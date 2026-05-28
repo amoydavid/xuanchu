@@ -46,6 +46,13 @@ func Resolve(opts Options) (Config, error) {
 	if dbPath == "" && opts.DataDir != "" {
 		dbPath = filepath.Join(opts.DataDir, "taskg.db")
 	}
+	if dbPath == "" {
+		if values, err := loadTomlConfig(configDir(home, env)); err == nil {
+			dbPath = values["database.path"]
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Config{}, err
+		}
+	}
 	if dbPath == "" && env["XDG_DATA_HOME"] != "" {
 		dbPath = filepath.Join(env["XDG_DATA_HOME"], "taskg", "taskg.db")
 	}
@@ -62,10 +69,17 @@ func Resolve(opts Options) (Config, error) {
 
 func environ() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "XDG_DATA_HOME"} {
+	for _, key := range []string{"TASKG_DB", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			values[key] = value
 		}
 	}
 	return values
+}
+
+func configDir(home string, env map[string]string) string {
+	if env != nil && env["XDG_CONFIG_HOME"] != "" {
+		return filepath.Join(env["XDG_CONFIG_HOME"], "taskg")
+	}
+	return filepath.Join(home, ".config", "taskg")
 }

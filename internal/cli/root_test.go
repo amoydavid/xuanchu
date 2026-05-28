@@ -27,9 +27,9 @@ func TestRootCommandVersion(t *testing.T) {
 
 func TestRootReorderRecognizesM1QueryTokens(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     []string
-		wantCmd  string
+		name    string
+		args    []string
+		wantCmd string
 	}{
 		{name: "parentheses", args: []string{"(project:work and +urgent) or priority:H", "list"}, wantCmd: "list"},
 		{name: "slash text", args: []string{"/spec/", "all"}, wantCmd: "all"},
@@ -59,4 +59,42 @@ func TestRootReorderRecognizesM1QueryTokens(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRootParsesRcOverridesAndNoContext(t *testing.T) {
+	flags, positional, rc := splitFlagsRcAndPositional([]string{"rc.date.format=epoch", "--no-context", "+next", "list"})
+	if len(flags) != 1 || flags[0] != "--no-context" {
+		t.Fatalf("flags = %#v", flags)
+	}
+	if len(positional) != 2 || positional[0] != "+next" || positional[1] != "list" {
+		t.Fatalf("positional = %#v", positional)
+	}
+	if got := rcValue(rc, "date.format"); got != "epoch" {
+		t.Fatalf("date.format rc = %q", got)
+	}
+}
+
+func TestRcOverrideEmptyClearsKey(t *testing.T) {
+	tests := [][]string{
+		{"rc.context="},
+		{"rc.context:"},
+		{"rc.context=none"},
+	}
+	for _, args := range tests {
+		_, positional, rc := splitFlagsRcAndPositional(args)
+		if len(positional) != 0 {
+			t.Fatalf("%v positional = %#v", args, positional)
+		}
+		if got := rcValue(rc, "context.active"); got != "" {
+			t.Fatalf("%v context.active = %q, want empty", args, got)
+		}
+	}
+}
+
+func rcValue(values map[string]*string, key string) string {
+	value, ok := values[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return *value
 }

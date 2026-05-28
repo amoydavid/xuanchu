@@ -80,6 +80,22 @@ func (s *Store) SetMeta(key, value string) error {
 	return s.db.Save(&Meta{Key: key, Value: value}).Error
 }
 
+func (s *Store) DeleteMeta(key string) error {
+	return s.db.Delete(&Meta{Key: key}).Error
+}
+
+func (s *Store) ListMeta() (map[string]string, error) {
+	var rows []Meta
+	if err := s.db.Order("key ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	values := make(map[string]string, len(rows))
+	for _, row := range rows {
+		values[row.Key] = row.Value
+	}
+	return values, nil
+}
+
 func (s *Store) configure() error {
 	return s.db.Exec("PRAGMA foreign_keys = ON").Error
 }

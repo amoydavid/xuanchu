@@ -18,10 +18,12 @@ type Options struct {
 	Stderr  io.Writer
 	Version string
 
-	DataDir string
-	DBPath  string
-	JSON    bool
-	NoColor bool
+	DataDir     string
+	DBPath      string
+	JSON        bool
+	NoColor     bool
+	NoContext   bool
+	RCOverrides map[string]*string
 }
 
 func NewRootCommand(opts Options) *cobra.Command {
@@ -50,6 +52,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db", opts.DBPath, "SQLite database path")
 	cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output")
 	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
+	cmd.PersistentFlags().BoolVar(&opts.NoContext, "no-context", opts.NoContext, "disable active context for this command")
 
 	cmd.AddCommand(newAddCommand(opts))
 	cmd.AddCommand(newListCommand(opts))
@@ -91,7 +94,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 // by intercepting args before Cobra's subcommand matching.
 func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
-	flags, positional := splitFlagsAndPositional(args)
+	flags, positional, rcOverrides := splitFlagsRcAndPositional(args)
+	opts = mergeRCOverrides(opts, rcOverrides)
 	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
 	knownActions := map[string]bool{"modify": true, "done": true, "delete": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
@@ -116,9 +120,19 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 }
 
 func splitFlagsAndPositional(args []string) (flags []string, positional []string) {
+	flags, positional, _ = splitFlagsRcAndPositional(args)
+	return
+}
+
+func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
+	rc = map[string]*string{}
 	stringFlags := map[string]bool{"--data-dir": true, "--db": true}
-	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--help": true, "--version": true}
+	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
+		if key, value, ok := parseRCOverride(args[i]); ok {
+			rc[key] = value
+			continue
+		}
 		name := args[i]
 		if strings.HasPrefix(name, "--") && strings.Contains(name, "=") {
 			name = strings.SplitN(name, "=", 2)[0]
@@ -136,6 +150,51 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 		}
 	}
 	return
+}
+
+func parseRCOverride(arg string) (string, *string, bool) {
+	if !strings.HasPrefix(arg, "rc.") {
+		return "", nil, false
+	}
+	body := strings.TrimPrefix(arg, "rc.")
+	var key, value string
+	switch {
+	case strings.Contains(body, "="):
+		parts := strings.SplitN(body, "=", 2)
+		key, value = parts[0], parts[1]
+	case strings.HasSuffix(body, ":"):
+		key = strings.TrimSuffix(body, ":")
+		value = ""
+	default:
+		return "", nil, false
+	}
+	key = normalizeRCKey(key)
+	if value == "" || (key == "context.active" && value == "none") {
+		return key, nil, true
+	}
+	return key, &value, true
+}
+
+func normalizeRCKey(key string) string {
+	if key == "context" {
+		return "context.active"
+	}
+	return key
+}
+
+func mergeRCOverrides(opts Options, overrides map[string]*string) Options {
+	if len(overrides) == 0 {
+		return opts
+	}
+	merged := map[string]*string{}
+	for key, value := range opts.RCOverrides {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	opts.RCOverrides = merged
+	return opts
 }
 
 func commandIndex(args []string, commands map[string]bool) int {
@@ -167,7 +226,7 @@ func isDashTag(arg string) bool {
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
 	stringFlags := map[string]bool{"--data-dir": true, "--db": true}
-	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--help": true, "--version": true}
+	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
 			parts := strings.SplitN(flags[i], "=", 2)
@@ -295,6 +354,7 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts.DBPath = getCmdStringFlag(cmd, "db", opts.DBPath)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
+	opts.NoContext = getCmdBoolFlag(cmd, "no-context", opts.NoContext)
 	return opts
 }
 

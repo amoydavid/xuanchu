@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/dajee/taskg/internal/config"
 	"github.com/dajee/taskg/internal/storage/sqlite"
@@ -14,27 +15,13 @@ func newShowCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			cfg, err := config.Resolve(config.Options{
-				DataDir: currentOpts.DataDir,
-				DBPath:  currentOpts.DBPath,
-				JSON:    currentOpts.JSON,
-				NoColor: currentOpts.NoColor,
-			})
+			rt, err := runtimeFromOptions(currentOpts)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "database.path=%s\n", cfg.DatabasePath)
-			fmt.Fprintf(cmd.OutOrStdout(), "color=%v\n", cfg.Color)
-
-			store, err := openStore(currentOpts)
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-			if value, ok, _ := store.GetMeta("date.format"); ok {
-				fmt.Fprintf(cmd.OutOrStdout(), "date.format=%s\n", value)
-			} else {
-				fmt.Fprintln(cmd.OutOrStdout(), "date.format=rfc3339")
+			for _, key := range []string{"database.path", "color", "json", "date.format", "context.active"} {
+				value, _ := rt.Get(key)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
 			}
 			return nil
 		},
@@ -48,6 +35,8 @@ func newConfigCommand(opts Options) *cobra.Command {
 	}
 	cmd.AddCommand(newConfigGetCommand(opts))
 	cmd.AddCommand(newConfigSetCommand(opts))
+	cmd.AddCommand(newConfigUnsetCommand(opts))
+	cmd.AddCommand(newConfigListCommand(opts))
 	return cmd
 }
 
@@ -58,30 +47,15 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
-			store, err := openStore(currentOpts)
+			rt, err := runtimeFromOptions(currentOpts)
 			if err != nil {
 				return err
 			}
-			defer store.Close()
-
-			if value, ok, _ := store.GetMeta(key); ok {
+			if value, ok := rt.Get(key); ok {
 				fmt.Fprintln(cmd.OutOrStdout(), value)
 				return nil
 			}
-			switch key {
-			case "database.path":
-				cfg, _ := config.Resolve(config.Options{
-					DataDir: currentOpts.DataDir, DBPath: currentOpts.DBPath,
-				})
-				fmt.Fprintln(cmd.OutOrStdout(), cfg.DatabasePath)
-			case "color":
-				fmt.Fprintln(cmd.OutOrStdout(), "true")
-			case "date.format":
-				fmt.Fprintln(cmd.OutOrStdout(), "rfc3339")
-			default:
-				return fmt.Errorf("unknown config key %q", key)
-			}
-			return nil
+			return fmt.Errorf("unknown config key %q", key)
 		},
 	}
 }
@@ -111,6 +85,54 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 	}
 }
 
+func newConfigUnsetCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "unset <key>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			key := args[0]
+			switch key {
+			case "date.format", "color", "json":
+				// allowed
+			case "database.path":
+				return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
+			case "context.active":
+				return fmt.Errorf("context.active is managed by context commands")
+			default:
+				return fmt.Errorf("unknown config key %q", key)
+			}
+			store, err := openStore(currentOpts)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			return store.DeleteMeta(key)
+		},
+	}
+}
+
+func newConfigListCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "list",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			rt, err := runtimeFromOptions(currentOpts)
+			if err != nil {
+				return err
+			}
+			keys := rt.Keys()
+			sort.Strings(keys)
+			for _, key := range keys {
+				value, _ := rt.Get(key)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
+			}
+			return nil
+		},
+	}
+}
+
 func openStore(opts Options) (*sqlite.Store, error) {
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir, DBPath: opts.DBPath,
@@ -119,4 +141,34 @@ func openStore(opts Options) (*sqlite.Store, error) {
 		return nil, err
 	}
 	return sqlite.Open(cfg.DatabasePath)
+}
+
+func runtimeFromOptions(opts Options) (config.Runtime, error) {
+	cfg, err := config.Resolve(config.Options{
+		DataDir: opts.DataDir,
+		DBPath:  opts.DBPath,
+		JSON:    opts.JSON,
+		NoColor: opts.NoColor,
+	})
+	if err != nil {
+		return config.Runtime{}, err
+	}
+	store, err := sqlite.Open(cfg.DatabasePath)
+	if err != nil {
+		return config.Runtime{}, err
+	}
+	defer store.Close()
+	meta, err := store.ListMeta()
+	if err != nil {
+		return config.Runtime{}, err
+	}
+	return config.LoadRuntime(config.RuntimeOptions{
+		Meta:        meta,
+		RCOverrides: opts.RCOverrides,
+		Defaults: map[string]string{
+			"database.path": cfg.DatabasePath,
+			"json":          fmt.Sprintf("%v", opts.JSON),
+			"color":         fmt.Sprintf("%v", !opts.NoColor),
+		},
+	})
 }

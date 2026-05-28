@@ -42,6 +42,26 @@ func TestCLIShowAndConfig(t *testing.T) {
 	}
 }
 
+func TestCLIConfigListUnsetAndShow(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "config", "set", "date.format", "epoch")
+	list := run(t, bin, "--db", db, "config", "list")
+	if !strings.Contains(list, "date.format=epoch") || !strings.Contains(list, "database.path="+db) {
+		t.Fatalf("config list output = %q", list)
+	}
+	show := run(t, bin, "--db", db, "show")
+	if !strings.Contains(show, "date.format=epoch") {
+		t.Fatalf("show output = %q", show)
+	}
+	run(t, bin, "--db", db, "config", "unset", "date.format")
+	got := strings.TrimSpace(run(t, bin, "--db", db, "config", "get", "date.format"))
+	if got != "rfc3339" {
+		t.Fatalf("date.format after unset = %q", got)
+	}
+}
+
 func TestCLIExportImportRoundTrip(t *testing.T) {
 	bin := buildTaskg(t)
 	db1 := filepath.Join(t.TempDir(), "one.db")
