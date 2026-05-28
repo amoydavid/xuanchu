@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -68,7 +69,9 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	flags, positional := splitFlagsAndPositional(args)
 	knownSubcommands := map[string]bool{"add": true, "list": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true}
 
-	if len(positional) >= 2 && !knownSubcommands[positional[0]] {
+	knownActions := map[string]bool{"modify": true, "done": true, "delete": true}
+
+	if len(positional) >= 2 && !knownSubcommands[positional[0]] && knownActions[positional[1]] {
 		// Pattern: taskg <target> <action> [args...]
 		return handleTargetAction(cmd, opts, flags, positional)
 	}
@@ -198,4 +201,9 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		return nil, nil, err
 	}
 	return svc, store.Close, nil
+}
+
+func isNumericTarget(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
 }

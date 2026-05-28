@@ -18,5 +18,46 @@
 
 ## 状态
 
-设计阶段。代码尚未开始落地。
+M0 已实现。
+
+## M0 本地 CLI 用法
+
+```bash
+go build -o taskg ./cmd/taskg
+
+# 添加任务
+./taskg add "Write project spec" project:taskg +planning due:tomorrow
+./taskg add "Review PR" priority:H +review
+
+# 查看任务列表
+./taskg list
+
+# 查看任务详情
+./taskg info 1
+
+# 修改任务
+./taskg 1 modify priority:H +next
+./taskg 1 modify project:backend
+
+# 完成任务
+./taskg 1 done
+
+# 删除任务
+./taskg 1 delete
+
+# 导出为 JSON
+./taskg export
+
+# 导入 JSON
+./taskg import tasks.json
+
+# 查看配置
+./taskg show
+
+# 设置配置
+./taskg config set date.format rfc3339
+./taskg config get date.format
+```
+
+默认数据库路径为 `~/.local/share/taskg/taskg.db`，可用 `--db` 或 `TASKG_DB` 环境变量覆盖。
 

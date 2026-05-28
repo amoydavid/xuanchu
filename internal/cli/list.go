@@ -2,21 +2,36 @@ package cli
 
 import (
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/spf13/cobra"
 )
 
 func newListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:  "list [filters...]",
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			tasks, err := svc.List(app.ListInput{})
+
+			input := app.ListInput{}
+			if len(args) > 0 {
+				filter, err := query.ParseFilters(args)
+				if err != nil {
+					return err
+				}
+				input.Status = derefStr(filter.Status)
+				input.Project = filter.Project
+				input.Priority = filter.Priority
+				input.Tags = filter.Tags
+				input.Text = filter.Text
+			}
+
+			tasks, err := svc.List(input)
 			if err != nil {
 				return err
 			}
@@ -27,4 +42,11 @@ func newListCommand(opts Options) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
