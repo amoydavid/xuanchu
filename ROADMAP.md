@@ -16,7 +16,7 @@
 | M0 | 已完成 | 本地单用户 CLI、SQLite 存储、核心任务生命周期 |
 | M1 | 已完成 | 查询语言、内置报表、urgency、DOM 与 calc 基础 |
 | M2 | 已完成 | Taskwarrior 核心任务模型补齐 |
-| M3 | 待规划 | 配置系统、上下文、脚本化 helper 与兼容导入导出增强 |
+| M3 | 已完成 | 配置系统、上下文、UDA、`.taskrc` 只读导入与脚本化 helper |
 | M4 | 待规划 | 多 workspace、本地团队模型与权限边界 |
 | M5 | 待规划 | HTTP/JSON API 与远程 CLI |
 | M6 | 待规划 | MCP Server 与 Agent 工具接口 |
@@ -212,6 +212,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 ## M3：配置系统、上下文、UDA 与兼容性增强
 
+**状态：已完成。**
+
 **目标：** 完善 Taskwarrior 风格的个性化能力和脚本化能力，为长期使用和迁移做准备。
 
 **范围：**
@@ -260,6 +262,30 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - orphan UDA 能保留并在兼容性报告中出现。
 - `_unique project`、`_tags`、`_udas` 等 helper 输出无装饰、可脚本解析。
 - `.taskrc` 导入不会破坏现有配置。
+
+**M3 已交付内容：**
+
+- 配置系统升级：
+  - 支持 `~/.config/taskg/taskg.toml` 与 `XDG_CONFIG_HOME`。
+  - 支持 `rc.<key>=<value>`、`rc.<key>:`、`rc.context=none`。
+  - `config get/set/unset/list` 可读取合并视图，并路由 UDA schema。
+- context：
+  - `context define/use/none/show/list/delete`。
+  - active context 自动影响读路径；`--no-context` 可绕过。
+- UDA：
+  - `string`、`numeric`、`date`、`duration` 类型。
+  - 枚举值校验、JSON top-level import/export、orphan UDA 保留。
+  - UDA query、DOM `_get`、`_udas`、`_unique`、urgency 系数基础。
+- `.taskrc` 只读导入：
+  - 支持 `data.location`、`color`、`dateformat`、`context.<name>`、`uda.*`、`urgency.uda.*`。
+  - `report.*`、`hooks.*` 等识别为 skipped；未知 key 进入 unknown 报告。
+  - 支持 `--dry-run` 和 `--json` 报告。
+- helper 与 completion：
+  - `_show`
+  - `_version`
+  - `_udas`
+  - `_unique`
+  - `completion bash|zsh|fish|powershell`
 
 ## M4：多 Workspace、本地团队模型与权限边界
 
@@ -527,14 +553,15 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-下一步应为 M2 编写独立需求规格：
+下一步应为 M4 编写独立需求规格：
 
 ```text
-docs/superpowers/specs/YYYY-MM-DD-taskg-m2-design.md
+docs/superpowers/specs/YYYY-MM-DD-taskg-m4-design.md
 ```
 
-M2 spec 应重点明确：
+M4 spec 应重点明确：
 
-- `start`/`stop`、`wait`/`scheduled`/`until`、`annotations`、`depends`、`recurring` 的数据模型。
-- blocked/blocking 报表与 urgency 联动。
-- waiting/ready/active 报表与字段状态机的精确行为。
+- 多 workspace 的数据模型与迁移策略。
+- active workspace 与 existing local workspace 的兼容规则。
+- context、UDA、config 在 workspace 维度的隔离方式。
+- 本地团队模型、membership 与后续 HTTP 权限边界。

@@ -158,3 +158,56 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 - `until` 会阻止生成超过截止时间的新 child
 - recurring parent 不接受 `wait`、`scheduled`、`depends`，避免模板字段被静默丢弃
 - `monthly` 目前直接沿用 Go `time.AddDate(0, n, 0)` 的月末滚动语义
+
+## M3 配置、Context、UDA 与 `.taskrc` 用法
+
+```bash
+# TOML / config / rc 覆盖
+./taskg show
+./taskg config set date.format rfc3339
+./taskg config list
+./taskg rc.date.format=epoch list
+
+# context
+./taskg context define work 'project:work status:pending'
+./taskg context use work
+./taskg list
+./taskg --no-context list
+./taskg context show
+./taskg context none
+
+# UDA
+./taskg config set uda.estimate.type numeric
+./taskg config set uda.estimate.label Estimate
+./taskg config set uda.estimate.values 1,2,3,5,8
+./taskg add "Implement API" estimate:3
+./taskg estimate:3 list
+./taskg _get 1.estimate
+./taskg _udas
+./taskg _unique estimate
+
+# .taskrc 只读导入
+./taskg config import-taskrc ~/.taskrc --dry-run --json
+./taskg config import-taskrc ~/.taskrc
+
+# completion 与脚本 helper
+./taskg completion zsh > ~/.zfunc/_taskg
+./taskg _show date.format context.active
+./taskg _version
+```
+
+M3 新增 `~/.config/taskg/taskg.toml` 作为文件配置来源。数据库路径仍按 `--db`、`TASKG_DB`、`--data-dir`、TOML、XDG data、home fallback 的顺序解析；普通配置按 CLI flag、`rc.*`、环境变量、SQLite meta、TOML、默认值合并。
+
+`context` 会自动叠加到 `list`、`next`、各类报表和 `_ids/_uuids/_projects/_tags/_unique`。`--no-context` 和 `rc.context=none` 只影响本次运行；`context none` 会持久化清空 active context。
+
+UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA 写入为 RFC3339 UTC 字符串；查询 `estimate:3`、`reviewed:2026-05-28` 会结合当前 schema 编译。未定义的 JSON top-level 字段会作为 orphan UDA 保留并导出，普通 `modify` 不能修改 orphan UDA。
+
+`.taskrc` 在 M3 中的作用是**迁移和兼容性导入**：taskg 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。taskg 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
+
+当前 `.taskrc` 支持范围：
+
+- 支持导入：`data.location`、`color`、`dateformat`、`context.<name>`、`uda.<name>.type/label/values/default`、`urgency.uda.*`
+- 识别但跳过：`report.*`、`calendar.*`、`burndown.*`、`news.*`、`sync.*`、`hooks.*`
+- 其它 key 进入 unknown 报告，不会让导入失败
+
+M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。
