@@ -126,6 +126,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
   - `fix: ...`
   - `docs: ...`
   - `chore: ...`
+- 使用中文提交信息
 
 提交前先确认：
 
