@@ -20,6 +20,17 @@ type Context struct {
 	ModifiedAt   int64  `gorm:"not null"`
 }
 
+type UDADefinition struct {
+	WorkspaceID  string `gorm:"primaryKey;not null"`
+	Name         string `gorm:"primaryKey;not null"`
+	Type         string `gorm:"not null"`
+	Label        string
+	ValuesJSON   string
+	DefaultValue string
+	CreatedAt    int64 `gorm:"not null"`
+	ModifiedAt   int64 `gorm:"not null"`
+}
+
 type Task struct {
 	UUID        string `gorm:"primaryKey"`
 	WorkspaceID string `gorm:"not null;index"`
@@ -42,6 +53,7 @@ type Task struct {
 	IMask       *int
 	Annotations []TaskAnnotation `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Depends     []TaskDependency `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	UDAs        []TaskUDAValue   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 }
 
 type TaskTag struct {
@@ -58,4 +70,13 @@ type TaskAnnotation struct {
 type TaskDependency struct {
 	TaskUUID  string `gorm:"primaryKey;not null"`
 	DependsOn string `gorm:"primaryKey;not null;index"`
+}
+
+type TaskUDAValue struct {
+	WorkspaceID string `gorm:"not null;index"`
+	TaskUUID    string `gorm:"primaryKey;not null;index"`
+	Name        string `gorm:"primaryKey;not null"`
+	Value       string `gorm:"not null"`
+	ValueType   string
+	Orphan      bool `gorm:"not null;default:false"`
 }

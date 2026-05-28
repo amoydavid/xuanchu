@@ -129,14 +129,28 @@ func parsePredicate(tok string) (Expr, error) {
 		if attr, op, err := parseAttributeOperator(tok); err == nil && op == OpNotNull {
 			return Predicate{Attribute: attr, Operator: op}, nil
 		}
+		if field, ok := parseUDANotNull(tok); ok {
+			return Predicate{Attribute: AttrUDA, Field: field, Operator: OpNotNull}, nil
+		}
 		return Predicate{Attribute: AttrBare, Operator: OpContains, Value: BareValue(tok)}, nil
 	}
 	attr, op, err := parseAttributeOperator(name)
 	if err != nil {
-		return nil, err
+		if field, udaOp, ok := parseUDAAttributeOperator(name); ok {
+			attr, op = AttrUDA, udaOp
+			name = field
+		} else {
+			return nil, err
+		}
 	}
 	if value == "" {
+		if attr == AttrUDA {
+			return Predicate{Attribute: attr, Field: name, Operator: OpIsNull, Value: StringValue("")}, nil
+		}
 		return Predicate{Attribute: attr, Operator: OpIsNull, Value: StringValue("")}, nil
+	}
+	if attr == AttrUDA {
+		return Predicate{Attribute: attr, Field: name, Operator: op, Value: StringValue(strings.Trim(value, "/"))}, nil
 	}
 	switch attr {
 	case AttrDue, AttrEntry, AttrModified, AttrEnd, AttrStart, AttrWait, AttrScheduled, AttrUntil:
@@ -151,6 +165,51 @@ func parsePredicate(tok string) (Expr, error) {
 		return Predicate{Attribute: attr, Operator: OpContains, Value: StringValue(strings.Trim(value, "/"))}, nil
 	}
 	return Predicate{Attribute: attr, Operator: op, Value: StringValue(value)}, nil
+}
+
+func parseUDANotNull(tok string) (string, bool) {
+	if strings.HasPrefix(tok, "uda.") {
+		body := strings.TrimPrefix(tok, "uda.")
+		field, suffix, ok := strings.Cut(body, ".")
+		return field, ok && suffix == "notnull" && field != ""
+	}
+	field, suffix, ok := strings.Cut(tok, ".")
+	if !ok || suffix != "notnull" || isBuiltInAttribute(field) {
+		return "", false
+	}
+	return strings.TrimPrefix(field, "uda."), true
+}
+
+func parseUDAAttributeOperator(name string) (string, Operator, bool) {
+	field := name
+	op := OpEqual
+	if strings.HasPrefix(field, "uda.") {
+		field = strings.TrimPrefix(field, "uda.")
+	} else if isBuiltInAttribute(strings.Split(field, ".")[0]) {
+		return "", "", false
+	}
+	if base, suffix, ok := strings.Cut(field, "."); ok {
+		field = base
+		switch suffix {
+		case "before":
+			op = OpBefore
+		case "after":
+			op = OpAfter
+		case "notnull":
+			op = OpNotNull
+		default:
+			return "", "", false
+		}
+	}
+	if field == "" {
+		return "", "", false
+	}
+	return field, op, true
+}
+
+func isBuiltInAttribute(name string) bool {
+	_, _, err := parseAttributeOperator(name)
+	return err == nil
 }
 
 func parseAttributeOperator(name string) (Attribute, Operator, error) {

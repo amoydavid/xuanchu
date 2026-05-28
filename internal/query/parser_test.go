@@ -86,3 +86,16 @@ func TestParseModifyArgsClearsM2DateFields(t *testing.T) {
 		t.Fatalf("clear flags not set: %#v", mod)
 	}
 }
+
+func TestParseModifyArgsAllowsUDAFields(t *testing.T) {
+	mod, err := ParseModifyArgs([]string{"estimate:3", "reviewed:"})
+	if err != nil {
+		t.Fatalf("ParseModifyArgs() error = %v", err)
+	}
+	if mod.UDAs["estimate"] != "3" {
+		t.Fatalf("UDAs = %#v", mod.UDAs)
+	}
+	if len(mod.ClearUDAs) != 1 || mod.ClearUDAs[0] != "reviewed" {
+		t.Fatalf("ClearUDAs = %#v", mod.ClearUDAs)
+	}
+}

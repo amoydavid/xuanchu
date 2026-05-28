@@ -46,7 +46,7 @@ func TestResolveM2Fields(t *testing.T) {
 	start := int64(10)
 	tsk := task.Task{
 		UUID: "u1", Description: "task", Status: task.StatusPending, Start: &start,
-		Depends: []string{"dep1", "dep2"},
+		Depends:     []string{"dep1", "dep2"},
 		Annotations: []task.Annotation{{Entry: 1, Description: "note"}},
 	}
 	if got, _ := Resolve(tsk, "start", 0); got != "10" {
@@ -57,5 +57,20 @@ func TestResolveM2Fields(t *testing.T) {
 	}
 	if got, _ := Resolve(tsk, "annotations", 0); !strings.Contains(got, "note") {
 		t.Fatalf("annotations = %q", got)
+	}
+}
+
+func TestResolveUDAFields(t *testing.T) {
+	tsk := task.Task{UDAs: map[string]task.UDAValue{
+		"estimate": {Name: "estimate", Raw: "3", Type: "numeric"},
+	}}
+	for _, field := range []string{"estimate", "uda.estimate"} {
+		got, err := Resolve(tsk, field, 0)
+		if err != nil {
+			t.Fatalf("Resolve(%s) error = %v", field, err)
+		}
+		if got != "3" {
+			t.Fatalf("Resolve(%s) = %q, want 3", field, got)
+		}
 	}
 }

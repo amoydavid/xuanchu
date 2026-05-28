@@ -42,6 +42,7 @@ func (s *Service) UseContext(name string) error {
 }
 
 func (s *Service) ContextNone() error {
+	s.activeContextOverride = nil
 	return s.store.DeleteMeta(activeContextMetaKey)
 }
 
@@ -90,7 +91,7 @@ func (s *Service) activeContextFilter(skip bool) (query.Expr, error) {
 }
 
 func (s *Service) activeContext() (*taskcontext.Context, error) {
-	name, ok, err := s.store.GetMeta(activeContextMetaKey)
+	name, ok, err := s.activeContextName()
 	if err != nil {
 		return nil, err
 	}
@@ -102,4 +103,19 @@ func (s *Service) activeContext() (*taskcontext.Context, error) {
 		return nil, err
 	}
 	return &ctx, nil
+}
+
+func (s *Service) OverrideActiveContext(name string) {
+	s.activeContextOverride = &name
+}
+
+func (s *Service) activeContextName() (string, bool, error) {
+	if s.activeContextOverride != nil {
+		return *s.activeContextOverride, *s.activeContextOverride != "", nil
+	}
+	name, ok, err := s.store.GetMeta(activeContextMetaKey)
+	if err != nil {
+		return "", false, err
+	}
+	return name, ok, nil
 }

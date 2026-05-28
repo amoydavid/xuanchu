@@ -165,3 +165,54 @@ func newTagsCommand(opts Options) *cobra.Command {
 		},
 	}
 }
+
+func newUDAsCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "_udas",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			defs, err := svc.ListUDAs()
+			if err != nil {
+				return err
+			}
+			for _, def := range defs {
+				fmt.Fprintln(cmd.OutOrStdout(), def.Name)
+			}
+			return nil
+		},
+	}
+}
+
+func newUniqueCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "_unique <attr> [filters...]",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			var expr query.Expr
+			if len(args) > 1 {
+				expr, err = query.ParseFilterExpr(args[1:])
+				if err != nil {
+					return err
+				}
+			}
+			values, err := svc.UniqueValues(args[0], app.ListInput{Query: expr})
+			if err != nil {
+				return err
+			}
+			for _, value := range values {
+				fmt.Fprintln(cmd.OutOrStdout(), value)
+			}
+			return nil
+		},
+	}
+}

@@ -18,6 +18,8 @@ type Modification struct {
 	ClearRecur     bool
 	AddTags        []string
 	RemoveTags     []string
+	UDAs           map[string]string
+	ClearUDAs      []string
 }
 
 func (m Modification) Empty() bool {
@@ -31,5 +33,7 @@ func (m Modification) Empty() bool {
 		len(m.AddDepends) == 0 && !m.ClearDepends &&
 		m.Recur == nil && !m.ClearRecur &&
 		len(m.AddTags) == 0 &&
-		len(m.RemoveTags) == 0
+		len(m.RemoveTags) == 0 &&
+		len(m.UDAs) == 0 &&
+		len(m.ClearUDAs) == 0
 }

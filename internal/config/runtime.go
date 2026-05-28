@@ -35,7 +35,9 @@ func LoadRuntime(opts RuntimeOptions) (Runtime, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			tomlValues, err = loadTomlConfig(filepath.Join(opts.ConfigDir, "taskg"))
 		}
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			tomlValues = nil
+		} else if err != nil {
 			return Runtime{}, err
 		}
 		for key, value := range tomlValues {

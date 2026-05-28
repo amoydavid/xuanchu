@@ -102,7 +102,7 @@ func (s *Store) configure() error {
 }
 
 func (s *Store) migrate() error {
-	if err := s.db.AutoMigrate(&Meta{}, &Workspace{}, &Context{}, &Task{}, &TaskTag{}, &TaskAnnotation{}, &TaskDependency{}); err != nil {
+	if err := s.db.AutoMigrate(&Meta{}, &Workspace{}, &Context{}, &UDADefinition{}, &Task{}, &TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskUDAValue{}); err != nil {
 		return err
 	}
 	return s.db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_parent_due_open ON tasks(parent, due) WHERE status IN ('pending', 'waiting') AND parent IS NOT NULL AND due IS NOT NULL").Error

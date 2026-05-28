@@ -89,6 +89,12 @@ func Resolve(tsk task.Task, field string, urgency float64) (string, error) {
 	case "urgency":
 		return strconv.FormatFloat(urgency, 'f', 3, 64), nil
 	}
+	if strings.HasPrefix(field, "uda.") {
+		field = strings.TrimPrefix(field, "uda.")
+	}
+	if value, ok := tsk.UDAs[field]; ok {
+		return value.Raw, nil
+	}
 	if strings.HasPrefix(field, "tag.") {
 		tag := strings.TrimPrefix(field, "tag.")
 		if slices.Contains(tsk.Tags, tag) {

@@ -62,6 +62,51 @@ func TestCLIConfigListUnsetAndShow(t *testing.T) {
 	}
 }
 
+func TestCLIUDAConfigAndImport(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
+	run(t, bin, "--db", db, "config", "set", "uda.estimate.label", "Estimate")
+	run(t, bin, "--db", db, "config", "set", "uda.estimate.values", "1,2,3,5,8")
+	if got := strings.TrimSpace(run(t, bin, "--db", db, "config", "get", "uda.estimate.values")); got != "1,2,3,5,8" {
+		t.Fatalf("config get uda values = %q", got)
+	}
+	run(t, bin, "--db", db, "add", "estimated", "task", "estimate:3")
+	run(t, bin, "--db", db, "add", "bigger", "task", "estimate:5")
+	exported := run(t, bin, "--db", db, "--json", "export")
+	if !strings.Contains(exported, `"estimate": "3"`) {
+		t.Fatalf("export missing estimate UDA: %q", exported)
+	}
+	list := run(t, bin, "--db", db, "estimate:3", "list")
+	if !strings.Contains(list, "estimated task") || strings.Contains(list, "bigger task") {
+		t.Fatalf("estimate query output = %q", list)
+	}
+	udas := run(t, bin, "--db", db, "_udas")
+	if strings.TrimSpace(udas) != "estimate" {
+		t.Fatalf("_udas output = %q", udas)
+	}
+	unique := run(t, bin, "--db", db, "_unique", "estimate")
+	if strings.TrimSpace(unique) != "3\n5" {
+		t.Fatalf("_unique estimate output = %q", unique)
+	}
+
+	path := filepath.Join(t.TempDir(), "orphan.json")
+	if err := os.WriteFile(path, []byte(`[{"uuid":"u1","description":"legacy task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "--db", db, "import", path)
+	legacyUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "/legacy/"))
+	got := run(t, bin, "--db", db, "_get", legacyUUID+".legacy_field")
+	if strings.TrimSpace(got) != "old" {
+		t.Fatalf("_get orphan UDA = %q", got)
+	}
+	cmd := exec.Command(bin, "--db", db, legacyUUID, "modify", "legacy_field:new")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("modify orphan UDA succeeded unexpectedly:\n%s", out)
+	}
+}
+
 func TestCLIContextCommands(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")

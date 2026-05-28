@@ -39,6 +39,7 @@ func loadTomlConfig(dir string) (map[string]string, error) {
 		if section != "" && !strings.Contains(key, ".") {
 			key = section + "." + key
 		}
+		key = normalizeTomlKey(key)
 		values[key] = normalizeTomlScalar(value)
 	}
 	if err := scanner.Err(); err != nil {
@@ -47,10 +48,41 @@ func loadTomlConfig(dir string) (map[string]string, error) {
 	return values, nil
 }
 
+func normalizeTomlKey(key string) string {
+	switch key {
+	case "display.color":
+		return "color"
+	case "display.json":
+		return "json"
+	default:
+		return key
+	}
+}
+
 func normalizeTomlScalar(raw string) string {
 	value := strings.TrimSpace(raw)
 	if i := strings.Index(value, "#"); i >= 0 {
 		value = strings.TrimSpace(value[:i])
+	}
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(value, "["), "]"))
+		if inner == "" {
+			return ""
+		}
+		parts := strings.Split(inner, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if len(part) >= 2 {
+				if (part[0] == '"' && part[len(part)-1] == '"') || (part[0] == '\'' && part[len(part)-1] == '\'') {
+					part = part[1 : len(part)-1]
+				}
+			}
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+		return strings.Join(out, ",")
 	}
 	if len(value) >= 2 {
 		if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {

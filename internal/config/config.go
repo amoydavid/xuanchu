@@ -77,9 +77,13 @@ func environ() map[string]string {
 	return values
 }
 
-func configDir(home string, env map[string]string) string {
+func ConfigDir(home string, env map[string]string) string {
 	if env != nil && env["XDG_CONFIG_HOME"] != "" {
 		return filepath.Join(env["XDG_CONFIG_HOME"], "taskg")
 	}
 	return filepath.Join(home, ".config", "taskg")
+}
+
+func configDir(home string, env map[string]string) string {
+	return ConfigDir(home, env)
 }

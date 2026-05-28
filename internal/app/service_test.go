@@ -62,6 +62,150 @@ func TestServiceAddListInfo(t *testing.T) {
 	}
 }
 
+func TestServicePersistsUDAValues(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.DefineUDA("estimate", "numeric", "Estimate", []string{"1", "2", "3", "5"}, ""); err != nil {
+		t.Fatalf("DefineUDA() error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "task", UDAs: map[string]string{"estimate": "3"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	got, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.UDAs["estimate"].Raw != "3" || got.UDAs["estimate"].Type != "numeric" {
+		t.Fatalf("UDA after add = %#v", got.UDAs)
+	}
+	if err := svc.Modify(created.UUID, ModifyInput{UDAs: map[string]string{"estimate": "5"}}); err != nil {
+		t.Fatalf("Modify(set UDA) error = %v", err)
+	}
+	got, _ = svc.ResolveTarget(created.UUID)
+	if got.UDAs["estimate"].Raw != "5" {
+		t.Fatalf("UDA after modify = %#v", got.UDAs)
+	}
+	if err := svc.Modify(created.UUID, ModifyInput{ClearUDAs: []string{"estimate"}}); err != nil {
+		t.Fatalf("Modify(clear UDA) error = %v", err)
+	}
+	got, _ = svc.ResolveTarget(created.UUID)
+	if _, ok := got.UDAs["estimate"]; ok {
+		t.Fatalf("UDA after clear = %#v, want absent", got.UDAs)
+	}
+}
+
+func TestConfigSetRoutesUDASchemaKeys(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.SetConfig("uda.estimate.type", "numeric"); err != nil {
+		t.Fatalf("SetConfig(type) error = %v", err)
+	}
+	if err := svc.SetConfig("uda.estimate.label", "Estimate"); err != nil {
+		t.Fatalf("SetConfig(label) error = %v", err)
+	}
+	if err := svc.SetConfig("uda.estimate.values", "1,2,3,5,8"); err != nil {
+		t.Fatalf("SetConfig(values) error = %v", err)
+	}
+	got, ok, err := svc.GetConfig("uda.estimate.values")
+	if err != nil {
+		t.Fatalf("GetConfig(values) error = %v", err)
+	}
+	if !ok || got != "1,2,3,5,8" {
+		t.Fatalf("uda.estimate.values = %q, %v", got, ok)
+	}
+	list, err := svc.ConfigValues()
+	if err != nil {
+		t.Fatalf("ConfigValues() error = %v", err)
+	}
+	if list["uda.estimate.type"] != "numeric" || list["uda.estimate.label"] != "Estimate" || list["uda.estimate.values"] != "1,2,3,5,8" {
+		t.Fatalf("ConfigValues() = %#v", list)
+	}
+	if err := svc.UnsetConfig("uda.estimate.values"); err != nil {
+		t.Fatalf("UnsetConfig(values) error = %v", err)
+	}
+	got, ok, err = svc.GetConfig("uda.estimate.values")
+	if err != nil {
+		t.Fatalf("GetConfig(values after unset) error = %v", err)
+	}
+	if ok || got != "" {
+		t.Fatalf("uda.estimate.values after unset = %q, %v", got, ok)
+	}
+}
+
+func TestImportPreservesOrphanUDA(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	var payload []task.JSONTask
+	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), &payload); err != nil {
+		t.Fatalf("UnmarshalJSONTasks() error = %v", err)
+	}
+	if _, err := svc.Import(payload); err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	got, err := svc.ResolveTarget("u1")
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	legacy := got.UDAs["legacy_field"]
+	if legacy.Raw != "old" || !legacy.Orphan {
+		t.Fatalf("legacy UDA = %#v", legacy)
+	}
+	var updated []task.JSONTask
+	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"new"}]`), &updated); err != nil {
+		t.Fatalf("UnmarshalJSONTasks(update) error = %v", err)
+	}
+	if _, err := svc.Import(updated); err != nil {
+		t.Fatalf("Import(update) error = %v", err)
+	}
+	got, _ = svc.ResolveTarget("u1")
+	if got.UDAs["legacy_field"].Raw != "new" {
+		t.Fatalf("legacy UDA after update = %#v", got.UDAs["legacy_field"])
+	}
+}
+
+func TestModifyRejectsOrphanUDA(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	var payload []task.JSONTask
+	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), &payload); err != nil {
+		t.Fatalf("UnmarshalJSONTasks() error = %v", err)
+	}
+	if _, err := svc.Import(payload); err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if err := svc.Modify("u1", ModifyInput{UDAs: map[string]string{"legacy_field": "new"}}); err == nil {
+		t.Fatal("Modify(orphan set) error = nil, want error")
+	}
+	if err := svc.Modify("u1", ModifyInput{ClearUDAs: []string{"legacy_field"}}); err == nil {
+		t.Fatal("Modify(orphan clear) error = nil, want error")
+	}
+}
+
+func TestUniqueHelperSupportsUDA(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	if err := svc.DefineUDA("estimate", "numeric", "Estimate", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "one", UDAs: map[string]string{"estimate": "3"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "two", UDAs: map[string]string{"estimate": "5"}}); err != nil {
+		t.Fatal(err)
+	}
+	values, err := svc.UniqueValues("estimate", ListInput{})
+	if err != nil {
+		t.Fatalf("UniqueValues() error = %v", err)
+	}
+	if strings.Join(values, ",") != "3,5" {
+		t.Fatalf("UniqueValues() = %#v", values)
+	}
+}
+
 func TestContextDefineUseShowNoneDelete(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

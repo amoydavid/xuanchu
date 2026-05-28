@@ -32,6 +32,7 @@ const (
 	AttrParent      Attribute = "parent"
 	AttrTag         Attribute = "tag"
 	AttrBare        Attribute = "bare"
+	AttrUDA         Attribute = "uda"
 )
 
 type Operator string
@@ -77,6 +78,7 @@ type Predicate struct {
 	Attribute Attribute
 	Operator  Operator
 	Value     Value
+	Field     string
 }
 
 type Binary struct {
@@ -116,11 +118,15 @@ func Not(expr Expr) Expr {
 }
 
 func (p Predicate) String() string {
+	attr := string(p.Attribute)
+	if p.Attribute == AttrUDA && p.Field != "" {
+		attr = "uda." + p.Field
+	}
 	if p.Operator == OpIsNull || p.Operator == OpNotNull {
-		return fmt.Sprintf("%s %s", p.Attribute, p.Operator)
+		return fmt.Sprintf("%s %s", attr, p.Operator)
 	}
 	value := strconv.Quote(p.Value.Raw)
-	return fmt.Sprintf("%s %s %s", p.Attribute, p.Operator, value)
+	return fmt.Sprintf("%s %s %s", attr, p.Operator, value)
 }
 
 func (b Binary) String() string {

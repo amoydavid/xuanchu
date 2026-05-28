@@ -82,6 +82,17 @@ func TestExplainIncludesM2Contributions(t *testing.T) {
 	}
 }
 
+func TestExplainIncludesUDAContribution(t *testing.T) {
+	tsk := task.Task{
+		UUID: "u1", Description: "task", Status: task.StatusPending, Entry: 0, Modified: 0,
+		UDAs: map[string]task.UDAValue{"estimate": {Name: "estimate", Raw: "3", Type: "numeric"}},
+	}
+	explain := Explain(tsk, Options{NowUnix: 100, UDACoefficients: map[string]float64{"estimate": 2}, UDAValueCoefficients: map[string]float64{"estimate.3": 5}})
+	if !hasItem(explain, "uda.estimate") || !hasItem(explain, "uda.estimate.3") {
+		t.Fatalf("items = %#v", explain.Items)
+	}
+}
+
 func hasItem(explain ExplainResult, name string) bool {
 	for _, item := range explain.Items {
 		if item.Name == name {

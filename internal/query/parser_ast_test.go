@@ -37,9 +37,15 @@ func TestParseQueryParentheses(t *testing.T) {
 	}
 }
 
-func TestParseQueryRejectsUnknownAttribute(t *testing.T) {
-	if _, err := ParseQuery(`foo:bar`); err == nil {
-		t.Fatal("ParseQuery() error = nil, want error")
+func TestParseQueryRecognizesDynamicUDA(t *testing.T) {
+	for _, input := range []string{`estimate:3`, `estimate.notnull`, `estimate:`, `uda.reviewed:2026-05-28`} {
+		expr, err := ParseQuery(input)
+		if err != nil {
+			t.Fatalf("ParseQuery(%q) error = %v", input, err)
+		}
+		if !strings.Contains(expr.String(), "uda.") {
+			t.Fatalf("ParseQuery(%q) = %s, want UDA predicate", input, expr.String())
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/dajee/taskg/internal/query"
@@ -9,9 +10,10 @@ import (
 )
 
 type QueryCompileOptions struct {
-	WorkspaceID string
-	NowUnix     int64
-	Location    *time.Location
+	WorkspaceID    string
+	NowUnix        int64
+	Location       *time.Location
+	UDADefinitions map[string]string
 }
 
 func ApplyQuery(db *gorm.DB, expr query.Expr, opts QueryCompileOptions) *gorm.DB {
@@ -91,6 +93,8 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 		return compareColumn("uuid", p.Operator, value, nil)
 	case query.AttrBare:
 		return "description LIKE ?", []any{"%" + value + "%"}, nil
+	case query.AttrUDA:
+		return compileUDAPredicate(p, opts)
 	case query.AttrDescription:
 		// description: 始终按子串匹配，无论是 description:abc、description:'abc def'
 		// 还是 description:/abc/。这与 /abc/ 短语一致，避免 OpEqual 字面相等带来的反直觉。
@@ -186,11 +190,83 @@ func compareDateColumn(column string, p query.Predicate, opts QueryCompileOption
 		if err != nil {
 			return "", nil, err
 		}
-		return column + " >= ? AND " + column + " <= ?", []any{start, end}, nil
+		return column + " >= ? AND " + column + " < ?", []any{start, end}, nil
 	}
 	value, err := query.ResolveDateValue(p.Value, opts.NowUnix, loc)
 	if err != nil {
 		return "", nil, err
 	}
 	return compareColumn(column, p.Operator, "", &value)
+}
+
+func compileUDAPredicate(p query.Predicate, opts QueryCompileOptions) (string, []any, error) {
+	name := p.Field
+	typ, ok := opts.UDADefinitions[name]
+	if !ok {
+		return "", nil, fmt.Errorf("unknown UDA %q", name)
+	}
+	base := "task_uda_values.workspace_id = ? AND task_uda_values.task_uuid = tasks.uuid AND task_uda_values.name = ?"
+	baseArgs := []any{opts.WorkspaceID, name}
+	switch p.Operator {
+	case query.OpIsNull:
+		return "NOT EXISTS (SELECT 1 FROM task_uda_values WHERE " + base + ")", baseArgs, nil
+	case query.OpNotNull:
+		return "EXISTS (SELECT 1 FROM task_uda_values WHERE " + base + ")", baseArgs, nil
+	}
+	value := p.Value.Text
+	compareSQL := ""
+	compareArgs := []any{}
+	switch typ {
+	case "numeric", "duration":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return "", nil, err
+		}
+		switch p.Operator {
+		case query.OpEqual:
+			compareSQL = "CAST(task_uda_values.value AS REAL) = CAST(? AS REAL)"
+		case query.OpBefore:
+			compareSQL = "CAST(task_uda_values.value AS REAL) < CAST(? AS REAL)"
+		case query.OpAfter:
+			compareSQL = "CAST(task_uda_values.value AS REAL) > CAST(? AS REAL)"
+		default:
+			return "", nil, fmt.Errorf("unsupported UDA operator %s", p.Operator)
+		}
+		compareArgs = append(compareArgs, value)
+	case "date":
+		loc := opts.Location
+		if loc == nil {
+			loc = time.UTC
+		}
+		if p.Operator == query.OpEqual {
+			start, end, err := query.ResolveDateRange(query.ParseDateValue(value), opts.NowUnix, loc)
+			if err != nil {
+				return "", nil, err
+			}
+			compareSQL = "task_uda_values.value >= ? AND task_uda_values.value < ?"
+			compareArgs = append(compareArgs, time.Unix(start, 0).UTC().Format(time.RFC3339), time.Unix(end, 0).UTC().Format(time.RFC3339))
+		} else {
+			ts, err := query.ResolveDateValue(query.ParseDateValue(value), opts.NowUnix, loc)
+			if err != nil {
+				return "", nil, err
+			}
+			if p.Operator == query.OpBefore {
+				compareSQL = "task_uda_values.value < ?"
+			} else if p.Operator == query.OpAfter {
+				compareSQL = "task_uda_values.value > ?"
+			} else {
+				return "", nil, fmt.Errorf("unsupported UDA operator %s", p.Operator)
+			}
+			compareArgs = append(compareArgs, time.Unix(ts, 0).UTC().Format(time.RFC3339))
+		}
+	default:
+		switch p.Operator {
+		case query.OpEqual, query.OpContains:
+			compareSQL = "task_uda_values.value LIKE ?"
+			compareArgs = append(compareArgs, "%"+value+"%")
+		default:
+			return "", nil, fmt.Errorf("unsupported UDA operator %s", p.Operator)
+		}
+	}
+	args := append(baseArgs, compareArgs...)
+	return "EXISTS (SELECT 1 FROM task_uda_values WHERE " + base + " AND " + compareSQL + ")", args, nil
 }

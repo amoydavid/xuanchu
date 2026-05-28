@@ -2,8 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"sort"
+	"strings"
 
+	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/config"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/spf13/cobra"
@@ -51,9 +54,28 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if strings.HasPrefix(key, "uda.") {
+				svc, closeFn, err := buildServiceFromOpts(currentOpts)
+				if err != nil {
+					return err
+				}
+				defer closeFn()
+				if value, ok, err := svc.GetConfig(key); err != nil {
+					return err
+				} else if ok {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+					return nil
+				}
+			}
 			if value, ok := rt.Get(key); ok {
-				fmt.Fprintln(cmd.OutOrStdout(), value)
-				return nil
+				if value != "" {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+					return nil
+				}
+				if _, known := map[string]bool{"color": true, "json": true, "date.format": true, "context.active": true, "database.path": true}[key]; known {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+					return nil
+				}
 			}
 			return fmt.Errorf("unknown config key %q", key)
 		},
@@ -67,20 +89,12 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key, value := args[0], args[1]
-			switch key {
-			case "color", "date.format":
-				// allowed
-			case "database.path":
-				return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
-			default:
-				return fmt.Errorf("unknown config key %q", key)
-			}
-			store, err := openStore(currentOpts)
+			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
 				return err
 			}
-			defer store.Close()
-			return store.SetMeta(key, value)
+			defer closeFn()
+			return svc.SetConfig(key, value)
 		},
 	}
 }
@@ -92,22 +106,12 @@ func newConfigUnsetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
-			switch key {
-			case "date.format", "color", "json":
-				// allowed
-			case "database.path":
-				return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
-			case "context.active":
-				return fmt.Errorf("context.active is managed by context commands")
-			default:
-				return fmt.Errorf("unknown config key %q", key)
-			}
-			store, err := openStore(currentOpts)
+			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
 				return err
 			}
-			defer store.Close()
-			return store.DeleteMeta(key)
+			defer closeFn()
+			return svc.UnsetConfig(key)
 		},
 	}
 }
@@ -144,11 +148,13 @@ func openStore(opts Options) (*sqlite.Store, error) {
 }
 
 func runtimeFromOptions(opts Options) (config.Runtime, error) {
+	env := runtimeEnv()
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
 		JSON:    opts.JSON,
 		NoColor: opts.NoColor,
+		Env:     env,
 	})
 	if err != nil {
 		return config.Runtime{}, err
@@ -162,8 +168,25 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	if err != nil {
 		return config.Runtime{}, err
 	}
+	svc, err := app.NewService(app.ServiceOptions{Store: store, NoContext: opts.NoContext})
+	if err != nil {
+		return config.Runtime{}, err
+	}
+	svcValues, err := svc.ConfigValues()
+	if err != nil {
+		return config.Runtime{}, err
+	}
+	for key, value := range svcValues {
+		meta[key] = value
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return config.Runtime{}, err
+	}
 	return config.LoadRuntime(config.RuntimeOptions{
+		ConfigDir:   config.ConfigDir(home, env),
 		Meta:        meta,
+		Env:         env,
 		RCOverrides: opts.RCOverrides,
 		Defaults: map[string]string{
 			"database.path": cfg.DatabasePath,

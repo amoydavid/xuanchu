@@ -143,6 +143,31 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 		mod.Recur = &value
 		return true, nil
 	default:
+		if name, value, ok := strings.Cut(arg, ":"); ok && isPotentialUDAName(name) {
+			if mod.UDAs == nil {
+				mod.UDAs = map[string]string{}
+			}
+			name = strings.TrimPrefix(name, "uda.")
+			if value == "" {
+				mod.ClearUDAs = append(mod.ClearUDAs, name)
+				return true, nil
+			}
+			mod.UDAs[name] = value
+			return true, nil
+		}
 		return false, nil
+	}
+}
+
+func isPotentialUDAName(name string) bool {
+	name = strings.TrimPrefix(name, "uda.")
+	if strings.TrimSpace(name) == "" {
+		return false
+	}
+	switch name {
+	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "tag":
+		return false
+	default:
+		return true
 	}
 }

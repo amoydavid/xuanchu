@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -46,7 +48,7 @@ func TestRootReorderRecognizesM1QueryTokens(t *testing.T) {
 				"help": true, "version": true, "completion": true,
 				"all": true, "completed": true, "deleted": true, "overdue": true,
 				"urgency": true, "_urgency": true,
-				"calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true,
+				"calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true,
 			}
 			if idx := commandIndex(positional, knownSubs); idx > 0 {
 				reordered := append([]string{positional[idx]}, positional[:idx]...)
@@ -88,6 +90,34 @@ func TestRcOverrideEmptyClearsKey(t *testing.T) {
 		if got := rcValue(rc, "context.active"); got != "" {
 			t.Fatalf("%v context.active = %q, want empty", args, got)
 		}
+	}
+}
+
+func TestExecutePassesRcOverridesToSubcommands(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	if err := Execute(cmd, opts, []string{"--db", db, "rc.date.format=epoch", "show"}); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "date.format=epoch") {
+		t.Fatalf("stdout = %q, want rc override in show output", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestExecuteRejectsUnknownRCKey(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	if err := Execute(cmd, opts, []string{"--db", db, "rc.notreal=value", "show"}); err == nil {
+		t.Fatal("Execute() error = nil, want unknown rc key error")
 	}
 }
 

@@ -15,7 +15,9 @@ type ExplainItem struct {
 }
 
 type Options struct {
-	NowUnix  int64
-	Blocked  bool
-	Blocking bool
+	NowUnix              int64
+	Blocked              bool
+	Blocking             bool
+	UDACoefficients      map[string]float64
+	UDAValueCoefficients map[string]float64
 }

@@ -15,10 +15,11 @@ type TaskRepository struct {
 }
 
 type ListOptions struct {
-	Status  string
-	Sort    string
-	Query   query.Expr
-	NowUnix int64
+	Status         string
+	Sort           string
+	Query          query.Expr
+	NowUnix        int64
+	UDADefinitions map[string]string
 }
 
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
@@ -26,7 +27,7 @@ func NewTaskRepository(db *gorm.DB) *TaskRepository {
 }
 
 func (r *TaskRepository) preloadAssociations() *gorm.DB {
-	return r.db.Preload("Tags").Preload("Annotations").Preload("Depends")
+	return r.db.Preload("Tags").Preload("Annotations").Preload("Depends").Preload("UDAs")
 }
 
 func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
@@ -72,7 +73,7 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 		q = q.Where("status = ?", opts.Status)
 	}
 	if opts.Query != nil {
-		q = ApplyQuery(q, opts.Query, QueryCompileOptions{WorkspaceID: workspaceID, NowUnix: opts.NowUnix})
+		q = ApplyQuery(q, opts.Query, QueryCompileOptions{WorkspaceID: workspaceID, NowUnix: opts.NowUnix, UDADefinitions: opts.UDADefinitions})
 	} else {
 		q = q.Where("workspace_id = ?", workspaceID)
 	}
@@ -161,6 +162,24 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 				return err
 			}
 		}
+		if err := tx.Where("workspace_id = ? AND task_uuid = ?", tsk.WorkspaceID, tsk.UUID).Delete(&TaskUDAValue{}).Error; err != nil {
+			return err
+		}
+		for name, value := range tsk.UDAs {
+			if value.Raw == "" {
+				continue
+			}
+			if err := tx.Create(&TaskUDAValue{
+				WorkspaceID: tsk.WorkspaceID,
+				TaskUUID:    tsk.UUID,
+				Name:        name,
+				Value:       value.Raw,
+				ValueType:   value.Type,
+				Orphan:      value.Orphan,
+			}).Error; err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
@@ -231,6 +250,20 @@ func toModel(tsk domain.Task) Task {
 	for _, d := range sortedUnique(tsk.Depends) {
 		depends = append(depends, TaskDependency{TaskUUID: tsk.UUID, DependsOn: d})
 	}
+	udas := make([]TaskUDAValue, 0, len(tsk.UDAs))
+	for name, value := range tsk.UDAs {
+		if value.Raw == "" {
+			continue
+		}
+		udas = append(udas, TaskUDAValue{
+			WorkspaceID: tsk.WorkspaceID,
+			TaskUUID:    tsk.UUID,
+			Name:        name,
+			Value:       value.Raw,
+			ValueType:   value.Type,
+			Orphan:      value.Orphan,
+		})
+	}
 	return Task{
 		UUID: tsk.UUID, WorkspaceID: tsk.WorkspaceID, Description: tsk.Description,
 		Status: tsk.Status, Entry: tsk.Entry, Modified: tsk.Modified,
@@ -238,7 +271,7 @@ func toModel(tsk domain.Task) Task {
 		Tags:  tags,
 		Start: tsk.Start, Wait: tsk.Wait, Scheduled: tsk.Scheduled, Until: tsk.Until,
 		Recur: tsk.Recur, Parent: tsk.Parent, Mask: tsk.Mask, IMask: tsk.IMask,
-		Annotations: annotations, Depends: depends,
+		Annotations: annotations, Depends: depends, UDAs: udas,
 	}
 }
 
@@ -263,6 +296,10 @@ func fromModel(model Task) domain.Task {
 		depends = append(depends, d.DependsOn)
 	}
 	sort.Strings(depends)
+	udas := make(map[string]domain.UDAValue, len(model.UDAs))
+	for _, value := range model.UDAs {
+		udas[value.Name] = domain.UDAValue{Name: value.Name, Raw: value.Value, Type: value.ValueType, Orphan: value.Orphan}
+	}
 	return domain.Task{
 		UUID: model.UUID, WorkspaceID: model.WorkspaceID, Description: model.Description,
 		Status: model.Status, Entry: model.Entry, Modified: model.Modified,
@@ -271,6 +308,7 @@ func fromModel(model Task) domain.Task {
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
 		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,
 		Annotations: annotations, Depends: depends,
+		UDAs: udas,
 	}
 }
 

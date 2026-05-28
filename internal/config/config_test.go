@@ -126,6 +126,35 @@ func TestRuntimeMergesSourcesAndRcOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeMapsDisplayTomlKeys(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+		"[display]",
+		"color = false",
+		"json = true",
+		"[date]",
+		"format = \"epoch\"",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := LoadRuntime(RuntimeOptions{ConfigDir: configDir})
+	if err != nil {
+		t.Fatalf("LoadRuntime() error = %v", err)
+	}
+	for key, want := range map[string]string{
+		"color":       "false",
+		"json":        "true",
+		"date.format": "epoch",
+	} {
+		got, _ := rt.Get(key)
+		if got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func stringPtr(v string) *string {
 	return &v
 }

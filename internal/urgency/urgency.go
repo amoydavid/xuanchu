@@ -2,25 +2,26 @@ package urgency
 
 import (
 	"slices"
+	"sort"
 
 	"github.com/dajee/taskg/internal/task"
 )
 
 const (
-	coefTagNext      = 15.0
-	coefDue          = 12.0
-	coefPriorityH    = 6.0
-	coefPriorityM    = 3.9
-	coefPriorityL    = 1.8
-	coefBlocking     = 8.0
-	coefActive       = 4.0
-	coefAnnotations  = 1.0
-	coefWaiting      = -3.0
-	coefBlocked      = -5.0
-	coefAge          = 2.0
-	coefTags         = 1.0
-	coefProject      = 1.0
-	ageMaxDays       = 365.0
+	coefTagNext     = 15.0
+	coefDue         = 12.0
+	coefPriorityH   = 6.0
+	coefPriorityM   = 3.9
+	coefPriorityL   = 1.8
+	coefBlocking    = 8.0
+	coefActive      = 4.0
+	coefAnnotations = 1.0
+	coefWaiting     = -3.0
+	coefBlocked     = -5.0
+	coefAge         = 2.0
+	coefTags        = 1.0
+	coefProject     = 1.0
+	ageMaxDays      = 365.0
 )
 
 func Explain(tsk task.Task, opts Options) ExplainResult {
@@ -79,6 +80,21 @@ func Explain(tsk task.Task, opts Options) ExplainResult {
 	}
 	if tsk.Project != nil && *tsk.Project != "" {
 		add(ExplainItem{Name: "project", Coefficient: coefProject, Raw: *tsk.Project, Contribution: coefProject, Reason: "task has project"})
+	}
+	names := make([]string, 0, len(tsk.UDAs))
+	for name := range tsk.UDAs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		value := tsk.UDAs[name]
+		if coef, ok := opts.UDACoefficients[name]; ok {
+			add(ExplainItem{Name: "uda." + name, Coefficient: coef, Raw: value.Raw, Contribution: coef, Reason: "task has UDA " + name})
+		}
+		key := name + "." + value.Raw
+		if coef, ok := opts.UDAValueCoefficients[key]; ok {
+			add(ExplainItem{Name: "uda." + key, Coefficient: coef, Raw: value.Raw, Contribution: coef, Reason: "task UDA value matches " + key})
+		}
 	}
 	return result
 }

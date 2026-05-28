@@ -130,9 +130,46 @@ func TestCompileQueryDateEqualUsesLocalDayRange(t *testing.T) {
 		t.Fatalf("args = %#v, want workspace + start/end", args)
 	}
 	start := time.Date(2025, 3, 9, 0, 0, 0, 0, loc).Unix()
-	end := time.Date(2025, 3, 9, 23, 59, 59, 0, loc).Unix()
+	end := time.Date(2025, 3, 10, 0, 0, 0, 0, loc).Unix()
 	if args[1] != start || args[2] != end {
 		t.Fatalf("range args = %#v, want %d..%d", args[1:], start, end)
+	}
+}
+
+func TestCompileQueryUDAFilters(t *testing.T) {
+	expr, err := query.ParseQuery(`estimate:3 reviewed:2026-05-28 reviewed.notnull legacy:`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	sql, args, err := CompileQuery(expr, QueryCompileOptions{
+		WorkspaceID: "w1",
+		NowUnix:     100,
+		UDADefinitions: map[string]string{
+			"estimate": "numeric",
+			"reviewed": "date",
+			"legacy":   "string",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CompileQuery() error = %v", err)
+	}
+	for _, part := range []string{"task_uda_values", "CAST(task_uda_values.value AS REAL)", "value >= ?", "value < ?", "NOT EXISTS"} {
+		if !strings.Contains(sql, part) {
+			t.Fatalf("sql = %s, missing %s", sql, part)
+		}
+	}
+	if len(args) == 0 {
+		t.Fatalf("args empty for sql %s", sql)
+	}
+}
+
+func TestCompileQueryRejectsUnknownUDA(t *testing.T) {
+	expr, err := query.ParseQuery(`estimate:3`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := CompileQuery(expr, QueryCompileOptions{WorkspaceID: "w1"}); err == nil {
+		t.Fatal("CompileQuery() error = nil, want unknown UDA")
 	}
 }
 

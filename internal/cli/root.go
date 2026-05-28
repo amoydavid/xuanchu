@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -25,6 +27,15 @@ type Options struct {
 	NoContext   bool
 	RCOverrides map[string]*string
 }
+
+var allowedRCKeys = map[string]bool{
+	"color":          true,
+	"json":           true,
+	"date.format":    true,
+	"context.active": true,
+}
+
+type effectiveOptionsContextKey struct{}
 
 func NewRootCommand(opts Options) *cobra.Command {
 	if opts.Stdout == nil {
@@ -79,6 +90,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newUUIDsCommand(opts))
 	cmd.AddCommand(newProjectsCommand(opts))
 	cmd.AddCommand(newTagsCommand(opts))
+	cmd.AddCommand(newUDAsCommand(opts))
+	cmd.AddCommand(newUniqueCommand(opts))
 	cmd.AddCommand(newCalcCommand(opts))
 	cmd.AddCommand(newStartCommand(opts))
 	cmd.AddCommand(newStopCommand(opts))
@@ -97,7 +110,18 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
 	flags, positional, rcOverrides := splitFlagsRcAndPositional(args)
 	opts = mergeRCOverrides(opts, rcOverrides)
-	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "context": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
+	if err := validateRCOverrides(opts.RCOverrides); err != nil {
+		return err
+	}
+	if disablesContext(opts.RCOverrides) {
+		opts.NoContext = true
+	}
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd.SetContext(context.WithValue(ctx, effectiveOptionsContextKey{}, opts))
+	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "context": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
 	knownActions := map[string]bool{"modify": true, "done": true, "delete": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
@@ -198,6 +222,20 @@ func mergeRCOverrides(opts Options, overrides map[string]*string) Options {
 	return opts
 }
 
+func validateRCOverrides(overrides map[string]*string) error {
+	for key := range overrides {
+		if !allowedRCKeys[key] && !strings.HasPrefix(key, "urgency.") {
+			return fmt.Errorf("unknown rc key %q", key)
+		}
+	}
+	return nil
+}
+
+func disablesContext(overrides map[string]*string) bool {
+	value, ok := overrides["context.active"]
+	return ok && value == nil
+}
+
 func commandIndex(args []string, commands map[string]bool) int {
 	for i, arg := range args {
 		if commands[arg] {
@@ -274,6 +312,8 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			ClearRecur:     mod.ClearRecur,
 			AddTags:        mod.AddTags,
 			RemoveTags:     mod.RemoveTags,
+			UDAs:           mod.UDAs,
+			ClearUDAs:      mod.ClearUDAs,
 		}); err != nil {
 			return err
 		}
@@ -350,6 +390,11 @@ func buildServiceFromCmd(cmd *cobra.Command, base Options) (*app.Service, func()
 }
 
 func optionsFromCmd(cmd *cobra.Command, base Options) Options {
+	if root := cmd.Root(); root != nil && root.Context() != nil {
+		if effective, ok := root.Context().Value(effectiveOptionsContextKey{}).(Options); ok {
+			base = effective
+		}
+	}
 	opts := base
 	opts.DataDir = getCmdStringFlag(cmd, "data-dir", opts.DataDir)
 	opts.DBPath = getCmdStringFlag(cmd, "db", opts.DBPath)
@@ -400,5 +445,22 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		_ = store.Close()
 		return nil, nil, err
 	}
+	if value, ok := opts.RCOverrides["context.active"]; ok {
+		if value == nil {
+			svc.OverrideActiveContext("")
+		} else {
+			svc.OverrideActiveContext(*value)
+		}
+	}
 	return svc, store.Close, nil
+}
+
+func runtimeEnv() map[string]string {
+	values := map[string]string{}
+	for _, key := range []string{"TASKG_DB", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+		if value := os.Getenv(key); value != "" {
+			values[key] = value
+		}
+	}
+	return values
 }

@@ -17,13 +17,15 @@ import (
 )
 
 type Service struct {
-	store          *sqlite.Store
-	repo           *sqlite.TaskRepository
-	contextRepo    *sqlite.ContextRepository
-	workspaceID    string
-	clock          Clock
-	reports        report.Registry
-	disableContext bool
+	store                 *sqlite.Store
+	repo                  *sqlite.TaskRepository
+	contextRepo           *sqlite.ContextRepository
+	udaRepo               *sqlite.UDARepository
+	activeContextOverride *string
+	workspaceID           string
+	clock                 Clock
+	reports               report.Registry
+	disableContext        bool
 }
 
 type ServiceOptions struct {
@@ -43,6 +45,7 @@ type AddInput struct {
 	Until       *int64
 	Recur       *string
 	Tags        []string
+	UDAs        map[string]string
 }
 
 type ListInput struct {
@@ -74,6 +77,8 @@ type ModifyInput struct {
 	ClearRecur     bool
 	AddTags        []string
 	RemoveTags     []string
+	UDAs           map[string]string
+	ClearUDAs      []string
 }
 
 type ReportInput struct {
@@ -97,6 +102,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		store:          opts.Store,
 		repo:           sqlite.NewTaskRepository(opts.Store.DB()),
 		contextRepo:    sqlite.NewContextRepository(opts.Store.DB()),
+		udaRepo:        sqlite.NewUDARepository(opts.Store.DB()),
 		workspaceID:    ws.ID,
 		clock:          opts.Clock,
 		reports:        report.DefaultRegistry(),
@@ -221,6 +227,11 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 		Depends: depends,
 		Wait:    input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
 	}
+	udas, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false)
+	if err != nil {
+		return task.Task{}, err
+	}
+	tsk.UDAs = udas
 	if input.Wait != nil && *input.Wait > now {
 		tsk.Status = task.StatusWaiting
 	}
@@ -247,11 +258,16 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 		return nil, err
 	}
 	queryExpr := query.And(contextExpr, input.Query)
+	udaDefs, err := s.udaDefinitionTypes()
+	if err != nil {
+		return nil, err
+	}
 	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
-		Status:  status,
-		Sort:    input.Sort,
-		Query:   queryExpr,
-		NowUnix: s.clock.Unix(),
+		Status:         status,
+		Sort:           input.Sort,
+		Query:          queryExpr,
+		NowUnix:        s.clock.Unix(),
+		UDADefinitions: udaDefs,
 	})
 	if err != nil {
 		return nil, err
@@ -369,6 +385,13 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		if err := s.validateDependencyCycles(tsk.UUID, tsk.Depends); err != nil {
 			return err
 		}
+	}
+	if len(input.UDAs) > 0 || len(input.ClearUDAs) > 0 {
+		udas, err := s.normalizeUDAModifications(tsk.UDAs, input.UDAs, input.ClearUDAs, false)
+		if err != nil {
+			return err
+		}
+		tsk.UDAs = udas
 	}
 	// Handle tags
 	tagSet := map[string]bool{}
@@ -569,6 +592,13 @@ func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 			if tsk.Modified == 0 {
 				tsk.Modified = s.clock.Unix()
 			}
+			if tsk.UDAs != nil {
+				normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
+				if err != nil {
+					return count, err
+				}
+				tsk.UDAs = normalized
+			}
 			if _, err := s.repo.Create(tsk); err != nil {
 				return count, err
 			}
@@ -625,6 +655,13 @@ func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 			if tsk.Depends != nil {
 				existing.Depends = tsk.Depends
 			}
+			if tsk.UDAs != nil {
+				normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
+				if err != nil {
+					return count, err
+				}
+				existing.UDAs = normalized
+			}
 			if err := s.repo.Update(existing); err != nil {
 				return count, err
 			}
@@ -660,10 +697,15 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	}
 	merged := query.And(contextExpr, query.And(def.Filter, input.Query))
 	now := s.clock.Unix()
+	udaDefs, err := s.udaDefinitionTypes()
+	if err != nil {
+		return ReportResult{}, err
+	}
 	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
-		Query:   merged,
-		Sort:    def.Sort,
-		NowUnix: now,
+		Query:          merged,
+		Sort:           def.Sort,
+		NowUnix:        now,
+		UDADefinitions: udaDefs,
 	})
 	if err != nil {
 		return ReportResult{}, err
@@ -895,6 +937,11 @@ func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, e
 		Due: input.Due, Project: input.Project, Priority: input.Priority, Tags: input.Tags,
 		Until: input.Until, Recur: input.Recur,
 	}
+	udas, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false)
+	if err != nil {
+		return task.Task{}, err
+	}
+	parent.UDAs = udas
 	createdParent, err := s.repo.Create(parent)
 	if err != nil {
 		return task.Task{}, err
@@ -944,6 +991,7 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 		Due: due, Project: parent.Project, Priority: parent.Priority, Tags: parent.Tags,
 		Until: parent.Until, Recur: parent.Recur,
 		Parent: &parent.UUID,
+		UDAs:   cloneUDAs(parent.UDAs),
 	}
 	created, _, err := s.repo.CreateRecurringChild(child)
 	if err != nil {

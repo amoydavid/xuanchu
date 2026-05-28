@@ -36,6 +36,7 @@ func newAddCommand(opts Options) *cobra.Command {
 				Until:       parsed.Mod.Until,
 				Recur:       parsed.Mod.Recur,
 				Tags:        parsed.Mod.AddTags,
+				UDAs:        parsed.Mod.UDAs,
 			})
 			if err != nil {
 				return err

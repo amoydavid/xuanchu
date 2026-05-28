@@ -60,11 +60,14 @@ func ResolveDateRange(value Value, nowUnix int64, loc *time.Location) (int64, in
 	}
 	startTime := time.Unix(start, 0).In(loc)
 	dayStart := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, loc)
-	dayEnd := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 23, 59, 59, 0, loc)
-	return dayStart.Unix(), dayEnd.Unix(), nil
+	nextDayStart := dayStart.AddDate(0, 0, 1)
+	return dayStart.Unix(), nextDayStart.Unix(), nil
 }
 
 func ResolveDeadlineDateValue(value Value, nowUnix int64, loc *time.Location) (int64, error) {
-	_, end, err := ResolveDateRange(value, nowUnix, loc)
-	return end, err
+	start, _, err := ResolveDateRange(value, nowUnix, loc)
+	if err != nil {
+		return 0, err
+	}
+	return time.Unix(start, 0).In(loc).Add(24*time.Hour - time.Second).Unix(), nil
 }
