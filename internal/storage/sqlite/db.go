@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,6 +62,22 @@ func (s *Store) LocalWorkspace() (Workspace, error) {
 	var ws Workspace
 	err := s.db.Where("slug = ?", localWorkspaceSlug).First(&ws).Error
 	return ws, err
+}
+
+func (s *Store) GetMeta(key string) (string, bool, error) {
+	var meta Meta
+	err := s.db.Where("key = ?", key).First(&meta).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return meta.Value, true, nil
+}
+
+func (s *Store) SetMeta(key, value string) error {
+	return s.db.Save(&Meta{Key: key, Value: value}).Error
 }
 
 func (s *Store) configure() error {

@@ -53,6 +53,10 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newAddCommand(opts))
 	cmd.AddCommand(newListCommand(opts))
 	cmd.AddCommand(newInfoCommand(opts))
+	cmd.AddCommand(newExportCommand(opts))
+	cmd.AddCommand(newImportCommand(opts))
+	cmd.AddCommand(newShowCommand(opts))
+	cmd.AddCommand(newConfigCommand(opts))
 
 	return cmd
 }
@@ -62,7 +66,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
 	flags, positional := splitFlagsAndPositional(args)
-	knownSubcommands := map[string]bool{"add": true, "list": true, "info": true, "help": true, "version": true, "completion": true}
+	knownSubcommands := map[string]bool{"add": true, "list": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true}
 
 	if len(positional) >= 2 && !knownSubcommands[positional[0]] {
 		// Pattern: taskg <target> <action> [args...]
