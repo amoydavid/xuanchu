@@ -155,3 +155,63 @@ func (s *Service) Delete(target string) error {
 	tsk.Delete(s.clock.Unix())
 	return s.repo.Update(tsk)
 }
+
+func (s *Service) Export() ([]task.Task, error) {
+	return s.repo.List(s.workspaceID, sqlite.ListOptions{})
+}
+
+func (s *Service) Import(tasks []task.JSONTask) (int, error) {
+	count := 0
+	for _, dto := range tasks {
+		tsk := task.FromJSON(dto)
+		tsk.WorkspaceID = s.workspaceID
+		if tsk.UUID == "" {
+			tsk.UUID = uuid.NewString()
+		}
+		// Try to get existing task
+		existing, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+		if err == sqlite.ErrNotFound {
+			// Create new
+			if tsk.Status == "" {
+				tsk.Status = task.StatusPending
+			}
+			if tsk.Entry == 0 {
+				tsk.Entry = s.clock.Unix()
+			}
+			if tsk.Modified == 0 {
+				tsk.Modified = s.clock.Unix()
+			}
+			if _, err := s.repo.Create(tsk); err != nil {
+				return count, err
+			}
+		} else if err != nil {
+			return count, err
+		} else {
+			// Update existing
+			if tsk.Description != "" {
+				existing.Description = tsk.Description
+			}
+			if tsk.Status != "" {
+				existing.Status = tsk.Status
+			}
+			existing.Modified = s.clock.Unix()
+			if tsk.Project != nil {
+				existing.Project = tsk.Project
+			}
+			if tsk.Priority != nil {
+				existing.Priority = tsk.Priority
+			}
+			if tsk.Due != nil {
+				existing.Due = tsk.Due
+			}
+			if len(tsk.Tags) > 0 {
+				existing.Tags = tsk.Tags
+			}
+			if err := s.repo.Update(existing); err != nil {
+				return count, err
+			}
+		}
+		count++
+	}
+	return count, nil
+}

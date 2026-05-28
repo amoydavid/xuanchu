@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,37 @@ func TestCLIAddListInfo(t *testing.T) {
 	info := run(t, bin, "--db", db, "info", "1")
 	if !strings.Contains(info, "UUID") || !strings.Contains(info, "write spec") {
 		t.Fatalf("info output = %q", info)
+	}
+}
+
+func TestCLIShowAndConfig(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	out := run(t, bin, "--db", db, "show")
+	if !strings.Contains(out, "database.path") {
+		t.Fatalf("show output = %q", out)
+	}
+	run(t, bin, "--db", db, "config", "set", "date.format", "rfc3339")
+	out = run(t, bin, "--db", db, "config", "get", "date.format")
+	if strings.TrimSpace(out) != "rfc3339" {
+		t.Fatalf("config get output = %q", out)
+	}
+}
+
+func TestCLIExportImportRoundTrip(t *testing.T) {
+	bin := buildTaskg(t)
+	db1 := filepath.Join(t.TempDir(), "one.db")
+	db2 := filepath.Join(t.TempDir(), "two.db")
+	run(t, bin, "--db", db1, "add", "write", "spec", "+planning")
+	exported := run(t, bin, "--db", db1, "export")
+	path := filepath.Join(t.TempDir(), "tasks.json")
+	if err := os.WriteFile(path, []byte(exported), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "--db", db2, "import", path)
+	out := run(t, bin, "--db", db2, "list")
+	if !strings.Contains(out, "write spec") {
+		t.Fatalf("list output = %q", out)
 	}
 }
 
