@@ -62,6 +62,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newImportCommand(opts))
 	cmd.AddCommand(newShowCommand(opts))
 	cmd.AddCommand(newConfigCommand(opts))
+	cmd.AddCommand(newContextCommand(opts))
 	cmd.AddCommand(newAllCommand(opts))
 	cmd.AddCommand(newCompletedCommand(opts))
 	cmd.AddCommand(newDeletedCommand(opts))
@@ -96,7 +97,7 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
 	flags, positional, rcOverrides := splitFlagsRcAndPositional(args)
 	opts = mergeRCOverrides(opts, rcOverrides)
-	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
+	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "context": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
 	knownActions := map[string]bool{"modify": true, "done": true, "delete": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
@@ -394,7 +395,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	svc, err := app.NewService(app.ServiceOptions{Store: store, NoContext: opts.NoContext})
 	if err != nil {
 		_ = store.Close()
 		return nil, nil, err

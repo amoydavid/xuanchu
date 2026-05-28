@@ -17,16 +17,19 @@ import (
 )
 
 type Service struct {
-	store       *sqlite.Store
-	repo        *sqlite.TaskRepository
-	workspaceID string
-	clock       Clock
-	reports     report.Registry
+	store          *sqlite.Store
+	repo           *sqlite.TaskRepository
+	contextRepo    *sqlite.ContextRepository
+	workspaceID    string
+	clock          Clock
+	reports        report.Registry
+	disableContext bool
 }
 
 type ServiceOptions struct {
-	Store *sqlite.Store
-	Clock Clock
+	Store     *sqlite.Store
+	Clock     Clock
+	NoContext bool
 }
 
 type AddInput struct {
@@ -48,6 +51,7 @@ type ListInput struct {
 	Sort       string
 	Query      query.Expr
 	ReportMode bool
+	NoContext  bool
 }
 
 type ModifyInput struct {
@@ -90,11 +94,13 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		return nil, err
 	}
 	return &Service{
-		store:       opts.Store,
-		repo:        sqlite.NewTaskRepository(opts.Store.DB()),
-		workspaceID: ws.ID,
-		clock:       opts.Clock,
-		reports:     report.DefaultRegistry(),
+		store:          opts.Store,
+		repo:           sqlite.NewTaskRepository(opts.Store.DB()),
+		contextRepo:    sqlite.NewContextRepository(opts.Store.DB()),
+		workspaceID:    ws.ID,
+		clock:          opts.Clock,
+		reports:        report.DefaultRegistry(),
+		disableContext: opts.NoContext,
 	}, nil
 }
 
@@ -103,11 +109,41 @@ func (s *Service) Clock() Clock {
 }
 
 func (s *Service) Projects() ([]string, error) {
-	return s.repo.Projects(s.workspaceID)
+	tasks, err := s.List(ListInput{ReportMode: true})
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, tsk := range tasks {
+		if tsk.Project != nil && *tsk.Project != "" {
+			seen[*tsk.Project] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s *Service) Tags() ([]string, error) {
-	return s.repo.Tags(s.workspaceID)
+	tasks, err := s.List(ListInput{ReportMode: true})
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, tsk := range tasks {
+		for _, tag := range tsk.Tags {
+			seen[tag] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for tag := range seen {
+		out = append(out, tag)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s *Service) UUIDs(input ListInput) ([]string, error) {
@@ -206,10 +242,15 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if status == "" && input.Query == nil && !input.ReportMode {
 		status = task.StatusPending
 	}
+	contextExpr, err := s.activeContextFilter(input.NoContext)
+	if err != nil {
+		return nil, err
+	}
+	queryExpr := query.And(contextExpr, input.Query)
 	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
 		Status:  status,
 		Sort:    input.Sort,
-		Query:   input.Query,
+		Query:   queryExpr,
 		NowUnix: s.clock.Unix(),
 	})
 	if err != nil {
@@ -613,7 +654,11 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err := s.refreshAutomaticState(); err != nil {
 		return ReportResult{}, err
 	}
-	merged := query.And(def.Filter, input.Query)
+	contextExpr, err := s.activeContextFilter(false)
+	if err != nil {
+		return ReportResult{}, err
+	}
+	merged := query.And(contextExpr, query.And(def.Filter, input.Query))
 	now := s.clock.Unix()
 	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
 		Query:   merged,

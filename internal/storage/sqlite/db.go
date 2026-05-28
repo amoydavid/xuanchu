@@ -11,6 +11,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const localWorkspaceSlug = "local"
@@ -26,7 +27,7 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +102,7 @@ func (s *Store) configure() error {
 }
 
 func (s *Store) migrate() error {
-	if err := s.db.AutoMigrate(&Meta{}, &Workspace{}, &Task{}, &TaskTag{}, &TaskAnnotation{}, &TaskDependency{}); err != nil {
+	if err := s.db.AutoMigrate(&Meta{}, &Workspace{}, &Context{}, &Task{}, &TaskTag{}, &TaskAnnotation{}, &TaskDependency{}); err != nil {
 		return err
 	}
 	return s.db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_parent_due_open ON tasks(parent, due) WHERE status IN ('pending', 'waiting') AND parent IS NOT NULL AND due IS NOT NULL").Error

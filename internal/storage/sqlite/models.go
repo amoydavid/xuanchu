@@ -12,6 +12,14 @@ type Workspace struct {
 	CreatedAt int64  `gorm:"not null"`
 }
 
+type Context struct {
+	WorkspaceID  string `gorm:"primaryKey;not null"`
+	Name         string `gorm:"primaryKey;not null"`
+	FilterSource string `gorm:"not null"`
+	CreatedAt    int64  `gorm:"not null"`
+	ModifiedAt   int64  `gorm:"not null"`
+}
+
 type Task struct {
 	UUID        string `gorm:"primaryKey"`
 	WorkspaceID string `gorm:"not null;index"`

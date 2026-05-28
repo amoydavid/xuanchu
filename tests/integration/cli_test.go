@@ -62,6 +62,39 @@ func TestCLIConfigListUnsetAndShow(t *testing.T) {
 	}
 }
 
+func TestCLIContextCommands(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "work", "task", "project:work")
+	run(t, bin, "--db", db, "add", "home", "task", "project:home")
+	if show := run(t, bin, "--db", db, "context", "show"); strings.TrimSpace(show) != "" {
+		t.Fatalf("empty context show = %q", show)
+	}
+	run(t, bin, "--db", db, "context", "define", "work", "project:work")
+	run(t, bin, "--db", db, "context", "use", "work")
+	show := run(t, bin, "--db", db, "context", "show")
+	if !strings.Contains(show, "work") || !strings.Contains(show, "project:work") {
+		t.Fatalf("context show = %q", show)
+	}
+	list := run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "work task") || strings.Contains(list, "home task") {
+		t.Fatalf("context list output = %q", list)
+	}
+	all := run(t, bin, "--db", db, "all")
+	if !strings.Contains(all, "work task") || strings.Contains(all, "home task") {
+		t.Fatalf("context all output = %q", all)
+	}
+	bypassed := run(t, bin, "--db", db, "--no-context", "list")
+	if !strings.Contains(bypassed, "work task") || !strings.Contains(bypassed, "home task") {
+		t.Fatalf("--no-context list output = %q", bypassed)
+	}
+	run(t, bin, "--db", db, "context", "delete", "work")
+	if show := run(t, bin, "--db", db, "context", "show"); strings.TrimSpace(show) != "" {
+		t.Fatalf("context show after delete = %q", show)
+	}
+}
+
 func TestCLIExportImportRoundTrip(t *testing.T) {
 	bin := buildTaskg(t)
 	db1 := filepath.Join(t.TempDir(), "one.db")

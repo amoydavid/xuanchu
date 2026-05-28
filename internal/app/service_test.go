@@ -10,6 +10,8 @@ import (
 	"github.com/dajee/taskg/internal/task"
 )
 
+func strptr(v string) *string { return &v }
+
 func newTestService(t *testing.T, now int64) (*Service, func()) {
 	t.Helper()
 	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
@@ -57,6 +59,94 @@ func TestServiceAddListInfo(t *testing.T) {
 	}
 	if got.UUID != created.UUID {
 		t.Fatalf("Info UUID = %q, want %q", got.UUID, created.UUID)
+	}
+}
+
+func TestContextDefineUseShowNoneDelete(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if show, err := svc.ContextShow(); err != nil || show != "" {
+		t.Fatalf("empty ContextShow() = %q, %v", show, err)
+	}
+	if err := svc.DefineContext("work", "project:work"); err != nil {
+		t.Fatalf("DefineContext() error = %v", err)
+	}
+	if err := svc.UseContext("work"); err != nil {
+		t.Fatalf("UseContext() error = %v", err)
+	}
+	show, err := svc.ContextShow()
+	if err != nil {
+		t.Fatalf("ContextShow() error = %v", err)
+	}
+	if !strings.Contains(show, "work") || !strings.Contains(show, "project:work") {
+		t.Fatalf("ContextShow() = %q", show)
+	}
+	if err := svc.ContextNone(); err != nil {
+		t.Fatalf("ContextNone() error = %v", err)
+	}
+	if show, err := svc.ContextShow(); err != nil || show != "" {
+		t.Fatalf("ContextShow() after none = %q, %v", show, err)
+	}
+	if err := svc.UseContext("work"); err != nil {
+		t.Fatalf("UseContext(work) error = %v", err)
+	}
+	if err := svc.ContextDelete("work"); err != nil {
+		t.Fatalf("ContextDelete() error = %v", err)
+	}
+	if show, err := svc.ContextShow(); err != nil || show != "" {
+		t.Fatalf("ContextShow() after delete active = %q, %v", show, err)
+	}
+}
+
+func TestContextFilterAppliesToListAndReports(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	if _, err := svc.Add(AddInput{Description: "work task", Project: strptr("work")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "home task", Project: strptr("home")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DefineContext("work", "project:work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UseContext("work"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Description != "work task" {
+		t.Fatalf("List with context = %#v", tasks)
+	}
+	all, err := svc.RunReport(ReportInput{Name: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Tasks) != 1 || all.Tasks[0].Description != "work task" {
+		t.Fatalf("all report with context = %#v", all.Tasks)
+	}
+}
+
+func TestNoContextBypassesActiveContext(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	_, _ = svc.Add(AddInput{Description: "work task", Project: strptr("work")})
+	_, _ = svc.Add(AddInput{Description: "home task", Project: strptr("home")})
+	if err := svc.DefineContext("work", "project:work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UseContext("work"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := svc.List(ListInput{NoContext: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("List(NoContext) len = %d, want 2: %#v", len(tasks), tasks)
 	}
 }
 
