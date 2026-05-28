@@ -1,0 +1,27 @@
+.claude/
+
+# Build outputs
+/taskg
+/bin/
+/build/
+/dist/
+
+# Go tooling
+*.test
+*.out
+coverage.out
+coverage/
+.coverprofile
+cover.out
+
+# Environment files
+.env
+.env.*
+
+# Editors and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp

@@ -6,6 +6,7 @@ import (
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/render"
+	"github.com/dajee/taskg/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +15,7 @@ func newAddCommand(opts Options) *cobra.Command {
 		Use:  "add [description] [modifications...]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
 			parsed, err := query.ParseAddArgs(args)
 			if err != nil {
 				return err
@@ -33,8 +35,8 @@ func newAddCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.JSON {
-				return render.JSON(cmd.OutOrStdout(), created)
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), task.ToJSON(created))
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", created.UUID)
 			return nil

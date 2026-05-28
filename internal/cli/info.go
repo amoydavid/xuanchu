@@ -15,6 +15,7 @@ func newInfoCommand(opts Options) *cobra.Command {
 		Use:  "info <target>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -25,8 +26,8 @@ func newInfoCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.JSON {
-				return render.JSON(cmd.OutOrStdout(), tsk)
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), task.ToJSON(tsk))
 			}
 			render.TaskInfo(cmd.OutOrStdout(), tsk)
 			return nil

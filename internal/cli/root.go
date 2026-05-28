@@ -53,6 +53,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 
 	cmd.AddCommand(newAddCommand(opts))
 	cmd.AddCommand(newListCommand(opts))
+	cmd.AddCommand(newNextCommand(opts))
 	cmd.AddCommand(newInfoCommand(opts))
 	cmd.AddCommand(newExportCommand(opts))
 	cmd.AddCommand(newImportCommand(opts))
@@ -67,13 +68,22 @@ func NewRootCommand(opts Options) *cobra.Command {
 func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
 	flags, positional := splitFlagsAndPositional(args)
-	knownSubcommands := map[string]bool{"add": true, "list": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true}
+	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true}
 
 	knownActions := map[string]bool{"modify": true, "done": true, "delete": true}
 
 	if len(positional) >= 2 && !knownSubcommands[positional[0]] && knownActions[positional[1]] {
 		// Pattern: taskg <target> <action> [args...]
 		return handleTargetAction(cmd, opts, flags, positional)
+	}
+	if idx := commandIndex(positional, knownSubcommands); idx > 0 {
+		// Pattern: taskg <filters...> <command> [args...]
+		reordered := append([]string{positional[idx]}, positional[:idx]...)
+		reordered = append(reordered, positional[idx+1:]...)
+		positional = reordered
+	}
+	if len(positional) > 0 && positional[0] == "add" {
+		positional = protectDashTagArgs(positional)
 	}
 
 	// Normal Cobra routing: set flags and let subcommand matching work.
@@ -82,28 +92,67 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 }
 
 func splitFlagsAndPositional(args []string) (flags []string, positional []string) {
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true}
+	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
-		if strings.HasPrefix(args[i], "--") && !strings.Contains(args[i], "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+		name := args[i]
+		if strings.HasPrefix(name, "--") && strings.Contains(name, "=") {
+			name = strings.SplitN(name, "=", 2)[0]
+		}
+		switch {
+		case stringFlags[name] && strings.Contains(args[i], "="):
+			flags = append(flags, args[i])
+		case stringFlags[name] && i+1 < len(args):
 			flags = append(flags, args[i], args[i+1])
 			i++
-		} else if strings.HasPrefix(args[i], "-") {
+		case boolFlags[name]:
 			flags = append(flags, args[i])
-		} else {
+		default:
 			positional = append(positional, args[i])
 		}
 	}
 	return
 }
 
+func commandIndex(args []string, commands map[string]bool) int {
+	for i, arg := range args {
+		if commands[arg] {
+			return i
+		}
+	}
+	return -1
+}
+
+func protectDashTagArgs(args []string) []string {
+	for i := 1; i < len(args); i++ {
+		if isDashTag(args[i]) {
+			out := make([]string, 0, len(args)+1)
+			out = append(out, args[:i]...)
+			out = append(out, "--")
+			out = append(out, args[i:]...)
+			return out
+		}
+	}
+	return args
+}
+
+func isDashTag(arg string) bool {
+	return strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--")
+}
+
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true}
+	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
 			parts := strings.SplitN(flags[i], "=", 2)
 			_ = cmd.PersistentFlags().Set(parts[0][2:], parts[1])
-		} else if strings.HasPrefix(flags[i], "--") && i+1 < len(flags) {
+		} else if stringFlags[flags[i]] && i+1 < len(flags) {
 			_ = cmd.PersistentFlags().Set(flags[i][2:], flags[i+1])
 			i++
+		} else if boolFlags[flags[i]] {
+			_ = cmd.PersistentFlags().Set(flags[i][2:], "true")
 		}
 	}
 
@@ -151,12 +200,16 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 }
 
 func buildServiceFromCmd(cmd *cobra.Command, base Options) (*app.Service, func() error, error) {
+	return buildServiceFromOpts(optionsFromCmd(cmd, base))
+}
+
+func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts := base
 	opts.DataDir = getCmdStringFlag(cmd, "data-dir", opts.DataDir)
 	opts.DBPath = getCmdStringFlag(cmd, "db", opts.DBPath)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
-	return buildServiceFromOpts(opts)
+	return opts
 }
 
 // getCmdStringFlag reads a flag from cmd.Flags(), falling back to

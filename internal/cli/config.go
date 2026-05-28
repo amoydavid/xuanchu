@@ -13,11 +13,12 @@ func newShowCommand(opts Options) *cobra.Command {
 		Use:  "show",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
 			cfg, err := config.Resolve(config.Options{
-				DataDir: opts.DataDir,
-				DBPath:  opts.DBPath,
-				JSON:    opts.JSON,
-				NoColor: opts.NoColor,
+				DataDir: currentOpts.DataDir,
+				DBPath:  currentOpts.DBPath,
+				JSON:    currentOpts.JSON,
+				NoColor: currentOpts.NoColor,
 			})
 			if err != nil {
 				return err
@@ -25,7 +26,7 @@ func newShowCommand(opts Options) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "database.path=%s\n", cfg.DatabasePath)
 			fmt.Fprintf(cmd.OutOrStdout(), "color=%v\n", cfg.Color)
 
-			store, err := openStore(opts)
+			store, err := openStore(currentOpts)
 			if err != nil {
 				return err
 			}
@@ -55,8 +56,9 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 		Use:  "get <key>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
-			store, err := openStore(opts)
+			store, err := openStore(currentOpts)
 			if err != nil {
 				return err
 			}
@@ -69,7 +71,7 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 			switch key {
 			case "database.path":
 				cfg, _ := config.Resolve(config.Options{
-					DataDir: opts.DataDir, DBPath: opts.DBPath,
+					DataDir: currentOpts.DataDir, DBPath: currentOpts.DBPath,
 				})
 				fmt.Fprintln(cmd.OutOrStdout(), cfg.DatabasePath)
 			case "color":
@@ -89,6 +91,7 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 		Use:  "set <key> <value>",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
 			key, value := args[0], args[1]
 			switch key {
 			case "color", "date.format":
@@ -98,7 +101,7 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 			default:
 				return fmt.Errorf("unknown config key %q", key)
 			}
-			store, err := openStore(opts)
+			store, err := openStore(currentOpts)
 			if err != nil {
 				return err
 			}

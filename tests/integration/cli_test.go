@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +71,119 @@ func TestCLIModifyDoneDelete(t *testing.T) {
 	out = run(t, bin, "--db", db, "list")
 	if strings.Contains(out, "write spec") {
 		t.Fatalf("done task still in default list: %q", out)
+	}
+}
+
+func TestCLIJSONFlagProducesMachineReadableOutput(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	addOut := run(t, bin, "--db", db, "--json", "add", "write", "spec")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(addOut), &created); err != nil {
+		t.Fatalf("add --json output is not JSON: %v\n%s", err, addOut)
+	}
+	if created["description"] != "write spec" {
+		t.Fatalf("created description = %#v", created["description"])
+	}
+
+	listOut := run(t, bin, "--db", db, "--json", "list")
+	var listed []map[string]any
+	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
+		t.Fatalf("list --json output is not JSON: %v\n%s", err, listOut)
+	}
+	if len(listed) != 1 || listed[0]["description"] != "write spec" {
+		t.Fatalf("listed = %#v", listed)
+	}
+}
+
+func TestCLIShowUsesParsedDBFlag(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "custom.db")
+
+	out := run(t, bin, "--db", db, "show")
+	if !strings.Contains(out, "database.path="+db) {
+		t.Fatalf("show output = %q, want database.path=%s", out, db)
+	}
+}
+
+func TestCLIPrefixFiltersAndTargetFilters(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "work", "task", "+work")
+	run(t, bin, "--db", db, "add", "home", "task", "+home")
+
+	workOut := run(t, bin, "--db", db, "+work", "list")
+	if !strings.Contains(workOut, "work task") || strings.Contains(workOut, "home task") {
+		t.Fatalf("+work list output = %q", workOut)
+	}
+
+	firstOut := run(t, bin, "--db", db, "1", "list")
+	if !strings.Contains(firstOut, "work task") || strings.Contains(firstOut, "home task") {
+		t.Fatalf("1 list output = %q", firstOut)
+	}
+
+	exported := run(t, bin, "--db", db, "export")
+	var tasks []map[string]any
+	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+		t.Fatalf("export output is not JSON: %v\n%s", err, exported)
+	}
+	uuid, _ := tasks[1]["uuid"].(string)
+	if uuid == "" {
+		t.Fatalf("exported tasks missing uuid: %#v", tasks)
+	}
+	uuidOut := run(t, bin, "--db", db, uuid, "list")
+	if !strings.Contains(uuidOut, "home task") || strings.Contains(uuidOut, "work task") {
+		t.Fatalf("uuid list output = %q", uuidOut)
+	}
+}
+
+func TestCLINextCommandSortsByDuePriorityAndEntry(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "later", "task", "due:2030-01-02")
+	run(t, bin, "--db", db, "add", "urgent", "task", "due:2030-01-01", "priority:H")
+	run(t, bin, "--db", db, "add", "undated", "task")
+
+	out := run(t, bin, "--db", db, "next")
+	urgent := strings.Index(out, "urgent task")
+	later := strings.Index(out, "later task")
+	undated := strings.Index(out, "undated task")
+	if urgent < 0 || later < 0 || undated < 0 || !(urgent < later && later < undated) {
+		t.Fatalf("next output order = %q", out)
+	}
+}
+
+func TestCLIAcceptsDashTagAsModificationNotFlag(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "write", "spec", "-ignored")
+	out := run(t, bin, "--db", db, "list")
+	if strings.Contains(out, "ignored") {
+		t.Fatalf("add -tag should not add tag, output = %q", out)
+	}
+
+	run(t, bin, "--db", db, "1", "modify", "+old")
+	run(t, bin, "--db", db, "1", "modify", "-old")
+	out = run(t, bin, "--db", db, "list")
+	if strings.Contains(out, "old") {
+		t.Fatalf("modify -tag should remove tag, output = %q", out)
+	}
+}
+
+func TestCLIInfoShowsAllM0Fields(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "write", "spec", "project:taskg", "priority:H", "due:2030-01-01", "+planning")
+	out := run(t, bin, "--db", db, "info", "1")
+	for _, want := range []string{"UUID:", "Status:", "Description:", "Entry:", "Modified:", "Due:", "Project:", "Priority:", "Tags:"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("info output missing %q: %q", want, out)
+		}
 	}
 }
 

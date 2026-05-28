@@ -18,6 +18,7 @@ type ListOptions struct {
 	Priority *string
 	Tags     []string
 	Text     *string
+	Sort     string
 }
 
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
@@ -53,7 +54,13 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 	for _, tag := range opts.Tags {
 		q = q.Where("uuid IN (SELECT task_uuid FROM task_tags WHERE tag = ?)", tag)
 	}
-	if err := q.Order("entry ASC").Find(&models).Error; err != nil {
+	switch opts.Sort {
+	case "next":
+		q = q.Order("due IS NULL ASC").Order("due ASC").Order("CASE priority WHEN 'H' THEN 3 WHEN 'M' THEN 2 WHEN 'L' THEN 1 ELSE 0 END DESC").Order("entry ASC")
+	default:
+		q = q.Order("entry ASC")
+	}
+	if err := q.Find(&models).Error; err != nil {
 		return nil, err
 	}
 	out := make([]domain.Task, 0, len(models))

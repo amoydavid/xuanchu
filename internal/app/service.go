@@ -30,11 +30,13 @@ type AddInput struct {
 }
 
 type ListInput struct {
+	Target   *string
 	Status   string
 	Project  *string
 	Priority *string
 	Tags     []string
 	Text     *string
+	Sort     string
 }
 
 type ModifyInput struct {
@@ -73,13 +75,20 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 }
 
 func (s *Service) List(input ListInput) ([]task.Task, error) {
+	if input.Target != nil {
+		tsk, err := s.ResolveTarget(*input.Target)
+		if err != nil {
+			return nil, err
+		}
+		return []task.Task{tsk}, nil
+	}
 	status := input.Status
 	if status == "" {
 		status = task.StatusPending
 	}
 	return s.repo.List(s.workspaceID, sqlite.ListOptions{
 		Status: status, Project: input.Project, Priority: input.Priority,
-		Tags: input.Tags, Text: input.Text,
+		Tags: input.Tags, Text: input.Text, Sort: input.Sort,
 	})
 }
 
