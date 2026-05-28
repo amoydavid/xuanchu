@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -203,6 +204,44 @@ func TestUniqueHelperSupportsUDA(t *testing.T) {
 	}
 	if strings.Join(values, ",") != "3,5" {
 		t.Fatalf("UniqueValues() = %#v", values)
+	}
+}
+
+func TestTaskRCDryRunDoesNotWriteState(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	path := filepath.Join(t.TempDir(), ".taskrc")
+	if err := os.WriteFile(path, []byte("context.work=project:work\nuda.estimate.type=numeric\nurgency.uda.estimate.coefficient=2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := svc.ImportTaskRC(path, true)
+	if err != nil {
+		t.Fatalf("ImportTaskRC(dry-run) error = %v", err)
+	}
+	if !report.DryRun || len(report.Imported) != 3 {
+		t.Fatalf("dry-run report = %#v", report)
+	}
+	if contexts, err := svc.ContextList(); err != nil || len(contexts) != 0 {
+		t.Fatalf("contexts after dry-run = %#v, %v", contexts, err)
+	}
+	if defs, err := svc.ListUDAs(); err != nil || len(defs) != 0 {
+		t.Fatalf("UDAs after dry-run = %#v, %v", defs, err)
+	}
+	report, err = svc.ImportTaskRC(path, false)
+	if err != nil {
+		t.Fatalf("ImportTaskRC() error = %v", err)
+	}
+	if report.DryRun {
+		t.Fatalf("report dry_run = true")
+	}
+	if contexts, _ := svc.ContextList(); len(contexts) != 1 || contexts[0].Name != "work" {
+		t.Fatalf("contexts after import = %#v", contexts)
+	}
+	if got, ok, err := svc.GetConfig("urgency.uda.estimate.coefficient"); err != nil || !ok || got != "2" {
+		t.Fatalf("urgency config = %q, %v, %v", got, ok, err)
+	}
+	if got, ok, err := svc.GetConfig("uda.estimate.type"); err != nil || !ok || got != "numeric" {
+		t.Fatalf("uda type = %q, %v, %v", got, ok, err)
 	}
 }
 

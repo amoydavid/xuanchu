@@ -2,13 +2,16 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/config"
+	"github.com/dajee/taskg/internal/render"
 	"github.com/dajee/taskg/internal/storage/sqlite"
+	taskrcparser "github.com/dajee/taskg/internal/taskrc"
 	"github.com/spf13/cobra"
 )
 
@@ -40,6 +43,7 @@ func newConfigCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newConfigSetCommand(opts))
 	cmd.AddCommand(newConfigUnsetCommand(opts))
 	cmd.AddCommand(newConfigListCommand(opts))
+	cmd.AddCommand(newConfigImportTaskRCCommand(opts))
 	return cmd
 }
 
@@ -134,6 +138,48 @@ func newConfigListCommand(opts Options) *cobra.Command {
 			}
 			return nil
 		},
+	}
+}
+
+func newConfigImportTaskRCCommand(opts Options) *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:  "import-taskrc <path>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			svc, closeFn, err := buildServiceFromOpts(currentOpts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			report, err := svc.ImportTaskRC(args[0], dryRun)
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), report)
+			}
+			renderTaskRCReport(cmd.OutOrStdout(), report)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "parse without writing")
+	return cmd
+}
+
+func renderTaskRCReport(w io.Writer, report taskrcparser.Report) {
+	fmt.Fprintln(w, "imported:")
+	for _, entry := range report.Imported {
+		fmt.Fprintf(w, "  %s\n", entry.Target)
+	}
+	fmt.Fprintln(w, "skipped:")
+	for _, entry := range report.Skipped {
+		fmt.Fprintf(w, "  %s (%s)\n", entry.Key, entry.Reason)
+	}
+	fmt.Fprintln(w, "unknown:")
+	for _, entry := range report.Unknown {
+		fmt.Fprintf(w, "  %s (%s)\n", entry.Key, entry.Reason)
 	}
 }
 

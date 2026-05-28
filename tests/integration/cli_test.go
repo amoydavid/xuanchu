@@ -107,6 +107,44 @@ func TestCLIUDAConfigAndImport(t *testing.T) {
 	}
 }
 
+func TestCLIImportTaskRC(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	path := filepath.Join(t.TempDir(), ".taskrc")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"color=off",
+		"dateformat=epoch",
+		"context.work=project:work",
+		"uda.estimate.type=numeric",
+		"uda.estimate.values=1,2,3",
+		"urgency.uda.estimate.coefficient=2",
+		"report.next.columns=id,description",
+		"unknown.value=yes",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dry := run(t, bin, "--db", db, "--json", "config", "import-taskrc", path, "--dry-run")
+	if !strings.Contains(dry, `"dry_run": true`) || !strings.Contains(dry, `"unknown.value"`) {
+		t.Fatalf("dry-run output = %q", dry)
+	}
+	if got := run(t, bin, "--db", db, "_udas"); strings.TrimSpace(got) != "" {
+		t.Fatalf("_udas after dry-run = %q", got)
+	}
+	out := run(t, bin, "--db", db, "config", "import-taskrc", path)
+	if !strings.Contains(out, "imported:") || !strings.Contains(out, "skipped:") || !strings.Contains(out, "unknown:") {
+		t.Fatalf("import-taskrc output = %q", out)
+	}
+	if got := strings.TrimSpace(run(t, bin, "--db", db, "config", "get", "uda.estimate.values")); got != "1,2,3" {
+		t.Fatalf("uda values after import = %q", got)
+	}
+	run(t, bin, "--db", db, "add", "work", "task", "project:work", "estimate:2")
+	run(t, bin, "--db", db, "context", "use", "work")
+	if got := run(t, bin, "--db", db, "list"); !strings.Contains(got, "work task") {
+		t.Fatalf("context imported filter did not work: %q", got)
+	}
+}
+
 func TestCLIContextCommands(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
