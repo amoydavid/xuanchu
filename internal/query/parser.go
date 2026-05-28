@@ -3,6 +3,7 @@ package query
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/dajee/taskg/internal/task"
 )
@@ -11,7 +12,11 @@ func ParseAddArgs(args []string) (ParsedAdd, error) {
 	var desc []string
 	mod := task.Modification{}
 	for _, arg := range args {
-		if applyModificationToken(arg, &mod) {
+		applied, err := applyModificationToken(arg, &mod)
+		if err != nil {
+			return ParsedAdd{}, err
+		}
+		if applied {
 			continue
 		}
 		desc = append(desc, arg)
@@ -26,7 +31,11 @@ func ParseAddArgs(args []string) (ParsedAdd, error) {
 func ParseModifyArgs(args []string) (task.Modification, error) {
 	mod := task.Modification{}
 	for _, arg := range args {
-		if !applyModificationToken(arg, &mod) {
+		applied, err := applyModificationToken(arg, &mod)
+		if err != nil {
+			return task.Modification{}, err
+		}
+		if !applied {
 			return task.Modification{}, errors.New("unsupported modification: " + arg)
 		}
 	}
@@ -62,27 +71,35 @@ func ParseFilters(args []string) (Filter, error) {
 	return filter, nil
 }
 
-func applyModificationToken(arg string, mod *task.Modification) bool {
+func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 	switch {
 	case strings.HasPrefix(arg, "+") && len(arg) > 1:
 		mod.AddTags = append(mod.AddTags, strings.TrimPrefix(arg, "+"))
-		return true
+		return true, nil
 	case strings.HasPrefix(arg, "-") && len(arg) > 1:
 		mod.RemoveTags = append(mod.RemoveTags, strings.TrimPrefix(arg, "-"))
-		return true
+		return true, nil
 	case strings.HasPrefix(arg, "project:"):
 		value := strings.TrimPrefix(arg, "project:")
 		mod.Project = &value
-		return true
+		return true, nil
 	case strings.HasPrefix(arg, "priority:"):
 		value := strings.TrimPrefix(arg, "priority:")
 		mod.Priority = &value
-		return true
+		return true, nil
 	case strings.HasPrefix(arg, "description:"):
 		value := strings.TrimPrefix(arg, "description:")
 		mod.Description = &value
-		return true
+		return true, nil
+	case strings.HasPrefix(arg, "due:"):
+		value := strings.TrimPrefix(arg, "due:")
+		due, err := ParseDate(value, time.Now(), time.Local)
+		if err != nil {
+			return false, err
+		}
+		mod.Due = &due
+		return true, nil
 	default:
-		return false
+		return false, nil
 	}
 }
