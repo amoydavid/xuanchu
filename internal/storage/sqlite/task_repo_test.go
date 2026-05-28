@@ -129,3 +129,33 @@ func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 		t.Fatalf("recurrence fields not roundtripped: %#v", got)
 	}
 }
+
+func TestTaskRepositoryRecurringChildUniqueByParentAndDue(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+	parent := "parent"
+	recur := "daily"
+	due := int64(100)
+	first, existing, err := repo.CreateRecurringChild(domain.Task{
+		UUID: "child-1", WorkspaceID: ws.ID, Description: "child", Status: domain.StatusPending,
+		Entry: 1, Modified: 1, Due: &due, Parent: &parent, Recur: &recur,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringChild(first) error = %v", err)
+	}
+	if existing {
+		t.Fatal("CreateRecurringChild(first) existing = true, want false")
+	}
+	second, existing, err := repo.CreateRecurringChild(domain.Task{
+		UUID: "child-2", WorkspaceID: ws.ID, Description: "child", Status: domain.StatusPending,
+		Entry: 2, Modified: 2, Due: &due, Parent: &parent, Recur: &recur,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringChild(second) error = %v", err)
+	}
+	if !existing {
+		t.Fatal("CreateRecurringChild(second) existing = false, want true")
+	}
+	if second.UUID != first.UUID {
+		t.Fatalf("second UUID = %q, want existing %q", second.UUID, first.UUID)
+	}
+}

@@ -457,6 +457,49 @@ func TestCLIM2Reports(t *testing.T) {
 	}
 }
 
+func TestCLIAddDependsAcceptsWorkingSetID(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "blocker")
+	run(t, bin, "--db", db, "add", "blocked", "depends:1")
+	blocked := run(t, bin, "--db", db, "blocked")
+	if !strings.Contains(blocked, "blocked") {
+		t.Fatalf("blocked output = %q", blocked)
+	}
+	blocking := run(t, bin, "--db", db, "blocking")
+	if !strings.Contains(blocking, "blocker") {
+		t.Fatalf("blocking output = %q", blocking)
+	}
+}
+
+func TestCLIListShowsWorkingSetIDWhenWaitingTaskIsHidden(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "hidden waiting", "wait:tomorrow")
+	run(t, bin, "--db", db, "add", "visible task")
+	list := run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "2") || !strings.Contains(list, "visible task") {
+		t.Fatalf("list output = %q, want visible task with working-set ID 2", list)
+	}
+	got := run(t, bin, "--db", db, "_get", "2.description")
+	if strings.TrimSpace(got) != "visible task" {
+		t.Fatalf("_get 2.description = %q, want visible task", got)
+	}
+}
+
+func TestCLIDOMUrgencyIncludesDependencyState(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "blocker")
+	run(t, bin, "--db", db, "add", "blocked")
+	run(t, bin, "--db", db, "2", "modify", "depends:1")
+	getUrgency := strings.TrimSpace(run(t, bin, "--db", db, "_get", "2.urgency"))
+	helperUrgency := strings.TrimSpace(run(t, bin, "--db", db, "_urgency", "2"))
+	if getUrgency != helperUrgency {
+		t.Fatalf("_get urgency = %q, _urgency = %q", getUrgency, helperUrgency)
+	}
+}
+
 func TestCLIAppendPrepend(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
@@ -478,6 +521,38 @@ func TestCLIAppendPrependCommands(t *testing.T) {
 	got := run(t, bin, "--db", db, "_get", "1.description")
 	if !strings.Contains(got, "head text middle tail text") {
 		t.Fatalf("description = %q", got)
+	}
+}
+
+func TestCLIEditRejectsInvalidDate(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	editor := buildEditorHelper(t, `package main
+import (
+	"encoding/json"
+	"os"
+)
+func main() {
+	path := os.Args[1]
+	data, err := os.ReadFile(path)
+	if err != nil { panic(err) }
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil { panic(err) }
+	doc["due"] = "not-a-date"
+	data, err = json.Marshal(doc)
+	if err != nil { panic(err) }
+	if err := os.WriteFile(path, data, 0o600); err != nil { panic(err) }
+}`)
+	run(t, bin, "--db", db, "add", "editable", "due:2030-01-01")
+	before := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.due"))
+	cmd := exec.Command(bin, "--db", db, "1", "edit")
+	cmd.Env = append(os.Environ(), "EDITOR="+editor)
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("edit succeeded unexpectedly:\n%s", out)
+	}
+	after := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.due"))
+	if after != before {
+		t.Fatalf("due changed after invalid edit: before=%q after=%q", before, after)
 	}
 }
 

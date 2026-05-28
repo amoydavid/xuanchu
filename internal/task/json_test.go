@@ -49,6 +49,19 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	}
 }
 
+func TestFromJSONStrictRejectsInvalidDate(t *testing.T) {
+	_, err := FromJSONStrict(JSONTask{
+		UUID:        "u1",
+		Description: "task",
+		Status:      StatusPending,
+		Entry:       "1970-01-01T00:00:01Z",
+		Modified:    "not-a-date",
+	})
+	if err == nil {
+		t.Fatal("FromJSONStrict() error = nil, want invalid date error")
+	}
+}
+
 func TestUnmarshalJSONTasksPreservesNilVsEmptySlices(t *testing.T) {
 	var missing []JSONTask
 	if err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`), &missing); err != nil {

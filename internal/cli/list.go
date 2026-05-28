@@ -57,7 +57,11 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 				}
 				return render.JSON(cmd.OutOrStdout(), dtos)
 			}
-			render.TaskList(cmd.OutOrStdout(), tasks)
+			ids, err := svc.IDs(app.ListInput{Query: input.Query})
+			if err != nil {
+				return err
+			}
+			render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
 			return nil
 		},
 	}

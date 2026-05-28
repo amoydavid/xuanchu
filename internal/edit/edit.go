@@ -3,6 +3,7 @@ package edit
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/dajee/taskg/internal/task"
 )
@@ -66,14 +67,30 @@ func Parse(data []byte, original EditableTask) (EditableTask, error) {
 
 func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 	out := original
+	due, err := parseTimePtr("due", edited.Due)
+	if err != nil {
+		return task.Task{}, err
+	}
+	wait, err := parseTimePtr("wait", edited.Wait)
+	if err != nil {
+		return task.Task{}, err
+	}
+	scheduled, err := parseTimePtr("scheduled", edited.Scheduled)
+	if err != nil {
+		return task.Task{}, err
+	}
+	until, err := parseTimePtr("until", edited.Until)
+	if err != nil {
+		return task.Task{}, err
+	}
 	out.Description = edited.Description
 	out.Status = edited.Status
 	out.Project = edited.Project
 	out.Priority = edited.Priority
-	out.Due = parseTimePtr(edited.Due)
-	out.Wait = parseTimePtr(edited.Wait)
-	out.Scheduled = parseTimePtr(edited.Scheduled)
-	out.Until = parseTimePtr(edited.Until)
+	out.Due = due
+	out.Wait = wait
+	out.Scheduled = scheduled
+	out.Until = until
 	out.Tags = edited.Tags
 	out.Depends = edited.Depends
 	out.Recur = edited.Recur
@@ -85,8 +102,12 @@ func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 	} else {
 		out.Annotations = make([]task.Annotation, len(edited.Annotations))
 		for i, annotation := range edited.Annotations {
+			entry, err := parseTime(fmt.Sprintf("annotations[%d].entry", i), annotation.Entry)
+			if err != nil {
+				return task.Task{}, err
+			}
 			out.Annotations[i] = task.Annotation{
-				Entry:       parseTime(annotation.Entry),
+				Entry:       entry,
 				Description: annotation.Description,
 			}
 		}
@@ -94,14 +115,21 @@ func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 	return out, out.Validate()
 }
 
-func parseTimePtr(value *string) *int64 {
+func parseTimePtr(field string, value *string) (*int64, error) {
 	if value == nil {
-		return nil
+		return nil, nil
 	}
-	parsed := parseTime(*value)
-	return &parsed
+	parsed, err := parseTime(field, *value)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
-func parseTime(value string) int64 {
-	return task.FromJSON(task.JSONTask{Entry: value}).Entry
+func parseTime(field, value string) (int64, error) {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %w", field, value, err)
+	}
+	return parsed.Unix(), nil
 }

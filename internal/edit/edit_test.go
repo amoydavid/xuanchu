@@ -1,6 +1,10 @@
 package edit
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dajee/taskg/internal/task"
+)
 
 func TestParseEditableTaskRejectsUUIDChange(t *testing.T) {
 	original := EditableTask{UUID: "u1", Entry: "1970-01-01T00:00:01Z", Description: "task", Status: "pending"}
@@ -26,5 +30,43 @@ func TestParseEditableTaskUpdatesDescription(t *testing.T) {
 	}
 	if got.Description != "new" {
 		t.Fatalf("Description = %q", got.Description)
+	}
+}
+
+func TestApplyRejectsInvalidDate(t *testing.T) {
+	due := "not-a-date"
+	_, err := Apply(taskFixture(), EditableTask{
+		UUID:        "u1",
+		Entry:       "1970-01-01T00:00:01Z",
+		Description: "task",
+		Status:      "pending",
+		Due:         &due,
+	})
+	if err == nil {
+		t.Fatal("Apply() error = nil, want invalid due error")
+	}
+}
+
+func TestApplyRejectsInvalidAnnotationEntry(t *testing.T) {
+	_, err := Apply(taskFixture(), EditableTask{
+		UUID:        "u1",
+		Entry:       "1970-01-01T00:00:01Z",
+		Description: "task",
+		Status:      "pending",
+		Annotations: []task.JSONAnnotation{{Entry: "not-a-date", Description: "note"}},
+	})
+	if err == nil {
+		t.Fatal("Apply() error = nil, want invalid annotation entry error")
+	}
+}
+
+func taskFixture() task.Task {
+	return task.Task{
+		UUID:        "u1",
+		WorkspaceID: "w1",
+		Description: "task",
+		Status:      task.StatusPending,
+		Entry:       1,
+		Modified:    1,
 	}
 }

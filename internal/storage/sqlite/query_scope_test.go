@@ -203,12 +203,45 @@ func TestCompileQueryM2Fields(t *testing.T) {
 	}
 }
 
+func TestCompileQueryAssociationSubqueriesAreWorkspaceScoped(t *testing.T) {
+	expr, err := query.ParseQuery(`+work depends:dep annotations:note`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, args, err := CompileQuery(expr, QueryCompileOptions{WorkspaceID: "w1", NowUnix: 100})
+	if err != nil {
+		t.Fatalf("CompileQuery() error = %v", err)
+	}
+	for _, part := range []string{
+		"tag_tasks.workspace_id = ?",
+		"dep_tasks.workspace_id = ?",
+		"annotation_tasks.workspace_id = ?",
+	} {
+		if !strings.Contains(sql, part) {
+			t.Fatalf("sql = %s, missing workspace scope %s", sql, part)
+		}
+	}
+	if got := countArgs(args, "w1"); got != 4 {
+		t.Fatalf("workspace args count = %d, args = %#v", got, args)
+	}
+}
+
 func taskUUIDs(tasks []domain.Task) []string {
 	out := make([]string, len(tasks))
 	for i, tsk := range tasks {
 		out[i] = tsk.UUID
 	}
 	return out
+}
+
+func countArgs(args []any, value string) int {
+	count := 0
+	for _, arg := range args {
+		if arg == value {
+			count++
+		}
+	}
+	return count
 }
 
 func newQueryTestStore(t *testing.T) (*Store, *TaskRepository, Workspace) {

@@ -142,6 +142,45 @@ func TestServiceRejectsDependencyCycle(t *testing.T) {
 	}
 }
 
+func TestServiceAddResolvesDependencyTargets(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	dep, _ := svc.Add(AddInput{Description: "dep"})
+	tsk, err := svc.Add(AddInput{Description: "task", Depends: []string{"1"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	got, err := svc.ResolveTarget(tsk.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if len(got.Depends) != 1 || got.Depends[0] != dep.UUID {
+		t.Fatalf("Depends = %#v, want %q", got.Depends, dep.UUID)
+	}
+}
+
+func TestServiceRejectsRecurringUnsupportedFields(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	dep, _ := svc.Add(AddInput{Description: "dep"})
+	due := int64(200)
+	wait := int64(150)
+	scheduled := int64(160)
+	recur := "daily"
+	for _, tc := range []struct {
+		name  string
+		input AddInput
+	}{
+		{name: "wait", input: AddInput{Description: "task", Due: &due, Recur: &recur, Wait: &wait}},
+		{name: "scheduled", input: AddInput{Description: "task", Due: &due, Recur: &recur, Scheduled: &scheduled}},
+		{name: "depends", input: AddInput{Description: "task", Due: &due, Recur: &recur, Depends: []string{dep.UUID}}},
+	} {
+		if _, err := svc.Add(tc.input); err == nil {
+			t.Fatalf("Add(%s) error = nil, want error", tc.name)
+		}
+	}
+}
+
 func TestServiceRejectsDeepDependencyCycle(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -212,6 +251,44 @@ func TestServiceRejectsBlankAnnotateAppendAndPrepend(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsAnnotationNewline(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	tsk, _ := svc.Add(AddInput{Description: "task"})
+	if err := svc.Annotate(tsk.UUID, "line1\nline2"); err == nil {
+		t.Fatal("Annotate() error = nil, want newline validation error")
+	}
+	got, err := svc.ResolveTarget(tsk.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if len(got.Annotations) != 0 {
+		t.Fatalf("Annotations = %#v, want empty", got.Annotations)
+	}
+}
+
+func TestServiceAllowsDuplicateAnnotationsInSameSecond(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	tsk, _ := svc.Add(AddInput{Description: "task"})
+	if err := svc.Annotate(tsk.UUID, "note"); err != nil {
+		t.Fatalf("Annotate(first) error = %v", err)
+	}
+	if err := svc.Annotate(tsk.UUID, "note"); err != nil {
+		t.Fatalf("Annotate(second) error = %v", err)
+	}
+	got, err := svc.ResolveTarget(tsk.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if len(got.Annotations) != 2 {
+		t.Fatalf("Annotations = %#v, want two duplicate notes", got.Annotations)
+	}
+	if got.Annotations[0].Entry == got.Annotations[1].Entry {
+		t.Fatalf("duplicate annotations kept same entry: %#v", got.Annotations)
+	}
+}
+
 func TestServiceImportClearsTagsWithExplicitEmptyArray(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -273,6 +350,26 @@ func TestServiceImportDoesNotClearTagsWhenFieldMissing(t *testing.T) {
 	}
 }
 
+func TestDefaultWorkingSetKeepsWaitingTasksAddressable(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	wait := int64(200)
+	if _, err := svc.Add(AddInput{Description: "hidden wait", Wait: &wait}); err != nil {
+		t.Fatalf("Add(waiting) error = %v", err)
+	}
+	visible, err := svc.Add(AddInput{Description: "visible"})
+	if err != nil {
+		t.Fatalf("Add(visible) error = %v", err)
+	}
+	got, err := svc.ResolveTarget("1")
+	if err != nil {
+		t.Fatalf("ResolveTarget(1) error = %v", err)
+	}
+	if got.UUID == visible.UUID {
+		t.Fatalf("ResolveTarget(1) should keep waiting task addressable before visible %q", visible.Description)
+	}
+}
+
 func TestServiceM2Reports(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -317,6 +414,31 @@ func TestServiceM2Reports(t *testing.T) {
 	}
 }
 
+func TestUntilExpiredDependencyDoesNotBlockLiveTask(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	expiredUntil := int64(90)
+	expired, _ := svc.Add(AddInput{Description: "expired", Until: &expiredUntil})
+	live, _ := svc.Add(AddInput{Description: "live"})
+	if err := svc.Modify(live.UUID, ModifyInput{AddDepends: []string{expired.UUID}}); err != nil {
+		t.Fatalf("Modify(live depends expired) error = %v", err)
+	}
+	blocked, err := svc.ListReport("blocked", ListInput{})
+	if err != nil {
+		t.Fatalf("ListReport(blocked) error = %v", err)
+	}
+	if containsTask(blocked, live.UUID) {
+		t.Fatalf("blocked includes live task with expired dependency: %#v", blocked)
+	}
+	ready, err := svc.ListReport("ready", ListInput{})
+	if err != nil {
+		t.Fatalf("ListReport(ready) error = %v", err)
+	}
+	if !containsTask(ready, live.UUID) {
+		t.Fatalf("ready missing live task with expired dependency: %#v", ready)
+	}
+}
+
 func TestUrgencyUsesDependencyState(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -336,6 +458,39 @@ func TestUrgencyUsesDependencyState(t *testing.T) {
 	}
 	if blockedU.Total >= plainU.Total {
 		t.Fatalf("blocked urgency = %.3f, plain = %.3f; blocked should be lower", blockedU.Total, plainU.Total)
+	}
+}
+
+func TestDoneChildDoesNotRecurWhenParentDeleted(t *testing.T) {
+	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
+	defer closeFn()
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	until := mustUnix(t, "2030-02-01T23:59:59Z")
+	recur := "daily"
+	parent, err := svc.Add(AddInput{Description: "daily task", Due: &due, Until: &until, Recur: &recur})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("children = %#v", tasks)
+	}
+	child := tasks[0]
+	if err := svc.Delete(parent.UUID); err != nil {
+		t.Fatalf("Delete(parent) error = %v", err)
+	}
+	if err := svc.Done(child.UUID); err != nil {
+		t.Fatalf("Done(child) error = %v", err)
+	}
+	tasks, err = svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() after Done(child) error = %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("child generated after deleted parent: %#v", tasks)
 	}
 }
 

@@ -10,8 +10,16 @@ import (
 )
 
 func TaskList(w io.Writer, tasks []task.Task) {
+	TaskListWithIDs(w, tasks, nil)
+}
+
+func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 	fmt.Fprintln(w, "ID  UUID      PRI  PROJECT  TAGS  DESCRIPTION")
 	for i, tsk := range tasks {
+		id := i + 1
+		if len(ids) == len(tasks) {
+			id = ids[i]
+		}
 		priority := ""
 		if tsk.Priority != nil {
 			priority = *tsk.Priority
@@ -25,7 +33,7 @@ func TaskList(w io.Writer, tasks []task.Task) {
 			uuid = uuid[:8]
 		}
 		fmt.Fprintf(w, "%-3d %-8s %-4s %-8s %-5s %s\n",
-			i+1, uuid, priority, project, strings.Join(tsk.Tags, ","), tsk.Description)
+			id, uuid, priority, project, strings.Join(tsk.Tags, ","), tsk.Description)
 	}
 }
 

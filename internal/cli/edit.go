@@ -74,7 +74,7 @@ func runEdit(cmd *cobra.Command, svc interface {
 		return err
 	}
 	editable := apptedit.FromTask(tsk)
-	data, err := json.Marshal(editable)
+	data, err := json.MarshalIndent(editable, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -106,6 +106,10 @@ func runEdit(cmd *cobra.Command, svc interface {
 	editedData, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	if string(editedData) == string(data) {
+		fmt.Fprintln(cmd.OutOrStdout(), "Edit unchanged", target)
+		return nil
 	}
 	edited, err := apptedit.Parse(editedData, editable)
 	if err != nil {

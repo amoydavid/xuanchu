@@ -36,7 +36,13 @@ func newGetCommand(opts Options) *cobra.Command {
 				}
 
 				var urg float64
-				if field == "urgency" || strings.HasPrefix(field, "tag.") {
+				if field == "urgency" {
+					explain, err := svc.ExplainUrgency(target)
+					if err != nil {
+						return err
+					}
+					urg = explain.Total
+				} else if strings.HasPrefix(field, "tag.") {
 					explain := urgency.Explain(tsk, urgency.Options{NowUnix: svc.Clock().Unix()})
 					urg = explain.Total
 				}

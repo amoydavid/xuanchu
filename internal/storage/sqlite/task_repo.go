@@ -3,6 +3,7 @@ package sqlite
 import (
 	"errors"
 	"sort"
+	"strings"
 
 	"github.com/dajee/taskg/internal/query"
 	domain "github.com/dajee/taskg/internal/task"
@@ -37,6 +38,31 @@ func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
 		return domain.Task{}, err
 	}
 	return fromModel(model), nil
+}
+
+func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, bool, error) {
+	if tsk.Parent == nil || tsk.Due == nil {
+		created, err := r.Create(tsk)
+		return created, false, err
+	}
+	created, err := r.Create(tsk)
+	if err == nil {
+		return created, false, nil
+	}
+	if !isUniqueConstraintError(err) {
+		return domain.Task{}, false, err
+	}
+	var model Task
+	findErr := r.preloadAssociations().
+		Where("workspace_id = ? AND parent = ? AND due = ? AND status IN ?", tsk.WorkspaceID, *tsk.Parent, *tsk.Due, []string{domain.StatusPending, domain.StatusWaiting}).
+		First(&model).Error
+	if errors.Is(findErr, gorm.ErrRecordNotFound) {
+		return domain.Task{}, false, err
+	}
+	if findErr != nil {
+		return domain.Task{}, false, findErr
+	}
+	return fromModel(model), true, nil
 }
 
 func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Task, error) {
@@ -209,7 +235,7 @@ func toModel(tsk domain.Task) Task {
 		UUID: tsk.UUID, WorkspaceID: tsk.WorkspaceID, Description: tsk.Description,
 		Status: tsk.Status, Entry: tsk.Entry, Modified: tsk.Modified,
 		EndTS: tsk.End, Due: tsk.Due, Project: tsk.Project, Priority: tsk.Priority,
-		Tags: tags,
+		Tags:  tags,
 		Start: tsk.Start, Wait: tsk.Wait, Scheduled: tsk.Scheduled, Until: tsk.Until,
 		Recur: tsk.Recur, Parent: tsk.Parent, Mask: tsk.Mask, IMask: tsk.IMask,
 		Annotations: annotations, Depends: depends,
@@ -241,7 +267,7 @@ func fromModel(model Task) domain.Task {
 		UUID: model.UUID, WorkspaceID: model.WorkspaceID, Description: model.Description,
 		Status: model.Status, Entry: model.Entry, Modified: model.Modified,
 		End: model.EndTS, Due: model.Due, Project: model.Project, Priority: model.Priority,
-		Tags: tags,
+		Tags:  tags,
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
 		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,
 		Annotations: annotations, Depends: depends,
@@ -260,4 +286,8 @@ func sortedUnique(values []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func isUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }

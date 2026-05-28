@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -135,7 +134,7 @@ func (s *Service) IDs(input ListInput) ([]int, error) {
 	for _, tsk := range filtered {
 		matched[tsk.UUID] = struct{}{}
 	}
-	workingSet, err := s.List(ListInput{})
+	workingSet, err := s.defaultWorkingSet()
 	if err != nil {
 		return nil, err
 	}
@@ -153,12 +152,16 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 	if input.Recur != nil {
 		return s.createRecurringParent(input, now)
 	}
+	depends, err := s.resolveDependencyTargets(input.Depends)
+	if err != nil {
+		return task.Task{}, err
+	}
 	tsk := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Project: input.Project, Priority: input.Priority, Tags: input.Tags,
-		Depends: input.Depends,
-		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
+		Depends: depends,
+		Wait:    input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
 	}
 	if input.Wait != nil && *input.Wait > now {
 		tsk.Status = task.StatusWaiting
@@ -286,34 +289,22 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		tsk.Depends = nil
 	}
 	if len(input.AddDepends) > 0 {
-		graph, err := s.dependencyGraph()
+		depends, err := s.resolveDependencyTargets(input.AddDepends)
 		if err != nil {
 			return err
-		}
-		graph[tsk.UUID] = append([]string(nil), tsk.Depends...)
-		for _, depUUID := range input.AddDepends {
-			dep, err := s.ResolveTarget(depUUID)
-			if err != nil {
-				return fmt.Errorf("dependency %q not found: %w", depUUID, err)
-			}
-			graph[tsk.UUID] = append(graph[tsk.UUID], dep.UUID)
-		}
-		for _, depUUID := range input.AddDepends {
-			dep, _ := s.ResolveTarget(depUUID)
-			if task.WouldCreateDependencyCycle(graph, tsk.UUID, dep.UUID) {
-				return fmt.Errorf("invalid dependency: cycle detected")
-			}
 		}
 		depSet := map[string]bool{}
 		for _, d := range tsk.Depends {
 			depSet[d] = true
 		}
-		for _, depUUID := range input.AddDepends {
-			dep, _ := s.ResolveTarget(depUUID)
-			if !depSet[dep.UUID] {
-				tsk.Depends = append(tsk.Depends, dep.UUID)
-				depSet[dep.UUID] = true
+		for _, depUUID := range depends {
+			if !depSet[depUUID] {
+				tsk.Depends = append(tsk.Depends, depUUID)
+				depSet[depUUID] = true
 			}
+		}
+		if err := s.validateDependencyCycles(tsk.UUID, tsk.Depends); err != nil {
+			return err
 		}
 	}
 	// Handle tags
@@ -349,6 +340,9 @@ func (s *Service) Done(target string) error {
 		parent, err := s.repo.GetByUUID(s.workspaceID, *tsk.Parent)
 		if err != nil {
 			return err
+		}
+		if parent.Status != task.StatusRecurring {
+			return nil
 		}
 		_, err = s.createNextRecurringChild(parent, &tsk, s.clock.Unix())
 		if err != nil {
@@ -401,6 +395,19 @@ func (s *Service) Annotate(target, description string) error {
 		return fmt.Errorf("annotation description is required")
 	}
 	now := s.clock.Unix()
+	for {
+		conflict := false
+		for _, annotation := range tsk.Annotations {
+			if annotation.Entry == now && annotation.Description == description {
+				conflict = true
+				break
+			}
+		}
+		if !conflict {
+			break
+		}
+		now++
+	}
 	tsk.Annotations = append(tsk.Annotations, task.Annotation{Entry: now, Description: description})
 	tsk.Modified = now
 	return s.repo.Update(tsk)
@@ -478,7 +485,10 @@ func (s *Service) Export() ([]task.Task, error) {
 func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 	count := 0
 	for _, dto := range tasks {
-		tsk := task.FromJSON(dto)
+		tsk, err := task.FromJSONStrict(dto)
+		if err != nil {
+			return count, err
+		}
 		tsk.WorkspaceID = s.workspaceID
 		if tsk.UUID == "" {
 			tsk.UUID = uuid.NewString()
@@ -595,7 +605,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, err
 	}
-	blocked, blocking := buildDependencyState(allTasks)
+	blocked, blocking := buildDependencyState(allTasks, now)
 	tasks = applyReportScope(tasks, def.Scope, now, blocked, blocking)
 	if def.Sort == "urgency" {
 		type taskWithUrgency struct {
@@ -633,12 +643,45 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
-	blocked, blocking := buildDependencyState(allTasks)
+	blocked, blocking := buildDependencyState(allTasks, s.clock.Unix())
 	return urgency.Explain(tsk, urgency.Options{
 		NowUnix:  s.clock.Unix(),
 		Blocked:  blocked[tsk.UUID],
 		Blocking: blocking[tsk.UUID],
 	}), nil
+}
+
+func (s *Service) resolveDependencyTargets(targets []string) ([]string, error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	depends := make([]string, 0, len(targets))
+	seen := map[string]bool{}
+	for _, target := range targets {
+		dep, err := s.ResolveTarget(target)
+		if err != nil {
+			return nil, fmt.Errorf("dependency %q not found: %w", target, err)
+		}
+		if !seen[dep.UUID] {
+			depends = append(depends, dep.UUID)
+			seen[dep.UUID] = true
+		}
+	}
+	return depends, nil
+}
+
+func (s *Service) validateDependencyCycles(taskUUID string, depends []string) error {
+	graph, err := s.dependencyGraph()
+	if err != nil {
+		return err
+	}
+	graph[taskUUID] = append([]string(nil), depends...)
+	for _, depUUID := range depends {
+		if task.WouldCreateDependencyCycle(graph, taskUUID, depUUID) {
+			return fmt.Errorf("invalid dependency: cycle detected")
+		}
+	}
+	return nil
 }
 
 func (s *Service) refreshAutomaticState() error {
@@ -724,7 +767,7 @@ func isUntilExpired(tsk task.Task, now int64) bool {
 	return tsk.Status == task.StatusPending || tsk.Status == task.StatusWaiting
 }
 
-func buildDependencyState(tasks []task.Task) (map[string]bool, map[string]bool) {
+func buildDependencyState(tasks []task.Task, now int64) (map[string]bool, map[string]bool) {
 	byUUID := make(map[string]task.Task, len(tasks))
 	for _, tsk := range tasks {
 		byUUID[tsk.UUID] = tsk
@@ -732,12 +775,12 @@ func buildDependencyState(tasks []task.Task) (map[string]bool, map[string]bool) 
 	blocked := map[string]bool{}
 	blocking := map[string]bool{}
 	for _, tsk := range tasks {
-		if !isDependencyEligible(tsk) {
+		if !isDependencyEligible(tsk, now) {
 			continue
 		}
 		for _, depUUID := range tsk.Depends {
 			dep, ok := byUUID[depUUID]
-			if !ok || !isDependencyEligible(dep) {
+			if !ok || !isDependencyEligible(dep, now) {
 				continue
 			}
 			blocked[tsk.UUID] = true
@@ -747,7 +790,10 @@ func buildDependencyState(tasks []task.Task) (map[string]bool, map[string]bool) 
 	return blocked, blocking
 }
 
-func isDependencyEligible(tsk task.Task) bool {
+func isDependencyEligible(tsk task.Task, now int64) bool {
+	if isUntilExpired(tsk, now) {
+		return false
+	}
 	return tsk.Status == task.StatusPending || tsk.Status == task.StatusWaiting
 }
 
@@ -773,6 +819,9 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 }
 
 func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, error) {
+	if input.Wait != nil || input.Scheduled != nil || len(input.Depends) > 0 {
+		return task.Task{}, fmt.Errorf("recurring task does not accept wait, scheduled, or depends")
+	}
 	parent := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
 		Status: task.StatusRecurring, Entry: now, Modified: now,
@@ -790,6 +839,9 @@ func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, e
 }
 
 func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task, now int64) (task.Task, error) {
+	if parent.Status != task.StatusRecurring {
+		return task.Task{}, nil
+	}
 	children, err := s.repo.Children(s.workspaceID, parent.UUID)
 	if err != nil {
 		return task.Task{}, err
@@ -807,7 +859,7 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 			due = &value
 		}
 	} else if previous.Due != nil && parent.Recur != nil {
-		nextDue, err := recurrence.Next(*previous.Due, *parent.Recur, time.UTC)
+		nextDue, err := recurrence.Next(*previous.Due, *parent.Recur, s.clock.Location())
 		if err != nil {
 			return task.Task{}, err
 		}
@@ -826,10 +878,11 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 		Until: parent.Until, Recur: parent.Recur,
 		Parent: &parent.UUID,
 	}
-	if _, err := s.repo.Create(child); err != nil {
+	created, _, err := s.repo.CreateRecurringChild(child)
+	if err != nil {
 		return task.Task{}, err
 	}
-	return child, nil
+	return created, nil
 }
 
 func (s *Service) ensureRecurringChildren() error {

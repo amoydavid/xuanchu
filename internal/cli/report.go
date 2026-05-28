@@ -39,13 +39,17 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 				}
 				return render.JSON(cmd.OutOrStdout(), dtos)
 			}
-			render.TaskList(cmd.OutOrStdout(), result.Tasks)
+			ids, err := svc.IDs(app.ListInput{Query: expr})
+			if err != nil {
+				return err
+			}
+			render.TaskListWithIDs(cmd.OutOrStdout(), result.Tasks, ids)
 			return nil
 		},
 	}
 }
 
-func newAllCommand(opts Options) *cobra.Command      { return newReportCommand(opts, "all") }
+func newAllCommand(opts Options) *cobra.Command       { return newReportCommand(opts, "all") }
 func newCompletedCommand(opts Options) *cobra.Command { return newReportCommand(opts, "completed") }
 func newDeletedCommand(opts Options) *cobra.Command   { return newReportCommand(opts, "deleted") }
 func newOverdueCommand(opts Options) *cobra.Command   { return newReportCommand(opts, "overdue") }

@@ -121,27 +121,27 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	case query.AttrDepends:
 		switch p.Operator {
 		case query.OpEqual:
-			return "uuid IN (SELECT task_uuid FROM task_dependencies WHERE depends_on = ?)", []any{value}, nil
+			return "uuid IN (SELECT task_dependencies.task_uuid FROM task_dependencies JOIN tasks AS dep_tasks ON dep_tasks.uuid = task_dependencies.task_uuid WHERE dep_tasks.workspace_id = ? AND task_dependencies.depends_on = ?)", []any{opts.WorkspaceID, value}, nil
 		case query.OpIsNull:
-			return "uuid NOT IN (SELECT task_uuid FROM task_dependencies)", nil, nil
+			return "uuid NOT IN (SELECT task_dependencies.task_uuid FROM task_dependencies JOIN tasks AS dep_tasks ON dep_tasks.uuid = task_dependencies.task_uuid WHERE dep_tasks.workspace_id = ?)", []any{opts.WorkspaceID}, nil
 		case query.OpNotNull:
-			return "uuid IN (SELECT task_uuid FROM task_dependencies)", nil, nil
+			return "uuid IN (SELECT task_dependencies.task_uuid FROM task_dependencies JOIN tasks AS dep_tasks ON dep_tasks.uuid = task_dependencies.task_uuid WHERE dep_tasks.workspace_id = ?)", []any{opts.WorkspaceID}, nil
 		}
 	case query.AttrAnnotations:
 		switch p.Operator {
 		case query.OpContains:
-			return "EXISTS (SELECT 1 FROM task_annotations WHERE task_uuid = tasks.uuid AND description LIKE ?)", []any{"%" + value + "%"}, nil
+			return "EXISTS (SELECT 1 FROM task_annotations JOIN tasks AS annotation_tasks ON annotation_tasks.uuid = task_annotations.task_uuid WHERE annotation_tasks.workspace_id = ? AND task_annotations.task_uuid = tasks.uuid AND task_annotations.description LIKE ?)", []any{opts.WorkspaceID, "%" + value + "%"}, nil
 		case query.OpIsNull:
-			return "NOT EXISTS (SELECT 1 FROM task_annotations WHERE task_uuid = tasks.uuid)", nil, nil
+			return "NOT EXISTS (SELECT 1 FROM task_annotations JOIN tasks AS annotation_tasks ON annotation_tasks.uuid = task_annotations.task_uuid WHERE annotation_tasks.workspace_id = ? AND task_annotations.task_uuid = tasks.uuid)", []any{opts.WorkspaceID}, nil
 		case query.OpNotNull:
-			return "EXISTS (SELECT 1 FROM task_annotations WHERE task_uuid = tasks.uuid)", nil, nil
+			return "EXISTS (SELECT 1 FROM task_annotations JOIN tasks AS annotation_tasks ON annotation_tasks.uuid = task_annotations.task_uuid WHERE annotation_tasks.workspace_id = ? AND task_annotations.task_uuid = tasks.uuid)", []any{opts.WorkspaceID}, nil
 		}
 	case query.AttrTag:
 		if p.Operator == query.OpHasTag {
-			return "uuid IN (SELECT task_uuid FROM task_tags WHERE tag = ?)", []any{value}, nil
+			return "uuid IN (SELECT task_tags.task_uuid FROM task_tags JOIN tasks AS tag_tasks ON tag_tasks.uuid = task_tags.task_uuid WHERE tag_tasks.workspace_id = ? AND task_tags.tag = ?)", []any{opts.WorkspaceID, value}, nil
 		}
 		if p.Operator == query.OpMissingTag {
-			return "uuid NOT IN (SELECT task_uuid FROM task_tags WHERE tag = ?)", []any{value}, nil
+			return "uuid NOT IN (SELECT task_tags.task_uuid FROM task_tags JOIN tasks AS tag_tasks ON tag_tasks.uuid = task_tags.task_uuid WHERE tag_tasks.workspace_id = ? AND task_tags.tag = ?)", []any{opts.WorkspaceID, value}, nil
 		}
 	}
 	return "", nil, fmt.Errorf("unsupported predicate %s", p.String())

@@ -128,7 +128,7 @@ go build -o taskg ./cmd/taskg
 
 # 依赖与 blocked / blocking
 ./taskg add "Prepare API"
-./taskg add "Write docs" depends:<uuid>
+./taskg add "Write docs" depends:<uuid-or-id>
 ./taskg blocked
 ./taskg blocking
 
@@ -147,9 +147,14 @@ M2 当前已经补齐这些能力：
 - 查询 / DOM / urgency / JSON import-export 对上述字段的贯通支持
 - 基础 recurring：`daily`、`weekly`、`monthly`、`<N>days`、`<N>weeks`、`<N>months`
 
+CLI 表格里的 `ID` 是默认 working set ID；隐藏的 waiting 任务仍可用该 ID 操作，所以如果前面有 waiting 任务，`list` 中第一条可见 pending 任务可能显示为 `2`。
+
+`edit` 会打开缩进 JSON，保存后执行校验；非法日期、非法 status、换行 annotation 等错误不会写回。
+
 当前 recurring 的基础约束：
 
 - recurring parent 使用 `status:recurring` 持久化，默认 human 报表隐藏
 - child 在创建 parent 时立即生成，完成 child 后自动生成下一个 child
 - `until` 会阻止生成超过截止时间的新 child
+- recurring parent 不接受 `wait`、`scheduled`、`depends`，避免模板字段被静默丢弃
 - `monthly` 目前直接沿用 Go `time.AddDate(0, n, 0)` 的月末滚动语义

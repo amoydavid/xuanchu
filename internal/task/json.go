@@ -2,6 +2,7 @@ package task
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 )
@@ -120,37 +121,78 @@ func ToJSON(tsk Task) JSONTask {
 }
 
 func FromJSON(dto JSONTask) Task {
+	tsk, _ := FromJSONStrict(dto)
+	return tsk
+}
+
+func FromJSONStrict(dto JSONTask) (Task, error) {
+	entry, err := parseUnixString("entry", dto.Entry)
+	if err != nil {
+		return Task{}, err
+	}
+	modified, err := parseUnixString("modified", dto.Modified)
+	if err != nil {
+		return Task{}, err
+	}
+	end, err := parseUnixStringPtr("end", dto.End)
+	if err != nil {
+		return Task{}, err
+	}
+	due, err := parseUnixStringPtr("due", dto.Due)
+	if err != nil {
+		return Task{}, err
+	}
+	start, err := parseUnixStringPtr("start", dto.Start)
+	if err != nil {
+		return Task{}, err
+	}
+	wait, err := parseUnixStringPtr("wait", dto.Wait)
+	if err != nil {
+		return Task{}, err
+	}
+	scheduled, err := parseUnixStringPtr("scheduled", dto.Scheduled)
+	if err != nil {
+		return Task{}, err
+	}
+	until, err := parseUnixStringPtr("until", dto.Until)
+	if err != nil {
+		return Task{}, err
+	}
+	annotations := func() []Annotation {
+		if dto.Annotations == nil {
+			return nil
+		}
+		return make([]Annotation, len(dto.Annotations))
+	}()
+	for i, a := range dto.Annotations {
+		entry, err := parseUnixString(fmt.Sprintf("annotations[%d].entry", i), a.Entry)
+		if err != nil {
+			return Task{}, err
+		}
+		annotations[i] = Annotation{Entry: entry, Description: a.Description}
+	}
 	return Task{
 		UUID:        dto.UUID,
 		Description: dto.Description,
 		Status:      dto.Status,
-		Entry:       parseUnixString(dto.Entry),
-		Modified:    parseUnixString(dto.Modified),
-		End:         parseUnixStringPtr(dto.End),
-		Due:         parseUnixStringPtr(dto.Due),
+		Entry:       entry,
+		Modified:    modified,
+		End:         end,
+		Due:         due,
 		Project:     dto.Project,
 		Priority:    dto.Priority,
 		Tags:        dto.Tags,
-		Start:       parseUnixStringPtr(dto.Start),
-		Wait:        parseUnixStringPtr(dto.Wait),
-		Scheduled:   parseUnixStringPtr(dto.Scheduled),
-		Until:       parseUnixStringPtr(dto.Until),
-		Annotations: func() []Annotation {
-			if dto.Annotations == nil {
-				return nil
-			}
-			out := make([]Annotation, len(dto.Annotations))
-			for i, a := range dto.Annotations {
-				out[i] = Annotation{Entry: parseUnixString(a.Entry), Description: a.Description}
-			}
-			return out
-		}(),
-		Depends: dto.Depends,
-		Recur:   dto.Recur,
-		Parent:  dto.Parent,
-		Mask:    dto.Mask,
-		IMask:   dto.IMask,
-	}
+		Start:       start,
+		Wait:        wait,
+		Scheduled:   scheduled,
+		Until:       until,
+		Annotations: annotations,
+		Depends:     dto.Depends,
+		Recur:       dto.Recur,
+		Parent:      dto.Parent,
+		Mask:        dto.Mask,
+		IMask:       dto.IMask,
+	}, nil
 }
 
 func formatUnix(sec int64) string {
@@ -165,20 +207,23 @@ func formatUnixPtr(sec *int64) *string {
 	return &value
 }
 
-func parseUnixString(s string) int64 {
+func parseUnixString(field, s string) (int64, error) {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("invalid %s %q: %w", field, s, err)
 	}
-	return t.Unix()
+	return t.Unix(), nil
 }
 
-func parseUnixStringPtr(s *string) *int64 {
+func parseUnixStringPtr(field string, s *string) (*int64, error) {
 	if s == nil {
-		return nil
+		return nil, nil
 	}
-	v := parseUnixString(*s)
-	return &v
+	v, err := parseUnixString(field, *s)
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 func MarshalJSONTasks(tasks []JSONTask) ([]byte, error) {
