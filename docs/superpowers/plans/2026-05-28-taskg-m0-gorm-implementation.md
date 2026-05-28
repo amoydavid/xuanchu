@@ -1,6 +1,6 @@
 # taskg M0 GORM Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 实现 `taskg` M0：一个本地单用户、单 workspace、SQLite 持久化的 Taskwarrior 风格 CLI，支持核心任务生命周期和 JSON 导入导出。
 
@@ -43,7 +43,7 @@
 - Create: `cmd/taskg/main.go`
 - Create: `internal/cli/root.go`
 
-- [ ] **Step 1: 创建失败测试，验证 root command 可执行**
+- [x] **Step 1: 创建失败测试，验证 root command 可执行**
 
 创建 `internal/cli/root_test.go`：
 
@@ -76,12 +76,12 @@ func TestRootCommandVersion(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/cli -run TestRootCommandVersion -v`  
 Expected: FAIL，原因是 module/package/function 尚不存在。
 
-- [ ] **Step 3: 添加最小实现**
+- [x] **Step 3: 添加最小实现**
 
 创建 `go.mod`：
 
@@ -163,17 +163,17 @@ func main() {
 }
 ```
 
-- [ ] **Step 4: 运行测试，确认通过**
+- [x] **Step 4: 运行测试，确认通过**
 
 Run: `go test ./internal/cli -run TestRootCommandVersion -v`  
 Expected: PASS。
 
-- [ ] **Step 5: 整体测试**
+- [x] **Step 5: 整体测试**
 
 Run: `go test ./...`  
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add go.mod go.sum cmd/taskg/main.go internal/cli/root.go internal/cli/root_test.go
@@ -190,7 +190,7 @@ git commit -m "chore: scaffold taskg cli"
 - Create: `internal/config/config_test.go`
 - Modify: `internal/cli/root.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/config/config_test.go`：
 
@@ -265,12 +265,12 @@ func TestResolveDatabasePathUsesHomeFallback(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/config -v`  
 Expected: FAIL，原因是 package/function 尚不存在。
 
-- [ ] **Step 3: 实现配置解析**
+- [x] **Step 3: 实现配置解析**
 
 创建 `internal/config/config.go`：
 
@@ -348,7 +348,7 @@ func environ() map[string]string {
 }
 ```
 
-- [ ] **Step 4: 给 root command 添加全局 flags**
+- [x] **Step 4: 给 root command 添加全局 flags**
 
 在 `internal/cli/root.go` 的 `Options` 增加：
 
@@ -368,12 +368,12 @@ cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output
 cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
 ```
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run: `go test ./internal/config ./internal/cli -v`  
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/config/config.go internal/config/config_test.go internal/cli/root.go
@@ -389,7 +389,7 @@ git commit -m "feat: resolve local taskg config"
 - Create: `internal/storage/sqlite/db_test.go`
 - Modify: `go.mod`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/storage/sqlite/db_test.go`：
 
@@ -453,7 +453,7 @@ func TestOpenCanReopenExistingDatabase(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 添加依赖并运行测试，确认失败**
+- [x] **Step 2: 添加依赖并运行测试，确认失败**
 
 Run:
 
@@ -466,7 +466,7 @@ Expected: FAIL，原因是 storage package 尚未实现。
 
 注意：不要使用 `gorm.io/driver/sqlite`，它默认依赖 `github.com/mattn/go-sqlite3`，会引入 CGO。M0 必须使用 `github.com/glebarez/sqlite`。
 
-- [ ] **Step 3: 实现 GORM models**
+- [x] **Step 3: 实现 GORM models**
 
 创建 `internal/storage/sqlite/models.go`：
 
@@ -505,7 +505,7 @@ type TaskTag struct {
 }
 ```
 
-- [ ] **Step 4: 实现数据库打开、迁移、初始化**
+- [x] **Step 4: 实现数据库打开、迁移、初始化**
 
 创建 `internal/storage/sqlite/db.go`：
 
@@ -604,18 +604,18 @@ func (s *Store) sqlDB() (*sql.DB, error) {
 }
 ```
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run: `go test ./internal/storage/sqlite -v`  
 Expected: PASS。
 
-- [ ] **Step 6: 验证纯 Go / CGO-free**
+- [x] **Step 6: 验证纯 Go / CGO-free**
 
 Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite -v`  
 Expected: PASS。  
 如果失败并出现 `go-sqlite3` 或 CGO 相关错误，检查是否误引入了 `gorm.io/driver/sqlite`。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add go.mod go.sum internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
@@ -650,7 +650,7 @@ git commit -m "feat: initialize gorm sqlite store"
 - Create: `internal/task/model.go`
 - Create: `internal/task/model_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/task/model_test.go`：
 
@@ -690,12 +690,12 @@ func TestCompleteSetsStatusAndEnd(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/task -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 domain model**
+- [x] **Step 3: 实现 domain model**
 
 创建 `internal/task/model.go`：
 
@@ -759,12 +759,12 @@ func (t *Task) Delete(now int64) {
 }
 ```
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run: `go test ./internal/task -v`  
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/task/model.go internal/task/model_test.go
@@ -780,7 +780,7 @@ git commit -m "feat: add task domain model"
 - Create: `internal/query/parser.go`
 - Create: `internal/query/parser_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/query/parser_test.go`：
 
@@ -834,12 +834,12 @@ func TestParseModifyArgsRequiresModification(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/query -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 modification 类型**
+- [x] **Step 3: 实现 modification 类型**
 
 创建 `internal/task/modification.go`：
 
@@ -865,7 +865,7 @@ func (m Modification) Empty() bool {
 }
 ```
 
-- [ ] **Step 4: 实现 filter 和 parser**
+- [x] **Step 4: 实现 filter 和 parser**
 
 创建 `internal/query/filter.go`：
 
@@ -984,12 +984,12 @@ func applyModificationToken(arg string, mod *task.Modification) bool {
 
 日期解析会在 Task 8 添加，届时补上 `due:`。
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run: `go test ./internal/query ./internal/task -v`  
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/task/modification.go internal/query/filter.go internal/query/parser.go internal/query/parser_test.go
@@ -1004,7 +1004,7 @@ git commit -m "feat: parse m0 task arguments"
 - Create: `internal/storage/sqlite/task_repo_test.go`
 - Modify: `internal/storage/sqlite/models.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/storage/sqlite/task_repo_test.go`：
 
@@ -1093,12 +1093,12 @@ func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/storage/sqlite -run TaskRepository -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 repository**
+- [x] **Step 3: 实现 repository**
 
 创建 `internal/storage/sqlite/task_repo.go`：
 
@@ -1253,17 +1253,17 @@ func sortedUnique(values []string) []string {
 }
 ```
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run: `go test ./internal/storage/sqlite -run TaskRepository -v`  
 Expected: PASS。
 
-- [ ] **Step 5: CGO-free 测试**
+- [x] **Step 5: CGO-free 测试**
 
 Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite -v`  
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/storage/sqlite/task_repo.go internal/storage/sqlite/task_repo_test.go internal/storage/sqlite/models.go
@@ -1301,7 +1301,7 @@ git commit -m "feat: persist tasks with gorm"
 - Create: `internal/app/service_test.go`
 - Create: `internal/app/clock.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/app/service_test.go`，使用 SQLite 临时库做 service 级测试：
 
@@ -1353,12 +1353,12 @@ func TestServiceAddListInfo(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/app -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 service**
+- [x] **Step 3: 实现 service**
 
 在 `internal/app/clock.go`：
 
@@ -1464,12 +1464,12 @@ func (s *Service) Info(target string) (task.Task, error) {
 }
 ```
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run: `go test ./internal/app ./internal/storage/sqlite -v`  
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/app/service.go internal/app/service_test.go internal/app/clock.go
@@ -1485,7 +1485,7 @@ git commit -m "feat: add task app service"
 - Modify: `internal/query/parser.go`
 - Modify: `internal/query/parser_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `internal/query/date_test.go`：
 
@@ -1523,12 +1523,12 @@ func TestParseDateYYYYMMDD(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/query -run ParseDate -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现日期解析**
+- [x] **Step 3: 实现日期解析**
 
 创建 `internal/query/date.go`：
 
@@ -1577,7 +1577,7 @@ func ParseDate(value string, now time.Time, loc *time.Location) (int64, error) {
 }
 ```
 
-- [ ] **Step 4: 修改 parser 支持 `due:`**
+- [x] **Step 4: 修改 parser 支持 `due:`**
 
 在 `applyModificationToken` 中识别 `due:`。为了让测试稳定，新增 `ParseAddArgsWithNow(args, now, loc)` 和 `ParseModifyArgsWithNow(args, now, loc)`，原函数调用当前时间版本。示例：
 
@@ -1594,12 +1594,12 @@ case strings.HasPrefix(arg, "due:"):
 
 实施时不要吞掉日期错误；应让 parser 返回 `unsupported date "..."`。如果当前 helper 返回 bool 不够表达错误，把它改为 `(bool, error)` 并更新测试。
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run: `go test ./internal/query -v`  
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/query/date.go internal/query/date_test.go internal/query/parser.go internal/query/parser_test.go
@@ -1618,7 +1618,7 @@ git commit -m "feat: parse task due dates"
 - Modify: `internal/cli/root.go`
 - Create: `tests/integration/cli_test.go`
 
-- [ ] **Step 1: 写失败集成测试**
+- [x] **Step 1: 写失败集成测试**
 
 创建 `tests/integration/cli_test.go`：
 
@@ -1671,12 +1671,12 @@ func run(t *testing.T, bin string, args ...string) string {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./tests/integration -run TestCLIAddListInfo -v`  
 Expected: FAIL，命令尚未注册。
 
-- [ ] **Step 3: 实现渲染辅助**
+- [x] **Step 3: 实现渲染辅助**
 
 创建 `internal/render/json.go`：
 
@@ -1736,7 +1736,7 @@ func TaskInfo(w io.Writer, tsk task.Task) {
 }
 ```
 
-- [ ] **Step 4: 注册 service factory**
+- [x] **Step 4: 注册 service factory**
 
 在 `internal/cli/root.go` 中增加运行时初始化逻辑：根据 flags 调用 `config.Resolve`，打开 `sqlite.Open`，创建 `app.NewService`。建议封装：
 
@@ -1746,7 +1746,7 @@ func buildService(opts Options) (*app.Service, func() error, error)
 
 每个命令调用该 helper，defer close。
 
-- [ ] **Step 5: 实现 add/list/info 命令**
+- [x] **Step 5: 实现 add/list/info 命令**
 
 `add`：
 
@@ -1776,22 +1776,22 @@ cmd := &cobra.Command{
 
 `list` 调用 `svc.List` 并使用 `render.TaskList`。`info` 暂时支持 target 为 `"1"` 时通过 `svc.List` 取第一项；UUID 直接 `svc.Info(uuid)`。后续 Task 10 会把 target resolution 收进 service/repository。
 
-- [ ] **Step 6: 运行集成测试**
+- [x] **Step 6: 运行集成测试**
 
 Run: `go test ./tests/integration -run TestCLIAddListInfo -v`  
 Expected: PASS。
 
-- [ ] **Step 7: 整体测试**
+- [x] **Step 7: 整体测试**
 
 Run: `go test ./...`  
 Expected: PASS。
 
-- [ ] **Step 8: CGO-free 测试**
+- [x] **Step 8: CGO-free 测试**
 
 Run: `CGO_ENABLED=0 go test ./...`  
 Expected: PASS。
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add internal/cli/add.go internal/cli/list.go internal/cli/info.go internal/cli/root.go internal/render/json.go internal/render/table.go tests/integration/cli_test.go
@@ -1808,7 +1808,7 @@ git commit -m "feat: add core read cli commands"
 - Modify: `internal/cli/modify.go`
 - Modify: `tests/integration/cli_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `internal/app/service_test.go` 增加：
 
@@ -1846,12 +1846,12 @@ func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/app -run TestServiceModifyDoneDeleteByNumber -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 target resolution**
+- [x] **Step 3: 实现 target resolution**
 
 在 service 增加：
 
@@ -1865,7 +1865,7 @@ func (s *Service) ResolveTarget(target string) (task.Task, error)
 - 否则按 UUID 查询。
 - N 小于 1 或超出范围时返回 `sqlite.ErrNotFound` 或 app 层 `ErrNotFound`。
 
-- [ ] **Step 4: 实现 Modify/Done/Delete**
+- [x] **Step 4: 实现 Modify/Done/Delete**
 
 新增：
 
@@ -1890,7 +1890,7 @@ type ModifyInput struct {
 
 `Done` 调用 domain `Complete(now)`，`Delete` 调用 domain `Delete(now)`。
 
-- [ ] **Step 5: 实现 CLI modify/done/delete**
+- [x] **Step 5: 实现 CLI modify/done/delete**
 
 创建 `internal/cli/modify.go`：
 
@@ -1906,7 +1906,7 @@ Use: "<target> <action>"
 
 更稳妥做法是在 root `Args` 前置解析中识别第一位 target，动态 dispatch 到 `modify/done/delete`。实施时保持测试覆盖，不为优雅牺牲可用性。
 
-- [ ] **Step 6: 增加集成测试**
+- [x] **Step 6: 增加集成测试**
 
 在 `tests/integration/cli_test.go` 增加：
 
@@ -1928,7 +1928,7 @@ func TestCLIModifyDoneDelete(t *testing.T) {
 }
 ```
 
-- [ ] **Step 7: 运行测试**
+- [x] **Step 7: 运行测试**
 
 Run:
 
@@ -1941,7 +1941,7 @@ CGO_ENABLED=0 go test ./...
 
 Expected: 全部 PASS。
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add internal/app/service.go internal/app/service_test.go internal/cli/modify.go internal/storage/sqlite/task_repo.go tests/integration/cli_test.go
@@ -1973,7 +1973,7 @@ git commit -m "feat: modify and complete tasks"
 - Modify: `internal/app/service.go`
 - Modify: `tests/integration/cli_test.go`
 
-- [ ] **Step 1: 写 JSON DTO 单元测试**
+- [x] **Step 1: 写 JSON DTO 单元测试**
 
 创建 `internal/task/json_test.go`：
 
@@ -2007,12 +2007,12 @@ func TestTaskJSONUsesTaskwarriorFieldNames(t *testing.T) {
 
 记得 import `strings`。
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./internal/task -run TaskJSON -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 JSON DTO**
+- [x] **Step 3: 实现 JSON DTO**
 
 创建 `internal/task/json.go`：
 
@@ -2058,7 +2058,7 @@ func formatUnixPtr(sec *int64) *string {
 
 后续可补 `FromJSON`，用于 import。
 
-- [ ] **Step 4: 实现 service Export/Import**
+- [x] **Step 4: 实现 service Export/Import**
 
 新增：
 
@@ -2074,7 +2074,7 @@ M0 import 行为：
 - 如果 JSON 未提供 UUID，生成新 UUID。
 - 日期解析 RFC3339。
 
-- [ ] **Step 5: 实现 CLI import/export**
+- [x] **Step 5: 实现 CLI import/export**
 
 `export`：
 
@@ -2086,7 +2086,7 @@ M0 import 行为：
 - `taskg import path.json` 或 `cat path.json | taskg import`。
 - 成功后输出 `Imported N tasks`。
 
-- [ ] **Step 6: 增加集成测试**
+- [x] **Step 6: 增加集成测试**
 
 在 `tests/integration/cli_test.go` 增加：
 
@@ -2111,7 +2111,7 @@ func TestCLIExportImportRoundTrip(t *testing.T) {
 
 记得 import `os`。
 
-- [ ] **Step 7: 运行测试**
+- [x] **Step 7: 运行测试**
 
 Run:
 
@@ -2123,7 +2123,7 @@ go test ./...
 
 Expected: PASS。
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add internal/task/json.go internal/task/json_test.go internal/cli/import_export.go internal/app/service.go tests/integration/cli_test.go
@@ -2139,7 +2139,7 @@ git commit -m "feat: import and export task json"
 - Modify: `internal/storage/sqlite/db.go`
 - Modify: `tests/integration/cli_test.go`
 
-- [ ] **Step 1: 写失败集成测试**
+- [x] **Step 1: 写失败集成测试**
 
 在 `tests/integration/cli_test.go` 增加：
 
@@ -2159,12 +2159,12 @@ func TestCLIShowAndConfig(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认失败**
+- [x] **Step 2: 运行测试，确认失败**
 
 Run: `go test ./tests/integration -run TestCLIShowAndConfig -v`  
 Expected: FAIL。
 
-- [ ] **Step 3: 实现 meta get/set**
+- [x] **Step 3: 实现 meta get/set**
 
 在 `internal/storage/sqlite/db.go` 增加：
 
@@ -2175,7 +2175,7 @@ func (s *Store) SetMeta(key, value string) error
 
 使用 GORM `First` 和 `Save` 或 `Clauses(OnConflict...)`。
 
-- [ ] **Step 4: 实现 CLI**
+- [x] **Step 4: 实现 CLI**
 
 `show` 输出：
 
@@ -2195,7 +2195,7 @@ date.format=rfc3339
 - 只允许 `color`、`date.format`。
 - `database.path` 只读，提示使用 `--db` 或 `TASKG_DB`。
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run:
 
@@ -2207,7 +2207,7 @@ CGO_ENABLED=0 go test ./...
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/cli/config.go internal/storage/sqlite/db.go internal/storage/sqlite/models.go tests/integration/cli_test.go
@@ -2220,7 +2220,7 @@ git commit -m "feat: add basic config commands"
 
 - Modify: `README.md`
 
-- [ ] **Step 1: 更新 README**
+- [x] **Step 1: 更新 README**
 
 在 `README.md` 添加 M0 用法：
 
@@ -2239,7 +2239,7 @@ go build -o taskg ./cmd/taskg
 默认数据库路径为 `~/.local/share/taskg/taskg.db`，可用 `--db` 或 `TASKG_DB` 覆盖。
 ````
 
-- [ ] **Step 2: 运行最终测试**
+- [x] **Step 2: 运行最终测试**
 
 Run:
 
@@ -2253,7 +2253,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 Expected: 全部 PASS，build 成功。
 
-- [ ] **Step 3: 检查依赖中没有 CGO SQLite driver**
+- [x] **Step 3: 检查依赖中没有 CGO SQLite driver**
 
 Run:
 
@@ -2264,7 +2264,7 @@ go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' || true
 Expected: 无输出。  
 如果出现 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`，移除误用依赖并重新测试。
 
-- [ ] **Step 4: 手动冒烟测试**
+- [x] **Step 4: 手动冒烟测试**
 
 Run:
 
@@ -2285,7 +2285,7 @@ Expected:
 - `status:completed list` 能看到该任务。
 - export 输出 JSON array。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add README.md
