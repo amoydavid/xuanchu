@@ -3,7 +3,7 @@
 `taskg` 是一个用 **纯 Go** 实现的 Taskwarrior 风格任务管理系统：
 
 - 单一二进制：同时承担 **本地 CLI / 远程 CLI 客户端 / HTTP API 服务端 / MCP Server** 四种形态
-- 数据库：**SQLite（`modernc.org/sqlite`，零 CGO）**，可跨平台交叉编译
+- 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
 - 多用户、多 workspace、行级隔离
 - 兼容 Taskwarrior 的核心命令名、JSON 数据格式与 urgency 公式
 
@@ -18,5 +18,45 @@
 
 ## 状态
 
-设计阶段。代码尚未开始落地。
+完整 milestone 拆解与当前进度见 [ROADMAP.md](./ROADMAP.md)。
 
+## M0 本地 CLI 用法
+
+```bash
+go build -o taskg ./cmd/taskg
+
+# 添加任务
+./taskg add "Write project spec" project:taskg +planning due:tomorrow
+./taskg add "Review PR" priority:H +review
+
+# 查看任务列表
+./taskg list
+
+# 查看任务详情
+./taskg info 1
+
+# 修改任务
+./taskg 1 modify priority:H +next
+./taskg 1 modify project:backend
+
+# 完成任务
+./taskg 1 done
+
+# 删除任务
+./taskg 1 delete
+
+# 导出为 JSON
+./taskg export
+
+# 导入 JSON
+./taskg import tasks.json
+
+# 查看配置
+./taskg show
+
+# 设置配置
+./taskg config set date.format rfc3339
+./taskg config get date.format
+```
+
+默认数据库路径为 `~/.local/share/taskg/taskg.db`，可用 `--db` 或 `TASKG_DB` 环境变量覆盖。
