@@ -11,7 +11,7 @@ func newListCommand(opts Options) *cobra.Command {
 		Use:  "list",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			svc, closeFn, err := buildService(opts)
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}

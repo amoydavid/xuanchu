@@ -25,6 +25,22 @@ func TestCLIAddListInfo(t *testing.T) {
 	}
 }
 
+func TestCLIModifyDoneDelete(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "write", "spec")
+	run(t, bin, "--db", db, "1", "modify", "priority:H", "+next")
+	out := run(t, bin, "--db", db, "list")
+	if !strings.Contains(out, "H") || !strings.Contains(out, "next") {
+		t.Fatalf("list output = %q", out)
+	}
+	run(t, bin, "--db", db, "1", "done")
+	out = run(t, bin, "--db", db, "list")
+	if strings.Contains(out, "write spec") {
+		t.Fatalf("done task still in default list: %q", out)
+	}
+}
+
 func buildTaskg(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "taskg")

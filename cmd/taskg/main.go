@@ -10,12 +10,13 @@ import (
 var version = "dev"
 
 func main() {
-	cmd := cli.NewRootCommand(cli.Options{
+	opts := cli.Options{
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,
 		Version: version,
-	})
-	if err := cmd.Execute(); err != nil {
+	}
+	cmd := cli.NewRootCommand(opts)
+	if err := cli.Execute(cmd, opts, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "taskg:", err)
 		os.Exit(1)
 	}

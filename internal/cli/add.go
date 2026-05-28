@@ -18,7 +18,7 @@ func newAddCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			svc, closeFn, err := buildService(opts)
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}

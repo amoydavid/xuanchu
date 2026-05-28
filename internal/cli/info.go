@@ -15,7 +15,7 @@ func newInfoCommand(opts Options) *cobra.Command {
 		Use:  "info <target>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			svc, closeFn, err := buildService(opts)
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}

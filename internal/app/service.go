@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strconv"
+
 	"github.com/google/uuid"
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
@@ -33,6 +35,15 @@ type ListInput struct {
 	Priority *string
 	Tags     []string
 	Text     *string
+}
+
+type ModifyInput struct {
+	Description *string
+	Project     *string
+	Priority    *string
+	Due         *int64
+	AddTags     []string
+	RemoveTags  []string
 }
 
 func NewService(opts ServiceOptions) (*Service, error) {
@@ -74,4 +85,73 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 
 func (s *Service) Info(target string) (task.Task, error) {
 	return s.repo.GetByUUID(s.workspaceID, target)
+}
+
+func (s *Service) ResolveTarget(target string) (task.Task, error) {
+	if n, err := strconv.Atoi(target); err == nil && n >= 1 {
+		tasks, err := s.List(ListInput{})
+		if err != nil {
+			return task.Task{}, err
+		}
+		if n > len(tasks) {
+			return task.Task{}, sqlite.ErrNotFound
+		}
+		return tasks[n-1], nil
+	}
+	return s.Info(target)
+}
+
+func (s *Service) Modify(target string, input ModifyInput) error {
+	tsk, err := s.ResolveTarget(target)
+	if err != nil {
+		return err
+	}
+	if input.Description != nil {
+		tsk.Description = *input.Description
+	}
+	if input.Project != nil {
+		tsk.Project = input.Project
+	}
+	if input.Priority != nil {
+		tsk.Priority = input.Priority
+	}
+	if input.Due != nil {
+		tsk.Due = input.Due
+	}
+	// Handle tags
+	tagSet := map[string]bool{}
+	for _, tag := range tsk.Tags {
+		tagSet[tag] = true
+	}
+	for _, tag := range input.AddTags {
+		tagSet[tag] = true
+	}
+	for _, tag := range input.RemoveTags {
+		delete(tagSet, tag)
+	}
+	newTags := make([]string, 0, len(tagSet))
+	for tag := range tagSet {
+		newTags = append(newTags, tag)
+	}
+	tsk.Tags = newTags
+	tsk.Modified = s.clock.Unix()
+	return s.repo.Update(tsk)
+}
+
+func (s *Service) Done(target string) error {
+	tsk, err := s.ResolveTarget(target)
+	if err != nil {
+		return err
+	}
+	tsk.Complete(s.clock.Unix())
+	return s.repo.Update(tsk)
+}
+
+func (s *Service) Delete(target string) error {
+	tsk, err := s.ResolveTarget(target)
+	if err != nil {
+		return err
+	}
+	tsk.Delete(s.clock.Unix())
+	return s.repo.Update(tsk)
 }

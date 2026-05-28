@@ -43,3 +43,35 @@ func TestServiceAddListInfo(t *testing.T) {
 		t.Fatalf("Info UUID = %q, want %q", got.UUID, created.UUID)
 	}
 }
+
+func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc, _ := NewService(ServiceOptions{Store: store, Clock: fixedClock{NowUnix: 100}})
+
+	_, err = svc.Add(AddInput{Description: "write spec"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	priority := "H"
+	if err := svc.Modify("1", ModifyInput{Priority: &priority}); err != nil {
+		t.Fatalf("Modify() error = %v", err)
+	}
+	got, err := svc.ResolveTarget("1")
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.Priority == nil || *got.Priority != "H" {
+		t.Fatalf("Priority = %#v", got.Priority)
+	}
+	if err := svc.Done("1"); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	tasks, _ := svc.List(ListInput{})
+	if len(tasks) != 0 {
+		t.Fatalf("pending tasks = %#v, want empty", tasks)
+	}
+}
