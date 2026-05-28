@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,9 +17,13 @@ func TaskList(w io.Writer, tasks []task.Task) {
 func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 	fmt.Fprintln(w, "ID  UUID      PRI  PROJECT  TAGS  DESCRIPTION")
 	for i, tsk := range tasks {
-		id := i + 1
+		idCell := strconv.Itoa(i + 1)
 		if len(ids) == len(tasks) {
-			id = ids[i]
+			if ids[i] > 0 {
+				idCell = strconv.Itoa(ids[i])
+			} else {
+				idCell = "-"
+			}
 		}
 		priority := ""
 		if tsk.Priority != nil {
@@ -32,8 +37,8 @@ func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 		if len(uuid) > 8 {
 			uuid = uuid[:8]
 		}
-		fmt.Fprintf(w, "%-3d %-8s %-4s %-8s %-5s %s\n",
-			id, uuid, priority, project, strings.Join(tsk.Tags, ","), tsk.Description)
+		fmt.Fprintf(w, "%-3s %-8s %-4s %-8s %-5s %s\n",
+			idCell, uuid, priority, project, strings.Join(tsk.Tags, ","), tsk.Description)
 	}
 }
 

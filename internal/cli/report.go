@@ -39,7 +39,7 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 				}
 				return render.JSON(cmd.OutOrStdout(), dtos)
 			}
-			ids, err := svc.IDs(app.ListInput{Query: expr})
+			ids, err := svc.WorkingSetIDs(result.Tasks)
 			if err != nil {
 				return err
 			}

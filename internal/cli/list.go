@@ -57,7 +57,7 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 				}
 				return render.JSON(cmd.OutOrStdout(), dtos)
 			}
-			ids, err := svc.IDs(app.ListInput{Query: input.Query})
+			ids, err := svc.WorkingSetIDs(tasks)
 			if err != nil {
 				return err
 			}

@@ -487,6 +487,46 @@ func TestCLIListShowsWorkingSetIDWhenWaitingTaskIsHidden(t *testing.T) {
 	}
 }
 
+func TestCLINextRowIDMatchesWorkingSetIDUnderUrgencySort(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "low priority task")
+	run(t, bin, "--db", db, "add", "high priority task")
+	run(t, bin, "--db", db, "2", "modify", "priority:H")
+	out := run(t, bin, "--db", db, "next")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("next output = %q, want header + 2 rows", out)
+	}
+	first := lines[1]
+	second := lines[2]
+	if !strings.Contains(first, "high priority task") {
+		t.Fatalf("first row = %q, want high priority task first under urgency sort", first)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(first), "2") {
+		t.Fatalf("first row = %q, want working-set ID 2 for high priority task", first)
+	}
+	if !strings.Contains(second, "low priority task") || !strings.HasPrefix(strings.TrimSpace(second), "1") {
+		t.Fatalf("second row = %q, want low priority task with ID 1", second)
+	}
+}
+
+func TestCLICompletedReportShowsDashID(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "done it")
+	run(t, bin, "--db", db, "1", "done")
+	out := run(t, bin, "--db", db, "completed")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("completed output = %q, want header + 1 row", out)
+	}
+	row := strings.TrimSpace(lines[1])
+	if !strings.HasPrefix(row, "-") {
+		t.Fatalf("completed row = %q, want '-' as ID for non-working-set task", row)
+	}
+}
+
 func TestCLIDOMUrgencyIncludesDependencyState(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")

@@ -147,6 +147,28 @@ func (s *Service) IDs(input ListInput) ([]int, error) {
 	return ids, nil
 }
 
+// WorkingSetIDs returns one ID per task in the same order as the input slice.
+// IDs are 1-based positions in the default working set; tasks not present in
+// the working set (e.g. completed/deleted/until-expired) get 0.
+func (s *Service) WorkingSetIDs(tasks []task.Task) ([]int, error) {
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+	workingSet, err := s.defaultWorkingSet()
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(workingSet))
+	for i, tsk := range workingSet {
+		index[tsk.UUID] = i + 1
+	}
+	ids := make([]int, len(tasks))
+	for i, tsk := range tasks {
+		ids[i] = index[tsk.UUID]
+	}
+	return ids, nil
+}
+
 func (s *Service) Add(input AddInput) (task.Task, error) {
 	now := s.clock.Unix()
 	if input.Recur != nil {
