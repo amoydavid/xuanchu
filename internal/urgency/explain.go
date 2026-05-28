@@ -15,5 +15,7 @@ type ExplainItem struct {
 }
 
 type Options struct {
-	NowUnix int64
+	NowUnix  int64
+	Blocked  bool
+	Blocking bool
 }

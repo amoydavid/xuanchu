@@ -80,11 +80,67 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 		return true, nil
 	case strings.HasPrefix(arg, "due:"):
 		value := strings.TrimPrefix(arg, "due:")
+		if value == "" {
+			mod.ClearDue = true
+			return true, nil
+		}
 		due, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
 		if err != nil {
 			return false, err
 		}
 		mod.Due = &due
+		return true, nil
+	case strings.HasPrefix(arg, "wait:"):
+		value := strings.TrimPrefix(arg, "wait:")
+		if value == "" {
+			mod.ClearWait = true
+			return true, nil
+		}
+		wait, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
+		if err != nil {
+			return false, err
+		}
+		mod.Wait = &wait
+		return true, nil
+	case strings.HasPrefix(arg, "scheduled:"):
+		value := strings.TrimPrefix(arg, "scheduled:")
+		if value == "" {
+			mod.ClearScheduled = true
+			return true, nil
+		}
+		sched, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
+		if err != nil {
+			return false, err
+		}
+		mod.Scheduled = &sched
+		return true, nil
+	case strings.HasPrefix(arg, "until:"):
+		value := strings.TrimPrefix(arg, "until:")
+		if value == "" {
+			mod.ClearUntil = true
+			return true, nil
+		}
+		until, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
+		if err != nil {
+			return false, err
+		}
+		mod.Until = &until
+		return true, nil
+	case strings.HasPrefix(arg, "depends:"):
+		value := strings.TrimPrefix(arg, "depends:")
+		if value == "" {
+			mod.ClearDepends = true
+			return true, nil
+		}
+		mod.AddDepends = append(mod.AddDepends, value)
+		return true, nil
+	case strings.HasPrefix(arg, "recur:"):
+		value := strings.TrimPrefix(arg, "recur:")
+		if value == "" {
+			mod.ClearRecur = true
+			return true, nil
+		}
+		mod.Recur = &value
 		return true, nil
 	default:
 		return false, nil

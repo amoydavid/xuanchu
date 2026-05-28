@@ -49,3 +49,8 @@ func newAllCommand(opts Options) *cobra.Command      { return newReportCommand(o
 func newCompletedCommand(opts Options) *cobra.Command { return newReportCommand(opts, "completed") }
 func newDeletedCommand(opts Options) *cobra.Command   { return newReportCommand(opts, "deleted") }
 func newOverdueCommand(opts Options) *cobra.Command   { return newReportCommand(opts, "overdue") }
+func newActiveCommand(opts Options) *cobra.Command    { return newReportCommand(opts, "active") }
+func newWaitingCommand(opts Options) *cobra.Command   { return newReportCommand(opts, "waiting") }
+func newReadyCommand(opts Options) *cobra.Command     { return newReportCommand(opts, "ready") }
+func newBlockedCommand(opts Options) *cobra.Command   { return newReportCommand(opts, "blocked") }
+func newBlockingCommand(opts Options) *cobra.Command  { return newReportCommand(opts, "blocking") }

@@ -60,3 +60,29 @@ func TestParseModifyArgsDueStoresEndOfDay(t *testing.T) {
 		t.Fatalf("Due time = %v, want 23:59:59 local", got)
 	}
 }
+
+func TestParseModifyArgsM2Fields(t *testing.T) {
+	mod, err := ParseModifyArgs([]string{"wait:tomorrow", "scheduled:eow", "until:2030-01-01", "depends:abc", "depends:", "recur:weekly"})
+	if err != nil {
+		t.Fatalf("ParseModifyArgs() error = %v", err)
+	}
+	if mod.Wait == nil || mod.Scheduled == nil || mod.Until == nil {
+		t.Fatalf("date fields not parsed: %#v", mod)
+	}
+	if !mod.ClearDepends || len(mod.AddDepends) != 1 || mod.AddDepends[0] != "abc" {
+		t.Fatalf("depends not parsed: %#v", mod)
+	}
+	if mod.Recur == nil || *mod.Recur != "weekly" {
+		t.Fatalf("Recur = %#v", mod.Recur)
+	}
+}
+
+func TestParseModifyArgsClearsM2DateFields(t *testing.T) {
+	mod, err := ParseModifyArgs([]string{"wait:", "scheduled:", "until:", "recur:"})
+	if err != nil {
+		t.Fatalf("ParseModifyArgs() error = %v", err)
+	}
+	if !mod.ClearWait || !mod.ClearScheduled || !mod.ClearUntil || !mod.ClearRecur {
+		t.Fatalf("clear flags not set: %#v", mod)
+	}
+}

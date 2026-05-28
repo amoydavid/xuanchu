@@ -9,9 +9,13 @@ func TestDefaultRegistryHasM1Reports(t *testing.T) {
 			t.Fatalf("missing report %s", name)
 		}
 	}
+}
+
+func TestDefaultRegistryHasM2Reports(t *testing.T) {
+	reg := DefaultRegistry()
 	for _, name := range []string{"waiting", "active", "ready", "blocked", "blocking"} {
-		if _, ok := reg.Get(name); ok {
-			t.Fatalf("M1 should not register report %s", name)
+		if _, ok := reg.Get(name); !ok {
+			t.Fatalf("missing M2 report %s", name)
 		}
 	}
 }

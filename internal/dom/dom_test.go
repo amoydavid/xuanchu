@@ -1,6 +1,7 @@
 package dom
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dajee/taskg/internal/task"
@@ -38,5 +39,23 @@ func TestResolveMissingVirtualTagReturnsEmpty(t *testing.T) {
 	}
 	if got != "" {
 		t.Fatalf("got %q, want empty string", got)
+	}
+}
+
+func TestResolveM2Fields(t *testing.T) {
+	start := int64(10)
+	tsk := task.Task{
+		UUID: "u1", Description: "task", Status: task.StatusPending, Start: &start,
+		Depends: []string{"dep1", "dep2"},
+		Annotations: []task.Annotation{{Entry: 1, Description: "note"}},
+	}
+	if got, _ := Resolve(tsk, "start", 0); got != "10" {
+		t.Fatalf("start = %q", got)
+	}
+	if got, _ := Resolve(tsk, "depends", 0); got != "dep1,dep2" {
+		t.Fatalf("depends = %q", got)
+	}
+	if got, _ := Resolve(tsk, "annotations", 0); !strings.Contains(got, "note") {
+		t.Fatalf("annotations = %q", got)
 	}
 }

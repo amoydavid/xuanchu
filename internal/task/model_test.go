@@ -17,6 +17,62 @@ func TestValidateRejectsInvalidPriority(t *testing.T) {
 	}
 }
 
+func TestValidateAllowsM2StatusesAndFields(t *testing.T) {
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusWaiting, Entry: 1, Modified: 1}
+	if err := tsk.Validate(); err != nil {
+		t.Fatalf("Validate(waiting) error = %v", err)
+	}
+}
+
+func TestValidateRecurringRequiresRecurAndDue(t *testing.T) {
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "parent", Status: StatusRecurring, Entry: 1, Modified: 1}
+	if err := tsk.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want recurring validation error")
+	}
+
+	recur := "weekly"
+	tsk.Recur = &recur
+	if err := tsk.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want due validation error")
+	}
+
+	due := int64(100)
+	tsk.Due = &due
+	if err := tsk.Validate(); err != nil {
+		t.Fatalf("Validate(recurring with recur/due) error = %v", err)
+	}
+}
+
+func TestValidateRejectsUnsupportedRecurrence(t *testing.T) {
+	recur := "fortnightly"
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusPending, Entry: 1, Modified: 1, Recur: &recur}
+	if err := tsk.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want recurrence validation error")
+	}
+}
+
+func TestAnnotationValidateRejectsEmptyDescription(t *testing.T) {
+	tsk := Task{
+		UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusPending, Entry: 1, Modified: 1,
+		Annotations: []Annotation{{Entry: 10, Description: "  "}},
+	}
+	if err := tsk.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want annotation error")
+	}
+}
+
+func TestStartStopHelpers(t *testing.T) {
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusPending, Entry: 1, Modified: 1}
+	tsk.StartTask(100)
+	if tsk.Start == nil || *tsk.Start != 100 || tsk.Modified != 100 {
+		t.Fatalf("StartTask did not set start/modified: %#v", tsk)
+	}
+	tsk.StopTask(200)
+	if tsk.Start != nil || tsk.Modified != 200 {
+		t.Fatalf("StopTask did not clear start/update modified: %#v", tsk)
+	}
+}
+
 func TestCompleteSetsStatusAndEnd(t *testing.T) {
 	now := int64(100)
 	tsk := Task{Description: "hello", Status: StatusPending}

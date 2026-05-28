@@ -126,20 +126,26 @@ func parsePredicate(tok string) (Expr, error) {
 
 	name, value, ok := strings.Cut(tok, ":")
 	if !ok {
+		if attr, op, err := parseAttributeOperator(tok); err == nil && op == OpNotNull {
+			return Predicate{Attribute: attr, Operator: op}, nil
+		}
 		return Predicate{Attribute: AttrBare, Operator: OpContains, Value: BareValue(tok)}, nil
 	}
 	attr, op, err := parseAttributeOperator(name)
 	if err != nil {
 		return nil, err
 	}
+	if value == "" {
+		return Predicate{Attribute: attr, Operator: OpIsNull, Value: StringValue("")}, nil
+	}
 	switch attr {
-	case AttrDue, AttrEntry, AttrModified, AttrEnd:
-		if value == "" {
-			return Predicate{Attribute: attr, Operator: OpIsNull, Value: StringValue("")}, nil
-		}
+	case AttrDue, AttrEntry, AttrModified, AttrEnd, AttrStart, AttrWait, AttrScheduled, AttrUntil:
 		if op == OpEqual || op == OpBefore || op == OpAfter {
 			return Predicate{Attribute: attr, Operator: op, Value: ParseDateValue(value)}, nil
 		}
+	}
+	if attr == AttrAnnotations {
+		return Predicate{Attribute: attr, Operator: OpContains, Value: StringValue(value)}, nil
 	}
 	if attr == AttrDescription && strings.HasPrefix(value, "/") && strings.HasSuffix(value, "/") {
 		return Predicate{Attribute: attr, Operator: OpContains, Value: StringValue(strings.Trim(value, "/"))}, nil
@@ -152,8 +158,10 @@ func parseAttributeOperator(name string) (Attribute, Operator, error) {
 	attr := map[string]Attribute{
 		"uuid": AttrUUID, "description": AttrDescription,
 		"status": AttrStatus, "entry": AttrEntry, "modified": AttrModified,
-		"end": AttrEnd, "due": AttrDue, "project": AttrProject,
-		"priority": AttrPriority,
+		"end": AttrEnd, "due": AttrDue, "start": AttrStart, "wait": AttrWait,
+		"scheduled": AttrScheduled, "until": AttrUntil, "project": AttrProject,
+		"priority": AttrPriority, "depends": AttrDepends, "annotations": AttrAnnotations,
+		"recur": AttrRecur, "parent": AttrParent,
 	}[base]
 	if attr == "" {
 		return "", "", fmt.Errorf("unknown attribute %q", base)
@@ -166,6 +174,8 @@ func parseAttributeOperator(name string) (Attribute, Operator, error) {
 		return attr, OpBefore, nil
 	case "after":
 		return attr, OpAfter, nil
+	case "notnull":
+		return attr, OpNotNull, nil
 	default:
 		return "", "", fmt.Errorf("unknown modifier %q", suffix)
 	}

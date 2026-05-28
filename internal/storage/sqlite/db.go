@@ -85,7 +85,7 @@ func (s *Store) configure() error {
 }
 
 func (s *Store) migrate() error {
-	return s.db.AutoMigrate(&Meta{}, &Workspace{}, &Task{}, &TaskTag{})
+	return s.db.AutoMigrate(&Meta{}, &Workspace{}, &Task{}, &TaskTag{}, &TaskAnnotation{}, &TaskDependency{})
 }
 
 func (s *Store) ensureLocalWorkspace() error {

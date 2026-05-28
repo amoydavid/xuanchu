@@ -2,10 +2,25 @@ package sqlite
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	domain "github.com/dajee/taskg/internal/task"
 )
+
+func newTestRepo(t *testing.T) (*Store, *TaskRepository, Workspace) {
+	t.Helper()
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, NewTaskRepository(store.DB()), ws
+}
 
 func TestTaskRepositoryCreateAndList(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
@@ -78,5 +93,39 @@ func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
 	}
 	if len(got.Tags) != 1 || got.Tags[0] != "new" {
 		t.Fatalf("Tags = %#v", got.Tags)
+	}
+}
+
+func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+
+	start, wait, scheduled, until := int64(10), int64(20), int64(30), int64(40)
+	recur, parent, mask := "weekly", "parent-uuid", "mask"
+	imask := 1
+	tsk := domain.Task{
+		UUID: "u1", WorkspaceID: ws.ID, Description: "m2 task", Status: domain.StatusPending,
+		Entry: 1, Modified: 2, Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
+		Annotations: []domain.Annotation{{Entry: 3, Description: "note"}},
+		Depends:     []string{"dep-1", "dep-2"},
+		Recur:       &recur, Parent: &parent, Mask: &mask, IMask: &imask,
+	}
+	if _, err := repo.Create(tsk); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	got, err := repo.GetByUUID(ws.ID, "u1")
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if got.Start == nil || *got.Start != start || got.Wait == nil || *got.Wait != wait || got.Scheduled == nil || *got.Scheduled != scheduled || got.Until == nil || *got.Until != until {
+		t.Fatalf("M2 date fields not roundtripped: %#v", got)
+	}
+	if len(got.Annotations) != 1 || got.Annotations[0].Description != "note" {
+		t.Fatalf("Annotations = %#v", got.Annotations)
+	}
+	if !slices.Equal(got.Depends, []string{"dep-1", "dep-2"}) {
+		t.Fatalf("Depends = %#v", got.Depends)
+	}
+	if got.Recur == nil || *got.Recur != recur || got.Parent == nil || *got.Parent != parent || got.Mask == nil || *got.Mask != mask || got.IMask == nil || *got.IMask != imask {
+		t.Fatalf("recurrence fields not roundtripped: %#v", got)
 	}
 }

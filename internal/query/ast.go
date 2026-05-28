@@ -20,8 +20,16 @@ const (
 	AttrModified    Attribute = "modified"
 	AttrEnd         Attribute = "end"
 	AttrDue         Attribute = "due"
+	AttrStart       Attribute = "start"
+	AttrWait        Attribute = "wait"
+	AttrScheduled   Attribute = "scheduled"
+	AttrUntil       Attribute = "until"
 	AttrProject     Attribute = "project"
 	AttrPriority    Attribute = "priority"
+	AttrDepends     Attribute = "depends"
+	AttrAnnotations Attribute = "annotations"
+	AttrRecur       Attribute = "recur"
+	AttrParent      Attribute = "parent"
 	AttrTag         Attribute = "tag"
 	AttrBare        Attribute = "bare"
 )
@@ -36,6 +44,7 @@ const (
 	OpHasTag     Operator = "has"
 	OpMissingTag Operator = "missing"
 	OpIsNull     Operator = "is_null"
+	OpNotNull    Operator = "not_null"
 )
 
 type Value struct {
@@ -107,7 +116,7 @@ func Not(expr Expr) Expr {
 }
 
 func (p Predicate) String() string {
-	if p.Operator == OpIsNull {
+	if p.Operator == OpIsNull || p.Operator == OpNotNull {
 		return fmt.Sprintf("%s %s", p.Attribute, p.Operator)
 	}
 	value := strconv.Quote(p.Value.Raw)

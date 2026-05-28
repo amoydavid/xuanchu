@@ -106,6 +106,36 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 		return compareDateColumn("modified", p, opts)
 	case query.AttrEnd:
 		return compareDateColumn("end_ts", p, opts)
+	case query.AttrStart:
+		return compareDateColumn("start", p, opts)
+	case query.AttrWait:
+		return compareDateColumn("wait", p, opts)
+	case query.AttrScheduled:
+		return compareDateColumn("scheduled", p, opts)
+	case query.AttrUntil:
+		return compareDateColumn("until", p, opts)
+	case query.AttrRecur:
+		return compareColumn("recur", p.Operator, value, nil)
+	case query.AttrParent:
+		return compareColumn("parent", p.Operator, value, nil)
+	case query.AttrDepends:
+		switch p.Operator {
+		case query.OpEqual:
+			return "uuid IN (SELECT task_uuid FROM task_dependencies WHERE depends_on = ?)", []any{value}, nil
+		case query.OpIsNull:
+			return "uuid NOT IN (SELECT task_uuid FROM task_dependencies)", nil, nil
+		case query.OpNotNull:
+			return "uuid IN (SELECT task_uuid FROM task_dependencies)", nil, nil
+		}
+	case query.AttrAnnotations:
+		switch p.Operator {
+		case query.OpContains:
+			return "EXISTS (SELECT 1 FROM task_annotations WHERE task_uuid = tasks.uuid AND description LIKE ?)", []any{"%" + value + "%"}, nil
+		case query.OpIsNull:
+			return "NOT EXISTS (SELECT 1 FROM task_annotations WHERE task_uuid = tasks.uuid)", nil, nil
+		case query.OpNotNull:
+			return "EXISTS (SELECT 1 FROM task_annotations WHERE task_uuid = tasks.uuid)", nil, nil
+		}
 	case query.AttrTag:
 		if p.Operator == query.OpHasTag {
 			return "uuid IN (SELECT task_uuid FROM task_tags WHERE tag = ?)", []any{value}, nil
@@ -131,6 +161,10 @@ func compareColumn(column string, op query.Operator, value string, intValue *int
 		return column + " > ?", []any{arg}, nil
 	case query.OpContains:
 		return column + " LIKE ?", []any{"%" + value + "%"}, nil
+	case query.OpIsNull:
+		return column + " IS NULL", nil, nil
+	case query.OpNotNull:
+		return column + " IS NOT NULL", nil, nil
 	default:
 		return "", nil, fmt.Errorf("unsupported operator %q", op)
 	}
@@ -139,6 +173,9 @@ func compareColumn(column string, op query.Operator, value string, intValue *int
 func compareDateColumn(column string, p query.Predicate, opts QueryCompileOptions) (string, []any, error) {
 	if p.Operator == query.OpIsNull {
 		return column + " IS NULL", nil, nil
+	}
+	if p.Operator == query.OpNotNull {
+		return column + " IS NOT NULL", nil, nil
 	}
 	loc := opts.Location
 	if loc == nil {

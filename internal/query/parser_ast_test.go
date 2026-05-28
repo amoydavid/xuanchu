@@ -1,6 +1,9 @@
 package query
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseQueryImplicitAnd(t *testing.T) {
 	expr, err := ParseQuery(`+work status:pending`)
@@ -69,5 +72,27 @@ func TestParseQueryNotExpression(t *testing.T) {
 func TestParseQueryEmptyInput(t *testing.T) {
 	if expr, err := ParseQuery(`   `); err != nil || expr != nil {
 		t.Fatalf("ParseQuery(empty) = %#v, %v; want nil, nil", expr, err)
+	}
+}
+
+func TestParseQueryM2Attributes(t *testing.T) {
+	expr, err := ParseQuery(`wait: scheduled.before:eow start.notnull until: depends:abc annotations:note recur:weekly parent:p1`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	got := expr.String()
+	for _, part := range []string{
+		`wait is_null`,
+		`scheduled before "eow"`,
+		`start not_null`,
+		`until is_null`,
+		`depends eq "abc"`,
+		`annotations contains "note"`,
+		`recur eq "weekly"`,
+		`parent eq "p1"`,
+	} {
+		if !strings.Contains(got, part) {
+			t.Fatalf("String() = %q, missing %q", got, part)
+		}
 	}
 }

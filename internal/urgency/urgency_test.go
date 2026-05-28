@@ -65,6 +65,23 @@ func TestPriorityAndMultipleTags(t *testing.T) {
 	}
 }
 
+func TestExplainIncludesM2Contributions(t *testing.T) {
+	start := int64(10)
+	wait := int64(200)
+	tsk := task.Task{
+		UUID: "u1", Description: "task", Status: task.StatusWaiting, Entry: 0, Modified: 0,
+		Start: &start, Wait: &wait,
+		Annotations: []task.Annotation{{Entry: 1, Description: "note"}},
+		Depends:     []string{"dep"},
+	}
+	explain := Explain(tsk, Options{NowUnix: 100, Blocked: true, Blocking: true})
+	for _, name := range []string{"active", "waiting", "blocked", "blocking", "annotations"} {
+		if !hasItem(explain, name) {
+			t.Fatalf("items missing %s: %#v", name, explain.Items)
+		}
+	}
+}
+
 func hasItem(explain ExplainResult, name string) bool {
 	for _, item := range explain.Items {
 		if item.Name == name {

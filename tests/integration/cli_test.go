@@ -388,6 +388,166 @@ func TestCLIM1QueryOverdueReport(t *testing.T) {
 	}
 }
 
+func TestCLIM2AddModifyFields(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "waiting task", "wait:tomorrow", "scheduled:eow", "until:eom")
+	waiting := run(t, bin, "--db", db, "waiting")
+	if !strings.Contains(waiting, "waiting task") {
+		t.Fatalf("waiting output = %q", waiting)
+	}
+	run(t, bin, "--db", db, "1", "modify", "wait:")
+	list := run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "waiting task") {
+		t.Fatalf("list output = %q", list)
+	}
+}
+
+func TestCLIStartStopActive(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "active task")
+	run(t, bin, "--db", db, "1", "start")
+	active := run(t, bin, "--db", db, "active")
+	if !strings.Contains(active, "active task") {
+		t.Fatalf("active output = %q", active)
+	}
+	run(t, bin, "--db", db, "1", "stop")
+	active = run(t, bin, "--db", db, "active")
+	if strings.Contains(active, "active task") {
+		t.Fatalf("stopped task still active: %q", active)
+	}
+}
+
+func TestCLIAnnotateDenotate(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "annotated task")
+	run(t, bin, "--db", db, "1", "annotate", "first note")
+	got := run(t, bin, "--db", db, "_get", "1.annotations")
+	if !strings.Contains(got, "first note") {
+		t.Fatalf("annotations output = %q", got)
+	}
+	run(t, bin, "--db", db, "1", "denotate", "1")
+	got = run(t, bin, "--db", db, "_get", "1.annotations")
+	if strings.Contains(got, "first note") {
+		t.Fatalf("annotation not removed: %q", got)
+	}
+}
+
+func TestCLIM2Reports(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "blocker")
+	blockerUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "/blocker/"))
+	run(t, bin, "--db", db, "add", "blocked", "depends:"+blockerUUID)
+	run(t, bin, "--db", db, "add", "waiting", "wait:tomorrow")
+	run(t, bin, "--db", db, "add", "ready", "scheduled:2020-01-01")
+
+	for name, want := range map[string]string{
+		"blocked":  "blocked",
+		"blocking": "blocker",
+		"waiting":  "waiting",
+		"ready":    "ready",
+	} {
+		out := run(t, bin, "--db", db, name)
+		if !strings.Contains(out, want) {
+			t.Fatalf("%s output = %q, want %q", name, out, want)
+		}
+	}
+}
+
+func TestCLIAppendPrepend(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "middle")
+	run(t, bin, "--db", db, "1", "append", "end")
+	run(t, bin, "--db", db, "1", "prepend", "start")
+	got := run(t, bin, "--db", db, "_get", "1.description")
+	if !strings.Contains(got, "start middle end") {
+		t.Fatalf("description = %q", got)
+	}
+}
+
+func TestCLIAppendPrependCommands(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "middle")
+	run(t, bin, "--db", db, "append", "1", "tail", "text")
+	run(t, bin, "--db", db, "prepend", "1", "head", "text")
+	got := run(t, bin, "--db", db, "_get", "1.description")
+	if !strings.Contains(got, "head text middle tail text") {
+		t.Fatalf("description = %q", got)
+	}
+}
+
+func TestCLIEditWithTestEditor(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	editor := buildEditorHelper(t, `package main
+import (
+	"encoding/json"
+	"os"
+)
+func main() {
+	path := os.Args[1]
+	data, err := os.ReadFile(path)
+	if err != nil { panic(err) }
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil { panic(err) }
+	doc["description"] = "edited task"
+	data, err = json.Marshal(doc)
+	if err != nil { panic(err) }
+	if err := os.WriteFile(path, data, 0o600); err != nil { panic(err) }
+}`)
+	run(t, bin, "--db", db, "add", "original task")
+	cmd := exec.Command(bin, "--db", db, "1", "edit")
+	cmd.Env = append(os.Environ(), "EDITOR="+editor)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("edit failed: %v\n%s", err, out)
+	}
+	got := run(t, bin, "--db", db, "_get", "1.description")
+	if !strings.Contains(got, "edited task") {
+		t.Fatalf("description = %q", got)
+	}
+}
+
+func TestCLIRecurringDaily(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
+	list := run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "daily task") {
+		t.Fatalf("list output = %q", list)
+	}
+	run(t, bin, "--db", db, "1", "done")
+	list = run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "daily task") {
+		t.Fatalf("next recurring child missing: %q", list)
+	}
+}
+
+func TestCLIRecurringExportImport(t *testing.T) {
+	bin := buildTaskg(t)
+	db1 := filepath.Join(t.TempDir(), "one.db")
+	db2 := filepath.Join(t.TempDir(), "two.db")
+	run(t, bin, "--db", db1, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
+	exported := run(t, bin, "--db", db1, "export")
+	path := filepath.Join(t.TempDir(), "recurring.json")
+	if err := os.WriteFile(path, []byte(exported), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "--db", db2, "import", path)
+	out := run(t, bin, "--db", db2, "export")
+	if !strings.Contains(out, `"recur": "daily"`) {
+		t.Fatalf("export output missing recur: %q", out)
+	}
+	if !strings.Contains(out, `"parent":`) {
+		t.Fatalf("export output missing parent linkage: %q", out)
+	}
+}
+
 func buildTaskg(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "taskg")
@@ -417,4 +577,20 @@ func run(t *testing.T, bin string, args ...string) string {
 		t.Fatalf("%s %v error = %v\n%s", bin, args, err, out)
 	}
 	return string(out)
+}
+
+func buildEditorHelper(t *testing.T, source string) string {
+	t.Helper()
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(mainPath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "editor")
+	cmd := exec.Command("go", "build", "-o", bin, mainPath)
+	cmd.Dir = projectRoot(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build editor helper error = %v\n%s", err, out)
+	}
+	return bin
 }

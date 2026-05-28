@@ -106,3 +106,50 @@ go build -o taskg ./cmd/taskg
 ### description 子串匹配
 
 `description:spec`、`description:/spec/` 和裸 `/spec/` **语义一致**，都按子串匹配；`description:` 不走字面相等。
+
+## M2 核心任务模型用法
+
+```bash
+# waiting / active / ready / blocked / blocking 报表
+./taskg add "Call vendor" wait:tomorrow scheduled:eow until:eom
+./taskg waiting
+./taskg 1 modify wait:
+./taskg 1 start
+./taskg active
+./taskg 1 stop
+
+# 注释与描述编辑
+./taskg 1 annotate "called, left voicemail"
+./taskg _get 1.annotations
+./taskg 1 denotate 1
+./taskg 1 append "with examples"
+./taskg 1 prepend "[draft]"
+./taskg 1 edit
+
+# 依赖与 blocked / blocking
+./taskg add "Prepare API"
+./taskg add "Write docs" depends:<uuid>
+./taskg blocked
+./taskg blocking
+
+# 基础循环任务
+./taskg add "Submit weekly report" recur:weekly due:2030-01-05 until:2030-02-01
+./taskg list
+./taskg 1 done
+./taskg list
+```
+
+M2 当前已经补齐这些能力：
+
+- 任务字段：`start`、`wait`、`scheduled`、`until`、`annotations`、`depends`、`recur`、`parent`、`mask`、`imask`
+- 报表命令：`waiting`、`active`、`ready`、`blocked`、`blocking`
+- 动作命令：`start`、`stop`、`annotate`、`denotate`、`append`、`prepend`、`edit`
+- 查询 / DOM / urgency / JSON import-export 对上述字段的贯通支持
+- 基础 recurring：`daily`、`weekly`、`monthly`、`<N>days`、`<N>weeks`、`<N>months`
+
+当前 recurring 的基础约束：
+
+- recurring parent 使用 `status:recurring` 持久化，默认 human 报表隐藏
+- child 在创建 parent 时立即生成，完成 child 后自动生成下一个 child
+- `until` 会阻止生成超过截止时间的新 child
+- `monthly` 目前直接沿用 Go `time.AddDate(0, n, 0)` 的月末滚动语义

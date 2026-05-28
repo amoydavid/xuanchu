@@ -15,7 +15,7 @@
 |---|---|---|
 | M0 | 已完成 | 本地单用户 CLI、SQLite 存储、核心任务生命周期 |
 | M1 | 已完成 | 查询语言、内置报表、urgency、DOM 与 calc 基础 |
-| M2 | 待规划 | Taskwarrior 核心任务模型补齐 |
+| M2 | 已完成 | Taskwarrior 核心任务模型补齐 |
 | M3 | 待规划 | 配置系统、上下文、脚本化 helper 与兼容导入导出增强 |
 | M4 | 待规划 | 多 workspace、本地团队模型与权限边界 |
 | M5 | 待规划 | HTTP/JSON API 与远程 CLI |
@@ -121,6 +121,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 ## M2：Taskwarrior 核心任务模型补齐
 
+**状态：已完成。**
+
 **目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 taskg 不再只是简单 todo CLI。
 
 **范围：**
@@ -170,6 +172,43 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - recurring 子任务生成规则有确定测试。
 - M2 字段导入导出往返不丢失。
 - urgency explain 能体现 active、blocked、blocking、annotations 等新增因素。
+
+**M2 已交付内容：**
+
+- 扩展任务模型：
+  - `start`
+  - `wait`
+  - `scheduled`
+  - `until`
+  - `annotations`
+  - `depends`
+  - `recur`
+  - `parent`
+  - `mask`
+  - `imask`
+- 新增报表：
+  - `waiting`
+  - `active`
+  - `ready`
+  - `blocked`
+  - `blocking`
+- 新增命令：
+  - `start`
+  - `stop`
+  - `annotate`
+  - `denotate`
+  - `append`
+  - `prepend`
+  - `edit`
+- 查询 / DOM / urgency / JSON import-export 已贯通 M2 字段。
+- 基础 recurring 已支持：
+  - `daily`
+  - `weekly`
+  - `monthly`
+  - `<N>days`
+  - `<N>weeks`
+  - `<N>months`
+- recurring parent 默认隐藏，child 可见；完成 child 后自动生成下一个 child；`until` 会阻止继续生成。
 
 ## M3：配置系统、上下文、UDA 与兼容性增强
 

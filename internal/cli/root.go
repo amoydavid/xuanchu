@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -62,6 +63,11 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newCompletedCommand(opts))
 	cmd.AddCommand(newDeletedCommand(opts))
 	cmd.AddCommand(newOverdueCommand(opts))
+	cmd.AddCommand(newActiveCommand(opts))
+	cmd.AddCommand(newWaitingCommand(opts))
+	cmd.AddCommand(newReadyCommand(opts))
+	cmd.AddCommand(newBlockedCommand(opts))
+	cmd.AddCommand(newBlockingCommand(opts))
 	cmd.AddCommand(newUrgencyCommand(opts))
 	cmd.AddCommand(newUrgencyHelperCommand(opts))
 	cmd.AddCommand(newGetCommand(opts))
@@ -70,6 +76,13 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newProjectsCommand(opts))
 	cmd.AddCommand(newTagsCommand(opts))
 	cmd.AddCommand(newCalcCommand(opts))
+	cmd.AddCommand(newStartCommand(opts))
+	cmd.AddCommand(newStopCommand(opts))
+	cmd.AddCommand(newAnnotateCommand(opts))
+	cmd.AddCommand(newDenotateCommand(opts))
+	cmd.AddCommand(newAppendCommand(opts))
+	cmd.AddCommand(newPrependCommand(opts))
+	cmd.AddCommand(newEditCommand(opts))
 
 	return cmd
 }
@@ -79,9 +92,9 @@ func NewRootCommand(opts Options) *cobra.Command {
 func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
 	flags, positional := splitFlagsAndPositional(args)
-	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true}
+	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
-	knownActions := map[string]bool{"modify": true, "done": true, "delete": true}
+	knownActions := map[string]bool{"modify": true, "done": true, "delete": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
 	if len(positional) >= 2 && !knownSubcommands[positional[0]] && knownActions[positional[1]] {
 		// Pattern: taskg <target> <action> [args...]
@@ -184,12 +197,23 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			return err
 		}
 		if err := svc.Modify(target, app.ModifyInput{
-			Description: mod.Description,
-			Project:     mod.Project,
-			Priority:    mod.Priority,
-			Due:         mod.Due,
-			AddTags:     mod.AddTags,
-			RemoveTags:  mod.RemoveTags,
+			Description:    mod.Description,
+			Project:        mod.Project,
+			Priority:       mod.Priority,
+			Due:            mod.Due,
+			ClearDue:       mod.ClearDue,
+			Wait:           mod.Wait,
+			ClearWait:      mod.ClearWait,
+			Scheduled:      mod.Scheduled,
+			ClearScheduled: mod.ClearScheduled,
+			Until:          mod.Until,
+			ClearUntil:     mod.ClearUntil,
+			AddDepends:     mod.AddDepends,
+			ClearDepends:   mod.ClearDepends,
+			Recur:          mod.Recur,
+			ClearRecur:     mod.ClearRecur,
+			AddTags:        mod.AddTags,
+			RemoveTags:     mod.RemoveTags,
 		}); err != nil {
 			return err
 		}
@@ -204,6 +228,57 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Deleted task", target)
+	case "start":
+		if err := svc.Start(target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Started task", target)
+	case "stop":
+		if err := svc.Stop(target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Stopped task", target)
+	case "annotate":
+		if len(actionArgs) == 0 {
+			return fmt.Errorf("annotate requires a description")
+		}
+		if err := svc.Annotate(target, strings.Join(actionArgs, " ")); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", target)
+	case "denotate":
+		if len(actionArgs) != 1 {
+			return fmt.Errorf("denotate requires an index")
+		}
+		index, err := strconv.Atoi(actionArgs[0])
+		if err != nil {
+			return err
+		}
+		if err := svc.Denotate(target, index); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from task", target)
+	case "append":
+		if len(actionArgs) == 0 {
+			return fmt.Errorf("append requires text")
+		}
+		if err := svc.AppendDescription(target, strings.Join(actionArgs, " ")); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Appended description for task", target)
+	case "prepend":
+		if len(actionArgs) == 0 {
+			return fmt.Errorf("prepend requires text")
+		}
+		if err := svc.PrependDescription(target, strings.Join(actionArgs, " ")); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Prepended description for task", target)
+	case "edit":
+		if len(actionArgs) != 0 {
+			return fmt.Errorf("edit does not take inline arguments")
+		}
+		return runEdit(cmd, svc, target)
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
