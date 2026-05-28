@@ -49,6 +49,44 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	}
 }
 
+func TestTaskJSONCarriesUDAFields(t *testing.T) {
+	tsk := Task{
+		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UDAs: map[string]UDAValue{
+			"estimate": {Name: "estimate", Raw: "3", Type: "numeric"},
+			"reviewed": {Name: "reviewed", Raw: "2026-05-28T00:00:00Z", Type: "date"},
+		},
+	}
+	data, err := json.Marshal(ToJSON(tsk))
+	if err != nil {
+		t.Fatalf("Marshal UDA task error = %v", err)
+	}
+	if !strings.Contains(string(data), `"estimate":"3"`) || !strings.Contains(string(data), `"reviewed":"2026-05-28T00:00:00Z"`) {
+		t.Fatalf("UDA JSON missing fields: %s", data)
+	}
+	var dtos []JSONTask
+	if err := UnmarshalJSONTasks(strings.NewReader("["+string(data)+"]"), &dtos); err != nil {
+		t.Fatalf("Unmarshal UDA JSON error = %v", err)
+	}
+	got := FromJSON(dtos[0])
+	if got.UDAs["estimate"].Raw != "3" || got.UDAs["reviewed"].Raw != "2026-05-28T00:00:00Z" {
+		t.Fatalf("UDAs lost: %#v", got.UDAs)
+	}
+}
+
+func TestUnmarshalJSONTasksPreservesOrphanUDA(t *testing.T) {
+	var tasks []JSONTask
+	err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":{"x":1}}]`), &tasks)
+	if err != nil {
+		t.Fatalf("UnmarshalJSONTasks(orphan) error = %v", err)
+	}
+	got := FromJSON(tasks[0])
+	legacy := got.UDAs["legacy_field"]
+	if legacy.Raw != `{"x":1}` || !legacy.Orphan {
+		t.Fatalf("legacy UDA = %#v", legacy)
+	}
+}
+
 func TestFromJSONStrictRejectsInvalidDate(t *testing.T) {
 	_, err := FromJSONStrict(JSONTask{
 		UUID:        "u1",

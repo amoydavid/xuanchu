@@ -20,6 +20,13 @@ type Annotation struct {
 	Description string
 }
 
+type UDAValue struct {
+	Name   string
+	Raw    string
+	Type   string
+	Orphan bool
+}
+
 type Task struct {
 	UUID        string
 	WorkspaceID string
@@ -42,6 +49,7 @@ type Task struct {
 	Parent      *string
 	Mask        *string
 	IMask       *int
+	UDAs        map[string]UDAValue
 }
 
 func (t Task) Validate() error {
@@ -73,6 +81,14 @@ func (t Task) Validate() error {
 	for _, d := range t.Depends {
 		if strings.TrimSpace(d) == "" {
 			return errors.New("dependency must not be empty")
+		}
+	}
+	for name, value := range t.UDAs {
+		if strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\n\r") {
+			return errors.New("UDA name is invalid")
+		}
+		if value.Raw != "" && strings.ContainsAny(value.Raw, "\n\r") {
+			return errors.New("UDA value must not contain newlines")
 		}
 	}
 	if t.Recur != nil {

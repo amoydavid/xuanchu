@@ -13,26 +13,27 @@ type JSONAnnotation struct {
 }
 
 type JSONTask struct {
-	UUID        string           `json:"uuid"`
-	Description string           `json:"description"`
-	Status      string           `json:"status"`
-	Entry       string           `json:"entry"`
-	Modified    string           `json:"modified"`
-	End         *string          `json:"end,omitempty"`
-	Due         *string          `json:"due,omitempty"`
-	Project     *string          `json:"project,omitempty"`
-	Priority    *string          `json:"priority,omitempty"`
-	Tags        []string         `json:"tags,omitempty"`
-	Start       *string          `json:"start,omitempty"`
-	Wait        *string          `json:"wait,omitempty"`
-	Scheduled   *string          `json:"scheduled,omitempty"`
-	Until       *string          `json:"until,omitempty"`
-	Annotations []JSONAnnotation `json:"annotations,omitempty"`
-	Depends     []string         `json:"depends,omitempty"`
-	Recur       *string          `json:"recur,omitempty"`
-	Parent      *string          `json:"parent,omitempty"`
-	Mask        *string          `json:"mask,omitempty"`
-	IMask       *int             `json:"imask,omitempty"`
+	UUID        string              `json:"uuid"`
+	Description string              `json:"description"`
+	Status      string              `json:"status"`
+	Entry       string              `json:"entry"`
+	Modified    string              `json:"modified"`
+	End         *string             `json:"end,omitempty"`
+	Due         *string             `json:"due,omitempty"`
+	Project     *string             `json:"project,omitempty"`
+	Priority    *string             `json:"priority,omitempty"`
+	Tags        []string            `json:"tags,omitempty"`
+	Start       *string             `json:"start,omitempty"`
+	Wait        *string             `json:"wait,omitempty"`
+	Scheduled   *string             `json:"scheduled,omitempty"`
+	Until       *string             `json:"until,omitempty"`
+	Annotations []JSONAnnotation    `json:"annotations,omitempty"`
+	Depends     []string            `json:"depends,omitempty"`
+	Recur       *string             `json:"recur,omitempty"`
+	Parent      *string             `json:"parent,omitempty"`
+	Mask        *string             `json:"mask,omitempty"`
+	IMask       *int                `json:"imask,omitempty"`
+	UDAs        map[string]UDAValue `json:"-"`
 }
 
 func (t JSONTask) MarshalJSON() ([]byte, error) {
@@ -89,7 +90,37 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	if t.IMask != nil {
 		wire["imask"] = t.IMask
 	}
+	for name, value := range t.UDAs {
+		wire[name] = value.Raw
+	}
 	return json.Marshal(wire)
+}
+
+func (t *JSONTask) UnmarshalJSON(data []byte) error {
+	type alias JSONTask
+	var core alias
+	if err := json.Unmarshal(data, &core); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for _, key := range coreJSONFields() {
+		delete(raw, key)
+	}
+	if len(raw) > 0 {
+		core.UDAs = map[string]UDAValue{}
+		for key, value := range raw {
+			text, err := rawToUDAString(value)
+			if err != nil {
+				return err
+			}
+			core.UDAs[key] = UDAValue{Name: key, Raw: text, Orphan: true}
+		}
+	}
+	*t = JSONTask(core)
+	return nil
 }
 
 func ToJSON(tsk Task) JSONTask {
@@ -117,6 +148,7 @@ func ToJSON(tsk Task) JSONTask {
 		Parent:  tsk.Parent,
 		Mask:    tsk.Mask,
 		IMask:   tsk.IMask,
+		UDAs:    tsk.UDAs,
 	}
 }
 
@@ -192,7 +224,35 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 		Parent:      dto.Parent,
 		Mask:        dto.Mask,
 		IMask:       dto.IMask,
+		UDAs:        dto.UDAs,
 	}, nil
+}
+
+func coreJSONFields() []string {
+	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask"}
+}
+
+func rawToUDAString(raw json.RawMessage) (string, error) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s, nil
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		return fmt.Sprintf("%v", f), nil
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		if b {
+			return "true", nil
+		}
+		return "false", nil
+	}
+	compact, err := json.Marshal(json.RawMessage(raw))
+	if err != nil {
+		return "", err
+	}
+	return string(compact), nil
 }
 
 func formatUnix(sec int64) string {
