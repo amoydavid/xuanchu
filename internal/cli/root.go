@@ -73,6 +73,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newImportCommand(opts))
 	cmd.AddCommand(newShowCommand(opts))
 	cmd.AddCommand(newConfigCommand(opts))
+	cmd.AddCommand(newCompletionCommand(opts))
 	cmd.AddCommand(newContextCommand(opts))
 	cmd.AddCommand(newAllCommand(opts))
 	cmd.AddCommand(newCompletedCommand(opts))
@@ -92,6 +93,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newTagsCommand(opts))
 	cmd.AddCommand(newUDAsCommand(opts))
 	cmd.AddCommand(newUniqueCommand(opts))
+	cmd.AddCommand(newShowHelperCommand(opts))
+	cmd.AddCommand(newVersionHelperCommand(opts))
 	cmd.AddCommand(newCalcCommand(opts))
 	cmd.AddCommand(newStartCommand(opts))
 	cmd.AddCommand(newStopCommand(opts))
@@ -121,7 +124,7 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 		ctx = context.Background()
 	}
 	cmd.SetContext(context.WithValue(ctx, effectiveOptionsContextKey{}, opts))
-	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "context": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
+	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "context": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true, "_show": true, "_version": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 
 	knownActions := map[string]bool{"modify": true, "done": true, "delete": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
 

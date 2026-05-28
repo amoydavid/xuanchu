@@ -216,3 +216,44 @@ func newUniqueCommand(opts Options) *cobra.Command {
 		},
 	}
 }
+
+func newShowHelperCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "_show [key...]",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			rt, err := runtimeFromOptions(currentOpts)
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				for _, key := range rt.Keys() {
+					value, _ := rt.Get(key)
+					fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
+				}
+				return nil
+			}
+			for _, key := range args {
+				value, _ := rt.Get(key)
+				fmt.Fprintln(cmd.OutOrStdout(), value)
+			}
+			return nil
+		},
+	}
+}
+
+func newVersionHelperCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "_version",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			version := opts.Version
+			if version == "" {
+				version = "dev"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "taskg %s\n", version)
+			return nil
+		},
+	}
+}

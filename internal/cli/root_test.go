@@ -48,7 +48,7 @@ func TestRootReorderRecognizesM1QueryTokens(t *testing.T) {
 				"help": true, "version": true, "completion": true,
 				"all": true, "completed": true, "deleted": true, "overdue": true,
 				"urgency": true, "_urgency": true,
-				"calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true,
+				"calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true, "_show": true, "_version": true,
 			}
 			if idx := commandIndex(positional, knownSubs); idx > 0 {
 				reordered := append([]string{positional[idx]}, positional[:idx]...)

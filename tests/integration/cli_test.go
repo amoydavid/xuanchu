@@ -145,6 +145,39 @@ func TestCLIImportTaskRC(t *testing.T) {
 	}
 }
 
+func TestCLIShowHelperVersionAndCompletion(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "config", "set", "date.format", "epoch")
+	show := run(t, bin, "--db", db, "_show", "date.format", "database.path")
+	lines := strings.Split(strings.TrimSpace(show), "\n")
+	if len(lines) != 2 || lines[0] != "epoch" || lines[1] != db {
+		t.Fatalf("_show output = %q", show)
+	}
+	version := strings.TrimSpace(run(t, bin, "_version"))
+	if version != "taskg dev" {
+		t.Fatalf("_version output = %q", version)
+	}
+	badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
+	completion := run(t, bin, "--db", badDB, "completion", "bash")
+	if !strings.Contains(completion, "complete") || !strings.Contains(completion, "taskg") {
+		t.Fatalf("completion output = %q", completion)
+	}
+}
+
+func TestCLICompletionDoesNotOpenDatabase(t *testing.T) {
+	bin := buildTaskg(t)
+	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
+		t.Run(shell, func(t *testing.T) {
+			badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
+			out := run(t, bin, "--db", badDB, "completion", shell)
+			if !strings.Contains(out, "taskg") {
+				t.Fatalf("completion %s output = %q", shell, out)
+			}
+		})
+	}
+}
+
 func TestCLIContextCommands(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
