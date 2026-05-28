@@ -60,3 +60,49 @@ go build -o taskg ./cmd/taskg
 ```
 
 默认数据库路径为 `~/.local/share/taskg/taskg.db`，可用 `--db` 或 `TASKG_DB` 环境变量覆盖。
+
+## M1 查询与报表用法
+
+```bash
+# 布尔组合查询
+./taskg '+next or due.before:tomorrow' list
+./taskg '(project:work and +urgent) or priority:H' list
+
+# 报表命令
+./taskg all
+./taskg completed
+./taskg deleted
+./taskg overdue
+
+# 查看任务 urgency（human 或 JSON）
+./taskg urgency 1
+./taskg urgency 1 --json
+./taskg _urgency 1
+
+# DOM helper
+./taskg _get 1.description 1.uuid 1.urgency 1.tag.next
+./taskg _ids +next
+./taskg _uuids project:work
+./taskg _projects
+./taskg _tags
+
+# 表达式计算
+./taskg calc '1 + 2 * 3'
+```
+
+报表名等价于 `(默认 filter) AND (用户 filter)`。要绕过默认 status 限制，使用 `all`。
+
+### 日期与 deadline 语义
+
+`due:` 和 `end:` 表达的是「某天截止/结束」，写入时会自动落在**当地时区的当天 `23:59:59`**：
+
+```bash
+./taskg add "deadline" due:2030-01-01
+# due 实际存储为 2030-01-01 23:59:59（本地时区），而非 00:00:00
+```
+
+查询时日期等值也用自然日范围，例如 `due:2030-01-01` 等价于 `[2030-01-01 00:00:00, 2030-01-01 23:59:59]`，跨 DST 与时区也稳定。
+
+### description 子串匹配
+
+`description:spec`、`description:/spec/` 和裸 `/spec/` **语义一致**，都按子串匹配；`description:` 不走字面相等。

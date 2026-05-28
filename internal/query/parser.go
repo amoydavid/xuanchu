@@ -8,6 +8,12 @@ import (
 	"github.com/dajee/taskg/internal/task"
 )
 
+// ParsedAdd is the structured result of ParseAddArgs.
+type ParsedAdd struct {
+	Description string
+	Mod         task.Modification
+}
+
 func ParseAddArgs(args []string) (ParsedAdd, error) {
 	var desc []string
 	mod := task.Modification{}
@@ -45,30 +51,11 @@ func ParseModifyArgs(args []string) (task.Modification, error) {
 	return mod, nil
 }
 
-func ParseFilters(args []string) (Filter, error) {
-	filter := Filter{}
-	for _, arg := range args {
-		switch {
-		case strings.HasPrefix(arg, "+") && len(arg) > 1:
-			filter.Tags = append(filter.Tags, strings.TrimPrefix(arg, "+"))
-		case strings.HasPrefix(arg, "status:"):
-			value := strings.TrimPrefix(arg, "status:")
-			filter.Status = &value
-		case strings.HasPrefix(arg, "project:"):
-			value := strings.TrimPrefix(arg, "project:")
-			filter.Project = &value
-		case strings.HasPrefix(arg, "priority:"):
-			value := strings.TrimPrefix(arg, "priority:")
-			filter.Priority = &value
-		case strings.HasPrefix(arg, "/") && strings.HasSuffix(arg, "/") && len(arg) >= 2:
-			value := strings.TrimSuffix(strings.TrimPrefix(arg, "/"), "/")
-			filter.Text = &value
-		default:
-			value := arg
-			filter.Target = &value
-		}
+func ParseFilterExpr(args []string) (Expr, error) {
+	if len(args) == 0 {
+		return nil, nil
 	}
-	return filter, nil
+	return ParseQuery(strings.Join(args, " "))
 }
 
 func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
@@ -93,7 +80,7 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 		return true, nil
 	case strings.HasPrefix(arg, "due:"):
 		value := strings.TrimPrefix(arg, "due:")
-		due, err := ParseDate(value, time.Now(), time.Local)
+		due, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
 		if err != nil {
 			return false, err
 		}

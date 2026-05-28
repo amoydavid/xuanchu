@@ -1,6 +1,9 @@
 package query
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
 	parsed, err := ParseAddArgs([]string{"write", "spec", "project:taskg", "+planning", "priority:H"})
@@ -21,27 +24,39 @@ func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
 	}
 }
 
-func TestParseFilters(t *testing.T) {
-	filter, err := ParseFilters([]string{"+work", "project:taskg", "status:completed", "/spec/"})
-	if err != nil {
-		t.Fatalf("ParseFilters() error = %v", err)
-	}
-	if len(filter.Tags) != 1 || filter.Tags[0] != "work" {
-		t.Fatalf("Tags = %#v", filter.Tags)
-	}
-	if filter.Project == nil || *filter.Project != "taskg" {
-		t.Fatalf("Project = %#v", filter.Project)
-	}
-	if filter.Status == nil || *filter.Status != "completed" {
-		t.Fatalf("Status = %#v", filter.Status)
-	}
-	if filter.Text == nil || *filter.Text != "spec" {
-		t.Fatalf("Text = %#v", filter.Text)
-	}
-}
-
 func TestParseModifyArgsRequiresModification(t *testing.T) {
 	if _, err := ParseModifyArgs([]string{}); err == nil {
 		t.Fatal("ParseModifyArgs() error = nil, want error")
+	}
+}
+
+func TestParseAddArgsDueStoresEndOfDay(t *testing.T) {
+	parsed, err := ParseAddArgs([]string{"task", "due:2030-01-01"})
+	if err != nil {
+		t.Fatalf("ParseAddArgs() error = %v", err)
+	}
+	if parsed.Mod.Due == nil {
+		t.Fatal("Mod.Due is nil")
+	}
+	got := time.Unix(*parsed.Mod.Due, 0).In(time.Local)
+	if got.Hour() != 23 || got.Minute() != 59 || got.Second() != 59 {
+		t.Fatalf("Due time = %v, want 23:59:59 local", got)
+	}
+	if got.Year() != 2030 || got.Month() != time.January || got.Day() != 1 {
+		t.Fatalf("Due date = %v, want 2030-01-01", got)
+	}
+}
+
+func TestParseModifyArgsDueStoresEndOfDay(t *testing.T) {
+	mod, err := ParseModifyArgs([]string{"due:2030-06-15"})
+	if err != nil {
+		t.Fatalf("ParseModifyArgs() error = %v", err)
+	}
+	if mod.Due == nil {
+		t.Fatal("Mod.Due is nil")
+	}
+	got := time.Unix(*mod.Due, 0).In(time.Local)
+	if got.Hour() != 23 || got.Minute() != 59 || got.Second() != 59 {
+		t.Fatalf("Due time = %v, want 23:59:59 local", got)
 	}
 }

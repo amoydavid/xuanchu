@@ -1,0 +1,58 @@
+package cli
+
+import (
+	"fmt"
+
+	"github.com/dajee/taskg/internal/render"
+	"github.com/spf13/cobra"
+)
+
+func newUrgencyCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "urgency <target>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+
+			explain, err := svc.ExplainUrgency(args[0])
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), explain)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Urgency for %s\n", explain.UUID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Total: %.3f\n", explain.Total)
+			for _, item := range explain.Items {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s\tcoef=%.1f\tcontrib=%.3f\t%s\n", item.Name, item.Coefficient, item.Contribution, item.Reason)
+			}
+			return nil
+		},
+	}
+}
+
+func newUrgencyHelperCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "_urgency <target>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+
+			explain, err := svc.ExplainUrgency(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%.3f\n", explain.Total)
+			return nil
+		},
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 
+	"github.com/dajee/taskg/internal/query"
 	domain "github.com/dajee/taskg/internal/task"
 	"gorm.io/gorm"
 )
@@ -13,12 +14,10 @@ type TaskRepository struct {
 }
 
 type ListOptions struct {
-	Status   string
-	Project  *string
-	Priority *string
-	Tags     []string
-	Text     *string
-	Sort     string
+	Status  string
+	Sort    string
+	Query   query.Expr
+	NowUnix int64
 }
 
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
@@ -38,25 +37,22 @@ func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
 
 func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Task, error) {
 	var models []Task
-	q := r.db.Preload("Tags").Where("workspace_id = ?", workspaceID)
+	q := r.db.Preload("Tags")
 	if opts.Status != "" {
 		q = q.Where("status = ?", opts.Status)
 	}
-	if opts.Project != nil {
-		q = q.Where("project = ?", *opts.Project)
-	}
-	if opts.Priority != nil {
-		q = q.Where("priority = ?", *opts.Priority)
-	}
-	if opts.Text != nil {
-		q = q.Where("description LIKE ?", "%"+*opts.Text+"%")
-	}
-	for _, tag := range opts.Tags {
-		q = q.Where("uuid IN (SELECT task_uuid FROM task_tags WHERE tag = ?)", tag)
+	if opts.Query != nil {
+		q = ApplyQuery(q, opts.Query, QueryCompileOptions{WorkspaceID: workspaceID, NowUnix: opts.NowUnix})
+	} else {
+		q = q.Where("workspace_id = ?", workspaceID)
 	}
 	switch opts.Sort {
 	case "next":
 		q = q.Order("due IS NULL ASC").Order("due ASC").Order("CASE priority WHEN 'H' THEN 3 WHEN 'M' THEN 2 WHEN 'L' THEN 1 ELSE 0 END DESC").Order("entry ASC")
+	case "completed":
+		q = q.Order("end_ts DESC").Order("modified DESC")
+	case "due":
+		q = q.Order("due IS NULL ASC").Order("due ASC")
 	default:
 		q = q.Order("entry ASC")
 	}
@@ -112,6 +108,27 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 }
 
 var ErrNotFound = errors.New("task not found")
+
+func (r *TaskRepository) Projects(workspaceID string) ([]string, error) {
+	var projects []string
+	err := r.db.Model(&Task{}).
+		Where("workspace_id = ? AND project IS NOT NULL AND project != ''", workspaceID).
+		Distinct("project").
+		Order("project ASC").
+		Pluck("project", &projects).Error
+	return projects, err
+}
+
+func (r *TaskRepository) Tags(workspaceID string) ([]string, error) {
+	var tags []string
+	err := r.db.Model(&TaskTag{}).
+		Joins("JOIN tasks ON tasks.uuid = task_tags.task_uuid").
+		Where("tasks.workspace_id = ?", workspaceID).
+		Distinct("tag").
+		Order("tag ASC").
+		Pluck("tag", &tags).Error
+	return tags, err
+}
 
 func toModel(tsk domain.Task) Task {
 	tags := make([]TaskTag, 0, len(tsk.Tags))

@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -59,6 +58,18 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newImportCommand(opts))
 	cmd.AddCommand(newShowCommand(opts))
 	cmd.AddCommand(newConfigCommand(opts))
+	cmd.AddCommand(newAllCommand(opts))
+	cmd.AddCommand(newCompletedCommand(opts))
+	cmd.AddCommand(newDeletedCommand(opts))
+	cmd.AddCommand(newOverdueCommand(opts))
+	cmd.AddCommand(newUrgencyCommand(opts))
+	cmd.AddCommand(newUrgencyHelperCommand(opts))
+	cmd.AddCommand(newGetCommand(opts))
+	cmd.AddCommand(newIDsCommand(opts))
+	cmd.AddCommand(newUUIDsCommand(opts))
+	cmd.AddCommand(newProjectsCommand(opts))
+	cmd.AddCommand(newTagsCommand(opts))
+	cmd.AddCommand(newCalcCommand(opts))
 
 	return cmd
 }
@@ -68,7 +79,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
 	flags, positional := splitFlagsAndPositional(args)
-	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true}
+	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true}
 
 	knownActions := map[string]bool{"modify": true, "done": true, "delete": true}
 
@@ -254,9 +265,4 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		return nil, nil, err
 	}
 	return svc, store.Close, nil
-}
-
-func isNumericTarget(s string) bool {
-	_, err := strconv.Atoi(s)
-	return err == nil
 }

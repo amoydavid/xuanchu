@@ -14,7 +14,7 @@
 | Milestone | 状态 | 主题 |
 |---|---|---|
 | M0 | 已完成 | 本地单用户 CLI、SQLite 存储、核心任务生命周期 |
-| M1 | 待规划 | 查询语言、内置报表、urgency、DOM 与 calc 基础 |
+| M1 | 已完成 | 查询语言、内置报表、urgency、DOM 与 calc 基础 |
 | M2 | 待规划 | Taskwarrior 核心任务模型补齐 |
 | M3 | 待规划 | 配置系统、上下文、脚本化 helper 与兼容导入导出增强 |
 | M4 | 待规划 | 多 workspace、本地团队模型与权限边界 |
@@ -488,14 +488,14 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-下一步应为 M1 编写独立需求规格：
+下一步应为 M2 编写独立需求规格：
 
 ```text
-docs/superpowers/specs/YYYY-MM-DD-taskg-m1-design.md
+docs/superpowers/specs/YYYY-MM-DD-taskg-m2-design.md
 ```
 
-M1 spec 应重点明确三件事：
+M2 spec 应重点明确：
 
-- query AST 的范围和语法优先级。
-- urgency 公式在 M1 可计算字段上的精确行为。
-- DOM/helper/calc 哪些能力进入 M1，哪些留到 M2/M3。
+- `start`/`stop`、`wait`/`scheduled`/`until`、`annotations`、`depends`、`recurring` 的数据模型。
+- blocked/blocking 报表与 urgency 联动。
+- waiting/ready/active 报表与字段状态机的精确行为。

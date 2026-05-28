@@ -1,12 +1,17 @@
 package app
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/google/uuid"
 
+	"github.com/dajee/taskg/internal/query"
+	"github.com/dajee/taskg/internal/report"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/taskg/internal/urgency"
 )
 
 type Service struct {
@@ -14,6 +19,7 @@ type Service struct {
 	repo        *sqlite.TaskRepository
 	workspaceID string
 	clock       Clock
+	reports     report.Registry
 }
 
 type ServiceOptions struct {
@@ -30,13 +36,11 @@ type AddInput struct {
 }
 
 type ListInput struct {
-	Target   *string
-	Status   string
-	Project  *string
-	Priority *string
-	Tags     []string
-	Text     *string
-	Sort     string
+	Target     *string
+	Status     string
+	Sort       string
+	Query      query.Expr
+	ReportMode bool
 }
 
 type ModifyInput struct {
@@ -46,6 +50,15 @@ type ModifyInput struct {
 	Due         *int64
 	AddTags     []string
 	RemoveTags  []string
+}
+
+type ReportInput struct {
+	Name  string
+	Query query.Expr
+}
+
+type ReportResult struct {
+	Tasks []task.Task
 }
 
 func NewService(opts ServiceOptions) (*Service, error) {
@@ -61,7 +74,57 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		repo:        sqlite.NewTaskRepository(opts.Store.DB()),
 		workspaceID: ws.ID,
 		clock:       opts.Clock,
+		reports:     report.DefaultRegistry(),
 	}, nil
+}
+
+func (s *Service) Clock() Clock {
+	return s.clock
+}
+
+func (s *Service) Projects() ([]string, error) {
+	return s.repo.Projects(s.workspaceID)
+}
+
+func (s *Service) Tags() ([]string, error) {
+	return s.repo.Tags(s.workspaceID)
+}
+
+func (s *Service) UUIDs(input ListInput) ([]string, error) {
+	tasks, err := s.List(input)
+	if err != nil {
+		return nil, err
+	}
+	uuids := make([]string, len(tasks))
+	for i, tsk := range tasks {
+		uuids[i] = tsk.UUID
+	}
+	return uuids, nil
+}
+
+func (s *Service) IDs(input ListInput) ([]int, error) {
+	filtered, err := s.List(input)
+	if err != nil {
+		return nil, err
+	}
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+	matched := make(map[string]struct{}, len(filtered))
+	for _, tsk := range filtered {
+		matched[tsk.UUID] = struct{}{}
+	}
+	workingSet, err := s.List(ListInput{})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int, 0, len(filtered))
+	for i, tsk := range workingSet {
+		if _, ok := matched[tsk.UUID]; ok {
+			ids = append(ids, i+1)
+		}
+	}
+	return ids, nil
 }
 
 func (s *Service) Add(input AddInput) (task.Task, error) {
@@ -83,13 +146,26 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 		return []task.Task{tsk}, nil
 	}
 	status := input.Status
-	if status == "" {
+	if status == "" && input.Query == nil && !input.ReportMode {
 		status = task.StatusPending
 	}
 	return s.repo.List(s.workspaceID, sqlite.ListOptions{
-		Status: status, Project: input.Project, Priority: input.Priority,
-		Tags: input.Tags, Text: input.Text, Sort: input.Sort,
+		Status:  status,
+		Sort:    input.Sort,
+		Query:   input.Query,
+		NowUnix: s.clock.Unix(),
 	})
+}
+
+func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) {
+	if input.Target != nil {
+		return s.List(input)
+	}
+	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query})
+	if err != nil {
+		return nil, err
+	}
+	return result.Tasks, nil
 }
 
 func (s *Service) Info(target string) (task.Task, error) {
@@ -223,4 +299,42 @@ func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
+	def, ok := s.reports.Get(input.Name)
+	if !ok {
+		return ReportResult{}, fmt.Errorf("unknown report %q", input.Name)
+	}
+	merged := query.And(def.Filter, input.Query)
+	tasks, err := s.List(ListInput{Query: merged, Sort: def.Sort, ReportMode: true})
+	if err != nil {
+		return ReportResult{}, err
+	}
+	if def.Sort == "urgency" {
+		type taskWithUrgency struct {
+			Task  task.Task
+			Total float64
+		}
+		withUrgency := make([]taskWithUrgency, len(tasks))
+		for i, tsk := range tasks {
+			explain := urgency.Explain(tsk, urgency.Options{NowUnix: s.clock.Unix()})
+			withUrgency[i] = taskWithUrgency{Task: tsk, Total: explain.Total}
+		}
+		sort.SliceStable(withUrgency, func(i, j int) bool {
+			return withUrgency[i].Total > withUrgency[j].Total
+		})
+		for i, wu := range withUrgency {
+			tasks[i] = wu.Task
+		}
+	}
+	return ReportResult{Tasks: tasks}, nil
+}
+
+func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
+	tsk, err := s.ResolveTarget(target)
+	if err != nil {
+		return urgency.ExplainResult{}, err
+	}
+	return urgency.Explain(tsk, urgency.Options{NowUnix: s.clock.Unix()}), nil
 }

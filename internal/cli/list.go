@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/render"
@@ -30,20 +33,20 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 
 			input := app.ListInput{}
 			if len(args) > 0 {
-				filter, err := query.ParseFilters(args)
-				if err != nil {
-					return err
+				if isPlainTargetArg(args) {
+					v := args[0]
+					input.Target = &v
+				} else {
+					expr, err := query.ParseFilterExpr(args)
+					if err != nil {
+						return err
+					}
+					input.Query = expr
 				}
-				input.Target = filter.Target
-				input.Status = derefStr(filter.Status)
-				input.Project = filter.Project
-				input.Priority = filter.Priority
-				input.Tags = filter.Tags
-				input.Text = filter.Text
 			}
 			input.Sort = sort
 
-			tasks, err := svc.List(input)
+			tasks, err := svc.ListReport(name, input)
 			if err != nil {
 				return err
 			}
@@ -60,9 +63,30 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 	}
 }
 
-func derefStr(s *string) string {
-	if s == nil {
-		return ""
+func isPlainTargetArg(args []string) bool {
+	if len(args) != 1 {
+		return false
 	}
-	return *s
+	s := args[0]
+	if _, err := strconv.Atoi(s); err == nil {
+		return true
+	}
+	// Full 36-char UUID with hyphens
+	if len(s) == 36 && strings.Count(s, "-") == 4 {
+		return true
+	}
+	// Full 32-char UUID without hyphens
+	if len(s) == 32 {
+		hex := true
+		for _, c := range s {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				hex = false
+				break
+			}
+		}
+		if hex {
+			return true
+		}
+	}
+	return false
 }

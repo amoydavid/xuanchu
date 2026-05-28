@@ -1,0 +1,73 @@
+package query
+
+import "testing"
+
+func TestParseQueryImplicitAnd(t *testing.T) {
+	expr, err := ParseQuery(`+work status:pending`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	if got := expr.String(); got != `(tag has "work" and status eq "pending")` {
+		t.Fatalf("String() = %q", got)
+	}
+}
+
+func TestParseQueryBooleanPrecedence(t *testing.T) {
+	expr, err := ParseQuery(`+next or due.before:tomorrow and priority:H`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	want := `(tag has "next" or (due before "tomorrow" and priority eq "H"))`
+	if got := expr.String(); got != want {
+		t.Fatalf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestParseQueryParentheses(t *testing.T) {
+	expr, err := ParseQuery(`(project:work and +urgent) or priority:H`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	want := `((project eq "work" and tag has "urgent") or priority eq "H")`
+	if got := expr.String(); got != want {
+		t.Fatalf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestParseQueryRejectsUnknownAttribute(t *testing.T) {
+	if _, err := ParseQuery(`foo:bar`); err == nil {
+		t.Fatal("ParseQuery() error = nil, want error")
+	}
+}
+
+func TestParseQueryBareTokenStaysBare(t *testing.T) {
+	expr, err := ParseQuery(`abc123`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	if got := expr.String(); got != `bare contains "abc123"` {
+		t.Fatalf("String() = %q", got)
+	}
+}
+
+func TestParseQueryRejectsUnbalancedParens(t *testing.T) {
+	if _, err := ParseQuery(`(+work or priority:H`); err == nil {
+		t.Fatal("ParseQuery() error = nil, want error")
+	}
+}
+
+func TestParseQueryNotExpression(t *testing.T) {
+	expr, err := ParseQuery(`not +work`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	if got := expr.String(); got != `(not tag has "work")` {
+		t.Fatalf("String() = %q", got)
+	}
+}
+
+func TestParseQueryEmptyInput(t *testing.T) {
+	if expr, err := ParseQuery(`   `); err != nil || expr != nil {
+		t.Fatalf("ParseQuery(empty) = %#v, %v; want nil, nil", expr, err)
+	}
+}

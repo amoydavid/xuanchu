@@ -40,3 +40,31 @@ func ParseDate(value string, now time.Time, loc *time.Location) (int64, error) {
 	}
 	return 0, fmt.Errorf("unsupported date %q", value)
 }
+
+func ParseDateValue(raw string) Value {
+	return DateValue(raw)
+}
+
+func ResolveDateValue(value Value, nowUnix int64, loc *time.Location) (int64, error) {
+	now := time.Unix(nowUnix, 0).In(loc)
+	return ParseDate(value.Raw, now, loc)
+}
+
+func ResolveDateRange(value Value, nowUnix int64, loc *time.Location) (int64, int64, error) {
+	if loc == nil {
+		loc = time.Local
+	}
+	start, err := ResolveDateValue(value, nowUnix, loc)
+	if err != nil {
+		return 0, 0, err
+	}
+	startTime := time.Unix(start, 0).In(loc)
+	dayStart := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, loc)
+	dayEnd := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 23, 59, 59, 0, loc)
+	return dayStart.Unix(), dayEnd.Unix(), nil
+}
+
+func ResolveDeadlineDateValue(value Value, nowUnix int64, loc *time.Location) (int64, error) {
+	_, end, err := ResolveDateRange(value, nowUnix, loc)
+	return end, err
+}
