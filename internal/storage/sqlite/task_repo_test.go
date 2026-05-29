@@ -159,3 +159,32 @@ func TestTaskRepositoryRecurringChildUniqueByParentAndDue(t *testing.T) {
 		t.Fatalf("second UUID = %q, want existing %q", second.UUID, first.UUID)
 	}
 }
+
+func TestTaskRepositoryAddAnnotationAppendsWithoutReplacingExisting(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+	if _, err := repo.Create(domain.Task{
+		UUID:        "task-1",
+		WorkspaceID: ws.ID,
+		Description: "annotated",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Annotations: []domain.Annotation{{Entry: 101, Description: "first"}},
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if err := repo.AddAnnotation(ws.ID, "task-1", domain.Annotation{Entry: 102, Description: "second"}, 102); err != nil {
+		t.Fatalf("AddAnnotation() error = %v", err)
+	}
+	got, err := repo.GetByUUID(ws.ID, "task-1")
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if len(got.Annotations) != 2 {
+		t.Fatalf("Annotations = %#v, want both entries", got.Annotations)
+	}
+	if got.Annotations[0].Description != "first" || got.Annotations[1].Description != "second" {
+		t.Fatalf("Annotations order/content = %#v", got.Annotations)
+	}
+}

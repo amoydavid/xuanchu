@@ -60,10 +60,7 @@ func normalizeTomlKey(key string) string {
 }
 
 func normalizeTomlScalar(raw string) string {
-	value := strings.TrimSpace(raw)
-	if i := strings.Index(value, "#"); i >= 0 {
-		value = strings.TrimSpace(value[:i])
-	}
+	value := trimInlineComment(strings.TrimSpace(raw))
 	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
 		inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(value, "["), "]"))
 		if inner == "" {
@@ -90,4 +87,34 @@ func normalizeTomlScalar(raw string) string {
 		}
 	}
 	return value
+}
+
+func trimInlineComment(value string) string {
+	var quote byte
+	escaped := false
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' && quote == '"' {
+				escaped = true
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			quote = ch
+			continue
+		}
+		if ch == '#' {
+			return strings.TrimSpace(value[:i])
+		}
+	}
+	return strings.TrimSpace(value)
 }

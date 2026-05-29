@@ -15,7 +15,13 @@ func (s *Service) ImportTaskRC(path string, dryRun bool) (taskrcparser.Report, e
 	if dryRun {
 		return report, nil
 	}
+	var activeContextValue *string
 	for key, value := range report.Values {
+		if key == "context.active" {
+			v := value
+			activeContextValue = &v
+			continue
+		}
 		if strings.HasPrefix(key, "context.") {
 			name := strings.TrimPrefix(key, "context.")
 			if err := s.DefineContext(name, value); err != nil {
@@ -27,6 +33,16 @@ func (s *Service) ImportTaskRC(path string, dryRun bool) (taskrcparser.Report, e
 			continue
 		}
 		if err := s.SetConfig(key, value); err != nil {
+			return report, err
+		}
+	}
+	if activeContextValue != nil {
+		value := strings.TrimSpace(*activeContextValue)
+		if value == "" || strings.EqualFold(value, "none") {
+			if err := s.ContextNone(); err != nil {
+				return report, err
+			}
+		} else if err := s.UseContext(value); err != nil {
 			return report, err
 		}
 	}

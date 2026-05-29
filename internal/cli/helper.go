@@ -7,7 +7,6 @@ import (
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/dom"
 	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/urgency"
 	"github.com/spf13/cobra"
 )
 
@@ -41,9 +40,6 @@ func newGetCommand(opts Options) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					urg = explain.Total
-				} else if strings.HasPrefix(field, "tag.") {
-					explain := urgency.Explain(tsk, urgency.Options{NowUnix: svc.Clock().Unix()})
 					urg = explain.Total
 				}
 

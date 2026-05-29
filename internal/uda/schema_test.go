@@ -41,3 +41,27 @@ func TestNormalizeValue(t *testing.T) {
 		t.Fatalf("duration value = %q", got)
 	}
 }
+
+func TestNormalizeDurationValueVariants(t *testing.T) {
+	cases := map[string]string{
+		"30min": "1800",
+		"7d":    "604800",
+		"2days": "172800",
+		"42":    "42",
+	}
+	for raw, want := range cases {
+		got, err := NormalizeValue(Definition{Name: "effort", Type: TypeDuration}, raw)
+		if err != nil {
+			t.Fatalf("NormalizeValue(%q) error = %v", raw, err)
+		}
+		if got != want {
+			t.Fatalf("NormalizeValue(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestNormalizeDurationValueRejectsInvalid(t *testing.T) {
+	if _, err := NormalizeValue(Definition{Name: "effort", Type: TypeDuration}, "oops"); err == nil {
+		t.Fatal("NormalizeValue(invalid duration) error = nil, want error")
+	}
+}

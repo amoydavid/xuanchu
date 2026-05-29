@@ -128,18 +128,33 @@ func parseDurationSeconds(raw string) (int64, error) {
 	switch {
 	case strings.HasSuffix(raw, "min"):
 		n, err := strconv.ParseInt(strings.TrimSuffix(raw, "min"), 10, 64)
+		if err != nil {
+			return 0, err
+		}
 		return n * 60, err
 	case strings.HasSuffix(raw, "h"):
 		n, err := strconv.ParseInt(strings.TrimSuffix(raw, "h"), 10, 64)
+		if err != nil {
+			return 0, err
+		}
 		return n * 3600, err
 	case strings.HasSuffix(raw, "days"):
 		n, err := strconv.ParseInt(strings.TrimSuffix(raw, "days"), 10, 64)
+		if err != nil {
+			return 0, err
+		}
 		return n * 86400, err
 	case strings.HasSuffix(raw, "d"):
 		n, err := strconv.ParseInt(strings.TrimSuffix(raw, "d"), 10, 64)
+		if err != nil {
+			return 0, err
+		}
 		return n * 86400, err
 	case strings.HasSuffix(raw, "w"):
 		n, err := strconv.ParseInt(strings.TrimSuffix(raw, "w"), 10, 64)
+		if err != nil {
+			return 0, err
+		}
 		return n * 7 * 86400, err
 	default:
 		return strconv.ParseInt(raw, 10, 64)

@@ -124,9 +124,8 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 		ctx = context.Background()
 	}
 	cmd.SetContext(context.WithValue(ctx, effectiveOptionsContextKey{}, opts))
-	knownSubcommands := map[string]bool{"add": true, "list": true, "next": true, "info": true, "export": true, "import": true, "show": true, "config": true, "context": true, "help": true, "version": true, "completion": true, "all": true, "completed": true, "deleted": true, "overdue": true, "active": true, "waiting": true, "ready": true, "blocked": true, "blocking": true, "urgency": true, "_urgency": true, "calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true, "_show": true, "_version": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
-
-	knownActions := map[string]bool{"modify": true, "done": true, "delete": true, "start": true, "stop": true, "annotate": true, "denotate": true, "append": true, "prepend": true, "edit": true}
+	knownSubcommands := knownCommandNames(cmd)
+	knownActions := knownTargetActions()
 
 	if len(positional) >= 2 && !knownSubcommands[positional[0]] && knownActions[positional[1]] {
 		// Pattern: taskg <target> <action> [args...]
@@ -145,6 +144,34 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Normal Cobra routing: set flags and let subcommand matching work.
 	cmd.SetArgs(append(flags, positional...))
 	return cmd.Execute()
+}
+
+func knownCommandNames(root *cobra.Command) map[string]bool {
+	known := map[string]bool{
+		"help":    true,
+		"version": true,
+	}
+	for _, child := range root.Commands() {
+		if child.Name() != "" {
+			known[child.Name()] = true
+		}
+	}
+	return known
+}
+
+func knownTargetActions() map[string]bool {
+	return map[string]bool{
+		"modify":   true,
+		"done":     true,
+		"delete":   true,
+		"start":    true,
+		"stop":     true,
+		"annotate": true,
+		"denotate": true,
+		"append":   true,
+		"prepend":  true,
+		"edit":     true,
+	}
 }
 
 func splitFlagsAndPositional(args []string) (flags []string, positional []string) {

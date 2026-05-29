@@ -107,7 +107,13 @@ func (r *UDARepository) ReplaceTaskUDAs(workspaceID, taskUUID string, values map
 		if err := tx.Where("workspace_id = ? AND task_uuid = ?", workspaceID, taskUUID).Delete(&TaskUDAValue{}).Error; err != nil {
 			return err
 		}
-		for name, value := range values {
+		names := make([]string, 0, len(values))
+		for name := range values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			value := values[name]
 			name = strings.TrimSpace(name)
 			if name == "" || value.Raw == "" {
 				continue
@@ -140,7 +146,9 @@ func (r *UDARepository) UniqueUDAValues(workspaceID, name string) ([]string, err
 func fromUDADefinitionModel(model UDADefinition) uda.Definition {
 	var values []string
 	if model.ValuesJSON != "" {
-		_ = json.Unmarshal([]byte(model.ValuesJSON), &values)
+		if err := json.Unmarshal([]byte(model.ValuesJSON), &values); err != nil {
+			values = []string{"__invalid_json__"}
+		}
 	}
 	return uda.Definition{
 		Name:    model.Name,

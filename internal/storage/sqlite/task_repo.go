@@ -184,6 +184,21 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 	})
 }
 
+func (r *TaskRepository) AddAnnotation(workspaceID, taskUUID string, annotation domain.Annotation, modified int64) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&TaskAnnotation{
+			TaskUUID:    taskUUID,
+			Entry:       annotation.Entry,
+			Description: annotation.Description,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Task{}).
+			Where("workspace_id = ? AND uuid = ?", workspaceID, taskUUID).
+			Update("modified", modified).Error
+	})
+}
+
 var ErrNotFound = errors.New("task not found")
 
 func (r *TaskRepository) Projects(workspaceID string) ([]string, error) {
@@ -328,4 +343,8 @@ func sortedUnique(values []string) []string {
 
 func isUniqueConstraintError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func IsUniqueConstraintError(err error) bool {
+	return isUniqueConstraintError(err)
 }

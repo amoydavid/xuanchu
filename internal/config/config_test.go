@@ -155,6 +155,30 @@ func TestLoadRuntimeMapsDisplayTomlKeys(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimePreservesHashInsideQuotedTomlValue(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+		`[context]`,
+		`active = "work#alpha" # trailing comment`,
+		`[uda.ticket]`,
+		`label = "fix #1234"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := LoadRuntime(RuntimeOptions{ConfigDir: configDir})
+	if err != nil {
+		t.Fatalf("LoadRuntime() error = %v", err)
+	}
+	if got, _ := rt.Get("context.active"); got != "work#alpha" {
+		t.Fatalf("context.active = %q, want work#alpha", got)
+	}
+	if got, _ := rt.Get("uda.ticket.label"); got != "fix #1234" {
+		t.Fatalf("uda.ticket.label = %q, want quoted hash preserved", got)
+	}
+}
+
 func stringPtr(v string) *string {
 	return &v
 }

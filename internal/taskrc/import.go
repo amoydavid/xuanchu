@@ -68,7 +68,7 @@ func parseFile(path string, report *Report, seen map[string]bool) error {
 			return fmt.Errorf("invalid taskrc line %q", line)
 		}
 		key = strings.TrimSpace(key)
-		value = strings.Trim(strings.TrimSpace(value), `"`)
+		value = normalizeTaskRCValue(value)
 		target, class, reason := classify(key)
 		entry := Entry{Key: key, Target: target, Reason: reason}
 		switch class {
@@ -85,10 +85,47 @@ func parseFile(path string, report *Report, seen map[string]bool) error {
 }
 
 func stripComment(line string) string {
-	if idx := strings.Index(line, "#"); idx >= 0 {
-		return strings.TrimSpace(line[:idx])
+	return trimHashComment(line)
+}
+
+func normalizeTaskRCValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
+			value = value[1 : len(value)-1]
+		}
 	}
-	return line
+	return value
+}
+
+func trimHashComment(line string) string {
+	var quote byte
+	escaped := false
+	for i := 0; i < len(line); i++ {
+		ch := line[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' && quote == '"' {
+				escaped = true
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			quote = ch
+			continue
+		}
+		if ch == '#' {
+			return strings.TrimSpace(line[:i])
+		}
+	}
+	return strings.TrimSpace(line)
 }
 
 func classify(key string) (target, class, reason string) {
@@ -105,6 +142,14 @@ func classify(key string) (target, class, reason string) {
 	}
 	if strings.HasPrefix(key, "uda.") {
 		parts := strings.Split(key, ".")
+		if len(parts) < 3 {
+			return key, "unknown", "invalid uda key"
+		}
+		for _, part := range parts[1:] {
+			if strings.TrimSpace(part) == "" {
+				return key, "unknown", "invalid uda key"
+			}
+		}
 		field := parts[len(parts)-1]
 		switch field {
 		case "type", "label", "values", "default":

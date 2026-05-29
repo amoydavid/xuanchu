@@ -9,6 +9,7 @@ import (
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
+	taskrcparser "github.com/dajee/taskg/internal/taskrc"
 	"github.com/dajee/taskg/internal/urgency"
 )
 
@@ -385,6 +386,34 @@ func TestTaskRCDryRunDoesNotWriteState(t *testing.T) {
 	}
 }
 
+func TestImportTaskRCAppliesActiveContextSelection(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	path := filepath.Join(t.TempDir(), ".taskrc")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"context.work=project:work",
+		"context.active=work",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := svc.ImportTaskRC(path, false)
+	if err != nil {
+		t.Fatalf("ImportTaskRC() error = %v", err)
+	}
+	if !hasTaskRCImportedTarget(report.Imported, "context.active") {
+		t.Fatalf("report imported missing context.active: %#v", report.Imported)
+	}
+	show, err := svc.ContextShow()
+	if err != nil {
+		t.Fatalf("ContextShow() error = %v", err)
+	}
+	if !strings.Contains(show, "work") || !strings.Contains(show, "project:work") {
+		t.Fatalf("ContextShow() = %q, want active imported context", show)
+	}
+}
+
 func TestContextDefineUseShowNoneDelete(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -731,6 +760,38 @@ func TestServiceAllowsDuplicateAnnotationsInSameSecond(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteAndStopRejectTerminalStates(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	completed, err := svc.Add(AddInput{Description: "done task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(completed.UUID); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	if err := svc.Delete(completed.UUID); err == nil {
+		t.Fatal("Delete(completed) error = nil, want terminal-state guard")
+	}
+	if err := svc.Stop(completed.UUID); err == nil {
+		t.Fatal("Stop(completed) error = nil, want terminal-state guard")
+	}
+
+	deleted, err := svc.Add(AddInput{Description: "deleted task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(deleted.UUID); err != nil {
+		t.Fatalf("Delete(first) error = %v", err)
+	}
+	if err := svc.Delete(deleted.UUID); err == nil {
+		t.Fatal("Delete(deleted) error = nil, want terminal-state guard")
+	}
+	if err := svc.Stop(deleted.UUID); err == nil {
+		t.Fatal("Stop(deleted) error = nil, want terminal-state guard")
+	}
+}
+
 func TestServiceImportClearsTagsWithExplicitEmptyArray(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -790,6 +851,52 @@ func TestServiceImportDoesNotClearTagsWhenFieldMissing(t *testing.T) {
 	if len(got.Tags) != 2 {
 		t.Fatalf("Tags = %#v, want preserved tags", got.Tags)
 	}
+}
+
+func TestServiceImportIsAtomicOnFailure(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	payload := []task.JSONTask{
+		{
+			UUID:        "ok-1",
+			Description: "first",
+			Status:      task.StatusPending,
+			Entry:       "1970-01-01T00:01:40Z",
+			Modified:    "1970-01-01T00:01:40Z",
+		},
+		{
+			UUID:        "bad-2",
+			Description: "second",
+			Status:      task.StatusPending,
+			Entry:       "not-a-date",
+			Modified:    "1970-01-01T00:01:40Z",
+		},
+	}
+
+	count, err := svc.Import(payload)
+	if err == nil {
+		t.Fatal("Import() error = nil, want rollback on invalid batch")
+	}
+	if count != 0 {
+		t.Fatalf("Import() count = %d, want 0 on atomic rollback", count)
+	}
+	tasks, listErr := svc.Export()
+	if listErr != nil {
+		t.Fatalf("Export() error = %v", listErr)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("tasks persisted after failed import: %#v", tasks)
+	}
+}
+
+func hasTaskRCImportedTarget(entries []taskrcparser.Entry, target string) bool {
+	for _, entry := range entries {
+		if entry.Target == target || entry.Key == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDefaultWorkingSetKeepsWaitingTasksAddressable(t *testing.T) {

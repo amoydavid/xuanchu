@@ -19,8 +19,9 @@ type QueryCompileOptions struct {
 func ApplyQuery(db *gorm.DB, expr query.Expr, opts QueryCompileOptions) *gorm.DB {
 	sql, args, err := CompileQuery(expr, opts)
 	if err != nil {
-		_ = db.AddError(err)
-		return db
+		out := db.Session(&gorm.Session{})
+		out.Error = err
+		return out
 	}
 	if sql == "" {
 		return db

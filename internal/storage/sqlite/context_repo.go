@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"errors"
-	"sort"
 
 	domain "github.com/dajee/taskg/internal/taskcontext"
 	"gorm.io/gorm"
@@ -47,7 +46,6 @@ func (r *ContextRepository) List(workspaceID string) ([]domain.Context, error) {
 	for _, model := range models {
 		out = append(out, fromContextModel(model))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 

@@ -3,6 +3,7 @@ package taskrc
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -42,6 +43,35 @@ include `+included+`
 	}
 	if got := report.Values["uda.estimate.values"]; got != "1,2,3,5" {
 		t.Fatalf("uda values = %q", got)
+	}
+}
+
+func TestParseTaskRCPreservesQuotedHashesAndRejectsMalformedUDAKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".taskrc")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		`context.active="work#alpha" # trailing comment`,
+		`uda.ticket.label="fix #1234"`,
+		`uda..type=numeric`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := ParseFile(path)
+	if err != nil {
+		t.Fatalf("ParseFile() error = %v", err)
+	}
+	if got := report.Values["context.active"]; got != "work#alpha" {
+		t.Fatalf("context.active = %q, want work#alpha", got)
+	}
+	if got := report.Values["uda.ticket.label"]; got != "fix #1234" {
+		t.Fatalf("uda.ticket.label = %q, want quoted hash preserved", got)
+	}
+	if hasEntry(report.Imported, "uda..type") {
+		t.Fatalf("malformed uda key imported: %#v", report.Imported)
+	}
+	if !hasEntry(report.Unknown, "uda..type") {
+		t.Fatalf("malformed uda key should be unknown: %#v", report.Unknown)
 	}
 }
 

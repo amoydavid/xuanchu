@@ -130,6 +130,20 @@ func (s *Service) Clock() Clock {
 	return s.clock
 }
 
+func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		return nil, err
+	}
+	clone := *s
+	clone.store = store
+	clone.repo = sqlite.NewTaskRepository(store.DB())
+	clone.contextRepo = sqlite.NewContextRepository(store.DB())
+	clone.udaRepo = sqlite.NewUDARepository(store.DB())
+	clone.workspaceID = ws.ID
+	return &clone, nil
+}
+
 func (s *Service) Projects() ([]string, error) {
 	tasks, err := s.List(ListInput{ReportMode: true})
 	if err != nil {
@@ -459,6 +473,9 @@ func (s *Service) Delete(target string) error {
 	if err != nil {
 		return err
 	}
+	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
+		return fmt.Errorf("cannot delete %s task", tsk.Status)
+	}
 	tsk.Delete(s.clock.Unix())
 	return s.repo.Update(tsk)
 }
@@ -483,36 +500,51 @@ func (s *Service) Stop(target string) error {
 	if err != nil {
 		return err
 	}
+	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
+		return fmt.Errorf("cannot stop %s task", tsk.Status)
+	}
 	tsk.StopTask(s.clock.Unix())
 	return s.repo.Update(tsk)
 }
 
 func (s *Service) Annotate(target, description string) error {
-	tsk, err := s.ResolveTarget(target)
-	if err != nil {
-		return err
-	}
 	description = strings.TrimSpace(description)
 	if description == "" {
 		return fmt.Errorf("annotation description is required")
 	}
+	if strings.ContainsAny(description, "\n\r") {
+		return fmt.Errorf("annotation description must not contain newlines")
+	}
 	now := s.clock.Unix()
-	for {
-		conflict := false
-		for _, annotation := range tsk.Annotations {
-			if annotation.Entry == now && annotation.Description == description {
-				conflict = true
+	for attempts := 0; attempts < 3; attempts++ {
+		tsk, err := s.ResolveTarget(target)
+		if err != nil {
+			return err
+		}
+		entry := now
+		for {
+			conflict := false
+			for _, annotation := range tsk.Annotations {
+				if annotation.Entry == entry && annotation.Description == description {
+					conflict = true
+					break
+				}
+			}
+			if !conflict {
 				break
 			}
+			entry++
 		}
-		if !conflict {
-			break
+		if err := s.repo.AddAnnotation(s.workspaceID, tsk.UUID, task.Annotation{Entry: entry, Description: description}, entry); err != nil {
+			if sqlite.IsUniqueConstraintError(err) {
+				now = entry + 1
+				continue
+			}
+			return err
 		}
-		now++
+		return nil
 	}
-	tsk.Annotations = append(tsk.Annotations, task.Annotation{Entry: now, Description: description})
-	tsk.Modified = now
-	return s.repo.Update(tsk)
+	return fmt.Errorf("annotation conflict could not be resolved")
 }
 
 func (s *Service) Denotate(target string, index int) error {
@@ -586,105 +618,115 @@ func (s *Service) Export() ([]task.Task, error) {
 
 func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 	count := 0
-	for _, dto := range tasks {
-		tsk, err := task.FromJSONStrict(dto)
+	err := s.store.Transaction(func(txStore *sqlite.Store) error {
+		txService, err := s.withStore(txStore)
 		if err != nil {
-			return count, err
+			return err
 		}
-		tsk.WorkspaceID = s.workspaceID
-		if tsk.UUID == "" {
-			tsk.UUID = uuid.NewString()
+		for _, dto := range tasks {
+			if err := txService.importOne(dto); err != nil {
+				return err
+			}
+			count++
 		}
-		// Try to get existing task
-		existing, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
-		if err == sqlite.ErrNotFound {
-			// Create new
-			if tsk.Status == "" {
-				tsk.Status = task.StatusPending
-			}
-			if tsk.Entry == 0 {
-				tsk.Entry = s.clock.Unix()
-			}
-			if tsk.Modified == 0 {
-				tsk.Modified = s.clock.Unix()
-			}
-			if tsk.UDAs != nil {
-				normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
-				if err != nil {
-					return count, err
-				}
-				tsk.UDAs = normalized
-			}
-			if _, err := s.repo.Create(tsk); err != nil {
-				return count, err
-			}
-		} else if err != nil {
-			return count, err
-		} else {
-			// Update existing
-			if tsk.Description != "" {
-				existing.Description = tsk.Description
-			}
-			if tsk.Status != "" {
-				existing.Status = tsk.Status
-			}
-			existing.Modified = s.clock.Unix()
-			if tsk.Project != nil {
-				existing.Project = tsk.Project
-			}
-			if tsk.Priority != nil {
-				existing.Priority = tsk.Priority
-			}
-			if tsk.Due != nil {
-				existing.Due = tsk.Due
-			}
-			if tsk.Start != nil {
-				existing.Start = tsk.Start
-			}
-			if tsk.Wait != nil {
-				existing.Wait = tsk.Wait
-			}
-			if tsk.Scheduled != nil {
-				existing.Scheduled = tsk.Scheduled
-			}
-			if tsk.Until != nil {
-				existing.Until = tsk.Until
-			}
-			if tsk.Recur != nil {
-				existing.Recur = tsk.Recur
-			}
-			if tsk.Parent != nil {
-				existing.Parent = tsk.Parent
-			}
-			if tsk.Mask != nil {
-				existing.Mask = tsk.Mask
-			}
-			if tsk.IMask != nil {
-				existing.IMask = tsk.IMask
-			}
-			if tsk.Tags != nil {
-				existing.Tags = tsk.Tags
-			}
-			if tsk.Annotations != nil {
-				existing.Annotations = tsk.Annotations
-			}
-			if tsk.Depends != nil {
-				existing.Depends = tsk.Depends
-			}
-			if tsk.UDAs != nil {
-				normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
-				if err != nil {
-					return count, err
-				}
-				existing.UDAs = normalized
-			}
-			if err := s.repo.Update(existing); err != nil {
-				return count, err
-			}
-		}
-		count++
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 	return count, nil
+}
+
+func (s *Service) importOne(dto task.JSONTask) error {
+	tsk, err := task.FromJSONStrict(dto)
+	if err != nil {
+		return err
+	}
+	tsk.WorkspaceID = s.workspaceID
+	if tsk.UUID == "" {
+		tsk.UUID = uuid.NewString()
+	}
+	existing, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+	if err == sqlite.ErrNotFound {
+		if tsk.Status == "" {
+			tsk.Status = task.StatusPending
+		}
+		if tsk.Entry == 0 {
+			tsk.Entry = s.clock.Unix()
+		}
+		if tsk.Modified == 0 {
+			tsk.Modified = s.clock.Unix()
+		}
+		if tsk.UDAs != nil {
+			normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
+			if err != nil {
+				return err
+			}
+			tsk.UDAs = normalized
+		}
+		_, err = s.repo.Create(tsk)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if tsk.Description != "" {
+		existing.Description = tsk.Description
+	}
+	if tsk.Status != "" {
+		existing.Status = tsk.Status
+	}
+	existing.Modified = s.clock.Unix()
+	if tsk.Project != nil {
+		existing.Project = tsk.Project
+	}
+	if tsk.Priority != nil {
+		existing.Priority = tsk.Priority
+	}
+	if tsk.Due != nil {
+		existing.Due = tsk.Due
+	}
+	if tsk.Start != nil {
+		existing.Start = tsk.Start
+	}
+	if tsk.Wait != nil {
+		existing.Wait = tsk.Wait
+	}
+	if tsk.Scheduled != nil {
+		existing.Scheduled = tsk.Scheduled
+	}
+	if tsk.Until != nil {
+		existing.Until = tsk.Until
+	}
+	if tsk.Recur != nil {
+		existing.Recur = tsk.Recur
+	}
+	if tsk.Parent != nil {
+		existing.Parent = tsk.Parent
+	}
+	if tsk.Mask != nil {
+		existing.Mask = tsk.Mask
+	}
+	if tsk.IMask != nil {
+		existing.IMask = tsk.IMask
+	}
+	if tsk.Tags != nil {
+		existing.Tags = tsk.Tags
+	}
+	if tsk.Annotations != nil {
+		existing.Annotations = tsk.Annotations
+	}
+	if tsk.Depends != nil {
+		existing.Depends = tsk.Depends
+	}
+	if tsk.UDAs != nil {
+		normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
+		if err != nil {
+			return err
+		}
+		existing.UDAs = normalized
+	}
+	return s.repo.Update(existing)
 }
 
 func (s *Service) dependencyGraph() (map[string][]string, error) {

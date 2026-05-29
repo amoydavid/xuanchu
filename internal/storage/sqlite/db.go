@@ -59,6 +59,12 @@ func (s *Store) DB() *gorm.DB {
 	return s.db
 }
 
+func (s *Store) Transaction(fn func(*Store) error) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		return fn(&Store{db: tx})
+	})
+}
+
 func (s *Store) LocalWorkspace() (Workspace, error) {
 	var ws Workspace
 	err := s.db.Where("slug = ?", localWorkspaceSlug).First(&ws).Error
