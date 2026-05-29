@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -331,6 +332,176 @@ func TestAdminCannotArchiveWorkspace(t *testing.T) {
 	adminSvc := newTestServiceWithRuntime(t, store, 100, admin.Name, ws.Slug)
 	if err := adminSvc.Require(PermissionWorkspaceArchive); err == nil {
 		t.Fatal("Require(PermissionWorkspaceArchive) error = nil, want denied")
+	}
+}
+
+type failingAuditRepo struct {
+	listRows []sqlite.AuditLogEntry
+}
+
+func (f *failingAuditRepo) Append(sqlite.AuditLogEntry) error {
+	return sqlite.ErrNotFound
+}
+
+func (f *failingAuditRepo) List(sqlite.AuditListOptions) ([]sqlite.AuditLogEntry, error) {
+	return f.listRows, nil
+}
+
+func TestTaskWriteCreatesAuditInSameTransaction(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.Add(AddInput{Description: "audit me"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) == 0 {
+		t.Fatal("ListAudit() returned no rows")
+	}
+	if logs[0].Action != "task.add" || logs[0].TargetID != created.UUID {
+		t.Fatalf("logs[0] = %#v", logs[0])
+	}
+}
+
+func TestAuditFailureRollsBackTaskWrite(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	svc.auditRepo = &failingAuditRepo{}
+	if _, err := svc.Add(AddInput{Description: "should rollback"}); err == nil {
+		t.Fatal("Add() error = nil, want audit failure")
+	}
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("tasks = %#v, want rollback to leave no task", tasks)
+	}
+}
+
+func TestModifyCreatesAuditEntry(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.Add(AddInput{Description: "before"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	priority := "H"
+	if err := svc.Modify(created.UUID, ModifyInput{Priority: &priority}); err != nil {
+		t.Fatalf("Modify() error = %v", err)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) < 2 {
+		t.Fatalf("logs = %#v, want at least 2 entries", logs)
+	}
+	if logs[0].Action != "task.modify" || logs[0].TargetID != created.UUID {
+		t.Fatalf("logs[0] = %#v", logs[0])
+	}
+}
+
+func TestUseContextCreatesAuditEntry(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.DefineContext("work", "project:work"); err != nil {
+		t.Fatalf("DefineContext() error = %v", err)
+	}
+	if err := svc.UseContext("work"); err != nil {
+		t.Fatalf("UseContext() error = %v", err)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) < 2 {
+		t.Fatalf("logs = %#v, want at least 2 entries", logs)
+	}
+	if logs[0].Action != "context.use" || logs[0].TargetType != "context" || logs[0].TargetID != "work" {
+		t.Fatalf("logs[0] = %#v", logs[0])
+	}
+}
+
+func TestUDAConfigWriteCreatesAuditEntry(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.SetConfig("uda.estimate.type", "numeric"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) == 0 {
+		t.Fatal("ListAudit() returned no rows")
+	}
+	if logs[0].Action != "uda.schema.set" || logs[0].TargetType != "uda" || logs[0].TargetID != "estimate" {
+		t.Fatalf("logs[0] = %#v", logs[0])
+	}
+}
+
+func TestImportCreatesAuditEntry(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	count, err := svc.Import([]task.JSONTask{{
+		Description: "imported task",
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+	}})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Import() count = %d, want 1", count)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) == 0 {
+		t.Fatal("ListAudit() returned no rows")
+	}
+	if logs[0].Action != "task.import" || logs[0].TargetType != "task" {
+		t.Fatalf("logs[0] = %#v", logs[0])
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(logs[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("payload json = %q, err = %v", logs[0].PayloadJSON, err)
+	}
+	if got := payload["count"]; got != float64(1) {
+		t.Fatalf("payload[count] = %#v, want 1", got)
+	}
+}
+
+func TestAuditFailureRollsBackContextWrite(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	svc.auditRepo = &failingAuditRepo{}
+	if err := svc.DefineContext("work", "project:work"); err == nil {
+		t.Fatal("DefineContext() error = nil, want audit failure")
+	}
+
+	contexts, err := svc.ContextList()
+	if err != nil {
+		t.Fatalf("ContextList() error = %v", err)
+	}
+	if len(contexts) != 0 {
+		t.Fatalf("contexts = %#v, want rollback to leave no context", contexts)
 	}
 }
 

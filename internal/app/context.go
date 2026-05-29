@@ -12,25 +12,18 @@ func (s *Service) DefineContext(name, filterSource string) error {
 	if err := s.Require(PermissionContextManage); err != nil {
 		return err
 	}
-	name = strings.TrimSpace(name)
-	filterSource = strings.TrimSpace(filterSource)
-	if !taskcontext.ValidateName(name) {
-		return fmt.Errorf("invalid context name %q", name)
-	}
-	if _, err := query.ParseQuery(filterSource); err != nil {
-		return fmt.Errorf("invalid context filter: %w", err)
-	}
-	now := s.clock.Unix()
-	existing, err := s.contextRepo.Get(s.workspaceID, name)
-	if err == nil {
-		now = existing.CreatedAt
-	}
-	return s.contextRepo.Upsert(taskcontext.Context{
-		WorkspaceID:  s.workspaceID,
-		Name:         name,
-		FilterSource: filterSource,
-		CreatedAt:    now,
-		ModifiedAt:   s.clock.Unix(),
+	return s.withAudit("context.define", func(tx *Service) (AuditEntry, error) {
+		name, filterSource, err := tx.defineContextLocked(name, filterSource)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "context",
+			TargetID:   name,
+			Payload: map[string]any{
+				"filter": filterSource,
+			},
+		}, nil
 	})
 }
 
@@ -38,19 +31,30 @@ func (s *Service) UseContext(name string) error {
 	if err := s.Require(PermissionContextUse); err != nil {
 		return err
 	}
-	name = strings.TrimSpace(name)
-	if _, err := s.contextRepo.Get(s.workspaceID, name); err != nil {
-		return err
-	}
-	return s.store.SetMeta(s.activeContextMetaKey(), name)
+	return s.withAudit("context.use", func(tx *Service) (AuditEntry, error) {
+		name, err := tx.useContextLocked(name)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "context",
+			TargetID:   name,
+		}, nil
+	})
 }
 
 func (s *Service) ContextNone() error {
 	if err := s.Require(PermissionContextUse); err != nil {
 		return err
 	}
-	s.activeContextOverride = nil
-	return s.store.SetMeta(s.activeContextMetaKey(), "")
+	return s.withAudit("context.none", func(tx *Service) (AuditEntry, error) {
+		if err := tx.contextNoneLocked(); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "context",
+		}, nil
+	})
 }
 
 func (s *Service) ContextShow() (string, error) {
@@ -76,18 +80,75 @@ func (s *Service) ContextDelete(name string) error {
 	if err := s.Require(PermissionContextManage); err != nil {
 		return err
 	}
+	return s.withAudit("context.delete", func(tx *Service) (AuditEntry, error) {
+		name, err := tx.contextDeleteLocked(name)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "context",
+			TargetID:   name,
+		}, nil
+	})
+}
+
+func (s *Service) defineContextLocked(name, filterSource string) (string, string, error) {
+	name = strings.TrimSpace(name)
+	filterSource = strings.TrimSpace(filterSource)
+	if !taskcontext.ValidateName(name) {
+		return "", "", fmt.Errorf("invalid context name %q", name)
+	}
+	if _, err := query.ParseQuery(filterSource); err != nil {
+		return "", "", fmt.Errorf("invalid context filter: %w", err)
+	}
+	now := s.clock.Unix()
+	existing, err := s.contextRepo.Get(s.workspaceID, name)
+	if err == nil {
+		now = existing.CreatedAt
+	}
+	if err := s.contextRepo.Upsert(taskcontext.Context{
+		WorkspaceID:  s.workspaceID,
+		Name:         name,
+		FilterSource: filterSource,
+		CreatedAt:    now,
+		ModifiedAt:   s.clock.Unix(),
+	}); err != nil {
+		return "", "", err
+	}
+	return name, filterSource, nil
+}
+
+func (s *Service) useContextLocked(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if _, err := s.contextRepo.Get(s.workspaceID, name); err != nil {
+		return "", err
+	}
+	if err := s.store.SetMeta(s.activeContextMetaKey(), name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func (s *Service) contextNoneLocked() error {
+	s.activeContextOverride = nil
+	return s.store.SetMeta(s.activeContextMetaKey(), "")
+}
+
+func (s *Service) contextDeleteLocked(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if err := s.contextRepo.Delete(s.workspaceID, name); err != nil {
-		return err
+		return "", err
 	}
 	activeName, ok, err := s.store.GetMeta(s.activeContextMetaKey())
 	if err != nil {
-		return err
+		return "", err
 	}
 	if ok && activeName == name {
-		return s.ContextNone()
+		if err := s.contextNoneLocked(); err != nil {
+			return "", err
+		}
 	}
-	return nil
+	return name, nil
 }
 
 func (s *Service) activeContextFilter(skip bool) (query.Expr, error) {

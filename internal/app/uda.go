@@ -14,6 +14,19 @@ func (s *Service) DefineUDA(name, typ, label string, values []string, defaultVal
 	if err := s.Require(PermissionUDAManage); err != nil {
 		return err
 	}
+	return s.withAudit("uda.schema.set", func(tx *Service) (AuditEntry, error) {
+		name, err := tx.defineUDALocked(name, typ, label, values, defaultValue)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "uda",
+			TargetID:   name,
+		}, nil
+	})
+}
+
+func (s *Service) defineUDALocked(name, typ, label string, values []string, defaultValue string) (string, error) {
 	def := uda.Definition{Name: strings.TrimSpace(name), Type: uda.Type(strings.TrimSpace(typ)), Label: label, Values: values, Default: defaultValue}
 	if def.Type == "" {
 		def.Type = uda.TypeString
@@ -21,18 +34,38 @@ func (s *Service) DefineUDA(name, typ, label string, values []string, defaultVal
 	if def.Default != "" {
 		normalized, err := uda.NormalizeValue(def, def.Default)
 		if err != nil {
-			return err
+			return "", err
 		}
 		def.Default = normalized
 	}
-	return s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix())
+	if err := s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix()); err != nil {
+		return "", err
+	}
+	return def.Name, nil
 }
 
 func (s *Service) DeleteUDA(name string) error {
 	if err := s.Require(PermissionUDAManage); err != nil {
 		return err
 	}
-	return s.udaRepo.DeleteDefinition(s.workspaceID, strings.TrimPrefix(name, "uda."))
+	return s.withAudit("uda.schema.delete", func(tx *Service) (AuditEntry, error) {
+		name, err := tx.deleteUDALocked(name)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "uda",
+			TargetID:   name,
+		}, nil
+	})
+}
+
+func (s *Service) deleteUDALocked(name string) (string, error) {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
+	if err := s.udaRepo.DeleteDefinition(s.workspaceID, name); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func (s *Service) ListUDAs() ([]uda.Definition, error) {
@@ -69,7 +102,19 @@ func (s *Service) udaDefinitionTypes() (map[string]string, error) {
 
 func (s *Service) SetConfig(key, value string) error {
 	if strings.HasPrefix(key, "uda.") {
-		return s.setUDAConfig(key, value)
+		if err := s.Require(PermissionUDAManage); err != nil {
+			return err
+		}
+		return s.withAudit("uda.schema.set", func(tx *Service) (AuditEntry, error) {
+			name, err := tx.setUDAConfigLocked(key, value)
+			if err != nil {
+				return AuditEntry{}, err
+			}
+			return AuditEntry{
+				TargetType: "uda",
+				TargetID:   name,
+			}, nil
+		})
 	}
 	if key == "database.path" {
 		return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
@@ -102,7 +147,23 @@ func (s *Service) GetConfig(key string) (string, bool, error) {
 
 func (s *Service) UnsetConfig(key string) error {
 	if strings.HasPrefix(key, "uda.") {
-		return s.unsetUDAConfig(key)
+		if err := s.Require(PermissionUDAManage); err != nil {
+			return err
+		}
+		action := "uda.schema.set"
+		if strings.HasSuffix(key, ".type") {
+			action = "uda.schema.delete"
+		}
+		return s.withAudit(action, func(tx *Service) (AuditEntry, error) {
+			name, err := tx.unsetUDAConfigLocked(key)
+			if err != nil {
+				return AuditEntry{}, err
+			}
+			return AuditEntry{
+				TargetType: "uda",
+				TargetID:   name,
+			}, nil
+		})
 	}
 	if key == "database.path" {
 		return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
@@ -176,18 +237,20 @@ func (s *Service) UniqueValues(field string, input ListInput) ([]string, error) 
 }
 
 func (s *Service) setUDAConfig(key, value string) error {
-	if err := s.Require(PermissionUDAManage); err != nil {
-		return err
-	}
+	_, err := s.setUDAConfigLocked(key, value)
+	return err
+}
+
+func (s *Service) setUDAConfigLocked(key, value string) (string, error) {
 	name, field, err := splitUDAConfigKey(key)
 	if err != nil {
-		return err
+		return "", err
 	}
 	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
 	if err == sqlite.ErrNotFound {
 		def = uda.Definition{Name: name, Type: uda.TypeString}
 	} else if err != nil {
-		return err
+		return "", err
 	}
 	switch field {
 	case "type":
@@ -199,9 +262,12 @@ func (s *Service) setUDAConfig(key, value string) error {
 	case "default":
 		def.Default = value
 	default:
-		return fmt.Errorf("unknown UDA config field %q", field)
+		return "", fmt.Errorf("unknown UDA config field %q", field)
 	}
-	return s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix())
+	if err := s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix()); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func (s *Service) getUDAConfig(key string) (string, bool, error) {
@@ -240,22 +306,24 @@ func (s *Service) getUDAConfig(key string) (string, bool, error) {
 }
 
 func (s *Service) unsetUDAConfig(key string) error {
-	if err := s.Require(PermissionUDAManage); err != nil {
-		return err
-	}
+	_, err := s.unsetUDAConfigLocked(key)
+	return err
+}
+
+func (s *Service) unsetUDAConfigLocked(key string) (string, error) {
 	name, field, err := splitUDAConfigKey(key)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if field == "type" {
-		return s.DeleteUDA(name)
+		return s.deleteUDALocked(name)
 	}
 	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
 	if err == sqlite.ErrNotFound {
-		return nil
+		return name, nil
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	switch field {
 	case "label":
@@ -265,9 +333,12 @@ func (s *Service) unsetUDAConfig(key string) error {
 	case "default":
 		def.Default = ""
 	default:
-		return fmt.Errorf("unknown UDA config field %q", field)
+		return "", fmt.Errorf("unknown UDA config field %q", field)
 	}
-	return s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix())
+	if err := s.udaRepo.UpsertDefinition(s.workspaceID, def, s.clock.Unix()); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func splitUDAConfigKey(key string) (string, string, error) {

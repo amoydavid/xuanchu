@@ -683,7 +683,7 @@ git commit -m "feat: 增加 M4 权限边界"
 - Modify: `internal/app/uda.go`
 - Test: `internal/app/service_test.go`
 
-- [ ] **Step 1：写失败的 audit 测试**
+- [x] **Step 1：写失败的 audit 测试**
 
 示例：
 
@@ -708,7 +708,7 @@ func TestTaskWriteCreatesAuditInSameTransaction(t *testing.T) {
 
 不要把“业务写和 audit 同事务”留成未测试假设。如果引入 fake repo interface 太重，可以用 transaction-level test helper 插入非法 audit row，并确认业务写回滚。
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -718,7 +718,7 @@ go test ./internal/app -run 'Audit' -count=1
 
 Expected: FAIL，因为 audit 方法还不存在。
 
-- [ ] **Step 3：实现 audit helper**
+- [x] **Step 3：实现 audit helper**
 
 在 `audit.go` 中：
 
@@ -790,7 +790,7 @@ func (s *Service) withAuditEntries(fn func(*Service) ([]AuditEntry, error)) erro
 - 单条审计的 `withAudit(action, fn)` 可以作为 `withAuditEntries` 的薄包装，包装时给 `AuditEntry.Action` 补上 action。
 - 需要多条审计的业务路径必须调用 `withAuditEntries` 一次完成，不能连续调用两次 `withAudit`。
 
-- [ ] **Step 4：包裹写路径**
+- [x] **Step 4：包裹写路径**
 
 使用 spec 中的 action：
 
@@ -821,11 +821,11 @@ func (s *Service) withAuditEntries(fn func(*Service) ([]AuditEntry, error)) erro
 - public 方法先 `Require`，再 `withAudit`，闭包里调用 `tx.xxxLocked`。
 - `xxxLocked` 只能使用 receiver 上的 repo。
 
-- [ ] **Step 5：实现 `ListAudit`**
+- [x] **Step 5：实现 `ListAudit`**
 
 需要 `audit.read` 权限，并按当前 workspace 调 audit repo。CLI 默认 limit 是 50；app 层也应把 `<=0` 规整为 50。
 
-- [ ] **Step 6：运行 audit 和 app 测试**
+- [x] **Step 6：运行 audit 和 app 测试**
 
 Run:
 
@@ -835,7 +835,7 @@ go test ./internal/app -run 'Audit|Add|Modify|Context|UDA' -count=1
 
 Expected: PASS。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add internal/app/audit.go internal/app/service.go internal/app/context.go internal/app/uda.go internal/app/service_test.go
