@@ -34,7 +34,7 @@ include `+included+`
 	if !hasEntry(report.Imported, "date.format") || !hasEntry(report.Imported, "context.work") || !hasEntry(report.Imported, "uda.estimate.values") || !hasEntry(report.Imported, "uda.reviewed.type") {
 		t.Fatalf("imported = %#v", report.Imported)
 	}
-	if !hasEntry(report.Skipped, "report.next.columns") {
+	if !hasEntry(report.Skipped, "database.path") || !hasEntry(report.Skipped, "report.next.columns") {
 		t.Fatalf("skipped = %#v", report.Skipped)
 	}
 	if !hasEntry(report.Unknown, "unknown.value") {

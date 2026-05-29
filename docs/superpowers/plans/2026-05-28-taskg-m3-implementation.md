@@ -870,7 +870,7 @@ Expected: FAIL。
 - 支持 `include <path>`，并处理递归 include 与循环 include。
 - 识别并分类：
   - imported：M3 支持且能落库的 key
-  - skipped：认识但 M3 不导入的 key
+  - skipped：认识但 M3 不导入的 key；`data.location` 归为 skipped，因为 M3 的 `database.path` 只在启动前由 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定
   - unknown：完全不认识的 key
 - `.taskrc` 中 `uda.<name>.values=1,2,3` 按逗号分隔解析，写入 UDA schema 时归一到 `values_json` JSON array；这必须与 TOML array 和 CLI `config set uda.<name>.values "1,2,3"` 的最终结果一致。
 - 报告结构必须能 human 输出，也能 JSON 输出。

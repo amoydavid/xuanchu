@@ -201,6 +201,10 @@ func TestCLIContextCommands(t *testing.T) {
 	if !strings.Contains(all, "work task") || strings.Contains(all, "home task") {
 		t.Fatalf("context all output = %q", all)
 	}
+	info := run(t, bin, "--db", db, "info", "2")
+	if !strings.Contains(info, "home task") {
+		t.Fatalf("explicit target info should ignore context, output = %q", info)
+	}
 	bypassed := run(t, bin, "--db", db, "--no-context", "list")
 	if !strings.Contains(bypassed, "work task") || !strings.Contains(bypassed, "home task") {
 		t.Fatalf("--no-context list output = %q", bypassed)

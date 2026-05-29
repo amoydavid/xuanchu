@@ -584,9 +584,8 @@ taskg config import-taskrc ~/.taskrc --json
 
 ### 解析范围
 
-M3 应识别：
+M3 应导入：
 
-- `data.location`
 - `color`
 - `dateformat`
 - `context.<name>`
@@ -599,6 +598,7 @@ M3 应识别：
 
 M3 可识别但暂不导入：
 
+- `data.location`：M3 只在启动前通过 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定数据库路径，`.taskrc` import 不改写运行时数据库路径
 - `report.<name>.*`
 - `calendar.*`
 - `burndown.*`

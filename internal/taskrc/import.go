@@ -94,7 +94,7 @@ func stripComment(line string) string {
 func classify(key string) (target, class, reason string) {
 	switch key {
 	case "data.location":
-		return "database.path", "imported", ""
+		return "database.path", "skipped", "database.path is read-only in M3; use --db, TASKG_DB, --data-dir, or TOML"
 	case "color":
 		return "color", "imported", ""
 	case "dateformat":

@@ -206,8 +206,8 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 
 当前 `.taskrc` 支持范围：
 
-- 支持导入：`data.location`、`color`、`dateformat`、`context.<name>`、`uda.<name>.type/label/values/default`、`urgency.uda.*`
-- 识别但跳过：`report.*`、`calendar.*`、`burndown.*`、`news.*`、`sync.*`、`hooks.*`
+- 支持导入：`color`、`dateformat`、`context.<name>`、`uda.<name>.type/label/values/default`、`urgency.uda.*`
+- 识别但跳过：`data.location`、`report.*`、`calendar.*`、`burndown.*`、`news.*`、`sync.*`、`hooks.*`
 - 其它 key 进入 unknown 报告，不会让导入失败
 
-M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。
+其中 `data.location` 会被识别但不会导入，因为 M3 的数据库路径只在启动前通过 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定。M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。

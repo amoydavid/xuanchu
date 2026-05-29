@@ -65,9 +65,9 @@ func ResolveDateRange(value Value, nowUnix int64, loc *time.Location) (int64, in
 }
 
 func ResolveDeadlineDateValue(value Value, nowUnix int64, loc *time.Location) (int64, error) {
-	start, _, err := ResolveDateRange(value, nowUnix, loc)
+	_, end, err := ResolveDateRange(value, nowUnix, loc)
 	if err != nil {
 		return 0, err
 	}
-	return time.Unix(start, 0).In(loc).Add(24*time.Hour - time.Second).Unix(), nil
+	return end - 1, nil
 }
