@@ -192,7 +192,7 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 
 # completion 与脚本 helper
 ./taskg completion zsh > ~/.zfunc/_taskg
-./taskg _show date.format context.active
+./taskg _show date.format active.context
 ./taskg _version
 ```
 
@@ -211,3 +211,70 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 - 其它 key 进入 unknown 报告，不会让导入失败
 
 其中 `data.location` 会被识别但不会导入，因为 M3 的数据库路径只在启动前通过 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定。M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。
+
+## M4 本地多用户、多 Workspace、权限与审计
+
+```bash
+# user
+./taskg user list
+./taskg user add alice email:alice@example.test
+./taskg user use alice
+./taskg user info
+
+# workspace
+./taskg workspace list
+./taskg workspace add work name:Work visibility:team
+./taskg workspace use work
+./taskg workspace info work
+./taskg workspace modify work description:"Team workspace"
+./taskg workspace archive old
+
+# 在指定 workspace 中执行一次命令
+./taskg --workspace local list
+./taskg --workspace work _projects
+
+# member
+./taskg member list
+./taskg member add bob role:viewer
+./taskg member role bob member
+
+# audit
+./taskg audit list
+./taskg audit list --limit 20 --json
+```
+
+M4 新增了本地团队运行时：
+
+- `user list/add/use/info`
+- `workspace list/add/use/info/modify/archive`
+- `member list/add/role`
+- `audit list`
+- 全局 `--workspace <slug|uuid>` 一次性切到指定 workspace 执行命令
+
+权限模型：
+
+- `viewer` 可以读任务、报表、helper、member list，并能切换自己的 active context
+- `member` 额外可以写任务、import、定义/删除 context
+- `admin` 额外可以改 workspace metadata、管理非 owner 成员、查看 audit、管理 UDA schema
+- `owner` 额外可以授予/降级 owner、归档 workspace
+
+当前仍有一个刻意保留的限制：M4 **没有 `member delete`**。如果要临时撤销写权限，可用 `member role <user> viewer`。同时，`viewer` 仍能读取该 workspace 的任务、project、tag、UDA 和成员信息。
+
+### M4 升级说明
+
+从 M3 升级到 M4 时，不需要手动执行迁移命令；第一次运行 `taskg` 会自动完成迁移。
+
+迁移后的默认状态：
+
+- 现有任务保留在 `local` workspace
+- 自动创建 `local` user
+- 自动创建 `local` workspace
+- 自动创建 `local user -> local workspace` 的 owner membership
+- 旧的 `context.active` SQLite meta 会迁移到 `(local user, local workspace)` 作用域的 active context
+- `local` user 的 email 保持空值，不会伪造测试邮箱
+
+注意：M4 **不再把 TOML `context.active` 当作运行时 active context 来源**。如果你之前只依赖 TOML 里的 active context，需要在升级后执行一次：
+
+```bash
+./taskg context use <name>
+```

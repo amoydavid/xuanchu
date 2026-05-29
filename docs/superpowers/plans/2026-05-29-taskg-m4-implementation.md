@@ -1406,7 +1406,7 @@ git commit -m "feat: 完善循环任务审计路径"
 
 下一步指向 M5。
 
-- [ ] **Step 3：运行文档 diff 检查**
+- [x] **Step 3：运行文档 diff 检查**
 
 Run:
 
@@ -1416,7 +1416,7 @@ git diff --check
 
 Expected: no output。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```bash
 git add README.md ROADMAP.md docs/superpowers/specs/2026-05-29-taskg-m4-design.md

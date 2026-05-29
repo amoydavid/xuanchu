@@ -17,7 +17,7 @@
 | M1 | 已完成 | 查询语言、内置报表、urgency、DOM 与 calc 基础 |
 | M2 | 已完成 | Taskwarrior 核心任务模型补齐 |
 | M3 | 已完成 | 配置系统、上下文、UDA、`.taskrc` 只读导入与脚本化 helper |
-| M4 | 待规划 | 多 workspace、本地团队模型与权限边界 |
+| M4 | 已完成 | 多 workspace、本地团队模型与权限边界 |
 | M5 | 待规划 | HTTP/JSON API 与远程 CLI |
 | M6 | 待规划 | MCP Server 与 Agent 工具接口 |
 | M7 | 待规划 | Operation log 同步、离线复制与 Hook |
@@ -289,47 +289,57 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 ## M4：多 Workspace、本地团队模型与权限边界
 
-**目标：** 在仍然不引入 HTTP 服务端的前提下，把数据模型升级为多 workspace，并建立后续多用户服务端所需的权限边界。
+**状态：已完成。**
 
-**范围：**
+**目标：** 在仍然不引入 HTTP 服务端的前提下，把运行时从“单用户单 workspace”升级成“actor + workspace + role”，为 M5 的服务端化保留稳定边界。
 
-- schema 扩展：
-  - users。
-  - workspaces。
-  - memberships。
-  - api_tokens 占位或基础模型。
-  - audit_logs 占位或基础模型。
-- 本地模式用户：
-  - 默认 local user。
-  - 可创建本地用户记录，但不做登录。
-- workspace 命令：
-  - `workspace list`
-  - `workspace add`
-  - `workspace use`
-  - `workspace info`
-  - `workspace archive` 或 delete 策略待 spec 决定。
-- membership 命令第一版：
-  - `member list`
-  - `member add`
-  - `member role`
-  - 本地模式只校验模型和权限边界，不做网络鉴权。
-- 所有任务查询、写入、报表、context、UDA 都显式绑定 workspace。
-- audit log 记录本地关键写操作。
+**M4 已交付内容：**
 
-**不进入 M4：**
+- 身份与审计模型：
+  - `users`
+  - `workspaces`
+  - `memberships`
+  - `audit_logs`
+- 本地默认身份：
+  - 自动创建 `local` user
+  - 自动创建 `local` workspace
+  - 自动创建 `local -> local` owner membership
+  - 首次升级时自动迁移旧 `context.active` meta
+- runtime context：
+  - 每次命令解析 `ActorUserID + WorkspaceID + Role`
+  - 支持 `active_user_id`
+  - 支持 `active_workspace.<user_id>`
+  - 支持 `active_context.<user_id>.<workspace_id>`
+  - 支持全局 `--workspace <slug|uuid>` 一次性覆盖
+- 权限边界：
+  - `viewer` / `member` / `admin` / `owner`
+  - task、context、UDA schema、workspace metadata、member role、audit read 都经过 app 层权限检查
+- 审计事务：
+  - spec 范围内的写操作在同一个 store-level transaction 中同时写业务表和 `audit_logs`
+  - `task` / `context` / `workspace` / `member` / `UDA schema` 写路径全部接入 audit
+- CLI 能力：
+  - `user list/add/use/info`
+  - `workspace list/add/use/info/modify/archive`
+  - `member list/add/role`
+  - `audit list`
+- workspace 隔离：
+  - task、project、tag、UDA、context、helper、working-set ID 都按 workspace 隔离
+  - storage 层 SQL 显式绑定 workspace，不再依赖“隐式全局 local workspace”
+
+**本阶段刻意不做：**
 
 - HTTP API。
-- JWT/PAT 鉴权真正启用。
+- 远程 CLI。
+- PAT/JWT 登录鉴权。
 - MCP。
 - 多端同步。
+- `member delete`、`user delete`、workspace hard delete。
 
-**验收标准：**
+**对 M5 的意义：**
 
-- 同一数据库中多个 workspace 的任务互不污染。
-- active workspace 切换后，数字 working-set ID 独立计算。
-- context、UDA、报表配置可以按 workspace 隔离。
-- app service 不再依赖“隐式全局 local workspace”假设。
-- 权限模型有单元测试，即使本地模式暂不登录。
+- app service 已不再把 local workspace 当作默认业务前提。
+- 权限检查、审计编排、runtime context 解析都已沉到可复用的 `internal/app` 边界。
+- M5 可以在不重写 M4 app service 的前提下接入 HTTP/JSON API 与远程 CLI。
 
 ## M5：HTTP/JSON API 与远程 CLI
 
