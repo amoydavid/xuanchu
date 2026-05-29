@@ -304,6 +304,57 @@ func TestCLIExportImportRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCLIUserWorkspaceLifecycle(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "user", "add", "alice", "email:alice@example.test")
+	users := run(t, bin, "--db", db, "user", "list")
+	if !strings.Contains(users, "alice") {
+		t.Fatalf("user list output = %q", users)
+	}
+	run(t, bin, "--db", db, "user", "use", "alice")
+
+	workspaces := run(t, bin, "--db", db, "workspace", "list")
+	if !strings.Contains(workspaces, "alice") {
+		t.Fatalf("workspace list output = %q", workspaces)
+	}
+	run(t, bin, "--db", db, "workspace", "add", "work", "name:Work", "visibility:team")
+	run(t, bin, "--db", db, "workspace", "use", "work")
+	workspaces = run(t, bin, "--db", db, "workspace", "list")
+	if !strings.Contains(workspaces, "work") {
+		t.Fatalf("workspace list missing work = %q", workspaces)
+	}
+}
+
+func TestCLIWorkspaceErrorSemantics(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	cmd := exec.Command(bin, "--db", db, "--workspace", "nonexistent", "list")
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "workspace_not_found") {
+		t.Fatalf("nonexistent workspace error = %v, output = %q", err, out)
+	}
+
+	run(t, bin, "--db", db, "workspace", "add", "old")
+	run(t, bin, "--db", db, "workspace", "add", "other")
+	run(t, bin, "--db", db, "workspace", "archive", "old")
+	cmd = exec.Command(bin, "--db", db, "--workspace", "old", "list")
+	out, err = cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "workspace_archived") {
+		t.Fatalf("archived workspace error = %v, output = %q", err, out)
+	}
+
+	run(t, bin, "--db", db, "user", "add", "alice")
+	run(t, bin, "--db", db, "user", "use", "alice")
+	cmd = exec.Command(bin, "--db", db, "--workspace", "local", "list")
+	out, err = cmd.CombinedOutput()
+	if err == nil || (!strings.Contains(string(out), "membership_not_found") && !strings.Contains(string(out), "permission_denied")) {
+		t.Fatalf("non-member workspace error = %v, output = %q", err, out)
+	}
+}
+
 func TestCLIModifyDoneDelete(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")

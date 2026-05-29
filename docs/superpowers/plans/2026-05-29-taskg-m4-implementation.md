@@ -1070,7 +1070,7 @@ git commit -m "feat: 增加本地团队 app 接口"
 - Modify: `internal/cli/root.go`
 - Test: `tests/integration/cli_test.go`
 
-- [ ] **Step 1：写失败的 CLI 集成测试**
+- [x] **Step 1：写失败的 CLI 集成测试**
 
 新增测试：
 
@@ -1091,7 +1091,7 @@ func TestCLIUserWorkspaceLifecycle(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -1101,7 +1101,7 @@ go test ./tests/integration -run 'TestCLIUserWorkspaceLifecycle' -count=1
 
 Expected: FAIL，因为命令还不存在。
 
-- [ ] **Step 3：实现 user commands**
+- [x] **Step 3：实现 user commands**
 
 `user list`：
 
@@ -1124,7 +1124,7 @@ Expected: FAIL，因为命令还不存在。
 - 无参数时显示当前 actor。
 - `--json` 输出 JSON。
 
-- [ ] **Step 4：实现 workspace commands**
+- [x] **Step 4：实现 workspace commands**
 
 `workspace list [--all]`、`add`、`use`、`info`、`modify`、`archive`。
 
@@ -1132,7 +1132,7 @@ modifier 解析沿用现有 `add/modify` 命令里的本地风格，不要发明
 
 支持脚本用 JSON 输出。
 
-- [ ] **Step 5：注册命令**
+- [x] **Step 5：注册命令**
 
 在 root：
 
@@ -1143,7 +1143,7 @@ cmd.AddCommand(newWorkspaceCommand(opts))
 
 必要时更新 `knownSubcommands` 相关测试。
 
-- [ ] **Step 6：运行 user/workspace CLI 测试**
+- [x] **Step 6：运行 user/workspace CLI 测试**
 
 Run:
 
@@ -1153,7 +1153,7 @@ go test ./tests/integration -run 'TestCLIUserWorkspaceLifecycle' -count=1
 
 Expected: PASS。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add internal/cli/user.go internal/cli/workspace.go internal/cli/root.go tests/integration/cli_test.go
