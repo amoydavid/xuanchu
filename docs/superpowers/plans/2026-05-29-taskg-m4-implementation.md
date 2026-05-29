@@ -81,7 +81,7 @@
 - `internal/app/service_test.go`
   runtime context、permission、audit、isolation 单元测试。
 - `internal/cli/root.go`
-  增加 `--workspace`，移除 `rc.context.active`，注册新命令组。
+  增加 `--workspace`，停止持久读写旧 `context.active`，保留 `rc.context=...` 的 in-memory override 行为，注册新命令组。
 - `internal/cli/config.go`
   展示新的 active key，停止读写旧 `context.active`。
 - `internal/cli/context.go`
@@ -182,8 +182,8 @@ type Workspace struct {
     Name            string `gorm:"not null"`
     CreatedByUserID *string
     Description     string
-    Visibility      string `gorm:"not null;default:private"`
-    SettingsJSON    string `gorm:"not null;default:{}"`
+    Visibility      string `gorm:"not null;default:'private'"`
+    SettingsJSON    string `gorm:"not null;default:'{}'"`
     ArchivedAt      *int64
     CreatedAt       int64 `gorm:"not null"`
     ModifiedAt      int64 `gorm:"not null"`
@@ -341,7 +341,17 @@ go test ./internal/storage/sqlite -run 'UserRepository|WorkspaceRepository|Membe
 
 Expected: PASS。
 
-- [ ] **Step 5：提交**
+- [ ] **Step 5：Chunk 1 构建检查**
+
+Run:
+
+```bash
+CGO_ENABLED=0 go build ./cmd/taskg
+```
+
+Expected: PASS。Chunk 1 引入新 schema/repo 后必须保持中间状态可构建，避免把编译错误拖到后续 runtime 接线阶段。
+
+- [ ] **Step 6：提交**
 
 ```bash
 git add internal/storage/sqlite/*repo.go internal/storage/sqlite/*test.go
@@ -389,6 +399,8 @@ func (s *Service) addLocked(input AddInput) (task.Task, error) {
 - 闭包必须调用 tx-bound service 上的 `xxxLocked` 方法，不能调用外层 service 的 public 方法。
 - `xxxLocked` 方法不调用 `Require`，也不打开新的 app-level audit transaction。
 - `withAudit` 从闭包接收 `AuditEntry`，这样 task UUID 这类运行时生成的 target ID 也能被审计。
+- 需要写多条审计记录的业务路径使用 `withAuditEntries`，闭包返回 `[]AuditEntry`，helper 在同一个 store-level transaction 内逐条 append。禁止通过连续调用两次 `withAudit` 实现一个业务操作的多审计。
+- 本计划统一使用局部变量 capture 从 audit 闭包带出业务返回值；不新增泛型 helper。
 - 自动状态维护（`refreshAutomaticStateLocked`、recurring child creation）属于内部维护，绕过用户权限检查，但必须保持 workspace-scoped。除非 spec 明确列出，否则不写独立 public audit action。
 - M4 不读取 TOML `context.active`。如果用户只依赖 TOML active context，升级后需要手动运行一次 `taskg context use <name>`。
 
@@ -483,10 +495,21 @@ type ServiceOptions struct {
 新增 helper：
 
 ```go
+type RuntimeError struct { Code, Message string }
+func (e RuntimeError) Error() string { return e.Message }
+
 func activeWorkspaceMetaKey(userID string) string
 func activeContextMetaKey(userID, workspaceID string) string
 func (s *Service) Runtime() RuntimeContext
 ```
+
+`ResolveRuntimeContext` 必须返回带 code 的错误，至少覆盖：
+
+- workspace 不存在：`workspace_not_found`
+- workspace 已归档：`workspace_archived`
+- actor 不是该 workspace member：`membership_not_found`
+
+这些 code 是 Task 9 CLI 错误语义测试的来源，不要只返回普通字符串错误。
 
 - [ ] **Step 5：更新 service 构造**
 
@@ -706,6 +729,7 @@ type AuditListInput struct {
 }
 
 type AuditEntry struct {
+    Action string
     TargetType string
     TargetID string
     Payload map[string]any
@@ -730,18 +754,41 @@ func (s *Service) withAudit(action string, fn func(*Service) (AuditEntry, error)
 }
 ```
 
+同时实现多审计 helper：
+
+```go
+func (s *Service) withAuditEntries(fn func(*Service) ([]AuditEntry, error)) error {
+    return s.store.Transaction(func(txStore *sqlite.Store) error {
+        txSvc, err := s.withStore(txStore)
+        if err != nil { return err }
+        entries, err := fn(txSvc)
+        if err != nil { return err }
+        for _, entry := range entries {
+            if err := txSvc.auditRepo.Append(sqlite.AuditLogEntry{
+                ActorUserID: &txSvc.runtime.ActorUserID,
+                WorkspaceID: &txSvc.runtime.WorkspaceID,
+                Action: entry.Action,
+                TargetType: entry.TargetType,
+                TargetID: entry.TargetID,
+                PayloadJSON: marshalAuditPayload(entry.Payload),
+                CreatedAt: txSvc.clock.Unix(),
+            }); err != nil {
+                return err
+            }
+        }
+        return nil
+    })
+}
+```
+
 注意：
 
 - 闭包必须调用 tx-bound 的 `xxxLocked` 方法，不能调用外层 service 的 public 方法。
 - 闭包在拿到运行时生成的 ID 后返回 `AuditEntry`。
 - 如果 `TaskRepository.Update` 内部开启嵌套 transaction，GORM savepoint 可以接受；但闭包里不能使用外层 `s` 的非 tx-bound repo。
-- 如果需要返回值，可以增加：
-
-```go
-func (s *Service) withAuditValue[T any](action string, fn func(*Service) (T, AuditEntry, error)) (T, error)
-```
-
-如果不想在 app helper 中使用泛型，就按前面的架构决策，用局部变量 capture 返回值，并保持 `withAudit` 非泛型。
+- 如果需要从闭包返回业务值，使用局部变量 capture。不要新增泛型 helper。
+- 单条审计的 `withAudit(action, fn)` 可以作为 `withAuditEntries` 的薄包装，包装时给 `AuditEntry.Action` 补上 action。
+- 需要多条审计的业务路径必须调用 `withAuditEntries` 一次完成，不能连续调用两次 `withAudit`。
 
 - [ ] **Step 4：包裹写路径**
 
@@ -810,7 +857,7 @@ git commit -m "feat: 审计 M4 写操作"
 
 - [ ] **Step 1：写失败的 active context 隔离测试**
 
-用 app 或 CLI 测试覆盖：
+用 app-level 测试覆盖 active context 隔离；CLI 旧 key 兼容行为放到 Step 5/Step 6 的 CLI 测试里覆盖：
 
 1. Owner define context `work`。
 2. 添加 Bob，并把 Bob 加到同一个 workspace。
@@ -843,7 +890,7 @@ func (s *Service) activeContextMetaKey() string {
 `activeContextName` 顺序：
 
 1. `activeContextOverride`。
-2. `runtimeOverrides["context"]`，只用于 `rc.context=none` / `rc.context:<value>` 这种本次运行覆盖，不持久化。
+2. `runtimeOverrides["context.active"]`，只用于 `rc.context=none` / `rc.context:<value>` 这种本次运行覆盖，不持久化。这个 key 只是 in-memory override key，为兼容现有 root parser 保留；它不是 SQLite meta key。
 3. Store meta `active_context.<user_id>.<workspace_id>`。
 
 M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，升级后需要运行一次 `taskg context use <name>`。这样避免重新引入机器级共享 active context。
@@ -853,7 +900,7 @@ M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，
 在 root：
 
 - 从 public config allowlist 中移除 `"context.active"`。
-- 保留 `rc.context=none`、`rc.context:`、`rc.context=`，映射到本次运行的 no-context/override 行为。
+- 保留 `rc.context=none`、`rc.context:`、`rc.context=`，映射到本次运行的 no-context/override 行为，内部仍可落到 `RuntimeOverrides["context.active"]`。
 - 拒绝 `rc.context.active=...`。
 
 - [ ] **Step 5：更新 show/config 行为**
@@ -862,7 +909,7 @@ M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，
 
 `show` 显示 `active.context=<name>` 或空值，不显示 `context.active`。
 
-`_show context.active` 和 `config get context.active` 应返回清晰的 unsupported legacy key 错误。不要在旧 key 下静默返回 scoped active context。
+`_get rc.context.active`、`_show context.active` 和 `config get context.active` 应返回清晰的 unsupported legacy key 错误。不要在旧 key 下静默返回 scoped active context，也不要静默接受 `config set context.active ...`。
 
 清理检查：
 
@@ -935,7 +982,9 @@ func (s *Service) UserInfo(ref string) (UserView, error)
 - 创建 `visibility=private` 的 personal workspace。
 - 创建 owner membership。
 - 设置 user default workspace。
-- 写 audit `user.add` 和 `workspace.add`。
+- 使用 `withAuditEntries` 一次写 audit `user.add` 和 `workspace.add`。不要连续调用两次 `withAudit`。
+
+权限：`AddUser` 是本地身份管理动作，不套用当前 workspace role permission；但必须有非空 actor，并在 audit 中记录 actor。不要用 `PermissionWorkspaceModify` 或 `PermissionMemberManageOwner` 来保护它，否则会把 user 管理错误地绑定到当前 workspace。
 
 `UseUser` 写入 `active_user_id` 并审计 `user.use`。它不需要当前 service 的 workspace membership，只需要解析目标 user 的 default/active workspace。
 
@@ -954,14 +1003,21 @@ func (s *Service) ArchiveWorkspace(ref string) error
 
 Archive 算法：
 
-1. 需要 owner。
+1. 需要 `s.Require(PermissionWorkspaceArchive)`，只允许 owner。
 2. 找出所有受影响 users：`default_workspace_id = target`，或 `active_workspace.<user_id>` 指向 target。
 3. 对每个受影响 user，查找其他未归档 membership workspace，按 slug 排序，并明确排除 target。
 4. 如果任一 user 没有可替代 workspace，整个 archive 失败。
 5. 更新受影响 user 的 default workspace。
 6. 如果受影响 user 的 active meta 指向 target，则更新为该 user 选中的替代 workspace。
 7. 归档 target。
-8. 写 audit `workspace.archive`。
+8. 写 audit `workspace.archive`。不要为 default workspace 的副作用更新额外写 `user.default_changed`；把被重新分配的 user 和目标 workspace 摘要放进 `workspace.archive` payload。
+
+其他 workspace 方法权限：
+
+- `AddWorkspace` 不调用 role `Require`；它只要求当前 actor 非空，创建后当前 actor 成为 owner，并审计 `workspace.add`。
+- `UseWorkspace` 不调用 role `Require`；它要求当前 actor 是目标 workspace member、目标 workspace 未归档，写 `active_workspace.<user_id>` 并审计 `workspace.use`。
+- `ModifyWorkspace` 需要 `PermissionWorkspaceModify`，并审计 `workspace.modify`。
+- 上述需要权限的检查必须在 `withAudit/withAuditEntries` 外层执行。
 
 - [ ] **Step 5：实现 member APIs**
 
@@ -978,6 +1034,12 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error
 - owner 可以授予 owner。
 - 不能降级最后一个 owner。
 - M4 不提供 member delete。
+
+权限检查必须在 audit transaction 外层执行：
+
+- `ListMembers` 对 viewer 开放，不需要 member 管理权限。
+- `AddMember` 如果目标 role 是 owner，需要 `PermissionMemberManageOwner`；否则需要 `PermissionMemberManage`。
+- `ChangeMemberRole` 如果 `newRole == owner` 或当前 role 是 owner，需要 `PermissionMemberManageOwner`；否则需要 `PermissionMemberManage`。
 
 - [ ] **Step 6：运行 app API 测试**
 
@@ -1218,7 +1280,7 @@ Expected: FAIL，直到 `--workspace` 和 runtime context 完整贯通。
 搜索：
 
 ```bash
-rg "store\\.LocalWorkspace|LocalWorkspace\\(|context\\.active" internal/app internal/cli
+rg "\\.LocalWorkspace\\b|context\\.active" internal/app internal/cli
 ```
 
 修复：
@@ -1277,9 +1339,12 @@ git commit -m "fix: 贯通 workspace 隔离"
 - 自动维护必须保持 workspace-scoped，不能暴露或修改其他 workspace。
 - 如果 recurring child creation 可以从 read path 触发，它也作为内部维护绕过权限检查。如果实现时觉得范围过宽，可以缩窄触发点，让 read path 不创建 recurring child；但不能让 viewer read 失败。
 
-- [ ] **Step 3：补 recurring child + audit 测试**
+- [ ] **Step 3：补自动维护 scope 和 recurring audit 测试**
 
-测试：对 recurring child 执行 `Done` 会写 `task.done` audit，并且下一个 child 仍在同一 workspace。
+测试：
+
+- 两个 workspace 各有一个 waiting task；actor/viewer 在其中一个 workspace 执行 `List`，只有当前 workspace 的 waiting task 被推进。
+- 对 recurring child 执行 `Done` 会写 `task.done` audit，并且下一个 child 仍在同一 workspace。
 
 - [ ] **Step 4：按需重构 transaction 边界**
 
@@ -1327,6 +1392,7 @@ git commit -m "feat: 完善循环任务审计路径"
 - role 概览与警告：M4 没有 `member delete`；viewer 仍能读取 workspace 数据。
 - migrated `local` user 的 email 是 empty/null。
 - M3 到 M4 升级行为：现有任务留在 local workspace；自动创建 local user/workspace/membership；旧 `context.active` meta 会迁移到 `(local user, local workspace)` scoped active context。
+- M3 用户升级后第一次运行 `taskg` 会自动完成迁移，不需要手动执行迁移命令。
 
 - [ ] **Step 2：更新 ROADMAP**
 
