@@ -173,6 +173,33 @@ func TestCompileQueryRejectsUnknownUDA(t *testing.T) {
 	}
 }
 
+func TestCompileQueryOrphanUDANotNullDoesNotRequireSchema(t *testing.T) {
+	expr, err := query.ParseQuery(`uda.legacy_field.notnull`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, args, err := CompileQuery(expr, QueryCompileOptions{WorkspaceID: "w1"})
+	if err != nil {
+		t.Fatalf("CompileQuery(orphan notnull) error = %v", err)
+	}
+	if !strings.Contains(sql, "EXISTS") || !strings.Contains(sql, "task_uda_values.name = ?") {
+		t.Fatalf("sql = %s", sql)
+	}
+	if len(args) == 0 || args[len(args)-1] != "legacy_field" {
+		t.Fatalf("args = %#v, want legacy_field as UDA name", args)
+	}
+}
+
+func TestCompileQueryOrphanUDAValueStillRequiresSchema(t *testing.T) {
+	expr, err := query.ParseQuery(`legacy_field:old`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := CompileQuery(expr, QueryCompileOptions{WorkspaceID: "w1"}); err == nil {
+		t.Fatal("CompileQuery(orphan value) error = nil, want unknown UDA")
+	}
+}
+
 func TestResolveDeadlineDateValueUsesEndOfDay(t *testing.T) {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {

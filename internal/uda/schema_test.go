@@ -8,7 +8,7 @@ func TestUDASchemaValidation(t *testing.T) {
 			t.Fatalf("ValidateDefinition(%s) error = %v", typ, err)
 		}
 	}
-	for _, name := range []string{"uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "tag"} {
+	for _, name := range []string{"uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "tag", "mask", "imask"} {
 		if err := ValidateDefinition(Definition{Name: name, Type: TypeString}); err == nil {
 			t.Fatalf("ValidateDefinition(%q) error = nil, want conflict", name)
 		}

@@ -43,7 +43,7 @@ func (s *Service) UseContext(name string) error {
 
 func (s *Service) ContextNone() error {
 	s.activeContextOverride = nil
-	return s.store.DeleteMeta(activeContextMetaKey)
+	return s.store.SetMeta(activeContextMetaKey, "")
 }
 
 func (s *Service) ContextShow() (string, error) {
@@ -113,9 +113,18 @@ func (s *Service) activeContextName() (string, bool, error) {
 	if s.activeContextOverride != nil {
 		return *s.activeContextOverride, *s.activeContextOverride != "", nil
 	}
+	if name, ok := s.runtimeOverrides[activeContextMetaKey]; ok {
+		return name, name != "", nil
+	}
 	name, ok, err := s.store.GetMeta(activeContextMetaKey)
 	if err != nil {
 		return "", false, err
 	}
-	return name, ok, nil
+	if ok {
+		return name, name != "", nil
+	}
+	if name, ok := s.runtimeConfig[activeContextMetaKey]; ok {
+		return name, name != "", nil
+	}
+	return "", false, nil
 }

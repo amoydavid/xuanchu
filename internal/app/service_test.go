@@ -9,6 +9,7 @@ import (
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/taskg/internal/urgency"
 )
 
 func strptr(v string) *string { return &v }
@@ -133,6 +134,145 @@ func TestConfigSetRoutesUDASchemaKeys(t *testing.T) {
 	}
 	if ok || got != "" {
 		t.Fatalf("uda.estimate.values after unset = %q, %v", got, ok)
+	}
+}
+
+func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc, err := NewService(ServiceOptions{
+		Store:         store,
+		Clock:         fixedClock{NowUnix: 100},
+		RuntimeConfig: map[string]string{"uda.estimate.type": "string"},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if err := svc.SetConfig("uda.estimate.type", "numeric"); err != nil {
+		t.Fatalf("SetConfig(type) error = %v", err)
+	}
+	got, ok, err := svc.GetConfig("uda.estimate.type")
+	if err != nil {
+		t.Fatalf("GetConfig(type) error = %v", err)
+	}
+	if !ok || got != "numeric" {
+		t.Fatalf("uda.estimate.type = %q, %v; want numeric from DB", got, ok)
+	}
+	values, err := svc.ConfigValues()
+	if err != nil {
+		t.Fatalf("ConfigValues() error = %v", err)
+	}
+	if values["uda.estimate.type"] != "numeric" {
+		t.Fatalf("ConfigValues()[uda.estimate.type] = %q, want numeric from DB", values["uda.estimate.type"])
+	}
+	if _, err := svc.Add(AddInput{Description: "bad estimate", UDAs: map[string]string{"estimate": "not-number"}}); err == nil {
+		t.Fatal("Add() error = nil, want DB numeric schema to override runtime string default")
+	}
+}
+
+func TestConfigSetOverridesRuntimeMetaDefaults(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc, err := NewService(ServiceOptions{
+		Store: store,
+		Clock: fixedClock{NowUnix: 100},
+		RuntimeConfig: map[string]string{
+			"date.format":                        "epoch",
+			"urgency.uda.estimate.coefficient":   "2",
+			"urgency.uda.estimate.3.coefficient": "3",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if err := svc.SetConfig("date.format", "rfc3339"); err != nil {
+		t.Fatalf("SetConfig(date.format) error = %v", err)
+	}
+	if err := svc.SetConfig("urgency.uda.estimate.coefficient", "10"); err != nil {
+		t.Fatalf("SetConfig(urgency coefficient) error = %v", err)
+	}
+	got, ok, err := svc.GetConfig("date.format")
+	if err != nil {
+		t.Fatalf("GetConfig(date.format) error = %v", err)
+	}
+	if !ok || got != "rfc3339" {
+		t.Fatalf("date.format = %q, %v; want rfc3339 from DB", got, ok)
+	}
+	got, ok, err = svc.GetConfig("urgency.uda.estimate.coefficient")
+	if err != nil {
+		t.Fatalf("GetConfig(urgency coefficient) error = %v", err)
+	}
+	if !ok || got != "10" {
+		t.Fatalf("urgency coefficient = %q, %v; want 10 from DB", got, ok)
+	}
+}
+
+func TestUrgencyUsesConfiguredUDACoefficients(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.SetConfig("uda.estimate.type", "numeric"); err != nil {
+		t.Fatalf("SetConfig(uda type) error = %v", err)
+	}
+	if err := svc.SetConfig("urgency.uda.estimate.coefficient", "10"); err != nil {
+		t.Fatalf("SetConfig(uda coefficient) error = %v", err)
+	}
+	if err := svc.SetConfig("urgency.uda.estimate.3.coefficient", "7"); err != nil {
+		t.Fatalf("SetConfig(uda value coefficient) error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "estimated", UDAs: map[string]string{"estimate": "3"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	explain, err := svc.ExplainUrgency(created.UUID)
+	if err != nil {
+		t.Fatalf("ExplainUrgency() error = %v", err)
+	}
+	if !hasUrgencyItem(explain, "uda.estimate") || !hasUrgencyItem(explain, "uda.estimate.3") {
+		t.Fatalf("urgency items = %#v", explain.Items)
+	}
+	if explain.Total < 17 {
+		t.Fatalf("urgency total = %f, want UDA coefficients applied", explain.Total)
+	}
+}
+
+func TestUrgencyUsesRuntimeUDACoefficients(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc, err := NewService(ServiceOptions{
+		Store: store,
+		Clock: fixedClock{NowUnix: 100},
+		RuntimeConfig: map[string]string{
+			"uda.estimate.type":                  "numeric",
+			"urgency.uda.estimate.coefficient":   "10",
+			"urgency.uda.estimate.3.coefficient": "7",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "runtime estimated", UDAs: map[string]string{"estimate": "3"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	explain, err := svc.ExplainUrgency(created.UUID)
+	if err != nil {
+		t.Fatalf("ExplainUrgency() error = %v", err)
+	}
+	if !hasUrgencyItem(explain, "uda.estimate") || !hasUrgencyItem(explain, "uda.estimate.3") {
+		t.Fatalf("urgency items = %#v", explain.Items)
 	}
 }
 
@@ -279,6 +419,35 @@ func TestContextDefineUseShowNoneDelete(t *testing.T) {
 	}
 	if show, err := svc.ContextShow(); err != nil || show != "" {
 		t.Fatalf("ContextShow() after delete active = %q, %v", show, err)
+	}
+}
+
+func TestContextNonePersistsEmptyOverrideOverRuntimeConfig(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	svc, err := NewService(ServiceOptions{
+		Store:         store,
+		Clock:         fixedClock{NowUnix: 100},
+		RuntimeConfig: map[string]string{"context.active": "work"},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if err := svc.DefineContext("work", "project:work"); err != nil {
+		t.Fatalf("DefineContext() error = %v", err)
+	}
+	if show, err := svc.ContextShow(); err != nil || !strings.Contains(show, "work") {
+		t.Fatalf("ContextShow() with runtime config = %q, %v", show, err)
+	}
+	if err := svc.ContextNone(); err != nil {
+		t.Fatalf("ContextNone() error = %v", err)
+	}
+	if show, err := svc.ContextShow(); err != nil || show != "" {
+		t.Fatalf("ContextShow() after none = %q, %v", show, err)
 	}
 }
 
@@ -831,6 +1000,15 @@ func TestRecurringStopsAtUntil(t *testing.T) {
 func containsTask(tasks []task.Task, uuid string) bool {
 	for _, tsk := range tasks {
 		if tsk.UUID == uuid {
+			return true
+		}
+	}
+	return false
+}
+
+func hasUrgencyItem(explain urgency.ExplainResult, name string) bool {
+	for _, item := range explain.Items {
+		if item.Name == name {
 			return true
 		}
 	}

@@ -99,3 +99,11 @@ func TestParseModifyArgsAllowsUDAFields(t *testing.T) {
 		t.Fatalf("ClearUDAs = %#v", mod.ClearUDAs)
 	}
 }
+
+func TestParseModifyArgsDoesNotTreatReservedFieldsAsUDA(t *testing.T) {
+	for _, arg := range []string{"mask:abc", "imask:1"} {
+		if _, err := ParseModifyArgs([]string{arg}); err == nil {
+			t.Fatalf("ParseModifyArgs(%q) error = nil, want reserved field rejected", arg)
+		}
+	}
+}

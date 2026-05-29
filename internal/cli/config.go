@@ -210,6 +210,10 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 		return config.Runtime{}, err
 	}
 	defer store.Close()
+	return runtimeFromResolvedConfig(opts, cfg, store, env)
+}
+
+func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.Store, env map[string]string) (config.Runtime, error) {
 	meta, err := store.ListMeta()
 	if err != nil {
 		return config.Runtime{}, err
@@ -234,10 +238,12 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 		Meta:        meta,
 		Env:         env,
 		RCOverrides: opts.RCOverrides,
-		Defaults: map[string]string{
+		Flags: map[string]string{
 			"database.path": cfg.DatabasePath,
-			"json":          fmt.Sprintf("%v", opts.JSON),
-			"color":         fmt.Sprintf("%v", !opts.NoColor),
+		},
+		Defaults: map[string]string{
+			"json":  fmt.Sprintf("%v", opts.JSON),
+			"color": fmt.Sprintf("%v", !opts.NoColor),
 		},
 	})
 }

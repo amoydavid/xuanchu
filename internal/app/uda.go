@@ -30,7 +30,23 @@ func (s *Service) DeleteUDA(name string) error {
 }
 
 func (s *Service) ListUDAs() ([]uda.Definition, error) {
-	return s.udaRepo.ListDefinitions(s.workspaceID)
+	defs, err := s.udaRepo.ListDefinitions(s.workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]uda.Definition, len(defs)+len(s.runtimeUDAs))
+	for name, def := range s.runtimeUDAs {
+		byName[name] = def
+	}
+	for _, def := range defs {
+		byName[def.Name] = def
+	}
+	out := make([]uda.Definition, 0, len(byName))
+	for _, def := range byName {
+		out = append(out, def)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }
 
 func (s *Service) udaDefinitionTypes() (map[string]string, error) {
@@ -62,11 +78,20 @@ func (s *Service) GetConfig(key string) (string, bool, error) {
 	if strings.HasPrefix(key, "uda.") {
 		return s.getUDAConfig(key)
 	}
+	if value, ok := s.runtimeOverrides[key]; ok {
+		return value, true, nil
+	}
 	value, ok, err := s.store.GetMeta(key)
 	if err != nil {
 		return "", false, err
 	}
-	return value, ok, nil
+	if ok {
+		return value, true, nil
+	}
+	if value, ok := s.runtimeConfig[key]; ok {
+		return value, true, nil
+	}
+	return "", false, nil
 }
 
 func (s *Service) UnsetConfig(key string) error {
@@ -83,7 +108,7 @@ func (s *Service) UnsetConfig(key string) error {
 }
 
 func (s *Service) ConfigValues() (map[string]string, error) {
-	values, err := s.store.ListMeta()
+	values, err := s.mergedConfigValues()
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +200,7 @@ func (s *Service) getUDAConfig(key string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
+	def, err := s.udaDefinition(name)
 	if err == sqlite.ErrNotFound {
 		return "", false, nil
 	}
@@ -254,7 +279,7 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 		if current, ok := out[name]; ok && current.Orphan && !allowOrphan {
 			return nil, fmt.Errorf("modifying orphan UDA %q is not allowed", name)
 		}
-		if _, err := s.udaRepo.GetDefinition(s.workspaceID, name); err == sqlite.ErrNotFound && !allowOrphan {
+		if _, err := s.udaDefinition(name); err == sqlite.ErrNotFound && !allowOrphan {
 			return nil, fmt.Errorf("UDA %q is not defined", name)
 		} else if err != nil {
 			return nil, err
@@ -272,7 +297,7 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 		if current, ok := out[name]; ok && current.Orphan && !allowOrphan {
 			return nil, fmt.Errorf("modifying orphan UDA %q is not allowed", name)
 		}
-		def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
+		def, err := s.udaDefinition(name)
 		if err == sqlite.ErrNotFound {
 			if !allowOrphan {
 				return nil, fmt.Errorf("UDA %q is not defined", name)
@@ -300,7 +325,7 @@ func (s *Service) normalizeImportedUDAs(values map[string]task.UDAValue) (map[st
 	out := map[string]task.UDAValue{}
 	for name, value := range values {
 		name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
-		def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
+		def, err := s.udaDefinition(name)
 		if err == sqlite.ErrNotFound {
 			if value.Raw != "" {
 				out[name] = task.UDAValue{Name: name, Raw: value.Raw, Type: value.Type, Orphan: true}
@@ -319,6 +344,90 @@ func (s *Service) normalizeImportedUDAs(values map[string]task.UDAValue) (map[st
 		}
 	}
 	return out, nil
+}
+
+func (s *Service) udaDefinition(name string) (uda.Definition, error) {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
+	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
+	if err == nil {
+		return def, nil
+	}
+	if err != sqlite.ErrNotFound {
+		return uda.Definition{}, err
+	}
+	if def, ok := s.runtimeUDAs[name]; ok {
+		return def, nil
+	}
+	return uda.Definition{}, sqlite.ErrNotFound
+}
+
+func (s *Service) mergedConfigValues() (map[string]string, error) {
+	values := cloneStringMap(s.runtimeConfig)
+	if values == nil {
+		values = map[string]string{}
+	}
+	meta, err := s.store.ListMeta()
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range meta {
+		values[key] = value
+	}
+	for key, value := range s.runtimeOverrides {
+		values[key] = value
+	}
+	return values, nil
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func udaDefinitionsFromConfig(values map[string]string) (map[string]uda.Definition, error) {
+	defs := map[string]uda.Definition{}
+	for key, value := range values {
+		if !strings.HasPrefix(key, "uda.") {
+			continue
+		}
+		name, field, err := splitUDAConfigKey(key)
+		if err != nil {
+			return nil, err
+		}
+		def := defs[name]
+		if def.Name == "" {
+			def = uda.Definition{Name: name, Type: uda.TypeString}
+		}
+		switch field {
+		case "type":
+			def.Type = uda.Type(value)
+		case "label":
+			def.Label = value
+		case "values":
+			def.Values = uda.ParseValuesCSV(value)
+		case "default":
+			def.Default = value
+		default:
+			return nil, fmt.Errorf("unknown UDA config field %q", field)
+		}
+		defs[name] = def
+	}
+	for name, def := range defs {
+		if def.Type == "" {
+			def.Type = uda.TypeString
+		}
+		if err := uda.ValidateDefinition(def); err != nil {
+			return nil, err
+		}
+		defs[name] = def
+	}
+	return defs, nil
 }
 
 func cloneUDAs(values map[string]task.UDAValue) map[string]task.UDAValue {

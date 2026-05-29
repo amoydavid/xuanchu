@@ -430,11 +430,13 @@ func getCmdBoolFlag(cmd *cobra.Command, name string, fallback bool) bool {
 }
 
 func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
+	env := runtimeEnv()
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
 		JSON:    opts.JSON,
 		NoColor: opts.NoColor,
+		Env:     env,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -443,7 +445,19 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	svc, err := app.NewService(app.ServiceOptions{Store: store, NoContext: opts.NoContext})
+	runtimeOpts := opts
+	runtimeOpts.RCOverrides = nil
+	rt, err := runtimeFromResolvedConfig(runtimeOpts, cfg, store, env)
+	if err != nil {
+		_ = store.Close()
+		return nil, nil, err
+	}
+	svc, err := app.NewService(app.ServiceOptions{
+		Store:            store,
+		NoContext:        opts.NoContext,
+		RuntimeConfig:    rt.Values(),
+		RuntimeOverrides: rcOverridesAsStrings(opts.RCOverrides),
+	})
 	if err != nil {
 		_ = store.Close()
 		return nil, nil, err
@@ -456,6 +470,21 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		}
 	}
 	return svc, store.Close, nil
+}
+
+func rcOverridesAsStrings(overrides map[string]*string) map[string]string {
+	if len(overrides) == 0 {
+		return nil
+	}
+	values := map[string]string{}
+	for key, value := range overrides {
+		if value == nil {
+			values[key] = ""
+			continue
+		}
+		values[key] = *value
+	}
+	return values
 }
 
 func runtimeEnv() map[string]string {

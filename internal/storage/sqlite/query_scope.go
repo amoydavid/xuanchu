@@ -201,10 +201,6 @@ func compareDateColumn(column string, p query.Predicate, opts QueryCompileOption
 
 func compileUDAPredicate(p query.Predicate, opts QueryCompileOptions) (string, []any, error) {
 	name := p.Field
-	typ, ok := opts.UDADefinitions[name]
-	if !ok {
-		return "", nil, fmt.Errorf("unknown UDA %q", name)
-	}
 	base := "task_uda_values.workspace_id = ? AND task_uda_values.task_uuid = tasks.uuid AND task_uda_values.name = ?"
 	baseArgs := []any{opts.WorkspaceID, name}
 	switch p.Operator {
@@ -212,6 +208,10 @@ func compileUDAPredicate(p query.Predicate, opts QueryCompileOptions) (string, [
 		return "NOT EXISTS (SELECT 1 FROM task_uda_values WHERE " + base + ")", baseArgs, nil
 	case query.OpNotNull:
 		return "EXISTS (SELECT 1 FROM task_uda_values WHERE " + base + ")", baseArgs, nil
+	}
+	typ, ok := opts.UDADefinitions[name]
+	if !ok {
+		return "", nil, fmt.Errorf("unknown UDA %q", name)
 	}
 	value := p.Value.Text
 	compareSQL := ""

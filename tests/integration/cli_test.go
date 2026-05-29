@@ -42,6 +42,65 @@ func TestCLIShowAndConfig(t *testing.T) {
 	}
 }
 
+func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
+	bin := buildTaskg(t)
+	dir := t.TempDir()
+	db := filepath.Join(dir, "taskg.db")
+	configDir := filepath.Join(dir, "config", "taskg")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+		"[context]",
+		"active = \"work\"",
+		"[uda.estimate]",
+		"type = \"numeric\"",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	run(t, bin, "--db", db, "context", "define", "work", "project:work")
+	runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "add", "work", "task", "project:work", "estimate:3")
+	runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "add", "home", "task", "project:home", "estimate:5")
+
+	show := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "_show", "context.active", "uda.estimate.type")
+	if strings.TrimSpace(show) != "work\nnumeric" {
+		t.Fatalf("_show from TOML = %q", show)
+	}
+	list := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "list")
+	if !strings.Contains(list, "work task") || strings.Contains(list, "home task") {
+		t.Fatalf("TOML context not applied to list: %q", list)
+	}
+	filtered := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "estimate:3", "list")
+	if !strings.Contains(filtered, "work task") || strings.Contains(filtered, "home task") {
+		t.Fatalf("TOML UDA schema not applied to query: %q", filtered)
+	}
+}
+
+func TestCLIShowDatabasePathUsesActualResolvedPath(t *testing.T) {
+	bin := buildTaskg(t)
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config", "taskg")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tomlDB := filepath.Join(dir, "toml.db")
+	flagDB := filepath.Join(dir, "flag.db")
+	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte("[database]\npath = \""+tomlDB+"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := strings.TrimSpace(runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", flagDB, "_show", "database.path"))
+	if got != flagDB {
+		t.Fatalf("database.path = %q, want actual --db path %q", got, flagDB)
+	}
+	got = strings.TrimSpace(runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", flagDB, "config", "get", "database.path"))
+	if got != flagDB {
+		t.Fatalf("config get database.path = %q, want actual --db path %q", got, flagDB)
+	}
+}
+
 func TestCLIConfigListUnsetAndShow(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
@@ -860,6 +919,20 @@ func projectRoot(t *testing.T) string {
 func run(t *testing.T, bin string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v error = %v\n%s", bin, args, err, out)
+	}
+	return string(out)
+}
+
+func runWithEnv(t *testing.T, env map[string]string, bin string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = os.Environ()
+	for key, value := range env {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %v error = %v\n%s", bin, args, err, out)

@@ -13,6 +13,7 @@ import (
 	"github.com/dajee/taskg/internal/report"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/taskg/internal/uda"
 	"github.com/dajee/taskg/internal/urgency"
 )
 
@@ -21,6 +22,9 @@ type Service struct {
 	repo                  *sqlite.TaskRepository
 	contextRepo           *sqlite.ContextRepository
 	udaRepo               *sqlite.UDARepository
+	runtimeConfig         map[string]string
+	runtimeOverrides      map[string]string
+	runtimeUDAs           map[string]uda.Definition
 	activeContextOverride *string
 	workspaceID           string
 	clock                 Clock
@@ -29,9 +33,13 @@ type Service struct {
 }
 
 type ServiceOptions struct {
-	Store     *sqlite.Store
-	Clock     Clock
-	NoContext bool
+	Store         *sqlite.Store
+	Clock         Clock
+	NoContext     bool
+	RuntimeConfig map[string]string
+	// RuntimeOverrides contains per-invocation rc.* values that must outrank
+	// both SQLite meta and file/runtime defaults.
+	RuntimeOverrides map[string]string
 }
 
 type AddInput struct {
@@ -98,15 +106,23 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtimeConfig := cloneStringMap(opts.RuntimeConfig)
+	runtimeUDAs, err := udaDefinitionsFromConfig(runtimeConfig)
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
-		store:          opts.Store,
-		repo:           sqlite.NewTaskRepository(opts.Store.DB()),
-		contextRepo:    sqlite.NewContextRepository(opts.Store.DB()),
-		udaRepo:        sqlite.NewUDARepository(opts.Store.DB()),
-		workspaceID:    ws.ID,
-		clock:          opts.Clock,
-		reports:        report.DefaultRegistry(),
-		disableContext: opts.NoContext,
+		store:            opts.Store,
+		repo:             sqlite.NewTaskRepository(opts.Store.DB()),
+		contextRepo:      sqlite.NewContextRepository(opts.Store.DB()),
+		udaRepo:          sqlite.NewUDARepository(opts.Store.DB()),
+		runtimeConfig:    runtimeConfig,
+		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
+		runtimeUDAs:      runtimeUDAs,
+		workspaceID:      ws.ID,
+		clock:            opts.Clock,
+		reports:          report.DefaultRegistry(),
+		disableContext:   opts.NoContext,
 	}, nil
 }
 
@@ -717,17 +733,21 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	blocked, blocking := buildDependencyState(allTasks, now)
 	tasks = applyReportScope(tasks, def.Scope, now, blocked, blocking)
 	if def.Sort == "urgency" {
+		urgencyOptions, err := s.urgencyConfig()
+		if err != nil {
+			return ReportResult{}, err
+		}
 		type taskWithUrgency struct {
 			Task  task.Task
 			Total float64
 		}
 		withUrgency := make([]taskWithUrgency, len(tasks))
 		for i, tsk := range tasks {
-			explain := urgency.Explain(tsk, urgency.Options{
-				NowUnix:  now,
-				Blocked:  blocked[tsk.UUID],
-				Blocking: blocking[tsk.UUID],
-			})
+			opts := urgencyOptions
+			opts.NowUnix = now
+			opts.Blocked = blocked[tsk.UUID]
+			opts.Blocking = blocking[tsk.UUID]
+			explain := urgency.Explain(tsk, opts)
 			withUrgency[i] = taskWithUrgency{Task: tsk, Total: explain.Total}
 		}
 		sort.SliceStable(withUrgency, func(i, j int) bool {
@@ -753,11 +773,46 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 		return urgency.ExplainResult{}, err
 	}
 	blocked, blocking := buildDependencyState(allTasks, s.clock.Unix())
-	return urgency.Explain(tsk, urgency.Options{
-		NowUnix:  s.clock.Unix(),
-		Blocked:  blocked[tsk.UUID],
-		Blocking: blocking[tsk.UUID],
-	}), nil
+	opts, err := s.urgencyConfig()
+	if err != nil {
+		return urgency.ExplainResult{}, err
+	}
+	opts.NowUnix = s.clock.Unix()
+	opts.Blocked = blocked[tsk.UUID]
+	opts.Blocking = blocking[tsk.UUID]
+	return urgency.Explain(tsk, opts), nil
+}
+
+func (s *Service) urgencyConfig() (urgency.Options, error) {
+	values, err := s.mergedConfigValues()
+	if err != nil {
+		return urgency.Options{}, err
+	}
+	opts := urgency.Options{
+		UDACoefficients:      map[string]float64{},
+		UDAValueCoefficients: map[string]float64{},
+	}
+	const prefix = "urgency.uda."
+	const suffix = ".coefficient"
+	for key, value := range values {
+		if !strings.HasPrefix(key, prefix) || !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		body := strings.TrimSuffix(strings.TrimPrefix(key, prefix), suffix)
+		if body == "" {
+			continue
+		}
+		coef, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return urgency.Options{}, fmt.Errorf("invalid urgency coefficient %q: %w", key, err)
+		}
+		if name, udaValue, ok := strings.Cut(body, "."); ok && name != "" && udaValue != "" {
+			opts.UDAValueCoefficients[name+"."+udaValue] = coef
+			continue
+		}
+		opts.UDACoefficients[body] = coef
+	}
+	return opts, nil
 }
 
 func (s *Service) resolveDependencyTargets(targets []string) ([]string, error) {

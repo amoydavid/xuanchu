@@ -165,7 +165,7 @@ func isPotentialUDAName(name string) bool {
 		return false
 	}
 	switch name {
-	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "tag":
+	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "tag", "mask", "imask":
 		return false
 	default:
 		return true
