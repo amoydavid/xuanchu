@@ -1428,7 +1428,7 @@ git commit -m "docs: 更新 M4 使用说明"
 **Files:**
 - 无计划改动；除非验证发现问题。
 
-- [ ] **Step 1：运行单元与集成测试**
+- [x] **Step 1：运行单元与集成测试**
 
 Run:
 
@@ -1438,7 +1438,7 @@ go test ./...
 
 Expected: PASS。
 
-- [ ] **Step 2：运行 CGO-free 测试**
+- [x] **Step 2：运行 CGO-free 测试**
 
 Run:
 
@@ -1448,7 +1448,7 @@ CGO_ENABLED=0 go test ./...
 
 Expected: PASS。
 
-- [ ] **Step 3：运行 CGO-free build**
+- [x] **Step 3：运行 CGO-free build**
 
 Run:
 
@@ -1458,7 +1458,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 Expected: PASS。
 
-- [ ] **Step 4：运行重点 CLI 集成测试**
+- [x] **Step 4：运行重点 CLI 集成测试**
 
 Run:
 
@@ -1468,7 +1468,7 @@ go test ./tests/integration -run TestCLI -count=1
 
 Expected: PASS。
 
-- [ ] **Step 5：检查最终 git 状态**
+- [x] **Step 5：检查最终 git 状态**
 
 Run:
 
@@ -1479,7 +1479,9 @@ git log --oneline -8
 
 Expected: 工作树干净，除了可选本地构建产物 `taskg`。如果出现未跟踪 `taskg`，只有确认它是本任务 build 生成物后才删除。
 
-- [ ] **Step 6：如果验证修复了问题，做最终提交**
+- [x] **Step 6：如果验证修复了问题，做最终提交**
+
+本次完整验证未发现新的代码问题，因此不需要额外的验证收尾提交。
 
 如果验证阶段有修复：
 
