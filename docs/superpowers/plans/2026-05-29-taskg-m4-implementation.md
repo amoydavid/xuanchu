@@ -235,7 +235,7 @@ go test ./internal/storage/sqlite -run 'TestOpenInitializesLocalUserWorkspaceAnd
 
 Expected: PASS。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
@@ -351,7 +351,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 Expected: PASS。Chunk 1 引入新 schema/repo 后必须保持中间状态可构建，避免把编译错误拖到后续 runtime 接线阶段。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add internal/storage/sqlite/*repo.go internal/storage/sqlite/*test.go
