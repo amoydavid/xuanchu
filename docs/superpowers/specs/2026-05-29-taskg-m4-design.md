@@ -89,6 +89,7 @@ M4 仍需保持脚本友好：
   - `user add <name> [email:<email>]`
   - `user use <name|email|uuid>`
   - `user info [name|email|uuid]`
+- `user add` 必须自动创建同名 personal workspace，并把该 workspace 设为新用户 default workspace。
 - app service 初始化时必须解析 actor user。
 
 不进入 M4：
@@ -106,6 +107,7 @@ M4 仍需保持脚本友好：
 - 扩展 `workspaces` 表。
 - 支持 active workspace 持久切换。
 - 支持全局 `--workspace <slug|uuid>` 单次覆盖。
+- workspace slug 全局唯一。
 - 支持 workspace 命令：
   - `workspace list [--all]`
   - `workspace add <slug> [name:<name>] [description:<text>] [visibility:private|team|public]`
@@ -160,6 +162,7 @@ M4 仍需保持脚本友好：
   - `_get`
   - `_urgency`
 - context 和 UDA 按 workspace 隔离。
+- active context 是 `(user_id, workspace_id)` 二维状态。
 - import/export 只作用于当前 workspace 或 `--workspace` 指定 workspace。
 - 数字 working-set ID 按 workspace 独立计算。
 
@@ -169,6 +172,7 @@ M4 仍需保持脚本友好：
 
 - 新增 `audit_logs` 表。
 - 记录本地关键写操作。
+- audit 范围内的写操作必须在同一个 store-level 事务内同时写业务表和 audit log。
 - 支持只读查看命令：
   - `audit list [--workspace <slug|uuid>]`
   - `audit list --json`
@@ -198,8 +202,9 @@ modified_at INTEGER NOT NULL
 
 - `id` 使用 UUID v4。
 - `name` 本地唯一，便于 CLI 使用；大小写是否敏感由 spec plan 明确，建议先大小写敏感，保持实现简单。
-- `email` 可为空；非空时唯一。
+- `email` 可为空；非空时唯一。SQLite 允许 `UNIQUE` 列中存在多个 `NULL`，M4 依赖这个行为。
 - `default_workspace_id` 指向该用户默认 workspace。
+- 迁移创建的 `local` user 的 `email` 必须为 `NULL`，不要写入假造邮箱。
 - 密码字段不进入 M4。
 
 ### workspaces
@@ -210,7 +215,7 @@ modified_at INTEGER NOT NULL
 id TEXT PRIMARY KEY
 slug TEXT NOT NULL
 name TEXT NOT NULL
-owner_user_id TEXT NOT NULL
+created_by_user_id TEXT
 description TEXT
 visibility TEXT NOT NULL DEFAULT 'private'
 settings_json TEXT NOT NULL DEFAULT '{}'
@@ -223,9 +228,13 @@ modified_at INTEGER NOT NULL
 
 - `slug` 是 CLI 主要引用方式。
 - workspace slug 建议全局唯一，避免本地 CLI 中同名 workspace 因 owner 不同而产生歧义。
+- workspace slug 必须匹配 `^[a-z0-9][a-z0-9_-]*$`，建议长度上限 64。
+- workspace slug 保留字至少包括 `all`、`none`、`current`。
+- `local` 是默认迁移 workspace slug，必须继续合法；是否禁止用户新建第二类特殊 local slug 由 plan 在唯一性约束下处理。
 - `visibility` 支持 `private/team/public`，M4 只保存和展示，不做 public discovery。
 - `archived_at != NULL` 表示归档。
-- `owner_user_id` 是创建时 owner，也用于默认展示；真实权限以 `memberships` 中是否有 owner 角色为准。
+- `created_by_user_id` 只表示创建者，不参与权限判定。
+- 当前 owner 完全由 `memberships.role = owner` 决定。
 
 ### memberships
 
@@ -264,6 +273,7 @@ created_at INTEGER NOT NULL
 - `workspace_id` 对 user-level 动作可为空，例如 `user add`。
 - `payload_json` 存储必要摘要，不存秘密。
 - audit 写入失败应让对应写操作失败，避免用户误以为审计完整。
+- 所有 audit 范围内的写操作必须在同一个 store-level 事务内同时写业务表和 `audit_logs`。禁止先提交业务表、再尝试补写 audit。
 
 ### api_tokens
 
@@ -281,15 +291,17 @@ M4 必须向前兼容 M0-M3 数据库。
 - 若现有 `local` workspace 没有 owner，则绑定到 `local` user。
 - 为 `local` user 和 `local` workspace 创建 owner membership。
 - 为 `local` user 设置 default workspace。
+- 迁移创建的 `local` user 不设置 email。
 - 如果已有 `contexts`、UDA schema/value、tasks，它们继续使用原 `workspace_id`。
 - 不修改任务 UUID、entry、modified、working-set 可见语义。
 - 所有迁移必须幂等，重复打开数据库不重复创建 user/workspace/member。
+- M4 必须保证每个 active/default workspace 都是未归档 workspace。
 
 兼容体验：
 
 - 用户升级后直接运行 `taskg list`，行为应与 M3 一致。
 - 用户没有创建额外 workspace 前，现有命令仍默认使用 `local` workspace。
-- 旧配置中的 context active 状态继续作用于 `local` workspace。
+- 旧配置中的 context active 状态迁移为 `active_context.<local_user_id>.<local_workspace_id>`。
 
 ## 6. 运行时上下文
 
@@ -328,6 +340,14 @@ active workspace：
 - `--workspace` 只影响本次运行，不写 meta。
 - active workspace 必须是当前 actor 可见且未归档 workspace。
 
+active context：
+
+- active context 是 `(user_id, workspace_id)` 二维状态。
+- 建议使用 meta key：`active_context.<user_id>.<workspace_id>`。
+- `context use`、`context none` 只影响当前 actor 在当前 workspace 中的 active context。
+- `--no-context` 和 `rc.context=none` 继续只影响本次运行。
+- 禁止 workspace 级共享 active context，避免 Alice 切换 context 后影响 Bob。
+
 ## 7. 权限矩阵
 
 M4 的权限必须真实生效。
@@ -351,7 +371,7 @@ M4 的权限必须真实生效。
 说明：
 
 - M4 不做成员删除。若必须撤销访问，应通过 `member role <user> viewer` 临时降权，成员删除留给后续 spec。
-- `context use/none` 修改当前 actor 的本地状态。为保持简单，M4 仍沿用现有 workspace-level active context；如果 plan 发现当前实现无法区分用户级 context active 状态，M4 可以先让 `viewer` 禁止 context 写操作。
+- `context use/none` 修改当前 actor 在当前 workspace 的 active context。
 - 所有权限错误使用稳定错误语义，human 输出到 stderr，JSON 输出结构化错误。
 
 ## 8. CLI 命令细节
@@ -367,7 +387,7 @@ human 输出建议列：
 
 ```text
 ACTIVE  NAME   EMAIL               DEFAULT
-*       local  local@example.test   local
+*       local                      local
 ```
 
 JSON 字段：
@@ -376,7 +396,7 @@ JSON 字段：
 {
   "id": "uuid",
   "name": "local",
-  "email": "local@example.test",
+  "email": null,
   "default_workspace_id": "uuid",
   "active": true,
   "created_at": "..."
@@ -394,8 +414,10 @@ taskg user add alice email:alice@example.test
 - `name` 必填。
 - `email:<email>` 可选。
 - 新用户默认不自动加入所有 workspace。
-- 新用户应获得自己的默认 workspace，建议 slug 为 user name；如果冲突，返回错误，让用户显式创建或选择。
-- 也可以只创建 user 而不创建 workspace，但这会让 `user use` 后无默认 workspace。M4 推荐自动创建同名 personal workspace 并给该用户 owner 权限。
+- 新用户必须自动获得自己的 personal workspace。
+- personal workspace 默认 slug 为 user name，name 也默认等于 user name。
+- 如果 personal workspace slug 冲突，`user add` 返回错误；plan 可增加 `workspace:<slug>` 参数解决冲突，但不能创建一个没有 default workspace 的 user。
+- 新 user 对 personal workspace 自动拥有 owner membership。
 
 ### user use
 
@@ -408,7 +430,7 @@ taskg user use alice
 - 切换 active user。
 - 如果该 user 有 active workspace，使用该 workspace。
 - 否则使用 default workspace。
-- 如果 default workspace 已归档或不可见，报错并提示先指定 `--workspace` 或创建 workspace。
+- 如果 default workspace 已归档或不可见，报错并提示先修复 default workspace 或创建新 workspace。
 
 ### workspace list
 
@@ -463,6 +485,9 @@ taskg workspace archive old
 - 归档后不可 `workspace use`。
 - 如果归档的是当前 active workspace，推荐自动切换到 actor 的第一个未归档 workspace；如果没有可切换 workspace，则拒绝归档。
 - `local` workspace 可以归档，但必须满足上面的可切换条件。
+- M4 必须保持不变量：每个 user 的 active/default workspace 都不能指向归档 workspace。
+- 归档某个 user 的 default workspace 时，必须同步把该 user 的 `default_workspace_id` 更新为新的未归档 workspace。
+- 如果没有可替代的未归档 workspace，必须拒绝归档。
 
 ### member list
 
@@ -476,6 +501,7 @@ taskg member list --json
 
 - 默认使用当前 workspace。
 - viewer 可以读取 member list。
+- member list 可以显示成员 name、email、role、joined_at；M4 是本地工具，email 不做额外脱敏。
 
 ### member add
 
@@ -490,6 +516,7 @@ taskg member add alice role:viewer
 - admin 可添加 `viewer/member/admin`。
 - owner 可添加任意角色，包括 owner。
 - 目标 user 必须已存在。
+- `<user>` 解析应复用统一 user resolver，支持 name、email、UUID。
 
 ### member role
 
@@ -517,7 +544,9 @@ taskg audit list --json
 
 - 默认查看当前 workspace 的 audit。
 - 需要 admin 或 owner。
-- human 输出只显示最近记录；是否增加 `--limit` 由 plan 决定，推荐支持 `--limit`，默认 50。
+- 默认按 `created_at DESC, id DESC` 排序。
+- human 输出只显示最近记录；必须支持 `--limit`，默认 50。
+- `--since <date>` 可在 plan 阶段决定是否进入 M4；不是 spec 必须项。
 - JSON 输出稳定字段：
   - `id`
   - `actor_user_id`
@@ -538,10 +567,12 @@ taskg audit list --json
 - recurring parent/child 只能在同一 workspace。
 - import 只导入到当前 workspace。
 - export 只导出当前 workspace。
+- export 是只读操作，不写 audit。
 
 ### 报表和 helper
 
 - 所有报表自动限定当前 workspace。
+- helper 命令尊重全局 `--workspace <slug|uuid>` 覆盖。
 - `_ids` 和 `_uuids` 只返回当前 workspace。
 - `_projects` 和 `_tags` 只聚合当前 workspace。
 - `_unique <attr>` 只聚合当前 workspace。
@@ -550,8 +581,9 @@ taskg audit list --json
 ### Context
 
 - context 定义按 workspace 隔离。
-- active context 在当前 workspace 中生效。
-- 切换 workspace 后，读取新 workspace 的 active context。
+- active context 按 `(user_id, workspace_id)` 隔离。
+- Alice 在某 workspace 中执行 `context use`，不得影响 Bob 在同一 workspace 的 active context。
+- 切换 workspace 后，读取当前 actor 在新 workspace 中的 active context。
 - `--no-context` 继续只影响本次运行。
 
 ### UDA
@@ -593,8 +625,8 @@ M4 必须记录这些动作：
   - `context.use`
   - `context.none`
 - UDA:
-  - `uda.set`
-  - `uda.unset`
+  - `uda.schema.set`
+  - `uda.schema.delete`
 - workspace:
   - `workspace.add`
   - `workspace.use`
@@ -639,6 +671,8 @@ Permission
 ```
 
 不要把 `local` workspace 或 `local` user 硬编码散落在 CLI 命令里。
+
+M4 应倾向“每个命令执行前解析 runtime context，再创建绑定该 context 的 service”。这与 M5 HTTP 的“每个请求一个 actor/workspace 上下文”一致，避免把 service 设计成长期持有可变全局状态。
 
 ## 12. 错误语义
 
@@ -691,7 +725,20 @@ M4 不做：
 - 完整 server/workspace/user 三层 config。
 - Taskwarrior 自定义 report DSL。
 
-## 14. 测试要求
+## 14. M4 完成判定标准
+
+M4 只有同时满足以下条件，才算真正完成：
+
+- 任意业务命令初始化后都能解析出非空 `ActorUserID` 和 `WorkspaceID`，除非该命令明确是数据库初始化前的纯本地辅助命令。
+- app service 的业务路径不再依赖 `store.LocalWorkspace()` 作为默认 workspace 来源。
+- 所有 task 写命令都经过权限检查，并在同一事务中写入业务表和 audit log。
+- context active 状态按 `(user_id, workspace_id)` 隔离，不存在 workspace 级共享 active context。
+- 两个 workspace 中同名 task/project/tag/UDA/context 的隔离由 storage 查询中的 workspace scope 保证，而不是靠 service 层事后过滤。
+- 归档逻辑保持“每个 user 的 active/default workspace 均未归档”的不变量。
+- viewer/member/admin/owner 的关键权限差异有单元测试和 CLI 集成测试覆盖。
+- M5 可以用 HTTP 鉴权解析出的 actor 替换本地 active user，而不重写 task/context/UDA/workspace/member 的业务逻辑。
+
+## 15. 测试要求
 
 ### 单元测试
 
@@ -699,12 +746,15 @@ M4 不做：
 
 - 默认 local user/workspace/member 迁移幂等。
 - workspace active 解析和 `--workspace` 覆盖。
+- active context 按 `(user_id, workspace_id)` 隔离。
 - role permission matrix。
 - owner 最后一人保护。
 - archived workspace 不可 use。
+- 归档时 default workspace 不指向归档 workspace。
 - UDA schema 跨 workspace 隔离。
 - context 跨 workspace 隔离。
 - audit log 写入。
+- audit 范围内写操作和 audit log 同事务提交或回滚。
 
 ### Storage 测试
 
@@ -731,6 +781,7 @@ M4 不做：
 - owner 归档成功。
 - 两个 workspace 中同名任务、project、tag、UDA、context 不互相污染。
 - working-set ID 在 workspace 切换后独立。
+- helper 命令尊重 `--workspace`。
 - `audit list --json` 能看到关键写操作。
 
 ### 必跑验证
@@ -749,7 +800,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 go test ./tests/integration -run TestCLI -count=1
 ```
 
-## 15. 文档同步
+## 16. 文档同步
 
 M4 完成后必须更新：
 
@@ -757,13 +808,14 @@ M4 完成后必须更新：
   - 增加本地 user/workspace/member/audit 用法。
   - 说明 `--workspace`。
   - 说明 workspace 归档而非删除。
+  - 说明 M4 不支持 member delete，viewer 仍可读取 workspace 数据。
 - `ROADMAP.md`
   - 将 M4 标为已完成。
   - 下一步指向 M5 HTTP/JSON API 与远程 CLI。
 - 本 spec
   - 如果 implementation plan 中调整范围，必须回写规格。
 
-## 16. M5 衔接
+## 17. M5 衔接
 
 M4 完成后，M5 应能直接复用：
 
