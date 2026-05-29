@@ -184,12 +184,12 @@ type Membership struct {
 type AuditLog struct {
     ID          int64 `gorm:"primaryKey;autoIncrement"`
     ActorUserID *string `gorm:"index"`
-    WorkspaceID *string `gorm:"index"`
+    WorkspaceID *string `gorm:"index;index:idx_audit_ws_time,priority:1"`
     Action      string  `gorm:"not null;index"`
     TargetType  string
     TargetID    string
     PayloadJSON string
-    CreatedAt   int64 `gorm:"not null;index"`
+    CreatedAt   int64 `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc"`
 }
 ```
 
@@ -203,6 +203,7 @@ In `db.go`:
 - Replace `ensureLocalWorkspace()` with `ensureLocalIdentity()` that:
   - Creates local user with nil email.
   - Creates or updates local workspace with `Slug: "local"`, `Visibility: "private"`, `SettingsJSON: "{}"`, `CreatedByUserID: &localUser.ID`.
+  - For historical workspaces with `modified_at = 0`, set `ModifiedAt = CreatedAt`.
   - Sets local user `DefaultWorkspaceID` to local workspace.
   - Creates owner membership.
   - Migrates `context.active` to `active_context.<local_user_id>.<local_workspace_id>` and deletes old key.
@@ -323,6 +324,46 @@ git commit -m "feat: 增加 M4 身份仓储"
 
 ## Chunk 2: Runtime Context, Permissions, and Audit Transactions
 
+### Architecture Decisions for Chunk 2+
+
+All write paths must follow this shape:
+
+```go
+func (s *Service) Add(input AddInput) (task.Task, error) {
+    if err := s.Require(PermissionTaskWrite); err != nil {
+        return task.Task{}, err
+    }
+    var out task.Task
+    err := s.withAudit("task.add", func(tx *Service) (AuditEntry, error) {
+        created, err := tx.addLocked(input)
+        if err != nil {
+            return AuditEntry{}, err
+        }
+        out = created
+        return AuditEntry{
+            TargetType: "task",
+            TargetID: created.UUID,
+            Payload: map[string]any{"description": created.Description},
+        }, nil
+    })
+    return out, err
+}
+
+func (s *Service) addLocked(input AddInput) (task.Task, error) {
+    // old Add body; only uses repositories on this service instance
+}
+```
+
+Rules:
+
+- Public write methods perform permission checks once, then call `withAudit`.
+- `withAudit` opens the store-level transaction and passes a tx-bound `*Service` to the closure.
+- The closure must call `xxxLocked` methods on the tx-bound service, never public methods on the outer service.
+- `xxxLocked` methods do not call `Require` and do not open their own app-level audit transaction.
+- `withAudit` receives the audit entry from the closure so runtime-generated IDs such as task UUIDs can be audited.
+- Automatic state maintenance (`refreshAutomaticStateLocked`, recurring child creation) is internal maintenance and bypasses user permission checks. It must still stay workspace-scoped. It does not create separate public audit actions unless the spec lists one.
+- TOML `context.active` is not read in M4. Users should run `taskg context use <name>` once after upgrade if they relied on TOML-only active context.
+
 ### Task 3: Introduce Runtime Context and Bind Service Per Command
 
 **Files:**
@@ -397,6 +438,8 @@ type ServiceOptions struct {
 
 Move `ServiceOptions` definition from `service.go` to `runtime.go` or extend it in place. Keep API-compatible zero values: no actor/workspace ref means local active user/default workspace.
 
+Zero-value `ActorRef` and `WorkspaceRef` must preserve M3 behavior for existing tests: local user, local/default workspace, no caller changes required for `NewService(ServiceOptions{Store: store, Clock: ...})`.
+
 - [ ] **Step 4: Implement runtime resolution**
 
 Resolution order:
@@ -430,6 +473,14 @@ rt, err := ResolveRuntimeContext(opts.Store, userRepo, workspaceRepo, memberRepo
 Set `s.workspaceID = rt.WorkspaceID` for incremental compatibility, but all new code should use `s.runtime.WorkspaceID`.
 
 In `withStore`, keep the same runtime context and rebuild repositories against the transaction DB. Do not call `LocalWorkspace()`.
+
+Hard requirement for this task: after Step 5, this command must return no matches:
+
+```bash
+rg "LocalWorkspace" internal/app
+```
+
+`Store.LocalWorkspace()` may remain in `internal/storage/sqlite` and storage tests as a migration compatibility helper, but app business paths must not call it.
 
 - [ ] **Step 6: Add root `--workspace`**
 
@@ -511,6 +562,7 @@ const (
     PermissionWorkspaceModify Permission = "workspace.modify"
     PermissionWorkspaceArchive Permission = "workspace.archive"
     PermissionMemberManage Permission = "member.manage"
+    PermissionMemberManageOwner Permission = "member.manage.owner"
     PermissionAuditRead Permission = "audit.read"
 )
 
@@ -527,14 +579,18 @@ Implement the spec matrix:
 - admin: member manage except owner changes, UDA schema, workspace metadata, audit read.
 - owner: all.
 
+Use `PermissionMemberManageOwner` for promoting another user to owner or downgrading an owner. Admin must not pass that check.
+
 - [ ] **Step 4: Guard app methods**
 
 Add `Require` calls to:
 
-- Task write methods: `Add`, `Modify`, `Done`, `Delete`, `Start`, `Stop`, `Annotate`, `Denotate`, `AppendDescription`, `PrependDescription`, `ReplaceEditableTask`, `Import`.
+- Task write methods: public `Add`, `Modify`, `Done`, `Delete`, `Start`, `Stop`, `Annotate`, `Denotate`, `AppendDescription`, `PrependDescription`, `ReplaceEditableTask`, `Import`.
 - Context: `UseContext` and `ContextNone` require `context.use`; `DefineContext` and `ContextDelete` require `context.manage`.
 - UDA schema: `DefineUDA`, `DeleteUDA`, `setUDAConfig`, `unsetUDAConfig` require `uda.manage` when they mutate schema.
 - Export/List/Info/Reports/helpers remain readable by viewer.
+
+Do not put permission checks in `xxxLocked` methods; those are internal transaction bodies used after the public method has already authorized the operation.
 
 - [ ] **Step 5: Run permission tests**
 
@@ -575,7 +631,13 @@ func TestTaskWriteCreatesAuditInSameTransaction(t *testing.T) {
 }
 ```
 
-Add a rollback test by injecting a broken audit repository only if easy; otherwise cover transaction behavior in storage/app by making audit append return error in a small fake repo. If introducing interfaces is too heavy, document this as plan review risk and rely on repo transaction tests.
+Add a rollback test. Preferred shape:
+
+- Add a test-only hook or small interface around audit append.
+- Force audit append to return an error after the business write succeeds.
+- Assert the task/config/member/workspace change is not persisted.
+
+Do not leave same-transaction audit as an untested assumption. If adding a fake repository interface becomes too invasive, use a transaction-level test helper that inserts an invalid audit row and verifies the business write rolls back.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -593,17 +655,43 @@ type AuditListInput struct {
     Limit int
 }
 
-func (s *Service) withAudit(action, targetType, targetID string, payload map[string]any, fn func(*Service) error) error {
+type AuditEntry struct {
+    TargetType string
+    TargetID string
+    Payload map[string]any
+}
+
+func (s *Service) withAudit(action string, fn func(*Service) (AuditEntry, error)) error {
     return s.store.Transaction(func(txStore *sqlite.Store) error {
         txSvc, err := s.withStore(txStore)
         if err != nil { return err }
-        if err := fn(txSvc); err != nil { return err }
-        return txSvc.auditRepo.Append(sqlite.AuditLogEntry{...})
+        entry, err := fn(txSvc)
+        if err != nil { return err }
+        return txSvc.auditRepo.Append(sqlite.AuditLogEntry{
+            ActorUserID: &txSvc.runtime.ActorUserID,
+            WorkspaceID: &txSvc.runtime.WorkspaceID,
+            Action: action,
+            TargetType: entry.TargetType,
+            TargetID: entry.TargetID,
+            PayloadJSON: marshalAuditPayload(entry.Payload),
+            CreatedAt: txSvc.clock.Unix(),
+        })
     })
 }
 ```
 
-Important: ensure repository methods called inside `fn` use the transaction-bound repositories. If `TaskRepository.Update` opens a nested transaction, GORM savepoints are acceptable, but do not call non-transaction-bound repos from `s` inside the closure.
+Important:
+
+- The closure must call tx-bound `xxxLocked` methods, not public methods on the outer service.
+- The closure returns `AuditEntry` after it knows runtime-generated IDs such as task UUIDs.
+- If `TaskRepository.Update` opens a nested transaction, GORM savepoints are acceptable, but do not call non-transaction-bound repos from the outer `s` inside the closure.
+- `withAudit` should have a sibling helper for actions that need to return a value:
+
+```go
+func (s *Service) withAuditValue[T any](action string, fn func(*Service) (T, AuditEntry, error)) (T, error)
+```
+
+If the codebase should avoid generics in app helpers, use explicit local capture as shown in the architecture decision and keep `withAudit` non-generic.
 
 - [ ] **Step 4: Wrap write paths**
 
@@ -629,6 +717,12 @@ Use actions from spec:
 - `uda.schema.delete`
 
 Do not audit `Export`.
+
+For each wrapped method:
+
+- Move the old method body into `xxxLocked`.
+- Public method: `Require`, then `withAudit`, then call `tx.xxxLocked`.
+- `xxxLocked` must use repositories on its receiver only.
 
 - [ ] **Step 5: Implement `ListAudit`**
 
@@ -693,7 +787,8 @@ func (s *Service) activeContextMetaKey() string {
 1. `activeContextOverride`.
 2. `runtimeOverrides["context"]` only for `rc.context=none` / `rc.context:<value>` compatibility during CLI parsing, not persisted.
 3. Store meta `active_context.<user_id>.<workspace_id>`.
-4. Runtime TOML config can still seed context for local compatibility only if no scoped meta exists. Do not write old `context.active`.
+
+Do not read TOML `context.active` in M4. If a user relied only on TOML `context.active`, they must run `taskg context use <name>` once after upgrade. This avoids reintroducing machine-wide active context state.
 
 - [ ] **Step 4: Update RC handling**
 
@@ -709,11 +804,21 @@ In root:
 
 `show` should display `active.context=<name>` or empty, not `context.active`.
 
+`_show context.active` and `config get context.active` should return a clear unsupported legacy key error. Do not silently fall back to scoped active context under the old key.
+
+Add a cleanup check:
+
+```bash
+rg "context\\.active" internal/cli internal/app tests/integration
+```
+
+After Task 6, remaining matches must be intentional test assertions for rejecting/migrating the legacy key, or comments documenting the migration. Command implementations must not read or write persistent `context.active`.
+
 - [ ] **Step 6: Run context tests**
 
 Run: `go test ./internal/app ./internal/cli ./tests/integration -run 'Context|RcOverride|Show' -count=1`
 
-Expected: PASS, with existing M3 tests updated to M4 output.
+Expected: PASS, with existing M3 tests updated to M4 output. Specifically search and update tests that assert `context.active` in `show`, `_show`, config, or integration output.
 
 - [ ] **Step 7: Commit**
 
@@ -736,6 +841,7 @@ Cover:
 
 - `AddUser` creates user + private personal workspace + owner membership.
 - `UseUser` writes `active_user_id`.
+- `UseUser` ignores `ServiceOptions.WorkspaceRef`; `taskg --workspace work user use alice` must not set Alice's active workspace. CLI may reject that combination later, but app semantics are "switch user only".
 - `AddWorkspace` creates workspace with current actor as owner.
 - `UseWorkspace` writes `active_workspace.<user_id>`.
 - `ModifyWorkspace` requires admin/owner and audits `workspace.modify`.
@@ -767,6 +873,8 @@ func (s *Service) UserInfo(ref string) (UserView, error)
 
 `UseUser` writes `active_user_id` and audits `user.use`. It does not require workspace membership beyond resolving that user's default/active workspace.
 
+`UseUser` must ignore any workspace override on the current service. It switches active user only; it must not opportunistically set the target user's active workspace.
+
 - [ ] **Step 4: Implement workspace APIs**
 
 ```go
@@ -781,11 +889,11 @@ func (s *Service) ArchiveWorkspace(ref string) error
 Archive algorithm:
 
 1. Require owner.
-2. Find all users with `default_workspace_id = target`.
-3. For each, find other unarchived membership workspaces ordered by slug.
+2. Find all affected users: `default_workspace_id = target` OR `active_workspace.<user_id>` points to target.
+3. For each affected user, find other unarchived membership workspaces ordered by slug, explicitly excluding target.
 4. If any user has none, abort.
 5. For affected users, update default workspace.
-6. If active meta points to target for any user, update to chosen replacement.
+6. If active meta points to target for any affected user, update it to that user's chosen replacement.
 7. Archive target.
 8. Audit `workspace.archive`.
 
@@ -872,6 +980,7 @@ Expected: FAIL because commands do not exist.
 `user use`:
 
 - Call app, print nothing or `Using user <name>`; prefer a short human confirmation.
+- `taskg --workspace work user use alice` must ignore `--workspace`; it only switches active user and must not set Alice's active workspace.
 
 `user info`:
 
@@ -922,6 +1031,9 @@ git commit -m "feat: 增加 user 和 workspace 命令"
 
 Cover:
 
+- `--workspace missing list` exits non-zero with `workspace_not_found`.
+- `--workspace <archived> list` exits non-zero with `workspace_archived`.
+- `--workspace <non-member-workspace> list` exits non-zero with `membership_not_found` or `permission_denied`.
 - `member add bob role:viewer`.
 - Viewer can list but cannot add task.
 - Member cannot manage members.
@@ -931,7 +1043,7 @@ Cover:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `go test ./tests/integration -run 'TestCLIMemberPermissions|TestCLIAuditList' -count=1`
+Run: `go test ./tests/integration -run 'TestCLIWorkspaceErrorSemantics|TestCLIMemberPermissions|TestCLIAuditList' -count=1`
 
 Expected: FAIL because commands do not exist or permissions not wired through CLI.
 
@@ -955,6 +1067,7 @@ Rules:
 - Default limit 50.
 - Human newest first.
 - JSON array with fields from spec.
+- JSON `payload` field should be an object decoded from `payload_json`; if payload is empty or cannot be decoded, output `null`.
 - No complex filters.
 
 - [ ] **Step 5: Register commands and JSON errors**
@@ -965,7 +1078,7 @@ If existing root error renderer does not support JSON errors, add minimal handli
 
 - [ ] **Step 6: Run member/audit tests**
 
-Run: `go test ./tests/integration -run 'TestCLIMemberPermissions|TestCLIAuditList' -count=1`
+Run: `go test ./tests/integration -run 'TestCLIWorkspaceErrorSemantics|TestCLIMemberPermissions|TestCLIAuditList' -count=1`
 
 Expected: PASS.
 
@@ -1014,7 +1127,7 @@ Expected: FAIL until `--workspace` and runtime context are fully wired.
 Search:
 
 ```bash
-rg "LocalWorkspace|context.active|workspaceID|buildServiceFrom" internal
+rg "store\\.LocalWorkspace|LocalWorkspace\\(|context\\.active" internal/app internal/cli
 ```
 
 Fix:
@@ -1022,6 +1135,8 @@ Fix:
 - Any app business path using `LocalWorkspace`.
 - Any config path reading old `context.active`.
 - Any helper path not using `buildServiceFromCmd`.
+
+`LocalWorkspace()` may still appear in storage migration/tests, but must not appear in app business code.
 
 - [ ] **Step 4: Verify storage-level scoping**
 
@@ -1063,6 +1178,9 @@ Use this rule:
 
 - User-triggered command audit action remains the command action (`task.done`, `task.add`, etc.).
 - Internal automatic writes inside that command occur in the same transaction when practical, but do not need separate public audit actions unless already listed in spec.
+- Automatic state maintenance bypasses user permission checks. A viewer running `list` must not fail just because `refreshAutomaticStateLocked` advances a waiting task to pending.
+- Automatic maintenance must remain workspace-scoped and must not expose or modify another workspace.
+- If recurring child creation is reachable from a read path, it also bypasses permission checks as internal maintenance. If this feels too broad during implementation, narrow the trigger so read paths do not create recurring children, but do not make viewer reads fail.
 
 - [ ] **Step 3: Add tests for recurring child with audit**
 
@@ -1084,7 +1202,7 @@ Expected: PASS.
 
 ```bash
 git add internal/app/service.go internal/app/audit.go internal/app/service_test.go
-git commit -m "fix: 审计循环任务写路径"
+git commit -m "feat: 完善循环任务审计路径"
 ```
 
 ---
@@ -1109,6 +1227,7 @@ Add section:
 - `audit list`
 - Role summary and warning: M4 has no `member delete`; viewer still reads workspace data.
 - Local user email for migrated `local` user is empty/null.
+- M3 to M4 upgrade behavior: existing tasks stay in local workspace, local user/workspace/membership are created automatically, and old `context.active` meta is migrated to `(local user, local workspace)` scoped active context.
 
 - [ ] **Step 2: Update ROADMAP**
 
