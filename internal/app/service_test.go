@@ -53,6 +53,31 @@ func newTestServiceWithRuntime(t *testing.T, store *sqlite.Store, now int64, act
 	return svc
 }
 
+func mustCreateUserRecord(t *testing.T, store *sqlite.Store, user sqlite.User) sqlite.User {
+	t.Helper()
+	created, err := sqlite.NewUserRepository(store.DB()).Create(user)
+	if err != nil {
+		t.Fatalf("Create(user %s) error = %v", user.Name, err)
+	}
+	return created
+}
+
+func mustCreateWorkspaceRecord(t *testing.T, store *sqlite.Store, ws sqlite.Workspace) sqlite.Workspace {
+	t.Helper()
+	created, err := sqlite.NewWorkspaceRepository(store.DB()).Create(ws)
+	if err != nil {
+		t.Fatalf("Create(workspace %s) error = %v", ws.Slug, err)
+	}
+	return created
+}
+
+func mustUpsertMembershipRecord(t *testing.T, store *sqlite.Store, member sqlite.Membership) {
+	t.Helper()
+	if err := sqlite.NewMemberRepository(store.DB()).Upsert(member); err != nil {
+		t.Fatalf("Upsert(membership %+v) error = %v", member, err)
+	}
+}
+
 func TestServiceAddListInfo(t *testing.T) {
 	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
@@ -653,6 +678,320 @@ func TestConfigSetOverridesRuntimeMetaDefaults(t *testing.T) {
 	}
 	if !ok || got != "10" {
 		t.Fatalf("urgency coefficient = %q, %v; want 10 from DB", got, ok)
+	}
+}
+
+func TestAddUserCreatesPersonalWorkspaceAndOwnerMembership(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.AddUser(AddUserInput{Name: "alice", Email: "alice@example.test"})
+	if err != nil {
+		t.Fatalf("AddUser() error = %v", err)
+	}
+	if created.Name != "alice" {
+		t.Fatalf("created.Name = %q, want alice", created.Name)
+	}
+	if created.Email == nil || *created.Email != "alice@example.test" {
+		t.Fatalf("created.Email = %#v", created.Email)
+	}
+	if created.DefaultWorkspaceID == nil {
+		t.Fatal("created.DefaultWorkspaceID = nil")
+	}
+
+	userRepo := sqlite.NewUserRepository(svc.store.DB())
+	wsRepo := sqlite.NewWorkspaceRepository(svc.store.DB())
+	memberRepo := sqlite.NewMemberRepository(svc.store.DB())
+
+	user, err := userRepo.GetByName("alice")
+	if err != nil {
+		t.Fatalf("GetByName(alice) error = %v", err)
+	}
+	ws, err := wsRepo.GetBySlug("alice")
+	if err != nil {
+		t.Fatalf("GetBySlug(alice) error = %v", err)
+	}
+	if ws.Visibility != "private" {
+		t.Fatalf("workspace visibility = %q, want private", ws.Visibility)
+	}
+	if user.DefaultWorkspaceID == nil || *user.DefaultWorkspaceID != ws.ID {
+		t.Fatalf("user.DefaultWorkspaceID = %#v, want %q", user.DefaultWorkspaceID, ws.ID)
+	}
+	member, err := memberRepo.Get(user.ID, ws.ID)
+	if err != nil {
+		t.Fatalf("Get(membership) error = %v", err)
+	}
+	if member.Role != string(RoleOwner) {
+		t.Fatalf("member.Role = %q, want owner", member.Role)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) < 2 {
+		t.Fatalf("logs = %#v, want at least 2 entries", logs)
+	}
+	if logs[0].Action != "workspace.add" || logs[1].Action != "user.add" {
+		t.Fatalf("logs = %#v", logs[:2])
+	}
+}
+
+func TestUseUserWritesActiveUserAndIgnoresWorkspaceOverride(t *testing.T) {
+	store := newTestStore(t)
+	userRepo := sqlite.NewUserRepository(store.DB())
+	wsRepo := sqlite.NewWorkspaceRepository(store.DB())
+	localUser, err := userRepo.GetByName("local")
+	if err != nil {
+		t.Fatalf("GetByName(local) error = %v", err)
+	}
+	work := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+		ID:              "ws-work",
+		Slug:            "work",
+		Name:            "Work",
+		CreatedByUserID: &localUser.ID,
+		Visibility:      "team",
+		SettingsJSON:    "{}",
+		CreatedAt:       100,
+		ModifiedAt:      100,
+	})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      localUser.ID,
+		WorkspaceID: work.ID,
+		Role:        string(RoleOwner),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+
+	creator := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	alice, err := creator.AddUser(AddUserInput{Name: "alice"})
+	if err != nil {
+		t.Fatalf("AddUser(alice) error = %v", err)
+	}
+
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "work")
+	if err := svc.UseUser("alice"); err != nil {
+		t.Fatalf("UseUser() error = %v", err)
+	}
+	activeUserID, ok, err := store.GetMeta("active_user_id")
+	if err != nil {
+		t.Fatalf("GetMeta(active_user_id) error = %v", err)
+	}
+	if !ok || activeUserID != alice.ID {
+		t.Fatalf("active_user_id = %q, %v; want %q", activeUserID, ok, alice.ID)
+	}
+	if activeWorkspace, ok, err := store.GetMeta(activeWorkspaceMetaKey(alice.ID)); err != nil {
+		t.Fatalf("GetMeta(active_workspace.%s) error = %v", alice.ID, err)
+	} else if ok {
+		t.Fatalf("alice active workspace = %q, want unset", activeWorkspace)
+	}
+	_, err = wsRepo.GetByID(*alice.DefaultWorkspaceID)
+	if err != nil {
+		t.Fatalf("GetByID(default workspace) error = %v", err)
+	}
+}
+
+func TestAddWorkspaceCreatesOwnerMembershipAndUseWorkspaceWritesMeta(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work", Visibility: "team"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+	if created.Slug != "work" || created.Visibility != "team" {
+		t.Fatalf("created = %#v", created)
+	}
+
+	member, err := sqlite.NewMemberRepository(svc.store.DB()).Get(svc.Runtime().ActorUserID, created.ID)
+	if err != nil {
+		t.Fatalf("Get(owner membership) error = %v", err)
+	}
+	if member.Role != string(RoleOwner) {
+		t.Fatalf("member.Role = %q, want owner", member.Role)
+	}
+
+	if err := svc.UseWorkspace("work"); err != nil {
+		t.Fatalf("UseWorkspace() error = %v", err)
+	}
+	got, ok, err := svc.store.GetMeta(activeWorkspaceMetaKey(svc.Runtime().ActorUserID))
+	if err != nil {
+		t.Fatalf("GetMeta(active workspace) error = %v", err)
+	}
+	if !ok || got != created.ID {
+		t.Fatalf("active workspace = %q, %v; want %q", got, ok, created.ID)
+	}
+}
+
+func TestModifyWorkspaceWritesAuditForAdmin(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team", Visibility: "team"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+
+	admin := mustCreateUserRecord(t, store, sqlite.User{ID: "user-admin-work", Name: "work-admin", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      admin.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleAdmin),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, admin.Name, ws.Slug)
+	description := "team workspace"
+	if err := adminSvc.ModifyWorkspace("team", ModifyWorkspaceInput{Description: &description}); err != nil {
+		t.Fatalf("ModifyWorkspace() error = %v", err)
+	}
+
+	logs, err := adminSvc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) == 0 || logs[0].Action != "workspace.modify" {
+		t.Fatalf("logs = %#v", logs)
+	}
+}
+
+func TestArchiveWorkspaceRejectsWhenAffectedUserHasNoReplacement(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "solo", Name: "Solo"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+
+	bob := mustCreateUserRecord(t, store, sqlite.User{
+		ID:                 "user-bob-solo",
+		Name:               "bob-solo",
+		DefaultWorkspaceID: &ws.ID,
+		CreatedAt:          100,
+		ModifiedAt:         100,
+	})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      bob.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleViewer),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+
+	if err := ownerSvc.ArchiveWorkspace("solo"); err == nil {
+		t.Fatal("ArchiveWorkspace() error = nil, want failure without replacement")
+	}
+}
+
+func TestArchiveWorkspaceReassignsAffectedUsers(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	target, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "old", Name: "Old"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(old) error = %v", err)
+	}
+	replacement, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "new", Name: "New"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(new) error = %v", err)
+	}
+
+	userRepo := sqlite.NewUserRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+	bob := mustCreateUserRecord(t, store, sqlite.User{
+		ID:                 "user-bob-archive",
+		Name:               "bob-archive",
+		DefaultWorkspaceID: &target.ID,
+		CreatedAt:          100,
+		ModifiedAt:         100,
+	})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      bob.ID,
+		WorkspaceID: target.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      bob.ID,
+		WorkspaceID: replacement.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+	if err := store.SetMeta(activeWorkspaceMetaKey(bob.ID), target.ID); err != nil {
+		t.Fatalf("SetMeta(active workspace) error = %v", err)
+	}
+
+	if err := ownerSvc.ArchiveWorkspace("old"); err != nil {
+		t.Fatalf("ArchiveWorkspace() error = %v", err)
+	}
+
+	reloaded, err := userRepo.GetByID(bob.ID)
+	if err != nil {
+		t.Fatalf("GetByID(bob) error = %v", err)
+	}
+	if reloaded.DefaultWorkspaceID == nil || *reloaded.DefaultWorkspaceID != replacement.ID {
+		t.Fatalf("bob.DefaultWorkspaceID = %#v, want %q", reloaded.DefaultWorkspaceID, replacement.ID)
+	}
+	active, ok, err := store.GetMeta(activeWorkspaceMetaKey(bob.ID))
+	if err != nil {
+		t.Fatalf("GetMeta(active workspace) error = %v", err)
+	}
+	if !ok || active != replacement.ID {
+		t.Fatalf("active workspace = %q, %v; want %q", active, ok, replacement.ID)
+	}
+	archived, err := sqlite.NewWorkspaceRepository(store.DB()).GetByID(target.ID)
+	if err != nil {
+		t.Fatalf("GetByID(old) error = %v", err)
+	}
+	if archived.ArchivedAt == nil {
+		t.Fatal("archived.ArchivedAt = nil, want archived")
+	}
+	if _, err := memberRepo.Get(bob.ID, replacement.ID); err != nil {
+		t.Fatalf("Get(replacement membership) error = %v", err)
+	}
+}
+
+func TestAddMemberAndChangeMemberRoleRespectOwnerRules(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "collab", Name: "Collab"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+
+	admin := mustCreateUserRecord(t, store, sqlite.User{ID: "user-admin-collab", Name: "admin-collab", CreatedAt: 100, ModifiedAt: 100})
+	alice := mustCreateUserRecord(t, store, sqlite.User{ID: "user-alice-collab", Name: "alice-collab", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      admin.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleAdmin),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, admin.Name, ws.Slug)
+	if err := adminSvc.AddMember(AddMemberInput{WorkspaceRef: ws.Slug, UserRef: alice.Name, Role: RoleViewer}); err != nil {
+		t.Fatalf("AddMember() error = %v", err)
+	}
+	if err := adminSvc.ChangeMemberRole(ChangeMemberRoleInput{WorkspaceRef: ws.Slug, UserRef: alice.Name, Role: RoleOwner}); err == nil {
+		t.Fatal("ChangeMemberRole() error = nil, want admin denied for owner promotion")
+	}
+	if err := ownerSvc.ChangeMemberRole(ChangeMemberRoleInput{WorkspaceRef: ws.Slug, UserRef: alice.Name, Role: RoleOwner}); err != nil {
+		t.Fatalf("ChangeMemberRole(owner promote) error = %v", err)
+	}
+}
+
+func TestChangeMemberRoleProtectsLastOwner(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "owners", Name: "Owners"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+
+	if err := ownerSvc.ChangeMemberRole(ChangeMemberRoleInput{WorkspaceRef: ws.Slug, UserRef: "local", Role: RoleAdmin}); err == nil {
+		t.Fatal("ChangeMemberRole() error = nil, want last owner protection")
 	}
 }
 

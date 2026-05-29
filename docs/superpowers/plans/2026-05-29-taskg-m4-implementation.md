@@ -944,7 +944,7 @@ git commit -m "feat: 按用户和 workspace 隔离 active context"
 - Modify: `internal/app/service.go`
 - Test: `internal/app/service_test.go`
 
-- [ ] **Step 1：写失败的 app API 测试**
+- [x] **Step 1：写失败的 app API 测试**
 
 覆盖：
 
@@ -957,7 +957,7 @@ git commit -m "feat: 按用户和 workspace 隔离 active context"
 - `ArchiveWorkspace` 在任一受影响 user 没有其他未归档 workspace 时拒绝。
 - `AddMember` 和 `ChangeMemberRole` 执行 owner/admin 规则和最后 owner 保护。
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -967,7 +967,7 @@ go test ./internal/app -run 'User|Workspace|Member|Archive|LastOwner' -count=1
 
 Expected: FAIL，因为 app APIs 还不存在。
 
-- [ ] **Step 3：实现 user APIs**
+- [x] **Step 3：实现 user APIs**
 
 ```go
 func (s *Service) ListUsers() ([]UserView, error)
@@ -990,7 +990,7 @@ func (s *Service) UserInfo(ref string) (UserView, error)
 
 `UseUser` 必须忽略当前 service 的 workspace override。它只切换 active user，不能顺手设置目标 user 的 active workspace。
 
-- [ ] **Step 4：实现 workspace APIs**
+- [x] **Step 4：实现 workspace APIs**
 
 ```go
 func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error)
@@ -1019,7 +1019,7 @@ Archive 算法：
 - `ModifyWorkspace` 需要 `PermissionWorkspaceModify`，并审计 `workspace.modify`。
 - 上述需要权限的检查必须在 `withAudit/withAuditEntries` 外层执行。
 
-- [ ] **Step 5：实现 member APIs**
+- [x] **Step 5：实现 member APIs**
 
 ```go
 func (s *Service) ListMembers(workspaceRef string) ([]MemberView, error)
@@ -1041,7 +1041,7 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error
 - `AddMember` 如果目标 role 是 owner，需要 `PermissionMemberManageOwner`；否则需要 `PermissionMemberManage`。
 - `ChangeMemberRole` 如果 `newRole == owner` 或当前 role 是 owner，需要 `PermissionMemberManageOwner`；否则需要 `PermissionMemberManage`。
 
-- [ ] **Step 6：运行 app API 测试**
+- [x] **Step 6：运行 app API 测试**
 
 Run:
 
@@ -1051,7 +1051,7 @@ go test ./internal/app -run 'User|Workspace|Member|Archive|LastOwner' -count=1
 
 Expected: PASS。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add internal/app/workspace.go internal/app/service.go internal/app/audit.go internal/app/service_test.go
