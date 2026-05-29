@@ -575,7 +575,7 @@ go test ./internal/app ./internal/cli -run 'Runtime|WorkspaceOverride|ParsesWork
 
 Expected: PASS。
 
-- [ ] **Step 9：提交**
+- [x] **Step 9：提交**
 
 ```bash
 git add internal/app/runtime.go internal/app/service.go internal/cli/root.go internal/cli/config.go internal/app/service_test.go internal/cli/root_test.go
@@ -667,7 +667,7 @@ go test ./internal/app -run 'Viewer|MemberCannot|AdminCannot|Permission' -count=
 
 Expected: PASS。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add internal/app/permission.go internal/app/service.go internal/app/context.go internal/app/uda.go internal/app/service_test.go
@@ -855,7 +855,7 @@ git commit -m "feat: 审计 M4 写操作"
 - Test: `internal/app/service_test.go`
 - Test: `tests/integration/cli_test.go`
 
-- [ ] **Step 1：写失败的 active context 隔离测试**
+- [x] **Step 1：写失败的 active context 隔离测试**
 
 用 app-level 测试覆盖 active context 隔离；CLI 旧 key 兼容行为放到 Step 5/Step 6 的 CLI 测试里覆盖：
 
@@ -865,7 +865,7 @@ git commit -m "feat: 审计 M4 写操作"
 4. Bob 的 `context show` 为空。
 5. 如果 context 已存在，Bob 作为 viewer 可以执行 `context use work`。
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -875,7 +875,7 @@ go test ./internal/app ./tests/integration -run 'ActiveContext|ContextIsolation'
 
 Expected: FAIL，因为当前 active context 是单一 `context.active` key。
 
-- [ ] **Step 3：替换 `activeContextMetaKey` 常量**
+- [x] **Step 3：替换 `activeContextMetaKey` 常量**
 
 移除用于写入的全局 `const activeContextMetaKey = "context.active"`。
 
@@ -895,7 +895,7 @@ func (s *Service) activeContextMetaKey() string {
 
 M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，升级后需要运行一次 `taskg context use <name>`。这样避免重新引入机器级共享 active context。
 
-- [ ] **Step 4：更新 RC 处理**
+- [x] **Step 4：更新 RC 处理**
 
 在 root：
 
@@ -903,7 +903,7 @@ M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，
 - 保留 `rc.context=none`、`rc.context:`、`rc.context=`，映射到本次运行的 no-context/override 行为，内部仍可落到 `RuntimeOverrides["context.active"]`。
 - 拒绝 `rc.context.active=...`。
 
-- [ ] **Step 5：更新 show/config 行为**
+- [x] **Step 5：更新 show/config 行为**
 
 `config set context.active ...` 和 `config unset context.active` 返回 “managed by context commands” 或 “unsupported legacy key”。
 
@@ -919,7 +919,7 @@ rg "context\\.active" internal/cli internal/app tests/integration
 
 Task 6 之后，剩余匹配必须是迁移/拒绝旧 key 的测试断言，或说明迁移的注释。命令实现不得读写持久化 `context.active`。
 
-- [ ] **Step 6：运行 context 测试**
+- [x] **Step 6：运行 context 测试**
 
 Run:
 
@@ -929,7 +929,7 @@ go test ./internal/app ./internal/cli ./tests/integration -run 'Context|RcOverri
 
 Expected: PASS。同步更新 M3 中断言 `context.active` 出现在 `show`、`_show`、config 或集成输出中的测试。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add internal/app/context.go internal/cli/root.go internal/cli/config.go internal/app/service_test.go internal/cli/root_test.go tests/integration/cli_test.go
@@ -1380,7 +1380,7 @@ git commit -m "feat: 完善循环任务审计路径"
 - Modify: `ROADMAP.md`
 - Modify: `docs/superpowers/specs/2026-05-29-taskg-m4-design.md` only if implementation changes the spec.
 
-- [ ] **Step 1：更新 README M4 用法**
+- [x] **Step 1：更新 README M4 用法**
 
 新增章节：
 
@@ -1394,7 +1394,7 @@ git commit -m "feat: 完善循环任务审计路径"
 - M3 到 M4 升级行为：现有任务留在 local workspace；自动创建 local user/workspace/membership；旧 `context.active` meta 会迁移到 `(local user, local workspace)` scoped active context。
 - M3 用户升级后第一次运行 `taskg` 会自动完成迁移，不需要手动执行迁移命令。
 
-- [ ] **Step 2：更新 ROADMAP**
+- [x] **Step 2：更新 ROADMAP**
 
 把 M4 标为已完成，并列出交付内容：
 

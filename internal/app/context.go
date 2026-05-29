@@ -202,8 +202,5 @@ func (s *Service) activeContextName() (string, bool, error) {
 	if ok {
 		return name, name != "", nil
 	}
-	if name, ok := s.runtimeConfig["context.active"]; ok {
-		return name, name != "", nil
-	}
 	return "", false, nil
 }

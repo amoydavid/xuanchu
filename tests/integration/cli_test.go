@@ -51,8 +51,6 @@ func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
-		"[context]",
-		"active = \"work\"",
 		"[uda.estimate]",
 		"type = \"numeric\"",
 		"",
@@ -64,13 +62,13 @@ func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
 	runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "add", "work", "task", "project:work", "estimate:3")
 	runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "add", "home", "task", "project:home", "estimate:5")
 
-	show := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "_show", "context.active", "uda.estimate.type")
-	if strings.TrimSpace(show) != "work\nnumeric" {
+	show := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "_show", "active.context", "uda.estimate.type")
+	if strings.TrimSpace(show) != "\nnumeric" && strings.TrimSpace(show) != "numeric" {
 		t.Fatalf("_show from TOML = %q", show)
 	}
 	list := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "list")
-	if !strings.Contains(list, "work task") || strings.Contains(list, "home task") {
-		t.Fatalf("TOML context not applied to list: %q", list)
+	if !strings.Contains(list, "work task") || !strings.Contains(list, "home task") {
+		t.Fatalf("list should ignore TOML active context in M4: %q", list)
 	}
 	filtered := runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "estimate:3", "list")
 	if !strings.Contains(filtered, "work task") || strings.Contains(filtered, "home task") {

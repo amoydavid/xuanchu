@@ -1248,8 +1248,8 @@ func TestContextNonePersistsEmptyOverrideOverRuntimeConfig(t *testing.T) {
 	if err := svc.DefineContext("work", "project:work"); err != nil {
 		t.Fatalf("DefineContext() error = %v", err)
 	}
-	if show, err := svc.ContextShow(); err != nil || !strings.Contains(show, "work") {
-		t.Fatalf("ContextShow() with runtime config = %q, %v", show, err)
+	if show, err := svc.ContextShow(); err != nil || show != "" {
+		t.Fatalf("ContextShow() with runtime config = %q, %v; want no TOML/runtime fallback", show, err)
 	}
 	if err := svc.ContextNone(); err != nil {
 		t.Fatalf("ContextNone() error = %v", err)
