@@ -179,6 +179,30 @@ func TestLoadRuntimePreservesHashInsideQuotedTomlValue(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeHandlesSectionCommentsAndArrayValues(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+		`[context] # active context section`,
+		`active = "work"`,
+		`[uda.estimate] # estimate schema`,
+		`values = ["1", "2", "3"]`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := LoadRuntime(RuntimeOptions{ConfigDir: configDir})
+	if err != nil {
+		t.Fatalf("LoadRuntime() error = %v", err)
+	}
+	if got, _ := rt.Get("context.active"); got != "work" {
+		t.Fatalf("context.active = %q, want work", got)
+	}
+	if got, _ := rt.Get("uda.estimate.values"); got != "1,2,3" {
+		t.Fatalf("uda.estimate.values = %q, want 1,2,3", got)
+	}
+}
+
 func stringPtr(v string) *string {
 	return &v
 }

@@ -27,8 +27,9 @@ func loadTomlConfig(dir string) (map[string]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
+		sectionLine := trimInlineComment(line)
+		if strings.HasPrefix(sectionLine, "[") && strings.HasSuffix(sectionLine, "]") {
+			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(sectionLine, "["), "]"))
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")

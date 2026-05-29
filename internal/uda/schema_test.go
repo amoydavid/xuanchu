@@ -1,6 +1,9 @@
 package uda
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestUDASchemaValidation(t *testing.T) {
 	for _, typ := range []Type{TypeString, TypeNumeric, TypeDate, TypeDuration} {
@@ -63,5 +66,37 @@ func TestNormalizeDurationValueVariants(t *testing.T) {
 func TestNormalizeDurationValueRejectsInvalid(t *testing.T) {
 	if _, err := NormalizeValue(Definition{Name: "effort", Type: TypeDuration}, "oops"); err == nil {
 		t.Fatal("NormalizeValue(invalid duration) error = nil, want error")
+	}
+}
+
+func TestValuesJSONAndParseValuesCSV(t *testing.T) {
+	jsonValue, err := ValuesJSON([]string{"1", "2", "3"})
+	if err != nil {
+		t.Fatalf("ValuesJSON() error = %v", err)
+	}
+	if jsonValue != `["1","2","3"]` {
+		t.Fatalf("ValuesJSON() = %q, want JSON array", jsonValue)
+	}
+	emptyJSON, err := ValuesJSON(nil)
+	if err != nil {
+		t.Fatalf("ValuesJSON(nil) error = %v", err)
+	}
+	if emptyJSON != "" {
+		t.Fatalf("ValuesJSON(nil) = %q, want empty string", emptyJSON)
+	}
+
+	got := ParseValuesCSV("1, 2, ,3,, 5 ")
+	want := []string{"1", "2", "3", "5"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseValuesCSV() = %#v, want %#v", got, want)
+	}
+	if got := ParseValuesCSV("   "); got != nil {
+		t.Fatalf("ParseValuesCSV(blank) = %#v, want nil", got)
+	}
+}
+
+func TestNormalizeStringValueRejectsNewlines(t *testing.T) {
+	if _, err := NormalizeValue(Definition{Name: "notes", Type: TypeString}, "line1\nline2"); err == nil {
+		t.Fatal("NormalizeValue(string with newline) error = nil, want error")
 	}
 }

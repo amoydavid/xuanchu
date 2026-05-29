@@ -237,6 +237,19 @@ func TestCLICompletionDoesNotOpenDatabase(t *testing.T) {
 	}
 }
 
+func TestCLICompletionRejectsUnsupportedShell(t *testing.T) {
+	bin := buildTaskg(t)
+	badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
+	cmd := exec.Command(bin, "--db", badDB, "completion", "bogus")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("completion bogus error = nil, output = %q", out)
+	}
+	if !strings.Contains(string(out), `unsupported shell "bogus"`) {
+		t.Fatalf("completion bogus output = %q", out)
+	}
+}
+
 func TestCLIContextCommands(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
