@@ -1168,7 +1168,7 @@ git commit -m "feat: 增加 user 和 workspace 命令"
 - Modify: `internal/cli/root.go`
 - Test: `tests/integration/cli_test.go`
 
-- [ ] **Step 1：写失败的集成测试**
+- [x] **Step 1：写失败的集成测试**
 
 覆盖：
 
@@ -1182,7 +1182,7 @@ git commit -m "feat: 增加 user 和 workspace 命令"
 - owner 在有另一个 workspace 时可以 archive。
 - `audit list --json` 包含 `task.add`、`member.add`、`workspace.modify`。
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -1192,7 +1192,7 @@ go test ./tests/integration -run 'TestCLIWorkspaceErrorSemantics|TestCLIMemberPe
 
 Expected: FAIL，因为命令还不存在或权限尚未接到 CLI。
 
-- [ ] **Step 3：实现 member commands**
+- [x] **Step 3：实现 member commands**
 
 `member list [--workspace]`：
 
@@ -1203,7 +1203,7 @@ Expected: FAIL，因为命令还不存在或权限尚未接到 CLI。
 
 `member role <user> <role>`。
 
-- [ ] **Step 4：实现 audit command**
+- [x] **Step 4：实现 audit command**
 
 `audit list [--limit N] [--workspace <ref>]`。
 
@@ -1215,13 +1215,13 @@ Expected: FAIL，因为命令还不存在或权限尚未接到 CLI。
 - JSON `payload` 字段应是从 `payload_json` 解码出来的 object；如果 payload 为空或解码失败，输出 `null`。
 - 不做复杂 filter。
 
-- [ ] **Step 5：注册命令和 JSON 错误**
+- [x] **Step 5：注册命令和 JSON 错误**
 
 注册 `member` 和 `audit`。
 
 如果现有 root error renderer 不支持 JSON error，可以只给新命令加最小处理；若改动太大，保留普通 error，并把完整 JSON error 统一化记为后续事项，不阻塞 M4。
 
-- [ ] **Step 6：运行 member/audit 测试**
+- [x] **Step 6：运行 member/audit 测试**
 
 Run:
 
@@ -1231,7 +1231,7 @@ go test ./tests/integration -run 'TestCLIWorkspaceErrorSemantics|TestCLIMemberPe
 
 Expected: PASS。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add internal/cli/member.go internal/cli/audit.go internal/cli/root.go tests/integration/cli_test.go

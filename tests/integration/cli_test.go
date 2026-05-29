@@ -355,6 +355,83 @@ func TestCLIWorkspaceErrorSemantics(t *testing.T) {
 	}
 }
 
+func TestCLIMemberPermissions(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "user", "add", "bob")
+	run(t, bin, "--db", db, "workspace", "add", "team")
+	run(t, bin, "--db", db, "workspace", "use", "team")
+	run(t, bin, "--db", db, "member", "add", "bob", "role:viewer")
+
+	run(t, bin, "--db", db, "user", "use", "bob")
+	out := run(t, bin, "--db", db, "--workspace", "team", "member", "list")
+	if !strings.Contains(out, "bob") {
+		t.Fatalf("member list output = %q", out)
+	}
+	cmd := exec.Command(bin, "--db", db, "--workspace", "team", "add", "viewer", "task")
+	raw, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(raw), "permission_denied") {
+		t.Fatalf("viewer add task error = %v, output = %q", err, raw)
+	}
+
+	run(t, bin, "--db", db, "user", "use", "local")
+	run(t, bin, "--db", db, "--workspace", "team", "member", "role", "bob", "member")
+	run(t, bin, "--db", db, "user", "use", "bob")
+	cmd = exec.Command(bin, "--db", db, "--workspace", "team", "member", "add", "local")
+	raw, err = cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(raw), "permission_denied") {
+		t.Fatalf("member manage members error = %v, output = %q", err, raw)
+	}
+
+	run(t, bin, "--db", db, "user", "use", "local")
+	run(t, bin, "--db", db, "user", "add", "admin")
+	run(t, bin, "--db", db, "--workspace", "team", "member", "add", "admin", "role:admin")
+	run(t, bin, "--db", db, "user", "use", "admin")
+	cmd = exec.Command(bin, "--db", db, "--workspace", "team", "workspace", "archive", "team")
+	raw, err = cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(raw), "permission_denied") {
+		t.Fatalf("admin archive workspace error = %v, output = %q", err, raw)
+	}
+
+	run(t, bin, "--db", db, "user", "use", "local")
+	run(t, bin, "--db", db, "workspace", "add", "backup")
+	run(t, bin, "--db", db, "workspace", "archive", "team")
+	list := run(t, bin, "--db", db, "workspace", "list", "--all")
+	if !strings.Contains(list, "team") || !strings.Contains(list, "archived") {
+		t.Fatalf("workspace list --all output = %q", list)
+	}
+}
+
+func TestCLIAuditList(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "workspace", "add", "team")
+	run(t, bin, "--db", db, "workspace", "use", "team")
+	run(t, bin, "--db", db, "add", "write", "spec")
+	run(t, bin, "--db", db, "user", "add", "alice")
+	run(t, bin, "--db", db, "member", "add", "alice", "role:viewer")
+	run(t, bin, "--db", db, "workspace", "modify", "team", "description:Team")
+
+	out := run(t, bin, "--db", db, "--json", "audit", "list")
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(out), &rows); err != nil {
+		t.Fatalf("audit list --json output is not JSON: %v\n%s", err, out)
+	}
+	actions := map[string]bool{}
+	for _, row := range rows {
+		if action, _ := row["action"].(string); action != "" {
+			actions[action] = true
+		}
+	}
+	for _, want := range []string{"task.add", "member.add", "workspace.modify"} {
+		if !actions[want] {
+			t.Fatalf("audit actions = %#v, missing %q", actions, want)
+		}
+	}
+}
+
 func TestCLIModifyDoneDelete(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")

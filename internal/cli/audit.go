@@ -1,0 +1,82 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/render"
+	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/spf13/cobra"
+)
+
+func newAuditCommand(opts Options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:  "audit",
+		Args: cobra.NoArgs,
+	}
+	cmd.AddCommand(newAuditListCommand(opts))
+	return cmd
+}
+
+func newAuditListCommand(opts Options) *cobra.Command {
+	var limit int
+	cmd := &cobra.Command{
+		Use:  "list",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			rows, err := svc.ListAudit(app.AuditListInput{
+				WorkspaceRef: currentOpts.Workspace,
+				Limit:        limit,
+			})
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), auditRowsForJSON(rows))
+			}
+			for _, row := range rows {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s\n", time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339), row.Action, row.TargetType, row.TargetID)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 50, "limit rows")
+	return cmd
+}
+
+func auditRowsForJSON(rows []sqlite.AuditLogEntry) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		item := map[string]any{
+			"id":            row.ID,
+			"actor_user_id": row.ActorUserID,
+			"workspace_id":  row.WorkspaceID,
+			"action":        row.Action,
+			"target_type":   row.TargetType,
+			"target_id":     row.TargetID,
+			"payload":       parseAuditPayload(row.PayloadJSON),
+			"created_at":    row.CreatedAt,
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func parseAuditPayload(raw string) any {
+	if raw == "" {
+		return nil
+	}
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return nil
+	}
+	return value
+}

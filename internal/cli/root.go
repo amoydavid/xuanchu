@@ -79,6 +79,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newContextCommand(opts))
 	cmd.AddCommand(newUserCommand(opts))
 	cmd.AddCommand(newWorkspaceCommand(opts))
+	cmd.AddCommand(newMemberCommand(opts))
+	cmd.AddCommand(newAuditCommand(opts))
 	cmd.AddCommand(newAllCommand(opts))
 	cmd.AddCommand(newCompletedCommand(opts))
 	cmd.AddCommand(newDeletedCommand(opts))
