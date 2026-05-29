@@ -104,7 +104,7 @@
 - Modify: `internal/storage/sqlite/db.go`
 - Test: `internal/storage/sqlite/db_test.go`
 
-- [ ] **Step 1：写失败的迁移测试**
+- [x] **Step 1：写失败的迁移测试**
 
 在 `internal/storage/sqlite/db_test.go` 中新增：
 
@@ -152,7 +152,7 @@ func TestOpenMigratesContextActiveMeta(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -162,7 +162,7 @@ go test ./internal/storage/sqlite -run 'TestOpenInitializesLocalUserWorkspaceAnd
 
 Expected: FAIL，因为 repository/model 还不存在，迁移也还没有创建 users/memberships。
 
-- [ ] **Step 3：更新 GORM models**
+- [x] **Step 3：更新 GORM models**
 
 在 `models.go` 中新增/修改：
 
@@ -211,7 +211,7 @@ type AuditLog struct {
 
 保留现有 `Task`、`Context`、`UDADefinition`、`TaskUDAValue` 的语义。除非 GORM 关系确实需要，不要扩大任务模型边界。
 
-- [ ] **Step 4：实现迁移 helper**
+- [x] **Step 4：实现迁移 helper**
 
 在 `db.go` 中：
 
@@ -225,7 +225,7 @@ type AuditLog struct {
   - 把旧 `context.active` 迁移到 `active_context.<local_user_id>.<local_workspace_id>`，并删除旧 key。
 - `LocalWorkspace()` 可以作为 storage migration/tests 的兼容 helper 保留，但 app 业务路径后续必须停止调用它。
 
-- [ ] **Step 5：运行 storage 迁移测试**
+- [x] **Step 5：运行 storage 迁移测试**
 
 Run:
 
@@ -251,7 +251,7 @@ git commit -m "feat: 初始化 M4 本地身份模型"
 - Create: `internal/storage/sqlite/audit_repo.go`
 - Test: `internal/storage/sqlite/db_test.go` 或新增 `internal/storage/sqlite/identity_repo_test.go`
 
-- [ ] **Step 1：写失败的 repository 测试**
+- [x] **Step 1：写失败的 repository 测试**
 
 覆盖：
 
@@ -283,7 +283,7 @@ func TestAuditRepositoryListsNewestFirst(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -293,7 +293,7 @@ go test ./internal/storage/sqlite -run 'UserRepository|WorkspaceRepository|Membe
 
 Expected: FAIL，因为 repo 还不存在。
 
-- [ ] **Step 3：实现 repository DTO 和方法**
+- [x] **Step 3：实现 repository DTO 和方法**
 
 先使用 storage-level DTO，不要把 user/workspace/member 概念塞进 `internal/task`。
 
@@ -331,7 +331,7 @@ func (r *AuditRepository) List(AuditListOptions) ([]AuditLogEntry, error)
 
 统一使用 `sqlite.ErrNotFound` 表示找不到。
 
-- [ ] **Step 4：运行 repository 测试**
+- [x] **Step 4：运行 repository 测试**
 
 Run:
 
@@ -341,7 +341,7 @@ go test ./internal/storage/sqlite -run 'UserRepository|WorkspaceRepository|Membe
 
 Expected: PASS。
 
-- [ ] **Step 5：Chunk 1 构建检查**
+- [x] **Step 5：Chunk 1 构建检查**
 
 Run:
 

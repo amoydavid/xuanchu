@@ -6,10 +6,44 @@ type Meta struct {
 }
 
 type Workspace struct {
-	ID        string `gorm:"primaryKey"`
-	Slug      string `gorm:"not null;uniqueIndex"`
-	Name      string `gorm:"not null"`
-	CreatedAt int64  `gorm:"not null"`
+	ID              string `gorm:"primaryKey"`
+	Slug            string `gorm:"not null;uniqueIndex"`
+	Name            string `gorm:"not null"`
+	CreatedByUserID *string
+	Description     string
+	Visibility      string `gorm:"not null;default:'private'"`
+	SettingsJSON    string `gorm:"not null;default:'{}'"`
+	ArchivedAt      *int64
+	CreatedAt       int64 `gorm:"not null"`
+	ModifiedAt      int64 `gorm:"not null"`
+}
+
+type User struct {
+	ID                 string  `gorm:"primaryKey"`
+	Name               string  `gorm:"not null;uniqueIndex"`
+	Email              *string `gorm:"uniqueIndex"`
+	DefaultWorkspaceID *string
+	CreatedAt          int64 `gorm:"not null"`
+	ModifiedAt         int64 `gorm:"not null"`
+}
+
+type Membership struct {
+	UserID      string `gorm:"primaryKey;not null"`
+	WorkspaceID string `gorm:"primaryKey;not null;index"`
+	Role        string `gorm:"not null;index"`
+	JoinedAt    int64  `gorm:"not null"`
+	ModifiedAt  int64  `gorm:"not null"`
+}
+
+type AuditLog struct {
+	ID          int64 `gorm:"primaryKey;autoIncrement"`
+	ActorUserID *string `gorm:"index"`
+	WorkspaceID *string `gorm:"index;index:idx_audit_ws_time,priority:1"`
+	Action      string  `gorm:"not null;index"`
+	TargetType  string
+	TargetID    string
+	PayloadJSON string
+	CreatedAt   int64 `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc"`
 }
 
 type Context struct {
