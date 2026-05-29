@@ -432,6 +432,63 @@ func TestCLIAuditList(t *testing.T) {
 	}
 }
 
+func TestCLIWorkspaceIsolation(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
+	run(t, bin, "--db", db, "add", "local", "task", "project:same", "+same", "estimate:1")
+	run(t, bin, "--db", db, "context", "define", "same", "project:same")
+	run(t, bin, "--db", db, "context", "use", "same")
+
+	run(t, bin, "--db", db, "workspace", "add", "work")
+	run(t, bin, "--db", db, "workspace", "use", "work")
+	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
+	run(t, bin, "--db", db, "add", "work", "task", "project:same", "+same", "estimate:2")
+	run(t, bin, "--db", db, "context", "define", "same", "project:same")
+	run(t, bin, "--db", db, "context", "use", "same")
+
+	list := run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "work task") || strings.Contains(list, "local task") {
+		t.Fatalf("work list output = %q", list)
+	}
+	localList := run(t, bin, "--db", db, "--workspace", "local", "list")
+	if !strings.Contains(localList, "local task") || strings.Contains(localList, "work task") {
+		t.Fatalf("local list output = %q", localList)
+	}
+
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		wantWork  string
+		wantLocal string
+	}{
+		{name: "projects", args: []string{"_projects"}, wantWork: "same", wantLocal: "same"},
+		{name: "tags", args: []string{"_tags"}, wantWork: "same", wantLocal: "same"},
+		{name: "udas", args: []string{"_udas"}, wantWork: "estimate", wantLocal: "estimate"},
+		{name: "unique", args: []string{"_unique", "estimate"}, wantWork: "2", wantLocal: "1"},
+		{name: "ids", args: []string{"_ids", "project:same"}, wantWork: "1", wantLocal: "1"},
+		{name: "uuids", args: []string{"_uuids", "project:same"}, wantWork: "", wantLocal: ""},
+		{name: "get", args: []string{"_get", "1.description"}, wantWork: "work task", wantLocal: "local task"},
+		{name: "urgency", args: []string{"_urgency", "1"}, wantWork: "", wantLocal: ""},
+	} {
+		workOut := run(t, bin, append([]string{"--db", db}, tc.args...)...)
+		localOut := run(t, bin, append([]string{"--db", db, "--workspace", "local"}, tc.args...)...)
+		if tc.wantWork != "" && !strings.Contains(workOut, tc.wantWork) {
+			t.Fatalf("%s work output = %q, want %q", tc.name, workOut, tc.wantWork)
+		}
+		if tc.wantLocal != "" && !strings.Contains(localOut, tc.wantLocal) {
+			t.Fatalf("%s local output = %q, want %q", tc.name, localOut, tc.wantLocal)
+		}
+		if tc.name == "uuids" && strings.TrimSpace(workOut) == strings.TrimSpace(localOut) {
+			t.Fatalf("uuids output should differ by workspace: work=%q local=%q", workOut, localOut)
+		}
+		if tc.name == "urgency" && strings.TrimSpace(workOut) == "" {
+			t.Fatalf("urgency work output = %q", workOut)
+		}
+	}
+}
+
 func TestCLIModifyDoneDelete(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")

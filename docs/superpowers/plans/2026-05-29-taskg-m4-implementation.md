@@ -1252,7 +1252,7 @@ git commit -m "feat: 增加 member 和 audit 命令"
 - Test: `tests/integration/cli_test.go`
 - Test: `internal/storage/sqlite/query_scope_test.go`
 
-- [ ] **Step 1：写失败的跨 workspace 集成测试**
+- [x] **Step 1：写失败的跨 workspace 集成测试**
 
 流程：
 
@@ -1265,7 +1265,7 @@ git commit -m "feat: 增加 member 和 audit 命令"
    - `_projects`、`_tags`、`_unique estimate`、`_udas`、`_ids`、`_uuids`、`_get`、`_urgency` 都尊重 `--workspace`。
    - working-set ID `1` 在不同 workspace 中独立解析。
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -1275,7 +1275,7 @@ go test ./tests/integration -run 'TestCLIWorkspaceIsolation' -count=1
 
 Expected: FAIL，直到 `--workspace` 和 runtime context 完整贯通。
 
-- [ ] **Step 3：修复仍绕过 service 的命令**
+- [x] **Step 3：修复仍绕过 service 的命令**
 
 搜索：
 
@@ -1291,13 +1291,13 @@ rg "\\.LocalWorkspace\\b|context\\.active" internal/app internal/cli
 
 `LocalWorkspace()` 可以留在 storage migration/tests 中，但不得出现在 app 业务代码里。
 
-- [ ] **Step 4：验证 storage-level scoping**
+- [x] **Step 4：验证 storage-level scoping**
 
 扩展 `query_scope_test.go`，断言 UDA subquery、tag/dependency/annotation subquery 都包含 workspace predicate。
 
 现有测试已经覆盖不少场景；如果缺 UDA schema/current workspace 回归，补一条。
 
-- [ ] **Step 5：运行隔离测试**
+- [x] **Step 5：运行隔离测试**
 
 Run:
 
@@ -1307,7 +1307,7 @@ go test ./tests/integration -run 'TestCLIWorkspaceIsolation' -count=1
 
 Expected: PASS。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add internal tests
