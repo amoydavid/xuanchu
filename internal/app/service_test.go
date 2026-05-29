@@ -1883,6 +1883,104 @@ func TestRecurringStopsAtUntil(t *testing.T) {
 	}
 }
 
+func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocalCreate := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	waitLocal := int64(200)
+	localWaiting, err := ownerLocalCreate.Add(AddInput{Description: "local waiting", Wait: &waitLocal})
+	if err != nil {
+		t.Fatalf("Add(local waiting) error = %v", err)
+	}
+
+	work, err := ownerLocalCreate.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	ownerWorkCreate := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
+	waitWork := int64(200)
+	if _, err := ownerWorkCreate.Add(AddInput{Description: "work waiting", Wait: &waitWork}); err != nil {
+		t.Fatalf("Add(work waiting) error = %v", err)
+	}
+
+	viewer := mustCreateUserRecord(t, store, sqlite.User{ID: "user-viewer-scope", Name: "viewer-scope", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      viewer.ID,
+		WorkspaceID: work.ID,
+		Role:        string(RoleViewer),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 300, viewer.Name, work.Slug)
+	tasks, err := viewerSvc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("viewer List() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].Description != "work waiting" {
+		t.Fatalf("viewer tasks = %#v", tasks)
+	}
+
+	ownerLocalRead := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	localTask, err := ownerLocalRead.Info(localWaiting.UUID)
+	if err != nil {
+		t.Fatalf("Info(local waiting) error = %v", err)
+	}
+	if localTask.Status != task.StatusWaiting {
+		t.Fatalf("local task status = %s, want waiting", localTask.Status)
+	}
+}
+
+func TestDoneRecurringTaskKeepsAuditAndNextChildInSameWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocal := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", "local")
+	work, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	svc := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", work.Slug)
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	until := mustUnix(t, "2030-02-01T23:59:59Z")
+	recur := "daily"
+	parent, err := svc.Add(AddInput{Description: "daily work task", Due: &due, Until: &until, Recur: &recur})
+	if err != nil {
+		t.Fatalf("Add(recurring) error = %v", err)
+	}
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("tasks = %#v", tasks)
+	}
+	firstChild := tasks[0]
+	if err := svc.Done(firstChild.UUID); err != nil {
+		t.Fatalf("Done(child) error = %v", err)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) == 0 || logs[0].Action != "task.done" || logs[0].TargetID != firstChild.UUID {
+		t.Fatalf("logs = %#v", logs)
+	}
+
+	tasks, err = svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() after Done error = %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("tasks after Done = %#v", tasks)
+	}
+	nextChild := tasks[0]
+	if nextChild.UUID == firstChild.UUID {
+		t.Fatalf("next child not created: %#v", tasks)
+	}
+	if nextChild.WorkspaceID != work.ID || nextChild.Parent == nil || *nextChild.Parent != parent.UUID {
+		t.Fatalf("next child = %#v", nextChild)
+	}
+}
+
 func containsTask(tasks []task.Task, uuid string) bool {
 	for _, tsk := range tasks {
 		if tsk.UUID == uuid {

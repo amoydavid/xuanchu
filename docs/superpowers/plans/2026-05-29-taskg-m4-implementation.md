@@ -1321,7 +1321,7 @@ git commit -m "fix: 贯通 workspace 隔离"
 - Modify: `internal/app/audit.go`
 - Test: `internal/app/service_test.go`
 
-- [ ] **Step 1：识别自动写入路径**
+- [x] **Step 1：识别自动写入路径**
 
 当前自动写入：
 
@@ -1329,7 +1329,7 @@ git commit -m "fix: 贯通 workspace 隔离"
 - `ensureRecurringChildren` 创建下一个 child。
 - `Done` 完成任务后可能创建 recurring child。
 
-- [ ] **Step 2：确定 audit/permission 规则**
+- [x] **Step 2：确定 audit/permission 规则**
 
 规则：
 
@@ -1339,20 +1339,20 @@ git commit -m "fix: 贯通 workspace 隔离"
 - 自动维护必须保持 workspace-scoped，不能暴露或修改其他 workspace。
 - 如果 recurring child creation 可以从 read path 触发，它也作为内部维护绕过权限检查。如果实现时觉得范围过宽，可以缩窄触发点，让 read path 不创建 recurring child；但不能让 viewer read 失败。
 
-- [ ] **Step 3：补自动维护 scope 和 recurring audit 测试**
+- [x] **Step 3：补自动维护 scope 和 recurring audit 测试**
 
 测试：
 
 - 两个 workspace 各有一个 waiting task；actor/viewer 在其中一个 workspace 执行 `List`，只有当前 workspace 的 waiting task 被推进。
 - 对 recurring child 执行 `Done` 会写 `task.done` audit，并且下一个 child 仍在同一 workspace。
 
-- [ ] **Step 4：按需重构 transaction 边界**
+- [x] **Step 4：按需重构 transaction 边界**
 
 如果 `Done` 当前先更新 task、再创建 child 是分散写入，把两者和 audit 包进 `withAudit`。
 
 避免对内部 child 创建重复写 audit。
 
-- [ ] **Step 5：运行 recurrence/app 测试**
+- [x] **Step 5：运行 recurrence/app 测试**
 
 Run:
 
@@ -1362,7 +1362,7 @@ go test ./internal/app ./internal/recurrence -run 'Recurring|Audit|Done' -count=
 
 Expected: PASS。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add internal/app/service.go internal/app/audit.go internal/app/service_test.go
