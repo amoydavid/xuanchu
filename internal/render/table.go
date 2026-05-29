@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/task"
+	"github.com/olekukonko/tablewriter"
 )
 
 func TaskList(w io.Writer, tasks []task.Task) {
@@ -15,7 +16,19 @@ func TaskList(w io.Writer, tasks []task.Task) {
 }
 
 func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
-	fmt.Fprintln(w, "ID  UUID      PRI  PROJECT  TAGS  DESCRIPTION")
+	table := tablewriter.NewWriter(w)
+	table.SetHeader([]string{"ID", "UUID", "PRI", "PROJECT", "TAGS", "DESCRIPTION"})
+	table.SetBorder(false)
+	table.SetHeaderLine(true)
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(false)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetColumnSeparator(" ")
+	table.SetCenterSeparator(" ")
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+
 	for i, tsk := range tasks {
 		idCell := strconv.Itoa(i + 1)
 		if len(ids) == len(tasks) {
@@ -37,22 +50,48 @@ func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 		if len(uuid) > 8 {
 			uuid = uuid[:8]
 		}
-		fmt.Fprintf(w, "%-3s %-8s %-4s %-8s %-5s %s\n",
-			idCell, uuid, priority, project, strings.Join(tsk.Tags, ","), tsk.Description)
+		table.Append([]string{
+			idCell,
+			uuid,
+			priority,
+			project,
+			strings.Join(tsk.Tags, ","),
+			tsk.Description,
+		})
 	}
+	table.Render()
+	fmt.Fprintf(w, "%d task(s)\n", len(tasks))
 }
 
 func TaskInfo(w io.Writer, tsk task.Task) {
-	fmt.Fprintf(w, "UUID: %s\n", tsk.UUID)
-	fmt.Fprintf(w, "Status: %s\n", tsk.Status)
-	fmt.Fprintf(w, "Description: %s\n", tsk.Description)
-	fmt.Fprintf(w, "Entry: %s\n", formatUnix(tsk.Entry))
-	fmt.Fprintf(w, "Modified: %s\n", formatUnix(tsk.Modified))
-	fmt.Fprintf(w, "End: %s\n", formatUnixPtr(tsk.End))
-	fmt.Fprintf(w, "Due: %s\n", formatUnixPtr(tsk.Due))
-	fmt.Fprintf(w, "Project: %s\n", stringPtrValue(tsk.Project))
-	fmt.Fprintf(w, "Priority: %s\n", stringPtrValue(tsk.Priority))
-	fmt.Fprintf(w, "Tags: %s\n", strings.Join(tsk.Tags, ","))
+	table := tablewriter.NewWriter(w)
+	table.SetBorder(false)
+	table.SetHeaderLine(false)
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(false)
+	table.SetColumnSeparator("")
+	table.SetCenterSeparator("")
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetColumnAlignment([]int{tablewriter.ALIGN_RIGHT, tablewriter.ALIGN_LEFT})
+
+	rows := [][]string{
+		{"UUID:", tsk.UUID},
+		{"Status:", string(tsk.Status)},
+		{"Description:", tsk.Description},
+		{"Entry:", formatUnix(tsk.Entry)},
+		{"Modified:", formatUnix(tsk.Modified)},
+		{"End:", formatUnixPtr(tsk.End)},
+		{"Due:", formatUnixPtr(tsk.Due)},
+		{"Project:", stringPtrValue(tsk.Project)},
+		{"Priority:", stringPtrValue(tsk.Priority)},
+		{"Tags:", strings.Join(tsk.Tags, ",")},
+	}
+	for _, row := range rows {
+		table.Append(row)
+	}
+	table.Render()
 }
 
 func formatUnix(sec int64) string {

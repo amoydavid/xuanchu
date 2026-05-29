@@ -203,6 +203,34 @@ func TestLoadRuntimeHandlesSectionCommentsAndArrayValues(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeSupportsTomlMultilineStrings(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+		`display.color = false`,
+		`[uda.ticket]`,
+		`label = """fix #1234`,
+		`second line"""`,
+		`values = ["1", "2", "3"]`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := LoadRuntime(RuntimeOptions{ConfigDir: configDir})
+	if err != nil {
+		t.Fatalf("LoadRuntime() error = %v", err)
+	}
+	if got, _ := rt.Get("color"); got != "false" {
+		t.Fatalf("color = %q, want false", got)
+	}
+	if got, _ := rt.Get("uda.ticket.label"); got != "fix #1234\nsecond line" {
+		t.Fatalf("uda.ticket.label = %q, want multiline TOML string", got)
+	}
+	if got, _ := rt.Get("uda.ticket.values"); got != "1,2,3" {
+		t.Fatalf("uda.ticket.values = %q, want 1,2,3", got)
+	}
+}
+
 func stringPtr(v string) *string {
 	return &v
 }

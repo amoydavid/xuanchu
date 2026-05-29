@@ -740,11 +740,12 @@ func TestCLINextRowIDMatchesWorkingSetIDUnderUrgencySort(t *testing.T) {
 	run(t, bin, "--db", db, "2", "modify", "priority:H")
 	out := run(t, bin, "--db", db, "next")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) < 3 {
-		t.Fatalf("next output = %q, want header + 2 rows", out)
+	// lines[0]=header, lines[1]=separator, lines[2..]=data rows
+	if len(lines) < 4 {
+		t.Fatalf("next output = %q, want header + separator + 2 rows", out)
 	}
-	first := lines[1]
-	second := lines[2]
+	first := lines[2]
+	second := lines[3]
 	if !strings.Contains(first, "high priority task") {
 		t.Fatalf("first row = %q, want high priority task first under urgency sort", first)
 	}
@@ -763,10 +764,11 @@ func TestCLICompletedReportShowsDashID(t *testing.T) {
 	run(t, bin, "--db", db, "1", "done")
 	out := run(t, bin, "--db", db, "completed")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("completed output = %q, want header + 1 row", out)
+	// lines[0]=header, lines[1]=separator, lines[2..]=data rows
+	if len(lines) < 3 {
+		t.Fatalf("completed output = %q, want header + separator + 1 row", out)
 	}
-	row := strings.TrimSpace(lines[1])
+	row := strings.TrimSpace(lines[2])
 	if !strings.HasPrefix(row, "-") {
 		t.Fatalf("completed row = %q, want '-' as ID for non-working-set task", row)
 	}

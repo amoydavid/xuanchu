@@ -1,52 +1,62 @@
 package config
 
 import (
-	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 func loadTomlConfig(dir string) (map[string]string, error) {
 	path := filepath.Join(dir, "taskg.toml")
-	file, err := os.Open(path)
-	if err != nil {
+	raw := map[string]any{}
+	if _, err := toml.DecodeFile(path, &raw); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, os.ErrNotExist
 		}
 		return nil, err
 	}
-	defer file.Close()
+	return flattenTomlMap(raw, ""), nil
+}
 
-	values := map[string]string{}
-	section := ""
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		sectionLine := trimInlineComment(line)
-		if strings.HasPrefix(sectionLine, "[") && strings.HasSuffix(sectionLine, "]") {
-			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(sectionLine, "["), "]"))
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		if section != "" && !strings.Contains(key, ".") {
-			key = section + "." + key
-		}
-		key = normalizeTomlKey(key)
-		values[key] = normalizeTomlScalar(value)
+func flattenTomlMap(values map[string]any, prefix string) map[string]string {
+	out := map[string]string{}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	sort.Strings(keys)
+	for _, key := range keys {
+		fullKey := key
+		if prefix != "" {
+			fullKey = prefix + "." + key
+		}
+		fullKey = normalizeTomlKey(fullKey)
+		for nestedKey, value := range flattenTomlValue(fullKey, values[key]) {
+			out[nestedKey] = value
+		}
 	}
-	return values, nil
+	return out
+}
+
+func flattenTomlValue(key string, value any) map[string]string {
+	switch v := value.(type) {
+	case map[string]any:
+		return flattenTomlMap(v, key)
+	case []any:
+		items := make([]string, 0, len(v))
+		for _, item := range v {
+			items = append(items, tomlScalarString(item))
+		}
+		return map[string]string{key: strings.Join(items, ",")}
+	default:
+		return map[string]string{key: tomlScalarString(v)}
+	}
 }
 
 func normalizeTomlKey(key string) string {
@@ -60,62 +70,21 @@ func normalizeTomlKey(key string) string {
 	}
 }
 
-func normalizeTomlScalar(raw string) string {
-	value := trimInlineComment(strings.TrimSpace(raw))
-	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-		inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(value, "["), "]"))
-		if inner == "" {
-			return ""
-		}
-		parts := strings.Split(inner, ",")
-		out := make([]string, 0, len(parts))
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if len(part) >= 2 {
-				if (part[0] == '"' && part[len(part)-1] == '"') || (part[0] == '\'' && part[len(part)-1] == '\'') {
-					part = part[1 : len(part)-1]
-				}
-			}
-			if part != "" {
-				out = append(out, part)
-			}
-		}
-		return strings.Join(out, ",")
+func tomlScalarString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case fmt.Stringer:
+		return v.String()
+	default:
+		return fmt.Sprint(v)
 	}
-	if len(value) >= 2 {
-		if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
-			value = value[1 : len(value)-1]
-		}
-	}
-	return value
-}
-
-func trimInlineComment(value string) string {
-	var quote byte
-	escaped := false
-	for i := 0; i < len(value); i++ {
-		ch := value[i]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-				continue
-			}
-			if ch == '\\' && quote == '"' {
-				escaped = true
-				continue
-			}
-			if ch == quote {
-				quote = 0
-			}
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			quote = ch
-			continue
-		}
-		if ch == '#' {
-			return strings.TrimSpace(value[:i])
-		}
-	}
-	return strings.TrimSpace(value)
 }
