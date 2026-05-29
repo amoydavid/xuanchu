@@ -76,6 +76,16 @@ func TestRootParsesRcOverridesAndNoContext(t *testing.T) {
 	}
 }
 
+func TestRootParsesWorkspaceFlag(t *testing.T) {
+	flags, positional, _ := splitFlagsRcAndPositional([]string{"--workspace", "work", "+next", "list"})
+	if len(flags) != 2 || flags[0] != "--workspace" || flags[1] != "work" {
+		t.Fatalf("flags = %#v", flags)
+	}
+	if len(positional) != 2 || positional[0] != "+next" || positional[1] != "list" {
+		t.Fatalf("positional = %#v", positional)
+	}
+}
+
 func TestRcOverrideEmptyClearsKey(t *testing.T) {
 	tests := [][]string{
 		{"rc.context="},
@@ -107,6 +117,37 @@ func TestExecutePassesRcOverridesToSubcommands(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestExecuteShowUsesScopedActiveKeys(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	if err := Execute(cmd, opts, []string{"--db", db, "show"}); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	out := stdout.String()
+	for _, key := range []string{"active.user=local", "active.workspace=local", "active.context="} {
+		if !strings.Contains(out, key) {
+			t.Fatalf("show output = %q, missing %q", out, key)
+		}
+	}
+	if strings.Contains(out, "context.active=") {
+		t.Fatalf("show output = %q, should not expose legacy context.active", out)
+	}
+}
+
+func TestExecuteRejectsLegacyContextActiveGet(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	if err := Execute(cmd, opts, []string{"--db", db, "config", "get", "context.active"}); err == nil {
+		t.Fatal("Execute() error = nil, want unsupported legacy key")
 	}
 }
 

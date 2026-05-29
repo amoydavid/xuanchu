@@ -414,7 +414,7 @@ func (s *Service) addLocked(input AddInput) (task.Task, error) {
 - Test: `internal/app/service_test.go`
 - Test: `internal/cli/root_test.go`
 
-- [ ] **Step 1：写失败的 runtime 测试**
+- [x] **Step 1：写失败的 runtime 测试**
 
 新增 app 测试：
 
@@ -438,7 +438,7 @@ func TestNewServiceWorkspaceOverride(t *testing.T) {
 
 新增 CLI root 测试：`--workspace work` 会作为 string flag 被解析。
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -448,7 +448,7 @@ go test ./internal/app ./internal/cli -run 'Runtime|WorkspaceOverride|ParsesWork
 
 Expected: FAIL，因为 runtime context 和 `--workspace` 尚不存在。
 
-- [ ] **Step 3：添加 app runtime 类型**
+- [x] **Step 3：添加 app runtime 类型**
 
 在 `internal/app/runtime.go` 中：
 
@@ -482,7 +482,7 @@ type ServiceOptions struct {
 
 可以把 `ServiceOptions` 从 `service.go` 移到 `runtime.go`，也可以原地扩展。零值行为必须兼容 M3：不传 actor/workspace ref 时，默认 local user + local/default workspace。现有 `NewService(ServiceOptions{Store: store, Clock: ...})` 调用点不应被迫修改。
 
-- [ ] **Step 4：实现 runtime 解析**
+- [x] **Step 4：实现 runtime 解析**
 
 解析顺序：
 
@@ -511,7 +511,7 @@ func (s *Service) Runtime() RuntimeContext
 
 这些 code 是 Task 9 CLI 错误语义测试的来源，不要只返回普通字符串错误。
 
-- [ ] **Step 5：更新 service 构造**
+- [x] **Step 5：更新 service 构造**
 
 在 `NewService` 中初始化新 repo：
 
@@ -535,7 +535,7 @@ rg "LocalWorkspace" internal/app
 
 `Store.LocalWorkspace()` 可以留在 `internal/storage/sqlite` 和 storage tests 中作为迁移兼容 helper，但 app 业务路径不能调用它。
 
-- [ ] **Step 6：添加 root `--workspace`**
+- [x] **Step 6：添加 root `--workspace`**
 
 在 `Options` 中增加：
 
@@ -553,7 +553,7 @@ cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "w
 
 在 `buildServiceFromOpts` 中传入 `WorkspaceRef: opts.Workspace`。
 
-- [ ] **Step 7：更新 config/show 路径**
+- [x] **Step 7：更新 config/show 路径**
 
 `runtimeFromResolvedConfig` 当前会构造 service 读取 UDA config。这里也要传入 workspace override。
 
@@ -565,7 +565,7 @@ cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "w
 
 可以继续输出 `date.format`、`color`、`json`、`database.path`。
 
-- [ ] **Step 8：运行 runtime 测试**
+- [x] **Step 8：运行 runtime 测试**
 
 Run:
 

@@ -68,7 +68,7 @@ func (s *Service) SetConfig(key, value string) error {
 	if key == "database.path" {
 		return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
 	}
-	if key == activeContextMetaKey {
+	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
 	}
 	return s.store.SetMeta(key, value)
@@ -101,7 +101,7 @@ func (s *Service) UnsetConfig(key string) error {
 	if key == "database.path" {
 		return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
 	}
-	if key == activeContextMetaKey {
+	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
 	}
 	return s.store.DeleteMeta(key)

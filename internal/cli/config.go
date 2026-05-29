@@ -25,7 +25,7 @@ func newShowCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, key := range []string{"database.path", "color", "json", "date.format", "context.active"} {
+			for _, key := range []string{"database.path", "color", "json", "date.format", "active.user", "active.workspace", "active.context"} {
 				value, _ := rt.Get(key)
 				fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
 			}
@@ -58,6 +58,9 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if key == "context.active" {
+				return fmt.Errorf("unsupported legacy key %q", key)
+			}
 			if strings.HasPrefix(key, "uda.") {
 				svc, closeFn, err := buildServiceFromOpts(currentOpts)
 				if err != nil {
@@ -76,7 +79,7 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 					fmt.Fprintln(cmd.OutOrStdout(), value)
 					return nil
 				}
-				if _, known := map[string]bool{"color": true, "json": true, "date.format": true, "context.active": true, "database.path": true}[key]; known {
+				if _, known := map[string]bool{"color": true, "json": true, "date.format": true, "active.user": true, "active.workspace": true, "active.context": true, "database.path": true}[key]; known {
 					fmt.Fprintln(cmd.OutOrStdout(), value)
 					return nil
 				}
@@ -93,6 +96,9 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key, value := args[0], args[1]
+			if key == "context.active" {
+				return fmt.Errorf("context.active is managed by context commands")
+			}
 			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
 				return err
@@ -110,6 +116,9 @@ func newConfigUnsetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
+			if key == "context.active" {
+				return fmt.Errorf("context.active is managed by context commands")
+			}
 			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
 				return err
@@ -218,7 +227,7 @@ func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.St
 	if err != nil {
 		return config.Runtime{}, err
 	}
-	svc, err := app.NewService(app.ServiceOptions{Store: store, NoContext: opts.NoContext})
+	svc, err := app.NewService(app.ServiceOptions{Store: store, NoContext: opts.NoContext, WorkspaceRef: opts.Workspace})
 	if err != nil {
 		return config.Runtime{}, err
 	}
@@ -228,6 +237,13 @@ func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.St
 	}
 	for key, value := range svcValues {
 		meta[key] = value
+	}
+	if activeName, ok, err := svc.ActiveContextName(); err != nil {
+		return config.Runtime{}, err
+	} else if ok {
+		meta["active.context"] = activeName
+	} else {
+		meta["active.context"] = ""
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -244,6 +260,8 @@ func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.St
 		Defaults: map[string]string{
 			"json":  fmt.Sprintf("%v", opts.JSON),
 			"color": fmt.Sprintf("%v", !opts.NoColor),
+			"active.user":      svc.Runtime().ActorName,
+			"active.workspace": svc.Runtime().WorkspaceSlug,
 		},
 	})
 }

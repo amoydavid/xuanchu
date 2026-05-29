@@ -20,26 +20,21 @@ import (
 type Service struct {
 	store                 *sqlite.Store
 	repo                  *sqlite.TaskRepository
+	userRepo              *sqlite.UserRepository
+	workspaceRepo         *sqlite.WorkspaceRepository
+	memberRepo            *sqlite.MemberRepository
+	auditRepo             *sqlite.AuditRepository
 	contextRepo           *sqlite.ContextRepository
 	udaRepo               *sqlite.UDARepository
 	runtimeConfig         map[string]string
 	runtimeOverrides      map[string]string
 	runtimeUDAs           map[string]uda.Definition
 	activeContextOverride *string
+	runtime               RuntimeContext
 	workspaceID           string
 	clock                 Clock
 	reports               report.Registry
 	disableContext        bool
-}
-
-type ServiceOptions struct {
-	Store         *sqlite.Store
-	Clock         Clock
-	NoContext     bool
-	RuntimeConfig map[string]string
-	// RuntimeOverrides contains per-invocation rc.* values that must outrank
-	// both SQLite meta and file/runtime defaults.
-	RuntimeOverrides map[string]string
 }
 
 type AddInput struct {
@@ -102,7 +97,11 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	if opts.Clock == nil {
 		opts.Clock = realClock{}
 	}
-	ws, err := opts.Store.LocalWorkspace()
+	userRepo := sqlite.NewUserRepository(opts.Store.DB())
+	workspaceRepo := sqlite.NewWorkspaceRepository(opts.Store.DB())
+	memberRepo := sqlite.NewMemberRepository(opts.Store.DB())
+	auditRepo := sqlite.NewAuditRepository(opts.Store.DB())
+	rt, err := ResolveRuntimeContext(opts.Store, userRepo, workspaceRepo, memberRepo, opts.ActorRef, opts.WorkspaceRef)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +113,17 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	return &Service{
 		store:            opts.Store,
 		repo:             sqlite.NewTaskRepository(opts.Store.DB()),
+		userRepo:         userRepo,
+		workspaceRepo:    workspaceRepo,
+		memberRepo:       memberRepo,
+		auditRepo:        auditRepo,
 		contextRepo:      sqlite.NewContextRepository(opts.Store.DB()),
 		udaRepo:          sqlite.NewUDARepository(opts.Store.DB()),
 		runtimeConfig:    runtimeConfig,
 		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
 		runtimeUDAs:      runtimeUDAs,
-		workspaceID:      ws.ID,
+		runtime:          rt,
+		workspaceID:      rt.WorkspaceID,
 		clock:            opts.Clock,
 		reports:          report.DefaultRegistry(),
 		disableContext:   opts.NoContext,
@@ -131,17 +135,20 @@ func (s *Service) Clock() Clock {
 }
 
 func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
-	ws, err := store.LocalWorkspace()
-	if err != nil {
-		return nil, err
-	}
 	clone := *s
 	clone.store = store
 	clone.repo = sqlite.NewTaskRepository(store.DB())
+	clone.userRepo = sqlite.NewUserRepository(store.DB())
+	clone.workspaceRepo = sqlite.NewWorkspaceRepository(store.DB())
+	clone.memberRepo = sqlite.NewMemberRepository(store.DB())
+	clone.auditRepo = sqlite.NewAuditRepository(store.DB())
 	clone.contextRepo = sqlite.NewContextRepository(store.DB())
 	clone.udaRepo = sqlite.NewUDARepository(store.DB())
-	clone.workspaceID = ws.ID
 	return &clone, nil
+}
+
+func (s *Service) Runtime() RuntimeContext {
+	return s.runtime
 }
 
 func (s *Service) Projects() ([]string, error) {

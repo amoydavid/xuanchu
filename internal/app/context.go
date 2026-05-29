@@ -8,8 +8,6 @@ import (
 	"github.com/dajee/taskg/internal/taskcontext"
 )
 
-const activeContextMetaKey = "context.active"
-
 func (s *Service) DefineContext(name, filterSource string) error {
 	name = strings.TrimSpace(name)
 	filterSource = strings.TrimSpace(filterSource)
@@ -38,12 +36,12 @@ func (s *Service) UseContext(name string) error {
 	if _, err := s.contextRepo.Get(s.workspaceID, name); err != nil {
 		return err
 	}
-	return s.store.SetMeta(activeContextMetaKey, name)
+	return s.store.SetMeta(s.activeContextMetaKey(), name)
 }
 
 func (s *Service) ContextNone() error {
 	s.activeContextOverride = nil
-	return s.store.SetMeta(activeContextMetaKey, "")
+	return s.store.SetMeta(s.activeContextMetaKey(), "")
 }
 
 func (s *Service) ContextShow() (string, error) {
@@ -57,6 +55,10 @@ func (s *Service) ContextShow() (string, error) {
 	return fmt.Sprintf("%s %s", active.Name, active.FilterSource), nil
 }
 
+func (s *Service) ActiveContextName() (string, bool, error) {
+	return s.activeContextName()
+}
+
 func (s *Service) ContextList() ([]taskcontext.Context, error) {
 	return s.contextRepo.List(s.workspaceID)
 }
@@ -66,7 +68,7 @@ func (s *Service) ContextDelete(name string) error {
 	if err := s.contextRepo.Delete(s.workspaceID, name); err != nil {
 		return err
 	}
-	activeName, ok, err := s.store.GetMeta(activeContextMetaKey)
+	activeName, ok, err := s.store.GetMeta(s.activeContextMetaKey())
 	if err != nil {
 		return err
 	}
@@ -109,21 +111,25 @@ func (s *Service) OverrideActiveContext(name string) {
 	s.activeContextOverride = &name
 }
 
+func (s *Service) activeContextMetaKey() string {
+	return activeContextMetaKey(s.runtime.ActorUserID, s.runtime.WorkspaceID)
+}
+
 func (s *Service) activeContextName() (string, bool, error) {
 	if s.activeContextOverride != nil {
 		return *s.activeContextOverride, *s.activeContextOverride != "", nil
 	}
-	if name, ok := s.runtimeOverrides[activeContextMetaKey]; ok {
+	if name, ok := s.runtimeOverrides["context.active"]; ok {
 		return name, name != "", nil
 	}
-	name, ok, err := s.store.GetMeta(activeContextMetaKey)
+	name, ok, err := s.store.GetMeta(s.activeContextMetaKey())
 	if err != nil {
 		return "", false, err
 	}
 	if ok {
 		return name, name != "", nil
 	}
-	if name, ok := s.runtimeConfig[activeContextMetaKey]; ok {
+	if name, ok := s.runtimeConfig["context.active"]; ok {
 		return name, name != "", nil
 	}
 	return "", false, nil

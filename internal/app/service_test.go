@@ -28,6 +28,16 @@ func newTestService(t *testing.T, now int64) (*Service, func()) {
 	return svc, func() { _ = store.Close() }
 }
 
+func newTestStore(t *testing.T) *sqlite.Store {
+	t.Helper()
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
 func TestServiceAddListInfo(t *testing.T) {
 	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
@@ -62,6 +72,74 @@ func TestServiceAddListInfo(t *testing.T) {
 	}
 	if got.UUID != created.UUID {
 		t.Fatalf("Info UUID = %q, want %q", got.UUID, created.UUID)
+	}
+}
+
+func TestNewServiceResolvesLocalRuntimeContext(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	rt := svc.Runtime()
+	if rt.ActorUserID == "" || rt.WorkspaceID == "" {
+		t.Fatalf("runtime = %#v", rt)
+	}
+	if rt.ActorName != "local" {
+		t.Fatalf("actor name = %q, want local", rt.ActorName)
+	}
+	if rt.WorkspaceSlug != "local" {
+		t.Fatalf("workspace slug = %q, want local", rt.WorkspaceSlug)
+	}
+	if rt.Role != RoleOwner {
+		t.Fatalf("role = %q, want owner", rt.Role)
+	}
+}
+
+func TestNewServiceWorkspaceOverride(t *testing.T) {
+	store := newTestStore(t)
+	userRepo := sqlite.NewUserRepository(store.DB())
+	wsRepo := sqlite.NewWorkspaceRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+
+	localUser, err := userRepo.GetByName("local")
+	if err != nil {
+		t.Fatalf("GetByName(local) error = %v", err)
+	}
+	work, err := wsRepo.Create(sqlite.Workspace{
+		ID:              "ws-work",
+		Slug:            "work",
+		Name:            "Work",
+		CreatedByUserID: &localUser.ID,
+		Visibility:      "team",
+		SettingsJSON:    "{}",
+		CreatedAt:       100,
+		ModifiedAt:      100,
+	})
+	if err != nil {
+		t.Fatalf("Create(workspace) error = %v", err)
+	}
+	if err := memberRepo.Upsert(sqlite.Membership{
+		UserID:      localUser.ID,
+		WorkspaceID: work.ID,
+		Role:        "admin",
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(membership) error = %v", err)
+	}
+
+	svc, err := NewService(ServiceOptions{
+		Store:        store,
+		Clock:        fixedClock{NowUnix: 100},
+		WorkspaceRef: "work",
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if got := svc.Runtime().WorkspaceSlug; got != "work" {
+		t.Fatalf("workspace slug = %q, want work", got)
+	}
+	if got := svc.Runtime().Role; got != RoleAdmin {
+		t.Fatalf("role = %q, want admin", got)
 	}
 }
 

@@ -22,6 +22,7 @@ type Options struct {
 
 	DataDir     string
 	DBPath      string
+	Workspace   string
 	JSON        bool
 	NoColor     bool
 	NoContext   bool
@@ -61,6 +62,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&opts.DataDir, "data-dir", opts.DataDir, "data directory")
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db", opts.DBPath, "SQLite database path")
+	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
 	cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output")
 	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
 	cmd.PersistentFlags().BoolVar(&opts.NoContext, "no-context", opts.NoContext, "disable active context for this command")
@@ -181,7 +183,7 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 
 func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
 	rc = map[string]*string{}
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--workspace": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
 		if key, value, ok := parseRCOverride(args[i]); ok {
@@ -294,7 +296,7 @@ func isDashTag(arg string) bool {
 
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--workspace": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
@@ -428,6 +430,7 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts := base
 	opts.DataDir = getCmdStringFlag(cmd, "data-dir", opts.DataDir)
 	opts.DBPath = getCmdStringFlag(cmd, "db", opts.DBPath)
+	opts.Workspace = getCmdStringFlag(cmd, "workspace", opts.Workspace)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
 	opts.NoContext = getCmdBoolFlag(cmd, "no-context", opts.NoContext)
@@ -484,6 +487,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		NoContext:        opts.NoContext,
 		RuntimeConfig:    rt.Values(),
 		RuntimeOverrides: rcOverridesAsStrings(opts.RCOverrides),
+		WorkspaceRef:     opts.Workspace,
 	})
 	if err != nil {
 		_ = store.Close()
