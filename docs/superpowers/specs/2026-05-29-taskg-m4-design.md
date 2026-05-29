@@ -113,6 +113,7 @@ M4 仍需保持脚本友好：
   - `workspace add <slug> [name:<name>] [description:<text>] [visibility:private|team|public]`
   - `workspace use <slug|uuid>`
   - `workspace info [slug|uuid]`
+  - `workspace modify <slug|uuid> [name:<name>] [description:<text>] [visibility:private|team|public]`
   - `workspace archive <slug|uuid>`
 - 归档 workspace 后不可作为 active workspace，默认列表和默认查询不可进入。
 
@@ -230,7 +231,7 @@ modified_at INTEGER NOT NULL
 - workspace slug 建议全局唯一，避免本地 CLI 中同名 workspace 因 owner 不同而产生歧义。
 - workspace slug 必须匹配 `^[a-z0-9][a-z0-9_-]*$`，建议长度上限 64。
 - workspace slug 保留字至少包括 `all`、`none`、`current`。
-- `local` 是默认迁移 workspace slug，必须继续合法；是否禁止用户新建第二类特殊 local slug 由 plan 在唯一性约束下处理。
+- `local` 是迁移产物的合法 slug，不是保留字；不能新建第二个 `local` 由 slug 全局唯一约束自然保证。
 - `visibility` 支持 `private/team/public`，M4 只保存和展示，不做 public discovery。
 - `archived_at != NULL` 表示归档。
 - `created_by_user_id` 只表示创建者，不参与权限判定。
@@ -243,6 +244,7 @@ user_id TEXT NOT NULL
 workspace_id TEXT NOT NULL
 role TEXT NOT NULL
 joined_at INTEGER NOT NULL
+modified_at INTEGER NOT NULL
 PRIMARY KEY (user_id, workspace_id)
 ```
 
@@ -253,6 +255,7 @@ PRIMARY KEY (user_id, workspace_id)
 - `workspace add` 自动给当前 actor 创建 owner membership。
 - `member role` 可以把其他用户提升为 owner。
 - `member role` 禁止把最后一个 owner 降级。
+- `joined_at` 表示成员首次加入时间；`modified_at` 表示最近角色修改时间。
 
 ### audit_logs
 
@@ -274,6 +277,7 @@ created_at INTEGER NOT NULL
 - `payload_json` 存储必要摘要，不存秘密。
 - audit 写入失败应让对应写操作失败，避免用户误以为审计完整。
 - 所有 audit 范围内的写操作必须在同一个 store-level 事务内同时写业务表和 `audit_logs`。禁止先提交业务表、再尝试补写 audit。
+- 建议为常用查询建立复合索引：`(workspace_id, created_at DESC, id DESC)`。
 
 ### api_tokens
 
@@ -301,7 +305,8 @@ M4 必须向前兼容 M0-M3 数据库。
 
 - 用户升级后直接运行 `taskg list`，行为应与 M3 一致。
 - 用户没有创建额外 workspace 前，现有命令仍默认使用 `local` workspace。
-- 旧配置中的 context active 状态迁移为 `active_context.<local_user_id>.<local_workspace_id>`。
+- 旧配置中的 `context.active` 状态迁移为 `active_context.<local_user_id>.<local_workspace_id>`。
+- 迁移后必须删除老的 `context.active` meta key；M4 不再支持读取或写入该 key。
 
 ## 6. 运行时上下文
 
@@ -358,7 +363,8 @@ M4 的权限必须真实生效。
 | 添加、修改、完成、删除任务 | 否 | 是 | 是 | 是 |
 | import 任务 | 否 | 是 | 是 | 是 |
 | export 任务 | 是 | 是 | 是 | 是 |
-| 管理自己的 context | 否 | 是 | 是 | 是 |
+| 切换自己的 active context | 是 | 是 | 是 | 是 |
+| 定义/删除 workspace context | 否 | 是 | 是 | 是 |
 | 读取 UDA schema/value | 是 | 是 | 是 | 是 |
 | 修改 UDA schema | 否 | 否 | 是 | 是 |
 | 修改 workspace metadata | 否 | 否 | 是 | 是 |
@@ -371,7 +377,8 @@ M4 的权限必须真实生效。
 说明：
 
 - M4 不做成员删除。若必须撤销访问，应通过 `member role <user> viewer` 临时降权，成员删除留给后续 spec。
-- `context use/none` 修改当前 actor 在当前 workspace 的 active context。
+- `context use/none` 修改当前 actor 在当前 workspace 的 active context，viewer 可以执行。
+- `context define/delete` 修改 workspace 共享 context，viewer 不可执行。
 - 所有权限错误使用稳定错误语义，human 输出到 stderr，JSON 输出结构化错误。
 
 ## 8. CLI 命令细节
@@ -416,6 +423,7 @@ taskg user add alice email:alice@example.test
 - 新用户默认不自动加入所有 workspace。
 - 新用户必须自动获得自己的 personal workspace。
 - personal workspace 默认 slug 为 user name，name 也默认等于 user name。
+- personal workspace 默认 `visibility:private`。
 - 如果 personal workspace slug 冲突，`user add` 返回错误；plan 可增加 `workspace:<slug>` 参数解决冲突，但不能创建一个没有 default workspace 的 user。
 - 新 user 对 personal workspace 自动拥有 owner membership。
 
@@ -472,6 +480,19 @@ taskg workspace use work
 - actor 必须是 member。
 - 持久写入当前 actor 的 active workspace。
 
+### workspace modify
+
+```bash
+taskg workspace modify work name:"Work" description:"Team work" visibility:team
+```
+
+规则：
+
+- 可修改字段为 `name`、`description`、`visibility`。
+- 不允许修改 `slug`。
+- admin 和 owner 可执行。
+- 修改必须写入 audit action `workspace.modify`。
+
 ### workspace archive
 
 ```bash
@@ -486,8 +507,10 @@ taskg workspace archive old
 - 如果归档的是当前 active workspace，推荐自动切换到 actor 的第一个未归档 workspace；如果没有可切换 workspace，则拒绝归档。
 - `local` workspace 可以归档，但必须满足上面的可切换条件。
 - M4 必须保持不变量：每个 user 的 active/default workspace 都不能指向归档 workspace。
-- 归档某个 user 的 default workspace 时，必须同步把该 user 的 `default_workspace_id` 更新为新的未归档 workspace。
-- 如果没有可替代的未归档 workspace，必须拒绝归档。
+- 归档前必须扫描所有 `users WHERE default_workspace_id = <target_workspace_id>`。
+- 对每个受影响 user，如果该 user 还有其他未归档 membership workspace，则选择 slug 排序最小的 workspace 写回 `default_workspace_id`。
+- 如果任一受影响 user 没有可替代的未归档 workspace，则整个归档操作失败。
+- active workspace 同样必须被重新分配到该 actor 可见的未归档 workspace；没有可替代 workspace 时拒绝归档。
 
 ### member list
 
@@ -599,6 +622,7 @@ M4 不引入完整 server/workspace/user 三层配置系统。只增加必要 ac
 
 - `active_user_id`
 - `active_workspace.<user_id>`
+- `active_context.<user_id>.<workspace_id>`
 
 普通配置继续沿用 M3 合并规则。workspace 级配置体系可在 M5/M7 结合服务端和 report DSL 再完整设计。
 
@@ -630,6 +654,7 @@ M4 必须记录这些动作：
 - workspace:
   - `workspace.add`
   - `workspace.use`
+  - `workspace.modify`
   - `workspace.archive`
 - member:
   - `member.add`
@@ -729,7 +754,7 @@ M4 不做：
 
 M4 只有同时满足以下条件，才算真正完成：
 
-- 任意业务命令初始化后都能解析出非空 `ActorUserID` 和 `WorkspaceID`，除非该命令明确是数据库初始化前的纯本地辅助命令。
+- 任意业务命令初始化后都能解析出非空 `ActorUserID` 和 `WorkspaceID`，除非该命令明确是数据库初始化前的纯本地辅助命令，例如 `help`、`completion`、`_version`。
 - app service 的业务路径不再依赖 `store.LocalWorkspace()` 作为默认 workspace 来源。
 - 所有 task 写命令都经过权限检查，并在同一事务中写入业务表和 audit log。
 - context active 状态按 `(user_id, workspace_id)` 隔离，不存在 workspace 级共享 active context。
@@ -772,7 +797,7 @@ M4 只有同时满足以下条件，才算真正完成：
 必须覆盖：
 
 - 升级后默认 `taskg add/list` 行为不破坏。
-- `workspace add/use/list/info/archive`。
+- `workspace add/use/list/info/modify/archive`。
 - `user add/use/list/info`。
 - `member add/role/list`。
 - viewer 写任务失败。
