@@ -9,6 +9,9 @@ import (
 )
 
 func (s *Service) DefineContext(name, filterSource string) error {
+	if err := s.Require(PermissionContextManage); err != nil {
+		return err
+	}
 	name = strings.TrimSpace(name)
 	filterSource = strings.TrimSpace(filterSource)
 	if !taskcontext.ValidateName(name) {
@@ -32,6 +35,9 @@ func (s *Service) DefineContext(name, filterSource string) error {
 }
 
 func (s *Service) UseContext(name string) error {
+	if err := s.Require(PermissionContextUse); err != nil {
+		return err
+	}
 	name = strings.TrimSpace(name)
 	if _, err := s.contextRepo.Get(s.workspaceID, name); err != nil {
 		return err
@@ -40,6 +46,9 @@ func (s *Service) UseContext(name string) error {
 }
 
 func (s *Service) ContextNone() error {
+	if err := s.Require(PermissionContextUse); err != nil {
+		return err
+	}
 	s.activeContextOverride = nil
 	return s.store.SetMeta(s.activeContextMetaKey(), "")
 }
@@ -64,6 +73,9 @@ func (s *Service) ContextList() ([]taskcontext.Context, error) {
 }
 
 func (s *Service) ContextDelete(name string) error {
+	if err := s.Require(PermissionContextManage); err != nil {
+		return err
+	}
 	name = strings.TrimSpace(name)
 	if err := s.contextRepo.Delete(s.workspaceID, name); err != nil {
 		return err

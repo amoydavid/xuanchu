@@ -11,6 +11,9 @@ import (
 )
 
 func (s *Service) DefineUDA(name, typ, label string, values []string, defaultValue string) error {
+	if err := s.Require(PermissionUDAManage); err != nil {
+		return err
+	}
 	def := uda.Definition{Name: strings.TrimSpace(name), Type: uda.Type(strings.TrimSpace(typ)), Label: label, Values: values, Default: defaultValue}
 	if def.Type == "" {
 		def.Type = uda.TypeString
@@ -26,6 +29,9 @@ func (s *Service) DefineUDA(name, typ, label string, values []string, defaultVal
 }
 
 func (s *Service) DeleteUDA(name string) error {
+	if err := s.Require(PermissionUDAManage); err != nil {
+		return err
+	}
 	return s.udaRepo.DeleteDefinition(s.workspaceID, strings.TrimPrefix(name, "uda."))
 }
 
@@ -170,6 +176,9 @@ func (s *Service) UniqueValues(field string, input ListInput) ([]string, error) 
 }
 
 func (s *Service) setUDAConfig(key, value string) error {
+	if err := s.Require(PermissionUDAManage); err != nil {
+		return err
+	}
 	name, field, err := splitUDAConfigKey(key)
 	if err != nil {
 		return err
@@ -231,6 +240,9 @@ func (s *Service) getUDAConfig(key string) (string, bool, error) {
 }
 
 func (s *Service) unsetUDAConfig(key string) error {
+	if err := s.Require(PermissionUDAManage); err != nil {
+		return err
+	}
 	name, field, err := splitUDAConfigKey(key)
 	if err != nil {
 		return err

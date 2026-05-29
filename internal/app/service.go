@@ -249,6 +249,9 @@ func (s *Service) WorkingSetIDs(tasks []task.Task) ([]int, error) {
 }
 
 func (s *Service) Add(input AddInput) (task.Task, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return task.Task{}, err
+	}
 	now := s.clock.Unix()
 	if input.Recur != nil {
 		return s.createRecurringParent(input, now)
@@ -327,6 +330,9 @@ func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) 
 }
 
 func (s *Service) Info(target string) (task.Task, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return task.Task{}, err
+	}
 	return s.repo.GetByUUID(s.workspaceID, target)
 }
 
@@ -345,6 +351,9 @@ func (s *Service) ResolveTarget(target string) (task.Task, error) {
 }
 
 func (s *Service) Modify(target string, input ModifyInput) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -451,6 +460,9 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 }
 
 func (s *Service) Done(target string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -476,6 +488,9 @@ func (s *Service) Done(target string) error {
 }
 
 func (s *Service) Delete(target string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -488,6 +503,9 @@ func (s *Service) Delete(target string) error {
 }
 
 func (s *Service) Start(target string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -503,6 +521,9 @@ func (s *Service) Start(target string) error {
 }
 
 func (s *Service) Stop(target string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -515,6 +536,9 @@ func (s *Service) Stop(target string) error {
 }
 
 func (s *Service) Annotate(target, description string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	description = strings.TrimSpace(description)
 	if description == "" {
 		return fmt.Errorf("annotation description is required")
@@ -555,6 +579,9 @@ func (s *Service) Annotate(target, description string) error {
 }
 
 func (s *Service) Denotate(target string, index int) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -571,6 +598,9 @@ func (s *Service) Denotate(target string, index int) error {
 }
 
 func (s *Service) AppendDescription(target, suffix string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -585,6 +615,9 @@ func (s *Service) AppendDescription(target, suffix string) error {
 }
 
 func (s *Service) PrependDescription(target, prefix string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -599,6 +632,9 @@ func (s *Service) PrependDescription(target, prefix string) error {
 }
 
 func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
 	original, err := s.ResolveTarget(target)
 	if err != nil {
 		return err
@@ -620,10 +656,16 @@ func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
 }
 
 func (s *Service) Export() ([]task.Task, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return nil, err
+	}
 	return s.repo.List(s.workspaceID, sqlite.ListOptions{})
 }
 
 func (s *Service) Import(tasks []task.JSONTask) (int, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return 0, err
+	}
 	count := 0
 	err := s.store.Transaction(func(txStore *sqlite.Store) error {
 		txService, err := s.withStore(txStore)

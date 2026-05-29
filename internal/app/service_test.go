@@ -38,6 +38,20 @@ func newTestStore(t *testing.T) *sqlite.Store {
 	return store
 }
 
+func newTestServiceWithRuntime(t *testing.T, store *sqlite.Store, now int64, actorRef, workspaceRef string) *Service {
+	t.Helper()
+	svc, err := NewService(ServiceOptions{
+		Store:        store,
+		Clock:        fixedClock{NowUnix: now},
+		ActorRef:     actorRef,
+		WorkspaceRef: workspaceRef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc
+}
+
 func TestServiceAddListInfo(t *testing.T) {
 	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
@@ -140,6 +154,183 @@ func TestNewServiceWorkspaceOverride(t *testing.T) {
 	}
 	if got := svc.Runtime().Role; got != RoleAdmin {
 		t.Fatalf("role = %q, want admin", got)
+	}
+}
+
+func TestViewerCannotModifyTasks(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.Add(AddInput{Description: "owner task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	userRepo := sqlite.NewUserRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	viewer, err := userRepo.Create(sqlite.User{ID: "user-viewer", Name: "viewer", CreatedAt: 100, ModifiedAt: 100})
+	if err != nil {
+		t.Fatalf("Create(viewer) error = %v", err)
+	}
+	if err := memberRepo.Upsert(sqlite.Membership{
+		UserID:      viewer.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleViewer),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(viewer membership) error = %v", err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewer.Name, ws.Slug)
+	priority := "H"
+	err = viewerSvc.Modify(created.UUID, ModifyInput{Priority: &priority})
+	if err == nil {
+		t.Fatal("Modify() error = nil, want permission denied")
+	}
+	permErr, ok := err.(PermissionError)
+	if !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("err = %#v, want PermissionError(permission_denied)", err)
+	}
+}
+
+func TestViewerCanUseOwnContextButCannotDefineContext(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	if err := ownerSvc.DefineContext("work", "project:work"); err != nil {
+		t.Fatalf("DefineContext(owner) error = %v", err)
+	}
+
+	userRepo := sqlite.NewUserRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	viewer, err := userRepo.Create(sqlite.User{ID: "user-viewer-ctx", Name: "viewer-ctx", CreatedAt: 100, ModifiedAt: 100})
+	if err != nil {
+		t.Fatalf("Create(viewer) error = %v", err)
+	}
+	if err := memberRepo.Upsert(sqlite.Membership{
+		UserID:      viewer.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleViewer),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(viewer membership) error = %v", err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewer.Name, ws.Slug)
+	if err := viewerSvc.UseContext("work"); err != nil {
+		t.Fatalf("UseContext(viewer) error = %v", err)
+	}
+	show, err := viewerSvc.ContextShow()
+	if err != nil || !strings.Contains(show, "work") {
+		t.Fatalf("ContextShow() = %q, %v", show, err)
+	}
+	err = viewerSvc.DefineContext("viewer-only", "project:viewer")
+	if err == nil {
+		t.Fatal("DefineContext(viewer) error = nil, want permission denied")
+	}
+	permErr, ok := err.(PermissionError)
+	if !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("err = %#v, want PermissionError(permission_denied)", err)
+	}
+}
+
+func TestViewerCannotManageUDASchema(t *testing.T) {
+	store := newTestStore(t)
+	userRepo := sqlite.NewUserRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	viewer, err := userRepo.Create(sqlite.User{ID: "user-viewer-uda", Name: "viewer-uda", CreatedAt: 100, ModifiedAt: 100})
+	if err != nil {
+		t.Fatalf("Create(viewer) error = %v", err)
+	}
+	if err := memberRepo.Upsert(sqlite.Membership{
+		UserID:      viewer.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleViewer),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(viewer membership) error = %v", err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewer.Name, ws.Slug)
+	err = viewerSvc.DefineUDA("estimate", "numeric", "Estimate", nil, "")
+	if err == nil {
+		t.Fatal("DefineUDA() error = nil, want permission denied")
+	}
+	permErr, ok := err.(PermissionError)
+	if !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("err = %#v, want PermissionError(permission_denied)", err)
+	}
+}
+
+func TestMemberCannotManageWorkspaceMetadataOrMembers(t *testing.T) {
+	store := newTestStore(t)
+	userRepo := sqlite.NewUserRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	member, err := userRepo.Create(sqlite.User{ID: "user-member", Name: "member-user", CreatedAt: 100, ModifiedAt: 100})
+	if err != nil {
+		t.Fatalf("Create(member) error = %v", err)
+	}
+	if err := memberRepo.Upsert(sqlite.Membership{
+		UserID:      member.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(member membership) error = %v", err)
+	}
+
+	memberSvc := newTestServiceWithRuntime(t, store, 100, member.Name, ws.Slug)
+	if err := memberSvc.Require(PermissionWorkspaceModify); err == nil {
+		t.Fatal("Require(PermissionWorkspaceModify) error = nil, want denied")
+	}
+	if err := memberSvc.Require(PermissionMemberManage); err == nil {
+		t.Fatal("Require(PermissionMemberManage) error = nil, want denied")
+	}
+}
+
+func TestAdminCannotArchiveWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	userRepo := sqlite.NewUserRepository(store.DB())
+	memberRepo := sqlite.NewMemberRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	admin, err := userRepo.Create(sqlite.User{ID: "user-admin", Name: "admin-user", CreatedAt: 100, ModifiedAt: 100})
+	if err != nil {
+		t.Fatalf("Create(admin) error = %v", err)
+	}
+	if err := memberRepo.Upsert(sqlite.Membership{
+		UserID:      admin.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleAdmin),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(admin membership) error = %v", err)
+	}
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, admin.Name, ws.Slug)
+	if err := adminSvc.Require(PermissionWorkspaceArchive); err == nil {
+		t.Fatal("Require(PermissionWorkspaceArchive) error = nil, want denied")
 	}
 }
 

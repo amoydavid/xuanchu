@@ -591,7 +591,7 @@ git commit -m "feat: 解析 M4 运行时上下文"
 - Modify: `internal/app/uda.go`
 - Test: `internal/app/service_test.go`
 
-- [ ] **Step 1：写失败的权限测试**
+- [x] **Step 1：写失败的权限测试**
 
 覆盖：
 
@@ -602,7 +602,7 @@ func TestMemberCannotManageMembersOrWorkspaceMetadata(t *testing.T) { /* app 方
 func TestAdminCannotArchiveWorkspace(t *testing.T) { /* denied */ }
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run:
 
@@ -612,7 +612,7 @@ go test ./internal/app -run 'Viewer|MemberCannot|AdminCannot|Permission' -count=
 
 Expected: FAIL，因为权限尚未实现。
 
-- [ ] **Step 3：实现权限原语**
+- [x] **Step 3：实现权限原语**
 
 在 `permission.go` 中：
 
@@ -646,7 +646,7 @@ func (s *Service) Require(p Permission) error
 
 `PermissionMemberManageOwner` 专门用于提升其他用户为 owner 或降级 owner。admin 不能通过这个检查。
 
-- [ ] **Step 4：保护 app 方法**
+- [x] **Step 4：保护 app 方法**
 
 给 public 方法加 `Require`：
 
@@ -657,7 +657,7 @@ func (s *Service) Require(p Permission) error
 
 不要在 `xxxLocked` 方法里放权限检查；这些方法是 public 方法授权后的内部 transaction body。
 
-- [ ] **Step 5：运行权限测试**
+- [x] **Step 5：运行权限测试**
 
 Run:
 
