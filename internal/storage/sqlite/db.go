@@ -109,10 +109,40 @@ func (s *Store) configure() error {
 }
 
 func (s *Store) migrate() error {
+	if err := s.prepareWorkspaceSchemaForM4(); err != nil {
+		return err
+	}
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Context{}, &UDADefinition{}, &Task{}, &TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskUDAValue{}); err != nil {
 		return err
 	}
 	return s.db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_parent_due_open ON tasks(parent, due) WHERE status IN ('pending', 'waiting') AND parent IS NOT NULL AND due IS NOT NULL").Error
+}
+
+func (s *Store) prepareWorkspaceSchemaForM4() error {
+	if !s.db.Migrator().HasTable(&Workspace{}) {
+		return nil
+	}
+	columns := []struct {
+		name string
+		sql  string
+	}{
+		{name: "name", sql: "ALTER TABLE workspaces ADD COLUMN name TEXT NOT NULL DEFAULT 'Local'"},
+		{name: "created_by_user_id", sql: "ALTER TABLE workspaces ADD COLUMN created_by_user_id TEXT"},
+		{name: "description", sql: "ALTER TABLE workspaces ADD COLUMN description TEXT"},
+		{name: "visibility", sql: "ALTER TABLE workspaces ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'"},
+		{name: "settings_json", sql: "ALTER TABLE workspaces ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'"},
+		{name: "archived_at", sql: "ALTER TABLE workspaces ADD COLUMN archived_at INTEGER"},
+		{name: "modified_at", sql: "ALTER TABLE workspaces ADD COLUMN modified_at INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, column := range columns {
+		if s.db.Migrator().HasColumn(&Workspace{}, column.name) {
+			continue
+		}
+		if err := s.db.Exec(column.sql).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) ensureLocalIdentity() error {

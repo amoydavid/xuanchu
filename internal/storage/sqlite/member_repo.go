@@ -60,7 +60,7 @@ func (r *MemberRepository) List(workspaceID string) ([]MemberWithUser, error) {
 	}
 	var rows []row
 	if err := r.db.Table("memberships").
-		Select("memberships.*, users.id AS user_id, users.name AS user_name, users.email AS user_email, users.default_workspace_id AS user_default_workspace_id, users.created_at AS user_created_at, users.modified_at AS user_modified_at").
+		Select("memberships.user_id, memberships.workspace_id, memberships.role, memberships.joined_at, memberships.modified_at, users.name AS user_name, users.email AS user_email, users.default_workspace_id AS user_default_workspace_id, users.created_at AS user_created_at, users.modified_at AS user_modified_at").
 		Joins("JOIN users ON users.id = memberships.user_id").
 		Where("memberships.workspace_id = ?", workspaceID).
 		Order("users.name ASC").

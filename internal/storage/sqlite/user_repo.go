@@ -42,10 +42,17 @@ func (r *UserRepository) List() ([]User, error) {
 }
 
 func (r *UserRepository) UpdateDefaultWorkspace(userID, workspaceID string, modifiedAt int64) error {
-	return r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
+	result := r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
 		"default_workspace_id": workspaceID,
 		"modified_at":          modifiedAt,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *UserRepository) find(query string, args ...any) (User, error) {

@@ -94,9 +94,13 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 		return UserView{}, fmt.Errorf("user name is required")
 	}
 	email := strings.TrimSpace(input.Email)
+	slug, err := normalizeWorkspaceSlug(name)
+	if err != nil {
+		return UserView{}, fmt.Errorf("user name %q is not a valid personal workspace slug: %w", name, err)
+	}
 	var created UserView
-	err := s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
-		user, workspace, err := tx.addUserLocked(name, email)
+	err = s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
+		user, workspace, err := tx.addUserLocked(name, email, slug)
 		if err != nil {
 			return nil, err
 		}
@@ -108,16 +112,17 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 				TargetID:   user.ID,
 			},
 			{
-				Action:     "workspace.add",
-				TargetType: "workspace",
-				TargetID:   workspace.ID,
+				Action:      "workspace.add",
+				WorkspaceID: &workspace.ID,
+				TargetType:  "workspace",
+				TargetID:    workspace.ID,
 			},
 		}, nil
 	})
 	return created, err
 }
 
-func (s *Service) addUserLocked(name, email string) (sqlite.User, sqlite.Workspace, error) {
+func (s *Service) addUserLocked(name, email, slug string) (sqlite.User, sqlite.Workspace, error) {
 	now := s.clock.Unix()
 	user := sqlite.User{
 		ID:         uuid.NewString(),
@@ -134,7 +139,7 @@ func (s *Service) addUserLocked(name, email string) (sqlite.User, sqlite.Workspa
 	}
 	workspace := sqlite.Workspace{
 		ID:              uuid.NewString(),
-		Slug:            name,
+		Slug:            slug,
 		Name:            name,
 		CreatedByUserID: &s.runtime.ActorUserID,
 		Visibility:      "private",
@@ -185,6 +190,8 @@ func (s *Service) useUserLocked(ref string) (sqlite.User, error) {
 	if err != nil {
 		return sqlite.User{}, err
 	}
+	// Avoid switching the active user into an unusable identity; each active
+	// user must still resolve to a non-archived workspace.
 	if _, err := ResolveRuntimeContext(s.store, s.userRepo, s.workspaceRepo, s.memberRepo, user.ID, ""); err != nil {
 		return sqlite.User{}, err
 	}
@@ -236,8 +243,9 @@ func (s *Service) AddWorkspace(input AddWorkspaceInput) (WorkspaceView, error) {
 		}
 		created = workspaceViewFromRow(workspace, RoleOwner, false)
 		return AuditEntry{
-			TargetType: "workspace",
-			TargetID:   workspace.ID,
+			WorkspaceID: &workspace.ID,
+			TargetType:  "workspace",
+			TargetID:    workspace.ID,
 		}, nil
 	})
 	return created, err
@@ -292,8 +300,9 @@ func (s *Service) UseWorkspace(ref string) error {
 			return AuditEntry{}, err
 		}
 		return AuditEntry{
-			TargetType: "workspace",
-			TargetID:   workspace.ID,
+			WorkspaceID: &workspace.ID,
+			TargetType:  "workspace",
+			TargetID:    workspace.ID,
 		}, nil
 	})
 }
@@ -331,6 +340,9 @@ func (s *Service) ModifyWorkspace(ref string, input ModifyWorkspaceInput) error 
 	if err != nil {
 		return err
 	}
+	if workspace.ArchivedAt != nil {
+		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+	}
 	if err := requireRolePermission(role, PermissionWorkspaceModify); err != nil {
 		return err
 	}
@@ -343,8 +355,9 @@ func (s *Service) ModifyWorkspace(ref string, input ModifyWorkspaceInput) error 
 			return AuditEntry{}, err
 		}
 		return AuditEntry{
-			TargetType: "workspace",
-			TargetID:   workspace.ID,
+			WorkspaceID: &workspace.ID,
+			TargetType:  "workspace",
+			TargetID:    workspace.ID,
 		}, nil
 	})
 }
@@ -362,6 +375,9 @@ func (s *Service) ArchiveWorkspace(ref string) error {
 	if err != nil {
 		return err
 	}
+	if workspace.ArchivedAt != nil {
+		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+	}
 	if err := requireRolePermission(role, PermissionWorkspaceArchive); err != nil {
 		return err
 	}
@@ -371,9 +387,10 @@ func (s *Service) ArchiveWorkspace(ref string) error {
 			return AuditEntry{}, err
 		}
 		return AuditEntry{
-			TargetType: "workspace",
-			TargetID:   workspace.ID,
-			Payload:    payload,
+			WorkspaceID: &workspace.ID,
+			TargetType:  "workspace",
+			TargetID:    workspace.ID,
+			Payload:     payload,
 		}, nil
 	})
 }
@@ -398,7 +415,7 @@ func (s *Service) archiveWorkspaceLocked(target sqlite.Workspace) (map[string]an
 		if user.DefaultWorkspaceID != nil && *user.DefaultWorkspaceID == target.ID {
 			current.workspaceID = target.ID
 		}
-		if active, ok := meta[activeWorkspaceMetaKey(user.ID)]; ok && (active == target.ID || active == target.Slug) {
+		if active, ok := meta[activeWorkspaceMetaKey(user.ID)]; ok && active == target.ID {
 			current.activeCurrent = true
 		}
 		if current.workspaceID != "" || current.activeCurrent {
@@ -453,6 +470,9 @@ func (s *Service) ListMembers(workspaceRef string) ([]MemberView, error) {
 	if err != nil {
 		return nil, err
 	}
+	if workspace.ArchivedAt != nil {
+		return nil, RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+	}
 	rows, err := s.memberRepo.List(workspace.ID)
 	if err != nil {
 		return nil, err
@@ -476,6 +496,9 @@ func (s *Service) AddMember(input AddMemberInput) error {
 	if err != nil {
 		return err
 	}
+	if workspace.ArchivedAt != nil {
+		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+	}
 	targetRole, err := normalizeRole(input.Role, RoleMember)
 	if err != nil {
 		return err
@@ -492,8 +515,9 @@ func (s *Service) AddMember(input AddMemberInput) error {
 			return AuditEntry{}, err
 		}
 		return AuditEntry{
-			TargetType: "member",
-			TargetID:   user.ID,
+			WorkspaceID: &workspace.ID,
+			TargetType:  "member",
+			TargetID:    user.ID,
 		}, nil
 	})
 }
@@ -518,6 +542,9 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error {
 	workspace, role, err := s.resolveWorkspaceForActor(input.WorkspaceRef)
 	if err != nil {
 		return err
+	}
+	if workspace.ArchivedAt != nil {
+		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	user, err := s.resolveUser(input.UserRef)
 	if err != nil {
@@ -548,8 +575,9 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error {
 			return AuditEntry{}, err
 		}
 		return AuditEntry{
-			TargetType: "member",
-			TargetID:   user.ID,
+			WorkspaceID: &workspace.ID,
+			TargetType:  "member",
+			TargetID:    user.ID,
 		}, nil
 	})
 }
@@ -668,6 +696,9 @@ func normalizeWorkspaceVisibility(visibility string) (string, error) {
 func normalizeWorkspaceModifyInput(input ModifyWorkspaceInput) (ModifyWorkspaceInput, error) {
 	if input.Name != nil {
 		name := strings.TrimSpace(*input.Name)
+		if name == "" {
+			return ModifyWorkspaceInput{}, fmt.Errorf("workspace name cannot be empty")
+		}
 		input.Name = &name
 	}
 	if input.Description != nil {

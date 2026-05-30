@@ -22,10 +22,9 @@ type Runtime struct {
 
 func LoadRuntime(opts RuntimeOptions) (Runtime, error) {
 	values := map[string]string{
-		"color":          "true",
-		"json":           "false",
-		"date.format":    "rfc3339",
-		"context.active": "",
+		"color":       "true",
+		"json":        "false",
+		"date.format": "rfc3339",
 	}
 	for key, value := range opts.Defaults {
 		values[key] = value

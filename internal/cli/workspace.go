@@ -40,7 +40,7 @@ func newWorkspaceListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), workspaces)
+				return render.JSON(cmd.OutOrStdout(), workspaceViewsForJSON(workspaces))
 			}
 			for _, ws := range workspaces {
 				active := " "
@@ -66,7 +66,10 @@ func newWorkspaceAddCommand(opts Options) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			input := parseWorkspaceAddArgs(args)
+			input, err := parseWorkspaceAddArgs(args)
+			if err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -77,7 +80,7 @@ func newWorkspaceAddCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), workspace)
+				return render.JSON(cmd.OutOrStdout(), workspaceViewForJSON(workspace))
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created workspace %s\n", workspace.Slug)
 			return nil
@@ -124,7 +127,7 @@ func newWorkspaceInfoCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), workspace)
+				return render.JSON(cmd.OutOrStdout(), workspaceViewForJSON(workspace))
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\nVisibility: %s\n", workspace.Slug, workspace.Name, workspace.Visibility)
 			if workspace.Description != "" {
@@ -140,7 +143,10 @@ func newWorkspaceModifyCommand(opts Options) *cobra.Command {
 		Use:  "modify <slug|uuid> [name:<name>] [description:<text>] [visibility:private|team|public]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			input := parseWorkspaceModifyArgs(args[1:])
+			input, err := parseWorkspaceModifyArgs(args[1:])
+			if err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -174,43 +180,61 @@ func newWorkspaceArchiveCommand(opts Options) *cobra.Command {
 	}
 }
 
-func parseWorkspaceAddArgs(args []string) app.AddWorkspaceInput {
+func parseWorkspaceAddArgs(args []string) (app.AddWorkspaceInput, error) {
 	input := app.AddWorkspaceInput{Slug: args[0]}
-	for _, arg := range args[1:] {
-		if value, ok := trimKV(arg, "name"); ok {
-			input.Name = value
-			continue
-		}
-		if value, ok := trimKV(arg, "description"); ok {
-			input.Description = value
-			continue
-		}
-		if value, ok := trimKV(arg, "visibility"); ok {
-			input.Visibility = value
-		}
+	values, err := parseKeyValueArgs(args[1:], map[string]bool{"name": true, "description": true, "visibility": true})
+	if err != nil {
+		return app.AddWorkspaceInput{}, err
 	}
-	return input
+	input.Name = values["name"]
+	input.Description = values["description"]
+	input.Visibility = values["visibility"]
+	return input, nil
 }
 
-func parseWorkspaceModifyArgs(args []string) app.ModifyWorkspaceInput {
+func parseWorkspaceModifyArgs(args []string) (app.ModifyWorkspaceInput, error) {
 	input := app.ModifyWorkspaceInput{}
-	for _, arg := range args {
-		if value, ok := trimKV(arg, "name"); ok {
-			v := value
-			input.Name = &v
-			continue
-		}
-		if value, ok := trimKV(arg, "description"); ok {
-			v := value
-			input.Description = &v
-			continue
-		}
-		if value, ok := trimKV(arg, "visibility"); ok {
-			v := value
-			input.Visibility = &v
-		}
+	values, err := parseKeyValueArgs(args, map[string]bool{"name": true, "description": true, "visibility": true})
+	if err != nil {
+		return app.ModifyWorkspaceInput{}, err
 	}
-	return input
+	if value, ok := values["name"]; ok {
+		v := value
+		input.Name = &v
+	}
+	if value, ok := values["description"]; ok {
+		v := value
+		input.Description = &v
+	}
+	if value, ok := values["visibility"]; ok {
+		v := value
+		input.Visibility = &v
+	}
+	return input, nil
+}
+
+func workspaceViewsForJSON(workspaces []app.WorkspaceView) []map[string]any {
+	out := make([]map[string]any, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		out = append(out, workspaceViewForJSON(workspace))
+	}
+	return out
+}
+
+func workspaceViewForJSON(workspace app.WorkspaceView) map[string]any {
+	return map[string]any{
+		"id":                 workspace.ID,
+		"slug":               workspace.Slug,
+		"name":               workspace.Name,
+		"description":        workspace.Description,
+		"visibility":         workspace.Visibility,
+		"created_by_user_id": workspace.CreatedByUserID,
+		"archived_at":        workspace.ArchivedAt,
+		"role":               workspace.Role,
+		"active":             workspace.Active,
+		"created_at":         workspace.CreatedAt,
+		"modified_at":        workspace.ModifiedAt,
+	}
 }
 
 func trimKV(arg, key string) (string, bool) {

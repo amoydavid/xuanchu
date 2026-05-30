@@ -36,7 +36,7 @@ func newMemberListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), members)
+				return render.JSON(cmd.OutOrStdout(), memberViewsForJSON(members))
 			}
 			for _, member := range members {
 				email := ""
@@ -48,6 +48,21 @@ func newMemberListCommand(opts Options) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func memberViewsForJSON(members []app.MemberView) []map[string]any {
+	out := make([]map[string]any, 0, len(members))
+	for _, member := range members {
+		out = append(out, map[string]any{
+			"user_id":     member.UserID,
+			"name":        member.Name,
+			"email":       member.Email,
+			"role":        member.Role,
+			"joined_at":   member.JoinedAt,
+			"modified_at": member.ModifiedAt,
+		})
+	}
+	return out
 }
 
 func newMemberAddCommand(opts Options) *cobra.Command {
@@ -65,10 +80,12 @@ func newMemberAddCommand(opts Options) *cobra.Command {
 				UserRef:      args[0],
 				Role:         app.Role("member"),
 			}
-			for _, arg := range args[1:] {
-				if value, ok := trimKV(arg, "role"); ok {
-					input.Role = app.Role(value)
-				}
+			values, err := parseKeyValueArgs(args[1:], map[string]bool{"role": true})
+			if err != nil {
+				return err
+			}
+			if role, ok := values["role"]; ok {
+				input.Role = app.Role(role)
 			}
 			if err := svc.AddMember(input); err != nil {
 				return err

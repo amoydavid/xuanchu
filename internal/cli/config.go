@@ -142,6 +142,9 @@ func newConfigListCommand(opts Options) *cobra.Command {
 			keys := rt.Keys()
 			sort.Strings(keys)
 			for _, key := range keys {
+				if !isPublicConfigKey(key) {
+					continue
+				}
 				value, _ := rt.Get(key)
 				fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
 			}
@@ -223,9 +226,15 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 }
 
 func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.Store, env map[string]string) (config.Runtime, error) {
-	meta, err := store.ListMeta()
+	rawMeta, err := store.ListMeta()
 	if err != nil {
 		return config.Runtime{}, err
+	}
+	meta := make(map[string]string, len(rawMeta))
+	for key, value := range rawMeta {
+		if isPublicConfigKey(key) {
+			meta[key] = value
+		}
 	}
 	svc, err := app.NewService(app.ServiceOptions{Store: store, NoContext: opts.NoContext, WorkspaceRef: opts.Workspace})
 	if err != nil {
@@ -236,7 +245,9 @@ func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.St
 		return config.Runtime{}, err
 	}
 	for key, value := range svcValues {
-		meta[key] = value
+		if isPublicConfigKey(key) {
+			meta[key] = value
+		}
 	}
 	if activeName, ok, err := svc.ActiveContextName(); err != nil {
 		return config.Runtime{}, err
@@ -258,10 +269,22 @@ func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.St
 			"database.path": cfg.DatabasePath,
 		},
 		Defaults: map[string]string{
-			"json":  fmt.Sprintf("%v", opts.JSON),
-			"color": fmt.Sprintf("%v", !opts.NoColor),
+			"json":             fmt.Sprintf("%v", opts.JSON),
+			"color":            fmt.Sprintf("%v", !opts.NoColor),
 			"active.user":      svc.Runtime().ActorName,
 			"active.workspace": svc.Runtime().WorkspaceSlug,
 		},
 	})
+}
+
+func isPublicConfigKey(key string) bool {
+	if strings.HasPrefix(key, "uda.") || strings.HasPrefix(key, "urgency.") {
+		return true
+	}
+	switch key {
+	case "color", "json", "date.format", "database.path", "active.user", "active.workspace", "active.context":
+		return true
+	default:
+		return false
+	}
 }

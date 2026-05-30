@@ -1,11 +1,11 @@
-# Taskwarrior 风格任务管理系统（Go 重构版）— 需求文档
+# 面向企业项目与 Agent MCP 的 Taskwarrior 风格任务运行时（Go 版）— 需求文档
 
 > 项目代号暂定：**taskg**（command-line binary），仓库根名：`task`
 > 目标语言：**Go 1.22+**
 > 主存储：**SQLite（纯 Go 驱动，零 CGO）**
 > 形态：**单一二进制**，可同时充当 ① 本地 CLI ② 远程 CLI 客户端 ③ HTTP/JSON API 服务端 ④ MCP Server
 
-本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加多用户 / 多 workspace / MCP 等扩展需求形成。每一条带 `[n]` 的脚注对应文末同号参考链接。
+本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。每一条带 `[n]` 的脚注对应文末同号参考链接。
 
 ---
 
@@ -22,15 +22,16 @@
 
 | 项 | 选型 | 理由 |
 |---|---|---|
-| 数据库引擎 | **`modernc.org/sqlite`** | 纯 Go 翻译版的 SQLite，无 CGO，可跨平台交叉编译到 linux/darwin/windows 的 amd64/arm64。 |
-| SQL Builder | **`database/sql` + `sqlc`** 或 **`ent`** | 优先 `sqlc`，保留手写 SQL；表结构演进用 `goose` / `golang-migrate`（均支持 modernc 驱动）。 |
-| CLI 框架 | **`spf13/cobra`** + **`spf13/viper`** | 与 Go 生态对齐，便于子命令组织与配置合并。 |
+| 数据库引擎 | **GORM + `github.com/glebarez/sqlite`** | 当前实现已采用这套纯 Go SQLite 方案，底层走 modernc SQLite，无 CGO。不要改成 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`。 |
+| SQL / ORM | **`gorm.io/gorm` + 少量参数化 SQL** | app 层不直接接触 GORM；复杂查询通过 AST 编译到安全 SQL 条件。后续热路径如需绕开 GORM，必须先有明确性能理由和测试。 |
+| CLI 框架 | **`spf13/cobra`** | 与现有实现一致，负责命令树、flag 和 completion。配置合并由 `internal/config` 和 app service 完成。 |
 | HTTP 服务 | **`net/http` + `chi`** | 极简、无 CGO。 |
 | MCP SDK | **官方 Go MCP SDK**（`github.com/modelcontextprotocol/go-sdk`）或自研适配层 | 支持 stdio + Streamable HTTP/SSE 双传输。 |
-| 表格输出 | `olekukonko/tablewriter` | |
-| 颜色输出 | `fatih/color`（自动按 TTY 关闭） | |
-| 表达式解析 | 自研（PEG/手写递归下降） | 因需要实现 Taskwarrior 过滤语法和 calc 子语言。 |
-| 时间解析 | `araddon/dateparse` 辅助 + 自研 `eom/eow/sod/...` 关键字 | |
+| TOML 配置 | `github.com/BurntSushi/toml` | 使用成熟 parser，不手写 TOML 语法。 |
+| 表格输出 | `olekukonko/tablewriter` | 当前通过依赖链使用，human 输出必须保持脚本友好。 |
+| 颜色输出 | `fatih/color` | 仅用于 human 输出；`--no-color` 和非 TTY 场景必须可关闭。 |
+| 表达式解析 | 自研递归下降 + `expr-lang/expr` 用于 `calc` | 查询语言需要 Taskwarrior 语义；calc 使用成熟表达式库。 |
+| 时间解析 | 自研日期解析 | 已支持 `today`、`tomorrow`、`eom/eow`、`<N>days` 等关键字。 |
 
 **编译目标**（最小集合）：
 `linux/amd64`、`linux/arm64`、`darwin/amd64`、`darwin/arm64`、`windows/amd64`。
@@ -39,23 +40,32 @@
 ### 0.3 存储位置约定
 
 - **本地模式**：单文件 `~/.local/share/taskg/taskg.db`（或 `$XDG_DATA_HOME/taskg/taskg.db`），与 Taskwarrior 3 的单 SQLite 文件方案对齐 `[2]`。
-- **服务端模式**：服务端可指定 `--data-dir`，每个 tenant/workspace 仍落同一个 SQLite 实例（依靠表内 `workspace_id` 行级隔离）。如未来需要扩展，可在不变更上层 API 的前提下替换为 PostgreSQL。
+- **服务端模式**：服务端可指定 `--data-dir`，每个企业 workspace 仍落同一个 SQLite 实例（依靠表内 `workspace_id` 行级隔离）。当前阶段 workspace 承担 effective tenant scope；如果未来做 SaaS 多企业共用一个服务端，可在 workspace 上方增加 organization/tenant 层，且不改变 task/query/MCP 的核心语义。
 - 配置文件：`~/.config/taskg/taskg.toml`（沿用 Taskwarrior 的 `XDG_CONFIG_HOME` 与 `TASKRC`/`TASKDATA` 习惯）`[13]`。
 
 ---
 
-## 1. 角色与多租户模型
+## 1. 企业 Workspace、Project 与 Agent 模型
 
 Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩展（这些是新增需求，不来自上游）：
+
+### 1.0 概念边界
+
+- **Workspace**：企业 / 租户级隔离边界。一个 workspace 通常对应一个企业、团队或独立业务域，例如 `dajee`。所有 task、project、context、UDA、audit、Agent token scope 都必须落在 workspace 内。
+- **Project**：workspace 内的真实企业项目，例如 `ai-agent-platform`、`erp-rewrite`、`lark-integration`。M4 阶段 project 仍是 Taskwarrior 兼容的任务字段；M5 起抬成一等实体，后续 API、token、MCP scope 都应绑定稳定 project 身份。
+- **Agent**：通过 PAT / service token / MCP 连接进来的非人类 actor。Agent 的权限来自 token 和 membership，不来自提示词。token 可限制 workspace，也可限制 project allowlist。
+- **Context**：人或 Agent 的当前视图过滤器，例如 `project:ai-agent-platform and +next`。context 不是权限边界，只是查询默认条件。
+
+当前实现中没有单独的 organization/tenant 表。`workspace` 就是请求执行时的租户级作用域。未来如需 SaaS 多企业模型，可在不破坏 workspace/project/task 关系的前提下增加更上层的 organization。
 
 ### 1.1 角色
 
 | 实体 | 关键字段 | 说明 |
 |---|---|---|
 | `User` | `id, name, email, password_hash, default_workspace_id, created_at` | 全局账号 |
-| `Workspace` | `id, owner_user_id, slug, name, description, visibility(private/team/public), settings_json` | 任务容器，对应"团队 / 项目空间" |
+| `Workspace` | `id, owner_user_id, slug, name, description, visibility(private/team/public), settings_json` | 企业 / 租户级任务空间 |
 | `Membership` | `user_id, workspace_id, role(owner/admin/member/viewer), joined_at` | 多对多关系 |
-| `ApiToken` | `id, user_id, name, hashed_token, scopes_json, workspace_scope(NULL=全部), expires_at` | 个人访问令牌（PAT），用于 CLI/MCP 鉴权 |
+| `ApiToken` | `id, user_id, name, hashed_token, scopes_json, workspace_scope(NULL=全部), project_scope(NULL=全部), expires_at` | PAT 或 Agent token，用于 CLI/API/MCP 鉴权；project scope 在 M5 后应引用 project id，slug 只能在明确 workspace 后解析 |
 | `AuditLog` | `id, actor_user_id, workspace_id, action, target_uuid, payload_json, created_at` | 服务端模式必备 |
 
 ### 1.2 鉴权
@@ -65,11 +75,12 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
   - 登录：用户名+密码 → 颁发短期 JWT；或直接使用 PAT。
   - CLI 与 MCP 客户端统一使用 `Authorization: Bearer <token>`。
   - 行级权限：所有任务查询自动叠加 `workspace_id IN (用户可见集合)`。
+  - 如果 token 带 `project_scope`，所有 task/query/report/import/export 还必须叠加 project 限制。
 
 ### 1.3 Workspace 与 Project 的关系
 
-- **Workspace** = 数据隔离边界（≈ 团队、公司、个人）。
-- **Project** = 任务属性，Taskwarrior 支持点号分层 `work.client.acme` `[19]`，我们继承该层级表示法，但 project 字符串只在所属 workspace 内有意义。
+- **Workspace** = 企业 / 租户级数据隔离边界。
+- **Project** = 企业里的真实项目。Taskwarrior 支持点号分层 `work.client.acme` `[19]`，我们继承该层级表示法；project slug 只在所属 workspace 内有意义，不同 workspace 可以有相同 slug。M5 前 project 只是任务字段；M5 后 project 是实体，M6 token 与 M7 MCP scope 优先使用 project id，slug 只能作为带 workspace 的人类可读输入。
 
 ---
 
@@ -93,7 +104,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 | `wait` | timestamp | 隐藏 pending；到期客户端必须自动清空 `wait` 并改为 pending `[15]` |
 | `scheduled` | timestamp | 过 `scheduled` 后任务为 ready `[15]` |
 | `until` | timestamp | 到期任务自动消失 `[7]` |
-| `project` | string | 支持 `a.b.c` 点号层级 `[19]` |
+| `project` | string | Taskwarrior 兼容字段，支持 `a.b.c` 点号层级 `[19]`；M5 后内部应映射到 workspace 内的 project 实体 |
 | `tags` | []string | 标签数组；`+tag` / `-tag` 修改语法 `[8]` |
 | `priority` | enum | 默认 `H/M/L/<空>`，本质上是内置 UDA `[5][12]` |
 | `depends` | []UUID | 依赖列表 `[11]` |
@@ -104,7 +115,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 
 ### 2.2 多租户扩展字段（新增）
 
-`workspace_id`(FK) · `creator_user_id`(FK) · `assignee_user_id`(FK, nullable) · `followers`([]user_id) · `external_refs`(JSON, e.g. `{"github":"owner/repo#123"}`)。
+`workspace_id`(FK) · `project_id`(FK, M5+) · `creator_user_id`(FK) · `assignee_user_id`(FK, nullable) · `followers`([]user_id) · `external_refs`(JSON, e.g. `{"github":"owner/repo#123"}`)。
 
 ### 2.3 UDA（用户自定义属性）
 
@@ -136,7 +147,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 多个 filter 默认 `and` 组合：
 `task +home status:pending modify priority:H due:eom` `[18]`。
 
-### 3.2 必须实现的命令（M0–M2 范围）
+### 3.2 核心命令
 
 | 命令 | 说明 |
 |---|---|
@@ -154,9 +165,11 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 | `config` / `show` | 配置读写 |
 | `context` | 设置默认过滤 `[22]` |
 | `calc` | 表达式求值（见 §3.5） |
-| `calendar` | 日历视图 |
-| `burndown.daily` / `.weekly` / `.monthly` | 燃尽图 |
-| `sync` | 同步（服务端模式） |
+| `project` | M5 起管理 workspace 内的真实项目实体 |
+| `user` / `workspace` / `member` / `audit` | M4 起的企业运行时命令 |
+| `server` / `token` | M6 起的 HTTP 服务端与访问令牌命令 |
+| `sync` | 后续同步命令，是否进入 M8 由对应 spec 决定 |
+| `calendar` / `burndown.daily` / `.weekly` / `.monthly` | 后续报表增强，不作为 M0-M8 主干阻塞项 |
 
 ### 3.3 Helper（脚本可解析）
 
@@ -168,11 +181,11 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 
 支持示例（全部来自上游）`[8][19]`：
 
-- 属性匹配：`project:work` · `+urgent` · `-waiting` · `due:today` · `due.before:tomorrow` · `due.after:2days`
+- 属性匹配：`project:ai-agent-platform` · `+urgent` · `-waiting` · `due:today` · `due.before:tomorrow` · `due.after:2days`
 - 日期关键字：`today` / `tomorrow` / `eow` / `eom` / `sod` / `eod` / `<N>days` 等
 - 文本与正则：`/pattern/`，受 `rc.search.case.sensitive` 控制
 - 布尔代数：`and` / `or` / `xor` / `not`，括号转义：`\( ... \)` `[8]`
-- 字符串引号：`project:'Home & Garden'`
+- 字符串引号：`project:'ERP Rewrite'`
 - 状态：`pending` / `completed` / `deleted` / `waiting` / `recurring` `[19]`
 
 **解析器实现要点**：递归下降；产出 AST → SQL 翻译层（绑定参数，防注入）。AST 同时也被 §7 DOM 与 §6 Urgency 引擎共享。
@@ -299,8 +312,8 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 我们将 hook 扩展为三种执行形态：
 
 1. **本地脚本 Hook**（CLI 模式）：与上游兼容；stdin 收任务 JSON，stdout 返回更新后的任务或拒绝。
-2. **服务端 Webhook**：HTTP POST 到 URL；超时与重试策略可配；用于飞书通知、CI 触发等。
-3. **内嵌处理器**：Go plugin / WASM 插件（M5+），用于沙箱化的扩展。
+2. **服务端 Webhook**：HTTP POST 到 URL；超时与重试策略可配；用于外部通知、CI 触发、协作系统回写等。
+3. **内嵌处理器**：Go plugin / WASM 插件（M8+ 评估），用于沙箱化扩展。
 
 ---
 
@@ -308,9 +321,9 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 
 ### 9.1 存储
 
-- 引擎：**SQLite + WAL 模式**（modernc.org/sqlite，纯 Go）。
+- 引擎：**SQLite + WAL 模式**，通过 GORM + `github.com/glebarez/sqlite` 使用纯 Go SQLite。
 - 表结构由 §附录 A DDL 描述；每个表均带 `workspace_id` 用于行级隔离。
-- 迁移：`golang-migrate` 或 `goose`（modernc 驱动）；版本化、可回滚。
+- 当前迁移由 `internal/storage/sqlite` 聚合，继续保持幂等和向前兼容。后续如引入独立迁移工具，必须兼容纯 Go SQLite。
 
 ### 9.2 同步
 
@@ -334,17 +347,21 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 - `.taskrc` 简单 `name = value` 语法；支持 `include`。
 - 环境变量优先级：`TASKDATA` > `TASKRC` > `XDG_CONFIG_HOME`；命令行 `rc.x=y` 覆盖文件。
 
-### 10.2 三层合并（新增）
+### 10.2 配置分层（新增）
 
-1. **服务端默认**（管理员）
-2. **Workspace 级**（团队约定，存 DB）
-3. **用户级**（个人偏好，文件 + DB）
+配置分成三类，不混用：
 
-CLI 启动时按 1→2→3 顺序合并；`rc.x=y` 临时覆盖最高优先级。
+1. **本机配置**：来自 `taskg.toml`、环境变量、CLI flag 和 `rc.*`。只描述当前机器如何启动和显示 taskg，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 的 server/token 路径。
+2. **Workspace 业务配置**：存 DB，带 `workspace_id`，受权限和 audit 约束。包括 UDA schema、urgency UDA 系数、context、report 默认配置、workspace 级 Agent 记忆。
+3. **Project 配置**：M5 project 实体化后引入，挂在 project/workspace 下。包括 project 默认 context、project 级 webhook、project 级 Agent 背景和约束。
+
+`rc.x=y` 只影响本次命令。它可以覆盖本机显示和连接行为，也可以作为显式请求参数参与一次操作，但不能变成跨 workspace 的业务默认值。
 
 ### 10.3 文件格式
 
-- 默认采用 **TOML**（Go 友好），同时保留对 Taskwarrior `.taskrc` 文本格式的**只读**导入能力。
+- 本机配置采用 **TOML**（Go 友好）。
+- `.taskrc` 保留为**只读迁移输入**。导入时应把 UDA、context、urgency 等业务 key 写入当前 workspace 的 DB 配置，而不是作为全局运行时配置长期读取。
+- 任何服务端 HTTP/MCP 请求都不得依赖调用者本机 TOML 来决定 workspace 业务规则。
 
 ---
 
@@ -365,7 +382,7 @@ CLI 启动时按 1→2→3 顺序合并；`rc.x=y` 临时覆盖最高优先级�
 │   - HookDispatcher                   │
 │   - SyncEngine (op-log)              │
 ├──────────────────────────────────────┤
-│ Storage Layer (SQLite, modernc)      │
+│ Storage Layer (GORM + SQLite)        │
 └──────────────────────────────────────┘
 ```
 
@@ -386,7 +403,10 @@ CLI 启动时按 1→2→3 顺序合并；`rc.x=y` 临时覆盖最高优先级�
 | `task.start` / `task.stop` | 起停 | `uuid` |
 | `report.run` | 跑预定义报表 | `name, extra_filter?` |
 | `urgency.explain` | 解释 urgency 构成 | `uuid` |
-| `workspace.list` / `workspace.switch` | 工作区 | — |
+| `workspace.list` / `workspace.current` | 企业 workspace | — |
+| `project.list` | 当前 workspace 内的项目 | `workspace_id` |
+| `project.get` | 读取单个项目 | `workspace_id, project_id \| project` |
+| `project.current` | 当前 project scope | `workspace_id` |
 | `context.set` / `context.show` | 上下文 | — |
 | `config.get` / `config.set` | 配置 | — |
 
@@ -394,8 +414,9 @@ CLI 启动时按 1→2→3 顺序合并；`rc.x=y` 临时覆盖最高优先级�
 
 ### 11.3 鉴权与隔离
 
-- MCP 客户端连接需带 PAT；token 决定可见 workspace。
+- MCP 客户端连接需带 PAT 或 Agent token；token 决定可见 workspace，也可以限制 project allowlist。
 - 数据库层强制注入 `workspace_id`；推荐用 SQL view + 触发器或仓储层守卫两种手段双重校验。
+- project scope 在 M5 后应基于 project 实体；`task.project` 字符串继续用于 Taskwarrior JSON 兼容和 CLI 查询输入，内部权限与 MCP/API scope 不应依赖裸 slug。所有 slug 解析都必须发生在明确 workspace 内。
 
 ---
 
@@ -410,14 +431,14 @@ CLI 启动时按 1→2→3 顺序合并；`rc.x=y` 临时覆盖最高优先级�
 
 ---
 
-## 13. 飞书 / 外部触发集成（私有云场景）
+## 13. Agent 驱动的外部系统集成
 
 > 不在 Taskwarrior 上游范围内，列出以便后续展开。
 
-- 触发源：飞书事件、webhook、定时（heartbeat）、一次性触发。
-- 触发动作：Agent 收到事件后经 MCP 调 `task.add` / `task.query`，结果回写。
-- 输出策略：飞书消息卡片 / 静默入库。
-- 记忆机制：每 workspace 挂载「个人偏好 + 团队记忆」，hook 自动维护。
+- 触发源：外部 webhook、协作系统事件、代码托管事件、定时（heartbeat）、一次性触发。
+- 触发动作：adapter 标准化事件后交给 Agent；Agent 通过 taskg MCP/API 调 `task.add` / `task.query` / `task.modify`，再把结果写回外部系统或静默入库。
+- adapter 示例：飞书、GitHub、Jira、Slack 等都可以接入，但它们不是 taskg 的核心目标。taskg 核心只关心 actor、workspace、project、task、权限和审计。
+- 记忆机制：workspace 挂企业偏好，project 挂项目背景和约束，Agent 读取的是服务端 DB 中的配置/记忆摘要，不读取操作者本机 TOML。
 
 ---
 
@@ -445,11 +466,13 @@ CLI 启动时按 1→2→3 顺序合并；`rc.x=y` 临时覆盖最高优先级�
 |---|---|
 | **M0** | 单用户单 workspace；SQLite 存储；`add/list/modify/done/delete/info`；TOML 配置 |
 | **M1** | 过滤表达式 + 报表系统 + Urgency 计算 + DOM `_get` + `calc` |
-| **M2** | UDA + Annotations + Dependencies + Recurring |
-| **M3** | 多用户多 workspace + 鉴权（PAT/JWT）+ 行级隔离 + HTTP API |
-| **M4** | MCP Server（stdio + Streamable HTTP）+ Webhook + 飞书触发示例 |
-| **M5** | Op-log 同步引擎 + Hook（脚本 / Webhook / WASM）|
-| **M6** | Taskwarrior JSON 双向导入导出 + `.taskrc` 兼容读 |
+| **M2** | Annotations、Dependencies、Recurring、waiting/active/ready 等核心任务模型 |
+| **M3** | 配置系统、context、UDA、`.taskrc` 只读导入 |
+| **M4** | 企业 workspace、用户、成员、权限、审计、行级隔离 |
+| **M5** | Project 实体化与 workspace/project 配置边界 |
+| **M6** | HTTP/JSON API、远程 CLI、PAT/Agent token |
+| **M7** | 企业 Agent MCP Server（stdio + Streamable HTTP） |
+| **M8** | Agent 驱动的外部集成、trigger、Hook、发布、迁移与备份打磨 |
 
 ---
 
@@ -474,7 +497,7 @@ CREATE TABLE workspaces (
   visibility    TEXT NOT NULL DEFAULT 'private',
   settings_json TEXT NOT NULL DEFAULT '{}',
   created_at    INTEGER NOT NULL,
-  UNIQUE(owner_user_id, slug)
+  UNIQUE(slug)
 );
 
 CREATE TABLE memberships (
@@ -492,14 +515,32 @@ CREATE TABLE api_tokens (
   hashed_token    TEXT NOT NULL UNIQUE,
   scopes_json     TEXT NOT NULL DEFAULT '[]',
   workspace_scope TEXT,                  -- NULL = 全部
+  project_scope_json TEXT NOT NULL DEFAULT '[]',
   expires_at      INTEGER,
   created_at      INTEGER NOT NULL
 );
+
+-- Project 实体（M5+）
+CREATE TABLE projects (
+  id            TEXT PRIMARY KEY,
+  workspace_id  TEXT NOT NULL REFERENCES workspaces(id),
+  slug          TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  status        TEXT NOT NULL DEFAULT 'active',
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  created_at    INTEGER NOT NULL,
+  archived_at   INTEGER,
+  UNIQUE(workspace_id, slug),             -- slug 只在 workspace 内唯一
+  UNIQUE(id, workspace_id)                -- 供 tasks 复合外键校验同 workspace
+);
+CREATE INDEX idx_projects_ws_status ON projects(workspace_id, status);
 
 -- 任务核心（物化态；权威来自 operations）
 CREATE TABLE tasks (
   uuid          TEXT PRIMARY KEY,
   workspace_id  TEXT NOT NULL REFERENCES workspaces(id),
+  project_id    TEXT,
   description   TEXT NOT NULL,
   status        TEXT NOT NULL,            -- pending/completed/deleted/waiting/recurring
   entry         INTEGER NOT NULL,
@@ -518,10 +559,12 @@ CREATE TABLE tasks (
   imask         INTEGER,
   creator_user_id  TEXT REFERENCES users(id),
   assignee_user_id TEXT REFERENCES users(id),
-  external_refs_json TEXT NOT NULL DEFAULT '{}'
+  external_refs_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
 );
 CREATE INDEX idx_tasks_ws_status ON tasks(workspace_id, status);
 CREATE INDEX idx_tasks_ws_project ON tasks(workspace_id, project);
+CREATE INDEX idx_tasks_ws_project_id ON tasks(workspace_id, project_id);
 CREATE INDEX idx_tasks_ws_due ON tasks(workspace_id, due);
 
 CREATE TABLE task_tags (
@@ -584,7 +627,7 @@ CREATE INDEX idx_ops_ws_task ON operations(workspace_id, task_uuid, created_at);
 
 -- 配置（三层）
 CREATE TABLE configs (
-  scope         TEXT NOT NULL,             -- server/workspace/user
+  scope         TEXT NOT NULL,             -- server/workspace/project/user
   scope_id      TEXT,                      -- NULL for server
   key           TEXT NOT NULL,
   value         TEXT NOT NULL,
@@ -621,15 +664,24 @@ CREATE TABLE audit_logs (
 ```
 
 > 注：`operations` 是权威表，`tasks` 与衍生表是物化视图。可用触发器或服务层在写入 op 时同步更新物化态；亦可只在物化态写入并后台异步生成 op-log（在 M0–M2 简化路径下可接受）。
+>
+> `workspaces.slug` 设计为实例内唯一，因为当前 CLI/API 使用裸 `--workspace <slug|uuid>` 解析 workspace。如果未来需要同一实例内多 owner 复用 workspace slug，必须先引入 `owner/slug` 或 org scope 形式，不能悄悄放宽唯一性。
+>
+> `projects.slug` 只在 `(workspace_id, slug)` 内唯一；不同 workspace 可以复用同名 project。`tasks.project_id` 非空时必须指向同一个 `workspace_id` 下的 project，数据库复合外键和 app/service 层都要校验这一点。`tasks.project` 字符串仅用于 Taskwarrior JSON 兼容和人类输入。
 
 ---
 
 ## 附录 B：CLI 命令分级清单
 
 - **M0**：`add` `modify` `done` `delete` `info` `list` `next` `config` `show` `import` `export`
-- **M1**：`all` `completed` `waiting` `active` `ready` `overdue` `blocked` `blocking` `calendar` `calc` `context` `_get` `_ids` `_uuids` `_projects` `_tags`
-- **M2**：`annotate` `denotate` `append` `prepend` `edit` `start` `stop` `recur` `_udas` `_unique` `_urgency`
-- **M3+**：`user` `workspace` `member` `token` `sync` `burndown.*` `_show` `_version` `_zsh*`
+- **M1**：过滤表达式与报表基础：`all` `completed` `overdue` `calc` `urgency` `_urgency` `_get` `_ids` `_uuids` `_projects` `_tags`
+- **M2**：任务核心模型扩展：`waiting` `active` `ready` `blocked` `blocking` `annotate` `denotate` `append` `prepend` `edit` `start` `stop`；`recur` 作为任务字段和修改语法进入，不是独立命令
+- **M3**：配置、context 与 UDA：`context` `_udas` `_unique` `_show` `_version` `completion` `config import-taskrc`
+- **M4**：`user` `workspace` `member` `audit`
+- **M5**：`project`
+- **M6**：`server` `token`
+- **M7**：MCP Server 入口
+- **M8+**：`sync` `burndown.*` 外部 trigger / adapter 相关命令
 
 ---
 
@@ -645,7 +697,8 @@ CREATE TABLE audit_logs (
   "properties": {
     "workspace_id": {"type": "string", "format": "uuid"},
     "description":  {"type": "string", "minLength": 1},
-    "project":      {"type": "string"},
+    "project":      {"type": "string", "description": "当前 workspace 内的企业项目 slug；不同 workspace 可以重复"},
+    "project_id":   {"type": "string", "format": "uuid", "description": "M5 后优先使用的稳定 project 身份"},
     "tags":         {"type": "array", "items": {"type": "string"}},
     "priority":     {"type": "string", "enum": ["H","M","L"]},
     "due":          {"type": "string"},      // 接受 ISO8601 或 Taskwarrior 关键字
@@ -656,6 +709,8 @@ CREATE TABLE audit_logs (
   }
 }
 ```
+
+`project_id` 是 API/MCP 的优先 project 身份。如果请求同时传入 `project` 和 `project_id`，服务端必须先在有效 workspace 内解析 `project`，并要求解析结果与 `project_id` 相同；不一致时返回参数错误（HTTP 400 / MCP invalid_params）。如果只传 `project`，它必须在有效 workspace 内唯一解析；如果只传 `project_id`，仍需校验调用者对该 project 所属 workspace 有权限。若请求同时带 `--workspace` / `workspace_id` 与 `project_id`，该 project 必须属于该 workspace，否则返回错误。
 
 ---
 
@@ -693,4 +748,3 @@ CREATE TABLE audit_logs (
 28. modernc.org/sqlite（纯 Go SQLite 驱动）. <https://pkg.go.dev/modernc.org/sqlite>
 29. Model Context Protocol — 规范. <https://modelcontextprotocol.io/>
 30. Cobra CLI 框架. <https://github.com/spf13/cobra>
-

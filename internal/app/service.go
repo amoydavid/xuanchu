@@ -146,6 +146,8 @@ func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
 	clone.userRepo = sqlite.NewUserRepository(store.DB())
 	clone.workspaceRepo = sqlite.NewWorkspaceRepository(store.DB())
 	clone.memberRepo = sqlite.NewMemberRepository(store.DB())
+	// Tests can inject a custom audit repo to force append failures; keep it
+	// attached while production services get a tx-bound repository.
 	if _, ok := s.auditRepo.(*sqlite.AuditRepository); ok || s.auditRepo == nil {
 		clone.auditRepo = sqlite.NewAuditRepository(store.DB())
 	}
@@ -302,6 +304,9 @@ func (s *Service) addLocked(input AddInput) (task.Task, error) {
 }
 
 func (s *Service) List(input ListInput) ([]task.Task, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return nil, err
+	}
 	if input.Target != nil {
 		tsk, err := s.ResolveTarget(*input.Target)
 		if err != nil {
@@ -949,6 +954,9 @@ func (s *Service) dependencyGraph() (map[string][]string, error) {
 }
 
 func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return ReportResult{}, err
+	}
 	def, ok := s.reports.Get(input.Name)
 	if !ok {
 		return ReportResult{}, fmt.Errorf("unknown report %q", input.Name)

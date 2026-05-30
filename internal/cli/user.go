@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/render"
@@ -36,7 +37,7 @@ func newUserListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), users)
+				return render.JSON(cmd.OutOrStdout(), userViewsForJSON(users))
 			}
 			for _, user := range users {
 				active := " "
@@ -60,7 +61,10 @@ func newUserAddCommand(opts Options) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			input := parseUserAddArgs(args)
+			input, err := parseUserAddArgs(args)
+			if err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -71,7 +75,7 @@ func newUserAddCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), user)
+				return render.JSON(cmd.OutOrStdout(), userViewForJSON(user))
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created user %s\n", user.Name)
 			return nil
@@ -84,7 +88,9 @@ func newUserUseCommand(opts Options) *cobra.Command {
 		Use:  "use <name|email|uuid>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			currentOpts := optionsFromCmd(cmd, opts)
+			currentOpts.Workspace = ""
+			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
 				return err
 			}
@@ -118,7 +124,7 @@ func newUserInfoCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), user)
+				return render.JSON(cmd.OutOrStdout(), userViewForJSON(user))
 			}
 			email := ""
 			if user.Email != nil {
@@ -130,12 +136,47 @@ func newUserInfoCommand(opts Options) *cobra.Command {
 	}
 }
 
-func parseUserAddArgs(args []string) app.AddUserInput {
+func parseUserAddArgs(args []string) (app.AddUserInput, error) {
 	input := app.AddUserInput{Name: args[0]}
-	for _, arg := range args[1:] {
-		if value, ok := trimKV(arg, "email"); ok {
-			input.Email = value
-		}
+	values, err := parseKeyValueArgs(args[1:], map[string]bool{"email": true})
+	if err != nil {
+		return app.AddUserInput{}, err
 	}
-	return input
+	input.Email = values["email"]
+	return input, nil
+}
+
+func userViewsForJSON(users []app.UserView) []map[string]any {
+	out := make([]map[string]any, 0, len(users))
+	for _, user := range users {
+		out = append(out, userViewForJSON(user))
+	}
+	return out
+}
+
+func userViewForJSON(user app.UserView) map[string]any {
+	return map[string]any{
+		"id":                   user.ID,
+		"name":                 user.Name,
+		"email":                user.Email,
+		"default_workspace_id": user.DefaultWorkspaceID,
+		"active":               user.Active,
+		"created_at":           user.CreatedAt,
+		"modified_at":          user.ModifiedAt,
+	}
+}
+
+func parseKeyValueArgs(args []string, allowed map[string]bool) (map[string]string, error) {
+	values := map[string]string{}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, ":")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid argument %q; expected key:value", arg)
+		}
+		if !allowed[key] {
+			return nil, fmt.Errorf("unknown argument %q", arg)
+		}
+		values[key] = value
+	}
+	return values, nil
 }

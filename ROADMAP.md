@@ -1,10 +1,11 @@
 # taskg Roadmap
 
-本文档是 `taskg` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：
+本文档是 `taskg` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：面向企业项目协作和 Agent MCP 的 Taskwarrior 风格任务运行时。
 
 - 单一二进制，同时承担本地 CLI、远程 CLI 客户端、HTTP/JSON API 服务端、MCP Server。
 - 使用纯 Go SQLite 方案，保持零 CGO、可跨平台交叉编译。
-- 支持多用户、多 workspace、行级隔离。
+- `workspace` 作为企业 / 租户级隔离边界，`project` 表示 workspace 内的真实企业项目。
+- 支持多用户、权限、审计、Agent token、行级隔离。
 - 兼容 Taskwarrior 的核心命令名、JSON 数据格式与 urgency 公式。
 
 路线图按可独立交付、可测试、可回滚的 milestone 拆分。每个 milestone 开始前都应先写中文 spec，再用 `superpowers:writing-plans` 拆成实施计划。
@@ -17,11 +18,11 @@
 | M1 | 已完成 | 查询语言、内置报表、urgency、DOM 与 calc 基础 |
 | M2 | 已完成 | Taskwarrior 核心任务模型补齐 |
 | M3 | 已完成 | 配置系统、上下文、UDA、`.taskrc` 只读导入与脚本化 helper |
-| M4 | 已完成 | 多 workspace、本地团队模型与权限边界 |
-| M5 | 待规划 | HTTP/JSON API 与远程 CLI |
-| M6 | 待规划 | MCP Server 与 Agent 工具接口 |
-| M7 | 待规划 | Operation log 同步、离线复制与 Hook |
-| M8 | 待规划 | 外部触发集成、飞书示例、发布与迁移打磨 |
+| M4 | 已完成 | 企业 Workspace、权限与审计基础 |
+| M5 | 待规划 | Project 实体化与 Workspace/Project 配置边界 |
+| M6 | 待规划 | HTTP/JSON API、远程 CLI 与 Agent Token |
+| M7 | 待规划 | 企业 Agent MCP Server 与工具接口 |
+| M8 | 待规划 | Agent 驱动的外部集成、触发器、发布与运维打磨 |
 
 ## M0：本地单用户 CLI
 
@@ -57,7 +58,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 - 新增 `internal/query` AST，而不是继续堆叠简单 `Filter` 字段。
 - 支持 Taskwarrior 风格常用 filter：
-  - `project:work`
+  - `project:ai-agent-platform`
   - `+urgent`
   - `-tag`
   - `status:pending`
@@ -66,7 +67,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `due.before:tomorrow`
   - `due.after:2days`
   - `/pattern/`
-  - 字符串引号：`project:'Home & Garden'`
+  - 字符串引号：`project:'ERP Rewrite'`
 - 支持布尔组合：
   - 默认 AND。
   - `and`、`or`、`xor`、`not`。
@@ -287,11 +288,11 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `_unique`
   - `completion bash|zsh|fish|powershell`
 
-## M4：多 Workspace、本地团队模型与权限边界
+## M4：企业 Workspace、权限与审计基础
 
 **状态：已完成。**
 
-**目标：** 在仍然不引入 HTTP 服务端的前提下，把运行时从“单用户单 workspace”升级成“actor + workspace + role”，为 M5 的服务端化保留稳定边界。
+**目标：** 在仍然不引入 HTTP 服务端的前提下，把运行时从“单用户单 workspace”升级成“actor + workspace + role”。M4 中的 workspace 是企业 / 租户级隔离边界；project 继续作为 Taskwarrior 兼容字段，用来表达该 workspace 内的真实企业项目。
 
 **M4 已交付内容：**
 
@@ -311,6 +312,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 支持 `active_workspace.<user_id>`
   - 支持 `active_context.<user_id>.<workspace_id>`
   - 支持全局 `--workspace <slug|uuid>` 一次性覆盖
+  - 当前 CLI 使用裸 workspace slug，因此 workspace slug 在同一个 taskg 实例内保持唯一；project slug 只在 workspace 内唯一
 - 权限边界：
   - `viewer` / `member` / `admin` / `owner`
   - task、context、UDA schema、workspace metadata、member role、audit read 都经过 app 层权限检查
@@ -339,11 +341,75 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 - app service 已不再把 local workspace 当作默认业务前提。
 - 权限检查、审计编排、runtime context 解析都已沉到可复用的 `internal/app` 边界。
-- M5 可以在不重写 M4 app service 的前提下接入 HTTP/JSON API 与远程 CLI。
+- M5 应先把 project 从“字符串字段”抬成 workspace 内的一等对象，再让后续 API、Agent token 和 MCP scope 绑定稳定 project 身份。
+- M5 还需要把配置边界收紧：TOML 只保留本机/启动配置，workspace/project 业务配置必须通过 DB、权限和 audit 管理。
 
-## M5：HTTP/JSON API 与远程 CLI
+## M5：Project 实体化与 Workspace/Project 配置边界
 
-**目标：** 让同一个 `taskg` 二进制可以作为 HTTP 服务端运行，并让 CLI 通过远程 API 操作任务。
+**目标：** 把 `project` 从 Taskwarrior 兼容字符串抬成企业项目对象。这样后续 HTTP API、Agent token、MCP tool 和外部集成都能围绕稳定的 project 身份授权，而不是依赖字符串约定。
+
+**范围：**
+
+- project 实体：
+  - 新增 `projects` 表，归属于 workspace。
+  - 字段至少包括 `id`、`workspace_id`、`slug`、`name`、`description`、`status`、`created_at`、`archived_at`。
+  - `slug` 只在同一 workspace 内唯一；不同 workspace 可以有相同 slug 的 project，任何解析都必须带 workspace。
+  - 兼容已有 `task.project` 字符串。迁移时按现有 project 值生成 project 草案，或采用明确的 lazy materialization 策略。
+- task 与 project 关系：
+  - task 保留 `project` 字符串用于 Taskwarrior JSON 兼容。
+  - 内部增加稳定 `project_id` 或等价映射，供权限、审计、API、MCP 使用。
+  - `project:<slug>` 查询继续可用，并限定在当前 workspace 内解析。
+- CLI：
+  - M5 不引入全局唯一 project slug。所有 project slug 都必须在 effective workspace 内解析。
+  - effective workspace 的来源顺序：本次 `--workspace <slug|uuid>` > 当前 active workspace > 本地默认 workspace。后续远程 CLI 还要叠加 token workspace scope。
+  - `taskg --workspace dajee project info ai-agent-platform` 表示 `dajee` workspace 下的 `ai-agent-platform`。
+  - `taskg --workspace partner project info ai-agent-platform` 表示另一个 workspace 下的同名 project。
+  - `taskg project info ai-agent-platform` 只在当前 active workspace 中查找，不做跨 workspace 搜索。
+  - 脚本和 API 场景应优先保存和传递 `project_id`；slug 只做人类输入。
+  - `project_id` 是全局稳定身份，但所有读取和写入仍必须校验 actor 对该 project 所属 workspace 的权限。
+  - 如果命令同时给出 `--workspace <slug|uuid>` 和 `<project-id>`，该 project 必须属于这个 workspace；不属于时直接报错，不回退到 project 自己的 workspace。
+  - `project list`
+  - `project add <slug> name:<name>`
+  - `project info <slug|project-id>`
+  - `project modify <slug|project-id> ...`
+  - `project archive <slug|project-id>`
+  - `_projects` 继续输出脚本兼容列表。
+  - `_projects` 默认只列 effective workspace 下的项目；跨 workspace 枚举必须显式指定 workspace，或等到 M6 API/M7 MCP 通过带权限的接口提供。
+- 配置边界：
+  - `taskg.toml` 只作为本机启动和显示配置来源，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 连接信息。
+  - workspace 业务配置必须存 DB，并绑定 `workspace_id`，包括 UDA schema、urgency UDA 系数、context、report 默认配置。
+  - project 级配置挂到 project/workspace 下，包括 project 默认 context、project 级 Agent 背景、project 级约束和后续 webhook 默认值。
+  - 明确合并规则：本次命令参数 > project 配置 > workspace 配置 > 本机显示配置 > 默认值。权限和业务规则不得从调用者本机 TOML 读取。
+  - `.taskrc` 和 TOML 中的 UDA/context/urgency 业务 key 只作为迁移输入，不作为跨 workspace 的运行时全局配置。
+- 权限与审计：
+  - project 写操作进入 audit。
+  - M5 可以先不做 project 成员表，但要为 M6 token 的 project allowlist 预留稳定 project id。
+  - 如果实现 project owner/member，需要明确它与 workspace role 的优先级。
+
+**不进入 M5：**
+
+- HTTP API。
+- 远程 CLI。
+- PAT / Agent token。
+- MCP。
+- op-log 同步。
+- 外部系统适配。
+- 复杂项目管理功能，例如甘特图、预算、审批流。
+
+**验收标准：**
+
+- 已有 `task.project` 数据能平滑进入 project 实体化路径，Taskwarrior JSON import/export 不丢字段。
+- 同一 workspace 内 project slug 唯一；不同 workspace 内可以复用同名 project。
+- `tasks.project_id` 与 `tasks.workspace_id` 必须一致：不能把 `dajee` workspace 的任务绑定到 `partner` workspace 的 project。数据库迁移、repo 写入和 app/service 测试都要覆盖这条约束。
+- `project:*` 查询、`_projects`、报表、context 与 UDA/urgency 都按 workspace/project 边界工作。
+- workspace 业务配置与 project 配置互不污染；两个 workspace 可以拥有不同 UDA、urgency、context 和 project 默认配置。
+- `taskg.toml` 不再被描述为业务配置来源。
+- project 写操作有权限检查和审计记录。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+
+## M6：HTTP/JSON API、远程 CLI 与 Agent Token
+
+**目标：** 让同一个 `taskg` 二进制可以作为 HTTP 服务端运行，并让 CLI / Agent 通过远程 API 操作任务。M6 的重点是把“actor + workspace + project + token scope”固化成传输层协议。
 
 **范围：**
 
@@ -354,6 +420,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - HTTP API：
   - task CRUD。
   - query/report。
+  - project CRUD。
   - context/config。
   - workspace/member 基础管理。
   - urgency explain。
@@ -361,34 +428,49 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - OpenAPI 3 文档生成或维护。
 - 鉴权：
   - PAT。
-  - JWT 登录可作为 M5.5，如果范围过大可拆分。
+  - Agent token / service token。
+  - JWT 登录可作为 M6.5，如果范围过大可拆分。
   - `Authorization: Bearer <token>`。
+  - token 绑定 actor，并可限制可访问 workspace。
+  - token 可限制 project allowlist；scope 应引用 M5 的稳定 project id。slug 只能作为带 workspace 的人类可读输入，不能作为全局唯一标识。
 - 行级隔离：
   - 所有请求必须绑定 actor。
   - 所有查询必须绑定可见 workspace。
+  - 如果 token 带 project scope，task/query/report/import/export 都必须叠加 project 限制。
 - 远程 CLI：
   - `taskg --server URL --token TOKEN list`。
   - 本地/远程命令输出尽量一致。
   - 支持环境变量配置 server/token。
+  - 支持 `--workspace <slug|uuid>`，但不能突破 token 的 workspace scope。
+  - 支持 `--project <slug>` 作为远程/API 场景的显式 project scope 便捷入口；slug 必须在 effective workspace 内解析，本地 Taskwarrior 风格 `project:<slug>` 查询继续可用。
+  - 支持 `--project-id <uuid>` 作为无歧义 project scope。脚本、Agent token 和 MCP 推荐使用 project id。
+  - 如果请求同时携带 `project` 和 `project_id`，`project` 必须在 effective workspace 内解析到同一个 id；不一致时返回参数错误。
+  - 如果请求同时携带 `workspace` 和 `project_id`，该 project 必须属于这个 workspace；不一致时返回参数错误。
+  - 如果 token 可见多个 workspace，且命令没有明确 effective workspace，则 `--project <slug>` 必须报错并提示补 `--workspace` 或改用 `--project-id`。
+- 配置 API：
+  - `config get/set/list` 在服务端和远程 CLI 下必须显式区分 local config、workspace config 与 project config。
+  - HTTP/远程 CLI 不依赖操作者本机 TOML 来决定 workspace/project 业务规则。
 
-**不进入 M5：**
+**不进入 M6：**
 
 - MCP。
 - op-log 同步。
 - Hook。
-- 飞书集成。
+- 外部系统适配。
 
 **验收标准：**
 
 - 本地 CLI 与远程 CLI 在核心命令上行为一致。
 - API 认证失败、权限不足、资源不存在有稳定错误结构。
 - 不同 workspace/user 的数据无法越权访问。
+- 带 project scope 的 token 不能读取或修改其它 project 的任务。
+- 配置 API 能清楚区分本机配置、workspace 配置和 project 配置。
 - OpenAPI 覆盖已实现 endpoint。
 - 服务端和远程 CLI 都通过 CGO-free 测试和构建。
 
-## M6：MCP Server 与 Agent 工具接口
+## M7：企业 Agent MCP Server 与工具接口
 
-**目标：** 让 AI Agent 能通过 MCP 以结构化方式使用 taskg，同时保留人类可读渲染。
+**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 taskg。MCP 请求必须落在明确的 workspace scope 内，并可进一步受 project scope 限制。Agent 不应该凭提示词决定自己能看什么，权限必须来自 token 和服务端校验。
 
 **范围：**
 
@@ -409,7 +491,10 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `report.run`
   - `urgency.explain`
   - `workspace.list`
-  - `workspace.switch`
+  - `workspace.current`
+  - `project.list`
+  - `project.get`
+  - `project.current`
   - `context.set`
   - `context.show`
   - `config.get`
@@ -420,94 +505,62 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - MCP 鉴权：
   - stdio 可使用本地配置。
   - HTTP MCP 使用 PAT。
+  - HTTP MCP 支持 Agent token / service token。
+  - 每次 tool 调用都解析 actor、workspace scope、project scope。
+- Agent 记忆与上下文：
+  - Agent 可读取 workspace/project 的背景、约束和默认 context 摘要。
+  - 这些信息来自服务端 DB，不来自操作者本机 TOML。
 - tool schema 测试：
   - 参数校验。
   - 错误结构。
   - workspace scope。
+  - project scope。
 
-**不进入 M6：**
+**不进入 M7：**
 
-- 飞书专用适配。
+- 外部系统专用适配。
 - op-log 同步。
-- Hook。
+- Hook / trigger 引擎。
+- 复杂 Agent 编排平台。
 
 **验收标准：**
 
 - 本地 MCP stdio 能被 MCP 客户端调用。
 - HTTP MCP 能鉴权并限制 workspace。
+- 带 project scope 的 Agent 只能查询和修改授权 project 中的任务。
 - MCP tool 与 CLI/API 复用同一 app service，不复制业务逻辑。
 - 每个 tool 都有 schema 和集成测试。
-- Agent 可以完成“查询待办、添加任务、解释 urgency、切换 workspace”的完整流程。
+- Agent 可以完成“查询项目待办、添加项目任务、解释 urgency、写入审计”的完整流程。
 
-## M7：Operation Log 同步与 Hook
+## M8：Agent 驱动的外部集成、触发器、发布与运维打磨
 
-**目标：** 支持多端离线写入、同步收敛，并提供 Taskwarrior 风格事件扩展。
+**目标：** 把 taskg 打磨成可交付、可迁移、可部署、可被外部系统驱动的完整产品。外部系统不是主角；它们负责产生事件或承载输出，真正的任务决策由 Agent 通过 taskg MCP/API 完成。
 
 **范围：**
 
-- operation log：
-  - `operations` 表。
-  - op_id。
-  - replica_id。
-  - parent_op_id。
-  - actor_user_id。
-  - workspace_id。
-  - task_uuid。
-  - key。
-  - old_value / new_value。
-  - created_at。
-- 写路径调整：
-  - 任务修改生成 op。
-  - 物化 task 表由 op 应用得到，或采用明确的双写过渡策略。
-- sync：
-  - `sync pull`。
-  - `sync push`。
-  - `sync status`。
-  - 断点续传。
-  - 冲突策略文档化。
-- 并发安全：
-  - tags 以原子 add/remove op 表达，避免完整列表覆盖丢更新。
+- 触发器：
+  - webhook trigger。
+  - schedule / heartbeat trigger。
+  - 一次性 trigger。
+  - 触发器必须绑定 actor、workspace 和可选 project scope。
+- Agent 驱动的外部适配：
+  - 飞书、GitHub、Jira、Slack 等都只是 adapter 示例。
+  - adapter 负责接收事件、标准化 payload、调用 Agent 或 taskg MCP/API、回写外部系统。
+  - 不把飞书作为唯一目标，也不把飞书业务逻辑写进 taskg 核心。
 - Hook：
   - `on-launch`。
   - `on-add`。
   - `on-modify`。
   - `on-exit`。
   - 本地脚本 Hook 与服务端 Webhook。
-- Hook 安全：
-  - timeout。
-  - 失败回滚。
-  - stderr/stdout 协议。
-  - Webhook 签名。
-
-**不进入 M7：**
-
-- 飞书场景定制。
-- WASM 插件正式化。可保留实验文档。
-
-**验收标准：**
-
-- 两个 replica 离线修改后可同步收敛。
-- 并发添加不同 tag 不丢失。
-- Hook 拒绝写入时，任务修改回滚。
-- sync 与 Hook 都有端到端测试。
-- 现有 CLI/API/MCP 行为不因 op-log 改造退化。
-
-## M8：外部触发、飞书示例、发布与迁移打磨
-
-**目标：** 把 taskg 打磨成可交付、可迁移、可部署、可被外部系统驱动的完整产品。
-
-**范围：**
-
-- 外部触发：
-  - webhook trigger。
-  - 定时 trigger。
-  - 一次性 trigger。
-- 飞书示例：
-  - 接收飞书事件。
-  - 通过 MCP 或 API 调用 `task.add` / `task.query`。
-  - 回写飞书消息卡片或静默入库。
-- workspace 记忆：
-  - 团队偏好。
+  - project/workspace 级 webhook。
+  - timeout、失败回滚、stdout/stderr 协议、Webhook 签名。
+- 同步与 operation log：
+  - 是否进入 M8 由 M8 spec 评估。如果进入，范围包括 `operations` 表、replica_id、断点续传、冲突策略和 tags 原子 add/remove。
+  - 如果范围过大，应拆成 M9，不阻塞外部触发和 MCP 产品化。
+- Agent 记忆：
+  - workspace 级企业偏好。
+  - project 级项目背景、约束和默认 context。
   - 个人偏好。
   - Agent 可读的 context/config 摘要。
 - backup：
@@ -532,6 +585,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 远程 CLI。
   - HTTP API。
   - MCP。
+  - 外部 adapter 编写指南。
   - 迁移。
   - 备份恢复。
 
@@ -540,7 +594,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - 新用户只靠 README 可以完成安装、添加任务、查询任务、导入 Taskwarrior 数据。
 - 管理员只靠文档可以部署服务端、创建 token、配置远程 CLI。
 - Agent 可以通过 MCP 完成常见任务管理流程。
-- 飞书示例可在测试环境跑通。
+- 至少一个外部 adapter 示例可在测试环境跑通；飞书可以是示例之一，但不是唯一目标。
+- 触发器不会绕过 workspace/project/token 权限。
 - 所有发布产物均通过 CGO-free 验证。
 
 ## 跨 Milestone 规则
@@ -563,15 +618,16 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-下一步应为 M4 编写独立需求规格：
+下一步应为 M5 编写独立需求规格：
 
 ```text
-docs/superpowers/specs/YYYY-MM-DD-taskg-m4-design.md
+docs/superpowers/specs/YYYY-MM-DD-taskg-m5-design.md
 ```
 
-M4 spec 应重点明确：
+M5 spec 应重点明确：
 
-- 多 workspace 的数据模型与迁移策略。
-- active workspace 与 existing local workspace 的兼容规则。
-- context、UDA、config 在 workspace 维度的隔离方式。
-- 本地团队模型、membership 与后续 HTTP 权限边界。
+- project 实体的表结构、`workspace_id + slug` 唯一规则、project id 规则和与 `task.project` 字符串字段的兼容策略。
+- project CLI、project audit、project archive 的最小闭环。
+- workspace 配置、project 配置、本机 TOML 配置的边界和合并规则。
+- UDA、urgency、context、report 默认配置迁移到 workspace/project DB 配置后的读写路径。
+- M6 token scope 和 M7 MCP tool 需要复用的 project service 接口，避免后续再把 project scope 建在字符串约定上。

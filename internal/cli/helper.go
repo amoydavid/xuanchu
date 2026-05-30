@@ -225,12 +225,21 @@ func newShowHelperCommand(opts Options) *cobra.Command {
 			}
 			if len(args) == 0 {
 				for _, key := range rt.Keys() {
+					if !isPublicConfigKey(key) {
+						continue
+					}
 					value, _ := rt.Get(key)
 					fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
 				}
 				return nil
 			}
 			for _, key := range args {
+				if key == "context.active" {
+					return fmt.Errorf("unsupported legacy key %q", key)
+				}
+				if !isPublicConfigKey(key) {
+					return fmt.Errorf("unsupported internal key %q", key)
+				}
 				value, _ := rt.Get(key)
 				fmt.Fprintln(cmd.OutOrStdout(), value)
 			}

@@ -79,14 +79,28 @@ func (r *WorkspaceRepository) UpdateMetadata(workspaceID string, input Workspace
 	if input.Visibility != nil {
 		updates["visibility"] = *input.Visibility
 	}
-	return r.db.Model(&Workspace{}).Where("id = ?", workspaceID).Updates(updates).Error
+	result := r.db.Model(&Workspace{}).Where("id = ?", workspaceID).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *WorkspaceRepository) Archive(workspaceID string, archivedAt int64) error {
-	return r.db.Model(&Workspace{}).Where("id = ?", workspaceID).Updates(map[string]any{
+	result := r.db.Model(&Workspace{}).Where("id = ?", workspaceID).Updates(map[string]any{
 		"archived_at": archivedAt,
 		"modified_at": archivedAt,
-	}).Error
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *WorkspaceRepository) find(query string, args ...any) (Workspace, error) {

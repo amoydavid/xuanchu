@@ -13,6 +13,8 @@
 
 偷懒是第一生产力，解决一些问题时，有成熟的第三方库就用，不要重复造轮子。
 
+重要，永远使用中文为主要语言撰写文档和注释。
+
 ## 1. 项目目标
 
 `taskg` 的最终目标见 [README.md](/Users/mac/code/projects/dajee/task/README.md) 和 [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)：

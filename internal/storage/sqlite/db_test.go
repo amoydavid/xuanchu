@@ -111,3 +111,65 @@ func TestOpenMigratesContextActiveMeta(t *testing.T) {
 		t.Fatalf("migrated active context = %q, %v, %v", got, ok, err)
 	}
 }
+
+func TestOpenMigratesM3WorkspaceRows(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open(initial) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropTable(&AuditLog{}, &Membership{}, &User{}); err != nil {
+		t.Fatalf("DropTable(identity) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "name"); err != nil {
+		t.Fatalf("DropColumn(name) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "created_by_user_id"); err != nil {
+		t.Fatalf("DropColumn(created_by_user_id) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "description"); err != nil {
+		t.Fatalf("DropColumn(description) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "visibility"); err != nil {
+		t.Fatalf("DropColumn(visibility) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "settings_json"); err != nil {
+		t.Fatalf("DropColumn(settings_json) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "archived_at"); err != nil {
+		t.Fatalf("DropColumn(archived_at) error = %v", err)
+	}
+	if err := store.DB().Migrator().DropColumn(&Workspace{}, "modified_at"); err != nil {
+		t.Fatalf("DropColumn(modified_at) error = %v", err)
+	}
+	if err := store.SetMeta("context.active", "work"); err != nil {
+		t.Fatalf("SetMeta(context.active) error = %v", err)
+	}
+	_ = store.Close()
+
+	reopened, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open(migrated) error = %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	ws, err := reopened.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	if ws.Name != "Local" || ws.Visibility != "private" || ws.SettingsJSON != "{}" || ws.ModifiedAt != ws.CreatedAt {
+		t.Fatalf("migrated workspace = %#v", ws)
+	}
+	user, err := NewUserRepository(reopened.DB()).GetByName("local")
+	if err != nil {
+		t.Fatalf("GetByName(local) error = %v", err)
+	}
+	if user.DefaultWorkspaceID == nil || *user.DefaultWorkspaceID != ws.ID {
+		t.Fatalf("default workspace = %#v, want %s", user.DefaultWorkspaceID, ws.ID)
+	}
+	if _, ok, err := reopened.GetMeta("context.active"); err != nil {
+		t.Fatalf("GetMeta(context.active) error = %v", err)
+	} else if ok {
+		t.Fatal("old context.active key still exists")
+	}
+}

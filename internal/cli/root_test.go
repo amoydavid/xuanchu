@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,6 +87,16 @@ func TestRootParsesWorkspaceFlag(t *testing.T) {
 	}
 }
 
+func TestRootParsesWorkspaceEqualsFlag(t *testing.T) {
+	flags, positional, _ := splitFlagsRcAndPositional([]string{"--workspace=work", "+next", "list"})
+	if len(flags) != 1 || flags[0] != "--workspace=work" {
+		t.Fatalf("flags = %#v", flags)
+	}
+	if len(positional) != 2 || positional[0] != "+next" || positional[1] != "list" {
+		t.Fatalf("positional = %#v", positional)
+	}
+}
+
 func TestRcOverrideEmptyClearsKey(t *testing.T) {
 	tests := [][]string{
 		{"rc.context="},
@@ -148,6 +159,92 @@ func TestExecuteRejectsLegacyContextActiveGet(t *testing.T) {
 
 	if err := Execute(cmd, opts, []string{"--db", db, "config", "get", "context.active"}); err == nil {
 		t.Fatal("Execute() error = nil, want unsupported legacy key")
+	}
+}
+
+func TestExecuteRejectsLegacyContextActiveShow(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	if err := Execute(cmd, opts, []string{"--db", db, "_show", "context.active"}); err == nil {
+		t.Fatal("Execute() error = nil, want unsupported legacy key")
+	}
+}
+
+func TestExecuteRejectsInternalScopedShowKeys(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	for _, key := range []string{"active_user_id", "active_workspace.local", "active_context.local.local"} {
+		cmd := NewRootCommand(opts)
+		err := Execute(cmd, opts, []string{"--db", db, "_show", key})
+		if err == nil {
+			t.Fatalf("_show %s error = nil, want unsupported internal key", key)
+		}
+	}
+}
+
+func TestExecuteConfigListHidesInternalScopedKeys(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	if err := Execute(cmd, opts, []string{"--db", db, "context", "define", "work", "description:one"}); err != nil {
+		t.Fatalf("context define error = %v", err)
+	}
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "context", "use", "work"}); err != nil {
+		t.Fatalf("context use error = %v", err)
+	}
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "config", "list"}); err != nil {
+		t.Fatalf("config list error = %v", err)
+	}
+	out := stdout.String()
+	for _, forbidden := range []string{"context.active=", "active_user_id=", "active_context."} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("config list output = %q, should not contain %q", out, forbidden)
+		}
+	}
+}
+
+func TestUserUseIgnoresWorkspaceOverride(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	cmd := NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
+		t.Fatalf("user add error = %v", err)
+	}
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--workspace", "missing", "user", "use", "alice"}); err != nil {
+		t.Fatalf("user use with missing workspace override error = %v", err)
+	}
+}
+
+func TestJSONViewsUseSnakeCaseFields(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	cmd := NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "user", "list"}); err != nil {
+		t.Fatalf("user list --json error = %v", err)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &rows); err != nil {
+		t.Fatalf("user list --json invalid JSON: %v\n%s", err, stdout.String())
+	}
+	if len(rows) == 0 || rows[0]["id"] == nil || rows[0]["default_workspace_id"] == nil {
+		t.Fatalf("user JSON rows = %#v", rows)
+	}
+	if _, ok := rows[0]["ID"]; ok {
+		t.Fatalf("user JSON uses Go field names: %#v", rows[0])
 	}
 }
 

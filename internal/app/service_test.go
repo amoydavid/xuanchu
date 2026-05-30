@@ -392,6 +392,58 @@ func TestTaskWriteCreatesAuditInSameTransaction(t *testing.T) {
 	}
 }
 
+func TestReadMethodsRequireTaskReadPermission(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.Add(AddInput{Description: "read me"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	svc.runtime.Role = Role("invalid")
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{name: "List", call: func() error {
+			_, err := svc.List(ListInput{})
+			return err
+		}},
+		{name: "List target", call: func() error {
+			_, err := svc.List(ListInput{Target: &created.UUID})
+			return err
+		}},
+		{name: "ListReport", call: func() error {
+			_, err := svc.ListReport("next", ListInput{})
+			return err
+		}},
+		{name: "Info", call: func() error {
+			_, err := svc.Info(created.UUID)
+			return err
+		}},
+		{name: "Export", call: func() error {
+			_, err := svc.Export()
+			return err
+		}},
+		{name: "RunReport", call: func() error {
+			_, err := svc.RunReport(ReportInput{Name: "next"})
+			return err
+		}},
+		{name: "ExplainUrgency", call: func() error {
+			_, err := svc.ExplainUrgency(created.UUID)
+			return err
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err == nil {
+				t.Fatal("error = nil, want permission denied")
+			}
+		})
+	}
+}
+
 func TestAuditFailureRollsBackTaskWrite(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -729,11 +781,28 @@ func TestAddUserCreatesPersonalWorkspaceAndOwnerMembership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAudit() error = %v", err)
 	}
-	if len(logs) < 2 {
-		t.Fatalf("logs = %#v, want at least 2 entries", logs)
+	if len(logs) == 0 || logs[0].Action != "user.add" {
+		t.Fatalf("local logs = %#v, want user.add", logs)
 	}
-	if logs[0].Action != "workspace.add" || logs[1].Action != "user.add" {
-		t.Fatalf("logs = %#v", logs[:2])
+	aliceSvc := newTestServiceWithRuntime(t, svc.store, 100, "alice", "alice")
+	aliceLogs, err := aliceSvc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit(alice workspace) error = %v", err)
+	}
+	if len(aliceLogs) == 0 || aliceLogs[0].Action != "workspace.add" || aliceLogs[0].WorkspaceID == nil || *aliceLogs[0].WorkspaceID != ws.ID {
+		t.Fatalf("alice logs = %#v, want workspace.add in personal workspace", aliceLogs)
+	}
+}
+
+func TestAddUserRejectsInvalidPersonalWorkspaceSlug(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if _, err := svc.AddUser(AddUserInput{Name: "Alice"}); err == nil {
+		t.Fatal("AddUser(Alice) error = nil, want invalid workspace slug")
+	}
+	if _, err := sqlite.NewUserRepository(svc.store.DB()).GetByName("Alice"); err != sqlite.ErrNotFound {
+		t.Fatalf("GetByName(Alice) error = %v, want ErrNotFound", err)
 	}
 }
 
@@ -855,6 +924,37 @@ func TestModifyWorkspaceWritesAuditForAdmin(t *testing.T) {
 	}
 }
 
+func TestModifyWorkspaceRejectsEmptyName(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if _, err := svc.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team"}); err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+	empty := "  "
+	if err := svc.ModifyWorkspace("team", ModifyWorkspaceInput{Name: &empty}); err == nil {
+		t.Fatal("ModifyWorkspace(empty name) error = nil, want error")
+	}
+}
+
+func TestWorkspaceAuditUsesTargetWorkspace(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+	teamSvc := newTestServiceWithRuntime(t, svc.store, 100, "local", "team")
+	logs, err := teamSvc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit(team) error = %v", err)
+	}
+	if len(logs) == 0 || logs[0].Action != "workspace.add" || logs[0].WorkspaceID == nil || *logs[0].WorkspaceID != created.ID {
+		t.Fatalf("team audit logs = %#v", logs)
+	}
+}
+
 func TestArchiveWorkspaceRejectsWhenAffectedUserHasNoReplacement(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
@@ -949,6 +1049,30 @@ func TestArchiveWorkspaceReassignsAffectedUsers(t *testing.T) {
 	}
 	if _, err := memberRepo.Get(bob.ID, replacement.ID); err != nil {
 		t.Fatalf("Get(replacement membership) error = %v", err)
+	}
+}
+
+func TestArchivedWorkspaceRejectsMetadataAndMemberWrites(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	target, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "old", Name: "Old"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(old) error = %v", err)
+	}
+	if _, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "new", Name: "New"}); err != nil {
+		t.Fatalf("AddWorkspace(new) error = %v", err)
+	}
+	if err := ownerSvc.ArchiveWorkspace("old"); err != nil {
+		t.Fatalf("ArchiveWorkspace() error = %v", err)
+	}
+
+	description := "archived"
+	if err := ownerSvc.ModifyWorkspace(target.Slug, ModifyWorkspaceInput{Description: &description}); err == nil {
+		t.Fatal("ModifyWorkspace(archived) error = nil, want failure")
+	}
+	alice := mustCreateUserRecord(t, store, sqlite.User{ID: "user-alice-archived", Name: "alice-archived", CreatedAt: 100, ModifiedAt: 100})
+	if err := ownerSvc.AddMember(AddMemberInput{WorkspaceRef: target.Slug, UserRef: alice.Name, Role: RoleViewer}); err == nil {
+		t.Fatal("AddMember(archived) error = nil, want failure")
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +42,7 @@ func newAuditListCommand(opts Options) *cobra.Command {
 				return render.JSON(cmd.OutOrStdout(), auditRowsForJSON(rows))
 			}
 			for _, row := range rows {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s\n", time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339), row.Action, row.TargetType, row.TargetID)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s %s\n", time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339), row.ActorName, row.Action, row.TargetType, row.TargetID)
 			}
 			return nil
 		},
@@ -52,12 +51,13 @@ func newAuditListCommand(opts Options) *cobra.Command {
 	return cmd
 }
 
-func auditRowsForJSON(rows []sqlite.AuditLogEntry) []map[string]any {
+func auditRowsForJSON(rows []app.AuditLogView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		item := map[string]any{
 			"id":            row.ID,
 			"actor_user_id": row.ActorUserID,
+			"actor_name":    row.ActorName,
 			"workspace_id":  row.WorkspaceID,
 			"action":        row.Action,
 			"target_type":   row.TargetType,

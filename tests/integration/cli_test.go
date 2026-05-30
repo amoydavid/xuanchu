@@ -351,6 +351,37 @@ func TestCLIWorkspaceErrorSemantics(t *testing.T) {
 	if err == nil || (!strings.Contains(string(out), "membership_not_found") && !strings.Contains(string(out), "permission_denied")) {
 		t.Fatalf("non-member workspace error = %v, output = %q", err, out)
 	}
+
+	cmd = exec.Command(bin, "--db", db, "--json", "--workspace", "nonexistent", "list")
+	out, err = cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("--json nonexistent workspace error = nil, output = %q", out)
+	}
+	var payload map[string]any
+	if json.Unmarshal(out, &payload) != nil || payload["code"] != "workspace_not_found" {
+		t.Fatalf("--json error output = %q", out)
+	}
+}
+
+func TestCLIConfigAndShowHideLegacyContextKeys(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "one")
+	run(t, bin, "--db", db, "context", "define", "work", "description:one")
+	run(t, bin, "--db", db, "context", "use", "work")
+
+	cmd := exec.Command(bin, "--db", db, "_show", "context.active")
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "unsupported legacy key") {
+		t.Fatalf("_show context.active error = %v, output = %q", err, out)
+	}
+	list := run(t, bin, "--db", db, "config", "list")
+	for _, forbidden := range []string{"context.active=", "active_user_id=", "active_context."} {
+		if strings.Contains(list, forbidden) {
+			t.Fatalf("config list output = %q, should not contain %q", list, forbidden)
+		}
+	}
 }
 
 func TestCLIMemberPermissions(t *testing.T) {
@@ -427,6 +458,11 @@ func TestCLIAuditList(t *testing.T) {
 		if !actions[want] {
 			t.Fatalf("audit actions = %#v, missing %q", actions, want)
 		}
+	}
+
+	human := run(t, bin, "--db", db, "audit", "list")
+	if !strings.Contains(human, "local") {
+		t.Fatalf("audit list output = %q, want actor name", human)
 	}
 }
 
