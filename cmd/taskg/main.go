@@ -10,6 +10,8 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/cli"
+	"github.com/dajee/taskg/internal/config"
+	"github.com/dajee/taskg/internal/storage/sqlite"
 )
 
 var version = "dev"
@@ -20,6 +22,7 @@ func main() {
 		Stderr:  os.Stderr,
 		Version: version,
 	}
+	maybeWarnM5Migration(os.Stderr, os.Args[1:], warningOptionsFromArgs(os.Args[1:], opts))
 	cmd := cli.NewRootCommand(opts)
 	if err := cli.Execute(cmd, opts, os.Args[1:]); err != nil {
 		var runtimeErr app.RuntimeError
@@ -35,6 +38,42 @@ func main() {
 		fmt.Fprintln(os.Stderr, "taskg:", err)
 		os.Exit(1)
 	}
+}
+
+func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
+	if skipsMigrationWarning(args) {
+		return
+	}
+	cfg, err := config.Resolve(config.Options{
+		DataDir: opts.DataDir,
+		DBPath:  opts.DBPath,
+		JSON:    opts.JSON,
+		NoColor: opts.NoColor,
+		Env:     runtimeEnv(),
+	})
+	if err != nil {
+		return
+	}
+	store, err := sqlite.Open(cfg.DatabasePath)
+	if err != nil {
+		return
+	}
+	defer store.Close()
+	report, err := store.M5ProjectMigrationReport()
+	if err != nil || len(report) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "taskg: warning: M5 project migration skipped some legacy project strings; inspect migration.m5.projects.skipped for details")
+}
+
+func skipsMigrationWarning(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "completion", "help", "--help", "-h", "--version", "version":
+			return true
+		}
+	}
+	return false
 }
 
 func writeError(w io.Writer, args []string, code, message string) {
@@ -64,6 +103,42 @@ func wantsJSON(args []string) bool {
 		}
 	}
 	return false
+}
+
+func runtimeEnv() map[string]string {
+	env := map[string]string{}
+	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "TASKG_DB"} {
+		if value, ok := os.LookupEnv(key); ok {
+			env[key] = value
+		}
+	}
+	return env
+}
+
+func warningOptionsFromArgs(args []string, base cli.Options) cli.Options {
+	opts := base
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--db" && i+1 < len(args):
+			opts.DBPath = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--db="):
+			opts.DBPath = strings.TrimPrefix(arg, "--db=")
+		case arg == "--data-dir" && i+1 < len(args):
+			opts.DataDir = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--data-dir="):
+			opts.DataDir = strings.TrimPrefix(arg, "--data-dir=")
+		case arg == "--json":
+			opts.JSON = true
+		case strings.HasPrefix(arg, "--json="):
+			opts.JSON = jsonTruthy(strings.TrimPrefix(arg, "--json="))
+		case arg == "--no-color":
+			opts.NoColor = true
+		}
+	}
+	return opts
 }
 
 func jsonTruthy(value string) bool {

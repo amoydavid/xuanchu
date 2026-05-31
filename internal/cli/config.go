@@ -74,6 +74,19 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 					return nil
 				}
 			}
+			if strings.HasPrefix(key, "agent.") || strings.HasPrefix(key, "context.") {
+				svc, closeFn, err := buildServiceFromOpts(currentOpts)
+				if err != nil {
+					return err
+				}
+				defer closeFn()
+				if value, ok, err := svc.GetConfig(key); err != nil {
+					return err
+				} else if ok {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+					return nil
+				}
+			}
 			if value, ok := rt.Get(key); ok {
 				if value != "" {
 					fmt.Fprintln(cmd.OutOrStdout(), value)
@@ -83,6 +96,17 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 					fmt.Fprintln(cmd.OutOrStdout(), value)
 					return nil
 				}
+			}
+			svc, closeFn, err := buildServiceFromOpts(currentOpts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			if value, ok, err := svc.GetConfig(key); err != nil {
+				return err
+			} else if ok {
+				fmt.Fprintln(cmd.OutOrStdout(), value)
+				return nil
 			}
 			return fmt.Errorf("unknown config key %q", key)
 		},

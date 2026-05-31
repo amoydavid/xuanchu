@@ -21,6 +21,7 @@ func newAuditCommand(opts Options) *cobra.Command {
 
 func newAuditListCommand(opts Options) *cobra.Command {
 	var limit int
+	var projectRef string
 	cmd := &cobra.Command{
 		Use:  "list",
 		Args: cobra.NoArgs,
@@ -33,6 +34,7 @@ func newAuditListCommand(opts Options) *cobra.Command {
 			defer closeFn()
 			rows, err := svc.ListAudit(app.AuditListInput{
 				WorkspaceRef: currentOpts.Workspace,
+				ProjectRef:   projectRef,
 				Limit:        limit,
 			})
 			if err != nil {
@@ -48,6 +50,7 @@ func newAuditListCommand(opts Options) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 50, "limit rows")
+	cmd.Flags().StringVar(&projectRef, "project", "", "filter audit rows by project slug or UUID")
 	return cmd
 }
 
@@ -59,6 +62,7 @@ func auditRowsForJSON(rows []app.AuditLogView) []map[string]any {
 			"actor_user_id": row.ActorUserID,
 			"actor_name":    row.ActorName,
 			"workspace_id":  row.WorkspaceID,
+			"project_id":    row.ProjectID,
 			"action":        row.Action,
 			"target_type":   row.TargetType,
 			"target_id":     row.TargetID,

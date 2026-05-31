@@ -1,11 +1,19 @@
 package sqlite
 
-import "gorm.io/gorm"
+import (
+	"errors"
+	"fmt"
+
+	"gorm.io/gorm"
+)
+
+var ErrInvalidAuditScope = errors.New("invalid audit scope")
 
 type AuditLogEntry struct {
 	ID          int64
 	ActorUserID *string
 	WorkspaceID *string
+	ProjectID   *string
 	Action      string
 	TargetType  string
 	TargetID    string
@@ -15,6 +23,7 @@ type AuditLogEntry struct {
 
 type AuditListOptions struct {
 	WorkspaceID *string
+	ProjectID   *string
 	Limit       int
 }
 
@@ -31,6 +40,7 @@ func (r *AuditRepository) Append(entry AuditLogEntry) error {
 		ID:          entry.ID,
 		ActorUserID: entry.ActorUserID,
 		WorkspaceID: entry.WorkspaceID,
+		ProjectID:   entry.ProjectID,
 		Action:      entry.Action,
 		TargetType:  entry.TargetType,
 		TargetID:    entry.TargetID,
@@ -40,6 +50,9 @@ func (r *AuditRepository) Append(entry AuditLogEntry) error {
 }
 
 func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
+	if opts.ProjectID != nil && opts.WorkspaceID == nil {
+		return nil, fmt.Errorf("%w: workspace_id is required when filtering audit logs by project_id", ErrInvalidAuditScope)
+	}
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 50
@@ -47,6 +60,9 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 	query := r.db.Model(&AuditLog{})
 	if opts.WorkspaceID != nil {
 		query = query.Where("workspace_id = ?", *opts.WorkspaceID)
+	}
+	if opts.ProjectID != nil {
+		query = query.Where("project_id = ?", *opts.ProjectID)
 	}
 	var rows []AuditLog
 	if err := query.Order("created_at DESC").Order("id DESC").Limit(limit).Find(&rows).Error; err != nil {
@@ -58,6 +74,7 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 			ID:          row.ID,
 			ActorUserID: row.ActorUserID,
 			WorkspaceID: row.WorkspaceID,
+			ProjectID:   row.ProjectID,
 			Action:      row.Action,
 			TargetType:  row.TargetType,
 			TargetID:    row.TargetID,

@@ -37,6 +37,7 @@ type Task struct {
 	End         *int64
 	Due         *int64
 	Project     *string
+	ProjectID   *string
 	Priority    *string
 	Tags        []string
 	Start       *int64

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"slices"
@@ -74,6 +75,26 @@ func TestTaskJSONCarriesUDAFields(t *testing.T) {
 	}
 }
 
+func TestJSONTaskSkipsReservedUDAFields(t *testing.T) {
+	tsk := Task{
+		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UDAs: map[string]UDAValue{
+			"estimate":   {Name: "estimate", Raw: "3", Type: "numeric"},
+			"project_id": {Name: "project_id", Raw: "project-1", Type: "string"},
+		},
+	}
+	data, err := json.Marshal(ToJSON(tsk))
+	if err != nil {
+		t.Fatalf("Marshal UDA task error = %v", err)
+	}
+	if bytes.Contains(data, []byte("project_id")) {
+		t.Fatalf("reserved UDA leaked into JSON: %s", data)
+	}
+	if !bytes.Contains(data, []byte(`"estimate":"3"`)) {
+		t.Fatalf("non-reserved UDA missing from JSON: %s", data)
+	}
+}
+
 func TestUnmarshalJSONTasksPreservesOrphanUDA(t *testing.T) {
 	var tasks []JSONTask
 	err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":{"x":1}}]`), &tasks)
@@ -84,6 +105,54 @@ func TestUnmarshalJSONTasksPreservesOrphanUDA(t *testing.T) {
 	legacy := got.UDAs["legacy_field"]
 	if legacy.Raw != `{"x":1}` || !legacy.Orphan {
 		t.Fatalf("legacy UDA = %#v", legacy)
+	}
+}
+
+func TestJSONTaskRejectsProjectIDAsReservedField(t *testing.T) {
+	var dto JSONTask
+	err := json.Unmarshal([]byte(`{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_id":"p1"}`), &dto)
+	if err == nil || !strings.Contains(err.Error(), "project_id") {
+		t.Fatalf("Unmarshal(project_id) error = %v, want reserved project_id", err)
+	}
+}
+
+func TestJSONTaskDoesNotExportProjectID(t *testing.T) {
+	project := "api"
+	projectID := "project-1"
+	data, err := json.Marshal(ToJSON(Task{
+		UUID:        "u1",
+		Description: "task",
+		Status:      StatusPending,
+		Entry:       1,
+		Modified:    2,
+		Project:     &project,
+		ProjectID:   &projectID,
+	}))
+	if err != nil {
+		t.Fatalf("Marshal(task with ProjectID) error = %v", err)
+	}
+	if bytes.Contains(data, []byte("project_id")) {
+		t.Fatalf("export leaked project_id: %s", data)
+	}
+}
+
+func TestJSONTaskKeepsOrphanUDAButRejectsReservedProjectID(t *testing.T) {
+	var dto JSONTask
+	err := json.Unmarshal([]byte(`{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":"kept"}`), &dto)
+	if err != nil {
+		t.Fatalf("Unmarshal(orphan UDA) error = %v", err)
+	}
+	got := dto.UDAs["legacy_field"]
+	if got.Raw != "kept" || !got.Orphan {
+		t.Fatalf("legacy UDA = %#v", got)
+	}
+	if _, ok := dto.UDAs["project_id"]; ok {
+		t.Fatalf("project_id entered orphan UDA: %#v", dto.UDAs)
+	}
+
+	err = json.Unmarshal([]byte(`{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_id":"p1"}`), &dto)
+	if err == nil || !strings.Contains(err.Error(), "project_id") {
+		t.Fatalf("Unmarshal(project_id) error = %v, want reserved project_id", err)
 	}
 }
 

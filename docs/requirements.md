@@ -5,7 +5,7 @@
 > 主存储：**SQLite（纯 Go 驱动，零 CGO）**
 > 形态：**单一二进制**，可同时充当 ① 本地 CLI ② 远程 CLI 客户端 ③ HTTP/JSON API 服务端 ④ MCP Server
 
-本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。每一条带 `[n]` 的脚注对应文末同号参考链接。
+本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。taskg 借鉴 Taskwarrior 的设计思路，但企业 workspace/project/Agent 边界优先于完整兼容。每一条带 `[n]` 的脚注对应文末同号参考链接。
 
 ---
 
@@ -52,7 +52,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 ### 1.0 概念边界
 
 - **Workspace**：企业 / 租户级隔离边界。一个 workspace 通常对应一个企业、团队或独立业务域，例如 `dajee`。所有 task、project、context、UDA、audit、Agent token scope 都必须落在 workspace 内。
-- **Project**：workspace 内的真实企业项目，例如 `ai-agent-platform`、`erp-rewrite`、`lark-integration`。M4 阶段 project 仍是 Taskwarrior 兼容的任务字段；M5 起抬成一等实体，后续 API、token、MCP scope 都应绑定稳定 project 身份。
+- **Project**：workspace 内的真实企业项目，例如 `ai-agent-platform`、`erp-rewrite`、`lark-integration`。M4 阶段 project 仍是任务字段；M5 起抬成一等实体，后续 API、token、MCP scope 都应绑定稳定 project 身份。
 - **Agent**：通过 PAT / service token / MCP 连接进来的非人类 actor。Agent 的权限来自 token 和 membership，不来自提示词。token 可限制 workspace，也可限制 project allowlist。
 - **Context**：人或 Agent 的当前视图过滤器，例如 `project:ai-agent-platform and +next`。context 不是权限边界，只是查询默认条件。
 
@@ -66,7 +66,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 | `Workspace` | `id, owner_user_id, slug, name, description, visibility(private/team/public), settings_json` | 企业 / 租户级任务空间 |
 | `Membership` | `user_id, workspace_id, role(owner/admin/member/viewer), joined_at` | 多对多关系 |
 | `ApiToken` | `id, user_id, name, hashed_token, scopes_json, workspace_scope(NULL=全部), project_scope(NULL=全部), expires_at` | PAT 或 Agent token，用于 CLI/API/MCP 鉴权；project scope 在 M5 后应引用 project id，slug 只能在明确 workspace 后解析 |
-| `AuditLog` | `id, actor_user_id, workspace_id, action, target_uuid, payload_json, created_at` | 服务端模式必备 |
+| `AuditLog` | `id, actor_user_id, workspace_id, project_id, action, target_uuid, payload_json, created_at` | 服务端模式必备；M5 起支持按 project 查询时间线 |
 
 ### 1.2 鉴权
 
@@ -80,7 +80,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 ### 1.3 Workspace 与 Project 的关系
 
 - **Workspace** = 企业 / 租户级数据隔离边界。
-- **Project** = 企业里的真实项目。Taskwarrior 支持点号分层 `work.client.acme` `[19]`，我们继承该层级表示法；project slug 只在所属 workspace 内有意义，不同 workspace 可以有相同 slug。M5 前 project 只是任务字段；M5 后 project 是实体，M6 token 与 M7 MCP scope 优先使用 project id，slug 只能作为带 workspace 的人类可读输入。
+- **Project** = 企业里的真实项目。Taskwarrior 支持点号分层 `work.client.acme` `[19]`，我们借鉴这种可读命名方式，但不再把 project 视为自由字符串。project slug 只在所属 workspace 内有意义，不同 workspace 可以有相同 slug。M5 前 project 只是任务字段；M5 后 project 是实体，M6 token 与 M7 MCP scope 优先使用 project id，slug 只能作为带 workspace 的人类可读输入。
 
 ---
 
@@ -104,7 +104,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 | `wait` | timestamp | 隐藏 pending；到期客户端必须自动清空 `wait` 并改为 pending `[15]` |
 | `scheduled` | timestamp | 过 `scheduled` 后任务为 ready `[15]` |
 | `until` | timestamp | 到期任务自动消失 `[7]` |
-| `project` | string | Taskwarrior 兼容字段，支持 `a.b.c` 点号层级 `[19]`；M5 后内部应映射到 workspace 内的 project 实体 |
+| `project` | string | 任务上的可读 project slug，借鉴 Taskwarrior 的 `a.b.c` 点号命名方式 `[19]`；M5 后内部必须映射到 workspace 内的 project 实体 |
 | `tags` | []string | 标签数组；`+tag` / `-tag` 修改语法 `[8]` |
 | `priority` | enum | 默认 `H/M/L/<空>`，本质上是内置 UDA `[5][12]` |
 | `depends` | []UUID | 依赖列表 `[11]` |
@@ -161,7 +161,7 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 | `info` | 详情 |
 | `edit` | 全字段编辑（弹 `$EDITOR`） |
 | `list` / `next` / `all` / `completed` / `waiting` / `active` / `ready` / `overdue` / `blocked` / `blocking` | 报表 `[22]` |
-| `import` / `export` | JSON 互导（兼容 Taskwarrior 格式） |
+| `import` / `export` | JSON 互导（支持 Taskwarrior 迁移格式，不承诺完整兼容） |
 | `config` / `show` | 配置读写 |
 | `context` | 设置默认过滤 `[22]` |
 | `calc` | 表达式求值（见 §3.5） |
@@ -332,7 +332,7 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
   - 每次写入产出一条不可变 op：`(op_id, replica_id, parent_op_id, uuid, key, old, new, ts)`。
   - 多端通过比较 op-log 收敛，避免读-改-写丢失 `[4]`。
 - 服务端 = 权威 op-log；客户端可离线累计 op，重连后批量推送。
-- 兼容性：保留 `task export` / `task import` 的 JSON 字段名与上游一致 `[4]`，确保从 Taskwarrior 平滑迁移。
+- 迁移兼容性：尽量保留 `task export` / `task import` 的常用 JSON 字段名 `[4]`，确保从 Taskwarrior 平滑迁移；企业 project、workspace、权限字段以 taskg 自身模型为准，不追求完整上游兼容。
 
 ### 9.3 备份
 
@@ -356,6 +356,8 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 3. **Project 配置**：M5 project 实体化后引入，挂在 project/workspace 下。包括 project 默认 context、project 级 webhook、project 级 Agent 背景和约束。
 
 `rc.x=y` 只影响本次命令。它可以覆盖本机显示和连接行为，也可以作为显式请求参数参与一次操作，但不能变成跨 workspace 的业务默认值。
+
+M5 起，project 配置只通过 `project config get/set/unset/list <project>` 访问；无 scope 的 `config get/set/list` 不显示 project 配置。
 
 ### 10.3 文件格式
 
@@ -416,7 +418,7 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 
 - MCP 客户端连接需带 PAT 或 Agent token；token 决定可见 workspace，也可以限制 project allowlist。
 - 数据库层强制注入 `workspace_id`；推荐用 SQL view + 触发器或仓储层守卫两种手段双重校验。
-- project scope 在 M5 后应基于 project 实体；`task.project` 字符串继续用于 Taskwarrior JSON 兼容和 CLI 查询输入，内部权限与 MCP/API scope 不应依赖裸 slug。所有 slug 解析都必须发生在明确 workspace 内。
+- project scope 在 M5 后应基于 project 实体；`task.project` 字符串继续用于 human 输出、迁移导出和 CLI 查询输入，内部权限与 MCP/API scope 不应依赖裸 slug。所有 slug 解析都必须发生在明确 workspace 内。
 
 ---
 
@@ -526,10 +528,11 @@ CREATE TABLE projects (
   workspace_id  TEXT NOT NULL REFERENCES workspaces(id),
   slug          TEXT NOT NULL,
   name          TEXT NOT NULL,
-  description   TEXT,
+  description   TEXT NOT NULL DEFAULT '',
   status        TEXT NOT NULL DEFAULT 'active',
   settings_json TEXT NOT NULL DEFAULT '{}',
   created_at    INTEGER NOT NULL,
+  modified_at   INTEGER NOT NULL,
   archived_at   INTEGER,
   UNIQUE(workspace_id, slug),             -- slug 只在 workspace 内唯一
   UNIQUE(id, workspace_id)                -- 供 tasks 复合外键校验同 workspace
@@ -545,7 +548,6 @@ CREATE TABLE tasks (
   status        TEXT NOT NULL,            -- pending/completed/deleted/waiting/recurring
   entry         INTEGER NOT NULL,
   modified      INTEGER NOT NULL,
-  start_ts      INTEGER,
   end_ts        INTEGER,
   due           INTEGER,
   wait          INTEGER,
@@ -553,8 +555,9 @@ CREATE TABLE tasks (
   until         INTEGER,
   project       TEXT,
   priority      TEXT,                     -- H/M/L/NULL
+  start         INTEGER,
   recur         TEXT,
-  parent_uuid   TEXT,
+  parent        TEXT,
   mask          TEXT,
   imask         INTEGER,
   creator_user_id  TEXT REFERENCES users(id),
@@ -563,7 +566,6 @@ CREATE TABLE tasks (
   FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
 );
 CREATE INDEX idx_tasks_ws_status ON tasks(workspace_id, status);
-CREATE INDEX idx_tasks_ws_project ON tasks(workspace_id, project);
 CREATE INDEX idx_tasks_ws_project_id ON tasks(workspace_id, project_id);
 CREATE INDEX idx_tasks_ws_due ON tasks(workspace_id, due);
 
@@ -580,17 +582,20 @@ CREATE TABLE task_dependencies (
 );
 
 CREATE TABLE task_annotations (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
   task_uuid TEXT NOT NULL REFERENCES tasks(uuid) ON DELETE CASCADE,
   entry     INTEGER NOT NULL,
-  description TEXT NOT NULL
+  description TEXT NOT NULL,
+  PRIMARY KEY (task_uuid, entry, description)
 );
 
-CREATE TABLE task_udas (
+CREATE TABLE task_uda_values (
+  workspace_id TEXT NOT NULL,
   task_uuid TEXT NOT NULL REFERENCES tasks(uuid) ON DELETE CASCADE,
-  key       TEXT NOT NULL,
-  value     TEXT,                          -- 统一以字符串存，类型由 schema 解释
-  PRIMARY KEY (task_uuid, key)
+  name      TEXT NOT NULL,
+  value     TEXT NOT NULL,                 -- 统一以字符串存，类型由 schema 解释
+  value_type TEXT,
+  orphan    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (task_uuid, name)
 );
 
 CREATE TABLE task_followers (
@@ -627,11 +632,12 @@ CREATE INDEX idx_ops_ws_task ON operations(workspace_id, task_uuid, created_at);
 
 -- 配置（三层）
 CREATE TABLE configs (
+  workspace_id  TEXT NOT NULL DEFAULT '',  -- server/user scope 可为空串；project/workspace 写真实 workspace id
   scope         TEXT NOT NULL,             -- server/workspace/project/user
-  scope_id      TEXT,                      -- NULL for server
+  scope_id      TEXT NOT NULL DEFAULT '',  -- server scope 用空串，project scope 用 project id
   key           TEXT NOT NULL,
   value         TEXT NOT NULL,
-  PRIMARY KEY (scope, scope_id, key)
+  PRIMARY KEY (workspace_id, scope, scope_id, key)
 );
 
 -- 报表与上下文
@@ -656,18 +662,24 @@ CREATE TABLE audit_logs (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   actor_user_id TEXT REFERENCES users(id),
   workspace_id  TEXT REFERENCES workspaces(id),
+  project_id    TEXT,
   action        TEXT NOT NULL,
   target_uuid   TEXT,
   payload_json  TEXT,
   created_at    INTEGER NOT NULL
 );
+CREATE INDEX idx_audit_project_time ON audit_logs(workspace_id, project_id, created_at);
 ```
 
 > 注：`operations` 是权威表，`tasks` 与衍生表是物化视图。可用触发器或服务层在写入 op 时同步更新物化态；亦可只在物化态写入并后台异步生成 op-log（在 M0–M2 简化路径下可接受）。
 >
 > `workspaces.slug` 设计为实例内唯一，因为当前 CLI/API 使用裸 `--workspace <slug|uuid>` 解析 workspace。如果未来需要同一实例内多 owner 复用 workspace slug，必须先引入 `owner/slug` 或 org scope 形式，不能悄悄放宽唯一性。
 >
-> `projects.slug` 只在 `(workspace_id, slug)` 内唯一；不同 workspace 可以复用同名 project。`tasks.project_id` 非空时必须指向同一个 `workspace_id` 下的 project，数据库复合外键和 app/service 层都要校验这一点。`tasks.project` 字符串仅用于 Taskwarrior JSON 兼容和人类输入。
+> `projects.slug` 只在 `(workspace_id, slug)` 内唯一；不同 workspace 可以复用同名 project。`tasks.project_id` 非空时必须指向同一个 `workspace_id` 下的 project，数据库复合外键和 app/service 层都要校验这一点。`tasks.project` 字符串仅用于 human 输出、迁移导出和人类输入。
+>
+> M5 起 SQLite 连接必须启用 `PRAGMA foreign_keys = ON`；如果实现发现既有库需要重建 `tasks` 才能声明复合外键，应在 M5 迁移中完成，不把跨 workspace project 引用只留给文档约定。
+>
+> `configs.workspace_id` 和 `configs.scope_id` 固定使用非 NULL 空字符串表示全局 scope，且 `workspace_id` 进入主键，避免 SQLite 复合主键中的 NULL 唯一性陷阱，也避免不同 workspace 的配置 key 互相覆盖。
 
 ---
 
@@ -710,7 +722,7 @@ CREATE TABLE audit_logs (
 }
 ```
 
-`project_id` 是 API/MCP 的优先 project 身份。如果请求同时传入 `project` 和 `project_id`，服务端必须先在有效 workspace 内解析 `project`，并要求解析结果与 `project_id` 相同；不一致时返回参数错误（HTTP 400 / MCP invalid_params）。如果只传 `project`，它必须在有效 workspace 内唯一解析；如果只传 `project_id`，仍需校验调用者对该 project 所属 workspace 有权限。若请求同时带 `--workspace` / `workspace_id` 与 `project_id`，该 project 必须属于该 workspace，否则返回错误。
+`project_id` 是 API/MCP 的优先 project 身份。M5 起采用严格 project 注册：请求中的 `project` 必须在有效 workspace 内解析到已存在 project，不存在时返回参数错误，不自动创建。如果请求同时传入 `project` 和 `project_id`，服务端必须先在有效 workspace 内解析 `project`，并要求解析结果与 `project_id` 相同；不一致时返回参数错误（HTTP 400 / MCP invalid_params）。如果只传 `project_id`，仍需校验调用者对该 project 所属 workspace 有权限。若请求同时带 `--workspace` / `workspace_id` 与 `project_id`，该 project 必须属于该 workspace，否则返回错误。
 
 ---
 

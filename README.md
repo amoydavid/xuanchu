@@ -1,12 +1,12 @@
 # taskg — 面向企业项目与 Agent MCP 的 Taskwarrior 风格任务运行时（Go 版）
 
-`taskg` 是一个用 **纯 Go** 实现的企业任务运行时。它保留 Taskwarrior 的 CLI、查询语言和 JSON 兼容性，同时把运行边界调整为企业项目协作和 Agent MCP：
+`taskg` 是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
 
 - 单一二进制：同时承担 **本地 CLI / 远程 CLI 客户端 / HTTP API 服务端 / MCP Server** 四种形态
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
 - `workspace` 作为企业 / 租户级隔离边界；`project` 表示企业内的真实项目
 - 支持多用户、权限、审计、行级隔离，并为 Agent token 和 MCP scope 预留边界
-- 兼容 Taskwarrior 的核心命令名、JSON 数据格式与 urgency 公式
+- 借鉴 Taskwarrior 的核心命令名、JSON 迁移格式与 urgency 公式；企业能力优先于完全兼容
 
 ## 详细需求
 
@@ -26,7 +26,8 @@
 ```bash
 go build -o taskg ./cmd/taskg
 
-# 第一条任务
+# 先注册一个项目，再创建第一条任务
+./taskg project add ai-agent-platform name:"AI Agent Platform"
 ./taskg add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
 
 # 默认只看 pending 任务
@@ -373,6 +374,8 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 ./taskg workspace archive old
 
 # project 表示 workspace 内的真实企业项目
+./taskg --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
+./taskg --workspace dajee project add erp-rewrite name:"ERP Rewrite"
 ./taskg --workspace dajee add "Design MCP task.query schema" project:ai-agent-platform +mcp
 ./taskg --workspace dajee add "Migrate invoice workflow" project:erp-rewrite +migration
 
@@ -398,9 +401,9 @@ M4 新增了企业运行时基础：
 - `audit list`
 - 全局 `--workspace <slug|uuid>` 一次性切到指定 workspace 执行命令
 
-在当前版本里，`workspace` 是企业 / 租户级隔离边界；`project` 仍然是 Taskwarrior 兼容的任务字段，用来表达该 workspace 内的真实项目，例如 `ai-agent-platform`、`erp-rewrite`、`lark-integration`。
+在当前版本里，`workspace` 是企业 / 租户级隔离边界；`project` 已经是 workspace 内的一等实体。任务上仍保留 `project` 字符串字段做人类可读输出，但运行时写入、查询、权限、审计和后续 API/MCP scope 都以稳定 `project_id` 为准。
 
-同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/ai-agent-platform` 和 `partner/ai-agent-platform` 是两个不同项目；后续 project 实体化后，权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
+同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/ai-agent-platform` 和 `partner/ai-agent-platform` 是两个不同项目；权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
 
 当前 CLI 的 `--workspace <slug|uuid>` 使用裸 workspace slug，所以 workspace slug 在同一个 taskg 实例内应保持唯一。project slug 只在当前 workspace 内解析：
 
@@ -409,11 +412,11 @@ M4 新增了企业运行时基础：
 ./taskg --workspace partner list project:ai-agent-platform
 ```
 
-上面两条命令访问的是两个不同 workspace 里的同名 project。M5 后，脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令应报错，避免把任务写进错误租户。
+上面两条命令访问的是两个不同 workspace 里的同名 project。当前版本已经采用严格 project 注册：`taskg add ... project:<slug>` 和 `taskg 1 modify project:<slug>` 只能引用当前 workspace 内已存在、未归档的 project，不会运行时自动创建。脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令会报错，避免把任务写进错误租户。
 
-后续路线会先把 project 实体化，再往外开放协议层：
+后续路线会基于已完成的 project 实体化继续往外开放协议层：
 
-- M5：把 project 变成 workspace 内的一等对象，并明确 workspace/project 配置边界。
+- M5：已完成。project 已是 workspace 内的一等对象，采用严格 project 注册，并明确 workspace/project 配置边界。
 - M6：在稳定 project scope 上提供 HTTP/JSON API、远程 CLI 和 Agent token。
 - M7：提供企业 Agent MCP Server，让 Agent 通过受权限约束的 tool 操作任务。
 - M8：接入外部系统触发器和 adapter。飞书、GitHub、Jira、Slack 都只是 adapter 示例，taskg 核心仍是 workspace/project/task/权限/审计。
@@ -449,3 +452,116 @@ M4 新增了企业运行时基础：
 ```bash
 ./taskg context use <name>
 ```
+
+## M5 Project 实体与配置边界
+
+M5 现在已经落地。最重要的变化有四点：
+
+- 任务引用 project 前，必须先在当前 workspace 注册 project。
+- `project` 查询、context、helper、audit 都会先在当前 workspace 内把 slug 解析成稳定 `project_id`。
+- `project config` 成为 project 级业务配置的唯一入口；无 scope 的 `config` 不再读写 project 配置。
+- JSON export 继续输出可读的 `project` slug，但脚本、API、token、MCP 应优先持有 `project_id`。
+
+一个完整的 M5 日常流大致是这样：
+
+```bash
+# 先建 workspace，再注册 project
+./taskg workspace add dajee name:Dajee
+./taskg --workspace dajee project add ai-agent-platform name:"AI Agent Platform" description:"Owns MCP work"
+./taskg --workspace dajee project add erp-rewrite name:"ERP Rewrite"
+
+# 用 project slug 创建和查询任务
+./taskg --workspace dajee add "Design task.query schema" project:ai-agent-platform +mcp
+./taskg --workspace dajee add "Review ERP migration" project:erp-rewrite
+./taskg --workspace dajee list project:ai-agent-platform
+
+# 管理 project 元数据
+./taskg --workspace dajee project list
+./taskg --workspace dajee project info ai-agent-platform --json
+./taskg --workspace dajee project modify ai-agent-platform description:"Owns taskg MCP and API work"
+./taskg --workspace dajee project archive erp-rewrite
+
+# 归档后不能再被新任务引用
+./taskg --workspace dajee add "Should fail" project:erp-rewrite
+```
+
+如果你直接写一个不存在的 project，命令会失败，而不是偷偷创建：
+
+```bash
+./taskg add "Ghost task" project:ghost
+# taskg: project_not_found: project "ghost" not found ...
+```
+
+### `project` 命令组
+
+当前支持这些命令：
+
+```bash
+./taskg project list [--all]
+./taskg project add <slug> name:<name> [description:<text>]
+./taskg project info <slug|project-id>
+./taskg project modify <slug|project-id> [name:<name>] [description:<text>]
+./taskg project archive <slug|project-id>
+```
+
+说明：
+
+- `project list` 默认只列 active project；加 `--all` 才包含 archived。
+- `project info` / `modify` / `archive` 既接受 slug，也接受稳定 `project_id`。
+- slug 只在当前 effective workspace 内解析，不做跨 workspace 搜索。
+
+### `project config` 命令组
+
+project 级业务配置固定走 `project config`：
+
+```bash
+./taskg project config set ai-agent-platform agent.background "Owns taskg MCP integration."
+./taskg project config get ai-agent-platform agent.background
+./taskg project config list ai-agent-platform
+./taskg project config unset ai-agent-platform agent.background
+```
+
+当前白名单 key：
+
+- `agent.background`
+- `context.default`
+- `constraint.description`
+
+如果你误用无 scope 的 `config`：
+
+```bash
+./taskg config set agent.background "..."
+```
+
+会返回 `project_config_scope_required`，并提示改用 `project config set <project> ...`。
+
+### Helper 与 audit 的 M5 行为
+
+```bash
+./taskg _projects           # 当前 workspace 的 active project slug
+./taskg _projects --all     # 包括 archived
+./taskg _unique project     # 当前查询结果中实际被任务引用到的 project slug
+./taskg audit list --project ai-agent-platform --json
+```
+
+这里有两个容易混的点：
+
+- `_projects` 看的是 project 表，所以“已注册但暂时没有任务”的 project 也会出现。
+- `_unique project` 看的是当前查询结果里的任务绑定，所以只会输出实际被命中的 project。
+
+`audit list --project` 支持 slug 或 `project_id`，JSON 输出里会带 `project_id`，方便脚本继续串联。
+
+### M5 升级提示
+
+从 M4 升级到 M5 时，数据库会自动迁移：
+
+- 原有 `tasks.project` 会尽量回填到 `projects` 与 `tasks.project_id`
+- 不合法、冲突或无法安全归一化的旧 project 值会被跳过，并写入迁移报告
+
+如果本次启动存在跳过项，CLI 会在 `stderr` 打一行 warning。详细报告可用：
+
+```bash
+./taskg config get migration.m5.projects.skipped
+```
+
+这个 key 只用于迁移排障，不是业务配置。

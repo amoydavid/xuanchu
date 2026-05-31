@@ -126,6 +126,7 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 			"end_ts":      model.EndTS,
 			"due":         model.Due,
 			"project":     model.Project,
+			"project_id":  model.ProjectID,
 			"priority":    model.Priority,
 			"start":       model.Start,
 			"wait":        model.Wait,
@@ -282,7 +283,7 @@ func toModel(tsk domain.Task) Task {
 	return Task{
 		UUID: tsk.UUID, WorkspaceID: tsk.WorkspaceID, Description: tsk.Description,
 		Status: tsk.Status, Entry: tsk.Entry, Modified: tsk.Modified,
-		EndTS: tsk.End, Due: tsk.Due, Project: tsk.Project, Priority: tsk.Priority,
+		EndTS: tsk.End, Due: tsk.Due, Project: tsk.Project, ProjectID: tsk.ProjectID, Priority: tsk.Priority,
 		Tags:  tags,
 		Start: tsk.Start, Wait: tsk.Wait, Scheduled: tsk.Scheduled, Until: tsk.Until,
 		Recur: tsk.Recur, Parent: tsk.Parent, Mask: tsk.Mask, IMask: tsk.IMask,
@@ -318,7 +319,7 @@ func fromModel(model Task) domain.Task {
 	return domain.Task{
 		UUID: model.UUID, WorkspaceID: model.WorkspaceID, Description: model.Description,
 		Status: model.Status, Entry: model.Entry, Modified: model.Modified,
-		End: model.EndTS, Due: model.Due, Project: model.Project, Priority: model.Priority,
+		End: model.EndTS, Due: model.Due, Project: model.Project, ProjectID: model.ProjectID, Priority: model.Priority,
 		Tags:  tags,
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
 		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,

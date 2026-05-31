@@ -162,7 +162,11 @@ func (s *Service) activeContextFilter(skip bool) (query.Expr, error) {
 	if active == nil {
 		return nil, nil
 	}
-	return query.ParseQuery(active.FilterSource)
+	parsed, err := query.ParseQuery(active.FilterSource)
+	if err != nil {
+		return nil, err
+	}
+	return s.resolveProjectPredicates(parsed)
 }
 
 func (s *Service) activeContext() (*taskcontext.Context, error) {

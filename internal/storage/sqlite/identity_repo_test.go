@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -181,5 +182,93 @@ func TestAuditRepositoryListsNewestFirst(t *testing.T) {
 	}
 	if got := []string{rows[0].Action, rows[1].Action}; !reflect.DeepEqual(got, []string{"c", "b"}) {
 		t.Fatalf("actions = %#v", got)
+	}
+}
+
+func TestAuditRepositoryPreservesAndFiltersProjectID(t *testing.T) {
+	store := openIdentityTestStore(t)
+	repo := NewAuditRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	projectID := "project-api"
+	otherProjectID := "project-web"
+
+	entries := []AuditLogEntry{
+		{WorkspaceID: &ws.ID, ProjectID: &projectID, Action: "task.modify", CreatedAt: 100},
+		{WorkspaceID: &ws.ID, ProjectID: &otherProjectID, Action: "task.modify", CreatedAt: 200},
+		{WorkspaceID: &ws.ID, ProjectID: &projectID, Action: "task.done", CreatedAt: 300},
+	}
+	for _, entry := range entries {
+		if err := repo.Append(entry); err != nil {
+			t.Fatalf("Append(%q) error = %v", entry.Action, err)
+		}
+	}
+
+	rows, err := repo.List(AuditListOptions{WorkspaceID: &ws.ID, ProjectID: &projectID, Limit: 10})
+	if err != nil {
+		t.Fatalf("List(project) error = %v", err)
+	}
+	if got := []string{rows[0].Action, rows[1].Action}; !reflect.DeepEqual(got, []string{"task.done", "task.modify"}) {
+		t.Fatalf("project actions = %#v", got)
+	}
+	for _, row := range rows {
+		if row.ProjectID == nil || *row.ProjectID != projectID {
+			t.Fatalf("row ProjectID = %#v, want %q", row.ProjectID, projectID)
+		}
+	}
+}
+
+func TestAuditRepositoryRejectsProjectFilterWithoutWorkspace(t *testing.T) {
+	store := openIdentityTestStore(t)
+	repo := NewAuditRepository(store.DB())
+	projectID := "project-api"
+
+	_, err := repo.List(AuditListOptions{ProjectID: &projectID})
+	if !errors.Is(err, ErrInvalidAuditScope) {
+		t.Fatalf("List(project without workspace) error = %v, want errors.Is ErrInvalidAuditScope", err)
+	}
+}
+
+func TestAuditRepositoryProjectFilterRequiresMatchingWorkspace(t *testing.T) {
+	store := openIdentityTestStore(t)
+	repo := NewAuditRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	otherWorkspaceID := "ws-other"
+	if err := store.DB().Create(&Workspace{
+		ID:         otherWorkspaceID,
+		Slug:       "other",
+		Name:       "Other",
+		Visibility: "team",
+		CreatedAt:  100,
+		ModifiedAt: 100,
+	}).Error; err != nil {
+		t.Fatalf("Create(other workspace) error = %v", err)
+	}
+	projectID := "project-shared"
+
+	entries := []AuditLogEntry{
+		{WorkspaceID: &ws.ID, ProjectID: &projectID, Action: "local.project", CreatedAt: 100},
+		{WorkspaceID: &otherWorkspaceID, ProjectID: &projectID, Action: "other.project", CreatedAt: 200},
+	}
+	for _, entry := range entries {
+		if err := repo.Append(entry); err != nil {
+			t.Fatalf("Append(%q) error = %v", entry.Action, err)
+		}
+	}
+
+	rows, err := repo.List(AuditListOptions{WorkspaceID: &ws.ID, ProjectID: &projectID, Limit: 10})
+	if err != nil {
+		t.Fatalf("List(workspace project) error = %v", err)
+	}
+	if len(rows) != 1 || rows[0].Action != "local.project" {
+		t.Fatalf("rows = %#v, want only local.project", rows)
+	}
+	if rows[0].WorkspaceID == nil || *rows[0].WorkspaceID != ws.ID {
+		t.Fatalf("row WorkspaceID = %#v, want %q", rows[0].WorkspaceID, ws.ID)
 	}
 }

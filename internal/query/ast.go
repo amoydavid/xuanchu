@@ -25,6 +25,7 @@ const (
 	AttrScheduled   Attribute = "scheduled"
 	AttrUntil       Attribute = "until"
 	AttrProject     Attribute = "project"
+	AttrProjectID   Attribute = "project_id"
 	AttrPriority    Attribute = "priority"
 	AttrDepends     Attribute = "depends"
 	AttrAnnotations Attribute = "annotations"

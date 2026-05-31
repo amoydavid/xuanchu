@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -93,6 +94,16 @@ func TestCompileQueryDueEmptyIsNull(t *testing.T) {
 	}
 	if sql != "due IS NULL" || len(args) != 0 {
 		t.Fatalf("sql = %q args = %#v", sql, args)
+	}
+}
+
+func TestCompileQueryRejectsUnresolvedProjectPredicate(t *testing.T) {
+	expr, err := query.ParseQuery(`project:api`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := CompileQuery(expr, QueryCompileOptions{WorkspaceID: "ws1"}); !errors.Is(err, query.ErrProjectPredicateUnresolved) {
+		t.Fatalf("CompileQuery() err = %v, want ErrProjectPredicateUnresolved", err)
 	}
 }
 
