@@ -285,6 +285,10 @@ func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
 
 	assertRawDDLContains(t, store, "configs", "PRIMARY KEY (`workspace_id`,`scope`,`scope_id`,`key`)")
 	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES(NULL, 'server', '', 'x', 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', NULL, '', 'x', 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', 'server', NULL, 'x', 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', 'server', '', NULL, 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', 'server', '', 'x', NULL)")
 	assertIndexColumns(t, store, "idx_projects_ws_slug", []string{"workspace_id", "slug"})
 	assertIndexColumns(t, store, "idx_projects_id_ws", []string{"id", "workspace_id"})
 }
@@ -378,9 +382,9 @@ func TestOpenMigratesInvalidAndConflictingProjects(t *testing.T) {
 	if got := projectSlugs(projects); !reflect.DeepEqual(got, []string{"web"}) {
 		t.Fatalf("project slugs = %#v", got)
 	}
-	assertTaskKeepsRawProjectWithoutID(t, store, "invalid", "Bad Project!")
-	assertTaskKeepsRawProjectWithoutID(t, store, "conflict-a", "API")
-	assertTaskKeepsRawProjectWithoutID(t, store, "conflict-b", " api ")
+	assertTaskHasNoProject(t, store, "invalid")
+	assertTaskHasNoProject(t, store, "conflict-a")
+	assertTaskHasNoProject(t, store, "conflict-b")
 	assertTaskProject(t, store, "valid", "web", projects[0].ID)
 	assertMigrationSkippedReport(t, store, []string{
 		"conflict-a:conflict",
@@ -409,8 +413,8 @@ func TestOpenMigratesTrimmedRawProjectConflicts(t *testing.T) {
 	if len(projects) != 0 {
 		t.Fatalf("projects = %#v, want none because raw values conflict", projects)
 	}
-	assertTaskKeepsRawProjectWithoutID(t, store, "plain", "api")
-	assertTaskKeepsRawProjectWithoutID(t, store, "spaced", " api ")
+	assertTaskHasNoProject(t, store, "plain")
+	assertTaskHasNoProject(t, store, "spaced")
 	assertMigrationSkippedReport(t, store, []string{
 		"plain:conflict",
 		"spaced:conflict",
@@ -1081,20 +1085,6 @@ func assertTaskHasNoProject(t *testing.T, store *Store, taskUUID string) {
 	}
 	if row.Project.Valid || row.ProjectID.Valid {
 		t.Fatalf("task %s project = (%#v, %#v), want NULLs", taskUUID, row.Project, row.ProjectID)
-	}
-}
-
-func assertTaskKeepsRawProjectWithoutID(t *testing.T, store *Store, taskUUID, wantProject string) {
-	t.Helper()
-	var row struct {
-		Project   sql.NullString
-		ProjectID sql.NullString
-	}
-	if err := store.DB().Raw("SELECT project, project_id FROM tasks WHERE uuid = ?", taskUUID).Scan(&row).Error; err != nil {
-		t.Fatal(err)
-	}
-	if !row.Project.Valid || row.Project.String != wantProject || row.ProjectID.Valid {
-		t.Fatalf("task %s project = (%#v, %#v), want (%q, NULL)", taskUUID, row.Project, row.ProjectID, wantProject)
 	}
 }
 

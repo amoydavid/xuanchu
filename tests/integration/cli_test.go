@@ -1227,8 +1227,26 @@ func TestCLIProjectLifecycle(t *testing.T) {
 	}
 	run(t, bin, "--db", db, "add", "Design schema", "project:ai-agent-platform")
 	archiveOut := run(t, bin, "--db", db, "project", "archive", "ai-agent-platform")
-	if !strings.Contains(archiveOut, "Archived project ai-agent-platform") {
+	if !strings.Contains(archiveOut, "Archived project ai-agent-platform") || !strings.Contains(archiveOut, "warning: archived project ai-agent-platform still has 1 non-deleted task") {
 		t.Fatalf("project archive output = %q", archiveOut)
+	}
+	archiveJSON := run(t, bin, "--db", db, "--json", "project", "info", "ai-agent-platform")
+	var archivedInfo map[string]any
+	if err := json.Unmarshal([]byte(archiveJSON), &archivedInfo); err != nil {
+		t.Fatalf("json.Unmarshal(archived project info) error = %v", err)
+	}
+	if archivedInfo["task_count"] != float64(1) {
+		t.Fatalf("archived project task_count = %#v, want 1", archivedInfo["task_count"])
+	}
+	run(t, bin, "--db", db, "project", "add", "json-archive", "name:JSON Archive")
+	run(t, bin, "--db", db, "add", "JSON archive task", "project:json-archive")
+	archiveJSONOut := run(t, bin, "--db", db, "--json", "project", "archive", "json-archive")
+	var archivedArchive map[string]any
+	if err := json.Unmarshal([]byte(archiveJSONOut), &archivedArchive); err != nil {
+		t.Fatalf("json.Unmarshal(project archive --json) error = %v; output = %q", err, archiveJSONOut)
+	}
+	if archivedArchive["slug"] != "json-archive" || archivedArchive["task_count"] != float64(1) || archivedArchive["status"] != "archived" {
+		t.Fatalf("project archive --json output = %#v", archivedArchive)
 	}
 	if _, err := runErr(t, bin, "--db", db, "add", "Should fail", "project:ai-agent-platform"); err == nil {
 		t.Fatal("add with archived project error = nil, want failure")

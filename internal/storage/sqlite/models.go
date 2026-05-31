@@ -52,7 +52,7 @@ type Project struct {
 	WorkspaceID  string `gorm:"not null;uniqueIndex:idx_projects_ws_slug,priority:1;uniqueIndex:idx_projects_id_ws,priority:2;index:idx_projects_ws_status,priority:1"`
 	Slug         string `gorm:"not null;uniqueIndex:idx_projects_ws_slug,priority:2"`
 	Name         string `gorm:"not null"`
-	Description  string `gorm:"type:TEXT;not null;default:''"`
+	Description  string `gorm:"not null;default:''"`
 	Status       string `gorm:"not null;default:'active';index:idx_projects_ws_status,priority:2"`
 	SettingsJSON string `gorm:"not null;default:'{}'"`
 	CreatedAt    int64  `gorm:"not null"`
@@ -89,7 +89,7 @@ type UDADefinition struct {
 
 type Task struct {
 	UUID        string `gorm:"primaryKey"`
-	WorkspaceID string `gorm:"not null;index"`
+	WorkspaceID string `gorm:"not null"`
 	Description string `gorm:"not null"`
 	Status      string `gorm:"not null;index"`
 	Entry       int64  `gorm:"not null"`

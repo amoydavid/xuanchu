@@ -821,7 +821,7 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (st
 	edited.WorkspaceID = original.WorkspaceID
 	edited.Entry = original.Entry
 	edited.Modified = s.clock.Unix()
-	change, err := s.applyProjectBinding(&edited, edited.Project)
+	change, err := s.applyProjectBindingFrom(&edited, edited.Project, projectBindingFromTask(original))
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -1477,7 +1477,7 @@ func (s *Service) recurringArchivedProjectWarning(parent task.Task, child task.T
 	}
 	project, err := s.projectRepo.GetByID(*parent.ProjectID)
 	if err != nil {
-		return nil, nil
+		return nil, RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
 	}
 	if project.Status != string(sqlite.ProjectStatusArchived) && project.ArchivedAt == nil {
 		return nil, nil

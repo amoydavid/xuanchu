@@ -395,7 +395,7 @@ func TestProjectPermissionsByRole(t *testing.T) {
 	if err := adminSvc.ModifyProject(created.ID, ModifyProjectInput{Name: &renamed}); err != nil {
 		t.Fatalf("admin ModifyProject() error = %v", err)
 	}
-	if err := adminSvc.ArchiveProject(created.ID); err != nil {
+	if _, err := adminSvc.ArchiveProject(created.ID); err != nil {
 		t.Fatalf("admin ArchiveProject() error = %v", err)
 	}
 
@@ -426,7 +426,7 @@ func TestProjectPermissionsByRole(t *testing.T) {
 	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
 		t.Fatalf("member ModifyProject() err = %#v, want PermissionError(permission_denied)", err)
 	}
-	if err := memberSvc.ArchiveProject(ownerCreated.ID); err == nil {
+	if _, err := memberSvc.ArchiveProject(ownerCreated.ID); err == nil {
 		t.Fatal("member ArchiveProject() error = nil, want permission denied")
 	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
 		t.Fatalf("member ArchiveProject() err = %#v, want PermissionError(permission_denied)", err)
@@ -455,7 +455,7 @@ func TestProjectPermissionsByRole(t *testing.T) {
 	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
 		t.Fatalf("viewer ModifyProject() err = %#v, want PermissionError(permission_denied)", err)
 	}
-	if err := viewerSvc.ArchiveProject(ownerCreated.ID); err == nil {
+	if _, err := viewerSvc.ArchiveProject(ownerCreated.ID); err == nil {
 		t.Fatal("viewer ArchiveProject() error = nil, want permission denied")
 	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
 		t.Fatalf("viewer ArchiveProject() err = %#v, want PermissionError(permission_denied)", err)
@@ -508,10 +508,10 @@ func TestArchiveProjectReturnsProjectArchivedWhenAlreadyArchived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
-	if err := svc.ArchiveProject(created.ID); err != nil {
+	if _, err := svc.ArchiveProject(created.ID); err != nil {
 		t.Fatalf("ArchiveProject(first) error = %v", err)
 	}
-	if err := svc.ArchiveProject(created.ID); err == nil {
+	if _, err := svc.ArchiveProject(created.ID); err == nil {
 		t.Fatal("ArchiveProject(second) error = nil, want project_archived")
 	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
 		t.Fatalf("ArchiveProject(second) err = %#v, want RuntimeError(project_archived)", err)
@@ -543,7 +543,7 @@ func TestListProjectsCountsArchivedProjectTasksExcludingDeleted(t *testing.T) {
 	if err := svc.Delete(deletedTask.UUID); err != nil {
 		t.Fatalf("Delete(deleted task) error = %v", err)
 	}
-	if err := svc.ArchiveProject(created.ID); err != nil {
+	if _, err := svc.ArchiveProject(created.ID); err != nil {
 		t.Fatalf("ArchiveProject() error = %v", err)
 	}
 
@@ -570,7 +570,7 @@ func TestProjectAuditEntriesIncludeProjectID(t *testing.T) {
 	if err := svc.ModifyProject(created.ID, ModifyProjectInput{Description: &description}); err != nil {
 		t.Fatalf("ModifyProject() error = %v", err)
 	}
-	if err := svc.ArchiveProject(created.ID); err != nil {
+	if _, err := svc.ArchiveProject(created.ID); err != nil {
 		t.Fatalf("ArchiveProject() error = %v", err)
 	}
 
@@ -696,7 +696,7 @@ func TestProjectConfigPermissionsAndArchivedBehavior(t *testing.T) {
 		t.Fatalf("viewer ProjectConfigSet() err = %#v, want PermissionError(permission_denied)", err)
 	}
 
-	if err := ownerSvc.ArchiveProject(project.ID); err != nil {
+	if _, err := ownerSvc.ArchiveProject(project.ID); err != nil {
 		t.Fatalf("ArchiveProject() error = %v", err)
 	}
 	if got, ok, err := ownerSvc.ProjectConfigGet(project.ID, "agent.background"); err != nil {
@@ -1232,7 +1232,7 @@ func TestImportAllowsArchivedProjectRoundTripOnlyForExistingBinding(t *testing.T
 	if err != nil || count != 1 {
 		t.Fatalf("Import(initial legacy task) = (%d, %v), want (1, nil)", count, err)
 	}
-	if err := svc.ArchiveProject(project.ID); err != nil {
+	if _, err := svc.ArchiveProject(project.ID); err != nil {
 		t.Fatalf("ArchiveProject(legacy) error = %v", err)
 	}
 
@@ -1317,7 +1317,7 @@ func TestRecurringChildOnArchivedProjectWritesAuditWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add(recurring) error = %v", err)
 	}
-	if err := svc.ArchiveProject(project.ID); err != nil {
+	if _, err := svc.ArchiveProject(project.ID); err != nil {
 		t.Fatalf("ArchiveProject(legacy) error = %v", err)
 	}
 	children, err := svc.List(ListInput{})
@@ -1379,7 +1379,7 @@ func TestAddTaskRequiresActiveProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(legacy) error = %v", err)
 	}
-	if err := svc.ArchiveProject(archived.ID); err != nil {
+	if _, err := svc.ArchiveProject(archived.ID); err != nil {
 		t.Fatalf("ArchiveProject(legacy) error = %v", err)
 	}
 	active, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
@@ -1440,10 +1440,10 @@ func TestModifyTaskProjectClearsAndRejectsArchivedAssignment(t *testing.T) {
 		t.Fatalf("Add(reject task) error = %v", err)
 	}
 
-	if err := svc.ArchiveProject(current.ID); err != nil {
+	if _, err := svc.ArchiveProject(current.ID); err != nil {
 		t.Fatalf("ArchiveProject(current) error = %v", err)
 	}
-	if err := svc.ArchiveProject(otherArchived.ID); err != nil {
+	if _, err := svc.ArchiveProject(otherArchived.ID); err != nil {
 		t.Fatalf("ArchiveProject(otherArchived) error = %v", err)
 	}
 
@@ -1630,6 +1630,56 @@ func TestReplaceEditableTaskClearsProjectFields(t *testing.T) {
 	}
 	if got.ProjectID != nil {
 		t.Fatalf("ProjectID = %#v, want nil", got.ProjectID)
+	}
+}
+
+func TestReplaceEditableTaskAuditUsesOriginalProjectAsBefore(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	projectA, err := svc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatalf("AddProject(alpha) error = %v", err)
+	}
+	projectB, err := svc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatalf("AddProject(beta) error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "editable task", Project: &projectA.Slug})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	edited, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	edited.Project = &projectB.Slug
+	edited.ProjectID = strptr("forged-project-id")
+
+	if err := svc.ReplaceEditableTask(created.UUID, edited); err != nil {
+		t.Fatalf("ReplaceEditableTask() error = %v", err)
+	}
+
+	workspaceID := svc.Runtime().WorkspaceID
+	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+		WorkspaceID: &workspaceID,
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("AuditRepository.List() error = %v", err)
+	}
+	if len(rows) == 0 || rows[0].Action != "task.edit" {
+		t.Fatalf("latest audit row = %#v, want task.edit", rows)
+	}
+	if rows[0].ProjectID == nil || *rows[0].ProjectID != projectA.ID {
+		t.Fatalf("task.edit ProjectID = %#v, want original project %q", rows[0].ProjectID, projectA.ID)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rows[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("payload json = %q, err = %v", rows[0].PayloadJSON, err)
+	}
+	if payload["before_project_id"] != projectA.ID || payload["after_project_id"] != projectB.ID {
+		t.Fatalf("task.edit payload = %#v, want before alpha and after beta", payload)
 	}
 }
 
@@ -2331,7 +2381,7 @@ func TestProjectsUsesProjectTableNotTaskAggregation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(legacy) error = %v", err)
 	}
-	if err := svc.ArchiveProject(project.ID); err != nil {
+	if _, err := svc.ArchiveProject(project.ID); err != nil {
 		t.Fatalf("ArchiveProject(legacy) error = %v", err)
 	}
 
