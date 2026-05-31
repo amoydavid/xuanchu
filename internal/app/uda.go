@@ -101,6 +101,9 @@ func (s *Service) udaDefinitionTypes() (map[string]string, error) {
 }
 
 func (s *Service) SetConfig(key, value string) error {
+	if isProjectConfigKey(key) {
+		return projectConfigScopeRequiredError("set")
+	}
 	if strings.HasPrefix(key, "uda.") {
 		if err := s.Require(PermissionUDAManage); err != nil {
 			return err
@@ -126,6 +129,9 @@ func (s *Service) SetConfig(key, value string) error {
 }
 
 func (s *Service) GetConfig(key string) (string, bool, error) {
+	if isProjectConfigKey(key) {
+		return "", false, projectConfigScopeRequiredError("get")
+	}
 	if strings.HasPrefix(key, "uda.") {
 		return s.getUDAConfig(key)
 	}
@@ -146,6 +152,9 @@ func (s *Service) GetConfig(key string) (string, bool, error) {
 }
 
 func (s *Service) UnsetConfig(key string) error {
+	if isProjectConfigKey(key) {
+		return projectConfigScopeRequiredError("unset")
+	}
 	if strings.HasPrefix(key, "uda.") {
 		if err := s.Require(PermissionUDAManage); err != nil {
 			return err
@@ -209,7 +218,10 @@ func (s *Service) UniqueValues(field string, input ListInput) ([]string, error) 
 	for _, tsk := range tasks {
 		switch field {
 		case "project":
-			if tsk.Project != nil && *tsk.Project != "" {
+			if err := s.validateTaskProjectInvariant(tsk); err != nil {
+				return nil, err
+			}
+			if tsk.ProjectID != nil && tsk.Project != nil && *tsk.Project != "" {
 				seen[*tsk.Project] = true
 			}
 		case "priority":

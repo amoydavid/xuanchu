@@ -20,6 +20,8 @@ import (
 type Service struct {
 	store                 *sqlite.Store
 	repo                  *sqlite.TaskRepository
+	projectRepo           *sqlite.ProjectRepository
+	configRepo            *sqlite.ConfigRepository
 	userRepo              *sqlite.UserRepository
 	workspaceRepo         *sqlite.WorkspaceRepository
 	memberRepo            *sqlite.MemberRepository
@@ -118,6 +120,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	return &Service{
 		store:            opts.Store,
 		repo:             sqlite.NewTaskRepository(opts.Store.DB()),
+		projectRepo:      sqlite.NewProjectRepository(opts.Store.DB()),
+		configRepo:       sqlite.NewConfigRepository(opts.Store.DB()),
 		userRepo:         userRepo,
 		workspaceRepo:    workspaceRepo,
 		memberRepo:       memberRepo,
@@ -143,6 +147,8 @@ func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
 	clone := *s
 	clone.store = store
 	clone.repo = sqlite.NewTaskRepository(store.DB())
+	clone.projectRepo = sqlite.NewProjectRepository(store.DB())
+	clone.configRepo = sqlite.NewConfigRepository(store.DB())
 	clone.userRepo = sqlite.NewUserRepository(store.DB())
 	clone.workspaceRepo = sqlite.NewWorkspaceRepository(store.DB())
 	clone.memberRepo = sqlite.NewMemberRepository(store.DB())
@@ -160,22 +166,15 @@ func (s *Service) Runtime() RuntimeContext {
 	return s.runtime
 }
 
-func (s *Service) Projects() ([]string, error) {
-	tasks, err := s.List(ListInput{ReportMode: true})
+func (s *Service) Projects(includeArchived bool) ([]string, error) {
+	projects, err := s.ListProjects(includeArchived)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	for _, tsk := range tasks {
-		if tsk.Project != nil && *tsk.Project != "" {
-			seen[*tsk.Project] = true
-		}
+	out := make([]string, 0, len(projects))
+	for _, project := range projects {
+		out = append(out, project.Slug)
 	}
-	out := make([]string, 0, len(seen))
-	for p := range seen {
-		out = append(out, p)
-	}
-	sort.Strings(out)
 	return out, nil
 }
 
@@ -263,44 +262,49 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 	}
 	var created task.Task
 	err := s.withAudit("task.add", func(tx *Service) (AuditEntry, error) {
-		var err error
-		created, err = tx.addLocked(input)
+		var (
+			err    error
+			change projectChange
+		)
+		created, change, err = tx.addLocked(input)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{
-			TargetType: "task",
-			TargetID:   created.UUID,
-		}, nil
+		return taskAuditEntry("task.add", created.UUID, change), nil
 	})
 	return created, err
 }
 
-func (s *Service) addLocked(input AddInput) (task.Task, error) {
+func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	now := s.clock.Unix()
 	if input.Recur != nil {
 		return s.createRecurringParent(input, now)
 	}
 	depends, err := s.resolveDependencyTargets(input.Depends)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	tsk := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
 		Status: task.StatusPending, Entry: now, Modified: now,
-		Due: input.Due, Project: input.Project, Priority: input.Priority, Tags: input.Tags,
+		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Depends: depends,
 		Wait:    input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
 	}
+	projChange, err := s.applyProjectBinding(&tsk, input.Project)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
 	udas, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, projChange, err
 	}
 	tsk.UDAs = udas
 	if input.Wait != nil && *input.Wait > now {
 		tsk.Status = task.StatusWaiting
 	}
-	return s.repo.Create(tsk)
+	created, err := s.repo.Create(tsk)
+	return created, projChange, err
 }
 
 func (s *Service) List(input ListInput) ([]task.Task, error) {
@@ -325,7 +329,11 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	queryExpr := query.And(contextExpr, input.Query)
+	resolvedInputQuery, err := s.resolveProjectPredicates(input.Query)
+	if err != nil {
+		return nil, err
+	}
+	queryExpr := query.And(contextExpr, resolvedInputQuery)
 	udaDefs, err := s.udaDefinitionTypes()
 	if err != nil {
 		return nil, err
@@ -338,7 +346,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 		UDADefinitions: udaDefs,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapProjectQueryCompileError(err)
 	}
 	if !input.ReportMode {
 		tasks = filterExpiredUntil(tasks, s.clock.Unix())
@@ -383,28 +391,36 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		return err
 	}
 	return s.withAudit("task.modify", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.modifyLocked(target, input)
+		targetID, change, err := tx.modifyLocked(target, input)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.modify", targetID, change), nil
 	})
 }
 
-func (s *Service) modifyLocked(target string, input ModifyInput) (string, error) {
+func (s *Service) modifyLocked(target string, input ModifyInput) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
 	now := s.clock.Unix()
+	change := projectChangeForTask(tsk)
 	if input.Description != nil {
 		tsk.Description = *input.Description
 	}
 	if input.Project != nil {
-		tsk.Project = input.Project
+		change, err = s.applyProjectBinding(&tsk, input.Project)
+		if err != nil {
+			return "", projectChange{}, err
+		}
 	}
 	if input.ClearProject {
-		tsk.Project = nil
+		empty := ""
+		change, err = s.applyProjectBinding(&tsk, &empty)
+		if err != nil {
+			return "", projectChange{}, err
+		}
 	}
 	if input.Priority != nil {
 		tsk.Priority = input.Priority
@@ -454,7 +470,7 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, error)
 	if len(input.AddDepends) > 0 {
 		depends, err := s.resolveDependencyTargets(input.AddDepends)
 		if err != nil {
-			return "", err
+			return "", projectChange{}, err
 		}
 		depSet := map[string]bool{}
 		for _, d := range tsk.Depends {
@@ -467,13 +483,13 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, error)
 			}
 		}
 		if err := s.validateDependencyCycles(tsk.UUID, tsk.Depends); err != nil {
-			return "", err
+			return "", projectChange{}, err
 		}
 	}
 	if len(input.UDAs) > 0 || len(input.ClearUDAs) > 0 {
 		udas, err := s.normalizeUDAModifications(tsk.UDAs, input.UDAs, input.ClearUDAs, false)
 		if err != nil {
-			return "", err
+			return "", projectChange{}, err
 		}
 		tsk.UDAs = udas
 	}
@@ -495,47 +511,53 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, error)
 	tsk.Tags = newTags
 	tsk.Modified = now
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) Done(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.done", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.doneLocked(target)
+	return s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
+		targetID, change, extraEntries, err := tx.doneLocked(target)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		entries := []AuditEntry{taskAuditEntry("task.done", targetID, change)}
+		entries = append(entries, extraEntries...)
+		return entries, nil
 	})
 }
 
-func (s *Service) doneLocked(target string) (string, error) {
+func (s *Service) doneLocked(target string) (string, projectChange, []AuditEntry, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, nil, err
 	}
+	change := projectChangeForTask(tsk)
 	tsk.Complete(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, nil, err
 	}
 	if tsk.Parent != nil {
 		parent, err := s.repo.GetByUUID(s.workspaceID, *tsk.Parent)
 		if err != nil {
-			return "", err
+			return "", projectChange{}, nil, err
 		}
 		if parent.Status != task.StatusRecurring {
-			return tsk.UUID, nil
+			return tsk.UUID, change, nil, nil
 		}
-		_, err = s.createNextRecurringChild(parent, &tsk, s.clock.Unix())
+		_, warningEntry, err := s.createNextRecurringChild(parent, &tsk, s.clock.Unix())
 		if err != nil {
-			return "", err
+			return "", projectChange{}, nil, err
+		}
+		if warningEntry != nil {
+			return tsk.UUID, change, []AuditEntry{*warningEntry}, nil
 		}
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil, nil
 }
 
 func (s *Service) Delete(target string) error {
@@ -543,27 +565,28 @@ func (s *Service) Delete(target string) error {
 		return err
 	}
 	return s.withAudit("task.delete", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.deleteLocked(target)
+		targetID, change, err := tx.deleteLocked(target)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.delete", targetID, change), nil
 	})
 }
 
-func (s *Service) deleteLocked(target string) (string, error) {
+func (s *Service) deleteLocked(target string) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
+	change := projectChangeForTask(tsk)
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
-		return "", fmt.Errorf("cannot delete %s task", tsk.Status)
+		return "", projectChange{}, fmt.Errorf("cannot delete %s task", tsk.Status)
 	}
 	tsk.Delete(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) Start(target string) error {
@@ -571,30 +594,31 @@ func (s *Service) Start(target string) error {
 		return err
 	}
 	return s.withAudit("task.start", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.startLocked(target)
+		targetID, change, err := tx.startLocked(target)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.start", targetID, change), nil
 	})
 }
 
-func (s *Service) startLocked(target string) (string, error) {
+func (s *Service) startLocked(target string) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
+	change := projectChangeForTask(tsk)
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted || tsk.Status == task.StatusRecurring {
-		return "", fmt.Errorf("cannot start %s task", tsk.Status)
+		return "", projectChange{}, fmt.Errorf("cannot start %s task", tsk.Status)
 	}
 	if tsk.Start != nil {
-		return "", fmt.Errorf("task is already active")
+		return "", projectChange{}, fmt.Errorf("task is already active")
 	}
 	tsk.StartTask(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) Stop(target string) error {
@@ -602,27 +626,28 @@ func (s *Service) Stop(target string) error {
 		return err
 	}
 	return s.withAudit("task.stop", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.stopLocked(target)
+		targetID, change, err := tx.stopLocked(target)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.stop", targetID, change), nil
 	})
 }
 
-func (s *Service) stopLocked(target string) (string, error) {
+func (s *Service) stopLocked(target string) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
+	change := projectChangeForTask(tsk)
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
-		return "", fmt.Errorf("cannot stop %s task", tsk.Status)
+		return "", projectChange{}, fmt.Errorf("cannot stop %s task", tsk.Status)
 	}
 	tsk.StopTask(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) Annotate(target, description string) error {
@@ -630,28 +655,29 @@ func (s *Service) Annotate(target, description string) error {
 		return err
 	}
 	return s.withAudit("task.annotate", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.annotateLocked(target, description)
+		targetID, change, err := tx.annotateLocked(target, description)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.annotate", targetID, change), nil
 	})
 }
 
-func (s *Service) annotateLocked(target, description string) (string, error) {
+func (s *Service) annotateLocked(target, description string) (string, projectChange, error) {
 	description = strings.TrimSpace(description)
 	if description == "" {
-		return "", fmt.Errorf("annotation description is required")
+		return "", projectChange{}, fmt.Errorf("annotation description is required")
 	}
 	if strings.ContainsAny(description, "\n\r") {
-		return "", fmt.Errorf("annotation description must not contain newlines")
+		return "", projectChange{}, fmt.Errorf("annotation description must not contain newlines")
 	}
 	now := s.clock.Unix()
 	for attempts := 0; attempts < 3; attempts++ {
 		tsk, err := s.ResolveTarget(target)
 		if err != nil {
-			return "", err
+			return "", projectChange{}, err
 		}
+		change := projectChangeForTask(tsk)
 		entry := now
 		for {
 			conflict := false
@@ -671,11 +697,11 @@ func (s *Service) annotateLocked(target, description string) (string, error) {
 				now = entry + 1
 				continue
 			}
-			return "", err
+			return "", projectChange{}, err
 		}
-		return tsk.UUID, nil
+		return tsk.UUID, change, nil
 	}
-	return "", fmt.Errorf("annotation conflict could not be resolved")
+	return "", projectChange{}, fmt.Errorf("annotation conflict could not be resolved")
 }
 
 func (s *Service) Denotate(target string, index int) error {
@@ -683,31 +709,32 @@ func (s *Service) Denotate(target string, index int) error {
 		return err
 	}
 	return s.withAudit("task.denotate", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.denotateLocked(target, index)
+		targetID, change, err := tx.denotateLocked(target, index)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.denotate", targetID, change), nil
 	})
 }
 
-func (s *Service) denotateLocked(target string, index int) (string, error) {
+func (s *Service) denotateLocked(target string, index int) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
+	change := projectChangeForTask(tsk)
 	sort.Slice(tsk.Annotations, func(i, j int) bool {
 		return tsk.Annotations[i].Entry < tsk.Annotations[j].Entry
 	})
 	if index < 1 || index > len(tsk.Annotations) {
-		return "", fmt.Errorf("annotation %d not found", index)
+		return "", projectChange{}, fmt.Errorf("annotation %d not found", index)
 	}
 	tsk.Annotations = append(tsk.Annotations[:index-1], tsk.Annotations[index:]...)
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) AppendDescription(target, suffix string) error {
@@ -715,29 +742,30 @@ func (s *Service) AppendDescription(target, suffix string) error {
 		return err
 	}
 	return s.withAudit("task.append", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.appendDescriptionLocked(target, suffix)
+		targetID, change, err := tx.appendDescriptionLocked(target, suffix)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.append", targetID, change), nil
 	})
 }
 
-func (s *Service) appendDescriptionLocked(target, suffix string) (string, error) {
+func (s *Service) appendDescriptionLocked(target, suffix string) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
+	change := projectChangeForTask(tsk)
 	suffix = strings.TrimSpace(suffix)
 	if suffix == "" {
-		return "", fmt.Errorf("description text is required")
+		return "", projectChange{}, fmt.Errorf("description text is required")
 	}
 	tsk.Description = tsk.Description + " " + suffix
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) PrependDescription(target, prefix string) error {
@@ -745,29 +773,30 @@ func (s *Service) PrependDescription(target, prefix string) error {
 		return err
 	}
 	return s.withAudit("task.prepend", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.prependDescriptionLocked(target, prefix)
+		targetID, change, err := tx.prependDescriptionLocked(target, prefix)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.prepend", targetID, change), nil
 	})
 }
 
-func (s *Service) prependDescriptionLocked(target, prefix string) (string, error) {
+func (s *Service) prependDescriptionLocked(target, prefix string) (string, projectChange, error) {
 	tsk, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
+	change := projectChangeForTask(tsk)
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		return "", fmt.Errorf("description text is required")
+		return "", projectChange{}, fmt.Errorf("description text is required")
 	}
 	tsk.Description = prefix + " " + tsk.Description
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return tsk.UUID, nil
+	return tsk.UUID, change, nil
 }
 
 func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
@@ -775,23 +804,27 @@ func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
 		return err
 	}
 	return s.withAudit("task.edit", func(tx *Service) (AuditEntry, error) {
-		targetID, err := tx.replaceEditableTaskLocked(target, edited)
+		targetID, change, err := tx.replaceEditableTaskLocked(target, edited)
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		return AuditEntry{TargetType: "task", TargetID: targetID}, nil
+		return taskAuditEntry("task.edit", targetID, change), nil
 	})
 }
 
-func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (string, error) {
+func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (string, projectChange, error) {
 	original, err := s.ResolveTarget(target)
 	if err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
 	edited.UUID = original.UUID
 	edited.WorkspaceID = original.WorkspaceID
 	edited.Entry = original.Entry
 	edited.Modified = s.clock.Unix()
+	change, err := s.applyProjectBinding(&edited, edited.Project)
+	if err != nil {
+		return "", projectChange{}, err
+	}
 	if edited.Wait != nil && *edited.Wait > s.clock.Unix() && edited.Status == task.StatusPending {
 		edited.Status = task.StatusWaiting
 	}
@@ -799,19 +832,28 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (st
 		edited.Status = task.StatusPending
 	}
 	if err := edited.Validate(); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
 	if err := s.repo.Update(edited); err != nil {
-		return "", err
+		return "", projectChange{}, err
 	}
-	return edited.UUID, nil
+	return edited.UUID, change, nil
 }
 
 func (s *Service) Export() ([]task.Task, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, err
 	}
-	return s.repo.List(s.workspaceID, sqlite.ListOptions{})
+	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for _, tsk := range tasks {
+		if err := s.validateTaskProjectInvariant(tsk); err != nil {
+			return nil, err
+		}
+	}
+	return tasks, nil
 }
 
 func (s *Service) Import(tasks []task.JSONTask) (int, error) {
@@ -860,6 +902,9 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	}
 	existing, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
 	if err == sqlite.ErrNotFound {
+		if err := s.normalizeTaskProjectFields(&tsk); err != nil {
+			return err
+		}
 		if tsk.Status == "" {
 			tsk.Status = task.StatusPending
 		}
@@ -882,6 +927,9 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	if err != nil {
 		return err
 	}
+	if err := s.normalizeImportedProjectUpdate(existing, &tsk); err != nil {
+		return err
+	}
 	if tsk.Description != "" {
 		existing.Description = tsk.Description
 	}
@@ -891,6 +939,11 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	existing.Modified = s.clock.Unix()
 	if tsk.Project != nil {
 		existing.Project = tsk.Project
+		existing.ProjectID = tsk.ProjectID
+	}
+	if tsk.Project == nil {
+		existing.Project = nil
+		existing.ProjectID = nil
 	}
 	if tsk.Priority != nil {
 		existing.Priority = tsk.Priority
@@ -968,7 +1021,11 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, err
 	}
-	merged := query.And(contextExpr, query.And(def.Filter, input.Query))
+	resolvedReportQuery, err := s.resolveProjectPredicates(input.Query)
+	if err != nil {
+		return ReportResult{}, err
+	}
+	merged := query.And(contextExpr, query.And(def.Filter, resolvedReportQuery))
 	now := s.clock.Unix()
 	udaDefs, err := s.udaDefinitionTypes()
 	if err != nil {
@@ -981,7 +1038,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 		UDADefinitions: udaDefs,
 	})
 	if err != nil {
-		return ReportResult{}, err
+		return ReportResult{}, mapProjectQueryCompileError(err)
 	}
 	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: now})
 	if err != nil {
@@ -1239,42 +1296,50 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 	return filtered, nil
 }
 
-func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, error) {
+func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, projectChange, error) {
 	if input.Wait != nil || input.Scheduled != nil || len(input.Depends) > 0 {
-		return task.Task{}, fmt.Errorf("recurring task does not accept wait, scheduled, or depends")
+		return task.Task{}, projectChange{}, fmt.Errorf("recurring task does not accept wait, scheduled, or depends")
 	}
 	parent := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
 		Status: task.StatusRecurring, Entry: now, Modified: now,
-		Due: input.Due, Project: input.Project, Priority: input.Priority, Tags: input.Tags,
+		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Until: input.Until, Recur: input.Recur,
+	}
+	change, err := s.applyProjectBinding(&parent, input.Project)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
 	}
 	udas, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	parent.UDAs = udas
 	createdParent, err := s.repo.Create(parent)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	if _, err := s.createNextRecurringChild(createdParent, nil, now); err != nil {
-		return task.Task{}, err
+	if _, warningEntry, err := s.createNextRecurringChild(createdParent, nil, now); err != nil {
+		return task.Task{}, projectChange{}, err
+	} else if warningEntry != nil {
+		if err := s.appendAuditEntry(*warningEntry); err != nil {
+			return task.Task{}, projectChange{}, err
+		}
 	}
-	return createdParent, nil
+	return createdParent, change, nil
 }
 
-func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task, now int64) (task.Task, error) {
+func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task, now int64) (task.Task, *AuditEntry, error) {
 	if parent.Status != task.StatusRecurring {
-		return task.Task{}, nil
+		return task.Task{}, nil, nil
 	}
 	children, err := s.repo.Children(s.workspaceID, parent.UUID)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, nil, err
 	}
 	for _, child := range children {
 		if child.Status == task.StatusPending || child.Status == task.StatusWaiting {
-			return child, nil
+			return child, nil, nil
 		}
 	}
 
@@ -1287,29 +1352,33 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 	} else if previous.Due != nil && parent.Recur != nil {
 		nextDue, err := recurrence.Next(*previous.Due, *parent.Recur, s.clock.Location())
 		if err != nil {
-			return task.Task{}, err
+			return task.Task{}, nil, err
 		}
 		due = &nextDue
 	}
 	if due == nil {
-		return task.Task{}, fmt.Errorf("recurring parent requires due")
+		return task.Task{}, nil, fmt.Errorf("recurring parent requires due")
 	}
 	if parent.Until != nil && *due > *parent.Until {
-		return task.Task{}, nil
+		return task.Task{}, nil, nil
 	}
 	child := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: parent.Description,
 		Status: task.StatusPending, Entry: now, Modified: now,
-		Due: due, Project: parent.Project, Priority: parent.Priority, Tags: parent.Tags,
+		Due: due, Project: parent.Project, ProjectID: parent.ProjectID, Priority: parent.Priority, Tags: parent.Tags,
 		Until: parent.Until, Recur: parent.Recur,
 		Parent: &parent.UUID,
 		UDAs:   cloneUDAs(parent.UDAs),
 	}
 	created, _, err := s.repo.CreateRecurringChild(child)
 	if err != nil {
-		return task.Task{}, err
+		return task.Task{}, nil, err
 	}
-	return created, nil
+	warningEntry, err := s.recurringArchivedProjectWarning(parent, created)
+	if err != nil {
+		return task.Task{}, nil, err
+	}
+	return created, warningEntry, nil
 }
 
 func (s *Service) ensureRecurringChildren() error {
@@ -1336,9 +1405,116 @@ func (s *Service) ensureRecurringChildren() error {
 		if hasOpen {
 			continue
 		}
-		if _, err := s.createNextRecurringChild(parent, latest, s.clock.Unix()); err != nil {
+		created, warningEntry, err := s.createNextRecurringChild(parent, latest, s.clock.Unix())
+		if err != nil {
 			return err
+		}
+		if warningEntry != nil && created.UUID != "" {
+			if err := s.appendAuditEntry(*warningEntry); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func (s *Service) normalizeTaskProjectFields(tsk *task.Task) error {
+	change, err := s.applyProjectBinding(tsk, tsk.Project)
+	if err != nil {
+		return err
+	}
+	_ = change
+	return s.validateTaskProjectInvariant(*tsk)
+}
+
+func (s *Service) normalizeImportedProjectUpdate(existing task.Task, incoming *task.Task) error {
+	if incoming.Project == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*incoming.Project)
+	if trimmed == "" {
+		incoming.Project = nil
+		incoming.ProjectID = nil
+		return nil
+	}
+	binding, err := s.resolveImportedProjectBinding(existing, trimmed)
+	if err != nil {
+		return err
+	}
+	incoming.Project = cloneStringPtr(binding.Slug)
+	incoming.ProjectID = cloneStringPtr(binding.ID)
+	return s.validateTaskProjectInvariant(*incoming)
+}
+
+func (s *Service) resolveImportedProjectBinding(existing task.Task, slug string) (projectBinding, error) {
+	project, err := s.ResolveProject(slug)
+	if err != nil {
+		normalized, normalizeErr := normalizeProjectSlug(slug)
+		if normalizeErr != nil || normalized == slug {
+			return projectBinding{}, err
+		}
+		project, err = s.ResolveProject(normalized)
+		if err != nil {
+			return projectBinding{}, err
+		}
+	}
+	binding := projectBindingFromProject(project)
+	if !binding.Archived {
+		return binding, nil
+	}
+	if existing.ProjectID != nil && existing.Project != nil && *existing.ProjectID == project.ID && *existing.Project == project.Slug {
+		return binding, nil
+	}
+	return projectBinding{}, RuntimeError{
+		Code:    "project_archived",
+		Message: fmt.Sprintf("project %q is archived", project.Slug),
+	}
+}
+
+func (s *Service) recurringArchivedProjectWarning(parent task.Task, child task.Task) (*AuditEntry, error) {
+	if parent.ProjectID == nil || parent.Project == nil {
+		return nil, nil
+	}
+	project, err := s.projectRepo.GetByID(*parent.ProjectID)
+	if err != nil {
+		return nil, nil
+	}
+	if project.Status != string(sqlite.ProjectStatusArchived) && project.ArchivedAt == nil {
+		return nil, nil
+	}
+	projectID := project.ID
+	return &AuditEntry{
+		Action:      "task.recurrence.archived_project",
+		WorkspaceID: &parent.WorkspaceID,
+		ProjectID:   &projectID,
+		TargetType:  "task",
+		TargetID:    child.UUID,
+		Payload: map[string]any{
+			"parent_uuid":  parent.UUID,
+			"child_uuid":   child.UUID,
+			"project_id":   project.ID,
+			"project_slug": project.Slug,
+		},
+	}, nil
+}
+
+func (s *Service) appendAuditEntry(entry AuditEntry) error {
+	workspaceID := &s.runtime.WorkspaceID
+	if entry.WorkspaceID != nil {
+		workspaceID = entry.WorkspaceID
+	}
+	payload, err := marshalAuditPayload(entry.Payload)
+	if err != nil {
+		return err
+	}
+	return s.auditRepo.Append(sqlite.AuditLogEntry{
+		ActorUserID: &s.runtime.ActorUserID,
+		WorkspaceID: workspaceID,
+		ProjectID:   entry.ProjectID,
+		Action:      entry.Action,
+		TargetType:  entry.TargetType,
+		TargetID:    entry.TargetID,
+		PayloadJSON: payload,
+		CreatedAt:   s.clock.Unix(),
+	})
 }

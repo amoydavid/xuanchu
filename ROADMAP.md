@@ -1,12 +1,12 @@
 # taskg Roadmap
 
-本文档是 `taskg` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：面向企业项目协作和 Agent MCP 的 Taskwarrior 风格任务运行时。
+本文档是 `taskg` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：借鉴 Taskwarrior 设计思路、面向企业项目协作和 Agent MCP 的任务运行时。
 
 - 单一二进制，同时承担本地 CLI、远程 CLI 客户端、HTTP/JSON API 服务端、MCP Server。
 - 使用纯 Go SQLite 方案，保持零 CGO、可跨平台交叉编译。
 - `workspace` 作为企业 / 租户级隔离边界，`project` 表示 workspace 内的真实企业项目。
 - 支持多用户、权限、审计、Agent token、行级隔离。
-- 兼容 Taskwarrior 的核心命令名、JSON 数据格式与 urgency 公式。
+- 借鉴 Taskwarrior 的核心命令名、JSON 迁移格式与 urgency 公式；企业 workspace/project/Agent 边界优先于完整兼容。
 
 路线图按可独立交付、可测试、可回滚的 milestone 拆分。每个 milestone 开始前都应先写中文 spec，再用 `superpowers:writing-plans` 拆成实施计划。
 
@@ -19,7 +19,7 @@
 | M2 | 已完成 | Taskwarrior 核心任务模型补齐 |
 | M3 | 已完成 | 配置系统、上下文、UDA、`.taskrc` 只读导入与脚本化 helper |
 | M4 | 已完成 | 企业 Workspace、权限与审计基础 |
-| M5 | 待规划 | Project 实体化与 Workspace/Project 配置边界 |
+| M5 | 已完成 | Project 实体化与 Workspace/Project 配置边界 |
 | M6 | 待规划 | HTTP/JSON API、远程 CLI 与 Agent Token |
 | M7 | 待规划 | 企业 Agent MCP Server 与工具接口 |
 | M8 | 待规划 | Agent 驱动的外部集成、触发器、发布与运维打磨 |
@@ -292,7 +292,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 **状态：已完成。**
 
-**目标：** 在仍然不引入 HTTP 服务端的前提下，把运行时从“单用户单 workspace”升级成“actor + workspace + role”。M4 中的 workspace 是企业 / 租户级隔离边界；project 继续作为 Taskwarrior 兼容字段，用来表达该 workspace 内的真实企业项目。
+**目标：** 在仍然不引入 HTTP 服务端的前提下，把运行时从“单用户单 workspace”升级成“actor + workspace + role”。M4 中的 workspace 是企业 / 租户级隔离边界；project 仍是任务字段，用来表达该 workspace 内的真实企业项目。
 
 **M4 已交付内容：**
 
@@ -346,7 +346,9 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 ## M5：Project 实体化与 Workspace/Project 配置边界
 
-**目标：** 把 `project` 从 Taskwarrior 兼容字符串抬成企业项目对象。这样后续 HTTP API、Agent token、MCP tool 和外部集成都能围绕稳定的 project 身份授权，而不是依赖字符串约定。
+**状态：已完成。**
+
+**目标：** 把 `project` 从任务自由字符串抬成企业项目对象。这样后续 HTTP API、Agent token、MCP tool 和外部集成都能围绕稳定的 project 身份授权，而不是依赖字符串约定。
 
 **范围：**
 
@@ -354,12 +356,14 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 新增 `projects` 表，归属于 workspace。
   - 字段至少包括 `id`、`workspace_id`、`slug`、`name`、`description`、`status`、`created_at`、`archived_at`。
   - `slug` 只在同一 workspace 内唯一；不同 workspace 可以有相同 slug 的 project，任何解析都必须带 workspace。
-  - 兼容已有 `task.project` 字符串。迁移时按现有 project 值生成 project 草案，或采用明确的 lazy materialization 策略。
+  - 迁移时按现有 `task.project` 值生成 project 草案；这是数据升级兼容，不代表运行时可自由创建 project。
 - task 与 project 关系：
-  - task 保留 `project` 字符串用于 Taskwarrior JSON 兼容。
+  - task 保留 `project` 字符串用于 human 输出和迁移导出。
   - 内部增加稳定 `project_id` 或等价映射，供权限、审计、API、MCP 使用。
   - `project:<slug>` 查询继续可用，并限定在当前 workspace 内解析。
 - CLI：
+  - M5 采用严格 project 注册：新增或修改任务引用不存在的 `project:<slug>` 必须报错，不自动创建 project。
+  - 已归档 project 不允许被新任务引用；已有任务保留关联并可继续读取、完成、删除。
   - M5 不引入全局唯一 project slug。所有 project slug 都必须在 effective workspace 内解析。
   - effective workspace 的来源顺序：本次 `--workspace <slug|uuid>` > 当前 active workspace > 本地默认 workspace。后续远程 CLI 还要叠加 token workspace scope。
   - `taskg --workspace dajee project info ai-agent-platform` 表示 `dajee` workspace 下的 `ai-agent-platform`。
@@ -379,7 +383,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `taskg.toml` 只作为本机启动和显示配置来源，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 连接信息。
   - workspace 业务配置必须存 DB，并绑定 `workspace_id`，包括 UDA schema、urgency UDA 系数、context、report 默认配置。
   - project 级配置挂到 project/workspace 下，包括 project 默认 context、project 级 Agent 背景、project 级约束和后续 webhook 默认值。
-  - 明确合并规则：本次命令参数 > project 配置 > workspace 配置 > 本机显示配置 > 默认值。权限和业务规则不得从调用者本机 TOML 读取。
+  - project 配置只通过 `project config get/set/unset/list <project>` 访问；无 scope 的 `config get/set/list` 不显示 project 配置。
+  - 本机显示/启动配置、workspace 业务配置、project 业务配置必须分开存储和审计。权限和业务规则不得从调用者本机 TOML 读取。
   - `.taskrc` 和 TOML 中的 UDA/context/urgency 业务 key 只作为迁移输入，不作为跨 workspace 的运行时全局配置。
 - 权限与审计：
   - project 写操作进入 audit。
@@ -398,14 +403,33 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 **验收标准：**
 
-- 已有 `task.project` 数据能平滑进入 project 实体化路径，Taskwarrior JSON import/export 不丢字段。
+- 已有 `task.project` 数据能平滑进入 project 实体化路径，迁移导出不丢 project 字符串。
 - 同一 workspace 内 project slug 唯一；不同 workspace 内可以复用同名 project。
+- 新增或修改任务时，`project:<slug>` 必须解析到当前 workspace 内已存在且未归档的 project；不存在时返回清晰错误。
 - `tasks.project_id` 与 `tasks.workspace_id` 必须一致：不能把 `dajee` workspace 的任务绑定到 `partner` workspace 的 project。数据库迁移、repo 写入和 app/service 测试都要覆盖这条约束。
 - `project:*` 查询、`_projects`、报表、context 与 UDA/urgency 都按 workspace/project 边界工作。
 - workspace 业务配置与 project 配置互不污染；两个 workspace 可以拥有不同 UDA、urgency、context 和 project 默认配置。
 - `taskg.toml` 不再被描述为业务配置来源。
 - project 写操作有权限检查和审计记录。
 - `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+
+**当前已交付结果：**
+
+- `projects` 表、`tasks.project_id`、`audit_logs.project_id`、project 级 `configs` 已落地。
+- M4 旧任务的 `project` 字符串会在升级时自动迁移到 project 实体；无法安全归一化的旧值写入 `migration.m5.projects.skipped`，CLI 启动时会给出 warning。
+- CLI 已支持：
+  - `project list/add/info/modify/archive`
+  - `project config get/set/unset/list`
+  - `_projects --all`
+  - `audit list --project <slug|project-id>`
+- 任务写路径采用严格 project 注册：
+  - `add project:<slug>` / `modify project:<slug>` 必须解析到当前 workspace 内已存在且未归档的 project
+  - 不存在返回 `project_not_found`
+  - 已归档返回 `project_archived`
+- 查询、context、report、helper 都先把 `project:<slug>` rewrite 成稳定 `project_id` 再执行。
+- `_projects` 读取 project 表；`_unique project` 继续表示“当前查询结果里的任务实际绑定了哪些 project”。
+- project 配置与 workspace/general config 已分开；无 scope `config` 不再读写 project 配置。
+- 后续 M6/M7 一律基于 `project_id` 做 token scope、API 参数和 MCP tool 身份。
 
 ## M6：HTTP/JSON API、远程 CLI 与 Agent Token
 
@@ -618,16 +642,15 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-下一步应为 M5 编写独立需求规格：
+M5 需求规格与实现计划都已落地到：
 
 ```text
-docs/superpowers/specs/YYYY-MM-DD-taskg-m5-design.md
+docs/superpowers/specs/2026-05-30-taskg-m5-design.md
+docs/superpowers/plans/2026-05-30-taskg-m5-implementation.md
 ```
 
-M5 spec 应重点明确：
+接下来的重点不再是 M5 设计，而是基于已完成的 project 实体能力推进：
 
-- project 实体的表结构、`workspace_id + slug` 唯一规则、project id 规则和与 `task.project` 字符串字段的兼容策略。
-- project CLI、project audit、project archive 的最小闭环。
-- workspace 配置、project 配置、本机 TOML 配置的边界和合并规则。
-- UDA、urgency、context、report 默认配置迁移到 workspace/project DB 配置后的读写路径。
-- M6 token scope 和 M7 MCP tool 需要复用的 project service 接口，避免后续再把 project scope 建在字符串约定上。
+- M6：HTTP/JSON API、远程 CLI、Agent token 全部统一采用 `project_id`。
+- M7：MCP tool 优先接受 `project_id`，slug 只作为当前 workspace 内的人类输入。
+- 更细的 project 级默认上下文、Agent 背景、约束模板扩展继续沿用 `project config`。

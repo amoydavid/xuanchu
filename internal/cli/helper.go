@@ -117,7 +117,8 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 }
 
 func newProjectsCommand(opts Options) *cobra.Command {
-	return &cobra.Command{
+	var includeArchived bool
+	cmd := &cobra.Command{
 		Use:  "_projects",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -127,7 +128,7 @@ func newProjectsCommand(opts Options) *cobra.Command {
 			}
 			defer closeFn()
 
-			projects, err := svc.Projects()
+			projects, err := svc.Projects(includeArchived)
 			if err != nil {
 				return err
 			}
@@ -137,6 +138,8 @@ func newProjectsCommand(opts Options) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&includeArchived, "all", false, "include archived projects")
+	return cmd
 }
 
 func newTagsCommand(opts Options) *cobra.Command {

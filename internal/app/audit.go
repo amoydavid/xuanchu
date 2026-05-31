@@ -9,12 +9,14 @@ import (
 
 type AuditListInput struct {
 	WorkspaceRef string
+	ProjectRef   string
 	Limit        int
 }
 
 type AuditEntry struct {
 	Action      string
 	WorkspaceID *string
+	ProjectID   *string
 	TargetType  string
 	TargetID    string
 	Payload     map[string]any
@@ -25,6 +27,7 @@ type AuditLogView struct {
 	ActorUserID *string
 	ActorName   string
 	WorkspaceID *string
+	ProjectID   *string
 	Action      string
 	TargetType  string
 	TargetID    string
@@ -63,6 +66,7 @@ func (s *Service) withAuditEntries(fn func(*Service) ([]AuditEntry, error)) erro
 			row := sqlite.AuditLogEntry{
 				ActorUserID: &txSvc.runtime.ActorUserID,
 				WorkspaceID: workspaceID,
+				ProjectID:   entry.ProjectID,
 				Action:      entry.Action,
 				TargetType:  entry.TargetType,
 				TargetID:    entry.TargetID,
@@ -97,8 +101,17 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 	if err := s.Require(PermissionAuditRead); err != nil {
 		return nil, err
 	}
+	var projectID *string
+	if input.ProjectRef != "" {
+		project, err := s.ResolveProject(input.ProjectRef)
+		if err != nil {
+			return nil, err
+		}
+		projectID = &project.ID
+	}
 	rows, err := s.auditRepo.List(sqlite.AuditListOptions{
 		WorkspaceID: &s.runtime.WorkspaceID,
+		ProjectID:   projectID,
 		Limit:       input.Limit,
 	})
 	if err != nil {
@@ -111,6 +124,7 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 			ID:          row.ID,
 			ActorUserID: row.ActorUserID,
 			WorkspaceID: row.WorkspaceID,
+			ProjectID:   row.ProjectID,
 			Action:      row.Action,
 			TargetType:  row.TargetType,
 			TargetID:    row.TargetID,

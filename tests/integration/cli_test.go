@@ -8,6 +8,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	gsqlite "github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestCLIAddListInfo(t *testing.T) {
@@ -58,6 +62,8 @@ func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
+	run(t, bin, "--db", db, "project", "add", "home", "name:Home")
 	run(t, bin, "--db", db, "context", "define", "work", "project:work")
 	runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "add", "work", "task", "project:work", "estimate:3")
 	runWithEnv(t, map[string]string{"XDG_CONFIG_HOME": filepath.Join(dir, "config")}, bin, "--db", db, "add", "home", "task", "project:home", "estimate:5")
@@ -195,6 +201,7 @@ func TestCLIImportTaskRC(t *testing.T) {
 	if got := strings.TrimSpace(run(t, bin, "--db", db, "config", "get", "uda.estimate.values")); got != "1,2,3" {
 		t.Fatalf("uda values after import = %q", got)
 	}
+	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
 	run(t, bin, "--db", db, "add", "work", "task", "project:work", "estimate:2")
 	run(t, bin, "--db", db, "context", "use", "work")
 	if got := run(t, bin, "--db", db, "list"); !strings.Contains(got, "work task") {
@@ -252,8 +259,14 @@ func TestCLIContextCommands(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
 
+	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
+	run(t, bin, "--db", db, "project", "add", "home", "name:Home")
 	run(t, bin, "--db", db, "add", "work", "task", "project:work")
 	run(t, bin, "--db", db, "add", "home", "task", "project:home")
+	homeID := strings.TrimSpace(run(t, bin, "--db", db, "_ids", "project:home"))
+	if homeID == "" {
+		t.Fatal("_ids project:home returned empty result")
+	}
 	if show := run(t, bin, "--db", db, "context", "show"); strings.TrimSpace(show) != "" {
 		t.Fatalf("empty context show = %q", show)
 	}
@@ -271,7 +284,7 @@ func TestCLIContextCommands(t *testing.T) {
 	if !strings.Contains(all, "work task") || strings.Contains(all, "home task") {
 		t.Fatalf("context all output = %q", all)
 	}
-	info := run(t, bin, "--db", db, "info", "2")
+	info := run(t, bin, "--db", db, "info", homeID)
 	if !strings.Contains(info, "home task") {
 		t.Fatalf("explicit target info should ignore context, output = %q", info)
 	}
@@ -438,7 +451,9 @@ func TestCLIAuditList(t *testing.T) {
 
 	run(t, bin, "--db", db, "workspace", "add", "team")
 	run(t, bin, "--db", db, "workspace", "use", "team")
+	run(t, bin, "--db", db, "project", "add", "api", "name:API")
 	run(t, bin, "--db", db, "add", "write", "spec")
+	run(t, bin, "--db", db, "1", "modify", "project:api")
 	run(t, bin, "--db", db, "user", "add", "alice")
 	run(t, bin, "--db", db, "member", "add", "alice", "role:viewer")
 	run(t, bin, "--db", db, "workspace", "modify", "team", "description:Team")
@@ -464,6 +479,43 @@ func TestCLIAuditList(t *testing.T) {
 	if !strings.Contains(human, "local") {
 		t.Fatalf("audit list output = %q, want actor name", human)
 	}
+
+	filtered := run(t, bin, "--db", db, "--json", "audit", "list", "--project", "api")
+	var projectRows []map[string]any
+	if err := json.Unmarshal([]byte(filtered), &projectRows); err != nil {
+		t.Fatalf("audit list --project --json output is not JSON: %v\n%s", err, filtered)
+	}
+	if len(projectRows) == 0 {
+		t.Fatalf("audit list --project returned no rows: %q", filtered)
+	}
+	for _, row := range projectRows {
+		if row["project_id"] == nil {
+			t.Fatalf("audit row missing project_id: %#v", row)
+		}
+	}
+}
+
+func TestCLIM5MigrationWarning(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	seedM4DatabaseWithTasksForCLI(t, db, []seedTask{
+		{WorkspaceSlug: "local", UUID: "t1", Project: strptr("Good"), Entry: 10},
+		{WorkspaceSlug: "local", UUID: "t2", Project: strptr("Bad Name"), Entry: 20},
+	})
+
+	cmd := exec.Command(bin, "--db", db, "list")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list after M5 migration error = %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "warning: M5 project migration skipped some legacy project strings") {
+		t.Fatalf("migration warning output = %q", out)
+	}
+	report := run(t, bin, "--db", db, "config", "get", "migration.m5.projects.skipped")
+	if !strings.Contains(report, "t2") || !strings.Contains(report, "invalid_slug") {
+		t.Fatalf("migration report = %q", report)
+	}
 }
 
 func TestCLIWorkspaceIsolation(t *testing.T) {
@@ -471,6 +523,7 @@ func TestCLIWorkspaceIsolation(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "taskg.db")
 
 	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
+	run(t, bin, "--db", db, "project", "add", "same", "name:Same")
 	run(t, bin, "--db", db, "add", "local", "task", "project:same", "+same", "estimate:1")
 	run(t, bin, "--db", db, "context", "define", "same", "project:same")
 	run(t, bin, "--db", db, "context", "use", "same")
@@ -478,6 +531,7 @@ func TestCLIWorkspaceIsolation(t *testing.T) {
 	run(t, bin, "--db", db, "workspace", "add", "work")
 	run(t, bin, "--db", db, "workspace", "use", "work")
 	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
+	run(t, bin, "--db", db, "project", "add", "same", "name:Same")
 	run(t, bin, "--db", db, "add", "work", "task", "project:same", "+same", "estimate:2")
 	run(t, bin, "--db", db, "context", "define", "same", "project:same")
 	run(t, bin, "--db", db, "context", "use", "same")
@@ -641,6 +695,7 @@ func TestCLIInfoShowsAllM0Fields(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
 
+	run(t, bin, "--db", db, "project", "add", "taskg", "name:Taskg")
 	run(t, bin, "--db", db, "add", "write", "spec", "project:taskg", "priority:H", "due:2030-01-01", "+planning")
 	out := run(t, bin, "--db", db, "info", "1")
 	for _, want := range []string{"UUID:", "Status:", "Description:", "Entry:", "Modified:", "Due:", "Project:", "Priority:", "Tags:"} {
@@ -688,20 +743,36 @@ func TestCLIReportsAndUrgency(t *testing.T) {
 func TestCLIHelpers(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
+	run(t, bin, "--db", db, "project", "add", "home", "name:Home")
 	run(t, bin, "--db", db, "add", "work", "task", "project:work", "+next")
 	run(t, bin, "--db", db, "add", "home", "task", "project:home", "+later")
 
-	got := run(t, bin, "--db", db, "_get", "1.description", "1.tag.next", "1.tag.missing", "1.urgency")
+	nextID := strings.TrimSpace(run(t, bin, "--db", db, "_ids", "+next"))
+	if nextID == "" {
+		t.Fatal("_ids +next returned empty result")
+	}
+	got := run(t, bin, "--db", db, "_get", nextID+".description", nextID+".tag.next", nextID+".tag.missing", nextID+".urgency")
 	if !strings.Contains(got, "work task") || !strings.Contains(got, "next") {
 		t.Fatalf("_get output = %q", got)
 	}
 	ids := run(t, bin, "--db", db, "_ids", "+next")
-	if strings.TrimSpace(ids) != "1" {
+	if strings.TrimSpace(ids) != nextID {
 		t.Fatalf("_ids output = %q", ids)
 	}
 	projects := run(t, bin, "--db", db, "_projects")
 	if !strings.Contains(projects, "home") || !strings.Contains(projects, "work") {
 		t.Fatalf("_projects output = %q", projects)
+	}
+	run(t, bin, "--db", db, "project", "add", "legacy", "name:Legacy")
+	run(t, bin, "--db", db, "project", "archive", "legacy")
+	allProjects := run(t, bin, "--db", db, "_projects", "--all")
+	if !strings.Contains(allProjects, "legacy") || !strings.Contains(allProjects, "home") || !strings.Contains(allProjects, "work") {
+		t.Fatalf("_projects --all output = %q", allProjects)
+	}
+	uniqueProjects := run(t, bin, "--db", db, "_unique", "project")
+	if !strings.Contains(uniqueProjects, "home") || !strings.Contains(uniqueProjects, "work") || strings.Contains(uniqueProjects, "legacy") {
+		t.Fatalf("_unique project output = %q", uniqueProjects)
 	}
 	tags := run(t, bin, "--db", db, "_tags")
 	if !strings.Contains(tags, "next") || !strings.Contains(tags, "later") {
@@ -731,6 +802,7 @@ func TestCLICalc(t *testing.T) {
 func TestCLIM1QueryExamples(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
+	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
 	run(t, bin, "--db", db, "add", "urgent", "work", "task", "project:work", "+urgent", "priority:H")
 	run(t, bin, "--db", db, "add", "later", "task", "+later")
 	run(t, bin, "--db", db, "add", "next", "task", "+next", "due:2030-01-01")
@@ -1129,6 +1201,115 @@ func TestCLIRecurringExportImport(t *testing.T) {
 	}
 }
 
+func TestCLIProjectLifecycle(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	addOut := run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
+	if !strings.Contains(addOut, "Created project ai-agent-platform") {
+		t.Fatalf("project add output = %q", addOut)
+	}
+	listOut := run(t, bin, "--db", db, "project", "list")
+	if !strings.Contains(listOut, "ai-agent-platform") {
+		t.Fatalf("project list output = %q", listOut)
+	}
+	infoJSON := run(t, bin, "--db", db, "--json", "project", "info", "ai-agent-platform")
+	var info map[string]any
+	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil {
+		t.Fatalf("json.Unmarshal(project info) error = %v", err)
+	}
+	if info["slug"] != "ai-agent-platform" || info["name"] != "AI Agent Platform" {
+		t.Fatalf("project info --json output = %#v", info)
+	}
+	modOut := run(t, bin, "--db", db, "project", "modify", "ai-agent-platform", "description:Agent MCP platform")
+	if !strings.Contains(modOut, "Modified project ai-agent-platform") {
+		t.Fatalf("project modify output = %q", modOut)
+	}
+	run(t, bin, "--db", db, "add", "Design schema", "project:ai-agent-platform")
+	archiveOut := run(t, bin, "--db", db, "project", "archive", "ai-agent-platform")
+	if !strings.Contains(archiveOut, "Archived project ai-agent-platform") {
+		t.Fatalf("project archive output = %q", archiveOut)
+	}
+	if _, err := runErr(t, bin, "--db", db, "add", "Should fail", "project:ai-agent-platform"); err == nil {
+		t.Fatal("add with archived project error = nil, want failure")
+	}
+	if _, err := runErr(t, bin, "--db", db, "project", "archive", "ai-agent-platform"); err == nil {
+		t.Fatal("project archive twice error = nil, want failure")
+	}
+}
+
+func TestCLIProjectWorkspaceIsolation(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "--workspace", "local", "project", "add", "api", "name:API")
+	localInfo := run(t, bin, "--db", db, "--json", "--workspace", "local", "project", "info", "api")
+	var localProject map[string]any
+	if err := json.Unmarshal([]byte(localInfo), &localProject); err != nil {
+		t.Fatalf("json.Unmarshal(local project info) error = %v", err)
+	}
+	if localProject["slug"] != "api" {
+		t.Fatalf("local project info = %#v", localProject)
+	}
+	run(t, bin, "--db", db, "workspace", "add", "partner")
+	if _, err := runErr(t, bin, "--db", db, "--workspace", "partner", "project", "info", "api"); err == nil {
+		t.Fatal("partner project info by slug error = nil, want project_not_found")
+	}
+
+	projectID, _ := localProject["id"].(string)
+	if projectID == "" {
+		t.Fatalf("local project id missing in %q", localInfo)
+	}
+	if _, err := runErr(t, bin, "--db", db, "--workspace", "partner", "project", "info", projectID); err == nil {
+		t.Fatal("partner project info by local id error = nil, want project_workspace_mismatch")
+	}
+}
+
+func TestCLIProjectConfigLifecycle(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
+	run(t, bin, "--db", db, "project", "config", "set", "ai-agent-platform", "agent.background", "Project background")
+	got := strings.TrimSpace(run(t, bin, "--db", db, "project", "config", "get", "ai-agent-platform", "agent.background"))
+	if got != "Project background" {
+		t.Fatalf("project config get output = %q", got)
+	}
+	listOut := run(t, bin, "--db", db, "project", "config", "list", "ai-agent-platform")
+	if !strings.Contains(listOut, "agent.background=Project background") {
+		t.Fatalf("project config list output = %q", listOut)
+	}
+	run(t, bin, "--db", db, "project", "config", "unset", "ai-agent-platform", "agent.background")
+	if _, err := runErr(t, bin, "--db", db, "project", "config", "get", "ai-agent-platform", "agent.background"); err == nil {
+		t.Fatal("project config get after unset error = nil, want failure")
+	}
+}
+
+func TestCLIConfigRejectsProjectScopedKeysWithoutScope(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
+	for _, args := range [][]string{
+		{"--db", db, "config", "set", "agent.background", "Background"},
+		{"--db", db, "config", "get", "agent.background"},
+		{"--db", db, "config", "unset", "agent.background"},
+	} {
+		out, err := runErr(t, bin, args...)
+		if err == nil {
+			t.Fatalf("%v error = nil, want project_config_scope_required", args)
+		}
+		if !strings.Contains(out, "project config requires project scope") {
+			t.Fatalf("%v output = %q", args, out)
+		}
+	}
+
+	configList := run(t, bin, "--db", db, "config", "list")
+	if strings.Contains(configList, "agent.background=") {
+		t.Fatalf("config list should not include project config values: %q", configList)
+	}
+}
+
 func buildTaskg(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "taskg")
@@ -1139,6 +1320,97 @@ func buildTaskg(t *testing.T) string {
 	}
 	return bin
 }
+
+func seedM4DatabaseWithTasksForCLI(t *testing.T, dbPath string, tasks []seedTask) {
+	t.Helper()
+	db, err := gorm.Open(gsqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("gorm.Open(%s) error = %v", dbPath, err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	defer sqlDB.Close()
+
+	mustExecSQL(t, db, `CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+	mustExecSQL(t, db, `CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, default_workspace_id TEXT, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL)`)
+	mustExecSQL(t, db, `CREATE UNIQUE INDEX idx_users_name ON users(name)`)
+	mustExecSQL(t, db, `CREATE UNIQUE INDEX idx_users_email ON users(email)`)
+	mustExecSQL(t, db, `CREATE TABLE workspaces (id TEXT PRIMARY KEY, slug TEXT NOT NULL, name TEXT NOT NULL DEFAULT 'Local', created_by_user_id TEXT, description TEXT, visibility TEXT NOT NULL DEFAULT 'private', settings_json TEXT NOT NULL DEFAULT '{}', archived_at INTEGER, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL DEFAULT 0)`)
+	mustExecSQL(t, db, `CREATE UNIQUE INDEX idx_workspaces_slug ON workspaces(slug)`)
+	mustExecSQL(t, db, `CREATE TABLE memberships (user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, role TEXT NOT NULL, joined_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (user_id, workspace_id))`)
+	mustExecSQL(t, db, `CREATE INDEX idx_memberships_workspace_id ON memberships(workspace_id)`)
+	mustExecSQL(t, db, `CREATE INDEX idx_memberships_role ON memberships(role)`)
+	mustExecSQL(t, db, `CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, workspace_id TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, payload_json TEXT, created_at INTEGER NOT NULL)`)
+	mustExecSQL(t, db, `CREATE TABLE contexts (workspace_id TEXT NOT NULL, name TEXT NOT NULL, filter_source TEXT NOT NULL, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name))`)
+	mustExecSQL(t, db, `CREATE TABLE uda_definitions (workspace_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, label TEXT, values_json TEXT, default_value TEXT, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name))`)
+	mustExecSQL(t, db, `CREATE TABLE tasks (
+uuid TEXT PRIMARY KEY,
+workspace_id TEXT NOT NULL,
+description TEXT NOT NULL,
+status TEXT NOT NULL,
+entry INTEGER NOT NULL,
+modified INTEGER NOT NULL,
+end_ts INTEGER,
+due INTEGER,
+project TEXT,
+priority TEXT,
+start INTEGER,
+wait INTEGER,
+scheduled INTEGER,
+until INTEGER,
+recur TEXT,
+parent TEXT,
+mask TEXT,
+i_mask INTEGER
+)`)
+	mustExecSQL(t, db, `CREATE INDEX idx_tasks_workspace_id ON tasks(workspace_id)`)
+	mustExecSQL(t, db, `CREATE INDEX idx_tasks_project ON tasks(project)`)
+	mustExecSQL(t, db, `CREATE TABLE task_tags (task_uuid TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (task_uuid, tag))`)
+	mustExecSQL(t, db, `CREATE TABLE task_annotations (task_uuid TEXT NOT NULL, entry INTEGER NOT NULL, description TEXT NOT NULL, PRIMARY KEY (task_uuid, entry, description))`)
+	mustExecSQL(t, db, `CREATE TABLE task_dependencies (task_uuid TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY (task_uuid, depends_on))`)
+	mustExecSQL(t, db, `CREATE INDEX idx_task_dependencies_depends_on ON task_dependencies(depends_on)`)
+	mustExecSQL(t, db, `CREATE TABLE task_uda_values (workspace_id TEXT NOT NULL, task_uuid TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL, value_type TEXT, orphan NUMERIC NOT NULL DEFAULT false, PRIMARY KEY (task_uuid, name))`)
+	mustExecSQL(t, db, `CREATE INDEX idx_task_uda_values_workspace_id ON task_uda_values(workspace_id)`)
+	mustExecSQL(t, db, `CREATE INDEX idx_task_uda_values_task_uuid ON task_uda_values(task_uuid)`)
+
+	workspaces := map[string]string{}
+	for _, task := range tasks {
+		slug := task.WorkspaceSlug
+		if slug == "" {
+			slug = "local"
+		}
+		if _, ok := workspaces[slug]; !ok {
+			workspaces[slug] = "ws-" + slug
+			mustExecSQL(t, db, `INSERT INTO workspaces(id, slug, name, visibility, settings_json, created_at, modified_at) VALUES(?, ?, ?, 'private', '{}', 1, 1)`, workspaces[slug], slug, "Workspace "+slug)
+		}
+	}
+	for _, task := range tasks {
+		slug := task.WorkspaceSlug
+		if slug == "" {
+			slug = "local"
+		}
+		mustExecSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES(?, ?, ?, 'pending', ?, ?, ?)`,
+			task.UUID, workspaces[slug], "task "+task.UUID, task.Entry, task.Entry, task.Project)
+	}
+}
+
+type seedTask struct {
+	WorkspaceSlug string
+	UUID          string
+	Project       *string
+	Entry         int64
+}
+
+func mustExecSQL(t *testing.T, db *gorm.DB, query string, args ...any) {
+	t.Helper()
+	if err := db.Exec(query, args...).Error; err != nil {
+		t.Fatalf("Exec(%s) error = %v", query, err)
+	}
+}
+
+func strptr(v string) *string { return &v }
 
 func projectRoot(t *testing.T) string {
 	t.Helper()
@@ -1172,6 +1444,13 @@ func runWithEnv(t *testing.T, env map[string]string, bin string, args ...string)
 		t.Fatalf("%s %v error = %v\n%s", bin, args, err, out)
 	}
 	return string(out)
+}
+
+func runErr(t *testing.T, bin string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 func buildEditorHelper(t *testing.T, source string) string {

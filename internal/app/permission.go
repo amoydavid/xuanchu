@@ -3,16 +3,20 @@ package app
 type Permission string
 
 const (
-	PermissionTaskWrite         Permission = "task.write"
-	PermissionTaskRead          Permission = "task.read"
-	PermissionContextUse        Permission = "context.use"
-	PermissionContextManage     Permission = "context.manage"
-	PermissionUDAManage         Permission = "uda.manage"
-	PermissionWorkspaceModify   Permission = "workspace.modify"
-	PermissionWorkspaceArchive  Permission = "workspace.archive"
-	PermissionMemberManage      Permission = "member.manage"
-	PermissionMemberManageOwner Permission = "member.manage.owner"
-	PermissionAuditRead         Permission = "audit.read"
+	PermissionTaskWrite          Permission = "task.write"
+	PermissionTaskRead           Permission = "task.read"
+	PermissionProjectRead        Permission = "project.read"
+	PermissionProjectManage      Permission = "project.manage"
+	PermissionProjectConfigRead  Permission = "project.config.read"
+	PermissionProjectConfigWrite Permission = "project.config.write"
+	PermissionContextUse         Permission = "context.use"
+	PermissionContextManage      Permission = "context.manage"
+	PermissionUDAManage          Permission = "uda.manage"
+	PermissionWorkspaceModify    Permission = "workspace.modify"
+	PermissionWorkspaceArchive   Permission = "workspace.archive"
+	PermissionMemberManage       Permission = "member.manage"
+	PermissionMemberManageOwner  Permission = "member.manage.owner"
+	PermissionAuditRead          Permission = "audit.read"
 )
 
 type PermissionError struct {

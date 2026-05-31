@@ -1,8 +1,18 @@
 package sqlite
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
 	"testing"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
@@ -72,6 +82,89 @@ func TestOpenCanReopenExistingDatabase(t *testing.T) {
 	}
 	if ws2.ID != ws1.ID {
 		t.Fatalf("workspace ID changed: %q -> %q", ws1.ID, ws2.ID)
+	}
+}
+
+func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	sqlDB, err := store.DB().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(2)
+
+	ctx := context.Background()
+	conn1, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn1.Close()
+	conn2, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn2.Close()
+
+	for i, conn := range []*sql.Conn{conn1, conn2} {
+		var enabled int
+		if err := conn.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&enabled); err != nil {
+			t.Fatalf("conn %d PRAGMA foreign_keys error = %v", i+1, err)
+		}
+		if enabled != 1 {
+			t.Fatalf("conn %d foreign_keys = %d, want 1", i+1, enabled)
+		}
+	}
+}
+
+func TestM5MigrationRestoresForeignKeysWhenBeginImmediateFails(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	db, err := gorm.Open(sqlite.Open(sqliteDSN(dbPath)+"&_pragma=busy_timeout(1)"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("gorm.Open() error = %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	sqlDB.SetMaxOpenConns(2)
+
+	ctx := context.Background()
+	lockConn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lockConn.Close()
+	if _, err := lockConn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatalf("BEGIN IMMEDIATE lock holder error = %v", err)
+	}
+	defer func() { _, _ = lockConn.ExecContext(ctx, "ROLLBACK") }()
+
+	store := &Store{db: db}
+	if err := store.prepareProjectSchemaForM5(); err == nil {
+		t.Fatal("prepareProjectSchemaForM5() succeeded, want BEGIN IMMEDIATE failure")
+	}
+
+	if _, err := lockConn.ExecContext(ctx, "ROLLBACK"); err != nil {
+		t.Fatalf("ROLLBACK lock holder error = %v", err)
+	}
+
+	checkConn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checkConn.Close()
+	var enabled int
+	if err := checkConn.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&enabled); err != nil {
+		t.Fatalf("PRAGMA foreign_keys error = %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", enabled)
 	}
 }
 
@@ -172,4 +265,925 @@ func TestOpenMigratesM3WorkspaceRows(t *testing.T) {
 	} else if ok {
 		t.Fatal("old context.active key still exists")
 	}
+}
+
+func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	for _, table := range []any{&Project{}, &Config{}} {
+		if !store.DB().Migrator().HasTable(table) {
+			t.Fatalf("missing table for %T", table)
+		}
+	}
+	if !store.DB().Migrator().HasColumn(&AuditLog{}, "project_id") {
+		t.Fatalf("missing audit_logs.project_id")
+	}
+
+	assertRawDDLContains(t, store, "configs", "PRIMARY KEY (`workspace_id`,`scope`,`scope_id`,`key`)")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES(NULL, 'server', '', 'x', 'y')")
+	assertIndexColumns(t, store, "idx_projects_ws_slug", []string{"workspace_id", "slug"})
+	assertIndexColumns(t, store, "idx_projects_id_ws", []string{"id", "workspace_id"})
+}
+
+func TestOpenMigratesM4ProjectStrings(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "t1", Project: ptrString("Customer-A"), Entry: 10},
+		{WorkspaceSlug: "local", UUID: "t2", Project: ptrString("customer-b"), Entry: 20},
+		{WorkspaceSlug: "local", UUID: "t3", Project: nil, Entry: 30},
+	})
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var projects []Project
+	if err := store.DB().Order("slug").Find(&projects).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := projectSlugs(projects); !reflect.DeepEqual(got, []string{"customer-a", "customer-b"}) {
+		t.Fatalf("project slugs = %#v", got)
+	}
+	assertTaskProject(t, store, "t1", "customer-a", projects[0].ID)
+	assertTaskProject(t, store, "t2", "customer-b", projects[1].ID)
+	assertTaskHasNoProject(t, store, "t3")
+	assertMigrationSkippedReport(t, store, nil)
+}
+
+func TestOpenMigratesM5ProjectStringsIdempotently(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "t1", Project: ptrString("api"), Entry: 10},
+		{WorkspaceSlug: "local", UUID: "t2", Project: ptrString("web"), Entry: 20},
+	})
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first []Project
+	if err := store.DB().Order("slug").Find(&first).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 2 {
+		t.Fatalf("first projects = %#v", first)
+	}
+	_ = store.Close()
+
+	reopened, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+
+	var second []Project
+	if err := reopened.DB().Order("slug").Find(&second).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := projectSlugs(second); !reflect.DeepEqual(got, []string{"api", "web"}) {
+		t.Fatalf("project slugs after reopen = %#v", got)
+	}
+	if second[0].ID != first[0].ID || second[1].ID != first[1].ID {
+		t.Fatalf("project IDs changed: %#v -> %#v", first, second)
+	}
+	assertTaskProject(t, reopened, "t1", "api", second[0].ID)
+	assertTaskProject(t, reopened, "t2", "web", second[1].ID)
+}
+
+func TestOpenMigratesInvalidAndConflictingProjects(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "invalid", Project: ptrString("Bad Project!"), Entry: 10},
+		{WorkspaceSlug: "local", UUID: "conflict-a", Project: ptrString("API"), Entry: 20},
+		{WorkspaceSlug: "local", UUID: "conflict-b", Project: ptrString(" api "), Entry: 30},
+		{WorkspaceSlug: "local", UUID: "valid", Project: ptrString("web"), Entry: 40},
+	})
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var projects []Project
+	if err := store.DB().Order("slug").Find(&projects).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := projectSlugs(projects); !reflect.DeepEqual(got, []string{"web"}) {
+		t.Fatalf("project slugs = %#v", got)
+	}
+	assertTaskKeepsRawProjectWithoutID(t, store, "invalid", "Bad Project!")
+	assertTaskKeepsRawProjectWithoutID(t, store, "conflict-a", "API")
+	assertTaskKeepsRawProjectWithoutID(t, store, "conflict-b", " api ")
+	assertTaskProject(t, store, "valid", "web", projects[0].ID)
+	assertMigrationSkippedReport(t, store, []string{
+		"conflict-a:conflict",
+		"conflict-b:conflict",
+		"invalid:invalid_slug",
+	})
+}
+
+func TestOpenMigratesTrimmedRawProjectConflicts(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "plain", Project: ptrString("api"), Entry: 10},
+		{WorkspaceSlug: "local", UUID: "spaced", Project: ptrString(" api "), Entry: 20},
+	})
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var projects []Project
+	if err := store.DB().Order("slug").Find(&projects).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("projects = %#v, want none because raw values conflict", projects)
+	}
+	assertTaskKeepsRawProjectWithoutID(t, store, "plain", "api")
+	assertTaskKeepsRawProjectWithoutID(t, store, "spaced", " api ")
+	assertMigrationSkippedReport(t, store, []string{
+		"plain:conflict",
+		"spaced:conflict",
+	})
+}
+
+func TestM5MigrationRollsBackOnCopyFailure(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "task-1", Project: ptrString("api"), Entry: 10},
+	})
+	mutateM4Database(t, dbPath, "ALTER TABLE tasks DROP COLUMN i_mask")
+
+	store, err := Open(dbPath)
+	if err == nil {
+		_ = store.Close()
+		t.Fatal("Open() succeeded, want migration copy failure")
+	}
+
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	if !rawTableExists(t, db, "tasks") {
+		t.Fatal("tasks table missing after failed migration rollback")
+	}
+	if rawTableExists(t, db, "tasks_old_m5") {
+		t.Fatal("tasks_old_m5 left behind after failed migration rollback")
+	}
+	var markerCount int
+	if err := db.Raw("SELECT COUNT(*) FROM meta WHERE key = ?", m5ProjectsAppliedMetaKey).Scan(&markerCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if markerCount != 0 {
+		t.Fatalf("migration marker count = %d, want 0", markerCount)
+	}
+}
+
+func TestOpenEnablesForeignKeyChecks(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := Project{
+		ID:           "project-1",
+		WorkspaceID:  "other-workspace",
+		Slug:         "api",
+		Name:         "api",
+		Description:  "",
+		Status:       "active",
+		SettingsJSON: "{}",
+		CreatedAt:    1,
+		ModifiedAt:   1,
+	}
+	if err := store.DB().Create(&project).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.DB().Exec(`INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task-1", ws.ID, "x", "pending", 1, 1, "api", project.ID).Error
+	if err == nil {
+		t.Fatal("cross-workspace task project_id insert succeeded, want FK failure")
+	}
+}
+
+func TestM5MigrationColumnsMatchM4Snapshot(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	got := taskColumnNames(t, store)
+	want := append(append([]string{}, m5TaskColumns...), "project_id")
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("tasks columns = %#v, want %#v", got, want)
+	}
+}
+
+func TestM5MigrationIndexesMatchM5Snapshot(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	got := taskIndexNames(t, store)
+	want := []string{
+		"idx_task_parent_due_open",
+		"idx_tasks_parent",
+		"idx_tasks_recur",
+		"idx_tasks_scheduled",
+		"idx_tasks_status",
+		"idx_tasks_until",
+		"idx_tasks_wait",
+		"idx_tasks_ws_project_id",
+		"sqlite_autoindex_tasks_1",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("tasks indexes = %#v, want %#v", got, want)
+	}
+}
+
+func TestM5MigrationPreservesTaskIndexesFromM4Database(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "task-1", Project: ptrString("api"), Entry: 10},
+	})
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	got := taskIndexNames(t, store)
+	want := []string{
+		"idx_task_parent_due_open",
+		"idx_tasks_parent",
+		"idx_tasks_recur",
+		"idx_tasks_scheduled",
+		"idx_tasks_status",
+		"idx_tasks_until",
+		"idx_tasks_wait",
+		"idx_tasks_ws_project_id",
+		"sqlite_autoindex_tasks_1",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("migrated tasks indexes = %#v, want %#v", got, want)
+	}
+}
+
+func TestM5MigrationPreservesTaskRelations(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
+		{WorkspaceSlug: "local", UUID: "dep", Project: ptrString("api"), Entry: 10},
+		{
+			WorkspaceSlug: "local",
+			UUID:          "task-1",
+			Project:       ptrString("api"),
+			Entry:         20,
+			Tags:          []string{"one", "two"},
+			Annotations:   []seedAnnotation{{Entry: 21, Description: "note"}},
+			Depends:       []string{"dep"},
+			UDAs:          []seedUDA{{Name: "legacy", Value: "v", ValueType: "string", Orphan: true}},
+		},
+	})
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var tags []string
+	if err := store.DB().Raw("SELECT tag FROM task_tags WHERE task_uuid = ? ORDER BY tag", "task-1").Scan(&tags).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(tags, []string{"one", "two"}) {
+		t.Fatalf("tags = %#v", tags)
+	}
+	var note string
+	if err := store.DB().Raw("SELECT description FROM task_annotations WHERE task_uuid = ?", "task-1").Scan(&note).Error; err != nil {
+		t.Fatal(err)
+	}
+	if note != "note" {
+		t.Fatalf("annotation = %q", note)
+	}
+	var dep string
+	if err := store.DB().Raw("SELECT depends_on FROM task_dependencies WHERE task_uuid = ?", "task-1").Scan(&dep).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dep != "dep" {
+		t.Fatalf("depends_on = %q", dep)
+	}
+	var uda TaskUDAValue
+	if err := store.DB().Where("task_uuid = ? AND name = ?", "task-1", "legacy").First(&uda).Error; err != nil {
+		t.Fatal(err)
+	}
+	if uda.Value != "v" || uda.ValueType != "string" || !uda.Orphan {
+		t.Fatalf("uda = %#v", uda)
+	}
+}
+
+func TestM5MigrationRebuildsM4RelationForeignKeys(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	seedM4GORMDatabaseWithTaskRelations(t, dbPath)
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	for _, table := range []string{"task_tags", "task_annotations", "task_dependencies", "task_uda_values"} {
+		assertRelationForeignKeysPointToTasks(t, store, table)
+	}
+	if rawTableExists(t, store.DB(), "tasks_old_m5") {
+		t.Fatal("tasks_old_m5 still exists after migration")
+	}
+
+	var tagCount int
+	if err := store.DB().Raw("SELECT COUNT(*) FROM task_tags WHERE task_uuid = ? AND tag = ?", "task-1", "one").Scan(&tagCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if tagCount != 1 {
+		t.Fatalf("task_tags preserved count = %d, want 1", tagCount)
+	}
+	var note string
+	if err := store.DB().Raw("SELECT description FROM task_annotations WHERE task_uuid = ?", "task-1").Scan(&note).Error; err != nil {
+		t.Fatal(err)
+	}
+	if note != "note" {
+		t.Fatalf("annotation = %q, want note", note)
+	}
+	var dep string
+	if err := store.DB().Raw("SELECT depends_on FROM task_dependencies WHERE task_uuid = ?", "task-1").Scan(&dep).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dep != "dep" {
+		t.Fatalf("depends_on = %q, want dep", dep)
+	}
+	var udaValue string
+	if err := store.DB().Raw("SELECT value FROM task_uda_values WHERE task_uuid = ? AND name = ?", "task-1", "legacy").Scan(&udaValue).Error; err != nil {
+		t.Fatal(err)
+	}
+	if udaValue != "v" {
+		t.Fatalf("uda value = %q, want v", udaValue)
+	}
+
+	if err := store.DB().Exec(`INSERT INTO task_tags(task_uuid, tag) VALUES(?, ?)`, "missing-task", "bad").Error; err == nil {
+		t.Fatal("insert into task_tags with missing task_uuid succeeded, want FK failure")
+	}
+	if violations := foreignKeyViolations(t, store); len(violations) != 0 {
+		t.Fatalf("foreign_key_check violations = %#v", violations)
+	}
+}
+
+type seedTask struct {
+	WorkspaceSlug string
+	UUID          string
+	Project       *string
+	Entry         int64
+	Tags          []string
+	Annotations   []seedAnnotation
+	Depends       []string
+	UDAs          []seedUDA
+}
+
+type seedAnnotation struct {
+	Entry       int64
+	Description string
+}
+
+type seedUDA struct {
+	Name      string
+	Value     string
+	ValueType string
+	Orphan    bool
+}
+
+func seedM4DatabaseWithTasks(t *testing.T, dbPath string, tasks []seedTask) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	execSQL(t, db, `CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+	execSQL(t, db, `CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, default_workspace_id TEXT, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL)`)
+	execSQL(t, db, `CREATE UNIQUE INDEX idx_users_name ON users(name)`)
+	execSQL(t, db, `CREATE UNIQUE INDEX idx_users_email ON users(email)`)
+	execSQL(t, db, `CREATE TABLE workspaces (id TEXT PRIMARY KEY, slug TEXT NOT NULL, name TEXT NOT NULL DEFAULT 'Local', created_by_user_id TEXT, description TEXT, visibility TEXT NOT NULL DEFAULT 'private', settings_json TEXT NOT NULL DEFAULT '{}', archived_at INTEGER, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL DEFAULT 0)`)
+	execSQL(t, db, `CREATE UNIQUE INDEX idx_workspaces_slug ON workspaces(slug)`)
+	execSQL(t, db, `CREATE TABLE memberships (user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, role TEXT NOT NULL, joined_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (user_id, workspace_id))`)
+	execSQL(t, db, `CREATE INDEX idx_memberships_workspace_id ON memberships(workspace_id)`)
+	execSQL(t, db, `CREATE INDEX idx_memberships_role ON memberships(role)`)
+	execSQL(t, db, `CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, workspace_id TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, payload_json TEXT, created_at INTEGER NOT NULL)`)
+	execSQL(t, db, `CREATE TABLE contexts (workspace_id TEXT NOT NULL, name TEXT NOT NULL, filter_source TEXT NOT NULL, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name))`)
+	execSQL(t, db, `CREATE TABLE uda_definitions (workspace_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, label TEXT, values_json TEXT, default_value TEXT, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name))`)
+	execSQL(t, db, m4TasksDDL)
+	for _, indexSQL := range m4TaskIndexes {
+		execSQL(t, db, indexSQL)
+	}
+	execSQL(t, db, `CREATE TABLE task_tags (task_uuid TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (task_uuid, tag))`)
+	execSQL(t, db, `CREATE TABLE task_annotations (task_uuid TEXT NOT NULL, entry INTEGER NOT NULL, description TEXT NOT NULL, PRIMARY KEY (task_uuid, entry, description))`)
+	execSQL(t, db, `CREATE TABLE task_dependencies (task_uuid TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY (task_uuid, depends_on))`)
+	execSQL(t, db, `CREATE INDEX idx_task_dependencies_depends_on ON task_dependencies(depends_on)`)
+	execSQL(t, db, `CREATE TABLE task_uda_values (workspace_id TEXT NOT NULL, task_uuid TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL, value_type TEXT, orphan NUMERIC NOT NULL DEFAULT false, PRIMARY KEY (task_uuid, name))`)
+	execSQL(t, db, `CREATE INDEX idx_task_uda_values_workspace_id ON task_uda_values(workspace_id)`)
+	execSQL(t, db, `CREATE INDEX idx_task_uda_values_task_uuid ON task_uda_values(task_uuid)`)
+
+	workspaces := map[string]string{}
+	for _, task := range tasks {
+		slug := task.WorkspaceSlug
+		if slug == "" {
+			slug = "local"
+		}
+		if _, ok := workspaces[slug]; !ok {
+			workspaces[slug] = "ws-" + slug
+			execSQL(t, db, `INSERT INTO workspaces(id, slug, name, visibility, settings_json, created_at, modified_at) VALUES(?, ?, ?, 'private', '{}', 1, 1)`, workspaces[slug], slug, "Workspace "+slug)
+		}
+	}
+	for _, task := range tasks {
+		slug := task.WorkspaceSlug
+		if slug == "" {
+			slug = "local"
+		}
+		execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES(?, ?, ?, 'pending', ?, ?, ?)`,
+			task.UUID, workspaces[slug], "task "+task.UUID, task.Entry, task.Entry, task.Project)
+		for _, tag := range task.Tags {
+			execSQL(t, db, `INSERT INTO task_tags(task_uuid, tag) VALUES(?, ?)`, task.UUID, tag)
+		}
+		for _, annotation := range task.Annotations {
+			execSQL(t, db, `INSERT INTO task_annotations(task_uuid, entry, description) VALUES(?, ?, ?)`, task.UUID, annotation.Entry, annotation.Description)
+		}
+		for _, dependsOn := range task.Depends {
+			execSQL(t, db, `INSERT INTO task_dependencies(task_uuid, depends_on) VALUES(?, ?)`, task.UUID, dependsOn)
+		}
+		for _, uda := range task.UDAs {
+			execSQL(t, db, `INSERT INTO task_uda_values(workspace_id, task_uuid, name, value, value_type, orphan) VALUES(?, ?, ?, ?, ?, ?)`, workspaces[slug], task.UUID, uda.Name, uda.Value, uda.ValueType, uda.Orphan)
+		}
+	}
+}
+
+type m4GORMMeta struct {
+	Key   string `gorm:"primaryKey"`
+	Value string `gorm:"not null"`
+}
+
+func (m4GORMMeta) TableName() string { return "meta" }
+
+type m4GORMWorkspace struct {
+	ID              string `gorm:"primaryKey"`
+	Slug            string `gorm:"not null;uniqueIndex"`
+	Name            string `gorm:"not null"`
+	CreatedByUserID *string
+	Description     string
+	Visibility      string `gorm:"not null;default:'private'"`
+	SettingsJSON    string `gorm:"not null;default:'{}'"`
+	ArchivedAt      *int64
+	CreatedAt       int64 `gorm:"not null"`
+	ModifiedAt      int64 `gorm:"not null"`
+}
+
+func (m4GORMWorkspace) TableName() string { return "workspaces" }
+
+type m4GORMUser struct {
+	ID                 string  `gorm:"primaryKey"`
+	Name               string  `gorm:"not null;uniqueIndex"`
+	Email              *string `gorm:"uniqueIndex"`
+	DefaultWorkspaceID *string
+	CreatedAt          int64 `gorm:"not null"`
+	ModifiedAt         int64 `gorm:"not null"`
+}
+
+func (m4GORMUser) TableName() string { return "users" }
+
+type m4GORMMembership struct {
+	UserID      string `gorm:"primaryKey;not null"`
+	WorkspaceID string `gorm:"primaryKey;not null;index"`
+	Role        string `gorm:"not null;index"`
+	JoinedAt    int64  `gorm:"not null"`
+	ModifiedAt  int64  `gorm:"not null"`
+}
+
+func (m4GORMMembership) TableName() string { return "memberships" }
+
+type m4GORMAuditLog struct {
+	ID          int64   `gorm:"primaryKey;autoIncrement"`
+	ActorUserID *string `gorm:"index"`
+	WorkspaceID *string `gorm:"index;index:idx_audit_ws_time,priority:1"`
+	Action      string  `gorm:"not null;index"`
+	TargetType  string
+	TargetID    string
+	PayloadJSON string
+	CreatedAt   int64 `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc"`
+}
+
+func (m4GORMAuditLog) TableName() string { return "audit_logs" }
+
+type m4GORMContext struct {
+	WorkspaceID  string `gorm:"primaryKey;not null"`
+	Name         string `gorm:"primaryKey;not null"`
+	FilterSource string `gorm:"not null"`
+	CreatedAt    int64  `gorm:"not null"`
+	ModifiedAt   int64  `gorm:"not null"`
+}
+
+func (m4GORMContext) TableName() string { return "contexts" }
+
+type m4GORMUDADefinition struct {
+	WorkspaceID  string `gorm:"primaryKey;not null"`
+	Name         string `gorm:"primaryKey;not null"`
+	Type         string `gorm:"not null"`
+	Label        string
+	ValuesJSON   string
+	DefaultValue string
+	CreatedAt    int64 `gorm:"not null"`
+	ModifiedAt   int64 `gorm:"not null"`
+}
+
+func (m4GORMUDADefinition) TableName() string { return "uda_definitions" }
+
+type m4GORMTask struct {
+	UUID        string `gorm:"primaryKey"`
+	WorkspaceID string `gorm:"not null;index"`
+	Description string `gorm:"not null"`
+	Status      string `gorm:"not null;index"`
+	Entry       int64  `gorm:"not null"`
+	Modified    int64  `gorm:"not null"`
+	EndTS       *int64
+	Due         *int64
+	Project     *string `gorm:"index"`
+	Priority    *string
+	Tags        []m4GORMTaskTag `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	Start       *int64
+	Wait        *int64  `gorm:"index"`
+	Scheduled   *int64  `gorm:"index"`
+	Until       *int64  `gorm:"index"`
+	Recur       *string `gorm:"index"`
+	Parent      *string `gorm:"index"`
+	Mask        *string
+	IMask       *int
+	Annotations []m4GORMTaskAnnotation `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	Depends     []m4GORMTaskDependency `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	UDAs        []m4GORMTaskUDAValue   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+}
+
+func (m4GORMTask) TableName() string { return "tasks" }
+
+type m4GORMTaskTag struct {
+	TaskUUID string `gorm:"primaryKey;not null"`
+	Tag      string `gorm:"primaryKey;not null"`
+}
+
+func (m4GORMTaskTag) TableName() string { return "task_tags" }
+
+type m4GORMTaskAnnotation struct {
+	TaskUUID    string `gorm:"primaryKey;not null"`
+	Entry       int64  `gorm:"primaryKey;not null"`
+	Description string `gorm:"primaryKey;not null"`
+}
+
+func (m4GORMTaskAnnotation) TableName() string { return "task_annotations" }
+
+type m4GORMTaskDependency struct {
+	TaskUUID  string `gorm:"primaryKey;not null"`
+	DependsOn string `gorm:"primaryKey;not null;index"`
+}
+
+func (m4GORMTaskDependency) TableName() string { return "task_dependencies" }
+
+type m4GORMTaskUDAValue struct {
+	WorkspaceID string `gorm:"not null;index"`
+	TaskUUID    string `gorm:"primaryKey;not null;index"`
+	Name        string `gorm:"primaryKey;not null"`
+	Value       string `gorm:"not null"`
+	ValueType   string
+	Orphan      bool `gorm:"not null;default:false"`
+}
+
+func (m4GORMTaskUDAValue) TableName() string { return "task_uda_values" }
+
+func seedM4GORMDatabaseWithTaskRelations(t *testing.T, dbPath string) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	if err := db.AutoMigrate(
+		&m4GORMMeta{},
+		&m4GORMUser{},
+		&m4GORMWorkspace{},
+		&m4GORMMembership{},
+		&m4GORMAuditLog{},
+		&m4GORMContext{},
+		&m4GORMUDADefinition{},
+		&m4GORMTask{},
+		&m4GORMTaskTag{},
+		&m4GORMTaskAnnotation{},
+		&m4GORMTaskDependency{},
+		&m4GORMTaskUDAValue{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	execSQL(t, db, `INSERT INTO workspaces(id, slug, name, visibility, settings_json, created_at, modified_at) VALUES('ws-local', 'local', 'Local', 'private', '{}', 1, 1)`)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES('dep', 'ws-local', 'dep', 'pending', 1, 1, 'api')`)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES('task-1', 'ws-local', 'task 1', 'pending', 2, 2, 'api')`)
+	execSQL(t, db, `INSERT INTO task_tags(task_uuid, tag) VALUES('task-1', 'one')`)
+	execSQL(t, db, `INSERT INTO task_annotations(task_uuid, entry, description) VALUES('task-1', 3, 'note')`)
+	execSQL(t, db, `INSERT INTO task_dependencies(task_uuid, depends_on) VALUES('task-1', 'dep')`)
+	execSQL(t, db, `INSERT INTO task_uda_values(workspace_id, task_uuid, name, value, value_type, orphan) VALUES('ws-local', 'task-1', 'legacy', 'v', 'string', true)`)
+}
+
+func execSQL(t *testing.T, db *gorm.DB, sql string, args ...any) {
+	t.Helper()
+	if err := db.Exec(sql, args...).Error; err != nil {
+		t.Fatalf("exec %q error = %v", sql, err)
+	}
+}
+
+func mutateM4Database(t *testing.T, dbPath, sql string) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	execSQL(t, db, sql)
+}
+
+func rawTableExists(t *testing.T, db *gorm.DB, table string) bool {
+	t.Helper()
+	var count int
+	if err := db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	return count > 0
+}
+
+func assertRawDDLContains(t *testing.T, store *Store, table, want string) {
+	t.Helper()
+	var ddl string
+	if err := store.DB().Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&ddl).Error; err != nil {
+		t.Fatal(err)
+	}
+	normalizedDDL := strings.ReplaceAll(ddl, " ", "")
+	normalizedWant := strings.ReplaceAll(want, " ", "")
+	if !strings.Contains(normalizedDDL, normalizedWant) {
+		t.Fatalf("%s DDL = %s, want containing %s", table, ddl, want)
+	}
+}
+
+func assertRawInsertNullRejected(t *testing.T, store *Store, sql string) {
+	t.Helper()
+	if err := store.DB().Exec(sql).Error; err == nil {
+		t.Fatalf("raw insert succeeded, want NULL rejection: %s", sql)
+	}
+}
+
+func assertIndexColumns(t *testing.T, store *Store, indexName string, want []string) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA index_info(" + indexName + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var seqno, cid int
+		var name string
+		if err := rows.Scan(&seqno, &cid, &name); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%s columns = %#v, want %#v", indexName, got, want)
+	}
+}
+
+func assertRelationForeignKeysPointToTasks(t *testing.T, store *Store, table string) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA foreign_key_list(" + table + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	foundTasks := false
+	for rows.Next() {
+		var id, seq int
+		var targetTable, from, to, onUpdate, onDelete, match string
+		if err := rows.Scan(&id, &seq, &targetTable, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+			t.Fatal(err)
+		}
+		if targetTable == "tasks_old_m5" {
+			t.Fatalf("%s foreign key points to tasks_old_m5", table)
+		}
+		if targetTable == "tasks" && from == "task_uuid" && to == "uuid" {
+			foundTasks = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !foundTasks {
+		t.Fatalf("%s has no task_uuid -> tasks.uuid foreign key", table)
+	}
+}
+
+func foreignKeyViolations(t *testing.T, store *Store) []string {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA foreign_key_check").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var violations []string
+	for rows.Next() {
+		var table string
+		var rowID int64
+		var parent string
+		var fkID int
+		if err := rows.Scan(&table, &rowID, &parent, &fkID); err != nil {
+			t.Fatal(err)
+		}
+		violations = append(violations, table+"->"+parent)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return violations
+}
+
+func assertTaskProject(t *testing.T, store *Store, taskUUID, wantSlug, wantProjectID string) {
+	t.Helper()
+	var row struct {
+		Project   sql.NullString
+		ProjectID sql.NullString
+	}
+	if err := store.DB().Raw("SELECT project, project_id FROM tasks WHERE uuid = ?", taskUUID).Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !row.Project.Valid || row.Project.String != wantSlug || !row.ProjectID.Valid || row.ProjectID.String != wantProjectID {
+		t.Fatalf("task %s project = (%#v, %#v), want (%q, %q)", taskUUID, row.Project, row.ProjectID, wantSlug, wantProjectID)
+	}
+}
+
+func assertTaskHasNoProject(t *testing.T, store *Store, taskUUID string) {
+	t.Helper()
+	var row struct {
+		Project   sql.NullString
+		ProjectID sql.NullString
+	}
+	if err := store.DB().Raw("SELECT project, project_id FROM tasks WHERE uuid = ?", taskUUID).Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Project.Valid || row.ProjectID.Valid {
+		t.Fatalf("task %s project = (%#v, %#v), want NULLs", taskUUID, row.Project, row.ProjectID)
+	}
+}
+
+func assertTaskKeepsRawProjectWithoutID(t *testing.T, store *Store, taskUUID, wantProject string) {
+	t.Helper()
+	var row struct {
+		Project   sql.NullString
+		ProjectID sql.NullString
+	}
+	if err := store.DB().Raw("SELECT project, project_id FROM tasks WHERE uuid = ?", taskUUID).Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !row.Project.Valid || row.Project.String != wantProject || row.ProjectID.Valid {
+		t.Fatalf("task %s project = (%#v, %#v), want (%q, NULL)", taskUUID, row.Project, row.ProjectID, wantProject)
+	}
+}
+
+func assertMigrationSkippedReport(t *testing.T, store *Store, want []string) {
+	t.Helper()
+	raw, ok, err := store.GetMeta("migration.m5.projects.skipped")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("missing migration.m5.projects.skipped")
+	}
+	var rows []m5SkippedProject
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		t.Fatalf("invalid skipped report %q: %v", raw, err)
+	}
+	got := make([]string, 0, len(rows))
+	for _, row := range rows {
+		got = append(got, row.TaskUUID+":"+row.Reason)
+	}
+	if want == nil {
+		want = []string{}
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skipped report = %#v, want %#v (raw %s)", got, want, raw)
+	}
+}
+
+func projectSlugs(projects []Project) []string {
+	slugs := make([]string, 0, len(projects))
+	for _, project := range projects {
+		slugs = append(slugs, project.Slug)
+	}
+	return slugs
+}
+
+func ptrString(value string) *string {
+	return &value
+}
+
+func taskColumnNames(t *testing.T, store *Store) []string {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA table_info(tasks)").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var columns []string
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatal(err)
+		}
+		columns = append(columns, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return columns
+}
+
+func taskIndexNames(t *testing.T, store *Store) []string {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA index_list(tasks)").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var seq int
+		var name string
+		var unique int
+		var origin string
+		var partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(names)
+	return names
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
 	taskrcparser "github.com/dajee/taskg/internal/taskrc"
@@ -360,6 +361,525 @@ func TestAdminCannotArchiveWorkspace(t *testing.T) {
 	}
 }
 
+func TestProjectPermissionsByRole(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	adminUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-admin", Name: "project-admin", CreatedAt: 100, ModifiedAt: 100})
+	memberUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-member", Name: "project-member", CreatedAt: 100, ModifiedAt: 100})
+	viewerUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-viewer", Name: "project-viewer", CreatedAt: 100, ModifiedAt: 100})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	for _, member := range []sqlite.Membership{
+		{UserID: adminUser.ID, WorkspaceID: ws.ID, Role: string(RoleAdmin), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: memberUser.ID, WorkspaceID: ws.ID, Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: viewerUser.ID, WorkspaceID: ws.ID, Role: string(RoleViewer), JoinedAt: 100, ModifiedAt: 100},
+	} {
+		mustUpsertMembershipRecord(t, store, member)
+	}
+
+	if err := ownerSvc.Require(PermissionProjectManage); err != nil {
+		t.Fatalf("owner Require(PermissionProjectManage) error = %v", err)
+	}
+	if err := ownerSvc.Require(PermissionProjectConfigWrite); err != nil {
+		t.Fatalf("owner Require(PermissionProjectConfigWrite) error = %v", err)
+	}
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, adminUser.Name, ws.Slug)
+	created, err := adminSvc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("admin AddProject() error = %v", err)
+	}
+	renamed := "API Platform"
+	if err := adminSvc.ModifyProject(created.ID, ModifyProjectInput{Name: &renamed}); err != nil {
+		t.Fatalf("admin ModifyProject() error = %v", err)
+	}
+	if err := adminSvc.ArchiveProject(created.ID); err != nil {
+		t.Fatalf("admin ArchiveProject() error = %v", err)
+	}
+
+	ownerCreated, err := ownerSvc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatalf("owner AddProject() error = %v", err)
+	}
+	memberSvc := newTestServiceWithRuntime(t, store, 100, memberUser.Name, ws.Slug)
+	if err := memberSvc.Require(PermissionProjectRead); err != nil {
+		t.Fatalf("member Require(PermissionProjectRead) error = %v", err)
+	}
+	if err := memberSvc.Require(PermissionProjectConfigRead); err != nil {
+		t.Fatalf("member Require(PermissionProjectConfigRead) error = %v", err)
+	}
+	if _, err := memberSvc.ListProjects(true); err != nil {
+		t.Fatalf("member ListProjects() error = %v", err)
+	}
+	if _, err := memberSvc.ProjectInfo(ownerCreated.ID); err != nil {
+		t.Fatalf("member ProjectInfo() error = %v", err)
+	}
+	if _, err := memberSvc.AddProject(AddProjectInput{Slug: "member-write", Name: "Member Write"}); err == nil {
+		t.Fatal("member AddProject() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("member AddProject() err = %#v, want PermissionError(permission_denied)", err)
+	}
+	if err := memberSvc.ModifyProject(ownerCreated.ID, ModifyProjectInput{Name: &renamed}); err == nil {
+		t.Fatal("member ModifyProject() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("member ModifyProject() err = %#v, want PermissionError(permission_denied)", err)
+	}
+	if err := memberSvc.ArchiveProject(ownerCreated.ID); err == nil {
+		t.Fatal("member ArchiveProject() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("member ArchiveProject() err = %#v, want PermissionError(permission_denied)", err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewerUser.Name, ws.Slug)
+	if err := viewerSvc.Require(PermissionProjectRead); err != nil {
+		t.Fatalf("viewer Require(PermissionProjectRead) error = %v", err)
+	}
+	if err := viewerSvc.Require(PermissionProjectConfigRead); err != nil {
+		t.Fatalf("viewer Require(PermissionProjectConfigRead) error = %v", err)
+	}
+	if _, err := viewerSvc.ListProjects(true); err != nil {
+		t.Fatalf("viewer ListProjects() error = %v", err)
+	}
+	if _, err := viewerSvc.ProjectInfo(ownerCreated.Slug); err != nil {
+		t.Fatalf("viewer ProjectInfo() error = %v", err)
+	}
+	if _, err := viewerSvc.AddProject(AddProjectInput{Slug: "viewer-write", Name: "Viewer Write"}); err == nil {
+		t.Fatal("viewer AddProject() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("viewer AddProject() err = %#v, want PermissionError(permission_denied)", err)
+	}
+	if err := viewerSvc.ModifyProject(ownerCreated.ID, ModifyProjectInput{Name: &renamed}); err == nil {
+		t.Fatal("viewer ModifyProject() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("viewer ModifyProject() err = %#v, want PermissionError(permission_denied)", err)
+	}
+	if err := viewerSvc.ArchiveProject(ownerCreated.ID); err == nil {
+		t.Fatal("viewer ArchiveProject() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("viewer ArchiveProject() err = %#v, want PermissionError(permission_denied)", err)
+	}
+}
+
+func TestProjectInfoRejectsWorkspaceMismatchInRuntime(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocal := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	work, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	ownerWork := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
+	created, err := ownerWork.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(work/api) error = %v", err)
+	}
+
+	_, err = ownerLocal.ProjectInfo(created.ID)
+	if err == nil {
+		t.Fatal("ProjectInfo(cross workspace id) error = nil, want project_workspace_mismatch")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "project_workspace_mismatch" {
+		t.Fatalf("ProjectInfo(cross workspace id) err = %#v, want RuntimeError(project_workspace_mismatch)", err)
+	}
+}
+
+func TestProjectAllowsSameSlugAcrossWorkspaces(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocal := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	if _, err := ownerLocal.AddProject(AddProjectInput{Slug: "api", Name: "Local API"}); err != nil {
+		t.Fatalf("local AddProject(api) error = %v", err)
+	}
+	work, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	ownerWork := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
+	if _, err := ownerWork.AddProject(AddProjectInput{Slug: "api", Name: "Work API"}); err != nil {
+		t.Fatalf("work AddProject(api) error = %v", err)
+	}
+}
+
+func TestArchiveProjectReturnsProjectArchivedWhenAlreadyArchived(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	if err := svc.ArchiveProject(created.ID); err != nil {
+		t.Fatalf("ArchiveProject(first) error = %v", err)
+	}
+	if err := svc.ArchiveProject(created.ID); err == nil {
+		t.Fatal("ArchiveProject(second) error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("ArchiveProject(second) err = %#v, want RuntimeError(project_archived)", err)
+	}
+}
+
+func TestListProjectsCountsArchivedProjectTasksExcludingDeleted(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	projectRef := created.Slug
+	if _, err := svc.Add(AddInput{Description: "pending task", Project: &projectRef}); err != nil {
+		t.Fatalf("Add(pending task) error = %v", err)
+	}
+	doneTask, err := svc.Add(AddInput{Description: "done task", Project: &projectRef})
+	if err != nil {
+		t.Fatalf("Add(done task) error = %v", err)
+	}
+	deletedTask, err := svc.Add(AddInput{Description: "deleted task", Project: &projectRef})
+	if err != nil {
+		t.Fatalf("Add(deleted task) error = %v", err)
+	}
+	if err := svc.Done(doneTask.UUID); err != nil {
+		t.Fatalf("Done(done task) error = %v", err)
+	}
+	if err := svc.Delete(deletedTask.UUID); err != nil {
+		t.Fatalf("Delete(deleted task) error = %v", err)
+	}
+	if err := svc.ArchiveProject(created.ID); err != nil {
+		t.Fatalf("ArchiveProject() error = %v", err)
+	}
+
+	projects, err := svc.ListProjects(true)
+	if err != nil {
+		t.Fatalf("ListProjects(includeArchived) error = %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("ListProjects(includeArchived) = %#v, want 1 project", projects)
+	}
+	if projects[0].TaskCount != 2 {
+		t.Fatalf("archived project TaskCount = %d, want 2", projects[0].TaskCount)
+	}
+}
+
+func TestProjectAuditEntriesIncludeProjectID(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	description := "updated"
+	if err := svc.ModifyProject(created.ID, ModifyProjectInput{Description: &description}); err != nil {
+		t.Fatalf("ModifyProject() error = %v", err)
+	}
+	if err := svc.ArchiveProject(created.ID); err != nil {
+		t.Fatalf("ArchiveProject() error = %v", err)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	if len(logs) < 3 {
+		t.Fatalf("ListAudit() rows = %#v, want >= 3", logs)
+	}
+	for i := 0; i < 3; i++ {
+		if logs[i].TargetID != created.ID {
+			t.Fatalf("logs[%d].TargetID = %q, want %q", i, logs[i].TargetID, created.ID)
+		}
+	}
+	workspaceID := svc.Runtime().WorkspaceID
+	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+		WorkspaceID: &workspaceID,
+		ProjectID:   &created.ID,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("AuditRepository.List(project filter) error = %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("AuditRepository.List(project filter) rows = %#v, want 3", rows)
+	}
+	for i, row := range rows {
+		if row.ProjectID == nil || *row.ProjectID != created.ID {
+			t.Fatalf("rows[%d].ProjectID = %#v, want %q", i, row.ProjectID, created.ID)
+		}
+	}
+}
+
+func TestProjectConfigPermissionsAndArchivedBehavior(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	adminUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-config-admin", Name: "project-config-admin", CreatedAt: 100, ModifiedAt: 100})
+	memberUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-config-member", Name: "project-config-member", CreatedAt: 100, ModifiedAt: 100})
+	viewerUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-config-viewer", Name: "project-config-viewer", CreatedAt: 100, ModifiedAt: 100})
+	for _, member := range []sqlite.Membership{
+		{UserID: adminUser.ID, WorkspaceID: ws.ID, Role: string(RoleAdmin), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: memberUser.ID, WorkspaceID: ws.ID, Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: viewerUser.ID, WorkspaceID: ws.ID, Role: string(RoleViewer), JoinedAt: 100, ModifiedAt: 100},
+	} {
+		mustUpsertMembershipRecord(t, store, member)
+	}
+
+	project, err := ownerSvc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, adminUser.Name, ws.Slug)
+	if err := adminSvc.ProjectConfigSet(project.ID, "agent.background", "Admin background"); err != nil {
+		t.Fatalf("admin ProjectConfigSet() error = %v", err)
+	}
+	got, ok, err := adminSvc.ProjectConfigGet(project.Slug, "agent.background")
+	if err != nil {
+		t.Fatalf("admin ProjectConfigGet() error = %v", err)
+	}
+	if !ok || got != "Admin background" {
+		t.Fatalf("admin ProjectConfigGet() = (%q, %v), want (%q, true)", got, ok, "Admin background")
+	}
+
+	if err := ownerSvc.ProjectConfigSet(project.Slug, "agent.constraints", "Owner constraints"); err != nil {
+		t.Fatalf("owner ProjectConfigSet() error = %v", err)
+	}
+	configs, err := ownerSvc.ProjectConfigList(project.ID)
+	if err != nil {
+		t.Fatalf("owner ProjectConfigList() error = %v", err)
+	}
+	if got := configs["agent.background"]; got != "Admin background" {
+		t.Fatalf("ProjectConfigList()[agent.background] = %q, want %q", got, "Admin background")
+	}
+	if got := configs["agent.constraints"]; got != "Owner constraints" {
+		t.Fatalf("ProjectConfigList()[agent.constraints] = %q, want %q", got, "Owner constraints")
+	}
+	if err := ownerSvc.ProjectConfigUnset(project.ID, "agent.constraints"); err != nil {
+		t.Fatalf("owner ProjectConfigUnset() error = %v", err)
+	}
+	if _, ok, err := ownerSvc.ProjectConfigGet(project.ID, "agent.constraints"); err != nil {
+		t.Fatalf("owner ProjectConfigGet(unset) error = %v", err)
+	} else if ok {
+		t.Fatal("owner ProjectConfigGet(unset) found value, want missing")
+	}
+
+	memberSvc := newTestServiceWithRuntime(t, store, 100, memberUser.Name, ws.Slug)
+	if got, ok, err := memberSvc.ProjectConfigGet(project.ID, "agent.background"); err != nil {
+		t.Fatalf("member ProjectConfigGet() error = %v", err)
+	} else if !ok || got != "Admin background" {
+		t.Fatalf("member ProjectConfigGet() = (%q, %v), want (%q, true)", got, ok, "Admin background")
+	}
+	if configs, err := memberSvc.ProjectConfigList(project.Slug); err != nil {
+		t.Fatalf("member ProjectConfigList() error = %v", err)
+	} else if got := configs["agent.background"]; got != "Admin background" {
+		t.Fatalf("member ProjectConfigList()[agent.background] = %q, want %q", got, "Admin background")
+	}
+	if err := memberSvc.ProjectConfigSet(project.ID, "agent.background", "member write"); err == nil {
+		t.Fatal("member ProjectConfigSet() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("member ProjectConfigSet() err = %#v, want PermissionError(permission_denied)", err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewerUser.Name, ws.Slug)
+	if got, ok, err := viewerSvc.ProjectConfigGet(project.Slug, "agent.background"); err != nil {
+		t.Fatalf("viewer ProjectConfigGet() error = %v", err)
+	} else if !ok || got != "Admin background" {
+		t.Fatalf("viewer ProjectConfigGet() = (%q, %v), want (%q, true)", got, ok, "Admin background")
+	}
+	if configs, err := viewerSvc.ProjectConfigList(project.ID); err != nil {
+		t.Fatalf("viewer ProjectConfigList() error = %v", err)
+	} else if got := configs["agent.background"]; got != "Admin background" {
+		t.Fatalf("viewer ProjectConfigList()[agent.background] = %q, want %q", got, "Admin background")
+	}
+	if err := viewerSvc.ProjectConfigSet(project.Slug, "agent.background", "viewer write"); err == nil {
+		t.Fatal("viewer ProjectConfigSet() error = nil, want permission denied")
+	} else if permErr, ok := err.(PermissionError); !ok || permErr.Code != "permission_denied" {
+		t.Fatalf("viewer ProjectConfigSet() err = %#v, want PermissionError(permission_denied)", err)
+	}
+
+	if err := ownerSvc.ArchiveProject(project.ID); err != nil {
+		t.Fatalf("ArchiveProject() error = %v", err)
+	}
+	if got, ok, err := ownerSvc.ProjectConfigGet(project.ID, "agent.background"); err != nil {
+		t.Fatalf("ProjectConfigGet(archived) error = %v", err)
+	} else if !ok || got != "Admin background" {
+		t.Fatalf("ProjectConfigGet(archived) = (%q, %v), want (%q, true)", got, ok, "Admin background")
+	}
+	if configs, err := ownerSvc.ProjectConfigList(project.Slug); err != nil {
+		t.Fatalf("ProjectConfigList(archived) error = %v", err)
+	} else if got := configs["agent.background"]; got != "Admin background" {
+		t.Fatalf("ProjectConfigList(archived)[agent.background] = %q, want %q", got, "Admin background")
+	}
+	if err := ownerSvc.ProjectConfigSet(project.ID, "context.default", "project:api"); err == nil {
+		t.Fatal("ProjectConfigSet(archived) error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("ProjectConfigSet(archived) err = %#v, want RuntimeError(project_archived)", err)
+	}
+	if err := adminSvc.ProjectConfigUnset(project.Slug, "agent.background"); err == nil {
+		t.Fatal("ProjectConfigUnset(archived) error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("ProjectConfigUnset(archived) err = %#v, want RuntimeError(project_archived)", err)
+	}
+}
+
+func TestConfigScopeRequiresProjectForProjectConfigKeys(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "set",
+			call: func() error {
+				return svc.SetConfig("agent.background", "Background")
+			},
+		},
+		{
+			name: "unset",
+			call: func() error {
+				return svc.UnsetConfig("agent.background")
+			},
+		},
+		{
+			name: "get",
+			call: func() error {
+				_, _, err := svc.GetConfig("agent.background")
+				return err
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil {
+				t.Fatalf("%s error = nil, want project_config_scope_required", tc.name)
+			}
+			runtimeErr, ok := err.(RuntimeError)
+			if !ok || runtimeErr.Code != "project_config_scope_required" {
+				t.Fatalf("%s err = %#v, want RuntimeError(project_config_scope_required)", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestProjectConfigRejectsUnknownKeyWithStableCode(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "get",
+			call: func() error {
+				_, _, err := svc.ProjectConfigGet(project.ID, "unknown.key")
+				return err
+			},
+		},
+		{
+			name: "set",
+			call: func() error {
+				return svc.ProjectConfigSet(project.ID, "unknown.key", "value")
+			},
+		},
+		{
+			name: "unset",
+			call: func() error {
+				return svc.ProjectConfigUnset(project.ID, "unknown.key")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil {
+				t.Fatalf("%s error = nil, want project_config_key_invalid", tc.name)
+			}
+			runtimeErr, ok := err.(RuntimeError)
+			if !ok || runtimeErr.Code != "project_config_key_invalid" {
+				t.Fatalf("%s err = %#v, want RuntimeError(project_config_key_invalid)", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestProjectConfigAuditEntriesIncludeProjectID(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	if err := svc.ProjectConfigSet(project.ID, "agent.background", "Background"); err != nil {
+		t.Fatalf("ProjectConfigSet() error = %v", err)
+	}
+	if err := svc.ProjectConfigUnset(project.Slug, "agent.background"); err != nil {
+		t.Fatalf("ProjectConfigUnset() error = %v", err)
+	}
+
+	workspaceID := svc.Runtime().WorkspaceID
+	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+		WorkspaceID: &workspaceID,
+		ProjectID:   &project.ID,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("AuditRepository.List(project config) error = %v", err)
+	}
+	var actions []string
+	for _, row := range rows {
+		if row.ProjectID == nil || *row.ProjectID != project.ID {
+			t.Fatalf("row.ProjectID = %#v, want %q", row.ProjectID, project.ID)
+		}
+		if row.Action == "project.config.set" || row.Action == "project.config.unset" {
+			actions = append(actions, row.Action)
+		}
+	}
+	if len(actions) != 2 {
+		t.Fatalf("project config audit actions = %#v, want set+unset", actions)
+	}
+}
+
+func TestProjectConfigSetRechecksArchivedProjectInsideAuditTransaction(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	archivedAt := int64(200)
+	if err := store.DB().Model(&sqlite.Project{}).
+		Where("id = ? AND workspace_id = ?", project.ID, svc.Runtime().WorkspaceID).
+		Updates(map[string]any{
+			"status":      string(sqlite.ProjectStatusArchived),
+			"archived_at": &archivedAt,
+			"modified_at": archivedAt,
+		}).Error; err != nil {
+		t.Fatalf("force archive project error = %v", err)
+	}
+
+	if err := svc.ProjectConfigSet(project.ID, "agent.background", "should fail"); err == nil {
+		t.Fatal("ProjectConfigSet() error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("ProjectConfigSet() err = %#v, want RuntimeError(project_archived)", err)
+	}
+
+	if _, ok, err := svc.ProjectConfigGet(project.ID, "agent.background"); err != nil {
+		t.Fatalf("ProjectConfigGet() error = %v", err)
+	} else if ok {
+		t.Fatal("ProjectConfigGet() found value after archived write attempt, want missing")
+	}
+}
+
 type failingAuditRepo struct {
 	listRows []sqlite.AuditLogEntry
 }
@@ -561,6 +1081,555 @@ func TestImportCreatesAuditEntry(t *testing.T) {
 	}
 	if got := payload["count"]; got != float64(1) {
 		t.Fatalf("payload[count] = %#v, want 1", got)
+	}
+}
+
+func TestServiceImportNormalizesProjectOnCreate(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{
+		Slug: "work-project",
+		Name: "Work Project",
+	})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	count, err := svc.Import([]task.JSONTask{{
+		UUID:        "import-project-create",
+		Description: "imported task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+		Project:     strptr("  " + strings.ToUpper(project.Slug) + "  "),
+	}})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Import() count = %d, want 1", count)
+	}
+
+	got, err := svc.ResolveTarget("import-project-create")
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.Project == nil || *got.Project != project.Slug {
+		t.Fatalf("Project = %#v, want %q", got.Project, project.Slug)
+	}
+	if got.ProjectID == nil || *got.ProjectID != project.ID {
+		t.Fatalf("ProjectID = %#v, want %q", got.ProjectID, project.ID)
+	}
+}
+
+func TestServiceImportNormalizesProjectOnUpdate(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	projectA, err := svc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatalf("AddProject(alpha) error = %v", err)
+	}
+	projectB, err := svc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatalf("AddProject(beta) error = %v", err)
+	}
+
+	if _, err := svc.Import([]task.JSONTask{{
+		UUID:        "import-project-update",
+		Description: "imported task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+		Project:     &projectA.Slug,
+	}}); err != nil {
+		t.Fatalf("Import(create) error = %v", err)
+	}
+
+	if _, err := svc.Import([]task.JSONTask{{
+		UUID:        "import-project-update",
+		Description: "imported task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+		Project:     strptr(" " + strings.ToUpper(projectB.Slug) + " "),
+	}}); err != nil {
+		t.Fatalf("Import(update) error = %v", err)
+	}
+
+	got, err := svc.ResolveTarget("import-project-update")
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.Project == nil || *got.Project != projectB.Slug {
+		t.Fatalf("Project = %#v, want %q", got.Project, projectB.Slug)
+	}
+	if got.ProjectID == nil || *got.ProjectID != projectB.ID {
+		t.Fatalf("ProjectID = %#v, want %q", got.ProjectID, projectB.ID)
+	}
+}
+
+func TestImportRejectsUnregisteredProjectAtomically(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	validProject, err := svc.AddProject(AddProjectInput{Slug: "known", Name: "Known"})
+	if err != nil {
+		t.Fatalf("AddProject(known) error = %v", err)
+	}
+
+	count, err := svc.Import([]task.JSONTask{
+		{
+			UUID:        "import-known",
+			Description: "known project task",
+			Status:      task.StatusPending,
+			Entry:       "1970-01-01T00:01:40Z",
+			Modified:    "1970-01-01T00:01:40Z",
+			Project:     &validProject.Slug,
+		},
+		{
+			UUID:        "import-missing",
+			Description: "missing project task",
+			Status:      task.StatusPending,
+			Entry:       "1970-01-01T00:01:41Z",
+			Modified:    "1970-01-01T00:01:41Z",
+			Project:     strptr("missing"),
+		},
+	})
+	if err == nil {
+		t.Fatal("Import(unregistered project) error = nil, want project_not_found")
+	}
+	if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_not_found" {
+		t.Fatalf("Import(unregistered project) err = %#v, want RuntimeError(project_not_found)", err)
+	}
+	if count != 0 {
+		t.Fatalf("Import(unregistered project) count = %d, want 0", count)
+	}
+	if tasks, err := svc.Export(); err != nil {
+		t.Fatalf("Export() error = %v", err)
+	} else if len(tasks) != 0 {
+		t.Fatalf("Export() tasks = %#v, want atomic rollback", tasks)
+	}
+}
+
+func TestImportAllowsArchivedProjectRoundTripOnlyForExistingBinding(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "legacy", Name: "Legacy"})
+	if err != nil {
+		t.Fatalf("AddProject(legacy) error = %v", err)
+	}
+	count, err := svc.Import([]task.JSONTask{{
+		UUID:        "legacy-task",
+		Description: "legacy task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+		Project:     &project.Slug,
+	}})
+	if err != nil || count != 1 {
+		t.Fatalf("Import(initial legacy task) = (%d, %v), want (1, nil)", count, err)
+	}
+	if err := svc.ArchiveProject(project.ID); err != nil {
+		t.Fatalf("ArchiveProject(legacy) error = %v", err)
+	}
+
+	if _, err := svc.Import([]task.JSONTask{{
+		UUID:        "legacy-task",
+		Description: "legacy task updated",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:42Z",
+		Project:     &project.Slug,
+	}}); err != nil {
+		t.Fatalf("Import(round-trip archived project) error = %v", err)
+	}
+
+	got, err := svc.ResolveTarget("legacy-task")
+	if err != nil {
+		t.Fatalf("ResolveTarget(legacy-task) error = %v", err)
+	}
+	if got.Project == nil || *got.Project != project.Slug || got.ProjectID == nil || *got.ProjectID != project.ID {
+		t.Fatalf("legacy task project binding = (%#v, %#v), want (%q, %q)", got.Project, got.ProjectID, project.Slug, project.ID)
+	}
+	if got.Description != "legacy task updated" {
+		t.Fatalf("legacy task description = %q, want updated", got.Description)
+	}
+
+	if _, err := svc.Import([]task.JSONTask{{
+		UUID:        "new-archived-task",
+		Description: "new archived task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:45Z",
+		Modified:    "1970-01-01T00:01:45Z",
+		Project:     &project.Slug,
+	}}); err == nil {
+		t.Fatal("Import(new archived project task) error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("Import(new archived project task) err = %#v, want RuntimeError(project_archived)", err)
+	}
+}
+
+func TestExportRejectsProjectInvariantViolation(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "broken export task", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add(task) error = %v", err)
+	}
+
+	if err := store.DB().Model(&sqlite.Task{}).
+		Where("uuid = ? AND workspace_id = ?", created.UUID, svc.Runtime().WorkspaceID).
+		Update("project", "mismatch").Error; err != nil {
+		t.Fatalf("corrupt project slug error = %v", err)
+	}
+
+	if _, err := svc.Export(); err == nil {
+		t.Fatal("Export() error = nil, want project_invariant_violation")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_invariant_violation" {
+		t.Fatalf("Export() err = %#v, want RuntimeError(project_invariant_violation)", err)
+	}
+}
+
+func TestRecurringChildOnArchivedProjectWritesAuditWarning(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "legacy", Name: "Legacy"})
+	if err != nil {
+		t.Fatalf("AddProject(legacy) error = %v", err)
+	}
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	until := mustUnix(t, "2030-01-03T23:59:59Z")
+	recur := "daily"
+	parent, err := svc.Add(AddInput{
+		Description: "legacy recurring task",
+		Project:     &project.Slug,
+		Due:         &due,
+		Until:       &until,
+		Recur:       &recur,
+	})
+	if err != nil {
+		t.Fatalf("Add(recurring) error = %v", err)
+	}
+	if err := svc.ArchiveProject(project.ID); err != nil {
+		t.Fatalf("ArchiveProject(legacy) error = %v", err)
+	}
+	children, err := svc.List(ListInput{})
+	if err != nil || len(children) != 1 {
+		t.Fatalf("List(children before done) = (%#v, %v), want one child", children, err)
+	}
+	firstChild := children[0]
+	svc.clock = fixedClock{NowUnix: mustUnix(t, "2030-01-02T10:00:00Z")}
+	if err := svc.Done(firstChild.UUID); err != nil {
+		t.Fatalf("Done(first child) error = %v", err)
+	}
+
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() after recurrence error = %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("List() after recurrence = %#v, want exactly next child", tasks)
+	}
+	nextChild := tasks[0]
+	if nextChild.Project == nil || *nextChild.Project != project.Slug || nextChild.ProjectID == nil || *nextChild.ProjectID != project.ID {
+		t.Fatalf("next child project binding = (%#v, %#v), want (%q, %q)", nextChild.Project, nextChild.ProjectID, project.Slug, project.ID)
+	}
+
+	logs, err := svc.ListAudit(AuditListInput{Limit: 20})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	found := false
+	for _, log := range logs {
+		if log.Action != "task.recurrence.archived_project" {
+			continue
+		}
+		found = true
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(log.PayloadJSON), &payload); err != nil {
+			t.Fatalf("recurrence warning payload json = %q, err = %v", log.PayloadJSON, err)
+		}
+		if log.TargetID != nextChild.UUID {
+			t.Fatalf("warning TargetID = %q, want child %q", log.TargetID, nextChild.UUID)
+		}
+		if log.ProjectID == nil || *log.ProjectID != project.ID {
+			t.Fatalf("warning ProjectID = %#v, want %q", log.ProjectID, project.ID)
+		}
+		if payload["parent_uuid"] != parent.UUID || payload["child_uuid"] != nextChild.UUID || payload["project_id"] != project.ID || payload["project_slug"] != project.Slug {
+			t.Fatalf("warning payload = %#v", payload)
+		}
+	}
+	if !found {
+		t.Fatal("missing task.recurrence.archived_project audit warning")
+	}
+}
+
+func TestAddTaskRequiresActiveProject(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	archived, err := svc.AddProject(AddProjectInput{Slug: "legacy", Name: "Legacy"})
+	if err != nil {
+		t.Fatalf("AddProject(legacy) error = %v", err)
+	}
+	if err := svc.ArchiveProject(archived.ID); err != nil {
+		t.Fatalf("ArchiveProject(legacy) error = %v", err)
+	}
+	active, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+
+	if _, err := svc.Add(AddInput{Description: "missing project", Project: strptr("missing")}); err == nil {
+		t.Fatal("Add(missing project) error = nil, want project_not_found")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_not_found" {
+		t.Fatalf("Add(missing project) err = %#v, want RuntimeError(project_not_found)", err)
+	}
+
+	if _, err := svc.Add(AddInput{Description: "archived project", Project: &archived.Slug}); err == nil {
+		t.Fatal("Add(archived project) error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("Add(archived project) err = %#v, want RuntimeError(project_archived)", err)
+	}
+
+	created, err := svc.Add(AddInput{Description: "active project", Project: strptr("  " + strings.ToUpper(active.Slug) + "  ")})
+	if err != nil {
+		t.Fatalf("Add(active project) error = %v", err)
+	}
+	if created.Project == nil || *created.Project != active.Slug {
+		t.Fatalf("created.Project = %#v, want %q", created.Project, active.Slug)
+	}
+	if created.ProjectID == nil || *created.ProjectID != active.ID {
+		t.Fatalf("created.ProjectID = %#v, want %q", created.ProjectID, active.ID)
+	}
+}
+
+func TestModifyTaskProjectClearsAndRejectsArchivedAssignment(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	current, err := svc.AddProject(AddProjectInput{Slug: "current", Name: "Current"})
+	if err != nil {
+		t.Fatalf("AddProject(current) error = %v", err)
+	}
+	otherArchived, err := svc.AddProject(AddProjectInput{Slug: "archived", Name: "Archived"})
+	if err != nil {
+		t.Fatalf("AddProject(archived) error = %v", err)
+	}
+	active, err := svc.AddProject(AddProjectInput{Slug: "next", Name: "Next"})
+	if err != nil {
+		t.Fatalf("AddProject(next) error = %v", err)
+	}
+	clearTask, err := svc.Add(AddInput{Description: "clear me", Project: &current.Slug})
+	if err != nil {
+		t.Fatalf("Add(clear task) error = %v", err)
+	}
+	moveTask, err := svc.Add(AddInput{Description: "move me", Project: &current.Slug})
+	if err != nil {
+		t.Fatalf("Add(move task) error = %v", err)
+	}
+	rejectTask, err := svc.Add(AddInput{Description: "reject me", Project: &current.Slug})
+	if err != nil {
+		t.Fatalf("Add(reject task) error = %v", err)
+	}
+
+	if err := svc.ArchiveProject(current.ID); err != nil {
+		t.Fatalf("ArchiveProject(current) error = %v", err)
+	}
+	if err := svc.ArchiveProject(otherArchived.ID); err != nil {
+		t.Fatalf("ArchiveProject(otherArchived) error = %v", err)
+	}
+
+	if err := svc.Modify(clearTask.UUID, ModifyInput{Project: strptr(" ")}); err != nil {
+		t.Fatalf("Modify(clear project) error = %v", err)
+	}
+	cleared, err := svc.ResolveTarget(clearTask.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget(clearTask) error = %v", err)
+	}
+	if cleared.Project != nil || cleared.ProjectID != nil {
+		t.Fatalf("cleared task project fields = (%#v, %#v), want nil,nil", cleared.Project, cleared.ProjectID)
+	}
+
+	if err := svc.Modify(moveTask.UUID, ModifyInput{Project: &active.Slug}); err != nil {
+		t.Fatalf("Modify(move to active) error = %v", err)
+	}
+	moved, err := svc.ResolveTarget(moveTask.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget(moveTask) error = %v", err)
+	}
+	if moved.Project == nil || *moved.Project != active.Slug {
+		t.Fatalf("moved.Project = %#v, want %q", moved.Project, active.Slug)
+	}
+	if moved.ProjectID == nil || *moved.ProjectID != active.ID {
+		t.Fatalf("moved.ProjectID = %#v, want %q", moved.ProjectID, active.ID)
+	}
+
+	if err := svc.Modify(rejectTask.UUID, ModifyInput{Project: &otherArchived.Slug}); err == nil {
+		t.Fatal("Modify(assign archived project) error = nil, want project_archived")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
+		t.Fatalf("Modify(assign archived project) err = %#v, want RuntimeError(project_archived)", err)
+	}
+}
+
+func TestTaskAuditEntriesTrackProjectChanges(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	projectA, err := svc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatalf("AddProject(alpha) error = %v", err)
+	}
+	projectB, err := svc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatalf("AddProject(beta) error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "audited task", Project: &projectA.Slug})
+	if err != nil {
+		t.Fatalf("Add(task) error = %v", err)
+	}
+	if err := svc.Modify(created.UUID, ModifyInput{Project: &projectB.Slug}); err != nil {
+		t.Fatalf("Modify(move to beta) error = %v", err)
+	}
+	if err := svc.Modify(created.UUID, ModifyInput{Project: strptr("")}); err != nil {
+		t.Fatalf("Modify(clear project) error = %v", err)
+	}
+	if err := svc.Modify(created.UUID, ModifyInput{Project: &projectA.Slug}); err != nil {
+		t.Fatalf("Modify(rebind alpha) error = %v", err)
+	}
+
+	workspaceID := svc.Runtime().WorkspaceID
+	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+		WorkspaceID: &workspaceID,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("AuditRepository.List() error = %v", err)
+	}
+	if len(rows) < 4 {
+		t.Fatalf("audit rows = %#v, want at least 4 task rows", rows)
+	}
+
+	assertProjectAudit := func(row sqlite.AuditLogEntry, wantAction string, wantProjectID *string, beforeID, beforeSlug, afterID, afterSlug *string) {
+		t.Helper()
+		if row.Action != wantAction {
+			t.Fatalf("row.Action = %q, want %q", row.Action, wantAction)
+		}
+		if row.ProjectID == nil && wantProjectID != nil || row.ProjectID != nil && wantProjectID == nil {
+			t.Fatalf("row.ProjectID = %#v, want %#v", row.ProjectID, wantProjectID)
+		}
+		if row.ProjectID != nil && wantProjectID != nil && *row.ProjectID != *wantProjectID {
+			t.Fatalf("row.ProjectID = %q, want %q", *row.ProjectID, *wantProjectID)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
+			t.Fatalf("payload json = %q, err = %v", row.PayloadJSON, err)
+		}
+		assertPayloadString := func(key string, want *string) {
+			t.Helper()
+			got, ok := payload[key]
+			if want == nil {
+				if ok && got != nil {
+					t.Fatalf("payload[%s] = %#v, want nil/absent", key, got)
+				}
+				return
+			}
+			if !ok {
+				t.Fatalf("payload missing key %q: %#v", key, payload)
+			}
+			gotStr, ok := got.(string)
+			if !ok || gotStr != *want {
+				t.Fatalf("payload[%s] = %#v, want %q", key, got, *want)
+			}
+		}
+		assertPayloadString("before_project_id", beforeID)
+		assertPayloadString("before_project_slug", beforeSlug)
+		assertPayloadString("after_project_id", afterID)
+		assertPayloadString("after_project_slug", afterSlug)
+	}
+
+	assertProjectAudit(rows[0], "task.modify", &projectA.ID, nil, nil, &projectA.ID, &projectA.Slug)
+	assertProjectAudit(rows[1], "task.modify", &projectB.ID, &projectB.ID, &projectB.Slug, nil, nil)
+	assertProjectAudit(rows[2], "task.modify", &projectA.ID, &projectA.ID, &projectA.Slug, &projectB.ID, &projectB.Slug)
+	assertProjectAudit(rows[3], "task.add", &projectA.ID, nil, nil, &projectA.ID, &projectA.Slug)
+}
+
+func TestReplaceEditableTaskNormalizesProjectAndIgnoresForgedProjectID(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "editable task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	edited, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	edited.Project = strptr(" " + strings.ToUpper(project.Slug) + " ")
+	edited.ProjectID = strptr("forged-project-id")
+
+	if err := svc.ReplaceEditableTask(created.UUID, edited); err != nil {
+		t.Fatalf("ReplaceEditableTask() error = %v", err)
+	}
+
+	got, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.Project == nil || *got.Project != project.Slug {
+		t.Fatalf("Project = %#v, want %q", got.Project, project.Slug)
+	}
+	if got.ProjectID == nil || *got.ProjectID != project.ID {
+		t.Fatalf("ProjectID = %#v, want %q", got.ProjectID, project.ID)
+	}
+}
+
+func TestReplaceEditableTaskClearsProjectFields(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "editable task", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	edited, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	edited.Project = strptr(" ")
+	edited.ProjectID = strptr("forged-project-id")
+
+	if err := svc.ReplaceEditableTask(created.UUID, edited); err != nil {
+		t.Fatalf("ReplaceEditableTask() error = %v", err)
+	}
+
+	got, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.Project != nil {
+		t.Fatalf("Project = %#v, want nil", got.Project)
+	}
+	if got.ProjectID != nil {
+		t.Fatalf("ProjectID = %#v, want nil", got.ProjectID)
 	}
 }
 
@@ -1251,6 +2320,70 @@ func TestUniqueHelperSupportsUDA(t *testing.T) {
 	}
 }
 
+func TestProjectsUsesProjectTableNotTaskAggregation(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if _, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"}); err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	project, err := svc.AddProject(AddProjectInput{Slug: "legacy", Name: "Legacy"})
+	if err != nil {
+		t.Fatalf("AddProject(legacy) error = %v", err)
+	}
+	if err := svc.ArchiveProject(project.ID); err != nil {
+		t.Fatalf("ArchiveProject(legacy) error = %v", err)
+	}
+
+	active, err := svc.Projects(false)
+	if err != nil {
+		t.Fatalf("Projects(false) error = %v", err)
+	}
+	if strings.Join(active, ",") != "api" {
+		t.Fatalf("Projects(false) = %#v, want only active project without tasks", active)
+	}
+
+	all, err := svc.Projects(true)
+	if err != nil {
+		t.Fatalf("Projects(true) error = %v", err)
+	}
+	if strings.Join(all, ",") != "api,legacy" {
+		t.Fatalf("Projects(true) = %#v, want active+archived from project table", all)
+	}
+}
+
+func TestUniqueValuesProjectUsesValidatedBindingsOnly(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "project task", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add(task) error = %v", err)
+	}
+	values, err := svc.UniqueValues("project", ListInput{})
+	if err != nil {
+		t.Fatalf("UniqueValues(project) error = %v", err)
+	}
+	if strings.Join(values, ",") != "api" {
+		t.Fatalf("UniqueValues(project) = %#v, want api", values)
+	}
+
+	if err := store.DB().Model(&sqlite.Task{}).
+		Where("uuid = ? AND workspace_id = ?", created.UUID, svc.Runtime().WorkspaceID).
+		Update("project", "broken").Error; err != nil {
+		t.Fatalf("corrupt task project slug error = %v", err)
+	}
+	if _, err := svc.UniqueValues("project", ListInput{}); err == nil {
+		t.Fatal("UniqueValues(project) error = nil, want project_invariant_violation")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_invariant_violation" {
+		t.Fatalf("UniqueValues(project) err = %#v, want RuntimeError(project_invariant_violation)", err)
+	}
+}
+
 func TestTaskRCDryRunDoesNotWriteState(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -1386,6 +2519,12 @@ func TestContextNonePersistsEmptyOverrideOverRuntimeConfig(t *testing.T) {
 func TestContextFilterAppliesToListAndReports(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
+	if _, err := svc.AddProject(AddProjectInput{Slug: "work", Name: "Work"}); err != nil {
+		t.Fatalf("AddProject(work) error = %v", err)
+	}
+	if _, err := svc.AddProject(AddProjectInput{Slug: "home", Name: "Home"}); err != nil {
+		t.Fatalf("AddProject(home) error = %v", err)
+	}
 	if _, err := svc.Add(AddInput{Description: "work task", Project: strptr("work")}); err != nil {
 		t.Fatal(err)
 	}
@@ -1414,11 +2553,111 @@ func TestContextFilterAppliesToListAndReports(t *testing.T) {
 	}
 }
 
+func TestProjectQueryResolvesWithinCurrentWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocal := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	localProject, err := ownerLocal.AddProject(AddProjectInput{Slug: "same", Name: "Local Same"})
+	if err != nil {
+		t.Fatalf("local AddProject(same) error = %v", err)
+	}
+	if _, err := ownerLocal.Add(AddInput{Description: "local task", Project: &localProject.Slug}); err != nil {
+		t.Fatalf("local Add(task) error = %v", err)
+	}
+
+	work, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	ownerWork := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
+	workProject, err := ownerWork.AddProject(AddProjectInput{Slug: "same", Name: "Work Same"})
+	if err != nil {
+		t.Fatalf("work AddProject(same) error = %v", err)
+	}
+	workTask, err := ownerWork.Add(AddInput{Description: "work task", Project: &workProject.Slug})
+	if err != nil {
+		t.Fatalf("work Add(task) error = %v", err)
+	}
+
+	expr, err := query.ParseQuery(`project:same`)
+	if err != nil {
+		t.Fatalf("ParseQuery(project:same) error = %v", err)
+	}
+	tasks, err := ownerWork.List(ListInput{Query: expr})
+	if err != nil {
+		t.Fatalf("List(project:same) error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID != workTask.UUID {
+		t.Fatalf("List(project:same) tasks = %#v, want only work task", tasks)
+	}
+}
+
+func TestProjectQueryMissingReturnsStableError(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	expr, err := query.ParseQuery(`project:missing`)
+	if err != nil {
+		t.Fatalf("ParseQuery(project:missing) error = %v", err)
+	}
+	if _, err := svc.List(ListInput{Query: expr}); err == nil {
+		t.Fatal("List(project:missing) error = nil, want project_not_found")
+	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_not_found" {
+		t.Fatalf("List(project:missing) err = %#v, want RuntimeError(project_not_found)", err)
+	}
+}
+
+func TestContextFilterResolvesProjectWithinWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocal := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	if _, err := ownerLocal.AddProject(AddProjectInput{Slug: "same", Name: "Local Same"}); err != nil {
+		t.Fatalf("local AddProject(same) error = %v", err)
+	}
+	if _, err := ownerLocal.Add(AddInput{Description: "local task", Project: strptr("same")}); err != nil {
+		t.Fatalf("local Add(task) error = %v", err)
+	}
+
+	work, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	ownerWork := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
+	if _, err := ownerWork.AddProject(AddProjectInput{Slug: "same", Name: "Work Same"}); err != nil {
+		t.Fatalf("work AddProject(same) error = %v", err)
+	}
+	workTask, err := ownerWork.Add(AddInput{Description: "work task", Project: strptr("same")})
+	if err != nil {
+		t.Fatalf("work Add(task) error = %v", err)
+	}
+	if err := ownerWork.DefineContext("same", "project:same"); err != nil {
+		t.Fatalf("DefineContext(project:same) error = %v", err)
+	}
+	if err := ownerWork.UseContext("same"); err != nil {
+		t.Fatalf("UseContext(same) error = %v", err)
+	}
+	tasks, err := ownerWork.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() with project context error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID != workTask.UUID {
+		t.Fatalf("List() with project context tasks = %#v, want only work task", tasks)
+	}
+}
+
 func TestNoContextBypassesActiveContext(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	_, _ = svc.Add(AddInput{Description: "work task", Project: strptr("work")})
-	_, _ = svc.Add(AddInput{Description: "home task", Project: strptr("home")})
+	if _, err := svc.AddProject(AddProjectInput{Slug: "work", Name: "Work"}); err != nil {
+		t.Fatalf("AddProject(work) error = %v", err)
+	}
+	if _, err := svc.AddProject(AddProjectInput{Slug: "home", Name: "Home"}); err != nil {
+		t.Fatalf("AddProject(home) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Description: "work task", Project: strptr("work")}); err != nil {
+		t.Fatalf("Add(work task) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Description: "home task", Project: strptr("home")}); err != nil {
+		t.Fatalf("Add(home task) error = %v", err)
+	}
 	if err := svc.DefineContext("work", "project:work"); err != nil {
 		t.Fatal(err)
 	}

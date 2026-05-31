@@ -130,6 +130,119 @@ func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryCreateUpdateAndListProjectID(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	projectRepo := NewProjectRepository(store.DB())
+	api, err := projectRepo.Create(testProject("project-api", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create(api project) error = %v", err)
+	}
+	web, err := projectRepo.Create(testProject("project-web", ws.ID, "web", 101))
+	if err != nil {
+		t.Fatalf("Create(web project) error = %v", err)
+	}
+
+	projectSlug := "api"
+	created, err := repo.Create(domain.Task{
+		UUID:        "task-project",
+		WorkspaceID: ws.ID,
+		Description: "project task",
+		Status:      domain.StatusPending,
+		Entry:       1,
+		Modified:    1,
+		Project:     &projectSlug,
+		ProjectID:   &api.ID,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.ProjectID == nil || *created.ProjectID != api.ID {
+		t.Fatalf("created ProjectID = %#v, want %q", created.ProjectID, api.ID)
+	}
+
+	webSlug := "web"
+	created.Project = &webSlug
+	created.ProjectID = &web.ID
+	created.Modified = 2
+	if err := repo.Update(created); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	got, err := repo.GetByUUID(ws.ID, "task-project")
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if got.ProjectID == nil || *got.ProjectID != web.ID {
+		t.Fatalf("got ProjectID = %#v, want %q", got.ProjectID, web.ID)
+	}
+
+	listed, err := repo.List(ws.ID, ListOptions{Status: domain.StatusPending})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0].ProjectID == nil || *listed[0].ProjectID != web.ID {
+		t.Fatalf("listed tasks = %#v, want ProjectID %q", listed, web.ID)
+	}
+}
+
+func TestTaskRepositoryUpdateClearsProjectID(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	projectRepo := NewProjectRepository(store.DB())
+	project, err := projectRepo.Create(testProject("project-api", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create(project) error = %v", err)
+	}
+
+	projectSlug := "api"
+	created, err := repo.Create(domain.Task{
+		UUID:        "task-clear-project",
+		WorkspaceID: ws.ID,
+		Description: "project task",
+		Status:      domain.StatusPending,
+		Entry:       1,
+		Modified:    1,
+		Project:     &projectSlug,
+		ProjectID:   &project.ID,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	created.Project = nil
+	created.ProjectID = nil
+	created.Modified = 2
+	if err := repo.Update(created); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	got, err := repo.GetByUUID(ws.ID, "task-clear-project")
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if got.Project != nil || got.ProjectID != nil {
+		t.Fatalf("got project = (%#v, %#v), want NULLs", got.Project, got.ProjectID)
+	}
+}
+
+func TestTaskRepositoryForeignKeyRejectsCrossWorkspaceProjectID(t *testing.T) {
+	store, _, ws := newTestRepo(t)
+	projectRepo := NewProjectRepository(store.DB())
+	other := createTestWorkspace(t, store, "team")
+	project, err := projectRepo.Create(testProject("project-other", other.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create(other project) error = %v", err)
+	}
+
+	err = store.DB().Exec(`
+INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"cross-project-task", ws.ID, "bad project", domain.StatusPending, int64(1), int64(1), "api", project.ID,
+	).Error
+	if err == nil {
+		t.Fatal("raw insert with cross-workspace project_id succeeded, want foreign key rejection")
+	}
+}
+
 func TestTaskRepositoryRecurringChildUniqueByParentAndDue(t *testing.T) {
 	_, repo, ws := newTestRepo(t)
 	parent := "parent"

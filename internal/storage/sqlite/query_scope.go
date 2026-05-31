@@ -87,7 +87,12 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	case query.AttrStatus:
 		return compareColumn("status", p.Operator, value, nil)
 	case query.AttrProject:
-		return compareColumn("project", p.Operator, value, nil)
+		if p.Operator == query.OpIsNull {
+			return "project_id IS NULL", nil, nil
+		}
+		return "", nil, query.ErrProjectPredicateUnresolved
+	case query.AttrProjectID:
+		return compareColumn("project_id", p.Operator, value, nil)
 	case query.AttrPriority:
 		return compareColumn("priority", p.Operator, value, nil)
 	case query.AttrUUID:

@@ -46,7 +46,8 @@ func TestRootReorderRecognizesM1QueryTokens(t *testing.T) {
 			knownSubs := map[string]bool{
 				"add": true, "list": true, "next": true, "info": true,
 				"export": true, "import": true, "show": true, "config": true,
-				"help": true, "version": true, "completion": true,
+				"project": true,
+				"help":    true, "version": true, "completion": true,
 				"all": true, "completed": true, "deleted": true, "overdue": true,
 				"urgency": true, "_urgency": true,
 				"calc": true, "_get": true, "_ids": true, "_uuids": true, "_projects": true, "_tags": true, "_udas": true, "_unique": true, "_show": true, "_version": true,
@@ -245,6 +246,16 @@ func TestJSONViewsUseSnakeCaseFields(t *testing.T) {
 	}
 	if _, ok := rows[0]["ID"]; ok {
 		t.Fatalf("user JSON uses Go field names: %#v", rows[0])
+	}
+}
+
+func TestProjectCommandRegistered(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := NewRootCommand(Options{Stdout: &stdout, Stderr: &stderr})
+	if got, _, err := cmd.Find([]string{"project"}); err != nil {
+		t.Fatalf("Find(project) error = %v", err)
+	} else if got == nil || got.Name() != "project" {
+		t.Fatalf("Find(project) = %#v, want project command", got)
 	}
 }
 

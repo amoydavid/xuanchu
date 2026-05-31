@@ -90,7 +90,11 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	if t.IMask != nil {
 		wire["imask"] = t.IMask
 	}
+	reserved := reservedJSONFields()
 	for name, value := range t.UDAs {
+		if _, ok := reserved[name]; ok {
+			continue
+		}
 		wire[name] = value.Raw
 	}
 	return json.Marshal(wire)
@@ -105,6 +109,11 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
+	}
+	for field := range reservedJSONFields() {
+		if _, ok := raw[field]; ok {
+			return fmt.Errorf("%s is reserved; use project:<slug> to modify project", field)
+		}
 	}
 	for _, key := range coreJSONFields() {
 		delete(raw, key)
@@ -230,6 +239,12 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 
 func coreJSONFields() []string {
 	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask"}
+}
+
+func reservedJSONFields() map[string]struct{} {
+	return map[string]struct{}{
+		"project_id": {},
+	}
 }
 
 func rawToUDAString(raw json.RawMessage) (string, error) {
