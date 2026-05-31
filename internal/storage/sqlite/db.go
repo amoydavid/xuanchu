@@ -488,7 +488,6 @@ SELECT
   t.end_ts, t.due,
   CASE
     WHEN p.id IS NOT NULL THEN p.slug
-    WHEN t.project IS NOT NULL AND TRIM(t.project) != '' THEN t.project
     ELSE NULL
   END AS project,
   t.priority, t.start, t.wait, t.scheduled, t.until,

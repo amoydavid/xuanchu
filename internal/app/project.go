@@ -135,21 +135,31 @@ func (s *Service) ModifyProject(ref string, input ModifyProjectInput) error {
 	})
 }
 
-func (s *Service) ArchiveProject(ref string) error {
+func (s *Service) ArchiveProject(ref string) (ProjectView, error) {
 	if err := s.Require(PermissionProjectManage); err != nil {
-		return err
+		return ProjectView{}, err
 	}
 	project, err := s.ResolveProject(ref)
 	if err != nil {
-		return err
+		return ProjectView{}, err
 	}
 	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
-		return RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+		return ProjectView{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
-	return s.withAudit("project.archive", func(tx *Service) (AuditEntry, error) {
+	var archived ProjectView
+	err = s.withAudit("project.archive", func(tx *Service) (AuditEntry, error) {
 		if err := tx.archiveProjectLocked(project); err != nil {
 			return AuditEntry{}, err
 		}
+		archivedProject, err := tx.projectRepo.GetByID(project.ID)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		view, err := tx.projectViewForRow(archivedProject)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		archived = view
 		return AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
 			ProjectID:   &project.ID,
@@ -157,6 +167,7 @@ func (s *Service) ArchiveProject(ref string) error {
 			TargetID:    project.ID,
 		}, nil
 	})
+	return archived, err
 }
 
 func (s *Service) ResolveProject(ref string) (sqlite.Project, error) {

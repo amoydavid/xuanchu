@@ -185,7 +185,10 @@ func TestConfigSchemaRejectsNullScopeColumns(t *testing.T) {
 
 	assertRawDDLContainsNormalized(t, store, "configs", "PRIMARY KEY(workspace_id, scope, scope_id, key)")
 	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES(NULL, 'server', '', 'x', 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', NULL, '', 'x', 'y')")
 	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', 'server', NULL, 'x', 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', 'server', '', NULL, 'y')")
+	assertRawInsertNullRejected(t, store, "INSERT INTO configs(workspace_id, scope, scope_id, key, value) VALUES('', 'server', '', 'x', NULL)")
 }
 
 func TestConfigRepositoryListScopeOrdersByKey(t *testing.T) {

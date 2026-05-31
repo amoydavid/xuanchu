@@ -140,13 +140,21 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 		Use:  "archive <slug|uuid>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			if err := svc.ArchiveProject(args[0]); err != nil {
+			project, err := svc.ArchiveProject(args[0])
+			if err != nil {
 				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
+			}
+			if project.TaskCount > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "taskg: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\n", args[0])
 			return nil

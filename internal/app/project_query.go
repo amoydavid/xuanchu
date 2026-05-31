@@ -56,6 +56,10 @@ func clearProjectBinding(tsk *task.Task) {
 
 func (s *Service) applyProjectBinding(tsk *task.Task, slug *string) (projectChange, error) {
 	before := projectBindingFromTask(*tsk)
+	return s.applyProjectBindingFrom(tsk, slug, before)
+}
+
+func (s *Service) applyProjectBindingFrom(tsk *task.Task, slug *string, before projectBinding) (projectChange, error) {
 	if slug == nil {
 		return projectChange{Before: before, After: before}, nil
 	}
