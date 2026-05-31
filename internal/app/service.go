@@ -26,6 +26,7 @@ type Service struct {
 	workspaceRepo         *sqlite.WorkspaceRepository
 	memberRepo            *sqlite.MemberRepository
 	auditRepo             auditAppenderLister
+	tokenRepo             *sqlite.TokenRepository
 	contextRepo           *sqlite.ContextRepository
 	udaRepo               *sqlite.UDARepository
 	runtimeConfig         map[string]string
@@ -126,6 +127,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		workspaceRepo:    workspaceRepo,
 		memberRepo:       memberRepo,
 		auditRepo:        auditRepo,
+		tokenRepo:        sqlite.NewTokenRepository(opts.Store.DB()),
 		contextRepo:      sqlite.NewContextRepository(opts.Store.DB()),
 		udaRepo:          sqlite.NewUDARepository(opts.Store.DB()),
 		runtimeConfig:    runtimeConfig,
@@ -157,6 +159,7 @@ func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
 	if _, ok := s.auditRepo.(*sqlite.AuditRepository); ok || s.auditRepo == nil {
 		clone.auditRepo = sqlite.NewAuditRepository(store.DB())
 	}
+	clone.tokenRepo = sqlite.NewTokenRepository(store.DB())
 	clone.contextRepo = sqlite.NewContextRepository(store.DB())
 	clone.udaRepo = sqlite.NewUDARepository(store.DB())
 	return &clone, nil

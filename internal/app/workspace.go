@@ -638,7 +638,8 @@ func allowedForRole(role Role, p Permission) bool {
 		switch p {
 		case PermissionTaskRead, PermissionTaskWrite,
 			PermissionProjectRead, PermissionProjectManage, PermissionProjectConfigRead, PermissionProjectConfigWrite,
-			PermissionContextUse, PermissionContextManage, PermissionUDAManage, PermissionWorkspaceModify, PermissionMemberManage, PermissionAuditRead:
+			PermissionContextUse, PermissionContextManage, PermissionUDAManage, PermissionWorkspaceModify, PermissionMemberManage, PermissionAuditRead,
+			PermissionTokenRead, PermissionTokenWrite:
 			return true
 		}
 	case RoleMember:

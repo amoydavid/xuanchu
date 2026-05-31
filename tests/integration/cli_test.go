@@ -46,6 +46,30 @@ func TestCLIShowAndConfig(t *testing.T) {
 	}
 }
 
+func TestCLITokenCreateListRevoke(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	out := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "cli", "--scope", "task:read", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	if token == "" {
+		t.Fatalf("missing raw token: %s", out)
+	}
+	list := run(t, bin, "--db", db, "token", "list")
+	if !strings.Contains(list, "cli") || strings.Contains(list, token) {
+		t.Fatalf("token list leaked raw token: %q", list)
+	}
+	run(t, bin, "--db", db, "token", "revoke", created["id"].(string))
+	all := run(t, bin, "--db", db, "token", "list", "--all")
+	if !strings.Contains(all, "cli") {
+		t.Fatalf("token list --all output = %q", all)
+	}
+}
+
 func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
 	bin := buildTaskg(t)
 	dir := t.TempDir()

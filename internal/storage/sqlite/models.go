@@ -68,6 +68,22 @@ type Config struct {
 	Value       string `gorm:"not null"`
 }
 
+type ApiToken struct {
+	ID               string `gorm:"primaryKey"`
+	UserID           string `gorm:"not null;index:idx_api_tokens_user"`
+	Name             string `gorm:"not null"`
+	Type             string `gorm:"not null"`
+	TokenPrefix      string `gorm:"not null;uniqueIndex:idx_api_tokens_prefix"`
+	TokenHash        string `gorm:"not null"`
+	ScopesJSON       string `gorm:"not null;default:'[]'"`
+	WorkspaceIDsJSON string `gorm:"not null;default:'[]'"`
+	ProjectIDsJSON   string `gorm:"not null;default:'[]'"`
+	CreatedAt        int64  `gorm:"not null"`
+	ExpiresAt        *int64
+	RevokedAt        *int64
+	LastUsedAt       *int64
+}
+
 type Context struct {
 	WorkspaceID  string `gorm:"primaryKey;not null"`
 	Name         string `gorm:"primaryKey;not null"`

@@ -17,6 +17,8 @@ const (
 	PermissionMemberManage       Permission = "member.manage"
 	PermissionMemberManageOwner  Permission = "member.manage.owner"
 	PermissionAuditRead          Permission = "audit.read"
+	PermissionTokenRead          Permission = "token.read"
+	PermissionTokenWrite         Permission = "token.write"
 )
 
 type PermissionError struct {
