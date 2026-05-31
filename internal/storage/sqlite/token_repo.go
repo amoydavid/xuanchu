@@ -85,7 +85,7 @@ func (r *TokenRepository) GetByIDOrPrefix(ref string) (ApiTokenEntry, error) {
 		return ApiTokenEntry{}, err
 	}
 	var rows []ApiToken
-	if err := r.db.Where("token_prefix LIKE ?", escapeLike(ref)+"%").Order("created_at DESC").Find(&rows).Error; err != nil {
+	if err := r.db.Where("token_prefix LIKE ? ESCAPE '\\'", escapeLike(ref)+"%").Order("created_at DESC").Find(&rows).Error; err != nil {
 		return ApiTokenEntry{}, err
 	}
 	if len(rows) == 0 {

@@ -183,6 +183,35 @@ func TestCLIRemoteTokenList(t *testing.T) {
 	}
 }
 
+func TestCLIRemoteTargetActionDoesNotWriteLocalDB(t *testing.T) {
+	bin := buildTaskg(t)
+	serverDB := filepath.Join(t.TempDir(), "server.db")
+	localDB := filepath.Join(t.TempDir(), "local.db")
+
+	tokenOut := run(t, bin, "--db", serverDB, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	if token == "" {
+		t.Fatalf("missing token in %s", tokenOut)
+	}
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", serverDB)
+	defer stopTaskgServer(t, cmd)
+
+	run(t, bin, "--db", localDB, "add", "local", "safety")
+	out := runExpectError(t, bin, "--db", localDB, "--server", baseURL, "--token", token, "1", "done")
+	if !strings.Contains(out, "remote_unsupported_command") {
+		t.Fatalf("remote target action error = %q, want remote_unsupported_command", out)
+	}
+	list := run(t, bin, "--db", localDB, "list")
+	if !strings.Contains(list, "local safety") {
+		t.Fatalf("local task was modified by remote target action; list = %q", list)
+	}
+}
+
 func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
 	bin := buildTaskg(t)
 	dir := t.TempDir()
@@ -1583,6 +1612,16 @@ func run(t *testing.T, bin string, args ...string) string {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %v error = %v\n%s", bin, args, err, out)
+	}
+	return string(out)
+}
+
+func runExpectError(t *testing.T, bin string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("%s %v succeeded unexpectedly\n%s", bin, args, out)
 	}
 	return string(out)
 }

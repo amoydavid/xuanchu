@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/query"
@@ -70,6 +71,10 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
+	if err := ensureProjectRefsMatch(scoped, req.Project, req.ProjectID); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	project := strings.TrimSpace(req.Project)
 	if project == "" && strings.TrimSpace(req.ProjectID) != "" {
 		view, err := scoped.ProjectInfo(req.ProjectID)
@@ -101,12 +106,17 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+	if _, err := uuid.Parse(taskID); err != nil {
+		writeError(w, http.StatusBadRequest, "task_uuid_invalid", "task UUID is invalid", nil)
+		return
+	}
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	tsk, err := scoped.Info(chi.URLParam(r, "taskID"))
+	tsk, err := scoped.Info(taskID)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -120,4 +130,24 @@ func tasksToJSON(rows []task.Task) []task.JSONTask {
 		out[i] = task.ToJSON(row)
 	}
 	return out
+}
+
+func ensureProjectRefsMatch(svc *app.Service, projectSlug, projectID string) error {
+	projectSlug = strings.TrimSpace(projectSlug)
+	projectID = strings.TrimSpace(projectID)
+	if projectSlug == "" || projectID == "" {
+		return nil
+	}
+	bySlug, err := svc.ProjectInfo(projectSlug)
+	if err != nil {
+		return err
+	}
+	byID, err := svc.ProjectInfo(projectID)
+	if err != nil {
+		return err
+	}
+	if bySlug.ID != byID.ID {
+		return app.RuntimeError{Code: "project_mismatch", Message: "project and project_id do not match"}
+	}
+	return nil
 }

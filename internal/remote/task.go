@@ -9,6 +9,8 @@ import (
 
 type ListTasksInput struct {
 	Workspace string
+	Project   string
+	ProjectID string
 	Report    string
 	Target    string
 	Filters   []string
@@ -18,6 +20,7 @@ type ListTasksInput struct {
 type AddTaskInput struct {
 	Description string   `json:"description"`
 	Project     string   `json:"project,omitempty"`
+	ProjectID   string   `json:"project_id,omitempty"`
 	Priority    string   `json:"priority,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 }
@@ -26,6 +29,11 @@ func (c *Client) ListTasks(ctx context.Context, input ListTasksInput) ([]task.Ta
 	values := url.Values{}
 	if input.Workspace != "" {
 		values.Set("workspace", input.Workspace)
+	}
+	if input.ProjectID != "" {
+		values.Set("project_id", input.ProjectID)
+	} else if input.Project != "" {
+		values.Set("project", input.Project)
 	}
 	if input.Report != "" {
 		values.Set("report", input.Report)

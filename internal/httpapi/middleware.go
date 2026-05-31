@@ -96,15 +96,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 		authn, err := svc.AuthenticateBearerToken(raw)
 		if err != nil {
-			writeAuthError(w, err)
+			writeAppError(w, err)
 			return
 		}
 		visible, effective, err := s.visibleAndEffectiveWorkspaces(authn)
 		if err != nil {
-			writeAuthError(w, err)
+			writeAppError(w, err)
 			return
 		}
-		_ = sqlite.NewTokenRepository(s.store.DB()).TouchLastUsed(authn.Token.ID, s.effectiveClock().Unix())
 		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
 			state.actorID = authn.User.ID
 			state.tokenID = authn.Token.ID

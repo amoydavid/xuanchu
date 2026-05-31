@@ -30,7 +30,11 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
-				input := remote.ListTasksInput{Workspace: currentOpts.Workspace}
+				input := remote.ListTasksInput{
+					Workspace: currentOpts.Workspace,
+					Project:   currentOpts.Project,
+					ProjectID: currentOpts.ProjectID,
+				}
 				if sort != "" {
 					input.Report = name
 				}

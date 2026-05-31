@@ -252,10 +252,9 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	if err != nil {
 		return AuthenticatedToken{}, err
 	}
-	if err := s.tokenRepo.TouchLastUsed(row.ID, now); err != nil {
-		return AuthenticatedToken{}, err
+	if err := s.tokenRepo.TouchLastUsed(row.ID, now); err == nil {
+		row.LastUsedAt = &now
 	}
-	row.LastUsedAt = &now
 	return AuthenticatedToken{
 		Token: tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs),
 		User:  user,

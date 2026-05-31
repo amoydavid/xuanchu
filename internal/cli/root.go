@@ -25,6 +25,8 @@ type Options struct {
 	Server      string
 	Token       string
 	Workspace   string
+	Project     string
+	ProjectID   string
 	JSON        bool
 	NoColor     bool
 	NoContext   bool
@@ -67,6 +69,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.Server, "server", opts.Server, "remote taskg server base URL")
 	cmd.PersistentFlags().StringVar(&opts.Token, "token", opts.Token, "remote bearer token")
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
+	cmd.PersistentFlags().StringVar(&opts.Project, "project", opts.Project, "remote project slug scope")
+	cmd.PersistentFlags().StringVar(&opts.ProjectID, "project-id", opts.ProjectID, "remote project UUID scope")
 	cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output")
 	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
 	cmd.PersistentFlags().BoolVar(&opts.NoContext, "no-context", opts.NoContext, "disable active context for this command")
@@ -194,7 +198,7 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 
 func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
 	rc = map[string]*string{}
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
 		if key, value, ok := parseRCOverride(args[i]); ok {
@@ -307,7 +311,7 @@ func isDashTag(arg string) bool {
 
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--workspace": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
@@ -319,6 +323,13 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		} else if boolFlags[flags[i]] {
 			_ = cmd.PersistentFlags().Set(flags[i][2:], "true")
 		}
+	}
+
+	currentOpts := optionsFromCmd(cmd, opts)
+	if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+		return err
+	} else if remoteMode {
+		return app.RuntimeError{Code: "remote_unsupported_command", Message: fmt.Sprintf("command %q is not supported in remote mode", positional[1])}
 	}
 
 	svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -444,6 +455,8 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts.Server = getCmdStringFlag(cmd, "server", opts.Server)
 	opts.Token = getCmdStringFlag(cmd, "token", opts.Token)
 	opts.Workspace = getCmdStringFlag(cmd, "workspace", opts.Workspace)
+	opts.Project = getCmdStringFlag(cmd, "project", opts.Project)
+	opts.ProjectID = getCmdStringFlag(cmd, "project-id", opts.ProjectID)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
 	opts.NoContext = getCmdBoolFlag(cmd, "no-context", opts.NoContext)

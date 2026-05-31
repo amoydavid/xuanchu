@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 type httpTokenFixture struct {
 	server *Server
 	token  string
+	id     string
 }
 
 func newHTTPServerWithTokenFixture(t *testing.T, scopes ...string) httpTokenFixture {
@@ -32,12 +34,18 @@ func newHTTPServerWithTokenFixture(t *testing.T, scopes ...string) httpTokenFixt
 	return httpTokenFixture{
 		server: NewServer(Options{Store: store}),
 		token:  created.RawToken,
+		id:     created.View.ID,
 	}
 }
 
 func requestHTTP(t *testing.T, srv *Server, method, path string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(method, path, nil)
+	return requestHTTPBody(t, srv, method, path, "", headers)
+}
+
+func requestHTTPBody(t *testing.T, srv *Server, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -81,4 +89,18 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 			t.Fatalf("body = %s, want %s", body, want)
 		}
 	}
+}
+
+func TestWorkspaceScopeDeniedIsForbidden(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read")
+	if err := fixture.server.store.DB().Exec(
+		`UPDATE api_tokens SET workspace_ids_json = ? WHERE id = ?`,
+		`["missing-workspace"]`,
+		fixture.id,
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/me", map[string]string{"Authorization": "Bearer " + fixture.token})
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "workspace_scope_denied")
 }

@@ -31,7 +31,8 @@ func newAddCommand(opts Options) *cobra.Command {
 				}
 				created, err := client.AddTask(context.Background(), currentOpts.Workspace, remote.AddTaskInput{
 					Description: parsed.Description,
-					Project:     stringValue(parsed.Mod.Project),
+					Project:     firstNonEmpty(stringValue(parsed.Mod.Project), currentOpts.Project),
+					ProjectID:   currentOpts.ProjectID,
 					Priority:    stringValue(parsed.Mod.Priority),
 					Tags:        parsed.Mod.AddTags,
 				})
@@ -79,4 +80,13 @@ func stringValue(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
