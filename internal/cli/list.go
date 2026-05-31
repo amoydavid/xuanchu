@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/query"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/dajee/taskg/internal/task"
 	"github.com/spf13/cobra"
@@ -25,6 +27,42 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				input := remote.ListTasksInput{Workspace: currentOpts.Workspace}
+				if sort != "" {
+					input.Report = name
+				}
+				if len(args) > 0 {
+					if isPlainTargetArg(args) {
+						input.Target = args[0]
+					} else {
+						input.Filters = append([]string(nil), args...)
+					}
+				}
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				tasks, err := client.ListTasks(context.Background(), input)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					dtos := make([]task.JSONTask, len(tasks))
+					for i, tsk := range tasks {
+						dtos[i] = task.ToJSON(tsk)
+					}
+					return render.JSON(cmd.OutOrStdout(), dtos)
+				}
+				ids := make([]int, len(tasks))
+				for i := range tasks {
+					ids[i] = i + 1
+				}
+				render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

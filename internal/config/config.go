@@ -8,6 +8,8 @@ import (
 
 type Config struct {
 	DatabasePath string
+	RemoteServer string
+	RemoteToken  string
 	JSON         bool
 	Color        bool
 }
@@ -15,6 +17,8 @@ type Config struct {
 type Options struct {
 	DataDir string
 	DBPath  string
+	Server  string
+	Token   string
 	JSON    bool
 	NoColor bool
 	Env     map[string]string
@@ -46,9 +50,18 @@ func Resolve(opts Options) (Config, error) {
 	if dbPath == "" && opts.DataDir != "" {
 		dbPath = filepath.Join(opts.DataDir, "taskg.db")
 	}
+	var tomlValues map[string]string
 	if dbPath == "" {
 		if values, err := loadTomlConfig(configDir(home, env)); err == nil {
+			tomlValues = values
 			dbPath = values["database.path"]
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Config{}, err
+		}
+	}
+	if tomlValues == nil {
+		if values, err := loadTomlConfig(configDir(home, env)); err == nil {
+			tomlValues = values
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return Config{}, err
 		}
@@ -59,9 +72,25 @@ func Resolve(opts Options) (Config, error) {
 	if dbPath == "" {
 		dbPath = filepath.Join(home, ".local", "share", "taskg", "taskg.db")
 	}
+	server := opts.Server
+	if server == "" {
+		server = env["TASKG_SERVER"]
+	}
+	if server == "" {
+		server = tomlValues["remote.server"]
+	}
+	token := opts.Token
+	if token == "" {
+		token = env["TASKG_TOKEN"]
+	}
+	if token == "" {
+		token = tomlValues["remote.token"]
+	}
 
 	return Config{
 		DatabasePath: dbPath,
+		RemoteServer: server,
+		RemoteToken:  token,
 		JSON:         opts.JSON,
 		Color:        !opts.NoColor,
 	}, nil
@@ -69,7 +98,7 @@ func Resolve(opts Options) (Config, error) {
 
 func environ() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+	for _, key := range []string{"TASKG_DB", "TASKG_SERVER", "TASKG_TOKEN", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			values[key] = value
 		}

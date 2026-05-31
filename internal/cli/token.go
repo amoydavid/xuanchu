@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -96,6 +97,35 @@ func newTokenListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				rows, err := client.ListTokens(context.Background(), currentOpts.Workspace, includeRevoked)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), tokenViewsForJSON(rows))
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "ID\tPREFIX\tNAME\tTYPE\tWORKSPACES\tSCOPES\tEXPIRES_AT\tLAST_USED_AT")
+				for _, row := range rows {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+						row.ID,
+						row.Prefix,
+						row.Name,
+						row.Type,
+						strings.Join(row.WorkspaceIDs, ","),
+						strings.Join(row.Scopes, ","),
+						formatUnixPtr(row.ExpiresAt),
+						formatUnixPtr(row.LastUsedAt),
+					)
+				}
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

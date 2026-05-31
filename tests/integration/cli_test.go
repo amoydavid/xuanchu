@@ -2,6 +2,9 @@ package integration
 
 import (
 	"encoding/json"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,6 +70,116 @@ func TestCLITokenCreateListRevoke(t *testing.T) {
 	all := run(t, bin, "--db", db, "token", "list", "--all")
 	if !strings.Contains(all, "cli") {
 		t.Fatalf("token list --all output = %q", all)
+	}
+}
+
+func TestCLIServerHealthz(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	resp, err := http.Get(baseURL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d body=%s", resp.StatusCode, string(body))
+	}
+}
+
+func TestCLIServerMeWithBearerToken(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	out := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "http", "--scope", "task:read", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	if token == "" {
+		t.Fatalf("missing raw token: %s", out)
+	}
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/me", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s", resp.StatusCode, string(body))
+	}
+	if !strings.Contains(string(body), `"name":"local"`) || !strings.Contains(string(body), `"type":"pat"`) {
+		t.Fatalf("body = %s", string(body))
+	}
+}
+
+func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write,project:read,project:write", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	if token == "" {
+		t.Fatalf("missing token in %s", tokenOut)
+	}
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	run(t, bin, "--server", baseURL, "--token", token, "project", "add", "remote", "name:Remote")
+	projectList := run(t, bin, "--server", baseURL, "--token", token, "project", "list")
+	if !strings.Contains(projectList, "remote Remote") {
+		t.Fatalf("remote project list = %q", projectList)
+	}
+
+	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "task", "project:remote", "+net")
+	list := run(t, bin, "--server", baseURL, "--token", token, "list")
+	if !strings.Contains(list, "remote task") {
+		t.Fatalf("remote list = %q", list)
+	}
+	info := run(t, bin, "--server", baseURL, "--token", token, "info", "1")
+	if !strings.Contains(info, "remote task") || !strings.Contains(info, "Project") {
+		t.Fatalf("remote info = %q", info)
+	}
+}
+
+func TestCLIRemoteTokenList(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "token:read,task:read", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	if token == "" {
+		t.Fatalf("missing token in %s", tokenOut)
+	}
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	list := run(t, bin, "--server", baseURL, "--token", token, "token", "list")
+	if !strings.Contains(list, "remote") {
+		t.Fatalf("remote token list = %q", list)
 	}
 }
 
@@ -1486,6 +1599,72 @@ func runWithEnv(t *testing.T, env map[string]string, bin string, args ...string)
 		t.Fatalf("%s %v error = %v\n%s", bin, args, err, out)
 	}
 	return string(out)
+}
+
+func startTaskgServer(t *testing.T, bin string, args ...string) (*exec.Cmd, string) {
+	t.Helper()
+	listen := pickFreeAddr(t)
+	serverArgs := append([]string{"server", "--listen", listen}, args...)
+	cmd := exec.Command(bin, serverArgs...)
+	cmd.Env = os.Environ()
+	output, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stdout = io.Discard
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}
+	})
+
+	baseURL := "http://" + listen
+	waitForHTTPServer(t, baseURL+"/healthz", output, cmd)
+	return cmd, baseURL
+}
+
+func stopTaskgServer(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		return
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		_ = cmd.Process.Kill()
+	}
+	_, _ = cmd.Process.Wait()
+}
+
+func pickFreeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	return ln.Addr().String()
+}
+
+func waitForHTTPServer(t *testing.T, url string, stderr io.Reader, cmd *exec.Cmd) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			data, _ := io.ReadAll(stderr)
+			t.Fatalf("server exited before ready: %s", string(data))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	data, _ := io.ReadAll(stderr)
+	t.Fatalf("server did not become ready: %s", string(data))
 }
 
 func runErr(t *testing.T, bin string, args ...string) (string, error) {

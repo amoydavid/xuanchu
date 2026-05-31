@@ -13,7 +13,37 @@ import (
 )
 
 func loadTomlConfig(dir string) (map[string]string, error) {
-	path := filepath.Join(dir, "taskg.toml")
+	_, values, err := loadTomlConfigWithPath(dir)
+	return values, err
+}
+
+func loadTomlConfigWithPath(dir string) (string, map[string]string, error) {
+	path, err := findTomlConfigPath(dir)
+	if err != nil {
+		return "", nil, err
+	}
+	values, err := loadTomlConfigFile(path)
+	if err != nil {
+		return "", nil, err
+	}
+	return path, values, nil
+}
+
+func findTomlConfigPath(dir string) (string, error) {
+	for _, path := range []string{
+		filepath.Join(dir, "taskg.toml"),
+		filepath.Join(dir, "taskg", "taskg.toml"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	}
+	return "", os.ErrNotExist
+}
+
+func loadTomlConfigFile(path string) (map[string]string, error) {
 	raw := map[string]any{}
 	if _, err := toml.DecodeFile(path, &raw); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

@@ -31,6 +31,8 @@ type ServiceOptions struct {
 	RuntimeOverrides map[string]string
 	ActorRef         string
 	WorkspaceRef     string
+	Runtime          *RuntimeContext
+	RequestScope     *RequestScope
 }
 
 type RuntimeError struct {

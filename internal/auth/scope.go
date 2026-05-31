@@ -7,19 +7,19 @@ import (
 )
 
 var allowedScopes = map[string]struct{}{
-	"task:read":      {},
-	"task:write":     {},
-	"project:read":   {},
-	"project:write":  {},
-	"context:read":   {},
-	"context:write":  {},
-	"config:read":    {},
-	"config:write":   {},
-	"workspace:read": {},
+	"task:read":       {},
+	"task:write":      {},
+	"project:read":    {},
+	"project:write":   {},
+	"context:read":    {},
+	"context:write":   {},
+	"config:read":     {},
+	"config:write":    {},
+	"workspace:read":  {},
 	"workspace:write": {},
-	"audit:read":     {},
-	"token:read":     {},
-	"token:write":    {},
+	"audit:read":      {},
+	"token:read":      {},
+	"token:write":     {},
 }
 
 type ScopeSet map[string]struct{}

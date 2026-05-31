@@ -22,6 +22,8 @@ type Options struct {
 
 	DataDir     string
 	DBPath      string
+	Server      string
+	Token       string
 	Workspace   string
 	JSON        bool
 	NoColor     bool
@@ -62,6 +64,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&opts.DataDir, "data-dir", opts.DataDir, "data directory")
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db", opts.DBPath, "SQLite database path")
+	cmd.PersistentFlags().StringVar(&opts.Server, "server", opts.Server, "remote taskg server base URL")
+	cmd.PersistentFlags().StringVar(&opts.Token, "token", opts.Token, "remote bearer token")
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
 	cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output")
 	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
@@ -83,6 +87,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newMemberCommand(opts))
 	cmd.AddCommand(newAuditCommand(opts))
 	cmd.AddCommand(newTokenCommand(opts))
+	cmd.AddCommand(newServerCommand(opts))
 	cmd.AddCommand(newAllCommand(opts))
 	cmd.AddCommand(newCompletedCommand(opts))
 	cmd.AddCommand(newDeletedCommand(opts))
@@ -189,7 +194,7 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 
 func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
 	rc = map[string]*string{}
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--workspace": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
 		if key, value, ok := parseRCOverride(args[i]); ok {
@@ -436,6 +441,8 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts := base
 	opts.DataDir = getCmdStringFlag(cmd, "data-dir", opts.DataDir)
 	opts.DBPath = getCmdStringFlag(cmd, "db", opts.DBPath)
+	opts.Server = getCmdStringFlag(cmd, "server", opts.Server)
+	opts.Token = getCmdStringFlag(cmd, "token", opts.Token)
 	opts.Workspace = getCmdStringFlag(cmd, "workspace", opts.Workspace)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
@@ -470,6 +477,8 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
+		Server:  opts.Server,
+		Token:   opts.Token,
 		JSON:    opts.JSON,
 		NoColor: opts.NoColor,
 		Env:     env,
@@ -526,7 +535,7 @@ func rcOverridesAsStrings(overrides map[string]*string) map[string]string {
 
 func runtimeEnv() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+	for _, key := range []string{"TASKG_DB", "TASKG_SERVER", "TASKG_TOKEN", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			values[key] = value
 		}

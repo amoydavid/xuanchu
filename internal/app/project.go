@@ -39,6 +39,9 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 	if err := s.Require(PermissionProjectManage); err != nil {
 		return ProjectView{}, err
 	}
+	if s.hasProjectScope() {
+		return ProjectView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+	}
 	slug, name, description, err := normalizeProjectCreateInput(input)
 	if err != nil {
 		return ProjectView{}, err
@@ -80,7 +83,7 @@ func (s *Service) ListProjects(includeArchived bool) ([]ProjectView, error) {
 	for _, row := range rows {
 		views = append(views, projectViewFromRow(row, counts[row.ID]))
 	}
-	return views, nil
+	return filterProjectsByScope(s.requestScope, views), nil
 }
 
 func (s *Service) ProjectInfo(ref string) (ProjectView, error) {
@@ -94,6 +97,9 @@ func (s *Service) ProjectInfo(ref string) (ProjectView, error) {
 				Code:    "project_workspace_mismatch",
 				Message: fmt.Sprintf("project %q does not belong to workspace %q", ref, s.runtime.WorkspaceSlug),
 			}
+		}
+		if err := s.ensureProjectScope(&project.ID); err != nil {
+			return ProjectView{}, err
 		}
 		return s.projectViewForRow(project)
 	}
@@ -183,7 +189,13 @@ func (s *Service) ResolveProjectInWorkspace(workspaceID, ref string) (sqlite.Pro
 	if errors.Is(err, sqlite.ErrNotFound) {
 		return sqlite.Project{}, RuntimeError{Code: "project_not_found", Message: fmt.Sprintf("project %q not found", ref)}
 	}
-	return project, err
+	if err != nil {
+		return sqlite.Project{}, err
+	}
+	if err := s.ensureProjectScope(&project.ID); err != nil {
+		return sqlite.Project{}, err
+	}
+	return project, nil
 }
 
 func (s *Service) addProjectLocked(slug, name, description string) (sqlite.Project, error) {

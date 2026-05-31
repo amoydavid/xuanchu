@@ -34,6 +34,7 @@ type Service struct {
 	runtimeUDAs           map[string]uda.Definition
 	activeContextOverride *string
 	runtime               RuntimeContext
+	requestScope          *RequestScope
 	workspaceID           string
 	clock                 Clock
 	reports               report.Registry
@@ -109,9 +110,15 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	workspaceRepo := sqlite.NewWorkspaceRepository(opts.Store.DB())
 	memberRepo := sqlite.NewMemberRepository(opts.Store.DB())
 	auditRepo := sqlite.NewAuditRepository(opts.Store.DB())
-	rt, err := ResolveRuntimeContext(opts.Store, userRepo, workspaceRepo, memberRepo, opts.ActorRef, opts.WorkspaceRef)
-	if err != nil {
-		return nil, err
+	rt := RuntimeContext{}
+	if opts.Runtime != nil {
+		rt = *opts.Runtime
+	} else {
+		var err error
+		rt, err = ResolveRuntimeContext(opts.Store, userRepo, workspaceRepo, memberRepo, opts.ActorRef, opts.WorkspaceRef)
+		if err != nil {
+			return nil, err
+		}
 	}
 	runtimeConfig := cloneStringMap(opts.RuntimeConfig)
 	runtimeUDAs, err := udaDefinitionsFromConfig(runtimeConfig)
@@ -134,6 +141,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
 		runtimeUDAs:      runtimeUDAs,
 		runtime:          rt,
+		requestScope:     cloneRequestScope(opts.RequestScope),
 		workspaceID:      rt.WorkspaceID,
 		clock:            opts.Clock,
 		reports:          report.DefaultRegistry(),
@@ -336,7 +344,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	queryExpr := query.And(contextExpr, resolvedInputQuery)
+	queryExpr := query.And(s.projectScopeExpr(), query.And(contextExpr, resolvedInputQuery))
 	udaDefs, err := s.udaDefinitionTypes()
 	if err != nil {
 		return nil, err
@@ -372,21 +380,11 @@ func (s *Service) Info(target string) (task.Task, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return task.Task{}, err
 	}
-	return s.repo.GetByUUID(s.workspaceID, target)
+	return s.resolveTargetForRead(target)
 }
 
 func (s *Service) ResolveTarget(target string) (task.Task, error) {
-	if n, err := strconv.Atoi(target); err == nil && n >= 1 {
-		tasks, err := s.defaultWorkingSet()
-		if err != nil {
-			return task.Task{}, err
-		}
-		if n > len(tasks) {
-			return task.Task{}, sqlite.ErrNotFound
-		}
-		return tasks[n-1], nil
-	}
-	return s.Info(target)
+	return s.resolveTargetForRead(target)
 }
 
 func (s *Service) Modify(target string, input ModifyInput) error {
@@ -403,7 +401,7 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 }
 
 func (s *Service) modifyLocked(target string, input ModifyInput) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -535,7 +533,7 @@ func (s *Service) Done(target string) error {
 }
 
 func (s *Service) doneLocked(target string) (string, projectChange, []AuditEntry, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, nil, err
 	}
@@ -577,7 +575,7 @@ func (s *Service) Delete(target string) error {
 }
 
 func (s *Service) deleteLocked(target string) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -606,7 +604,7 @@ func (s *Service) Start(target string) error {
 }
 
 func (s *Service) startLocked(target string) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -676,7 +674,7 @@ func (s *Service) annotateLocked(target, description string) (string, projectCha
 	}
 	now := s.clock.Unix()
 	for attempts := 0; attempts < 3; attempts++ {
-		tsk, err := s.ResolveTarget(target)
+		tsk, err := s.resolveTargetForWrite(target)
 		if err != nil {
 			return "", projectChange{}, err
 		}
@@ -721,7 +719,7 @@ func (s *Service) Denotate(target string, index int) error {
 }
 
 func (s *Service) denotateLocked(target string, index int) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -754,7 +752,7 @@ func (s *Service) AppendDescription(target, suffix string) error {
 }
 
 func (s *Service) appendDescriptionLocked(target, suffix string) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -785,7 +783,7 @@ func (s *Service) PrependDescription(target, prefix string) error {
 }
 
 func (s *Service) prependDescriptionLocked(target, prefix string) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -816,7 +814,7 @@ func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
 }
 
 func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (string, projectChange, error) {
-	original, err := s.ResolveTarget(target)
+	original, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -850,6 +848,15 @@ func (s *Service) Export() ([]task.Task, error) {
 	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{})
 	if err != nil {
 		return nil, err
+	}
+	if s.hasProjectScope() {
+		filtered := make([]task.Task, 0, len(tasks))
+		for _, tsk := range tasks {
+			if s.allowsProjectID(tsk.ProjectID) {
+				filtered = append(filtered, tsk)
+			}
+		}
+		tasks = filtered
 	}
 	for _, tsk := range tasks {
 		if err := s.validateTaskProjectInvariant(tsk); err != nil {
@@ -928,6 +935,9 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 		return err
 	}
 	if err != nil {
+		return err
+	}
+	if err := s.ensureWritableTaskScope(existing); err != nil {
 		return err
 	}
 	if err := s.normalizeImportedProjectUpdate(existing, &tsk); err != nil {
@@ -1028,7 +1038,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, err
 	}
-	merged := query.And(contextExpr, query.And(def.Filter, resolvedReportQuery))
+	merged := query.And(s.projectScopeExpr(), query.And(contextExpr, query.And(def.Filter, resolvedReportQuery)))
 	now := s.clock.Unix()
 	udaDefs, err := s.udaDefinitionTypes()
 	if err != nil {
@@ -1043,7 +1053,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, mapProjectQueryCompileError(err)
 	}
-	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: now})
+	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: now, Query: s.projectScopeExpr()})
 	if err != nil {
 		return ReportResult{}, err
 	}
@@ -1078,14 +1088,17 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 }
 
 func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return urgency.ExplainResult{}, err
+	}
 	if err := s.refreshAutomaticState(); err != nil {
 		return urgency.ExplainResult{}, err
 	}
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForRead(target)
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
-	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: s.clock.Unix()})
+	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr()})
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
@@ -1139,7 +1152,7 @@ func (s *Service) resolveDependencyTargets(targets []string) ([]string, error) {
 	depends := make([]string, 0, len(targets))
 	seen := map[string]bool{}
 	for _, target := range targets {
-		dep, err := s.ResolveTarget(target)
+		dep, err := s.resolveTargetForWrite(target)
 		if err != nil {
 			return nil, fmt.Errorf("dependency %q not found: %w", target, err)
 		}
@@ -1282,7 +1295,10 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 	if err := s.refreshAutomaticState(); err != nil {
 		return nil, err
 	}
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: s.clock.Unix()})
+	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
+		NowUnix: s.clock.Unix(),
+		Query:   s.projectScopeExpr(),
+	})
 	if err != nil {
 		return nil, err
 	}

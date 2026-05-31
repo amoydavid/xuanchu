@@ -147,5 +147,5 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 		}
 		out = append(out, view)
 	}
-	return out, nil
+	return filterAuditByScope(s.requestScope, out), nil
 }

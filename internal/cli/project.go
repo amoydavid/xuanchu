@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +32,29 @@ func newProjectListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				projects, err := client.ListProjects(context.Background(), currentOpts.Workspace, includeArchived)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), projectViewsForJSON(projects))
+				}
+				for _, project := range projects {
+					archived := ""
+					if project.ArchivedAt != nil {
+						archived = " archived"
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s %s%s\n", project.Slug, project.Name, archived)
+				}
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -66,6 +91,27 @@ func newProjectAddCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				project, err := client.AddProject(context.Background(), currentOpts.Workspace, remote.AddProjectInput{
+					Slug:        input.Slug,
+					Name:        input.Name,
+					Description: input.Description,
+				})
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Created project %s\n", project.Slug)
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -90,6 +136,27 @@ func newProjectInfoCommand(opts Options) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				project, err := client.GetProject(context.Background(), currentOpts.Workspace, args[0])
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\n", project.Slug, project.Name)
+				if project.Description != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", project.Description)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nTask Count: %d\n", project.Status, project.TaskCount)
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

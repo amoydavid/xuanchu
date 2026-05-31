@@ -144,6 +144,13 @@ func TestAuthenticateBearerToken(t *testing.T) {
 	if authn.Token.ID != created.View.ID {
 		t.Fatalf("token id = %q want %q", authn.Token.ID, created.View.ID)
 	}
+	listed, err := svc.ListTokens(ListTokensInput{})
+	if err != nil {
+		t.Fatalf("ListTokens() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0].LastUsedAt == nil || *listed[0].LastUsedAt != 100 {
+		t.Fatalf("ListTokens().LastUsedAt = %#v, want 100", listed)
+	}
 	if _, err := svc.AuthenticateBearerToken(created.RawToken + "x"); err == nil {
 		t.Fatal("AuthenticateBearerToken(invalid) error = nil")
 	} else {

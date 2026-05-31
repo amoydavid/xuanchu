@@ -46,7 +46,7 @@ func LoadRuntime(opts RuntimeOptions) (Runtime, error) {
 	for key, value := range opts.Meta {
 		values[key] = value
 	}
-	for key, value := range opts.Env {
+	for key, value := range runtimeEnvValues(opts.Env) {
 		values[key] = value
 	}
 	for key, value := range opts.Flags {
@@ -60,6 +60,26 @@ func LoadRuntime(opts RuntimeOptions) (Runtime, error) {
 		values[key] = *value
 	}
 	return Runtime{values: values}, nil
+}
+
+func runtimeEnvValues(env map[string]string) map[string]string {
+	if env == nil {
+		env = environ()
+	}
+	values := map[string]string{}
+	for key, value := range env {
+		values[key] = value
+	}
+	for envKey, configKey := range map[string]string{
+		"TASKG_DB":     "database.path",
+		"TASKG_SERVER": "remote.server",
+		"TASKG_TOKEN":  "remote.token",
+	} {
+		if value := env[envKey]; value != "" {
+			values[configKey] = value
+		}
+	}
+	return values
 }
 
 func (r Runtime) Get(key string) (string, bool) {

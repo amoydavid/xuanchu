@@ -40,6 +40,9 @@ func (s *Service) resolveActiveProjectBinding(ref *string) (projectBinding, erro
 			return projectBinding{}, err
 		}
 	}
+	if err := s.ensureProjectScope(&project.ID); err != nil {
+		return projectBinding{}, err
+	}
 	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
 		return projectBinding{}, RuntimeError{
 			Code:    "project_archived",
@@ -61,9 +64,15 @@ func (s *Service) applyProjectBinding(tsk *task.Task, slug *string) (projectChan
 
 func (s *Service) applyProjectBindingFrom(tsk *task.Task, slug *string, before projectBinding) (projectChange, error) {
 	if slug == nil {
+		if s.hasProjectScope() && !s.allowsProjectID(tsk.ProjectID) {
+			return projectChange{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		}
 		return projectChange{Before: before, After: before}, nil
 	}
 	if strings.TrimSpace(*slug) == "" {
+		if s.hasProjectScope() {
+			return projectChange{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		}
 		clearProjectBinding(tsk)
 		return projectChange{Before: before, After: projectBinding{}}, nil
 	}
