@@ -22,7 +22,7 @@
 | M5 | 已完成 | Project 实体化与 Workspace/Project 配置边界 |
 | M6 | 已完成 | HTTP/JSON API、远程 CLI 与 Agent Token |
 | M7 | 已完成 | 企业 Agent MCP Server 与工具接口 |
-| M8 | 待规划 | Agent 驱动的外部集成、触发器、发布与运维打磨 |
+| M8 | 规划完成，待实现 | 服务端 Hook / 自动化扩展与运维交付打磨 |
 
 ## M0：本地单用户 CLI
 
@@ -599,70 +599,50 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 - 每个 tool 都有 schema 和集成测试。
 - Agent 可以完成“查询项目待办、添加项目任务、解释 urgency、写入审计”的完整流程。
 
-## M8：Agent 驱动的外部集成、触发器、发布与运维打磨
+## M8：服务端 Hook / 自动化扩展与运维交付打磨
 
-**目标：** 把 taskg 打磨成可交付、可迁移、可部署、可被外部系统驱动的完整产品。外部系统不是主角；它们负责产生事件或承载输出，真正的任务决策由 Agent 通过 taskg MCP/API 完成。
+**目标：** 为 `taskg server` 增加可审计、可控、可恢复的服务端 Hook / automation 能力，让内部事件发生后可以稳定触发外部 webhook，同时补齐与该能力直接相关的部署、发布与恢复文档。`taskg` 核心仍然是 workspace/project/task/权限/审计运行时，而不是业务域 adapter 市场或通用工作流编排平台。
 
 **范围：**
 
-- 触发器：
-  - webhook trigger。
-  - schedule / heartbeat trigger。
-  - 一次性 trigger。
-  - 触发器必须绑定 actor、workspace 和可选 project scope。
-- Agent 驱动的外部适配：
-  - 飞书、GitHub、Jira、Slack 等都只是 adapter 示例。
-  - adapter 负责接收事件、标准化 payload、调用 Agent 或 taskg MCP/API、回写外部系统。
-  - 不把飞书作为唯一目标，也不把飞书业务逻辑写进 taskg 核心。
-- Hook：
-  - `on-launch`。
-  - `on-add`。
-  - `on-modify`。
-  - `on-exit`。
-  - 本地脚本 Hook 与服务端 Webhook。
-  - project/workspace 级 webhook。
-  - timeout、失败回滚、stdout/stderr 协议、Webhook 签名。
-- 同步与 operation log：
-  - 是否进入 M8 由 M8 spec 评估。如果进入，范围包括 `operations` 表、replica_id、断点续传、冲突策略和 tags 原子 add/remove。
-  - 如果范围过大，应拆成 M9，不阻塞外部触发和 MCP 产品化。
-- Agent 记忆：
-  - workspace 级企业偏好。
-  - project 级项目背景、约束和默认 context。
-  - 个人偏好。
-  - Agent 可读的 context/config 摘要。
-- backup：
-  - SQLite `VACUUM INTO`。
-  - JSON 导出。
-  - 恢复演练文档。
-- Taskwarrior 迁移打磨：
-  - 真实 `task export` 样本导入。
-  - 兼容性报告。
-  - 不支持字段保留策略。
-- 发布：
-  - linux/amd64。
-  - linux/arm64。
-  - darwin/amd64。
-  - darwin/arm64。
-  - windows/amd64。
-  - 全部 CGO-free。
-- 文档：
-  - 安装。
-  - 本地 CLI。
-  - 服务端部署。
-  - 远程 CLI。
-  - HTTP API。
-  - MCP。
-  - 外部 adapter 编写指南。
-  - 迁移。
-  - 备份恢复。
+- 服务端 Hook：
+  - 仅做 server-side hook runtime。
+  - 仅做 post-commit 异步投递语义。
+  - 支持 workspace 级和 project 级 webhook hook。
+  - hook 必须绑定 actor、workspace 和可选 project scope。
+  - 事件集合首版聚焦稳定内部事件，例如 `task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。
+- 投递与恢复：
+  - durable delivery queue / outbox。
+  - timeout、retry、disable、dead-letter、manual replay。
+  - Webhook HMAC 签名与稳定事件 envelope。
+  - hook 失败不回滚已经提交成功的 task/project 事务。
+- 管理面：
+  - CLI 与 HTTP API 管理 hook definition、delivery state 和 replay。
+  - hook 配置变更与人工 replay 必须写 audit。
+  - delivery 级状态进入专用运行记录，不把每次投递尝试都膨胀成业务 audit。
+- 运维交付：
+  - 服务端部署文档。
+  - backup / restore 演练文档。
+  - CGO-free 发布产物与安装说明。
+
+**不进入 M8：**
+
+- 飞书 / GitHub / Jira / Slack 等业务域 adapter。
+- Agent memory 系统。
+- replica / sync / operation log 同步。
+- 本地 CLI shell hook。
+- `heartbeat` trigger。
+- 没有明确业务事件支撑的 `schedule` / `one-shot` trigger。
+- 事务内外部回调强一致 / 外部失败回滚本地事务。
 
 **验收标准：**
 
-- 新用户只靠 README 可以完成安装、添加任务、查询任务、导入 Taskwarrior 数据。
-- 管理员只靠文档可以部署服务端、创建 token、配置远程 CLI。
-- Agent 可以通过 MCP 完成常见任务管理流程。
-- 至少一个外部 adapter 示例可在测试环境跑通；飞书可以是示例之一，但不是唯一目标。
-- 触发器不会绕过 workspace/project/token 权限。
+- 管理员可以为 workspace 或 project 配置 webhook hook，并在命中事件后收到稳定 JSON payload。
+- project-scoped hook 不会收到 scope 外事件。
+- hook 投递失败不会回滚已提交的 task/project 事务。
+- timeout、retry、disable、dead-letter、manual replay 都有端到端测试。
+- hook 配置变更和人工 replay 都有 audit。
+- 管理员只靠 README/部署文档即可完成服务端部署、token 配置、hook 启用和基础恢复演练。
 - 所有发布产物均通过 CGO-free 验证。
 
 ## 跨 Milestone 规则
@@ -685,11 +665,18 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M7 已完成。当前重点推进 M8：
+M7 已完成。当前重点推进 M8 实现：
 
-- M8 spec 需要先定义触发器、Hook、外部 adapter 的范围和优先级。
-- M8 评估是否引入 operation log 同步，或拆分到 M9。
-- 发布与文档打磨：交叉编译、安装指南、迁移文档、备份恢复。
+- M8 spec 与 implementation plan 已定义服务端 Hook 的事件模型、投递语义、权限边界和恢复策略。
+- M8 不做 adapter / memory / replica/sync，避免把 taskg 推成业务域编排平台。
+- 与 Hook 直接相关的部署、发布、backup / restore 文档需要同步收口。
+
+M8 规格与实现计划：
+
+```text
+docs/superpowers/specs/2026-06-02-taskg-m8-design.md
+docs/superpowers/plans/2026-06-02-taskg-m8-implementation.md
+```
 
 M7 规格与实现计划：
 

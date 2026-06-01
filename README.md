@@ -308,7 +308,7 @@ format = "rfc3339"
 - `uda.*`
 - `urgency.uda.*`
 - `context.<name>`
-- 未来的 report、hook、agent memory、project defaults
+- 未来的 report、hook、project defaults
 
 这些配置属于 workspace，应写入 SQLite，由权限和 audit 管理：
 
@@ -419,13 +419,13 @@ M4 新增了企业运行时基础：
 - M5：已完成。project 已是 workspace 内的一等对象，采用严格 project 注册，并明确 workspace/project 配置边界。
 - M6：在稳定 project scope 上提供 HTTP/JSON API、远程 CLI 和 Agent token。
 - M7：提供企业 Agent MCP Server，让 Agent 通过受权限约束的 tool 操作任务。
-- M8：接入外部系统触发器和 adapter。飞书、GitHub、Jira、Slack 都只是 adapter 示例，taskg 核心仍是 workspace/project/task/权限/审计。
+- M8：提供服务端 Hook / 自动化扩展与运维交付打磨。主线是内部事件触发的 webhook hook；不做业务域 adapter、不做 memory，也不做 replica/sync。
 
 权限模型：
 
 - `viewer` 可以读任务、报表、helper、member list，并能切换自己的 active context
 - `member` 额外可以写任务、import、定义/删除 context
-- `admin` 额外可以改 workspace metadata、管理非 owner 成员、查看 audit、管理 UDA schema
+- `admin` 额外可以改 workspace metadata、管理非 owner 成员、查看 audit、管理 UDA schema、管理服务端 Hook
 - `owner` 额外可以授予/降级 owner、归档 workspace
 
 `config list` 和 `_show` 只暴露用户可用的 public key，例如 `active.user`、`active.workspace`、`active.context`、`uda.*`、`urgency.*`。`active_user_id`、`active_workspace.<user>`、`active_context.<user>.<workspace>` 是内部 meta，不作为 CLI 接口使用。
@@ -624,7 +624,7 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 常用 capability：
 
 ```text
-task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write
+task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write
 ```
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{uuid}` 只接受真实 UUID；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析为 UUID。
