@@ -1,0 +1,120 @@
+{
+  "description": "Modify a task; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "clear": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "clear_depends": {
+        "type": "boolean"
+      },
+      "depends": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "due": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "priority": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "remove_tags": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "scheduled": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "tags": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "udas": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "until": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "wait": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "type": "object"
+  },
+  "name": "task.modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

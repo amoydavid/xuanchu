@@ -1,0 +1,48 @@
+{
+  "description": "Query tasks; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "include_completed": {
+        "type": "boolean"
+      },
+      "include_deleted": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "task.query",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

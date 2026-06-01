@@ -292,6 +292,40 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 	return created, err
 }
 
+func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task.Task, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return task.Task{}, err
+	}
+	if len(annotations) == 0 {
+		return s.Add(input)
+	}
+	var created task.Task
+	err := s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
+		var (
+			err    error
+			change projectChange
+		)
+		created, change, err = tx.addLocked(input)
+		if err != nil {
+			return nil, err
+		}
+		entries := []AuditEntry{taskAuditEntry("task.add", created.UUID, change)}
+		for _, annotation := range annotations {
+			targetID, change, err := tx.annotateLocked(created.UUID, annotation)
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, taskAuditEntry("task.annotate", targetID, change))
+		}
+		created, err = tx.repo.GetByUUID(tx.workspaceID, created.UUID)
+		if err != nil {
+			return nil, err
+		}
+		return entries, nil
+	})
+	return created, err
+}
+
 func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	now := s.clock.Unix()
 	if input.Recur != nil {

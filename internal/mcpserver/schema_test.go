@@ -32,7 +32,7 @@ func goldenGet(t *testing.T, name string, actual []byte) []byte {
 	return want
 }
 
-func TestListToolsEmpty(t *testing.T) {
+func TestListToolsDefaultServerHasTools(t *testing.T) {
 	srv := NewServer(Options{Version: "test"})
 
 	// 创建 in-memory transport 对
@@ -62,8 +62,8 @@ func TestListToolsEmpty(t *testing.T) {
 		t.Fatalf("list tools: %v", err)
 	}
 
-	if len(result.Tools) != 0 {
-		t.Fatalf("expected 0 tools, got %d", len(result.Tools))
+	if len(result.Tools) == 0 {
+		t.Fatal("expected default MCP server to expose tools")
 	}
 
 	// golden 比较：序列化完整结果
@@ -72,7 +72,7 @@ func TestListToolsEmpty(t *testing.T) {
 		t.Fatalf("marshal result: %v", err)
 	}
 
-	want := goldenGet(t, "list-tools-empty.json", got)
+	want := goldenGet(t, "list-tools-default.json", got)
 	gotS := string(got)
 	wantS := string(want)
 	if gotS != wantS {

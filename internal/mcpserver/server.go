@@ -2,8 +2,7 @@ package mcpserver
 
 import "github.com/modelcontextprotocol/go-sdk/mcp"
 
-// NewServer 创建一个空的 MCP server 实例。
-// 调用方后续通过 AddTool 等方法注册能力。
+// NewServer 创建注册了 taskg 默认工具的 MCP server 实例。
 func NewServer(opts Options) *mcp.Server {
 	version := opts.Version
 	if version == "" {
@@ -13,5 +12,13 @@ func NewServer(opts Options) *mcp.Server {
 		Name:    "taskg",
 		Version: version,
 	}, nil)
+	RegisterTools(srv, opts)
 	return srv
+}
+
+// RegisterTools 在 server 上注册所有核心工具。
+// 必须在 NewServer 之后、Run/Connect 之前调用。
+func RegisterTools(s *mcp.Server, opts Options) {
+	registerTaskTools(s, opts)
+	registerReportTools(s, opts)
 }

@@ -1,0 +1,634 @@
+{
+  "tools": [
+    {
+      "description": "Run a task report; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "report.run",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "description": "task description",
+            "type": "string"
+          },
+          "due": {
+            "description": "unix seconds",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "priority": {
+            "type": "string"
+          },
+          "project": {
+            "description": "project slug in the effective workspace",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "stable project UUID",
+            "type": "string"
+          },
+          "scheduled": {
+            "description": "unix seconds",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "until": {
+            "description": "unix seconds",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "wait": {
+            "description": "unix seconds",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "workspace": {
+            "description": "workspace slug or UUID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "type": "object"
+      },
+      "name": "task.add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Annotate a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.annotate",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.delete",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Adjust task dependencies; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "clear_depends": {
+            "type": "boolean"
+          },
+          "depends": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.depends",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Complete a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.done",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get one task; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "task UUID; stdio may also use working-set ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.get",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "clear": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "clear_depends": {
+            "type": "boolean"
+          },
+          "depends": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "due": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "remove_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "scheduled": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "udas": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "until": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "wait": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Query tasks; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_completed": {
+            "type": "boolean"
+          },
+          "include_deleted": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "task.query",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Start a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.start",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Stop a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task.stop",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Explain task urgency; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "urgency.explain",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    }
+  ]
+}
