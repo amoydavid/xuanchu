@@ -673,7 +673,7 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 | `task.done` | 完成任务 |
 | `task.delete` | 删除任务 |
 | `task.query` | 通用查询，支持 filter、status、limit |
-| `task.get` | 按 UUID 或 DOM 表达式读取任务 |
+| `task.get` | 按 UUID 读取任务；stdio 模式可使用工作集 ID |
 | `task.annotate` | 添加注释 |
 | `task.depends` | 添加依赖 |
 | `task.start` | 开始任务 |
