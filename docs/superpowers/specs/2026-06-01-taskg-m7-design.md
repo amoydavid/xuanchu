@@ -52,7 +52,7 @@ M7 将 Go 版本从 `1.22` 升级到 `1.25`。
 
 规则：
 
-- M7 plan 的 Phase 0 必须先升级 `go.mod`、文档和 CI/验收说明中的 Go 版本。
+- M7 plan 的 Phase 0a 必须先升级 `go.mod`、文档和 CI/验收说明中的 Go 版本。
 - 升级 Go 不改变 SQLite driver。仍使用 `GORM + github.com/glebarez/sqlite`，继续保持 `CGO_ENABLED=0` 验收。
 - 不引入 `gorm.io/driver/sqlite`。
 - 不引入 `github.com/mattn/go-sqlite3`。
@@ -74,6 +74,7 @@ M7 不更换 HTTP 框架。
 - `/healthz` 继续保持匿名。
 - HTTP server 生命周期、timeout、access log、body limit 继续沿用 M6 语义。
 - 如需新增 MCP HTTP endpoint，应挂在同一个 `http.Server` 上，而不是启动第二个端口。
+- M7 不新增内置 TLS 和 CORS 配置。`/mcp` 与 `/api/v1/*` 共享同一个 HTTP server 和同一套反向代理部署边界；未来如新增 CORS/TLS 配置，必须同时适用于 REST 与 MCP。
 
 ### 2.3 MCP 协议层使用官方 MCP Go SDK
 
@@ -135,13 +136,13 @@ M6 明确把下列远程 CLI 管理命令留给 M7：
 - `taskg --server ... member list|add|role`
 - `taskg --server ... show`
 
-M7 必须把这些命令的远程行为作为 Phase 0 收口：能安全远程化的命令必须支持；本质依赖本机身份切换的命令必须继续明确返回 `remote_unsupported_command`，并用测试证明不会触碰本地 DB。
+M7 必须把这些命令的远程行为作为 Phase 0b 收口：能安全远程化的命令必须支持；本质依赖本机身份切换的命令必须继续明确返回 `remote_unsupported_command`，并用测试证明不会触碰本地 DB。
 
 规则：
 
 - 已有 HTTP endpoint 能覆盖的命令直接接线。
-- 当前 HTTP endpoint 不足以覆盖的命令，M7 Phase 0 必须补最小 REST endpoint，并同步 OpenAPI；不能让远程 CLI 回退到本地 SQLite。
-- `workspace use` 远程模式写服务端 `(actor, workspace)` active workspace，不修改操作者本机业务状态。
+- 当前 HTTP endpoint 不足以覆盖的命令，M7 Phase 0b 必须补最小 REST endpoint，并同步 OpenAPI；不能让远程 CLI 回退到本地 SQLite。
+- `workspace use` 远程模式写服务端 `active_workspace.<actor_user_id>`，不修改操作者本机业务状态。
 - `user use` 远程模式继续不支持。HTTP token 的 actor 已由 token 决定，远程命令不应让客户端切换成另一个 user。
 - 原有 `remote_unsupported_command` 集成测试要拆成两类：
   - 命令已经远程成功。
@@ -275,7 +276,8 @@ taskg server --listen :8080
 - `/mcp` 使用 MCP SDK 的 Streamable HTTP handler。
 - `/mcp` 与 `/api/v1/*` 共享同一个 SQLite store、clock、stderr、access log 基础设施。
 - `/mcp` 不进入 OpenAPI；OpenAPI 只描述 REST API。
-- `/mcp` 的 body limit、panic recovery、request id、access log 应尽量复用 HTTP middleware。
+- `/mcp` 必须复用 body limit、panic recovery、request id、access log 四个 middleware。
+- MCP Streamable HTTP 长连接场景下，body limit 是限制单条 HTTP request 还是整个会话，由 implementation plan 阶段验证 SDK 行为并写测试。
 
 ### 4.2 本地 MCP stdio
 
@@ -299,6 +301,7 @@ taskg mcp stdio --project-id <uuid>
 - 可用 `--workspace` 覆盖 effective workspace。
 - 可用 `--project-id` 或 `--project` 收窄 project scope。
 - 如果本地没有 active user/workspace，返回稳定 MCP error，不自动创建匿名 actor。
+- `taskg mcp` 只作为协议入口命名空间。M7 不新增 `taskg mcp tools list` 之类诊断子命令；如需调试，优先通过 `taskg server` 的 MCP debug flag 或测试工具实现，避免协议入口命名空间膨胀。
 
 ### 4.3 MCP HTTP
 
@@ -336,7 +339,7 @@ M7 固定使用：
 
 理由：
 
-- MCP 是协议入口，不是 REST API 子资源。
+- MCP Streamable HTTP 在同一路径上复用 GET/POST 实现长连接与请求响应混合语义，与 `/api/v1/*` 的同步 REST 资源语义不同。强行嵌套进 REST API 会让 OpenAPI 描述失真。
 - 官方 SDK 的 Streamable HTTP client/server 示例使用独立 endpoint。
 - 未来如需版本化，应优先通过 MCP protocol version 和 SDK 能力协商处理。
 
@@ -446,11 +449,11 @@ func NewServer(opts Options) *mcp.Server
 
 规则：
 
-- 参数解析错误：`api_bad_request` 或更具体的 app runtime code。
-- 认证失败：HTTP MCP 在 handler 层返回 HTTP 401；stdio MCP 返回 MCP error。
-- 权限不足：保留 `permission_denied`、`token_scope_denied`、`workspace_scope_denied`、`project_scope_denied`。
-- 资源不存在：保留 `task_not_found`、`project_not_found`、`workspace_not_found`、`context_not_found`。
-- tool 内部错误：返回 `api_internal` 或 `mcp_internal`，不得泄露 stack trace。
+- 业务错误走 MCP tool result：`CallToolResult.IsError = true`，`Content` 中包含可读 `rendered` 文本；如果 SDK structured output 支持错误 payload，则同时返回 `{code,message,details}`。
+- 业务错误包括 `permission_denied`、`token_scope_denied`、`workspace_scope_denied`、`project_scope_denied`、`task_not_found`、`project_not_found`、`workspace_not_found`、`context_not_found`、`project_mismatch` 等 app `RuntimeError` / `PermissionError`。
+- 协议错误走 JSON-RPC error，例如 tool 不存在、SDK schema 层类型不匹配、缺失必填字段且未进入业务 handler。
+- 网络、IO、panic、不可恢复内部错误走 JSON-RPC `InternalError`，并包装为 `mcp_internal`；不得泄露 stack trace。
+- 认证失败：HTTP MCP 在 handler 层返回 HTTP 401；stdio MCP actor 解析失败返回 MCP tool/protocol error，具体由进入 tool handler 前后决定。
 - MCP protocol error 与业务 error 分层；不要把所有 app error 都压成 JSON-RPC `InternalError`。
 
 ### 5.6 审计
@@ -484,6 +487,7 @@ local active user + local active workspace + optional project scope
 - 同时设置 `--project` 和 `--project-id` 时必须解析到同一个 project。
 - stdio MCP 不读取远程 token。
 - stdio MCP 不使用 `taskg.toml` 中的 `remote.token` 做 actor。
+- `active_workspace.<user_id>` 是 actor 维度的服务端 SQLite 状态，HTTP MCP、stdio MCP、远程 CLI、本地 CLI 共享。HTTP `workspace use` 修改后，其它入口在同一 DB 上会立刻看到新值。
 
 ### 6.2 HTTP MCP scope
 
@@ -552,7 +556,7 @@ MCP tool 到 token capability / app permission 的映射：
 | `config.get` | `config:read` | config key 对应 read permission |
 | `config.set` | `config:write` | config key 对应 write permission |
 
-如果 M6 token capability 表中缺少 `context:write`、`config:read`、`config:write` 等细分能力，M7 plan 必须先补齐 capability 定义或明确复用已有 capability。不能让 MCP tool 绕过 capability 检查。
+上述 capability 已在 M6 定义并启用。M7 plan 只需确认所有 MCP tool 复用现有字符串，不新增 capability 名称。`context.set` 只切换 active context，不定义或删除 context，因此沿用 M6 `context:write + PermissionContextUse` 组合；定义/删除 context 仍属于 `PermissionContextManage`，不进入 M7 MCP tool。
 
 ## 7. MCP Tools
 
@@ -565,6 +569,7 @@ MCP tool 到 token capability / app permission 的映射：
 - tool 不暴露 CLI flag 名称，例如不使用 `--project-id`，而是 `project_id`。
 - tool 描述必须说明副作用：只读、写任务、写 context、写 config。
 - tool schema 必须测试，避免字段漂移。
+- 凡 MCP tool 输出与 REST endpoint 表达同一资源，`data.<resource>` schema 必须与 REST DTO 字段完全一致。任何字段差异必须在本规格显式列出。
 
 ### 7.2 Task tools
 
@@ -591,7 +596,7 @@ MCP tool 到 token capability / app permission 的映射：
 
 - project 必须是已存在、未归档 project。
 - project-scoped token 创建任务时，如果指定 project 不在 allowlist，返回 `project_scope_denied`。
-- 没有指定 project 但 token 只有一个 project allowlist 时，是否自动填充 project 由 plan 阶段决定；如果自动填充，必须在 spec 实施计划中写测试。默认建议不自动填充，要求显式 project，避免 Agent 写错项目。
+- 没有指定 project 时，不自动填充 project；即使 token 只有一个 project allowlist，Agent 也必须显式指定 project 或 project_id，避免写错项目。
 
 #### `task.query`
 
@@ -616,7 +621,8 @@ MCP tool 到 token capability / app permission 的映射：
 规则：
 
 - 默认不返回 deleted。
-- limit 必须有上限，建议继承 HTTP list 上限；如果当前 HTTP 没有 list 上限，M7 应为 MCP 单独设默认上限，避免 Agent 一次拉全库。
+- `limit` 默认 200，最大 1000；超过最大值或非正数返回 `api_bad_limit`。
+- M7 Phase 0b 必须给 `/api/v1/tasks` 同步增加相同 limit 语义并更新 OpenAPI，避免 REST/MCP 行为分叉。
 - token project scope 必须叠加到 query。
 
 #### `task.get`
@@ -640,6 +646,7 @@ MCP tool 到 token capability / app permission 的映射：
 - HTTP MCP 默认不应依赖客户端本机 working set；远程场景推荐 UUID。
 - 如果 HTTP MCP 支持工作集 ID，必须使用服务端 actor/workspace 维度 working set，不得读取客户端本机状态。
 - 任务存在但不在 project allowlist 时返回 `task_not_found`，避免泄露存在性。
+- working-set ID 在两次 tool call 之间不保证稳定；并发 session 中 add/done/delete 会让编号 shift。Agent 在多步流程里应使用 `task.add` / `task.query` 返回的 UUID 作为后续引用。
 
 #### `task.modify`
 
@@ -649,6 +656,8 @@ MCP tool 到 token capability / app permission 的映射：
 
 - `id` 必填。
 - `description`、`project`、`project_id`、`priority`、`due`、`wait`、`scheduled`、`until`、`tags`、`remove_tags`、`udas` 等可选。
+- `depends` 可选，语义为 add-only，与当前 app `AddDepends` 一致。
+- `clear_depends` 可选；如果和 `depends` 同时出现，先清空再添加，与当前 app `ClearDepends + AddDepends` 一致。
 - `clear` 可选，表示清空指定字段。
 
 输出：
@@ -661,6 +670,7 @@ MCP tool 到 token capability / app permission 的映射：
 - 必须复用 app service 的 replace/modify 语义。
 - project 修改必须遵守严格 project 注册。
 - project-scoped token 不能把任务移出 allowlist。
+- M7 不新增 `ReplaceDepends` 语义。
 
 #### `task.done`
 
@@ -698,6 +708,7 @@ MCP tool 到 token capability / app permission 的映射：
 规则：
 
 - 不做硬删除，沿用任务状态删除语义。
+- 删除成功后 `data.task.status` 必须是 `deleted`。
 
 #### `task.annotate`
 
@@ -722,8 +733,8 @@ M7 不新增 `task.denotate`，除非 plan 阶段确认 app service 已有稳定
 输入：
 
 - `id` 必填。
-- `depends`：依赖任务 UUID 列表。
-- `append` 可选，默认 false 表示替换。
+- `depends`：依赖任务 UUID 列表，语义为 add-only。
+- `clear_depends` 可选；如果为 true，先清空现有依赖，再添加 `depends`。
 
 输出：
 
@@ -732,8 +743,10 @@ M7 不新增 `task.denotate`，除非 plan 阶段确认 app service 已有稳定
 
 规则：
 
+- `task.depends` 是 `task.modify` 依赖字段的窄包装，方便 Agent 调用；不得引入第二套依赖语义。
 - 依赖目标必须在同 workspace 且对 actor 可见。
 - project-scoped token 不能通过 depends 泄露 allowlist 外任务。
+- M7 不新增 `ReplaceDepends`。需要替换依赖时使用 `clear_depends=true` 加新的 `depends` 列表。
 
 #### `task.start` / `task.stop`
 
@@ -774,6 +787,7 @@ M7 不新增 `task.denotate`，除非 plan 阶段确认 app service 已有稳定
 规则：
 
 - 只读。
+- `limit` 默认 200，最大 1000；超过最大值或非正数返回 `api_bad_limit`。
 - project token scope 必须叠加。
 
 #### `urgency.explain`
@@ -979,10 +993,16 @@ M7 不新增 `task.denotate`，除非 plan 阶段确认 app service 已有稳定
 - HTTP MCP 不支持写操作者本机 local config。
 - `color`、`json` 这类个人渲染配置不应通过 HTTP MCP 写 workspace/project 配置。
 - config key 权限继续复用 M6/M5 分类。
+- `scope=workspace` 时，key 必须满足 M6 workspace business config 白名单，例如 `date.format`、`uda.*`、`urgency.*`；否则返回 `config_key_unsupported`。
+- `scope=project` 时，key 必须是 M5 project config 白名单。
+- `agent.*` 系列只能用于 `scope=project`。
+- `scope=local` 在 HTTP MCP 永远拒绝；stdio MCP M7 默认也拒绝 local config 写入，避免协议入口修改个人渲染配置。
 
 ## 8. MCP Resources
 
 M7 应提供最小 resources，让 Agent 获取背景而不是把所有上下文塞进 tool 参数。
+
+M7 不做列表型 resource，例如 `taskg://workspace/{id}/projects` 或 `taskg://project/{id}/tasks`。列表数据必须通过 `project.list`、`task.query` 等 tools 获取。原因是初版 resource 只承载背景和约束，避免 MCP 客户端在上下文阶段拉取大量任务列表。
 
 ### 8.1 Resource URI
 
@@ -1058,6 +1078,7 @@ M5 已有 project config。M7 定义 Agent 可读 key：
 - 这些 key 是普通 project config 的受控子集。
 - `project.get` 和 project resource 可以读取这些 key。
 - `config.get` 仍可按权限读取其它允许 key。
+- 每个 `agent.*` value 上限 16KB；超长在 SetConfig 入口拒绝并返回 `config_value_too_large`。
 - M7 不做向量记忆、长短期记忆、自动总结和外部知识库。
 
 ## 10. 远程 CLI 管理命令收口
@@ -1079,8 +1100,9 @@ taskg --server ... workspace archive <slug|uuid>
 
 - 接 M6 HTTP workspace endpoint。
 - 输出与本地 human / JSON 尽量一致。
-- `workspace use` 需要新增 `POST /api/v1/workspaces/{workspace}/use` 或等价 endpoint。
-- `workspace use` 写服务端 SQLite 中 actor 的 active workspace，后续远程命令没有显式 `--workspace` 时可使用该状态。
+- `workspace use` 使用 `PUT /api/v1/me/active_workspace`，body 为 `{"workspace":"slug-or-uuid"}`。
+- 选择 `/api/v1/me/active_workspace` 的原因是 active workspace 是 actor 状态的一等资源，幂等 PUT 比动词子资源更稳定；后续如需 active context endpoint，可沿用 `/api/v1/me/active_context`。
+- `workspace use` 写服务端 SQLite 中 actor 的 `active_workspace.<user_id>`，后续远程命令没有显式 `--workspace` 时可使用该状态。
 - `workspace use` 不能修改客户端本机 TOML 或本地 DB。
 
 ### 10.2 user
@@ -1196,8 +1218,9 @@ M7 只在 REST endpoint 变化时更新 OpenAPI。
 规则：
 
 - `/mcp` 不进入 OpenAPI。
-- Phase 0 需要为远程 `user list/info/add` 和 `workspace use` 补最小 REST endpoint，必须更新 `docs/openapi/taskg-v1.yaml`。
+- Phase 0b 需要为远程 `user list/info/add` 和 `workspace use` 补最小 REST endpoint，必须更新 `docs/openapi/taskg-v1.yaml`。
 - 如果只是把远程 CLI 接到已有 endpoint，不需要新增 OpenAPI path。
+- `workspace use` 对应的 REST path 固定为 `PUT /api/v1/me/active_workspace`，不要再新增 `POST /api/v1/workspaces/{workspace}/use` 之类动词 endpoint。
 
 ### 12.2 MCP tool schema
 
@@ -1211,6 +1234,7 @@ MCP tool schema 是 M7 的验收重点。
 - 不出现 Go 内部字段名。
 - 不出现 CLI flag 名称如 `project-id`。
 - `workspace`、`project`、`project_id` 三类 scope 参数一致。
+- `schema_test.go` 必须把每个 tool 的 input schema 序列化为稳定 JSON，并与 `internal/mcpserver/testdata/<tool>.schema.json` golden 文件对比。新增或修改字段必须显式更新 golden；CI 失败时应展示 schema diff。
 
 ## 13. 测试策略
 
@@ -1225,7 +1249,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
 ```
 
-M7 plan 应在 Go 升级后先跑上述命令，再继续 MCP 实现。
+M7 plan 应在 Phase 0a Go 升级后先跑上述命令，再继续 Phase 0b/0c 和 MCP 实现。Phase 0b/0c 也必须分别独立跑同一组验证。
 
 ### 13.2 MCP unit tests
 
@@ -1291,32 +1315,71 @@ go test -race ./internal/mcpserver ./internal/app
 
 ## 14. 分阶段交付
 
-### Phase 0：平台升级与 M6 遗留收口
+### Phase 0a：Go 版本升级
 
 目标：
 
 - 升级 Go。
-- 引入官方 MCP Go SDK。
-- 补齐远程管理命令。
+- 不引入 MCP SDK。
+- 不改业务行为。
 
 交付：
 
 - `go.mod` Go 版本更新。
 - README / ROADMAP / AGENTS 技术栈说明更新。
-- M6 遗留远程管理命令接线。
+
+验收：
+
+- 独立提交。
+- 全量测试通过。
+- CGO-free 测试和构建通过。
+- 不引入 CGO SQLite driver。
+
+### Phase 0b：M6 遗留远程管理命令收口
+
+目标：
+
+- 补齐远程管理命令。
+- 补最小 REST endpoint 和 OpenAPI。
+
+交付：
+
+- `PUT /api/v1/me/active_workspace`。
+- `GET /api/v1/users`。
+- `POST /api/v1/users`。
+- `GET /api/v1/users/{user}`。
+- 远程 workspace/user/member/show 命令接线。
 - 相关集成测试。
 
 验收：
 
-- 全量测试通过。
-- CGO-free 测试和构建通过。
-- 不引入 CGO SQLite driver。
+- 独立提交。
+- 远程命令不触碰本地 DB。
+- OpenAPI 与实现一致。
+
+### Phase 0c：官方 MCP SDK 引入
+
+目标：
+
+- 引入官方 MCP Go SDK。
+- 建立空 MCP server 骨架和 schema 测试基础。
+
+交付：
+
+- `github.com/modelcontextprotocol/go-sdk/mcp` 依赖。
+- `internal/mcpserver` 基础包。
+- 空或最小 tool 注册 smoke test。
+
+验收：
+
+- 独立提交。
+- 全量测试、CGO-free 测试和构建通过。
 
 ### Phase 1：MCP server 基础设施
 
 目标：
 
-- 建立 `internal/mcpserver`。
+- 扩展 Phase 0c 建立的 `internal/mcpserver`。
 - 实现 stdio MCP。
 - 实现 HTTP `/mcp`。
 - 建立 result/error/scope adapter。
@@ -1405,6 +1468,8 @@ M7 不做：
 - 任务自动分解 Agent。
 - Web UI。
 
+上述 non-goals 的落地版本由后续 ROADMAP 决定，本规格不做承诺。
+
 ## 16. ROADMAP 对齐
 
 ROADMAP M7 要求：
@@ -1418,10 +1483,10 @@ ROADMAP M7 要求：
 
 本规格完全覆盖以上要求，并额外明确：
 
-- Go 升级是 M7 Phase 0。
+- Go 升级是 M7 Phase 0a。
 - MCP 采用官方 Go SDK，避免重复造轮子。
 - REST HTTP 不换框架。
-- M6 遗留远程管理命令作为 M7 Phase 0 收口。
+- M6 遗留远程管理命令作为 M7 Phase 0b 收口。
 - `/mcp` 不进入 OpenAPI。
 
 ## 17. 验收标准
@@ -1455,9 +1520,9 @@ go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || t
 
 M7 plan 按下列默认决策拆解，不再把这些问题留到实现中临场判断：
 
-1. `workspace use` 远程模式支持，新增最小服务端 active workspace endpoint，并更新 OpenAPI。
+1. `workspace use` 远程模式支持，新增 `PUT /api/v1/me/active_workspace`，并更新 OpenAPI。
 2. `user add/list/info` 远程模式支持，新增最小 user management REST endpoint，并更新 OpenAPI。
 3. `user use` 远程模式继续 unsupported，因为 actor 由 token 决定。
 4. HTTP MCP `task.get` 只承诺 UUID；stdio MCP 可以支持工作集 ID。
 5. `task.add` 不自动填充 project；即使 token 只有一个 project allowlist，Agent 也必须显式指定 project 或 project_id。
-6. M7 Phase 0 补齐 `context:read`、`context:write`、`config:read`、`config:write` capability，避免 MCP 放宽权限。
+6. 维持 M6 capability 集合：`context:read`、`context:write`、`config:read`、`config:write` 已存在，M7 MCP tool 复用这些字符串，不新增同义 capability。
