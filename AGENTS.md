@@ -30,7 +30,7 @@
 
 ## 2. 当前技术栈
 
-- Go: `1.22`
+- Go: `1.25`
 - CLI: `github.com/spf13/cobra`
 - ORM: `gorm.io/gorm`
 - SQLite driver: `github.com/glebarez/sqlite`

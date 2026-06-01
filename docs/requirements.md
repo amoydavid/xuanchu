@@ -1,7 +1,7 @@
 # 面向企业项目与 Agent MCP 的 Taskwarrior 风格任务运行时（Go 版）— 需求文档
 
 > 项目代号暂定：**taskg**（command-line binary），仓库根名：`task`
-> 目标语言：**Go 1.22+**
+> 目标语言：**Go 1.25+**
 > 主存储：**SQLite（纯 Go 驱动，零 CGO）**
 > 形态：**单一二进制**，可同时充当 ① 本地 CLI ② 远程 CLI 客户端 ③ HTTP/JSON API 服务端 ④ MCP Server
 
