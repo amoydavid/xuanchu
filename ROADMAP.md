@@ -21,7 +21,7 @@
 | M4 | 已完成 | 企业 Workspace、权限与审计基础 |
 | M5 | 已完成 | Project 实体化与 Workspace/Project 配置边界 |
 | M6 | 已完成 | HTTP/JSON API、远程 CLI 与 Agent Token |
-| M7 | 待规划 | 企业 Agent MCP Server 与工具接口 |
+| M7 | 已完成 | 企业 Agent MCP Server 与工具接口 |
 | M8 | 待规划 | Agent 驱动的外部集成、触发器、发布与运维打磨 |
 
 ## M0：本地单用户 CLI
@@ -508,7 +508,36 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 
 ## M7：企业 Agent MCP Server 与工具接口
 
+**状态：已完成。**
+
 **目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 taskg。MCP 请求必须落在明确的 workspace scope 内，并可进一步受 project scope 限制。Agent 不应该凭提示词决定自己能看什么，权限必须来自 token 和服务端校验。
+
+**M7 已交付内容：**
+
+- Go 版本升级到 1.25。
+- 官方 MCP Go SDK (`github.com/modelcontextprotocol/go-sdk` v1.6.1) 接入。
+- `taskg mcp stdio` 命令，本地 MCP 通过标准输入输出运行。
+- `taskg server` 暴露 `/mcp`，使用 Streamable HTTP 传输。
+- HTTP MCP Bearer token 鉴权，复用 M6 PAT/Agent token 与 workspace/project scope。
+- 21 个 MCP tools：
+  - 任务：`task.add`、`task.modify`、`task.done`、`task.delete`、`task.query`、`task.get`、`task.annotate`、`task.depends`、`task.start`、`task.stop`
+  - 报表：`report.run`
+  - Urgency：`urgency.explain`
+  - Workspace：`workspace.list`、`workspace.current`
+  - Project：`project.list`、`project.get`、`project.current`
+  - Context：`context.set`、`context.show`
+  - Config：`config.get`、`config.set`
+- 4 个 MCP resources：
+  - `taskg://workspace/current`
+  - `taskg://workspace/{workspace_id}`
+  - `taskg://project/{project_id}`
+  - `taskg://context/current`
+- M6 遗留远程管理命令收口：`workspace`、`user`、`member`、`show` 均已支持远程模式。
+- `/api/v1/tasks` 统一 limit：默认 200，最大 1000。
+- 新增 REST endpoint：`GET/POST /api/v1/users`、`GET /api/v1/users/{user}`、`PUT /api/v1/me/active_workspace`、`POST /api/v1/workspaces/{workspace}/archive`。
+- MCP tool schema golden tests 覆盖全部 tools。
+- MCP tool 与 CLI/API 复用同一 `internal/app` service，不复制业务逻辑。
+- `/mcp` 不进入 OpenAPI 文档。
 
 **范围：**
 
@@ -656,15 +685,15 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M5 需求规格与实现计划都已落地到：
+M7 已完成。当前重点推进 M8：
+
+- M8 spec 需要先定义触发器、Hook、外部 adapter 的范围和优先级。
+- M8 评估是否引入 operation log 同步，或拆分到 M9。
+- 发布与文档打磨：交叉编译、安装指南、迁移文档、备份恢复。
+
+M7 规格与实现计划：
 
 ```text
-docs/superpowers/specs/2026-05-30-taskg-m5-design.md
-docs/superpowers/plans/2026-05-30-taskg-m5-implementation.md
+docs/superpowers/specs/2026-06-01-taskg-m7-design.md
+docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
 ```
-
-接下来的重点不再是 M5 设计，而是基于已完成的 project 实体能力推进：
-
-- M6：HTTP/JSON API、远程 CLI、Agent token 全部统一采用 `project_id`。
-- M7：MCP tool 优先接受 `project_id`，slug 只作为当前 workspace 内的人类输入。
-- 更细的 project 级默认上下文、Agent 背景、约束模板扩展继续沿用 `project config`。

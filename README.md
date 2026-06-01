@@ -630,3 +630,83 @@ task:read task:write project:read project:write context:read context:write confi
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{uuid}` 只接受真实 UUID；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析为 UUID。
 
 远程 CLI 已覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢；M6 不新增 aggregation endpoint。
+
+## M7 MCP Server
+
+M7 让 Agent 通过 MCP 协议以结构化方式使用 taskg。支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
+
+### MCP stdio 模式
+
+本地 Agent 直接通过标准输入输出连接 taskg：
+
+```bash
+# 本地 MCP，使用默认本地数据库
+./taskg mcp stdio
+
+# 指定数据库
+./taskg --db ./taskg.db mcp stdio
+```
+
+stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输出 MCP JSON-RPC 协议帧，不会混入迁移 warning 或日志。
+
+### MCP HTTP 模式
+
+`taskg server` 在 `/mcp` 路径暴露 Streamable HTTP MCP endpoint：
+
+```bash
+# 启动服务端
+./taskg server --listen :8080
+
+# MCP 客户端连接
+# POST http://127.0.0.1:8080/mcp
+# Authorization: Bearer taskg_pat_xxx
+```
+
+HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。`/mcp` 不在 OpenAPI 文档中。
+
+### MCP tools 列表
+
+| Tool | 说明 |
+|---|---|
+| `task.add` | 添加任务 |
+| `task.modify` | 修改任务 |
+| `task.done` | 完成任务 |
+| `task.delete` | 删除任务 |
+| `task.query` | 通用查询，支持 filter、status、limit |
+| `task.get` | 按 UUID 或 DOM 表达式读取任务 |
+| `task.annotate` | 添加注释 |
+| `task.depends` | 添加依赖 |
+| `task.start` | 开始任务 |
+| `task.stop` | 停止任务 |
+| `report.run` | 运行预定义报表 |
+| `urgency.explain` | 解释 urgency 构成 |
+| `workspace.list` | 列出可见 workspace |
+| `workspace.current` | 当前 workspace |
+| `project.list` | 列出当前 workspace 项目 |
+| `project.get` | 读取单个项目 |
+| `project.current` | 当前 project scope |
+| `context.set` | 设置 active context |
+| `context.show` | 显示 active context |
+| `config.get` | 读取配置 |
+| `config.set` | 写入配置 |
+
+每个 tool 返回 `{data, rendered}` 双格式：`data` 是结构化 JSON，`rendered` 是人类可读文本。
+
+### MCP resources
+
+- `taskg://workspace/current` — 当前 workspace 概要
+- `taskg://workspace/{workspace_id}` — 指定 workspace 信息
+- `taskg://project/{project_id}` — 项目元数据与 Agent 背景
+- `taskg://context/current` — 当前 context 与 scope
+
+### 远程管理命令收口
+
+M7 补齐了 M6 遗留的远程管理命令。以下命令均已支持远程模式，不会触碰客户端本地数据库：
+
+```bash
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" workspace list
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" workspace add team name:Team
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" user list
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" member list
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" show date.format
+```

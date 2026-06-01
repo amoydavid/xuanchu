@@ -1,6 +1,6 @@
 # taskg M7 Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 实现 M7：升级 Go 与官方 MCP Go SDK，补齐 M6 遗留远程管理命令，并提供 stdio / Streamable HTTP MCP Server，让 Agent 以受权限约束的 tools/resources 操作 taskg。
 
@@ -181,7 +181,7 @@
 - Modify: `ROADMAP.md`
 - Modify: `docs/requirements.md`
 
-- [ ] **Step 1: 确认当前工具链**
+- [x] **Step 1: 确认当前工具链**
 
 Run:
 
@@ -199,7 +199,7 @@ go1.25 version
 
 Then run subsequent Go commands with `go1.25` or update `PATH` so `go version` reports `go1.25.x`。
 
-- [ ] **Step 2: 修改 `go.mod`**
+- [x] **Step 2: 修改 `go.mod`**
 
 Change:
 
@@ -209,7 +209,7 @@ go 1.25
 
 Do not add MCP SDK in this task.
 
-- [ ] **Step 3: 同步文档里的 Go 版本**
+- [x] **Step 3: 同步文档里的 Go 版本**
 
 Update exact references that describe current stack:
 
@@ -220,7 +220,7 @@ Update exact references that describe current stack:
 
 Keep `github.com/glebarez/sqlite` and `CGO_ENABLED=0` language unchanged.
 
-- [ ] **Step 4: Run module tidy**
+- [x] **Step 4: Run module tidy**
 
 Run:
 
@@ -230,7 +230,7 @@ go mod tidy
 
 Expected: no new MCP dependency appears; `go.sum` changes only if Go version causes tidy normalization.
 
-- [ ] **Step 5: Run Phase 0a full verification**
+- [x] **Step 5: Run Phase 0a full verification**
 
 Run:
 
@@ -250,7 +250,7 @@ rm -f taskg
 
 If `gofmt -l` reports files, run `gofmt -w` on those files first, then re-run the full Phase 0a verification before committing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add go.mod go.sum AGENTS.md README.md ROADMAP.md docs/requirements.md
@@ -269,7 +269,7 @@ git commit -m "chore: 升级 Go 版本到 1.25"
 - Modify: `internal/remote/task.go`
 - Modify: `docs/openapi/taskg-v1.yaml`
 
-- [ ] **Step 1: 写 HTTP limit 测试**
+- [x] **Step 1: 写 HTTP limit 测试**
 
 Add tests in `internal/httpapi/tasks_test.go`:
 
@@ -298,7 +298,7 @@ func TestTaskListDefaultLimitDoesNotRejectEmptyLimit(t *testing.T) {
 
 Adjust fixture helper names to match existing tests.
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run:
 
@@ -308,7 +308,7 @@ go test ./internal/httpapi -run 'TestTaskList.*Limit' -count=1
 
 Expected: FAIL because limit is not implemented or invalid limit is accepted.
 
-- [ ] **Step 3: Implement parser**
+- [x] **Step 3: Implement parser**
 
 In `internal/httpapi/tasks.go`, add constants:
 
@@ -335,11 +335,11 @@ Concrete changes:
 - apply `q = q.Limit(opts.Limit)` only when `opts.Limit > 0` inside `TaskRepository.List` after sorting。
 - keep internal app callers with zero limit as unlimited unless an HTTP/MCP entry point sets default 200 explicitly。
 
-- [ ] **Step 4: Update remote client**
+- [x] **Step 4: Update remote client**
 
 In `internal/remote/task.go`, add `Limit int` to `ListTasksInput` and include `limit` query parameter only when non-zero. Existing CLI calls can leave it zero and use server default.
 
-- [ ] **Step 5: Update OpenAPI**
+- [x] **Step 5: Update OpenAPI**
 
 In `docs/openapi/taskg-v1.yaml`, document `limit` on `GET /api/v1/tasks`:
 
@@ -348,7 +348,7 @@ In `docs/openapi/taskg-v1.yaml`, document `limit` on `GET /api/v1/tasks`:
 - minimum 1。
 - `api_bad_limit` 400 response。
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -367,7 +367,7 @@ Expected: PASS.
 - Modify: `internal/httpapi/server_test.go` or `internal/httpapi/auth_test.go`
 - Modify: `docs/openapi/taskg-v1.yaml`
 
-- [ ] **Step 1: Write handler tests**
+- [x] **Step 1: Write handler tests**
 
 Add tests:
 
@@ -399,7 +399,7 @@ Also add permission test: viewer/member without adequate role gets 403 for `POST
 
 Use existing test helpers from `internal/httpapi` (`newHTTPServerWithTokenFixture`, `requestHTTP`, `requestHTTPBody`, `assertHTTPErrorCode`, `assertSnakeCaseResponse`) rather than introducing a second fixture API.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -409,7 +409,7 @@ go test ./internal/httpapi -run 'TestUser.*HTTP' -count=1
 
 Expected: FAIL with route not found.
 
-- [ ] **Step 3: Implement response DTOs**
+- [x] **Step 3: Implement response DTOs**
 
 Create `internal/httpapi/users.go`:
 
@@ -427,7 +427,7 @@ type userResponse struct {
 
 Map from `app.UserView`.
 
-- [ ] **Step 4: Implement handlers**
+- [x] **Step 4: Implement handlers**
 
 Handlers:
 
@@ -442,7 +442,7 @@ Use `scopedService` and keep user management mapped to existing workspace-level 
 - Do not introduce new `user:*` token capabilities in M7; if the app layer has no dedicated user permission, keep role evaluation through the workspace permission mapping above.
 - Current `Service.ListUsers` / `AddUser` / `UserInfo` do not call `Require` internally. For M7, HTTP handler `scopedService` is the permission boundary; do not expose these methods from MCP tools unless equivalent permission wrapping is added there too.
 
-- [ ] **Step 5: Register routes**
+- [x] **Step 5: Register routes**
 
 In `internal/httpapi/router.go`:
 
@@ -452,7 +452,7 @@ api.With(s.authMiddleware).Post("/api/v1/users", s.handleUserCreate)
 api.With(s.authMiddleware).Get("/api/v1/users/{user}", s.handleUserInfo)
 ```
 
-- [ ] **Step 6: Update OpenAPI**
+- [x] **Step 6: Update OpenAPI**
 
 Add paths and schemas:
 
@@ -462,7 +462,7 @@ Add paths and schemas:
 - `POST /api/v1/users`
 - `GET /api/v1/users/{user}`
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run:
 
@@ -481,7 +481,7 @@ Expected: PASS.
 - Modify: `internal/httpapi/server_test.go` or `internal/httpapi/auth_test.go`
 - Modify: `docs/openapi/taskg-v1.yaml`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add test:
 
@@ -517,7 +517,7 @@ func TestPutMeActiveWorkspaceUpdatesServerState(t *testing.T) {
 
 Adapt only constructor details to the actual fixture shape; keep assertions against existing `/api/v1/me.effective_workspace`, not a new `active_workspace` field.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -527,7 +527,7 @@ go test ./internal/httpapi -run TestPutMeActiveWorkspaceUpdatesServerState -coun
 
 Expected: FAIL with route not found.
 
-- [ ] **Step 3: Implement handler**
+- [x] **Step 3: Implement handler**
 
 Create `internal/httpapi/me_state.go` with:
 
@@ -545,7 +545,7 @@ Handler:
 - construct a fresh scoped service after `UseWorkspace`, because the original service runtime still points at the previous workspace。
 - call `freshSvc.WorkspaceInfo(req.Workspace)` and return `workspaceResponseFromView(view)` through the standard REST envelope；the returned workspace must have `active=true`。
 
-- [ ] **Step 4: Register route**
+- [x] **Step 4: Register route**
 
 In `internal/httpapi/router.go`:
 
@@ -553,7 +553,7 @@ In `internal/httpapi/router.go`:
 api.With(s.authMiddleware).Put("/api/v1/me/active_workspace", s.handleMeActiveWorkspacePut)
 ```
 
-- [ ] **Step 5: Update OpenAPI**
+- [x] **Step 5: Update OpenAPI**
 
 Add `PUT /api/v1/me/active_workspace`:
 
@@ -561,7 +561,7 @@ Add `PUT /api/v1/me/active_workspace`:
 - response uses the standard REST success envelope with body `{ "data": <Workspace> }` where `<Workspace>` is the existing `workspaceResponse` from `internal/httpapi/workspaces.go`。Remote `workspace use` parses this shape into `remote.Workspace`.
 - update OpenAPI `ErrorCode` enum with `workspace_required` if not already present, because M7 moves this code into shared app/request-scope logic.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -587,7 +587,7 @@ Expected: PASS.
 - Modify: `tests/integration/cli_test.go`
 - Modify: `docs/openapi/taskg-v1.yaml`
 
-- [ ] **Step 1: Split old unsupported-management test**
+- [x] **Step 1: Split old unsupported-management test**
 
 Refactor `TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB` in `tests/integration/cli_test.go`:
 
@@ -599,7 +599,7 @@ Refactor `TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB` in `tests
 - keep the assertion that remote commands do not create or mutate the client-side local DB path.
 - confirm route coverage before moving each case: existing M6 routes cover workspace list/add/info/modify and member list/add/role; M7 must add user routes, active workspace route, show wiring, and workspace archive route.
 
-- [ ] **Step 2: Write integration tests**
+- [x] **Step 2: Write integration tests**
 
 In `tests/integration/cli_test.go`, add black-box tests that start `taskg server` with temp DB and token:
 
@@ -613,7 +613,7 @@ In `tests/integration/cli_test.go`, add black-box tests that start `taskg server
 
 Use existing M6 remote integration helpers if present.
 
-- [ ] **Step 3: Add workspace archive REST endpoint**
+- [x] **Step 3: Add workspace archive REST endpoint**
 
 M6 has `Service.ArchiveWorkspace(ref)` but no REST route for workspace archive. Add:
 
@@ -628,7 +628,7 @@ Handler rules:
 - return the archived `Workspace` view in `{ "data": <Workspace> }` by creating a fresh scoped service or querying the archive result in a way that does not report stale active state。
 - update OpenAPI with `POST /api/v1/workspaces/{workspace}/archive` and documented errors.
 
-- [ ] **Step 4: Run and confirm failures**
+- [x] **Step 4: Run and confirm failures**
 
 Run:
 
@@ -638,7 +638,7 @@ go test ./tests/integration -run 'Remote.*(Workspace|User|Member|Show)' -count=1
 
 Expected: FAIL because commands are still unsupported.
 
-- [ ] **Step 5: Implement remote clients**
+- [x] **Step 5: Implement remote clients**
 
 Implement methods:
 
@@ -670,7 +670,7 @@ Remote workspace mapping:
 - use -> `PUT /api/v1/me/active_workspace`。
 - archive -> `POST /api/v1/workspaces/{workspace}/archive`。
 
-- [ ] **Step 6: Wire CLI workspace/user/member**
+- [x] **Step 6: Wire CLI workspace/user/member**
 
 Replace `remoteUnsupported` in remote-capable commands with remote branch:
 
@@ -686,7 +686,7 @@ if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 
 Keep `user use` remote unsupported.
 
-- [ ] **Step 7: Upgrade `show [key]` local and remote**
+- [x] **Step 7: Upgrade `show [key]` local and remote**
 
 Change `newShowCommand`:
 
@@ -705,7 +705,7 @@ Remote:
 - no arg: use remote config list / me as needed。
 - key: same output contract as local；use remote config get for business keys and `/api/v1/me` for actor-state keys if needed。
 
-- [ ] **Step 8: Verify**
+- [x] **Step 8: Verify**
 
 Run:
 
@@ -721,7 +721,7 @@ Expected: PASS.
 **Files:**
 - All files touched in Chunk 2.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 Run:
 
@@ -736,7 +736,7 @@ rm -f taskg
 
 Expected: all verification commands exit 0.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add internal/app internal/httpapi internal/remote internal/cli tests/integration docs/openapi/taskg-v1.yaml
@@ -757,7 +757,7 @@ git commit -m "feat: 收口 M7 远程管理命令并统一 task 列表 limit"
 - Create: `internal/mcpserver/SDK_NOTES.md`
 - Create: `internal/mcpserver/schema_test.go`
 
-- [ ] **Step 1: Add dependency**
+- [x] **Step 1: Add dependency**
 
 Run:
 
@@ -768,7 +768,7 @@ go mod tidy
 
 Select the newest official SDK version compatible with Go 1.25 at execution time, then pin that exact version in `go.mod` and record it in `SDK_NOTES.md`。Do not leave `@latest` in scripts or docs after Phase 0c. Expected: `go.mod` includes `github.com/modelcontextprotocol/go-sdk`; no CGO SQLite dependency appears.
 
-- [ ] **Step 2: Record SDK API notes**
+- [x] **Step 2: Record SDK API notes**
 
 Read the installed module docs and examples from the module cache:
 
@@ -791,7 +791,7 @@ Create `internal/mcpserver/SDK_NOTES.md` with:
 
 Do not proceed to Step 3 until this file names the concrete APIs later tasks must use. If SDK examples disagree with pseudo-code in this plan, follow `SDK_NOTES.md` and update the pseudo-code in the same commit.
 
-- [ ] **Step 3: Create options**
+- [x] **Step 3: Create options**
 
 Create `internal/mcpserver/options.go`:
 
@@ -821,7 +821,7 @@ type Options struct {
 }
 ```
 
-- [ ] **Step 4: Create empty server constructor**
+- [x] **Step 4: Create empty server constructor**
 
 Create `internal/mcpserver/server.go`:
 
@@ -845,7 +845,7 @@ func NewServer(opts Options) *mcp.Server {
 
 Do not implement stdio/HTTP transport, auth, or scope adapter in Phase 0c.
 
-- [ ] **Step 5: Add empty tools/list smoke test**
+- [x] **Step 5: Add empty tools/list smoke test**
 
 In `internal/mcpserver/schema_test.go`, use the SDK in-memory client/server transport recorded in `SDK_NOTES.md` to assert empty `tools/list` result or SDK-equivalent empty list. Also create the reusable golden comparison helper and `-update` flag now; with zero tools it should pass without writing files. This smoke test verifies `NewServer` and the selected SDK transport can run, and Task 13 will add actual tool goldens on top of the same framework.
 
@@ -877,7 +877,7 @@ func TestNewServerStartsWithNoTools(t *testing.T) {
 
 Use exact signatures recorded in `internal/mcpserver/SDK_NOTES.md`; do not leave guessed SDK calls in committed code.
 
-- [ ] **Step 6: Verify Phase 0c**
+- [x] **Step 6: Verify Phase 0c**
 
 Run:
 
@@ -893,7 +893,7 @@ rm -f taskg
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go.mod go.sum internal/mcpserver
@@ -910,7 +910,7 @@ git commit -m "feat: 引入 MCP SDK 骨架"
 - Create: `internal/mcpserver/result.go`
 - Create: `internal/mcpserver/result_test.go`
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Tests:
 
@@ -932,7 +932,7 @@ func TestToolErrorPreservesRuntimeCode(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -942,7 +942,7 @@ go test ./internal/mcpserver -run TestToolError -count=1
 
 Expected: FAIL because helper does not exist.
 
-- [ ] **Step 3: Implement helpers**
+- [x] **Step 3: Implement helpers**
 
 Implement helpers:
 
@@ -958,7 +958,7 @@ func businessErrorResult(err error) *mcp.CallToolResult
 
 Use SDK content types. If SDK supports structured output return `ToolEnvelope`; otherwise return text content and keep `ToolEnvelope` for future structured data tests.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -976,7 +976,7 @@ Expected: PASS.
 - Modify: `internal/httpapi/app_service.go` if useful helpers need exporting/moving.
 - Modify: `internal/app/request_scope.go` only if reusable API is missing.
 
-- [ ] **Step 1: Write stdio scope tests**
+- [x] **Step 1: Write stdio scope tests**
 
 Tests:
 
@@ -985,7 +985,7 @@ Tests:
 - stdio project slug + project_id mismatch returns stable app error。
 - stdio with no active user/workspace returns stable MCP business/protocol error and does not auto-create an anonymous actor or workspace。
 
-- [ ] **Step 2: Write HTTP scope tests**
+- [x] **Step 2: Write HTTP scope tests**
 
 Tests:
 
@@ -993,7 +993,7 @@ Tests:
 - project-scoped token denies allowlist outside project。
 - token visible multiple workspaces + project slug without workspace returns `workspace_required`。
 
-- [ ] **Step 3: Run and confirm failure**
+- [x] **Step 3: Run and confirm failure**
 
 Run:
 
@@ -1003,7 +1003,7 @@ go test ./internal/mcpserver -run 'Test.*Scope|Test.*Auth' -count=1
 
 Expected: FAIL because auth factory does not exist.
 
-- [ ] **Step 4: Implement request model**
+- [x] **Step 4: Implement request model**
 
 Create:
 
@@ -1031,7 +1031,7 @@ Reuse M6 app request scope authorization. If helper currently lives inside `inte
 
 When HTTP MCP receives a project slug without `workspace` / `workspace_id` and the token can see multiple workspaces, return app `RuntimeError{Code:"workspace_required", Message:"workspace is required to resolve project slug"}`. Do not invent another MCP-only error code.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1050,7 +1050,7 @@ Expected: PASS.
 - Modify: `cmd/taskg/main.go`
 - Modify: `tests/integration/cli_test.go`
 
-- [ ] **Step 1: Write CLI integration test**
+- [x] **Step 1: Write CLI integration test**
 
 Add test that starts:
 
@@ -1064,7 +1064,7 @@ and sends MCP initialize/listTools JSON-RPC through stdin using SDK client comma
 - stderr may contain logs but no protocol data。
 - no M5 migration warning appears on stdout。
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1074,7 +1074,7 @@ go test ./tests/integration -run TestMCPStdio -count=1
 
 Expected: FAIL because command missing.
 
-- [ ] **Step 3: Implement `taskg mcp stdio`**
+- [x] **Step 3: Implement `taskg mcp stdio`**
 
 Create `newMCPCommand(opts)` and `newMCPStdioCommand(opts)`:
 
@@ -1085,11 +1085,11 @@ Create `newMCPCommand(opts)` and `newMCPStdioCommand(opts)`:
 
 Register in `internal/cli/root.go`.
 
-- [ ] **Step 4: Suppress stdout warning**
+- [x] **Step 4: Suppress stdout warning**
 
 In `cmd/taskg/main.go`, update `skipsMigrationWarning` to skip `mcp` command. Warning can be omitted entirely for MCP protocol safety.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1108,7 +1108,7 @@ Expected: PASS.
 - Modify: `internal/httpapi/server_test.go`
 - Modify: `internal/cli/server.go` if options need version/mcp setup.
 
-- [ ] **Step 1: Write HTTP MCP auth tests**
+- [x] **Step 1: Write HTTP MCP auth tests**
 
 Tests:
 
@@ -1119,7 +1119,7 @@ Tests:
 - `GET /mcp` Streamable HTTP/SSE setup is not used for body-limit assertions unless SDK docs show GET carries a request body。
 - SDK Streamable HTTP body/session limit conclusion is recorded in `SDK_NOTES.md`。
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1129,7 +1129,7 @@ go test ./internal/httpapi -run 'TestMCP' -count=1
 
 Expected: FAIL because `/mcp` route missing.
 
-- [ ] **Step 3: Confirm middleware and SDK request context**
+- [x] **Step 3: Confirm middleware and SDK request context**
 
 Before coding, append a short section to `internal/mcpserver/SDK_NOTES.md`:
 
@@ -1137,7 +1137,7 @@ Before coding, append a short section to `internal/mcpserver/SDK_NOTES.md`:
 - Streamable HTTP handler registration style required by the installed SDK。
 - whether the SDK server factory receives `*http.Request` and preserves the original `r.Context()`。
 
-- [ ] **Step 4: Mount SDK handler**
+- [x] **Step 4: Mount SDK handler**
 
 In router:
 
@@ -1152,14 +1152,14 @@ Use the concrete handler registration recorded in `SDK_NOTES.md` rather than gue
 
 Construct the `mcp.Server` according to `SDK_NOTES.md` session guidance. If the SDK expects a long-lived server for Streamable HTTP sessions, create/reuse one server instance from `httpapi.Server` options instead of constructing a new one for every request.
 
-- [ ] **Step 5: Preserve auth context for MCP**
+- [x] **Step 5: Preserve auth context for MCP**
 
 Implement exactly one of these verified paths and record which one in `SDK_NOTES.md`:
 
 - Path A: SDK server factory receives the original `*http.Request`。`RuntimeFactory.ServiceForHTTP` reads auth from `r.Context()` inside tool handlers。
 - Path B: SDK does not preserve request context。Wrap the SDK handler after `authMiddleware`, capture authenticated request auth in the factory closure, and pass it into `mcpserver.Options` or `RuntimeFactory` without using package globals。
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -1174,7 +1174,7 @@ Expected: PASS.
 **Files:**
 - All files touched in Chunk 4.
 
-- [ ] **Step 1: Run verification**
+- [x] **Step 1: Run verification**
 
 Run:
 
@@ -1189,7 +1189,7 @@ rm -f taskg
 
 Expected: PASS.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add internal/mcpserver internal/httpapi internal/cli cmd/taskg/main.go tests/integration
@@ -1207,7 +1207,7 @@ git commit -m "feat: 添加 MCP 传输与鉴权基础"
 - Modify: `internal/mcpserver/schema_test.go`
 - Create: `internal/mcpserver/testdata/*.schema.json`
 
-- [ ] **Step 1: Write golden test**
+- [x] **Step 1: Write golden test**
 
 In `schema_test.go`, connect SDK client and call `ListTools`. Serialize each tool input schema to deterministic JSON and compare to:
 
@@ -1217,7 +1217,7 @@ internal/mcpserver/testdata/<tool-name>.schema.json
 
 Tool filename convention: replace `.` with `_`, e.g. `task_add.schema.json`. Reuse the golden helper and `-update` flag created in Task 7; this task should add tool registrations and golden files, not a second golden framework.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1227,7 +1227,7 @@ go test ./internal/mcpserver -run TestToolSchemasMatchGolden -count=1
 
 Expected: FAIL until tools/goldens exist.
 
-- [ ] **Step 3: Add registration helper**
+- [x] **Step 3: Add registration helper**
 
 In `server.go`:
 
@@ -1240,7 +1240,7 @@ func registerTools(s *mcp.Server, opts Options) {
 
 For this task, register schema-only tool definitions with input structs. If a handler is required by the SDK before the real implementation lands, return a business error result with code `tool_not_implemented` and message `not implemented`; replace these handlers in the following tasks. Do not use `mcp_internal` for intentional temporary handlers.
 
-- [ ] **Step 4: Generate golden files**
+- [x] **Step 4: Generate golden files**
 
 Use the golden update flag in `schema_test.go`:
 
@@ -1265,7 +1265,7 @@ Generate files with:
 go test ./internal/mcpserver -run TestToolSchemasMatchGolden -update -count=1
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1284,7 +1284,7 @@ Expected: PASS.
 - Update: `internal/mcpserver/testdata/task_query.schema.json`
 - Update: `internal/mcpserver/testdata/task_get.schema.json`
 
-- [ ] **Step 1: Write integration tests**
+- [x] **Step 1: Write integration tests**
 
 Tests:
 
@@ -1297,7 +1297,7 @@ Tests:
 - project allowlist outside task returns `task_not_found` as business error (`IsError=true`)。
 - HTTP MCP `task.get` rejects numeric working-set IDs with existing `task_uuid_invalid` business error；stdio MCP may resolve working-set IDs through the local working set。
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1307,7 +1307,7 @@ go test ./internal/mcpserver -run 'TestMCPTask(Add|Query|Get)' -count=1
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement input structs**
+- [x] **Step 3: Implement input structs**
 
 Define:
 
@@ -1353,7 +1353,7 @@ type TaskGetInput struct {
 }
 ```
 
-- [ ] **Step 4: Implement handlers through app service**
+- [x] **Step 4: Implement handlers through app service**
 
 Each handler:
 
@@ -1363,7 +1363,7 @@ Each handler:
 - render using existing render helpers or concise text。
 - return `ToolEnvelope{Data: map[string]any{"task": taskView}, Rendered: rendered}`。
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1380,7 +1380,7 @@ Expected: PASS.
 - Modify: `internal/mcpserver/integration_test.go`
 - Update: corresponding schema golden files.
 
-- [ ] **Step 1: Write integration tests**
+- [x] **Step 1: Write integration tests**
 
 Tests:
 
@@ -1393,7 +1393,7 @@ Tests:
 - `task.start` / `task.stop` update start state。
 - project-scoped token cannot move task outside allowlist。
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1403,7 +1403,7 @@ go test ./internal/mcpserver -run 'TestMCPTask(Modify|Done|Delete|Annotate|Depen
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement handlers**
+- [x] **Step 3: Implement handlers**
 
 Use app methods already used by CLI:
 
@@ -1447,11 +1447,11 @@ Map `clear` entries onto existing `app.ModifyInput` clear booleans / clear slice
 
 If `project_id` is present in `task.modify`, extend `app.ModifyInput` or add a resolver before calling `Modify` so project slug/id mismatch and project scope checks remain in app/service logic. Do not silently convert `project_id` to a slug in the MCP handler without checking workspace ownership and allowlist.
 
-- [ ] **Step 4: Verify audit**
+- [x] **Step 4: Verify audit**
 
 In tests, after write tool call, query `svc.ListAudit(AuditListInput{Limit: 10})` or DB audit repository to assert action exists. If the test uses `svc.ListAudit`, create the fixture token/service with `audit:read` capability and an app role that can read audit; otherwise the audit assertion should fail with permission denial instead of testing the write behavior.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1469,7 +1469,7 @@ Expected: PASS.
 - Update: `internal/mcpserver/testdata/report_run.schema.json`
 - Update: `internal/mcpserver/testdata/urgency_explain.schema.json`
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Tests:
 
@@ -1479,7 +1479,7 @@ Tests:
 - project-scoped token report only sees allowlist project。
 - `urgency.explain` returns `data.urgency` and `data.factors`。
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1489,7 +1489,7 @@ go test ./internal/mcpserver -run 'TestMCP(ReportRun|UrgencyExplain)' -count=1
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement handlers**
+- [x] **Step 3: Implement handlers**
 
 Use existing app/report/urgency paths. Do not recalculate formulas in MCP layer.
 
@@ -1508,7 +1508,7 @@ For limit:
 - invalid -> `api_bad_limit` business error。
 - REST report limit is not required by the M7 spec. Do not add `limit` to `/api/v1/reports/{name}` unless Task 2 intentionally adds report limit while threading `app.ListInput.Limit`; if REST report limit is added, document it in OpenAPI and add REST tests in Task 2.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -1523,7 +1523,7 @@ Expected: PASS.
 **Files:**
 - All files touched in Chunk 5.
 
-- [ ] **Step 1: Run verification**
+- [x] **Step 1: Run verification**
 
 Run:
 
@@ -1538,7 +1538,7 @@ rm -f taskg
 
 Expected: PASS.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add internal/mcpserver internal/app internal/httpapi internal/remote docs/openapi/taskg-v1.yaml
@@ -1559,7 +1559,7 @@ git commit -m "feat: 添加 MCP 核心任务工具"
 - Modify: `internal/mcpserver/integration_test.go`
 - Update: schema golden files.
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Tests:
 
@@ -1580,7 +1580,7 @@ Tests:
 - `config.get scope=project agent.handoff` succeeds。
 - oversized `agent.background` returns `config_value_too_large`。
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1590,7 +1590,7 @@ go test ./internal/mcpserver -run 'TestMCP(Workspace|Project|Context|Config)' -c
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement workspace/project tools**
+- [x] **Step 3: Implement workspace/project tools**
 
 Use app methods:
 
@@ -1602,7 +1602,7 @@ Use app methods:
 
 Ensure DTO matches REST response fields.
 
-- [ ] **Step 4: Implement context tools**
+- [x] **Step 4: Implement context tools**
 
 Use app methods:
 
@@ -1612,7 +1612,7 @@ Use app methods:
 
 Do not implement define/delete.
 
-- [ ] **Step 5: Implement config tools**
+- [x] **Step 5: Implement config tools**
 
 Rules:
 
@@ -1633,7 +1633,7 @@ Update project config whitelist in `internal/app/project_config.go` to match M7 
 - add `agent.handoff`。
 - decide compatibility for existing `context.default`: keep as legacy alias if existing tests depend on it, but M7 Agent tools/resources should emit `agent.default_context`。
 
-- [ ] **Step 6: Add 16KB `agent.*` limit**
+- [x] **Step 6: Add 16KB `agent.*` limit**
 
 In `internal/app/project_config.go`, reject values longer than 16KB for `agent.*` keys:
 
@@ -1647,7 +1647,7 @@ if strings.HasPrefix(key, "agent.") && len(value) > agentConfigValueMaxBytes {
 
 Add app service unit test.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run:
 
@@ -1664,7 +1664,7 @@ Expected: PASS.
 - Create/Modify: `internal/mcpserver/resources.go`
 - Modify: `internal/mcpserver/integration_test.go`
 
-- [ ] **Step 1: Write resource tests**
+- [x] **Step 1: Write resource tests**
 
 Tests:
 
@@ -1674,7 +1674,7 @@ Tests:
 - `ReadResource taskg://context/current` returns active context/effective workspace/project scope。
 - list-style URI like `taskg://project/{id}/tasks` is not registered.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run:
 
@@ -1684,7 +1684,7 @@ go test ./internal/mcpserver -run TestMCPResources -count=1
 
 Expected: FAIL.
 
-- [ ] **Step 3: Register resources**
+- [x] **Step 3: Register resources**
 
 In `resources.go`, implement:
 
@@ -1694,7 +1694,7 @@ func registerResources(s *mcp.Server, opts Options)
 
 Register exact resources/templates allowed by spec.
 
-- [ ] **Step 4: Implement resource handlers through app service**
+- [x] **Step 4: Implement resource handlers through app service**
 
 Each handler:
 
@@ -1705,7 +1705,7 @@ Each handler:
 
 Do not include token, audit details, member private data, or full arbitrary config.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1721,7 +1721,7 @@ Expected: PASS.
 - Modify: `internal/mcpserver/integration_test.go`
 - Modify: `tests/integration/cli_test.go`
 
-- [ ] **Step 1: Add end-to-end Agent flow test**
+- [x] **Step 1: Add end-to-end Agent flow test**
 
 Test sequence over HTTP MCP:
 
@@ -1732,7 +1732,7 @@ Test sequence over HTTP MCP:
 5. `task.done` completes task。
 6. audit list confirms write audit via existing REST/API or app service.
 
-- [ ] **Step 2: Add project-scope denial flow**
+- [x] **Step 2: Add project-scope denial flow**
 
 Create token allowlisted to project A, task in project B:
 
@@ -1740,7 +1740,7 @@ Create token allowlisted to project A, task in project B:
 - `task.get` B task returns `task_not_found` business error。
 - `project.list` only shows project A。
 
-- [ ] **Step 3: Run and verify**
+- [x] **Step 3: Run and verify**
 
 Run:
 
@@ -1756,7 +1756,7 @@ Expected: PASS.
 **Files:**
 - All files touched in Chunk 6.
 
-- [ ] **Step 1: Run verification**
+- [x] **Step 1: Run verification**
 
 Run:
 
@@ -1772,7 +1772,7 @@ rm -f taskg
 
 Expected: PASS.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add internal/mcpserver internal/app tests/integration
@@ -1793,7 +1793,7 @@ If Task 18 touches `internal/app/project_config.go` or shared OpenAPI/schema doc
 - Modify: `docs/requirements.md`
 - Modify: `docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md`
 
-- [ ] **Step 1: Update README**
+- [x] **Step 1: Update README**
 
 Add:
 
@@ -1804,7 +1804,7 @@ Add:
 - list of core MCP tools。
 - note that `/mcp` is not OpenAPI。
 
-- [ ] **Step 2: Update ROADMAP**
+- [x] **Step 2: Update ROADMAP**
 
 Mark M7 as completed or in-progress per actual state. Include:
 
@@ -1813,15 +1813,15 @@ Mark M7 as completed or in-progress per actual state. Include:
 - M6 remote management closure。
 - non-goals remain M8/backlog。
 
-- [ ] **Step 3: Update requirements**
+- [x] **Step 3: Update requirements**
 
 Ensure final product architecture includes MCP implementation and Go 1.25.
 
-- [ ] **Step 4: Check plan boxes**
+- [x] **Step 4: Check plan boxes**
 
 Only mark tasks complete if actually implemented and verified. Do not mass-check boxes without evidence.
 
-- [ ] **Step 5: Verify docs**
+- [x] **Step 5: Verify docs**
 
 Run:
 
@@ -1837,7 +1837,7 @@ Expected: no stale Go 1.22 or M7 pending state unless intentionally historical.
 **Files:**
 - Entire repository.
 
-- [ ] **Step 1: Run final verification bundle**
+- [x] **Step 1: Run final verification bundle**
 
 Run:
 
@@ -1853,7 +1853,7 @@ rm -f taskg
 
 Expected: all commands exit 0.
 
-- [ ] **Step 2: Manual smoke test stdio MCP**
+- [x] **Step 2: Manual smoke test stdio MCP**
 
 Run a small SDK client or existing integration helper against:
 
@@ -1867,7 +1867,7 @@ Expected:
 - `tools/list` returns all required tools。
 - stdout contains only MCP protocol frames。
 
-- [ ] **Step 3: Manual smoke test HTTP MCP**
+- [x] **Step 3: Manual smoke test HTTP MCP**
 
 Run:
 
@@ -1883,7 +1883,7 @@ Expected:
 - valid token -> initialize/listTools/callTool succeeds。
 - project-scoped token cannot access other project。
 
-- [ ] **Step 4: Commit docs sync**
+- [x] **Step 4: Commit docs sync**
 
 ```bash
 git add README.md ROADMAP.md docs/requirements.md docs/superpowers/specs/2026-06-01-taskg-m7-design.md docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
@@ -1908,17 +1908,17 @@ git commit -m "docs: 同步 M7 完成状态"
 
 ## 最终验收清单
 
-- [ ] Phase 0a、0b、0c 均独立提交且通过完整验证。
-- [ ] `go.mod` 为 Go 1.25。
-- [ ] 没有 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`。
-- [ ] `/api/v1/tasks` limit 默认 200、最大 1000。
-- [ ] 远程 management CLI 不触碰本地 DB。
-- [ ] `taskg mcp stdio` stdout 协议安全。
-- [ ] `taskg server` 暴露 `/mcp`。
-- [ ] HTTP MCP Bearer token 鉴权。
-- [ ] MCP tool schema golden tests 覆盖所有 tools。
-- [ ] project-scoped token 对 MCP task/query/get/report/resources 生效。
-- [ ] 业务错误走 `IsError=true`。
-- [ ] 写操作写 audit。
-- [ ] README、ROADMAP、requirements、OpenAPI 同步。
-- [ ] Final verification bundle 全部通过。
+- [x] Phase 0a、0b、0c 均独立提交且通过完整验证。
+- [x] `go.mod` 为 Go 1.25。
+- [x] 没有 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`。
+- [x] `/api/v1/tasks` limit 默认 200、最大 1000。
+- [x] 远程 management CLI 不触碰本地 DB。
+- [x] `taskg mcp stdio` stdout 协议安全。
+- [x] `taskg server` 暴露 `/mcp`。
+- [x] HTTP MCP Bearer token 鉴权。
+- [x] MCP tool schema golden tests 覆盖所有 tools。
+- [x] project-scoped token 对 MCP task/query/get/report/resources 生效。
+- [x] 业务错误走 `IsError=true`。
+- [x] 写操作写 audit。
+- [x] README、ROADMAP、requirements、OpenAPI 同步。
+- [x] Final verification bundle 全部通过。

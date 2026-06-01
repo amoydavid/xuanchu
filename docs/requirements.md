@@ -26,7 +26,7 @@
 | SQL / ORM | **`gorm.io/gorm` + 少量参数化 SQL** | app 层不直接接触 GORM；复杂查询通过 AST 编译到安全 SQL 条件。后续热路径如需绕开 GORM，必须先有明确性能理由和测试。 |
 | CLI 框架 | **`spf13/cobra`** | 与现有实现一致，负责命令树、flag 和 completion。配置合并由 `internal/config` 和 app service 完成。 |
 | HTTP 服务 | **`net/http` + `chi`** | 极简、无 CGO。 |
-| MCP SDK | **官方 Go MCP SDK**（`github.com/modelcontextprotocol/go-sdk`）或自研适配层 | 支持 stdio + Streamable HTTP/SSE 双传输。 |
+| MCP SDK | **官方 Go MCP SDK**（`github.com/modelcontextprotocol/go-sdk` v1.6.1） | 支持 stdio + Streamable HTTP 双传输。M7 已接入。 |
 | TOML 配置 | `github.com/BurntSushi/toml` | 使用成熟 parser，不手写 TOML 语法。 |
 | 表格输出 | `olekukonko/tablewriter` | 当前通过依赖链使用，human 输出必须保持脚本友好。 |
 | 颜色输出 | `fatih/color` | 仅用于 human 输出；`--no-color` 和非 TTY 场景必须可关闭。 |
