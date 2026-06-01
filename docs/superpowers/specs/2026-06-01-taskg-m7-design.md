@@ -967,7 +967,8 @@ M7 不新增 `task.denotate`，除非 plan 阶段确认 app service 已有稳定
 规则：
 
 - HTTP MCP 不支持读取操作者本机 local config。
-- stdio MCP 可读 local config，但业务配置优先服务端 DB。
+- stdio MCP 的 `config.get scope=local` 读取本机 TOML，与本地 CLI 等价；HTTP MCP 永远不读取客户端 TOML。
+- stdio MCP 读取 workspace/project 业务配置时仍来自 SQLite，而不是本机 TOML。
 - project config 必须要求 project config read permission。
 
 #### `config.set`
@@ -1102,6 +1103,7 @@ taskg --server ... workspace archive <slug|uuid>
 - 输出与本地 human / JSON 尽量一致。
 - `workspace use` 使用 `PUT /api/v1/me/active_workspace`，body 为 `{"workspace":"slug-or-uuid"}`。
 - 选择 `/api/v1/me/active_workspace` 的原因是 active workspace 是 actor 状态的一等资源，幂等 PUT 比动词子资源更稳定；后续如需 active context endpoint，可沿用 `/api/v1/me/active_context`。
+- `/api/v1/me/*` 是 actor 状态的统一命名空间；后续 active context、default project 等 actor 维度状态扩展应挂在此前缀下，不再新增动词路径。
 - `workspace use` 写服务端 SQLite 中 actor 的 `active_workspace.<user_id>`，后续远程命令没有显式 `--workspace` 时可使用该状态。
 - `workspace use` 不能修改客户端本机 TOML 或本地 DB。
 
@@ -1155,6 +1157,7 @@ taskg --server ... show <key>
 - 读取服务端 config，不读取本机任务 DB。
 - 明确区分 local config、workspace config、project config。
 - HTTP MCP / 远程 CLI 下不暴露 remote token 原文。
+- M7 plan 应同步升级本地 `show`，支持 `show <key>`，让本地和远程 CLI 保持参数对称。
 
 ## 11. HTTP 与 MCP 的复用边界
 
@@ -1369,6 +1372,10 @@ go test -race ./internal/mcpserver ./internal/app
 - `github.com/modelcontextprotocol/go-sdk/mcp` 依赖。
 - `internal/mcpserver` 基础包。
 - 空或最小 tool 注册 smoke test。
+- 不实现 stdio/HTTP transport。
+- 不实现 auth。
+- 不实现 scope adapter。
+- 只验证 SDK 能构造 server，且 `tools/list` 在无业务 tools 时返回空列表或 SDK 等价空结果。
 
 验收：
 
@@ -1515,6 +1522,8 @@ CGO_ENABLED=0 go test ./...
 CGO_ENABLED=0 go build ./cmd/taskg
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
 ```
+
+上述最终验收命令同样适用于 Phase 0a、Phase 0b、Phase 0c 各自的合入门槛；不能只在 M7 最终收尾时跑一次。
 
 ## 18. implementation plan 默认决策
 
