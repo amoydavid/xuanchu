@@ -27,6 +27,9 @@ func newUserListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "user list"); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -58,9 +61,15 @@ func newUserListCommand(opts Options) *cobra.Command {
 func newUserAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "add <name> [email:<email>]",
-		Args: cobra.MinimumNArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "user add"); err != nil {
+				return err
+			}
+			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			input, err := parseUserAddArgs(args)
 			if err != nil {
 				return err
@@ -86,9 +95,15 @@ func newUserAddCommand(opts Options) *cobra.Command {
 func newUserUseCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "use <name|email|uuid>",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "user use"); err != nil {
+				return err
+			}
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			currentOpts.Workspace = ""
 			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
@@ -110,6 +125,9 @@ func newUserInfoCommand(opts Options) *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "user info"); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

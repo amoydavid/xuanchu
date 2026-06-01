@@ -477,6 +477,17 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `config get/set/list` 在服务端和远程 CLI 下必须显式区分 local config、workspace config 与 project config。
   - HTTP/远程 CLI 不依赖操作者本机 TOML 来决定 workspace/project 业务规则。
 
+**M6 留待 M7 补齐的远程管理命令：**
+
+M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令，避免服务端不可达或命令未接线时静默读写本地 SQLite：
+
+- `taskg --server ... workspace add|list|info|modify|use|archive`
+- `taskg --server ... user add|list|info|use`
+- `taskg --server ... member list|add|role`
+- `taskg --server ... show`
+
+服务端对应的 `/api/v1/workspaces*`、`/api/v1/workspaces/{workspace}/members*`、`/api/v1/me` 已在 M6 实现。M7 应把 CLI 侧接到这些 endpoint，不新增 HTTP endpoint，并把现有远程 unsupported 集成测试拆成“命令远程成功”和“不会触碰本地 DB”两类验收。
+
 **不进入 M6：**
 
 - MCP。

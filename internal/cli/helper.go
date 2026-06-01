@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -12,6 +13,33 @@ import (
 	"github.com/dajee/taskg/internal/remote"
 	"github.com/spf13/cobra"
 )
+
+func RuntimeEnv() map[string]string {
+	values := map[string]string{}
+	for _, key := range []string{
+		"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+		"TASKG_DB", "TASKG_SERVER", "TASKG_TOKEN",
+	} {
+		if value, ok := os.LookupEnv(key); ok {
+			values[key] = value
+		}
+	}
+	return values
+}
+
+func remoteUnsupported(opts Options, name string) error {
+	remoteMode, _, err := isRemoteMode(opts)
+	if err != nil {
+		return err
+	}
+	if remoteMode {
+		return app.RuntimeError{
+			Code:    "remote_unsupported_command",
+			Message: fmt.Sprintf("command %q is not supported in remote mode", name),
+		}
+	}
+	return nil
+}
 
 func newGetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
@@ -109,17 +137,28 @@ func newIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				matches, err := client.ListTasks(context.Background(), remote.ListTasksInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
 					Filters:   append([]string(nil), args...),
+					NoContext: currentOpts.NoContext,
 				})
 				if err != nil {
 					return err
 				}
-				for i := range tasks {
-					fmt.Fprintln(cmd.OutOrStdout(), i+1)
+				matched := make(map[string]struct{}, len(matches))
+				for _, tsk := range matches {
+					matched[tsk.UUID] = struct{}{}
+				}
+				workingSet, err := remoteDefaultWorkingSet(context.Background(), client, currentOpts)
+				if err != nil {
+					return err
+				}
+				for i, tsk := range workingSet {
+					if _, ok := matched[tsk.UUID]; ok {
+						fmt.Fprintln(cmd.OutOrStdout(), i+1)
+					}
 				}
 				return nil
 			}
@@ -167,6 +206,7 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
 					Filters:   append([]string(nil), args...),
+					NoContext: currentOpts.NoContext,
 				})
 				if err != nil {
 					return err
@@ -231,12 +271,12 @@ func newProjectsCommand(opts Options) *cobra.Command {
 			}
 			defer closeFn()
 
-			projects, err := svc.Projects(includeArchived)
+			projects, err := svc.ListProjects(includeArchived)
 			if err != nil {
 				return err
 			}
 			for _, p := range projects {
-				fmt.Fprintln(cmd.OutOrStdout(), p)
+				fmt.Fprintln(cmd.OutOrStdout(), p.Slug)
 			}
 			return nil
 		},
@@ -258,7 +298,12 @@ func newTagsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{Workspace: currentOpts.Workspace, Project: currentOpts.Project, ProjectID: currentOpts.ProjectID})
+				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+					Workspace: currentOpts.Workspace,
+					Project:   currentOpts.Project,
+					ProjectID: currentOpts.ProjectID,
+					NoContext: currentOpts.NoContext,
+				})
 				if err != nil {
 					return err
 				}
@@ -360,6 +405,7 @@ func newUniqueCommand(opts Options) *cobra.Command {
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
 					Filters:   append([]string(nil), args[1:]...),
+					NoContext: currentOpts.NoContext,
 				})
 				if err != nil {
 					return err

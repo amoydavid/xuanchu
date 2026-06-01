@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
@@ -459,12 +458,25 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 			return err
 		}
 		_, err = client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{
-			Description: mod.Description,
-			Project:     mod.Project,
-			Priority:    mod.Priority,
-			Tags:        mod.AddTags,
-			UDAs:        mod.UDAs,
-			ClearUDAs:   mod.ClearUDAs,
+			Description:    mod.Description,
+			Project:        mod.Project,
+			Priority:       mod.Priority,
+			Due:            mod.Due,
+			ClearDue:       mod.ClearDue,
+			Wait:           mod.Wait,
+			ClearWait:      mod.ClearWait,
+			Scheduled:      mod.Scheduled,
+			ClearScheduled: mod.ClearScheduled,
+			Until:          mod.Until,
+			ClearUntil:     mod.ClearUntil,
+			Depends:        mod.AddDepends,
+			ClearDepends:   mod.ClearDepends,
+			Recur:          mod.Recur,
+			ClearRecur:     mod.ClearRecur,
+			Tags:           mod.AddTags,
+			RemoveTags:     mod.RemoveTags,
+			UDAs:           mod.UDAs,
+			ClearUDAs:      mod.ClearUDAs,
 		})
 		if err != nil {
 			return err
@@ -612,7 +624,7 @@ func getCmdBoolFlag(cmd *cobra.Command, name string, fallback bool) bool {
 }
 
 func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
-	env := runtimeEnv()
+	env := RuntimeEnv()
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
@@ -668,16 +680,6 @@ func rcOverridesAsStrings(overrides map[string]*string) map[string]string {
 			continue
 		}
 		values[key] = *value
-	}
-	return values
-}
-
-func runtimeEnv() map[string]string {
-	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "TASKG_SERVER", "TASKG_TOKEN", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
-		if value := os.Getenv(key); value != "" {
-			values[key] = value
-		}
 	}
 	return values
 }

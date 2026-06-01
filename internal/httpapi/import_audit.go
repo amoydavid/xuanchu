@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -22,6 +23,8 @@ type auditResponse struct {
 	CreatedAt   int64           `json:"created_at"`
 }
 
+const auditMaxLimit = 1000
+
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
@@ -29,24 +32,19 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	rows, err := scoped.Export()
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
+	var input app.ExportInput
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
 		if err != nil {
 			writeAppError(w, err)
 			return
 		}
-		filtered := rows[:0]
-		for _, row := range rows {
-			if row.ProjectID != nil && *row.ProjectID == project.ID {
-				filtered = append(filtered, row)
-			}
-		}
-		rows = filtered
+		input.ProjectID = &project.ID
+	}
+	rows, err := scoped.ExportWithInput(input)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
 	writeSuccess(w, http.StatusOK, tasksToJSON(rows), nil)
 }
@@ -74,8 +72,12 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil {
+		if err != nil || parsed <= 0 {
 			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return
+		}
+		if parsed > auditMaxLimit {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", auditMaxLimit), nil)
 			return
 		}
 		limit = parsed

@@ -229,6 +229,159 @@ func TestCLIRemoteTargetActionWritesRemoteNotLocalDB(t *testing.T) {
 	}
 }
 
+func TestCLIRemoteFilteredIDsUseDefaultWorkingSetPositions(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	run(t, bin, "--server", baseURL, "--token", token, "add", "plain", "task")
+	run(t, bin, "--server", baseURL, "--token", token, "add", "tagged", "task", "+net")
+
+	if ids := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "_ids", "+net")); ids != "2" {
+		t.Fatalf("remote _ids +net = %q, want 2", ids)
+	}
+	list := run(t, bin, "--server", baseURL, "--token", token, "list", "+net")
+	if !strings.Contains(list, "\n2   ") {
+		t.Fatalf("remote filtered list should render working-set ID 2: %q", list)
+	}
+	run(t, bin, "--server", baseURL, "--token", token, "2", "done")
+	remaining := run(t, bin, "--server", baseURL, "--token", token, "list")
+	if strings.Contains(remaining, "tagged task") || !strings.Contains(remaining, "plain task") {
+		t.Fatalf("remote 2 done modified wrong task; list = %q", remaining)
+	}
+}
+
+func TestCLIRemoteIDsAreSortedByWorkingSetPosition(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	run(t, bin, "--server", baseURL, "--token", token, "add", "low", "match", "+x", "priority:L")
+	run(t, bin, "--server", baseURL, "--token", token, "add", "high", "match", "+x", "priority:H")
+	run(t, bin, "--server", baseURL, "--token", token, "add", "middle", "miss", "priority:M")
+
+	if ids := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "_ids", "priority:H", "or", "priority:L")); ids != "1\n2" {
+		t.Fatalf("remote _ids order = %q, want 1\\n2", ids)
+	}
+}
+
+func TestCLIRemoteAddAndModifyPreserveTaskwarriorFields(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "deadline", "due:2030-01-01")
+	run(t, bin, "--server", baseURL, "--token", token, "1", "modify", "wait:2030-01-02", "+blocked")
+	info := run(t, bin, "--server", baseURL, "--token", token, "--json", "info", "1")
+	var row map[string]any
+	if err := json.Unmarshal([]byte(info), &row); err != nil {
+		t.Fatal(err)
+	}
+	if row["due"] == nil || row["wait"] == nil {
+		t.Fatalf("remote add/modify dropped due or wait: %s", info)
+	}
+	tags, _ := row["tags"].([]any)
+	found := false
+	for _, tag := range tags {
+		if tag == "blocked" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("remote modify dropped tag: %s", info)
+	}
+}
+
+func TestCLIRemoteConfigImportTaskRCUnsupported(t *testing.T) {
+	bin := buildTaskg(t)
+	serverDB := filepath.Join(t.TempDir(), "server.db")
+	localDB := filepath.Join(t.TempDir(), "local.db")
+	taskrcPath := filepath.Join(t.TempDir(), ".taskrc")
+	if err := os.WriteFile(taskrcPath, []byte("dateformat=Y-M-D\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tokenOut := run(t, bin, "--db", serverDB, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "config:write", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	cmd, baseURL := startTaskgServer(t, bin, "--db", serverDB)
+	defer stopTaskgServer(t, cmd)
+
+	errOut := runExpectError(t, bin, "--db", localDB, "--server", baseURL, "--token", token, "config", "import-taskrc", taskrcPath, "--dry-run")
+	if !strings.Contains(errOut, "remote_unsupported_command") {
+		t.Fatalf("remote config import-taskrc error = %q", errOut)
+	}
+	if _, err := os.Stat(localDB); !os.IsNotExist(err) {
+		t.Fatalf("remote unsupported command touched local db; stat err=%v", err)
+	}
+}
+
+func TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB(t *testing.T) {
+	bin := buildTaskg(t)
+	localDB := filepath.Join(t.TempDir(), "local.db")
+	cases := [][]string{
+		{"show"},
+		{"user", "list"},
+		{"user", "info"},
+		{"user", "add"},
+		{"user", "add", "alice"},
+		{"user", "use"},
+		{"user", "use", "local"},
+		{"workspace", "list"},
+		{"workspace", "info"},
+		{"workspace", "add"},
+		{"workspace", "add", "foo"},
+		{"workspace", "modify"},
+		{"workspace", "modify", "local", "name:Local"},
+		{"workspace", "use"},
+		{"workspace", "use", "local"},
+		{"workspace", "archive"},
+		{"workspace", "archive", "foo"},
+		{"member", "list"},
+		{"member", "add"},
+		{"member", "add", "local"},
+		{"member", "role"},
+		{"member", "role", "local", "viewer"},
+	}
+	for _, args := range cases {
+		full := append([]string{"--db", localDB, "--server", "http://127.0.0.1:1", "--token", "x"}, args...)
+		out := runExpectError(t, bin, full...)
+		if !strings.Contains(out, "remote_unsupported_command") {
+			t.Fatalf("%v: expected remote_unsupported_command, got %q", args, out)
+		}
+	}
+	if _, err := os.Stat(localDB); !os.IsNotExist(err) {
+		t.Fatalf("remote unsupported commands touched local db; stat err=%v", err)
+	}
+}
+
 func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")
@@ -275,6 +428,13 @@ func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
 	}
 	if ids := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "_ids", "+net")); ids != "1" {
 		t.Fatalf("remote _ids = %q", ids)
+	}
+	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "outside")
+	if list := run(t, bin, "--server", baseURL, "--token", token, "list"); strings.Contains(list, "remote outside") {
+		t.Fatalf("remote list ignored active context: %q", list)
+	}
+	if list := run(t, bin, "--server", baseURL, "--token", token, "--no-context", "list"); !strings.Contains(list, "remote outside") {
+		t.Fatalf("remote --no-context list = %q", list)
 	}
 	if projects := run(t, bin, "--server", baseURL, "--token", token, "_projects"); !strings.Contains(projects, "api") {
 		t.Fatalf("remote _projects = %q", projects)
@@ -385,6 +545,32 @@ func TestCLIConfigListUnsetAndShow(t *testing.T) {
 	got := strings.TrimSpace(run(t, bin, "--db", db, "config", "get", "date.format"))
 	if got != "rfc3339" {
 		t.Fatalf("date.format after unset = %q", got)
+	}
+}
+
+func TestCLIConfigSetRejectsUnsupportedBusinessKey(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	out := runExpectError(t, bin, "--db", db, "config", "set", "arbitrary.thing", "1")
+	if !strings.Contains(out, "config_key_unsupported") {
+		t.Fatalf("config set arbitrary.thing error = %q", out)
+	}
+	list := run(t, bin, "--db", db, "config", "list")
+	if strings.Contains(list, "arbitrary.thing") {
+		t.Fatalf("unsupported config key was persisted: %q", list)
+	}
+}
+
+func TestCLIProjectsHelperListsAllSlugs(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "alpha", "name:Alpha")
+	run(t, bin, "--db", db, "project", "add", "beta", "name:Beta")
+	out := run(t, bin, "--db", db, "_projects")
+	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
+		t.Fatalf("_projects = %q, want both slugs", out)
 	}
 }
 

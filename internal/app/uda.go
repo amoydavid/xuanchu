@@ -125,7 +125,27 @@ func (s *Service) SetConfig(key, value string) error {
 	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
 	}
-	return s.store.SetMeta(key, value)
+	if !IsBusinessConfigKey(key) && !isPersonalRenderKey(key) {
+		return RuntimeError{Code: "config_key_unsupported", Message: fmt.Sprintf("config key %q is not writable", key)}
+	}
+	if isPersonalRenderKey(key) {
+		return s.store.SetMeta(key, value)
+	}
+	if err := s.Require(PermissionWorkspaceModify); err != nil {
+		return err
+	}
+	return s.withAudit("config.set", func(tx *Service) (AuditEntry, error) {
+		if err := tx.store.SetMeta(key, value); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "config",
+			TargetID:   key,
+			Payload: map[string]any{
+				"key": key,
+			},
+		}, nil
+	})
 }
 
 func (s *Service) GetConfig(key string) (string, bool, error) {
@@ -180,7 +200,27 @@ func (s *Service) UnsetConfig(key string) error {
 	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
 	}
-	return s.store.DeleteMeta(key)
+	if !IsBusinessConfigKey(key) && !isPersonalRenderKey(key) {
+		return RuntimeError{Code: "config_key_unsupported", Message: fmt.Sprintf("config key %q is not writable", key)}
+	}
+	if isPersonalRenderKey(key) {
+		return s.store.DeleteMeta(key)
+	}
+	if err := s.Require(PermissionWorkspaceModify); err != nil {
+		return err
+	}
+	return s.withAudit("config.unset", func(tx *Service) (AuditEntry, error) {
+		if err := tx.store.DeleteMeta(key); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "config",
+			TargetID:   key,
+			Payload: map[string]any{
+				"key": key,
+			},
+		}, nil
+	})
 }
 
 func (s *Service) ConfigValues() (map[string]string, error) {
@@ -206,6 +246,16 @@ func (s *Service) ConfigValues() (map[string]string, error) {
 		}
 	}
 	return values, nil
+}
+
+func IsBusinessConfigKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return key == "date.format" || strings.HasPrefix(key, "uda.") || strings.HasPrefix(key, "urgency.")
+}
+
+func isPersonalRenderKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return key == "color" || key == "json"
 }
 
 func (s *Service) UniqueValues(field string, input ListInput) ([]string, error) {

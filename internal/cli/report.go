@@ -30,6 +30,7 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 					ProjectID: currentOpts.ProjectID,
 					Report:    name,
 					Filters:   append([]string(nil), args...),
+					NoContext: currentOpts.NoContext,
 				})
 				if err != nil {
 					return err

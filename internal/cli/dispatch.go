@@ -16,7 +16,7 @@ func resolveConfigFromOpts(opts Options) (config.Config, error) {
 		Token:   opts.Token,
 		JSON:    opts.JSON,
 		NoColor: opts.NoColor,
-		Env:     runtimeEnv(),
+		Env:     RuntimeEnv(),
 	})
 }
 
@@ -36,7 +36,7 @@ func buildRemoteClient(opts Options) (*remote.Client, error) {
 	if cfg.RemoteServer == "" {
 		return nil, fmt.Errorf("remote server is required")
 	}
-	if warning, warnErr := remoteTokenWarning(runtimeEnv()); warnErr == nil && warning != "" {
+	if warning, warnErr := remoteTokenWarning(RuntimeEnv()); warnErr == nil && warning != "" {
 		fmt.Fprintln(opts.Stderr, "taskg:", warning)
 	}
 	return remote.NewClient(remote.Options{

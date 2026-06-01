@@ -21,6 +21,29 @@ type memberRequest struct {
 	Role string `json:"role"`
 }
 
+type workspaceResponse struct {
+	ID              string  `json:"id"`
+	Slug            string  `json:"slug"`
+	Name            string  `json:"name"`
+	Description     string  `json:"description,omitempty"`
+	Visibility      string  `json:"visibility"`
+	CreatedByUserID *string `json:"created_by_user_id,omitempty"`
+	ArchivedAt      *int64  `json:"archived_at,omitempty"`
+	Role            string  `json:"role"`
+	Active          bool    `json:"active"`
+	CreatedAt       int64   `json:"created_at"`
+	ModifiedAt      int64   `json:"modified_at"`
+}
+
+type memberResponse struct {
+	UserID     string  `json:"user_id"`
+	Name       string  `json:"name"`
+	Email      *string `json:"email,omitempty"`
+	Role       string  `json:"role"`
+	JoinedAt   int64   `json:"joined_at"`
+	ModifiedAt int64   `json:"modified_at"`
+}
+
 func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "workspace:read", app.PermissionWorkspaceRead, "")
 	if err != nil {
@@ -32,7 +55,7 @@ func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, rows, nil)
+	writeSuccess(w, http.StatusOK, workspaceResponsesFromViews(rows), nil)
 }
 
 func (s *Server) handleWorkspaceInfo(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +70,7 @@ func (s *Server) handleWorkspaceInfo(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, view, nil)
+	writeSuccess(w, http.StatusOK, workspaceResponseFromView(view), nil)
 }
 
 func (s *Server) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +99,7 @@ func (s *Server) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusCreated, view, nil)
+	writeSuccess(w, http.StatusCreated, workspaceResponseFromView(view), nil)
 }
 
 func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +127,7 @@ func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, view, nil)
+	writeSuccess(w, http.StatusOK, workspaceResponseFromView(view), nil)
 }
 
 func (s *Server) handleMemberList(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +142,7 @@ func (s *Server) handleMemberList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, rows, nil)
+	writeSuccess(w, http.StatusOK, memberResponsesFromViews(rows), nil)
 }
 
 func (s *Server) handleMemberAdd(w http.ResponseWriter, r *http.Request) {
@@ -159,4 +182,51 @@ func (s *Server) handleMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func workspaceResponsesFromViews(rows []app.WorkspaceView) []workspaceResponse {
+	out := make([]workspaceResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, workspaceResponseFromView(row))
+	}
+	return out
+}
+
+func workspaceResponseFromView(row app.WorkspaceView) workspaceResponse {
+	role := string(row.Role)
+	if role == "" {
+		role = string(app.RoleViewer)
+	}
+	return workspaceResponse{
+		ID:              row.ID,
+		Slug:            row.Slug,
+		Name:            row.Name,
+		Description:     row.Description,
+		Visibility:      row.Visibility,
+		CreatedByUserID: row.CreatedByUserID,
+		ArchivedAt:      row.ArchivedAt,
+		Role:            role,
+		Active:          row.Active,
+		CreatedAt:       row.CreatedAt,
+		ModifiedAt:      row.ModifiedAt,
+	}
+}
+
+func memberResponsesFromViews(rows []app.MemberView) []memberResponse {
+	out := make([]memberResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, memberResponseFromView(row))
+	}
+	return out
+}
+
+func memberResponseFromView(row app.MemberView) memberResponse {
+	return memberResponse{
+		UserID:     row.UserID,
+		Name:       row.Name,
+		Email:      row.Email,
+		Role:       string(row.Role),
+		JoinedAt:   row.JoinedAt,
+		ModifiedAt: row.ModifiedAt,
+	}
 }

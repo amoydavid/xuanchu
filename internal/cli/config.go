@@ -22,6 +22,9 @@ func newShowCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "show"); err != nil {
+				return err
+			}
 			rt, err := runtimeFromOptions(currentOpts)
 			if err != nil {
 				return err
@@ -212,6 +215,11 @@ func newConfigImportTaskRCCommand(opts Options) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				return app.RuntimeError{Code: "remote_unsupported_command", Message: `command "config import-taskrc" is not supported in remote mode`}
+			}
 			svc, closeFn, err := buildServiceFromOpts(currentOpts)
 			if err != nil {
 				return err
@@ -258,7 +266,7 @@ func openStore(opts Options) (*sqlite.Store, error) {
 }
 
 func runtimeFromOptions(opts Options) (config.Runtime, error) {
-	env := runtimeEnv()
+	env := RuntimeEnv()
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,

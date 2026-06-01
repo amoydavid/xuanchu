@@ -19,19 +19,39 @@ type addTaskRequest struct {
 	Project     string            `json:"project,omitempty"`
 	ProjectID   string            `json:"project_id,omitempty"`
 	Priority    string            `json:"priority,omitempty"`
+	Due         *int64            `json:"due,omitempty"`
+	Depends     []string          `json:"depends,omitempty"`
+	Wait        *int64            `json:"wait,omitempty"`
+	Scheduled   *int64            `json:"scheduled,omitempty"`
+	Until       *int64            `json:"until,omitempty"`
+	Recur       *string           `json:"recur,omitempty"`
 	Tags        []string          `json:"tags,omitempty"`
 	UDAs        map[string]string `json:"udas,omitempty"`
 }
 
 type modifyTaskRequest struct {
-	Description  *string           `json:"description,omitempty"`
-	Project      *string           `json:"project,omitempty"`
-	ProjectID    *string           `json:"project_id,omitempty"`
-	Priority     *string           `json:"priority,omitempty"`
-	ClearProject bool              `json:"clear_project,omitempty"`
-	Tags         []string          `json:"tags,omitempty"`
-	UDAs         map[string]string `json:"udas,omitempty"`
-	ClearUDAs    []string          `json:"clear_udas,omitempty"`
+	Description    *string           `json:"description,omitempty"`
+	Project        *string           `json:"project,omitempty"`
+	ProjectID      *string           `json:"project_id,omitempty"`
+	Priority       *string           `json:"priority,omitempty"`
+	ClearProject   bool              `json:"clear_project,omitempty"`
+	ClearPriority  bool              `json:"clear_priority,omitempty"`
+	Due            *int64            `json:"due,omitempty"`
+	ClearDue       bool              `json:"clear_due,omitempty"`
+	Wait           *int64            `json:"wait,omitempty"`
+	ClearWait      bool              `json:"clear_wait,omitempty"`
+	Scheduled      *int64            `json:"scheduled,omitempty"`
+	ClearScheduled bool              `json:"clear_scheduled,omitempty"`
+	Until          *int64            `json:"until,omitempty"`
+	ClearUntil     bool              `json:"clear_until,omitempty"`
+	Depends        []string          `json:"depends,omitempty"`
+	ClearDepends   bool              `json:"clear_depends,omitempty"`
+	Recur          *string           `json:"recur,omitempty"`
+	ClearRecur     bool              `json:"clear_recur,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
+	RemoveTags     []string          `json:"remove_tags,omitempty"`
+	UDAs           map[string]string `json:"udas,omitempty"`
+	ClearUDAs      []string          `json:"clear_udas,omitempty"`
 }
 
 type textRequest struct {
@@ -47,10 +67,17 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := app.ListInput{Sort: r.URL.Query().Get("sort")}
+	if isTruthyQueryValue(r.URL.Query().Get("no_context")) {
+		input.NoContext = true
+	}
 	if target := strings.TrimSpace(r.URL.Query().Get("target")); target != "" {
 		input.Target = &target
 	}
-	if filters := r.URL.Query()["filter"]; len(filters) > 0 {
+	filters := r.URL.Query()["query"]
+	if len(filters) == 0 {
+		filters = r.URL.Query()["filter"]
+	}
+	if len(filters) > 0 {
 		expr, err := query.ParseFilterExpr(filters)
 		if err != nil {
 			writeAppError(w, err)
@@ -78,6 +105,11 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, tasksToJSON(tasks), nil)
+}
+
+func isTruthyQueryValue(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	return value == "true" || value == "1" || value == "yes"
 }
 
 func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +155,12 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		Description: strings.TrimSpace(req.Description),
 		Project:     projectPtr,
 		Priority:    priority,
+		Due:         req.Due,
+		Depends:     req.Depends,
+		Wait:        req.Wait,
+		Scheduled:   req.Scheduled,
+		Until:       req.Until,
+		Recur:       req.Recur,
 		Tags:        req.Tags,
 		UDAs:        req.UDAs,
 	})
@@ -190,13 +228,27 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		project = &view.Slug
 	}
 	if err := scoped.Modify(taskID, app.ModifyInput{
-		Description:  req.Description,
-		Project:      project,
-		ClearProject: req.ClearProject,
-		Priority:     req.Priority,
-		AddTags:      req.Tags,
-		UDAs:         req.UDAs,
-		ClearUDAs:    req.ClearUDAs,
+		Description:    req.Description,
+		Project:        project,
+		ClearProject:   req.ClearProject,
+		Priority:       req.Priority,
+		ClearPriority:  req.ClearPriority,
+		Due:            req.Due,
+		ClearDue:       req.ClearDue,
+		Wait:           req.Wait,
+		ClearWait:      req.ClearWait,
+		Scheduled:      req.Scheduled,
+		ClearScheduled: req.ClearScheduled,
+		Until:          req.Until,
+		ClearUntil:     req.ClearUntil,
+		AddDepends:     req.Depends,
+		ClearDepends:   req.ClearDepends,
+		Recur:          req.Recur,
+		ClearRecur:     req.ClearRecur,
+		AddTags:        req.Tags,
+		RemoveTags:     req.RemoveTags,
+		UDAs:           req.UDAs,
+		ClearUDAs:      req.ClearUDAs,
 	}); err != nil {
 		writeAppError(w, err)
 		return

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -27,6 +28,15 @@ func assertHTTPErrorCode(t *testing.T, rr *httptest.ResponseRecorder, wantStatus
 	}
 	if !strings.Contains(rr.Body.String(), `"`+wantCode+`"`) {
 		t.Fatalf("body = %s, want error code %q", rr.Body.String(), wantCode)
+	}
+}
+
+var pascalCaseJSONKey = regexp.MustCompile(`"[A-Z][A-Za-z]*":`)
+
+func assertSnakeCaseResponse(t *testing.T, body string) {
+	t.Helper()
+	if key := pascalCaseJSONKey.FindString(body); key != "" {
+		t.Fatalf("response leaked PascalCase key %q in body=%s", key, body)
 	}
 }
 

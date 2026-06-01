@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -237,12 +238,15 @@ func (s *Service) resolveTargetForRead(target string) (task.Task, error) {
 			return task.Task{}, err
 		}
 		if n > len(tasks) {
-			return task.Task{}, sqlite.ErrNotFound
+			return task.Task{}, taskNotFoundError()
 		}
 		return tasks[n-1], nil
 	}
 	tsk, err := s.repo.GetByUUID(s.workspaceID, target)
 	if err != nil {
+		if errors.Is(err, sqlite.ErrNotFound) {
+			return task.Task{}, taskNotFoundError()
+		}
 		return task.Task{}, err
 	}
 	if err := s.ensureReadableTaskScope(tsk); err != nil {
@@ -258,18 +262,25 @@ func (s *Service) resolveTargetForWrite(target string) (task.Task, error) {
 			return task.Task{}, err
 		}
 		if n > len(tasks) {
-			return task.Task{}, sqlite.ErrNotFound
+			return task.Task{}, taskNotFoundError()
 		}
 		return tasks[n-1], nil
 	}
 	tsk, err := s.repo.GetByUUID(s.workspaceID, target)
 	if err != nil {
+		if errors.Is(err, sqlite.ErrNotFound) {
+			return task.Task{}, taskNotFoundError()
+		}
 		return task.Task{}, err
 	}
 	if err := s.ensureWritableTaskScope(tsk); err != nil {
 		return task.Task{}, err
 	}
 	return tsk, nil
+}
+
+func taskNotFoundError() RuntimeError {
+	return RuntimeError{Code: "task_not_found", Message: "task not found"}
 }
 
 func filterProjectsByScope(scope *RequestScope, projects []ProjectView) []ProjectView {

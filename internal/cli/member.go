@@ -26,6 +26,9 @@ func newMemberListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "member list"); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -68,15 +71,22 @@ func memberViewsForJSON(members []app.MemberView) []map[string]any {
 func newMemberAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "add <user> [role:<role>]",
-		Args: cobra.MinimumNArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "member add"); err != nil {
+				return err
+			}
+			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
 			input := app.AddMemberInput{
-				WorkspaceRef: optionsFromCmd(cmd, opts).Workspace,
+				WorkspaceRef: currentOpts.Workspace,
 				UserRef:      args[0],
 				Role:         app.Role("member"),
 			}
@@ -99,15 +109,22 @@ func newMemberAddCommand(opts Options) *cobra.Command {
 func newMemberRoleCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "role <user> <owner|admin|member|viewer>",
-		Args: cobra.ExactArgs(2),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "member role"); err != nil {
+				return err
+			}
+			if err := cobra.ExactArgs(2)(cmd, args); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
 			if err := svc.ChangeMemberRole(app.ChangeMemberRoleInput{
-				WorkspaceRef: optionsFromCmd(cmd, opts).Workspace,
+				WorkspaceRef: currentOpts.Workspace,
 				UserRef:      args[0],
 				Role:         app.Role(args[1]),
 			}); err != nil {

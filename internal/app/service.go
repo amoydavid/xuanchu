@@ -64,6 +64,10 @@ type ListInput struct {
 	NoContext  bool
 }
 
+type ExportInput struct {
+	ProjectID *string
+}
+
 type ModifyInput struct {
 	Description    *string
 	Project        *string
@@ -89,8 +93,9 @@ type ModifyInput struct {
 }
 
 type ReportInput struct {
-	Name  string
-	Query query.Expr
+	Name      string
+	Query     query.Expr
+	NoContext bool
 }
 
 type ReportResult struct {
@@ -369,7 +374,7 @@ func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) 
 	if input.Target != nil {
 		return s.List(input)
 	}
-	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query})
+	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext})
 	if err != nil {
 		return nil, err
 	}
@@ -842,21 +847,20 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (st
 }
 
 func (s *Service) Export() ([]task.Task, error) {
+	return s.ExportWithInput(ExportInput{})
+}
+
+func (s *Service) ExportWithInput(input ExportInput) ([]task.Task, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, err
 	}
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{})
+	queryExpr := s.projectScopeExpr()
+	if input.ProjectID != nil && strings.TrimSpace(*input.ProjectID) != "" {
+		queryExpr = query.And(queryExpr, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(strings.TrimSpace(*input.ProjectID))})
+	}
+	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{Query: queryExpr})
 	if err != nil {
 		return nil, err
-	}
-	if s.hasProjectScope() {
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range tasks {
-			if s.allowsProjectID(tsk.ProjectID) {
-				filtered = append(filtered, tsk)
-			}
-		}
-		tasks = filtered
 	}
 	for _, tsk := range tasks {
 		if err := s.validateTaskProjectInvariant(tsk); err != nil {
@@ -1036,7 +1040,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err := s.refreshAutomaticState(); err != nil {
 		return ReportResult{}, err
 	}
-	contextExpr, err := s.activeContextFilter(false)
+	contextExpr, err := s.activeContextFilter(input.NoContext)
 	if err != nil {
 		return ReportResult{}, err
 	}

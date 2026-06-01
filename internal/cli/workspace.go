@@ -30,6 +30,9 @@ func newWorkspaceListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "workspace list"); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -63,9 +66,15 @@ func newWorkspaceListCommand(opts Options) *cobra.Command {
 func newWorkspaceAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "add <slug> [name:<name>] [description:<text>] [visibility:private|team|public]",
-		Args: cobra.MinimumNArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "workspace add"); err != nil {
+				return err
+			}
+			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			input, err := parseWorkspaceAddArgs(args)
 			if err != nil {
 				return err
@@ -91,8 +100,15 @@ func newWorkspaceAddCommand(opts Options) *cobra.Command {
 func newWorkspaceUseCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "use <slug|uuid>",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "workspace use"); err != nil {
+				return err
+			}
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -113,6 +129,9 @@ func newWorkspaceInfoCommand(opts Options) *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "workspace info"); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -141,8 +160,15 @@ func newWorkspaceInfoCommand(opts Options) *cobra.Command {
 func newWorkspaceModifyCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "modify <slug|uuid> [name:<name>] [description:<text>] [visibility:private|team|public]",
-		Args: cobra.MinimumNArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "workspace modify"); err != nil {
+				return err
+			}
+			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			input, err := parseWorkspaceModifyArgs(args[1:])
 			if err != nil {
 				return err
@@ -164,8 +190,15 @@ func newWorkspaceModifyCommand(opts Options) *cobra.Command {
 func newWorkspaceArchiveCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "archive <slug|uuid>",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if err := remoteUnsupported(currentOpts, "workspace archive"); err != nil {
+				return err
+			}
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return err
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

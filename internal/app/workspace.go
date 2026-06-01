@@ -216,6 +216,9 @@ func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error) 
 	}
 	out := make([]WorkspaceView, 0, len(rows))
 	for _, row := range rows {
+		if s.requestScope != nil && !s.requestScope.AllowsWorkspace(row.Workspace.ID) {
+			continue
+		}
 		out = append(out, workspaceViewFromRow(row.Workspace, Role(row.Role), row.Workspace.ID == s.runtime.WorkspaceID))
 	}
 	return out, nil

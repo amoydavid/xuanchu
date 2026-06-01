@@ -31,6 +31,7 @@ components:
         - project_mismatch
         - context_not_found
         - config_not_found
+        - config_key_unsupported
         - route_not_found
         - method_not_allowed
         - api_bad_json
@@ -97,6 +98,58 @@ components:
           type: integer
           format: int64
           nullable: true
+    Workspace:
+      type: object
+      required: [id, slug, name, visibility, role, active, created_at, modified_at]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+        created_by_user_id:
+          type: string
+          nullable: true
+        archived_at:
+          type: integer
+          format: int64
+          nullable: true
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+        active:
+          type: boolean
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    Member:
+      type: object
+      required: [user_id, name, role, joined_at, modified_at]
+      properties:
+        user_id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+        joined_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
     Token:
       type: object
       properties:
@@ -270,6 +323,15 @@ paths:
           schema:
             type: string
         - in: query
+          name: query
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+          description: Taskwarrior-style filter expression. Alias of filter.
+        - in: query
           name: filter
           schema:
             type: array
@@ -281,6 +343,11 @@ paths:
           name: sort
           schema:
             type: string
+        - in: query
+          name: no_context
+          schema:
+            type: boolean
+          description: Bypass the server-side active context for this request.
       responses:
         '200':
           description: Task list.
@@ -307,6 +374,24 @@ paths:
                 project_id:
                   type: string
                 priority:
+                  type: string
+                due:
+                  type: integer
+                  format: int64
+                depends:
+                  type: array
+                  items:
+                    type: string
+                wait:
+                  type: integer
+                  format: int64
+                scheduled:
+                  type: integer
+                  format: int64
+                until:
+                  type: integer
+                  format: int64
+                recur:
                   type: string
                 tags:
                   type: array
@@ -362,7 +447,43 @@ paths:
                   type: string
                 clear_project:
                   type: boolean
+                clear_priority:
+                  type: boolean
+                due:
+                  type: integer
+                  format: int64
+                clear_due:
+                  type: boolean
+                wait:
+                  type: integer
+                  format: int64
+                clear_wait:
+                  type: boolean
+                scheduled:
+                  type: integer
+                  format: int64
+                clear_scheduled:
+                  type: boolean
+                until:
+                  type: integer
+                  format: int64
+                clear_until:
+                  type: boolean
+                depends:
+                  type: array
+                  items:
+                    type: string
+                clear_depends:
+                  type: boolean
+                recur:
+                  type: string
+                clear_recur:
+                  type: boolean
                 tags:
+                  type: array
+                  items:
+                    type: string
+                remove_tags:
                   type: array
                   items:
                     type: string
@@ -534,6 +655,17 @@ paths:
       responses:
         '200':
           description: Workspace list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Workspace'
     post:
       summary: Create a workspace.
       requestBody:
@@ -555,6 +687,15 @@ paths:
       responses:
         '201':
           description: Workspace created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workspace'
   /api/v1/workspaces/{workspace}:
     parameters:
       - in: path
@@ -568,11 +709,29 @@ paths:
       responses:
         '200':
           description: Workspace details.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workspace'
     patch:
       summary: Modify workspace metadata.
       responses:
         '200':
           description: Modified workspace.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workspace'
   /api/v1/workspaces/{workspace}/members:
     get:
       summary: List workspace members.
@@ -585,6 +744,17 @@ paths:
       responses:
         '200':
           description: Member list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Member'
     post:
       summary: Add a workspace member.
       parameters:
@@ -822,6 +992,8 @@ paths:
           name: limit
           schema:
             type: integer
+            minimum: 1
+            maximum: 1000
       responses:
         '200':
           description: Audit list.

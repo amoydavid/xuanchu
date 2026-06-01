@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -142,7 +141,7 @@ func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfigList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "config:read", app.PermissionProjectConfigRead, "")
+	scoped, _, err := s.scopedService(r, "config:read", app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -167,7 +166,7 @@ func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not available over HTTP", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:read", app.PermissionProjectConfigRead, "")
+	scoped, _, err := s.scopedService(r, "config:read", app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -195,7 +194,7 @@ func (s *Server) handleConfigSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:write", app.PermissionUDAManage, "")
+	scoped, _, err := s.scopedService(r, "config:write", app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -213,7 +212,7 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not writable over HTTP", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:write", app.PermissionUDAManage, "")
+	scoped, _, err := s.scopedService(r, "config:write", app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -226,6 +225,5 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 }
 
 func isHTTPBusinessConfigKey(key string) bool {
-	key = strings.TrimSpace(key)
-	return key == "date.format" || strings.HasPrefix(key, "uda.") || strings.HasPrefix(key, "urgency.")
+	return app.IsBusinessConfigKey(key)
 }

@@ -34,6 +34,12 @@ func newAddCommand(opts Options) *cobra.Command {
 					Project:     firstNonEmpty(stringValue(parsed.Mod.Project), currentOpts.Project),
 					ProjectID:   currentOpts.ProjectID,
 					Priority:    stringValue(parsed.Mod.Priority),
+					Due:         parsed.Mod.Due,
+					Depends:     parsed.Mod.AddDepends,
+					Wait:        parsed.Mod.Wait,
+					Scheduled:   parsed.Mod.Scheduled,
+					Until:       parsed.Mod.Until,
+					Recur:       parsed.Mod.Recur,
 					Tags:        parsed.Mod.AddTags,
 					UDAs:        parsed.Mod.UDAs,
 				})

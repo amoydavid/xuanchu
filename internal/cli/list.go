@@ -34,6 +34,7 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
+					NoContext: currentOpts.NoContext,
 				}
 				if sort != "" {
 					input.Report = name
@@ -60,9 +61,9 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 					}
 					return render.JSON(cmd.OutOrStdout(), dtos)
 				}
-				ids := make([]int, len(tasks))
-				for i := range tasks {
-					ids[i] = i + 1
+				ids, err := remoteWorkingSetIDs(context.Background(), client, currentOpts, tasks)
+				if err != nil {
+					return err
 				}
 				render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
 				return nil
@@ -107,6 +108,25 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func remoteWorkingSetIDs(ctx context.Context, client *remote.Client, opts Options, tasks []task.Task) ([]int, error) {
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+	workingSet, err := remoteDefaultWorkingSet(ctx, client, opts)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(workingSet))
+	for i, tsk := range workingSet {
+		index[tsk.UUID] = i + 1
+	}
+	ids := make([]int, len(tasks))
+	for i, tsk := range tasks {
+		ids[i] = index[tsk.UUID]
+	}
+	return ids, nil
 }
 
 func isPlainTargetArg(args []string) bool {

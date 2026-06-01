@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -2720,6 +2722,114 @@ func TestNoContextBypassesActiveContext(t *testing.T) {
 	}
 	if len(tasks) != 2 {
 		t.Fatalf("List(NoContext) len = %d, want 2: %#v", len(tasks), tasks)
+	}
+}
+
+func TestSetConfigRejectsUnsupportedBusinessKey(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	err := svc.SetConfig("arbitrary.thing", "1")
+	if err == nil {
+		t.Fatal("SetConfig(arbitrary.thing) succeeded unexpectedly")
+	}
+	assertRuntimeCode(t, err, "config_key_unsupported")
+}
+
+func TestSetConfigPersonalKeysSkipAuditAndRole(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	viewer, err := ownerSvc.AddUser(AddUserInput{Name: "viewer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ownerSvc.AddMember(AddMemberInput{WorkspaceRef: "local", UserRef: viewer.ID, Role: RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := ownerSvc.ListAudit(AuditListInput{Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, "viewer", "local")
+	if err := viewerSvc.SetConfig("color", "false"); err != nil {
+		t.Fatalf("viewer SetConfig(color) error = %v", err)
+	}
+	if err := viewerSvc.SetConfig("json", "true"); err != nil {
+		t.Fatalf("viewer SetConfig(json) error = %v", err)
+	}
+	if value, ok, err := viewerSvc.GetConfig("color"); err != nil || !ok || value != "false" {
+		t.Fatalf("GetConfig(color) = %q, %v, %v; want false, true, nil", value, ok, err)
+	}
+	if err := viewerSvc.UnsetConfig("color"); err != nil {
+		t.Fatalf("viewer UnsetConfig(color) error = %v", err)
+	}
+	if value, ok, err := viewerSvc.GetConfig("color"); err != nil || ok || value != "" {
+		t.Fatalf("GetConfig(color after unset) = %q, %v, %v; want empty, false, nil", value, ok, err)
+	}
+	if err := viewerSvc.SetConfig("date.format", "epoch"); err == nil {
+		t.Fatal("viewer SetConfig(date.format) succeeded unexpectedly")
+	}
+
+	after, err := ownerSvc.ListAudit(AuditListInput{Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("personal render config wrote audit rows: before=%d after=%d rows=%#v", len(before), len(after), after)
+	}
+}
+
+func TestExportWithInputFiltersByProjectID(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	alpha, err := svc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := svc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "alpha task", Project: strptr("alpha")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "beta task", Project: strptr("beta")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "no project"}); err != nil {
+		t.Fatal(err)
+	}
+
+	missingProjectID := "00000000-0000-0000-0000-000000000000"
+	cases := []struct {
+		name      string
+		projectID *string
+		want      []string
+	}{
+		{name: "no filter", want: []string{"alpha task", "beta task", "no project"}},
+		{name: "alpha only", projectID: &alpha.ID, want: []string{"alpha task"}},
+		{name: "missing project", projectID: &missingProjectID},
+	}
+	_ = beta
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tasks, err := svc.ExportWithInput(ExportInput{ProjectID: tc.projectID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := make([]string, 0, len(tasks))
+			for _, tsk := range tasks {
+				got = append(got, tsk.Description)
+			}
+			sort.Strings(got)
+			want := append([]string(nil), tc.want...)
+			sort.Strings(want)
+			if !slices.Equal(got, want) {
+				t.Fatalf("ExportWithInput descriptions = %v, want %v", got, want)
+			}
+		})
 	}
 }
 

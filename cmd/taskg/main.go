@@ -47,11 +47,16 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
+		Server:  opts.Server,
+		Token:   opts.Token,
 		JSON:    opts.JSON,
 		NoColor: opts.NoColor,
-		Env:     runtimeEnv(),
+		Env:     cli.RuntimeEnv(),
 	})
 	if err != nil {
+		return
+	}
+	if cfg.RemoteServer != "" {
 		return
 	}
 	store, err := sqlite.Open(cfg.DatabasePath)
@@ -105,16 +110,6 @@ func wantsJSON(args []string) bool {
 	return false
 }
 
-func runtimeEnv() map[string]string {
-	env := map[string]string{}
-	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "TASKG_DB"} {
-		if value, ok := os.LookupEnv(key); ok {
-			env[key] = value
-		}
-	}
-	return env
-}
-
 func warningOptionsFromArgs(args []string, base cli.Options) cli.Options {
 	opts := base
 	for i := 0; i < len(args); i++ {
@@ -130,6 +125,16 @@ func warningOptionsFromArgs(args []string, base cli.Options) cli.Options {
 			i++
 		case strings.HasPrefix(arg, "--data-dir="):
 			opts.DataDir = strings.TrimPrefix(arg, "--data-dir=")
+		case arg == "--server" && i+1 < len(args):
+			opts.Server = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--server="):
+			opts.Server = strings.TrimPrefix(arg, "--server=")
+		case arg == "--token" && i+1 < len(args):
+			opts.Token = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--token="):
+			opts.Token = strings.TrimPrefix(arg, "--token=")
 		case arg == "--json":
 			opts.JSON = true
 		case strings.HasPrefix(arg, "--json="):

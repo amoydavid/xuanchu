@@ -70,6 +70,7 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 				Workspace: opts.Workspace,
 				Project:   opts.Project,
 				ProjectID: opts.ProjectID,
+				NoContext: true,
 			})
 			if err != nil {
 				return "", err
@@ -83,11 +84,7 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 		}
 		return target, nil
 	}
-	tasks, err := client.ListTasks(ctx, remote.ListTasksInput{
-		Workspace: opts.Workspace,
-		Project:   opts.Project,
-		ProjectID: opts.ProjectID,
-	})
+	tasks, err := remoteDefaultWorkingSet(ctx, client, opts)
 	if err != nil {
 		return "", err
 	}
@@ -110,4 +107,14 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 		return "", fmt.Errorf("task %q not found", target)
 	}
 	return matched, nil
+}
+
+func remoteDefaultWorkingSet(ctx context.Context, client *remote.Client, opts Options) ([]task.Task, error) {
+	return client.ListTasks(ctx, remote.ListTasksInput{
+		Workspace: opts.Workspace,
+		Project:   opts.Project,
+		ProjectID: opts.ProjectID,
+		Filters:   []string{"(status:pending or status:waiting)"},
+		NoContext: true,
+	})
 }

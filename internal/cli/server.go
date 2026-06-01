@@ -29,7 +29,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				return app.RuntimeError{Code: "server_listen_required", Message: "server listen address is required"}
 			}
 			currentOpts := optionsFromCmd(cmd, opts)
-			env := runtimeEnv()
+			env := RuntimeEnv()
 			cfg, err := config.Resolve(config.Options{
 				DataDir: currentOpts.DataDir,
 				DBPath:  currentOpts.DBPath,
