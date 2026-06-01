@@ -46,12 +46,17 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer store.Close()
+			rt, err := runtimeFromResolvedConfig(currentOpts, cfg, store, env)
+			if err != nil {
+				return err
+			}
 
 			srv := mcpserver.NewServer(mcpserver.Options{
-				Store:   store,
-				Version: opts.Version,
-				Mode:    mcpserver.ModeStdio,
-				Stderr:  cmd.ErrOrStderr(),
+				Store:              store,
+				Version:            opts.Version,
+				Mode:               mcpserver.ModeStdio,
+				Stderr:             cmd.ErrOrStderr(),
+				LocalRuntimeValues: rt.Values(),
 			})
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

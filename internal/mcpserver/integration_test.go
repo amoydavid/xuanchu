@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -137,6 +139,54 @@ func parseError(t *testing.T, result *mcp.CallToolResult) ToolError {
 		return ToolError{Code: "sdk_validation", Message: string(raw)}
 	}
 	return toolErr
+}
+
+func envelopeData(t *testing.T, env ToolEnvelope) map[string]any {
+	t.Helper()
+	dataMap, ok := env.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("data type = %T, want map", env.Data)
+	}
+	return dataMap
+}
+
+func nestedMap(t *testing.T, parent map[string]any, key string) map[string]any {
+	t.Helper()
+	value, ok := parent[key].(map[string]any)
+	if !ok {
+		t.Fatalf("%s type = %T, want map", key, parent[key])
+	}
+	return value
+}
+
+func nestedSlice(t *testing.T, parent map[string]any, key string) []any {
+	t.Helper()
+	value, ok := parent[key].([]any)
+	if !ok {
+		t.Fatalf("%s type = %T, want []any", key, parent[key])
+	}
+	return value
+}
+
+func newTestServerWithOptions(t *testing.T, opts Options) (*mcp.Server, *sqlite.Store) {
+	t.Helper()
+	store := opts.Store
+	if store == nil {
+		var err error
+		store, err = sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+		opts.Store = store
+	}
+	if opts.Clock == nil {
+		opts.Clock = fixedTestClock()
+	}
+	if opts.Version == "" {
+		opts.Version = "test"
+	}
+	return NewServer(opts), store
 }
 
 // ---------------------------------------------------------------------------
@@ -602,4 +652,301 @@ func TestWriteOperationsCreateAuditEntries(t *testing.T) {
 
 	// 这些写操作已成功完成，audit 由 app 层 withAudit 自动写入
 	// 这里仅验证操作本身无错误，不直接检查 audit 表
+}
+
+// ---------------------------------------------------------------------------
+// workspace/project/context/config tools 集成测试
+// ---------------------------------------------------------------------------
+
+func TestMCPWorkspaceTools(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	if _, err := svc.AddWorkspace(app.AddWorkspaceInput{Slug: "team", Name: "Team"}); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	list := callTool(t, session, "workspace.list", WorkspaceListInput{})
+	if list.IsError {
+		t.Fatalf("workspace.list error: %v", parseError(t, list))
+	}
+	workspaces := nestedSlice(t, envelopeData(t, parseEnvelope(t, list)), "workspaces")
+	if len(workspaces) < 2 {
+		t.Fatalf("workspace.list returned %d workspace(s), want at least 2", len(workspaces))
+	}
+
+	current := callTool(t, session, "workspace.current", WorkspaceCurrentInput{Workspace: "team"})
+	if current.IsError {
+		t.Fatalf("workspace.current error: %v", parseError(t, current))
+	}
+	workspace := nestedMap(t, envelopeData(t, parseEnvelope(t, current)), "workspace")
+	if workspace["slug"] != "team" {
+		t.Fatalf("workspace slug = %v, want team", workspace["slug"])
+	}
+}
+
+func TestMCPProjectTools(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "agent", Name: "Agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ProjectConfigSet(project.Slug, "agent.background", "Background"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ProjectConfigSet(project.Slug, "context.default", "legacy"); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	list := callTool(t, session, "project.list", ProjectListInput{})
+	if list.IsError {
+		t.Fatalf("project.list error: %v", parseError(t, list))
+	}
+	projects := nestedSlice(t, envelopeData(t, parseEnvelope(t, list)), "projects")
+	if len(projects) != 1 {
+		t.Fatalf("project.list count = %d, want 1", len(projects))
+	}
+
+	got := callTool(t, session, "project.get", ProjectGetInput{ProjectID: project.ID})
+	if got.IsError {
+		t.Fatalf("project.get error: %v", parseError(t, got))
+	}
+	data := envelopeData(t, parseEnvelope(t, got))
+	projectData := nestedMap(t, data, "project")
+	if projectData["slug"] != "agent" {
+		t.Fatalf("project slug = %v, want agent", projectData["slug"])
+	}
+	configSummary := nestedMap(t, data, "config_summary")
+	if configSummary["agent.background"] != "Background" {
+		t.Fatalf("agent.background = %v, want Background", configSummary["agent.background"])
+	}
+	if _, ok := configSummary["context.default"]; ok {
+		t.Fatal("context.default must not be exposed in MCP project config summary")
+	}
+
+	current := callTool(t, session, "project.current", ProjectCurrentInput{})
+	if current.IsError {
+		t.Fatalf("project.current error: %v", parseError(t, current))
+	}
+	if envelopeData(t, parseEnvelope(t, current))["project"] != nil {
+		t.Fatal("project.current without explicit scope should return null project")
+	}
+}
+
+func TestMCPContextTools(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	if err := svc.DefineContext("sprint", "priority:H"); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	set := callTool(t, session, "context.set", ContextSetInput{Name: "sprint"})
+	if set.IsError {
+		t.Fatalf("context.set error: %v", parseError(t, set))
+	}
+	show := callTool(t, session, "context.show", ContextShowInput{})
+	if show.IsError {
+		t.Fatalf("context.show error: %v", parseError(t, show))
+	}
+	contextData := nestedMap(t, envelopeData(t, parseEnvelope(t, show)), "context")
+	if contextData["name"] != "sprint" || contextData["filter"] != "priority:H" || contextData["active"] != true {
+		t.Fatalf("context = %#v, want active sprint priority:H", contextData)
+	}
+
+	clear := callTool(t, session, "context.set", ContextSetInput{Name: "none"})
+	if clear.IsError {
+		t.Fatalf("context.set none error: %v", parseError(t, clear))
+	}
+	if envelopeData(t, parseEnvelope(t, clear))["context"] != nil {
+		t.Fatal("context.set none should return null context")
+	}
+}
+
+func TestMCPConfigTools(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "agent", Name: "Agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{
+		Store: store,
+		Mode:  ModeStdio,
+		LocalRuntimeValues: map[string]string{
+			"remote.server": "http://127.0.0.1:8080",
+			"date.format":   "epoch",
+		},
+	})
+	session := connectClient(t, srv)
+
+	local := callTool(t, session, "config.get", ConfigGetInput{Scope: "local", Key: "remote.server"})
+	if local.IsError {
+		t.Fatalf("config.get local error: %v", parseError(t, local))
+	}
+	if got := envelopeData(t, parseEnvelope(t, local))["value"]; got != "http://127.0.0.1:8080" {
+		t.Fatalf("local remote.server = %v", got)
+	}
+
+	workspacePersonal := callTool(t, session, "config.set", ConfigSetInput{Scope: "workspace", Key: "color", Value: "auto"})
+	if !workspacePersonal.IsError {
+		t.Fatal("config.set workspace color should fail")
+	}
+	if code := parseError(t, workspacePersonal).Code; code != "config_key_unsupported" {
+		t.Fatalf("code = %q, want config_key_unsupported", code)
+	}
+	workspaceAgent := callTool(t, session, "config.set", ConfigSetInput{Scope: "workspace", Key: "agent.background", Value: "x"})
+	if !workspaceAgent.IsError {
+		t.Fatal("config.set workspace agent.background should fail")
+	}
+	if code := parseError(t, workspaceAgent).Code; code != "config_key_unsupported" {
+		t.Fatalf("code = %q, want config_key_unsupported", code)
+	}
+
+	projectSet := callTool(t, session, "config.set", ConfigSetInput{Scope: "project", ProjectID: project.ID, Key: "agent.handoff", Value: "handoff"})
+	if projectSet.IsError {
+		t.Fatalf("config.set project error: %v", parseError(t, projectSet))
+	}
+	projectGet := callTool(t, session, "config.get", ConfigGetInput{Scope: "project", ProjectID: project.ID, Key: "agent.handoff"})
+	if projectGet.IsError {
+		t.Fatalf("config.get project error: %v", parseError(t, projectGet))
+	}
+	if got := envelopeData(t, parseEnvelope(t, projectGet))["value"]; got != "handoff" {
+		t.Fatalf("agent.handoff = %v, want handoff", got)
+	}
+}
+
+func TestMCPConfigGetLocalRejectedInHTTPMode(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	token := mustCreateMCPToken(t, svc, []string{"config:read"}, []string{"local"}, nil)
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "config.get", ConfigGetInput{Scope: "local", Key: "date.format"})
+	if !result.IsError {
+		t.Fatal("config.get local in HTTP mode should fail")
+	}
+	if code := parseError(t, result).Code; code != "config_scope_invalid" {
+		t.Fatalf("code = %q, want config_scope_invalid", code)
+	}
+}
+
+func TestMCPAgentFlow(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ProjectConfigSet(project.Slug, "agent.background", "remote docs"); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	projectGet := callTool(t, session, "project.get", ProjectGetInput{ProjectID: project.ID})
+	if projectGet.IsError {
+		t.Fatalf("project.get error: %v", parseError(t, projectGet))
+	}
+	configSummary := nestedMap(t, envelopeData(t, parseEnvelope(t, projectGet)), "config_summary")
+	if configSummary["agent.background"] != "remote docs" {
+		t.Fatalf("agent.background = %v, want remote docs", configSummary["agent.background"])
+	}
+
+	queryEmpty := callTool(t, session, "task.query", TaskQueryInput{ProjectID: project.ID})
+	if queryEmpty.IsError {
+		t.Fatalf("task.query empty error: %v", parseError(t, queryEmpty))
+	}
+	if count := envelopeData(t, parseEnvelope(t, queryEmpty))["count"]; count != float64(0) {
+		t.Fatalf("empty project task count = %v, want 0", count)
+	}
+
+	add := callTool(t, session, "task.add", TaskAddInput{Description: "ship MCP", ProjectID: project.ID})
+	if add.IsError {
+		t.Fatalf("task.add error: %v", parseError(t, add))
+	}
+	uuid := extractUUID(t, parseEnvelope(t, add))
+	explain := callTool(t, session, "urgency.explain", UrgencyExplainInput{ID: uuid})
+	if explain.IsError {
+		t.Fatalf("urgency.explain error: %v", parseError(t, explain))
+	}
+	done := callTool(t, session, "task.done", TaskIDInput{ID: uuid})
+	if done.IsError {
+		t.Fatalf("task.done error: %v", parseError(t, done))
+	}
+
+	audits, err := svc.ListAudit(app.AuditListInput{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	var sawAdd, sawDone bool
+	for _, row := range audits {
+		sawAdd = sawAdd || row.Action == "task.add"
+		sawDone = sawDone || row.Action == "task.done"
+	}
+	if !sawAdd || !sawDone {
+		t.Fatalf("audit did not include task.add and task.done: %#v", audits)
+	}
+}
+
+func TestMCPProjectScope(t *testing.T) {
+	store := newMCPTestStore(t)
+	owner := newMCPTestService(t, store)
+	projectA, err := owner.AddProject(app.AddProjectInput{Slug: "a", Name: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectB, err := owner.AddProject(app.AddProjectInput{Slug: "b", Name: "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskB, err := owner.Add(app.AddInput{Description: "hidden", Project: &projectB.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := mustCreateMCPToken(t, owner, []string{"task:read", "project:read"}, []string{"local"}, []string{projectA.ID})
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	query := callTool(t, session, "task.query", TaskQueryInput{ProjectID: projectB.ID})
+	if !query.IsError {
+		t.Fatal("task.query outside project allowlist should fail")
+	}
+	if code := parseError(t, query).Code; code != "project_scope_denied" {
+		t.Fatalf("task.query code = %q, want project_scope_denied", code)
+	}
+
+	get := callTool(t, session, "task.get", TaskGetInput{ID: taskB.UUID})
+	if !get.IsError {
+		t.Fatal("task.get outside project allowlist should fail")
+	}
+	if code := parseError(t, get).Code; code != "task_not_found" {
+		t.Fatalf("task.get code = %q, want task_not_found", code)
+	}
+
+	list := callTool(t, session, "project.list", ProjectListInput{})
+	if list.IsError {
+		t.Fatalf("project.list error: %v", parseError(t, list))
+	}
+	projects := nestedSlice(t, envelopeData(t, parseEnvelope(t, list)), "projects")
+	if len(projects) != 1 {
+		t.Fatalf("project.list count = %d, want 1", len(projects))
+	}
+	projectMap, ok := projects[0].(map[string]any)
+	if !ok {
+		t.Fatalf("project.list item type = %T, want map", projects[0])
+	}
+	if projectMap["slug"] != projectA.Slug {
+		t.Fatalf("project.list projects = %#v, want only project A", projects)
+	}
 }
