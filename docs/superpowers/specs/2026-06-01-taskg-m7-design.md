@@ -450,7 +450,7 @@ func NewServer(opts Options) *mcp.Server
 规则：
 
 - 业务错误走 MCP tool result：`CallToolResult.IsError = true`，`Content` 中包含可读 `rendered` 文本；如果 SDK structured output 支持错误 payload，则同时返回 `{code,message,details}`。
-- 业务错误包括 `permission_denied`、`token_scope_denied`、`workspace_scope_denied`、`project_scope_denied`、`task_not_found`、`project_not_found`、`workspace_not_found`、`context_not_found`、`project_mismatch` 等 app `RuntimeError` / `PermissionError`。
+- 业务错误包括 `permission_denied`、`token_scope_denied`、`workspace_scope_denied`、`workspace_required`、`project_scope_denied`、`task_not_found`、`project_not_found`、`workspace_not_found`、`context_not_found`、`project_mismatch` 等 app `RuntimeError` / `PermissionError`。`workspace_required` 用于 HTTP MCP 中 token 可见多个 workspace、但请求只给 project slug 且无法确定 workspace 的场景。
 - 协议错误走 JSON-RPC error，例如 tool 不存在、SDK schema 层类型不匹配、缺失必填字段且未进入业务 handler。
 - 网络、IO、panic、不可恢复内部错误走 JSON-RPC `InternalError`，并包装为 `mcp_internal`；不得泄露 stack trace。
 - 认证失败：HTTP MCP 在 handler 层返回 HTTP 401；stdio MCP actor 解析失败返回 MCP tool/protocol error，具体由进入 tool handler 前后决定。
@@ -586,6 +586,7 @@ MCP tool 到 token capability / app permission 的映射：
 - `due` / `wait` / `scheduled` / `until` 可选。
 - `annotations` 可选。
 - `workspace` 可选。
+- M7 `task.add` 不接收 `recur`；如需 recurring 创建能力，另行设计并同步 app/REST 输入。
 
 输出：
 
@@ -645,6 +646,7 @@ MCP tool 到 token capability / app permission 的映射：
 - stdio 可支持工作集 ID。
 - HTTP MCP 默认不应依赖客户端本机 working set；远程场景推荐 UUID。
 - 如果 HTTP MCP 支持工作集 ID，必须使用服务端 actor/workspace 维度 working set，不得读取客户端本机状态。
+- M7 HTTP MCP 不承诺支持数字工作集 ID；收到数字 ID 时应复用现有 `task_uuid_invalid` 语义，而不是新增 MCP-only 错误码。
 - 任务存在但不在 project allowlist 时返回 `task_not_found`，避免泄露存在性。
 - working-set ID 在两次 tool call 之间不保证稳定；并发 session 中 add/done/delete 会让编号 shift。Agent 在多步流程里应使用 `task.add` / `task.query` 返回的 UUID 作为后续引用。
 
@@ -1077,6 +1079,7 @@ M5 已有 project config。M7 定义 Agent 可读 key：
 规则：
 
 - 这些 key 是普通 project config 的受控子集。
+- 旧的 `context.default` 可作为兼容别名保留，但 MCP tools/resources 应优先读写和输出 `agent.default_context`。
 - `project.get` 和 project resource 可以读取这些 key。
 - `config.get` 仍可按权限读取其它允许 key。
 - 每个 `agent.*` value 上限 16KB；超长在 SetConfig 入口拒绝并返回 `config_value_too_large`。
@@ -1102,6 +1105,7 @@ taskg --server ... workspace archive <slug|uuid>
 - 接 M6 HTTP workspace endpoint。
 - 输出与本地 human / JSON 尽量一致。
 - `workspace use` 使用 `PUT /api/v1/me/active_workspace`，body 为 `{"workspace":"slug-or-uuid"}`。
+- `PUT /api/v1/me/active_workspace` 使用 `workspace:read` capability + `PermissionWorkspaceRead`；切换 active workspace 是 actor 自我状态变更，不是 workspace 级 mutation。
 - 选择 `/api/v1/me/active_workspace` 的原因是 active workspace 是 actor 状态的一等资源，幂等 PUT 比动词子资源更稳定；后续如需 active context endpoint，可沿用 `/api/v1/me/active_context`。
 - `/api/v1/me/*` 是 actor 状态的统一命名空间；后续 active context、default project 等 actor 维度状态扩展应挂在此前缀下，不再新增动词路径。
 - `workspace use` 写服务端 SQLite 中 actor 的 `active_workspace.<user_id>`，后续远程命令没有显式 `--workspace` 时可使用该状态。

@@ -56,6 +56,7 @@
 - `context.set` 只切 active context，使用 `context:write + PermissionContextUse`；不新增 context define/delete tool。
 - `task.depends` 是 `task.modify` 的窄包装：`depends` add-only，`clear_depends` 先清再加。
 - `agent.*` project config value 上限 16KB，超长返回 `config_value_too_large`。
+- `agent.*` 16KB 是 project config 的独立上限；M7 不修改 audit payload size 行为，除非 spec 后续单独要求。
 - `config.get scope=local` 仅 stdio MCP 读取本机 TOML；HTTP MCP 永远不读客户端 TOML。
 - `/mcp` 不进 OpenAPI；REST 新增 endpoint 必须进 OpenAPI。
 - 每个 chunk 完成后至少跑局部测试；跨 chunk 后跑完整验证。
@@ -68,6 +69,8 @@
   构造 MCP server、集中注册 tools/resources、暴露 `NewServer(opts Options)`。
 - `internal/mcpserver/options.go`
   MCP server options、mode、clock/store/logger/version。
+- `internal/mcpserver/SDK_NOTES.md`
+  Phase 0c 固定官方 MCP Go SDK 版本、关键 API 签名、transport/handler 行为；后续 MCP task 必须按此文件实现，不再保留猜测式伪 API。
 - `internal/mcpserver/auth.go`
   stdio/http actor、token、workspace/project scope 解析；构造已授权 app service。
 - `internal/mcpserver/result.go`
@@ -108,6 +111,8 @@
   user management REST handlers。
 - `internal/httpapi/me_state.go`
   actor state REST handlers，例如 active workspace。
+- `internal/httpapi/workspace_archive.go`
+  workspace archive REST handler，如不合并进 `workspaces.go`。
 - `internal/cli/mcp.go`
   `taskg mcp stdio` 命令。
 
@@ -125,6 +130,7 @@
   如仍写 Go 1.22 或 MCP 草案，更新到 M7 选型。
 - `docs/openapi/taskg-v1.yaml`
   新增 users、active_workspace、task list limit。
+  同步新增 REST error enum：`workspace_required`（若 app shared error 进入 HTTP/OpenAPI）和 workspace archive endpoint。
 - `cmd/taskg/main.go`
   确保 `mcp stdio` 跳过 migration warning 或不污染 stdout。
 - `internal/cli/root.go`
@@ -143,18 +149,20 @@
   注册 users、active_workspace、`/mcp`。
 - `internal/httpapi/tasks.go`
   task list limit 默认 200 / max 1000。
+- `internal/storage/sqlite/task_repo.go`
+  `ListOptions.Limit` 与 SQL `LIMIT`。
 - `internal/httpapi/workspaces.go`
-  如已有 response DTO，复用给 MCP/remote。
+  复用 workspace response DTO；新增 workspace archive endpoint。
 - `internal/httpapi/me.go`
   如 actor state handler 更适合放这里，可合并 `me_state.go`。
 - `internal/httpapi/app_service.go`
   抽出或复用 request scope 构造，供 MCP HTTP adapter 使用。
 - `internal/app/workspace.go`
   如 `UseWorkspace` 需要返回 view，新增安全 wrapper；user endpoint 复用现有 `ListUsers/AddUser/UserInfo`。
+- `internal/app/project_config.go`
+  `agent.*` key 白名单与 16KB 上限。
 - `internal/app/service.go`
   task list/report limit 支持；MCP tools 需要的 app 方法补齐。
-- `internal/app/project_config.go`
-  `agent.*` value 16KB 上限。
 - `internal/remote/task.go`
   task list limit query 参数。
 - `tests/integration/cli_test.go`
@@ -181,7 +189,15 @@ Run:
 go version
 ```
 
-Expected: Go version is `go1.25.x` or newer. If local toolchain is older, stop and install/switch Go before editing.
+Expected: Go version is `go1.25.x` or newer. If local toolchain is older, install/switch Go before editing. On machines using the Go toolchain downloader, use:
+
+```bash
+go install golang.org/dl/go1.25@latest
+go1.25 download
+go1.25 version
+```
+
+Then run subsequent Go commands with `go1.25` or update `PATH` so `go version` reports `go1.25.x`。
 
 - [ ] **Step 2: 修改 `go.mod`**
 
@@ -231,6 +247,8 @@ Expected: all commands exit 0. Remove generated `taskg` binary if `go build` cre
 ```bash
 rm -f taskg
 ```
+
+If `gofmt -l` reports files, run `gofmt -w` on those files first, then re-run the full Phase 0a verification before committing.
 
 - [ ] **Step 6: Commit**
 
@@ -309,6 +327,14 @@ Parse `limit` query:
 
 Thread the parsed limit into app task list/report input. If current app list input lacks limit, add it in `internal/app` and storage query path.
 
+Concrete changes:
+
+- add `Limit int` to `app.ListInput`。
+- add `Limit int` to `sqlite.ListOptions`。
+- pass `Limit` from `Service.List` and `RunReport` / `ListReport` into `TaskRepository.List`。
+- apply `q = q.Limit(opts.Limit)` only when `opts.Limit > 0` inside `TaskRepository.List` after sorting。
+- keep internal app callers with zero limit as unlimited unless an HTTP/MCP entry point sets default 200 explicitly。
+
 - [ ] **Step 4: Update remote client**
 
 In `internal/remote/task.go`, add `Limit int` to `ListTasksInput` and include `limit` query parameter only when non-zero. Existing CLI calls can leave it zero and use server default.
@@ -371,6 +397,8 @@ func TestUserListCreateInfoHTTP(t *testing.T) {
 
 Also add permission test: viewer/member without adequate role gets 403 for `POST /api/v1/users` if current app permission requires it. If current app service lacks explicit permission for user management, add one in app layer rather than allowing every token.
 
+Use existing test helpers from `internal/httpapi` (`newHTTPServerWithTokenFixture`, `requestHTTP`, `requestHTTPBody`, `assertHTTPErrorCode`, `assertSnakeCaseResponse`) rather than introducing a second fixture API.
+
 - [ ] **Step 2: Run and confirm failure**
 
 Run:
@@ -412,6 +440,7 @@ Use `scopedService` and keep user management mapped to existing workspace-level 
 - `GET /api/v1/users` and `GET /api/v1/users/{user}` require token capability `workspace:read` and app permission `PermissionWorkspaceRead`。
 - `POST /api/v1/users` requires token capability `workspace:write` and app permission `PermissionWorkspaceModify`。
 - Do not introduce new `user:*` token capabilities in M7; if the app layer has no dedicated user permission, keep role evaluation through the workspace permission mapping above.
+- Current `Service.ListUsers` / `AddUser` / `UserInfo` do not call `Require` internally. For M7, HTTP handler `scopedService` is the permission boundary; do not expose these methods from MCP tools unless equivalent permission wrapping is added there too.
 
 - [ ] **Step 5: Register routes**
 
@@ -458,22 +487,35 @@ Add test:
 
 ```go
 func TestPutMeActiveWorkspaceUpdatesServerState(t *testing.T) {
-    fixture := newHTTPFixture(t)
-    token := fixture.createToken(t, "workspace:write", "workspace:read")
-    ws := fixture.createWorkspace(t, "team")
+    fixture := newHTTPServerWithTokenFixture(t, "workspace:read")
+    ownerSvc := app.NewService(...)
+    ws, err := ownerSvc.AddWorkspace(app.AddWorkspaceInput{Slug: "team", Name: "Team"})
+    if err != nil {
+        t.Fatal(err)
+    }
 
     body := fmt.Sprintf(`{"workspace":%q}`, ws.Slug)
-    resp := fixture.request(t, http.MethodPut, "/api/v1/me/active_workspace", strings.NewReader(body), token)
+    resp := requestHTTPBody(t, fixture.server, http.MethodPut, "/api/v1/me/active_workspace", body, map[string]string{
+        "Authorization": "Bearer " + fixture.token,
+    })
     if resp.Code != http.StatusOK {
         t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
     }
+    assertSnakeCaseResponse(t, resp.Body.String())
+    if !strings.Contains(resp.Body.String(), `"active":true`) {
+        t.Fatalf("active workspace response is not active: %s", resp.Body.String())
+    }
 
-    me := fixture.request(t, http.MethodGet, "/api/v1/me", nil, token)
-    assertJSONContains(t, me.Body.Bytes(), "active_workspace", ws.ID)
+    me := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/me", map[string]string{
+        "Authorization": "Bearer " + fixture.token,
+    })
+    if !strings.Contains(me.Body.String(), `"effective_workspace"`) || !strings.Contains(me.Body.String(), ws.ID) {
+        t.Fatalf("effective workspace not updated: %s", me.Body.String())
+    }
 }
 ```
 
-Adapt assertion to actual `/api/v1/me` response shape.
+Adapt only constructor details to the actual fixture shape; keep assertions against existing `/api/v1/me.effective_workspace`, not a new `active_workspace` field.
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -498,9 +540,10 @@ type activeWorkspaceRequest struct {
 Handler:
 
 - require auth。
-- use `scopedService` with `workspace:write + PermissionWorkspaceRead` or existing `UseWorkspace` permission semantics. Since `UseWorkspace` checks membership, avoid over-restricting to admins.
+- use `scopedService` with capability `workspace:read` and app permission `PermissionWorkspaceRead`。切换 active workspace 是 actor 自我状态变更，不是 workspace 级 mutation；能读取该 workspace 且 membership 有效即可切换。
 - call `svc.UseWorkspace(req.Workspace)`。
-- return current workspace response.
+- construct a fresh scoped service after `UseWorkspace`, because the original service runtime still points at the previous workspace。
+- call `freshSvc.WorkspaceInfo(req.Workspace)` and return `workspaceResponseFromView(view)` through the standard REST envelope；the returned workspace must have `active=true`。
 
 - [ ] **Step 4: Register route**
 
@@ -515,7 +558,8 @@ api.With(s.authMiddleware).Put("/api/v1/me/active_workspace", s.handleMeActiveWo
 Add `PUT /api/v1/me/active_workspace`:
 
 - request body `{workspace:string}`。
-- response uses the standard REST success envelope with body `{ "data": { "active_workspace": <Workspace> } }`。Remote `workspace use` must parse this shape; do not return a bare `Workspace` from this endpoint.
+- response uses the standard REST success envelope with body `{ "data": <Workspace> }` where `<Workspace>` is the existing `workspaceResponse` from `internal/httpapi/workspaces.go`。Remote `workspace use` parses this shape into `remote.Workspace`.
+- update OpenAPI `ErrorCode` enum with `workspace_required` if not already present, because M7 moves this code into shared app/request-scope logic.
 
 - [ ] **Step 6: Verify**
 
@@ -538,9 +582,24 @@ Expected: PASS.
 - Modify: `internal/cli/user.go`
 - Modify: `internal/cli/member.go`
 - Modify: `internal/cli/config.go`
+- Modify: `internal/httpapi/router.go`
+- Modify: `internal/httpapi/workspaces.go`
 - Modify: `tests/integration/cli_test.go`
+- Modify: `docs/openapi/taskg-v1.yaml`
 
-- [ ] **Step 1: Write integration tests**
+- [ ] **Step 1: Split old unsupported-management test**
+
+Refactor `TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB` in `tests/integration/cli_test.go`:
+
+- keep only `user use` in the unsupported test。
+- move workspace cases into `TestCLIRemoteWorkspaceCommands`。
+- move user list/info/add cases into `TestCLIRemoteUserCommands`。
+- move member cases into `TestCLIRemoteMemberCommands`。
+- move `show` / `show <key>` into `TestCLIRemoteShowCommand`。
+- keep the assertion that remote commands do not create or mutate the client-side local DB path.
+- confirm route coverage before moving each case: existing M6 routes cover workspace list/add/info/modify and member list/add/role; M7 must add user routes, active workspace route, show wiring, and workspace archive route.
+
+- [ ] **Step 2: Write integration tests**
 
 In `tests/integration/cli_test.go`, add black-box tests that start `taskg server` with temp DB and token:
 
@@ -554,7 +613,22 @@ In `tests/integration/cli_test.go`, add black-box tests that start `taskg server
 
 Use existing M6 remote integration helpers if present.
 
-- [ ] **Step 2: Run and confirm failures**
+- [ ] **Step 3: Add workspace archive REST endpoint**
+
+M6 has `Service.ArchiveWorkspace(ref)` but no REST route for workspace archive. Add:
+
+```go
+api.With(s.authMiddleware).Post("/api/v1/workspaces/{workspace}/archive", s.handleWorkspaceArchive)
+```
+
+Handler rules:
+
+- use `scopedServiceWithWorkspace` with capability `workspace:write` and app permission `PermissionWorkspaceArchive`。
+- call `svc.ArchiveWorkspace(ref)`。
+- return the archived `Workspace` view in `{ "data": <Workspace> }` by creating a fresh scoped service or querying the archive result in a way that does not report stale active state。
+- update OpenAPI with `POST /api/v1/workspaces/{workspace}/archive` and documented errors.
+
+- [ ] **Step 4: Run and confirm failures**
 
 Run:
 
@@ -564,7 +638,7 @@ go test ./tests/integration -run 'Remote.*(Workspace|User|Member|Show)' -count=1
 
 Expected: FAIL because commands are still unsupported.
 
-- [ ] **Step 3: Implement remote clients**
+- [ ] **Step 5: Implement remote clients**
 
 Implement methods:
 
@@ -585,9 +659,18 @@ func (c *Client) AddMember(ctx context.Context, input MemberAddInput) error
 func (c *Client) ChangeMemberRole(ctx context.Context, input MemberRoleInput) error
 ```
 
-Use snake_case JSON structs matching REST DTOs.
+Use snake_case JSON structs matching REST DTOs. `UseWorkspace` must decode `PUT /api/v1/me/active_workspace` from `{ "data": <Workspace> }` and return that `Workspace`. Add `func (c *Client) put(ctx context.Context, path string, body any, out any) error` to `internal/remote/client.go`; do not hand-roll PUT only in `UseWorkspace`.
 
-- [ ] **Step 4: Wire CLI workspace/user/member**
+Remote workspace mapping:
+
+- list -> `GET /api/v1/workspaces?all=<bool>`。
+- add -> `POST /api/v1/workspaces`。
+- info -> `GET /api/v1/workspaces/{workspace}`。
+- modify -> `PATCH /api/v1/workspaces/{workspace}`。
+- use -> `PUT /api/v1/me/active_workspace`。
+- archive -> `POST /api/v1/workspaces/{workspace}/archive`。
+
+- [ ] **Step 6: Wire CLI workspace/user/member**
 
 Replace `remoteUnsupported` in remote-capable commands with remote branch:
 
@@ -603,7 +686,7 @@ if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 
 Keep `user use` remote unsupported.
 
-- [ ] **Step 5: Upgrade `show [key]` local and remote**
+- [ ] **Step 7: Upgrade `show [key]` local and remote**
 
 Change `newShowCommand`:
 
@@ -614,15 +697,15 @@ Args: cobra.MaximumNArgs(1),
 
 Local:
 
-- no arg: existing list。
-- key: print single value or `unknown config key`。
+- no arg: existing human list；in `--json` mode return a JSON object map of public keys to values。
+- key: human mode prints the raw value only, matching `_show <key>` semantics; JSON mode returns `{ "key": "<key>", "value": "<value>" }`; missing key returns existing `unknown config key` error behavior。
 
 Remote:
 
 - no arg: use remote config list / me as needed。
-- key: use remote config get for business keys and `/api/v1/me` for actor-state keys if needed。
+- key: same output contract as local；use remote config get for business keys and `/api/v1/me` for actor-state keys if needed。
 
-- [ ] **Step 6: Verify**
+- [ ] **Step 8: Verify**
 
 Run:
 
@@ -657,7 +740,7 @@ Expected: all verification commands exit 0.
 
 ```bash
 git add internal/app internal/httpapi internal/remote internal/cli tests/integration docs/openapi/taskg-v1.yaml
-git commit -m "feat: 收口 M7 远程管理命令"
+git commit -m "feat: 收口 M7 远程管理命令并统一 task 列表 limit"
 ```
 
 ---
@@ -671,6 +754,7 @@ git commit -m "feat: 收口 M7 远程管理命令"
 - Modify: `go.sum`
 - Create: `internal/mcpserver/options.go`
 - Create: `internal/mcpserver/server.go`
+- Create: `internal/mcpserver/SDK_NOTES.md`
 - Create: `internal/mcpserver/schema_test.go`
 
 - [ ] **Step 1: Add dependency**
@@ -678,13 +762,36 @@ git commit -m "feat: 收口 M7 远程管理命令"
 Run:
 
 ```bash
-go get github.com/modelcontextprotocol/go-sdk@latest
+go get github.com/modelcontextprotocol/go-sdk@<selected-version>
 go mod tidy
 ```
 
-Expected: `go.mod` includes `github.com/modelcontextprotocol/go-sdk`; no CGO SQLite dependency appears.
+Select the newest official SDK version compatible with Go 1.25 at execution time, then pin that exact version in `go.mod` and record it in `SDK_NOTES.md`。Do not leave `@latest` in scripts or docs after Phase 0c. Expected: `go.mod` includes `github.com/modelcontextprotocol/go-sdk`; no CGO SQLite dependency appears.
 
-- [ ] **Step 2: Create options**
+- [ ] **Step 2: Record SDK API notes**
+
+Read the installed module docs and examples from the module cache:
+
+```bash
+go list -m github.com/modelcontextprotocol/go-sdk
+go doc github.com/modelcontextprotocol/go-sdk/mcp
+```
+
+Create `internal/mcpserver/SDK_NOTES.md` with:
+
+- exact module version。
+- server constructor signature。
+- tool registration signature。
+- in-memory/client transport signature for tests。
+- stdio server transport signature。
+- Streamable HTTP handler constructor and whether its factory receives `*http.Request` with the original `Context`。
+- how SDK exposes input schema from `ListTools`。
+- Streamable HTTP session ownership: whether one `mcp.Server` may be reused across requests or the SDK expects/request-scopes a server per session/request。
+- body limit semantics for Streamable HTTP: whether `bodyLimitMiddleware` constrains each POST request body, GET/SSE setup, or any longer-lived session payload.
+
+Do not proceed to Step 3 until this file names the concrete APIs later tasks must use. If SDK examples disagree with pseudo-code in this plan, follow `SDK_NOTES.md` and update the pseudo-code in the same commit.
+
+- [ ] **Step 3: Create options**
 
 Create `internal/mcpserver/options.go`:
 
@@ -714,7 +821,7 @@ type Options struct {
 }
 ```
 
-- [ ] **Step 3: Create empty server constructor**
+- [ ] **Step 4: Create empty server constructor**
 
 Create `internal/mcpserver/server.go`:
 
@@ -738,9 +845,9 @@ func NewServer(opts Options) *mcp.Server {
 
 Do not implement stdio/HTTP transport, auth, or scope adapter in Phase 0c.
 
-- [ ] **Step 4: Add empty tools/list smoke test**
+- [ ] **Step 5: Add empty tools/list smoke test**
 
-In `internal/mcpserver/schema_test.go`, use SDK in-memory client/server transport to assert empty `tools/list` result or SDK-equivalent empty list.
+In `internal/mcpserver/schema_test.go`, use the SDK in-memory client/server transport recorded in `SDK_NOTES.md` to assert empty `tools/list` result or SDK-equivalent empty list. Also create the reusable golden comparison helper and `-update` flag now; with zero tools it should pass without writing files. This smoke test verifies `NewServer` and the selected SDK transport can run, and Task 13 will add actual tool goldens on top of the same framework.
 
 Skeleton:
 
@@ -768,9 +875,9 @@ func TestNewServerStartsWithNoTools(t *testing.T) {
 }
 ```
 
-Adjust SDK method signatures to actual installed version.
+Use exact signatures recorded in `internal/mcpserver/SDK_NOTES.md`; do not leave guessed SDK calls in committed code.
 
-- [ ] **Step 5: Verify Phase 0c**
+- [ ] **Step 6: Verify Phase 0c**
 
 Run:
 
@@ -786,7 +893,7 @@ rm -f taskg
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add go.mod go.sum internal/mcpserver
@@ -876,6 +983,7 @@ Tests:
 - stdio default uses local active user/workspace from SQLite。
 - stdio `workspace` override resolves within same DB。
 - stdio project slug + project_id mismatch returns stable app error。
+- stdio with no active user/workspace returns stable MCP business/protocol error and does not auto-create an anonymous actor or workspace。
 
 - [ ] **Step 2: Write HTTP scope tests**
 
@@ -883,7 +991,7 @@ Tests:
 
 - missing/invalid token maps to auth error。
 - project-scoped token denies allowlist outside project。
-- token visible multiple workspaces + project slug without workspace errors。
+- token visible multiple workspaces + project slug without workspace returns `workspace_required`。
 
 - [ ] **Step 3: Run and confirm failure**
 
@@ -909,7 +1017,6 @@ type RequestScopeInput struct {
 type RuntimeFactory struct {
     Store *sqlite.Store
     Clock app.Clock
-    Mode  Mode
 }
 ```
 
@@ -921,6 +1028,8 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 ```
 
 Reuse M6 app request scope authorization. If helper currently lives inside `internal/httpapi`, move generic logic to `internal/app` rather than importing `httpapi` from `mcpserver`.
+
+When HTTP MCP receives a project slug without `workspace` / `workspace_id` and the token can see multiple workspaces, return app `RuntimeError{Code:"workspace_required", Message:"workspace is required to resolve project slug"}`. Do not invent another MCP-only error code.
 
 - [ ] **Step 5: Verify**
 
@@ -1004,8 +1113,11 @@ Expected: PASS.
 Tests:
 
 - `POST /mcp` without token returns 401。
+- `GET /mcp` without token returns 401, so Streamable HTTP/SSE entry is also protected。
 - `/mcp` receives request id/access log/panic/body limit middleware。
-- body over limit returns 413.
+- `POST /mcp` body over limit returns 413。
+- `GET /mcp` Streamable HTTP/SSE setup is not used for body-limit assertions unless SDK docs show GET carries a request body。
+- SDK Streamable HTTP body/session limit conclusion is recorded in `SDK_NOTES.md`。
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -1017,7 +1129,15 @@ go test ./internal/httpapi -run 'TestMCP' -count=1
 
 Expected: FAIL because `/mcp` route missing.
 
-- [ ] **Step 3: Mount SDK handler**
+- [ ] **Step 3: Confirm middleware and SDK request context**
+
+Before coding, append a short section to `internal/mcpserver/SDK_NOTES.md`:
+
+- current `internal/httpapi/router.go` middleware order is `requestIDMiddleware -> recovererMiddleware -> accessLogMiddleware -> bodyLimitMiddleware -> authMiddleware` for protected routes。
+- Streamable HTTP handler registration style required by the installed SDK。
+- whether the SDK server factory receives `*http.Request` and preserves the original `r.Context()`。
+
+- [ ] **Step 4: Mount SDK handler**
 
 In router:
 
@@ -1028,13 +1148,18 @@ mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 api.With(s.authMiddleware).Handle("/mcp", mcpHandler)
 ```
 
-If SDK handler requires exact GET/POST registration, register methods accordingly. Ensure middleware order includes body limit, recoverer, request id, access log.
+Use the concrete handler registration recorded in `SDK_NOTES.md` rather than guessed SDK calls. `/mcp` must be mounted on the same `api` chi router so it receives, in order, request id, recoverer, access log, body limit, and then auth middleware. Register every HTTP method required by the installed SDK, including GET if Streamable HTTP uses GET for SSE.
 
-- [ ] **Step 4: Preserve auth context for MCP**
+Construct the `mcp.Server` according to `SDK_NOTES.md` session guidance. If the SDK expects a long-lived server for Streamable HTTP sessions, create/reuse one server instance from `httpapi.Server` options instead of constructing a new one for every request.
 
-Ensure MCP handler can read authenticated token from request context. If SDK request factory receives `*http.Request`, pass context into `mcpserver` options/factory.
+- [ ] **Step 5: Preserve auth context for MCP**
 
-- [ ] **Step 5: Verify**
+Implement exactly one of these verified paths and record which one in `SDK_NOTES.md`:
+
+- Path A: SDK server factory receives the original `*http.Request`。`RuntimeFactory.ServiceForHTTP` reads auth from `r.Context()` inside tool handlers。
+- Path B: SDK does not preserve request context。Wrap the SDK handler after `authMiddleware`, capture authenticated request auth in the factory closure, and pass it into `mcpserver.Options` or `RuntimeFactory` without using package globals。
+
+- [ ] **Step 6: Verify**
 
 Run:
 
@@ -1090,7 +1215,7 @@ In `schema_test.go`, connect SDK client and call `ListTools`. Serialize each too
 internal/mcpserver/testdata/<tool-name>.schema.json
 ```
 
-Tool filename convention: replace `.` with `_`, e.g. `task_add.schema.json`.
+Tool filename convention: replace `.` with `_`, e.g. `task_add.schema.json`. Reuse the golden helper and `-update` flag created in Task 7; this task should add tool registrations and golden files, not a second golden framework.
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -1113,11 +1238,32 @@ func registerTools(s *mcp.Server, opts Options) {
 }
 ```
 
-For this task, register schema-only tool definitions with input structs. If a handler is required by the SDK before the real implementation lands, return a business error result with code `mcp_internal` and message `not implemented`; replace these handlers in the following tasks.
+For this task, register schema-only tool definitions with input structs. If a handler is required by the SDK before the real implementation lands, return a business error result with code `tool_not_implemented` and message `not implemented`; replace these handlers in the following tasks. Do not use `mcp_internal` for intentional temporary handlers.
 
 - [ ] **Step 4: Generate golden files**
 
-Use `go test ./internal/mcpserver -run TestToolSchemasMatchGolden -update` if you implement an update flag, or manually write JSON from test output.
+Use the golden update flag in `schema_test.go`:
+
+```go
+var updateSchemaGoldens = flag.Bool("update", false, "update schema golden files")
+```
+
+Inside the schema comparison helper if Task 7 did not already add this exact helper:
+
+```go
+if *updateSchemaGoldens {
+    if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+        t.Fatalf("update golden %s: %v", goldenPath, err)
+    }
+    return
+}
+```
+
+Generate files with:
+
+```bash
+go test ./internal/mcpserver -run TestToolSchemasMatchGolden -update -count=1
+```
 
 - [ ] **Step 5: Verify**
 
@@ -1143,10 +1289,13 @@ Expected: PASS.
 Tests:
 
 - `task.add` creates task with explicit `project_id` and returns UUID。
-- project-scoped token with missing project returns error, not auto-fill。
+- project-scoped token with a single project allowlist and missing `project`/`project_id` returns error, not auto-fill。
 - `task.query` default excludes deleted, limit defaults 200 and max 1000。
+- `task.query include_completed=true` includes completed tasks。
+- `task.query include_deleted=true` includes deleted tasks。
 - `task.get` by UUID returns task。
 - project allowlist outside task returns `task_not_found` as business error (`IsError=true`)。
+- HTTP MCP `task.get` rejects numeric working-set IDs with existing `task_uuid_invalid` business error；stdio MCP may resolve working-set IDs through the local working set。
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -1170,11 +1319,39 @@ type TaskAddInput struct {
     Description string   `json:"description" jsonschema:"task description"`
     Tags        []string `json:"tags,omitempty"`
     Priority    string   `json:"priority,omitempty"`
-    Due         string   `json:"due,omitempty"`
+    Due         *int64   `json:"due,omitempty" jsonschema:"unix seconds"`
+    Wait        *int64   `json:"wait,omitempty" jsonschema:"unix seconds"`
+    Scheduled   *int64   `json:"scheduled,omitempty" jsonschema:"unix seconds"`
+    Until       *int64   `json:"until,omitempty" jsonschema:"unix seconds"`
+    Annotations []string `json:"annotations,omitempty"`
 }
 ```
 
-Add date fields present in app `AddInput`. Keep snake_case.
+Keep date/time fields aligned with `internal/httpapi/tasks.go:addTaskRequest` and `app.AddInput`: `due` / `wait` / `scheduled` / `until` are nullable Unix seconds (`*int64`)。M7 MCP must not accept human-readable date strings here; if that is needed later, add a separate parsing task. Do not include `recur` in M7 `task.add` unless the spec is updated first.
+
+`annotations` is in the M7 spec. Implement it atomically: prefer extending `app.AddInput` so task creation and initial annotations are written in one app transaction and one coherent audit flow. If that is too invasive, wrap `app.Add` + annotation writes in a new app-layer method such as `AddWithAnnotations`; do not implement two independent MCP handler calls where task creation can succeed and annotation writing can fail.
+
+Also define concrete input structs for:
+
+```go
+type TaskQueryInput struct {
+    Workspace        string `json:"workspace,omitempty"`
+    Project          string `json:"project,omitempty"`
+    ProjectID        string `json:"project_id,omitempty"`
+    Query            string `json:"query,omitempty"`
+    Status           string `json:"status,omitempty"`
+    Limit            int    `json:"limit,omitempty"`
+    IncludeCompleted bool   `json:"include_completed,omitempty"`
+    IncludeDeleted   bool   `json:"include_deleted,omitempty"`
+}
+
+type TaskGetInput struct {
+    Workspace string `json:"workspace,omitempty"`
+    Project   string `json:"project,omitempty"`
+    ProjectID string `json:"project_id,omitempty"`
+    ID        string `json:"id"`
+}
+```
 
 - [ ] **Step 4: Implement handlers through app service**
 
@@ -1238,9 +1415,41 @@ Use app methods already used by CLI:
 
 Do not add `ReplaceDepends`.
 
+Define and golden-test input structs that include all spec fields:
+
+- `task.modify`: `id`, `workspace`, `project`, `project_id`, `description`, `priority`, `due`, `wait`, `scheduled`, `until`, `tags`, `remove_tags`, `udas`, `clear`, `depends`, `clear_depends`。
+- `task.depends`: `id`, `workspace`, `depends`, `clear_depends`。
+
+Use this struct shape as the starting point:
+
+```go
+type TaskModifyInput struct {
+    Workspace      string            `json:"workspace,omitempty"`
+    Project        string            `json:"project,omitempty"`
+    ProjectID      string            `json:"project_id,omitempty"`
+    ID             string            `json:"id"`
+    Description    *string           `json:"description,omitempty"`
+    Priority       *string           `json:"priority,omitempty"`
+    Due            *int64            `json:"due,omitempty"`
+    Wait           *int64            `json:"wait,omitempty"`
+    Scheduled      *int64            `json:"scheduled,omitempty"`
+    Until          *int64            `json:"until,omitempty"`
+    Tags           []string          `json:"tags,omitempty"`
+    RemoveTags     []string          `json:"remove_tags,omitempty"`
+    UDAs           map[string]string `json:"udas,omitempty"`
+    Clear          []string          `json:"clear,omitempty"`
+    Depends        []string          `json:"depends,omitempty"`
+    ClearDepends   bool              `json:"clear_depends,omitempty"`
+}
+```
+
+Map `clear` entries onto existing `app.ModifyInput` clear booleans / clear slices. Current `app.ModifyInput` already has `UDAs` and `ClearUDAs`; if more clear targets are accepted by the MCP schema, add explicit mapping and tests rather than interpreting arbitrary field names dynamically.
+
+If `project_id` is present in `task.modify`, extend `app.ModifyInput` or add a resolver before calling `Modify` so project slug/id mismatch and project scope checks remain in app/service logic. Do not silently convert `project_id` to a slug in the MCP handler without checking workspace ownership and allowlist.
+
 - [ ] **Step 4: Verify audit**
 
-In tests, after write tool call, query `svc.ListAudit(AuditListInput{Limit: 10})` or DB audit repository to assert action exists.
+In tests, after write tool call, query `svc.ListAudit(AuditListInput{Limit: 10})` or DB audit repository to assert action exists. If the test uses `svc.ListAudit`, create the fixture token/service with `audit:read` capability and an app role that can read audit; otherwise the audit assertion should fail with permission denial instead of testing the write behavior.
 
 - [ ] **Step 5: Verify**
 
@@ -1266,6 +1475,7 @@ Tests:
 
 - `report.run name=next` returns tasks and rendered text。
 - `report.run limit=1001` returns `api_bad_limit` business error。
+- `report.run limit=1` returns at most one task。
 - project-scoped token report only sees allowlist project。
 - `urgency.explain` returns `data.urgency` and `data.factors`。
 
@@ -1283,11 +1493,20 @@ Expected: FAIL.
 
 Use existing app/report/urgency paths. Do not recalculate formulas in MCP layer.
 
+`report.run` result shape must be built explicitly:
+
+- `data.report.name` is the requested report name。
+- `data.tasks` is the task array。
+- `rendered` uses existing report/list rendering helpers or a concise summary。
+
+Current `app.ReportResult` only carries tasks; do not assume it already contains report metadata.
+
 For limit:
 
 - default 200。
 - max 1000。
 - invalid -> `api_bad_limit` business error。
+- REST report limit is not required by the M7 spec. Do not add `limit` to `/api/v1/reports/{name}` unless Task 2 intentionally adds report limit while threading `app.ListInput.Limit`; if REST report limit is added, document it in OpenAPI and add REST tests in Task 2.
 
 - [ ] **Step 4: Verify**
 
@@ -1309,6 +1528,7 @@ Expected: PASS.
 Run:
 
 ```bash
+test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./internal/mcpserver -count=1
 go test ./...
 CGO_ENABLED=0 go test ./...
@@ -1347,13 +1567,17 @@ Tests:
 - `workspace.current` returns current effective workspace。
 - `project.list` respects project allowlist。
 - `project.get` includes allowed `agent.*` summary only。
+- `project.get` for project outside project allowlist returns `project_scope_denied`, matching HTTP project info behavior。
 - `project.current` returns null when no effective project。
 - `context.show` reads service active context。
 - `context.set name=none` clears active context and uses `context:write + PermissionContextUse`。
 - `config.get scope=local` works in stdio mode and reads TOML/runtime config。
 - `config.get scope=local` fails in HTTP mode。
 - `config.set scope=workspace agent.background` returns `config_key_unsupported`。
+- `config.set scope=workspace color=auto` returns `config_key_unsupported`。
 - `config.set scope=project agent.background` succeeds if value <=16KB。
+- `config.get scope=project agent.background` succeeds。
+- `config.get scope=project agent.handoff` succeeds。
 - oversized `agent.background` returns `config_value_too_large`。
 
 - [ ] **Step 2: Run and confirm failure**
@@ -1383,7 +1607,7 @@ Ensure DTO matches REST response fields.
 Use app methods:
 
 - `ContextShow`
-- `ContextUse`
+- `UseContext`
 - `ContextNone`
 
 Do not implement define/delete.
@@ -1394,16 +1618,29 @@ Rules:
 
 - HTTP `scope=local`: business error。
 - stdio `scope=local`: read local runtime config/TOML only。
-- `scope=workspace`: app `GetConfig/SetConfig` with `IsBusinessConfigKey`。
+- confirm `app.IsBusinessConfigKey` exists and is exported; if its signature changes before M7 implementation, add/adjust the app helper first and cover it with unit tests。
+- `scope=workspace`: in the MCP tool handler, first reject unsupported write keys with `app.IsBusinessConfigKey(key)` and return `config_key_unsupported`; then call app `GetConfig/SetConfig`。Do not rely only on `Service.SetConfig` because it also permits personal render keys for local CLI compatibility.
 - `scope=project`: app `ProjectConfigGet/Set` with project ref。
 - `agent.*`: project only。
+
+Current app has `ConfigValues()` but no public `GetConfig` / `SetConfig` pair. Add focused app methods for workspace config get/set or reuse existing config internals behind app-layer methods with `PermissionProjectConfigRead/Write` or the existing workspace config permissions; do not have MCP handlers write SQLite meta directly.
+
+Update project config whitelist in `internal/app/project_config.go` to match M7 spec:
+
+- keep `agent.background`。
+- keep `agent.constraints`。
+- add `agent.default_context`。
+- add `agent.handoff`。
+- decide compatibility for existing `context.default`: keep as legacy alias if existing tests depend on it, but M7 Agent tools/resources should emit `agent.default_context`。
 
 - [ ] **Step 6: Add 16KB `agent.*` limit**
 
 In `internal/app/project_config.go`, reject values longer than 16KB for `agent.*` keys:
 
 ```go
-if strings.HasPrefix(key, "agent.") && len(value) > 16*1024 {
+const agentConfigValueMaxBytes = 16 * 1024
+
+if strings.HasPrefix(key, "agent.") && len(value) > agentConfigValueMaxBytes {
     return RuntimeError{Code: "config_value_too_large", Message: "config value too large"}
 }
 ```
@@ -1542,6 +1779,8 @@ git add internal/mcpserver internal/app tests/integration
 git commit -m "feat: 添加 MCP 企业上下文工具"
 ```
 
+If Task 18 touches `internal/app/project_config.go` or shared OpenAPI/schema docs, include those files in this commit as well; do not leave app whitelist changes unstaged.
+
 ---
 
 ## Chunk 7: 文档同步与 M7 收尾
@@ -1647,7 +1886,7 @@ Expected:
 - [ ] **Step 4: Commit docs sync**
 
 ```bash
-git add README.md ROADMAP.md docs/requirements.md docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
+git add README.md ROADMAP.md docs/requirements.md docs/superpowers/specs/2026-06-01-taskg-m7-design.md docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
 git commit -m "docs: 同步 M7 完成状态"
 ```
 
@@ -1659,9 +1898,10 @@ git commit -m "docs: 同步 M7 完成状态"
 
 - Agent A：Chunk 1，Go 升级与文档版本同步。
 - Agent B：Chunk 2 的 REST/remote CLI，不碰 `internal/mcpserver`。
-- Agent C：Chunk 3/4 的 MCP SDK、transport、auth、scope，不碰 task tools。
-- Agent D：Chunk 5 的 task/report/urgency tools。
-- Agent E：Chunk 6 的 enterprise tools/resources。
+- Agent C：Chunk 3 / Phase 0c 的 MCP SDK 骨架和 `SDK_NOTES.md`，提交后停止，不进入 Phase 1。
+- Agent C2：Chunk 4 / Phase 1 的 MCP transport、auth、scope、result，不碰 task tools。
+- Agent D：Chunk 5 的 task/report/urgency tools；必须等 Agent B 的 app list limit 和 Agent C2 的 RuntimeFactory 合入后开始。
+- Agent E：Chunk 6 的 enterprise tools/resources；必须等 Agent D 合入后开始，避免同时修改 `internal/mcpserver/server.go` 和 shared app config。
 - Main agent：集成、冲突处理、OpenAPI/docs、最终验证。
 
 不要让多个 agent 同时编辑同一文件；如果必须共享 `internal/mcpserver/server.go`，先让一个 agent 建立注册接口，其他 agent 只新增各自 `tools_*.go` 并在最后由 main agent 集成注册。
