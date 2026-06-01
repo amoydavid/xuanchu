@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -26,6 +27,20 @@ func newContextDefineCommand(opts Options) *cobra.Command {
 		Use:  "define <name> <filter...>",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if err := client.DefineContext(context.Background(), currentOpts.Workspace, args[0], strings.Join(args[1:], " ")); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Defined context %s\n", args[0])
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -45,6 +60,16 @@ func newContextUseCommand(opts Options) *cobra.Command {
 		Use:  "use <name>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				return client.UseContext(context.Background(), currentOpts.Workspace, args[0])
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -60,6 +85,16 @@ func newContextNoneCommand(opts Options) *cobra.Command {
 		Use:  "none",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				return client.ClearContext(context.Background(), currentOpts.Workspace)
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -75,6 +110,26 @@ func newContextShowCommand(opts Options) *cobra.Command {
 		Use:  "show",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				contexts, active, err := client.ListContexts(context.Background(), currentOpts.Workspace)
+				if err != nil {
+					return err
+				}
+				for _, ctx := range contexts {
+					if ctx.Name == active {
+						fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", ctx.Name, ctx.FilterSource)
+						return nil
+					}
+				}
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -97,6 +152,23 @@ func newContextListCommand(opts Options) *cobra.Command {
 		Use:  "list",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				contexts, _, err := client.ListContexts(context.Background(), currentOpts.Workspace)
+				if err != nil {
+					return err
+				}
+				for _, ctx := range contexts {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", ctx.Name, ctx.FilterSource)
+				}
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
@@ -119,6 +191,16 @@ func newContextDeleteCommand(opts Options) *cobra.Command {
 		Use:  "delete <name>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				return client.DeleteContext(context.Background(), currentOpts.Workspace, args[0])
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

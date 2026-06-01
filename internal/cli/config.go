@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -54,6 +55,20 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				value, err := client.GetConfig(context.Background(), currentOpts.Workspace, key)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), value)
+				return nil
+			}
 			rt, err := runtimeFromOptions(currentOpts)
 			if err != nil {
 				return err
@@ -94,6 +109,15 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key, value := args[0], args[1]
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				return client.SetConfig(context.Background(), currentOpts.Workspace, key, value)
+			}
 			if key == "context.active" {
 				return fmt.Errorf("context.active is managed by context commands")
 			}
@@ -114,6 +138,15 @@ func newConfigUnsetCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				return client.UnsetConfig(context.Background(), currentOpts.Workspace, key)
+			}
 			if key == "context.active" {
 				return fmt.Errorf("context.active is managed by context commands")
 			}
@@ -133,6 +166,27 @@ func newConfigListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				values, err := client.ListConfig(context.Background(), currentOpts.Workspace)
+				if err != nil {
+					return err
+				}
+				keys := make([]string, 0, len(values))
+				for key := range values {
+					keys = append(keys, key)
+				}
+				sort.Strings(keys)
+				for _, key := range keys {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, values[key])
+				}
+				return nil
+			}
 			rt, err := runtimeFromOptions(currentOpts)
 			if err != nil {
 				return err

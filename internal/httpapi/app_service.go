@@ -8,13 +8,18 @@ import (
 )
 
 func (s *Server) scopedService(r *http.Request, capability string, permission app.Permission, projectRef string) (*app.Service, requestAuth, error) {
+	return s.scopedServiceWithWorkspace(r, capability, permission, requestWorkspaceRef(r), projectRef)
+}
+
+func (s *Server) scopedServiceWithWorkspace(r *http.Request, capability string, permission app.Permission, workspaceRef, projectRef string) (*app.Service, requestAuth, error) {
 	authn, ok := authFromContext(r.Context())
 	if !ok {
 		return nil, requestAuth{}, app.RuntimeError{Code: "api_internal", Message: "internal server error"}
 	}
 	baseSvc, err := app.NewService(app.ServiceOptions{
-		Store: s.store,
-		Clock: s.effectiveClock(),
+		Store:   s.store,
+		Clock:   s.effectiveClock(),
+		Runtime: &app.RuntimeContext{},
 	})
 	if err != nil {
 		return nil, requestAuth{}, err
@@ -23,7 +28,7 @@ func (s *Server) scopedService(r *http.Request, capability string, permission ap
 		Token:              authn.Authn,
 		RequiredCapability: capability,
 		RequiredPermission: permission,
-		WorkspaceRef:       requestWorkspaceRef(r),
+		WorkspaceRef:       workspaceRef,
 		ProjectRef:         strings.TrimSpace(projectRef),
 	})
 	if err != nil {

@@ -26,6 +26,12 @@ type AddProjectInput struct {
 	Description string `json:"description,omitempty"`
 }
 
+type ModifyProjectInput struct {
+	Slug        *string `json:"slug,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
 func (c *Client) ListProjects(ctx context.Context, workspace string, includeArchived bool) ([]app.ProjectView, error) {
 	values := url.Values{}
 	if workspace != "" {
@@ -67,6 +73,36 @@ func (c *Client) GetProject(ctx context.Context, workspace, ref string) (app.Pro
 		return app.ProjectView{}, err
 	}
 	return projectDTOToView(envelope.Data), nil
+}
+
+func (c *Client) ModifyProject(ctx context.Context, workspace, ref string, input ModifyProjectInput) (app.ProjectView, error) {
+	path := projectPath(workspace, ref)
+	var envelope apiEnvelope[projectDTO]
+	if err := c.patch(ctx, path, input, &envelope); err != nil {
+		return app.ProjectView{}, err
+	}
+	return projectDTOToView(envelope.Data), nil
+}
+
+func (c *Client) ArchiveProject(ctx context.Context, workspace, ref string) (app.ProjectView, error) {
+	path := projectPathWithSuffix(workspace, ref, "/archive")
+	var envelope apiEnvelope[projectDTO]
+	if err := c.post(ctx, path, map[string]any{}, &envelope); err != nil {
+		return app.ProjectView{}, err
+	}
+	return projectDTOToView(envelope.Data), nil
+}
+
+func projectPath(workspace, ref string) string {
+	return projectPathWithSuffix(workspace, ref, "")
+}
+
+func projectPathWithSuffix(workspace, ref, suffix string) string {
+	path := "/api/v1/projects/" + url.PathEscape(ref) + suffix
+	if workspace != "" {
+		path += "?workspace=" + url.QueryEscape(workspace)
+	}
+	return path
 }
 
 func projectDTOToView(row projectDTO) app.ProjectView {

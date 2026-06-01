@@ -65,6 +65,22 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 		return "", fmt.Errorf("task target is required")
 	}
 	if _, err := uuid.Parse(target); err == nil {
+		if opts.Project != "" || opts.ProjectID != "" {
+			tasks, err := client.ListTasks(ctx, remote.ListTasksInput{
+				Workspace: opts.Workspace,
+				Project:   opts.Project,
+				ProjectID: opts.ProjectID,
+			})
+			if err != nil {
+				return "", err
+			}
+			for _, tsk := range tasks {
+				if tsk.UUID == target {
+					return target, nil
+				}
+			}
+			return "", fmt.Errorf("task %q not found", target)
+		}
 		return target, nil
 	}
 	tasks, err := client.ListTasks(ctx, remote.ListTasksInput{

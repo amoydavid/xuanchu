@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -27,16 +28,28 @@ func newAuditListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
-			if err != nil {
-				return err
+			var rows []app.AuditLogView
+			var err error
+			if remoteMode, _, modeErr := isRemoteMode(currentOpts); modeErr != nil {
+				return modeErr
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				rows, err = client.ListAudit(context.Background(), currentOpts.Workspace, projectRef, limit)
+			} else {
+				svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+				if err != nil {
+					return err
+				}
+				defer closeFn()
+				rows, err = svc.ListAudit(app.AuditListInput{
+					WorkspaceRef: currentOpts.Workspace,
+					ProjectRef:   projectRef,
+					Limit:        limit,
+				})
 			}
-			defer closeFn()
-			rows, err := svc.ListAudit(app.AuditListInput{
-				WorkspaceRef: currentOpts.Workspace,
-				ProjectRef:   projectRef,
-				Limit:        limit,
-			})
 			if err != nil {
 				return err
 			}

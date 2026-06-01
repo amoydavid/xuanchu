@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dajee/taskg/internal/task"
+)
 
 func TestAuthorizeTokenRequestRejectsMissingCapability(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
@@ -108,6 +112,64 @@ func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
 		t.Fatal("Add(no project) error = nil")
 	} else {
 		assertRuntimeCode(t, err, "project_scope_denied")
+	}
+}
+
+func TestProjectScopedImportCannotClearProject(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	work, err := ownerSvc.AddProject(AddProjectInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddProject(work) error = %v", err)
+	}
+	workTask, err := ownerSvc.Add(AddInput{Description: "work task", Project: strptr(work.Slug)})
+	if err != nil {
+		t.Fatalf("Add(work task) error = %v", err)
+	}
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "cli",
+		Scopes:        []string{"task:write"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{work.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:write",
+		RequiredPermission: PermissionTaskWrite,
+		WorkspaceRef:       "local",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	scopedSvc, err := NewService(ServiceOptions{
+		Store:        store,
+		Clock:        fixedClock{NowUnix: 100},
+		Runtime:      &authorized.Runtime,
+		RequestScope: &authorized.Scope,
+	})
+	if err != nil {
+		t.Fatalf("NewService(scoped) error = %v", err)
+	}
+
+	payload := task.ToJSON(workTask)
+	payload.Project = nil
+	_, err = scopedSvc.Import([]task.JSONTask{payload})
+	assertRuntimeCode(t, err, "project_scope_denied")
+
+	reloaded, err := ownerSvc.Info(workTask.UUID)
+	if err != nil {
+		t.Fatalf("Info(workTask) error = %v", err)
+	}
+	if reloaded.ProjectID == nil || *reloaded.ProjectID != work.ID {
+		t.Fatalf("project was cleared after failed import: %#v", reloaded.ProjectID)
 	}
 }
 

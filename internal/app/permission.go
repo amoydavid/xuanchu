@@ -12,6 +12,7 @@ const (
 	PermissionContextUse         Permission = "context.use"
 	PermissionContextManage      Permission = "context.manage"
 	PermissionUDAManage          Permission = "uda.manage"
+	PermissionWorkspaceRead      Permission = "workspace.read"
 	PermissionWorkspaceModify    Permission = "workspace.modify"
 	PermissionWorkspaceArchive   Permission = "workspace.archive"
 	PermissionMemberManage       Permission = "member.manage"

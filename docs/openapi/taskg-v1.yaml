@@ -4,13 +4,40 @@ info:
   version: v1
 servers:
   - url: http://127.0.0.1:8080
+security:
+  - bearerAuth: []
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: taskg token
+      bearerFormat: taskg_pat or taskg_agent
   schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - auth_missing_token
+        - auth_invalid_token
+        - auth_token_expired
+        - auth_token_revoked
+        - token_scope_denied
+        - workspace_scope_denied
+        - project_scope_denied
+        - membership_not_found
+        - permission_denied
+        - task_not_found
+        - task_uuid_invalid
+        - project_not_found
+        - project_mismatch
+        - context_not_found
+        - config_not_found
+        - route_not_found
+        - method_not_allowed
+        - api_bad_json
+        - api_bad_limit
+        - api_payload_too_large
+        - api_internal
+        - remote_server_invalid
     ErrorEnvelope:
       type: object
       required: [error]
@@ -20,43 +47,220 @@ components:
           required: [code, message]
           properties:
             code:
-              type: string
+              $ref: '#/components/schemas/ErrorCode'
             message:
               type: string
             details:
               type: object
               additionalProperties: true
+    Task:
+      type: object
+      additionalProperties: true
+      properties:
+        uuid:
+          type: string
+        description:
+          type: string
+        project:
+          type: string
+          nullable: true
+        project_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+    Project:
+      type: object
+      required: [id, workspace_id, slug, name, status]
+      properties:
+        id:
+          type: string
+        workspace_id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        task_count:
+          type: integer
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+        archived_at:
+          type: integer
+          format: int64
+          nullable: true
+    Token:
+      type: object
+      properties:
+        id:
+          type: string
+        prefix:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [pat, agent]
+        user_id:
+          type: string
+        workspace_ids:
+          type: array
+          items:
+            type: string
+        project_ids:
+          type: array
+          items:
+            type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: integer
+          format: int64
+        expires_at:
+          type: integer
+          format: int64
+          nullable: true
+        revoked_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_used_at:
+          type: integer
+          format: int64
+          nullable: true
+    Context:
+      type: object
+      properties:
+        name:
+          type: string
+        filter:
+          type: string
+        active:
+          type: boolean
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        actor_user_id:
+          type: string
+          nullable: true
+        actor_name:
+          type: string
+        workspace_id:
+          type: string
+          nullable: true
+        project_id:
+          type: string
+          nullable: true
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: integer
+          format: int64
+    Success:
+      type: object
+      required: [data]
+      properties:
+        data:
+          nullable: true
+  parameters:
+    WorkspaceQuery:
+      in: query
+      name: workspace
+      schema:
+        type: string
+      description: Workspace slug or UUID. If omitted, token/default workspace rules apply.
+    ProjectQuery:
+      in: query
+      name: project
+      schema:
+        type: string
+      description: Project slug or UUID in the effective workspace.
+    ProjectIDQuery:
+      in: query
+      name: project_id
+      schema:
+        type: string
+      description: Stable project UUID. If project is also provided, both must resolve to the same project.
+  responses:
+    Unauthorized:
+      description: Missing, invalid, expired, or revoked bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Token scope, workspace/project scope, membership, or role permission denied.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    BadRequest:
+      description: Invalid JSON, invalid path parameter, or validation failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Route or resource not found. Project-scoped task misses use task_not_found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PayloadTooLarge:
+      description: Request body exceeds server limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
 paths:
   /healthz:
     get:
-      summary: Health check
+      security: []
+      summary: Health check.
       responses:
         '200':
-          description: Server is healthy
+          description: Server is healthy.
   /api/v1/me:
     get:
-      summary: Current authenticated actor
-      security:
-        - bearerAuth: []
+      summary: Current actor, token, visible workspaces, and effective workspace.
       responses:
         '200':
-          description: Authenticated actor details
+          description: Actor metadata.
         '401':
-          description: Missing or invalid bearer token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/tasks:
     get:
-      summary: List tasks in the effective workspace
-      security:
-        - bearerAuth: []
+      summary: List tasks or run a report in the effective workspace.
       parameters:
-        - in: query
-          name: workspace
-          schema:
-            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - $ref: '#/components/parameters/ProjectIDQuery'
         - in: query
           name: report
           schema:
@@ -68,21 +272,26 @@ paths:
         - in: query
           name: filter
           schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - in: query
+          name: sort
+          schema:
             type: string
-          description: Repeatable CLI-style filter token
       responses:
         '200':
-          description: Task list
+          description: Task list.
         '401':
-          description: Missing or invalid bearer token
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Token scope or membership denied
-        '404':
-          description: Task or workspace not found
+          $ref: '#/components/responses/Forbidden'
     post:
-      summary: Create a task
-      security:
-        - bearerAuth: []
+      summary: Create a task.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
       requestBody:
         required: true
         content:
@@ -103,71 +312,237 @@ paths:
                   type: array
                   items:
                     type: string
+                udas:
+                  type: object
+                  additionalProperties:
+                    type: string
       responses:
         '201':
-          description: Task created
+          description: Task created.
         '400':
-          description: Invalid JSON or validation failure
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid bearer token
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Token scope or membership denied
-  /api/v1/tasks/{taskID}:
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/tasks/{uuid}:
+    parameters:
+      - in: path
+        name: uuid
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/WorkspaceQuery'
     get:
-      summary: Get a task by UUID
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: taskID
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: workspace
-          schema:
-            type: string
+      summary: Get one task by full UUID. Numeric working-set IDs are rejected with task_uuid_invalid.
       responses:
         '200':
-          description: Task details
-        '401':
-          description: Missing or invalid bearer token
-        '403':
-          description: Token scope or membership denied
+          description: Task details.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Task not found
-  /api/v1/projects:
-    get:
-      summary: List projects in the effective workspace
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: query
-          name: workspace
-          schema:
-            type: string
-        - in: query
-          name: all
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: Project list
-        '401':
-          description: Missing or invalid bearer token
-        '403':
-          description: Token scope or membership denied
-    post:
-      summary: Create a project
-      security:
-        - bearerAuth: []
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Modify one task by full UUID.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [slug, name]
+              properties:
+                description:
+                  type: string
+                project:
+                  type: string
+                project_id:
+                  type: string
+                priority:
+                  type: string
+                clear_project:
+                  type: boolean
+                tags:
+                  type: array
+                  items:
+                    type: string
+                udas:
+                  type: object
+                  additionalProperties:
+                    type: string
+                clear_udas:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Modified task.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Mark a task deleted.
+      responses:
+        '200':
+          description: Deleted task.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/tasks/{uuid}/done:
+    post:
+      summary: Complete a task.
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Completed task.
+  /api/v1/tasks/{uuid}/start:
+    post:
+      summary: Start a task.
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Started task.
+  /api/v1/tasks/{uuid}/stop:
+    post:
+      summary: Stop a task.
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Stopped task.
+  /api/v1/tasks/{uuid}/annotations:
+    post:
+      summary: Add an annotation.
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Annotated task.
+  /api/v1/tasks/{uuid}/annotations/{index}:
+    delete:
+      summary: Remove an annotation by 1-based index.
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: index
+          required: true
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Annotation removed.
+  /api/v1/tasks/{uuid}/urgency:
+    get:
+      summary: Explain task urgency.
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Urgency explanation.
+  /api/v1/reports/{name}:
+    get:
+      summary: Run a named report.
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - in: query
+          name: query
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - in: query
+          name: filter
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: Report task list.
+  /api/v1/workspaces:
+    get:
+      summary: List visible workspaces.
+      parameters:
+        - in: query
+          name: all
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Workspace list.
+    post:
+      summary: Create a workspace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
               properties:
                 slug:
                   type: string
@@ -175,57 +550,312 @@ paths:
                   type: string
                 description:
                   type: string
+                visibility:
+                  type: string
       responses:
         '201':
-          description: Project created
-        '400':
-          description: Invalid JSON or validation failure
-        '401':
-          description: Missing or invalid bearer token
-        '403':
-          description: Token scope or membership denied
-  /api/v1/projects/{projectRef}:
+          description: Workspace created.
+  /api/v1/workspaces/{workspace}:
+    parameters:
+      - in: path
+        name: workspace
+        required: true
+        schema:
+          type: string
+        description: Workspace slug or UUID.
     get:
-      summary: Get a project by slug or UUID
-      security:
-        - bearerAuth: []
+      summary: Get workspace details.
+      responses:
+        '200':
+          description: Workspace details.
+    patch:
+      summary: Modify workspace metadata.
+      responses:
+        '200':
+          description: Modified workspace.
+  /api/v1/workspaces/{workspace}/members:
+    get:
+      summary: List workspace members.
       parameters:
         - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-        - in: query
           name: workspace
+          required: true
           schema:
             type: string
       responses:
         '200':
-          description: Project details
-        '401':
-          description: Missing or invalid bearer token
-        '403':
-          description: Token scope or membership denied
-        '404':
-          description: Project not found
-  /api/v1/tokens:
-    get:
-      summary: List visible tokens for the current actor
-      security:
-        - bearerAuth: []
+          description: Member list.
+    post:
+      summary: Add a workspace member.
       parameters:
-        - in: query
+        - in: path
           name: workspace
+          required: true
           schema:
             type: string
+      responses:
+        '201':
+          description: Member added.
+  /api/v1/workspaces/{workspace}/members/{user}:
+    patch:
+      summary: Change member role.
+      parameters:
+        - in: path
+          name: workspace
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: user
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member role changed.
+  /api/v1/projects:
+    get:
+      summary: List projects.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
         - in: query
           name: all
           schema:
             type: boolean
       responses:
         '200':
-          description: Token list
-        '401':
-          description: Missing or invalid bearer token
+          description: Project list.
+    post:
+      summary: Create a project.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '201':
+          description: Project created.
+  /api/v1/projects/{project}:
+    parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          type: string
+        description: Project slug or UUID in the effective workspace.
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get project details.
+      responses:
+        '200':
+          description: Project details.
+    patch:
+      summary: Modify a project.
+      responses:
+        '200':
+          description: Modified project.
+  /api/v1/projects/{project}/archive:
+    post:
+      summary: Archive a project.
+      parameters:
+        - in: path
+          name: project
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Archived project.
+  /api/v1/projects/{project}/config:
+    get:
+      summary: List project config.
+      parameters:
+        - in: path
+          name: project
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Project config map.
+  /api/v1/projects/{project}/config/{key}:
+    parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: key
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get project config value.
+      responses:
+        '200':
+          description: Project config value.
+    put:
+      summary: Set project config value.
+      responses:
+        '200':
+          description: Project config value set.
+    delete:
+      summary: Unset project config value.
+      responses:
+        '200':
+          description: Project config value unset.
+  /api/v1/contexts:
+    get:
+      summary: List contexts, including active marker.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Context list.
+    post:
+      summary: Define a context.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '201':
+          description: Context defined.
+  /api/v1/contexts/none:
+    post:
+      summary: Clear active context for actor and effective workspace.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Active context cleared.
+  /api/v1/contexts/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get context details.
+      responses:
+        '200':
+          description: Context details.
+    delete:
+      summary: Delete context.
+      responses:
+        '200':
+          description: Context deleted.
+  /api/v1/contexts/{name}/use:
+    post:
+      summary: Set active context.
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Active context changed.
+  /api/v1/config:
+    get:
+      summary: List workspace business config. Local runtime keys such as database.path and remote.token are omitted.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Config map.
+  /api/v1/config/{key}:
+    parameters:
+      - in: path
+        name: key
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get workspace business config.
+      responses:
+        '200':
+          description: Config value.
+    put:
+      summary: Set workspace business config.
+      responses:
+        '200':
+          description: Config value set.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      summary: Unset workspace business config.
+      responses:
+        '200':
+          description: Config value unset.
+  /api/v1/export:
+    get:
+      summary: Export tasks visible to token and project scope.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - $ref: '#/components/parameters/ProjectIDQuery'
+      responses:
+        '200':
+          description: Taskwarrior-compatible JSON array.
+  /api/v1/import:
+    post:
+      summary: Import Taskwarrior-compatible JSON tasks.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Imported count.
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+  /api/v1/audit:
+    get:
+      summary: List audit rows. Requires audit:read plus admin/owner role; project-scoped tokens only see allowlisted project rows.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Audit list.
         '403':
-          description: Token scope or membership denied
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/tokens:
+    get:
+      summary: List tokens visible to the actor. Raw token and token hash are never returned.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - in: query
+          name: all
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Token list.
+    post:
+      summary: Create PAT or Agent token. The raw token is returned once.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '201':
+          description: Token created.
+  /api/v1/tokens/{tokenRef}:
+    delete:
+      summary: Revoke token by id or stored prefix.
+      parameters:
+        - in: path
+          name: tokenRef
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Token revoked.

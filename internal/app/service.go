@@ -636,7 +636,7 @@ func (s *Service) Stop(target string) error {
 }
 
 func (s *Service) stopLocked(target string) (string, projectChange, error) {
-	tsk, err := s.ResolveTarget(target)
+	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return "", projectChange{}, err
 	}
@@ -931,6 +931,9 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 			}
 			tsk.UDAs = normalized
 		}
+		if err := s.ensureWritableTaskScope(tsk); err != nil {
+			return err
+		}
 		_, err = s.repo.Create(tsk)
 		return err
 	}
@@ -1003,6 +1006,9 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 			return err
 		}
 		existing.UDAs = normalized
+	}
+	if err := s.ensureWritableTaskScope(existing); err != nil {
+		return err
 	}
 	return s.repo.Update(existing)
 }

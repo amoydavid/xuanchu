@@ -157,12 +157,18 @@ func (s *Service) resolveRequestWorkspace(user sqlite.User, scope RequestScope, 
 		}
 		return workspace, nil
 	}
-	workspace, err := resolveWorkspace(s.store, s.workspaceRepo, user, "")
+	if user.DefaultWorkspaceID == nil || strings.TrimSpace(*user.DefaultWorkspaceID) == "" {
+		return sqlite.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "workspace must be specified"}
+	}
+	workspace, err := s.workspaceRepo.GetByID(*user.DefaultWorkspaceID)
 	if err != nil {
 		return sqlite.Workspace{}, err
 	}
+	if workspace.ArchivedAt != nil {
+		return sqlite.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+	}
 	if !scope.AllowsWorkspace(workspace.ID) {
-		return sqlite.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access workspace"}
+		return sqlite.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access default workspace; specify workspace"}
 	}
 	return workspace, nil
 }

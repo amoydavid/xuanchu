@@ -20,6 +20,7 @@ type CreateTokenInput struct {
 	WorkspaceRefs []string
 	ProjectRefs   []string
 	ExpiresIn     *time.Duration
+	ParentToken   *TokenView
 }
 
 type ListTokensInput struct {
@@ -92,6 +93,9 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 	scopes, err := auth.ParseScopes(input.Scopes)
 	if err != nil {
 		return CreatedToken{}, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
+	}
+	if err := enforceTokenCreateLimit(input.ParentToken, scopes.Values(), workspaceIDs, projectIDs); err != nil {
+		return CreatedToken{}, err
 	}
 
 	raw, prefix, hash, err := auth.GenerateToken(tokenType)
@@ -188,12 +192,23 @@ func (s *Service) ListTokens(input ListTokensInput) ([]TokenView, error) {
 }
 
 func (s *Service) RevokeToken(ref string) error {
+	return s.revokeToken(ref, nil)
+}
+
+func (s *Service) RevokeTokenWithLimit(ref string, limit *TokenView) error {
+	return s.revokeToken(ref, limit)
+}
+
+func (s *Service) revokeToken(ref string, limit *TokenView) error {
 	entry, err := s.tokenRepo.GetByIDOrPrefix(strings.TrimSpace(ref))
 	if err != nil {
 		return err
 	}
 	if entry.UserID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
 		return PermissionError{Code: "permission_denied", Message: "permission denied"}
+	}
+	if err := enforceTokenRevokeLimit(limit, entry); err != nil {
+		return err
 	}
 	return s.withAudit("token.revoke", func(tx *Service) (AuditEntry, error) {
 		if err := tx.tokenRepo.Revoke(entry.ID, tx.clock.Unix()); err != nil {
@@ -208,6 +223,54 @@ func (s *Service) RevokeToken(ref string) error {
 			},
 		}, nil
 	})
+}
+
+func enforceTokenCreateLimit(parent *TokenView, scopes, workspaceIDs, projectIDs []string) error {
+	if parent == nil {
+		return nil
+	}
+	for _, scope := range scopes {
+		if !slices.Contains(parent.Scopes, scope) {
+			return RuntimeError{Code: "token_scope_denied", Message: "new token scope exceeds current token"}
+		}
+	}
+	if err := requireSubsetWhenRestricted(parent.WorkspaceIDs, workspaceIDs, "workspace_scope_denied", "new token workspace scope exceeds current token"); err != nil {
+		return err
+	}
+	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, "project_scope_denied", "new token project scope exceeds current token")
+}
+
+func enforceTokenRevokeLimit(parent *TokenView, entry sqlite.ApiTokenEntry) error {
+	if parent == nil {
+		return nil
+	}
+	workspaceIDs, err := unmarshalStringSlice(entry.WorkspaceIDsJSON)
+	if err != nil {
+		return err
+	}
+	projectIDs, err := unmarshalStringSlice(entry.ProjectIDsJSON)
+	if err != nil {
+		return err
+	}
+	if err := requireSubsetWhenRestricted(parent.WorkspaceIDs, workspaceIDs, "workspace_scope_denied", "target token workspace scope is outside current token"); err != nil {
+		return err
+	}
+	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, "project_scope_denied", "target token project scope is outside current token")
+}
+
+func requireSubsetWhenRestricted(parent, child []string, code, message string) error {
+	if len(parent) == 0 {
+		return nil
+	}
+	if len(child) == 0 {
+		return RuntimeError{Code: code, Message: message}
+	}
+	for _, id := range child {
+		if !slices.Contains(parent, id) {
+			return RuntimeError{Code: code, Message: message}
+		}
+	}
+	return nil
 }
 
 func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error) {

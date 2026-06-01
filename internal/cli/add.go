@@ -35,6 +35,7 @@ func newAddCommand(opts Options) *cobra.Command {
 					ProjectID:   currentOpts.ProjectID,
 					Priority:    stringValue(parsed.Mod.Priority),
 					Tags:        parsed.Mod.AddTags,
+					UDAs:        parsed.Mod.UDAs,
 				})
 				if err != nil {
 					return err

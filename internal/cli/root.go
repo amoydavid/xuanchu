@@ -11,6 +11,7 @@ import (
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/config"
 	"github.com/dajee/taskg/internal/query"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
@@ -329,7 +330,7 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 	if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 		return err
 	} else if remoteMode {
-		return app.RuntimeError{Code: "remote_unsupported_command", Message: fmt.Sprintf("command %q is not supported in remote mode", positional[1])}
+		return handleRemoteTargetAction(cmd, currentOpts, positional)
 	}
 
 	svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -439,6 +440,105 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 	return nil
 }
 
+func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []string) error {
+	client, err := buildRemoteClient(opts)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	target, err := resolveRemoteTaskTarget(ctx, client, opts, positional[0])
+	if err != nil {
+		return err
+	}
+	action := positional[1]
+	actionArgs := positional[2:]
+	switch action {
+	case "modify":
+		mod, err := query.ParseModifyArgs(actionArgs)
+		if err != nil {
+			return err
+		}
+		_, err = client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{
+			Description: mod.Description,
+			Project:     mod.Project,
+			Priority:    mod.Priority,
+			Tags:        mod.AddTags,
+			UDAs:        mod.UDAs,
+			ClearUDAs:   mod.ClearUDAs,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Modified task", positional[0])
+	case "done":
+		if _, err := client.DoneTask(ctx, opts.Workspace, target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Completed task", positional[0])
+	case "delete":
+		if _, err := client.DeleteTask(ctx, opts.Workspace, target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Deleted task", positional[0])
+	case "start":
+		if _, err := client.StartTask(ctx, opts.Workspace, target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Started task", positional[0])
+	case "stop":
+		if _, err := client.StopTask(ctx, opts.Workspace, target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Stopped task", positional[0])
+	case "annotate":
+		if len(actionArgs) == 0 {
+			return fmt.Errorf("annotate requires a description")
+		}
+		if _, err := client.AnnotateTask(ctx, opts.Workspace, target, strings.Join(actionArgs, " ")); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", positional[0])
+	case "denotate":
+		if len(actionArgs) != 1 {
+			return fmt.Errorf("denotate requires an index")
+		}
+		index, err := strconv.Atoi(actionArgs[0])
+		if err != nil {
+			return err
+		}
+		if _, err := client.DenotateTask(ctx, opts.Workspace, target, index); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from task", positional[0])
+	case "append", "prepend":
+		if len(actionArgs) == 0 {
+			return fmt.Errorf("%s requires text", action)
+		}
+		tsk, err := client.GetTask(ctx, opts.Workspace, target)
+		if err != nil {
+			return err
+		}
+		text := strings.Join(actionArgs, " ")
+		description := tsk.Description + " " + text
+		if action == "prepend" {
+			description = text + " " + tsk.Description
+		}
+		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Description: &description}); err != nil {
+			return err
+		}
+		if action == "append" {
+			fmt.Fprintln(cmd.OutOrStdout(), "Appended description for task", positional[0])
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "Prepended description for task", positional[0])
+		}
+	case "edit":
+		return app.RuntimeError{Code: "remote_unsupported_command", Message: `command "edit" is not supported in remote mode`}
+	default:
+		return fmt.Errorf("unknown action %q", action)
+	}
+	return nil
+}
+
 func buildServiceFromCmd(cmd *cobra.Command, base Options) (*app.Service, func() error, error) {
 	return buildServiceFromOpts(optionsFromCmd(cmd, base))
 }
@@ -466,20 +566,46 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 // getCmdStringFlag reads a flag from cmd.Flags(), falling back to
 // cmd.PersistentFlags() (needed when cmd is the root command).
 func getCmdStringFlag(cmd *cobra.Command, name, fallback string) string {
-	if v, err := cmd.Flags().GetString(name); err == nil {
+	if flag := cmd.Flags().Lookup(name); flag != nil && flag.Changed {
+		if v, err := cmd.Flags().GetString(name); err == nil {
+			return v
+		}
+	}
+	if v, err := cmd.InheritedFlags().GetString(name); err == nil {
 		return v
 	}
 	if v, err := cmd.PersistentFlags().GetString(name); err == nil {
+		return v
+	}
+	if root := cmd.Root(); root != nil {
+		if v, err := root.PersistentFlags().GetString(name); err == nil {
+			return v
+		}
+	}
+	if v, err := cmd.Flags().GetString(name); err == nil {
 		return v
 	}
 	return fallback
 }
 
 func getCmdBoolFlag(cmd *cobra.Command, name string, fallback bool) bool {
-	if v, err := cmd.Flags().GetBool(name); err == nil {
+	if flag := cmd.Flags().Lookup(name); flag != nil && flag.Changed {
+		if v, err := cmd.Flags().GetBool(name); err == nil {
+			return v
+		}
+	}
+	if v, err := cmd.InheritedFlags().GetBool(name); err == nil {
 		return v
 	}
 	if v, err := cmd.PersistentFlags().GetBool(name); err == nil {
+		return v
+	}
+	if root := cmd.Root(); root != nil {
+		if v, err := root.PersistentFlags().GetBool(name); err == nil {
+			return v
+		}
+	}
+	if v, err := cmd.Flags().GetBool(name); err == nil {
 		return v
 	}
 	return fallback

@@ -51,6 +51,11 @@ func NewClient(opts Options) (*Client, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("remote server is required")
 	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, APIError{Code: "remote_server_invalid", Message: "remote server URL must start with http:// or https://"}
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/api/v1")
 	token := strings.TrimSpace(opts.Token)
 	if token == "" {
 		return nil, fmt.Errorf("remote token is required")
@@ -79,11 +84,27 @@ func (c *Client) get(ctx context.Context, path string, values url.Values, out an
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, out any) error {
+	return c.doJSON(ctx, http.MethodPost, path, body, out)
+}
+
+func (c *Client) patch(ctx context.Context, path string, body any, out any) error {
+	return c.doJSON(ctx, http.MethodPatch, path, body, out)
+}
+
+func (c *Client) delete(ctx context.Context, path string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	return c.do(req, out)
+}
+
+func (c *Client) doJSON(ctx context.Context, method, path string, body any, out any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}

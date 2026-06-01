@@ -124,6 +124,39 @@ func TestCreateTokenRejectsProjectOutsideWorkspaceScope(t *testing.T) {
 	assertRuntimeCode(t, err, "token_project_scope_invalid")
 }
 
+func TestCreateTokenCannotExceedParentTokenScope(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	parent := &TokenView{
+		Scopes:       []string{"task:read"},
+		WorkspaceIDs: []string{svc.Runtime().WorkspaceID},
+	}
+	_, err := svc.CreateToken(CreateTokenInput{
+		Name:          "too-broad-scope",
+		Scopes:        []string{"task:read", "task:write"},
+		WorkspaceRefs: []string{"local"},
+		ParentToken:   parent,
+	})
+	assertRuntimeCode(t, err, "token_scope_denied")
+
+	_, err = svc.CreateToken(CreateTokenInput{
+		Name:        "global-workspace",
+		Scopes:      []string{"task:read"},
+		ParentToken: parent,
+	})
+	assertRuntimeCode(t, err, "workspace_scope_denied")
+
+	if _, err := svc.CreateToken(CreateTokenInput{
+		Name:          "narrow",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+		ParentToken:   parent,
+	}); err != nil {
+		t.Fatalf("CreateToken(narrow) error = %v", err)
+	}
+}
+
 func TestAuthenticateBearerToken(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

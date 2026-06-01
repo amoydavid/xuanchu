@@ -565,3 +565,68 @@ project 级业务配置固定走 `project config`：
 ```
 
 这个 key 只用于迁移排障，不是业务配置。
+
+## M6 Server、Token 与远程 CLI
+
+M6 已经把 HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上。本地 CLI 仍然可以直接打开 SQLite；远程 CLI 通过 HTTP API 访问服务端，不会在 remote mode 下写本机任务库。
+
+启动服务端：
+
+```bash
+./taskg server --listen :8080
+./taskg server --listen 127.0.0.1:8080 --db ./taskg.db
+```
+
+服务端不内置 TLS。生产部署应放在可信网络内，或使用 Nginx / Caddy 等反向代理做 TLS termination；不要把裸 HTTP token 服务直接暴露公网。服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口。
+
+创建第一个 token 建议在 server 启动前用本地 CLI 完成：
+
+```bash
+./taskg --workspace local token create cli \
+  --scope task:read,task:write,project:read,project:write,context:read,context:write,config:read,config:write,audit:read,token:read,token:write \
+  --expires-in 720h
+```
+
+PAT raw token 以 `taskg_pat_` 开头，Agent token raw token 以 `taskg_agent_` 开头。raw token 只在创建时输出一次；数据库只保存 hash 和短 prefix。后续可以通过 HTTP/远程 CLI 管理 token：
+
+```bash
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" token list
+./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" token revoke <token-id-or-prefix>
+```
+
+远程 CLI：
+
+```bash
+export TASKG_SERVER=http://127.0.0.1:8080
+export TASKG_TOKEN=taskg_pat_xxx
+
+./taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" --workspace local list
+./taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" add "Review API docs" --project-id <project-id>
+./taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" 1 done
+```
+
+`--server` / `--token` 也可以来自环境变量 `TASKG_SERVER` / `TASKG_TOKEN`，或本机 `taskg.toml`：
+
+```toml
+[remote]
+server = "http://127.0.0.1:8080"
+token = "taskg_pat_xxx"
+```
+
+如果 `taskg.toml` 包含 `remote.token` 且权限比 `0600` 更宽，CLI 会向 stderr 输出 warning，但不会阻止执行。推荐优先用环境变量或系统 secret manager 注入 token，不要把含 token 的 TOML 提交到公共仓库。
+
+Token scope 是收窄，不是放大。最终权限是：
+
+```text
+membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
+```
+
+常用 capability：
+
+```text
+task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write
+```
+
+project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{uuid}` 只接受真实 UUID；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析为 UUID。
+
+远程 CLI 已覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢；M6 不新增 aggregation endpoint。

@@ -91,6 +91,26 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestConfigEndpointDoesNotExposeOrWriteInternalMeta(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "config:read", "config:write")
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/config", authHeader)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	for _, forbidden := range []string{"active_user_id", "active_workspace.", "active_context.", "database.path", "remote.token"} {
+		if strings.Contains(rr.Body.String(), forbidden) {
+			t.Fatalf("config response leaked %q: %s", forbidden, rr.Body.String())
+		}
+	}
+
+	rr = requestHTTPBody(t, fixture.server, http.MethodPut, "/api/v1/config/active_user_id", `{"value":"evil"}`, authHeader)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "config_scope_invalid")
+	rr = requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/config/active_context.local.local", authHeader)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "config_scope_invalid")
+}
+
 func TestWorkspaceScopeDeniedIsForbidden(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read")
 	if err := fixture.server.store.DB().Exec(

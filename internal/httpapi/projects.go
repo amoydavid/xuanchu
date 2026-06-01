@@ -16,6 +16,16 @@ type addProjectRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
+type modifyProjectRequest struct {
+	Slug        *string `json:"slug,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+type configValueRequest struct {
+	Value string `json:"value"`
+}
+
 type projectResponse struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspace_id"`
@@ -82,6 +92,115 @@ func (s *Server) handleProjectInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
+}
+
+func (s *Server) handleProjectModify(w http.ResponseWriter, r *http.Request) {
+	var req modifyProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ModifyProject(ref, app.ModifyProjectInput{Slug: req.Slug, Name: req.Name, Description: req.Description}); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	project, err := scoped.ProjectInfo(ref)
+	if err != nil && req.Slug != nil {
+		project, err = scoped.ProjectInfo(*req.Slug)
+	}
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
+}
+
+func (s *Server) handleProjectArchive(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	project, err := scoped.ArchiveProject(ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
+}
+
+func (s *Server) handleProjectConfigList(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectConfigRead, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	values, err := scoped.ProjectConfigList(ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, values, nil)
+}
+
+func (s *Server) handleProjectConfigGet(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectConfigRead, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	value, ok, err := scoped.ProjectConfigGet(ref, chi.URLParam(r, "key"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "config_not_found", "config not found", nil)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]string{"value": value}, nil)
+}
+
+func (s *Server) handleProjectConfigSet(w http.ResponseWriter, r *http.Request) {
+	var req configValueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectConfigWrite, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ProjectConfigSet(ref, chi.URLParam(r, "key"), req.Value); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]string{"value": req.Value}, nil)
+}
+
+func (s *Server) handleProjectConfigUnset(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectConfigWrite, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ProjectConfigUnset(ref, chi.URLParam(r, "key")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
 }
 
 func projectResponseFromView(view app.ProjectView) projectResponse {

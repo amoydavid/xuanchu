@@ -158,6 +158,21 @@ func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
 	if !strings.Contains(info, "remote task") || !strings.Contains(info, "Project") {
 		t.Fatalf("remote info = %q", info)
 	}
+
+	remoteInfoJSON := run(t, bin, "--server", baseURL, "--token", token, "--json", "project", "info", "remote")
+	var remoteProject map[string]any
+	if err := json.Unmarshal([]byte(remoteInfoJSON), &remoteProject); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "--server", baseURL, "--token", token, "project", "add", "other", "name:Other")
+	otherAddJSON := run(t, bin, "--server", baseURL, "--token", token, "--json", "add", "other", "task", "project:other")
+	var otherTask map[string]any
+	if err := json.Unmarshal([]byte(otherAddJSON), &otherTask); err != nil {
+		t.Fatal(err)
+	}
+	if errOut := runExpectError(t, bin, "--server", baseURL, "--token", token, "--project-id", remoteProject["id"].(string), "info", otherTask["uuid"].(string)); !strings.Contains(errOut, "not found") {
+		t.Fatalf("remote project scoped full UUID error = %q", errOut)
+	}
 }
 
 func TestCLIRemoteTokenList(t *testing.T) {
@@ -183,7 +198,7 @@ func TestCLIRemoteTokenList(t *testing.T) {
 	}
 }
 
-func TestCLIRemoteTargetActionDoesNotWriteLocalDB(t *testing.T) {
+func TestCLIRemoteTargetActionWritesRemoteNotLocalDB(t *testing.T) {
 	bin := buildTaskg(t)
 	serverDB := filepath.Join(t.TempDir(), "server.db")
 	localDB := filepath.Join(t.TempDir(), "local.db")
@@ -201,14 +216,96 @@ func TestCLIRemoteTargetActionDoesNotWriteLocalDB(t *testing.T) {
 	cmd, baseURL := startTaskgServer(t, bin, "--db", serverDB)
 	defer stopTaskgServer(t, cmd)
 
+	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "safety")
 	run(t, bin, "--db", localDB, "add", "local", "safety")
-	out := runExpectError(t, bin, "--db", localDB, "--server", baseURL, "--token", token, "1", "done")
-	if !strings.Contains(out, "remote_unsupported_command") {
-		t.Fatalf("remote target action error = %q, want remote_unsupported_command", out)
-	}
+	run(t, bin, "--db", localDB, "--server", baseURL, "--token", token, "1", "done")
 	list := run(t, bin, "--db", localDB, "list")
 	if !strings.Contains(list, "local safety") {
 		t.Fatalf("local task was modified by remote target action; list = %q", list)
+	}
+	remoteList := run(t, bin, "--server", baseURL, "--token", token, "list")
+	if strings.Contains(remoteList, "remote safety") {
+		t.Fatalf("remote task was not completed; list = %q", remoteList)
+	}
+}
+
+func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote-full", "--scope", "task:read,task:write,project:read,project:write,context:read,context:write,config:read,config:write,audit:read", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+	if token == "" {
+		t.Fatalf("missing token in %s", tokenOut)
+	}
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	run(t, bin, "--server", baseURL, "--token", token, "project", "add", "api", "name:API")
+	run(t, bin, "--server", baseURL, "--token", token, "project", "config", "set", "api", "agent.background", "remote docs")
+	if got := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "project", "config", "get", "api", "agent.background")); got != "remote docs" {
+		t.Fatalf("remote project config get = %q", got)
+	}
+	if list := run(t, bin, "--server", baseURL, "--token", token, "project", "config", "list", "api"); !strings.Contains(list, "agent.background=remote docs") {
+		t.Fatalf("remote project config list = %q", list)
+	}
+	run(t, bin, "--server", baseURL, "--token", token, "project", "config", "unset", "api", "agent.background")
+
+	run(t, bin, "--server", baseURL, "--token", token, "config", "set", "uda.estimate.type", "numeric")
+	if got := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "config", "get", "uda.estimate.type")); got != "numeric" {
+		t.Fatalf("remote config get = %q", got)
+	}
+	if list := run(t, bin, "--server", baseURL, "--token", token, "config", "list"); !strings.Contains(list, "uda.estimate.type=numeric") {
+		t.Fatalf("remote config list = %q", list)
+	}
+
+	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "helper", "project:api", "+net", "estimate:3")
+	run(t, bin, "--server", baseURL, "--token", token, "context", "define", "api", "project:api")
+	run(t, bin, "--server", baseURL, "--token", token, "context", "use", "api")
+	if show := run(t, bin, "--server", baseURL, "--token", token, "context", "show"); !strings.Contains(show, "api project:api") {
+		t.Fatalf("remote context show = %q", show)
+	}
+	if unique := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "_unique", "estimate")); unique != "3" {
+		t.Fatalf("remote _unique = %q", unique)
+	}
+	if ids := strings.TrimSpace(run(t, bin, "--server", baseURL, "--token", token, "_ids", "+net")); ids != "1" {
+		t.Fatalf("remote _ids = %q", ids)
+	}
+	if projects := run(t, bin, "--server", baseURL, "--token", token, "_projects"); !strings.Contains(projects, "api") {
+		t.Fatalf("remote _projects = %q", projects)
+	}
+	run(t, bin, "--server", baseURL, "--token", token, "context", "none")
+
+	exported := run(t, bin, "--server", baseURL, "--token", token, "export")
+	importDB := filepath.Join(t.TempDir(), "import.db")
+	importTokenOut := run(t, bin, "--db", importDB, "--json", "--workspace", "local", "token", "create", "remote-import", "--scope", "task:read,task:write,project:write", "--expires-in", "720h")
+	var importCreated map[string]any
+	if err := json.Unmarshal([]byte(importTokenOut), &importCreated); err != nil {
+		t.Fatal(err)
+	}
+	importToken, _ := importCreated["token"].(string)
+	importServer, importBaseURL := startTaskgServer(t, bin, "--db", importDB)
+	defer stopTaskgServer(t, importServer)
+	run(t, bin, "--server", importBaseURL, "--token", importToken, "project", "add", "api", "name:API")
+	importPath := filepath.Join(t.TempDir(), "tasks.json")
+	if err := os.WriteFile(importPath, []byte(exported), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "--server", importBaseURL, "--token", importToken, "import", importPath)
+	if imported := run(t, bin, "--server", importBaseURL, "--token", importToken, "list"); !strings.Contains(imported, "remote helper") {
+		t.Fatalf("remote imported list = %q", imported)
+	}
+
+	if audit := run(t, bin, "--server", baseURL, "--token", token, "audit", "list"); !strings.Contains(audit, "task.add") {
+		t.Fatalf("remote audit list = %q", audit)
+	}
+	if errOut := runExpectError(t, bin, "--server", baseURL, "--token", token, "_show", "database.path"); !strings.Contains(errOut, "remote_unsupported_command") {
+		t.Fatalf("remote _show database.path error = %q", errOut)
 	}
 }
 

@@ -1,0 +1,231 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/dajee/taskg/internal/app"
+)
+
+type contextRequest struct {
+	Name   string `json:"name"`
+	Filter string `json:"filter"`
+}
+
+type contextResponse struct {
+	Name       string `json:"name"`
+	Filter     string `json:"filter"`
+	Active     bool   `json:"active"`
+	CreatedAt  int64  `json:"created_at"`
+	ModifiedAt int64  `json:"modified_at"`
+}
+
+func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "context:read", app.PermissionContextUse, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ContextList()
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	activeName, _, err := scoped.ActiveContextName()
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]contextResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, contextResponse{
+			Name:       row.Name,
+			Filter:     row.FilterSource,
+			Active:     row.Name == activeName,
+			CreatedAt:  row.CreatedAt,
+			ModifiedAt: row.ModifiedAt,
+		})
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleContextDefine(w http.ResponseWriter, r *http.Request) {
+	var req contextRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextManage, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.DefineContext(req.Name, req.Filter); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, map[string]string{"name": req.Name, "filter": req.Filter}, nil)
+}
+
+func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	scoped, _, err := s.scopedService(r, "context:read", app.PermissionContextUse, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ContextList()
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	for _, row := range rows {
+		if row.Name == name {
+			activeName, _, err := scoped.ActiveContextName()
+			if err != nil {
+				writeAppError(w, err)
+				return
+			}
+			writeSuccess(w, http.StatusOK, contextResponse{
+				Name:       row.Name,
+				Filter:     row.FilterSource,
+				Active:     row.Name == activeName,
+				CreatedAt:  row.CreatedAt,
+				ModifiedAt: row.ModifiedAt,
+			}, nil)
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "context_not_found", "context not found", nil)
+}
+
+func (s *Server) handleContextDelete(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextManage, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ContextDelete(chi.URLParam(r, "name")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextUse, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.UseContext(chi.URLParam(r, "name")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextUse, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ContextNone(); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleConfigList(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "config:read", app.PermissionProjectConfigRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	values, err := scoped.ConfigValues()
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	filtered := make(map[string]string, len(values))
+	for key, value := range values {
+		if isHTTPBusinessConfigKey(key) {
+			filtered[key] = value
+		}
+	}
+	writeSuccess(w, http.StatusOK, filtered, nil)
+}
+
+func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if !isHTTPBusinessConfigKey(key) {
+		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not available over HTTP", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "config:read", app.PermissionProjectConfigRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	value, ok, err := scoped.GetConfig(key)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "config_not_found", "config not found", nil)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]string{"value": value}, nil)
+}
+
+func (s *Server) handleConfigSet(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if !isHTTPBusinessConfigKey(key) {
+		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not writable over HTTP", nil)
+		return
+	}
+	var req configValueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "config:write", app.PermissionUDAManage, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.SetConfig(key, req.Value); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]string{"value": req.Value}, nil)
+}
+
+func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if !isHTTPBusinessConfigKey(key) {
+		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not writable over HTTP", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "config:write", app.PermissionUDAManage, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.UnsetConfig(key); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func isHTTPBusinessConfigKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return key == "date.format" || strings.HasPrefix(key, "uda.") || strings.HasPrefix(key, "urgency.")
+}

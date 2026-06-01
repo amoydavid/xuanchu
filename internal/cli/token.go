@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -35,12 +36,6 @@ func newTokenCreateCommand(opts Options) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
-			if err != nil {
-				return err
-			}
-			defer closeFn()
-
 			workspaceRefs := append([]string(nil), workspaceIDs...)
 			if currentOpts.Workspace != "" {
 				workspaceRefs = append([]string{currentOpts.Workspace}, workspaceRefs...)
@@ -57,6 +52,42 @@ func newTokenCreateCommand(opts Options) *cobra.Command {
 				ttl = &value
 			}
 
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				created, err := client.CreateToken(context.Background(), currentOpts.Workspace, remote.CreateTokenInput{
+					Name:             args[0],
+					Type:             tokenType,
+					User:             userRef,
+					Scopes:           scopes,
+					WorkspaceIDs:     workspaceRefs,
+					ProjectRefs:      projectRefs,
+					ProjectIDs:       projectIDs,
+					ExpiresInSeconds: remote.DurationSecondsPtr(ttl),
+				})
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					payload := tokenViewForJSON(created.View)
+					payload["token"] = created.Token
+					return render.JSON(cmd.OutOrStdout(), payload)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Created token %s\n", created.View.ID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Token: %s\n", created.Token)
+				fmt.Fprintln(cmd.OutOrStdout(), "This token is shown only once.")
+				return nil
+			}
+
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
 			created, err := svc.CreateToken(app.CreateTokenInput{
 				Name:          args[0],
 				Type:          tokenType,
@@ -163,6 +194,20 @@ func newTokenRevokeCommand(opts Options) *cobra.Command {
 		Use:  "revoke <id|prefix>",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if err := client.RevokeToken(context.Background(), currentOpts.Workspace, args[0]); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Revoked token %s\n", args[0])
+				return nil
+			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err

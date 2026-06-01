@@ -20,7 +20,7 @@
 | M3 | 已完成 | 配置系统、上下文、UDA、`.taskrc` 只读导入与脚本化 helper |
 | M4 | 已完成 | 企业 Workspace、权限与审计基础 |
 | M5 | 已完成 | Project 实体化与 Workspace/Project 配置边界 |
-| M6 | 待规划 | HTTP/JSON API、远程 CLI 与 Agent Token |
+| M6 | 已完成 | HTTP/JSON API、远程 CLI 与 Agent Token |
 | M7 | 待规划 | 企业 Agent MCP Server 与工具接口 |
 | M8 | 待规划 | Agent 驱动的外部集成、触发器、发布与运维打磨 |
 
@@ -433,6 +433,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 ## M6：HTTP/JSON API、远程 CLI 与 Agent Token
 
+**状态：已完成。**
+
 **目标：** 让同一个 `taskg` 二进制可以作为 HTTP 服务端运行，并让 CLI / Agent 通过远程 API 操作任务。M6 的重点是把“actor + workspace + project + token scope”固化成传输层协议。
 
 **范围：**
@@ -442,14 +444,13 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `--data-dir` / `--db` 指定服务端数据库。
   - graceful shutdown。
 - HTTP API：
-  - task CRUD。
+  - task CRUD/action、annotation、urgency。
   - query/report。
-  - project CRUD。
+  - workspace/member/project/project config。
   - context/config。
   - workspace/member 基础管理。
-  - urgency explain。
   - import/export。
-- OpenAPI 3 文档生成或维护。
+- OpenAPI 3 文档维护在 `docs/openapi/taskg-v1.yaml`。
 - 鉴权：
   - PAT。
   - Agent token / service token。
@@ -465,6 +466,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `taskg --server URL --token TOKEN list`。
   - 本地/远程命令输出尽量一致。
   - 支持环境变量配置 server/token。
+  - 核心 task/report/project/context/config/helper/token/import/export/audit 命令已远程化；`edit`、`.taskrc import` 等本机语义命令暂不支持远程。
   - 支持 `--workspace <slug|uuid>`，但不能突破 token 的 workspace scope。
   - 支持 `--project <slug>` 作为远程/API 场景的显式 project scope 便捷入口；slug 必须在 effective workspace 内解析，本地 Taskwarrior 风格 `project:<slug>` 查询继续可用。
   - 支持 `--project-id <uuid>` 作为无歧义 project scope。脚本、Agent token 和 MCP 推荐使用 project id。
@@ -478,6 +480,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 **不进入 M6：**
 
 - MCP。
+- JWT / password login / refresh token。
 - op-log 同步。
 - Hook。
 - 外部系统适配。

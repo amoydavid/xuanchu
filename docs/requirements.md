@@ -65,17 +65,30 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 | `User` | `id, name, email, password_hash, default_workspace_id, created_at` | 全局账号 |
 | `Workspace` | `id, owner_user_id, slug, name, description, visibility(private/team/public), settings_json` | 企业 / 租户级任务空间 |
 | `Membership` | `user_id, workspace_id, role(owner/admin/member/viewer), joined_at` | 多对多关系 |
-| `ApiToken` | `id, user_id, name, hashed_token, scopes_json, workspace_scope(NULL=全部), project_scope(NULL=全部), expires_at` | PAT 或 Agent token，用于 CLI/API/MCP 鉴权；project scope 在 M5 后应引用 project id，slug 只能在明确 workspace 后解析 |
+| `ApiToken` | `id, user_id, name, type, token_prefix, token_hash, scopes_json, workspace_ids_json, project_ids_json, expires_at, revoked_at, last_used_at` | PAT 或 Agent token，用于 CLI/API/MCP 鉴权；project scope 引用稳定 project id，slug 只能在明确 workspace 后解析 |
 | `AuditLog` | `id, actor_user_id, workspace_id, project_id, action, target_uuid, payload_json, created_at` | 服务端模式必备；M5 起支持按 project 查询时间线 |
 
 ### 1.2 鉴权
 
 - **本地模式**：无鉴权，单用户隐式为 `local`。
 - **服务端模式**：
-  - 登录：用户名+密码 → 颁发短期 JWT；或直接使用 PAT。
+  - M6 只支持 PAT / Agent token；用户名密码登录、JWT、refresh token 留给 M6.5 或后续里程碑。
   - CLI 与 MCP 客户端统一使用 `Authorization: Bearer <token>`。
-  - 行级权限：所有任务查询自动叠加 `workspace_id IN (用户可见集合)`。
-  - 如果 token 带 `project_scope`，所有 task/query/report/import/export 还必须叠加 project 限制。
+  - Token capability 空数组表示无能力；workspace/project allowlist 空数组表示不额外收窄。
+  - 最终权限是 `membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope`。
+  - 如果 token 带 project allowlist，所有 task/query/report/import/export/audit 都必须叠加 project 限制；单任务越界读返回 404 `task_not_found`，避免泄露资源存在性。
+
+M6 已实现的 capability：
+
+| Capability | 说明 |
+|---|---|
+| `task:read` / `task:write` | 任务、报表、import/export、urgency 与 task action |
+| `project:read` / `project:write` | project 与 project config |
+| `context:read` / `context:write` | context list/show/define/use/delete/none |
+| `config:read` / `config:write` | workspace 业务配置，不含本机 TOML / `remote.token` |
+| `audit:read` | audit list，需要 admin/owner role |
+| `token:read` / `token:write` | token list/create/revoke |
+| `workspace:read` / `workspace:write` | workspace/member 基础管理 |
 
 ### 1.3 Workspace 与 Project 的关系
 
@@ -427,6 +440,9 @@ M5 起，project 配置只通过 `project config get/set/unset/list <project>` �
 - 二进制名：`taskg`。
 - 本地模式：`taskg add ...`（直连 SQLite）。
 - 远程模式：`taskg --server https://... --token ... add ...`。
+- 远程连接配置优先级：CLI flag > `TASKG_SERVER` / `TASKG_TOKEN` > `taskg.toml` > 空值。
+- `taskg.toml` 中的 `remote.token` 是本机便利配置；如果文件权限比 `0600` 更宽，CLI 应输出 warning。
+- 远程 CLI 覆盖核心 task/report/project/project config/context/config/helper/import/export/audit/token 命令；`edit`、`.taskrc import` 等本机语义命令暂不支持远程。
 - 全命令支持 `--json` 输出（脚本化）。
 - 提供 shell 补全：`taskg completion zsh|bash|fish|powershell`，利用 `_xxx` helper 命令。
 - 所有命令必须 100% 可脚本化，stderr/stdout 严格分离。
@@ -472,7 +488,7 @@ M5 起，project 配置只通过 `project config get/set/unset/list <project>` �
 | **M3** | 配置系统、context、UDA、`.taskrc` 只读导入 |
 | **M4** | 企业 workspace、用户、成员、权限、审计、行级隔离 |
 | **M5** | Project 实体化与 workspace/project 配置边界 |
-| **M6** | HTTP/JSON API、远程 CLI、PAT/Agent token |
+| **M6** | HTTP/JSON API、远程 CLI、PAT/Agent token（已实现） |
 | **M7** | 企业 Agent MCP Server（stdio + Streamable HTTP） |
 | **M8** | Agent 驱动的外部集成、trigger、Hook、发布、迁移与备份打磨 |
 
@@ -514,11 +530,15 @@ CREATE TABLE api_tokens (
   id              TEXT PRIMARY KEY,
   user_id         TEXT NOT NULL REFERENCES users(id),
   name            TEXT NOT NULL,
-  hashed_token    TEXT NOT NULL UNIQUE,
+  type            TEXT NOT NULL CHECK(type IN ('pat','agent')),
+  token_prefix    TEXT NOT NULL,
+  token_hash      TEXT NOT NULL UNIQUE,
   scopes_json     TEXT NOT NULL DEFAULT '[]',
-  workspace_scope TEXT,                  -- NULL = 全部
-  project_scope_json TEXT NOT NULL DEFAULT '[]',
+  workspace_ids_json TEXT NOT NULL DEFAULT '[]',
+  project_ids_json   TEXT NOT NULL DEFAULT '[]',
   expires_at      INTEGER,
+  revoked_at      INTEGER,
+  last_used_at    INTEGER,
   created_at      INTEGER NOT NULL
 );
 
@@ -691,7 +711,7 @@ CREATE INDEX idx_audit_project_time ON audit_logs(workspace_id, project_id, crea
 - **M3**：配置、context 与 UDA：`context` `_udas` `_unique` `_show` `_version` `completion` `config import-taskrc`
 - **M4**：`user` `workspace` `member` `audit`
 - **M5**：`project`
-- **M6**：`server` `token`
+- **M6**：`server` `token`，以及 `--server` / `--token` 远程模式
 - **M7**：MCP Server 入口
 - **M8+**：`sync` `burndown.*` 外部 trigger / adapter 相关命令
 
