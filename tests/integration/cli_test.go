@@ -346,29 +346,10 @@ func TestCLIRemoteConfigImportTaskRCUnsupported(t *testing.T) {
 func TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB(t *testing.T) {
 	bin := buildTaskg(t)
 	localDB := filepath.Join(t.TempDir(), "local.db")
+	// user use 仍然不支持远程模式（因为需要切换本地身份）
 	cases := [][]string{
-		{"show"},
-		{"user", "list"},
-		{"user", "info"},
-		{"user", "add"},
-		{"user", "add", "alice"},
 		{"user", "use"},
 		{"user", "use", "local"},
-		{"workspace", "list"},
-		{"workspace", "info"},
-		{"workspace", "add"},
-		{"workspace", "add", "foo"},
-		{"workspace", "modify"},
-		{"workspace", "modify", "local", "name:Local"},
-		{"workspace", "use"},
-		{"workspace", "use", "local"},
-		{"workspace", "archive"},
-		{"workspace", "archive", "foo"},
-		{"member", "list"},
-		{"member", "add"},
-		{"member", "add", "local"},
-		{"member", "role"},
-		{"member", "role", "local", "viewer"},
 	}
 	for _, args := range cases {
 		full := append([]string{"--db", localDB, "--server", "http://127.0.0.1:1", "--token", "x"}, args...)
@@ -379,6 +360,31 @@ func TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB(t *testing.T) {
 	}
 	if _, err := os.Stat(localDB); !os.IsNotExist(err) {
 		t.Fatalf("remote unsupported commands touched local db; stat err=%v", err)
+	}
+}
+
+func TestCLIRemoteManagementCommandsDoNotTouchLocalDB(t *testing.T) {
+	bin := buildTaskg(t)
+	localDB := filepath.Join(t.TempDir(), "local.db")
+	// 这些命令现在支持远程模式，但应使用远程服务器而不触碰本地 DB
+	cases := [][]string{
+		{"show"},
+		{"user", "list"},
+		{"user", "info"},
+		{"workspace", "list"},
+		{"workspace", "info"},
+		{"member", "list"},
+	}
+	for _, args := range cases {
+		full := append([]string{"--db", localDB, "--server", "http://127.0.0.1:1", "--token", "x"}, args...)
+		out := runExpectError(t, bin, full...)
+		// 不应包含 remote_unsupported_command，而是连接错误
+		if strings.Contains(out, "remote_unsupported_command") {
+			t.Fatalf("%v: should be remote-supported now, got %q", args, out)
+		}
+	}
+	if _, err := os.Stat(localDB); !os.IsNotExist(err) {
+		t.Fatalf("remote management commands touched local db; stat err=%v", err)
 	}
 }
 

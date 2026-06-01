@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -26,8 +28,32 @@ func newMemberListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "member list"); err != nil {
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				ws := currentOpts.Workspace
+				if ws == "" {
+					ws = "local"
+				}
+				members, err := client.ListMembers(context.Background(), ws)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), memberViewsForJSON(members))
+				}
+				for _, member := range members {
+					email := ""
+					if member.Email != nil {
+						email = *member.Email
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s\n", member.Name, email, member.Role, time.Unix(member.JoinedAt, 0).UTC().Format(time.RFC3339))
+				}
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -74,11 +100,36 @@ func newMemberAddCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "member add"); err != nil {
-				return err
-			}
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
 				return err
+			}
+			role := app.Role("member")
+			values, err := parseKeyValueArgs(args[1:], map[string]bool{"role": true})
+			if err != nil {
+				return err
+			}
+			if r, ok := values["role"]; ok {
+				role = app.Role(r)
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				ws := currentOpts.Workspace
+				if ws == "" {
+					ws = "local"
+				}
+				if err := client.AddMember(context.Background(), ws, remote.AddMemberInput{
+					User: args[0],
+					Role: string(role),
+				}); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Added member %s\n", args[0])
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -88,14 +139,7 @@ func newMemberAddCommand(opts Options) *cobra.Command {
 			input := app.AddMemberInput{
 				WorkspaceRef: currentOpts.Workspace,
 				UserRef:      args[0],
-				Role:         app.Role("member"),
-			}
-			values, err := parseKeyValueArgs(args[1:], map[string]bool{"role": true})
-			if err != nil {
-				return err
-			}
-			if role, ok := values["role"]; ok {
-				input.Role = app.Role(role)
+				Role:         role,
 			}
 			if err := svc.AddMember(input); err != nil {
 				return err
@@ -112,11 +156,25 @@ func newMemberRoleCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "member role"); err != nil {
-				return err
-			}
 			if err := cobra.ExactArgs(2)(cmd, args); err != nil {
 				return err
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				ws := currentOpts.Workspace
+				if ws == "" {
+					ws = "local"
+				}
+				if err := client.ChangeMemberRole(context.Background(), ws, args[0], args[1]); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Updated member %s\n", args[0])
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {

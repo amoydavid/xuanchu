@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -27,8 +29,36 @@ func newUserListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "user list"); err != nil {
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				users, err := client.ListUsers(context.Background())
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					views := make([]app.UserView, 0, len(users))
+					for _, u := range users {
+						views = append(views, u)
+					}
+					return render.JSON(cmd.OutOrStdout(), userViewsForJSON(views))
+				}
+				for _, user := range users {
+					active := " "
+					if user.Active {
+						active = "*"
+					}
+					email := ""
+					if user.Email != nil {
+						email = *user.Email
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s\n", active, user.Name, email)
+				}
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -64,15 +94,33 @@ func newUserAddCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "user add"); err != nil {
-				return err
-			}
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
 				return err
 			}
 			input, err := parseUserAddArgs(args)
 			if err != nil {
 				return err
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				remoteInput := remote.AddUserInput{Name: input.Name}
+				if input.Email != "" {
+					remoteInput.Email = &input.Email
+				}
+				user, err := client.AddUser(context.Background(), remoteInput)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), userViewForJSON(user))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Created user %s\n", user.Name)
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -125,8 +173,31 @@ func newUserInfoCommand(opts Options) *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "user info"); err != nil {
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				// 远程模式下默认获取当前用户（使用 local 用户）
+				ref := "local"
+				if len(args) == 1 {
+					ref = args[0]
+				}
+				user, err := client.UserInfo(context.Background(), ref)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), userViewForJSON(user))
+				}
+				email := ""
+				if user.Email != nil {
+					email = *user.Email
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Name: %s\nEmail: %s\n", user.Name, email)
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {

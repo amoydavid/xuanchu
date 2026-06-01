@@ -150,6 +150,28 @@ components:
         modified_at:
           type: integer
           format: int64
+    User:
+      type: object
+      required: [id, name, active, created_at, modified_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        default_workspace_id:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
     Token:
       type: object
       properties:
@@ -348,6 +370,13 @@ paths:
           schema:
             type: boolean
           description: Bypass the server-side active context for this request.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          description: Maximum number of tasks to return. Defaults to 200.
       responses:
         '200':
           description: Task list.
@@ -644,6 +673,97 @@ paths:
       responses:
         '200':
           description: Report task list.
+  /api/v1/users:
+    get:
+      summary: List users.
+      responses:
+        '200':
+          description: User list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+    post:
+      summary: Create a user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '201':
+          description: User created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+  /api/v1/users/{user}:
+    parameters:
+      - in: path
+        name: user
+        required: true
+        schema:
+          type: string
+        description: User ID or name.
+    get:
+      summary: Get user details.
+      responses:
+        '200':
+          description: User details.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+  /api/v1/me/active_workspace:
+    put:
+      summary: Switch the actor's active workspace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace]
+              properties:
+                workspace:
+                  type: string
+                  description: Workspace slug or UUID.
+      responses:
+        '200':
+          description: Active workspace switched.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workspace'
   /api/v1/workspaces:
     get:
       summary: List visible workspaces.
@@ -732,6 +852,18 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/Workspace'
+  /api/v1/workspaces/{workspace}/archive:
+    post:
+      summary: Archive a workspace.
+      parameters:
+        - in: path
+          name: workspace
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workspace archived.
   /api/v1/workspaces/{workspace}/members:
     get:
       summary: List workspace members.

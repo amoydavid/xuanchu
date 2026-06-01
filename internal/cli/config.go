@@ -22,8 +22,25 @@ func newShowCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "show"); err != nil {
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				values, err := client.ListConfig(context.Background(), currentOpts.Workspace)
+				if err != nil {
+					return err
+				}
+				for _, key := range []string{"color", "json", "date.format", "active.user", "active.workspace", "active.context"} {
+					value, ok := values[key]
+					if !ok {
+						value = ""
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, value)
+				}
+				return nil
 			}
 			rt, err := runtimeFromOptions(currentOpts)
 			if err != nil {

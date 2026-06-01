@@ -62,6 +62,7 @@ type ListInput struct {
 	Query      query.Expr
 	ReportMode bool
 	NoContext  bool
+	Limit      int
 }
 
 type ExportInput struct {
@@ -360,6 +361,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 		Query:          queryExpr,
 		NowUnix:        s.clock.Unix(),
 		UDADefinitions: udaDefs,
+		Limit:          input.Limit,
 	})
 	if err != nil {
 		return nil, mapProjectQueryCompileError(err)

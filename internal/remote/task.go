@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 
 	"github.com/dajee/taskg/internal/task"
 )
@@ -17,6 +18,7 @@ type ListTasksInput struct {
 	Filters   []string
 	Sort      string
 	NoContext bool
+	Limit     int
 }
 
 type AddTaskInput struct {
@@ -85,6 +87,9 @@ func (c *Client) ListTasks(ctx context.Context, input ListTasksInput) ([]task.Ta
 	}
 	if input.NoContext {
 		values.Set("no_context", "true")
+	}
+	if input.Limit > 0 {
+		values.Set("limit", strconv.Itoa(input.Limit))
 	}
 	for _, filter := range input.Filters {
 		values.Add("query", filter)

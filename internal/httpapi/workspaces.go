@@ -130,6 +130,20 @@ func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, workspaceResponseFromView(view), nil)
 }
 
+func (s *Server) handleWorkspaceArchive(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "workspace")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:write", app.PermissionWorkspaceArchive, ref, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ArchiveWorkspace(ref); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
 func (s *Server) handleMemberList(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
 	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:read", app.PermissionWorkspaceRead, workspace, "")

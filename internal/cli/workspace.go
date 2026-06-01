@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -30,8 +32,32 @@ func newWorkspaceListCommand(opts Options) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "workspace list"); err != nil {
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				workspaces, err := client.ListWorkspaces(context.Background(), includeArchived)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), workspaceViewsForJSON(workspaces))
+				}
+				for _, ws := range workspaces {
+					active := " "
+					if ws.Active {
+						active = "*"
+					}
+					archived := ""
+					if ws.ArchivedAt != nil {
+						archived = " archived"
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s%s\n", active, ws.Slug, ws.Name, ws.Role, archived)
+				}
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -69,15 +95,28 @@ func newWorkspaceAddCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "workspace add"); err != nil {
-				return err
-			}
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
 				return err
 			}
 			input, err := parseWorkspaceAddArgs(args)
 			if err != nil {
 				return err
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				_, err = client.AddWorkspace(context.Background(), remote.AddWorkspaceInput{
+					Slug: input.Slug, Name: input.Name, Description: input.Description, Visibility: input.Visibility,
+				})
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Created workspace %s\n", input.Slug)
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -103,11 +142,21 @@ func newWorkspaceUseCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "workspace use"); err != nil {
-				return err
-			}
 			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 				return err
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if _, err := client.UseWorkspace(context.Background(), args[0]); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Switched active workspace to %s\n", args[0])
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -129,8 +178,47 @@ func newWorkspaceInfoCommand(opts Options) *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "workspace info"); err != nil {
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				ref := ""
+				if len(args) == 1 {
+					ref = args[0]
+				} else {
+					// 使用当前 workspace
+					workspaces, err := client.ListWorkspaces(context.Background(), false)
+					if err != nil {
+						return err
+					}
+					for _, ws := range workspaces {
+						if ws.Active {
+							ref = ws.Slug
+							break
+						}
+					}
+					if ref == "" && len(workspaces) > 0 {
+						ref = workspaces[0].Slug
+					}
+				}
+				if ref == "" {
+					return fmt.Errorf("no workspace available")
+				}
+				workspace, err := client.WorkspaceInfo(context.Background(), ref)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), workspaceViewForJSON(workspace))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\nVisibility: %s\n", workspace.Slug, workspace.Name, workspace.Visibility)
+				if workspace.Description != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", workspace.Description)
+				}
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -163,15 +251,27 @@ func newWorkspaceModifyCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "workspace modify"); err != nil {
-				return err
-			}
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
 				return err
 			}
 			input, err := parseWorkspaceModifyArgs(args[1:])
 			if err != nil {
 				return err
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if err := client.ModifyWorkspace(context.Background(), args[0], remote.ModifyWorkspaceInput{
+					Name: input.Name, Description: input.Description, Visibility: input.Visibility,
+				}); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Modified workspace %s\n", args[0])
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -193,11 +293,21 @@ func newWorkspaceArchiveCommand(opts Options) *cobra.Command {
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			if err := remoteUnsupported(currentOpts, "workspace archive"); err != nil {
-				return err
-			}
 			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 				return err
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if err := client.ArchiveWorkspace(context.Background(), args[0]); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Archived workspace %s\n", args[0])
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {

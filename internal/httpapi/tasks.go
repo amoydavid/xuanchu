@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -59,6 +60,11 @@ type textRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
+const (
+	taskListDefaultLimit = 200
+	taskListMaxLimit     = 1000
+)
+
 func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
@@ -66,7 +72,20 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	input := app.ListInput{Sort: r.URL.Query().Get("sort")}
+	limit := taskListDefaultLimit
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return
+		}
+		if parsed > taskListMaxLimit {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", taskListMaxLimit), nil)
+			return
+		}
+		limit = parsed
+	}
+	input := app.ListInput{Sort: r.URL.Query().Get("sort"), Limit: limit}
 	if isTruthyQueryValue(r.URL.Query().Get("no_context")) {
 		input.NoContext = true
 	}

@@ -112,6 +112,27 @@ func TestTaskListNoContextBypassesActiveContext(t *testing.T) {
 	}
 }
 
+func TestTaskListRejectsInvalidLimit(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read")
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
+	cases := []string{"0", "-1", "1001", "bad"}
+	for _, limit := range cases {
+		rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks?limit="+limit, authHeader)
+		assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_limit")
+	}
+}
+
+func TestTaskListDefaultLimitDoesNotRejectEmptyLimit(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read")
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
+	for _, path := range []string{"/api/v1/tasks?limit=", "/api/v1/tasks"} {
+		rr := requestHTTP(t, fixture.server, http.MethodGet, path, authHeader)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s", path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
 func TestTaskAddAcceptsDueField(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 

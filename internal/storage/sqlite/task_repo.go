@@ -20,6 +20,7 @@ type ListOptions struct {
 	Query          query.Expr
 	NowUnix        int64
 	UDADefinitions map[string]string
+	Limit          int
 }
 
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
@@ -90,6 +91,9 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 		q = q.Order("start DESC")
 	default:
 		q = q.Order("entry ASC")
+	}
+	if opts.Limit > 0 {
+		q = q.Limit(opts.Limit)
 	}
 	if err := q.Find(&models).Error; err != nil {
 		return nil, err
