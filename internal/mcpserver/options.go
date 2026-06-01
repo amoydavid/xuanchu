@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"io"
+	"net/http"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/storage/sqlite"
@@ -22,4 +23,5 @@ type Options struct {
 	Version string
 	Mode    Mode
 	Stderr  io.Writer
+	Request *http.Request
 }

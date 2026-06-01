@@ -22,10 +22,10 @@ type workspaceDTO struct {
 }
 
 type AddWorkspaceInput struct {
-	Slug        string  `json:"slug"`
-	Name        string  `json:"name,omitempty"`
-	Description string  `json:"description,omitempty"`
-	Visibility  string  `json:"visibility,omitempty"`
+	Slug        string `json:"slug"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
 }
 
 type ModifyWorkspaceInput struct {

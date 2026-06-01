@@ -74,7 +74,7 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 func skipsMigrationWarning(args []string) bool {
 	for _, arg := range args {
 		switch arg {
-		case "completion", "help", "--help", "-h", "--version", "version":
+		case "completion", "help", "--help", "-h", "--version", "version", "mcp":
 			return true
 		}
 	}

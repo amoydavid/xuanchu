@@ -132,6 +132,17 @@ func TestExecutePassesRcOverridesToSubcommands(t *testing.T) {
 	}
 }
 
+func TestRootIncludesMCPStdioCommand(t *testing.T) {
+	cmd := NewRootCommand(Options{})
+	mcpCmd, _, err := cmd.Find([]string{"mcp", "stdio"})
+	if err != nil {
+		t.Fatalf("Find(mcp stdio) error = %v", err)
+	}
+	if mcpCmd == nil || mcpCmd.Name() != "stdio" {
+		t.Fatalf("Find(mcp stdio) = %#v, want stdio command", mcpCmd)
+	}
+}
+
 func TestExecuteShowUsesScopedActiveKeys(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}

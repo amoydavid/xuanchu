@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	gsqlite "github.com/glebarez/sqlite"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -87,6 +90,26 @@ func TestCLIServerHealthz(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d body=%s", resp.StatusCode, string(body))
+	}
+}
+
+func TestMCPStdioListTools(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.Command(bin, "--db", db, "mcp", "stdio")
+	client := mcp.NewClient(&mcp.Implementation{Name: "taskg-test", Version: "test"}, nil)
+	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		t.Fatalf("connect mcp stdio: %v", err)
+	}
+	defer session.Close()
+
+	if _, err := session.ListTools(ctx, nil); err != nil {
+		t.Fatalf("ListTools: %v", err)
 	}
 }
 
@@ -2016,4 +2039,145 @@ func buildEditorHelper(t *testing.T, source string) string {
 		t.Fatalf("go build editor helper error = %v\n%s", err, out)
 	}
 	return bin
+}
+
+func TestCLIMCPStdioOutputsJSONRPC(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	// 初始化 DB（创建 local user/workspace）
+	run(t, bin, "--db", db, "list")
+
+	// 发送 MCP initialize 请求到 stdin，读取 stdout
+	initRequest := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.1.0"}}}` + "\n"
+
+	cmd := exec.Command(bin, "--db", db, "mcp", "stdio")
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// 发送 initialize
+	if _, err := io.WriteString(stdinPipe, initRequest); err != nil {
+		t.Fatal(err)
+	}
+	// 发送 shutdown
+	time.Sleep(200 * time.Millisecond)
+	shutdownRequest := `{"jsonrpc":"2.0","id":2,"method":"shutdown","params":{}}` + "\n"
+	_, _ = io.WriteString(stdinPipe, shutdownRequest)
+	time.Sleep(200 * time.Millisecond)
+	stdinPipe.Close()
+
+	_ = cmd.Wait()
+
+	// stderr 不应有 migration warning
+	stderrStr := stderr.String()
+	if strings.Contains(stderrStr, "warning") || strings.Contains(stderrStr, "migration") {
+		t.Fatalf("stderr should not contain migration warning: %q", stderrStr)
+	}
+
+	// stdout 应该只有 JSON-RPC 响应
+	stdoutStr := strings.TrimSpace(stdout.String())
+	if stdoutStr == "" {
+		t.Fatal("stdout is empty, expected JSON-RPC response")
+	}
+	lines := strings.Split(stdoutStr, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "{") {
+			t.Fatalf("stdout line is not JSON: %q", line)
+		}
+		var msg map[string]any
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			t.Fatalf("stdout line is not valid JSON: %q\nparse error: %v", line, err)
+		}
+		if _, ok := msg["jsonrpc"]; !ok {
+			t.Fatalf("stdout JSON missing jsonrpc field: %q", line)
+		}
+	}
+}
+
+func TestCLIServerMCPRejectsMissingToken(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	// POST /mcp 无 token -> 401
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.1.0"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST /mcp without token status = %d, want 401 body=%s", resp.StatusCode, string(body))
+	}
+
+	// GET /mcp 无 token -> 401
+	req, err = http.NewRequest(http.MethodGet, baseURL+"/mcp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /mcp without token status = %d, want 401 body=%s", resp.StatusCode, string(body))
+	}
+}
+
+func TestCLIServerMCPRejectsBodyOverLimit(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	// 创建 token
+	out := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "mcp-http", "--scope", "task:read", "--expires-in", "720h")
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out), &created); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := created["token"].(string)
+
+	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+	defer stopTaskgServer(t, cmd)
+
+	// 发送超大 body -> 413
+	largeBody := make([]byte, 11*1024*1024) // 11MB，超过默认 10MB 限制
+	for i := range largeBody {
+		largeBody[i] = 'a'
+	}
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/mcp", bytes.NewReader(largeBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST /mcp oversized body status = %d, want 413 body=%s", resp.StatusCode, string(body))
+	}
 }

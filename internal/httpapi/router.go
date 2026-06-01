@@ -3,7 +3,9 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/dajee/taskg/internal/mcpserver"
 	"github.com/go-chi/chi/v5"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func (s *Server) newRouter() *http.ServeMux {
@@ -77,7 +79,26 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Get("/api/v1/tokens", s.handleTokenList)
 	api.With(s.authMiddleware).Post("/api/v1/tokens", s.handleTokenCreate)
 	api.With(s.authMiddleware).Delete("/api/v1/tokens/{tokenRef}", s.handleTokenRevoke)
+	api.With(s.authMiddleware).Handle("/mcp", s.handleMCP())
 
 	root.Handle("/", api)
 	return root
+}
+
+func (s *Server) handleMCP() http.Handler {
+	factory := mcpserver.RuntimeFactory{Store: s.store, Clock: s.effectiveClock()}
+	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		authReq, err := factory.AuthenticateHTTPRequest(r)
+		if err != nil {
+			return nil
+		}
+		return mcpserver.NewServer(mcpserver.Options{
+			Store:   s.store,
+			Clock:   s.effectiveClock(),
+			Version: "dev",
+			Mode:    mcpserver.ModeHTTP,
+			Stderr:  s.stderr,
+			Request: authReq,
+		})
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 }

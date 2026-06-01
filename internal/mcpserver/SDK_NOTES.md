@@ -56,6 +56,11 @@ func NewStreamableHTTPHandler(getServer func(*http.Request) *Server, opts *Strea
 
 - `getServer` 回调用于为每个新 session 创建或查找 Server
 - 可以多次返回同一个 Server
+- M7 当前使用 `StreamableHTTPOptions{Stateless:true, JSONResponse:true}` 挂载 `/mcp`，每个请求创建短生命周期 MCP session，不保留跨请求状态。
+- `getServer` 接收原始 `*http.Request`；SDK 在 `server.Connect(req.Context(), ...)` 时保留 middleware context，并在 tool request 的 `CallToolRequest.Extra.Header` 中暴露 HTTP header。
+- `/mcp` 挂在现有 chi `api` router 上，middleware 顺序是 `requestIDMiddleware -> recovererMiddleware -> accessLogMiddleware -> bodyLimitMiddleware -> authMiddleware -> StreamableHTTPHandler`。
+- HTTP 鉴权先由 `authMiddleware` 在 handler 层返回 401/403；MCP tool handler 仍可通过 `RequestScopeInput` + `RuntimeFactory.ServiceForHTTP` 从 Bearer header/context 构造 app scoped service。
+- `bodyLimitMiddleware` 限制每个 HTTP request body；GET/SSE 没有 request body，不用于 body limit 断言。
 
 ## Server.Run / Server.Connect
 
