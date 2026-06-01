@@ -13,6 +13,7 @@ func NewServer(opts Options) *mcp.Server {
 		Version: version,
 	}, nil)
 	RegisterTools(srv, opts)
+	RegisterResources(srv, opts)
 	return srv
 }
 

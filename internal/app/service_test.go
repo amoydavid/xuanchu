@@ -3504,6 +3504,25 @@ func TestDoneRecurringTaskKeepsAuditAndNextChildInSameWorkspace(t *testing.T) {
 	}
 }
 
+func TestProjectConfigAgentKeysAndSizeLimit(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "agent", Name: "Agent"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	for _, key := range []string{"agent.background", "agent.constraints", "agent.default_context", "agent.handoff"} {
+		if err := svc.ProjectConfigSet(project.Slug, key, "ok"); err != nil {
+			t.Fatalf("ProjectConfigSet(%s) error = %v", key, err)
+		}
+		if value, ok, err := svc.ProjectConfigGet(project.Slug, key); err != nil || !ok || value != "ok" {
+			t.Fatalf("ProjectConfigGet(%s) = %q,%v,%v", key, value, ok, err)
+		}
+	}
+	err = svc.ProjectConfigSet(project.Slug, "agent.background", strings.Repeat("x", agentConfigValueMaxBytes+1))
+	assertRuntimeCode(t, err, "config_value_too_large")
+}
+
 func containsTask(tasks []task.Task, uuid string) bool {
 	for _, tsk := range tasks {
 		if tsk.UUID == uuid {

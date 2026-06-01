@@ -7,10 +7,14 @@ import (
 	"github.com/dajee/taskg/internal/storage/sqlite"
 )
 
+const agentConfigValueMaxBytes = 16 * 1024
+
 var projectConfigKeys = map[string]bool{
-	"agent.background":  true,
-	"agent.constraints": true,
-	"context.default":   true,
+	"agent.background":      true,
+	"agent.constraints":     true,
+	"agent.default_context": true,
+	"agent.handoff":         true,
+	"context.default":       true,
 }
 
 func (s *Service) ProjectConfigGet(projectRef, key string) (string, bool, error) {
@@ -40,6 +44,9 @@ func (s *Service) ProjectConfigSet(projectRef, key, value string) error {
 	key, err := normalizeProjectConfigKey(key)
 	if err != nil {
 		return err
+	}
+	if strings.HasPrefix(key, "agent.") && len(value) > agentConfigValueMaxBytes {
+		return RuntimeError{Code: "config_value_too_large", Message: "config value too large"}
 	}
 	return s.withAudit("project.config.set", func(tx *Service) (AuditEntry, error) {
 		project, err := tx.ResolveProject(projectRef)
