@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
 )
 
 func TestUserListReturnsUsers(t *testing.T) {
@@ -99,17 +98,4 @@ func TestUserInfoByNameReturnsUser(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
-}
-
-func mustCreateHTTPUser(t *testing.T, store *sqlite.Store, name string) app.UserView {
-	t.Helper()
-	svc, err := app.NewService(app.ServiceOptions{Store: store})
-	if err != nil {
-		t.Fatal(err)
-	}
-	user, err := svc.AddUser(app.AddUserInput{Name: name})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return user
 }

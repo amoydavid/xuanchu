@@ -272,16 +272,6 @@ func renderTaskRCReport(w io.Writer, report taskrcparser.Report) {
 	}
 }
 
-func openStore(opts Options) (*sqlite.Store, error) {
-	cfg, err := config.Resolve(config.Options{
-		DataDir: opts.DataDir, DBPath: opts.DBPath,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return sqlite.Open(cfg.DatabasePath)
-}
-
 func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	env := RuntimeEnv()
 	cfg, err := config.Resolve(config.Options{

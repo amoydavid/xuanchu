@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -136,18 +135,6 @@ func bearerToken(header string) (string, bool) {
 		return "", false
 	}
 	return parts[1], true
-}
-
-func writeAuthError(w http.ResponseWriter, err error) {
-	var runtimeErr app.RuntimeError
-	if errors.As(err, &runtimeErr) {
-		switch runtimeErr.Code {
-		case "auth_invalid_token", "auth_token_expired", "auth_token_revoked":
-			writeError(w, http.StatusUnauthorized, runtimeErr.Code, runtimeErr.Message, nil)
-			return
-		}
-	}
-	writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
 }
 
 func authFromContext(ctx context.Context) (requestAuth, bool) {

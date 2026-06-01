@@ -97,6 +97,7 @@ type ReportInput struct {
 	Name      string
 	Query     query.Expr
 	NoContext bool
+	Limit     int
 }
 
 type ReportResult struct {
@@ -410,7 +411,7 @@ func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) 
 	if input.Target != nil {
 		return s.List(input)
 	}
-	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext})
+	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext, Limit: input.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -1129,6 +1130,9 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 		for i, wu := range withUrgency {
 			tasks[i] = wu.Task
 		}
+	}
+	if input.Limit > 0 && len(tasks) > input.Limit {
+		tasks = tasks[:input.Limit]
 	}
 	return ReportResult{Tasks: tasks}, nil
 }

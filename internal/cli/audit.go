@@ -33,15 +33,15 @@ func newAuditListCommand(opts Options) *cobra.Command {
 			if remoteMode, _, modeErr := isRemoteMode(currentOpts); modeErr != nil {
 				return modeErr
 			} else if remoteMode {
-				client, err := buildRemoteClient(currentOpts)
-				if err != nil {
-					return err
+				client, clientErr := buildRemoteClient(currentOpts)
+				if clientErr != nil {
+					return clientErr
 				}
 				rows, err = client.ListAudit(context.Background(), currentOpts.Workspace, projectRef, limit)
 			} else {
-				svc, closeFn, err := buildServiceFromCmd(cmd, opts)
-				if err != nil {
-					return err
+				svc, closeFn, serviceErr := buildServiceFromCmd(cmd, opts)
+				if serviceErr != nil {
+					return serviceErr
 				}
 				defer closeFn()
 				rows, err = svc.ListAudit(app.AuditListInput{

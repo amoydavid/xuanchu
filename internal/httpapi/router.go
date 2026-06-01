@@ -86,11 +86,10 @@ func (s *Server) newRouter() *http.ServeMux {
 }
 
 func (s *Server) handleMCP() http.Handler {
-	factory := mcpserver.RuntimeFactory{Store: s.store, Clock: s.effectiveClock()}
 	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		authReq, err := factory.AuthenticateHTTPRequest(r)
-		if err != nil {
-			return nil
+		authReq := r
+		if authn, ok := authFromContext(r.Context()); ok {
+			authReq = mcpserver.SetHTTPAuthContext(r, authn.Authn)
 		}
 		return mcpserver.NewServer(mcpserver.Options{
 			Store:   s.store,

@@ -137,6 +137,9 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
+	if ok := s.ensureTaskAddProjectRefs(w, r, req); !ok {
+		return
+	}
 	projectRef := requestProjectRef(r)
 	if projectRef == "" {
 		projectRef = strings.TrimSpace(req.ProjectID)
@@ -188,6 +191,35 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusCreated, task.ToJSON(created), nil)
+}
+
+func (s *Server) ensureTaskAddProjectRefs(w http.ResponseWriter, r *http.Request, req addTaskRequest) bool {
+	if strings.TrimSpace(req.Project) == "" || strings.TrimSpace(req.ProjectID) == "" {
+		return true
+	}
+	authn, ok := authFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
+		return false
+	}
+	workspaceRef := requestWorkspaceRef(r)
+	if workspaceRef == "" {
+		workspaceRef = authn.EffectiveWorkspace.ID
+	}
+	preflightSvc, _, err := s.scopedServiceFor(r, scopedServiceInput{
+		Capability:   "task:write",
+		Permission:   app.PermissionTaskWrite,
+		WorkspaceRef: workspaceRef,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return false
+	}
+	if err := ensureProjectRefsMatch(preflightSvc, req.Project, req.ProjectID); err != nil {
+		writeAppError(w, err)
+		return false
+	}
+	return true
 }
 
 func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {

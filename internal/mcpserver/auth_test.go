@@ -95,7 +95,7 @@ func TestRuntimeFactoryServiceForStdioProjectMismatch(t *testing.T) {
 	factory := RuntimeFactory{Store: store, Clock: testClock{now: 100}}
 
 	_, err = factory.ServiceForStdio(context.Background(), RequestScopeInput{Project: "missing", ProjectID: project.ID}, "", app.PermissionProjectRead)
-	assertMCPRuntimeCode(t, err, "project_mismatch")
+	assertMCPRuntimeCode(t, err, "project_not_found")
 }
 
 func TestRuntimeFactoryServiceForHTTPRejectsMissingToken(t *testing.T) {
@@ -140,6 +140,35 @@ func TestRuntimeFactoryServiceForHTTPRequiresWorkspaceForAmbiguousProjectSlug(t 
 
 	_, err := factory.ServiceForHTTP(req, RequestScopeInput{Project: "alpha"}, "project:read", app.PermissionProjectRead)
 	assertMCPRuntimeCode(t, err, "workspace_required")
+}
+
+func TestRuntimeFactoryServiceForHTTPProjectIDSelectsOwningWorkspace(t *testing.T) {
+	store := newMCPTestStore(t)
+	owner := newMCPTestService(t, store)
+	work, err := owner.AddWorkspace(app.AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workSvc, err := app.NewService(app.ServiceOptions{Store: store, Clock: testClock{now: 100}, WorkspaceRef: work.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := workSvc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := mustCreateMCPToken(t, owner, []string{"project:read"}, nil, nil)
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	factory := RuntimeFactory{Store: store, Clock: testClock{now: 100}}
+
+	svc, err := factory.ServiceForHTTP(req, RequestScopeInput{ProjectID: project.ID}, "project:read", app.PermissionProjectRead)
+	if err != nil {
+		t.Fatalf("ServiceForHTTP() error = %v", err)
+	}
+	if got := svc.Runtime().WorkspaceID; got != work.ID {
+		t.Fatalf("workspace = %q, want %q", got, work.ID)
+	}
 }
 
 func assertMCPRuntimeCode(t *testing.T, err error, want string) {

@@ -382,15 +382,15 @@ func newProjectConfigListCommand(opts Options) *cobra.Command {
 			if remoteMode, _, modeErr := isRemoteMode(currentOpts); modeErr != nil {
 				return modeErr
 			} else if remoteMode {
-				client, err := buildRemoteClient(currentOpts)
-				if err != nil {
-					return err
+				client, clientErr := buildRemoteClient(currentOpts)
+				if clientErr != nil {
+					return clientErr
 				}
 				values, err = client.ProjectConfigList(context.Background(), currentOpts.Workspace, args[0])
 			} else {
-				svc, closeFn, err := buildServiceFromCmd(cmd, opts)
-				if err != nil {
-					return err
+				svc, closeFn, serviceErr := buildServiceFromCmd(cmd, opts)
+				if serviceErr != nil {
+					return serviceErr
 				}
 				defer closeFn()
 				values, err = svc.ProjectConfigList(args[0])

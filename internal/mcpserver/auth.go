@@ -104,6 +104,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		RequiredPermission: permission,
 		WorkspaceRef:       workspaceRef,
 		ProjectRef:         projectRef,
+		ProjectRefIsID:     strings.TrimSpace(input.ProjectID) != "",
 	})
 	if err != nil {
 		return nil, err
@@ -142,7 +143,7 @@ func ensureProjectRefsMatch(svc *app.Service, projectSlug, projectID string) err
 	}
 	bySlug, err := svc.ProjectInfo(projectSlug)
 	if err != nil {
-		return app.RuntimeError{Code: "project_mismatch", Message: "project and project_id do not match"}
+		return err
 	}
 	if bySlug.ID != byID.ID {
 		return app.RuntimeError{Code: "project_mismatch", Message: "project and project_id do not match"}
@@ -207,6 +208,9 @@ func workspaceRefFromHTTPRequest(r *http.Request) string {
 // AuthenticateHTTPRequest 对 HTTP 请求进行 Bearer token 鉴权。
 // 返回更新了 auth context 的 request 和 error。
 func (f RuntimeFactory) AuthenticateHTTPRequest(r *http.Request) (*http.Request, error) {
+	if _, ok := authFromHTTPRequest(r); ok {
+		return r, nil
+	}
 	raw, ok := bearerTokenFromHeader(r.Header.Get("Authorization"))
 	if !ok {
 		return nil, app.RuntimeError{Code: "auth_missing_token", Message: "missing bearer token"}

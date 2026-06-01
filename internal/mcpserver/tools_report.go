@@ -62,9 +62,6 @@ func registerReportTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if len(rows) > limit {
-			rows = rows[:limit]
-		}
 		data := tasksData(rows)
 		data["report"] = map[string]any{"name": strings.TrimSpace(in.Name)}
 		return successWithEnvelope(data, renderTaskList(rows))

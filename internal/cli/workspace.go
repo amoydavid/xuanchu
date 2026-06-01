@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/remote"
@@ -378,12 +377,4 @@ func workspaceViewForJSON(workspace app.WorkspaceView) map[string]any {
 		"created_at":         workspace.CreatedAt,
 		"modified_at":        workspace.ModifiedAt,
 	}
-}
-
-func trimKV(arg, key string) (string, bool) {
-	prefix := key + ":"
-	if !strings.HasPrefix(arg, prefix) {
-		return "", false
-	}
-	return strings.TrimPrefix(arg, prefix), true
 }

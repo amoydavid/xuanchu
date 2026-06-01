@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -221,7 +222,7 @@ func TestReadProjectByID(t *testing.T) {
 		Mode:    ModeStdio,
 	})
 
-	uri := "taskg://project/" + proj.Slug
+	uri := "taskg://project/" + proj.ID
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 		URI: uri,
 	})
@@ -247,6 +248,52 @@ func TestReadProjectByID(t *testing.T) {
 	}
 	if data.AgentConfig["agent.constraints"] != "no-breaking-changes" {
 		t.Errorf("agent.constraints = %q, want no-breaking-changes", data.AgentConfig["agent.constraints"])
+	}
+}
+
+func TestReadProjectRejectsSlugResourceURI(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	proj, err := svc.AddProject(app.AddProjectInput{Slug: "backend", Name: "Backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := setupResourceTestServer(t, Options{
+		Store:   store,
+		Clock:   testClock{now: 100},
+		Version: "test",
+		Mode:    ModeStdio,
+	})
+
+	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "taskg://project/" + proj.Slug}); err == nil {
+		t.Fatal("ReadResource taskg://project/{slug} error = nil, want not found")
+	}
+}
+
+func TestHTTPProjectResourceHonorsProjectScope(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	allowed, err := svc.AddProject(app.AddProjectInput{Slug: "allowed", Name: "Allowed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := svc.AddProject(app.AddProjectInput{Slug: "hidden", Name: "Hidden"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := mustCreateMCPToken(t, svc, []string{"project:read"}, []string{"local"}, []string{allowed.ID})
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	session := setupResourceTestServer(t, Options{
+		Store:   store,
+		Clock:   testClock{now: 100},
+		Version: "test",
+		Mode:    ModeHTTP,
+		Request: req,
+	})
+
+	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "taskg://project/" + hidden.ID}); err == nil {
+		t.Fatal("ReadResource hidden project error = nil, want scope denial")
 	}
 }
 
@@ -388,7 +435,7 @@ func TestProjectResourceOnlyExposesAllowedAgentKeys(t *testing.T) {
 		Mode:    ModeStdio,
 	})
 
-	uri := "taskg://project/" + proj.Slug
+	uri := "taskg://project/" + proj.ID
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 		URI: uri,
 	})

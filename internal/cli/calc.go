@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newCalcCommand(opts Options) *cobra.Command {
+func newCalcCommand(_ Options) *cobra.Command {
 	return &cobra.Command{
 		Use:  "calc <expression>",
 		Args: cobra.MinimumNArgs(1),

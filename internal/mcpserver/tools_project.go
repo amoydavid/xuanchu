@@ -42,6 +42,9 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 
 	addTool(s, &mcp.Tool{Name: "project.get", Description: "Get one project and its agent-readable config; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
+		if strings.TrimSpace(ref) == "" {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
+		}
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "project:read", app.PermissionProjectRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -50,7 +53,10 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		config, _ := filterAgentConfig(svc, ref)
+		config, err := filterAgentConfig(svc, ref)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		data := map[string]any{"project": projectViewFromApp(project), "config_summary": config}
 		return successWithEnvelope(data, "project "+project.Slug)
 	})

@@ -286,6 +286,104 @@ func TestAuthorizeTokenRequestRejectsProjectOutsideAllowlist(t *testing.T) {
 	assertRuntimeCode(t, err, "project_scope_denied")
 }
 
-func ptrString(value string) *string {
-	return &value
+func TestAuthorizeTokenRequestProjectIDSelectsOwningWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	work, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(work) error = %v", err)
+	}
+	workSvc := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
+	project, err := workSvc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:   "agent",
+		Scopes: []string{"project:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "project:read",
+		RequiredPermission: PermissionProjectRead,
+		ProjectRef:         project.ID,
+		ProjectRefIsID:     true,
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	if authorized.Workspace.ID != work.ID {
+		t.Fatalf("workspace = %q, want %q", authorized.Workspace.ID, work.ID)
+	}
+	if authorized.Project == nil || authorized.Project.ID != project.ID {
+		t.Fatalf("project = %#v, want %q", authorized.Project, project.ID)
+	}
+}
+
+func TestExplicitProjectScopeFiltersSingleTaskOperations(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	alpha, err := ownerSvc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatalf("AddProject(alpha) error = %v", err)
+	}
+	beta, err := ownerSvc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatalf("AddProject(beta) error = %v", err)
+	}
+	alphaTask, err := ownerSvc.Add(AddInput{Description: "alpha task", Project: strptr(alpha.Slug)})
+	if err != nil {
+		t.Fatalf("Add(alpha task) error = %v", err)
+	}
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Scopes:        []string{"task:read", "task:write"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+		ProjectRef:         beta.ID,
+		ProjectRefIsID:     true,
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	scopedSvc, err := NewService(ServiceOptions{
+		Store:        store,
+		Clock:        fixedClock{NowUnix: 100},
+		Runtime:      &authorized.Runtime,
+		RequestScope: &authorized.Scope,
+	})
+	if err != nil {
+		t.Fatalf("NewService(scoped) error = %v", err)
+	}
+
+	if _, err := scopedSvc.Info(alphaTask.UUID); err == nil {
+		t.Fatal("Info(alpha task through beta request scope) error = nil")
+	} else {
+		assertRuntimeCode(t, err, "task_not_found")
+	}
+	if err := scopedSvc.Modify(alphaTask.UUID, ModifyInput{Description: strptr("blocked")}); err == nil {
+		t.Fatal("Modify(alpha task through beta request scope) error = nil")
+	} else {
+		assertRuntimeCode(t, err, "project_scope_denied")
+	}
 }

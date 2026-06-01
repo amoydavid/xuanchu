@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "annotations": {
+        "description": "initial annotations",
         "items": {
           "type": "string"
         },
@@ -42,6 +43,7 @@
         ]
       },
       "tags": {
+        "description": "task tags to add",
         "items": {
           "type": "string"
         },

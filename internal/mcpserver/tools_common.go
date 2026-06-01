@@ -19,15 +19,12 @@ const (
 	mcpMaxLimit     = 1000
 )
 
-type toolScopedInput interface {
-	scopeInput() RequestScopeInput
-}
-
 func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
 	inputSchema, err := jsonschema.For[In](nil)
 	if err != nil {
 		panic(err)
 	}
+	patchInputSchema[In](inputSchema)
 	outputSchema, err := jsonschema.For[ToolEnvelope](nil)
 	if err != nil {
 		panic(err)
@@ -45,12 +42,20 @@ func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[I
 		}
 		result, _, err := handler(ctx, req, input)
 		if err != nil {
-			var errResult mcp.CallToolResult
-			errResult.SetError(err)
-			return &errResult, nil
+			return businessErrorResult(err), nil
 		}
 		return result, nil
 	})
+}
+
+func patchInputSchema[In any](schema *jsonschema.Schema) {
+	switch any(*new(In)).(type) {
+	case ProjectGetInput:
+		schema.AnyOf = []*jsonschema.Schema{
+			{Required: []string{"project"}},
+			{Required: []string{"project_id"}},
+		}
+	}
 }
 
 func serviceForTool(ctx context.Context, req *mcp.CallToolRequest, opts Options, input RequestScopeInput, capability string, permission app.Permission) (*app.Service, error) {
@@ -85,15 +90,20 @@ func limitOrDefault(limit int) (int, error) {
 	return limit, nil
 }
 
-func taskData(tsk task.Task) map[string]any {
+func taskData(tsk task.Task) (map[string]any, error) {
 	dto := task.ToJSON(tsk)
 	var flat map[string]any
-	raw, _ := json.Marshal(dto)
-	_ = json.Unmarshal(raw, &flat)
+	raw, err := json.Marshal(dto)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &flat); err != nil {
+		return nil, err
+	}
 	flat["task"] = dto
 	flat["completed"] = tsk.Status == task.StatusCompleted
 	flat["deleted"] = tsk.Status == task.StatusDeleted
-	return flat
+	return flat, nil
 }
 
 func tasksData(rows []task.Task) map[string]any {

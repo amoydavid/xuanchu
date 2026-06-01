@@ -298,11 +298,6 @@ func (s *Service) UniqueValues(field string, input ListInput) ([]string, error) 
 	return out, nil
 }
 
-func (s *Service) setUDAConfig(key, value string) error {
-	_, err := s.setUDAConfigLocked(key, value)
-	return err
-}
-
 func (s *Service) setUDAConfigLocked(key, value string) (string, error) {
 	name, field, err := splitUDAConfigKey(key)
 	if err != nil {
@@ -365,11 +360,6 @@ func (s *Service) getUDAConfig(key string) (string, bool, error) {
 	default:
 		return "", false, fmt.Errorf("unknown UDA config field %q", field)
 	}
-}
-
-func (s *Service) unsetUDAConfig(key string) error {
-	_, err := s.unsetUDAConfigLocked(key)
-	return err
 }
 
 func (s *Service) unsetUDAConfigLocked(key string) (string, error) {

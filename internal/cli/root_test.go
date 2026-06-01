@@ -224,6 +224,30 @@ func TestExecuteConfigListHidesInternalScopedKeys(t *testing.T) {
 	}
 }
 
+func TestExecuteAuditListReturnsServiceError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	err := Execute(cmd, opts, []string{"--db", db, "audit", "list", "--project", "missing"})
+	if err == nil {
+		t.Fatal("Execute(audit list --project missing) error = nil, want service error")
+	}
+}
+
+func TestExecuteProjectConfigListReturnsServiceError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := Options{Stdout: &stdout, Stderr: &stderr}
+	cmd := NewRootCommand(opts)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	err := Execute(cmd, opts, []string{"--db", db, "project", "config", "list", "missing"})
+	if err == nil {
+		t.Fatal("Execute(project config list missing) error = nil, want service error")
+	}
+}
+
 func TestUserUseIgnoresWorkspaceOverride(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}

@@ -189,6 +189,18 @@
       "description": "Get one project and its agent-readable config; read-only.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "project": {
             "type": "string"
@@ -299,6 +311,7 @@
         "additionalProperties": false,
         "properties": {
           "annotations": {
+            "description": "initial annotations",
             "items": {
               "type": "string"
             },
@@ -337,6 +350,7 @@
             ]
           },
           "tags": {
+            "description": "task tags to add",
             "items": {
               "type": "string"
             },
@@ -393,9 +407,6 @@
           "annotation": {
             "type": "string"
           },
-          "description": {
-            "type": "string"
-          },
           "id": {
             "type": "string"
           },
@@ -410,7 +421,8 @@
           }
         },
         "required": [
-          "id"
+          "id",
+          "annotation"
         ],
         "type": "object"
       },

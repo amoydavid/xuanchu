@@ -2,6 +2,18 @@
   "description": "Get one project and its agent-readable config; read-only.",
   "inputSchema": {
     "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
     "properties": {
       "project": {
         "type": "string"

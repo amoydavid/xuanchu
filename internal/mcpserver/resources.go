@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -40,7 +41,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		URITemplate: "taskg://workspace/{workspace_id}",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		workspaceID := uriParam(req.Params.URI, "workspace_id")
+		workspaceID := uriParam(req.Params.URI)
 		if workspaceID == "" {
 			return nil, mcp.ResourceNotFoundError(req.Params.URI)
 		}
@@ -68,8 +69,11 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		URITemplate: "taskg://project/{project_id}",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		projectRef := uriParam(req.Params.URI, "project_id")
+		projectRef := uriParam(req.Params.URI)
 		if projectRef == "" {
+			return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		}
+		if _, err := uuid.Parse(projectRef); err != nil {
 			return nil, mcp.ResourceNotFoundError(req.Params.URI)
 		}
 		svc, err := resourceService(ctx, opts, req, RequestScopeInput{ProjectID: projectRef}, "project:read", app.PermissionProjectRead)
@@ -82,8 +86,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		}
 		agentConfig, err := filterAgentConfig(svc, projectRef)
 		if err != nil {
-			// agent config 读取失败不阻断整个 resource
-			agentConfig = map[string]string{}
+			return nil, err
 		}
 		data := buildProjectData(info, agentConfig)
 		return jsonResource(req.Params.URI, data)
@@ -240,9 +243,8 @@ func buildContextCurrentData(svc *app.Service) (*contextResourceData, error) {
 	rt := svc.Runtime()
 
 	projects, projErr := svc.ListProjects(false)
-	var projectCount int
-	if projErr == nil {
-		projectCount = len(projects)
+	if projErr != nil {
+		return nil, projErr
 	}
 
 	return &contextResourceData{
@@ -250,7 +252,7 @@ func buildContextCurrentData(svc *app.Service) (*contextResourceData, error) {
 		Filter:            filter,
 		WorkspaceID:       rt.WorkspaceID,
 		WorkspaceSlug:     rt.WorkspaceSlug,
-		ProjectScopeCount: projectCount,
+		ProjectScopeCount: len(projects),
 	}, nil
 }
 
@@ -330,10 +332,8 @@ func jsonResource(uri string, data any) (*mcp.ReadResourceResult, error) {
 	}, nil
 }
 
-// uriParam 从 URI path 中提取指定参数值。
-// 支持格式: taskg://segment/{param} 或 taskg://segment/value
-// 对于 template 参数，在 template 格式下 SDK 会替换为实际值。
-func uriParam(uri, param string) string {
+// uriParam 从 taskg://segment/value 形式的 URI path 中提取 value。
+func uriParam(uri string) string {
 	// URI 格式: taskg://workspace/{workspace_id} 或 taskg://project/{project_id}
 	// SDK 在 template 匹配时会把 {param} 替换为实际值
 	// 所以实际收到的 URI 是 taskg://workspace/xxx 或 taskg://project/xxx

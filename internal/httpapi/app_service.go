@@ -8,10 +8,33 @@ import (
 )
 
 func (s *Server) scopedService(r *http.Request, capability string, permission app.Permission, projectRef string) (*app.Service, requestAuth, error) {
-	return s.scopedServiceWithWorkspace(r, capability, permission, requestWorkspaceRef(r), projectRef)
+	return s.scopedServiceFor(r, scopedServiceInput{
+		Capability:     capability,
+		Permission:     permission,
+		WorkspaceRef:   requestWorkspaceRef(r),
+		ProjectRef:     projectRef,
+		ProjectRefIsID: projectRefIsID(r, projectRef),
+	})
 }
 
 func (s *Server) scopedServiceWithWorkspace(r *http.Request, capability string, permission app.Permission, workspaceRef, projectRef string) (*app.Service, requestAuth, error) {
+	return s.scopedServiceFor(r, scopedServiceInput{
+		Capability:   capability,
+		Permission:   permission,
+		WorkspaceRef: workspaceRef,
+		ProjectRef:   projectRef,
+	})
+}
+
+type scopedServiceInput struct {
+	Capability     string
+	Permission     app.Permission
+	WorkspaceRef   string
+	ProjectRef     string
+	ProjectRefIsID bool
+}
+
+func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*app.Service, requestAuth, error) {
 	authn, ok := authFromContext(r.Context())
 	if !ok {
 		return nil, requestAuth{}, app.RuntimeError{Code: "api_internal", Message: "internal server error"}
@@ -26,10 +49,11 @@ func (s *Server) scopedServiceWithWorkspace(r *http.Request, capability string, 
 	}
 	authorized, err := baseSvc.AuthorizeTokenRequest(app.RequestAuthorizationInput{
 		Token:              authn.Authn,
-		RequiredCapability: capability,
-		RequiredPermission: permission,
-		WorkspaceRef:       workspaceRef,
-		ProjectRef:         strings.TrimSpace(projectRef),
+		RequiredCapability: input.Capability,
+		RequiredPermission: input.Permission,
+		WorkspaceRef:       input.WorkspaceRef,
+		ProjectRef:         strings.TrimSpace(input.ProjectRef),
+		ProjectRefIsID:     input.ProjectRefIsID,
 	})
 	if err != nil {
 		return nil, requestAuth{}, err
@@ -59,4 +83,8 @@ func requestProjectRef(r *http.Request) string {
 		return value
 	}
 	return strings.TrimSpace(r.URL.Query().Get("project"))
+}
+
+func projectRefIsID(r *http.Request, ref string) bool {
+	return strings.TrimSpace(ref) != "" && strings.TrimSpace(r.URL.Query().Get("project_id")) == strings.TrimSpace(ref)
 }

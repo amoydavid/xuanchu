@@ -16,13 +16,13 @@ type TaskAddInput struct {
 	Project     string   `json:"project,omitempty" jsonschema:"project slug in the effective workspace"`
 	ProjectID   string   `json:"project_id,omitempty" jsonschema:"stable project UUID"`
 	Description string   `json:"description" jsonschema:"task description"`
-	Tags        []string `json:"tags,omitempty"`
+	Tags        []string `json:"tags,omitempty" jsonschema:"task tags to add"`
 	Priority    string   `json:"priority,omitempty"`
 	Due         *int64   `json:"due,omitempty" jsonschema:"unix seconds"`
 	Wait        *int64   `json:"wait,omitempty" jsonschema:"unix seconds"`
 	Scheduled   *int64   `json:"scheduled,omitempty" jsonschema:"unix seconds"`
 	Until       *int64   `json:"until,omitempty" jsonschema:"unix seconds"`
-	Annotations []string `json:"annotations,omitempty"`
+	Annotations []string `json:"annotations,omitempty" jsonschema:"initial annotations"`
 }
 
 func (in TaskAddInput) scopeInput() RequestScopeInput {
@@ -95,12 +95,11 @@ type TaskStartInput = TaskIDInput
 type TaskStopInput = TaskIDInput
 
 type TaskAnnotateInput struct {
-	Workspace   string `json:"workspace,omitempty"`
-	Project     string `json:"project,omitempty"`
-	ProjectID   string `json:"project_id,omitempty"`
-	ID          string `json:"id"`
-	Annotation  string `json:"annotation,omitempty"`
-	Description string `json:"description,omitempty"`
+	Workspace  string `json:"workspace,omitempty"`
+	Project    string `json:"project,omitempty"`
+	ProjectID  string `json:"project_id,omitempty"`
+	ID         string `json:"id"`
+	Annotation string `json:"annotation"`
 }
 
 func (in TaskAnnotateInput) scopeInput() RequestScopeInput {
@@ -112,10 +111,6 @@ type TaskDependsInput struct {
 	ID           string   `json:"id"`
 	Depends      []string `json:"depends,omitempty"`
 	ClearDepends bool     `json:"clear_depends,omitempty"`
-}
-
-func (in TaskDependsInput) scopeInput() RequestScopeInput {
-	return RequestScopeInput{Workspace: in.Workspace}
 }
 
 func registerTaskTools(s *mcp.Server, opts Options) {
@@ -142,7 +137,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(taskData(created), "Created task "+created.UUID)
+		data, err := taskData(created)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(data, "Created task "+created.UUID)
 	})
 
 	addTool(s, &mcp.Tool{Name: "task.query", Description: "Query tasks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -154,15 +153,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.ListInput{Status: strings.TrimSpace(in.Status), Limit: limit}
-		if input.Status == "" && (in.IncludeCompleted || in.IncludeDeleted) {
+		input := app.ListInput{Status: taskQueryStatus(in), Limit: limit}
+		statuses := taskQueryStatuses(in)
+		if input.Status == "" && len(statuses) == 0 && (in.IncludeCompleted || in.IncludeDeleted) {
 			input.ReportMode = true
-		}
-		if in.IncludeCompleted && !in.IncludeDeleted {
-			input.Status = task.StatusCompleted
-		}
-		if in.IncludeDeleted {
-			input.Status = task.StatusDeleted
 		}
 		if strings.TrimSpace(in.Query) != "" {
 			expr, err := query.ParseFilterExpr([]string{in.Query})
@@ -178,7 +172,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			}
 			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 		}
-		rows, err := svc.List(input)
+		rows, err := taskQueryList(svc, input, statuses)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -199,7 +193,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(taskData(tsk), renderTaskInfo(tsk))
+		data, err := taskData(tsk)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(data, renderTaskInfo(tsk))
 	})
 
 	addTool(s, &mcp.Tool{Name: "task.modify", Description: "Modify a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -214,11 +212,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		text := strings.TrimSpace(in.Annotation)
-		if text == "" {
-			text = strings.TrimSpace(in.Description)
-		}
-		if err := svc.Annotate(strings.TrimSpace(in.ID), text); err != nil {
+		if err := svc.Annotate(strings.TrimSpace(in.ID), strings.TrimSpace(in.Annotation)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return taskAfterMutation(svc, in.ID, "annotated task")
@@ -252,7 +246,9 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 		AddDepends:   in.Depends,
 		ClearDepends: in.ClearDepends,
 	}
-	applyClearFields(in.Clear, &mod)
+	if err := applyClearFields(in.Clear, &mod); err != nil {
+		return businessErrorWithEnvelope(err)
+	}
 	if err := svc.Modify(strings.TrimSpace(in.ID), mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
@@ -277,7 +273,11 @@ func taskAfterMutation(svc *app.Service, id, rendered string) (*mcp.CallToolResu
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	return successWithEnvelope(taskData(tsk), rendered)
+	data, err := taskData(tsk)
+	if err != nil {
+		return businessErrorWithEnvelope(err)
+	}
+	return successWithEnvelope(data, rendered)
 }
 
 func projectSlugForTask(svc *app.Service, project, projectID string) (*string, error) {
@@ -305,9 +305,52 @@ func projectRefForScope(project, projectID string) string {
 	return strings.TrimSpace(project)
 }
 
-func applyClearFields(fields []string, mod *app.ModifyInput) {
+func taskQueryStatus(in TaskQueryInput) string {
+	status := strings.TrimSpace(in.Status)
+	if status != "" {
+		return status
+	}
+	switch {
+	case in.IncludeCompleted && !in.IncludeDeleted:
+		return task.StatusCompleted
+	case in.IncludeDeleted && !in.IncludeCompleted:
+		return task.StatusDeleted
+	default:
+		return ""
+	}
+}
+
+func taskQueryStatuses(in TaskQueryInput) []string {
+	if strings.TrimSpace(in.Status) != "" || !in.IncludeCompleted || !in.IncludeDeleted {
+		return nil
+	}
+	return []string{task.StatusCompleted, task.StatusDeleted}
+}
+
+func taskQueryList(svc *app.Service, input app.ListInput, statuses []string) ([]task.Task, error) {
+	if len(statuses) == 0 {
+		return svc.List(input)
+	}
+	rows := make([]task.Task, 0)
+	for _, status := range statuses {
+		statusInput := input
+		statusInput.Status = status
+		statusRows, err := svc.List(statusInput)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, statusRows...)
+		if input.Limit > 0 && len(rows) >= input.Limit {
+			return rows[:input.Limit], nil
+		}
+	}
+	return rows, nil
+}
+
+func applyClearFields(fields []string, mod *app.ModifyInput) error {
 	for _, field := range fields {
-		switch strings.TrimSpace(field) {
+		field = strings.TrimSpace(field)
+		switch field {
 		case "project":
 			mod.ClearProject = true
 		case "priority":
@@ -325,9 +368,12 @@ func applyClearFields(fields []string, mod *app.ModifyInput) {
 		default:
 			if strings.HasPrefix(field, "uda.") {
 				mod.ClearUDAs = append(mod.ClearUDAs, strings.TrimPrefix(field, "uda."))
+				continue
 			}
+			return app.RuntimeError{Code: "task_clear_field_unknown", Message: "unknown clear field " + field}
 		}
 	}
+	return nil
 }
 
 func successWithEnvelope(data any, rendered string) (*mcp.CallToolResult, ToolEnvelope, error) {

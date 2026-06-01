@@ -41,7 +41,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 			return configValueResult(key, value, scope)
 		case "project":
 			ref := projectRefForScope(in.Project, in.ProjectID)
-			svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "project:read", app.PermissionProjectConfigRead)
+			svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "config:read", app.PermissionProjectConfigRead)
 			if err != nil {
 				return businessErrorWithEnvelope(err)
 			}
@@ -80,7 +80,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "config_scope_invalid", Message: "local config is not writable over MCP"})
 		case "project":
 			ref := projectRefForScope(in.Project, in.ProjectID)
-			svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "project:write", app.PermissionProjectConfigWrite)
+			svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "config:write", app.PermissionProjectConfigWrite)
 			if err != nil {
 				return businessErrorWithEnvelope(err)
 			}

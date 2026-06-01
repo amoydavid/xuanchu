@@ -25,6 +25,7 @@ type RequestAuthorizationInput struct {
 	RequiredPermission Permission
 	WorkspaceRef       string
 	ProjectRef         string
+	ProjectRefIsID     bool
 }
 
 type AuthorizedRequest struct {
@@ -99,7 +100,28 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "token scope denied"}
 	}
 
-	workspace, err := s.resolveRequestWorkspace(input.Token.User, scope, input.WorkspaceRef)
+	workspaceRef, projectRef := strings.TrimSpace(input.WorkspaceRef), strings.TrimSpace(input.ProjectRef)
+	if input.ProjectRefIsID && projectRef != "" {
+		project, err := s.projectRepo.GetByID(projectRef)
+		if errors.Is(err, sqlite.ErrNotFound) {
+			return AuthorizedRequest{}, RuntimeError{Code: "project_not_found", Message: "project not found"}
+		}
+		if err != nil {
+			return AuthorizedRequest{}, err
+		}
+		if workspaceRef != "" {
+			workspace, err := lookupWorkspace(s.workspaceRepo, workspaceRef)
+			if err != nil {
+				return AuthorizedRequest{}, err
+			}
+			if project.WorkspaceID != workspace.ID {
+				return AuthorizedRequest{}, RuntimeError{Code: "project_workspace_mismatch", Message: "project does not belong to workspace"}
+			}
+		}
+		workspaceRef = project.WorkspaceID
+	}
+
+	workspace, err := s.resolveRequestWorkspace(input.Token.User, scope, workspaceRef)
 	if err != nil {
 		return AuthorizedRequest{}, err
 	}
@@ -110,9 +132,13 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	if err != nil {
 		return AuthorizedRequest{}, err
 	}
-	project, err := s.resolveRequestProject(workspace.ID, scope, input.ProjectRef)
+	project, err := s.resolveRequestProject(workspace.ID, scope, projectRef)
 	if err != nil {
 		return AuthorizedRequest{}, err
+	}
+	effectiveScope := scope
+	if project != nil {
+		effectiveScope.ProjectIDs = []string{project.ID}
 	}
 
 	runtime := RuntimeContext{
@@ -127,7 +153,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 	return AuthorizedRequest{
 		Runtime:   runtime,
-		Scope:     scope,
+		Scope:     effectiveScope,
 		Workspace: workspace,
 		Project:   project,
 	}, nil

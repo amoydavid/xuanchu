@@ -332,6 +332,52 @@ func TestTaskGetByID(t *testing.T) {
 	}
 }
 
+func TestTaskGetHonorsExplicitProjectScope(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	alpha, err := svc.AddProject(app.AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := svc.AddProject(app.AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskA, err := svc.Add(app.AddInput{Description: "alpha task", Project: &alpha.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := mustCreateMCPToken(t, svc, []string{"task:read"}, []string{"local"}, nil)
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task.get", TaskGetInput{ID: taskA.UUID, ProjectID: beta.ID})
+	if !result.IsError {
+		t.Fatal("task.get with mismatched explicit project_id should fail")
+	}
+	if code := parseError(t, result).Code; code != "task_not_found" {
+		t.Fatalf("task.get code = %q, want task_not_found", code)
+	}
+}
+
+func TestAddToolConvertsReturnedErrorToStructuredToolError(t *testing.T) {
+	srv, _ := newTestServer(t)
+	addTool(srv, &mcp.Tool{Name: "test.error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, ToolEnvelope, error) {
+		return nil, ToolEnvelope{}, app.RuntimeError{Code: "synthetic_error", Message: "synthetic failure"}
+	})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "test.error", struct{}{})
+	if !result.IsError {
+		t.Fatal("test.error IsError = false, want true")
+	}
+	if code := parseError(t, result).Code; code != "synthetic_error" {
+		t.Fatalf("test.error code = %q, want synthetic_error", code)
+	}
+}
+
 func TestTaskGetMissingID(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
@@ -365,6 +411,29 @@ func TestTaskQueryReturnsTasks(t *testing.T) {
 	count, _ := dataMap["count"].(float64)
 	if int(count) < 2 {
 		t.Fatalf("expected at least 2 tasks, got %d", int(count))
+	}
+}
+
+func TestTaskQueryCanIncludeCompletedAndDeleted(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	doneUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task.add", TaskAddInput{Description: "done item"})))
+	deleteUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task.add", TaskAddInput{Description: "deleted item"})))
+	if result := callTool(t, session, "task.done", TaskIDInput{ID: doneUUID}); result.IsError {
+		t.Fatalf("task.done error: %v", parseError(t, result))
+	}
+	if result := callTool(t, session, "task.delete", TaskIDInput{ID: deleteUUID}); result.IsError {
+		t.Fatalf("task.delete error: %v", parseError(t, result))
+	}
+
+	result := callTool(t, session, "task.query", TaskQueryInput{IncludeCompleted: true, IncludeDeleted: true})
+	if result.IsError {
+		t.Fatalf("task.query error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	if count := data["count"]; count != float64(2) {
+		t.Fatalf("count = %v, want 2", count)
 	}
 }
 
@@ -462,6 +531,21 @@ func TestTaskModifyClearFields(t *testing.T) {
 	}
 }
 
+func TestTaskModifyRejectsUnknownClearField(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+	addResult := callTool(t, session, "task.add", TaskAddInput{Description: "unknown clear"})
+	uuid := extractUUID(t, parseEnvelope(t, addResult))
+
+	result := callTool(t, session, "task.modify", TaskModifyInput{ID: uuid, Clear: []string{"priorty"}})
+	if !result.IsError {
+		t.Fatal("task.modify with unknown clear field error = nil")
+	}
+	if code := parseError(t, result).Code; code != "task_clear_field_unknown" {
+		t.Fatalf("code = %q, want task_clear_field_unknown", code)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // task.annotate 集成测试
 // ---------------------------------------------------------------------------
@@ -474,8 +558,8 @@ func TestTaskAnnotate(t *testing.T) {
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	annResult := callTool(t, session, "task.annotate", TaskAnnotateInput{
-		ID:          uuid,
-		Description: "this is a note",
+		ID:         uuid,
+		Annotation: "this is a note",
 	})
 	if annResult.IsError {
 		t.Fatalf("unexpected error: %v", parseError(t, annResult))
@@ -491,7 +575,7 @@ func TestTaskAnnotateMissingDescription(t *testing.T) {
 
 	result := callTool(t, session, "task.annotate", TaskAnnotateInput{ID: uuid})
 	if !result.IsError {
-		t.Fatal("expected IsError=true for missing description")
+		t.Fatal("expected IsError=true for missing annotation")
 	}
 }
 
@@ -571,6 +655,23 @@ func TestReportRun(t *testing.T) {
 	}
 }
 
+func TestReportRunLimit(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "task.add", TaskAddInput{Description: "report task 1"})
+	callTool(t, session, "task.add", TaskAddInput{Description: "report task 2"})
+
+	result := callTool(t, session, "report.run", ReportRunInput{Name: "list", Limit: 1})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, result))
+	}
+	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "tasks")
+	if len(tasks) != 1 {
+		t.Fatalf("tasks len = %d, want 1", len(tasks))
+	}
+}
+
 func TestReportRunMissingName(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
@@ -626,7 +727,9 @@ func TestUrgencyExplain(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWriteOperationsCreateAuditEntries(t *testing.T) {
-	srv, _ := newTestServer(t)
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
 	session := connectClient(t, srv)
 
 	// 创建任务（写操作应产生 audit）
@@ -650,8 +753,19 @@ func TestWriteOperationsCreateAuditEntries(t *testing.T) {
 		t.Fatalf("unexpected error: %v", parseError(t, delResult))
 	}
 
-	// 这些写操作已成功完成，audit 由 app 层 withAudit 自动写入
-	// 这里仅验证操作本身无错误，不直接检查 audit 表
+	audits, err := svc.ListAudit(app.AuditListInput{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	var sawAdd, sawDone, sawDelete bool
+	for _, row := range audits {
+		sawAdd = sawAdd || row.Action == "task.add"
+		sawDone = sawDone || row.Action == "task.done"
+		sawDelete = sawDelete || row.Action == "task.delete"
+	}
+	if !sawAdd || !sawDone || !sawDelete {
+		t.Fatalf("audit did not include task.add/task.done/task.delete: %#v", audits)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -726,6 +840,11 @@ func TestMCPProjectTools(t *testing.T) {
 	}
 	if _, ok := configSummary["context.default"]; ok {
 		t.Fatal("context.default must not be exposed in MCP project config summary")
+	}
+
+	missing := callTool(t, session, "project.get", ProjectGetInput{})
+	if !missing.IsError {
+		t.Fatal("project.get without project or project_id should fail")
 	}
 
 	current := callTool(t, session, "project.current", ProjectCurrentInput{})
@@ -836,6 +955,45 @@ func TestMCPConfigGetLocalRejectedInHTTPMode(t *testing.T) {
 	}
 	if code := parseError(t, result).Code; code != "config_scope_invalid" {
 		t.Fatalf("code = %q, want config_scope_invalid", code)
+	}
+}
+
+func TestMCPProjectConfigUsesConfigCapability(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "agent", Name: "Agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ProjectConfigSet(project.Slug, "agent.handoff", "handoff"); err != nil {
+		t.Fatal(err)
+	}
+
+	projectOnly := mustCreateMCPToken(t, svc, []string{"project:read", "project:write"}, []string{"local"}, nil)
+	projectReq, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	projectReq.Header.Set("Authorization", "Bearer "+projectOnly)
+	projectSrv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: projectReq})
+	projectSession := connectClient(t, projectSrv)
+	projectRead := callTool(t, projectSession, "config.get", ConfigGetInput{Scope: "project", ProjectID: project.ID, Key: "agent.handoff"})
+	if !projectRead.IsError {
+		t.Fatal("config.get with project:read but without config:read should fail")
+	}
+	if code := parseError(t, projectRead).Code; code != "token_scope_denied" {
+		t.Fatalf("config.get project-only code = %q, want token_scope_denied", code)
+	}
+
+	configToken := mustCreateMCPToken(t, svc, []string{"config:read", "config:write"}, []string{"local"}, nil)
+	configReq, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	configReq.Header.Set("Authorization", "Bearer "+configToken)
+	configSrv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: configReq})
+	configSession := connectClient(t, configSrv)
+	configRead := callTool(t, configSession, "config.get", ConfigGetInput{Scope: "project", ProjectID: project.ID, Key: "agent.handoff"})
+	if configRead.IsError {
+		t.Fatalf("config.get with config:read error: %v", parseError(t, configRead))
+	}
+	configWrite := callTool(t, configSession, "config.set", ConfigSetInput{Scope: "project", ProjectID: project.ID, Key: "agent.handoff", Value: "updated"})
+	if configWrite.IsError {
+		t.Fatalf("config.set with config:write error: %v", parseError(t, configWrite))
 	}
 }
 

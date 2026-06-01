@@ -50,6 +50,48 @@ func TestTaskAddRejectsProjectMismatch(t *testing.T) {
 	_ = alpha
 }
 
+func TestTaskListProjectIDSelectsOwningWorkspace(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := svc.AddWorkspace(app.AddWorkspaceInput{Slug: "work", Name: "Work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workSvc, err := app.NewService(app.ServiceOptions{Store: store, WorkspaceRef: work.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := workSvc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workSvc.Add(app.AddInput{Description: "work task", Project: &project.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateToken(app.CreateTokenInput{
+		Name:        "project-id",
+		Scopes:      []string{"task:read"},
+		ProjectRefs: []string{project.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := NewServer(Options{Store: store})
+	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks?project_id="+project.ID, map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if body := rr.Body.String(); !strings.Contains(body, "work task") {
+		t.Fatalf("project_id did not select owning workspace: %s", body)
+	}
+}
+
 func TestTaskListAcceptsQueryParameter(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})

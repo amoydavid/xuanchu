@@ -6,9 +6,6 @@
       "annotation": {
         "type": "string"
       },
-      "description": {
-        "type": "string"
-      },
       "id": {
         "type": "string"
       },
@@ -23,7 +20,8 @@
       }
     },
     "required": [
-      "id"
+      "id",
+      "annotation"
     ],
     "type": "object"
   },
