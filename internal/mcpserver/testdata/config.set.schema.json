@@ -1,0 +1,47 @@
+{
+  "description": "Write workspace or project config; writes audit for shared config.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "key",
+      "value",
+      "scope"
+    ],
+    "type": "object"
+  },
+  "name": "config.set",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

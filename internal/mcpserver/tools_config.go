@@ -34,14 +34,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 			if opts.Mode == ModeHTTP {
 				return businessErrorWithEnvelope(app.RuntimeError{Code: "config_scope_invalid", Message: "local config is not available over HTTP MCP"})
 			}
-			svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionWorkspaceRead)
-			if err != nil {
-				return businessErrorWithEnvelope(err)
-			}
-			value, ok, err := svc.GetConfig(key)
-			if err != nil {
-				return businessErrorWithEnvelope(err)
-			}
+			value, ok := opts.LocalRuntimeValues[key]
 			if !ok {
 				return businessErrorWithEnvelope(app.RuntimeError{Code: "config_not_found", Message: "config not found"})
 			}

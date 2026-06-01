@@ -62,7 +62,11 @@ func contextViewFor(svc *app.Service, name string) (contextView, error) {
 	if strings.TrimSpace(name) == "" {
 		name = activeName
 	}
-	for _, row := range mustContextList(svc) {
+	rows, err := svc.ContextList()
+	if err != nil {
+		return contextView{}, err
+	}
+	for _, row := range rows {
 		if row.Name == name {
 			return contextView{Name: row.Name, Filter: row.FilterSource, Active: row.Name == activeName, CreatedAt: row.CreatedAt, ModifiedAt: row.ModifiedAt}, nil
 		}
@@ -71,31 +75,4 @@ func contextViewFor(svc *app.Service, name string) (contextView, error) {
 		return contextView{}, nil
 	}
 	return contextView{}, app.RuntimeError{Code: "context_not_found", Message: "context not found"}
-}
-
-func mustContextList(svc *app.Service) []struct {
-	Name         string
-	FilterSource string
-	CreatedAt    int64
-	ModifiedAt   int64
-} {
-	rows, err := svc.ContextList()
-	if err != nil {
-		return nil
-	}
-	out := make([]struct {
-		Name         string
-		FilterSource string
-		CreatedAt    int64
-		ModifiedAt   int64
-	}, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, struct {
-			Name         string
-			FilterSource string
-			CreatedAt    int64
-			ModifiedAt   int64
-		}{Name: row.Name, FilterSource: row.FilterSource, CreatedAt: row.CreatedAt, ModifiedAt: row.ModifiedAt})
-	}
-	return out
 }

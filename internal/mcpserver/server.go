@@ -22,4 +22,8 @@ func NewServer(opts Options) *mcp.Server {
 func RegisterTools(s *mcp.Server, opts Options) {
 	registerTaskTools(s, opts)
 	registerReportTools(s, opts)
+	registerWorkspaceTools(s, opts)
+	registerProjectTools(s, opts)
+	registerContextTools(s, opts)
+	registerConfigTools(s, opts)
 }

@@ -112,12 +112,12 @@ func RegisterResources(s *mcp.Server, opts Options) {
 // ---- data 构造 ----
 
 type workspaceResourceData struct {
-	ID       string              `json:"id"`
-	Slug     string              `json:"slug"`
-	Name     string              `json:"name"`
-	Role     string              `json:"role"`
-	Context  *contextSummary     `json:"context,omitempty"`
-	Projects []projectSummary    `json:"projects"`
+	ID       string           `json:"id"`
+	Slug     string           `json:"slug"`
+	Name     string           `json:"name"`
+	Role     string           `json:"role"`
+	Context  *contextSummary  `json:"context,omitempty"`
+	Projects []projectSummary `json:"projects"`
 }
 
 type contextSummary struct {
@@ -136,9 +136,9 @@ type projectResourceData struct {
 	ID          string            `json:"id"`
 	Slug        string            `json:"slug"`
 	Name        string            `json:"name"`
-	Description string           `json:"description"`
-	Status      string           `json:"status"`
-	Archived    bool             `json:"archived"`
+	Description string            `json:"description"`
+	Status      string            `json:"status"`
+	Archived    bool              `json:"archived"`
 	AgentConfig map[string]string `json:"agent_config"`
 }
 
@@ -298,7 +298,7 @@ func contextSummaryFromService(svc *app.Service) (*contextSummary, error) {
 	return &contextSummary{Name: name, Filter: filter}, nil
 }
 
-// filterAgentConfig 只保留 agent.* 前缀的配置项。
+// filterAgentConfig 只保留 spec 允许暴露给 Agent 的 project 配置项。
 func filterAgentConfig(svc *app.Service, projectRef string) (map[string]string, error) {
 	all, err := svc.ProjectConfigList(projectRef)
 	if err != nil {
@@ -306,7 +306,7 @@ func filterAgentConfig(svc *app.Service, projectRef string) (map[string]string, 
 	}
 	out := make(map[string]string)
 	for k, v := range all {
-		if strings.HasPrefix(k, "agent.") {
+		if isAllowedAgentKey(k) {
 			out[k] = v
 		}
 	}

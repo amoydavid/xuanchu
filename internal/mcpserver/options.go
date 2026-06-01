@@ -18,10 +18,11 @@ const (
 
 // Options 是创建 MCP server 的配置参数。
 type Options struct {
-	Store   *sqlite.Store
-	Clock   app.Clock
-	Version string
-	Mode    Mode
-	Stderr  io.Writer
-	Request *http.Request
+	Store              *sqlite.Store
+	Clock              app.Clock
+	Version            string
+	Mode               Mode
+	Stderr             io.Writer
+	Request            *http.Request
+	LocalRuntimeValues map[string]string
 }

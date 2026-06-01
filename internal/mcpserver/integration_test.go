@@ -171,6 +171,10 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"task.modify", "task.done", "task.delete",
 		"task.annotate", "task.depends", "task.start", "task.stop",
 		"report.run", "urgency.explain",
+		"workspace.list", "workspace.current",
+		"project.list", "project.get", "project.current",
+		"context.show", "context.set",
+		"config.get", "config.set",
 	}
 	if len(result.Tools) != len(expectedTools) {
 		t.Fatalf("expected %d tools, got %d", len(expectedTools), len(result.Tools))
