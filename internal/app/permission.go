@@ -20,6 +20,8 @@ const (
 	PermissionAuditRead          Permission = "audit.read"
 	PermissionTokenRead          Permission = "token.read"
 	PermissionTokenWrite         Permission = "token.write"
+	PermissionHookRead           Permission = "hook.read"
+	PermissionHookWrite          Permission = "hook.write"
 )
 
 type PermissionError struct {

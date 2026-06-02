@@ -710,3 +710,28 @@ M7 补齐了 M6 遗留的远程管理命令。以下命令均已支持远程模�
 ./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" member list
 ./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" show date.format
 ```
+
+## M8 服务端 Webhook Hook
+
+M8 为 `taskg server` 提供服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。
+
+```bash
+# 创建 workspace 级 hook
+./taskg hook add task-webhook --event task.created --event task.completed --url https://example.test/taskg
+
+# 创建 project 级 hook
+./taskg hook add proj-webhook --scope project --project myproject --event task.modified --url https://example.test/hook
+
+# 查看 hook 列表
+./taskg hook list
+
+# 查看投递记录
+./taskg hook deliveries <hook-id>
+
+# 重试失败投递
+./taskg hook replay <delivery-id>
+```
+
+Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。投递失败不会回滚已提交的 task/project 事务。所有 hook 配置变更和人工 replay 都会写入 audit log。
+
+部署、TLS、备份恢复请参考 [`docs/deployment.md`](./docs/deployment.md) 和 [`docs/backup-restore.md`](./docs/backup-restore.md)。

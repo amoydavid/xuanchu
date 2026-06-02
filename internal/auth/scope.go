@@ -20,6 +20,8 @@ var allowedScopes = map[string]struct{}{
 	"audit:read":      {},
 	"token:read":      {},
 	"token:write":     {},
+	"hook:read":       {},
+	"hook:write":      {},
 }
 
 type ScopeSet map[string]struct{}

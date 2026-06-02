@@ -25,7 +25,7 @@ func newTestService(t *testing.T, now int64) (*Service, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := NewService(ServiceOptions{Store: store, Clock: fixedClock{NowUnix: now}})
+	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func newTestServiceWithRuntime(t *testing.T, store *sqlite.Store, now int64, act
 	t.Helper()
 	svc, err := NewService(ServiceOptions{
 		Store:        store,
-		Clock:        fixedClock{NowUnix: now},
+		Clock:        FixedClock{NowUnix: now},
 		ActorRef:     actorRef,
 		WorkspaceRef: workspaceRef,
 	})
@@ -88,7 +88,7 @@ func TestServiceAddListInfo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	svc, err := NewService(ServiceOptions{Store: store, Clock: fixedClock{NowUnix: 100}})
+	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -172,7 +172,7 @@ func TestNewServiceWorkspaceOverride(t *testing.T) {
 
 	svc, err := NewService(ServiceOptions{
 		Store:        store,
-		Clock:        fixedClock{NowUnix: 100},
+		Clock:        FixedClock{NowUnix: 100},
 		WorkspaceRef: "work",
 	})
 	if err != nil {
@@ -1327,7 +1327,7 @@ func TestRecurringChildOnArchivedProjectWritesAuditWarning(t *testing.T) {
 		t.Fatalf("List(children before done) = (%#v, %v), want one child", children, err)
 	}
 	firstChild := children[0]
-	svc.clock = fixedClock{NowUnix: mustUnix(t, "2030-01-02T10:00:00Z")}
+	svc.clock = FixedClock{NowUnix: mustUnix(t, "2030-01-02T10:00:00Z")}
 	if err := svc.Done(firstChild.UUID); err != nil {
 		t.Fatalf("Done(first child) error = %v", err)
 	}
@@ -1785,7 +1785,7 @@ func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
 
 	svc, err := NewService(ServiceOptions{
 		Store:         store,
-		Clock:         fixedClock{NowUnix: 100},
+		Clock:         FixedClock{NowUnix: 100},
 		RuntimeConfig: map[string]string{"uda.estimate.type": "string"},
 	})
 	if err != nil {
@@ -1822,7 +1822,7 @@ func TestConfigSetOverridesRuntimeMetaDefaults(t *testing.T) {
 
 	svc, err := NewService(ServiceOptions{
 		Store: store,
-		Clock: fixedClock{NowUnix: 100},
+		Clock: FixedClock{NowUnix: 100},
 		RuntimeConfig: map[string]string{
 			"date.format":                        "epoch",
 			"urgency.uda.estimate.coefficient":   "2",
@@ -2278,7 +2278,7 @@ func TestUrgencyUsesRuntimeUDACoefficients(t *testing.T) {
 
 	svc, err := NewService(ServiceOptions{
 		Store: store,
-		Clock: fixedClock{NowUnix: 100},
+		Clock: FixedClock{NowUnix: 100},
 		RuntimeConfig: map[string]string{
 			"uda.estimate.type":                  "numeric",
 			"urgency.uda.estimate.coefficient":   "10",
@@ -2548,7 +2548,7 @@ func TestContextNonePersistsEmptyOverrideOverRuntimeConfig(t *testing.T) {
 
 	svc, err := NewService(ServiceOptions{
 		Store:         store,
-		Clock:         fixedClock{NowUnix: 100},
+		Clock:         FixedClock{NowUnix: 100},
 		RuntimeConfig: map[string]string{"context.active": "work"},
 	})
 	if err != nil {
@@ -2839,7 +2839,7 @@ func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	svc, _ := NewService(ServiceOptions{Store: store, Clock: fixedClock{NowUnix: 100}})
+	svc, _ := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
 
 	_, err = svc.Add(AddInput{Description: "write spec"})
 	if err != nil {

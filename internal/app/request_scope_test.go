@@ -80,7 +80,7 @@ func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
 	}
 	scopedSvc, err := NewService(ServiceOptions{
 		Store:        store,
-		Clock:        fixedClock{NowUnix: 100},
+		Clock:        FixedClock{NowUnix: 100},
 		Runtime:      &authorized.Runtime,
 		RequestScope: &authorized.Scope,
 	})
@@ -151,7 +151,7 @@ func TestProjectScopedImportCannotClearProject(t *testing.T) {
 	}
 	scopedSvc, err := NewService(ServiceOptions{
 		Store:        store,
-		Clock:        fixedClock{NowUnix: 100},
+		Clock:        FixedClock{NowUnix: 100},
 		Runtime:      &authorized.Runtime,
 		RequestScope: &authorized.Scope,
 	})
@@ -216,7 +216,7 @@ func TestProjectScopedServiceFiltersProjectsAndAudit(t *testing.T) {
 	}
 	scopedSvc, err := NewService(ServiceOptions{
 		Store:        store,
-		Clock:        fixedClock{NowUnix: 100},
+		Clock:        FixedClock{NowUnix: 100},
 		Runtime:      &authorized.Runtime,
 		RequestScope: &authorized.Scope,
 	})
@@ -368,7 +368,7 @@ func TestExplicitProjectScopeFiltersSingleTaskOperations(t *testing.T) {
 	}
 	scopedSvc, err := NewService(ServiceOptions{
 		Store:        store,
-		Clock:        fixedClock{NowUnix: 100},
+		Clock:        FixedClock{NowUnix: 100},
 		Runtime:      &authorized.Runtime,
 		RequestScope: &authorized.Scope,
 	})

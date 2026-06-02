@@ -29,6 +29,8 @@ type Service struct {
 	tokenRepo             *sqlite.TokenRepository
 	contextRepo           *sqlite.ContextRepository
 	udaRepo               *sqlite.UDARepository
+	hookRepo              *sqlite.HookRepository
+	hookDeliveryRepo      hookDeliveryEnqueuer
 	runtimeConfig         map[string]string
 	runtimeOverrides      map[string]string
 	runtimeUDAs           map[string]uda.Definition
@@ -109,9 +111,16 @@ type auditAppenderLister interface {
 	List(sqlite.AuditListOptions) ([]sqlite.AuditLogEntry, error)
 }
 
+type hookDeliveryEnqueuer interface {
+	Enqueue(rows []sqlite.HookDelivery) error
+	ListByHook(hookID string, status string, limit int) ([]sqlite.HookDelivery, error)
+	GetByID(id string) (sqlite.HookDelivery, error)
+	Requeue(id string, now int64) error
+}
+
 func NewService(opts ServiceOptions) (*Service, error) {
 	if opts.Clock == nil {
-		opts.Clock = realClock{}
+		opts.Clock = RealClock{}
 	}
 	userRepo := sqlite.NewUserRepository(opts.Store.DB())
 	workspaceRepo := sqlite.NewWorkspaceRepository(opts.Store.DB())
@@ -144,6 +153,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		tokenRepo:        sqlite.NewTokenRepository(opts.Store.DB()),
 		contextRepo:      sqlite.NewContextRepository(opts.Store.DB()),
 		udaRepo:          sqlite.NewUDARepository(opts.Store.DB()),
+		hookRepo:         sqlite.NewHookRepository(opts.Store.DB()),
+		hookDeliveryRepo: sqlite.NewHookDeliveryRepository(opts.Store.DB()),
 		runtimeConfig:    runtimeConfig,
 		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
 		runtimeUDAs:      runtimeUDAs,
@@ -177,6 +188,12 @@ func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
 	clone.tokenRepo = sqlite.NewTokenRepository(store.DB())
 	clone.contextRepo = sqlite.NewContextRepository(store.DB())
 	clone.udaRepo = sqlite.NewUDARepository(store.DB())
+	clone.hookRepo = sqlite.NewHookRepository(store.DB())
+	// Tests can inject a custom delivery repo to force enqueue failures; keep it
+	// attached while production services get a tx-bound repository.
+	if _, ok := s.hookDeliveryRepo.(*sqlite.HookDeliveryRepository); ok || s.hookDeliveryRepo == nil {
+		clone.hookDeliveryRepo = sqlite.NewHookDeliveryRepository(store.DB())
+	}
 	return &clone, nil
 }
 
@@ -279,16 +296,18 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 		return task.Task{}, err
 	}
 	var created task.Task
-	err := s.withAudit("task.add", func(tx *Service) (AuditEntry, error) {
+	err := s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
 		var (
 			err    error
 			change projectChange
 		)
 		created, change, err = tx.addLocked(input)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.add", created.UUID, change), nil
+		event := buildTaskHookEvent("task.created", created, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.add", created.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 	return created, err
 }
@@ -301,28 +320,30 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 		return s.Add(input)
 	}
 	var created task.Task
-	err := s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
+	err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
 		var (
 			err    error
 			change projectChange
 		)
 		created, change, err = tx.addLocked(input)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		entries := []AuditEntry{taskAuditEntry("task.add", created.UUID, change)}
 		for _, annotation := range annotations {
-			targetID, change, err := tx.annotateLocked(created.UUID, annotation)
+			targetTask, annChange, err := tx.annotateLocked(created.UUID, annotation)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			entries = append(entries, taskAuditEntry("task.annotate", targetID, change))
+			entries = append(entries, taskAuditEntry("task.annotate", targetTask.UUID, annChange))
+			_ = targetTask // annotation events not required in M8 v1
 		}
 		created, err = tx.repo.GetByUUID(tx.workspaceID, created.UUID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return entries, nil
+		event := buildTaskHookEvent("task.created", created, tx.runtime, tx.clock.Unix())
+		return entries, []HookEvent{event}, nil
 	})
 	return created, err
 }
@@ -433,19 +454,21 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.modify", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.modifyLocked(target, input)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		modified, change, err := tx.modifyLocked(target, input)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.modify", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", modified, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.modify", modified.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) modifyLocked(target string, input ModifyInput) (string, projectChange, error) {
+func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	now := s.clock.Unix()
 	change := projectChangeForTask(tsk)
@@ -455,14 +478,14 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, projec
 	if input.Project != nil {
 		change, err = s.applyProjectBinding(&tsk, input.Project)
 		if err != nil {
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
 	}
 	if input.ClearProject {
 		empty := ""
 		change, err = s.applyProjectBinding(&tsk, &empty)
 		if err != nil {
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
 	}
 	if input.Priority != nil {
@@ -513,7 +536,7 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, projec
 	if len(input.AddDepends) > 0 {
 		depends, err := s.resolveDependencyTargets(input.AddDepends)
 		if err != nil {
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
 		depSet := map[string]bool{}
 		for _, d := range tsk.Depends {
@@ -526,13 +549,13 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, projec
 			}
 		}
 		if err := s.validateDependencyCycles(tsk.UUID, tsk.Depends); err != nil {
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
 	}
 	if len(input.UDAs) > 0 || len(input.ClearUDAs) > 0 {
 		udas, err := s.normalizeUDAModifications(tsk.UDAs, input.UDAs, input.ClearUDAs, false)
 		if err != nil {
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
 		tsk.UDAs = udas
 	}
@@ -554,171 +577,180 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (string, projec
 	tsk.Tags = newTags
 	tsk.Modified = now
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) Done(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
-		targetID, change, extraEntries, err := tx.doneLocked(target)
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		doneTask, change, extraEntries, err := tx.doneLocked(target)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		entries := []AuditEntry{taskAuditEntry("task.done", targetID, change)}
+		event := buildTaskHookEvent("task.completed", doneTask, tx.runtime, tx.clock.Unix())
+		entries := []AuditEntry{taskAuditEntry("task.done", doneTask.UUID, change)}
 		entries = append(entries, extraEntries...)
-		return entries, nil
+		return entries, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) doneLocked(target string) (string, projectChange, []AuditEntry, error) {
+func (s *Service) doneLocked(target string) (task.Task, projectChange, []AuditEntry, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, nil, err
+		return task.Task{}, projectChange{}, nil, err
 	}
 	change := projectChangeForTask(tsk)
 	tsk.Complete(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, nil, err
+		return task.Task{}, projectChange{}, nil, err
 	}
 	if tsk.Parent != nil {
 		parent, err := s.repo.GetByUUID(s.workspaceID, *tsk.Parent)
 		if err != nil {
-			return "", projectChange{}, nil, err
+			return task.Task{}, projectChange{}, nil, err
 		}
 		if parent.Status != task.StatusRecurring {
-			return tsk.UUID, change, nil, nil
+			return tsk, change, nil, nil
 		}
 		_, warningEntry, err := s.createNextRecurringChild(parent, &tsk, s.clock.Unix())
 		if err != nil {
-			return "", projectChange{}, nil, err
+			return task.Task{}, projectChange{}, nil, err
 		}
 		if warningEntry != nil {
-			return tsk.UUID, change, []AuditEntry{*warningEntry}, nil
+			return tsk, change, []AuditEntry{*warningEntry}, nil
 		}
 	}
-	return tsk.UUID, change, nil, nil
+	return tsk, change, nil, nil
 }
 
 func (s *Service) Delete(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.delete", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.deleteLocked(target)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		deletedTask, change, err := tx.deleteLocked(target)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.delete", targetID, change), nil
+		event := buildTaskHookEvent("task.deleted", deletedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.delete", deletedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) deleteLocked(target string) (string, projectChange, error) {
+func (s *Service) deleteLocked(target string) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
-		return "", projectChange{}, fmt.Errorf("cannot delete %s task", tsk.Status)
+		return task.Task{}, projectChange{}, fmt.Errorf("cannot delete %s task", tsk.Status)
 	}
 	tsk.Delete(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) Start(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.start", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.startLocked(target)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		startedTask, change, err := tx.startLocked(target)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.start", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", startedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.start", startedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) startLocked(target string) (string, projectChange, error) {
+func (s *Service) startLocked(target string) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted || tsk.Status == task.StatusRecurring {
-		return "", projectChange{}, fmt.Errorf("cannot start %s task", tsk.Status)
+		return task.Task{}, projectChange{}, fmt.Errorf("cannot start %s task", tsk.Status)
 	}
 	if tsk.Start != nil {
-		return "", projectChange{}, fmt.Errorf("task is already active")
+		return task.Task{}, projectChange{}, fmt.Errorf("task is already active")
 	}
 	tsk.StartTask(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) Stop(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.stop", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.stopLocked(target)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		stoppedTask, change, err := tx.stopLocked(target)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.stop", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", stoppedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.stop", stoppedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) stopLocked(target string) (string, projectChange, error) {
+func (s *Service) stopLocked(target string) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
-		return "", projectChange{}, fmt.Errorf("cannot stop %s task", tsk.Status)
+		return task.Task{}, projectChange{}, fmt.Errorf("cannot stop %s task", tsk.Status)
 	}
 	tsk.StopTask(s.clock.Unix())
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) Annotate(target, description string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.annotate", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.annotateLocked(target, description)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		annotatedTask, change, err := tx.annotateLocked(target, description)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.annotate", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", annotatedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.annotate", annotatedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) annotateLocked(target, description string) (string, projectChange, error) {
+func (s *Service) annotateLocked(target, description string) (task.Task, projectChange, error) {
 	description = strings.TrimSpace(description)
 	if description == "" {
-		return "", projectChange{}, fmt.Errorf("annotation description is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("annotation description is required")
 	}
 	if strings.ContainsAny(description, "\n\r") {
-		return "", projectChange{}, fmt.Errorf("annotation description must not contain newlines")
+		return task.Task{}, projectChange{}, fmt.Errorf("annotation description must not contain newlines")
 	}
 	now := s.clock.Unix()
 	for attempts := 0; attempts < 3; attempts++ {
 		tsk, err := s.resolveTargetForWrite(target)
 		if err != nil {
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
 		change := projectChangeForTask(tsk)
 		entry := now
@@ -740,125 +772,137 @@ func (s *Service) annotateLocked(target, description string) (string, projectCha
 				now = entry + 1
 				continue
 			}
-			return "", projectChange{}, err
+			return task.Task{}, projectChange{}, err
 		}
-		return tsk.UUID, change, nil
+		updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+		if err != nil {
+			return task.Task{}, projectChange{}, err
+		}
+		return updated, change, nil
 	}
-	return "", projectChange{}, fmt.Errorf("annotation conflict could not be resolved")
+	return task.Task{}, projectChange{}, fmt.Errorf("annotation conflict could not be resolved")
 }
 
 func (s *Service) Denotate(target string, index int) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.denotate", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.denotateLocked(target, index)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		denotatedTask, change, err := tx.denotateLocked(target, index)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.denotate", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", denotatedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.denotate", denotatedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) denotateLocked(target string, index int) (string, projectChange, error) {
+func (s *Service) denotateLocked(target string, index int) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
 	sort.Slice(tsk.Annotations, func(i, j int) bool {
 		return tsk.Annotations[i].Entry < tsk.Annotations[j].Entry
 	})
 	if index < 1 || index > len(tsk.Annotations) {
-		return "", projectChange{}, fmt.Errorf("annotation %d not found", index)
+		return task.Task{}, projectChange{}, fmt.Errorf("annotation %d not found", index)
 	}
 	tsk.Annotations = append(tsk.Annotations[:index-1], tsk.Annotations[index:]...)
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) AppendDescription(target, suffix string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.append", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.appendDescriptionLocked(target, suffix)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		appendedTask, change, err := tx.appendDescriptionLocked(target, suffix)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.append", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", appendedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.append", appendedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) appendDescriptionLocked(target, suffix string) (string, projectChange, error) {
+func (s *Service) appendDescriptionLocked(target, suffix string) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
 	suffix = strings.TrimSpace(suffix)
 	if suffix == "" {
-		return "", projectChange{}, fmt.Errorf("description text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
 	}
 	tsk.Description = tsk.Description + " " + suffix
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) PrependDescription(target, prefix string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.prepend", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.prependDescriptionLocked(target, prefix)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		prependedTask, change, err := tx.prependDescriptionLocked(target, prefix)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.prepend", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", prependedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.prepend", prependedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) prependDescriptionLocked(target, prefix string) (string, projectChange, error) {
+func (s *Service) prependDescriptionLocked(target, prefix string) (task.Task, projectChange, error) {
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		return "", projectChange{}, fmt.Errorf("description text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
 	}
 	tsk.Description = prefix + " " + tsk.Description
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return tsk.UUID, change, nil
+	return tsk, change, nil
 }
 
 func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAudit("task.edit", func(tx *Service) (AuditEntry, error) {
-		targetID, change, err := tx.replaceEditableTaskLocked(target, edited)
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		replacedTask, change, err := tx.replaceEditableTaskLocked(target, edited)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
-		return taskAuditEntry("task.edit", targetID, change), nil
+		event := buildTaskHookEvent("task.modified", replacedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.edit", replacedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
 	})
 }
 
-func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (string, projectChange, error) {
+func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (task.Task, projectChange, error) {
 	original, err := s.resolveTargetForWrite(target)
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	edited.UUID = original.UUID
 	edited.WorkspaceID = original.WorkspaceID
@@ -866,7 +910,7 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (st
 	edited.Modified = s.clock.Unix()
 	change, err := s.applyProjectBindingFrom(&edited, edited.Project, projectBindingFromTask(original))
 	if err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	if edited.Wait != nil && *edited.Wait > s.clock.Unix() && edited.Status == task.StatusPending {
 		edited.Status = task.StatusWaiting
@@ -875,12 +919,12 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (st
 		edited.Status = task.StatusPending
 	}
 	if err := edited.Validate(); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
 	if err := s.repo.Update(edited); err != nil {
-		return "", projectChange{}, err
+		return task.Task{}, projectChange{}, err
 	}
-	return edited.UUID, change, nil
+	return edited, change, nil
 }
 
 func (s *Service) Export() ([]task.Task, error) {
@@ -912,18 +956,20 @@ func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 		return 0, err
 	}
 	count := 0
-	err := s.withAudit("task.import", func(tx *Service) (AuditEntry, error) {
+	err := s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
 		imported, err := tx.importLocked(tasks)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
 		count = imported
-		return AuditEntry{
+		entry := AuditEntry{
+			Action:     "task.import",
 			TargetType: "task",
 			Payload: map[string]any{
 				"count": imported,
 			},
-		}, nil
+		}
+		return &entry, nil, nil
 	})
 	if err != nil {
 		return 0, err

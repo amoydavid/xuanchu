@@ -38,6 +38,13 @@ components:
         - api_bad_limit
         - api_payload_too_large
         - api_internal
+        - hook_not_found
+        - hook_event_types_invalid
+        - hook_endpoint_invalid
+        - hook_scope_invalid
+        - hook_secret_invalid
+        - hook_delivery_not_found
+        - hook_delivery_not_replayable
         - remote_server_invalid
     ErrorEnvelope:
       type: object
@@ -263,6 +270,201 @@ components:
       properties:
         data:
           nullable: true
+    Hook:
+      type: object
+      required: [id, workspace_id, name, endpoint_url, event_types, scope_type, enabled, timeout_seconds, max_attempts, created_at, modified_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Non-null when hook is scoped to a project.
+        name:
+          type: string
+        endpoint_url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+            enum:
+              - task.created
+              - task.modified
+              - task.completed
+              - task.deleted
+              - project.archived
+        scope_type:
+          type: string
+          enum: [workspace, project]
+        enabled:
+          type: boolean
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 120
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 20
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    HookCreateRequest:
+      type: object
+      required: [name, endpoint_url, event_types]
+      properties:
+        name:
+          type: string
+        endpoint_url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+            enum:
+              - task.created
+              - task.modified
+              - task.completed
+              - task.deleted
+              - project.archived
+          minItems: 1
+        scope_type:
+          type: string
+          enum: [workspace, project]
+          default: workspace
+        project_ref:
+          type: string
+          nullable: true
+          description: Project slug or UUID. Required when scope_type is project.
+        secret:
+          type: string
+          nullable: true
+          description: Optional HMAC-SHA256 signing secret. Never returned in responses.
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 120
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 20
+    HookUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        endpoint_url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+            enum:
+              - task.created
+              - task.modified
+              - task.completed
+              - task.deleted
+              - project.archived
+        secret:
+          type: string
+          nullable: true
+          description: Replace the signing secret. Pass null or omit to keep existing.
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 120
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 20
+    HookDelivery:
+      type: object
+      required: [id, hook_id, event_id, event_type, workspace_id, status, attempt_count, created_at, modified_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        hook_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_user_id:
+          type: string
+          format: uuid
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Event payload as JSON object.
+        status:
+          type: string
+          enum:
+            - queued
+            - delivering
+            - succeeded
+            - retry_wait
+            - dead_lettered
+            - disabled_skipped
+        attempt_count:
+          type: integer
+          minimum: 0
+        next_attempt_at:
+          type: integer
+          format: int64
+          nullable: true
+        claim_expires_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_attempt_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_status_code:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    HookDeliveryReplayResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/HookDelivery'
   parameters:
     WorkspaceQuery:
       in: query
@@ -931,6 +1133,8 @@ paths:
       summary: Create a project.
       parameters:
         - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - $ref: '#/components/parameters/ProjectIDQuery'
       responses:
         '201':
           description: Project created.
@@ -1163,3 +1367,282 @@ paths:
       responses:
         '200':
           description: Token revoked.
+  # ── Hook management ───────────────────────────────────────
+  /api/v1/hooks:
+    get:
+      summary: List hooks in the effective workspace.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Hook list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Hook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Create a webhook hook.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HookCreateRequest'
+      responses:
+        '201':
+          description: Hook created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Hook'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/hooks/{hookID}:
+    parameters:
+      - in: path
+        name: hookID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get hook details.
+      responses:
+        '200':
+          description: Hook details.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Hook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Modify hook definition.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HookUpdateRequest'
+      responses:
+        '200':
+          description: Modified hook.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Hook'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a hook.
+      responses:
+        '204':
+          description: Hook deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/hooks/{hookID}/enable:
+    post:
+      summary: Enable a disabled hook.
+      parameters:
+        - in: path
+          name: hookID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Hook enabled.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/hooks/{hookID}/disable:
+    post:
+      summary: Disable a hook. Pending deliveries are skipped.
+      parameters:
+        - in: path
+          name: hookID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Hook disabled.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/hooks/{hookID}/deliveries:
+    get:
+      summary: List deliveries for a hook.
+      parameters:
+        - in: path
+          name: hookID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [queued, delivering, succeeded, retry_wait, dead_lettered, disabled_skipped]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        '200':
+          description: Delivery list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HookDelivery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/hook-deliveries/{deliveryID}:
+    parameters:
+      - in: path
+        name: deliveryID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get delivery details.
+      responses:
+        '200':
+          description: Delivery details.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HookDelivery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/hook-deliveries/{deliveryID}/replay:
+    post:
+      summary: Manually replay a dead-lettered or failed delivery.
+      parameters:
+        - in: path
+          name: deliveryID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Delivery replayed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HookDeliveryReplayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ── Webhook protocol ──────────────────────────────────────────
+#
+# Outbound webhook requests sent by taskg dispatcher:
+#
+# Headers:
+#   X-Taskg-Event          - event type, e.g. "task.created"
+#   X-Taskg-Event-Id       - stable event UUID
+#   X-Taskg-Event-Version  - "1"
+#   X-Taskg-Delivery       - delivery UUID
+#   X-Taskg-Hook-Id        - hook UUID
+#   X-Taskg-Attempt        - attempt number (1-based)
+#   X-Taskg-Timestamp      - unix seconds at send time
+#   X-Taskg-Signature-256  - HMAC-SHA256 signature (if secret configured)
+#   User-Agent             - "taskg/<version>"
+#
+# Signature computation (when secret is configured):
+#   signing_input = "<delivery_id>.<timestamp>.<body>"
+#   signature     = "sha256=" + hex(HMAC-SHA256(secret, signing_input))
+#   Consumer should reject requests with timestamps older than 5 minutes.
+#
+# Delivery statuses:
+#   queued          - waiting for first attempt
+#   delivering      - in-flight HTTP request
+#   succeeded       - endpoint returned 2xx
+#   retry_wait      - non-2xx or network error, scheduled for retry
+#   dead_lettered   - max retries exceeded
+#   disabled_skipped - hook is disabled, delivery skipped

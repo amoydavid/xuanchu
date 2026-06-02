@@ -13,6 +13,7 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/config"
+	"github.com/dajee/taskg/internal/hookruntime"
 	"github.com/dajee/taskg/internal/httpapi"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/spf13/cobra"
@@ -65,21 +66,33 @@ func newServerCommand(opts Options) *cobra.Command {
 				IdleTimeout:       120 * time.Second,
 			}
 
-			errCh := make(chan error, 1)
+			errCh := make(chan error, 2)
 			go func() {
 				if err := httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					errCh <- err
 				}
-				close(errCh)
 			}()
 
 			fmt.Fprintf(cmd.ErrOrStderr(), "taskg: server listening on http://%s\n", ln.Addr().String())
 
+			// 启动 webhook 投递调度器
+			dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
+				Store:   store,
+				Clock:   app.RealClock{},
+				Version: "dev",
+			})
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
+			go func() {
+				if err := dispatcher.Run(ctx); err != nil {
+					errCh <- fmt.Errorf("hook dispatcher: %w", err)
+				}
+			}()
+
 			select {
 			case err := <-errCh:
+				stop()
 				return err
 			case <-ctx.Done():
 			}
@@ -87,9 +100,6 @@ func newServerCommand(opts Options) *cobra.Command {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				return err
-			}
-			if err := <-errCh; err != nil {
 				return err
 			}
 			return nil

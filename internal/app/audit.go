@@ -36,25 +36,45 @@ type AuditLogView struct {
 }
 
 func (s *Service) withAudit(action string, fn func(*Service) (AuditEntry, error)) error {
-	return s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
 		entry, err := fn(tx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if entry.Action == "" {
 			entry.Action = action
 		}
-		return []AuditEntry{entry}, nil
+		return &entry, nil, nil
 	})
 }
 
 func (s *Service) withAuditEntries(fn func(*Service) ([]AuditEntry, error)) error {
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		entries, err := fn(tx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return entries, nil, nil
+	})
+}
+
+func (s *Service) withAuditAndEvents(fn func(*Service) (*AuditEntry, []HookEvent, error)) error {
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		entry, events, err := fn(tx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []AuditEntry{*entry}, events, nil
+	})
+}
+
+func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []HookEvent, error)) error {
 	return s.store.Transaction(func(txStore *sqlite.Store) error {
 		txSvc, err := s.withStore(txStore)
 		if err != nil {
 			return err
 		}
-		entries, err := fn(txSvc)
+		entries, events, err := fn(txSvc)
 		if err != nil {
 			return err
 		}
@@ -82,7 +102,7 @@ func (s *Service) withAuditEntries(fn func(*Service) ([]AuditEntry, error)) erro
 				return err
 			}
 		}
-		return nil
+		return txSvc.enqueueHookEvents(events)
 	})
 }
 

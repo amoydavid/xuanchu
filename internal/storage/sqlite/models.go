@@ -153,3 +153,41 @@ type TaskUDAValue struct {
 	ValueType   string
 	Orphan      bool `gorm:"not null;default:false"`
 }
+
+type HookDefinition struct {
+	ID             string  `gorm:"primaryKey"`
+	Name           string  `gorm:"not null"`
+	ScopeType      string  `gorm:"not null;index:idx_hooks_scope,priority:1"`
+	WorkspaceID    string  `gorm:"not null;index:idx_hooks_scope,priority:2;index:idx_hooks_enabled"`
+	ProjectID      *string `gorm:"index:idx_hooks_scope,priority:3"`
+	ActorUserID    string  `gorm:"not null;index"`
+	EventTypesJSON string  `gorm:"not null"`
+	EndpointURL    string  `gorm:"not null"`
+	Secret         string  `gorm:"not null;default:''"`
+	Enabled        *bool   `gorm:"not null;default:true;index:idx_hooks_enabled"`
+	TimeoutSeconds int     `gorm:"not null;default:10"`
+	MaxAttempts    int     `gorm:"not null;default:5"`
+	CreatedAt      int64   `gorm:"not null"`
+	ModifiedAt     int64   `gorm:"not null"`
+}
+
+type HookDelivery struct {
+	ID             string  `gorm:"primaryKey"`
+	HookID         string  `gorm:"not null;index:idx_deliveries_due,priority:2;index:idx_deliveries_hook_status,priority:1"`
+	EventID        string  `gorm:"not null;index"`
+	EventType      string  `gorm:"not null;index"`
+	WorkspaceID    string  `gorm:"not null;index"`
+	ProjectID      *string `gorm:"index"`
+	ActorUserID    string  `gorm:"not null;index"`
+	PayloadJSON    string  `gorm:"not null"`
+	HeadersJSON    string  `gorm:"not null;default:'{}'"`
+	Status         string  `gorm:"not null;index:idx_deliveries_due,priority:1;index:idx_deliveries_hook_status,priority:2"`
+	AttemptCount   int     `gorm:"not null;default:0"`
+	NextAttemptAt  *int64  `gorm:"index:idx_deliveries_due,priority:3"`
+	ClaimExpiresAt *int64  `gorm:"index"`
+	LastAttemptAt  *int64
+	LastStatusCode *int
+	LastError      string
+	CreatedAt      int64 `gorm:"not null;index"`
+	ModifiedAt     int64 `gorm:"not null"`
+}

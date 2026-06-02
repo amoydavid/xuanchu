@@ -153,25 +153,27 @@ func (s *Service) ArchiveProject(ref string) (ProjectView, error) {
 		return ProjectView{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	var archived ProjectView
-	err = s.withAudit("project.archive", func(tx *Service) (AuditEntry, error) {
+	err = s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
 		if err := tx.archiveProjectLocked(project); err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
 		archivedProject, err := tx.projectRepo.GetByID(project.ID)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
 		view, err := tx.projectViewForRow(archivedProject)
 		if err != nil {
-			return AuditEntry{}, err
+			return nil, nil, err
 		}
 		archived = view
-		return AuditEntry{
+		event := buildProjectArchivedHookEvent(view, tx.runtime, tx.clock.Unix())
+		entry := AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
 			ProjectID:   &project.ID,
 			TargetType:  "project",
 			TargetID:    project.ID,
-		}, nil
+		}
+		return &entry, []HookEvent{event}, nil
 	})
 	return archived, err
 }

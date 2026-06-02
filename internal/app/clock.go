@@ -7,20 +7,20 @@ type Clock interface {
 	Location() *time.Location
 }
 
-type realClock struct{}
+type RealClock struct{}
 
-func (realClock) Unix() int64 { return time.Now().Unix() }
-func (realClock) Location() *time.Location {
+func (RealClock) Unix() int64 { return time.Now().Unix() }
+func (RealClock) Location() *time.Location {
 	return time.Local
 }
 
-type fixedClock struct {
+type FixedClock struct {
 	NowUnix int64
 	Loc     *time.Location
 }
 
-func (f fixedClock) Unix() int64 { return f.NowUnix }
-func (f fixedClock) Location() *time.Location {
+func (f FixedClock) Unix() int64 { return f.NowUnix }
+func (f FixedClock) Location() *time.Location {
 	if f.Loc != nil {
 		return f.Loc
 	}

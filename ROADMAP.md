@@ -22,7 +22,7 @@
 | M5 | 已完成 | Project 实体化与 Workspace/Project 配置边界 |
 | M6 | 已完成 | HTTP/JSON API、远程 CLI 与 Agent Token |
 | M7 | 已完成 | 企业 Agent MCP Server 与工具接口 |
-| M8 | 规划完成，待实现 | 服务端 Hook / 自动化扩展与运维交付打磨 |
+| M8 | 已完成 | 服务端 Hook / 自动化扩展与运维交付打磨 |
 
 ## M0：本地单用户 CLI
 
@@ -601,6 +601,8 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 
 ## M8：服务端 Hook / 自动化扩展与运维交付打磨
 
+**状态：已完成。**
+
 **目标：** 为 `taskg server` 增加可审计、可控、可恢复的服务端 Hook / automation 能力，让内部事件发生后可以稳定触发外部 webhook，同时补齐与该能力直接相关的部署、发布与恢复文档。`taskg` 核心仍然是 workspace/project/task/权限/审计运行时，而不是业务域 adapter 市场或通用工作流编排平台。
 
 **范围：**
@@ -645,6 +647,23 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 - 管理员只靠 README/部署文档即可完成服务端部署、token 配置、hook 启用和基础恢复演练。
 - 所有发布产物均通过 CGO-free 验证。
 
+**M8 已交付内容：**
+
+- 服务端 post-commit webhook Hook runtime
+- Workspace/project scoped Hook 定义
+- 5 个稳定 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`
+- Durable delivery queue，支持 retry、dead-letter、disable、manual replay
+- Webhook HMAC-SHA256 签名（`X-Taskg-Signature-256` header）
+- Hook 管理 CLI（`hook add/list/deliveries/replay`）
+- Hook 管理 HTTP API（`/api/v1/hooks/*`、`/api/v1/hook-deliveries/*`）
+- Hook 配置变更与人工 replay 写入 audit log
+- Secret 安全：不暴露在 CLI/HTTP response、audit、server log 中
+- 出站网络防护：禁止投递到 loopback、link-local、RFC1918、RFC6598、multicast、unspecified 地址
+- 部署文档：`docs/deployment.md`
+- 备份恢复文档：`docs/backup-restore.md`
+- OpenAPI hook schemas 和 paths
+- CGO-free 交叉编译发布脚本：`scripts/release-build.sh`
+
 ## 跨 Milestone 规则
 
 - 每个 milestone 都必须有独立中文 spec。
@@ -665,11 +684,14 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M7 已完成。当前重点推进 M8 实现：
+M8 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook 的完整能力栈。
 
-- M8 spec 与 implementation plan 已定义服务端 Hook 的事件模型、投递语义、权限边界和恢复策略。
-- M8 不做 adapter / memory / replica/sync，避免把 taskg 推成业务域编排平台。
-- 与 Hook 直接相关的部署、发布、backup / restore 文档需要同步收口。
+后续方向待定，可能包括：
+
+- 性能优化与大 workspace 场景验证
+- 更丰富的 MCP tool 覆盖
+- 外部系统 adapter 生态
+- 多端同步与 replica
 
 M8 规格与实现计划：
 
