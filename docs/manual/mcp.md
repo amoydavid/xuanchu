@@ -7,6 +7,8 @@ weight: 80
 
 taskg 可以作为 MCP Server，让 Agent 通过结构化 tools/resources 访问任务系统。
 
+MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace；HTTP MCP 使用 Bearer token 绑定的 user 和 scope。完整身份初始化流程见 [身份与初始化](identity-and-initialization.md)。
+
 ## 运行模式
 
 本地 stdio MCP：
@@ -251,6 +253,22 @@ Agent 不应该靠提示词决定权限。权限来自：
 - workspace scope
 - project scope
 - membership role
+
+stdio MCP 启动前，建议先确认本机 active user/workspace：
+
+```bash
+taskg _show active.user active.workspace
+```
+
+HTTP MCP 接入前，建议为 Agent 创建 project-scoped token：
+
+```bash
+taskg --workspace dajee token create mcp-agent \
+  --type agent \
+  --scope task:read,task:write,project:read,context:read,config:read \
+  --project ai-agent-platform \
+  --expires-in 720h
+```
 
 ## 建议给 Agent 的提示词
 

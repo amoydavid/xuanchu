@@ -30,6 +30,8 @@ go build -o taskg ./cmd/taskg
 
 taskg 要求先注册 project，再把任务放进 project。
 
+首次本地运行时，taskg 会自动创建 `local` user、`local` workspace 和 owner membership。单人试用可以直接使用这个默认身份。团队或服务端使用建议先读 [身份与初始化](identity-and-initialization.md)，显式创建自己的 user/workspace。
+
 ```bash
 ./taskg project add ai-agent-platform name:"AI Agent Platform"
 ```
@@ -109,7 +111,7 @@ taskg 要求先注册 project，再把任务放进 project。
 
 ## 8. 下一步读什么
 
+- 想搞清楚当前是谁在操作、在哪个 workspace：读 [身份与初始化](identity-and-initialization.md)
 - 想了解完整任务操作：读 [任务操作](tasks.md)
 - 想学查询和报表：读 [查询与报表](query-reports.md)
 - 想团队使用：读 [团队、Workspace 与 Project](team-workspaces-projects.md)
-

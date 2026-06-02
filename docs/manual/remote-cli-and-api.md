@@ -7,6 +7,8 @@ weight: 70
 
 taskg server 提供 HTTP/JSON API。远程 CLI 通过同一套 API 访问服务端，不复制业务逻辑。
 
+远程 CLI 的 actor 来自 Bearer token 绑定的 user，不来自本机 `taskg user use`。如果你还不熟悉 user/workspace/member 初始化，先读 [身份与初始化](identity-and-initialization.md)。
+
 ## 启动服务端
 
 ```bash
@@ -18,7 +20,7 @@ taskg server --listen 127.0.0.1:8080 --db ./taskg.db
 
 ## 创建 token
 
-本地创建第一个 admin token：
+第一个 admin token 建议在 server 启动前用本地 CLI 创建：
 
 ```bash
 taskg token create admin \
@@ -52,6 +54,8 @@ taskg token revoke <id-or-prefix>
 export TASKG_TOKEN="..."
 taskg --server https://taskg.example.com --token "$TASKG_TOKEN" --workspace dajee list
 ```
+
+这条命令中的真实 actor 是 `$TASKG_TOKEN` 绑定的 user。`--workspace dajee` 只是在 token 允许范围内选择 effective workspace。
 
 也可以每次显式指定 project scope：
 
@@ -147,4 +151,3 @@ OpenAPI 文件在：
 ```text
 docs/openapi/taskg-v1.yaml
 ```
-

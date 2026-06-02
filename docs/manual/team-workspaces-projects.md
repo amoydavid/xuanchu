@@ -7,6 +7,8 @@ weight: 60
 
 taskg 的企业边界由 workspace、project、user、membership 和 audit 组成。
 
+如果你还不确定“当前 CLI/MCP 到底以哪个 user 身份运行”，先读 [身份与初始化](identity-and-initialization.md)。本页更偏团队对象和管理命令。
+
 ## 概念
 
 - `workspace`：企业、团队或租户级隔离边界。
@@ -28,6 +30,8 @@ taskg user info
 
 本地模式会自动创建 `local` user。
 
+本地 CLI 的 actor 来自 `user use` 设置的 active user。远程 CLI 和 HTTP MCP 的 actor 来自 token 绑定的 user，不受本机 `user use` 影响。
+
 ## Workspace
 
 ```bash
@@ -44,6 +48,8 @@ taskg workspace archive old
 ```bash
 taskg --workspace dajee list
 ```
+
+`--workspace` 只选择本次命令的 effective workspace，不会改变 actor，也不会突破 token 的 workspace scope。
 
 ## Member 与角色
 
@@ -100,4 +106,3 @@ taskg audit list --project ai-agent-platform
 audit 记录写操作，例如 task、context、workspace、member、project、config、token、hook、manual replay 等。
 
 远程 API 中读取 audit 需要 `audit:read` capability，并且 actor 角色需要 admin 或 owner。
-

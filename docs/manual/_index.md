@@ -18,8 +18,9 @@ weight: 1
 如果你只是想开始用 taskg：
 
 1. 读 [快速使用](quick-start.md)
-2. 读 [用户指南](user-guide.md)
-3. 需要更多细节时再查 [任务操作](tasks.md) 和 [查询与报表](query-reports.md)
+2. 读 [身份与初始化](identity-and-initialization.md)
+3. 读 [用户指南](user-guide.md)
+4. 需要更多细节时再查 [任务操作](tasks.md) 和 [查询与报表](query-reports.md)
 
 如果你要在团队里使用：
 
@@ -36,6 +37,7 @@ weight: 1
 ## 手册章节
 
 - [快速使用](quick-start.md)
+- [身份与初始化](identity-and-initialization.md)
 - [用户指南](user-guide.md)
 - [任务操作](tasks.md)
 - [查询与报表](query-reports.md)
@@ -54,6 +56,7 @@ weight: 1
 
 - `workspace` 是企业、团队或租户级隔离边界。
 - `project` 是 workspace 内的真实项目，任务引用 project 前必须先注册 project。
+- `user` 是执行操作的 actor；本地 CLI 使用 active user，远程 CLI / HTTP MCP 使用 token 绑定的 user。
 - `context` 是默认查询过滤器，不是权限边界。
 - `token` 是远程 CLI、HTTP API 和 HTTP MCP 的访问凭证。
 - `hook` 是服务端内部事件发生后的异步 webhook 投递能力。
@@ -70,4 +73,3 @@ weight: 1
 - HTTP/JSON API、远程 CLI、PAT / Agent token
 - MCP stdio 与 HTTP transport
 - 服务端 Webhook Hook、投递重试、dead-letter、manual replay
-
