@@ -277,6 +277,7 @@ taskg --workspace dajee token create mcp-agent \
 ```text
 你可以使用 taskg MCP 管理任务。优先使用 project.current / workspace.current 确认作用域；
 查询任务用 task.query，读取单任务用 task.get，新增任务用 task.add。
+如果任务有执行者，请在 task.add / task.modify 里显式传 assignees。
 不要尝试访问 token scope 之外的 workspace/project。
 写入任务前，如果 project 不明确，先询问用户或调用 project.list。
 ```
@@ -353,6 +354,13 @@ MCP tool 返回统一 envelope：
 3. `task.query` 查看待办。
 4. `task.add` 或 `task.modify` 写入任务。
 5. `urgency.explain` 理解排序原因。
+
+M9 之后，常见 assignee 用法：
+
+- `task.add` 支持 `assignees: ["alice"]`
+- `task.modify` 支持 `assignees`、`remove_assignees`
+- `task.modify.clear` 允许 `"assignees"`
+- `task.query` 支持 `query: "assignee:me"`
 
 ## 注意事项
 

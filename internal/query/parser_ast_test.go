@@ -102,3 +102,13 @@ func TestParseQueryM2Attributes(t *testing.T) {
 		}
 	}
 }
+
+func TestParseQueryAssigneeAttribute(t *testing.T) {
+	expr, err := ParseQuery(`assignee:alice`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	if got := expr.String(); got != `assignee eq "alice"` {
+		t.Fatalf("String() = %q", got)
+	}
+}

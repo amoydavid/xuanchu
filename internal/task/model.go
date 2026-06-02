@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/dajee/taskg/internal/recurrence"
@@ -27,6 +28,12 @@ type UDAValue struct {
 	Orphan bool
 }
 
+type AssigneeInfo struct {
+	UserID string
+	Name   string
+	Email  *string
+}
+
 type Task struct {
 	UUID        string
 	WorkspaceID string
@@ -50,6 +57,7 @@ type Task struct {
 	Parent      *string
 	Mask        *string
 	IMask       *int
+	Assignees   []AssigneeInfo
 	UDAs        map[string]UDAValue
 }
 
@@ -78,6 +86,11 @@ func (t Task) Validate() error {
 			return errors.New("annotation description must not contain newlines")
 		}
 		_ = i
+	}
+	for _, a := range t.Assignees {
+		if strings.TrimSpace(a.UserID) == "" {
+			return errors.New("assignee user_id is required")
+		}
 	}
 	for _, d := range t.Depends {
 		if strings.TrimSpace(d) == "" {
@@ -132,4 +145,24 @@ func (t *Task) StartTask(now int64) {
 func (t *Task) StopTask(now int64) {
 	t.Start = nil
 	t.Modified = now
+}
+
+func SortAssigneeInfos(assignees []AssigneeInfo) {
+	sort.Slice(assignees, func(i, j int) bool {
+		if assignees[i].Name != assignees[j].Name {
+			return assignees[i].Name < assignees[j].Name
+		}
+		leftEmail := ""
+		if assignees[i].Email != nil {
+			leftEmail = *assignees[i].Email
+		}
+		rightEmail := ""
+		if assignees[j].Email != nil {
+			rightEmail = *assignees[j].Email
+		}
+		if leftEmail != rightEmail {
+			return leftEmail < rightEmail
+		}
+		return assignees[i].UserID < assignees[j].UserID
+	})
 }

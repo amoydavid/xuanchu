@@ -48,6 +48,7 @@ type AddInput struct {
 	Project     *string
 	Priority    *string
 	Due         *int64
+	Assignees   []string
 	Depends     []string
 	Wait        *int64
 	Scheduled   *int64
@@ -72,27 +73,30 @@ type ExportInput struct {
 }
 
 type ModifyInput struct {
-	Description    *string
-	Project        *string
-	ClearProject   bool
-	Priority       *string
-	ClearPriority  bool
-	Due            *int64
-	ClearDue       bool
-	Wait           *int64
-	ClearWait      bool
-	Scheduled      *int64
-	ClearScheduled bool
-	Until          *int64
-	ClearUntil     bool
-	AddDepends     []string
-	ClearDepends   bool
-	Recur          *string
-	ClearRecur     bool
-	AddTags        []string
-	RemoveTags     []string
-	UDAs           map[string]string
-	ClearUDAs      []string
+	Description     *string
+	Project         *string
+	ClearProject    bool
+	Priority        *string
+	ClearPriority   bool
+	Due             *int64
+	ClearDue        bool
+	Wait            *int64
+	ClearWait       bool
+	Scheduled       *int64
+	ClearScheduled  bool
+	Until           *int64
+	ClearUntil      bool
+	AddDepends      []string
+	ClearDepends    bool
+	Recur           *string
+	ClearRecur      bool
+	AddAssignees    []string
+	RemoveAssignees []string
+	ClearAssignees  bool
+	AddTags         []string
+	RemoveTags      []string
+	UDAs            map[string]string
+	ClearUDAs       []string
 }
 
 type ReportInput struct {
@@ -353,6 +357,10 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	if input.Recur != nil {
 		return s.createRecurringParent(input, now)
 	}
+	assignees, err := s.resolveAssigneeRefs(input.Assignees)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
 	depends, err := s.resolveDependencyTargets(input.Depends)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
@@ -361,8 +369,8 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
-		Depends: depends,
-		Wait:    input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
+		Assignees: assignees, Depends: depends,
+		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
 	}
 	projChange, err := s.applyProjectBinding(&tsk, input.Project)
 	if err != nil {
@@ -402,7 +410,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	resolvedInputQuery, err := s.resolveProjectPredicates(input.Query)
+	resolvedInputQuery, err := s.resolveTaskQueryPredicates(input.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -551,6 +559,13 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 		if err := s.validateDependencyCycles(tsk.UUID, tsk.Depends); err != nil {
 			return task.Task{}, projectChange{}, err
 		}
+	}
+	if input.ClearAssignees || len(input.AddAssignees) > 0 || len(input.RemoveAssignees) > 0 {
+		assignees, err := s.applyAssigneeModifications(tsk.Assignees, input.AddAssignees, input.RemoveAssignees, input.ClearAssignees)
+		if err != nil {
+			return task.Task{}, projectChange{}, err
+		}
+		tsk.Assignees = assignees
 	}
 	if len(input.UDAs) > 0 || len(input.ClearUDAs) > 0 {
 		udas, err := s.normalizeUDAModifications(tsk.UDAs, input.UDAs, input.ClearUDAs, false)
@@ -1018,6 +1033,13 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 			}
 			tsk.UDAs = normalized
 		}
+		if tsk.Assignees != nil {
+			resolvedAssignees, err := s.resolveImportedAssignees(tsk.Assignees)
+			if err != nil {
+				return err
+			}
+			tsk.Assignees = resolvedAssignees
+		}
 		if err := s.ensureWritableTaskScope(tsk); err != nil {
 			return err
 		}
@@ -1087,6 +1109,13 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	if tsk.Depends != nil {
 		existing.Depends = tsk.Depends
 	}
+	if tsk.Assignees != nil {
+		resolvedAssignees, err := s.resolveImportedAssignees(tsk.Assignees)
+		if err != nil {
+			return err
+		}
+		existing.Assignees = resolvedAssignees
+	}
 	if tsk.UDAs != nil {
 		normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
 		if err != nil {
@@ -1098,6 +1127,29 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 		return err
 	}
 	return s.repo.Update(existing)
+}
+
+func (s *Service) resolveImportedAssignees(values []task.AssigneeInfo) ([]task.AssigneeInfo, error) {
+	if values == nil {
+		return nil, nil
+	}
+	if len(values) == 0 {
+		return []task.AssigneeInfo{}, nil
+	}
+	refs := make([]string, 0, len(values))
+	for _, value := range values {
+		switch {
+		case strings.TrimSpace(value.UserID) != "":
+			refs = append(refs, strings.TrimSpace(value.UserID))
+		case value.Email != nil && strings.TrimSpace(*value.Email) != "":
+			refs = append(refs, strings.TrimSpace(*value.Email))
+		case strings.TrimSpace(value.Name) != "":
+			refs = append(refs, strings.TrimSpace(value.Name))
+		default:
+			return nil, fmt.Errorf("assignee reference is required")
+		}
+	}
+	return s.resolveAssigneeRefs(refs)
 }
 
 func (s *Service) dependencyGraph() (map[string][]string, error) {
@@ -1127,7 +1179,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, err
 	}
-	resolvedReportQuery, err := s.resolveProjectPredicates(input.Query)
+	resolvedReportQuery, err := s.resolveTaskQueryPredicates(input.Query)
 	if err != nil {
 		return ReportResult{}, err
 	}
@@ -1181,6 +1233,176 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 		tasks = tasks[:input.Limit]
 	}
 	return ReportResult{Tasks: tasks}, nil
+}
+
+func (s *Service) resolveTaskQueryPredicates(expr query.Expr) (query.Expr, error) {
+	resolved, err := s.resolveProjectPredicates(expr)
+	if err != nil {
+		return nil, err
+	}
+	return s.resolveAssigneePredicates(resolved)
+}
+
+func (s *Service) resolveAssigneePredicates(expr query.Expr) (query.Expr, error) {
+	switch e := expr.(type) {
+	case nil:
+		return nil, nil
+	case query.Predicate:
+		return s.resolveAssigneePredicate(e)
+	case query.Binary:
+		left, err := s.resolveAssigneePredicates(e.Left)
+		if err != nil {
+			return nil, err
+		}
+		right, err := s.resolveAssigneePredicates(e.Right)
+		if err != nil {
+			return nil, err
+		}
+		return query.Binary{Op: e.Op, Left: left, Right: right}, nil
+	case query.Unary:
+		resolved, err := s.resolveAssigneePredicates(e.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return query.Unary{Op: e.Op, Expr: resolved}, nil
+	default:
+		return nil, fmt.Errorf("unsupported query expr %T", expr)
+	}
+}
+
+func (s *Service) resolveAssigneePredicate(p query.Predicate) (query.Expr, error) {
+	if p.Attribute != query.AttrAssignee {
+		return p, nil
+	}
+	switch p.Operator {
+	case query.OpIsNull, query.OpNotNull:
+		return p, nil
+	case query.OpEqual:
+		value := strings.TrimSpace(p.Value.Text)
+		if value == "" {
+			return query.Predicate{Attribute: query.AttrAssignee, Operator: query.OpIsNull, Value: query.StringValue("")}, nil
+		}
+		if strings.EqualFold(value, "me") {
+			return query.Predicate{
+				Attribute: query.AttrAssignee,
+				Operator:  query.OpEqual,
+				Value:     query.StringValue(s.runtime.ActorUserID),
+			}, nil
+		}
+		info, err := s.resolveAssigneeRef(value)
+		if err != nil {
+			return nil, err
+		}
+		return query.Predicate{
+			Attribute: query.AttrAssignee,
+			Operator:  query.OpEqual,
+			Value:     query.StringValue(info.UserID),
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported assignee predicate operator %q", p.Operator)
+	}
+}
+
+func (s *Service) resolveAssigneeRefs(refs []string) ([]task.AssigneeInfo, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool, len(refs))
+	out := make([]task.AssigneeInfo, 0, len(refs))
+	for _, ref := range refs {
+		info, err := s.resolveAssigneeRef(ref)
+		if err != nil {
+			return nil, err
+		}
+		if seen[info.UserID] {
+			continue
+		}
+		seen[info.UserID] = true
+		out = append(out, info)
+	}
+	normalizeAssigneeInfos(out)
+	return out, nil
+}
+
+func (s *Service) resolveAssigneeRef(ref string) (task.AssigneeInfo, error) {
+	user, err := s.resolveUser(ref)
+	if err != nil {
+		if rtErr, ok := err.(RuntimeError); ok && rtErr.Code == "user_not_found" {
+			return task.AssigneeInfo{}, RuntimeError{
+				Code:    "assignee_not_found",
+				Message: fmt.Sprintf("assignee %q not found", strings.TrimSpace(ref)),
+			}
+		}
+		return task.AssigneeInfo{}, err
+	}
+	if _, err := s.memberRepo.Get(user.ID, s.workspaceID); err == sqlite.ErrNotFound {
+		return task.AssigneeInfo{}, RuntimeError{
+			Code:    "assignee_not_member",
+			Message: fmt.Sprintf("user %q is not a member of workspace %q", user.Name, s.runtime.WorkspaceSlug),
+		}
+	} else if err != nil {
+		return task.AssigneeInfo{}, err
+	}
+	return task.AssigneeInfo{
+		UserID: user.ID,
+		Name:   user.Name,
+		Email:  cloneStringPtr(user.Email),
+	}, nil
+}
+
+func (s *Service) applyAssigneeModifications(existing []task.AssigneeInfo, addRefs, removeRefs []string, clear bool) ([]task.AssigneeInfo, error) {
+	assigneeByUserID := make(map[string]task.AssigneeInfo, len(existing))
+	if !clear {
+		for _, assignee := range existing {
+			if assignee.UserID == "" {
+				continue
+			}
+			assigneeByUserID[assignee.UserID] = task.AssigneeInfo{
+				UserID: assignee.UserID,
+				Name:   assignee.Name,
+				Email:  cloneStringPtr(assignee.Email),
+			}
+		}
+	}
+	added, err := s.resolveAssigneeRefs(addRefs)
+	if err != nil {
+		return nil, err
+	}
+	for _, assignee := range added {
+		assigneeByUserID[assignee.UserID] = assignee
+	}
+	removed, err := s.resolveAssigneeRefs(removeRefs)
+	if err != nil {
+		return nil, err
+	}
+	for _, assignee := range removed {
+		delete(assigneeByUserID, assignee.UserID)
+	}
+	out := make([]task.AssigneeInfo, 0, len(assigneeByUserID))
+	for _, assignee := range assigneeByUserID {
+		out = append(out, assignee)
+	}
+	normalizeAssigneeInfos(out)
+	return out, nil
+}
+
+func normalizeAssigneeInfos(assignees []task.AssigneeInfo) {
+	task.SortAssigneeInfos(assignees)
+}
+
+func cloneAssigneeInfos(assignees []task.AssigneeInfo) []task.AssigneeInfo {
+	if assignees == nil {
+		return nil
+	}
+	out := make([]task.AssigneeInfo, len(assignees))
+	for i, assignee := range assignees {
+		out[i] = task.AssigneeInfo{
+			UserID: assignee.UserID,
+			Name:   assignee.Name,
+			Email:  cloneStringPtr(assignee.Email),
+		}
+	}
+	return out
 }
 
 func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
@@ -1415,11 +1637,15 @@ func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, p
 	if input.Wait != nil || input.Scheduled != nil || len(input.Depends) > 0 {
 		return task.Task{}, projectChange{}, fmt.Errorf("recurring task does not accept wait, scheduled, or depends")
 	}
+	assignees, err := s.resolveAssigneeRefs(input.Assignees)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
 	parent := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
 		Status: task.StatusRecurring, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
-		Until: input.Until, Recur: input.Recur,
+		Assignees: assignees, Until: input.Until, Recur: input.Recur,
 	}
 	change, err := s.applyProjectBinding(&parent, input.Project)
 	if err != nil {
@@ -1481,7 +1707,7 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: parent.Description,
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: due, Project: parent.Project, ProjectID: parent.ProjectID, Priority: parent.Priority, Tags: parent.Tags,
-		Until: parent.Until, Recur: parent.Recur,
+		Assignees: cloneAssigneeInfos(parent.Assignees), Until: parent.Until, Recur: parent.Recur,
 		Parent: &parent.UUID,
 		UDAs:   cloneUDAs(parent.UDAs),
 	}

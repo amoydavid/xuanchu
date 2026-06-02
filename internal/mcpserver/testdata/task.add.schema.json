@@ -13,6 +13,16 @@
           "array"
         ]
       },
+      "assignees": {
+        "description": "workspace user refs to assign",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
       "description": {
         "description": "task description",
         "type": "string"

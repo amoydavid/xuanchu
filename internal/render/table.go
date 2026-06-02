@@ -17,7 +17,7 @@ func TaskList(w io.Writer, tasks []task.Task) {
 
 func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"ID", "UUID", "PRI", "PROJECT", "TAGS", "DESCRIPTION"})
+	table.SetHeader([]string{"ID", "UUID", "PRI", "PROJECT", "ASSIGNEES", "TAGS", "DESCRIPTION"})
 	table.SetBorder(false)
 	table.SetHeaderLine(true)
 	table.SetAutoWrapText(false)
@@ -55,6 +55,7 @@ func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 			uuid,
 			priority,
 			project,
+			formatAssignees(tsk.Assignees),
 			strings.Join(tsk.Tags, ","),
 			tsk.Description,
 		})
@@ -86,6 +87,7 @@ func TaskInfo(w io.Writer, tsk task.Task) {
 		{"Due:", formatUnixPtr(tsk.Due)},
 		{"Project:", stringPtrValue(tsk.Project)},
 		{"Priority:", stringPtrValue(tsk.Priority)},
+		{"Assignees:", formatAssignees(tsk.Assignees)},
 		{"Tags:", strings.Join(tsk.Tags, ",")},
 	}
 	for _, row := range rows {
@@ -110,4 +112,22 @@ func stringPtrValue(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func formatAssignees(assignees []task.AssigneeInfo) string {
+	if len(assignees) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(assignees))
+	for _, assignee := range assignees {
+		switch {
+		case assignee.Name != "":
+			out = append(out, "@"+assignee.Name)
+		case assignee.Email != nil && *assignee.Email != "":
+			out = append(out, "@"+*assignee.Email)
+		case assignee.UserID != "":
+			out = append(out, "@"+assignee.UserID)
+		}
+	}
+	return strings.Join(out, ", ")
 }

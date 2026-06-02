@@ -114,6 +114,9 @@ curl -H "Authorization: Bearer $TASKG_TOKEN" \
 ```bash
 curl -H "Authorization: Bearer $TASKG_TOKEN" \
   'https://taskg.example.com/api/v1/tasks?workspace=dajee&project=ai-agent-platform&limit=20'
+
+curl -H "Authorization: Bearer $TASKG_TOKEN" \
+  'https://taskg.example.com/api/v1/tasks?workspace=dajee&query=assignee:me'
 ```
 
 创建任务：
@@ -122,9 +125,32 @@ curl -H "Authorization: Bearer $TASKG_TOKEN" \
 curl -X POST \
   -H "Authorization: Bearer $TASKG_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"description":"Review MCP docs","project":"ai-agent-platform","tags":["review"]}' \
+  -d '{"description":"Review MCP docs","project":"ai-agent-platform","tags":["review"],"assignees":["alice"]}' \
   'https://taskg.example.com/api/v1/tasks?workspace=dajee'
 ```
+
+更新 assignee：
+
+```bash
+curl -X PATCH \
+  -H "Authorization: Bearer $TASKG_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"assignees":["alice"],"remove_assignees":["bob"]}' \
+  'https://taskg.example.com/api/v1/tasks/<task-uuid>?workspace=dajee'
+```
+
+远程 CLI 走同一套字段语义：
+
+```bash
+taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+  add "Ship docs" @alice
+taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+  1 modify +@alice -@bob
+taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+  list assignee:me
+```
+
+服务端模式下，`assignees` 只能引用当前 effective workspace 的成员；不存在的用户返回 `assignee_not_found`，跨 workspace 成员返回 `assignee_not_member`。
 
 API 使用统一 envelope：
 

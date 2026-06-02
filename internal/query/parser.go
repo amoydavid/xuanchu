@@ -60,6 +60,15 @@ func ParseFilterExpr(args []string) (Expr, error) {
 
 func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 	switch {
+	case strings.HasPrefix(arg, "+@") && len(arg) > 2:
+		mod.AddAssignees = append(mod.AddAssignees, strings.TrimPrefix(arg, "+@"))
+		return true, nil
+	case strings.HasPrefix(arg, "-@") && len(arg) > 2:
+		mod.RemoveAssignees = append(mod.RemoveAssignees, strings.TrimPrefix(arg, "-@"))
+		return true, nil
+	case strings.HasPrefix(arg, "@") && len(arg) > 1:
+		mod.AddAssignees = append(mod.AddAssignees, strings.TrimPrefix(arg, "@"))
+		return true, nil
 	case strings.HasPrefix(arg, "+") && len(arg) > 1:
 		mod.AddTags = append(mod.AddTags, strings.TrimPrefix(arg, "+"))
 		return true, nil
@@ -165,7 +174,7 @@ func isPotentialUDAName(name string) bool {
 		return false
 	}
 	switch name {
-	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "tag", "mask", "imask":
+	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "priority", "depends", "annotations", "recur", "parent", "assignee", "tag", "mask", "imask":
 		return false
 	default:
 		return true

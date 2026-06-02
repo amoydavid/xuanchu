@@ -17,6 +17,7 @@ type TaskAddInput struct {
 	ProjectID   string   `json:"project_id,omitempty" jsonschema:"stable project UUID"`
 	Description string   `json:"description" jsonschema:"task description"`
 	Tags        []string `json:"tags,omitempty" jsonschema:"task tags to add"`
+	Assignees   []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
 	Priority    string   `json:"priority,omitempty"`
 	Due         *int64   `json:"due,omitempty" jsonschema:"unix seconds"`
 	Wait        *int64   `json:"wait,omitempty" jsonschema:"unix seconds"`
@@ -56,22 +57,24 @@ func (in TaskGetInput) scopeInput() RequestScopeInput {
 }
 
 type TaskModifyInput struct {
-	Workspace    string            `json:"workspace,omitempty"`
-	Project      string            `json:"project,omitempty"`
-	ProjectID    string            `json:"project_id,omitempty"`
-	ID           string            `json:"id"`
-	Description  *string           `json:"description,omitempty"`
-	Priority     *string           `json:"priority,omitempty"`
-	Due          *int64            `json:"due,omitempty"`
-	Wait         *int64            `json:"wait,omitempty"`
-	Scheduled    *int64            `json:"scheduled,omitempty"`
-	Until        *int64            `json:"until,omitempty"`
-	Tags         []string          `json:"tags,omitempty"`
-	RemoveTags   []string          `json:"remove_tags,omitempty"`
-	UDAs         map[string]string `json:"udas,omitempty"`
-	Clear        []string          `json:"clear,omitempty"`
-	Depends      []string          `json:"depends,omitempty"`
-	ClearDepends bool              `json:"clear_depends,omitempty"`
+	Workspace       string            `json:"workspace,omitempty"`
+	Project         string            `json:"project,omitempty"`
+	ProjectID       string            `json:"project_id,omitempty"`
+	ID              string            `json:"id"`
+	Description     *string           `json:"description,omitempty"`
+	Priority        *string           `json:"priority,omitempty"`
+	Due             *int64            `json:"due,omitempty"`
+	Wait            *int64            `json:"wait,omitempty"`
+	Scheduled       *int64            `json:"scheduled,omitempty"`
+	Until           *int64            `json:"until,omitempty"`
+	Tags            []string          `json:"tags,omitempty"`
+	Assignees       []string          `json:"assignees,omitempty"`
+	RemoveAssignees []string          `json:"remove_assignees,omitempty"`
+	RemoveTags      []string          `json:"remove_tags,omitempty"`
+	UDAs            map[string]string `json:"udas,omitempty"`
+	Clear           []string          `json:"clear,omitempty"`
+	Depends         []string          `json:"depends,omitempty"`
+	ClearDepends    bool              `json:"clear_depends,omitempty"`
 }
 
 func (in TaskModifyInput) scopeInput() RequestScopeInput {
@@ -129,6 +132,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			Project:     project,
 			Priority:    priority,
 			Due:         in.Due,
+			Assignees:   in.Assignees,
 			Wait:        in.Wait,
 			Scheduled:   in.Scheduled,
 			Until:       in.Until,
@@ -233,18 +237,20 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 		return businessErrorWithEnvelope(err)
 	}
 	mod := app.ModifyInput{
-		Description:  in.Description,
-		Project:      project,
-		Priority:     in.Priority,
-		Due:          in.Due,
-		Wait:         in.Wait,
-		Scheduled:    in.Scheduled,
-		Until:        in.Until,
-		AddTags:      in.Tags,
-		RemoveTags:   in.RemoveTags,
-		UDAs:         in.UDAs,
-		AddDepends:   in.Depends,
-		ClearDepends: in.ClearDepends,
+		Description:     in.Description,
+		Project:         project,
+		Priority:        in.Priority,
+		Due:             in.Due,
+		Wait:            in.Wait,
+		Scheduled:       in.Scheduled,
+		Until:           in.Until,
+		AddTags:         in.Tags,
+		AddAssignees:    in.Assignees,
+		RemoveAssignees: in.RemoveAssignees,
+		RemoveTags:      in.RemoveTags,
+		UDAs:            in.UDAs,
+		AddDepends:      in.Depends,
+		ClearDepends:    in.ClearDepends,
 	}
 	if err := applyClearFields(in.Clear, &mod); err != nil {
 		return businessErrorWithEnvelope(err)
@@ -365,6 +371,8 @@ func applyClearFields(fields []string, mod *app.ModifyInput) error {
 			mod.ClearUntil = true
 		case "recur":
 			mod.ClearRecur = true
+		case "assignees":
+			mod.ClearAssignees = true
 		default:
 			if strings.HasPrefix(field, "uda.") {
 				mod.ClearUDAs = append(mod.ClearUDAs, strings.TrimPrefix(field, "uda."))

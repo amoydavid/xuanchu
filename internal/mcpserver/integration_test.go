@@ -299,6 +299,40 @@ func TestTaskAddBasic(t *testing.T) {
 	}
 }
 
+func TestTaskAddAndGetAssignees(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task.add", TaskAddInput{
+		Description: "assigned task",
+		Assignees:   []string{"local"},
+	})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, result))
+	}
+	env := parseEnvelope(t, result)
+	taskObj := extractTask(t, env)
+	assignees, ok := taskObj["assignees"].([]any)
+	if !ok || len(assignees) != 1 {
+		t.Fatalf("assignees = %#v, want one assignee", taskObj["assignees"])
+	}
+	first, ok := assignees[0].(map[string]any)
+	if !ok || first["name"] != "local" {
+		t.Fatalf("first assignee = %#v, want local", assignees[0])
+	}
+
+	uuid := extractUUID(t, env)
+	getResult := callTool(t, session, "task.get", TaskGetInput{ID: uuid})
+	if getResult.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, getResult))
+	}
+	taskObj = extractTask(t, parseEnvelope(t, getResult))
+	assignees, ok = taskObj["assignees"].([]any)
+	if !ok || len(assignees) != 1 {
+		t.Fatalf("assignees after get = %#v, want one assignee", taskObj["assignees"])
+	}
+}
+
 func TestTaskAddMissingDescription(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
@@ -528,6 +562,40 @@ func TestTaskModifyClearFields(t *testing.T) {
 	taskObj := extractTask(t, parseEnvelope(t, getResult))
 	if taskObj["priority"] != nil {
 		t.Fatalf("priority = %v, want nil after clear", taskObj["priority"])
+	}
+}
+
+func TestTaskModifyAssigneesAndClear(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	addResult := callTool(t, session, "task.add", TaskAddInput{Description: "assign later"})
+	uuid := extractUUID(t, parseEnvelope(t, addResult))
+
+	modResult := callTool(t, session, "task.modify", TaskModifyInput{
+		ID:        uuid,
+		Assignees: []string{"local"},
+	})
+	if modResult.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, modResult))
+	}
+	taskObj := extractTask(t, parseEnvelope(t, modResult))
+	assignees, ok := taskObj["assignees"].([]any)
+	if !ok || len(assignees) != 1 {
+		t.Fatalf("assignees after modify = %#v, want one assignee", taskObj["assignees"])
+	}
+
+	clearResult := callTool(t, session, "task.modify", TaskModifyInput{
+		ID:    uuid,
+		Clear: []string{"assignees"},
+	})
+	if clearResult.IsError {
+		t.Fatalf("unexpected clear error: %v", parseError(t, clearResult))
+	}
+	taskObj = extractTask(t, parseEnvelope(t, clearResult))
+	assignees, ok = taskObj["assignees"].([]any)
+	if !ok || len(assignees) != 0 {
+		t.Fatalf("assignees after clear = %#v, want empty assignees", taskObj["assignees"])
 	}
 }
 

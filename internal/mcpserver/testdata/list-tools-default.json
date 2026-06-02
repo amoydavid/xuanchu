@@ -320,6 +320,16 @@
               "array"
             ]
           },
+          "assignees": {
+            "description": "workspace user refs to assign",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "description": {
             "description": "task description",
             "type": "string"
@@ -610,6 +620,15 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "assignees": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "clear": {
             "items": {
               "type": "string"
@@ -657,6 +676,15 @@
           },
           "project_id": {
             "type": "string"
+          },
+          "remove_assignees": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           },
           "remove_tags": {
             "items": {

@@ -278,6 +278,52 @@ func TestCompileQueryM2Fields(t *testing.T) {
 	}
 }
 
+func TestCompileQueryAssigneePredicate(t *testing.T) {
+	store, repo, ws := newQueryTestStore(t)
+	createQueryTestUser(t, store, User{ID: "user-alice", Name: "alice", CreatedAt: 100, ModifiedAt: 100})
+	mustCreate(t, repo, domain.Task{
+		UUID:        "task-a",
+		WorkspaceID: ws.ID,
+		Description: "task a",
+		Status:      domain.StatusPending,
+		Entry:       1,
+		Modified:    1,
+		Assignees:   []domain.AssigneeInfo{{UserID: "user-alice"}},
+	})
+	mustCreate(t, repo, domain.Task{
+		UUID:        "task-b",
+		WorkspaceID: ws.ID,
+		Description: "task b",
+		Status:      domain.StatusPending,
+		Entry:       1,
+		Modified:    1,
+	})
+	t.Cleanup(func() { _ = store.Close() })
+
+	expr, err := query.ParseQuery(`assignee:user-alice`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, args, err := CompileQuery(expr, QueryCompileOptions{WorkspaceID: ws.ID})
+	if err != nil {
+		t.Fatalf("CompileQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "task_assignees") || !strings.Contains(sql, "user_id = ?") {
+		t.Fatalf("sql = %q", sql)
+	}
+	if len(args) < 2 || args[len(args)-1] != "user-alice" {
+		t.Fatalf("args = %#v", args)
+	}
+
+	tasks, err := repo.List(ws.ID, ListOptions{Query: expr})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID != "task-a" {
+		t.Fatalf("tasks = %#v, want only task-a", tasks)
+	}
+}
+
 func TestCompileQueryAssociationSubqueriesAreWorkspaceScoped(t *testing.T) {
 	expr, err := query.ParseQuery(`+work depends:dep annotations:note`)
 	if err != nil {
@@ -337,4 +383,13 @@ func mustCreate(t *testing.T, repo *TaskRepository, task domain.Task) {
 	if _, err := repo.Create(task); err != nil {
 		t.Fatalf("Create(%s) error = %v", task.UUID, err)
 	}
+}
+
+func createQueryTestUser(t *testing.T, store *Store, user User) User {
+	t.Helper()
+	created, err := NewUserRepository(store.DB()).Create(user)
+	if err != nil {
+		t.Fatalf("Create(user %s) error = %v", user.ID, err)
+	}
+	return created
 }

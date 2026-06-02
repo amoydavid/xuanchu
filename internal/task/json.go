@@ -4,12 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
 type JSONAnnotation struct {
 	Entry       string `json:"entry"`
 	Description string `json:"description"`
+}
+
+type JSONAssignee struct {
+	UserID string  `json:"user_id,omitempty"`
+	Name   string  `json:"name,omitempty"`
+	Email  *string `json:"email,omitempty"`
 }
 
 type JSONTask struct {
@@ -33,6 +40,7 @@ type JSONTask struct {
 	Parent      *string             `json:"parent,omitempty"`
 	Mask        *string             `json:"mask,omitempty"`
 	IMask       *int                `json:"imask,omitempty"`
+	Assignees   []JSONAssignee      `json:"assignees,omitempty"`
 	UDAs        map[string]UDAValue `json:"-"`
 }
 
@@ -90,6 +98,9 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	if t.IMask != nil {
 		wire["imask"] = t.IMask
 	}
+	if t.Assignees != nil {
+		wire["assignees"] = t.Assignees
+	}
 	reserved := reservedJSONFields()
 	for name, value := range t.UDAs {
 		if _, ok := reserved[name]; ok {
@@ -101,8 +112,28 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 }
 
 func (t *JSONTask) UnmarshalJSON(data []byte) error {
-	type alias JSONTask
-	var core alias
+	var core struct {
+		UUID        string           `json:"uuid"`
+		Description string           `json:"description"`
+		Status      string           `json:"status"`
+		Entry       string           `json:"entry"`
+		Modified    string           `json:"modified"`
+		End         *string          `json:"end,omitempty"`
+		Due         *string          `json:"due,omitempty"`
+		Project     *string          `json:"project,omitempty"`
+		Priority    *string          `json:"priority,omitempty"`
+		Tags        []string         `json:"tags,omitempty"`
+		Start       *string          `json:"start,omitempty"`
+		Wait        *string          `json:"wait,omitempty"`
+		Scheduled   *string          `json:"scheduled,omitempty"`
+		Until       *string          `json:"until,omitempty"`
+		Annotations []JSONAnnotation `json:"annotations,omitempty"`
+		Depends     []string         `json:"depends,omitempty"`
+		Recur       *string          `json:"recur,omitempty"`
+		Parent      *string          `json:"parent,omitempty"`
+		Mask        *string          `json:"mask,omitempty"`
+		IMask       *int             `json:"imask,omitempty"`
+	}
 	if err := json.Unmarshal(data, &core); err != nil {
 		return err
 	}
@@ -115,20 +146,51 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("%s is reserved; use project:<slug> to modify project", field)
 		}
 	}
+	if assigneesRaw, ok := raw["assignees"]; ok {
+		assignees, err := unmarshalJSONAssignees(assigneesRaw)
+		if err != nil {
+			return err
+		}
+		t.Assignees = assignees
+	} else {
+		t.Assignees = nil
+	}
 	for _, key := range coreJSONFields() {
 		delete(raw, key)
 	}
 	if len(raw) > 0 {
-		core.UDAs = map[string]UDAValue{}
+		udas := map[string]UDAValue{}
 		for key, value := range raw {
 			text, err := rawToUDAString(value)
 			if err != nil {
 				return err
 			}
-			core.UDAs[key] = UDAValue{Name: key, Raw: text, Orphan: true}
+			udas[key] = UDAValue{Name: key, Raw: text, Orphan: true}
 		}
+		t.UDAs = udas
+	} else {
+		t.UDAs = nil
 	}
-	*t = JSONTask(core)
+	t.UUID = core.UUID
+	t.Description = core.Description
+	t.Status = core.Status
+	t.Entry = core.Entry
+	t.Modified = core.Modified
+	t.End = core.End
+	t.Due = core.Due
+	t.Project = core.Project
+	t.Priority = core.Priority
+	t.Tags = core.Tags
+	t.Start = core.Start
+	t.Wait = core.Wait
+	t.Scheduled = core.Scheduled
+	t.Until = core.Until
+	t.Annotations = core.Annotations
+	t.Depends = core.Depends
+	t.Recur = core.Recur
+	t.Parent = core.Parent
+	t.Mask = core.Mask
+	t.IMask = core.IMask
 	return nil
 }
 
@@ -157,7 +219,21 @@ func ToJSON(tsk Task) JSONTask {
 		Parent:  tsk.Parent,
 		Mask:    tsk.Mask,
 		IMask:   tsk.IMask,
-		UDAs:    tsk.UDAs,
+		Assignees: func() []JSONAssignee {
+			if tsk.Assignees == nil {
+				return nil
+			}
+			out := make([]JSONAssignee, len(tsk.Assignees))
+			for i, assignee := range tsk.Assignees {
+				out[i] = JSONAssignee{
+					UserID: assignee.UserID,
+					Name:   assignee.Name,
+					Email:  assignee.Email,
+				}
+			}
+			return out
+		}(),
+		UDAs: tsk.UDAs,
 	}
 }
 
@@ -233,12 +309,26 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 		Parent:      dto.Parent,
 		Mask:        dto.Mask,
 		IMask:       dto.IMask,
-		UDAs:        dto.UDAs,
+		Assignees: func() []AssigneeInfo {
+			if dto.Assignees == nil {
+				return nil
+			}
+			out := make([]AssigneeInfo, len(dto.Assignees))
+			for i, assignee := range dto.Assignees {
+				out[i] = AssigneeInfo{
+					UserID: assignee.UserID,
+					Name:   assignee.Name,
+					Email:  assignee.Email,
+				}
+			}
+			return out
+		}(),
+		UDAs: dto.UDAs,
 	}, nil
 }
 
 func coreJSONFields() []string {
-	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask"}
+	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees"}
 }
 
 func reservedJSONFields() map[string]struct{} {
@@ -268,6 +358,34 @@ func rawToUDAString(raw json.RawMessage) (string, error) {
 		return "", err
 	}
 	return string(compact), nil
+}
+
+func unmarshalJSONAssignees(raw json.RawMessage) ([]JSONAssignee, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, err
+	}
+	assignees := make([]JSONAssignee, len(items))
+	for i, item := range items {
+		var stringValue string
+		if err := json.Unmarshal(item, &stringValue); err == nil {
+			assignees[i] = jsonAssigneeFromStringRef(stringValue)
+			continue
+		}
+		var assignee JSONAssignee
+		if err := json.Unmarshal(item, &assignee); err != nil {
+			return nil, fmt.Errorf("invalid assignees[%d]: %w", i, err)
+		}
+		assignees[i] = assignee
+	}
+	return assignees, nil
+}
+
+func jsonAssigneeFromStringRef(ref string) JSONAssignee {
+	if strings.Contains(ref, "@") {
+		return JSONAssignee{Email: &ref}
+	}
+	return JSONAssignee{UserID: ref}
 }
 
 func formatUnix(sec int64) string {

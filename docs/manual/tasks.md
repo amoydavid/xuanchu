@@ -10,6 +10,7 @@ weight: 30
 ```bash
 taskg add "Write project spec" project:ai-agent-platform +planning due:tomorrow
 taskg add "Review PR" project:ai-agent-platform priority:H +review
+taskg add "Ship docs" @alice @bob
 ```
 
 任务描述可以作为第一个参数，也可以和修改项一起出现。常见修改项：
@@ -24,6 +25,7 @@ taskg add "Review PR" project:ai-agent-platform priority:H +review
 | `until:eom` | 到期后自动消失 |
 | `+next` | 添加标签 |
 | `-next` | 移除标签 |
+| `@alice` | 为新任务追加 assignee |
 
 ## 查看任务
 
@@ -33,6 +35,8 @@ taskg next
 taskg all
 taskg info 1
 taskg info <uuid>
+taskg list assignee:alice
+taskg next assignee:me
 ```
 
 常用报表：
@@ -57,9 +61,11 @@ taskg info <uuid>
 taskg 1 modify priority:H +next
 taskg 1 modify due:
 taskg 1 modify project:ai-agent-platform
+taskg 1 modify +@alice -@bob
 ```
 
 `key:` 表示清空字段，例如 `due:` 清空 due。
+`@ref` 只用于 `add`；`+@ref` / `-@ref` 用于 `modify`。`assignee:me` 只表示当前 effective workspace 中的当前 actor。
 
 ## 完成和删除
 
@@ -153,4 +159,3 @@ taskg add "deadline" project:ai-agent-platform due:2030-01-01
 ```
 
 查询 `due:2030-01-01` 表示这个自然日范围，而不是只匹配零点。
-

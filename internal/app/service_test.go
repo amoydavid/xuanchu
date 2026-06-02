@@ -226,6 +226,183 @@ func TestViewerCannotModifyTasks(t *testing.T) {
 	}
 }
 
+func TestServiceAddResolvesAssigneesInWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	memberUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID:         "user-alice",
+		Name:       "alice",
+		Email:      strptr("alice@example.com"),
+		CreatedAt:  100,
+		ModifiedAt: 100,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      memberUser.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+
+	created, err := ownerSvc.Add(AddInput{
+		Description: "write spec",
+		Assignees:   []string{"alice"},
+	})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if got := created.Assignees; len(got) != 1 || got[0].UserID != memberUser.ID || got[0].Name != "alice" {
+		t.Fatalf("Assignees = %#v", got)
+	}
+}
+
+func TestServiceModifyRejectsCrossWorkspaceAssignee(t *testing.T) {
+	store := newTestStore(t)
+	localSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	otherWS := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+		ID:           "ws-other",
+		Slug:         "other",
+		Name:         "Other",
+		Visibility:   "team",
+		SettingsJSON: "{}",
+		CreatedAt:    100,
+		ModifiedAt:   100,
+	})
+	otherUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID:         "user-other",
+		Name:       "other-user",
+		CreatedAt:  100,
+		ModifiedAt: 100,
+	})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      otherUser.ID,
+		WorkspaceID: otherWS.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+	created, err := localSvc.Add(AddInput{Description: "write spec"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	err = localSvc.Modify(created.UUID, ModifyInput{AddAssignees: []string{"other-user"}})
+	if err == nil {
+		t.Fatal("Modify() error = nil, want assignee_not_member")
+	}
+	rtErr, ok := err.(RuntimeError)
+	if !ok || rtErr.Code != "assignee_not_member" {
+		t.Fatalf("Modify() err = %#v, want RuntimeError(assignee_not_member)", err)
+	}
+}
+
+func TestServiceListExpandsAssigneeMe(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	localUser, err := sqlite.NewUserRepository(store.DB()).GetByName("local")
+	if err != nil {
+		t.Fatalf("GetByName(local) error = %v", err)
+	}
+	mine, err := svc.Add(AddInput{
+		Description: "my task",
+		Assignees:   []string{localUser.ID},
+	})
+	if err != nil {
+		t.Fatalf("Add(my task) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Description: "other task"}); err != nil {
+		t.Fatalf("Add(other task) error = %v", err)
+	}
+
+	expr, err := query.ParseQuery(`assignee:me`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	tasks, err := svc.List(ListInput{Query: expr, NoContext: true})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID != mine.UUID {
+		t.Fatalf("tasks = %#v, want only mine", tasks)
+	}
+}
+
+func TestServiceContextFilterResolvesAssigneeMe(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	mine, err := svc.Add(AddInput{Description: "my context task", Assignees: []string{"local"}})
+	if err != nil {
+		t.Fatalf("Add(my context task) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Description: "other context task"}); err != nil {
+		t.Fatalf("Add(other context task) error = %v", err)
+	}
+	if err := svc.DefineContext("mine", "assignee:me"); err != nil {
+		t.Fatalf("DefineContext(mine) error = %v", err)
+	}
+	if err := svc.UseContext("mine"); err != nil {
+		t.Fatalf("UseContext(mine) error = %v", err)
+	}
+
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() with assignee context error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID != mine.UUID {
+		t.Fatalf("List() with assignee context = %#v, want only mine", tasks)
+	}
+
+	all, err := svc.RunReport(ReportInput{Name: "all"})
+	if err != nil {
+		t.Fatalf("RunReport(all) with assignee context error = %v", err)
+	}
+	if len(all.Tasks) != 1 || all.Tasks[0].UUID != mine.UUID {
+		t.Fatalf("RunReport(all) with assignee context = %#v, want only mine", all.Tasks)
+	}
+}
+
+func TestServiceModifyClearAndAddAssigneesReplacesSet(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	alice := mustCreateUserRecord(t, store, sqlite.User{
+		ID:         "user-alice-clear-add",
+		Name:       "alice-clear-add",
+		Email:      strptr("alice-clear-add@example.com"),
+		CreatedAt:  100,
+		ModifiedAt: 100,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      alice.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+	created, err := svc.Add(AddInput{Description: "replace assignees", Assignees: []string{"local"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	if err := svc.Modify(created.UUID, ModifyInput{ClearAssignees: true, AddAssignees: []string{"alice-clear-add"}}); err != nil {
+		t.Fatalf("Modify(clear+add assignees) error = %v", err)
+	}
+	got, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+	if len(got.Assignees) != 1 || got.Assignees[0].UserID != alice.ID {
+		t.Fatalf("Assignees after clear+add = %#v, want only alice", got.Assignees)
+	}
+}
+
 func TestViewerCanUseOwnContextButCannotDefineContext(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
@@ -1122,6 +1299,117 @@ func TestServiceImportNormalizesProjectOnCreate(t *testing.T) {
 	}
 	if got.ProjectID == nil || *got.ProjectID != project.ID {
 		t.Fatalf("ProjectID = %#v, want %q", got.ProjectID, project.ID)
+	}
+}
+
+func TestServiceImportAssigneesFromObjectArray(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	count, err := svc.Import([]task.JSONTask{{
+		UUID:        "import-assignee-object",
+		Description: "imported task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+		Assignees:   []task.JSONAssignee{{Name: "local"}},
+	}})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Import() count = %d, want 1", count)
+	}
+
+	got, err := svc.ResolveTarget("import-assignee-object")
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if len(got.Assignees) != 1 || got.Assignees[0].Name != "local" {
+		t.Fatalf("Assignees = %#v, want one local assignee", got.Assignees)
+	}
+}
+
+func TestServiceImportAssigneesFromStringArray(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	count, err := svc.Import([]task.JSONTask{{
+		UUID:        "import-assignee-string",
+		Description: "imported task",
+		Status:      task.StatusPending,
+		Entry:       "1970-01-01T00:01:40Z",
+		Modified:    "1970-01-01T00:01:40Z",
+		Assignees:   []task.JSONAssignee{{UserID: "local"}},
+	}})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Import() count = %d, want 1", count)
+	}
+
+	got, err := svc.ResolveTarget("import-assignee-string")
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if len(got.Assignees) != 1 || got.Assignees[0].Name != "local" {
+		t.Fatalf("Assignees = %#v, want one local assignee", got.Assignees)
+	}
+}
+
+func TestServiceImportClearsAssigneesWithExplicitEmptyArray(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.Add(AddInput{Description: "assigned task", Assignees: []string{"local"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	count, err := svc.Import([]task.JSONTask{{
+		UUID:      created.UUID,
+		Entry:     "1970-01-01T00:01:40Z",
+		Modified:  "1970-01-01T00:01:40Z",
+		Assignees: []task.JSONAssignee{},
+	}})
+	if err != nil {
+		t.Fatalf("Import(clear assignees) error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Import() count = %d, want 1", count)
+	}
+
+	got, err := svc.ResolveTarget(created.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if len(got.Assignees) != 0 {
+		t.Fatalf("Assignees = %#v, want cleared assignees", got.Assignees)
+	}
+}
+
+func TestServiceExportIncludesAssignees(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.Add(AddInput{Description: "assigned task", Assignees: []string{"local"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	rows, err := svc.Export()
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Export() len = %d, want 1", len(rows))
+	}
+	if rows[0].UUID != created.UUID {
+		t.Fatalf("Exported UUID = %q, want %q", rows[0].UUID, created.UUID)
+	}
+	if len(rows[0].Assignees) != 1 || rows[0].Assignees[0].Name != "local" {
+		t.Fatalf("Exported assignees = %#v, want one local assignee", rows[0].Assignees)
 	}
 }
 
@@ -3375,6 +3663,54 @@ func TestServiceRecurringAddAndDoneCreatesNextChild(t *testing.T) {
 	}
 	if len(tasks) != 1 || tasks[0].UUID == firstChild.UUID {
 		t.Fatalf("next child not generated: %#v", tasks)
+	}
+}
+
+func TestServiceRecurringTaskPreservesAssignees(t *testing.T) {
+	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
+	defer closeFn()
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	until := mustUnix(t, "2030-02-01T23:59:59Z")
+	recur := "daily"
+	parent, err := svc.Add(AddInput{Description: "daily assigned task", Due: &due, Until: &until, Recur: &recur, Assignees: []string{"local"}})
+	if err != nil {
+		t.Fatalf("Add(recurring assigned) error = %v", err)
+	}
+	if len(parent.Assignees) != 1 || parent.Assignees[0].Name != "local" {
+		t.Fatalf("parent assignees = %#v, want local", parent.Assignees)
+	}
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 || len(tasks[0].Assignees) != 1 || tasks[0].Assignees[0].Name != "local" {
+		t.Fatalf("first child assignees = %#v, want local", tasks)
+	}
+	firstChild := tasks[0]
+	if err := svc.Done(firstChild.UUID); err != nil {
+		t.Fatalf("Done(first child) error = %v", err)
+	}
+	tasks, err = svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() after done error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID == firstChild.UUID || len(tasks[0].Assignees) != 1 || tasks[0].Assignees[0].Name != "local" {
+		t.Fatalf("next child assignees = %#v, want local", tasks)
+	}
+}
+
+func TestServiceRecurringTaskRejectsMissingAssignee(t *testing.T) {
+	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
+	defer closeFn()
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	recur := "daily"
+	_, err := svc.Add(AddInput{Description: "daily bad assignee", Due: &due, Recur: &recur, Assignees: []string{"missing-assignee"}})
+	if err == nil {
+		t.Fatal("Add(recurring missing assignee) error = nil, want assignee_not_found")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "assignee_not_found" {
+		t.Fatalf("Add(recurring missing assignee) err = %#v, want RuntimeError(assignee_not_found)", err)
 	}
 }
 

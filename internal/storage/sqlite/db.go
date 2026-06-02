@@ -173,7 +173,7 @@ func (s *Store) migrate() error {
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &Config{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskUDAValue{}); err != nil {
+	if err := s.db.AutoMigrate(&TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}); err != nil {
 		return err
 	}
 	if err := s.prepareProjectSchemaForM5(); err != nil {

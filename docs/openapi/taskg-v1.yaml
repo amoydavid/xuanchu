@@ -27,6 +27,8 @@ components:
         - permission_denied
         - task_not_found
         - task_uuid_invalid
+        - assignee_not_found
+        - assignee_not_member
         - project_not_found
         - project_mismatch
         - context_not_found
@@ -77,6 +79,20 @@ components:
           nullable: true
         status:
           type: string
+        assignees:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskAssignee'
+    TaskAssignee:
+      type: object
+      properties:
+        user_id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
     Project:
       type: object
       required: [id, workspace_id, slug, name, status]
@@ -554,7 +570,7 @@ paths:
               type: string
           style: form
           explode: true
-          description: Taskwarrior-style filter expression. Alias of filter.
+          description: Taskwarrior-style filter expression. Alias of filter. Supports assignee filters such as assignee:alice and assignee:me.
         - in: query
           name: filter
           schema:
@@ -609,6 +625,10 @@ paths:
                 due:
                   type: integer
                   format: int64
+                assignees:
+                  type: array
+                  items:
+                    type: string
                 depends:
                   type: array
                   items:
@@ -699,6 +719,16 @@ paths:
                   type: integer
                   format: int64
                 clear_until:
+                  type: boolean
+                assignees:
+                  type: array
+                  items:
+                    type: string
+                remove_assignees:
+                  type: array
+                  items:
+                    type: string
+                clear_assignees:
                   type: boolean
                 depends:
                   type: array

@@ -85,6 +85,21 @@ func TestOpenCanReopenExistingDatabase(t *testing.T) {
 	}
 }
 
+func TestTaskAssigneeTableMigrated(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasTable(&TaskAssignee{}) {
+		t.Fatal("task_assignees table missing after migration")
+	}
+	if !store.DB().Migrator().HasIndex(&TaskAssignee{}, "idx_task_assignees_user_id") {
+		t.Fatal("idx_task_assignees_user_id missing after migration")
+	}
+}
+
 func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {

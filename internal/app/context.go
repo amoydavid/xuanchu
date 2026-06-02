@@ -166,7 +166,7 @@ func (s *Service) activeContextFilter(skip bool) (query.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.resolveProjectPredicates(parsed)
+	return s.resolveTaskQueryPredicates(parsed)
 }
 
 func (s *Service) activeContext() (*taskcontext.Context, error) {

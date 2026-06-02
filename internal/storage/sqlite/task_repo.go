@@ -28,7 +28,7 @@ func NewTaskRepository(db *gorm.DB) *TaskRepository {
 }
 
 func (r *TaskRepository) preloadAssociations() *gorm.DB {
-	return r.db.Preload("Tags").Preload("Annotations").Preload("Depends").Preload("UDAs")
+	return r.db.Preload("Tags").Preload("Annotations").Preload("Depends").Preload("Assignees").Preload("UDAs")
 }
 
 func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
@@ -39,7 +39,11 @@ func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
 	if err := r.db.Create(&model).Error; err != nil {
 		return domain.Task{}, err
 	}
-	return fromModel(model), nil
+	usersByID, err := r.loadAssigneeUsers([]Task{model})
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return fromModel(model, usersByID), nil
 }
 
 func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, bool, error) {
@@ -64,7 +68,11 @@ func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, boo
 	if findErr != nil {
 		return domain.Task{}, false, findErr
 	}
-	return fromModel(model), true, nil
+	usersByID, err := r.loadAssigneeUsers([]Task{model})
+	if err != nil {
+		return domain.Task{}, false, err
+	}
+	return fromModel(model, usersByID), true, nil
 }
 
 func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Task, error) {
@@ -98,9 +106,13 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 	if err := q.Find(&models).Error; err != nil {
 		return nil, err
 	}
+	usersByID, err := r.loadAssigneeUsers(models)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.Task, 0, len(models))
 	for _, model := range models {
-		out = append(out, fromModel(model))
+		out = append(out, fromModel(model, usersByID))
 	}
 	return out, nil
 }
@@ -114,7 +126,11 @@ func (r *TaskRepository) GetByUUID(workspaceID, uuid string) (domain.Task, error
 	if err != nil {
 		return domain.Task{}, err
 	}
-	return fromModel(model), nil
+	usersByID, err := r.loadAssigneeUsers([]Task{model})
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return fromModel(model, usersByID), nil
 }
 
 func (r *TaskRepository) Update(tsk domain.Task) error {
@@ -164,6 +180,14 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 		}
 		for _, d := range sortedUnique(tsk.Depends) {
 			if err := tx.Create(&TaskDependency{TaskUUID: tsk.UUID, DependsOn: d}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("task_uuid = ?", tsk.UUID).Delete(&TaskAssignee{}).Error; err != nil {
+			return err
+		}
+		for _, userID := range sortedUniqueAssigneeUserIDs(tsk.Assignees) {
+			if err := tx.Create(&TaskAssignee{TaskUUID: tsk.UUID, UserID: userID}).Error; err != nil {
 				return err
 			}
 		}
@@ -235,9 +259,13 @@ func (r *TaskRepository) Children(workspaceID, parentUUID string) ([]domain.Task
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
+	usersByID, err := r.loadAssigneeUsers(models)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.Task, 0, len(models))
 	for _, model := range models {
-		out = append(out, fromModel(model))
+		out = append(out, fromModel(model, usersByID))
 	}
 	return out, nil
 }
@@ -250,9 +278,13 @@ func (r *TaskRepository) RecurringParents(workspaceID string) ([]domain.Task, er
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
+	usersByID, err := r.loadAssigneeUsers(models)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.Task, 0, len(models))
 	for _, model := range models {
-		out = append(out, fromModel(model))
+		out = append(out, fromModel(model, usersByID))
 	}
 	return out, nil
 }
@@ -269,6 +301,10 @@ func toModel(tsk domain.Task) Task {
 	depends := make([]TaskDependency, 0, len(tsk.Depends))
 	for _, d := range sortedUnique(tsk.Depends) {
 		depends = append(depends, TaskDependency{TaskUUID: tsk.UUID, DependsOn: d})
+	}
+	assignees := make([]TaskAssignee, 0, len(tsk.Assignees))
+	for _, userID := range sortedUniqueAssigneeUserIDs(tsk.Assignees) {
+		assignees = append(assignees, TaskAssignee{TaskUUID: tsk.UUID, UserID: userID})
 	}
 	udas := make([]TaskUDAValue, 0, len(tsk.UDAs))
 	for name, value := range tsk.UDAs {
@@ -291,11 +327,11 @@ func toModel(tsk domain.Task) Task {
 		Tags:  tags,
 		Start: tsk.Start, Wait: tsk.Wait, Scheduled: tsk.Scheduled, Until: tsk.Until,
 		Recur: tsk.Recur, Parent: tsk.Parent, Mask: tsk.Mask, IMask: tsk.IMask,
-		Annotations: annotations, Depends: depends, UDAs: udas,
+		Assignees: assignees, Annotations: annotations, Depends: depends, UDAs: udas,
 	}
 }
 
-func fromModel(model Task) domain.Task {
+func fromModel(model Task, usersByID map[string]User) domain.Task {
 	tags := make([]string, 0, len(model.Tags))
 	for _, tag := range model.Tags {
 		tags = append(tags, tag.Tag)
@@ -316,6 +352,16 @@ func fromModel(model Task) domain.Task {
 		depends = append(depends, d.DependsOn)
 	}
 	sort.Strings(depends)
+	assignees := make([]domain.AssigneeInfo, 0, len(model.Assignees))
+	for _, assignee := range model.Assignees {
+		info := domain.AssigneeInfo{UserID: assignee.UserID}
+		if user, ok := usersByID[assignee.UserID]; ok {
+			info.Name = user.Name
+			info.Email = user.Email
+		}
+		assignees = append(assignees, info)
+	}
+	domain.SortAssigneeInfos(assignees)
 	udas := make(map[string]domain.UDAValue, len(model.UDAs))
 	for _, value := range model.UDAs {
 		udas[value.Name] = domain.UDAValue{Name: value.Name, Raw: value.Value, Type: value.ValueType, Orphan: value.Orphan}
@@ -327,9 +373,35 @@ func fromModel(model Task) domain.Task {
 		Tags:  tags,
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
 		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,
-		Annotations: annotations, Depends: depends,
+		Assignees: assignees, Annotations: annotations, Depends: depends,
 		UDAs: udas,
 	}
+}
+
+func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]User, error) {
+	userIDs := make([]string, 0)
+	seen := map[string]bool{}
+	for _, model := range models {
+		for _, assignee := range model.Assignees {
+			if assignee.UserID == "" || seen[assignee.UserID] {
+				continue
+			}
+			seen[assignee.UserID] = true
+			userIDs = append(userIDs, assignee.UserID)
+		}
+	}
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var users []User
+	if err := r.db.Where("id IN ?", userIDs).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	usersByID := make(map[string]User, len(users))
+	for _, user := range users {
+		usersByID[user.ID] = user
+	}
+	return usersByID, nil
 }
 
 func sortedUnique(values []string) []string {
@@ -341,6 +413,20 @@ func sortedUnique(values []string) []string {
 		}
 		seen[value] = true
 		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedUniqueAssigneeUserIDs(values []domain.AssigneeInfo) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value.UserID == "" || seen[value.UserID] {
+			continue
+		}
+		seen[value.UserID] = true
+		out = append(out, value.UserID)
 	}
 	sort.Strings(out)
 	return out

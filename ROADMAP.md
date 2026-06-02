@@ -23,6 +23,7 @@
 | M6 | 已完成 | HTTP/JSON API、远程 CLI 与 Agent Token |
 | M7 | 已完成 | 企业 Agent MCP Server 与工具接口 |
 | M8 | 已完成 | 服务端 Hook / 自动化扩展与运维交付打磨 |
+| M9 | 已完成 | 任务多 Assignee |
 
 ## M0：本地单用户 CLI
 
@@ -692,6 +693,50 @@ M8 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Serve
 - 更丰富的 MCP tool 覆盖
 - 外部系统 adapter 生态
 - 多端同步与 replica
+
+## M9：任务多 Assignee
+
+**状态：已完成。**
+
+**目标：** 为任务增加多 assignee 支持，并让本地 CLI、远程 CLI、HTTP API、MCP、JSON export/import、Hook payload 都能在当前 workspace 边界内稳定读写和查询任务执行者。
+
+**范围：**
+
+- 新增 `task_assignees` 关联表，任务与用户改为多对多，不引入主 assignee 概念。
+- CLI：`@ref`、`+@ref`、`-@ref` 写语法，以及 `assignee:<ref>` / `assignee:me` 查询语法。
+- App / storage：统一把 assignee ref 解析到稳定 `user_id`，并在 repo hydrate 为结构化 assignee 列表；服务端模式下只允许 assign 当前 workspace 成员。
+- 错误语义固定：缺用户报 `assignee_not_found`，跨 workspace assign 报 `assignee_not_member`。
+- HTTP API、remote CLI、MCP：统一支持 assignee 写字段与结构化读字段。
+- JSON export/import、Hook payload：`assignees` 统一为对象数组视图。
+- README / manual / OpenAPI / requirements 同步更新。
+
+**不进入 M9：**
+
+- 主 assignee / 协作者区分。
+- assignee 级权限。
+- assignee 通知/提醒（属于外部 adapter 范畴）。
+- urgency 公式修改。
+- 跨 workspace 的全局 “assignee:me” 视图。
+- `list` / `next` / report table 的 assignee 列系统改造。
+
+**验收标准：**
+
+- CLI `add @alice`、`modify +@bob -@alice`、`list assignee:me` 可用。
+- `task info` human 输出可显示 assignee。
+- export/import 往返不丢失 assignee 数据，并兼容对象数组与字符串数组输入。
+- MCP `task.add` / `task.modify` 支持 assignee 参数，`task.get` / `task.query` 返回结构化 assignees。
+- HTTP API / remote CLI 支持 assignee 参数与过滤。
+- Hook payload 的 `data.task.assignees` 可见。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+
+M9 规格与实现计划：
+
+```text
+docs/superpowers/specs/2026-06-02-taskg-m9-assignee-design.md
+docs/superpowers/plans/2026-06-02-taskg-m9-assignee-implementation.md
+```
+
+---
 
 M8 规格与实现计划：
 

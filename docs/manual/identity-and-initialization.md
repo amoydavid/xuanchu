@@ -135,7 +135,16 @@ curl -H "Authorization: Bearer $TASKG_TOKEN" \
 
 ## 创建远程 token
 
-第一个远程 token 建议在 server 启动前用本地 CLI 创建：
+第一个远程 token 建议在 server 启动前用本地 CLI 创建。
+
+> **注意**：`--workspace` 仅覆盖本次命令的 workspace，actor 仍是本机 active user。如果 active user 不是目标 workspace 的成员，会报 `membership_not_found`。请先确认身份：
+>
+> ```bash
+> taskg _show active.user active.workspace
+> # 如果 active user 不是目标 workspace 成员，先切换：
+> taskg user use <workspace-owner>
+> taskg workspace use dajee
+> ```
 
 ```bash
 taskg --workspace dajee token create admin \

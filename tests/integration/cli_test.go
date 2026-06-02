@@ -38,6 +38,78 @@ func TestCLIAddListInfo(t *testing.T) {
 	}
 }
 
+func TestCLIAddWithAssignees(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "write", "spec", "@local")
+	out := run(t, bin, "--db", db, "--json", "info", "1")
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("info --json output is not JSON: %v\n%s", err, out)
+	}
+	assignees, ok := payload["assignees"].([]any)
+	if !ok || len(assignees) != 1 {
+		t.Fatalf("assignees = %#v, want one assignee", payload["assignees"])
+	}
+	first, ok := assignees[0].(map[string]any)
+	if !ok || first["name"] != "local" {
+		t.Fatalf("first assignee = %#v, want name local", assignees[0])
+	}
+}
+
+func TestCLIModifyAssignees(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "write", "spec")
+	run(t, bin, "--db", db, "1", "modify", "+@local")
+	out := run(t, bin, "--db", db, "--json", "info", "1")
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("info --json output is not JSON: %v\n%s", err, out)
+	}
+	assignees, ok := payload["assignees"].([]any)
+	if !ok || len(assignees) != 1 {
+		t.Fatalf("assignees after add = %#v, want one assignee", payload["assignees"])
+	}
+
+	run(t, bin, "--db", db, "1", "modify", "-@local")
+	out = run(t, bin, "--db", db, "--json", "info", "1")
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("info --json output is not JSON after remove: %v\n%s", err, out)
+	}
+	assignees, ok = payload["assignees"].([]any)
+	if !ok || len(assignees) != 0 {
+		t.Fatalf("assignees after remove = %#v, want empty array", payload["assignees"])
+	}
+}
+
+func TestCLIInfoShowsAssignees(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "write", "spec", "@local")
+	info := run(t, bin, "--db", db, "info", "1")
+	if !strings.Contains(info, "Assignees:") || !strings.Contains(info, "@local") {
+		t.Fatalf("info output = %q", info)
+	}
+}
+
+func TestCLIListByAssignee(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "my", "task", "@local")
+	run(t, bin, "--db", db, "add", "other", "task")
+	out := run(t, bin, "--db", db, "list", "assignee:me")
+	if !strings.Contains(out, "my task") || strings.Contains(out, "other task") {
+		t.Fatalf("list output = %q", out)
+	}
+}
+
 func TestCLIShowAndConfig(t *testing.T) {
 	bin := buildTaskg(t)
 	db := filepath.Join(t.TempDir(), "taskg.db")

@@ -31,6 +31,7 @@ const (
 	AttrAnnotations Attribute = "annotations"
 	AttrRecur       Attribute = "recur"
 	AttrParent      Attribute = "parent"
+	AttrAssignee    Attribute = "assignee"
 	AttrTag         Attribute = "tag"
 	AttrBare        Attribute = "bare"
 	AttrUDA         Attribute = "uda"

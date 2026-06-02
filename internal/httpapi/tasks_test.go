@@ -198,3 +198,88 @@ func TestTaskAddAcceptsDueField(t *testing.T) {
 		t.Fatalf("due = %#v, want non-empty due; body=%s", payload.Data.Due, rr.Body.String())
 	}
 }
+
+func TestTaskAddAssignees(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+
+	body := `{"description":"assigned","assignees":["local"]}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", body, map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	})
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Assignees []struct {
+				Name string `json:"name"`
+			} `json:"assignees"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Data.Assignees) != 1 || payload.Data.Assignees[0].Name != "local" {
+		t.Fatalf("assignees = %#v, want [local]", payload.Data.Assignees)
+	}
+}
+
+func TestTaskModifyAssignees(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "assigned later"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"assignees":["local"]}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tasks/"+created.UUID, body, map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Assignees []struct {
+				Name string `json:"name"`
+			} `json:"assignees"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Data.Assignees) != 1 || payload.Data.Assignees[0].Name != "local" {
+		t.Fatalf("assignees = %#v, want [local]", payload.Data.Assignees)
+	}
+}
+
+func TestTaskListByAssignee(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "mine", Assignees: []string{"local"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "plain"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks?query=assignee:me", map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "mine") || strings.Contains(body, "plain") {
+		t.Fatalf("assignee query did not filter tasks: %s", body)
+	}
+}

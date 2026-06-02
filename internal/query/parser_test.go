@@ -24,6 +24,19 @@ func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
 	}
 }
 
+func TestParseAddArgsRecognizesAssignees(t *testing.T) {
+	parsed, err := ParseAddArgs([]string{"write", "spec", "@alice", "@bob@example.com"})
+	if err != nil {
+		t.Fatalf("ParseAddArgs() error = %v", err)
+	}
+	if parsed.Description != "write spec" {
+		t.Fatalf("Description = %q", parsed.Description)
+	}
+	if got := parsed.Mod.AddAssignees; len(got) != 2 || got[0] != "alice" || got[1] != "bob@example.com" {
+		t.Fatalf("AddAssignees = %#v", got)
+	}
+}
+
 func TestParseModifyArgsRequiresModification(t *testing.T) {
 	if _, err := ParseModifyArgs([]string{}); err == nil {
 		t.Fatal("ParseModifyArgs() error = nil, want error")
@@ -74,6 +87,19 @@ func TestParseModifyArgsM2Fields(t *testing.T) {
 	}
 	if mod.Recur == nil || *mod.Recur != "weekly" {
 		t.Fatalf("Recur = %#v", mod.Recur)
+	}
+}
+
+func TestParseModifyArgsRecognizesAssigneeMutations(t *testing.T) {
+	mod, err := ParseModifyArgs([]string{"+@alice", "-@bob@example.com"})
+	if err != nil {
+		t.Fatalf("ParseModifyArgs() error = %v", err)
+	}
+	if got := mod.AddAssignees; len(got) != 1 || got[0] != "alice" {
+		t.Fatalf("AddAssignees = %#v", got)
+	}
+	if got := mod.RemoveAssignees; len(got) != 1 || got[0] != "bob@example.com" {
+		t.Fatalf("RemoveAssignees = %#v", got)
 	}
 }
 

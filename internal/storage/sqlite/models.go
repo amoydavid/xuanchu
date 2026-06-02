@@ -124,6 +124,7 @@ type Task struct {
 	Parent      *string `gorm:"index"`
 	Mask        *string
 	IMask       *int
+	Assignees   []TaskAssignee   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Annotations []TaskAnnotation `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Depends     []TaskDependency `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	UDAs        []TaskUDAValue   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
@@ -143,6 +144,11 @@ type TaskAnnotation struct {
 type TaskDependency struct {
 	TaskUUID  string `gorm:"primaryKey;not null"`
 	DependsOn string `gorm:"primaryKey;not null;index"`
+}
+
+type TaskAssignee struct {
+	TaskUUID string `gorm:"primaryKey;not null"`
+	UserID   string `gorm:"primaryKey;not null;index:idx_task_assignees_user_id"`
 }
 
 type TaskUDAValue struct {

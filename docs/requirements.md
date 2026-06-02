@@ -128,7 +128,7 @@ M6 已实现的 capability：
 
 ### 2.2 多租户扩展字段（新增）
 
-`workspace_id`(FK) · `project_id`(FK, M5+) · `creator_user_id`(FK) · `assignee_user_id`(FK, nullable) · `followers`([]user_id) · `external_refs`(JSON, e.g. `{"github":"owner/repo#123"}`)。
+`workspace_id`(FK) · `project_id`(FK, M5+) · `creator_user_id`(FK) · `task_assignees`(task↔user 多对多关系) · `followers`([]user_id) · `external_refs`(JSON, e.g. `{"github":"owner/repo#123"}`)。
 
 ### 2.3 UDA（用户自定义属性）
 
@@ -581,13 +581,19 @@ CREATE TABLE tasks (
   mask          TEXT,
   imask         INTEGER,
   creator_user_id  TEXT REFERENCES users(id),
-  assignee_user_id TEXT REFERENCES users(id),
   external_refs_json TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
 );
 CREATE INDEX idx_tasks_ws_status ON tasks(workspace_id, status);
 CREATE INDEX idx_tasks_ws_project_id ON tasks(workspace_id, project_id);
 CREATE INDEX idx_tasks_ws_due ON tasks(workspace_id, due);
+
+CREATE TABLE task_assignees (
+  task_uuid TEXT NOT NULL REFERENCES tasks(uuid) ON DELETE CASCADE,
+  user_id   TEXT NOT NULL REFERENCES users(id),
+  PRIMARY KEY (task_uuid, user_id)
+);
+CREATE INDEX idx_task_assignees_user_id ON task_assignees(user_id);
 
 CREATE TABLE task_tags (
   task_uuid TEXT NOT NULL REFERENCES tasks(uuid) ON DELETE CASCADE,
@@ -732,6 +738,7 @@ CREATE INDEX idx_audit_project_time ON audit_logs(workspace_id, project_id, crea
     "project":      {"type": "string", "description": "当前 workspace 内的企业项目 slug；不同 workspace 可以重复"},
     "project_id":   {"type": "string", "format": "uuid", "description": "M5 后优先使用的稳定 project 身份"},
     "tags":         {"type": "array", "items": {"type": "string"}},
+    "assignees":    {"type": "array", "items": {"type": "string"}},
     "priority":     {"type": "string", "enum": ["H","M","L"]},
     "due":          {"type": "string"},      // 接受 ISO8601 或 Taskwarrior 关键字
     "scheduled":    {"type": "string"},

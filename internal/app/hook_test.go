@@ -1006,6 +1006,75 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	_ = store
 }
 
+func TestHookPayloadIncludesAssignees(t *testing.T) {
+	svc, store, cleanup := hookTestEnv(t)
+	defer cleanup()
+	assignee := mustCreateUserRecord(t, store, sqlite.User{
+		ID:         "user-hook-assignee",
+		Name:       "hook-assignee",
+		Email:      strptr("hook-assignee@example.com"),
+		CreatedAt:  1000,
+		ModifiedAt: 1000,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID:      assignee.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleMember),
+		JoinedAt:    1000,
+		ModifiedAt:  1000,
+	})
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "create-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
+		Secret: "s3cret", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+
+	created, err := svc.Add(AddInput{Description: "assigned hook task", Assignees: []string{"hook-assignee"}})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries count = %d, want 1", len(deliveries))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(deliveries[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal(payload) error = %v", err)
+	}
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload data = %T, want map[string]any", payload["data"])
+	}
+	taskData, ok := data["task"].(map[string]any)
+	if !ok {
+		t.Fatalf("data.task = %T, want map[string]any", data["task"])
+	}
+	if taskData["uuid"] != created.UUID {
+		t.Fatalf("task.uuid = %v, want %s", taskData["uuid"], created.UUID)
+	}
+	assignees, ok := taskData["assignees"].([]any)
+	if !ok || len(assignees) != 1 {
+		t.Fatalf("task.assignees = %#v, want one assignee", taskData["assignees"])
+	}
+	first, ok := assignees[0].(map[string]any)
+	if !ok || first["user_id"] != assignee.ID || first["name"] != "hook-assignee" || first["email"] != "hook-assignee@example.com" {
+		t.Fatalf("first assignee = %#v, want complete hook-assignee info", assignees[0])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestHookEventsForWriteOperations: 每个写操作生成正确的事件类型
 // ---------------------------------------------------------------------------

@@ -1,25 +1,28 @@
 package task
 
 type Modification struct {
-	Description    *string
-	Project        *string
-	Priority       *string
-	Due            *int64
-	ClearDue       bool
-	Wait           *int64
-	ClearWait      bool
-	Scheduled      *int64
-	ClearScheduled bool
-	Until          *int64
-	ClearUntil     bool
-	AddDepends     []string
-	ClearDepends   bool
-	Recur          *string
-	ClearRecur     bool
-	AddTags        []string
-	RemoveTags     []string
-	UDAs           map[string]string
-	ClearUDAs      []string
+	Description     *string
+	Project         *string
+	Priority        *string
+	Due             *int64
+	ClearDue        bool
+	Wait            *int64
+	ClearWait       bool
+	Scheduled       *int64
+	ClearScheduled  bool
+	Until           *int64
+	ClearUntil      bool
+	AddDepends      []string
+	ClearDepends    bool
+	Recur           *string
+	ClearRecur      bool
+	AddAssignees    []string
+	RemoveAssignees []string
+	ClearAssignees  bool
+	AddTags         []string
+	RemoveTags      []string
+	UDAs            map[string]string
+	ClearUDAs       []string
 }
 
 func (m Modification) Empty() bool {
@@ -32,6 +35,8 @@ func (m Modification) Empty() bool {
 		m.Until == nil && !m.ClearUntil &&
 		len(m.AddDepends) == 0 && !m.ClearDepends &&
 		m.Recur == nil && !m.ClearRecur &&
+		len(m.AddAssignees) == 0 &&
+		len(m.RemoveAssignees) == 0 && !m.ClearAssignees &&
 		len(m.AddTags) == 0 &&
 		len(m.RemoveTags) == 0 &&
 		len(m.UDAs) == 0 &&

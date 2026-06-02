@@ -27,6 +27,99 @@ func TestTaskJSONUsesTaskwarriorFieldNames(t *testing.T) {
 	}
 }
 
+func TestJSONTaskExportsAssignees(t *testing.T) {
+	email := "alice@example.com"
+	tsk := Task{
+		UUID:        "u1",
+		Description: "write spec",
+		Status:      StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Assignees: []AssigneeInfo{
+			{UserID: "user-alice", Name: "alice", Email: &email},
+			{UserID: "user-bob", Name: "bob"},
+		},
+	}
+
+	data, err := json.Marshal(ToJSON(tsk))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	for _, field := range []string{
+		`"assignees":[`,
+		`"user_id":"user-alice"`,
+		`"name":"alice"`,
+		`"email":"alice@example.com"`,
+		`"user_id":"user-bob"`,
+		`"name":"bob"`,
+	} {
+		if !strings.Contains(string(data), field) {
+			t.Fatalf("JSON %s missing field %s", data, field)
+		}
+	}
+}
+
+func TestJSONTaskImportSupportsObjectAssignees(t *testing.T) {
+	var dto JSONTask
+	err := json.Unmarshal([]byte(`{
+		"uuid":"u1",
+		"description":"task",
+		"status":"pending",
+		"entry":"1970-01-01T00:00:01Z",
+		"modified":"1970-01-01T00:00:02Z",
+		"assignees":[
+			{"user_id":"user-alice","name":"alice","email":"alice@example.com"},
+			{"user_id":"user-bob","name":"bob"}
+		]
+	}`), &dto)
+	if err != nil {
+		t.Fatalf("Unmarshal(object assignees) error = %v", err)
+	}
+
+	got, err := FromJSONStrict(dto)
+	if err != nil {
+		t.Fatalf("FromJSONStrict(object assignees) error = %v", err)
+	}
+	if len(got.Assignees) != 2 {
+		t.Fatalf("Assignees = %#v, want 2 entries", got.Assignees)
+	}
+	if got.Assignees[0].UserID != "user-alice" || got.Assignees[0].Name != "alice" || got.Assignees[0].Email == nil || *got.Assignees[0].Email != "alice@example.com" {
+		t.Fatalf("first assignee = %#v", got.Assignees[0])
+	}
+	if got.Assignees[1].UserID != "user-bob" || got.Assignees[1].Name != "bob" || got.Assignees[1].Email != nil {
+		t.Fatalf("second assignee = %#v", got.Assignees[1])
+	}
+}
+
+func TestJSONTaskImportSupportsStringAssignees(t *testing.T) {
+	var dto JSONTask
+	err := json.Unmarshal([]byte(`{
+		"uuid":"u1",
+		"description":"task",
+		"status":"pending",
+		"entry":"1970-01-01T00:00:01Z",
+		"modified":"1970-01-01T00:00:02Z",
+		"assignees":["user-alice","alice@example.com"]
+	}`), &dto)
+	if err != nil {
+		t.Fatalf("Unmarshal(string assignees) error = %v", err)
+	}
+
+	got, err := FromJSONStrict(dto)
+	if err != nil {
+		t.Fatalf("FromJSONStrict(string assignees) error = %v", err)
+	}
+	if len(got.Assignees) != 2 {
+		t.Fatalf("Assignees = %#v, want 2 entries", got.Assignees)
+	}
+	if got.Assignees[0].UserID != "user-alice" || got.Assignees[0].Name != "" || got.Assignees[0].Email != nil {
+		t.Fatalf("first assignee = %#v", got.Assignees[0])
+	}
+	if got.Assignees[1].UserID != "" || got.Assignees[1].Name != "" || got.Assignees[1].Email == nil || *got.Assignees[1].Email != "alice@example.com" {
+		t.Fatalf("second assignee = %#v", got.Assignees[1])
+	}
+}
+
 func TestJSONTaskM2RoundTrip(t *testing.T) {
 	start, wait, scheduled, until := int64(10), int64(20), int64(30), int64(40)
 	recur, parent, mask := "weekly", "parent", "mask"

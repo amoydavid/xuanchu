@@ -63,8 +63,18 @@ go build -o taskg ./cmd/taskg
 
 ```bash
 ./taskg add "Ship MCP API" project:ai-agent-platform priority:H +next due:friday
+./taskg add "Review release note" @alice
 ./taskg 1 modify project:ai-agent-platform priority:M +review -next
+./taskg 1 modify +@alice -@bob
 ./taskg 1 modify due:                  # 清空 due
+```
+
+多 assignee 查询与展示：
+
+```bash
+./taskg list assignee:alice
+./taskg next assignee:me
+./taskg info 1
 ```
 
 查询可以放在报表命令前，也可以放在报表命令后：

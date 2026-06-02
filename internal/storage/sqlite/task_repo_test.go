@@ -96,6 +96,90 @@ func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryCreateAndGetAssignees(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	createTestUser(t, store, User{ID: "user-bob", Name: "bob", CreatedAt: 100, ModifiedAt: 100})
+	createTestUser(t, store, User{ID: "user-alice", Name: "alice", CreatedAt: 100, ModifiedAt: 100, Email: stringPtr("alice@example.com")})
+
+	created, err := repo.Create(domain.Task{
+		UUID:        "task-assignees",
+		WorkspaceID: ws.ID,
+		Description: "write spec",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Assignees: []domain.AssigneeInfo{
+			{UserID: "user-bob"},
+			{UserID: "user-alice"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(created.Assignees) != 2 {
+		t.Fatalf("created assignees = %#v, want 2 entries", created.Assignees)
+	}
+
+	got, err := repo.GetByUUID(ws.ID, "task-assignees")
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if len(got.Assignees) != 2 {
+		t.Fatalf("Assignees = %#v, want 2 entries", got.Assignees)
+	}
+	if got.Assignees[0].UserID != "user-alice" || got.Assignees[0].Name != "alice" || got.Assignees[0].Email == nil || *got.Assignees[0].Email != "alice@example.com" {
+		t.Fatalf("first assignee = %#v", got.Assignees[0])
+	}
+	if got.Assignees[1].UserID != "user-bob" || got.Assignees[1].Name != "bob" || got.Assignees[1].Email != nil {
+		t.Fatalf("second assignee = %#v", got.Assignees[1])
+	}
+}
+
+func TestTaskRepositoryUpdateAssignees(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	createTestUser(t, store, User{ID: "user-alice", Name: "alice", CreatedAt: 100, ModifiedAt: 100})
+	createTestUser(t, store, User{ID: "user-bob", Name: "bob", CreatedAt: 100, ModifiedAt: 100})
+	createTestUser(t, store, User{ID: "user-carol", Name: "carol", CreatedAt: 100, ModifiedAt: 100, Email: stringPtr("carol@example.com")})
+
+	if _, err := repo.Create(domain.Task{
+		UUID:        "task-update-assignees",
+		WorkspaceID: ws.ID,
+		Description: "write spec",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Assignees: []domain.AssigneeInfo{
+			{UserID: "user-bob"},
+			{UserID: "user-alice"},
+		},
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	tsk, err := repo.GetByUUID(ws.ID, "task-update-assignees")
+	if err != nil {
+		t.Fatalf("GetByUUID() before update error = %v", err)
+	}
+	tsk.Assignees = []domain.AssigneeInfo{
+		{UserID: "user-carol"},
+	}
+	tsk.Modified = 200
+	if err := repo.Update(tsk); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	got, err := repo.GetByUUID(ws.ID, "task-update-assignees")
+	if err != nil {
+		t.Fatalf("GetByUUID() after update error = %v", err)
+	}
+	if len(got.Assignees) != 1 {
+		t.Fatalf("Assignees = %#v, want 1 entry", got.Assignees)
+	}
+	if got.Assignees[0].UserID != "user-carol" || got.Assignees[0].Name != "carol" || got.Assignees[0].Email == nil || *got.Assignees[0].Email != "carol@example.com" {
+		t.Fatalf("assignee after update = %#v", got.Assignees[0])
+	}
+}
+
 func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 	_, repo, ws := newTestRepo(t)
 
@@ -300,4 +384,15 @@ func TestTaskRepositoryAddAnnotationAppendsWithoutReplacingExisting(t *testing.T
 	if got.Annotations[0].Description != "first" || got.Annotations[1].Description != "second" {
 		t.Fatalf("Annotations order/content = %#v", got.Annotations)
 	}
+}
+
+func createTestUser(t *testing.T, store *Store, user User) {
+	t.Helper()
+	if err := store.DB().Create(&user).Error; err != nil {
+		t.Fatalf("create user %q: %v", user.ID, err)
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

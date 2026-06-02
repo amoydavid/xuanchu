@@ -128,6 +128,15 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 		return compareColumn("recur", p.Operator, value, nil)
 	case query.AttrParent:
 		return compareColumn("parent", p.Operator, value, nil)
+	case query.AttrAssignee:
+		switch p.Operator {
+		case query.OpEqual:
+			return "EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid AND task_assignees.user_id = ?)", []any{value}, nil
+		case query.OpIsNull:
+			return "NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)", nil, nil
+		case query.OpNotNull:
+			return "EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)", nil, nil
+		}
 	case query.AttrDepends:
 		switch p.Operator {
 		case query.OpEqual:
