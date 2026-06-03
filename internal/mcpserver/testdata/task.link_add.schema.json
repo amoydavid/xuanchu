@@ -1,0 +1,54 @@
+{
+  "description": "Add an external link to a task; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "task": {
+        "description": "task reference (UUID or working-set ID)",
+        "type": "string"
+      },
+      "title": {
+        "description": "optional display title",
+        "type": "string"
+      },
+      "type": {
+        "description": "link type (e.g. document, pr, ticket, design)",
+        "type": "string"
+      },
+      "url": {
+        "description": "external resource URL",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "task",
+      "type",
+      "url"
+    ],
+    "type": "object"
+  },
+  "name": "task.link_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

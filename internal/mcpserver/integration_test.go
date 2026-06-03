@@ -220,6 +220,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"task.add", "task.query", "task.get",
 		"task.modify", "task.done", "task.delete",
 		"task.annotate", "task.depends", "task.start", "task.stop",
+		"task.link_add", "task.link_remove",
 		"report.run", "urgency.explain",
 		"workspace.list", "workspace.current",
 		"project.list", "project.get", "project.current",
