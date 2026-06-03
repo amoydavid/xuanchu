@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/task"
 )
 
 var workspaceSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
@@ -743,6 +744,71 @@ func userViewFromRow(user sqlite.User, active bool) UserView {
 		CreatedAt:          user.CreatedAt,
 		ModifiedAt:         user.ModifiedAt,
 	}
+}
+
+func (s *Service) BindExternalID(userID, provider, externalID string) error {
+	provider = strings.TrimSpace(provider)
+	externalID = strings.TrimSpace(externalID)
+	if provider == "" || externalID == "" {
+		return RuntimeError{Code: "invalid_input", Message: "provider and external_id are required"}
+	}
+	if userID != s.runtime.ActorUserID {
+		if err := requireRolePermission(s.runtime.Role, PermissionWorkspaceModify); err != nil {
+			return RuntimeError{Code: "permission_denied", Message: "only admin/owner can bind external IDs for other users"}
+		}
+	}
+	return s.withAudit("user.bind_external_id", func(tx *Service) (AuditEntry, error) {
+		_, err := tx.extIDRepo.Create(sqlite.UserExternalID{
+			ID:         uuid.NewString(),
+			UserID:     userID,
+			Provider:   provider,
+			ExternalID: externalID,
+			CreatedAt:  s.clock.Unix(),
+		})
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "user",
+			TargetID:   userID,
+			Payload:    map[string]any{"provider": provider, "external_id": externalID},
+		}, nil
+	})
+}
+
+func (s *Service) UnbindExternalID(userID, provider, externalID string) error {
+	provider = strings.TrimSpace(provider)
+	externalID = strings.TrimSpace(externalID)
+	if provider == "" || externalID == "" {
+		return RuntimeError{Code: "invalid_input", Message: "provider and external_id are required"}
+	}
+	if userID != s.runtime.ActorUserID {
+		if err := requireRolePermission(s.runtime.Role, PermissionWorkspaceModify); err != nil {
+			return RuntimeError{Code: "permission_denied", Message: "only admin/owner can unbind external IDs for other users"}
+		}
+	}
+	return s.withAudit("user.unbind_external_id", func(tx *Service) (AuditEntry, error) {
+		if err := tx.extIDRepo.Delete(userID, provider, externalID); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "user",
+			TargetID:   userID,
+			Payload:    map[string]any{"provider": provider, "external_id": externalID},
+		}, nil
+	})
+}
+
+func (s *Service) ListExternalIDs(userID string) ([]task.ExternalIDInfo, error) {
+	rows, err := s.extIDRepo.ListByUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]task.ExternalIDInfo, len(rows))
+	for i, row := range rows {
+		out[i] = task.ExternalIDInfo{Provider: row.Provider, ExternalID: row.ExternalID}
+	}
+	return out, nil
 }
 
 func workspaceViewFromRow(workspace sqlite.Workspace, role Role, active bool) WorkspaceView {
