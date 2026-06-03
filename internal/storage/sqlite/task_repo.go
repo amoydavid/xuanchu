@@ -43,7 +43,11 @@ func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
 	if err != nil {
 		return domain.Task{}, err
 	}
-	return fromModel(model, usersByID), nil
+	linksByTask, err := r.loadLinksByTask([]Task{model})
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return fromModel(model, usersByID, linksByTask), nil
 }
 
 func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, bool, error) {
@@ -72,7 +76,11 @@ func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, boo
 	if err != nil {
 		return domain.Task{}, false, err
 	}
-	return fromModel(model, usersByID), true, nil
+	linksByTask, err := r.loadLinksByTask([]Task{model})
+	if err != nil {
+		return domain.Task{}, false, err
+	}
+	return fromModel(model, usersByID, linksByTask), true, nil
 }
 
 func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Task, error) {
@@ -110,9 +118,13 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 	if err != nil {
 		return nil, err
 	}
+	linksByTask, err := r.loadLinksByTask(models)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.Task, 0, len(models))
 	for _, model := range models {
-		out = append(out, fromModel(model, usersByID))
+		out = append(out, fromModel(model, usersByID, linksByTask))
 	}
 	return out, nil
 }
@@ -130,7 +142,11 @@ func (r *TaskRepository) GetByUUID(workspaceID, uuid string) (domain.Task, error
 	if err != nil {
 		return domain.Task{}, err
 	}
-	return fromModel(model, usersByID), nil
+	linksByTask, err := r.loadLinksByTask([]Task{model})
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return fromModel(model, usersByID, linksByTask), nil
 }
 
 func (r *TaskRepository) Update(tsk domain.Task) error {
@@ -263,9 +279,13 @@ func (r *TaskRepository) Children(workspaceID, parentUUID string) ([]domain.Task
 	if err != nil {
 		return nil, err
 	}
+	linksByTask, err := r.loadLinksByTask(models)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.Task, 0, len(models))
 	for _, model := range models {
-		out = append(out, fromModel(model, usersByID))
+		out = append(out, fromModel(model, usersByID, linksByTask))
 	}
 	return out, nil
 }
@@ -282,9 +302,13 @@ func (r *TaskRepository) RecurringParents(workspaceID string) ([]domain.Task, er
 	if err != nil {
 		return nil, err
 	}
+	linksByTask, err := r.loadLinksByTask(models)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.Task, 0, len(models))
 	for _, model := range models {
-		out = append(out, fromModel(model, usersByID))
+		out = append(out, fromModel(model, usersByID, linksByTask))
 	}
 	return out, nil
 }
@@ -331,7 +355,7 @@ func toModel(tsk domain.Task) Task {
 	}
 }
 
-func fromModel(model Task, usersByID map[string]assigneeUserData) domain.Task {
+func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask map[string][]domain.TaskLinkInfo) domain.Task {
 	tags := make([]string, 0, len(model.Tags))
 	for _, tag := range model.Tags {
 		tags = append(tags, tag.Tag)
@@ -375,6 +399,7 @@ func fromModel(model Task, usersByID map[string]assigneeUserData) domain.Task {
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
 		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,
 		Assignees: assignees, Annotations: annotations, Depends: depends,
+		Links: linksByTask[model.UUID],
 		UDAs: udas,
 	}
 }
@@ -424,6 +449,33 @@ func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]assigneeUs
 		}
 	}
 	return usersByID, nil
+}
+
+func (r *TaskRepository) loadLinksByTask(models []Task) (map[string][]domain.TaskLinkInfo, error) {
+	taskUUIDs := make([]string, 0, len(models))
+	for _, m := range models {
+		taskUUIDs = append(taskUUIDs, m.UUID)
+	}
+	if len(taskUUIDs) == 0 {
+		return nil, nil
+	}
+	linkRepo := NewTaskLinkRepository(r.db)
+	linksMap, err := linkRepo.LoadByTaskUUIDs(taskUUIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string][]domain.TaskLinkInfo, len(linksMap))
+	for uuid, links := range linksMap {
+		infos := make([]domain.TaskLinkInfo, 0, len(links))
+		for _, l := range links {
+			infos = append(infos, domain.TaskLinkInfo{
+				ID: l.ID, Type: l.Type, URL: l.URL,
+				Title: l.Title, CreatedAt: l.CreatedAt, CreatedBy: l.CreatedBy,
+			})
+		}
+		result[uuid] = infos
+	}
+	return result, nil
 }
 
 func sortedUnique(values []string) []string {
