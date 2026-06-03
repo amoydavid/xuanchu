@@ -597,6 +597,15 @@ func (s *Service) resolveUser(ref string) (sqlite.User, error) {
 	if user, err := s.userRepo.GetByID(ref); err == nil {
 		return user, nil
 	}
+	if idx := strings.Index(ref, ":"); idx > 0 {
+		provider := ref[:idx]
+		externalID := ref[idx+1:]
+		if provider != "" && externalID != "" {
+			if user, err := s.userRepo.GetByExternalID(provider, externalID); err == nil {
+				return user, nil
+			}
+		}
+	}
 	if user, err := s.userRepo.GetByName(ref); err == nil {
 		return user, nil
 	}

@@ -31,6 +31,7 @@ type Service struct {
 	udaRepo               *sqlite.UDARepository
 	hookRepo              *sqlite.HookRepository
 	hookDeliveryRepo      hookDeliveryEnqueuer
+	extIDRepo             *sqlite.ExternalIDRepository
 	runtimeConfig         map[string]string
 	runtimeOverrides      map[string]string
 	runtimeUDAs           map[string]uda.Definition
@@ -159,6 +160,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		udaRepo:          sqlite.NewUDARepository(opts.Store.DB()),
 		hookRepo:         sqlite.NewHookRepository(opts.Store.DB()),
 		hookDeliveryRepo: sqlite.NewHookDeliveryRepository(opts.Store.DB()),
+		extIDRepo:        sqlite.NewExternalIDRepository(opts.Store.DB()),
 		runtimeConfig:    runtimeConfig,
 		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
 		runtimeUDAs:      runtimeUDAs,
