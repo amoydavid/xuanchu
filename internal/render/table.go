@@ -120,13 +120,28 @@ func formatAssignees(assignees []task.AssigneeInfo) string {
 	}
 	out := make([]string, 0, len(assignees))
 	for _, assignee := range assignees {
+		label := ""
 		switch {
 		case assignee.Name != "":
-			out = append(out, "@"+assignee.Name)
+			label = assignee.Name
 		case assignee.Email != nil && *assignee.Email != "":
-			out = append(out, "@"+*assignee.Email)
+			label = *assignee.Email
 		case assignee.UserID != "":
-			out = append(out, "@"+assignee.UserID)
+			label = assignee.UserID
+		}
+		if len(assignee.ExternalIDs) > 0 {
+			labels := make([]string, 0, len(assignee.ExternalIDs))
+			for _, eid := range assignee.ExternalIDs {
+				labels = append(labels, eid.Provider+":"+eid.ExternalID)
+			}
+			if label != "" {
+				label += " [" + strings.Join(labels, ", ") + "]"
+			} else {
+				label = strings.Join(labels, ", ")
+			}
+		}
+		if label != "" {
+			out = append(out, "@"+label)
 		}
 	}
 	return strings.Join(out, ", ")
