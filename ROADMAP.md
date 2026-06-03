@@ -25,6 +25,7 @@
 | M8 | 已完成 | 服务端 Hook / 自动化扩展与运维交付打磨 |
 | M9 | 已完成 | 任务多 Assignee |
 | M10 | 已完成 | Token 委托与 Impersonation |
+| M11 | 已完成 | 用户外部 ID 绑定 |
 
 ## M0：本地单用户 CLI
 
@@ -686,7 +687,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M8 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook 的完整能力栈。
+M11 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定的完整能力栈。
 
 后续方向待定，可能包括：
 
@@ -774,6 +775,50 @@ M10 规格：
 
 ```text
 docs/superpowers/specs/2026-06-03-taskg-m10-impersonation-design.md
+```
+
+## M11：用户外部 ID 绑定
+
+**状态：已完成。**
+
+**目标：** 为 taskg 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+
+**M11 已交付内容：**
+
+- `user_external_ids` 表：存储用户与外部系统 ID 的绑定关系，`(provider, external_id)` 联合唯一。
+- CLI：`user bind`、`user unbind` 子命令；`user info` / `user list` 显示外部 ID。
+- HTTP API：`POST/DELETE/GET /api/v1/users/{user}/external-ids`；所有返回用户的 endpoint 附带 `external_ids`。
+- MCP：`user_bind` / `user_unbind` tool；`task.get` / `task.query` 的 assignee 数据附带 `external_ids`。
+- App service：`resolveUser` 支持 `provider:value` 格式解析；assignee ref 自动支持外部 ID。
+- JSON DTO：`AssigneeInfo` / `UserView` / `JSONAssignee` 扩展 `external_ids` 字段。
+- 审计：绑定/解绑操作写入 audit log。
+- Hook payload：assignee 数据自动携带 `external_ids`。
+
+**不进入 M11：**
+
+- 自动用户创建。
+- OAuth / OIDC。
+- 外部系统 API 调用。
+- provider 插件系统。
+
+**验收标准：**
+
+- `taskg user bind feishu:ou_xxxxx` 能绑定外部 ID，`taskg user unbind feishu:ou_xxxxx` 能解绑。
+- `taskg user info` human 输出显示外部 ID 列表。
+- `taskg user info --json` 返回 `external_ids` 数组。
+- `taskg add "做这件事" @feishu:ou_xxxxx` 能创建带外部 ID assignee 的任务。
+- `taskg list assignee:feishu:ou_xxxxx` 能按外部 ID 查询任务。
+- HTTP API / MCP / remote CLI 统一支持外部 ID 绑定和 assignee 解析。
+- 同一个 `(provider, external_id)` 不能绑两次。
+- 绑定/解绑操作写入 audit log。
+- admin/owner 可以给其他用户绑定；普通用户只能给自己绑定。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+
+M11 规格与实现计划：
+
+```text
+docs/superpowers/specs/2026-06-03-taskg-m11-external-id-design.md
+docs/superpowers/plans/2026-06-03-taskg-m11-external-id-implementation.md
 ```
 
 ---
