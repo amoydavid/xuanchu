@@ -55,6 +55,17 @@ func (r *UserRepository) UpdateDefaultWorkspace(userID, workspaceID string, modi
 	return nil
 }
 
+func (r *UserRepository) GetByExternalID(provider, externalID string) (User, error) {
+	var extID UserExternalID
+	if err := r.db.Where("provider = ? AND external_id = ?", provider, externalID).First(&extID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return User{}, ErrNotFound
+		}
+		return User{}, err
+	}
+	return r.GetByID(extID.UserID)
+}
+
 func (r *UserRepository) find(query string, args ...any) (User, error) {
 	var user User
 	err := r.db.Where(query, args...).First(&user).Error
