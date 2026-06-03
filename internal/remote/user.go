@@ -5,16 +5,23 @@ import (
 	"net/url"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type userDTO struct {
-	ID                 string  `json:"id"`
-	Name               string  `json:"name"`
-	Email              *string `json:"email,omitempty"`
-	DefaultWorkspaceID *string `json:"default_workspace_id,omitempty"`
-	Active             bool    `json:"active"`
-	CreatedAt          int64   `json:"created_at"`
-	ModifiedAt         int64   `json:"modified_at"`
+	ID                 string           `json:"id"`
+	Name               string           `json:"name"`
+	Email              *string          `json:"email,omitempty"`
+	DefaultWorkspaceID *string          `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []externalIDDTO  `json:"external_ids,omitempty"`
+	Active             bool             `json:"active"`
+	CreatedAt          int64            `json:"created_at"`
+	ModifiedAt         int64            `json:"modified_at"`
+}
+
+type externalIDDTO struct {
+	Provider   string `json:"provider"`
+	ExternalID string `json:"external_id"`
 }
 
 type AddUserInput struct {
@@ -51,12 +58,30 @@ func (c *Client) UserInfo(ctx context.Context, ref string) (app.UserView, error)
 	return userDTOToView(envelope.Data), nil
 }
 
+func (c *Client) BindExternalID(ctx context.Context, userRef, provider, externalID string) error {
+	path := "/api/v1/users/" + url.PathEscape(userRef) + "/external-ids"
+	body := map[string]string{"provider": provider, "external_id": externalID}
+	var envelope apiEnvelope[any]
+	return c.post(ctx, path, body, &envelope)
+}
+
+func (c *Client) UnbindExternalID(ctx context.Context, userRef, provider, externalID string) error {
+	path := "/api/v1/users/" + url.PathEscape(userRef) + "/external-ids/" + url.PathEscape(provider) + "/" + url.PathEscape(externalID)
+	var envelope apiEnvelope[any]
+	return c.delete(ctx, path, &envelope)
+}
+
 func userDTOToView(row userDTO) app.UserView {
+	extIDs := make([]task.ExternalIDInfo, 0, len(row.ExternalIDs))
+	for _, eid := range row.ExternalIDs {
+		extIDs = append(extIDs, task.ExternalIDInfo{Provider: eid.Provider, ExternalID: eid.ExternalID})
+	}
 	return app.UserView{
 		ID:                 row.ID,
 		Name:               row.Name,
 		Email:              row.Email,
 		DefaultWorkspaceID: row.DefaultWorkspaceID,
+		ExternalIDs:        extIDs,
 		Active:             row.Active,
 		CreatedAt:          row.CreatedAt,
 		ModifiedAt:         row.ModifiedAt,

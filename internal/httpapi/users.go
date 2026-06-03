@@ -15,13 +15,24 @@ type userRequest struct {
 }
 
 type userResponse struct {
-	ID                 string  `json:"id"`
-	Name               string  `json:"name"`
-	Email              *string `json:"email,omitempty"`
-	DefaultWorkspaceID *string `json:"default_workspace_id,omitempty"`
-	Active             bool    `json:"active"`
-	CreatedAt          int64   `json:"created_at"`
-	ModifiedAt         int64   `json:"modified_at"`
+	ID                 string               `json:"id"`
+	Name               string               `json:"name"`
+	Email              *string              `json:"email,omitempty"`
+	DefaultWorkspaceID *string              `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []externalIDResponse `json:"external_ids,omitempty"`
+	Active             bool                 `json:"active"`
+	CreatedAt          int64                `json:"created_at"`
+	ModifiedAt         int64                `json:"modified_at"`
+}
+
+type externalIDResponse struct {
+	Provider   string `json:"provider"`
+	ExternalID string `json:"external_id"`
+}
+
+type bindExternalIDRequest struct {
+	Provider   string `json:"provider"`
+	ExternalID string `json:"external_id"`
 }
 
 func (s *Server) handleUserList(w http.ResponseWriter, r *http.Request) {
@@ -85,13 +96,91 @@ func userResponsesFromViews(users []app.UserView) []userResponse {
 }
 
 func userResponseFromView(user app.UserView) userResponse {
+	extIDs := make([]externalIDResponse, 0, len(user.ExternalIDs))
+	for _, eid := range user.ExternalIDs {
+		extIDs = append(extIDs, externalIDResponse{Provider: eid.Provider, ExternalID: eid.ExternalID})
+	}
 	return userResponse{
 		ID:                 user.ID,
 		Name:               user.Name,
 		Email:              user.Email,
 		DefaultWorkspaceID: user.DefaultWorkspaceID,
+		ExternalIDs:        extIDs,
 		Active:             user.Active,
 		CreatedAt:          user.CreatedAt,
 		ModifiedAt:         user.ModifiedAt,
 	}
+}
+
+func (s *Server) handleExternalIDBind(w http.ResponseWriter, r *http.Request) {
+	userRef := chi.URLParam(r, "user")
+	var req bindExternalIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	if req.Provider == "" || req.ExternalID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_input", "provider and external_id are required", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	user, err := scoped.UserInfo(userRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.BindExternalID(user.ID, req.Provider, req.ExternalID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, externalIDResponse{Provider: req.Provider, ExternalID: req.ExternalID}, nil)
+}
+
+func (s *Server) handleExternalIDUnbind(w http.ResponseWriter, r *http.Request) {
+	userRef := chi.URLParam(r, "user")
+	provider := chi.URLParam(r, "provider")
+	externalID := chi.URLParam(r, "externalID")
+	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	user, err := scoped.UserInfo(userRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.UnbindExternalID(user.ID, provider, externalID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusNoContent, nil, nil)
+}
+
+func (s *Server) handleExternalIDList(w http.ResponseWriter, r *http.Request) {
+	userRef := chi.URLParam(r, "user")
+	scoped, _, err := s.scopedService(r, "workspace:read", app.PermissionWorkspaceRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	user, err := scoped.UserInfo(userRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	extIDs, err := scoped.ListExternalIDs(user.ID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]externalIDResponse, len(extIDs))
+	for i, eid := range extIDs {
+		out[i] = externalIDResponse{Provider: eid.Provider, ExternalID: eid.ExternalID}
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
 }

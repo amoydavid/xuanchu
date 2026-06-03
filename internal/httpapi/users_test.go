@@ -99,3 +99,28 @@ func TestUserInfoByNameReturnsUser(t *testing.T) {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestExternalIDBindUnbindAndList(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:read,workspace:write,task:read")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.BindExternalID(svc.Runtime().ActorUserID, "feishu", "ou_http_test")
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
+
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/users/local/external-ids", `{"provider":"feishu","external_id":"ou_bind_http"}`, authHeader)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("bind: expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/users/local/external-ids", authHeader)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/users/local/external-ids/feishu/ou_bind_http", authHeader)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("unbind: expected 204, got %d: %s", rr.Code, rr.Body.String())
+	}
+}

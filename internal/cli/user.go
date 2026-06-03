@@ -20,6 +20,8 @@ func newUserCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newUserAddCommand(opts))
 	cmd.AddCommand(newUserUseCommand(opts))
 	cmd.AddCommand(newUserInfoCommand(opts))
+	cmd.AddCommand(newUserBindCommand(opts))
+	cmd.AddCommand(newUserUnbindCommand(opts))
 	return cmd
 }
 
@@ -197,6 +199,12 @@ func newUserInfoCommand(opts Options) *cobra.Command {
 					email = *user.Email
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Name: %s\nEmail: %s\n", user.Name, email)
+				if len(user.ExternalIDs) > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "External IDs:\n")
+					for _, eid := range user.ExternalIDs {
+						fmt.Fprintf(cmd.OutOrStdout(), "  %s:%s\n", eid.Provider, eid.ExternalID)
+					}
+				}
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -220,6 +228,12 @@ func newUserInfoCommand(opts Options) *cobra.Command {
 				email = *user.Email
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Name: %s\nEmail: %s\n", user.Name, email)
+			if len(user.ExternalIDs) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "External IDs:\n")
+				for _, eid := range user.ExternalIDs {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s:%s\n", eid.Provider, eid.ExternalID)
+				}
+			}
 			return nil
 		},
 	}
@@ -244,15 +258,124 @@ func userViewsForJSON(users []app.UserView) []map[string]any {
 }
 
 func userViewForJSON(user app.UserView) map[string]any {
+	extIDs := make([]map[string]string, 0, len(user.ExternalIDs))
+	for _, eid := range user.ExternalIDs {
+		extIDs = append(extIDs, map[string]string{"provider": eid.Provider, "external_id": eid.ExternalID})
+	}
 	return map[string]any{
 		"id":                   user.ID,
 		"name":                 user.Name,
 		"email":                user.Email,
 		"default_workspace_id": user.DefaultWorkspaceID,
+		"external_ids":         extIDs,
 		"active":               user.Active,
 		"created_at":           user.CreatedAt,
 		"modified_at":          user.ModifiedAt,
 	}
+}
+
+func newUserBindCommand(opts Options) *cobra.Command {
+	var userRef string
+	cmd := &cobra.Command{
+		Use:  "bind <provider:external_id>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			provider, externalID, ok := parseProviderExternalID(args[0])
+			if !ok {
+				return fmt.Errorf("invalid external ID format %q; expected provider:external_id", args[0])
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				ref := userRef
+				if ref == "" {
+					ref = "local"
+				}
+				return client.BindExternalID(context.Background(), ref, provider, externalID)
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			targetUserID := svc.Runtime().ActorUserID
+			if userRef != "" {
+				user, err := svc.UserInfo(userRef)
+				if err != nil {
+					return err
+				}
+				targetUserID = user.ID
+			}
+			if err := svc.BindExternalID(targetUserID, provider, externalID); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Bound %s:%s\n", provider, externalID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&userRef, "user", "", "target user (name, email, or UUID); defaults to current user")
+	return cmd
+}
+
+func newUserUnbindCommand(opts Options) *cobra.Command {
+	var userRef string
+	cmd := &cobra.Command{
+		Use:  "unbind <provider:external_id>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			provider, externalID, ok := parseProviderExternalID(args[0])
+			if !ok {
+				return fmt.Errorf("invalid external ID format %q; expected provider:external_id", args[0])
+			}
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				ref := userRef
+				if ref == "" {
+					ref = "local"
+				}
+				return client.UnbindExternalID(context.Background(), ref, provider, externalID)
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			targetUserID := svc.Runtime().ActorUserID
+			if userRef != "" {
+				user, err := svc.UserInfo(userRef)
+				if err != nil {
+					return err
+				}
+				targetUserID = user.ID
+			}
+			if err := svc.UnbindExternalID(targetUserID, provider, externalID); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Unbound %s:%s\n", provider, externalID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&userRef, "user", "", "target user (name, email, or UUID); defaults to current user")
+	return cmd
+}
+
+func parseProviderExternalID(s string) (string, string, bool) {
+	idx := strings.Index(s, ":")
+	if idx <= 0 || idx == len(s)-1 {
+		return "", "", false
+	}
+	return s[:idx], s[idx+1:], true
 }
 
 func parseKeyValueArgs(args []string, allowed map[string]bool) (map[string]string, error) {
