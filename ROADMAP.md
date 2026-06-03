@@ -681,35 +681,6 @@ docs/superpowers/specs/2026-06-02-taskg-m8-design.md
 docs/superpowers/plans/2026-06-02-taskg-m8-implementation.md
 ```
 
-## 跨 Milestone 规则
-
-- 每个 milestone 都必须有独立中文 spec。
-- 每个 spec 通过后，再写 implementation plan。
-- implementation plan 必须包含 TDD 步骤、测试命令和验收命令。
-- 每个 milestone 完成后更新 README、ROADMAP 和必要的 docs。
-- 数据迁移必须向前兼容，除非明确进入破坏性版本。
-- CLI、HTTP API、MCP 必须复用同一 app service。
-- JSON 字段语义在 CLI、HTTP API、MCP 中保持一致。
-- 所有涉及权限、同步、Hook、导入导出的改动必须有端到端测试。
-- 每个 milestone 必跑：
-
-```bash
-go test ./...
-CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
-```
-
-## 当前下一步
-
-M11 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定的完整能力栈。
-
-后续方向待定，可能包括：
-
-- 性能优化与大 workspace 场景验证
-- 更丰富的 MCP tool 覆盖
-- 外部系统 adapter 生态
-- 多端同步与 replica
-
 ## M9：任务多 Assignee
 
 **状态：已完成。**
@@ -834,4 +805,33 @@ M11 规格与实现计划：
 docs/superpowers/specs/2026-06-03-taskg-m11-external-id-design.md
 docs/superpowers/plans/2026-06-03-taskg-m11-external-id-implementation.md
 ```
+
+## 跨 Milestone 规则
+
+- 每个 milestone 都必须有独立中文 spec。
+- 每个 spec 通过后，再写 implementation plan。
+- implementation plan 必须包含 TDD 步骤、测试命令和验收命令。
+- 每个 milestone 完成后更新 README、ROADMAP 和必要的 docs。
+- 数据迁移必须向前兼容，除非明确进入破坏性版本。
+- CLI、HTTP API、MCP 必须复用同一 app service。
+- JSON 字段语义在 CLI、HTTP API、MCP 中保持一致。
+- 所有涉及权限、同步、Hook、导入导出的改动必须有端到端测试。
+- 每个 milestone 必跑：
+
+```bash
+go test ./...
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build ./cmd/taskg
+```
+
+## 当前下一步
+
+M11 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定的完整能力栈。
+
+后续方向待定，可能包括：
+
+- 性能优化与大 workspace 场景验证
+- 更丰富的 MCP tool 覆盖
+- 外部系统 adapter 生态
+- 多端同步与 replica
 
