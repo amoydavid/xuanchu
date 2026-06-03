@@ -22,6 +22,7 @@ var allowedScopes = map[string]struct{}{
 	"token:write":     {},
 	"hook:read":       {},
 	"hook:write":      {},
+	"impersonate":     {},
 }
 
 type ScopeSet map[string]struct{}

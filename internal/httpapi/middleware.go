@@ -25,8 +25,11 @@ type requestAuth struct {
 }
 
 type requestLogState struct {
-	actorID string
-	tokenID string
+	actorID            string
+	tokenID            string
+	delegatorUserID    string
+	delegatorTokenID   string
+	impersonateAttempt string
 }
 
 func (s *Server) requestIDMiddleware(next http.Handler) http.Handler {
@@ -56,12 +59,20 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 		state := &requestLogState{actorID: "-", tokenID: "-"}
 		next.ServeHTTP(recorder, r.WithContext(context.WithValue(r.Context(), logStateContextKey, state)))
 
-		fmt.Fprintf(s.stderr, "%s %s %d actor_user_id=%s token_id=%s duration=%s\n",
+		extra := ""
+		if state.delegatorUserID != "" {
+			extra = fmt.Sprintf(" delegator_user_id=%s delegator_token_id=%s", state.delegatorUserID, state.delegatorTokenID)
+		}
+		if state.impersonateAttempt != "" {
+			extra += fmt.Sprintf(" impersonate_attempt=%s", state.impersonateAttempt)
+		}
+		fmt.Fprintf(s.stderr, "%s %s %d actor_user_id=%s token_id=%s%s duration=%s\n",
 			r.Method,
 			r.URL.Path,
 			recorder.status,
 			state.actorID,
 			state.tokenID,
+			extra,
 			time.Since(start).Truncate(time.Millisecond),
 		)
 	})

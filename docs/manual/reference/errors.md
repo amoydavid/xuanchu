@@ -35,8 +35,9 @@ weight: 210
 |---|---|
 | `workspace_not_found` | workspace 不存在 |
 | `workspace_archived` | workspace 已归档 |
-| `membership_not_found` | actor 不是 workspace 成员 |
+| `membership_not_found` | actor 不是 workspace 成员，或 impersonation 目标不存在/不是成员 |
 | `user_not_found` | user 不存在 |
+| `workspace_required` | impersonation 请求未指定 workspace，且 token 可见多个 workspace |
 
 ## Project
 

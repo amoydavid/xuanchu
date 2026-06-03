@@ -13,12 +13,14 @@ import (
 type Client struct {
 	baseURL    string
 	token      string
+	asUser     string
 	httpClient *http.Client
 }
 
 type Options struct {
 	BaseURL    string
 	Token      string
+	AsUser     string
 	HTTPClient *http.Client
 }
 
@@ -67,6 +69,7 @@ func NewClient(opts Options) (*Client, error) {
 	return &Client{
 		baseURL:    baseURL,
 		token:      token,
+		asUser:     strings.TrimSpace(opts.AsUser),
 		httpClient: httpClient,
 	}, nil
 }
@@ -114,6 +117,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, out 
 
 func (c *Client) do(req *http.Request, out any) error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.asUser != "" {
+		req.Header.Set("X-Taskg-As", c.asUser)
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err

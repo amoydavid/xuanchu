@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -385,5 +386,268 @@ func TestExplicitProjectScopeFiltersSingleTaskOperations(t *testing.T) {
 		t.Fatal("Modify(alpha task through beta request scope) error = nil")
 	} else {
 		assertRuntimeCode(t, err, "project_scope_denied")
+	}
+}
+
+func TestAuthorizeTokenRequestImpersonationUsesSubjectMembership(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	aliceUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID: "user-alice-imp", Name: "alice-imp", CreatedAt: 100, ModifiedAt: 100,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID: aliceUser.ID, WorkspaceID: ws.ID,
+		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
+	})
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "imp-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "alice-imp",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	if authorized.Runtime.ActorUserID != aliceUser.ID {
+		t.Fatalf("actor = %q, want %q", authorized.Runtime.ActorUserID, aliceUser.ID)
+	}
+	if authorized.Runtime.DelegatorTokenID != created.View.ID {
+		t.Fatalf("delegator token = %q, want %q", authorized.Runtime.DelegatorTokenID, created.View.ID)
+	}
+	if authorized.Runtime.DelegatorUserID == "" {
+		t.Fatal("delegator user id is empty")
+	}
+	if authorized.Runtime.Role != RoleMember {
+		t.Fatalf("role = %q, want member", authorized.Runtime.Role)
+	}
+}
+
+func TestAuthorizeTokenRequestImpersonationRejectsUnknownUser(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "imp-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "nonexistent-user",
+	})
+	assertRuntimeCode(t, err, "membership_not_found")
+}
+
+func TestAuthorizeTokenRequestImpersonationRejectsNonMember(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	otherUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID: "user-other-imp", Name: "other-imp", CreatedAt: 100, ModifiedAt: 100,
+	})
+	_ = otherUser
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "imp-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "other-imp",
+	})
+	assertRuntimeCode(t, err, "membership_not_found")
+}
+
+func TestAuthorizeTokenRequestImpersonationRejectsWithoutScope(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "no-impersonate",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "local",
+	})
+	assertRuntimeCode(t, err, "token_scope_denied")
+}
+
+func TestAuthorizeTokenRequestImpersonationRejectsPAT(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "pat-imp",
+		Type:          "pat",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "local",
+	})
+	assertRuntimeCode(t, err, "token_scope_denied")
+}
+
+func TestAuthorizeTokenRequestImpersonationWorkspaceRequiredMultiWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	_, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "work-imp", Name: "Work Imp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "multi-ws-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local", "work-imp"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		SubjectUserRef:     "local",
+	})
+	assertRuntimeCode(t, err, "workspace_required")
+}
+
+func TestImpersonatedTaskActionRecordsDelegatorInAudit(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	aliceUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID: "user-alice-audit", Name: "alice-audit", CreatedAt: 100, ModifiedAt: 100,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID: aliceUser.ID, WorkspaceID: ws.ID,
+		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
+	})
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "audit-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:write", "audit:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:write",
+		RequiredPermission: PermissionTaskWrite,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "alice-audit",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	impersonatedSvc, err := NewService(ServiceOptions{
+		Store:        store,
+		Clock:        FixedClock{NowUnix: 100},
+		Runtime:      &authorized.Runtime,
+		RequestScope: &authorized.Scope,
+	})
+	if err != nil {
+		t.Fatalf("NewService(impersonated) error = %v", err)
+	}
+	if _, err := impersonatedSvc.Add(AddInput{Description: "impersonated task"}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	ownerAuditSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	rows, err := ownerAuditSvc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	found := false
+	for _, row := range rows {
+		if row.Action == "task.add" && row.TargetType == "task" {
+			if row.ActorUserID == nil || *row.ActorUserID != aliceUser.ID {
+				t.Fatalf("audit actor = %v, want alice id", row.ActorUserID)
+			}
+			if row.DelegatorTokenID == nil || *row.DelegatorTokenID != created.View.ID {
+				t.Fatalf("audit delegator_token_id = %v, want %s", row.DelegatorTokenID, created.View.ID)
+			}
+			if row.DelegatorUserID == nil {
+				t.Fatal("audit delegator_user_id is nil")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("no task.add audit entry found for impersonated task")
 	}
 }

@@ -105,6 +105,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		WorkspaceRef:       workspaceRef,
 		ProjectRef:         projectRef,
 		ProjectRefIsID:     strings.TrimSpace(input.ProjectID) != "",
+		SubjectUserRef:     strings.TrimSpace(r.Header.Get("X-Taskg-As")),
 	})
 	if err != nil {
 		return nil, err

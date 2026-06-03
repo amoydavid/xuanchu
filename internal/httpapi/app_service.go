@@ -54,8 +54,12 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		WorkspaceRef:       input.WorkspaceRef,
 		ProjectRef:         strings.TrimSpace(input.ProjectRef),
 		ProjectRefIsID:     input.ProjectRefIsID,
+		SubjectUserRef:     strings.TrimSpace(r.Header.Get("X-Taskg-As")),
 	})
 	if err != nil {
+		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok && strings.TrimSpace(r.Header.Get("X-Taskg-As")) != "" {
+			state.impersonateAttempt = strings.TrimSpace(r.Header.Get("X-Taskg-As"))
+		}
 		return nil, requestAuth{}, err
 	}
 	scoped, err := app.NewService(app.ServiceOptions{
@@ -68,6 +72,10 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		return nil, requestAuth{}, err
 	}
 	authn.EffectiveWorkspace = authorized.Workspace
+	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok && authorized.Runtime.DelegatorTokenID != "" {
+		state.delegatorUserID = authorized.Runtime.DelegatorUserID
+		state.delegatorTokenID = authorized.Runtime.DelegatorTokenID
+	}
 	return scoped, authn, nil
 }
 

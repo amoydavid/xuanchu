@@ -36,15 +36,17 @@ type Membership struct {
 }
 
 type AuditLog struct {
-	ID          int64   `gorm:"primaryKey;autoIncrement"`
-	ActorUserID *string `gorm:"index"`
-	WorkspaceID *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1"`
-	ProjectID   *string `gorm:"index:idx_audit_project_time,priority:2"`
-	Action      string  `gorm:"not null;index"`
-	TargetType  string
-	TargetID    string
-	PayloadJSON string
-	CreatedAt   int64 `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc"`
+	ID               int64   `gorm:"primaryKey;autoIncrement"`
+	ActorUserID      *string `gorm:"index"`
+	WorkspaceID      *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1"`
+	ProjectID        *string `gorm:"index:idx_audit_project_time,priority:2"`
+	Action           string  `gorm:"not null;index"`
+	TargetType       string
+	TargetID         string
+	PayloadJSON      string
+	DelegatorTokenID *string `gorm:"index"`
+	DelegatorUserID  *string `gorm:"index"`
+	CreatedAt        int64   `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc"`
 }
 
 type Project struct {

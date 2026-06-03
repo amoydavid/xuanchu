@@ -177,3 +177,33 @@ OpenAPI 文件在：
 ```text
 docs/openapi/taskg-v1.yaml
 ```
+
+## Impersonation（M10）
+
+远程 CLI 和 HTTP API 支持 impersonation：持有带 `impersonate` scope 的 agent token 的请求可以指定目标用户，以该用户身份执行操作。
+
+### 远程 CLI
+
+```bash
+taskg --server https://taskg.example.com \
+  --token "$AGENT_TOKEN" \
+  --workspace dajee \
+  --as alice \
+  list assignee:me
+```
+
+`--as` 只在远程模式生效，值为目标用户的 name、email 或 UUID。所有 HTTP 子请求都会携带 `X-Taskg-As` header。
+
+### HTTP API
+
+```
+GET /api/v1/tasks
+Authorization: Bearer taskg_agent_...
+X-Taskg-As: alice
+```
+
+只有 agent token 且拥有 `impersonate` scope 时，`X-Taskg-As` 才生效。权限以目标用户在 workspace 的 membership role 与 token scope 的交集为准。
+
+如果 token 可见多个 workspace 且请求未显式指定 workspace，返回 `workspace_required`。目标用户不存在或不是 workspace 成员时返回 `membership_not_found`。
+
+Audit log 会同时记录 `actor_user_id`（目标用户）和 `delegator_token_id`/`delegator_user_id`（发起 impersonation 的 agent token）。

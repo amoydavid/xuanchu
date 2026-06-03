@@ -157,6 +157,106 @@ func TestCreateTokenCannotExceedParentTokenScope(t *testing.T) {
 	}
 }
 
+func TestCreateTokenRejectsPATWithImpersonateScope(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	_, err := svc.CreateToken(CreateTokenInput{
+		Name:          "pat-impersonate",
+		Type:          "pat",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	assertRuntimeCode(t, err, "token_scope_invalid")
+}
+
+func TestCreateTokenRejectsMemberCreatingImpersonateScope(t *testing.T) {
+	store := newTestStore(t)
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	memberUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID: "user-member", Name: "member", CreatedAt: 100, ModifiedAt: 100,
+	})
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID: memberUser.ID, WorkspaceID: ws.ID,
+		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
+	})
+	memberSvc := newTestServiceWithRuntime(t, store, 100, "member", "local")
+	_, err = memberSvc.CreateToken(CreateTokenInput{
+		Name:          "agent-impersonate",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	// member 没有 token:write 权限，在 workspace 验证阶段就被拒绝
+	if err == nil {
+		t.Fatal("CreateToken() error = nil, want permission denied or scope denied")
+	}
+}
+
+func TestCreateTokenRejectsImpersonateScopeOutsideParentToken(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	parent := &TokenView{
+		Scopes:       []string{"task:read", "task:write"},
+		WorkspaceIDs: []string{svc.Runtime().WorkspaceID},
+	}
+	_, err := svc.CreateToken(CreateTokenInput{
+		Name:          "child-impersonate",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+		ParentToken:   parent,
+	})
+	assertRuntimeCode(t, err, "token_scope_denied")
+}
+
+func TestCreateTokenAllowsAgentImpersonateScopeForOwner(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "agent-impersonate",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "task:write", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatalf("CreateToken() error = %v", err)
+	}
+	if created.View.Type != "agent" {
+		t.Fatalf("type = %q, want agent", created.View.Type)
+	}
+	hasImpersonate := false
+	for _, scope := range created.View.Scopes {
+		if scope == "impersonate" {
+			hasImpersonate = true
+		}
+	}
+	if !hasImpersonate {
+		t.Fatalf("scopes = %#v, want impersonate", created.View.Scopes)
+	}
+}
+
+func TestCreateTokenAllowsChildImpersonateWhenParentHasIt(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	parent := &TokenView{
+		Scopes:       []string{"task:read", "task:write", "impersonate"},
+		WorkspaceIDs: []string{svc.Runtime().WorkspaceID},
+	}
+	_, err := svc.CreateToken(CreateTokenInput{
+		Name:          "child-impersonate",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+		ParentToken:   parent,
+	})
+	if err != nil {
+		t.Fatalf("CreateToken() error = %v", err)
+	}
+}
+
 func TestAuthenticateBearerToken(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

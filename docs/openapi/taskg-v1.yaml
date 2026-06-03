@@ -29,6 +29,7 @@ components:
         - task_uuid_invalid
         - assignee_not_found
         - assignee_not_member
+        - workspace_required
         - project_not_found
         - project_mismatch
         - context_not_found
@@ -277,6 +278,12 @@ components:
         payload:
           type: object
           additionalProperties: true
+        delegator_token_id:
+          type: string
+          nullable: true
+        delegator_user_id:
+          type: string
+          nullable: true
         created_at:
           type: integer
           format: int64
@@ -500,6 +507,12 @@ components:
       schema:
         type: string
       description: Stable project UUID. If project is also provided, both must resolve to the same project.
+    ImpersonateHeader:
+      in: header
+      name: X-Taskg-As
+      schema:
+        type: string
+      description: Impersonation target user name, email, or UUID. Requires agent token with impersonate scope.
   responses:
     Unauthorized:
       description: Missing, invalid, expired, or revoked bearer token.

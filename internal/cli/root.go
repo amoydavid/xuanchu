@@ -27,6 +27,7 @@ type Options struct {
 	Workspace   string
 	Project     string
 	ProjectID   string
+	As          string
 	JSON        bool
 	NoColor     bool
 	NoContext   bool
@@ -71,6 +72,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
 	cmd.PersistentFlags().StringVar(&opts.Project, "project", opts.Project, "remote project slug scope")
 	cmd.PersistentFlags().StringVar(&opts.ProjectID, "project-id", opts.ProjectID, "remote project UUID scope")
+		cmd.PersistentFlags().StringVar(&opts.As, "as", opts.As, "impersonate user by name, email or UUID (remote only)")
 	cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output")
 	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
 	cmd.PersistentFlags().BoolVar(&opts.NoContext, "no-context", opts.NoContext, "disable active context for this command")
@@ -200,7 +202,7 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 
 func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
 	rc = map[string]*string{}
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
 		if key, value, ok := parseRCOverride(args[i]); ok {
@@ -313,7 +315,7 @@ func isDashTag(arg string) bool {
 
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
@@ -577,6 +579,7 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts.Workspace = getCmdStringFlag(cmd, "workspace", opts.Workspace)
 	opts.Project = getCmdStringFlag(cmd, "project", opts.Project)
 	opts.ProjectID = getCmdStringFlag(cmd, "project-id", opts.ProjectID)
+	opts.As = getCmdStringFlag(cmd, "as", opts.As)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
 	opts.NoContext = getCmdBoolFlag(cmd, "no-context", opts.NoContext)
@@ -632,6 +635,9 @@ func getCmdBoolFlag(cmd *cobra.Command, name string, fallback bool) bool {
 }
 
 func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
+	if opts.As != "" {
+		fmt.Fprintln(opts.Stderr, "taskg: --as 仅在远程模式下生效，本地模式已忽略")
+	}
 	env := RuntimeEnv()
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,

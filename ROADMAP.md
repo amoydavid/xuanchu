@@ -24,6 +24,7 @@
 | M7 | 已完成 | 企业 Agent MCP Server 与工具接口 |
 | M8 | 已完成 | 服务端 Hook / 自动化扩展与运维交付打磨 |
 | M9 | 已完成 | 任务多 Assignee |
+| M10 | 已完成 | Token 委托与 Impersonation |
 
 ## M0：本地单用户 CLI
 
@@ -454,7 +455,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - OpenAPI 3 文档维护在 `docs/openapi/taskg-v1.yaml`。
 - 鉴权：
   - PAT。
-  - Agent token / service token。
+  - Agent token。
   - JWT 登录可作为 M6.5，如果范围过大可拆分。
   - `Authorization: Bearer <token>`。
   - token 绑定 actor，并可限制可访问 workspace。
@@ -573,7 +574,7 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 - MCP 鉴权：
   - stdio 可使用本地配置。
   - HTTP MCP 使用 PAT。
-  - HTTP MCP 支持 Agent token / service token。
+  - HTTP MCP 支持 Agent token。
   - 每次 tool 调用都解析 actor、workspace scope、project scope。
 - Agent 记忆与上下文：
   - Agent 可读取 workspace/project 的背景、约束和默认 context 摘要。
@@ -734,6 +735,45 @@ M9 规格与实现计划：
 ```text
 docs/superpowers/specs/2026-06-02-taskg-m9-assignee-design.md
 docs/superpowers/plans/2026-06-02-taskg-m9-assignee-implementation.md
+```
+
+## M10：Token 委托与 Impersonation
+
+**状态：已完成。**
+
+**目标：** 让 Agent 平台（外部 HTTP 服务）可以持有一个带 `impersonate` scope 的 Agent token，以 workspace 成员的身份发起请求，audit log 清晰区分"名义 actor（员工）"和"实际委托方（Agent 平台 service account）"。主要满足个人助理 Agent 场景：员工和 Agent 对话，Agent 代表员工操作，行为归属员工。
+
+**范围：**
+
+- 沿用现有 `agent` token 模型，仅新增 `impersonate` scope；M10 不新增 `service` token type，也不允许 `pat` 做 impersonation
+- 新增 `impersonate` scope：只有 workspace `admin` / `owner` 才能创建带此 scope 的 Agent token，且远程/API 创建时新 token 仍必须是当前 bearer token 的子集
+- 请求头 `X-Taskg-As: <user-name | email | uuid>`：仅带 `impersonate` scope 的 Agent token 可使用；workspace 仍按 M6 既有规则解析，若存在多 workspace 歧义则返回 `workspace_required`
+- 权限交集：`subject.membership_role ∩ agent_token.scopes ∩ agent_token.workspace_allowlist ∩ agent_token.project_allowlist`，impersonation 不能提权
+- Audit / access log 双重 actor：subject 驱动权限、`assignee:me` 和 active context；delegator 仅用于追责与日志
+- 远程 CLI 新增 `--as` flag，作为 remote client 级配置透传 `X-Taskg-As`，同一条命令内所有子请求必须一致
+- HTTP MCP 仅支持 request-scoped `X-Taskg-As` header 透传；stdio MCP 不支持 impersonation
+
+**不进入 M10：**
+
+- OAuth 2.0 / OIDC 完整授权流程
+- 员工自助授权 Web UI
+- 跨 workspace 全局 impersonation
+- impersonation 时间窗口 / 审批流
+
+**验收标准：**
+
+- Agent token + `X-Taskg-As` 可以以目标 user 身份执行请求，权限受 subject role、token scope、workspace allowlist 和 project allowlist 共同约束
+- 无 `impersonate` scope 时携带 `X-Taskg-As` 返回 `token_scope_denied`
+- token 可见多个 workspace 且请求未显式指定 workspace / project_id 时返回 `workspace_required`
+- 目标 user 不存在或不是 workspace 成员时统一返回 `membership_not_found`
+- audit log 同时记录 actor 和 delegator
+- 普通 member 无法创建带 `impersonate` scope 的 token，PAT 也不能持有该 scope
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过
+
+M10 规格：
+
+```text
+docs/superpowers/specs/2026-06-03-taskg-m10-impersonation-design.md
 ```
 
 ---

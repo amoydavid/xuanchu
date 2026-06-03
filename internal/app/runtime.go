@@ -16,11 +16,13 @@ const (
 )
 
 type RuntimeContext struct {
-	ActorUserID   string
-	ActorName     string
-	WorkspaceID   string
-	WorkspaceSlug string
-	Role          Role
+	ActorUserID      string
+	ActorName        string
+	WorkspaceID      string
+	WorkspaceSlug    string
+	Role             Role
+	DelegatorTokenID string
+	DelegatorUserID  string
 }
 
 type ServiceOptions struct {

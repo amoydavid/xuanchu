@@ -85,6 +85,21 @@ func TestOpenCanReopenExistingDatabase(t *testing.T) {
 	}
 }
 
+func TestDBMigratesAuditDelegatorColumns(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasColumn(&AuditLog{}, "delegator_token_id") {
+		t.Fatal("audit_logs.delegator_token_id column missing after migration")
+	}
+	if !store.DB().Migrator().HasColumn(&AuditLog{}, "delegator_user_id") {
+		t.Fatal("audit_logs.delegator_user_id column missing after migration")
+	}
+}
+
 func TestTaskAssigneeTableMigrated(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {

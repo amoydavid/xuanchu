@@ -11,16 +11,18 @@ import (
 )
 
 type auditResponse struct {
-	ID          int64           `json:"id"`
-	ActorUserID *string         `json:"actor_user_id"`
-	ActorName   string          `json:"actor_name"`
-	WorkspaceID *string         `json:"workspace_id"`
-	ProjectID   *string         `json:"project_id"`
-	Action      string          `json:"action"`
-	TargetType  string          `json:"target_type"`
-	TargetID    string          `json:"target_id"`
-	Payload     json.RawMessage `json:"payload,omitempty"`
-	CreatedAt   int64           `json:"created_at"`
+	ID               int64           `json:"id"`
+	ActorUserID      *string         `json:"actor_user_id"`
+	ActorName        string          `json:"actor_name"`
+	WorkspaceID      *string         `json:"workspace_id"`
+	ProjectID        *string         `json:"project_id"`
+	Action           string          `json:"action"`
+	TargetType       string          `json:"target_type"`
+	TargetID         string          `json:"target_id"`
+	Payload          json.RawMessage `json:"payload,omitempty"`
+	DelegatorTokenID *string         `json:"delegator_token_id,omitempty"`
+	DelegatorUserID  *string         `json:"delegator_user_id,omitempty"`
+	CreatedAt        int64           `json:"created_at"`
 }
 
 const auditMaxLimit = 1000
@@ -99,15 +101,17 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 	out := make([]auditResponse, 0, len(rows))
 	for _, row := range rows {
 		item := auditResponse{
-			ID:          row.ID,
-			ActorUserID: row.ActorUserID,
-			ActorName:   row.ActorName,
-			WorkspaceID: row.WorkspaceID,
-			ProjectID:   row.ProjectID,
-			Action:      row.Action,
-			TargetType:  row.TargetType,
-			TargetID:    row.TargetID,
-			CreatedAt:   row.CreatedAt,
+			ID:               row.ID,
+			ActorUserID:      row.ActorUserID,
+			ActorName:        row.ActorName,
+			WorkspaceID:      row.WorkspaceID,
+			ProjectID:        row.ProjectID,
+			Action:           row.Action,
+			TargetType:       row.TargetType,
+			TargetID:         row.TargetID,
+			DelegatorTokenID: row.DelegatorTokenID,
+			DelegatorUserID:  row.DelegatorUserID,
+			CreatedAt:        row.CreatedAt,
 		}
 		if row.PayloadJSON != "" {
 			item.Payload = json.RawMessage(row.PayloadJSON)

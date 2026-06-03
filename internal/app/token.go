@@ -94,6 +94,9 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 	if err != nil {
 		return CreatedToken{}, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
 	}
+	if scopes.Has("impersonate") && !tokenManageAllowed(s.runtime.Role) {
+		return CreatedToken{}, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can create tokens with impersonate scope"}
+	}
 	if err := enforceTokenCreateLimit(input.ParentToken, scopes.Values(), workspaceIDs, projectIDs); err != nil {
 		return CreatedToken{}, err
 	}

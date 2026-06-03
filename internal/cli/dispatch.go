@@ -42,6 +42,7 @@ func buildRemoteClient(opts Options) (*remote.Client, error) {
 	return remote.NewClient(remote.Options{
 		BaseURL: cfg.RemoteServer,
 		Token:   cfg.RemoteToken,
+		AsUser:  opts.As,
 	})
 }
 

@@ -182,7 +182,7 @@ openclaw mcp probe taskg --json
 如果只希望 OpenClaw 暴露一部分 taskg MCP tools，可以配置 tool filter。例如只让 Agent 查询任务和读取项目：
 
 ```bash
-openclaw mcp tools taskg --include 'task.query,task.get,project.list,project.get,workspace.current'
+openclaw mcp tools taskg --include 'task_query,task_get,project_list,project_get,workspace_current'
 ```
 
 注意：OpenClaw 文档中 `streamable-http` 是 Streamable HTTP 的规范写法；taskg 的 `/mcp` 就是这个 HTTP MCP endpoint。
@@ -275,11 +275,11 @@ taskg --workspace dajee token create mcp-agent \
 可以在 Agent 系统提示词或项目说明中加入：
 
 ```text
-你可以使用 taskg MCP 管理任务。优先使用 project.current / workspace.current 确认作用域；
-查询任务用 task.query，读取单任务用 task.get，新增任务用 task.add。
-如果任务有执行者，请在 task.add / task.modify 里显式传 assignees。
+你可以使用 taskg MCP 管理任务。优先使用 project_current / workspace_current 确认作用域；
+查询任务用 task_query，读取单任务用 task_get，新增任务用 task_add。
+如果任务有执行者，请在 task_add / task_modify 里显式传 assignees。
 不要尝试访问 token scope 之外的 workspace/project。
-写入任务前，如果 project 不明确，先询问用户或调用 project.list。
+写入任务前，如果 project 不明确，先询问用户或调用 project_list。
 ```
 
 ## Tools
@@ -288,42 +288,42 @@ taskg --workspace dajee token create mcp-agent \
 
 任务：
 
-- `task.add`
-- `task.modify`
-- `task.done`
-- `task.delete`
-- `task.query`
-- `task.get`
-- `task.annotate`
-- `task.depends`
-- `task.start`
-- `task.stop`
+- `task_add`
+- `task_modify`
+- `task_done`
+- `task_delete`
+- `task_query`
+- `task_get`
+- `task_annotate`
+- `task_depends`
+- `task_start`
+- `task_stop`
 
 报表与 urgency：
 
-- `report.run`
-- `urgency.explain`
+- `report_run`
+- `urgency_explain`
 
 Workspace：
 
-- `workspace.list`
-- `workspace.current`
+- `workspace_list`
+- `workspace_current`
 
 Project：
 
-- `project.list`
-- `project.get`
-- `project.current`
+- `project_list`
+- `project_get`
+- `project_current`
 
 Context：
 
-- `context.set`
-- `context.show`
+- `context_set`
+- `context_show`
 
 Config：
 
-- `config.get`
-- `config.set`
+- `config_get`
+- `config_set`
 
 ## Resources
 
@@ -349,22 +349,39 @@ MCP tool 返回统一 envelope：
 
 ## 常见 Agent 流程
 
-1. `workspace.current` 确认当前 workspace。
-2. `project.list` 或 `project.current` 确认项目。
-3. `task.query` 查看待办。
-4. `task.add` 或 `task.modify` 写入任务。
-5. `urgency.explain` 理解排序原因。
+1. `workspace_current` 确认当前 workspace。
+2. `project_list` 或 `project_current` 确认项目。
+3. `task_query` 查看待办。
+4. `task_add` 或 `task_modify` 写入任务。
+5. `urgency_explain` 理解排序原因。
 
 M9 之后，常见 assignee 用法：
 
-- `task.add` 支持 `assignees: ["alice"]`
-- `task.modify` 支持 `assignees`、`remove_assignees`
-- `task.modify.clear` 允许 `"assignees"`
-- `task.query` 支持 `query: "assignee:me"`
+- `task_add` 支持 `assignees: ["alice"]`
+- `task_modify` 支持 `assignees`、`remove_assignees`
+- `task_modify.clear` 允许 `"assignees"`
+- `task_query` 支持 `query: "assignee:me"`
 
 ## 注意事项
 
-- HTTP MCP 的 `task.get` 只承诺 UUID，不使用本地 working-set ID。
+- HTTP MCP 的 `task_get` 只承诺 UUID，不使用本地 working-set ID。
 - HTTP MCP 不读取调用者本机 TOML。
 - HTTP MCP 不能写 local config。
+
+## Impersonation（M10）
+
+HTTP MCP 支持 request-scoped impersonation。每个 tool call 的 HTTP 请求携带 `X-Taskg-As` header，值为目标用户的 name、email 或 UUID：
+
+```
+Authorization: Bearer taskg_agent_...
+X-Taskg-As: alice
+```
+
+agent token 必须拥有 `impersonate` scope。权限以目标用户在 workspace 的 membership role 与 token scope 的交集为准。
+
+限制：
+
+- stdio MCP **不支持** impersonation。
+- HTTP MCP 的 impersonation 是 request-scoped，不是连接级状态。
+- 每个 tool call 必须独立携带 `Authorization` 和 `X-Taskg-As` header。
 - `/mcp` 不在 OpenAPI 文档中；MCP schema 由 MCP server 暴露。

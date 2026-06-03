@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dajee/taskg/internal/auth"
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/storage/sqlite"
 	"github.com/dajee/taskg/internal/task"
@@ -26,6 +27,7 @@ type RequestAuthorizationInput struct {
 	WorkspaceRef       string
 	ProjectRef         string
 	ProjectRefIsID     bool
+	SubjectUserRef     string
 }
 
 type AuthorizedRequest struct {
@@ -99,6 +101,15 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	if !scope.HasCapability(input.RequiredCapability) {
 		return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "token scope denied"}
 	}
+	subjectUserRef := strings.TrimSpace(input.SubjectUserRef)
+	if subjectUserRef != "" {
+		if input.Token.Token.Type != auth.TokenTypeAgent {
+			return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "impersonation requires agent token"}
+		}
+		if !scope.HasCapability("impersonate") {
+			return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "token does not have impersonate scope"}
+		}
+	}
 
 	workspaceRef, projectRef := strings.TrimSpace(input.WorkspaceRef), strings.TrimSpace(input.ProjectRef)
 	if input.ProjectRefIsID && projectRef != "" {
@@ -121,11 +132,37 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		workspaceRef = project.WorkspaceID
 	}
 
-	workspace, err := s.resolveRequestWorkspace(input.Token.User, scope, workspaceRef)
+	tokenUser := input.Token.User
+	workspace, err := s.resolveRequestWorkspace(tokenUser, scope, workspaceRef)
 	if err != nil {
 		return AuthorizedRequest{}, err
 	}
-	member, err := s.memberRepo.Get(input.Token.User.ID, workspace.ID)
+
+	var subjectUser sqlite.User
+	var delegatorTokenID string
+	var delegatorUserID string
+	if subjectUserRef != "" {
+		if workspaceRef == "" && scope.RestrictsWorkspaces() && len(scope.WorkspaceIDs) > 1 {
+			return AuthorizedRequest{}, RuntimeError{Code: "workspace_required", Message: "workspace must be specified for impersonation with multiple visible workspaces"}
+		}
+		subjectUser, err = s.resolveUser(subjectUserRef)
+		if err != nil {
+			return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "impersonation target user not found"}
+		}
+		_, err = s.memberRepo.Get(subjectUser.ID, workspace.ID)
+		if err == sqlite.ErrNotFound {
+			return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "impersonation target is not a member of workspace"}
+		}
+		if err != nil {
+			return AuthorizedRequest{}, err
+		}
+		delegatorTokenID = input.Token.Token.ID
+		delegatorUserID = tokenUser.ID
+	} else {
+		subjectUser = tokenUser
+	}
+
+	member, err := s.memberRepo.Get(subjectUser.ID, workspace.ID)
 	if err == sqlite.ErrNotFound {
 		return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "user is not a member of workspace"}
 	}
@@ -142,11 +179,13 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 
 	runtime := RuntimeContext{
-		ActorUserID:   input.Token.User.ID,
-		ActorName:     input.Token.User.Name,
-		WorkspaceID:   workspace.ID,
-		WorkspaceSlug: workspace.Slug,
-		Role:          Role(member.Role),
+		ActorUserID:      subjectUser.ID,
+		ActorName:        subjectUser.Name,
+		WorkspaceID:      workspace.ID,
+		WorkspaceSlug:    workspace.Slug,
+		Role:             Role(member.Role),
+		DelegatorTokenID: delegatorTokenID,
+		DelegatorUserID:  delegatorUserID,
 	}
 	if err := requireRolePermission(runtime.Role, input.RequiredPermission); err != nil {
 		return AuthorizedRequest{}, err

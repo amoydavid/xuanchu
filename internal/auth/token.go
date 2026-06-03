@@ -60,8 +60,12 @@ func ValidateTokenCreate(opts CreateTokenOptions) error {
 			return fmt.Errorf("agent token requires explicit scopes")
 		}
 	}
-	if _, err := ParseScopes(opts.Scopes); err != nil {
+	scopes, err := ParseScopes(opts.Scopes)
+	if err != nil {
 		return err
+	}
+	if opts.Type == TokenTypePAT && scopes.Has("impersonate") {
+		return fmt.Errorf("impersonate scope requires agent token")
 	}
 	return nil
 }

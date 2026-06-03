@@ -23,16 +23,18 @@ type AuditEntry struct {
 }
 
 type AuditLogView struct {
-	ID          int64
-	ActorUserID *string
-	ActorName   string
-	WorkspaceID *string
-	ProjectID   *string
-	Action      string
-	TargetType  string
-	TargetID    string
-	PayloadJSON string
-	CreatedAt   int64
+	ID               int64
+	ActorUserID      *string
+	ActorName        string
+	WorkspaceID      *string
+	ProjectID        *string
+	Action           string
+	TargetType       string
+	TargetID         string
+	PayloadJSON      string
+	DelegatorTokenID *string
+	DelegatorUserID  *string
+	CreatedAt        int64
 }
 
 func (s *Service) withAudit(action string, fn func(*Service) (AuditEntry, error)) error {
@@ -84,14 +86,16 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 				workspaceID = entry.WorkspaceID
 			}
 			row := sqlite.AuditLogEntry{
-				ActorUserID: &txSvc.runtime.ActorUserID,
-				WorkspaceID: workspaceID,
-				ProjectID:   entry.ProjectID,
-				Action:      entry.Action,
-				TargetType:  entry.TargetType,
-				TargetID:    entry.TargetID,
-				PayloadJSON: "",
-				CreatedAt:   txSvc.clock.Unix(),
+				ActorUserID:      &txSvc.runtime.ActorUserID,
+				WorkspaceID:      workspaceID,
+				ProjectID:        entry.ProjectID,
+				Action:           entry.Action,
+				TargetType:       entry.TargetType,
+				TargetID:         entry.TargetID,
+				PayloadJSON:      "",
+				DelegatorTokenID: stringPtr(txSvc.runtime.DelegatorTokenID),
+				DelegatorUserID:  stringPtr(txSvc.runtime.DelegatorUserID),
+				CreatedAt:        txSvc.clock.Unix(),
 			}
 			payload, err := marshalAuditPayload(entry.Payload)
 			if err != nil {
@@ -141,15 +145,17 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 	names := map[string]string{}
 	for _, row := range rows {
 		view := AuditLogView{
-			ID:          row.ID,
-			ActorUserID: row.ActorUserID,
-			WorkspaceID: row.WorkspaceID,
-			ProjectID:   row.ProjectID,
-			Action:      row.Action,
-			TargetType:  row.TargetType,
-			TargetID:    row.TargetID,
-			PayloadJSON: row.PayloadJSON,
-			CreatedAt:   row.CreatedAt,
+			ID:               row.ID,
+			ActorUserID:      row.ActorUserID,
+			WorkspaceID:      row.WorkspaceID,
+			ProjectID:        row.ProjectID,
+			Action:           row.Action,
+			TargetType:       row.TargetType,
+			TargetID:         row.TargetID,
+			PayloadJSON:      row.PayloadJSON,
+			DelegatorTokenID: row.DelegatorTokenID,
+			DelegatorUserID:  row.DelegatorUserID,
+			CreatedAt:        row.CreatedAt,
 		}
 		if row.ActorUserID != nil {
 			actorID := *row.ActorUserID
@@ -168,4 +174,11 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 		out = append(out, view)
 	}
 	return filterAuditByScope(s.requestScope, out), nil
+}
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

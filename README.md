@@ -634,7 +634,7 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 常用 capability：
 
 ```text
-task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write
+task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write impersonate
 ```
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{uuid}` 只接受真实 UUID；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析为 UUID。
@@ -743,5 +743,38 @@ M8 为 `taskg server` 提供服务端 post-commit webhook hook。这里的 hook 
 ```
 
 Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。投递失败不会回滚已提交的 task/project 事务。所有 hook 配置变更和人工 replay 都会写入 audit log。
+
+## M10 Impersonation
+
+M10 让 Agent 平台可以持有一个带 `impersonate` scope 的 Agent token，以 workspace 成员的身份发起请求。
+
+```bash
+# 创建可 impersonate 的 Agent token（需要 admin/owner）
+./taskg --workspace local token create pm-agent \
+  --type agent \
+  --scope task:read,task:write,impersonate \
+  --expires-in 8760h
+
+# 远程 CLI 使用 impersonation
+./taskg --server http://127.0.0.1:8080 \
+  --token "$AGENT_TOKEN" \
+  --workspace local \
+  --as alice \
+  list assignee:me
+```
+
+HTTP API 通过 `X-Taskg-As` header：
+
+```
+GET /api/v1/tasks
+Authorization: Bearer taskg_agent_...
+X-Taskg-As: alice
+```
+
+权限以目标用户的 membership role 与 token scope 的交集为准，impersonation 不能提权。Token 可见多个 workspace 且请求未显式指定 workspace 时返回 `workspace_required`。目标用户不存在或不是成员时返回 `membership_not_found`。
+
+Audit log 同时记录 `actor_user_id`（目标用户）和 `delegator_token_id`/`delegator_user_id`（发起方 Agent token）。
+
+HTTP MCP 的每个 tool call 都支持 `X-Taskg-As` header 透传。stdio MCP 不支持 impersonation。
 
 部署、TLS、备份恢复请参考 [`docs/deployment.md`](./docs/deployment.md) 和 [`docs/backup-restore.md`](./docs/backup-restore.md)。
