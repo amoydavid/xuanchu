@@ -223,6 +223,8 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"report.run", "urgency.explain",
 		"workspace.list", "workspace.current",
 		"project.list", "project.get", "project.current",
+		"member_list", "member_add",
+		"user_list", "user_info",
 		"context.show", "context.set",
 		"config.get", "config.set",
 	}

@@ -37,6 +37,25 @@ type contextView struct {
 	ModifiedAt int64  `json:"modified_at,omitempty"`
 }
 
+type memberView struct {
+	UserID     string  `json:"user_id"`
+	Name       string  `json:"name"`
+	Email      *string `json:"email,omitempty"`
+	Role       string  `json:"role"`
+	JoinedAt   int64   `json:"joined_at"`
+	ModifiedAt int64   `json:"modified_at"`
+}
+
+type userView struct {
+	ID                 string  `json:"id"`
+	Name               string  `json:"name"`
+	Email              *string `json:"email,omitempty"`
+	DefaultWorkspaceID *string `json:"default_workspace_id,omitempty"`
+	Active             bool    `json:"active"`
+	CreatedAt          int64   `json:"created_at"`
+	ModifiedAt         int64   `json:"modified_at"`
+}
+
 func workspaceViewFromApp(row app.WorkspaceView) workspaceView {
 	role := string(row.Role)
 	if role == "" {
@@ -84,6 +103,45 @@ func projectViewsFromApp(rows []app.ProjectView) []projectView {
 	out := make([]projectView, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, projectViewFromApp(row))
+	}
+	return out
+}
+
+func memberViewFromApp(row app.MemberView) memberView {
+	return memberView{
+		UserID:     row.UserID,
+		Name:       row.Name,
+		Email:      row.Email,
+		Role:       string(row.Role),
+		JoinedAt:   row.JoinedAt,
+		ModifiedAt: row.ModifiedAt,
+	}
+}
+
+func memberViewsFromApp(rows []app.MemberView) []memberView {
+	out := make([]memberView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, memberViewFromApp(row))
+	}
+	return out
+}
+
+func userViewFromApp(row app.UserView) userView {
+	return userView{
+		ID:                 row.ID,
+		Name:               row.Name,
+		Email:              row.Email,
+		DefaultWorkspaceID: row.DefaultWorkspaceID,
+		Active:             row.Active,
+		CreatedAt:          row.CreatedAt,
+		ModifiedAt:         row.ModifiedAt,
+	}
+}
+
+func userViewsFromApp(rows []app.UserView) []userView {
+	out := make([]userView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, userViewFromApp(row))
 	}
 	return out
 }

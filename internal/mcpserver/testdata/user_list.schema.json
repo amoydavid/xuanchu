@@ -1,0 +1,22 @@
+{
+  "description": "List all users; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "type": "object"
+  },
+  "name": "user_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

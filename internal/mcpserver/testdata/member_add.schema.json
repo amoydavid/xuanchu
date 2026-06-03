@@ -1,0 +1,36 @@
+{
+  "description": "Add a user to the effective workspace as a member.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "type": "string"
+      },
+      "user": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "type": "object"
+  },
+  "name": "member_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}
