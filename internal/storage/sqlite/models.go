@@ -207,3 +207,13 @@ type UserExternalID struct {
 	ExternalID  string `gorm:"not null;uniqueIndex:idx_user_ext_id_provider_value,priority:2"`
 	CreatedAt   int64  `gorm:"not null"`
 }
+
+type TaskLink struct {
+	ID        string `gorm:"primaryKey"`
+	TaskUUID  string `gorm:"not null;uniqueIndex:idx_task_links_task_url,priority:1;index:idx_task_links_task"`
+	Type      string `gorm:"not null"`
+	URL       string `gorm:"not null;uniqueIndex:idx_task_links_task_url,priority:2"`
+	Title     string `gorm:"not null;default:''"`
+	CreatedAt int64  `gorm:"not null"`
+	CreatedBy string `gorm:"not null"`
+}
