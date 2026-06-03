@@ -599,8 +599,15 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 - HTTP MCP 能鉴权并限制 workspace。
 - 带 project scope 的 Agent 只能查询和修改授权 project 中的任务。
 - MCP tool 与 CLI/API 复用同一 app service，不复制业务逻辑。
-- 每个 tool 都有 schema 和集成测试。
-- Agent 可以完成“查询项目待办、添加项目任务、解释 urgency、写入审计”的完整流程。
+ - 每个 tool 都有 schema 和集成测试。
+ - Agent 可以完成"查询项目待办、添加项目任务、解释 urgency、写入审计"的完整流程。
+
+M7 规格与实现计划：
+
+```text
+docs/superpowers/specs/2026-06-01-taskg-m7-design.md
+docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
+```
 
 ## M8：服务端 Hook / 自动化扩展与运维交付打磨
 
@@ -666,6 +673,13 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 - 备份恢复文档：`docs/backup-restore.md`
 - OpenAPI hook schemas 和 paths
 - CGO-free 交叉编译发布脚本：`scripts/release-build.sh`
+
+M8 规格与实现计划：
+
+```text
+docs/superpowers/specs/2026-06-02-taskg-m8-design.md
+docs/superpowers/plans/2026-06-02-taskg-m8-implementation.md
+```
 
 ## 跨 Milestone 规则
 
@@ -821,18 +835,3 @@ docs/superpowers/specs/2026-06-03-taskg-m11-external-id-design.md
 docs/superpowers/plans/2026-06-03-taskg-m11-external-id-implementation.md
 ```
 
----
-
-M8 规格与实现计划：
-
-```text
-docs/superpowers/specs/2026-06-02-taskg-m8-design.md
-docs/superpowers/plans/2026-06-02-taskg-m8-implementation.md
-```
-
-M7 规格与实现计划：
-
-```text
-docs/superpowers/specs/2026-06-01-taskg-m7-design.md
-docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
-```
