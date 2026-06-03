@@ -346,6 +346,105 @@ func TestUnmarshalJSONTasksPreservesNilVsEmptySlices(t *testing.T) {
 	}
 }
 
+func TestJSONTaskExportsLinks(t *testing.T) {
+	tsk := Task{
+		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		Links: []TaskLinkInfo{
+			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: "user-1"},
+			{ID: "link-2", Type: "pr", URL: "https://github.com/pull/1", CreatedAt: 1700000001, CreatedBy: "user-2"},
+		},
+	}
+	data, err := json.Marshal(ToJSON(tsk))
+	if err != nil {
+		t.Fatalf("Marshal links task error = %v", err)
+	}
+	if !strings.Contains(string(data), `"links"`) || !strings.Contains(string(data), `"需求文档"`) {
+		t.Fatalf("links JSON missing: %s", data)
+	}
+	var dto JSONTask
+	if err := json.Unmarshal(data, &dto); err != nil {
+		t.Fatalf("Unmarshal links error = %v", err)
+	}
+	if len(dto.Links) != 2 {
+		t.Fatalf("expected 2 links, got %d", len(dto.Links))
+	}
+	if dto.Links[0].Type != "document" || dto.Links[0].URL != "https://example.com/doc" {
+		t.Fatalf("link[0] = %#v", dto.Links[0])
+	}
+	if dto.Links[1].Title != "" {
+		t.Fatalf("link[1] title should be omitted, got %q", dto.Links[1].Title)
+	}
+}
+
+func TestJSONTaskImportLinks(t *testing.T) {
+	var dto JSONTask
+	err := json.Unmarshal([]byte(`{
+		"uuid":"u1",
+		"description":"test",
+		"status":"pending",
+		"entry":"1970-01-01T00:00:01Z",
+		"modified":"1970-01-01T00:00:02Z",
+		"links":[
+			{"id":"link-1","type":"document","url":"https://example.com/doc","title":"需求文档","created_at":"2023-11-14T22:13:20Z","created_by":"user-1"},
+			{"id":"link-2","type":"pr","url":"https://github.com/pull/1","created_at":"2023-11-14T22:13:21Z","created_by":"user-2"}
+		]
+	}`), &dto)
+	if err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	tsk := FromJSON(dto)
+	if len(tsk.Links) != 2 {
+		t.Fatalf("expected 2 links, got %d", len(tsk.Links))
+	}
+	if tsk.Links[0].Type != "document" || tsk.Links[0].URL != "https://example.com/doc" {
+		t.Fatalf("link[0] = %#v", tsk.Links[0])
+	}
+	if tsk.Links[0].CreatedAt != 1700000000 {
+		t.Fatalf("link[0].CreatedAt = %d, want 1700000000", tsk.Links[0].CreatedAt)
+	}
+}
+
+func TestJSONTaskLinksRoundTrip(t *testing.T) {
+	tsk := Task{
+		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		Links: []TaskLinkInfo{
+			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: "user-1"},
+		},
+	}
+	got := FromJSON(ToJSON(tsk))
+	if len(got.Links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(got.Links))
+	}
+	if got.Links[0].ID != "link-1" || got.Links[0].Type != "document" || got.Links[0].Title != "需求文档" {
+		t.Fatalf("link round-trip lost data: %#v", got.Links[0])
+	}
+}
+
+func TestJSONTaskNilLinksOmitted(t *testing.T) {
+	tsk := Task{UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2}
+	data, err := json.Marshal(ToJSON(tsk))
+	if err != nil {
+		t.Fatalf("Marshal error = %v", err)
+	}
+	if strings.Contains(string(data), `"links"`) {
+		t.Fatalf("nil links should be omitted: %s", data)
+	}
+}
+
+func TestJSONTaskEmptyLinksPreserved(t *testing.T) {
+	data, err := json.Marshal(JSONTask{
+		UUID: "u1", Description: "task", Status: StatusPending,
+		Entry: "1970-01-01T00:00:01Z", Modified: "1970-01-01T00:00:02Z",
+		Links: []JSONTaskLink{},
+	})
+	if err != nil {
+		t.Fatalf("Marshal error = %v", err)
+	}
+	if !strings.Contains(string(data), `"links":[]`) {
+		t.Fatalf("empty links should be preserved: %s", data)
+	}
+}
+
 func TestMarshalJSONTaskOmitsNilSlicesAndKeepsEmptyTagsWhenRequested(t *testing.T) {
 	nilJSON, err := json.Marshal(JSONTask{
 		UUID:        "u1",
