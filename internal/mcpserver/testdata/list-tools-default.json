@@ -982,6 +982,44 @@
       }
     },
     {
+      "description": "Bind an external ID (e.g. feishu:ou_xxxxx) to a taskg user. Admin/owner can bind for others; regular users can only bind to themselves.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "provider",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "name": "user_bind",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Read a single user by name, email, or UUID; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1018,6 +1056,44 @@
         "type": "object"
       },
       "name": "user_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Unbind an external ID from a taskg user.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "provider",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "name": "user_unbind",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
