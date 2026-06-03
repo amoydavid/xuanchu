@@ -26,3 +26,4 @@ cover.out
 *.swp
 *.swo
 *.tmp
+.worktrees/
