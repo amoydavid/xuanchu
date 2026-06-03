@@ -28,10 +28,16 @@ type UDAValue struct {
 	Orphan bool
 }
 
+type ExternalIDInfo struct {
+	Provider   string
+	ExternalID string
+}
+
 type AssigneeInfo struct {
-	UserID string
-	Name   string
-	Email  *string
+	UserID      string
+	Name        string
+	Email       *string
+	ExternalIDs []ExternalIDInfo
 }
 
 type Task struct {

@@ -13,10 +13,16 @@ type JSONAnnotation struct {
 	Description string `json:"description"`
 }
 
+type JSONExternalID struct {
+	Provider   string `json:"provider"`
+	ExternalID string `json:"external_id"`
+}
+
 type JSONAssignee struct {
-	UserID string  `json:"user_id,omitempty"`
-	Name   string  `json:"name,omitempty"`
-	Email  *string `json:"email,omitempty"`
+	UserID      string           `json:"user_id,omitempty"`
+	Name        string           `json:"name,omitempty"`
+	Email       *string          `json:"email,omitempty"`
+	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
 }
 
 type JSONTask struct {
@@ -225,11 +231,18 @@ func ToJSON(tsk Task) JSONTask {
 			}
 			out := make([]JSONAssignee, len(tsk.Assignees))
 			for i, assignee := range tsk.Assignees {
-				out[i] = JSONAssignee{
+				a := JSONAssignee{
 					UserID: assignee.UserID,
 					Name:   assignee.Name,
 					Email:  assignee.Email,
 				}
+				if len(assignee.ExternalIDs) > 0 {
+					a.ExternalIDs = make([]JSONExternalID, len(assignee.ExternalIDs))
+					for j, eid := range assignee.ExternalIDs {
+						a.ExternalIDs[j] = JSONExternalID{Provider: eid.Provider, ExternalID: eid.ExternalID}
+					}
+				}
+				out[i] = a
 			}
 			return out
 		}(),
@@ -315,11 +328,18 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 			}
 			out := make([]AssigneeInfo, len(dto.Assignees))
 			for i, assignee := range dto.Assignees {
-				out[i] = AssigneeInfo{
+				info := AssigneeInfo{
 					UserID: assignee.UserID,
 					Name:   assignee.Name,
 					Email:  assignee.Email,
 				}
+				if len(assignee.ExternalIDs) > 0 {
+					info.ExternalIDs = make([]ExternalIDInfo, len(assignee.ExternalIDs))
+					for j, eid := range assignee.ExternalIDs {
+						info.ExternalIDs[j] = ExternalIDInfo{Provider: eid.Provider, ExternalID: eid.ExternalID}
+					}
+				}
+				out[i] = info
 			}
 			return out
 		}(),
