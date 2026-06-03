@@ -19,6 +19,7 @@ type UserView struct {
 	Name               string
 	Email              *string
 	DefaultWorkspaceID *string
+	ExternalIDs        []task.ExternalIDInfo
 	Active             bool
 	CreatedAt          int64
 	ModifiedAt         int64
@@ -82,9 +83,17 @@ func (s *Service) ListUsers() ([]UserView, error) {
 	if err != nil {
 		return nil, err
 	}
+	userIDs := make([]string, len(users))
+	for i, u := range users {
+		userIDs[i] = u.ID
+	}
+	extByUser, err := s.loadExternalIDsByUsers(userIDs)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]UserView, 0, len(users))
 	for _, user := range users {
-		out = append(out, userViewFromRow(user, user.ID == s.runtime.ActorUserID))
+		out = append(out, userViewFromRow(user, user.ID == s.runtime.ActorUserID, extByUser[user.ID]))
 	}
 	return out, nil
 }
@@ -105,7 +114,7 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 		if err != nil {
 			return nil, err
 		}
-		created = userViewFromRow(user, false)
+		created = userViewFromRow(user, false, nil)
 		return []AuditEntry{
 			{
 				Action:     "user.add",
@@ -207,7 +216,11 @@ func (s *Service) UserInfo(ref string) (UserView, error) {
 	if err != nil {
 		return UserView{}, err
 	}
-	return userViewFromRow(user, user.ID == s.runtime.ActorUserID), nil
+	extIDs, err := s.ListExternalIDs(user.ID)
+	if err != nil {
+		return UserView{}, err
+	}
+	return userViewFromRow(user, user.ID == s.runtime.ActorUserID, extIDs), nil
 }
 
 func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error) {
@@ -734,12 +747,13 @@ func normalizeWorkspaceModifyInput(input ModifyWorkspaceInput) (ModifyWorkspaceI
 	return input, nil
 }
 
-func userViewFromRow(user sqlite.User, active bool) UserView {
+func userViewFromRow(user sqlite.User, active bool, externalIDs []task.ExternalIDInfo) UserView {
 	return UserView{
 		ID:                 user.ID,
 		Name:               user.Name,
 		Email:              user.Email,
 		DefaultWorkspaceID: user.DefaultWorkspaceID,
+		ExternalIDs:        externalIDs,
 		Active:             active,
 		CreatedAt:          user.CreatedAt,
 		ModifiedAt:         user.ModifiedAt,
@@ -809,6 +823,21 @@ func (s *Service) ListExternalIDs(userID string) ([]task.ExternalIDInfo, error) 
 		out[i] = task.ExternalIDInfo{Provider: row.Provider, ExternalID: row.ExternalID}
 	}
 	return out, nil
+}
+
+func (s *Service) loadExternalIDsByUsers(userIDs []string) (map[string][]task.ExternalIDInfo, error) {
+	rows, err := s.extIDRepo.ListByUsers(userIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string][]task.ExternalIDInfo)
+	for _, row := range rows {
+		result[row.UserID] = append(result[row.UserID], task.ExternalIDInfo{
+			Provider:   row.Provider,
+			ExternalID: row.ExternalID,
+		})
+	}
+	return result, nil
 }
 
 func workspaceViewFromRow(workspace sqlite.Workspace, role Role, active bool) WorkspaceView {

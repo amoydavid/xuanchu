@@ -331,7 +331,7 @@ func toModel(tsk domain.Task) Task {
 	}
 }
 
-func fromModel(model Task, usersByID map[string]User) domain.Task {
+func fromModel(model Task, usersByID map[string]assigneeUserData) domain.Task {
 	tags := make([]string, 0, len(model.Tags))
 	for _, tag := range model.Tags {
 		tags = append(tags, tag.Tag)
@@ -358,6 +358,7 @@ func fromModel(model Task, usersByID map[string]User) domain.Task {
 		if user, ok := usersByID[assignee.UserID]; ok {
 			info.Name = user.Name
 			info.Email = user.Email
+			info.ExternalIDs = user.ExternalIDs
 		}
 		assignees = append(assignees, info)
 	}
@@ -378,7 +379,13 @@ func fromModel(model Task, usersByID map[string]User) domain.Task {
 	}
 }
 
-func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]User, error) {
+type assigneeUserData struct {
+	Name        string
+	Email       *string
+	ExternalIDs []domain.ExternalIDInfo
+}
+
+func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]assigneeUserData, error) {
 	userIDs := make([]string, 0)
 	seen := map[string]bool{}
 	for _, model := range models {
@@ -397,9 +404,24 @@ func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]User, erro
 	if err := r.db.Where("id IN ?", userIDs).Find(&users).Error; err != nil {
 		return nil, err
 	}
-	usersByID := make(map[string]User, len(users))
+	var extIDs []UserExternalID
+	if err := r.db.Where("user_id IN ?", userIDs).Find(&extIDs).Error; err != nil {
+		return nil, err
+	}
+	extByUser := make(map[string][]domain.ExternalIDInfo)
+	for _, eid := range extIDs {
+		extByUser[eid.UserID] = append(extByUser[eid.UserID], domain.ExternalIDInfo{
+			Provider:   eid.Provider,
+			ExternalID: eid.ExternalID,
+		})
+	}
+	usersByID := make(map[string]assigneeUserData, len(users))
 	for _, user := range users {
-		usersByID[user.ID] = user
+		usersByID[user.ID] = assigneeUserData{
+			Name:        user.Name,
+			Email:       user.Email,
+			ExternalIDs: extByUser[user.ID],
+		}
 	}
 	return usersByID, nil
 }
