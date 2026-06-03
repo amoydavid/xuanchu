@@ -855,3 +855,79 @@ func workspaceViewFromRow(workspace sqlite.Workspace, role Role, active bool) Wo
 		ModifiedAt:      workspace.ModifiedAt,
 	}
 }
+
+func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLinkInfo, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return task.TaskLinkInfo{}, err
+	}
+	tsk, err := s.resolveTargetForWrite(taskRef)
+	if err != nil {
+		return task.TaskLinkInfo{}, err
+	}
+	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
+		return task.TaskLinkInfo{}, RuntimeError{Code: "task_not_writable", Message: fmt.Sprintf("cannot add link to %s task", tsk.Status)}
+	}
+	linkType = strings.TrimSpace(linkType)
+	if linkType == "" {
+		return task.TaskLinkInfo{}, RuntimeError{Code: "link_type_required", Message: "link type is required"}
+	}
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return task.TaskLinkInfo{}, RuntimeError{Code: "link_url_required", Message: "link url is required"}
+	}
+	now := s.clock.Unix()
+	link := sqlite.TaskLink{
+		ID:        uuid.NewString(),
+		TaskUUID:  tsk.UUID,
+		Type:      linkType,
+		URL:       url,
+		Title:     strings.TrimSpace(title),
+		CreatedAt: now,
+		CreatedBy: s.runtime.ActorUserID,
+	}
+	created, err := sqlite.NewTaskLinkRepository(s.store.DB()).Create(link)
+	if err != nil {
+		if sqlite.IsUniqueConstraintError(err) {
+			return task.TaskLinkInfo{}, RuntimeError{Code: "link_duplicate", Message: "this URL is already linked to the task"}
+		}
+		return task.TaskLinkInfo{}, err
+	}
+	s.appendAuditEntry(AuditEntry{
+		Action:     "task.link.add",
+		TargetType: "task",
+		TargetID:   tsk.UUID,
+		Payload:    map[string]any{"link_id": created.ID, "type": linkType, "url": url},
+	})
+	return task.TaskLinkInfo{
+		ID: created.ID, Type: created.Type, URL: created.URL,
+		Title: created.Title, CreatedAt: created.CreatedAt, CreatedBy: created.CreatedBy,
+	}, nil
+}
+
+func (s *Service) TaskRemoveLink(taskRef, linkID string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
+	tsk, err := s.resolveTargetForWrite(taskRef)
+	if err != nil {
+		return err
+	}
+	linkRepo := sqlite.NewTaskLinkRepository(s.store.DB())
+	link, err := linkRepo.GetByID(linkID)
+	if err != nil {
+		return RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
+	}
+	if link.TaskUUID != tsk.UUID {
+		return RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
+	}
+	if err := linkRepo.Delete(linkID); err != nil {
+		return err
+	}
+	s.appendAuditEntry(AuditEntry{
+		Action:     "task.link.remove",
+		TargetType: "task",
+		TargetID:   tsk.UUID,
+		Payload:    map[string]any{"link_id": linkID},
+	})
+	return nil
+}
