@@ -396,3 +396,10 @@ func createTestUser(t *testing.T, store *Store, user User) {
 func stringPtr(value string) *string {
 	return &value
 }
+
+func mkDomainTask(uuid, wsID, desc string) domain.Task {
+	return domain.Task{
+		UUID: uuid, WorkspaceID: wsID, Description: desc,
+		Status: domain.StatusPending, Entry: 100, Modified: 100,
+	}
+}

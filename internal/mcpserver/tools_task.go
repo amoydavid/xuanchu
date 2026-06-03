@@ -116,6 +116,32 @@ type TaskDependsInput struct {
 	ClearDepends bool     `json:"clear_depends,omitempty"`
 }
 
+type TaskLinkAddInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Task      string `json:"task" jsonschema:"task reference (UUID or working-set ID)"`
+	Type      string `json:"type" jsonschema:"link type (e.g. document, pr, ticket, design)"`
+	URL       string `json:"url" jsonschema:"external resource URL"`
+	Title     string `json:"title,omitempty" jsonschema:"optional display title"`
+}
+
+func (in TaskLinkAddInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type TaskLinkRemoveInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Task      string `json:"task" jsonschema:"task reference (UUID or working-set ID)"`
+	LinkID    string `json:"link_id" jsonschema:"link ID to remove"`
+}
+
+func (in TaskLinkRemoveInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
 func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "task.add", Description: "Create a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
@@ -224,6 +250,27 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "task.depends", Description: "Adjust task dependencies; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDependsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		mod := TaskModifyInput{Workspace: in.Workspace, ID: in.ID, Depends: in.Depends, ClearDepends: in.ClearDepends}
 		return modifyTaskTool(ctx, req, opts, mod, "updated dependencies")
+	})
+	addTool(s, &mcp.Tool{Name: "task.link_add", Description: "Add an external link to a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		link, err := svc.TaskAddLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(link, "Added link to task")
+	})
+	addTool(s, &mcp.Tool{Name: "task.link_remove", Description: "Remove an external link from a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkRemoveInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.TaskRemoveLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.LinkID)); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(nil, "Removed link from task")
 	})
 }
 

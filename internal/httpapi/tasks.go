@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -62,6 +63,21 @@ type modifyTaskRequest struct {
 type textRequest struct {
 	Text        string `json:"text,omitempty"`
 	Description string `json:"description,omitempty"`
+}
+
+type addLinkRequest struct {
+	Type  string `json:"type"`
+	URL   string `json:"url"`
+	Title string `json:"title,omitempty"`
+}
+
+type linkJSON struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	URL       string `json:"url"`
+	Title     string `json:"title,omitempty"`
+	CreatedAt string `json:"created_at"`
+	CreatedBy string `json:"created_by"`
 }
 
 const (
@@ -371,6 +387,69 @@ func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, result, nil)
 }
 
+func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
+	var req addLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	taskID, ok := requireTaskUUID(w, r)
+	if !ok {
+		return
+	}
+	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	link, err := scoped.TaskAddLink(taskID, req.Type, req.URL, req.Title)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, taskLinkToJSON(link), nil)
+}
+
+func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := requireTaskUUID(w, r)
+	if !ok {
+		return
+	}
+	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	tsk, err := scoped.Info(taskID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, taskLinksToJSON(tsk.Links), nil)
+}
+
+func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := requireTaskUUID(w, r)
+	if !ok {
+		return
+	}
+	linkID := chi.URLParam(r, "linkID")
+	if linkID == "" {
+		writeError(w, http.StatusBadRequest, "link_id_required", "link ID is required", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.TaskRemoveLink(taskID, linkID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeTaskAfterMutation(w, scoped, taskID)
+}
+
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
@@ -468,4 +547,23 @@ func ensureProjectRefsMatch(svc *app.Service, projectSlug, projectID string) err
 		return app.RuntimeError{Code: "project_mismatch", Message: "project and project_id do not match"}
 	}
 	return nil
+}
+
+func taskLinkToJSON(link task.TaskLinkInfo) linkJSON {
+	return linkJSON{
+		ID:        link.ID,
+		Type:      link.Type,
+		URL:       link.URL,
+		Title:     link.Title,
+		CreatedAt: time.Unix(link.CreatedAt, 0).UTC().Format(time.RFC3339),
+		CreatedBy: link.CreatedBy,
+	}
+}
+
+func taskLinksToJSON(links []task.TaskLinkInfo) []linkJSON {
+	out := make([]linkJSON, len(links))
+	for i, link := range links {
+		out[i] = taskLinkToJSON(link)
+	}
+	return out
 }

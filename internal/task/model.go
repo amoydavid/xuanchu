@@ -40,6 +40,15 @@ type AssigneeInfo struct {
 	ExternalIDs []ExternalIDInfo
 }
 
+type TaskLinkInfo struct {
+	ID        string
+	Type      string
+	URL       string
+	Title     string
+	CreatedAt int64
+	CreatedBy string
+}
+
 type Task struct {
 	UUID        string
 	WorkspaceID string
@@ -64,6 +73,7 @@ type Task struct {
 	Mask        *string
 	IMask       *int
 	Assignees   []AssigneeInfo
+	Links       []TaskLinkInfo
 	UDAs        map[string]UDAValue
 }
 

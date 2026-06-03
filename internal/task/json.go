@@ -25,6 +25,15 @@ type JSONAssignee struct {
 	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
 }
 
+type JSONTaskLink struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	URL       string `json:"url"`
+	Title     string `json:"title,omitempty"`
+	CreatedAt string `json:"created_at"`
+	CreatedBy string `json:"created_by"`
+}
+
 type JSONTask struct {
 	UUID        string              `json:"uuid"`
 	Description string              `json:"description"`
@@ -47,6 +56,7 @@ type JSONTask struct {
 	Mask        *string             `json:"mask,omitempty"`
 	IMask       *int                `json:"imask,omitempty"`
 	Assignees   []JSONAssignee      `json:"assignees,omitempty"`
+	Links       []JSONTaskLink      `json:"links,omitempty"`
 	UDAs        map[string]UDAValue `json:"-"`
 }
 
@@ -107,6 +117,9 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	if t.Assignees != nil {
 		wire["assignees"] = t.Assignees
 	}
+	if t.Links != nil {
+		wire["links"] = t.Links
+	}
 	reserved := reservedJSONFields()
 	for name, value := range t.UDAs {
 		if _, ok := reserved[name]; ok {
@@ -160,6 +173,15 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 		t.Assignees = assignees
 	} else {
 		t.Assignees = nil
+	}
+	if linksRaw, ok := raw["links"]; ok {
+		var links []JSONTaskLink
+		if err := json.Unmarshal(linksRaw, &links); err != nil {
+			return fmt.Errorf("invalid links: %w", err)
+		}
+		t.Links = links
+	} else {
+		t.Links = nil
 	}
 	for _, key := range coreJSONFields() {
 		delete(raw, key)
@@ -243,6 +265,20 @@ func ToJSON(tsk Task) JSONTask {
 					}
 				}
 				out[i] = a
+			}
+			return out
+		}(),
+		Links: func() []JSONTaskLink {
+			if tsk.Links == nil {
+				return nil
+			}
+			out := make([]JSONTaskLink, len(tsk.Links))
+			for i, link := range tsk.Links {
+				out[i] = JSONTaskLink{
+					ID: link.ID, Type: link.Type, URL: link.URL,
+					Title: link.Title, CreatedAt: formatUnix(link.CreatedAt),
+					CreatedBy: link.CreatedBy,
+				}
 			}
 			return out
 		}(),
@@ -343,12 +379,29 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 			}
 			return out
 		}(),
+		Links: func() []TaskLinkInfo {
+			if dto.Links == nil {
+				return nil
+			}
+			out := make([]TaskLinkInfo, len(dto.Links))
+			for i, link := range dto.Links {
+				createdAt, err := parseUnixString(fmt.Sprintf("links[%d].created_at", i), link.CreatedAt)
+				if err != nil {
+					return nil
+				}
+				out[i] = TaskLinkInfo{
+					ID: link.ID, Type: link.Type, URL: link.URL,
+					Title: link.Title, CreatedAt: createdAt, CreatedBy: link.CreatedBy,
+				}
+			}
+			return out
+		}(),
 		UDAs: dto.UDAs,
 	}, nil
 }
 
 func coreJSONFields() []string {
-	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees"}
+	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links"}
 }
 
 func reservedJSONFields() map[string]struct{} {
