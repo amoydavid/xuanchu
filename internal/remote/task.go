@@ -70,6 +70,15 @@ type TextInput struct {
 	Description string `json:"description,omitempty"`
 }
 
+type TaskLinkDTO struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	URL       string `json:"url"`
+	Title     string `json:"title,omitempty"`
+	CreatedAt string `json:"created_at"`
+	CreatedBy string `json:"created_by"`
+}
+
 func (c *Client) ListTasks(ctx context.Context, input ListTasksInput) ([]task.Task, error) {
 	values := url.Values{}
 	if input.Workspace != "" {
@@ -214,4 +223,35 @@ func jsonTasksToTasks(rows []task.JSONTask) ([]task.Task, error) {
 		out = append(out, tsk)
 	}
 	return out, nil
+}
+
+func (c *Client) AddTaskLink(ctx context.Context, workspace, taskUUID, linkType, linkURL, title string) (TaskLinkDTO, error) {
+	path := taskPathWithSuffix(workspace, taskUUID, "/links")
+	body := map[string]string{"type": linkType, "url": linkURL}
+	if title != "" {
+		body["title"] = title
+	}
+	var envelope apiEnvelope[TaskLinkDTO]
+	if err := c.post(ctx, path, body, &envelope); err != nil {
+		return TaskLinkDTO{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) RemoveTaskLink(ctx context.Context, workspace, taskUUID, linkID string) (task.Task, error) {
+	path := taskPathWithSuffix(workspace, taskUUID, "/links/"+url.PathEscape(linkID))
+	var envelope apiEnvelope[task.JSONTask]
+	if err := c.delete(ctx, path, &envelope); err != nil {
+		return task.Task{}, err
+	}
+	return task.FromJSONStrict(envelope.Data)
+}
+
+func (c *Client) ListTaskLinks(ctx context.Context, workspace, taskUUID string) ([]TaskLinkDTO, error) {
+	path := taskPathWithSuffix(workspace, taskUUID, "/links")
+	var envelope apiEnvelope[[]TaskLinkDTO]
+	if err := c.get(ctx, path, nil, &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Data, nil
 }

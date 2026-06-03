@@ -124,6 +124,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newAppendCommand(opts))
 	cmd.AddCommand(newPrependCommand(opts))
 	cmd.AddCommand(newEditCommand(opts))
+	cmd.AddCommand(newLinkCommand(opts))
 
 	return cmd
 }
@@ -192,6 +193,7 @@ func knownTargetActions() map[string]bool {
 		"append":   true,
 		"prepend":  true,
 		"edit":     true,
+		"link":     true,
 	}
 }
 
@@ -440,6 +442,8 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			return fmt.Errorf("edit does not take inline arguments")
 		}
 		return runEdit(cmd, svc, target)
+	case "link":
+		return handleLinkAction(cmd, opts, svc, target, actionArgs)
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
@@ -555,6 +559,8 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		}
 	case "edit":
 		return app.RuntimeError{Code: "remote_unsupported_command", Message: `command "edit" is not supported in remote mode`}
+	case "link":
+		return handleRemoteLinkAction(cmd, opts, client, ctx, positional[0], target, actionArgs)
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
