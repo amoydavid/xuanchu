@@ -26,6 +26,7 @@
 | M9 | 已完成 | 任务多 Assignee |
 | M10 | 已完成 | Token 委托与 Impersonation |
 | M11 | 已完成 | 用户外部 ID 绑定 |
+| M12 | 已完成 | 任务外部关联 |
 
 ## M0：本地单用户 CLI
 
@@ -806,6 +807,26 @@ docs/superpowers/specs/2026-06-03-taskg-m11-external-id-design.md
 docs/superpowers/plans/2026-06-03-taskg-m11-external-id-implementation.md
 ```
 
+## M12：任务外部关联
+
+**状态：已完成。**
+
+为任务增加外部资源轻关联能力（type + URL + title），让 Agent 能结构化地记录"这个任务和外部世界的什么东西有关"。
+
+核心能力：
+
+- 新增 `task_links` 表，支持自由类型的轻量关联（document、pr、ticket、design 等）
+- Agent 通过 MCP 读写（`task.link_add` / `task.link_remove`），CLI 和 HTTP API 均可操作
+- Hook payload 和 `--json` 输出中包含 links
+- `task info` 渲染中展示 links 列表
+
+M12 规格与实现计划：
+
+```text
+docs/superpowers/specs/2026-06-03-taskg-m12-project-context-task-links-design.md
+docs/superpowers/plans/2026-06-03-taskg-m12-task-links-implementation.md
+```
+
 ## 跨 Milestone 规则
 
 - 每个 milestone 都必须有独立中文 spec。
@@ -826,7 +847,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M11 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定的完整能力栈。
+M12 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联的完整能力栈。
 
 后续方向待定，可能包括：
 
