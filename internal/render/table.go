@@ -94,6 +94,18 @@ func TaskInfo(w io.Writer, tsk task.Task) {
 		table.Append(row)
 	}
 	table.Render()
+
+	if len(tsk.Links) > 0 {
+		fmt.Fprintln(w, "")
+		fmt.Fprintln(w, "Links:")
+		for _, link := range tsk.Links {
+			if link.Title != "" {
+				fmt.Fprintf(w, "  [%s] %s  %s\n", link.Type, link.Title, link.URL)
+			} else {
+				fmt.Fprintf(w, "  [%s] %s\n", link.Type, link.URL)
+			}
+		}
+	}
 }
 
 func formatUnix(sec int64) string {
