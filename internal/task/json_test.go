@@ -120,6 +120,69 @@ func TestJSONTaskImportSupportsStringAssignees(t *testing.T) {
 	}
 }
 
+func TestJSONTaskExportsAssigneeExternalIDs(t *testing.T) {
+	email := "alice@example.com"
+	tsk := Task{
+		UUID:        "u1",
+		Description: "test",
+		Status:      StatusPending,
+		Entry:       1700000000,
+		Modified:    1700000000,
+		Assignees: []AssigneeInfo{
+			{
+				UserID: "user-1",
+				Name:   "alice",
+				Email:  &email,
+				ExternalIDs: []ExternalIDInfo{
+					{Provider: "feishu", ExternalID: "ou_abc"},
+					{Provider: "slack", ExternalID: "U_ABC"},
+				},
+			},
+		},
+	}
+	dto := ToJSON(tsk)
+	if len(dto.Assignees) != 1 {
+		t.Fatalf("expected 1 assignee, got %d", len(dto.Assignees))
+	}
+	if len(dto.Assignees[0].ExternalIDs) != 2 {
+		t.Fatalf("expected 2 external IDs, got %d", len(dto.Assignees[0].ExternalIDs))
+	}
+	if dto.Assignees[0].ExternalIDs[0].Provider != "feishu" {
+		t.Fatalf("expected provider feishu, got %s", dto.Assignees[0].ExternalIDs[0].Provider)
+	}
+	if dto.Assignees[0].ExternalIDs[1].ExternalID != "U_ABC" {
+		t.Fatalf("expected external_id U_ABC, got %s", dto.Assignees[0].ExternalIDs[1].ExternalID)
+	}
+}
+
+func TestJSONTaskImportPreservesAssigneeExternalIDs(t *testing.T) {
+	var dto JSONTask
+	err := json.Unmarshal([]byte(`{
+		"uuid":"u2",
+		"description":"test",
+		"status":"pending",
+		"entry":"1970-01-01T00:00:01Z",
+		"modified":"1970-01-01T00:00:02Z",
+		"assignees":[{"user_id":"user-1","name":"bob","external_ids":[{"provider":"feishu","external_id":"ou_bob"}]}]
+	}`), &dto)
+	if err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	tsk := FromJSON(dto)
+	if len(tsk.Assignees) != 1 {
+		t.Fatalf("expected 1 assignee, got %d", len(tsk.Assignees))
+	}
+	if len(tsk.Assignees[0].ExternalIDs) != 1 {
+		t.Fatalf("expected 1 external ID, got %d", len(tsk.Assignees[0].ExternalIDs))
+	}
+	if tsk.Assignees[0].ExternalIDs[0].Provider != "feishu" {
+		t.Fatalf("expected provider feishu, got %s", tsk.Assignees[0].ExternalIDs[0].Provider)
+	}
+	if tsk.Assignees[0].ExternalIDs[0].ExternalID != "ou_bob" {
+		t.Fatalf("expected external_id ou_bob, got %s", tsk.Assignees[0].ExternalIDs[0].ExternalID)
+	}
+}
+
 func TestJSONTaskM2RoundTrip(t *testing.T) {
 	start, wait, scheduled, until := int64(10), int64(20), int64(30), int64(40)
 	recur, parent, mask := "weekly", "parent", "mask"

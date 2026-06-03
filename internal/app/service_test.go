@@ -403,6 +403,109 @@ func TestServiceModifyClearAndAddAssigneesReplacesSet(t *testing.T) {
 	}
 }
 
+func TestServiceBindAndUnbindExternalID(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_test_bind")
+	if err != nil {
+		t.Fatalf("BindExternalID() error = %v", err)
+	}
+
+	extIDs, err := svc.ListExternalIDs(svc.runtime.ActorUserID)
+	if err != nil {
+		t.Fatalf("ListExternalIDs() error = %v", err)
+	}
+	if len(extIDs) != 1 || extIDs[0].Provider != "feishu" || extIDs[0].ExternalID != "ou_test_bind" {
+		t.Fatalf("external IDs = %#v, want [feishu:ou_test_bind]", extIDs)
+	}
+
+	err = svc.UnbindExternalID(svc.runtime.ActorUserID, "feishu", "ou_test_bind")
+	if err != nil {
+		t.Fatalf("UnbindExternalID() error = %v", err)
+	}
+
+	extIDs, err = svc.ListExternalIDs(svc.runtime.ActorUserID)
+	if err != nil {
+		t.Fatalf("ListExternalIDs() error = %v", err)
+	}
+	if len(extIDs) != 0 {
+		t.Fatalf("external IDs after unbind = %#v, want empty", extIDs)
+	}
+}
+
+func TestServiceBindExternalIDRejectsDuplicate(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_dup")
+	if err != nil {
+		t.Fatalf("first bind: %v", err)
+	}
+	err = svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_dup")
+	if err == nil {
+		t.Fatal("expected duplicate bind to fail")
+	}
+}
+
+func TestServiceUnbindExternalIDNotFound(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	err := svc.UnbindExternalID(svc.runtime.ActorUserID, "feishu", "ou_nonexist")
+	if err == nil {
+		t.Fatal("expected unbind of non-existent ID to fail")
+	}
+}
+
+func TestServiceBindExternalIDRejectsOtherUserForNonAdmin(t *testing.T) {
+	store := newTestStore(t)
+	adminSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	otherUser := mustCreateUserRecord(t, store, sqlite.User{
+		ID: "user-other", Name: "other", CreatedAt: 100, ModifiedAt: 100,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+		UserID: otherUser.ID, WorkspaceID: ws.ID, Role: "member", JoinedAt: 100, ModifiedAt: 100,
+	})
+
+	memberSvc := newTestServiceWithRuntime(t, store, 200, otherUser.Name, ws.Slug)
+
+	err = memberSvc.BindExternalID(adminSvc.runtime.ActorUserID, "feishu", "ou_other")
+	if err == nil {
+		t.Fatal("expected non-admin binding other user to fail")
+	}
+}
+
+func TestServiceAddResolvesAssigneeByExternalID(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_ext_assign")
+	if err != nil {
+		t.Fatalf("BindExternalID() error = %v", err)
+	}
+
+	created, err := svc.Add(AddInput{
+		Description: "external assign test",
+		Assignees:   []string{"feishu:ou_ext_assign"},
+	})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	got, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+	if len(got.Assignees) != 1 || got.Assignees[0].UserID != svc.runtime.ActorUserID {
+		t.Fatalf("Assignees = %#v, want current user", got.Assignees)
+	}
+}
+
 func TestViewerCanUseOwnContextButCannotDefineContext(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")

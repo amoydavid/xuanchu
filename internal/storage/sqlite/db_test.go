@@ -115,6 +115,21 @@ func TestTaskAssigneeTableMigrated(t *testing.T) {
 	}
 }
 
+func TestUserExternalIDTableMigrated(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasTable(&UserExternalID{}) {
+		t.Fatal("user_external_ids table missing after migration")
+	}
+	if !store.DB().Migrator().HasIndex(&UserExternalID{}, "idx_user_ext_id_provider_value") {
+		t.Fatal("idx_user_ext_id_provider_value missing after migration")
+	}
+}
+
 func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {

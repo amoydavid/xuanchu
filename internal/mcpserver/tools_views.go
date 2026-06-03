@@ -47,13 +47,19 @@ type memberView struct {
 }
 
 type userView struct {
-	ID                 string  `json:"id"`
-	Name               string  `json:"name"`
-	Email              *string `json:"email,omitempty"`
-	DefaultWorkspaceID *string `json:"default_workspace_id,omitempty"`
-	Active             bool    `json:"active"`
-	CreatedAt          int64   `json:"created_at"`
-	ModifiedAt         int64   `json:"modified_at"`
+	ID                 string           `json:"id"`
+	Name               string           `json:"name"`
+	Email              *string          `json:"email,omitempty"`
+	DefaultWorkspaceID *string          `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []externalIDView `json:"external_ids,omitempty"`
+	Active             bool             `json:"active"`
+	CreatedAt          int64            `json:"created_at"`
+	ModifiedAt         int64            `json:"modified_at"`
+}
+
+type externalIDView struct {
+	Provider   string `json:"provider"`
+	ExternalID string `json:"external_id"`
 }
 
 func workspaceViewFromApp(row app.WorkspaceView) workspaceView {
@@ -127,11 +133,16 @@ func memberViewsFromApp(rows []app.MemberView) []memberView {
 }
 
 func userViewFromApp(row app.UserView) userView {
+	extIDs := make([]externalIDView, 0, len(row.ExternalIDs))
+	for _, eid := range row.ExternalIDs {
+		extIDs = append(extIDs, externalIDView{Provider: eid.Provider, ExternalID: eid.ExternalID})
+	}
 	return userView{
 		ID:                 row.ID,
 		Name:               row.Name,
 		Email:              row.Email,
 		DefaultWorkspaceID: row.DefaultWorkspaceID,
+		ExternalIDs:        extIDs,
 		Active:             row.Active,
 		CreatedAt:          row.CreatedAt,
 		ModifiedAt:         row.ModifiedAt,
