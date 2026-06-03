@@ -1,0 +1,45 @@
+{
+  "description": "Adjust task dependencies; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "clear_depends": {
+        "type": "boolean"
+      },
+      "depends": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "type": "object"
+  },
+  "name": "task_depends",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

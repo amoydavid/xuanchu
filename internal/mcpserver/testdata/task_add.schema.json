@@ -1,0 +1,104 @@
+{
+  "description": "Create a task; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "annotations": {
+        "description": "initial annotations",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "assignees": {
+        "description": "workspace user refs to assign",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "description": {
+        "description": "task description",
+        "type": "string"
+      },
+      "due": {
+        "description": "unix seconds",
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "priority": {
+        "type": "string"
+      },
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "scheduled": {
+        "description": "unix seconds",
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "tags": {
+        "description": "task tags to add",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "until": {
+        "description": "unix seconds",
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "wait": {
+        "description": "unix seconds",
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "workspace": {
+        "description": "workspace slug or UUID",
+        "type": "string"
+      }
+    },
+    "required": [
+      "description"
+    ],
+    "type": "object"
+  },
+  "name": "task_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

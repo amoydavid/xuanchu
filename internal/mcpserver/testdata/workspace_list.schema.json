@@ -1,0 +1,27 @@
+{
+  "description": "List visible workspaces; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "include_archived": {
+        "type": "boolean"
+      }
+    },
+    "type": "object"
+  },
+  "name": "workspace_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

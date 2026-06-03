@@ -1,0 +1,30 @@
+{
+  "description": "List projects in the effective workspace; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "include_archived": {
+        "type": "boolean"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "project_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}
