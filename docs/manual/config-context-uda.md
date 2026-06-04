@@ -18,7 +18,7 @@ taskg 的配置可以来自：
 本机配置和业务配置要分开理解：
 
 - `taskg.toml` 是本机启动和显示配置。
-- workspace/project 业务配置存 SQLite，并受权限和 audit 管理。
+- workspace/project 业务配置存数据库，并受权限和 audit 管理。
 
 ## taskg.toml
 
@@ -46,7 +46,7 @@ format = "rfc3339"
 | `[display] json = false` | `json` | 默认 JSON 输出 |
 | `[date] format = "rfc3339"` | `date.format` | 日期输出格式 |
 
-不要把 `uda.*`、`urgency.uda.*`、`context.<name>`、project defaults、hook defaults 长期写进 TOML。这些属于业务配置，应通过 CLI/API 写入 SQLite。
+不要把 `uda.*`、`urgency.uda.*`、`context.<name>`、project defaults、hook defaults 长期写进 TOML。这些属于业务配置，应通过 CLI/API 写入数据库。
 
 ## config 命令
 

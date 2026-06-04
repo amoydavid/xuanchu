@@ -57,7 +57,7 @@ taskg _show active.user active.workspace active.context
 
 ## 本地 CLI 的身份来源
 
-本地 CLI 直接读写 SQLite，身份来自本机 active state：
+本地 CLI 直接读写本地数据库（默认 SQLite），身份来自本机 active state：
 
 ```bash
 taskg user use alice
@@ -180,7 +180,7 @@ stdio MCP 使用本机 runtime 身份，等价于本地 CLI：
 - actor 来自本机 active user。
 - workspace 来自本机 active workspace，或 tool input 中的 workspace scope。
 - project scope 来自 tool input 和本地权限校验。
-- 会读取本机 SQLite 和本机可用配置。
+- 会读取本地数据库和本机可用配置。
 
 因此，在启动 stdio MCP 前应先确认：
 

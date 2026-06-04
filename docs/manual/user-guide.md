@@ -124,11 +124,11 @@ taskg --json export > tasks.json
 taskg import tasks.json
 ```
 
-注意：JSON export/import 只覆盖任务数据，不是完整数据库备份。Hook、token、audit、workspace、membership 等数据请用 SQLite 备份，见 [备份与恢复](backup-restore.md)。
+注意：JSON export/import 只覆盖任务数据，不是完整数据库备份。Hook、token、audit、workspace、membership 等数据请用数据库备份（SQLite 文件或 `pg_dump`），见 [备份与恢复](backup-restore.md)。
 
 ## 本地与远程的区别
 
-本地模式直接读写 SQLite：
+本地模式直接读写本地数据库（默认 SQLite）：
 
 ```bash
 taskg list

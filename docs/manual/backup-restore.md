@@ -27,7 +27,7 @@ cp ~/.local/share/taskg/taskg.db /path/to/backup.db
 
 ## 备份内容
 
-完整 SQLite 备份包含：
+完整数据库备份包含：
 
 - task、project、workspace、user 数据
 - membership 和 audit log
@@ -71,7 +71,7 @@ taskg export --json > tasks-backup.json
 taskg import tasks-backup.json
 ```
 
-如果你要完整恢复服务端，请使用 SQLite 备份。
+如果你要完整恢复服务端，请使用数据库备份（SQLite 文件或 `pg_dump`）。
 
 ## 自动化备份示例
 
