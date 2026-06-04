@@ -41,6 +41,7 @@ format = "rfc3339"
 | TOML | 展开后 | 说明 |
 |---|---|---|
 | `[database] path = "..."` | `database.path` | SQLite 路径 |
+| `[database] url = "postgres://..."` | `database.url` | PostgreSQL 连接字符串，与 `database.path` 互斥 |
 | `[display] color = true` | `color` | human 输出颜色 |
 | `[display] json = false` | `json` | 默认 JSON 输出 |
 | `[date] format = "rfc3339"` | `date.format` | 日期输出格式 |

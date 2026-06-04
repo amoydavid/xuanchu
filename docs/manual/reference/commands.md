@@ -9,6 +9,7 @@ weight: 200
 
 ```bash
 taskg --db ./taskg.db list
+taskg --db-url "postgres://user:pass@localhost:5432/taskg" list
 taskg --data-dir ./data list
 taskg --json list
 taskg --no-color list

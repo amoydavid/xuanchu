@@ -9,7 +9,7 @@ weight: 20
 
 ## taskg 的工作方式
 
-taskg 把任务当作结构化对象保存到 SQLite。任务可以有 project、tag、priority、due、depends、annotations、UDA 等字段。CLI 既是操作入口，也是查询入口。
+taskg 把任务当作结构化对象保存到数据库（默认 SQLite，也支持 PostgreSQL）。任务可以有 project、tag、priority、due、depends、annotations、UDA 等字段。CLI 既是操作入口，也是查询入口。
 
 最常用的模式是：
 

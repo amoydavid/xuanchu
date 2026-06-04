@@ -65,7 +65,7 @@ weight: 1
 
 当前 taskg 已支持：
 
-- 本地 CLI 与 SQLite 存储
+- 本地 CLI 与 SQLite / PostgreSQL 存储
 - Taskwarrior 风格任务字段、查询、报表、urgency 和 helper 命令
 - 配置、context、UDA、`.taskrc` 只读导入
 - 多 user、多 workspace、member role、audit
@@ -73,3 +73,4 @@ weight: 1
 - HTTP/JSON API、远程 CLI、PAT / Agent token
 - MCP stdio 与 HTTP transport
 - 服务端 Webhook Hook、投递重试、dead-letter、manual replay
+- PostgreSQL 后端支持（`--db-url`）

@@ -14,6 +14,7 @@ taskg server 提供 HTTP/JSON API。远程 CLI 通过同一套 API 访问服务�
 ```bash
 taskg server --listen :8080
 taskg server --listen 127.0.0.1:8080 --db ./taskg.db
+taskg server --listen :8080 --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
 ```
 
 生产环境建议放在反向代理之后做 TLS termination。详见 [部署指南](deployment.md)。

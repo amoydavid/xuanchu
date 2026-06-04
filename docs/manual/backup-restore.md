@@ -5,7 +5,7 @@ weight: 110
 
 # 备份与恢复
 
-taskg 使用 SQLite。完整备份应备份 SQLite 数据库文件。
+taskg 支持 SQLite（默认）和 PostgreSQL。备份方式取决于数据库类型。
 
 ## 在线备份
 
@@ -80,4 +80,20 @@ taskg import tasks-backup.json
 ```
 
 建议定期清理旧备份，并定期做恢复演练。
+
+## PostgreSQL 备份
+
+如果使用 PostgreSQL，请使用 `pg_dump`：
+
+```bash
+pg_dump -h localhost -U user taskg > /backup/taskg-$(date +%Y%m%d).sql
+```
+
+恢复：
+
+```bash
+psql -h localhost -U user taskg < /backup/taskg-20260605.sql
+```
+
+PostgreSQL 不支持 SQLite 的 `VACUUM INTO`，请使用 `pg_dump` 或 PostgreSQL 自身的 PITR / streaming replication。
 

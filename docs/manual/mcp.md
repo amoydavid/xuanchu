@@ -73,6 +73,7 @@ claude mcp add --transport stdio taskg -- /path/to/taskg mcp stdio
 
 ```bash
 claude mcp add --transport stdio taskg -- /path/to/taskg --db /path/to/taskg.db mcp stdio
+claude mcp add --transport stdio taskg -- /path/to/taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" mcp stdio
 ```
 
 ### Claude Code 远程 HTTP

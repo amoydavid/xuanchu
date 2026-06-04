@@ -26,6 +26,12 @@ go build -o taskg ./cmd/taskg
 ./taskg --data-dir ./data list
 ```
 
+也可以使用 PostgreSQL：
+
+```bash
+./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" list
+```
+
 ## 2. 创建第一个项目
 
 taskg 要求先注册 project，再把任务放进 project。

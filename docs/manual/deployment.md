@@ -10,6 +10,7 @@ weight: 100
 ```bash
 taskg server --listen :8080
 taskg server --listen 127.0.0.1:8080 --db ./taskg.db
+taskg server --listen :8080 --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
 ```
 
 服务端不内置 TLS。生产部署应放在可信网络内，或使用反向代理做 TLS termination。
@@ -86,6 +87,30 @@ HTTP 3xx redirect 不会被自动跟随。
 - `taskg server` 启动后会自动运行 webhook dispatcher。
 - Hook 投递失败不会回滚已提交的 task/project 事务。
 - Dead-lettered delivery 可通过 `taskg hook replay <delivery-id>` 手动重试。
+
+## PostgreSQL 部署
+
+使用 `--db-url` 指定 PostgreSQL 连接字符串：
+
+```bash
+taskg server --listen :8080 --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+```
+
+也可以通过环境变量或 TOML 配置：
+
+```bash
+export TASKG_DB_URL="postgres://user:pass@localhost:5432/taskg"
+taskg server --listen :8080
+```
+
+```toml
+[database]
+url = "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+```
+
+`--db-url` 和 `--db` 互斥。PostgreSQL 模式下会跳过 SQLite 历史迁移（M4/M5），使用 `AutoMigrate` 直接建表。
+
+PostgreSQL 备份请使用 `pg_dump`，不要使用 SQLite 备份命令。
 
 ## 发布构建
 

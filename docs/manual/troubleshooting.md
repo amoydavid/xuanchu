@@ -126,3 +126,14 @@ TASKG_DB=./taskg.db taskg list
 taskg --data-dir ./data list
 ```
 
+## PostgreSQL 连接失败
+
+如果使用 `--db-url` 连接 PostgreSQL 失败：
+
+- 检查连接字符串格式：`postgres://user:pass@host:5432/dbname?sslmode=disable`
+- 检查 PostgreSQL 是否运行：`pg_isready -h localhost -p 5432`
+- 检查用户权限：数据库必须已创建，用户必须有 CREATE TABLE 权限
+- 查看当前配置：`taskg _show database.url`
+
+`--db-url` 和 `--db` 互斥，同时指定会报错。
+
