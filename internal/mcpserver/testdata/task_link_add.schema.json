@@ -1,18 +1,28 @@
 {
-  "description": "Read workspace, project, or stdio local config.",
+  "description": "Add an external link to a task; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "key": {
-        "type": "string"
-      },
       "project": {
         "type": "string"
       },
       "project_id": {
         "type": "string"
       },
-      "scope": {
+      "task": {
+        "description": "task reference (UUID or working-set ID)",
+        "type": "string"
+      },
+      "title": {
+        "description": "optional display title",
+        "type": "string"
+      },
+      "type": {
+        "description": "link type (e.g. document, pr, ticket, design)",
+        "type": "string"
+      },
+      "url": {
+        "description": "external resource URL",
         "type": "string"
       },
       "workspace": {
@@ -20,11 +30,13 @@
       }
     },
     "required": [
-      "key"
+      "task",
+      "type",
+      "url"
     ],
     "type": "object"
   },
-  "name": "config.get",
+  "name": "task_link_add",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

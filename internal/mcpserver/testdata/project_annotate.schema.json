@@ -1,10 +1,9 @@
 {
-  "description": "Remove an external link from a task; writes audit.",
+  "description": "Add an annotation to a project; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "link_id": {
-        "description": "link ID to remove",
+      "content": {
         "type": "string"
       },
       "project": {
@@ -13,21 +12,16 @@
       "project_id": {
         "type": "string"
       },
-      "task": {
-        "description": "task reference (UUID or working-set ID)",
-        "type": "string"
-      },
       "workspace": {
         "type": "string"
       }
     },
     "required": [
-      "task",
-      "link_id"
+      "content"
     ],
     "type": "object"
   },
-  "name": "task.link_remove",
+  "name": "project_annotate",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

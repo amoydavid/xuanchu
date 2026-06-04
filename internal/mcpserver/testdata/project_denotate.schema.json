@@ -1,20 +1,11 @@
 {
-  "description": "Get one project and its agent-readable config; read-only.",
+  "description": "Remove an annotation from a project; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
-    "anyOf": [
-      {
-        "required": [
-          "project"
-        ]
-      },
-      {
-        "required": [
-          "project_id"
-        ]
-      }
-    ],
     "properties": {
+      "annotation_id": {
+        "type": "string"
+      },
       "project": {
         "type": "string"
       },
@@ -25,9 +16,12 @@
         "type": "string"
       }
     },
+    "required": [
+      "annotation_id"
+    ],
     "type": "object"
   },
-  "name": "project.get",
+  "name": "project_denotate",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

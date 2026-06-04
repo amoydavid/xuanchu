@@ -26,7 +26,7 @@ type ConfigSetInput struct {
 }
 
 func registerConfigTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "config.get", Description: "Read workspace, project, or stdio local config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "config_get", Description: "Read workspace, project, or stdio local config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		scope := normalizeConfigScope(in.Scope)
 		key := strings.TrimSpace(in.Key)
 		switch scope {
@@ -72,7 +72,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		}
 	})
 
-	addTool(s, &mcp.Tool{Name: "config.set", Description: "Write workspace or project config; writes audit for shared config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "config_set", Description: "Write workspace or project config; writes audit for shared config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		scope := normalizeConfigScope(in.Scope)
 		key := strings.TrimSpace(in.Key)
 		switch scope {

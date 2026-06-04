@@ -1,9 +1,10 @@
 {
-  "description": "Explain task urgency; read-only.",
+  "description": "Remove an external link from a task; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "id": {
+      "link_id": {
+        "description": "link ID to remove",
         "type": "string"
       },
       "project": {
@@ -12,16 +13,21 @@
       "project_id": {
         "type": "string"
       },
+      "task": {
+        "description": "task reference (UUID or working-set ID)",
+        "type": "string"
+      },
       "workspace": {
         "type": "string"
       }
     },
     "required": [
-      "id"
+      "task",
+      "link_id"
     ],
     "type": "object"
   },
-  "name": "urgency.explain",
+  "name": "task_link_remove",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

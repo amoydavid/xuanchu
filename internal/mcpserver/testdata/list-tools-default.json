@@ -26,7 +26,7 @@
         ],
         "type": "object"
       },
-      "name": "config.get",
+      "name": "config_get",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -73,7 +73,7 @@
         ],
         "type": "object"
       },
-      "name": "config.set",
+      "name": "config_set",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -106,7 +106,7 @@
         ],
         "type": "object"
       },
-      "name": "context.set",
+      "name": "context_set",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -136,7 +136,7 @@
         },
         "type": "object"
       },
-      "name": "context.show",
+      "name": "context_show",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -238,7 +238,7 @@
         ],
         "type": "object"
       },
-      "name": "project.annotate",
+      "name": "project_annotate",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -271,7 +271,7 @@
         },
         "type": "object"
       },
-      "name": "project.annotations",
+      "name": "project_annotations",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -304,7 +304,7 @@
         },
         "type": "object"
       },
-      "name": "project.current",
+      "name": "project_current",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -343,7 +343,7 @@
         ],
         "type": "object"
       },
-      "name": "project.denotate",
+      "name": "project_denotate",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -388,7 +388,7 @@
         },
         "type": "object"
       },
-      "name": "project.get",
+      "name": "project_get",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -418,7 +418,7 @@
         },
         "type": "object"
       },
-      "name": "project.list",
+      "name": "project_list",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -454,7 +454,7 @@
         },
         "type": "object"
       },
-      "name": "project.timeline",
+      "name": "project_timeline",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -499,7 +499,7 @@
         ],
         "type": "object"
       },
-      "name": "report.run",
+      "name": "report_run",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -603,7 +603,7 @@
         ],
         "type": "object"
       },
-      "name": "task.add",
+      "name": "task_add",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -646,7 +646,7 @@
         ],
         "type": "object"
       },
-      "name": "task.annotate",
+      "name": "task_annotate",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -685,7 +685,7 @@
         ],
         "type": "object"
       },
-      "name": "task.delete",
+      "name": "task_delete",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -730,7 +730,7 @@
         ],
         "type": "object"
       },
-      "name": "task.depends",
+      "name": "task_depends",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -769,7 +769,7 @@
         ],
         "type": "object"
       },
-      "name": "task.done",
+      "name": "task_done",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -809,7 +809,7 @@
         ],
         "type": "object"
       },
-      "name": "task.get",
+      "name": "task_get",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -863,7 +863,7 @@
         ],
         "type": "object"
       },
-      "name": "task.link_add",
+      "name": "task_link_add",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -908,7 +908,7 @@
         ],
         "type": "object"
       },
-      "name": "task.link_remove",
+      "name": "task_link_remove",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1046,7 +1046,7 @@
         ],
         "type": "object"
       },
-      "name": "task.modify",
+      "name": "task_modify",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1094,7 +1094,7 @@
         },
         "type": "object"
       },
-      "name": "task.query",
+      "name": "task_query",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1133,7 +1133,7 @@
         ],
         "type": "object"
       },
-      "name": "task.start",
+      "name": "task_start",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1172,7 +1172,7 @@
         ],
         "type": "object"
       },
-      "name": "task.stop",
+      "name": "task_stop",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1211,7 +1211,7 @@
         ],
         "type": "object"
       },
-      "name": "urgency.explain",
+      "name": "urgency_explain",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1366,7 +1366,7 @@
         },
         "type": "object"
       },
-      "name": "workspace.current",
+      "name": "workspace_current",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1393,7 +1393,7 @@
         },
         "type": "object"
       },
-      "name": "workspace.list",
+      "name": "workspace_list",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

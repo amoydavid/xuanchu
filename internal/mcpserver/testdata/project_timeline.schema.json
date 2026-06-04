@@ -1,10 +1,10 @@
 {
-  "description": "Delete a task; writes audit.",
+  "description": "List timeline entries for a project; read-only.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "id": {
-        "type": "string"
+      "limit": {
+        "type": "integer"
       },
       "project": {
         "type": "string"
@@ -16,12 +16,9 @@
         "type": "string"
       }
     },
-    "required": [
-      "id"
-    ],
     "type": "object"
   },
-  "name": "task.delete",
+  "name": "project_timeline",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

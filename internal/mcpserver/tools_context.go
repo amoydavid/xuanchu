@@ -19,7 +19,7 @@ type ContextSetInput struct {
 }
 
 func registerContextTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "context.show", Description: "Show active or named context; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "context_show", Description: "Show active or named context; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:read", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -31,7 +31,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"context": view}, "context "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "context.set", Description: "Set active context; writes actor workspace state."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "context_set", Description: "Set active context; writes actor workspace state."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:write", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
