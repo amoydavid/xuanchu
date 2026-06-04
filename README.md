@@ -49,6 +49,7 @@ go build -o taskg ./cmd/taskg
 ```bash
 ./taskg --db ./taskg.db list          # 使用指定 SQLite 文件
 ./taskg --data-dir ./data list        # 数据库放到 ./data/taskg.db
+./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" list
 ./taskg --json list                   # 输出 JSON
 ./taskg --no-color list               # 关闭颜色
 ./taskg --no-context list             # 本次命令忽略 active context
@@ -56,6 +57,28 @@ go build -o taskg ./cmd/taskg
 ```
 
 默认数据库路径是 `~/.local/share/taskg/taskg.db`。配置优先级按“本次命令参数优先”理解即可：CLI flag / `rc.*` 覆盖 > 环境变量 > SQLite meta > `taskg.toml` > 默认值。
+
+## PostgreSQL
+
+taskg 支持 PostgreSQL 作为数据库后端，通过 `--db-url` 指定连接字符串：
+
+```bash
+./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" server
+```
+
+也可以通过环境变量或 TOML 配置：
+
+```bash
+export TASKG_DB_URL="postgres://user:pass@localhost:5432/taskg"
+./taskg list
+```
+
+```toml
+[database]
+url = "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+```
+
+`--db-url` 和 `--db` 互斥。未指定 `--db-url` 时使用 SQLite（默认行为不变）。
 
 ## 命令和参数怎么写
 

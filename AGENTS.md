@@ -34,12 +34,14 @@
 - CLI: `github.com/spf13/cobra`
 - ORM: `gorm.io/gorm`
 - SQLite driver: `github.com/glebarez/sqlite`
+- PostgreSQL driver: `gorm.io/driver/postgres`（底层 `github.com/jackc/pgx/v5`，纯 Go）
 - UUID: `github.com/google/uuid`
 
 重要约束：
 
-- 本仓库当前使用的是 `GORM + github.com/glebarez/sqlite`。
-- 这是为了保持纯 Go、零 CGO。
+- 支持 SQLite（默认）和 PostgreSQL，通过 `--db-url` 选择。
+- SQLite 使用 `GORM + github.com/glebarez/sqlite`，纯 Go、零 CGO。
+- PostgreSQL 使用 `gorm.io/driver/postgres`（`github.com/jackc/pgx/v5`），纯 Go。
 - 不要引入 `gorm.io/driver/sqlite`。
 - 不要直接引入 `github.com/mattn/go-sqlite3`。
 - 每次改动后都必须继续满足 `CGO_ENABLED=0` 的测试和构建要求。
@@ -149,7 +151,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 8. SQLite 与数据层硬约束
 
-- 使用 `github.com/glebarez/sqlite` 作为 GORM dialector。
+- SQLite 使用 `github.com/glebarez/sqlite`；PostgreSQL 使用 `gorm.io/driver/postgres`（`github.com/jackc/pgx/v5`）。
 - 所有数据库访问都应通过 `internal/storage` 聚合。
 - M0/M1 阶段可以继续用 GORM，但需要保持查询逻辑清晰，不要把复杂 filter 直接堆成字符串拼接。
 - 面向 M1 的查询能力，应优先设计成：
@@ -174,7 +176,8 @@ CGO_ENABLED=0 go build ./cmd/taskg
 ## 10. 当前已知项目习惯
 
 - 本地数据库默认路径：`~/.local/share/taskg/taskg.db`
-- 全局 flag：`--db`、`--data-dir`、`--json`、`--no-color`
+- 全局 flag：`--db`、`--db-url`、`--data-dir`、`--json`、`--no-color`
+- 环境变量：`TASKG_DB`、`TASKG_DB_URL`
 - 当前根命令支持两种入口模式：
   - `taskg <subcommand> ...`
   - `taskg <target> <action> ...`
