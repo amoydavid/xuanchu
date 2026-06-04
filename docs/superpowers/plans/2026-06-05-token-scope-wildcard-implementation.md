@@ -288,7 +288,13 @@ func ValidateTokenCreate(opts CreateTokenOptions) (ScopeSet, error) {
 
 - [ ] **Step 5: 适配 `ValidateTokenCreate` 的调用方**
 
-`internal/app/token.go` 中 `CreateToken` 调用 `ValidateTokenCreate` 的地方，适配新的返回值。搜索 `ValidateTokenCreate` 并修改。原来可能只是 `err := auth.ValidateTokenCreate(...)`，改为 `scopes, err := auth.ValidateTokenCreate(...)` 并使用返回的 scopes。
+`ValidateTokenCreate` 唯一调用方是 `internal/app/token.go` 的 `CreateToken` 方法（约第 87-93 行）。当前 `CreateToken` 内部先调用 `ValidateTokenCreate` 做结构校验，然后又调用 `ParseScopes` 做 scope 展开。改为：
+
+1. `scopes, err := auth.ValidateTokenCreate(...)` 获取展开后的 ScopeSet。
+2. 删除 `CreateToken` 中重复的 `auth.ParseScopes(opts.Scopes)` 调用。
+3. 后续直接使用 `scopes.Values()` 作为存储用的 scope 列表。
+
+注意：`ValidateTokenCreate` 对 PAT 已静默剔除 `impersonate`，所以后续不再需要单独检查 PAT + impersonate。
 
 - [ ] **Step 6: 运行测试确认通过**
 
@@ -483,6 +489,38 @@ func TestTokenRepository_Update(t *testing.T) {
 		t.Fatalf("scopes = %q", updated.ScopesJSON)
 	}
 }
+
+func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
+	db := testDB(t)
+	repo := storage.NewTokenRepository(db)
+	expiresAt := time.Now().Add(24 * time.Hour).Unix()
+	entry := storage.ApiTokenEntry{
+		ID:               uuid.NewString(),
+		UserID:           "user1",
+		Name:             "test-token",
+		Type:             "pat",
+		TokenPrefix:      "taskg_pat_abc",
+		TokenHash:        "hash",
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `[]`,
+		ProjectIDsJSON:   `[]`,
+		CreatedAt:        time.Now().Unix(),
+		ExpiresAt:        &expiresAt,
+	}
+	if err := repo.Create(entry); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Update(entry.ID, storage.TokenUpdates{ClearExpiresAt: true}); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := repo.GetByID(entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ExpiresAt != nil {
+		t.Fatalf("expected nil ExpiresAt, got %d", *updated.ExpiresAt)
+	}
+}
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -502,6 +540,7 @@ type TokenUpdates struct {
 	WorkspaceIDsJSON *string
 	ProjectIDsJSON   *string
 	ExpiresAt        *int64
+	ClearExpiresAt   bool
 }
 
 func (r *TokenRepository) Update(id string, updates TokenUpdates) error {
@@ -518,7 +557,9 @@ func (r *TokenRepository) Update(id string, updates TokenUpdates) error {
 	if updates.ProjectIDsJSON != nil {
 		attrs["project_ids_json"] = *updates.ProjectIDsJSON
 	}
-	if updates.ExpiresAt != nil {
+	if updates.ClearExpiresAt {
+		attrs["expires_at"] = nil
+	} else if updates.ExpiresAt != nil {
 		attrs["expires_at"] = *updates.ExpiresAt
 	}
 	if len(attrs) == 0 {
@@ -592,9 +633,13 @@ type ModifyTokenInput struct {
 3. 检查 `ExpiresAt` 不为 nil 且已过期则返回 `RuntimeError{Code: "token_expired"}`。
 4. 如果提供了 `Scopes`：调用 `ParseScopes()` 展开，然后按 token type 剔除 `impersonate`（PAT）。
 5. 如果远程模式且有 `ParentToken`：复用 `enforceTokenCreateLimit` 逻辑检查 scope/workspace/project 子集。
-6. 合并修改项，构造 `storage.TokenUpdates`，调用 `store.TokenRepo().Update()`。
-7. 写审计（action=`token.modified`，payload 含 before/after diff）。
-8. 返回更新后的 `TokenView`。
+6. 如果提供了 `ExpiresIn`：
+   - `*time.Duration` 值为 `0`：设置 `TokenUpdates.ClearExpiresAt = true`（永不过期）。
+   - 正值：设置 `TokenUpdates.ExpiresAt` 为 `now + duration` 的 unix 秒。
+   - 负值：返回 `RuntimeError{Code: "token_scope_invalid", Message: "expires-in must be non-negative"}`。
+7. 合并修改项，构造 `storage.TokenUpdates`，调用 `store.TokenRepo().Update()`。
+8. 写审计（action=`token.modified`，payload 含 before/after diff）。
+9. 如果没有任何修改项（所有字段为 nil/空），直接查找并返回当前 `TokenView`，不写数据库和审计。
 
 - [ ] **Step 4: 运行测试确认通过**
 
@@ -659,7 +704,19 @@ git commit -m "feat: token modify CLI 命令"
 
 - [ ] **Step 1: 新增 `ModifyTokenInput` 和 `ModifyToken` 方法**
 
-参考现有 `CreateToken`/`RevokeToken` 的模式，新增 `ModifyToken` 方法，发送 `PATCH /api/v1/tokens/{id}`。
+参考现有 `CreateToken`/`RevokeToken` 的模式。在 `internal/remote/client.go` 中新增：
+
+```go
+type ModifyTokenInput struct {
+	Scopes       []string
+	Name         *string
+	ExpiresIn    *string
+	WorkspaceIDs []string
+	ProjectIDs   []string
+}
+```
+
+`ModifyToken` 发送 `PATCH /api/v1/tokens/{id}`，JSON body 为 `ModifyTokenInput` 的非 nil 字段。返回 `TokenView`。
 
 - [ ] **Step 2: 提交**
 
@@ -675,6 +732,7 @@ git commit -m "feat: 远程客户端 ModifyToken"
 **Files:**
 - Modify: `internal/httpapi/tokens.go`
 - Modify: `internal/httpapi/tokens_test.go`（如果存在）
+- Modify: `docs/openapi/taskg-v1.yaml`
 
 - [ ] **Step 1: 新增 PATCH handler**
 
@@ -690,16 +748,20 @@ git commit -m "feat: 远程客户端 ModifyToken"
 - 无 `token:write` capability 返回 403
 - scope 扩张超出请求者自身 scope 返回 403
 
-- [ ] **Step 3: 运行测试**
+- [ ] **Step 3: 更新 OpenAPI**
+
+在 `docs/openapi/taskg-v1.yaml` 中新增 `PATCH /api/v1/tokens/{id}` 的 schema 和 paths，参考现有 `POST /api/v1/tokens` 的结构。
+
+- [ ] **Step 4: 运行测试**
 
 ```bash
 go test ./internal/httpapi/ -run "TestToken" -v
 ```
 
-- [ ] **Step 4: 提交**
+- [ ] **Step 5: 提交**
 
 ```bash
-git add internal/httpapi/
+git add internal/httpapi/ docs/openapi/
 git commit -m "feat: HTTP API PATCH /api/v1/tokens/{id}"
 ```
 
@@ -713,6 +775,7 @@ git commit -m "feat: HTTP API PATCH /api/v1/tokens/{id}"
 - Modify: `docs/manual/reference/commands.md`
 - Modify: `docs/manual/reference/errors.md`
 - Modify: `docs/manual/remote-cli-and-api.md`
+- Modify: `tests/integration/cli_test.go`
 
 - [ ] **Step 1: 更新命令速查**
 
@@ -735,7 +798,18 @@ Server / Token / MCP 区域补充 `scope list` 和 `token modify`。
 
 在 `docs/manual/remote-cli-and-api.md` 中补充 token modify API 说明。
 
-- [ ] **Step 4: 提交**
+- [ ] **Step 4: 新增 CLI 集成测试**
+
+在 `tests/integration/cli_test.go` 中新增：
+
+- `TestCLIScopeList` — 验证 `scope list` 输出包含 `task:read`。
+- `TestCLIScopeListJSON` — 验证 `scope list --json` 输出合法 JSON。
+- `TestCLITokenCreateWithWildcard` — 验证 `token create --scope '*'` 创建成功。
+- `TestCLITokenModifyScope` — 验证 `token modify <id> --scope 'task:read'` 修改成功。
+- `TestCLITokenModifyName` — 验证 `token modify <id> --name "new"` 修改成功。
+- `TestCLITokenModifyExpiresIn` — 验证 `token modify <id> --expires-in 720h` 修改成功。
+
+- [ ] **Step 5: 提交**
 
 ```bash
 git add docs/manual/
