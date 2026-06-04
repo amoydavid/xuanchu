@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/task"
 )
 
 // HookScopeType 定义 hook 的作用域类型。
@@ -75,7 +76,7 @@ type HookDeliveryView struct {
 	EventType      string
 	WorkspaceID    string
 	ProjectID      *string
-	ActorUserID    string
+	Actor          task.UserInfo
 	Payload        map[string]any
 	Headers        map[string]string
 	Status         string
@@ -569,7 +570,7 @@ func hookDeliveryViewFromRowChecked(row sqlite.HookDelivery) (HookDeliveryView, 
 		EventType:      row.EventType,
 		WorkspaceID:    row.WorkspaceID,
 		ProjectID:      row.ProjectID,
-		ActorUserID:    row.ActorUserID,
+		Actor:          task.UserInfo{ID: row.ActorUserID},
 		Payload:        payload,
 		Headers:        headers,
 		Status:         row.Status,

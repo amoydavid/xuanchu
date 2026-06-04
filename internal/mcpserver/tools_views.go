@@ -1,19 +1,22 @@
 package mcpserver
 
-import "github.com/dajee/taskg/internal/app"
+import (
+	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
+)
 
 type workspaceView struct {
 	ID              string  `json:"id"`
 	Slug            string  `json:"slug"`
-	Name            string  `json:"name"`
-	Description     string  `json:"description,omitempty"`
-	Visibility      string  `json:"visibility"`
-	CreatedByUserID *string `json:"created_by_user_id,omitempty"`
-	ArchivedAt      *int64  `json:"archived_at,omitempty"`
-	Role            string  `json:"role"`
-	Active          bool    `json:"active"`
-	CreatedAt       int64   `json:"created_at"`
-	ModifiedAt      int64   `json:"modified_at"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	Visibility  string             `json:"visibility"`
+	CreatedBy   *task.JSONUserInfo `json:"created_by,omitempty"`
+	ArchivedAt  *int64             `json:"archived_at,omitempty"`
+	Role        string             `json:"role"`
+	Active      bool               `json:"active"`
+	CreatedAt   int64              `json:"created_at"`
+	ModifiedAt  int64              `json:"modified_at"`
 }
 
 type projectView struct {
@@ -67,18 +70,23 @@ func workspaceViewFromApp(row app.WorkspaceView) workspaceView {
 	if role == "" {
 		role = string(app.RoleViewer)
 	}
+	var createdBy *task.JSONUserInfo
+	if row.CreatedBy != nil {
+		jui := task.UserInfoToJSON(*row.CreatedBy)
+		createdBy = &jui
+	}
 	return workspaceView{
-		ID:              row.ID,
-		Slug:            row.Slug,
-		Name:            row.Name,
-		Description:     row.Description,
-		Visibility:      row.Visibility,
-		CreatedByUserID: row.CreatedByUserID,
-		ArchivedAt:      row.ArchivedAt,
-		Role:            role,
-		Active:          row.Active,
-		CreatedAt:       row.CreatedAt,
-		ModifiedAt:      row.ModifiedAt,
+		ID:          row.ID,
+		Slug:        row.Slug,
+		Name:        row.Name,
+		Description: row.Description,
+		Visibility:  row.Visibility,
+		CreatedBy:   createdBy,
+		ArchivedAt:  row.ArchivedAt,
+		Role:        role,
+		Active:      row.Active,
+		CreatedAt:   row.CreatedAt,
+		ModifiedAt:  row.ModifiedAt,
 	}
 }
 

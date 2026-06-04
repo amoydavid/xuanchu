@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type AuditListInput struct {
@@ -24,8 +25,7 @@ type AuditEntry struct {
 
 type AuditLogView struct {
 	ID               int64
-	ActorUserID      *string
-	ActorName        string
+	Actor            *task.UserInfo
 	WorkspaceID      *string
 	ProjectID        *string
 	Action           string
@@ -33,7 +33,7 @@ type AuditLogView struct {
 	TargetID         string
 	PayloadJSON      string
 	DelegatorTokenID *string
-	DelegatorUserID  *string
+	DelegatorUser    *task.UserInfo
 	CreatedAt        int64
 }
 
@@ -142,11 +142,22 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 		return nil, err
 	}
 	out := make([]AuditLogView, 0, len(rows))
-	names := map[string]string{}
+	userIDs := make([]string, 0)
+	for _, row := range rows {
+		if row.ActorUserID != nil {
+			userIDs = append(userIDs, *row.ActorUserID)
+		}
+		if row.DelegatorUserID != nil {
+			userIDs = append(userIDs, *row.DelegatorUserID)
+		}
+	}
+	userInfos, err := s.resolveUserInfos(userIDs)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range rows {
 		view := AuditLogView{
 			ID:               row.ID,
-			ActorUserID:      row.ActorUserID,
 			WorkspaceID:      row.WorkspaceID,
 			ProjectID:        row.ProjectID,
 			Action:           row.Action,
@@ -154,22 +165,15 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 			TargetID:         row.TargetID,
 			PayloadJSON:      row.PayloadJSON,
 			DelegatorTokenID: row.DelegatorTokenID,
-			DelegatorUserID:  row.DelegatorUserID,
 			CreatedAt:        row.CreatedAt,
 		}
 		if row.ActorUserID != nil {
-			actorID := *row.ActorUserID
-			if name, ok := names[actorID]; ok {
-				view.ActorName = name
-			} else if user, err := s.userRepo.GetByID(actorID); err == nil {
-				view.ActorName = user.Name
-				names[actorID] = user.Name
-			} else if err == sqlite.ErrNotFound {
-				view.ActorName = actorID
-				names[actorID] = view.ActorName
-			} else {
-				return nil, err
-			}
+			ui := userInfos[*row.ActorUserID]
+			view.Actor = &ui
+		}
+		if row.DelegatorUserID != nil {
+			ui := userInfos[*row.DelegatorUserID]
+			view.DelegatorUser = &ui
 		}
 		out = append(out, view)
 	}

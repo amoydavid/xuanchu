@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
 )
 
 // hookDTO 对应 HTTP API 返回的 hook JSON 结构。
@@ -54,7 +55,7 @@ type deliveryDTO struct {
 	EventType      string            `json:"event_type"`
 	WorkspaceID    string            `json:"workspace_id"`
 	ProjectID      *string           `json:"project_id,omitempty"`
-	ActorUserID    string            `json:"actor_user_id"`
+	Actor          task.JSONUserInfo `json:"actor"`
 	Payload        map[string]any    `json:"payload"`
 	Headers        map[string]string `json:"headers"`
 	Status         string            `json:"status"`
@@ -205,7 +206,7 @@ func deliveryDTOToView(row deliveryDTO) app.HookDeliveryView {
 		EventType:      row.EventType,
 		WorkspaceID:    row.WorkspaceID,
 		ProjectID:      row.ProjectID,
-		ActorUserID:    row.ActorUserID,
+		Actor:          task.UserInfoFromJSON(row.Actor),
 		Payload:        row.Payload,
 		Headers:        row.Headers,
 		Status:         row.Status,

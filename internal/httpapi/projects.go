@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type addProjectRequest struct {
@@ -28,12 +29,12 @@ type configValueRequest struct {
 }
 
 type projectAnnotationInfoResponse struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Entry     int64  `json:"entry"`
-	Content   string `json:"content"`
-	CreatedBy string `json:"created_by"`
-	CreatedAt int64  `json:"created_at"`
+	ID        string             `json:"id"`
+	ProjectID string             `json:"project_id"`
+	Entry     int64              `json:"entry"`
+	Content   string             `json:"content"`
+	CreatedBy task.JSONUserInfo  `json:"created_by"`
+	CreatedAt int64              `json:"created_at"`
 }
 
 type projectResponse struct {
@@ -235,7 +236,7 @@ func projectResponseFromView(view app.ProjectView) projectResponse {
 				ProjectID: a.ProjectID,
 				Entry:     a.Entry,
 				Content:   a.Content,
-				CreatedBy: a.CreatedBy,
+				CreatedBy: task.UserInfoToJSON(a.CreatedBy),
 				CreatedAt: a.CreatedAt,
 			}
 		}
@@ -248,21 +249,21 @@ type addProjectAnnotationRequest struct {
 }
 
 type projectAnnotationResponse struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Entry     int64  `json:"entry"`
-	Content   string `json:"content"`
-	CreatedBy string `json:"created_by"`
-	CreatedAt int64  `json:"created_at"`
+	ID        string             `json:"id"`
+	ProjectID string             `json:"project_id"`
+	Entry     int64              `json:"entry"`
+	Content   string             `json:"content"`
+	CreatedBy task.JSONUserInfo  `json:"created_by"`
+	CreatedAt int64              `json:"created_at"`
 }
 
 type timelineEntryResponse struct {
-	SourceType  string `json:"source_type"`
-	SourceID    string `json:"source_id"`
-	SourceLabel string `json:"source_label"`
-	Entry       int64  `json:"entry"`
-	Content     string `json:"content"`
-	CreatedBy   string `json:"created_by"`
+	SourceType  string            `json:"source_type"`
+	SourceID    string            `json:"source_id"`
+	SourceLabel string            `json:"source_label"`
+	Entry       int64             `json:"entry"`
+	Content     string            `json:"content"`
+	CreatedBy   task.JSONUserInfo `json:"created_by"`
 }
 
 func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Request) {
@@ -353,7 +354,7 @@ func projectAnnotationToJSON(a app.ProjectAnnotationInfo) projectAnnotationRespo
 		ProjectID: a.ProjectID,
 		Entry:     a.Entry,
 		Content:   a.Content,
-		CreatedBy: a.CreatedBy,
+		CreatedBy: task.UserInfoToJSON(a.CreatedBy),
 		CreatedAt: a.CreatedAt,
 	}
 }
@@ -375,7 +376,7 @@ func timelineEntriesToJSON(entries []app.TimelineEntry) []timelineEntryResponse 
 			SourceLabel: e.SourceLabel,
 			Entry:       e.Entry,
 			Content:     e.Content,
-			CreatedBy:   e.CreatedBy,
+			CreatedBy:   task.UserInfoToJSON(e.CreatedBy),
 		}
 	}
 	return out

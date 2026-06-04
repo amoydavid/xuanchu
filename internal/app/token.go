@@ -10,6 +10,7 @@ import (
 
 	"github.com/dajee/taskg/internal/auth"
 	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type CreateTokenInput struct {
@@ -33,7 +34,7 @@ type TokenView struct {
 	Prefix       string
 	Name         string
 	Type         string
-	UserID       string
+	User         task.UserInfo
 	WorkspaceIDs []string
 	ProjectIDs   []string
 	Scopes       []string
@@ -436,7 +437,7 @@ func tokenViewFromEntry(row sqlite.ApiTokenEntry, scopes, workspaceIDs, projectI
 		Prefix:       row.TokenPrefix,
 		Name:         row.Name,
 		Type:         row.Type,
-		UserID:       row.UserID,
+		User:         task.UserInfo{ID: row.UserID},
 		WorkspaceIDs: append([]string(nil), workspaceIDs...),
 		ProjectIDs:   append([]string(nil), projectIDs...),
 		Scopes:       append([]string(nil), scopes...),

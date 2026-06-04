@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type hookCreateRequest struct {
@@ -52,7 +53,7 @@ type hookDeliveryResponse struct {
 	EventType      string            `json:"event_type"`
 	WorkspaceID    string            `json:"workspace_id"`
 	ProjectID      *string           `json:"project_id,omitempty"`
-	ActorUserID    string            `json:"actor_user_id"`
+	Actor          task.JSONUserInfo `json:"actor"`
 	Payload        map[string]any    `json:"payload"`
 	Headers        map[string]string `json:"headers"`
 	Status         string            `json:"status"`
@@ -284,7 +285,7 @@ func hookDeliveryResponseFromView(view app.HookDeliveryView) hookDeliveryRespons
 		EventType:      view.EventType,
 		WorkspaceID:    view.WorkspaceID,
 		ProjectID:      view.ProjectID,
-		ActorUserID:    view.ActorUserID,
+		Actor:          task.UserInfoToJSON(view.Actor),
 		Payload:        view.Payload,
 		Headers:        view.Headers,
 		Status:         view.Status,

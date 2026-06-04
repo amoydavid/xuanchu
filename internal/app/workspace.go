@@ -31,17 +31,17 @@ type AddUserInput struct {
 }
 
 type WorkspaceView struct {
-	ID              string
-	Slug            string
-	Name            string
-	Description     string
-	Visibility      string
-	CreatedByUserID *string
-	ArchivedAt      *int64
-	Role            Role
-	Active          bool
-	CreatedAt       int64
-	ModifiedAt      int64
+	ID          string
+	Slug        string
+	Name        string
+	Description string
+	Visibility  string
+	CreatedBy   *task.UserInfo
+	ArchivedAt  *int64
+	Role        Role
+	Active      bool
+	CreatedAt   int64
+	ModifiedAt  int64
 }
 
 type AddWorkspaceInput struct {
@@ -841,18 +841,22 @@ func (s *Service) loadExternalIDsByUsers(userIDs []string) (map[string][]task.Ex
 }
 
 func workspaceViewFromRow(workspace sqlite.Workspace, role Role, active bool) WorkspaceView {
+	var createdBy *task.UserInfo
+	if workspace.CreatedByUserID != nil {
+		createdBy = &task.UserInfo{ID: *workspace.CreatedByUserID}
+	}
 	return WorkspaceView{
-		ID:              workspace.ID,
-		Slug:            workspace.Slug,
-		Name:            workspace.Name,
-		Description:     workspace.Description,
-		Visibility:      workspace.Visibility,
-		CreatedByUserID: workspace.CreatedByUserID,
-		ArchivedAt:      workspace.ArchivedAt,
-		Role:            role,
-		Active:          active,
-		CreatedAt:       workspace.CreatedAt,
-		ModifiedAt:      workspace.ModifiedAt,
+		ID:          workspace.ID,
+		Slug:        workspace.Slug,
+		Name:        workspace.Name,
+		Description: workspace.Description,
+		Visibility:  workspace.Visibility,
+		CreatedBy:   createdBy,
+		ArchivedAt:  workspace.ArchivedAt,
+		Role:        role,
+		Active:      active,
+		CreatedAt:   workspace.CreatedAt,
+		ModifiedAt:  workspace.ModifiedAt,
 	}
 }
 
@@ -924,7 +928,8 @@ func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.Task
 	}
 	return task.TaskLinkInfo{
 		ID: created.ID, Type: created.Type, URL: created.URL,
-		Title: created.Title, CreatedAt: created.CreatedAt, CreatedBy: created.CreatedBy,
+		Title: created.Title, CreatedAt: created.CreatedAt,
+		CreatedBy: task.UserInfo{ID: created.CreatedBy},
 	}, updated, nil
 }
 

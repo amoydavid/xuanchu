@@ -8,6 +8,7 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/render"
+	"github.com/dajee/taskg/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -57,7 +58,7 @@ func newAuditListCommand(opts Options) *cobra.Command {
 				return render.JSON(cmd.OutOrStdout(), auditRowsForJSON(rows))
 			}
 			for _, row := range rows {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s %s\n", time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339), row.ActorName, row.Action, row.TargetType, row.TargetID)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s %s %s\n", time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339), actorDisplayName(row.Actor), row.Action, row.TargetType, row.TargetID)
 			}
 			return nil
 		},
@@ -71,16 +72,21 @@ func auditRowsForJSON(rows []app.AuditLogView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		item := map[string]any{
-			"id":            row.ID,
-			"actor_user_id": row.ActorUserID,
-			"actor_name":    row.ActorName,
-			"workspace_id":  row.WorkspaceID,
-			"project_id":    row.ProjectID,
-			"action":        row.Action,
-			"target_type":   row.TargetType,
-			"target_id":     row.TargetID,
-			"payload":       parseAuditPayload(row.PayloadJSON),
-			"created_at":    row.CreatedAt,
+			"id":           row.ID,
+			"actor":        userInfoToJSONMap(row.Actor),
+			"workspace_id": row.WorkspaceID,
+			"project_id":   row.ProjectID,
+			"action":       row.Action,
+			"target_type":  row.TargetType,
+			"target_id":    row.TargetID,
+			"payload":      parseAuditPayload(row.PayloadJSON),
+			"created_at":   row.CreatedAt,
+		}
+		if row.DelegatorUser != nil {
+			item["delegator_user"] = userInfoToJSONMap(row.DelegatorUser)
+		}
+		if row.DelegatorTokenID != nil {
+			item["delegator_token_id"] = *row.DelegatorTokenID
 		}
 		out = append(out, item)
 	}
@@ -96,4 +102,32 @@ func parseAuditPayload(raw string) any {
 		return nil
 	}
 	return value
+}
+
+func userInfoToJSONMap(ui *task.UserInfo) map[string]any {
+	if ui == nil {
+		return nil
+	}
+	m := map[string]any{
+		"id":   ui.ID,
+		"name": ui.Name,
+	}
+	if ui.Email != nil {
+		m["email"] = *ui.Email
+	}
+	if len(ui.ExternalIDs) > 0 {
+		extIDs := make([]map[string]string, len(ui.ExternalIDs))
+		for i, eid := range ui.ExternalIDs {
+			extIDs[i] = map[string]string{"provider": eid.Provider, "external_id": eid.ExternalID}
+		}
+		m["external_ids"] = extIDs
+	}
+	return m
+}
+
+func actorDisplayName(actor *task.UserInfo) string {
+	if actor == nil {
+		return ""
+	}
+	return actor.Name
 }

@@ -6,21 +6,22 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type tokenDTO struct {
-	ID           string   `json:"id"`
-	Prefix       string   `json:"prefix"`
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	UserID       string   `json:"user_id"`
-	WorkspaceIDs []string `json:"workspace_ids"`
-	ProjectIDs   []string `json:"project_ids"`
-	Scopes       []string `json:"scopes"`
-	CreatedAt    int64    `json:"created_at"`
-	ExpiresAt    *int64   `json:"expires_at"`
-	RevokedAt    *int64   `json:"revoked_at"`
-	LastUsedAt   *int64   `json:"last_used_at"`
+	ID           string             `json:"id"`
+	Prefix       string             `json:"prefix"`
+	Name         string             `json:"name"`
+	Type         string             `json:"type"`
+	User         task.JSONUserInfo  `json:"user"`
+	WorkspaceIDs []string           `json:"workspace_ids"`
+	ProjectIDs   []string           `json:"project_ids"`
+	Scopes       []string           `json:"scopes"`
+	CreatedAt    int64              `json:"created_at"`
+	ExpiresAt    *int64             `json:"expires_at"`
+	RevokedAt    *int64             `json:"revoked_at"`
+	LastUsedAt   *int64             `json:"last_used_at"`
 }
 
 type CreateTokenInput struct {
@@ -40,19 +41,19 @@ type CreatedToken struct {
 }
 
 type createdTokenDTO struct {
-	Token        string   `json:"token"`
-	ID           string   `json:"id"`
-	Prefix       string   `json:"prefix"`
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	UserID       string   `json:"user_id"`
-	WorkspaceIDs []string `json:"workspace_ids"`
-	ProjectIDs   []string `json:"project_ids"`
-	Scopes       []string `json:"scopes"`
-	CreatedAt    int64    `json:"created_at"`
-	ExpiresAt    *int64   `json:"expires_at"`
-	RevokedAt    *int64   `json:"revoked_at"`
-	LastUsedAt   *int64   `json:"last_used_at"`
+	Token        string            `json:"token"`
+	ID           string            `json:"id"`
+	Prefix       string            `json:"prefix"`
+	Name         string            `json:"name"`
+	Type         string            `json:"type"`
+	User         task.JSONUserInfo `json:"user"`
+	WorkspaceIDs []string          `json:"workspace_ids"`
+	ProjectIDs   []string          `json:"project_ids"`
+	Scopes       []string          `json:"scopes"`
+	CreatedAt    int64             `json:"created_at"`
+	ExpiresAt    *int64            `json:"expires_at"`
+	RevokedAt    *int64            `json:"revoked_at"`
+	LastUsedAt   *int64            `json:"last_used_at"`
 }
 
 func (c *Client) ListTokens(ctx context.Context, workspace string, includeRevoked bool) ([]app.TokenView, error) {
@@ -92,7 +93,7 @@ func (c *Client) CreateToken(ctx context.Context, workspace string, input Create
 		Prefix:       envelope.Data.Prefix,
 		Name:         envelope.Data.Name,
 		Type:         envelope.Data.Type,
-		UserID:       envelope.Data.UserID,
+		User:         envelope.Data.User,
 		WorkspaceIDs: envelope.Data.WorkspaceIDs,
 		ProjectIDs:   envelope.Data.ProjectIDs,
 		Scopes:       envelope.Data.Scopes,
@@ -129,7 +130,7 @@ func tokenDTOToView(row tokenDTO) app.TokenView {
 		Prefix:       row.Prefix,
 		Name:         row.Name,
 		Type:         row.Type,
-		UserID:       row.UserID,
+		User:         task.UserInfoFromJSON(row.User),
 		WorkspaceIDs: append([]string(nil), row.WorkspaceIDs...),
 		ProjectIDs:   append([]string(nil), row.ProjectIDs...),
 		Scopes:       append([]string(nil), row.Scopes...),

@@ -471,7 +471,8 @@ func (r *TaskRepository) loadLinksByTask(models []Task) (map[string][]domain.Tas
 		for _, l := range links {
 			infos = append(infos, domain.TaskLinkInfo{
 				ID: l.ID, Type: l.Type, URL: l.URL,
-				Title: l.Title, CreatedAt: l.CreatedAt, CreatedBy: l.CreatedBy,
+				Title: l.Title, CreatedAt: l.CreatedAt,
+				CreatedBy: domain.UserInfo{ID: l.CreatedBy},
 			})
 		}
 		result[uuid] = infos

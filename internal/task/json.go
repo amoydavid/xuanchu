@@ -18,6 +18,13 @@ type JSONExternalID struct {
 	ExternalID string `json:"external_id"`
 }
 
+type JSONUserInfo struct {
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Email       *string          `json:"email,omitempty"`
+	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
+}
+
 type JSONAssignee struct {
 	UserID      string           `json:"user_id,omitempty"`
 	Name        string           `json:"name,omitempty"`
@@ -26,12 +33,12 @@ type JSONAssignee struct {
 }
 
 type JSONTaskLink struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	URL       string `json:"url"`
-	Title     string `json:"title,omitempty"`
-	CreatedAt string `json:"created_at"`
-	CreatedBy string `json:"created_by"`
+	ID        string       `json:"id"`
+	Type      string       `json:"type"`
+	URL       string       `json:"url"`
+	Title     string       `json:"title,omitempty"`
+	CreatedAt string       `json:"created_at"`
+	CreatedBy JSONUserInfo `json:"created_by"`
 }
 
 type JSONTask struct {
@@ -277,7 +284,10 @@ func ToJSON(tsk Task) JSONTask {
 				out[i] = JSONTaskLink{
 					ID: link.ID, Type: link.Type, URL: link.URL,
 					Title: link.Title, CreatedAt: formatUnix(link.CreatedAt),
-					CreatedBy: link.CreatedBy,
+					CreatedBy: JSONUserInfo{
+						ID: link.CreatedBy.ID, Name: link.CreatedBy.Name,
+						Email: link.CreatedBy.Email, ExternalIDs: externalIDsToJSON(link.CreatedBy.ExternalIDs),
+					},
 				}
 			}
 			return out
@@ -391,7 +401,11 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 				}
 				out[i] = TaskLinkInfo{
 					ID: link.ID, Type: link.Type, URL: link.URL,
-					Title: link.Title, CreatedAt: createdAt, CreatedBy: link.CreatedBy,
+					Title: link.Title, CreatedAt: createdAt,
+					CreatedBy: UserInfo{
+						ID: link.CreatedBy.ID, Name: link.CreatedBy.Name,
+						Email: link.CreatedBy.Email, ExternalIDs: externalIDsFromJSON(link.CreatedBy.ExternalIDs),
+					},
 				}
 			}
 			return out
@@ -498,4 +512,40 @@ func MarshalJSONTasks(tasks []JSONTask) ([]byte, error) {
 
 func UnmarshalJSONTasks(r io.Reader, tasks *[]JSONTask) error {
 	return json.NewDecoder(r).Decode(tasks)
+}
+
+func externalIDsToJSON(ids []ExternalIDInfo) []JSONExternalID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]JSONExternalID, len(ids))
+	for i, eid := range ids {
+		out[i] = JSONExternalID{Provider: eid.Provider, ExternalID: eid.ExternalID}
+	}
+	return out
+}
+
+func externalIDsFromJSON(ids []JSONExternalID) []ExternalIDInfo {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]ExternalIDInfo, len(ids))
+	for i, eid := range ids {
+		out[i] = ExternalIDInfo{Provider: eid.Provider, ExternalID: eid.ExternalID}
+	}
+	return out
+}
+
+func UserInfoToJSON(u UserInfo) JSONUserInfo {
+	return JSONUserInfo{
+		ID: u.ID, Name: u.Name, Email: u.Email,
+		ExternalIDs: externalIDsToJSON(u.ExternalIDs),
+	}
+}
+
+func UserInfoFromJSON(j JSONUserInfo) UserInfo {
+	return UserInfo{
+		ID: j.ID, Name: j.Name, Email: j.Email,
+		ExternalIDs: externalIDsFromJSON(j.ExternalIDs),
+	}
 }

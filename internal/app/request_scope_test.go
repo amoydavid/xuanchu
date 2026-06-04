@@ -634,14 +634,14 @@ func TestImpersonatedTaskActionRecordsDelegatorInAudit(t *testing.T) {
 	found := false
 	for _, row := range rows {
 		if row.Action == "task.add" && row.TargetType == "task" {
-			if row.ActorUserID == nil || *row.ActorUserID != aliceUser.ID {
-				t.Fatalf("audit actor = %v, want alice id", row.ActorUserID)
+			if row.Actor == nil || row.Actor.ID != aliceUser.ID {
+				t.Fatalf("audit actor = %v, want alice id", row.Actor)
 			}
 			if row.DelegatorTokenID == nil || *row.DelegatorTokenID != created.View.ID {
 				t.Fatalf("audit delegator_token_id = %v, want %s", row.DelegatorTokenID, created.View.ID)
 			}
-			if row.DelegatorUserID == nil {
-				t.Fatal("audit delegator_user_id is nil")
+			if row.DelegatorUser == nil {
+				t.Fatal("audit delegator_user is nil")
 			}
 			found = true
 			break

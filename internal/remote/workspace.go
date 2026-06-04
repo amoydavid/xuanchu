@@ -5,20 +5,21 @@ import (
 	"net/url"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type workspaceDTO struct {
-	ID              string  `json:"id"`
-	Slug            string  `json:"slug"`
-	Name            string  `json:"name"`
-	Description     string  `json:"description,omitempty"`
-	Visibility      string  `json:"visibility"`
-	CreatedByUserID *string `json:"created_by_user_id,omitempty"`
-	ArchivedAt      *int64  `json:"archived_at,omitempty"`
-	Role            string  `json:"role"`
-	Active          bool    `json:"active"`
-	CreatedAt       int64   `json:"created_at"`
-	ModifiedAt      int64   `json:"modified_at"`
+	ID          string             `json:"id"`
+	Slug        string             `json:"slug"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	Visibility  string             `json:"visibility"`
+	CreatedBy   *task.JSONUserInfo `json:"created_by,omitempty"`
+	ArchivedAt  *int64             `json:"archived_at,omitempty"`
+	Role        string             `json:"role"`
+	Active      bool               `json:"active"`
+	CreatedAt   int64              `json:"created_at"`
+	ModifiedAt  int64              `json:"modified_at"`
 }
 
 type AddWorkspaceInput struct {
@@ -87,17 +88,22 @@ func (c *Client) ArchiveWorkspace(ctx context.Context, ref string) error {
 }
 
 func workspaceDTOToView(row workspaceDTO) app.WorkspaceView {
+	var createdBy *task.UserInfo
+	if row.CreatedBy != nil {
+		ui := task.UserInfoFromJSON(*row.CreatedBy)
+		createdBy = &ui
+	}
 	return app.WorkspaceView{
-		ID:              row.ID,
-		Slug:            row.Slug,
-		Name:            row.Name,
-		Description:     row.Description,
-		Visibility:      row.Visibility,
-		CreatedByUserID: row.CreatedByUserID,
-		ArchivedAt:      row.ArchivedAt,
-		Role:            app.Role(row.Role),
-		Active:          row.Active,
-		CreatedAt:       row.CreatedAt,
-		ModifiedAt:      row.ModifiedAt,
+		ID:          row.ID,
+		Slug:        row.Slug,
+		Name:        row.Name,
+		Description: row.Description,
+		Visibility:  row.Visibility,
+		CreatedBy:   createdBy,
+		ArchivedAt:  row.ArchivedAt,
+		Role:        app.Role(row.Role),
+		Active:      row.Active,
+		CreatedAt:   row.CreatedAt,
+		ModifiedAt:  row.ModifiedAt,
 	}
 }

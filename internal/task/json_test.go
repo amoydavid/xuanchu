@@ -350,8 +350,8 @@ func TestJSONTaskExportsLinks(t *testing.T) {
 	tsk := Task{
 		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Links: []TaskLinkInfo{
-			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: "user-1"},
-			{ID: "link-2", Type: "pr", URL: "https://github.com/pull/1", CreatedAt: 1700000001, CreatedBy: "user-2"},
+			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: UserInfo{ID: "user-1"}},
+			{ID: "link-2", Type: "pr", URL: "https://github.com/pull/1", CreatedAt: 1700000001, CreatedBy: UserInfo{ID: "user-2"}},
 		},
 	}
 	data, err := json.Marshal(ToJSON(tsk))
@@ -385,8 +385,8 @@ func TestJSONTaskImportLinks(t *testing.T) {
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
 		"links":[
-			{"id":"link-1","type":"document","url":"https://example.com/doc","title":"需求文档","created_at":"2023-11-14T22:13:20Z","created_by":"user-1"},
-			{"id":"link-2","type":"pr","url":"https://github.com/pull/1","created_at":"2023-11-14T22:13:21Z","created_by":"user-2"}
+			{"id":"link-1","type":"document","url":"https://example.com/doc","title":"需求文档","created_at":"2023-11-14T22:13:20Z","created_by":{"id":"user-1","name":"user-1"}},
+			{"id":"link-2","type":"pr","url":"https://github.com/pull/1","created_at":"2023-11-14T22:13:21Z","created_by":{"id":"user-2","name":"user-2"}}
 		]
 	}`), &dto)
 	if err != nil {
@@ -408,7 +408,7 @@ func TestJSONTaskLinksRoundTrip(t *testing.T) {
 	tsk := Task{
 		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Links: []TaskLinkInfo{
-			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: "user-1"},
+			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: UserInfo{ID: "user-1"}},
 		},
 	}
 	got := FromJSON(ToJSON(tsk))

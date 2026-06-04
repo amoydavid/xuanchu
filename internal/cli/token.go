@@ -236,7 +236,7 @@ func tokenViewForJSON(row app.TokenView) map[string]any {
 		"prefix":        row.Prefix,
 		"name":          row.Name,
 		"type":          row.Type,
-		"user_id":       row.UserID,
+		"user":          userInfoToJSONMap(&row.User),
 		"workspace_ids": row.WorkspaceIDs,
 		"project_ids":   row.ProjectIDs,
 		"scopes":        row.Scopes,

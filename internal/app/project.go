@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/task"
 )
 
 type ProjectAnnotationInfo struct {
@@ -15,7 +16,7 @@ type ProjectAnnotationInfo struct {
 	ProjectID string
 	Entry     int64
 	Content   string
-	CreatedBy string
+	CreatedBy task.UserInfo
 	CreatedAt int64
 }
 
@@ -25,12 +26,12 @@ type TimelineOptions struct {
 }
 
 type TimelineEntry struct {
-	SourceType  string `json:"source_type"`
-	SourceID    string `json:"source_id"`
-	SourceLabel string `json:"source_label"`
-	Entry       int64  `json:"entry"`
-	Content     string `json:"content"`
-	CreatedBy   string `json:"created_by"`
+	SourceType  string       `json:"source_type"`
+	SourceID    string       `json:"source_id"`
+	SourceLabel string       `json:"source_label"`
+	Entry       int64        `json:"entry"`
+	Content     string       `json:"content"`
+	CreatedBy   task.UserInfo `json:"created_by"`
 }
 
 type ProjectView struct {
@@ -366,7 +367,7 @@ func projectAnnotationInfoFromModel(m sqlite.ProjectAnnotation) ProjectAnnotatio
 		ProjectID: m.ProjectID,
 		Entry:     m.Entry,
 		Content:   m.Content,
-		CreatedBy: m.CreatedBy,
+		CreatedBy: task.UserInfo{ID: m.CreatedBy},
 		CreatedAt: m.CreatedAt,
 	}
 }
@@ -540,7 +541,7 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 			SourceLabel: r.SourceLabel,
 			Entry:       r.Entry,
 			Content:     r.Content,
-			CreatedBy:   r.CreatedBy,
+			CreatedBy:   task.UserInfo{ID: r.CreatedBy},
 		})
 	}
 	return out, nil

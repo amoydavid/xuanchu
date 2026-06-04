@@ -495,7 +495,7 @@ func projectViewForJSON(project app.ProjectView) map[string]any {
 				"project_id": a.ProjectID,
 				"entry":      a.Entry,
 				"content":    a.Content,
-				"created_by": a.CreatedBy,
+				"created_by": userInfoToJSONMap(&a.CreatedBy),
 				"created_at": a.CreatedAt,
 			}
 		}

@@ -33,6 +33,13 @@ type ExternalIDInfo struct {
 	ExternalID string
 }
 
+type UserInfo struct {
+	ID          string
+	Name        string
+	Email       *string
+	ExternalIDs []ExternalIDInfo
+}
+
 type AssigneeInfo struct {
 	UserID      string
 	Name        string
@@ -46,7 +53,7 @@ type TaskLinkInfo struct {
 	URL       string
 	Title     string
 	CreatedAt int64
-	CreatedBy string
+	CreatedBy UserInfo
 }
 
 type Task struct {

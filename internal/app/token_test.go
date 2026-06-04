@@ -68,8 +68,8 @@ func TestCreateTokenStoresHashAndAudits(t *testing.T) {
 	if strings.Contains(out.Stored.TokenHash, out.RawToken) {
 		t.Fatalf("raw token stored")
 	}
-	if out.View.UserID != svc.Runtime().ActorUserID {
-		t.Fatalf("view user id = %q want %q", out.View.UserID, svc.Runtime().ActorUserID)
+	if out.View.User.ID != svc.Runtime().ActorUserID {
+		t.Fatalf("view user id = %q want %q", out.View.User.ID, svc.Runtime().ActorUserID)
 	}
 	audits := mustListAudit(t, svc)
 	assertAuditAction(t, audits, "token.create")
