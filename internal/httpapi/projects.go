@@ -27,17 +27,27 @@ type configValueRequest struct {
 	Value string `json:"value"`
 }
 
+type projectAnnotationInfoResponse struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Entry     int64  `json:"entry"`
+	Content   string `json:"content"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type projectResponse struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Status      string `json:"status"`
-	TaskCount   int    `json:"task_count"`
-	CreatedAt   int64  `json:"created_at"`
-	ModifiedAt  int64  `json:"modified_at"`
-	ArchivedAt  *int64 `json:"archived_at,omitempty"`
+	ID                string                        `json:"id"`
+	WorkspaceID       string                        `json:"workspace_id"`
+	Slug              string                        `json:"slug"`
+	Name              string                        `json:"name"`
+	Description       string                        `json:"description,omitempty"`
+	Status            string                        `json:"status"`
+	TaskCount         int                           `json:"task_count"`
+	CreatedAt         int64                         `json:"created_at"`
+	ModifiedAt        int64                         `json:"modified_at"`
+	ArchivedAt        *int64                        `json:"archived_at,omitempty"`
+	RecentAnnotations []projectAnnotationInfoResponse `json:"recent_annotations,omitempty"`
 }
 
 func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +215,7 @@ func (s *Server) handleProjectConfigUnset(w http.ResponseWriter, r *http.Request
 }
 
 func projectResponseFromView(view app.ProjectView) projectResponse {
-	return projectResponse{
+	resp := projectResponse{
 		ID:          view.ID,
 		WorkspaceID: view.WorkspaceID,
 		Slug:        view.Slug,
@@ -217,6 +227,20 @@ func projectResponseFromView(view app.ProjectView) projectResponse {
 		ModifiedAt:  view.ModifiedAt,
 		ArchivedAt:  view.ArchivedAt,
 	}
+	if len(view.RecentAnnotations) > 0 {
+		resp.RecentAnnotations = make([]projectAnnotationInfoResponse, len(view.RecentAnnotations))
+		for i, a := range view.RecentAnnotations {
+			resp.RecentAnnotations[i] = projectAnnotationInfoResponse{
+				ID:        a.ID,
+				ProjectID: a.ProjectID,
+				Entry:     a.Entry,
+				Content:   a.Content,
+				CreatedBy: a.CreatedBy,
+				CreatedAt: a.CreatedAt,
+			}
+		}
+	}
+	return resp
 }
 
 type addProjectAnnotationRequest struct {

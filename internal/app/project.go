@@ -372,10 +372,11 @@ func projectAnnotationInfoFromModel(m sqlite.ProjectAnnotation) ProjectAnnotatio
 }
 
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	return string(runes[:maxLen])
 }
 
 func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotationInfo, error) {
@@ -396,6 +397,11 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 			ProjectID:   &project.ID,
 			TargetType:  "project",
 			TargetID:    project.ID,
+			Action:      "project.annotate",
+			Payload: map[string]any{
+				"annotation_id":    annotation.ID,
+				"content_preview":  truncateString(annotation.Content, 200),
+			},
 		}
 		return []AuditEntry{entry}, []HookEvent{event}, nil
 	})
@@ -405,7 +411,7 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnnotationInfo, sqlite.Project, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return ProjectAnnotationInfo{}, sqlite.Project{}, fmt.Errorf("annotation content is required")
+		return ProjectAnnotationInfo{}, sqlite.Project{}, RuntimeError{Code: "annotation_content_required", Message: "annotation content is required"}
 	}
 	project, err := s.ResolveProject(projectRef)
 	if err != nil {
@@ -439,7 +445,7 @@ func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnno
 		}
 		return projectAnnotationInfoFromModel(created), project, nil
 	}
-	return ProjectAnnotationInfo{}, sqlite.Project{}, fmt.Errorf("annotation conflict could not be resolved")
+	return ProjectAnnotationInfo{}, sqlite.Project{}, RuntimeError{Code: "annotation_conflict", Message: "annotation conflict could not be resolved"}
 }
 
 func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
@@ -458,6 +464,10 @@ func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
 			ProjectID:   &project.ID,
 			TargetType:  "project",
 			TargetID:    project.ID,
+			Action:      "project.denotate",
+			Payload: map[string]any{
+				"annotation_id": annotationID,
+			},
 		}
 		return []AuditEntry{entry}, []HookEvent{event}, nil
 	})

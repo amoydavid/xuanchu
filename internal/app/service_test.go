@@ -4376,3 +4376,38 @@ func TestServiceProjectTimeline(t *testing.T) {
 		t.Fatalf("timeline missing source types: %+v", entries)
 	}
 }
+
+func TestServiceProjectAnnotateTimestampConflict(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a1, err := svc.ProjectAnnotate("test-proj", "first at timestamp 100")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc2 := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	a2, err := svc2.ProjectAnnotate("test-proj", "second at timestamp 100")
+	if err != nil {
+		t.Fatalf("ProjectAnnotate with same timestamp: error = %v", err)
+	}
+	if a1.ID == a2.ID {
+		t.Fatal("second annotation should have different ID")
+	}
+	if a1.Entry == a2.Entry {
+		t.Fatalf("entry should differ on conflict: a1.Entry=%d, a2.Entry=%d", a1.Entry, a2.Entry)
+	}
+
+	annotations, err := svc.ProjectAnnotations("test-proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 2 {
+		t.Fatalf("annotations count = %d, want 2", len(annotations))
+	}
+}

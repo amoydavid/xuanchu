@@ -475,7 +475,7 @@ func projectViewsForJSON(projects []app.ProjectView) []map[string]any {
 }
 
 func projectViewForJSON(project app.ProjectView) map[string]any {
-	return map[string]any{
+	m := map[string]any{
 		"id":           project.ID,
 		"workspace_id": project.WorkspaceID,
 		"slug":         project.Slug,
@@ -487,6 +487,21 @@ func projectViewForJSON(project app.ProjectView) map[string]any {
 		"modified_at":  project.ModifiedAt,
 		"archived_at":  project.ArchivedAt,
 	}
+	if len(project.RecentAnnotations) > 0 {
+		anns := make([]map[string]any, len(project.RecentAnnotations))
+		for i, a := range project.RecentAnnotations {
+			anns[i] = map[string]any{
+				"id":         a.ID,
+				"project_id": a.ProjectID,
+				"entry":      a.Entry,
+				"content":    a.Content,
+				"created_by": a.CreatedBy,
+				"created_at": a.CreatedAt,
+			}
+		}
+		m["recent_annotations"] = anns
+	}
+	return m
 }
 
 func newProjectAnnotateCommand(opts Options) *cobra.Command {
