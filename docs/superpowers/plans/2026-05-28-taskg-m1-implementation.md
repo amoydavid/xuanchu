@@ -743,26 +743,26 @@ git commit -m "feat: 实现查询 AST parser"
 
 ### 文件职责
 
-- Create: `internal/storage/sqlite/query_scope.go`
+- Create: `internal/storage/query_scope.go`
   - 将 query AST 编译成 GORM scopes。
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
   - 支持 `Query Expr` 与 sort 选项。
 - Modify: `internal/app/service.go`
   - `ListInput` 增加 `Query query.Expr`。
-- Test: `internal/storage/sqlite/query_scope_test.go`
+- Test: `internal/storage/query_scope_test.go`
 - Test: `internal/app/service_test.go`
 
 ### Task 4: 实现 AST 到 GORM scope
 
 **Files:**
 
-- Create: `internal/storage/sqlite/query_scope.go`
-- Create: `internal/storage/sqlite/query_scope_test.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Create: `internal/storage/query_scope.go`
+- Create: `internal/storage/query_scope_test.go`
+- Modify: `internal/storage/task_repo.go`
 
 - [x] **Step 1: 写失败测试**
 
-创建 `internal/storage/sqlite/query_scope_test.go`：
+创建 `internal/storage/query_scope_test.go`：
 
 ```go
 package sqlite
@@ -904,12 +904,12 @@ var _ = strings.Contains
 
 - [x] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/storage/sqlite -run QueryExpr -v`  
+Run: `go test ./internal/storage -run QueryExpr -v`  
 Expected: FAIL，`ListOptions.Query` 尚不存在。
 
 - [x] **Step 3: 扩展 ListOptions**
 
-修改 `internal/storage/sqlite/task_repo.go`：
+修改 `internal/storage/task_repo.go`：
 
 ```go
 import "github.com/dajee/taskg/internal/query"
@@ -938,7 +938,7 @@ if opts.Query != nil {
 
 - [x] **Step 4: 实现 ApplyQuery**
 
-创建 `internal/storage/sqlite/query_scope.go`：
+创建 `internal/storage/query_scope.go`：
 
 ```go
 package sqlite
@@ -1080,18 +1080,18 @@ func compareDateColumn(column string, p query.Predicate, opts QueryCompileOption
 
 - [x] **Step 5: 运行测试**
 
-Run: `go test ./internal/storage/sqlite -run QueryExpr -v`  
+Run: `go test ./internal/storage -run QueryExpr -v`  
 Expected: PASS。
 
 - [x] **Step 6: 回归测试**
 
-Run: `go test ./internal/storage/sqlite ./internal/query -v`  
+Run: `go test ./internal/storage ./internal/query -v`  
 Expected: PASS。
 
 - [x] **Step 7: 提交**
 
 ```bash
-git add internal/storage/sqlite/query_scope.go internal/storage/sqlite/query_scope_test.go internal/storage/sqlite/task_repo.go
+git add internal/storage/query_scope.go internal/storage/query_scope_test.go internal/storage/task_repo.go
 git commit -m "feat: 编译查询 AST 到 GORM"
 ```
 
@@ -1222,7 +1222,7 @@ git commit -m "feat: 列表查询接入 AST"
 - Create: `internal/report/registry.go`
 - Test: `internal/report/report_test.go`
 - Modify: `internal/app/service.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 - Modify: `internal/cli/list.go`
 - Create/Modify: `internal/cli/report.go`
 - Create: `internal/cli/urgency.go`
@@ -1571,7 +1571,7 @@ git commit -m "feat: 添加 M1 内置报表定义"
 **Files:**
 
 - Modify: `internal/app/service.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 - Modify: `internal/cli/list.go`
 - Create: `internal/cli/report.go`
 - Create: `internal/cli/urgency.go`
@@ -1709,7 +1709,7 @@ Expected: PASS。
 - [x] **Step 8: 提交**
 
 ```bash
-git add internal/app/service.go internal/storage/sqlite/task_repo.go internal/cli/list.go internal/cli/report.go internal/cli/urgency.go internal/render/json.go tests/integration/cli_test.go
+git add internal/app/service.go internal/storage/task_repo.go internal/cli/list.go internal/cli/report.go internal/cli/urgency.go internal/render/json.go tests/integration/cli_test.go
 git commit -m "feat: 接入报表与 urgency"
 ```
 
@@ -1721,7 +1721,7 @@ git commit -m "feat: 接入报表与 urgency"
 - Create: `internal/dom/dom_test.go`
 - Create: `internal/cli/helper.go`
 - Modify: `internal/app/service.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 - Modify: `internal/cli/root.go`
 - Test: `tests/integration/cli_test.go`
 
@@ -1864,7 +1864,7 @@ git commit -m "feat: 添加 DOM 字段解析"
 - Create: `internal/cli/helper.go`
 - Modify: `internal/cli/root.go`
 - Modify: `internal/app/service.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 - Modify: `tests/integration/cli_test.go`
 
 - [x] **Step 1: 写失败集成测试**
@@ -1930,7 +1930,7 @@ func (s *Service) UUIDs(input ListInput) ([]string, error)
 
 - [x] **Step 4: storage 增加 distinct 查询**
 
-在 `internal/storage/sqlite/task_repo.go`：
+在 `internal/storage/task_repo.go`：
 
 ```go
 func (r *TaskRepository) Projects(workspaceID string) ([]string, error)
@@ -1989,7 +1989,7 @@ Expected: PASS。
 - [x] **Step 8: 提交**
 
 ```bash
-git add internal/cli/helper.go internal/cli/root.go internal/app/service.go internal/storage/sqlite/task_repo.go tests/integration/cli_test.go
+git add internal/cli/helper.go internal/cli/root.go internal/app/service.go internal/storage/task_repo.go tests/integration/cli_test.go
 git commit -m "feat: 添加 DOM helper 命令"
 ```
 

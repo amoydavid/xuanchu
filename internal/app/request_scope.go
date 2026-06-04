@@ -8,7 +8,7 @@ import (
 
 	"github.com/dajee/taskg/internal/auth"
 	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -33,8 +33,8 @@ type RequestAuthorizationInput struct {
 type AuthorizedRequest struct {
 	Runtime   RuntimeContext
 	Scope     RequestScope
-	Workspace sqlite.Workspace
-	Project   *sqlite.Project
+	Workspace storage.Workspace
+	Project   *storage.Project
 }
 
 func NewRequestScope(token TokenView) RequestScope {
@@ -114,7 +114,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	workspaceRef, projectRef := strings.TrimSpace(input.WorkspaceRef), strings.TrimSpace(input.ProjectRef)
 	if input.ProjectRefIsID && projectRef != "" {
 		project, err := s.projectRepo.GetByID(projectRef)
-		if errors.Is(err, sqlite.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return AuthorizedRequest{}, RuntimeError{Code: "project_not_found", Message: "project not found"}
 		}
 		if err != nil {
@@ -138,7 +138,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		return AuthorizedRequest{}, err
 	}
 
-	var subjectUser sqlite.User
+	var subjectUser storage.User
 	var delegatorTokenID string
 	var delegatorUserID string
 	if subjectUserRef != "" {
@@ -150,7 +150,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 			return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "impersonation target user not found"}
 		}
 		_, err = s.memberRepo.Get(subjectUser.ID, workspace.ID)
-		if err == sqlite.ErrNotFound {
+		if err == storage.ErrNotFound {
 			return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "impersonation target is not a member of workspace"}
 		}
 		if err != nil {
@@ -163,7 +163,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 
 	member, err := s.memberRepo.Get(subjectUser.ID, workspace.ID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "user is not a member of workspace"}
 	}
 	if err != nil {
@@ -198,48 +198,48 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}, nil
 }
 
-func (s *Service) resolveRequestWorkspace(user sqlite.User, scope RequestScope, ref string) (sqlite.Workspace, error) {
+func (s *Service) resolveRequestWorkspace(user storage.User, scope RequestScope, ref string) (storage.Workspace, error) {
 	ref = strings.TrimSpace(ref)
 	if ref != "" {
 		workspace, err := lookupWorkspace(s.workspaceRepo, ref)
 		if err != nil {
-			return sqlite.Workspace{}, err
+			return storage.Workspace{}, err
 		}
 		if workspace.ArchivedAt != nil {
-			return sqlite.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+			return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
 		}
 		if !scope.AllowsWorkspace(workspace.ID) {
-			return sqlite.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access workspace"}
+			return storage.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access workspace"}
 		}
 		return workspace, nil
 	}
 	if len(scope.WorkspaceIDs) == 1 {
 		workspace, err := s.workspaceRepo.GetByID(scope.WorkspaceIDs[0])
 		if err != nil {
-			return sqlite.Workspace{}, err
+			return storage.Workspace{}, err
 		}
 		if workspace.ArchivedAt != nil {
-			return sqlite.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+			return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
 		}
 		return workspace, nil
 	}
 	if user.DefaultWorkspaceID == nil || strings.TrimSpace(*user.DefaultWorkspaceID) == "" {
-		return sqlite.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "workspace must be specified"}
+		return storage.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "workspace must be specified"}
 	}
 	workspace, err := s.workspaceRepo.GetByID(*user.DefaultWorkspaceID)
 	if err != nil {
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
 	if workspace.ArchivedAt != nil {
-		return sqlite.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+		return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
 	}
 	if !scope.AllowsWorkspace(workspace.ID) {
-		return sqlite.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access default workspace; specify workspace"}
+		return storage.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access default workspace; specify workspace"}
 	}
 	return workspace, nil
 }
 
-func (s *Service) resolveRequestProject(workspaceID string, scope RequestScope, ref string) (*sqlite.Project, error) {
+func (s *Service) resolveRequestProject(workspaceID string, scope RequestScope, ref string) (*storage.Project, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return nil, nil
@@ -309,7 +309,7 @@ func (s *Service) resolveTargetForRead(target string) (task.Task, error) {
 	}
 	tsk, err := s.repo.GetByUUID(s.workspaceID, target)
 	if err != nil {
-		if errors.Is(err, sqlite.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return task.Task{}, taskNotFoundError()
 		}
 		return task.Task{}, err
@@ -333,7 +333,7 @@ func (s *Service) resolveTargetForWrite(target string) (task.Task, error) {
 	}
 	tsk, err := s.repo.GetByUUID(s.workspaceID, target)
 	if err != nil {
-		if errors.Is(err, sqlite.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return task.Task{}, taskNotFoundError()
 		}
 		return task.Task{}, err

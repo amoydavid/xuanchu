@@ -223,11 +223,11 @@ git commit -m "feat: 扩展 config 命令"
   - context domain model、filter 校验、命名规则。
 - Create: `internal/taskcontext/context_test.go`
   - context filter 与状态边界测试。
-- Modify: `internal/storage/sqlite/models.go`
+- Modify: `internal/storage/models.go`
   - 新增 contexts 表模型。
-- Modify: `internal/storage/sqlite/db.go`
+- Modify: `internal/storage/db.go`
   - AutoMigrate 新表。
-- Create: `internal/storage/sqlite/context_repo.go`
+- Create: `internal/storage/context_repo.go`
   - context CRUD、active context 持久化读写。
 - Create: `internal/app/context.go`
   - context 用例编排、active context 注入、读路径叠加。
@@ -249,7 +249,7 @@ git commit -m "feat: 扩展 config 命令"
 **Files:**
 
 - Create: `internal/taskcontext/context_test.go`
-- Modify: `internal/storage/sqlite/context_repo_test.go`（如需创建）
+- Modify: `internal/storage/context_repo_test.go`（如需创建）
 - Modify: `internal/app/service_test.go`
 
 - [ ] **Step 1: 写失败测试**
@@ -292,7 +292,7 @@ Expected: FAIL。
 
 - [ ] **Step 3: 实现 context domain + repo**
 
-在 `internal/taskcontext/context.go` 和 `internal/storage/sqlite/context_repo.go` 中：
+在 `internal/taskcontext/context.go` 和 `internal/storage/context_repo.go` 中：
 
 - 使用 `taskcontext` 包名，避免与标准库 `context` 混淆。
 - 定义 `Context`：
@@ -320,7 +320,7 @@ Expected: FAIL。
 Run:
 
 ```bash
-go test ./internal/taskcontext ./internal/storage/sqlite ./internal/app -run 'Context|NoContext' -v
+go test ./internal/taskcontext ./internal/storage ./internal/app -run 'Context|NoContext' -v
 ```
 
 Expected: PASS。
@@ -328,7 +328,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交**
 
 ```bash
-git add internal/taskcontext/context.go internal/taskcontext/context_test.go internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/context_repo.go internal/app/context.go internal/app/service.go internal/app/service_test.go
+git add internal/taskcontext/context.go internal/taskcontext/context_test.go internal/storage/models.go internal/storage/db.go internal/storage/context_repo.go internal/app/context.go internal/app/service.go internal/app/service_test.go
 git commit -m "feat: 添加 context 支持"
 ```
 
@@ -418,11 +418,11 @@ git commit -m "feat: 添加 context CLI"
   - UDA top-level field 导入导出。
 - Modify: `internal/task/json_test.go`
   - UDA JSON 往返测试。
-- Modify: `internal/storage/sqlite/models.go`
+- Modify: `internal/storage/models.go`
   - `uda_definitions`、`task_uda_values` 表模型。
-- Modify: `internal/storage/sqlite/db.go`
+- Modify: `internal/storage/db.go`
   - AutoMigrate 新表。
-- Create: `internal/storage/sqlite/uda_repo.go`
+- Create: `internal/storage/uda_repo.go`
   - UDA schema 与任务值 CRUD。
 - Create: `internal/app/uda.go`
   - UDA 定义、写入、清空、删除、查询的 app 层用例。
@@ -521,9 +521,9 @@ git commit -m "feat: 添加 UDA 模型"
 
 **Files:**
 
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Create: `internal/storage/sqlite/uda_repo.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Create: `internal/storage/uda_repo.go`
 - Create: `internal/app/uda.go`
 - Modify: `internal/app/service.go`
 - Modify: `internal/app/service_test.go`
@@ -562,7 +562,7 @@ func TestModifyRejectsOrphanUDA(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/app ./internal/storage/sqlite -run 'UDA|ConfigSet' -v
+go test ./internal/app ./internal/storage -run 'UDA|ConfigSet' -v
 go test ./tests/integration -run 'UDA|Import' -v
 ```
 
@@ -570,14 +570,14 @@ Expected: FAIL。
 
 - [ ] **Step 3: 实现 UDA 存储**
 
-在 `internal/storage/sqlite/models.go` 和 `db.go` 中：
+在 `internal/storage/models.go` 和 `db.go` 中：
 
 - 增加 `uda_definitions` 表。
 - 增加 `task_uda_values` 表。
 - 两张表都应带 `workspace_id`，为 M4 预留边界。
 - M3 所有 UDA schema/value 行的 `workspace_id` 取现有 `store.LocalWorkspace().ID`；service 初始化时缓存 workspace ID，repo 调用必须显式传入，避免硬编码 `"local"`。
 
-在 `internal/storage/sqlite/uda_repo.go` 中：
+在 `internal/storage/uda_repo.go` 中：
 
 - 提供 `GetDefinition`、`ListDefinitions`、`UpsertDefinition`、`DeleteDefinition`。
 - 提供 `GetTaskUDAs`、`ReplaceTaskUDAs`、`UniqueUDAValues`。
@@ -597,7 +597,7 @@ Expected: FAIL。
 Run:
 
 ```bash
-go test ./internal/app ./internal/storage/sqlite -run 'UDA|ConfigSet' -v
+go test ./internal/app ./internal/storage -run 'UDA|ConfigSet' -v
 go test ./tests/integration -run 'UDA|Import' -v
 ```
 
@@ -606,7 +606,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/uda_repo.go internal/app/uda.go internal/app/service.go internal/app/service_test.go internal/cli/config.go tests/integration/cli_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/uda_repo.go internal/app/uda.go internal/app/service.go internal/app/service_test.go internal/cli/config.go tests/integration/cli_test.go
 git commit -m "feat: 持久化 UDA"
 ```
 
@@ -626,9 +626,9 @@ git commit -m "feat: 持久化 UDA"
   - `ParseModifyArgs` 识别 UDA 修改 token。
 - Modify: `internal/query/parser_test.go`
   - UDA modify 语法测试。
-- Modify: `internal/storage/sqlite/query_scope.go`
+- Modify: `internal/storage/query_scope.go`
   - 动态 UDA 条件编译。
-- Modify: `internal/storage/sqlite/query_scope_test.go`
+- Modify: `internal/storage/query_scope_test.go`
   - UDA 查询 SQL 测试。
 - Modify: `internal/dom/dom.go`
   - `_get` 支持 UDA。
@@ -651,7 +651,7 @@ git commit -m "feat: 持久化 UDA"
 
 - Modify: `internal/query/parser_ast_test.go`
 - Modify: `internal/query/parser_test.go`
-- Modify: `internal/storage/sqlite/query_scope_test.go`
+- Modify: `internal/storage/query_scope_test.go`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -682,7 +682,7 @@ func TestBuiltinDateEqUsesDayRange(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/query ./internal/storage/sqlite -run 'UDA|ModifyArgs' -v
+go test ./internal/query ./internal/storage -run 'UDA|ModifyArgs' -v
 ```
 
 Expected: FAIL。
@@ -700,7 +700,7 @@ Expected: FAIL。
   - `estimate:` 解析为 UDA 为空测试。
   - 如果字段最终不在 schema 中，compile 阶段返回 unknown UDA 错误。
 
-在 `internal/storage/sqlite/query_scope.go` 中：
+在 `internal/storage/query_scope.go` 中：
 
 - 通过 `QueryCompileOptions` 注入 UDA schema。
 - 编译 UDA 条件时使用参数绑定。
@@ -719,7 +719,7 @@ Expected: FAIL。
 Run:
 
 ```bash
-go test ./internal/query ./internal/storage/sqlite -run 'UDA|ModifyArgs' -v
+go test ./internal/query ./internal/storage -run 'UDA|ModifyArgs' -v
 ```
 
 Expected: PASS。
@@ -727,7 +727,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交**
 
 ```bash
-git add internal/query/ast.go internal/query/parser_ast.go internal/query/parser_ast_test.go internal/query/parser.go internal/query/parser_test.go internal/storage/sqlite/query_scope.go internal/storage/sqlite/query_scope_test.go
+git add internal/query/ast.go internal/query/parser_ast.go internal/query/parser_ast_test.go internal/query/parser.go internal/query/parser_test.go internal/storage/query_scope.go internal/storage/query_scope_test.go
 git commit -m "feat: 查询支持 UDA"
 ```
 

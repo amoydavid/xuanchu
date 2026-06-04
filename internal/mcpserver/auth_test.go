@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 type testClock struct {
@@ -21,9 +21,9 @@ func (c testClock) Location() *time.Location {
 	return time.Local
 }
 
-func newMCPTestStore(t *testing.T) *sqlite.Store {
+func newMCPTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func newMCPTestStore(t *testing.T) *sqlite.Store {
 	return store
 }
 
-func newMCPTestService(t *testing.T, store *sqlite.Store) *app.Service {
+func newMCPTestService(t *testing.T, store *storage.Store) *app.Service {
 	t.Helper()
 	svc, err := app.NewService(app.ServiceOptions{Store: store, Clock: testClock{now: 100}})
 	if err != nil {

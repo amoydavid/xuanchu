@@ -46,19 +46,19 @@
   assignee JSON 序列化与兼容测试。
 - `internal/task/modification_test.go`
   assignee modification 的空值判断测试。
-- `internal/storage/sqlite/models.go`
+- `internal/storage/models.go`
   增加 `TaskAssignee` model 与 task 关联。
-- `internal/storage/sqlite/db.go`
+- `internal/storage/db.go`
   迁移 `TaskAssignee`。
-- `internal/storage/sqlite/db_test.go`
+- `internal/storage/db_test.go`
   验证新表已迁移。
-- `internal/storage/sqlite/task_repo.go`
+- `internal/storage/task_repo.go`
   持久化与 hydrate assignees。
-- `internal/storage/sqlite/task_repo_test.go`
+- `internal/storage/task_repo_test.go`
   repository 读写与去重测试。
-- `internal/storage/sqlite/query_scope.go`
+- `internal/storage/query_scope.go`
   `assignee` predicate 编译为 SQL。
-- `internal/storage/sqlite/query_scope_test.go`
+- `internal/storage/query_scope_test.go`
   `assignee` 查询编译和执行测试。
 - `internal/query/expr.go`
   新增 `AttrAssignee`。
@@ -192,11 +192,11 @@ Expected: PASS。
 ### Task 2: 增加 SQLite 关系表与 repository hydration
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
-- Test: `internal/storage/sqlite/db_test.go`
-- Test: `internal/storage/sqlite/task_repo_test.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Modify: `internal/storage/task_repo.go`
+- Test: `internal/storage/db_test.go`
+- Test: `internal/storage/task_repo_test.go`
 
 - [ ] **Step 1: 写失败测试，锁定迁移与 repo 行为**
 
@@ -210,13 +210,13 @@ func TestTaskRepositoryUpdateAssignees(t *testing.T) {}
 
 - [ ] **Step 2: 运行红测**
 
-Run: `go test ./internal/storage/sqlite -run 'TestTaskAssignee|TestTaskRepository.*Assignee'`
+Run: `go test ./internal/storage -run 'TestTaskAssignee|TestTaskRepository.*Assignee'`
 
 Expected: FAIL，提示 `task_assignees` 不存在或 domain 未 hydrate。
 
 - [ ] **Step 3: 增加 model 与 migration**
 
-在 `internal/storage/sqlite/models.go` 增加：
+在 `internal/storage/models.go` 增加：
 
 ```go
 type TaskAssignee struct {
@@ -231,11 +231,11 @@ type TaskAssignee struct {
 Assignees []TaskAssignee `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 ```
 
-在 `internal/storage/sqlite/db.go` 的 AutoMigrate 列表里加入 `&TaskAssignee{}`。
+在 `internal/storage/db.go` 的 AutoMigrate 列表里加入 `&TaskAssignee{}`。
 
 - [ ] **Step 4: 写入与回填 assignees**
 
-在 `internal/storage/sqlite/task_repo.go`：
+在 `internal/storage/task_repo.go`：
 
 - `preloadAssociations()` 加入 `Preload("Assignees")`
 - `toModel()` 从 domain assignees 生成 `TaskAssignee`
@@ -246,7 +246,7 @@ Assignees []TaskAssignee `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"
 
 - [ ] **Step 5: 运行绿测**
 
-Run: `go test ./internal/storage/sqlite/...`
+Run: `go test ./internal/storage/...`
 
 Expected: PASS。
 
@@ -306,8 +306,8 @@ Expected: PASS。
 ### Task 4: 让 storage SQL 与 app service 解析 assignee ref
 
 **Files:**
-- Modify: `internal/storage/sqlite/query_scope.go`
-- Test: `internal/storage/sqlite/query_scope_test.go`
+- Modify: `internal/storage/query_scope.go`
+- Test: `internal/storage/query_scope_test.go`
 - Modify: `internal/app/service.go`
 - Test: `internal/app/service_test.go`
 
@@ -324,13 +324,13 @@ func TestServiceListExpandsAssigneeMe(t *testing.T) {}
 
 - [ ] **Step 2: 运行红测**
 
-Run: `go test ./internal/storage/sqlite ./internal/app -run 'Assignee|assignee'`
+Run: `go test ./internal/storage ./internal/app -run 'Assignee|assignee'`
 
 Expected: FAIL。
 
 - [ ] **Step 3: 在 SQL 编译层支持 assignee**
 
-在 `internal/storage/sqlite/query_scope.go` 为 `query.AttrAssignee` 编译 `EXISTS` 子查询，形如：
+在 `internal/storage/query_scope.go` 为 `query.AttrAssignee` 编译 `EXISTS` 子查询，形如：
 
 ```go
 EXISTS (
@@ -356,7 +356,7 @@ EXISTS (
 
 - [ ] **Step 5: 运行绿测**
 
-Run: `go test ./internal/storage/sqlite ./internal/app`
+Run: `go test ./internal/storage ./internal/app`
 
 Expected: PASS。
 
@@ -533,7 +533,7 @@ Expected: PASS
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/task internal/storage/sqlite internal/query internal/app internal/cli internal/render internal/remote internal/httpapi internal/mcpserver tests/integration README.md ROADMAP.md docs
+git add internal/task internal/storage internal/query internal/app internal/cli internal/render internal/remote internal/httpapi internal/mcpserver tests/integration README.md ROADMAP.md docs
 git commit -m "feat: 增加任务多 assignee 支持"
 ```
 

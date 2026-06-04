@@ -8,7 +8,7 @@ import (
 
 	"github.com/dajee/taskg/internal/config"
 	"github.com/dajee/taskg/internal/mcpserver"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +41,7 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := sqlite.Open(cfg.DatabasePath)
+			store, err := storage.Open(cfg.DatabasePath)
 			if err != nil {
 				return err
 			}

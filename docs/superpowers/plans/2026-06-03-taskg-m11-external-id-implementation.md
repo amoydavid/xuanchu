@@ -18,16 +18,16 @@
 
 | 文件 | 职责 |
 |---|---|
-| `internal/storage/sqlite/external_id_repo.go` | UserExternalID 的 CRUD 操作 |
+| `internal/storage/external_id_repo.go` | UserExternalID 的 CRUD 操作 |
 
 ### 修改文件
 
 | 文件 | 变更内容 |
 |---|---|
-| `internal/storage/sqlite/models.go` | 新增 `UserExternalID` struct |
-| `internal/storage/sqlite/db.go` | AutoMigrate 加入 `UserExternalID` |
-| `internal/storage/sqlite/user_repo.go` | 新增 `GetByExternalID` 方法 |
-| `internal/storage/sqlite/task_repo.go` | `fromModel` / `loadAssigneeUsers` 扩展，hydrate 外部 ID |
+| `internal/storage/models.go` | 新增 `UserExternalID` struct |
+| `internal/storage/db.go` | AutoMigrate 加入 `UserExternalID` |
+| `internal/storage/user_repo.go` | 新增 `GetByExternalID` 方法 |
+| `internal/storage/task_repo.go` | `fromModel` / `loadAssigneeUsers` 扩展，hydrate 外部 ID |
 | `internal/task/model.go` | `AssigneeInfo` 增加 `ExternalIDs` 字段 |
 | `internal/task/json.go` | `JSONAssignee` 增加 `ExternalIDs`，export/import 扩展 |
 | `internal/app/workspace.go` | `resolveUser` 扩展、`UserView` 扩展、新增 `BindExternalID` / `UnbindExternalID` |
@@ -45,10 +45,10 @@
 
 | 文件 | 测试内容 |
 |---|---|
-| `internal/storage/sqlite/db_test.go` | `UserExternalID` 表 migration 验证 |
-| `internal/storage/sqlite/user_repo_test.go` | `GetByExternalID` 单元测试 |
-| `internal/storage/sqlite/external_id_repo_test.go` | 外部 ID CRUD 单元测试 |
-| `internal/storage/sqlite/task_repo_test.go` | assignee 附带外部 ID 的 hydration 测试 |
+| `internal/storage/db_test.go` | `UserExternalID` 表 migration 验证 |
+| `internal/storage/user_repo_test.go` | `GetByExternalID` 单元测试 |
+| `internal/storage/external_id_repo_test.go` | 外部 ID CRUD 单元测试 |
+| `internal/storage/task_repo_test.go` | assignee 附带外部 ID 的 hydration 测试 |
 | `internal/task/json_test.go` | JSON assignee export/import 外部 ID 测试 |
 | `internal/app/service_test.go` | `resolveUser` 外部 ID 解析、`BindExternalID` / `UnbindExternalID`、assignee 外部 ID 测试 |
 | `internal/httpapi/users_test.go` | 外部 ID CRUD endpoint 测试 |
@@ -63,13 +63,13 @@
 ### Task 1: 新增 UserExternalID model 和 migration
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go` (末尾追加)
-- Modify: `internal/storage/sqlite/db.go:173`
-- Test: `internal/storage/sqlite/db_test.go`
+- Modify: `internal/storage/models.go` (末尾追加)
+- Modify: `internal/storage/db.go:173`
+- Test: `internal/storage/db_test.go`
 
 - [ ] **Step 1: 在 models.go 末尾新增 UserExternalID struct**
 
-在 `internal/storage/sqlite/models.go` 末尾追加：
+在 `internal/storage/models.go` 末尾追加：
 
 ```go
 type UserExternalID struct {
@@ -83,7 +83,7 @@ type UserExternalID struct {
 
 - [ ] **Step 2: 在 db.go AutoMigrate 注册新表**
 
-在 `internal/storage/sqlite/db.go:173` 的第一个 AutoMigrate 调用中加入 `&UserExternalID{}`：
+在 `internal/storage/db.go:173` 的第一个 AutoMigrate 调用中加入 `&UserExternalID{}`：
 
 ```go
 if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &Config{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &UserExternalID{}); err != nil {
@@ -91,7 +91,7 @@ if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &Audit
 
 - [ ] **Step 3: 写 db_test.go 验证表已迁移**
 
-在 `internal/storage/sqlite/db_test.go` 新增测试：
+在 `internal/storage/db_test.go` 新增测试：
 
 ```go
 func TestUserExternalIDTableMigrated(t *testing.T) {
@@ -104,18 +104,18 @@ func TestUserExternalIDTableMigrated(t *testing.T) {
 
 - [ ] **Step 4: 运行测试验证**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -run TestUserExternalIDTableMigrated -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -run TestUserExternalIDTableMigrated -v`
 Expected: PASS
 
 - [ ] **Step 5: 运行全量 storage 测试确认无破坏**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -v`
 Expected: 全部 PASS
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/db_test.go
 git commit -m "feat(m11): 新增 UserExternalID model 和 migration"
 ```
 
@@ -124,12 +124,12 @@ git commit -m "feat(m11): 新增 UserExternalID model 和 migration"
 ### Task 2: 新增 ExternalIDRepository
 
 **Files:**
-- Create: `internal/storage/sqlite/external_id_repo.go`
-- Test: `internal/storage/sqlite/external_id_repo_test.go`
+- Create: `internal/storage/external_id_repo.go`
+- Test: `internal/storage/external_id_repo_test.go`
 
 - [ ] **Step 1: 写测试**
 
-创建 `internal/storage/sqlite/external_id_repo_test.go`：
+创建 `internal/storage/external_id_repo_test.go`：
 
 ```go
 package sqlite
@@ -282,12 +282,12 @@ func TestExternalIDRepoListByUsers(t *testing.T) {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -run TestExternalIDRepo -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -run TestExternalIDRepo -v`
 Expected: FAIL（文件不存在）
 
 - [ ] **Step 3: 实现 ExternalIDRepository**
 
-创建 `internal/storage/sqlite/external_id_repo.go`：
+创建 `internal/storage/external_id_repo.go`：
 
 ```go
 package sqlite
@@ -358,11 +358,11 @@ func (r *ExternalIDRepository) Delete(userID, provider, externalID string) error
 
 - [ ] **Step 4: 在 user_repo.go 新增 GetByExternalID**
 
-在 `internal/storage/sqlite/user_repo.go` 的 `UserRepository` 上新增方法。这需要组合 `ExternalIDRepository`，或者直接在 `UserRepository` 上加一个 `GetByExternalID` 方法。
+在 `internal/storage/user_repo.go` 的 `UserRepository` 上新增方法。这需要组合 `ExternalIDRepository`，或者直接在 `UserRepository` 上加一个 `GetByExternalID` 方法。
 
 实际上 `resolveUser` 需要通过外部 ID 找到 user，最直接的做法是在 `UserRepository` 上新增方法：
 
-在 `internal/storage/sqlite/user_repo.go` 追加：
+在 `internal/storage/user_repo.go` 追加：
 
 ```go
 func (r *UserRepository) GetByExternalID(provider, externalID string) (User, error) {
@@ -379,18 +379,18 @@ func (r *UserRepository) GetByExternalID(provider, externalID string) (User, err
 
 - [ ] **Step 5: 运行测试确认通过**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -run TestExternalIDRepo -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -run TestExternalIDRepo -v`
 Expected: 全部 PASS
 
 - [ ] **Step 6: 运行全量 storage 测试**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -v`
 Expected: 全部 PASS
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add internal/storage/sqlite/external_id_repo.go internal/storage/sqlite/external_id_repo_test.go internal/storage/sqlite/user_repo.go
+git add internal/storage/external_id_repo.go internal/storage/external_id_repo_test.go internal/storage/user_repo.go
 git commit -m "feat(m11): 新增 ExternalIDRepository 和 UserRepository.GetByExternalID"
 ```
 
@@ -640,9 +640,9 @@ func TestResolveUserByExternalIDNotFound(t *testing.T) {
 
 查看 `setupServiceTest` 返回的 fixture 是否暴露了 `store` 或其 `DB()`。如果没有，需要给 `Store` 添加一个 `DB()` 访问器，或者用其他方式构造 `ExternalIDRepository`。
 
-在 `internal/storage/sqlite/store.go` 或 `db.go` 中查看 `Store` 是否有暴露 `db` 的方法。
+在 `internal/storage/store.go` 或 `db.go` 中查看 `Store` 是否有暴露 `db` 的方法。
 
-如果没有，在 `internal/storage/sqlite/db.go` 的 `Store` struct 上新增：
+如果没有，在 `internal/storage/db.go` 的 `Store` struct 上新增：
 
 ```go
 func (s *Store) DB() *gorm.DB {
@@ -698,7 +698,7 @@ Expected: 全部 PASS
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/app/workspace.go internal/app/service_test.go internal/storage/sqlite/db.go
+git add internal/app/workspace.go internal/app/service_test.go internal/storage/db.go
 git commit -m "feat(m11): resolveUser 支持 provider:value 外部 ID 解析"
 ```
 
@@ -898,7 +898,7 @@ git commit -m "feat(m11): BindExternalID / UnbindExternalID / ListExternalIDs"
 
 **Files:**
 - Modify: `internal/app/workspace.go` (UserView 扩展、userViewFromRow 扩展、ListUsers/UserInfo hydrate)
-- Modify: `internal/storage/sqlite/task_repo.go:334-364` (fromModel hydrate external IDs)
+- Modify: `internal/storage/task_repo.go:334-364` (fromModel hydrate external IDs)
 
 - [ ] **Step 1: 扩展 UserView struct**
 
@@ -978,7 +978,7 @@ func (s *Service) loadExternalIDsByUsers(userIDs []string) (map[string][]task.Ex
 
 - [ ] **Step 4: 扩展 task_repo.go 的 fromModel hydrate external IDs**
 
-在 `internal/storage/sqlite/task_repo.go` 的 `fromModel` 方法中，assignee 构建部分需要加载外部 ID。当前模式是 `loadAssigneeUsers` 返回 `map[string]User`。
+在 `internal/storage/task_repo.go` 的 `fromModel` 方法中，assignee 构建部分需要加载外部 ID。当前模式是 `loadAssigneeUsers` 返回 `map[string]User`。
 
 最简洁的做法是新增一个 `loadExternalIDsForUsers` 方法，或者在 `loadAssigneeUsers` 中一并加载外部 ID。
 
@@ -1030,13 +1030,13 @@ func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]assigneeUs
 
 - [ ] **Step 5: 运行全量测试**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ ./internal/app/ ./internal/task/ -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ ./internal/app/ ./internal/task/ -v`
 Expected: 全部 PASS
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/app/workspace.go internal/storage/sqlite/task_repo.go
+git add internal/app/workspace.go internal/storage/task_repo.go
 git commit -m "feat(m11): UserView 和 assignee hydrate 扩展 external IDs"
 ```
 

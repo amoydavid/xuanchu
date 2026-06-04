@@ -20,14 +20,14 @@
   - 扩展 Task 字段、status、Annotation 类型、domain validation。
 - Modify: `internal/task/modification.go`
   - 扩展 Modification，支持 wait/scheduled/until/start/depends/annotations/recurrence 字段。
-- Modify: `internal/storage/sqlite/models.go`
+- Modify: `internal/storage/models.go`
   - 扩展 GORM Task model，新增 TaskAnnotation、TaskDependency。
-- Modify: `internal/storage/sqlite/db.go`
+- Modify: `internal/storage/db.go`
   - AutoMigrate 新表和新列。
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
   - create/update/fromModel/toModel 支持 annotations、depends、M2 nullable columns。
 - Test: `internal/task/model_test.go`
-- Test: `internal/storage/sqlite/task_repo_test.go`
+- Test: `internal/storage/task_repo_test.go`
 
 ### Task 1: 扩展 domain Task 模型
 
@@ -174,14 +174,14 @@ git commit -m "feat: 扩展 M2 任务模型"
 
 **Files:**
 
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
-- Modify: `internal/storage/sqlite/task_repo_test.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Modify: `internal/storage/task_repo.go`
+- Modify: `internal/storage/task_repo_test.go`
 
 - [x] **Step 1: 写失败测试**
 
-在 `internal/storage/sqlite/task_repo_test.go` 增加：
+在 `internal/storage/task_repo_test.go` 增加：
 
 ```go
 func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
@@ -220,16 +220,16 @@ func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 }
 ```
 
-如果测试文件尚无 `newTestRepo(t)` helper，参考 `internal/storage/sqlite/query_scope_test.go` 中的 `newQueryTestStore(t)` 新增一个本文件 helper，返回 `(*Store, *TaskRepository, Workspace)`；如果测试文件尚无 `slices` import，添加标准库 `slices`。
+如果测试文件尚无 `newTestRepo(t)` helper，参考 `internal/storage/query_scope_test.go` 中的 `newQueryTestStore(t)` 新增一个本文件 helper，返回 `(*Store, *TaskRepository, Workspace)`；如果测试文件尚无 `slices` import，添加标准库 `slices`。
 
 - [x] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/storage/sqlite -run TestTaskRepositoryPersistsM2Fields -v`  
+Run: `go test ./internal/storage -run TestTaskRepositoryPersistsM2Fields -v`  
 Expected: FAIL，storage model 尚不支持 M2 字段。
 
 - [x] **Step 3: 扩展 GORM models**
 
-修改 `internal/storage/sqlite/models.go`：
+修改 `internal/storage/models.go`：
 
 ```go
 type Task struct {
@@ -270,7 +270,7 @@ type TaskDependency struct {
 
 - [x] **Step 4: 更新 AutoMigrate**
 
-修改 `internal/storage/sqlite/db.go`：
+修改 `internal/storage/db.go`：
 
 ```go
 func (s *Store) migrate() error {
@@ -280,7 +280,7 @@ func (s *Store) migrate() error {
 
 - [x] **Step 5: 更新 repository 映射和事务**
 
-修改 `internal/storage/sqlite/task_repo.go`：
+修改 `internal/storage/task_repo.go`：
 
 - `Preload("Tags")` 改为同时 preload annotations/depends，建议抽 helper：
 
@@ -303,8 +303,8 @@ func (r *TaskRepository) withTaskPreloads() *gorm.DB {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run TestTaskRepositoryPersistsM2Fields -v
-go test ./internal/storage/sqlite ./internal/task -v
+go test ./internal/storage -run TestTaskRepositoryPersistsM2Fields -v
+go test ./internal/storage ./internal/task -v
 ```
 
 Expected: PASS。
@@ -312,7 +312,7 @@ Expected: PASS。
 - [x] **Step 7: 提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/task_repo.go internal/storage/sqlite/task_repo_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/task_repo.go internal/storage/task_repo_test.go
 git commit -m "feat: 持久化 M2 任务字段"
 ```
 
@@ -811,7 +811,7 @@ git commit -m "feat: 扩展 M2 JSON 字段"
   - 新增属性和 OpNotNull。
 - Modify: `internal/query/parser_ast.go`
   - 识别 M2 属性、`.notnull` modifier。
-- Modify: `internal/storage/sqlite/query_scope.go`
+- Modify: `internal/storage/query_scope.go`
   - 编译 M2 属性、depends/recur/parent、notnull。
 - Modify: `internal/report/registry.go`
   - 注册 waiting/active/ready/blocked/blocking。
@@ -830,8 +830,8 @@ git commit -m "feat: 扩展 M2 JSON 字段"
 - Modify: `internal/query/ast.go`
 - Modify: `internal/query/parser_ast.go`
 - Modify: `internal/query/parser_ast_test.go`
-- Modify: `internal/storage/sqlite/query_scope.go`
-- Modify: `internal/storage/sqlite/query_scope_test.go`
+- Modify: `internal/storage/query_scope.go`
+- Modify: `internal/storage/query_scope_test.go`
 
 - [x] **Step 1: 写 query parser 失败测试**
 
@@ -894,7 +894,7 @@ const (
 
 - [x] **Step 5: 写 compiler 失败测试**
 
-在 `internal/storage/sqlite/query_scope_test.go` 增加：
+在 `internal/storage/query_scope_test.go` 增加：
 
 ```go
 func TestCompileQueryM2Fields(t *testing.T) {
@@ -919,7 +919,7 @@ func TestCompileQueryM2Fields(t *testing.T) {
 
 - [x] **Step 6: 扩展 compiler**
 
-修改 `internal/storage/sqlite/query_scope.go`：
+修改 `internal/storage/query_scope.go`：
 
 - start/wait/scheduled/until 调用 `compareDateColumn`。
 - recur/parent 调用 `compareColumn`。
@@ -949,8 +949,8 @@ Run:
 
 ```bash
 go test ./internal/query -run M2Attributes -v
-go test ./internal/storage/sqlite -run M2Fields -v
-go test ./internal/query ./internal/storage/sqlite -v
+go test ./internal/storage -run M2Fields -v
+go test ./internal/query ./internal/storage -v
 ```
 
 Expected: PASS。
@@ -958,7 +958,7 @@ Expected: PASS。
 - [x] **Step 8: 提交**
 
 ```bash
-git add internal/query/ast.go internal/query/parser_ast.go internal/query/parser_ast_test.go internal/storage/sqlite/query_scope.go internal/storage/sqlite/query_scope_test.go
+git add internal/query/ast.go internal/query/parser_ast.go internal/query/parser_ast_test.go internal/storage/query_scope.go internal/storage/query_scope_test.go
 git commit -m "feat: 查询支持 M2 字段"
 ```
 
@@ -970,7 +970,7 @@ git commit -m "feat: 查询支持 M2 字段"
 - Modify: `internal/report/report_test.go`
 - Modify: `internal/app/service.go`
 - Modify: `internal/app/service_test.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 
 - [x] **Step 1: 写 report registry 失败测试**
 
@@ -1100,7 +1100,7 @@ func buildDependencyState(tasks []task.Task) (blocked map[string]bool, blocking 
 
 - [x] **Step 6: Storage sort 支持**
 
-修改 `internal/storage/sqlite/task_repo.go` sort：
+修改 `internal/storage/task_repo.go` sort：
 
 - `wait`: `wait IS NULL ASC, wait ASC`
 - `start`: `start DESC`
@@ -1113,7 +1113,7 @@ Run:
 ```bash
 go test ./internal/report -v
 go test ./internal/app -run M2Reports -v
-go test ./internal/app ./internal/storage/sqlite -v
+go test ./internal/app ./internal/storage -v
 ```
 
 Expected: PASS。
@@ -1121,7 +1121,7 @@ Expected: PASS。
 - [x] **Step 8: 提交**
 
 ```bash
-git add internal/report/registry.go internal/report/report_test.go internal/app/service.go internal/app/service_test.go internal/storage/sqlite/task_repo.go
+git add internal/report/registry.go internal/report/report_test.go internal/app/service.go internal/app/service_test.go internal/storage/task_repo.go
 git commit -m "feat: 添加 M2 状态报表"
 ```
 
@@ -1801,7 +1801,7 @@ git commit -m "feat: 添加基础 edit 命令"
 - Create: `internal/recurrence/recurrence_test.go`
 - Modify: `internal/app/service.go`
   - recurring add/done/report ensure。
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
   - 查询 parent/children helper，如有需要。
 - Modify: `internal/cli/add.go`
   - recur add 已在前面传入，补行为测试。
@@ -1969,7 +1969,7 @@ git commit -m "feat: 添加 recurrence 周期计算"
 
 - Modify: `internal/app/service.go`
 - Modify: `internal/app/service_test.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 - Modify: `tests/integration/cli_test.go`
 
 - [x] **Step 1: 写 app 失败测试**
@@ -2036,7 +2036,7 @@ func (s *Service) ensureRecurringChildren() error
 
 - [x] **Step 4: 更新 storage helper**
 
-在 `internal/storage/sqlite/task_repo.go` 添加：
+在 `internal/storage/task_repo.go` 添加：
 
 ```go
 func (r *TaskRepository) Children(workspaceID, parentUUID string) ([]domain.Task, error)
@@ -2078,7 +2078,7 @@ Run:
 ```bash
 go test ./internal/app -run Recurring -v
 go test ./tests/integration -run TestCLIRecurringDaily -v
-go test ./internal/app ./internal/storage/sqlite ./internal/recurrence -v
+go test ./internal/app ./internal/storage ./internal/recurrence -v
 ```
 
 Expected: PASS。
@@ -2086,7 +2086,7 @@ Expected: PASS。
 - [x] **Step 7: 提交**
 
 ```bash
-git add internal/app/service.go internal/app/service_test.go internal/storage/sqlite/task_repo.go tests/integration/cli_test.go
+git add internal/app/service.go internal/app/service_test.go internal/storage/task_repo.go tests/integration/cli_test.go
 git commit -m "feat: 生成基础循环任务"
 ```
 

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 	"github.com/dajee/taskg/internal/uda"
 )
@@ -304,7 +304,7 @@ func (s *Service) setUDAConfigLocked(key, value string) (string, error) {
 		return "", err
 	}
 	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		def = uda.Definition{Name: name, Type: uda.TypeString}
 	} else if err != nil {
 		return "", err
@@ -333,7 +333,7 @@ func (s *Service) getUDAConfig(key string) (string, bool, error) {
 		return "", false, err
 	}
 	def, err := s.udaDefinition(name)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return "", false, nil
 	}
 	if err != nil {
@@ -371,7 +371,7 @@ func (s *Service) unsetUDAConfigLocked(key string) (string, error) {
 		return s.deleteUDALocked(name)
 	}
 	def, err := s.udaRepo.GetDefinition(s.workspaceID, name)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return name, nil
 	}
 	if err != nil {
@@ -414,7 +414,7 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 		if current, ok := out[name]; ok && current.Orphan && !allowOrphan {
 			return nil, fmt.Errorf("modifying orphan UDA %q is not allowed", name)
 		}
-		if _, err := s.udaDefinition(name); err == sqlite.ErrNotFound && !allowOrphan {
+		if _, err := s.udaDefinition(name); err == storage.ErrNotFound && !allowOrphan {
 			return nil, fmt.Errorf("UDA %q is not defined", name)
 		} else if err != nil {
 			return nil, err
@@ -433,7 +433,7 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 			return nil, fmt.Errorf("modifying orphan UDA %q is not allowed", name)
 		}
 		def, err := s.udaDefinition(name)
-		if err == sqlite.ErrNotFound {
+		if err == storage.ErrNotFound {
 			if !allowOrphan {
 				return nil, fmt.Errorf("UDA %q is not defined", name)
 			}
@@ -461,7 +461,7 @@ func (s *Service) normalizeImportedUDAs(values map[string]task.UDAValue) (map[st
 	for name, value := range values {
 		name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
 		def, err := s.udaDefinition(name)
-		if err == sqlite.ErrNotFound {
+		if err == storage.ErrNotFound {
 			if value.Raw != "" {
 				out[name] = task.UDAValue{Name: name, Raw: value.Raw, Type: value.Type, Orphan: true}
 			}
@@ -487,13 +487,13 @@ func (s *Service) udaDefinition(name string) (uda.Definition, error) {
 	if err == nil {
 		return def, nil
 	}
-	if err != sqlite.ErrNotFound {
+	if err != storage.ErrNotFound {
 		return uda.Definition{}, err
 	}
 	if def, ok := s.runtimeUDAs[name]; ok {
 		return def, nil
 	}
-	return uda.Definition{}, sqlite.ErrNotFound
+	return uda.Definition{}, storage.ErrNotFound
 }
 
 func (s *Service) mergedConfigValues() (map[string]string, error) {

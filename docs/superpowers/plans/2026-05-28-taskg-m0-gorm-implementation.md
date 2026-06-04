@@ -4,7 +4,7 @@
 
 **Goal:** 实现 `taskg` M0：一个本地单用户、单 workspace、SQLite 持久化的 Taskwarrior 风格 CLI，支持核心任务生命周期和 JSON 导入导出。
 
-**Architecture:** 采用 `cmd/taskg -> internal/cli -> internal/app -> internal/{task,query,config} -> internal/storage/sqlite` 的分层结构。CLI 只负责参数解析和输出，app service 负责用例与事务，storage 使用 GORM 封装 SQLite，domain/query/config 保持不依赖 GORM 和 Cobra。M0 保留 `workspace_id`，但只创建和使用隐式 `local` workspace。
+**Architecture:** 采用 `cmd/taskg -> internal/cli -> internal/app -> internal/{task,query,config} -> internal/storage` 的分层结构。CLI 只负责参数解析和输出，app service 负责用例与事务，storage 使用 GORM 封装 SQLite，domain/query/config 保持不依赖 GORM 和 Cobra。M0 保留 `workspace_id`，但只创建和使用隐式 `local` workspace。
 
 **Tech Stack:** Go 1.22+、Cobra、GORM、`github.com/glebarez/sqlite`（纯 Go SQLite GORM driver，替代需要 CGO 的 `gorm.io/driver/sqlite`）、`github.com/google/uuid`、标准库 `encoding/json`、Go test。
 
@@ -24,11 +24,11 @@
   解析数据库路径、数据目录、JSON/color 偏好。
 - 创建：`internal/config/config_test.go`  
   配置路径和环境变量优先级测试。
-- 创建：`internal/storage/sqlite/models.go`  
+- 创建：`internal/storage/models.go`  
   GORM model：`Meta`、`Workspace`、`Task`、`TaskTag`。
-- 创建：`internal/storage/sqlite/db.go`  
+- 创建：`internal/storage/db.go`  
   使用 `github.com/glebarez/sqlite` 打开数据库、设置 pragma、AutoMigrate、初始化 local workspace。
-- 创建：`internal/storage/sqlite/db_test.go`  
+- 创建：`internal/storage/db_test.go`  
   数据库初始化、CGO-free driver、local workspace 测试。
 - 创建：`internal/task/model.go`  
   domain task 类型与状态常量。
@@ -384,14 +384,14 @@ git commit -m "feat: resolve local taskg config"
 
 **Files:**
 
-- Create: `internal/storage/sqlite/models.go`
-- Create: `internal/storage/sqlite/db.go`
-- Create: `internal/storage/sqlite/db_test.go`
+- Create: `internal/storage/models.go`
+- Create: `internal/storage/db.go`
+- Create: `internal/storage/db_test.go`
 - Modify: `go.mod`
 
 - [x] **Step 1: 写失败测试**
 
-创建 `internal/storage/sqlite/db_test.go`：
+创建 `internal/storage/db_test.go`：
 
 ```go
 package sqlite
@@ -459,7 +459,7 @@ Run:
 
 ```bash
 go get gorm.io/gorm@latest github.com/glebarez/sqlite@latest github.com/google/uuid@latest
-go test ./internal/storage/sqlite -v
+go test ./internal/storage -v
 ```
 
 Expected: FAIL，原因是 storage package 尚未实现。
@@ -468,7 +468,7 @@ Expected: FAIL，原因是 storage package 尚未实现。
 
 - [x] **Step 3: 实现 GORM models**
 
-创建 `internal/storage/sqlite/models.go`：
+创建 `internal/storage/models.go`：
 
 ```go
 package sqlite
@@ -507,7 +507,7 @@ type TaskTag struct {
 
 - [x] **Step 4: 实现数据库打开、迁移、初始化**
 
-创建 `internal/storage/sqlite/db.go`：
+创建 `internal/storage/db.go`：
 
 ```go
 package sqlite
@@ -606,19 +606,19 @@ func (s *Store) sqlDB() (*sql.DB, error) {
 
 - [x] **Step 5: 运行测试**
 
-Run: `go test ./internal/storage/sqlite -v`  
+Run: `go test ./internal/storage -v`  
 Expected: PASS。
 
 - [x] **Step 6: 验证纯 Go / CGO-free**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite -v`  
+Run: `CGO_ENABLED=0 go test ./internal/storage -v`  
 Expected: PASS。  
 如果失败并出现 `go-sqlite3` 或 CGO 相关错误，检查是否误引入了 `gorm.io/driver/sqlite`。
 
 - [x] **Step 7: 提交**
 
 ```bash
-git add go.mod go.sum internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
+git add go.mod go.sum internal/storage/models.go internal/storage/db.go internal/storage/db_test.go
 git commit -m "feat: initialize gorm sqlite store"
 ```
 
@@ -636,9 +636,9 @@ git commit -m "feat: initialize gorm sqlite store"
   解析 `+tag`、`-tag`、`project:x`、`priority:H`、`status:completed`、`due:x`、`/text/`。
 - 创建：`internal/query/parser_test.go`  
   filter 与 modification 解析测试。
-- 创建：`internal/storage/sqlite/task_repo.go`  
+- 创建：`internal/storage/task_repo.go`  
   GORM task CRUD、list、tag replace、ID resolution。
-- 创建：`internal/storage/sqlite/task_repo_test.go`  
+- 创建：`internal/storage/task_repo_test.go`  
   仓储集成测试。
 - 修改：`internal/app/service.go`  
   Add/List/Modify/Done/Delete/Info use cases。
@@ -1000,13 +1000,13 @@ git commit -m "feat: parse m0 task arguments"
 
 **Files:**
 
-- Create: `internal/storage/sqlite/task_repo.go`
-- Create: `internal/storage/sqlite/task_repo_test.go`
-- Modify: `internal/storage/sqlite/models.go`
+- Create: `internal/storage/task_repo.go`
+- Create: `internal/storage/task_repo_test.go`
+- Modify: `internal/storage/models.go`
 
 - [x] **Step 1: 写失败测试**
 
-创建 `internal/storage/sqlite/task_repo_test.go`：
+创建 `internal/storage/task_repo_test.go`：
 
 ```go
 package sqlite
@@ -1095,12 +1095,12 @@ func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
 
 - [x] **Step 2: 运行测试，确认失败**
 
-Run: `go test ./internal/storage/sqlite -run TaskRepository -v`  
+Run: `go test ./internal/storage -run TaskRepository -v`  
 Expected: FAIL。
 
 - [x] **Step 3: 实现 repository**
 
-创建 `internal/storage/sqlite/task_repo.go`：
+创建 `internal/storage/task_repo.go`：
 
 ```go
 package sqlite
@@ -1255,18 +1255,18 @@ func sortedUnique(values []string) []string {
 
 - [x] **Step 4: 运行测试**
 
-Run: `go test ./internal/storage/sqlite -run TaskRepository -v`  
+Run: `go test ./internal/storage -run TaskRepository -v`  
 Expected: PASS。
 
 - [x] **Step 5: CGO-free 测试**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite -v`  
+Run: `CGO_ENABLED=0 go test ./internal/storage -v`  
 Expected: PASS。
 
 - [x] **Step 6: 提交**
 
 ```bash
-git add internal/storage/sqlite/task_repo.go internal/storage/sqlite/task_repo_test.go internal/storage/sqlite/models.go
+git add internal/storage/task_repo.go internal/storage/task_repo_test.go internal/storage/models.go
 git commit -m "feat: persist tasks with gorm"
 ```
 
@@ -1312,7 +1312,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 func TestServiceAddListInfo(t *testing.T) {
@@ -1390,7 +1390,7 @@ package app
 import (
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -1466,7 +1466,7 @@ func (s *Service) Info(target string) (task.Task, error) {
 
 - [x] **Step 4: 运行测试**
 
-Run: `go test ./internal/app ./internal/storage/sqlite -v`  
+Run: `go test ./internal/app ./internal/storage -v`  
 Expected: PASS。
 
 - [x] **Step 5: 提交**
@@ -1804,7 +1804,7 @@ git commit -m "feat: add core read cli commands"
 
 - Modify: `internal/app/service.go`
 - Modify: `internal/app/service_test.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/task_repo.go`
 - Modify: `internal/cli/modify.go`
 - Modify: `tests/integration/cli_test.go`
 
@@ -1944,7 +1944,7 @@ Expected: 全部 PASS。
 - [x] **Step 8: 提交**
 
 ```bash
-git add internal/app/service.go internal/app/service_test.go internal/cli/modify.go internal/storage/sqlite/task_repo.go tests/integration/cli_test.go
+git add internal/app/service.go internal/app/service_test.go internal/cli/modify.go internal/storage/task_repo.go tests/integration/cli_test.go
 git commit -m "feat: modify and complete tasks"
 ```
 
@@ -2135,8 +2135,8 @@ git commit -m "feat: import and export task json"
 **Files:**
 
 - Create: `internal/cli/config.go`
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
 - Modify: `tests/integration/cli_test.go`
 
 - [x] **Step 1: 写失败集成测试**
@@ -2166,7 +2166,7 @@ Expected: FAIL。
 
 - [x] **Step 3: 实现 meta get/set**
 
-在 `internal/storage/sqlite/db.go` 增加：
+在 `internal/storage/db.go` 增加：
 
 ```go
 func (s *Store) GetMeta(key string) (string, bool, error)
@@ -2210,7 +2210,7 @@ Expected: PASS。
 - [x] **Step 6: 提交**
 
 ```bash
-git add internal/cli/config.go internal/storage/sqlite/db.go internal/storage/sqlite/models.go tests/integration/cli_test.go
+git add internal/cli/config.go internal/storage/db.go internal/storage/models.go tests/integration/cli_test.go
 git commit -m "feat: add basic config commands"
 ```
 

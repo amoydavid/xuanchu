@@ -267,7 +267,7 @@ M6 不实现 MCP，但必须让 M7 可以直接复用 token 校验和 request sc
 
 建议新增 storage：
 
-- `internal/storage/sqlite/token_repo.go`
+- `internal/storage/token_repo.go`
   - token CRUD、按 prefix 查询、revoke、过期过滤。
 
 建议新增 CLI：

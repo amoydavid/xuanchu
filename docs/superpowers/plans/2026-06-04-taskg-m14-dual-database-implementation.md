@@ -4,7 +4,7 @@
 
 **Goal:** 让 taskg 同时支持 SQLite 和 PostgreSQL 后端，通过配置选择，GORM 作为唯一抽象层。
 
-**Architecture:** 重命名 `internal/storage/sqlite` 为 `internal/storage`，拆分 SQLite/PostgreSQL 的 Open 和 Migration 逻辑，在 `query_scope.go` 中适配 SQL 方言。不引入 repository interface，所有 repo 保持具体 struct 直接使用 `*gorm.DB`。
+**Architecture:** 重命名 `internal/storage` 为 `internal/storage`，拆分 SQLite/PostgreSQL 的 Open 和 Migration 逻辑，在 `query_scope.go` 中适配 SQL 方言。不引入 repository interface，所有 repo 保持具体 struct 直接使用 `*gorm.DB`。
 
 **Tech Stack:** Go 1.25, GORM, `github.com/glebarez/sqlite`（SQLite）, `gorm.io/driver/postgres` + `github.com/jackc/pgx/v5`（PostgreSQL）, Cobra
 
@@ -14,19 +14,19 @@
 
 ## Chunk 1: 包重命名 + 依赖引入
 
-### Task 1: 机械重命名 internal/storage/sqlite → internal/storage
+### Task 1: 机械重命名 internal/storage → internal/storage
 
 **Files:**
-- Move: `internal/storage/sqlite/*` → `internal/storage/*`
-- Modify: 所有 import `github.com/dajee/taskg/internal/storage/sqlite` 的文件（36 个 .go 源文件）
+- Move: `internal/storage/*` → `internal/storage/*`
+- Modify: 所有 import `github.com/dajee/taskg/internal/storage` 的文件（36 个 .go 源文件）
 - Modify: `go.mod`, `go.sum`
 
 - [ ] **Step 1: 执行包重命名**
 
 ```bash
 mkdir -p internal/storage
-git mv internal/storage/sqlite/* internal/storage/
-rm -rf internal/storage/sqlite
+git mv internal/storage/* internal/storage/
+rm -rf internal/storage
 ```
 
 - [ ] **Step 2: 替换包声明和 import 路径**
@@ -36,7 +36,7 @@ rm -rf internal/storage/sqlite
 find internal/storage -name '*.go' -exec sed -i '' 's/^package sqlite$/package storage/' {} +
 
 # 替换所有 Go 源文件的 import 路径
-find . -name '*.go' -exec sed -i '' 's|"github.com/dajee/taskg/internal/storage/sqlite"|"github.com/dajee/taskg/internal/storage"|g' {} +
+find . -name '*.go' -exec sed -i '' 's|"github.com/dajee/taskg/internal/storage"|"github.com/dajee/taskg/internal/storage"|g' {} +
 ```
 
 - [ ] **Step 3: 替换所有 `sqlite.` qualified identifier 为 `storage.`**
@@ -64,10 +64,10 @@ grep -rn 'sqlite\.' --include='*.go' . | grep -v '_test.go' | grep -v vendor | g
 - [ ] **Step 5: 更新文档中的引用**
 
 ```bash
-find docs -name '*.md' -exec sed -i '' 's|internal/storage/sqlite|internal/storage|g' {} +
+find docs -name '*.md' -exec sed -i '' 's|internal/storage|internal/storage|g' {} +
 ```
 
-同步更新 `AGENTS.md` 中所有 `internal/storage/sqlite` 引用为 `internal/storage`。
+同步更新 `AGENTS.md` 中所有 `internal/storage` 引用为 `internal/storage`。
 
 - [ ] **Step 6: 编译验证**
 
@@ -89,7 +89,7 @@ CGO_ENABLED=0 go test ./...
 
 ```bash
 git add -A
-git commit -m "refactor: 重命名 internal/storage/sqlite → internal/storage"
+git commit -m "refactor: 重命名 internal/storage → internal/storage"
 ```
 
 ### Task 2: 引入 PostgreSQL 依赖
@@ -1072,7 +1072,7 @@ M14 行状态改为"已完成"。更新"当前下一步"节。
 - [ ] **Step 3: 更新 AGENTS.md**
 
 - 第 2 节技术栈：新增 `gorm.io/driver/postgres`、`github.com/jackc/pgx/v5`（纯 Go PostgreSQL driver）
-- 第 8 节存储层：`internal/storage`（不再是 `internal/storage/sqlite`），新增 PostgreSQL 支持说明
+- 第 8 节存储层：`internal/storage`（不再是 `internal/storage`），新增 PostgreSQL 支持说明
 - 第 10 节全局 flag：新增 `--db-url`、`TASKG_DB_URL`
 
 - [ ] **Step 4: 提交**

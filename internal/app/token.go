@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dajee/taskg/internal/auth"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -47,12 +47,12 @@ type TokenView struct {
 type CreatedToken struct {
 	RawToken string
 	View     TokenView
-	Stored   sqlite.ApiTokenEntry
+	Stored   storage.ApiTokenEntry
 }
 
 type AuthenticatedToken struct {
 	Token TokenView
-	User  sqlite.User
+	User  storage.User
 }
 
 func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
@@ -126,7 +126,7 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 		return CreatedToken{}, err
 	}
 
-	stored := sqlite.ApiTokenEntry{
+	stored := storage.ApiTokenEntry{
 		ID:               uuid.NewString(),
 		UserID:           targetUser.ID,
 		Name:             name,
@@ -244,7 +244,7 @@ func enforceTokenCreateLimit(parent *TokenView, scopes, workspaceIDs, projectIDs
 	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, "project_scope_denied", "new token project scope exceeds current token")
 }
 
-func enforceTokenRevokeLimit(parent *TokenView, entry sqlite.ApiTokenEntry) error {
+func enforceTokenRevokeLimit(parent *TokenView, entry storage.ApiTokenEntry) error {
 	if parent == nil {
 		return nil
 	}
@@ -287,7 +287,7 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 		prefix = prefix[:16]
 	}
 	row, err := s.tokenRepo.GetByPrefix(prefix)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return AuthenticatedToken{}, RuntimeError{Code: "auth_invalid_token", Message: "invalid token"}
 	}
 	if err != nil {
@@ -328,36 +328,36 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	}, nil
 }
 
-func (s *Service) resolveTokenTargetUser(ref string) (sqlite.User, error) {
+func (s *Service) resolveTokenTargetUser(ref string) (storage.User, error) {
 	if strings.TrimSpace(ref) == "" {
 		return s.userRepo.GetByID(s.runtime.ActorUserID)
 	}
 	user, err := s.resolveUser(ref)
 	if err != nil {
-		return sqlite.User{}, err
+		return storage.User{}, err
 	}
 	if user.ID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
-		return sqlite.User{}, PermissionError{Code: "permission_denied", Message: "permission denied"}
+		return storage.User{}, PermissionError{Code: "permission_denied", Message: "permission denied"}
 	}
 	return user, nil
 }
 
-func (s *Service) resolveTokenListUser(ref string) (sqlite.User, error) {
+func (s *Service) resolveTokenListUser(ref string) (storage.User, error) {
 	if strings.TrimSpace(ref) == "" {
 		return s.userRepo.GetByID(s.runtime.ActorUserID)
 	}
 	user, err := s.resolveUser(ref)
 	if err != nil {
-		return sqlite.User{}, err
+		return storage.User{}, err
 	}
 	if user.ID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
-		return sqlite.User{}, PermissionError{Code: "permission_denied", Message: "permission denied"}
+		return storage.User{}, PermissionError{Code: "permission_denied", Message: "permission denied"}
 	}
 	return user, nil
 }
 
-func (s *Service) resolveTokenWorkspaces(refs []string) ([]sqlite.Workspace, error) {
-	out := make([]sqlite.Workspace, 0, len(refs))
+func (s *Service) resolveTokenWorkspaces(refs []string) ([]storage.Workspace, error) {
+	out := make([]storage.Workspace, 0, len(refs))
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
@@ -370,19 +370,19 @@ func (s *Service) resolveTokenWorkspaces(refs []string) ([]sqlite.Workspace, err
 		if err := requireRolePermission(role, PermissionTokenWrite); err != nil {
 			return nil, err
 		}
-		if !slices.ContainsFunc(out, func(item sqlite.Workspace) bool { return item.ID == workspace.ID }) {
+		if !slices.ContainsFunc(out, func(item storage.Workspace) bool { return item.ID == workspace.ID }) {
 			out = append(out, workspace)
 		}
 	}
 	return out, nil
 }
 
-func (s *Service) resolveTokenProjects(workspaces []sqlite.Workspace, refs []string) ([]sqlite.Project, error) {
+func (s *Service) resolveTokenProjects(workspaces []storage.Workspace, refs []string) ([]storage.Project, error) {
 	allowedWorkspaceIDs := map[string]struct{}{}
 	for _, workspace := range workspaces {
 		allowedWorkspaceIDs[workspace.ID] = struct{}{}
 	}
-	out := make([]sqlite.Project, 0, len(refs))
+	out := make([]storage.Project, 0, len(refs))
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
@@ -397,41 +397,41 @@ func (s *Service) resolveTokenProjects(workspaces []sqlite.Workspace, refs []str
 				return nil, RuntimeError{Code: "token_project_scope_invalid", Message: "invalid token project scope"}
 			}
 		}
-		if !slices.ContainsFunc(out, func(item sqlite.Project) bool { return item.ID == project.ID }) {
+		if !slices.ContainsFunc(out, func(item storage.Project) bool { return item.ID == project.ID }) {
 			out = append(out, project)
 		}
 	}
 	return out, nil
 }
 
-func (s *Service) resolveTokenProject(ref string, workspaces []sqlite.Workspace) (sqlite.Project, error) {
+func (s *Service) resolveTokenProject(ref string, workspaces []storage.Workspace) (storage.Project, error) {
 	for _, workspace := range workspaces {
 		project, err := s.projectRepo.ResolveInWorkspace(workspace.ID, ref)
 		if err == nil {
 			return project, nil
 		}
-		if err != sqlite.ErrNotFound {
-			return sqlite.Project{}, err
+		if err != storage.ErrNotFound {
+			return storage.Project{}, err
 		}
 	}
 	if project, err := s.projectRepo.GetByID(ref); err == nil {
 		_, role, err := s.resolveWorkspaceForActor(project.WorkspaceID)
 		if err != nil {
-			return sqlite.Project{}, err
+			return storage.Project{}, err
 		}
 		if err := requireRolePermission(role, PermissionTokenWrite); err != nil {
-			return sqlite.Project{}, err
+			return storage.Project{}, err
 		}
 		return project, nil
 	}
 	project, err := s.ResolveProject(ref)
 	if err != nil {
-		return sqlite.Project{}, RuntimeError{Code: "token_project_scope_invalid", Message: "invalid token project scope"}
+		return storage.Project{}, RuntimeError{Code: "token_project_scope_invalid", Message: "invalid token project scope"}
 	}
 	return project, nil
 }
 
-func tokenViewFromEntry(row sqlite.ApiTokenEntry, scopes, workspaceIDs, projectIDs []string) TokenView {
+func tokenViewFromEntry(row storage.ApiTokenEntry, scopes, workspaceIDs, projectIDs []string) TokenView {
 	return TokenView{
 		ID:           row.ID,
 		Prefix:       row.TokenPrefix,

@@ -758,7 +758,7 @@ M3 建议新增 packages：
 
 - `internal/cli` 不放业务规则。
 - `internal/app` 负责拼装 config/context/UDA/query。
-- `internal/storage/sqlite` 只做持久化。
+- `internal/storage` 只做持久化。
 - `internal/query` 不直接访问 SQLite 或 config。
 - UDA dynamic attribute 的 schema 解析应由 app 层注入 compile options。
 

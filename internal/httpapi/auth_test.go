@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 type httpTokenFixture struct {
@@ -134,7 +134,7 @@ func TestWorkspaceListRespectsTokenWorkspaceScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other := mustCreateHTTPWorkspace(t, fixture.server.store, sqlite.Workspace{
+	other := mustCreateHTTPWorkspace(t, fixture.server.store, storage.Workspace{
 		ID:           "ws-other",
 		Slug:         "other",
 		Name:         "Other",
@@ -143,7 +143,7 @@ func TestWorkspaceListRespectsTokenWorkspaceScope(t *testing.T) {
 		CreatedAt:    100,
 		ModifiedAt:   100,
 	})
-	mustUpsertHTTPMembership(t, fixture.server.store, sqlite.Membership{
+	mustUpsertHTTPMembership(t, fixture.server.store, storage.Membership{
 		UserID:      svc.Runtime().ActorUserID,
 		WorkspaceID: other.ID,
 		Role:        string(app.RoleOwner),
@@ -314,18 +314,18 @@ func TestAuditListAcceptsEmptyLimitAndDefaults(t *testing.T) {
 	}
 }
 
-func mustCreateHTTPWorkspace(t *testing.T, store *sqlite.Store, ws sqlite.Workspace) sqlite.Workspace {
+func mustCreateHTTPWorkspace(t *testing.T, store *storage.Store, ws storage.Workspace) storage.Workspace {
 	t.Helper()
-	created, err := sqlite.NewWorkspaceRepository(store.DB()).Create(ws)
+	created, err := storage.NewWorkspaceRepository(store.DB()).Create(ws)
 	if err != nil {
 		t.Fatalf("Create(workspace %s) error = %v", ws.Slug, err)
 	}
 	return created
 }
 
-func mustUpsertHTTPMembership(t *testing.T, store *sqlite.Store, member sqlite.Membership) {
+func mustUpsertHTTPMembership(t *testing.T, store *storage.Store, member storage.Membership) {
 	t.Helper()
-	if err := sqlite.NewMemberRepository(store.DB()).Upsert(member); err != nil {
+	if err := storage.NewMemberRepository(store.DB()).Upsert(member); err != nil {
 		t.Fatalf("Upsert(membership %+v) error = %v", member, err)
 	}
 }

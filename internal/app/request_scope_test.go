@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -392,14 +392,14 @@ func TestExplicitProjectScopeFiltersSingleTaskOperations(t *testing.T) {
 func TestAuthorizeTokenRequestImpersonationUsesSubjectMembership(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	aliceUser := mustCreateUserRecord(t, store, sqlite.User{
+	aliceUser := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-alice-imp", Name: "alice-imp", CreatedAt: 100, ModifiedAt: 100,
 	})
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: aliceUser.ID, WorkspaceID: ws.ID,
 		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
 	})
@@ -469,7 +469,7 @@ func TestAuthorizeTokenRequestImpersonationRejectsUnknownUser(t *testing.T) {
 func TestAuthorizeTokenRequestImpersonationRejectsNonMember(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	otherUser := mustCreateUserRecord(t, store, sqlite.User{
+	otherUser := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-other-imp", Name: "other-imp", CreatedAt: 100, ModifiedAt: 100,
 	})
 	_ = otherUser
@@ -579,14 +579,14 @@ func TestAuthorizeTokenRequestImpersonationWorkspaceRequiredMultiWorkspace(t *te
 func TestImpersonatedTaskActionRecordsDelegatorInAudit(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	aliceUser := mustCreateUserRecord(t, store, sqlite.User{
+	aliceUser := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-alice-audit", Name: "alice-audit", CreatedAt: 100, ModifiedAt: 100,
 	})
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: aliceUser.ID, WorkspaceID: ws.ID,
 		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
 	})

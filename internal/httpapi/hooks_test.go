@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 // helper: 创建 workspace hook 并返回 hook ID
@@ -43,9 +43,9 @@ func createTestProjectHook(t *testing.T, scoped *app.Service, projectRef string)
 }
 
 // helper: 创建 dead-lettered delivery
-func createDeadLetteredDelivery(t *testing.T, store *sqlite.Store, hookID string) sqlite.HookDelivery {
+func createDeadLetteredDelivery(t *testing.T, store *storage.Store, hookID string) storage.HookDelivery {
 	t.Helper()
-	delivery := sqlite.HookDelivery{
+	delivery := storage.HookDelivery{
 		ID:           "delivery-001",
 		HookID:       hookID,
 		EventID:      "event-001",
@@ -54,31 +54,31 @@ func createDeadLetteredDelivery(t *testing.T, store *sqlite.Store, hookID string
 		ActorUserID:  getFirstUserID(t, store),
 		PayloadJSON:  `{"task":{"uuid":"t1"}}`,
 		HeadersJSON:  `{"X-Taskg-Signature":"sha256=abc"}`,
-		Status:       sqlite.DeliveryStatusDeadLettered,
+		Status:       storage.DeliveryStatusDeadLettered,
 		AttemptCount: 3,
 		LastError:    "connection refused",
 		CreatedAt:    1000,
 		ModifiedAt:   1000,
 	}
-	repo := sqlite.NewHookDeliveryRepository(store.DB())
-	if err := repo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	repo := storage.NewHookDeliveryRepository(store.DB())
+	if err := repo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 	return delivery
 }
 
-func getFirstWorkspaceID(t *testing.T, store *sqlite.Store) string {
+func getFirstWorkspaceID(t *testing.T, store *storage.Store) string {
 	t.Helper()
-	var ws sqlite.Workspace
+	var ws storage.Workspace
 	if err := store.DB().First(&ws).Error; err != nil {
 		t.Fatal(err)
 	}
 	return ws.ID
 }
 
-func getFirstUserID(t *testing.T, store *sqlite.Store) string {
+func getFirstUserID(t *testing.T, store *storage.Store) string {
 	t.Helper()
-	var user sqlite.User
+	var user storage.User
 	if err := store.DB().First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +488,7 @@ func TestHookDeliveryReplayNonReplayableRejected(t *testing.T) {
 	// 创建一个 succeeded delivery（不可重试）
 	wsID := getFirstWorkspaceID(t, fixture.server.store)
 	userID := getFirstUserID(t, fixture.server.store)
-	delivery := sqlite.HookDelivery{
+	delivery := storage.HookDelivery{
 		ID:           "delivery-succeeded",
 		HookID:       hook.ID,
 		EventID:      "event-002",
@@ -497,13 +497,13 @@ func TestHookDeliveryReplayNonReplayableRejected(t *testing.T) {
 		ActorUserID:  userID,
 		PayloadJSON:  `{}`,
 		HeadersJSON:  `{}`,
-		Status:       sqlite.DeliveryStatusSucceeded,
+		Status:       storage.DeliveryStatusSucceeded,
 		AttemptCount: 1,
 		CreatedAt:    1000,
 		ModifiedAt:   1000,
 	}
-	repo := sqlite.NewHookDeliveryRepository(fixture.server.store.DB())
-	if err := repo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	repo := storage.NewHookDeliveryRepository(fixture.server.store.DB())
+	if err := repo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -543,7 +543,7 @@ func TestHookDeliveryInfoRespectsProjectTokenScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	delivery := sqlite.HookDelivery{
+	delivery := storage.HookDelivery{
 		ID:           "delivery-beta",
 		HookID:       hook.ID,
 		EventID:      "event-beta",
@@ -553,12 +553,12 @@ func TestHookDeliveryInfoRespectsProjectTokenScope(t *testing.T) {
 		ActorUserID:  getFirstUserID(t, store),
 		PayloadJSON:  `{}`,
 		HeadersJSON:  `{}`,
-		Status:       sqlite.DeliveryStatusDeadLettered,
+		Status:       storage.DeliveryStatusDeadLettered,
 		AttemptCount: 1,
 		CreatedAt:    1000,
 		ModifiedAt:   1000,
 	}
-	if err := sqlite.NewHookDeliveryRepository(store.DB()).Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := storage.NewHookDeliveryRepository(store.DB()).Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 	token, err := ownerSvc.CreateToken(app.CreateTokenInput{

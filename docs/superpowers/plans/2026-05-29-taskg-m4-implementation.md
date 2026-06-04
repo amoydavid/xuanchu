@@ -4,7 +4,7 @@
 
 **目标：** 实现 M4：本地多用户、多 workspace 运行时上下文、membership 权限、审计日志，以及所有 CLI 路径的 workspace 隔离；不引入 HTTP、远程 CLI、PAT/JWT、MCP 或同步。
 
-**架构：** 在 `internal/storage/sqlite` 中增加 user/workspace/member/audit 持久化；在 `internal/app` 中按每次命令解析 runtime context，并把 service 绑定到 `ActorUserID + WorkspaceID + Role`。权限判断和审计编排放在 app 层，SQL/GORM repo 只负责持久化与 workspace-scoped 数据访问。CLI 命令保持薄层，只做参数解析和渲染。
+**架构：** 在 `internal/storage` 中增加 user/workspace/member/audit 持久化；在 `internal/app` 中按每次命令解析 runtime context，并把 service 绑定到 `ActorUserID + WorkspaceID + Role`。权限判断和审计编排放在 app 层，SQL/GORM repo 只负责持久化与 workspace-scoped 数据访问。CLI 命令保持薄层，只做参数解析和渲染。
 
 **技术栈：** Go 1.22、Cobra、GORM、`github.com/glebarez/sqlite`（保持 `CGO_ENABLED=0`）、现有 `internal/query`、`internal/task`、`internal/uda`、`internal/render` 和黑盒 CLI 集成测试。
 
@@ -47,13 +47,13 @@
   user/workspace/member app 方法。
 - `internal/app/audit.go`
   audit app 方法和写路径审计 helper。
-- `internal/storage/sqlite/user_repo.go`
+- `internal/storage/user_repo.go`
   user CRUD 与 lookup。
-- `internal/storage/sqlite/workspace_repo.go`
+- `internal/storage/workspace_repo.go`
   workspace CRUD、归档、可见 workspace 查询。
-- `internal/storage/sqlite/member_repo.go`
+- `internal/storage/member_repo.go`
   membership CRUD、role 更新、owner 计数、membership lookup。
-- `internal/storage/sqlite/audit_repo.go`
+- `internal/storage/audit_repo.go`
   audit append/list。
 - `internal/cli/user.go`
   `taskg user ...` 命令。
@@ -66,11 +66,11 @@
 
 修改文件：
 
-- `internal/storage/sqlite/models.go`
+- `internal/storage/models.go`
   新增/扩展 GORM models：users、workspaces、memberships、audit_logs。
-- `internal/storage/sqlite/db.go`
+- `internal/storage/db.go`
   AutoMigrate 新表，初始化 local user/workspace/membership，迁移 active context meta。
-- `internal/storage/sqlite/db_test.go`
+- `internal/storage/db_test.go`
   migration/idempotency 测试。
 - `internal/app/service.go`
   service 绑定 runtime context，移除业务路径中的 `Store.LocalWorkspace()` 依赖，把写方法改为 permission + audit transaction 模式。
@@ -100,13 +100,13 @@
 ### Task 1：扩展 SQLite Models 与迁移
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Test: `internal/storage/sqlite/db_test.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Test: `internal/storage/db_test.go`
 
 - [x] **Step 1：写失败的迁移测试**
 
-在 `internal/storage/sqlite/db_test.go` 中新增：
+在 `internal/storage/db_test.go` 中新增：
 
 ```go
 func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
@@ -157,7 +157,7 @@ func TestOpenMigratesContextActiveMeta(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'TestOpenInitializesLocalUserWorkspaceAndMembership|TestOpenMigratesContextActiveMeta' -count=1
+go test ./internal/storage -run 'TestOpenInitializesLocalUserWorkspaceAndMembership|TestOpenMigratesContextActiveMeta' -count=1
 ```
 
 Expected: FAIL，因为 repository/model 还不存在，迁移也还没有创建 users/memberships。
@@ -230,7 +230,7 @@ type AuditLog struct {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'TestOpenInitializesLocalUserWorkspaceAndMembership|TestOpenMigratesContextActiveMeta' -count=1
+go test ./internal/storage -run 'TestOpenInitializesLocalUserWorkspaceAndMembership|TestOpenMigratesContextActiveMeta' -count=1
 ```
 
 Expected: PASS。
@@ -238,18 +238,18 @@ Expected: PASS。
 - [x] **Step 6：提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/db_test.go
 git commit -m "feat: 初始化 M4 本地身份模型"
 ```
 
 ### Task 2：新增 User、Workspace、Membership、Audit Repositories
 
 **Files:**
-- Create: `internal/storage/sqlite/user_repo.go`
-- Create: `internal/storage/sqlite/workspace_repo.go`
-- Create: `internal/storage/sqlite/member_repo.go`
-- Create: `internal/storage/sqlite/audit_repo.go`
-- Test: `internal/storage/sqlite/db_test.go` 或新增 `internal/storage/sqlite/identity_repo_test.go`
+- Create: `internal/storage/user_repo.go`
+- Create: `internal/storage/workspace_repo.go`
+- Create: `internal/storage/member_repo.go`
+- Create: `internal/storage/audit_repo.go`
+- Test: `internal/storage/db_test.go` 或新增 `internal/storage/identity_repo_test.go`
 
 - [x] **Step 1：写失败的 repository 测试**
 
@@ -288,7 +288,7 @@ func TestAuditRepositoryListsNewestFirst(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'UserRepository|WorkspaceRepository|MemberRepository|AuditRepository' -count=1
+go test ./internal/storage -run 'UserRepository|WorkspaceRepository|MemberRepository|AuditRepository' -count=1
 ```
 
 Expected: FAIL，因为 repo 还不存在。
@@ -336,7 +336,7 @@ func (r *AuditRepository) List(AuditListOptions) ([]AuditLogEntry, error)
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'UserRepository|WorkspaceRepository|MemberRepository|AuditRepository' -count=1
+go test ./internal/storage -run 'UserRepository|WorkspaceRepository|MemberRepository|AuditRepository' -count=1
 ```
 
 Expected: PASS。
@@ -354,7 +354,7 @@ Expected: PASS。Chunk 1 引入新 schema/repo 后必须保持中间状态可构
 - [x] **Step 6：提交**
 
 ```bash
-git add internal/storage/sqlite/*repo.go internal/storage/sqlite/*test.go
+git add internal/storage/*repo.go internal/storage/*test.go
 git commit -m "feat: 增加 M4 身份仓储"
 ```
 
@@ -533,7 +533,7 @@ rt, err := ResolveRuntimeContext(opts.Store, userRepo, workspaceRepo, memberRepo
 rg "LocalWorkspace" internal/app
 ```
 
-`Store.LocalWorkspace()` 可以留在 `internal/storage/sqlite` 和 storage tests 中作为迁移兼容 helper，但 app 业务路径不能调用它。
+`Store.LocalWorkspace()` 可以留在 `internal/storage` 和 storage tests 中作为迁移兼容 helper，但 app 业务路径不能调用它。
 
 - [x] **Step 6：添加 root `--workspace`**
 
@@ -1250,7 +1250,7 @@ git commit -m "feat: 增加 member 和 audit 命令"
 - Modify: `internal/app/context.go`
 - Modify: `internal/app/uda.go`
 - Test: `tests/integration/cli_test.go`
-- Test: `internal/storage/sqlite/query_scope_test.go`
+- Test: `internal/storage/query_scope_test.go`
 
 - [x] **Step 1：写失败的跨 workspace 集成测试**
 
@@ -1499,7 +1499,7 @@ git commit -m "fix: 完成 M4 验证收尾"
 - [M4 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-29-taskg-m4-design.md)
 - [AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md)
 - [internal/app/service.go](/Users/mac/code/projects/dajee/task/internal/app/service.go)
-- [internal/storage/sqlite/db.go](/Users/mac/code/projects/dajee/task/internal/storage/sqlite/db.go)
+- [internal/storage/db.go](/Users/mac/code/projects/dajee/task/internal/storage/db.go)
 - [internal/cli/root.go](/Users/mac/code/projects/dajee/task/internal/cli/root.go)
 
 实现必须保持：

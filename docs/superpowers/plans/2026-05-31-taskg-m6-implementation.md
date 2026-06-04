@@ -6,7 +6,7 @@
 
 **Architecture:** 新增 `internal/auth` 处理 token 生成、hash 与 scope；新增 `api_tokens` 存储和 app token service；新增 `internal/httpapi` 作为协议层，只做鉴权、request scope、JSON envelope 和 handler 编排。远程 CLI 通过 `internal/remote` 调用 HTTP API，再复用现有 render 输出，不在客户端复制业务逻辑。
 
-**Tech Stack:** Go 1.22、Cobra、GORM、`github.com/glebarez/sqlite`（保持 `CGO_ENABLED=0`）、`net/http`、`github.com/go-chi/chi/v5`、现有 `internal/app` / `internal/storage/sqlite` / `internal/render` / CLI 集成测试、OpenAPI 3 YAML。
+**Tech Stack:** Go 1.22、Cobra、GORM、`github.com/glebarez/sqlite`（保持 `CGO_ENABLED=0`）、`net/http`、`github.com/go-chi/chi/v5`、现有 `internal/app` / `internal/storage` / `internal/render` / CLI 集成测试、OpenAPI 3 YAML。
 
 ---
 
@@ -64,9 +64,9 @@
   capability scope 解析、校验、StringSlice 输入归一化、Agent token 硬约束。
 - `internal/auth/token_test.go`
   token 格式、hash、常量时间 verify、scope parser 测试。
-- `internal/storage/sqlite/token_repo.go`
+- `internal/storage/token_repo.go`
   `api_tokens` CRUD、按 prefix 查候选、revoke、list active、更新 `last_used_at`。
-- `internal/storage/sqlite/token_repo_test.go`
+- `internal/storage/token_repo_test.go`
   schema、raw token 不落库、过期/revoked/list/update 测试。
 - `internal/app/token.go`
   `CreateToken/ListTokens/RevokeToken/AuthenticateBearerToken`，权限、audit、workspace/project scope 校验。
@@ -111,9 +111,9 @@
 
 - `go.mod` / `go.sum`
   添加 `github.com/go-chi/chi/v5`，确认无 CGO。
-- `internal/storage/sqlite/models.go`
+- `internal/storage/models.go`
   新增 `ApiToken` model 和索引。
-- `internal/storage/sqlite/db.go`
+- `internal/storage/db.go`
   AutoMigrate `ApiToken`。M6 不创建 `idx_api_tokens_active` partial index。
 - `internal/app/runtime.go`
   增加 request runtime / token scope 表达，支持不读 active workspace 的服务端构造路径。
@@ -224,10 +224,10 @@ git commit -m "feat: 添加 token 生成与 scope 解析"
 ### Task 2：新增 api_tokens schema 与 repository
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Create: `internal/storage/sqlite/token_repo.go`
-- Test: `internal/storage/sqlite/token_repo_test.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Create: `internal/storage/token_repo.go`
+- Test: `internal/storage/token_repo_test.go`
 
 - [ ] **Step 1：写失败的 schema/repo 测试**
 
@@ -262,7 +262,7 @@ func TestTokenRepositoryDoesNotStoreRawToken(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'Test(OpenCreatesAPITokenSchema|TokenRepository)' -count=1
+go test ./internal/storage -run 'Test(OpenCreatesAPITokenSchema|TokenRepository)' -count=1
 ```
 
 Expected: FAIL，`ApiToken` / repo 不存在。
@@ -305,7 +305,7 @@ M6 不建 partial index `idx_api_tokens_active`。每个 user 的 token 量级�
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'Test(OpenCreatesAPITokenSchema|TokenRepository)' -count=1
+go test ./internal/storage -run 'Test(OpenCreatesAPITokenSchema|TokenRepository)' -count=1
 ```
 
 Expected: PASS。
@@ -313,7 +313,7 @@ Expected: PASS。
 - [ ] **Step 5：提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/token_repo.go internal/storage/sqlite/token_repo_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/token_repo.go internal/storage/token_repo_test.go
 git commit -m "feat: 添加 API token 存储"
 ```
 

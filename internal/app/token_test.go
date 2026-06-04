@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 func ptrDuration(value time.Duration) *time.Duration {
@@ -93,7 +93,7 @@ func TestCreateAgentTokenRequiresExplicitWorkspaceAndScope(t *testing.T) {
 func TestCreateTokenRejectsProjectOutsideWorkspaceScope(t *testing.T) {
 	store := newTestStore(t)
 	owner := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	other := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+	other := mustCreateWorkspaceRecord(t, store, storage.Workspace{
 		ID:           "ws-work",
 		Slug:         "work",
 		Name:         "Work",
@@ -102,7 +102,7 @@ func TestCreateTokenRejectsProjectOutsideWorkspaceScope(t *testing.T) {
 		CreatedAt:    100,
 		ModifiedAt:   100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      owner.Runtime().ActorUserID,
 		WorkspaceID: other.ID,
 		Role:        string(RoleAdmin),
@@ -175,10 +175,10 @@ func TestCreateTokenRejectsMemberCreatingImpersonateScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	memberUser := mustCreateUserRecord(t, store, sqlite.User{
+	memberUser := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-member", Name: "member", CreatedAt: 100, ModifiedAt: 100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: memberUser.ID, WorkspaceID: ws.ID,
 		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
 	})

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -19,10 +19,10 @@ func (s *Service) resolveUserInfos(ids []string) (map[string]task.UserInfo, erro
 		return map[string]task.UserInfo{}, nil
 	}
 
-	users := make(map[string]sqlite.User, len(unique))
+	users := make(map[string]storage.User, len(unique))
 	for _, id := range unique {
 		user, err := s.userRepo.GetByID(id)
-		if err == sqlite.ErrNotFound {
+		if err == storage.ErrNotFound {
 			continue
 		}
 		if err != nil {

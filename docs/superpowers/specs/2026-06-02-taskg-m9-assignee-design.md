@@ -276,7 +276,7 @@ Hook 事件 envelope 不变。变化只在 `data.task`：
 
 ### 5.2 Storage
 
-`internal/storage/sqlite` 需要承担：
+`internal/storage` 需要承担：
 
 - `TaskAssignee` model 与 migration。
 - `TaskRepository.Create` / `Update` 的关联表写入。

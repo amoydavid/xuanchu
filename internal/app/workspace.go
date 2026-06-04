@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -132,9 +132,9 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 	return created, err
 }
 
-func (s *Service) addUserLocked(name, email, slug string) (sqlite.User, sqlite.Workspace, error) {
+func (s *Service) addUserLocked(name, email, slug string) (storage.User, storage.Workspace, error) {
 	now := s.clock.Unix()
-	user := sqlite.User{
+	user := storage.User{
 		ID:         uuid.NewString(),
 		Name:       name,
 		CreatedAt:  now,
@@ -145,9 +145,9 @@ func (s *Service) addUserLocked(name, email, slug string) (sqlite.User, sqlite.W
 	}
 	createdUser, err := s.userRepo.Create(user)
 	if err != nil {
-		return sqlite.User{}, sqlite.Workspace{}, err
+		return storage.User{}, storage.Workspace{}, err
 	}
-	workspace := sqlite.Workspace{
+	workspace := storage.Workspace{
 		ID:              uuid.NewString(),
 		Slug:            slug,
 		Name:            name,
@@ -159,19 +159,19 @@ func (s *Service) addUserLocked(name, email, slug string) (sqlite.User, sqlite.W
 	}
 	createdWorkspace, err := s.workspaceRepo.Create(workspace)
 	if err != nil {
-		return sqlite.User{}, sqlite.Workspace{}, err
+		return storage.User{}, storage.Workspace{}, err
 	}
-	if err := s.memberRepo.Upsert(sqlite.Membership{
+	if err := s.memberRepo.Upsert(storage.Membership{
 		UserID:      createdUser.ID,
 		WorkspaceID: createdWorkspace.ID,
 		Role:        string(RoleOwner),
 		JoinedAt:    now,
 		ModifiedAt:  now,
 	}); err != nil {
-		return sqlite.User{}, sqlite.Workspace{}, err
+		return storage.User{}, storage.Workspace{}, err
 	}
 	if err := s.userRepo.UpdateDefaultWorkspace(createdUser.ID, createdWorkspace.ID, now); err != nil {
-		return sqlite.User{}, sqlite.Workspace{}, err
+		return storage.User{}, storage.Workspace{}, err
 	}
 	createdUser.DefaultWorkspaceID = &createdWorkspace.ID
 	createdUser.ModifiedAt = now
@@ -195,18 +195,18 @@ func (s *Service) UseUser(ref string) error {
 	})
 }
 
-func (s *Service) useUserLocked(ref string) (sqlite.User, error) {
+func (s *Service) useUserLocked(ref string) (storage.User, error) {
 	user, err := s.resolveUser(ref)
 	if err != nil {
-		return sqlite.User{}, err
+		return storage.User{}, err
 	}
 	// Avoid switching the active user into an unusable identity; each active
 	// user must still resolve to a non-archived workspace.
 	if _, err := ResolveRuntimeContext(s.store, s.userRepo, s.workspaceRepo, s.memberRepo, user.ID, ""); err != nil {
-		return sqlite.User{}, err
+		return storage.User{}, err
 	}
 	if err := s.store.SetMeta("active_user_id", user.ID); err != nil {
-		return sqlite.User{}, err
+		return storage.User{}, err
 	}
 	return user, nil
 }
@@ -268,9 +268,9 @@ func (s *Service) AddWorkspace(input AddWorkspaceInput) (WorkspaceView, error) {
 	return created, err
 }
 
-func (s *Service) addWorkspaceLocked(slug, name, description, visibility string) (sqlite.Workspace, error) {
+func (s *Service) addWorkspaceLocked(slug, name, description, visibility string) (storage.Workspace, error) {
 	now := s.clock.Unix()
-	workspace := sqlite.Workspace{
+	workspace := storage.Workspace{
 		ID:              uuid.NewString(),
 		Slug:            slug,
 		Name:            name,
@@ -283,24 +283,24 @@ func (s *Service) addWorkspaceLocked(slug, name, description, visibility string)
 	}
 	created, err := s.workspaceRepo.Create(workspace)
 	if err != nil {
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
-	if err := s.memberRepo.Upsert(sqlite.Membership{
+	if err := s.memberRepo.Upsert(storage.Membership{
 		UserID:      s.runtime.ActorUserID,
 		WorkspaceID: created.ID,
 		Role:        string(RoleOwner),
 		JoinedAt:    now,
 		ModifiedAt:  now,
 	}); err != nil {
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
 	actor, err := s.userRepo.GetByID(s.runtime.ActorUserID)
 	if err != nil {
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
 	if actor.DefaultWorkspaceID == nil || *actor.DefaultWorkspaceID == "" {
 		if err := s.userRepo.UpdateDefaultWorkspace(actor.ID, created.ID, now); err != nil {
-			return sqlite.Workspace{}, err
+			return storage.Workspace{}, err
 		}
 	}
 	return created, nil
@@ -324,22 +324,22 @@ func (s *Service) UseWorkspace(ref string) error {
 	})
 }
 
-func (s *Service) useWorkspaceLocked(ref string) (sqlite.Workspace, error) {
+func (s *Service) useWorkspaceLocked(ref string) (storage.Workspace, error) {
 	workspace, err := lookupWorkspace(s.workspaceRepo, ref)
 	if err != nil {
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
 	if workspace.ArchivedAt != nil {
-		return sqlite.Workspace{}, RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	if _, err := s.memberRepo.Get(s.runtime.ActorUserID, workspace.ID); err != nil {
-		if err == sqlite.ErrNotFound {
-			return sqlite.Workspace{}, RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
+		if err == storage.ErrNotFound {
+			return storage.Workspace{}, RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
 		}
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
 	if err := s.store.SetMeta(activeWorkspaceMetaKey(s.runtime.ActorUserID), workspace.ID); err != nil {
-		return sqlite.Workspace{}, err
+		return storage.Workspace{}, err
 	}
 	return workspace, nil
 }
@@ -380,7 +380,7 @@ func (s *Service) ModifyWorkspace(ref string, input ModifyWorkspaceInput) error 
 }
 
 func (s *Service) modifyWorkspaceLocked(workspaceID string, input ModifyWorkspaceInput) error {
-	return s.workspaceRepo.UpdateMetadata(workspaceID, sqlite.WorkspaceMetadataUpdate{
+	return s.workspaceRepo.UpdateMetadata(workspaceID, storage.WorkspaceMetadataUpdate{
 		Name:        input.Name,
 		Description: input.Description,
 		Visibility:  input.Visibility,
@@ -412,7 +412,7 @@ func (s *Service) ArchiveWorkspace(ref string) error {
 	})
 }
 
-func (s *Service) archiveWorkspaceLocked(target sqlite.Workspace) (map[string]any, error) {
+func (s *Service) archiveWorkspaceLocked(target storage.Workspace) (map[string]any, error) {
 	users, err := s.userRepo.List()
 	if err != nil {
 		return nil, err
@@ -542,11 +542,11 @@ func (s *Service) AddMember(input AddMemberInput) error {
 func (s *Service) addMemberLocked(workspaceID, userID string, role Role) error {
 	if _, err := s.memberRepo.Get(userID, workspaceID); err == nil {
 		return fmt.Errorf("user is already a member")
-	} else if err != sqlite.ErrNotFound {
+	} else if err != storage.ErrNotFound {
 		return err
 	}
 	now := s.clock.Unix()
-	return s.memberRepo.Upsert(sqlite.Membership{
+	return s.memberRepo.Upsert(storage.Membership{
 		UserID:      userID,
 		WorkspaceID: workspaceID,
 		Role:        string(role),
@@ -603,10 +603,10 @@ func (s *Service) changeMemberRoleLocked(workspaceID, userID string, role Role) 
 	return s.memberRepo.UpdateRole(userID, workspaceID, string(role), s.clock.Unix())
 }
 
-func (s *Service) resolveUser(ref string) (sqlite.User, error) {
+func (s *Service) resolveUser(ref string) (storage.User, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return sqlite.User{}, fmt.Errorf("user reference is required")
+		return storage.User{}, fmt.Errorf("user reference is required")
 	}
 	if user, err := s.userRepo.GetByID(ref); err == nil {
 		return user, nil
@@ -624,27 +624,27 @@ func (s *Service) resolveUser(ref string) (sqlite.User, error) {
 		return user, nil
 	}
 	user, err := s.userRepo.GetByEmail(ref)
-	if err == sqlite.ErrNotFound {
-		return sqlite.User{}, RuntimeError{Code: "user_not_found", Message: fmt.Sprintf("user %q not found", ref)}
+	if err == storage.ErrNotFound {
+		return storage.User{}, RuntimeError{Code: "user_not_found", Message: fmt.Sprintf("user %q not found", ref)}
 	}
 	return user, err
 }
 
-func (s *Service) resolveWorkspaceForActor(ref string) (sqlite.Workspace, Role, error) {
+func (s *Service) resolveWorkspaceForActor(ref string) (storage.Workspace, Role, error) {
 	if strings.TrimSpace(ref) == "" {
 		workspace, err := s.workspaceRepo.GetByID(s.runtime.WorkspaceID)
 		return workspace, s.runtime.Role, err
 	}
 	workspace, err := lookupWorkspace(s.workspaceRepo, strings.TrimSpace(ref))
 	if err != nil {
-		return sqlite.Workspace{}, "", err
+		return storage.Workspace{}, "", err
 	}
 	member, err := s.memberRepo.Get(s.runtime.ActorUserID, workspace.ID)
-	if err == sqlite.ErrNotFound {
-		return sqlite.Workspace{}, "", RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
+	if err == storage.ErrNotFound {
+		return storage.Workspace{}, "", RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
 	}
 	if err != nil {
-		return sqlite.Workspace{}, "", err
+		return storage.Workspace{}, "", err
 	}
 	return workspace, Role(member.Role), nil
 }
@@ -747,7 +747,7 @@ func normalizeWorkspaceModifyInput(input ModifyWorkspaceInput) (ModifyWorkspaceI
 	return input, nil
 }
 
-func userViewFromRow(user sqlite.User, active bool, externalIDs []task.ExternalIDInfo) UserView {
+func userViewFromRow(user storage.User, active bool, externalIDs []task.ExternalIDInfo) UserView {
 	return UserView{
 		ID:                 user.ID,
 		Name:               user.Name,
@@ -772,7 +772,7 @@ func (s *Service) BindExternalID(userID, provider, externalID string) error {
 		}
 	}
 	return s.withAudit("user.bind_external_id", func(tx *Service) (AuditEntry, error) {
-		_, err := tx.extIDRepo.Create(sqlite.UserExternalID{
+		_, err := tx.extIDRepo.Create(storage.UserExternalID{
 			ID:         uuid.NewString(),
 			UserID:     userID,
 			Provider:   provider,
@@ -840,7 +840,7 @@ func (s *Service) loadExternalIDsByUsers(userIDs []string) (map[string][]task.Ex
 	return result, nil
 }
 
-func workspaceViewFromRow(workspace sqlite.Workspace, role Role, active bool) WorkspaceView {
+func workspaceViewFromRow(workspace storage.Workspace, role Role, active bool) WorkspaceView {
 	var createdBy *task.UserInfo
 	if workspace.CreatedByUserID != nil {
 		createdBy = &task.UserInfo{ID: *workspace.CreatedByUserID}
@@ -902,7 +902,7 @@ func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.Task
 		return task.TaskLinkInfo{}, task.Task{}, RuntimeError{Code: "link_url_required", Message: "link url is required"}
 	}
 	now := s.clock.Unix()
-	link := sqlite.TaskLink{
+	link := storage.TaskLink{
 		ID:        uuid.NewString(),
 		TaskUUID:  tsk.UUID,
 		Type:      linkType,
@@ -911,9 +911,9 @@ func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.Task
 		CreatedAt: now,
 		CreatedBy: s.runtime.ActorUserID,
 	}
-	created, err := sqlite.NewTaskLinkRepository(s.store.DB()).Create(link)
+	created, err := storage.NewTaskLinkRepository(s.store.DB()).Create(link)
 	if err != nil {
-		if sqlite.IsUniqueConstraintError(err) {
+		if storage.IsUniqueConstraintError(err) {
 			return task.TaskLinkInfo{}, task.Task{}, RuntimeError{Code: "link_duplicate", Message: "this URL is already linked to the task"}
 		}
 		return task.TaskLinkInfo{}, task.Task{}, err
@@ -958,7 +958,7 @@ func (s *Service) removeLinkLocked(taskRef, linkID string) (task.Task, error) {
 	if err != nil {
 		return task.Task{}, err
 	}
-	linkRepo := sqlite.NewTaskLinkRepository(s.store.DB())
+	linkRepo := storage.NewTaskLinkRepository(s.store.DB())
 	link, err := linkRepo.GetByID(linkID)
 	if err != nil {
 		return task.Task{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}

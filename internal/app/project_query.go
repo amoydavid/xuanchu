@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -43,7 +43,7 @@ func (s *Service) resolveActiveProjectBinding(ref *string) (projectBinding, erro
 	if err := s.ensureProjectScope(&project.ID); err != nil {
 		return projectBinding{}, err
 	}
-	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
 		return projectBinding{}, RuntimeError{
 			Code:    "project_archived",
 			Message: fmt.Sprintf("project %q is archived", project.Slug),
@@ -109,11 +109,11 @@ func projectBindingFromTask(tsk task.Task) projectBinding {
 	}
 }
 
-func projectBindingFromProject(project sqlite.Project) projectBinding {
+func projectBindingFromProject(project storage.Project) projectBinding {
 	return projectBinding{
 		ID:       cloneStringPtr(&project.ID),
 		Slug:     cloneStringPtr(&project.Slug),
-		Archived: project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil,
+		Archived: project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil,
 	}
 }
 

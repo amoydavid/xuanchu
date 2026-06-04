@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 // ---------------------------------------------------------------------------
@@ -26,9 +26,9 @@ func (s stubResolver) LookupIPAddr(_ context.Context, _ string) ([]net.IPAddr, e
 }
 
 // hookTestEnv 创建一个包含 owner 用户的测试环境。
-func hookTestEnv(t *testing.T) (*Service, *sqlite.Store, func()) {
+func hookTestEnv(t *testing.T) (*Service, *storage.Store, func()) {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,20 +40,20 @@ func hookTestEnv(t *testing.T) (*Service, *sqlite.Store, func()) {
 }
 
 // hookTestEnvWithRole 创建指定角色的测试服务。
-func hookTestEnvWithRole(t *testing.T, role string) (*Service, *sqlite.Store, func()) {
+func hookTestEnvWithRole(t *testing.T, role string) (*Service, *storage.Store, func()) {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ws := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+	ws := mustCreateWorkspaceRecord(t, store, storage.Workspace{
 		ID: "ws-hook-test", Slug: "hook-test", Name: "Hook Test",
 		Visibility: "private", CreatedAt: 100, ModifiedAt: 100,
 	})
-	user := mustCreateUserRecord(t, store, sqlite.User{
+	user := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-hook-" + role, Name: "hook-" + role, CreatedAt: 100, ModifiedAt: 100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: user.ID, WorkspaceID: ws.ID, Role: role, JoinedAt: 100, ModifiedAt: 100,
 	})
 	svc := newTestServiceWithRuntime(t, store, 1000, user.Name, ws.Slug)
@@ -733,14 +733,14 @@ func TestHookInfoWrongWorkspace(t *testing.T) {
 	}
 
 	// 创建另一个 workspace
-	ws2 := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+	ws2 := mustCreateWorkspaceRecord(t, store, storage.Workspace{
 		ID: "ws-other", Slug: "other", Name: "Other",
 		Visibility: "private", CreatedAt: 100, ModifiedAt: 100,
 	})
-	user2 := mustCreateUserRecord(t, store, sqlite.User{
+	user2 := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-other", Name: "other-user", CreatedAt: 100, ModifiedAt: 100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: user2.ID, WorkspaceID: ws2.ID, Role: "owner", JoinedAt: 100, ModifiedAt: 100,
 	})
 	svc2 := newTestServiceWithRuntime(t, store, 1000, user2.Name, ws2.Slug)
@@ -762,14 +762,14 @@ func TestHookDeleteWrongWorkspace(t *testing.T) {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
-	ws2 := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+	ws2 := mustCreateWorkspaceRecord(t, store, storage.Workspace{
 		ID: "ws-other2", Slug: "other2", Name: "Other2",
 		Visibility: "private", CreatedAt: 100, ModifiedAt: 100,
 	})
-	user2 := mustCreateUserRecord(t, store, sqlite.User{
+	user2 := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-other2", Name: "other2-user", CreatedAt: 100, ModifiedAt: 100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: user2.ID, WorkspaceID: ws2.ID, Role: "owner", JoinedAt: 100, ModifiedAt: 100,
 	})
 	svc2 := newTestServiceWithRuntime(t, store, 1000, user2.Name, ws2.Slug)
@@ -945,7 +945,7 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	if d.HookID != hook.ID {
 		t.Fatalf("hook_id = %q, want %q", d.HookID, hook.ID)
 	}
-	if d.Status != sqlite.DeliveryStatusQueued {
+	if d.Status != storage.DeliveryStatusQueued {
 		t.Fatalf("status = %q, want queued", d.Status)
 	}
 	if d.WorkspaceID != svc.runtime.WorkspaceID {
@@ -1009,7 +1009,7 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 func TestHookPayloadIncludesAssignees(t *testing.T) {
 	svc, store, cleanup := hookTestEnv(t)
 	defer cleanup()
-	assignee := mustCreateUserRecord(t, store, sqlite.User{
+	assignee := mustCreateUserRecord(t, store, storage.User{
 		ID:         "user-hook-assignee",
 		Name:       "hook-assignee",
 		Email:      strptr("hook-assignee@example.com"),
@@ -1020,7 +1020,7 @@ func TestHookPayloadIncludesAssignees(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      assignee.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleMember),
@@ -1331,10 +1331,10 @@ func TestHookDeliveryFailureRollsBackTaskWrite(t *testing.T) {
 
 // failingDeliveryRepo 是一个 Enqueue 总是返回错误的 hookDeliveryEnqueuer。
 type failingDeliveryRepo struct {
-	sqlite.HookDeliveryRepository
+	storage.HookDeliveryRepository
 }
 
-func (r *failingDeliveryRepo) Enqueue(_ []sqlite.HookDelivery) error {
+func (r *failingDeliveryRepo) Enqueue(_ []storage.HookDelivery) error {
 	return fmt.Errorf("injected delivery failure")
 }
 

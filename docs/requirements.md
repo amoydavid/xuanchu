@@ -336,7 +336,7 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 
 - 引擎：**SQLite + WAL 模式**，通过 GORM + `github.com/glebarez/sqlite` 使用纯 Go SQLite。
 - 表结构由 §附录 A DDL 描述；每个表均带 `workspace_id` 用于行级隔离。
-- 当前迁移由 `internal/storage/sqlite` 聚合，继续保持幂等和向前兼容。后续如引入独立迁移工具，必须兼容纯 Go SQLite。
+- 当前迁移由 `internal/storage` 聚合，继续保持幂等和向前兼容。后续如引入独立迁移工具，必须兼容纯 Go SQLite。
 
 ### 9.2 同步
 

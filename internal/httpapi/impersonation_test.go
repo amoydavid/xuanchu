@@ -6,24 +6,24 @@ import (
 	"testing"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
-func newHTTPImpersonationFixture(t *testing.T) (store *sqlite.Store, srv *Server, ownerSvc *app.Service, agentToken string, agentTokenID string, aliceUser sqlite.User) {
+func newHTTPImpersonationFixture(t *testing.T) (store *storage.Store, srv *Server, ownerSvc *app.Service, agentToken string, agentTokenID string, aliceUser storage.User) {
 	t.Helper()
 	store = openHTTPTestStore(t)
 	ownerSvc, err := app.NewService(app.ServiceOptions{Store: store})
 	if err != nil {
 		t.Fatal(err)
 	}
-	aliceUser = mustCreateHTTPUser(t, store, sqlite.User{
+	aliceUser = mustCreateHTTPUser(t, store, storage.User{
 		ID: "user-alice-imp", Name: "alice-imp", CreatedAt: 100, ModifiedAt: 100,
 	})
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustUpsertHTTPMembership(t, store, sqlite.Membership{
+	mustUpsertHTTPMembership(t, store, storage.Membership{
 		UserID: aliceUser.ID, WorkspaceID: ws.ID,
 		Role: string(app.RoleMember), JoinedAt: 100, ModifiedAt: 100,
 	})
@@ -166,9 +166,9 @@ func TestImpersonationWorkspaceRequiredForMultiWorkspace(t *testing.T) {
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "workspace_required")
 }
 
-func mustCreateHTTPUser(t *testing.T, store *sqlite.Store, user sqlite.User) sqlite.User {
+func mustCreateHTTPUser(t *testing.T, store *storage.Store, user storage.User) storage.User {
 	t.Helper()
-	created, err := sqlite.NewUserRepository(store.DB()).Create(user)
+	created, err := storage.NewUserRepository(store.DB()).Create(user)
 	if err != nil {
 		t.Fatalf("Create(user %s) error = %v", user.Name, err)
 	}

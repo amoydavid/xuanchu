@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 // DispatcherOptions 配置 webhook 投递调度器。
 type DispatcherOptions struct {
-	Store          *sqlite.Store
+	Store          *storage.Store
 	Clock          app.Clock
 	Client         *http.Client
 	Resolver       app.HookHostResolver
@@ -34,8 +34,8 @@ type DispatcherOptions struct {
 // Dispatcher 负责 webhook 投递的主循环。
 type Dispatcher struct {
 	opts         DispatcherOptions
-	hookRepo     *sqlite.HookRepository
-	deliveryRepo *sqlite.HookDeliveryRepository
+	hookRepo     *storage.HookRepository
+	deliveryRepo *storage.HookDeliveryRepository
 	rng          *rand.Rand
 	rngMu        sync.Mutex
 }
@@ -77,8 +77,8 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	}
 	return &Dispatcher{
 		opts:         opts,
-		hookRepo:     sqlite.NewHookRepository(opts.Store.DB()),
-		deliveryRepo: sqlite.NewHookDeliveryRepository(opts.Store.DB()),
+		hookRepo:     storage.NewHookRepository(opts.Store.DB()),
+		deliveryRepo: storage.NewHookDeliveryRepository(opts.Store.DB()),
 		rng:          rand.New(rand.NewSource(seed)),
 	}
 }
@@ -180,7 +180,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	}
 }
 
-func (d *Dispatcher) dispatchOne(ctx context.Context, delivery sqlite.HookDelivery, now int64) error {
+func (d *Dispatcher) dispatchOne(ctx context.Context, delivery storage.HookDelivery, now int64) error {
 	// 加载 hook 定义
 	hook, err := d.hookRepo.GetByID(delivery.HookID)
 	if err != nil {
@@ -231,7 +231,7 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, delivery sqlite.HookDelive
 	return d.handleResponse(delivery, hook, now, resp)
 }
 
-func (d *Dispatcher) handleResponse(delivery sqlite.HookDelivery, hook sqlite.HookDefinition, now int64, resp *http.Response) error {
+func (d *Dispatcher) handleResponse(delivery storage.HookDelivery, hook storage.HookDefinition, now int64, resp *http.Response) error {
 	statusCode := resp.StatusCode
 
 	if statusCode >= 200 && statusCode < 300 {
@@ -254,12 +254,12 @@ func (d *Dispatcher) handleResponse(delivery sqlite.HookDelivery, hook sqlite.Ho
 	}
 }
 
-func (d *Dispatcher) handleFailure(delivery sqlite.HookDelivery, hook sqlite.HookDefinition, now int64, statusCode *int, err error) error {
+func (d *Dispatcher) handleFailure(delivery storage.HookDelivery, hook storage.HookDefinition, now int64, statusCode *int, err error) error {
 	message := err.Error()
 	return d.handleRetry(delivery, hook, now, statusCode, message, 0)
 }
 
-func (d *Dispatcher) handleRetry(delivery sqlite.HookDelivery, hook sqlite.HookDefinition, now int64, statusCode *int, message string, retryAfter time.Duration) error {
+func (d *Dispatcher) handleRetry(delivery storage.HookDelivery, hook storage.HookDefinition, now int64, statusCode *int, message string, retryAfter time.Duration) error {
 	if delivery.AttemptCount >= hook.MaxAttempts {
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, statusCode, message)
 	}

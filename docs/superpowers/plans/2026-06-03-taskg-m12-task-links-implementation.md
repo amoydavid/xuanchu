@@ -18,15 +18,15 @@
 
 | 文件 | 职责 |
 |---|---|
-| `internal/storage/sqlite/task_link_repo.go` | TaskLink 的 CRUD 操作 |
+| `internal/storage/task_link_repo.go` | TaskLink 的 CRUD 操作 |
 
 ### 修改文件
 
 | 文件 | 变更内容 |
 |---|---|
-| `internal/storage/sqlite/models.go` | 新增 `TaskLink` struct |
-| `internal/storage/sqlite/db.go` | AutoMigrate 加入 `TaskLink` |
-| `internal/storage/sqlite/task_repo.go` | `fromModel` 扩展 Links 字段，新增 `loadLinksByTask` 批量加载 |
+| `internal/storage/models.go` | 新增 `TaskLink` struct |
+| `internal/storage/db.go` | AutoMigrate 加入 `TaskLink` |
+| `internal/storage/task_repo.go` | `fromModel` 扩展 Links 字段，新增 `loadLinksByTask` 批量加载 |
 | `internal/task/model.go` | 新增 `TaskLinkInfo` struct，`Task` 增加 `Links` 字段 |
 | `internal/task/json.go` | 新增 `JSONTaskLink`，`JSONTask` 增加 `Links`，export/import 扩展 |
 | `internal/app/workspace.go` | 新增 `TaskAddLink` / `TaskRemoveLink` 方法 |
@@ -43,9 +43,9 @@
 
 | 文件 | 测试内容 |
 |---|---|
-| `internal/storage/sqlite/db_test.go` | `TaskLink` 表 migration 验证 |
-| `internal/storage/sqlite/task_link_repo_test.go` | TaskLink CRUD 单元测试 |
-| `internal/storage/sqlite/task_repo_test.go` | task 附带 links 的 hydration 测试 |
+| `internal/storage/db_test.go` | `TaskLink` 表 migration 验证 |
+| `internal/storage/task_link_repo_test.go` | TaskLink CRUD 单元测试 |
+| `internal/storage/task_repo_test.go` | task 附带 links 的 hydration 测试 |
 | `internal/task/json_test.go` | JSON task links export/import 测试 |
 | `internal/app/service_test.go` | `TaskAddLink` / `TaskRemoveLink` 测试 |
 | `internal/httpapi/tasks_test.go` | link CRUD endpoint 测试 |
@@ -60,9 +60,9 @@
 ### Task 1: 新增 TaskLink model 和 migration
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go` (末尾追加)
-- Modify: `internal/storage/sqlite/db.go` (AutoMigrate 行)
-- Test: `internal/storage/sqlite/db_test.go`
+- Modify: `internal/storage/models.go` (末尾追加)
+- Modify: `internal/storage/db.go` (AutoMigrate 行)
+- Test: `internal/storage/db_test.go`
 
 - [ ] **Step 1: 在 models.go 末尾新增 TaskLink struct**
 
@@ -80,7 +80,7 @@ type TaskLink struct {
 
 - [ ] **Step 2: 在 db.go AutoMigrate 注册新表**
 
-在 `internal/storage/sqlite/db.go` 的 AutoMigrate 调用中加入 `&TaskLink{}`。
+在 `internal/storage/db.go` 的 AutoMigrate 调用中加入 `&TaskLink{}`。
 
 - [ ] **Step 3: 写 db_test.go 验证表已迁移**
 
@@ -95,18 +95,18 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 
 - [ ] **Step 4: 运行测试验证**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -run TestTaskLinkTableMigrated -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -run TestTaskLinkTableMigrated -v`
 Expected: PASS
 
 - [ ] **Step 5: 运行全量 storage 测试确认无破坏**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -v`
 Expected: 全部 PASS
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/db_test.go
 git commit -m "feat(m12): 新增 TaskLink model 和 migration"
 ```
 
@@ -115,12 +115,12 @@ git commit -m "feat(m12): 新增 TaskLink model 和 migration"
 ### Task 2: 新增 TaskLinkRepository
 
 **Files:**
-- Create: `internal/storage/sqlite/task_link_repo.go`
-- Test: `internal/storage/sqlite/task_link_repo_test.go`
+- Create: `internal/storage/task_link_repo.go`
+- Test: `internal/storage/task_link_repo_test.go`
 
 - [ ] **Step 1: 写测试**
 
-创建 `internal/storage/sqlite/task_link_repo_test.go`，测试以下场景：
+创建 `internal/storage/task_link_repo_test.go`，测试以下场景：
 
 1. Create 成功并返回完整记录
 2. Create 重复 (TaskUUID, URL) 失败
@@ -133,7 +133,7 @@ git commit -m "feat(m12): 新增 TaskLink model 和 migration"
 
 - [ ] **Step 2: 实现 TaskLinkRepository**
 
-创建 `internal/storage/sqlite/task_link_repo.go`：
+创建 `internal/storage/task_link_repo.go`：
 
 ```go
 type TaskLinkRepository struct {
@@ -153,13 +153,13 @@ func (r *TaskLinkRepository) LoadByTaskUUIDs(taskUUIDs []string) (map[string][]T
 
 - [ ] **Step 3: 运行测试**
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -run TestTaskLinkRepo -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -run TestTaskLinkRepo -v`
 Expected: 全部 PASS
 
 - [ ] **Step 4: 提交**
 
 ```bash
-git add internal/storage/sqlite/task_link_repo.go internal/storage/sqlite/task_link_repo_test.go
+git add internal/storage/task_link_repo.go internal/storage/task_link_repo_test.go
 git commit -m "feat(m12): 新增 TaskLinkRepository CRUD"
 ```
 
@@ -229,8 +229,8 @@ git commit -m "feat(m12): domain 模型和 JSON DTO 扩展 TaskLinkInfo"
 ### Task 4: task_repo 扩展 — fromModel 加载 links
 
 **Files:**
-- Modify: `internal/storage/sqlite/task_repo.go`
-- Test: `internal/storage/sqlite/task_repo_test.go`
+- Modify: `internal/storage/task_repo.go`
+- Test: `internal/storage/task_repo_test.go`
 
 - [ ] **Step 1: 新增 loadLinksByTask 函数**
 
@@ -280,13 +280,13 @@ func (r *TaskRepository) loadLinksByTask(models []Task) (map[string][]domain.Tas
 
 测试 task 查询结果中包含 links 数据。
 
-Run: `CGO_ENABLED=0 go test ./internal/storage/sqlite/ -run TestTask -v`
+Run: `CGO_ENABLED=0 go test ./internal/storage/ -run TestTask -v`
 Expected: 全部 PASS
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/storage/sqlite/task_repo.go internal/storage/sqlite/task_repo_test.go internal/storage/sqlite/db.go
+git add internal/storage/task_repo.go internal/storage/task_repo_test.go internal/storage/db.go
 git commit -m "feat(m12): task_repo 扩展加载 links"
 ```
 

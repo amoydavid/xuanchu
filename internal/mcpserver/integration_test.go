@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -55,7 +55,7 @@ func extractUUID(t *testing.T, env ToolEnvelope) string {
 // newTestServer 创建注册了所有工具的 MCP server。
 func newTestServer(t *testing.T) (*mcp.Server, testClock) {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,12 +168,12 @@ func nestedSlice(t *testing.T, parent map[string]any, key string) []any {
 	return value
 }
 
-func newTestServerWithOptions(t *testing.T, opts Options) (*mcp.Server, *sqlite.Store) {
+func newTestServerWithOptions(t *testing.T, opts Options) (*mcp.Server, *storage.Store) {
 	t.Helper()
 	store := opts.Store
 	if store == nil {
 		var err error
-		store, err = sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+		store, err = storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 		if err != nil {
 			t.Fatal(err)
 		}

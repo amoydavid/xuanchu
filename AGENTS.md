@@ -60,7 +60,7 @@
   - 查询参数、日期解析、后续 AST 和表达式引擎入口。
 - `internal/config`
   - 本地配置和路径解析。
-- `internal/storage/sqlite`
+- `internal/storage`
   - GORM model、SQLite 打开、仓储。
 - `internal/render`
   - human/JSON 输出渲染。
@@ -72,7 +72,7 @@
 - `internal/cli` 不要直接实现业务规则。
 - `internal/app` 负责拼装 repo 和 domain 行为，不要把 SQL/GORM 细节拉进来。
 - `internal/task` 不依赖 Cobra、GORM 或 CLI 输出。
-- `internal/storage/sqlite` 不负责参数解释和 CLI 行为。
+- `internal/storage` 不负责参数解释和 CLI 行为。
 - 新增 HTTP/MCP 时必须复用 `internal/app`，不要复制业务逻辑。
 
 ## 4. 开发原则
@@ -122,8 +122,8 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 如果改动影响 SQLite 或持久化层，额外关注：
 
-- `internal/storage/sqlite/db_test.go`
-- `internal/storage/sqlite/task_repo_test.go`
+- `internal/storage/db_test.go`
+- `internal/storage/task_repo_test.go`
 - 不要破坏 `CGO_ENABLED=0`
 
 如果没有运行验证，不要在结论里说“已完成”或“测试通过”。
@@ -150,7 +150,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 ## 8. SQLite 与数据层硬约束
 
 - 使用 `github.com/glebarez/sqlite` 作为 GORM dialector。
-- 所有数据库访问都应通过 `internal/storage/sqlite` 聚合。
+- 所有数据库访问都应通过 `internal/storage` 聚合。
 - M0/M1 阶段可以继续用 GORM，但需要保持查询逻辑清晰，不要把复杂 filter 直接堆成字符串拼接。
 - 面向 M1 的查询能力，应优先设计成：
   - AST 或结构化查询表示

@@ -149,7 +149,7 @@
   注册 users、active_workspace、`/mcp`。
 - `internal/httpapi/tasks.go`
   task list limit 默认 200 / max 1000。
-- `internal/storage/sqlite/task_repo.go`
+- `internal/storage/task_repo.go`
   `ListOptions.Limit` 与 SQL `LIMIT`。
 - `internal/httpapi/workspaces.go`
   复用 workspace response DTO；新增 workspace archive endpoint。
@@ -802,7 +802,7 @@ import (
     "io"
 
     "github.com/dajee/taskg/internal/app"
-    "github.com/dajee/taskg/internal/storage/sqlite"
+    "github.com/dajee/taskg/internal/storage"
 )
 
 type Mode string

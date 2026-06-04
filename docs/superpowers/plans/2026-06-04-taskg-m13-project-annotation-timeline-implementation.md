@@ -17,8 +17,8 @@
 ### Task 1：ProjectAnnotation model + migration
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go` — 新增 `ProjectAnnotation` struct，`Project` 增加 `Annotations` 关联
-- Modify: `internal/storage/sqlite/db.go` — AutoMigrate 加入 `ProjectAnnotation`，M5 relation schema 加入 `project_annotations`
+- Modify: `internal/storage/models.go` — 新增 `ProjectAnnotation` struct，`Project` 增加 `Annotations` 关联
+- Modify: `internal/storage/db.go` — AutoMigrate 加入 `ProjectAnnotation`，M5 relation schema 加入 `project_annotations`
 
 - [ ] **Step 1：新增 ProjectAnnotation model**
 
@@ -79,7 +79,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 - [ ] **Step 5：新增 migration 测试**
 
-在 `internal/storage/sqlite/db_test.go` 中添加测试验证 `project_annotations` 表和索引被正确创建。
+在 `internal/storage/db_test.go` 中添加测试验证 `project_annotations` 表和索引被正确创建。
 
 - [ ] **Step 6：Commit**
 
@@ -91,8 +91,8 @@ git commit -m "feat(m13): ProjectAnnotation model 和 migration"
 ### Task 2：ProjectAnnotationRepository CRUD
 
 **Files:**
-- Create: `internal/storage/sqlite/project_annotation_repo.go`
-- Create: `internal/storage/sqlite/project_annotation_repo_test.go`
+- Create: `internal/storage/project_annotation_repo.go`
+- Create: `internal/storage/project_annotation_repo_test.go`
 
 - [ ] **Step 1：实现 ProjectAnnotationRepository**
 
@@ -222,8 +222,8 @@ func (r *ProjectAnnotationRepository) TimelineByProjectID(projectID string, limi
 - [ ] **Step 4：验证**
 
 ```bash
-CGO_ENABLED=0 go test ./internal/storage/sqlite/... -v -run TestProjectAnnotation
-CGO_ENABLED=0 go test ./internal/storage/sqlite/... -v -run TestTimeline
+CGO_ENABLED=0 go test ./internal/storage/... -v -run TestProjectAnnotation
+CGO_ENABLED=0 go test ./internal/storage/... -v -run TestTimeline
 ```
 
 - [ ] **Step 5：Commit**

@@ -250,7 +250,7 @@ taskg: invalid query: unclosed quote
 - `internal/query/parser.go`
 - `internal/query/compiler.go`
 - `internal/query/date.go`
-- `internal/storage/sqlite/query_scope.go`
+- `internal/storage/query_scope.go`
 
 `internal/app` 只接收结构化查询，不直接处理 SQL。
 

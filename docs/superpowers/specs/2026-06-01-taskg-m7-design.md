@@ -114,7 +114,7 @@ M7 后 `taskg` 有三类入口：
 三类入口必须复用：
 
 - `internal/app` 权限和业务规则。
-- `internal/storage/sqlite` repository。
+- `internal/storage` repository。
 - `internal/render` 的 human 输出能力。
 - M6 token / request scope 语义。
 - M4/M5/M6 audit 语义。

@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -128,7 +128,7 @@ func (s *Service) ProjectInfo(ref string) (ProjectView, error) {
 		}
 		return s.projectViewForRow(project)
 	}
-	if !errors.Is(err, sqlite.ErrNotFound) {
+	if !errors.Is(err, storage.ErrNotFound) {
 		return ProjectView{}, err
 	}
 	project, err = s.ResolveProject(ref)
@@ -146,7 +146,7 @@ func (s *Service) ModifyProject(ref string, input ModifyProjectInput) error {
 	if err != nil {
 		return err
 	}
-	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
 		return RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	normalized, err := normalizeProjectModifyInput(input)
@@ -174,7 +174,7 @@ func (s *Service) ArchiveProject(ref string) (ProjectView, error) {
 	if err != nil {
 		return ProjectView{}, err
 	}
-	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
 		return ProjectView{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	var archived ProjectView
@@ -203,37 +203,37 @@ func (s *Service) ArchiveProject(ref string) (ProjectView, error) {
 	return archived, err
 }
 
-func (s *Service) ResolveProject(ref string) (sqlite.Project, error) {
+func (s *Service) ResolveProject(ref string) (storage.Project, error) {
 	return s.ResolveProjectInWorkspace(s.workspaceID, ref)
 }
 
-func (s *Service) ResolveProjectInWorkspace(workspaceID, ref string) (sqlite.Project, error) {
+func (s *Service) ResolveProjectInWorkspace(workspaceID, ref string) (storage.Project, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return sqlite.Project{}, RuntimeError{Code: "project_not_found", Message: "project reference is required"}
+		return storage.Project{}, RuntimeError{Code: "project_not_found", Message: "project reference is required"}
 	}
 	project, err := s.projectRepo.ResolveInWorkspace(workspaceID, ref)
-	if errors.Is(err, sqlite.ErrNotFound) {
-		return sqlite.Project{}, RuntimeError{Code: "project_not_found", Message: fmt.Sprintf("project %q not found", ref)}
+	if errors.Is(err, storage.ErrNotFound) {
+		return storage.Project{}, RuntimeError{Code: "project_not_found", Message: fmt.Sprintf("project %q not found", ref)}
 	}
 	if err != nil {
-		return sqlite.Project{}, err
+		return storage.Project{}, err
 	}
 	if err := s.ensureProjectScope(&project.ID); err != nil {
-		return sqlite.Project{}, err
+		return storage.Project{}, err
 	}
 	return project, nil
 }
 
-func (s *Service) addProjectLocked(slug, name, description string) (sqlite.Project, error) {
+func (s *Service) addProjectLocked(slug, name, description string) (storage.Project, error) {
 	now := s.clock.Unix()
-	project := sqlite.Project{
+	project := storage.Project{
 		ID:           uuid.NewString(),
 		WorkspaceID:  s.workspaceID,
 		Slug:         slug,
 		Name:         name,
 		Description:  description,
-		Status:       string(sqlite.ProjectStatusActive),
+		Status:       string(storage.ProjectStatusActive),
 		SettingsJSON: "{}",
 		CreatedAt:    now,
 		ModifiedAt:   now,
@@ -241,17 +241,17 @@ func (s *Service) addProjectLocked(slug, name, description string) (sqlite.Proje
 	created, err := s.projectRepo.Create(project)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			return sqlite.Project{}, RuntimeError{
+			return storage.Project{}, RuntimeError{
 				Code:    "project_already_exists",
 				Message: fmt.Sprintf("project %q already exists in workspace %q", slug, s.runtime.WorkspaceSlug),
 			}
 		}
-		return sqlite.Project{}, err
+		return storage.Project{}, err
 	}
 	return created, nil
 }
 
-func (s *Service) modifyProjectLocked(project sqlite.Project, input ModifyProjectInput) error {
+func (s *Service) modifyProjectLocked(project storage.Project, input ModifyProjectInput) error {
 	if input.Name != nil {
 		project.Name = *input.Name
 	}
@@ -263,7 +263,7 @@ func (s *Service) modifyProjectLocked(project sqlite.Project, input ModifyProjec
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return RuntimeError{Code: "project_already_exists", Message: fmt.Sprintf("project %q already exists in workspace %q", project.Slug, s.runtime.WorkspaceSlug)}
 		}
-		if errors.Is(err, sqlite.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return RuntimeError{Code: "project_not_found", Message: fmt.Sprintf("project %q not found", project.Slug)}
 		}
 		return err
@@ -271,24 +271,24 @@ func (s *Service) modifyProjectLocked(project sqlite.Project, input ModifyProjec
 	return nil
 }
 
-func (s *Service) archiveProjectLocked(project sqlite.Project) error {
+func (s *Service) archiveProjectLocked(project storage.Project) error {
 	err := s.projectRepo.Archive(project.WorkspaceID, project.ID, s.clock.Unix())
-	if errors.Is(err, sqlite.ErrAlreadyArchived) {
+	if errors.Is(err, storage.ErrAlreadyArchived) {
 		return RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
-	if errors.Is(err, sqlite.ErrNotFound) {
+	if errors.Is(err, storage.ErrNotFound) {
 		return RuntimeError{Code: "project_not_found", Message: fmt.Sprintf("project %q not found", project.Slug)}
 	}
 	return err
 }
 
-func (s *Service) projectViewForRow(project sqlite.Project) (ProjectView, error) {
+func (s *Service) projectViewForRow(project storage.Project) (ProjectView, error) {
 	counts, err := s.projectRepo.TaskCounts(project.WorkspaceID, []string{project.ID})
 	if err != nil {
 		return ProjectView{}, err
 	}
 	view := projectViewFromRow(project, counts[project.ID])
-	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	recent, err := repo.RecentByProject(project.ID, 5)
 	if err != nil {
 		return ProjectView{}, err
@@ -299,7 +299,7 @@ func (s *Service) projectViewForRow(project sqlite.Project) (ProjectView, error)
 	return view, nil
 }
 
-func projectViewFromRow(project sqlite.Project, taskCount int) ProjectView {
+func projectViewFromRow(project storage.Project, taskCount int) ProjectView {
 	return ProjectView{
 		ID:          project.ID,
 		WorkspaceID: project.WorkspaceID,
@@ -361,7 +361,7 @@ func normalizeProjectSlug(slug string) (string, error) {
 	return slug, nil
 }
 
-func projectAnnotationInfoFromModel(m sqlite.ProjectAnnotation) ProjectAnnotationInfo {
+func projectAnnotationInfoFromModel(m storage.ProjectAnnotation) ProjectAnnotationInfo {
 	return ProjectAnnotationInfo{
 		ID:        m.ID,
 		ProjectID: m.ProjectID,
@@ -409,23 +409,23 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 	return result, err
 }
 
-func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnnotationInfo, sqlite.Project, error) {
+func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnnotationInfo, storage.Project, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return ProjectAnnotationInfo{}, sqlite.Project{}, RuntimeError{Code: "annotation_content_required", Message: "annotation content is required"}
+		return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "annotation_content_required", Message: "annotation content is required"}
 	}
 	project, err := s.ResolveProject(projectRef)
 	if err != nil {
-		return ProjectAnnotationInfo{}, sqlite.Project{}, err
+		return ProjectAnnotationInfo{}, storage.Project{}, err
 	}
-	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
-		return ProjectAnnotationInfo{}, sqlite.Project{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+		return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
-	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	now := s.clock.Unix()
 	for attempts := 0; attempts < 3; attempts++ {
 		entry := now + int64(attempts)
-		annotation := sqlite.ProjectAnnotation{
+		annotation := storage.ProjectAnnotation{
 			ID:        uuid.NewString(),
 			ProjectID: project.ID,
 			Entry:     entry,
@@ -435,18 +435,18 @@ func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnno
 		}
 		created, err := repo.Create(annotation)
 		if err != nil {
-			if sqlite.IsUniqueConstraintError(err) {
+			if storage.IsUniqueConstraintError(err) {
 				continue
 			}
-			return ProjectAnnotationInfo{}, sqlite.Project{}, err
+			return ProjectAnnotationInfo{}, storage.Project{}, err
 		}
 		project.ModifiedAt = now
 		if err := s.projectRepo.Update(project); err != nil {
-			return ProjectAnnotationInfo{}, sqlite.Project{}, err
+			return ProjectAnnotationInfo{}, storage.Project{}, err
 		}
 		return projectAnnotationInfoFromModel(created), project, nil
 	}
-	return ProjectAnnotationInfo{}, sqlite.Project{}, RuntimeError{Code: "annotation_conflict", Message: "annotation conflict could not be resolved"}
+	return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "annotation_conflict", Message: "annotation conflict could not be resolved"}
 }
 
 func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
@@ -474,28 +474,28 @@ func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
 	})
 }
 
-func (s *Service) projectDenotateLocked(projectRef, annotationID string) (sqlite.Project, string, error) {
+func (s *Service) projectDenotateLocked(projectRef, annotationID string) (storage.Project, string, error) {
 	project, err := s.ResolveProject(projectRef)
 	if err != nil {
-		return sqlite.Project{}, "", err
+		return storage.Project{}, "", err
 	}
-	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
-		return sqlite.Project{}, "", RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+		return storage.Project{}, "", RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
-	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	annotation, err := repo.GetByID(annotationID)
 	if err != nil {
-		return sqlite.Project{}, "", err
+		return storage.Project{}, "", err
 	}
 	if annotation.ProjectID != project.ID {
-		return sqlite.Project{}, "", RuntimeError{Code: "annotation_not_found", Message: fmt.Sprintf("annotation %q does not belong to project %q", annotationID, project.Slug)}
+		return storage.Project{}, "", RuntimeError{Code: "annotation_not_found", Message: fmt.Sprintf("annotation %q does not belong to project %q", annotationID, project.Slug)}
 	}
 	if err := repo.Delete(annotationID); err != nil {
-		return sqlite.Project{}, "", err
+		return storage.Project{}, "", err
 	}
 	project.ModifiedAt = s.clock.Unix()
 	if err := s.projectRepo.Update(project); err != nil {
-		return sqlite.Project{}, "", err
+		return storage.Project{}, "", err
 	}
 	return project, annotationID, nil
 }
@@ -508,7 +508,7 @@ func (s *Service) ProjectAnnotations(projectRef string) ([]ProjectAnnotationInfo
 	if err != nil {
 		return nil, err
 	}
-	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	annotations, err := repo.ListByProject(project.ID)
 	if err != nil {
 		return nil, err
@@ -528,7 +528,7 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 	if err != nil {
 		return nil, err
 	}
-	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	rows, err := repo.TimelineByProjectID(project.ID, opts.Limit, opts.Offset)
 	if err != nil {
 		return nil, err

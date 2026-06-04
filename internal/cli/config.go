@@ -11,7 +11,7 @@ import (
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/config"
 	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	taskrcparser "github.com/dajee/taskg/internal/taskrc"
 	"github.com/spf13/cobra"
 )
@@ -284,7 +284,7 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	if err != nil {
 		return config.Runtime{}, err
 	}
-	store, err := sqlite.Open(cfg.DatabasePath)
+	store, err := storage.Open(cfg.DatabasePath)
 	if err != nil {
 		return config.Runtime{}, err
 	}
@@ -292,7 +292,7 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	return runtimeFromResolvedConfig(opts, cfg, store, env)
 }
 
-func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *sqlite.Store, env map[string]string) (config.Runtime, error) {
+func runtimeFromResolvedConfig(opts Options, cfg config.Config, store *storage.Store, env map[string]string) (config.Runtime, error) {
 	rawMeta, err := store.ListMeta()
 	if err != nil {
 		return config.Runtime{}, err

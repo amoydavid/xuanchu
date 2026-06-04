@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 	taskrcparser "github.com/dajee/taskg/internal/taskrc"
 	"github.com/dajee/taskg/internal/urgency"
@@ -21,7 +21,7 @@ func strptr(v string) *string { return &v }
 
 func newTestService(t *testing.T, now int64) (*Service, func()) {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +32,9 @@ func newTestService(t *testing.T, now int64) (*Service, func()) {
 	return svc, func() { _ = store.Close() }
 }
 
-func newTestStore(t *testing.T) *sqlite.Store {
+func newTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func newTestStore(t *testing.T) *sqlite.Store {
 	return store
 }
 
-func newTestServiceWithRuntime(t *testing.T, store *sqlite.Store, now int64, actorRef, workspaceRef string) *Service {
+func newTestServiceWithRuntime(t *testing.T, store *storage.Store, now int64, actorRef, workspaceRef string) *Service {
 	t.Helper()
 	svc, err := NewService(ServiceOptions{
 		Store:        store,
@@ -56,33 +56,33 @@ func newTestServiceWithRuntime(t *testing.T, store *sqlite.Store, now int64, act
 	return svc
 }
 
-func mustCreateUserRecord(t *testing.T, store *sqlite.Store, user sqlite.User) sqlite.User {
+func mustCreateUserRecord(t *testing.T, store *storage.Store, user storage.User) storage.User {
 	t.Helper()
-	created, err := sqlite.NewUserRepository(store.DB()).Create(user)
+	created, err := storage.NewUserRepository(store.DB()).Create(user)
 	if err != nil {
 		t.Fatalf("Create(user %s) error = %v", user.Name, err)
 	}
 	return created
 }
 
-func mustCreateWorkspaceRecord(t *testing.T, store *sqlite.Store, ws sqlite.Workspace) sqlite.Workspace {
+func mustCreateWorkspaceRecord(t *testing.T, store *storage.Store, ws storage.Workspace) storage.Workspace {
 	t.Helper()
-	created, err := sqlite.NewWorkspaceRepository(store.DB()).Create(ws)
+	created, err := storage.NewWorkspaceRepository(store.DB()).Create(ws)
 	if err != nil {
 		t.Fatalf("Create(workspace %s) error = %v", ws.Slug, err)
 	}
 	return created
 }
 
-func mustUpsertMembershipRecord(t *testing.T, store *sqlite.Store, member sqlite.Membership) {
+func mustUpsertMembershipRecord(t *testing.T, store *storage.Store, member storage.Membership) {
 	t.Helper()
-	if err := sqlite.NewMemberRepository(store.DB()).Upsert(member); err != nil {
+	if err := storage.NewMemberRepository(store.DB()).Upsert(member); err != nil {
 		t.Fatalf("Upsert(membership %+v) error = %v", member, err)
 	}
 }
 
 func TestServiceAddListInfo(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -139,15 +139,15 @@ func TestNewServiceResolvesLocalRuntimeContext(t *testing.T) {
 
 func TestNewServiceWorkspaceOverride(t *testing.T) {
 	store := newTestStore(t)
-	userRepo := sqlite.NewUserRepository(store.DB())
-	wsRepo := sqlite.NewWorkspaceRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	wsRepo := storage.NewWorkspaceRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
 
 	localUser, err := userRepo.GetByName("local")
 	if err != nil {
 		t.Fatalf("GetByName(local) error = %v", err)
 	}
-	work, err := wsRepo.Create(sqlite.Workspace{
+	work, err := wsRepo.Create(storage.Workspace{
 		ID:              "ws-work",
 		Slug:            "work",
 		Name:            "Work",
@@ -160,7 +160,7 @@ func TestNewServiceWorkspaceOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create(workspace) error = %v", err)
 	}
-	if err := memberRepo.Upsert(sqlite.Membership{
+	if err := memberRepo.Upsert(storage.Membership{
 		UserID:      localUser.ID,
 		WorkspaceID: work.ID,
 		Role:        "admin",
@@ -194,17 +194,17 @@ func TestViewerCannotModifyTasks(t *testing.T) {
 		t.Fatalf("Add() error = %v", err)
 	}
 
-	userRepo := sqlite.NewUserRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	viewer, err := userRepo.Create(sqlite.User{ID: "user-viewer", Name: "viewer", CreatedAt: 100, ModifiedAt: 100})
+	viewer, err := userRepo.Create(storage.User{ID: "user-viewer", Name: "viewer", CreatedAt: 100, ModifiedAt: 100})
 	if err != nil {
 		t.Fatalf("Create(viewer) error = %v", err)
 	}
-	if err := memberRepo.Upsert(sqlite.Membership{
+	if err := memberRepo.Upsert(storage.Membership{
 		UserID:      viewer.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleViewer),
@@ -229,7 +229,7 @@ func TestViewerCannotModifyTasks(t *testing.T) {
 func TestServiceAddResolvesAssigneesInWorkspace(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	memberUser := mustCreateUserRecord(t, store, sqlite.User{
+	memberUser := mustCreateUserRecord(t, store, storage.User{
 		ID:         "user-alice",
 		Name:       "alice",
 		Email:      strptr("alice@example.com"),
@@ -240,7 +240,7 @@ func TestServiceAddResolvesAssigneesInWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      memberUser.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleMember),
@@ -263,7 +263,7 @@ func TestServiceAddResolvesAssigneesInWorkspace(t *testing.T) {
 func TestServiceModifyRejectsCrossWorkspaceAssignee(t *testing.T) {
 	store := newTestStore(t)
 	localSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	otherWS := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+	otherWS := mustCreateWorkspaceRecord(t, store, storage.Workspace{
 		ID:           "ws-other",
 		Slug:         "other",
 		Name:         "Other",
@@ -272,13 +272,13 @@ func TestServiceModifyRejectsCrossWorkspaceAssignee(t *testing.T) {
 		CreatedAt:    100,
 		ModifiedAt:   100,
 	})
-	otherUser := mustCreateUserRecord(t, store, sqlite.User{
+	otherUser := mustCreateUserRecord(t, store, storage.User{
 		ID:         "user-other",
 		Name:       "other-user",
 		CreatedAt:  100,
 		ModifiedAt: 100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      otherUser.ID,
 		WorkspaceID: otherWS.ID,
 		Role:        string(RoleMember),
@@ -303,7 +303,7 @@ func TestServiceModifyRejectsCrossWorkspaceAssignee(t *testing.T) {
 func TestServiceListExpandsAssigneeMe(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	localUser, err := sqlite.NewUserRepository(store.DB()).GetByName("local")
+	localUser, err := storage.NewUserRepository(store.DB()).GetByName("local")
 	if err != nil {
 		t.Fatalf("GetByName(local) error = %v", err)
 	}
@@ -368,7 +368,7 @@ func TestServiceContextFilterResolvesAssigneeMe(t *testing.T) {
 func TestServiceModifyClearAndAddAssigneesReplacesSet(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	alice := mustCreateUserRecord(t, store, sqlite.User{
+	alice := mustCreateUserRecord(t, store, storage.User{
 		ID:         "user-alice-clear-add",
 		Name:       "alice-clear-add",
 		Email:      strptr("alice-clear-add@example.com"),
@@ -379,7 +379,7 @@ func TestServiceModifyClearAndAddAssigneesReplacesSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      alice.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleMember),
@@ -462,14 +462,14 @@ func TestServiceBindExternalIDRejectsOtherUserForNonAdmin(t *testing.T) {
 	store := newTestStore(t)
 	adminSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	otherUser := mustCreateUserRecord(t, store, sqlite.User{
+	otherUser := mustCreateUserRecord(t, store, storage.User{
 		ID: "user-other", Name: "other", CreatedAt: 100, ModifiedAt: 100,
 	})
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID: otherUser.ID, WorkspaceID: ws.ID, Role: "member", JoinedAt: 100, ModifiedAt: 100,
 	})
 
@@ -513,17 +513,17 @@ func TestViewerCanUseOwnContextButCannotDefineContext(t *testing.T) {
 		t.Fatalf("DefineContext(owner) error = %v", err)
 	}
 
-	userRepo := sqlite.NewUserRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	viewer, err := userRepo.Create(sqlite.User{ID: "user-viewer-ctx", Name: "viewer-ctx", CreatedAt: 100, ModifiedAt: 100})
+	viewer, err := userRepo.Create(storage.User{ID: "user-viewer-ctx", Name: "viewer-ctx", CreatedAt: 100, ModifiedAt: 100})
 	if err != nil {
 		t.Fatalf("Create(viewer) error = %v", err)
 	}
-	if err := memberRepo.Upsert(sqlite.Membership{
+	if err := memberRepo.Upsert(storage.Membership{
 		UserID:      viewer.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleViewer),
@@ -553,17 +553,17 @@ func TestViewerCanUseOwnContextButCannotDefineContext(t *testing.T) {
 
 func TestViewerCannotManageUDASchema(t *testing.T) {
 	store := newTestStore(t)
-	userRepo := sqlite.NewUserRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	viewer, err := userRepo.Create(sqlite.User{ID: "user-viewer-uda", Name: "viewer-uda", CreatedAt: 100, ModifiedAt: 100})
+	viewer, err := userRepo.Create(storage.User{ID: "user-viewer-uda", Name: "viewer-uda", CreatedAt: 100, ModifiedAt: 100})
 	if err != nil {
 		t.Fatalf("Create(viewer) error = %v", err)
 	}
-	if err := memberRepo.Upsert(sqlite.Membership{
+	if err := memberRepo.Upsert(storage.Membership{
 		UserID:      viewer.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleViewer),
@@ -586,17 +586,17 @@ func TestViewerCannotManageUDASchema(t *testing.T) {
 
 func TestMemberCannotManageWorkspaceMetadataOrMembers(t *testing.T) {
 	store := newTestStore(t)
-	userRepo := sqlite.NewUserRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	member, err := userRepo.Create(sqlite.User{ID: "user-member", Name: "member-user", CreatedAt: 100, ModifiedAt: 100})
+	member, err := userRepo.Create(storage.User{ID: "user-member", Name: "member-user", CreatedAt: 100, ModifiedAt: 100})
 	if err != nil {
 		t.Fatalf("Create(member) error = %v", err)
 	}
-	if err := memberRepo.Upsert(sqlite.Membership{
+	if err := memberRepo.Upsert(storage.Membership{
 		UserID:      member.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleMember),
@@ -617,17 +617,17 @@ func TestMemberCannotManageWorkspaceMetadataOrMembers(t *testing.T) {
 
 func TestAdminCannotArchiveWorkspace(t *testing.T) {
 	store := newTestStore(t)
-	userRepo := sqlite.NewUserRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	admin, err := userRepo.Create(sqlite.User{ID: "user-admin", Name: "admin-user", CreatedAt: 100, ModifiedAt: 100})
+	admin, err := userRepo.Create(storage.User{ID: "user-admin", Name: "admin-user", CreatedAt: 100, ModifiedAt: 100})
 	if err != nil {
 		t.Fatalf("Create(admin) error = %v", err)
 	}
-	if err := memberRepo.Upsert(sqlite.Membership{
+	if err := memberRepo.Upsert(storage.Membership{
 		UserID:      admin.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleAdmin),
@@ -646,14 +646,14 @@ func TestAdminCannotArchiveWorkspace(t *testing.T) {
 func TestProjectPermissionsByRole(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	adminUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-admin", Name: "project-admin", CreatedAt: 100, ModifiedAt: 100})
-	memberUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-member", Name: "project-member", CreatedAt: 100, ModifiedAt: 100})
-	viewerUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-viewer", Name: "project-viewer", CreatedAt: 100, ModifiedAt: 100})
+	adminUser := mustCreateUserRecord(t, store, storage.User{ID: "user-project-admin", Name: "project-admin", CreatedAt: 100, ModifiedAt: 100})
+	memberUser := mustCreateUserRecord(t, store, storage.User{ID: "user-project-member", Name: "project-member", CreatedAt: 100, ModifiedAt: 100})
+	viewerUser := mustCreateUserRecord(t, store, storage.User{ID: "user-project-viewer", Name: "project-viewer", CreatedAt: 100, ModifiedAt: 100})
 	ws, err := store.LocalWorkspace()
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	for _, member := range []sqlite.Membership{
+	for _, member := range []storage.Membership{
 		{UserID: adminUser.ID, WorkspaceID: ws.ID, Role: string(RoleAdmin), JoinedAt: 100, ModifiedAt: 100},
 		{UserID: memberUser.ID, WorkspaceID: ws.ID, Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100},
 		{UserID: viewerUser.ID, WorkspaceID: ws.ID, Role: string(RoleViewer), JoinedAt: 100, ModifiedAt: 100},
@@ -869,7 +869,7 @@ func TestProjectAuditEntriesIncludeProjectID(t *testing.T) {
 		}
 	}
 	workspaceID := svc.Runtime().WorkspaceID
-	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+	rows, err := storage.NewAuditRepository(store.DB()).List(storage.AuditListOptions{
 		WorkspaceID: &workspaceID,
 		ProjectID:   &created.ID,
 		Limit:       10,
@@ -894,10 +894,10 @@ func TestProjectConfigPermissionsAndArchivedBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalWorkspace() error = %v", err)
 	}
-	adminUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-config-admin", Name: "project-config-admin", CreatedAt: 100, ModifiedAt: 100})
-	memberUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-config-member", Name: "project-config-member", CreatedAt: 100, ModifiedAt: 100})
-	viewerUser := mustCreateUserRecord(t, store, sqlite.User{ID: "user-project-config-viewer", Name: "project-config-viewer", CreatedAt: 100, ModifiedAt: 100})
-	for _, member := range []sqlite.Membership{
+	adminUser := mustCreateUserRecord(t, store, storage.User{ID: "user-project-config-admin", Name: "project-config-admin", CreatedAt: 100, ModifiedAt: 100})
+	memberUser := mustCreateUserRecord(t, store, storage.User{ID: "user-project-config-member", Name: "project-config-member", CreatedAt: 100, ModifiedAt: 100})
+	viewerUser := mustCreateUserRecord(t, store, storage.User{ID: "user-project-config-viewer", Name: "project-config-viewer", CreatedAt: 100, ModifiedAt: 100})
+	for _, member := range []storage.Membership{
 		{UserID: adminUser.ID, WorkspaceID: ws.ID, Role: string(RoleAdmin), JoinedAt: 100, ModifiedAt: 100},
 		{UserID: memberUser.ID, WorkspaceID: ws.ID, Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100},
 		{UserID: viewerUser.ID, WorkspaceID: ws.ID, Role: string(RoleViewer), JoinedAt: 100, ModifiedAt: 100},
@@ -1108,7 +1108,7 @@ func TestProjectConfigAuditEntriesIncludeProjectID(t *testing.T) {
 	}
 
 	workspaceID := svc.Runtime().WorkspaceID
-	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+	rows, err := storage.NewAuditRepository(store.DB()).List(storage.AuditListOptions{
 		WorkspaceID: &workspaceID,
 		ProjectID:   &project.ID,
 		Limit:       10,
@@ -1139,10 +1139,10 @@ func TestProjectConfigSetRechecksArchivedProjectInsideAuditTransaction(t *testin
 	}
 
 	archivedAt := int64(200)
-	if err := store.DB().Model(&sqlite.Project{}).
+	if err := store.DB().Model(&storage.Project{}).
 		Where("id = ? AND workspace_id = ?", project.ID, svc.Runtime().WorkspaceID).
 		Updates(map[string]any{
-			"status":      string(sqlite.ProjectStatusArchived),
+			"status":      string(storage.ProjectStatusArchived),
 			"archived_at": &archivedAt,
 			"modified_at": archivedAt,
 		}).Error; err != nil {
@@ -1163,14 +1163,14 @@ func TestProjectConfigSetRechecksArchivedProjectInsideAuditTransaction(t *testin
 }
 
 type failingAuditRepo struct {
-	listRows []sqlite.AuditLogEntry
+	listRows []storage.AuditLogEntry
 }
 
-func (f *failingAuditRepo) Append(sqlite.AuditLogEntry) error {
-	return sqlite.ErrNotFound
+func (f *failingAuditRepo) Append(storage.AuditLogEntry) error {
+	return storage.ErrNotFound
 }
 
-func (f *failingAuditRepo) List(sqlite.AuditListOptions) ([]sqlite.AuditLogEntry, error) {
+func (f *failingAuditRepo) List(storage.AuditListOptions) ([]storage.AuditLogEntry, error) {
 	return f.listRows, nil
 }
 
@@ -1677,7 +1677,7 @@ func TestExportRejectsProjectInvariantViolation(t *testing.T) {
 		t.Fatalf("Add(task) error = %v", err)
 	}
 
-	if err := store.DB().Model(&sqlite.Task{}).
+	if err := store.DB().Model(&storage.Task{}).
 		Where("uuid = ? AND workspace_id = ?", created.UUID, svc.Runtime().WorkspaceID).
 		Update("project", "mismatch").Error; err != nil {
 		t.Fatalf("corrupt project slug error = %v", err)
@@ -1899,7 +1899,7 @@ func TestTaskAuditEntriesTrackProjectChanges(t *testing.T) {
 	}
 
 	workspaceID := svc.Runtime().WorkspaceID
-	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+	rows, err := storage.NewAuditRepository(store.DB()).List(storage.AuditListOptions{
 		WorkspaceID: &workspaceID,
 		Limit:       10,
 	})
@@ -1910,7 +1910,7 @@ func TestTaskAuditEntriesTrackProjectChanges(t *testing.T) {
 		t.Fatalf("audit rows = %#v, want at least 4 task rows", rows)
 	}
 
-	assertProjectAudit := func(row sqlite.AuditLogEntry, wantAction string, wantProjectID *string, beforeID, beforeSlug, afterID, afterSlug *string) {
+	assertProjectAudit := func(row storage.AuditLogEntry, wantAction string, wantProjectID *string, beforeID, beforeSlug, afterID, afterSlug *string) {
 		t.Helper()
 		if row.Action != wantAction {
 			t.Fatalf("row.Action = %q, want %q", row.Action, wantAction)
@@ -2054,7 +2054,7 @@ func TestReplaceEditableTaskAuditUsesOriginalProjectAsBefore(t *testing.T) {
 	}
 
 	workspaceID := svc.Runtime().WorkspaceID
-	rows, err := sqlite.NewAuditRepository(store.DB()).List(sqlite.AuditListOptions{
+	rows, err := storage.NewAuditRepository(store.DB()).List(storage.AuditListOptions{
 		WorkspaceID: &workspaceID,
 		Limit:       5,
 	})
@@ -2168,7 +2168,7 @@ func TestConfigSetRoutesUDASchemaKeys(t *testing.T) {
 }
 
 func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2205,7 +2205,7 @@ func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
 }
 
 func TestConfigSetOverridesRuntimeMetaDefaults(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2263,9 +2263,9 @@ func TestAddUserCreatesPersonalWorkspaceAndOwnerMembership(t *testing.T) {
 		t.Fatal("created.DefaultWorkspaceID = nil")
 	}
 
-	userRepo := sqlite.NewUserRepository(svc.store.DB())
-	wsRepo := sqlite.NewWorkspaceRepository(svc.store.DB())
-	memberRepo := sqlite.NewMemberRepository(svc.store.DB())
+	userRepo := storage.NewUserRepository(svc.store.DB())
+	wsRepo := storage.NewWorkspaceRepository(svc.store.DB())
+	memberRepo := storage.NewMemberRepository(svc.store.DB())
 
 	user, err := userRepo.GetByName("alice")
 	if err != nil {
@@ -2313,20 +2313,20 @@ func TestAddUserRejectsInvalidPersonalWorkspaceSlug(t *testing.T) {
 	if _, err := svc.AddUser(AddUserInput{Name: "Alice"}); err == nil {
 		t.Fatal("AddUser(Alice) error = nil, want invalid workspace slug")
 	}
-	if _, err := sqlite.NewUserRepository(svc.store.DB()).GetByName("Alice"); err != sqlite.ErrNotFound {
+	if _, err := storage.NewUserRepository(svc.store.DB()).GetByName("Alice"); err != storage.ErrNotFound {
 		t.Fatalf("GetByName(Alice) error = %v, want ErrNotFound", err)
 	}
 }
 
 func TestUseUserWritesActiveUserAndIgnoresWorkspaceOverride(t *testing.T) {
 	store := newTestStore(t)
-	userRepo := sqlite.NewUserRepository(store.DB())
-	wsRepo := sqlite.NewWorkspaceRepository(store.DB())
+	userRepo := storage.NewUserRepository(store.DB())
+	wsRepo := storage.NewWorkspaceRepository(store.DB())
 	localUser, err := userRepo.GetByName("local")
 	if err != nil {
 		t.Fatalf("GetByName(local) error = %v", err)
 	}
-	work := mustCreateWorkspaceRecord(t, store, sqlite.Workspace{
+	work := mustCreateWorkspaceRecord(t, store, storage.Workspace{
 		ID:              "ws-work",
 		Slug:            "work",
 		Name:            "Work",
@@ -2336,7 +2336,7 @@ func TestUseUserWritesActiveUserAndIgnoresWorkspaceOverride(t *testing.T) {
 		CreatedAt:       100,
 		ModifiedAt:      100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      localUser.ID,
 		WorkspaceID: work.ID,
 		Role:        string(RoleOwner),
@@ -2384,7 +2384,7 @@ func TestAddWorkspaceCreatesOwnerMembershipAndUseWorkspaceWritesMeta(t *testing.
 		t.Fatalf("created = %#v", created)
 	}
 
-	member, err := sqlite.NewMemberRepository(svc.store.DB()).Get(svc.Runtime().ActorUserID, created.ID)
+	member, err := storage.NewMemberRepository(svc.store.DB()).Get(svc.Runtime().ActorUserID, created.ID)
 	if err != nil {
 		t.Fatalf("Get(owner membership) error = %v", err)
 	}
@@ -2412,8 +2412,8 @@ func TestModifyWorkspaceWritesAuditForAdmin(t *testing.T) {
 		t.Fatalf("AddWorkspace() error = %v", err)
 	}
 
-	admin := mustCreateUserRecord(t, store, sqlite.User{ID: "user-admin-work", Name: "work-admin", CreatedAt: 100, ModifiedAt: 100})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	admin := mustCreateUserRecord(t, store, storage.User{ID: "user-admin-work", Name: "work-admin", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      admin.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleAdmin),
@@ -2475,14 +2475,14 @@ func TestArchiveWorkspaceRejectsWhenAffectedUserHasNoReplacement(t *testing.T) {
 		t.Fatalf("AddWorkspace() error = %v", err)
 	}
 
-	bob := mustCreateUserRecord(t, store, sqlite.User{
+	bob := mustCreateUserRecord(t, store, storage.User{
 		ID:                 "user-bob-solo",
 		Name:               "bob-solo",
 		DefaultWorkspaceID: &ws.ID,
 		CreatedAt:          100,
 		ModifiedAt:         100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      bob.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleViewer),
@@ -2507,23 +2507,23 @@ func TestArchiveWorkspaceReassignsAffectedUsers(t *testing.T) {
 		t.Fatalf("AddWorkspace(new) error = %v", err)
 	}
 
-	userRepo := sqlite.NewUserRepository(store.DB())
-	memberRepo := sqlite.NewMemberRepository(store.DB())
-	bob := mustCreateUserRecord(t, store, sqlite.User{
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
+	bob := mustCreateUserRecord(t, store, storage.User{
 		ID:                 "user-bob-archive",
 		Name:               "bob-archive",
 		DefaultWorkspaceID: &target.ID,
 		CreatedAt:          100,
 		ModifiedAt:         100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      bob.ID,
 		WorkspaceID: target.ID,
 		Role:        string(RoleMember),
 		JoinedAt:    100,
 		ModifiedAt:  100,
 	})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      bob.ID,
 		WorkspaceID: replacement.ID,
 		Role:        string(RoleMember),
@@ -2552,7 +2552,7 @@ func TestArchiveWorkspaceReassignsAffectedUsers(t *testing.T) {
 	if !ok || active != replacement.ID {
 		t.Fatalf("active workspace = %q, %v; want %q", active, ok, replacement.ID)
 	}
-	archived, err := sqlite.NewWorkspaceRepository(store.DB()).GetByID(target.ID)
+	archived, err := storage.NewWorkspaceRepository(store.DB()).GetByID(target.ID)
 	if err != nil {
 		t.Fatalf("GetByID(old) error = %v", err)
 	}
@@ -2582,7 +2582,7 @@ func TestArchivedWorkspaceRejectsMetadataAndMemberWrites(t *testing.T) {
 	if err := ownerSvc.ModifyWorkspace(target.Slug, ModifyWorkspaceInput{Description: &description}); err == nil {
 		t.Fatal("ModifyWorkspace(archived) error = nil, want failure")
 	}
-	alice := mustCreateUserRecord(t, store, sqlite.User{ID: "user-alice-archived", Name: "alice-archived", CreatedAt: 100, ModifiedAt: 100})
+	alice := mustCreateUserRecord(t, store, storage.User{ID: "user-alice-archived", Name: "alice-archived", CreatedAt: 100, ModifiedAt: 100})
 	if err := ownerSvc.AddMember(AddMemberInput{WorkspaceRef: target.Slug, UserRef: alice.Name, Role: RoleViewer}); err == nil {
 		t.Fatal("AddMember(archived) error = nil, want failure")
 	}
@@ -2596,9 +2596,9 @@ func TestAddMemberAndChangeMemberRoleRespectOwnerRules(t *testing.T) {
 		t.Fatalf("AddWorkspace() error = %v", err)
 	}
 
-	admin := mustCreateUserRecord(t, store, sqlite.User{ID: "user-admin-collab", Name: "admin-collab", CreatedAt: 100, ModifiedAt: 100})
-	alice := mustCreateUserRecord(t, store, sqlite.User{ID: "user-alice-collab", Name: "alice-collab", CreatedAt: 100, ModifiedAt: 100})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	admin := mustCreateUserRecord(t, store, storage.User{ID: "user-admin-collab", Name: "admin-collab", CreatedAt: 100, ModifiedAt: 100})
+	alice := mustCreateUserRecord(t, store, storage.User{ID: "user-alice-collab", Name: "alice-collab", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      admin.ID,
 		WorkspaceID: ws.ID,
 		Role:        string(RoleAdmin),
@@ -2661,7 +2661,7 @@ func TestUrgencyUsesConfiguredUDACoefficients(t *testing.T) {
 }
 
 func TestUrgencyUsesRuntimeUDACoefficients(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2815,7 +2815,7 @@ func TestUniqueValuesProjectUsesValidatedBindingsOnly(t *testing.T) {
 		t.Fatalf("UniqueValues(project) = %#v, want api", values)
 	}
 
-	if err := store.DB().Model(&sqlite.Task{}).
+	if err := store.DB().Model(&storage.Task{}).
 		Where("uuid = ? AND workspace_id = ?", created.UUID, svc.Runtime().WorkspaceID).
 		Update("project", "broken").Error; err != nil {
 		t.Fatalf("corrupt task project slug error = %v", err)
@@ -2931,7 +2931,7 @@ func TestContextDefineUseShowNoneDelete(t *testing.T) {
 }
 
 func TestContextNonePersistsEmptyOverrideOverRuntimeConfig(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3225,7 +3225,7 @@ func TestExportWithInputFiltersByProjectID(t *testing.T) {
 }
 
 func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -3864,8 +3864,8 @@ func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
 		t.Fatalf("Add(work waiting) error = %v", err)
 	}
 
-	viewer := mustCreateUserRecord(t, store, sqlite.User{ID: "user-viewer-scope", Name: "viewer-scope", CreatedAt: 100, ModifiedAt: 100})
-	mustUpsertMembershipRecord(t, store, sqlite.Membership{
+	viewer := mustCreateUserRecord(t, store, storage.User{ID: "user-viewer-scope", Name: "viewer-scope", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, store, storage.Membership{
 		UserID:      viewer.ID,
 		WorkspaceID: work.ID,
 		Role:        string(RoleViewer),

@@ -5,13 +5,13 @@ import (
 	"net/http"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 const defaultBodyLimitBytes int64 = 10 << 20
 
 type Options struct {
-	Store          *sqlite.Store
+	Store          *storage.Store
 	Clock          app.Clock
 	Stderr         io.Writer
 	BodyLimitBytes int64
@@ -19,7 +19,7 @@ type Options struct {
 }
 
 type Server struct {
-	store          *sqlite.Store
+	store          *storage.Store
 	clock          app.Clock
 	stderr         io.Writer
 	bodyLimitBytes int64

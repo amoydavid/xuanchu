@@ -278,7 +278,7 @@ taskg user unbind feishu:ou_xxxxx --user alice     # admin/owner 给其他用户
 
 ## 5. 分层影响
 
-### 5.1 Storage（`internal/storage/sqlite`）
+### 5.1 Storage（`internal/storage`）
 
 - `models.go`：新增 `UserExternalID` struct。
 - `db.go`：AutoMigrate 加入 `UserExternalID`。

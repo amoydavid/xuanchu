@@ -22,7 +22,7 @@ taskg 当前只支持 SQLite（`github.com/glebarez/sqlite`，纯 Go，零 CGO�
 
 ## 包结构变更
 
-`internal/storage/sqlite` 重命名为 `internal/storage`。这是本 milestone 最大的机械性改动，涉及 36+ 个文件的 import 路径替换（`sqlite.Open` → `storage.Open`、`*sqlite.Store` → `*storage.Store` 等），但每个文件的改动仅限于 import 路径，不涉及业务逻辑变更。
+`internal/storage` 重命名为 `internal/storage`。这是本 milestone 最大的机械性改动，涉及 36+ 个文件的 import 路径替换（`sqlite.Open` → `storage.Open`、`*sqlite.Store` → `*storage.Store` 等），但每个文件的改动仅限于 import 路径，不涉及业务逻辑变更。
 
 文件组织：
 
@@ -160,7 +160,7 @@ path = "/path/to/taskg.db"
 
 ### 现有测试
 
-随包重命名从 `internal/storage/sqlite/*_test.go` 迁移到 `internal/storage/*_test.go`，继续作为 SQLite 测试运行，行为不变。
+随包重命名从 `internal/storage/*_test.go` 迁移到 `internal/storage/*_test.go`，继续作为 SQLite 测试运行，行为不变。
 
 ### PostgreSQL 测试
 

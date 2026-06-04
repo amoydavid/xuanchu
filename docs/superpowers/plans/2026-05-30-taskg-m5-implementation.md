@@ -4,7 +4,7 @@
 
 **目标：** 实现 M5：把 `project` 从任务自由字符串升级为 workspace 内一等实体，建立稳定 `project_id`、严格 project 注册、project 配置边界、project audit 维度，并为 M6 API / token 与 M7 MCP project scope 提供可复用 app service。
 
-**架构：** 在 `internal/storage/sqlite` 中新增 `projects`、`configs`、`tasks.project_id` 和 `audit_logs.project_id`，并用 M5 raw SQL 迁移重建 `tasks` 以落地复合 FK。`internal/app` 负责 project 解析、权限、不变量校验、task 写路径绑定和 audit payload；`internal/cli` 只增加 `project` 命令组和薄参数路由。查询层保持结构化 AST，在 app 层把 `project:<slug>` 解析为 project id 后交给 storage 编译。
+**架构：** 在 `internal/storage` 中新增 `projects`、`configs`、`tasks.project_id` 和 `audit_logs.project_id`，并用 M5 raw SQL 迁移重建 `tasks` 以落地复合 FK。`internal/app` 负责 project 解析、权限、不变量校验、task 写路径绑定和 audit payload；`internal/cli` 只增加 `project` 命令组和薄参数路由。查询层保持结构化 AST，在 app 层把 `project:<slug>` 解析为 project id 后交给 storage 编译。
 
 **技术栈：** Go 1.22、Cobra、GORM、`github.com/glebarez/sqlite`（保持 `CGO_ENABLED=0`）、现有 `internal/query`、`internal/task`、`internal/app`、`internal/render`、SQLite raw migration、黑盒 CLI 集成测试。
 
@@ -50,11 +50,11 @@
 
 新增文件：
 
-- `internal/storage/sqlite/project_repo.go`
+- `internal/storage/project_repo.go`
   project CRUD、slug/id 解析、archive、task count、迁移用批量创建。
-- `internal/storage/sqlite/config_repo.go`
+- `internal/storage/config_repo.go`
   通用 `configs` scope 存储；M5 只使用 project scope，但 DDL 支持 server/workspace/project/user。
-- `internal/storage/sqlite/migration_m5_tasks.go`
+- `internal/storage/migration_m5_tasks.go`
   M5 `tasks` 表 raw DDL、M4 列清单与索引快照、重建 tasks 表、迁移关联表完整性检查。
 - `internal/app/project.go`
   `AddProject/ListProjects/ProjectInfo/ModifyProject/ArchiveProject/ResolveProject/ResolveProjectInWorkspace`。
@@ -67,17 +67,17 @@
 
 修改文件：
 
-- `internal/storage/sqlite/models.go`
+- `internal/storage/models.go`
   新增 `Project`、`Config`；Task 2 后再扩展 `Task.ProjectID`；Task 1 扩展 `AuditLog.ProjectID`。
-- `internal/storage/sqlite/db.go`
+- `internal/storage/db.go`
   M5 迁移入口、`BEGIN IMMEDIATE` raw migration、`tasks` 表重建、FK/索引创建、迁移报告 meta。
-- `internal/storage/sqlite/db_test.go`
+- `internal/storage/db_test.go`
   M5 迁移、FK、幂等测试。
-- `internal/storage/sqlite/task_repo.go`
+- `internal/storage/task_repo.go`
   持久化 `ProjectID`；`Projects` 改为 project repo 能力后删或仅保留兼容调用；列表查询支持 project invariant。
-- `internal/storage/sqlite/query_scope.go`
+- `internal/storage/query_scope.go`
   `AttrProject` 改为基于 `project_id` 编译；`project:` 空值编译为 `project_id IS NULL`。
-- `internal/storage/sqlite/audit_repo.go`
+- `internal/storage/audit_repo.go`
   `AuditLogEntry.ProjectID`、按 project 过滤的预留字段。
 - `internal/query/ast.go`
   新增内部属性 `AttrProjectID`，仅供 app 层 rewrite 后交给 storage 编译。
@@ -119,12 +119,12 @@
 ### Task 1：新增 Project / Config / Audit ProjectID 模型
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go`
-- Test: `internal/storage/sqlite/db_test.go`
+- Modify: `internal/storage/models.go`
+- Test: `internal/storage/db_test.go`
 
 - [x] **Step 1：写失败的 schema 测试**
 
-在 `internal/storage/sqlite/db_test.go` 新增：
+在 `internal/storage/db_test.go` 新增：
 
 ```go
 func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
@@ -153,7 +153,7 @@ func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run TestOpenCreatesM5ProjectAndConfigSchema -count=1
+go test ./internal/storage -run TestOpenCreatesM5ProjectAndConfigSchema -count=1
 ```
 
 Expected: FAIL，`Project` / `Config` / `audit_logs.project_id` 不存在，或 `configs` DDL 不满足非 NULL / 复合主键要求。
@@ -211,7 +211,7 @@ type AuditLog struct {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run TestOpenCreatesM5ProjectAndConfigSchema -count=1
+go test ./internal/storage -run TestOpenCreatesM5ProjectAndConfigSchema -count=1
 ```
 
 Expected: PASS。
@@ -219,17 +219,17 @@ Expected: PASS。
 - [x] **Step 6：提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/db_test.go
 git commit -m "feat: 添加 M5 project 存储模型"
 ```
 
 ### Task 2：实现 M5 raw migration、FK 和迁移报告
 
 **Files:**
-- Modify: `internal/storage/sqlite/db.go`
-- Create: `internal/storage/sqlite/migration_m5_tasks.go`
-- Modify: `internal/storage/sqlite/db_test.go`
-- Modify: `internal/storage/sqlite/task_repo.go`
+- Modify: `internal/storage/db.go`
+- Create: `internal/storage/migration_m5_tasks.go`
+- Modify: `internal/storage/db_test.go`
+- Modify: `internal/storage/task_repo.go`
 
 - [x] **Step 1：写 M4 升级迁移测试**
 
@@ -273,7 +273,7 @@ func TestOpenMigratesM4ProjectStringsToProjects(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'TestOpenMigratesM4ProjectStrings|TestOpenEnablesForeignKeyChecks|TestOpenMigratesInvalidAndConflictingProjects' -count=1
+go test ./internal/storage -run 'TestOpenMigratesM4ProjectStrings|TestOpenEnablesForeignKeyChecks|TestOpenMigratesInvalidAndConflictingProjects' -count=1
 ```
 
 Expected: FAIL。
@@ -391,7 +391,7 @@ type m5SkippedProject struct {
 Run:
 
 ```bash
-go test ./internal/storage/sqlite -run 'TestOpenMigratesM4ProjectStrings|TestOpenEnablesForeignKeyChecks|TestOpenMigratesInvalidAndConflictingProjects|TestOpenMigratesM5ProjectStringsIdempotently' -count=1
+go test ./internal/storage -run 'TestOpenMigratesM4ProjectStrings|TestOpenEnablesForeignKeyChecks|TestOpenMigratesInvalidAndConflictingProjects|TestOpenMigratesM5ProjectStringsIdempotently' -count=1
 ```
 
 Expected: PASS。
@@ -399,7 +399,7 @@ Expected: PASS。
 - [x] **Step 6：提交**
 
 ```bash
-git add internal/storage/sqlite/db.go internal/storage/sqlite/migration_m5_tasks.go internal/storage/sqlite/db_test.go internal/storage/sqlite/task_repo.go
+git add internal/storage/db.go internal/storage/migration_m5_tasks.go internal/storage/db_test.go internal/storage/task_repo.go
 git commit -m "feat: 迁移 project 实体和任务外键"
 ```
 
@@ -410,8 +410,8 @@ git commit -m "feat: 迁移 project 实体和任务外键"
 ### Task 3：ProjectRepository
 
 **Files:**
-- Create: `internal/storage/sqlite/project_repo.go`
-- Test: `internal/storage/sqlite/project_repo_test.go`
+- Create: `internal/storage/project_repo.go`
+- Test: `internal/storage/project_repo_test.go`
 
 - [x] **Step 1：写 repository 测试**
 
@@ -428,7 +428,7 @@ git commit -m "feat: 迁移 project 实体和任务外键"
 - [x] **Step 2：运行测试失败**
 
 ```bash
-go test ./internal/storage/sqlite -run ProjectRepository -count=1
+go test ./internal/storage -run ProjectRepository -count=1
 ```
 
 - [x] **Step 3：实现 repository**
@@ -464,18 +464,18 @@ Repository 层错误固定：
 - [x] **Step 4：运行测试通过并提交**
 
 ```bash
-go test ./internal/storage/sqlite -run ProjectRepository -count=1
-git add internal/storage/sqlite/project_repo.go internal/storage/sqlite/project_repo_test.go
+go test ./internal/storage -run ProjectRepository -count=1
+git add internal/storage/project_repo.go internal/storage/project_repo_test.go
 git commit -m "feat: 添加 project repository"
 ```
 
 ### Task 4：ConfigRepository 和 Audit project_id
 
 **Files:**
-- Create: `internal/storage/sqlite/config_repo.go`
-- Modify: `internal/storage/sqlite/audit_repo.go`
-- Test: `internal/storage/sqlite/config_repo_test.go`
-- Test: `internal/storage/sqlite/identity_repo_test.go`
+- Create: `internal/storage/config_repo.go`
+- Modify: `internal/storage/audit_repo.go`
+- Test: `internal/storage/config_repo_test.go`
+- Test: `internal/storage/identity_repo_test.go`
 
 - [x] **Step 1：写配置和 audit 测试**
 
@@ -534,8 +534,8 @@ func (r *ConfigRepository) ListScope(workspaceID string, scope ConfigScope, scop
 - [x] **Step 4：运行测试通过并提交**
 
 ```bash
-go test ./internal/storage/sqlite -run 'ConfigRepository|AuditRepository' -count=1
-git add internal/storage/sqlite/config_repo.go internal/storage/sqlite/config_repo_test.go internal/storage/sqlite/audit_repo.go internal/storage/sqlite/identity_repo_test.go
+go test ./internal/storage -run 'ConfigRepository|AuditRepository' -count=1
+git add internal/storage/config_repo.go internal/storage/config_repo_test.go internal/storage/audit_repo.go internal/storage/identity_repo_test.go
 git commit -m "feat: 添加 scoped config 存储"
 ```
 
@@ -616,8 +616,8 @@ git commit -m "feat: 保留内部 project_id 字段"
 ### Task 6：TaskRepository 持久化 ProjectID
 
 **Files:**
-- Modify: `internal/storage/sqlite/task_repo.go`
-- Test: `internal/storage/sqlite/task_repo_test.go`
+- Modify: `internal/storage/task_repo.go`
+- Test: `internal/storage/task_repo_test.go`
 
 - [x] **Step 1：写失败测试**
 
@@ -634,8 +634,8 @@ git commit -m "feat: 保留内部 project_id 字段"
 - [x] **Step 3：运行测试通过并提交**
 
 ```bash
-go test ./internal/storage/sqlite -run 'TaskRepository.*ProjectID|ForeignKey' -count=1
-git add internal/storage/sqlite/task_repo.go internal/storage/sqlite/task_repo_test.go
+go test ./internal/storage -run 'TaskRepository.*ProjectID|ForeignKey' -count=1
+git add internal/storage/task_repo.go internal/storage/task_repo_test.go
 git commit -m "feat: 任务持久化 project_id"
 ```
 
@@ -974,9 +974,9 @@ git commit -m "feat: 导入导出和循环任务支持 project"
 
 **Files:**
 - Modify: `internal/query/ast.go`
-- Modify: `internal/storage/sqlite/query_scope.go`
+- Modify: `internal/storage/query_scope.go`
 - Modify: `internal/app/project_query.go`
-- Test: `internal/storage/sqlite/query_scope_test.go`
+- Test: `internal/storage/query_scope_test.go`
 - Test: `internal/app/service_test.go`
 
 - [x] **Step 1：写失败测试**
@@ -1036,8 +1036,8 @@ case query.AttrProject:
 - [x] **Step 5：运行测试通过并提交**
 
 ```bash
-go test ./internal/app ./internal/storage/sqlite ./internal/query -run 'Project.*Query|AttrProject|Context.*Project' -count=1
-git add internal/query/ast.go internal/app/project_query.go internal/app/service.go internal/storage/sqlite/query_scope.go internal/storage/sqlite/query_scope_test.go internal/app/service_test.go
+go test ./internal/app ./internal/storage ./internal/query -run 'Project.*Query|AttrProject|Context.*Project' -count=1
+git add internal/query/ast.go internal/app/project_query.go internal/app/service.go internal/storage/query_scope.go internal/storage/query_scope_test.go internal/app/service_test.go
 git commit -m "feat: project 查询使用实体解析"
 ```
 
@@ -1207,7 +1207,7 @@ git commit -m "feat: 添加 project 配置 CLI"
 
 **Files:**
 - Test: `tests/integration/cli_test.go`
-- Test: `internal/storage/sqlite/db_test.go`
+- Test: `internal/storage/db_test.go`
 - Test: `internal/app/service_test.go`
 
 - [x] **Step 1：补集成测试**
@@ -1247,13 +1247,13 @@ CLI runtime 打开 DB 并完成迁移后调用一次；报告为空不输出，�
 
 ```bash
 go test ./tests/integration -run 'Project|Import|Audit|Context' -count=1
-go test ./internal/app ./internal/storage/sqlite -run 'Project|M5|Invariant|Migration' -count=1
+go test ./internal/app ./internal/storage -run 'Project|M5|Invariant|Migration' -count=1
 ```
 
 - [x] **Step 4：提交**
 
 ```bash
-git add tests/integration/cli_test.go internal/storage/sqlite/db_test.go internal/app/service_test.go
+git add tests/integration/cli_test.go internal/storage/db_test.go internal/app/service_test.go
 git commit -m "test: 补齐 M5 project 集成覆盖"
 ```
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -173,9 +173,9 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		}
 
 		now := s.clock.Unix()
-		var deliveries []sqlite.HookDelivery
+		var deliveries []storage.HookDelivery
 		for _, hook := range hooks {
-			deliveries = append(deliveries, sqlite.HookDelivery{
+			deliveries = append(deliveries, storage.HookDelivery{
 				ID:          uuid.NewString(),
 				HookID:      hook.ID,
 				EventID:     event.EventID,
@@ -185,7 +185,7 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 				ActorUserID: event.ActorUserID,
 				PayloadJSON: string(payloadBytes),
 				HeadersJSON: string(headersBytes),
-				Status:      sqlite.DeliveryStatusQueued,
+				Status:      storage.DeliveryStatusQueued,
 				CreatedAt:   now,
 				ModifiedAt:  now,
 			})
@@ -199,13 +199,13 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 
 // matchingHooks 返回应该接收该事件的所有 hook。
 // workspace 范围的 hook 接收所有事件，project 范围的 hook 仅接收匹配 project 的事件。
-func (s *Service) matchingHooks(event HookEvent) ([]sqlite.HookDefinition, error) {
+func (s *Service) matchingHooks(event HookEvent) ([]storage.HookDefinition, error) {
 	// 查询 workspace 下所有启用的、匹配事件类型的 hook
 	allHooks, err := s.hookRepo.ListMatching(s.workspaceID, nil, event.EventType)
 	if err != nil {
 		return nil, err
 	}
-	var matched []sqlite.HookDefinition
+	var matched []storage.HookDefinition
 	for _, hook := range allHooks {
 		if hook.ProjectID == nil {
 			// workspace 范围的 hook 接收所有事件

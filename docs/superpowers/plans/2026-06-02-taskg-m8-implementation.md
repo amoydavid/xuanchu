@@ -62,11 +62,11 @@
   App event 类型、payload builder、事件到 delivery outbox 的事务内 enqueue。
 - `internal/app/hook_test.go`
   Hook 管理、权限、secret 不泄露、事件 enqueue 的 app 层测试。
-- `internal/storage/sqlite/hook_repo.go`
+- `internal/storage/hook_repo.go`
   Hook definition repository。
-- `internal/storage/sqlite/hook_delivery_repo.go`
+- `internal/storage/hook_delivery_repo.go`
   Delivery repository、claim、stale delivering 恢复、retry/dead-letter/success 状态更新。
-- `internal/storage/sqlite/hook_repo_test.go`
+- `internal/storage/hook_repo_test.go`
   Hook repository 与 migration 测试。
 - `internal/hookruntime/dispatcher.go`
   后台 dispatcher、`RunOnce`、抢占 delivery、发送 webhook、状态更新。
@@ -91,9 +91,9 @@
 
 修改文件：
 
-- `internal/storage/sqlite/models.go`
+- `internal/storage/models.go`
   增加 `HookDefinition`、`HookDelivery` model。
-- `internal/storage/sqlite/db.go`
+- `internal/storage/db.go`
   AutoMigrate Hook models；必要时补轻量 schema prepare。
 - `internal/app/service.go`
   增加 hook repos；`withStore` 绑定事务内 repo。
@@ -131,13 +131,13 @@
 ### Task 1: 增加 Hook models 与 migration
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Test: `internal/storage/sqlite/db_test.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Test: `internal/storage/db_test.go`
 
 - [ ] **Step 1: 写失败测试，验证迁移创建 Hook 表与索引**
 
-在 `internal/storage/sqlite/db_test.go` 新增测试：
+在 `internal/storage/db_test.go` 新增测试：
 
 ```go
 func TestM8HookTablesMigrated(t *testing.T) {
@@ -158,13 +158,13 @@ func TestM8HookTablesMigrated(t *testing.T) {
 
 - [ ] **Step 2: 运行红测**
 
-Run: `go test ./internal/storage/sqlite -run TestM8HookTablesMigrated`
+Run: `go test ./internal/storage -run TestM8HookTablesMigrated`
 
 Expected: FAIL，提示 `hook_definitions` 或 `hook_deliveries` 缺失。
 
 - [ ] **Step 3: 增加 GORM models**
 
-在 `internal/storage/sqlite/models.go` 增加：
+在 `internal/storage/models.go` 增加：
 
 ```go
 type HookDefinition struct {
@@ -212,23 +212,23 @@ type HookDelivery struct {
 
 - [ ] **Step 5: 运行绿测**
 
-Run: `go test ./internal/storage/sqlite -run TestM8HookTablesMigrated`
+Run: `go test ./internal/storage -run TestM8HookTablesMigrated`
 
 Expected: PASS。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/storage/sqlite/models.go internal/storage/sqlite/db.go internal/storage/sqlite/db_test.go
+git add internal/storage/models.go internal/storage/db.go internal/storage/db_test.go
 git commit -m "feat: 增加 Hook 持久化表"
 ```
 
 ### Task 2: 实现 Hook repository
 
 **Files:**
-- Create: `internal/storage/sqlite/hook_repo.go`
-- Create: `internal/storage/sqlite/hook_delivery_repo.go`
-- Test: `internal/storage/sqlite/hook_repo_test.go`
+- Create: `internal/storage/hook_repo.go`
+- Create: `internal/storage/hook_delivery_repo.go`
+- Test: `internal/storage/hook_repo_test.go`
 
 - [ ] **Step 1: 写 HookDefinition CRUD 红测**
 
@@ -239,7 +239,7 @@ git commit -m "feat: 增加 Hook 持久化表"
 - update 不改变 secret 时保留旧 secret。
 - delete 后 info 返回 `sqlite.ErrNotFound`。
 
-Run: `go test ./internal/storage/sqlite -run TestHookRepository`
+Run: `go test ./internal/storage -run TestHookRepository`
 
 Expected: FAIL，repo 未定义。
 
@@ -275,7 +275,7 @@ func (r *HookRepository) Delete(id string) error
 - dead-letter 更新 `dead_lettered`。
 - disabled hook pending delivery 更新 `disabled_skipped`。
 
-Run: `go test ./internal/storage/sqlite -run TestHookDeliveryRepository`
+Run: `go test ./internal/storage -run TestHookDeliveryRepository`
 
 Expected: FAIL，repo 未定义。
 
@@ -303,14 +303,14 @@ func (r *HookDeliveryRepository) Requeue(id string, now int64) error
 
 - [ ] **Step 5: 运行 repository 测试**
 
-Run: `go test ./internal/storage/sqlite -run 'TestHookRepository|TestHookDeliveryRepository'`
+Run: `go test ./internal/storage -run 'TestHookRepository|TestHookDeliveryRepository'`
 
 Expected: PASS。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/storage/sqlite/hook_repo.go internal/storage/sqlite/hook_delivery_repo.go internal/storage/sqlite/hook_repo_test.go
+git add internal/storage/hook_repo.go internal/storage/hook_delivery_repo.go internal/storage/hook_repo_test.go
 git commit -m "feat: 增加 Hook 仓储"
 ```
 
@@ -926,7 +926,7 @@ Expected: PASS。
 - [ ] **Step 6: 提交**
 
 ```bash
-git add internal/hookruntime internal/storage/sqlite/hook_delivery_repo.go
+git add internal/hookruntime internal/storage/hook_delivery_repo.go
 git commit -m "feat: 增加 Hook dispatcher"
 ```
 

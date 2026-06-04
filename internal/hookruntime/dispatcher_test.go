@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -49,9 +49,9 @@ func noRedirectClient() *http.Client {
 	}
 }
 
-func newTestStore(t *testing.T) *sqlite.Store {
+func newTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func newTestStore(t *testing.T) *sqlite.Store {
 	return store
 }
 
-func mustLocalWorkspace(t *testing.T, store *sqlite.Store) string {
+func mustLocalWorkspace(t *testing.T, store *storage.Store) string {
 	t.Helper()
 	ws, err := store.LocalWorkspace()
 	if err != nil {
@@ -73,9 +73,9 @@ func int64Ptr(v int64) *int64 { return &v }
 func intPtr(v int) *int       { return &v }
 func strPtr(v string) *string { return &v }
 
-func makeTestHook(t *testing.T, wsID string, endpointURL string, overrides ...func(*sqlite.HookDefinition)) sqlite.HookDefinition {
+func makeTestHook(t *testing.T, wsID string, endpointURL string, overrides ...func(*storage.HookDefinition)) storage.HookDefinition {
 	t.Helper()
-	h := sqlite.HookDefinition{
+	h := storage.HookDefinition{
 		ID:             uuid.NewString(),
 		Name:           "test-hook",
 		ScopeType:      "workspace",
@@ -96,9 +96,9 @@ func makeTestHook(t *testing.T, wsID string, endpointURL string, overrides ...fu
 	return h
 }
 
-func makeTestDelivery(t *testing.T, hookID, wsID string, overrides ...func(*sqlite.HookDelivery)) sqlite.HookDelivery {
+func makeTestDelivery(t *testing.T, hookID, wsID string, overrides ...func(*storage.HookDelivery)) storage.HookDelivery {
 	t.Helper()
-	d := sqlite.HookDelivery{
+	d := storage.HookDelivery{
 		ID:          uuid.NewString(),
 		HookID:      hookID,
 		EventID:     uuid.NewString(),
@@ -107,7 +107,7 @@ func makeTestDelivery(t *testing.T, hookID, wsID string, overrides ...func(*sqli
 		ActorUserID: "user-1",
 		PayloadJSON: `{"test":true}`,
 		HeadersJSON: `{}`,
-		Status:      sqlite.DeliveryStatusQueued,
+		Status:      storage.DeliveryStatusQueued,
 		CreatedAt:   200,
 		ModifiedAt:  200,
 	}
@@ -117,11 +117,11 @@ func makeTestDelivery(t *testing.T, hookID, wsID string, overrides ...func(*sqli
 	return d
 }
 
-func setupHookAndDelivery(t *testing.T, store *sqlite.Store, endpointURL string) (sqlite.HookDefinition, sqlite.HookDelivery) {
+func setupHookAndDelivery(t *testing.T, store *storage.Store, endpointURL string) (storage.HookDefinition, storage.HookDelivery) {
 	t.Helper()
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
 	hook := makeTestHook(t, wsID, endpointURL)
 	if err := hookRepo.Create(hook); err != nil {
@@ -129,16 +129,16 @@ func setupHookAndDelivery(t *testing.T, store *sqlite.Store, endpointURL string)
 	}
 
 	delivery := makeTestDelivery(t, hook.ID, wsID)
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
 	return hook, delivery
 }
 
-func getDelivery(t *testing.T, store *sqlite.Store, id string) sqlite.HookDelivery {
+func getDelivery(t *testing.T, store *storage.Store, id string) storage.HookDelivery {
 	t.Helper()
-	repo := sqlite.NewHookDeliveryRepository(store.DB())
+	repo := storage.NewHookDeliveryRepository(store.DB())
 	d, err := repo.GetByID(id)
 	if err != nil {
 		t.Fatal(err)
@@ -179,14 +179,14 @@ func TestWebhookSignature(t *testing.T) {
 
 func TestHeadersForDelivery(t *testing.T) {
 	wsID := "ws-1"
-	hook := sqlite.HookDefinition{
+	hook := storage.HookDefinition{
 		ID:             "hook-1",
 		Name:           "test",
 		WorkspaceID:    wsID,
 		Secret:         "my-secret",
 		TimeoutSeconds: 10,
 	}
-	delivery := sqlite.HookDelivery{
+	delivery := storage.HookDelivery{
 		ID:           "del-1",
 		HookID:       "hook-1",
 		WorkspaceID:  wsID,
@@ -233,11 +233,11 @@ func TestHeadersForDelivery(t *testing.T) {
 }
 
 func TestHeadersForDeliveryNoSecret(t *testing.T) {
-	hook := sqlite.HookDefinition{
+	hook := storage.HookDefinition{
 		ID:     "hook-1",
 		Secret: "",
 	}
-	delivery := sqlite.HookDelivery{
+	delivery := storage.HookDelivery{
 		ID:           "del-1",
 		HookID:       "hook-1",
 		AttemptCount: 1,
@@ -326,7 +326,7 @@ func TestDispatcherRunOnceDeliversWebhook(t *testing.T) {
 
 	// 验证投递状态为 succeeded
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusSucceeded {
+	if got.Status != storage.DeliveryStatusSucceeded {
 		t.Fatalf("status = %q, want succeeded", got.Status)
 	}
 }
@@ -353,7 +353,7 @@ func TestDispatcherNetworkError(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusRetryWait {
+	if got.Status != storage.DeliveryStatusRetryWait {
 		t.Fatalf("status = %q, want retry_wait", got.Status)
 	}
 	if got.LastError == "" {
@@ -370,10 +370,10 @@ func TestDispatcherTimeout(t *testing.T) {
 
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
-	hook := makeTestHook(t, wsID, server.URL, func(h *sqlite.HookDefinition) {
+	hook := makeTestHook(t, wsID, server.URL, func(h *storage.HookDefinition) {
 		h.TimeoutSeconds = 1 // 1秒超时
 	})
 	if err := hookRepo.Create(hook); err != nil {
@@ -381,7 +381,7 @@ func TestDispatcherTimeout(t *testing.T) {
 	}
 
 	delivery := makeTestDelivery(t, hook.ID, wsID)
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -398,7 +398,7 @@ func TestDispatcherTimeout(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusRetryWait {
+	if got.Status != storage.DeliveryStatusRetryWait {
 		t.Fatalf("status = %q, want retry_wait", got.Status)
 	}
 }
@@ -426,7 +426,7 @@ func TestDispatcherHTTP3xx(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusDeadLettered {
+	if got.Status != storage.DeliveryStatusDeadLettered {
 		t.Fatalf("status = %q, want dead_lettered", got.Status)
 	}
 	if got.LastStatusCode == nil || *got.LastStatusCode != 302 {
@@ -456,7 +456,7 @@ func TestDispatcherHTTP500(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusRetryWait {
+	if got.Status != storage.DeliveryStatusRetryWait {
 		t.Fatalf("status = %q, want retry_wait", got.Status)
 	}
 	if got.LastStatusCode == nil || *got.LastStatusCode != 500 {
@@ -519,7 +519,7 @@ func TestDispatcherHTTP429(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusRetryWait {
+	if got.Status != storage.DeliveryStatusRetryWait {
 		t.Fatalf("status = %q, want retry_wait", got.Status)
 	}
 	if got.LastStatusCode == nil || *got.LastStatusCode != 429 {
@@ -550,7 +550,7 @@ func TestDispatcherHTTP429WithRetryAfter(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusRetryWait {
+	if got.Status != storage.DeliveryStatusRetryWait {
 		t.Fatalf("status = %q, want retry_wait", got.Status)
 	}
 	// next_attempt_at 应该是 now + 120 = 1120
@@ -581,7 +581,7 @@ func TestDispatcherHTTP400(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusDeadLettered {
+	if got.Status != storage.DeliveryStatusDeadLettered {
 		t.Fatalf("status = %q, want dead_lettered", got.Status)
 	}
 	if got.LastStatusCode == nil || *got.LastStatusCode != 400 {
@@ -597,10 +597,10 @@ func TestDispatcherMaxAttemptsDeadLetter(t *testing.T) {
 
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
-	hook := makeTestHook(t, wsID, server.URL, func(h *sqlite.HookDefinition) {
+	hook := makeTestHook(t, wsID, server.URL, func(h *storage.HookDefinition) {
 		h.MaxAttempts = 1
 	})
 	if err := hookRepo.Create(hook); err != nil {
@@ -608,12 +608,12 @@ func TestDispatcherMaxAttemptsDeadLetter(t *testing.T) {
 	}
 
 	// 创建一个已经 attempt_count=1 的 delivery（即将超出 max_attempts=1）
-	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *sqlite.HookDelivery) {
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
 		d.AttemptCount = 1 // ClaimDue 会再 +1，所以实际是 2
-		d.Status = sqlite.DeliveryStatusRetryWait
+		d.Status = storage.DeliveryStatusRetryWait
 		d.NextAttemptAt = int64Ptr(500) // 过去时间
 	})
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -631,7 +631,7 @@ func TestDispatcherMaxAttemptsDeadLetter(t *testing.T) {
 
 	got := getDelivery(t, store, delivery.ID)
 	// attempt_count=2 >= max_attempts=1 -> dead_lettered
-	if got.Status != sqlite.DeliveryStatusDeadLettered {
+	if got.Status != storage.DeliveryStatusDeadLettered {
 		t.Fatalf("status = %q, want dead_lettered (max attempts exhausted)", got.Status)
 	}
 }
@@ -646,10 +646,10 @@ func TestDispatcherDisabledHookSkipped(t *testing.T) {
 
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
-	hook := makeTestHook(t, wsID, server.URL, func(h *sqlite.HookDefinition) {
+	hook := makeTestHook(t, wsID, server.URL, func(h *storage.HookDefinition) {
 		h.Enabled = boolPtr(false)
 	})
 	if err := hookRepo.Create(hook); err != nil {
@@ -657,7 +657,7 @@ func TestDispatcherDisabledHookSkipped(t *testing.T) {
 	}
 
 	delivery := makeTestDelivery(t, hook.ID, wsID)
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -678,7 +678,7 @@ func TestDispatcherDisabledHookSkipped(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusDisabledSkipped {
+	if got.Status != storage.DeliveryStatusDisabledSkipped {
 		t.Fatalf("status = %q, want disabled_skipped", got.Status)
 	}
 }
@@ -686,8 +686,8 @@ func TestDispatcherDisabledHookSkipped(t *testing.T) {
 func TestDispatcherStaleRecovery(t *testing.T) {
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
 	// 创建 hook（让 dispatchOne 能找到 hook 但不执行 SSRF 验证失败）
 	hook := makeTestHook(t, wsID, "https://example.com/webhook")
@@ -696,12 +696,12 @@ func TestDispatcherStaleRecovery(t *testing.T) {
 	}
 
 	// 创建一个 stale delivering 状态的 delivery
-	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *sqlite.HookDelivery) {
-		d.Status = sqlite.DeliveryStatusDelivering
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.Status = storage.DeliveryStatusDelivering
 		d.ClaimExpiresAt = int64Ptr(500) // 已过期
 		d.AttemptCount = 1
 	})
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -715,7 +715,7 @@ func TestDispatcherStaleRecovery(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusQueued {
+	if got.Status != storage.DeliveryStatusQueued {
 		t.Fatalf("status after recovery = %q, want queued", got.Status)
 	}
 }
@@ -743,8 +743,8 @@ func TestDispatcherDNSRebinding(t *testing.T) {
 
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
 	hook := makeTestHook(t, wsID, "https://evil.example.com/webhook")
 	if err := hookRepo.Create(hook); err != nil {
@@ -752,7 +752,7 @@ func TestDispatcherDNSRebinding(t *testing.T) {
 	}
 
 	delivery := makeTestDelivery(t, hook.ID, wsID)
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -775,7 +775,7 @@ func TestDispatcherDNSRebinding(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusDeadLettered {
+	if got.Status != storage.DeliveryStatusDeadLettered {
 		t.Fatalf("status = %q, want dead_lettered (SSRF protection)", got.Status)
 	}
 	if got.LastError == "" {
@@ -833,7 +833,7 @@ func TestDispatcherNoRedirect(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusDeadLettered {
+	if got.Status != storage.DeliveryStatusDeadLettered {
 		t.Fatalf("status = %q, want dead_lettered (3xx not followed)", got.Status)
 	}
 }
@@ -892,11 +892,11 @@ func TestDispatcherExponentialBackoff(t *testing.T) {
 func TestDispatcherHookNotFoundDeadLetters(t *testing.T) {
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
 	// 创建指向不存在 hook 的 delivery
 	delivery := makeTestDelivery(t, "nonexistent-hook", wsID)
-	if err := deliveryRepo.Enqueue([]sqlite.HookDelivery{delivery}); err != nil {
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -912,7 +912,7 @@ func TestDispatcherHookNotFoundDeadLetters(t *testing.T) {
 	}
 
 	got := getDelivery(t, store, delivery.ID)
-	if got.Status != sqlite.DeliveryStatusDeadLettered {
+	if got.Status != storage.DeliveryStatusDeadLettered {
 		t.Fatalf("status = %q, want dead_lettered (hook not found)", got.Status)
 	}
 	if got.LastError != "hook not found" {
@@ -1057,15 +1057,15 @@ func TestDispatcherRunOnceMultipleDeliveries(t *testing.T) {
 
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
 	hook := makeTestHook(t, wsID, server.URL)
 	if err := hookRepo.Create(hook); err != nil {
 		t.Fatal(err)
 	}
 
-	deliveries := make([]sqlite.HookDelivery, 3)
+	deliveries := make([]storage.HookDelivery, 3)
 	for i := range deliveries {
 		deliveries[i] = makeTestDelivery(t, hook.ID, wsID)
 	}
@@ -1094,7 +1094,7 @@ func TestDispatcherRunOnceMultipleDeliveries(t *testing.T) {
 	// 验证所有 delivery 状态为 succeeded
 	for _, del := range deliveries {
 		got := getDelivery(t, store, del.ID)
-		if got.Status != sqlite.DeliveryStatusSucceeded {
+		if got.Status != storage.DeliveryStatusSucceeded {
 			t.Fatalf("delivery %s status = %q, want succeeded", del.ID, got.Status)
 		}
 	}
@@ -1113,8 +1113,8 @@ func TestDispatcherRunOnceRespectsBatchSize(t *testing.T) {
 
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
-	hookRepo := sqlite.NewHookRepository(store.DB())
-	deliveryRepo := sqlite.NewHookDeliveryRepository(store.DB())
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
 
 	hook := makeTestHook(t, wsID, server.URL)
 	if err := hookRepo.Create(hook); err != nil {
@@ -1122,7 +1122,7 @@ func TestDispatcherRunOnceRespectsBatchSize(t *testing.T) {
 	}
 
 	// 创建 5 个 delivery
-	deliveries := make([]sqlite.HookDelivery, 5)
+	deliveries := make([]storage.HookDelivery, 5)
 	for i := range deliveries {
 		deliveries[i] = makeTestDelivery(t, hook.ID, wsID)
 	}

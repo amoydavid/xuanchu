@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 // RequestScopeInput 是构造 scoped service 的输入参数。
@@ -21,7 +21,7 @@ type RequestScopeInput struct {
 
 // RuntimeFactory 为 MCP server 提供 scoped app.Service 构造能力。
 type RuntimeFactory struct {
-	Store *sqlite.Store
+	Store *storage.Store
 	Clock app.Clock
 }
 
@@ -152,15 +152,15 @@ func ensureProjectRefsMatch(svc *app.Service, projectSlug, projectID string) err
 	return nil
 }
 
-func visibleWorkspacesForToken(store *sqlite.Store, authn app.AuthenticatedToken) ([]sqlite.WorkspaceWithRole, error) {
-	rows, err := sqlite.NewWorkspaceRepository(store.DB()).ListVisibleForUser(authn.User.ID, false)
+func visibleWorkspacesForToken(store *storage.Store, authn app.AuthenticatedToken) ([]storage.WorkspaceWithRole, error) {
+	rows, err := storage.NewWorkspaceRepository(store.DB()).ListVisibleForUser(authn.User.ID, false)
 	if err != nil {
 		return nil, err
 	}
 	if len(authn.Token.WorkspaceIDs) == 0 {
 		return rows, nil
 	}
-	out := make([]sqlite.WorkspaceWithRole, 0, len(rows))
+	out := make([]storage.WorkspaceWithRole, 0, len(rows))
 	for _, row := range rows {
 		if slices.Contains(authn.Token.WorkspaceIDs, row.Workspace.ID) {
 			out = append(out, row)

@@ -681,8 +681,8 @@ M4 必须保持分层清晰：
 - `internal/cli` 只负责参数解析、命令路由、输出。
 - `internal/app` 负责 actor/workspace 解析后的用例编排和权限校验。
 - `internal/task` 不依赖 user、workspace、membership、GORM 或 Cobra。
-- `internal/storage/sqlite` 负责 GORM model、迁移、repo 查询，不负责解释角色权限。
-- 新增 user/workspace/member/audit repo 应在 `internal/storage/sqlite` 聚合。
+- `internal/storage` 负责 GORM model、迁移、repo 查询，不负责解释角色权限。
+- 新增 user/workspace/member/audit repo 应在 `internal/storage` 聚合。
 - 后续 HTTP/MCP 必须复用 M4 app service。
 
 建议新增 app 级概念：

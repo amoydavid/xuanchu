@@ -13,7 +13,7 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/hookruntime"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -26,7 +26,7 @@ func (publicTestResolver) LookupIPAddr(_ context.Context, _ string) ([]net.IPAdd
 
 // e2eTestHelper 创建 E2E 测试所需的公共状态。
 type e2eTestHelper struct {
-	store  *sqlite.Store
+	store  *storage.Store
 	svc    *app.Service
 	clock  app.FixedClock
 	wsID   string
@@ -47,11 +47,11 @@ func newE2EHelper(t *testing.T) *e2eTestHelper {
 
 // createHookDirect 通过 repo 直接创建 hook，绕过 SSRF 验证。
 // httptest.Server 监听 127.0.0.1，SSRF 检查会拒绝它。
-func (h *e2eTestHelper) createHookDirect(t *testing.T, endpointURL string, eventTypes []string, overrides ...func(*sqlite.HookDefinition)) sqlite.HookDefinition {
+func (h *e2eTestHelper) createHookDirect(t *testing.T, endpointURL string, eventTypes []string, overrides ...func(*storage.HookDefinition)) storage.HookDefinition {
 	t.Helper()
 	enabled := true
 	typesJSON, _ := json.Marshal(eventTypes)
-	row := sqlite.HookDefinition{
+	row := storage.HookDefinition{
 		ID:             uuid.NewString(),
 		Name:           "e2e-hook",
 		ScopeType:      "workspace",
@@ -69,7 +69,7 @@ func (h *e2eTestHelper) createHookDirect(t *testing.T, endpointURL string, event
 	for _, fn := range overrides {
 		fn(&row)
 	}
-	if err := sqlite.NewHookRepository(h.store.DB()).Create(row); err != nil {
+	if err := storage.NewHookRepository(h.store.DB()).Create(row); err != nil {
 		t.Fatal(err)
 	}
 	return row
@@ -348,7 +348,7 @@ func TestHookSecretNotInWebhookPayload(t *testing.T) {
 	defer webhookTarget.Close()
 
 	secret := "super-secret-value-12345"
-	h.createHookDirect(t, webhookTarget.URL, []string{"task.created"}, func(hd *sqlite.HookDefinition) {
+	h.createHookDirect(t, webhookTarget.URL, []string{"task.created"}, func(hd *storage.HookDefinition) {
 		hd.Secret = secret
 	})
 
@@ -455,14 +455,14 @@ func TestHookEndToEndViaHTTPAPI(t *testing.T) {
 	userID := getFirstUserID(t, fixture.server.store)
 	enabled := true
 	typesJSON, _ := json.Marshal([]string{"task.created"})
-	hook := sqlite.HookDefinition{
+	hook := storage.HookDefinition{
 		ID: uuid.NewString(), Name: "http-e2e-hook", ScopeType: "workspace",
 		WorkspaceID: wsID, ActorUserID: userID,
 		EventTypesJSON: string(typesJSON), EndpointURL: webhookTarget.URL,
 		Secret: "http-secret", Enabled: &enabled, TimeoutSeconds: 10, MaxAttempts: 5,
 		CreatedAt: 100, ModifiedAt: 100,
 	}
-	if err := sqlite.NewHookRepository(fixture.server.store.DB()).Create(hook); err != nil {
+	if err := storage.NewHookRepository(fixture.server.store.DB()).Create(hook); err != nil {
 		t.Fatal(err)
 	}
 

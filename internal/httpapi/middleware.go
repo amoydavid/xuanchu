@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -20,8 +20,8 @@ const logStateContextKey requestContextKey = "httpapi.log_state"
 
 type requestAuth struct {
 	Authn              app.AuthenticatedToken
-	VisibleWorkspaces  []sqlite.WorkspaceWithRole
-	EffectiveWorkspace sqlite.Workspace
+	VisibleWorkspaces  []storage.WorkspaceWithRole
+	EffectiveWorkspace storage.Workspace
 }
 
 type requestLogState struct {
@@ -153,19 +153,19 @@ func authFromContext(ctx context.Context) (requestAuth, bool) {
 	return value, ok
 }
 
-func (s *Server) visibleAndEffectiveWorkspaces(authn app.AuthenticatedToken) ([]sqlite.WorkspaceWithRole, sqlite.Workspace, error) {
-	rows, err := sqlite.NewWorkspaceRepository(s.store.DB()).ListVisibleForUser(authn.User.ID, false)
+func (s *Server) visibleAndEffectiveWorkspaces(authn app.AuthenticatedToken) ([]storage.WorkspaceWithRole, storage.Workspace, error) {
+	rows, err := storage.NewWorkspaceRepository(s.store.DB()).ListVisibleForUser(authn.User.ID, false)
 	if err != nil {
-		return nil, sqlite.Workspace{}, err
+		return nil, storage.Workspace{}, err
 	}
 	filtered := filterVisibleWorkspaces(rows, authn.Token.WorkspaceIDs)
 	if len(filtered) == 0 {
-		return nil, sqlite.Workspace{}, app.RuntimeError{Code: "workspace_scope_denied", Message: "workspace scope denied"}
+		return nil, storage.Workspace{}, app.RuntimeError{Code: "workspace_scope_denied", Message: "workspace scope denied"}
 	}
 	return filtered, chooseEffectiveWorkspace(authn.User, filtered), nil
 }
 
-func filterVisibleWorkspaces(rows []sqlite.WorkspaceWithRole, allowedIDs []string) []sqlite.WorkspaceWithRole {
+func filterVisibleWorkspaces(rows []storage.WorkspaceWithRole, allowedIDs []string) []storage.WorkspaceWithRole {
 	if len(allowedIDs) == 0 {
 		return rows
 	}
@@ -173,7 +173,7 @@ func filterVisibleWorkspaces(rows []sqlite.WorkspaceWithRole, allowedIDs []strin
 	for _, id := range allowedIDs {
 		allowed[id] = struct{}{}
 	}
-	out := make([]sqlite.WorkspaceWithRole, 0, len(rows))
+	out := make([]storage.WorkspaceWithRole, 0, len(rows))
 	for _, row := range rows {
 		if _, ok := allowed[row.Workspace.ID]; ok {
 			out = append(out, row)
@@ -182,7 +182,7 @@ func filterVisibleWorkspaces(rows []sqlite.WorkspaceWithRole, allowedIDs []strin
 	return out
 }
 
-func chooseEffectiveWorkspace(user sqlite.User, rows []sqlite.WorkspaceWithRole) sqlite.Workspace {
+func chooseEffectiveWorkspace(user storage.User, rows []storage.WorkspaceWithRole) storage.Workspace {
 	if user.DefaultWorkspaceID != nil {
 		for _, row := range rows {
 			if row.Workspace.ID == *user.DefaultWorkspaceID {

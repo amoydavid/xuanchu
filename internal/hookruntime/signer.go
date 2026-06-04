@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 // SignatureSHA256 按照 taskg webhook 签名规范计算 HMAC-SHA256。
@@ -30,7 +30,7 @@ func SignatureSHA256(secret, deliveryID string, timestamp int64, body []byte) st
 // HeadersForDelivery 构造投递所需的 HTTP 请求头。
 // 先恢复存储的 headers，再用运行时 headers 覆盖。
 // 如果 hook 有 secret，额外添加 timestamp 和 signature 头。
-func HeadersForDelivery(delivery sqlite.HookDelivery, hook sqlite.HookDefinition, body []byte, now int64, version string) (http.Header, error) {
+func HeadersForDelivery(delivery storage.HookDelivery, hook storage.HookDefinition, body []byte, now int64, version string) (http.Header, error) {
 	headers := http.Header{}
 
 	// 恢复存储的 headers

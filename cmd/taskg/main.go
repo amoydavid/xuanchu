@@ -11,7 +11,7 @@ import (
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/cli"
 	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 var version = "dev"
@@ -59,7 +59,7 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 	if cfg.RemoteServer != "" {
 		return
 	}
-	store, err := sqlite.Open(cfg.DatabasePath)
+	store, err := storage.Open(cfg.DatabasePath)
 	if err != nil {
 		return
 	}

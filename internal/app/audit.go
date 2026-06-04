@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -71,7 +71,7 @@ func (s *Service) withAuditAndEvents(fn func(*Service) (*AuditEntry, []HookEvent
 }
 
 func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []HookEvent, error)) error {
-	return s.store.Transaction(func(txStore *sqlite.Store) error {
+	return s.store.Transaction(func(txStore *storage.Store) error {
 		txSvc, err := s.withStore(txStore)
 		if err != nil {
 			return err
@@ -85,7 +85,7 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 			if entry.WorkspaceID != nil {
 				workspaceID = entry.WorkspaceID
 			}
-			row := sqlite.AuditLogEntry{
+			row := storage.AuditLogEntry{
 				ActorUserID:      &txSvc.runtime.ActorUserID,
 				WorkspaceID:      workspaceID,
 				ProjectID:        entry.ProjectID,
@@ -133,7 +133,7 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 		}
 		projectID = &project.ID
 	}
-	rows, err := s.auditRepo.List(sqlite.AuditListOptions{
+	rows, err := s.auditRepo.List(storage.AuditListOptions{
 		WorkspaceID: &s.runtime.WorkspaceID,
 		ProjectID:   projectID,
 		Limit:       input.Limit,

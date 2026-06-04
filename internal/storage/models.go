@@ -1,4 +1,4 @@
-package sqlite
+package storage
 
 type Meta struct {
 	Key   string `gorm:"primaryKey"`

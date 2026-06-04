@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 )
 
@@ -157,7 +157,7 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 
 	secretFingerprint := secretFingerprint(input.Secret)
 
-	row := sqlite.HookDefinition{
+	row := storage.HookDefinition{
 		ID:             uuid.NewString(),
 		Name:           input.Name,
 		ScopeType:      scopeType,
@@ -232,7 +232,7 @@ func (s *Service) HookInfo(hookID string) (HookView, error) {
 		return HookView{}, err
 	}
 	row, err := s.hookRepo.GetByID(hookID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return HookView{}, RuntimeError{Code: "hook_not_found", Message: "hook not found"}
 	}
 	if err != nil {
@@ -253,7 +253,7 @@ func (s *Service) ModifyHook(hookID string, input HookModifyInput) (HookView, er
 		return HookView{}, err
 	}
 	row, err := s.hookRepo.GetByID(hookID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return HookView{}, RuntimeError{Code: "hook_not_found", Message: "hook not found"}
 	}
 	if err != nil {
@@ -360,7 +360,7 @@ func (s *Service) DisableHook(hookID string) (HookView, error) {
 
 func (s *Service) toggleHook(hookID string, enabled bool, action string) (HookView, error) {
 	row, err := s.hookRepo.GetByID(hookID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return HookView{}, RuntimeError{Code: "hook_not_found", Message: "hook not found"}
 	}
 	if err != nil {
@@ -400,7 +400,7 @@ func (s *Service) DeleteHook(hookID string) error {
 		return err
 	}
 	row, err := s.hookRepo.GetByID(hookID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return RuntimeError{Code: "hook_not_found", Message: "hook not found"}
 	}
 	if err != nil {
@@ -432,7 +432,7 @@ func (s *Service) ListHookDeliveries(hookID string, status string, limit int) ([
 		return nil, err
 	}
 	hook, err := s.hookRepo.GetByID(hookID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return nil, RuntimeError{Code: "hook_not_found", Message: "hook not found"}
 	}
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *Service) HookDeliveryInfo(deliveryID string) (HookDeliveryView, error) 
 		return HookDeliveryView{}, err
 	}
 	row, err := s.hookDeliveryRepo.GetByID(deliveryID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return HookDeliveryView{}, RuntimeError{Code: "hook_delivery_not_found", Message: "delivery not found"}
 	}
 	if err != nil {
@@ -486,7 +486,7 @@ func (s *Service) ReplayHookDelivery(deliveryID string) (HookDeliveryView, error
 		return HookDeliveryView{}, err
 	}
 	row, err := s.hookDeliveryRepo.GetByID(deliveryID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		return HookDeliveryView{}, RuntimeError{Code: "hook_delivery_not_found", Message: "delivery not found"}
 	}
 	if err != nil {
@@ -498,7 +498,7 @@ func (s *Service) ReplayHookDelivery(deliveryID string) (HookDeliveryView, error
 	if err := s.ensureReadableDeliveryScope(row); err != nil {
 		return HookDeliveryView{}, err
 	}
-	if row.Status != sqlite.DeliveryStatusDeadLettered && row.Status != sqlite.DeliveryStatusDisabledSkipped {
+	if row.Status != storage.DeliveryStatusDeadLettered && row.Status != storage.DeliveryStatusDisabledSkipped {
 		return HookDeliveryView{}, RuntimeError{Code: "hook_delivery_not_replayable", Message: "delivery is not in a replayable state"}
 	}
 	var view HookDeliveryView
@@ -523,21 +523,21 @@ func (s *Service) ReplayHookDelivery(deliveryID string) (HookDeliveryView, error
 	return view, err
 }
 
-func (s *Service) ensureReadableHookScope(row sqlite.HookDefinition) error {
+func (s *Service) ensureReadableHookScope(row storage.HookDefinition) error {
 	if s.allowsProjectID(row.ProjectID) {
 		return nil
 	}
 	return RuntimeError{Code: "hook_not_found", Message: "hook not found"}
 }
 
-func (s *Service) ensureWritableHookScope(row sqlite.HookDefinition) error {
+func (s *Service) ensureWritableHookScope(row storage.HookDefinition) error {
 	if s.allowsProjectID(row.ProjectID) {
 		return nil
 	}
 	return RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
 }
 
-func (s *Service) ensureReadableDeliveryScope(row sqlite.HookDelivery) error {
+func (s *Service) ensureReadableDeliveryScope(row storage.HookDelivery) error {
 	if s.allowsProjectID(row.ProjectID) {
 		return nil
 	}
@@ -545,12 +545,12 @@ func (s *Service) ensureReadableDeliveryScope(row sqlite.HookDelivery) error {
 }
 
 // hookDeliveryViewFromRow 将 GORM 模型转换为只读视图。
-func hookDeliveryViewFromRow(row sqlite.HookDelivery) HookDeliveryView {
+func hookDeliveryViewFromRow(row storage.HookDelivery) HookDeliveryView {
 	view, _ := hookDeliveryViewFromRowChecked(row)
 	return view
 }
 
-func hookDeliveryViewFromRowChecked(row sqlite.HookDelivery) (HookDeliveryView, error) {
+func hookDeliveryViewFromRowChecked(row storage.HookDelivery) (HookDeliveryView, error) {
 	var payload map[string]any
 	if row.PayloadJSON != "" {
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
@@ -586,7 +586,7 @@ func hookDeliveryViewFromRowChecked(row sqlite.HookDelivery) (HookDeliveryView, 
 }
 
 // hookViewFromRow 将 GORM 模型转换为只读视图（不含 secret）。
-func hookViewFromRow(row sqlite.HookDefinition) HookView {
+func hookViewFromRow(row storage.HookDefinition) HookView {
 	var eventTypes []string
 	if row.EventTypesJSON != "" {
 		_ = json.Unmarshal([]byte(row.EventTypesJSON), &eventTypes)

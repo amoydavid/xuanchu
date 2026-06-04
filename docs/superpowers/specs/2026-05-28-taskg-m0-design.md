@@ -76,7 +76,7 @@ cmd/taskg
           -> internal/task
           -> internal/query
           -> internal/config
-          -> internal/storage/sqlite
+          -> internal/storage
 ```
 
 CLI 层负责命令行形态解析和输出格式化。App 层负责用例编排和事务边界。Domain 包负责任务生命周期规则。Storage 层负责 SQLite 细节。Query 解析在 M0 阶段保持很小，但需要返回类型化 filter，方便 M1 替换或扩展为真正的 AST。
@@ -102,9 +102,9 @@ Domain 包不应依赖 Cobra、Viper、SQLite driver 类型或终端渲染库。
 - `internal/query/filter.go`：M0 filter 模型。
 - `internal/query/parser.go`：M0 阶段的小型 Taskwarrior 风格解析器。
 - `internal/config/config.go`：配置加载与路径解析。
-- `internal/storage/sqlite/db.go`：SQLite 打开、pragma、迁移。
-- `internal/storage/sqlite/schema.sql`：M0 数据库 schema。
-- `internal/storage/sqlite/task_repo.go`：任务仓储。
+- `internal/storage/db.go`：SQLite 打开、pragma、迁移。
+- `internal/storage/schema.sql`：M0 数据库 schema。
+- `internal/storage/task_repo.go`：任务仓储。
 - `internal/render/table.go`：表格渲染。
 - `internal/render/json.go`：JSON 渲染辅助。
 - `tests/integration/cli_test.go`：黑盒 CLI 集成测试。

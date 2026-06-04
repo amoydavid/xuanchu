@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
 const agentConfigValueMaxBytes = 16 * 1024
@@ -29,9 +29,9 @@ func (s *Service) ProjectConfigGet(projectRef, key string) (string, bool, error)
 	if err != nil {
 		return "", false, err
 	}
-	return s.configRepo.Get(sqlite.ConfigKey{
+	return s.configRepo.Get(storage.ConfigKey{
 		WorkspaceID: s.workspaceID,
-		Scope:       sqlite.ConfigScopeProject,
+		Scope:       storage.ConfigScopeProject,
 		ScopeID:     project.ID,
 		Key:         key,
 	})
@@ -56,9 +56,9 @@ func (s *Service) ProjectConfigSet(projectRef, key, value string) error {
 		if err := ensureProjectConfigWritable(project); err != nil {
 			return AuditEntry{}, err
 		}
-		if err := tx.configRepo.Set(sqlite.ConfigKey{
+		if err := tx.configRepo.Set(storage.ConfigKey{
 			WorkspaceID: tx.workspaceID,
-			Scope:       sqlite.ConfigScopeProject,
+			Scope:       storage.ConfigScopeProject,
 			ScopeID:     project.ID,
 			Key:         key,
 		}, value); err != nil {
@@ -93,9 +93,9 @@ func (s *Service) ProjectConfigUnset(projectRef, key string) error {
 		if err := ensureProjectConfigWritable(project); err != nil {
 			return AuditEntry{}, err
 		}
-		if err := tx.configRepo.Unset(sqlite.ConfigKey{
+		if err := tx.configRepo.Unset(storage.ConfigKey{
 			WorkspaceID: tx.workspaceID,
-			Scope:       sqlite.ConfigScopeProject,
+			Scope:       storage.ConfigScopeProject,
 			ScopeID:     project.ID,
 			Key:         key,
 		}); err != nil {
@@ -121,7 +121,7 @@ func (s *Service) ProjectConfigList(projectRef string) (map[string]string, error
 	if err != nil {
 		return nil, err
 	}
-	return s.configRepo.ListScope(s.workspaceID, sqlite.ConfigScopeProject, project.ID)
+	return s.configRepo.ListScope(s.workspaceID, storage.ConfigScopeProject, project.ID)
 }
 
 func isProjectConfigKey(key string) bool {
@@ -139,8 +139,8 @@ func normalizeProjectConfigKey(key string) (string, error) {
 	return key, nil
 }
 
-func ensureProjectConfigWritable(project sqlite.Project) error {
-	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
+func ensureProjectConfigWritable(project storage.Project) error {
+	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
 		return RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	return nil

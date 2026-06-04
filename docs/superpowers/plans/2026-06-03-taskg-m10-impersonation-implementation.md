@@ -76,13 +76,13 @@
   token scope、workspace_required、subject membership、project/workspace allowlist 交集测试。
 - `internal/app/token_test.go`
   `impersonate` scope 的 token create / reject PAT / subset 约束测试。
-- `internal/storage/sqlite/models.go`
+- `internal/storage/models.go`
   `AuditLog` 增加 `DelegatorTokenID` / `DelegatorUserID` 字段。
-- `internal/storage/sqlite/db.go`
+- `internal/storage/db.go`
   AutoMigrate 覆盖新 audit 字段。
-- `internal/storage/sqlite/audit_repo.go`
+- `internal/storage/audit_repo.go`
   audit repository entry / list DTO 增加 delegator 字段。
-- `internal/storage/sqlite/db_test.go`
+- `internal/storage/db_test.go`
   migration 验证新 audit 列存在。
 - `internal/httpapi/middleware.go`
   解析 `X-Taskg-As`，在 access log 中输出 subject/delegator。
@@ -289,11 +289,11 @@ Expected: PASS。
 ### Task 3: 扩展 audit schema 与 app audit view
 
 **Files:**
-- Modify: `internal/storage/sqlite/models.go`
-- Modify: `internal/storage/sqlite/db.go`
-- Modify: `internal/storage/sqlite/audit_repo.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/db.go`
+- Modify: `internal/storage/audit_repo.go`
 - Modify: `internal/app/audit.go`
-- Test: `internal/storage/sqlite/db_test.go`
+- Test: `internal/storage/db_test.go`
 - Test: `internal/app/token_test.go`
 
 - [ ] **Step 1: 写失败测试，锁定新 audit 字段**
@@ -312,14 +312,14 @@ func TestAuditListIncludesDelegatorFields(t *testing.T) {}
 Run:
 
 ```bash
-go test ./internal/storage/sqlite ./internal/app -run 'TestDBMigratesAuditDelegatorColumns|TestAuditListIncludesDelegatorFields'
+go test ./internal/storage ./internal/app -run 'TestDBMigratesAuditDelegatorColumns|TestAuditListIncludesDelegatorFields'
 ```
 
 Expected: FAIL，当前 schema / repo / view 都没有 delegator 字段。
 
 - [ ] **Step 3: 修改 SQLite model 与 repo DTO**
 
-在 `internal/storage/sqlite/models.go` 的 `AuditLog` 增加：
+在 `internal/storage/models.go` 的 `AuditLog` 增加：
 
 ```go
 DelegatorTokenID *string `gorm:"index"`
@@ -344,7 +344,7 @@ row.DelegatorUserID = stringPtr(txSvc.runtime.DelegatorUserID)
 Run:
 
 ```bash
-go test ./internal/storage/sqlite ./internal/app -run 'TestDBMigratesAuditDelegatorColumns|TestAuditListIncludesDelegatorFields'
+go test ./internal/storage ./internal/app -run 'TestDBMigratesAuditDelegatorColumns|TestAuditListIncludesDelegatorFields'
 ```
 
 Expected: PASS。
@@ -590,7 +590,7 @@ Expected: PASS，schema golden / route tests 不再引用旧 contract。
 Run:
 
 ```bash
-go test ./internal/auth ./internal/app ./internal/storage/sqlite ./internal/httpapi ./internal/mcpserver ./internal/remote ./internal/cli
+go test ./internal/auth ./internal/app ./internal/storage ./internal/httpapi ./internal/mcpserver ./internal/remote ./internal/cli
 go test ./tests/integration
 ```
 
@@ -619,7 +619,7 @@ rm -f taskg
 Run:
 
 ```bash
-gofmt -w internal/auth/*.go internal/app/*.go internal/storage/sqlite/*.go internal/httpapi/*.go internal/mcpserver/*.go internal/remote/*.go internal/cli/*.go
+gofmt -w internal/auth/*.go internal/app/*.go internal/storage/*.go internal/httpapi/*.go internal/mcpserver/*.go internal/remote/*.go internal/cli/*.go
 git diff --check
 ```
 
@@ -628,7 +628,7 @@ Expected: no output from `git diff --check`。
 - [ ] **Step 4: Commit**
 
 ```bash
-git add internal/auth internal/app internal/storage/sqlite internal/httpapi internal/mcpserver internal/remote internal/cli tests/integration docs/openapi docs/manual README.md ROADMAP.md docs/requirements.md
+git add internal/auth internal/app internal/storage internal/httpapi internal/mcpserver internal/remote internal/cli tests/integration docs/openapi docs/manual README.md ROADMAP.md docs/requirements.md
 git commit -m "feat: 实现 token impersonation"
 ```
 

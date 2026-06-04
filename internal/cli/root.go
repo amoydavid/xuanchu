@@ -11,7 +11,7 @@ import (
 	"github.com/dajee/taskg/internal/config"
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/remote"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -717,7 +717,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	store, err := sqlite.Open(cfg.DatabasePath)
+	store, err := storage.Open(cfg.DatabasePath)
 	if err != nil {
 		return nil, nil, err
 	}

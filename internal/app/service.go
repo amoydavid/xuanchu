@@ -11,27 +11,27 @@ import (
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/recurrence"
 	"github.com/dajee/taskg/internal/report"
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 	"github.com/dajee/taskg/internal/task"
 	"github.com/dajee/taskg/internal/uda"
 	"github.com/dajee/taskg/internal/urgency"
 )
 
 type Service struct {
-	store                 *sqlite.Store
-	repo                  *sqlite.TaskRepository
-	projectRepo           *sqlite.ProjectRepository
-	configRepo            *sqlite.ConfigRepository
-	userRepo              *sqlite.UserRepository
-	workspaceRepo         *sqlite.WorkspaceRepository
-	memberRepo            *sqlite.MemberRepository
+	store                 *storage.Store
+	repo                  *storage.TaskRepository
+	projectRepo           *storage.ProjectRepository
+	configRepo            *storage.ConfigRepository
+	userRepo              *storage.UserRepository
+	workspaceRepo         *storage.WorkspaceRepository
+	memberRepo            *storage.MemberRepository
 	auditRepo             auditAppenderLister
-	tokenRepo             *sqlite.TokenRepository
-	contextRepo           *sqlite.ContextRepository
-	udaRepo               *sqlite.UDARepository
-	hookRepo              *sqlite.HookRepository
+	tokenRepo             *storage.TokenRepository
+	contextRepo           *storage.ContextRepository
+	udaRepo               *storage.UDARepository
+	hookRepo              *storage.HookRepository
 	hookDeliveryRepo      hookDeliveryEnqueuer
-	extIDRepo             *sqlite.ExternalIDRepository
+	extIDRepo             *storage.ExternalIDRepository
 	runtimeConfig         map[string]string
 	runtimeOverrides      map[string]string
 	runtimeUDAs           map[string]uda.Definition
@@ -112,14 +112,14 @@ type ReportResult struct {
 }
 
 type auditAppenderLister interface {
-	Append(sqlite.AuditLogEntry) error
-	List(sqlite.AuditListOptions) ([]sqlite.AuditLogEntry, error)
+	Append(storage.AuditLogEntry) error
+	List(storage.AuditListOptions) ([]storage.AuditLogEntry, error)
 }
 
 type hookDeliveryEnqueuer interface {
-	Enqueue(rows []sqlite.HookDelivery) error
-	ListByHook(hookID string, status string, limit int) ([]sqlite.HookDelivery, error)
-	GetByID(id string) (sqlite.HookDelivery, error)
+	Enqueue(rows []storage.HookDelivery) error
+	ListByHook(hookID string, status string, limit int) ([]storage.HookDelivery, error)
+	GetByID(id string) (storage.HookDelivery, error)
 	Requeue(id string, now int64) error
 }
 
@@ -127,10 +127,10 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	if opts.Clock == nil {
 		opts.Clock = RealClock{}
 	}
-	userRepo := sqlite.NewUserRepository(opts.Store.DB())
-	workspaceRepo := sqlite.NewWorkspaceRepository(opts.Store.DB())
-	memberRepo := sqlite.NewMemberRepository(opts.Store.DB())
-	auditRepo := sqlite.NewAuditRepository(opts.Store.DB())
+	userRepo := storage.NewUserRepository(opts.Store.DB())
+	workspaceRepo := storage.NewWorkspaceRepository(opts.Store.DB())
+	memberRepo := storage.NewMemberRepository(opts.Store.DB())
+	auditRepo := storage.NewAuditRepository(opts.Store.DB())
 	rt := RuntimeContext{}
 	if opts.Runtime != nil {
 		rt = *opts.Runtime
@@ -148,19 +148,19 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	}
 	return &Service{
 		store:            opts.Store,
-		repo:             sqlite.NewTaskRepository(opts.Store.DB()),
-		projectRepo:      sqlite.NewProjectRepository(opts.Store.DB()),
-		configRepo:       sqlite.NewConfigRepository(opts.Store.DB()),
+		repo:             storage.NewTaskRepository(opts.Store.DB()),
+		projectRepo:      storage.NewProjectRepository(opts.Store.DB()),
+		configRepo:       storage.NewConfigRepository(opts.Store.DB()),
 		userRepo:         userRepo,
 		workspaceRepo:    workspaceRepo,
 		memberRepo:       memberRepo,
 		auditRepo:        auditRepo,
-		tokenRepo:        sqlite.NewTokenRepository(opts.Store.DB()),
-		contextRepo:      sqlite.NewContextRepository(opts.Store.DB()),
-		udaRepo:          sqlite.NewUDARepository(opts.Store.DB()),
-		hookRepo:         sqlite.NewHookRepository(opts.Store.DB()),
-		hookDeliveryRepo: sqlite.NewHookDeliveryRepository(opts.Store.DB()),
-		extIDRepo:        sqlite.NewExternalIDRepository(opts.Store.DB()),
+		tokenRepo:        storage.NewTokenRepository(opts.Store.DB()),
+		contextRepo:      storage.NewContextRepository(opts.Store.DB()),
+		udaRepo:          storage.NewUDARepository(opts.Store.DB()),
+		hookRepo:         storage.NewHookRepository(opts.Store.DB()),
+		hookDeliveryRepo: storage.NewHookDeliveryRepository(opts.Store.DB()),
+		extIDRepo:        storage.NewExternalIDRepository(opts.Store.DB()),
 		runtimeConfig:    runtimeConfig,
 		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
 		runtimeUDAs:      runtimeUDAs,
@@ -177,28 +177,28 @@ func (s *Service) Clock() Clock {
 	return s.clock
 }
 
-func (s *Service) withStore(store *sqlite.Store) (*Service, error) {
+func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone := *s
 	clone.store = store
-	clone.repo = sqlite.NewTaskRepository(store.DB())
-	clone.projectRepo = sqlite.NewProjectRepository(store.DB())
-	clone.configRepo = sqlite.NewConfigRepository(store.DB())
-	clone.userRepo = sqlite.NewUserRepository(store.DB())
-	clone.workspaceRepo = sqlite.NewWorkspaceRepository(store.DB())
-	clone.memberRepo = sqlite.NewMemberRepository(store.DB())
+	clone.repo = storage.NewTaskRepository(store.DB())
+	clone.projectRepo = storage.NewProjectRepository(store.DB())
+	clone.configRepo = storage.NewConfigRepository(store.DB())
+	clone.userRepo = storage.NewUserRepository(store.DB())
+	clone.workspaceRepo = storage.NewWorkspaceRepository(store.DB())
+	clone.memberRepo = storage.NewMemberRepository(store.DB())
 	// Tests can inject a custom audit repo to force append failures; keep it
 	// attached while production services get a tx-bound repository.
-	if _, ok := s.auditRepo.(*sqlite.AuditRepository); ok || s.auditRepo == nil {
-		clone.auditRepo = sqlite.NewAuditRepository(store.DB())
+	if _, ok := s.auditRepo.(*storage.AuditRepository); ok || s.auditRepo == nil {
+		clone.auditRepo = storage.NewAuditRepository(store.DB())
 	}
-	clone.tokenRepo = sqlite.NewTokenRepository(store.DB())
-	clone.contextRepo = sqlite.NewContextRepository(store.DB())
-	clone.udaRepo = sqlite.NewUDARepository(store.DB())
-	clone.hookRepo = sqlite.NewHookRepository(store.DB())
+	clone.tokenRepo = storage.NewTokenRepository(store.DB())
+	clone.contextRepo = storage.NewContextRepository(store.DB())
+	clone.udaRepo = storage.NewUDARepository(store.DB())
+	clone.hookRepo = storage.NewHookRepository(store.DB())
 	// Tests can inject a custom delivery repo to force enqueue failures; keep it
 	// attached while production services get a tx-bound repository.
-	if _, ok := s.hookDeliveryRepo.(*sqlite.HookDeliveryRepository); ok || s.hookDeliveryRepo == nil {
-		clone.hookDeliveryRepo = sqlite.NewHookDeliveryRepository(store.DB())
+	if _, ok := s.hookDeliveryRepo.(*storage.HookDeliveryRepository); ok || s.hookDeliveryRepo == nil {
+		clone.hookDeliveryRepo = storage.NewHookDeliveryRepository(store.DB())
 	}
 	return &clone, nil
 }
@@ -421,7 +421,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
 		Status:         status,
 		Sort:           input.Sort,
 		Query:          queryExpr,
@@ -785,7 +785,7 @@ func (s *Service) annotateLocked(target, description string) (task.Task, project
 			entry++
 		}
 		if err := s.repo.AddAnnotation(s.workspaceID, tsk.UUID, task.Annotation{Entry: entry, Description: description}, entry); err != nil {
-			if sqlite.IsUniqueConstraintError(err) {
+			if storage.IsUniqueConstraintError(err) {
 				now = entry + 1
 				continue
 			}
@@ -956,7 +956,7 @@ func (s *Service) ExportWithInput(input ExportInput) ([]task.Task, error) {
 	if input.ProjectID != nil && strings.TrimSpace(*input.ProjectID) != "" {
 		queryExpr = query.And(queryExpr, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(strings.TrimSpace(*input.ProjectID))})
 	}
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{Query: queryExpr})
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{Query: queryExpr})
 	if err != nil {
 		return nil, err
 	}
@@ -1015,7 +1015,7 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 		tsk.UUID = uuid.NewString()
 	}
 	existing, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
-	if err == sqlite.ErrNotFound {
+	if err == storage.ErrNotFound {
 		if err := s.normalizeTaskProjectFields(&tsk); err != nil {
 			return err
 		}
@@ -1155,7 +1155,7 @@ func (s *Service) resolveImportedAssignees(values []task.AssigneeInfo) ([]task.A
 }
 
 func (s *Service) dependencyGraph() (map[string][]string, error) {
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{})
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -1191,7 +1191,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, err
 	}
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
 		Query:          merged,
 		Sort:           def.Sort,
 		NowUnix:        now,
@@ -1200,7 +1200,7 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 	if err != nil {
 		return ReportResult{}, mapProjectQueryCompileError(err)
 	}
-	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: now, Query: s.projectScopeExpr()})
+	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: now, Query: s.projectScopeExpr()})
 	if err != nil {
 		return ReportResult{}, err
 	}
@@ -1337,7 +1337,7 @@ func (s *Service) resolveAssigneeRef(ref string) (task.AssigneeInfo, error) {
 		}
 		return task.AssigneeInfo{}, err
 	}
-	if _, err := s.memberRepo.Get(user.ID, s.workspaceID); err == sqlite.ErrNotFound {
+	if _, err := s.memberRepo.Get(user.ID, s.workspaceID); err == storage.ErrNotFound {
 		return task.AssigneeInfo{}, RuntimeError{
 			Code:    "assignee_not_member",
 			Message: fmt.Sprintf("user %q is not a member of workspace %q", user.Name, s.runtime.WorkspaceSlug),
@@ -1418,7 +1418,7 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
-	allTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr()})
+	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr()})
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
@@ -1500,7 +1500,7 @@ func (s *Service) validateDependencyCycles(taskUUID string, depends []string) er
 
 func (s *Service) refreshAutomaticState() error {
 	now := s.clock.Unix()
-	waitingTasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
+	waitingTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
 		Status:  task.StatusWaiting,
 		NowUnix: now,
 	})
@@ -1615,7 +1615,7 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 	if err := s.refreshAutomaticState(); err != nil {
 		return nil, err
 	}
-	tasks, err := s.repo.List(s.workspaceID, sqlite.ListOptions{
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
 		NowUnix: s.clock.Unix(),
 		Query:   s.projectScopeExpr(),
 	})
@@ -1822,7 +1822,7 @@ func (s *Service) recurringArchivedProjectWarning(parent task.Task, child task.T
 	if err != nil {
 		return nil, RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
 	}
-	if project.Status != string(sqlite.ProjectStatusArchived) && project.ArchivedAt == nil {
+	if project.Status != string(storage.ProjectStatusArchived) && project.ArchivedAt == nil {
 		return nil, nil
 	}
 	projectID := project.ID
@@ -1850,7 +1850,7 @@ func (s *Service) appendAuditEntry(entry AuditEntry) error {
 	if err != nil {
 		return err
 	}
-	return s.auditRepo.Append(sqlite.AuditLogEntry{
+	return s.auditRepo.Append(storage.AuditLogEntry{
 		ActorUserID: &s.runtime.ActorUserID,
 		WorkspaceID: workspaceID,
 		ProjectID:   entry.ProjectID,

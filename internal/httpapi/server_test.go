@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/storage/sqlite"
+	"github.com/dajee/taskg/internal/storage"
 )
 
-func openHTTPTestStore(t *testing.T) *sqlite.Store {
+func openHTTPTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
