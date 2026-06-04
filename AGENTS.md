@@ -181,6 +181,40 @@ CGO_ENABLED=0 go build ./cmd/taskg
 - 集成测试会临时构建 `./cmd/taskg` 二进制运行。
 - 仓库中可能存在本地构建产物 `taskg`，处理前先确认是否是临时文件。
 
+### 用户信息输出规范
+
+所有对外输出（HTTP API、CLI `--json`、MCP tool 响应、Remote Client）中涉及用户身份的字段，必须使用 `task.UserInfo` 统一结构体，包含完整的用户信息：
+
+```go
+type UserInfo struct {
+    ID          string
+    Name        string
+    Email       *string
+    ExternalIDs []ExternalIDInfo
+}
+```
+
+**规则：**
+
+- 凡是 JSON 输出中出现用户引用的地方（`created_by`、`actor`、`user` 等），必须是 `UserInfo` 对象（`{"id":"...", "name":"...", "email":"...", "external_ids":[...]}`），不允许只输出裸 UUID。
+- App 层 view struct 中引用用户时使用 `task.UserInfo`（或 `*task.UserInfo` 表示可选）。
+- Storage 层返回原始 UUID 字符串，App 层通过 `resolveUserInfos(ids []string) (map[string]UserInfo, error)` 批量解析为完整 `UserInfo`。未找到的用户 fallback 为 `{ID: id, Name: id}`。
+- HTTP/CLI/MCP/Remote 输出层使用 `task.UserInfoToJSON()` 或 `userInfoToJSONMap()` 进行序列化，统一 JSON 格式。
+- 新增任何涉及用户身份的输出字段时，必须遵循此规范，不要退化为裸 UUID 字符串。
+
+**当前已覆盖的字段：**
+
+| View Struct | 字段 | 旧格式 | 新格式 |
+|---|---|---|---|
+| `TaskLinkInfo.CreatedBy` | `UserInfo` | `string` | `{"id","name","email","external_ids"}` |
+| `ProjectAnnotationInfo.CreatedBy` | `UserInfo` | `string` | 同上 |
+| `TimelineEntry.CreatedBy` | `UserInfo` | `string` | 同上 |
+| `WorkspaceView.CreatedBy` | `*UserInfo` | `*string` | 同上 |
+| `HookDeliveryView.Actor` | `UserInfo` | `string` | 同上 |
+| `TokenView.User` | `UserInfo` | `string` | 同上 |
+| `AuditLogView.Actor` | `*UserInfo` | `*string`+`string` | 同上 |
+| `AuditLogView.DelegatorUser` | `*UserInfo` | `*string` | 同上 |
+
 ## 11. 对后续代理的建议
 
 - 从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、以及当前 milestone 的 spec 开始读上下文。
