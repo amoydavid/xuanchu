@@ -183,7 +183,7 @@ openclaw mcp probe taskg --json
 如果只希望 OpenClaw 暴露一部分 taskg MCP tools，可以配置 tool filter。例如只让 Agent 查询任务和读取项目：
 
 ```bash
-openclaw mcp tools taskg --include 'task_query,task_get,project_list,project_get,workspace_current'
+openclaw mcp tools taskg --include 'task_query,task_get,project_list,project_get,workspace_get_current'
 ```
 
 注意：OpenClaw 文档中 `streamable-http` 是 Streamable HTTP 的规范写法；taskg 的 `/mcp` 就是这个 HTTP MCP endpoint。
@@ -276,7 +276,7 @@ taskg --workspace dajee token create mcp-agent \
 可以在 Agent 系统提示词或项目说明中加入：
 
 ```text
-你可以使用 taskg MCP 管理任务。优先使用 project_current / workspace_current 确认作用域；
+你可以使用 taskg MCP 管理任务。优先使用 project_get_current / workspace_get_current 确认作用域；
 查询任务用 task_query，读取单任务用 task_get，新增任务用 task_add。
 如果任务有执行者，请在 task_add / task_modify 里显式传 assignees。
 不要尝试访问 token scope 之外的 workspace/project。
@@ -285,46 +285,393 @@ taskg --workspace dajee token create mcp-agent \
 
 ## Tools
 
-当前提供 21 个 tools。
+当前提供 33 个 tools。
 
-任务：
+### 任务
 
-- `task_add`
-- `task_modify`
-- `task_done`
-- `task_delete`
-- `task_query`
-- `task_get`
-- `task_annotate`
-- `task_depends`
-- `task_start`
-- `task_stop`
+#### `task_add`
 
-报表与 urgency：
+创建任务。
 
-- `report_run`
-- `urgency_explain`
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | workspace slug 或 UUID |
+| `project` | string | 否 | project slug |
+| `project_id` | string | 否 | project UUID |
+| `description` | string | 是 | 任务描述 |
+| `tags` | string[] | 否 | 要添加的标签 |
+| `assignees` | string[] | 否 | workspace 用户引用（name/email/UUID/外部ID） |
+| `priority` | string | 否 | `H`/`M`/`L` |
+| `due` | int64 | 否 | unix 秒 |
+| `wait` | int64 | 否 | unix 秒 |
+| `scheduled` | int64 | 否 | unix 秒 |
+| `until` | int64 | 否 | unix 秒 |
+| `annotations` | string[] | 否 | 初始注释 |
 
-Workspace：
+#### `task_query`
 
-- `workspace_list`
-- `workspace_current`
+查询任务。只读。
 
-Project：
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | workspace slug 或 UUID |
+| `project` | string | 否 | project slug |
+| `project_id` | string | 否 | project UUID |
+| `query` | string | 否 | Taskwarrior 风格查询表达式 |
+| `status` | string | 否 | 按状态过滤 |
+| `limit` | int | 否 | 最大返回数，默认 200，最大 1000 |
+| `include_completed` | bool | 否 | 包含已完成 |
+| `include_deleted` | bool | 否 | 包含已删除 |
 
-- `project_list`
-- `project_get`
-- `project_current`
+#### `task_get`
 
-Context：
+读取单个任务。只读。
 
-- `context_set`
-- `context_show`
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | 任务 UUID；stdio 可用 working-set ID |
 
-Config：
+#### `task_modify`
 
-- `config_get`
-- `config_set`
+修改任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | 任务 UUID 或 working-set ID |
+| `description` | string | 否 | 新描述 |
+| `priority` | string | 否 | `H`/`M`/`L` |
+| `due` | int64 | 否 | unix 秒 |
+| `wait` | int64 | 否 | unix 秒 |
+| `scheduled` | int64 | 否 | unix 秒 |
+| `until` | int64 | 否 | unix 秒 |
+| `tags` | string[] | 否 | 要添加的标签 |
+| `remove_tags` | string[] | 否 | 要移除的标签 |
+| `assignees` | string[] | 否 | 要添加的执行者 |
+| `remove_assignees` | string[] | 否 | 要移除的执行者 |
+| `udas` | map | 否 | UDA 键值对 |
+| `depends` | string[] | 否 | 要添加的依赖 |
+| `clear_depends` | bool | 否 | 清空所有依赖 |
+| `clear` | string[] | 否 | 要清空的字段：`project`/`priority`/`due`/`wait`/`scheduled`/`until`/`recur`/`assignees`/`uda.*` |
+
+#### `task_done`
+
+完成任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+
+#### `task_delete`
+
+删除任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+
+#### `task_start`
+
+开始任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+
+#### `task_stop`
+
+停止任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+
+#### `task_annotate`
+
+为任务添加注释。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+| `annotation` | string | 是 | 注释内容 |
+
+#### `task_depends`
+
+调整任务依赖。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `id` | string | 是 | |
+| `depends` | string[] | 否 | 要添加的依赖 |
+| `clear_depends` | bool | 否 | 清空所有依赖 |
+
+#### `task_link_add`
+
+为任务添加外部关联链接。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `task` | string | 是 | 任务引用（UUID 或 working-set ID） |
+| `type` | string | 是 | 链接类型（document/pr/ticket/design 等） |
+| `url` | string | 是 | 外部资源 URL |
+| `title` | string | 否 | 显示标题 |
+
+#### `task_link_remove`
+
+移除任务的外部关联链接。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `task` | string | 是 | 任务引用 |
+| `link_id` | string | 是 | 要移除的链接 ID |
+
+### 报表与 Urgency
+
+#### `report_run`
+
+运行内置报表。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `name` | string | 是 | 报表名（list/next/all/completed/deleted/waiting/active/ready/overdue/blocked/blocking） |
+| `query` | string | 否 | 附加过滤表达式 |
+| `limit` | int | 否 | 最大返回数 |
+
+#### `urgency_explain`
+
+解释任务 urgency 评分。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+
+### Workspace
+
+#### `workspace_list`
+
+列出可见 workspace。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `include_archived` | bool | 否 | 包含已归档 |
+
+#### `workspace_get_current`
+
+读取当前生效的 workspace。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | 可显式指定 |
+
+### Project
+
+#### `project_list`
+
+列出 effective workspace 内的项目。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `include_archived` | bool | 否 | 包含已归档 |
+
+#### `project_get`
+
+读取单个项目及其 agent 配置。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | project slug |
+| `project_id` | string | 否 | project UUID |
+
+#### `project_get_current`
+
+读取当前生效的 project scope。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+
+#### `project_annotate`
+
+为项目添加注释。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `content` | string | 是 | 注释内容 |
+
+#### `project_denotate`
+
+移除项目注释。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `annotation_id` | string | 是 | 要移除的注释 ID |
+
+#### `project_list_annotations`
+
+列出项目注释。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+
+#### `project_list_timeline`
+
+列出项目时间线（project + task 注释聚合）。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `limit` | int | 否 | 默认 50 |
+
+### Member
+
+#### `member_list`
+
+列出 effective workspace 的成员。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `member_add`
+
+添加成员到 effective workspace。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `user` | string | 是 | 用户引用（name/email/UUID） |
+| `role` | string | 否 | `viewer`/`member`/`admin`/`owner`，默认 `member` |
+
+### User
+
+#### `user_list`
+
+列出所有用户。只读。
+
+无参数。
+
+#### `user_get`
+
+读取单个用户。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `user` | string | 是 | name/email/UUID |
+
+#### `user_bind`
+
+为用户绑定外部 ID（如 `feishu:ou_xxxxx`）。admin/owner 可操作其他用户；普通用户只能绑定自己。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `user` | string | 是 | |
+| `provider` | string | 是 | 提供商标识（如 `feishu`） |
+| `external_id` | string | 是 | 外部系统 ID |
+
+#### `user_unbind`
+
+解绑用户的外部 ID。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `user` | string | 是 | |
+| `provider` | string | 是 | |
+| `external_id` | string | 是 | |
+
+### Context
+
+#### `context_get`
+
+查看 active 或指定 context。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `name` | string | 否 | 留空查看 active context |
+
+#### `context_set`
+
+设置 active context。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `name` | string | 是 | context 名；传 `"none"` 清空 |
+
+### Config
+
+#### `config_get`
+
+读取配置。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `key` | string | 是 | 配置键 |
+| `scope` | string | 否 | `workspace`（默认）/`project`/`local` |
+
+#### `config_set`
+
+写入配置。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `key` | string | 是 | 配置键 |
+| `value` | string | 是 | 配置值 |
+| `scope` | string | 是 | `workspace`/`project` |
 
 ## Resources
 
@@ -350,8 +697,8 @@ MCP tool 返回统一 envelope：
 
 ## 常见 Agent 流程
 
-1. `workspace_current` 确认当前 workspace。
-2. `project_list` 或 `project_current` 确认项目。
+1. `workspace_get_current` 确认当前 workspace。
+2. `project_list` 或 `project_get_current` 确认项目。
 3. `task_query` 查看待办。
 4. `task_add` 或 `task_modify` 写入任务。
 5. `urgency_explain` 理解排序原因。
