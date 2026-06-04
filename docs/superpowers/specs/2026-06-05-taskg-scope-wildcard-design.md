@@ -1,17 +1,18 @@
-# Token Scope 通配符
+# Token Scope 通配符与 Token 修改
 
 ## 背景
 
 taskg 当前有 16 个 token scope（`task:read`、`task:write`、`project:read` 等），创建 token 时必须逐个列举。一个全权限 admin token 需要 15 个 scope（不含 `impersonate`），写起来冗长且容易遗漏或拼错。
 
-同时，新增 scope 后没有统一的地方查看所有可用 scope，用户只能翻文档或源码。
+同时，新增 scope 后没有统一的地方查看所有可用 scope，用户只能翻文档或源码。token 创建后无法修改 scope、名称、过期时间或 workspace/project 可见范围，只能撤销重建。
 
 ## 目标
 
 1. `--scope` 支持通配符，减少输入负担。
 2. 新增 `taskg scope list` 命令，输出所有有效 scope。
-3. 未来新增 scope 时，`scope list` 自动反映，通配符自动包含。
-4. 运行时行为不变，存储和校验逻辑不变。
+3. 新增 `taskg token modify` 命令和 `PATCH /api/v1/tokens/{id}` 接口，支持修改 token 的 scope、名称、过期时间和 workspace/project 可见范围。
+4. 未来新增 scope 时，`scope list` 自动反映，通配符自动包含。
+5. 运行时行为不变，存储和校验逻辑不变。
 
 ## 当前状态
 
@@ -43,6 +44,10 @@ taskg 当前有 16 个 token scope（`task:read`、`task:write`、`project:read`
 `ParseScopes(values []string)` 逐条检查 `allowedScopes` map，不在就报 `token_scope_invalid`。token 创建时展开为 JSON 数组存储，运行时 `Has()` 逐条检查。
 
 当前 token 只支持 create/list/revoke，不支持 scope 更新。
+
+### Token 修改的当前空白
+
+修改 token 需要撤销重建，操作成本高且会中断依赖该 token 的服务。常见的修改需求包括：缩小 scope（最小权限轮换）、续期、调整 workspace/project 可见范围、重命名。
 
 ## 设计
 
@@ -134,7 +139,104 @@ JSON 输出：
 
 不需要 `--json` 时以 human 格式输出。
 
-### 5. CLI 使用示例
+### 5. Token 修改
+
+#### 可修改字段
+
+| 字段 | 允许修改 | 说明 |
+|---|---|---|
+| scope | 是 | 支持通配符 |
+| name | 是 | 重命名 |
+| expires_at | 是 | 续期或缩短，通过 `--expires-in` 指定新的相对时长 |
+| workspace_ids | 是 | 通过 `--workspace-id` 整体替换 |
+| project_ids | 是 | 通过 `--project`/`--project-id` 整体替换 |
+| type | 否 | pat↔agent 会改变安全语义 |
+| token hash / prefix | 否 | 换 secret = 重建 |
+
+#### CLI
+
+```bash
+taskg token modify <id-or-prefix> [--scope ...] [--name ...] [--expires-in ...] [--workspace-id ...] [--project ...] [--project-id ...]
+```
+
+至少需要提供一个修改项。不提供任何修改项时报错。
+
+#### HTTP API
+
+```
+PATCH /api/v1/tokens/{id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "scopes": ["task:read", "task:write"],
+  "name": "renamed-token",
+  "expires_in": "720h",
+  "workspace_ids": ["<uuid>"],
+  "project_ids": ["<uuid>"]
+}
+```
+
+所有字段可选，至少提供一个。未提供的字段保持不变。
+
+#### 权限约束
+
+**本地 CLI（直接操作数据库）：**
+
+- 需要 admin 或 owner 角色。
+- scope 修改不受操作者自身 token scope 限制。
+- `impersonate` scope 的添加仍受 admin/owner 限制。
+- PAT 不允许添加 `impersonate` scope。
+
+**远程 API（通过 token 操作）：**
+
+- 请求者需要 `token:write` capability。
+- 新 scope 必须是请求者自身 scope 的子集（复用 `enforceTokenCreateLimit` 同一逻辑）。
+- 新 workspace_ids 必须是请求者自身可见 workspace 的子集。
+- 新 project_ids 必须是请求者自身可见 project 的子集。
+- 操作者只能修改自己创建的 token（同 user_id），admin/owner 可修改任意 token。
+
+**通用约束：**
+
+- 已撤销的 token 不允许修改，返回 `token_revoked`。
+- 已过期的 token 不允许修改，返回 `token_expired`。
+- `--expires-in` 设置为已过去的时间点等同于让 token 立即过期。
+- workspace_ids / project_ids 是整体替换，不是增量追加。如需追加，先列出当前值再合在一起传。
+
+#### App 层
+
+`Service.ModifyToken(input ModifyTokenInput) (TokenView, error)`
+
+```go
+type ModifyTokenInput struct {
+    TokenRef    string
+    Scopes      []string // nil 表示不改
+    Name        *string  // nil 表示不改
+    ExpiresIn   *string  // Go duration string，nil 表示不改
+    WorkspaceIDs []string // nil 表示不改
+    ProjectIDs  []string // nil 表示不改
+}
+```
+
+流程：
+
+1. 解析 token ref，查找 token。
+2. 检查 token 未撤销且未过期。
+3. 如果提供了 scopes：调用 `ParseScopes()`（支持通配符）展开并校验。
+4. 如果远程模式：校验请求者权限（scope 子集、workspace 子集、project 子集、owner 约束）。
+5. 合并修改项，写入数据库。
+6. 写审计记录。
+7. 返回更新后的 `TokenView`。
+
+#### Storage 层
+
+新增 `UpdateToken(id string, updates TokenUpdates) error`，只更新非零值字段。
+
+#### 审计
+
+token 修改写入 `audit_logs`，action 为 `token.modified`，payload 包含修改前后的 diff。
+
+### 6. CLI 使用示例
 
 ```bash
 # 全权限 admin token
@@ -148,17 +250,32 @@ taskg token create task-worker --type agent --scope 'task:*,project:read' --expi
 
 # 查看可用 scope
 taskg scope list
+
+# 缩小 token scope
+taskg token modify abc123 --scope 'task:read,project:read'
+
+# 续期
+taskg token modify abc123 --expires-in 720h
+
+# 重命名
+taskg token modify abc123 --name "production-agent"
+
+# 通配符也可用于 modify
+taskg token modify abc123 --scope '*:read'
 ```
 
 ## 不改什么
 
-- token 存储、运行时校验、MCP tool 权限检查 —— 完全不变。
+- token 运行时校验、MCP tool 权限检查 —— 完全不变。
 - `impersonate` scope 对 PAT 的限制 —— 不变（`*` 展开后包含 `impersonate`，但 PAT 的 type 校验仍然拒绝它）。
 - `impersonate` scope 对 admin/owner 的限制 —— 不变。
 - 父子 token scope 子集校验 —— 不变（比较展开后的列表）。
-- token 更新 —— 当前不支持 token scope 更新，本次不做。
+- token type —— 不允许通过 modify 改变类型。
+- token secret —— 不允许通过 modify 换 secret，需要撤销重建。
 
 ## 验收标准
+
+### Scope 通配符
 
 - `taskg token create admin --scope '*' --type pat` 能创建全权限 PAT（不含 `impersonate`）。
 - `taskg token create agent --scope '*' --type agent` 能创建全权限 agent token（含 `impersonate`，需 admin/owner）。
@@ -168,14 +285,38 @@ taskg scope list
 - `taskg scope list` 输出所有有效 scope。
 - `taskg scope list --json` 输出结构化 JSON。
 - 所有现有 scope 校验测试通过。
+
+### Token 修改
+
+- `taskg token modify <ref> --scope 'task:*'` 能修改 scope。
+- `taskg token modify <ref> --name "new-name"` 能重命名。
+- `taskg token modify <ref> --expires-in 720h` 能续期。
+- `taskg token modify <ref> --project new-project` 能替换 project allowlist。
+- 修改已撤销 token 返回 `token_revoked`。
+- 修改已过期 token 返回 `token_expired`。
+- 远程模式下 scope 扩张受请求者自身 scope 约束。
+- token 修改写入 audit log。
+- `PATCH /api/v1/tokens/{id}` 行为与 CLI 一致。
+
+### 全局
+
 - `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
 
 ## 影响范围
 
 - `internal/auth/scope.go` — 主要改动：有序注册、`ParseScopes()` 通配符展开。
-- `internal/cli/scope.go` — 新增：`scope list` 命令。
-- `internal/cli/root.go` — 注册 `scope` 子命令。
 - `internal/auth/scope_test.go` — 新增通配符测试。
+- `internal/auth/token.go` — `ValidateTokenCreate()` 改为 `ValidateTokenScopes()` 复用于 modify。
+- `internal/app/token.go` — 新增 `ModifyToken()`、`ModifyTokenInput`。
+- `internal/app/token_test.go` — 新增 modify 测试。
+- `internal/storage/token_repo.go` — 新增 `UpdateToken()`。
+- `internal/cli/scope.go` — 新增：`scope list` 命令。
+- `internal/cli/token.go` — 新增：`token modify` 子命令。
+- `internal/cli/root.go` — 注册 `scope` 子命令。
+- `internal/httpapi/tokens.go` — 新增 `PATCH /api/v1/tokens/{id}`。
+- `internal/httpapi/tokens_test.go` — 新增 modify 测试。
 - `tests/integration/cli_test.go` — 新增 CLI 集成测试。
-- `docs/manual/reference/commands.md` — 补充 `scope list` 命令。
-- `docs/manual/mcp.md` — 无需改动（MCP 层不变）。
+- `docs/openapi/taskg-v1.yaml` — 新增 `PATCH /api/v1/tokens/{id}`。
+- `docs/manual/reference/commands.md` — 补充 `scope list` 和 `token modify` 命令。
+- `docs/manual/remote-cli-and-api.md` — 补充 token modify API。
+- `docs/manual/reference/errors.md` — 新增 `token_revoked`、`token_expired` 错误码。
