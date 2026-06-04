@@ -32,6 +32,7 @@ type ProjectAnnotation struct {
     Entry       int64  `gorm:"not null;uniqueIndex:idx_project_annotations_entry,priority:2"`
     Content     string `gorm:"not null;type:text"`
     CreatedBy   string `gorm:"not null"`
+    CreatedAt   int64  `gorm:"not null"`
 }
 ```
 
@@ -43,6 +44,7 @@ type ProjectAnnotation struct {
 - `(ProjectID, Entry)` 联合唯一索引，同一时间戳不允许重复（与 task annotation 冲突处理一致）。
 - `Content` 是多行文本，支持 Markdown。与 task annotation 的单行限制不同，project annotation 允许更丰富的内容。
 - `CreatedBy` 记录写入者的 user ID。
+- `CreatedAt` 记录实际写入时间（Unix 时间戳）。与 `Entry` 分离——`Entry` 是语义上的"记录时间"（可由调用方指定或自动填充），`CreatedAt` 是数据库实际写入时间。
 
 在 `Project` GORM 模型中增加关联：
 
@@ -62,10 +64,11 @@ type ProjectAnnotationInfo struct {
     Entry     int64
     Content   string
     CreatedBy string
+    CreatedAt int64
 }
 ```
 
-不引入独立的 JSON DTO——project annotation 通过 HTTP API 直接以 snake_case JSON 返回，与现有 project API 风格一致。
+不引入独立的 JSON DTO——project annotation 通过 HTTP API 直接以 snake_case JSON 返回，与现有 project API 风格一致。Remote Client 层可定义自己的传输结构体（`ProjectAnnotationDTO` 等），与 domain model 分离。
 
 ### 三、Repository 层
 
@@ -75,6 +78,7 @@ type ProjectAnnotationInfo struct {
 - `Delete(id string) error` — 按 ID 删除
 - `ListByProject(projectID string) ([]ProjectAnnotation, error)` — 按项目列出，entry 升序
 - `GetByID(id string) (ProjectAnnotation, error)` — 按 ID 查询
+- `TimelineByProjectID(projectID string, limit, offset int) ([]TimelineRow, error)` — 聚合查询
 
 ### 四、App 层
 
@@ -84,6 +88,7 @@ type ProjectAnnotationInfo struct {
   - 需要 `project:manage` 权限（与 ModifyProject 一致）
   - 项目不能是 archived 状态
   - `content` 不能为空
+  - `Entry` 冲突处理：与 task annotation 一致，最多重试 3 次（timestamp 自增）避免并发写入时唯一约束冲突
   - 写入审计条目（`project.annotate`）
   - 触发 `project.annotated` hook 事件
   - 更新 project 的 `modified_at`
@@ -98,14 +103,17 @@ type ProjectAnnotationInfo struct {
 
 - `ProjectAnnotations(projectRef string) ([]ProjectAnnotationInfo, error)` — 列出项目 annotation
   - 需要 `project:read` 权限
+  - archived 项目允许读取 annotation
 
 #### Timeline 聚合
 
 - `ProjectTimeline(projectRef string, opts TimelineOptions) ([]TimelineEntry, error)` — 聚合时间线
   - 需要 `project:read` 权限
-  - 合并 project annotations + 该项目下所有 task annotations
+  - archived 项目允许读取 timeline
+  - 合并 project annotations + 该项目下所有 task annotations（通过 tasks.project_id 过滤）
   - 按 entry（时间戳）升序排列
   - 每条记录标记来源类型（`project` / `task`）
+  - 实现策略：repository 层通过 SQL UNION 合并两个查询结果，在 UNION 后做 ORDER BY + LIMIT/OFFSET。先 UNION 再分页，保证跨来源的全局排序正确
 
 ```go
 type TimelineOptions struct {
@@ -136,9 +144,11 @@ taskg <project-ref> timeline [--limit N]
 
 两种入口风格：
 - 子命令风格：`taskg project annotate <ref> <content>`
-- 目标风格：`taskg <ref> annotate <content>`（与 `taskg 1 annotate note` 一致）
+- 目标风格：`taskg <ref> annotate <content>`
 
-`taskg project info <ref>` 输出中展示最近几条 annotation（如最近 5 条）。
+目标风格的歧义处理：`taskg <ref> annotate` 中的 ref 可能是 task 也可能是 project。当前 `handleTargetAction` 只处理 task。解决方案：**先尝试作为 task 解析，如果 task 不存在且 ref 看起来像 project slug（小写字母+数字+横线+下划线），则回退为 project**。在 `handleTargetAction` 中增加 `annotate`/`annotations`/`timeline` 的 project 回退分支。如果 ref 同时匹配 task ID 和 project slug，task 优先（保持向后兼容）。
+
+`taskg project info <ref>` 输出中展示最近几条 annotation（如最近 5 条）。实现方式：`ProjectInfo` 方法额外加载最近 5 条 annotation，`ProjectView` 增加 `RecentAnnotations []ProjectAnnotationInfo` 字段。`--json` 输出和 HTTP `GET /projects/{ref}` 响应均包含此字段。
 
 ### 六、HTTP API
 
@@ -159,7 +169,7 @@ taskg <project-ref> timeline [--limit N]
 - `project.annotated` — 新增 annotation 时触发，payload 包含 project 信息和 annotation 内容
 - `project.denotated` — 删除 annotation 时触发
 
-两个事件复用现有的 `buildProjectHookEvent` 模式，`ObjectKind` 为 `project`，`ObjectID` 为 project ID。
+两个事件参考 `buildProjectArchivedHookEvent` 的模式，新建 `buildProjectAnnotatedHookEvent` 和 `buildProjectDenotatedHookEvent`，`ObjectKind` 为 `project`，`ObjectID` 为 project ID。
 
 ### 九、Render
 
@@ -193,15 +203,16 @@ GORM AutoMigrate 自动处理：新增 `project_annotations` 表。
 ## 验收标准
 
 1. 项目能添加/删除/查看 annotation（多行文本）
-2. CLI 能操作项目 annotation（两种入口风格）
-3. HTTP API 能操作项目 annotation
-4. MCP 能操作项目 annotation
-5. Timeline 聚合接口合并 project + task annotations，按时间排序
-6. Timeline CLI/API/MCP 均可用
+2. CLI 能操作项目 annotation（子命令风格 `taskg project annotate` 和目标风格 `taskg <ref> annotate`）
+3. HTTP API 能操作项目 annotation（CRUD 3 个端点）
+4. MCP 能操作项目 annotation（`project.annotate` / `project.denotate` / `project.annotations`）
+5. Timeline 聚合接口合并 project + task annotations，按 entry 排序，limit/offset 生效
+6. Timeline 通过 CLI（`taskg project timeline`）、HTTP API、MCP（`project.timeline`）均可访问
 7. 写入触发审计条目和 hook 事件
-8. `project info` 展示最近几条 annotation
-9. 所有现有测试继续通过
-10. `CGO_ENABLED=0 go build ./cmd/taskg` 和 `CGO_ENABLED=0 go test ./...` 通过
+8. `project info` 展示最近 5 条 annotation（`ProjectView.RecentAnnotations`）
+9. Archived 项目允许读取 annotation 和 timeline，不允许写入
+10. 所有现有测试继续通过
+11. `CGO_ENABLED=0 go build ./cmd/taskg` 和 `CGO_ENABLED=0 go test ./...` 通过
 
 ## 不做什么
 
