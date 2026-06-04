@@ -22,6 +22,7 @@ type Options struct {
 
 	DataDir     string
 	DBPath      string
+	DBURL       string
 	Server      string
 	Token       string
 	Workspace   string
@@ -67,6 +68,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&opts.DataDir, "data-dir", opts.DataDir, "data directory")
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db", opts.DBPath, "SQLite database path")
+	cmd.PersistentFlags().StringVar(&opts.DBURL, "db-url", opts.DBURL, "Database URL (postgres://...); mutually exclusive with --db")
 	cmd.PersistentFlags().StringVar(&opts.Server, "server", opts.Server, "remote taskg server base URL")
 	cmd.PersistentFlags().StringVar(&opts.Token, "token", opts.Token, "remote bearer token")
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
@@ -206,7 +208,7 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 
 func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
 	rc = map[string]*string{}
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--db-url": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
 		if key, value, ok := parseRCOverride(args[i]); ok {
@@ -319,7 +321,7 @@ func isDashTag(arg string) bool {
 
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--db-url": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
@@ -640,6 +642,7 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts := base
 	opts.DataDir = getCmdStringFlag(cmd, "data-dir", opts.DataDir)
 	opts.DBPath = getCmdStringFlag(cmd, "db", opts.DBPath)
+	opts.DBURL = getCmdStringFlag(cmd, "db-url", opts.DBURL)
 	opts.Server = getCmdStringFlag(cmd, "server", opts.Server)
 	opts.Token = getCmdStringFlag(cmd, "token", opts.Token)
 	opts.Workspace = getCmdStringFlag(cmd, "workspace", opts.Workspace)
@@ -708,6 +711,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
+		DBURL:   opts.DBURL,
 		Server:  opts.Server,
 		Token:   opts.Token,
 		JSON:    opts.JSON,
@@ -717,7 +721,11 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	store, err := storage.Open(cfg.DatabasePath)
+	dbTarget := cfg.DatabaseURL
+	if dbTarget == "" {
+		dbTarget = cfg.DatabasePath
+	}
+	store, err := storage.Open(dbTarget)
 	if err != nil {
 		return nil, nil, err
 	}

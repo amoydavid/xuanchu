@@ -277,6 +277,7 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
+		DBURL:   opts.DBURL,
 		JSON:    opts.JSON,
 		NoColor: opts.NoColor,
 		Env:     env,
@@ -284,7 +285,11 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	if err != nil {
 		return config.Runtime{}, err
 	}
-	store, err := storage.Open(cfg.DatabasePath)
+	dbTarget := cfg.DatabaseURL
+	if dbTarget == "" {
+		dbTarget = cfg.DatabasePath
+	}
+	store, err := storage.Open(dbTarget)
 	if err != nil {
 		return config.Runtime{}, err
 	}

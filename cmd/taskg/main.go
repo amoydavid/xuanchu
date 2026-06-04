@@ -47,6 +47,7 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 	cfg, err := config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
+		DBURL:   opts.DBURL,
 		Server:  opts.Server,
 		Token:   opts.Token,
 		JSON:    opts.JSON,
@@ -57,6 +58,9 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 		return
 	}
 	if cfg.RemoteServer != "" {
+		return
+	}
+	if cfg.DatabaseURL != "" {
 		return
 	}
 	store, err := storage.Open(cfg.DatabasePath)
@@ -120,6 +124,11 @@ func warningOptionsFromArgs(args []string, base cli.Options) cli.Options {
 			i++
 		case strings.HasPrefix(arg, "--db="):
 			opts.DBPath = strings.TrimPrefix(arg, "--db=")
+		case arg == "--db-url" && i+1 < len(args):
+			opts.DBURL = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--db-url="):
+			opts.DBURL = strings.TrimPrefix(arg, "--db-url=")
 		case arg == "--data-dir" && i+1 < len(args):
 			opts.DataDir = args[i+1]
 			i++

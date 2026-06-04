@@ -18,7 +18,7 @@ func RuntimeEnv() map[string]string {
 	values := map[string]string{}
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-		"TASKG_DB", "TASKG_SERVER", "TASKG_TOKEN",
+		"TASKG_DB", "TASKG_DB_URL", "TASKG_SERVER", "TASKG_TOKEN",
 	} {
 		if value, ok := os.LookupEnv(key); ok {
 			values[key] = value

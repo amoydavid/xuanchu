@@ -34,6 +34,7 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			cfg, err := config.Resolve(config.Options{
 				DataDir: currentOpts.DataDir,
 				DBPath:  currentOpts.DBPath,
+				DBURL:   currentOpts.DBURL,
 				JSON:    currentOpts.JSON,
 				NoColor: currentOpts.NoColor,
 				Env:     env,
@@ -41,7 +42,11 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := storage.Open(cfg.DatabasePath)
+			dbTarget := cfg.DatabaseURL
+			if dbTarget == "" {
+				dbTarget = cfg.DatabasePath
+			}
+			store, err := storage.Open(dbTarget)
 			if err != nil {
 				return err
 			}

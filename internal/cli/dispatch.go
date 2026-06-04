@@ -12,6 +12,7 @@ func resolveConfigFromOpts(opts Options) (config.Config, error) {
 	return config.Resolve(config.Options{
 		DataDir: opts.DataDir,
 		DBPath:  opts.DBPath,
+		DBURL:   opts.DBURL,
 		Server:  opts.Server,
 		Token:   opts.Token,
 		JSON:    opts.JSON,
