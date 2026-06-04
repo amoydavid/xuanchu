@@ -22,7 +22,9 @@ taskg 当前只支持 SQLite（`github.com/glebarez/sqlite`，纯 Go，零 CGO�
 
 ## 包结构变更
 
-`internal/storage/sqlite` 重命名为 `internal/storage`。文件组织：
+`internal/storage/sqlite` 重命名为 `internal/storage`。这是本 milestone 最大的机械性改动，涉及 36+ 个文件的 import 路径替换（`sqlite.Open` → `storage.Open`、`*sqlite.Store` → `*storage.Store` 等），但每个文件的改动仅限于 import 路径，不涉及业务逻辑变更。
+
+文件组织：
 
 ```
 internal/storage/
@@ -65,22 +67,25 @@ internal/storage/
 纯净建表：
 
 - 只使用 GORM `AutoMigrate` 创建全部表和索引
-- 不执行任何历史迁移
+- 不执行 `prepareWorkspaceSchemaForM4`（M4 历史迁移仅 SQLite 路径）
+- 不执行 `prepareProjectSchemaForM5`（M5 历史迁移仅 SQLite 路径）
 - 不使用 PRAGMA
 - GORM 对 PostgreSQL 自动处理类型映射（`TEXT → text`、`INTEGER → bigint`、`NUMERIC → numeric`）
 - M5 手写 DDL 不需要，因为 `AutoMigrate` 直接创建正确的 schema
 - M5 的关联表 DDL（`m5TaskRelationSchemas`）在 PostgreSQL 下由 `AutoMigrate` 等价处理
 
+`migrate()` 入口按 dialect 分发，SQLite 路径调用 `prepareWorkspaceSchemaForM4` + `prepareProjectSchemaForM5` + `AutoMigrate`，PostgreSQL 路径只调用 `AutoMigrate`。
+
 ## Query 编译方言适配
 
 `QueryCompileOptions` 新增 `Dialect string` 字段。
 
-需要适配的 SQL 差异：
+需要适配的 SQL 差异（均位于 `query_scope.go` 的 `compileUDAPredicate` 函数内）：
 
-| SQLite | PostgreSQL | 用途 |
-|---|---|---|
-| `LIKE` | `ILIKE` | 大小写不敏感的文本搜索 |
-| `CAST(... AS REAL)` | `CAST(... AS DOUBLE PRECISION)` | UDA numeric/duration 比较 |
+| SQLite | PostgreSQL | 用途 | 出现位置 |
+|---|---|---|---|
+| `LIKE` | `ILIKE` | 大小写不敏感的文本搜索（description、bare text、UDA string、tag、annotation） | `compilePredicate` 多处 |
+| `CAST(... AS REAL)` | `CAST(... AS DOUBLE PRECISION)` | UDA numeric/duration 比较 | `compileUDAPredicate` 第 241-244 行，共 3 处（`=`、`<`、`>`） |
 
 提供 dialect helper 函数：
 
@@ -103,23 +108,49 @@ func realCastType(dialect string) string
 | 环境变量 | `TASKG_DB_URL` | 同上 |
 | TOML | `[database]` 段 `url = "..."` | 同上 |
 
-优先级：CLI flag > 环境变量 > TOML > 默认值。
+### 优先级
 
-与 `--db` 的关系：
+完整解析优先级（从高到低）：
 
-- `--db` 保持现有行为（SQLite 文件路径）
-- `--db-url` 和 `--db` 互斥，同时指定返回错误
-- 两者都不指定：走默认 SQLite 路径 `~/.local/share/taskg/taskg.db`
-- 只指定 `--db-url`：按 scheme 路由
+1. `--db-url` CLI flag（如果指定，直接使用，忽略其他所有来源）
+2. `TASKG_DB_URL` 环境变量（如果指定且 `--db-url` 未指定）
+3. `[database] url = "..."` TOML 配置（如果上述都未指定）
+4. `--db` CLI flag（如果指定，走 SQLite 文件路径）
+5. `TASKG_DB` 环境变量
+6. `[database] path = "..."` TOML 配置
+7. 默认 SQLite 路径 `~/.local/share/taskg/taskg.db`
 
-`internal/config` 改动：
+**互斥规则：**
+
+- `--db-url` 和 `--db` 同时指定 → 返回错误
+- `TASKG_DB_URL` 和 `TASKG_DB` 同时存在 → `TASKG_DB_URL` 优先（与环境变量优先级一致）
+- 只指定 `--db-url` 或 `TASKG_DB_URL` → 按 scheme 路由（`postgres://` → PostgreSQL，否则报错）
+- 只指定 `--db` 或 `TASKG_DB` → 走 SQLite 文件路径
+- `--db` 接收到含 `://` 的值时返回错误，防止误用
+
+### TOML 示例
+
+```toml
+# PostgreSQL（优先于 database.path）
+[database]
+url = "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+
+# SQLite（url 未设置时生效）
+[database]
+path = "/path/to/taskg.db"
+```
+
+### 代码改动
+
+`internal/config`：
 
 - `Config` struct 新增 `DatabaseURL string`
-- 数据库路径解析逻辑扩展：有 `DatabaseURL` 时返回 URL，否则走现有路径解析
+- `ResolveDBURL()` 新增：按上述优先级返回有效的数据库 URL 或空字符串
+- 现有 `ResolveDBPath()` 保持不变，仅在 `ResolveDBURL()` 返回空时被调用
 
-`internal/app` 改动：
+`internal/app`：
 
-- 从 config 取 `DatabaseURL`，传给 `storage.Open(dbURL)`
+- 从 config 取 `ResolveDBURL()` 结果，非空时传给 `storage.Open(dbURL)`，否则传 `storage.Open(ResolveDBPath())`
 
 ## 依赖变更
 
@@ -146,7 +177,7 @@ func realCastType(dialect string) string
   2. `AutoMigrate` 创建正确的表和索引
   3. `ensureLocalIdentity` 正常执行
   4. 核心 repo CRUD 通过（Task、Project、Workspace）
-  5. Query 编译使用 `ILIKE` / `DOUBLE PRECISION`
+  5. Query 编译方言验证（纯单元测试，不依赖 PostgreSQL 实例：`CompileQuery` 对 SQLite/PostgreSQL dialect 输出正确的 SQL，验证 `ILIKE` / `DOUBLE PRECISION`）
 
 ### 集成测试
 

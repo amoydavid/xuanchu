@@ -28,6 +28,7 @@
 | M11 | 已完成 | 用户外部 ID 绑定 |
 | M12 | 已完成 | 任务外部关联 |
 | M13 | 已完成 | 项目 Annotation 与 Timeline |
+| M14 | 进行中 | 多数据库支持（SQLite / PostgreSQL） |
 
 ## M0：本地单用户 CLI
 
@@ -872,7 +873,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M13 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline 的完整能力栈。
+M13 已完成。M14（多数据库支持）进行中。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline 的完整能力栈。
 
 后续方向待定，可能包括：
 
