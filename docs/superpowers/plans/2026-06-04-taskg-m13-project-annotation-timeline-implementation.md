@@ -349,7 +349,7 @@ func buildProjectAnnotatedHookEvent(project ProjectView, annotation ProjectAnnot
         WorkspaceID:   runtime.WorkspaceID,
         WorkspaceSlug: runtime.WorkspaceSlug,
         ProjectID:     &project.ID,
-        ProjectSlug:   strPtr(project.Slug),
+        ProjectSlug:   &view.Slug,
         ObjectKind:    "project",
         ObjectID:      project.ID,
         Data:          map[string]any{"annotation_id": annotation.ID, "content_preview": truncateString(annotation.Content, 200)},
@@ -366,7 +366,7 @@ func buildProjectDenotatedHookEvent(project ProjectView, annotationID string, ru
         WorkspaceID:   runtime.WorkspaceID,
         WorkspaceSlug: runtime.WorkspaceSlug,
         ProjectID:     &project.ID,
-        ProjectSlug:   strPtr(project.Slug),
+        ProjectSlug:   &view.Slug,
         ObjectKind:    "project",
         ObjectID:      project.ID,
         Data:          map[string]any{"annotation_id": annotationID},
@@ -377,8 +377,6 @@ func buildProjectDenotatedHookEvent(project ProjectView, annotationID string, ru
 需要辅助函数：
 
 ```go
-func strPtr(s string) *string { return &s }
-
 func truncateString(s string, maxLen int) string {
     if len(s) <= maxLen {
         return s
@@ -387,7 +385,7 @@ func truncateString(s string, maxLen int) string {
 }
 ```
 
-注意：检查 `strPtr` 是否已存在（`audit.go:179` 有 `stringPtr`，但接收的是 `string` 而非创建指针）。如果 `strPtr` 已在 hook_event.go 中定义则不复用。
+注意：`stringPtr` 已存在于 `audit.go:179`，可直接使用。hook_event.go 中 `ProjectSlug` 字段直接用 `&pv.Slug` 赋值即可（参考 `buildProjectArchivedHookEvent`）。`strPtr` 只在 test 文件中存在，app 层不要重复定义。
 
 - [ ] **Step 2：实现 ProjectAnnotate**
 
@@ -1111,9 +1109,55 @@ func renderProjectAnnotationsJSON(cmd *cobra.Command, asJSON bool, annotations [
     }
     return nil
 }
+
+func renderTimelineEntries(cmd *cobra.Command, asJSON bool, entries []remote.TimelineEntryDTO) error {
+    if asJSON {
+        return render.JSON(cmd.OutOrStdout(), entries)
+    }
+    if len(entries) == 0 {
+        fmt.Fprintln(cmd.OutOrStdout(), "No timeline entries.")
+        return nil
+    }
+    for _, e := range entries {
+        label := e.SourceLabel
+        if len(label) > 40 {
+            label = label[:40] + "..."
+        }
+        fmt.Fprintf(cmd.OutOrStdout(), "[%s] <%s> %s: %s\n", formatUnixTime(e.Entry), e.SourceType, label, e.Content)
+    }
+    return nil
+}
+
+func renderTimelineEntriesApp(cmd *cobra.Command, asJSON bool, entries []app.TimelineEntry) error {
+    if asJSON {
+        return render.JSON(cmd.OutOrStdout(), entries)
+    }
+    if len(entries) == 0 {
+        fmt.Fprintln(cmd.OutOrStdout(), "No timeline entries.")
+        return nil
+    }
+    for _, e := range entries {
+        label := e.SourceLabel
+        if len(label) > 40 {
+            label = label[:40] + "..."
+        }
+        fmt.Fprintf(cmd.OutOrStdout(), "[%s] <%s> %s: %s\n", formatUnixTime(e.Entry), e.SourceType, label, e.Content)
+    }
+    return nil
+}
 ```
 
 需要 `formatUnixTime` — 检查 render 包中是否已有类似函数。
+
+经确认，`formatUnixTime` 不存在于代码库中。在 `project.go` 的 render 辅助函数区域添加：
+
+```go
+func formatUnixTime(unix int64) string {
+    return time.Unix(unix, 0).Format("2006-01-02 15:04:05")
+}
+```
+
+需要导入 `time` 包。
 
 - [ ] **Step 6：修改 project info 渲染，展示 RecentAnnotations**
 
@@ -1228,7 +1272,60 @@ case "timeline":
 
 - [ ] **Step 4：修改 handleRemoteTargetAction**
 
-类似地在远程模式中增加 `annotations` 和 `timeline` case，以及 `annotate` 的 project 回退。
+在远程模式的 `handleRemoteTargetAction` 中：
+
+修改 `case "annotate"` — 先尝试 task annotate，失败后回退 project：
+
+```go
+case "annotate":
+    if len(actionArgs) == 0 {
+        return fmt.Errorf("annotate requires a description")
+    }
+    content := strings.Join(actionArgs, " ")
+    _, err := client.AnnotateTask(ctx, opts.Workspace, target, content)
+    if err != nil {
+        if isPossibleProjectSlug(positional[0]) {
+            _, projectErr := client.AnnotateProject(ctx, opts.Workspace, target, content)
+            if projectErr == nil {
+                fmt.Fprintln(cmd.OutOrStdout(), "Annotated project", positional[0])
+                return nil
+            }
+        }
+        return err
+    }
+    fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", positional[0])
+```
+
+新增 `case "annotations"`：
+
+```go
+case "annotations":
+    tsk, err := client.GetTask(ctx, opts.Workspace, target)
+    if err == nil {
+        return renderAnnotations(cmd, opts.JSON, tsk.Annotations)
+    }
+    if isPossibleProjectSlug(positional[0]) {
+        annotations, err := client.ListProjectAnnotations(ctx, opts.Workspace, target)
+        if err == nil {
+            return renderProjectAnnotations(cmd, opts.JSON, annotations)
+        }
+    }
+    return fmt.Errorf("target %q not found", positional[0])
+```
+
+新增 `case "timeline"`：
+
+```go
+case "timeline":
+    if !isPossibleProjectSlug(positional[0]) {
+        return fmt.Errorf("timeline is only available for projects")
+    }
+    entries, err := client.ProjectTimeline(ctx, opts.Workspace, target, 50)
+    if err != nil {
+        return err
+    }
+    return renderTimelineEntries(cmd, opts.JSON, entries)
+```
 
 - [ ] **Step 5：验证**
 
