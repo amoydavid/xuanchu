@@ -4205,3 +4205,174 @@ func TestAddProjectRejectsDigitStartSlug(t *testing.T) {
 		t.Fatal("expected digit-starting slug to be rejected")
 	}
 }
+
+func TestServiceProjectAnnotateAndList(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	annotation, err := svc.ProjectAnnotate("test-proj", "first note")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if annotation.Content != "first note" {
+		t.Fatalf("Content = %q, want %q", annotation.Content, "first note")
+	}
+
+	annotations, err := svc.ProjectAnnotations("test-proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 1 {
+		t.Fatalf("annotations count = %d, want 1", len(annotations))
+	}
+	if annotations[0].ID != annotation.ID {
+		t.Fatalf("annotation ID mismatch")
+	}
+
+	_ = project
+}
+
+func TestServiceProjectDenotate(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	annotation, err := svc.ProjectAnnotate("test-proj", "will be removed")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ProjectDenotate("test-proj", annotation.ID); err != nil {
+		t.Fatalf("ProjectDenotate() error = %v", err)
+	}
+
+	annotations, err := svc.ProjectAnnotations("test-proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 0 {
+		t.Fatalf("annotations after denotate = %d, want 0", len(annotations))
+	}
+}
+
+func TestServiceProjectDenotateNotFound(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = svc.ProjectDenotate("test-proj", "nonexistent-id")
+	if err == nil {
+		t.Fatal("ProjectDenotate(nonexistent) error = nil, want error")
+	}
+}
+
+func TestServiceProjectAnnotateRejectsArchived(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ArchiveProject(project.ID); err != nil {
+		t.Fatalf("ArchiveProject() error = %v", err)
+	}
+
+	_, err = svc.ProjectAnnotate("test-proj", "should fail")
+	if err == nil {
+		t.Fatal("ProjectAnnotate(archived) error = nil, want error")
+	}
+}
+
+func TestServiceProjectAnnotateRejectsEmptyContent(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ProjectAnnotate("test-proj", "")
+	if err == nil {
+		t.Fatal("ProjectAnnotate(empty) error = nil, want error")
+	}
+}
+
+func TestServiceProjectAnnotateUpdatesModifiedAt(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeModified := project.ModifiedAt
+
+	svc2 := newTestServiceWithRuntime(t, store, 200, "local", "local")
+	_, err = svc2.ProjectAnnotate("test-proj", "new note")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := svc2.ProjectInfo("test-proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ModifiedAt <= beforeModified {
+		t.Fatalf("ModifiedAt = %d, want > %d", updated.ModifiedAt, beforeModified)
+	}
+}
+
+func TestServiceProjectTimeline(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ProjectAnnotate("test-proj", "project note")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := svc.Add(AddInput{Description: "task", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc2 := newTestServiceWithRuntime(t, store, 200, "local", "local")
+	if err := svc2.Annotate(task.UUID, "task note"); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := svc2.ProjectTimeline("test-proj", TimelineOptions{Limit: 50, Offset: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("timeline entries = %d, want 2", len(entries))
+	}
+
+	sourceTypes := map[string]bool{}
+	for _, e := range entries {
+		sourceTypes[e.SourceType] = true
+	}
+	if !sourceTypes["project"] || !sourceTypes["task"] {
+		t.Fatalf("timeline missing source types: %+v", entries)
+	}
+}

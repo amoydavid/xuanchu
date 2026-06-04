@@ -10,17 +10,41 @@ import (
 	"github.com/dajee/taskg/internal/storage/sqlite"
 )
 
+type ProjectAnnotationInfo struct {
+	ID        string
+	ProjectID string
+	Entry     int64
+	Content   string
+	CreatedBy string
+	CreatedAt int64
+}
+
+type TimelineOptions struct {
+	Limit  int
+	Offset int
+}
+
+type TimelineEntry struct {
+	SourceType  string `json:"source_type"`
+	SourceID    string `json:"source_id"`
+	SourceLabel string `json:"source_label"`
+	Entry       int64  `json:"entry"`
+	Content     string `json:"content"`
+	CreatedBy   string `json:"created_by"`
+}
+
 type ProjectView struct {
-	ID          string
-	WorkspaceID string
-	Slug        string
-	Name        string
-	Description string
-	Status      string
-	TaskCount   int
-	CreatedAt   int64
-	ModifiedAt  int64
-	ArchivedAt  *int64
+	ID                string
+	WorkspaceID       string
+	Slug              string
+	Name              string
+	Description       string
+	Status            string
+	TaskCount         int
+	CreatedAt         int64
+	ModifiedAt        int64
+	ArchivedAt        *int64
+	RecentAnnotations []ProjectAnnotationInfo
 }
 
 type AddProjectInput struct {
@@ -262,7 +286,16 @@ func (s *Service) projectViewForRow(project sqlite.Project) (ProjectView, error)
 	if err != nil {
 		return ProjectView{}, err
 	}
-	return projectViewFromRow(project, counts[project.ID]), nil
+	view := projectViewFromRow(project, counts[project.ID])
+	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	recent, err := repo.RecentByProject(project.ID, 5)
+	if err != nil {
+		return ProjectView{}, err
+	}
+	for _, a := range recent {
+		view.RecentAnnotations = append(view.RecentAnnotations, projectAnnotationInfoFromModel(a))
+	}
+	return view, nil
 }
 
 func projectViewFromRow(project sqlite.Project, taskCount int) ProjectView {
@@ -325,4 +358,180 @@ func normalizeProjectSlug(slug string) (string, error) {
 		return "", RuntimeError{Code: "project_invalid_slug", Message: fmt.Sprintf("project slug %q is invalid", slug)}
 	}
 	return slug, nil
+}
+
+func projectAnnotationInfoFromModel(m sqlite.ProjectAnnotation) ProjectAnnotationInfo {
+	return ProjectAnnotationInfo{
+		ID:        m.ID,
+		ProjectID: m.ProjectID,
+		Entry:     m.Entry,
+		Content:   m.Content,
+		CreatedBy: m.CreatedBy,
+		CreatedAt: m.CreatedAt,
+	}
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
+}
+
+func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotationInfo, error) {
+	if err := s.Require(PermissionProjectManage); err != nil {
+		return ProjectAnnotationInfo{}, err
+	}
+	var result ProjectAnnotationInfo
+	err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		annotation, project, err := tx.projectAnnotateLocked(projectRef, content)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = annotation
+		view := projectViewFromRow(project, 0)
+		event := buildProjectAnnotatedHookEvent(view, annotation, tx.runtime, tx.clock.Unix())
+		entry := AuditEntry{
+			WorkspaceID: &project.WorkspaceID,
+			ProjectID:   &project.ID,
+			TargetType:  "project",
+			TargetID:    project.ID,
+		}
+		return []AuditEntry{entry}, []HookEvent{event}, nil
+	})
+	return result, err
+}
+
+func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnnotationInfo, sqlite.Project, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ProjectAnnotationInfo{}, sqlite.Project{}, fmt.Errorf("annotation content is required")
+	}
+	project, err := s.ResolveProject(projectRef)
+	if err != nil {
+		return ProjectAnnotationInfo{}, sqlite.Project{}, err
+	}
+	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
+		return ProjectAnnotationInfo{}, sqlite.Project{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+	}
+	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	now := s.clock.Unix()
+	for attempts := 0; attempts < 3; attempts++ {
+		entry := now + int64(attempts)
+		annotation := sqlite.ProjectAnnotation{
+			ID:        uuid.NewString(),
+			ProjectID: project.ID,
+			Entry:     entry,
+			Content:   content,
+			CreatedBy: s.runtime.ActorUserID,
+			CreatedAt: now,
+		}
+		created, err := repo.Create(annotation)
+		if err != nil {
+			if sqlite.IsUniqueConstraintError(err) {
+				continue
+			}
+			return ProjectAnnotationInfo{}, sqlite.Project{}, err
+		}
+		project.ModifiedAt = now
+		if err := s.projectRepo.Update(project); err != nil {
+			return ProjectAnnotationInfo{}, sqlite.Project{}, err
+		}
+		return projectAnnotationInfoFromModel(created), project, nil
+	}
+	return ProjectAnnotationInfo{}, sqlite.Project{}, fmt.Errorf("annotation conflict could not be resolved")
+}
+
+func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
+	if err := s.Require(PermissionProjectManage); err != nil {
+		return err
+	}
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		project, annotationID, err := tx.projectDenotateLocked(projectRef, annotationID)
+		if err != nil {
+			return nil, nil, err
+		}
+		view := projectViewFromRow(project, 0)
+		event := buildProjectDenotatedHookEvent(view, annotationID, tx.runtime, tx.clock.Unix())
+		entry := AuditEntry{
+			WorkspaceID: &project.WorkspaceID,
+			ProjectID:   &project.ID,
+			TargetType:  "project",
+			TargetID:    project.ID,
+		}
+		return []AuditEntry{entry}, []HookEvent{event}, nil
+	})
+}
+
+func (s *Service) projectDenotateLocked(projectRef, annotationID string) (sqlite.Project, string, error) {
+	project, err := s.ResolveProject(projectRef)
+	if err != nil {
+		return sqlite.Project{}, "", err
+	}
+	if project.Status == string(sqlite.ProjectStatusArchived) || project.ArchivedAt != nil {
+		return sqlite.Project{}, "", RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+	}
+	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	annotation, err := repo.GetByID(annotationID)
+	if err != nil {
+		return sqlite.Project{}, "", err
+	}
+	if annotation.ProjectID != project.ID {
+		return sqlite.Project{}, "", RuntimeError{Code: "annotation_not_found", Message: fmt.Sprintf("annotation %q does not belong to project %q", annotationID, project.Slug)}
+	}
+	if err := repo.Delete(annotationID); err != nil {
+		return sqlite.Project{}, "", err
+	}
+	project.ModifiedAt = s.clock.Unix()
+	if err := s.projectRepo.Update(project); err != nil {
+		return sqlite.Project{}, "", err
+	}
+	return project, annotationID, nil
+}
+
+func (s *Service) ProjectAnnotations(projectRef string) ([]ProjectAnnotationInfo, error) {
+	if err := s.Require(PermissionProjectRead); err != nil {
+		return nil, err
+	}
+	project, err := s.ResolveProject(projectRef)
+	if err != nil {
+		return nil, err
+	}
+	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	annotations, err := repo.ListByProject(project.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ProjectAnnotationInfo, 0, len(annotations))
+	for _, a := range annotations {
+		out = append(out, projectAnnotationInfoFromModel(a))
+	}
+	return out, nil
+}
+
+func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]TimelineEntry, error) {
+	if err := s.Require(PermissionProjectRead); err != nil {
+		return nil, err
+	}
+	project, err := s.ResolveProject(projectRef)
+	if err != nil {
+		return nil, err
+	}
+	repo := sqlite.NewProjectAnnotationRepository(s.store.DB())
+	rows, err := repo.TimelineByProjectID(project.ID, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TimelineEntry, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, TimelineEntry{
+			SourceType:  r.SourceType,
+			SourceID:    r.SourceID,
+			SourceLabel: r.SourceLabel,
+			Entry:       r.Entry,
+			Content:     r.Content,
+			CreatedBy:   r.CreatedBy,
+		})
+	}
+	return out, nil
 }

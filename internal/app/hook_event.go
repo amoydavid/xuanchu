@@ -80,6 +80,40 @@ func buildProjectArchivedPayload(pv ProjectView) map[string]any {
 	}
 }
 
+func buildProjectAnnotatedHookEvent(pv ProjectView, annotation ProjectAnnotationInfo, runtime RuntimeContext, now int64) HookEvent {
+	return HookEvent{
+		EventID:       uuid.NewString(),
+		EventType:     "project.annotated",
+		EventVersion:  1,
+		OccurredAt:    now,
+		ActorUserID:   runtime.ActorUserID,
+		WorkspaceID:   pv.WorkspaceID,
+		WorkspaceSlug: runtime.WorkspaceSlug,
+		ProjectID:     &pv.ID,
+		ProjectSlug:   &pv.Slug,
+		ObjectKind:    "project",
+		ObjectID:      pv.ID,
+		Data:          map[string]any{"annotation_id": annotation.ID, "content_preview": truncateString(annotation.Content, 200)},
+	}
+}
+
+func buildProjectDenotatedHookEvent(pv ProjectView, annotationID string, runtime RuntimeContext, now int64) HookEvent {
+	return HookEvent{
+		EventID:       uuid.NewString(),
+		EventType:     "project.denotated",
+		EventVersion:  1,
+		OccurredAt:    now,
+		ActorUserID:   runtime.ActorUserID,
+		WorkspaceID:   pv.WorkspaceID,
+		WorkspaceSlug: runtime.WorkspaceSlug,
+		ProjectID:     &pv.ID,
+		ProjectSlug:   &pv.Slug,
+		ObjectKind:    "project",
+		ObjectID:      pv.ID,
+		Data:          map[string]any{"annotation_id": annotationID},
+	}
+}
+
 func projectViewToMap(pv ProjectView) map[string]any {
 	return map[string]any{
 		"id":           pv.ID,
