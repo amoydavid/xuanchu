@@ -27,6 +27,7 @@
 | M10 | 已完成 | Token 委托与 Impersonation |
 | M11 | 已完成 | 用户外部 ID 绑定 |
 | M12 | 已完成 | 任务外部关联 |
+| M13 | 已完成 | 项目 Annotation 与 Timeline |
 
 ## M0：本地单用户 CLI
 
@@ -845,9 +846,33 @@ CGO_ENABLED=0 go test ./...
 CGO_ENABLED=0 go build ./cmd/taskg
 ```
 
+## M13：项目 Annotation 与 Timeline
+
+**状态：已完成。**
+
+为项目增加 annotation 能力和聚合时间线接口。核心认知：project annotation + 该项目下所有 task annotation = 项目完整时间线。
+
+核心能力：
+
+- 新增 `project_annotations` 表，支持多行文本 annotation（type:text）
+- Agent 通过 MCP 读写（`project.annotate` / `project.denotate` / `project.annotations` / `project.timeline`）
+- CLI 和 HTTP API 均可操作
+- Timeline 聚合接口通过 SQL UNION 合并 project + task annotations
+- `project info` 展示最近 5 条 annotation
+- `normalizeProjectSlug` 强化：拒绝数字开头，确保与 task 数字 ID 不冲突
+- 目标风格 `taskg <slug> annotate <content>` 自动回退到 project
+
+验收：
+
+```bash
+go test ./...
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build ./cmd/taskg
+```
+
 ## 当前下一步
 
-M12 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联的完整能力栈。
+M13 已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline 的完整能力栈。
 
 后续方向待定，可能包括：
 
