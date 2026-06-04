@@ -30,7 +30,7 @@ func registerWorkspaceTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d workspace(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "workspace_current", Description: "Read the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in WorkspaceCurrentInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "workspace_get_current", Description: "Read the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in WorkspaceCurrentInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "workspace:read", app.PermissionWorkspaceRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

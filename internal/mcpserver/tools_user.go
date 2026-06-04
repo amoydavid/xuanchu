@@ -40,7 +40,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d user(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "user_info", Description: "Read a single user by name, email, or UUID; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserInfoInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "user_get", Description: "Read a single user by name, email, or UUID; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserInfoInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

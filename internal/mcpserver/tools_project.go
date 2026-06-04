@@ -88,7 +88,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "project "+project.Slug)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_current", Description: "Read explicit effective project scope; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectCurrentInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "project_get_current", Description: "Read explicit effective project scope; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectCurrentInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "project:read", app.PermissionProjectRead)
 		if err != nil {

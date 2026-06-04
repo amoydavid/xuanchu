@@ -222,13 +222,13 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"task_annotate", "task_depends", "task_start", "task_stop",
 		"task_link_add", "task_link_remove",
 		"report_run", "urgency_explain",
-		"workspace_list", "workspace_current",
-		"project_list", "project_get", "project_current",
+		"workspace_list", "workspace_get_current",
+		"project_list", "project_get", "project_get_current",
 		"project_annotate", "project_denotate",
 		"project_list_annotations", "project_list_timeline",
 		"member_list", "member_add",
-		"user_list", "user_info", "user_bind", "user_unbind",
-		"context_show", "context_set",
+		"user_list", "user_get", "user_bind", "user_unbind",
+		"context_get", "context_set",
 		"config_get", "config_set",
 	}
 	if len(result.Tools) != len(expectedTools) {
@@ -863,7 +863,7 @@ func TestMCPWorkspaceTools(t *testing.T) {
 		t.Fatalf("workspace.list returned %d workspace(s), want at least 2", len(workspaces))
 	}
 
-	current := callTool(t, session, "workspace_current", WorkspaceCurrentInput{Workspace: "team"})
+	current := callTool(t, session, "workspace_get_current", WorkspaceCurrentInput{Workspace: "team"})
 	if current.IsError {
 		t.Fatalf("workspace.current error: %v", parseError(t, current))
 	}
@@ -920,7 +920,7 @@ func TestMCPProjectTools(t *testing.T) {
 		t.Fatal("project.get without project or project_id should fail")
 	}
 
-	current := callTool(t, session, "project_current", ProjectCurrentInput{})
+	current := callTool(t, session, "project_get_current", ProjectCurrentInput{})
 	if current.IsError {
 		t.Fatalf("project.current error: %v", parseError(t, current))
 	}
@@ -942,7 +942,7 @@ func TestMCPContextTools(t *testing.T) {
 	if set.IsError {
 		t.Fatalf("context.set error: %v", parseError(t, set))
 	}
-	show := callTool(t, session, "context_show", ContextShowInput{})
+	show := callTool(t, session, "context_get", ContextShowInput{})
 	if show.IsError {
 		t.Fatalf("context.show error: %v", parseError(t, show))
 	}

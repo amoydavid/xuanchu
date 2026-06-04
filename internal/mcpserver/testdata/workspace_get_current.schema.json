@@ -1,18 +1,15 @@
 {
-  "description": "Read a single user by name, email, or UUID; read-only.",
+  "description": "Read the effective workspace; read-only.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "user": {
+      "workspace": {
         "type": "string"
       }
     },
-    "required": [
-      "user"
-    ],
     "type": "object"
   },
-  "name": "user_info",
+  "name": "workspace_get_current",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

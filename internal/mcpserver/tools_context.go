@@ -19,7 +19,7 @@ type ContextSetInput struct {
 }
 
 func registerContextTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "context_show", Description: "Show active or named context; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "context_get", Description: "Show active or named context; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:read", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

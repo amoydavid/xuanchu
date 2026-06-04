@@ -15,7 +15,7 @@
     },
     "type": "object"
   },
-  "name": "project_current",
+  "name": "project_get_current",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

@@ -12,7 +12,7 @@
     },
     "type": "object"
   },
-  "name": "context_show",
+  "name": "context_get",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

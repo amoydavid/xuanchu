@@ -229,10 +229,10 @@ type UserInfo struct {
 
 所有 MCP tool name 必须使用下划线 `_` 分隔，不使用点号 `.`。
 
-- 正确：`task_add`、`project_annotate`、`workspace_list`、`config_get`
-- 错误：`task.add`、`project.annotate`、`workspace.list`、`config.get`
+- 正确：`task_add`、`project_annotate`、`workspace_list`、`config_get`、`user_get`、`project_get_current`
+- 错误：`task.add`、`project.annotate`、`workspace.list`、`config.get`、`user_info`、`project_current`
 
-命名格式：`{资源}_{动作}`，如 `task_query`、`user_bind`、`member_add`。对于资源下的子资源，使用 `task_link_add`、`task_link_remove`、`project_list_annotations`、`project_list_timeline` 等格式。读操作（列出子资源）统一用 `list` 前缀，写操作（添加/删除）统一用动词。
+命名格式：`{资源}_{动作}`，如 `task_query`、`user_get`、`member_add`。对于资源下的子资源，使用 `task_link_add`、`task_link_remove`、`project_list_annotations`、`project_list_timeline` 等格式。读操作（列出子资源）统一用 `list` 前缀，写操作（添加/删除）统一用动词。
 
 ## 12. 禁止事项
 
