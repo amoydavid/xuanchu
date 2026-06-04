@@ -283,3 +283,108 @@ func TestTaskListByAssignee(t *testing.T) {
 		t.Fatalf("assignee query did not filter tasks: %s", body)
 	}
 }
+
+func TestTaskLinkAddAndList(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "link test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	body := `{"type":"document","url":"https://example.com","title":"Example"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks/"+created.UUID+"/links", body, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("add link status = %d body = %s", rr.Code, rr.Body.String())
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+created.UUID+"/links", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list links status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "document") || !strings.Contains(rr.Body.String(), "https://example.com") {
+		t.Fatalf("list links body = %s, want link data", rr.Body.String())
+	}
+}
+
+func TestTaskLinkAddRejectsMissingType(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "link test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	body := `{"url":"https://example.com","title":"Example"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks/"+created.UUID+"/links", body, headers)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "link_type_required")
+}
+
+func TestTaskLinkRemoveAndVerify(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "link test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	linkInfo, err := svc.TaskAddLink(created.UUID, "document", "https://example.com", "Example")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/tasks/"+created.UUID+"/links/"+linkInfo.ID, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("remove link status = %d body = %s", rr.Code, rr.Body.String())
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+created.UUID+"/links", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list links status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), linkInfo.ID) {
+		t.Fatalf("link still present after removal: %s", rr.Body.String())
+	}
+}
+
+func TestTaskLinkRemoveNotFound(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "link test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/tasks/"+created.UUID+"/links/nonexistent-link-id", headers)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "link_not_found")
+}

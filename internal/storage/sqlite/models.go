@@ -130,6 +130,7 @@ type Task struct {
 	Annotations []TaskAnnotation `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Depends     []TaskDependency `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	UDAs        []TaskUDAValue   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	Links       []TaskLink       `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 }
 
 type TaskTag struct {

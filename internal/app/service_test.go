@@ -3988,3 +3988,211 @@ func mustUnix(t *testing.T, value string) int64 {
 	}
 	return parsed.Unix()
 }
+
+func TestServiceTaskAddLink(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	info, err := svc.TaskAddLink(created.UUID, "document", "https://example.com/doc", "Test Doc")
+	if err != nil {
+		t.Fatalf("TaskAddLink() error = %v", err)
+	}
+	if info.Type != "document" {
+		t.Fatalf("Type = %q, want %q", info.Type, "document")
+	}
+	if info.URL != "https://example.com/doc" {
+		t.Fatalf("URL = %q, want %q", info.URL, "https://example.com/doc")
+	}
+	if info.Title != "Test Doc" {
+		t.Fatalf("Title = %q, want %q", info.Title, "Test Doc")
+	}
+
+	tsk, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+	if len(tsk.Links) != 1 {
+		t.Fatalf("Links count = %d, want 1", len(tsk.Links))
+	}
+	if tsk.Links[0].ID != info.ID {
+		t.Fatalf("Link ID = %q, want %q", tsk.Links[0].ID, info.ID)
+	}
+}
+
+func TestServiceTaskAddLinkDuplicateURL(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	_, err = svc.TaskAddLink(created.UUID, "document", "https://example.com/doc", "First")
+	if err != nil {
+		t.Fatalf("first TaskAddLink() error = %v", err)
+	}
+
+	_, err = svc.TaskAddLink(created.UUID, "document", "https://example.com/doc", "Second")
+	if err == nil {
+		t.Fatal("duplicate TaskAddLink() error = nil, want link_duplicate")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || (runtimeErr.Code != "link_duplicate" && !strings.Contains(runtimeErr.Message, "already linked")) {
+		t.Fatalf("duplicate TaskAddLink() err = %#v, want RuntimeError with link_duplicate", err)
+	}
+}
+
+func TestServiceTaskRemoveLink(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	linkInfo, err := svc.TaskAddLink(created.UUID, "document", "https://example.com/doc", "Test Doc")
+	if err != nil {
+		t.Fatalf("TaskAddLink() error = %v", err)
+	}
+
+	if err := svc.TaskRemoveLink(created.UUID, linkInfo.ID); err != nil {
+		t.Fatalf("TaskRemoveLink() error = %v", err)
+	}
+
+	tsk, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+	if len(tsk.Links) != 0 {
+		t.Fatalf("Links after remove = %d, want 0", len(tsk.Links))
+	}
+}
+
+func TestServiceTaskRemoveLinkNotFound(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	err = svc.TaskRemoveLink(created.UUID, "nonexistent-link-id")
+	if err == nil {
+		t.Fatal("TaskRemoveLink(nonexistent) error = nil, want link_not_found")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "link_not_found" {
+		t.Fatalf("TaskRemoveLink(nonexistent) err = %#v, want RuntimeError(link_not_found)", err)
+	}
+}
+
+func TestServiceTaskRemoveLinkWrongTask(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	task1, err := svc.Add(AddInput{Description: "task one"})
+	if err != nil {
+		t.Fatalf("Add(task1) error = %v", err)
+	}
+	task2, err := svc.Add(AddInput{Description: "task two"})
+	if err != nil {
+		t.Fatalf("Add(task2) error = %v", err)
+	}
+
+	linkInfo, err := svc.TaskAddLink(task1.UUID, "document", "https://example.com/doc", "Test Doc")
+	if err != nil {
+		t.Fatalf("TaskAddLink() error = %v", err)
+	}
+
+	err = svc.TaskRemoveLink(task2.UUID, linkInfo.ID)
+	if err == nil {
+		t.Fatal("TaskRemoveLink(wrong task) error = nil, want link_not_found")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "link_not_found" {
+		t.Fatalf("TaskRemoveLink(wrong task) err = %#v, want RuntimeError(link_not_found)", err)
+	}
+}
+
+func TestServiceTaskAddLinkRejectsCompletedTask(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if err := svc.Done(created.UUID); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+
+	_, err = svc.TaskAddLink(created.UUID, "document", "https://example.com/doc", "Test Doc")
+	if err == nil {
+		t.Fatal("TaskAddLink(completed) error = nil, want task_not_writable")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "task_not_writable" {
+		t.Fatalf("TaskAddLink(completed) err = %#v, want RuntimeError(task_not_writable)", err)
+	}
+}
+
+func TestServiceTaskAddLinkUpdatesModifiedTimestamp(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	beforeModify := created.Modified
+
+	svc.clock = FixedClock{NowUnix: 200}
+	if _, err := svc.TaskAddLink(created.UUID, "document", "https://example.com/doc", "Test Doc"); err != nil {
+		t.Fatalf("TaskAddLink() error = %v", err)
+	}
+
+	tsk, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+	if tsk.Modified <= beforeModify {
+		t.Fatalf("Modified = %d, want > %d", tsk.Modified, beforeModify)
+	}
+}
+
+func TestServiceTaskAddLinkRequiresTypeAndURL(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	created, err := svc.Add(AddInput{Description: "test task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	_, err = svc.TaskAddLink(created.UUID, "", "https://example.com/doc", "Test Doc")
+	if err == nil {
+		t.Fatal("TaskAddLink(empty type) error = nil, want link_type_required")
+	}
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "link_type_required" {
+		t.Fatalf("TaskAddLink(empty type) err = %#v, want RuntimeError(link_type_required)", err)
+	}
+
+	_, err = svc.TaskAddLink(created.UUID, "document", "", "Test Doc")
+	if err == nil {
+		t.Fatal("TaskAddLink(empty url) error = nil, want link_url_required")
+	}
+	runtimeErr, ok = err.(RuntimeError)
+	if !ok || runtimeErr.Code != "link_url_required" {
+		t.Fatalf("TaskAddLink(empty url) err = %#v, want RuntimeError(link_url_required)", err)
+	}
+}

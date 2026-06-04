@@ -860,20 +860,42 @@ func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLi
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return task.TaskLinkInfo{}, err
 	}
-	tsk, err := s.resolveTargetForWrite(taskRef)
-	if err != nil {
+	var result task.TaskLinkInfo
+	if err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		created, updated, err := tx.addLinkLocked(taskRef, linkType, url, title)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = created
+		entry := AuditEntry{
+			Action:     "task.link.add",
+			TargetType: "task",
+			TargetID:   updated.UUID,
+			Payload:    map[string]any{"link_id": created.ID, "type": linkType, "url": url},
+		}
+		event := buildTaskHookEvent("task.modified", updated, tx.runtime, tx.clock.Unix())
+		return []AuditEntry{entry}, []HookEvent{event}, nil
+	}); err != nil {
 		return task.TaskLinkInfo{}, err
 	}
+	return result, nil
+}
+
+func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.TaskLinkInfo, task.Task, error) {
+	tsk, err := s.resolveTargetForWrite(taskRef)
+	if err != nil {
+		return task.TaskLinkInfo{}, task.Task{}, err
+	}
 	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
-		return task.TaskLinkInfo{}, RuntimeError{Code: "task_not_writable", Message: fmt.Sprintf("cannot add link to %s task", tsk.Status)}
+		return task.TaskLinkInfo{}, task.Task{}, RuntimeError{Code: "task_not_writable", Message: fmt.Sprintf("cannot add link to %s task", tsk.Status)}
 	}
 	linkType = strings.TrimSpace(linkType)
 	if linkType == "" {
-		return task.TaskLinkInfo{}, RuntimeError{Code: "link_type_required", Message: "link type is required"}
+		return task.TaskLinkInfo{}, task.Task{}, RuntimeError{Code: "link_type_required", Message: "link type is required"}
 	}
 	url = strings.TrimSpace(url)
 	if url == "" {
-		return task.TaskLinkInfo{}, RuntimeError{Code: "link_url_required", Message: "link url is required"}
+		return task.TaskLinkInfo{}, task.Task{}, RuntimeError{Code: "link_url_required", Message: "link url is required"}
 	}
 	now := s.clock.Unix()
 	link := sqlite.TaskLink{
@@ -888,46 +910,67 @@ func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLi
 	created, err := sqlite.NewTaskLinkRepository(s.store.DB()).Create(link)
 	if err != nil {
 		if sqlite.IsUniqueConstraintError(err) {
-			return task.TaskLinkInfo{}, RuntimeError{Code: "link_duplicate", Message: "this URL is already linked to the task"}
+			return task.TaskLinkInfo{}, task.Task{}, RuntimeError{Code: "link_duplicate", Message: "this URL is already linked to the task"}
 		}
-		return task.TaskLinkInfo{}, err
+		return task.TaskLinkInfo{}, task.Task{}, err
 	}
-	s.appendAuditEntry(AuditEntry{
-		Action:     "task.link.add",
-		TargetType: "task",
-		TargetID:   tsk.UUID,
-		Payload:    map[string]any{"link_id": created.ID, "type": linkType, "url": url},
-	})
+	tsk.Modified = now
+	if err := s.repo.Update(tsk); err != nil {
+		return task.TaskLinkInfo{}, task.Task{}, err
+	}
+	updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+	if err != nil {
+		return task.TaskLinkInfo{}, task.Task{}, err
+	}
 	return task.TaskLinkInfo{
 		ID: created.ID, Type: created.Type, URL: created.URL,
 		Title: created.Title, CreatedAt: created.CreatedAt, CreatedBy: created.CreatedBy,
-	}, nil
+	}, updated, nil
 }
 
 func (s *Service) TaskRemoveLink(taskRef, linkID string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		updated, err := tx.removeLinkLocked(taskRef, linkID)
+		if err != nil {
+			return nil, nil, err
+		}
+		entry := AuditEntry{
+			Action:     "task.link.remove",
+			TargetType: "task",
+			TargetID:   updated.UUID,
+			Payload:    map[string]any{"link_id": linkID},
+		}
+		event := buildTaskHookEvent("task.modified", updated, tx.runtime, tx.clock.Unix())
+		return []AuditEntry{entry}, []HookEvent{event}, nil
+	})
+}
+
+func (s *Service) removeLinkLocked(taskRef, linkID string) (task.Task, error) {
 	tsk, err := s.resolveTargetForWrite(taskRef)
 	if err != nil {
-		return err
+		return task.Task{}, err
 	}
 	linkRepo := sqlite.NewTaskLinkRepository(s.store.DB())
 	link, err := linkRepo.GetByID(linkID)
 	if err != nil {
-		return RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
+		return task.Task{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
 	}
 	if link.TaskUUID != tsk.UUID {
-		return RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
+		return task.Task{}, RuntimeError{Code: "link_not_found", Message: fmt.Sprintf("link %q not found", linkID)}
 	}
 	if err := linkRepo.Delete(linkID); err != nil {
-		return err
+		return task.Task{}, err
 	}
-	s.appendAuditEntry(AuditEntry{
-		Action:     "task.link.remove",
-		TargetType: "task",
-		TargetID:   tsk.UUID,
-		Payload:    map[string]any{"link_id": linkID},
-	})
-	return nil
+	tsk.Modified = s.clock.Unix()
+	if err := s.repo.Update(tsk); err != nil {
+		return task.Task{}, err
+	}
+	updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+	if err != nil {
+		return task.Task{}, err
+	}
+	return updated, nil
 }

@@ -1878,6 +1878,104 @@ func TestCLIConfigRejectsProjectScopedKeysWithoutScope(t *testing.T) {
 	}
 }
 
+func TestCLILinkAddListRemove(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "task with links")
+
+	out := run(t, bin, "--db", db, "1", "link", "add", "--type", "doc", "--url", "https://example.com/spec")
+	if !strings.Contains(out, "Added") {
+		t.Fatalf("link add output = %q", out)
+	}
+
+	out = run(t, bin, "--db", db, "1", "link", "list")
+	if !strings.Contains(out, "[doc]") || !strings.Contains(out, "https://example.com/spec") {
+		t.Fatalf("link list output = %q", out)
+	}
+
+	infoOut := run(t, bin, "--db", db, "--json", "info", "1")
+	var infoPayload map[string]any
+	if err := json.Unmarshal([]byte(infoOut), &infoPayload); err != nil {
+		t.Fatalf("info JSON parse error = %v, output = %q", err, infoOut)
+	}
+	linksRaw, _ := infoPayload["links"].([]any)
+	if len(linksRaw) != 1 {
+		t.Fatalf("links count = %d, want 1", len(linksRaw))
+	}
+	linkMap, _ := linksRaw[0].(map[string]any)
+	if linkMap["type"] != "doc" {
+		t.Fatalf("link type = %v, want doc", linkMap["type"])
+	}
+	linkID, _ := linkMap["id"].(string)
+
+	out = run(t, bin, "--db", db, "1", "link", "remove", linkID)
+	if !strings.Contains(out, "Removed") {
+		t.Fatalf("link remove output = %q", out)
+	}
+
+	out = run(t, bin, "--db", db, "1", "link", "list")
+	if !strings.Contains(out, "No links") {
+		t.Fatalf("expected no links, got = %q", out)
+	}
+}
+
+func TestCLILinkAddRequiresTypeAndURL(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "task for link validation")
+
+	out := runExpectError(t, bin, "--db", db, "1", "link", "add", "--url", "https://example.com")
+	if !strings.Contains(out, "required") && !strings.Contains(out, "type") {
+		t.Fatalf("expected type required error, got = %q", out)
+	}
+
+	out = runExpectError(t, bin, "--db", db, "1", "link", "add", "--type", "doc")
+	if !strings.Contains(out, "required") && !strings.Contains(out, "url") {
+		t.Fatalf("expected url required error, got = %q", out)
+	}
+}
+
+func TestCLILinkInfoShowsLinks(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "task with info links")
+	run(t, bin, "--db", db, "1", "link", "add", "--type", "doc", "--url", "https://example.com/spec")
+
+	out := run(t, bin, "--db", db, "info", "1")
+	if !strings.Contains(out, "Links") || !strings.Contains(out, "https://example.com/spec") {
+		t.Fatalf("info output should contain link info, got = %q", out)
+	}
+}
+
+func TestCLILinkListEmpty(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "task with no links")
+
+	out := run(t, bin, "--db", db, "1", "link", "list")
+	if !strings.Contains(out, "No links") {
+		t.Fatalf("expected no links message, got = %q", out)
+	}
+}
+
+func TestCLILinkAddRejectsCompletedTask(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "add", "completed task for link")
+	taskUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "/completed task for link/"))
+	run(t, bin, "--db", db, "1", "done")
+
+	_, err := runErr(t, bin, "--db", db, taskUUID, "link", "add", "--type", "doc", "--url", "https://example.com")
+	if err == nil {
+		t.Fatal("link add on completed task should fail")
+	}
+}
+
 func buildTaskg(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "taskg")

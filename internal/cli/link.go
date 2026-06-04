@@ -148,11 +148,19 @@ func runLinkAddRemote(cmd *cobra.Command, opts Options, target, linkType, linkUR
 	if err != nil {
 		return err
 	}
-	_, err = resolveRemoteTaskTarget(context.Background(), client, opts, target)
+	resolved, err := resolveRemoteTaskTarget(context.Background(), client, opts, target)
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("remote link add not yet implemented")
+	dto, err := client.AddTaskLink(context.Background(), opts.Workspace, resolved, linkType, linkURL, linkTitle)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return render.JSON(cmd.OutOrStdout(), dto)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Added %s link to task %s\n", dto.Type, target)
+	return nil
 }
 
 func runLinkListRemote(cmd *cobra.Command, opts Options, target string) error {
@@ -176,11 +184,15 @@ func runLinkRemoveRemote(cmd *cobra.Command, opts Options, target, linkID string
 	if err != nil {
 		return err
 	}
-	_, err = resolveRemoteTaskTarget(context.Background(), client, opts, target)
+	resolved, err := resolveRemoteTaskTarget(context.Background(), client, opts, target)
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("remote link remove not yet implemented")
+	if _, err := client.RemoveTaskLink(context.Background(), opts.Workspace, resolved, linkID); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Removed link from task %s\n", target)
+	return nil
 }
 
 func parseLinkActionArgs(actionArgs []string) (subAction string, flags []string, positional []string) {
@@ -257,10 +269,14 @@ func handleRemoteLinkAction(cmd *cobra.Command, opts Options, client *remote.Cli
 		if err != nil {
 			return err
 		}
-		_ = linkType
-		_ = linkURL
-		_ = linkTitle
-		return fmt.Errorf("remote link add not yet implemented")
+		dto, err := client.AddTaskLink(ctx, opts.Workspace, resolvedTarget, linkType, linkURL, linkTitle)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return render.JSON(cmd.OutOrStdout(), dto)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Added %s link to task %s\n", dto.Type, displayTarget)
 	case "list":
 		tsk, err := client.GetTask(ctx, opts.Workspace, resolvedTarget)
 		if err != nil {
@@ -271,11 +287,14 @@ func handleRemoteLinkAction(cmd *cobra.Command, opts Options, client *remote.Cli
 		if len(positional) != 1 {
 			return fmt.Errorf("link remove requires a link-id")
 		}
-		_ = positional[0]
-		return fmt.Errorf("remote link remove not yet implemented")
+		if _, err := client.RemoveTaskLink(ctx, opts.Workspace, resolvedTarget, positional[0]); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Removed link from task %s\n", displayTarget)
 	default:
 		return fmt.Errorf("unknown link subcommand %q (use: add, list, remove)", subAction)
 	}
+	return nil
 }
 
 func parseLinkAddFlags(flags []string) (linkType, linkURL, linkTitle string, err error) {

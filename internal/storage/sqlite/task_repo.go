@@ -11,7 +11,8 @@ import (
 )
 
 type TaskRepository struct {
-	db *gorm.DB
+	db          *gorm.DB
+	taskLinkRepo *TaskLinkRepository
 }
 
 type ListOptions struct {
@@ -24,7 +25,7 @@ type ListOptions struct {
 }
 
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
-	return &TaskRepository{db: db}
+	return &TaskRepository{db: db, taskLinkRepo: NewTaskLinkRepository(db)}
 }
 
 func (r *TaskRepository) preloadAssociations() *gorm.DB {
@@ -459,7 +460,7 @@ func (r *TaskRepository) loadLinksByTask(models []Task) (map[string][]domain.Tas
 	if len(taskUUIDs) == 0 {
 		return nil, nil
 	}
-	linkRepo := NewTaskLinkRepository(r.db)
+	linkRepo := r.taskLinkRepo
 	linksMap, err := linkRepo.LoadByTaskUUIDs(taskUUIDs)
 	if err != nil {
 		return nil, err

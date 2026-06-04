@@ -585,6 +585,24 @@ var m5TaskRelationSchemas = []m5TaskRelationSchema{
 			"CREATE INDEX IF NOT EXISTS idx_task_uda_values_task_uuid ON task_uda_values(task_uuid)",
 		},
 	},
+	{
+		table:   "task_links",
+		columns: []string{"id", "task_uuid", "type", "url", "title", "created_at", "created_by"},
+		ddl: `CREATE TABLE task_links (
+	id TEXT PRIMARY KEY,
+	task_uuid TEXT NOT NULL,
+	type TEXT NOT NULL,
+	url TEXT NOT NULL,
+	title TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	created_by TEXT NOT NULL,
+	CONSTRAINT fk_tasks_links FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+)`,
+		indexes: []string{
+			"CREATE UNIQUE INDEX IF NOT EXISTS idx_task_links_task_url ON task_links(task_uuid, url)",
+			"CREATE INDEX IF NOT EXISTS idx_task_links_task ON task_links(task_uuid)",
+		},
+	},
 }
 
 func rebuildM5TaskRelationForeignKeys(tx m5MigrationTx) error {
