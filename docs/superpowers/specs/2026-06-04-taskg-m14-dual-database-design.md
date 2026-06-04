@@ -74,25 +74,20 @@ internal/storage/
 - M5 手写 DDL 不需要，因为 `AutoMigrate` 直接创建正确的 schema
 - M5 的关联表 DDL（`m5TaskRelationSchemas`）在 PostgreSQL 下由 `AutoMigrate` 等价处理
 
-`migrate()` 入口按 dialect 分发，SQLite 路径调用 `prepareWorkspaceSchemaForM4` + `prepareProjectSchemaForM5` + `AutoMigrate`，PostgreSQL 路径只调用 `AutoMigrate`。
+`migrate()` 入口按 dialect 分发。SQLite 路径调用顺序为：`prepareWorkspaceSchemaForM4` → `AutoMigrate` → `prepareProjectSchemaForM5`（M5 在 AutoMigrate 之后，因为需要 `projects` 表已存在）。PostgreSQL 路径只调用 `AutoMigrate`。
 
 ## Query 编译方言适配
 
 `QueryCompileOptions` 新增 `Dialect string` 字段。
 
-需要适配的 SQL 差异（均位于 `query_scope.go` 的 `compileUDAPredicate` 函数内）：
+需要适配的 SQL 差异（位于 `query_scope.go`）：
 
 | SQLite | PostgreSQL | 用途 | 出现位置 |
 |---|---|---|---|
-| `LIKE` | `ILIKE` | 大小写不敏感的文本搜索（description、bare text、UDA string、tag、annotation） | `compilePredicate` 多处 |
+| `LIKE` | `ILIKE` | 大小写不敏感的文本搜索 | `compilePredicate`（AttrBare 第 101 行、AttrDescription 第 108 行、AttrAnnotations 第 152 行）、`compareColumn`（OpContains 第 182 行）、`compileUDAPredicate`（UDA string 第 279 行） |
 | `CAST(... AS REAL)` | `CAST(... AS DOUBLE PRECISION)` | UDA numeric/duration 比较 | `compileUDAPredicate` 第 241-244 行，共 3 处（`=`、`<`、`>`） |
 
-提供 dialect helper 函数：
-
-```go
-func likeOp(dialect string) string
-func realCastType(dialect string) string
-```
+`likeOp(dialect)` helper 必须应用到所有上述 LIKE 出现位置（5 处）。`realCastType(dialect)` helper 应用到 3 处 CAST 出现位置。
 
 其余 SQL 均为标准语法（`=`, `<`, `>`, `IS NULL`, `EXISTS`, `NOT EXISTS` 等），无需适配。
 
