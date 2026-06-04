@@ -170,7 +170,7 @@ func (s *Store) migrate() error {
 	if err := s.prepareWorkspaceSchemaForM4(); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &Config{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &UserExternalID{}); err != nil {
+	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &UserExternalID{}); err != nil {
 		return err
 	}
 	if err := s.db.AutoMigrate(&TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {

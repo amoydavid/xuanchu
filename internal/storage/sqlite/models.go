@@ -60,6 +60,16 @@ type Project struct {
 	CreatedAt    int64  `gorm:"not null"`
 	ModifiedAt   int64  `gorm:"not null"`
 	ArchivedAt   *int64
+	Annotations  []ProjectAnnotation `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+}
+
+type ProjectAnnotation struct {
+	ID        string `gorm:"primaryKey"`
+	ProjectID string `gorm:"not null;index:idx_project_annotations_project;uniqueIndex:idx_project_annotations_entry,priority:1"`
+	Entry     int64  `gorm:"not null;uniqueIndex:idx_project_annotations_entry,priority:2"`
+	Content   string `gorm:"not null;type:text"`
+	CreatedBy string `gorm:"not null"`
+	CreatedAt int64  `gorm:"not null"`
 }
 
 type Config struct {

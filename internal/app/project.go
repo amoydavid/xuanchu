@@ -315,6 +315,9 @@ func normalizeProjectSlug(slug string) (string, error) {
 	if slug == "" {
 		return "", RuntimeError{Code: "project_invalid_slug", Message: "project slug is invalid"}
 	}
+	if slug[0] >= '0' && slug[0] <= '9' {
+		return "", RuntimeError{Code: "project_invalid_slug", Message: fmt.Sprintf("project slug %q must not start with a digit", slug)}
+	}
 	for _, ch := range slug {
 		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
 			continue

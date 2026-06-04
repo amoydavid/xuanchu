@@ -4196,3 +4196,12 @@ func TestServiceTaskAddLinkRequiresTypeAndURL(t *testing.T) {
 		t.Fatalf("TaskAddLink(empty url) err = %#v, want RuntimeError(link_url_required)", err)
 	}
 }
+
+func TestAddProjectRejectsDigitStartSlug(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	_, err := svc.AddProject(AddProjectInput{Slug: "123project", Name: "Test"})
+	if err == nil {
+		t.Fatal("expected digit-starting slug to be rejected")
+	}
+}
