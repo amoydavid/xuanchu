@@ -219,11 +219,20 @@ type UserInfo struct {
 
 - 从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、以及当前 milestone 的 spec 开始读上下文。
 - 改动前先看对应层的测试文件，理解当前行为边界。
-- 当你发现“现在能改，但会把后续 HTTP/MCP/多 workspace 做死”的实现方式时，优先选择对未来更稳的边界。
+- 当你发现"现在能改，但会把后续 HTTP/MCP/多 workspace 做死"的实现方式时，优先选择对未来更稳的边界。
 - 如果你需要新增一套跨层能力，先问自己：
   - 这是不是应该在 `app` 层？
   - 这会不会未来被 CLI、HTTP、MCP 共用？
   - 这会不会破坏 `CGO_ENABLED=0`？
+
+### MCP Tool 命名规范
+
+所有 MCP tool name 必须使用下划线 `_` 分隔，不使用点号 `.`。
+
+- 正确：`task_add`、`project_annotate`、`workspace_list`、`config_get`
+- 错误：`task.add`、`project.annotate`、`workspace.list`、`config.get`
+
+命名格式：`{资源}_{动作}`，如 `task_query`、`user_bind`、`member_add`。对于资源下的子资源，使用 `task_link_add`、`task_link_remove` 等格式。
 
 ## 12. 禁止事项
 
