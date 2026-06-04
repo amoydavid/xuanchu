@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"net/url"
+	"strconv"
 
 	"github.com/dajee/taskg/internal/app"
 )
@@ -118,4 +119,67 @@ func projectDTOToView(row projectDTO) app.ProjectView {
 		ModifiedAt:  row.ModifiedAt,
 		ArchivedAt:  row.ArchivedAt,
 	}
+}
+
+type ProjectAnnotationDTO struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Entry     int64  `json:"entry"`
+	Content   string `json:"content"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+type TimelineEntryDTO struct {
+	SourceType  string `json:"source_type"`
+	SourceID    string `json:"source_id"`
+	SourceLabel string `json:"source_label"`
+	Entry       int64  `json:"entry"`
+	Content     string `json:"content"`
+	CreatedBy   string `json:"created_by"`
+}
+
+func (c *Client) AnnotateProject(ctx context.Context, workspace, projectRef, content string) (ProjectAnnotationDTO, error) {
+	path := projectPathWithSuffix(workspace, projectRef, "/annotations")
+	var envelope apiEnvelope[ProjectAnnotationDTO]
+	if err := c.post(ctx, path, map[string]string{"content": content}, &envelope); err != nil {
+		return ProjectAnnotationDTO{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) DenotateProject(ctx context.Context, workspace, projectRef, annotationID string) error {
+	path := projectPathWithSuffix(workspace, projectRef, "/annotations/"+url.PathEscape(annotationID))
+	return c.delete(ctx, path, nil)
+}
+
+func (c *Client) ListProjectAnnotations(ctx context.Context, workspace, projectRef string) ([]ProjectAnnotationDTO, error) {
+	path := projectPathWithSuffix(workspace, projectRef, "/annotations")
+	var envelope apiEnvelope[[]ProjectAnnotationDTO]
+	if err := c.get(ctx, path, nil, &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) ProjectTimeline(ctx context.Context, workspace, projectRef string, limit int) ([]TimelineEntryDTO, error) {
+	suffix := "/timeline"
+	if limit > 0 {
+		suffix += "?limit=" + strconv.Itoa(limit)
+		if workspace != "" {
+			suffix += "&workspace=" + url.QueryEscape(workspace)
+		}
+		path := "/api/v1/projects/" + url.PathEscape(projectRef) + suffix
+		var envelope apiEnvelope[[]TimelineEntryDTO]
+		if err := c.get(ctx, path, nil, &envelope); err != nil {
+			return nil, err
+		}
+		return envelope.Data, nil
+	}
+	path := projectPathWithSuffix(workspace, projectRef, "/timeline")
+	var envelope apiEnvelope[[]TimelineEntryDTO]
+	if err := c.get(ctx, path, nil, &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Data, nil
 }

@@ -54,7 +54,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 			status = http.StatusForbidden
 		case "workspace_required":
 			status = http.StatusBadRequest
-		case "workspace_not_found", "project_not_found", "task_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found":
+		case "workspace_not_found", "project_not_found", "task_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found":
 			status = http.StatusNotFound
 		case "hook_delivery_not_replayable", "hook_endpoint_invalid", "hook_event_types_invalid", "hook_name_invalid", "hook_timeout_invalid", "hook_max_attempts_invalid", "hook_project_required", "hook_scope_invalid", "hook_secret_invalid":
 			status = http.StatusBadRequest

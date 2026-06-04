@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -216,4 +217,142 @@ func projectResponseFromView(view app.ProjectView) projectResponse {
 		ModifiedAt:  view.ModifiedAt,
 		ArchivedAt:  view.ArchivedAt,
 	}
+}
+
+type addProjectAnnotationRequest struct {
+	Content string `json:"content"`
+}
+
+type projectAnnotationResponse struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Entry     int64  `json:"entry"`
+	Content   string `json:"content"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+type timelineEntryResponse struct {
+	SourceType  string `json:"source_type"`
+	SourceID    string `json:"source_id"`
+	SourceLabel string `json:"source_label"`
+	Entry       int64  `json:"entry"`
+	Content     string `json:"content"`
+	CreatedBy   string `json:"created_by"`
+}
+
+func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req addProjectAnnotationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	annotation, err := scoped.ProjectAnnotate(ref, req.Content)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, projectAnnotationToJSON(annotation), nil)
+}
+
+func (s *Server) handleProjectAnnotationList(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectRead, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	annotations, err := scoped.ProjectAnnotations(ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, projectAnnotationsToJSON(annotations), nil)
+}
+
+func (s *Server) handleProjectAnnotationDelete(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	annotationID := chi.URLParam(r, "annotationID")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ProjectDenotate(ref, annotationID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleProjectTimeline(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectRead, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	opts := app.TimelineOptions{Limit: 50}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return
+		}
+		opts.Limit = parsed
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_offset", "invalid offset", nil)
+			return
+		}
+		opts.Offset = parsed
+	}
+	entries, err := scoped.ProjectTimeline(ref, opts)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, timelineEntriesToJSON(entries), nil)
+}
+
+func projectAnnotationToJSON(a app.ProjectAnnotationInfo) projectAnnotationResponse {
+	return projectAnnotationResponse{
+		ID:        a.ID,
+		ProjectID: a.ProjectID,
+		Entry:     a.Entry,
+		Content:   a.Content,
+		CreatedBy: a.CreatedBy,
+		CreatedAt: a.CreatedAt,
+	}
+}
+
+func projectAnnotationsToJSON(annotations []app.ProjectAnnotationInfo) []projectAnnotationResponse {
+	out := make([]projectAnnotationResponse, len(annotations))
+	for i, a := range annotations {
+		out[i] = projectAnnotationToJSON(a)
+	}
+	return out
+}
+
+func timelineEntriesToJSON(entries []app.TimelineEntry) []timelineEntryResponse {
+	out := make([]timelineEntryResponse, len(entries))
+	for i, e := range entries {
+		out[i] = timelineEntryResponse{
+			SourceType:  e.SourceType,
+			SourceID:    e.SourceID,
+			SourceLabel: e.SourceLabel,
+			Entry:       e.Entry,
+			Content:     e.Content,
+			CreatedBy:   e.CreatedBy,
+		}
+	}
+	return out
 }
