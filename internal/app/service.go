@@ -428,6 +428,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 		NowUnix:        s.clock.Unix(),
 		UDADefinitions: udaDefs,
 		Limit:          input.Limit,
+		Dialect:        s.store.Dialect(),
 	})
 	if err != nil {
 		return nil, mapProjectQueryCompileError(err)
@@ -956,7 +957,7 @@ func (s *Service) ExportWithInput(input ExportInput) ([]task.Task, error) {
 	if input.ProjectID != nil && strings.TrimSpace(*input.ProjectID) != "" {
 		queryExpr = query.And(queryExpr, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(strings.TrimSpace(*input.ProjectID))})
 	}
-	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{Query: queryExpr})
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{Query: queryExpr, Dialect: s.store.Dialect()})
 	if err != nil {
 		return nil, err
 	}
@@ -1155,7 +1156,7 @@ func (s *Service) resolveImportedAssignees(values []task.AssigneeInfo) ([]task.A
 }
 
 func (s *Service) dependencyGraph() (map[string][]string, error) {
-	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{})
+	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{Dialect: s.store.Dialect()})
 	if err != nil {
 		return nil, err
 	}
@@ -1196,11 +1197,12 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 		Sort:           def.Sort,
 		NowUnix:        now,
 		UDADefinitions: udaDefs,
+		Dialect:        s.store.Dialect(),
 	})
 	if err != nil {
 		return ReportResult{}, mapProjectQueryCompileError(err)
 	}
-	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: now, Query: s.projectScopeExpr()})
+	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: now, Query: s.projectScopeExpr(), Dialect: s.store.Dialect()})
 	if err != nil {
 		return ReportResult{}, err
 	}
@@ -1418,7 +1420,7 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
-	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr()})
+	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr(), Dialect: s.store.Dialect()})
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
@@ -1503,6 +1505,7 @@ func (s *Service) refreshAutomaticState() error {
 	waitingTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
 		Status:  task.StatusWaiting,
 		NowUnix: now,
+		Dialect: s.store.Dialect(),
 	})
 	if err != nil {
 		return err
@@ -1618,6 +1621,7 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
 		NowUnix: s.clock.Unix(),
 		Query:   s.projectScopeExpr(),
+		Dialect: s.store.Dialect(),
 	})
 	if err != nil {
 		return nil, err

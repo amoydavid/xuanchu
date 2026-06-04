@@ -22,6 +22,7 @@ type ListOptions struct {
 	NowUnix        int64
 	UDADefinitions map[string]string
 	Limit          int
+	Dialect        string
 }
 
 func NewTaskRepository(db *gorm.DB) *TaskRepository {
@@ -91,7 +92,7 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 		q = q.Where("status = ?", opts.Status)
 	}
 	if opts.Query != nil {
-		q = ApplyQuery(q, opts.Query, QueryCompileOptions{WorkspaceID: workspaceID, NowUnix: opts.NowUnix, UDADefinitions: opts.UDADefinitions})
+		q = ApplyQuery(q, opts.Query, QueryCompileOptions{WorkspaceID: workspaceID, NowUnix: opts.NowUnix, UDADefinitions: opts.UDADefinitions, Dialect: opts.Dialect})
 	} else {
 		q = q.Where("workspace_id = ?", workspaceID)
 	}

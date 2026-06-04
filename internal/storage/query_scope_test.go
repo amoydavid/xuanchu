@@ -385,6 +385,54 @@ func mustCreate(t *testing.T, repo *TaskRepository, task domain.Task) {
 	}
 }
 
+func TestCompileQuery_PostgresDialect(t *testing.T) {
+	opts := QueryCompileOptions{WorkspaceID: "ws1", NowUnix: 1000000, Dialect: "postgres"}
+	expr := query.Predicate{Attribute: query.AttrBare, Operator: query.OpEqual, Value: query.ParseDateValue("hello")}
+	sql, _, err := CompileQuery(expr, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "ILIKE") {
+		t.Errorf("expected ILIKE, got: %s", sql)
+	}
+}
+
+func TestCompileQuery_SQLiteDialect(t *testing.T) {
+	opts := QueryCompileOptions{WorkspaceID: "ws1", NowUnix: 1000000, Dialect: "sqlite"}
+	expr := query.Predicate{Attribute: query.AttrBare, Operator: query.OpEqual, Value: query.ParseDateValue("hello")}
+	sql, _, err := CompileQuery(expr, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, " LIKE ") {
+		t.Errorf("expected LIKE, got: %s", sql)
+	}
+}
+
+func TestCompileQuery_UDANumericPostgres(t *testing.T) {
+	opts := QueryCompileOptions{WorkspaceID: "ws1", NowUnix: 1000000, Dialect: "postgres", UDADefinitions: map[string]string{"score": "numeric"}}
+	expr := query.Predicate{Attribute: query.AttrUDA, Field: "score", Operator: query.OpEqual, Value: query.ParseDateValue("42")}
+	sql, _, err := CompileQuery(expr, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "DOUBLE PRECISION") {
+		t.Errorf("expected DOUBLE PRECISION, got: %s", sql)
+	}
+}
+
+func TestCompileQuery_CompareColumnContains(t *testing.T) {
+	opts := QueryCompileOptions{WorkspaceID: "ws1", NowUnix: 1000000, Dialect: "postgres"}
+	expr := query.Predicate{Attribute: query.AttrStatus, Operator: query.OpContains, Value: query.ParseDateValue("pend")}
+	sql, _, err := CompileQuery(expr, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "ILIKE") {
+		t.Errorf("expected ILIKE for OpContains, got: %s", sql)
+	}
+}
+
 func createQueryTestUser(t *testing.T, store *Store, user User) User {
 	t.Helper()
 	created, err := NewUserRepository(store.DB()).Create(user)

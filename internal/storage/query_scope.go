@@ -14,6 +14,21 @@ type QueryCompileOptions struct {
 	NowUnix        int64
 	Location       *time.Location
 	UDADefinitions map[string]string
+	Dialect        string
+}
+
+func likeOp(dialect string) string {
+	if dialect == "postgres" {
+		return "ILIKE"
+	}
+	return "LIKE"
+}
+
+func realCastType(dialect string) string {
+	if dialect == "postgres" {
+		return "DOUBLE PRECISION"
+	}
+	return "REAL"
 }
 
 func ApplyQuery(db *gorm.DB, expr query.Expr, opts QueryCompileOptions) *gorm.DB {
@@ -85,29 +100,29 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	value := p.Value.Text
 	switch p.Attribute {
 	case query.AttrStatus:
-		return compareColumn("status", p.Operator, value, nil)
+		return compareColumn("status", p.Operator, value, nil, opts.Dialect)
 	case query.AttrProject:
 		if p.Operator == query.OpIsNull {
 			return "project_id IS NULL", nil, nil
 		}
 		return "", nil, query.ErrProjectPredicateUnresolved
 	case query.AttrProjectID:
-		return compareColumn("project_id", p.Operator, value, nil)
+		return compareColumn("project_id", p.Operator, value, nil, opts.Dialect)
 	case query.AttrPriority:
-		return compareColumn("priority", p.Operator, value, nil)
+		return compareColumn("priority", p.Operator, value, nil, opts.Dialect)
 	case query.AttrUUID:
-		return compareColumn("uuid", p.Operator, value, nil)
+		return compareColumn("uuid", p.Operator, value, nil, opts.Dialect)
 	case query.AttrBare:
-		return "description LIKE ?", []any{"%" + value + "%"}, nil
+		return fmt.Sprintf("description %s ?", likeOp(opts.Dialect)), []any{"%" + value + "%"}, nil
 	case query.AttrUDA:
 		return compileUDAPredicate(p, opts)
 	case query.AttrDescription:
 		// description: 始终按子串匹配，无论是 description:abc、description:'abc def'
 		// 还是 description:/abc/。这与 /abc/ 短语一致，避免 OpEqual 字面相等带来的反直觉。
 		if p.Operator == query.OpEqual || p.Operator == query.OpContains {
-			return "description LIKE ?", []any{"%" + value + "%"}, nil
+			return fmt.Sprintf("description %s ?", likeOp(opts.Dialect)), []any{"%" + value + "%"}, nil
 		}
-		return compareColumn("description", p.Operator, value, nil)
+		return compareColumn("description", p.Operator, value, nil, opts.Dialect)
 	case query.AttrDue:
 		return compareDateColumn("due", p, opts)
 	case query.AttrEntry:
@@ -125,9 +140,9 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	case query.AttrUntil:
 		return compareDateColumn("until", p, opts)
 	case query.AttrRecur:
-		return compareColumn("recur", p.Operator, value, nil)
+		return compareColumn("recur", p.Operator, value, nil, opts.Dialect)
 	case query.AttrParent:
-		return compareColumn("parent", p.Operator, value, nil)
+		return compareColumn("parent", p.Operator, value, nil, opts.Dialect)
 	case query.AttrAssignee:
 		switch p.Operator {
 		case query.OpEqual:
@@ -149,7 +164,7 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	case query.AttrAnnotations:
 		switch p.Operator {
 		case query.OpContains:
-			return "EXISTS (SELECT 1 FROM task_annotations JOIN tasks AS annotation_tasks ON annotation_tasks.uuid = task_annotations.task_uuid WHERE annotation_tasks.workspace_id = ? AND task_annotations.task_uuid = tasks.uuid AND task_annotations.description LIKE ?)", []any{opts.WorkspaceID, "%" + value + "%"}, nil
+			return fmt.Sprintf("EXISTS (SELECT 1 FROM task_annotations JOIN tasks AS annotation_tasks ON annotation_tasks.uuid = task_annotations.task_uuid WHERE annotation_tasks.workspace_id = ? AND task_annotations.task_uuid = tasks.uuid AND task_annotations.description %s ?)", likeOp(opts.Dialect)), []any{opts.WorkspaceID, "%" + value + "%"}, nil
 		case query.OpIsNull:
 			return "NOT EXISTS (SELECT 1 FROM task_annotations JOIN tasks AS annotation_tasks ON annotation_tasks.uuid = task_annotations.task_uuid WHERE annotation_tasks.workspace_id = ? AND task_annotations.task_uuid = tasks.uuid)", []any{opts.WorkspaceID}, nil
 		case query.OpNotNull:
@@ -166,7 +181,7 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	return "", nil, fmt.Errorf("unsupported predicate %s", p.String())
 }
 
-func compareColumn(column string, op query.Operator, value string, intValue *int64) (string, []any, error) {
+func compareColumn(column string, op query.Operator, value string, intValue *int64, dialect string) (string, []any, error) {
 	arg := any(value)
 	if intValue != nil {
 		arg = *intValue
@@ -179,7 +194,7 @@ func compareColumn(column string, op query.Operator, value string, intValue *int
 	case query.OpAfter:
 		return column + " > ?", []any{arg}, nil
 	case query.OpContains:
-		return column + " LIKE ?", []any{"%" + value + "%"}, nil
+		return fmt.Sprintf("%s %s ?", column, likeOp(dialect)), []any{"%" + value + "%"}, nil
 	case query.OpIsNull:
 		return column + " IS NULL", nil, nil
 	case query.OpNotNull:
@@ -211,7 +226,7 @@ func compareDateColumn(column string, p query.Predicate, opts QueryCompileOption
 	if err != nil {
 		return "", nil, err
 	}
-	return compareColumn(column, p.Operator, "", &value)
+	return compareColumn(column, p.Operator, "", &value, opts.Dialect)
 }
 
 func compileUDAPredicate(p query.Predicate, opts QueryCompileOptions) (string, []any, error) {
@@ -236,13 +251,14 @@ func compileUDAPredicate(p query.Predicate, opts QueryCompileOptions) (string, [
 		if _, err := strconv.ParseFloat(value, 64); err != nil {
 			return "", nil, err
 		}
+		rt := realCastType(opts.Dialect)
 		switch p.Operator {
 		case query.OpEqual:
-			compareSQL = "CAST(task_uda_values.value AS REAL) = CAST(? AS REAL)"
+			compareSQL = fmt.Sprintf("CAST(task_uda_values.value AS %s) = CAST(? AS %s)", rt, rt)
 		case query.OpBefore:
-			compareSQL = "CAST(task_uda_values.value AS REAL) < CAST(? AS REAL)"
+			compareSQL = fmt.Sprintf("CAST(task_uda_values.value AS %s) < CAST(? AS %s)", rt, rt)
 		case query.OpAfter:
-			compareSQL = "CAST(task_uda_values.value AS REAL) > CAST(? AS REAL)"
+			compareSQL = fmt.Sprintf("CAST(task_uda_values.value AS %s) > CAST(? AS %s)", rt, rt)
 		default:
 			return "", nil, fmt.Errorf("unsupported UDA operator %s", p.Operator)
 		}
@@ -276,7 +292,7 @@ func compileUDAPredicate(p query.Predicate, opts QueryCompileOptions) (string, [
 	default:
 		switch p.Operator {
 		case query.OpEqual, query.OpContains:
-			compareSQL = "task_uda_values.value LIKE ?"
+			compareSQL = fmt.Sprintf("task_uda_values.value %s ?", likeOp(opts.Dialect))
 			compareArgs = append(compareArgs, "%"+value+"%")
 		default:
 			return "", nil, fmt.Errorf("unsupported UDA operator %s", p.Operator)
