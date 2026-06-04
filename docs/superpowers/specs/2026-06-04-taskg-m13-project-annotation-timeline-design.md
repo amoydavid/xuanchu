@@ -148,6 +148,8 @@ taskg <project-ref> timeline [--limit N]
 
 目标风格的歧义处理：`taskg <ref> annotate` 中的 ref 可能是 task 也可能是 project。当前 `handleTargetAction` 只处理 task。解决方案：**先尝试作为 task 解析，如果 task 不存在且 ref 看起来像 project slug（小写字母+数字+横线+下划线），则回退为 project**。在 `handleTargetAction` 中增加 `annotate`/`annotations`/`timeline` 的 project 回退分支。如果 ref 同时匹配 task ID 和 project slug，task 优先（保持向后兼容）。
 
+这个歧义处理的可靠性依赖于一个前置约束：**project slug 不允许纯数字、不允许数字开头**。这样 task 的数字 working-set ID（`1`、`23`）和 project slug（`api`、`web-v2`）在词法层面就不会冲突。此约束需要修改现有的 `normalizeProjectSlug` 函数——在创建和修改 project 时拒绝纯数字和数字开头的 slug。
+
 `taskg project info <ref>` 输出中展示最近几条 annotation（如最近 5 条）。实现方式：`ProjectInfo` 方法额外加载最近 5 条 annotation，`ProjectView` 增加 `RecentAnnotations []ProjectAnnotationInfo` 字段。`--json` 输出和 HTTP `GET /projects/{ref}` 响应均包含此字段。
 
 ### 六、HTTP API
