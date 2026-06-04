@@ -6,18 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 const localWorkspaceSlug = "local"
@@ -28,8 +23,11 @@ const m5ProjectsSkippedMetaKey = "migration.m5.projects.skipped"
 var m5ProjectSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 type Store struct {
-	db *gorm.DB
+	db      *gorm.DB
+	dialect string
 }
+
+func (s *Store) Dialect() string { return s.dialect }
 
 type MigrationWarning struct {
 	WorkspaceID string `json:"workspace_id"`
@@ -45,41 +43,18 @@ type m5SkippedProject struct {
 	Reason      string `json:"reason"`
 }
 
-func Open(path string) (*Store, error) {
-	if path == "" {
-		return nil, fmt.Errorf("database path is required")
+func Open(dbURL string) (*Store, error) {
+	if isPostgresURL(dbURL) {
+		return openPostgres(dbURL)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
+	if strings.Contains(dbURL, "://") {
+		return nil, fmt.Errorf("unsupported database scheme: %s", dbURL)
 	}
-	db, err := gorm.Open(sqlite.Open(sqliteDSN(path)), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		return nil, err
-	}
-	store := &Store{db: db}
-	if err := store.configure(); err != nil {
-		_ = store.Close()
-		return nil, err
-	}
-	if err := store.migrate(); err != nil {
-		_ = store.Close()
-		return nil, err
-	}
-	if err := store.ensureLocalIdentity(); err != nil {
-		_ = store.Close()
-		return nil, err
-	}
-	return store, nil
+	return openSQLite(dbURL)
 }
 
-func sqliteDSN(path string) string {
-	values := url.Values{}
-	values.Add("_pragma", "foreign_keys(1)")
-	separator := "?"
-	if strings.Contains(path, "?") {
-		separator = "&"
-	}
-	return path + separator + values.Encode()
+func isPostgresURL(s string) bool {
+	return strings.HasPrefix(s, "postgres://") || strings.HasPrefix(s, "postgresql://")
 }
 
 func (s *Store) Close() error {
@@ -160,10 +135,6 @@ func (s *Store) M5ProjectMigrationReport() ([]MigrationWarning, error) {
 		})
 	}
 	return out, nil
-}
-
-func (s *Store) configure() error {
-	return s.db.Exec("PRAGMA foreign_keys = ON").Error
 }
 
 func (s *Store) migrate() error {

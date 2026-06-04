@@ -15,6 +15,35 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+func TestIsPostgresURL(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"postgres://user:pass@host:5432/db", true},
+		{"postgresql://user:pass@host:5432/db", true},
+		{"", false},
+		{"/path/to/taskg.db", false},
+		{"taskg.db", false},
+		{"mysql://host/db", false},
+	}
+	for _, tt := range tests {
+		if got := isPostgresURL(tt.input); got != tt.want {
+			t.Errorf("isPostgresURL(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestOpen_UnsupportedScheme(t *testing.T) {
+	_, err := Open("mysql://host/db")
+	if err == nil {
+		t.Error("expected error for unsupported scheme")
+	}
+	if !strings.Contains(err.Error(), "unsupported database scheme") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "taskg.db")
 
