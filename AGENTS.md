@@ -232,7 +232,7 @@ type UserInfo struct {
 - 正确：`task_add`、`project_annotate`、`workspace_list`、`config_get`
 - 错误：`task.add`、`project.annotate`、`workspace.list`、`config.get`
 
-命名格式：`{资源}_{动作}`，如 `task_query`、`user_bind`、`member_add`。对于资源下的子资源，使用 `task_link_add`、`task_link_remove` 等格式。
+命名格式：`{资源}_{动作}`，如 `task_query`、`user_bind`、`member_add`。对于资源下的子资源，使用 `task_link_add`、`task_link_remove`、`project_list_annotations`、`project_list_timeline` 等格式。读操作（列出子资源）统一用 `list` 前缀，写操作（添加/删除）统一用动词。
 
 ## 12. 禁止事项
 

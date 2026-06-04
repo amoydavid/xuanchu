@@ -225,7 +225,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"workspace_list", "workspace_current",
 		"project_list", "project_get", "project_current",
 		"project_annotate", "project_denotate",
-		"project_annotations", "project_timeline",
+		"project_list_annotations", "project_list_timeline",
 		"member_list", "member_add",
 		"user_list", "user_info", "user_bind", "user_unbind",
 		"context_show", "context_set",

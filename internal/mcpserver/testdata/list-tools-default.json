@@ -255,39 +255,6 @@
       }
     },
     {
-      "description": "List annotations on a project; read-only.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "project_id": {
-            "type": "string"
-          },
-          "workspace": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "name": "project_annotations",
-      "outputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "data": true,
-          "rendered": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "data",
-          "rendered"
-        ],
-        "type": "object"
-      }
-    },
-    {
       "description": "Read explicit effective project scope; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -435,6 +402,39 @@
       }
     },
     {
+      "description": "List annotations on a project; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "project_list_annotations",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "List timeline entries for a project; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -454,7 +454,7 @@
         },
         "type": "object"
       },
-      "name": "project_timeline",
+      "name": "project_list_timeline",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

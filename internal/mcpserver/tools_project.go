@@ -136,7 +136,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": in.AnnotationID}, "removed annotation")
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_annotations", Description: "List annotations on a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAnnotationsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "project_list_annotations", Description: "List annotations on a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAnnotationsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -153,7 +153,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d annotation(s)", len(annotations)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_timeline", Description: "List timeline entries for a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectTimelineInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "project_list_timeline", Description: "List timeline entries for a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectTimelineInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
