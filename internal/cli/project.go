@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/render"
+	"github.com/dajee/taskg/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +25,9 @@ func newProjectCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newProjectModifyCommand(opts))
 	cmd.AddCommand(newProjectArchiveCommand(opts))
 	cmd.AddCommand(newProjectConfigCommand(opts))
+	cmd.AddCommand(newProjectAnnotateCommand(opts))
+	cmd.AddCommand(newProjectAnnotationsCommand(opts))
+	cmd.AddCommand(newProjectTimelineCommand(opts))
 	return cmd
 }
 
@@ -155,6 +161,16 @@ func newProjectInfoCommand(opts Options) *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", project.Description)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nTask Count: %d\n", project.Status, project.TaskCount)
+				if len(project.RecentAnnotations) > 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "Recent Annotations:")
+					for _, a := range project.RecentAnnotations {
+						preview := a.Content
+						if len(preview) > 100 {
+							preview = preview[:100] + "..."
+						}
+						fmt.Fprintf(cmd.OutOrStdout(), "  [%s] %s\n", formatUnixTime(a.Entry), preview)
+					}
+				}
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -174,6 +190,16 @@ func newProjectInfoCommand(opts Options) *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", project.Description)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nTask Count: %d\n", project.Status, project.TaskCount)
+			if len(project.RecentAnnotations) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "Recent Annotations:")
+				for _, a := range project.RecentAnnotations {
+					preview := a.Content
+					if len(preview) > 100 {
+						preview = preview[:100] + "..."
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "  [%s] %s\n", formatUnixTime(a.Entry), preview)
+				}
+			}
 			return nil
 		},
 	}
@@ -460,4 +486,189 @@ func projectViewForJSON(project app.ProjectView) map[string]any {
 		"modified_at":  project.ModifiedAt,
 		"archived_at":  project.ArchivedAt,
 	}
+}
+
+func newProjectAnnotateCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "annotate <project-ref> <content...>",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			content := strings.Join(args[1:], " ")
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if _, err := client.AnnotateProject(context.Background(), currentOpts.Workspace, args[0], content); err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Annotated project", args[0])
+				return nil
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			if _, err := svc.ProjectAnnotate(args[0], content); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Annotated project", args[0])
+			return nil
+		},
+	}
+}
+
+func newProjectAnnotationsCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "annotations <project-ref>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				annotations, err := client.ListProjectAnnotations(context.Background(), currentOpts.Workspace, args[0])
+				if err != nil {
+					return err
+				}
+				return renderRemoteProjectAnnotations(cmd, currentOpts.JSON, annotations)
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			annotations, err := svc.ProjectAnnotations(args[0])
+			if err != nil {
+				return err
+			}
+			return renderProjectAnnotationInfos(cmd, currentOpts.JSON, annotations)
+		},
+	}
+}
+
+func newProjectTimelineCommand(opts Options) *cobra.Command {
+	var limit int
+	cmd := &cobra.Command{
+		Use:  "timeline <project-ref>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				entries, err := client.ProjectTimeline(context.Background(), currentOpts.Workspace, args[0], limit)
+				if err != nil {
+					return err
+				}
+				return renderRemoteTimelineEntries(cmd, currentOpts.JSON, entries)
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			entries, err := svc.ProjectTimeline(args[0], app.TimelineOptions{Limit: limit})
+			if err != nil {
+				return err
+			}
+			return renderTimelineEntriesApp(cmd, currentOpts.JSON, entries)
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 50, "maximum number of timeline entries")
+	return cmd
+}
+
+func formatUnixTime(unix int64) string {
+	return time.Unix(unix, 0).Format("2006-01-02 15:04:05")
+}
+
+func renderProjectAnnotationInfos(cmd *cobra.Command, asJSON bool, annotations []app.ProjectAnnotationInfo) error {
+	if asJSON {
+		return render.JSON(cmd.OutOrStdout(), annotations)
+	}
+	if len(annotations) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No annotations.")
+		return nil
+	}
+	for i, a := range annotations {
+		fmt.Fprintf(cmd.OutOrStdout(), "%d [%s] %s\n", i+1, formatUnixTime(a.Entry), a.Content)
+	}
+	return nil
+}
+
+func renderRemoteProjectAnnotations(cmd *cobra.Command, asJSON bool, annotations []remote.ProjectAnnotationDTO) error {
+	if asJSON {
+		return render.JSON(cmd.OutOrStdout(), annotations)
+	}
+	if len(annotations) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No annotations.")
+		return nil
+	}
+	for i, a := range annotations {
+		fmt.Fprintf(cmd.OutOrStdout(), "%d [%s] %s\n", i+1, formatUnixTime(a.Entry), a.Content)
+	}
+	return nil
+}
+
+func renderTimelineEntriesApp(cmd *cobra.Command, asJSON bool, entries []app.TimelineEntry) error {
+	if asJSON {
+		return render.JSON(cmd.OutOrStdout(), entries)
+	}
+	if len(entries) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No timeline entries.")
+		return nil
+	}
+	for _, e := range entries {
+		label := e.SourceLabel
+		if len(label) > 40 {
+			label = label[:40] + "..."
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "[%s] <%s> %s: %s\n", formatUnixTime(e.Entry), e.SourceType, label, e.Content)
+	}
+	return nil
+}
+
+func renderRemoteTimelineEntries(cmd *cobra.Command, asJSON bool, entries []remote.TimelineEntryDTO) error {
+	if asJSON {
+		return render.JSON(cmd.OutOrStdout(), entries)
+	}
+	if len(entries) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No timeline entries.")
+		return nil
+	}
+	for _, e := range entries {
+		label := e.SourceLabel
+		if len(label) > 40 {
+			label = label[:40] + "..."
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "[%s] <%s> %s: %s\n", formatUnixTime(e.Entry), e.SourceType, label, e.Content)
+	}
+	return nil
+}
+
+func renderAnnotations(cmd *cobra.Command, asJSON bool, annotations []task.Annotation) error {
+	if asJSON {
+		return render.JSON(cmd.OutOrStdout(), annotations)
+	}
+	if len(annotations) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No annotations.")
+		return nil
+	}
+	for i, a := range annotations {
+		fmt.Fprintf(cmd.OutOrStdout(), "%d [%s] %s\n", i+1, formatUnixTime(a.Entry), a.Description)
+	}
+	return nil
 }

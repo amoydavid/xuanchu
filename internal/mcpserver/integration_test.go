@@ -224,6 +224,8 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"report.run", "urgency.explain",
 		"workspace.list", "workspace.current",
 		"project.list", "project.get", "project.current",
+		"project.annotate", "project.denotate",
+		"project.annotations", "project.timeline",
 		"member_list", "member_add",
 		"user_list", "user_info", "user_bind", "user_unbind",
 		"context.show", "context.set",

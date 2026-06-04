@@ -183,17 +183,19 @@ func knownCommandNames(root *cobra.Command) map[string]bool {
 
 func knownTargetActions() map[string]bool {
 	return map[string]bool{
-		"modify":   true,
-		"done":     true,
-		"delete":   true,
-		"start":    true,
-		"stop":     true,
-		"annotate": true,
-		"denotate": true,
-		"append":   true,
-		"prepend":  true,
-		"edit":     true,
-		"link":     true,
+		"modify":      true,
+		"done":        true,
+		"delete":      true,
+		"start":       true,
+		"stop":        true,
+		"annotate":    true,
+		"denotate":    true,
+		"append":      true,
+		"prepend":     true,
+		"edit":        true,
+		"link":        true,
+		"annotations": true,
+		"timeline":    true,
 	}
 }
 
@@ -405,7 +407,15 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("annotate requires a description")
 		}
-		if err := svc.Annotate(target, strings.Join(actionArgs, " ")); err != nil {
+		content := strings.Join(actionArgs, " ")
+		err := svc.Annotate(target, content)
+		if err != nil {
+			if isPossibleProjectSlug(target) {
+				if _, projectErr := svc.ProjectAnnotate(target, content); projectErr == nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "Annotated project", target)
+					return nil
+				}
+			}
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", target)
@@ -442,6 +452,27 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			return fmt.Errorf("edit does not take inline arguments")
 		}
 		return runEdit(cmd, svc, target)
+	case "annotations":
+		tsk, err := svc.Info(target)
+		if err == nil {
+			return renderAnnotations(cmd, currentOpts.JSON, tsk.Annotations)
+		}
+		if isPossibleProjectSlug(target) {
+			annotations, err := svc.ProjectAnnotations(target)
+			if err == nil {
+				return renderProjectAnnotationInfos(cmd, currentOpts.JSON, annotations)
+			}
+		}
+		return fmt.Errorf("target %q not found", target)
+	case "timeline":
+		if !isPossibleProjectSlug(target) {
+			return fmt.Errorf("timeline is only available for projects")
+		}
+		entries, err := svc.ProjectTimeline(target, app.TimelineOptions{Limit: 50})
+		if err != nil {
+			return err
+		}
+		return renderTimelineEntriesApp(cmd, currentOpts.JSON, entries)
 	case "link":
 		return handleLinkAction(cmd, opts, svc, target, actionArgs)
 	default:
@@ -520,7 +551,15 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("annotate requires a description")
 		}
-		if _, err := client.AnnotateTask(ctx, opts.Workspace, target, strings.Join(actionArgs, " ")); err != nil {
+		content := strings.Join(actionArgs, " ")
+		_, err := client.AnnotateTask(ctx, opts.Workspace, target, content)
+		if err != nil {
+			if isPossibleProjectSlug(positional[0]) {
+				if _, projectErr := client.AnnotateProject(ctx, opts.Workspace, target, content); projectErr == nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "Annotated project", positional[0])
+					return nil
+				}
+			}
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", positional[0])
@@ -559,6 +598,27 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		}
 	case "edit":
 		return app.RuntimeError{Code: "remote_unsupported_command", Message: `command "edit" is not supported in remote mode`}
+	case "annotations":
+		tsk, tskErr := client.GetTask(ctx, opts.Workspace, target)
+		if tskErr == nil {
+			return renderAnnotations(cmd, opts.JSON, tsk.Annotations)
+		}
+		if isPossibleProjectSlug(positional[0]) {
+			annotations, annErr := client.ListProjectAnnotations(ctx, opts.Workspace, target)
+			if annErr == nil {
+				return renderRemoteProjectAnnotations(cmd, opts.JSON, annotations)
+			}
+		}
+		return fmt.Errorf("target %q not found", positional[0])
+	case "timeline":
+		if !isPossibleProjectSlug(positional[0]) {
+			return fmt.Errorf("timeline is only available for projects")
+		}
+		entries, err := client.ProjectTimeline(ctx, opts.Workspace, target, 50)
+		if err != nil {
+			return err
+		}
+		return renderRemoteTimelineEntries(cmd, opts.JSON, entries)
 	case "link":
 		return handleRemoteLinkAction(cmd, opts, client, ctx, positional[0], target, actionArgs)
 	default:
@@ -702,4 +762,20 @@ func rcOverridesAsStrings(overrides map[string]*string) map[string]string {
 		values[key] = *value
 	}
 	return values
+}
+
+func isPossibleProjectSlug(ref string) bool {
+	if len(ref) == 0 {
+		return false
+	}
+	if ref[0] >= '0' && ref[0] <= '9' {
+		return false
+	}
+	for _, ch := range ref {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
