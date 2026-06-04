@@ -66,8 +66,13 @@ taskg 当前有 16 个 token scope（`task:read`、`task:write`、`project:read`
 - `*:action` 匹配所有以 `:action` 结尾的 scope。
 - `*` 匹配全部 scope。
 - 不含通配符的 scope 保持原有校验逻辑。
-- 通配符展开不区分 `impersonate` 等裸 scope；`*` 会包含它，但后续 token type 和 role 校验仍然生效。
 - 多个通配符和具体 scope 可以混合使用，展开后去重。
+
+展开后按 token type 剔除不允许的 scope，而不是报错：
+
+- PAT：展开结果自动剔除 `impersonate`。因此 `--scope '*' --type pat` 等价于 15 个 scope。
+- Agent：保留全部展开结果，包含 `impersonate`（但后续仍需 admin/owner 角色才能实际创建）。
+- 这意味着 `taskg token create admin --scope '*' --type pat` 能正常创建全权限 PAT。
 
 ### 2. 展开时机
 
@@ -159,7 +164,25 @@ JSON 输出：
 taskg token modify <id-or-prefix> [--scope ...] [--name ...] [--expires-in ...] [--workspace-id ...] [--project ...] [--project-id ...]
 ```
 
-至少需要提供一个修改项。不提供任何修改项时报错。
+至多提供一个修改项。不提供任何修改项时不报错，直接返回当前 token 信息（等价于 info）。
+
+#### `--expires-in` 语义
+
+- 正值（如 `720h`）：设置过期时间为 `now + duration`。
+- `0`：移除过期时间，token 永不过期。
+- 负值：报错。
+
+#### 远程 CLI
+
+远程模式自动转发到 `PATCH /api/v1/tokens/{id}`：
+
+```bash
+taskg --server https://taskg.example.com --token "$TASKG_TOKEN" token modify abc123 --scope '*:read'
+```
+
+#### MCP
+
+token modify 不暴露为 MCP tool。token 管理是 admin 操作，不属于 Agent 日常任务。
 
 #### HTTP API
 
@@ -212,7 +235,7 @@ type ModifyTokenInput struct {
     TokenRef    string
     Scopes      []string // nil 表示不改
     Name        *string  // nil 表示不改
-    ExpiresIn   *string  // Go duration string，nil 表示不改
+    ExpiresIn   *string  // Go duration string，nil 表示不改，"0" 表示永不过期
     WorkspaceIDs []string // nil 表示不改
     ProjectIDs  []string // nil 表示不改
 }
@@ -222,11 +245,14 @@ type ModifyTokenInput struct {
 
 1. 解析 token ref，查找 token。
 2. 检查 token 未撤销且未过期。
-3. 如果提供了 scopes：调用 `ParseScopes()`（支持通配符）展开并校验。
+3. 如果提供了 scopes：调用 `ParseScopes()`（支持通配符）展开并校验。展开后按目标 token 的 type 剔除不允许的 scope（PAT 剔除 `impersonate`）。
 4. 如果远程模式：校验请求者权限（scope 子集、workspace 子集、project 子集、owner 约束）。
-5. 合并修改项，写入数据库。
-6. 写审计记录。
-7. 返回更新后的 `TokenView`。
+5. 如果提供了 `ExpiresIn`：解析 duration，`0` 表示移除过期时间，正值设置 `now + duration`，负值报错。
+6. 合并修改项，写入数据库。
+7. 写审计记录，action 为 `token.modified`，payload 包含修改前后 diff。
+8. 返回更新后的 `TokenView`。
+
+注意：scope 校验函数拆分为 `ValidateTokenScopes(scopes, tokenType)`，只校验 scope 字符串合法性和 type 约束，不检查 workspace 必填性。workspace 必填性仅在 `CreateToken` 中检查。
 
 #### Storage 层
 
