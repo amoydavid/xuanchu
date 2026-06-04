@@ -27,6 +27,7 @@ func newProjectCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newProjectConfigCommand(opts))
 	cmd.AddCommand(newProjectAnnotateCommand(opts))
 	cmd.AddCommand(newProjectAnnotationsCommand(opts))
+	cmd.AddCommand(newProjectDenotateCommand(opts))
 	cmd.AddCommand(newProjectTimelineCommand(opts))
 	return cmd
 }
@@ -589,6 +590,39 @@ func newProjectTimelineCommand(opts Options) *cobra.Command {
 	}
 	cmd.Flags().IntVar(&limit, "limit", 50, "maximum number of timeline entries")
 	return cmd
+}
+
+func newProjectDenotateCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:  "denotate <project-ref> <annotation-id>",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if err := client.DenotateProject(context.Background(), currentOpts.Workspace, args[0], args[1]); err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from project", args[0])
+				return nil
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			if err := svc.ProjectDenotate(args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from project", args[0])
+			return nil
+		},
+	}
 }
 
 func formatUnixTime(unix int64) string {

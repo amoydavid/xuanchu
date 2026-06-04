@@ -1976,6 +1976,103 @@ func TestCLILinkAddRejectsCompletedTask(t *testing.T) {
 	}
 }
 
+func TestCLIProjectAnnotateDenotate(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "test-proj", "name:Test Project")
+
+	out := run(t, bin, "--db", db, "project", "annotate", "test-proj", "first", "note")
+	if !strings.Contains(out, "Annotated project") {
+		t.Fatalf("annotate output = %q", out)
+	}
+
+	out = run(t, bin, "--db", db, "project", "annotations", "test-proj")
+	if !strings.Contains(out, "first note") {
+		t.Fatalf("annotations output = %q", out)
+	}
+
+	out = run(t, bin, "--db", db, "--json", "project", "annotations", "test-proj")
+	var annotations []map[string]any
+	if err := json.Unmarshal([]byte(out), &annotations); err != nil {
+		t.Fatalf("JSON parse error = %v, output = %q", err, out)
+	}
+	if len(annotations) != 1 {
+		t.Fatalf("annotations count = %d, want 1", len(annotations))
+	}
+	annotationID, _ := annotations[0]["ID"].(string)
+
+	out = run(t, bin, "--db", db, "project", "denotate", "test-proj", annotationID)
+	if !strings.Contains(out, "Removed annotation") || !strings.Contains(out, "project") {
+		t.Fatalf("denotate output = %q", out)
+	}
+
+	out = run(t, bin, "--db", db, "project", "annotations", "test-proj")
+	if !strings.Contains(out, "No annotations") {
+		t.Fatalf("expected no annotations, got = %q", out)
+	}
+}
+
+func TestCLIProjectTimeline(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "my-project", "name:My Project")
+
+	run(t, bin, "--db", db, "project", "annotate", "my-project", "project decision")
+
+	run(t, bin, "--db", db, "add", "task one", "project:my-project")
+	run(t, bin, "--db", db, "1", "annotate", "task observation")
+
+	out := run(t, bin, "--db", db, "project", "timeline", "my-project")
+	if !strings.Contains(out, "project decision") {
+		t.Fatalf("timeline missing project annotation = %q", out)
+	}
+	if !strings.Contains(out, "task observation") {
+		t.Fatalf("timeline missing task annotation = %q", out)
+	}
+}
+
+func TestCLIProjectAnnotateTargetStyle(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "web-app", "name:Web App")
+
+	out := run(t, bin, "--db", db, "web-app", "annotate", "target style note")
+	if !strings.Contains(out, "Annotated project") {
+		t.Fatalf("target-style annotate output = %q", out)
+	}
+
+	out = run(t, bin, "--db", db, "web-app", "annotations")
+	if !strings.Contains(out, "target style note") {
+		t.Fatalf("annotations output = %q", out)
+	}
+}
+
+func TestCLIProjectAnnotateRejectsArchived(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	run(t, bin, "--db", db, "project", "add", "old-proj", "name:Old Project")
+	run(t, bin, "--db", db, "project", "archive", "old-proj")
+
+	_, err := runErr(t, bin, "--db", db, "project", "annotate", "old-proj", "should fail")
+	if err == nil {
+		t.Fatal("expected annotate on archived project to fail")
+	}
+}
+
+func TestCLIProjectSlugRejectsDigitStart(t *testing.T) {
+	bin := buildTaskg(t)
+	db := filepath.Join(t.TempDir(), "taskg.db")
+
+	_, err := runErr(t, bin, "--db", db, "project", "add", "123project", "name:Bad Slug")
+	if err == nil {
+		t.Fatal("expected digit-starting slug to be rejected")
+	}
+}
+
 func buildTaskg(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "taskg")
