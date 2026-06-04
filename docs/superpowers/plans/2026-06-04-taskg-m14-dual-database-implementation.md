@@ -602,31 +602,34 @@ type Options struct {
 }
 ```
 
-- [ ] **Step 2: 修改 Resolve 函数**
+- [ ] **Step 2: 修改 Resolve 函数 — 重构 TOML 加载为无条件执行**
 
-DatabaseURL 优先级链：
-1. `opts.DBURL`（`--db-url` flag）
-2. `env["TASKG_DB_URL"]`
-3. `tomlValues["database.url"]`
+当前 `Resolve` 中 TOML 加载是惰性的（`dbPath == ""` 时才加载）。新增 `database.url` 需要无条件读取 TOML。
 
-DatabaseURL 与 DatabasePath 的关系：
-- 仅当 `opts.DBURL != "" && opts.DBPath != ""` 时互斥报错（CLI flag 层面）
-- `TASKG_DB_URL` env + `TASKG_DB` env 或 `--db` flag 共存时，`TASKG_DB_URL` 静默优先，不报错
-
-`--db` 接收到含 `://` 的值时报错，使用 `strings.Contains(dbPath, "://")`（不仅限于 postgres scheme）：
+先将现有 Resolve 中的 TOML 加载改为无条件（移到 `dbPath` 解析之前）：
 
 ```go
 func Resolve(opts Options) (Config, error) {
-    // ... 现有 home/env/tomlValues 初始化 ...
+    home := opts.HomeDir
+    // ... 现有 home/env 初始化 ...
     
-    // DatabaseURL（仅 CLI flag 层面互斥）
+    // 无条件加载 TOML（database.url 需要读取）
+    var tomlValues map[string]string
+    if values, err := loadTomlConfig(configDir(home, env)); err == nil {
+        tomlValues = values
+    } else if !errors.Is(err, os.ErrNotExist) {
+        return Config{}, err
+    }
+    
+    // DatabaseURL 优先级链
     dbURL := opts.DBURL
     if dbURL == "" {
         dbURL = env["TASKG_DB_URL"]
     }
-    if dbURL == "" {
+    if dbURL == "" && tomlValues != nil {
         dbURL = tomlValues["database.url"]
     }
+    // 仅 CLI flag 层面互斥
     if opts.DBURL != "" && opts.DBPath != "" {
         return Config{}, errors.New("--db-url and --db are mutually exclusive")
     }
@@ -641,7 +644,7 @@ func Resolve(opts Options) (Config, error) {
         if dbPath == "" && opts.DataDir != "" {
             dbPath = filepath.Join(opts.DataDir, "taskg.db")
         }
-        if dbPath == "" {
+        if dbPath == "" && tomlValues != nil {
             dbPath = tomlValues["database.path"]
         }
         if dbPath == "" && env["XDG_DATA_HOME"] != "" {
@@ -656,9 +659,9 @@ func Resolve(opts Options) (Config, error) {
         return Config{}, errors.New("--db accepts file paths only; use --db-url for database URLs")
     }
     
-    // ... 现有 server/token 解析 ...
+    // ... 现有 server/token 解析（不变） ...
     
-    return Config{DatabasePath: dbPath, DatabaseURL: dbURL, ...}, nil
+    return Config{DatabasePath: dbPath, DatabaseURL: dbURL, RemoteServer: server, RemoteToken: token, JSON: opts.JSON, Color: !opts.NoColor}, nil
 }
 ```
 
@@ -788,9 +791,9 @@ git commit -m "feat: 配置层新增 DatabaseURL 支持（--db-url / TASKG_DB_UR
 cmd.PersistentFlags().StringVar(&opts.DBURL, "db-url", opts.DBURL, "Database URL (postgres://...); mutually exclusive with --db")
 ```
 
-- [ ] **Step 3: 将 "db-url" 加入 stringFlags map**
+- [ ] **Step 3: 将 `"--db-url"` 加入 stringFlags map**
 
-在 `splitFlagsRcAndPositional` 和 `handleTargetAction` 中的 `stringFlags` map 中加入 `"db-url": true`，确保 `taskg <target> <action> --db-url ...` 模式下 flag 被正确解析。
+在 `splitFlagsRcAndPositional` 和 `handleTargetAction` 中的 `stringFlags` map 中加入 `"--db-url": true`（注意：代码库中 stringFlags 使用 `--` 前缀格式，如 `"--db": true`）。
 
 - [ ] **Step 4: 在 optionsFromCmd 中提取 --db-url 值**
 
@@ -802,9 +805,18 @@ opts.DBURL = getCmdStringFlag(cmd, "db-url", opts.DBURL)
 
 - [ ] **Step 5: 传递 DBURL 到 config.Options**
 
-在所有构建 `config.Options` 的地方，加入 `DBURL: opts.DBURL`。
+在所有构建 `config.Options` 的地方，加入 `DBURL: opts.DBURL`。精确位置：
+- `internal/cli/root.go` 的 `buildServiceFromOpts` 函数（约第 708 行）
+- `internal/cli/server.go` 的 `newServerCommand` 函数（约第 34 行）
+- `internal/cli/mcp.go` 的 `newMCPStdioCommand` 函数（约第 34 行）
+- `internal/cli/config.go` 的 `runtimeFromOptions` 函数（约第 277 行）
+- `cmd/taskg/main.go` 的 `warningOptionsFromArgs` 函数（约第 47 行）
 
-- [ ] **Step 6: 修改 store 初始化逻辑**
+- [ ] **Step 6: 更新 `cli.RuntimeEnv()` 以包含 `TASKG_DB_URL`**
+
+在 `internal/cli/helper.go`（或 `RuntimeEnv()` 定义所在的文件）的 `RuntimeEnv()` 函数中，新增 `"TASKG_DB_URL"` 到环境变量列表。这很关键：所有生产代码路径通过 `opts.Env` 传入 `cli.RuntimeEnv()` 返回值，如果不加，`TASKG_DB_URL` 环境变量在运行时不会被读取。
+
+- [ ] **Step 7: 修改 store 初始化逻辑**
 
 在所有调用 `storage.Open(...)` 的地方（`root.go`、`server.go`、`config.go`、`mcp.go`），改为：
 
@@ -816,14 +828,28 @@ if dbTarget == "" {
 store, err := storage.Open(dbTarget)
 ```
 
-- [ ] **Step 7: 更新 cmd/taskg/main.go 中的 M5 migration warning**
+- [ ] **Step 8: 更新 cmd/taskg/main.go 中的 M5 migration warning**
 
-`maybeWarnM5Migration` 函数当前直接调用 `storage.Open(cfg.DatabasePath)`。改为：
-- 使用 `cfg.DatabaseURL || cfg.DatabasePath` 作为 dbTarget
-- 如果 dbTarget 是 PostgreSQL URL，直接 return（M5 迁移仅 SQLite 路径）
+`maybeWarnM5Migration` 的实际签名为 `func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options)`。
+
+修改内容：
+1. 更新 `warningOptionsFromArgs` 函数以解析 `--db-url` 参数（仿照 `--db` 的解析方式）
+2. 在 `maybeWarnM5Migration` 内部，通过 `warningOptionsFromArgs` 获取完整的 `cli.Options`（含 DBURL），然后构建 `config.Options` 并调用 `config.Resolve`
+3. 从返回的 `config.Config` 中取 `DatabaseURL || DatabasePath` 作为 dbTarget
+4. 如果 dbTarget 是 PostgreSQL URL（`strings.HasPrefix(dbTarget, "postgres://")`），直接 return
 
 ```go
-func maybeWarnM5Migration(cfg config.Config) {
+func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
+    // 从 opts 构建 config
+    cfg, err := config.Resolve(config.Options{
+        DBPath:  opts.DBPath,
+        DBURL:   opts.DBURL,
+        HomeDir: opts.HomeDir,
+        Env:     opts.Env,
+    })
+    if err != nil {
+        return
+    }
     dbTarget := cfg.DatabaseURL
     if dbTarget == "" {
         dbTarget = cfg.DatabasePath
@@ -831,20 +857,18 @@ func maybeWarnM5Migration(cfg config.Config) {
     if strings.HasPrefix(dbTarget, "postgres://") || strings.HasPrefix(dbTarget, "postgresql://") {
         return
     }
-    // ... 现有 SQLite M5 迁移 warning 逻辑 ...
+    // ... 现有 SQLite M5 迁移 warning 逻辑（使用 dbTarget 打开 store） ...
 }
 ```
 
-同样需要更新 `warningOptionsFromArgs` 函数以解析 `--db-url` 参数。
-
-- [ ] **Step 8: 全量编译 + 测试**
+- [ ] **Step 9: 全量编译 + 测试**
 
 ```bash
 CGO_ENABLED=0 go build ./cmd/taskg
 CGO_ENABLED=0 go test ./...
 ```
 
-- [ ] **Step 9: 手动验证**
+- [ ] **Step 10: 手动验证**
 
 ```bash
 ./taskg --db-url "invalid://host/db" list
