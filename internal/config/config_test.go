@@ -410,6 +410,63 @@ func TestRemoteTokenPermissionWarningIgnoresFilesWithoutToken(t *testing.T) {
 	}
 }
 
+func TestResolve_DBURLAndDBPathMutualExclusion(t *testing.T) {
+	_, err := Resolve(Options{DBURL: "postgres://host/db", DBPath: "/path/to.db", HomeDir: "/home"})
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+}
+
+func TestResolve_DBURLOnly(t *testing.T) {
+	cfg, err := Resolve(Options{DBURL: "postgres://host/db", HomeDir: "/home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DatabaseURL != "postgres://host/db" {
+		t.Errorf("got %q", cfg.DatabaseURL)
+	}
+	if cfg.DatabasePath != "" {
+		t.Errorf("got %q", cfg.DatabasePath)
+	}
+}
+
+func TestResolve_DBURLEnvVar(t *testing.T) {
+	cfg, err := Resolve(Options{HomeDir: "/home", Env: map[string]string{"TASKG_DB_URL": "postgres://env/db"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DatabaseURL != "postgres://env/db" {
+		t.Errorf("got %q", cfg.DatabaseURL)
+	}
+}
+
+func TestResolve_DBPathRejectsURL(t *testing.T) {
+	_, err := Resolve(Options{DBPath: "postgres://host/db", HomeDir: "/home"})
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestResolve_DBPathRejectsAnyScheme(t *testing.T) {
+	_, err := Resolve(Options{DBPath: "mysql://host/db", HomeDir: "/home"})
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestResolve_DBURLEnvOverridesDBEnv(t *testing.T) {
+	cfg, err := Resolve(Options{HomeDir: "/home", Env: map[string]string{"TASKG_DB_URL": "postgres://env/db", "TASKG_DB": "/path/to.db"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DatabaseURL != "postgres://env/db" {
+		t.Errorf("got %q", cfg.DatabaseURL)
+	}
+	if cfg.DatabasePath != "" {
+		t.Errorf("got %q", cfg.DatabasePath)
+	}
+}
+
 func stringPtr(v string) *string {
 	return &v
 }
