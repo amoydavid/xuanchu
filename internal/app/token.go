@@ -487,17 +487,23 @@ func tokenManageAllowed(role Role) bool {
 }
 
 type ModifyTokenInput struct {
-	TokenID     string
-	Name        *string
-	Scopes      []string
-	ExpiresIn   *int64
-	ClearExpire bool
+	TokenID   string
+	Name      *string
+	Scopes    []string
+	ExpiresIn *time.Duration
 }
 
 func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 	existing, err := s.tokenRepo.GetByID(input.TokenID)
 	if err != nil {
 		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
+	}
+
+	if existing.RevokedAt != nil {
+		return nil, RuntimeError{Code: "token_revoked", Message: "cannot modify a revoked token"}
+	}
+	if existing.ExpiresAt != nil && *existing.ExpiresAt < s.clock.Unix() {
+		return nil, RuntimeError{Code: "token_expired", Message: "cannot modify an expired token"}
 	}
 
 	updates := storage.TokenUpdates{}
@@ -515,31 +521,41 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 			WorkspaceIDs: parseIDsFromJSON(existing.WorkspaceIDsJSON),
 		})
 		if err != nil {
-			return nil, RuntimeError{Message: err.Error()}
+			return nil, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
 		}
 		sj, _ := marshalStringSlice(scopes.Values())
 		updates.ScopesJSON = &sj
 		dirty = true
 	}
 
-	if input.ClearExpire {
-		updates.ClearExpiresAt = true
-		dirty = true
-	} else if input.ExpiresIn != nil {
-		if *input.ExpiresIn < 0 {
-			return nil, RuntimeError{Message: "expires-in must be non-negative"}
-		}
+	if input.ExpiresIn != nil {
 		if *input.ExpiresIn == 0 {
 			updates.ClearExpiresAt = true
+		} else if *input.ExpiresIn < 0 {
+			return nil, RuntimeError{Code: "token_scope_invalid", Message: "expires-in must be a positive duration"}
 		} else {
-			ts := s.clock.Unix() + *input.ExpiresIn
+			ts := s.clock.Unix() + int64(input.ExpiresIn.Seconds())
 			updates.ExpiresAt = &ts
 		}
 		dirty = true
 	}
 
 	if dirty {
-		if err := s.tokenRepo.Update(input.TokenID, updates); err != nil {
+		err = s.withAudit("token.modified", func(tx *Service) (AuditEntry, error) {
+			if err := tx.tokenRepo.Update(input.TokenID, updates); err != nil {
+				return AuditEntry{}, err
+			}
+			return AuditEntry{
+				TargetType: "token",
+				TargetID:   existing.ID,
+				Payload: map[string]any{
+					"user_id": existing.UserID,
+					"name":    existing.Name,
+					"changes": updates.ChangedFields(),
+				},
+			}, nil
+		})
+		if err != nil {
 			return nil, RuntimeError{Code: "token_update_failed", Message: "failed to update token"}
 		}
 	}

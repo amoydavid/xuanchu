@@ -26,6 +26,22 @@ type ApiTokenEntry struct {
 
 var ErrAmbiguousTokenRef = errors.New("ambiguous token reference")
 
+func (u TokenUpdates) ChangedFields() map[string]any {
+	attrs := map[string]any{}
+	if u.Name != nil {
+		attrs["name"] = *u.Name
+	}
+	if u.ScopesJSON != nil {
+		attrs["scopes"] = *u.ScopesJSON
+	}
+	if u.ClearExpiresAt {
+		attrs["expires_at"] = nil
+	} else if u.ExpiresAt != nil {
+		attrs["expires_at"] = *u.ExpiresAt
+	}
+	return attrs
+}
+
 type TokenRepository struct {
 	db *gorm.DB
 }

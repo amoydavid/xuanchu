@@ -27,9 +27,9 @@ type tokenResponse struct {
 }
 
 type modifyTokenRequest struct {
-	Name      *string  `json:"name,omitempty"`
-	Scopes    []string `json:"scopes,omitempty"`
-	ExpiresIn *int64   `json:"expires_in,omitempty"`
+	Name             *string  `json:"name,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
+	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty"`
 }
 
 type createTokenRequest struct {
@@ -133,11 +133,16 @@ func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
+	var ttl *time.Duration
+	if req.ExpiresInSeconds != nil {
+		value := time.Duration(*req.ExpiresInSeconds) * time.Second
+		ttl = &value
+	}
 	view, err := scoped.ModifyToken(app.ModifyTokenInput{
 		TokenID:   chi.URLParam(r, "tokenRef"),
 		Name:      req.Name,
 		Scopes:    req.Scopes,
-		ExpiresIn: req.ExpiresIn,
+		ExpiresIn: ttl,
 	})
 	if err != nil {
 		writeAppError(w, err)

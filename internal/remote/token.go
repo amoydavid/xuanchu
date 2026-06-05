@@ -105,10 +105,10 @@ func (c *Client) CreateToken(ctx context.Context, workspace string, input Create
 }
 
 type ModifyTokenInput struct {
-	TokenID   string   `json:"-"`
-	Name      *string  `json:"name,omitempty"`
-	Scopes    []string `json:"scopes,omitempty"`
-	ExpiresIn *int64   `json:"expires_in,omitempty"`
+	TokenID          string   `json:"-"`
+	Name             *string  `json:"name,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
+	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty"`
 }
 
 func (c *Client) ModifyToken(ctx context.Context, workspace string, input ModifyTokenInput) (*app.TokenView, error) {

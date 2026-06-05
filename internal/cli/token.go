@@ -199,17 +199,27 @@ func newTokenListCommand(opts Options) *cobra.Command {
 func newTokenModifyCommand(opts Options) *cobra.Command {
 	var name string
 	var scopes []string
-	var expiresIn int64
+	var expiresIn string
 	cmd := &cobra.Command{
 		Use:   "modify <id|prefix>",
 		Short: "修改 token 属性（名称、scope、过期时间）",
 		Long: "修改已有 token 的属性。可以同时指定多个修改项。\n" +
 			"  --name        修改 token 名称\n" +
 			"  --scope       替换 scope 列表（支持通配符）\n" +
-			"  --expires-in  设置新的过期时间（秒），0 表示移除过期限制",
+			"  --expires-in  设置新的过期时间（Go duration，如 720h），0 表示移除过期限制",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+
+			var ttl *time.Duration
+			if cmd.Flags().Changed("expires-in") && strings.TrimSpace(expiresIn) != "" {
+				d, err := time.ParseDuration(expiresIn)
+				if err != nil {
+					return err
+				}
+				ttl = &d
+			}
+
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -226,9 +236,7 @@ func newTokenModifyCommand(opts Options) *cobra.Command {
 				if cmd.Flags().Changed("scope") {
 					input.Scopes = scopes
 				}
-				if cmd.Flags().Changed("expires-in") {
-					input.ExpiresIn = &expiresIn
-				}
+				input.ExpiresInSeconds = remote.DurationSecondsPtr(ttl)
 				view, err := client.ModifyToken(context.Background(), currentOpts.Workspace, input)
 				if err != nil {
 					return err
@@ -255,8 +263,11 @@ func newTokenModifyCommand(opts Options) *cobra.Command {
 			if cmd.Flags().Changed("scope") {
 				input.Scopes = scopes
 			}
-			if cmd.Flags().Changed("expires-in") {
-				input.ExpiresIn = &expiresIn
+			if ttl != nil {
+				input.ExpiresIn = ttl
+			} else if cmd.Flags().Changed("expires-in") {
+				zero := time.Duration(0)
+				input.ExpiresIn = &zero
 			}
 
 			view, err := svc.ModifyToken(input)
@@ -273,7 +284,7 @@ func newTokenModifyCommand(opts Options) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "新名称")
 	cmd.Flags().StringSliceVar(&scopes, "scope", nil, "新的 scope 列表")
-	cmd.Flags().Int64Var(&expiresIn, "expires-in", 0, "新的过期时间（秒），0 表示永不过期")
+	cmd.Flags().StringVar(&expiresIn, "expires-in", "", "新的过期时间（Go duration，如 720h），0 表示永不过期")
 	return cmd
 }
 
