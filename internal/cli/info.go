@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dajee/taskg/internal/remote"
-	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )

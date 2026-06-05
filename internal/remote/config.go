@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/task"
-	"github.com/dajee/taskg/internal/taskcontext"
-	"github.com/dajee/taskg/internal/urgency"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskcontext"
+	"git.dajee.net/dajee/xuanchu/internal/urgency"
 )
 
 type contextDTO struct {

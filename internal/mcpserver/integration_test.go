@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -56,7 +56,7 @@ func extractUUID(t *testing.T, env ToolEnvelope) string {
 // newTestServer 创建注册了所有工具的 MCP server。
 func newTestServer(t *testing.T) (*mcp.Server, testClock) {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func newTestServerWithOptions(t *testing.T, opts Options) (*mcp.Server, *storage
 	store := opts.Store
 	if store == nil {
 		var err error
-		store, err = storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+		store, err = storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 		if err != nil {
 			t.Fatal(err)
 		}

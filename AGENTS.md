@@ -17,7 +17,7 @@
 
 ## 1. 项目目标
 
-`taskg` 的最终目标见 [README.md](/Users/mac/code/projects/dajee/task/README.md) 和 [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)：
+`xuanchu` 的最终目标见 [README.md](/Users/mac/code/projects/dajee/task/README.md) 和 [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)：
 
 - 单一二进制，同时承担本地 CLI、远程 CLI 客户端、HTTP/JSON API 服务端、MCP Server。
 - 使用纯 Go SQLite 方案，保持零 CGO。
@@ -50,7 +50,7 @@
 
 当前代码结构：
 
-- `cmd/taskg`
+- `cmd/xuanchu`
   - 二进制入口。
 - `internal/cli`
   - Cobra 命令、参数路由、CLI 输出。
@@ -112,7 +112,7 @@
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 如果改动影响 CLI 行为，重点关注：
@@ -175,14 +175,14 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 10. 当前已知项目习惯
 
-- 本地数据库默认路径：`~/.local/share/taskg/taskg.db`
+- 本地数据库默认路径：`~/.local/share/xuanchu/xuanchu.db`
 - 全局 flag：`--db`、`--db-url`、`--data-dir`、`--json`、`--no-color`
-- 环境变量：`TASKG_DB`、`TASKG_DB_URL`
+- 环境变量：`XUANCHU_DB`、`XUANCHU_DB_URL`
 - 当前根命令支持两种入口模式：
-  - `taskg <subcommand> ...`
-  - `taskg <target> <action> ...`
-- 集成测试会临时构建 `./cmd/taskg` 二进制运行。
-- 仓库中可能存在本地构建产物 `taskg`，处理前先确认是否是临时文件。
+  - `xuanchu <subcommand> ...`
+  - `xuanchu <target> <action> ...`
+- 集成测试会临时构建 `./cmd/xuanchu` 二进制运行。
+- 仓库中可能存在本地构建产物 `xuanchu`，处理前先确认是否是临时文件。
 
 ### 用户信息输出规范
 

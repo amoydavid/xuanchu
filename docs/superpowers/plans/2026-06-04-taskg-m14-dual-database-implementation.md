@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让 taskg 同时支持 SQLite 和 PostgreSQL 后端，通过配置选择，GORM 作为唯一抽象层。
+**Goal:** 让 xuanchu 同时支持 SQLite 和 PostgreSQL 后端，通过配置选择，GORM 作为唯一抽象层。
 
 **Architecture:** 重命名 `internal/storage` 为 `internal/storage`，拆分 SQLite/PostgreSQL 的 Open 和 Migration 逻辑，在 `query_scope.go` 中适配 SQL 方言。不引入 repository interface，所有 repo 保持具体 struct 直接使用 `*gorm.DB`。
 
 **Tech Stack:** Go 1.25, GORM, `github.com/glebarez/sqlite`（SQLite）, `gorm.io/driver/postgres` + `github.com/jackc/pgx/v5`（PostgreSQL）, Cobra
 
-**Spec:** `docs/superpowers/specs/2026-06-04-taskg-m14-dual-database-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-04-xuanchu-m14-dual-database-design.md`
 
 ---
 
@@ -18,7 +18,7 @@
 
 **Files:**
 - Move: `internal/storage/*` → `internal/storage/*`
-- Modify: 所有 import `github.com/dajee/taskg/internal/storage` 的文件（36 个 .go 源文件）
+- Modify: 所有 import `github.com/dajee/xuanchu/internal/storage` 的文件（36 个 .go 源文件）
 - Modify: `go.mod`, `go.sum`
 
 - [ ] **Step 1: 执行包重命名**
@@ -36,7 +36,7 @@ rm -rf internal/storage
 find internal/storage -name '*.go' -exec sed -i '' 's/^package sqlite$/package storage/' {} +
 
 # 替换所有 Go 源文件的 import 路径
-find . -name '*.go' -exec sed -i '' 's|"github.com/dajee/taskg/internal/storage"|"github.com/dajee/taskg/internal/storage"|g' {} +
+find . -name '*.go' -exec sed -i '' 's|"github.com/dajee/xuanchu/internal/storage"|"github.com/dajee/xuanchu/internal/storage"|g' {} +
 ```
 
 - [ ] **Step 3: 替换所有 `sqlite.` qualified identifier 为 `storage.`**
@@ -108,7 +108,7 @@ go get gorm.io/driver/postgres
 - [ ] **Step 2: 验证零 CGO 构建**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
@@ -231,8 +231,8 @@ func TestIsPostgresURL(t *testing.T) {
         {"postgres://user:pass@host:5432/db", true},
         {"postgresql://user:pass@host:5432/db", true},
         {"", false},
-        {"/path/to/taskg.db", false},
-        {"taskg.db", false},
+        {"/path/to/xuanchu.db", false},
+        {"xuanchu.db", false},
         {"mysql://host/db", false},
     }
     for _, tt := range tests {
@@ -256,7 +256,7 @@ func TestOpen_UnsupportedScheme(t *testing.T) {
 - [ ] **Step 6: 编译 + 全量测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
@@ -358,7 +358,7 @@ func (s *Store) migratePostgres() error {
 - [ ] **Step 5: 编译 + 全量测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
@@ -529,7 +529,7 @@ go test ./internal/storage/ -run "TestCompileQuery_" -v
 - [ ] **Step 9: 全量编译 + 测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
@@ -556,7 +556,7 @@ git commit -m "feat: query 编译适配 SQLite/PostgreSQL 方言（LIKE/ILIKE, C
 - [ ] **Step 2: 编译 + 测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
@@ -624,7 +624,7 @@ func Resolve(opts Options) (Config, error) {
     // DatabaseURL 优先级链
     dbURL := opts.DBURL
     if dbURL == "" {
-        dbURL = env["TASKG_DB_URL"]
+        dbURL = env["XUANCHU_DB_URL"]
     }
     if dbURL == "" && tomlValues != nil {
         dbURL = tomlValues["database.url"]
@@ -639,19 +639,19 @@ func Resolve(opts Options) (Config, error) {
     if dbURL == "" {
         dbPath = opts.DBPath
         if dbPath == "" {
-            dbPath = env["TASKG_DB"]
+            dbPath = env["XUANCHU_DB"]
         }
         if dbPath == "" && opts.DataDir != "" {
-            dbPath = filepath.Join(opts.DataDir, "taskg.db")
+            dbPath = filepath.Join(opts.DataDir, "xuanchu.db")
         }
         if dbPath == "" && tomlValues != nil {
             dbPath = tomlValues["database.path"]
         }
         if dbPath == "" && env["XDG_DATA_HOME"] != "" {
-            dbPath = filepath.Join(env["XDG_DATA_HOME"], "taskg", "taskg.db")
+            dbPath = filepath.Join(env["XDG_DATA_HOME"], "xuanchu", "xuanchu.db")
         }
         if dbPath == "" {
-            dbPath = filepath.Join(home, ".local", "share", "taskg", "taskg.db")
+            dbPath = filepath.Join(home, ".local", "share", "xuanchu", "xuanchu.db")
         }
     }
     
@@ -672,7 +672,7 @@ func Resolve(opts Options) (Config, error) {
 ```go
 func environ() map[string]string {
     values := map[string]string{}
-    for _, key := range []string{"TASKG_DB", "TASKG_DB_URL", "TASKG_SERVER", "TASKG_TOKEN", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+    for _, key := range []string{"XUANCHU_DB", "XUANCHU_DB_URL", "XUANCHU_SERVER", "XUANCHU_TOKEN", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
         if value := os.Getenv(key); value != "" {
             values[key] = value
         }
@@ -707,7 +707,7 @@ func TestResolve_DBURLOnly(t *testing.T) {
 func TestResolve_DBURLEnvVar(t *testing.T) {
     cfg, err := Resolve(Options{
         HomeDir: "/home",
-        Env:     map[string]string{"TASKG_DB_URL": "postgres://env/db"},
+        Env:     map[string]string{"XUANCHU_DB_URL": "postgres://env/db"},
     })
     if err != nil {
         t.Fatal(err)
@@ -734,13 +734,13 @@ func TestResolve_DBPathRejectsAnyScheme(t *testing.T) {
 func TestResolve_DBURLEnvOverridesDBEnv(t *testing.T) {
     cfg, err := Resolve(Options{
         HomeDir: "/home",
-        Env:     map[string]string{"TASKG_DB_URL": "postgres://env/db", "TASKG_DB": "/path/to.db"},
+        Env:     map[string]string{"XUANCHU_DB_URL": "postgres://env/db", "XUANCHU_DB": "/path/to.db"},
     })
     if err != nil {
         t.Fatal(err)
     }
     if cfg.DatabaseURL != "postgres://env/db" {
-        t.Errorf("expected TASKG_DB_URL to take precedence, got %q", cfg.DatabaseURL)
+        t.Errorf("expected XUANCHU_DB_URL to take precedence, got %q", cfg.DatabaseURL)
     }
     if cfg.DatabasePath != "" {
         t.Errorf("expected empty DatabasePath when DatabaseURL is set, got %q", cfg.DatabasePath)
@@ -759,7 +759,7 @@ go test ./internal/config/ -v
 - [ ] **Step 6: 全量编译 + 测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
@@ -767,7 +767,7 @@ CGO_ENABLED=0 go test ./...
 
 ```bash
 git add internal/config/
-git commit -m "feat: 配置层新增 DatabaseURL 支持（--db-url / TASKG_DB_URL / TOML）"
+git commit -m "feat: 配置层新增 DatabaseURL 支持（--db-url / XUANCHU_DB_URL / TOML）"
 ```
 
 ### Task 8: CLI 层注册 --db-url flag
@@ -777,7 +777,7 @@ git commit -m "feat: 配置层新增 DatabaseURL 支持（--db-url / TASKG_DB_UR
 - Modify: `internal/cli/server.go` — 使用 `cfg.DatabaseURL` 或 `cfg.DatabasePath`
 - Modify: `internal/cli/config.go` — 同上
 - Modify: `internal/cli/mcp.go` — 同上
-- Modify: `cmd/taskg/main.go` — 更新 M5 migration warning 逻辑、使用新配置
+- Modify: `cmd/xuanchu/main.go` — 更新 M5 migration warning 逻辑、使用新配置
 
 - [ ] **Step 1: 在 Options struct 新增 DBURL 字段**
 
@@ -810,11 +810,11 @@ opts.DBURL = getCmdStringFlag(cmd, "db-url", opts.DBURL)
 - `internal/cli/server.go` 的 `newServerCommand` 函数（约第 34 行）
 - `internal/cli/mcp.go` 的 `newMCPStdioCommand` 函数（约第 34 行）
 - `internal/cli/config.go` 的 `runtimeFromOptions` 函数（约第 277 行）
-- `cmd/taskg/main.go` 的 `warningOptionsFromArgs` 函数（约第 47 行）
+- `cmd/xuanchu/main.go` 的 `warningOptionsFromArgs` 函数（约第 47 行）
 
-- [ ] **Step 6: 更新 `cli.RuntimeEnv()` 以包含 `TASKG_DB_URL`**
+- [ ] **Step 6: 更新 `cli.RuntimeEnv()` 以包含 `XUANCHU_DB_URL`**
 
-在 `internal/cli/helper.go`（或 `RuntimeEnv()` 定义所在的文件）的 `RuntimeEnv()` 函数中，新增 `"TASKG_DB_URL"` 到环境变量列表。这很关键：所有生产代码路径通过 `opts.Env` 传入 `cli.RuntimeEnv()` 返回值，如果不加，`TASKG_DB_URL` 环境变量在运行时不会被读取。
+在 `internal/cli/helper.go`（或 `RuntimeEnv()` 定义所在的文件）的 `RuntimeEnv()` 函数中，新增 `"XUANCHU_DB_URL"` 到环境变量列表。这很关键：所有生产代码路径通过 `opts.Env` 传入 `cli.RuntimeEnv()` 返回值，如果不加，`XUANCHU_DB_URL` 环境变量在运行时不会被读取。
 
 - [ ] **Step 7: 修改 store 初始化逻辑**
 
@@ -828,7 +828,7 @@ if dbTarget == "" {
 store, err := storage.Open(dbTarget)
 ```
 
-- [ ] **Step 8: 更新 cmd/taskg/main.go 中的 M5 migration warning**
+- [ ] **Step 8: 更新 cmd/xuanchu/main.go 中的 M5 migration warning**
 
 `maybeWarnM5Migration` 的实际签名为 `func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options)`。
 
@@ -864,30 +864,30 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 - [ ] **Step 9: 全量编译 + 测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./...
 ```
 
 - [ ] **Step 10: 手动验证**
 
 ```bash
-./taskg --db-url "invalid://host/db" list
+./xuanchu --db-url "invalid://host/db" list
 # 预期：错误 "unsupported database scheme"
 
-./taskg --db-url "postgres://host/db" --db ./taskg.db list
+./xuanchu --db-url "postgres://host/db" --db ./xuanchu.db list
 # 预期：错误 "mutually exclusive"
 
-./taskg --db "./taskg.db" list
+./xuanchu --db "./xuanchu.db" list
 # 预期：正常工作（SQLite 行为不变）
 
-./taskg --db "postgres://host/db" list
+./xuanchu --db "postgres://host/db" list
 # 预期：错误 "--db accepts file paths only"
 ```
 
 - [ ] **Step 10: 提交**
 
 ```bash
-git add internal/cli/ cmd/taskg/
+git add internal/cli/ cmd/xuanchu/
 git commit -m "feat: CLI 注册 --db-url flag，store 初始化支持 PostgreSQL"
 ```
 
@@ -910,15 +910,15 @@ import (
     "testing"
     "time"
 
-    "github.com/dajee/taskg/internal/task"
+    "github.com/dajee/xuanchu/internal/task"
     "github.com/google/uuid"
 )
 
 func postgresTestURL(t *testing.T) string {
     t.Helper()
-    url := os.Getenv("TASKG_TEST_DB_URL")
+    url := os.Getenv("XUANCHU_TEST_DB_URL")
     if url == "" {
-        t.Skip("TASKG_TEST_DB_URL not set, skipping PostgreSQL tests")
+        t.Skip("XUANCHU_TEST_DB_URL not set, skipping PostgreSQL tests")
     }
     return url
 }
@@ -1006,13 +1006,13 @@ func TestPostgres_TaskCRUD(t *testing.T) {
 CGO_ENABLED=0 go test ./internal/storage/ -v
 ```
 
-预期：全部 SQLite 测试通过，PostgreSQL 测试被 skip（无 `TASKG_TEST_DB_URL`）。
+预期：全部 SQLite 测试通过，PostgreSQL 测试被 skip（无 `XUANCHU_TEST_DB_URL`）。
 
 - [ ] **Step 3: 提交**
 
 ```bash
 git add internal/storage/postgres_test.go
-git commit -m "test: 新增 PostgreSQL 集成测试（TASKG_TEST_DB_URL 驱动）"
+git commit -m "test: 新增 PostgreSQL 集成测试（XUANCHU_TEST_DB_URL 驱动）"
 ```
 
 ### Task 10: CLI 集成测试 PostgreSQL 支持（可选）
@@ -1022,18 +1022,18 @@ git commit -m "test: 新增 PostgreSQL 集成测试（TASKG_TEST_DB_URL 驱动�
 
 此任务为可选。M14 验收不要求 CLI 集成测试在 PostgreSQL 下通过，只要求 SQLite 集成测试不回退。
 
-- [ ] **Step 1: 在测试 helper 中检测 TASKG_TEST_DB_URL**
+- [ ] **Step 1: 在测试 helper 中检测 XUANCHU_TEST_DB_URL**
 
 在集成测试的 DB 初始化 helper 中：
 
 ```go
 func testDBArgs(t *testing.T) (args []string, cleanup func()) {
     t.Helper()
-    if dbURL := os.Getenv("TASKG_TEST_DB_URL"); dbURL != "" {
+    if dbURL := os.Getenv("XUANCHU_TEST_DB_URL"); dbURL != "" {
         return []string{"--db-url", dbURL}, func() {}
     }
     dir := t.TempDir()
-    return []string{"--db", filepath.Join(dir, "taskg.db")}, func() {}
+    return []string{"--db", filepath.Join(dir, "xuanchu.db")}, func() {}
 }
 ```
 
@@ -1051,7 +1051,7 @@ CGO_ENABLED=0 go test ./tests/integration/ -v
 
 ```bash
 git add tests/integration/
-git commit -m "test: 集成测试预留 TASKG_TEST_DB_URL 支持（可选）"
+git commit -m "test: 集成测试预留 XUANCHU_TEST_DB_URL 支持（可选）"
 ```
 
 ### Task 11: 文档更新
@@ -1073,7 +1073,7 @@ M14 行状态改为"已完成"。更新"当前下一步"节。
 
 - 第 2 节技术栈：新增 `gorm.io/driver/postgres`、`github.com/jackc/pgx/v5`（纯 Go PostgreSQL driver）
 - 第 8 节存储层：`internal/storage`（不再是 `internal/storage`），新增 PostgreSQL 支持说明
-- 第 10 节全局 flag：新增 `--db-url`、`TASKG_DB_URL`
+- 第 10 节全局 flag：新增 `--db-url`、`XUANCHU_DB_URL`
 
 - [ ] **Step 4: 提交**
 
@@ -1089,7 +1089,7 @@ git commit -m "docs: M14 多数据库支持文档更新"
 ```bash
 CGO_ENABLED=0 go vet ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 预期：全部通过。
@@ -1098,25 +1098,25 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ```bash
 # SQLite（行为不变）
-./taskg --db /tmp/test.db project add test-project name:"Test"
-./taskg --db /tmp/test.db add "Test task" project:test-project
-./taskg --db /tmp/test.db list
+./xuanchu --db /tmp/test.db project add test-project name:"Test"
+./xuanchu --db /tmp/test.db add "Test task" project:test-project
+./xuanchu --db /tmp/test.db list
 
 # PostgreSQL（如果环境可用）
-./taskg --db-url "postgres://user:pass@localhost:5432/taskg_test?sslmode=disable" project add test-project name:"Test"
-./taskg --db-url "postgres://user:pass@localhost:5432/taskg_test?sslmode=disable" add "Test task" project:test-project
-./taskg --db-url "postgres://user:pass@localhost:5432/taskg_test?sslmode=disable" list
+./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu_test?sslmode=disable" project add test-project name:"Test"
+./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu_test?sslmode=disable" add "Test task" project:test-project
+./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu_test?sslmode=disable" list
 
 # 互斥检查
-./taskg --db-url "postgres://..." --db /tmp/test.db list
+./xuanchu --db-url "postgres://..." --db /tmp/test.db list
 # 预期：错误
 
 # --db URL 误用检查
-./taskg --db "postgres://..." list
+./xuanchu --db "postgres://..." list
 # 预期：错误
 
 # 不支持的 scheme
-./taskg --db-url "mysql://..." list
+./xuanchu --db-url "mysql://..." list
 # 预期：错误 "unsupported database scheme"
 ```
 

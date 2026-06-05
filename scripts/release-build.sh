@@ -16,6 +16,6 @@ do
   if [ "$GOOS" = "windows" ]; then suffix=".exe"; fi
   CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
     go build -ldflags "-X main.version=${VERSION}" \
-      -o "dist/taskg-${VERSION}-${GOOS}-${GOARCH}${suffix}" ./cmd/taskg
+      -o "dist/xuanchu-${VERSION}-${GOOS}-${GOARCH}${suffix}" ./cmd/xuanchu
 done
 echo "Built 5 binaries in dist/"

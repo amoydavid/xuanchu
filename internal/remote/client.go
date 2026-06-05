@@ -118,7 +118,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, out 
 func (c *Client) do(req *http.Request, out any) error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	if c.asUser != "" {
-		req.Header.Set("X-Taskg-As", c.asUser)
+		req.Header.Set("X-Xuanchu-As", c.asUser)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

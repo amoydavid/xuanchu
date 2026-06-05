@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 func TestResolveTaskField(t *testing.T) {

@@ -5,7 +5,7 @@ weight: 80
 
 # MCP 使用指南
 
-taskg 可以作为 MCP Server，让 Agent 通过结构化 tools/resources 访问任务系统。
+xuanchu 可以作为 MCP Server，让 Agent 通过结构化 tools/resources 访问任务系统。
 
 MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace；HTTP MCP 使用 Bearer token 绑定的 user 和 scope。完整身份初始化流程见 [身份与初始化](identity-and-initialization.md)。
 
@@ -16,13 +16,13 @@ MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace�
 本地 stdio MCP：
 
 ```bash
-taskg mcp stdio
+xuanchu mcp stdio
 ```
 
 HTTP MCP：
 
 ```bash
-taskg server --listen :8080
+xuanchu server --listen :8080
 ```
 
 HTTP MCP endpoint：
@@ -35,18 +35,18 @@ HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token sc
 
 ## 接入前准备
 
-如果使用本地 stdio MCP，先确认 `taskg` 在 PATH 中，或记录完整路径：
+如果使用本地 stdio MCP，先确认 `xuanchu` 在 PATH 中，或记录完整路径：
 
 ```bash
-which taskg
+which xuanchu
 ```
 
 如果使用 HTTP MCP，先启动服务端并创建 token：
 
 ```bash
-taskg server --listen :8080
+xuanchu server --listen :8080
 
-taskg --workspace dajee token create mcp-agent \
+xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
   --project ai-agent-platform \
@@ -62,20 +62,20 @@ Claude Code 支持 stdio 和 HTTP MCP。推荐优先使用 HTTP MCP 连接生产
 ### Claude Code 本地 stdio
 
 ```bash
-claude mcp add --transport stdio taskg -- taskg mcp stdio
+claude mcp add --transport stdio xuanchu -- xuanchu mcp stdio
 ```
 
-如果 `taskg` 不在 PATH 中，使用完整路径：
+如果 `xuanchu` 不在 PATH 中，使用完整路径：
 
 ```bash
-claude mcp add --transport stdio taskg -- /path/to/taskg mcp stdio
+claude mcp add --transport stdio xuanchu -- /path/to/xuanchu mcp stdio
 ```
 
 指定本地数据库：
 
 ```bash
-claude mcp add --transport stdio taskg -- /path/to/taskg --db /path/to/taskg.db mcp stdio
-claude mcp add --transport stdio taskg -- /path/to/taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" mcp stdio
+claude mcp add --transport stdio xuanchu -- /path/to/xuanchu --db /path/to/xuanchu.db mcp stdio
+claude mcp add --transport stdio xuanchu -- /path/to/xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable" mcp stdio
 ```
 
 ### Claude Code 远程 HTTP
@@ -83,16 +83,16 @@ claude mcp add --transport stdio taskg -- /path/to/taskg --db-url "postgres://us
 ```bash
 claude mcp add \
   --transport http \
-  --header "Authorization: Bearer $TASKG_TOKEN" \
-  taskg \
-  https://taskg.example.com/mcp
+  --header "Authorization: Bearer $XUANCHU_TOKEN" \
+  xuanchu \
+  https://xuanchu.example.com/mcp
 ```
 
 检查连接状态：
 
 ```bash
 claude mcp list
-claude mcp get taskg
+claude mcp get xuanchu
 ```
 
 在 Claude Code 交互界面中也可以运行：
@@ -108,9 +108,9 @@ claude mcp get taskg
 ```json
 {
   "mcpServers": {
-    "taskg": {
+    "xuanchu": {
       "type": "stdio",
-      "command": "/path/to/taskg",
+      "command": "/path/to/xuanchu",
       "args": ["mcp", "stdio"],
       "env": {}
     }
@@ -123,28 +123,28 @@ HTTP 示例：
 ```json
 {
   "mcpServers": {
-    "taskg": {
+    "xuanchu": {
       "type": "http",
-      "url": "https://taskg.example.com/mcp",
+      "url": "https://xuanchu.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer ${TASKG_TOKEN}"
+        "Authorization": "Bearer ${XUANCHU_TOKEN}"
       }
     }
   }
 }
 ```
 
-如果客户端不展开 `${TASKG_TOKEN}`，请改用该客户端支持的 secret manager、header helper，或只把配置放在用户级私有配置里。
+如果客户端不展开 `${XUANCHU_TOKEN}`，请改用该客户端支持的 secret manager、header helper，或只把配置放在用户级私有配置里。
 
 ## 在 OpenClaw 中使用
 
-OpenClaw 的 `openclaw mcp serve` 是"OpenClaw 自己作为 MCP server"。这里要做的是相反方向：让 OpenClaw 托管的 agent 使用 taskg MCP server，所以应使用 OpenClaw 的 MCP client registry，也就是 `openclaw mcp add/set/configure/probe`。
+OpenClaw 的 `openclaw mcp serve` 是"OpenClaw 自己作为 MCP server"。这里要做的是相反方向：让 OpenClaw 托管的 agent 使用 xuanchu MCP server，所以应使用 OpenClaw 的 MCP client registry，也就是 `openclaw mcp add/set/configure/probe`。
 
 ### OpenClaw 本地 stdio
 
 ```bash
-openclaw mcp add taskg \
-  --command /path/to/taskg \
+openclaw mcp add xuanchu \
+  --command /path/to/xuanchu \
   --arg mcp \
   --arg stdio
 ```
@@ -152,10 +152,10 @@ openclaw mcp add taskg \
 指定数据库：
 
 ```bash
-openclaw mcp add taskg \
-  --command /path/to/taskg \
+openclaw mcp add xuanchu \
+  --command /path/to/xuanchu \
   --arg --db \
-  --arg /path/to/taskg.db \
+  --arg /path/to/xuanchu.db \
   --arg mcp \
   --arg stdio
 ```
@@ -163,8 +163,8 @@ openclaw mcp add taskg \
 ### OpenClaw 远程 HTTP
 
 ```bash
-openclaw mcp set taskg '{
-  "url": "https://taskg.example.com/mcp",
+openclaw mcp set xuanchu '{
+  "url": "https://xuanchu.example.com/mcp",
   "transport": "streamable-http",
   "headers": {
     "Authorization": "Bearer <token>"
@@ -178,17 +178,17 @@ openclaw mcp set taskg '{
 
 ```bash
 openclaw mcp status --verbose
-openclaw mcp doctor taskg --probe
-openclaw mcp probe taskg --json
+openclaw mcp doctor xuanchu --probe
+openclaw mcp probe xuanchu --json
 ```
 
-如果只希望 OpenClaw 暴露一部分 taskg MCP tools，可以配置 tool filter。例如只让 Agent 查询任务和读取项目：
+如果只希望 OpenClaw 暴露一部分 xuanchu MCP tools，可以配置 tool filter。例如只让 Agent 查询任务和读取项目：
 
 ```bash
-openclaw mcp tools taskg --include 'task_query,task_get,project_list,project_get,workspace_get_current'
+openclaw mcp tools xuanchu --include 'task_query,task_get,project_list,project_get,workspace_get_current'
 ```
 
-注意：OpenClaw 文档中 `streamable-http` 是 Streamable HTTP 的规范写法；taskg 的 `/mcp` 就是这个 HTTP MCP endpoint。
+注意：OpenClaw 文档中 `streamable-http` 是 Streamable HTTP 的规范写法；xuanchu 的 `/mcp` 就是这个 HTTP MCP endpoint。
 
 ## 在 Hermes Agent 中使用
 
@@ -198,8 +198,8 @@ Hermes Agent 从 `~/.hermes/config.yaml` 的 `mcp_servers` 读取 MCP 配置。�
 
 ```yaml
 mcp_servers:
-  taskg:
-    command: "/path/to/taskg"
+  xuanchu:
+    command: "/path/to/xuanchu"
     args: ["mcp", "stdio"]
 ```
 
@@ -207,19 +207,19 @@ mcp_servers:
 
 ```yaml
 mcp_servers:
-  taskg:
-    command: "/path/to/taskg"
-    args: ["--db", "/path/to/taskg.db", "mcp", "stdio"]
+  xuanchu:
+    command: "/path/to/xuanchu"
+    args: ["--db", "/path/to/xuanchu.db", "mcp", "stdio"]
 ```
 
 ### Hermes 远程 HTTP
 
 ```yaml
 mcp_servers:
-  taskg:
-    url: "https://taskg.example.com/mcp"
+  xuanchu:
+    url: "https://xuanchu.example.com/mcp"
     headers:
-      Authorization: "Bearer ${TASKG_TOKEN}"
+      Authorization: "Bearer ${XUANCHU_TOKEN}"
     timeout: 30
     connect_timeout: 10
 ```
@@ -239,9 +239,9 @@ hermes chat
 Hermes 会给 MCP tool 名加前缀，形如：
 
 ```text
-mcp_taskg_task_query
-mcp_taskg_task_add
-mcp_taskg_project_list
+mcp_xuanchu_task_query
+mcp_xuanchu_task_add
+mcp_xuanchu_project_list
 ```
 
 通常不需要手动调用这些名字；让 Agent 用自然语言描述目标即可。
@@ -260,13 +260,13 @@ Agent 不应该靠提示词决定权限。权限来自：
 stdio MCP 启动前，建议先确认本机 active user/workspace：
 
 ```bash
-taskg _show active.user active.workspace
+xuanchu _show active.user active.workspace
 ```
 
 HTTP MCP 接入前，建议为 Agent 创建 project-scoped token：
 
 ```bash
-taskg --workspace dajee token create mcp-agent \
+xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
   --project ai-agent-platform \
@@ -278,7 +278,7 @@ taskg --workspace dajee token create mcp-agent \
 可以在 Agent 系统提示词或项目说明中加入：
 
 ```text
-你可以使用 taskg MCP 管理任务。每次调用都必须通过参数显式指定 workspace 和 project_id，
+你可以使用 xuanchu MCP 管理任务。每次调用都必须通过参数显式指定 workspace 和 project_id，
 不要依赖隐式上下文。如果不知道 workspace 或 project，先调用 workspace_list / project_list 发现。
 查询任务用 task_query，读取单任务用 task_get，新增任务用 task_add。
 如果任务有执行者，请在 task_add / task_modify 里显式传 assignees。
@@ -1088,10 +1088,10 @@ Ping Hook（写审计日志）。
 
 当前提供 4 个 resources：
 
-- `taskg://workspace/current`
-- `taskg://workspace/{workspace_id}`
-- `taskg://project/{project_id}`
-- `taskg://context/current`
+- `xuanchu://workspace/current`
+- `xuanchu://workspace/{workspace_id}`
+- `xuanchu://project/{project_id}`
+- `xuanchu://context/current`
 
 ## 返回格式
 
@@ -1131,11 +1131,11 @@ Assignee 用法（M9+）：
 
 ## Impersonation（M10）
 
-HTTP MCP 支持 request-scoped impersonation。每个 tool call 的 HTTP 请求携带 `X-Taskg-As` header，值为目标用户的 name、email 或 UUID：
+HTTP MCP 支持 request-scoped impersonation。每个 tool call 的 HTTP 请求携带 `X-Xuanchu-As` header，值为目标用户的 name、email 或 UUID：
 
 ```
-Authorization: Bearer taskg_agent_...
-X-Taskg-As: alice
+Authorization: Bearer xuanchu_agent_...
+X-Xuanchu-As: alice
 ```
 
 agent token 必须拥有 `impersonate` scope。权限以目标用户在 workspace 的 membership role 与 token scope 的交集为准。
@@ -1144,5 +1144,5 @@ agent token 必须拥有 `impersonate` scope。权限以目标用户在 workspac
 
 - stdio MCP **不支持** impersonation。
 - HTTP MCP 的 impersonation 是 request-scoped，不是连接级状态。
-- 每个 tool call 必须独立携带 `Authorization` 和 `X-Taskg-As` header。
+- 每个 tool call 必须独立携带 `Authorization` 和 `X-Xuanchu-As` header。
 - `/mcp` 不在 OpenAPI 文档中；MCP schema 由 MCP server 暴露。

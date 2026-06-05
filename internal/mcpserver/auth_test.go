@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 type testClock struct {
@@ -23,7 +23,7 @@ func (c testClock) Location() *time.Location {
 
 func newMCPTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

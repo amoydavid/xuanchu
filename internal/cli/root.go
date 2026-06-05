@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/logging"
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/remote"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/config"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:           "taskg",
+		Use:           "xuanchu",
 		Short:         "Taskwarrior-style task manager",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -67,13 +67,13 @@ func NewRootCommand(opts Options) *cobra.Command {
 	}
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
-	cmd.SetVersionTemplate(fmt.Sprintf("taskg %s\n", opts.Version))
+	cmd.SetVersionTemplate(fmt.Sprintf("xuanchu %s\n", opts.Version))
 
 	cmd.PersistentFlags().StringVar(&opts.DataDir, "data-dir", opts.DataDir, "data directory")
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db", opts.DBPath, "SQLite database path")
 	cmd.PersistentFlags().StringVar(&opts.DBURL, "db-url", opts.DBURL, "Database URL (postgres://...); mutually exclusive with --db")
 	cmd.PersistentFlags().StringVar(&opts.Config, "config", opts.Config, "TOML 配置文件路径")
-	cmd.PersistentFlags().StringVar(&opts.Server, "server", opts.Server, "remote taskg server base URL")
+	cmd.PersistentFlags().StringVar(&opts.Server, "server", opts.Server, "remote xuanchu server base URL")
 	cmd.PersistentFlags().StringVar(&opts.Token, "token", opts.Token, "remote bearer token")
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
 	cmd.PersistentFlags().StringVar(&opts.Project, "project", opts.Project, "remote project slug scope")
@@ -136,7 +136,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	return cmd
 }
 
-// Execute runs the root command, handling the taskg <target> <action> pattern
+// Execute runs the root command, handling the xuanchu <target> <action> pattern
 // by intercepting args before Cobra's subcommand matching.
 func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	// Separate flags from positional args to detect target+action pattern.
@@ -157,11 +157,11 @@ func Execute(cmd *cobra.Command, opts Options, args []string) error {
 	knownActions := knownTargetActions()
 
 	if len(positional) >= 2 && !knownSubcommands[positional[0]] && knownActions[positional[1]] {
-		// Pattern: taskg <target> <action> [args...]
+		// Pattern: xuanchu <target> <action> [args...]
 		return handleTargetAction(cmd, opts, flags, positional)
 	}
 	if idx := commandIndex(positional, knownSubcommands); idx > 0 {
-		// Pattern: taskg <filters...> <command> [args...]
+		// Pattern: xuanchu <filters...> <command> [args...]
 		reordered := append([]string{positional[idx]}, positional[:idx]...)
 		reordered = append(reordered, positional[idx+1:]...)
 		positional = reordered
@@ -711,7 +711,7 @@ func getCmdBoolFlag(cmd *cobra.Command, name string, fallback bool) bool {
 
 func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if opts.As != "" {
-		fmt.Fprintln(opts.Stderr, "taskg: --as 仅在远程模式下生效，本地模式已忽略")
+		fmt.Fprintln(opts.Stderr, "xuanchu: --as 仅在远程模式下生效，本地模式已忽略")
 	}
 	env := RuntimeEnv()
 	cfg, err := config.Resolve(config.Options{

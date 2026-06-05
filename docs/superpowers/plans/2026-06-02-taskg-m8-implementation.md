@@ -1,8 +1,8 @@
-# taskg M8 Implementation Plan
+# xuanchu M8 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 实现 M8：为 `taskg server` 增加 server-side post-commit webhook Hook 能力，并补齐投递恢复、CLI/HTTP 管理面、audit、OpenAPI、部署与恢复文档。
+**Goal:** 实现 M8：为 `xuanchu server` 增加 server-side post-commit webhook Hook 能力，并补齐投递恢复、CLI/HTTP 管理面、audit、OpenAPI、部署与恢复文档。
 
 **Architecture:** M8 在现有 `internal/app` 事务边界内生成稳定事件和 delivery outbox；后台 dispatcher 从 SQLite 抢占待投递记录并发送 HTTP webhook。Hook 管理继续复用 `internal/app`、HTTP scoped service、远程 CLI 和 audit，不新增业务域 adapter、不引入 memory / replica / sync，也不把 Hook 写操作暴露到 MCP。
 
@@ -12,7 +12,7 @@
 
 ## 范围锁定
 
-严格按 [M8 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-02-taskg-m8-design.md) 实现。
+严格按 [M8 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-02-xuanchu-m8-design.md) 实现。
 
 必须进入 M8：
 
@@ -81,7 +81,7 @@
 - `internal/remote/hook.go`
   远程 Hook client。
 - `internal/cli/hook.go`
-  `taskg hook ...` 命令组。
+  `xuanchu hook ...` 命令组。
 - `docs/deployment.md`
   服务端部署、reverse proxy、outbound webhook、secret 注意事项。
 - `docs/backup-restore.md`
@@ -114,8 +114,8 @@
 - `internal/cli/root.go`
   注册 `hook` 命令组。
 - `internal/cli/server.go`
-  启动 `taskg server` 时启动 Hook dispatcher，并随 server shutdown 停止。
-- `docs/openapi/taskg-v1.yaml`
+  启动 `xuanchu server` 时启动 Hook dispatcher，并随 server shutdown 停止。
+- `docs/openapi/xuanchu-v1.yaml`
   增加 Hook API schema、endpoint、错误码、capability 说明。
 - `README.md`
   增加 Hook 使用示例、部署/恢复文档链接。
@@ -323,7 +323,7 @@ git commit -m "feat: 增加 Hook 仓储"
 **Files:**
 - Modify: `internal/app/permission.go`
 - Modify: `README.md`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 - Test: `internal/app/service_test.go`
 
 - [ ] **Step 1: 写权限红测**
@@ -530,7 +530,7 @@ Expected: PASS。
 - [ ] **Step 7: 提交**
 
 ```bash
-git add internal/app/permission.go internal/app/service.go internal/app/hook.go internal/app/hook_endpoint.go internal/app/hook_test.go README.md docs/openapi/taskg-v1.yaml
+git add internal/app/permission.go internal/app/service.go internal/app/hook.go internal/app/hook_endpoint.go internal/app/hook_test.go README.md docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 增加 Hook 管理用例"
 ```
 
@@ -628,7 +628,7 @@ func (s *Service) withAuditAndEvents(fn func(*Service) (*AuditEntry, []HookEvent
 - 每个 matched hook 生成一个 `HookDelivery`。
 - delivery 写入 `workspace_id`、`project_id`、`actor_user_id` scope snapshot。
 - `payload_json` 保存完整 event envelope。
-- `headers_json` 保存 `X-Taskg-Event`、`X-Taskg-Event-Id`、`X-Taskg-Event-Version`，签名在 dispatcher 发送时计算。
+- `headers_json` 保存 `X-Xuanchu-Event`、`X-Xuanchu-Event-Id`、`X-Xuanchu-Event-Version`，签名在 dispatcher 发送时计算。
 
 匹配伪代码：
 
@@ -760,11 +760,11 @@ git commit -m "feat: 写操作生成 Hook delivery"
 
 验证：
 
-- 有 secret 时生成 `X-Taskg-Signature-256`。
+- 有 secret 时生成 `X-Xuanchu-Signature-256`。
 - 同一 body/secret/delivery_id/timestamp 签名稳定。
 - 无 secret 时不生成签名。
-- 有 secret 时生成 `X-Taskg-Timestamp`。
-- headers 包含 `X-Taskg-Delivery`、`X-Taskg-Hook-Id`、`X-Taskg-Attempt`、`User-Agent`。
+- 有 secret 时生成 `X-Xuanchu-Timestamp`。
+- headers 包含 `X-Xuanchu-Delivery`、`X-Xuanchu-Hook-Id`、`X-Xuanchu-Attempt`、`User-Agent`。
 - replay 使用原始 payload/header，但用 Hook 当前 secret 重新计算签名。
 
 Run: `go test ./internal/hookruntime -run TestWebhookSignature`
@@ -930,7 +930,7 @@ git add internal/hookruntime internal/storage/hook_delivery_repo.go
 git commit -m "feat: 增加 Hook dispatcher"
 ```
 
-### Task 10: `taskg server` 启动 dispatcher
+### Task 10: `xuanchu server` 启动 dispatcher
 
 **Files:**
 - Modify: `internal/cli/server.go`
@@ -1099,13 +1099,13 @@ git commit -m "feat: 增加 Hook HTTP API"
 
 覆盖：
 
-- `taskg hook add ... --event task.created --url http://example.test/hook`
-- `taskg hook list`
-- `taskg hook info <id>`
-- `taskg hook disable <id>`
-- `taskg hook enable <id>`
-- `taskg hook deliveries <id>`
-- `taskg hook replay <delivery-id>`
+- `xuanchu hook add ... --event task.created --url http://example.test/hook`
+- `xuanchu hook list`
+- `xuanchu hook info <id>`
+- `xuanchu hook disable <id>`
+- `xuanchu hook enable <id>`
+- `xuanchu hook deliveries <id>`
+- `xuanchu hook replay <delivery-id>`
 
 Run: `go test ./internal/cli -run TestExecuteHook`
 
@@ -1132,15 +1132,15 @@ func (c *Client) ReplayHookDelivery(ctx context.Context, deliveryID string) (Hoo
 命令形态：
 
 ```text
-taskg hook list [--project <slug|uuid>] [--all]
-taskg hook add <name> --event <event> --url <url> [--project <slug|uuid>] [--secret <secret>|--secret-stdin|--secret-file <path>] [--timeout 10s] [--max-attempts 5]
-taskg hook info <hook-id>
-taskg hook modify <hook-id> [--name ...] [--event ...] [--url ...] [--secret <secret>|--secret-stdin|--secret-file <path>] [--timeout ...] [--max-attempts ...]
-taskg hook enable <hook-id>
-taskg hook disable <hook-id>
-taskg hook delete <hook-id>
-taskg hook deliveries <hook-id> [--status <status>] [--limit 50]
-taskg hook replay <delivery-id>
+xuanchu hook list [--project <slug|uuid>] [--all]
+xuanchu hook add <name> --event <event> --url <url> [--project <slug|uuid>] [--secret <secret>|--secret-stdin|--secret-file <path>] [--timeout 10s] [--max-attempts 5]
+xuanchu hook info <hook-id>
+xuanchu hook modify <hook-id> [--name ...] [--event ...] [--url ...] [--secret <secret>|--secret-stdin|--secret-file <path>] [--timeout ...] [--max-attempts ...]
+xuanchu hook enable <hook-id>
+xuanchu hook disable <hook-id>
+xuanchu hook delete <hook-id>
+xuanchu hook deliveries <hook-id> [--status <status>] [--limit 50]
+xuanchu hook replay <delivery-id>
 ```
 
 本地与远程模式共用输出。`hook modify --event` 是整体替换语义；不传 `--event` 保留原 event list。`--secret-stdin` 从 stdin 读取一行并去掉末尾换行；`--secret-file` 从文件读取并去掉末尾换行；三种 secret 输入方式互斥。`--timeout` 只接受秒级整数 duration，例如 `10s`，拒绝 `10500ms` 这类亚秒值。`--json` 输出稳定结构。
@@ -1187,7 +1187,7 @@ git commit -m "feat: 增加 Hook CLI"
 ### Task 14: 同步 OpenAPI
 
 **Files:**
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1: 增加 Hook schemas**
 
@@ -1205,7 +1205,7 @@ git commit -m "feat: 增加 Hook CLI"
 - response 不含 secret。
 - status enum 包含 M8 全部 delivery 状态。
 - `HookDelivery` schema 包含 `workspace_id`、`project_id`、`actor_user_id`、`claim_expires_at`。
-- Webhook 协议文档列出 `X-Taskg-Delivery`、`X-Taskg-Hook-Id`、`X-Taskg-Attempt`、`X-Taskg-Timestamp`、`X-Taskg-Signature-256` 和签名输入格式。
+- Webhook 协议文档列出 `X-Xuanchu-Delivery`、`X-Xuanchu-Hook-Id`、`X-Xuanchu-Attempt`、`X-Xuanchu-Timestamp`、`X-Xuanchu-Signature-256` 和签名输入格式。
 - Hook create/update request 描述 endpoint SSRF 校验、`timeout_seconds` / `max_attempts` 范围。
 
 - [ ] **Step 2: 增加 Hook paths**
@@ -1224,7 +1224,7 @@ OpenAPI common errors 增加：
 
 - [ ] **Step 4: YAML 基础校验**
 
-增加或复用一个会 parse `docs/openapi/taskg-v1.yaml` 的测试，确保 YAML 语法和新增 path/schema 基本有效。
+增加或复用一个会 parse `docs/openapi/xuanchu-v1.yaml` 的测试，确保 YAML 语法和新增 path/schema 基本有效。
 
 Run: `go test ./internal/httpapi -run TestOpenAPI`
 
@@ -1244,10 +1244,10 @@ Expected: PASS。
 包含：
 
 ```bash
-./taskg hook add task-webhook --event task.created --event task.completed --url https://example.test/taskg
-./taskg hook list
-./taskg hook deliveries <hook-id>
-./taskg hook replay <delivery-id>
+./xuanchu hook add task-webhook --event task.created --event task.completed --url https://example.test/xuanchu
+./xuanchu hook list
+./xuanchu hook deliveries <hook-id>
+./xuanchu hook replay <delivery-id>
 ```
 
 说明 Hook 是 server-side webhook，不是本地 shell hook。
@@ -1260,7 +1260,7 @@ Expected: PASS。
 
 覆盖：
 
-- `taskg server --listen :8080`
+- `xuanchu server --listen :8080`
 - reverse proxy / TLS termination。
 - outbound webhook 网络要求。
 - token scope 建议：`hook:read hook:write`。
@@ -1303,7 +1303,7 @@ do
   if [ "$GOOS" = "windows" ]; then suffix=".exe"; fi
   CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
     go build -ldflags "-X main.version=${VERSION}" \
-      -o "dist/taskg-${VERSION}-${GOOS}-${GOARCH}${suffix}" ./cmd/taskg
+      -o "dist/xuanchu-${VERSION}-${GOOS}-${GOARCH}${suffix}" ./cmd/xuanchu
 done
 ```
 
@@ -1322,7 +1322,7 @@ Expected: 工作区不保留构建产物。
 - [ ] **Step 8: 提交**
 
 ```bash
-git add README.md ROADMAP.md docs/deployment.md docs/backup-restore.md scripts/release-build.sh docs/openapi/taskg-v1.yaml
+git add README.md ROADMAP.md docs/deployment.md docs/backup-restore.md scripts/release-build.sh docs/openapi/xuanchu-v1.yaml
 git commit -m "docs: 补齐 M8 Hook 文档"
 ```
 
@@ -1347,7 +1347,7 @@ git commit -m "docs: 补齐 M8 Hook 文档"
 - 调用 dispatcher `RunOnce`。
 - webhook target 收到 `task.created` payload。
 - webhook target 收到 `Content-Type: application/json; charset=utf-8`。
-- webhook target 收到 `X-Taskg-Delivery`、`X-Taskg-Hook-Id`、`X-Taskg-Attempt`、`X-Taskg-Timestamp`、`X-Taskg-Signature-256`、`User-Agent`。
+- webhook target 收到 `X-Xuanchu-Delivery`、`X-Xuanchu-Hook-Id`、`X-Xuanchu-Attempt`、`X-Xuanchu-Timestamp`、`X-Xuanchu-Signature-256`、`User-Agent`。
 - `task.modified` 的 Modify / Start / Stop / Annotate 都能产生稳定 payload，payload 包含 `task`、`completed`、`deleted`。
 - `project.archived` payload 包含 `project` 与 `archived: true`。
 
@@ -1456,15 +1456,15 @@ Expected: PASS。
 
 - [ ] **Step 5: CGO-free build**
 
-Run: `CGO_ENABLED=0 go build ./cmd/taskg`
+Run: `CGO_ENABLED=0 go build ./cmd/xuanchu`
 
 Expected: PASS。
 
 - [ ] **Step 6: 删除本地构建产物**
 
-Run: `rm -f taskg`
+Run: `rm -f xuanchu`
 
-Expected: `git status --short` 中没有 `taskg`。
+Expected: `git status --short` 中没有 `xuanchu`。
 
 - [ ] **Step 7: diff whitespace check**
 

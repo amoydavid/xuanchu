@@ -1,10 +1,10 @@
-# taskg 服务端部署指南
+# xuanchu 服务端部署指南
 
 ## 启动服务
 
 ```bash
-taskg server --listen :8080
-taskg server --listen 127.0.0.1:8080 --db ./taskg.db
+xuanchu server --listen :8080
+xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
 ```
 
 服务端不内置 TLS。生产部署应放在可信网络内，或使用反向代理做 TLS termination。
@@ -16,10 +16,10 @@ taskg server --listen 127.0.0.1:8080 --db ./taskg.db
 ```nginx
 server {
     listen 443 ssl;
-    server_name taskg.example.com;
+    server_name xuanchu.example.com;
 
-    ssl_certificate     /etc/ssl/certs/taskg.pem;
-    ssl_certificate_key /etc/ssl/private/taskg.key;
+    ssl_certificate     /etc/ssl/certs/xuanchu.pem;
+    ssl_certificate_key /etc/ssl/private/xuanchu.key;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -32,7 +32,7 @@ server {
 
 ## Webhook 出站网络
 
-taskg dispatcher 需要访问外部 webhook URL。默认禁止投递到以下地址：
+xuanchu dispatcher 需要访问外部 webhook URL。默认禁止投递到以下地址：
 
 - Loopback：`127.0.0.0/8`、`::1/128`
 - Link-local：`169.254.0.0/16`、`fe80::/10`
@@ -49,10 +49,10 @@ HTTP 3xx redirect 不会被自动跟随。
 
 ```bash
 # 管理 Hook
-./taskg token create hook-admin --scope hook:read,hook:write --expires-in 720h
+./xuanchu token create hook-admin --scope hook:read,hook:write --expires-in 720h
 
 # 只读 Hook
-./taskg token create hook-viewer --scope hook:read --expires-in 720h
+./xuanchu token create hook-viewer --scope hook:read --expires-in 720h
 ```
 
 避免使用全 scope token，减少 token 泄露时的攻击面。
@@ -64,23 +64,23 @@ HTTP 3xx redirect 不会被自动跟随。
 
 ```bash
 # 从 stdin 读取 secret
-echo "my-secret-key" | ./taskg hook add my-hook --secret-stdin --event task.created --url https://example.test/hook
+echo "my-secret-key" | ./xuanchu hook add my-hook --secret-stdin --event task.created --url https://example.test/hook
 
 # 从文件读取 secret
-./taskg hook add my-hook --secret-file /run/secrets/hook-secret --event task.created --url https://example.test/hook
+./xuanchu hook add my-hook --secret-file /run/secrets/hook-secret --event task.created --url https://example.test/hook
 ```
 
 - Hook secret 会随 SQLite 数据库和 `VACUUM INTO` 备份保存
 - 建议数据库文件和备份文件权限为 `0600`：
 
 ```bash
-chmod 600 ~/.local/share/taskg/taskg.db
+chmod 600 ~/.local/share/xuanchu/xuanchu.db
 chmod 600 /path/to/backup.db
 ```
 
 ## Webhook 签名验证
 
-消费方应使用 `X-Taskg-Signature-256` header 验证请求真实性。
+消费方应使用 `X-Xuanchu-Signature-256` header 验证请求真实性。
 
 签名输入：
 
@@ -112,6 +112,6 @@ def verify_signature(secret, delivery_id, timestamp, body, signature):
 ## 服务端运行注意事项
 
 - 服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口
-- `taskg dispatcher` 在 server 启动后自动运行，负责 webhook 出站投递
+- `xuanchu dispatcher` 在 server 启动后自动运行，负责 webhook 出站投递
 - Hook 投递失败不会回滚已提交的 task/project 事务
-- Dead-lettered 投递可通过 `taskg hook replay <delivery-id>` 手动重试
+- Dead-lettered 投递可通过 `xuanchu hook replay <delivery-id>` 手动重试

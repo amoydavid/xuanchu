@@ -1,5 +1,5 @@
 {
-  "description": "Unbind an external ID from a taskg user.",
+  "description": "Unbind an external ID from a xuanchu user.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {

@@ -63,7 +63,7 @@ func TestSetup_WithFile_ExpandsTilde(t *testing.T) {
 		t.Skip("cannot determine home dir")
 	}
 
-	dir := filepath.Join(home, ".taskg-test-tmp", strings.TrimPrefix(t.Name(), "Test"))
+	dir := filepath.Join(home, ".xuanchu-test-tmp", strings.TrimPrefix(t.Name(), "Test"))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

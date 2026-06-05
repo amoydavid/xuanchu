@@ -1,11 +1,11 @@
 # 面向企业项目与 Agent MCP 的 Taskwarrior 风格任务运行时（Go 版）— 需求文档
 
-> 项目代号暂定：**taskg**（command-line binary），仓库根名：`task`
+> 项目代号暂定：**xuanchu**（command-line binary），仓库根名：`task`
 > 目标语言：**Go 1.25+**
 > 主存储：**SQLite（纯 Go 驱动，零 CGO）**
 > 形态：**单一二进制**，可同时充当 ① 本地 CLI ② 远程 CLI 客户端 ③ HTTP/JSON API 服务端 ④ MCP Server
 
-本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。taskg 借鉴 Taskwarrior 的设计思路，但企业 workspace/project/Agent 边界优先于完整兼容。每一条带 `[n]` 的脚注对应文末同号参考链接。
+本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。xuanchu 借鉴 Taskwarrior 的设计思路，但企业 workspace/project/Agent 边界优先于完整兼容。每一条带 `[n]` 的脚注对应文末同号参考链接。
 
 ---
 
@@ -39,9 +39,9 @@
 
 ### 0.3 存储位置约定
 
-- **本地模式**：单文件 `~/.local/share/taskg/taskg.db`（或 `$XDG_DATA_HOME/taskg/taskg.db`），与 Taskwarrior 3 的单 SQLite 文件方案对齐 `[2]`。
+- **本地模式**：单文件 `~/.local/share/xuanchu/xuanchu.db`（或 `$XDG_DATA_HOME/xuanchu/xuanchu.db`），与 Taskwarrior 3 的单 SQLite 文件方案对齐 `[2]`。
 - **服务端模式**：服务端可指定 `--data-dir`，每个企业 workspace 仍落同一个 SQLite 实例（依靠表内 `workspace_id` 行级隔离）。当前阶段 workspace 承担 effective tenant scope；如果未来做 SaaS 多企业共用一个服务端，可在 workspace 上方增加 organization/tenant 层，且不改变 task/query/MCP 的核心语义。
-- 配置文件：`~/.config/taskg/taskg.toml`（沿用 Taskwarrior 的 `XDG_CONFIG_HOME` 与 `TASKRC`/`TASKDATA` 习惯）`[13]`。
+- 配置文件：`~/.config/xuanchu/xuanchu.toml`（沿用 Taskwarrior 的 `XDG_CONFIG_HOME` 与 `TASKRC`/`TASKDATA` 习惯）`[13]`。
 
 ---
 
@@ -238,7 +238,7 @@ task 12 done /typo/fix typo/ +reviewed
 
 - **Workspace context**：默认显示某 project / 某 sprint。
 - **Global context**：跨 workspace 视图，如「所有 assignee=我 的任务」。
-- 切换：`taskg context use sprint-23` / `taskg context none`。
+- 切换：`xuanchu context use sprint-23` / `xuanchu context none`。
 
 ---
 
@@ -345,11 +345,11 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
   - 每次写入产出一条不可变 op：`(op_id, replica_id, parent_op_id, uuid, key, old, new, ts)`。
   - 多端通过比较 op-log 收敛，避免读-改-写丢失 `[4]`。
 - 服务端 = 权威 op-log；客户端可离线累计 op，重连后批量推送。
-- 迁移兼容性：尽量保留 `task export` / `task import` 的常用 JSON 字段名 `[4]`，确保从 Taskwarrior 平滑迁移；企业 project、workspace、权限字段以 taskg 自身模型为准，不追求完整上游兼容。
+- 迁移兼容性：尽量保留 `task export` / `task import` 的常用 JSON 字段名 `[4]`，确保从 Taskwarrior 平滑迁移；企业 project、workspace、权限字段以 xuanchu 自身模型为准，不追求完整上游兼容。
 
 ### 9.3 备份
 
-- `taskg backup` → 复制 SQLite 文件（VACUUM INTO）+ 导出 JSON 双格式；管理员可在服务端定时任务。
+- `xuanchu backup` → 复制 SQLite 文件（VACUUM INTO）+ 导出 JSON 双格式；管理员可在服务端定时任务。
 
 ---
 
@@ -364,7 +364,7 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 
 配置分成三类，不混用：
 
-1. **本机配置**：来自 `taskg.toml`、环境变量、CLI flag 和 `rc.*`。只描述当前机器如何启动和显示 taskg，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 的 server/token 路径。
+1. **本机配置**：来自 `xuanchu.toml`、环境变量、CLI flag 和 `rc.*`。只描述当前机器如何启动和显示 xuanchu，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 的 server/token 路径。
 2. **Workspace 业务配置**：存 DB，带 `workspace_id`，受权限和 audit 约束。包括 UDA schema、urgency UDA 系数、context、report 默认配置、workspace 级 Agent 记忆。
 3. **Project 配置**：M5 project 实体化后引入，挂在 project/workspace 下。包括 project 默认 context、project 级 webhook、project 级 Agent 背景和约束。
 
@@ -437,14 +437,14 @@ M5 起，project 配置只通过 `project config get/set/unset/list <project>` �
 
 ## 12. CLI 工程要求
 
-- 二进制名：`taskg`。
-- 本地模式：`taskg add ...`（直连 SQLite）。
-- 远程模式：`taskg --server https://... --token ... add ...`。
-- 远程连接配置优先级：CLI flag > `TASKG_SERVER` / `TASKG_TOKEN` > `taskg.toml` > 空值。
-- `taskg.toml` 中的 `remote.token` 是本机便利配置；如果文件权限比 `0600` 更宽，CLI 应输出 warning。
+- 二进制名：`xuanchu`。
+- 本地模式：`xuanchu add ...`（直连 SQLite）。
+- 远程模式：`xuanchu --server https://... --token ... add ...`。
+- 远程连接配置优先级：CLI flag > `XUANCHU_SERVER` / `XUANCHU_TOKEN` > `xuanchu.toml` > 空值。
+- `xuanchu.toml` 中的 `remote.token` 是本机便利配置；如果文件权限比 `0600` 更宽，CLI 应输出 warning。
 - 远程 CLI 覆盖核心 task/report/project/project config/context/config/helper/import/export/audit/token 命令；`edit`、`.taskrc import` 等本机语义命令暂不支持远程。
 - 全命令支持 `--json` 输出（脚本化）。
-- 提供 shell 补全：`taskg completion zsh|bash|fish|powershell`，利用 `_xxx` helper 命令。
+- 提供 shell 补全：`xuanchu completion zsh|bash|fish|powershell`，利用 `_xxx` helper 命令。
 - 所有命令必须 100% 可脚本化，stderr/stdout 严格分离。
 
 ---
@@ -454,15 +454,15 @@ M5 起，project 配置只通过 `project config get/set/unset/list <project>` �
 > 不在 Taskwarrior 上游范围内，列出以便后续展开。
 
 - 触发源：外部 webhook、协作系统事件、代码托管事件、定时（heartbeat）、一次性触发。
-- 触发动作：adapter 标准化事件后交给 Agent；Agent 通过 taskg MCP/API 调 `task.add` / `task.query` / `task.modify`，再把结果写回外部系统或静默入库。
-- adapter 示例：飞书、GitHub、Jira、Slack 等都可以接入，但它们不是 taskg 的核心目标。taskg 核心只关心 actor、workspace、project、task、权限和审计。
+- 触发动作：adapter 标准化事件后交给 Agent；Agent 通过 xuanchu MCP/API 调 `task.add` / `task.query` / `task.modify`，再把结果写回外部系统或静默入库。
+- adapter 示例：飞书、GitHub、Jira、Slack 等都可以接入，但它们不是 xuanchu 的核心目标。xuanchu 核心只关心 actor、workspace、project、task、权限和审计。
 - 记忆机制：workspace 挂企业偏好，project 挂项目背景和约束，Agent 读取的是服务端 DB 中的配置/记忆摘要，不读取操作者本机 TOML。
 
 ---
 
 ## 14. 兼容性目标
 
-1. **JSON 互通**：`task export | taskg import` 与反向均无损 `[4]`。
+1. **JSON 互通**：`task export | xuanchu import` 与反向均无损 `[4]`。
 2. **CLI 同形**：核心命令名/参数与上游一致。
 3. **Urgency 默认公式与上游一致** `[1]`。
 4. **`.taskrc` 只读兼容**：解析能识别绝大多数上游配置项 `[13]`。

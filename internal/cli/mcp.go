@@ -6,10 +6,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/logging"
-	"github.com/dajee/taskg/internal/mcpserver"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/config"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/mcpserver"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )

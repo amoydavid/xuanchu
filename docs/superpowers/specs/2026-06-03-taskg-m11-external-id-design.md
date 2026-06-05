@@ -1,18 +1,18 @@
-# taskg M11 设计规格：用户外部 ID 绑定
+# xuanchu M11 设计规格：用户外部 ID 绑定
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 为 taskg 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+**目标：** 为 xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
 
 **范围策略：** M11 只解决"用户可以绑定外部系统 ID，所有入口都能用它来标识用户"。不引入自动用户创建、不引入 OAuth、不改变现有权限模型。
 
-**需求来源：** 本规格基于 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、M9 assignee 设计规格、M10 impersonation 设计规格，以及 Agent 通过 MCP 操作 taskg 时的实际身份映射需求。
+**需求来源：** 本规格基于 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、M9 assignee 设计规格、M10 impersonation 设计规格，以及 Agent 通过 MCP 操作 xuanchu 时的实际身份映射需求。
 
 ---
 
 ## 1. 当前基础
 
-M10 完成后，taskg 已经具备：
+M10 完成后，xuanchu 已经具备：
 
 - 完整的 assignee 体系（M9）：多对多关系、`@ref` 写语法、`assignee:<ref>` 查询、全入口覆盖。
 - Impersonation（M10）：Agent token 可以代表 workspace 成员操作。
@@ -20,7 +20,7 @@ M10 完成后，taskg 已经具备：
 
 当前缺口：
 
-- Agent 只持有外部系统 ID（如飞书 `ou_xxxxx`），无法将其映射到 taskg 用户。
+- Agent 只持有外部系统 ID（如飞书 `ou_xxxxx`），无法将其映射到 xuanchu 用户。
 - `resolveUser` 不识别外部 ID 格式，Agent 无法用 `feishu:ou_xxxxx` 作为 assignee ref。
 - 所有返回用户信息的接口（`user info`、`task.get` 的 assignees、`user list`）都不包含外部 ID，Agent 拿到任务后无法反向查找飞书 ID 去发通知。
 
@@ -41,7 +41,7 @@ M10 完成后，taskg 已经具备：
 
 - 自动用户创建（遇到未绑定的外部 ID 时严格返回 `assignee_not_found`）。
 - OAuth / OIDC / 飞书授权流程。
-- 外部系统 API 调用（taskg 不主动查飞书通讯录）。
+- 外部系统 API 调用（xuanchu 不主动查飞书通讯录）。
 - provider 插件系统（早期硬编码 `feishu`、`email`、`slack`、`wechat` 即可）。
 - 批量导入外部 ID（CSV / API batch）。
 - 外部 ID 变更同步（外部系统用户 ID 变了，需要手动重新绑定）。
@@ -78,8 +78,8 @@ provider 值为小写字母开头的字符串，早期支持的常量：
 `(provider, external_id)` 联合唯一。理由：
 
 - 一个外部 ID 代表一个真实的人。
-- 同一个 taskg 实例内，一个真实的人应该只有一个 taskg 用户。
-- 如果出现"同一个飞书 ID 想绑两个 taskg 用户"的需求，说明数据模型有问题，应该先修正用户数据，而不是放开唯一约束。
+- 同一个 xuanchu 实例内，一个真实的人应该只有一个 xuanchu 用户。
+- 如果出现"同一个飞书 ID 想绑两个 xuanchu 用户"的需求，说明数据模型有问题，应该先修正用户数据，而不是放开唯一约束。
 
 一个用户可以绑定多个外部 ID（飞书 + Slack + 邮箱，多端接入）。
 
@@ -262,19 +262,19 @@ export 行为：
 新增子命令：
 
 ```bash
-taskg user bind feishu:ou_xxxxx                    # 绑定到当前用户
-taskg user bind feishu:ou_xxxxx --user alice       # admin/owner 给其他用户绑定
-taskg user unbind feishu:ou_xxxxx                  # 解绑
-taskg user unbind feishu:ou_xxxxx --user alice     # admin/owner 给其他用户解绑
+xuanchu user bind feishu:ou_xxxxx                    # 绑定到当前用户
+xuanchu user bind feishu:ou_xxxxx --user alice       # admin/owner 给其他用户绑定
+xuanchu user unbind feishu:ou_xxxxx                  # 解绑
+xuanchu user unbind feishu:ou_xxxxx --user alice     # admin/owner 给其他用户解绑
 ```
 
 已有命令行为变更：
 
-- `taskg user info`：human 输出增加外部 ID 列表行。
-- `taskg user list`：human 输出可选显示外部 ID（`--verbose` 或默认不显示，`--json` 一定包含）。
-- `taskg task info`：assignee 行如果有关联外部 ID，可选择性显示（首版不强制，JSON 输出一定包含）。
-- assignee ref 语法自动支持：`taskg add "做这件事" @feishu:ou_xxxxx`
-- 查询语法自动支持：`taskg list assignee:feishu:ou_xxxxx`
+- `xuanchu user info`：human 输出增加外部 ID 列表行。
+- `xuanchu user list`：human 输出可选显示外部 ID（`--verbose` 或默认不显示，`--json` 一定包含）。
+- `xuanchu task info`：assignee 行如果有关联外部 ID，可选择性显示（首版不强制，JSON 输出一定包含）。
+- assignee ref 语法自动支持：`xuanchu add "做这件事" @feishu:ou_xxxxx`
+- 查询语法自动支持：`xuanchu list assignee:feishu:ou_xxxxx`
 
 ## 5. 分层影响
 
@@ -335,19 +335,19 @@ taskg user unbind feishu:ou_xxxxx --user alice     # admin/owner 给其他用户
 - `ROADMAP.md`
 - `docs/manual/mcp.md`
 - `docs/manual/remote-cli-and-api.md`
-- `docs/openapi/taskg-v1.yaml`
+- `docs/openapi/xuanchu-v1.yaml`
 - `docs/requirements.md`
 
 ## 6. 验收标准
 
 M11 完成时，至少要满足：
 
-- `taskg user bind feishu:ou_xxxxx` 能绑定外部 ID，`taskg user unbind feishu:ou_xxxxx` 能解绑。
-- `taskg user info` human 输出显示外部 ID 列表。
-- `taskg user info --json` 返回 `external_ids` 数组。
-- `taskg user list --json` 每个用户包含 `external_ids`。
-- `taskg add "做这件事" @feishu:ou_xxxxx` 能创建带外部 ID assignee 的任务。
-- `taskg list assignee:feishu:ou_xxxxx` 能按外部 ID 查询任务。
+- `xuanchu user bind feishu:ou_xxxxx` 能绑定外部 ID，`xuanchu user unbind feishu:ou_xxxxx` 能解绑。
+- `xuanchu user info` human 输出显示外部 ID 列表。
+- `xuanchu user info --json` 返回 `external_ids` 数组。
+- `xuanchu user list --json` 每个用户包含 `external_ids`。
+- `xuanchu add "做这件事" @feishu:ou_xxxxx` 能创建带外部 ID assignee 的任务。
+- `xuanchu list assignee:feishu:ou_xxxxx` 能按外部 ID 查询任务。
 - JSON export 的 assignee 包含 `external_ids`；JSON import 支持 `feishu:ou_xxxxx` 作为 ref。
 - HTTP API `POST /api/v1/users/{user}/external-ids` 能绑定，`DELETE` 能解绑，`GET` 能列出。
 - HTTP API 所有返回用户/assignee 的 endpoint 附带 `external_ids`。
@@ -357,7 +357,7 @@ M11 完成时，至少要满足：
 - admin/owner 可以给其他用户绑定；普通用户只能给自己绑定。
 - 未绑定的外部 ID 在 assignee 解析时返回 `assignee_not_found`。
 - Hook payload 的 `data.task.assignees` 自动携带 `external_ids`。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 ## 7. 明确不做
 

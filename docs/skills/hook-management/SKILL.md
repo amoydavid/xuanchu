@@ -1,10 +1,10 @@
 # Hook 管理
 
-通过 taskg MCP 管理 Webhook Hook——自动化事件通知机制。
+通过 xuanchu MCP 管理 Webhook Hook——自动化事件通知机制。
 
 ## 基本概念
 
-Hook 是事件驱动的 Webhook 端点。当 taskg 中发生特定事件时，系统会向 Hook 的 URL 发送 HTTP POST 请求。
+Hook 是事件驱动的 Webhook 端点。当 xuanchu 中发生特定事件时，系统会向 Hook 的 URL 发送 HTTP POST 请求。
 
 支持的事件类型：
 - `task.created` — 任务创建

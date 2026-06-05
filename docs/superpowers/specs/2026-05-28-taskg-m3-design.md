@@ -1,4 +1,4 @@
-# taskg M3 设计规格
+# xuanchu M3 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
@@ -54,35 +54,35 @@ M3 完成后，应支持这些使用方式：
 
 ```bash
 # TOML 配置与临时 rc 覆盖
-taskg show
-taskg config get date.format
-taskg config set date.format rfc3339
-taskg rc.date.format=epoch list
+xuanchu show
+xuanchu config get date.format
+xuanchu config set date.format rfc3339
+xuanchu rc.date.format=epoch list
 
 # context
-taskg context define work 'project:work status:pending'
-taskg context use work
-taskg list
-taskg --no-context list
-taskg context show
-taskg context none
+xuanchu context define work 'project:work status:pending'
+xuanchu context use work
+xuanchu list
+xuanchu --no-context list
+xuanchu context show
+xuanchu context none
 
 # UDA schema 与值
-taskg config set uda.estimate.type numeric
-taskg config set uda.estimate.label "Estimate"
-taskg add "Implement API" estimate:3
-taskg estimate:3 list
-taskg _get 1.estimate
-taskg _udas
-taskg _unique estimate
+xuanchu config set uda.estimate.type numeric
+xuanchu config set uda.estimate.label "Estimate"
+xuanchu add "Implement API" estimate:3
+xuanchu estimate:3 list
+xuanchu _get 1.estimate
+xuanchu _udas
+xuanchu _unique estimate
 
 # .taskrc 只读导入
-taskg config import-taskrc ~/.taskrc --dry-run
-taskg config import-taskrc ~/.taskrc
+xuanchu config import-taskrc ~/.taskrc --dry-run
+xuanchu config import-taskrc ~/.taskrc
 
 # completion
-taskg completion zsh > ~/.zfunc/_taskg
-taskg completion bash
+xuanchu completion zsh > ~/.zfunc/_xuanchu
+xuanchu completion bash
 ```
 
 M3 仍需保持脚本友好：
@@ -99,9 +99,9 @@ M3 仍需保持脚本友好：
 
 必须进入 M3：
 
-- 支持 `~/.config/taskg/taskg.toml`。
+- 支持 `~/.config/xuanchu/xuanchu.toml`。
 - 支持 `XDG_CONFIG_HOME`。
-- 继续支持 `--db`、`--data-dir`、`TASKG_DB`、`XDG_DATA_HOME`。
+- 继续支持 `--db`、`--data-dir`、`XUANCHU_DB`、`XDG_DATA_HOME`。
 - 支持 Taskwarrior 风格临时覆盖参数：
   - `rc.<key>=<value>`
   - `rc.<key>:` 或 `rc.<key>=` 表示本次运行清空该 key。
@@ -181,20 +181,20 @@ M3 不做：
 M3 引入 TOML 文件：
 
 ```text
-~/.config/taskg/taskg.toml
+~/.config/xuanchu/xuanchu.toml
 ```
 
 如果 `XDG_CONFIG_HOME` 存在，则使用：
 
 ```text
-$XDG_CONFIG_HOME/taskg/taskg.toml
+$XDG_CONFIG_HOME/xuanchu/xuanchu.toml
 ```
 
 建议 TOML 结构：
 
 ```toml
 [database]
-path = "/path/to/taskg.db"
+path = "/path/to/xuanchu.db"
 
 [display]
 color = true
@@ -225,31 +225,31 @@ label = "Reviewed"
 数据库路径是特殊配置，因为必须先解析路径才能打开 SQLite。路径优先级：
 
 1. `--db`
-2. `TASKG_DB`
+2. `XUANCHU_DB`
 3. `--data-dir`
 4. TOML `database.path`
-5. `XDG_DATA_HOME/taskg/taskg.db`
-6. `~/.local/share/taskg/taskg.db`
+5. `XDG_DATA_HOME/xuanchu/xuanchu.db`
+6. `~/.local/share/xuanchu/xuanchu.db`
 
 非路径配置优先级：
 
 1. CLI flag。
 2. 本次运行的 `rc.<key>=<value>` 覆盖。
 3. 环境变量。
-4. SQLite meta 中由 `taskg config set` 写入的值。
+4. SQLite meta 中由 `xuanchu config set` 写入的值。
 5. TOML 文件。
 6. 默认值。
 
-选择 SQLite meta 高于 TOML，是为了保留 M0-M2 已有 `taskg config set` 行为：用户通过命令显式设置的值，不会被较早写入的 TOML 默认值悄悄覆盖。
+选择 SQLite meta 高于 TOML，是为了保留 M0-M2 已有 `xuanchu config set` 行为：用户通过命令显式设置的值，不会被较早写入的 TOML 默认值悄悄覆盖。
 
 ### rc 临时覆盖
 
 M3 支持 Taskwarrior 风格临时覆盖：
 
 ```bash
-taskg rc.date.format=epoch list
-taskg rc.context=none list
-taskg rc.color=false next
+xuanchu rc.date.format=epoch list
+xuanchu rc.context=none list
+xuanchu rc.color=false next
 ```
 
 规则：
@@ -264,11 +264,11 @@ taskg rc.color=false next
 M3 扩展：
 
 ```bash
-taskg config get <key>
-taskg config set <key> <value>
-taskg config unset <key>
-taskg config list
-taskg config import-taskrc <path> [--dry-run]
+xuanchu config get <key>
+xuanchu config set <key> <value>
+xuanchu config unset <key>
+xuanchu config list
+xuanchu config import-taskrc <path> [--dry-run]
 ```
 
 规则：
@@ -306,12 +306,12 @@ context.active=<name>
 ### 命令
 
 ```bash
-taskg context define work 'project:work status:pending'
-taskg context use work
-taskg context none
-taskg context show
-taskg context list
-taskg context delete work
+xuanchu context define work 'project:work status:pending'
+xuanchu context use work
+xuanchu context none
+xuanchu context show
+xuanchu context list
+xuanchu context delete work
 ```
 
 规则：
@@ -455,11 +455,11 @@ M3 先以 `value TEXT` 保存用户输入的规范化字符串。查询时按 sc
 M3 支持：
 
 ```bash
-taskg add "Implement API" estimate:3
-taskg 1 modify estimate:5
-taskg 1 modify estimate:
-taskg uda.estimate:3 list
-taskg estimate:3 list
+xuanchu add "Implement API" estimate:3
+xuanchu 1 modify estimate:5
+xuanchu 1 modify estimate:
+xuanchu uda.estimate:3 list
+xuanchu estimate:3 list
 ```
 
 规则：
@@ -549,8 +549,8 @@ Taskwarrior UDA 在 JSON 中表现为 top-level field。M3 采用同样规则：
 DOM：
 
 ```bash
-taskg _get 1.estimate
-taskg _get 1.uda.estimate
+xuanchu _get 1.estimate
+xuanchu _get 1.uda.estimate
 ```
 
 规则：
@@ -577,9 +577,9 @@ urgency：
 ### 命令
 
 ```bash
-taskg config import-taskrc ~/.taskrc
-taskg config import-taskrc ~/.taskrc --dry-run
-taskg config import-taskrc ~/.taskrc --json
+xuanchu config import-taskrc ~/.taskrc
+xuanchu config import-taskrc ~/.taskrc --dry-run
+xuanchu config import-taskrc ~/.taskrc --json
 ```
 
 ### 解析范围
@@ -598,7 +598,7 @@ M3 应导入：
 
 M3 可识别但暂不导入：
 
-- `data.location`：M3 只在启动前通过 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定数据库路径，`.taskrc` import 不改写运行时数据库路径
+- `data.location`：M3 只在启动前通过 `--db`、`XUANCHU_DB`、`--data-dir` 或 TOML 决定数据库路径，`.taskrc` import 不改写运行时数据库路径
 - `report.<name>.*`
 - `calendar.*`
 - `burndown.*`
@@ -645,7 +645,7 @@ JSON 输出建议：
 ### `_udas`
 
 ```bash
-taskg _udas
+xuanchu _udas
 ```
 
 输出已定义 UDA 名称，每行一个，按字典序。
@@ -653,9 +653,9 @@ taskg _udas
 ### `_unique`
 
 ```bash
-taskg _unique project
-taskg _unique tags
-taskg _unique estimate project:work
+xuanchu _unique project
+xuanchu _unique tags
+xuanchu _unique estimate project:work
 ```
 
 规则：
@@ -677,8 +677,8 @@ taskg _unique estimate project:work
 ### `_show`
 
 ```bash
-taskg _show
-taskg _show date.format context.active
+xuanchu _show
+xuanchu _show date.format context.active
 ```
 
 规则：
@@ -690,19 +690,19 @@ taskg _show date.format context.active
 ### `_version`
 
 ```bash
-taskg _version
+xuanchu _version
 ```
 
 输出当前版本字符串。M3 可以先输出：
 
 ```text
-taskg 0.3.0
+xuanchu 0.3.0
 ```
 
 如果构建时没有注入版本，使用 `dev`：
 
 ```text
-taskg dev
+xuanchu dev
 ```
 
 ## 10. Shell completion
@@ -710,10 +710,10 @@ taskg dev
 M3 使用 Cobra 内置 completion：
 
 ```bash
-taskg completion bash
-taskg completion zsh
-taskg completion fish
-taskg completion powershell
+xuanchu completion bash
+xuanchu completion zsh
+xuanchu completion fish
+xuanchu completion powershell
 ```
 
 规则：
@@ -728,16 +728,16 @@ taskg completion powershell
 M3 的 root 参数重排需要识别 `rc.<key>=<value>`：
 
 ```bash
-taskg rc.context=none +next list
-taskg +next rc.date.format=epoch list
+xuanchu rc.context=none +next list
+xuanchu +next rc.date.format=epoch list
 ```
 
 规则：
 
 - `rc.*` token 不应进入 query parser。
 - root reorder 后仍保留原有两种入口：
-  - `taskg <subcommand> ...`
-  - `taskg <target> <action> ...`
+  - `xuanchu <subcommand> ...`
+  - `xuanchu <target> <action> ...`
 - 如果 `rc.*` 与 `--no-context` 同时出现，`--no-context` 和 `rc.context=none` 等价，不冲突。
 - 如果 `rc.context=<name>` 指向不存在的 context，应返回错误。
 
@@ -818,32 +818,32 @@ M3 的 JSON import/export 需要继续满足：
 必须覆盖：
 
 ```bash
-taskg context define work 'project:work'
-taskg context use work
-taskg add "work task" project:work
-taskg add "home task" project:home
-taskg list
-taskg --no-context list
+xuanchu context define work 'project:work'
+xuanchu context use work
+xuanchu add "work task" project:work
+xuanchu add "home task" project:home
+xuanchu list
+xuanchu --no-context list
 ```
 
 ```bash
-taskg config set uda.estimate.type numeric
-taskg add "estimated" estimate:3
-taskg estimate:3 list
-taskg _get 1.estimate
-taskg _unique estimate
+xuanchu config set uda.estimate.type numeric
+xuanchu add "estimated" estimate:3
+xuanchu estimate:3 list
+xuanchu _get 1.estimate
+xuanchu _unique estimate
 ```
 
 ```bash
-taskg config import-taskrc ./testdata/taskrc --dry-run --json
-taskg config import-taskrc ./testdata/taskrc
-taskg _udas
-taskg context list
+xuanchu config import-taskrc ./testdata/taskrc --dry-run --json
+xuanchu config import-taskrc ./testdata/taskrc
+xuanchu _udas
+xuanchu context list
 ```
 
 ```bash
-taskg completion zsh
-taskg _version
+xuanchu completion zsh
+xuanchu _version
 ```
 
 ### 必跑验收
@@ -851,7 +851,7 @@ taskg _version
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 还必须确认：
@@ -879,7 +879,7 @@ M3 完成时必须更新：
 M3 完成时应满足：
 
 - M0/M1/M2 全部测试继续通过。
-- `taskg.toml` 可读取，且与 SQLite meta、env、CLI flag、rc override 按规则合并。
+- `xuanchu.toml` 可读取，且与 SQLite meta、env、CLI flag、rc override 按规则合并。
 - `context define/use/none/show/list/delete` 可用。
 - active context 自动影响读路径，并可用 `--no-context` 绕过。
 - UDA schema 可定义，UDA 值可写入、清空、查询、导入导出。
@@ -887,7 +887,7 @@ M3 完成时应满足：
 - `.taskrc` import 能生成 imported/skipped/unknown 报告，`--dry-run` 不写库。
 - `_udas`、`_unique`、`_show`、`_version` 输出稳定、可脚本解析。
 - `completion bash|zsh|fish|powershell` 可输出 completion 脚本。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 ## 18. 后续衔接
 

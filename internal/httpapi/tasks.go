@@ -11,9 +11,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type addTaskRequest struct {

@@ -1,10 +1,10 @@
-# taskg M0 GORM Implementation Plan
+# xuanchu M0 GORM Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** 实现 `taskg` M0：一个本地单用户、单 workspace、SQLite 持久化的 Taskwarrior 风格 CLI，支持核心任务生命周期和 JSON 导入导出。
+**Goal:** 实现 `xuanchu` M0：一个本地单用户、单 workspace、SQLite 持久化的 Taskwarrior 风格 CLI，支持核心任务生命周期和 JSON 导入导出。
 
-**Architecture:** 采用 `cmd/taskg -> internal/cli -> internal/app -> internal/{task,query,config} -> internal/storage` 的分层结构。CLI 只负责参数解析和输出，app service 负责用例与事务，storage 使用 GORM 封装 SQLite，domain/query/config 保持不依赖 GORM 和 Cobra。M0 保留 `workspace_id`，但只创建和使用隐式 `local` workspace。
+**Architecture:** 采用 `cmd/xuanchu -> internal/cli -> internal/app -> internal/{task,query,config} -> internal/storage` 的分层结构。CLI 只负责参数解析和输出，app service 负责用例与事务，storage 使用 GORM 封装 SQLite，domain/query/config 保持不依赖 GORM 和 Cobra。M0 保留 `workspace_id`，但只创建和使用隐式 `local` workspace。
 
 **Tech Stack:** Go 1.22+、Cobra、GORM、`github.com/glebarez/sqlite`（纯 Go SQLite GORM driver，替代需要 CGO 的 `gorm.io/driver/sqlite`）、`github.com/google/uuid`、标准库 `encoding/json`、Go test。
 
@@ -16,7 +16,7 @@
 
 - 创建：`go.mod`  
   定义 Go module 与依赖。
-- 创建：`cmd/taskg/main.go`  
+- 创建：`cmd/xuanchu/main.go`  
   二进制入口，只调用 CLI root command。
 - 创建：`internal/cli/root.go`  
   Cobra root、全局 flags、stdout/stderr 注入。
@@ -40,7 +40,7 @@
 **Files:**
 
 - Create: `go.mod`
-- Create: `cmd/taskg/main.go`
+- Create: `cmd/xuanchu/main.go`
 - Create: `internal/cli/root.go`
 
 - [x] **Step 1: 创建失败测试，验证 root command 可执行**
@@ -67,8 +67,8 @@ func TestRootCommandVersion(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if got := stdout.String(); got != "taskg test\n" {
-		t.Fatalf("stdout = %q, want %q", got, "taskg test\n")
+	if got := stdout.String(); got != "xuanchu test\n" {
+		t.Fatalf("stdout = %q, want %q", got, "xuanchu test\n")
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
@@ -86,7 +86,7 @@ Expected: FAIL，原因是 module/package/function 尚不存在。
 创建 `go.mod`：
 
 ```go
-module github.com/dajee/taskg
+module github.com/dajee/xuanchu
 
 go 1.22
 
@@ -123,7 +123,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:           "taskg",
+		Use:           "xuanchu",
 		Short:         "Taskwarrior-style task manager",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -131,12 +131,12 @@ func NewRootCommand(opts Options) *cobra.Command {
 	}
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
-	cmd.SetVersionTemplate(fmt.Sprintf("taskg %s\n", opts.Version))
+	cmd.SetVersionTemplate(fmt.Sprintf("xuanchu %s\n", opts.Version))
 	return cmd
 }
 ```
 
-创建 `cmd/taskg/main.go`：
+创建 `cmd/xuanchu/main.go`：
 
 ```go
 package main
@@ -145,7 +145,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dajee/taskg/internal/cli"
+	"github.com/dajee/xuanchu/internal/cli"
 )
 
 var version = "dev"
@@ -157,7 +157,7 @@ func main() {
 		Version: version,
 	})
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "taskg:", err)
+		fmt.Fprintln(os.Stderr, "xuanchu:", err)
 		os.Exit(1)
 	}
 }
@@ -176,8 +176,8 @@ Expected: PASS。
 - [x] **Step 6: 提交**
 
 ```bash
-git add go.mod go.sum cmd/taskg/main.go internal/cli/root.go internal/cli/root_test.go
-git commit -m "chore: scaffold taskg cli"
+git add go.mod go.sum cmd/xuanchu/main.go internal/cli/root.go internal/cli/root_test.go
+git commit -m "chore: scaffold xuanchu cli"
 ```
 
 如果当前目录不是 git 仓库，记录“跳过提交：not a git repository”，继续执行后续步骤。
@@ -204,32 +204,32 @@ import (
 
 func TestResolveDatabasePathPrefersExplicitDB(t *testing.T) {
 	env := map[string]string{
-		"TASKG_DB": "/env/taskg.db",
+		"XUANCHU_DB": "/env/xuanchu.db",
 	}
 	cfg, err := Resolve(Options{
-		DBPath: "/explicit/taskg.db",
+		DBPath: "/explicit/xuanchu.db",
 		Env:    env,
 		HomeDir: "/home/alice",
 	})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.DatabasePath != "/explicit/taskg.db" {
+	if cfg.DatabasePath != "/explicit/xuanchu.db" {
 		t.Fatalf("DatabasePath = %q", cfg.DatabasePath)
 	}
 }
 
-func TestResolveDatabasePathUsesTaskgDB(t *testing.T) {
+func TestResolveDatabasePathUsesXuanchuDB(t *testing.T) {
 	cfg, err := Resolve(Options{
 		Env: map[string]string{
-			"TASKG_DB": "/env/taskg.db",
+			"XUANCHU_DB": "/env/xuanchu.db",
 		},
 		HomeDir: "/home/alice",
 	})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.DatabasePath != "/env/taskg.db" {
+	if cfg.DatabasePath != "/env/xuanchu.db" {
 		t.Fatalf("DatabasePath = %q", cfg.DatabasePath)
 	}
 }
@@ -244,7 +244,7 @@ func TestResolveDatabasePathUsesXDGDataHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	want := filepath.Join("/xdg", "taskg", "taskg.db")
+	want := filepath.Join("/xdg", "xuanchu", "xuanchu.db")
 	if cfg.DatabasePath != want {
 		t.Fatalf("DatabasePath = %q, want %q", cfg.DatabasePath, want)
 	}
@@ -258,7 +258,7 @@ func TestResolveDatabasePathUsesHomeFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	want := filepath.Join("/home/alice", ".local", "share", "taskg", "taskg.db")
+	want := filepath.Join("/home/alice", ".local", "share", "xuanchu", "xuanchu.db")
 	if cfg.DatabasePath != want {
 		t.Fatalf("DatabasePath = %q, want %q", cfg.DatabasePath, want)
 	}
@@ -318,16 +318,16 @@ func Resolve(opts Options) (Config, error) {
 
 	dbPath := opts.DBPath
 	if dbPath == "" {
-		dbPath = env["TASKG_DB"]
+		dbPath = env["XUANCHU_DB"]
 	}
 	if dbPath == "" && opts.DataDir != "" {
-		dbPath = filepath.Join(opts.DataDir, "taskg.db")
+		dbPath = filepath.Join(opts.DataDir, "xuanchu.db")
 	}
 	if dbPath == "" && env["XDG_DATA_HOME"] != "" {
-		dbPath = filepath.Join(env["XDG_DATA_HOME"], "taskg", "taskg.db")
+		dbPath = filepath.Join(env["XDG_DATA_HOME"], "xuanchu", "xuanchu.db")
 	}
 	if dbPath == "" {
-		dbPath = filepath.Join(home, ".local", "share", "taskg", "taskg.db")
+		dbPath = filepath.Join(home, ".local", "share", "xuanchu", "xuanchu.db")
 	}
 
 	return Config{
@@ -339,7 +339,7 @@ func Resolve(opts Options) (Config, error) {
 
 func environ() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "XDG_DATA_HOME"} {
+	for _, key := range []string{"XUANCHU_DB", "XDG_DATA_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			values[key] = value
 		}
@@ -377,7 +377,7 @@ Expected: PASS。
 
 ```bash
 git add internal/config/config.go internal/config/config_test.go internal/cli/root.go
-git commit -m "feat: resolve local taskg config"
+git commit -m "feat: resolve local xuanchu config"
 ```
 
 ### Task 3: 使用 GORM + 纯 Go SQLite 初始化数据库
@@ -402,7 +402,7 @@ import (
 )
 
 func TestOpenInitializesLocalWorkspace(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	store, err := Open(dbPath)
 	if err != nil {
@@ -426,7 +426,7 @@ func TestOpenInitializesLocalWorkspace(t *testing.T) {
 }
 
 func TestOpenCanReopenExistingDatabase(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	store1, err := Open(dbPath)
 	if err != nil {
@@ -790,14 +790,14 @@ package query
 import "testing"
 
 func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
-	parsed, err := ParseAddArgs([]string{"write", "spec", "project:taskg", "+planning", "priority:H"})
+	parsed, err := ParseAddArgs([]string{"write", "spec", "project:xuanchu", "+planning", "priority:H"})
 	if err != nil {
 		t.Fatalf("ParseAddArgs() error = %v", err)
 	}
 	if parsed.Description != "write spec" {
 		t.Fatalf("Description = %q", parsed.Description)
 	}
-	if parsed.Mod.Project == nil || *parsed.Mod.Project != "taskg" {
+	if parsed.Mod.Project == nil || *parsed.Mod.Project != "xuanchu" {
 		t.Fatalf("Project = %#v", parsed.Mod.Project)
 	}
 	if parsed.Mod.Priority == nil || *parsed.Mod.Priority != "H" {
@@ -809,14 +809,14 @@ func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
 }
 
 func TestParseFilters(t *testing.T) {
-	filter, err := ParseFilters([]string{"+work", "project:taskg", "status:completed", "/spec/"})
+	filter, err := ParseFilters([]string{"+work", "project:xuanchu", "status:completed", "/spec/"})
 	if err != nil {
 		t.Fatalf("ParseFilters() error = %v", err)
 	}
 	if len(filter.Tags) != 1 || filter.Tags[0] != "work" {
 		t.Fatalf("Tags = %#v", filter.Tags)
 	}
-	if filter.Project == nil || *filter.Project != "taskg" {
+	if filter.Project == nil || *filter.Project != "xuanchu" {
 		t.Fatalf("Project = %#v", filter.Project)
 	}
 	if filter.Status == nil || *filter.Status != "completed" {
@@ -872,7 +872,7 @@ func (m Modification) Empty() bool {
 ```go
 package query
 
-import "github.com/dajee/taskg/internal/task"
+import "github.com/dajee/xuanchu/internal/task"
 
 type Filter struct {
 	Target  *string
@@ -898,7 +898,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 func ParseAddArgs(args []string) (ParsedAdd, error) {
@@ -1015,11 +1015,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	domain "github.com/dajee/taskg/internal/task"
+	domain "github.com/dajee/xuanchu/internal/task"
 )
 
 func TestTaskRepositoryCreateAndList(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -1056,7 +1056,7 @@ func TestTaskRepositoryCreateAndList(t *testing.T) {
 }
 
 func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -1109,7 +1109,7 @@ import (
 	"errors"
 	"sort"
 
-	domain "github.com/dajee/taskg/internal/task"
+	domain "github.com/dajee/xuanchu/internal/task"
 	"gorm.io/gorm"
 )
 
@@ -1281,13 +1281,13 @@ git commit -m "feat: persist tasks with gorm"
 - 创建：`internal/app/clock.go`  
   可注入时钟。
 - 创建：`internal/cli/add.go`  
-  `taskg add`。
+  `xuanchu add`。
 - 创建：`internal/cli/list.go`  
-  `taskg list`、`taskg next`。
+  `xuanchu list`、`xuanchu next`。
 - 创建：`internal/cli/modify.go`  
-  `taskg <target> modify`、`done`、`delete`。
+  `xuanchu <target> modify`、`done`、`delete`。
 - 创建：`internal/cli/info.go`  
-  `taskg info <target>`。
+  `xuanchu info <target>`。
 - 创建：`internal/render/json.go`  
   JSON 输出。
 - 创建：`internal/render/table.go`  
@@ -1312,11 +1312,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dajee/taskg/internal/storage"
+	"github.com/dajee/xuanchu/internal/storage"
 )
 
 func TestServiceAddListInfo(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -1390,8 +1390,8 @@ package app
 import (
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage"
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/storage"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 type Service struct {
@@ -1633,8 +1633,8 @@ import (
 )
 
 func TestCLIAddListInfo(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "write", "spec", "+planning")
 	out := run(t, bin, "--db", db, "list")
@@ -1650,10 +1650,10 @@ func TestCLIAddListInfo(t *testing.T) {
 	}
 }
 
-func buildTaskg(t *testing.T) string {
+func buildXuanchu(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "taskg")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/taskg")
+	bin := filepath.Join(t.TempDir(), "xuanchu")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/xuanchu")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build error = %v\n%s", err, out)
 	}
@@ -1705,7 +1705,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 func TaskList(w io.Writer, tasks []task.Task) {
@@ -1814,7 +1814,7 @@ git commit -m "feat: add core read cli commands"
 
 ```go
 func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -1894,9 +1894,9 @@ type ModifyInput struct {
 
 创建 `internal/cli/modify.go`：
 
-- 支持 `taskg 1 modify priority:H +next`。
-- 支持 `taskg 1 done`。
-- 支持 `taskg 1 delete`。
+- 支持 `xuanchu 1 modify priority:H +next`。
+- 支持 `xuanchu 1 done`。
+- 支持 `xuanchu 1 delete`。
 
 实现方式：在 root command 上增加一个隐藏/通用分发逻辑会复杂；M0 可以注册 Cobra command：
 
@@ -1912,8 +1912,8 @@ Use: "<target> <action>"
 
 ```go
 func TestCLIModifyDoneDelete(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "write", "spec")
 	run(t, bin, "--db", db, "1", "modify", "priority:H", "+next")
 	out := run(t, bin, "--db", db, "list")
@@ -2083,7 +2083,7 @@ M0 import 行为：
 
 `import`：
 
-- `taskg import path.json` 或 `cat path.json | taskg import`。
+- `xuanchu import path.json` 或 `cat path.json | xuanchu import`。
 - 成功后输出 `Imported N tasks`。
 
 - [x] **Step 6: 增加集成测试**
@@ -2092,7 +2092,7 @@ M0 import 行为：
 
 ```go
 func TestCLIExportImportRoundTrip(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	db1 := filepath.Join(t.TempDir(), "one.db")
 	db2 := filepath.Join(t.TempDir(), "two.db")
 	run(t, bin, "--db", db1, "add", "write", "spec", "+planning")
@@ -2145,8 +2145,8 @@ git commit -m "feat: import and export task json"
 
 ```go
 func TestCLIShowAndConfig(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	out := run(t, bin, "--db", db, "show")
 	if !strings.Contains(out, "database.path") {
 		t.Fatalf("show output = %q", out)
@@ -2180,7 +2180,7 @@ func (s *Store) SetMeta(key, value string) error
 `show` 输出：
 
 ```text
-database.path=/abs/path/taskg.db
+database.path=/abs/path/xuanchu.db
 color=true
 date.format=rfc3339
 ```
@@ -2193,7 +2193,7 @@ date.format=rfc3339
 `config set <key> <value>`：
 
 - 只允许 `color`、`date.format`。
-- `database.path` 只读，提示使用 `--db` 或 `TASKG_DB`。
+- `database.path` 只读，提示使用 `--db` 或 `XUANCHU_DB`。
 
 - [x] **Step 5: 运行测试**
 
@@ -2228,15 +2228,15 @@ git commit -m "feat: add basic config commands"
 ## M0 本地 CLI 用法
 
 ```bash
-go build -o taskg ./cmd/taskg
-./taskg add "Write project spec" project:taskg +planning due:tomorrow
-./taskg list
-./taskg 1 modify priority:H
-./taskg 1 done
-./taskg export
+go build -o xuanchu ./cmd/xuanchu
+./xuanchu add "Write project spec" project:xuanchu +planning due:tomorrow
+./xuanchu list
+./xuanchu 1 modify priority:H
+./xuanchu 1 done
+./xuanchu export
 ```
 
-默认数据库路径为 `~/.local/share/taskg/taskg.db`，可用 `--db` 或 `TASKG_DB` 覆盖。
+默认数据库路径为 `~/.local/share/xuanchu/xuanchu.db`，可用 `--db` 或 `XUANCHU_DB` 覆盖。
 ````
 
 - [x] **Step 2: 运行最终测试**
@@ -2247,8 +2247,8 @@ Run:
 go test ./...
 CGO_ENABLED=0 go test ./...
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test ./...
-go build ./cmd/taskg
-CGO_ENABLED=0 go build ./cmd/taskg
+go build ./cmd/xuanchu
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: 全部 PASS，build 成功。
@@ -2270,11 +2270,11 @@ Run:
 
 ```bash
 tmp="$(mktemp -d)"
-go run ./cmd/taskg --db "$tmp/taskg.db" add "write final smoke" +smoke priority:H
-go run ./cmd/taskg --db "$tmp/taskg.db" list
-go run ./cmd/taskg --db "$tmp/taskg.db" 1 done
-go run ./cmd/taskg --db "$tmp/taskg.db" status:completed list
-go run ./cmd/taskg --db "$tmp/taskg.db" export
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "write final smoke" +smoke priority:H
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" list
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" 1 done
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" status:completed list
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" export
 ```
 
 Expected:
@@ -2294,6 +2294,6 @@ git commit -m "docs: document m0 local usage"
 
 ## 计划审阅说明
 
-本计划根据 [docs/superpowers/specs/2026-05-28-taskg-m0-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-taskg-m0-design.md) 编写，并按用户要求将数据库实现改为 GORM。SQLite driver 选择 `github.com/glebarez/sqlite`，因为它是 GORM 可用的纯 Go SQLite driver，不需要 CGO；不要使用 `gorm.io/driver/sqlite`。
+本计划根据 [docs/superpowers/specs/2026-05-28-xuanchu-m0-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-xuanchu-m0-design.md) 编写，并按用户要求将数据库实现改为 GORM。SQLite driver 选择 `github.com/glebarez/sqlite`，因为它是 GORM 可用的纯 Go SQLite driver，不需要 CGO；不要使用 `gorm.io/driver/sqlite`。
 
 当前目录不是 git 仓库时，计划中的 commit 步骤应记录为跳过，不应阻塞实施。当前工具策略没有用户明确授权 subagent delegation，因此未执行 plan-document-reviewer subagent 审阅；实施前如需要严格执行 superpowers 审阅环节，请先授权使用 subagent。

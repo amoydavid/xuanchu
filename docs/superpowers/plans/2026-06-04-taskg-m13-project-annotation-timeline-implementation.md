@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 taskg 增加项目级别 annotation 和聚合 timeline 能力，让 Agent 能记录项目级信息并查看完整项目时间线。
+**Goal:** 为 xuanchu 增加项目级别 annotation 和聚合 timeline 能力，让 Agent 能记录项目级信息并查看完整项目时间线。
 
 **Architecture:** 新增 `project_annotations` 表和 `ProjectAnnotationRepository`，在 `app` 层提供 `ProjectAnnotate`/`ProjectDenotate`/`ProjectAnnotations`/`ProjectTimeline` 四个方法，通过 CLI、HTTP API、MCP 三端暴露。Timeline 通过 SQL UNION 聚合 project + task annotations。同时强化 `normalizeProjectSlug` 拒绝数字开头的 slug。
 
 **Tech Stack:** Go 1.25、GORM、github.com/glebarez/sqlite、Cobra、chi、MCP SDK
 
-**Spec:** `docs/superpowers/specs/2026-06-04-taskg-m13-project-annotation-timeline-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-04-xuanchu-m13-project-annotation-timeline-design.md`
 
 ---
 
@@ -74,7 +74,7 @@ Annotations []ProjectAnnotation `gorm:"foreignKey:ProjectID;constraint:OnDelete:
 - [ ] **Step 4：验证**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 - [ ] **Step 5：新增 migration 测试**
@@ -619,7 +619,7 @@ func (s *Service) projectViewForRow(project sqlite.Project) (ProjectView, error)
 - [ ] **Step 7：验证**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./internal/app/... -v -run TestProject
 ```
 
@@ -823,7 +823,7 @@ api.With(s.authMiddleware).Get("/api/v1/projects/{projectRef}/timeline", s.handl
 - [ ] **Step 4：验证**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 - [ ] **Step 5：Commit**
@@ -1179,7 +1179,7 @@ if len(project.RecentAnnotations) > 0 {
 - [ ] **Step 7：验证**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 - [ ] **Step 8：Commit**
@@ -1330,7 +1330,7 @@ case "timeline":
 - [ ] **Step 5：验证**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 - [ ] **Step 6：Commit**
@@ -1482,7 +1482,7 @@ git commit -m "feat(m13): MCP project.annotate/denotate/annotations/timeline too
 覆盖：
 - `TestCLIProjectAnnotateDenotate` — 创建 project，annotate，列出，denotate
 - `TestCLIProjectTimeline` — 创建 project + task，各自 annotate，timeline 展示合并结果
-- `TestCLIProjectAnnotateTargetStyle` — 使用 `taskg <slug> annotate <content>` 目标风格
+- `TestCLIProjectAnnotateTargetStyle` — 使用 `xuanchu <slug> annotate <content>` 目标风格
 - `TestCLIProjectAnnotateRejectsArchived` — archived 项目不能 annotate
 - `TestCLIProjectSlugRejectsDigitStart` — 创建数字开头的 project slug 报错
 
@@ -1508,7 +1508,7 @@ git commit -m "test(m13): CLI 集成测试"
 
 ```bash
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 - [ ] **Step 2：更新 ROADMAP**

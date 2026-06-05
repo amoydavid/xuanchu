@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/dom"
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/dom"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/remote"
 	"github.com/spf13/cobra"
 )
 
@@ -18,8 +18,8 @@ func RuntimeEnv() map[string]string {
 	values := map[string]string{}
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-		"TASKG_DB", "TASKG_DB_URL", "TASKG_SERVER", "TASKG_TOKEN",
-		"TASKG_CONFIG", "TASKG_LOG_LEVEL", "TASKG_LOG_FILE",
+		"XUANCHU_DB", "XUANCHU_DB_URL", "XUANCHU_SERVER", "XUANCHU_TOKEN",
+		"XUANCHU_CONFIG", "XUANCHU_LOG_LEVEL", "XUANCHU_LOG_FILE",
 	} {
 		if value, ok := os.LookupEnv(key); ok {
 			values[key] = value
@@ -566,7 +566,7 @@ func newVersionHelperCommand(opts Options) *cobra.Command {
 			if version == "" {
 				version = "dev"
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "taskg %s\n", version)
+			fmt.Fprintf(cmd.OutOrStdout(), "xuanchu %s\n", version)
 			return nil
 		},
 	}

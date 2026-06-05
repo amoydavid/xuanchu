@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	taskrcparser "github.com/dajee/taskg/internal/taskrc"
+	taskrcparser "git.dajee.net/dajee/xuanchu/internal/taskrc"
 )
 
 func (s *Service) ImportTaskRC(path string, dryRun bool) (taskrcparser.Report, error) {

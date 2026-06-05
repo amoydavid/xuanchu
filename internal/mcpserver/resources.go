@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -19,7 +19,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		Name:        "workspace-current",
 		Title:       "当前工作区",
 		Description: "返回当前生效的 workspace 信息，包括 ID、slug、名称、角色和可见 project 摘要。",
-		URI:         "taskg://workspace/current",
+		URI:         "xuanchu://workspace/current",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		svc, err := resourceService(ctx, opts, req, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
@@ -30,7 +30,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		if err != nil {
 			return nil, err
 		}
-		return jsonResource("taskg://workspace/current", data)
+		return jsonResource("xuanchu://workspace/current", data)
 	})
 
 	// workspace/{workspace_id} — template resource
@@ -38,7 +38,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		Name:        "workspace-by-id",
 		Title:       "指定工作区",
 		Description: "按 ID 或 slug 返回指定 workspace 信息。",
-		URITemplate: "taskg://workspace/{workspace_id}",
+		URITemplate: "xuanchu://workspace/{workspace_id}",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		workspaceID := uriParam(req.Params.URI)
@@ -66,7 +66,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		Name:        "project-by-id",
 		Title:       "指定项目",
 		Description: "按 ID 或 slug 返回指定 project 详情，仅暴露 agent.* 配置项。",
-		URITemplate: "taskg://project/{project_id}",
+		URITemplate: "xuanchu://project/{project_id}",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		projectRef := uriParam(req.Params.URI)
@@ -97,7 +97,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		Name:        "context-current",
 		Title:       "当前上下文",
 		Description: "返回当前活跃 context 的名称、过滤表达式和生效范围。",
-		URI:         "taskg://context/current",
+		URI:         "xuanchu://context/current",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		svc, err := resourceService(ctx, opts, req, RequestScopeInput{}, "context:read", app.PermissionContextUse)
@@ -108,7 +108,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		if err != nil {
 			return nil, err
 		}
-		return jsonResource("taskg://context/current", data)
+		return jsonResource("xuanchu://context/current", data)
 	})
 }
 
@@ -332,12 +332,12 @@ func jsonResource(uri string, data any) (*mcp.ReadResourceResult, error) {
 	}, nil
 }
 
-// uriParam 从 taskg://segment/value 形式的 URI path 中提取 value。
+// uriParam 从 xuanchu://segment/value 形式的 URI path 中提取 value。
 func uriParam(uri string) string {
-	// URI 格式: taskg://workspace/{workspace_id} 或 taskg://project/{project_id}
+	// URI 格式: xuanchu://workspace/{workspace_id} 或 xuanchu://project/{project_id}
 	// SDK 在 template 匹配时会把 {param} 替换为实际值
-	// 所以实际收到的 URI 是 taskg://workspace/xxx 或 taskg://project/xxx
-	parts := strings.Split(strings.TrimPrefix(uri, "taskg://"), "/")
+	// 所以实际收到的 URI 是 xuanchu://workspace/xxx 或 xuanchu://project/xxx
+	parts := strings.Split(strings.TrimPrefix(uri, "xuanchu://"), "/")
 	// /workspace/xxx -> ["workspace", "xxx"]
 	// /project/xxx   -> ["project", "xxx"]
 	if len(parts) < 2 {
@@ -349,16 +349,16 @@ func uriParam(uri string) string {
 // allResourceURIs 返回所有注册的 resource URI，用于测试验证。
 func allResourceURIs() []string {
 	return []string{
-		"taskg://workspace/current",
-		"taskg://context/current",
+		"xuanchu://workspace/current",
+		"xuanchu://context/current",
 	}
 }
 
 // allResourceTemplateURIs 返回所有注册的 resource template URI，用于测试验证。
 func allResourceTemplateURIs() []string {
 	return []string{
-		"taskg://workspace/{workspace_id}",
-		"taskg://project/{project_id}",
+		"xuanchu://workspace/{workspace_id}",
+		"xuanchu://project/{project_id}",
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/olekukonko/tablewriter"
 )
 

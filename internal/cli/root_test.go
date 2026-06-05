@@ -20,8 +20,8 @@ func TestRootCommandVersion(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if got := stdout.String(); got != "taskg test\n" {
-		t.Fatalf("stdout = %q, want %q", got, "taskg test\n")
+	if got := stdout.String(); got != "xuanchu test\n" {
+		t.Fatalf("stdout = %q, want %q", got, "xuanchu test\n")
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
@@ -119,7 +119,7 @@ func TestExecutePassesRcOverridesToSubcommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	if err := Execute(cmd, opts, []string{"--db", db, "rc.date.format=epoch", "show"}); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -147,7 +147,7 @@ func TestExecuteShowUsesScopedActiveKeys(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	if err := Execute(cmd, opts, []string{"--db", db, "show"}); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -167,7 +167,7 @@ func TestExecuteRejectsLegacyContextActiveGet(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	if err := Execute(cmd, opts, []string{"--db", db, "config", "get", "context.active"}); err == nil {
 		t.Fatal("Execute() error = nil, want unsupported legacy key")
@@ -178,7 +178,7 @@ func TestExecuteRejectsLegacyContextActiveShow(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	if err := Execute(cmd, opts, []string{"--db", db, "_show", "context.active"}); err == nil {
 		t.Fatal("Execute() error = nil, want unsupported legacy key")
@@ -188,7 +188,7 @@ func TestExecuteRejectsLegacyContextActiveShow(t *testing.T) {
 func TestExecuteRejectsInternalScopedShowKeys(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	for _, key := range []string{"active_user_id", "active_workspace.local", "active_context.local.local"} {
 		cmd := NewRootCommand(opts)
@@ -203,7 +203,7 @@ func TestExecuteConfigListHidesInternalScopedKeys(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	if err := Execute(cmd, opts, []string{"--db", db, "context", "define", "work", "description:one"}); err != nil {
 		t.Fatalf("context define error = %v", err)
@@ -228,7 +228,7 @@ func TestExecuteAuditListReturnsServiceError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	err := Execute(cmd, opts, []string{"--db", db, "audit", "list", "--project", "missing"})
 	if err == nil {
@@ -240,7 +240,7 @@ func TestExecuteProjectConfigListReturnsServiceError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	err := Execute(cmd, opts, []string{"--db", db, "project", "config", "list", "missing"})
 	if err == nil {
@@ -251,7 +251,7 @@ func TestExecuteProjectConfigListReturnsServiceError(t *testing.T) {
 func TestUserUseIgnoresWorkspaceOverride(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	cmd := NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
@@ -266,7 +266,7 @@ func TestUserUseIgnoresWorkspaceOverride(t *testing.T) {
 func TestJSONViewsUseSnakeCaseFields(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	cmd := NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "--json", "user", "list"}); err != nil {
@@ -298,7 +298,7 @@ func TestExecuteRejectsUnknownRCKey(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	opts := Options{Stdout: &stdout, Stderr: &stderr}
 	cmd := NewRootCommand(opts)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	if err := Execute(cmd, opts, []string{"--db", db, "rc.notreal=value", "show"}); err == nil {
 		t.Fatal("Execute() error = nil, want unknown rc key error")

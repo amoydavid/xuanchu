@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/storage"
-	"github.com/dajee/taskg/internal/task"
-	"github.com/dajee/taskg/internal/uda"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/uda"
 )
 
 func (s *Service) DefineUDA(name, typ, label string, values []string, defaultValue string) error {
@@ -120,7 +120,7 @@ func (s *Service) SetConfig(key, value string) error {
 		})
 	}
 	if key == "database.path" {
-		return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
+		return fmt.Errorf("database.path is read-only; use --db or XUANCHU_DB")
 	}
 	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
@@ -195,7 +195,7 @@ func (s *Service) UnsetConfig(key string) error {
 		})
 	}
 	if key == "database.path" {
-		return fmt.Errorf("database.path is read-only; use --db or TASKG_DB")
+		return fmt.Errorf("database.path is read-only; use --db or XUANCHU_DB")
 	}
 	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")

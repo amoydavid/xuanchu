@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/task"
-	"github.com/dajee/taskg/internal/uda"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/uda"
 	"gorm.io/gorm"
 )
 

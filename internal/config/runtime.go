@@ -32,7 +32,7 @@ func LoadRuntime(opts RuntimeOptions) (Runtime, error) {
 	if opts.ConfigDir != "" {
 		tomlValues, err := loadTomlConfig(opts.ConfigDir)
 		if errors.Is(err, os.ErrNotExist) {
-			tomlValues, err = loadTomlConfig(filepath.Join(opts.ConfigDir, "taskg"))
+			tomlValues, err = loadTomlConfig(filepath.Join(opts.ConfigDir, "xuanchu"))
 		}
 		if errors.Is(err, os.ErrNotExist) {
 			tomlValues = nil
@@ -71,9 +71,9 @@ func runtimeEnvValues(env map[string]string) map[string]string {
 		values[key] = value
 	}
 	for envKey, configKey := range map[string]string{
-		"TASKG_DB":     "database.path",
-		"TASKG_SERVER": "remote.server",
-		"TASKG_TOKEN":  "remote.token",
+		"XUANCHU_DB":     "database.path",
+		"XUANCHU_SERVER": "remote.server",
+		"XUANCHU_TOKEN":  "remote.token",
 	} {
 		if value := env[envKey]; value != "" {
 			values[configKey] = value

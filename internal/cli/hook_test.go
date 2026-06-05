@@ -11,7 +11,7 @@ import (
 // setupHookTestDB 创建临时数据库并返回数据库路径。
 func setupHookTestDB(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), "taskg.db")
+	return filepath.Join(t.TempDir(), "xuanchu.db")
 }
 
 // setupHookTestOpts 创建带标准输出的测试 Options。

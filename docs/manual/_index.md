@@ -1,11 +1,11 @@
 ---
-title: "taskg 用户手册"
+title: "xuanchu 用户手册"
 weight: 1
 ---
 
-# taskg 用户手册
+# xuanchu 用户手册
 
-`taskg` 是一个 Taskwarrior 风格的企业任务运行时。它既可以作为本地 CLI 使用，也可以作为 HTTP 服务端、远程 CLI 客户端和 MCP Server 使用。
+`xuanchu` 是一个 Taskwarrior 风格的企业任务运行时。它既可以作为本地 CLI 使用，也可以作为 HTTP 服务端、远程 CLI 客户端和 MCP Server 使用。
 
 这份手册面向使用者和管理员，重点回答三个问题：
 
@@ -15,7 +15,7 @@ weight: 1
 
 ## 推荐阅读路径
 
-如果你只是想开始用 taskg：
+如果你只是想开始用 xuanchu：
 
 1. 读 [快速使用](quick-start.md)
 2. 读 [身份与初始化](identity-and-initialization.md)
@@ -63,7 +63,7 @@ weight: 1
 
 ## 当前能力范围
 
-当前 taskg 已支持：
+当前 xuanchu 已支持：
 
 - 本地 CLI 与 SQLite / PostgreSQL 存储
 - Taskwarrior 风格任务字段、查询、报表、urgency 和 helper 命令

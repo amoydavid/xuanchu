@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * taskg MCP stdio 启动器
+ * xuanchu MCP stdio 启动器
  * 
  * 用法：
  *   node wrapper.js
- *   node wrapper.js --db /path/to/taskg.db
+ *   node wrapper.js --db /path/to/xuanchu.db
  */
 
 const { spawn } = require('child_process');
 const path = require('path');
 
-// 获取 taskg 二进制文件路径
-const taskgPath = path.join(__dirname, 'taskg');
+// 获取 xuanchu 二进制文件路径
+const xuanchuPath = path.join(__dirname, 'xuanchu');
 
 // 构建参数
 const args = ['mcp', 'stdio'];
@@ -23,8 +23,8 @@ if (userArgs.length > 0) {
   args.unshift(...userArgs);
 }
 
-// 启动 taskg 进程
-const child = spawn(taskgPath, args, {
+// 启动 xuanchu 进程
+const child = spawn(xuanchuPath, args, {
   stdio: ['pipe', 'pipe', 'pipe'],
   cwd: __dirname
 });
@@ -45,7 +45,7 @@ child.on('exit', (code, signal) => {
 
 // 处理错误
 child.on('error', (err) => {
-  console.error('启动 taskg 失败:', err.message);
+  console.error('启动 xuanchu 失败:', err.message);
   process.exit(1);
 });
 

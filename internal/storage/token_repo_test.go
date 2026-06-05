@@ -11,7 +11,7 @@ import (
 
 func newTokenRepoTestStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func newTokenRepoTestStore(t *testing.T) *Store {
 }
 
 func TestOpenCreatesAPITokenSchema(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -40,7 +40,7 @@ func TestTokenRepositoryDoesNotStoreRawToken(t *testing.T) {
 		UserID:           "u1",
 		Name:             "cli",
 		Type:             "pat",
-		TokenPrefix:      "taskg_pat_abcd",
+		TokenPrefix:      "xuanchu_pat_abcd",
 		TokenHash:        strings.Repeat("a", 64),
 		ScopesJSON:       `["task:read"]`,
 		WorkspaceIDsJSON: `[]`,
@@ -50,14 +50,14 @@ func TestTokenRepositoryDoesNotStoreRawToken(t *testing.T) {
 	if err := repo.Create(row); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.GetByPrefix("taskg_pat_abcd")
+	got, err := repo.GetByPrefix("xuanchu_pat_abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.TokenHash != row.TokenHash {
 		t.Fatalf("hash mismatch")
 	}
-	if strings.Contains(got.TokenHash, "taskg_pat_") {
+	if strings.Contains(got.TokenHash, "xuanchu_pat_") {
 		t.Fatalf("raw token leaked")
 	}
 }
@@ -71,7 +71,7 @@ func TestTokenRepositoryRevokeAndListByUser(t *testing.T) {
 			UserID:           "u1",
 			Name:             "cli",
 			Type:             "pat",
-			TokenPrefix:      "taskg_pat_a1",
+			TokenPrefix:      "xuanchu_pat_a1",
 			TokenHash:        strings.Repeat("a", 64),
 			ScopesJSON:       `["task:read"]`,
 			WorkspaceIDsJSON: `[]`,
@@ -83,7 +83,7 @@ func TestTokenRepositoryRevokeAndListByUser(t *testing.T) {
 			UserID:           "u1",
 			Name:             "agent",
 			Type:             "agent",
-			TokenPrefix:      "taskg_agent_b2",
+			TokenPrefix:      "xuanchu_agent_b2",
 			TokenHash:        strings.Repeat("b", 64),
 			ScopesJSON:       `["task:read"]`,
 			WorkspaceIDsJSON: `["w1"]`,
@@ -125,7 +125,7 @@ func TestTokenRepository_Update(t *testing.T) {
 		UserID:           "user1",
 		Name:             "test-token",
 		Type:             "pat",
-		TokenPrefix:      "taskg_pat_abc",
+		TokenPrefix:      "xuanchu_pat_abc",
 		TokenHash:        "hash",
 		ScopesJSON:       `["task:read"]`,
 		WorkspaceIDsJSON: `[]`,
@@ -165,7 +165,7 @@ func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
 		UserID:           "user1",
 		Name:             "test-token",
 		Type:             "pat",
-		TokenPrefix:      "taskg_pat_abc",
+		TokenPrefix:      "xuanchu_pat_abc",
 		TokenHash:        "hash",
 		ScopesJSON:       `["task:read"]`,
 		WorkspaceIDsJSON: `[]`,

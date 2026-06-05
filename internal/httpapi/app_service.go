@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
 func (s *Server) scopedService(r *http.Request, capability string, permission app.Permission, projectRef string) (*app.Service, requestAuth, error) {
@@ -54,11 +54,11 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		WorkspaceRef:       input.WorkspaceRef,
 		ProjectRef:         strings.TrimSpace(input.ProjectRef),
 		ProjectRefIsID:     input.ProjectRefIsID,
-		SubjectUserRef:     strings.TrimSpace(r.Header.Get("X-Taskg-As")),
+		SubjectUserRef:     strings.TrimSpace(r.Header.Get("X-Xuanchu-As")),
 	})
 	if err != nil {
-		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok && strings.TrimSpace(r.Header.Get("X-Taskg-As")) != "" {
-			state.impersonateAttempt = strings.TrimSpace(r.Header.Get("X-Taskg-As"))
+		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok && strings.TrimSpace(r.Header.Get("X-Xuanchu-As")) != "" {
+			state.impersonateAttempt = strings.TrimSpace(r.Header.Get("X-Xuanchu-As"))
 		}
 		return nil, requestAuth{}, err
 	}
@@ -83,7 +83,7 @@ func requestWorkspaceRef(r *http.Request) string {
 	if value := strings.TrimSpace(r.URL.Query().Get("workspace")); value != "" {
 		return value
 	}
-	return strings.TrimSpace(r.Header.Get("X-Taskg-Workspace"))
+	return strings.TrimSpace(r.Header.Get("X-Xuanchu-Workspace"))
 }
 
 func requestProjectRef(r *http.Request) string {

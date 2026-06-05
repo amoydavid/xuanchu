@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: taskg HTTP API
+  title: xuanchu HTTP API
   version: v1
 servers:
   - url: http://127.0.0.1:8080
@@ -11,7 +11,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: taskg_pat or taskg_agent
+      bearerFormat: xuanchu_pat or xuanchu_agent
   schemas:
     ErrorCode:
       type: string
@@ -510,7 +510,7 @@ components:
       description: Stable project UUID. If project is also provided, both must resolve to the same project.
     ImpersonateHeader:
       in: header
-      name: X-Taskg-As
+      name: X-Xuanchu-As
       schema:
         type: string
       description: Impersonation target user name, email, or UUID. Requires agent token with impersonate scope.
@@ -1711,18 +1711,18 @@ paths:
 
 # ── Webhook protocol ──────────────────────────────────────────
 #
-# Outbound webhook requests sent by taskg dispatcher:
+# Outbound webhook requests sent by xuanchu dispatcher:
 #
 # Headers:
-#   X-Taskg-Event          - event type, e.g. "task.created"
-#   X-Taskg-Event-Id       - stable event UUID
-#   X-Taskg-Event-Version  - "1"
-#   X-Taskg-Delivery       - delivery UUID
-#   X-Taskg-Hook-Id        - hook UUID
-#   X-Taskg-Attempt        - attempt number (1-based)
-#   X-Taskg-Timestamp      - unix seconds at send time
-#   X-Taskg-Signature-256  - HMAC-SHA256 signature (if secret configured)
-#   User-Agent             - "taskg/<version>"
+#   X-Xuanchu-Event          - event type, e.g. "task.created"
+#   X-Xuanchu-Event-Id       - stable event UUID
+#   X-Xuanchu-Event-Version  - "1"
+#   X-Xuanchu-Delivery       - delivery UUID
+#   X-Xuanchu-Hook-Id        - hook UUID
+#   X-Xuanchu-Attempt        - attempt number (1-based)
+#   X-Xuanchu-Timestamp      - unix seconds at send time
+#   X-Xuanchu-Signature-256  - HMAC-SHA256 signature (if secret configured)
+#   User-Agent             - "xuanchu/<version>"
 #
 # Signature computation (when secret is configured):
 #   signing_input = "<delivery_id>.<timestamp>.<body>"

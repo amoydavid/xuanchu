@@ -1,8 +1,8 @@
-# taskg M9 设计规格
+# xuanchu M9 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 为 `taskg` 增加任务多 assignee 能力，让本地 CLI、远程 CLI、HTTP API、MCP Server 和 Hook payload 都能在同一套 workspace 权限边界内读写、查询和导出任务执行者信息。
+**目标：** 为 `xuanchu` 增加任务多 assignee 能力，让本地 CLI、远程 CLI、HTTP API、MCP Server 和 Hook payload 都能在同一套 workspace 权限边界内读写、查询和导出任务执行者信息。
 
 **范围策略：** M9 只解决“任务可以有多个执行者，并且这一事实能在所有现有任务入口中稳定表达”。M9 不借机扩成主责/协作者模型、不引入 assignee 通知编排，也不改动现有权限模型和 urgency 公式。能复用现有 `task.add`、`task.modify`、`task.query`、JSON export/import、Hook payload 的地方，优先复用，不平行造新接口。
 
@@ -12,7 +12,7 @@
 
 ## 1. 当前基础
 
-M8 完成后，`taskg` 已经具备：
+M8 完成后，`xuanchu` 已经具备：
 
 - 本地 CLI、远程 CLI、HTTP API、MCP Server、server-side Hook。
 - `workspace -> project -> task` 的严格 scope。
@@ -102,10 +102,10 @@ M9 使用独立的 `task_assignees` 关联表表达任务与用户的多对多�
 M9 复用当前 CLI “描述 + 修改 token” 风格：
 
 ```bash
-taskg add "ship m9 docs" @alice @bob
-taskg 1 modify +@carol -@alice
-taskg list assignee:alice
-taskg next assignee:me
+xuanchu add "ship m9 docs" @alice @bob
+xuanchu 1 modify +@carol -@alice
+xuanchu list assignee:alice
+xuanchu next assignee:me
 ```
 
 规则：
@@ -142,7 +142,7 @@ M9 的 `assignee:me` 展开为“当前 runtime actor 在当前 effective worksp
 
 这样做的原因：
 
-- 当前 `taskg` 的查询、权限、remote、HTTP、MCP 都是 workspace-scoped。
+- 当前 `xuanchu` 的查询、权限、remote、HTTP、MCP 都是 workspace-scoped。
 - 如果在 M9 首版就引入跨 workspace “我的任务” 视图，会把 request scope、token allowlist、audit 语义一起拉进来。
 
 跨 workspace 个人视图如果要做，应在后续 milestone 明确设计，而不是偷偷塞进 assignee 功能里。
@@ -309,7 +309,7 @@ M9 不要求修改 `list` / `next` 表格列定义。
 
 ### 5.5 HTTP API / remote client
 
-`internal/httpapi/tasks.go`、`internal/remote/task.go`、`docs/openapi/taskg-v1.yaml` 需要同步更新，保证：
+`internal/httpapi/tasks.go`、`internal/remote/task.go`、`docs/openapi/xuanchu-v1.yaml` 需要同步更新，保证：
 
 - handler request struct
 - remote typed client struct
@@ -345,14 +345,14 @@ M9 需要同步的文档至少包括：
 
 M9 完成时，至少要满足：
 
-- `taskg add "ship docs" @alice @bob` 能创建带 assignees 的任务。
-- `taskg 1 modify +@carol -@alice` 能增减 assignee。
-- `taskg list assignee:alice` 和 `taskg next assignee:me` 能稳定过滤。
-- `taskg info <target>` 的 human 输出能看到 assignee 列表。
+- `xuanchu add "ship docs" @alice @bob` 能创建带 assignees 的任务。
+- `xuanchu 1 modify +@carol -@alice` 能增减 assignee。
+- `xuanchu list assignee:alice` 和 `xuanchu next assignee:me` 能稳定过滤。
+- `xuanchu info <target>` 的 human 输出能看到 assignee 列表。
 - JSON export 包含 `assignees` 对象数组；JSON import 支持对象数组、字符串数组和显式空数组。
 - HTTP API / remote CLI / MCP 三个入口都能写入 assignees，并在读接口返回相同字段。
 - Hook payload 的 `data.task.assignees` 可见。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 ## 7. 明确不做
 

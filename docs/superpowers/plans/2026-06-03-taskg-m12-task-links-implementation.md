@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 taskg 任务增加外部资源轻关联能力，让 Agent 能通过 MCP 结构化地记录任务与外部资源（文档、PR、设计稿等）的关联。
+**Goal:** 为 xuanchu 任务增加外部资源轻关联能力，让 Agent 能通过 MCP 结构化地记录任务与外部资源（文档、PR、设计稿等）的关联。
 
 **Architecture:** 新增 `task_links` 表存储任务与外部资源的关联（type + URL + title）。遵循现有 TaskTag/TaskAnnotation 子表模式。App 层提供 `TaskAddLink` / `TaskRemoveLink` 方法。CLI、HTTP API、MCP 三端复用同一 app service。Hook payload 中包含 links。
 
 **Tech Stack:** Go 1.25, GORM + github.com/glebarez/sqlite, github.com/google/uuid, github.com/spf13/cobra, github.com/modelcontextprotocol/go-sdk
 
-**Spec:** `docs/superpowers/specs/2026-06-03-taskg-m12-project-context-task-links-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-03-xuanchu-m12-project-context-task-links-design.md`
 
 ---
 
@@ -385,14 +385,14 @@ git commit -m "feat(m12): App 层 TaskAddLink/TaskRemoveLink"
 - [ ] **Step 3: 写集成测试**
 
 测试场景：
-1. `taskg add "test task"`
-2. `taskg 1 link add --type document --url https://example.com/doc`
-3. `taskg 1 link list` — 输出包含 type 和 URL
-4. `taskg 1 info` — 输出包含 links 部分
-5. `taskg 1 --json` — JSON 中包含 links 数组
+1. `xuanchu add "test task"`
+2. `xuanchu 1 link add --type document --url https://example.com/doc`
+3. `xuanchu 1 link list` — 输出包含 type 和 URL
+4. `xuanchu 1 info` — 输出包含 links 部分
+5. `xuanchu 1 --json` — JSON 中包含 links 数组
 6. 重复 URL 失败
-7. `taskg 1 link remove <link-id>` — 成功
-8. `taskg 1 link list` — 输出为空
+7. `xuanchu 1 link remove <link-id>` — 成功
+8. `xuanchu 1 link list` — 输出为空
 
 Run: `CGO_ENABLED=0 go test ./tests/integration/ -run TestLink -v`
 Expected: 全部 PASS
@@ -563,7 +563,7 @@ Expected: 全部 PASS
 - [ ] **Step 2: 构建**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: 成功
@@ -571,16 +571,16 @@ Expected: 成功
 - [ ] **Step 3: 端到端手动验证**
 
 ```bash
-./taskg workspace add test-ws
-./taskg project add test-ws test-project --name "Test Project"
-./taskg project test-ws test-project modify --description "这是一个测试项目，用于验证任务外部关联功能。项目约定：任务描述必须包含验收标准。飞书群：https://feishu.cn/group/xxx"
-./taskg add "实现用户登录功能"
-./taskg 1 link add --type document --url "https://feishu.cn/docx/abc" --title "需求文档"
-./taskg 1 link add --type pr --url "https://github.com/org/repo/pull/123" --title "PR #123"
-./taskg 1 info
-./taskg 1 --json
-./taskg 1 link list
-./taskg 1 link remove <link-id>
+./xuanchu workspace add test-ws
+./xuanchu project add test-ws test-project --name "Test Project"
+./xuanchu project test-ws test-project modify --description "这是一个测试项目，用于验证任务外部关联功能。项目约定：任务描述必须包含验收标准。飞书群：https://feishu.cn/group/xxx"
+./xuanchu add "实现用户登录功能"
+./xuanchu 1 link add --type document --url "https://feishu.cn/docx/abc" --title "需求文档"
+./xuanchu 1 link add --type pr --url "https://github.com/org/repo/pull/123" --title "PR #123"
+./xuanchu 1 info
+./xuanchu 1 --json
+./xuanchu 1 link list
+./xuanchu 1 link remove <link-id>
 ```
 
 验证：

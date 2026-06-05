@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/dajee/taskg/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
 func TestMeActiveWorkspaceSwitchesWorkspace(t *testing.T) {

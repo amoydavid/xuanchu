@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 func ptrDuration(value time.Duration) *time.Duration {
@@ -62,7 +62,7 @@ func TestCreateTokenStoresHashAndAudits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.RawToken, "taskg_pat_") {
+	if !strings.HasPrefix(out.RawToken, "xuanchu_pat_") {
 		t.Fatalf("token = %q", out.RawToken)
 	}
 	if strings.Contains(out.Stored.TokenHash, out.RawToken) {

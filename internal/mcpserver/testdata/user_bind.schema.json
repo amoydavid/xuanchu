@@ -1,5 +1,5 @@
 {
-  "description": "Bind an external ID (e.g. feishu:ou_xxxxx) to a taskg user. Admin/owner can bind for others; regular users can only bind to themselves.",
+  "description": "Bind an external ID (e.g. feishu:ou_xxxxx) to a xuanchu user. Admin/owner can bind for others; regular users can only bind to themselves.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {

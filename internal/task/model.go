@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/recurrence"
+	"git.dajee.net/dajee/xuanchu/internal/recurrence"
 )
 
 const (

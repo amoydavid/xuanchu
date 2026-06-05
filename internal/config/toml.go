@@ -31,8 +31,8 @@ func loadTomlConfigWithPath(dir string) (string, map[string]string, error) {
 
 func findTomlConfigPath(dir string) (string, error) {
 	for _, path := range []string{
-		filepath.Join(dir, "taskg.toml"),
-		filepath.Join(dir, "taskg", "taskg.toml"),
+		filepath.Join(dir, "xuanchu.toml"),
+		filepath.Join(dir, "xuanchu", "xuanchu.toml"),
 	} {
 		if _, err := os.Stat(path); err == nil {
 			return path, nil

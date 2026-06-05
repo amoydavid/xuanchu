@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -51,7 +51,7 @@ func noRedirectClient() *http.Client {
 
 func newTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,25 +205,25 @@ func TestHeadersForDelivery(t *testing.T) {
 	if v := headers.Get("Content-Type"); v != "application/json; charset=utf-8" {
 		t.Fatalf("Content-Type = %q", v)
 	}
-	if v := headers.Get("X-Taskg-Delivery"); v != "del-1" {
-		t.Fatalf("X-Taskg-Delivery = %q", v)
+	if v := headers.Get("X-Xuanchu-Delivery"); v != "del-1" {
+		t.Fatalf("X-Xuanchu-Delivery = %q", v)
 	}
-	if v := headers.Get("X-Taskg-Hook-Id"); v != "hook-1" {
-		t.Fatalf("X-Taskg-Hook-Id = %q", v)
+	if v := headers.Get("X-Xuanchu-Hook-Id"); v != "hook-1" {
+		t.Fatalf("X-Xuanchu-Hook-Id = %q", v)
 	}
-	if v := headers.Get("X-Taskg-Attempt"); v != "2" {
-		t.Fatalf("X-Taskg-Attempt = %q", v)
+	if v := headers.Get("X-Xuanchu-Attempt"); v != "2" {
+		t.Fatalf("X-Xuanchu-Attempt = %q", v)
 	}
-	if v := headers.Get("User-Agent"); v != "taskg-webhook/1.0.0" {
+	if v := headers.Get("User-Agent"); v != "xuanchu-webhook/1.0.0" {
 		t.Fatalf("User-Agent = %q", v)
 	}
 
 	// 签名 headers（有 secret 时）
-	if v := headers.Get("X-Taskg-Timestamp"); v == "" {
-		t.Fatal("expected X-Taskg-Timestamp header when secret exists")
+	if v := headers.Get("X-Xuanchu-Timestamp"); v == "" {
+		t.Fatal("expected X-Xuanchu-Timestamp header when secret exists")
 	}
-	if v := headers.Get("X-Taskg-Signature-256"); v == "" {
-		t.Fatal("expected X-Taskg-Signature-256 header when secret exists")
+	if v := headers.Get("X-Xuanchu-Signature-256"); v == "" {
+		t.Fatal("expected X-Xuanchu-Signature-256 header when secret exists")
 	}
 
 	// 存储的自定义 header 应该被保留
@@ -252,11 +252,11 @@ func TestHeadersForDeliveryNoSecret(t *testing.T) {
 	}
 
 	// 没有 secret 时不应该有 timestamp 和 signature
-	if v := headers.Get("X-Taskg-Timestamp"); v != "" {
-		t.Fatalf("expected no X-Taskg-Timestamp without secret, got %q", v)
+	if v := headers.Get("X-Xuanchu-Timestamp"); v != "" {
+		t.Fatalf("expected no X-Xuanchu-Timestamp without secret, got %q", v)
 	}
-	if v := headers.Get("X-Taskg-Signature-256"); v != "" {
-		t.Fatalf("expected no X-Taskg-Signature-256 without secret, got %q", v)
+	if v := headers.Get("X-Xuanchu-Signature-256"); v != "" {
+		t.Fatalf("expected no X-Xuanchu-Signature-256 without secret, got %q", v)
 	}
 }
 
@@ -314,13 +314,13 @@ func TestDispatcherRunOnceDeliversWebhook(t *testing.T) {
 	}
 
 	// 验证必需 headers
-	if v := receivedRequest.Header.Get("X-Taskg-Delivery"); v != delivery.ID {
-		t.Fatalf("X-Taskg-Delivery = %q, want %q", v, delivery.ID)
+	if v := receivedRequest.Header.Get("X-Xuanchu-Delivery"); v != delivery.ID {
+		t.Fatalf("X-Xuanchu-Delivery = %q, want %q", v, delivery.ID)
 	}
-	if v := receivedRequest.Header.Get("X-Taskg-Hook-Id"); v != hook.ID {
-		t.Fatalf("X-Taskg-Hook-Id = %q, want %q", v, hook.ID)
+	if v := receivedRequest.Header.Get("X-Xuanchu-Hook-Id"); v != hook.ID {
+		t.Fatalf("X-Xuanchu-Hook-Id = %q, want %q", v, hook.ID)
 	}
-	if v := receivedRequest.Header.Get("X-Taskg-Signature-256"); v == "" {
+	if v := receivedRequest.Header.Get("X-Xuanchu-Signature-256"); v == "" {
 		t.Fatal("expected signature header")
 	}
 
@@ -1028,19 +1028,19 @@ func TestDispatcherSignatureHeadersMatch(t *testing.T) {
 	// 验证签名一致性
 	body := []byte(delivery.PayloadJSON)
 	expectedSig := SignatureSHA256(hook.Secret, delivery.ID, 1700000000, body)
-	gotSig := receivedHeaders.Get("X-Taskg-Signature-256")
+	gotSig := receivedHeaders.Get("X-Xuanchu-Signature-256")
 	if gotSig != expectedSig {
 		t.Fatalf("signature mismatch: got %q, want %q", gotSig, expectedSig)
 	}
 
 	// 验证 User-Agent
-	if v := receivedHeaders.Get("User-Agent"); v != "taskg-webhook/test-version" {
-		t.Fatalf("User-Agent = %q, want taskg-webhook/test-version", v)
+	if v := receivedHeaders.Get("User-Agent"); v != "xuanchu-webhook/test-version" {
+		t.Fatalf("User-Agent = %q, want xuanchu-webhook/test-version", v)
 	}
 
 	// 验证时间戳
-	if v := receivedHeaders.Get("X-Taskg-Timestamp"); v != "1700000000" {
-		t.Fatalf("X-Taskg-Timestamp = %q, want 1700000000", v)
+	if v := receivedHeaders.Get("X-Xuanchu-Timestamp"); v != "1700000000" {
+		t.Fatalf("X-Xuanchu-Timestamp = %q, want 1700000000", v)
 	}
 }
 

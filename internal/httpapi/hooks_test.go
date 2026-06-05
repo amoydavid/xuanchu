@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 // helper: 创建 workspace hook 并返回 hook ID
@@ -53,7 +53,7 @@ func createDeadLetteredDelivery(t *testing.T, store *storage.Store, hookID strin
 		WorkspaceID:  getFirstWorkspaceID(t, store),
 		ActorUserID:  getFirstUserID(t, store),
 		PayloadJSON:  `{"task":{"uuid":"t1"}}`,
-		HeadersJSON:  `{"X-Taskg-Signature":"sha256=abc"}`,
+		HeadersJSON:  `{"X-Xuanchu-Signature":"sha256=abc"}`,
 		Status:       storage.DeliveryStatusDeadLettered,
 		AttemptCount: 3,
 		LastError:    "connection refused",

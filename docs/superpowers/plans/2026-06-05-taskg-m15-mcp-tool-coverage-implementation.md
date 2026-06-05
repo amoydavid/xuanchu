@@ -79,7 +79,7 @@ addTool(s, &mcp.Tool{Name: "task_link_list", Description: "List external links o
 - [ ] **Step 2: 构建验证**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 ```
 
 ### Task 2: task_export + task_import
@@ -146,12 +146,12 @@ addTool(s, &mcp.Tool{Name: "task_import", Description: "Import tasks from JSON; 
 })
 ```
 
-注意：需在 import 中加入 `"github.com/dajee/taskg/internal/task"`（如果还没有）。
+注意：需在 import 中加入 `"github.com/dajee/xuanchu/internal/task"`（如果还没有）。
 
 - [ ] **Step 2: 构建并测试**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 go test ./internal/mcpserver/ -count=1
 ```
 
@@ -252,7 +252,7 @@ addTool(s, &mcp.Tool{Name: "project_archive", Description: "Archive a project; w
 - [ ] **Step 3: 构建**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 ```
 
 ### Task 4: project_config_set / project_config_unset / project_config_list
@@ -338,7 +338,7 @@ addTool(s, &mcp.Tool{Name: "project_config_list", Description: "List project con
 - [ ] **Step 2: 构建并测试**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 go test ./internal/mcpserver/ -count=1
 ```
 
@@ -401,7 +401,7 @@ type WorkspaceModifyInput struct {
 - [ ] **Step 3: 构建并测试**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 go test ./internal/mcpserver/ -count=1
 ```
 
@@ -577,7 +577,7 @@ registerHookTools(s, opts)
 - [ ] **Step 3: 构建并测试**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 go test ./internal/mcpserver/ -count=1
 ```
 
@@ -637,7 +637,7 @@ Tool 注册：
 `token_list` 不需要 workspace scope。
 `token_revoke` 使用 `RevokeToken`（非 `RevokeTokenWithLimit`，MCP 不做父 token 委托）。
 
-需要 import `"time"` 和 `"github.com/dajee/taskg/internal/app"`。
+需要 import `"time"` 和 `"github.com/dajee/xuanchu/internal/app"`。
 
 - [ ] **Step 2: 在 server.go 中注册**
 
@@ -648,7 +648,7 @@ registerTokenTools(s, opts)
 - [ ] **Step 3: 构建并测试**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 go test ./internal/mcpserver/ -count=1
 ```
 
@@ -710,7 +710,7 @@ registerMiscTools(s, opts)
 - [ ] **Step 4: 构建并测试**
 
 ```bash
-go build ./cmd/taskg
+go build ./cmd/xuanchu
 go test ./internal/mcpserver/ -count=1
 ```
 
@@ -767,7 +767,7 @@ git commit -m "docs: MCP 文档更新为 74 个 tool"
 - [ ] **Step 1: 全量测试**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 CGO_ENABLED=0 go test ./... -count=1
 ```
 

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 func Resolve(tsk task.Task, field string, urgency float64) (string, error) {

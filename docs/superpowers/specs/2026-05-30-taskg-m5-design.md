@@ -1,10 +1,10 @@
-# taskg M5 设计规格
+# xuanchu M5 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
 **目标：** 把 `project` 从任务上的自由字符串升级为 workspace 内的一等企业项目实体，并建立 project scope、project 配置边界和后续 API/MCP/Agent token 可复用的稳定 `project_id`。
 
-**范围策略：** M5 不再把“完全兼容 Taskwarrior”作为优先目标。taskg 继续借用 Taskwarrior 的 CLI 风格、查询思路、任务字段和 JSON 迁移经验，但企业场景下 `project` 必须是受权限、审计、配置和作用域约束的业务对象。M5 的关键决策是：运行时采用**严格 project 注册**，新增或修改任务引用不存在的 `project:<slug>` 必须报错，不自动创建 project。
+**范围策略：** M5 不再把“完全兼容 Taskwarrior”作为优先目标。xuanchu 继续借用 Taskwarrior 的 CLI 风格、查询思路、任务字段和 JSON 迁移经验，但企业场景下 `project` 必须是受权限、审计、配置和作用域约束的业务对象。M5 的关键决策是：运行时采用**严格 project 注册**，新增或修改任务引用不存在的 `project:<slug>` 必须报错，不自动创建 project。
 
 **需求来源：** 本规格从 [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[README.md](/Users/mac/code/projects/dajee/task/README.md)、[docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md)、M4 当前实现，以及本轮关于 workspace/project/tenant/Agent MCP 方向的讨论中收束。
 
@@ -29,9 +29,9 @@ M5 的工作不是新增网络层，而是先把 project 的身份、配置和�
 
 ## 2. 核心产品决策
 
-### 2.1 taskg 与 Taskwarrior 的关系
+### 2.1 xuanchu 与 Taskwarrior 的关系
 
-taskg 借用 Taskwarrior 的设计思路，但不再承诺完全兼容：
+xuanchu 借用 Taskwarrior 的设计思路，但不再承诺完全兼容：
 
 - 保留：
   - CLI 的 `key:value` 修改风格。
@@ -49,8 +49,8 @@ taskg 借用 Taskwarrior 的设计思路，但不再承诺完全兼容：
 M5 采用严格注册规则：
 
 - `project add <slug> name:<name>` 创建 project。
-- `taskg add "..." project:<slug>` 必须在 effective workspace 内找到 active project。
-- `taskg 1 modify project:<slug>` 必须在 effective workspace 内找到 active project。
+- `xuanchu add "..." project:<slug>` 必须在 effective workspace 内找到 active project。
+- `xuanchu 1 modify project:<slug>` 必须在 effective workspace 内找到 active project。
 - 找不到 project 时返回非零 exit code，错误信息应提示先创建 project。
 - 不允许在任务写路径中自动创建 project。
 - 已归档 project 不允许被新任务引用。
@@ -61,7 +61,7 @@ M5 采用严格注册规则：
 ### 2.3 workspace 与 project 身份
 
 - `workspace` 是企业 / 租户级隔离边界。
-- `workspace.slug` 在同一个 taskg 实例内唯一，因为 CLI 使用裸 `--workspace <slug|uuid>`。
+- `workspace.slug` 在同一个 xuanchu 实例内唯一，因为 CLI 使用裸 `--workspace <slug|uuid>`。
 - `project.slug` 只在 `(workspace_id, slug)` 内唯一。
 - 不同 workspace 可以拥有同名 project，例如：
   - `dajee/ai-agent-platform`
@@ -80,32 +80,32 @@ M5 完成后，应支持这些使用方式：
 
 ```bash
 # 创建项目
-taskg --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
-taskg --workspace dajee project add erp-rewrite name:"ERP Rewrite"
+xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
+xuanchu --workspace dajee project add erp-rewrite name:"ERP Rewrite"
 
 # 列出当前 workspace 的项目
-taskg --workspace dajee project list
-taskg --workspace dajee project list --all
+xuanchu --workspace dajee project list
+xuanchu --workspace dajee project list --all
 
 # 查看、修改、归档项目
-taskg --workspace dajee project info ai-agent-platform
-taskg --workspace dajee project modify ai-agent-platform description:"Agent MCP platform"
-taskg --workspace dajee project archive erp-rewrite
+xuanchu --workspace dajee project info ai-agent-platform
+xuanchu --workspace dajee project modify ai-agent-platform description:"Agent MCP platform"
+xuanchu --workspace dajee project archive erp-rewrite
 
 # 引用已注册 project 创建任务
-taskg --workspace dajee add "Design task.query MCP schema" project:ai-agent-platform +mcp
+xuanchu --workspace dajee add "Design task.query MCP schema" project:ai-agent-platform +mcp
 
 # 未注册 project 必须失败
-taskg --workspace dajee add "Unknown work" project:ghost
-# error: project "ghost" not found in workspace "dajee"; create it with: taskg project add ghost name:<name>
+xuanchu --workspace dajee add "Unknown work" project:ghost
+# error: project "ghost" not found in workspace "dajee"; create it with: xuanchu project add ghost name:<name>
 
 # 同名 project 在不同 workspace 中互不冲突
-taskg --workspace partner project add ai-agent-platform name:"Partner Agent Platform"
-taskg --workspace partner add "Partner integration" project:ai-agent-platform
+xuanchu --workspace partner project add ai-agent-platform name:"Partner Agent Platform"
+xuanchu --workspace partner add "Partner integration" project:ai-agent-platform
 
 # 脚本优先拿 project_id
-taskg --workspace dajee project info ai-agent-platform --json
-taskg --workspace dajee _projects
+xuanchu --workspace dajee project info ai-agent-platform --json
+xuanchu --workspace dajee _projects
 ```
 
 M5 仍需保持脚本友好：
@@ -369,7 +369,7 @@ M5 必须向前兼容 M4 数据库。
 - 如果旧 `tasks.project` 不符合新 slug 规则，必须清空该任务的 `project` 和 `project_id`，并写入迁移报告。
 - 如果同一 workspace 内多个不同原始 project 值规范化后冲突，例如 `API`、`api`、` api `，M5 不自动选择 winner。冲突集合内所有相关任务都清空 `project` 和 `project_id`，并写入迁移报告，让用户显式 `project add api name:<name>` 后再手动修复。
 - 迁移报告固定写入 SQLite meta key `migration.m5.projects.skipped`，值为 JSON array，至少包含 `workspace_id`、`task_uuid`、`raw_project`、`reason`。
-- 如果迁移报告非空，CLI 在该次命令 stderr 输出一行 warning，提示通过 `taskg config get migration.m5.projects.skipped --json` 查看详情；M5 不新增专门的 migration report 命令。
+- 如果迁移报告非空，CLI 在该次命令 stderr 输出一行 warning，提示通过 `xuanchu config get migration.m5.projects.skipped --json` 查看详情；M5 不新增专门的 migration report 命令。
 - 对被跳过的非法 / 冲突任务，新查询语义下视为无 project 任务；`project:<old-value>` 不再匹配它们，`project:` 可以匹配。
 - 迁移必须幂等。
 - 迁移失败不得部分写坏数据库。
@@ -380,9 +380,9 @@ M5 必须向前兼容 M4 数据库。
 ### project list
 
 ```bash
-taskg project list
-taskg project list --all
-taskg project list --json
+xuanchu project list
+xuanchu project list --all
+xuanchu project list --json
 ```
 
 human 输出固定列：
@@ -414,7 +414,7 @@ JSON 输出字段：
 ### project add
 
 ```bash
-taskg project add ai-agent-platform name:"AI Agent Platform" description:"Agent MCP platform"
+xuanchu project add ai-agent-platform name:"AI Agent Platform" description:"Agent MCP platform"
 ```
 
 规则：
@@ -427,9 +427,9 @@ taskg project add ai-agent-platform name:"AI Agent Platform" description:"Agent 
 ### project info
 
 ```bash
-taskg project info ai-agent-platform
-taskg project info <project-id>
-taskg project info ai-agent-platform --json
+xuanchu project info ai-agent-platform
+xuanchu project info <project-id>
+xuanchu project info ai-agent-platform --json
 ```
 
 规则：
@@ -441,7 +441,7 @@ taskg project info ai-agent-platform --json
 ### project modify
 
 ```bash
-taskg project modify ai-agent-platform name:"Agent Platform" description:"..."
+xuanchu project modify ai-agent-platform name:"Agent Platform" description:"..."
 ```
 
 规则：
@@ -454,7 +454,7 @@ taskg project modify ai-agent-platform name:"Agent Platform" description:"..."
 ### project archive
 
 ```bash
-taskg project archive ai-agent-platform
+xuanchu project archive ai-agent-platform
 ```
 
 规则：
@@ -471,10 +471,10 @@ taskg project archive ai-agent-platform
 M5 固定使用以下 CLI 形态：
 
 ```bash
-taskg project config get ai-agent-platform agent.background
-taskg project config set ai-agent-platform agent.background "This project owns taskg MCP integration."
-taskg project config unset ai-agent-platform agent.background
-taskg project config list ai-agent-platform
+xuanchu project config get ai-agent-platform agent.background
+xuanchu project config set ai-agent-platform agent.background "This project owns xuanchu MCP integration."
+xuanchu project config unset ai-agent-platform agent.background
+xuanchu project config list ai-agent-platform
 ```
 
 原因：
@@ -490,7 +490,7 @@ taskg project config list ai-agent-platform
 ### add
 
 ```bash
-taskg add "Implement API" project:ai-agent-platform
+xuanchu add "Implement API" project:ai-agent-platform
 ```
 
 流程：
@@ -505,8 +505,8 @@ taskg add "Implement API" project:ai-agent-platform
 ### modify
 
 ```bash
-taskg 1 modify project:ai-agent-platform
-taskg 1 modify project:
+xuanchu 1 modify project:ai-agent-platform
+xuanchu 1 modify project:
 ```
 
 规则：
@@ -546,8 +546,8 @@ recurrence tick 创建子任务时使用 parent 的 `project_id` 和 `project`�
 ### project filter
 
 ```bash
-taskg project:ai-agent-platform list
-taskg context define agent 'project:ai-agent-platform status:pending'
+xuanchu project:ai-agent-platform list
+xuanchu context define agent 'project:ai-agent-platform status:pending'
 ```
 
 规则：
@@ -560,7 +560,7 @@ taskg context define agent 'project:ai-agent-platform status:pending'
 ### `_projects`
 
 ```bash
-taskg _projects
+xuanchu _projects
 ```
 
 规则：
@@ -584,7 +584,7 @@ taskg _projects
 
 M5 后配置分成四类：
 
-1. 本机配置：`taskg.toml`、env、CLI flag、`rc.*`。
+1. 本机配置：`xuanchu.toml`、env、CLI flag、`rc.*`。
 2. workspace 业务配置：UDA schema、workspace context、report 默认值、workspace Agent 背景。
 3. project 业务配置：project Agent 背景、约束、默认 context、后续 webhook 默认值。
 4. user 偏好：后续可加入，不进入 M5。
@@ -659,9 +659,9 @@ M5 至少需要覆盖：
   - actor 在 workspace A 下尝试引用只存在于 workspace B 的 slug、project id 都必须失败。
 - CLI：
   - `project list/add/info/modify/archive` human 与 JSON 输出。
-  - `taskg add ... project:missing` 失败并提示创建 project。
-  - `taskg add ... project:existing` 写入成功。
-  - `taskg 1 modify project:` 清空 project。
+  - `xuanchu add ... project:missing` 失败并提示创建 project。
+  - `xuanchu add ... project:existing` 写入成功。
+  - `xuanchu 1 modify project:` 清空 project。
   - `project archive` 对已归档 project 返回错误。
 - 查询：
   - `project:<slug>` 命中 project_id。
@@ -697,7 +697,7 @@ go test -race ./...
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## 14. 文档更新要求
@@ -706,7 +706,7 @@ M5 完成后必须更新：
 
 - [README.md](/Users/mac/code/projects/dajee/task/README.md)
   - 增加 M5 project 命令用法。
-  - 明确 taskg 不是完整 Taskwarrior clone。
+  - 明确 xuanchu 不是完整 Taskwarrior clone。
   - 明确 project 必须先注册。
 - [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)
   - M5 状态改为已完成。

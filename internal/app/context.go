@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/taskcontext"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/taskcontext"
 )
 
 func (s *Service) DefineContext(name, filterSource string) error {

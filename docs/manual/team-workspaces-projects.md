@@ -5,7 +5,7 @@ weight: 60
 
 # 团队、Workspace 与 Project
 
-taskg 的企业边界由 workspace、project、user、membership 和 audit 组成。
+xuanchu 的企业边界由 workspace、project、user、membership 和 audit 组成。
 
 如果你还不确定“当前 CLI/MCP 到底以哪个 user 身份运行”，先读 [身份与初始化](identity-and-initialization.md)。本页更偏团队对象和管理命令。
 
@@ -22,10 +22,10 @@ taskg 的企业边界由 workspace、project、user、membership 和 audit 组�
 ## User
 
 ```bash
-taskg user list
-taskg user add alice email:alice@example.test
-taskg user use alice
-taskg user info
+xuanchu user list
+xuanchu user add alice email:alice@example.test
+xuanchu user use alice
+xuanchu user info
 ```
 
 本地模式会自动创建 `local` user。
@@ -35,18 +35,18 @@ taskg user info
 ## Workspace
 
 ```bash
-taskg workspace list
-taskg workspace add dajee name:Dajee visibility:team
-taskg workspace use dajee
-taskg workspace info dajee
-taskg workspace modify dajee description:"Dajee enterprise workspace"
-taskg workspace archive old
+xuanchu workspace list
+xuanchu workspace add dajee name:Dajee visibility:team
+xuanchu workspace use dajee
+xuanchu workspace info dajee
+xuanchu workspace modify dajee description:"Dajee enterprise workspace"
+xuanchu workspace archive old
 ```
 
 一次性指定 workspace：
 
 ```bash
-taskg --workspace dajee list
+xuanchu --workspace dajee list
 ```
 
 `--workspace` 只选择本次命令的 effective workspace，不会改变 actor，也不会突破 token 的 workspace scope。
@@ -54,9 +54,9 @@ taskg --workspace dajee list
 ## Member 与角色
 
 ```bash
-taskg member list
-taskg member add bob role:viewer
-taskg member role bob member
+xuanchu member list
+xuanchu member add bob role:viewer
+xuanchu member role bob member
 ```
 
 角色：
@@ -73,11 +73,11 @@ taskg member role bob member
 ## Project
 
 ```bash
-taskg --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
-taskg --workspace dajee project list
-taskg --workspace dajee project info ai-agent-platform
-taskg --workspace dajee project modify ai-agent-platform description:"Owns MCP work"
-taskg --workspace dajee project archive ai-agent-platform
+xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
+xuanchu --workspace dajee project list
+xuanchu --workspace dajee project info ai-agent-platform
+xuanchu --workspace dajee project modify ai-agent-platform description:"Owns MCP work"
+xuanchu --workspace dajee project archive ai-agent-platform
 ```
 
 project 归档后不能被新任务引用，但已有任务仍可读取、完成和删除。
@@ -87,10 +87,10 @@ project 归档后不能被新任务引用，但已有任务仍可读取、完成
 project 级业务配置走 `project config`：
 
 ```bash
-taskg project config set ai-agent-platform agent.background "Owns taskg MCP integration."
-taskg project config get ai-agent-platform agent.background
-taskg project config list ai-agent-platform
-taskg project config unset ai-agent-platform agent.background
+xuanchu project config set ai-agent-platform agent.background "Owns xuanchu MCP integration."
+xuanchu project config get ai-agent-platform agent.background
+xuanchu project config list ai-agent-platform
+xuanchu project config unset ai-agent-platform agent.background
 ```
 
 无 scope 的 `config` 不读写 project 配置。
@@ -98,9 +98,9 @@ taskg project config unset ai-agent-platform agent.background
 ## Audit
 
 ```bash
-taskg audit list
-taskg audit list --limit 20 --json
-taskg audit list --project ai-agent-platform
+xuanchu audit list
+xuanchu audit list --limit 20 --json
+xuanchu audit list --project ai-agent-platform
 ```
 
 audit 记录写操作，例如 task、context、workspace、member、project、config、token、hook、manual replay 等。

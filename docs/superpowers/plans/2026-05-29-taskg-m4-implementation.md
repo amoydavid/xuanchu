@@ -1,4 +1,4 @@
-# taskg M4 实施计划
+# xuanchu M4 实施计划
 
 > **给 agentic workers 的要求：** 必须使用 `superpowers:subagent-driven-development`（如果可用）或 `superpowers:executing-plans` 执行本计划。所有步骤使用 checkbox（`- [ ]`）语法跟踪。
 
@@ -12,7 +12,7 @@
 
 ## 范围锁定
 
-严格按 [M4 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-29-taskg-m4-design.md) 实现：
+严格按 [M4 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-29-xuanchu-m4-design.md) 实现：
 
 - users、workspaces、memberships、audit logs。
 - active user、active workspace、active context 都按 user/workspace 维度隔离。
@@ -56,13 +56,13 @@
 - `internal/storage/audit_repo.go`
   audit append/list。
 - `internal/cli/user.go`
-  `taskg user ...` 命令。
+  `xuanchu user ...` 命令。
 - `internal/cli/workspace.go`
-  `taskg workspace ...` 命令。
+  `xuanchu workspace ...` 命令。
 - `internal/cli/member.go`
-  `taskg member ...` 命令。
+  `xuanchu member ...` 命令。
 - `internal/cli/audit.go`
-  `taskg audit list`。
+  `xuanchu audit list`。
 
 修改文件：
 
@@ -110,7 +110,7 @@
 
 ```go
 func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
-    store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+    store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
     if err != nil { t.Fatal(err) }
     t.Cleanup(func() { _ = store.Close() })
 
@@ -130,7 +130,7 @@ func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
 }
 
 func TestOpenMigratesContextActiveMeta(t *testing.T) {
-    dbPath := filepath.Join(t.TempDir(), "taskg.db")
+    dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
     store, err := Open(dbPath)
     if err != nil { t.Fatal(err) }
     if err := store.SetMeta("context.active", "work"); err != nil { t.Fatal(err) }
@@ -346,7 +346,7 @@ Expected: PASS。
 Run:
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。Chunk 1 引入新 schema/repo 后必须保持中间状态可构建，避免把编译错误拖到后续 runtime 接线阶段。
@@ -402,7 +402,7 @@ func (s *Service) addLocked(input AddInput) (task.Task, error) {
 - 需要写多条审计记录的业务路径使用 `withAuditEntries`，闭包返回 `[]AuditEntry`，helper 在同一个 store-level transaction 内逐条 append。禁止通过连续调用两次 `withAudit` 实现一个业务操作的多审计。
 - 本计划统一使用局部变量 capture 从 audit 闭包带出业务返回值；不新增泛型 helper。
 - 自动状态维护（`refreshAutomaticStateLocked`、recurring child creation）属于内部维护，绕过用户权限检查，但必须保持 workspace-scoped。除非 spec 明确列出，否则不写独立 public audit action。
-- M4 不读取 TOML `context.active`。如果用户只依赖 TOML active context，升级后需要手动运行一次 `taskg context use <name>`。
+- M4 不读取 TOML `context.active`。如果用户只依赖 TOML active context，升级后需要手动运行一次 `xuanchu context use <name>`。
 
 ### Task 3：引入 Runtime Context，并按命令绑定 Service
 
@@ -893,7 +893,7 @@ func (s *Service) activeContextMetaKey() string {
 2. `runtimeOverrides["context.active"]`，只用于 `rc.context=none` / `rc.context:<value>` 这种本次运行覆盖，不持久化。这个 key 只是 in-memory override key，为兼容现有 root parser 保留；它不是 SQLite meta key。
 3. Store meta `active_context.<user_id>.<workspace_id>`。
 
-M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，升级后需要运行一次 `taskg context use <name>`。这样避免重新引入机器级共享 active context。
+M4 不读取 TOML `context.active`。如果用户依赖 TOML `context.active`，升级后需要运行一次 `xuanchu context use <name>`。这样避免重新引入机器级共享 active context。
 
 - [x] **Step 4：更新 RC 处理**
 
@@ -950,7 +950,7 @@ git commit -m "feat: 按用户和 workspace 隔离 active context"
 
 - `AddUser` 创建 user + private personal workspace + owner membership。
 - `UseUser` 写入 `active_user_id`。
-- `UseUser` 忽略 `ServiceOptions.WorkspaceRef`；`taskg --workspace work user use alice` 不得设置 Alice 的 active workspace。CLI 可以之后选择拒绝该组合，但 app 语义是“只切换 user”。
+- `UseUser` 忽略 `ServiceOptions.WorkspaceRef`；`xuanchu --workspace work user use alice` 不得设置 Alice 的 active workspace。CLI 可以之后选择拒绝该组合，但 app 语义是“只切换 user”。
 - `AddWorkspace` 创建 workspace，并让当前 actor 成为 owner。
 - `UseWorkspace` 写入 `active_workspace.<user_id>`。
 - `ModifyWorkspace` 需要 admin/owner，并写 audit `workspace.modify`。
@@ -1076,8 +1076,8 @@ git commit -m "feat: 增加本地团队 app 接口"
 
 ```go
 func TestCLIUserWorkspaceLifecycle(t *testing.T) {
-    bin := buildTaskg(t)
-    db := filepath.Join(t.TempDir(), "taskg.db")
+    bin := buildXuanchu(t)
+    db := filepath.Join(t.TempDir(), "xuanchu.db")
     run(t, bin, "--db", db, "user", "add", "alice", "email:alice@example.test")
     out := run(t, bin, "--db", db, "user", "list")
     assertContains(t, out, "alice")
@@ -1117,7 +1117,7 @@ Expected: FAIL，因为命令还不存在。
 
 - 调 app。
 - 输出空或 `Using user <name>`；建议短确认。
-- `taskg --workspace work user use alice` 必须忽略 `--workspace`；只切换 active user，不设置 Alice 的 active workspace。
+- `xuanchu --workspace work user use alice` 必须忽略 `--workspace`；只切换 active user，不设置 Alice 的 active workspace。
 
 `user info`：
 
@@ -1260,8 +1260,8 @@ git commit -m "feat: 增加 member 和 audit 命令"
 2. 创建 workspace `work` 并 use。
 3. 添加 "work task"，使用相同 project/tag/UDA/context 名称。
 4. 断言：
-   - `taskg list` 只显示 work task。
-   - `taskg --workspace local list` 只显示 local task。
+   - `xuanchu list` 只显示 work task。
+   - `xuanchu --workspace local list` 只显示 local task。
    - `_projects`、`_tags`、`_unique estimate`、`_udas`、`_ids`、`_uuids`、`_get`、`_urgency` 都尊重 `--workspace`。
    - working-set ID `1` 在不同 workspace 中独立解析。
 
@@ -1378,7 +1378,7 @@ git commit -m "feat: 完善循环任务审计路径"
 **Files:**
 - Modify: `README.md`
 - Modify: `ROADMAP.md`
-- Modify: `docs/superpowers/specs/2026-05-29-taskg-m4-design.md` only if implementation changes the spec.
+- Modify: `docs/superpowers/specs/2026-05-29-xuanchu-m4-design.md` only if implementation changes the spec.
 
 - [x] **Step 1：更新 README M4 用法**
 
@@ -1392,7 +1392,7 @@ git commit -m "feat: 完善循环任务审计路径"
 - role 概览与警告：M4 没有 `member delete`；viewer 仍能读取 workspace 数据。
 - migrated `local` user 的 email 是 empty/null。
 - M3 到 M4 升级行为：现有任务留在 local workspace；自动创建 local user/workspace/membership；旧 `context.active` meta 会迁移到 `(local user, local workspace)` scoped active context。
-- M3 用户升级后第一次运行 `taskg` 会自动完成迁移，不需要手动执行迁移命令。
+- M3 用户升级后第一次运行 `xuanchu` 会自动完成迁移，不需要手动执行迁移命令。
 
 - [x] **Step 2：更新 ROADMAP**
 
@@ -1419,7 +1419,7 @@ Expected: no output。
 - [x] **Step 4：提交**
 
 ```bash
-git add README.md ROADMAP.md docs/superpowers/specs/2026-05-29-taskg-m4-design.md
+git add README.md ROADMAP.md docs/superpowers/specs/2026-05-29-xuanchu-m4-design.md
 git commit -m "docs: 更新 M4 使用说明"
 ```
 
@@ -1453,7 +1453,7 @@ Expected: PASS。
 Run:
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -1477,7 +1477,7 @@ git status --short
 git log --oneline -8
 ```
 
-Expected: 工作树干净，除了可选本地构建产物 `taskg`。如果出现未跟踪 `taskg`，只有确认它是本任务 build 生成物后才删除。
+Expected: 工作树干净，除了可选本地构建产物 `xuanchu`。如果出现未跟踪 `xuanchu`，只有确认它是本任务 build 生成物后才删除。
 
 - [x] **Step 6：如果验证修复了问题，做最终提交**
 
@@ -1496,7 +1496,7 @@ git commit -m "fix: 完成 M4 验证收尾"
 
 开始实现前必须阅读：
 
-- [M4 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-29-taskg-m4-design.md)
+- [M4 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-29-xuanchu-m4-design.md)
 - [AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md)
 - [internal/app/service.go](/Users/mac/code/projects/dajee/task/internal/app/service.go)
 - [internal/storage/db.go](/Users/mac/code/projects/dajee/task/internal/storage/db.go)

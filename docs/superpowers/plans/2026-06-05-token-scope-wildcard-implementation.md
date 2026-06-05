@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go, Cobra, GORM
 
-**Spec:** `docs/superpowers/specs/2026-06-05-taskg-scope-wildcard-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-05-xuanchu-scope-wildcard-design.md`
 
 ---
 
@@ -337,8 +337,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dajee/taskg/internal/auth"
-	"github.com/dajee/taskg/internal/render"
+	"github.com/dajee/xuanchu/internal/auth"
+	"github.com/dajee/xuanchu/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -424,9 +424,9 @@ cmd.AddCommand(newScopeCommand(opts))
 - [ ] **Step 3: 运行构建和手动验证**
 
 ```bash
-go build ./cmd/taskg
-./taskg scope list
-./taskg scope list --json
+go build ./cmd/xuanchu
+./xuanchu scope list
+./xuanchu scope list --json
 ```
 
 - [ ] **Step 4: 提交**
@@ -459,7 +459,7 @@ func TestTokenRepository_Update(t *testing.T) {
 		UserID:           "user1",
 		Name:             "test-token",
 		Type:             "pat",
-		TokenPrefix:      "taskg_pat_abc",
+		TokenPrefix:      "xuanchu_pat_abc",
 		TokenHash:        "hash",
 		ScopesJSON:       `["task:read"]`,
 		WorkspaceIDsJSON: `[]`,
@@ -499,7 +499,7 @@ func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
 		UserID:           "user1",
 		Name:             "test-token",
 		Type:             "pat",
-		TokenPrefix:      "taskg_pat_abc",
+		TokenPrefix:      "xuanchu_pat_abc",
 		TokenHash:        "hash",
 		ScopesJSON:       `["task:read"]`,
 		WorkspaceIDsJSON: `[]`,
@@ -684,8 +684,8 @@ git commit -m "feat: app 层 ModifyToken"
 - [ ] **Step 3: 构建验证**
 
 ```bash
-go build ./cmd/taskg
-./taskg token modify --help
+go build ./cmd/xuanchu
+./xuanchu token modify --help
 ```
 
 - [ ] **Step 4: 提交**
@@ -732,7 +732,7 @@ git commit -m "feat: 远程客户端 ModifyToken"
 **Files:**
 - Modify: `internal/httpapi/tokens.go`
 - Modify: `internal/httpapi/tokens_test.go`（如果存在）
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1: 新增 PATCH handler**
 
@@ -750,7 +750,7 @@ git commit -m "feat: 远程客户端 ModifyToken"
 
 - [ ] **Step 3: 更新 OpenAPI**
 
-在 `docs/openapi/taskg-v1.yaml` 中新增 `PATCH /api/v1/tokens/{id}` 的 schema 和 paths，参考现有 `POST /api/v1/tokens` 的结构。
+在 `docs/openapi/xuanchu-v1.yaml` 中新增 `PATCH /api/v1/tokens/{id}` 的 schema 和 paths，参考现有 `POST /api/v1/tokens` 的结构。
 
 - [ ] **Step 4: 运行测试**
 
@@ -825,20 +825,20 @@ git commit -m "docs: scope 通配符与 token modify 文档更新"
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 - [ ] **Step 2: 手动验收**
 
 ```bash
-./taskg scope list
-./taskg scope list --json
-./taskg token create test-scope-wildcard --scope '*' --type pat --expires-in 1h
-./taskg token create test-scope-wildcard-agent --scope '*' --type agent --expires-in 1h
-./taskg token list
-./taskg token modify <id> --scope '*:read'
-./taskg token modify <id> --name "renamed"
-./taskg token modify <id> --expires-in 720h
+./xuanchu scope list
+./xuanchu scope list --json
+./xuanchu token create test-scope-wildcard --scope '*' --type pat --expires-in 1h
+./xuanchu token create test-scope-wildcard-agent --scope '*' --type agent --expires-in 1h
+./xuanchu token list
+./xuanchu token modify <id> --scope '*:read'
+./xuanchu token modify <id> --name "renamed"
+./xuanchu token modify <id> --expires-in 720h
 ```
 
 - [ ] **Step 3: 提交**

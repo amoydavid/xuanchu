@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/query"
-	domain "github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"gorm.io/gorm"
 )
 

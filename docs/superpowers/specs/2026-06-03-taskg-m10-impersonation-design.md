@@ -2,7 +2,7 @@
 
 **日期**：2026-06-03  
 **状态**：草稿  
-**作者**：taskg team
+**作者**：xuanchu team
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### 1.1 场景
 
-taskg 已经支持 PAT（Personal Access Token）和 Agent token，能覆盖以下场景：
+xuanchu 已经支持 PAT（Personal Access Token）和 Agent token，能覆盖以下场景：
 
 - 个人本地 CLI 操作
 - 团队统一 PM Agent（service account 视角）
@@ -37,7 +37,7 @@ taskg 已经支持 PAT（Personal Access Token）和 Agent token，能覆盖以�
 当前没有机制让 Agent 平台：
 
 1. **代表员工**发起请求（impersonation）
-2. **引导员工**在 Agent 平台侧授权 taskg token，而不需要员工手动跑 CLI
+2. **引导员工**在 Agent 平台侧授权 xuanchu token，而不需要员工手动跑 CLI
 
 ---
 
@@ -46,7 +46,7 @@ taskg 已经支持 PAT（Personal Access Token）和 Agent token，能覆盖以�
 - Agent 平台（外部 HTTP 服务）能持有一个 **带 `impersonate` scope 的 Agent token**，以该 token 的权限代任意 workspace 成员发起请求
 - Audit log 清晰区分：**谁发起了操作（delegator）** 和 **谁是操作的名义 actor（subject）**
 - 权限模型：impersonation 不能越过 subject 在 workspace 的 membership 权限
-- 不引入完整 OAuth，保持 taskg token 体系的简单性
+- 不引入完整 OAuth，保持 xuanchu token 体系的简单性
 
 ---
 
@@ -73,26 +73,26 @@ workspace_ids: [ws-dajee]
 
 ### 3.2 Impersonation 请求
 
-带 `impersonate` scope 的 Agent token 在请求时附加 `X-Taskg-As` header，值为目标 user 的 name、email 或 UUID：
+带 `impersonate` scope 的 Agent token 在请求时附加 `X-Xuanchu-As` header，值为目标 user 的 name、email 或 UUID：
 
 ```
-Authorization: Bearer taskg_agent_...
-X-Taskg-As: alice
+Authorization: Bearer xuanchu_agent_...
+X-Xuanchu-As: alice
 ```
 
-taskg 服务端：
+xuanchu 服务端：
 1. 验证 Bearer token 是有效 Agent token，且有 `impersonate` scope
 2. 先按 M6 既有规则解析 request workspace / project scope
-3. 再解析 `X-Taskg-As` 找到目标 user
+3. 再解析 `X-Xuanchu-As` 找到目标 user
 4. 验证目标 user 是该 effective workspace 的成员
 5. 以目标 user 的 membership role 作为权限边界执行请求
 6. audit log 和 access log 记录双重 actor
 
 重要约束：
 
-- `X-Taskg-As` 只替换 actor，不参与 workspace 选择
+- `X-Xuanchu-As` 只替换 actor，不参与 workspace 选择
 - workspace 继续遵守 M6/M7 现有解析顺序：显式 `workspace` / `project_id` 优先，其次是 token 可见范围内的默认选择
-- 如果请求带 `X-Taskg-As`，但未显式指定 `workspace` 或 `project_id`，且 token 可见多个 workspace，应直接返回 `workspace_required`，不要静默落到 delegator 或 subject 的默认 workspace
+- 如果请求带 `X-Xuanchu-As`，但未显式指定 `workspace` 或 `project_id`，且 token 可见多个 workspace，应直接返回 `workspace_required`，不要静默落到 delegator 或 subject 的默认 workspace
 
 ### 3.3 双重 Actor Runtime / Audit
 
@@ -139,7 +139,7 @@ M10 采用以下冻结方案：
 ### 4.1 Impersonation 请求头
 
 ```
-X-Taskg-As: <user-name | user-email | user-uuid>
+X-Xuanchu-As: <user-name | user-email | user-uuid>
 ```
 
 只有 `agent` token 且拥有 `impersonate` scope 时，此 header 才生效。  
@@ -168,7 +168,7 @@ workspace 已确定后，如果目标 user 不存在，或存在但不是该 wor
 
 ```bash
 # 管理员创建可 impersonate 的 Agent token
-taskg --workspace dajee token create pm-agent-service \
+xuanchu --workspace dajee token create pm-agent-service \
   --type agent \
   --scope task:read,task:write,project:read,workspace:read,impersonate \
   --expires-in 8760h
@@ -195,8 +195,8 @@ POST /api/v1/tokens
 
 ### 4.4 MCP 工具扩展
 
-HTTP MCP 下，`X-Taskg-As` 是 request-scoped metadata，不是持久连接状态。  
-客户端必须保证承载 tool call 的每个 HTTP 请求都带上 `Authorization` 和 `X-Taskg-As` header。  
+HTTP MCP 下，`X-Xuanchu-As` 是 request-scoped metadata，不是持久连接状态。  
+客户端必须保证承载 tool call 的每个 HTTP 请求都带上 `Authorization` 和 `X-Xuanchu-As` header。  
 stdio MCP 不支持 impersonation。
 
 ---
@@ -238,7 +238,7 @@ effective permission =
 - **Impersonation 必须在 token 的 workspace allowlist 内**：不能 impersonate 一个 token 无权访问的 workspace 里的 user
 - **若 token 可见多个 workspace，impersonation 请求必须显式带 `workspace` 或 `project_id`**：避免默认 workspace 歧义
 - **Audit 完整记录 delegator**：任何 impersonation 操作都可以追溯到 delegator token 和 service account
-- **`X-Taskg-As` 对无 `impersonate` scope 的 token 不生效**：不能静默降级，直接返回错误
+- **`X-Xuanchu-As` 对无 `impersonate` scope 的 token 不生效**：不能静默降级，直接返回错误
 
 ---
 
@@ -246,10 +246,10 @@ effective permission =
 
 本地 CLI 不需要 impersonation（本地直接 `user use` 切换身份）。
 
-远程 CLI 新增 `--as` flag，对应 `X-Taskg-As` header：
+远程 CLI 新增 `--as` flag，对应 `X-Xuanchu-As` header：
 
 ```bash
-taskg --server https://taskg.example.com \
+xuanchu --server https://xuanchu.example.com \
   --token "$PM_AGENT_TOKEN" \
   --workspace dajee \
   --as alice \
@@ -260,7 +260,7 @@ taskg --server https://taskg.example.com \
 
 - `--as` 只在 remote mode 生效；本地 CLI 不支持该 flag 驱动 impersonation
 - `--as` 是 remote client 级别配置，而不是单 endpoint 的临时参数
-- 同一条 CLI invocation 内产生的所有 HTTP 子请求都必须携带同一个 `X-Taskg-As`
+- 同一条 CLI invocation 内产生的所有 HTTP 子请求都必须携带同一个 `X-Xuanchu-As`
 - 对 `assignee:me`、active context、working-set ID 两跳解析等行为，都应以 subject 为准，而不是 delegator
 
 ---
@@ -271,9 +271,9 @@ Agent 平台要支持个人助理 Agent，推荐以下流程：
 
 ```
 1. Agent 平台管理员持有带 `impersonate` scope 的 Agent token
-2. 员工在 Agent 平台登录，平台记录其 taskg username / email
-3. 员工和 Agent 对话时，Agent 平台在请求里加 X-Taskg-As: <员工 name>
-4. taskg 以员工身份执行，audit actor 是员工
+2. 员工在 Agent 平台登录，平台记录其 xuanchu username / email
+3. 员工和 Agent 对话时，Agent 平台在请求里加 X-Xuanchu-As: <员工 name>
+4. xuanchu 以员工身份执行，audit actor 是员工
 5. Agent 平台无需持有员工的个人 token
 ```
 
@@ -293,21 +293,21 @@ Agent 平台要支持个人助理 Agent，推荐以下流程：
 
 ## 10. 验收标准
 
-- Agent token 携带 `impersonate` scope，加 `X-Taskg-As` header 后可以以目标 user 身份执行请求
+- Agent token 携带 `impersonate` scope，加 `X-Xuanchu-As` header 后可以以目标 user 身份执行请求
 - Audit log 同时记录 `actor_user_id`（subject）和 `delegator_token_id` / `delegator_user_id`
 - 权限交集模型：subject role ∩ token scope ∩ token workspace/project allowlist，不能通过 impersonation 提权
 - token 可见多个 workspace 且请求未显式指定 workspace / project_id 时返回 `workspace_required`
 - 目标 user 不存在或不是 workspace 成员时统一返回 `membership_not_found`
-- token 无 `impersonate` scope 时携带 `X-Taskg-As` 返回 `token_scope_denied`
+- token 无 `impersonate` scope 时携带 `X-Xuanchu-As` 返回 `token_scope_denied`
 - 普通 member 无法创建带 `impersonate` scope 的 token
 - PAT 无法创建或持有 `impersonate` scope
-- 远程 CLI `--as` flag 透传为 `X-Taskg-As` header
-- MCP HTTP transport 的每个 tool-call request 都可透传 `X-Taskg-As`
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过
+- 远程 CLI `--as` flag 透传为 `X-Xuanchu-As` header
+- MCP HTTP transport 的每个 tool-call request 都可透传 `X-Xuanchu-As`
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过
 
 ---
 
 ## 11. 对后续 milestone 的影响
 
 - M11 可以在此基础上实现 Web UI 让员工自助授权 Agent 平台（页面引导员工点击，平台调用 API 获取 token）
-- 长期若引入 OIDC，`X-Taskg-As` 可以直接对接 OIDC subject claim，impersonation 层逻辑不变
+- 长期若引入 OIDC，`X-Xuanchu-As` 可以直接对接 OIDC subject claim，impersonation 层逻辑不变

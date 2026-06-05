@@ -1,10 +1,10 @@
 # Token 管理
 
-通过 taskg MCP 管理 API Token——用于 HTTP MCP 和远程 CLI 的身份凭证。
+通过 xuanchu MCP 管理 API Token——用于 HTTP MCP 和远程 CLI 的身份凭证。
 
 ## 基本概念
 
-Token 是 taskg 的身份凭证，用于：
+Token 是 xuanchu 的身份凭证，用于：
 - HTTP MCP 连接（Bearer Token）
 - 远程 CLI 认证
 - API 调用
@@ -27,7 +27,7 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
     "tokens": [
       {
         "id": "token-uuid-xxx",
-        "prefix": "taskg_agent_abc123",
+        "prefix": "xuanchu_agent_abc123",
         "name": "mcp-agent",
         "type": "agent",
         "user": {"id": "user-uuid-xxx", "name": "local"},
@@ -68,12 +68,12 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
   "data": {
     "token": {
       "id": "token-uuid-new",
-      "prefix": "taskg_agent_def456",
+      "prefix": "xuanchu_agent_def456",
       "name": "claude-agent",
       "type": "agent",
       "user": {"id": "user-uuid-xxx", "name": "local"},
       "scopes": ["task:read", "task:write", "project:read", "config:read"],
-      "raw_token": "taskg_agent_def456xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      "raw_token": "xuanchu_agent_def456xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     }
   },
   "rendered": "token claude-agent created"

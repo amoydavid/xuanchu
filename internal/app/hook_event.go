@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/storage"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 // HookEvent 表示一个待投递的 hook 事件。
@@ -163,9 +163,9 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 
 		// 基础 headers（签名由 dispatcher 在发送时添加）
 		headers := map[string]string{
-			"X-Taskg-Event":         event.EventType,
-			"X-Taskg-Event-Id":      event.EventID,
-			"X-Taskg-Event-Version": "1",
+			"X-Xuanchu-Event":         event.EventType,
+			"X-Xuanchu-Event-Id":      event.EventID,
+			"X-Xuanchu-Event-Version": "1",
 		}
 		headersBytes, err := json.Marshal(headers)
 		if err != nil {

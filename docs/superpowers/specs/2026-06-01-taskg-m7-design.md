@@ -1,12 +1,12 @@
-# taskg M7 设计规格
+# xuanchu M7 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 `taskg`，并把 M6 留下的远程管理命令补齐。M7 必须继续保持一个二进制、同一套 app service、同一套 actor/workspace/project 权限边界；MCP 不应成为第二套业务实现。
+**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 `xuanchu`，并把 M6 留下的远程管理命令补齐。M7 必须继续保持一个二进制、同一套 app service、同一套 actor/workspace/project 权限边界；MCP 不应成为第二套业务实现。
 
 **范围策略：** M7 聚焦 MCP Server、MCP tool schema、Agent 可读上下文、远程管理命令收口，以及支撑这些能力所需的 Go / SDK 技术选型升级。不做外部系统 adapter、不做 op-log 同步、不做 Hook / trigger 引擎、不做复杂 Agent 编排平台。
 
-**需求来源：** 本规格从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md)、[M6 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-31-taskg-m6-design.md)、M6 当前实现，以及本轮关于“HTTP 和未来 MCP server 选型，避免重复造轮子”的讨论中收束。
+**需求来源：** 本规格从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md)、[M6 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-31-xuanchu-m6-design.md)、M6 当前实现，以及本轮关于“HTTP 和未来 MCP server 选型，避免重复造轮子”的讨论中收束。
 
 **外部技术依据：**
 
@@ -20,7 +20,7 @@
 
 M6 已完成并合并。当前项目已有：
 
-- 单一 `taskg` 二进制。
+- 单一 `xuanchu` 二进制。
 - Cobra 本地 CLI 和远程 CLI。
 - HTTP/JSON API 服务端，基于 `net/http` + `github.com/go-chi/chi/v5`。
 - OpenAPI 3 文档。
@@ -87,7 +87,7 @@ github.com/modelcontextprotocol/go-sdk/mcp
 职责边界：
 
 - SDK 负责 MCP JSON-RPC、stdio transport、Streamable HTTP transport、tool 注册、schema 推导、会话协议。
-- `taskg` 负责 actor/workspace/project 授权、业务调用、错误码映射、审计和 rendered/data 输出。
+- `xuanchu` 负责 actor/workspace/project 授权、业务调用、错误码映射、审计和 rendered/data 输出。
 
 M7 不手写：
 
@@ -98,14 +98,14 @@ M7 不手写：
 
 M7 可以手写：
 
-- `taskg` 自己的 tool 输入 DTO。
-- `taskg` 自己的 tool result DTO。
-- `taskg` app service adapter。
-- `taskg` 错误码到 MCP tool error 的映射。
+- `xuanchu` 自己的 tool 输入 DTO。
+- `xuanchu` 自己的 tool result DTO。
+- `xuanchu` app service adapter。
+- `xuanchu` 错误码到 MCP tool error 的映射。
 
 ### 2.4 MCP 是第三个入口，不是第三套业务逻辑
 
-M7 后 `taskg` 有三类入口：
+M7 后 `xuanchu` 有三类入口：
 
 - 本地 CLI。
 - HTTP/JSON API + 远程 CLI。
@@ -131,10 +131,10 @@ MCP handler 不允许：
 
 M6 明确把下列远程 CLI 管理命令留给 M7：
 
-- `taskg --server ... workspace add|list|info|modify|use|archive`
-- `taskg --server ... user add|list|info|use`
-- `taskg --server ... member list|add|role`
-- `taskg --server ... show`
+- `xuanchu --server ... workspace add|list|info|modify|use|archive`
+- `xuanchu --server ... user add|list|info|use`
+- `xuanchu --server ... member list|add|role`
+- `xuanchu --server ... show`
 
 M7 必须把这些命令的远程行为作为 Phase 0b 收口：能安全远程化的命令必须支持；本质依赖本机身份切换的命令必须继续明确返回 `remote_unsupported_command`，并用测试证明不会触碰本地 DB。
 
@@ -158,7 +158,7 @@ M7 HTTP MCP 继续使用 M6 PAT / Agent token。
 - token 校验复用 M6 `AuthenticateBearerToken`。
 - actor、workspace scope、project scope 复用 M6 request scope。
 - OAuth Protected Resource Metadata、JWT 登录、refresh token、浏览器登录都不进入 M7。
-- 若官方 SDK 提供 auth middleware，可以作为参考，但不替代 taskg 当前 token 模型。
+- 若官方 SDK 提供 auth middleware，可以作为参考，但不替代 xuanchu 当前 token 模型。
 
 ## 3. 技术选型
 
@@ -213,7 +213,7 @@ M7 HTTP MCP 继续使用 M6 PAT / Agent token。
 - 升级 Go。
 - 引入 `github.com/modelcontextprotocol/go-sdk/mcp`。
 - SDK 承担 MCP 协议层。
-- `taskg` 只写业务 adapter。
+- `xuanchu` 只写业务 adapter。
 
 优点：
 
@@ -237,7 +237,7 @@ M7 最终选型：
 - REST HTTP：继续 `net/http` + `github.com/go-chi/chi/v5`。
 - MCP：`github.com/modelcontextprotocol/go-sdk/mcp`。
 - SQLite：继续 `GORM + github.com/glebarez/sqlite`。
-- 验收：继续包含 `CGO_ENABLED=0 go test ./...` 和 `CGO_ENABLED=0 go build ./cmd/taskg`。
+- 验收：继续包含 `CGO_ENABLED=0 go test ./...` 和 `CGO_ENABLED=0 go build ./cmd/xuanchu`。
 
 ### 3.3 依赖边界
 
@@ -261,7 +261,7 @@ M7 最终选型：
 M7 后：
 
 ```bash
-taskg server --listen :8080
+xuanchu server --listen :8080
 ```
 
 提供：
@@ -284,10 +284,10 @@ taskg server --listen :8080
 新增：
 
 ```bash
-taskg mcp stdio
-taskg mcp stdio --db ./taskg.db
-taskg mcp stdio --workspace dajee
-taskg mcp stdio --project-id <uuid>
+xuanchu mcp stdio
+xuanchu mcp stdio --db ./xuanchu.db
+xuanchu mcp stdio --workspace dajee
+xuanchu mcp stdio --project-id <uuid>
 ```
 
 规则：
@@ -301,7 +301,7 @@ taskg mcp stdio --project-id <uuid>
 - 可用 `--workspace` 覆盖 effective workspace。
 - 可用 `--project-id` 或 `--project` 收窄 project scope。
 - 如果本地没有 active user/workspace，返回稳定 MCP error，不自动创建匿名 actor。
-- `taskg mcp` 只作为协议入口命名空间。M7 不新增 `taskg mcp tools list` 之类诊断子命令；如需调试，优先通过 `taskg server` 的 MCP debug flag 或测试工具实现，避免协议入口命名空间膨胀。
+- `xuanchu mcp` 只作为协议入口命名空间。M7 不新增 `xuanchu mcp tools list` 之类诊断子命令；如需调试，优先通过 `xuanchu server` 的 MCP debug flag 或测试工具实现，避免协议入口命名空间膨胀。
 
 ### 4.3 MCP HTTP
 
@@ -437,7 +437,7 @@ func NewServer(opts Options) *mcp.Server
 
 ### 5.5 MCP error 格式
 
-业务错误必须保留 taskg 稳定 code：
+业务错误必须保留 xuanchu 稳定 code：
 
 ```json
 {
@@ -486,7 +486,7 @@ local active user + local active workspace + optional project scope
 - `--project` 必须在 effective workspace 内解析。
 - 同时设置 `--project` 和 `--project-id` 时必须解析到同一个 project。
 - stdio MCP 不读取远程 token。
-- stdio MCP 不使用 `taskg.toml` 中的 `remote.token` 做 actor。
+- stdio MCP 不使用 `xuanchu.toml` 中的 `remote.token` 做 actor。
 - `active_workspace.<user_id>` 是 actor 维度的服务端 SQLite 状态，HTTP MCP、stdio MCP、远程 CLI、本地 CLI 共享。HTTP `workspace use` 修改后，其它入口在同一 DB 上会立刻看到新值。
 
 ### 6.2 HTTP MCP scope
@@ -1005,17 +1005,17 @@ M7 不新增 `task.denotate`，除非 plan 阶段确认 app service 已有稳定
 
 M7 应提供最小 resources，让 Agent 获取背景而不是把所有上下文塞进 tool 参数。
 
-M7 不做列表型 resource，例如 `taskg://workspace/{id}/projects` 或 `taskg://project/{id}/tasks`。列表数据必须通过 `project.list`、`task.query` 等 tools 获取。原因是初版 resource 只承载背景和约束，避免 MCP 客户端在上下文阶段拉取大量任务列表。
+M7 不做列表型 resource，例如 `xuanchu://workspace/{id}/projects` 或 `xuanchu://project/{id}/tasks`。列表数据必须通过 `project.list`、`task.query` 等 tools 获取。原因是初版 resource 只承载背景和约束，避免 MCP 客户端在上下文阶段拉取大量任务列表。
 
 ### 8.1 Resource URI
 
 建议 URI：
 
 ```text
-taskg://workspace/current
-taskg://workspace/{workspace_id}
-taskg://project/{project_id}
-taskg://context/current
+xuanchu://workspace/current
+xuanchu://workspace/{workspace_id}
+xuanchu://project/{project_id}
+xuanchu://context/current
 ```
 
 ### 8.2 workspace resource
@@ -1092,12 +1092,12 @@ M5 已有 project config。M7 定义 Agent 可读 key：
 远程支持：
 
 ```bash
-taskg --server ... workspace list
-taskg --server ... workspace info <slug|uuid>
-taskg --server ... workspace add <slug> name:<name>
-taskg --server ... workspace modify <slug|uuid> name:<name>
-taskg --server ... workspace use <slug|uuid>
-taskg --server ... workspace archive <slug|uuid>
+xuanchu --server ... workspace list
+xuanchu --server ... workspace info <slug|uuid>
+xuanchu --server ... workspace add <slug> name:<name>
+xuanchu --server ... workspace modify <slug|uuid> name:<name>
+xuanchu --server ... workspace use <slug|uuid>
+xuanchu --server ... workspace archive <slug|uuid>
 ```
 
 规则：
@@ -1116,9 +1116,9 @@ taskg --server ... workspace archive <slug|uuid>
 远程支持：
 
 ```bash
-taskg --server ... user list
-taskg --server ... user info <user>
-taskg --server ... user add <name>
+xuanchu --server ... user list
+xuanchu --server ... user info <user>
+xuanchu --server ... user add <name>
 ```
 
 规则：
@@ -1136,9 +1136,9 @@ taskg --server ... user add <name>
 远程支持：
 
 ```bash
-taskg --server ... member list --workspace <workspace>
-taskg --server ... member add <user> --workspace <workspace> --role member
-taskg --server ... member role <user> --workspace <workspace> --role admin
+xuanchu --server ... member list --workspace <workspace>
+xuanchu --server ... member add <user> --workspace <workspace> --role member
+xuanchu --server ... member role <user> --workspace <workspace> --role admin
 ```
 
 规则：
@@ -1152,8 +1152,8 @@ taskg --server ... member role <user> --workspace <workspace> --role admin
 远程支持：
 
 ```bash
-taskg --server ... show
-taskg --server ... show <key>
+xuanchu --server ... show
+xuanchu --server ... show <key>
 ```
 
 规则：
@@ -1225,7 +1225,7 @@ M7 只在 REST endpoint 变化时更新 OpenAPI。
 规则：
 
 - `/mcp` 不进入 OpenAPI。
-- Phase 0b 需要为远程 `user list/info/add` 和 `workspace use` 补最小 REST endpoint，必须更新 `docs/openapi/taskg-v1.yaml`。
+- Phase 0b 需要为远程 `user list/info/add` 和 `workspace use` 补最小 REST endpoint，必须更新 `docs/openapi/xuanchu-v1.yaml`。
 - 如果只是把远程 CLI 接到已有 endpoint，不需要新增 OpenAPI path。
 - `workspace use` 对应的 REST path 固定为 `PUT /api/v1/me/active_workspace`，不要再新增 `POST /api/v1/workspaces/{workspace}/use` 之类动词 endpoint。
 
@@ -1252,7 +1252,7 @@ MCP tool schema 是 M7 的验收重点。
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
 ```
 
@@ -1304,7 +1304,7 @@ M7 plan 应在 Phase 0a Go 升级后先跑上述命令，再继续 Phase 0b/0c �
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go vet ./...
 ```
 
@@ -1397,8 +1397,8 @@ go test -race ./internal/mcpserver ./internal/app
 
 交付：
 
-- `taskg mcp stdio`。
-- `taskg server` 挂载 `/mcp`。
+- `xuanchu mcp stdio`。
+- `xuanchu server` 挂载 `/mcp`。
 - HTTP MCP Bearer token 鉴权。
 - stdio MCP 本地 actor/workspace 解析。
 - schema/listTools 基础测试。
@@ -1506,8 +1506,8 @@ M7 完成时必须满足：
 
 - `go.mod` 和文档已统一到新的 Go 版本。
 - 官方 MCP Go SDK 已接入。
-- `taskg mcp stdio` 可被 MCP 客户端调用。
-- `taskg server` 暴露 `/api/v1/*` 和 `/mcp`。
+- `xuanchu mcp stdio` 可被 MCP 客户端调用。
+- `xuanchu server` 暴露 `/api/v1/*` 和 `/mcp`。
 - HTTP MCP 使用 M6 Bearer token 鉴权。
 - stdio MCP 使用本地 actor/workspace。
 - project-scoped token 只能查询和修改授权 project。
@@ -1523,7 +1523,7 @@ M7 完成时必须满足：
 test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
 ```
 

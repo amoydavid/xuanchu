@@ -73,9 +73,9 @@ func ValidateTokenCreate(opts CreateTokenOptions) (ScopeSet, error) {
 func tokenPrefixForType(tokenType string) (string, error) {
 	switch tokenType {
 	case TokenTypePAT:
-		return "taskg_pat_", nil
+		return "xuanchu_pat_", nil
 	case TokenTypeAgent:
-		return "taskg_agent_", nil
+		return "xuanchu_agent_", nil
 	default:
 		return "", fmt.Errorf("invalid token type %q", tokenType)
 	}

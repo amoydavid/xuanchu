@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dajee/taskg/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

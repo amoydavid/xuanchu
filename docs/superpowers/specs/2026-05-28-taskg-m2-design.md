@@ -1,4 +1,4 @@
-# taskg M2 设计规格
+# xuanchu M2 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
@@ -34,41 +34,41 @@ M2 完成后，应支持这些用户体验：
 
 ```bash
 # 起停与 active
-taskg 1 start
-taskg active
-taskg 1 stop
+xuanchu 1 start
+xuanchu active
+xuanchu 1 stop
 
 # 等待、计划和 ready/waiting
-taskg add "Call vendor" wait:tomorrow
-taskg waiting
-taskg ready
-taskg 1 modify wait:
+xuanchu add "Call vendor" wait:tomorrow
+xuanchu waiting
+xuanchu ready
+xuanchu 1 modify wait:
 
 # until 自动过期
-taskg add "temporary reminder" until:eow
-taskg all
+xuanchu add "temporary reminder" until:eow
+xuanchu all
 
 # 注释
-taskg 1 annotate "called, left voicemail"
-taskg _get 1.annotations
-taskg 1 denotate 1
+xuanchu 1 annotate "called, left voicemail"
+xuanchu _get 1.annotations
+xuanchu 1 denotate 1
 
 # 依赖与 blocked/blocking
-taskg add "Prepare API" project:taskg
-taskg add "Write docs" depends:<uuid-or-id>
-taskg blocked
-taskg blocking
+xuanchu add "Prepare API" project:xuanchu
+xuanchu add "Write docs" depends:<uuid-or-id>
+xuanchu blocked
+xuanchu blocking
 
 # 描述编辑
-taskg 1 append "with examples"
-taskg 1 prepend "[draft]"
-taskg 1 edit
+xuanchu 1 append "with examples"
+xuanchu 1 prepend "[draft]"
+xuanchu 1 edit
 
 # 循环任务
-taskg add "Submit weekly report" recur:weekly due:friday until:2030-12-31
-taskg next
-taskg 1 done
-taskg next
+xuanchu add "Submit weekly report" recur:weekly due:friday until:2030-12-31
+xuanchu next
+xuanchu 1 done
+xuanchu next
 ```
 
 M2 仍需保持脚本友好：
@@ -274,9 +274,9 @@ M2 复用 M1 lazy date parser。
 M2 支持：
 
 ```bash
-taskg 2 modify depends:1
-taskg 2 modify depends:<uuid>
-taskg 2 modify depends:
+xuanchu 2 modify depends:1
+xuanchu 2 modify depends:<uuid>
+xuanchu 2 modify depends:
 ```
 
 规则：
@@ -306,8 +306,8 @@ taskg 2 modify depends:
 ### 命令
 
 ```bash
-taskg 1 annotate "called customer"
-taskg 1 denotate 1
+xuanchu 1 annotate "called customer"
+xuanchu 1 denotate 1
 ```
 
 规则：
@@ -340,8 +340,8 @@ taskg 1 denotate 1
 ### 命令
 
 ```bash
-taskg 1 start
-taskg 1 stop
+xuanchu 1 start
+xuanchu 1 stop
 ```
 
 规则：
@@ -358,8 +358,8 @@ taskg 1 stop
 ### append/prepend
 
 ```bash
-taskg 1 append "with examples"
-taskg 1 prepend "[draft]"
+xuanchu 1 append "with examples"
+xuanchu 1 prepend "[draft]"
 ```
 
 规则：
@@ -374,7 +374,7 @@ taskg 1 prepend "[draft]"
 M2 `edit` 是基础版：
 
 ```bash
-taskg 1 edit
+xuanchu 1 edit
 ```
 
 规则：
@@ -483,14 +483,14 @@ parent:<uuid>
 `_get` 支持：
 
 ```bash
-taskg _get 1.start
-taskg _get 1.wait
-taskg _get 1.scheduled
-taskg _get 1.until
-taskg _get 1.annotations
-taskg _get 1.depends
-taskg _get 1.recur
-taskg _get 1.parent
+xuanchu _get 1.start
+xuanchu _get 1.wait
+xuanchu _get 1.scheduled
+xuanchu _get 1.until
+xuanchu _get 1.annotations
+xuanchu _get 1.depends
+xuanchu _get 1.recur
+xuanchu _get 1.parent
 ```
 
 helper 行为：
@@ -559,14 +559,14 @@ CLI args
 新增错误示例：
 
 ```text
-taskg: task 1 is already active
-taskg: cannot start completed task
-taskg: invalid dependency: task cannot depend on itself
-taskg: invalid dependency: cycle detected
-taskg: annotation 3 not found
-taskg: invalid recurrence "fortnightly"
-taskg: edit aborted: invalid TOML
-taskg: editor exited with status 1
+xuanchu: task 1 is already active
+xuanchu: cannot start completed task
+xuanchu: invalid dependency: task cannot depend on itself
+xuanchu: invalid dependency: cycle detected
+xuanchu: annotation 3 not found
+xuanchu: invalid recurrence "fortnightly"
+xuanchu: edit aborted: invalid TOML
+xuanchu: editor exited with status 1
 ```
 
 错误继续遵守：
@@ -629,7 +629,7 @@ taskg: editor exited with status 1
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## 18. 验收标准

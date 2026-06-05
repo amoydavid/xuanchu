@@ -8,7 +8,7 @@ import (
 )
 
 func TestTaskLinkRepoCreateAndGet(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -57,7 +57,7 @@ func TestTaskLinkRepoCreateAndGet(t *testing.T) {
 }
 
 func TestTaskLinkRepoCreateDuplicateURLFails(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -90,7 +90,7 @@ func TestTaskLinkRepoCreateDuplicateURLFails(t *testing.T) {
 }
 
 func TestTaskLinkRepoListByTaskUUID(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -127,7 +127,7 @@ func TestTaskLinkRepoListByTaskUUID(t *testing.T) {
 }
 
 func TestTaskLinkRepoGetByIDNotFound(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -141,7 +141,7 @@ func TestTaskLinkRepoGetByIDNotFound(t *testing.T) {
 }
 
 func TestTaskLinkRepoDelete(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestTaskLinkRepoDelete(t *testing.T) {
 }
 
 func TestTaskLinkRepoDeleteNotFound(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -189,7 +189,7 @@ func TestTaskLinkRepoDeleteNotFound(t *testing.T) {
 }
 
 func TestTaskLinkRepoLoadByTaskUUIDs(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -220,7 +220,7 @@ func TestTaskLinkRepoLoadByTaskUUIDs(t *testing.T) {
 }
 
 func TestTaskLinkRepoLoadByTaskUUIDsEmpty(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

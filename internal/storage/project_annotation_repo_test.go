@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	domain "github.com/dajee/taskg/internal/task"
+	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
 )
 
 func TestProjectAnnotationRepoCreateAndList(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -55,7 +55,7 @@ func TestProjectAnnotationRepoCreateAndList(t *testing.T) {
 }
 
 func TestProjectAnnotationRepoDelete(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -91,7 +91,7 @@ func TestProjectAnnotationRepoDelete(t *testing.T) {
 }
 
 func TestProjectAnnotationRepoDeleteNotFound(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -105,7 +105,7 @@ func TestProjectAnnotationRepoDeleteNotFound(t *testing.T) {
 }
 
 func TestProjectAnnotationRepoGetByID(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -140,7 +140,7 @@ func TestProjectAnnotationRepoGetByID(t *testing.T) {
 }
 
 func TestProjectAnnotationRepoGetByIDNotFound(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -154,7 +154,7 @@ func TestProjectAnnotationRepoGetByIDNotFound(t *testing.T) {
 }
 
 func TestProjectAnnotationRepoRecentByProject(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -197,7 +197,7 @@ func TestProjectAnnotationRepoRecentByProject(t *testing.T) {
 }
 
 func TestProjectAnnotationRepoTimeline(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dajee/taskg/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/query"
 	"gorm.io/gorm"
 )
 

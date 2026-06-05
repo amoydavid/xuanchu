@@ -9,7 +9,7 @@ import (
 
 func newProjectRepoTest(t *testing.T) (*Store, *ProjectRepository, Workspace) {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

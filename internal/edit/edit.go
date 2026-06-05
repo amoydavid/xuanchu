@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type EditableTask struct {

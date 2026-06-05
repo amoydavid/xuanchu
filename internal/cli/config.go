@@ -8,11 +8,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/storage"
-	taskrcparser "github.com/dajee/taskg/internal/taskrc"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/config"
+	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	taskrcparser "git.dajee.net/dajee/xuanchu/internal/taskrc"
 	"github.com/spf13/cobra"
 )
 

@@ -5,12 +5,12 @@ weight: 40
 
 # 查询与报表
 
-taskg 的 CLI 也是查询语言。你可以把 filter 放在报表命令前，也可以放在报表命令后。
+xuanchu 的 CLI 也是查询语言。你可以把 filter 放在报表命令前，也可以放在报表命令后。
 
 ```bash
-taskg +next list
-taskg list +next
-taskg '(project:ai-agent-platform and +review) or priority:H' next
+xuanchu +next list
+xuanchu list +next
+xuanchu '(project:ai-agent-platform and +review) or priority:H' next
 ```
 
 ## 常用查询
@@ -32,9 +32,9 @@ taskg '(project:ai-agent-platform and +review) or priority:H' next
 ## 布尔组合
 
 ```bash
-taskg '+next or due.before:tomorrow' list
-taskg '(project:ai-agent-platform and +urgent) or priority:H' list
-taskg 'not +waiting' list
+xuanchu '+next or due.before:tomorrow' list
+xuanchu '(project:ai-agent-platform and +urgent) or priority:H' list
+xuanchu 'not +waiting' list
 ```
 
 支持：
@@ -50,17 +50,17 @@ taskg 'not +waiting' list
 ## 报表
 
 ```bash
-taskg list
-taskg next
-taskg all
-taskg completed
-taskg deleted
-taskg waiting
-taskg active
-taskg ready
-taskg overdue
-taskg blocked
-taskg blocking
+xuanchu list
+xuanchu next
+xuanchu all
+xuanchu completed
+xuanchu deleted
+xuanchu waiting
+xuanchu active
+xuanchu ready
+xuanchu overdue
+xuanchu blocked
+xuanchu blocking
 ```
 
 报表会把内置 filter 和用户 filter 组合起来。比如 `completed +review` 表示“已完成且带 review tag 的任务”。
@@ -72,9 +72,9 @@ taskg blocking
 `next` 默认按 urgency 排序。
 
 ```bash
-taskg urgency 1
-taskg urgency 1 --json
-taskg _urgency 1
+xuanchu urgency 1
+xuanchu urgency 1 --json
+xuanchu _urgency 1
 ```
 
 urgency 会考虑：
@@ -93,15 +93,15 @@ urgency 会考虑：
 以下划线开头的命令适合脚本和补全，输出无装饰：
 
 ```bash
-taskg _ids +next
-taskg _uuids project:ai-agent-platform
-taskg _projects
-taskg _tags
-taskg _udas
-taskg _unique project
-taskg _get 1.uuid 1.description 1.urgency
-taskg _show database.path active.user active.workspace active.context
-taskg _version
+xuanchu _ids +next
+xuanchu _uuids project:ai-agent-platform
+xuanchu _projects
+xuanchu _tags
+xuanchu _udas
+xuanchu _unique project
+xuanchu _get 1.uuid 1.description 1.urgency
+xuanchu _show database.path active.user active.workspace active.context
+xuanchu _version
 ```
 
 脚本里建议优先使用：
@@ -113,8 +113,8 @@ taskg _version
 ## Calc
 
 ```bash
-taskg calc '1 + 2 * 3'
-taskg calc '10 > 2 and 3 < 5'
+xuanchu calc '1 + 2 * 3'
+xuanchu calc '10 > 2 and 3 < 5'
 ```
 
 `calc` 暴露表达式求值能力，主要用于调试和脚本。

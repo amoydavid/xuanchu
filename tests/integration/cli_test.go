@@ -21,8 +21,8 @@ import (
 )
 
 func TestCLIAddListInfo(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "write", "spec", "+planning")
 	out := run(t, bin, "--db", db, "list")
@@ -39,8 +39,8 @@ func TestCLIAddListInfo(t *testing.T) {
 }
 
 func TestCLIAddWithAssignees(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "write", "spec", "@local")
 	out := run(t, bin, "--db", db, "--json", "info", "1")
@@ -60,8 +60,8 @@ func TestCLIAddWithAssignees(t *testing.T) {
 }
 
 func TestCLIModifyAssignees(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "write", "spec")
 	run(t, bin, "--db", db, "1", "modify", "+@local")
@@ -88,8 +88,8 @@ func TestCLIModifyAssignees(t *testing.T) {
 }
 
 func TestCLIInfoShowsAssignees(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "write", "spec", "@local")
 	info := run(t, bin, "--db", db, "info", "1")
@@ -99,8 +99,8 @@ func TestCLIInfoShowsAssignees(t *testing.T) {
 }
 
 func TestCLIListByAssignee(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "my", "task", "@local")
 	run(t, bin, "--db", db, "add", "other", "task")
@@ -111,8 +111,8 @@ func TestCLIListByAssignee(t *testing.T) {
 }
 
 func TestCLIShowAndConfig(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	out := run(t, bin, "--db", db, "show")
 	if !strings.Contains(out, "database.path") {
 		t.Fatalf("show output = %q", out)
@@ -125,8 +125,8 @@ func TestCLIShowAndConfig(t *testing.T) {
 }
 
 func TestCLITokenCreateListRevoke(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	out := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "cli", "--scope", "task:read", "--expires-in", "720h")
 	var created map[string]any
@@ -149,10 +149,10 @@ func TestCLITokenCreateListRevoke(t *testing.T) {
 }
 
 func TestCLIServerHealthz(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	resp, err := http.Get(baseURL + "/healthz")
 	if err != nil {
@@ -166,14 +166,14 @@ func TestCLIServerHealthz(t *testing.T) {
 }
 
 func TestMCPStdioListTools(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	cmd := exec.Command(bin, "--db", db, "mcp", "stdio")
-	client := mcp.NewClient(&mcp.Implementation{Name: "taskg-test", Version: "test"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "xuanchu-test", Version: "test"}, nil)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
 		t.Fatalf("connect mcp stdio: %v", err)
@@ -186,8 +186,8 @@ func TestMCPStdioListTools(t *testing.T) {
 }
 
 func TestCLIServerMeWithBearerToken(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	out := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "http", "--scope", "task:read", "--expires-in", "720h")
 	var created map[string]any
@@ -199,8 +199,8 @@ func TestCLIServerMeWithBearerToken(t *testing.T) {
 		t.Fatalf("missing raw token: %s", out)
 	}
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/me", nil)
 	if err != nil {
@@ -222,8 +222,8 @@ func TestCLIServerMeWithBearerToken(t *testing.T) {
 }
 
 func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write,project:read,project:write", "--expires-in", "720h")
 	var created map[string]any
@@ -235,8 +235,8 @@ func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
 		t.Fatalf("missing token in %s", tokenOut)
 	}
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	run(t, bin, "--server", baseURL, "--token", token, "project", "add", "remote", "name:Remote")
 	projectList := run(t, bin, "--server", baseURL, "--token", token, "project", "list")
@@ -271,8 +271,8 @@ func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
 }
 
 func TestCLIRemoteTokenList(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "token:read,task:read", "--expires-in", "720h")
 	var created map[string]any
@@ -284,8 +284,8 @@ func TestCLIRemoteTokenList(t *testing.T) {
 		t.Fatalf("missing token in %s", tokenOut)
 	}
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	list := run(t, bin, "--server", baseURL, "--token", token, "token", "list")
 	if !strings.Contains(list, "remote") {
@@ -294,7 +294,7 @@ func TestCLIRemoteTokenList(t *testing.T) {
 }
 
 func TestCLIRemoteTargetActionWritesRemoteNotLocalDB(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	serverDB := filepath.Join(t.TempDir(), "server.db")
 	localDB := filepath.Join(t.TempDir(), "local.db")
 
@@ -308,8 +308,8 @@ func TestCLIRemoteTargetActionWritesRemoteNotLocalDB(t *testing.T) {
 		t.Fatalf("missing token in %s", tokenOut)
 	}
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", serverDB)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", serverDB)
+	defer stopXuanchuServer(t, cmd)
 
 	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "safety")
 	run(t, bin, "--db", localDB, "add", "local", "safety")
@@ -325,8 +325,8 @@ func TestCLIRemoteTargetActionWritesRemoteNotLocalDB(t *testing.T) {
 }
 
 func TestCLIRemoteFilteredIDsUseDefaultWorkingSetPositions(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
 	var created map[string]any
@@ -334,8 +334,8 @@ func TestCLIRemoteFilteredIDsUseDefaultWorkingSetPositions(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, _ := created["token"].(string)
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	run(t, bin, "--server", baseURL, "--token", token, "add", "plain", "task")
 	run(t, bin, "--server", baseURL, "--token", token, "add", "tagged", "task", "+net")
@@ -355,8 +355,8 @@ func TestCLIRemoteFilteredIDsUseDefaultWorkingSetPositions(t *testing.T) {
 }
 
 func TestCLIRemoteIDsAreSortedByWorkingSetPosition(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
 	var created map[string]any
@@ -364,8 +364,8 @@ func TestCLIRemoteIDsAreSortedByWorkingSetPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, _ := created["token"].(string)
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	run(t, bin, "--server", baseURL, "--token", token, "add", "low", "match", "+x", "priority:L")
 	run(t, bin, "--server", baseURL, "--token", token, "add", "high", "match", "+x", "priority:H")
@@ -377,8 +377,8 @@ func TestCLIRemoteIDsAreSortedByWorkingSetPosition(t *testing.T) {
 }
 
 func TestCLIRemoteAddAndModifyPreserveTaskwarriorFields(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote", "--scope", "task:read,task:write", "--expires-in", "720h")
 	var created map[string]any
@@ -386,8 +386,8 @@ func TestCLIRemoteAddAndModifyPreserveTaskwarriorFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, _ := created["token"].(string)
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	run(t, bin, "--server", baseURL, "--token", token, "add", "remote", "deadline", "due:2030-01-01")
 	run(t, bin, "--server", baseURL, "--token", token, "1", "modify", "wait:2030-01-02", "+blocked")
@@ -412,7 +412,7 @@ func TestCLIRemoteAddAndModifyPreserveTaskwarriorFields(t *testing.T) {
 }
 
 func TestCLIRemoteConfigImportTaskRCUnsupported(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	serverDB := filepath.Join(t.TempDir(), "server.db")
 	localDB := filepath.Join(t.TempDir(), "local.db")
 	taskrcPath := filepath.Join(t.TempDir(), ".taskrc")
@@ -426,8 +426,8 @@ func TestCLIRemoteConfigImportTaskRCUnsupported(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, _ := created["token"].(string)
-	cmd, baseURL := startTaskgServer(t, bin, "--db", serverDB)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", serverDB)
+	defer stopXuanchuServer(t, cmd)
 
 	errOut := runExpectError(t, bin, "--db", localDB, "--server", baseURL, "--token", token, "config", "import-taskrc", taskrcPath, "--dry-run")
 	if !strings.Contains(errOut, "remote_unsupported_command") {
@@ -439,7 +439,7 @@ func TestCLIRemoteConfigImportTaskRCUnsupported(t *testing.T) {
 }
 
 func TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	localDB := filepath.Join(t.TempDir(), "local.db")
 	// user use 仍然不支持远程模式（因为需要切换本地身份）
 	cases := [][]string{
@@ -459,7 +459,7 @@ func TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB(t *testing.T) {
 }
 
 func TestCLIRemoteManagementCommandsDoNotTouchLocalDB(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	localDB := filepath.Join(t.TempDir(), "local.db")
 	// 这些命令现在支持远程模式，但应使用远程服务器而不触碰本地 DB
 	cases := [][]string{
@@ -484,8 +484,8 @@ func TestCLIRemoteManagementCommandsDoNotTouchLocalDB(t *testing.T) {
 }
 
 func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "remote-full", "--scope", "task:read,task:write,project:read,project:write,context:read,context:write,config:read,config:write,audit:read", "--expires-in", "720h")
 	var created map[string]any
@@ -497,8 +497,8 @@ func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
 		t.Fatalf("missing token in %s", tokenOut)
 	}
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	run(t, bin, "--server", baseURL, "--token", token, "project", "add", "api", "name:API")
 	run(t, bin, "--server", baseURL, "--token", token, "project", "config", "set", "api", "agent.background", "remote docs")
@@ -550,8 +550,8 @@ func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	importToken, _ := importCreated["token"].(string)
-	importServer, importBaseURL := startTaskgServer(t, bin, "--db", importDB)
-	defer stopTaskgServer(t, importServer)
+	importServer, importBaseURL := startXuanchuServer(t, bin, "--db", importDB)
+	defer stopXuanchuServer(t, importServer)
 	run(t, bin, "--server", importBaseURL, "--token", importToken, "project", "add", "api", "name:API")
 	importPath := filepath.Join(t.TempDir(), "tasks.json")
 	if err := os.WriteFile(importPath, []byte(exported), 0o644); err != nil {
@@ -571,14 +571,14 @@ func TestCLIRemoteContextConfigHelpersImportExportAndAudit(t *testing.T) {
 }
 
 func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	dir := t.TempDir()
-	db := filepath.Join(dir, "taskg.db")
-	configDir := filepath.Join(dir, "config", "taskg")
+	db := filepath.Join(dir, "xuanchu.db")
+	configDir := filepath.Join(dir, "config", "xuanchu")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		"[uda.estimate]",
 		"type = \"numeric\"",
 		"",
@@ -607,15 +607,15 @@ func TestCLITomlRuntimeAffectsServiceBehavior(t *testing.T) {
 }
 
 func TestCLIShowDatabasePathUsesActualResolvedPath(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	dir := t.TempDir()
-	configDir := filepath.Join(dir, "config", "taskg")
+	configDir := filepath.Join(dir, "config", "xuanchu")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	tomlDB := filepath.Join(dir, "toml.db")
 	flagDB := filepath.Join(dir, "flag.db")
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte("[database]\npath = \""+tomlDB+"\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte("[database]\npath = \""+tomlDB+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -630,8 +630,8 @@ func TestCLIShowDatabasePathUsesActualResolvedPath(t *testing.T) {
 }
 
 func TestCLIConfigListUnsetAndShow(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "config", "set", "date.format", "epoch")
 	list := run(t, bin, "--db", db, "config", "list")
@@ -650,8 +650,8 @@ func TestCLIConfigListUnsetAndShow(t *testing.T) {
 }
 
 func TestCLIConfigSetRejectsUnsupportedBusinessKey(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	out := runExpectError(t, bin, "--db", db, "config", "set", "arbitrary.thing", "1")
 	if !strings.Contains(out, "config_key_unsupported") {
@@ -664,8 +664,8 @@ func TestCLIConfigSetRejectsUnsupportedBusinessKey(t *testing.T) {
 }
 
 func TestCLIProjectsHelperListsAllSlugs(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "alpha", "name:Alpha")
 	run(t, bin, "--db", db, "project", "add", "beta", "name:Beta")
@@ -676,8 +676,8 @@ func TestCLIProjectsHelperListsAllSlugs(t *testing.T) {
 }
 
 func TestCLIUDAConfigAndImport(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
 	run(t, bin, "--db", db, "config", "set", "uda.estimate.label", "Estimate")
@@ -721,8 +721,8 @@ func TestCLIUDAConfigAndImport(t *testing.T) {
 }
 
 func TestCLIImportTaskRC(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	path := filepath.Join(t.TempDir(), ".taskrc")
 	if err := os.WriteFile(path, []byte(strings.Join([]string{
 		"color=off",
@@ -760,8 +760,8 @@ func TestCLIImportTaskRC(t *testing.T) {
 }
 
 func TestCLIShowHelperVersionAndCompletion(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "config", "set", "date.format", "epoch")
 	show := run(t, bin, "--db", db, "_show", "date.format", "database.path")
 	lines := strings.Split(strings.TrimSpace(show), "\n")
@@ -769,23 +769,23 @@ func TestCLIShowHelperVersionAndCompletion(t *testing.T) {
 		t.Fatalf("_show output = %q", show)
 	}
 	version := strings.TrimSpace(run(t, bin, "_version"))
-	if !strings.HasPrefix(version, "taskg ") {
+	if !strings.HasPrefix(version, "xuanchu ") {
 		t.Fatalf("_version output = %q", version)
 	}
-	badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
+	badDB := filepath.Join(t.TempDir(), "missing-parent", "xuanchu.db")
 	completion := run(t, bin, "--db", badDB, "completion", "bash")
-	if !strings.Contains(completion, "complete") || !strings.Contains(completion, "taskg") {
+	if !strings.Contains(completion, "complete") || !strings.Contains(completion, "xuanchu") {
 		t.Fatalf("completion output = %q", completion)
 	}
 }
 
 func TestCLICompletionDoesNotOpenDatabase(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
 		t.Run(shell, func(t *testing.T) {
-			badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
+			badDB := filepath.Join(t.TempDir(), "missing-parent", "xuanchu.db")
 			out := run(t, bin, "--db", badDB, "completion", shell)
-			if !strings.Contains(out, "taskg") {
+			if !strings.Contains(out, "xuanchu") {
 				t.Fatalf("completion %s output = %q", shell, out)
 			}
 		})
@@ -793,8 +793,8 @@ func TestCLICompletionDoesNotOpenDatabase(t *testing.T) {
 }
 
 func TestCLICompletionRejectsUnsupportedShell(t *testing.T) {
-	bin := buildTaskg(t)
-	badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
+	bin := buildXuanchu(t)
+	badDB := filepath.Join(t.TempDir(), "missing-parent", "xuanchu.db")
 	cmd := exec.Command(bin, "--db", badDB, "completion", "bogus")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -806,8 +806,8 @@ func TestCLICompletionRejectsUnsupportedShell(t *testing.T) {
 }
 
 func TestCLIContextCommands(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
 	run(t, bin, "--db", db, "project", "add", "home", "name:Home")
@@ -849,7 +849,7 @@ func TestCLIContextCommands(t *testing.T) {
 }
 
 func TestCLIExportImportRoundTrip(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	db1 := filepath.Join(t.TempDir(), "one.db")
 	db2 := filepath.Join(t.TempDir(), "two.db")
 	run(t, bin, "--db", db1, "add", "write", "spec", "+planning")
@@ -866,8 +866,8 @@ func TestCLIExportImportRoundTrip(t *testing.T) {
 }
 
 func TestCLIUserWorkspaceLifecycle(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "user", "add", "alice", "email:alice@example.test")
 	users := run(t, bin, "--db", db, "user", "list")
@@ -889,8 +889,8 @@ func TestCLIUserWorkspaceLifecycle(t *testing.T) {
 }
 
 func TestCLIWorkspaceErrorSemantics(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	cmd := exec.Command(bin, "--db", db, "--workspace", "nonexistent", "list")
 	out, err := cmd.CombinedOutput()
@@ -927,8 +927,8 @@ func TestCLIWorkspaceErrorSemantics(t *testing.T) {
 }
 
 func TestCLIConfigAndShowHideLegacyContextKeys(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "one")
 	run(t, bin, "--db", db, "context", "define", "work", "description:one")
@@ -948,8 +948,8 @@ func TestCLIConfigAndShowHideLegacyContextKeys(t *testing.T) {
 }
 
 func TestCLIMemberPermissions(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "user", "add", "bob")
 	run(t, bin, "--db", db, "workspace", "add", "team")
@@ -996,8 +996,8 @@ func TestCLIMemberPermissions(t *testing.T) {
 }
 
 func TestCLIAuditList(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "workspace", "add", "team")
 	run(t, bin, "--db", db, "workspace", "use", "team")
@@ -1046,8 +1046,8 @@ func TestCLIAuditList(t *testing.T) {
 }
 
 func TestCLIM5MigrationWarning(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	seedM4DatabaseWithTasksForCLI(t, db, []seedTask{
 		{WorkspaceSlug: "local", UUID: "t1", Project: strptr("Good"), Entry: 10},
@@ -1069,8 +1069,8 @@ func TestCLIM5MigrationWarning(t *testing.T) {
 }
 
 func TestCLIWorkspaceIsolation(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "config", "set", "uda.estimate.type", "numeric")
 	run(t, bin, "--db", db, "project", "add", "same", "name:Same")
@@ -1128,8 +1128,8 @@ func TestCLIWorkspaceIsolation(t *testing.T) {
 }
 
 func TestCLIModifyDoneDelete(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "write", "spec")
 	run(t, bin, "--db", db, "1", "modify", "priority:H", "+next")
 	out := run(t, bin, "--db", db, "list")
@@ -1144,8 +1144,8 @@ func TestCLIModifyDoneDelete(t *testing.T) {
 }
 
 func TestCLIJSONFlagProducesMachineReadableOutput(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	addOut := run(t, bin, "--db", db, "--json", "add", "write", "spec")
 	var created map[string]any
@@ -1167,7 +1167,7 @@ func TestCLIJSONFlagProducesMachineReadableOutput(t *testing.T) {
 }
 
 func TestCLIShowUsesParsedDBFlag(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "custom.db")
 
 	out := run(t, bin, "--db", db, "show")
@@ -1177,8 +1177,8 @@ func TestCLIShowUsesParsedDBFlag(t *testing.T) {
 }
 
 func TestCLIPrefixFiltersAndTargetFilters(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "work", "task", "+work")
 	run(t, bin, "--db", db, "add", "home", "task", "+home")
@@ -1209,8 +1209,8 @@ func TestCLIPrefixFiltersAndTargetFilters(t *testing.T) {
 }
 
 func TestCLINextCommandSortsByUrgency(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "future", "task", "due:2099-01-01")
 	run(t, bin, "--db", db, "add", "urgent", "task", "+next", "priority:H")
@@ -1224,8 +1224,8 @@ func TestCLINextCommandSortsByUrgency(t *testing.T) {
 }
 
 func TestCLIAcceptsDashTagAsModificationNotFlag(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "write", "spec", "-ignored")
 	out := run(t, bin, "--db", db, "list")
@@ -1242,11 +1242,11 @@ func TestCLIAcceptsDashTagAsModificationNotFlag(t *testing.T) {
 }
 
 func TestCLIInfoShowsAllM0Fields(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "taskg", "name:Taskg")
-	run(t, bin, "--db", db, "add", "write", "spec", "project:taskg", "priority:H", "due:2030-01-01", "+planning")
+	run(t, bin, "--db", db, "project", "add", "xuanchu", "name:Xuanchu")
+	run(t, bin, "--db", db, "add", "write", "spec", "project:xuanchu", "priority:H", "due:2030-01-01", "+planning")
 	out := run(t, bin, "--db", db, "info", "1")
 	for _, want := range []string{"UUID:", "Status:", "Description:", "Entry:", "Modified:", "Due:", "Project:", "Priority:", "Tags:"} {
 		if !strings.Contains(out, want) {
@@ -1256,8 +1256,8 @@ func TestCLIInfoShowsAllM0Fields(t *testing.T) {
 }
 
 func TestCLIReportsAndUrgency(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "normal", "task")
 	run(t, bin, "--db", db, "add", "next", "task", "+next", "priority:H")
 	nextUUID := strings.TrimSpace(run(t, bin, "--db", db, "_urgency", "2"))
@@ -1291,8 +1291,8 @@ func TestCLIReportsAndUrgency(t *testing.T) {
 }
 
 func TestCLIHelpers(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
 	run(t, bin, "--db", db, "project", "add", "home", "name:Home")
 	run(t, bin, "--db", db, "add", "work", "task", "project:work", "+next")
@@ -1338,7 +1338,7 @@ func TestCLIHelpers(t *testing.T) {
 }
 
 func TestCLICalc(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	out := run(t, bin, "calc", "1 + 2 * 3")
 	if strings.TrimSpace(out) != "7" {
 		t.Fatalf("calc output = %q", out)
@@ -1350,8 +1350,8 @@ func TestCLICalc(t *testing.T) {
 }
 
 func TestCLIM1QueryExamples(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "project", "add", "work", "name:Work")
 	run(t, bin, "--db", db, "add", "urgent", "work", "task", "project:work", "+urgent", "priority:H")
 	run(t, bin, "--db", db, "add", "later", "task", "+later")
@@ -1372,8 +1372,8 @@ func TestCLIM1QueryExamples(t *testing.T) {
 }
 
 func TestCLIListQueryKeepsDefaultPendingFilter(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "alpha", "+work")
 	run(t, bin, "--db", db, "add", "beta", "+work")
 	run(t, bin, "--db", db, "1", "done")
@@ -1385,8 +1385,8 @@ func TestCLIListQueryKeepsDefaultPendingFilter(t *testing.T) {
 }
 
 func TestCLIIDsReturnDefaultWorkingSetIDs(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "first")
 	run(t, bin, "--db", db, "add", "second", "+next")
 
@@ -1401,8 +1401,8 @@ func TestCLIIDsReturnDefaultWorkingSetIDs(t *testing.T) {
 }
 
 func TestCLIIDsOnlyReturnDefaultWorkingSetIDsForCompletedQueries(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "first")
 	run(t, bin, "--db", db, "add", "second")
 	run(t, bin, "--db", db, "2", "done")
@@ -1418,8 +1418,8 @@ func TestCLIIDsOnlyReturnDefaultWorkingSetIDsForCompletedQueries(t *testing.T) {
 }
 
 func TestCLIDueStoredAsEndOfDay(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "deadline", "due:2030-01-01")
 	exported := run(t, bin, "--db", db, "--json", "export")
@@ -1445,8 +1445,8 @@ func TestCLIDueStoredAsEndOfDay(t *testing.T) {
 }
 
 func TestCLIDescriptionAttributeUsesSubstring(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "write", "spec")
 	run(t, bin, "--db", db, "add", "other", "task")
 
@@ -1460,8 +1460,8 @@ func TestCLIDescriptionAttributeUsesSubstring(t *testing.T) {
 }
 
 func TestCLIM1QueryOverdueReport(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "old", "task", "due:2020-01-01")
 	run(t, bin, "--db", db, "add", "future", "task", "due:2099-01-01")
 
@@ -1475,8 +1475,8 @@ func TestCLIM1QueryOverdueReport(t *testing.T) {
 }
 
 func TestCLIM2AddModifyFields(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "waiting task", "wait:tomorrow", "scheduled:eow", "until:eom")
 	waiting := run(t, bin, "--db", db, "waiting")
 	if !strings.Contains(waiting, "waiting task") {
@@ -1490,8 +1490,8 @@ func TestCLIM2AddModifyFields(t *testing.T) {
 }
 
 func TestCLIStartStopActive(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "active task")
 	run(t, bin, "--db", db, "1", "start")
 	active := run(t, bin, "--db", db, "active")
@@ -1506,8 +1506,8 @@ func TestCLIStartStopActive(t *testing.T) {
 }
 
 func TestCLIAnnotateDenotate(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "annotated task")
 	run(t, bin, "--db", db, "1", "annotate", "first note")
 	got := run(t, bin, "--db", db, "_get", "1.annotations")
@@ -1522,8 +1522,8 @@ func TestCLIAnnotateDenotate(t *testing.T) {
 }
 
 func TestCLIM2Reports(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "blocker")
 	blockerUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "/blocker/"))
 	run(t, bin, "--db", db, "add", "blocked", "depends:"+blockerUUID)
@@ -1544,8 +1544,8 @@ func TestCLIM2Reports(t *testing.T) {
 }
 
 func TestCLIAddDependsAcceptsWorkingSetID(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "blocker")
 	run(t, bin, "--db", db, "add", "blocked", "depends:1")
 	blocked := run(t, bin, "--db", db, "blocked")
@@ -1559,8 +1559,8 @@ func TestCLIAddDependsAcceptsWorkingSetID(t *testing.T) {
 }
 
 func TestCLIListShowsWorkingSetIDWhenWaitingTaskIsHidden(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "hidden waiting", "wait:tomorrow")
 	run(t, bin, "--db", db, "add", "visible task")
 	list := run(t, bin, "--db", db, "list")
@@ -1574,8 +1574,8 @@ func TestCLIListShowsWorkingSetIDWhenWaitingTaskIsHidden(t *testing.T) {
 }
 
 func TestCLINextRowIDMatchesWorkingSetIDUnderUrgencySort(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "low priority task")
 	run(t, bin, "--db", db, "add", "high priority task")
 	run(t, bin, "--db", db, "2", "modify", "priority:H")
@@ -1599,8 +1599,8 @@ func TestCLINextRowIDMatchesWorkingSetIDUnderUrgencySort(t *testing.T) {
 }
 
 func TestCLICompletedReportShowsDashID(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "done it")
 	run(t, bin, "--db", db, "1", "done")
 	out := run(t, bin, "--db", db, "completed")
@@ -1616,8 +1616,8 @@ func TestCLICompletedReportShowsDashID(t *testing.T) {
 }
 
 func TestCLIDOMUrgencyIncludesDependencyState(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "blocker")
 	run(t, bin, "--db", db, "add", "blocked")
 	run(t, bin, "--db", db, "2", "modify", "depends:1")
@@ -1629,8 +1629,8 @@ func TestCLIDOMUrgencyIncludesDependencyState(t *testing.T) {
 }
 
 func TestCLIAppendPrepend(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "1", "append", "end")
 	run(t, bin, "--db", db, "1", "prepend", "start")
@@ -1641,8 +1641,8 @@ func TestCLIAppendPrepend(t *testing.T) {
 }
 
 func TestCLIAppendPrependCommands(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "append", "1", "tail", "text")
 	run(t, bin, "--db", db, "prepend", "1", "head", "text")
@@ -1653,8 +1653,8 @@ func TestCLIAppendPrependCommands(t *testing.T) {
 }
 
 func TestCLIEditRejectsInvalidDate(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	editor := buildEditorHelper(t, `package main
 import (
 	"encoding/json"
@@ -1685,8 +1685,8 @@ func main() {
 }
 
 func TestCLIEditWithTestEditor(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	editor := buildEditorHelper(t, `package main
 import (
 	"encoding/json"
@@ -1717,8 +1717,8 @@ func main() {
 }
 
 func TestCLIRecurringDaily(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
 	list := run(t, bin, "--db", db, "list")
 	if !strings.Contains(list, "daily task") {
@@ -1732,7 +1732,7 @@ func TestCLIRecurringDaily(t *testing.T) {
 }
 
 func TestCLIRecurringExportImport(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	db1 := filepath.Join(t.TempDir(), "one.db")
 	db2 := filepath.Join(t.TempDir(), "two.db")
 	run(t, bin, "--db", db1, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
@@ -1752,8 +1752,8 @@ func TestCLIRecurringExportImport(t *testing.T) {
 }
 
 func TestCLIProjectLifecycle(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	addOut := run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
 	if !strings.Contains(addOut, "Created project ai-agent-platform") {
@@ -1807,8 +1807,8 @@ func TestCLIProjectLifecycle(t *testing.T) {
 }
 
 func TestCLIProjectWorkspaceIsolation(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "--workspace", "local", "project", "add", "api", "name:API")
 	localInfo := run(t, bin, "--db", db, "--json", "--workspace", "local", "project", "info", "api")
@@ -1834,8 +1834,8 @@ func TestCLIProjectWorkspaceIsolation(t *testing.T) {
 }
 
 func TestCLIProjectConfigLifecycle(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
 	run(t, bin, "--db", db, "project", "config", "set", "ai-agent-platform", "agent.background", "Project background")
@@ -1854,8 +1854,8 @@ func TestCLIProjectConfigLifecycle(t *testing.T) {
 }
 
 func TestCLIConfigRejectsProjectScopedKeysWithoutScope(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
 	for _, args := range [][]string{
@@ -1879,8 +1879,8 @@ func TestCLIConfigRejectsProjectScopedKeysWithoutScope(t *testing.T) {
 }
 
 func TestCLILinkAddListRemove(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "task with links")
 
@@ -1921,8 +1921,8 @@ func TestCLILinkAddListRemove(t *testing.T) {
 }
 
 func TestCLILinkAddRequiresTypeAndURL(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "task for link validation")
 
@@ -1938,8 +1938,8 @@ func TestCLILinkAddRequiresTypeAndURL(t *testing.T) {
 }
 
 func TestCLILinkInfoShowsLinks(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "task with info links")
 	run(t, bin, "--db", db, "1", "link", "add", "--type", "doc", "--url", "https://example.com/spec")
@@ -1951,8 +1951,8 @@ func TestCLILinkInfoShowsLinks(t *testing.T) {
 }
 
 func TestCLILinkListEmpty(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "task with no links")
 
@@ -1963,8 +1963,8 @@ func TestCLILinkListEmpty(t *testing.T) {
 }
 
 func TestCLILinkAddRejectsCompletedTask(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "completed task for link")
 	taskUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "/completed task for link/"))
@@ -1977,8 +1977,8 @@ func TestCLILinkAddRejectsCompletedTask(t *testing.T) {
 }
 
 func TestCLIProjectAnnotateDenotate(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "test-proj", "name:Test Project")
 
@@ -2014,8 +2014,8 @@ func TestCLIProjectAnnotateDenotate(t *testing.T) {
 }
 
 func TestCLIProjectTimeline(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "my-project", "name:My Project")
 
@@ -2034,8 +2034,8 @@ func TestCLIProjectTimeline(t *testing.T) {
 }
 
 func TestCLIProjectAnnotateTargetStyle(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "web-app", "name:Web App")
 
@@ -2051,8 +2051,8 @@ func TestCLIProjectAnnotateTargetStyle(t *testing.T) {
 }
 
 func TestCLIProjectAnnotateRejectsArchived(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "old-proj", "name:Old Project")
 	run(t, bin, "--db", db, "project", "archive", "old-proj")
@@ -2064,8 +2064,8 @@ func TestCLIProjectAnnotateRejectsArchived(t *testing.T) {
 }
 
 func TestCLIProjectSlugRejectsDigitStart(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	_, err := runErr(t, bin, "--db", db, "project", "add", "123project", "name:Bad Slug")
 	if err == nil {
@@ -2073,10 +2073,10 @@ func TestCLIProjectSlugRejectsDigitStart(t *testing.T) {
 	}
 }
 
-func buildTaskg(t *testing.T) string {
+func buildXuanchu(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "taskg")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/taskg")
+	bin := filepath.Join(t.TempDir(), "xuanchu")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/xuanchu")
 	cmd.Dir = projectRoot(t)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build error = %v\n%s", err, out)
@@ -2219,7 +2219,7 @@ func runWithEnv(t *testing.T, env map[string]string, bin string, args ...string)
 	return string(out)
 }
 
-func startTaskgServer(t *testing.T, bin string, args ...string) (*exec.Cmd, string) {
+func startXuanchuServer(t *testing.T, bin string, args ...string) (*exec.Cmd, string) {
 	t.Helper()
 	listen := pickFreeAddr(t)
 	serverArgs := append([]string{"server", "--listen", listen}, args...)
@@ -2245,7 +2245,7 @@ func startTaskgServer(t *testing.T, bin string, args ...string) (*exec.Cmd, stri
 	return cmd, baseURL
 }
 
-func stopTaskgServer(t *testing.T, cmd *exec.Cmd) {
+func stopXuanchuServer(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
 	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
 		return
@@ -2309,8 +2309,8 @@ func buildEditorHelper(t *testing.T, source string) string {
 }
 
 func TestCLIMCPStdioOutputsJSONRPC(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	// 初始化 DB（创建 local user/workspace）
 	run(t, bin, "--db", db, "list")
@@ -2374,11 +2374,11 @@ func TestCLIMCPStdioOutputsJSONRPC(t *testing.T) {
 }
 
 func TestCLIServerMCPRejectsMissingToken(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	// POST /mcp 无 token -> 401
 	req, err := http.NewRequest(http.MethodPost, baseURL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.1.0"}}}`))
@@ -2413,15 +2413,15 @@ func TestCLIServerMCPRejectsMissingToken(t *testing.T) {
 }
 
 func TestConfigFlagNonexistent(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	runExpectError(t, bin, "--config", "/nonexistent/path.toml", "list")
 }
 
 func TestConfigFlagValid(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "taskg.db")
-	tomlPath := filepath.Join(dir, "taskg.toml")
+	dbPath := filepath.Join(dir, "xuanchu.db")
+	tomlPath := filepath.Join(dir, "xuanchu.toml")
 	if err := os.WriteFile(tomlPath, []byte("[database]\npath = \""+dbPath+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -2429,16 +2429,16 @@ func TestConfigFlagValid(t *testing.T) {
 }
 
 func TestVersionOutput(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	out := run(t, bin, "--version")
-	if !strings.HasPrefix(strings.TrimSpace(out), "taskg ") {
+	if !strings.HasPrefix(strings.TrimSpace(out), "xuanchu ") {
 		t.Fatalf("--version output = %q", out)
 	}
 }
 
 func TestCLIServerMCPRejectsBodyOverLimit(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	// 创建 token
 	out := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "mcp-http", "--scope", "task:read", "--expires-in", "720h")
@@ -2448,8 +2448,8 @@ func TestCLIServerMCPRejectsBodyOverLimit(t *testing.T) {
 	}
 	token, _ := created["token"].(string)
 
-	cmd, baseURL := startTaskgServer(t, bin, "--db", db)
-	defer stopTaskgServer(t, cmd)
+	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	defer stopXuanchuServer(t, cmd)
 
 	// 发送超大 body -> 413
 	largeBody := make([]byte, 11*1024*1024) // 11MB，超过默认 10MB 限制

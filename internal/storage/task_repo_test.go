@@ -5,12 +5,12 @@ import (
 	"slices"
 	"testing"
 
-	domain "github.com/dajee/taskg/internal/task"
+	domain "git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 func newTestRepo(t *testing.T) (*Store, *TaskRepository, Workspace) {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func newTestRepo(t *testing.T) (*Store, *TaskRepository, Workspace) {
 }
 
 func TestTaskRepositoryCreateAndList(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestTaskRepositoryCreateAndList(t *testing.T) {
 }
 
 func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

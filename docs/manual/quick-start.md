@@ -5,54 +5,54 @@ weight: 10
 
 # 快速使用
 
-这一页给你一条最短路径：构建 taskg，创建项目，添加任务，查询任务，完成任务。
+这一页给你一条最短路径：构建 xuanchu，创建项目，添加任务，查询任务，完成任务。
 
 ## 1. 构建二进制
 
 ```bash
-go build -o taskg ./cmd/taskg
+go build -o xuanchu ./cmd/xuanchu
 ```
 
 默认数据库路径是：
 
 ```text
-~/.local/share/taskg/taskg.db
+~/.local/share/xuanchu/xuanchu.db
 ```
 
 也可以临时指定数据库：
 
 ```bash
-./taskg --db ./taskg.db list
-./taskg --data-dir ./data list
+./xuanchu --db ./xuanchu.db list
+./xuanchu --data-dir ./data list
 ```
 
 也可以使用 PostgreSQL：
 
 ```bash
-./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" list
+./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable" list
 ```
 
 ## 2. 创建第一个项目
 
-taskg 要求先注册 project，再把任务放进 project。
+xuanchu 要求先注册 project，再把任务放进 project。
 
-首次本地运行时，taskg 会自动创建 `local` user、`local` workspace 和 owner membership。单人试用可以直接使用这个默认身份。团队或服务端使用建议先读 [身份与初始化](identity-and-initialization.md)，显式创建自己的 user/workspace。
+首次本地运行时，xuanchu 会自动创建 `local` user、`local` workspace 和 owner membership。单人试用可以直接使用这个默认身份。团队或服务端使用建议先读 [身份与初始化](identity-and-initialization.md)，显式创建自己的 user/workspace。
 
 ```bash
-./taskg project add ai-agent-platform name:"AI Agent Platform"
+./xuanchu project add ai-agent-platform name:"AI Agent Platform"
 ```
 
 查看项目：
 
 ```bash
-./taskg project list
+./xuanchu project list
 ```
 
 ## 3. 添加任务
 
 ```bash
-./taskg add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
-./taskg add "Review API schema" project:ai-agent-platform priority:H +review
+./xuanchu add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
+./xuanchu add "Review API schema" project:ai-agent-platform priority:H +review
 ```
 
 常见写法：
@@ -65,24 +65,24 @@ taskg 要求先注册 project，再把任务放进 project。
 ## 4. 查看任务
 
 ```bash
-./taskg list
-./taskg next
-./taskg info 1
+./xuanchu list
+./xuanchu next
+./xuanchu info 1
 ```
 
 `list` 和 `next` 输出里的 `ID` 是 working-set ID。你可以用它操作任务，也可以用完整 UUID。
 
 ```bash
-./taskg 1 modify priority:M +next
-./taskg 1 done
+./xuanchu 1 modify priority:M +next
+./xuanchu 1 done
 ```
 
 ## 5. 查询任务
 
 ```bash
-./taskg +review list
-./taskg project:ai-agent-platform list
-./taskg '(project:ai-agent-platform and +review) or priority:H' next
+./xuanchu +review list
+./xuanchu project:ai-agent-platform list
+./xuanchu '(project:ai-agent-platform and +review) or priority:H' next
 ```
 
 复杂查询建议加引号，避免 shell 处理括号和空格。
@@ -90,29 +90,29 @@ taskg 要求先注册 project，再把任务放进 project。
 ## 6. 输出 JSON
 
 ```bash
-./taskg --json list
-./taskg --json info 1
-./taskg --json export
+./xuanchu --json list
+./xuanchu --json info 1
+./xuanchu --json export
 ```
 
 脚本里优先使用 JSON 或 helper 命令：
 
 ```bash
-./taskg _ids +review
-./taskg _uuids project:ai-agent-platform
-./taskg _get 1.uuid 1.description 1.urgency
+./xuanchu _ids +review
+./xuanchu _uuids project:ai-agent-platform
+./xuanchu _get 1.uuid 1.description 1.urgency
 ```
 
 ## 7. 一次完整日常流程
 
 ```bash
-./taskg project add docs-site name:"Docs Site"
-./taskg add "Draft user guide" project:docs-site +writing due:tomorrow
-./taskg add "Review hook docs" project:docs-site +review priority:H
-./taskg +review list
-./taskg 2 annotate "Need to mention signature verification"
-./taskg 2 done
-./taskg completed
+./xuanchu project add docs-site name:"Docs Site"
+./xuanchu add "Draft user guide" project:docs-site +writing due:tomorrow
+./xuanchu add "Review hook docs" project:docs-site +review priority:H
+./xuanchu +review list
+./xuanchu 2 annotate "Need to mention signature verification"
+./xuanchu 2 done
+./xuanchu completed
 ```
 
 ## 8. 下一步读什么

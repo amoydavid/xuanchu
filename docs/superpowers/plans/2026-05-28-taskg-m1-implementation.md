@@ -1,8 +1,8 @@
-# taskg M1 Implementation Plan
+# xuanchu M1 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** 实现 taskg M1：查询 AST、报表系统、urgency 计算、DOM/helper 基础和 `calc` 第一版，让 M0 CLI 具备 Taskwarrior 风格的查询与解释能力。
+**Goal:** 实现 xuanchu M1：查询 AST、报表系统、urgency 计算、DOM/helper 基础和 `calc` 第一版，让 M0 CLI 具备 Taskwarrior 风格的查询与解释能力。
 
 **Architecture:** 保持 M0 分层：CLI 解析命令形态，app service 承接用例，query/report/urgency/dom/expr 提供可复用领域能力，storage/sqlite 负责把 query AST 安全编译到 GORM 查询。日期相对值在 parser 阶段保持 lazy，到编译阶段使用 app 注入的 clock 求值；裸 token 不直接编译为 `uuid = ?`，而是由 CLI/app 按上下文解析为 target 或 description 子串查询。M1 不新增任务核心字段，不实现 M2 的 waiting/active/blocked 等能力，只基于 M0 字段交付真实可用功能。
 
@@ -774,8 +774,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/query"
-	domain "github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/query"
+	domain "github.com/dajee/xuanchu/internal/task"
 )
 
 func TestListWithQueryExprSupportsOrAndTags(t *testing.T) {
@@ -879,7 +879,7 @@ func taskUUIDs(tasks []domain.Task) []string {
 
 func newQueryTestStore(t *testing.T) (*Store, *TaskRepository, Workspace) {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -912,7 +912,7 @@ Expected: FAIL，`ListOptions.Query` 尚不存在。
 修改 `internal/storage/task_repo.go`：
 
 ```go
-import "github.com/dajee/taskg/internal/query"
+import "github.com/dajee/xuanchu/internal/query"
 
 type ListOptions struct {
 	Status   string
@@ -947,7 +947,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dajee/taskg/internal/query"
+	"github.com/dajee/xuanchu/internal/query"
 	"gorm.io/gorm"
 )
 
@@ -1109,7 +1109,7 @@ git commit -m "feat: 编译查询 AST 到 GORM"
 
 ```go
 func TestServiceListWithQueryExpr(t *testing.T) {
-	store, err := sqlite.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -1133,7 +1133,7 @@ func TestServiceListWithQueryExpr(t *testing.T) {
 }
 ```
 
-记得 import `github.com/dajee/taskg/internal/query`。
+记得 import `github.com/dajee/xuanchu/internal/query`。
 
 - [x] **Step 2: 运行测试确认失败**
 
@@ -1145,7 +1145,7 @@ Expected: FAIL，`ListInput.Query` 尚不存在。
 在 `internal/app/service.go`：
 
 ```go
-import "github.com/dajee/taskg/internal/query"
+import "github.com/dajee/xuanchu/internal/query"
 
 type ListInput struct {
 	Target   *string
@@ -1245,7 +1245,7 @@ package urgency
 import (
 	"testing"
 
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 func TestExplainIncludesNextAndPriority(t *testing.T) {
@@ -1356,7 +1356,7 @@ package urgency
 import (
 	"slices"
 
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 const (
@@ -1498,7 +1498,7 @@ Expected: FAIL，package 不存在。
 ```go
 package report
 
-import "github.com/dajee/taskg/internal/query"
+import "github.com/dajee/xuanchu/internal/query"
 
 type Definition struct {
 	Name        string
@@ -1515,7 +1515,7 @@ type Definition struct {
 ```go
 package report
 
-import "github.com/dajee/taskg/internal/query"
+import "github.com/dajee/xuanchu/internal/query"
 
 type Registry struct {
 	defs map[string]Definition
@@ -1585,8 +1585,8 @@ git commit -m "feat: 添加 M1 内置报表定义"
 
 ```go
 func TestCLIReportsAndUrgency(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "normal", "task")
 	run(t, bin, "--db", db, "add", "next", "task", "+next", "priority:H")
 	nextUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "+next"))
@@ -1690,8 +1690,8 @@ sort.SliceStable(withUrgency, func(i, j int) bool {
 
 创建 `internal/cli/urgency.go`：
 
-- `taskg urgency <target>` human 输出 explain。
-- `taskg urgency --json <target>` 输出 explain JSON。
+- `xuanchu urgency <target>` human 输出 explain。
+- `xuanchu urgency --json <target>` 输出 explain JSON。
 - `_urgency <target>` 只输出数字。
 
 - [x] **Step 7: 运行测试**
@@ -1742,7 +1742,7 @@ package dom
 import (
 	"testing"
 
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 func TestResolveTaskField(t *testing.T) {
@@ -1799,7 +1799,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dajee/taskg/internal/task"
+	"github.com/dajee/xuanchu/internal/task"
 )
 
 func Resolve(tsk task.Task, field string, urgency float64) (string, error) {
@@ -1873,8 +1873,8 @@ git commit -m "feat: 添加 DOM 字段解析"
 
 ```go
 func TestCLIHelpers(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "work", "task", "project:work", "+next")
 	run(t, bin, "--db", db, "add", "home", "task", "project:home", "+later")
 
@@ -2202,7 +2202,7 @@ git commit -m "feat: 使用 expr 实现 calc"
 
 ```go
 func TestCLICalc(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	out := run(t, bin, "calc", "1 + 2 * 3")
 	if strings.TrimSpace(out) != "7" {
 		t.Fatalf("calc output = %q", out)
@@ -2230,7 +2230,7 @@ import (
 	"fmt"
 	"strings"
 
-	calcexpr "github.com/dajee/taskg/internal/expr"
+	calcexpr "github.com/dajee/xuanchu/internal/expr"
 	"github.com/spf13/cobra"
 )
 
@@ -2280,7 +2280,7 @@ git commit -m "feat: 添加 calc CLI"
 
 - Modify: `README.md`
 - Modify: `ROADMAP.md`
-- Modify: `docs/superpowers/specs/2026-05-28-taskg-m1-design.md`
+- Modify: `docs/superpowers/specs/2026-05-28-xuanchu-m1-design.md`
   - 如实现中产生范围修订，同步回 spec。
 - Modify: `AGENTS.md`
   - 如新增约束，同步记录。
@@ -2298,8 +2298,8 @@ git commit -m "feat: 添加 calc CLI"
 
 ```go
 func TestCLIM1QueryExamples(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "urgent", "work", "task", "project:work", "+urgent", "priority:H")
 	run(t, bin, "--db", db, "add", "later", "task", "+later")
 	run(t, bin, "--db", db, "add", "next", "task", "+next", "due:2030-01-01")
@@ -2344,17 +2344,17 @@ git commit -m "test: 补齐 M1 CLI 集成覆盖"
 ## M1 查询与报表用法
 
 ```bash
-./taskg '+next or due.before:tomorrow' list
-./taskg '(project:work and +urgent) or priority:H' list
-./taskg all
-./taskg completed
-./taskg overdue
-./taskg urgency 1
-./taskg _get 1.description 1.uuid
-./taskg _ids +next
-./taskg _projects
-./taskg _tags
-./taskg calc '1 + 2 * 3'
+./xuanchu '+next or due.before:tomorrow' list
+./xuanchu '(project:work and +urgent) or priority:H' list
+./xuanchu all
+./xuanchu completed
+./xuanchu overdue
+./xuanchu urgency 1
+./xuanchu _get 1.description 1.uuid
+./xuanchu _ids +next
+./xuanchu _projects
+./xuanchu _tags
+./xuanchu calc '1 + 2 * 3'
 ```
 
 补充说明：
@@ -2408,7 +2408,7 @@ Expected: PASS。
 Run:
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -2429,13 +2429,13 @@ Run:
 
 ```bash
 tmp="$(mktemp -d)"
-go run ./cmd/taskg --db "$tmp/taskg.db" add "urgent work task" project:work +urgent priority:H
-go run ./cmd/taskg --db "$tmp/taskg.db" add "next task" +next due:tomorrow
-go run ./cmd/taskg --db "$tmp/taskg.db" '(project:work and +urgent) or +next' list
-go run ./cmd/taskg --db "$tmp/taskg.db" next
-go run ./cmd/taskg --db "$tmp/taskg.db" urgency 1 --json
-go run ./cmd/taskg --db "$tmp/taskg.db" _get 1.description 1.urgency
-go run ./cmd/taskg --db "$tmp/taskg.db" calc '1 + 2 * 3'
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "urgent work task" project:work +urgent priority:H
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "next task" +next due:tomorrow
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" '(project:work and +urgent) or +next' list
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" next
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" urgency 1 --json
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" _get 1.description 1.urgency
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" calc '1 + 2 * 3'
 ```
 
 Expected:
@@ -2458,7 +2458,7 @@ Expected: 除用户刻意保留的文件外，没有未提交实现变更。
 
 ## 计划审阅说明
 
-本计划根据 [docs/superpowers/specs/2026-05-28-taskg-m1-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-taskg-m1-design.md)、[AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md) 和当前 M0 代码编写。计划允许使用第三方 Go 库加快开发；M1 明确选择 `github.com/expr-lang/expr` 处理 `calc`，查询 DSL 仍自研以兼容 Taskwarrior 形态。
+本计划根据 [docs/superpowers/specs/2026-05-28-xuanchu-m1-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-xuanchu-m1-design.md)、[AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md) 和当前 M0 代码编写。计划允许使用第三方 Go 库加快开发；M1 明确选择 `github.com/expr-lang/expr` 处理 `calc`，查询 DSL 仍自研以兼容 Taskwarrior 形态。
 
 2026-05-28 人工评审反馈已处理：修订了 lazy 日期、`/text/` 子串语义、裸 token、root reorder、DOM 虚拟 tag、urgency 排序和测试计划。当前未执行 plan-document-reviewer subagent 审阅；本环境未暴露 subagent 工具，后续如需要严格执行 superpowers 审阅环节，请在实施前补充审阅。实施过程中若发现本计划与 spec 冲突，以 spec 为准并先更新计划。
 

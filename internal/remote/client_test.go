@@ -10,7 +10,7 @@ import (
 func TestRemoteClientSetsAsHeader(t *testing.T) {
 	var receivedAs string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAs = r.Header.Get("X-Taskg-As")
+		receivedAs = r.Header.Get("X-Xuanchu-As")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"data":[]}`))
@@ -31,14 +31,14 @@ func TestRemoteClientSetsAsHeader(t *testing.T) {
 		t.Fatalf("get() error = %v", err)
 	}
 	if receivedAs != "alice" {
-		t.Fatalf("X-Taskg-As = %q, want %q", receivedAs, "alice")
+		t.Fatalf("X-Xuanchu-As = %q, want %q", receivedAs, "alice")
 	}
 }
 
 func TestRemoteClientOmitsAsHeaderWhenEmpty(t *testing.T) {
 	var receivedAs string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAs = r.Header.Get("X-Taskg-As")
+		receivedAs = r.Header.Get("X-Xuanchu-As")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"data":[]}`))
@@ -58,6 +58,6 @@ func TestRemoteClientOmitsAsHeaderWhenEmpty(t *testing.T) {
 		t.Fatalf("get() error = %v", err)
 	}
 	if receivedAs != "" {
-		t.Fatalf("X-Taskg-As = %q, want empty", receivedAs)
+		t.Fatalf("X-Xuanchu-As = %q, want empty", receivedAs)
 	}
 }

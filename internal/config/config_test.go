@@ -9,30 +9,30 @@ import (
 
 func TestResolveDatabasePathPrefersExplicitDB(t *testing.T) {
 	env := map[string]string{
-		"TASKG_DB": "/env/taskg.db",
+		"XUANCHU_DB": "/env/xuanchu.db",
 	}
 	cfg, err := Resolve(Options{
-		DBPath:  "/explicit/taskg.db",
+		DBPath:  "/explicit/xuanchu.db",
 		Env:     env,
 		HomeDir: "/home/alice",
 	})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.DatabasePath != "/explicit/taskg.db" {
+	if cfg.DatabasePath != "/explicit/xuanchu.db" {
 		t.Fatalf("DatabasePath = %q", cfg.DatabasePath)
 	}
 }
 
-func TestResolveDatabasePathUsesTaskgDB(t *testing.T) {
+func TestResolveDatabasePathUsesXuanchuDB(t *testing.T) {
 	cfg, err := Resolve(Options{
-		Env:     map[string]string{"TASKG_DB": "/env/taskg.db"},
+		Env:     map[string]string{"XUANCHU_DB": "/env/xuanchu.db"},
 		HomeDir: "/home/alice",
 	})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.DatabasePath != "/env/taskg.db" {
+	if cfg.DatabasePath != "/env/xuanchu.db" {
 		t.Fatalf("DatabasePath = %q", cfg.DatabasePath)
 	}
 }
@@ -45,7 +45,7 @@ func TestResolveDatabasePathUsesXDGDataHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	want := filepath.Join("/xdg", "taskg", "taskg.db")
+	want := filepath.Join("/xdg", "xuanchu", "xuanchu.db")
 	if cfg.DatabasePath != want {
 		t.Fatalf("DatabasePath = %q, want %q", cfg.DatabasePath, want)
 	}
@@ -59,7 +59,7 @@ func TestResolveDatabasePathUsesHomeFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	want := filepath.Join("/home/alice", ".local", "share", "taskg", "taskg.db")
+	want := filepath.Join("/home/alice", ".local", "share", "xuanchu", "xuanchu.db")
 	if cfg.DatabasePath != want {
 		t.Fatalf("DatabasePath = %q, want %q", cfg.DatabasePath, want)
 	}
@@ -68,11 +68,11 @@ func TestResolveDatabasePathUsesHomeFallback(t *testing.T) {
 func TestResolveDatabasePathUsesToml(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	if err := os.MkdirAll(filepath.Join(configDir, "taskg"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(configDir, "xuanchu"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	tomlDB := filepath.Join(dir, "toml.db")
-	if err := os.WriteFile(filepath.Join(configDir, "taskg", "taskg.toml"), []byte("database.path = \""+tomlDB+"\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu", "xuanchu.toml"), []byte("database.path = \""+tomlDB+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Resolve(Options{
@@ -90,13 +90,13 @@ func TestResolveDatabasePathUsesToml(t *testing.T) {
 func TestResolveReadsRemoteSettingsFromToml(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	if err := os.MkdirAll(filepath.Join(configDir, "taskg"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(configDir, "xuanchu"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "taskg", "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu", "xuanchu.toml"), []byte(strings.Join([]string{
 		"[remote]",
 		`server = "http://127.0.0.1:8080"`,
-		`token = "taskg_pat_toml"`,
+		`token = "xuanchu_pat_toml"`,
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestResolveReadsRemoteSettingsFromToml(t *testing.T) {
 	if cfg.RemoteServer != "http://127.0.0.1:8080" {
 		t.Fatalf("RemoteServer = %q", cfg.RemoteServer)
 	}
-	if cfg.RemoteToken != "taskg_pat_toml" {
+	if cfg.RemoteToken != "xuanchu_pat_toml" {
 		t.Fatalf("RemoteToken = %q", cfg.RemoteToken)
 	}
 }
@@ -120,13 +120,13 @@ func TestResolveReadsRemoteSettingsFromToml(t *testing.T) {
 func TestResolveRemoteEnvOverridesToml(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	if err := os.MkdirAll(filepath.Join(configDir, "taskg"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(configDir, "xuanchu"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "taskg", "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu", "xuanchu.toml"), []byte(strings.Join([]string{
 		"[remote]",
 		`server = "http://127.0.0.1:8080"`,
-		`token = "taskg_pat_toml"`,
+		`token = "xuanchu_pat_toml"`,
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -135,8 +135,8 @@ func TestResolveRemoteEnvOverridesToml(t *testing.T) {
 	cfg, err := Resolve(Options{
 		Env: map[string]string{
 			"XDG_CONFIG_HOME": configDir,
-			"TASKG_SERVER":    "http://env.example",
-			"TASKG_TOKEN":     "taskg_pat_env",
+			"XUANCHU_SERVER":    "http://env.example",
+			"XUANCHU_TOKEN":     "xuanchu_pat_env",
 		},
 		HomeDir: filepath.Join(dir, "home"),
 	})
@@ -146,7 +146,7 @@ func TestResolveRemoteEnvOverridesToml(t *testing.T) {
 	if cfg.RemoteServer != "http://env.example" {
 		t.Fatalf("RemoteServer = %q", cfg.RemoteServer)
 	}
-	if cfg.RemoteToken != "taskg_pat_env" {
+	if cfg.RemoteToken != "xuanchu_pat_env" {
 		t.Fatalf("RemoteToken = %q", cfg.RemoteToken)
 	}
 }
@@ -154,10 +154,10 @@ func TestResolveRemoteEnvOverridesToml(t *testing.T) {
 func TestRuntimeMergesSourcesAndRcOverrides(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	if err := os.MkdirAll(filepath.Join(configDir, "taskg"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(configDir, "xuanchu"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "taskg", "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu", "xuanchu.toml"), []byte(strings.Join([]string{
 		"color = false",
 		"date.format = \"epoch\"",
 		"[context]",
@@ -192,10 +192,10 @@ func TestRuntimeMergesSourcesAndRcOverrides(t *testing.T) {
 
 func TestLoadRuntimeReadsRemoteSettingsFromToml(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		"[remote]",
 		`server = "http://127.0.0.1:8080"`,
-		`token = "taskg_pat_toml"`,
+		`token = "xuanchu_pat_toml"`,
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -208,17 +208,17 @@ func TestLoadRuntimeReadsRemoteSettingsFromToml(t *testing.T) {
 	if got, _ := rt.Get("remote.server"); got != "http://127.0.0.1:8080" {
 		t.Fatalf("remote.server = %q", got)
 	}
-	if got, _ := rt.Get("remote.token"); got != "taskg_pat_toml" {
+	if got, _ := rt.Get("remote.token"); got != "xuanchu_pat_toml" {
 		t.Fatalf("remote.token = %q", got)
 	}
 }
 
 func TestLoadRuntimeEnvOverridesRemoteToml(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		"[remote]",
 		`server = "http://127.0.0.1:8080"`,
-		`token = "taskg_pat_toml"`,
+		`token = "xuanchu_pat_toml"`,
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -227,8 +227,8 @@ func TestLoadRuntimeEnvOverridesRemoteToml(t *testing.T) {
 	rt, err := LoadRuntime(RuntimeOptions{
 		ConfigDir: configDir,
 		Env: map[string]string{
-			"TASKG_SERVER": "http://env.example",
-			"TASKG_TOKEN":  "taskg_pat_env",
+			"XUANCHU_SERVER": "http://env.example",
+			"XUANCHU_TOKEN":  "xuanchu_pat_env",
 		},
 	})
 	if err != nil {
@@ -237,14 +237,14 @@ func TestLoadRuntimeEnvOverridesRemoteToml(t *testing.T) {
 	if got, _ := rt.Get("remote.server"); got != "http://env.example" {
 		t.Fatalf("remote.server = %q", got)
 	}
-	if got, _ := rt.Get("remote.token"); got != "taskg_pat_env" {
+	if got, _ := rt.Get("remote.token"); got != "xuanchu_pat_env" {
 		t.Fatalf("remote.token = %q", got)
 	}
 }
 
 func TestLoadRuntimeMapsDisplayTomlKeys(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		"[display]",
 		"color = false",
 		"json = true",
@@ -273,7 +273,7 @@ func TestLoadRuntimeMapsDisplayTomlKeys(t *testing.T) {
 
 func TestLoadRuntimePreservesHashInsideQuotedTomlValue(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		`[context]`,
 		`active = "work#alpha" # trailing comment`,
 		`[uda.ticket]`,
@@ -297,7 +297,7 @@ func TestLoadRuntimePreservesHashInsideQuotedTomlValue(t *testing.T) {
 
 func TestLoadRuntimeHandlesSectionCommentsAndArrayValues(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		`[context] # active context section`,
 		`active = "work"`,
 		`[uda.estimate] # estimate schema`,
@@ -321,7 +321,7 @@ func TestLoadRuntimeHandlesSectionCommentsAndArrayValues(t *testing.T) {
 
 func TestLoadRuntimeSupportsTomlMultilineStrings(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		`display.color = false`,
 		`[uda.ticket]`,
 		`label = """fix #1234`,
@@ -349,10 +349,10 @@ func TestLoadRuntimeSupportsTomlMultilineStrings(t *testing.T) {
 
 func TestRemoteTokenPermissionWarningWarnsForWidePermissions(t *testing.T) {
 	configDir := t.TempDir()
-	configPath := filepath.Join(configDir, "taskg.toml")
+	configPath := filepath.Join(configDir, "xuanchu.toml")
 	if err := os.WriteFile(configPath, []byte(strings.Join([]string{
 		`[remote]`,
-		`token = "taskg_pat_toml"`,
+		`token = "xuanchu_pat_toml"`,
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -374,9 +374,9 @@ func TestRemoteTokenPermissionWarningWarnsForWidePermissions(t *testing.T) {
 
 func TestRemoteTokenPermissionWarningAllows0600(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		`[remote]`,
-		`token = "taskg_pat_toml"`,
+		`token = "xuanchu_pat_toml"`,
 		"",
 	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
@@ -393,7 +393,7 @@ func TestRemoteTokenPermissionWarningAllows0600(t *testing.T) {
 
 func TestRemoteTokenPermissionWarningIgnoresFilesWithoutToken(t *testing.T) {
 	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "taskg.toml"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(configDir, "xuanchu.toml"), []byte(strings.Join([]string{
 		`[remote]`,
 		`server = "http://127.0.0.1:8080"`,
 		"",
@@ -431,7 +431,7 @@ func TestResolve_DBURLOnly(t *testing.T) {
 }
 
 func TestResolve_DBURLEnvVar(t *testing.T) {
-	cfg, err := Resolve(Options{HomeDir: "/home", Env: map[string]string{"TASKG_DB_URL": "postgres://env/db"}})
+	cfg, err := Resolve(Options{HomeDir: "/home", Env: map[string]string{"XUANCHU_DB_URL": "postgres://env/db"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestResolve_DBPathRejectsAnyScheme(t *testing.T) {
 }
 
 func TestResolve_DBURLEnvOverridesDBEnv(t *testing.T) {
-	cfg, err := Resolve(Options{HomeDir: "/home", Env: map[string]string{"TASKG_DB_URL": "postgres://env/db", "TASKG_DB": "/path/to.db"}})
+	cfg, err := Resolve(Options{HomeDir: "/home", Env: map[string]string{"XUANCHU_DB_URL": "postgres://env/db", "XUANCHU_DB": "/path/to.db"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +505,7 @@ func TestResolveConfigPathNonexistentReturnsError(t *testing.T) {
 	}
 }
 
-func TestResolveTaskgConfigEnvFallback(t *testing.T) {
+func TestResolveXuanchuConfigEnvFallback(t *testing.T) {
 	dir := t.TempDir()
 	tomlPath := dir + "/env.toml"
 	tomlDB := dir + "/env.db"
@@ -514,7 +514,7 @@ func TestResolveTaskgConfigEnvFallback(t *testing.T) {
 	}
 	cfg, err := Resolve(Options{
 		HomeDir: "/home/alice",
-		Env:     map[string]string{"TASKG_CONFIG": tomlPath},
+		Env:     map[string]string{"XUANCHU_CONFIG": tomlPath},
 	})
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
@@ -526,13 +526,13 @@ func TestResolveTaskgConfigEnvFallback(t *testing.T) {
 
 func TestResolveLogConfigFromToml(t *testing.T) {
 	dir := t.TempDir()
-	tomlPath := dir + "/taskg.toml"
+	tomlPath := dir + "/xuanchu.toml"
 	if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
 		"[log]",
 		`level = "debug"`,
 		`format = "json"`,
 		"[log.file]",
-		`path = "/tmp/taskg.log"`,
+		`path = "/tmp/xuanchu.log"`,
 		`rotate = "daily"`,
 		`max_size_mb = 50`,
 		`max_age_days = 7`,
@@ -557,7 +557,7 @@ func TestResolveLogConfigFromToml(t *testing.T) {
 	if cfg.Log.File == nil {
 		t.Fatal("Log.File is nil")
 	}
-	if cfg.Log.File.Path != "/tmp/taskg.log" {
+	if cfg.Log.File.Path != "/tmp/xuanchu.log" {
 		t.Fatalf("Log.File.Path = %q", cfg.Log.File.Path)
 	}
 	if cfg.Log.File.Rotate != "daily" {
@@ -573,12 +573,12 @@ func TestResolveLogConfigFromToml(t *testing.T) {
 
 func TestResolveLogEnvOverridesToml(t *testing.T) {
 	dir := t.TempDir()
-	tomlPath := dir + "/taskg.toml"
+	tomlPath := dir + "/xuanchu.toml"
 	if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
 		"[log]",
 		`level = "debug"`,
 		"[log.file]",
-		`path = "/tmp/taskg.log"`,
+		`path = "/tmp/xuanchu.log"`,
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -587,8 +587,8 @@ func TestResolveLogEnvOverridesToml(t *testing.T) {
 		ConfigPath: tomlPath,
 		HomeDir:    "/home/alice",
 		Env: map[string]string{
-			"TASKG_LOG_LEVEL": "warn",
-			"TASKG_LOG_FILE":  "/var/log/taskg.log",
+			"XUANCHU_LOG_LEVEL": "warn",
+			"XUANCHU_LOG_FILE":  "/var/log/xuanchu.log",
 		},
 	})
 	if err != nil {
@@ -600,8 +600,8 @@ func TestResolveLogEnvOverridesToml(t *testing.T) {
 	if cfg.Log.File == nil {
 		t.Fatal("Log.File is nil")
 	}
-	if cfg.Log.File.Path != "/var/log/taskg.log" {
-		t.Fatalf("Log.File.Path = %q, want /var/log/taskg.log", cfg.Log.File.Path)
+	if cfg.Log.File.Path != "/var/log/xuanchu.log" {
+		t.Fatalf("Log.File.Path = %q, want /var/log/xuanchu.log", cfg.Log.File.Path)
 	}
 }
 
@@ -609,8 +609,8 @@ func TestResolveLogEnvWithoutToml(t *testing.T) {
 	cfg, err := Resolve(Options{
 		HomeDir: "/home/alice",
 		Env: map[string]string{
-			"TASKG_LOG_LEVEL": "error",
-			"TASKG_LOG_FILE":  "/tmp/from-env.log",
+			"XUANCHU_LOG_LEVEL": "error",
+			"XUANCHU_LOG_FILE":  "/tmp/from-env.log",
 		},
 	})
 	if err != nil {

@@ -4,9 +4,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/logging"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 // Mode 表示 MCP server 的运行模式。

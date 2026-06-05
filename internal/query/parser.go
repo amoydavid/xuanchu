@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 // ParsedAdd is the structured result of ParseAddArgs.

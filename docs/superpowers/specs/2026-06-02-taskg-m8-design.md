@@ -1,12 +1,12 @@
-# taskg M8 设计规格
+# xuanchu M8 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 为 `taskg server` 增加可审计、可控、可恢复的服务端 Hook / automation 能力，让内部事件发生后可以稳定触发外部 webhook，同时补齐与该能力直接相关的部署、发布与恢复文档。`taskg` 继续保持“企业任务运行时”定位，不演化成业务域 adapter 市场、memory 系统或多副本同步平台。
+**目标：** 为 `xuanchu server` 增加可审计、可控、可恢复的服务端 Hook / automation 能力，让内部事件发生后可以稳定触发外部 webhook，同时补齐与该能力直接相关的部署、发布与恢复文档。`xuanchu` 继续保持“企业任务运行时”定位，不演化成业务域 adapter 市场、memory 系统或多副本同步平台。
 
 **范围策略：** M8 主线是 server-side post-commit webhook hook。M8 不做飞书 / GitHub / Jira / Slack adapter，不做 memory，不做 replica/sync，不做本地 CLI shell hook，也不做没有明确业务动机支撑的 scheduler 类能力。与 Hook 无直接关系的“大而全平台化”需求必须在本规格里显式排除。
 
-**需求来源：** 本规格从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[M6 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-31-taskg-m6-design.md)、[M7 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-01-taskg-m7-design.md)、当前实现，以及本轮关于“Hook 应作为内部事件扩展边界，而非业务域 adapter 或 memory/sync 入口”的讨论收束。
+**需求来源：** 本规格从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[M6 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-31-xuanchu-m6-design.md)、[M7 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-01-xuanchu-m7-design.md)、当前实现，以及本轮关于“Hook 应作为内部事件扩展边界，而非业务域 adapter 或 memory/sync 入口”的讨论收束。
 
 ---
 
@@ -14,13 +14,13 @@
 
 M6 与 M7 已完成。当前项目已有：
 
-- 单一 `taskg` 二进制。
+- 单一 `xuanchu` 二进制。
 - 本地 CLI、远程 CLI、HTTP/JSON API 服务端、MCP Server。
 - `actor + workspace + project` 权限边界。
 - PAT / Agent token、workspace scope、project scope。
 - 统一 `internal/app` service。
 - 审计、context、project config、MCP tool/resource。
-- `taskg server` 作为唯一服务端入口。
+- `xuanchu server` 作为唯一服务端入口。
 
 M8 不重做这些能力。M8 的工作是：
 
@@ -71,17 +71,17 @@ M8 的核心不是“接多少第三方系统”，而是“内部事件能否�
 
 因此：
 
-- `taskg` 负责产生标准事件。
-- `taskg` 负责按权限边界投递 webhook。
-- `taskg` 负责记录审计、失败状态和 replay。
-- `taskg` 不负责承载第三方业务域语义。
-- `taskg` 不内置飞书 / GitHub / Jira / Slack 业务逻辑。
+- `xuanchu` 负责产生标准事件。
+- `xuanchu` 负责按权限边界投递 webhook。
+- `xuanchu` 负责记录审计、失败状态和 replay。
+- `xuanchu` 不负责承载第三方业务域语义。
+- `xuanchu` 不内置飞书 / GitHub / Jira / Slack 业务逻辑。
 
-第三方系统如果未来要接入，应该消费 M8 暴露的 Hook 或基于 HTTP API / MCP 自己实现，而不是把其业务域适配逻辑写进 `taskg` 核心。
+第三方系统如果未来要接入，应该消费 M8 暴露的 Hook 或基于 HTTP API / MCP 自己实现，而不是把其业务域适配逻辑写进 `xuanchu` 核心。
 
 ### 3.2 M8 只做 server-side hook，不做本地 CLI hook
 
-M8 首版只提供 `taskg server` 侧的 Hook runtime。
+M8 首版只提供 `xuanchu server` 侧的 Hook runtime。
 
 不做本地 CLI shell hook 的原因：
 
@@ -206,7 +206,7 @@ M8 v1 的 `data` 只发送提交后的当前 snapshot，不发送完整 `before/
 
 - after snapshot 已能覆盖大多数外部消费场景。
 - diff 语义很容易放大 payload 和兼容性成本。
-- delete 在 `taskg` 中是逻辑删除，after snapshot 仍可表达 deleted 状态。
+- delete 在 `xuanchu` 中是逻辑删除，after snapshot 仍可表达 deleted 状态。
 
 如果未来需要 diff，应通过新的 `event_version` 显式扩展，而不是在 v1 中模糊混入。
 
@@ -386,17 +386,17 @@ M8 首版 webhook 使用：
 
 稳定 header：
 
-- `X-Taskg-Event`
-- `X-Taskg-Event-Id`
-- `X-Taskg-Event-Version`
-- `X-Taskg-Delivery`
-- `X-Taskg-Hook-Id`
-- `X-Taskg-Attempt`
-- `X-Taskg-Timestamp`
-- `X-Taskg-Signature-256`
-- `User-Agent: taskg-webhook/<version>`
+- `X-Xuanchu-Event`
+- `X-Xuanchu-Event-Id`
+- `X-Xuanchu-Event-Version`
+- `X-Xuanchu-Delivery`
+- `X-Xuanchu-Hook-Id`
+- `X-Xuanchu-Attempt`
+- `X-Xuanchu-Timestamp`
+- `X-Xuanchu-Signature-256`
+- `User-Agent: xuanchu-webhook/<version>`
 
-`X-Taskg-Signature-256` 使用 HMAC-SHA256。签名输入为：
+`X-Xuanchu-Signature-256` 使用 HMAC-SHA256。签名输入为：
 
 ```text
 <delivery_id>.<timestamp_unix_seconds>.<body>
@@ -414,7 +414,7 @@ sha256=<hex>
 
 - 有 `secret` 时必须签名。
 - 无 `secret` 时不发送签名 header。
-- 有 `secret` 时必须发送 `X-Taskg-Timestamp`，消费方应拒绝超过 5 分钟窗口的请求。
+- 有 `secret` 时必须发送 `X-Xuanchu-Timestamp`，消费方应拒绝超过 5 分钟窗口的请求。
 - 签名算法和 header 名称必须在文档中固定。
 
 M8 首版不做：
@@ -559,7 +559,7 @@ M8 首版不要求新增 MCP Hook 管理 tool。
 
 M8 文档必须覆盖：
 
-- `taskg server` 基础启动方式。
+- `xuanchu server` 基础启动方式。
 - 反向代理 / TLS termination 建议。
 - Hook outbound 网络需求。
 - secret 配置与最小权限建议。
@@ -624,7 +624,7 @@ M8 的验收标准如下：
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## 13. 对 implementation plan 的约束
@@ -643,6 +643,6 @@ M8 implementation plan 至少要显式拆出以下阶段：
 - 红测到绿测的 TDD 步骤。
 - 与该阶段直接相关的局部验证命令。
 
-整个 milestone 的最终验收必须包含端到端测试、`CGO_ENABLED=0 go test ./...` 与 `CGO_ENABLED=0 go build ./cmd/taskg`。不要求每个小阶段都重复跑完整 CGO-free 全量验证，但阶段合入前不能跳过局部测试。
+整个 milestone 的最终验收必须包含端到端测试、`CGO_ENABLED=0 go test ./...` 与 `CGO_ENABLED=0 go build ./cmd/xuanchu`。不要求每个小阶段都重复跑完整 CGO-free 全量验证，但阶段合入前不能跳过局部测试。
 
 M8 不允许在没有 durable queue、没有 replay、没有权限测试的情况下宣称 Hook 能力完成。

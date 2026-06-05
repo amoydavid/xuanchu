@@ -5,9 +5,9 @@ weight: 90
 
 # Webhook Hook 使用指南
 
-Hook 是 taskg 的服务端自动化扩展边界。当内部事件发生后，taskg 会异步向外部 webhook URL 投递事件。
+Hook 是 xuanchu 的服务端自动化扩展边界。当内部事件发生后，xuanchu 会异步向外部 webhook URL 投递事件。
 
-Hook 不是业务域 adapter 市场。taskg 不内置飞书、Jira、Slack adapter，也不做 memory、replica 或 sync。
+Hook 不是业务域 adapter 市场。xuanchu 不内置飞书、Jira、Slack adapter，也不做 memory、replica 或 sync。
 
 ## 支持的事件
 
@@ -22,24 +22,24 @@ Hook 不是业务域 adapter 市场。taskg 不内置飞书、Jira、Slack adapt
 ## 创建 workspace 级 Hook
 
 ```bash
-taskg hook add audit-sink \
+xuanchu hook add audit-sink \
   --scope workspace \
   --event task.created \
   --event task.completed \
-  --url https://example.com/taskg/webhook \
+  --url https://example.com/xuanchu/webhook \
   --secret-stdin
 ```
 
 ## 创建 project 级 Hook
 
 ```bash
-taskg --workspace dajee hook add mcp-project-hook \
+xuanchu --workspace dajee hook add mcp-project-hook \
   --scope project \
   --project ai-agent-platform \
   --event task.created \
   --event task.modified \
-  --url https://example.com/taskg/project-hook \
-  --secret-file /run/secrets/taskg-hook
+  --url https://example.com/xuanchu/project-hook \
+  --secret-file /run/secrets/xuanchu-hook
 ```
 
 project-scoped hook 只接收该 project 内的事件。
@@ -47,13 +47,13 @@ project-scoped hook 只接收该 project 内的事件。
 ## 管理 Hook
 
 ```bash
-taskg hook list
-taskg hook list --project ai-agent-platform
-taskg hook info <hook-id>
-taskg hook modify <hook-id> --name renamed-hook --url https://example.com/new
-taskg hook disable <hook-id>
-taskg hook enable <hook-id>
-taskg hook delete <hook-id>
+xuanchu hook list
+xuanchu hook list --project ai-agent-platform
+xuanchu hook info <hook-id>
+xuanchu hook modify <hook-id> --name renamed-hook --url https://example.com/new
+xuanchu hook disable <hook-id>
+xuanchu hook enable <hook-id>
+xuanchu hook delete <hook-id>
 ```
 
 Hook secret 不会出现在 CLI/HTTP response、audit log 或 server log 中。
@@ -61,8 +61,8 @@ Hook secret 不会出现在 CLI/HTTP response、audit log 或 server log 中。
 ## 查看投递
 
 ```bash
-taskg hook deliveries <hook-id>
-taskg hook deliveries <hook-id> --status dead_lettered
+xuanchu hook deliveries <hook-id>
+xuanchu hook deliveries <hook-id> --status dead_lettered
 ```
 
 可见 delivery 状态包括：
@@ -77,25 +77,25 @@ taskg hook deliveries <hook-id> --status dead_lettered
 手动 replay：
 
 ```bash
-taskg hook replay <delivery-id>
+xuanchu hook replay <delivery-id>
 ```
 
 manual replay 会写 audit。
 
 ## Webhook 请求
 
-taskg dispatcher 发送 `POST` 请求，body 是稳定 JSON envelope。
+xuanchu dispatcher 发送 `POST` 请求，body 是稳定 JSON envelope。
 
 常见 header：
 
-- `X-Taskg-Event`
-- `X-Taskg-Event-Id`
-- `X-Taskg-Event-Version`
-- `X-Taskg-Signature-256`
-- `X-Taskg-Timestamp`
-- `X-Taskg-Delivery`
-- `X-Taskg-Hook-Id`
-- `X-Taskg-Attempt`
+- `X-Xuanchu-Event`
+- `X-Xuanchu-Event-Id`
+- `X-Xuanchu-Event-Version`
+- `X-Xuanchu-Signature-256`
+- `X-Xuanchu-Timestamp`
+- `X-Xuanchu-Delivery`
+- `X-Xuanchu-Hook-Id`
+- `X-Xuanchu-Attempt`
 - `User-Agent`
 
 签名输入：
@@ -137,7 +137,7 @@ Hook 投递是 post-commit 异步语义：
 
 ## 出站网络防护
 
-taskg 默认禁止投递到：
+xuanchu 默认禁止投递到：
 
 - loopback
 - link-local

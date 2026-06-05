@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

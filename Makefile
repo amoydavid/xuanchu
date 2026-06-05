@@ -1,6 +1,6 @@
 CGO_ENABLED ?= 0
-BINARY := taskg
-CMD := ./cmd/taskg
+BINARY := xuanchu
+CMD := ./cmd/xuanchu
 VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
 
 .PHONY: all build clean

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/config"
+	"git.dajee.net/dajee/xuanchu/internal/remote"
 )
 
 func resolveConfigFromOpts(opts Options) (config.Config, error) {
@@ -38,7 +38,7 @@ func buildRemoteClient(opts Options) (*remote.Client, error) {
 		return nil, fmt.Errorf("remote server is required")
 	}
 	if warning, warnErr := remoteTokenWarning(RuntimeEnv()); warnErr == nil && warning != "" {
-		fmt.Fprintln(opts.Stderr, "taskg:", warning)
+		fmt.Fprintln(opts.Stderr, "xuanchu:", warning)
 	}
 	return remote.NewClient(remote.Options{
 		BaseURL: cfg.RemoteServer,

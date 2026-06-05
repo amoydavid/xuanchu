@@ -10,7 +10,7 @@ func TestGenerateRawTokenAndHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(raw, "taskg_pat_") {
+	if !strings.HasPrefix(raw, "xuanchu_pat_") {
 		t.Fatalf("raw = %q", raw)
 	}
 	if len(prefix) < 12 || !strings.HasPrefix(raw, prefix) {

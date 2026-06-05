@@ -2,7 +2,7 @@
 
 ## 概述
 
-本 milestone 为 taskg 增加项目级别的 annotation 能力，并提供聚合时间线接口，将项目 annotation 与该项目下所有 task 的 annotation 合并为完整的项目时间线。
+本 milestone 为 xuanchu 增加项目级别的 annotation 能力，并提供聚合时间线接口，将项目 annotation 与该项目下所有 task 的 annotation 合并为完整的项目时间线。
 
 ## 动机
 
@@ -134,23 +134,23 @@ type TimelineEntry struct {
 ### 五、CLI
 
 ```
-taskg project annotate <project-ref> <content...>
-taskg project annotations <project-ref>
-taskg project timeline <project-ref> [--limit N]
-taskg <project-ref> annotate <content...>
-taskg <project-ref> annotations
-taskg <project-ref> timeline [--limit N]
+xuanchu project annotate <project-ref> <content...>
+xuanchu project annotations <project-ref>
+xuanchu project timeline <project-ref> [--limit N]
+xuanchu <project-ref> annotate <content...>
+xuanchu <project-ref> annotations
+xuanchu <project-ref> timeline [--limit N]
 ```
 
 两种入口风格：
-- 子命令风格：`taskg project annotate <ref> <content>`
-- 目标风格：`taskg <ref> annotate <content>`
+- 子命令风格：`xuanchu project annotate <ref> <content>`
+- 目标风格：`xuanchu <ref> annotate <content>`
 
-目标风格的歧义处理：`taskg <ref> annotate` 中的 ref 可能是 task 也可能是 project。当前 `handleTargetAction` 只处理 task。解决方案：**先尝试作为 task 解析，如果 task 不存在且 ref 看起来像 project slug（小写字母+数字+横线+下划线），则回退为 project**。在 `handleTargetAction` 中增加 `annotate`/`annotations`/`timeline` 的 project 回退分支。如果 ref 同时匹配 task ID 和 project slug，task 优先（保持向后兼容）。
+目标风格的歧义处理：`xuanchu <ref> annotate` 中的 ref 可能是 task 也可能是 project。当前 `handleTargetAction` 只处理 task。解决方案：**先尝试作为 task 解析，如果 task 不存在且 ref 看起来像 project slug（小写字母+数字+横线+下划线），则回退为 project**。在 `handleTargetAction` 中增加 `annotate`/`annotations`/`timeline` 的 project 回退分支。如果 ref 同时匹配 task ID 和 project slug，task 优先（保持向后兼容）。
 
 这个歧义处理的可靠性依赖于一个前置约束：**project slug 不允许纯数字、不允许数字开头**。这样 task 的数字 working-set ID（`1`、`23`）和 project slug（`api`、`web-v2`）在词法层面就不会冲突。此约束需要修改现有的 `normalizeProjectSlug` 函数——在创建和修改 project 时拒绝纯数字和数字开头的 slug。
 
-`taskg project info <ref>` 输出中展示最近几条 annotation（如最近 5 条）。实现方式：`ProjectInfo` 方法额外加载最近 5 条 annotation，`ProjectView` 增加 `RecentAnnotations []ProjectAnnotationInfo` 字段。`--json` 输出和 HTTP `GET /projects/{ref}` 响应均包含此字段。
+`xuanchu project info <ref>` 输出中展示最近几条 annotation（如最近 5 条）。实现方式：`ProjectInfo` 方法额外加载最近 5 条 annotation，`ProjectView` 增加 `RecentAnnotations []ProjectAnnotationInfo` 字段。`--json` 输出和 HTTP `GET /projects/{ref}` 响应均包含此字段。
 
 ### 六、HTTP API
 
@@ -175,9 +175,9 @@ taskg <project-ref> timeline [--limit N]
 
 ### 九、Render
 
-- `taskg project info <ref>` 输出中增加 Annotations 段落，展示最近 5 条 annotation（entry 时间 + content 前 100 字符）
-- `taskg project annotations <ref>` 列表输出：序号 + 时间 + content
-- `taskg project timeline <ref>` 列表输出：来源标记 + 时间 + content
+- `xuanchu project info <ref>` 输出中增加 Annotations 段落，展示最近 5 条 annotation（entry 时间 + content 前 100 字符）
+- `xuanchu project annotations <ref>` 列表输出：序号 + 时间 + content
+- `xuanchu project timeline <ref>` 列表输出：来源标记 + 时间 + content
 
 ### 十、审计
 
@@ -205,16 +205,16 @@ GORM AutoMigrate 自动处理：新增 `project_annotations` 表。
 ## 验收标准
 
 1. 项目能添加/删除/查看 annotation（多行文本）
-2. CLI 能操作项目 annotation（子命令风格 `taskg project annotate` 和目标风格 `taskg <ref> annotate`）
+2. CLI 能操作项目 annotation（子命令风格 `xuanchu project annotate` 和目标风格 `xuanchu <ref> annotate`）
 3. HTTP API 能操作项目 annotation（CRUD 3 个端点）
 4. MCP 能操作项目 annotation（`project.annotate` / `project.denotate` / `project.annotations`）
 5. Timeline 聚合接口合并 project + task annotations，按 entry 排序，limit/offset 生效
-6. Timeline 通过 CLI（`taskg project timeline`）、HTTP API、MCP（`project.timeline`）均可访问
+6. Timeline 通过 CLI（`xuanchu project timeline`）、HTTP API、MCP（`project.timeline`）均可访问
 7. 写入触发审计条目和 hook 事件
 8. `project info` 展示最近 5 条 annotation（`ProjectView.RecentAnnotations`）
 9. Archived 项目允许读取 annotation 和 timeline，不允许写入
 10. 所有现有测试继续通过
-11. `CGO_ENABLED=0 go build ./cmd/taskg` 和 `CGO_ENABLED=0 go test ./...` 通过
+11. `CGO_ENABLED=0 go build ./cmd/xuanchu` 和 `CGO_ENABLED=0 go test ./...` 通过
 
 ## 不做什么
 

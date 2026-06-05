@@ -3,7 +3,7 @@ package urgency
 import (
 	"testing"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 func TestExplainIncludesNextAndPriority(t *testing.T) {

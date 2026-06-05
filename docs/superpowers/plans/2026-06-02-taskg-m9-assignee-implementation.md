@@ -1,8 +1,8 @@
-# taskg M9 Assignee Implementation Plan
+# xuanchu M9 Assignee Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 `taskg` 增加任务多 assignee 能力，并让 CLI、remote CLI、HTTP API、MCP、JSON export/import、Hook payload 在同一套 task 模型上读写 assignee。
+**Goal:** 为 `xuanchu` 增加任务多 assignee 能力，并让 CLI、remote CLI、HTTP API、MCP、JSON export/import、Hook payload 在同一套 task 模型上读写 assignee。
 
 **Architecture:** M9 不新增新的 task 入口或事件体系，而是在现有 `task.Task`、`task.JSONTask`、`internal/app.Service` 和 SQLite task repository 基础上补一层 `task_assignees` 关系，并让所有对外接口复用同一个 assignee 解析与序列化路径。写入路径统一先解析 assignee ref 到稳定 `user_id`，再通过 repository 持久化；读取路径统一在 repository hydrate 为 `[]AssigneeInfo`，再由 JSON/API/MCP/Hook 复用。
 
@@ -12,7 +12,7 @@
 
 ## 范围锁定
 
-严格按 [M9 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-02-taskg-m9-assignee-design.md) 实现。
+严格按 [M9 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-02-xuanchu-m9-assignee-design.md) 实现。
 
 必须进入 M9：
 
@@ -102,7 +102,7 @@
   验证 Hook payload 中透出 assignees。
 - `tests/integration/cli_test.go`
   CLI 黑盒测试。
-- `docs/openapi/taskg-v1.yaml`
+- `docs/openapi/xuanchu-v1.yaml`
   task request/response schema 与 filter 说明。
 - `docs/manual/tasks.md`
   任务语法与 `@ref` 示例。
@@ -474,7 +474,7 @@ Expected: PASS。
 **Files:**
 - Modify: `internal/app/service.go`
 - Test: `internal/app/service_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 - Modify: `docs/manual/tasks.md`
 - Modify: `docs/manual/remote-cli-and-api.md`
 - Modify: `docs/manual/mcp.md`
@@ -527,7 +527,7 @@ Expected: PASS
 Run: `CGO_ENABLED=0 go test ./...`
 Expected: PASS
 
-Run: `CGO_ENABLED=0 go build ./cmd/taskg`
+Run: `CGO_ENABLED=0 go build ./cmd/xuanchu`
 Expected: PASS
 
 - [ ] **Step 6: 提交**
@@ -552,5 +552,5 @@ git commit -m "feat: 增加任务多 assignee 支持"
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```

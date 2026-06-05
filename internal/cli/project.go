@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/remote"
-	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -278,7 +278,7 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 				}
 				if project.TaskCount > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "taskg: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
+					fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\n", args[0])
 				return nil
@@ -296,7 +296,7 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 			}
 			if project.TaskCount > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "taskg: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
+				fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\n", args[0])
 			return nil

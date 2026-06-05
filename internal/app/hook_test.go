@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ func (s stubResolver) LookupIPAddr(_ context.Context, _ string) ([]net.IPAddr, e
 // hookTestEnv 创建一个包含 owner 用户的测试环境。
 func hookTestEnv(t *testing.T) (*Service, *storage.Store, func()) {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func hookTestEnv(t *testing.T) (*Service, *storage.Store, func()) {
 // hookTestEnvWithRole 创建指定角色的测试服务。
 func hookTestEnvWithRole(t *testing.T, role string) (*Service, *storage.Store, func()) {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -995,11 +995,11 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	if err := json.Unmarshal([]byte(d.HeadersJSON), &headers); err != nil {
 		t.Fatalf("json.Unmarshal(headers) error = %v", err)
 	}
-	if headers["X-Taskg-Event"] != "task.created" {
-		t.Fatalf("X-Taskg-Event = %q, want task.created", headers["X-Taskg-Event"])
+	if headers["X-Xuanchu-Event"] != "task.created" {
+		t.Fatalf("X-Xuanchu-Event = %q, want task.created", headers["X-Xuanchu-Event"])
 	}
-	if headers["X-Taskg-Event-Version"] != "1" {
-		t.Fatalf("X-Taskg-Event-Version = %q, want 1", headers["X-Taskg-Event-Version"])
+	if headers["X-Xuanchu-Event-Version"] != "1" {
+		t.Fatalf("X-Xuanchu-Event-Version = %q, want 1", headers["X-Xuanchu-Event-Version"])
 	}
 
 	// 确保 store 已关闭（defer 会处理）

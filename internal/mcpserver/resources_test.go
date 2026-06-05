@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -102,7 +102,7 @@ func TestReadWorkspaceCurrent(t *testing.T) {
 	})
 
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
-		URI: "taskg://workspace/current",
+		URI: "xuanchu://workspace/current",
 	})
 	if err != nil {
 		t.Fatalf("ReadResource workspace/current: %v", err)
@@ -144,7 +144,7 @@ func TestReadWorkspaceByID(t *testing.T) {
 		Mode:    ModeStdio,
 	})
 
-	uri := "taskg://workspace/" + ws.ID
+	uri := "xuanchu://workspace/" + ws.ID
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 		URI: uri,
 	})
@@ -179,7 +179,7 @@ func TestReadWorkspaceBySlug(t *testing.T) {
 	})
 
 	// 使用 slug 而不是 ID
-	uri := "taskg://workspace/team"
+	uri := "xuanchu://workspace/team"
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 		URI: uri,
 	})
@@ -222,7 +222,7 @@ func TestReadProjectByID(t *testing.T) {
 		Mode:    ModeStdio,
 	})
 
-	uri := "taskg://project/" + proj.ID
+	uri := "xuanchu://project/" + proj.ID
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 		URI: uri,
 	})
@@ -265,8 +265,8 @@ func TestReadProjectRejectsSlugResourceURI(t *testing.T) {
 		Mode:    ModeStdio,
 	})
 
-	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "taskg://project/" + proj.Slug}); err == nil {
-		t.Fatal("ReadResource taskg://project/{slug} error = nil, want not found")
+	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "xuanchu://project/" + proj.Slug}); err == nil {
+		t.Fatal("ReadResource xuanchu://project/{slug} error = nil, want not found")
 	}
 }
 
@@ -292,7 +292,7 @@ func TestHTTPProjectResourceHonorsProjectScope(t *testing.T) {
 		Request: req,
 	})
 
-	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "taskg://project/" + hidden.ID}); err == nil {
+	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "xuanchu://project/" + hidden.ID}); err == nil {
 		t.Fatal("ReadResource hidden project error = nil, want scope denial")
 	}
 }
@@ -317,7 +317,7 @@ func TestReadContextCurrent(t *testing.T) {
 	})
 
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
-		URI: "taskg://context/current",
+		URI: "xuanchu://context/current",
 	})
 	if err != nil {
 		t.Fatalf("ReadResource context/current: %v", err)
@@ -351,7 +351,7 @@ func TestReadContextCurrentNone(t *testing.T) {
 	})
 
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
-		URI: "taskg://context/current",
+		URI: "xuanchu://context/current",
 	})
 	if err != nil {
 		t.Fatalf("ReadResource context/current: %v", err)
@@ -386,7 +386,7 @@ func TestReadWorkspaceCurrentIncludesProjects(t *testing.T) {
 	})
 
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
-		URI: "taskg://workspace/current",
+		URI: "xuanchu://workspace/current",
 	})
 	if err != nil {
 		t.Fatalf("ReadResource: %v", err)
@@ -435,7 +435,7 @@ func TestProjectResourceOnlyExposesAllowedAgentKeys(t *testing.T) {
 		Mode:    ModeStdio,
 	})
 
-	uri := "taskg://project/" + proj.ID
+	uri := "xuanchu://project/" + proj.ID
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 		URI: uri,
 	})
@@ -462,7 +462,7 @@ func TestProjectResourceOnlyExposesAllowedAgentKeys(t *testing.T) {
 }
 
 func TestNoTaskListResourceRegistered(t *testing.T) {
-	// 验证 list-style URI 如 taskg://project/{id}/tasks 不注册
+	// 验证 list-style URI 如 xuanchu://project/{id}/tasks 不注册
 	store := newMCPTestStore(t)
 	session := setupResourceTestServer(t, Options{
 		Store:   store,
@@ -512,7 +512,7 @@ func TestReadWorkspaceCurrentWithActiveContext(t *testing.T) {
 	})
 
 	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{
-		URI: "taskg://workspace/current",
+		URI: "xuanchu://workspace/current",
 	})
 	if err != nil {
 		t.Fatalf("ReadResource: %v", err)

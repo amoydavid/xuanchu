@@ -3,7 +3,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/dajee/taskg/internal/mcpserver"
+	"git.dajee.net/dajee/xuanchu/internal/mcpserver"
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

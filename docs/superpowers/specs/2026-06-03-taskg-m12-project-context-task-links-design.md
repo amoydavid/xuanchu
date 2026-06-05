@@ -2,7 +2,7 @@
 
 ## 概述
 
-本 milestone 为 taskg 增加任务外部资源轻关联能力：任务可以关联多个外部资源（文档目录、PR、设计稿、会议纪要等），以轻量方式记录"这个任务和外部世界的什么东西有关"。
+本 milestone 为 xuanchu 增加任务外部资源轻关联能力：任务可以关联多个外部资源（文档目录、PR、设计稿、会议纪要等），以轻量方式记录"这个任务和外部世界的什么东西有关"。
 
 ## 动机
 
@@ -91,9 +91,9 @@ type JSONTaskLink struct {
 ### 四、CLI
 
 ```
-taskg <task> link add --type <type> --url <url> [--title <title>]
-taskg <task> link list
-taskg <task> link remove <link-id>
+xuanchu <task> link add --type <type> --url <url> [--title <title>]
+xuanchu <task> link list
+xuanchu <task> link remove <link-id>
 ```
 
 `task info` 输出中展示 links 列表。`--json` 输出中包含 links。
@@ -138,7 +138,7 @@ GORM AutoMigrate 自动处理：新增 `task_links` 表。无破坏性变更。
 6. Hook payload 中包含 links
 7. `task info` 渲染中展示 links
 8. 所有现有测试继续通过
-9. `CGO_ENABLED=0 go build ./cmd/taskg` 和 `CGO_ENABLED=0 go test ./...` 通过
+9. `CGO_ENABLED=0 go build ./cmd/xuanchu` 和 `CGO_ENABLED=0 go test ./...` 通过
 
 ## 不做什么
 

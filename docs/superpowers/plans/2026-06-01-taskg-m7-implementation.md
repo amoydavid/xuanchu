@@ -1,8 +1,8 @@
-# taskg M7 Implementation Plan
+# xuanchu M7 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** 实现 M7：升级 Go 与官方 MCP Go SDK，补齐 M6 遗留远程管理命令，并提供 stdio / Streamable HTTP MCP Server，让 Agent 以受权限约束的 tools/resources 操作 taskg。
+**Goal:** 实现 M7：升级 Go 与官方 MCP Go SDK，补齐 M6 遗留远程管理命令，并提供 stdio / Streamable HTTP MCP Server，让 Agent 以受权限约束的 tools/resources 操作 xuanchu。
 
 **Architecture:** M7 分三层推进：先做 Go 版本与 REST/远程 CLI 收口，再引入官方 MCP SDK 骨架，最后在 `internal/mcpserver` 中实现 transport/auth/scope/result/tools/resources。MCP tool 不调用 HTTP API，不直接访问 storage，只通过 `internal/app` 构造已授权 service；REST、CLI、MCP 共享 app service、request scope、render、audit 和稳定错误码。
 
@@ -12,7 +12,7 @@
 
 ## 范围锁定
 
-严格按 [M7 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-01-taskg-m7-design.md) 实现。
+严格按 [M7 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-01-xuanchu-m7-design.md) 实现。
 
 必须进入 M7：
 
@@ -22,12 +22,12 @@
 - `/api/v1/tasks` 与 MCP `task.query` / `report.run` 统一 limit：默认 200，最大 1000，非法返回 `api_bad_limit`。
 - 本地 `show <key>` 与远程 `show <key>` 对称。
 - 官方 MCP Go SDK 引入，先建空 server 骨架。
-- `taskg mcp stdio`。
-- `taskg server` 挂载 `/mcp`。
+- `xuanchu mcp stdio`。
+- `xuanchu server` 挂载 `/mcp`。
 - HTTP MCP Bearer token 鉴权，stdio MCP 本地 actor/workspace 解析。
 - MCP result/error/scope adapter。
 - MCP tools：`task.*`、`report.run`、`urgency.explain`、workspace/project/context/config tools。
-- MCP resources：`taskg://workspace/current`、`taskg://workspace/{workspace_id}`、`taskg://project/{project_id}`、`taskg://context/current`。
+- MCP resources：`xuanchu://workspace/current`、`xuanchu://workspace/{workspace_id}`、`xuanchu://project/{project_id}`、`xuanchu://context/current`。
 - MCP tool schema golden tests。
 - stdio / HTTP MCP integration tests。
 - README、ROADMAP、AGENTS、OpenAPI 同步。
@@ -114,7 +114,7 @@
 - `internal/httpapi/workspace_archive.go`
   workspace archive REST handler，如不合并进 `workspaces.go`。
 - `internal/cli/mcp.go`
-  `taskg mcp stdio` 命令。
+  `xuanchu mcp stdio` 命令。
 
 修改文件：
 
@@ -128,15 +128,15 @@
   M7 状态与已完成范围同步。
 - `docs/requirements.md`
   如仍写 Go 1.22 或 MCP 草案，更新到 M7 选型。
-- `docs/openapi/taskg-v1.yaml`
+- `docs/openapi/xuanchu-v1.yaml`
   新增 users、active_workspace、task list limit。
   同步新增 REST error enum：`workspace_required`（若 app shared error 进入 HTTP/OpenAPI）和 workspace archive endpoint。
-- `cmd/taskg/main.go`
+- `cmd/xuanchu/main.go`
   确保 `mcp stdio` 跳过 migration warning 或不污染 stdout。
 - `internal/cli/root.go`
   注册 `mcp` 命令；确认 split flags 支持 MCP 所需 flags。
 - `internal/cli/server.go`
-  `taskg server` 挂载 `/mcp` handler。
+  `xuanchu server` 挂载 `/mcp` handler。
 - `internal/cli/config.go`
   `show [key]` 本地支持；remote show 接线。
 - `internal/cli/workspace.go`
@@ -238,14 +238,14 @@ Run:
 test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
 ```
 
-Expected: all commands exit 0. Remove generated `taskg` binary if `go build` creates it:
+Expected: all commands exit 0. Remove generated `xuanchu` binary if `go build` creates it:
 
 ```bash
-rm -f taskg
+rm -f xuanchu
 ```
 
 If `gofmt -l` reports files, run `gofmt -w` on those files first, then re-run the full Phase 0a verification before committing.
@@ -267,7 +267,7 @@ git commit -m "chore: 升级 Go 版本到 1.25"
 - Modify: `internal/httpapi/tasks.go`
 - Modify: `internal/httpapi/tasks_test.go`
 - Modify: `internal/remote/task.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [x] **Step 1: 写 HTTP limit 测试**
 
@@ -341,7 +341,7 @@ In `internal/remote/task.go`, add `Limit int` to `ListTasksInput` and include `l
 
 - [x] **Step 5: Update OpenAPI**
 
-In `docs/openapi/taskg-v1.yaml`, document `limit` on `GET /api/v1/tasks`:
+In `docs/openapi/xuanchu-v1.yaml`, document `limit` on `GET /api/v1/tasks`:
 
 - default 200。
 - maximum 1000。
@@ -365,7 +365,7 @@ Expected: PASS.
 - Create: `internal/httpapi/users.go`
 - Modify: `internal/httpapi/router.go`
 - Modify: `internal/httpapi/server_test.go` or `internal/httpapi/auth_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [x] **Step 1: Write handler tests**
 
@@ -479,7 +479,7 @@ Expected: PASS.
 - Create: `internal/httpapi/me_state.go`
 - Modify: `internal/httpapi/router.go`
 - Modify: `internal/httpapi/server_test.go` or `internal/httpapi/auth_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [x] **Step 1: Write failing test**
 
@@ -585,7 +585,7 @@ Expected: PASS.
 - Modify: `internal/httpapi/router.go`
 - Modify: `internal/httpapi/workspaces.go`
 - Modify: `tests/integration/cli_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [x] **Step 1: Split old unsupported-management test**
 
@@ -601,7 +601,7 @@ Refactor `TestCLIRemoteUnsupportedManagementCommandsDoNotTouchLocalDB` in `tests
 
 - [x] **Step 2: Write integration tests**
 
-In `tests/integration/cli_test.go`, add black-box tests that start `taskg server` with temp DB and token:
+In `tests/integration/cli_test.go`, add black-box tests that start `xuanchu server` with temp DB and token:
 
 - remote `workspace list` succeeds。
 - remote `workspace add/info/modify/use/archive` succeeds。
@@ -729,9 +729,9 @@ Run:
 test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
-rm -f taskg
+rm -f xuanchu
 ```
 
 Expected: all verification commands exit 0.
@@ -739,7 +739,7 @@ Expected: all verification commands exit 0.
 - [x] **Step 2: Commit**
 
 ```bash
-git add internal/app internal/httpapi internal/remote internal/cli tests/integration docs/openapi/taskg-v1.yaml
+git add internal/app internal/httpapi internal/remote internal/cli tests/integration docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 收口 M7 远程管理命令并统一 task 列表 limit"
 ```
 
@@ -801,8 +801,8 @@ package mcpserver
 import (
     "io"
 
-    "github.com/dajee/taskg/internal/app"
-    "github.com/dajee/taskg/internal/storage"
+    "github.com/dajee/xuanchu/internal/app"
+    "github.com/dajee/xuanchu/internal/storage"
 )
 
 type Mode string
@@ -836,7 +836,7 @@ func NewServer(opts Options) *mcp.Server {
         version = "dev"
     }
     srv := mcp.NewServer(&mcp.Implementation{
-        Name:    "taskg",
+        Name:    "xuanchu",
         Version: version,
     }, nil)
     return srv
@@ -886,9 +886,9 @@ go test ./internal/mcpserver -count=1
 test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
-rm -f taskg
+rm -f xuanchu
 ```
 
 Expected: PASS.
@@ -1047,7 +1047,7 @@ Expected: PASS.
 **Files:**
 - Create: `internal/cli/mcp.go`
 - Modify: `internal/cli/root.go`
-- Modify: `cmd/taskg/main.go`
+- Modify: `cmd/xuanchu/main.go`
 - Modify: `tests/integration/cli_test.go`
 
 - [x] **Step 1: Write CLI integration test**
@@ -1055,7 +1055,7 @@ Expected: PASS.
 Add test that starts:
 
 ```bash
-taskg --db <db> mcp stdio
+xuanchu --db <db> mcp stdio
 ```
 
 and sends MCP initialize/listTools JSON-RPC through stdin using SDK client command transport if possible. Assert:
@@ -1074,7 +1074,7 @@ go test ./tests/integration -run TestMCPStdio -count=1
 
 Expected: FAIL because command missing.
 
-- [x] **Step 3: Implement `taskg mcp stdio`**
+- [x] **Step 3: Implement `xuanchu mcp stdio`**
 
 Create `newMCPCommand(opts)` and `newMCPStdioCommand(opts)`:
 
@@ -1087,7 +1087,7 @@ Register in `internal/cli/root.go`.
 
 - [x] **Step 4: Suppress stdout warning**
 
-In `cmd/taskg/main.go`, update `skipsMigrationWarning` to skip `mcp` command. Warning can be omitted entirely for MCP protocol safety.
+In `cmd/xuanchu/main.go`, update `skipsMigrationWarning` to skip `mcp` command. Warning can be omitted entirely for MCP protocol safety.
 
 - [x] **Step 5: Verify**
 
@@ -1183,8 +1183,8 @@ test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./internal/mcpserver ./internal/httpapi ./internal/cli ./tests/integration -count=1
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
-rm -f taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
+rm -f xuanchu
 ```
 
 Expected: PASS.
@@ -1192,7 +1192,7 @@ Expected: PASS.
 - [x] **Step 2: Commit**
 
 ```bash
-git add internal/mcpserver internal/httpapi internal/cli cmd/taskg/main.go tests/integration
+git add internal/mcpserver internal/httpapi internal/cli cmd/xuanchu/main.go tests/integration
 git commit -m "feat: 添加 MCP 传输与鉴权基础"
 ```
 
@@ -1532,8 +1532,8 @@ test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test ./internal/mcpserver -count=1
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
-rm -f taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
+rm -f xuanchu
 ```
 
 Expected: PASS.
@@ -1541,7 +1541,7 @@ Expected: PASS.
 - [x] **Step 2: Commit**
 
 ```bash
-git add internal/mcpserver internal/app internal/httpapi internal/remote docs/openapi/taskg-v1.yaml
+git add internal/mcpserver internal/app internal/httpapi internal/remote docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 添加 MCP 核心任务工具"
 ```
 
@@ -1668,11 +1668,11 @@ Expected: PASS.
 
 Tests:
 
-- `ReadResource taskg://workspace/current` returns workspace id/slug/name/role/context summary。
-- `ReadResource taskg://workspace/{workspace_id}` respects workspace allowlist。
-- `ReadResource taskg://project/{project_id}` returns project metadata and allowed `agent.*` keys。
-- `ReadResource taskg://context/current` returns active context/effective workspace/project scope。
-- list-style URI like `taskg://project/{id}/tasks` is not registered.
+- `ReadResource xuanchu://workspace/current` returns workspace id/slug/name/role/context summary。
+- `ReadResource xuanchu://workspace/{workspace_id}` respects workspace allowlist。
+- `ReadResource xuanchu://project/{project_id}` returns project metadata and allowed `agent.*` keys。
+- `ReadResource xuanchu://context/current` returns active context/effective workspace/project scope。
+- list-style URI like `xuanchu://project/{id}/tasks` is not registered.
 
 - [x] **Step 2: Run and confirm failure**
 
@@ -1765,9 +1765,9 @@ test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test -race ./internal/mcpserver ./internal/app ./internal/httpapi
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
-rm -f taskg
+rm -f xuanchu
 ```
 
 Expected: PASS.
@@ -1791,15 +1791,15 @@ If Task 18 touches `internal/app/project_config.go` or shared OpenAPI/schema doc
 - Modify: `README.md`
 - Modify: `ROADMAP.md`
 - Modify: `docs/requirements.md`
-- Modify: `docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md`
+- Modify: `docs/superpowers/plans/2026-06-01-xuanchu-m7-implementation.md`
 
 - [x] **Step 1: Update README**
 
 Add:
 
 - Go 1.25。
-- `taskg mcp stdio` example。
-- `taskg server --listen :8080` exposes `/mcp`。
+- `xuanchu mcp stdio` example。
+- `xuanchu server --listen :8080` exposes `/mcp`。
 - HTTP MCP Bearer token example。
 - list of core MCP tools。
 - note that `/mcp` is not OpenAPI。
@@ -1826,7 +1826,7 @@ Only mark tasks complete if actually implemented and verified. Do not mass-check
 Run:
 
 ```bash
-rg -n 'Go 1\\.22|M7 \\| 待规划|TODO|TBD' README.md ROADMAP.md docs/requirements.md docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
+rg -n 'Go 1\\.22|M7 \\| 待规划|TODO|TBD' README.md ROADMAP.md docs/requirements.md docs/superpowers/plans/2026-06-01-xuanchu-m7-implementation.md
 git diff --check
 ```
 
@@ -1846,9 +1846,9 @@ test -z "$(gofmt -l internal cmd tests)" && go vet ./...
 go test -race ./internal/mcpserver ./internal/app ./internal/httpapi
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 go list -m all | grep -E 'gorm.io/driver/sqlite|mattn/go-sqlite3' && exit 1 || true
-rm -f taskg
+rm -f xuanchu
 ```
 
 Expected: all commands exit 0.
@@ -1858,7 +1858,7 @@ Expected: all commands exit 0.
 Run a small SDK client or existing integration helper against:
 
 ```bash
-taskg --db <tmpdb> mcp stdio
+xuanchu --db <tmpdb> mcp stdio
 ```
 
 Expected:
@@ -1872,7 +1872,7 @@ Expected:
 Run:
 
 ```bash
-taskg server --listen 127.0.0.1:0 --db <tmpdb>
+xuanchu server --listen 127.0.0.1:0 --db <tmpdb>
 ```
 
 Use SDK Streamable HTTP client with Bearer token.
@@ -1886,7 +1886,7 @@ Expected:
 - [x] **Step 4: Commit docs sync**
 
 ```bash
-git add README.md ROADMAP.md docs/requirements.md docs/superpowers/specs/2026-06-01-taskg-m7-design.md docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
+git add README.md ROADMAP.md docs/requirements.md docs/superpowers/specs/2026-06-01-xuanchu-m7-design.md docs/superpowers/plans/2026-06-01-xuanchu-m7-implementation.md
 git commit -m "docs: 同步 M7 完成状态"
 ```
 
@@ -1913,8 +1913,8 @@ git commit -m "docs: 同步 M7 完成状态"
 - [x] 没有 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`。
 - [x] `/api/v1/tasks` limit 默认 200、最大 1000。
 - [x] 远程 management CLI 不触碰本地 DB。
-- [x] `taskg mcp stdio` stdout 协议安全。
-- [x] `taskg server` 暴露 `/mcp`。
+- [x] `xuanchu mcp stdio` stdout 协议安全。
+- [x] `xuanchu server` 暴露 `/mcp`。
 - [x] HTTP MCP Bearer token 鉴权。
 - [x] MCP tool schema golden tests 覆盖所有 tools。
 - [x] project-scoped token 对 MCP task/query/get/report/resources 生效。

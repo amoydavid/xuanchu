@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	calcexpr "github.com/dajee/taskg/internal/expr"
+	calcexpr "git.dajee.net/dajee/xuanchu/internal/expr"
 	"github.com/spf13/cobra"
 )
 

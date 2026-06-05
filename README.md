@@ -1,6 +1,9 @@
-# taskg — 面向企业项目与 Agent MCP 的 Taskwarrior 风格任务运行时（Go 版）
+# 璇础 (Xuán Chǔ) — 面向企业项目与 Agent MCP 的 Taskwarrior 风格任务运行时（Go 版）
 
-`taskg` 是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
+`璇`：取自《尚书·舜典》 “在璇玑玉衡，以齐七政”，指北斗星中运转、校准的枢机，象征规则与秩序的核心。
+`础`：取自《淮南子·说林训》 “山云蒸，柱础润”，指房屋柱下的基石。汉代《说文解字》注：“础，磶也”，即承载重量的基础。
+
+命令行输出为 `xuanchu`，这是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
 
 - 单一二进制：同时承担 **本地 CLI / 远程 CLI 客户端 / HTTP API 服务端 / MCP Server** 四种形态
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
@@ -24,62 +27,62 @@
 ## 快速开始
 
 ```bash
-go build -o taskg ./cmd/taskg
+go build -o xuanchu ./cmd/xuanchu
 
 # 先注册一个项目，再创建第一条任务
-./taskg project add ai-agent-platform name:"AI Agent Platform"
-./taskg add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
+./xuanchu project add ai-agent-platform name:"AI Agent Platform"
+./xuanchu add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
 
 # 默认只看 pending 任务
-./taskg list
+./xuanchu list
 
 # 查看详情。这里的 1 是列表里的 working-set ID
-./taskg info 1
+./xuanchu info 1
 
 # 修改、完成、删除都可以用 <target> <action> 写法
-./taskg 1 modify priority:H +next
-./taskg 1 done
-./taskg 1 delete
+./xuanchu 1 modify priority:H +next
+./xuanchu 1 done
+./xuanchu 1 delete
 ```
 
-`target` 可以是列表里的数字 ID、完整 UUID，或足够长的 UUID 前缀。常用命令既支持 `taskg <subcommand> ...`，也支持 Taskwarrior 风格的 `taskg <target> <action> ...`。
+`target` 可以是列表里的数字 ID、完整 UUID，或足够长的 UUID 前缀。常用命令既支持 `xuanchu <subcommand> ...`，也支持 Taskwarrior 风格的 `xuanchu <target> <action> ...`。
 
 常用全局参数：
 
 ```bash
-./taskg --db ./taskg.db list          # 使用指定 SQLite 文件
-./taskg --data-dir ./data list        # 数据库放到 ./data/taskg.db
-./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" list
-./taskg --config /path/to/config.toml list  # 指定 TOML 配置文件
-./taskg --json list                   # 输出 JSON
-./taskg --no-color list               # 关闭颜色
-./taskg --no-context list             # 本次命令忽略 active context
-./taskg --workspace dajee list        # 本次命令切到 dajee workspace
-./taskg --version                     # 显示版本号
+./xuanchu --db ./xuanchu.db list          # 使用指定 SQLite 文件
+./xuanchu --data-dir ./data list        # 数据库放到 ./data/xuanchu.db
+./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable" list
+./xuanchu --config /path/to/config.toml list  # 指定 TOML 配置文件
+./xuanchu --json list                   # 输出 JSON
+./xuanchu --no-color list               # 关闭颜色
+./xuanchu --no-context list             # 本次命令忽略 active context
+./xuanchu --workspace dajee list        # 本次命令切到 dajee workspace
+./xuanchu --version                     # 显示版本号
 ```
 
-默认数据库路径是 `~/.local/share/taskg/taskg.db`。配置优先级按“本次命令参数优先”理解即可：CLI flag / `rc.*` 覆盖 > 环境变量 > SQLite meta > `taskg.toml` > 默认值。
+默认数据库路径是 `~/.local/share/xuanchu/xuanchu.db`。配置优先级按“本次命令参数优先”理解即可：CLI flag / `rc.*` 覆盖 > 环境变量 > SQLite meta > `xuanchu.toml` > 默认值。
 
-`--config` 可以指定任意 TOML 文件路径（环境变量 `TASKG_CONFIG` 等价），不指定时仍从 XDG 默认路径加载。版本号可通过 `--version` 查看，`go install` 构建的版本会从 git 信息自动推断。
+`--config` 可以指定任意 TOML 文件路径（环境变量 `XUANCHU_CONFIG` 等价），不指定时仍从 XDG 默认路径加载。版本号可通过 `--version` 查看，`go install` 构建的版本会从 git 信息自动推断。
 
 ## PostgreSQL
 
-taskg 支持 PostgreSQL 作为数据库后端，通过 `--db-url` 指定连接字符串：
+xuanchu 支持 PostgreSQL 作为数据库后端，通过 `--db-url` 指定连接字符串：
 
 ```bash
-./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" server
+./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable" server
 ```
 
 也可以通过环境变量或 TOML 配置：
 
 ```bash
-export TASKG_DB_URL="postgres://user:pass@localhost:5432/taskg"
-./taskg list
+export XUANCHU_DB_URL="postgres://user:pass@localhost:5432/xuanchu"
+./xuanchu list
 ```
 
 ```toml
 [database]
-url = "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 ```
 
 `--db-url` 和 `--db` 互斥。未指定 `--db-url` 时使用 SQLite（默认行为不变）。
@@ -89,27 +92,27 @@ url = "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
 任务属性一般写成 `key:value`，标签写成 `+tag` 或 `-tag`：
 
 ```bash
-./taskg add "Ship MCP API" project:ai-agent-platform priority:H +next due:friday
-./taskg add "Review release note" @alice
-./taskg 1 modify project:ai-agent-platform priority:M +review -next
-./taskg 1 modify +@alice -@bob
-./taskg 1 modify due:                  # 清空 due
+./xuanchu add "Ship MCP API" project:ai-agent-platform priority:H +next due:friday
+./xuanchu add "Review release note" @alice
+./xuanchu 1 modify project:ai-agent-platform priority:M +review -next
+./xuanchu 1 modify +@alice -@bob
+./xuanchu 1 modify due:                  # 清空 due
 ```
 
 多 assignee 查询与展示：
 
 ```bash
-./taskg list assignee:alice
-./taskg next assignee:me
-./taskg info 1
+./xuanchu list assignee:alice
+./xuanchu next assignee:me
+./xuanchu info 1
 ```
 
 查询可以放在报表命令前，也可以放在报表命令后：
 
 ```bash
-./taskg +next list
-./taskg list +next
-./taskg '(project:ai-agent-platform and +review) or priority:H' next
+./xuanchu +next list
+./xuanchu list +next
+./xuanchu '(project:ai-agent-platform and +review) or priority:H' next
 ```
 
 Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。`/text/` 是 description 子串匹配，不是正则。
@@ -117,81 +120,81 @@ Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。
 脚本里建议优先使用这些稳定接口：
 
 ```bash
-./taskg --json export
-./taskg _ids +next
-./taskg _uuids project:ai-agent-platform
-./taskg _get 1.uuid 1.description 1.urgency
-./taskg _show database.path active.user active.workspace active.context
+./xuanchu --json export
+./xuanchu _ids +next
+./xuanchu _uuids project:ai-agent-platform
+./xuanchu _get 1.uuid 1.description 1.urgency
+./xuanchu _show database.path active.user active.workspace active.context
 ```
 
 ## M0 本地 CLI 用法
 
 ```bash
-go build -o taskg ./cmd/taskg
+go build -o xuanchu ./cmd/xuanchu
 
 # 添加任务
-./taskg add "Write project spec" project:ai-agent-platform +planning due:tomorrow
-./taskg add "Review PR" priority:H +review
+./xuanchu add "Write project spec" project:ai-agent-platform +planning due:tomorrow
+./xuanchu add "Review PR" priority:H +review
 
 # 查看任务列表
-./taskg list
+./xuanchu list
 
 # 查看任务详情
-./taskg info 1
+./xuanchu info 1
 
 # 修改任务
-./taskg 1 modify priority:H +next
-./taskg 1 modify project:ai-agent-platform
+./xuanchu 1 modify priority:H +next
+./xuanchu 1 modify project:ai-agent-platform
 
 # 完成任务
-./taskg 1 done
+./xuanchu 1 done
 
 # 删除任务
-./taskg 1 delete
+./xuanchu 1 delete
 
 # 导出为 JSON
-./taskg export
+./xuanchu export
 
 # 导入 JSON
-./taskg import tasks.json
+./xuanchu import tasks.json
 
 # 查看配置
-./taskg show
+./xuanchu show
 
 # 设置配置
-./taskg config set date.format rfc3339
-./taskg config get date.format
+./xuanchu config set date.format rfc3339
+./xuanchu config get date.format
 ```
 
-默认数据库路径为 `~/.local/share/taskg/taskg.db`，可用 `--db` 或 `TASKG_DB` 环境变量覆盖。
+默认数据库路径为 `~/.local/share/xuanchu/xuanchu.db`，可用 `--db` 或 `XUANCHU_DB` 环境变量覆盖。
 
 ## M1 查询与报表用法
 
 ```bash
 # 布尔组合查询
-./taskg '+next or due.before:tomorrow' list
-./taskg '(project:ai-agent-platform and +urgent) or priority:H' list
+./xuanchu '+next or due.before:tomorrow' list
+./xuanchu '(project:ai-agent-platform and +urgent) or priority:H' list
 
 # 报表命令
-./taskg all
-./taskg completed
-./taskg deleted
-./taskg overdue
+./xuanchu all
+./xuanchu completed
+./xuanchu deleted
+./xuanchu overdue
 
 # 查看任务 urgency（human 或 JSON）
-./taskg urgency 1
-./taskg urgency 1 --json
-./taskg _urgency 1
+./xuanchu urgency 1
+./xuanchu urgency 1 --json
+./xuanchu _urgency 1
 
 # DOM helper
-./taskg _get 1.description 1.uuid 1.urgency 1.tag.next
-./taskg _ids +next
-./taskg _uuids project:ai-agent-platform
-./taskg _projects
-./taskg _tags
+./xuanchu _get 1.description 1.uuid 1.urgency 1.tag.next
+./xuanchu _ids +next
+./xuanchu _uuids project:ai-agent-platform
+./xuanchu _projects
+./xuanchu _tags
 
 # 表达式计算
-./taskg calc '1 + 2 * 3'
+./xuanchu calc '1 + 2 * 3'
 ```
 
 报表名等价于 `(默认 filter) AND (用户 filter)`。要绕过默认 status 限制，使用 `all`。
@@ -201,7 +204,7 @@ go build -o taskg ./cmd/taskg
 `due:` 和 `end:` 表达的是「某天截止/结束」，写入时会自动落在**当地时区的当天 `23:59:59`**：
 
 ```bash
-./taskg add "deadline" due:2030-01-01
+./xuanchu add "deadline" due:2030-01-01
 # due 实际存储为 2030-01-01 23:59:59（本地时区），而非 00:00:00
 ```
 
@@ -215,32 +218,32 @@ go build -o taskg ./cmd/taskg
 
 ```bash
 # waiting / active / ready / blocked / blocking 报表
-./taskg add "Call vendor" wait:tomorrow scheduled:eow until:eom
-./taskg waiting
-./taskg 1 modify wait:
-./taskg 1 start
-./taskg active
-./taskg 1 stop
+./xuanchu add "Call vendor" wait:tomorrow scheduled:eow until:eom
+./xuanchu waiting
+./xuanchu 1 modify wait:
+./xuanchu 1 start
+./xuanchu active
+./xuanchu 1 stop
 
 # 注释与描述编辑
-./taskg 1 annotate "called, left voicemail"
-./taskg _get 1.annotations
-./taskg 1 denotate 1
-./taskg 1 append "with examples"
-./taskg 1 prepend "[draft]"
-./taskg 1 edit
+./xuanchu 1 annotate "called, left voicemail"
+./xuanchu _get 1.annotations
+./xuanchu 1 denotate 1
+./xuanchu 1 append "with examples"
+./xuanchu 1 prepend "[draft]"
+./xuanchu 1 edit
 
 # 依赖与 blocked / blocking
-./taskg add "Prepare API"
-./taskg add "Write docs" depends:<uuid-or-id>
-./taskg blocked
-./taskg blocking
+./xuanchu add "Prepare API"
+./xuanchu add "Write docs" depends:<uuid-or-id>
+./xuanchu blocked
+./xuanchu blocking
 
 # 基础循环任务
-./taskg add "Submit weekly report" recur:weekly due:2030-01-05 until:2030-02-01
-./taskg list
-./taskg 1 done
-./taskg list
+./xuanchu add "Submit weekly report" recur:weekly due:2030-01-05 until:2030-02-01
+./xuanchu list
+./xuanchu 1 done
+./xuanchu list
 ```
 
 M2 当前已经补齐这些能力：
@@ -267,44 +270,44 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 
 ```bash
 # TOML / config / rc 覆盖
-./taskg show
-./taskg config set date.format rfc3339
-./taskg config list
-./taskg rc.date.format=epoch list
+./xuanchu show
+./xuanchu config set date.format rfc3339
+./xuanchu config list
+./xuanchu rc.date.format=epoch list
 
 # context
-./taskg context define agent 'project:ai-agent-platform status:pending'
-./taskg context use agent
-./taskg list
-./taskg --no-context list
-./taskg context show
-./taskg context none
+./xuanchu context define agent 'project:ai-agent-platform status:pending'
+./xuanchu context use agent
+./xuanchu list
+./xuanchu --no-context list
+./xuanchu context show
+./xuanchu context none
 
 # UDA
-./taskg config set uda.estimate.type numeric
-./taskg config set uda.estimate.label Estimate
-./taskg config set uda.estimate.values 1,2,3,5,8
-./taskg add "Implement API" estimate:3
-./taskg estimate:3 list
-./taskg _get 1.estimate
-./taskg _udas
-./taskg _unique estimate
+./xuanchu config set uda.estimate.type numeric
+./xuanchu config set uda.estimate.label Estimate
+./xuanchu config set uda.estimate.values 1,2,3,5,8
+./xuanchu add "Implement API" estimate:3
+./xuanchu estimate:3 list
+./xuanchu _get 1.estimate
+./xuanchu _udas
+./xuanchu _unique estimate
 
 # .taskrc 只读导入
-./taskg config import-taskrc ~/.taskrc --dry-run --json
-./taskg config import-taskrc ~/.taskrc
+./xuanchu config import-taskrc ~/.taskrc --dry-run --json
+./xuanchu config import-taskrc ~/.taskrc
 
 # completion 与脚本 helper
-./taskg completion zsh > ~/.zfunc/_taskg
-./taskg _show date.format active.user active.workspace active.context
-./taskg _version
+./xuanchu completion zsh > ~/.zfunc/_xuanchu
+./xuanchu _show date.format active.user active.workspace active.context
+./xuanchu _version
 ```
 
-M3 新增 `~/.config/taskg/taskg.toml` 作为文件配置来源。TOML 使用标准解析器，支持普通 TOML 字符串、数组、dotted key 和多行字符串。一个最小示例：
+M3 新增 `~/.config/xuanchu/xuanchu.toml` 作为文件配置来源。TOML 使用标准解析器，支持普通 TOML 字符串、数组、dotted key 和多行字符串。一个最小示例：
 
 ```toml
 [database]
-path = "/Users/me/.local/share/taskg/taskg.db"
+path = "/Users/me/.local/share/xuanchu/xuanchu.db"
 
 [display]
 color = true
@@ -313,9 +316,9 @@ color = true
 format = "rfc3339"
 ```
 
-### `taskg.toml` 可配置项
+### `xuanchu.toml` 可配置项
 
-`taskg.toml` 是**本机配置**：它描述这台机器如何启动和显示 taskg，不描述某个企业 workspace 的业务规则。TOML 的 key 会被展开成点分格式，例如 `[database] path = "..."` 等价于 `database.path = "..."`。
+`xuanchu.toml` 是**本机配置**：它描述这台机器如何启动和显示 xuanchu，不描述某个企业 workspace 的业务规则。TOML 的 key 会被展开成点分格式，例如 `[database] path = "..."` 等价于 `database.path = "..."`。
 
 当前建议只把这些 key 写进 TOML：
 
@@ -325,16 +328,16 @@ format = "rfc3339"
 | `[display] color = true` | `color` | `true` / `false` | 是否启用 human 输出颜色。也可直接写 `color = true`。 |
 | `[display] json = false` | `json` | `true` / `false` | 默认是否输出 JSON。CLI 的 `--json` 优先级更高。也可直接写 `json = false`。 |
 | `[date] format = "rfc3339"` | `date.format` | `rfc3339` / `epoch` | `_show`、`config get` 和部分脚本输出使用的日期格式。 |
-| `[log] level = "info"` | `log.level` | `debug` / `info` / `warn` / `error` | 日志级别。环境变量 `TASKG_LOG_LEVEL` 优先。 |
+| `[log] level = "info"` | `log.level` | `debug` / `info` / `warn` / `error` | 日志级别。环境变量 `XUANCHU_LOG_LEVEL` 优先。 |
 | `[log] format = "text"` | `log.format` | `text` / `json` | 日志格式。 |
-| `[log] file = "..."` | `log.file` | 文件路径 | 日志文件路径。支持 `~` 展开。环境变量 `TASKG_LOG_FILE` 优先。 |
+| `[log] file = "..."` | `log.file` | 文件路径 | 日志文件路径。支持 `~` 展开。环境变量 `XUANCHU_LOG_FILE` 优先。 |
 | `[log] rotate = "daily"` | `log.rotate` | `daily` / `size` / `none` | 日志轮转模式。`daily` 按日期切割，`size` 按 10MB 切割，`none` 不轮转。 |
 
 一个完整的本机配置例子：
 
 ```toml
 [database]
-path = "/Users/me/.local/share/taskg/taskg.db"
+path = "/Users/me/.local/share/xuanchu/xuanchu.db"
 
 [display]
 color = true
@@ -346,7 +349,7 @@ format = "rfc3339"
 [log]
 level = "info"
 format = "text"
-file = "~/.local/share/taskg/logs/taskg.log"
+file = "~/.local/share/xuanchu/logs/xuanchu.log"
 rotate = "daily"
 ```
 
@@ -360,10 +363,10 @@ rotate = "daily"
 这些配置属于 workspace，应写入 SQLite，由权限和 audit 管理：
 
 ```bash
-./taskg --workspace dajee config set uda.estimate.type numeric
-./taskg --workspace dajee config set uda.estimate.values 1,2,3,5,8
-./taskg --workspace dajee config set urgency.uda.estimate.coefficient 1.5
-./taskg --workspace dajee context define agent 'project:ai-agent-platform status:pending'
+./xuanchu --workspace dajee config set uda.estimate.type numeric
+./xuanchu --workspace dajee config set uda.estimate.values 1,2,3,5,8
+./xuanchu --workspace dajee config set urgency.uda.estimate.coefficient 1.5
+./xuanchu --workspace dajee context define agent 'project:ai-agent-platform status:pending'
 ```
 
 不要把这些状态或内部 key 当作 TOML 配置写入：
@@ -375,25 +378,25 @@ rotate = "daily"
 想确认当前最终生效值，用：
 
 ```bash
-./taskg config list
-./taskg _show database.path color json date.format active.user active.workspace active.context
+./xuanchu config list
+./xuanchu _show database.path color json date.format active.user active.workspace active.context
 ```
 
-数据库路径仍按 `--db`、`TASKG_DB`、`--data-dir`、TOML、XDG data、home fallback 的顺序解析。显示类配置按 CLI flag、`rc.*`、环境变量、SQLite meta、TOML、默认值合并。workspace 业务配置以数据库中的 workspace 记录为准；TOML 只作为本机默认值或迁移辅助。
+数据库路径仍按 `--db`、`XUANCHU_DB`、`--data-dir`、TOML、XDG data、home fallback 的顺序解析。显示类配置按 CLI flag、`rc.*`、环境变量、SQLite meta、TOML、默认值合并。workspace 业务配置以数据库中的 workspace 记录为准；TOML 只作为本机默认值或迁移辅助。
 
 `rc.*` 只影响本次命令，适合脚本临时覆盖：
 
 ```bash
-./taskg rc.date.format=epoch list
-./taskg rc.json:on --workspace missing list
-./taskg rc.context=none list
+./xuanchu rc.date.format=epoch list
+./xuanchu rc.json:on --workspace missing list
+./xuanchu rc.context=none list
 ```
 
 `context` 会自动叠加到 `list`、`next`、各类报表和 `_ids/_uuids/_projects/_tags/_unique`。`--no-context` 和 `rc.context=none` 只影响本次运行；`context none` 会持久化清空 active context。
 
 UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA 写入为 RFC3339 UTC 字符串；查询 `estimate:3`、`reviewed:2026-05-28` 会结合当前 schema 编译。未定义的 JSON top-level 字段会作为 orphan UDA 保留并导出，普通 `modify` 不能修改 orphan UDA。
 
-`.taskrc` 在 M3 中的作用是**迁移和兼容性导入**：taskg 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。taskg 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
+`.taskrc` 在 M3 中的作用是**迁移和兼容性导入**：xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
 
 当前 `.taskrc` 支持范围：
 
@@ -401,43 +404,43 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 - 识别但跳过：`data.location`、`report.*`、`calendar.*`、`burndown.*`、`news.*`、`sync.*`、`hooks.*`
 - 其它 key 进入 unknown 报告，不会让导入失败
 
-其中 `data.location` 会被识别但不会导入，因为 M3 的数据库路径只在启动前通过 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定。M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。
+其中 `data.location` 会被识别但不会导入，因为 M3 的数据库路径只在启动前通过 `--db`、`XUANCHU_DB`、`--data-dir` 或 TOML 决定。M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。
 
 ## M4 企业 Workspace、权限与审计基础
 
 ```bash
 # user
-./taskg user list
-./taskg user add alice email:alice@example.test
-./taskg user use alice
-./taskg user info
+./xuanchu user list
+./xuanchu user add alice email:alice@example.test
+./xuanchu user use alice
+./xuanchu user info
 
 # workspace。这里的 dajee 表示企业 / 租户级工作空间
-./taskg workspace list
-./taskg workspace add dajee name:Dajee visibility:team
-./taskg workspace use dajee
-./taskg workspace info dajee
-./taskg workspace modify dajee description:"Dajee enterprise workspace"
-./taskg workspace archive old
+./xuanchu workspace list
+./xuanchu workspace add dajee name:Dajee visibility:team
+./xuanchu workspace use dajee
+./xuanchu workspace info dajee
+./xuanchu workspace modify dajee description:"Dajee enterprise workspace"
+./xuanchu workspace archive old
 
 # project 表示 workspace 内的真实企业项目
-./taskg --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
-./taskg --workspace dajee project add erp-rewrite name:"ERP Rewrite"
-./taskg --workspace dajee add "Design MCP task.query schema" project:ai-agent-platform +mcp
-./taskg --workspace dajee add "Migrate invoice workflow" project:erp-rewrite +migration
+./xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
+./xuanchu --workspace dajee project add erp-rewrite name:"ERP Rewrite"
+./xuanchu --workspace dajee add "Design MCP task.query schema" project:ai-agent-platform +mcp
+./xuanchu --workspace dajee add "Migrate invoice workflow" project:erp-rewrite +migration
 
 # 在指定 workspace 中执行一次命令
-./taskg --workspace local list
-./taskg --workspace dajee _projects
+./xuanchu --workspace local list
+./xuanchu --workspace dajee _projects
 
 # member
-./taskg member list
-./taskg member add bob role:viewer
-./taskg member role bob member
+./xuanchu member list
+./xuanchu member add bob role:viewer
+./xuanchu member role bob member
 
 # audit
-./taskg audit list
-./taskg audit list --limit 20 --json
+./xuanchu audit list
+./xuanchu audit list --limit 20 --json
 ```
 
 M4 新增了企业运行时基础：
@@ -452,14 +455,14 @@ M4 新增了企业运行时基础：
 
 同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/ai-agent-platform` 和 `partner/ai-agent-platform` 是两个不同项目；权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
 
-当前 CLI 的 `--workspace <slug|uuid>` 使用裸 workspace slug，所以 workspace slug 在同一个 taskg 实例内应保持唯一。project slug 只在当前 workspace 内解析：
+当前 CLI 的 `--workspace <slug|uuid>` 使用裸 workspace slug，所以 workspace slug 在同一个 xuanchu 实例内应保持唯一。project slug 只在当前 workspace 内解析：
 
 ```bash
-./taskg --workspace dajee list project:ai-agent-platform
-./taskg --workspace partner list project:ai-agent-platform
+./xuanchu --workspace dajee list project:ai-agent-platform
+./xuanchu --workspace partner list project:ai-agent-platform
 ```
 
-上面两条命令访问的是两个不同 workspace 里的同名 project。当前版本已经采用严格 project 注册：`taskg add ... project:<slug>` 和 `taskg 1 modify project:<slug>` 只能引用当前 workspace 内已存在、未归档的 project，不会运行时自动创建。脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令会报错，避免把任务写进错误租户。
+上面两条命令访问的是两个不同 workspace 里的同名 project。当前版本已经采用严格 project 注册：`xuanchu add ... project:<slug>` 和 `xuanchu 1 modify project:<slug>` 只能引用当前 workspace 内已存在、未归档的 project，不会运行时自动创建。脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令会报错，避免把任务写进错误租户。
 
 后续路线会基于已完成的 project 实体化继续往外开放协议层：
 
@@ -483,7 +486,7 @@ M4 新增了企业运行时基础：
 
 ### M4 升级说明
 
-从 M3 升级到 M4 时，不需要手动执行迁移命令；第一次运行 `taskg` 会自动完成迁移。
+从 M3 升级到 M4 时，不需要手动执行迁移命令；第一次运行 `xuanchu` 会自动完成迁移。
 
 迁移后的默认状态：
 
@@ -497,7 +500,7 @@ M4 新增了企业运行时基础：
 注意：M4 **不再把 TOML `context.active` 当作运行时 active context 来源**。如果你之前只依赖 TOML 里的 active context，需要在升级后执行一次：
 
 ```bash
-./taskg context use <name>
+./xuanchu context use <name>
 ```
 
 ## M5 Project 实体与配置边界
@@ -513,30 +516,30 @@ M5 现在已经落地。最重要的变化有四点：
 
 ```bash
 # 先建 workspace，再注册 project
-./taskg workspace add dajee name:Dajee
-./taskg --workspace dajee project add ai-agent-platform name:"AI Agent Platform" description:"Owns MCP work"
-./taskg --workspace dajee project add erp-rewrite name:"ERP Rewrite"
+./xuanchu workspace add dajee name:Dajee
+./xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform" description:"Owns MCP work"
+./xuanchu --workspace dajee project add erp-rewrite name:"ERP Rewrite"
 
 # 用 project slug 创建和查询任务
-./taskg --workspace dajee add "Design task.query schema" project:ai-agent-platform +mcp
-./taskg --workspace dajee add "Review ERP migration" project:erp-rewrite
-./taskg --workspace dajee list project:ai-agent-platform
+./xuanchu --workspace dajee add "Design task.query schema" project:ai-agent-platform +mcp
+./xuanchu --workspace dajee add "Review ERP migration" project:erp-rewrite
+./xuanchu --workspace dajee list project:ai-agent-platform
 
 # 管理 project 元数据
-./taskg --workspace dajee project list
-./taskg --workspace dajee project info ai-agent-platform --json
-./taskg --workspace dajee project modify ai-agent-platform description:"Owns taskg MCP and API work"
-./taskg --workspace dajee project archive erp-rewrite
+./xuanchu --workspace dajee project list
+./xuanchu --workspace dajee project info ai-agent-platform --json
+./xuanchu --workspace dajee project modify ai-agent-platform description:"Owns xuanchu MCP and API work"
+./xuanchu --workspace dajee project archive erp-rewrite
 
 # 归档后不能再被新任务引用
-./taskg --workspace dajee add "Should fail" project:erp-rewrite
+./xuanchu --workspace dajee add "Should fail" project:erp-rewrite
 ```
 
 如果你直接写一个不存在的 project，命令会失败，而不是偷偷创建：
 
 ```bash
-./taskg add "Ghost task" project:ghost
-# taskg: project_not_found: project "ghost" not found ...
+./xuanchu add "Ghost task" project:ghost
+# xuanchu: project_not_found: project "ghost" not found ...
 ```
 
 ### `project` 命令组
@@ -544,11 +547,11 @@ M5 现在已经落地。最重要的变化有四点：
 当前支持这些命令：
 
 ```bash
-./taskg project list [--all]
-./taskg project add <slug> name:<name> [description:<text>]
-./taskg project info <slug|project-id>
-./taskg project modify <slug|project-id> [name:<name>] [description:<text>]
-./taskg project archive <slug|project-id>
+./xuanchu project list [--all]
+./xuanchu project add <slug> name:<name> [description:<text>]
+./xuanchu project info <slug|project-id>
+./xuanchu project modify <slug|project-id> [name:<name>] [description:<text>]
+./xuanchu project archive <slug|project-id>
 ```
 
 说明：
@@ -562,10 +565,10 @@ M5 现在已经落地。最重要的变化有四点：
 project 级业务配置固定走 `project config`：
 
 ```bash
-./taskg project config set ai-agent-platform agent.background "Owns taskg MCP integration."
-./taskg project config get ai-agent-platform agent.background
-./taskg project config list ai-agent-platform
-./taskg project config unset ai-agent-platform agent.background
+./xuanchu project config set ai-agent-platform agent.background "Owns xuanchu MCP integration."
+./xuanchu project config get ai-agent-platform agent.background
+./xuanchu project config list ai-agent-platform
+./xuanchu project config unset ai-agent-platform agent.background
 ```
 
 当前白名单 key：
@@ -577,7 +580,7 @@ project 级业务配置固定走 `project config`：
 如果你误用无 scope 的 `config`：
 
 ```bash
-./taskg config set agent.background "..."
+./xuanchu config set agent.background "..."
 ```
 
 会返回 `project_config_scope_required`，并提示改用 `project config set <project> ...`。
@@ -585,10 +588,10 @@ project 级业务配置固定走 `project config`：
 ### Helper 与 audit 的 M5 行为
 
 ```bash
-./taskg _projects           # 当前 workspace 的 active project slug
-./taskg _projects --all     # 包括 archived
-./taskg _unique project     # 当前查询结果中实际被任务引用到的 project slug
-./taskg audit list --project ai-agent-platform --json
+./xuanchu _projects           # 当前 workspace 的 active project slug
+./xuanchu _projects --all     # 包括 archived
+./xuanchu _unique project     # 当前查询结果中实际被任务引用到的 project slug
+./xuanchu audit list --project ai-agent-platform --json
 ```
 
 这里有两个容易混的点：
@@ -608,7 +611,7 @@ project 级业务配置固定走 `project config`：
 如果本次启动存在跳过项，CLI 会在 `stderr` 打一行 warning。详细报告可用：
 
 ```bash
-./taskg config get migration.m5.projects.skipped
+./xuanchu config get migration.m5.projects.skipped
 ```
 
 这个 key 只用于迁移排障，不是业务配置。
@@ -620,8 +623,8 @@ M6 已经把 HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app
 启动服务端：
 
 ```bash
-./taskg server --listen :8080
-./taskg server --listen 127.0.0.1:8080 --db ./taskg.db
+./xuanchu server --listen :8080
+./xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
 ```
 
 服务端不内置 TLS。生产部署应放在可信网络内，或使用 Nginx / Caddy 等反向代理做 TLS termination；不要把裸 HTTP token 服务直接暴露公网。服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口。
@@ -629,38 +632,38 @@ M6 已经把 HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app
 创建第一个 token 建议在 server 启动前用本地 CLI 完成：
 
 ```bash
-./taskg --workspace local token create cli \
+./xuanchu --workspace local token create cli \
   --scope task:read,task:write,project:read,project:write,context:read,context:write,config:read,config:write,audit:read,token:read,token:write \
   --expires-in 720h
 ```
 
-PAT raw token 以 `taskg_pat_` 开头，Agent token raw token 以 `taskg_agent_` 开头。raw token 只在创建时输出一次；数据库只保存 hash 和短 prefix。后续可以通过 HTTP/远程 CLI 管理 token：
+PAT raw token 以 `xuanchu_pat_` 开头，Agent token raw token 以 `xuanchu_agent_` 开头。raw token 只在创建时输出一次；数据库只保存 hash 和短 prefix。后续可以通过 HTTP/远程 CLI 管理 token：
 
 ```bash
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" token list
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" token revoke <token-id-or-prefix>
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" token list
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" token revoke <token-id-or-prefix>
 ```
 
 远程 CLI：
 
 ```bash
-export TASKG_SERVER=http://127.0.0.1:8080
-export TASKG_TOKEN=taskg_pat_xxx
+export XUANCHU_SERVER=http://127.0.0.1:8080
+export XUANCHU_TOKEN=xuanchu_pat_xxx
 
-./taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" --workspace local list
-./taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" add "Review API docs" --project-id <project-id>
-./taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" 1 done
+./xuanchu --server "$XUANCHU_SERVER" --token "$XUANCHU_TOKEN" --workspace local list
+./xuanchu --server "$XUANCHU_SERVER" --token "$XUANCHU_TOKEN" add "Review API docs" --project-id <project-id>
+./xuanchu --server "$XUANCHU_SERVER" --token "$XUANCHU_TOKEN" 1 done
 ```
 
-`--server` / `--token` 也可以来自环境变量 `TASKG_SERVER` / `TASKG_TOKEN`，或本机 `taskg.toml`：
+`--server` / `--token` 也可以来自环境变量 `XUANCHU_SERVER` / `XUANCHU_TOKEN`，或本机 `xuanchu.toml`：
 
 ```toml
 [remote]
 server = "http://127.0.0.1:8080"
-token = "taskg_pat_xxx"
+token = "xuanchu_pat_xxx"
 ```
 
-如果 `taskg.toml` 包含 `remote.token` 且权限比 `0600` 更宽，CLI 会向 stderr 输出 warning，但不会阻止执行。推荐优先用环境变量或系统 secret manager 注入 token，不要把含 token 的 TOML 提交到公共仓库。
+如果 `xuanchu.toml` 包含 `remote.token` 且权限比 `0600` 更宽，CLI 会向 stderr 输出 warning，但不会阻止执行。推荐优先用环境变量或系统 secret manager 注入 token，不要把含 token 的 TOML 提交到公共仓库。
 
 Token scope 是收窄，不是放大。最终权限是：
 
@@ -680,33 +683,33 @@ project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取
 
 ## M7 MCP Server
 
-M7 让 Agent 通过 MCP 协议以结构化方式使用 taskg。支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
+M7 让 Agent 通过 MCP 协议以结构化方式使用 xuanchu。支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
 
 ### MCP stdio 模式
 
-本地 Agent 直接通过标准输入输出连接 taskg：
+本地 Agent 直接通过标准输入输出连接 xuanchu：
 
 ```bash
 # 本地 MCP，使用默认本地数据库
-./taskg mcp stdio
+./xuanchu mcp stdio
 
 # 指定数据库
-./taskg --db ./taskg.db mcp stdio
+./xuanchu --db ./xuanchu.db mcp stdio
 ```
 
 stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输出 MCP JSON-RPC 协议帧，不会混入迁移 warning 或日志。
 
 ### MCP HTTP 模式
 
-`taskg server` 在 `/mcp` 路径暴露 Streamable HTTP MCP endpoint：
+`xuanchu server` 在 `/mcp` 路径暴露 Streamable HTTP MCP endpoint：
 
 ```bash
 # 启动服务端
-./taskg server --listen :8080
+./xuanchu server --listen :8080
 
 # MCP 客户端连接
 # POST http://127.0.0.1:8080/mcp
-# Authorization: Bearer taskg_pat_xxx
+# Authorization: Bearer xuanchu_pat_xxx
 ```
 
 HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。`/mcp` 不在 OpenAPI 文档中。
@@ -741,42 +744,42 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 
 ### MCP resources
 
-- `taskg://workspace/current` — 当前 workspace 概要
-- `taskg://workspace/{workspace_id}` — 指定 workspace 信息
-- `taskg://project/{project_id}` — 项目元数据与 Agent 背景
-- `taskg://context/current` — 当前 context 与 scope
+- `xuanchu://workspace/current` — 当前 workspace 概要
+- `xuanchu://workspace/{workspace_id}` — 指定 workspace 信息
+- `xuanchu://project/{project_id}` — 项目元数据与 Agent 背景
+- `xuanchu://context/current` — 当前 context 与 scope
 
 ### 远程管理命令收口
 
 M7 补齐了 M6 遗留的远程管理命令。以下命令均已支持远程模式，不会触碰客户端本地数据库：
 
 ```bash
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" workspace list
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" workspace add team name:Team
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" user list
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" member list
-./taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" show date.format
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" workspace list
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" workspace add team name:Team
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" user list
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" member list
+./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" show date.format
 ```
 
 ## M8 服务端 Webhook Hook
 
-M8 为 `taskg server` 提供服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。
+M8 为 `xuanchu server` 提供服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。
 
 ```bash
 # 创建 workspace 级 hook
-./taskg hook add task-webhook --event task.created --event task.completed --url https://example.test/taskg
+./xuanchu hook add task-webhook --event task.created --event task.completed --url https://example.test/xuanchu
 
 # 创建 project 级 hook
-./taskg hook add proj-webhook --scope project --project myproject --event task.modified --url https://example.test/hook
+./xuanchu hook add proj-webhook --scope project --project myproject --event task.modified --url https://example.test/hook
 
 # 查看 hook 列表
-./taskg hook list
+./xuanchu hook list
 
 # 查看投递记录
-./taskg hook deliveries <hook-id>
+./xuanchu hook deliveries <hook-id>
 
 # 重试失败投递
-./taskg hook replay <delivery-id>
+./xuanchu hook replay <delivery-id>
 ```
 
 Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。投递失败不会回滚已提交的 task/project 事务。所有 hook 配置变更和人工 replay 都会写入 audit log。
@@ -787,31 +790,31 @@ M10 让 Agent 平台可以持有一个带 `impersonate` scope 的 Agent token，
 
 ```bash
 # 创建可 impersonate 的 Agent token（需要 admin/owner）
-./taskg --workspace local token create pm-agent \
+./xuanchu --workspace local token create pm-agent \
   --type agent \
   --scope task:read,task:write,impersonate \
   --expires-in 8760h
 
 # 远程 CLI 使用 impersonation
-./taskg --server http://127.0.0.1:8080 \
+./xuanchu --server http://127.0.0.1:8080 \
   --token "$AGENT_TOKEN" \
   --workspace local \
   --as alice \
   list assignee:me
 ```
 
-HTTP API 通过 `X-Taskg-As` header：
+HTTP API 通过 `X-Xuanchu-As` header：
 
 ```
 GET /api/v1/tasks
-Authorization: Bearer taskg_agent_...
-X-Taskg-As: alice
+Authorization: Bearer xuanchu_agent_...
+X-Xuanchu-As: alice
 ```
 
 权限以目标用户的 membership role 与 token scope 的交集为准，impersonation 不能提权。Token 可见多个 workspace 且请求未显式指定 workspace 时返回 `workspace_required`。目标用户不存在或不是成员时返回 `membership_not_found`。
 
 Audit log 同时记录 `actor_user_id`（目标用户）和 `delegator_token_id`/`delegator_user_id`（发起方 Agent token）。
 
-HTTP MCP 的每个 tool call 都支持 `X-Taskg-As` header 透传。stdio MCP 不支持 impersonation。
+HTTP MCP 的每个 tool call 都支持 `X-Xuanchu-As` header 透传。stdio MCP 不支持 impersonation。
 
 部署、TLS、备份恢复请参考 [`docs/deployment.md`](./docs/deployment.md) 和 [`docs/backup-restore.md`](./docs/backup-restore.md)。

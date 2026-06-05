@@ -1,10 +1,10 @@
-# taskg M10 Impersonation Implementation Plan
+# xuanchu M10 Impersonation Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 `taskg` 增加基于 `agent` token + `X-Taskg-As` 的 impersonation 能力，并让 HTTP API、remote CLI、HTTP MCP、audit/access log 在同一套 actor/runtime 语义下工作。
+**Goal:** 为 `xuanchu` 增加基于 `agent` token + `X-Xuanchu-As` 的 impersonation 能力，并让 HTTP API、remote CLI、HTTP MCP、audit/access log 在同一套 actor/runtime 语义下工作。
 
-**Architecture:** M10 不新增第三种 token type，而是在现有 `pat` / `agent` 模型上为 `agent` token 新增 `impersonate` capability，并在请求授权阶段拆分出“delegator token 身份”和“subject actor 身份”。实现按四层推进：先收敛 token/scope/runtime 数据结构，再把 impersonation 接进 HTTP 鉴权与 audit，再让 remote CLI 和 HTTP MCP 透传 `X-Taskg-As`，最后补齐文档与全量验证。
+**Architecture:** M10 不新增第三种 token type，而是在现有 `pat` / `agent` 模型上为 `agent` token 新增 `impersonate` capability，并在请求授权阶段拆分出“delegator token 身份”和“subject actor 身份”。实现按四层推进：先收敛 token/scope/runtime 数据结构，再把 impersonation 接进 HTTP 鉴权与 audit，再让 remote CLI 和 HTTP MCP 透传 `X-Xuanchu-As`，最后补齐文档与全量验证。
 
 **Tech Stack:** Go 1.25、Cobra、GORM、`github.com/glebarez/sqlite`、`net/http`、`github.com/go-chi/chi/v5`、官方 MCP Go SDK、CLI integration tests、`httptest`、MCP integration/schema tests。
 
@@ -12,12 +12,12 @@
 
 ## 范围锁定
 
-严格按 [M10 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-03-taskg-m10-impersonation-design.md) 实现。
+严格按 [M10 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-06-03-xuanchu-m10-impersonation-design.md) 实现。
 
 必须进入 M10：
 
 - `agent` token 新增 `impersonate` capability；`pat` 不允许持有该 scope。
-- 请求头 `X-Taskg-As: <user-name|user-email|user-uuid>`。
+- 请求头 `X-Xuanchu-As: <user-name|user-email|user-uuid>`。
 - request authorization 生成双重 actor：
   - subject：驱动 `ActorUserID`、`ActorName`、membership role、`assignee:me`、active context。
   - delegator：驱动 token id / token user id 的追责字段。
@@ -25,7 +25,7 @@
 - workspace 已确定后，目标 user 不存在或不是该 workspace 成员时统一返回 `membership_not_found`。
 - `audit_logs` 增加 `delegator_token_id` / `delegator_user_id`，并贯通 `audit list --json`、HTTP audit response、access log。
 - remote CLI 增加 `--as`，作为 client 级配置透传到每个 HTTP 子请求。
-- HTTP MCP 支持每个 tool-call request 透传 `X-Taskg-As`；stdio MCP 不支持 impersonation。
+- HTTP MCP 支持每个 tool-call request 透传 `X-Xuanchu-As`；stdio MCP 不支持 impersonation。
 - 本地/远程 token create 都要执行新的 M10 约束：只有 admin/owner 才能创建带 `impersonate` 的 token，且远程/API 创建时新 token 仍必须是当前 bearer token 的子集。
 - README / manual / OpenAPI / roadmap / requirements 同步。
 
@@ -41,7 +41,7 @@
 ## 执行注意事项
 
 - 不要在 `internal/httpapi` 或 `internal/mcpserver` 复制权限规则；缺能力就补 `internal/app`。
-- `X-Taskg-As` 只替换 actor，不参与 workspace 选择。
+- `X-Xuanchu-As` 只替换 actor，不参与 workspace 选择。
 - 所有 impersonation 行为必须先经过统一的 request authorization，再构造 scoped service。
 - 任何行为差异都要优先用测试锁定：token 创建、HTTP 鉴权、audit 输出、remote CLI 透传、MCP request-scoped header。
 - `audit` 与 `access log` 的“双重 actor”必须同时落地；不要只改 DB 表不改上层 view。
@@ -85,7 +85,7 @@
 - `internal/storage/db_test.go`
   migration 验证新 audit 列存在。
 - `internal/httpapi/middleware.go`
-  解析 `X-Taskg-As`，在 access log 中输出 subject/delegator。
+  解析 `X-Xuanchu-As`，在 access log 中输出 subject/delegator。
 - `internal/httpapi/app_service.go`
   request-scoped service 构造接入 impersonation authorization。
 - `internal/httpapi/envelope.go`
@@ -103,7 +103,7 @@
 - `internal/mcpserver/auth.go`
   HTTP MCP request authorization 接入 impersonation。
 - `internal/mcpserver/tools_common.go`
-  确保 tool request 的 header clone 能传入 `X-Taskg-As`。
+  确保 tool request 的 header clone 能传入 `X-Xuanchu-As`。
 - `internal/mcpserver/auth_test.go`
   HTTP MCP `workspace_required` / `membership_not_found` / `token_scope_denied` 测试。
 - `internal/mcpserver/integration_test.go`
@@ -122,10 +122,10 @@
   token create help / type help 更新为 `impersonate` 只对 `agent` 生效。
 - `tests/integration/cli_test.go`
   remote CLI `--as` 黑盒测试。
-- `docs/openapi/taskg-v1.yaml`
-  token scope enum、新 audit 字段、`X-Taskg-As`、`workspace_required` 等说明。
+- `docs/openapi/xuanchu-v1.yaml`
+  token scope enum、新 audit 字段、`X-Xuanchu-As`、`workspace_required` 等说明。
 - `docs/manual/remote-cli-and-api.md`
-  `--as` / `X-Taskg-As` 文档。
+  `--as` / `X-Xuanchu-As` 文档。
 - `docs/manual/mcp.md`
   HTTP MCP request-scoped impersonation 说明。
 - `docs/manual/reference/errors.md`
@@ -235,7 +235,7 @@ Run:
 go test ./internal/app -run 'TestAuthorizeTokenRequest.*Impersonation'
 ```
 
-Expected: FAIL，当前 authorization 只有单 actor，且不识别 `X-Taskg-As` 语义。
+Expected: FAIL，当前 authorization 只有单 actor，且不识别 `X-Xuanchu-As` 语义。
 
 - [ ] **Step 3: 扩展 authorization 输入与输出**
 
@@ -377,13 +377,13 @@ Run:
 go test ./internal/httpapi -run 'TestImpersonation'
 ```
 
-Expected: FAIL，middleware 还没有读取 `X-Taskg-As`，`workspace_required` 也未映射。
+Expected: FAIL，middleware 还没有读取 `X-Xuanchu-As`，`workspace_required` 也未映射。
 
 - [ ] **Step 3: 在 HTTP 鉴权链中透传 subject**
 
 在 `internal/httpapi/middleware.go` / `app_service.go`：
 
-- 从 header 读取 `X-Taskg-As`
+- 从 header 读取 `X-Xuanchu-As`
 - 传入 `AuthorizeTokenRequest`
 - access log 改成同时输出 subject/delegator，例如：
 
@@ -467,7 +467,7 @@ type Options struct {
 
 ```go
 if strings.TrimSpace(c.asUser) != "" {
-    req.Header.Set("X-Taskg-As", c.asUser)
+    req.Header.Set("X-Xuanchu-As", c.asUser)
 }
 ```
 
@@ -521,7 +521,7 @@ Run:
 go test ./internal/mcpserver ./internal/httpapi -run 'TestMCP.*Impersonation'
 ```
 
-Expected: FAIL，HTTP MCP 还不会把 `X-Taskg-As` 解释为 subject。
+Expected: FAIL，HTTP MCP 还不会把 `X-Xuanchu-As` 解释为 subject。
 
 - [ ] **Step 3: 复用 HTTP request authorization**
 
@@ -530,7 +530,7 @@ Expected: FAIL，HTTP MCP 还不会把 `X-Taskg-As` 解释为 subject。
 
 - [ ] **Step 4: 保持 stdio MCP 不支持 impersonation**
 
-不要在 `ServiceForStdio()` 增加任何 `X-Taskg-As` 或本地 actor 覆盖逻辑。  
+不要在 `ServiceForStdio()` 增加任何 `X-Xuanchu-As` 或本地 actor 覆盖逻辑。  
 如果测试需要，显式证明 stdio 仍只使用本地 active user/workspace。
 
 - [ ] **Step 5: 运行绿测**
@@ -551,7 +551,7 @@ Expected: PASS。
 
 **Files:**
 - Modify: `internal/remote/config.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 - Modify: `docs/manual/remote-cli-and-api.md`
 - Modify: `docs/manual/mcp.md`
 - Modify: `docs/manual/reference/errors.md`
@@ -565,7 +565,7 @@ Expected: PASS。
 
 - token scope enum 增加 `impersonate`
 - audit JSON response 增加 `delegator_token_id` / `delegator_user_id`
-- remote CLI / HTTP API 文档增加 `--as` / `X-Taskg-As`
+- remote CLI / HTTP API 文档增加 `--as` / `X-Xuanchu-As`
 - manual 里明确“HTTP MCP 是 request-scoped impersonation，stdio MCP 不支持”
 - `workspace_required` 在 remote/HTTP/MCP 场景下的触发条件写清楚
 
@@ -603,7 +603,7 @@ Run:
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -611,7 +611,7 @@ Expected: PASS。
 如果 `go build` 生成本地二进制，执行：
 
 ```bash
-rm -f taskg
+rm -f xuanchu
 ```
 
 - [ ] **Step 3: 检查格式与脏 diff**
@@ -642,9 +642,9 @@ git commit -m "feat: 实现 token impersonation"
 - [ ] 未知 user 与非成员统一返回 `membership_not_found`
 - [ ] audit / access log 都有 subject + delegator
 - [ ] remote CLI `--as` 透传到所有 HTTP 子请求
-- [ ] HTTP MCP 每个 tool-call request 都支持 `X-Taskg-As`
+- [ ] HTTP MCP 每个 tool-call request 都支持 `X-Xuanchu-As`
 - [ ] stdio MCP 不支持 impersonation
 - [ ] OpenAPI / manual / roadmap / requirements 已同步
-- [ ] `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过
+- [ ] `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过
 
-Plan complete and saved to `docs/superpowers/plans/2026-06-03-taskg-m10-impersonation-implementation.md`. Ready to execute?
+Plan complete and saved to `docs/superpowers/plans/2026-06-03-xuanchu-m10-impersonation-implementation.md`. Ready to execute?

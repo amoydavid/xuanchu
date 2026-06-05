@@ -8,9 +8,9 @@ weight: 30
 ## 添加任务
 
 ```bash
-taskg add "Write project spec" project:ai-agent-platform +planning due:tomorrow
-taskg add "Review PR" project:ai-agent-platform priority:H +review
-taskg add "Ship docs" @alice @bob
+xuanchu add "Write project spec" project:ai-agent-platform +planning due:tomorrow
+xuanchu add "Review PR" project:ai-agent-platform priority:H +review
+xuanchu add "Ship docs" @alice @bob
 ```
 
 任务描述可以作为第一个参数，也可以和修改项一起出现。常见修改项：
@@ -30,13 +30,13 @@ taskg add "Ship docs" @alice @bob
 ## 查看任务
 
 ```bash
-taskg list
-taskg next
-taskg all
-taskg info 1
-taskg info <uuid>
-taskg list assignee:alice
-taskg next assignee:me
+xuanchu list
+xuanchu next
+xuanchu all
+xuanchu info 1
+xuanchu info <uuid>
+xuanchu list assignee:alice
+xuanchu next assignee:me
 ```
 
 常用报表：
@@ -58,10 +58,10 @@ taskg next assignee:me
 ## 修改任务
 
 ```bash
-taskg 1 modify priority:H +next
-taskg 1 modify due:
-taskg 1 modify project:ai-agent-platform
-taskg 1 modify +@alice -@bob
+xuanchu 1 modify priority:H +next
+xuanchu 1 modify due:
+xuanchu 1 modify project:ai-agent-platform
+xuanchu 1 modify +@alice -@bob
 ```
 
 `key:` 表示清空字段，例如 `due:` 清空 due。
@@ -70,22 +70,22 @@ taskg 1 modify +@alice -@bob
 ## 完成和删除
 
 ```bash
-taskg 1 done
-taskg 1 delete
+xuanchu 1 done
+xuanchu 1 delete
 ```
 
 `delete` 是软删除。要查看 deleted 任务：
 
 ```bash
-taskg deleted
+xuanchu deleted
 ```
 
 ## Start / Stop
 
 ```bash
-taskg 1 start
-taskg active
-taskg 1 stop
+xuanchu 1 start
+xuanchu active
+xuanchu 1 stop
 ```
 
 `start` 会写入 `start` 字段，任务进入 active 报表，并影响 urgency。
@@ -93,9 +93,9 @@ taskg 1 stop
 ## 注释
 
 ```bash
-taskg 1 annotate "called vendor, waiting for reply"
-taskg _get 1.annotations
-taskg 1 denotate 1
+xuanchu 1 annotate "called vendor, waiting for reply"
+xuanchu _get 1.annotations
+xuanchu 1 denotate 1
 ```
 
 annotation 包含时间戳和描述。`denotate` 的 index 从 1 开始。
@@ -103,22 +103,22 @@ annotation 包含时间戳和描述。`denotate` 的 index 从 1 开始。
 ## 描述编辑
 
 ```bash
-taskg 1 append "with examples"
-taskg 1 prepend "[draft]"
-taskg 1 edit
+xuanchu 1 append "with examples"
+xuanchu 1 prepend "[draft]"
+xuanchu 1 edit
 ```
 
-`edit` 会打开 `$EDITOR`，以 JSON 形式编辑任务。保存后 taskg 会校验字段；非法日期、非法 status、换行 annotation 等不会写回。
+`edit` 会打开 `$EDITOR`，以 JSON 形式编辑任务。保存后 xuanchu 会校验字段；非法日期、非法 status、换行 annotation 等不会写回。
 
 远程 CLI 不支持 `edit`，因为它依赖本机编辑器。
 
 ## 依赖
 
 ```bash
-taskg add "Prepare API" project:ai-agent-platform
-taskg add "Write docs" project:ai-agent-platform depends:<uuid-or-id>
-taskg blocked
-taskg blocking
+xuanchu add "Prepare API" project:ai-agent-platform
+xuanchu add "Write docs" project:ai-agent-platform depends:<uuid-or-id>
+xuanchu blocked
+xuanchu blocking
 ```
 
 被其他 pending 任务依赖的任务会出现在 `blocking`。依赖未完成的任务会出现在 `blocked`。
@@ -128,18 +128,18 @@ taskg blocking
 为任务添加外部关联链接（文档、PR、工单等）：
 
 ```bash
-taskg link add <task-ref> --type document --url https://... --title "设计文档"
-taskg link list <task-ref>
-taskg link remove <task-ref> --link-id <link-id>
+xuanchu link add <task-ref> --type document --url https://... --title "设计文档"
+xuanchu link list <task-ref>
+xuanchu link remove <task-ref> --link-id <link-id>
 ```
 
 ## 循环任务
 
 ```bash
-taskg add "Submit weekly report" project:ai-agent-platform recur:weekly due:2030-01-05 until:2030-02-01
-taskg list
-taskg 1 done
-taskg list
+xuanchu add "Submit weekly report" project:ai-agent-platform recur:weekly due:2030-01-05 until:2030-02-01
+xuanchu list
+xuanchu 1 done
+xuanchu list
 ```
 
 当前支持：
@@ -165,7 +165,7 @@ taskg list
 `due:` 和 `end:` 表示某天截止或结束，写入时会落在当地时区当天 `23:59:59`。
 
 ```bash
-taskg add "deadline" project:ai-agent-platform due:2030-01-01
+xuanchu add "deadline" project:ai-agent-platform due:2030-01-01
 ```
 
 查询 `due:2030-01-01` 表示这个自然日范围，而不是只匹配零点。

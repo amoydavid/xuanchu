@@ -1,12 +1,12 @@
-# taskg M6 设计规格
+# xuanchu M6 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 让同一个 `taskg` 二进制可以作为 HTTP/JSON API 服务端运行，并让远程 CLI 与 Agent token 通过同一套 actor、workspace、project scope 访问已有 app service。
+**目标：** 让同一个 `xuanchu` 二进制可以作为 HTTP/JSON API 服务端运行，并让远程 CLI 与 Agent token 通过同一套 actor、workspace、project scope 访问已有 app service。
 
 **范围策略：** M6 只做服务化入口、令牌鉴权、请求级 scope 和远程 CLI 基础，不做 MCP、不做 op-log 同步、不做外部系统 adapter。M6 的关键决策是：HTTP/API/远程 CLI 必须复用 `internal/app`，权限边界来自 token 与 membership，不能在 handler 或远程 CLI 中复制业务规则。
 
-**需求来源：** 本规格从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md)、[M5 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-30-taskg-m5-design.md)，以及当前 M5 已完成实现边界中收束。
+**需求来源：** 本规格从 [README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md)、[M5 设计规格](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-30-xuanchu-m5-design.md)，以及当前 M5 已完成实现边界中收束。
 
 ---
 
@@ -33,14 +33,14 @@ M6 不重做任务模型和 project 模型。M6 的工作是把已有 app servic
 M6 新增：
 
 ```bash
-taskg server --listen :8080
-taskg server --listen 127.0.0.1:8080 --db ./taskg.db
-taskg server --listen :8080 --data-dir ./data
+xuanchu server --listen :8080
+xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
+xuanchu server --listen :8080 --data-dir ./data
 ```
 
 规则：
 
-- `server` 是 `taskg` 的子命令，不新增第二个二进制。
+- `server` 是 `xuanchu` 的子命令，不新增第二个二进制。
 - 服务端数据库路径继续遵守现有 `--db`、`--data-dir`、TOML、XDG data、home fallback 规则。
 - 服务端启动后使用同一个 SQLite 文件，通过表内 `workspace_id` 做行级隔离。
 - 服务端模式不读取请求方本机 TOML，也不依赖请求方本机 active context。服务端持有的 `(actor, workspace)` 维度 active context 仍存于服务端 SQLite，按 M4/M5 既有语义工作。
@@ -101,9 +101,9 @@ M6 延续 M5 决策：
 M6 支持：
 
 ```bash
-taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" list
-taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" --workspace dajee list project:ai-agent-platform
-taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" add "Review API" --project-id <uuid>
+xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" list
+xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" --workspace dajee list project:ai-agent-platform
+xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" add "Review API" --project-id <uuid>
 ```
 
 规则：
@@ -120,7 +120,7 @@ taskg --server http://127.0.0.1:8080 --token "$TASKG_TOKEN" add "Review API" --p
 ### 3.1 启动服务端
 
 ```bash
-taskg server --listen :8080 --data-dir ./data
+xuanchu server --listen :8080 --data-dir ./data
 ```
 
 启动行为：
@@ -142,13 +142,13 @@ taskg server --listen :8080 --data-dir ./data
 本地管理员可以创建 token：
 
 ```bash
-taskg token create cli-dajee \
+xuanchu token create cli-dajee \
   --user alice \
   --workspace dajee \
   --scope task:read,task:write,project:read,context:read \
   --expires-in 720h
 
-taskg token create agent-api-docs \
+xuanchu token create agent-api-docs \
   --user agent-api \
   --workspace dajee \
   --project-id <project-id> \
@@ -165,11 +165,11 @@ taskg token create agent-api-docs \
 M6 还需要：
 
 ```bash
-taskg token list
-taskg token revoke <token-id|token-prefix>
+xuanchu token list
+xuanchu token revoke <token-id|token-prefix>
 ```
 
-`taskg token list` 输出规则：
+`xuanchu token list` 输出规则：
 
 - human columns 固定为 `ID PREFIX NAME TYPE WORKSPACES SCOPES EXPIRES_AT LAST_USED_AT`。
 - `--json` 输出 token view 字段：`id`、`prefix`、`name`、`type`、`user_id`、`workspace_ids`、`project_ids`、`scopes`、`created_at`、`expires_at`、`revoked_at`、`last_used_at`，但不得包含 raw token 或 token hash。
@@ -180,9 +180,9 @@ token 创建有两条路径：
 - 本地 CLI：直接打开 SQLite 创建 token，使用本地 active user 作为 actor。这是 fresh server 的 bootstrap 路径。
 - HTTP API：通过已有 token 创建或 revoke token，受 token capability、workspace/project scope 和 membership role 共同限制。
 
-建议在 `taskg server` 启动前，先用本地 CLI 创建至少一个 admin token 作为远程 bootstrap 凭证。M6 不在 `taskg server` 启动时输出 bootstrap token，也不提供匿名 token 创建 endpoint。server 已运行后，后续 token 应优先通过 HTTP API 创建，避免长期绕开服务端写入口。
+建议在 `xuanchu server` 启动前，先用本地 CLI 创建至少一个 admin token 作为远程 bootstrap 凭证。M6 不在 `xuanchu server` 启动时输出 bootstrap token，也不提供匿名 token 创建 endpoint。server 已运行后，后续 token 应优先通过 HTTP API 创建，避免长期绕开服务端写入口。
 
-本地 `taskg token create` 规则：
+本地 `xuanchu token create` 规则：
 
 - 省略 `--user` 时，token 归属当前 active user。
 - 指定 `--user other` 时，当前 actor 必须在目标 workspace 中是 admin/owner。
@@ -197,18 +197,18 @@ M6 不做用户名密码登录和短期 JWT。JWT 可在 M6.5 或后续里程碑
 连接配置可以来自 flag、环境变量或本机 TOML：
 
 ```bash
-TASKG_SERVER=http://127.0.0.1:8080
-TASKG_TOKEN=taskg_pat_xxx
+XUANCHU_SERVER=http://127.0.0.1:8080
+XUANCHU_TOKEN=xuanchu_pat_xxx
 
-taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" list
-taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" --workspace dajee next
-taskg --server "$TASKG_SERVER" --token "$TASKG_TOKEN" --project-id <project-id> add "Draft OpenAPI docs"
+xuanchu --server "$XUANCHU_SERVER" --token "$XUANCHU_TOKEN" list
+xuanchu --server "$XUANCHU_SERVER" --token "$XUANCHU_TOKEN" --workspace dajee next
+xuanchu --server "$XUANCHU_SERVER" --token "$XUANCHU_TOKEN" --project-id <project-id> add "Draft OpenAPI docs"
 ```
 
 优先级：
 
 ```text
-CLI flag > 环境变量 > taskg.toml > 空值
+CLI flag > 环境变量 > xuanchu.toml > 空值
 ```
 
 建议 TOML：
@@ -216,23 +216,23 @@ CLI flag > 环境变量 > taskg.toml > 空值
 ```toml
 [remote]
 server = "http://127.0.0.1:8080"
-token = "taskg_pat_xxx"
+token = "xuanchu_pat_xxx"
 ```
 
 说明：
 
 - `remote.server` 和 `remote.token` 是本机连接配置，不是 workspace 业务配置。
 - token 写入 TOML 是本地便利功能，不进入服务端 DB 业务配置。
-- 推荐优先用环境变量 `TASKG_TOKEN` 或系统 secret manager 注入 token。把 `remote.token` 写入 TOML 时，用户必须自行保护文件权限，建议 `0600`；不要把含 token 的 `taskg.toml` 提交到公共 repo。
+- 推荐优先用环境变量 `XUANCHU_TOKEN` 或系统 secret manager 注入 token。把 `remote.token` 写入 TOML 时，用户必须自行保护文件权限，建议 `0600`；不要把含 token 的 `xuanchu.toml` 提交到公共 repo。
 - M6 不提供 token 加密存储，也不做系统钥匙串集成。
-- 如果 CLI 发现 `taskg.toml` 包含 `remote.token` 且文件权限比 `0600` 更宽，应向 stderr 输出 warning，但不阻止执行。
+- 如果 CLI 发现 `xuanchu.toml` 包含 `remote.token` 且文件权限比 `0600` 更宽，应向 stderr 输出 warning，但不阻止执行。
 
 ### 3.4 Agent token 的使用边界
 
 Agent token 与 PAT 使用同一个 HTTP bearer 机制：
 
 ```http
-Authorization: Bearer taskg_agent_xxx
+Authorization: Bearer xuanchu_agent_xxx
 ```
 
 Agent token 的区别在于：
@@ -310,7 +310,7 @@ NewServiceForRuntime(store, runtime, scope, opts)
 HTTP 请求解析 workspace 的顺序：
 
 ```text
-请求参数 workspace / X-Taskg-Workspace > token 单 workspace scope > actor default workspace > 错误
+请求参数 workspace / X-Xuanchu-Workspace > token 单 workspace scope > actor default workspace > 错误
 ```
 
 规则：
@@ -373,8 +373,8 @@ M6 不要求 `idx_api_tokens_active` partial index。每个 user 的 token 量�
 规则：
 
 - raw token 使用至少 32 bytes 随机数生成，并带可读前缀：
-  - `taskg_pat_...`
-  - `taskg_agent_...`
+  - `xuanchu_pat_...`
+  - `xuanchu_agent_...`
 - `token_prefix` 保存前 12 到 16 个可用于列表和快速定位的字符。
 - `token_hash` 保存 raw token 的 SHA-256 hex 或等价安全哈希。
 - 校验时先按 prefix 找候选，再用常量时间比较 hash。
@@ -725,8 +725,8 @@ remote_unsupported_command: command "edit" is not supported in remote mode
 远程 CLI 仍要支持数字 working-set ID：
 
 ```bash
-taskg --server ... list
-taskg --server ... 1 done
+xuanchu --server ... list
+xuanchu --server ... 1 done
 ```
 
 规则：
@@ -860,8 +860,8 @@ M6 必须提供 OpenAPI 3 文档。
 
 允许两种实现：
 
-1. 手写 `docs/openapi/taskg-v1.yaml`。
-2. 用 Go 注释或结构生成，但生成产物仍提交到 `docs/openapi/taskg-v1.yaml`。
+1. 手写 `docs/openapi/xuanchu-v1.yaml`。
+2. 用 Go 注释或结构生成，但生成产物仍提交到 `docs/openapi/xuanchu-v1.yaml`。
 
 推荐 M6 先手写，因为 endpoint 范围可控，避免引入过重生成链。
 
@@ -973,7 +973,7 @@ M6 新增错误 code：
 
 必须覆盖：
 
-- `taskg server` 可启动并响应 `/healthz`。
+- `xuanchu server` 可启动并响应 `/healthz`。
 - `token create/list/revoke`。
 - 远程 `list/add/info/modify/done/delete`。
 - 远程 `project list/add/info/modify/archive`。
@@ -992,7 +992,7 @@ M6 新增错误 code：
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 如果引入 HTTP router 依赖，必须确认它不引入 CGO。
@@ -1009,7 +1009,7 @@ M6 完成后必须更新：
   - 收紧 M7 为 MCP Server 和 tool schema。
 - [docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md)
   - 更新 M6 实际 endpoint、token scope、远程 CLI 范围。
-- [docs/openapi/taskg-v1.yaml](/Users/mac/code/projects/dajee/task/docs/openapi/taskg-v1.yaml)
+- [docs/openapi/xuanchu-v1.yaml](/Users/mac/code/projects/dajee/task/docs/openapi/xuanchu-v1.yaml)
   - 覆盖已实现 HTTP API。
 
 ## 15. 进入 implementation plan 前的检查

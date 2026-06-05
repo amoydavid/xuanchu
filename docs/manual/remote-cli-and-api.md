@@ -5,16 +5,16 @@ weight: 70
 
 # 远程 CLI 与 HTTP API
 
-taskg server 提供 HTTP/JSON API。远程 CLI 通过同一套 API 访问服务端，不复制业务逻辑。
+xuanchu server 提供 HTTP/JSON API。远程 CLI 通过同一套 API 访问服务端，不复制业务逻辑。
 
-远程 CLI 的 actor 来自 Bearer token 绑定的 user，不来自本机 `taskg user use`。如果你还不熟悉 user/workspace/member 初始化，先读 [身份与初始化](identity-and-initialization.md)。
+远程 CLI 的 actor 来自 Bearer token 绑定的 user，不来自本机 `xuanchu user use`。如果你还不熟悉 user/workspace/member 初始化，先读 [身份与初始化](identity-and-initialization.md)。
 
 ## 启动服务端
 
 ```bash
-taskg server --listen :8080
-taskg server --listen 127.0.0.1:8080 --db ./taskg.db
-taskg server --listen :8080 --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+xuanchu server --listen :8080
+xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
+xuanchu server --listen :8080 --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 ```
 
 生产环境建议放在反向代理之后做 TLS termination。详见 [部署指南](deployment.md)。
@@ -24,7 +24,7 @@ taskg server --listen :8080 --db-url "postgres://user:pass@localhost:5432/taskg?
 第一个 admin token 建议在 server 启动前用本地 CLI 创建：
 
 ```bash
-taskg token create admin \
+xuanchu token create admin \
   --type pat \
   --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write \
   --expires-in 720h
@@ -35,7 +35,7 @@ taskg token create admin \
 创建 project-scoped Agent token：
 
 ```bash
-taskg --workspace dajee token create mcp-agent \
+xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
   --project ai-agent-platform \
@@ -45,30 +45,30 @@ taskg --workspace dajee token create mcp-agent \
 查看和撤销：
 
 ```bash
-taskg token list
-taskg token revoke <id-or-prefix>
+xuanchu token list
+xuanchu token revoke <id-or-prefix>
 ```
 
 ## 使用远程 CLI
 
 ```bash
-export TASKG_TOKEN="..."
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" --workspace dajee list
+export XUANCHU_TOKEN="..."
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" --workspace dajee list
 ```
 
-这条命令中的真实 actor 是 `$TASKG_TOKEN` 绑定的 user。`--workspace dajee` 只是在 token 允许范围内选择 effective workspace。
+这条命令中的真实 actor 是 `$XUANCHU_TOKEN` 绑定的 user。`--workspace dajee` 只是在 token 允许范围内选择 effective workspace。
 
 也可以每次显式指定 project scope：
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
   --workspace dajee --project ai-agent-platform list
 ```
 
 脚本和 Agent 推荐使用 `--project-id`，避免 slug 歧义：
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
   --project-id <project-uuid> list
 ```
 
@@ -114,16 +114,16 @@ project-scoped token 读不到 scope 外的任务。单任务越界读取返回 
 
 PAT 使用 `*` 通配符时自动剔除 `impersonate`（仅限 agent token）。
 
-使用 `taskg scope list` 查看当前系统所有可用 scope。
+使用 `xuanchu scope list` 查看当前系统所有可用 scope。
 
 ### Token 修改
 
 已创建的 token 可以修改名称、scope 和过期时间：
 
 ```bash
-taskg token modify <id> --name "新名称"
-taskg token modify <id> --scope '*:read' --scope 'task:write'
-taskg token modify <id> --expires-in 0
+xuanchu token modify <id> --name "新名称"
+xuanchu token modify <id> --scope '*:read' --scope 'task:write'
+xuanchu token modify <id> --expires-in 0
 ```
 
 修改 token 需要 `token:write` 权限。已撤销或已过期的 token 不能修改。
@@ -133,48 +133,48 @@ taskg token modify <id> --expires-in 0
 认证：
 
 ```bash
-curl -H "Authorization: Bearer $TASKG_TOKEN" \
-  https://taskg.example.com/api/v1/me
+curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  https://xuanchu.example.com/api/v1/me
 ```
 
 列任务：
 
 ```bash
-curl -H "Authorization: Bearer $TASKG_TOKEN" \
-  'https://taskg.example.com/api/v1/tasks?workspace=dajee&project=ai-agent-platform&limit=20'
+curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  'https://xuanchu.example.com/api/v1/tasks?workspace=dajee&project=ai-agent-platform&limit=20'
 
-curl -H "Authorization: Bearer $TASKG_TOKEN" \
-  'https://taskg.example.com/api/v1/tasks?workspace=dajee&query=assignee:me'
+curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  'https://xuanchu.example.com/api/v1/tasks?workspace=dajee&query=assignee:me'
 ```
 
 创建任务：
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer $TASKG_TOKEN" \
+  -H "Authorization: Bearer $XUANCHU_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"description":"Review MCP docs","project":"ai-agent-platform","tags":["review"],"assignees":["alice"]}' \
-  'https://taskg.example.com/api/v1/tasks?workspace=dajee'
+  'https://xuanchu.example.com/api/v1/tasks?workspace=dajee'
 ```
 
 更新 assignee：
 
 ```bash
 curl -X PATCH \
-  -H "Authorization: Bearer $TASKG_TOKEN" \
+  -H "Authorization: Bearer $XUANCHU_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"assignees":["alice"],"remove_assignees":["bob"]}' \
-  'https://taskg.example.com/api/v1/tasks/<task-uuid>?workspace=dajee'
+  'https://xuanchu.example.com/api/v1/tasks/<task-uuid>?workspace=dajee'
 ```
 
 远程 CLI 走同一套字段语义：
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
   add "Ship docs" @alice
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
   1 modify +@alice -@bob
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
   list assignee:me
 ```
 
@@ -203,7 +203,7 @@ API 使用统一 envelope：
 OpenAPI 文件在：
 
 ```text
-docs/openapi/taskg-v1.yaml
+docs/openapi/xuanchu-v1.yaml
 ```
 
 ## Impersonation（M10）
@@ -213,24 +213,24 @@ docs/openapi/taskg-v1.yaml
 ### 远程 CLI
 
 ```bash
-taskg --server https://taskg.example.com \
+xuanchu --server https://xuanchu.example.com \
   --token "$AGENT_TOKEN" \
   --workspace dajee \
   --as alice \
   list assignee:me
 ```
 
-`--as` 只在远程模式生效，值为目标用户的 name、email 或 UUID。所有 HTTP 子请求都会携带 `X-Taskg-As` header。
+`--as` 只在远程模式生效，值为目标用户的 name、email 或 UUID。所有 HTTP 子请求都会携带 `X-Xuanchu-As` header。
 
 ### HTTP API
 
 ```
 GET /api/v1/tasks
-Authorization: Bearer taskg_agent_...
-X-Taskg-As: alice
+Authorization: Bearer xuanchu_agent_...
+X-Xuanchu-As: alice
 ```
 
-只有 agent token 且拥有 `impersonate` scope 时，`X-Taskg-As` 才生效。权限以目标用户在 workspace 的 membership role 与 token scope 的交集为准。
+只有 agent token 且拥有 `impersonate` scope 时，`X-Xuanchu-As` 才生效。权限以目标用户在 workspace 的 membership role 与 token scope 的交集为准。
 
 如果 token 可见多个 workspace 且请求未显式指定 workspace，返回 `workspace_required`。目标用户不存在或不是 workspace 成员时返回 `membership_not_found`。
 

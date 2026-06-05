@@ -6,14 +6,14 @@ import (
 )
 
 func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
-	parsed, err := ParseAddArgs([]string{"write", "spec", "project:taskg", "+planning", "priority:H"})
+	parsed, err := ParseAddArgs([]string{"write", "spec", "project:xuanchu", "+planning", "priority:H"})
 	if err != nil {
 		t.Fatalf("ParseAddArgs() error = %v", err)
 	}
 	if parsed.Description != "write spec" {
 		t.Fatalf("Description = %q", parsed.Description)
 	}
-	if parsed.Mod.Project == nil || *parsed.Mod.Project != "taskg" {
+	if parsed.Mod.Project == nil || *parsed.Mod.Project != "xuanchu" {
 		t.Fatalf("Project = %#v", parsed.Mod.Project)
 	}
 	if parsed.Mod.Priority == nil || *parsed.Mod.Priority != "H" {

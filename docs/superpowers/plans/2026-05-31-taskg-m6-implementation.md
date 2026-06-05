@@ -1,8 +1,8 @@
-# taskg M6 Implementation Plan
+# xuanchu M6 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 实现 M6：同一个 `taskg` 二进制支持 HTTP/JSON API 服务端、PAT/Agent token、request scope、远程 CLI，并保持所有业务规则复用 `internal/app`。
+**Goal:** 实现 M6：同一个 `xuanchu` 二进制支持 HTTP/JSON API 服务端、PAT/Agent token、request scope、远程 CLI，并保持所有业务规则复用 `internal/app`。
 
 **Architecture:** 新增 `internal/auth` 处理 token 生成、hash 与 scope；新增 `api_tokens` 存储和 app token service；新增 `internal/httpapi` 作为协议层，只做鉴权、request scope、JSON envelope 和 handler 编排。远程 CLI 通过 `internal/remote` 调用 HTTP API，再复用现有 render 输出，不在客户端复制业务逻辑。
 
@@ -12,11 +12,11 @@
 
 ## 范围锁定
 
-严格按 [M6 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-31-taskg-m6-design.md) 实现。
+严格按 [M6 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-31-xuanchu-m6-design.md) 实现。
 
 必须进入 M6：
 
-- `taskg server --listen ...`。
+- `xuanchu server --listen ...`。
 - `api_tokens` 表、token 生成、hash、verify、revoke、`last_used_at`。
 - `token create/list/revoke` 本地 CLI 与 HTTP API。
 - Authorization Bearer only，不支持 query token / cookie / Basic Auth。
@@ -25,7 +25,7 @@
 - HTTP endpoint：workspace/member/project/task/report/context/config/import/export/audit/token 的 M6 范围。
 - 远程 CLI：核心 task/report/project/context/config/helper/token 命令。
 - project-scoped token 全局过滤，单任务越界读固定返回 404 `task_not_found`。
-- OpenAPI：`docs/openapi/taskg-v1.yaml` 随 endpoint chunk 同步维护。
+- OpenAPI：`docs/openapi/xuanchu-v1.yaml` 随 endpoint chunk 同步维护。
 - README、ROADMAP、requirements 在 M6 完成后同步。
 
 不进入 M6：
@@ -47,8 +47,8 @@
 - token capability 空数组表示无权限；workspace/project allowlist 空数组表示不额外收窄。
 - 所有远程/API 写操作必须有明确 actor，M6 不使用 `actor_user_id = NULL` 写 audit。
 - 第 1-5 步鉴权/授权失败不写 audit。
-- `taskg server` 启动不输出 bootstrap token；第一个 token 由本地 CLI 预先创建。
-- `taskg.toml` 中 `remote.token` 只作为便利功能；权限宽于 `0600` 时 stderr warning。
+- `xuanchu server` 启动不输出 bootstrap token；第一个 token 由本地 CLI 预先创建。
+- `xuanchu.toml` 中 `remote.token` 只作为便利功能；权限宽于 `0600` 时 stderr warning。
 - HTTP path `{uuid}` 只接受真实 UUID；远程数字 working-set ID 由客户端两跳解析。
 - helper 远程化不要新增下划线 API；优先用已有 endpoint 本地后处理。
 - 每个 endpoint chunk 同步更新 OpenAPI，不要最后一次性补。
@@ -99,12 +99,12 @@
 - `internal/remote/client_test.go`
   URL 编码、Bearer-only、error envelope、remote unsupported 测试。
 - `internal/cli/server.go`
-  `taskg server` 子命令。
+  `xuanchu server` 子命令。
 - `internal/cli/token.go`
-  `taskg token create/list/revoke`。
+  `xuanchu token create/list/revoke`。
 - `internal/cli/dispatch.go`
   remote/local dispatch helper，避免每个命令重复 `isRemoteMode` 判断模板。
-- `docs/openapi/taskg-v1.yaml`
+- `docs/openapi/xuanchu-v1.yaml`
   M6 HTTP API OpenAPI 3 文档。
 
 修改文件：
@@ -130,7 +130,7 @@
 - `internal/cli/*.go`
   核心命令在 remote mode 下走 `internal/remote`，local mode 保持原逻辑。
 - `internal/config/config.go` / `internal/config/toml.go`
-  支持 `remote.server`、`remote.token`、`TASKG_SERVER`、`TASKG_TOKEN`；含 token TOML 权限 warning。
+  支持 `remote.server`、`remote.token`、`XUANCHU_SERVER`、`XUANCHU_TOKEN`；含 token TOML 权限 warning。
 - `tests/integration/cli_test.go`
   增加 server/token/remote CLI 黑盒测试。
 - `README.md`、`ROADMAP.md`、`docs/requirements.md`
@@ -155,7 +155,7 @@
 func TestGenerateRawTokenAndHash(t *testing.T) {
     raw, prefix, hash, err := auth.GenerateToken(auth.TokenTypePAT)
     if err != nil { t.Fatal(err) }
-    if !strings.HasPrefix(raw, "taskg_pat_") { t.Fatalf("raw = %q", raw) }
+    if !strings.HasPrefix(raw, "xuanchu_pat_") { t.Fatalf("raw = %q", raw) }
     if len(prefix) < 12 || !strings.HasPrefix(raw, prefix) { t.Fatalf("prefix = %q raw = %q", prefix, raw) }
     if strings.Contains(hash, raw) { t.Fatalf("hash contains raw token") }
     if !auth.VerifyTokenHash(raw, hash) { t.Fatalf("hash did not verify") }
@@ -197,7 +197,7 @@ Expected: FAIL，`internal/auth` 不存在。
 
 - `TokenTypePAT = "pat"`、`TokenTypeAgent = "agent"`。
 - raw token 使用 `crypto/rand` 生成至少 32 bytes，base64url 无 padding。
-- raw token 前缀为 `taskg_pat_` 或 `taskg_agent_`。
+- raw token 前缀为 `xuanchu_pat_` 或 `xuanchu_agent_`。
 - `token_prefix` 取 raw token 前 16 字符。
 - `token_hash` 用 SHA-256 hex。
 - verify 使用 `subtle.ConstantTimeCompare`。
@@ -235,7 +235,7 @@ git commit -m "feat: 添加 token 生成与 scope 解析"
 
 ```go
 func TestOpenCreatesAPITokenSchema(t *testing.T) {
-    store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+    store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
     if err != nil { t.Fatal(err) }
     defer store.Close()
     if !store.DB().Migrator().HasTable(&ApiToken{}) {
@@ -248,12 +248,12 @@ func TestOpenCreatesAPITokenSchema(t *testing.T) {
 func TestTokenRepositoryDoesNotStoreRawToken(t *testing.T) {
     store := openTestStore(t)
     repo := NewTokenRepository(store.DB())
-    row := ApiTokenEntry{ID: "tok1", UserID: "u1", Name: "cli", Type: "pat", TokenPrefix: "taskg_pat_abcd", TokenHash: strings.Repeat("a", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 100}
+    row := ApiTokenEntry{ID: "tok1", UserID: "u1", Name: "cli", Type: "pat", TokenPrefix: "xuanchu_pat_abcd", TokenHash: strings.Repeat("a", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 100}
     if err := repo.Create(row); err != nil { t.Fatal(err) }
-    got, err := repo.GetByPrefix("taskg_pat_abcd")
+    got, err := repo.GetByPrefix("xuanchu_pat_abcd")
     if err != nil { t.Fatal(err) }
     if got.TokenHash != row.TokenHash { t.Fatalf("hash mismatch") }
-    if strings.Contains(got.TokenHash, "taskg_pat_") { t.Fatalf("raw token leaked") }
+    if strings.Contains(got.TokenHash, "xuanchu_pat_") { t.Fatalf("raw token leaked") }
 }
 ```
 
@@ -343,7 +343,7 @@ func TestCreateTokenStoresHashAndAudits(t *testing.T) {
         ExpiresIn: ptrDuration(720 * time.Hour),
     })
     if err != nil { t.Fatal(err) }
-    if !strings.HasPrefix(out.RawToken, "taskg_pat_") { t.Fatalf("token = %q", out.RawToken) }
+    if !strings.HasPrefix(out.RawToken, "xuanchu_pat_") { t.Fatalf("token = %q", out.RawToken) }
     if strings.Contains(out.Stored.TokenHash, out.RawToken) { t.Fatalf("raw token stored") }
     audits := mustListAudit(t, svc)
     assertAuditAction(t, audits, "token.create")
@@ -360,8 +360,8 @@ Integration 测试：
 
 ```go
 func TestCLITokenCreateListRevoke(t *testing.T) {
-    bin := buildTaskg(t)
-    db := filepath.Join(t.TempDir(), "taskg.db")
+    bin := buildXuanchu(t)
+    db := filepath.Join(t.TempDir(), "xuanchu.db")
     out := run(t, bin, "--db", db, "--json", "token", "create", "cli", "--scope", "task:read", "--workspace", "local", "--expires-in", "720h")
     var created map[string]any
     if err := json.Unmarshal([]byte(out), &created); err != nil { t.Fatal(err) }
@@ -399,7 +399,7 @@ Expected: FAIL，app/CLI token 功能不存在。
 - `AuthenticateBearerToken(raw string)` 不缓存，每次查 DB，过期/revoked 返回 `auth_token_expired` / `auth_token_revoked`。
 - `token.create` / `token.revoke` audit payload 不包含 raw token/hash。
 
-- [ ] **Step 4：实现 `taskg token` CLI**
+- [ ] **Step 4：实现 `xuanchu token` CLI**
 
 CLI 规则：
 
@@ -445,7 +445,7 @@ git commit -m "feat: 添加 token 管理命令"
 - Create: `internal/cli/server.go`
 - Modify: `internal/cli/root.go`
 - Test: `tests/integration/cli_test.go`
-- Create/Modify: `docs/openapi/taskg-v1.yaml`
+- Create/Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1：写失败的 HTTP skeleton 测试**
 
@@ -485,9 +485,9 @@ Integration：
 
 ```go
 func TestCLIServerHealthz(t *testing.T) {
-    bin := buildTaskg(t)
-    db := filepath.Join(t.TempDir(), "taskg.db")
-    cmd, baseURL := startTaskgServer(t, bin, "--db", db)
+    bin := buildXuanchu(t)
+    db := filepath.Join(t.TempDir(), "xuanchu.db")
+    cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
     defer cmd.Process.Kill()
     resp, err := http.Get(baseURL + "/healthz")
     if err != nil { t.Fatal(err) }
@@ -495,9 +495,9 @@ func TestCLIServerHealthz(t *testing.T) {
 }
 
 func TestServerEnforcesForeignKeys(t *testing.T) {
-    bin := buildTaskg(t)
-    db := filepath.Join(t.TempDir(), "taskg.db")
-    server := startTaskgServerWithDB(t, bin, db)
+    bin := buildXuanchu(t)
+    db := filepath.Join(t.TempDir(), "xuanchu.db")
+    server := startXuanchuServerWithDB(t, bin, db)
     token := createAdminToken(t, bin, db)
     // 通过 API 构造跨 workspace project_id 写入，必须返回明确错误，不能静默写入。
     rr := postJSON(t, server.URL+"/api/v1/tasks?workspace=local", bearer(token), `{"description":"bad","project_id":"project-from-other-workspace"}`)
@@ -530,11 +530,11 @@ Expected: FAIL，包/命令不存在。
 - access log 默认写 stderr：method/path/status/actor_user_id/token_id/duration；鉴权失败和 `/healthz` 的 actor/token 写 `-`。
 - body limit middleware 默认 10 MB，超出返回 413 `api_payload_too_large`。
 
-- [ ] **Step 4：实现 `taskg server`**
+- [ ] **Step 4：实现 `xuanchu server`**
 
 实现：
 
-- `taskg server --listen :8080`，默认 listen 可以为空则报 `server_listen_required`。
+- `xuanchu server --listen :8080`，默认 listen 可以为空则报 `server_listen_required`。
 - 启动时立即 `sqlite.Open(path)`，触发 schema 迁移。迁移失败时写 stderr 并 exit 1，不能等第一个请求才失败。
 - 使用 `openStore(opts)` 打开服务端 DB。
 - SIGINT/SIGTERM graceful shutdown，默认 30 秒超时；增加 `--shutdown-timeout 30s` flag。超时后进程退出 1。
@@ -544,7 +544,7 @@ Expected: FAIL，包/命令不存在。
 
 - [ ] **Step 5：同步 OpenAPI skeleton**
 
-创建 `docs/openapi/taskg-v1.yaml`，至少包含：
+创建 `docs/openapi/xuanchu-v1.yaml`，至少包含：
 
 - OpenAPI 3 header。
 - Bearer auth security scheme。
@@ -567,7 +567,7 @@ Expected: PASS。
 - [ ] **Step 7：提交**
 
 ```bash
-git add go.mod go.sum internal/httpapi internal/cli/server.go internal/cli/root.go tests/integration/cli_test.go docs/openapi/taskg-v1.yaml
+git add go.mod go.sum internal/httpapi internal/cli/server.go internal/cli/root.go tests/integration/cli_test.go docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 添加 HTTP 服务端骨架"
 ```
 
@@ -577,7 +577,7 @@ git commit -m "feat: 添加 HTTP 服务端骨架"
 - Modify: `internal/httpapi/middleware.go`
 - Create: `internal/httpapi/me.go`
 - Create/Modify: `internal/httpapi/auth_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1：写失败的 auth middleware 测试**
 
@@ -663,7 +663,7 @@ Expected: PASS。
 - [ ] **Step 7：提交**
 
 ```bash
-git add internal/httpapi docs/openapi/taskg-v1.yaml
+git add internal/httpapi docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 添加 HTTP token 鉴权"
 ```
 
@@ -749,7 +749,7 @@ Expected: FAIL。
 
 实现：
 
-- workspace 来源优先级固定为 path > body > query > header (`X-Taskg-Workspace`) > token 单 workspace > actor default workspace > error。
+- workspace 来源优先级固定为 path > body > query > header (`X-Xuanchu-Workspace`) > token 单 workspace > actor default workspace > error。
 - 如果多个来源同时存在但解析到不同 workspace，返回 400 `workspace_mismatch`。
 - `{workspace}` 接受 slug/UUID；与 body/query `workspace_id` 同时存在时必须一致。
 - `{project}` 接受 slug/project_id；与 body/query `project_id` 同时存在但解析不同，返回 400 `project_mismatch`。
@@ -785,7 +785,7 @@ git commit -m "feat: 添加请求级权限边界"
 - Create: `internal/httpapi/member.go`
 - Test: `internal/httpapi/project_test.go`
 - Test: `internal/httpapi/workspace_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1：写失败的 endpoint 测试**
 
@@ -859,7 +859,7 @@ Expected: PASS。
 - [ ] **Step 6：提交**
 
 ```bash
-git add internal/httpapi/project.go internal/httpapi/workspace.go internal/httpapi/member.go internal/httpapi/*_test.go docs/openapi/taskg-v1.yaml
+git add internal/httpapi/project.go internal/httpapi/workspace.go internal/httpapi/member.go internal/httpapi/*_test.go docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 添加 project 与 workspace API"
 ```
 
@@ -870,7 +870,7 @@ git commit -m "feat: 添加 project 与 workspace API"
 - Create: `internal/httpapi/report.go`
 - Test: `internal/httpapi/task_test.go`
 - Test: `internal/httpapi/report_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1：写失败的 task/report 测试**
 
@@ -932,7 +932,7 @@ Expected: PASS。
 - [ ] **Step 6：提交**
 
 ```bash
-git add internal/httpapi/task.go internal/httpapi/report.go internal/httpapi/*_test.go docs/openapi/taskg-v1.yaml
+git add internal/httpapi/task.go internal/httpapi/report.go internal/httpapi/*_test.go docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 添加 task 与 report API"
 ```
 
@@ -946,7 +946,7 @@ git commit -m "feat: 添加 task 与 report API"
 - Create: `internal/httpapi/token.go`
 - Test: `internal/httpapi/context_config_test.go`
 - Test: `internal/httpapi/import_audit_token_test.go`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1：写失败测试**
 
@@ -1009,7 +1009,7 @@ Expected: PASS。
 - [ ] **Step 6：提交**
 
 ```bash
-git add internal/httpapi docs/openapi/taskg-v1.yaml
+git add internal/httpapi docs/openapi/xuanchu-v1.yaml
 git commit -m "feat: 补齐 M6 HTTP API"
 ```
 
@@ -1031,7 +1031,7 @@ git commit -m "feat: 补齐 M6 HTTP API"
 
 覆盖：
 
-- `TASKG_SERVER` / `TASKG_TOKEN`。
+- `XUANCHU_SERVER` / `XUANCHU_TOKEN`。
 - TOML `[remote] server/token`。
 - CLI flag > env > TOML。
 - remote server URL 校验：
@@ -1059,7 +1059,7 @@ Expected: FAIL。
 实现：
 
 - `config.Config` 增加 `RemoteServer`、`RemoteToken`。
-- env 读取 `TASKG_SERVER`、`TASKG_TOKEN`。
+- env 读取 `XUANCHU_SERVER`、`XUANCHU_TOKEN`。
 - TOML 读取 `remote.server`、`remote.token`。
 - CLI `Options` 增加 `Server`、`Token`、`Project`、`ProjectID`。
 - `splitFlagsRcAndPositional` string flags 增加 `--server`、`--token`、`--project`、`--project-id`。
@@ -1109,10 +1109,10 @@ git commit -m "feat: 添加远程 CLI 客户端配置"
 
 ```go
 func TestRemoteCLIAddListDone(t *testing.T) {
-    bin := buildTaskg(t)
-    db := filepath.Join(t.TempDir(), "taskg.db")
+    bin := buildXuanchu(t)
+    db := filepath.Join(t.TempDir(), "xuanchu.db")
     run(t, bin, "--db", db, "token", "create", "cli", "--scope", "task:read,task:write,project:read", "--workspace", "local", "--expires-in", "720h")
-    server := startTaskgServerWithDB(t, bin, db)
+    server := startXuanchuServerWithDB(t, bin, db)
     token := extractToken(...)
     run(t, bin, "--server", server.URL, "--token", token, "project", "add", "api", "name:API")
     run(t, bin, "--server", server.URL, "--token", token, "add", "remote", "task", "project:api")
@@ -1250,14 +1250,14 @@ git commit -m "fix: 收紧 project scoped token 边界"
 ### Task 13：补齐 OpenAPI 与用户文档
 
 **Files:**
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 - Modify: `README.md`
 - Modify: `ROADMAP.md`
 - Modify: `docs/requirements.md`
 
 - [ ] **Step 1：审查 OpenAPI 覆盖面**
 
-检查 `docs/openapi/taskg-v1.yaml` 是否覆盖：
+检查 `docs/openapi/xuanchu-v1.yaml` 是否覆盖：
 
 - bearer auth。
 - error envelope，`details.additionalProperties: true`。
@@ -1274,9 +1274,9 @@ git commit -m "fix: 收紧 project scoped token 边界"
 
 新增：
 
-- `taskg server --listen :8080`。
-- `taskg token create/list/revoke`。
-- 远程 CLI `--server` / `--token` / `TASKG_SERVER` / `TASKG_TOKEN`。
+- `xuanchu server --listen :8080`。
+- `xuanchu token create/list/revoke`。
+- 远程 CLI `--server` / `--token` / `XUANCHU_SERVER` / `XUANCHU_TOKEN`。
 - project-scoped token 示例。
 - TOML `remote.server` / `remote.token` 安全提醒。
 - M6 server 不内置 TLS；生产部署应使用 Nginx/Caddy 等反向代理做 TLS termination，不要把裸 HTTP token 服务直接暴露公网。
@@ -1306,8 +1306,8 @@ Run:
 
 ```bash
 git diff --check
-rg -n "\\| `admin:\\*` \\||report:read|meta\\.count|\"count\"\\s*:" docs/superpowers/specs/2026-05-31-taskg-m6-design.md docs/openapi/taskg-v1.yaml README.md ROADMAP.md docs/requirements.md
-rg -n "auth_missing_token|auth_invalid_token|auth_token_expired|auth_token_revoked|taskg_pat_|taskg_agent_|task_not_found|workspace_scope_denied|project_scope_denied|route_not_found|method_not_allowed|api_internal|task_uuid_invalid|remote_server_invalid" docs/openapi/taskg-v1.yaml README.md ROADMAP.md docs/requirements.md
+rg -n "\\| `admin:\\*` \\||report:read|meta\\.count|\"count\"\\s*:" docs/superpowers/specs/2026-05-31-xuanchu-m6-design.md docs/openapi/xuanchu-v1.yaml README.md ROADMAP.md docs/requirements.md
+rg -n "auth_missing_token|auth_invalid_token|auth_token_expired|auth_token_revoked|xuanchu_pat_|xuanchu_agent_|task_not_found|workspace_scope_denied|project_scope_denied|route_not_found|method_not_allowed|api_internal|task_uuid_invalid|remote_server_invalid" docs/openapi/xuanchu-v1.yaml README.md ROADMAP.md docs/requirements.md
 ```
 
 Expected: `git diff --check` 无输出；第一条 `rg` 不应发现旧的 M6 设计残留；第二条 `rg` 应能在 OpenAPI 或用户文档中命中对应错误码和 token 前缀说明。
@@ -1315,7 +1315,7 @@ Expected: `git diff --check` 无输出；第一条 `rg` 不应发现旧的 M6 �
 - [ ] **Step 6：提交**
 
 ```bash
-git add docs/openapi/taskg-v1.yaml README.md ROADMAP.md docs/requirements.md
+git add docs/openapi/xuanchu-v1.yaml README.md ROADMAP.md docs/requirements.md
 git commit -m "docs: 更新 M6 服务端与远程 CLI 文档"
 ```
 
@@ -1379,7 +1379,7 @@ Expected: PASS。
 Run:
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -1410,7 +1410,7 @@ git commit -m "fix: 完成 M6 验证修复"
 
 M6 只有在以下条件全部满足时才能标记完成：
 
-- `taskg server` 可启动、graceful shutdown、`/healthz` 匿名可用。
+- `xuanchu server` 可启动、graceful shutdown、`/healthz` 匿名可用。
 - 本地 CLI 可创建第一个 token；HTTP 可用已有 token 管理后续 token。
 - HTTP API 全部使用 Authorization Bearer header，拒绝 query/cookie/basic auth。
 - API error envelope 稳定，spec §11 列出的所有 M6 错误 code 都在对应 endpoint 有 OpenAPI 描述和测试覆盖。
@@ -1419,4 +1419,4 @@ M6 只有在以下条件全部满足时才能标记完成：
 - `_show database.path` 远程模式不泄露服务端路径。
 - OpenAPI 与已实现 endpoint 一致。
 - README、ROADMAP、requirements 已同步。
-- `test -z "$(gofmt -l internal cmd tests)"`、`go vet ./...`、`go test ./...`、`go test -race ./internal/httpapi ./internal/auth ./internal/remote ./internal/app`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 全部通过。
+- `test -z "$(gofmt -l internal cmd tests)"`、`go vet ./...`、`go test ./...`、`go test -race ./internal/httpapi ./internal/auth ./internal/remote ./internal/app`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 全部通过。

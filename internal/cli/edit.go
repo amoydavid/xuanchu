@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	apptedit "github.com/dajee/taskg/internal/edit"
-	"github.com/dajee/taskg/internal/task"
+	apptedit "git.dajee.net/dajee/xuanchu/internal/edit"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -81,7 +81,7 @@ func runEdit(cmd *cobra.Command, svc interface {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp("", "taskg-edit-*.json")
+	tmp, err := os.CreateTemp("", "xuanchu-edit-*.json")
 	if err != nil {
 		return err
 	}

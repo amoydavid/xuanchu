@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
 )
 
 func postgresTestURL(t *testing.T) string {
 	t.Helper()
-	url := os.Getenv("TASKG_TEST_DB_URL")
+	url := os.Getenv("XUANCHU_TEST_DB_URL")
 	if url == "" {
-		t.Skip("TASKG_TEST_DB_URL not set, skipping PostgreSQL tests")
+		t.Skip("XUANCHU_TEST_DB_URL not set, skipping PostgreSQL tests")
 	}
 	return url
 }

@@ -1,4 +1,4 @@
-# taskg M5 实施计划
+# xuanchu M5 实施计划
 
 > **给 agentic workers 的要求：** 必须使用 `superpowers:subagent-driven-development`（如果可用）或 `superpowers:executing-plans` 执行本计划。所有步骤使用 checkbox（`- [ ]`）语法跟踪。
 
@@ -12,7 +12,7 @@
 
 ## 范围锁定
 
-严格按 [M5 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-30-taskg-m5-design.md) 实现。
+严格按 [M5 spec](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-30-xuanchu-m5-design.md) 实现。
 
 必须进入 M5：
 
@@ -63,7 +63,7 @@
 - `internal/app/project_query.go`
   project query AST rewrite、project invariant 校验 helper。
 - `internal/cli/project.go`
-  `taskg project ...` 命令组和 `project config ...` 子命令。
+  `xuanchu project ...` 命令组和 `project config ...` 子命令。
 
 修改文件：
 
@@ -128,7 +128,7 @@
 
 ```go
 func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
-    store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+    store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
     if err != nil { t.Fatal(err) }
     t.Cleanup(func() { _ = store.Close() })
 
@@ -237,7 +237,7 @@ git commit -m "feat: 添加 M5 project 存储模型"
 
 ```go
 func TestOpenMigratesM4ProjectStringsToProjects(t *testing.T) {
-    dbPath := filepath.Join(t.TempDir(), "taskg.db")
+    dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
     seedM4DatabaseWithTasks(t, dbPath, []seedTask{
         {WorkspaceSlug: "local", UUID: "t1", Project: ptr("Customer-A"), Entry: 10},
         {WorkspaceSlug: "local", UUID: "t2", Project: ptr("customer-b"), Entry: 20},
@@ -1105,23 +1105,23 @@ git commit -m "feat: helper 使用 project 表"
 新增 `TestCLIProjectLifecycle`：
 
 ```bash
-taskg project add ai-agent-platform name:"AI Agent Platform"
-taskg project list
-taskg project info ai-agent-platform --json
-taskg project modify ai-agent-platform description:"Agent MCP platform"
-taskg add "Design schema" project:ai-agent-platform
-taskg project archive ai-agent-platform
-taskg add "Should fail" project:ai-agent-platform   # project_archived
-taskg project archive ai-agent-platform             # project_archived
+xuanchu project add ai-agent-platform name:"AI Agent Platform"
+xuanchu project list
+xuanchu project info ai-agent-platform --json
+xuanchu project modify ai-agent-platform description:"Agent MCP platform"
+xuanchu add "Design schema" project:ai-agent-platform
+xuanchu project archive ai-agent-platform
+xuanchu add "Should fail" project:ai-agent-platform   # project_archived
+xuanchu project archive ai-agent-platform             # project_archived
 ```
 
 新增跨 workspace 测试：
 
 ```bash
-taskg workspace add partner name:Partner
-taskg --workspace local project add api name:API
-taskg --workspace partner project info api          # project_not_found
-taskg --workspace partner project info <local-id>   # project_workspace_mismatch
+xuanchu workspace add partner name:Partner
+xuanchu --workspace local project add api name:API
+xuanchu --workspace partner project info api          # project_not_found
+xuanchu --workspace partner project info <local-id>   # project_workspace_mismatch
 ```
 
 - [x] **Step 2：实现 CLI**
@@ -1150,9 +1150,9 @@ func projectViewForJSON(p app.ProjectView) map[string]any
 
 `NewRootCommand` 注册 `newProjectCommand(opts)`。补 root 测试确认：
 
-- `taskg project:list` 不支持，正确形式是 `project list`。
-- `taskg --workspace x project info api` 和 `taskg project info api --workspace x` 都被 Cobra 接受。
-- `taskg project info project` 在 project slug 名为 `project` 时按 project 子命令解析，不被 root target-action reorder 吞掉。M5 保留字不包含 `project`，该 slug 允许存在。
+- `xuanchu project:list` 不支持，正确形式是 `project list`。
+- `xuanchu --workspace x project info api` 和 `xuanchu project info api --workspace x` 都被 Cobra 接受。
+- `xuanchu project info project` 在 project slug 名为 `project` 时按 project 子命令解析，不被 root target-action reorder 吞掉。M5 保留字不包含 `project`，该 slug 允许存在。
 - `project info api --json --workspace x` 与 `--workspace x project info api --json` 输出一致。
 
 - [x] **Step 5：运行测试通过并提交**
@@ -1263,7 +1263,7 @@ git commit -m "test: 补齐 M5 project 集成覆盖"
 - Modify: `README.md`
 - Modify: `ROADMAP.md`
 - Modify: `docs/requirements.md`
-- Modify: `docs/superpowers/specs/2026-05-30-taskg-m5-design.md`
+- Modify: `docs/superpowers/specs/2026-05-30-xuanchu-m5-design.md`
 
 - [x] **Step 1：README 增加 M5 用法**
 
@@ -1287,7 +1287,7 @@ git commit -m "test: 补齐 M5 project 集成覆盖"
 - [x] **Step 4：提交**
 
 ```bash
-git add README.md ROADMAP.md docs/requirements.md docs/superpowers/specs/2026-05-30-taskg-m5-design.md
+git add README.md ROADMAP.md docs/requirements.md docs/superpowers/specs/2026-05-30-xuanchu-m5-design.md
 git commit -m "docs: 更新 M5 project 文档"
 ```
 
@@ -1311,7 +1311,7 @@ Expected: PASS。
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -1328,15 +1328,15 @@ Expected: PASS。若本地耗时或环境限制导致无法常规执行，必须
 
 ```bash
 tmp=$(mktemp -d)
-go build -o "$tmp/taskg" ./cmd/taskg
-"$tmp/taskg" --data-dir "$tmp" project add api name:"API"
-"$tmp/taskg" --data-dir "$tmp" add "Design endpoint" project:api
-"$tmp/taskg" --data-dir "$tmp" project list
-"$tmp/taskg" --data-dir "$tmp" _projects
-"$tmp/taskg" --data-dir "$tmp" project config set api agent.background "Owns API work"
-"$tmp/taskg" --data-dir "$tmp" project config get api agent.background
-"$tmp/taskg" --data-dir "$tmp" project archive api
-"$tmp/taskg" --data-dir "$tmp" add "Should fail" project:api
+go build -o "$tmp/xuanchu" ./cmd/xuanchu
+"$tmp/xuanchu" --data-dir "$tmp" project add api name:"API"
+"$tmp/xuanchu" --data-dir "$tmp" add "Design endpoint" project:api
+"$tmp/xuanchu" --data-dir "$tmp" project list
+"$tmp/xuanchu" --data-dir "$tmp" _projects
+"$tmp/xuanchu" --data-dir "$tmp" project config set api agent.background "Owns API work"
+"$tmp/xuanchu" --data-dir "$tmp" project config get api agent.background
+"$tmp/xuanchu" --data-dir "$tmp" project archive api
+"$tmp/xuanchu" --data-dir "$tmp" add "Should fail" project:api
 ```
 
 Expected:

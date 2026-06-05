@@ -2867,7 +2867,7 @@
       }
     },
     {
-      "description": "Bind an external ID (e.g. feishu:ou_xxxxx) to a taskg user. Admin/owner can bind for others; regular users can only bind to themselves.",
+      "description": "Bind an external ID (e.g. feishu:ou_xxxxx) to a xuanchu user. Admin/owner can bind for others; regular users can only bind to themselves.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2987,7 +2987,7 @@
       }
     },
     {
-      "description": "Unbind an external ID from a taskg user.",
+      "description": "Unbind an external ID from a xuanchu user.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {

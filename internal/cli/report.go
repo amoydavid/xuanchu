@@ -3,11 +3,11 @@ package cli
 import (
 	"context"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/remote"
-	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 

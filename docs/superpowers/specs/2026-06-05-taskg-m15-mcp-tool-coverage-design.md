@@ -202,5 +202,5 @@ Token tool 不传入 `ParentToken`（MCP 不支持委托校验），由 app 层�
 - 74 个 MCP tool 全部注册并可调用。
 - 每个 tool 有 schema golden test。
 - 所有写操作经过权限检查。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 - `docs/manual/mcp.md` 工具列表更新为 74 个。

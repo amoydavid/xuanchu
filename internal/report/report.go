@@ -1,6 +1,6 @@
 package report
 
-import "github.com/dajee/taskg/internal/query"
+import "git.dajee.net/dajee/xuanchu/internal/query"
 
 type ScopeKind string
 

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 // DispatcherOptions 配置 webhook 投递调度器。

@@ -8,7 +8,7 @@ import (
 )
 
 func TestExternalIDRepoCreateAndGet(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestExternalIDRepoCreateAndGet(t *testing.T) {
 }
 
 func TestExternalIDRepoCreateDuplicateFails(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -82,7 +82,7 @@ func TestExternalIDRepoCreateDuplicateFails(t *testing.T) {
 }
 
 func TestExternalIDRepoListByUser(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -114,7 +114,7 @@ func TestExternalIDRepoListByUser(t *testing.T) {
 }
 
 func TestExternalIDRepoDelete(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -145,7 +145,7 @@ func TestExternalIDRepoDelete(t *testing.T) {
 }
 
 func TestExternalIDRepoDeleteNotFound(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -165,7 +165,7 @@ func TestExternalIDRepoDeleteNotFound(t *testing.T) {
 }
 
 func TestExternalIDRepoListByUsers(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -196,7 +196,7 @@ func TestExternalIDRepoListByUsers(t *testing.T) {
 }
 
 func TestExternalIDRepoListByUsersEmpty(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

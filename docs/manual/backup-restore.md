@@ -5,14 +5,14 @@ weight: 110
 
 # 备份与恢复
 
-taskg 支持 SQLite（默认）和 PostgreSQL。备份方式取决于数据库类型。
+xuanchu 支持 SQLite（默认）和 PostgreSQL。备份方式取决于数据库类型。
 
 ## 在线备份
 
 推荐使用 SQLite `VACUUM INTO`：
 
 ```bash
-sqlite3 ~/.local/share/taskg/taskg.db "VACUUM INTO '/path/to/backup.db'"
+sqlite3 ~/.local/share/xuanchu/xuanchu.db "VACUUM INTO '/path/to/backup.db'"
 ```
 
 `VACUUM INTO` 会生成一致快照，服务运行期间也可以执行。
@@ -22,7 +22,7 @@ sqlite3 ~/.local/share/taskg/taskg.db "VACUUM INTO '/path/to/backup.db'"
 如果可以停止服务，也可以直接复制数据库：
 
 ```bash
-cp ~/.local/share/taskg/taskg.db /path/to/backup.db
+cp ~/.local/share/xuanchu/xuanchu.db /path/to/backup.db
 ```
 
 ## 备份内容
@@ -46,29 +46,29 @@ chmod 600 /path/to/backup.db
 
 ## 恢复演练
 
-1. 停止 taskg server。
+1. 停止 xuanchu server。
 2. 替换数据库文件。
 
 ```bash
-cp backup.db ~/.local/share/taskg/taskg.db
+cp backup.db ~/.local/share/xuanchu/xuanchu.db
 ```
 
-3. 启动 taskg server。
+3. 启动 xuanchu server。
 4. 验证关键数据。
 
 ```bash
-taskg hook list
-taskg list
-taskg audit list --limit 5
+xuanchu hook list
+xuanchu list
+xuanchu audit list --limit 5
 ```
 
 ## JSON Export/Import 的边界
 
-`taskg export --json` 只导出 task 数据，不包含 Hook、token、audit、workspace、membership 等数据。
+`xuanchu export --json` 只导出 task 数据，不包含 Hook、token、audit、workspace、membership 等数据。
 
 ```bash
-taskg export --json > tasks-backup.json
-taskg import tasks-backup.json
+xuanchu export --json > tasks-backup.json
+xuanchu import tasks-backup.json
 ```
 
 如果你要完整恢复服务端，请使用数据库备份（SQLite 文件或 `pg_dump`）。
@@ -76,7 +76,7 @@ taskg import tasks-backup.json
 ## 自动化备份示例
 
 ```bash
-0 2 * * * sqlite3 ~/.local/share/taskg/taskg.db "VACUUM INTO '/backup/taskg-$(date +\%Y\%m\%d).db'"
+0 2 * * * sqlite3 ~/.local/share/xuanchu/xuanchu.db "VACUUM INTO '/backup/xuanchu-$(date +\%Y\%m\%d).db'"
 ```
 
 建议定期清理旧备份，并定期做恢复演练。
@@ -86,13 +86,13 @@ taskg import tasks-backup.json
 如果使用 PostgreSQL，请使用 `pg_dump`：
 
 ```bash
-pg_dump -h localhost -U user taskg > /backup/taskg-$(date +%Y%m%d).sql
+pg_dump -h localhost -U user xuanchu > /backup/xuanchu-$(date +%Y%m%d).sql
 ```
 
 恢复：
 
 ```bash
-psql -h localhost -U user taskg < /backup/taskg-20260605.sql
+psql -h localhost -U user xuanchu < /backup/xuanchu-20260605.sql
 ```
 
 PostgreSQL 不支持 SQLite 的 `VACUUM INTO`，请使用 `pg_dump` 或 PostgreSQL 自身的 PITR / streaming replication。

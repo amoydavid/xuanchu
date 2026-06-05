@@ -1,8 +1,8 @@
-# taskg M4 设计规格
+# xuanchu M4 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 在不引入 HTTP 服务端、远程 CLI、PAT/JWT 或 MCP 的前提下，把 `taskg` 从隐式单用户单 workspace 升级为本地多用户、多 workspace 的团队模型，并在 app service 层建立真实权限边界。
+**目标：** 在不引入 HTTP 服务端、远程 CLI、PAT/JWT 或 MCP 的前提下，把 `xuanchu` 从隐式单用户单 workspace 升级为本地多用户、多 workspace 的团队模型，并在 app service 层建立真实权限边界。
 
 **范围策略：** M4 是“本地多 workspace 与权限骨架”里程碑。它必须让本地 CLI 真实使用 `actor_user_id + workspace_id` 上下文，但不能提前实现网络鉴权或服务端运行模式。后续 M5 只应替换 actor 来源，而不是重写任务、context、UDA、workspace、member 的业务边界。
 
@@ -36,35 +36,35 @@ M4 完成后，应支持这些使用方式：
 
 ```bash
 # 本地用户
-taskg user list
-taskg user add alice email:alice@example.test
-taskg user use alice
-taskg user info
+xuanchu user list
+xuanchu user add alice email:alice@example.test
+xuanchu user use alice
+xuanchu user info
 
 # workspace
-taskg workspace list
-taskg workspace add work name:"Work"
-taskg workspace use work
-taskg workspace info
-taskg workspace archive old
+xuanchu workspace list
+xuanchu workspace add work name:"Work"
+xuanchu workspace use work
+xuanchu workspace info
+xuanchu workspace archive old
 
 # 临时 workspace 覆盖
-taskg --workspace work add "Write API spec" project:taskg
-taskg --workspace personal list
+xuanchu --workspace work add "Write API spec" project:xuanchu
+xuanchu --workspace personal list
 
 # membership
-taskg member list
-taskg member add bob role:viewer
-taskg member role bob member
+xuanchu member list
+xuanchu member add bob role:viewer
+xuanchu member role bob member
 
 # 权限真实生效
-taskg user use bob
-taskg --workspace work list
-taskg --workspace work add "This fails if bob is viewer"
+xuanchu user use bob
+xuanchu --workspace work list
+xuanchu --workspace work add "This fails if bob is viewer"
 
 # 审计
-taskg audit list
-taskg audit list --json
+xuanchu audit list
+xuanchu audit list --json
 ```
 
 M4 仍需保持脚本友好：
@@ -303,7 +303,7 @@ M4 必须向前兼容 M0-M3 数据库。
 
 兼容体验：
 
-- 用户升级后直接运行 `taskg list`，行为应与 M3 一致。
+- 用户升级后直接运行 `xuanchu list`，行为应与 M3 一致。
 - 用户没有创建额外 workspace 前，现有命令仍默认使用 `local` workspace。
 - 旧配置中的 `context.active` 状态迁移为 `active_context.<local_user_id>.<local_workspace_id>`。
 - 迁移后必须删除老的 `context.active` meta key；M4 不再支持读取或写入该 key。
@@ -386,8 +386,8 @@ M4 的权限必须真实生效。
 ### user list
 
 ```bash
-taskg user list
-taskg user list --json
+xuanchu user list
+xuanchu user list --json
 ```
 
 human 输出建议列：
@@ -413,7 +413,7 @@ JSON 字段：
 ### user add
 
 ```bash
-taskg user add alice email:alice@example.test
+xuanchu user add alice email:alice@example.test
 ```
 
 规则：
@@ -430,7 +430,7 @@ taskg user add alice email:alice@example.test
 ### user use
 
 ```bash
-taskg user use alice
+xuanchu user use alice
 ```
 
 规则：
@@ -443,9 +443,9 @@ taskg user use alice
 ### workspace list
 
 ```bash
-taskg workspace list
-taskg workspace list --all
-taskg workspace list --json
+xuanchu workspace list
+xuanchu workspace list --all
+xuanchu workspace list --json
 ```
 
 规则：
@@ -457,7 +457,7 @@ taskg workspace list --json
 ### workspace add
 
 ```bash
-taskg workspace add work name:"Work" description:"Team work" visibility:team
+xuanchu workspace add work name:"Work" description:"Team work" visibility:team
 ```
 
 规则：
@@ -471,7 +471,7 @@ taskg workspace add work name:"Work" description:"Team work" visibility:team
 ### workspace use
 
 ```bash
-taskg workspace use work
+xuanchu workspace use work
 ```
 
 规则：
@@ -483,7 +483,7 @@ taskg workspace use work
 ### workspace modify
 
 ```bash
-taskg workspace modify work name:"Work" description:"Team work" visibility:team
+xuanchu workspace modify work name:"Work" description:"Team work" visibility:team
 ```
 
 规则：
@@ -496,7 +496,7 @@ taskg workspace modify work name:"Work" description:"Team work" visibility:team
 ### workspace archive
 
 ```bash
-taskg workspace archive old
+xuanchu workspace archive old
 ```
 
 规则：
@@ -515,9 +515,9 @@ taskg workspace archive old
 ### member list
 
 ```bash
-taskg member list
-taskg member list --workspace work
-taskg member list --json
+xuanchu member list
+xuanchu member list --workspace work
+xuanchu member list --json
 ```
 
 规则：
@@ -529,8 +529,8 @@ taskg member list --json
 ### member add
 
 ```bash
-taskg member add alice
-taskg member add alice role:viewer
+xuanchu member add alice
+xuanchu member add alice role:viewer
 ```
 
 规则：
@@ -544,8 +544,8 @@ taskg member add alice role:viewer
 ### member role
 
 ```bash
-taskg member role alice viewer
-taskg member role bob owner
+xuanchu member role alice viewer
+xuanchu member role bob owner
 ```
 
 规则：
@@ -558,9 +558,9 @@ taskg member role bob owner
 ### audit list
 
 ```bash
-taskg audit list
-taskg audit list --workspace work
-taskg audit list --json
+xuanchu audit list
+xuanchu audit list --workspace work
+xuanchu audit list --json
 ```
 
 规则：
@@ -796,7 +796,7 @@ M4 只有同时满足以下条件，才算真正完成：
 
 必须覆盖：
 
-- 升级后默认 `taskg add/list` 行为不破坏。
+- 升级后默认 `xuanchu add/list` 行为不破坏。
 - `workspace add/use/list/info/modify/archive`。
 - `user add/use/list/info`。
 - `member add/role/list`。
@@ -816,7 +816,7 @@ M4 只有同时满足以下条件，才算真正完成：
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 如果改动影响 CLI 行为，还应重点运行：

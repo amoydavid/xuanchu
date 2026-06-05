@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 type Role string

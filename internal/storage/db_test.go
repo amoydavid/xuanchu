@@ -23,8 +23,8 @@ func TestIsPostgresURL(t *testing.T) {
 		{"postgres://user:pass@host:5432/db", true},
 		{"postgresql://user:pass@host:5432/db", true},
 		{"", false},
-		{"/path/to/taskg.db", false},
-		{"taskg.db", false},
+		{"/path/to/xuanchu.db", false},
+		{"xuanchu.db", false},
 		{"mysql://host/db", false},
 	}
 	for _, tt := range tests {
@@ -45,7 +45,7 @@ func TestOpen_UnsupportedScheme(t *testing.T) {
 }
 
 func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	store, err := Open(dbPath)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
 }
 
 func TestOpenCanReopenExistingDatabase(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	store1, err := Open(dbPath)
 	if err != nil {
@@ -115,7 +115,7 @@ func TestOpenCanReopenExistingDatabase(t *testing.T) {
 }
 
 func TestDBMigratesAuditDelegatorColumns(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -130,7 +130,7 @@ func TestDBMigratesAuditDelegatorColumns(t *testing.T) {
 }
 
 func TestTaskAssigneeTableMigrated(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -145,7 +145,7 @@ func TestTaskAssigneeTableMigrated(t *testing.T) {
 }
 
 func TestUserExternalIDTableMigrated(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -160,7 +160,7 @@ func TestUserExternalIDTableMigrated(t *testing.T) {
 }
 
 func TestTaskLinkTableMigrated(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 }
 
 func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -211,7 +211,7 @@ func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
 }
 
 func TestM5MigrationRestoresForeignKeysWhenBeginImmediateFails(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	db, err := gorm.Open(sqlite.Open(sqliteDSN(dbPath)+"&_pragma=busy_timeout(1)"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		t.Fatalf("gorm.Open() error = %v", err)
@@ -258,7 +258,7 @@ func TestM5MigrationRestoresForeignKeysWhenBeginImmediateFails(t *testing.T) {
 }
 
 func TestOpenMigratesContextActiveMeta(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	store, err := Open(dbPath)
 	if err != nil {
@@ -295,7 +295,7 @@ func TestOpenMigratesContextActiveMeta(t *testing.T) {
 }
 
 func TestOpenMigratesM3WorkspaceRows(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	store, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open(initial) error = %v", err)
@@ -357,7 +357,7 @@ func TestOpenMigratesM3WorkspaceRows(t *testing.T) {
 }
 
 func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
 }
 
 func TestOpenMigratesM4ProjectStrings(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "t1", Project: ptrString("Customer-A"), Entry: 10},
 		{WorkspaceSlug: "local", UUID: "t2", Project: ptrString("customer-b"), Entry: 20},
@@ -410,7 +410,7 @@ func TestOpenMigratesM4ProjectStrings(t *testing.T) {
 }
 
 func TestOpenMigratesM5ProjectStringsIdempotently(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "t1", Project: ptrString("api"), Entry: 10},
 		{WorkspaceSlug: "local", UUID: "t2", Project: ptrString("web"), Entry: 20},
@@ -450,7 +450,7 @@ func TestOpenMigratesM5ProjectStringsIdempotently(t *testing.T) {
 }
 
 func TestOpenMigratesInvalidAndConflictingProjects(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "invalid", Project: ptrString("Bad Project!"), Entry: 10},
 		{WorkspaceSlug: "local", UUID: "conflict-a", Project: ptrString("API"), Entry: 20},
@@ -483,7 +483,7 @@ func TestOpenMigratesInvalidAndConflictingProjects(t *testing.T) {
 }
 
 func TestOpenMigratesTrimmedRawProjectConflicts(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "plain", Project: ptrString("api"), Entry: 10},
 		{WorkspaceSlug: "local", UUID: "spaced", Project: ptrString(" api "), Entry: 20},
@@ -511,7 +511,7 @@ func TestOpenMigratesTrimmedRawProjectConflicts(t *testing.T) {
 }
 
 func TestM5MigrationRollsBackOnCopyFailure(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "task-1", Project: ptrString("api"), Entry: 10},
 	})
@@ -549,7 +549,7 @@ func TestM5MigrationRollsBackOnCopyFailure(t *testing.T) {
 }
 
 func TestOpenEnablesForeignKeyChecks(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func TestOpenEnablesForeignKeyChecks(t *testing.T) {
 }
 
 func TestM5MigrationColumnsMatchM4Snapshot(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +596,7 @@ func TestM5MigrationColumnsMatchM4Snapshot(t *testing.T) {
 }
 
 func TestM5MigrationIndexesMatchM5Snapshot(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,7 +620,7 @@ func TestM5MigrationIndexesMatchM5Snapshot(t *testing.T) {
 }
 
 func TestM5MigrationPreservesTaskIndexesFromM4Database(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "task-1", Project: ptrString("api"), Entry: 10},
 	})
@@ -649,7 +649,7 @@ func TestM5MigrationPreservesTaskIndexesFromM4Database(t *testing.T) {
 }
 
 func TestM5MigrationPreservesTaskRelations(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
 		{WorkspaceSlug: "local", UUID: "dep", Project: ptrString("api"), Entry: 10},
 		{
@@ -701,7 +701,7 @@ func TestM5MigrationPreservesTaskRelations(t *testing.T) {
 }
 
 func TestM5MigrationRebuildsM4RelationForeignKeys(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "taskg.db")
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4GORMDatabaseWithTaskRelations(t, dbPath)
 
 	store, err := Open(dbPath)

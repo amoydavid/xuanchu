@@ -8,13 +8,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/recurrence"
-	"github.com/dajee/taskg/internal/report"
-	"github.com/dajee/taskg/internal/storage"
-	"github.com/dajee/taskg/internal/task"
-	"github.com/dajee/taskg/internal/uda"
-	"github.com/dajee/taskg/internal/urgency"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/recurrence"
+	"git.dajee.net/dajee/xuanchu/internal/report"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/uda"
+	"git.dajee.net/dajee/xuanchu/internal/urgency"
 )
 
 type Service struct {

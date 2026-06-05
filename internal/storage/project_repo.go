@@ -3,7 +3,7 @@ package storage
 import (
 	"errors"
 
-	domain "github.com/dajee/taskg/internal/task"
+	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"gorm.io/gorm"
 )
 

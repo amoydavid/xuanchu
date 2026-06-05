@@ -1,7 +1,7 @@
 package mcpserver
 
 import (
-	"github.com/dajee/taskg/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -13,7 +13,7 @@ func NewServer(opts Options) *mcp.Server {
 		version = "dev"
 	}
 	srv := mcp.NewServer(&mcp.Implementation{
-		Name:    "taskg",
+		Name:    "xuanchu",
 		Version: version,
 	}, nil)
 	RegisterTools(srv, opts)

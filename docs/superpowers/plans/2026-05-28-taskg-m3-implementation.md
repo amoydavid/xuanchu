@@ -1,14 +1,14 @@
-# taskg M3 Implementation Plan
+# xuanchu M3 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 完成 taskg M3：配置系统升级、context、UDA、`.taskrc` 只读导入、脚本化 helper 补齐和 shell completion。
+**Goal:** 完成 xuanchu M3：配置系统升级、context、UDA、`.taskrc` 只读导入、脚本化 helper 补齐和 shell completion。
 
 **Architecture:** M3 在 M0-M2 已有 CLI / app / query / storage / JSON / DOM 分层之上继续增量扩展，不重写现有任务核心。实现时把“配置来源与合并”“context 过滤”“UDA schema 与值”“`.taskrc` 导入”“helper/completion”拆成独立边界，让 CLI 只负责参数路由，app 负责用例编排，storage 只负责持久化，query/DOM/urgency 只接收结构化输入。
 
 **Tech Stack:** Go 1.22、Cobra、GORM、`github.com/glebarez/sqlite`、`github.com/pelletier/go-toml/v2`、标准库 `encoding/json` / `text/scanner` / `time` / `sort` / `os/exec`、Go test。M3 不新增 SQLite driver，不引入 CGO。
 
-**Delivery:** 建议拆成 6 个可合并点：Chunk 1+2、Chunk 3、Chunk 4、Chunk 5、Chunk 6、Chunk 7。每个合并点都必须能单独验证，并满足 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 的要求。
+**Delivery:** 建议拆成 6 个可合并点：Chunk 1+2、Chunk 3、Chunk 4、Chunk 5、Chunk 6、Chunk 7。每个合并点都必须能单独验证，并满足 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 的要求。
 
 ---
 
@@ -21,7 +21,7 @@
 - Create: `internal/config/runtime.go`
   - 运行时配置快照、合并规则、typed accessors。
 - Create: `internal/config/toml.go`
-  - 读取 `~/.config/taskg/taskg.toml` / `XDG_CONFIG_HOME`，解析平铺与分组 key。
+  - 读取 `~/.config/xuanchu/xuanchu.toml` / `XDG_CONFIG_HOME`，解析平铺与分组 key。
 - Modify: `internal/cli/root.go`
   - 解析 `rc.<key>=<value>` 与 `--no-context`，并把 rc 覆盖传入后续构造。
 - Modify: `internal/cli/config.go`
@@ -48,13 +48,13 @@
 ```go
 func TestResolveMergesDatabasePathAndRuntimeConfig(t *testing.T) {
 	// 1. explicit --db wins
-	// 2. TASKG_DB wins over TOML
+	// 2. XUANCHU_DB wins over TOML
 	// 3. TOML wins over default data dir fallback for non-path keys
 	// 4. SQLite meta wins over TOML for user-set keys
 }
 
 func TestResolveLoadsTomlFile(t *testing.T) {
-	// 读取 $XDG_CONFIG_HOME/taskg/taskg.toml 或 ~/.config/taskg/taskg.toml
+	// 读取 $XDG_CONFIG_HOME/xuanchu/xuanchu.toml 或 ~/.config/xuanchu/xuanchu.toml
 	// 验证 date.format / color / context.active / uda.* 能被展开成 runtime key/value
 }
 ```
@@ -132,8 +132,8 @@ Expected: FAIL。
 - `rc.<key>=` 与 `rc.<key>:` 都表示本次运行清空该 key；`rc.context=none` 也归一为清空 `context.active`。
 - 扫描 `--no-context` 并把它注入 root options。
 - 继续保持两种入口：
-  - `taskg <subcommand> ...`
-  - `taskg <target> <action> ...`
+  - `xuanchu <subcommand> ...`
+  - `xuanchu <target> <action> ...`
 
 - [ ] **Step 4: 运行测试**
 
@@ -550,10 +550,10 @@ func TestImportPreservesOrphanUDA(t *testing.T) {
 
 func TestModifyRejectsOrphanUDA(t *testing.T) {
 	// 1. JSON import 一个含未定义 UDA "legacy_field" 的任务
-	// 2. taskg 1 modify legacy_field:newvalue 应返回 error
-	// 3. taskg 1 modify legacy_field: 也应返回 error，不能靠清空绕过
+	// 2. xuanchu 1 modify legacy_field:newvalue 应返回 error
+	// 3. xuanchu 1 modify legacy_field: 也应返回 error，不能靠清空绕过
 	// 4. JSON import 修改同字段值应被允许，保证 round-trip
-	// 5. taskg 1 edit 中清空 legacy_field 应被允许
+	// 5. xuanchu 1 edit 中清空 legacy_field 应被允许
 }
 ```
 
@@ -870,7 +870,7 @@ Expected: FAIL。
 - 支持 `include <path>`，并处理递归 include 与循环 include。
 - 识别并分类：
   - imported：M3 支持且能落库的 key
-  - skipped：认识但 M3 不导入的 key；`data.location` 归为 skipped，因为 M3 的 `database.path` 只在启动前由 `--db`、`TASKG_DB`、`--data-dir` 或 TOML 决定
+  - skipped：认识但 M3 不导入的 key；`data.location` 归为 skipped，因为 M3 的 `database.path` 只在启动前由 `--db`、`XUANCHU_DB`、`--data-dir` 或 TOML 决定
   - unknown：完全不认识的 key
 - `.taskrc` 中 `uda.<name>.values=1,2,3` 按逗号分隔解析，写入 UDA schema 时归一到 `values_json` JSON array；这必须与 TOML array 和 CLI `config set uda.<name>.values "1,2,3"` 的最终结果一致。
 - 报告结构必须能 human 输出，也能 JSON 输出。
@@ -984,7 +984,7 @@ git commit -m "feat: CLI 支持 taskrc 导入"
 ```go
 func TestCLIShowHelperAndVersion(t *testing.T) {
 	// _show / _version 输出稳定
-	// _version 无 build flag 时输出 taskg dev
+	// _version 无 build flag 时输出 xuanchu dev
 }
 
 func TestCLICompletionDoesNotOpenDatabase(t *testing.T) {
@@ -1013,7 +1013,7 @@ Expected: FAIL。
 - `_show` 作为脚本版配置读取器：
   - 无参数输出所有合并后的 key/value，每行一个。
   - 有参数按请求顺序输出对应 value。
-- `_version` 输出构建时注入的版本字符串；如果没有注入，输出 `taskg dev`。
+- `_version` 输出构建时注入的版本字符串；如果没有注入，输出 `xuanchu dev`。
 
 创建 `internal/cli/completion.go`：
 
@@ -1028,7 +1028,7 @@ Expected: FAIL。
 - completion 不打开数据库。
 - completion 不依赖当前 workspace 或 context。
 - completion 命令必须能在业务命令初始化数据库之前返回；如果 root 使用 `PersistentPreRunE` 打开 DB，需要跳过 completion，或把 DB 打开下沉到具体业务命令的 `RunE`。
-- 集成测试使用一个无法打开的 `--db` 路径，例如 `$TMP/nonexistent-dir/taskg.db`。`taskg --db "$bad" completion bash` 应成功输出 bash completion；如果尝试开库，测试应失败。
+- 集成测试使用一个无法打开的 `--db` 路径，例如 `$TMP/nonexistent-dir/xuanchu.db`。`xuanchu --db "$bad" completion bash` 应成功输出 bash completion；如果尝试开库，测试应失败。
 
 - [ ] **Step 4: 运行测试**
 
@@ -1058,7 +1058,7 @@ git commit -m "feat: 补齐 helper 和 completion"
   - 增加 M3 用法和约束说明。
 - Modify: `ROADMAP.md`
   - 将 M3 标为已完成，下一步切到 M4。
-- Modify: `docs/superpowers/specs/2026-05-28-taskg-m3-design.md`
+- Modify: `docs/superpowers/specs/2026-05-28-xuanchu-m3-design.md`
   - 若实现过程确认范围有微调，回写 spec。
 - Test: 全量测试与 CGO-free 构建。
 
@@ -1077,7 +1077,7 @@ git commit -m "feat: 补齐 helper 和 completion"
 
 README 必须补充：
 
-- `taskg.toml` 与 `config` 用法。
+- `xuanchu.toml` 与 `config` 用法。
 - `context define/use/none/show/list/delete` 用法。
 - UDA 的 `config set`、`_udas`、`_unique`、`_get` 示例。
 - `.taskrc` 只读导入示例。
@@ -1102,7 +1102,7 @@ Expected: PASS。
 - [ ] **Step 4: 提交**
 
 ```bash
-git add README.md ROADMAP.md docs/superpowers/specs/2026-05-28-taskg-m3-design.md
+git add README.md ROADMAP.md docs/superpowers/specs/2026-05-28-xuanchu-m3-design.md
 git commit -m "docs: 更新 M3 文档与路线图"
 ```
 
@@ -1137,7 +1137,7 @@ Expected: PASS。
 Run:
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -1161,9 +1161,9 @@ Run:
 
 ```bash
 tmp="$(mktemp -d)"
-go run ./cmd/taskg --db "$tmp/taskg.db" show
-go run ./cmd/taskg --db "$tmp/taskg.db" completion zsh
-go run ./cmd/taskg --db "$tmp/taskg.db" config list
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" show
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" completion zsh
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" config list
 ```
 
 Expected:
@@ -1184,6 +1184,6 @@ Expected: 干净。
 
 ## 计划审阅说明
 
-本计划根据 [docs/superpowers/specs/2026-05-28-taskg-m3-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-taskg-m3-design.md)、[README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md) 和 [docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md) 编写。
+本计划根据 [docs/superpowers/specs/2026-05-28-xuanchu-m3-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-xuanchu-m3-design.md)、[README.md](/Users/mac/code/projects/dajee/task/README.md)、[ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)、[AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md) 和 [docs/requirements.md](/Users/mac/code/projects/dajee/task/docs/requirements.md) 编写。
 
 当前未执行 plan-document-reviewer subagent 审阅；本环境虽提供通用 multi-agent 工具，但未提供明确的 plan-document-reviewer 角色或提示文件，也没有 `plan-document-reviewer-prompt.md` 可引用。后续如需要严格执行 superpowers 审阅环节，请用专门 reviewer prompt 对每个 chunk 进行审阅。实施过程中若发现本计划与 spec 冲突，以 spec 为准并先更新计划。

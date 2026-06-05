@@ -1,8 +1,8 @@
-# taskg M1 设计规格
+# xuanchu M1 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 在 M0 本地 CLI 的基础上，实现 Taskwarrior 风格的查询核心、内置报表、urgency 计算、DOM/helper 基础和 `calc` 第一版，让 `taskg` 从“能管理任务”升级为“能查询和解释任务”。
+**目标：** 在 M0 本地 CLI 的基础上，实现 Taskwarrior 风格的查询核心、内置报表、urgency 计算、DOM/helper 基础和 `calc` 第一版，让 `xuanchu` 从“能管理任务”升级为“能查询和解释任务”。
 
 **范围：** M1 只基于 M0 已有任务字段实现可真实工作的能力。`start`、`wait`、`scheduled`、`depends`、`annotations`、`recurring`、UDA、多 workspace、HTTP API、MCP Server、op-log sync 和 Hook 均不进入 M1。
 
@@ -32,20 +32,20 @@ M1 的核心任务是替换“简单 Filter + 临时排序”的查询基础设�
 M1 应支持这些用户体验：
 
 ```bash
-taskg '+next or due.before:tomorrow' list
-taskg '(project:work and +urgent) or priority:H' list
-taskg due.after:today due.before:eow list
-taskg /spec/ all
-taskg overdue
-taskg completed
-taskg _get 1.description 1.uuid
-taskg _ids +next
-taskg _projects
-taskg calc '1 + 2 * 3'
-taskg urgency 1
+xuanchu '+next or due.before:tomorrow' list
+xuanchu '(project:work and +urgent) or priority:H' list
+xuanchu due.after:today due.before:eow list
+xuanchu /spec/ all
+xuanchu overdue
+xuanchu completed
+xuanchu _get 1.description 1.uuid
+xuanchu _ids +next
+xuanchu _projects
+xuanchu calc '1 + 2 * 3'
+xuanchu urgency 1
 ```
 
-CLI 仍需兼容 M0 的“filter 出现在命令名前”形态，例如 `taskg +next list`；当查询包含空格、括号或布尔操作符时，用户应使用引号把查询表达式作为一个 shell 参数传入。
+CLI 仍需兼容 M0 的“filter 出现在命令名前”形态，例如 `xuanchu +next list`；当查询包含空格、括号或布尔操作符时，用户应使用引号把查询表达式作为一个 shell 参数传入。
 `/spec/` 在 M1 中只表示 description 子串匹配的简写，不承诺正则语义；完整正则匹配留到后续兼容阶段。
 
 M1 的查询和报表能力必须仍然保持脚本友好：
@@ -167,7 +167,7 @@ not +later
 多个相邻 filter 默认 AND：
 
 ```bash
-taskg +work status:pending list
+xuanchu +work status:pending list
 ```
 
 等价于：
@@ -178,8 +178,8 @@ taskg +work status:pending list
 
 裸 token 不再由 parser 直接解释成 `uuid = token`。parser 应保留 `BareToken`，由 CLI/app 根据命令上下文判断：
 
-- `taskg 1 list`、`taskg <uuid> list`：作为 target 解析。
-- `taskg 1 done`、`taskg <uuid> modify ...`：沿用 M0 target action。
+- `xuanchu 1 list`、`xuanchu <uuid> list`：作为 target 解析。
+- `xuanchu 1 done`、`xuanchu <uuid> modify ...`：沿用 M0 target action。
 - 在纯查询位置中无法判定的裸 token：M1 转为 description 子串过滤，保持 M0 `/text/` 搜索体验；若后续发现这与 Taskwarrior 兼容性冲突，再单独调整。
 
 M1 的 target 判定规则保持保守：只有单个纯整数 working-set ID、完整 36 字符 UUID、完整 32 字符无连字符 UUID 会被 `list`/`info` 等命令当成 target；其它裸 token 一律进入 query AST，作为 description 子串过滤。UUID 短前缀留到 M2 再评估。
@@ -210,9 +210,9 @@ parser 应返回清晰错误：
 错误示例：
 
 ```text
-taskg: invalid query: expected expression after "or"
-taskg: invalid query: unknown attribute "foo"
-taskg: invalid query: unclosed quote
+xuanchu: invalid query: expected expression after "or"
+xuanchu: invalid query: unknown attribute "foo"
+xuanchu: invalid query: unclosed quote
 ```
 
 ## 5. AST 与编译层
@@ -373,9 +373,9 @@ M1 不计算：
 M1 增加：
 
 ```bash
-taskg urgency 1
-taskg urgency <uuid>
-taskg _urgency 1
+xuanchu urgency 1
+xuanchu urgency <uuid>
+xuanchu _urgency 1
 ```
 
 建议行为：
@@ -393,17 +393,17 @@ M1 新增 `internal/dom`，提供最小可复用 DOM 查询能力。
 支持：
 
 ```bash
-taskg _get 1.description
-taskg _get 1.uuid
-taskg _get 1.status
-taskg _get 1.entry
-taskg _get 1.modified
-taskg _get 1.due
-taskg _get 1.project
-taskg _get 1.priority
-taskg _get 1.tags
-taskg _get 1.urgency
-taskg _get 1.tag.next
+xuanchu _get 1.description
+xuanchu _get 1.uuid
+xuanchu _get 1.status
+xuanchu _get 1.entry
+xuanchu _get 1.modified
+xuanchu _get 1.due
+xuanchu _get 1.project
+xuanchu _get 1.priority
+xuanchu _get 1.tags
+xuanchu _get 1.urgency
+xuanchu _get 1.tag.next
 ```
 
 规则：
@@ -420,7 +420,7 @@ taskg _get 1.tag.next
 输出当前查询结果的 working-set ID：
 
 ```bash
-taskg _ids +next
+xuanchu _ids +next
 ```
 
 ### `_uuids`
@@ -428,7 +428,7 @@ taskg _ids +next
 输出当前查询结果的 UUID：
 
 ```bash
-taskg _uuids project:work
+xuanchu _uuids project:work
 ```
 
 ### `_projects`
@@ -451,8 +451,8 @@ taskg _uuids project:work
 M1 增加 `internal/expr` 和 CLI：
 
 ```bash
-taskg calc '1 + 2 * 3'
-taskg calc '3 > 2 and 1 < 2'
+xuanchu calc '1 + 2 * 3'
+xuanchu calc '3 > 2 and 1 < 2'
 ```
 
 支持：
@@ -480,9 +480,9 @@ M1 不支持：
 
 M0 root command 已经支持：
 
-- `taskg <subcommand> ...`
-- `taskg <filters...> <command> ...`
-- `taskg <target> <action> ...`
+- `xuanchu <subcommand> ...`
+- `xuanchu <filters...> <command> ...`
+- `xuanchu <target> <action> ...`
 
 M1 增加 `_get`、`_ids`、`_uuids`、`_projects`、`_tags`、`_urgency`、`calc`、`urgency`、`all`、`completed`、`deleted`、`overdue` 后，需要同步更新 root command 的 known subcommands。
 
@@ -513,7 +513,7 @@ CLI args
 关键点：
 
 - report 默认 filter 与用户 filter 通过 AND 合并。
-- 若用户 filter 与 report 默认 filter 冲突，例如 `taskg completed status:pending`，M1 返回空结果；用户若要完全绕开默认状态限制，应使用 `all` 报表。
+- 若用户 filter 与 report 默认 filter 冲突，例如 `xuanchu completed status:pending`，M1 返回空结果；用户若要完全绕开默认状态限制，应使用 `all` 报表。
 - `all` 不注入默认 status。
 - `list` 和 `next` 注入 `status:pending`。
 - `overdue` 注入 `status:pending and due.before:today`。
@@ -538,10 +538,10 @@ M1 错误继续遵守 M0 约定：
 错误示例：
 
 ```text
-taskg: invalid query: unclosed /text/ expression
-taskg: unknown report "waiting"; this report requires M2 task fields
-taskg: unknown DOM field "1.foo"
-taskg: calc: division by zero
+xuanchu: invalid query: unclosed /text/ expression
+xuanchu: unknown report "waiting"; this report requires M2 task fields
+xuanchu: unknown DOM field "1.foo"
+xuanchu: calc: division by zero
 ```
 
 虽然 M1 不注册 `waiting` 命令，但如果用户显式请求未知报表或未来配置残留，应给清晰错误。
@@ -621,20 +621,20 @@ taskg: calc: division by zero
 
 ### CLI 集成测试
 
-- `taskg '+next or due.before:tomorrow' list`。
-- `taskg '(project:work and +urgent) or priority:H' list`。
-- `taskg overdue`。
-- `taskg completed --json`。
-- `taskg _get 1.description 1.uuid`。
-- `taskg calc '1 + 2 * 3'`。
-- `taskg urgency 1 --json`。
+- `xuanchu '+next or due.before:tomorrow' list`。
+- `xuanchu '(project:work and +urgent) or priority:H' list`。
+- `xuanchu overdue`。
+- `xuanchu completed --json`。
+- `xuanchu _get 1.description 1.uuid`。
+- `xuanchu calc '1 + 2 * 3'`。
+- `xuanchu urgency 1 --json`。
 
 ### 必跑验收
 
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## 14. 验收标准

@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/dajee/taskg/internal/render"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 

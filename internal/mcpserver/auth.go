@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 // RequestScopeInput 是构造 scoped service 的输入参数。
@@ -105,7 +105,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		WorkspaceRef:       workspaceRef,
 		ProjectRef:         projectRef,
 		ProjectRefIsID:     strings.TrimSpace(input.ProjectID) != "",
-		SubjectUserRef:     strings.TrimSpace(r.Header.Get("X-Taskg-As")),
+		SubjectUserRef:     strings.TrimSpace(r.Header.Get("X-Xuanchu-As")),
 	})
 	if err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func workspaceRefFromHTTPRequest(r *http.Request) string {
 	if value := strings.TrimSpace(r.URL.Query().Get("workspace")); value != "" {
 		return value
 	}
-	return strings.TrimSpace(r.Header.Get("X-Taskg-Workspace"))
+	return strings.TrimSpace(r.Header.Get("X-Xuanchu-Workspace"))
 }
 
 // AuthenticateHTTPRequest 对 HTTP 请求进行 Bearer token 鉴权。

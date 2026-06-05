@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
-// SignatureSHA256 按照 taskg webhook 签名规范计算 HMAC-SHA256。
+// SignatureSHA256 按照 xuanchu webhook 签名规范计算 HMAC-SHA256。
 // 签名输入: "<delivery_id>.<timestamp_unix_seconds>.<body>"
 // 签名输出: "sha256=<hex>"
 // 如果 secret 为空，返回空字符串。
@@ -47,17 +47,17 @@ func HeadersForDelivery(delivery storage.HookDelivery, hook storage.HookDefiniti
 	// 运行时 headers 覆盖存储的
 	attempt := strconv.Itoa(delivery.AttemptCount)
 	headers.Set("Content-Type", "application/json; charset=utf-8")
-	headers.Set("X-Taskg-Delivery", delivery.ID)
-	headers.Set("X-Taskg-Hook-Id", hook.ID)
-	headers.Set("X-Taskg-Attempt", attempt)
-	headers.Set("User-Agent", "taskg-webhook/"+version)
+	headers.Set("X-Xuanchu-Delivery", delivery.ID)
+	headers.Set("X-Xuanchu-Hook-Id", hook.ID)
+	headers.Set("X-Xuanchu-Attempt", attempt)
+	headers.Set("User-Agent", "xuanchu-webhook/"+version)
 
 	// 签名相关 headers（仅当 secret 存在时）
 	if hook.Secret != "" {
 		ts := strconv.FormatInt(now, 10)
-		headers.Set("X-Taskg-Timestamp", ts)
+		headers.Set("X-Xuanchu-Timestamp", ts)
 		sig := SignatureSHA256(hook.Secret, delivery.ID, now, body)
-		headers.Set("X-Taskg-Signature-256", sig)
+		headers.Set("X-Xuanchu-Signature-256", sig)
 	}
 
 	return headers, nil

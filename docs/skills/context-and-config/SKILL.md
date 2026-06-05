@@ -1,6 +1,6 @@
 # 上下文与配置
 
-通过 taskg MCP 管理 workspace/project 级配置。
+通过 xuanchu MCP 管理 workspace/project 级配置。
 
 ## 重要原则
 

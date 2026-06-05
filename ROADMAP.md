@@ -1,6 +1,6 @@
-# taskg Roadmap
+# xuanchu Roadmap
 
-本文档是 `taskg` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：借鉴 Taskwarrior 设计思路、面向企业项目协作和 Agent MCP 的任务运行时。
+本文档是 `xuanchu` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：借鉴 Taskwarrior 设计思路、面向企业项目协作和 Agent MCP 的任务运行时。
 
 - 单一二进制，同时承担本地 CLI、远程 CLI 客户端、HTTP/JSON API 服务端、MCP Server。
 - 使用纯 Go SQLite 方案，保持零 CGO、可跨平台交叉编译。
@@ -38,7 +38,7 @@
 
 M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力包括：
 
-- Go module 与 `cmd/taskg` 单二进制入口。
+- Go module 与 `cmd/xuanchu` 单二进制入口。
 - Cobra CLI 基础结构。
 - GORM 持久化层。
 - 纯 Go SQLite driver：`github.com/glebarez/sqlite`。
@@ -107,7 +107,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `_tags`
 - `internal/expr` / `calc` 第一版：
   - 数字、布尔、比较、基础算术。
-  - 先满足 `taskg calc` 和后续 query/urgency 复用，不追求一次性覆盖完整 Taskwarrior calc。
+  - 先满足 `xuanchu calc` 和后续 query/urgency 复用，不追求一次性覆盖完整 Taskwarrior calc。
 
 **不进入 M1：**
 
@@ -122,9 +122,9 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 **验收标准：**
 
 - 常用 Taskwarrior filter 示例有单元测试和 CLI 集成测试。
-- `taskg +next or due.before:tomorrow list` 这类布尔查询可用。
+- `xuanchu +next or due.before:tomorrow list` 这类布尔查询可用。
 - `next` 默认按 urgency 排序。
-- `taskg urgency 1` 或 `_urgency` 能输出任务 urgency；如果命令命名暂未确定，至少 app/service 层提供 explain。
+- `xuanchu urgency 1` 或 `_urgency` 能输出任务 urgency；如果命令命名暂未确定，至少 app/service 层提供 explain。
 - `_get`、`_ids`、`_uuids`、`_projects`、`_tags` 可脚本化使用。
 - `go test ./...`、`CGO_ENABLED=0 go test ./...` 通过。
 
@@ -132,7 +132,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 **状态：已完成。**
 
-**目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 taskg 不再只是简单 todo CLI。
+**目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 xuanchu 不再只是简单 todo CLI。
 
 **范围：**
 
@@ -228,10 +228,10 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 **范围：**
 
 - 配置系统升级：
-  - `~/.config/taskg/taskg.toml`。
+  - `~/.config/xuanchu/xuanchu.toml`。
   - SQLite meta/config 与文件配置合并规则。
   - 命令行临时覆盖：`rc.x=y`。
-  - 保留 `--db`、`TASKG_DB` 的优先级。
+  - 保留 `--db`、`XUANCHU_DB` 的优先级。
 - `.taskrc` 只读导入第一版：
   - 能识别常见 key。
   - 不认识的 key 给出兼容性报告。
@@ -275,7 +275,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 **M3 已交付内容：**
 
 - 配置系统升级：
-  - 支持 `~/.config/taskg/taskg.toml` 与 `XDG_CONFIG_HOME`。
+  - 支持 `~/.config/xuanchu/xuanchu.toml` 与 `XDG_CONFIG_HOME`。
   - 支持 `rc.<key>=<value>`、`rc.<key>:`、`rc.context=none`。
   - `config get/set/unset/list` 可读取合并视图，并路由 UDA schema。
 - context：
@@ -320,7 +320,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 支持 `active_workspace.<user_id>`
   - 支持 `active_context.<user_id>.<workspace_id>`
   - 支持全局 `--workspace <slug|uuid>` 一次性覆盖
-  - 当前 CLI 使用裸 workspace slug，因此 workspace slug 在同一个 taskg 实例内保持唯一；project slug 只在 workspace 内唯一
+  - 当前 CLI 使用裸 workspace slug，因此 workspace slug 在同一个 xuanchu 实例内保持唯一；project slug 只在 workspace 内唯一
 - 权限边界：
   - `viewer` / `member` / `admin` / `owner`
   - task、context、UDA schema、workspace metadata、member role、audit read 都经过 app 层权限检查
@@ -374,9 +374,9 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 已归档 project 不允许被新任务引用；已有任务保留关联并可继续读取、完成、删除。
   - M5 不引入全局唯一 project slug。所有 project slug 都必须在 effective workspace 内解析。
   - effective workspace 的来源顺序：本次 `--workspace <slug|uuid>` > 当前 active workspace > 本地默认 workspace。后续远程 CLI 还要叠加 token workspace scope。
-  - `taskg --workspace dajee project info ai-agent-platform` 表示 `dajee` workspace 下的 `ai-agent-platform`。
-  - `taskg --workspace partner project info ai-agent-platform` 表示另一个 workspace 下的同名 project。
-  - `taskg project info ai-agent-platform` 只在当前 active workspace 中查找，不做跨 workspace 搜索。
+  - `xuanchu --workspace dajee project info ai-agent-platform` 表示 `dajee` workspace 下的 `ai-agent-platform`。
+  - `xuanchu --workspace partner project info ai-agent-platform` 表示另一个 workspace 下的同名 project。
+  - `xuanchu project info ai-agent-platform` 只在当前 active workspace 中查找，不做跨 workspace 搜索。
   - 脚本和 API 场景应优先保存和传递 `project_id`；slug 只做人类输入。
   - `project_id` 是全局稳定身份，但所有读取和写入仍必须校验 actor 对该 project 所属 workspace 的权限。
   - 如果命令同时给出 `--workspace <slug|uuid>` 和 `<project-id>`，该 project 必须属于这个 workspace；不属于时直接报错，不回退到 project 自己的 workspace。
@@ -388,7 +388,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - `_projects` 继续输出脚本兼容列表。
   - `_projects` 默认只列 effective workspace 下的项目；跨 workspace 枚举必须显式指定 workspace，或等到 M6 API/M7 MCP 通过带权限的接口提供。
 - 配置边界：
-  - `taskg.toml` 只作为本机启动和显示配置来源，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 连接信息。
+  - `xuanchu.toml` 只作为本机启动和显示配置来源，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 连接信息。
   - workspace 业务配置必须存 DB，并绑定 `workspace_id`，包括 UDA schema、urgency UDA 系数、context、report 默认配置。
   - project 级配置挂到 project/workspace 下，包括 project 默认 context、project 级 Agent 背景、project 级约束和后续 webhook 默认值。
   - project 配置只通过 `project config get/set/unset/list <project>` 访问；无 scope 的 `config get/set/list` 不显示 project 配置。
@@ -417,9 +417,9 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - `tasks.project_id` 与 `tasks.workspace_id` 必须一致：不能把 `dajee` workspace 的任务绑定到 `partner` workspace 的 project。数据库迁移、repo 写入和 app/service 测试都要覆盖这条约束。
 - `project:*` 查询、`_projects`、报表、context 与 UDA/urgency 都按 workspace/project 边界工作。
 - workspace 业务配置与 project 配置互不污染；两个 workspace 可以拥有不同 UDA、urgency、context 和 project 默认配置。
-- `taskg.toml` 不再被描述为业务配置来源。
+- `xuanchu.toml` 不再被描述为业务配置来源。
 - project 写操作有权限检查和审计记录。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 **当前已交付结果：**
 
@@ -443,12 +443,12 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 **状态：已完成。**
 
-**目标：** 让同一个 `taskg` 二进制可以作为 HTTP 服务端运行，并让 CLI / Agent 通过远程 API 操作任务。M6 的重点是把“actor + workspace + project + token scope”固化成传输层协议。
+**目标：** 让同一个 `xuanchu` 二进制可以作为 HTTP 服务端运行，并让 CLI / Agent 通过远程 API 操作任务。M6 的重点是把“actor + workspace + project + token scope”固化成传输层协议。
 
 **范围：**
 
 - 服务端模式：
-  - `taskg server --listen :8080`。
+  - `xuanchu server --listen :8080`。
   - `--data-dir` / `--db` 指定服务端数据库。
   - graceful shutdown。
 - HTTP API：
@@ -458,7 +458,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - context/config。
   - workspace/member 基础管理。
   - import/export。
-- OpenAPI 3 文档维护在 `docs/openapi/taskg-v1.yaml`。
+- OpenAPI 3 文档维护在 `docs/openapi/xuanchu-v1.yaml`。
 - 鉴权：
   - PAT。
   - Agent token。
@@ -471,7 +471,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 所有查询必须绑定可见 workspace。
   - 如果 token 带 project scope，task/query/report/import/export 都必须叠加 project 限制。
 - 远程 CLI：
-  - `taskg --server URL --token TOKEN list`。
+  - `xuanchu --server URL --token TOKEN list`。
   - 本地/远程命令输出尽量一致。
   - 支持环境变量配置 server/token。
   - 核心 task/report/project/context/config/helper/token/import/export/audit 命令已远程化；`edit`、`.taskrc import` 等本机语义命令暂不支持远程。
@@ -489,10 +489,10 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令，避免服务端不可达或命令未接线时静默读写本地 SQLite：
 
-- `taskg --server ... workspace add|list|info|modify|use|archive`
-- `taskg --server ... user add|list|info|use`
-- `taskg --server ... member list|add|role`
-- `taskg --server ... show`
+- `xuanchu --server ... workspace add|list|info|modify|use|archive`
+- `xuanchu --server ... user add|list|info|use`
+- `xuanchu --server ... member list|add|role`
+- `xuanchu --server ... show`
 
 服务端对应的 `/api/v1/workspaces*`、`/api/v1/workspaces/{workspace}/members*`、`/api/v1/me` 已在 M6 实现。M7 应把 CLI 侧接到这些 endpoint，不新增 HTTP endpoint，并把现有远程 unsupported 集成测试拆成“命令远程成功”和“不会触碰本地 DB”两类验收。
 
@@ -518,14 +518,14 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 
 **状态：已完成。**
 
-**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 taskg。MCP 请求必须落在明确的 workspace scope 内，并可进一步受 project scope 限制。Agent 不应该凭提示词决定自己能看什么，权限必须来自 token 和服务端校验。
+**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 xuanchu。MCP 请求必须落在明确的 workspace scope 内，并可进一步受 project scope 限制。Agent 不应该凭提示词决定自己能看什么，权限必须来自 token 和服务端校验。
 
 **M7 已交付内容：**
 
 - Go 版本升级到 1.25。
 - 官方 MCP Go SDK (`github.com/modelcontextprotocol/go-sdk` v1.6.1) 接入。
-- `taskg mcp stdio` 命令，本地 MCP 通过标准输入输出运行。
-- `taskg server` 暴露 `/mcp`，使用 Streamable HTTP 传输。
+- `xuanchu mcp stdio` 命令，本地 MCP 通过标准输入输出运行。
+- `xuanchu server` 暴露 `/mcp`，使用 Streamable HTTP 传输。
 - HTTP MCP Bearer token 鉴权，复用 M6 PAT/Agent token 与 workspace/project scope。
 - 21 个 MCP tools：
   - 任务：`task.add`、`task.modify`、`task.done`、`task.delete`、`task.query`、`task.get`、`task.annotate`、`task.depends`、`task.start`、`task.stop`
@@ -536,10 +536,10 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
   - Context：`context.set`、`context.show`
   - Config：`config.get`、`config.set`
 - 4 个 MCP resources：
-  - `taskg://workspace/current`
-  - `taskg://workspace/{workspace_id}`
-  - `taskg://project/{project_id}`
-  - `taskg://context/current`
+  - `xuanchu://workspace/current`
+  - `xuanchu://workspace/{workspace_id}`
+  - `xuanchu://project/{project_id}`
+  - `xuanchu://context/current`
 - M6 遗留远程管理命令收口：`workspace`、`user`、`member`、`show` 均已支持远程模式。
 - `/api/v1/tasks` 统一 limit：默认 200，最大 1000。
 - 新增 REST endpoint：`GET/POST /api/v1/users`、`GET /api/v1/users/{user}`、`PUT /api/v1/me/active_workspace`、`POST /api/v1/workspaces/{workspace}/archive`。
@@ -610,15 +610,15 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 M7 规格与实现计划：
 
 ```text
-docs/superpowers/specs/2026-06-01-taskg-m7-design.md
-docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
+docs/superpowers/specs/2026-06-01-xuanchu-m7-design.md
+docs/superpowers/plans/2026-06-01-xuanchu-m7-implementation.md
 ```
 
 ## M8：服务端 Hook / 自动化扩展与运维交付打磨
 
 **状态：已完成。**
 
-**目标：** 为 `taskg server` 增加可审计、可控、可恢复的服务端 Hook / automation 能力，让内部事件发生后可以稳定触发外部 webhook，同时补齐与该能力直接相关的部署、发布与恢复文档。`taskg` 核心仍然是 workspace/project/task/权限/审计运行时，而不是业务域 adapter 市场或通用工作流编排平台。
+**目标：** 为 `xuanchu server` 增加可审计、可控、可恢复的服务端 Hook / automation 能力，让内部事件发生后可以稳定触发外部 webhook，同时补齐与该能力直接相关的部署、发布与恢复文档。`xuanchu` 核心仍然是 workspace/project/task/权限/审计运行时，而不是业务域 adapter 市场或通用工作流编排平台。
 
 **范围：**
 
@@ -668,7 +668,7 @@ docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
 - Workspace/project scoped Hook 定义
 - 5 个稳定 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`
 - Durable delivery queue，支持 retry、dead-letter、disable、manual replay
-- Webhook HMAC-SHA256 签名（`X-Taskg-Signature-256` header）
+- Webhook HMAC-SHA256 签名（`X-Xuanchu-Signature-256` header）
 - Hook 管理 CLI（`hook add/list/deliveries/replay`）
 - Hook 管理 HTTP API（`/api/v1/hooks/*`、`/api/v1/hook-deliveries/*`）
 - Hook 配置变更与人工 replay 写入 audit log
@@ -682,8 +682,8 @@ docs/superpowers/plans/2026-06-01-taskg-m7-implementation.md
 M8 规格与实现计划：
 
 ```text
-docs/superpowers/specs/2026-06-02-taskg-m8-design.md
-docs/superpowers/plans/2026-06-02-taskg-m8-implementation.md
+docs/superpowers/specs/2026-06-02-xuanchu-m8-design.md
+docs/superpowers/plans/2026-06-02-xuanchu-m8-implementation.md
 ```
 
 ## M9：任务多 Assignee
@@ -719,13 +719,13 @@ docs/superpowers/plans/2026-06-02-taskg-m8-implementation.md
 - MCP `task.add` / `task.modify` 支持 assignee 参数，`task.get` / `task.query` 返回结构化 assignees。
 - HTTP API / remote CLI 支持 assignee 参数与过滤。
 - Hook payload 的 `data.task.assignees` 可见。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 M9 规格与实现计划：
 
 ```text
-docs/superpowers/specs/2026-06-02-taskg-m9-assignee-design.md
-docs/superpowers/plans/2026-06-02-taskg-m9-assignee-implementation.md
+docs/superpowers/specs/2026-06-02-xuanchu-m9-assignee-design.md
+docs/superpowers/plans/2026-06-02-xuanchu-m9-assignee-implementation.md
 ```
 
 ## M10：Token 委托与 Impersonation
@@ -738,11 +738,11 @@ docs/superpowers/plans/2026-06-02-taskg-m9-assignee-implementation.md
 
 - 沿用现有 `agent` token 模型，仅新增 `impersonate` scope；M10 不新增 `service` token type，也不允许 `pat` 做 impersonation
 - 新增 `impersonate` scope：只有 workspace `admin` / `owner` 才能创建带此 scope 的 Agent token，且远程/API 创建时新 token 仍必须是当前 bearer token 的子集
-- 请求头 `X-Taskg-As: <user-name | email | uuid>`：仅带 `impersonate` scope 的 Agent token 可使用；workspace 仍按 M6 既有规则解析，若存在多 workspace 歧义则返回 `workspace_required`
+- 请求头 `X-Xuanchu-As: <user-name | email | uuid>`：仅带 `impersonate` scope 的 Agent token 可使用；workspace 仍按 M6 既有规则解析，若存在多 workspace 歧义则返回 `workspace_required`
 - 权限交集：`subject.membership_role ∩ agent_token.scopes ∩ agent_token.workspace_allowlist ∩ agent_token.project_allowlist`，impersonation 不能提权
 - Audit / access log 双重 actor：subject 驱动权限、`assignee:me` 和 active context；delegator 仅用于追责与日志
-- 远程 CLI 新增 `--as` flag，作为 remote client 级配置透传 `X-Taskg-As`，同一条命令内所有子请求必须一致
-- HTTP MCP 仅支持 request-scoped `X-Taskg-As` header 透传；stdio MCP 不支持 impersonation
+- 远程 CLI 新增 `--as` flag，作为 remote client 级配置透传 `X-Xuanchu-As`，同一条命令内所有子请求必须一致
+- HTTP MCP 仅支持 request-scoped `X-Xuanchu-As` header 透传；stdio MCP 不支持 impersonation
 
 **不进入 M10：**
 
@@ -753,25 +753,25 @@ docs/superpowers/plans/2026-06-02-taskg-m9-assignee-implementation.md
 
 **验收标准：**
 
-- Agent token + `X-Taskg-As` 可以以目标 user 身份执行请求，权限受 subject role、token scope、workspace allowlist 和 project allowlist 共同约束
-- 无 `impersonate` scope 时携带 `X-Taskg-As` 返回 `token_scope_denied`
+- Agent token + `X-Xuanchu-As` 可以以目标 user 身份执行请求，权限受 subject role、token scope、workspace allowlist 和 project allowlist 共同约束
+- 无 `impersonate` scope 时携带 `X-Xuanchu-As` 返回 `token_scope_denied`
 - token 可见多个 workspace 且请求未显式指定 workspace / project_id 时返回 `workspace_required`
 - 目标 user 不存在或不是 workspace 成员时统一返回 `membership_not_found`
 - audit log 同时记录 actor 和 delegator
 - 普通 member 无法创建带 `impersonate` scope 的 token，PAT 也不能持有该 scope
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过
 
 M10 规格：
 
 ```text
-docs/superpowers/specs/2026-06-03-taskg-m10-impersonation-design.md
+docs/superpowers/specs/2026-06-03-xuanchu-m10-impersonation-design.md
 ```
 
 ## M11：用户外部 ID 绑定
 
 **状态：已完成。**
 
-**目标：** 为 taskg 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+**目标：** 为 xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
 
 **M11 已交付内容：**
 
@@ -793,22 +793,22 @@ docs/superpowers/specs/2026-06-03-taskg-m10-impersonation-design.md
 
 **验收标准：**
 
-- `taskg user bind feishu:ou_xxxxx` 能绑定外部 ID，`taskg user unbind feishu:ou_xxxxx` 能解绑。
-- `taskg user info` human 输出显示外部 ID 列表。
-- `taskg user info --json` 返回 `external_ids` 数组。
-- `taskg add "做这件事" @feishu:ou_xxxxx` 能创建带外部 ID assignee 的任务。
-- `taskg list assignee:feishu:ou_xxxxx` 能按外部 ID 查询任务。
+- `xuanchu user bind feishu:ou_xxxxx` 能绑定外部 ID，`xuanchu user unbind feishu:ou_xxxxx` 能解绑。
+- `xuanchu user info` human 输出显示外部 ID 列表。
+- `xuanchu user info --json` 返回 `external_ids` 数组。
+- `xuanchu add "做这件事" @feishu:ou_xxxxx` 能创建带外部 ID assignee 的任务。
+- `xuanchu list assignee:feishu:ou_xxxxx` 能按外部 ID 查询任务。
 - HTTP API / MCP / remote CLI 统一支持外部 ID 绑定和 assignee 解析。
 - 同一个 `(provider, external_id)` 不能绑两次。
 - 绑定/解绑操作写入 audit log。
 - admin/owner 可以给其他用户绑定；普通用户只能给自己绑定。
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 M11 规格与实现计划：
 
 ```text
-docs/superpowers/specs/2026-06-03-taskg-m11-external-id-design.md
-docs/superpowers/plans/2026-06-03-taskg-m11-external-id-implementation.md
+docs/superpowers/specs/2026-06-03-xuanchu-m11-external-id-design.md
+docs/superpowers/plans/2026-06-03-xuanchu-m11-external-id-implementation.md
 ```
 
 ## M12：任务外部关联
@@ -827,8 +827,8 @@ docs/superpowers/plans/2026-06-03-taskg-m11-external-id-implementation.md
 M12 规格与实现计划：
 
 ```text
-docs/superpowers/specs/2026-06-03-taskg-m12-project-context-task-links-design.md
-docs/superpowers/plans/2026-06-03-taskg-m12-task-links-implementation.md
+docs/superpowers/specs/2026-06-03-xuanchu-m12-project-context-task-links-design.md
+docs/superpowers/plans/2026-06-03-xuanchu-m12-task-links-implementation.md
 ```
 
 ## M14.1：Token Scope 通配符与 Token Modify
@@ -869,7 +869,7 @@ docs/superpowers/plans/2026-06-03-taskg-m12-task-links-implementation.md
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## M13：项目 Annotation 与 Timeline
@@ -886,14 +886,14 @@ CGO_ENABLED=0 go build ./cmd/taskg
 - Timeline 聚合接口通过 SQL UNION 合并 project + task annotations
 - `project info` 展示最近 5 条 annotation
 - `normalizeProjectSlug` 强化：拒绝数字开头，确保与 task 数字 ID 不冲突
-- 目标风格 `taskg <slug> annotate <content>` 自动回退到 project
+- 目标风格 `xuanchu <slug> annotate <content>` 自动回退到 project
 
 验收：
 
 ```bash
 go test ./...
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## M15：MCP Tool 全量覆盖与 Agent Skill 文档
@@ -930,16 +930,16 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 **状态：已完成。**
 
-**目标：** 补齐运维和可观测性基础设施，使 taskg 达到可正式发布的质量标准。
+**目标：** 补齐运维和可观测性基础设施，使 xuanchu 达到可正式发布的质量标准。
 
 **已交付内容：**
 
-- `--config` / `TASKG_CONFIG` 指定 TOML 配置文件路径
+- `--config` / `XUANCHU_CONFIG` 指定 TOML 配置文件路径
 - 通用日志框架（`internal/logging`）：基于 `log/slog`，支持 stderr + 文件双输出、text/json 格式、日志级别过滤
 - 日志文件轮转：daily / size / none 三种模式，自动过期清理
 - CLI / HTTP / MCP 三层全覆盖 panic recovery，panic 时记录堆栈到日志文件
 - 版本号自动化：`debug.ReadBuildInfo()` 读取 git commit/time，ldflags 仅用于正式发布覆盖
-- `[log]` TOML 配置区块，`TASKG_LOG_LEVEL` / `TASKG_LOG_FILE` 环境变量覆盖
+- `[log]` TOML 配置区块，`XUANCHU_LOG_LEVEL` / `XUANCHU_LOG_FILE` 环境变量覆盖
 - 集成测试覆盖 `--config`、`--version` 行为
 - 全量测试 `CGO_ENABLED=0 go test ./...` 通过
 
@@ -952,7 +952,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.1.0 已发布。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
+v0.1.0 已发布。xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
 
 后续方向待定，可能包括：
 

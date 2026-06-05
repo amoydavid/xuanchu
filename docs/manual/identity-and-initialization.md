@@ -5,7 +5,7 @@ weight: 15
 
 # 身份与初始化
 
-taskg 有 `user`、`workspace` 和 `member` 概念。每次读写任务时，taskg 都需要知道：
+xuanchu 有 `user`、`workspace` 和 `member` 概念。每次读写任务时，xuanchu 都需要知道：
 
 - 当前是谁在操作，也就是 actor user。
 - 当前在哪个 workspace 操作。
@@ -16,7 +16,7 @@ taskg 有 `user`、`workspace` 和 `member` 概念。每次读写任务时，tas
 
 ## 首次运行的默认状态
 
-第一次运行本地 CLI 时，taskg 会自动创建：
+第一次运行本地 CLI 时，xuanchu 会自动创建：
 
 - `local` user
 - `local` workspace
@@ -25,9 +25,9 @@ taskg 有 `user`、`workspace` 和 `member` 概念。每次读写任务时，tas
 所以单人本地使用可以直接开始：
 
 ```bash
-taskg project add inbox name:"Inbox"
-taskg add "Try taskg" project:inbox
-taskg list
+xuanchu project add inbox name:"Inbox"
+xuanchu add "Try xuanchu" project:inbox
+xuanchu list
 ```
 
 这个默认身份适合本机试用和单人使用。团队或服务端部署建议显式创建自己的 user 和 workspace。
@@ -37,13 +37,13 @@ taskg list
 假设你要初始化一个名为 `dajee` 的 workspace，并以 `alice` 作为第一个管理员：
 
 ```bash
-taskg user add alice email:alice@example.test
-taskg user use alice
+xuanchu user add alice email:alice@example.test
+xuanchu user use alice
 
-taskg workspace add dajee name:Dajee visibility:team
-taskg workspace use dajee
+xuanchu workspace add dajee name:Dajee visibility:team
+xuanchu workspace use dajee
 
-taskg project add ai-agent-platform name:"AI Agent Platform"
+xuanchu project add ai-agent-platform name:"AI Agent Platform"
 ```
 
 此时本机 active user 是 `alice`，active workspace 是 `dajee`。后续不带 `--workspace` 的本地命令会默认在 `dajee` 中执行。
@@ -51,8 +51,8 @@ taskg project add ai-agent-platform name:"AI Agent Platform"
 查看当前身份：
 
 ```bash
-taskg show
-taskg _show active.user active.workspace active.context
+xuanchu show
+xuanchu _show active.user active.workspace active.context
 ```
 
 ## 本地 CLI 的身份来源
@@ -60,15 +60,15 @@ taskg _show active.user active.workspace active.context
 本地 CLI 直接读写本地数据库（默认 SQLite），身份来自本机 active state：
 
 ```bash
-taskg user use alice
-taskg workspace use dajee
-taskg list
+xuanchu user use alice
+xuanchu workspace use dajee
+xuanchu list
 ```
 
 也可以用 `--workspace` 只影响本次命令：
 
 ```bash
-taskg --workspace partner list
+xuanchu --workspace partner list
 ```
 
 本地 CLI 的规则：
@@ -84,9 +84,9 @@ taskg --workspace partner list
 在当前 workspace 添加成员：
 
 ```bash
-taskg member add bob role:viewer
-taskg member role bob member
-taskg member list
+xuanchu member add bob role:viewer
+xuanchu member role bob member
+xuanchu member list
 ```
 
 角色从低到高：
@@ -99,8 +99,8 @@ taskg member list
 本地 CLI 切换到另一个 user：
 
 ```bash
-taskg user use bob
-taskg list
+xuanchu user use bob
+xuanchu list
 ```
 
 如果 `bob` 不是当前 workspace 成员，会得到 `membership_not_found` 或权限错误。
@@ -110,7 +110,7 @@ taskg list
 远程 CLI 的身份不来自本机 `user use`。远程 CLI 使用 Bearer token，actor 是 token 绑定的 user。
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" --workspace dajee list
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" --workspace dajee list
 ```
 
 远程 CLI 的规则：
@@ -118,19 +118,19 @@ taskg --server https://taskg.example.com --token "$TASKG_TOKEN" --workspace daje
 - actor user 来自 token。
 - `--workspace` 选择 effective workspace，但不能突破 token workspace scope。
 - `--project` / `--project-id` 选择 project scope，但不能突破 token project allowlist。
-- 本机 `taskg user use alice` 不会改变远程请求里的 actor。
+- 本机 `xuanchu user use alice` 不会改变远程请求里的 actor。
 
 查看远程请求身份：
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" --workspace dajee show
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" --workspace dajee show
 ```
 
 或直接调用 HTTP：
 
 ```bash
-curl -H "Authorization: Bearer $TASKG_TOKEN" \
-  "https://taskg.example.com/api/v1/me"
+curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  "https://xuanchu.example.com/api/v1/me"
 ```
 
 ## 创建远程 token
@@ -140,14 +140,14 @@ curl -H "Authorization: Bearer $TASKG_TOKEN" \
 > **注意**：`--workspace` 仅覆盖本次命令的 workspace，actor 仍是本机 active user。如果 active user 不是目标 workspace 的成员，会报 `membership_not_found`。请先确认身份：
 >
 > ```bash
-> taskg _show active.user active.workspace
+> xuanchu _show active.user active.workspace
 > # 如果 active user 不是目标 workspace 成员，先切换：
-> taskg user use <workspace-owner>
-> taskg workspace use dajee
+> xuanchu user use <workspace-owner>
+> xuanchu workspace use dajee
 > ```
 
 ```bash
-taskg --workspace dajee token create admin \
+xuanchu --workspace dajee token create admin \
   --type pat \
   --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write \
   --expires-in 720h
@@ -156,14 +156,14 @@ taskg --workspace dajee token create admin \
 通配符简化写法：
 
 ```bash
-taskg token create admin-token --scope '*' --expires-in 720h
-taskg token create reader --scope '*:read' --expires-in 720h
+xuanchu token create admin-token --scope '*' --expires-in 720h
+xuanchu token create reader --scope '*:read' --expires-in 720h
 ```
 
 给 Agent 创建 project-scoped token：
 
 ```bash
-taskg --workspace dajee token create mcp-agent \
+xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
   --project ai-agent-platform \
@@ -179,7 +179,7 @@ MCP 有两种运行模式，身份来源不同。
 ### stdio MCP
 
 ```bash
-taskg mcp stdio
+xuanchu mcp stdio
 ```
 
 stdio MCP 使用本机 runtime 身份，等价于本地 CLI：
@@ -192,19 +192,19 @@ stdio MCP 使用本机 runtime 身份，等价于本地 CLI：
 因此，在启动 stdio MCP 前应先确认：
 
 ```bash
-taskg user use alice
-taskg workspace use dajee
-taskg _show active.user active.workspace
+xuanchu user use alice
+xuanchu workspace use dajee
+xuanchu _show active.user active.workspace
 ```
 
-如果你在 Claude Code、OpenClaw、Hermes Agent 中用 stdio MCP，本质上就是让该客户端以这台机器上的 active user 身份操作本地 taskg 数据库。
+如果你在 Claude Code、OpenClaw、Hermes Agent 中用 stdio MCP，本质上就是让该客户端以这台机器上的 active user 身份操作本地 xuanchu 数据库。
 
 ### HTTP MCP
 
 HTTP MCP 通过 server 的 `/mcp` endpoint 访问：
 
 ```text
-https://taskg.example.com/mcp
+https://xuanchu.example.com/mcp
 ```
 
 HTTP MCP 使用 Bearer token 身份：

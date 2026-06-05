@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/hookruntime"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/hookruntime"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -145,27 +145,27 @@ func TestHookEndToEnd(t *testing.T) {
 	if v := req.Header.Get("Content-Type"); v != "application/json; charset=utf-8" {
 		t.Fatalf("Content-Type = %q, want application/json; charset=utf-8", v)
 	}
-	if v := req.Header.Get("X-Taskg-Event"); v != "task.created" {
-		t.Fatalf("X-Taskg-Event = %q, want task.created", v)
+	if v := req.Header.Get("X-Xuanchu-Event"); v != "task.created" {
+		t.Fatalf("X-Xuanchu-Event = %q, want task.created", v)
 	}
-	if v := req.Header.Get("X-Taskg-Delivery"); v == "" {
-		t.Fatal("X-Taskg-Delivery header is empty")
+	if v := req.Header.Get("X-Xuanchu-Delivery"); v == "" {
+		t.Fatal("X-Xuanchu-Delivery header is empty")
 	}
-	if v := req.Header.Get("X-Taskg-Hook-Id"); v != hook.ID {
-		t.Fatalf("X-Taskg-Hook-Id = %q, want %q", v, hook.ID)
+	if v := req.Header.Get("X-Xuanchu-Hook-Id"); v != hook.ID {
+		t.Fatalf("X-Xuanchu-Hook-Id = %q, want %q", v, hook.ID)
 	}
-	if v := req.Header.Get("X-Taskg-Attempt"); v != "1" {
-		t.Fatalf("X-Taskg-Attempt = %q, want 1", v)
+	if v := req.Header.Get("X-Xuanchu-Attempt"); v != "1" {
+		t.Fatalf("X-Xuanchu-Attempt = %q, want 1", v)
 	}
-	if v := req.Header.Get("User-Agent"); !strings.HasPrefix(v, "taskg-webhook/") {
-		t.Fatalf("User-Agent = %q, want taskg-webhook/*", v)
+	if v := req.Header.Get("User-Agent"); !strings.HasPrefix(v, "xuanchu-webhook/") {
+		t.Fatalf("User-Agent = %q, want xuanchu-webhook/*", v)
 	}
 	// secret 不为空时应有签名 headers
-	if v := req.Header.Get("X-Taskg-Timestamp"); v == "" {
-		t.Fatal("expected X-Taskg-Timestamp header")
+	if v := req.Header.Get("X-Xuanchu-Timestamp"); v == "" {
+		t.Fatal("expected X-Xuanchu-Timestamp header")
 	}
-	if v := req.Header.Get("X-Taskg-Signature-256"); v == "" {
-		t.Fatal("expected X-Taskg-Signature-256 header")
+	if v := req.Header.Get("X-Xuanchu-Signature-256"); v == "" {
+		t.Fatal("expected X-Xuanchu-Signature-256 header")
 	}
 
 	// 验证 body 是合法 JSON 且包含 task.created 事件和任务快照

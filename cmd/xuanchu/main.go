@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/cli"
-	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/logging"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/cli"
+	"git.dajee.net/dajee/xuanchu/internal/config"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 var version = ""
@@ -43,7 +43,7 @@ func main() {
 			writeError(os.Stderr, os.Args[1:], permissionErr.Code, permissionErr.Message)
 			os.Exit(1)
 		}
-		fmt.Fprintln(os.Stderr, "taskg:", err)
+		fmt.Fprintln(os.Stderr, "xuanchu:", err)
 		os.Exit(1)
 	}
 }
@@ -81,7 +81,7 @@ func maybeWarnM5Migration(w io.Writer, args []string, opts cli.Options) {
 	if err != nil || len(report) == 0 {
 		return
 	}
-	fmt.Fprintln(w, "taskg: warning: M5 project migration skipped some legacy project strings; inspect migration.m5.projects.skipped for details")
+	fmt.Fprintln(w, "xuanchu: warning: M5 project migration skipped some legacy project strings; inspect migration.m5.projects.skipped for details")
 }
 
 func skipsMigrationWarning(args []string) bool {
@@ -102,7 +102,7 @@ func writeError(w io.Writer, args []string, code, message string) {
 		})
 		return
 	}
-	fmt.Fprintln(w, "taskg:", code+":", message)
+	fmt.Fprintln(w, "xuanchu:", code+":", message)
 }
 
 func wantsJSON(args []string) bool {
@@ -183,7 +183,7 @@ func handlePanic() {
 	if r == nil {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "taskg: internal error")
+	fmt.Fprintln(os.Stderr, "xuanchu: internal error")
 	logPanic(r)
 	os.Exit(1)
 }
@@ -200,7 +200,7 @@ func logPanic(r any) {
 	if err != nil {
 		return
 	}
-	path := filepath.Join(home, ".local", "share", "taskg", "logs", "panic.log")
+	path := filepath.Join(home, ".local", "share", "xuanchu", "logs", "panic.log")
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {

@@ -2,15 +2,15 @@
 
 ## 背景
 
-taskg 当前有 16 个 token scope（`task:read`、`task:write`、`project:read` 等），创建 token 时必须逐个列举。一个全权限 admin token 需要 15 个 scope（不含 `impersonate`），写起来冗长且容易遗漏或拼错。
+xuanchu 当前有 16 个 token scope（`task:read`、`task:write`、`project:read` 等），创建 token 时必须逐个列举。一个全权限 admin token 需要 15 个 scope（不含 `impersonate`），写起来冗长且容易遗漏或拼错。
 
 同时，新增 scope 后没有统一的地方查看所有可用 scope，用户只能翻文档或源码。token 创建后无法修改 scope、名称、过期时间或 workspace/project 可见范围，只能撤销重建。
 
 ## 目标
 
 1. `--scope` 支持通配符，减少输入负担。
-2. 新增 `taskg scope list` 命令，输出所有有效 scope。
-3. 新增 `taskg token modify` 命令和 `PATCH /api/v1/tokens/{id}` 接口，支持修改 token 的 scope、名称、过期时间和 workspace/project 可见范围。
+2. 新增 `xuanchu scope list` 命令，输出所有有效 scope。
+3. 新增 `xuanchu token modify` 命令和 `PATCH /api/v1/tokens/{id}` 接口，支持修改 token 的 scope、名称、过期时间和 workspace/project 可见范围。
 4. 未来新增 scope 时，`scope list` 自动反映，通配符自动包含。
 5. 运行时行为不变，存储和校验逻辑不变。
 
@@ -72,7 +72,7 @@ taskg 当前有 16 个 token scope（`task:read`、`task:write`、`project:read`
 
 - PAT：展开结果自动剔除 `impersonate`。因此 `--scope '*' --type pat` 等价于 15 个 scope。
 - Agent：保留全部展开结果，包含 `impersonate`（但后续仍需 admin/owner 角色才能实际创建）。
-- 这意味着 `taskg token create admin --scope '*' --type pat` 能正常创建全权限 PAT。
+- 这意味着 `xuanchu token create admin --scope '*' --type pat` 能正常创建全权限 PAT。
 
 ### 2. 展开时机
 
@@ -107,11 +107,11 @@ var scopeLookup map[string]struct{}
 
 新增 scope 只需在 `scopeRegistry` 中添加一项，`scopeLookup` 和 `scope list` 自动反映。
 
-### 4. `taskg scope list` 命令
+### 4. `xuanchu scope list` 命令
 
 ```
-taskg scope list
-taskg scope list --json
+xuanchu scope list
+xuanchu scope list --json
 ```
 
 Human 输出按 resource 分组：
@@ -161,7 +161,7 @@ JSON 输出：
 #### CLI
 
 ```bash
-taskg token modify <id-or-prefix> [--scope ...] [--name ...] [--expires-in ...] [--workspace-id ...] [--project ...] [--project-id ...]
+xuanchu token modify <id-or-prefix> [--scope ...] [--name ...] [--expires-in ...] [--workspace-id ...] [--project ...] [--project-id ...]
 ```
 
 至多提供一个修改项。不提供任何修改项时不报错，直接返回当前 token 信息（等价于 info）。
@@ -177,7 +177,7 @@ taskg token modify <id-or-prefix> [--scope ...] [--name ...] [--expires-in ...] 
 远程模式自动转发到 `PATCH /api/v1/tokens/{id}`：
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" token modify abc123 --scope '*:read'
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" token modify abc123 --scope '*:read'
 ```
 
 #### MCP
@@ -266,28 +266,28 @@ token 修改写入 `audit_logs`，action 为 `token.modified`，payload 包含�
 
 ```bash
 # 全权限 admin token
-taskg token create admin --type pat --scope '*' --expires-in 720h
+xuanchu token create admin --type pat --scope '*' --expires-in 720h
 
 # 只读 token
-taskg token create viewer --type agent --scope '*:read' --project my-project --expires-in 720h
+xuanchu token create viewer --type agent --scope '*:read' --project my-project --expires-in 720h
 
 # task 全权限 + 项目只读
-taskg token create task-worker --type agent --scope 'task:*,project:read' --expires-in 720h
+xuanchu token create task-worker --type agent --scope 'task:*,project:read' --expires-in 720h
 
 # 查看可用 scope
-taskg scope list
+xuanchu scope list
 
 # 缩小 token scope
-taskg token modify abc123 --scope 'task:read,project:read'
+xuanchu token modify abc123 --scope 'task:read,project:read'
 
 # 续期
-taskg token modify abc123 --expires-in 720h
+xuanchu token modify abc123 --expires-in 720h
 
 # 重命名
-taskg token modify abc123 --name "production-agent"
+xuanchu token modify abc123 --name "production-agent"
 
 # 通配符也可用于 modify
-taskg token modify abc123 --scope '*:read'
+xuanchu token modify abc123 --scope '*:read'
 ```
 
 ## 不改什么
@@ -303,21 +303,21 @@ taskg token modify abc123 --scope '*:read'
 
 ### Scope 通配符
 
-- `taskg token create admin --scope '*' --type pat` 能创建全权限 PAT（不含 `impersonate`）。
-- `taskg token create agent --scope '*' --type agent` 能创建全权限 agent token（含 `impersonate`，需 admin/owner）。
-- `taskg token create viewer --scope '*:read'` 能创建只读 token。
-- `taskg token create worker --scope 'task:*'` 能创建 task 全权限 token。
+- `xuanchu token create admin --scope '*' --type pat` 能创建全权限 PAT（不含 `impersonate`）。
+- `xuanchu token create agent --scope '*' --type agent` 能创建全权限 agent token（含 `impersonate`，需 admin/owner）。
+- `xuanchu token create viewer --scope '*:read'` 能创建只读 token。
+- `xuanchu token create worker --scope 'task:*'` 能创建 task 全权限 token。
 - 无效通配符（如 `foo:*`）报 `token_scope_invalid`。
-- `taskg scope list` 输出所有有效 scope。
-- `taskg scope list --json` 输出结构化 JSON。
+- `xuanchu scope list` 输出所有有效 scope。
+- `xuanchu scope list --json` 输出结构化 JSON。
 - 所有现有 scope 校验测试通过。
 
 ### Token 修改
 
-- `taskg token modify <ref> --scope 'task:*'` 能修改 scope。
-- `taskg token modify <ref> --name "new-name"` 能重命名。
-- `taskg token modify <ref> --expires-in 720h` 能续期。
-- `taskg token modify <ref> --project new-project` 能替换 project allowlist。
+- `xuanchu token modify <ref> --scope 'task:*'` 能修改 scope。
+- `xuanchu token modify <ref> --name "new-name"` 能重命名。
+- `xuanchu token modify <ref> --expires-in 720h` 能续期。
+- `xuanchu token modify <ref> --project new-project` 能替换 project allowlist。
 - 修改已撤销 token 返回 `token_revoked`。
 - 修改已过期 token 返回 `token_expired`。
 - 远程模式下 scope 扩张受请求者自身 scope 约束。
@@ -326,7 +326,7 @@ taskg token modify abc123 --scope '*:read'
 
 ### 全局
 
-- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg` 通过。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu` 通过。
 
 ## 影响范围
 
@@ -342,7 +342,7 @@ taskg token modify abc123 --scope '*:read'
 - `internal/httpapi/tokens.go` — 新增 `PATCH /api/v1/tokens/{id}`。
 - `internal/httpapi/tokens_test.go` — 新增 modify 测试。
 - `tests/integration/cli_test.go` — 新增 CLI 集成测试。
-- `docs/openapi/taskg-v1.yaml` — 新增 `PATCH /api/v1/tokens/{id}`。
+- `docs/openapi/xuanchu-v1.yaml` — 新增 `PATCH /api/v1/tokens/{id}`。
 - `docs/manual/reference/commands.md` — 补充 `scope list` 和 `token modify` 命令。
 - `docs/manual/remote-cli-and-api.md` — 补充 token modify API。
 - `docs/manual/reference/errors.md` — 新增 `token_revoked`、`token_expired` 错误码。

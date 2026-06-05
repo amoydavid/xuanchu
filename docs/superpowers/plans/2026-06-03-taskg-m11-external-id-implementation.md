@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 taskg 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+**Goal:** 为 xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
 
 **Architecture:** 新增 `user_external_ids` 表存储用户与外部系统的 ID 映射。在现有 `resolveUser` 中增加 `provider:value` 格式解析，使所有使用 assignee ref 的入口（CLI、HTTP API、MCP、JSON import）自动支持外部 ID。所有返回用户/assignee 的地方附带 `external_ids` 列表。
 
 **Tech Stack:** Go 1.25, GORM + github.com/glebarez/sqlite, github.com/google/uuid, github.com/spf13/cobra, github.com/modelcontextprotocol/go-sdk
 
-**Spec:** `docs/superpowers/specs/2026-06-03-taskg-m11-external-id-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-03-xuanchu-m11-external-id-design.md`
 
 ---
 
@@ -39,7 +39,7 @@
 | `internal/mcpserver/tools_user.go` | 新增 `user.bind` / `user.unbind` tool |
 | `internal/mcpserver/tools_views.go` | `userView` struct 和转换函数扩展 |
 | `internal/render/table.go` | `TaskInfo` / `formatAssignees` 可选展示外部 ID |
-| `docs/openapi/taskg-v1.yaml` | 新增外部 ID endpoint schema |
+| `docs/openapi/xuanchu-v1.yaml` | 新增外部 ID endpoint schema |
 
 ### 测试文件
 
@@ -1213,7 +1213,7 @@ func userViewForJSON(user app.UserView) map[string]any {
 
 ```go
 func TestCLIUserBindAndUnbind(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	dir := t.TempDir()
 
 	run := func(args ...string) string {
@@ -1235,7 +1235,7 @@ func TestCLIUserBindAndUnbind(t *testing.T) {
 }
 
 func TestCLIAssignByExternalID(t *testing.T) {
-	bin := buildTaskg(t)
+	bin := buildXuanchu(t)
 	dir := t.TempDir()
 
 	run := func(args ...string) string {
@@ -1588,7 +1588,7 @@ type UserUnbindInput struct {
 在 `registerUserTools` 中注册：
 
 ```go
-addTool(s, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. feishu:ou_xxxxx) to a taskg user. Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+addTool(s, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. feishu:ou_xxxxx) to a xuanchu user. Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 	svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
 	if err != nil {
 		return businessErrorWithEnvelope(err)
@@ -1606,7 +1606,7 @@ addTool(s, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. 
 	)
 })
 
-addTool(s, &mcp.Tool{Name: "user_unbind", Description: "Unbind an external ID from a taskg user."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserUnbindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+addTool(s, &mcp.Tool{Name: "user_unbind", Description: "Unbind an external ID from a xuanchu user."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserUnbindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 	svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
 	if err != nil {
 		return businessErrorWithEnvelope(err)
@@ -1761,7 +1761,7 @@ Expected: 全部 PASS
 - [ ] **Step 2: 运行构建验证**
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: 成功
@@ -1769,12 +1769,12 @@ Expected: 成功
 - [ ] **Step 3: 手动端到端验证**
 
 ```bash
-./taskg --data-dir /tmp/taskg-m11-test user bind feishu:ou_manual_test
-./taskg --data-dir /tmp/taskg-m11-test user info
-./taskg --data-dir /tmp/taskg-m11-test add "test task" @feishu:ou_manual_test
-./taskg --data-dir /tmp/taskg-m11-test --json list
-./taskg --data-dir /tmp/taskg-m11-test list assignee:feishu:ou_manual_test
-./taskg --data-dir /tmp/taskg-m11-test user unbind feishu:ou_manual_test
+./xuanchu --data-dir /tmp/xuanchu-m11-test user bind feishu:ou_manual_test
+./xuanchu --data-dir /tmp/xuanchu-m11-test user info
+./xuanchu --data-dir /tmp/xuanchu-m11-test add "test task" @feishu:ou_manual_test
+./xuanchu --data-dir /tmp/xuanchu-m11-test --json list
+./xuanchu --data-dir /tmp/xuanchu-m11-test list assignee:feishu:ou_manual_test
+./xuanchu --data-dir /tmp/xuanchu-m11-test user unbind feishu:ou_manual_test
 ```
 
 Expected: 绑定 → info 可见 → add 成功 → list JSON 含 external_ids → query 成功 → unbind 成功
@@ -1793,7 +1793,7 @@ git commit -m "feat(m11): 用户外部 ID 绑定 — 全量测试通过"
 **Files:**
 - Modify: `ROADMAP.md`
 - Modify: `README.md`
-- Modify: `docs/openapi/taskg-v1.yaml`
+- Modify: `docs/openapi/xuanchu-v1.yaml`
 
 - [ ] **Step 1: 更新 ROADMAP.md**
 
@@ -1805,13 +1805,13 @@ git commit -m "feat(m11): 用户外部 ID 绑定 — 全量测试通过"
 
 - [ ] **Step 3: 更新 OpenAPI schema**
 
-在 `docs/openapi/taskg-v1.yaml` 中：
+在 `docs/openapi/xuanchu-v1.yaml` 中：
 - 新增 `/api/v1/users/{user}/external-ids` 的 POST/GET/DELETE schema
 - 扩展 user response schema 增加 `external_ids`
 
 - [ ] **Step 4: 提交**
 
 ```bash
-git add ROADMAP.md README.md docs/openapi/taskg-v1.yaml
+git add ROADMAP.md README.md docs/openapi/xuanchu-v1.yaml
 git commit -m "docs(m11): 更新 ROADMAP、README 和 OpenAPI 文档"
 ```

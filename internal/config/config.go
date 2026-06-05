@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dajee/taskg/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 )
 
 type Config struct {
@@ -59,10 +59,10 @@ func Resolve(opts Options) (Config, error) {
 			return Config{}, fmt.Errorf("--config: %w", err)
 		}
 		tomlValues = values
-	} else if configPath := env["TASKG_CONFIG"]; configPath != "" {
+	} else if configPath := env["XUANCHU_CONFIG"]; configPath != "" {
 		values, err := loadTomlConfigFile(configPath)
 		if err != nil {
-			return Config{}, fmt.Errorf("TASKG_CONFIG: %w", err)
+			return Config{}, fmt.Errorf("XUANCHU_CONFIG: %w", err)
 		}
 		tomlValues = values
 	} else if values, err := loadTomlConfig(configDir(home, env)); err == nil {
@@ -77,7 +77,7 @@ func Resolve(opts Options) (Config, error) {
 
 	dbURL := opts.DBURL
 	if dbURL == "" {
-		dbURL = env["TASKG_DB_URL"]
+		dbURL = env["XUANCHU_DB_URL"]
 	}
 	if dbURL == "" && tomlValues != nil {
 		dbURL = tomlValues["database.url"]
@@ -87,45 +87,45 @@ func Resolve(opts Options) (Config, error) {
 	if dbURL == "" {
 		dbPath = opts.DBPath
 		if dbPath == "" {
-			dbPath = env["TASKG_DB"]
+			dbPath = env["XUANCHU_DB"]
 		}
 		if dbPath != "" && strings.Contains(dbPath, "://") {
 			return Config{}, errors.New("--db flag does not accept URLs; use --db-url instead")
 		}
 		if dbPath == "" && opts.DataDir != "" {
-			dbPath = filepath.Join(opts.DataDir, "taskg.db")
+			dbPath = filepath.Join(opts.DataDir, "xuanchu.db")
 		}
 		if dbPath == "" && tomlValues != nil {
 			dbPath = tomlValues["database.path"]
 		}
 		if dbPath == "" && env["XDG_DATA_HOME"] != "" {
-			dbPath = filepath.Join(env["XDG_DATA_HOME"], "taskg", "taskg.db")
+			dbPath = filepath.Join(env["XDG_DATA_HOME"], "xuanchu", "xuanchu.db")
 		}
 		if dbPath == "" {
-			dbPath = filepath.Join(home, ".local", "share", "taskg", "taskg.db")
+			dbPath = filepath.Join(home, ".local", "share", "xuanchu", "xuanchu.db")
 		}
 	}
 
 	server := opts.Server
 	if server == "" {
-		server = env["TASKG_SERVER"]
+		server = env["XUANCHU_SERVER"]
 	}
 	if server == "" && tomlValues != nil {
 		server = tomlValues["remote.server"]
 	}
 	token := opts.Token
 	if token == "" {
-		token = env["TASKG_TOKEN"]
+		token = env["XUANCHU_TOKEN"]
 	}
 	if token == "" && tomlValues != nil {
 		token = tomlValues["remote.token"]
 	}
 
 	logCfg := parseLogConfig(tomlValues)
-	if v := env["TASKG_LOG_LEVEL"]; v != "" {
+	if v := env["XUANCHU_LOG_LEVEL"]; v != "" {
 		logCfg.Level = v
 	}
-	if v := env["TASKG_LOG_FILE"]; v != "" {
+	if v := env["XUANCHU_LOG_FILE"]; v != "" {
 		if logCfg.File == nil {
 			logCfg.File = &logging.FileConfig{}
 		}
@@ -145,7 +145,7 @@ func Resolve(opts Options) (Config, error) {
 
 func environ() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "TASKG_DB_URL", "TASKG_SERVER", "TASKG_TOKEN", "TASKG_CONFIG", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+	for _, key := range []string{"XUANCHU_DB", "XUANCHU_DB_URL", "XUANCHU_SERVER", "XUANCHU_TOKEN", "XUANCHU_CONFIG", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			values[key] = value
 		}
@@ -155,9 +155,9 @@ func environ() map[string]string {
 
 func ConfigDir(home string, env map[string]string) string {
 	if env != nil && env["XDG_CONFIG_HOME"] != "" {
-		return filepath.Join(env["XDG_CONFIG_HOME"], "taskg")
+		return filepath.Join(env["XDG_CONFIG_HOME"], "xuanchu")
 	}
-	return filepath.Join(home, ".config", "taskg")
+	return filepath.Join(home, ".config", "xuanchu")
 }
 
 func configDir(home string, env map[string]string) string {

@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 // hookDTO 对应 HTTP API 返回的 hook JSON 结构。

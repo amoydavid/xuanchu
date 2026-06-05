@@ -11,18 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dajee/taskg/internal/query"
-	"github.com/dajee/taskg/internal/storage"
-	"github.com/dajee/taskg/internal/task"
-	taskrcparser "github.com/dajee/taskg/internal/taskrc"
-	"github.com/dajee/taskg/internal/urgency"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	taskrcparser "git.dajee.net/dajee/xuanchu/internal/taskrc"
+	"git.dajee.net/dajee/xuanchu/internal/urgency"
 )
 
 func strptr(v string) *string { return &v }
 
 func newTestService(t *testing.T, now int64) (*Service, func()) {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func newTestService(t *testing.T, now int64) (*Service, func()) {
 
 func newTestStore(t *testing.T) *storage.Store {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func mustUpsertMembershipRecord(t *testing.T, store *storage.Store, member stora
 }
 
 func TestServiceAddListInfo(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -2169,7 +2169,7 @@ func TestConfigSetRoutesUDASchemaKeys(t *testing.T) {
 }
 
 func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2206,7 +2206,7 @@ func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
 }
 
 func TestConfigSetOverridesRuntimeMetaDefaults(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2700,7 +2700,7 @@ func TestUrgencyUsesConfiguredUDACoefficients(t *testing.T) {
 }
 
 func TestUrgencyUsesRuntimeUDACoefficients(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2970,7 +2970,7 @@ func TestContextDefineUseShowNoneDelete(t *testing.T) {
 }
 
 func TestContextNonePersistsEmptyOverrideOverRuntimeConfig(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3264,7 +3264,7 @@ func TestExportWithInputFiltersByProjectID(t *testing.T) {
 }
 
 func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

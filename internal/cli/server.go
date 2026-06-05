@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/config"
-	"github.com/dajee/taskg/internal/hookruntime"
-	"github.com/dajee/taskg/internal/httpapi"
-	"github.com/dajee/taskg/internal/logging"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/config"
+	"git.dajee.net/dajee/xuanchu/internal/hookruntime"
+	"git.dajee.net/dajee/xuanchu/internal/httpapi"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -91,7 +91,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				}
 			}()
 
-			fmt.Fprintf(cmd.ErrOrStderr(), "taskg: server listening on http://%s\n", ln.Addr().String())
+			fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: server listening on http://%s\n", ln.Addr().String())
 
 			// 启动 webhook 投递调度器
 			dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{

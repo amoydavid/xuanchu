@@ -1,8 +1,8 @@
-# taskg M0 设计规格
+# xuanchu M0 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 构建第一个可用的本地版 `taskg` 二进制程序：它是一个 Taskwarrior 风格的 CLI，使用 SQLite 存储，支持一个隐式本地用户、一个隐式 workspace，以及核心任务生命周期。
+**目标：** 构建第一个可用的本地版 `xuanchu` 二进制程序：它是一个 Taskwarrior 风格的 CLI，使用 SQLite 存储，支持一个隐式本地用户、一个隐式 workspace，以及核心任务生命周期。
 
 **范围：** 本文档只覆盖 M0。多用户鉴权、HTTP API、MCP Server、op-log 同步、Hook、循环任务、UDA、DOM、高级报表，以及完整 Taskwarrior 兼容能力均属于后续里程碑。
 
@@ -24,19 +24,19 @@
 M0 需要让单个本地用户无需启动服务端，就能通过终端管理任务：
 
 ```bash
-taskg add "Write project spec" project:taskg +planning due:tomorrow
-taskg list
-taskg 1 modify priority:H
-taskg 1 done
-taskg info 1
-taskg export
+xuanchu add "Write project spec" project:xuanchu +planning due:tomorrow
+xuanchu list
+xuanchu 1 modify priority:H
+xuanchu 1 done
+xuanchu info 1
+xuanchu export
 ```
 
 在已支持的命令范围内，交互体验应尽量贴近 Taskwarrior；内部架构则应为后续里程碑保留清晰扩展点。
 
 ### 范围内
 
-- 单一二进制，名称为 `taskg`。
+- 单一二进制，名称为 `xuanchu`。
 - 本地 SQLite 数据库，驱动使用 `modernc.org/sqlite`。
 - 禁止 CGO 依赖。
 - Go 1.22+ module 与测试基础设施。
@@ -70,7 +70,7 @@ taskg export
 M0 采用朴素的分层架构：
 
 ```text
-cmd/taskg
+cmd/xuanchu
   -> internal/cli
       -> internal/app
           -> internal/task
@@ -88,7 +88,7 @@ Domain 包不应依赖 Cobra、Viper、SQLite driver 类型或终端渲染库。
 实施计划应从以下文件切入：
 
 - `go.mod`：Go module 定义。
-- `cmd/taskg/main.go`：二进制入口。
+- `cmd/xuanchu/main.go`：二进制入口。
 - `internal/cli/root.go`：Cobra root command、全局 flags、命令注册。
 - `internal/cli/add.go`：`add` 命令。
 - `internal/cli/list.go`：`list` 与 `next` 命令。
@@ -167,17 +167,17 @@ CREATE TABLE task_tags (
 
 默认数据库路径优先级：
 
-1. `$TASKG_DB`，如果已设置。
-2. `$XDG_DATA_HOME/taskg/taskg.db`，如果 `XDG_DATA_HOME` 已设置。
-3. `~/.local/share/taskg/taskg.db`。
+1. `$XUANCHU_DB`，如果已设置。
+2. `$XDG_DATA_HOME/xuanchu/xuanchu.db`，如果 `XDG_DATA_HOME` 已设置。
+3. `~/.local/share/xuanchu/xuanchu.db`。
 
 ### `add`
 
 支持输入：
 
 ```bash
-taskg add "description" project:work +tag priority:H due:tomorrow
-taskg add description words project:work +tag
+xuanchu add "description" project:work +tag priority:H due:tomorrow
+xuanchu add description words project:work +tag
 ```
 
 规则：
@@ -198,10 +198,10 @@ taskg add description words project:work +tag
 命令名前支持的 filter 示例：
 
 ```bash
-taskg +work list
-taskg project:taskg list
-taskg status:completed list
-taskg /spec/ list
+xuanchu +work list
+xuanchu project:xuanchu list
+xuanchu status:completed list
+xuanchu /spec/ list
 ```
 
 M0 filter 只支持 AND 组合。布尔操作符和括号属于 M1。
@@ -211,8 +211,8 @@ M0 filter 只支持 AND 组合。布尔操作符和括号属于 M1。
 支持输入：
 
 ```bash
-taskg 1 modify priority:H due:eow +next
-taskg <uuid> modify project:taskg
+xuanchu 1 modify priority:H due:eow +next
+xuanchu <uuid> modify project:xuanchu
 ```
 
 规则：
@@ -225,7 +225,7 @@ taskg <uuid> modify project:taskg
 description 替换语法：
 
 ```bash
-taskg 1 modify description:"New description"
+xuanchu 1 modify description:"New description"
 ```
 
 `append` 和 `prepend` 是后续命令，不进入 M0。
@@ -247,9 +247,9 @@ taskg 1 modify description:"New description"
 
 M0 的配置能力保持克制：
 
-- `taskg show`：打印解析后的配置值。
-- `taskg config get <key>`：读取配置值。
-- `taskg config set <key> <value>`：写入用户级配置，可先落在 SQLite `meta` 表或配置文件中。
+- `xuanchu show`：打印解析后的配置值。
+- `xuanchu config get <key>`：读取配置值。
+- `xuanchu config set <key> <value>`：写入用户级配置，可先落在 SQLite `meta` 表或配置文件中。
 
 初始支持 key：
 
@@ -307,9 +307,9 @@ CLI 错误需要简洁，并适合脚本调用：
 错误示例：
 
 ```text
-taskg: no task matches "42"
-taskg: unsupported priority "X"; expected H, M, or L
-taskg: description is required
+xuanchu: no task matches "42"
+xuanchu: unsupported priority "X"; expected H, M, or L
+xuanchu: description is required
 ```
 
 ## 9. 测试策略
@@ -371,7 +371,7 @@ M0 需要为后续里程碑保留这些清晰边界：
 
 M0 完成时应满足：
 
-- `taskg` 可以构建为单一 CGO-free 二进制。
+- `xuanchu` 可以构建为单一 CGO-free 二进制。
 - 首次运行命令时自动初始化本地数据库。
 - `add`、`list`、`next`、`modify`、`done`、`delete`、`info`、`config`、`show`、`import`、`export` 在人类模式下可用。
 - 同一组核心命令支持 `--json`。
@@ -397,7 +397,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 
 ### M1：查询语言、报表、Urgency 与 DOM 基础
 
-**目标：** 让 `taskg` 从“能记录任务”升级为“能像 Taskwarrior 一样查询、排序和解释任务”。
+**目标：** 让 `xuanchu` 从“能记录任务”升级为“能像 Taskwarrior 一样查询、排序和解释任务”。
 
 **前置条件：**
 
@@ -417,7 +417,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 
 - 常见 Taskwarrior 查询示例能通过测试。
 - `next` 使用 urgency 排序。
-- `taskg _get 1.description`、`taskg _ids`、`taskg _tags` 可脚本化使用。
+- `xuanchu _get 1.description`、`xuanchu _ids`、`xuanchu _tags` 可脚本化使用。
 - 报表输出在 human 和 `--json` 模式下都可用。
 
 ### M2：任务细节模型补齐
@@ -462,7 +462,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 - owner/admin/member/viewer 权限模型。
 - PAT 与 JWT 鉴权。
 - HTTP/JSON API，提供 OpenAPI 3 描述。
-- 远程 CLI 模式：`taskg --server ... --token ...`。
+- 远程 CLI 模式：`xuanchu --server ... --token ...`。
 - 行级隔离守卫：repository 或 service 层强制 workspace scope。
 - 管理命令：`user`、`workspace`、`member`、`token`。
 
@@ -475,7 +475,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 
 ### M4：MCP Server、Webhook 与飞书触发示例
 
-**目标：** 让 AI Agent 和外部系统可以通过稳定工具接口使用 taskg。
+**目标：** 让 AI Agent 和外部系统可以通过稳定工具接口使用 xuanchu。
 
 **前置条件：**
 
@@ -501,7 +501,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 
 ### M5：Operation Log 同步与 Hook 系统
 
-**目标：** 让 taskg 支持多端收敛、离线写入和事件扩展。
+**目标：** 让 xuanchu 支持多端收敛、离线写入和事件扩展。
 
 **前置条件：**
 
@@ -527,7 +527,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 
 ### M6：兼容性、迁移与发布打磨
 
-**目标：** 把 taskg 从“功能可用”打磨成“可迁移、可发布、可长期维护”的工具。
+**目标：** 把 xuanchu 从“功能可用”打磨成“可迁移、可发布、可长期维护”的工具。
 
 **前置条件：**
 
@@ -548,7 +548,7 @@ M0 完成后，项目应按可独立验证的里程碑继续推进。每个里�
 **验收信号：**
 
 - 真实 Taskwarrior export 样本可导入，并给出兼容性报告。
-- `taskg export` 的结果可被后续版本稳定读取。
+- `xuanchu export` 的结果可被后续版本稳定读取。
 - 发布产物均为 CGO-free。
 - 新用户能只靠 README 和 CLI help 完成安装、添加任务、迁移和备份。
 

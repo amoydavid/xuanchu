@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"text/tabwriter"
 
-	"github.com/dajee/taskg/internal/auth"
-	"github.com/dajee/taskg/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/render"
 	"github.com/spf13/cobra"
 )
 

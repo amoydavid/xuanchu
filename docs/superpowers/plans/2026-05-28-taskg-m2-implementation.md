@@ -1,14 +1,14 @@
-# taskg M2 Implementation Plan
+# xuanchu M2 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 实现 taskg M2：补齐 Taskwarrior 核心任务模型、状态报表、注释/依赖、描述编辑和基础循环任务，并贯通查询、urgency、DOM、JSON import/export。
+**Goal:** 实现 xuanchu M2：补齐 Taskwarrior 核心任务模型、状态报表、注释/依赖、描述编辑和基础循环任务，并贯通查询、urgency、DOM、JSON import/export。
 
 **Architecture:** M2 在 M1 的 query/report/urgency/dom/app/storage 分层上增量扩展，不重写已有查询 AST 与报表系统。存储继续使用 GORM + `github.com/glebarez/sqlite` + AutoMigrate，保持零 CGO；复杂派生语义（waiting 到期刷新、blocked/blocking、recurrence 生成）在 app/service 或独立 domain 包中完成，再通过 repository 事务落库。实现顺序按 Core schema/domain → query/report → CLI commands → editing → recurrence → docs/验收推进，每个 chunk 独立测试和提交。
 
 **Tech Stack:** Go 1.22、Cobra、GORM、`github.com/glebarez/sqlite`、标准库 `time`/`sort`/`os/exec`/`encoding/json`、Go test。M2 不新增 SQLite driver，不引入 CGO。
 
-**Delivery:** M2 可按 Chunk 拆成 6 个 PR/合并点：Chunk 1+2、Chunk 3、Chunk 4、Chunk 5、Chunk 6、Chunk 7。每个合并点都必须满足 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/taskg`。
+**Delivery:** M2 可按 Chunk 拆成 6 个 PR/合并点：Chunk 1+2、Chunk 3、Chunk 4、Chunk 5、Chunk 6、Chunk 7。每个合并点都必须满足 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu`。
 
 ---
 
@@ -1192,7 +1192,7 @@ coefBlocked = -5.0
 在 `internal/app/service.go` 明确更新两条调用路径：
 
 - `RunReport`：先加载当前 workspace 的完整普通任务集合，用 `buildDependencyState` 计算 blocked/blocking map；urgency 排序前为每个候选任务预计算 `urgency.Explain(tsk, urgency.Options{NowUnix: now, Blocked: blocked[tsk.UUID], Blocking: blocking[tsk.UUID]}).Total`，不要在 sort comparator 里重复 Explain。
-- `ExplainUrgency(target)`：同样构建 dependency state 后传入 Options，保证 `taskg urgency <id>` 与 `next` 排序使用同一套 blocked/blocking 语义。
+- `ExplainUrgency(target)`：同样构建 dependency state 后传入 Options，保证 `xuanchu urgency <id>` 与 `next` 排序使用同一套 blocked/blocking 语义。
 
 补充 app 单测：
 
@@ -1303,8 +1303,8 @@ git commit -m "feat: urgency 和 DOM 支持 M2 字段"
 
 ```go
 func TestCLIM2AddModifyFields(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "waiting task", "wait:tomorrow", "scheduled:eow", "until:eom")
 	waiting := run(t, bin, "--db", db, "waiting")
 	if !strings.Contains(waiting, "waiting task") {
@@ -1373,8 +1373,8 @@ git commit -m "feat: CLI 支持 M2 修改字段"
 
 ```go
 func TestCLIStartStopActive(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "active task")
 	run(t, bin, "--db", db, "1", "start")
 	active := run(t, bin, "--db", db, "active")
@@ -1403,8 +1403,8 @@ Expected: FAIL。
 
 同时 target action 支持：
 
-- `taskg 1 start`
-- `taskg 1 stop`
+- `xuanchu 1 start`
+- `xuanchu 1 stop`
 
 可以让 root target action 直接调用 service，而不是通过 Cobra command。
 
@@ -1454,8 +1454,8 @@ git commit -m "feat: 添加 start stop active CLI"
 
 ```go
 func TestCLIAnnotateDenotate(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "annotated task")
 	run(t, bin, "--db", db, "1", "annotate", "first note")
 	got := run(t, bin, "--db", db, "_get", "1.annotations")
@@ -1484,8 +1484,8 @@ Expected: FAIL。
 
 支持 target action：
 
-- `taskg 1 annotate "note"`
-- `taskg 1 denotate 1`
+- `xuanchu 1 annotate "note"`
+- `xuanchu 1 denotate 1`
 
 修改 `handleTargetAction` 增加对应分支。
 
@@ -1528,8 +1528,8 @@ git commit -m "feat: 添加 annotate denotate CLI"
 
 ```go
 func TestCLIM2Reports(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "blocker")
 	blockerUUID := strings.TrimSpace(run(t, bin, "--db", db, "_uuids", "/blocker/"))
 	run(t, bin, "--db", db, "add", "blocked", "depends:"+blockerUUID)
@@ -1615,8 +1615,8 @@ git commit -m "feat: 添加 M2 报表 CLI"
 
 ```go
 func TestCLIAppendPrepend(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "1", "append", "end")
 	run(t, bin, "--db", db, "1", "prepend", "start")
@@ -1641,8 +1641,8 @@ Expected: FAIL。
 
 支持 target action：
 
-- `taskg 1 append "end"`
-- `taskg 1 prepend "start"`
+- `xuanchu 1 append "end"`
+- `xuanchu 1 prepend "start"`
 
 修改 `internal/cli/root.go` 注册命令和 target actions。
 
@@ -1722,8 +1722,8 @@ func TestParseEditableTaskUpdatesDescription(t *testing.T) {
 
 ```go
 func TestCLIEditWithTestEditor(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	editor := buildEditorHelper(t, `package main
 import (
 	"encoding/json"
@@ -2050,8 +2050,8 @@ func (r *TaskRepository) Children(workspaceID, parentUUID string) ([]domain.Task
 
 ```go
 func TestCLIRecurringDaily(t *testing.T) {
-	bin := buildTaskg(t)
-	db := filepath.Join(t.TempDir(), "taskg.db")
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
 	list := run(t, bin, "--db", db, "list")
 	if !strings.Contains(list, "daily task") {
@@ -2175,7 +2175,7 @@ git commit -m "feat: 完成循环任务边界"
 
 - Modify: `README.md`
 - Modify: `ROADMAP.md`
-- Modify: `docs/superpowers/specs/2026-05-28-taskg-m2-design.md`
+- Modify: `docs/superpowers/specs/2026-05-28-xuanchu-m2-design.md`
   - 如实现中有范围决策变化，同步回 spec。
 - Test: full suite。
 
@@ -2194,20 +2194,20 @@ git commit -m "feat: 完成循环任务边界"
 ## M2 任务状态与循环任务用法
 
 ```bash
-./taskg 1 start
-./taskg active
-./taskg 1 stop
-./taskg add "Call vendor" wait:tomorrow
-./taskg waiting
-./taskg 1 annotate "called customer"
-./taskg 1 denotate 1
-./taskg add "Write docs" depends:<uuid>
-./taskg blocked
-./taskg blocking
-./taskg 1 append "with examples"
-./taskg 1 prepend "[draft]"
-./taskg 1 edit
-./taskg add "Weekly report" recur:weekly due:friday until:2030-12-31
+./xuanchu 1 start
+./xuanchu active
+./xuanchu 1 stop
+./xuanchu add "Call vendor" wait:tomorrow
+./xuanchu waiting
+./xuanchu 1 annotate "called customer"
+./xuanchu 1 denotate 1
+./xuanchu add "Write docs" depends:<uuid>
+./xuanchu blocked
+./xuanchu blocking
+./xuanchu 1 append "with examples"
+./xuanchu 1 prepend "[draft]"
+./xuanchu 1 edit
+./xuanchu add "Weekly report" recur:weekly due:friday until:2030-12-31
 ```
 
 M2 的 recurring 为基础兼容版：支持 daily/weekly/monthly/Ndays/Nweeks/Nmonths，父任务隐藏，完成子任务时按需生成下一个子任务。
@@ -2261,7 +2261,7 @@ Expected: PASS。
 Run:
 
 ```bash
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 Expected: PASS。
@@ -2285,20 +2285,20 @@ Run:
 
 ```bash
 tmp="$(mktemp -d)"
-go run ./cmd/taskg --db "$tmp/taskg.db" add "active task"
-go run ./cmd/taskg --db "$tmp/taskg.db" 1 start
-go run ./cmd/taskg --db "$tmp/taskg.db" active
-go run ./cmd/taskg --db "$tmp/taskg.db" 1 stop
-go run ./cmd/taskg --db "$tmp/taskg.db" add "blocker"
-blocker="$(go run ./cmd/taskg --db "$tmp/taskg.db" _uuids /blocker/)"
-go run ./cmd/taskg --db "$tmp/taskg.db" add "blocked task" "depends:$blocker"
-go run ./cmd/taskg --db "$tmp/taskg.db" blocked
-go run ./cmd/taskg --db "$tmp/taskg.db" blocking
-go run ./cmd/taskg --db "$tmp/taskg.db" 1 annotate "manual note"
-go run ./cmd/taskg --db "$tmp/taskg.db" _get 1.annotations
-go run ./cmd/taskg --db "$tmp/taskg.db" add "weekly report" recur:weekly due:tomorrow until:eom
-go run ./cmd/taskg --db "$tmp/taskg.db" next
-go run ./cmd/taskg --db "$tmp/taskg.db" export
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "active task"
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" 1 start
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" active
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" 1 stop
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "blocker"
+blocker="$(go run ./cmd/xuanchu --db "$tmp/xuanchu.db" _uuids /blocker/)"
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "blocked task" "depends:$blocker"
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" blocked
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" blocking
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" 1 annotate "manual note"
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" _get 1.annotations
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" add "weekly report" recur:weekly due:tomorrow until:eom
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" next
+go run ./cmd/xuanchu --db "$tmp/xuanchu.db" export
 ```
 
 Expected:
@@ -2321,7 +2321,7 @@ Expected: 干净。
 
 ## 计划审阅说明
 
-本计划根据 [docs/superpowers/specs/2026-05-28-taskg-m2-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-taskg-m2-design.md)、[AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md) 和当前 M1 代码编写。
+本计划根据 [docs/superpowers/specs/2026-05-28-xuanchu-m2-design.md](/Users/mac/code/projects/dajee/task/docs/superpowers/specs/2026-05-28-xuanchu-m2-design.md)、[AGENTS.md](/Users/mac/code/projects/dajee/task/AGENTS.md) 和当前 M1 代码编写。
 
 ## 评审反馈
 

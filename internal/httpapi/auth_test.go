@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/app"
-	"github.com/dajee/taskg/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 type httpTokenFixture struct {

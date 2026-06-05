@@ -12,7 +12,7 @@ import (
 
 func newHookTestStore(t *testing.T) (*Store, string) {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func boolPtr(v bool) *bool    { return &v }
 // --- TestHookTablesMigrated ---
 
 func TestHookTablesMigrated(t *testing.T) {
-	store, err := Open(filepath.Join(t.TempDir(), "taskg.db"))
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

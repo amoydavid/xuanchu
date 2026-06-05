@@ -2,7 +2,7 @@
 
 ## 背景
 
-taskg 当前只支持 SQLite（`github.com/glebarez/sqlite`，纯 Go，零 CGO）。企业部署场景中，部分客户要求使用 PostgreSQL。本 milestone 在保持零 CGO、零接口定义的前提下，让 taskg 同时支持 SQLite 和 PostgreSQL，通过配置选择后端。
+xuanchu 当前只支持 SQLite（`github.com/glebarez/sqlite`，纯 Go，零 CGO）。企业部署场景中，部分客户要求使用 PostgreSQL。本 milestone 在保持零 CGO、零接口定义的前提下，让 xuanchu 同时支持 SQLite 和 PostgreSQL，通过配置选择后端。
 
 ## 目标
 
@@ -99,8 +99,8 @@ internal/storage/
 
 | 来源 | 键 | 示例 |
 |---|---|---|
-| CLI flag | `--db-url` | `postgres://user:pass@localhost:5432/taskg?sslmode=disable` |
-| 环境变量 | `TASKG_DB_URL` | 同上 |
+| CLI flag | `--db-url` | `postgres://user:pass@localhost:5432/xuanchu?sslmode=disable` |
+| 环境变量 | `XUANCHU_DB_URL` | 同上 |
 | TOML | `[database]` 段 `url = "..."` | 同上 |
 
 ### 优先级
@@ -108,19 +108,19 @@ internal/storage/
 完整解析优先级（从高到低）：
 
 1. `--db-url` CLI flag（如果指定，直接使用，忽略其他所有来源）
-2. `TASKG_DB_URL` 环境变量（如果指定且 `--db-url` 未指定）
+2. `XUANCHU_DB_URL` 环境变量（如果指定且 `--db-url` 未指定）
 3. `[database] url = "..."` TOML 配置（如果上述都未指定）
 4. `--db` CLI flag（如果指定，走 SQLite 文件路径）
-5. `TASKG_DB` 环境变量
+5. `XUANCHU_DB` 环境变量
 6. `[database] path = "..."` TOML 配置
-7. 默认 SQLite 路径 `~/.local/share/taskg/taskg.db`
+7. 默认 SQLite 路径 `~/.local/share/xuanchu/xuanchu.db`
 
 **互斥规则：**
 
 - `--db-url` 和 `--db` 同时指定 → 返回错误
-- `TASKG_DB_URL` 和 `TASKG_DB` 同时存在 → `TASKG_DB_URL` 优先（与环境变量优先级一致）
-- 只指定 `--db-url` 或 `TASKG_DB_URL` → 按 scheme 路由（`postgres://` → PostgreSQL，否则报错）
-- 只指定 `--db` 或 `TASKG_DB` → 走 SQLite 文件路径
+- `XUANCHU_DB_URL` 和 `XUANCHU_DB` 同时存在 → `XUANCHU_DB_URL` 优先（与环境变量优先级一致）
+- 只指定 `--db-url` 或 `XUANCHU_DB_URL` → 按 scheme 路由（`postgres://` → PostgreSQL，否则报错）
+- 只指定 `--db` 或 `XUANCHU_DB` → 走 SQLite 文件路径
 - `--db` 接收到含 `://` 的值时返回错误，防止误用
 
 ### TOML 示例
@@ -128,11 +128,11 @@ internal/storage/
 ```toml
 # PostgreSQL（优先于 database.path）
 [database]
-url = "postgres://user:pass@localhost:5432/taskg?sslmode=disable"
+url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 # SQLite（url 未设置时生效）
 [database]
-path = "/path/to/taskg.db"
+path = "/path/to/xuanchu.db"
 ```
 
 ### 代码改动
@@ -165,7 +165,7 @@ path = "/path/to/taskg.db"
 ### PostgreSQL 测试
 
 - 新增 `internal/storage/postgres_test.go`
-- 通过环境变量 `TASKG_TEST_DB_URL` 指定 PostgreSQL 连接字符串
+- 通过环境变量 `XUANCHU_TEST_DB_URL` 指定 PostgreSQL 连接字符串
 - 无 PostgreSQL 环境时 skip
 - 测试重点：
   1. `Open(postgres://...)` 能建库
@@ -177,21 +177,21 @@ path = "/path/to/taskg.db"
 ### 集成测试
 
 - `tests/integration/cli_test.go` 默认继续用 SQLite
-- 新增环境变量 `TASKG_TEST_DB_URL` 支持对 PostgreSQL 运行同一套 CLI 集成测试
+- 新增环境变量 `XUANCHU_TEST_DB_URL` 支持对 PostgreSQL 运行同一套 CLI 集成测试
 
 ### 验收命令
 
 ```bash
 CGO_ENABLED=0 go test ./...
-CGO_ENABLED=0 go build ./cmd/taskg
+CGO_ENABLED=0 go build ./cmd/xuanchu
 ```
 
 ## 验收标准
 
-- `taskg --db-url postgres://user:pass@host:5432/taskg server` 能启动并正常工作
-- `taskg --db ./taskg.db list` 行为与改动前完全一致
+- `xuanchu --db-url postgres://user:pass@host:5432/xuanchu server` 能启动并正常工作
+- `xuanchu --db ./xuanchu.db list` 行为与改动前完全一致
 - `CGO_ENABLED=0 go test ./...` 通过
-- `CGO_ENABLED=0 go build ./cmd/taskg` 通过
+- `CGO_ENABLED=0 go build ./cmd/xuanchu` 通过
 - 现有 SQLite 全部测试不回退
 - PostgreSQL 下 CLI 集成测试通过（有 PostgreSQL 环境时）
 - `internal/app`、`internal/cli` 等消费者只改 import 路径，不改业务逻辑

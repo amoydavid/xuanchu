@@ -7,26 +7,26 @@ weight: 50
 
 ## 配置来源
 
-taskg 的配置可以来自：
+xuanchu 的配置可以来自：
 
 - CLI flag / `rc.*`
 - 环境变量
 - SQLite meta/config
-- `~/.config/taskg/taskg.toml`
+- `~/.config/xuanchu/xuanchu.toml`
 - 默认值
 
 本机配置和业务配置要分开理解：
 
-- `taskg.toml` 是本机启动和显示配置。
+- `xuanchu.toml` 是本机启动和显示配置。
 - workspace/project 业务配置存数据库，并受权限和 audit 管理。
 
-## taskg.toml
+## xuanchu.toml
 
 最小示例：
 
 ```toml
 [database]
-path = "/Users/me/.local/share/taskg/taskg.db"
+path = "/Users/me/.local/share/xuanchu/xuanchu.db"
 
 [display]
 color = true
@@ -51,11 +51,11 @@ format = "rfc3339"
 ## config 命令
 
 ```bash
-taskg show
-taskg config get date.format
-taskg config set date.format rfc3339
-taskg config list
-taskg config unset date.format
+xuanchu show
+xuanchu config get date.format
+xuanchu config set date.format rfc3339
+xuanchu config list
+xuanchu config unset date.format
 ```
 
 远程模式下，`config` 只访问服务端 workspace 业务配置，不读取调用者本机 TOML。
@@ -65,9 +65,9 @@ taskg config unset date.format
 `rc.*` 只影响本次命令：
 
 ```bash
-taskg rc.date.format=epoch list
-taskg rc.json:on list
-taskg rc.context=none list
+xuanchu rc.date.format=epoch list
+xuanchu rc.json:on list
+xuanchu rc.context=none list
 ```
 
 ## Context
@@ -75,12 +75,12 @@ taskg rc.context=none list
 context 是命名过滤器，不是权限边界。
 
 ```bash
-taskg context define agent 'project:ai-agent-platform status:pending'
-taskg context use agent
-taskg context show
-taskg context list
-taskg context delete agent
-taskg context none
+xuanchu context define agent 'project:ai-agent-platform status:pending'
+xuanchu context use agent
+xuanchu context show
+xuanchu context list
+xuanchu context delete agent
+xuanchu context none
 ```
 
 启用后，`list`、`next`、报表、helper 都会叠加 active context。
@@ -88,8 +88,8 @@ taskg context none
 临时绕过：
 
 ```bash
-taskg --no-context list
-taskg rc.context=none list
+xuanchu --no-context list
+xuanchu rc.context=none list
 ```
 
 ## UDA
@@ -104,21 +104,21 @@ UDA 是用户自定义属性。支持：
 示例：
 
 ```bash
-taskg config set uda.estimate.type numeric
-taskg config set uda.estimate.label Estimate
-taskg config set uda.estimate.values 1,2,3,5,8
+xuanchu config set uda.estimate.type numeric
+xuanchu config set uda.estimate.label Estimate
+xuanchu config set uda.estimate.values 1,2,3,5,8
 
-taskg add "Implement API" project:ai-agent-platform estimate:3
-taskg estimate:3 list
-taskg _get 1.estimate
-taskg _udas
-taskg _unique estimate
+xuanchu add "Implement API" project:ai-agent-platform estimate:3
+xuanchu estimate:3 list
+xuanchu _get 1.estimate
+xuanchu _udas
+xuanchu _unique estimate
 ```
 
 UDA 可以参与 urgency：
 
 ```bash
-taskg config set urgency.uda.estimate.coefficient 1.5
+xuanchu config set urgency.uda.estimate.coefficient 1.5
 ```
 
 未定义 schema 的 JSON top-level 字段会作为 orphan UDA 保留并导出，但普通 `modify` 不能修改 orphan UDA。
@@ -126,11 +126,11 @@ taskg config set urgency.uda.estimate.coefficient 1.5
 ## .taskrc 只读导入
 
 ```bash
-taskg config import-taskrc ~/.taskrc --dry-run --json
-taskg config import-taskrc ~/.taskrc
+xuanchu config import-taskrc ~/.taskrc --dry-run --json
+xuanchu config import-taskrc ~/.taskrc
 ```
 
-taskg 不会修改原 `.taskrc`。当前支持导入：
+xuanchu 不会修改原 `.taskrc`。当前支持导入：
 
 - `color`
 - `dateformat`

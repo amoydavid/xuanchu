@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dajee/taskg/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
 func TestSuccessResultReturnsEnvelope(t *testing.T) {

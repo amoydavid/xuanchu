@@ -10,14 +10,14 @@ weight: 120
 任务引用 project 前必须先注册 project：
 
 ```bash
-taskg project add ai-agent-platform name:"AI Agent Platform"
-taskg add "Write docs" project:ai-agent-platform
+xuanchu project add ai-agent-platform name:"AI Agent Platform"
+xuanchu add "Write docs" project:ai-agent-platform
 ```
 
 如果你指定了 `--workspace`，project 会在该 workspace 内解析：
 
 ```bash
-taskg --workspace dajee project list
+xuanchu --workspace dajee project list
 ```
 
 ## project_archived
@@ -46,7 +46,7 @@ token 不允许访问该 workspace，或 token 可见多个 workspace 但请求�
 解决方式：
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" --workspace dajee list
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" --workspace dajee list
 ```
 
 或创建带正确 workspace scope 的 token。
@@ -74,8 +74,8 @@ token 带 project allowlist，不能访问 scope 外 project。
 HTTP API、远程 CLI、HTTP MCP 都需要 Bearer token。
 
 ```bash
-taskg --server https://taskg.example.com --token "$TASKG_TOKEN" list
-curl -H "Authorization: Bearer $TASKG_TOKEN" https://taskg.example.com/api/v1/me
+xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" list
+curl -H "Authorization: Bearer $XUANCHU_TOKEN" https://xuanchu.example.com/api/v1/me
 ```
 
 如果 token 过期或被撤销，请重新创建 token。
@@ -96,7 +96,7 @@ Hook endpoint 必须是 dispatcher 可以访问的公网或允许的外部地址
 只有可 replay 的 delivery 状态才能手动重试。先查看 delivery：
 
 ```bash
-taskg hook deliveries <hook-id> --json
+xuanchu hook deliveries <hook-id> --json
 ```
 
 ## JSON 输出和 human 输出不一致
@@ -104,10 +104,10 @@ taskg hook deliveries <hook-id> --json
 human 输出为了阅读友好，可能省略或格式化字段。脚本应使用：
 
 ```bash
-taskg --json <command>
-taskg _get ...
-taskg _ids ...
-taskg _uuids ...
+xuanchu --json <command>
+xuanchu _get ...
+xuanchu _ids ...
+xuanchu _uuids ...
 ```
 
 ## 数据库路径不对
@@ -115,15 +115,15 @@ taskg _uuids ...
 查看当前路径：
 
 ```bash
-taskg _show database.path
+xuanchu _show database.path
 ```
 
 常见覆盖方式：
 
 ```bash
-taskg --db ./taskg.db list
-TASKG_DB=./taskg.db taskg list
-taskg --data-dir ./data list
+xuanchu --db ./xuanchu.db list
+XUANCHU_DB=./xuanchu.db xuanchu list
+xuanchu --data-dir ./data list
 ```
 
 ## PostgreSQL 连接失败
@@ -133,7 +133,7 @@ taskg --data-dir ./data list
 - 检查连接字符串格式：`postgres://user:pass@host:5432/dbname?sslmode=disable`
 - 检查 PostgreSQL 是否运行：`pg_isready -h localhost -p 5432`
 - 检查用户权限：数据库必须已创建，用户必须有 CREATE TABLE 权限
-- 查看当前配置：`taskg _show database.url`
+- 查看当前配置：`xuanchu _show database.url`
 
 `--db-url` 和 `--db` 互斥，同时指定会报错。
 
