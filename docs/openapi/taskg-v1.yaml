@@ -41,6 +41,7 @@ components:
         - api_bad_limit
         - api_payload_too_large
         - api_internal
+        - token_not_found
         - hook_not_found
         - hook_event_types_invalid
         - hook_endpoint_invalid
@@ -1398,6 +1399,52 @@ paths:
         '201':
           description: Token created.
   /api/v1/tokens/{tokenRef}:
+    patch:
+      summary: 修改 token 属性
+      parameters:
+        - in: path
+          name: tokenRef
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                expires_in:
+                  type: integer
+                  format: int64
+                  description: 新的过期时间（秒），0 表示永不过期
+      responses:
+        '200':
+          description: 修改后的 token
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Token'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       summary: Revoke token by id or stored prefix.
       parameters:

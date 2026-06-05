@@ -104,6 +104,30 @@ func (c *Client) CreateToken(ctx context.Context, workspace string, input Create
 	})}, nil
 }
 
+type ModifyTokenInput struct {
+	TokenID   string   `json:"-"`
+	Name      *string  `json:"name,omitempty"`
+	Scopes    []string `json:"scopes,omitempty"`
+	ExpiresIn *int64   `json:"expires_in,omitempty"`
+}
+
+func (c *Client) ModifyToken(ctx context.Context, workspace string, input ModifyTokenInput) (*app.TokenView, error) {
+	values := url.Values{}
+	if workspace != "" {
+		values.Set("workspace", workspace)
+	}
+	path := "/api/v1/tokens/" + url.PathEscape(input.TokenID)
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var envelope apiEnvelope[tokenDTO]
+	if err := c.patch(ctx, path, input, &envelope); err != nil {
+		return nil, err
+	}
+	view := tokenDTOToView(envelope.Data)
+	return &view, nil
+}
+
 func (c *Client) RevokeToken(ctx context.Context, workspace, ref string) error {
 	values := url.Values{}
 	if workspace != "" {

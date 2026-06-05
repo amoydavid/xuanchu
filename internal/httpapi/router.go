@@ -88,6 +88,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Get("/api/v1/audit", s.handleAuditList)
 	api.With(s.authMiddleware).Get("/api/v1/tokens", s.handleTokenList)
 	api.With(s.authMiddleware).Post("/api/v1/tokens", s.handleTokenCreate)
+	api.With(s.authMiddleware).Patch("/api/v1/tokens/{tokenRef}", s.handleTokenModify)
 	api.With(s.authMiddleware).Delete("/api/v1/tokens/{tokenRef}", s.handleTokenRevoke)
 	api.With(s.authMiddleware).Get("/api/v1/hooks", s.handleHookList)
 	api.With(s.authMiddleware).Post("/api/v1/hooks", s.handleHookCreate)

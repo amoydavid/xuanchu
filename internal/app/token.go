@@ -485,3 +485,86 @@ func classifyTokenCreateError(err error) error {
 func tokenManageAllowed(role Role) bool {
 	return role == RoleOwner || role == RoleAdmin
 }
+
+type ModifyTokenInput struct {
+	TokenID     string
+	Name        *string
+	Scopes      []string
+	ExpiresIn   *int64
+	ClearExpire bool
+}
+
+func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
+	existing, err := s.tokenRepo.GetByID(input.TokenID)
+	if err != nil {
+		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
+	}
+
+	updates := storage.TokenUpdates{}
+	dirty := false
+
+	if input.Name != nil {
+		updates.Name = input.Name
+		dirty = true
+	}
+
+	if input.Scopes != nil {
+		scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
+			Type:         existing.Type,
+			Scopes:       input.Scopes,
+			WorkspaceIDs: parseIDsFromJSON(existing.WorkspaceIDsJSON),
+		})
+		if err != nil {
+			return nil, RuntimeError{Message: err.Error()}
+		}
+		sj, _ := marshalStringSlice(scopes.Values())
+		updates.ScopesJSON = &sj
+		dirty = true
+	}
+
+	if input.ClearExpire {
+		updates.ClearExpiresAt = true
+		dirty = true
+	} else if input.ExpiresIn != nil {
+		if *input.ExpiresIn < 0 {
+			return nil, RuntimeError{Message: "expires-in must be non-negative"}
+		}
+		if *input.ExpiresIn == 0 {
+			updates.ClearExpiresAt = true
+		} else {
+			ts := s.clock.Unix() + *input.ExpiresIn
+			updates.ExpiresAt = &ts
+		}
+		dirty = true
+	}
+
+	if dirty {
+		if err := s.tokenRepo.Update(input.TokenID, updates); err != nil {
+			return nil, RuntimeError{Code: "token_update_failed", Message: "failed to update token"}
+		}
+	}
+
+	updated, err := s.tokenRepo.GetByID(input.TokenID)
+	if err != nil {
+		return nil, RuntimeError{Code: "token_not_found", Message: "failed to reload token"}
+	}
+
+	view := tokenEntryToView(updated)
+	return &view, nil
+}
+
+func tokenEntryToView(row storage.ApiTokenEntry) TokenView {
+	scopes, _ := unmarshalStringSlice(row.ScopesJSON)
+	workspaceIDs, _ := unmarshalStringSlice(row.WorkspaceIDsJSON)
+	projectIDs, _ := unmarshalStringSlice(row.ProjectIDsJSON)
+	return tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs)
+}
+
+func parseIDsFromJSON(jsonStr string) []string {
+	if jsonStr == "" || jsonStr == "[]" || jsonStr == "null" {
+		return nil
+	}
+	var ids []string
+	json.Unmarshal([]byte(jsonStr), &ids)
+	return ids
+}

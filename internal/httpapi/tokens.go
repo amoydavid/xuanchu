@@ -26,6 +26,12 @@ type tokenResponse struct {
 	LastUsedAt   *int64             `json:"last_used_at,omitempty"`
 }
 
+type modifyTokenRequest struct {
+	Name      *string  `json:"name,omitempty"`
+	Scopes    []string `json:"scopes,omitempty"`
+	ExpiresIn *int64   `json:"expires_in,omitempty"`
+}
+
 type createTokenRequest struct {
 	Name             string   `json:"name"`
 	Type             string   `json:"type,omitempty"`
@@ -114,6 +120,30 @@ func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "token:write", app.PermissionTokenWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req modifyTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	view, err := scoped.ModifyToken(app.ModifyTokenInput{
+		TokenID:   chi.URLParam(r, "tokenRef"),
+		Name:      req.Name,
+		Scopes:    req.Scopes,
+		ExpiresIn: req.ExpiresIn,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, tokenResponseFromView(*view), nil)
 }
 
 func tokenResponseFromView(view app.TokenView) tokenResponse {

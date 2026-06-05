@@ -157,16 +157,23 @@ func TestCreateTokenCannotExceedParentTokenScope(t *testing.T) {
 	}
 }
 
-func TestCreateTokenRejectsPATWithImpersonateScope(t *testing.T) {
+func TestCreateTokenPATSilentlyDropsImpersonateScope(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	_, err := svc.CreateToken(CreateTokenInput{
+	created, err := svc.CreateToken(CreateTokenInput{
 		Name:          "pat-impersonate",
 		Type:          "pat",
 		Scopes:        []string{"task:read", "impersonate"},
 		WorkspaceRefs: []string{"local"},
 	})
-	assertRuntimeCode(t, err, "token_scope_invalid")
+	if err != nil {
+		t.Fatalf("CreateToken() error = %v", err)
+	}
+	for _, s := range created.View.Scopes {
+		if s == "impersonate" {
+			t.Fatalf("PAT should not contain impersonate scope, got %v", created.View.Scopes)
+		}
+	}
 }
 
 func TestCreateTokenRejectsMemberCreatingImpersonateScope(t *testing.T) {
