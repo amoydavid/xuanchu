@@ -1,0 +1,57 @@
+{
+  "description": "Create an API token. The raw secret is returned only at creation time.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "expires_in_seconds": {
+        "description": "token expiration in seconds from now",
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "name": {
+        "description": "token name",
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "scope": {
+        "description": "token scopes",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "name": "token_create",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

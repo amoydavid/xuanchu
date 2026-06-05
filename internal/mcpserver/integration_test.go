@@ -11,6 +11,7 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/storage"
+	"github.com/dajee/taskg/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -219,17 +220,29 @@ func TestListToolsWithRegistered(t *testing.T) {
 	expectedTools := []string{
 		"task_add", "task_query", "task_get",
 		"task_modify", "task_done", "task_delete",
-		"task_annotate", "task_depends", "task_start", "task_stop",
-		"task_link_add", "task_link_remove",
+		"task_annotate", "task_denotate", "task_depends",
+		"task_start", "task_stop",
+		"task_link_add", "task_link_list", "task_link_remove",
+		"task_export", "task_import",
 		"report_run", "urgency_explain",
 		"workspace_list", "workspace_get_current",
+		"workspace_info", "workspace_add", "workspace_modify", "workspace_archive", "workspace_use",
 		"project_list", "project_get", "project_get_current",
+		"project_add", "project_modify", "project_archive",
 		"project_annotate", "project_denotate",
 		"project_list_annotations", "project_list_timeline",
-		"member_list", "member_add",
-		"user_list", "user_get", "user_bind", "user_unbind",
-		"context_get", "context_set",
-		"config_get", "config_set",
+		"project_config_list", "project_config_set", "project_config_unset",
+		"member_list", "member_add", "member_role",
+		"user_list", "user_get", "user_add", "user_bind", "user_unbind",
+		"user_use", "user_list_external_ids",
+		"context_get", "context_set", "context_none",
+		"context_list", "context_delete",
+		"config_get", "config_set", "config_list", "config_unset",
+		"hook_list", "hook_add", "hook_info", "hook_modify", "hook_remove",
+		"hook_test", "hook_delivery_list", "hook_delivery_info",
+		"hook_delivery_redeliver", "hook_ping",
+		"token_list", "token_create", "token_modify", "token_revoke",
+		"audit_list", "scope_list", "me_get",
 	}
 	if len(result.Tools) != len(expectedTools) {
 		t.Fatalf("expected %d tools, got %d", len(expectedTools), len(result.Tools))
@@ -1179,5 +1192,543 @@ func TestMCPProjectScope(t *testing.T) {
 	}
 	if projectMap["slug"] != projectA.Slug {
 		t.Fatalf("project.list projects = %#v, want only project A", projects)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// task.denotate / task.link_list / task.export / task.import 集成测试
+// ---------------------------------------------------------------------------
+
+func TestTaskDenotate(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	uuid := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "denotate me"})))
+	callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid, Annotation: "note 1"})
+	callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid, Annotation: "note 2"})
+
+	result := callTool(t, session, "task_denotate", TaskDenotateInput{ID: uuid, AnnotationIndex: 1})
+	if result.IsError {
+		t.Fatalf("task_denotate error: %v", parseError(t, result))
+	}
+	taskObj := extractTask(t, parseEnvelope(t, result))
+	anns, ok := taskObj["annotations"].([]any)
+	if !ok || len(anns) != 1 {
+		t.Fatalf("annotations after denotate = %#v, want 1", taskObj["annotations"])
+	}
+}
+
+func TestTaskLinkList(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	uuid := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "link test"})))
+	callTool(t, session, "task_link_add", TaskLinkAddInput{Task: uuid, Type: "document", URL: "https://example.com/doc"})
+
+	result := callTool(t, session, "task_link_list", TaskLinkListInput{Task: uuid})
+	if result.IsError {
+		t.Fatalf("task_link_list error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	count, _ := data["count"].(float64)
+	if int(count) != 1 {
+		t.Fatalf("link count = %v, want 1", count)
+	}
+}
+
+func TestTaskExportImport(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "task_add", TaskAddInput{Description: "export me"})
+
+	exportResult := callTool(t, session, "task_export", TaskExportInput{})
+	if exportResult.IsError {
+		t.Fatalf("task_export error: %v", parseError(t, exportResult))
+	}
+	exportData := envelopeData(t, parseEnvelope(t, exportResult))
+	exportCount, _ := exportData["count"].(float64)
+	if int(exportCount) < 1 {
+		t.Fatalf("export count = %v, want at least 1", exportCount)
+	}
+
+	importResult := callTool(t, session, "task_import", TaskImportInput{
+		Tasks: []task.JSONTask{
+			{UUID: "imported-uuid-1", Description: "imported task", Status: "pending", Entry: "2025-06-01T00:00:00Z", Modified: "2025-06-01T00:00:00Z"},
+		},
+	})
+	if importResult.IsError {
+		t.Fatalf("task_import error: %v", parseError(t, importResult))
+	}
+	importData := envelopeData(t, parseEnvelope(t, importResult))
+	imported, _ := importData["imported"].(float64)
+	if int(imported) != 1 {
+		t.Fatalf("imported = %v, want 1", imported)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// workspace 补充工具集成测试
+// ---------------------------------------------------------------------------
+
+func TestWorkspaceAddInfoModifyArchiveUse(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	add := callTool(t, session, "workspace_add", WorkspaceAddInput{Slug: "test-ws", Name: "Test Workspace"})
+	if add.IsError {
+		t.Fatalf("workspace_add error: %v", parseError(t, add))
+	}
+	wsData := nestedMap(t, envelopeData(t, parseEnvelope(t, add)), "workspace")
+	if wsData["slug"] != "test-ws" {
+		t.Fatalf("slug = %v, want test-ws", wsData["slug"])
+	}
+
+	info := callTool(t, session, "workspace_info", WorkspaceRefInput{Workspace: "test-ws"})
+	if info.IsError {
+		t.Fatalf("workspace_info error: %v", parseError(t, info))
+	}
+
+	mod := callTool(t, session, "workspace_modify", WorkspaceModifyInput{Workspace: "test-ws", Name: ptrStr("Updated Name")})
+	if mod.IsError {
+		t.Fatalf("workspace_modify error: %v", parseError(t, mod))
+	}
+	modWs := nestedMap(t, envelopeData(t, parseEnvelope(t, mod)), "workspace")
+	if modWs["name"] != "Updated Name" {
+		t.Fatalf("name = %v, want Updated Name", modWs["name"])
+	}
+
+	use := callTool(t, session, "workspace_use", WorkspaceRefInput{Workspace: "test-ws"})
+	if use.IsError {
+		t.Fatalf("workspace_use error: %v", parseError(t, use))
+	}
+
+	archive := callTool(t, session, "workspace_archive", WorkspaceRefInput{Workspace: "test-ws"})
+	if archive.IsError {
+		t.Fatalf("workspace_archive error: %v", parseError(t, archive))
+	}
+
+	list := callTool(t, session, "workspace_list", WorkspaceListInput{IncludeArchived: true})
+	if list.IsError {
+		t.Fatalf("workspace_list error: %v", parseError(t, list))
+	}
+	_ = svc
+}
+
+// ---------------------------------------------------------------------------
+// project 补充工具集成测试
+// ---------------------------------------------------------------------------
+
+func TestProjectAddModifyArchive(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	add := callTool(t, session, "project_add", ProjectAddInput{Slug: "my-proj", Name: "My Project"})
+	if add.IsError {
+		t.Fatalf("project_add error: %v", parseError(t, add))
+	}
+	projData := nestedMap(t, envelopeData(t, parseEnvelope(t, add)), "project")
+	if projData["slug"] != "my-proj" {
+		t.Fatalf("slug = %v, want my-proj", projData["slug"])
+	}
+
+	mod := callTool(t, session, "project_modify", ProjectModifyInput{Project: "my-proj", Name: ptrStr("Updated Project")})
+	if mod.IsError {
+		t.Fatalf("project_modify error: %v", parseError(t, mod))
+	}
+	modProj := nestedMap(t, envelopeData(t, parseEnvelope(t, mod)), "project")
+	if modProj["name"] != "Updated Project" {
+		t.Fatalf("name = %v, want Updated Project", modProj["name"])
+	}
+
+	archive := callTool(t, session, "project_archive", ProjectArchiveInput{Project: "my-proj"})
+	if archive.IsError {
+		t.Fatalf("project_archive error: %v", parseError(t, archive))
+	}
+}
+
+func TestProjectAnnotateDenotateListTimeline(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "project_add", ProjectAddInput{Slug: "ann-proj", Name: "Ann Project"})
+
+	ann := callTool(t, session, "project_annotate", ProjectAnnotateInput{Project: "ann-proj", Content: "project note"})
+	if ann.IsError {
+		t.Fatalf("project_annotate error: %v", parseError(t, ann))
+	}
+	annData := envelopeData(t, parseEnvelope(t, ann))
+	annotationObj, ok := annData["annotation"].(map[string]any)
+	if !ok {
+		t.Fatalf("annotation type = %T, want map", annData["annotation"])
+	}
+	annID, _ := annotationObj["ID"].(string)
+	if annID == "" {
+		t.Fatalf("annotation ID is empty, annotationObj = %#v", annotationObj)
+	}
+
+	listAnn := callTool(t, session, "project_list_annotations", ProjectAnnotationsInput{Project: "ann-proj"})
+	if listAnn.IsError {
+		t.Fatalf("project_list_annotations error: %v", parseError(t, listAnn))
+	}
+	annListData := envelopeData(t, parseEnvelope(t, listAnn))
+	annCount, _ := annListData["count"].(float64)
+	if int(annCount) != 1 {
+		t.Fatalf("annotation count = %v, want 1", annCount)
+	}
+
+	timeline := callTool(t, session, "project_list_timeline", ProjectTimelineInput{Project: "ann-proj"})
+	if timeline.IsError {
+		t.Fatalf("project_list_timeline error: %v", parseError(t, timeline))
+	}
+
+	denotate := callTool(t, session, "project_denotate", ProjectDenotateInput{Project: "ann-proj", AnnotationID: annID})
+	if denotate.IsError {
+		t.Fatalf("project_denotate error: %v", parseError(t, denotate))
+	}
+}
+
+func TestProjectConfigSetUnsetList(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "project_add", ProjectAddInput{Slug: "cfg-proj", Name: "Cfg Project"})
+
+	set := callTool(t, session, "project_config_set", ProjectConfigSetInput{Project: "cfg-proj", Key: "agent.background", Value: "test"})
+	if set.IsError {
+		t.Fatalf("project_config_set error: %v", parseError(t, set))
+	}
+
+	list := callTool(t, session, "project_config_list", ProjectConfigListInput{Project: "cfg-proj"})
+	if list.IsError {
+		t.Fatalf("project_config_list error: %v", parseError(t, list))
+	}
+	cfgData := envelopeData(t, parseEnvelope(t, list))
+	cfgMap, ok := cfgData["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("config type = %T, want map", cfgData["config"])
+	}
+	if cfgMap["agent.background"] != "test" {
+		t.Fatalf("agent.background = %v, want test", cfgMap["agent.background"])
+	}
+
+	unset := callTool(t, session, "project_config_unset", ProjectConfigUnsetInput{Project: "cfg-proj", Key: "agent.background"})
+	if unset.IsError {
+		t.Fatalf("project_config_unset error: %v", parseError(t, unset))
+	}
+
+	list2 := callTool(t, session, "project_config_list", ProjectConfigListInput{Project: "cfg-proj"})
+	cfgData2 := envelopeData(t, parseEnvelope(t, list2))
+	cfgMap2, _ := cfgData2["config"].(map[string]any)
+	if _, exists := cfgMap2["agent.background"]; exists {
+		t.Fatal("agent.background should be unset")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// user 补充工具集成测试
+// ---------------------------------------------------------------------------
+
+func TestUserAddUseListGetExternalIDs(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	add := callTool(t, session, "user_add", UserAddInput{Name: "testuser"})
+	if add.IsError {
+		t.Fatalf("user_add error: %v", parseError(t, add))
+	}
+
+	list := callTool(t, session, "user_list", UserListInput{})
+	if list.IsError {
+		t.Fatalf("user_list error: %v", parseError(t, list))
+	}
+	usersData := envelopeData(t, parseEnvelope(t, list))
+	userCount, _ := usersData["count"].(float64)
+	if int(userCount) < 2 {
+		t.Fatalf("user count = %v, want at least 2", userCount)
+	}
+
+	get := callTool(t, session, "user_get", UserInfoInput{User: "testuser"})
+	if get.IsError {
+		t.Fatalf("user_get error: %v", parseError(t, get))
+	}
+
+	use := callTool(t, session, "user_use", UserUseInput{User: "testuser"})
+	if use.IsError {
+		t.Fatalf("user_use error: %v", parseError(t, use))
+	}
+
+	extList := callTool(t, session, "user_list_external_ids", UserRefInput{User: "testuser"})
+	if extList.IsError {
+		t.Fatalf("user_list_external_ids error: %v", parseError(t, extList))
+	}
+}
+
+func TestUserBindUnbind(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "user_add", UserAddInput{Name: "bindtest"})
+
+	bind := callTool(t, session, "user_bind", UserBindInput{User: "bindtest", Provider: "feishu", ExternalID: "ou_12345"})
+	if bind.IsError {
+		t.Fatalf("user_bind error: %v", parseError(t, bind))
+	}
+
+	extList := callTool(t, session, "user_list_external_ids", UserRefInput{User: "bindtest"})
+	extData := envelopeData(t, parseEnvelope(t, extList))
+	extCount, _ := extData["count"].(float64)
+	if int(extCount) != 1 {
+		t.Fatalf("external ID count = %v, want 1", extCount)
+	}
+
+	unbind := callTool(t, session, "user_unbind", UserUnbindInput{User: "bindtest", Provider: "feishu", ExternalID: "ou_12345"})
+	if unbind.IsError {
+		t.Fatalf("user_unbind error: %v", parseError(t, unbind))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// member_role 集成测试
+// ---------------------------------------------------------------------------
+
+func TestMemberRole(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "user_add", UserAddInput{Name: "roleuser"})
+	callTool(t, session, "member_add", MemberAddInput{User: "roleuser", Role: "member"})
+
+	result := callTool(t, session, "member_role", MemberRoleInput{User: "roleuser", Role: "admin"})
+	if result.IsError {
+		t.Fatalf("member_role error: %v", parseError(t, result))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// context_none / context_list / context_delete 集成测试
+// ---------------------------------------------------------------------------
+
+func TestContextNoneListDelete(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	if err := svc.DefineContext("sprint", "priority:H"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DefineContext("release", "priority:M"); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	list := callTool(t, session, "context_list", ContextShowInput{})
+	if list.IsError {
+		t.Fatalf("context_list error: %v", parseError(t, list))
+	}
+	ctxData := envelopeData(t, parseEnvelope(t, list))
+	ctxCount, _ := ctxData["count"].(float64)
+	if int(ctxCount) != 2 {
+		t.Fatalf("context count = %v, want 2", ctxCount)
+	}
+
+	none := callTool(t, session, "context_none", ContextShowInput{})
+	if none.IsError {
+		t.Fatalf("context_none error: %v", parseError(t, none))
+	}
+
+	del := callTool(t, session, "context_delete", ContextDeleteInput{Name: "release"})
+	if del.IsError {
+		t.Fatalf("context_delete error: %v", parseError(t, del))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// config_unset / config_list 集成测试
+// ---------------------------------------------------------------------------
+
+func TestConfigUnsetList(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	_ = svc
+	if err := newMCPTestService(t, store).SetConfig("urgency.priority.coeff", "5.0"); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	list := callTool(t, session, "config_list", ConfigListInput{})
+	if list.IsError {
+		t.Fatalf("config_list error: %v", parseError(t, list))
+	}
+
+	unset := callTool(t, session, "config_unset", ConfigUnsetInput{Key: "urgency.priority.coeff"})
+	if unset.IsError {
+		t.Fatalf("config_unset error: %v", parseError(t, unset))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// hook 全域集成测试
+// ---------------------------------------------------------------------------
+
+func TestHookFullLifecycle(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	list := callTool(t, session, "hook_list", HookListInput{})
+	if list.IsError {
+		t.Fatalf("hook_list error: %v", parseError(t, list))
+	}
+
+	add := callTool(t, session, "hook_add", HookAddInput{
+		Name:   "test-hook",
+		URL:    "https://example.com/webhook",
+		Events: []string{"task.created", "task.completed"},
+	})
+	if add.IsError {
+		t.Fatalf("hook_add error: %v", parseError(t, add))
+	}
+	hookData := envelopeData(t, parseEnvelope(t, add))
+	hookObj, ok := hookData["hook"].(map[string]any)
+	if !ok {
+		t.Fatalf("hook type = %T, want map", hookData["hook"])
+	}
+	hookID, _ := hookObj["id"].(string)
+
+	info := callTool(t, session, "hook_info", HookRefInput{Hook: hookID})
+	if info.IsError {
+		t.Fatalf("hook_info error: %v", parseError(t, info))
+	}
+
+	mod := callTool(t, session, "hook_modify", HookModifyInput{Hook: hookID, Name: ptrStr("renamed-hook")})
+	if mod.IsError {
+		t.Fatalf("hook_modify error: %v", parseError(t, mod))
+	}
+
+	test := callTool(t, session, "hook_test", HookRefInput{Hook: hookID})
+	if test.IsError {
+		t.Fatalf("hook_test error: %v", parseError(t, test))
+	}
+
+	ping := callTool(t, session, "hook_ping", HookRefInput{Hook: hookID})
+	if ping.IsError {
+		t.Fatalf("hook_ping error: %v", parseError(t, ping))
+	}
+
+	deliveries := callTool(t, session, "hook_delivery_list", HookDeliveryListInput{Hook: hookID})
+	if deliveries.IsError {
+		t.Fatalf("hook_delivery_list error: %v", parseError(t, deliveries))
+	}
+
+	remove := callTool(t, session, "hook_remove", HookRefInput{Hook: hookID})
+	if remove.IsError {
+		t.Fatalf("hook_remove error: %v", parseError(t, remove))
+	}
+
+	list2 := callTool(t, session, "hook_list", HookListInput{})
+	listData := envelopeData(t, parseEnvelope(t, list2))
+	hookCount, _ := listData["count"].(float64)
+	if int(hookCount) != 0 {
+		t.Fatalf("hook count after remove = %v, want 0", hookCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// token 全域集成测试
+// ---------------------------------------------------------------------------
+
+func TestTokenFullLifecycle(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	list := callTool(t, session, "token_list", TokenListInput{})
+	if list.IsError {
+		t.Fatalf("token_list error: %v", parseError(t, list))
+	}
+
+	create := callTool(t, session, "token_create", TokenCreateInput{
+		Name:  "test-token",
+		Scope: []string{"task:read", "task:write"},
+	})
+	if create.IsError {
+		t.Fatalf("token_create error: %v", parseError(t, create))
+	}
+	tokenData := envelopeData(t, parseEnvelope(t, create))
+	tokenObj, ok := tokenData["token"].(map[string]any)
+	if !ok {
+		t.Fatalf("token type = %T, want map", tokenData["token"])
+	}
+	tokenID, _ := tokenObj["id"].(string)
+	if _, hasRaw := tokenObj["raw_token"]; !hasRaw {
+		t.Fatal("token_create should return raw_token")
+	}
+
+	mod := callTool(t, session, "token_modify", TokenModifyInput{
+		TokenRef: tokenID,
+		Name:     ptrStr("renamed-token"),
+	})
+	if mod.IsError {
+		t.Fatalf("token_modify error: %v", parseError(t, mod))
+	}
+
+	revoke := callTool(t, session, "token_revoke", TokenRevokeInput{TokenRef: tokenID})
+	if revoke.IsError {
+		t.Fatalf("token_revoke error: %v", parseError(t, revoke))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// audit_list / scope_list / me_get 集成测试
+// ---------------------------------------------------------------------------
+
+func TestAuditList(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "task_add", TaskAddInput{Description: "audit test task"})
+
+	result := callTool(t, session, "audit_list", AuditListInput{})
+	if result.IsError {
+		t.Fatalf("audit_list error: %v", parseError(t, result))
+	}
+	auditData := envelopeData(t, parseEnvelope(t, result))
+	entries, ok := auditData["entries"].([]any)
+	if !ok || len(entries) == 0 {
+		t.Fatalf("audit entries = %#v, want at least 1", auditData["entries"])
+	}
+}
+
+func TestScopeList(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "scope_list", ScopeListInput{})
+	if result.IsError {
+		t.Fatalf("scope_list error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	scopes, ok := data["scopes"].([]any)
+	if !ok || len(scopes) == 0 {
+		t.Fatalf("scopes = %#v, want non-empty", data["scopes"])
+	}
+}
+
+func TestMeGet(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "me_get", MeGetInput{})
+	if result.IsError {
+		t.Fatalf("me_get error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	userObj, ok := data["user"].(map[string]any)
+	if !ok {
+		t.Fatalf("user type = %T, want map", data["user"])
+	}
+	if userObj["name"] == "" {
+		t.Fatal("user name is empty")
 	}
 }

@@ -1,0 +1,73 @@
+{
+  "description": "Modify a hook; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "active": {
+        "type": [
+          "null",
+          "boolean"
+        ]
+      },
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "hook": {
+        "description": "hook ID",
+        "type": "string"
+      },
+      "name": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "secret": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "url": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "hook"
+    ],
+    "type": "object"
+  },
+  "name": "hook_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

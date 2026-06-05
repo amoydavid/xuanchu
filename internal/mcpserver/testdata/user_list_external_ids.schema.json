@@ -1,0 +1,30 @@
+{
+  "description": "List external IDs bound to a user; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "user": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "type": "object"
+  },
+  "name": "user_list_external_ids",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

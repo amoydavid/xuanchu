@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -2306,15 +2307,53 @@ func TestAddUserCreatesPersonalWorkspaceAndOwnerMembership(t *testing.T) {
 	}
 }
 
-func TestAddUserRejectsInvalidPersonalWorkspaceSlug(t *testing.T) {
+func findPersonalWorkspaceSlug(svc *Service, userID string) (string, error) {
+	user, err := storage.NewUserRepository(svc.store.DB()).GetByID(userID)
+	if err != nil {
+		return "", fmt.Errorf("GetByID(%s): %w", userID, err)
+	}
+	if user.DefaultWorkspaceID == nil {
+		return "", fmt.Errorf("user %s has no default workspace", userID)
+	}
+	ws, err := storage.NewWorkspaceRepository(svc.store.DB()).GetByID(*user.DefaultWorkspaceID)
+	if err != nil {
+		return "", fmt.Errorf("GetByID(%s): %w", *user.DefaultWorkspaceID, err)
+	}
+	return ws.Slug, nil
+}
+
+func TestAddUserFallbackSlugForNonAsciiName(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	if _, err := svc.AddUser(AddUserInput{Name: "Alice"}); err == nil {
-		t.Fatal("AddUser(Alice) error = nil, want invalid workspace slug")
+	view, err := svc.AddUser(AddUserInput{Name: "Alice"})
+	if err != nil {
+		t.Fatalf("AddUser(Alice) error = %v", err)
 	}
-	if _, err := storage.NewUserRepository(svc.store.DB()).GetByName("Alice"); err != storage.ErrNotFound {
-		t.Fatalf("GetByName(Alice) error = %v, want ErrNotFound", err)
+	if view.Name != "Alice" {
+		t.Fatalf("name = %q, want Alice", view.Name)
+	}
+	slug, err := findPersonalWorkspaceSlug(svc, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(slug, "user-") {
+		t.Fatalf("personal workspace slug = %q, want user- prefix", slug)
+	}
+
+	view2, err := svc.AddUser(AddUserInput{Name: "张三"})
+	if err != nil {
+		t.Fatalf("AddUser(张三) error = %v", err)
+	}
+	if view2.Name != "张三" {
+		t.Fatalf("name = %q, want 张三", view2.Name)
+	}
+	slug2, err := findPersonalWorkspaceSlug(svc, view2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(slug2, "user-") {
+		t.Fatalf("personal workspace slug = %q, want user- prefix", slug2)
 	}
 }
 

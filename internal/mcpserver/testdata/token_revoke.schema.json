@@ -1,0 +1,40 @@
+{
+  "description": "Revoke an API token.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "token_ref": {
+        "description": "token ID or prefix",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "token_ref"
+    ],
+    "type": "object"
+  },
+  "name": "token_revoke",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

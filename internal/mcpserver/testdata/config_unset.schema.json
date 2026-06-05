@@ -1,0 +1,33 @@
+{
+  "description": "Unset (delete) a workspace config key.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "key"
+    ],
+    "type": "object"
+  },
+  "name": "config_unset",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "description": "List external links on a task; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "task": {
+        "description": "task reference (UUID or working-set ID)",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "task"
+    ],
+    "type": "object"
+  },
+  "name": "task_link_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

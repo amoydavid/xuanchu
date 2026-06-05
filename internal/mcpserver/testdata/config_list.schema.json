@@ -1,0 +1,27 @@
+{
+  "description": "List all config values; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "config_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -23,6 +24,15 @@ type ConfigSetInput struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 	Scope     string `json:"scope"`
+}
+
+type ConfigUnsetInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Key       string `json:"key"`
+}
+
+type ConfigListInput struct {
+	Workspace string `json:"workspace,omitempty"`
 }
 
 func registerConfigTools(s *mcp.Server, opts Options) {
@@ -101,6 +111,30 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 			}
 			return configValueResult(key, in.Value, "workspace")
 		}
+	})
+
+	addTool(s, &mcp.Tool{Name: "config_unset", Description: "Unset (delete) a workspace config key."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigUnsetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionUDAManage)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.UnsetConfig(strings.TrimSpace(in.Key)); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(nil, "unset "+in.Key)
+	})
+
+	addTool(s, &mcp.Tool{Name: "config_list", Description: "List all config values; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionContextUse)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		values, err := svc.ConfigValues()
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		data := map[string]any{"values": values, "count": len(values)}
+		return successWithEnvelope(data, fmt.Sprintf("%d config value(s)", len(values)))
 	})
 }
 

@@ -1,0 +1,30 @@
+{
+  "description": "Switch the active user for subsequent operations.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "user": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "type": "object"
+  },
+  "name": "user_use",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

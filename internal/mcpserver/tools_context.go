@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -14,6 +15,11 @@ type ContextShowInput struct {
 }
 
 type ContextSetInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Name      string `json:"name"`
+}
+
+type ContextDeleteInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Name      string `json:"name"`
 }
@@ -51,6 +57,46 @@ func registerContextTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(map[string]any{"context": view}, "context "+name)
+	})
+
+	addTool(s, &mcp.Tool{Name: "context_none", Description: "Clear the active context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionContextManage)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.ContextNone(); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"context": nil}, "context none")
+	})
+
+	addTool(s, &mcp.Tool{Name: "context_list", Description: "List all contexts in the workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionContextUse)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		rows, err := svc.ContextList()
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		activeName, _, _ := svc.ActiveContextName()
+		views := make([]contextView, len(rows))
+		for i, row := range rows {
+			views[i] = contextView{Name: row.Name, Filter: row.FilterSource, Active: row.Name == activeName, CreatedAt: row.CreatedAt, ModifiedAt: row.ModifiedAt}
+		}
+		data := map[string]any{"contexts": views, "count": len(views)}
+		return successWithEnvelope(data, fmt.Sprintf("%d context(s)", len(views)))
+	})
+
+	addTool(s, &mcp.Tool{Name: "context_delete", Description: "Delete a named context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionContextManage)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.ContextDelete(in.Name); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(nil, "deleted context "+in.Name)
 	})
 }
 

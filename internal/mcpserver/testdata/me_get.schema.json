@@ -1,0 +1,22 @@
+{
+  "description": "Get the current authenticated user info.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "type": "object"
+  },
+  "name": "me_get",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

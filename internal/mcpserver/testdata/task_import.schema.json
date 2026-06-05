@@ -1,0 +1,306 @@
+{
+  "description": "Import tasks from JSON; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "tasks": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "entry": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "entry",
+                  "description"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "assignees": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "email": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "external_ids": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "external_id": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "external_id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "depends": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "due": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "end": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "entry": {
+              "type": "string"
+            },
+            "imask": {
+              "type": [
+                "null",
+                "integer"
+              ]
+            },
+            "links": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "created_at": {
+                    "type": "string"
+                  },
+                  "created_by": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "external_ids": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "external_id": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "external_id"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "created_at",
+                  "created_by"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "mask": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "modified": {
+              "type": "string"
+            },
+            "parent": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "priority": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "project": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "recur": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "scheduled": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "start": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "until": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "uuid": {
+              "type": "string"
+            },
+            "wait": {
+              "type": [
+                "null",
+                "string"
+              ]
+            }
+          },
+          "required": [
+            "uuid",
+            "description",
+            "status",
+            "entry",
+            "modified"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tasks"
+    ],
+    "type": "object"
+  },
+  "name": "task_import",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

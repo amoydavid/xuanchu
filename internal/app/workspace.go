@@ -106,7 +106,7 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 	email := strings.TrimSpace(input.Email)
 	slug, err := normalizeWorkspaceSlug(name)
 	if err != nil {
-		return UserView{}, fmt.Errorf("user name %q is not a valid personal workspace slug: %w", name, err)
+		slug = "user-" + uuid.New().String()[:8]
 	}
 	var created UserView
 	err = s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {

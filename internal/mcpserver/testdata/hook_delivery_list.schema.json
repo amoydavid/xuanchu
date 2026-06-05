@@ -1,0 +1,44 @@
+{
+  "description": "List hook deliveries; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "hook": {
+        "description": "hook ID",
+        "type": "string"
+      },
+      "limit": {
+        "description": "max deliveries to return (default 20)",
+        "type": "integer"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "hook"
+    ],
+    "type": "object"
+  },
+  "name": "hook_delivery_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "description": "Switch active workspace.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace"
+    ],
+    "type": "object"
+  },
+  "name": "workspace_use",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

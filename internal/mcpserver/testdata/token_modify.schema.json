@@ -1,0 +1,61 @@
+{
+  "description": "Modify an API token's name, scope, or expiration.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "expires_in_seconds": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "name": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "scope": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "token_ref": {
+        "description": "token ID or prefix",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "token_ref"
+    ],
+    "type": "object"
+  },
+  "name": "token_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

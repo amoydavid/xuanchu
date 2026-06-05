@@ -1,0 +1,37 @@
+{
+  "description": "Change a member's role in the workspace.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "type": "string"
+      },
+      "user": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "user",
+      "role"
+    ],
+    "type": "object"
+  },
+  "name": "member_role",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

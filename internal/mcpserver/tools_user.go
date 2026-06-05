@@ -26,6 +26,19 @@ type UserUnbindInput struct {
 	ExternalID string `json:"external_id"`
 }
 
+type UserAddInput struct {
+	Name  string `json:"name"`
+	Email string `json:"email,omitempty"`
+}
+
+type UserUseInput struct {
+	User string `json:"user"`
+}
+
+type UserRefInput struct {
+	User string `json:"user"`
+}
+
 func registerUserTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "user_list", Description: "List all users; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
@@ -84,5 +97,50 @@ func registerUserTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(nil, fmt.Sprintf("Unbound %s:%s from %s", in.Provider, in.ExternalID, user.Name))
+	})
+
+	addTool(s, &mcp.Tool{Name: "user_add", Description: "Create a new user with a personal workspace."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.AddUser(app.AddUserInput{Name: in.Name, Email: in.Email})
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		data := map[string]any{"user": userViewFromApp(view)}
+		return successWithEnvelope(data, "user "+view.Name)
+	})
+
+	addTool(s, &mcp.Tool{Name: "user_use", Description: "Switch the active user for subsequent operations."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserUseInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.UseUser(in.User); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"user": in.User}, "switched to "+in.User)
+	})
+
+	addTool(s, &mcp.Tool{Name: "user_list_external_ids", Description: "List external IDs bound to a user; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		user, err := svc.UserInfo(in.User)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		extIDs, err := svc.ListExternalIDs(user.ID)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		views := make([]externalIDView, len(extIDs))
+		for i, eid := range extIDs {
+			views[i] = externalIDView{Provider: eid.Provider, ExternalID: eid.ExternalID}
+		}
+		data := map[string]any{"external_ids": views, "count": len(views)}
+		return successWithEnvelope(data, fmt.Sprintf("%d external ID(s)", len(views)))
 	})
 }

@@ -1,6 +1,48 @@
 {
   "tools": [
     {
+      "description": "List audit log entries for the current workspace.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "audit_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Read workspace, project, or stdio local config.",
       "inputSchema": {
         "additionalProperties": false,
@@ -27,6 +69,33 @@
         "type": "object"
       },
       "name": "config_get",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List all config values; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "config_list",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -90,6 +159,72 @@
       }
     },
     {
+      "description": "Unset (delete) a workspace config key.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "config_unset",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete a named context.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "context_delete",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Show active or named context; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -104,6 +239,66 @@
         "type": "object"
       },
       "name": "context_get",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List all contexts in the workspace; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "context_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Clear the active context.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "context_none",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -137,6 +332,495 @@
         "type": "object"
       },
       "name": "context_set",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a hook; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "whether the hook is enabled (default true)",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "events": {
+            "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "name": {
+            "description": "hook name",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "secret": {
+            "description": "optional webhook secret",
+            "type": "string"
+          },
+          "url": {
+            "description": "endpoint URL",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "events"
+        ],
+        "type": "object"
+      },
+      "name": "hook_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get delivery details; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delivery_id": {
+            "description": "delivery ID",
+            "type": "string"
+          },
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook",
+          "delivery_id"
+        ],
+        "type": "object"
+      },
+      "name": "hook_delivery_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List hook deliveries; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "limit": {
+            "description": "max deliveries to return (default 20)",
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "type": "object"
+      },
+      "name": "hook_delivery_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Redeliver a hook delivery; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delivery_id": {
+            "description": "delivery ID",
+            "type": "string"
+          },
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook",
+          "delivery_id"
+        ],
+        "type": "object"
+      },
+      "name": "hook_delivery_redeliver",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get hook details; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "type": "object"
+      },
+      "name": "hook_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List all hooks; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "hook_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify a hook; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "secret": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "type": "object"
+      },
+      "name": "hook_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Ping a hook by fetching its info; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "type": "object"
+      },
+      "name": "hook_ping",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete a hook; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "type": "object"
+      },
+      "name": "hook_remove",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get hook details for testing; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "description": "hook ID",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "type": "object"
+      },
+      "name": "hook_test",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get the current authenticated user info.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "name": "me_get",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -216,6 +900,82 @@
       }
     },
     {
+      "description": "Change a member's role in the workspace.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "role"
+        ],
+        "type": "object"
+      },
+      "name": "member_role",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a project in the effective workspace; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "type": "object"
+      },
+      "name": "project_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Add an annotation to a project; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
@@ -239,6 +999,154 @@
         "type": "object"
       },
       "name": "project_annotate",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Archive a project; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "project_archive",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List project config values; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "project_config_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Set a project config value; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "name": "project_config_set",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Remove a project config value; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "project_config_unset",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -471,6 +1379,51 @@
       }
     },
     {
+      "description": "Modify a project; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "project_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Run a task report; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -500,6 +1453,28 @@
         "type": "object"
       },
       "name": "report_run",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List all available token scopes.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "name": "scope_list",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -702,6 +1677,49 @@
       }
     },
     {
+      "description": "Remove an annotation from a task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation_index": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "annotation_index"
+        ],
+        "type": "object"
+      },
+      "name": "task_denotate",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Adjust task dependencies; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
@@ -786,6 +1804,39 @@
       }
     },
     {
+      "description": "Export tasks as JSON; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "task_export",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Get one task; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -810,6 +1861,312 @@
         "type": "object"
       },
       "name": "task_get",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Import tasks from JSON; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "annotations": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "entry": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "entry",
+                      "description"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "assignees": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "type": [
+                          "null",
+                          "string"
+                        ]
+                      },
+                      "external_ids": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "external_id": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "external_id"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "depends": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "description": {
+                  "type": "string"
+                },
+                "due": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "end": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "entry": {
+                  "type": "string"
+                },
+                "imask": {
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
+                },
+                "links": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "created_at": {
+                        "type": "string"
+                      },
+                      "created_by": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "email": {
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "external_ids": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "external_id": {
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "provider",
+                                "external_id"
+                              ],
+                              "type": "object"
+                            },
+                            "type": [
+                              "null",
+                              "array"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "type",
+                      "url",
+                      "created_at",
+                      "created_by"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "mask": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "modified": {
+                  "type": "string"
+                },
+                "parent": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "priority": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "project": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "recur": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "scheduled": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "start": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "until": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "uuid": {
+                  "type": "string"
+                },
+                "wait": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "uuid",
+                "description",
+                "status",
+                "entry",
+                "modified"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tasks"
+        ],
+        "type": "object"
+      },
+      "name": "task_import",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -864,6 +2221,46 @@
         "type": "object"
       },
       "name": "task_link_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List external links on a task; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "task": {
+            "description": "task reference (UUID or working-set ID)",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "type": "object"
+      },
+      "name": "task_link_list",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1189,6 +2586,197 @@
       }
     },
     {
+      "description": "Create an API token. The raw secret is returned only at creation time.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_seconds": {
+            "description": "token expiration in seconds from now",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "name": {
+            "description": "token name",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "scope": {
+            "description": "token scopes",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "token_create",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List API tokens; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "token_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify an API token's name, scope, or expiration.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_seconds": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "token_ref": {
+            "description": "token ID or prefix",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_ref"
+        ],
+        "type": "object"
+      },
+      "name": "token_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Revoke an API token.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "token_ref": {
+            "description": "token ID or prefix",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_ref"
+        ],
+        "type": "object"
+      },
+      "name": "token_revoke",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Explain task urgency; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1212,6 +2800,39 @@
         "type": "object"
       },
       "name": "urgency_explain",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a new user with a personal workspace.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "user_add",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1318,6 +2939,36 @@
       }
     },
     {
+      "description": "List external IDs bound to a user; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "type": "object"
+      },
+      "name": "user_list_external_ids",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Unbind an external ID from a taskg user.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1340,6 +2991,105 @@
         "type": "object"
       },
       "name": "user_unbind",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Switch the active user for subsequent operations.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "type": "object"
+      },
+      "name": "user_use",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a new workspace.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "type": "object"
+      },
+      "name": "workspace_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Archive a workspace.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "type": "object"
+      },
+      "name": "workspace_archive",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1383,6 +3133,36 @@
       }
     },
     {
+      "description": "Get workspace details.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "type": "object"
+      },
+      "name": "workspace_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "List visible workspaces; read-only.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1394,6 +3174,84 @@
         "type": "object"
       },
       "name": "workspace_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify workspace name, description, or visibility.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "visibility": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "type": "object"
+      },
+      "name": "workspace_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Switch active workspace.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "type": "object"
+      },
+      "name": "workspace_use",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

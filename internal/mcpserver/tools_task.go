@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -142,6 +143,50 @@ func (in TaskLinkRemoveInput) scopeInput() RequestScopeInput {
 	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
 }
 
+type TaskDenotateInput struct {
+	Workspace       string `json:"workspace,omitempty"`
+	Project         string `json:"project,omitempty"`
+	ProjectID       string `json:"project_id,omitempty"`
+	ID              string `json:"id"`
+	AnnotationIndex int    `json:"annotation_index"`
+}
+
+func (in TaskDenotateInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type TaskLinkListInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Task      string `json:"task" jsonschema:"task reference (UUID or working-set ID)"`
+}
+
+func (in TaskLinkListInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type TaskExportInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+}
+
+func (in TaskExportInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type TaskImportInput struct {
+	Workspace string          `json:"workspace,omitempty"`
+	Project   string          `json:"project,omitempty"`
+	ProjectID string          `json:"project_id,omitempty"`
+	Tasks     []task.JSONTask `json:"tasks"`
+}
+
+func (in TaskImportInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
 func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "task_add", Description: "Create a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
@@ -271,6 +316,53 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(nil, "Removed link from task")
+	})
+	addTool(s, &mcp.Tool{Name: "task_denotate", Description: "Remove an annotation from a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDenotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.Denotate(strings.TrimSpace(in.ID), in.AnnotationIndex); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return taskAfterMutation(svc, in.ID, "removed annotation")
+	})
+	addTool(s, &mcp.Tool{Name: "task_link_list", Description: "List external links on a task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		tsk, err := svc.Info(strings.TrimSpace(in.Task))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"links": tsk.Links, "count": len(tsk.Links)}, fmt.Sprintf("%d link(s)", len(tsk.Links)))
+	})
+	addTool(s, &mcp.Tool{Name: "task_export", Description: "Export tasks as JSON; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		tasks, err := svc.Export()
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		dto := make([]task.JSONTask, len(tasks))
+		for i, t := range tasks {
+			dto[i] = task.ToJSON(t)
+		}
+		return successWithEnvelope(map[string]any{"tasks": dto, "count": len(dto)}, fmt.Sprintf("exported %d task(s)", len(dto)))
+	})
+	addTool(s, &mcp.Tool{Name: "task_import", Description: "Import tasks from JSON; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskImportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		count, err := svc.Import(in.Tasks)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"imported": count}, fmt.Sprintf("imported %d task(s)", count))
 	})
 }
 

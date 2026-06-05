@@ -1,0 +1,45 @@
+{
+  "description": "Get delivery details; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "delivery_id": {
+        "description": "delivery ID",
+        "type": "string"
+      },
+      "hook": {
+        "description": "hook ID",
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "hook",
+      "delivery_id"
+    ],
+    "type": "object"
+  },
+  "name": "hook_delivery_info",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

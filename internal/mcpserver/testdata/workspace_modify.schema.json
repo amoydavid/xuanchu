@@ -1,0 +1,48 @@
+{
+  "description": "Modify workspace name, description, or visibility.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "name": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "visibility": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspace"
+    ],
+    "type": "object"
+  },
+  "name": "workspace_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

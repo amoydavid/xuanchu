@@ -1,0 +1,43 @@
+{
+  "description": "Remove an annotation from a task; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "annotation_index": {
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "annotation_index"
+    ],
+    "type": "object"
+  },
+  "name": "task_denotate",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "description": "Create a hook; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "active": {
+        "description": "whether the hook is enabled (default true)",
+        "type": [
+          "null",
+          "boolean"
+        ]
+      },
+      "events": {
+        "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived)",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "name": {
+        "description": "hook name",
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "secret": {
+        "description": "optional webhook secret",
+        "type": "string"
+      },
+      "url": {
+        "description": "endpoint URL",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "url",
+      "events"
+    ],
+    "type": "object"
+  },
+  "name": "hook_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

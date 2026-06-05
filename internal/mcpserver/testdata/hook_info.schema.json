@@ -1,0 +1,40 @@
+{
+  "description": "Get hook details; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "hook": {
+        "description": "hook ID",
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "hook"
+    ],
+    "type": "object"
+  },
+  "name": "hook_info",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}
