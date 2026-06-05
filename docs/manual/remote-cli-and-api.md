@@ -95,11 +95,38 @@ taskg --server https://taskg.example.com --token "$TASKG_TOKEN" \
 | `context:read` / `context:write` | context |
 | `config:read` / `config:write` | workspace 业务配置 |
 | `audit:read` | audit list |
-| `token:read` / `token:write` | token list/create/revoke |
+| `token:read` / `token:write` | token list/create/modify/revoke |
 | `workspace:read` / `workspace:write` | workspace/member 管理 |
 | `hook:read` / `hook:write` | hook definition、delivery、replay |
+| `impersonate` | 以其他用户身份操作（仅 agent token） |
 
 project-scoped token 读不到 scope 外的任务。单任务越界读取返回 `task_not_found`，避免泄露资源存在性。
+
+### Scope 通配符
+
+创建或修改 token 时，scope 支持通配符展开：
+
+| 通配符 | 含义 | 示例 |
+|---|---|---|
+| `*` | 所有 scope | `--scope '*'` |
+| `resource:*` | 该资源的所有动作 | `task:*` → `task:read,task:write` |
+| `*:action` | 所有资源的指定动作 | `*:read` → `task:read,project:read,context:read,...` |
+
+PAT 使用 `*` 通配符时自动剔除 `impersonate`（仅限 agent token）。
+
+使用 `taskg scope list` 查看当前系统所有可用 scope。
+
+### Token 修改
+
+已创建的 token 可以修改名称、scope 和过期时间：
+
+```bash
+taskg token modify <id> --name "新名称"
+taskg token modify <id> --scope '*:read' --scope 'task:write'
+taskg token modify <id> --expires-in 0
+```
+
+修改 token 需要 `token:write` 权限。已撤销或已过期的 token 不能修改。
 
 ## HTTP API 基础
 

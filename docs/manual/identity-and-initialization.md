@@ -153,6 +153,13 @@ taskg --workspace dajee token create admin \
   --expires-in 720h
 ```
 
+通配符简化写法：
+
+```bash
+taskg token create admin-token --scope '*' --expires-in 720h
+taskg token create reader --scope '*:read' --expires-in 720h
+```
+
 给 Agent 创建 project-scoped token：
 
 ```bash

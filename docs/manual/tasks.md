@@ -123,6 +123,16 @@ taskg blocking
 
 被其他 pending 任务依赖的任务会出现在 `blocking`。依赖未完成的任务会出现在 `blocked`。
 
+## Links
+
+为任务添加外部关联链接（文档、PR、工单等）：
+
+```bash
+taskg link add <task-ref> --type document --url https://... --title "设计文档"
+taskg link list <task-ref>
+taskg link remove <task-ref> --link-id <link-id>
+```
+
 ## 循环任务
 
 ```bash

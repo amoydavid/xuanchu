@@ -1421,7 +1421,7 @@ paths:
                   type: array
                   items:
                     type: string
-                expires_in:
+                expires_in_seconds:
                   type: integer
                   format: int64
                   description: 新的过期时间（秒），0 表示永不过期

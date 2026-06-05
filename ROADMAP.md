@@ -29,6 +29,7 @@
 | M12 | 已完成 | 任务外部关联 |
 | M13 | 已完成 | 项目 Annotation 与 Timeline |
 | M14 | 已完成 | 多数据库支持（SQLite / PostgreSQL） |
+| M14.1 | 已完成 | Token Scope 通配符与 Token Modify |
 
 ## M0：本地单用户 CLI
 
@@ -829,6 +830,29 @@ docs/superpowers/specs/2026-06-03-taskg-m12-project-context-task-links-design.md
 docs/superpowers/plans/2026-06-03-taskg-m12-task-links-implementation.md
 ```
 
+## M14.1：Token Scope 通配符与 Token Modify
+
+**状态：已完成。**
+
+**目标：** 为 token scope 增加通配符展开能力，新增 `scope list` 和 `token modify` 命令。
+
+**已交付内容：**
+
+- Scope 通配符展开：`*`（全部）、`resource:*`（如 `task:*`）、`*:action`（如 `*:read`）
+- `scope list` / `scope ls` 命令（含 `--json`）
+- `token modify` 命令：修改名称、scope、过期时间
+- PAT 使用 `*` 通配符时自动剔除 `impersonate`
+- `ModifyToken` 包含 revoked/expired 检查和审计日志
+- HTTP API `PATCH /api/v1/tokens/{tokenRef}`
+- 远程客户端 `ModifyToken`
+- OpenAPI spec 更新
+- 全量 CLI 命令中文 Short 描述补全
+
+**不进入 M14.1：**
+
+- Token workspace/project 修改
+- 远程 API token scope 子集校验
+
 ## 跨 Milestone 规则
 
 - 每个 milestone 都必须有独立中文 spec。
@@ -873,7 +897,7 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 ## 当前下一步
 
-M14（多数据库支持）已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）的完整能力栈。
+M14.1（Token Scope 通配符与 Token Modify）已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、Token Scope 通配符与 Token Modify 的完整能力栈。
 
 后续方向待定，可能包括：
 

@@ -52,6 +52,14 @@ taskg token create readonly \
 
 避免使用全 scope token，减少 token 泄露时的攻击面。
 
+使用 `taskg scope list` 查看所有可用 scope。通配符可以简化 scope 配置：
+
+```bash
+taskg token create admin-token --scope '*' --expires-in 720h
+taskg token create reader --scope '*:read' --expires-in 720h
+taskg token create task-agent --scope 'task:*' --expires-in 720h
+```
+
 ## Secret 安全
 
 建议使用 `--secret-stdin` 或 `--secret-file`，避免 secret 进入 shell history、process list 或 CI log。

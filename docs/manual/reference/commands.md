@@ -46,6 +46,10 @@ taskg denotate <target> <index>
 taskg append <target> <text...>
 taskg prepend <target> <text...>
 taskg edit <target>
+
+taskg link add <task-ref> --type <type> --url <url> [--title <title>]
+taskg link list <task-ref>
+taskg link remove <task-ref> --link-id <link-id>
 ```
 
 ## 查询、报表、helper
@@ -132,7 +136,7 @@ taskg project config list <project>
 ```bash
 taskg server --listen :8080
 
-taskg token create <name> [--type pat|agent] [--scope <scope>] [--workspace-id <uuid>] [--project <slug>] [--project-id <uuid>] [--expires-in 720h]
+taskg token create <name> [--type pat|agent] [--scope <scope>] [--user <name|email|uuid>] [--workspace-id <uuid>] [--project <slug>] [--project-id <uuid>] [--expires-in 720h]
 taskg token list [--all]
 taskg token modify <id|prefix> [--name NAME] [--scope SCOPE...] [--expires-in SECONDS]
 taskg token revoke <id|prefix>
