@@ -926,9 +926,33 @@ CGO_ENABLED=0 go build ./cmd/taskg
 
 - `task_search` 全文搜索 tool（已讨论，方案 A：新增 Agent 友好搜索 tool，尚未实施）
 
+## v0.1.0：基础设施与发布准备
+
+**状态：已完成。**
+
+**目标：** 补齐运维和可观测性基础设施，使 taskg 达到可正式发布的质量标准。
+
+**已交付内容：**
+
+- `--config` / `TASKG_CONFIG` 指定 TOML 配置文件路径
+- 通用日志框架（`internal/logging`）：基于 `log/slog`，支持 stderr + 文件双输出、text/json 格式、日志级别过滤
+- 日志文件轮转：daily / size / none 三种模式，自动过期清理
+- CLI / HTTP / MCP 三层全覆盖 panic recovery，panic 时记录堆栈到日志文件
+- 版本号自动化：`debug.ReadBuildInfo()` 读取 git commit/time，ldflags 仅用于正式发布覆盖
+- `[log]` TOML 配置区块，`TASKG_LOG_LEVEL` / `TASKG_LOG_FILE` 环境变量覆盖
+- 集成测试覆盖 `--config`、`--version` 行为
+- 全量测试 `CGO_ENABLED=0 go test ./...` 通过
+
+v0.1.0 规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-06-05-v0.1.0-infra-design.md
+docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
+```
+
 ## 当前下一步
 
-M15（MCP Tool 全量覆盖与 Agent Skill 文档）已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）的完整能力栈。
+v0.1.0 已发布。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
 
 后续方向待定，可能包括：
 

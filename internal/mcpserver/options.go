@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/logging"
 	"github.com/dajee/taskg/internal/storage"
 )
 
@@ -25,4 +26,5 @@ type Options struct {
 	Stderr             io.Writer
 	Request            *http.Request
 	LocalRuntimeValues map[string]string
+	Logger             *logging.Logger
 }

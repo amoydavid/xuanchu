@@ -1,6 +1,7 @@
 CGO_ENABLED ?= 0
 BINARY := taskg
 CMD := ./cmd/taskg
+VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
 
 .PHONY: all build clean
 
@@ -9,7 +10,9 @@ all: build
 build: $(BINARY)
 
 $(BINARY):
-	CGO_ENABLED=$(CGO_ENABLED) go build -o $(BINARY) $(CMD)
+	$(if $(VERSION),\
+		CGO_ENABLED=$(CGO_ENABLED) go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY) $(CMD),\
+		CGO_ENABLED=$(CGO_ENABLED) go build -o $(BINARY) $(CMD))
 
 clean:
 	rm -f $(BINARY)

@@ -769,7 +769,7 @@ func TestCLIShowHelperVersionAndCompletion(t *testing.T) {
 		t.Fatalf("_show output = %q", show)
 	}
 	version := strings.TrimSpace(run(t, bin, "_version"))
-	if version != "taskg dev" {
+	if !strings.HasPrefix(version, "taskg ") {
 		t.Fatalf("_version output = %q", version)
 	}
 	badDB := filepath.Join(t.TempDir(), "missing-parent", "taskg.db")
@@ -2409,6 +2409,30 @@ func TestCLIServerMCPRejectsMissingToken(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("GET /mcp without token status = %d, want 401 body=%s", resp.StatusCode, string(body))
+	}
+}
+
+func TestConfigFlagNonexistent(t *testing.T) {
+	bin := buildTaskg(t)
+	runExpectError(t, bin, "--config", "/nonexistent/path.toml", "list")
+}
+
+func TestConfigFlagValid(t *testing.T) {
+	bin := buildTaskg(t)
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "taskg.db")
+	tomlPath := filepath.Join(dir, "taskg.toml")
+	if err := os.WriteFile(tomlPath, []byte("[database]\npath = \""+dbPath+"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "--config", tomlPath, "list")
+}
+
+func TestVersionOutput(t *testing.T) {
+	bin := buildTaskg(t)
+	out := run(t, bin, "--version")
+	if !strings.HasPrefix(strings.TrimSpace(out), "taskg ") {
+		t.Fatalf("--version output = %q", out)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/config"
+	"github.com/dajee/taskg/internal/logging"
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/remote"
 	"github.com/dajee/taskg/internal/storage"
@@ -19,6 +20,7 @@ type Options struct {
 	Stdout  io.Writer
 	Stderr  io.Writer
 	Version string
+	SetLogger func(*logging.Logger)
 
 	DataDir     string
 	DBPath      string
@@ -29,6 +31,7 @@ type Options struct {
 	Project     string
 	ProjectID   string
 	As          string
+	Config      string
 	JSON        bool
 	NoColor     bool
 	NoContext   bool
@@ -69,6 +72,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.DataDir, "data-dir", opts.DataDir, "data directory")
 	cmd.PersistentFlags().StringVar(&opts.DBPath, "db", opts.DBPath, "SQLite database path")
 	cmd.PersistentFlags().StringVar(&opts.DBURL, "db-url", opts.DBURL, "Database URL (postgres://...); mutually exclusive with --db")
+	cmd.PersistentFlags().StringVar(&opts.Config, "config", opts.Config, "TOML 配置文件路径")
 	cmd.PersistentFlags().StringVar(&opts.Server, "server", opts.Server, "remote taskg server base URL")
 	cmd.PersistentFlags().StringVar(&opts.Token, "token", opts.Token, "remote bearer token")
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
@@ -209,7 +213,7 @@ func splitFlagsAndPositional(args []string) (flags []string, positional []string
 
 func splitFlagsRcAndPositional(args []string) (flags []string, positional []string, rc map[string]*string) {
 	rc = map[string]*string{}
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--db-url": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--db-url": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true, "--config": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(args); i++ {
 		if key, value, ok := parseRCOverride(args[i]); ok {
@@ -322,7 +326,7 @@ func isDashTag(arg string) bool {
 
 func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positional []string) error {
 	// Apply flags to the root command's PersistentFlags.
-	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--db-url": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true}
+	stringFlags := map[string]bool{"--data-dir": true, "--db": true, "--db-url": true, "--server": true, "--token": true, "--workspace": true, "--project": true, "--project-id": true, "--as": true, "--config": true}
 	boolFlags := map[string]bool{"--json": true, "--no-color": true, "--no-context": true, "--help": true, "--version": true}
 	for i := 0; i < len(flags); i++ {
 		if strings.HasPrefix(flags[i], "--") && strings.Contains(flags[i], "=") {
@@ -650,6 +654,7 @@ func optionsFromCmd(cmd *cobra.Command, base Options) Options {
 	opts.Project = getCmdStringFlag(cmd, "project", opts.Project)
 	opts.ProjectID = getCmdStringFlag(cmd, "project-id", opts.ProjectID)
 	opts.As = getCmdStringFlag(cmd, "as", opts.As)
+	opts.Config = getCmdStringFlag(cmd, "config", opts.Config)
 	opts.JSON = getCmdBoolFlag(cmd, "json", opts.JSON)
 	opts.NoColor = getCmdBoolFlag(cmd, "no-color", opts.NoColor)
 	opts.NoContext = getCmdBoolFlag(cmd, "no-context", opts.NoContext)
@@ -710,17 +715,25 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	}
 	env := RuntimeEnv()
 	cfg, err := config.Resolve(config.Options{
-		DataDir: opts.DataDir,
-		DBPath:  opts.DBPath,
-		DBURL:   opts.DBURL,
-		Server:  opts.Server,
-		Token:   opts.Token,
-		JSON:    opts.JSON,
-		NoColor: opts.NoColor,
-		Env:     env,
+		DataDir:    opts.DataDir,
+		DBPath:     opts.DBPath,
+		DBURL:      opts.DBURL,
+		Server:     opts.Server,
+		Token:      opts.Token,
+		JSON:       opts.JSON,
+		NoColor:    opts.NoColor,
+		Env:        env,
+		ConfigPath: opts.Config,
 	})
 	if err != nil {
 		return nil, nil, err
+	}
+	logger, loggerClose, err := logging.Setup(cfg.Log, opts.Stderr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if opts.SetLogger != nil {
+		opts.SetLogger(logger)
 	}
 	dbTarget := cfg.DatabaseURL
 	if dbTarget == "" {
@@ -755,7 +768,10 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 			svc.OverrideActiveContext(*value)
 		}
 	}
-	return svc, store.Close, nil
+	return svc, func() error {
+		loggerClose()
+		return store.Close()
+	}, nil
 }
 
 func rcOverridesAsStrings(overrides map[string]*string) map[string]string {

@@ -27,3 +27,4 @@ cover.out
 *.swo
 *.tmp
 .worktrees/
+deploy.yaml

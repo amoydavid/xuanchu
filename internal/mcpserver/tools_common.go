@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"runtime/debug"
 	"strings"
 
 	"github.com/dajee/taskg/internal/app"
@@ -44,17 +46,34 @@ func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[I
 	tool.InputSchema = inputSchema
 	tool.OutputSchema = outputSchema
 	s.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var input In
-		if req != nil && req.Params != nil && len(req.Params.Arguments) > 0 {
-			if err := json.Unmarshal(req.Params.Arguments, &input); err != nil {
-				var result mcp.CallToolResult
-				result.SetError(err)
-				return &result, nil
+		var result *mcp.CallToolResult
+		var handlerErr error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if mcpLogger != nil {
+						mcpLogger.Error("panic in tool", "tool", tool.Name, "panic", r, "stack", string(debug.Stack()))
+					}
+					var res mcp.CallToolResult
+					res.SetError(fmt.Errorf("internal error"))
+					result = &res
+				}
+			}()
+			var input In
+			if req != nil && req.Params != nil && len(req.Params.Arguments) > 0 {
+				if err := json.Unmarshal(req.Params.Arguments, &input); err != nil {
+					var res mcp.CallToolResult
+					res.SetError(err)
+					result = &res
+					return
+				}
 			}
-		}
-		result, _, err := handler(ctx, req, input)
-		if err != nil {
-			return businessErrorResult(err), nil
+			r, _, err := handler(ctx, req, input)
+			result = r
+			handlerErr = err
+		}()
+		if handlerErr != nil {
+			return businessErrorResult(handlerErr), nil
 		}
 		return result, nil
 	})

@@ -2,9 +2,13 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/dajee/taskg/internal/logging"
 )
 
 type Config struct {
@@ -14,18 +18,20 @@ type Config struct {
 	RemoteToken  string
 	JSON         bool
 	Color        bool
+	Log          logging.LogConfig
 }
 
 type Options struct {
-	DataDir string
-	DBPath  string
-	DBURL   string
-	Server  string
-	Token   string
-	JSON    bool
-	NoColor bool
-	Env     map[string]string
-	HomeDir string
+	DataDir    string
+	DBPath     string
+	DBURL      string
+	Server     string
+	Token      string
+	JSON       bool
+	NoColor    bool
+	Env        map[string]string
+	HomeDir    string
+	ConfigPath string
 }
 
 func Resolve(opts Options) (Config, error) {
@@ -47,7 +53,19 @@ func Resolve(opts Options) (Config, error) {
 	}
 
 	var tomlValues map[string]string
-	if values, err := loadTomlConfig(configDir(home, env)); err == nil {
+	if opts.ConfigPath != "" {
+		values, err := loadTomlConfigFile(opts.ConfigPath)
+		if err != nil {
+			return Config{}, fmt.Errorf("--config: %w", err)
+		}
+		tomlValues = values
+	} else if configPath := env["TASKG_CONFIG"]; configPath != "" {
+		values, err := loadTomlConfigFile(configPath)
+		if err != nil {
+			return Config{}, fmt.Errorf("TASKG_CONFIG: %w", err)
+		}
+		tomlValues = values
+	} else if values, err := loadTomlConfig(configDir(home, env)); err == nil {
 		tomlValues = values
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Config{}, err
@@ -103,6 +121,17 @@ func Resolve(opts Options) (Config, error) {
 		token = tomlValues["remote.token"]
 	}
 
+	logCfg := parseLogConfig(tomlValues)
+	if v := env["TASKG_LOG_LEVEL"]; v != "" {
+		logCfg.Level = v
+	}
+	if v := env["TASKG_LOG_FILE"]; v != "" {
+		if logCfg.File == nil {
+			logCfg.File = &logging.FileConfig{}
+		}
+		logCfg.File.Path = v
+	}
+
 	return Config{
 		DatabasePath: dbPath,
 		DatabaseURL:  dbURL,
@@ -110,12 +139,13 @@ func Resolve(opts Options) (Config, error) {
 		RemoteToken:  token,
 		JSON:         opts.JSON,
 		Color:        !opts.NoColor,
+		Log:          logCfg,
 	}, nil
 }
 
 func environ() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"TASKG_DB", "TASKG_DB_URL", "TASKG_SERVER", "TASKG_TOKEN", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+	for _, key := range []string{"TASKG_DB", "TASKG_DB_URL", "TASKG_SERVER", "TASKG_TOKEN", "TASKG_CONFIG", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
 		if value := os.Getenv(key); value != "" {
 			values[key] = value
 		}
@@ -132,4 +162,35 @@ func ConfigDir(home string, env map[string]string) string {
 
 func configDir(home string, env map[string]string) string {
 	return ConfigDir(home, env)
+}
+
+func parseLogConfig(values map[string]string) logging.LogConfig {
+	cfg := logging.LogConfig{}
+	if values == nil {
+		return cfg
+	}
+	if v, ok := values["log.level"]; ok {
+		cfg.Level = v
+	}
+	if v, ok := values["log.format"]; ok {
+		cfg.Format = v
+	}
+	if _, ok := values["log.file.path"]; ok {
+		fc := &logging.FileConfig{Path: values["log.file.path"]}
+		if v, ok := values["log.file.rotate"]; ok {
+			fc.Rotate = v
+		}
+		if v, ok := values["log.file.max_size_mb"]; ok {
+			if n, err := strconv.Atoi(v); err == nil {
+				fc.MaxSizeMB = n
+			}
+		}
+		if v, ok := values["log.file.max_age_days"]; ok {
+			if n, err := strconv.Atoi(v); err == nil {
+				fc.MaxAgeDays = n
+			}
+		}
+		cfg.File = fc
+	}
+	return cfg
 }

@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/dajee/taskg/internal/config"
+	"github.com/dajee/taskg/internal/logging"
 	"github.com/dajee/taskg/internal/mcpserver"
 	"github.com/dajee/taskg/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -32,12 +33,13 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			currentOpts := optionsFromCmd(cmd, opts)
 			env := RuntimeEnv()
 			cfg, err := config.Resolve(config.Options{
-				DataDir: currentOpts.DataDir,
-				DBPath:  currentOpts.DBPath,
-				DBURL:   currentOpts.DBURL,
-				JSON:    currentOpts.JSON,
-				NoColor: currentOpts.NoColor,
-				Env:     env,
+				DataDir:    currentOpts.DataDir,
+				DBPath:     currentOpts.DBPath,
+				DBURL:      currentOpts.DBURL,
+				JSON:       currentOpts.JSON,
+				NoColor:    currentOpts.NoColor,
+				Env:        env,
+				ConfigPath: currentOpts.Config,
 			})
 			if err != nil {
 				return err
@@ -56,12 +58,22 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 				return err
 			}
 
+			logger, loggerClose, err := logging.Setup(cfg.Log, cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			defer loggerClose()
+			if opts.SetLogger != nil {
+				opts.SetLogger(logger)
+			}
+
 			srv := mcpserver.NewServer(mcpserver.Options{
 				Store:              store,
 				Version:            opts.Version,
 				Mode:               mcpserver.ModeStdio,
 				Stderr:             cmd.ErrOrStderr(),
 				LocalRuntimeValues: rt.Values(),
+				Logger:             logger,
 			})
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

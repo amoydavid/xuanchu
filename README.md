@@ -50,13 +50,17 @@ go build -o taskg ./cmd/taskg
 ./taskg --db ./taskg.db list          # 使用指定 SQLite 文件
 ./taskg --data-dir ./data list        # 数据库放到 ./data/taskg.db
 ./taskg --db-url "postgres://user:pass@localhost:5432/taskg?sslmode=disable" list
+./taskg --config /path/to/config.toml list  # 指定 TOML 配置文件
 ./taskg --json list                   # 输出 JSON
 ./taskg --no-color list               # 关闭颜色
 ./taskg --no-context list             # 本次命令忽略 active context
 ./taskg --workspace dajee list        # 本次命令切到 dajee workspace
+./taskg --version                     # 显示版本号
 ```
 
 默认数据库路径是 `~/.local/share/taskg/taskg.db`。配置优先级按“本次命令参数优先”理解即可：CLI flag / `rc.*` 覆盖 > 环境变量 > SQLite meta > `taskg.toml` > 默认值。
+
+`--config` 可以指定任意 TOML 文件路径（环境变量 `TASKG_CONFIG` 等价），不指定时仍从 XDG 默认路径加载。版本号可通过 `--version` 查看，`go install` 构建的版本会从 git 信息自动推断。
 
 ## PostgreSQL
 
@@ -321,6 +325,10 @@ format = "rfc3339"
 | `[display] color = true` | `color` | `true` / `false` | 是否启用 human 输出颜色。也可直接写 `color = true`。 |
 | `[display] json = false` | `json` | `true` / `false` | 默认是否输出 JSON。CLI 的 `--json` 优先级更高。也可直接写 `json = false`。 |
 | `[date] format = "rfc3339"` | `date.format` | `rfc3339` / `epoch` | `_show`、`config get` 和部分脚本输出使用的日期格式。 |
+| `[log] level = "info"` | `log.level` | `debug` / `info` / `warn` / `error` | 日志级别。环境变量 `TASKG_LOG_LEVEL` 优先。 |
+| `[log] format = "text"` | `log.format` | `text` / `json` | 日志格式。 |
+| `[log] file = "..."` | `log.file` | 文件路径 | 日志文件路径。支持 `~` 展开。环境变量 `TASKG_LOG_FILE` 优先。 |
+| `[log] rotate = "daily"` | `log.rotate` | `daily` / `size` / `none` | 日志轮转模式。`daily` 按日期切割，`size` 按 10MB 切割，`none` 不轮转。 |
 
 一个完整的本机配置例子：
 
@@ -334,6 +342,12 @@ json = false
 
 [date]
 format = "rfc3339"
+
+[log]
+level = "info"
+format = "text"
+file = "~/.local/share/taskg/logs/taskg.log"
+rotate = "daily"
 ```
 
 不要把这些业务配置长期写进 TOML：

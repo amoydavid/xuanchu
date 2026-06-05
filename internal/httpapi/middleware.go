@@ -44,7 +44,11 @@ func (s *Server) recovererMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				fmt.Fprintf(s.stderr, "panic: %v\n%s", rec, debug.Stack())
+				if s.logger != nil {
+					s.logger.Error("panic recovered", "panic", rec, "stack", string(debug.Stack()), "path", r.URL.Path)
+				} else {
+					fmt.Fprintf(s.stderr, "panic: %v\n%s", rec, debug.Stack())
+				}
 				writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
 			}
 		}()

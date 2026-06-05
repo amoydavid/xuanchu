@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/dajee/taskg/internal/app"
+	"github.com/dajee/taskg/internal/logging"
 	"github.com/dajee/taskg/internal/storage"
 )
 
@@ -16,6 +17,7 @@ type Options struct {
 	Stderr         io.Writer
 	BodyLimitBytes int64
 	TestPanicRoute bool
+	Logger         *logging.Logger
 }
 
 type Server struct {
@@ -24,6 +26,7 @@ type Server struct {
 	stderr         io.Writer
 	bodyLimitBytes int64
 	testPanicRoute bool
+	logger         *logging.Logger
 	router         *http.ServeMux
 }
 
@@ -40,6 +43,7 @@ func NewServer(opts Options) *Server {
 		stderr:         opts.Stderr,
 		bodyLimitBytes: opts.BodyLimitBytes,
 		testPanicRoute: opts.TestPanicRoute,
+		logger:         opts.Logger,
 	}
 	srv.router = srv.newRouter()
 	return srv

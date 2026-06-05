@@ -470,3 +470,159 @@ func TestResolve_DBURLEnvOverridesDBEnv(t *testing.T) {
 func stringPtr(v string) *string {
 	return &v
 }
+
+func TestResolveConfigPathLoadsToml(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := dir + "/custom.toml"
+	tomlDB := dir + "/toml.db"
+	if err := os.WriteFile(tomlPath, []byte("database.path = \""+tomlDB+"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(Options{
+		ConfigPath: tomlPath,
+		HomeDir:    "/home/alice",
+		Env:        map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.DatabasePath != tomlDB {
+		t.Fatalf("DatabasePath = %q, want %q", cfg.DatabasePath, tomlDB)
+	}
+}
+
+func TestResolveConfigPathNonexistentReturnsError(t *testing.T) {
+	_, err := Resolve(Options{
+		ConfigPath: "/nonexistent/path.toml",
+		HomeDir:    "/home/alice",
+		Env:        map[string]string{},
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent config path")
+	}
+	if !strings.Contains(err.Error(), "--config") {
+		t.Fatalf("error = %q, want --config prefix", err.Error())
+	}
+}
+
+func TestResolveTaskgConfigEnvFallback(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := dir + "/env.toml"
+	tomlDB := dir + "/env.db"
+	if err := os.WriteFile(tomlPath, []byte("database.path = \""+tomlDB+"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(Options{
+		HomeDir: "/home/alice",
+		Env:     map[string]string{"TASKG_CONFIG": tomlPath},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.DatabasePath != tomlDB {
+		t.Fatalf("DatabasePath = %q, want %q", cfg.DatabasePath, tomlDB)
+	}
+}
+
+func TestResolveLogConfigFromToml(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := dir + "/taskg.toml"
+	if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
+		"[log]",
+		`level = "debug"`,
+		`format = "json"`,
+		"[log.file]",
+		`path = "/tmp/taskg.log"`,
+		`rotate = "daily"`,
+		`max_size_mb = 50`,
+		`max_age_days = 7`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(Options{
+		ConfigPath: tomlPath,
+		HomeDir:    "/home/alice",
+		Env:        map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Log.Level != "debug" {
+		t.Fatalf("Log.Level = %q, want %q", cfg.Log.Level, "debug")
+	}
+	if cfg.Log.Format != "json" {
+		t.Fatalf("Log.Format = %q, want %q", cfg.Log.Format, "json")
+	}
+	if cfg.Log.File == nil {
+		t.Fatal("Log.File is nil")
+	}
+	if cfg.Log.File.Path != "/tmp/taskg.log" {
+		t.Fatalf("Log.File.Path = %q", cfg.Log.File.Path)
+	}
+	if cfg.Log.File.Rotate != "daily" {
+		t.Fatalf("Log.File.Rotate = %q", cfg.Log.File.Rotate)
+	}
+	if cfg.Log.File.MaxSizeMB != 50 {
+		t.Fatalf("Log.File.MaxSizeMB = %d, want 50", cfg.Log.File.MaxSizeMB)
+	}
+	if cfg.Log.File.MaxAgeDays != 7 {
+		t.Fatalf("Log.File.MaxAgeDays = %d, want 7", cfg.Log.File.MaxAgeDays)
+	}
+}
+
+func TestResolveLogEnvOverridesToml(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := dir + "/taskg.toml"
+	if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
+		"[log]",
+		`level = "debug"`,
+		"[log.file]",
+		`path = "/tmp/taskg.log"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(Options{
+		ConfigPath: tomlPath,
+		HomeDir:    "/home/alice",
+		Env: map[string]string{
+			"TASKG_LOG_LEVEL": "warn",
+			"TASKG_LOG_FILE":  "/var/log/taskg.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Log.Level != "warn" {
+		t.Fatalf("Log.Level = %q, want %q", cfg.Log.Level, "warn")
+	}
+	if cfg.Log.File == nil {
+		t.Fatal("Log.File is nil")
+	}
+	if cfg.Log.File.Path != "/var/log/taskg.log" {
+		t.Fatalf("Log.File.Path = %q, want /var/log/taskg.log", cfg.Log.File.Path)
+	}
+}
+
+func TestResolveLogEnvWithoutToml(t *testing.T) {
+	cfg, err := Resolve(Options{
+		HomeDir: "/home/alice",
+		Env: map[string]string{
+			"TASKG_LOG_LEVEL": "error",
+			"TASKG_LOG_FILE":  "/tmp/from-env.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Log.Level != "error" {
+		t.Fatalf("Log.Level = %q, want %q", cfg.Log.Level, "error")
+	}
+	if cfg.Log.File == nil {
+		t.Fatal("Log.File is nil")
+	}
+	if cfg.Log.File.Path != "/tmp/from-env.log" {
+		t.Fatalf("Log.File.Path = %q, want /tmp/from-env.log", cfg.Log.File.Path)
+	}
+}
