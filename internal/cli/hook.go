@@ -15,8 +15,9 @@ import (
 
 func newHookCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "hook",
-		Args: cobra.NoArgs,
+		Use:   "hook",
+		Short: "管理 Webhook",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newHookListCommand(opts))
 	cmd.AddCommand(newHookAddCommand(opts))
@@ -34,8 +35,9 @@ func newHookListCommand(opts Options) *cobra.Command {
 	var projectRef string
 	var includeDisabled bool
 	cmd := &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出所有 Webhook",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -90,8 +92,9 @@ func newHookAddCommand(opts Options) *cobra.Command {
 		maxAttempts int
 	)
 	cmd := &cobra.Command{
-		Use:  "add <name>",
-		Args: cobra.ExactArgs(1),
+		Use:   "add <name>",
+		Short: "创建 Webhook",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			secretVal, err := resolveSecret(secret, secretStdin, secretFile, cmd.InOrStdin())
 			if err != nil {
@@ -158,8 +161,9 @@ func newHookAddCommand(opts Options) *cobra.Command {
 
 func newHookInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "info <hook-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "info <hook-id>",
+		Short: "显示 Webhook 详情",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -209,8 +213,9 @@ func newHookModifyCommand(opts Options) *cobra.Command {
 		maxAttempts int
 	)
 	cmd := &cobra.Command{
-		Use:  "modify <hook-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "modify <hook-id>",
+		Short: "修改 Webhook 属性",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			secretVal, err := resolveSecret(secret, secretStdin, secretFile, cmd.InOrStdin())
 			if err != nil {
@@ -268,8 +273,9 @@ func newHookModifyCommand(opts Options) *cobra.Command {
 
 func newHookEnableCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "enable <hook-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "enable <hook-id>",
+		Short: "启用 Webhook",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -306,8 +312,9 @@ func newHookEnableCommand(opts Options) *cobra.Command {
 
 func newHookDisableCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "disable <hook-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "disable <hook-id>",
+		Short: "禁用 Webhook",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -344,8 +351,9 @@ func newHookDisableCommand(opts Options) *cobra.Command {
 
 func newHookDeleteCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "delete <hook-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "delete <hook-id>",
+		Short: "删除 Webhook",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -379,8 +387,9 @@ func newHookDeliveriesCommand(opts Options) *cobra.Command {
 	var status string
 	var limit int
 	cmd := &cobra.Command{
-		Use:  "deliveries <hook-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "deliveries <hook-id>",
+		Short: "查看 Webhook 投递记录",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -423,8 +432,9 @@ func newHookDeliveriesCommand(opts Options) *cobra.Command {
 
 func newHookReplayCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "replay <delivery-id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "replay <delivery-id>",
+		Short: "重放 Webhook 投递",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

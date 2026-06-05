@@ -15,7 +15,7 @@ import (
 func newLinkCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "link",
-		Short: "Manage task links",
+		Short: "管理任务关联链接",
 	}
 
 	cmd.AddCommand(newLinkAddCommand(opts))
@@ -31,8 +31,9 @@ func newLinkAddCommand(opts Options) *cobra.Command {
 	var linkTitle string
 
 	cmd := &cobra.Command{
-		Use:  "add <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "add <target>",
+		Short: "添加任务关联链接",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -68,8 +69,9 @@ func newLinkAddCommand(opts Options) *cobra.Command {
 
 func newLinkListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "list <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "list <target>",
+		Short: "列出任务关联链接",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -93,8 +95,9 @@ func newLinkListCommand(opts Options) *cobra.Command {
 
 func newLinkRemoveCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "remove <target> <link-id>",
-		Args: cobra.ExactArgs(2),
+		Use:   "remove <target> <link-id>",
+		Short: "删除任务关联链接",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

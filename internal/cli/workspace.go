@@ -12,8 +12,9 @@ import (
 
 func newWorkspaceCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "workspace",
-		Args: cobra.NoArgs,
+		Use:   "workspace",
+		Short: "管理 workspace",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newWorkspaceListCommand(opts))
 	cmd.AddCommand(newWorkspaceAddCommand(opts))
@@ -27,8 +28,9 @@ func newWorkspaceCommand(opts Options) *cobra.Command {
 func newWorkspaceListCommand(opts Options) *cobra.Command {
 	var includeArchived bool
 	cmd := &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出所有 workspace",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -90,8 +92,9 @@ func newWorkspaceListCommand(opts Options) *cobra.Command {
 
 func newWorkspaceAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "add <slug> [name:<name>] [description:<text>] [visibility:private|team|public]",
-		Args: cobra.ArbitraryArgs,
+		Use:   "add <slug> [name:<name>] [description:<text>] [visibility:private|team|public]",
+		Short: "创建 workspace",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
@@ -137,8 +140,9 @@ func newWorkspaceAddCommand(opts Options) *cobra.Command {
 
 func newWorkspaceUseCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "use <slug|uuid>",
-		Args: cobra.ArbitraryArgs,
+		Use:   "use <slug|uuid>",
+		Short: "切换当前 workspace",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
@@ -173,8 +177,9 @@ func newWorkspaceUseCommand(opts Options) *cobra.Command {
 
 func newWorkspaceInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "info [slug|uuid]",
-		Args: cobra.MaximumNArgs(1),
+		Use:   "info [slug|uuid]",
+		Short: "显示 workspace 详情",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -246,8 +251,9 @@ func newWorkspaceInfoCommand(opts Options) *cobra.Command {
 
 func newWorkspaceModifyCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "modify <slug|uuid> [name:<name>] [description:<text>] [visibility:private|team|public]",
-		Args: cobra.ArbitraryArgs,
+		Use:   "modify <slug|uuid> [name:<name>] [description:<text>] [visibility:private|team|public]",
+		Short: "修改 workspace 属性",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
@@ -288,8 +294,9 @@ func newWorkspaceModifyCommand(opts Options) *cobra.Command {
 
 func newWorkspaceArchiveCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "archive <slug|uuid>",
-		Args: cobra.ArbitraryArgs,
+		Use:   "archive <slug|uuid>",
+		Short: "归档 workspace",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if err := cobra.ExactArgs(1)(cmd, args); err != nil {

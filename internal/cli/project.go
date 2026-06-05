@@ -16,8 +16,9 @@ import (
 
 func newProjectCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "project",
-		Args: cobra.NoArgs,
+		Use:   "project",
+		Short: "管理项目",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newProjectListCommand(opts))
 	cmd.AddCommand(newProjectAddCommand(opts))
@@ -35,8 +36,9 @@ func newProjectCommand(opts Options) *cobra.Command {
 func newProjectListCommand(opts Options) *cobra.Command {
 	var includeArchived bool
 	cmd := &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出所有项目",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -90,8 +92,9 @@ func newProjectListCommand(opts Options) *cobra.Command {
 
 func newProjectAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "add <slug> [name:<name>] [description:<text>]",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "add <slug> [name:<name>] [description:<text>]",
+		Short: "创建项目",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			input, err := parseProjectAddArgs(args)
@@ -139,8 +142,9 @@ func newProjectAddCommand(opts Options) *cobra.Command {
 
 func newProjectInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "info <slug|uuid>",
-		Args: cobra.ExactArgs(1),
+		Use:   "info <slug|uuid>",
+		Short: "显示项目详情",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -208,8 +212,9 @@ func newProjectInfoCommand(opts Options) *cobra.Command {
 
 func newProjectModifyCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "modify <slug|uuid> [name:<name>] [description:<text>]",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "modify <slug|uuid> [name:<name>] [description:<text>]",
+		Short: "修改项目属性",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			input, err := parseProjectModifyArgs(args[1:])
@@ -253,8 +258,9 @@ func newProjectModifyCommand(opts Options) *cobra.Command {
 
 func newProjectArchiveCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "archive <slug|uuid>",
-		Args: cobra.ExactArgs(1),
+		Use:   "archive <slug|uuid>",
+		Short: "归档项目",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -300,8 +306,9 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 
 func newProjectConfigCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "config",
-		Args: cobra.NoArgs,
+		Use:   "config",
+		Short: "查看或修改项目配置",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newProjectConfigGetCommand(opts))
 	cmd.AddCommand(newProjectConfigSetCommand(opts))
@@ -312,8 +319,9 @@ func newProjectConfigCommand(opts Options) *cobra.Command {
 
 func newProjectConfigGetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "get <project> <key>",
-		Args: cobra.ExactArgs(2),
+		Use:   "get <project> <key>",
+		Short: "获取项目配置项的值",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -350,8 +358,9 @@ func newProjectConfigGetCommand(opts Options) *cobra.Command {
 
 func newProjectConfigSetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "set <project> <key> <value>",
-		Args: cobra.ExactArgs(3),
+		Use:   "set <project> <key> <value>",
+		Short: "设置项目配置项",
+		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -375,8 +384,9 @@ func newProjectConfigSetCommand(opts Options) *cobra.Command {
 
 func newProjectConfigUnsetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "unset <project> <key>",
-		Args: cobra.ExactArgs(2),
+		Use:   "unset <project> <key>",
+		Short: "删除项目配置项",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -400,8 +410,9 @@ func newProjectConfigUnsetCommand(opts Options) *cobra.Command {
 
 func newProjectConfigListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "list <project>",
-		Args: cobra.ExactArgs(1),
+		Use:   "list <project>",
+		Short: "列出项目所有配置项",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			var values map[string]string
@@ -506,8 +517,9 @@ func projectViewForJSON(project app.ProjectView) map[string]any {
 
 func newProjectAnnotateCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "annotate <project-ref> <content...>",
-		Args: cobra.MinimumNArgs(2),
+		Use:   "annotate <project-ref> <content...>",
+		Short: "为项目添加备注",
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			content := strings.Join(args[1:], " ")
@@ -540,8 +552,9 @@ func newProjectAnnotateCommand(opts Options) *cobra.Command {
 
 func newProjectAnnotationsCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "annotations <project-ref>",
-		Args: cobra.ExactArgs(1),
+		Use:   "annotations <project-ref>",
+		Short: "列出项目备注",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -574,8 +587,9 @@ func newProjectAnnotationsCommand(opts Options) *cobra.Command {
 func newProjectTimelineCommand(opts Options) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
-		Use:  "timeline <project-ref>",
-		Args: cobra.ExactArgs(1),
+		Use:   "timeline <project-ref>",
+		Short: "查看项目时间线",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -609,8 +623,9 @@ func newProjectTimelineCommand(opts Options) *cobra.Command {
 
 func newProjectDenotateCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "denotate <project-ref> <annotation-id>",
-		Args: cobra.ExactArgs(2),
+		Use:   "denotate <project-ref> <annotation-id>",
+		Short: "删除项目备注",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

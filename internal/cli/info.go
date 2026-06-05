@@ -15,8 +15,9 @@ import (
 
 func newInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "info <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "info <target>",
+		Short: "显示任务详情",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

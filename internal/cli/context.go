@@ -10,8 +10,9 @@ import (
 
 func newContextCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "context",
-		Args: cobra.NoArgs,
+		Use:   "context",
+		Short: "管理任务上下文过滤器",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newContextDefineCommand(opts))
 	cmd.AddCommand(newContextUseCommand(opts))
@@ -24,8 +25,9 @@ func newContextCommand(opts Options) *cobra.Command {
 
 func newContextDefineCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "define <name> <filter...>",
-		Args: cobra.MinimumNArgs(2),
+		Use:   "define <name> <filter...>",
+		Short: "定义上下文过滤器",
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -57,8 +59,9 @@ func newContextDefineCommand(opts Options) *cobra.Command {
 
 func newContextUseCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "use <name>",
-		Args: cobra.ExactArgs(1),
+		Use:   "use <name>",
+		Short: "激活上下文",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -82,8 +85,9 @@ func newContextUseCommand(opts Options) *cobra.Command {
 
 func newContextNoneCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "none",
-		Args: cobra.NoArgs,
+		Use:   "none",
+		Short: "清除当前活跃上下文",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -107,8 +111,9 @@ func newContextNoneCommand(opts Options) *cobra.Command {
 
 func newContextShowCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "show",
-		Args: cobra.NoArgs,
+		Use:   "show",
+		Short: "显示当前活跃上下文",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -149,8 +154,9 @@ func newContextShowCommand(opts Options) *cobra.Command {
 
 func newContextListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出所有上下文",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -188,8 +194,9 @@ func newContextListCommand(opts Options) *cobra.Command {
 
 func newContextDeleteCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "delete <name>",
-		Args: cobra.ExactArgs(1),
+		Use:   "delete <name>",
+		Short: "删除上下文",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

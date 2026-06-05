@@ -10,8 +10,9 @@ import (
 
 func newCalcCommand(_ Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "calc <expression>",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "calc <expression>",
+		Short: "计算数学表达式",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := calcexpr.Calc(strings.Join(args, " "))
 			if err != nil {

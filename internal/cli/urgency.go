@@ -10,8 +10,9 @@ import (
 
 func newUrgencyCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "urgency <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "urgency <target>",
+		Short: "计算任务的 urgency 值",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -64,8 +65,9 @@ func newUrgencyCommand(opts Options) *cobra.Command {
 
 func newUrgencyHelperCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_urgency <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "_urgency <target>",
+		Short: "输出匹配任务的 urgency 值",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

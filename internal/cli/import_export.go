@@ -14,8 +14,9 @@ import (
 
 func newExportCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "export",
-		Args: cobra.NoArgs,
+		Use:   "export",
+		Short: "导出任务为 JSON",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -55,8 +56,9 @@ func newExportCommand(opts Options) *cobra.Command {
 
 func newImportCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "import [file]",
-		Args: cobra.MaximumNArgs(1),
+		Use:   "import [file]",
+		Short: "从 JSON 导入任务",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			var r io.Reader

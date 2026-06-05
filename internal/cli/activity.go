@@ -9,8 +9,9 @@ import (
 
 func newStartCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "start <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "start <target>",
+		Short: "开始任务",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -46,8 +47,9 @@ func newStartCommand(opts Options) *cobra.Command {
 
 func newStopCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "stop <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "stop <target>",
+		Short: "停止任务",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

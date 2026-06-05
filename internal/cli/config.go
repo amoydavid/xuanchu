@@ -18,8 +18,9 @@ import (
 
 func newShowCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "show",
-		Args: cobra.NoArgs,
+		Use:   "show",
+		Short: "显示当前配置",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -57,8 +58,9 @@ func newShowCommand(opts Options) *cobra.Command {
 
 func newConfigCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "config",
-		Args: cobra.NoArgs,
+		Use:   "config",
+		Short: "查看和修改配置",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newConfigGetCommand(opts))
 	cmd.AddCommand(newConfigSetCommand(opts))
@@ -70,8 +72,9 @@ func newConfigCommand(opts Options) *cobra.Command {
 
 func newConfigGetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "get <key>",
-		Args: cobra.ExactArgs(1),
+		Use:   "get <key>",
+		Short: "获取配置项的值",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
@@ -124,8 +127,9 @@ func newConfigGetCommand(opts Options) *cobra.Command {
 
 func newConfigSetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "set <key> <value>",
-		Args: cobra.ExactArgs(2),
+		Use:   "set <key> <value>",
+		Short: "设置配置项",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key, value := args[0], args[1]
@@ -153,8 +157,9 @@ func newConfigSetCommand(opts Options) *cobra.Command {
 
 func newConfigUnsetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "unset <key>",
-		Args: cobra.ExactArgs(1),
+		Use:   "unset <key>",
+		Short: "删除配置项",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			key := args[0]
@@ -182,8 +187,9 @@ func newConfigUnsetCommand(opts Options) *cobra.Command {
 
 func newConfigListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出所有配置项",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -228,8 +234,9 @@ func newConfigListCommand(opts Options) *cobra.Command {
 func newConfigImportTaskRCCommand(opts Options) *cobra.Command {
 	var dryRun bool
 	cmd := &cobra.Command{
-		Use:  "import-taskrc <path>",
-		Args: cobra.ExactArgs(1),
+		Use:   "import-taskrc <path>",
+		Short: "从 taskrc 文件导入配置",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

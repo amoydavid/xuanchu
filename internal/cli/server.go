@@ -23,8 +23,9 @@ func newServerCommand(opts Options) *cobra.Command {
 	var listen string
 	var shutdownTimeout time.Duration
 	cmd := &cobra.Command{
-		Use:  "server",
-		Args: cobra.NoArgs,
+		Use:   "server",
+		Short: "启动 HTTP API 服务器",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if listen == "" {
 				return app.RuntimeError{Code: "server_listen_required", Message: "server listen address is required"}

@@ -14,8 +14,9 @@ import (
 
 func newEditCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "edit <target>",
-		Args: cobra.ExactArgs(1),
+		Use:   "edit <target>",
+		Short: "在编辑器中修改任务",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -29,8 +30,9 @@ func newEditCommand(opts Options) *cobra.Command {
 
 func newAppendCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "append <target> <text...>",
-		Args: cobra.MinimumNArgs(2),
+		Use:   "append <target> <text...>",
+		Short: "追加任务描述",
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -48,8 +50,9 @@ func newAppendCommand(opts Options) *cobra.Command {
 
 func newPrependCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "prepend <target> <text...>",
-		Args: cobra.MinimumNArgs(2),
+		Use:   "prepend <target> <text...>",
+		Short: "前置追加任务描述",
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {

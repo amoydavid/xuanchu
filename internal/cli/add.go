@@ -14,8 +14,9 @@ import (
 
 func newAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "add [description] [modifications...]",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "add [description] [modifications...]",
+		Short: "添加新任务",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			parsed, err := query.ParseAddArgs(args)

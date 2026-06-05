@@ -43,8 +43,9 @@ func remoteUnsupported(opts Options, name string) error {
 
 func newGetCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_get [expr...]",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "_get [expr...]",
+		Short: "获取任务指定字段的值",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -126,8 +127,9 @@ func newGetCommand(opts Options) *cobra.Command {
 
 func newIDsCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_ids [filters...]",
-		Args: cobra.ArbitraryArgs,
+		Use:   "_ids [filters...]",
+		Short: "输出匹配任务的 ID 列表",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -190,8 +192,9 @@ func newIDsCommand(opts Options) *cobra.Command {
 
 func newUUIDsCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_uuids [filters...]",
-		Args: cobra.ArbitraryArgs,
+		Use:   "_uuids [filters...]",
+		Short: "输出匹配任务的 UUID 列表",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -245,7 +248,8 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 func newProjectsCommand(opts Options) *cobra.Command {
 	var includeArchived bool
 	cmd := &cobra.Command{
-		Use:  "_projects",
+		Use:   "_projects",
+		Short: "列出所有项目",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -287,8 +291,9 @@ func newProjectsCommand(opts Options) *cobra.Command {
 
 func newTagsCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_tags",
-		Args: cobra.NoArgs,
+		Use:   "_tags",
+		Short: "列出所有标签",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -341,8 +346,9 @@ func newTagsCommand(opts Options) *cobra.Command {
 
 func newUDAsCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_udas",
-		Args: cobra.NoArgs,
+		Use:   "_udas",
+		Short: "列出所有用户定义属性（UDA）",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -389,8 +395,9 @@ func newUDAsCommand(opts Options) *cobra.Command {
 
 func newUniqueCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_unique <attr> [filters...]",
-		Args: cobra.MinimumNArgs(1),
+		Use:   "_unique <attr> [filters...]",
+		Short: "列出指定字段的唯一值",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -465,8 +472,9 @@ func newUniqueCommand(opts Options) *cobra.Command {
 
 func newShowHelperCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_show [key...]",
-		Args: cobra.ArbitraryArgs,
+		Use:   "_show [key...]",
+		Short: "显示当前配置",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -549,8 +557,9 @@ func sortedStringMapKeys(values map[string]string) []string {
 
 func newVersionHelperCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "_version",
-		Args: cobra.NoArgs,
+		Use:   "_version",
+		Short: "显示版本信息",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			version := opts.Version
 			if version == "" {

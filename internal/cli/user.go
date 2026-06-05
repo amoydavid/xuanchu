@@ -13,8 +13,9 @@ import (
 
 func newUserCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "user",
-		Args: cobra.NoArgs,
+		Use:   "user",
+		Short: "管理用户",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newUserListCommand(opts))
 	cmd.AddCommand(newUserAddCommand(opts))
@@ -27,8 +28,9 @@ func newUserCommand(opts Options) *cobra.Command {
 
 func newUserListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出所有用户",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -92,8 +94,9 @@ func newUserListCommand(opts Options) *cobra.Command {
 
 func newUserAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "add <name> [email:<email>]",
-		Args: cobra.ArbitraryArgs,
+		Use:   "add <name> [email:<email>]",
+		Short: "创建用户",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if err := cobra.MinimumNArgs(1)(cmd, args); err != nil {
@@ -144,8 +147,9 @@ func newUserAddCommand(opts Options) *cobra.Command {
 
 func newUserUseCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "use <name|email|uuid>",
-		Args: cobra.ArbitraryArgs,
+		Use:   "use <name|email|uuid>",
+		Short: "切换当前用户",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if err := remoteUnsupported(currentOpts, "user use"); err != nil {
@@ -171,8 +175,9 @@ func newUserUseCommand(opts Options) *cobra.Command {
 
 func newUserInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "info [name|email|uuid]",
-		Args: cobra.MaximumNArgs(1),
+		Use:   "info [name|email|uuid]",
+		Short: "显示用户详情",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -277,8 +282,9 @@ func userViewForJSON(user app.UserView) map[string]any {
 func newUserBindCommand(opts Options) *cobra.Command {
 	var userRef string
 	cmd := &cobra.Command{
-		Use:  "bind <provider:external_id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "bind <provider:external_id>",
+		Short: "绑定外部身份",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			provider, externalID, ok := parseProviderExternalID(args[0])
@@ -325,8 +331,9 @@ func newUserBindCommand(opts Options) *cobra.Command {
 func newUserUnbindCommand(opts Options) *cobra.Command {
 	var userRef string
 	cmd := &cobra.Command{
-		Use:  "unbind <provider:external_id>",
-		Args: cobra.ExactArgs(1),
+		Use:   "unbind <provider:external_id>",
+		Short: "解绑外部身份",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			provider, externalID, ok := parseProviderExternalID(args[0])

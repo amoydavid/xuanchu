@@ -14,8 +14,9 @@ import (
 
 func newAuditCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "audit",
-		Args: cobra.NoArgs,
+		Use:   "audit",
+		Short: "查看审计日志",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newAuditListCommand(opts))
 	return cmd
@@ -25,8 +26,9 @@ func newAuditListCommand(opts Options) *cobra.Command {
 	var limit int
 	var projectRef string
 	cmd := &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出审计日志",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			var rows []app.AuditLogView

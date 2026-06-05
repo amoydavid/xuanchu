@@ -13,8 +13,9 @@ import (
 
 func newMemberCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "member",
-		Args: cobra.NoArgs,
+		Use:   "member",
+		Short: "管理 workspace 成员",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newMemberListCommand(opts))
 	cmd.AddCommand(newMemberAddCommand(opts))

@@ -11,10 +11,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var reportShorts = map[string]string{
+	"all":       "列出所有任务（含已完成和已删除）",
+	"completed": "列出已完成的任务",
+	"deleted":   "列出已删除的任务",
+	"overdue":   "列出已过期的任务",
+	"active":    "列出已开始的任务",
+	"waiting":   "列出等待中的任务",
+	"ready":     "列出就绪待办任务",
+	"blocked":   "列出被阻塞的任务",
+	"blocking":  "列出阻塞其他任务的任务",
+}
+
 func newReportCommand(opts Options, name string) *cobra.Command {
 	return &cobra.Command{
-		Use:  name + " [filters...]",
-		Args: cobra.ArbitraryArgs,
+		Use:   name + " [filters...]",
+		Short: reportShorts[name],
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

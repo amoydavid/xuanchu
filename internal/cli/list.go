@@ -13,6 +13,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listCommandShorts = map[string]string{
+	"list": "列出待办任务",
+	"next": "列出按 urgency 排序的待办任务",
+}
+
 func newListCommand(opts Options) *cobra.Command {
 	return newTaskListCommand(opts, "list", "")
 }
@@ -23,8 +28,9 @@ func newNextCommand(opts Options) *cobra.Command {
 
 func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 	return &cobra.Command{
-		Use:  name + " [filters...]",
-		Args: cobra.ArbitraryArgs,
+		Use:   name + " [filters...]",
+		Short: listCommandShorts[name],
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

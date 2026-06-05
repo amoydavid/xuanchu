@@ -11,8 +11,9 @@ import (
 
 func newAnnotateCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "annotate <target> <description...>",
-		Args: cobra.MinimumNArgs(2),
+		Use:   "annotate <target> <description...>",
+		Short: "为任务添加注解",
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -48,8 +49,9 @@ func newAnnotateCommand(opts Options) *cobra.Command {
 
 func newDenotateCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "denotate <target> <index>",
-		Args: cobra.ExactArgs(2),
+		Use:   "denotate <target> <index>",
+		Short: "删除任务的注解",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

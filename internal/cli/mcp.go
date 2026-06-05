@@ -16,7 +16,7 @@ import (
 func newMCPCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mcp",
-		Short: "MCP server commands",
+		Short: "MCP 服务器",
 	}
 
 	cmd.AddCommand(newMCPStdioCommand(opts))
@@ -26,7 +26,7 @@ func newMCPCommand(opts Options) *cobra.Command {
 func newMCPStdioCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stdio",
-		Short: "Start MCP server on stdio transport",
+		Short: "在 stdio 上启动 MCP 服务器",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
