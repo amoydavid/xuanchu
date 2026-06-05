@@ -74,6 +74,8 @@ weight: 210
 
 | 错误码 | 含义 |
 |---|---|
+| `token_not_found` | token 不存在 |
+| `token_update_failed` | token 更新失败 |
 | `token_name_required` | token name 不能为空 |
 | `token_scope_invalid` | token scope 格式非法 |
 | `token_project_scope_invalid` | token project scope 非法 |

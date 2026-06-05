@@ -134,7 +134,11 @@ taskg server --listen :8080
 
 taskg token create <name> [--type pat|agent] [--scope <scope>] [--workspace-id <uuid>] [--project <slug>] [--project-id <uuid>] [--expires-in 720h]
 taskg token list [--all]
+taskg token modify <id|prefix> [--name NAME] [--scope SCOPE...] [--expires-in SECONDS]
 taskg token revoke <id|prefix>
+
+taskg scope list
+taskg scope ls
 
 taskg mcp stdio
 ```
