@@ -264,6 +264,293 @@ func TestCreateTokenAllowsChildImpersonateWhenParentHasIt(t *testing.T) {
 	}
 }
 
+func TestModifyTokenName(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "old-name",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Name:    strptr("new-name"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Name != "new-name" {
+		t.Fatalf("name = %q, want new-name", view.Name)
+	}
+	audits := mustListAudit(t, svc)
+	assertAuditAction(t, audits, "token.modified")
+}
+
+func TestModifyTokenScopes(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Scopes:  []string{"task:read", "task:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Scopes) != 2 {
+		t.Fatalf("scopes = %v, want 2", view.Scopes)
+	}
+}
+
+func TestModifyTokenScopesWildcard(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Scopes:  []string{"task:*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasRead, hasWrite := false, false
+	for _, s := range view.Scopes {
+		if s == "task:read" {
+			hasRead = true
+		}
+		if s == "task:write" {
+			hasWrite = true
+		}
+	}
+	if !hasRead || !hasWrite {
+		t.Fatalf("scopes = %v, want task:read and task:write", view.Scopes)
+	}
+}
+
+func TestModifyTokenPATSilentlyDropsImpersonate(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Type:          "pat",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Scopes:  []string{"task:read", "impersonate"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range view.Scopes {
+		if s == "impersonate" {
+			t.Fatal("PAT should not contain impersonate after modify")
+		}
+	}
+}
+
+func TestModifyTokenRejectsRevoked(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RevokeToken(created.View.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Name:    strptr("new-name"),
+	})
+	assertRuntimeCode(t, err, "token_revoked")
+}
+
+func TestModifyTokenRejectsExpired(t *testing.T) {
+	svc, closeFn := newTestService(t, 200)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	past := int64(100)
+	if err := svc.tokenRepo.Update(created.View.ID, storage.TokenUpdates{ExpiresAt: &past}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Name:    strptr("new-name"),
+	})
+	assertRuntimeCode(t, err, "token_expired")
+}
+
+func TestModifyTokenExpiresIn(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ttl := 720 * time.Hour
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID:   created.View.ID,
+		ExpiresIn: &ttl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.ExpiresAt == nil {
+		t.Fatal("expires_at should not be nil")
+	}
+	expected := int64(100) + int64(ttl.Seconds())
+	if *view.ExpiresAt != expected {
+		t.Fatalf("expires_at = %d, want %d", *view.ExpiresAt, expected)
+	}
+}
+
+func TestModifyTokenClearExpiry(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+		ExpiresIn:     ptrDuration(720 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	zero := time.Duration(0)
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID:   created.View.ID,
+		ExpiresIn: &zero,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.ExpiresAt != nil {
+		t.Fatalf("expires_at should be nil after clear, got %d", *view.ExpiresAt)
+	}
+}
+
+func TestModifyTokenRejectsNegativeDuration(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	neg := -1 * time.Hour
+	_, err = svc.ModifyToken(ModifyTokenInput{
+		TokenID:   created.View.ID,
+		ExpiresIn: &neg,
+	})
+	assertRuntimeCode(t, err, "token_scope_invalid")
+}
+
+func TestModifyTokenRejectsInvalidScope(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Scopes:  []string{"invalid:scope"},
+	})
+	assertRuntimeCode(t, err, "token_scope_invalid")
+}
+
+func TestModifyTokenNoChangesReturnsCurrentView(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "test",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Name != "test" {
+		t.Fatalf("name = %q, want test", view.Name)
+	}
+	if len(view.Scopes) != 1 || view.Scopes[0] != "task:read" {
+		t.Fatalf("scopes = %v, want [task:read]", view.Scopes)
+	}
+}
+
 func TestAuthenticateBearerToken(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
