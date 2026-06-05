@@ -96,6 +96,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newHookCommand(opts))
 	cmd.AddCommand(newAuditCommand(opts))
 	cmd.AddCommand(newTokenCommand(opts))
+	cmd.AddCommand(newScopeCommand(opts))
 	cmd.AddCommand(newMCPCommand(opts))
 	cmd.AddCommand(newServerCommand(opts))
 	cmd.AddCommand(newAllCommand(opts))
