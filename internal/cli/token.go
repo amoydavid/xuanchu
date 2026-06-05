@@ -14,11 +14,13 @@ import (
 
 func newTokenCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "token",
-		Args: cobra.NoArgs,
+		Use:   "token",
+		Short: "管理 API token（创建、列表、修改、吊销）",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newTokenCreateCommand(opts))
 	cmd.AddCommand(newTokenListCommand(opts))
+	cmd.AddCommand(newTokenModifyCommand(opts))
 	cmd.AddCommand(newTokenRevokeCommand(opts))
 	return cmd
 }
@@ -32,7 +34,11 @@ func newTokenCreateCommand(opts Options) *cobra.Command {
 	var tokenType string
 	var expiresIn string
 	cmd := &cobra.Command{
-		Use:  "create <name>",
+		Use:   "create <name>",
+		Short: "创建新的 API token",
+		Long: "创建新的 API token 并返回令牌明文（仅显示一次）。\n" +
+			"scope 支持通配符：*（全部）、resource:*（如 task:*）、*:action（如 *:read）。\n" +
+			"PAT 类型 token 使用 * 通配符时会自动剔除 impersonate scope。",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -124,8 +130,9 @@ func newTokenCreateCommand(opts Options) *cobra.Command {
 func newTokenListCommand(opts Options) *cobra.Command {
 	var includeRevoked bool
 	cmd := &cobra.Command{
-		Use:  "list",
-		Args: cobra.NoArgs,
+		Use:   "list",
+		Short: "列出当前用户的 token",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -189,10 +196,92 @@ func newTokenListCommand(opts Options) *cobra.Command {
 	return cmd
 }
 
+func newTokenModifyCommand(opts Options) *cobra.Command {
+	var name string
+	var scopes []string
+	var expiresIn int64
+	cmd := &cobra.Command{
+		Use:   "modify <id|prefix>",
+		Short: "修改 token 属性（名称、scope、过期时间）",
+		Long: "修改已有 token 的属性。可以同时指定多个修改项。\n" +
+			"  --name        修改 token 名称\n" +
+			"  --scope       替换 scope 列表（支持通配符）\n" +
+			"  --expires-in  设置新的过期时间（秒），0 表示移除过期限制",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				input := remote.ModifyTokenInput{
+					TokenID: args[0],
+				}
+				if cmd.Flags().Changed("name") {
+					input.Name = &name
+				}
+				if cmd.Flags().Changed("scope") {
+					input.Scopes = scopes
+				}
+				if cmd.Flags().Changed("expires-in") {
+					input.ExpiresIn = &expiresIn
+				}
+				view, err := client.ModifyToken(context.Background(), currentOpts.Workspace, input)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), tokenViewForJSON(*view))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Modified token %s\n", view.ID)
+				return nil
+			}
+
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+
+			input := app.ModifyTokenInput{
+				TokenID: args[0],
+			}
+			if cmd.Flags().Changed("name") {
+				input.Name = &name
+			}
+			if cmd.Flags().Changed("scope") {
+				input.Scopes = scopes
+			}
+			if cmd.Flags().Changed("expires-in") {
+				input.ExpiresIn = &expiresIn
+			}
+
+			view, err := svc.ModifyToken(input)
+			if err != nil {
+				return err
+			}
+
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), tokenViewForJSON(*view))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Modified token %s\n", view.ID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "新名称")
+	cmd.Flags().StringSliceVar(&scopes, "scope", nil, "新的 scope 列表")
+	cmd.Flags().Int64Var(&expiresIn, "expires-in", 0, "新的过期时间（秒），0 表示永不过期")
+	return cmd
+}
+
 func newTokenRevokeCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:  "revoke <id|prefix>",
-		Args: cobra.ExactArgs(1),
+		Use:   "revoke <id|prefix>",
+		Short: "吊销 token，使其立即失效",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {

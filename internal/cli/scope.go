@@ -11,8 +11,9 @@ import (
 
 func newScopeCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "scope",
-		Args: cobra.NoArgs,
+		Use:   "scope",
+		Short: "查看和管理 token scope",
+		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newScopeListCommand(opts))
 	return cmd
@@ -21,6 +22,8 @@ func newScopeCommand(opts Options) *cobra.Command {
 func newScopeListCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "list",
+		Short:   "列出所有可用的 token scope",
+		Long:    "列出系统注册的所有 token scope，可用于创建或修改 token 时指定 --scope 参数。\n支持通配符：*（全部）、resource:*（如 task:*）、*:action（如 *:read）。",
 		Aliases: []string{"ls"},
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
