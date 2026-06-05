@@ -45,29 +45,29 @@ func VerifyTokenHash(raw, hash string) bool {
 	return subtle.ConstantTimeCompare([]byte(want), []byte(hash)) == 1
 }
 
-func ValidateTokenCreate(opts CreateTokenOptions) error {
+func ValidateTokenCreate(opts CreateTokenOptions) (ScopeSet, error) {
 	if opts.Type == "" {
 		opts.Type = TokenTypePAT
 	}
 	if _, err := tokenPrefixForType(opts.Type); err != nil {
-		return err
+		return nil, err
 	}
 	if opts.Type == TokenTypeAgent {
 		if len(opts.WorkspaceIDs) == 0 {
-			return fmt.Errorf("agent token requires at least one workspace")
+			return nil, fmt.Errorf("agent token requires at least one workspace")
 		}
 		if len(opts.Scopes) == 0 {
-			return fmt.Errorf("agent token requires explicit scopes")
+			return nil, fmt.Errorf("agent token requires explicit scopes")
 		}
 	}
 	scopes, err := ParseScopes(opts.Scopes)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if opts.Type == TokenTypePAT && scopes.Has("impersonate") {
-		return fmt.Errorf("impersonate scope requires agent token")
+	if opts.Type == TokenTypePAT {
+		delete(scopes, "impersonate")
 	}
-	return nil
+	return scopes, nil
 }
 
 func tokenPrefixForType(tokenType string) (string, error) {

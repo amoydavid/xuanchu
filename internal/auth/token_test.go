@@ -58,11 +58,11 @@ func TestParseScopesRejectsInvalidAndWildcardScopes(t *testing.T) {
 }
 
 func TestAgentTokenRequiresExplicitWorkspaceAndScope(t *testing.T) {
-	err := ValidateTokenCreate(CreateTokenOptions{Type: TokenTypeAgent, Scopes: []string{"task:read"}})
+	_, err := ValidateTokenCreate(CreateTokenOptions{Type: TokenTypeAgent, Scopes: []string{"task:read"}})
 	if err == nil || !strings.Contains(err.Error(), "workspace") {
 		t.Fatalf("expected workspace error, got %v", err)
 	}
-	err = ValidateTokenCreate(CreateTokenOptions{Type: TokenTypeAgent, WorkspaceIDs: []string{"w1"}})
+	_, err = ValidateTokenCreate(CreateTokenOptions{Type: TokenTypeAgent, WorkspaceIDs: []string{"w1"}})
 	if err == nil || !strings.Contains(err.Error(), "scope") {
 		t.Fatalf("expected scope error, got %v", err)
 	}

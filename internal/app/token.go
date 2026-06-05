@@ -84,16 +84,13 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 	for _, project := range projects {
 		projectIDs = append(projectIDs, project.ID)
 	}
-	if err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
+	scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
 		Type:         tokenType,
 		Scopes:       input.Scopes,
 		WorkspaceIDs: workspaceIDs,
-	}); err != nil {
-		return CreatedToken{}, classifyTokenCreateError(err)
-	}
-	scopes, err := auth.ParseScopes(input.Scopes)
+	})
 	if err != nil {
-		return CreatedToken{}, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
+		return CreatedToken{}, classifyTokenCreateError(err)
 	}
 	if scopes.Has("impersonate") && !tokenManageAllowed(s.runtime.Role) {
 		return CreatedToken{}, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can create tokens with impersonate scope"}
