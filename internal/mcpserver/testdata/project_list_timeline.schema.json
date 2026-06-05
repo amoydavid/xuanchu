@@ -6,6 +6,9 @@
       "limit": {
         "type": "integer"
       },
+      "offset": {
+        "type": "integer"
+      },
       "project": {
         "type": "string"
       },

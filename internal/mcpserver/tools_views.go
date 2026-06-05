@@ -65,6 +65,24 @@ type externalIDView struct {
 	ExternalID string `json:"external_id"`
 }
 
+type annotationView struct {
+	ID        string             `json:"id"`
+	ProjectID string             `json:"project_id"`
+	Entry     int64              `json:"entry"`
+	Content   string             `json:"content"`
+	CreatedBy task.JSONUserInfo  `json:"created_by"`
+	CreatedAt int64              `json:"created_at"`
+}
+
+type taskLinkView struct {
+	ID        string            `json:"id"`
+	Type      string            `json:"type"`
+	URL       string            `json:"url"`
+	Title     string            `json:"title,omitempty"`
+	CreatedAt int64             `json:"created_at"`
+	CreatedBy task.JSONUserInfo `json:"created_by"`
+}
+
 func workspaceViewFromApp(row app.WorkspaceView) workspaceView {
 	role := string(row.Role)
 	if role == "" {
@@ -163,4 +181,34 @@ func userViewsFromApp(rows []app.UserView) []userView {
 		out = append(out, userViewFromApp(row))
 	}
 	return out
+}
+
+func annotationViewFromApp(row app.ProjectAnnotationInfo) annotationView {
+	return annotationView{
+		ID:        row.ID,
+		ProjectID: row.ProjectID,
+		Entry:     row.Entry,
+		Content:   row.Content,
+		CreatedBy: task.UserInfoToJSON(row.CreatedBy),
+		CreatedAt: row.CreatedAt,
+	}
+}
+
+func annotationViewsFromApp(rows []app.ProjectAnnotationInfo) []annotationView {
+	out := make([]annotationView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, annotationViewFromApp(row))
+	}
+	return out
+}
+
+func taskLinkViewFromApp(row task.TaskLinkInfo) taskLinkView {
+	return taskLinkView{
+		ID:        row.ID,
+		Type:      row.Type,
+		URL:       row.URL,
+		Title:     row.Title,
+		CreatedAt: row.CreatedAt,
+		CreatedBy: task.UserInfoToJSON(row.CreatedBy),
+	}
 }

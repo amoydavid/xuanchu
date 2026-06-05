@@ -107,7 +107,7 @@ func TestHookEndToEnd(t *testing.T) {
 	}
 
 	// 验证 delivery 已入队
-	deliveries, err := h.svc.ListHookDeliveries(hook.ID, "", 10)
+	deliveries, err := h.svc.ListHookDeliveries(hook.ID, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListHookDeliveries() error = %v", err)
 	}
@@ -198,7 +198,7 @@ func TestHookEndToEnd(t *testing.T) {
 	}
 
 	// 验证 delivery 状态变为 succeeded
-	deliveriesAfter, err := h.svc.ListHookDeliveries(hook.ID, "", 10)
+	deliveriesAfter, err := h.svc.ListHookDeliveries(hook.ID, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListHookDeliveries() after dispatch error = %v", err)
 	}
@@ -406,7 +406,7 @@ func TestHookSecretNotInDeliveryView(t *testing.T) {
 
 	_, _ = svc.Add(app.AddInput{Description: "delivery secret test"})
 
-	deliveries, _ := svc.ListHookDeliveries(hook.ID, "", 10)
+	deliveries, _ := svc.ListHookDeliveries(hook.ID, "", 10, 0)
 	if len(deliveries) != 1 {
 		t.Fatalf("deliveries = %d, want 1", len(deliveries))
 	}

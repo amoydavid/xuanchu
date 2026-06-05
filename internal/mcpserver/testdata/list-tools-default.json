@@ -472,6 +472,9 @@
             "description": "max deliveries to return (default 20)",
             "type": "integer"
           },
+          "offset": {
+            "type": "integer"
+          },
           "project": {
             "type": "string"
           },
@@ -1350,6 +1353,9 @@
           "limit": {
             "type": "integer"
           },
+          "offset": {
+            "type": "integer"
+          },
           "project": {
             "type": "string"
           },
@@ -1433,6 +1439,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "offset": {
+            "type": "integer"
           },
           "project": {
             "type": "string"
@@ -1737,6 +1746,12 @@
             ]
           },
           "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
             "type": "string"
           },
           "workspace": {
@@ -2471,6 +2486,9 @@
             "type": "boolean"
           },
           "limit": {
+            "type": "integer"
+          },
+          "offset": {
             "type": "integer"
           },
           "project": {

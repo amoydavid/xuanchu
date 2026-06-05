@@ -108,7 +108,11 @@ func registerWorkspaceTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(nil, "workspace archived")
+		view, err := svc.WorkspaceInfo(in.Workspace)
+		if err != nil {
+			return successWithEnvelope(nil, "workspace archived")
+		}
+		return successWithEnvelope(map[string]any{"workspace": workspaceViewFromApp(view)}, "workspace archived")
 	})
 
 	addTool(s, &mcp.Tool{Name: "workspace_use", Description: "Switch active workspace."}, func(ctx context.Context, req *mcp.CallToolRequest, in WorkspaceRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -120,7 +124,11 @@ func registerWorkspaceTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(nil, "workspace switched to "+in.Workspace)
+		view, err := svc.WorkspaceInfo(in.Workspace)
+		if err != nil {
+			return successWithEnvelope(nil, "workspace switched to "+in.Workspace)
+		}
+		return successWithEnvelope(map[string]any{"workspace": workspaceViewFromApp(view)}, "workspace switched to "+in.Workspace)
 	})
 }
 

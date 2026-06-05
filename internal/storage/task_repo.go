@@ -22,6 +22,7 @@ type ListOptions struct {
 	NowUnix        int64
 	UDADefinitions map[string]string
 	Limit          int
+	Offset         int
 	Dialect        string
 }
 
@@ -112,6 +113,9 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 	}
 	if opts.Limit > 0 {
 		q = q.Limit(opts.Limit)
+	}
+	if opts.Offset > 0 {
+		q = q.Offset(opts.Offset)
 	}
 	if err := q.Find(&models).Error; err != nil {
 		return nil, err

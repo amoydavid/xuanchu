@@ -67,6 +67,7 @@ type ListInput struct {
 	ReportMode bool
 	NoContext  bool
 	Limit      int
+	Offset     int
 }
 
 type ExportInput struct {
@@ -105,6 +106,7 @@ type ReportInput struct {
 	Query     query.Expr
 	NoContext bool
 	Limit     int
+	Offset    int
 }
 
 type ReportResult struct {
@@ -118,7 +120,7 @@ type auditAppenderLister interface {
 
 type hookDeliveryEnqueuer interface {
 	Enqueue(rows []storage.HookDelivery) error
-	ListByHook(hookID string, status string, limit int) ([]storage.HookDelivery, error)
+	ListByHook(hookID string, status string, limit int, offset int) ([]storage.HookDelivery, error)
 	GetByID(id string) (storage.HookDelivery, error)
 	Requeue(id string, now int64) error
 }
@@ -428,6 +430,7 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 		NowUnix:        s.clock.Unix(),
 		UDADefinitions: udaDefs,
 		Limit:          input.Limit,
+		Offset:         input.Offset,
 		Dialect:        s.store.Dialect(),
 	})
 	if err != nil {
@@ -443,7 +446,7 @@ func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) 
 	if input.Target != nil {
 		return s.List(input)
 	}
-	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext, Limit: input.Limit})
+	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext, Limit: input.Limit, Offset: input.Offset})
 	if err != nil {
 		return nil, err
 	}
@@ -1197,6 +1200,8 @@ func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
 		Sort:           def.Sort,
 		NowUnix:        now,
 		UDADefinitions: udaDefs,
+		Limit:          input.Limit,
+		Offset:         input.Offset,
 		Dialect:        s.store.Dialect(),
 	})
 	if err != nil {

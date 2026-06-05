@@ -427,7 +427,7 @@ func (s *Service) DeleteHook(hookID string) error {
 }
 
 // ListHookDeliveries 列出指定 hook 的投递记录。
-func (s *Service) ListHookDeliveries(hookID string, status string, limit int) ([]HookDeliveryView, error) {
+func (s *Service) ListHookDeliveries(hookID string, status string, limit int, offset int) ([]HookDeliveryView, error) {
 	if err := s.Require(PermissionHookRead); err != nil {
 		return nil, err
 	}
@@ -444,7 +444,7 @@ func (s *Service) ListHookDeliveries(hookID string, status string, limit int) ([
 	if err := s.ensureReadableHookScope(hook); err != nil {
 		return nil, err
 	}
-	rows, err := s.hookDeliveryRepo.ListByHook(hookID, status, limit)
+	rows, err := s.hookDeliveryRepo.ListByHook(hookID, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}

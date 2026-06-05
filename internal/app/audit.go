@@ -12,6 +12,7 @@ type AuditListInput struct {
 	WorkspaceRef string
 	ProjectRef   string
 	Limit        int
+	Offset       int
 }
 
 type AuditEntry struct {
@@ -137,6 +138,7 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 		WorkspaceID: &s.runtime.WorkspaceID,
 		ProjectID:   projectID,
 		Limit:       input.Limit,
+		Offset:      input.Offset,
 	})
 	if err != nil {
 		return nil, err

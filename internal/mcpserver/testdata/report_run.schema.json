@@ -9,6 +9,9 @@
       "name": {
         "type": "string"
       },
+      "offset": {
+        "type": "integer"
+      },
       "project": {
         "type": "string"
       },

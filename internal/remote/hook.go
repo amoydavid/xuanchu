@@ -144,13 +144,16 @@ func (c *Client) DeleteHook(ctx context.Context, hookID string) error {
 }
 
 // ListHookDeliveries 列出指定 hook 的投递记录。
-func (c *Client) ListHookDeliveries(ctx context.Context, hookID, status string, limit int) ([]app.HookDeliveryView, error) {
+func (c *Client) ListHookDeliveries(ctx context.Context, hookID, status string, limit int, offset int) ([]app.HookDeliveryView, error) {
 	values := url.Values{}
 	if status != "" {
 		values.Set("status", status)
 	}
 	if limit > 0 {
 		values.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		values.Set("offset", strconv.Itoa(offset))
 	}
 	var envelope apiEnvelope[[]deliveryDTO]
 	if err := c.get(ctx, "/api/v1/hooks/"+url.PathEscape(hookID)+"/deliveries", values, &envelope); err != nil {

@@ -11,6 +11,9 @@
         "description": "max deliveries to return (default 20)",
         "type": "integer"
       },
+      "offset": {
+        "type": "integer"
+      },
       "project": {
         "type": "string"
       },

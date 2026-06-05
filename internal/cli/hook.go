@@ -399,7 +399,7 @@ func newHookDeliveriesCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				deliveries, err := client.ListHookDeliveries(context.Background(), args[0], status, limit)
+				deliveries, err := client.ListHookDeliveries(context.Background(), args[0], status, limit, 0)
 				if err != nil {
 					return err
 				}
@@ -414,7 +414,7 @@ func newHookDeliveriesCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			deliveries, err := svc.ListHookDeliveries(args[0], status, limit)
+			deliveries, err := svc.ListHookDeliveries(args[0], status, limit, 0)
 			if err != nil {
 				return err
 			}

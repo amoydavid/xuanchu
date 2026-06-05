@@ -41,6 +41,7 @@ type Operator string
 
 const (
 	OpEqual      Operator = "eq"
+	OpNotEqual   Operator = "neq"
 	OpBefore     Operator = "before"
 	OpAfter      Operator = "after"
 	OpContains   Operator = "contains"

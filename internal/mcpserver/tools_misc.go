@@ -97,6 +97,7 @@ func registerMiscTools(s *mcp.Server, opts Options) {
 			WorkspaceRef: in.Workspace,
 			ProjectRef:   in.Project,
 			Limit:        limit,
+			Offset:       in.Offset,
 		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)

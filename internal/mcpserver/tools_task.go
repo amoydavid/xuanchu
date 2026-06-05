@@ -8,7 +8,6 @@ import (
 	"github.com/dajee/taskg/internal/app"
 	"github.com/dajee/taskg/internal/query"
 	"github.com/dajee/taskg/internal/task"
-	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -38,6 +37,7 @@ type TaskQueryInput struct {
 	Query            string `json:"query,omitempty"`
 	Status           string `json:"status,omitempty"`
 	Limit            int    `json:"limit,omitempty"`
+	Offset           int    `json:"offset,omitempty"`
 	IncludeCompleted bool   `json:"include_completed,omitempty"`
 	IncludeDeleted   bool   `json:"include_deleted,omitempty"`
 }
@@ -112,6 +112,8 @@ func (in TaskAnnotateInput) scopeInput() RequestScopeInput {
 
 type TaskDependsInput struct {
 	Workspace    string   `json:"workspace,omitempty"`
+	Project      string   `json:"project,omitempty"`
+	ProjectID    string   `json:"project_id,omitempty"`
 	ID           string   `json:"id"`
 	Depends      []string `json:"depends,omitempty"`
 	ClearDepends bool     `json:"clear_depends,omitempty"`
@@ -228,7 +230,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.ListInput{Status: taskQueryStatus(in), Limit: limit}
+		input := app.ListInput{Status: taskQueryStatus(in), Limit: limit, Offset: in.Offset}
 		statuses := taskQueryStatuses(in)
 		if input.Status == "" && len(statuses) == 0 && (in.IncludeCompleted || in.IncludeDeleted) {
 			input.ReportMode = true
@@ -247,6 +249,9 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			}
 			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 		}
+		if taskQueryExcludeDeleted(in) {
+			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrStatus, Operator: query.OpNotEqual, Value: query.StringValue(task.StatusDeleted)})
+		}
 		rows, err := taskQueryList(svc, input, statuses)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -255,10 +260,8 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, &mcp.Tool{Name: "task_get", Description: "Get one task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if opts.Mode == ModeHTTP {
-			if _, err := uuid.Parse(strings.TrimSpace(in.ID)); err != nil {
-				return businessErrorWithEnvelope(app.RuntimeError{Code: "task_uuid_invalid", Message: "task UUID is invalid"})
-			}
+		if err := requireUUID(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
 		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
@@ -283,6 +286,9 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "task_start", Description: "Start a task; writes audit."}, taskActionHandler(opts, "task started", func(svc *app.Service, id string) error { return svc.Start(id) }))
 	addTool(s, &mcp.Tool{Name: "task_stop", Description: "Stop a task; writes audit."}, taskActionHandler(opts, "task stopped", func(svc *app.Service, id string) error { return svc.Stop(id) }))
 	addTool(s, &mcp.Tool{Name: "task_annotate", Description: "Annotate a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskAnnotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -293,10 +299,16 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		return taskAfterMutation(svc, in.ID, "annotated task")
 	})
 	addTool(s, &mcp.Tool{Name: "task_depends", Description: "Adjust task dependencies; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDependsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		mod := TaskModifyInput{Workspace: in.Workspace, ID: in.ID, Depends: in.Depends, ClearDepends: in.ClearDepends}
+		if err := requireUUID(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		mod := TaskModifyInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID, ID: in.ID, Depends: in.Depends, ClearDepends: in.ClearDepends}
 		return modifyTaskTool(ctx, req, opts, mod, "updated dependencies")
 	})
 	addTool(s, &mcp.Tool{Name: "task_link_add", Description: "Add an external link to a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.Task, "task"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -305,9 +317,12 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(link, "Added link to task")
+		return successWithEnvelope(map[string]any{"link": taskLinkViewFromApp(link)}, "Added link to task")
 	})
 	addTool(s, &mcp.Tool{Name: "task_link_remove", Description: "Remove an external link from a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkRemoveInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.Task, "task"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -318,6 +333,9 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(nil, "Removed link from task")
 	})
 	addTool(s, &mcp.Tool{Name: "task_denotate", Description: "Remove an annotation from a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDenotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -328,6 +346,9 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		return taskAfterMutation(svc, in.ID, "removed annotation")
 	})
 	addTool(s, &mcp.Tool{Name: "task_link_list", Description: "List external links on a task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.Task, "task"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -336,7 +357,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(map[string]any{"links": tsk.Links, "count": len(tsk.Links)}, fmt.Sprintf("%d link(s)", len(tsk.Links)))
+		linkViews := make([]taskLinkView, len(tsk.Links))
+		for i, l := range tsk.Links {
+			linkViews[i] = taskLinkViewFromApp(l)
+		}
+		return successWithEnvelope(map[string]any{"links": linkViews, "count": len(linkViews)}, fmt.Sprintf("%d link(s)", len(linkViews)))
 	})
 	addTool(s, &mcp.Tool{Name: "task_export", Description: "Export tasks as JSON; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
@@ -367,6 +392,9 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 }
 
 func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options, in TaskModifyInput, rendered string) (*mcp.CallToolResult, ToolEnvelope, error) {
+	if err := requireUUID(in.ID, "id"); err != nil {
+		return businessErrorWithEnvelope(err)
+	}
 	svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 	if err != nil {
 		return businessErrorWithEnvelope(err)
@@ -402,6 +430,9 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 
 func taskActionHandler(opts Options, rendered string, fn func(*app.Service, string) error) mcp.ToolHandlerFor[TaskIDInput, ToolEnvelope] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in TaskIDInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -460,9 +491,19 @@ func taskQueryStatus(in TaskQueryInput) string {
 		return task.StatusCompleted
 	case in.IncludeDeleted && !in.IncludeCompleted:
 		return task.StatusDeleted
+	case in.IncludeCompleted && in.IncludeDeleted:
+		return ""
 	default:
 		return ""
 	}
+}
+
+func taskQueryExcludeDeleted(in TaskQueryInput) bool {
+	status := strings.TrimSpace(in.Status)
+	if status != "" {
+		return false
+	}
+	return !in.IncludeDeleted
 }
 
 func taskQueryStatuses(in TaskQueryInput) []string {

@@ -11,6 +11,7 @@ import (
 	"github.com/dajee/taskg/internal/render"
 	"github.com/dajee/taskg/internal/task"
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -18,6 +19,17 @@ const (
 	mcpDefaultLimit = 200
 	mcpMaxLimit     = 1000
 )
+
+func requireUUID(id, fieldName string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return app.RuntimeError{Code: fieldName + "_required", Message: fieldName + " is required"}
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return app.RuntimeError{Code: fieldName + "_invalid", Message: fieldName + " must be a valid UUID, numeric IDs are not accepted in MCP"}
+	}
+	return nil
+}
 
 func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
 	inputSchema, err := jsonschema.For[In](nil)

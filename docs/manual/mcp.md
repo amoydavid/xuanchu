@@ -9,6 +9,8 @@ taskg 可以作为 MCP Server，让 Agent 通过结构化 tools/resources 访问
 
 MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace；HTTP MCP 使用 Bearer token 绑定的 user 和 scope。完整身份初始化流程见 [身份与初始化](identity-and-initialization.md)。
 
+**重要原则：** 每个 MCP 调用都应通过参数显式指定 `workspace`、`project`/`project_id`，不要依赖隐式上下文状态（如 `context_set`/`workspace_use`）。如果不知道 workspace 或 project，先调用 `workspace_list`/`project_list` 发现，然后把参数带上。
+
 ## 运行模式
 
 本地 stdio MCP：
@@ -136,7 +138,7 @@ HTTP 示例：
 
 ## 在 OpenClaw 中使用
 
-OpenClaw 的 `openclaw mcp serve` 是“OpenClaw 自己作为 MCP server”。这里要做的是相反方向：让 OpenClaw 托管的 agent 使用 taskg MCP server，所以应使用 OpenClaw 的 MCP client registry，也就是 `openclaw mcp add/set/configure/probe`。
+OpenClaw 的 `openclaw mcp serve` 是"OpenClaw 自己作为 MCP server"。这里要做的是相反方向：让 OpenClaw 托管的 agent 使用 taskg MCP server，所以应使用 OpenClaw 的 MCP client registry，也就是 `openclaw mcp add/set/configure/probe`。
 
 ### OpenClaw 本地 stdio
 
@@ -276,7 +278,8 @@ taskg --workspace dajee token create mcp-agent \
 可以在 Agent 系统提示词或项目说明中加入：
 
 ```text
-你可以使用 taskg MCP 管理任务。优先使用 project_get_current / workspace_get_current 确认作用域；
+你可以使用 taskg MCP 管理任务。每次调用都必须通过参数显式指定 workspace 和 project_id，
+不要依赖隐式上下文。如果不知道 workspace 或 project，先调用 workspace_list / project_list 发现。
 查询任务用 task_query，读取单任务用 task_get，新增任务用 task_add。
 如果任务有执行者，请在 task_add / task_modify 里显式传 assignees。
 不要尝试访问 token scope 之外的 workspace/project。
@@ -285,9 +288,9 @@ taskg --workspace dajee token create mcp-agent \
 
 ## Tools
 
-当前提供 33 个 tools。
+当前提供 74 个 tools。
 
-### 任务
+### 任务（16 tools）
 
 #### `task_add`
 
@@ -415,6 +418,18 @@ taskg --workspace dajee token create mcp-agent \
 | `id` | string | 是 | |
 | `annotation` | string | 是 | 注释内容 |
 
+#### `task_denotate`
+
+移除任务注释。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `id` | string | 是 | |
+| `annotation_index` | int | 是 | 1-based 注释索引（按时间排序） |
+
 #### `task_depends`
 
 调整任务依赖。
@@ -440,6 +455,17 @@ taskg --workspace dajee token create mcp-agent \
 | `url` | string | 是 | 外部资源 URL |
 | `title` | string | 否 | 显示标题 |
 
+#### `task_link_list`
+
+列出任务的外部关联链接。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `task` | string | 是 | 任务引用 |
+
 #### `task_link_remove`
 
 移除任务的外部关联链接。
@@ -452,7 +478,28 @@ taskg --workspace dajee token create mcp-agent \
 | `task` | string | 是 | 任务引用 |
 | `link_id` | string | 是 | 要移除的链接 ID |
 
-### 报表与 Urgency
+#### `task_export`
+
+导出任务为 JSON 数组。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+
+#### `task_import`
+
+导入 JSON 任务数组。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `tasks` | array | 是 | JSON 任务数组（`uuid`/`description`/`status`/`entry`/`modified` 必填） |
+
+### 报表与 Urgency（2 tools）
 
 #### `report_run`
 
@@ -478,25 +525,18 @@ taskg --workspace dajee token create mcp-agent \
 | `project_id` | string | 否 | |
 | `id` | string | 是 | |
 
-### Workspace
+### Project（13 tools）
 
-#### `workspace_list`
+#### `project_add`
 
-列出可见 workspace。只读。
-
-| 参数 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `include_archived` | bool | 否 | 包含已归档 |
-
-#### `workspace_get_current`
-
-读取当前生效的 workspace。只读。
+创建项目。`slug` 仅允许 `^[a-z0-9][a-z0-9_-]*$`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workspace` | string | 否 | 可显式指定 |
-
-### Project
+| `workspace` | string | 否 | |
+| `slug` | string | 是 | 项目 slug |
+| `name` | string | 否 | 显示名称 |
+| `description` | string | 否 | 项目描述 |
 
 #### `project_list`
 
@@ -509,7 +549,7 @@ taskg --workspace dajee token create mcp-agent \
 
 #### `project_get`
 
-读取单个项目及其 agent 配置。只读。
+读取单个项目及其 agent 配置。只读。返回 `config_summary`（包含 `agent.*` 配置项）。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -520,6 +560,28 @@ taskg --workspace dajee token create mcp-agent \
 #### `project_get_current`
 
 读取当前生效的 project scope。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+
+#### `project_modify`
+
+修改项目。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `name` | string | 否 | |
+| `description` | string | 否 | |
+
+#### `project_archive`
+
+归档项目。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -570,27 +632,102 @@ taskg --workspace dajee token create mcp-agent \
 | `project_id` | string | 否 | |
 | `limit` | int | 否 | 默认 50 |
 
-### Member
+#### `project_config_set`
 
-#### `member_list`
-
-列出 effective workspace 的成员。只读。
+设置项目配置。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `key` | string | 是 | 配置键 |
+| `value` | string | 是 | 配置值 |
 
-#### `member_add`
+#### `project_config_list`
 
-添加成员到 effective workspace。
+列出项目配置。只读。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | |
-| `user` | string | 是 | 用户引用（name/email/UUID） |
-| `role` | string | 否 | `viewer`/`member`/`admin`/`owner`，默认 `member` |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
 
-### User
+#### `project_config_unset`
+
+删除项目配置。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `key` | string | 是 | 配置键 |
+
+### Workspace（7 tools）
+
+#### `workspace_list`
+
+列出可见 workspace。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `include_archived` | bool | 否 | 包含已归档 |
+
+#### `workspace_get_current`
+
+读取当前生效的 workspace。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | 可显式指定 |
+
+#### `workspace_info`
+
+查看 workspace 详情。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 是 | workspace slug 或 UUID |
+
+#### `workspace_add`
+
+创建 workspace。`slug` 仅允许 `^[a-z0-9][a-z0-9_-]*$`。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `slug` | string | 是 | workspace slug |
+| `name` | string | 否 | 显示名称 |
+| `visibility` | string | 否 | `private`（默认）/`team`/`public` |
+
+#### `workspace_modify`
+
+修改 workspace。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 是 | |
+| `name` | string | 否 | |
+| `description` | string | 否 | |
+
+#### `workspace_use`
+
+切换 active workspace。仅影响 stdio MCP 隐式状态，Agent 应优先通过参数显式传 `workspace`。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 是 | workspace slug 或 UUID |
+
+#### `workspace_archive`
+
+归档 workspace。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 是 | workspace slug 或 UUID |
+
+### User（7 tools）
 
 #### `user_list`
 
@@ -601,6 +738,23 @@ taskg --workspace dajee token create mcp-agent \
 #### `user_get`
 
 读取单个用户。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `user` | string | 是 | name/email/UUID |
+
+#### `user_add`
+
+创建用户。用户名支持中文等非 ASCII 字符，系统自动生成 workspace slug。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `name` | string | 是 | 用户名 |
+| `email` | string | 否 | 邮箱 |
+
+#### `user_use`
+
+切换 active user。仅影响 stdio MCP 隐式状态。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -626,7 +780,47 @@ taskg --workspace dajee token create mcp-agent \
 | `provider` | string | 是 | |
 | `external_id` | string | 是 | |
 
-### Context
+#### `user_list_external_ids`
+
+列出用户的外部 ID。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `user` | string | 是 | name/email/UUID |
+
+### Member（3 tools）
+
+#### `member_list`
+
+列出 effective workspace 的成员。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `member_add`
+
+添加成员到 effective workspace。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `user` | string | 是 | 用户引用（name/email/UUID） |
+| `role` | string | 否 | `viewer`/`member`/`admin`/`owner`，默认 `member` |
+
+#### `member_role`
+
+修改成员角色。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `user` | string | 是 | 用户引用 |
+| `role` | string | 是 | `viewer`/`member`/`admin`/`owner` |
+
+### Context（5 tools）
+
+Context 是预定义的查询过滤器，供 CLI 交互使用。Agent 可以读取 context 了解用户偏好，但不应通过 `context_set`/`context_none` 管理隐式状态。需要过滤时，直接在 `task_query` 的 `query` 参数中指定。
 
 #### `context_get`
 
@@ -646,7 +840,32 @@ taskg --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `name` | string | 是 | context 名；传 `"none"` 清空 |
 
-### Config
+#### `context_list`
+
+列出所有 context。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `context_none`
+
+清空 active context。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `context_delete`
+
+删除 context。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `name` | string | 是 | context 名 |
+
+### Config（4 tools）
 
 #### `config_get`
 
@@ -673,6 +892,198 @@ taskg --workspace dajee token create mcp-agent \
 | `value` | string | 是 | 配置值 |
 | `scope` | string | 是 | `workspace`/`project` |
 
+#### `config_list`
+
+列出配置。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `config_unset`
+
+删除配置。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `key` | string | 是 | 配置键 |
+
+### Hook（10 tools）
+
+Hook 是事件驱动的 Webhook 端点。支持的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。
+
+#### `hook_add`
+
+创建 Hook。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `name` | string | 是 | Hook 名称 |
+| `url` | string | 是 | Webhook URL |
+| `events` | string[] | 是 | 事件类型列表 |
+| `secret` | string | 否 | HMAC 签名密钥 |
+| `active` | bool | 否 | 是否启用，默认 true |
+
+#### `hook_list`
+
+列出 Hook。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `hook_info`
+
+查看 Hook 详情。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+
+#### `hook_modify`
+
+修改 Hook。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+| `name` | string | 否 | |
+| `url` | string | 否 | |
+| `events` | string[] | 否 | |
+| `secret` | string | 否 | |
+| `active` | bool | 否 | |
+
+#### `hook_remove`
+
+删除 Hook。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+
+#### `hook_delivery_list`
+
+列出 Hook 投递记录。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+| `limit` | int | 否 | 默认 20 |
+
+#### `hook_delivery_info`
+
+查看投递详情。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+| `delivery_id` | string | 是 | 投递 ID |
+
+#### `hook_delivery_redeliver`
+
+重试投递。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+| `delivery_id` | string | 是 | 投递 ID |
+
+#### `hook_test`
+
+测试 Hook 配置（只读）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+
+#### `hook_ping`
+
+Ping Hook（写审计日志）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `hook` | string | 是 | Hook ID |
+
+### Token（4 tools）
+
+#### `token_list`
+
+列出 Token。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+
+#### `token_create`
+
+创建 Token。返回中包含 `raw_token`，仅此一次。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `name` | string | 是 | Token 名称 |
+| `scope` | string[] | 否 | 权限 scope 列表 |
+| `expires_in_seconds` | int | 否 | 过期时间（秒） |
+
+#### `token_modify`
+
+修改 Token。不能修改已撤销或已过期的 Token。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `token_ref` | string | 是 | Token ID |
+| `name` | string | 否 | |
+| `scope` | string[] | 否 | |
+| `expires_in_seconds` | int | 否 | |
+
+#### `token_revoke`
+
+撤销 Token。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `token_ref` | string | 是 | Token ID |
+
+### 系统（3 tools）
+
+#### `audit_list`
+
+列出审计条目。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project_id` | string | 否 | |
+| `actor` | string | 否 | 按操作者过滤 |
+| `limit` | int | 否 | 默认 50 |
+| `offset` | int | 否 | |
+
+#### `scope_list`
+
+列出所有可用 scope。只读。无需鉴权。
+
+无参数。
+
+#### `me_get`
+
+获取当前用户信息。用于确认"我是谁"。无需鉴权。
+
+无参数。
+
 ## Resources
 
 当前提供 4 个 resources：
@@ -697,13 +1108,14 @@ MCP tool 返回统一 envelope：
 
 ## 常见 Agent 流程
 
-1. `workspace_get_current` 确认当前 workspace。
-2. `project_list` 或 `project_get_current` 确认项目。
-3. `task_query` 查看待办。
-4. `task_add` 或 `task_modify` 写入任务。
-5. `urgency_explain` 理解排序原因。
+1. `me_get` 确认当前身份。
+2. `workspace_list` 发现可用 workspace。
+3. `project_list`（带 `workspace` 参数）发现项目。
+4. `task_query`（带 `workspace` + `project_id` 参数）查看待办。
+5. `task_add` / `task_modify`（带 `workspace` + `project_id` 参数）写入任务。
+6. `urgency_explain`（带 `workspace` + `project_id` 参数）理解排序原因。
 
-M9 之后，常见 assignee 用法：
+Assignee 用法（M9+）：
 
 - `task_add` 支持 `assignees: ["alice"]`
 - `task_modify` 支持 `assignees`、`remove_assignees`
@@ -715,6 +1127,7 @@ M9 之后，常见 assignee 用法：
 - HTTP MCP 的 `task_get` 只承诺 UUID，不使用本地 working-set ID。
 - HTTP MCP 不读取调用者本机 TOML。
 - HTTP MCP 不能写 local config。
+- Agent 不应依赖 `context_set`/`workspace_use` 等隐式状态操作，每次调用都应显式传参。
 
 ## Impersonation（M10）
 

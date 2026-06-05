@@ -68,6 +68,7 @@ type HookDeliveryListInput struct {
 	ProjectID string `json:"project_id,omitempty"`
 	Hook      string `json:"hook" jsonschema:"hook ID"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"max deliveries to return (default 20)"`
+	Offset    int    `json:"offset,omitempty"`
 }
 
 func (in HookDeliveryListInput) scopeInput() RequestScopeInput {
@@ -195,7 +196,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		if limit <= 0 {
 			limit = 20
 		}
-		rows, err := svc.ListHookDeliveries(strings.TrimSpace(in.Hook), "", limit)
+		rows, err := svc.ListHookDeliveries(strings.TrimSpace(in.Hook), "", limit, in.Offset)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}

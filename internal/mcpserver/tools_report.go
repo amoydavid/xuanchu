@@ -16,6 +16,7 @@ type ReportRunInput struct {
 	Name      string `json:"name"`
 	Query     string `json:"query,omitempty"`
 	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
 }
 
 func (in ReportRunInput) scopeInput() RequestScopeInput {
@@ -43,7 +44,7 @@ func registerReportTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.ListInput{Limit: limit}
+		input := app.ListInput{Limit: limit, Offset: in.Offset}
 		if strings.TrimSpace(in.Query) != "" {
 			expr, err := query.ParseFilterExpr([]string{in.Query})
 			if err != nil {
@@ -68,6 +69,9 @@ func registerReportTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, &mcp.Tool{Name: "urgency_explain", Description: "Explain task urgency; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UrgencyExplainInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		if err := requireUUID(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

@@ -218,7 +218,7 @@ func (s *Server) handleHookDeliveryList(w http.ResponseWriter, r *http.Request) 
 		}
 		limit = parsed
 	}
-	rows, err := scoped.ListHookDeliveries(hookID, status, limit)
+	rows, err := scoped.ListHookDeliveries(hookID, status, limit, 0)
 	if err != nil {
 		writeAppError(w, err)
 		return

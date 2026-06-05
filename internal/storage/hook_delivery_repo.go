@@ -36,10 +36,13 @@ func (r *HookDeliveryRepository) GetByID(id string) (HookDelivery, error) {
 	return row, err
 }
 
-func (r *HookDeliveryRepository) ListByHook(hookID string, status string, limit int) ([]HookDelivery, error) {
+func (r *HookDeliveryRepository) ListByHook(hookID string, status string, limit int, offset int) ([]HookDelivery, error) {
 	query := r.db.Where("hook_id = ?", hookID)
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
 	}
 	if limit > 0 {
 		query = query.Limit(limit)

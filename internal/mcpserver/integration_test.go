@@ -1364,9 +1364,9 @@ func TestProjectAnnotateDenotateListTimeline(t *testing.T) {
 	if !ok {
 		t.Fatalf("annotation type = %T, want map", annData["annotation"])
 	}
-	annID, _ := annotationObj["ID"].(string)
+	annID, _ := annotationObj["id"].(string)
 	if annID == "" {
-		t.Fatalf("annotation ID is empty, annotationObj = %#v", annotationObj)
+		t.Fatalf("annotation id is empty, annotationObj = %#v", annotationObj)
 	}
 
 	listAnn := callTool(t, session, "project_list_annotations", ProjectAnnotationsInput{Project: "ann-proj"})

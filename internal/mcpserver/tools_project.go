@@ -51,6 +51,7 @@ type ProjectTimelineInput struct {
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
 	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
 }
 
 type ProjectAddInput struct {
@@ -159,7 +160,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		data := map[string]any{"annotation": annotation}
+		data := map[string]any{"annotation": annotationViewFromApp(annotation)}
 		return successWithEnvelope(data, "annotated project")
 	})
 
@@ -191,7 +192,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		data := map[string]any{"annotations": annotations, "count": len(annotations)}
+		data := map[string]any{"annotations": annotationViewsFromApp(annotations), "count": len(annotations)}
 		return successWithEnvelope(data, fmt.Sprintf("%d annotation(s)", len(annotations)))
 	})
 
@@ -204,9 +205,12 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		timelineOpts := app.TimelineOptions{Limit: in.Limit}
+		timelineOpts := app.TimelineOptions{Limit: in.Limit, Offset: in.Offset}
 		if timelineOpts.Limit <= 0 {
 			timelineOpts.Limit = 50
+		}
+		if timelineOpts.Limit > mcpMaxLimit {
+			timelineOpts.Limit = mcpMaxLimit
 		}
 		entries, err := svc.ProjectTimeline(ref, timelineOpts)
 		if err != nil {

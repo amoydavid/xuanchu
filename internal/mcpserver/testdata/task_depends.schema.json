@@ -18,6 +18,12 @@
       "id": {
         "type": "string"
       },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
       "workspace": {
         "type": "string"
       }

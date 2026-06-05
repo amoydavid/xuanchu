@@ -63,6 +63,9 @@ func registerMemberTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		data := map[string]any{"user": in.User, "role": string(role)}
+		if userView, err := svc.UserInfo(in.User); err == nil {
+			data["member"] = memberViewFromApp(app.MemberView{UserID: userView.ID, Name: userView.Name, Email: userView.Email, Role: role})
+		}
 		return successWithEnvelope(data, fmt.Sprintf("added %s as %s", in.User, role))
 	})
 
@@ -83,6 +86,9 @@ func registerMemberTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		data := map[string]any{"user": in.User, "role": in.Role}
+		if userView, err := svc.UserInfo(in.User); err == nil {
+			data["member"] = memberViewFromApp(app.MemberView{UserID: userView.ID, Name: userView.Name, Email: userView.Email, Role: app.Role(in.Role)})
+		}
 		return successWithEnvelope(data, fmt.Sprintf("changed %s role to %s", in.User, in.Role))
 	})
 }

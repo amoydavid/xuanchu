@@ -189,6 +189,8 @@ func compareColumn(column string, op query.Operator, value string, intValue *int
 	switch op {
 	case query.OpEqual:
 		return column + " = ?", []any{arg}, nil
+	case query.OpNotEqual:
+		return column + " != ?", []any{arg}, nil
 	case query.OpBefore:
 		return column + " < ?", []any{arg}, nil
 	case query.OpAfter:

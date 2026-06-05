@@ -931,7 +931,7 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	}
 
 	// 验证 delivery 已入队
-	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10)
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListByHook() error = %v", err)
 	}
@@ -1042,7 +1042,7 @@ func TestHookPayloadIncludesAssignees(t *testing.T) {
 		t.Fatalf("Add() error = %v", err)
 	}
 
-	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10)
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListByHook() error = %v", err)
 	}
@@ -1153,7 +1153,7 @@ func TestHookEventsForWriteOperations(t *testing.T) {
 
 func assertDeliveryEventType(t *testing.T, svc *Service, hookID, wantEventType string) {
 	t.Helper()
-	deliveries, err := svc.hookDeliveryRepo.ListByHook(hookID, "", 20)
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hookID, "", 20, 0)
 	if err != nil {
 		t.Fatalf("ListByHook() error = %v", err)
 	}
@@ -1209,8 +1209,8 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
-	projDeliveries, _ := svc.hookDeliveryRepo.ListByHook(projHook.ID, "", 10)
-	wsDeliveries, _ := svc.hookDeliveryRepo.ListByHook(wsHook.ID, "", 10)
+	projDeliveries, _ := svc.hookDeliveryRepo.ListByHook(projHook.ID, "", 10, 0)
+	wsDeliveries, _ := svc.hookDeliveryRepo.ListByHook(wsHook.ID, "", 10, 0)
 	if len(projDeliveries) != 1 {
 		t.Fatalf("proj hook deliveries for in-project task = %d, want 1", len(projDeliveries))
 	}
@@ -1223,8 +1223,8 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
-	projDeliveries2, _ := svc.hookDeliveryRepo.ListByHook(projHook.ID, "", 10)
-	wsDeliveries2, _ := svc.hookDeliveryRepo.ListByHook(wsHook.ID, "", 10)
+	projDeliveries2, _ := svc.hookDeliveryRepo.ListByHook(projHook.ID, "", 10, 0)
+	wsDeliveries2, _ := svc.hookDeliveryRepo.ListByHook(wsHook.ID, "", 10, 0)
 	if len(projDeliveries2) != 1 {
 		t.Fatalf("proj hook deliveries total = %d, want 1 (should not receive no-project event)", len(projDeliveries2))
 	}
@@ -1262,7 +1262,7 @@ func TestHookWorkspaceScopeNoProject(t *testing.T) {
 	}
 
 	// Done 之前不应有 delivery
-	deliveries, _ := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10)
+	deliveries, _ := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
 	if len(deliveries) != 0 {
 		t.Fatalf("deliveries before done = %d, want 0", len(deliveries))
 	}
@@ -1272,7 +1272,7 @@ func TestHookWorkspaceScopeNoProject(t *testing.T) {
 		t.Fatalf("Done() error = %v", err)
 	}
 
-	deliveries, _ = svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10)
+	deliveries, _ = svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
 	if len(deliveries) != 1 {
 		t.Fatalf("deliveries after done = %d, want 1", len(deliveries))
 	}
@@ -1368,7 +1368,7 @@ func TestHookProjectArchivedEvent(t *testing.T) {
 	}
 
 	// 验证 delivery
-	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10)
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListByHook() error = %v", err)
 	}

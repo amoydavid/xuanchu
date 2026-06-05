@@ -30,6 +30,7 @@
 | M13 | 已完成 | 项目 Annotation 与 Timeline |
 | M14 | 已完成 | 多数据库支持（SQLite / PostgreSQL） |
 | M14.1 | 已完成 | Token Scope 通配符与 Token Modify |
+| M15 | 已完成 | MCP Tool 全量覆盖（74 tool）与 Agent Skill 文档 |
 
 ## M0：本地单用户 CLI
 
@@ -895,14 +896,44 @@ CGO_ENABLED=0 go test ./...
 CGO_ENABLED=0 go build ./cmd/taskg
 ```
 
+## M15：MCP Tool 全量覆盖与 Agent Skill 文档
+
+**状态：已完成。**
+
+**目标：** 把 MCP tool 从 33 个扩展到 74 个，覆盖 CLI/HTTP 已有的全部操作，补齐集成测试，并生成面向 Agent 的 Skill 文档。同时确保 MCP 调用模式为"每次显式传 workspace/project，不依赖隐式上下文"。
+
+**已交付内容：**
+
+- MCP tool 从 33 扩展到 74，按领域拆分到独立文件：
+  - `tools_task.go` — 16 task tool（含 denotate、link_list、export、import）
+  - `tools_project.go` — 13 project tool（含 add/modify/archive/annotate/denotate/config 全套）
+  - `tools_workspace.go` — 7 workspace tool（含 add/info/modify/archive/use）
+  - `tools_user.go` — 7 user tool（含 add/use/list/get/bind/unbind/list_external_ids）
+  - `tools_member.go` — 3 member tool（含 member_role）
+  - `tools_context.go` — 5 context tool（含 get/list/delete）
+  - `tools_config.go` — 4 config tool（含 get/set/list/unset）
+  - `tools_hook.go` — 新文件，10 hook tool（add/list/info/modify/remove + delivery_list/delivery_info/delivery_redeliver + test/ping）
+  - `tools_token.go` — 新文件，4 token tool（list/create/modify/revoke）
+  - `tools_misc.go` — 新文件，audit_list + scope_list + me_get
+- MCP tool 命名统一使用 `_` 分隔（如 `task_add`、`project_annotate`、`hook_delivery_redeliver`）
+- AddUser 支持中文/非 ASCII 用户名：slug 推导失败时自动 fallback 到 `user-{uuid[:8]}`
+- 集成测试全覆盖：17 个新测试函数覆盖所有 74 tool
+- 74 tool schema golden test（`internal/mcpserver/testdata/`）
+- 8 个 Agent Skill 文档（`docs/skills/*/SKILL.md`），每个 tool 含 MCP 调用示例（输入/输出 JSON）
+- Skill 文档明确指导 Agent "每次调用显式传 workspace/project，不依赖 context_set / workspace_use 隐式状态"
+
+**不进入 M15：**
+
+- `task_search` 全文搜索 tool（已讨论，方案 A：新增 Agent 友好搜索 tool，尚未实施）
+
 ## 当前下一步
 
-M14.1（Token Scope 通配符与 Token Modify）已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、Token Scope 通配符与 Token Modify 的完整能力栈。
+M15（MCP Tool 全量覆盖与 Agent Skill 文档）已完成。taskg 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）的完整能力栈。
 
 后续方向待定，可能包括：
 
+- `task_search` Agent 友好全文搜索 tool
 - 性能优化与大 workspace 场景验证
-- 更丰富的 MCP tool 覆盖
 - 外部系统 adapter 生态
 - 多端同步与 replica
 

@@ -731,7 +731,7 @@ func TestHookDeliveryListByHook(t *testing.T) {
 	}
 
 	// filter by hook
-	all, err := repo.ListByHook(hookID, "", 0)
+	all, err := repo.ListByHook(hookID, "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -740,7 +740,7 @@ func TestHookDeliveryListByHook(t *testing.T) {
 	}
 
 	// filter by hook + status
-	succeeded, err := repo.ListByHook(hookID, DeliveryStatusSucceeded, 0)
+	succeeded, err := repo.ListByHook(hookID, DeliveryStatusSucceeded, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -749,7 +749,7 @@ func TestHookDeliveryListByHook(t *testing.T) {
 	}
 
 	// limit
-	limited, err := repo.ListByHook(hookID, "", 1)
+	limited, err := repo.ListByHook(hookID, "", 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
