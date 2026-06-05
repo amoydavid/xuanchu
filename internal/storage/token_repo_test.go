@@ -4,6 +4,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 func newTokenRepoTestStore(t *testing.T) *Store {
@@ -111,5 +114,76 @@ func TestTokenRepositoryRevokeAndListByUser(t *testing.T) {
 	}
 	if all[1].RevokedAt == nil || *all[1].RevokedAt != 200 {
 		t.Fatalf("revoked token = %#v", all[1])
+	}
+}
+
+func TestTokenRepository_Update(t *testing.T) {
+	store := newTokenRepoTestStore(t)
+	repo := NewTokenRepository(store.DB())
+	entry := ApiTokenEntry{
+		ID:               uuid.NewString(),
+		UserID:           "user1",
+		Name:             "test-token",
+		Type:             "pat",
+		TokenPrefix:      "taskg_pat_abc",
+		TokenHash:        "hash",
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `[]`,
+		ProjectIDsJSON:   `[]`,
+		CreatedAt:        time.Now().Unix(),
+	}
+	if err := repo.Create(entry); err != nil {
+		t.Fatal(err)
+	}
+	newName := "renamed"
+	newScopes := `["task:read","task:write"]`
+	err := repo.Update(entry.ID, TokenUpdates{
+		Name:       &newName,
+		ScopesJSON: &newScopes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := repo.GetByID(entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "renamed" {
+		t.Fatalf("name = %q", updated.Name)
+	}
+	if updated.ScopesJSON != newScopes {
+		t.Fatalf("scopes = %q", updated.ScopesJSON)
+	}
+}
+
+func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
+	store := newTokenRepoTestStore(t)
+	repo := NewTokenRepository(store.DB())
+	expiresAt := time.Now().Add(24 * time.Hour).Unix()
+	entry := ApiTokenEntry{
+		ID:               uuid.NewString(),
+		UserID:           "user1",
+		Name:             "test-token",
+		Type:             "pat",
+		TokenPrefix:      "taskg_pat_abc",
+		TokenHash:        "hash",
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `[]`,
+		ProjectIDsJSON:   `[]`,
+		CreatedAt:        time.Now().Unix(),
+		ExpiresAt:        &expiresAt,
+	}
+	if err := repo.Create(entry); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Update(entry.ID, TokenUpdates{ClearExpiresAt: true}); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := repo.GetByID(entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ExpiresAt != nil {
+		t.Fatalf("expected nil ExpiresAt, got %d", *updated.ExpiresAt)
 	}
 }

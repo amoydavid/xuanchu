@@ -123,6 +123,47 @@ func (r *TokenRepository) TouchLastUsed(id string, ts int64) error {
 	return nil
 }
 
+type TokenUpdates struct {
+	Name             *string
+	ScopesJSON       *string
+	WorkspaceIDsJSON *string
+	ProjectIDsJSON   *string
+	ExpiresAt        *int64
+	ClearExpiresAt   bool
+}
+
+func (r *TokenRepository) Update(id string, updates TokenUpdates) error {
+	attrs := map[string]any{}
+	if updates.Name != nil {
+		attrs["name"] = *updates.Name
+	}
+	if updates.ScopesJSON != nil {
+		attrs["scopes_json"] = *updates.ScopesJSON
+	}
+	if updates.WorkspaceIDsJSON != nil {
+		attrs["workspace_ids_json"] = *updates.WorkspaceIDsJSON
+	}
+	if updates.ProjectIDsJSON != nil {
+		attrs["project_ids_json"] = *updates.ProjectIDsJSON
+	}
+	if updates.ClearExpiresAt {
+		attrs["expires_at"] = nil
+	} else if updates.ExpiresAt != nil {
+		attrs["expires_at"] = *updates.ExpiresAt
+	}
+	if len(attrs) == 0 {
+		return nil
+	}
+	result := r.db.Model(&ApiToken{}).Where("id = ?", id).Updates(attrs)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func apiTokenModel(entry ApiTokenEntry) ApiToken {
 	return ApiToken{
 		ID:               entry.ID,
