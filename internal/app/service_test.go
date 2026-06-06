@@ -3454,19 +3454,22 @@ func TestServiceRejectsBlankAnnotateAppendAndPrepend(t *testing.T) {
 	}
 }
 
-func TestServiceRejectsAnnotationNewline(t *testing.T) {
+func TestServiceAllowsAnnotationMultiline(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 	tsk, _ := svc.Add(AddInput{Description: "task"})
-	if err := svc.Annotate(tsk.UUID, "line1\nline2"); err == nil {
-		t.Fatal("Annotate() error = nil, want newline validation error")
+	if err := svc.Annotate(tsk.UUID, "line1\nline2"); err != nil {
+		t.Fatalf("Annotate() error = %v", err)
 	}
 	got, err := svc.ResolveTarget(tsk.UUID)
 	if err != nil {
 		t.Fatalf("ResolveTarget() error = %v", err)
 	}
-	if len(got.Annotations) != 0 {
-		t.Fatalf("Annotations = %#v, want empty", got.Annotations)
+	if len(got.Annotations) != 1 {
+		t.Fatalf("Annotations = %#v, want 1", got.Annotations)
+	}
+	if got.Annotations[0].Description != "line1\nline2" {
+		t.Fatalf("Description = %q, want multi-line preserved", got.Annotations[0].Description)
 	}
 }
 

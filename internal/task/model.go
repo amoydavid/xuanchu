@@ -105,9 +105,7 @@ func (t Task) Validate() error {
 		if trimmed == "" {
 			return errors.New("annotation description is required")
 		}
-		if strings.ContainsAny(a.Description, "\n\r") {
-			return errors.New("annotation description must not contain newlines")
-		}
+
 		_ = i
 	}
 	for _, a := range t.Assignees {

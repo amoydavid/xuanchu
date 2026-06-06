@@ -764,9 +764,7 @@ func (s *Service) annotateLocked(target, description string) (task.Task, project
 	if description == "" {
 		return task.Task{}, projectChange{}, fmt.Errorf("annotation description is required")
 	}
-	if strings.ContainsAny(description, "\n\r") {
-		return task.Task{}, projectChange{}, fmt.Errorf("annotation description must not contain newlines")
-	}
+
 	now := s.clock.Unix()
 	for attempts := 0; attempts < 3; attempts++ {
 		tsk, err := s.resolveTargetForWrite(target)
