@@ -179,7 +179,7 @@ func (c *Client) ExportTasks(ctx context.Context, workspace, project, projectID 
 	} else if project != "" {
 		values.Set("project", project)
 	}
-	var envelope apiEnvelope[[]task.JSONTask]
+	var envelope apiEnvelope[[]taskResponseJSON]
 	if err := c.get(ctx, "/api/v1/export", values, &envelope); err != nil {
 		return nil, err
 	}

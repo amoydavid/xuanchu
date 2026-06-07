@@ -38,6 +38,67 @@ func TestCLIAddListInfo(t *testing.T) {
 	}
 }
 
+func TestCLITaskSlugTargets(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+
+	run(t, bin, "--db", db, "project", "add", "API", "name:API")
+	run(t, bin, "--db", db, "add", "Write docs", "project:api", "+next")
+
+	list := run(t, bin, "--db", db, "list")
+	if !strings.Contains(list, "api-1") {
+		t.Fatalf("list output missing task slug: %q", list)
+	}
+
+	info := run(t, bin, "--db", db, "info", "api-1")
+	if !strings.Contains(info, "Task slug:") || !strings.Contains(info, "api-1") {
+		t.Fatalf("info api-1 output = %q", info)
+	}
+
+	uuidOut := strings.TrimSpace(run(t, bin, "--db", db, "_get", "api-1.uuid"))
+	if uuidOut == "" || strings.Contains(uuidOut, "api-1") {
+		t.Fatalf("_get api-1.uuid output = %q", uuidOut)
+	}
+
+	urgency := run(t, bin, "--db", db, "urgency", "api-1")
+	if !strings.Contains(urgency, "tag.next") {
+		t.Fatalf("urgency api-1 output = %q", urgency)
+	}
+
+	linkAdd := run(t, bin, "--db", db, "api-1", "link", "add", "--type", "doc", "--url", "https://example.com/spec")
+	if !strings.Contains(linkAdd, "Added") {
+		t.Fatalf("link add api-1 output = %q", linkAdd)
+	}
+	linkList := run(t, bin, "--db", db, "api-1", "link", "list")
+	if !strings.Contains(linkList, "[doc]") || !strings.Contains(linkList, "https://example.com/spec") {
+		t.Fatalf("link list api-1 output = %q", linkList)
+	}
+
+	infoJSON := run(t, bin, "--db", db, "--json", "info", "api-1")
+	var infoPayload map[string]any
+	if err := json.Unmarshal([]byte(infoJSON), &infoPayload); err != nil {
+		t.Fatalf("info api-1 --json parse error = %v, output = %q", err, infoJSON)
+	}
+	if infoPayload["task_slug"] != "api-1" {
+		t.Fatalf("task_slug = %v, want api-1", infoPayload["task_slug"])
+	}
+	linksRaw, _ := infoPayload["links"].([]any)
+	if len(linksRaw) != 1 {
+		t.Fatalf("links count = %d, want 1", len(linksRaw))
+	}
+	linkMap, _ := linksRaw[0].(map[string]any)
+	linkID, _ := linkMap["id"].(string)
+	if linkID == "" {
+		t.Fatalf("link id missing in %s", infoJSON)
+	}
+	linkRemove := run(t, bin, "--db", db, "api-1", "link", "remove", linkID)
+	if !strings.Contains(linkRemove, "Removed") {
+		t.Fatalf("link remove api-1 output = %q", linkRemove)
+	}
+
+	run(t, bin, "--db", db, "api-1", "done")
+}
+
 func TestCLIAddWithAssignees(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
@@ -252,6 +313,10 @@ func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
 	info := run(t, bin, "--server", baseURL, "--token", token, "info", "1")
 	if !strings.Contains(info, "remote task") || !strings.Contains(info, "Project") {
 		t.Fatalf("remote info = %q", info)
+	}
+	slugInfo := run(t, bin, "--server", baseURL, "--token", token, "info", "remote-1")
+	if !strings.Contains(slugInfo, "remote task") || !strings.Contains(slugInfo, "Task slug:") {
+		t.Fatalf("remote info by task_slug = %q", slugInfo)
 	}
 
 	remoteInfoJSON := run(t, bin, "--server", baseURL, "--token", token, "--json", "project", "info", "remote")

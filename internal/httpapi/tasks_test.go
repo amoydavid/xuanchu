@@ -13,7 +13,125 @@ func TestTaskInfoRejectsNonUUIDPath(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read")
 
 	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/1", map[string]string{"Authorization": "Bearer " + fixture.token})
-	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_uuid_invalid")
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_ref_invalid")
+}
+
+func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
+	cases := []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		wantStatus int
+		before     func(t *testing.T, svc *app.Service, taskUUID string) string
+	}{
+		{name: "info", method: http.MethodGet, path: "/api/v1/tasks/api-1", wantStatus: http.StatusOK},
+		{name: "list target", method: http.MethodGet, path: "/api/v1/tasks?target=api-1", wantStatus: http.StatusOK},
+		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/api-1", body: `{"description":"updated"}`, wantStatus: http.StatusOK},
+		{name: "done", method: http.MethodPost, path: "/api/v1/tasks/api-1/done", wantStatus: http.StatusOK},
+		{name: "delete", method: http.MethodDelete, path: "/api/v1/tasks/api-1", wantStatus: http.StatusOK},
+		{name: "start", method: http.MethodPost, path: "/api/v1/tasks/api-1/start", wantStatus: http.StatusOK},
+		{name: "stop", method: http.MethodPost, path: "/api/v1/tasks/api-1/stop", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
+			t.Helper()
+			if err := svc.Start(taskUUID); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}},
+		{name: "annotate", method: http.MethodPost, path: "/api/v1/tasks/api-1/annotations", body: `{"description":"note"}`, wantStatus: http.StatusOK},
+		{name: "denotate", method: http.MethodDelete, path: "/api/v1/tasks/api-1/annotations/1", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
+			t.Helper()
+			if err := svc.Annotate(taskUUID, "note"); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}},
+		{name: "urgency", method: http.MethodGet, path: "/api/v1/tasks/api-1/urgency", wantStatus: http.StatusOK},
+		{name: "link add", method: http.MethodPost, path: "/api/v1/tasks/api-1/links", body: `{"type":"document","url":"https://example.com","title":"Example"}`, wantStatus: http.StatusCreated},
+		{name: "link list", method: http.MethodGet, path: "/api/v1/tasks/api-1/links", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
+			t.Helper()
+			if _, err := svc.TaskAddLink(taskUUID, "document", "https://example.com", "Example"); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}},
+		{name: "link remove", method: http.MethodDelete, path: "/api/v1/tasks/api-1/links/{linkID}", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
+			t.Helper()
+			link, err := svc.TaskAddLink(taskUUID, "document", "https://example.com", "Example")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return link.ID
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write", "project:read", "project:write")
+			svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+			if err != nil {
+				t.Fatal(err)
+			}
+			project, err := svc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			created, err := svc.Add(app.AddInput{Description: "slug task", Project: &project.Slug})
+			if err != nil {
+				t.Fatal(err)
+			}
+			linkID := ""
+			if tc.before != nil {
+				linkID = tc.before(t, svc, created.UUID)
+			}
+			path := strings.ReplaceAll(tc.path, "{linkID}", linkID)
+			headers := map[string]string{
+				"Authorization": "Bearer " + fixture.token,
+				"Content-Type":  "application/json",
+			}
+			rr := requestHTTPBody(t, fixture.server, tc.method, path, tc.body, headers)
+			if rr.Code != tc.wantStatus {
+				t.Fatalf("%s %s status = %d body=%s", tc.method, path, rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "slug task") && !strings.Contains(rr.Body.String(), "updated") && !strings.Contains(rr.Body.String(), "document") && tc.name != "urgency" {
+				t.Fatalf("%s %s body missing expected task/link data: %s", tc.method, path, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestTaskHTTPRejectsNumericTaskRefs(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{name: "info", method: http.MethodGet, path: "/api/v1/tasks/1"},
+		{name: "list target", method: http.MethodGet, path: "/api/v1/tasks?target=1"},
+		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/1", body: `{"description":"updated"}`},
+		{name: "delete", method: http.MethodDelete, path: "/api/v1/tasks/1"},
+		{name: "done", method: http.MethodPost, path: "/api/v1/tasks/1/done"},
+		{name: "start", method: http.MethodPost, path: "/api/v1/tasks/1/start"},
+		{name: "stop", method: http.MethodPost, path: "/api/v1/tasks/1/stop"},
+		{name: "annotate", method: http.MethodPost, path: "/api/v1/tasks/1/annotations", body: `{"description":"note"}`},
+		{name: "denotate", method: http.MethodDelete, path: "/api/v1/tasks/1/annotations/1"},
+		{name: "urgency", method: http.MethodGet, path: "/api/v1/tasks/1/urgency"},
+		{name: "link list", method: http.MethodGet, path: "/api/v1/tasks/1/links"},
+		{name: "link add", method: http.MethodPost, path: "/api/v1/tasks/1/links", body: `{"type":"document","url":"https://example.com"}`},
+		{name: "link remove", method: http.MethodDelete, path: "/api/v1/tasks/1/links/link"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := requestHTTPBody(t, fixture.server, tc.method, tc.path, tc.body, headers)
+			assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_ref_invalid")
+		})
+	}
 }
 
 func TestTaskInfoMissingReturnsTaskNotFound(t *testing.T) {

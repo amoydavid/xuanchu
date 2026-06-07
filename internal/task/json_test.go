@@ -60,16 +60,27 @@ func TestJSONTaskOmitsTaskSlugWithoutProject(t *testing.T) {
 	}
 }
 
-func TestJSONTaskRejectsReadonlyTaskSlugAndProjectSeq(t *testing.T) {
-	for _, field := range []string{"task_slug", "project_seq"} {
-		t.Run(field, func(t *testing.T) {
-			var dto JSONTask
-			raw := `{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","` + field + `":"api-1"}`
-			err := json.Unmarshal([]byte(raw), &dto)
-			if err == nil || !strings.Contains(err.Error(), field) {
-				t.Fatalf("Unmarshal(%s) error = %v, want readonly/reserved", field, err)
-			}
-		})
+func TestJSONTaskAcceptsExportedTaskSlugButDoesNotImportProjectSeq(t *testing.T) {
+	var dto JSONTask
+	raw := `{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project":"api","task_slug":"api-12"}`
+	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
+		t.Fatalf("Unmarshal(task_slug) error = %v", err)
+	}
+	got := FromJSON(dto)
+	if got.ProjectSeq != nil {
+		t.Fatalf("ProjectSeq = %#v, want nil because task_slug is derived", got.ProjectSeq)
+	}
+	if dto.TaskSlug == nil || *dto.TaskSlug != "api-12" {
+		t.Fatalf("TaskSlug = %#v, want api-12", dto.TaskSlug)
+	}
+}
+
+func TestJSONTaskRejectsReadonlyProjectSeq(t *testing.T) {
+	var dto JSONTask
+	raw := `{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_seq":1}`
+	err := json.Unmarshal([]byte(raw), &dto)
+	if err == nil || !strings.Contains(err.Error(), "project_seq") {
+		t.Fatalf("Unmarshal(project_seq) error = %v, want readonly/reserved", err)
 	}
 }
 

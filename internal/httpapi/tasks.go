@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
@@ -110,7 +109,12 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		input.NoContext = true
 	}
 	if target := strings.TrimSpace(r.URL.Query().Get("target")); target != "" {
-		input.Target = &target
+		tsk, err := scoped.ResolveProtocolTarget(target)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		input.Target = &tsk.UUID
 	}
 	filters := r.URL.Query()["query"]
 	if len(filters) == 0 {
@@ -244,9 +248,8 @@ func (s *Server) ensureTaskAddProjectRefs(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
-	taskID := chi.URLParam(r, "taskID")
-	if _, err := uuid.Parse(taskID); err != nil {
-		writeError(w, http.StatusBadRequest, "task_uuid_invalid", "task UUID is invalid", nil)
+	taskRef, ok := requireTaskRef(w, r)
+	if !ok {
 		return
 	}
 	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
@@ -254,7 +257,7 @@ func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	tsk, err := scoped.Info(taskID)
+	tsk, err := scoped.ResolveProtocolTarget(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -268,7 +271,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	taskID, ok := requireTaskUUID(w, r)
+	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
 		return
 	}
@@ -280,6 +283,11 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		projectRef = strings.TrimSpace(*req.Project)
 	}
 	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -299,7 +307,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		}
 		project = &view.Slug
 	}
-	if err := scoped.Modify(taskID, app.ModifyInput{
+	if err := scoped.Modify(resolved.UUID, app.ModifyInput{
 		Description:     req.Description,
 		Project:         project,
 		ClearProject:    req.ClearProject,
@@ -328,7 +336,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, taskID)
+	writeTaskAfterMutation(w, scoped, resolved.UUID)
 }
 
 func (s *Server) handleTaskDone(w http.ResponseWriter, r *http.Request) {
@@ -370,7 +378,7 @@ func (s *Server) handleTaskDenotate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
-	taskID, ok := requireTaskUUID(w, r)
+	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
 		return
 	}
@@ -379,7 +387,12 @@ func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	result, err := scoped.ExplainUrgency(taskID)
+	resolved, err := scoped.ResolveProtocolTarget(taskRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result, err := scoped.ExplainUrgency(resolved.UUID)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -393,7 +406,7 @@ func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	taskID, ok := requireTaskUUID(w, r)
+	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
 		return
 	}
@@ -402,7 +415,12 @@ func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	link, err := scoped.TaskAddLink(taskID, req.Type, req.URL, req.Title)
+	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	link, err := scoped.TaskAddLink(resolved.UUID, req.Type, req.URL, req.Title)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -411,7 +429,7 @@ func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
-	taskID, ok := requireTaskUUID(w, r)
+	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
 		return
 	}
@@ -420,7 +438,7 @@ func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	tsk, err := scoped.Info(taskID)
+	tsk, err := scoped.ResolveProtocolTarget(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -429,7 +447,7 @@ func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
-	taskID, ok := requireTaskUUID(w, r)
+	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
 		return
 	}
@@ -443,11 +461,16 @@ func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	if err := scoped.TaskRemoveLink(taskID, linkID); err != nil {
+	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
+	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, taskID)
+	if err := scoped.TaskRemoveLink(resolved.UUID, linkID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeTaskAfterMutation(w, scoped, resolved.UUID)
 }
 
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
@@ -487,7 +510,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn func(*app.Service, string) error) {
-	taskID, ok := requireTaskUUID(w, r)
+	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
 		return
 	}
@@ -496,11 +519,16 @@ func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn fun
 		writeAppError(w, err)
 		return
 	}
-	if err := fn(scoped, taskID); err != nil {
+	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
+	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, taskID)
+	if err := fn(scoped, resolved.UUID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeTaskAfterMutation(w, scoped, resolved.UUID)
 }
 
 func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskID string) {
@@ -512,13 +540,13 @@ func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskID stri
 	writeSuccess(w, http.StatusOK, task.ToJSON(tsk), nil)
 }
 
-func requireTaskUUID(w http.ResponseWriter, r *http.Request) (string, bool) {
-	taskID := chi.URLParam(r, "taskID")
-	if _, err := uuid.Parse(taskID); err != nil {
-		writeError(w, http.StatusBadRequest, "task_uuid_invalid", "task UUID is invalid", nil)
+func requireTaskRef(w http.ResponseWriter, r *http.Request) (string, bool) {
+	taskRef := strings.TrimSpace(chi.URLParam(r, "taskID"))
+	if taskRef == "" {
+		writeError(w, http.StatusBadRequest, "task_ref_invalid", "task reference is required", nil)
 		return "", false
 	}
-	return taskID, true
+	return taskRef, true
 }
 
 func tasksToJSON(rows []task.Task) []task.JSONTask {

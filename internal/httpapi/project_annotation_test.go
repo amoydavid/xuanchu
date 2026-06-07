@@ -15,7 +15,7 @@ func TestProjectAnnotationAddAndList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, err := svc.AddProject(app.AddProjectInput{Slug: "test-proj", Name: "Test"})
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestProjectAnnotationDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, err := svc.AddProject(app.AddProjectInput{Slug: "del-proj", Name: "Delete"})
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "delproj", Name: "Delete"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestProjectTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, err := svc.AddProject(app.AddProjectInput{Slug: "tl-proj", Name: "Timeline"})
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "tlproj", Name: "Timeline"})
 	if err != nil {
 		t.Fatal(err)
 	}

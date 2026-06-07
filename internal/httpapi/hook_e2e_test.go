@@ -295,7 +295,7 @@ func TestHookEndToEndProjectArchivedPayloadStability(t *testing.T) {
 	h.createHookDirect(t, webhookTarget.URL, []string{"project.archived"})
 
 	// 创建并归档 project
-	proj, _ := h.svc.AddProject(app.AddProjectInput{Slug: "e2e-proj", Name: "E2E Project"})
+	proj, _ := h.svc.AddProject(app.AddProjectInput{Slug: "e2eproj", Name: "E2E Project"})
 	_, _ = h.svc.ArchiveProject(proj.Slug)
 
 	dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
@@ -322,8 +322,8 @@ func TestHookEndToEndProjectArchivedPayloadStability(t *testing.T) {
 		t.Fatalf("archived = %v, want true", data["archived"])
 	}
 	projData := data["project"].(map[string]any)
-	if projData["slug"] != "e2e-proj" {
-		t.Fatalf("project slug = %v, want e2e-proj", projData["slug"])
+	if projData["slug"] != "e2eproj" {
+		t.Fatalf("project slug = %v, want e2eproj", projData["slug"])
 	}
 }
 

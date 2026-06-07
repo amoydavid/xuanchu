@@ -151,6 +151,7 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 		End         *string          `json:"end,omitempty"`
 		Due         *string          `json:"due,omitempty"`
 		Project     *string          `json:"project,omitempty"`
+		TaskSlug    *string          `json:"task_slug,omitempty"`
 		Priority    *string          `json:"priority,omitempty"`
 		Tags        []string         `json:"tags,omitempty"`
 		Start       *string          `json:"start,omitempty"`
@@ -218,6 +219,7 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 	t.End = core.End
 	t.Due = core.Due
 	t.Project = core.Project
+	t.TaskSlug = core.TaskSlug
 	t.Priority = core.Priority
 	t.Tags = core.Tags
 	t.Start = core.Start
@@ -431,7 +433,6 @@ func reservedJSONFields() map[string]struct{} {
 	return map[string]struct{}{
 		"project_id":  {},
 		"project_seq": {},
-		"task_slug":   {},
 	}
 }
 

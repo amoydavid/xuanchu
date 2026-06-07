@@ -85,6 +85,9 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 		}
 		return target, nil
 	}
+	if isTaskSlugRef(target) {
+		return target, nil
+	}
 	tasks, err := remoteDefaultWorkingSet(ctx, client, opts)
 	if err != nil {
 		return "", err
@@ -108,6 +111,32 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 		return "", fmt.Errorf("task %q not found", target)
 	}
 	return matched, nil
+}
+
+func isTaskSlugRef(target string) bool {
+	dash := strings.LastIndex(target, "-")
+	if dash <= 0 || dash == len(target)-1 {
+		return false
+	}
+	if seq, err := strconv.ParseInt(target[dash+1:], 10, 64); err != nil || seq < 1 {
+		return false
+	}
+	project := target[:dash]
+	if len(project) < 3 || len(project) > 10 {
+		return false
+	}
+	first := project[0]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')) {
+		return false
+	}
+	for i := 0; i < len(project); i++ {
+		ch := project[i]
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func remoteDefaultWorkingSet(ctx context.Context, client *remote.Client, opts Options) ([]task.Task, error) {
