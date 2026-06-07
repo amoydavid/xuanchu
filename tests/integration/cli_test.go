@@ -1755,32 +1755,32 @@ func TestCLIProjectLifecycle(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	addOut := run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
-	if !strings.Contains(addOut, "Created project ai-agent-platform") {
+	addOut := run(t, bin, "--db", db, "project", "add", "apiplat", "name:AI Agent Platform")
+	if !strings.Contains(addOut, "Created project apiplat") {
 		t.Fatalf("project add output = %q", addOut)
 	}
 	listOut := run(t, bin, "--db", db, "project", "list")
-	if !strings.Contains(listOut, "ai-agent-platform") {
+	if !strings.Contains(listOut, "apiplat") {
 		t.Fatalf("project list output = %q", listOut)
 	}
-	infoJSON := run(t, bin, "--db", db, "--json", "project", "info", "ai-agent-platform")
+	infoJSON := run(t, bin, "--db", db, "--json", "project", "info", "apiplat")
 	var info map[string]any
 	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil {
 		t.Fatalf("json.Unmarshal(project info) error = %v", err)
 	}
-	if info["slug"] != "ai-agent-platform" || info["name"] != "AI Agent Platform" {
+	if info["slug"] != "apiplat" || info["name"] != "AI Agent Platform" {
 		t.Fatalf("project info --json output = %#v", info)
 	}
-	modOut := run(t, bin, "--db", db, "project", "modify", "ai-agent-platform", "description:Agent MCP platform")
-	if !strings.Contains(modOut, "Modified project ai-agent-platform") {
+	modOut := run(t, bin, "--db", db, "project", "modify", "apiplat", "description:Agent MCP platform")
+	if !strings.Contains(modOut, "Modified project apiplat") {
 		t.Fatalf("project modify output = %q", modOut)
 	}
-	run(t, bin, "--db", db, "add", "Design schema", "project:ai-agent-platform")
-	archiveOut := run(t, bin, "--db", db, "project", "archive", "ai-agent-platform")
-	if !strings.Contains(archiveOut, "Archived project ai-agent-platform") || !strings.Contains(archiveOut, "warning: archived project ai-agent-platform still has 1 non-deleted task") {
+	run(t, bin, "--db", db, "add", "Design schema", "project:apiplat")
+	archiveOut := run(t, bin, "--db", db, "project", "archive", "apiplat")
+	if !strings.Contains(archiveOut, "Archived project apiplat") || !strings.Contains(archiveOut, "warning: archived project apiplat still has 1 non-deleted task") {
 		t.Fatalf("project archive output = %q", archiveOut)
 	}
-	archiveJSON := run(t, bin, "--db", db, "--json", "project", "info", "ai-agent-platform")
+	archiveJSON := run(t, bin, "--db", db, "--json", "project", "info", "apiplat")
 	var archivedInfo map[string]any
 	if err := json.Unmarshal([]byte(archiveJSON), &archivedInfo); err != nil {
 		t.Fatalf("json.Unmarshal(archived project info) error = %v", err)
@@ -1788,20 +1788,20 @@ func TestCLIProjectLifecycle(t *testing.T) {
 	if archivedInfo["task_count"] != float64(1) {
 		t.Fatalf("archived project task_count = %#v, want 1", archivedInfo["task_count"])
 	}
-	run(t, bin, "--db", db, "project", "add", "json-archive", "name:JSON Archive")
-	run(t, bin, "--db", db, "add", "JSON archive task", "project:json-archive")
-	archiveJSONOut := run(t, bin, "--db", db, "--json", "project", "archive", "json-archive")
+	run(t, bin, "--db", db, "project", "add", "jsonarch", "name:JSON Archive")
+	run(t, bin, "--db", db, "add", "JSON archive task", "project:jsonarch")
+	archiveJSONOut := run(t, bin, "--db", db, "--json", "project", "archive", "jsonarch")
 	var archivedArchive map[string]any
 	if err := json.Unmarshal([]byte(archiveJSONOut), &archivedArchive); err != nil {
 		t.Fatalf("json.Unmarshal(project archive --json) error = %v; output = %q", err, archiveJSONOut)
 	}
-	if archivedArchive["slug"] != "json-archive" || archivedArchive["task_count"] != float64(1) || archivedArchive["status"] != "archived" {
+	if archivedArchive["slug"] != "jsonarch" || archivedArchive["task_count"] != float64(1) || archivedArchive["status"] != "archived" {
 		t.Fatalf("project archive --json output = %#v", archivedArchive)
 	}
-	if _, err := runErr(t, bin, "--db", db, "add", "Should fail", "project:ai-agent-platform"); err == nil {
+	if _, err := runErr(t, bin, "--db", db, "add", "Should fail", "project:apiplat"); err == nil {
 		t.Fatal("add with archived project error = nil, want failure")
 	}
-	if _, err := runErr(t, bin, "--db", db, "project", "archive", "ai-agent-platform"); err == nil {
+	if _, err := runErr(t, bin, "--db", db, "project", "archive", "apiplat"); err == nil {
 		t.Fatal("project archive twice error = nil, want failure")
 	}
 }
@@ -1837,18 +1837,18 @@ func TestCLIProjectConfigLifecycle(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
-	run(t, bin, "--db", db, "project", "config", "set", "ai-agent-platform", "agent.background", "Project background")
-	got := strings.TrimSpace(run(t, bin, "--db", db, "project", "config", "get", "ai-agent-platform", "agent.background"))
+	run(t, bin, "--db", db, "project", "add", "apiplat", "name:AI Agent Platform")
+	run(t, bin, "--db", db, "project", "config", "set", "apiplat", "agent.background", "Project background")
+	got := strings.TrimSpace(run(t, bin, "--db", db, "project", "config", "get", "apiplat", "agent.background"))
 	if got != "Project background" {
 		t.Fatalf("project config get output = %q", got)
 	}
-	listOut := run(t, bin, "--db", db, "project", "config", "list", "ai-agent-platform")
+	listOut := run(t, bin, "--db", db, "project", "config", "list", "apiplat")
 	if !strings.Contains(listOut, "agent.background=Project background") {
 		t.Fatalf("project config list output = %q", listOut)
 	}
-	run(t, bin, "--db", db, "project", "config", "unset", "ai-agent-platform", "agent.background")
-	if _, err := runErr(t, bin, "--db", db, "project", "config", "get", "ai-agent-platform", "agent.background"); err == nil {
+	run(t, bin, "--db", db, "project", "config", "unset", "apiplat", "agent.background")
+	if _, err := runErr(t, bin, "--db", db, "project", "config", "get", "apiplat", "agent.background"); err == nil {
 		t.Fatal("project config get after unset error = nil, want failure")
 	}
 }
@@ -1857,7 +1857,7 @@ func TestCLIConfigRejectsProjectScopedKeysWithoutScope(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "ai-agent-platform", "name:AI Agent Platform")
+	run(t, bin, "--db", db, "project", "add", "apiplat", "name:AI Agent Platform")
 	for _, args := range [][]string{
 		{"--db", db, "config", "set", "agent.background", "Background"},
 		{"--db", db, "config", "get", "agent.background"},
@@ -1980,19 +1980,19 @@ func TestCLIProjectAnnotateDenotate(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "test-proj", "name:Test Project")
+	run(t, bin, "--db", db, "project", "add", "testproj", "name:Test Project")
 
-	out := run(t, bin, "--db", db, "project", "annotate", "test-proj", "first", "note")
+	out := run(t, bin, "--db", db, "project", "annotate", "testproj", "first", "note")
 	if !strings.Contains(out, "Annotated project") {
 		t.Fatalf("annotate output = %q", out)
 	}
 
-	out = run(t, bin, "--db", db, "project", "annotations", "test-proj")
+	out = run(t, bin, "--db", db, "project", "annotations", "testproj")
 	if !strings.Contains(out, "first note") {
 		t.Fatalf("annotations output = %q", out)
 	}
 
-	out = run(t, bin, "--db", db, "--json", "project", "annotations", "test-proj")
+	out = run(t, bin, "--db", db, "--json", "project", "annotations", "testproj")
 	var annotations []map[string]any
 	if err := json.Unmarshal([]byte(out), &annotations); err != nil {
 		t.Fatalf("JSON parse error = %v, output = %q", err, out)
@@ -2002,12 +2002,12 @@ func TestCLIProjectAnnotateDenotate(t *testing.T) {
 	}
 	annotationID, _ := annotations[0]["ID"].(string)
 
-	out = run(t, bin, "--db", db, "project", "denotate", "test-proj", annotationID)
+	out = run(t, bin, "--db", db, "project", "denotate", "testproj", annotationID)
 	if !strings.Contains(out, "Removed annotation") || !strings.Contains(out, "project") {
 		t.Fatalf("denotate output = %q", out)
 	}
 
-	out = run(t, bin, "--db", db, "project", "annotations", "test-proj")
+	out = run(t, bin, "--db", db, "project", "annotations", "testproj")
 	if !strings.Contains(out, "No annotations") {
 		t.Fatalf("expected no annotations, got = %q", out)
 	}
@@ -2017,14 +2017,14 @@ func TestCLIProjectTimeline(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "my-project", "name:My Project")
+	run(t, bin, "--db", db, "project", "add", "myproject", "name:My Project")
 
-	run(t, bin, "--db", db, "project", "annotate", "my-project", "project decision")
+	run(t, bin, "--db", db, "project", "annotate", "myproject", "project decision")
 
-	run(t, bin, "--db", db, "add", "task one", "project:my-project")
+	run(t, bin, "--db", db, "add", "task one", "project:myproject")
 	run(t, bin, "--db", db, "1", "annotate", "task observation")
 
-	out := run(t, bin, "--db", db, "project", "timeline", "my-project")
+	out := run(t, bin, "--db", db, "project", "timeline", "myproject")
 	if !strings.Contains(out, "project decision") {
 		t.Fatalf("timeline missing project annotation = %q", out)
 	}
@@ -2037,14 +2037,14 @@ func TestCLIProjectAnnotateTargetStyle(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "web-app", "name:Web App")
+	run(t, bin, "--db", db, "project", "add", "webapp", "name:Web App")
 
-	out := run(t, bin, "--db", db, "web-app", "annotate", "target style note")
+	out := run(t, bin, "--db", db, "webapp", "annotate", "target style note")
 	if !strings.Contains(out, "Annotated project") {
 		t.Fatalf("target-style annotate output = %q", out)
 	}
 
-	out = run(t, bin, "--db", db, "web-app", "annotations")
+	out = run(t, bin, "--db", db, "webapp", "annotations")
 	if !strings.Contains(out, "target style note") {
 		t.Fatalf("annotations output = %q", out)
 	}
@@ -2054,10 +2054,10 @@ func TestCLIProjectAnnotateRejectsArchived(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	run(t, bin, "--db", db, "project", "add", "old-proj", "name:Old Project")
-	run(t, bin, "--db", db, "project", "archive", "old-proj")
+	run(t, bin, "--db", db, "project", "add", "oldproj", "name:Old Project")
+	run(t, bin, "--db", db, "project", "archive", "oldproj")
 
-	_, err := runErr(t, bin, "--db", db, "project", "annotate", "old-proj", "should fail")
+	_, err := runErr(t, bin, "--db", db, "project", "annotate", "oldproj", "should fail")
 	if err == nil {
 		t.Fatal("expected annotate on archived project to fail")
 	}

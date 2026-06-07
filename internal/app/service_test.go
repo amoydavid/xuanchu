@@ -1578,7 +1578,7 @@ func TestServiceImportNormalizesProjectOnCreate(t *testing.T) {
 	defer closeFn()
 
 	project, err := svc.AddProject(AddProjectInput{
-		Slug: "work-project",
+		Slug: "workproj",
 		Name: "Work Project",
 	})
 	if err != nil {
@@ -4461,16 +4461,41 @@ func TestAddProjectRejectsDigitStartSlug(t *testing.T) {
 	}
 }
 
+func TestAddProjectNormalizesSlugToLowercaseAlnum(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "API9", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(API9) error = %v", err)
+	}
+	if project.Slug != "api9" {
+		t.Fatalf("project slug = %q, want api9", project.Slug)
+	}
+}
+
+func TestAddProjectRejectsInvalidShortSlugRules(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	for _, slug := range []string{"p1", "1api", "web-app", "ai_agent", "verylongslug", "中文"} {
+		t.Run(slug, func(t *testing.T) {
+			_, err := svc.AddProject(AddProjectInput{Slug: slug, Name: "Bad"})
+			if err == nil {
+				t.Fatalf("AddProject(%q) error = nil, want invalid slug", slug)
+			}
+		})
+	}
+}
+
 func TestServiceProjectAnnotateAndList(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	annotation, err := svc.ProjectAnnotate("test-proj", "first note")
+	annotation, err := svc.ProjectAnnotate("testproj", "first note")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4478,7 +4503,7 @@ func TestServiceProjectAnnotateAndList(t *testing.T) {
 		t.Fatalf("Content = %q, want %q", annotation.Content, "first note")
 	}
 
-	annotations, err := svc.ProjectAnnotations("test-proj")
+	annotations, err := svc.ProjectAnnotations("testproj")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4496,21 +4521,21 @@ func TestServiceProjectDenotate(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	_, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	annotation, err := svc.ProjectAnnotate("test-proj", "will be removed")
+	annotation, err := svc.ProjectAnnotate("testproj", "will be removed")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := svc.ProjectDenotate("test-proj", annotation.ID); err != nil {
+	if err := svc.ProjectDenotate("testproj", annotation.ID); err != nil {
 		t.Fatalf("ProjectDenotate() error = %v", err)
 	}
 
-	annotations, err := svc.ProjectAnnotations("test-proj")
+	annotations, err := svc.ProjectAnnotations("testproj")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4523,12 +4548,12 @@ func TestServiceProjectDenotateNotFound(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	_, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = svc.ProjectDenotate("test-proj", "nonexistent-id")
+	err = svc.ProjectDenotate("testproj", "nonexistent-id")
 	if err == nil {
 		t.Fatal("ProjectDenotate(nonexistent) error = nil, want error")
 	}
@@ -4538,7 +4563,7 @@ func TestServiceProjectAnnotateRejectsArchived(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4546,7 +4571,7 @@ func TestServiceProjectAnnotateRejectsArchived(t *testing.T) {
 		t.Fatalf("ArchiveProject() error = %v", err)
 	}
 
-	_, err = svc.ProjectAnnotate("test-proj", "should fail")
+	_, err = svc.ProjectAnnotate("testproj", "should fail")
 	if err == nil {
 		t.Fatal("ProjectAnnotate(archived) error = nil, want error")
 	}
@@ -4556,12 +4581,12 @@ func TestServiceProjectAnnotateRejectsEmptyContent(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	_, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = svc.ProjectAnnotate("test-proj", "")
+	_, err = svc.ProjectAnnotate("testproj", "")
 	if err == nil {
 		t.Fatal("ProjectAnnotate(empty) error = nil, want error")
 	}
@@ -4571,19 +4596,19 @@ func TestServiceProjectAnnotateUpdatesModifiedAt(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	beforeModified := project.ModifiedAt
 
 	svc2 := newTestServiceWithRuntime(t, store, 200, "local", "local")
-	_, err = svc2.ProjectAnnotate("test-proj", "new note")
+	_, err = svc2.ProjectAnnotate("testproj", "new note")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	updated, err := svc2.ProjectInfo("test-proj")
+	updated, err := svc2.ProjectInfo("testproj")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4596,12 +4621,12 @@ func TestServiceProjectTimeline(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	project, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = svc.ProjectAnnotate("test-proj", "project note")
+	_, err = svc.ProjectAnnotate("testproj", "project note")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4615,7 +4640,7 @@ func TestServiceProjectTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entries, err := svc2.ProjectTimeline("test-proj", TimelineOptions{Limit: 50, Offset: 0})
+	entries, err := svc2.ProjectTimeline("testproj", TimelineOptions{Limit: 50, Offset: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4636,18 +4661,18 @@ func TestServiceProjectAnnotateTimestampConflict(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	_, err := svc.AddProject(AddProjectInput{Slug: "test-proj", Name: "Test"})
+	_, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	a1, err := svc.ProjectAnnotate("test-proj", "first at timestamp 100")
+	a1, err := svc.ProjectAnnotate("testproj", "first at timestamp 100")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	svc2 := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	a2, err := svc2.ProjectAnnotate("test-proj", "second at timestamp 100")
+	a2, err := svc2.ProjectAnnotate("testproj", "second at timestamp 100")
 	if err != nil {
 		t.Fatalf("ProjectAnnotate with same timestamp: error = %v", err)
 	}
@@ -4658,7 +4683,7 @@ func TestServiceProjectAnnotateTimestampConflict(t *testing.T) {
 		t.Fatalf("entry should differ on conflict: a1.Entry=%d, a2.Entry=%d", a1.Entry, a2.Entry)
 	}
 
-	annotations, err := svc.ProjectAnnotations("test-proj")
+	annotations, err := svc.ProjectAnnotations("testproj")
 	if err != nil {
 		t.Fatal(err)
 	}

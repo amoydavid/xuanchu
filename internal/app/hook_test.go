@@ -1178,14 +1178,14 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	defer cleanup()
 
 	// 创建 project
-	proj, err := svc.AddProject(AddProjectInput{Slug: "isolated-proj", Name: "Isolated Project"})
+	proj, err := svc.AddProject(AddProjectInput{Slug: "isolated", Name: "Isolated Project"})
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
 
 	// 创建 project-scoped hook，只监听 task.created
 	projHook, err := svc.AddHook(HookAddInput{
-		Name: "proj-hook", ScopeType: HookScopeProject, ProjectRef: "isolated-proj",
+		Name: "proj-hook", ScopeType: HookScopeProject, ProjectRef: "isolated",
 		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/proj",
 		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
@@ -1204,7 +1204,7 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	}
 
 	// 创建带 project 的任务 -> 两个 hook 都应收到
-	p := "isolated-proj"
+	p := "isolated"
 	_, err = svc.Add(AddInput{Description: "in project", Project: &p})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
@@ -1357,7 +1357,7 @@ func TestHookProjectArchivedEvent(t *testing.T) {
 	}
 
 	// 创建并归档 project
-	proj, err := svc.AddProject(AddProjectInput{Slug: "to-archive", Name: "To Archive"})
+	proj, err := svc.AddProject(AddProjectInput{Slug: "archive", Name: "To Archive"})
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
@@ -1392,8 +1392,8 @@ func TestHookProjectArchivedEvent(t *testing.T) {
 		t.Fatalf("data.archived = %v, want true", data["archived"])
 	}
 	projData := data["project"].(map[string]any)
-	if projData["slug"] != "to-archive" {
-		t.Fatalf("project slug = %v, want to-archive", projData["slug"])
+	if projData["slug"] != "archive" {
+		t.Fatalf("project slug = %v, want archive", projData["slug"])
 	}
 
 	_ = archived

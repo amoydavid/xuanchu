@@ -346,14 +346,14 @@ func normalizeProjectModifyInput(input ModifyProjectInput) (ModifyProjectInput, 
 
 func normalizeProjectSlug(slug string) (string, error) {
 	slug = strings.TrimSpace(strings.ToLower(slug))
-	if slug == "" {
-		return "", RuntimeError{Code: "project_invalid_slug", Message: "project slug is invalid"}
+	if len(slug) < 3 || len(slug) > 10 {
+		return "", RuntimeError{Code: "project_invalid_slug", Message: fmt.Sprintf("project slug %q must be 3-10 lowercase letters or digits", slug)}
 	}
-	if slug[0] >= '0' && slug[0] <= '9' {
-		return "", RuntimeError{Code: "project_invalid_slug", Message: fmt.Sprintf("project slug %q must not start with a digit", slug)}
+	if slug[0] < 'a' || slug[0] > 'z' {
+		return "", RuntimeError{Code: "project_invalid_slug", Message: fmt.Sprintf("project slug %q must start with a letter", slug)}
 	}
 	for _, ch := range slug {
-		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
 			continue
 		}
 		return "", RuntimeError{Code: "project_invalid_slug", Message: fmt.Sprintf("project slug %q is invalid", slug)}
