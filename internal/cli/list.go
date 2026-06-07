@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
@@ -45,16 +44,20 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 				if sort != "" {
 					input.Report = name
 				}
-				if len(args) > 0 {
-					if isPlainTargetArg(args) {
-						input.Target = args[0]
-					} else {
-						input.Filters = append([]string(nil), args...)
-					}
-				}
 				client, err := buildRemoteClient(currentOpts)
 				if err != nil {
 					return err
+				}
+				if len(args) > 0 {
+					if isPlainTargetArg(args) {
+						target, err := resolveRemoteTaskTarget(context.Background(), client, currentOpts, args[0])
+						if err != nil {
+							return err
+						}
+						input.Target = target
+					} else {
+						input.Filters = append([]string(nil), args...)
+					}
 				}
 				tasks, err := client.ListTasks(context.Background(), input)
 				if err != nil {
@@ -140,7 +143,10 @@ func isPlainTargetArg(args []string) bool {
 		return false
 	}
 	s := args[0]
-	if _, err := strconv.Atoi(s); err == nil {
+	if isDecimalDigitsArg(s) {
+		return true
+	}
+	if isTaskSlugRef(s) {
 		return true
 	}
 	// Full 36-char UUID with hyphens
@@ -161,4 +167,16 @@ func isPlainTargetArg(args []string) bool {
 		}
 	}
 	return false
+}
+
+func isDecimalDigitsArg(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }

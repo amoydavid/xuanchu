@@ -2147,6 +2147,11 @@ func TestResolveTaskRefModesAndWorkspaceIsolation(t *testing.T) {
 	} else {
 		assertRuntimeCode(t, err, "task_ref_invalid")
 	}
+	if _, err := localSvc.ResolveProtocolTarget("999999999999999999999999999999"); err == nil {
+		t.Fatal("ResolveProtocolTarget(huge numeric) error = nil, want task_ref_invalid")
+	} else {
+		assertRuntimeCode(t, err, "task_ref_invalid")
+	}
 
 	team, err := localSvc.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team"})
 	if err != nil {

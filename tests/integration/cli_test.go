@@ -54,6 +54,10 @@ func TestCLITaskSlugTargets(t *testing.T) {
 	if !strings.Contains(info, "Task slug:") || !strings.Contains(info, "api-1") {
 		t.Fatalf("info api-1 output = %q", info)
 	}
+	listTarget := run(t, bin, "--db", db, "list", "api-1")
+	if !strings.Contains(listTarget, "Write docs") || !strings.Contains(listTarget, "api-1") {
+		t.Fatalf("list api-1 output = %q", listTarget)
+	}
 
 	uuidOut := strings.TrimSpace(run(t, bin, "--db", db, "_get", "api-1.uuid"))
 	if uuidOut == "" || strings.Contains(uuidOut, "api-1") {
@@ -314,9 +318,20 @@ func TestCLIRemoteAddListInfoAndProject(t *testing.T) {
 	if !strings.Contains(info, "remote task") || !strings.Contains(info, "Project") {
 		t.Fatalf("remote info = %q", info)
 	}
+	if errOut := runExpectError(t, bin, "--server", baseURL, "--token", token, "info", "999999999999999999999999999999"); !strings.Contains(errOut, "not found") {
+		t.Fatalf("remote info huge numeric error = %q", errOut)
+	}
+	listTarget := run(t, bin, "--server", baseURL, "--token", token, "list", "1")
+	if !strings.Contains(listTarget, "remote task") || !strings.Contains(listTarget, "remote-1") {
+		t.Fatalf("remote list by numeric target = %q", listTarget)
+	}
 	slugInfo := run(t, bin, "--server", baseURL, "--token", token, "info", "remote-1")
 	if !strings.Contains(slugInfo, "remote task") || !strings.Contains(slugInfo, "Task slug:") {
 		t.Fatalf("remote info by task_slug = %q", slugInfo)
+	}
+	slugList := run(t, bin, "--server", baseURL, "--token", token, "list", "remote-1")
+	if !strings.Contains(slugList, "remote task") || !strings.Contains(slugList, "remote-1") {
+		t.Fatalf("remote list by task_slug = %q", slugList)
 	}
 
 	remoteInfoJSON := run(t, bin, "--server", baseURL, "--token", token, "--json", "project", "info", "remote")

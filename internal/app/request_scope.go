@@ -321,10 +321,10 @@ func (s *Service) ResolveProtocolTargetForWrite(target string) (task.Task, error
 
 func (s *Service) resolveTaskRef(target string, mode ResolveMode, write bool) (task.Task, error) {
 	target = strings.TrimSpace(target)
-	if n, err := strconv.Atoi(target); err == nil && n >= 1 {
-		if mode == ResolveProtocol {
-			return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
-		}
+	if mode == ResolveProtocol && isDecimalDigits(target) {
+		return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
+	}
+	if n, ok := parseInteractiveNumericTaskRef(target); ok {
 		tasks, err := s.defaultWorkingSet()
 		if err != nil {
 			return task.Task{}, err
@@ -337,11 +337,6 @@ func (s *Service) resolveTaskRef(target string, mode ResolveMode, write bool) (t
 			return task.Task{}, err
 		}
 		return tsk, nil
-	}
-	if mode == ResolveProtocol {
-		if _, err := strconv.Atoi(target); err == nil {
-			return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
-		}
 	}
 	var (
 		tsk task.Task
@@ -435,4 +430,27 @@ func cloneRequestScope(scope *RequestScope) *RequestScope {
 	cloned.ProjectIDs = append([]string(nil), scope.ProjectIDs...)
 	cloned.Capabilities = append([]string(nil), scope.Capabilities...)
 	return &cloned
+}
+
+func parseInteractiveNumericTaskRef(target string) (int, bool) {
+	if !isDecimalDigits(target) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(target)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
+func isDecimalDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }

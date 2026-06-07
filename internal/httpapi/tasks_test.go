@@ -113,7 +113,9 @@ func TestTaskHTTPRejectsNumericTaskRefs(t *testing.T) {
 		body   string
 	}{
 		{name: "info", method: http.MethodGet, path: "/api/v1/tasks/1"},
+		{name: "info huge numeric", method: http.MethodGet, path: "/api/v1/tasks/999999999999999999999999999999"},
 		{name: "list target", method: http.MethodGet, path: "/api/v1/tasks?target=1"},
+		{name: "list target huge numeric", method: http.MethodGet, path: "/api/v1/tasks?target=999999999999999999999999999999"},
 		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/1", body: `{"description":"updated"}`},
 		{name: "delete", method: http.MethodDelete, path: "/api/v1/tasks/1"},
 		{name: "done", method: http.MethodPost, path: "/api/v1/tasks/1/done"},
