@@ -269,24 +269,24 @@ type hookView struct {
 }
 
 type hookDeliveryView struct {
-	ID             string                    `json:"id"`
-	HookID         string                    `json:"hook_id"`
-	EventID        string                    `json:"event_id"`
-	EventType      string                    `json:"event_type"`
-	WorkspaceID    string                    `json:"workspace_id"`
-	ProjectID      *string                   `json:"project_id,omitempty"`
-	Actor          task.JSONUserInfo         `json:"actor"`
-	Payload        map[string]any            `json:"payload,omitempty"`
-	Headers        map[string]string         `json:"headers,omitempty"`
-	Status         string                    `json:"status"`
-	AttemptCount   int                       `json:"attempt_count"`
-	NextAttemptAt  *int64                    `json:"next_attempt_at,omitempty"`
-	ClaimExpiresAt *int64                    `json:"claim_expires_at,omitempty"`
-	LastAttemptAt  *int64                    `json:"last_attempt_at,omitempty"`
-	LastStatusCode *int                      `json:"last_status_code,omitempty"`
-	LastError      string                    `json:"last_error,omitempty"`
-	CreatedAt      int64                     `json:"created_at"`
-	ModifiedAt     int64                     `json:"modified_at"`
+	ID             string            `json:"id"`
+	HookID         string            `json:"hook_id"`
+	EventID        string            `json:"event_id"`
+	EventType      string            `json:"event_type"`
+	WorkspaceID    string            `json:"workspace_id"`
+	ProjectID      *string           `json:"project_id,omitempty"`
+	Actor          task.JSONUserInfo `json:"actor"`
+	Payload        map[string]any    `json:"payload,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	Status         string            `json:"status"`
+	AttemptCount   int               `json:"attempt_count"`
+	NextAttemptAt  *int64            `json:"next_attempt_at,omitempty"`
+	ClaimExpiresAt *int64            `json:"claim_expires_at,omitempty"`
+	LastAttemptAt  *int64            `json:"last_attempt_at,omitempty"`
+	LastStatusCode *int              `json:"last_status_code,omitempty"`
+	LastError      string            `json:"last_error,omitempty"`
+	CreatedAt      int64             `json:"created_at"`
+	ModifiedAt     int64             `json:"modified_at"`
 }
 
 func hookViewFromApp(v app.HookView) hookView {

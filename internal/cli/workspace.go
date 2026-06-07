@@ -372,16 +372,16 @@ func workspaceViewsForJSON(workspaces []app.WorkspaceView) []map[string]any {
 
 func workspaceViewForJSON(workspace app.WorkspaceView) map[string]any {
 	m := map[string]any{
-		"id":           workspace.ID,
-		"slug":         workspace.Slug,
-		"name":         workspace.Name,
-		"description":  workspace.Description,
-		"visibility":   workspace.Visibility,
-		"archived_at":  workspace.ArchivedAt,
-		"role":         workspace.Role,
-		"active":       workspace.Active,
-		"created_at":   workspace.CreatedAt,
-		"modified_at":  workspace.ModifiedAt,
+		"id":          workspace.ID,
+		"slug":        workspace.Slug,
+		"name":        workspace.Name,
+		"description": workspace.Description,
+		"visibility":  workspace.Visibility,
+		"archived_at": workspace.ArchivedAt,
+		"role":        workspace.Role,
+		"active":      workspace.Active,
+		"created_at":  workspace.CreatedAt,
+		"modified_at": workspace.ModifiedAt,
 	}
 	if workspace.CreatedBy != nil {
 		m["created_by"] = userInfoToJSONMap(workspace.CreatedBy)

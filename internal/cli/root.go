@@ -17,9 +17,9 @@ import (
 )
 
 type Options struct {
-	Stdout  io.Writer
-	Stderr  io.Writer
-	Version string
+	Stdout    io.Writer
+	Stderr    io.Writer
+	Version   string
 	SetLogger func(*logging.Logger)
 
 	DataDir     string
@@ -78,7 +78,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.Workspace, "workspace", opts.Workspace, "workspace slug or UUID")
 	cmd.PersistentFlags().StringVar(&opts.Project, "project", opts.Project, "remote project slug scope")
 	cmd.PersistentFlags().StringVar(&opts.ProjectID, "project-id", opts.ProjectID, "remote project UUID scope")
-		cmd.PersistentFlags().StringVar(&opts.As, "as", opts.As, "impersonate user by name, email or UUID (remote only)")
+	cmd.PersistentFlags().StringVar(&opts.As, "as", opts.As, "impersonate user by name, email or UUID (remote only)")
 	cmd.PersistentFlags().BoolVar(&opts.JSON, "json", opts.JSON, "render JSON output")
 	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", opts.NoColor, "disable colored output")
 	cmd.PersistentFlags().BoolVar(&opts.NoContext, "no-context", opts.NoContext, "disable active context for this command")

@@ -9,14 +9,14 @@ import (
 )
 
 type userDTO struct {
-	ID                 string           `json:"id"`
-	Name               string           `json:"name"`
-	Email              *string          `json:"email,omitempty"`
-	DefaultWorkspaceID *string          `json:"default_workspace_id,omitempty"`
-	ExternalIDs        []externalIDDTO  `json:"external_ids,omitempty"`
-	Active             bool             `json:"active"`
-	CreatedAt          int64            `json:"created_at"`
-	ModifiedAt         int64            `json:"modified_at"`
+	ID                 string          `json:"id"`
+	Name               string          `json:"name"`
+	Email              *string         `json:"email,omitempty"`
+	DefaultWorkspaceID *string         `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []externalIDDTO `json:"external_ids,omitempty"`
+	Active             bool            `json:"active"`
+	CreatedAt          int64           `json:"created_at"`
+	ModifiedAt         int64           `json:"modified_at"`
 }
 
 type externalIDDTO struct {

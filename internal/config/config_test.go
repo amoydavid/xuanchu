@@ -135,8 +135,8 @@ func TestResolveRemoteEnvOverridesToml(t *testing.T) {
 	cfg, err := Resolve(Options{
 		Env: map[string]string{
 			"XDG_CONFIG_HOME": configDir,
-			"XUANCHU_SERVER":    "http://env.example",
-			"XUANCHU_TOKEN":     "xuanchu_pat_env",
+			"XUANCHU_SERVER":  "http://env.example",
+			"XUANCHU_TOKEN":   "xuanchu_pat_env",
 		},
 		HomeDir: filepath.Join(dir, "home"),
 	})

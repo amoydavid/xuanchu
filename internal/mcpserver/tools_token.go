@@ -83,9 +83,9 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 			expiresIn = &d
 		}
 		created, err := svc.CreateToken(app.CreateTokenInput{
-			Name:       in.Name,
-			Scopes:     in.Scope,
-			ExpiresIn:  expiresIn,
+			Name:      in.Name,
+			Scopes:    in.Scope,
+			ExpiresIn: expiresIn,
 		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)

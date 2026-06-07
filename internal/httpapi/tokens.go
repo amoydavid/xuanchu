@@ -12,18 +12,18 @@ import (
 )
 
 type tokenResponse struct {
-	ID           string             `json:"id"`
-	Prefix       string             `json:"prefix"`
-	Name         string             `json:"name"`
-	Type         string             `json:"type"`
-	User         task.JSONUserInfo  `json:"user"`
-	WorkspaceIDs []string           `json:"workspace_ids"`
-	ProjectIDs   []string           `json:"project_ids"`
-	Scopes       []string           `json:"scopes"`
-	CreatedAt    int64              `json:"created_at"`
-	ExpiresAt    *int64             `json:"expires_at,omitempty"`
-	RevokedAt    *int64             `json:"revoked_at,omitempty"`
-	LastUsedAt   *int64             `json:"last_used_at,omitempty"`
+	ID           string            `json:"id"`
+	Prefix       string            `json:"prefix"`
+	Name         string            `json:"name"`
+	Type         string            `json:"type"`
+	User         task.JSONUserInfo `json:"user"`
+	WorkspaceIDs []string          `json:"workspace_ids"`
+	ProjectIDs   []string          `json:"project_ids"`
+	Scopes       []string          `json:"scopes"`
+	CreatedAt    int64             `json:"created_at"`
+	ExpiresAt    *int64            `json:"expires_at,omitempty"`
+	RevokedAt    *int64            `json:"revoked_at,omitempty"`
+	LastUsedAt   *int64            `json:"last_used_at,omitempty"`
 }
 
 type modifyTokenRequest struct {

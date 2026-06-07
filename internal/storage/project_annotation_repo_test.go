@@ -248,4 +248,3 @@ func TestProjectAnnotationRepoTimeline(t *testing.T) {
 		t.Fatalf("row[1] = %+v", rows[1])
 	}
 }
-

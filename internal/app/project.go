@@ -26,11 +26,11 @@ type TimelineOptions struct {
 }
 
 type TimelineEntry struct {
-	SourceType  string       `json:"source_type"`
-	SourceID    string       `json:"source_id"`
-	SourceLabel string       `json:"source_label"`
-	Entry       int64        `json:"entry"`
-	Content     string       `json:"content"`
+	SourceType  string        `json:"source_type"`
+	SourceID    string        `json:"source_id"`
+	SourceLabel string        `json:"source_label"`
+	Entry       int64         `json:"entry"`
+	Content     string        `json:"content"`
 	CreatedBy   task.UserInfo `json:"created_by"`
 }
 
@@ -400,8 +400,8 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 			TargetID:    project.ID,
 			Action:      "project.annotate",
 			Payload: map[string]any{
-				"annotation_id":    annotation.ID,
-				"content_preview":  truncateString(annotation.Content, 200),
+				"annotation_id":   annotation.ID,
+				"content_preview": truncateString(annotation.Content, 200),
 			},
 		}
 		return []AuditEntry{entry}, []HookEvent{event}, nil

@@ -6,8 +6,8 @@ import (
 )
 
 type workspaceView struct {
-	ID              string  `json:"id"`
-	Slug            string  `json:"slug"`
+	ID          string             `json:"id"`
+	Slug        string             `json:"slug"`
 	Name        string             `json:"name"`
 	Description string             `json:"description,omitempty"`
 	Visibility  string             `json:"visibility"`
@@ -66,12 +66,12 @@ type externalIDView struct {
 }
 
 type annotationView struct {
-	ID        string             `json:"id"`
-	ProjectID string             `json:"project_id"`
-	Entry     int64              `json:"entry"`
-	Content   string             `json:"content"`
-	CreatedBy task.JSONUserInfo  `json:"created_by"`
-	CreatedAt int64              `json:"created_at"`
+	ID        string            `json:"id"`
+	ProjectID string            `json:"project_id"`
+	Entry     int64             `json:"entry"`
+	Content   string            `json:"content"`
+	CreatedBy task.JSONUserInfo `json:"created_by"`
+	CreatedAt int64             `json:"created_at"`
 }
 
 type taskLinkView struct {

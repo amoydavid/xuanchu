@@ -228,11 +228,11 @@ type HookDelivery struct {
 }
 
 type UserExternalID struct {
-	ID          string `gorm:"primaryKey"`
-	UserID      string `gorm:"not null;index:idx_user_ext_id_user"`
-	Provider    string `gorm:"not null;uniqueIndex:idx_user_ext_id_provider_value,priority:1"`
-	ExternalID  string `gorm:"not null;uniqueIndex:idx_user_ext_id_provider_value,priority:2"`
-	CreatedAt   int64  `gorm:"not null"`
+	ID         string `gorm:"primaryKey"`
+	UserID     string `gorm:"not null;index:idx_user_ext_id_user"`
+	Provider   string `gorm:"not null;uniqueIndex:idx_user_ext_id_provider_value,priority:1"`
+	ExternalID string `gorm:"not null;uniqueIndex:idx_user_ext_id_provider_value,priority:2"`
+	CreatedAt  int64  `gorm:"not null"`
 }
 
 type TaskLink struct {

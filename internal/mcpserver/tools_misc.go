@@ -25,17 +25,17 @@ type ScopeListInput struct{}
 type MeGetInput struct{}
 
 type auditLogView struct {
-	ID               int64             `json:"id"`
+	ID               int64              `json:"id"`
 	Actor            *task.JSONUserInfo `json:"actor,omitempty"`
-	WorkspaceID      *string           `json:"workspace_id,omitempty"`
-	ProjectID        *string           `json:"project_id,omitempty"`
-	Action           string            `json:"action"`
-	TargetType       string            `json:"target_type"`
-	TargetID         string            `json:"target_id"`
-	Payload          json.RawMessage   `json:"payload,omitempty"`
-	DelegatorTokenID *string           `json:"delegator_token_id,omitempty"`
+	WorkspaceID      *string            `json:"workspace_id,omitempty"`
+	ProjectID        *string            `json:"project_id,omitempty"`
+	Action           string             `json:"action"`
+	TargetType       string             `json:"target_type"`
+	TargetID         string             `json:"target_id"`
+	Payload          json.RawMessage    `json:"payload,omitempty"`
+	DelegatorTokenID *string            `json:"delegator_token_id,omitempty"`
 	DelegatorUser    *task.JSONUserInfo `json:"delegator_user,omitempty"`
-	CreatedAt        int64             `json:"created_at"`
+	CreatedAt        int64              `json:"created_at"`
 }
 
 func auditLogViewFromApp(row app.AuditLogView) auditLogView {
@@ -69,9 +69,9 @@ func auditLogViewFromApp(row app.AuditLogView) auditLogView {
 }
 
 type meView struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Email       *string             `json:"email,omitempty"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Email       *string               `json:"email,omitempty"`
 	ExternalIDs []task.JSONExternalID `json:"external_ids,omitempty"`
 }
 

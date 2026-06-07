@@ -11,7 +11,7 @@ import (
 )
 
 type TaskRepository struct {
-	db          *gorm.DB
+	db           *gorm.DB
 	taskLinkRepo *TaskLinkRepository
 }
 
@@ -406,7 +406,7 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,
 		Assignees: assignees, Annotations: annotations, Depends: depends,
 		Links: linksByTask[model.UUID],
-		UDAs: udas,
+		UDAs:  udas,
 	}
 }
 

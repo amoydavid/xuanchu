@@ -58,7 +58,7 @@ func TestImpersonationRejectsTokenWithoutScope(t *testing.T) {
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + created.RawToken,
-		"X-Xuanchu-As":    "alice",
+		"X-Xuanchu-As":  "alice",
 	})
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
 }
@@ -82,7 +82,7 @@ func TestImpersonationRejectsPAT(t *testing.T) {
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + created.RawToken,
-		"X-Xuanchu-As":    "alice",
+		"X-Xuanchu-As":  "alice",
 	})
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
 }
@@ -92,7 +92,7 @@ func TestImpersonationReturnsMembershipNotFoundForUnknownUser(t *testing.T) {
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + agentToken,
-		"X-Xuanchu-As":    "nonexistent-user",
+		"X-Xuanchu-As":  "nonexistent-user",
 	})
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "membership_not_found")
 }
@@ -104,7 +104,7 @@ func TestImpersonationTaskActionUsesSubjectIdentity(t *testing.T) {
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + agentToken,
-		"X-Xuanchu-As":    "alice-imp",
+		"X-Xuanchu-As":  "alice-imp",
 	})
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
@@ -161,7 +161,7 @@ func TestImpersonationWorkspaceRequiredForMultiWorkspace(t *testing.T) {
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + created.RawToken,
-		"X-Xuanchu-As":    "local",
+		"X-Xuanchu-As":  "local",
 	})
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "workspace_required")
 }

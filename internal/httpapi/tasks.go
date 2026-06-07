@@ -72,12 +72,12 @@ type addLinkRequest struct {
 }
 
 type linkJSON struct {
-	ID        string             `json:"id"`
-	Type      string             `json:"type"`
-	URL       string             `json:"url"`
-	Title     string             `json:"title,omitempty"`
-	CreatedAt string             `json:"created_at"`
-	CreatedBy task.JSONUserInfo  `json:"created_by"`
+	ID        string            `json:"id"`
+	Type      string            `json:"type"`
+	URL       string            `json:"url"`
+	Title     string            `json:"title,omitempty"`
+	CreatedAt string            `json:"created_at"`
+	CreatedBy task.JSONUserInfo `json:"created_by"`
 }
 
 const (

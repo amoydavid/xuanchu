@@ -251,7 +251,7 @@ func newProjectsCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "_projects",
 		Short: "列出所有项目",
-		Args: cobra.NoArgs,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
