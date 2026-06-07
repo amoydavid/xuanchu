@@ -717,6 +717,164 @@ func TestTaskDepends(t *testing.T) {
 	}
 }
 
+func TestTaskToolsAcceptTaskSlugRefs(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(t *testing.T, session *mcp.ClientSession, slug, depUUID string)
+	}{
+		{name: "task_get", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_get", TaskGetInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("task_get error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_modify", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			desc := "updated"
+			result := callTool(t, session, "task_modify", TaskModifyInput{ID: slug, Description: &desc})
+			if result.IsError {
+				t.Fatalf("task_modify error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_done", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_done", TaskIDInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("task_done error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_delete", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_delete", TaskIDInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("task_delete error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_start", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_start", TaskIDInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("task_start error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_stop", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			if result := callTool(t, session, "task_start", TaskIDInput{ID: slug}); result.IsError {
+				t.Fatalf("task_start setup error: %v", parseError(t, result))
+			}
+			result := callTool(t, session, "task_stop", TaskIDInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("task_stop error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_annotate", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_annotate", TaskAnnotateInput{ID: slug, Annotation: "note"})
+			if result.IsError {
+				t.Fatalf("task_annotate error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_denotate", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			if result := callTool(t, session, "task_annotate", TaskAnnotateInput{ID: slug, Annotation: "note"}); result.IsError {
+				t.Fatalf("task_annotate setup error: %v", parseError(t, result))
+			}
+			result := callTool(t, session, "task_denotate", TaskDenotateInput{ID: slug, AnnotationIndex: 1})
+			if result.IsError {
+				t.Fatalf("task_denotate error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_depends", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_depends", TaskDependsInput{ID: slug, Depends: []string{depUUID}})
+			if result.IsError {
+				t.Fatalf("task_depends error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_link_add", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "task_link_add", TaskLinkAddInput{Task: slug, Type: "document", URL: "https://example.com/doc"})
+			if result.IsError {
+				t.Fatalf("task_link_add error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_link_list", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			if result := callTool(t, session, "task_link_add", TaskLinkAddInput{Task: slug, Type: "document", URL: "https://example.com/doc"}); result.IsError {
+				t.Fatalf("task_link_add setup error: %v", parseError(t, result))
+			}
+			result := callTool(t, session, "task_link_list", TaskLinkListInput{Task: slug})
+			if result.IsError {
+				t.Fatalf("task_link_list error: %v", parseError(t, result))
+			}
+		}},
+		{name: "task_link_remove", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			add := callTool(t, session, "task_link_add", TaskLinkAddInput{Task: slug, Type: "document", URL: "https://example.com/doc"})
+			if add.IsError {
+				t.Fatalf("task_link_add setup error: %v", parseError(t, add))
+			}
+			data := envelopeData(t, parseEnvelope(t, add))
+			link := nestedMap(t, data, "link")
+			linkID, _ := link["id"].(string)
+			if linkID == "" {
+				t.Fatalf("link id missing: %#v", link)
+			}
+			result := callTool(t, session, "task_link_remove", TaskLinkRemoveInput{Task: slug, LinkID: linkID})
+			if result.IsError {
+				t.Fatalf("task_link_remove error: %v", parseError(t, result))
+			}
+		}},
+		{name: "urgency_explain", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			result := callTool(t, session, "urgency_explain", UrgencyExplainInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("urgency_explain error: %v", parseError(t, result))
+			}
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := newTestServer(t)
+			session := connectClient(t, srv)
+			callTool(t, session, "project_add", ProjectAddInput{Slug: "api", Name: "API"})
+			add := callTool(t, session, "task_add", TaskAddInput{Description: "slug task", Project: "api"})
+			taskObj := extractTask(t, parseEnvelope(t, add))
+			slug, _ := taskObj["task_slug"].(string)
+			if slug != "api-1" {
+				t.Fatalf("task_slug = %v, want api-1", taskObj["task_slug"])
+			}
+			depUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "dependency", Project: "api"})))
+			tc.run(t, session, slug, depUUID)
+		})
+	}
+}
+
+func TestTaskToolsRejectNumericTaskRefs(t *testing.T) {
+	cases := []struct {
+		name  string
+		tool  string
+		input any
+	}{
+		{name: "task_get", tool: "task_get", input: TaskGetInput{ID: "1"}},
+		{name: "task_modify", tool: "task_modify", input: TaskModifyInput{ID: "1", Description: ptrStr("updated")}},
+		{name: "task_done", tool: "task_done", input: TaskIDInput{ID: "1"}},
+		{name: "task_delete", tool: "task_delete", input: TaskIDInput{ID: "1"}},
+		{name: "task_start", tool: "task_start", input: TaskIDInput{ID: "1"}},
+		{name: "task_stop", tool: "task_stop", input: TaskIDInput{ID: "1"}},
+		{name: "task_annotate", tool: "task_annotate", input: TaskAnnotateInput{ID: "1", Annotation: "note"}},
+		{name: "task_denotate", tool: "task_denotate", input: TaskDenotateInput{ID: "1", AnnotationIndex: 1}},
+		{name: "task_depends", tool: "task_depends", input: TaskDependsInput{ID: "1", Depends: []string{"00000000-0000-0000-0000-000000000001"}}},
+		{name: "task_link_add", tool: "task_link_add", input: TaskLinkAddInput{Task: "1", Type: "document", URL: "https://example.com/doc"}},
+		{name: "task_link_list", tool: "task_link_list", input: TaskLinkListInput{Task: "1"}},
+		{name: "task_link_remove", tool: "task_link_remove", input: TaskLinkRemoveInput{Task: "1", LinkID: "link"}},
+		{name: "urgency_explain", tool: "urgency_explain", input: UrgencyExplainInput{ID: "1"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := newTestServer(t)
+			session := connectClient(t, srv)
+			result := callTool(t, session, tc.tool, tc.input)
+			if !result.IsError {
+				t.Fatalf("%s expected error", tc.tool)
+			}
+			if got := parseError(t, result).Code; got != "task_ref_invalid" {
+				t.Fatalf("%s error code = %q, want task_ref_invalid", tc.tool, got)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // report.run 集成测试
 // ---------------------------------------------------------------------------
@@ -1145,11 +1303,11 @@ func TestMCPAgentFlow(t *testing.T) {
 func TestMCPProjectScope(t *testing.T) {
 	store := newMCPTestStore(t)
 	owner := newMCPTestService(t, store)
-	projectA, err := owner.AddProject(app.AddProjectInput{Slug: "a", Name: "A"})
+	projectA, err := owner.AddProject(app.AddProjectInput{Slug: "apia", Name: "A"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	projectB, err := owner.AddProject(app.AddProjectInput{Slug: "b", Name: "B"})
+	projectB, err := owner.AddProject(app.AddProjectInput{Slug: "apib", Name: "B"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1326,16 +1484,16 @@ func TestProjectAddModifyArchive(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	add := callTool(t, session, "project_add", ProjectAddInput{Slug: "my-proj", Name: "My Project"})
+	add := callTool(t, session, "project_add", ProjectAddInput{Slug: "myproj", Name: "My Project"})
 	if add.IsError {
 		t.Fatalf("project_add error: %v", parseError(t, add))
 	}
 	projData := nestedMap(t, envelopeData(t, parseEnvelope(t, add)), "project")
-	if projData["slug"] != "my-proj" {
-		t.Fatalf("slug = %v, want my-proj", projData["slug"])
+	if projData["slug"] != "myproj" {
+		t.Fatalf("slug = %v, want myproj", projData["slug"])
 	}
 
-	mod := callTool(t, session, "project_modify", ProjectModifyInput{Project: "my-proj", Name: ptrStr("Updated Project")})
+	mod := callTool(t, session, "project_modify", ProjectModifyInput{Project: "myproj", Name: ptrStr("Updated Project")})
 	if mod.IsError {
 		t.Fatalf("project_modify error: %v", parseError(t, mod))
 	}
@@ -1344,7 +1502,7 @@ func TestProjectAddModifyArchive(t *testing.T) {
 		t.Fatalf("name = %v, want Updated Project", modProj["name"])
 	}
 
-	archive := callTool(t, session, "project_archive", ProjectArchiveInput{Project: "my-proj"})
+	archive := callTool(t, session, "project_archive", ProjectArchiveInput{Project: "myproj"})
 	if archive.IsError {
 		t.Fatalf("project_archive error: %v", parseError(t, archive))
 	}
@@ -1354,9 +1512,9 @@ func TestProjectAnnotateDenotateListTimeline(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "project_add", ProjectAddInput{Slug: "ann-proj", Name: "Ann Project"})
+	callTool(t, session, "project_add", ProjectAddInput{Slug: "annproj", Name: "Ann Project"})
 
-	ann := callTool(t, session, "project_annotate", ProjectAnnotateInput{Project: "ann-proj", Content: "project note"})
+	ann := callTool(t, session, "project_annotate", ProjectAnnotateInput{Project: "annproj", Content: "project note"})
 	if ann.IsError {
 		t.Fatalf("project_annotate error: %v", parseError(t, ann))
 	}
@@ -1370,7 +1528,7 @@ func TestProjectAnnotateDenotateListTimeline(t *testing.T) {
 		t.Fatalf("annotation id is empty, annotationObj = %#v", annotationObj)
 	}
 
-	listAnn := callTool(t, session, "project_list_annotations", ProjectAnnotationsInput{Project: "ann-proj"})
+	listAnn := callTool(t, session, "project_list_annotations", ProjectAnnotationsInput{Project: "annproj"})
 	if listAnn.IsError {
 		t.Fatalf("project_list_annotations error: %v", parseError(t, listAnn))
 	}
@@ -1380,12 +1538,12 @@ func TestProjectAnnotateDenotateListTimeline(t *testing.T) {
 		t.Fatalf("annotation count = %v, want 1", annCount)
 	}
 
-	timeline := callTool(t, session, "project_list_timeline", ProjectTimelineInput{Project: "ann-proj"})
+	timeline := callTool(t, session, "project_list_timeline", ProjectTimelineInput{Project: "annproj"})
 	if timeline.IsError {
 		t.Fatalf("project_list_timeline error: %v", parseError(t, timeline))
 	}
 
-	denotate := callTool(t, session, "project_denotate", ProjectDenotateInput{Project: "ann-proj", AnnotationID: annID})
+	denotate := callTool(t, session, "project_denotate", ProjectDenotateInput{Project: "annproj", AnnotationID: annID})
 	if denotate.IsError {
 		t.Fatalf("project_denotate error: %v", parseError(t, denotate))
 	}
@@ -1395,14 +1553,14 @@ func TestProjectConfigSetUnsetList(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "project_add", ProjectAddInput{Slug: "cfg-proj", Name: "Cfg Project"})
+	callTool(t, session, "project_add", ProjectAddInput{Slug: "cfgproj", Name: "Cfg Project"})
 
-	set := callTool(t, session, "project_config_set", ProjectConfigSetInput{Project: "cfg-proj", Key: "agent.background", Value: "test"})
+	set := callTool(t, session, "project_config_set", ProjectConfigSetInput{Project: "cfgproj", Key: "agent.background", Value: "test"})
 	if set.IsError {
 		t.Fatalf("project_config_set error: %v", parseError(t, set))
 	}
 
-	list := callTool(t, session, "project_config_list", ProjectConfigListInput{Project: "cfg-proj"})
+	list := callTool(t, session, "project_config_list", ProjectConfigListInput{Project: "cfgproj"})
 	if list.IsError {
 		t.Fatalf("project_config_list error: %v", parseError(t, list))
 	}
@@ -1415,12 +1573,12 @@ func TestProjectConfigSetUnsetList(t *testing.T) {
 		t.Fatalf("agent.background = %v, want test", cfgMap["agent.background"])
 	}
 
-	unset := callTool(t, session, "project_config_unset", ProjectConfigUnsetInput{Project: "cfg-proj", Key: "agent.background"})
+	unset := callTool(t, session, "project_config_unset", ProjectConfigUnsetInput{Project: "cfgproj", Key: "agent.background"})
 	if unset.IsError {
 		t.Fatalf("project_config_unset error: %v", parseError(t, unset))
 	}
 
-	list2 := callTool(t, session, "project_config_list", ProjectConfigListInput{Project: "cfg-proj"})
+	list2 := callTool(t, session, "project_config_list", ProjectConfigListInput{Project: "cfgproj"})
 	cfgData2 := envelopeData(t, parseEnvelope(t, list2))
 	cfgMap2, _ := cfgData2["config"].(map[string]any)
 	if _, exists := cfgMap2["agent.background"]; exists {

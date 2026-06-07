@@ -14,7 +14,7 @@
         "type": "string"
       },
       "task": {
-        "description": "task reference (UUID or working-set ID)",
+        "description": "task reference: UUID or task_slug",
         "type": "string"
       },
       "workspace": {

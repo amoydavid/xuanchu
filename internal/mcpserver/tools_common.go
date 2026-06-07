@@ -33,6 +33,17 @@ func requireUUID(id, fieldName string) error {
 	return nil
 }
 
+func resolveToolTaskRef(svc *app.Service, ref, fieldName string, write bool) (task.Task, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return task.Task{}, app.RuntimeError{Code: fieldName + "_required", Message: fieldName + " is required"}
+	}
+	if write {
+		return svc.ResolveProtocolTargetForWrite(ref)
+	}
+	return svc.ResolveProtocolTarget(ref)
+}
+
 func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
 	inputSchema, err := jsonschema.For[In](nil)
 	if err != nil {

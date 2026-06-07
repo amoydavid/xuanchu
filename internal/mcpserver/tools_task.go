@@ -50,7 +50,7 @@ type TaskGetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id" jsonschema:"task UUID; stdio may also use working-set ID"`
+	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
 }
 
 func (in TaskGetInput) scopeInput() RequestScopeInput {
@@ -61,7 +61,7 @@ type TaskModifyInput struct {
 	Workspace       string            `json:"workspace,omitempty"`
 	Project         string            `json:"project,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
-	ID              string            `json:"id"`
+	ID              string            `json:"id" jsonschema:"task reference: UUID or task_slug"`
 	Description     *string           `json:"description,omitempty"`
 	Priority        *string           `json:"priority,omitempty"`
 	Due             *int64            `json:"due,omitempty"`
@@ -86,7 +86,7 @@ type TaskIDInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id"`
+	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
 }
 
 func (in TaskIDInput) scopeInput() RequestScopeInput {
@@ -102,7 +102,7 @@ type TaskAnnotateInput struct {
 	Workspace  string `json:"workspace,omitempty"`
 	Project    string `json:"project,omitempty"`
 	ProjectID  string `json:"project_id,omitempty"`
-	ID         string `json:"id"`
+	ID         string `json:"id" jsonschema:"task reference: UUID or task_slug"`
 	Annotation string `json:"annotation"`
 }
 
@@ -114,7 +114,7 @@ type TaskDependsInput struct {
 	Workspace    string   `json:"workspace,omitempty"`
 	Project      string   `json:"project,omitempty"`
 	ProjectID    string   `json:"project_id,omitempty"`
-	ID           string   `json:"id"`
+	ID           string   `json:"id" jsonschema:"task reference: UUID or task_slug"`
 	Depends      []string `json:"depends,omitempty"`
 	ClearDepends bool     `json:"clear_depends,omitempty"`
 }
@@ -123,7 +123,7 @@ type TaskLinkAddInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference (UUID or working-set ID)"`
+	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
 	Type      string `json:"type" jsonschema:"link type (e.g. document, pr, ticket, design)"`
 	URL       string `json:"url" jsonschema:"external resource URL"`
 	Title     string `json:"title,omitempty" jsonschema:"optional display title"`
@@ -137,7 +137,7 @@ type TaskLinkRemoveInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference (UUID or working-set ID)"`
+	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
 	LinkID    string `json:"link_id" jsonschema:"link ID to remove"`
 }
 
@@ -149,7 +149,7 @@ type TaskDenotateInput struct {
 	Workspace       string `json:"workspace,omitempty"`
 	Project         string `json:"project,omitempty"`
 	ProjectID       string `json:"project_id,omitempty"`
-	ID              string `json:"id"`
+	ID              string `json:"id" jsonschema:"task reference: UUID or task_slug"`
 	AnnotationIndex int    `json:"annotation_index"`
 }
 
@@ -161,7 +161,7 @@ type TaskLinkListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference (UUID or working-set ID)"`
+	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
 }
 
 func (in TaskLinkListInput) scopeInput() RequestScopeInput {
@@ -260,14 +260,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, &mcp.Tool{Name: "task_get", Description: "Get one task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.ID, "id"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tsk, err := svc.Info(strings.TrimSpace(in.ID))
+		tsk, err := resolveToolTaskRef(svc, in.ID, "id", false)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -286,74 +283,72 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "task_start", Description: "Start a task; writes audit."}, taskActionHandler(opts, "task started", func(svc *app.Service, id string) error { return svc.Start(id) }))
 	addTool(s, &mcp.Tool{Name: "task_stop", Description: "Stop a task; writes audit."}, taskActionHandler(opts, "task stopped", func(svc *app.Service, id string) error { return svc.Stop(id) }))
 	addTool(s, &mcp.Tool{Name: "task_annotate", Description: "Annotate a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskAnnotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.ID, "id"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Annotate(strings.TrimSpace(in.ID), strings.TrimSpace(in.Annotation)); err != nil {
+		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
+		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, in.ID, "annotated task")
+		if err := svc.Annotate(resolved.UUID, strings.TrimSpace(in.Annotation)); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return taskAfterMutation(svc, resolved.UUID, "annotated task")
 	})
 	addTool(s, &mcp.Tool{Name: "task_depends", Description: "Adjust task dependencies; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDependsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.ID, "id"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		mod := TaskModifyInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID, ID: in.ID, Depends: in.Depends, ClearDepends: in.ClearDepends}
 		return modifyTaskTool(ctx, req, opts, mod, "updated dependencies")
 	})
 	addTool(s, &mcp.Tool{Name: "task_link_add", Description: "Add an external link to a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.Task, "task"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		link, err := svc.TaskAddLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
+		resolved, err := resolveToolTaskRef(svc, in.Task, "task", true)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		link, err := svc.TaskAddLink(resolved.UUID, strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(map[string]any{"link": taskLinkViewFromApp(link)}, "Added link to task")
 	})
 	addTool(s, &mcp.Tool{Name: "task_link_remove", Description: "Remove an external link from a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkRemoveInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.Task, "task"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.TaskRemoveLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.LinkID)); err != nil {
+		resolved, err := resolveToolTaskRef(svc, in.Task, "task", true)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.TaskRemoveLink(resolved.UUID, strings.TrimSpace(in.LinkID)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(nil, "Removed link from task")
 	})
 	addTool(s, &mcp.Tool{Name: "task_denotate", Description: "Remove an annotation from a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDenotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.ID, "id"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Denotate(strings.TrimSpace(in.ID), in.AnnotationIndex); err != nil {
+		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
+		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, in.ID, "removed annotation")
+		if err := svc.Denotate(resolved.UUID, in.AnnotationIndex); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return taskAfterMutation(svc, resolved.UUID, "removed annotation")
 	})
 	addTool(s, &mcp.Tool{Name: "task_link_list", Description: "List external links on a task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.Task, "task"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tsk, err := svc.Info(strings.TrimSpace(in.Task))
+		tsk, err := resolveToolTaskRef(svc, in.Task, "task", false)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -392,10 +387,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 }
 
 func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options, in TaskModifyInput, rendered string) (*mcp.CallToolResult, ToolEnvelope, error) {
-	if err := requireUUID(in.ID, "id"); err != nil {
+	svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
+	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
+	resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
@@ -422,25 +418,26 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 	if err := applyClearFields(in.Clear, &mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	if err := svc.Modify(strings.TrimSpace(in.ID), mod); err != nil {
+	if err := svc.Modify(resolved.UUID, mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	return taskAfterMutation(svc, in.ID, rendered)
+	return taskAfterMutation(svc, resolved.UUID, rendered)
 }
 
 func taskActionHandler(opts Options, rendered string, fn func(*app.Service, string) error) mcp.ToolHandlerFor[TaskIDInput, ToolEnvelope] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in TaskIDInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.ID, "id"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := fn(svc, strings.TrimSpace(in.ID)); err != nil {
+		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
+		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, in.ID, rendered)
+		if err := fn(svc, resolved.UUID); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return taskAfterMutation(svc, resolved.UUID, rendered)
 	}
 }
 

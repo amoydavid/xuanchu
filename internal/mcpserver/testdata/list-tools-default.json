@@ -1782,6 +1782,7 @@
             "type": "string"
           },
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -1822,6 +1823,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -1864,6 +1866,7 @@
             "type": "integer"
           },
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -1916,6 +1919,7 @@
             ]
           },
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -1955,6 +1959,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -2027,7 +2032,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task UUID; stdio may also use working-set ID",
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -2312,6 +2317,12 @@
                     "array"
                   ]
                 },
+                "task_slug": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "until": {
                   "type": [
                     "null",
@@ -2379,7 +2390,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference (UUID or working-set ID)",
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "title": {
@@ -2433,7 +2444,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference (UUID or working-set ID)",
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "workspace": {
@@ -2477,7 +2488,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference (UUID or working-set ID)",
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "workspace": {
@@ -2554,6 +2565,7 @@
             ]
           },
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "priority": {
@@ -2701,6 +2713,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -2740,6 +2753,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {
@@ -2970,6 +2984,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
+            "description": "task reference: UUID or task_slug",
             "type": "string"
           },
           "project": {

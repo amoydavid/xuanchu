@@ -7,6 +7,7 @@
         "type": "integer"
       },
       "id": {
+        "description": "task reference: UUID or task_slug",
         "type": "string"
       },
       "project": {

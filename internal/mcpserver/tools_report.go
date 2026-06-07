@@ -27,7 +27,7 @@ type UrgencyExplainInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id"`
+	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
 }
 
 func (in UrgencyExplainInput) scopeInput() RequestScopeInput {
@@ -69,14 +69,15 @@ func registerReportTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, &mcp.Tool{Name: "urgency_explain", Description: "Explain task urgency; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UrgencyExplainInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		if err := requireUUID(in.ID, "id"); err != nil {
-			return businessErrorWithEnvelope(err)
-		}
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		explain, err := svc.ExplainUrgency(strings.TrimSpace(in.ID))
+		resolved, err := resolveToolTaskRef(svc, in.ID, "id", false)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		explain, err := svc.ExplainUrgency(resolved.UUID)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}

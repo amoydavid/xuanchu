@@ -4,7 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "id": {
-        "description": "task UUID; stdio may also use working-set ID",
+        "description": "task reference: UUID or task_slug",
         "type": "string"
       },
       "project": {

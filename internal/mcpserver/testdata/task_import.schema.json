@@ -249,6 +249,12 @@
                 "array"
               ]
             },
+            "task_slug": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
             "until": {
               "type": [
                 "null",
