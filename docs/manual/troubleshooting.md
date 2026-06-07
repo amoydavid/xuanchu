@@ -10,8 +10,8 @@ weight: 120
 任务引用 project 前必须先注册 project：
 
 ```bash
-xuanchu project add ai-agent-platform name:"AI Agent Platform"
-xuanchu add "Write docs" project:ai-agent-platform
+xuanchu project add agentapi name:"AI Agent Platform"
+xuanchu add "Write docs" project:agentapi
 ```
 
 如果你指定了 `--workspace`，project 会在该 workspace 内解析：
@@ -34,6 +34,7 @@ xuanchu --workspace dajee project list
 可能原因：
 
 - UUID 不存在。
+- `task_slug` 不存在，或任务已经被移动到其他 project 后旧 `task_slug` 失效。
 - working-set ID 不是当前报表里的有效 ID。
 - 远程 project-scoped token 没有权限访问该任务。
 
@@ -136,4 +137,3 @@ xuanchu --data-dir ./data list
 - 查看当前配置：`xuanchu _show database.url`
 
 `--db-url` 和 `--db` 互斥，同时指定会报错。
-

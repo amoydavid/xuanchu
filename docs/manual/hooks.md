@@ -35,7 +35,7 @@ xuanchu hook add audit-sink \
 ```bash
 xuanchu --workspace dajee hook add mcp-project-hook \
   --scope project \
-  --project ai-agent-platform \
+  --project agentapi \
   --event task.created \
   --event task.modified \
   --url https://example.com/xuanchu/project-hook \
@@ -48,7 +48,7 @@ project-scoped hook 只接收该 project 内的事件。
 
 ```bash
 xuanchu hook list
-xuanchu hook list --project ai-agent-platform
+xuanchu hook list --project agentapi
 xuanchu hook info <hook-id>
 xuanchu hook modify <hook-id> --name renamed-hook --url https://example.com/new
 xuanchu hook disable <hook-id>

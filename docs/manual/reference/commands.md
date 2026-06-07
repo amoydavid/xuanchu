@@ -15,7 +15,7 @@ xuanchu --json list
 xuanchu --no-color list
 xuanchu --no-context list
 xuanchu --workspace dajee list
-xuanchu --project ai-agent-platform list
+xuanchu --project agentapi list
 xuanchu --project-id <uuid> list
 xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" list
 ```
@@ -51,6 +51,8 @@ xuanchu link add <task-ref> --type <type> --url <url> [--title <title>]
 xuanchu link list <task-ref>
 xuanchu link remove <task-ref> --link-id <link-id>
 ```
+
+本地 CLI 的 `<target>` / `<task-ref>` 可以是 working-set ID、UUID、UUID 前缀或 `task_slug`。HTTP API 和 MCP tool 只接受 UUID 或 `task_slug`。
 
 ## 查询、报表、helper
 

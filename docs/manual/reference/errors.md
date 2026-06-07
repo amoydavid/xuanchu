@@ -57,7 +57,8 @@ weight: 210
 | 错误码 | 含义 |
 |---|---|
 | `task_not_found` | 任务不存在，或 project-scoped token 无权看到该任务 |
-| `task_uuid_invalid` | MCP/HTTP 场景中的 task UUID 无效 |
+| `task_ref_invalid` | MCP/HTTP 场景中的任务引用无效，或传入了纯数字 working-set ID |
+| `task_uuid_invalid` | 旧版 task UUID 格式错误码；新协议入口优先使用 `task_ref_invalid` |
 | `task_clear_field_unknown` | MCP `clear` 字段名未知 |
 
 ## Config / Context

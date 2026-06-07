@@ -17,7 +17,7 @@ Xuanchu 的企业边界由 workspace、project、user、membership 和 audit 组
 - `member`：user 在 workspace 内的角色。
 - `audit`：写操作审计记录。
 
-同名 project 可以存在于不同 workspace。`dajee/ai-agent-platform` 和 `partner/ai-agent-platform` 是两个不同项目。
+同名 project 可以存在于不同 workspace。`dajee/agentapi` 和 `partner/agentapi` 是两个不同项目。
 
 ## User
 
@@ -73,11 +73,11 @@ xuanchu member role bob member
 ## Project
 
 ```bash
-xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
+xuanchu --workspace dajee project add agentapi name:"AI Agent Platform"
 xuanchu --workspace dajee project list
-xuanchu --workspace dajee project info ai-agent-platform
-xuanchu --workspace dajee project modify ai-agent-platform description:"Owns MCP work"
-xuanchu --workspace dajee project archive ai-agent-platform
+xuanchu --workspace dajee project info agentapi
+xuanchu --workspace dajee project modify agentapi description:"Owns MCP work"
+xuanchu --workspace dajee project archive agentapi
 ```
 
 project 归档后不能被新任务引用，但已有任务仍可读取、完成和删除。
@@ -91,10 +91,10 @@ xuanchu --workspace dajee config schema set agent.background type:string scopes:
 xuanchu --workspace dajee config schema set ads.roi_threshold type:number scopes:workspace,project default:1.8
 
 xuanchu --workspace dajee config set ads.roi_threshold 2.0
-xuanchu project config set ai-agent-platform agent.background "Owns Xuanchu MCP integration."
-xuanchu project config get ai-agent-platform agent.background
-xuanchu project config list ai-agent-platform
-xuanchu project config unset ai-agent-platform agent.background
+xuanchu project config set agentapi agent.background "Owns Xuanchu MCP integration."
+xuanchu project config get agentapi agent.background
+xuanchu project config list agentapi
+xuanchu project config unset agentapi agent.background
 ```
 
 补充说明：
@@ -110,7 +110,7 @@ xuanchu project config unset ai-agent-platform agent.background
 ```bash
 xuanchu audit list
 xuanchu audit list --limit 20 --json
-xuanchu audit list --project ai-agent-platform
+xuanchu audit list --project agentapi
 ```
 
 audit 记录写操作，例如 task、context、workspace、member、project、config、token、hook、manual replay 等。

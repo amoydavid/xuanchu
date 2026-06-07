@@ -39,7 +39,7 @@ xuanchu 要求先注册 project，再把任务放进 project。
 首次本地运行时，xuanchu 会自动创建 `local` user、`local` workspace 和 owner membership。单人试用可以直接使用这个默认身份。团队或服务端使用建议先读 [身份与初始化](identity-and-initialization.md)，显式创建自己的 user/workspace。
 
 ```bash
-./xuanchu project add ai-agent-platform name:"AI Agent Platform"
+./xuanchu project add agentapi name:"AI Agent Platform"
 ```
 
 查看项目：
@@ -51,13 +51,13 @@ xuanchu 要求先注册 project，再把任务放进 project。
 ## 3. 添加任务
 
 ```bash
-./xuanchu add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
-./xuanchu add "Review API schema" project:ai-agent-platform priority:H +review
+./xuanchu add "Write MCP task docs" project:agentapi +docs due:tomorrow
+./xuanchu add "Review API schema" project:agentapi priority:H +review
 ```
 
 常见写法：
 
-- `project:ai-agent-platform` 表示任务所属 project。
+- `project:agentapi` 表示任务所属 project。
 - `+docs` 添加标签。
 - `priority:H` 设置高优先级。
 - `due:tomorrow` 设置截止日期。
@@ -68,21 +68,22 @@ xuanchu 要求先注册 project，再把任务放进 project。
 ./xuanchu list
 ./xuanchu next
 ./xuanchu info 1
+./xuanchu info agentapi-1
 ```
 
-`list` 和 `next` 输出里的 `ID` 是 working-set ID。你可以用它操作任务，也可以用完整 UUID。
+`list` 和 `next` 输出里的 `ID` 是 working-set ID。带 project 的任务还会有 `task_slug`，例如 `agentapi-1`。本地 CLI 可以用 working-set ID、UUID、UUID 前缀或 `task_slug` 操作任务；HTTP API 和 MCP tool 只接受 UUID 或 `task_slug`。
 
 ```bash
 ./xuanchu 1 modify priority:M +next
-./xuanchu 1 done
+./xuanchu agentapi-1 done
 ```
 
 ## 5. 查询任务
 
 ```bash
 ./xuanchu +review list
-./xuanchu project:ai-agent-platform list
-./xuanchu '(project:ai-agent-platform and +review) or priority:H' next
+./xuanchu project:agentapi list
+./xuanchu '(project:agentapi and +review) or priority:H' next
 ```
 
 复杂查询建议加引号，避免 shell 处理括号和空格。
@@ -99,16 +100,16 @@ xuanchu 要求先注册 project，再把任务放进 project。
 
 ```bash
 ./xuanchu _ids +review
-./xuanchu _uuids project:ai-agent-platform
+./xuanchu _uuids project:agentapi
 ./xuanchu _get 1.uuid 1.description 1.urgency
 ```
 
 ## 7. 一次完整日常流程
 
 ```bash
-./xuanchu project add docs-site name:"Docs Site"
-./xuanchu add "Draft user guide" project:docs-site +writing due:tomorrow
-./xuanchu add "Review hook docs" project:docs-site +review priority:H
+./xuanchu project add docsite name:"Docs Site"
+./xuanchu add "Draft user guide" project:docsite +writing due:tomorrow
+./xuanchu add "Review hook docs" project:docsite +review priority:H
 ./xuanchu +review list
 ./xuanchu 2 annotate "Need to mention signature verification"
 ./xuanchu 2 done

@@ -38,7 +38,7 @@ xuanchu token create admin \
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project ai-agent-platform \
+  --project agentapi \
   --expires-in 720h
 ```
 
@@ -62,7 +62,7 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" --workspac
 
 ```bash
 xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
-  --workspace dajee --project ai-agent-platform list
+  --workspace dajee --project agentapi list
 ```
 
 脚本和 Agent 推荐使用 `--project-id`，避免 slug 歧义：
@@ -142,7 +142,7 @@ curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
 
 ```bash
 curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
-  'https://xuanchu.example.com/api/v1/tasks?workspace=dajee&project=ai-agent-platform&limit=20'
+  'https://xuanchu.example.com/api/v1/tasks?workspace=dajee&project=agentapi&limit=20'
 
 curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
   'https://xuanchu.example.com/api/v1/tasks?workspace=dajee&query=assignee:me'
@@ -154,7 +154,7 @@ curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
 curl -X POST \
   -H "Authorization: Bearer $XUANCHU_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"description":"Review MCP docs","project":"ai-agent-platform","tags":["review"],"assignees":["alice"]}' \
+  -d '{"description":"Review MCP docs","project":"agentapi","tags":["review"],"assignees":["alice"]}' \
   'https://xuanchu.example.com/api/v1/tasks?workspace=dajee'
 ```
 
@@ -165,8 +165,10 @@ curl -X PATCH \
   -H "Authorization: Bearer $XUANCHU_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"assignees":["alice"],"remove_assignees":["bob"]}' \
-  'https://xuanchu.example.com/api/v1/tasks/<task-uuid>?workspace=dajee'
+  'https://xuanchu.example.com/api/v1/tasks/agentapi-1?workspace=dajee'
 ```
+
+单任务 path 使用 `{taskRef}`，接受完整 UUID 或 `task_slug`。HTTP API 不接受纯数字 working-set ID；传入 `1` 会返回 `task_ref_invalid`。远程 CLI 仍支持 `info 1`、`1 done` 这类交互写法，但会先在客户端按当前 working set 解析，再调用 HTTP API。
 
 远程 CLI 走同一套字段语义：
 

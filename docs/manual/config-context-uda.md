@@ -75,7 +75,7 @@ xuanchu rc.context=none list
 context 是命名过滤器，不是权限边界。
 
 ```bash
-xuanchu context define agent 'project:ai-agent-platform status:pending'
+xuanchu context define agent 'project:agentapi status:pending'
 xuanchu context use agent
 xuanchu context show
 xuanchu context list
@@ -108,7 +108,7 @@ xuanchu config set uda.estimate.type numeric
 xuanchu config set uda.estimate.label Estimate
 xuanchu config set uda.estimate.values 1,2,3,5,8
 
-xuanchu add "Implement API" project:ai-agent-platform estimate:3
+xuanchu add "Implement API" project:agentapi estimate:3
 xuanchu estimate:3 list
 xuanchu _get 1.estimate
 xuanchu _udas

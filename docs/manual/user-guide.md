@@ -25,15 +25,15 @@ xuanchu <id> done
 project 是 workspace 内的真实项目。任务引用 project 前必须先注册：
 
 ```bash
-xuanchu project add ai-agent-platform name:"AI Agent Platform"
-xuanchu project add erp-rewrite name:"ERP Rewrite"
+xuanchu project add agentapi name:"AI Agent Platform"
+xuanchu project add erpflow name:"ERP Rewrite"
 ```
 
 然后创建任务：
 
 ```bash
-xuanchu add "Design task.query schema" project:ai-agent-platform +mcp
-xuanchu add "Review ERP migration" project:erp-rewrite +review
+xuanchu add "Design task.query schema" project:agentapi +mcp
+xuanchu add "Review ERP migration" project:erpflow +review
 ```
 
 如果 project 不存在，命令会失败，而不是自动创建：
@@ -42,18 +42,19 @@ xuanchu add "Review ERP migration" project:erp-rewrite +review
 xuanchu add "Ghost task" project:ghost
 ```
 
-## 使用 working-set ID
+## 使用任务引用
 
-Human 报表里的 `ID` 是当前 working set 里的数字 ID，方便手工操作：
+Human 报表里的 `ID` 是当前 working set 里的数字 ID，方便手工操作；带 project 的任务还会有稳定短引用 `task_slug`，例如 `agentapi-1`：
 
 ```bash
 xuanchu list
 xuanchu info 1
+xuanchu info agentapi-1
 xuanchu 1 modify +next
-xuanchu 1 done
+xuanchu agentapi-1 done
 ```
 
-脚本和远程系统应优先使用 UUID：
+脚本和远程系统应优先使用 UUID 或 `task_slug`。HTTP API 与 MCP tool 不接受纯数字 working-set ID：
 
 ```bash
 xuanchu _uuids +next
@@ -63,7 +64,7 @@ xuanchu info <uuid>
 ## 用 tag 和 priority 组织任务
 
 ```bash
-xuanchu add "Fix webhook retry" project:ai-agent-platform +backend +urgent priority:H
+xuanchu add "Fix webhook retry" project:agentapi +backend +urgent priority:H
 xuanchu +backend list
 xuanchu priority:H next
 ```
@@ -79,7 +80,7 @@ xuanchu 1 modify +review -urgent
 context 是一个命名过滤器。启用后，`list`、`next`、报表和 helper 会自动叠加它。
 
 ```bash
-xuanchu context define mcp 'project:ai-agent-platform +mcp status:pending'
+xuanchu context define mcp 'project:agentapi +mcp status:pending'
 xuanchu context use mcp
 xuanchu list
 ```
@@ -141,4 +142,3 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" list
 ```
 
 远程模式下，权限由 token、workspace scope、project scope 和 membership 共同决定。
-

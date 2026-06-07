@@ -30,22 +30,25 @@
 go build -o xuanchu ./cmd/xuanchu
 
 # 先注册一个项目，再创建第一条任务
-./xuanchu project add ai-agent-platform name:"AI Agent Platform"
-./xuanchu add "Write MCP task docs" project:ai-agent-platform +docs due:tomorrow
+./xuanchu project add agentapi name:"AI Agent Platform"
+./xuanchu add "Write MCP task docs" project:agentapi +docs due:tomorrow
 
 # 默认只看 pending 任务
 ./xuanchu list
 
-# 查看详情。这里的 1 是列表里的 working-set ID
+# 查看详情。1 是列表里的 working-set ID；agentapi-1 是稳定短任务引用 task_slug
 ./xuanchu info 1
+./xuanchu info agentapi-1
 
 # 修改、完成、删除都可以用 <target> <action> 写法
-./xuanchu 1 modify priority:H +next
-./xuanchu 1 done
-./xuanchu 1 delete
+./xuanchu agentapi-1 modify priority:H +next
+./xuanchu agentapi-1 done
+./xuanchu agentapi-1 delete
 ```
 
-`target` 可以是列表里的数字 ID、完整 UUID，或足够长的 UUID 前缀。常用命令既支持 `xuanchu <subcommand> ...`，也支持 Taskwarrior 风格的 `xuanchu <target> <action> ...`。
+`project.slug` 会统一转成小写，只允许 3-10 位 ASCII 英文字母和数字，且必须以字母开头；同一 workspace 内不能重复，跨 workspace 可以重复。带 project 的任务会输出短标识 `task_slug`，格式为 `<projectSlug>-<seq>`，例如 `agentapi-1`。`--json` 输出中也会包含 `"task_slug":"agentapi-1"`。
+
+本地 CLI 的 `target` 可以是列表里的数字 ID、完整 UUID、足够长的 UUID 前缀，或 `task_slug`。HTTP API 和 MCP tool 属于协议入口，只接受 UUID 或 `task_slug`，不会接受本地 working-set 数字 ID。常用命令既支持 `xuanchu <subcommand> ...`，也支持 Taskwarrior 风格的 `xuanchu <target> <action> ...`。
 
 常用全局参数：
 
@@ -92,9 +95,9 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 任务属性一般写成 `key:value`，标签写成 `+tag` 或 `-tag`：
 
 ```bash
-./xuanchu add "Ship MCP API" project:ai-agent-platform priority:H +next due:friday
+./xuanchu add "Ship MCP API" project:agentapi priority:H +next due:friday
 ./xuanchu add "Review release note" @alice
-./xuanchu 1 modify project:ai-agent-platform priority:M +review -next
+./xuanchu 1 modify project:agentapi priority:M +review -next
 ./xuanchu 1 modify +@alice -@bob
 ./xuanchu 1 modify due:                  # 清空 due
 ```
@@ -112,7 +115,7 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 ```bash
 ./xuanchu +next list
 ./xuanchu list +next
-./xuanchu '(project:ai-agent-platform and +review) or priority:H' next
+./xuanchu '(project:agentapi and +review) or priority:H' next
 ```
 
 Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。`/text/` 是 description 子串匹配，不是正则。
@@ -122,7 +125,7 @@ Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。
 ```bash
 ./xuanchu --json export
 ./xuanchu _ids +next
-./xuanchu _uuids project:ai-agent-platform
+./xuanchu _uuids project:agentapi
 ./xuanchu _get 1.uuid 1.description 1.urgency
 ./xuanchu _show database.path active.user active.workspace active.context
 ```
@@ -133,7 +136,7 @@ Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。
 go build -o xuanchu ./cmd/xuanchu
 
 # 添加任务
-./xuanchu add "Write project spec" project:ai-agent-platform +planning due:tomorrow
+./xuanchu add "Write project spec" project:agentapi +planning due:tomorrow
 ./xuanchu add "Review PR" priority:H +review
 
 # 查看任务列表
@@ -144,7 +147,7 @@ go build -o xuanchu ./cmd/xuanchu
 
 # 修改任务
 ./xuanchu 1 modify priority:H +next
-./xuanchu 1 modify project:ai-agent-platform
+./xuanchu 1 modify project:agentapi
 
 # 完成任务
 ./xuanchu 1 done
@@ -173,7 +176,7 @@ go build -o xuanchu ./cmd/xuanchu
 ```bash
 # 布尔组合查询
 ./xuanchu '+next or due.before:tomorrow' list
-./xuanchu '(project:ai-agent-platform and +urgent) or priority:H' list
+./xuanchu '(project:agentapi and +urgent) or priority:H' list
 
 # 报表命令
 ./xuanchu all
@@ -189,7 +192,7 @@ go build -o xuanchu ./cmd/xuanchu
 # DOM helper
 ./xuanchu _get 1.description 1.uuid 1.urgency 1.tag.next
 ./xuanchu _ids +next
-./xuanchu _uuids project:ai-agent-platform
+./xuanchu _uuids project:agentapi
 ./xuanchu _projects
 ./xuanchu _tags
 
@@ -276,7 +279,7 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 ./xuanchu rc.date.format=epoch list
 
 # context
-./xuanchu context define agent 'project:ai-agent-platform status:pending'
+./xuanchu context define agent 'project:agentapi status:pending'
 ./xuanchu context use agent
 ./xuanchu list
 ./xuanchu --no-context list
@@ -366,7 +369,7 @@ rotate = "daily"
 ./xuanchu --workspace dajee config set uda.estimate.type numeric
 ./xuanchu --workspace dajee config set uda.estimate.values 1,2,3,5,8
 ./xuanchu --workspace dajee config set urgency.uda.estimate.coefficient 1.5
-./xuanchu --workspace dajee context define agent 'project:ai-agent-platform status:pending'
+./xuanchu --workspace dajee context define agent 'project:agentapi status:pending'
 ```
 
 不要把这些状态或内部 key 当作 TOML 配置写入：
@@ -424,10 +427,10 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 ./xuanchu workspace archive old
 
 # project 表示 workspace 内的真实企业项目
-./xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform"
-./xuanchu --workspace dajee project add erp-rewrite name:"ERP Rewrite"
-./xuanchu --workspace dajee add "Design MCP task.query schema" project:ai-agent-platform +mcp
-./xuanchu --workspace dajee add "Migrate invoice workflow" project:erp-rewrite +migration
+./xuanchu --workspace dajee project add agentapi name:"AI Agent Platform"
+./xuanchu --workspace dajee project add erpflow name:"ERP Rewrite"
+./xuanchu --workspace dajee add "Design MCP task.query schema" project:agentapi +mcp
+./xuanchu --workspace dajee add "Migrate invoice workflow" project:erpflow +migration
 
 # 在指定 workspace 中执行一次命令
 ./xuanchu --workspace local list
@@ -453,13 +456,13 @@ M4 新增了企业运行时基础：
 
 在当前版本里，`workspace` 是企业 / 租户级隔离边界；`project` 已经是 workspace 内的一等实体。任务上仍保留 `project` 字符串字段做人类可读输出，但运行时写入、查询、权限、审计和后续 API/MCP scope 都以稳定 `project_id` 为准。
 
-同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/ai-agent-platform` 和 `partner/ai-agent-platform` 是两个不同项目；权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
+同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/agentapi` 和 `partner/agentapi` 是两个不同项目；权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
 
 当前 CLI 的 `--workspace <slug|uuid>` 使用裸 workspace slug，所以 workspace slug 在同一个 Xuanchu 实例内应保持唯一。project slug 只在当前 workspace 内解析：
 
 ```bash
-./xuanchu --workspace dajee list project:ai-agent-platform
-./xuanchu --workspace partner list project:ai-agent-platform
+./xuanchu --workspace dajee list project:agentapi
+./xuanchu --workspace partner list project:agentapi
 ```
 
 上面两条命令访问的是两个不同 workspace 里的同名 project。当前版本已经采用严格 project 注册：`xuanchu add ... project:<slug>` 和 `xuanchu 1 modify project:<slug>` 只能引用当前 workspace 内已存在、未归档的 project，不会运行时自动创建。脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令会报错，避免把任务写进错误租户。
@@ -517,22 +520,22 @@ M5 现在已经落地。最重要的变化有四点：
 ```bash
 # 先建 workspace，再注册 project
 ./xuanchu workspace add dajee name:Dajee
-./xuanchu --workspace dajee project add ai-agent-platform name:"AI Agent Platform" description:"Owns MCP work"
-./xuanchu --workspace dajee project add erp-rewrite name:"ERP Rewrite"
+./xuanchu --workspace dajee project add agentapi name:"AI Agent Platform" description:"Owns MCP work"
+./xuanchu --workspace dajee project add erpflow name:"ERP Rewrite"
 
 # 用 project slug 创建和查询任务
-./xuanchu --workspace dajee add "Design task.query schema" project:ai-agent-platform +mcp
-./xuanchu --workspace dajee add "Review ERP migration" project:erp-rewrite
-./xuanchu --workspace dajee list project:ai-agent-platform
+./xuanchu --workspace dajee add "Design task.query schema" project:agentapi +mcp
+./xuanchu --workspace dajee add "Review ERP migration" project:erpflow
+./xuanchu --workspace dajee list project:agentapi
 
 # 管理 project 元数据
 ./xuanchu --workspace dajee project list
-./xuanchu --workspace dajee project info ai-agent-platform --json
-./xuanchu --workspace dajee project modify ai-agent-platform description:"Owns Xuanchu MCP and API work"
-./xuanchu --workspace dajee project archive erp-rewrite
+./xuanchu --workspace dajee project info agentapi --json
+./xuanchu --workspace dajee project modify agentapi description:"Owns Xuanchu MCP and API work"
+./xuanchu --workspace dajee project archive erpflow
 
 # 归档后不能再被新任务引用
-./xuanchu --workspace dajee add "Should fail" project:erp-rewrite
+./xuanchu --workspace dajee add "Should fail" project:erpflow
 ```
 
 如果你直接写一个不存在的 project，命令会失败，而不是偷偷创建：
@@ -578,10 +581,10 @@ shared config 现在分成两层：
 ./xuanchu --workspace dajee config schema set ads.roi_threshold type:number scopes:workspace,project default:1.8
 
 ./xuanchu --workspace dajee config set ads.roi_threshold 2.0
-./xuanchu project config set ai-agent-platform agent.background "Owns Xuanchu MCP integration."
-./xuanchu project config get ai-agent-platform agent.background
-./xuanchu project config list ai-agent-platform
-./xuanchu project config unset ai-agent-platform agent.background
+./xuanchu project config set agentapi agent.background "Owns Xuanchu MCP integration."
+./xuanchu project config get agentapi agent.background
+./xuanchu project config list agentapi
+./xuanchu project config unset agentapi agent.background
 ```
 
 也可以直接管理 schema：
@@ -622,7 +625,7 @@ shared config 现在分成两层：
 ./xuanchu _projects           # 当前 workspace 的 active project slug
 ./xuanchu _projects --all     # 包括 archived
 ./xuanchu _unique project     # 当前查询结果中实际被任务引用到的 project slug
-./xuanchu audit list --project ai-agent-platform --json
+./xuanchu audit list --project agentapi --json
 ```
 
 这里有两个容易混的点：
@@ -708,7 +711,7 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write impersonate
 ```
 
-project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{uuid}` 只接受真实 UUID；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析为 UUID。
+project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
 
 远程 CLI 已覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢；M6 不新增 aggregation endpoint。
 

@@ -8,8 +8,8 @@ weight: 30
 ## 添加任务
 
 ```bash
-xuanchu add "Write project spec" project:ai-agent-platform +planning due:tomorrow
-xuanchu add "Review PR" project:ai-agent-platform priority:H +review
+xuanchu add "Write project spec" project:agentapi +planning due:tomorrow
+xuanchu add "Review PR" project:agentapi priority:H +review
 xuanchu add "Ship docs" @alice @bob
 ```
 
@@ -27,6 +27,19 @@ xuanchu add "Ship docs" @alice @bob
 | `-next` | 移除标签 |
 | `@alice` | 为新任务追加 assignee |
 
+## 任务引用
+
+本地 CLI 可以用四种方式定位任务：
+
+| 引用 | 说明 |
+|---|---|
+| `1` | 当前报表里的 working-set ID，只适合人手工操作 |
+| `<uuid>` | 任务永久 UUID |
+| `<uuid-prefix>` | 足够长且不歧义的 UUID 前缀 |
+| `agentapi-1` | `task_slug`，由 `<projectSlug>-<seq>` 派生 |
+
+HTTP API、HTTP MCP 和 stdio MCP 属于协议入口，只接受 UUID 或 `task_slug`。纯数字 working-set ID 不进入协议契约；远程 CLI 如果收到 `info 1` 这类输入，会先在客户端按当前 working set 两跳解析。
+
 ## 查看任务
 
 ```bash
@@ -34,6 +47,7 @@ xuanchu list
 xuanchu next
 xuanchu all
 xuanchu info 1
+xuanchu info agentapi-1
 xuanchu info <uuid>
 xuanchu list assignee:alice
 xuanchu next assignee:me
@@ -60,7 +74,7 @@ xuanchu next assignee:me
 ```bash
 xuanchu 1 modify priority:H +next
 xuanchu 1 modify due:
-xuanchu 1 modify project:ai-agent-platform
+xuanchu 1 modify project:agentapi
 xuanchu 1 modify +@alice -@bob
 ```
 
@@ -115,8 +129,8 @@ xuanchu 1 edit
 ## 依赖
 
 ```bash
-xuanchu add "Prepare API" project:ai-agent-platform
-xuanchu add "Write docs" project:ai-agent-platform depends:<uuid-or-id>
+xuanchu add "Prepare API" project:agentapi
+xuanchu add "Write docs" project:agentapi depends:<uuid-or-id>
 xuanchu blocked
 xuanchu blocking
 ```
@@ -136,7 +150,7 @@ xuanchu link remove <task-ref> --link-id <link-id>
 ## 循环任务
 
 ```bash
-xuanchu add "Submit weekly report" project:ai-agent-platform recur:weekly due:2030-01-05 until:2030-02-01
+xuanchu add "Submit weekly report" project:agentapi recur:weekly due:2030-01-05 until:2030-02-01
 xuanchu list
 xuanchu 1 done
 xuanchu list
@@ -165,7 +179,7 @@ xuanchu list
 `due:` 和 `end:` 表示某天截止或结束，写入时会落在当地时区当天 `23:59:59`。
 
 ```bash
-xuanchu add "deadline" project:ai-agent-platform due:2030-01-01
+xuanchu add "deadline" project:agentapi due:2030-01-01
 ```
 
 查询 `due:2030-01-01` 表示这个自然日范围，而不是只匹配零点。

@@ -31,6 +31,23 @@
 | M14 | 已完成 | 多数据库支持（SQLite / PostgreSQL） |
 | M14.1 | 已完成 | Token Scope 通配符与 Token Modify |
 | M15 | 已完成 | MCP Tool 全量覆盖（74 tool）与 Agent Skill 文档 |
+| v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
+
+## v0.1.1：稳定短任务标识 task_slug
+
+**状态：已完成。**
+
+v0.1.1 在 v0.1.0 已具备的 CLI / HTTP / MCP / Remote 基础上，补齐面向人类和 Agent 协作的稳定短任务引用。
+
+核心能力：
+
+- `project.slug` 收紧为 3-10 位 ASCII 英文字母和数字，必须以字母开头，存储和输出统一小写。
+- `project.slug` 继续只在同一 workspace 内唯一；不同 workspace 可以复用同名 project。
+- 带 project 的任务按 project 内递增序号生成 `task_slug`，格式为 `<projectSlug>-<seq>`，例如 `agentapi-1`。
+- task JSON 输出新增只读字段 `task_slug`；无 project 的任务省略该字段。
+- 本地 CLI 可用数字 working-set ID、UUID、UUID 前缀和 `task_slug` 定位任务。
+- 远程 CLI 的纯数字 target 仍由客户端两跳解析；UUID 和 `task_slug` 直接传给服务端。
+- HTTP API 与 MCP tool 只接受 UUID 或 `task_slug`，纯数字 working-set ID 返回 `task_ref_invalid`。
 
 ## M0：本地单用户 CLI
 
@@ -45,7 +62,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 - 隐式 local workspace。
 - 本地数据库自动初始化。
 - 任务核心生命周期：`add`、`list`、`next`、`info`、`modify`、`done`、`delete`。
-- 基础 filter：status、project、priority、tag、自由文本、数字 working-set ID、UUID。
+- 基础 filter：status、project、priority、tag、自由文本、数字 working-set ID、UUID。v0.1.1 起任务引用额外支持 `task_slug`。
 - 基础日期解析：`today`、`tomorrow`、`YYYY-MM-DD`、RFC3339、`eod`、`eow`、`eom`、`<N>days`。
 - JSON import/export。
 - `show`、`config get`、`config set`。
@@ -66,7 +83,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 - 新增 `internal/query` AST，而不是继续堆叠简单 `Filter` 字段。
 - 支持 Taskwarrior 风格常用 filter：
-  - `project:ai-agent-platform`
+  - `project:agentapi`
   - `+urgent`
   - `-tag`
   - `status:pending`
@@ -374,9 +391,9 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 已归档 project 不允许被新任务引用；已有任务保留关联并可继续读取、完成、删除。
   - M5 不引入全局唯一 project slug。所有 project slug 都必须在 effective workspace 内解析。
   - effective workspace 的来源顺序：本次 `--workspace <slug|uuid>` > 当前 active workspace > 本地默认 workspace。后续远程 CLI 还要叠加 token workspace scope。
-  - `xuanchu --workspace dajee project info ai-agent-platform` 表示 `dajee` workspace 下的 `ai-agent-platform`。
-  - `xuanchu --workspace partner project info ai-agent-platform` 表示另一个 workspace 下的同名 project。
-  - `xuanchu project info ai-agent-platform` 只在当前 active workspace 中查找，不做跨 workspace 搜索。
+  - `xuanchu --workspace dajee project info agentapi` 表示 `dajee` workspace 下的 `agentapi`。
+  - `xuanchu --workspace partner project info agentapi` 表示另一个 workspace 下的同名 project。
+  - `xuanchu project info agentapi` 只在当前 active workspace 中查找，不做跨 workspace 搜索。
   - 脚本和 API 场景应优先保存和传递 `project_id`；slug 只做人类输入。
   - `project_id` 是全局稳定身份，但所有读取和写入仍必须校验 actor 对该 project 所属 workspace 的权限。
   - 如果命令同时给出 `--workspace <slug|uuid>` 和 `<project-id>`，该 project 必须属于这个 workspace；不属于时直接报错，不回退到 project 自己的 workspace。
@@ -885,7 +902,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 - CLI 和 HTTP API 均可操作
 - Timeline 聚合接口通过 SQL UNION 合并 project + task annotations
 - `project info` 展示最近 5 条 annotation
-- `normalizeProjectSlug` 强化：拒绝数字开头，确保与 task 数字 ID 不冲突
+- `normalizeProjectSlug` 强化：只允许 3-10 位 ASCII 英文字母和数字，必须以字母开头，统一小写，确保可作为 `task_slug` 前缀并与数字 working-set ID 不冲突
 - 目标风格 `xuanchu <slug> annotate <content>` 自动回退到 project
 
 验收：

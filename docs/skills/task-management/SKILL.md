@@ -103,7 +103,7 @@ project_list({"workspace": "dajee"})
 
 ### task_get — 读取单任务
 
-只读。HTTP 模式只能用 UUID，stdio 模式可用 working-set 数字 ID。
+只读。HTTP 和 stdio MCP 模式都只能用 UUID 或 `task_slug`，不能使用本地 working-set 数字 ID。
 
 ```json
 // 输入

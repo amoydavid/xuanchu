@@ -924,8 +924,13 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
 	// 创建任务
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Description: "test task", Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -989,6 +994,9 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	if taskData["description"] != "test task" {
 		t.Fatalf("task.description = %v, want test task", taskData["description"])
 	}
+	if taskData["task_slug"] != "api-1" {
+		t.Fatalf("task.task_slug = %v, want api-1", taskData["task_slug"])
+	}
 
 	// 验证 headers
 	var headers map[string]string
@@ -1004,6 +1012,41 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 
 	// 确保 store 已关闭（defer 会处理）
 	_ = store
+}
+
+func TestHookTaskCreatedPayloadOmitsTaskSlugWithoutProject(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "create-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
+		Secret: "s3cret", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+
+	if _, err := svc.Add(AddInput{Description: "no project"}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries count = %d, want 1", len(deliveries))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(deliveries[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal(payload) error = %v", err)
+	}
+	data := payload["data"].(map[string]any)
+	taskData := data["task"].(map[string]any)
+	if _, ok := taskData["task_slug"]; ok {
+		t.Fatalf("task_slug should be omitted without project: %#v", taskData)
+	}
 }
 
 func TestHookPayloadIncludesAssignees(t *testing.T) {

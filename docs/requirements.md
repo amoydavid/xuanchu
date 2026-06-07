@@ -52,9 +52,9 @@ Taskwarrior 原生为**单用户**模型 `[24]`。我们在其上叠加以下扩
 ### 1.0 概念边界
 
 - **Workspace**：企业 / 租户级隔离边界。一个 workspace 通常对应一个企业、团队或独立业务域，例如 `dajee`。所有 task、project、context、UDA、audit、Agent token scope 都必须落在 workspace 内。
-- **Project**：workspace 内的真实企业项目，例如 `ai-agent-platform`、`erp-rewrite`、`lark-integration`。M4 阶段 project 仍是任务字段；M5 起抬成一等实体，后续 API、token、MCP scope 都应绑定稳定 project 身份。
+- **Project**：workspace 内的真实企业项目，例如 `agentapi`、`erpflow`、`lark-integration`。M4 阶段 project 仍是任务字段；M5 起抬成一等实体，后续 API、token、MCP scope 都应绑定稳定 project 身份。
 - **Agent**：通过 PAT / service token / MCP 连接进来的非人类 actor。Agent 的权限来自 token 和 membership，不来自提示词。token 可限制 workspace，也可限制 project allowlist。
-- **Context**：人或 Agent 的当前视图过滤器，例如 `project:ai-agent-platform and +next`。context 不是权限边界，只是查询默认条件。
+- **Context**：人或 Agent 的当前视图过滤器，例如 `project:agentapi and +next`。context 不是权限边界，只是查询默认条件。
 
 当前实现中没有单独的 organization/tenant 表。`workspace` 就是请求执行时的租户级作用域。未来如需 SaaS 多企业模型，可在不破坏 workspace/project/task 关系的前提下增加更上层的 organization。
 
@@ -93,7 +93,7 @@ M6 已实现的 capability：
 ### 1.3 Workspace 与 Project 的关系
 
 - **Workspace** = 企业 / 租户级数据隔离边界。
-- **Project** = 企业里的真实项目。Taskwarrior 支持点号分层 `work.client.acme` `[19]`，我们借鉴这种可读命名方式，但不再把 project 视为自由字符串。project slug 只在所属 workspace 内有意义，不同 workspace 可以有相同 slug。M5 前 project 只是任务字段；M5 后 project 是实体，M6 token 与 M7 MCP scope 优先使用 project id，slug 只能作为带 workspace 的人类可读输入。
+- **Project** = 企业里的真实项目。Taskwarrior 支持可读 project 名 `[19]`，我们借鉴其人类可读性，但不再把 project 视为自由字符串。v0.1.1 起 project slug 只允许 3-10 位 ASCII 英文字母和数字，必须以字母开头，存储和输出统一小写；slug 只在所属 workspace 内有意义，不同 workspace 可以有相同 slug。M5 前 project 只是任务字段；M5 后 project 是实体，M6 token 与 M7 MCP scope 优先使用 project id，slug 只能作为带 workspace 的人类可读输入。
 
 ---
 
@@ -117,7 +117,8 @@ M6 已实现的 capability：
 | `wait` | timestamp | 隐藏 pending；到期客户端必须自动清空 `wait` 并改为 pending `[15]` |
 | `scheduled` | timestamp | 过 `scheduled` 后任务为 ready `[15]` |
 | `until` | timestamp | 到期任务自动消失 `[7]` |
-| `project` | string | 任务上的可读 project slug，借鉴 Taskwarrior 的 `a.b.c` 点号命名方式 `[19]`；M5 后内部必须映射到 workspace 内的 project 实体 |
+| `project` | string | 任务上的可读 project slug；M5 后内部必须映射到 workspace 内的 project 实体 |
+| `task_slug` | string (派生) | v0.1.1 起输出的稳定短任务引用，格式为 `<projectSlug>-<seq>`；无 project 的任务省略 |
 | `tags` | []string | 标签数组；`+tag` / `-tag` 修改语法 `[8]` |
 | `priority` | enum | 默认 `H/M/L/<空>`，本质上是内置 UDA `[5][12]` |
 | `depends` | []UUID | 依赖列表 `[11]` |
@@ -194,7 +195,7 @@ M6 已实现的 capability：
 
 支持示例（全部来自上游）`[8][19]`：
 
-- 属性匹配：`project:ai-agent-platform` · `+urgent` · `-waiting` · `due:today` · `due.before:tomorrow` · `due.after:2days`
+- 属性匹配：`project:agentapi` · `+urgent` · `-waiting` · `due:today` · `due.before:tomorrow` · `due.after:2days`
 - 日期关键字：`today` / `tomorrow` / `eow` / `eom` / `sod` / `eod` / `<N>days` 等
 - 文本与正则：`/pattern/`，受 `rc.search.case.sensitive` 控制
 - 布尔代数：`and` / `or` / `xor` / `not`，括号转义：`\( ... \)` `[8]`
@@ -701,7 +702,7 @@ CREATE INDEX idx_audit_project_time ON audit_logs(workspace_id, project_id, crea
 >
 > `workspaces.slug` 设计为实例内唯一，因为当前 CLI/API 使用裸 `--workspace <slug|uuid>` 解析 workspace。如果未来需要同一实例内多 owner 复用 workspace slug，必须先引入 `owner/slug` 或 org scope 形式，不能悄悄放宽唯一性。
 >
-> `projects.slug` 只在 `(workspace_id, slug)` 内唯一；不同 workspace 可以复用同名 project。`tasks.project_id` 非空时必须指向同一个 `workspace_id` 下的 project，数据库复合外键和 app/service 层都要校验这一点。`tasks.project` 字符串仅用于 human 输出、迁移导出和人类输入。
+> `projects.slug` 只在 `(workspace_id, slug)` 内唯一；不同 workspace 可以复用同名 project。v0.1.1 起 slug 只允许 3-10 位 ASCII 英文字母和数字，必须以字母开头，并统一小写。`tasks.project_id` 非空时必须指向同一个 `workspace_id` 下的 project，数据库复合外键和 app/service 层都要校验这一点。`tasks.project` 字符串仅用于 human 输出、迁移导出和人类输入。
 >
 > M5 起 SQLite 连接必须启用 `PRAGMA foreign_keys = ON`；如果实现发现既有库需要重建 `tasks` 才能声明复合外键，应在 M5 迁移中完成，不把跨 workspace project 引用只留给文档约定。
 >

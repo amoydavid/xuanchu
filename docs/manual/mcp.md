@@ -49,7 +49,7 @@ xuanchu server --listen :8080
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project ai-agent-platform \
+  --project agentapi \
   --expires-in 720h
 ```
 
@@ -269,7 +269,7 @@ HTTP MCP 接入前，建议为 Agent 创建 project-scoped token：
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project ai-agent-platform \
+  --project agentapi \
   --expires-in 720h
 ```
 
@@ -335,7 +335,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `id` | string | 是 | 任务 UUID；stdio 可用 working-set ID |
+| `id` | string | 是 | 任务 UUID 或 `task_slug` |
 
 #### `task_modify`
 
@@ -346,7 +346,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `id` | string | 是 | 任务 UUID 或 working-set ID |
+| `id` | string | 是 | 任务 UUID 或 `task_slug` |
 | `description` | string | 否 | 新描述 |
 | `priority` | string | 否 | `H`/`M`/`L` |
 | `due` | int64 | 否 | unix 秒 |
@@ -450,7 +450,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `task` | string | 是 | 任务引用（UUID 或 working-set ID） |
+| `task` | string | 是 | 任务引用（UUID 或 `task_slug`） |
 | `type` | string | 是 | 链接类型（document/pr/ticket/design 等） |
 | `url` | string | 是 | 外部资源 URL |
 | `title` | string | 否 | 显示标题 |
@@ -1124,7 +1124,7 @@ Assignee 用法（M9+）：
 
 ## 注意事项
 
-- HTTP MCP 的 `task_get` 只承诺 UUID，不使用本地 working-set ID。
+- MCP task tool 只承诺 UUID 或 `task_slug`，不使用本地 working-set ID。
 - HTTP MCP 不读取调用者本机 TOML。
 - HTTP MCP 不能写 local config。
 - Agent 不应依赖 `context_set`/`workspace_use` 等隐式状态操作，每次调用都应显式传参。

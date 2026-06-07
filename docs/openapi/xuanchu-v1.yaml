@@ -26,6 +26,7 @@ components:
         - membership_not_found
         - permission_denied
         - task_not_found
+        - task_ref_invalid
         - task_uuid_invalid
         - assignee_not_found
         - assignee_not_member
@@ -76,6 +77,9 @@ components:
       properties:
         uuid:
           type: string
+        task_slug:
+          type: string
+          nullable: true
         description:
           type: string
         project:
@@ -680,17 +684,17 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /api/v1/tasks/{uuid}:
+  /api/v1/tasks/{taskRef}:
     parameters:
       - in: path
-        name: uuid
+        name: taskRef
         required: true
+        description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
         schema:
           type: string
-          format: uuid
       - $ref: '#/components/parameters/WorkspaceQuery'
     get:
-      summary: Get one task by full UUID. Numeric working-set IDs are rejected with task_uuid_invalid.
+      summary: Get one task by UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
       responses:
         '200':
           description: Task details.
@@ -699,7 +703,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
     patch:
-      summary: Modify one task by full UUID.
+      summary: Modify one task by UUID or task_slug.
       requestBody:
         required: true
         content:
@@ -793,58 +797,58 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-  /api/v1/tasks/{uuid}/done:
+  /api/v1/tasks/{taskRef}/done:
     post:
-      summary: Complete a task.
+      summary: Complete a task by UUID or task_slug.
       parameters:
         - in: path
-          name: uuid
+          name: taskRef
           required: true
+          description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
           schema:
             type: string
-            format: uuid
         - $ref: '#/components/parameters/WorkspaceQuery'
       responses:
         '200':
           description: Completed task.
-  /api/v1/tasks/{uuid}/start:
+  /api/v1/tasks/{taskRef}/start:
     post:
-      summary: Start a task.
+      summary: Start a task by UUID or task_slug.
       parameters:
         - in: path
-          name: uuid
+          name: taskRef
           required: true
+          description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
           schema:
             type: string
-            format: uuid
         - $ref: '#/components/parameters/WorkspaceQuery'
       responses:
         '200':
           description: Started task.
-  /api/v1/tasks/{uuid}/stop:
+  /api/v1/tasks/{taskRef}/stop:
     post:
-      summary: Stop a task.
+      summary: Stop a task by UUID or task_slug.
       parameters:
         - in: path
-          name: uuid
+          name: taskRef
           required: true
+          description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
           schema:
             type: string
-            format: uuid
         - $ref: '#/components/parameters/WorkspaceQuery'
       responses:
         '200':
           description: Stopped task.
-  /api/v1/tasks/{uuid}/annotations:
+  /api/v1/tasks/{taskRef}/annotations:
     post:
-      summary: Add an annotation.
+      summary: Add an annotation by UUID or task_slug.
       parameters:
         - in: path
-          name: uuid
+          name: taskRef
           required: true
+          description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
           schema:
             type: string
-            format: uuid
         - $ref: '#/components/parameters/WorkspaceQuery'
       requestBody:
         required: true
@@ -860,16 +864,16 @@ paths:
       responses:
         '200':
           description: Annotated task.
-  /api/v1/tasks/{uuid}/annotations/{index}:
+  /api/v1/tasks/{taskRef}/annotations/{index}:
     delete:
       summary: Remove an annotation by 1-based index.
       parameters:
         - in: path
-          name: uuid
+          name: taskRef
           required: true
+          description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
           schema:
             type: string
-            format: uuid
         - in: path
           name: index
           required: true
@@ -879,16 +883,16 @@ paths:
       responses:
         '200':
           description: Annotation removed.
-  /api/v1/tasks/{uuid}/urgency:
+  /api/v1/tasks/{taskRef}/urgency:
     get:
-      summary: Explain task urgency.
+      summary: Explain task urgency by UUID or task_slug.
       parameters:
         - in: path
-          name: uuid
+          name: taskRef
           required: true
+          description: Task UUID or task_slug. Numeric working-set IDs are rejected with task_ref_invalid.
           schema:
             type: string
-            format: uuid
         - $ref: '#/components/parameters/WorkspaceQuery'
       responses:
         '200':

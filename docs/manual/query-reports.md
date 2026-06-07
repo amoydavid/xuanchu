@@ -10,14 +10,14 @@ Xuanchu 的 CLI 也是查询语言。你可以把 filter 放在报表命令前�
 ```bash
 xuanchu +next list
 xuanchu list +next
-xuanchu '(project:ai-agent-platform and +review) or priority:H' next
+xuanchu '(project:agentapi and +review) or priority:H' next
 ```
 
 ## 常用查询
 
 | 查询 | 说明 |
 |---|---|
-| `project:ai-agent-platform` | 查询 project |
+| `project:agentapi` | 查询 project |
 | `+review` | 包含 tag |
 | `-review` | 不包含 tag |
 | `status:pending` | 按状态查询 |
@@ -33,7 +33,7 @@ xuanchu '(project:ai-agent-platform and +review) or priority:H' next
 
 ```bash
 xuanchu '+next or due.before:tomorrow' list
-xuanchu '(project:ai-agent-platform and +urgent) or priority:H' list
+xuanchu '(project:agentapi and +urgent) or priority:H' list
 xuanchu 'not +waiting' list
 ```
 
@@ -94,7 +94,7 @@ urgency 会考虑：
 
 ```bash
 xuanchu _ids +next
-xuanchu _uuids project:ai-agent-platform
+xuanchu _uuids project:agentapi
 xuanchu _projects
 xuanchu _tags
 xuanchu _udas
@@ -106,7 +106,7 @@ xuanchu _version
 
 脚本里建议优先使用：
 
-- UUID，而不是 working-set ID。
+- UUID 或 `task_slug`，而不是 working-set ID。
 - `--json`，而不是解析 human 输出。
 - helper 命令，而不是解析表格。
 
@@ -118,4 +118,3 @@ xuanchu calc '10 > 2 and 3 < 5'
 ```
 
 `calc` 暴露表达式求值能力，主要用于调试和脚本。
-

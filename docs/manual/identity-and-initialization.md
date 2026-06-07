@@ -43,7 +43,7 @@ xuanchu user use alice
 xuanchu workspace add dajee name:Dajee visibility:team
 xuanchu workspace use dajee
 
-xuanchu project add ai-agent-platform name:"AI Agent Platform"
+xuanchu project add agentapi name:"AI Agent Platform"
 ```
 
 此时本机 active user 是 `alice`，active workspace 是 `dajee`。后续不带 `--workspace` 的本地命令会默认在 `dajee` 中执行。
@@ -166,7 +166,7 @@ xuanchu token create reader --scope '*:read' --expires-in 720h
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project ai-agent-platform \
+  --project agentapi \
   --expires-in 720h
 ```
 
