@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -397,8 +398,8 @@ func TestOpenCreatesM5ProjectAndConfigSchema(t *testing.T) {
 func TestOpenMigratesM4ProjectStrings(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 	seedM4DatabaseWithTasks(t, dbPath, []seedTask{
-		{WorkspaceSlug: "local", UUID: "t1", Project: ptrString("Customer-A"), Entry: 10},
-		{WorkspaceSlug: "local", UUID: "t2", Project: ptrString("customer-b"), Entry: 20},
+		{WorkspaceSlug: "local", UUID: "t1", Project: ptrString("CustomerA"), Entry: 10},
+		{WorkspaceSlug: "local", UUID: "t2", Project: ptrString("customerb"), Entry: 20},
 		{WorkspaceSlug: "local", UUID: "t3", Project: nil, Entry: 30},
 	})
 
@@ -412,11 +413,11 @@ func TestOpenMigratesM4ProjectStrings(t *testing.T) {
 	if err := store.DB().Order("slug").Find(&projects).Error; err != nil {
 		t.Fatal(err)
 	}
-	if got := projectSlugs(projects); !reflect.DeepEqual(got, []string{"customer-a", "customer-b"}) {
+	if got := projectSlugs(projects); !reflect.DeepEqual(got, []string{"customera", "customerb"}) {
 		t.Fatalf("project slugs = %#v", got)
 	}
-	assertTaskProject(t, store, "t1", "customer-a", projects[0].ID)
-	assertTaskProject(t, store, "t2", "customer-b", projects[1].ID)
+	assertTaskProject(t, store, "t1", "customera", projects[0].ID)
+	assertTaskProject(t, store, "t2", "customerb", projects[1].ID)
 	assertTaskHasNoProject(t, store, "t3")
 	assertMigrationSkippedReport(t, store, nil)
 }
@@ -624,10 +625,85 @@ func TestM5MigrationIndexesMatchM5Snapshot(t *testing.T) {
 		"idx_tasks_until",
 		"idx_tasks_wait",
 		"idx_tasks_ws_project_id",
+		"idx_tasks_ws_project_seq",
 		"sqlite_autoindex_tasks_1",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tasks indexes = %#v, want %#v", got, want)
+	}
+}
+
+func TestTaskSlugMigrationBackfillsOldM5Schema(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
+	seedOldM5DatabaseForTaskSlug(t, dbPath, "api")
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if !store.DB().Migrator().HasColumn(&Task{}, "project_seq") {
+		t.Fatal("tasks.project_seq missing after v0.1.1 migration")
+	}
+	if !store.DB().Migrator().HasColumn(&Project{}, "next_task_seq") {
+		t.Fatal("projects.next_task_seq missing after v0.1.1 migration")
+	}
+
+	type seqRow struct {
+		UUID       string
+		ProjectSeq int64
+	}
+	var rows []seqRow
+	if err := store.DB().Raw("SELECT uuid, project_seq FROM tasks ORDER BY entry ASC, uuid ASC").Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rows, []seqRow{{UUID: "task-a", ProjectSeq: 1}, {UUID: "task-b", ProjectSeq: 2}}) {
+		t.Fatalf("backfilled project_seq rows = %#v", rows)
+	}
+	var nextSeq int64
+	if err := store.DB().Raw("SELECT next_task_seq FROM projects WHERE id = ?", "project-api").Scan(&nextSeq).Error; err != nil {
+		t.Fatal(err)
+	}
+	if nextSeq != 3 {
+		t.Fatalf("next_task_seq = %d, want 3", nextSeq)
+	}
+	if _, ok, err := store.GetMeta(taskSlugMigrationMetaKey); err != nil || !ok {
+		t.Fatalf("task slug migration marker ok=%v err=%v, want marker", ok, err)
+	}
+	if !slices.Contains(taskIndexNames(t, store), "idx_tasks_ws_project_seq") {
+		t.Fatalf("idx_tasks_ws_project_seq missing: %#v", taskIndexNames(t, store))
+	}
+}
+
+func TestTaskSlugMigrationRejectsOldIllegalProjectSlug(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
+	seedOldM5DatabaseForTaskSlug(t, dbPath, "web-app")
+
+	_, err := Open(dbPath)
+	if err == nil || !strings.Contains(err.Error(), "project_slug_migration_required") {
+		t.Fatalf("Open(illegal old slug) error = %v, want project_slug_migration_required", err)
+	}
+}
+
+func TestTaskSlugMigrationNewSchemaIncludesProjectSeq(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if !store.DB().Migrator().HasColumn(&Task{}, "project_seq") {
+		t.Fatal("new schema missing tasks.project_seq")
+	}
+	if !store.DB().Migrator().HasColumn(&Project{}, "next_task_seq") {
+		t.Fatal("new schema missing projects.next_task_seq")
+	}
+	if !slices.Contains(taskIndexNames(t, store), "idx_tasks_ws_project_seq") {
+		t.Fatalf("new schema missing idx_tasks_ws_project_seq: %#v", taskIndexNames(t, store))
+	}
+	if _, ok, err := store.GetMeta(taskSlugMigrationMetaKey); err != nil || !ok {
+		t.Fatalf("task slug migration marker ok=%v err=%v, want marker", ok, err)
 	}
 }
 
@@ -653,6 +729,7 @@ func TestM5MigrationPreservesTaskIndexesFromM4Database(t *testing.T) {
 		"idx_tasks_until",
 		"idx_tasks_wait",
 		"idx_tasks_ws_project_id",
+		"idx_tasks_ws_project_seq",
 		"sqlite_autoindex_tasks_1",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -787,6 +864,81 @@ type seedUDA struct {
 	Value     string
 	ValueType string
 	Orphan    bool
+}
+
+type oldM5ProjectForTaskSlug struct {
+	ID           string `gorm:"primaryKey;uniqueIndex:idx_projects_id_ws,priority:1"`
+	WorkspaceID  string `gorm:"not null;uniqueIndex:idx_projects_ws_slug,priority:1;uniqueIndex:idx_projects_id_ws,priority:2;index:idx_projects_ws_status,priority:1"`
+	Slug         string `gorm:"not null;uniqueIndex:idx_projects_ws_slug,priority:2"`
+	Name         string `gorm:"not null"`
+	Description  string `gorm:"not null;default:''"`
+	Status       string `gorm:"not null;default:'active';index:idx_projects_ws_status,priority:2"`
+	SettingsJSON string `gorm:"not null;default:'{}'"`
+	CreatedAt    int64  `gorm:"not null"`
+	ModifiedAt   int64  `gorm:"not null"`
+	ArchivedAt   *int64
+}
+
+func (oldM5ProjectForTaskSlug) TableName() string { return "projects" }
+
+func seedOldM5DatabaseForTaskSlug(t *testing.T, dbPath, projectSlug string) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	execSQL(t, db, `CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+	execSQL(t, db, `INSERT INTO meta(key, value) VALUES(?, ?)`, m5ProjectsAppliedMetaKey, "true")
+	execSQL(t, db, `CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, default_workspace_id TEXT, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL)`)
+	execSQL(t, db, `CREATE TABLE workspaces (id TEXT PRIMARY KEY, slug TEXT NOT NULL, name TEXT NOT NULL DEFAULT 'Local', created_by_user_id TEXT, description TEXT, visibility TEXT NOT NULL DEFAULT 'private', settings_json TEXT NOT NULL DEFAULT '{}', archived_at INTEGER, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL DEFAULT 0)`)
+	execSQL(t, db, `CREATE UNIQUE INDEX idx_workspaces_slug ON workspaces(slug)`)
+	execSQL(t, db, `CREATE TABLE memberships (user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, role TEXT NOT NULL, joined_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (user_id, workspace_id))`)
+	execSQL(t, db, `CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, workspace_id TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, payload_json TEXT, created_at INTEGER NOT NULL)`)
+	execSQL(t, db, `CREATE TABLE contexts (workspace_id TEXT NOT NULL, name TEXT NOT NULL, filter_source TEXT NOT NULL, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name))`)
+	execSQL(t, db, `CREATE TABLE uda_definitions (workspace_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, label TEXT, values_json TEXT, default_value TEXT, created_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name))`)
+	if err := db.AutoMigrate(&oldM5ProjectForTaskSlug{}); err != nil {
+		t.Fatal(err)
+	}
+	execSQL(t, db, `CREATE TABLE tasks (
+	uuid TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL,
+	description TEXT NOT NULL,
+	status TEXT NOT NULL,
+	entry INTEGER NOT NULL,
+	modified INTEGER NOT NULL,
+	end_ts INTEGER,
+	due INTEGER,
+	project TEXT,
+	priority TEXT,
+	start INTEGER,
+	wait INTEGER,
+	scheduled INTEGER,
+	until INTEGER,
+	recur TEXT,
+	parent TEXT,
+	mask TEXT,
+	i_mask INTEGER,
+	project_id TEXT,
+	FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
+)`)
+	execSQL(t, db, `CREATE INDEX idx_tasks_ws_project_id ON tasks(workspace_id, project_id)`)
+	execSQL(t, db, `CREATE TABLE task_tags (task_uuid TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (task_uuid, tag))`)
+	execSQL(t, db, `CREATE TABLE task_annotations (task_uuid TEXT NOT NULL, entry INTEGER NOT NULL, description TEXT NOT NULL, PRIMARY KEY (task_uuid, entry, description))`)
+	execSQL(t, db, `CREATE TABLE task_dependencies (task_uuid TEXT NOT NULL, depends_on TEXT NOT NULL, PRIMARY KEY (task_uuid, depends_on))`)
+	execSQL(t, db, `CREATE TABLE task_uda_values (workspace_id TEXT NOT NULL, task_uuid TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL, value_type TEXT, orphan NUMERIC NOT NULL DEFAULT false, PRIMARY KEY (task_uuid, name))`)
+	execSQL(t, db, `CREATE TABLE task_assignees (task_uuid TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (task_uuid, user_id))`)
+	execSQL(t, db, `CREATE TABLE task_links (id TEXT PRIMARY KEY, task_uuid TEXT NOT NULL, type TEXT NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, created_by TEXT NOT NULL)`)
+
+	execSQL(t, db, `INSERT INTO workspaces(id, slug, name, visibility, settings_json, created_at, modified_at) VALUES('ws-local', 'local', 'Local', 'private', '{}', 1, 1)`)
+	execSQL(t, db, `INSERT INTO projects(id, workspace_id, slug, name, description, status, settings_json, created_at, modified_at) VALUES('project-api', 'ws-local', ?, 'API', '', 'active', '{}', 1, 1)`, projectSlug)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES('task-b', 'ws-local', 'task b', 'pending', 20, 20, ?, 'project-api')`, projectSlug)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES('task-a', 'ws-local', 'task a', 'pending', 10, 10, ?, 'project-api')`, projectSlug)
 }
 
 func seedM4DatabaseWithTasks(t *testing.T, dbPath string, tasks []seedTask) {

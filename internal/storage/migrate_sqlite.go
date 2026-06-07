@@ -14,11 +14,15 @@ import (
 )
 
 const m5ProjectsAppliedMetaKey = "migration.m5.projects.applied"
+const taskSlugMigrationMetaKey = "migration.v0.1.1.task_slug.applied"
 
 var m5ProjectSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 func (s *Store) migrateSQLite() error {
 	if err := s.prepareWorkspaceSchemaForM4(); err != nil {
+		return err
+	}
+	if err := s.prepareProjectNextTaskSeqColumnForV011(); err != nil {
 		return err
 	}
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &UserExternalID{}); err != nil {
@@ -30,6 +34,89 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareProjectSchemaForM5(); err != nil {
 		return err
 	}
+	if err := s.prepareTaskSlugSchemaForV011(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) prepareProjectNextTaskSeqColumnForV011() error {
+	if !s.db.Migrator().HasTable(&Project{}) {
+		return nil
+	}
+	if s.db.Migrator().HasColumn(&Project{}, "next_task_seq") {
+		return nil
+	}
+	return s.db.Exec("ALTER TABLE projects ADD COLUMN next_task_seq INTEGER NOT NULL DEFAULT 1").Error
+}
+
+func (s *Store) prepareTaskSlugSchemaForV011() error {
+	sqlDB, err := s.sqlDB()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	began := true
+	committed := false
+	defer func() {
+		if began && !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
+
+	tx := m5MigrationTx{ctx: ctx, conn: conn}
+	applied, err := metaKeyApplied(tx, taskSlugMigrationMetaKey)
+	if err != nil {
+		return err
+	}
+	if applied {
+		if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	}
+
+	if exists, err := columnExists(tx, "projects", "next_task_seq"); err != nil {
+		return err
+	} else if !exists {
+		if err := tx.exec("ALTER TABLE projects ADD COLUMN next_task_seq INTEGER NOT NULL DEFAULT 1"); err != nil {
+			return err
+		}
+	}
+	if exists, err := columnExists(tx, "tasks", "project_seq"); err != nil {
+		return err
+	} else if !exists {
+		if err := tx.exec("ALTER TABLE tasks ADD COLUMN project_seq INTEGER"); err != nil {
+			return err
+		}
+	}
+	if err := validateV011ProjectSlugs(tx); err != nil {
+		return err
+	}
+	if err := backfillProjectSeqs(tx); err != nil {
+		return err
+	}
+	for _, indexSQL := range m5TaskIndexes {
+		if err := tx.exec(indexSQL); err != nil {
+			return err
+		}
+	}
+	if err := setMetaInTx(tx, taskSlugMigrationMetaKey, "true"); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 
@@ -581,6 +668,112 @@ func writeM5SkippedReport(tx m5MigrationTx, rows []m5SkippedProject) error {
 
 func setMetaInTx(tx m5MigrationTx, key, value string) error {
 	return tx.exec("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
+}
+
+func metaKeyApplied(tx m5MigrationTx, key string) (bool, error) {
+	var value string
+	err := tx.queryRow("SELECT value FROM meta WHERE key = ?", key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return value == "true", nil
+}
+
+func columnExists(tx m5MigrationTx, table, column string) (bool, error) {
+	rows, err := tx.query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func validateV011ProjectSlugs(tx m5MigrationTx) error {
+	rows, err := tx.query("SELECT workspace_id, slug FROM projects ORDER BY workspace_id, slug")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var workspaceID, slug string
+		if err := rows.Scan(&workspaceID, &slug); err != nil {
+			return err
+		}
+		if !isValidTaskSlugProjectSlug(slug) {
+			return fmt.Errorf("project_slug_migration_required: workspace %s project slug %q does not match ^[a-z][a-z0-9]{2,9}$", workspaceID, slug)
+		}
+	}
+	return rows.Err()
+}
+
+func isValidTaskSlugProjectSlug(slug string) bool {
+	if len(slug) < 3 || len(slug) > 10 {
+		return false
+	}
+	if slug[0] < 'a' || slug[0] > 'z' {
+		return false
+	}
+	for _, ch := range slug {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func backfillProjectSeqs(tx m5MigrationTx) error {
+	if err := tx.exec("UPDATE tasks SET project_seq = NULL WHERE project_id IS NULL"); err != nil {
+		return err
+	}
+	rows, err := tx.query(`SELECT uuid, workspace_id, project_id
+FROM tasks
+WHERE project_id IS NOT NULL
+ORDER BY workspace_id ASC, project_id ASC, entry ASC, uuid ASC`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	nextByProject := map[string]int64{}
+	for rows.Next() {
+		var uuidValue, workspaceID, projectID string
+		if err := rows.Scan(&uuidValue, &workspaceID, &projectID); err != nil {
+			return err
+		}
+		key := workspaceID + "\x00" + projectID
+		next := nextByProject[key] + 1
+		nextByProject[key] = next
+		if err := tx.exec("UPDATE tasks SET project_seq = ? WHERE uuid = ?", next, uuidValue); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return tx.exec(`UPDATE projects
+SET next_task_seq = COALESCE((
+	SELECT MAX(project_seq) + 1
+	FROM tasks
+	WHERE tasks.workspace_id = projects.workspace_id
+	  AND tasks.project_id = projects.id
+), 1)`)
 }
 
 func tableExists(tx m5MigrationTx, table string) (bool, error) {

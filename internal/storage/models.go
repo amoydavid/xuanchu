@@ -57,6 +57,7 @@ type Project struct {
 	Description  string `gorm:"not null;default:''"`
 	Status       string `gorm:"not null;default:'active';index:idx_projects_ws_status,priority:2"`
 	SettingsJSON string `gorm:"not null;default:'{}'"`
+	NextTaskSeq  int64  `gorm:"not null;default:1"`
 	CreatedAt    int64  `gorm:"not null"`
 	ModifiedAt   int64  `gorm:"not null"`
 	ArchivedAt   *int64
@@ -133,7 +134,7 @@ type UDADefinition struct {
 
 type Task struct {
 	UUID        string `gorm:"primaryKey"`
-	WorkspaceID string `gorm:"not null"`
+	WorkspaceID string `gorm:"not null;uniqueIndex:idx_tasks_ws_project_seq,priority:1"`
 	Description string `gorm:"not null"`
 	Status      string `gorm:"not null;index"`
 	Entry       int64  `gorm:"not null"`
@@ -141,8 +142,8 @@ type Task struct {
 	EndTS       *int64
 	Due         *int64
 	Project     *string
-	ProjectID   *string
-	ProjectSeq  *int64
+	ProjectID   *string `gorm:"uniqueIndex:idx_tasks_ws_project_seq,priority:2"`
+	ProjectSeq  *int64  `gorm:"uniqueIndex:idx_tasks_ws_project_seq,priority:3"`
 	Priority    *string
 	Tags        []TaskTag `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Start       *int64

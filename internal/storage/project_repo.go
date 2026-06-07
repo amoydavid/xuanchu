@@ -5,6 +5,7 @@ import (
 
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ProjectStatus string
@@ -25,10 +26,42 @@ func NewProjectRepository(db *gorm.DB) *ProjectRepository {
 }
 
 func (r *ProjectRepository) Create(project Project) (Project, error) {
+	if project.NextTaskSeq <= 0 {
+		project.NextTaskSeq = 1
+	}
 	if err := r.db.Create(&project).Error; err != nil {
 		return Project{}, err
 	}
 	return project, nil
+}
+
+func (r *ProjectRepository) AllocateProjectTaskSeqLocked(workspaceID, projectID string) (int64, error) {
+	var project Project
+	query := r.db.Where("workspace_id = ? AND id = ?", workspaceID, projectID)
+	if r.db.Dialector.Name() == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	err := query.First(&project).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	seq := project.NextTaskSeq
+	if seq <= 0 {
+		seq = 1
+	}
+	result := r.db.Model(&Project{}).
+		Where("workspace_id = ? AND id = ?", workspaceID, projectID).
+		Update("next_task_seq", seq+1)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return 0, ErrNotFound
+	}
+	return seq, nil
 }
 
 func (r *ProjectRepository) List(workspaceID string, includeArchived bool) ([]Project, error) {
@@ -60,6 +93,10 @@ func (r *ProjectRepository) ResolveInWorkspace(workspaceID, ref string) (Project
 }
 
 func (r *ProjectRepository) Update(project Project) error {
+	nextTaskSeq := project.NextTaskSeq
+	if nextTaskSeq <= 0 {
+		nextTaskSeq = 1
+	}
 	result := r.db.Model(&Project{}).
 		Where("id = ?", project.ID).
 		Updates(map[string]any{
@@ -69,6 +106,7 @@ func (r *ProjectRepository) Update(project Project) error {
 			"description":   project.Description,
 			"status":        project.Status,
 			"settings_json": project.SettingsJSON,
+			"next_task_seq": nextTaskSeq,
 			"created_at":    project.CreatedAt,
 			"modified_at":   project.ModifiedAt,
 			"archived_at":   project.ArchivedAt,

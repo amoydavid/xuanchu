@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 func newProjectRepoTest(t *testing.T) (*Store, *ProjectRepository, Workspace) {
@@ -29,6 +31,75 @@ func TestProjectRepositoryEnforcesUniqueSlugPerWorkspace(t *testing.T) {
 	}
 	if _, err := repo.Create(testProject("p2", ws.ID, "customer", 101)); err == nil {
 		t.Fatal("Create(duplicate slug) error = nil, want unique constraint error")
+	}
+}
+
+func TestProjectRepositoryCreateInitializesNextTaskSeq(t *testing.T) {
+	_, repo, ws := newProjectRepoTest(t)
+	project, err := repo.Create(testProject("p1", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if project.NextTaskSeq != 1 {
+		t.Fatalf("NextTaskSeq = %d, want 1", project.NextTaskSeq)
+	}
+}
+
+func TestProjectRepositoryAllocateProjectTaskSeqIncrements(t *testing.T) {
+	_, repo, ws := newProjectRepoTest(t)
+	project, err := repo.Create(testProject("p1", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	first, err := repo.AllocateProjectTaskSeqLocked(ws.ID, project.ID)
+	if err != nil {
+		t.Fatalf("AllocateProjectTaskSeqLocked(first) error = %v", err)
+	}
+	second, err := repo.AllocateProjectTaskSeqLocked(ws.ID, project.ID)
+	if err != nil {
+		t.Fatalf("AllocateProjectTaskSeqLocked(second) error = %v", err)
+	}
+	if first != 1 || second != 2 {
+		t.Fatalf("allocated seqs = %d,%d, want 1,2", first, second)
+	}
+	got, err := repo.GetByID(project.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.NextTaskSeq != 3 {
+		t.Fatalf("NextTaskSeq = %d, want 3", got.NextTaskSeq)
+	}
+}
+
+func TestProjectRepositoryAllocateProjectTaskSeqRollsBackWithOuterTx(t *testing.T) {
+	store, repo, ws := newProjectRepoTest(t)
+	project, err := repo.Create(testProject("p1", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	sentinel := errors.New("rollback")
+	if err := store.DB().Transaction(func(tx *gorm.DB) error {
+		txRepo := NewProjectRepository(tx)
+		seq, err := txRepo.AllocateProjectTaskSeqLocked(ws.ID, project.ID)
+		if err != nil {
+			return err
+		}
+		if seq != 1 {
+			t.Fatalf("seq inside rollback tx = %d, want 1", seq)
+		}
+		return sentinel
+	}); !errors.Is(err, sentinel) {
+		t.Fatalf("transaction error = %v, want sentinel", err)
+	}
+
+	seq, err := repo.AllocateProjectTaskSeqLocked(ws.ID, project.ID)
+	if err != nil {
+		t.Fatalf("AllocateProjectTaskSeqLocked(after rollback) error = %v", err)
+	}
+	if seq != 1 {
+		t.Fatalf("seq after rollback = %d, want 1", seq)
 	}
 }
 

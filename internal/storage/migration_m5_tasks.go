@@ -42,6 +42,7 @@ var m5TaskIndexes = []string{
 	"CREATE INDEX IF NOT EXISTS idx_tasks_recur ON tasks(recur)",
 	"CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent)",
 	"CREATE INDEX IF NOT EXISTS idx_tasks_ws_project_id ON tasks(workspace_id, project_id)",
+	"CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_ws_project_seq ON tasks(workspace_id, project_id, project_seq)",
 	"CREATE UNIQUE INDEX IF NOT EXISTS idx_task_parent_due_open ON tasks(parent, due) WHERE status IN ('pending', 'waiting') AND parent IS NOT NULL AND due IS NOT NULL",
 }
 
