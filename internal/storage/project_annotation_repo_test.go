@@ -19,7 +19,7 @@ func TestProjectAnnotationRepoCreateAndList(t *testing.T) {
 	annoRepo := NewProjectAnnotationRepository(store.DB())
 
 	project, err := projectRepo.Create(Project{
-		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "test-proj", Name: "Test",
+		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "testproj", Name: "Test",
 		Status: "active", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100,
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func TestProjectAnnotationRepoDelete(t *testing.T) {
 	annoRepo := NewProjectAnnotationRepository(store.DB())
 
 	project, err := projectRepo.Create(Project{
-		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "del-proj", Name: "Del",
+		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "delproj", Name: "Del",
 		Status: "active", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100,
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestProjectAnnotationRepoGetByID(t *testing.T) {
 	annoRepo := NewProjectAnnotationRepository(store.DB())
 
 	project, err := projectRepo.Create(Project{
-		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "get-proj", Name: "Get",
+		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "getproj", Name: "Get",
 		Status: "active", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100,
 	})
 	if err != nil {
@@ -164,7 +164,7 @@ func TestProjectAnnotationRepoRecentByProject(t *testing.T) {
 	annoRepo := NewProjectAnnotationRepository(store.DB())
 
 	project, err := projectRepo.Create(Project{
-		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "recent-proj", Name: "Recent",
+		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "recentproj", Name: "Recent",
 		Status: "active", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100,
 	})
 	if err != nil {
@@ -208,7 +208,7 @@ func TestProjectAnnotationRepoTimeline(t *testing.T) {
 	annoRepo := NewProjectAnnotationRepository(store.DB())
 
 	project, err := projectRepo.Create(Project{
-		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "timeline-proj", Name: "Timeline",
+		ID: uuid.NewString(), WorkspaceID: ws.ID, Slug: "timeline", Name: "Timeline",
 		Status: "active", SettingsJSON: "{}", CreatedAt: 100, ModifiedAt: 100,
 	})
 	if err != nil {

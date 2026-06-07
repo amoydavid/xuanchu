@@ -531,8 +531,8 @@ func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn fun
 	writeTaskAfterMutation(w, scoped, resolved.UUID)
 }
 
-func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskID string) {
-	tsk, err := svc.Info(taskID)
+func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskRef string) {
+	tsk, err := svc.Info(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -541,7 +541,7 @@ func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskID stri
 }
 
 func requireTaskRef(w http.ResponseWriter, r *http.Request) (string, bool) {
-	taskRef := strings.TrimSpace(chi.URLParam(r, "taskID"))
+	taskRef := strings.TrimSpace(chi.URLParam(r, "taskRef"))
 	if taskRef == "" {
 		writeError(w, http.StatusBadRequest, "task_ref_invalid", "task reference is required", nil)
 		return "", false
