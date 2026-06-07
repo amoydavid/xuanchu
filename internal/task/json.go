@@ -50,6 +50,7 @@ type JSONTask struct {
 	End         *string             `json:"end,omitempty"`
 	Due         *string             `json:"due,omitempty"`
 	Project     *string             `json:"project,omitempty"`
+	TaskSlug    *string             `json:"task_slug,omitempty"`
 	Priority    *string             `json:"priority,omitempty"`
 	Tags        []string            `json:"tags,omitempty"`
 	Start       *string             `json:"start,omitempty"`
@@ -84,6 +85,9 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	}
 	if t.Project != nil {
 		wire["project"] = t.Project
+	}
+	if t.TaskSlug != nil {
+		wire["task_slug"] = t.TaskSlug
 	}
 	if t.Priority != nil {
 		wire["priority"] = t.Priority
@@ -230,11 +234,16 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 }
 
 func ToJSON(tsk Task) JSONTask {
+	var taskSlug *string
+	if tsk.Project != nil && tsk.ProjectSeq != nil {
+		value := fmt.Sprintf("%s-%d", *tsk.Project, *tsk.ProjectSeq)
+		taskSlug = &value
+	}
 	return JSONTask{
 		UUID: tsk.UUID, Description: tsk.Description, Status: tsk.Status,
 		Entry: formatUnix(tsk.Entry), Modified: formatUnix(tsk.Modified),
 		End: formatUnixPtr(tsk.End), Due: formatUnixPtr(tsk.Due),
-		Project: tsk.Project, Priority: tsk.Priority, Tags: tsk.Tags,
+		Project: tsk.Project, TaskSlug: taskSlug, Priority: tsk.Priority, Tags: tsk.Tags,
 		Start:     formatUnixPtr(tsk.Start),
 		Wait:      formatUnixPtr(tsk.Wait),
 		Scheduled: formatUnixPtr(tsk.Scheduled),
@@ -415,12 +424,14 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 }
 
 func coreJSONFields() []string {
-	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links"}
+	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "task_slug", "project_seq", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links"}
 }
 
 func reservedJSONFields() map[string]struct{} {
 	return map[string]struct{}{
-		"project_id": {},
+		"project_id":  {},
+		"project_seq": {},
+		"task_slug":   {},
 	}
 }
 

@@ -127,7 +127,7 @@ func TestParseModifyArgsAllowsUDAFields(t *testing.T) {
 }
 
 func TestParseModifyArgsDoesNotTreatReservedFieldsAsUDA(t *testing.T) {
-	for _, arg := range []string{"mask:abc", "imask:1"} {
+	for _, arg := range []string{"mask:abc", "imask:1", "task_slug:api-1", "project_seq:1"} {
 		if _, err := ParseModifyArgs([]string{arg}); err == nil {
 			t.Fatalf("ParseModifyArgs(%q) error = nil, want reserved field rejected", arg)
 		}

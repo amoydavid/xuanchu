@@ -7,6 +7,7 @@ var m5TaskColumns = []string{
 	"end_ts", "due", "project", "priority",
 	"start", "wait", "scheduled", "until",
 	"recur", "parent", "mask", "i_mask",
+	"project_seq",
 }
 
 var m4TaskIndexes = []string{
@@ -66,6 +67,7 @@ var m4TasksDDL = `CREATE TABLE tasks (
 )`
 
 var m5TasksDDL = strings.TrimSuffix(strings.TrimSuffix(m4TasksDDL, "\n)"), ")") + `,
+	project_seq INTEGER,
 	project_id TEXT,
 	FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
 )`

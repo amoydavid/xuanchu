@@ -142,6 +142,7 @@ type Task struct {
 	Due         *int64
 	Project     *string
 	ProjectID   *string
+	ProjectSeq  *int64
 	Priority    *string
 	Tags        []TaskTag `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Start       *int64

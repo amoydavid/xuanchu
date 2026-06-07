@@ -17,7 +17,7 @@ func TaskList(w io.Writer, tasks []task.Task) {
 
 func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"ID", "UUID", "PRI", "PROJECT", "ASSIGNEES", "TAGS", "DESCRIPTION"})
+	table.SetHeader([]string{"ID", "SLUG", "UUID", "PRI", "PROJECT", "ASSIGNEES", "TAGS", "DESCRIPTION"})
 	table.SetBorder(false)
 	table.SetHeaderLine(true)
 	table.SetAutoWrapText(false)
@@ -52,6 +52,7 @@ func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 		}
 		table.Append([]string{
 			idCell,
+			taskSlugCell(tsk),
 			uuid,
 			priority,
 			project,
@@ -86,6 +87,7 @@ func TaskInfo(w io.Writer, tsk task.Task) {
 		{"End:", formatUnixPtr(tsk.End)},
 		{"Due:", formatUnixPtr(tsk.Due)},
 		{"Project:", stringPtrValue(tsk.Project)},
+		{"Task slug:", taskSlug(tsk)},
 		{"Priority:", stringPtrValue(tsk.Priority)},
 		{"Assignees:", formatAssignees(tsk.Assignees)},
 		{"Tags:", strings.Join(tsk.Tags, ",")},
@@ -157,4 +159,19 @@ func formatAssignees(assignees []task.AssigneeInfo) string {
 		}
 	}
 	return strings.Join(out, ", ")
+}
+
+func taskSlugCell(tsk task.Task) string {
+	value := taskSlug(tsk)
+	if value == "" {
+		return "-"
+	}
+	return value
+}
+
+func taskSlug(tsk task.Task) string {
+	if tsk.Project == nil || tsk.ProjectSeq == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s-%d", *tsk.Project, *tsk.ProjectSeq)
 }

@@ -2,6 +2,7 @@ package uda
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,14 @@ func TestUDASchemaValidation(t *testing.T) {
 	}
 	if err := ValidateDefinition(Definition{Name: "estimate", Type: TypeNumeric, Values: []string{"1", "2"}}); err != nil {
 		t.Fatalf("numeric enum validation error = %v", err)
+	}
+}
+
+func TestUDASchemaRejectsTaskSlugReservedNames(t *testing.T) {
+	for _, name := range []string{"task_slug", "project_seq"} {
+		if err := ValidateDefinition(Definition{Name: name, Type: TypeString}); err == nil || !strings.Contains(err.Error(), "built-in attribute") {
+			t.Fatalf("ValidateDefinition(%s) error = %v, want reserved", name, err)
+		}
 	}
 }
 

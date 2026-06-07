@@ -67,6 +67,7 @@ type Task struct {
 	Due         *int64
 	Project     *string
 	ProjectID   *string
+	ProjectSeq  *int64
 	Priority    *string
 	Tags        []string
 	Start       *int64

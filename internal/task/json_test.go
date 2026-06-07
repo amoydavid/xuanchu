@@ -27,6 +27,52 @@ func TestTaskJSONUsesTaskwarriorFieldNames(t *testing.T) {
 	}
 }
 
+func TestJSONTaskExportsTaskSlugWhenProjectSeqPresent(t *testing.T) {
+	project := "api"
+	seq := int64(12)
+	dto := ToJSON(Task{
+		UUID:        "u1",
+		Description: "task",
+		Status:      StatusPending,
+		Entry:       1,
+		Modified:    2,
+		Project:     &project,
+		ProjectSeq:  &seq,
+	})
+	data, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte(`"task_slug":"api-12"`)) {
+		t.Fatalf("task_slug missing: %s", data)
+	}
+}
+
+func TestJSONTaskOmitsTaskSlugWithoutProject(t *testing.T) {
+	seq := int64(12)
+	dto := ToJSON(Task{UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2, ProjectSeq: &seq})
+	data, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("task_slug")) {
+		t.Fatalf("task_slug should be omitted without project: %s", data)
+	}
+}
+
+func TestJSONTaskRejectsReadonlyTaskSlugAndProjectSeq(t *testing.T) {
+	for _, field := range []string{"task_slug", "project_seq"} {
+		t.Run(field, func(t *testing.T) {
+			var dto JSONTask
+			raw := `{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","` + field + `":"api-1"}`
+			err := json.Unmarshal([]byte(raw), &dto)
+			if err == nil || !strings.Contains(err.Error(), field) {
+				t.Fatalf("Unmarshal(%s) error = %v, want readonly/reserved", field, err)
+			}
+		})
+	}
+}
+
 func TestJSONTaskExportsAssignees(t *testing.T) {
 	email := "alice@example.com"
 	tsk := Task{

@@ -269,6 +269,57 @@ func TestTaskRepositoryCreateUpdateAndListProjectID(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryPersistsProjectSeq(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	projectRepo := NewProjectRepository(store.DB())
+	project, err := projectRepo.Create(testProject("project-api", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create(project) error = %v", err)
+	}
+
+	projectSlug := "api"
+	seq := int64(7)
+	created, err := repo.Create(domain.Task{
+		UUID:        "task-project-seq",
+		WorkspaceID: ws.ID,
+		Description: "project task",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Project:     &projectSlug,
+		ProjectID:   &project.ID,
+		ProjectSeq:  &seq,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.ProjectSeq == nil || *created.ProjectSeq != 7 {
+		t.Fatalf("created ProjectSeq = %#v, want 7", created.ProjectSeq)
+	}
+
+	got, err := repo.GetByUUID(ws.ID, created.UUID)
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if got.ProjectSeq == nil || *got.ProjectSeq != 7 {
+		t.Fatalf("got ProjectSeq = %#v, want 7", got.ProjectSeq)
+	}
+
+	nextSeq := int64(8)
+	got.ProjectSeq = &nextSeq
+	got.Modified = 200
+	if err := repo.Update(got); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	updated, err := repo.GetByUUID(ws.ID, created.UUID)
+	if err != nil {
+		t.Fatalf("GetByUUID() after update error = %v", err)
+	}
+	if updated.ProjectSeq == nil || *updated.ProjectSeq != 8 {
+		t.Fatalf("updated ProjectSeq = %#v, want 8", updated.ProjectSeq)
+	}
+}
+
 func TestTaskRepositoryUpdateClearsProjectID(t *testing.T) {
 	store, repo, ws := newTestRepo(t)
 	projectRepo := NewProjectRepository(store.DB())
