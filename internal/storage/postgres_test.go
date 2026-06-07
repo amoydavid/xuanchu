@@ -39,7 +39,7 @@ func TestPostgres_Migration(t *testing.T) {
 	defer store.Close()
 	db := store.DB()
 	tables := []string{"meta", "users", "workspaces", "memberships",
-		"audit_logs", "projects", "project_annotations", "configs",
+		"audit_logs", "projects", "project_annotations", "configs", "config_definitions",
 		"api_tokens", "contexts", "uda_definitions", "hook_definitions",
 		"hook_deliveries", "user_external_ids", "tasks",
 		"task_tags", "task_annotations", "task_dependencies",
@@ -91,5 +91,35 @@ func TestPostgres_TaskCRUD(t *testing.T) {
 	}
 	if created.UUID != tsk.UUID {
 		t.Errorf("UUID mismatch: %q vs %q", created.UUID, tsk.UUID)
+	}
+}
+
+func TestPostgres_ConfigDefinitionCRUD(t *testing.T) {
+	dbURL := postgresTestURL(t)
+	store, err := Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	repo := NewConfigDefinitionRepository(store.DB())
+	def := ConfigDefinition{
+		WorkspaceID:       "ws-postgres",
+		Key:               "ads.account_id",
+		ValueType:         "string",
+		AllowedScopesJSON: `["project"]`,
+		EnumValuesJSON:    "[]",
+		CreatedAt:         time.Now().Unix(),
+		ModifiedAt:        time.Now().Unix(),
+	}
+	if err := repo.Set(def); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	got, ok, err := repo.Get("ws-postgres", "ads.account_id")
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, %v, %v", got, ok, err)
+	}
+	if got.ValueType != "string" {
+		t.Fatalf("ValueType = %q, want string", got.ValueType)
 	}
 }
