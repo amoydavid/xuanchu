@@ -1,10 +1,10 @@
 # Token 管理
 
-通过 xuanchu MCP 管理 API Token——用于 HTTP MCP 和远程 CLI 的身份凭证。
+通过 Xuanchu MCP 管理 API Token——用于 HTTP MCP 和远程 CLI 的身份凭证。
 
 ## 基本概念
 
-Token 是 xuanchu 的身份凭证，用于：
+Token 是 Xuanchu 的身份凭证，用于：
 - HTTP MCP 连接（Bearer Token）
 - 远程 CLI 认证
 - API 调用

@@ -1,4 +1,4 @@
-# xuanchu M0 GORM Implementation Plan
+# Xuanchu M0 GORM Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 

@@ -2,7 +2,7 @@
 
 ## 概述
 
-本 milestone 为 xuanchu 增加项目级别的 annotation 能力，并提供聚合时间线接口，将项目 annotation 与该项目下所有 task 的 annotation 合并为完整的项目时间线。
+本 milestone 为 Xuanchu 增加项目级别的 annotation 能力，并提供聚合时间线接口，将项目 annotation 与该项目下所有 task 的 annotation 合并为完整的项目时间线。
 
 ## 动机
 

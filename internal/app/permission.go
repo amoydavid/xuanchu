@@ -9,6 +9,8 @@ const (
 	PermissionProjectManage      Permission = "project.manage"
 	PermissionProjectConfigRead  Permission = "project.config.read"
 	PermissionProjectConfigWrite Permission = "project.config.write"
+	PermissionConfigSchemaRead   Permission = "config.schema.read"
+	PermissionConfigSchemaWrite  Permission = "config.schema.write"
 	PermissionContextUse         Permission = "context.use"
 	PermissionContextManage      Permission = "context.manage"
 	PermissionUDAManage          Permission = "uda.manage"

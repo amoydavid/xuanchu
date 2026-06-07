@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让 xuanchu 同时支持 SQLite 和 PostgreSQL 后端，通过配置选择，GORM 作为唯一抽象层。
+**Goal:** 让 Xuanchu 同时支持 SQLite 和 PostgreSQL 后端，通过配置选择，GORM 作为唯一抽象层。
 
 **Architecture:** 重命名 `internal/storage` 为 `internal/storage`，拆分 SQLite/PostgreSQL 的 Open 和 Migration 逻辑，在 `query_scope.go` 中适配 SQL 方言。不引入 repository interface，所有 repo 保持具体 struct 直接使用 `*gorm.DB`。
 

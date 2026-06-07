@@ -205,6 +205,112 @@ func TestConfigRepositoryListScopeOrdersByKey(t *testing.T) {
 	}
 }
 
+func TestConfigDefinitionRepositoryCRUD(t *testing.T) {
+	store := openIdentityTestStore(t)
+	repo := NewConfigDefinitionRepository(store.DB())
+
+	def := ConfigDefinition{
+		WorkspaceID:       "ws-a",
+		Key:               "ads.roi_threshold",
+		ValueType:         "number",
+		AllowedScopesJSON: `["workspace","project"]`,
+		Label:             "ROI Threshold",
+		Description:       "minimum acceptable ROI",
+		EnumValuesJSON:    "[]",
+		DefaultValue:      "1.8",
+		HasDefault:        true,
+		Required:          false,
+		Secret:            false,
+		CreatedAt:         100,
+		ModifiedAt:        100,
+	}
+
+	if err := repo.Set(def); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	got, ok, err := repo.Get("ws-a", "ads.roi_threshold")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("Get() missing definition, want found")
+	}
+	if got.ValueType != "number" || got.DefaultValue != "1.8" || !got.HasDefault {
+		t.Fatalf("Get() = %#v", got)
+	}
+
+	listed, err := repo.List("ws-a")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0].Key != "ads.roi_threshold" {
+		t.Fatalf("List() = %#v, want single ads.roi_threshold", listed)
+	}
+
+	def.Label = "Updated"
+	def.ModifiedAt = 200
+	if err := repo.Set(def); err != nil {
+		t.Fatalf("Set(update) error = %v", err)
+	}
+	got, ok, err = repo.Get("ws-a", "ads.roi_threshold")
+	if err != nil || !ok {
+		t.Fatalf("Get(after update) = %#v, %v, %v", got, ok, err)
+	}
+	if got.Label != "Updated" || got.ModifiedAt != 200 {
+		t.Fatalf("updated definition = %#v", got)
+	}
+
+	if err := repo.Delete("ws-a", "ads.roi_threshold"); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if _, ok, err := repo.Get("ws-a", "ads.roi_threshold"); err != nil || ok {
+		t.Fatalf("Get(after delete) = (_, %v, %v), want missing nil error", ok, err)
+	}
+}
+
+func TestConfigDefinitionRepositoryWorkspaceIsolationAndUniqueness(t *testing.T) {
+	store := openIdentityTestStore(t)
+	repo := NewConfigDefinitionRepository(store.DB())
+
+	base := ConfigDefinition{
+		Key:               "ads.account_id",
+		ValueType:         "string",
+		AllowedScopesJSON: `["project"]`,
+		EnumValuesJSON:    "[]",
+		CreatedAt:         100,
+		ModifiedAt:        100,
+	}
+
+	defA := base
+	defA.WorkspaceID = "ws-a"
+	if err := repo.Set(defA); err != nil {
+		t.Fatalf("Set(ws-a) error = %v", err)
+	}
+
+	defB := base
+	defB.WorkspaceID = "ws-b"
+	if err := repo.Set(defB); err != nil {
+		t.Fatalf("Set(ws-b) error = %v", err)
+	}
+
+	listA, err := repo.List("ws-a")
+	if err != nil {
+		t.Fatalf("List(ws-a) error = %v", err)
+	}
+	if len(listA) != 1 || listA[0].WorkspaceID != "ws-a" {
+		t.Fatalf("List(ws-a) = %#v", listA)
+	}
+
+	listB, err := repo.List("ws-b")
+	if err != nil {
+		t.Fatalf("List(ws-b) error = %v", err)
+	}
+	if len(listB) != 1 || listB[0].WorkspaceID != "ws-b" {
+		t.Fatalf("List(ws-b) = %#v", listB)
+	}
+}
+
 func assertRawDDLContainsNormalized(t *testing.T, store *Store, table, want string) {
 	t.Helper()
 	var ddl string

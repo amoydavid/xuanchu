@@ -1,6 +1,6 @@
 # Hook 管理
 
-通过 xuanchu MCP 管理 Webhook Hook——自动化事件通知机制。
+通过 Xuanchu MCP 管理 Webhook Hook——自动化事件通知机制。
 
 ## 基本概念
 

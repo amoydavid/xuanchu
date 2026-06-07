@@ -80,6 +80,22 @@ type Config struct {
 	Value       string `gorm:"not null"`
 }
 
+type ConfigDefinition struct {
+	WorkspaceID       string `gorm:"primaryKey;not null"`
+	Key               string `gorm:"primaryKey;not null"`
+	ValueType         string `gorm:"not null"`
+	AllowedScopesJSON string `gorm:"not null"`
+	Label             string `gorm:"not null;default:''"`
+	Description       string `gorm:"not null;default:''"`
+	EnumValuesJSON    string `gorm:"not null;default:'[]'"`
+	DefaultValue      string `gorm:"not null;default:''"`
+	HasDefault        bool   `gorm:"not null;default:false"`
+	Required          bool   `gorm:"not null;default:false"`
+	Secret            bool   `gorm:"not null;default:false"`
+	CreatedAt         int64  `gorm:"not null"`
+	ModifiedAt        int64  `gorm:"not null"`
+}
+
 type ApiToken struct {
 	ID               string `gorm:"primaryKey"`
 	UserID           string `gorm:"not null;index:idx_api_tokens_user"`

@@ -35,6 +35,34 @@ type ConfigListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 }
 
+type ConfigSchemaGetInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Key       string `json:"key"`
+}
+
+type ConfigSchemaSetInput struct {
+	Workspace     string   `json:"workspace,omitempty"`
+	Key           string   `json:"key"`
+	ValueType     string   `json:"value_type"`
+	AllowedScopes []string `json:"allowed_scopes"`
+	Label         string   `json:"label,omitempty"`
+	Description   string   `json:"description,omitempty"`
+	EnumValues    []string `json:"enum_values,omitempty"`
+	DefaultValue  *string  `json:"default_value,omitempty"`
+	Required      bool     `json:"required,omitempty"`
+	Secret        bool     `json:"secret,omitempty"`
+}
+
+type ConfigSchemaListInput struct {
+	Workspace string `json:"workspace,omitempty"`
+}
+
+type ConfigSchemaDeleteInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Key       string `json:"key"`
+	Purge     bool   `json:"purge,omitempty"`
+}
+
 func registerConfigTools(s *mcp.Server, opts Options) {
 	addTool(s, &mcp.Tool{Name: "config_get", Description: "Read workspace, project, or stdio local config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		scope := normalizeConfigScope(in.Scope)
@@ -135,6 +163,73 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		}
 		data := map[string]any{"values": values, "count": len(values)}
 		return successWithEnvelope(data, fmt.Sprintf("%d config value(s)", len(values)))
+	})
+
+	addTool(s, &mcp.Tool{Name: "config_schema_list", Description: "List config schema definitions in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionConfigSchemaRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		rows, err := svc.ConfigSchemaList()
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"definitions": rows, "count": len(rows)}, fmt.Sprintf("%d config schema definition(s)", len(rows)))
+	})
+
+	addTool(s, &mcp.Tool{Name: "config_schema_get", Description: "Get one config schema definition; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionConfigSchemaRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		row, ok, err := svc.ConfigSchemaGet(strings.TrimSpace(in.Key))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if !ok {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "config_definition_not_found", Message: "config definition not found"})
+		}
+		return successWithEnvelope(map[string]any{"definition": row}, "config schema "+row.Key)
+	})
+
+	addTool(s, &mcp.Tool{Name: "config_schema_set", Description: "Create or update a config schema definition; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionConfigSchemaWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		input := app.ConfigSchemaInput{
+			Key:           in.Key,
+			ValueType:     in.ValueType,
+			AllowedScopes: in.AllowedScopes,
+			Label:         in.Label,
+			Description:   in.Description,
+			EnumValues:    in.EnumValues,
+			DefaultValue:  in.DefaultValue,
+			Required:      in.Required,
+			Secret:        in.Secret,
+		}
+		if err := svc.ConfigSchemaSet(input); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		row, ok, err := svc.ConfigSchemaGet(strings.TrimSpace(in.Key))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if !ok {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "config_definition_not_found", Message: "config definition not found"})
+		}
+		return successWithEnvelope(map[string]any{"definition": row}, "set config schema "+row.Key)
+	})
+
+	addTool(s, &mcp.Tool{Name: "config_schema_delete", Description: "Delete a config schema definition; optional purge also removes existing values."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionConfigSchemaWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		if err := svc.ConfigSchemaDelete(strings.TrimSpace(in.Key), in.Purge); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"key": strings.TrimSpace(in.Key), "purge": in.Purge}, "deleted config schema "+strings.TrimSpace(in.Key))
 	})
 }
 

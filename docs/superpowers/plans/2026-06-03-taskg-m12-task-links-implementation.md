@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 xuanchu 任务增加外部资源轻关联能力，让 Agent 能通过 MCP 结构化地记录任务与外部资源（文档、PR、设计稿等）的关联。
+**Goal:** 为 Xuanchu 任务增加外部资源轻关联能力，让 Agent 能通过 MCP 结构化地记录任务与外部资源（文档、PR、设计稿等）的关联。
 
 **Architecture:** 新增 `task_links` 表存储任务与外部资源的关联（type + URL + title）。遵循现有 TaskTag/TaskAnnotation 子表模式。App 层提供 `TaskAddLink` / `TaskRemoveLink` 方法。CLI、HTTP API、MCP 三端复用同一 app service。Hook payload 中包含 links。
 

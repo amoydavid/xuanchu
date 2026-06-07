@@ -303,6 +303,9 @@ func (s *Service) addWorkspaceLocked(slug, name, description, visibility string)
 			return storage.Workspace{}, err
 		}
 	}
+	if err := s.ensureBuiltinConfigDefinitions(created.ID); err != nil {
+		return storage.Workspace{}, err
+	}
 	return created, nil
 }
 
@@ -664,6 +667,7 @@ func allowedForRole(role Role, p Permission) bool {
 		switch p {
 		case PermissionTaskRead, PermissionTaskWrite,
 			PermissionProjectRead, PermissionProjectManage, PermissionProjectConfigRead, PermissionProjectConfigWrite,
+			PermissionConfigSchemaRead, PermissionConfigSchemaWrite,
 			PermissionContextUse, PermissionContextManage, PermissionUDAManage, PermissionWorkspaceRead, PermissionWorkspaceModify, PermissionMemberManage, PermissionAuditRead,
 			PermissionTokenRead, PermissionTokenWrite,
 			PermissionHookRead, PermissionHookWrite:
@@ -672,13 +676,13 @@ func allowedForRole(role Role, p Permission) bool {
 	case RoleMember:
 		switch p {
 		case PermissionTaskRead, PermissionTaskWrite,
-			PermissionProjectRead, PermissionProjectConfigRead,
+			PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead,
 			PermissionContextUse, PermissionContextManage, PermissionWorkspaceRead:
 			return true
 		}
 	case RoleViewer:
 		switch p {
-		case PermissionTaskRead, PermissionProjectRead, PermissionProjectConfigRead, PermissionContextUse, PermissionWorkspaceRead:
+		case PermissionTaskRead, PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead, PermissionContextUse, PermissionWorkspaceRead:
 			return true
 		}
 	}

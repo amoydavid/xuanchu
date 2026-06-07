@@ -3,7 +3,7 @@
 `璇`：取自《尚书·舜典》 “在璇玑玉衡，以齐七政”，指北斗星中运转、校准的枢机，象征规则与秩序的核心。
 `础`：取自《淮南子·说林训》 “山云蒸，柱础润”，指房屋柱下的基石。汉代《说文解字》注：“础，磶也”，即承载重量的基础。
 
-命令行输出为 `xuanchu`，这是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
+命令行输出为 `xuanchu`，Xuanchu 是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
 
 - 单一二进制：同时承担 **本地 CLI / 远程 CLI 客户端 / HTTP API 服务端 / MCP Server** 四种形态
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
@@ -67,7 +67,7 @@ go build -o xuanchu ./cmd/xuanchu
 
 ## PostgreSQL
 
-xuanchu 支持 PostgreSQL 作为数据库后端，通过 `--db-url` 指定连接字符串：
+Xuanchu 支持 PostgreSQL 作为数据库后端，通过 `--db-url` 指定连接字符串：
 
 ```bash
 ./xuanchu --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable" server
@@ -318,7 +318,7 @@ format = "rfc3339"
 
 ### `xuanchu.toml` 可配置项
 
-`xuanchu.toml` 是**本机配置**：它描述这台机器如何启动和显示 xuanchu，不描述某个企业 workspace 的业务规则。TOML 的 key 会被展开成点分格式，例如 `[database] path = "..."` 等价于 `database.path = "..."`。
+`xuanchu.toml` 是**本机配置**：它描述这台机器如何启动和显示 Xuanchu，不描述某个企业 workspace 的业务规则。TOML 的 key 会被展开成点分格式，例如 `[database] path = "..."` 等价于 `database.path = "..."`。
 
 当前建议只把这些 key 写进 TOML：
 
@@ -396,7 +396,7 @@ rotate = "daily"
 
 UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA 写入为 RFC3339 UTC 字符串；查询 `estimate:3`、`reviewed:2026-05-28` 会结合当前 schema 编译。未定义的 JSON top-level 字段会作为 orphan UDA 保留并导出，普通 `modify` 不能修改 orphan UDA。
 
-`.taskrc` 在 M3 中的作用是**迁移和兼容性导入**：xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
+`.taskrc` 在 M3 中的作用是**迁移和兼容性导入**：Xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。Xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
 
 当前 `.taskrc` 支持范围：
 
@@ -455,7 +455,7 @@ M4 新增了企业运行时基础：
 
 同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/ai-agent-platform` 和 `partner/ai-agent-platform` 是两个不同项目；权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
 
-当前 CLI 的 `--workspace <slug|uuid>` 使用裸 workspace slug，所以 workspace slug 在同一个 xuanchu 实例内应保持唯一。project slug 只在当前 workspace 内解析：
+当前 CLI 的 `--workspace <slug|uuid>` 使用裸 workspace slug，所以 workspace slug 在同一个 Xuanchu 实例内应保持唯一。project slug 只在当前 workspace 内解析：
 
 ```bash
 ./xuanchu --workspace dajee list project:ai-agent-platform
@@ -509,7 +509,7 @@ M5 现在已经落地。最重要的变化有四点：
 
 - 任务引用 project 前，必须先在当前 workspace 注册 project。
 - `project` 查询、context、helper、audit 都会先在当前 workspace 内把 slug 解析成稳定 `project_id`。
-- `project config` 成为 project 级业务配置的唯一入口；无 scope 的 `config` 不再读写 project 配置。
+- `project config` 继续是 project 级业务配置入口，但 key 的合法性现在由 workspace 内 `config schema` 决定，不再靠代码白名单。
 - JSON export 继续输出可读的 `project` slug，但脚本、API、token、MCP 应优先持有 `project_id`。
 
 一个完整的 M5 日常流大致是这样：
@@ -528,7 +528,7 @@ M5 现在已经落地。最重要的变化有四点：
 # 管理 project 元数据
 ./xuanchu --workspace dajee project list
 ./xuanchu --workspace dajee project info ai-agent-platform --json
-./xuanchu --workspace dajee project modify ai-agent-platform description:"Owns xuanchu MCP and API work"
+./xuanchu --workspace dajee project modify ai-agent-platform description:"Owns Xuanchu MCP and API work"
 ./xuanchu --workspace dajee project archive erp-rewrite
 
 # 归档后不能再被新任务引用
@@ -560,22 +560,53 @@ M5 现在已经落地。最重要的变化有四点：
 - `project info` / `modify` / `archive` 既接受 slug，也接受稳定 `project_id`。
 - slug 只在当前 effective workspace 内解析，不做跨 workspace 搜索。
 
-### `project config` 命令组
+### `config schema` 与 `project config`
 
-project 级业务配置固定走 `project config`：
+shared config 现在分成两层：
+
+- `config schema`
+  - 定义 key、类型、允许作用域、默认值等 schema
+- `config`
+  - 写 workspace scope 的显式值
+- `project config`
+  - 写 project scope 的显式值
+
+典型流程：
 
 ```bash
-./xuanchu project config set ai-agent-platform agent.background "Owns xuanchu MCP integration."
+./xuanchu --workspace dajee config schema set agent.background type:string scopes:project label:"Agent Background"
+./xuanchu --workspace dajee config schema set ads.roi_threshold type:number scopes:workspace,project default:1.8
+
+./xuanchu --workspace dajee config set ads.roi_threshold 2.0
+./xuanchu project config set ai-agent-platform agent.background "Owns Xuanchu MCP integration."
 ./xuanchu project config get ai-agent-platform agent.background
 ./xuanchu project config list ai-agent-platform
 ./xuanchu project config unset ai-agent-platform agent.background
 ```
 
-当前白名单 key：
+也可以直接管理 schema：
+
+```bash
+./xuanchu --workspace dajee config schema list
+./xuanchu --workspace dajee config schema get agent.background
+./xuanchu --workspace dajee config schema delete ads.roi_threshold
+./xuanchu --workspace dajee config schema delete ads.roi_threshold --purge
+```
+
+说明：
+
+- schema 严格按 workspace 隔离；不同 workspace 可以定义同名 key，但定义互不影响。
+- `project config get` 的读取链是：`project 显式值 > workspace 显式值 > schema default`。
+- `project config list` 和 `config list` 仍然只列当前 scope 的显式值，不展开继承结果。
+- 删除 schema 时，如果当前 workspace 下还存在对应 workspace/project 值，默认返回 `config_definition_in_use`；只有显式 `--purge` 才会连值一起删。
+
+当前系统会自动为这些 key 预置 schema：
 
 - `agent.background`
+- `agent.constraints`
+- `agent.default_context`
+- `agent.handoff`
 - `context.default`
-- `constraint.description`
 
 如果你误用无 scope 的 `config`：
 
@@ -583,7 +614,7 @@ project 级业务配置固定走 `project config`：
 ./xuanchu config set agent.background "..."
 ```
 
-会返回 `project_config_scope_required`，并提示改用 `project config set <project> ...`。
+现在会返回 `config_scope_not_allowed`，因为 `agent.background` 已有 schema，但只允许 `project` scope。
 
 ### Helper 与 audit 的 M5 行为
 
@@ -683,11 +714,11 @@ project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取
 
 ## M7 MCP Server
 
-M7 让 Agent 通过 MCP 协议以结构化方式使用 xuanchu。支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
+M7 让 Agent 通过 MCP 协议以结构化方式使用 Xuanchu。支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
 
 ### MCP stdio 模式
 
-本地 Agent 直接通过标准输入输出连接 xuanchu：
+本地 Agent 直接通过标准输入输出连接 Xuanchu：
 
 ```bash
 # 本地 MCP，使用默认本地数据库

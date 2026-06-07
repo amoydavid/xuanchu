@@ -1,4 +1,4 @@
-# xuanchu M1 Implementation Plan
+# Xuanchu M1 Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use `superpowers:subagent-driven-development` (if subagents available) or `superpowers:executing-plans` to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 

@@ -131,6 +131,22 @@ xuanchu project config unset <project> <key>
 xuanchu project config list <project>
 ```
 
+## Config Schema
+
+```bash
+xuanchu config schema list
+xuanchu config schema get <key>
+xuanchu config schema set <key> type:<type> scopes:<workspace|project|workspace,project> [label:<text>] [description:<text>] [values:<csv>] [default:<value>] [required:true|false] [secret:true|false]
+xuanchu config schema delete <key> [--purge]
+```
+
+说明：
+
+- `config schema set` 定义 shared config key 的类型、允许作用域和默认值。
+- `config set/get/unset/list` 操作 workspace scope 的显式值。
+- `project config set/get/unset/list` 操作 project scope 的显式值。
+- `config schema delete <key>` 默认会在 key 仍被引用时拒绝；`--purge` 会同时删除该 workspace 下的所有对应值。
+
 ## Server / Token / MCP
 
 ```bash

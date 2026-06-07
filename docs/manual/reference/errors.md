@@ -65,9 +65,13 @@ weight: 210
 | 错误码 | 含义 |
 |---|---|
 | `config_not_found` | config key 不存在 |
-| `config_key_unsupported` | config key 不支持写入 |
+| `config_definition_not_found` | 当前 workspace 下没有该 shared config key 的 schema 定义 |
+| `config_scope_not_allowed` | schema 存在，但当前 workspace/project 作用域不允许使用该 key |
+| `config_definition_in_use` | 删除 schema 时发现当前 workspace 下仍有对应 workspace/project 值 |
 | `config_scope_invalid` | config scope 不合法 |
+| `config_value_invalid` | config value 与 schema 类型或枚举约束不匹配 |
 | `config_value_too_large` | config value 太大 |
+| `project_config_scope_required` | 该 key 只能走 `project config` 入口，不能用无 scope 的 `config` 访问 |
 | `context_not_found` | context 不存在 |
 
 ## Token
@@ -106,4 +110,3 @@ weight: 210
 | `remote_server_invalid` | remote server URL 非法 |
 | `remote_unsupported_command` | 远程模式不支持该命令 |
 | `server_listen_required` | server 缺少 `--listen` |
-

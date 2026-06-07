@@ -111,6 +111,24 @@ func (r *ConfigRepository) ListScope(workspaceID string, scope ConfigScope, scop
 	return out, nil
 }
 
+func (r *ConfigRepository) CountByKey(workspaceID, key string) (workspaceCount int64, projectCount int64, err error) {
+	if err = r.db.Model(&Config{}).
+		Where("workspace_id = ? AND scope = ? AND key = ?", workspaceID, string(ConfigScopeWorkspace), key).
+		Count(&workspaceCount).Error; err != nil {
+		return 0, 0, err
+	}
+	if err = r.db.Model(&Config{}).
+		Where("workspace_id = ? AND scope = ? AND key = ?", workspaceID, string(ConfigScopeProject), key).
+		Count(&projectCount).Error; err != nil {
+		return 0, 0, err
+	}
+	return workspaceCount, projectCount, nil
+}
+
+func (r *ConfigRepository) DeleteByKey(workspaceID, key string) error {
+	return r.db.Where("workspace_id = ? AND key = ?", workspaceID, key).Delete(&Config{}).Error
+}
+
 func normalizeConfigKey(key ConfigKey) (ConfigKey, error) {
 	if key.Key == "" {
 		return ConfigKey{}, fmt.Errorf("%w: key is required", ErrInvalidConfigKey)

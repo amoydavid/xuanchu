@@ -1,4 +1,4 @@
-# xuanchu M3 设计规格
+# Xuanchu M3 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 

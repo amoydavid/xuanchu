@@ -5,7 +5,7 @@ weight: 70
 
 # 远程 CLI 与 HTTP API
 
-xuanchu server 提供 HTTP/JSON API。远程 CLI 通过同一套 API 访问服务端，不复制业务逻辑。
+Xuanchu 通过 `xuanchu server` 提供 HTTP/JSON API。远程 CLI 通过同一套 API 访问服务端，不复制业务逻辑。
 
 远程 CLI 的 actor 来自 Bearer token 绑定的 user，不来自本机 `xuanchu user use`。如果你还不熟悉 user/workspace/member 初始化，先读 [身份与初始化](identity-and-initialization.md)。
 
@@ -94,6 +94,7 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
 | `project:read` / `project:write` | project 与 project config |
 | `context:read` / `context:write` | context |
 | `config:read` / `config:write` | workspace 业务配置 |
+| `config.schema.read` / `config.schema.write` | shared config schema 定义 |
 | `audit:read` | audit list |
 | `token:read` / `token:write` | token list/create/modify/revoke |
 | `workspace:read` / `workspace:write` | workspace/member 管理 |

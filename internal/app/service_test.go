@@ -82,6 +82,13 @@ func mustUpsertMembershipRecord(t *testing.T, store *storage.Store, member stora
 	}
 }
 
+func mustSetConfigSchema(t *testing.T, svc *Service, input ConfigSchemaInput) {
+	t.Helper()
+	if err := svc.ConfigSchemaSet(input); err != nil {
+		t.Fatalf("ConfigSchemaSet(%s) error = %v", input.Key, err)
+	}
+}
+
 func TestServiceAddListInfo(t *testing.T) {
 	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
@@ -910,6 +917,13 @@ func TestProjectConfigPermissionsAndArchivedBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
+	for _, key := range []string{"agent.background", "agent.constraints", "context.default"} {
+		mustSetConfigSchema(t, ownerSvc, ConfigSchemaInput{
+			Key:           key,
+			ValueType:     "string",
+			AllowedScopes: []string{"project"},
+		})
+	}
 
 	adminSvc := newTestServiceWithRuntime(t, store, 100, adminUser.Name, ws.Slug)
 	if err := adminSvc.ProjectConfigSet(project.ID, "agent.background", "Admin background"); err != nil {
@@ -1004,7 +1018,7 @@ func TestProjectConfigPermissionsAndArchivedBehavior(t *testing.T) {
 	}
 }
 
-func TestConfigScopeRequiresProjectForProjectConfigKeys(t *testing.T) {
+func TestWorkspaceConfigRejectsProjectOnlyKeys(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
@@ -1036,17 +1050,17 @@ func TestConfigScopeRequiresProjectForProjectConfigKeys(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.call()
 			if err == nil {
-				t.Fatalf("%s error = nil, want project_config_scope_required", tc.name)
+				t.Fatalf("%s error = nil, want config_scope_not_allowed", tc.name)
 			}
 			runtimeErr, ok := err.(RuntimeError)
-			if !ok || runtimeErr.Code != "project_config_scope_required" {
-				t.Fatalf("%s err = %#v, want RuntimeError(project_config_scope_required)", tc.name, err)
+			if !ok || runtimeErr.Code != "config_scope_not_allowed" {
+				t.Fatalf("%s err = %#v, want RuntimeError(config_scope_not_allowed)", tc.name, err)
 			}
 		})
 	}
 }
 
-func TestProjectConfigRejectsUnknownKeyWithStableCode(t *testing.T) {
+func TestProjectConfigRejectsMissingDefinitionWithStableCode(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
@@ -1084,14 +1098,196 @@ func TestProjectConfigRejectsUnknownKeyWithStableCode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.call()
 			if err == nil {
-				t.Fatalf("%s error = nil, want project_config_key_invalid", tc.name)
+				t.Fatalf("%s error = nil, want config_definition_not_found", tc.name)
 			}
 			runtimeErr, ok := err.(RuntimeError)
-			if !ok || runtimeErr.Code != "project_config_key_invalid" {
-				t.Fatalf("%s err = %#v, want RuntimeError(project_config_key_invalid)", tc.name, err)
+			if !ok || runtimeErr.Code != "config_definition_not_found" {
+				t.Fatalf("%s err = %#v, want RuntimeError(config_definition_not_found)", tc.name, err)
 			}
 		})
 	}
+}
+
+func TestConfigSchemaAndProjectConfigFallback(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key:           "ads.roi_threshold",
+		ValueType:     "number",
+		AllowedScopes: []string{"workspace", "project"},
+		DefaultValue:  strptr("1.8"),
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet() error = %v", err)
+	}
+
+	value, ok, err := svc.ProjectConfigGet(project.ID, "ads.roi_threshold")
+	if err != nil {
+		t.Fatalf("ProjectConfigGet(default) error = %v", err)
+	}
+	if !ok || value != "1.8" {
+		t.Fatalf("ProjectConfigGet(default) = %q, %v, want 1.8, true", value, ok)
+	}
+
+	if err := svc.SetConfig("ads.roi_threshold", "2.0"); err != nil {
+		t.Fatalf("SetConfig(workspace) error = %v", err)
+	}
+	value, ok, err = svc.ProjectConfigGet(project.Slug, "ads.roi_threshold")
+	if err != nil {
+		t.Fatalf("ProjectConfigGet(workspace fallback) error = %v", err)
+	}
+	if !ok || value != "2" {
+		t.Fatalf("ProjectConfigGet(workspace fallback) = %q, %v, want 2, true", value, ok)
+	}
+
+	if err := svc.ProjectConfigSet(project.Slug, "ads.roi_threshold", "2.4"); err != nil {
+		t.Fatalf("ProjectConfigSet(project override) error = %v", err)
+	}
+	value, ok, err = svc.ProjectConfigGet(project.Slug, "ads.roi_threshold")
+	if err != nil {
+		t.Fatalf("ProjectConfigGet(project override) error = %v", err)
+	}
+	if !ok || value != "2.4" {
+		t.Fatalf("ProjectConfigGet(project override) = %q, %v, want 2.4, true", value, ok)
+	}
+
+	configs, err := svc.ProjectConfigList(project.ID)
+	if err != nil {
+		t.Fatalf("ProjectConfigList() error = %v", err)
+	}
+	if got := configs["ads.roi_threshold"]; got != "2.4" {
+		t.Fatalf("ProjectConfigList()[ads.roi_threshold] = %q, want 2.4 explicit project value", got)
+	}
+}
+
+func TestProjectConfigRejectsScopeNotAllowedBySchema(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key:           "ads.workspace_only",
+		ValueType:     "string",
+		AllowedScopes: []string{"workspace"},
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet() error = %v", err)
+	}
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "get",
+			call: func() error {
+				_, _, err := svc.ProjectConfigGet(project.ID, "ads.workspace_only")
+				return err
+			},
+		},
+		{
+			name: "set",
+			call: func() error {
+				return svc.ProjectConfigSet(project.ID, "ads.workspace_only", "value")
+			},
+		},
+		{
+			name: "unset",
+			call: func() error {
+				return svc.ProjectConfigUnset(project.ID, "ads.workspace_only")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertRuntimeCode(t, tc.call(), "config_scope_not_allowed")
+		})
+	}
+}
+
+func TestConfigSchemaWorkspaceIsolation(t *testing.T) {
+	store := newTestStore(t)
+	ownerLocal := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	otherWS := mustCreateWorkspaceRecord(t, store, storage.Workspace{
+		ID:           "ws-work",
+		Slug:         "work",
+		Name:         "Work",
+		Visibility:   "team",
+		SettingsJSON: "{}",
+		CreatedAt:    100,
+		ModifiedAt:   100,
+	})
+	localUser, err := storage.NewUserRepository(store.DB()).GetByName("local")
+	if err != nil {
+		t.Fatalf("GetByName(local) error = %v", err)
+	}
+	mustUpsertMembershipRecord(t, store, storage.Membership{
+		UserID:      localUser.ID,
+		WorkspaceID: otherWS.ID,
+		Role:        string(RoleOwner),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	})
+	ownerWork := newTestServiceWithRuntime(t, store, 100, "local", "work")
+
+	if err := ownerLocal.ConfigSchemaSet(ConfigSchemaInput{
+		Key:           "ads.account_id",
+		ValueType:     "string",
+		AllowedScopes: []string{"project"},
+	}); err != nil {
+		t.Fatalf("ownerLocal ConfigSchemaSet() error = %v", err)
+	}
+	if _, ok, err := ownerWork.ConfigSchemaGet("ads.account_id"); err != nil {
+		t.Fatalf("ownerWork ConfigSchemaGet() error = %v", err)
+	} else if ok {
+		t.Fatal("ownerWork ConfigSchemaGet() found local workspace definition, want isolated")
+	}
+
+	workProject, err := ownerWork.AddProject(AddProjectInput{Slug: "work-api", Name: "Work API"})
+	if err != nil {
+		t.Fatalf("ownerWork AddProject() error = %v", err)
+	}
+	assertRuntimeCode(t, ownerWork.ProjectConfigSet(workProject.ID, "ads.account_id", "act_123"), "config_definition_not_found")
+}
+
+func TestConfigSchemaDeleteRequiresPurgeWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key:           "ads.account_id",
+		ValueType:     "string",
+		AllowedScopes: []string{"workspace", "project"},
+	})
+	if err := svc.SetConfig("ads.account_id", "act_workspace"); err != nil {
+		t.Fatalf("SetConfig(workspace) error = %v", err)
+	}
+	if err := svc.ProjectConfigSet(project.ID, "ads.account_id", "act_project"); err != nil {
+		t.Fatalf("ProjectConfigSet(project) error = %v", err)
+	}
+
+	assertRuntimeCode(t, svc.ConfigSchemaDelete("ads.account_id", false), "config_definition_in_use")
+	if err := svc.ConfigSchemaDelete("ads.account_id", true); err != nil {
+		t.Fatalf("ConfigSchemaDelete(purge) error = %v", err)
+	}
+	if _, ok, err := svc.ConfigSchemaGet("ads.account_id"); err != nil {
+		t.Fatalf("ConfigSchemaGet(after delete) error = %v", err)
+	} else if ok {
+		t.Fatal("ConfigSchemaGet(after delete) found definition, want missing")
+	}
+	_, _, err = svc.ProjectConfigGet(project.ID, "ads.account_id")
+	assertRuntimeCode(t, err, "config_definition_not_found")
 }
 
 func TestProjectConfigAuditEntriesIncludeProjectID(t *testing.T) {
@@ -1101,6 +1297,11 @@ func TestProjectConfigAuditEntriesIncludeProjectID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key:           "agent.background",
+		ValueType:     "string",
+		AllowedScopes: []string{"project"},
+	})
 	if err := svc.ProjectConfigSet(project.ID, "agent.background", "Background"); err != nil {
 		t.Fatalf("ProjectConfigSet() error = %v", err)
 	}
@@ -1138,6 +1339,11 @@ func TestProjectConfigSetRechecksArchivedProjectInsideAuditTransaction(t *testin
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key:           "agent.background",
+		ValueType:     "string",
+		AllowedScopes: []string{"project"},
+	})
 
 	archivedAt := int64(200)
 	if err := store.DB().Model(&storage.Project{}).
@@ -3155,7 +3361,7 @@ func TestNoContextBypassesActiveContext(t *testing.T) {
 	}
 }
 
-func TestSetConfigRejectsUnsupportedBusinessKey(t *testing.T) {
+func TestSetConfigRejectsUnknownSharedConfigKeyWithoutSchema(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
@@ -3163,7 +3369,7 @@ func TestSetConfigRejectsUnsupportedBusinessKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("SetConfig(arbitrary.thing) succeeded unexpectedly")
 	}
-	assertRuntimeCode(t, err, "config_key_unsupported")
+	assertRuntimeCode(t, err, "config_definition_not_found")
 }
 
 func TestSetConfigPersonalKeysSkipAuditAndRole(t *testing.T) {
@@ -3993,6 +4199,13 @@ func TestProjectConfigAgentKeysAndSizeLimit(t *testing.T) {
 		t.Fatalf("AddProject() error = %v", err)
 	}
 	for _, key := range []string{"agent.background", "agent.constraints", "agent.default_context", "agent.handoff"} {
+		if err := svc.ConfigSchemaSet(ConfigSchemaInput{
+			Key:           key,
+			ValueType:     "string",
+			AllowedScopes: []string{"project"},
+		}); err != nil {
+			t.Fatalf("ConfigSchemaSet(%s) error = %v", key, err)
+		}
 		if err := svc.ProjectConfigSet(project.Slug, key, "ok"); err != nil {
 			t.Fatalf("ProjectConfigSet(%s) error = %v", key, err)
 		}

@@ -1,4 +1,4 @@
-# xuanchu M5 设计规格
+# Xuanchu M5 设计规格
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
@@ -61,7 +61,7 @@ M5 采用严格注册规则：
 ### 2.3 workspace 与 project 身份
 
 - `workspace` 是企业 / 租户级隔离边界。
-- `workspace.slug` 在同一个 xuanchu 实例内唯一，因为 CLI 使用裸 `--workspace <slug|uuid>`。
+- `workspace.slug` 在同一个 Xuanchu 实例内唯一，因为 CLI 使用裸 `--workspace <slug|uuid>`。
 - `project.slug` 只在 `(workspace_id, slug)` 内唯一。
 - 不同 workspace 可以拥有同名 project，例如：
   - `dajee/ai-agent-platform`
@@ -472,7 +472,7 @@ M5 固定使用以下 CLI 形态：
 
 ```bash
 xuanchu project config get ai-agent-platform agent.background
-xuanchu project config set ai-agent-platform agent.background "This project owns xuanchu MCP integration."
+xuanchu project config set ai-agent-platform agent.background "This project owns Xuanchu MCP integration."
 xuanchu project config unset ai-agent-platform agent.background
 xuanchu project config list ai-agent-platform
 ```
@@ -706,7 +706,7 @@ M5 完成后必须更新：
 
 - [README.md](/Users/mac/code/projects/dajee/task/README.md)
   - 增加 M5 project 命令用法。
-  - 明确 xuanchu 不是完整 Taskwarrior clone。
+  - 明确 Xuanchu 不是完整 Taskwarrior clone。
   - 明确 project 必须先注册。
 - [ROADMAP.md](/Users/mac/code/projects/dajee/task/ROADMAP.md)
   - M5 状态改为已完成。

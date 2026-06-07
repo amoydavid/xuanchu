@@ -101,9 +101,7 @@ func (s *Service) udaDefinitionTypes() (map[string]string, error) {
 }
 
 func (s *Service) SetConfig(key, value string) error {
-	if isProjectConfigKey(key) {
-		return projectConfigScopeRequiredError("set")
-	}
+	key = strings.TrimSpace(key)
 	if strings.HasPrefix(key, "uda.") {
 		if err := s.Require(PermissionUDAManage); err != nil {
 			return err
@@ -125,56 +123,128 @@ func (s *Service) SetConfig(key, value string) error {
 	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
 	}
-	if !IsBusinessConfigKey(key) && !isPersonalRenderKey(key) {
-		return RuntimeError{Code: "config_key_unsupported", Message: fmt.Sprintf("config key %q is not writable", key)}
+	if isLegacyWorkspaceConfigKey(key) {
+		if err := s.Require(PermissionWorkspaceModify); err != nil {
+			return err
+		}
+		return s.withAudit("config.set", func(tx *Service) (AuditEntry, error) {
+			if err := tx.store.SetMeta(key, value); err != nil {
+				return AuditEntry{}, err
+			}
+			return AuditEntry{
+				TargetType: "config",
+				TargetID:   key,
+				Payload: map[string]any{
+					"key": key,
+				},
+			}, nil
+		})
 	}
 	if isPersonalRenderKey(key) {
 		return s.store.SetMeta(key, value)
+	}
+	def, err := s.scopedConfigDefinition(key)
+	if err != nil {
+		return err
+	}
+	normalizedValue, err := s.validateScopedConfigValue(def, storage.ConfigScopeWorkspace, value)
+	if err != nil {
+		return err
 	}
 	if err := s.Require(PermissionWorkspaceModify); err != nil {
 		return err
 	}
 	return s.withAudit("config.set", func(tx *Service) (AuditEntry, error) {
-		if err := tx.store.SetMeta(key, value); err != nil {
+		if err := tx.configRepo.Set(storage.ConfigKey{
+			WorkspaceID: tx.workspaceID,
+			Scope:       storage.ConfigScopeWorkspace,
+			ScopeID:     tx.workspaceID,
+			Key:         key,
+		}, normalizedValue); err != nil {
 			return AuditEntry{}, err
+		}
+		payload := map[string]any{
+			"key": key,
+		}
+		if def.Secret {
+			payload["secret"] = true
+			payload["changed"] = true
 		}
 		return AuditEntry{
 			TargetType: "config",
 			TargetID:   key,
-			Payload: map[string]any{
-				"key": key,
-			},
+			Payload:    payload,
 		}, nil
 	})
 }
 
 func (s *Service) GetConfig(key string) (string, bool, error) {
-	if isProjectConfigKey(key) {
-		return "", false, projectConfigScopeRequiredError("get")
-	}
+	key = strings.TrimSpace(key)
 	if strings.HasPrefix(key, "uda.") {
 		return s.getUDAConfig(key)
 	}
 	if value, ok := s.runtimeOverrides[key]; ok {
 		return value, true, nil
 	}
-	value, ok, err := s.store.GetMeta(key)
+	if isLegacyWorkspaceConfigKey(key) {
+		value, ok, err := s.store.GetMeta(key)
+		if err != nil {
+			return "", false, err
+		}
+		if ok {
+			return value, true, nil
+		}
+		if value, ok := s.runtimeConfig[key]; ok {
+			return value, true, nil
+		}
+		return "", false, nil
+	}
+	if isPersonalRenderKey(key) {
+		value, ok, err := s.store.GetMeta(key)
+		if err != nil {
+			return "", false, err
+		}
+		if ok {
+			return value, true, nil
+		}
+		if value, ok := s.runtimeConfig[key]; ok {
+			return value, true, nil
+		}
+		return "", false, nil
+	}
+	if value, ok := s.runtimeConfig[key]; ok {
+		return value, true, nil
+	}
+	def, err := s.scopedConfigDefinition(key)
+	if err != nil {
+		return "", false, err
+	}
+	if !configDefinitionAllowsScope(def, storage.ConfigScopeWorkspace) {
+		return "", false, RuntimeError{
+			Code:    "config_scope_not_allowed",
+			Message: fmt.Sprintf("config key %q does not allow workspace scope", key),
+		}
+	}
+	value, ok, err := s.configRepo.Get(storage.ConfigKey{
+		WorkspaceID: s.workspaceID,
+		Scope:       storage.ConfigScopeWorkspace,
+		ScopeID:     s.workspaceID,
+		Key:         key,
+	})
 	if err != nil {
 		return "", false, err
 	}
 	if ok {
 		return value, true, nil
 	}
-	if value, ok := s.runtimeConfig[key]; ok {
-		return value, true, nil
+	if def.DefaultValue != nil {
+		return *def.DefaultValue, true, nil
 	}
 	return "", false, nil
 }
 
 func (s *Service) UnsetConfig(key string) error {
-	if isProjectConfigKey(key) {
-		return projectConfigScopeRequiredError("unset")
-	}
+	key = strings.TrimSpace(key)
 	if strings.HasPrefix(key, "uda.") {
 		if err := s.Require(PermissionUDAManage); err != nil {
 			return err
@@ -200,17 +270,46 @@ func (s *Service) UnsetConfig(key string) error {
 	if key == "context.active" {
 		return fmt.Errorf("context.active is managed by context commands")
 	}
-	if !IsBusinessConfigKey(key) && !isPersonalRenderKey(key) {
-		return RuntimeError{Code: "config_key_unsupported", Message: fmt.Sprintf("config key %q is not writable", key)}
+	if isLegacyWorkspaceConfigKey(key) {
+		if err := s.Require(PermissionWorkspaceModify); err != nil {
+			return err
+		}
+		return s.withAudit("config.unset", func(tx *Service) (AuditEntry, error) {
+			if err := tx.store.DeleteMeta(key); err != nil {
+				return AuditEntry{}, err
+			}
+			return AuditEntry{
+				TargetType: "config",
+				TargetID:   key,
+				Payload: map[string]any{
+					"key": key,
+				},
+			}, nil
+		})
 	}
 	if isPersonalRenderKey(key) {
 		return s.store.DeleteMeta(key)
+	}
+	def, err := s.scopedConfigDefinition(key)
+	if err != nil {
+		return err
+	}
+	if !configDefinitionAllowsScope(def, storage.ConfigScopeWorkspace) {
+		return RuntimeError{
+			Code:    "config_scope_not_allowed",
+			Message: fmt.Sprintf("config key %q does not allow workspace scope", key),
+		}
 	}
 	if err := s.Require(PermissionWorkspaceModify); err != nil {
 		return err
 	}
 	return s.withAudit("config.unset", func(tx *Service) (AuditEntry, error) {
-		if err := tx.store.DeleteMeta(key); err != nil {
+		if err := tx.configRepo.Unset(storage.ConfigKey{
+			WorkspaceID: tx.workspaceID,
+			Scope:       storage.ConfigScopeWorkspace,
+			ScopeID:     tx.workspaceID,
+			Key:         key,
+		}); err != nil {
 			return AuditEntry{}, err
 		}
 		return AuditEntry{
@@ -256,6 +355,11 @@ func IsBusinessConfigKey(key string) bool {
 func isPersonalRenderKey(key string) bool {
 	key = strings.TrimSpace(key)
 	return key == "color" || key == "json"
+}
+
+func isLegacyWorkspaceConfigKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return key == "date.format" || strings.HasPrefix(key, "urgency.")
 }
 
 func (s *Service) UniqueValues(field string, input ListInput) ([]string, error) {
@@ -506,6 +610,13 @@ func (s *Service) mergedConfigValues() (map[string]string, error) {
 		return nil, err
 	}
 	for key, value := range meta {
+		values[key] = value
+	}
+	shared, err := s.configRepo.ListScope(s.workspaceID, storage.ConfigScopeWorkspace, s.workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range shared {
 		values[key] = value
 	}
 	for key, value := range s.runtimeOverrides {

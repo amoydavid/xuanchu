@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 xuanchu 增加项目级别 annotation 和聚合 timeline 能力，让 Agent 能记录项目级信息并查看完整项目时间线。
+**Goal:** 为 Xuanchu 增加项目级别 annotation 和聚合 timeline 能力，让 Agent 能记录项目级信息并查看完整项目时间线。
 
 **Architecture:** 新增 `project_annotations` 表和 `ProjectAnnotationRepository`，在 `app` 层提供 `ProjectAnnotate`/`ProjectDenotate`/`ProjectAnnotations`/`ProjectTimeline` 四个方法，通过 CLI、HTTP API、MCP 三端暴露。Timeline 通过 SQL UNION 聚合 project + task annotations。同时强化 `normalizeProjectSlug` 拒绝数字开头的 slug。
 

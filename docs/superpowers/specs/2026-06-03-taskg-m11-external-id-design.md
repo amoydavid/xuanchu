@@ -1,8 +1,8 @@
-# xuanchu M11 设计规格：用户外部 ID 绑定
+# Xuanchu M11 设计规格：用户外部 ID 绑定
 
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
-**目标：** 为 xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+**目标：** 为 Xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
 
 **范围策略：** M11 只解决"用户可以绑定外部系统 ID，所有入口都能用它来标识用户"。不引入自动用户创建、不引入 OAuth、不改变现有权限模型。
 
@@ -20,7 +20,7 @@ M10 完成后，xuanchu 已经具备：
 
 当前缺口：
 
-- Agent 只持有外部系统 ID（如飞书 `ou_xxxxx`），无法将其映射到 xuanchu 用户。
+- Agent 只持有外部系统 ID（如飞书 `ou_xxxxx`），无法将其映射到 Xuanchu 用户。
 - `resolveUser` 不识别外部 ID 格式，Agent 无法用 `feishu:ou_xxxxx` 作为 assignee ref。
 - 所有返回用户信息的接口（`user info`、`task.get` 的 assignees、`user list`）都不包含外部 ID，Agent 拿到任务后无法反向查找飞书 ID 去发通知。
 
@@ -41,7 +41,7 @@ M10 完成后，xuanchu 已经具备：
 
 - 自动用户创建（遇到未绑定的外部 ID 时严格返回 `assignee_not_found`）。
 - OAuth / OIDC / 飞书授权流程。
-- 外部系统 API 调用（xuanchu 不主动查飞书通讯录）。
+- 外部系统 API 调用（Xuanchu 不主动查飞书通讯录）。
 - provider 插件系统（早期硬编码 `feishu`、`email`、`slack`、`wechat` 即可）。
 - 批量导入外部 ID（CSV / API batch）。
 - 外部 ID 变更同步（外部系统用户 ID 变了，需要手动重新绑定）。
@@ -78,8 +78,8 @@ provider 值为小写字母开头的字符串，早期支持的常量：
 `(provider, external_id)` 联合唯一。理由：
 
 - 一个外部 ID 代表一个真实的人。
-- 同一个 xuanchu 实例内，一个真实的人应该只有一个 xuanchu 用户。
-- 如果出现"同一个飞书 ID 想绑两个 xuanchu 用户"的需求，说明数据模型有问题，应该先修正用户数据，而不是放开唯一约束。
+- 同一个 Xuanchu 实例内，一个真实的人应该只有一个 Xuanchu 用户。
+- 如果出现"同一个飞书 ID 想绑两个 Xuanchu 用户"的需求，说明数据模型有问题，应该先修正用户数据，而不是放开唯一约束。
 
 一个用户可以绑定多个外部 ID（飞书 + Slack + 邮箱，多端接入）。
 

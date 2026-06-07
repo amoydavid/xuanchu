@@ -1,4 +1,4 @@
-# xuanchu M5 实施计划
+# Xuanchu M5 实施计划
 
 > **给 agentic workers 的要求：** 必须使用 `superpowers:subagent-driven-development`（如果可用）或 `superpowers:executing-plans` 执行本计划。所有步骤使用 checkbox（`- [ ]`）语法跟踪。
 

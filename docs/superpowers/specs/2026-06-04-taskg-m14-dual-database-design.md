@@ -2,7 +2,7 @@
 
 ## 背景
 
-xuanchu 当前只支持 SQLite（`github.com/glebarez/sqlite`，纯 Go，零 CGO）。企业部署场景中，部分客户要求使用 PostgreSQL。本 milestone 在保持零 CGO、零接口定义的前提下，让 xuanchu 同时支持 SQLite 和 PostgreSQL，通过配置选择后端。
+xuanchu 当前只支持 SQLite（`github.com/glebarez/sqlite`，纯 Go，零 CGO）。企业部署场景中，部分客户要求使用 PostgreSQL。本 milestone 在保持零 CGO、零接口定义的前提下，让 Xuanchu 同时支持 SQLite 和 PostgreSQL，通过配置选择后端。
 
 ## 目标
 

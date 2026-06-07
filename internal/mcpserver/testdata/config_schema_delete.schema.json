@@ -1,0 +1,36 @@
+{
+  "description": "Delete a config schema definition; optional purge also removes existing values.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "purge": {
+        "type": "boolean"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "key"
+    ],
+    "type": "object"
+  },
+  "name": "config_schema_delete",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

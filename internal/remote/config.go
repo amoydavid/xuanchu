@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -22,6 +23,31 @@ type contextDTO struct {
 
 type configValueInput struct {
 	Value string `json:"value"`
+}
+
+type ConfigSchemaDefinition struct {
+	Key           string   `json:"key"`
+	ValueType     string   `json:"value_type"`
+	AllowedScopes []string `json:"allowed_scopes"`
+	Label         string   `json:"label"`
+	Description   string   `json:"description"`
+	EnumValues    []string `json:"enum_values"`
+	DefaultValue  *string  `json:"default_value,omitempty"`
+	Required      bool     `json:"required"`
+	Secret        bool     `json:"secret"`
+	CreatedAt     int64    `json:"created_at"`
+	ModifiedAt    int64    `json:"modified_at"`
+}
+
+type ConfigSchemaSetInput struct {
+	ValueType     string   `json:"value_type"`
+	AllowedScopes []string `json:"allowed_scopes"`
+	Label         string   `json:"label,omitempty"`
+	Description   string   `json:"description,omitempty"`
+	EnumValues    []string `json:"enum_values,omitempty"`
+	DefaultValue  *string  `json:"default_value,omitempty"`
+	Required      bool     `json:"required,omitempty"`
+	Secret        bool     `json:"secret,omitempty"`
 }
 
 func (c *Client) ListContexts(ctx context.Context, workspace string) ([]taskcontext.Context, string, error) {
@@ -86,6 +112,39 @@ func (c *Client) SetConfig(ctx context.Context, workspace, key, value string) er
 
 func (c *Client) UnsetConfig(ctx context.Context, workspace, key string) error {
 	return c.delete(ctx, pathWithWorkspace("/api/v1/config/"+url.PathEscape(key), workspace), nil)
+}
+
+func (c *Client) ListConfigSchemas(ctx context.Context, workspace string) ([]ConfigSchemaDefinition, error) {
+	var envelope apiEnvelope[[]ConfigSchemaDefinition]
+	if err := c.get(ctx, "/api/v1/config-schema", workspaceValues(workspace), &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) GetConfigSchema(ctx context.Context, workspace, key string) (ConfigSchemaDefinition, error) {
+	var envelope apiEnvelope[ConfigSchemaDefinition]
+	if err := c.get(ctx, pathWithWorkspace("/api/v1/config-schema/"+url.PathEscape(key), workspace), nil, &envelope); err != nil {
+		return ConfigSchemaDefinition{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) SetConfigSchema(ctx context.Context, workspace, key string, input ConfigSchemaSetInput) error {
+	var envelope apiEnvelope[ConfigSchemaDefinition]
+	return c.doJSON(ctx, "PUT", pathWithWorkspace("/api/v1/config-schema/"+url.PathEscape(key), workspace), input, &envelope)
+}
+
+func (c *Client) DeleteConfigSchema(ctx context.Context, workspace, key string, purge bool) error {
+	path := pathWithWorkspace("/api/v1/config-schema/"+url.PathEscape(key), workspace)
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	if purge {
+		path += sep + "purge=true"
+	}
+	return c.delete(ctx, path, nil)
 }
 
 func (c *Client) ProjectConfigList(ctx context.Context, workspace, projectRef string) (map[string]string, error) {

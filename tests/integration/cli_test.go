@@ -654,7 +654,7 @@ func TestCLIConfigSetRejectsUnsupportedBusinessKey(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	out := runExpectError(t, bin, "--db", db, "config", "set", "arbitrary.thing", "1")
-	if !strings.Contains(out, "config_key_unsupported") {
+	if !strings.Contains(out, "config_definition_not_found") {
 		t.Fatalf("config set arbitrary.thing error = %q", out)
 	}
 	list := run(t, bin, "--db", db, "config", "list")
@@ -1865,9 +1865,9 @@ func TestCLIConfigRejectsProjectScopedKeysWithoutScope(t *testing.T) {
 	} {
 		out, err := runErr(t, bin, args...)
 		if err == nil {
-			t.Fatalf("%v error = nil, want project_config_scope_required", args)
+			t.Fatalf("%v error = nil, want config_scope_not_allowed", args)
 		}
-		if !strings.Contains(out, "project config requires project scope") {
+		if !strings.Contains(out, "config_scope_not_allowed") {
 			t.Fatalf("%v output = %q", args, out)
 		}
 	}

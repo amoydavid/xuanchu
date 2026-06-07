@@ -5,7 +5,7 @@ weight: 110
 
 # 备份与恢复
 
-xuanchu 支持 SQLite（默认）和 PostgreSQL。备份方式取决于数据库类型。
+Xuanchu 支持 SQLite（默认）和 PostgreSQL。备份方式取决于数据库类型。
 
 ## 在线备份
 

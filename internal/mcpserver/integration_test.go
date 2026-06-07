@@ -238,6 +238,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"context_get", "context_set", "context_none",
 		"context_list", "context_delete",
 		"config_get", "config_set", "config_list", "config_unset",
+		"config_schema_list", "config_schema_get", "config_schema_set", "config_schema_delete",
 		"hook_list", "hook_add", "hook_info", "hook_modify", "hook_remove",
 		"hook_test", "hook_delivery_list", "hook_delivery_info",
 		"hook_delivery_redeliver", "hook_ping",

@@ -364,7 +364,7 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
 
 配置分成三类，不混用：
 
-1. **本机配置**：来自 `xuanchu.toml`、环境变量、CLI flag 和 `rc.*`。只描述当前机器如何启动和显示 xuanchu，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 的 server/token 路径。
+1. **本机配置**：来自 `xuanchu.toml`、环境变量、CLI flag 和 `rc.*`。只描述当前机器如何启动和显示 Xuanchu，例如 `database.path`、`color`、`json`、`date.format`、远程 CLI 的 server/token 路径。
 2. **Workspace 业务配置**：存 DB，带 `workspace_id`，受权限和 audit 约束。包括 UDA schema、urgency UDA 系数、context、report 默认配置、workspace 级 Agent 记忆。
 3. **Project 配置**：M5 project 实体化后引入，挂在 project/workspace 下。包括 project 默认 context、project 级 webhook、project 级 Agent 背景和约束。
 
@@ -454,8 +454,8 @@ M5 起，project 配置只通过 `project config get/set/unset/list <project>` �
 > 不在 Taskwarrior 上游范围内，列出以便后续展开。
 
 - 触发源：外部 webhook、协作系统事件、代码托管事件、定时（heartbeat）、一次性触发。
-- 触发动作：adapter 标准化事件后交给 Agent；Agent 通过 xuanchu MCP/API 调 `task.add` / `task.query` / `task.modify`，再把结果写回外部系统或静默入库。
-- adapter 示例：飞书、GitHub、Jira、Slack 等都可以接入，但它们不是 xuanchu 的核心目标。xuanchu 核心只关心 actor、workspace、project、task、权限和审计。
+- 触发动作：adapter 标准化事件后交给 Agent；Agent 通过 Xuanchu MCP/API 调 `task.add` / `task.query` / `task.modify`，再把结果写回外部系统或静默入库。
+- adapter 示例：飞书、GitHub、Jira、Slack 等都可以接入，但它们不是 Xuanchu 的核心目标。Xuanchu 核心只关心 actor、workspace、project、task、权限和审计。
 - 记忆机制：workspace 挂企业偏好，project 挂项目背景和约束，Agent 读取的是服务端 DB 中的配置/记忆摘要，不读取操作者本机 TOML。
 
 ---

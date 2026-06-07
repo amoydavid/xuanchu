@@ -1,11 +1,11 @@
 ---
-title: "xuanchu 用户手册"
+title: "Xuanchu 用户手册"
 weight: 1
 ---
 
-# xuanchu 用户手册
+# Xuanchu 用户手册
 
-`xuanchu` 是一个 Taskwarrior 风格的企业任务运行时。它既可以作为本地 CLI 使用，也可以作为 HTTP 服务端、远程 CLI 客户端和 MCP Server 使用。
+Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业任务运行时，既可以作为本地 CLI 使用，也可以作为 HTTP 服务端、远程 CLI 客户端和 MCP Server 使用。
 
 这份手册面向使用者和管理员，重点回答三个问题：
 
@@ -63,7 +63,7 @@ weight: 1
 
 ## 当前能力范围
 
-当前 xuanchu 已支持：
+当前 Xuanchu 已支持：
 
 - 本地 CLI 与 SQLite / PostgreSQL 存储
 - Taskwarrior 风格任务字段、查询、报表、urgency 和 helper 命令

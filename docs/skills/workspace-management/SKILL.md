@@ -1,6 +1,6 @@
 # Workspace 管理
 
-通过 xuanchu MCP 管理工作区（workspace）——企业/租户级隔离边界。
+通过 Xuanchu MCP 管理工作区（workspace）——企业/租户级隔离边界。
 
 ## 基本概念
 

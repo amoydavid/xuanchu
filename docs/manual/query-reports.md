@@ -5,7 +5,7 @@ weight: 40
 
 # 查询与报表
 
-xuanchu 的 CLI 也是查询语言。你可以把 filter 放在报表命令前，也可以放在报表命令后。
+Xuanchu 的 CLI 也是查询语言。你可以把 filter 放在报表命令前，也可以放在报表命令后。
 
 ```bash
 xuanchu +next list

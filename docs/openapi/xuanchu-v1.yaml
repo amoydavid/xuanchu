@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: xuanchu HTTP API
+  title: Xuanchu HTTP API
   version: v1
 servers:
   - url: http://127.0.0.1:8080
@@ -34,7 +34,12 @@ components:
         - project_mismatch
         - context_not_found
         - config_not_found
-        - config_key_unsupported
+        - config_definition_not_found
+        - config_scope_not_allowed
+        - config_definition_in_use
+        - config_value_invalid
+        - config_value_too_large
+        - project_config_scope_required
         - route_not_found
         - method_not_allowed
         - api_bad_json

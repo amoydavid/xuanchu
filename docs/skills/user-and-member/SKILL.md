@@ -1,6 +1,6 @@
 # 用户与成员管理
 
-通过 xuanchu MCP 管理用户账户、外部 ID 绑定和 workspace 成员角色。
+通过 Xuanchu MCP 管理用户账户、外部 ID 绑定和 workspace 成员角色。
 
 ## 重要原则
 

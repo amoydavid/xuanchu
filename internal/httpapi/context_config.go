@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,6 +21,17 @@ type contextResponse struct {
 	Active     bool   `json:"active"`
 	CreatedAt  int64  `json:"created_at"`
 	ModifiedAt int64  `json:"modified_at"`
+}
+
+type configSchemaRequest struct {
+	ValueType     string   `json:"value_type"`
+	AllowedScopes []string `json:"allowed_scopes"`
+	Label         string   `json:"label"`
+	Description   string   `json:"description"`
+	EnumValues    []string `json:"enum_values"`
+	DefaultValue  *string  `json:"default_value"`
+	Required      bool     `json:"required"`
+	Secret        bool     `json:"secret"`
 }
 
 func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +234,90 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleConfigSchemaList(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "config:read", app.PermissionConfigSchemaRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ConfigSchemaList()
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, rows, nil)
+}
+
+func (s *Server) handleConfigSchemaGet(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "config:read", app.PermissionConfigSchemaRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	row, ok, err := scoped.ConfigSchemaGet(chi.URLParam(r, "key"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "config_definition_not_found", "config definition not found", nil)
+		return
+	}
+	writeSuccess(w, http.StatusOK, row, nil)
+}
+
+func (s *Server) handleConfigSchemaSet(w http.ResponseWriter, r *http.Request) {
+	var req configSchemaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "config:write", app.PermissionConfigSchemaWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	input := app.ConfigSchemaInput{
+		Key:           chi.URLParam(r, "key"),
+		ValueType:     req.ValueType,
+		AllowedScopes: req.AllowedScopes,
+		Label:         req.Label,
+		Description:   req.Description,
+		EnumValues:    req.EnumValues,
+		DefaultValue:  req.DefaultValue,
+		Required:      req.Required,
+		Secret:        req.Secret,
+	}
+	if err := scoped.ConfigSchemaSet(input); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	row, ok, err := scoped.ConfigSchemaGet(input.Key)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "api_internal", "config definition missing after write", nil)
+		return
+	}
+	writeSuccess(w, http.StatusOK, row, nil)
+}
+
+func (s *Server) handleConfigSchemaDelete(w http.ResponseWriter, r *http.Request) {
+	purge := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("purge")), "true")
+	scoped, _, err := s.scopedService(r, "config:write", app.PermissionConfigSchemaWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.ConfigSchemaDelete(chi.URLParam(r, "key"), purge); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]any{"ok": true, "purge": purge}, nil)
 }
 
 func isHTTPBusinessConfigKey(key string) bool {

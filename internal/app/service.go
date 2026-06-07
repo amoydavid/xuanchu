@@ -22,6 +22,7 @@ type Service struct {
 	repo                  *storage.TaskRepository
 	projectRepo           *storage.ProjectRepository
 	configRepo            *storage.ConfigRepository
+	configDefRepo         *storage.ConfigDefinitionRepository
 	userRepo              *storage.UserRepository
 	workspaceRepo         *storage.WorkspaceRepository
 	memberRepo            *storage.MemberRepository
@@ -148,11 +149,12 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{
+	svc := &Service{
 		store:            opts.Store,
 		repo:             storage.NewTaskRepository(opts.Store.DB()),
 		projectRepo:      storage.NewProjectRepository(opts.Store.DB()),
 		configRepo:       storage.NewConfigRepository(opts.Store.DB()),
+		configDefRepo:    storage.NewConfigDefinitionRepository(opts.Store.DB()),
 		userRepo:         userRepo,
 		workspaceRepo:    workspaceRepo,
 		memberRepo:       memberRepo,
@@ -172,7 +174,11 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		clock:            opts.Clock,
 		reports:          report.DefaultRegistry(),
 		disableContext:   opts.NoContext,
-	}, nil
+	}
+	if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
+		return nil, err
+	}
+	return svc, nil
 }
 
 func (s *Service) Clock() Clock {
@@ -185,6 +191,7 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.repo = storage.NewTaskRepository(store.DB())
 	clone.projectRepo = storage.NewProjectRepository(store.DB())
 	clone.configRepo = storage.NewConfigRepository(store.DB())
+	clone.configDefRepo = storage.NewConfigDefinitionRepository(store.DB())
 	clone.userRepo = storage.NewUserRepository(store.DB())
 	clone.workspaceRepo = storage.NewWorkspaceRepository(store.DB())
 	clone.memberRepo = storage.NewMemberRepository(store.DB())

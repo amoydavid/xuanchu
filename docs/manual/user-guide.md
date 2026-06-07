@@ -7,7 +7,7 @@ weight: 20
 
 这一章按日常使用顺序介绍 xuanchu。你可以把它当成“正常一天怎么用 xuanchu”的主线。
 
-## xuanchu 的工作方式
+## Xuanchu 的工作方式
 
 xuanchu 把任务当作结构化对象保存到数据库（默认 SQLite，也支持 PostgreSQL）。任务可以有 project、tag、priority、due、depends、annotations、UDA 等字段。CLI 既是操作入口，也是查询入口。
 

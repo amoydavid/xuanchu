@@ -7,7 +7,7 @@ weight: 50
 
 ## 配置来源
 
-xuanchu 的配置可以来自：
+Xuanchu 的配置可以来自：
 
 - CLI flag / `rc.*`
 - 环境变量
@@ -130,7 +130,7 @@ xuanchu config import-taskrc ~/.taskrc --dry-run --json
 xuanchu config import-taskrc ~/.taskrc
 ```
 
-xuanchu 不会修改原 `.taskrc`。当前支持导入：
+Xuanchu 不会修改原 `.taskrc`。当前支持导入：
 
 - `color`
 - `dateformat`

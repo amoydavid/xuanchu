@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+**Goal:** 为 Xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
 
 **Architecture:** 新增 `user_external_ids` 表存储用户与外部系统的 ID 映射。在现有 `resolveUser` 中增加 `provider:value` 格式解析，使所有使用 assignee ref 的入口（CLI、HTTP API、MCP、JSON import）自动支持外部 ID。所有返回用户/assignee 的地方附带 `external_ids` 列表。
 

@@ -138,7 +138,7 @@ HTTP 示例：
 
 ## 在 OpenClaw 中使用
 
-OpenClaw 的 `openclaw mcp serve` 是"OpenClaw 自己作为 MCP server"。这里要做的是相反方向：让 OpenClaw 托管的 agent 使用 xuanchu MCP server，所以应使用 OpenClaw 的 MCP client registry，也就是 `openclaw mcp add/set/configure/probe`。
+OpenClaw 的 `openclaw mcp serve` 是"OpenClaw 自己作为 MCP server"。这里要做的是相反方向：让 OpenClaw 托管的 agent 使用 Xuanchu MCP server，所以应使用 OpenClaw 的 MCP client registry，也就是 `openclaw mcp add/set/configure/probe`。
 
 ### OpenClaw 本地 stdio
 
@@ -182,13 +182,13 @@ openclaw mcp doctor xuanchu --probe
 openclaw mcp probe xuanchu --json
 ```
 
-如果只希望 OpenClaw 暴露一部分 xuanchu MCP tools，可以配置 tool filter。例如只让 Agent 查询任务和读取项目：
+如果只希望 OpenClaw 暴露一部分 Xuanchu MCP tools，可以配置 tool filter。例如只让 Agent 查询任务和读取项目：
 
 ```bash
 openclaw mcp tools xuanchu --include 'task_query,task_get,project_list,project_get,workspace_get_current'
 ```
 
-注意：OpenClaw 文档中 `streamable-http` 是 Streamable HTTP 的规范写法；xuanchu 的 `/mcp` 就是这个 HTTP MCP endpoint。
+注意：OpenClaw 文档中 `streamable-http` 是 Streamable HTTP 的规范写法；Xuanchu 的 `/mcp` 就是这个 HTTP MCP endpoint。
 
 ## 在 Hermes Agent 中使用
 
@@ -278,7 +278,7 @@ xuanchu --workspace dajee token create mcp-agent \
 可以在 Agent 系统提示词或项目说明中加入：
 
 ```text
-你可以使用 xuanchu MCP 管理任务。每次调用都必须通过参数显式指定 workspace 和 project_id，
+你可以使用 Xuanchu MCP 管理任务。每次调用都必须通过参数显式指定 workspace 和 project_id，
 不要依赖隐式上下文。如果不知道 workspace 或 project，先调用 workspace_list / project_list 发现。
 查询任务用 task_query，读取单任务用 task_get，新增任务用 task_add。
 如果任务有执行者，请在 task_add / task_modify 里显式传 assignees。

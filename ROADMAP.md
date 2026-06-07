@@ -1,6 +1,6 @@
-# xuanchu Roadmap
+# Xuanchu Roadmap
 
-本文档是 `xuanchu` 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：借鉴 Taskwarrior 设计思路、面向企业项目协作和 Agent MCP 的任务运行时。
+本文档是 Xuanchu 的产品路线图。目标是逐步实现 README 中定义的最终产品形态：借鉴 Taskwarrior 设计思路、面向企业项目协作和 Agent MCP 的任务运行时。
 
 - 单一二进制，同时承担本地 CLI、远程 CLI 客户端、HTTP/JSON API 服务端、MCP Server。
 - 使用纯 Go SQLite 方案，保持零 CGO、可跨平台交叉编译。
@@ -132,7 +132,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 
 **状态：已完成。**
 
-**目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 xuanchu 不再只是简单 todo CLI。
+**目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 Xuanchu 不再只是简单 todo CLI。
 
 **范围：**
 
@@ -320,7 +320,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 支持 `active_workspace.<user_id>`
   - 支持 `active_context.<user_id>.<workspace_id>`
   - 支持全局 `--workspace <slug|uuid>` 一次性覆盖
-  - 当前 CLI 使用裸 workspace slug，因此 workspace slug 在同一个 xuanchu 实例内保持唯一；project slug 只在 workspace 内唯一
+  - 当前 CLI 使用裸 workspace slug，因此 workspace slug 在同一个 Xuanchu 实例内保持唯一；project slug 只在 workspace 内唯一
 - 权限边界：
   - `viewer` / `member` / `admin` / `owner`
   - task、context、UDA schema、workspace metadata、member role、audit read 都经过 app 层权限检查
@@ -518,7 +518,7 @@ M6 已用 `remote_unsupported_command` 显式拦截下列远程 CLI 管理命令
 
 **状态：已完成。**
 
-**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 xuanchu。MCP 请求必须落在明确的 workspace scope 内，并可进一步受 project scope 限制。Agent 不应该凭提示词决定自己能看什么，权限必须来自 token 和服务端校验。
+**目标：** 让企业 Agent 能通过 MCP 以结构化方式使用 Xuanchu。MCP 请求必须落在明确的 workspace scope 内，并可进一步受 project scope 限制。Agent 不应该凭提示词决定自己能看什么，权限必须来自 token 和服务端校验。
 
 **M7 已交付内容：**
 
@@ -771,7 +771,7 @@ docs/superpowers/specs/2026-06-03-xuanchu-m10-impersonation-design.md
 
 **状态：已完成。**
 
-**目标：** 为 xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
+**目标：** 为 Xuanchu 用户增加外部 ID 绑定能力，让 Agent 能通过 `feishu:ou_xxxxx` 这类标识符指派 assignee、查询用户，并在所有返回用户信息的地方一并返回外部 ID 列表。
 
 **M11 已交付内容：**
 
@@ -930,7 +930,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 **状态：已完成。**
 
-**目标：** 补齐运维和可观测性基础设施，使 xuanchu 达到可正式发布的质量标准。
+**目标：** 补齐运维和可观测性基础设施，使 Xuanchu 达到可正式发布的质量标准。
 
 **已交付内容：**
 
@@ -960,4 +960,3 @@ v0.1.0 已发布。xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP
 - 性能优化与大 workspace 场景验证
 - 外部系统 adapter 生态
 - 多端同步与 replica
-

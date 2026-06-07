@@ -174,6 +174,18 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 	}
 }
 
+func TestConfigDefinitionTableMigrated(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasTable(&ConfigDefinition{}) {
+		t.Fatal("config_definitions table missing after migration")
+	}
+}
+
 func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {

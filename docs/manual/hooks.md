@@ -5,9 +5,9 @@ weight: 90
 
 # Webhook Hook 使用指南
 
-Hook 是 xuanchu 的服务端自动化扩展边界。当内部事件发生后，xuanchu 会异步向外部 webhook URL 投递事件。
+Hook 是 Xuanchu 的服务端自动化扩展边界。当内部事件发生后，xuanchu 会异步向外部 webhook URL 投递事件。
 
-Hook 不是业务域 adapter 市场。xuanchu 不内置飞书、Jira、Slack adapter，也不做 memory、replica 或 sync。
+Hook 不是业务域 adapter 市场。Xuanchu 不内置飞书、Jira、Slack adapter，也不做 memory、replica 或 sync。
 
 ## 支持的事件
 
@@ -137,7 +137,7 @@ Hook 投递是 post-commit 异步语义：
 
 ## 出站网络防护
 
-xuanchu 默认禁止投递到：
+Xuanchu 默认禁止投递到：
 
 - loopback
 - link-local

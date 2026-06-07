@@ -5,7 +5,7 @@ weight: 60
 
 # 团队、Workspace 与 Project
 
-xuanchu 的企业边界由 workspace、project、user、membership 和 audit 组成。
+Xuanchu 的企业边界由 workspace、project、user、membership 和 audit 组成。
 
 如果你还不确定“当前 CLI/MCP 到底以哪个 user 身份运行”，先读 [身份与初始化](identity-and-initialization.md)。本页更偏团队对象和管理命令。
 
@@ -84,16 +84,26 @@ project 归档后不能被新任务引用，但已有任务仍可读取、完成
 
 ## Project 配置
 
-project 级业务配置走 `project config`：
+project/shared config 现在分成 schema 定义和值写入两层：
 
 ```bash
-xuanchu project config set ai-agent-platform agent.background "Owns xuanchu MCP integration."
+xuanchu --workspace dajee config schema set agent.background type:string scopes:project
+xuanchu --workspace dajee config schema set ads.roi_threshold type:number scopes:workspace,project default:1.8
+
+xuanchu --workspace dajee config set ads.roi_threshold 2.0
+xuanchu project config set ai-agent-platform agent.background "Owns Xuanchu MCP integration."
 xuanchu project config get ai-agent-platform agent.background
 xuanchu project config list ai-agent-platform
 xuanchu project config unset ai-agent-platform agent.background
 ```
 
-无 scope 的 `config` 不读写 project 配置。
+补充说明：
+
+- `config schema` 只在当前 workspace 内生效，不会跨 workspace 共享。
+- `project config get` 的读取顺序是：project 显式值 -> workspace 显式值 -> schema default。
+- `config list` / `project config list` 只显示显式写入的值，不展开继承结果。
+- 如果 schema 仍被 workspace/project 值引用，`config schema delete <key>` 会拒绝；要连值一起删除，需要显式加 `--purge`。
+- 系统会自动预置 `agent.background`、`agent.constraints`、`agent.default_context`、`agent.handoff`、`context.default` 这些常用 project key 的 schema。
 
 ## Audit
 
