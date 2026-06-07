@@ -155,6 +155,28 @@ func (r *TaskRepository) GetByUUID(workspaceID, uuid string) (domain.Task, error
 	return fromModel(model, usersByID, linksByTask), nil
 }
 
+func (r *TaskRepository) GetByProjectSeq(workspaceID, projectID string, seq int64) (domain.Task, error) {
+	var model Task
+	err := r.preloadAssociations().
+		Where("workspace_id = ? AND project_id = ? AND project_seq = ?", workspaceID, projectID, seq).
+		First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return domain.Task{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.Task{}, err
+	}
+	usersByID, err := r.loadAssigneeUsers([]Task{model})
+	if err != nil {
+		return domain.Task{}, err
+	}
+	linksByTask, err := r.loadLinksByTask([]Task{model})
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return fromModel(model, usersByID, linksByTask), nil
+}
+
 func (r *TaskRepository) Update(tsk domain.Task) error {
 	if err := tsk.Validate(); err != nil {
 		return err

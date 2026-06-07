@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -317,6 +318,59 @@ func TestTaskRepositoryPersistsProjectSeq(t *testing.T) {
 	}
 	if updated.ProjectSeq == nil || *updated.ProjectSeq != 8 {
 		t.Fatalf("updated ProjectSeq = %#v, want 8", updated.ProjectSeq)
+	}
+}
+
+func TestTaskRepositoryGetByProjectSeq(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	projectRepo := NewProjectRepository(store.DB())
+	api, err := projectRepo.Create(testProject("project-api", ws.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create(api project) error = %v", err)
+	}
+	other := createTestWorkspace(t, store, "team")
+	otherProject, err := projectRepo.Create(testProject("project-other", other.ID, "api", 100))
+	if err != nil {
+		t.Fatalf("Create(other project) error = %v", err)
+	}
+	apiSlug := "api"
+	seq := int64(1)
+	if _, err := repo.Create(domain.Task{
+		UUID:        "task-api-1",
+		WorkspaceID: ws.ID,
+		Description: "api task",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Project:     &apiSlug,
+		ProjectID:   &api.ID,
+		ProjectSeq:  &seq,
+	}); err != nil {
+		t.Fatalf("Create(api task) error = %v", err)
+	}
+	if _, err := repo.Create(domain.Task{
+		UUID:        "task-other-1",
+		WorkspaceID: other.ID,
+		Description: "other task",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+		Project:     &apiSlug,
+		ProjectID:   &otherProject.ID,
+		ProjectSeq:  &seq,
+	}); err != nil {
+		t.Fatalf("Create(other task) error = %v", err)
+	}
+
+	got, err := repo.GetByProjectSeq(ws.ID, api.ID, 1)
+	if err != nil {
+		t.Fatalf("GetByProjectSeq() error = %v", err)
+	}
+	if got.UUID != "task-api-1" {
+		t.Fatalf("GetByProjectSeq() UUID = %s, want task-api-1", got.UUID)
+	}
+	if _, err := repo.GetByProjectSeq(ws.ID, api.ID, 2); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetByProjectSeq(missing) error = %v, want ErrNotFound", err)
 	}
 }
 

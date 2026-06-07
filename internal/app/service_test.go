@@ -1250,7 +1250,7 @@ func TestConfigSchemaWorkspaceIsolation(t *testing.T) {
 		t.Fatal("ownerWork ConfigSchemaGet() found local workspace definition, want isolated")
 	}
 
-	workProject, err := ownerWork.AddProject(AddProjectInput{Slug: "work-api", Name: "Work API"})
+	workProject, err := ownerWork.AddProject(AddProjectInput{Slug: "workapi", Name: "Work API"})
 	if err != nil {
 		t.Fatalf("ownerWork AddProject() error = %v", err)
 	}
@@ -1897,6 +1897,35 @@ func TestExportRejectsProjectInvariantViolation(t *testing.T) {
 	}
 }
 
+func TestProjectSeqInvariantViolationOnInfoAndExport(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "broken project seq", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add(task) error = %v", err)
+	}
+	if err := store.DB().Model(&storage.Task{}).
+		Where("uuid = ? AND workspace_id = ?", created.UUID, svc.Runtime().WorkspaceID).
+		Update("project_seq", nil).Error; err != nil {
+		t.Fatalf("corrupt project_seq error = %v", err)
+	}
+
+	if _, err := svc.Info(created.UUID); err == nil {
+		t.Fatal("Info() error = nil, want project_invariant_violation")
+	} else {
+		assertRuntimeCode(t, err, "project_invariant_violation")
+	}
+	if _, err := svc.Export(); err == nil {
+		t.Fatal("Export() error = nil, want project_invariant_violation")
+	} else {
+		assertRuntimeCode(t, err, "project_invariant_violation")
+	}
+}
+
 func TestRecurringChildOnArchivedProjectWritesAuditWarning(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", "local")
@@ -2008,6 +2037,137 @@ func TestAddTaskRequiresActiveProject(t *testing.T) {
 	}
 	if created.ProjectID == nil || *created.ProjectID != active.ID {
 		t.Fatalf("created.ProjectID = %#v, want %q", created.ProjectID, active.ID)
+	}
+}
+
+func TestAddAssignsProjectSeqPerProject(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	api, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	web, err := svc.AddProject(AddProjectInput{Slug: "web", Name: "Web"})
+	if err != nil {
+		t.Fatalf("AddProject(web) error = %v", err)
+	}
+
+	apiSlug := api.Slug
+	webSlug := web.Slug
+	first, err := svc.Add(AddInput{Description: "one", Project: &apiSlug})
+	if err != nil {
+		t.Fatalf("Add(first) error = %v", err)
+	}
+	second, err := svc.Add(AddInput{Description: "two", Project: &apiSlug})
+	if err != nil {
+		t.Fatalf("Add(second) error = %v", err)
+	}
+	third, err := svc.Add(AddInput{Description: "three", Project: &webSlug})
+	if err != nil {
+		t.Fatalf("Add(third) error = %v", err)
+	}
+	assertProjectSeq(t, first, 1)
+	assertProjectSeq(t, second, 2)
+	assertProjectSeq(t, third, 1)
+}
+
+func TestModifyTaskProjectReassignsProjectSeqAndClears(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	api, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	web, err := svc.AddProject(AddProjectInput{Slug: "web", Name: "Web"})
+	if err != nil {
+		t.Fatalf("AddProject(web) error = %v", err)
+	}
+	apiSlug := api.Slug
+	created, err := svc.Add(AddInput{Description: "move me", Project: &apiSlug})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if got, err := svc.ResolveTarget("api-1"); err != nil || got.UUID != created.UUID {
+		t.Fatalf("ResolveTarget(api-1) = %#v,%v, want %s", got, err, created.UUID)
+	}
+
+	webSlug := web.Slug
+	if err := svc.Modify(created.UUID, ModifyInput{Project: &webSlug}); err != nil {
+		t.Fatalf("Modify(project:web) error = %v", err)
+	}
+	moved, err := svc.ResolveTarget("web-1")
+	if err != nil {
+		t.Fatalf("ResolveTarget(web-1) error = %v", err)
+	}
+	if moved.UUID != created.UUID {
+		t.Fatalf("web-1 UUID = %s, want %s", moved.UUID, created.UUID)
+	}
+	assertProjectSeq(t, moved, 1)
+	if _, err := svc.ResolveTarget("api-1"); err == nil {
+		t.Fatal("ResolveTarget(api-1) after move error = nil, want task_not_found")
+	} else {
+		assertRuntimeCode(t, err, "task_not_found")
+	}
+
+	if err := svc.Modify(created.UUID, ModifyInput{ClearProject: true}); err != nil {
+		t.Fatalf("Modify(clear project) error = %v", err)
+	}
+	cleared, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatalf("Info(cleared) error = %v", err)
+	}
+	if cleared.Project != nil || cleared.ProjectID != nil || cleared.ProjectSeq != nil {
+		t.Fatalf("cleared project fields = project:%#v id:%#v seq:%#v, want nils", cleared.Project, cleared.ProjectID, cleared.ProjectSeq)
+	}
+}
+
+func TestResolveTaskRefModesAndWorkspaceIsolation(t *testing.T) {
+	store := newTestStore(t)
+	localSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	api, err := localSvc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(local api) error = %v", err)
+	}
+	apiSlug := api.Slug
+	localTask, err := localSvc.Add(AddInput{Description: "local task", Project: &apiSlug})
+	if err != nil {
+		t.Fatalf("Add(local task) error = %v", err)
+	}
+
+	if got, err := localSvc.ResolveTarget("1"); err != nil || got.UUID != localTask.UUID {
+		t.Fatalf("ResolveTarget(1) = %#v,%v, want %s", got, err, localTask.UUID)
+	}
+	for _, ref := range []string{localTask.UUID, "api-1"} {
+		if got, err := localSvc.ResolveProtocolTarget(ref); err != nil || got.UUID != localTask.UUID {
+			t.Fatalf("ResolveProtocolTarget(%s) = %#v,%v, want %s", ref, got, err, localTask.UUID)
+		}
+	}
+	if _, err := localSvc.ResolveProtocolTarget("1"); err == nil {
+		t.Fatal("ResolveProtocolTarget(1) error = nil, want task_ref_invalid")
+	} else {
+		assertRuntimeCode(t, err, "task_ref_invalid")
+	}
+
+	team, err := localSvc.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team"})
+	if err != nil {
+		t.Fatalf("AddWorkspace(team) error = %v", err)
+	}
+	teamSvc := newTestServiceWithRuntime(t, store, 100, "local", team.Slug)
+	teamAPI, err := teamSvc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(team api) error = %v", err)
+	}
+	teamSlug := teamAPI.Slug
+	teamTask, err := teamSvc.Add(AddInput{Description: "team task", Project: &teamSlug})
+	if err != nil {
+		t.Fatalf("Add(team task) error = %v", err)
+	}
+	got, err := teamSvc.ResolveProtocolTarget("api-1")
+	if err != nil {
+		t.Fatalf("team ResolveProtocolTarget(api-1) error = %v", err)
+	}
+	if got.UUID != teamTask.UUID {
+		t.Fatalf("team api-1 UUID = %s, want %s", got.UUID, teamTask.UUID)
 	}
 }
 
@@ -4017,6 +4177,44 @@ func TestServiceRecurringAddAndDoneCreatesNextChild(t *testing.T) {
 	}
 }
 
+func TestRecurringChildAssignsNewProjectSeq(t *testing.T) {
+	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject(api) error = %v", err)
+	}
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	until := mustUnix(t, "2030-02-01T23:59:59Z")
+	recur := "daily"
+	parent, err := svc.Add(AddInput{Description: "daily project task", Due: &due, Until: &until, Recur: &recur, Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add(recurring project task) error = %v", err)
+	}
+	assertProjectSeq(t, parent, 1)
+	tasks, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("visible children = %#v, want 1", tasks)
+	}
+	firstChild := tasks[0]
+	assertProjectSeq(t, firstChild, 2)
+
+	if err := svc.Done(firstChild.UUID); err != nil {
+		t.Fatalf("Done(first child) error = %v", err)
+	}
+	tasks, err = svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("List() after Done error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID == firstChild.UUID {
+		t.Fatalf("next child not created: %#v", tasks)
+	}
+	assertProjectSeq(t, tasks[0], 3)
+}
+
 func TestServiceRecurringTaskPreservesAssignees(t *testing.T) {
 	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
 	defer closeFn()
@@ -4224,6 +4422,13 @@ func containsTask(tasks []task.Task, uuid string) bool {
 		}
 	}
 	return false
+}
+
+func assertProjectSeq(t *testing.T, tsk task.Task, want int64) {
+	t.Helper()
+	if tsk.ProjectSeq == nil || *tsk.ProjectSeq != want {
+		t.Fatalf("task %s ProjectSeq = %#v, want %d", tsk.UUID, tsk.ProjectSeq, want)
+	}
 }
 
 func hasUrgencyItem(explain urgency.ExplainResult, name string) bool {

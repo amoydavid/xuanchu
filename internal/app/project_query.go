@@ -13,6 +13,7 @@ import (
 type projectBinding struct {
 	ID       *string
 	Slug     *string
+	Seq      *int64
 	Archived bool
 }
 
@@ -55,6 +56,7 @@ func (s *Service) resolveActiveProjectBinding(ref *string) (projectBinding, erro
 func clearProjectBinding(tsk *task.Task) {
 	tsk.Project = nil
 	tsk.ProjectID = nil
+	tsk.ProjectSeq = nil
 }
 
 func (s *Service) applyProjectBinding(tsk *task.Task, slug *string) (projectChange, error) {
@@ -66,6 +68,11 @@ func (s *Service) applyProjectBindingFrom(tsk *task.Task, slug *string, before p
 	if slug == nil {
 		if s.hasProjectScope() && !s.allowsProjectID(tsk.ProjectID) {
 			return projectChange{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		}
+		if before.ID != nil && tsk.ProjectID == nil {
+			tsk.ProjectID = cloneStringPtr(before.ID)
+			tsk.Project = cloneStringPtr(before.Slug)
+			tsk.ProjectSeq = cloneInt64Ptr(before.Seq)
 		}
 		return projectChange{Before: before, After: before}, nil
 	}
@@ -82,14 +89,26 @@ func (s *Service) applyProjectBindingFrom(tsk *task.Task, slug *string, before p
 	}
 	tsk.Project = cloneStringPtr(after.Slug)
 	tsk.ProjectID = cloneStringPtr(after.ID)
+	if projectBindingEqual(before, after) {
+		tsk.ProjectSeq = cloneInt64Ptr(before.Seq)
+	} else if after.ID != nil {
+		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(tsk.WorkspaceID, *after.ID)
+		if err != nil {
+			return projectChange{}, err
+		}
+		tsk.ProjectSeq = &seq
+	}
 	return projectChange{Before: before, After: after}, nil
 }
 
 func (s *Service) validateTaskProjectInvariant(tsk task.Task) error {
-	if tsk.Project == nil && tsk.ProjectID == nil {
+	if tsk.Project == nil && tsk.ProjectID == nil && tsk.ProjectSeq == nil {
 		return nil
 	}
-	if tsk.Project == nil || tsk.ProjectID == nil {
+	if tsk.Project == nil || tsk.ProjectID == nil || tsk.ProjectSeq == nil {
+		return RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
+	}
+	if tsk.ProjectID == nil && tsk.ProjectSeq != nil {
 		return RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
 	}
 	project, err := s.projectRepo.GetByID(*tsk.ProjectID)
@@ -106,6 +125,7 @@ func projectBindingFromTask(tsk task.Task) projectBinding {
 	return projectBinding{
 		ID:   cloneStringPtr(tsk.ProjectID),
 		Slug: cloneStringPtr(tsk.Project),
+		Seq:  cloneInt64Ptr(tsk.ProjectSeq),
 	}
 }
 
@@ -169,6 +189,14 @@ func stringPtrEqual(a, b *string) bool {
 }
 
 func cloneStringPtr(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	cloned := *v
+	return &cloned
+}
+
+func cloneInt64Ptr(v *int64) *int64 {
 	if v == nil {
 		return nil
 	}

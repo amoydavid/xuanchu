@@ -37,6 +37,13 @@ type AuthorizedRequest struct {
 	Project   *storage.Project
 }
 
+type ResolveMode int
+
+const (
+	ResolveInteractive ResolveMode = iota
+	ResolveProtocol
+)
+
 func NewRequestScope(token TokenView) RequestScope {
 	return RequestScope{
 		TokenID:      token.ID,
@@ -297,7 +304,27 @@ func (s *Service) ensureProjectScope(projectID *string) error {
 }
 
 func (s *Service) resolveTargetForRead(target string) (task.Task, error) {
+	return s.resolveTaskRef(target, ResolveInteractive, false)
+}
+
+func (s *Service) resolveTargetForWrite(target string) (task.Task, error) {
+	return s.resolveTaskRef(target, ResolveInteractive, true)
+}
+
+func (s *Service) ResolveProtocolTarget(target string) (task.Task, error) {
+	return s.resolveTaskRef(target, ResolveProtocol, false)
+}
+
+func (s *Service) ResolveProtocolTargetForWrite(target string) (task.Task, error) {
+	return s.resolveTaskRef(target, ResolveProtocol, true)
+}
+
+func (s *Service) resolveTaskRef(target string, mode ResolveMode, write bool) (task.Task, error) {
+	target = strings.TrimSpace(target)
 	if n, err := strconv.Atoi(target); err == nil && n >= 1 {
+		if mode == ResolveProtocol {
+			return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
+		}
 		tasks, err := s.defaultWorkingSet()
 		if err != nil {
 			return task.Task{}, err
@@ -305,43 +332,68 @@ func (s *Service) resolveTargetForRead(target string) (task.Task, error) {
 		if n > len(tasks) {
 			return task.Task{}, taskNotFoundError()
 		}
-		return tasks[n-1], nil
+		tsk := tasks[n-1]
+		if err := s.validateTaskProjectInvariant(tsk); err != nil {
+			return task.Task{}, err
+		}
+		return tsk, nil
 	}
-	tsk, err := s.repo.GetByUUID(s.workspaceID, target)
+	if mode == ResolveProtocol {
+		if _, err := strconv.Atoi(target); err == nil {
+			return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
+		}
+	}
+	var (
+		tsk task.Task
+		err error
+	)
+	tsk, err = s.repo.GetByUUID(s.workspaceID, target)
+	if errors.Is(err, storage.ErrNotFound) {
+		tsk, err = s.resolveTaskSlug(target)
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return task.Task{}, taskNotFoundError()
 		}
 		return task.Task{}, err
 	}
-	if err := s.ensureReadableTaskScope(tsk); err != nil {
+	if write {
+		if err := s.ensureWritableTaskScope(tsk); err != nil {
+			return task.Task{}, err
+		}
+	} else {
+		if err := s.ensureReadableTaskScope(tsk); err != nil {
+			return task.Task{}, err
+		}
+	}
+	if err := s.validateTaskProjectInvariant(tsk); err != nil {
 		return task.Task{}, err
 	}
 	return tsk, nil
 }
 
-func (s *Service) resolveTargetForWrite(target string) (task.Task, error) {
-	if n, err := strconv.Atoi(target); err == nil && n >= 1 {
-		tasks, err := s.defaultWorkingSet()
-		if err != nil {
-			return task.Task{}, err
-		}
-		if n > len(tasks) {
-			return task.Task{}, taskNotFoundError()
-		}
-		return tasks[n-1], nil
+func (s *Service) resolveTaskSlug(ref string) (task.Task, error) {
+	left, right, ok := strings.Cut(ref, "-")
+	if !ok {
+		return task.Task{}, storage.ErrNotFound
 	}
-	tsk, err := s.repo.GetByUUID(s.workspaceID, target)
+	if last := strings.LastIndex(ref, "-"); last >= 0 {
+		left = ref[:last]
+		right = ref[last+1:]
+	}
+	seq, err := strconv.ParseInt(right, 10, 64)
+	if err != nil || seq < 1 {
+		return task.Task{}, storage.ErrNotFound
+	}
+	projectSlug, err := normalizeProjectSlug(left)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return task.Task{}, taskNotFoundError()
-		}
+		return task.Task{}, storage.ErrNotFound
+	}
+	project, err := s.projectRepo.GetBySlug(s.workspaceID, projectSlug)
+	if err != nil {
 		return task.Task{}, err
 	}
-	if err := s.ensureWritableTaskScope(tsk); err != nil {
-		return task.Task{}, err
-	}
-	return tsk, nil
+	return s.repo.GetByProjectSeq(s.workspaceID, project.ID, seq)
 }
 
 func taskNotFoundError() RuntimeError {

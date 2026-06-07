@@ -446,6 +446,11 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if !input.ReportMode {
 		tasks = filterExpiredUntil(tasks, s.clock.Unix())
 	}
+	for _, tsk := range tasks {
+		if err := s.validateTaskProjectInvariant(tsk); err != nil {
+			return nil, err
+		}
+	}
 	return tasks, nil
 }
 
@@ -1076,10 +1081,12 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	if tsk.Project != nil {
 		existing.Project = tsk.Project
 		existing.ProjectID = tsk.ProjectID
+		existing.ProjectSeq = tsk.ProjectSeq
 	}
 	if tsk.Project == nil {
 		existing.Project = nil
 		existing.ProjectID = nil
+		existing.ProjectSeq = nil
 	}
 	if tsk.Priority != nil {
 		existing.Priority = tsk.Priority
@@ -1727,6 +1734,13 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 		Parent: &parent.UUID,
 		UDAs:   cloneUDAs(parent.UDAs),
 	}
+	if child.ProjectID != nil {
+		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(child.WorkspaceID, *child.ProjectID)
+		if err != nil {
+			return task.Task{}, nil, err
+		}
+		child.ProjectSeq = &seq
+	}
 	created, _, err := s.repo.CreateRecurringChild(child)
 	if err != nil {
 		return task.Task{}, nil, err
@@ -1800,6 +1814,15 @@ func (s *Service) normalizeImportedProjectUpdate(existing task.Task, incoming *t
 	}
 	incoming.Project = cloneStringPtr(binding.Slug)
 	incoming.ProjectID = cloneStringPtr(binding.ID)
+	if stringPtrEqual(existing.ProjectID, binding.ID) {
+		incoming.ProjectSeq = cloneInt64Ptr(existing.ProjectSeq)
+	} else if binding.ID != nil {
+		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(incoming.WorkspaceID, *binding.ID)
+		if err != nil {
+			return err
+		}
+		incoming.ProjectSeq = &seq
+	}
 	return s.validateTaskProjectInvariant(*incoming)
 }
 
