@@ -952,7 +952,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.1.0 已发布。xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
+v0.1.0 已发布。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
 
 后续方向待定，可能包括：
 
