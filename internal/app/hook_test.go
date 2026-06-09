@@ -36,6 +36,7 @@ func hookTestEnv(t *testing.T) (*Service, *storage.Store, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	createHookTestSink(t, store, svc.workspaceID, svc.runtime.ActorUserID, "hook-sink")
 	return svc, store, func() { _ = store.Close() }
 }
 
@@ -57,7 +58,35 @@ func hookTestEnvWithRole(t *testing.T, role string) (*Service, *storage.Store, f
 		UserID: user.ID, WorkspaceID: ws.ID, Role: role, JoinedAt: 100, ModifiedAt: 100,
 	})
 	svc := newTestServiceWithRuntime(t, store, 1000, user.Name, ws.Slug)
+	createHookTestSink(t, store, ws.ID, user.ID, "hook-sink")
 	return svc, store, func() { _ = store.Close() }
+}
+
+func createHookTestSink(t *testing.T, store *storage.Store, workspaceID, createdBy, name string) {
+	t.Helper()
+	enabled := true
+	row := storage.NotificationSink{
+		ID:                  "sink-" + name + "-" + workspaceID,
+		WorkspaceID:         workspaceID,
+		Name:                name,
+		Type:                NotificationSinkTypeWebhook,
+		EndpointMode:        NotificationEndpointStaticURL,
+		URL:                 "https://example.com/webhook",
+		AllowedHostsJSON:    `["example.com"]`,
+		HTTPMethod:          "POST",
+		HeaderTemplatesJSON: `[]`,
+		SecretRefsJSON:      `{}`,
+		Secret:              "s3cret",
+		Enabled:             &enabled,
+		TimeoutSeconds:      10,
+		MaxAttempts:         5,
+		CreatedBy:           createdBy,
+		CreatedAt:           100,
+		ModifiedAt:          100,
+	}
+	if err := storage.NewNotificationSinkRepository(store.DB()).Create(row); err != nil {
+		t.Fatalf("Create notification sink %q error = %v", name, err)
+	}
 }
 
 func defaultHookInput() HookAddInput {
@@ -65,8 +94,7 @@ func defaultHookInput() HookAddInput {
 		Name:           "test-hook",
 		ScopeType:      HookScopeWorkspace,
 		EventTypes:     []string{"task.created"},
-		EndpointURL:    "https://example.com/webhook",
-		Secret:         "s3cret",
+		SinkRef:        "hook-sink",
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
 	}
@@ -133,11 +161,10 @@ func TestHookAddDefaults(t *testing.T) {
 	defer cleanup()
 
 	input := HookAddInput{
-		Name:        "defaults-test",
-		ScopeType:   HookScopeWorkspace,
-		EventTypes:  []string{"task.created"},
-		EndpointURL: "https://example.com/webhook",
-		Secret:      "s3cret",
+		Name:       "defaults-test",
+		ScopeType:  HookScopeWorkspace,
+		EventTypes: []string{"task.created"},
+		SinkRef:    "hook-sink",
 		// TimeoutSeconds 和 MaxAttempts 未设置 (0)
 	}
 	view, err := svc.AddHook(input)
@@ -203,12 +230,13 @@ func TestHookInfoNoSecret(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestHookModifySecretOnlyWhenProvided: 修改时不传 secret 保持旧值，传入则更新
+// TestHookModifySinkOnlyWhenProvided: 修改时不传 sink 保持旧值，传入则更新
 // ---------------------------------------------------------------------------
 
-func TestHookModifySecretOnlyWhenProvided(t *testing.T) {
-	svc, _, cleanup := hookTestEnv(t)
+func TestHookModifySinkOnlyWhenProvided(t *testing.T) {
+	svc, store, cleanup := hookTestEnv(t)
 	defer cleanup()
+	createHookTestSink(t, store, svc.workspaceID, svc.runtime.ActorUserID, "other-sink")
 
 	created, err := svc.AddHook(defaultHookInput())
 	if err != nil {
@@ -225,35 +253,33 @@ func TestHookModifySecretOnlyWhenProvided(t *testing.T) {
 		t.Fatalf("name = %q, want %q", modified.Name, newName)
 	}
 
-	// 验证原 secret 仍在数据库中（通过直接查询 repo）
 	row, err := svc.hookRepo.GetByID(created.ID)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
-	if row.Secret != "s3cret" {
-		t.Fatalf("secret unexpectedly changed: %q", row.Secret)
+	if row.SinkID != created.SinkID {
+		t.Fatalf("sink unexpectedly changed: %q want %q", row.SinkID, created.SinkID)
 	}
 
-	// 传入新 secret
-	newSecret := "n3w-s3cret"
-	_, err = svc.ModifyHook(created.ID, HookModifyInput{Secret: &newSecret})
+	newSink := "other-sink"
+	_, err = svc.ModifyHook(created.ID, HookModifyInput{SinkRef: &newSink})
 	if err != nil {
-		t.Fatalf("ModifyHook() with secret error = %v", err)
+		t.Fatalf("ModifyHook() with sink error = %v", err)
 	}
 	row, err = svc.hookRepo.GetByID(created.ID)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
-	if row.Secret != newSecret {
-		t.Fatalf("secret = %q, want %q", row.Secret, newSecret)
+	if row.SinkID == created.SinkID || row.SinkID == "" {
+		t.Fatalf("sink was not updated: %q", row.SinkID)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// TestHookAuditSecretFingerprint: 审计包含指纹而非 secret
+// TestHookAuditSinkReference: 审计包含 sink 引用且不泄露 sink secret
 // ---------------------------------------------------------------------------
 
-func TestHookAuditSecretFingerprint(t *testing.T) {
+func TestHookAuditSinkReference(t *testing.T) {
 	svc, _, cleanup := hookTestEnv(t)
 	defer cleanup()
 
@@ -279,22 +305,17 @@ func TestHookAuditSecretFingerprint(t *testing.T) {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
-	// 应包含 secret_fingerprint，不应包含原始 secret
-	fp, ok := payload["secret_fingerprint"].(string)
-	if !ok || fp == "" {
-		t.Fatalf("missing secret_fingerprint in audit: %#v", payload)
-	}
-	if len(fp) != 8 {
-		t.Fatalf("fingerprint length = %d, want 8", len(fp))
+	if payload["sink_name"] != "hook-sink" {
+		t.Fatalf("sink_name = %#v, want hook-sink; payload=%#v", payload["sink_name"], payload)
 	}
 	if _, hasSecret := payload["secret"]; hasSecret {
 		t.Fatal("audit payload contains raw secret")
 	}
-
-	// 验证指纹计算正确
-	expected := secretFingerprint("s3cret")
-	if fp != expected {
-		t.Fatalf("fingerprint = %q, want %q", fp, expected)
+	if _, hasFingerprint := payload["secret_fingerprint"]; hasFingerprint {
+		t.Fatal("audit payload contains sink secret fingerprint")
+	}
+	if _, hasURL := payload["endpoint_url"]; hasURL {
+		t.Fatal("audit payload contains endpoint url")
 	}
 }
 
@@ -310,8 +331,7 @@ func TestHookModifyEventTypesReplace(t *testing.T) {
 		Name:           "events-test",
 		ScopeType:      HookScopeWorkspace,
 		EventTypes:     []string{"task.created", "task.modified"},
-		EndpointURL:    "https://example.com/webhook",
-		Secret:         "s3cret",
+		SinkRef:        "hook-sink",
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
 	})
@@ -435,8 +455,7 @@ func TestHookProjectScopeValidation(t *testing.T) {
 		ScopeType:      HookScopeProject,
 		ProjectRef:     "myproject",
 		EventTypes:     []string{"task.created"},
-		EndpointURL:    "https://example.com/webhook",
-		Secret:         "s3cret",
+		SinkRef:        "hook-sink",
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
 	})
@@ -453,8 +472,7 @@ func TestHookProjectScopeValidation(t *testing.T) {
 		ScopeType:      HookScopeProject,
 		ProjectRef:     "nonexistent",
 		EventTypes:     []string{"task.created"},
-		EndpointURL:    "https://example.com/webhook",
-		Secret:         "s3cret",
+		SinkRef:        "hook-sink",
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
 	})
@@ -684,10 +702,10 @@ func TestHookModifyEmptyEventTypes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestHookModifyEndpointValidation: 修改 endpoint 时也要验证 SSRF
+// TestHookModifySinkValidation: 修改 sink 时必须解析当前 workspace 内的 sink
 // ---------------------------------------------------------------------------
 
-func TestHookModifyEndpointValidation(t *testing.T) {
+func TestHookModifySinkValidation(t *testing.T) {
 	svc, _, cleanup := hookTestEnv(t)
 	defer cleanup()
 
@@ -696,9 +714,9 @@ func TestHookModifyEndpointValidation(t *testing.T) {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
-	badURL := "ftp://example.com/webhook"
-	_, err = svc.ModifyHook(created.ID, HookModifyInput{EndpointURL: &badURL})
-	assertRuntimeCode(t, err, "hook_endpoint_invalid")
+	missingSink := "missing-sink"
+	_, err = svc.ModifyHook(created.ID, HookModifyInput{SinkRef: &missingSink})
+	assertRuntimeCode(t, err, "notification_sink_not_found")
 }
 
 // ---------------------------------------------------------------------------
@@ -799,21 +817,21 @@ func TestHookAddNameValidation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestHookModifyAuditFingerprint: 修改 secret 时审计包含新指纹
+// TestHookModifyAuditSink: 修改 sink 时审计包含 sink 信息且不泄露 secret
 // ---------------------------------------------------------------------------
 
-func TestHookModifyAuditFingerprint(t *testing.T) {
-	svc, _, cleanup := hookTestEnv(t)
+func TestHookModifyAuditSink(t *testing.T) {
+	svc, store, cleanup := hookTestEnv(t)
 	defer cleanup()
+	createHookTestSink(t, store, svc.workspaceID, svc.runtime.ActorUserID, "audit-sink")
 
 	created, err := svc.AddHook(defaultHookInput())
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
-	// 清空已有审计
-	newSecret := "updated-secret"
-	_, err = svc.ModifyHook(created.ID, HookModifyInput{Secret: &newSecret})
+	newSink := "audit-sink"
+	_, err = svc.ModifyHook(created.ID, HookModifyInput{SinkRef: &newSink})
 	if err != nil {
 		t.Fatalf("ModifyHook() error = %v", err)
 	}
@@ -835,18 +853,15 @@ func TestHookModifyAuditFingerprint(t *testing.T) {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
-	fp, ok := payload["secret_fingerprint"].(string)
-	if !ok || fp == "" {
-		t.Fatalf("missing secret_fingerprint in modify audit: %#v", payload)
-	}
-
-	expected := secretFingerprint("updated-secret")
-	if fp != expected {
-		t.Fatalf("fingerprint = %q, want %q", fp, expected)
+	if payload["sink_name"] != "audit-sink" {
+		t.Fatalf("sink_name = %#v, want audit-sink; payload=%#v", payload["sink_name"], payload)
 	}
 
 	if _, hasSecret := payload["secret"]; hasSecret {
 		t.Fatal("modify audit payload contains raw secret")
+	}
+	if _, hasFingerprint := payload["secret_fingerprint"]; hasFingerprint {
+		t.Fatal("modify audit payload contains sink secret fingerprint")
 	}
 }
 
@@ -867,8 +882,7 @@ func TestHookListByProject(t *testing.T) {
 	// workspace-scoped hook
 	_, err = svc.AddHook(HookAddInput{
 		Name: "ws-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/ws",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() ws error = %v", err)
@@ -877,8 +891,7 @@ func TestHookListByProject(t *testing.T) {
 	// project-scoped hook
 	_, err = svc.AddHook(HookAddInput{
 		Name: "proj-hook", ScopeType: HookScopeProject, ProjectRef: "listproj",
-		EventTypes: []string{"task.completed"}, EndpointURL: "https://example.com/proj",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.completed"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() proj error = %v", err)
@@ -917,8 +930,7 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	// 创建 workspace 范围的 hook，监听 task.created
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "create-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
-		Secret: "s3cret", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
@@ -1020,8 +1032,7 @@ func TestHookTaskCreatedPayloadOmitsTaskSlugWithoutProject(t *testing.T) {
 
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "create-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
-		Secret: "s3cret", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
@@ -1073,8 +1084,7 @@ func TestHookPayloadIncludesAssignees(t *testing.T) {
 
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "create-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
-		Secret: "s3cret", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
@@ -1130,8 +1140,7 @@ func TestHookEventsForWriteOperations(t *testing.T) {
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "all-events", ScopeType: HookScopeWorkspace,
 		EventTypes:     []string{"task.created", "task.modified", "task.completed", "task.deleted"},
-		EndpointURL:    "https://example.com/hook",
-		Secret:         "s",
+		SinkRef:        "hook-sink",
 		TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
@@ -1229,8 +1238,7 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	// 创建 project-scoped hook，只监听 task.created
 	projHook, err := svc.AddHook(HookAddInput{
 		Name: "proj-hook", ScopeType: HookScopeProject, ProjectRef: "isolated",
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/proj",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() proj error = %v", err)
@@ -1239,8 +1247,7 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	// 创建 workspace-scoped hook
 	wsHook, err := svc.AddHook(HookAddInput{
 		Name: "ws-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/ws",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() ws error = %v", err)
@@ -1292,8 +1299,7 @@ func TestHookWorkspaceScopeNoProject(t *testing.T) {
 
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "ws-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.completed"}, EndpointURL: "https://example.com/hook",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.completed"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
@@ -1333,18 +1339,17 @@ func TestHookWorkspaceScopeNoProject(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestHookDeliveryFailureRollsBackTaskWrite: 投递失败时任务写入回滚
+// TestHookDeliveryFailureDoesNotRollBackTaskWrite: 投递失败不回滚任务写入
 // ---------------------------------------------------------------------------
 
-func TestHookDeliveryFailureRollsBackTaskWrite(t *testing.T) {
+func TestHookDeliveryFailureDoesNotRollBackTaskWrite(t *testing.T) {
 	svc, store, cleanup := hookTestEnv(t)
 	defer cleanup()
 
 	// 创建 hook
 	_, err := svc.AddHook(HookAddInput{
 		Name: "rollback-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
@@ -1353,22 +1358,49 @@ func TestHookDeliveryFailureRollsBackTaskWrite(t *testing.T) {
 	// 注入一个会失败的 hookDeliveryRepo
 	svc.hookDeliveryRepo = &failingDeliveryRepo{}
 
-	// 创建任务应该失败
-	_, err = svc.Add(AddInput{Description: "should rollback"})
-	if err == nil {
-		t.Fatal("Add() should have failed when delivery enqueue fails")
+	// 创建任务应该成功，hook delivery 属于事务提交后的副作用
+	created, err := svc.Add(AddInput{Description: "should not rollback"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
 	}
 
-	// 验证任务确实没有被创建（通过新的 service 查询）
 	cleanSvc := newTestServiceWithRuntime(t, store, 1000, "local", "local")
-	tasks, err := cleanSvc.List(ListInput{})
+	got, err := cleanSvc.Info(created.UUID)
 	if err != nil {
-		t.Fatalf("List() error = %v", err)
+		t.Fatalf("Info(created) error = %v", err)
 	}
-	for _, tsk := range tasks {
-		if tsk.Description == "should rollback" {
-			t.Fatal("task should have been rolled back but was found")
-		}
+	if got.Description != "should not rollback" {
+		t.Fatalf("description = %q", got.Description)
+	}
+}
+
+func TestHookDeliveryActorResolvedToUserInfo(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(defaultHookInput())
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Description: "actor user info"}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	rows, err := svc.ListHookDeliveries(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListHookDeliveries() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("delivery count = %d, want 1", len(rows))
+	}
+	if rows[0].Actor.ID != svc.Runtime().ActorUserID || rows[0].Actor.Name != svc.Runtime().ActorName {
+		t.Fatalf("list actor = %#v, want id %q name %q", rows[0].Actor, svc.Runtime().ActorUserID, svc.Runtime().ActorName)
+	}
+	info, err := svc.HookDeliveryInfo(rows[0].ID)
+	if err != nil {
+		t.Fatalf("HookDeliveryInfo() error = %v", err)
+	}
+	if info.Actor.ID != svc.Runtime().ActorUserID || info.Actor.Name != svc.Runtime().ActorName {
+		t.Fatalf("info actor = %#v, want id %q name %q", info.Actor, svc.Runtime().ActorUserID, svc.Runtime().ActorName)
 	}
 }
 
@@ -1392,8 +1424,7 @@ func TestHookProjectArchivedEvent(t *testing.T) {
 	// 创建监听 project.archived 的 hook
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "archive-hook", ScopeType: HookScopeWorkspace,
-		EventTypes: []string{"project.archived"}, EndpointURL: "https://example.com/hook",
-		Secret: "s", TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypes: []string{"project.archived"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
 	})
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
@@ -1440,4 +1471,210 @@ func TestHookProjectArchivedEvent(t *testing.T) {
 	}
 
 	_ = archived
+}
+
+func TestHookProjectAnnotatedEventPayload(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "annotated-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"project.annotated"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	proj, err := svc.AddProject(AddProjectInput{Slug: "notes", Name: "Notes"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	annotation, err := svc.ProjectAnnotate(proj.Slug, "project note")
+	if err != nil {
+		t.Fatalf("ProjectAnnotate() error = %v", err)
+	}
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries count = %d, want 1", len(deliveries))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(deliveries[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal(payload) error = %v", err)
+	}
+	data := payload["data"].(map[string]any)
+	project := data["project"].(map[string]any)
+	if project["slug"] != "notes" {
+		t.Fatalf("project.slug = %v, want notes", project["slug"])
+	}
+	gotAnnotation := data["annotation"].(map[string]any)
+	if gotAnnotation["id"] != annotation.ID {
+		t.Fatalf("annotation.id = %v, want %s", gotAnnotation["id"], annotation.ID)
+	}
+	if gotAnnotation["content"] != "project note" {
+		t.Fatalf("annotation.content = %v, want project note", gotAnnotation["content"])
+	}
+	createdBy := gotAnnotation["created_by"].(map[string]any)
+	if createdBy["id"] == "" || createdBy["name"] == "" {
+		t.Fatalf("created_by = %#v, want full user info", createdBy)
+	}
+}
+
+func TestHookProjectDenotatedEventPayload(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "denotated-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"project.denotated"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	proj, err := svc.AddProject(AddProjectInput{Slug: "notes", Name: "Notes"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	annotation, err := svc.ProjectAnnotate(proj.Slug, "project note")
+	if err != nil {
+		t.Fatalf("ProjectAnnotate() error = %v", err)
+	}
+	if err := svc.ProjectDenotate(proj.Slug, annotation.ID); err != nil {
+		t.Fatalf("ProjectDenotate() error = %v", err)
+	}
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries count = %d, want 1", len(deliveries))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(deliveries[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal(payload) error = %v", err)
+	}
+	data := payload["data"].(map[string]any)
+	project := data["project"].(map[string]any)
+	if project["slug"] != "notes" {
+		t.Fatalf("project.slug = %v, want notes", project["slug"])
+	}
+	gotAnnotation := data["annotation"].(map[string]any)
+	if gotAnnotation["id"] != annotation.ID {
+		t.Fatalf("annotation.id = %v, want %s", gotAnnotation["id"], annotation.ID)
+	}
+}
+
+func TestHookTaskUnblockedEventForLastDependency(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "unblocked-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"task.unblocked"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	blocker, err := svc.Add(AddInput{Description: "prepare api"})
+	if err != nil {
+		t.Fatalf("Add(blocker) error = %v", err)
+	}
+	blocked, err := svc.Add(AddInput{Description: "integrate client"})
+	if err != nil {
+		t.Fatalf("Add(blocked) error = %v", err)
+	}
+	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
+		t.Fatalf("Modify(depends) error = %v", err)
+	}
+	if err := svc.Done(blocker.UUID); err != nil {
+		t.Fatalf("Done(blocker) error = %v", err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries count = %d, want 1", len(deliveries))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(deliveries[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal(payload) error = %v", err)
+	}
+	if payload["event_type"] != "task.unblocked" {
+		t.Fatalf("event_type = %v, want task.unblocked", payload["event_type"])
+	}
+	data := payload["data"].(map[string]any)
+	taskData := data["task"].(map[string]any)
+	if taskData["uuid"] != blocked.UUID {
+		t.Fatalf("task.uuid = %v, want %s", taskData["uuid"], blocked.UUID)
+	}
+	dependency := data["dependency"].(map[string]any)
+	completedTask := dependency["completed_task"].(map[string]any)
+	if completedTask["uuid"] != blocker.UUID {
+		t.Fatalf("completed_task.uuid = %v, want %s", completedTask["uuid"], blocker.UUID)
+	}
+}
+
+func TestHookTaskUnblockedEventNotGeneratedWhenOtherBlockersRemain(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "unblocked-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"task.unblocked"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	blocker1, _ := svc.Add(AddInput{Description: "prepare api"})
+	blocker2, _ := svc.Add(AddInput{Description: "prepare data"})
+	blocked, _ := svc.Add(AddInput{Description: "integrate client"})
+	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker1.UUID, blocker2.UUID}}); err != nil {
+		t.Fatalf("Modify(depends) error = %v", err)
+	}
+	if err := svc.Done(blocker1.UUID); err != nil {
+		t.Fatalf("Done(blocker1) error = %v", err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 0 {
+		t.Fatalf("deliveries count = %d, want 0", len(deliveries))
+	}
+}
+
+func TestHookTaskUnblockedEventNotGeneratedForCompletedDependent(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "unblocked-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"task.unblocked"}, SinkRef: "hook-sink", TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	blocker, _ := svc.Add(AddInput{Description: "prepare api"})
+	dependent, _ := svc.Add(AddInput{Description: "integrate client"})
+	if err := svc.Modify(dependent.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
+		t.Fatalf("Modify(depends) error = %v", err)
+	}
+	if err := svc.Done(dependent.UUID); err != nil {
+		t.Fatalf("Done(dependent) error = %v", err)
+	}
+	if err := svc.Done(blocker.UUID); err != nil {
+		t.Fatalf("Done(blocker) error = %v", err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(deliveries) != 0 {
+		t.Fatalf("deliveries count = %d, want 0", len(deliveries))
+	}
 }

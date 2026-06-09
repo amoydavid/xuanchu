@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -93,7 +95,17 @@ func buildProjectAnnotatedHookEvent(pv ProjectView, annotation ProjectAnnotation
 		ProjectSlug:   &pv.Slug,
 		ObjectKind:    "project",
 		ObjectID:      pv.ID,
-		Data:          map[string]any{"annotation_id": annotation.ID, "content_preview": truncateString(annotation.Content, 200)},
+		Data: map[string]any{
+			"project": projectViewToMap(pv),
+			"annotation": map[string]any{
+				"id":              annotation.ID,
+				"entry":           annotation.Entry,
+				"content":         annotation.Content,
+				"content_preview": truncateString(annotation.Content, 200),
+				"created_by":      task.UserInfoToJSON(annotation.CreatedBy),
+				"created_at":      annotation.CreatedAt,
+			},
+		},
 	}
 }
 
@@ -110,8 +122,19 @@ func buildProjectDenotatedHookEvent(pv ProjectView, annotationID string, runtime
 		ProjectSlug:   &pv.Slug,
 		ObjectKind:    "project",
 		ObjectID:      pv.ID,
-		Data:          map[string]any{"annotation_id": annotationID},
+		Data: map[string]any{
+			"project":    projectViewToMap(pv),
+			"annotation": map[string]any{"id": annotationID},
+		},
 	}
+}
+
+func buildTaskUnblockedHookEvent(tsk task.Task, completedTask task.Task, runtime RuntimeContext, now int64) HookEvent {
+	event := buildTaskHookEvent("task.unblocked", tsk, runtime, now)
+	event.Data["dependency"] = map[string]any{
+		"completed_task": task.ToJSON(completedTask),
+	}
+	return event
 }
 
 func projectViewToMap(pv ProjectView) map[string]any {
@@ -175,19 +198,31 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		now := s.clock.Unix()
 		var deliveries []storage.HookDelivery
 		for _, hook := range hooks {
+			req, err := s.resolveHookDeliveryRequest(hook, event, string(payloadBytes))
+			if err != nil {
+				return err
+			}
 			deliveries = append(deliveries, storage.HookDelivery{
-				ID:          uuid.NewString(),
-				HookID:      hook.ID,
-				EventID:     event.EventID,
-				EventType:   event.EventType,
-				WorkspaceID: event.WorkspaceID,
-				ProjectID:   event.ProjectID,
-				ActorUserID: event.ActorUserID,
-				PayloadJSON: string(payloadBytes),
-				HeadersJSON: string(headersBytes),
-				Status:      storage.DeliveryStatusQueued,
-				CreatedAt:   now,
-				ModifiedAt:  now,
+				ID:                          uuid.NewString(),
+				HookID:                      hook.ID,
+				EventID:                     event.EventID,
+				EventType:                   event.EventType,
+				WorkspaceID:                 event.WorkspaceID,
+				ProjectID:                   event.ProjectID,
+				ActorUserID:                 event.ActorUserID,
+				SinkID:                      hook.SinkID,
+				ResolvedURL:                 req.ResolvedURL,
+				ResolvedEndpointSource:      req.ResolvedEndpointSource,
+				ResolvedEndpointFingerprint: req.ResolvedEndpointFingerprint,
+				RenderedMethod:              req.RenderedMethod,
+				RenderedHeadersJSON:         req.RenderedHeadersJSON,
+				RenderedBody:                req.RenderedBody,
+				RenderedContentType:         req.RenderedContentType,
+				PayloadJSON:                 string(payloadBytes),
+				HeadersJSON:                 string(headersBytes),
+				Status:                      storage.DeliveryStatusQueued,
+				CreatedAt:                   now,
+				ModifiedAt:                  now,
 			})
 		}
 		if err := s.hookDeliveryRepo.Enqueue(deliveries); err != nil {
@@ -195,6 +230,84 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		}
 	}
 	return nil
+}
+
+func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event HookEvent, envelopeJSON string) (NotificationResolvedRequest, error) {
+	sink, err := s.notificationSinkRepo.GetByID(hook.SinkID)
+	if err == storage.ErrNotFound {
+		return NotificationResolvedRequest{}, RuntimeError{Code: "notification_sink_not_found", Message: "notification sink not found"}
+	}
+	if err != nil {
+		return NotificationResolvedRequest{}, err
+	}
+	if sink.WorkspaceID != event.WorkspaceID || sink.WorkspaceID != s.workspaceID {
+		return NotificationResolvedRequest{}, RuntimeError{Code: "notification_sink_not_found", Message: "notification sink not found"}
+	}
+	sinkView := notificationSinkViewFromRow(sink, task.UserInfo{ID: sink.CreatedBy, Name: sink.CreatedBy})
+
+	workspace, err := s.workspaceRepo.GetByID(event.WorkspaceID)
+	if err != nil {
+		return NotificationResolvedRequest{}, err
+	}
+	var projectCtx *NotificationProjectContext
+	if event.ProjectID != nil && *event.ProjectID != "" {
+		project, err := s.projectRepo.GetByID(*event.ProjectID)
+		if err != nil {
+			return NotificationResolvedRequest{}, err
+		}
+		projectCtx = &NotificationProjectContext{ID: project.ID, Slug: project.Slug, Name: project.Name}
+	}
+	userInfos, err := s.resolveUserInfos([]string{event.ActorUserID})
+	if err != nil {
+		return NotificationResolvedRequest{}, err
+	}
+	actor := userInfos[event.ActorUserID]
+	configValues, secretValues, err := schedulerNotificationConfigValues(s.configRepo, s.configDefRepo, event.WorkspaceID, event.ProjectID, sink)
+	if err != nil {
+		return NotificationResolvedRequest{}, err
+	}
+	req, err := ResolveNotificationRequest(NotificationRequestResolveInput{
+		Sink:      sinkView,
+		Workspace: NotificationWorkspaceContext{ID: workspace.ID, Slug: workspace.Slug, Name: workspace.Name},
+		Project:   projectCtx,
+		Rule:      NotificationRuleContext{ID: hook.ID, Name: hook.Name, TriggerType: "hook"},
+		Recipient: actor,
+		Actor:     actor,
+		Event: NotificationEventContext{
+			ID:         event.EventID,
+			Type:       event.EventType,
+			Version:    event.EventVersion,
+			OccurredAt: event.OccurredAt,
+			ObjectKind: event.ObjectKind,
+			ObjectID:   event.ObjectID,
+			JSON:       envelopeJSON,
+		},
+		EventType:    event.EventType,
+		ConfigValues: configValues,
+		SecretValues: secretValues,
+	})
+	if err != nil {
+		return NotificationResolvedRequest{}, err
+	}
+	if strings.TrimSpace(req.RenderedBody) == "" {
+		req.RenderedBody = envelopeJSON
+	}
+	if strings.TrimSpace(req.RenderedMethod) == "" {
+		req.RenderedMethod = "POST"
+	}
+	if req.RenderedHeadersJSON == "" {
+		req.RenderedHeadersJSON = "{}"
+	}
+	if req.RenderedContentType == "" {
+		req.RenderedContentType = "application/json"
+	}
+	if req.PayloadJSON == "" {
+		req.PayloadJSON = envelopeJSON
+	}
+	if req.ResolvedURL == "" {
+		return NotificationResolvedRequest{}, RuntimeError{Code: "endpoint_unresolved", Message: fmt.Sprintf("hook sink %q endpoint is empty", sink.Name)}
+	}
+	return req, nil
 }
 
 // matchingHooks 返回应该接收该事件的所有 hook。

@@ -151,6 +151,8 @@ type NotificationDeliveryView struct {
 	RuleID                      string              `json:"rule_id"`
 	SinkID                      string              `json:"sink_id"`
 	TaskUUID                    string              `json:"task_uuid"`
+	ObjectKind                  string              `json:"object_kind"`
+	ObjectID                    string              `json:"object_id"`
 	RecipientUserID             string              `json:"-"`
 	Recipient                   task.UserInfo       `json:"recipient"`
 	EventID                     string              `json:"event_id"`
@@ -697,6 +699,9 @@ func (s *Service) ListNotificationDeliveries(sinkID string, status string, limit
 		return nil, err
 	}
 	for _, row := range rows {
+		if !s.allowsProjectID(row.ProjectID) {
+			continue
+		}
 		view, err := notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID])
 		if err != nil {
 			return nil, err
@@ -720,6 +725,9 @@ func (s *Service) NotificationDeliveryInfo(deliveryID string) (NotificationDeliv
 	if row.WorkspaceID != s.workspaceID {
 		return NotificationDeliveryView{}, RuntimeError{Code: "notification_delivery_not_found", Message: "notification delivery not found"}
 	}
+	if !s.allowsProjectID(row.ProjectID) {
+		return NotificationDeliveryView{}, RuntimeError{Code: "notification_delivery_not_found", Message: "notification delivery not found"}
+	}
 	return s.notificationDeliveryViewFromRow(row)
 }
 
@@ -735,6 +743,9 @@ func (s *Service) ReplayNotificationDelivery(deliveryID string) (NotificationDel
 		return NotificationDeliveryView{}, err
 	}
 	if row.WorkspaceID != s.workspaceID {
+		return NotificationDeliveryView{}, RuntimeError{Code: "notification_delivery_not_found", Message: "notification delivery not found"}
+	}
+	if !s.allowsProjectID(row.ProjectID) {
 		return NotificationDeliveryView{}, RuntimeError{Code: "notification_delivery_not_found", Message: "notification delivery not found"}
 	}
 	if row.Status != storage.DeliveryStatusDeadLettered && row.Status != storage.DeliveryStatusDisabledSkipped {
@@ -1227,6 +1238,8 @@ func notificationDeliveryViewFromRow(row storage.NotificationDelivery, recipient
 		RuleID:                      row.RuleID,
 		SinkID:                      row.SinkID,
 		TaskUUID:                    row.TaskUUID,
+		ObjectKind:                  row.ObjectKind,
+		ObjectID:                    row.ObjectID,
 		RecipientUserID:             row.RecipientUserID,
 		Recipient:                   recipient,
 		EventID:                     row.EventID,

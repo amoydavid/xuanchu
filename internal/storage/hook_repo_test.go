@@ -33,8 +33,7 @@ func makeHookDef(t *testing.T, wsID, name, eventsJSON string, overrides ...func(
 		WorkspaceID:    wsID,
 		ActorUserID:    "user-1",
 		EventTypesJSON: eventsJSON,
-		EndpointURL:    "https://example.com/hook",
-		Secret:         "s3cret",
+		SinkID:         "sink-1",
 		Enabled:        boolPtr(true),
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
@@ -91,7 +90,7 @@ func TestHookTablesMigrated(t *testing.T) {
 	// spot-check key columns
 	hookDefCols := []string{
 		"id", "name", "scope_type", "workspace_id", "project_id",
-		"actor_user_id", "event_types_json", "endpoint_url", "secret",
+		"actor_user_id", "event_types_json", "sink_id",
 		"enabled", "timeout_seconds", "max_attempts", "created_at", "modified_at",
 	}
 	for _, col := range hookDefCols {
@@ -213,16 +212,18 @@ func TestHookRepositoryListExcludesDisabled(t *testing.T) {
 	}
 }
 
-func TestHookRepositoryUpdatePreservesFields(t *testing.T) {
+func TestHookDefinitionStoresSinkID(t *testing.T) {
 	store, wsID := newHookTestStore(t)
 	repo := NewHookRepository(store.DB())
 
-	h := makeHookDef(t, wsID, "my-hook", `["task.created"]`)
+	h := makeHookDef(t, wsID, "my-hook", `["task.created"]`, func(h *HookDefinition) {
+		h.SinkID = "sink-primary"
+	})
 	if err := repo.Create(h); err != nil {
 		t.Fatal(err)
 	}
 
-	h.EndpointURL = "https://example.com/new-hook"
+	h.SinkID = "sink-secondary"
 	h.ModifiedAt = 300
 	if err := repo.Update(h); err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -232,11 +233,8 @@ func TestHookRepositoryUpdatePreservesFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.EndpointURL != "https://example.com/new-hook" {
-		t.Fatalf("endpoint = %q", got.EndpointURL)
-	}
-	if got.Secret != "s3cret" {
-		t.Fatalf("secret changed unexpectedly = %q", got.Secret)
+	if got.SinkID != "sink-secondary" {
+		t.Fatalf("SinkID = %q, want sink-secondary", got.SinkID)
 	}
 	if got.ModifiedAt != 300 {
 		t.Fatalf("modified_at = %d, want 300", got.ModifiedAt)

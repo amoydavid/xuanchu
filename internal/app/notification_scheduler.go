@@ -349,6 +349,8 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 		RuleID:                      rule.ID,
 		SinkID:                      sink.ID,
 		TaskUUID:                    tsk.UUID,
+		ObjectKind:                  "task",
+		ObjectID:                    tsk.UUID,
 		RecipientUserID:             recipient.ID,
 		EventID:                     uuid.NewString(),
 		EventType:                   eventType,

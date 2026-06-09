@@ -72,6 +72,30 @@ type ReminderRuleModifyRequest struct {
 	SinkRef       *string   `json:"sink_ref,omitempty"`
 }
 
+type EventNotificationRuleRequest struct {
+	Name            string   `json:"name"`
+	ProjectRef      string   `json:"project_ref"`
+	EventType       string   `json:"event_type"`
+	FilterSource    string   `json:"filter_source"`
+	AudienceType    string   `json:"audience_type"`
+	Recipients      []string `json:"recipients"`
+	Sink            string   `json:"sink"`
+	TemplateSubject string   `json:"template_subject"`
+	TemplateBody    string   `json:"template_body"`
+}
+
+type EventNotificationRuleModifyRequest struct {
+	Name            *string   `json:"name,omitempty"`
+	ProjectRef      *string   `json:"project_ref,omitempty"`
+	EventType       *string   `json:"event_type,omitempty"`
+	FilterSource    *string   `json:"filter_source,omitempty"`
+	AudienceType    *string   `json:"audience_type,omitempty"`
+	Recipients      *[]string `json:"recipients,omitempty"`
+	Sink            *string   `json:"sink,omitempty"`
+	TemplateSubject *string   `json:"template_subject,omitempty"`
+	TemplateBody    *string   `json:"template_body,omitempty"`
+}
+
 func (c *Client) ListNotificationSinks(ctx context.Context, workspace string, includeDisabled bool) ([]app.NotificationSinkView, error) {
 	values := url.Values{}
 	if workspace != "" {
@@ -199,6 +223,72 @@ func (c *Client) DisableReminderRule(ctx context.Context, ruleID string) (app.Re
 
 func (c *Client) DeleteReminderRule(ctx context.Context, ruleID string) error {
 	return c.delete(ctx, "/api/v1/reminder-rules/"+url.PathEscape(ruleID), nil)
+}
+
+func (c *Client) ListEventNotificationRules(ctx context.Context, workspace string, projectRef string, includeDisabled bool) ([]app.EventNotificationRuleView, error) {
+	values := url.Values{}
+	if workspace != "" {
+		values.Set("workspace", workspace)
+	}
+	if projectRef != "" {
+		values.Set("project", projectRef)
+	}
+	if includeDisabled {
+		values.Set("all", "true")
+	}
+	var envelope apiEnvelope[[]app.EventNotificationRuleView]
+	if err := c.get(ctx, "/api/v1/notification-rules", values, &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) AddEventNotificationRule(ctx context.Context, workspace string, input EventNotificationRuleRequest) (app.EventNotificationRuleView, error) {
+	path := "/api/v1/notification-rules"
+	if workspace != "" {
+		path += "?workspace=" + url.QueryEscape(workspace)
+	}
+	var envelope apiEnvelope[app.EventNotificationRuleView]
+	if err := c.post(ctx, path, input, &envelope); err != nil {
+		return app.EventNotificationRuleView{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) EventNotificationRuleInfo(ctx context.Context, ruleID string) (app.EventNotificationRuleView, error) {
+	var envelope apiEnvelope[app.EventNotificationRuleView]
+	if err := c.get(ctx, "/api/v1/notification-rules/"+url.PathEscape(ruleID), nil, &envelope); err != nil {
+		return app.EventNotificationRuleView{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) ModifyEventNotificationRule(ctx context.Context, ruleID string, input EventNotificationRuleModifyRequest) (app.EventNotificationRuleView, error) {
+	var envelope apiEnvelope[app.EventNotificationRuleView]
+	if err := c.patch(ctx, "/api/v1/notification-rules/"+url.PathEscape(ruleID), input, &envelope); err != nil {
+		return app.EventNotificationRuleView{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) EnableEventNotificationRule(ctx context.Context, ruleID string) (app.EventNotificationRuleView, error) {
+	var envelope apiEnvelope[app.EventNotificationRuleView]
+	if err := c.post(ctx, "/api/v1/notification-rules/"+url.PathEscape(ruleID)+"/enable", nil, &envelope); err != nil {
+		return app.EventNotificationRuleView{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) DisableEventNotificationRule(ctx context.Context, ruleID string) (app.EventNotificationRuleView, error) {
+	var envelope apiEnvelope[app.EventNotificationRuleView]
+	if err := c.post(ctx, "/api/v1/notification-rules/"+url.PathEscape(ruleID)+"/disable", nil, &envelope); err != nil {
+		return app.EventNotificationRuleView{}, err
+	}
+	return envelope.Data, nil
+}
+
+func (c *Client) DeleteEventNotificationRule(ctx context.Context, ruleID string) error {
+	return c.delete(ctx, "/api/v1/notification-rules/"+url.PathEscape(ruleID), nil)
 }
 
 func (c *Client) ListNotificationDeliveries(ctx context.Context, workspace string, sinkID string, status string, limit int, offset int) ([]app.NotificationDeliveryView, error) {

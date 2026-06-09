@@ -27,6 +27,32 @@ func fixedTestClock() testClock {
 // ptrStr 返回字符串指针。
 func ptrStr(s string) *string { return &s }
 
+func ensureMCPHookSink(t *testing.T, store *storage.Store) {
+	t.Helper()
+	svc, err := app.NewService(app.ServiceOptions{Store: store, Clock: fixedTestClock()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing, err := svc.ListNotificationSinks(true)
+	if err == nil {
+		for _, sink := range existing {
+			if sink.Name == "hook-sink" {
+				return
+			}
+		}
+	}
+	if _, err := svc.AddNotificationSink(app.NotificationSinkAddInput{
+		Name:         "hook-sink",
+		Type:         app.NotificationSinkTypeWebhook,
+		EndpointMode: app.NotificationEndpointStaticURL,
+		URL:          "https://example.com/webhook",
+		AllowedHosts: []string{"example.com"},
+		Secret:       "hook-secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // extractTask 从 envelope data 中提取 task 对象。
 // taskData 返回 {"task": {...}}，此函数提取内层 map。
 func extractTask(t *testing.T, env ToolEnvelope) map[string]any {
@@ -62,6 +88,7 @@ func newTestServer(t *testing.T) (*mcp.Server, testClock) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	clock := fixedTestClock()
+	ensureMCPHookSink(t, store)
 	opts := Options{Store: store, Clock: clock, Version: "test"}
 	srv := NewServer(opts)
 	return srv, clock
@@ -187,6 +214,7 @@ func newTestServerWithOptions(t *testing.T, opts Options) (*mcp.Server, *storage
 	if opts.Version == "" {
 		opts.Version = "test"
 	}
+	ensureMCPHookSink(t, store)
 	return NewServer(opts), store
 }
 
@@ -248,6 +276,9 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"reminder_rule_list", "reminder_rule_add", "reminder_rule_info",
 		"reminder_rule_modify", "reminder_rule_enable", "reminder_rule_disable",
 		"reminder_rule_remove",
+		"notification_rule_list", "notification_rule_add", "notification_rule_info",
+		"notification_rule_modify", "notification_rule_enable", "notification_rule_disable",
+		"notification_rule_remove",
 		"notification_delivery_list", "notification_delivery_info", "notification_delivery_replay",
 		"token_list", "token_create", "token_modify", "token_revoke",
 		"audit_list", "scope_list", "me_get",
@@ -1782,7 +1813,7 @@ func TestHookFullLifecycle(t *testing.T) {
 
 	add := callTool(t, session, "hook_add", HookAddInput{
 		Name:   "test-hook",
-		URL:    "https://example.com/webhook",
+		Sink:   "hook-sink",
 		Events: []string{"task.created", "task.completed"},
 	})
 	if add.IsError {
@@ -1910,6 +1941,50 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 		t.Fatalf("reminder_rule_enable error: %v", parseError(t, enableRule))
 	}
 
+	addNotificationRule := callTool(t, session, "notification_rule_add", NotificationRuleAddInput{
+		Name:            "task-unblocked-openclaw",
+		Event:           "task.unblocked",
+		Filter:          "end.isnull",
+		Audience:        "assignees",
+		Sink:            sinkID,
+		TemplateSubject: "任务已解除阻塞",
+		TemplateBody:    "{{task.description}}",
+	})
+	if addNotificationRule.IsError {
+		t.Fatalf("notification_rule_add error: %v", parseError(t, addNotificationRule))
+	}
+	notificationRuleObj := nestedMap(t, envelopeData(t, parseEnvelope(t, addNotificationRule)), "rule")
+	notificationRuleID, _ := notificationRuleObj["id"].(string)
+	if notificationRuleObj["event_type"] != "task.unblocked" || notificationRuleObj["audience_type"] != "assignees" || notificationRuleObj["filter_source"] != "end.isnull" {
+		t.Fatalf("notification rule = %#v", notificationRuleObj)
+	}
+
+	notificationRules := callTool(t, session, "notification_rule_list", NotificationRuleListInput{})
+	if notificationRules.IsError {
+		t.Fatalf("notification_rule_list error: %v", parseError(t, notificationRules))
+	}
+	notificationRuleInfo := callTool(t, session, "notification_rule_info", NotificationRuleRefInput{Rule: notificationRuleID})
+	if notificationRuleInfo.IsError {
+		t.Fatalf("notification_rule_info error: %v", parseError(t, notificationRuleInfo))
+	}
+
+	notificationAudience := "actor"
+	modNotificationRule := callTool(t, session, "notification_rule_modify", NotificationRuleModifyInput{
+		Rule:     notificationRuleID,
+		Audience: &notificationAudience,
+	})
+	if modNotificationRule.IsError {
+		t.Fatalf("notification_rule_modify error: %v", parseError(t, modNotificationRule))
+	}
+	disableNotificationRule := callTool(t, session, "notification_rule_disable", NotificationRuleRefInput{Rule: notificationRuleID})
+	if disableNotificationRule.IsError {
+		t.Fatalf("notification_rule_disable error: %v", parseError(t, disableNotificationRule))
+	}
+	enableNotificationRule := callTool(t, session, "notification_rule_enable", NotificationRuleRefInput{Rule: notificationRuleID})
+	if enableNotificationRule.IsError {
+		t.Fatalf("notification_rule_enable error: %v", parseError(t, enableNotificationRule))
+	}
+
 	delivery := storage.NotificationDelivery{
 		ID:                  "delivery-1",
 		WorkspaceID:         svc.Runtime().WorkspaceID,
@@ -1949,6 +2024,10 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 	removeRule := callTool(t, session, "reminder_rule_remove", ReminderRuleRefInput{Rule: ruleID})
 	if removeRule.IsError {
 		t.Fatalf("reminder_rule_remove error: %v", parseError(t, removeRule))
+	}
+	removeNotificationRule := callTool(t, session, "notification_rule_remove", NotificationRuleRefInput{Rule: notificationRuleID})
+	if removeNotificationRule.IsError {
+		t.Fatalf("notification_rule_remove error: %v", parseError(t, removeNotificationRule))
 	}
 	removeSink := callTool(t, session, "notification_sink_remove", NotificationSinkRefInput{Sink: sinkID})
 	if removeSink.IsError {

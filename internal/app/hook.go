@@ -22,11 +22,14 @@ const (
 
 // 允许的 hook 事件类型。
 var allowedHookEventTypes = map[string]bool{
-	"task.created":     true,
-	"task.modified":    true,
-	"task.completed":   true,
-	"task.deleted":     true,
-	"project.archived": true,
+	"task.created":      true,
+	"task.modified":     true,
+	"task.completed":    true,
+	"task.deleted":      true,
+	"project.archived":  true,
+	"project.annotated": true,
+	"project.denotated": true,
+	"task.unblocked":    true,
 }
 
 // HookAddInput 创建 hook 的输入参数。
@@ -35,8 +38,7 @@ type HookAddInput struct {
 	ScopeType      HookScopeType
 	ProjectRef     string
 	EventTypes     []string
-	EndpointURL    string
-	Secret         string
+	SinkRef        string
 	TimeoutSeconds int
 	MaxAttempts    int
 }
@@ -45,8 +47,7 @@ type HookAddInput struct {
 type HookModifyInput struct {
 	Name           *string
 	EventTypes     *[]string
-	EndpointURL    *string
-	Secret         *string
+	SinkRef        *string
 	TimeoutSeconds *int
 	MaxAttempts    *int
 }
@@ -60,7 +61,9 @@ type HookView struct {
 	ProjectID      *string
 	ActorUserID    string
 	EventTypes     []string
-	EndpointURL    string
+	SinkID         string
+	SinkName       string
+	SinkType       string
 	Enabled        bool
 	TimeoutSeconds int
 	MaxAttempts    int
@@ -101,15 +104,6 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 	if err := validateHookEventTypes(input.EventTypes); err != nil {
 		return HookView{}, err
 	}
-	if err := validateHookEndpointLength(input.EndpointURL); err != nil {
-		return HookView{}, err
-	}
-	if err := validateHookSecret(input.Secret); err != nil {
-		return HookView{}, err
-	}
-	if err := ValidateWebhookEndpointURLWithDefault(input.EndpointURL); err != nil {
-		return HookView{}, err
-	}
 	timeout := input.TimeoutSeconds
 	if timeout == 0 {
 		timeout = 10
@@ -147,6 +141,10 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		}
 		projectID = &project.ID
 	}
+	sink, err := s.resolveNotificationSink(input.SinkRef)
+	if err != nil {
+		return HookView{}, err
+	}
 
 	enabled := true
 	eventTypesJSON, err := json.Marshal(input.EventTypes)
@@ -154,8 +152,6 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		return HookView{}, err
 	}
 	now := s.clock.Unix()
-
-	secretFingerprint := secretFingerprint(input.Secret)
 
 	row := storage.HookDefinition{
 		ID:             uuid.NewString(),
@@ -165,8 +161,7 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		ProjectID:      projectID,
 		ActorUserID:    s.runtime.ActorUserID,
 		EventTypesJSON: string(eventTypesJSON),
-		EndpointURL:    input.EndpointURL,
-		Secret:         input.Secret,
+		SinkID:         sink.ID,
 		Enabled:        &enabled,
 		TimeoutSeconds: timeout,
 		MaxAttempts:    maxAttempts,
@@ -183,16 +178,16 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view = hookViewFromRow(created)
+		view = hookViewFromRowWithSink(created, sink)
 		return AuditEntry{
 			TargetType: "hook",
 			TargetID:   created.ID,
 			Payload: map[string]any{
-				"name":               created.Name,
-				"scope_type":         created.ScopeType,
-				"event_types":        input.EventTypes,
-				"endpoint_url":       created.EndpointURL,
-				"secret_fingerprint": secretFingerprint,
+				"name":        created.Name,
+				"scope_type":  created.ScopeType,
+				"event_types": input.EventTypes,
+				"sink_id":     created.SinkID,
+				"sink_name":   sink.Name,
 			},
 		}, nil
 	})
@@ -221,7 +216,7 @@ func (s *Service) ListHooks(projectRef string) ([]HookView, error) {
 		if !s.allowsProjectID(row.ProjectID) {
 			continue
 		}
-		views = append(views, hookViewFromRow(row))
+		views = append(views, s.hookViewFromRow(row))
 	}
 	return views, nil
 }
@@ -244,7 +239,7 @@ func (s *Service) HookInfo(hookID string) (HookView, error) {
 	if err := s.ensureReadableHookScope(row); err != nil {
 		return HookView{}, err
 	}
-	return hookViewFromRow(row), nil
+	return s.hookViewFromRow(row), nil
 }
 
 // ModifyHook 修改 hook 的属性。
@@ -291,22 +286,14 @@ func (s *Service) ModifyHook(hookID string, input HookModifyInput) (HookView, er
 		row.EventTypesJSON = string(eventTypesJSON)
 		auditPayload["event_types"] = *input.EventTypes
 	}
-	if input.EndpointURL != nil {
-		if err := validateHookEndpointLength(*input.EndpointURL); err != nil {
+	if input.SinkRef != nil {
+		sink, err := s.resolveNotificationSink(*input.SinkRef)
+		if err != nil {
 			return HookView{}, err
 		}
-		if err := ValidateWebhookEndpointURLWithDefault(*input.EndpointURL); err != nil {
-			return HookView{}, err
-		}
-		row.EndpointURL = *input.EndpointURL
-		auditPayload["endpoint_url"] = *input.EndpointURL
-	}
-	if input.Secret != nil {
-		if err := validateHookSecret(*input.Secret); err != nil {
-			return HookView{}, err
-		}
-		row.Secret = *input.Secret
-		auditPayload["secret_fingerprint"] = secretFingerprint(*input.Secret)
+		row.SinkID = sink.ID
+		auditPayload["sink_id"] = sink.ID
+		auditPayload["sink_name"] = sink.Name
 	}
 	if input.TimeoutSeconds != nil {
 		if err := validateTimeout(*input.TimeoutSeconds); err != nil {
@@ -332,7 +319,7 @@ func (s *Service) ModifyHook(hookID string, input HookModifyInput) (HookView, er
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view = hookViewFromRow(updated)
+		view = tx.hookViewFromRow(updated)
 		return AuditEntry{
 			TargetType: "hook",
 			TargetID:   hookID,
@@ -384,7 +371,7 @@ func (s *Service) toggleHook(hookID string, enabled bool, action string) (HookVi
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view = hookViewFromRow(updated)
+		view = tx.hookViewFromRow(updated)
 		return AuditEntry{
 			TargetType: "hook",
 			TargetID:   hookID,
@@ -449,8 +436,12 @@ func (s *Service) ListHookDeliveries(hookID string, status string, limit int, of
 		return nil, err
 	}
 	views := make([]HookDeliveryView, 0, len(rows))
+	actorInfos, err := s.resolveUserInfos(hookDeliveryActorIDs(rows))
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range rows {
-		view, err := hookDeliveryViewFromRowChecked(row)
+		view, err := hookDeliveryViewFromRowWithActor(row, actorInfos[row.ActorUserID])
 		if err != nil {
 			return nil, err
 		}
@@ -477,7 +468,7 @@ func (s *Service) HookDeliveryInfo(deliveryID string) (HookDeliveryView, error) 
 	if err := s.ensureReadableDeliveryScope(row); err != nil {
 		return HookDeliveryView{}, err
 	}
-	return hookDeliveryViewFromRowChecked(row)
+	return s.hookDeliveryViewFromRow(row)
 }
 
 // ReplayHookDelivery 重试 dead-lettered 或 disabled_skipped 的投递。
@@ -510,7 +501,7 @@ func (s *Service) ReplayHookDelivery(deliveryID string) (HookDeliveryView, error
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view, err = hookDeliveryViewFromRowChecked(updated)
+		view, err = tx.hookDeliveryViewFromRow(updated)
 		if err != nil {
 			return AuditEntry{}, err
 		}
@@ -551,6 +542,18 @@ func hookDeliveryViewFromRow(row storage.HookDelivery) HookDeliveryView {
 }
 
 func hookDeliveryViewFromRowChecked(row storage.HookDelivery) (HookDeliveryView, error) {
+	return hookDeliveryViewFromRowWithActor(row, task.UserInfo{ID: row.ActorUserID, Name: row.ActorUserID})
+}
+
+func (s *Service) hookDeliveryViewFromRow(row storage.HookDelivery) (HookDeliveryView, error) {
+	infos, err := s.resolveUserInfos([]string{row.ActorUserID})
+	if err != nil {
+		return HookDeliveryView{}, err
+	}
+	return hookDeliveryViewFromRowWithActor(row, infos[row.ActorUserID])
+}
+
+func hookDeliveryViewFromRowWithActor(row storage.HookDelivery, actor task.UserInfo) (HookDeliveryView, error) {
 	var payload map[string]any
 	if row.PayloadJSON != "" {
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
@@ -570,7 +573,7 @@ func hookDeliveryViewFromRowChecked(row storage.HookDelivery) (HookDeliveryView,
 		EventType:      row.EventType,
 		WorkspaceID:    row.WorkspaceID,
 		ProjectID:      row.ProjectID,
-		Actor:          task.UserInfo{ID: row.ActorUserID},
+		Actor:          actor,
 		Payload:        payload,
 		Headers:        headers,
 		Status:         row.Status,
@@ -585,8 +588,29 @@ func hookDeliveryViewFromRowChecked(row storage.HookDelivery) (HookDeliveryView,
 	}, nil
 }
 
-// hookViewFromRow 将 GORM 模型转换为只读视图（不含 secret）。
-func hookViewFromRow(row storage.HookDefinition) HookView {
+func hookDeliveryActorIDs(rows []storage.HookDelivery) []string {
+	seen := map[string]bool{}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.ActorUserID == "" || seen[row.ActorUserID] {
+			continue
+		}
+		seen[row.ActorUserID] = true
+		ids = append(ids, row.ActorUserID)
+	}
+	return ids
+}
+
+func (s *Service) hookViewFromRow(row storage.HookDefinition) HookView {
+	sink, err := s.notificationSinkRepo.GetByID(row.SinkID)
+	if err != nil || sink.WorkspaceID != row.WorkspaceID {
+		return hookViewFromRowWithSink(row, storage.NotificationSink{ID: row.SinkID})
+	}
+	return hookViewFromRowWithSink(row, sink)
+}
+
+// hookViewFromRowWithSink 将 GORM 模型转换为只读视图（不含 secret）。
+func hookViewFromRowWithSink(row storage.HookDefinition, sink storage.NotificationSink) HookView {
 	var eventTypes []string
 	if row.EventTypesJSON != "" {
 		_ = json.Unmarshal([]byte(row.EventTypesJSON), &eventTypes)
@@ -600,7 +624,9 @@ func hookViewFromRow(row storage.HookDefinition) HookView {
 		ProjectID:      row.ProjectID,
 		ActorUserID:    row.ActorUserID,
 		EventTypes:     eventTypes,
-		EndpointURL:    row.EndpointURL,
+		SinkID:         row.SinkID,
+		SinkName:       sink.Name,
+		SinkType:       sink.Type,
 		Enabled:        enabled,
 		TimeoutSeconds: row.TimeoutSeconds,
 		MaxAttempts:    row.MaxAttempts,

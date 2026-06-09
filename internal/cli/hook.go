@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
@@ -84,10 +82,7 @@ func newHookAddCommand(opts Options) *cobra.Command {
 		scopeType   string
 		projectRef  string
 		events      []string
-		endpointURL string
-		secret      string
-		secretStdin bool
-		secretFile  string
+		sinkRef     string
 		timeout     int
 		maxAttempts int
 	)
@@ -96,10 +91,6 @@ func newHookAddCommand(opts Options) *cobra.Command {
 		Short: "创建 Webhook",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			secretVal, err := resolveSecret(secret, secretStdin, secretFile, cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
 			currentOpts := optionsFromCmd(cmd, opts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
@@ -109,7 +100,7 @@ func newHookAddCommand(opts Options) *cobra.Command {
 					return err
 				}
 				hook, err := client.AddHook(context.Background(), currentOpts.Workspace, remote.HookCreateRequest{
-					Name: args[0], ScopeType: scopeType, ProjectRef: projectRef, EventTypes: events, EndpointURL: endpointURL, Secret: secretVal, TimeoutSeconds: timeout, MaxAttempts: maxAttempts,
+					Name: args[0], ScopeType: scopeType, ProjectRef: projectRef, EventTypes: events, Sink: sinkRef, TimeoutSeconds: timeout, MaxAttempts: maxAttempts,
 				})
 				if err != nil {
 					return err
@@ -130,8 +121,7 @@ func newHookAddCommand(opts Options) *cobra.Command {
 				ScopeType:      app.HookScopeType(scopeType),
 				ProjectRef:     projectRef,
 				EventTypes:     events,
-				EndpointURL:    endpointURL,
-				Secret:         secretVal,
+				SinkRef:        sinkRef,
 				TimeoutSeconds: timeout,
 				MaxAttempts:    maxAttempts,
 			})
@@ -148,14 +138,11 @@ func newHookAddCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&scopeType, "scope", "workspace", "作用域类型: workspace 或 project")
 	cmd.Flags().StringVar(&projectRef, "project", "", "项目 slug（project 作用域时必填）")
 	cmd.Flags().StringArrayVar(&events, "event", nil, "事件类型（可重复指定）")
-	cmd.Flags().StringVar(&endpointURL, "url", "", "webhook 接收端 URL")
-	cmd.Flags().StringVar(&secret, "secret", "", "签名密钥")
-	cmd.Flags().BoolVar(&secretStdin, "secret-stdin", false, "从 stdin 读取签名密钥")
-	cmd.Flags().StringVar(&secretFile, "secret-file", "", "从文件读取签名密钥")
+	cmd.Flags().StringVar(&sinkRef, "sink", "", "workspace 内 outbound sink 名称或 ID")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "超时秒数（默认 10）")
 	cmd.Flags().IntVar(&maxAttempts, "max-attempts", 0, "最大重试次数（默认 5）")
 	cmd.MarkFlagRequired("event")
-	cmd.MarkFlagRequired("url")
+	cmd.MarkFlagRequired("sink")
 	return cmd
 }
 
@@ -205,10 +192,7 @@ func newHookModifyCommand(opts Options) *cobra.Command {
 	var (
 		events      []string
 		name        string
-		endpointURL string
-		secret      string
-		secretStdin bool
-		secretFile  string
+		sinkRef     string
 		timeout     int
 		maxAttempts int
 	)
@@ -217,12 +201,8 @@ func newHookModifyCommand(opts Options) *cobra.Command {
 		Short: "修改 Webhook 属性",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			secretVal, err := resolveSecret(secret, secretStdin, secretFile, cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
 			currentOpts := optionsFromCmd(cmd, opts)
-			input := buildHookModifyInput(name, events, endpointURL, secretVal, timeout, maxAttempts)
+			input := buildHookModifyInput(name, events, sinkRef, timeout, maxAttempts)
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -262,10 +242,7 @@ func newHookModifyCommand(opts Options) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "hook 名称")
 	cmd.Flags().StringArrayVar(&events, "event", nil, "事件类型（可重复指定）")
-	cmd.Flags().StringVar(&endpointURL, "url", "", "webhook 接收端 URL")
-	cmd.Flags().StringVar(&secret, "secret", "", "签名密钥")
-	cmd.Flags().BoolVar(&secretStdin, "secret-stdin", false, "从 stdin 读取签名密钥")
-	cmd.Flags().StringVar(&secretFile, "secret-file", "", "从文件读取签名密钥")
+	cmd.Flags().StringVar(&sinkRef, "sink", "", "workspace 内 outbound sink 名称或 ID")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "超时秒数")
 	cmd.Flags().IntVar(&maxAttempts, "max-attempts", 0, "最大重试次数")
 	return cmd
@@ -469,49 +446,8 @@ func newHookReplayCommand(opts Options) *cobra.Command {
 	}
 }
 
-// resolveSecret 从三种来源解析密钥，互斥使用。
-func resolveSecret(secret string, secretStdin bool, secretFile string, stdin interface {
-	Read(p []byte) (n int, err error)
-}) (string, error) {
-	sources := 0
-	if secret != "" {
-		sources++
-	}
-	if secretStdin {
-		sources++
-	}
-	if secretFile != "" {
-		sources++
-	}
-	if sources > 1 {
-		return "", fmt.Errorf("--secret, --secret-stdin 和 --secret-file 互斥，只能指定一个")
-	}
-	if secret != "" {
-		return secret, nil
-	}
-	if secretStdin {
-		reader := bufio.NewReader(stdin)
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			// 读取到 EOF 也是合法的（比如管道无换行）
-			if line == "" {
-				return "", fmt.Errorf("从 stdin 读取密钥失败")
-			}
-		}
-		return strings.TrimRight(line, "\n"), nil
-	}
-	if secretFile != "" {
-		data, err := os.ReadFile(secretFile)
-		if err != nil {
-			return "", fmt.Errorf("读取密钥文件 %s 失败: %w", secretFile, err)
-		}
-		return strings.TrimRight(string(data), "\n"), nil
-	}
-	return "", nil
-}
-
 // buildHookModifyInput 从 CLI flags 构建 app 层修改输入。
-func buildHookModifyInput(name string, events []string, endpointURL, secret string, timeout, maxAttempts int) app.HookModifyInput {
+func buildHookModifyInput(name string, events []string, sinkRef string, timeout, maxAttempts int) app.HookModifyInput {
 	input := app.HookModifyInput{}
 	if name != "" {
 		input.Name = &name
@@ -519,11 +455,8 @@ func buildHookModifyInput(name string, events []string, endpointURL, secret stri
 	if len(events) > 0 {
 		input.EventTypes = &events
 	}
-	if endpointURL != "" {
-		input.EndpointURL = &endpointURL
-	}
-	if secret != "" {
-		input.Secret = &secret
+	if sinkRef != "" {
+		input.SinkRef = &sinkRef
 	}
 	if timeout != 0 {
 		input.TimeoutSeconds = &timeout
@@ -539,8 +472,7 @@ func hookModifyInputToRemote(input app.HookModifyInput) remote.HookModifyRequest
 	return remote.HookModifyRequest{
 		Name:           input.Name,
 		EventTypes:     input.EventTypes,
-		EndpointURL:    input.EndpointURL,
-		Secret:         input.Secret,
+		Sink:           input.SinkRef,
 		TimeoutSeconds: input.TimeoutSeconds,
 		MaxAttempts:    input.MaxAttempts,
 	}
@@ -560,7 +492,11 @@ func renderHookList(w interface {
 		}
 		events := strings.Join(h.EventTypes, ",")
 		scope := h.ScopeType
-		fmt.Fprintf(w, "%s  %s  %s  [%s]  %s  %s\n", shortID(h.ID), h.Name, scope, events, enabled, h.EndpointURL)
+		sink := h.SinkName
+		if sink == "" {
+			sink = h.SinkID
+		}
+		fmt.Fprintf(w, "%s  %s  %s  [%s]  %s  %s\n", shortID(h.ID), h.Name, scope, events, enabled, sink)
 	}
 }
 
@@ -575,7 +511,9 @@ func renderHookInfo(w interface {
 		fmt.Fprintf(w, "Project ID: %s\n", *hook.ProjectID)
 	}
 	fmt.Fprintf(w, "Events: %s\n", strings.Join(hook.EventTypes, ", "))
-	fmt.Fprintf(w, "URL: %s\n", hook.EndpointURL)
+	fmt.Fprintf(w, "Sink: %s\n", hook.SinkName)
+	fmt.Fprintf(w, "Sink ID: %s\n", hook.SinkID)
+	fmt.Fprintf(w, "Sink Type: %s\n", hook.SinkType)
 	enabled := "disabled"
 	if hook.Enabled {
 		enabled = "enabled"
@@ -626,7 +564,9 @@ func hookViewForJSON(hook app.HookView) map[string]any {
 		"workspace_id":    hook.WorkspaceID,
 		"project_id":      hook.ProjectID,
 		"event_types":     hook.EventTypes,
-		"endpoint_url":    hook.EndpointURL,
+		"sink_id":         hook.SinkID,
+		"sink_name":       hook.SinkName,
+		"sink_type":       hook.SinkType,
 		"enabled":         hook.Enabled,
 		"timeout_seconds": hook.TimeoutSeconds,
 		"max_attempts":    hook.MaxAttempts,

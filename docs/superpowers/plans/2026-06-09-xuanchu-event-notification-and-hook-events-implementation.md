@@ -1,6 +1,6 @@
 # Xuanchu 事件通知与 Hook 事件扩展实现计划
 
-> **给 agentic workers 的要求：** 执行本计划时必须使用 `superpowers:subagent-driven-development`（如果当前环境支持子代理）或 `superpowers:executing-plans`。步骤使用 checkbox（`- [ ]`）语法跟踪进度。
+> **给 agentic workers 的要求：** 执行本计划时必须使用 `superpowers:subagent-driven-development`（如果当前环境支持子代理）或 `superpowers:executing-plans`。步骤使用 checkbox（`- [x]`）语法跟踪进度。
 
 **目标：** 实现 sink 化 Hook、补齐项目 annotation / 依赖解除阻塞事件，并新增基于事件的 notification rule。
 
@@ -66,7 +66,7 @@
 - Modify: `internal/storage/migrate_postgres.go`
 - Modify: `internal/storage/hook_repo_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `internal/storage/hook_repo_test.go` 更新 helper，让 `HookDefinition` 必须包含 `SinkID`，并新增测试：
 
@@ -97,7 +97,7 @@ func TestHookDefinitionStoresSinkID(t *testing.T) {
 
 同时删除或改写断言 `EndpointURL` / `Secret` 保持不变的测试；新测试 helper 不应再为 Hook 填 URL/secret。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -107,7 +107,7 @@ go test ./internal/storage -run 'TestHookDefinitionStoresSinkID|TestHookReposito
 
 预期：FAIL，`SinkID` 字段不存在或迁移缺列。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 在 `storage.HookDefinition` 中：
 
@@ -126,7 +126,7 @@ Secret string
 
 SQLite/PostgreSQL AutoMigrate 应覆盖新增字段。由于未上线，不需要为旧数据回填 URL 到 sink。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -143,7 +143,7 @@ go test ./internal/storage -run 'TestHookDefinitionStoresSinkID|TestHookReposito
 - Modify: `internal/app/hook_test.go`
 - Modify: `internal/app/notification.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `internal/app/hook_test.go` 添加：
 
@@ -175,7 +175,7 @@ func TestAddHookRejectsCrossWorkspaceSink(t *testing.T) {
 
 并把所有 `defaultHookInput()` 改为先创建 sink，再填 `SinkRef`。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -185,7 +185,7 @@ go test ./internal/app -run 'TestAddHook.*Sink|TestHook' -count=1
 
 预期：FAIL，`HookAddInput.SinkRef` 未定义或旧 URL 校验仍生效。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 修改 app 结构：
 
@@ -218,7 +218,7 @@ type HookModifyInput struct {
 - audit payload 写 `sink_id` / `sink_name`，不写 endpoint URL / secret。
 - `validateHookEndpointLength`、`validateHookSecret` 对 Hook 创建/修改不再使用；若无其他调用，可删除。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -241,7 +241,7 @@ go test ./internal/app -run 'TestAddHook|TestModifyHook|TestHook|TestProject.*Ho
 - Modify: `internal/mcpserver/testdata/hook_modify.schema.json`
 - Modify: `internal/mcpserver/testdata/list-tools-default.json`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 测试要求：
 
@@ -273,7 +273,7 @@ HTTP:
 
 MCP `hook_add` schema 不再包含 `url`，包含 `sink`。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -283,7 +283,7 @@ go test ./internal/cli ./internal/httpapi ./internal/mcpserver -run 'Test.*Hook'
 
 预期：FAIL，旧 `url` 参数仍存在。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 CLI：
 
@@ -303,7 +303,7 @@ MCP：
 - `HookModifyInput` 增加 `Sink *string`，删除 `URL`/`Secret`。
 - schema 重新生成或更新 golden。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -315,7 +315,7 @@ go test ./internal/cli ./internal/httpapi ./internal/remote ./internal/mcpserver
 
 ### Task 4: 提交 Chunk 1
 
-- [ ] **Step 1: 检查 diff**
+- [x] **Step 1: 检查 diff**
 
 Run:
 
@@ -325,7 +325,7 @@ git diff -- internal/storage internal/app internal/cli internal/httpapi internal
 
 预期：Hook 对外入口不再暴露 `url` / `secret`。
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 git add internal/storage internal/app internal/cli internal/httpapi internal/remote internal/mcpserver
@@ -344,7 +344,7 @@ git commit -m "feat: 将 Hook 改为 workspace sink 投递"
 - Modify: `internal/app/hook_event.go`
 - Modify: `internal/app/hook_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 hook delivery 入队测试中断言字段：
 
@@ -365,7 +365,7 @@ if !strings.Contains(delivery.PayloadJSON, `"event_type":"task.created"`) {
 
 新增 HTTP template sink 测试：Hook 使用 `http_template` sink 时，delivery 冻结 header/body 模板结果。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -375,7 +375,7 @@ go test ./internal/storage ./internal/app -run 'TestHookDelivery|Test.*HTTPTempl
 
 预期：FAIL，字段不存在或未填。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 `storage.HookDelivery` 增加：
 
@@ -407,7 +407,7 @@ RenderedContentType string
 - Hook 使用的 sink 可以引用 `secret.*`，secret ref 仍由 sink 自己声明；Hook 不再持有独立 secret。
 - `http_template` sink 的 `HTTPMethod` 应被尊重；如果为空才默认 POST。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -425,7 +425,7 @@ go test ./internal/app ./internal/storage -run 'TestHookDelivery|Test.*Hook.*Tem
 - Modify: `internal/hookruntime/dispatcher_test.go`
 - Modify: `internal/httpapi/hook_e2e_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 更新 dispatcher 测试：
 
@@ -435,7 +435,7 @@ go test ./internal/app ./internal/storage -run 'TestHookDelivery|Test.*Hook.*Tem
 - headers 合并 `delivery.RenderedHeadersJSON` 和基础 `X-Xuanchu-*` headers。
 - sink disabled 时标记 `disabled_skipped`。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -445,7 +445,7 @@ go test ./internal/hookruntime ./internal/httpapi -run 'TestHook.*Dispatch|Test.
 
 预期：FAIL，dispatcher 仍读取 hook endpoint。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 Dispatcher 逻辑：
 
@@ -460,7 +460,7 @@ Dispatcher 逻辑：
 
 `HeadersForDelivery` 参数改为接收 sink 或 secret 字符串。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -490,7 +490,7 @@ git commit -m "feat: 冻结 Hook sink 投递请求"
 - Modify: `internal/app/hook_test.go`
 - Modify: `internal/app/project_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 测试：
 
@@ -499,7 +499,7 @@ git commit -m "feat: 冻结 Hook sink 投递请求"
 - `ProjectAnnotate` 生成 delivery，payload `data.project` 和 `data.annotation` 存在。
 - `ProjectDenotate` 生成 delivery，payload `data.project` 和 `data.annotation.id` 存在。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -509,7 +509,7 @@ go test ./internal/app -run 'Test.*Project.*Hook|TestAddHook.*Project|TestProjec
 
 预期：FAIL，事件白名单或 payload 不完整。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 - `allowedHookEventTypes` 增加 `project.annotated`、`project.denotated`、`task.unblocked`。
 - `buildProjectAnnotatedHookEvent` payload 改为：
@@ -521,7 +521,7 @@ go test ./internal/app -run 'Test.*Project.*Hook|TestAddHook.*Project|TestProjec
 
 如果 annotation `CreatedBy` 还只是 ID，必须在 app 层批量解析为 `task.UserInfo` 后再放入 event payload；不得在对外 payload 中输出裸 UUID。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -539,7 +539,7 @@ go test ./internal/app -run 'Test.*Project.*Hook|TestAddHook.*Project|TestProjec
 - Modify: `internal/app/service_test.go`
 - Modify: `internal/app/hook_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 覆盖：
 
@@ -556,7 +556,7 @@ func TestDoneDoesNotGenerateTaskUnblockedForCompletedDependent(t *testing.T) { .
 - payload `data.dependency.completed_task.uuid` 是刚完成的任务。
 - 仍有其他未完成依赖时不生成。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -566,7 +566,7 @@ go test ./internal/app -run 'TestDone.*Unblocked|TestHookDeliveryEnqueuedOnTaskC
 
 预期：FAIL，`task.unblocked` 尚未生成。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 实现建议：
 
@@ -582,7 +582,7 @@ go test ./internal/app -run 'TestDone.*Unblocked|TestHookDeliveryEnqueuedOnTaskC
 - project invariant 校验仍然有效。
 - 不要在 CLI/HTTP/MCP 层生成事件。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -612,7 +612,7 @@ git commit -m "feat: 补齐项目与解除阻塞事件"
 - Modify: `internal/storage/migrate_sqlite.go`
 - Modify: `internal/storage/migrate_postgres.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 测试：
 
@@ -620,7 +620,7 @@ git commit -m "feat: 补齐项目与解除阻塞事件"
 - `ListMatching(workspaceID, projectID, eventType)` 只返回 enabled、同 workspace、事件匹配、project 匹配的 rule。
 - 跨 workspace 不返回。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -630,7 +630,7 @@ go test ./internal/storage -run 'TestEventNotificationRule' -count=1
 
 预期：FAIL，repo/model 不存在。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 新增模型：
 
@@ -654,7 +654,7 @@ type EventNotificationRule struct {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -673,11 +673,11 @@ go test ./internal/storage -run 'TestEventNotificationRule|TestDBMigrates' -coun
 - Modify: `internal/app/notification.go`
 - Modify: `internal/app/notification_scheduler.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 新增测试：可以插入 `task_uuid=""` 但 `object_kind="project"` / `object_id=<projectID>` 的 notification delivery。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -687,7 +687,7 @@ go test ./internal/storage ./internal/app -run 'TestNotificationDelivery.*Event|
 
 预期：FAIL，`TaskUUID` not null 或 view 假设 task 必填。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 二选一，推荐 B：
 
@@ -698,7 +698,7 @@ go test ./internal/storage ./internal/app -run 'TestNotificationDelivery.*Event|
 
 推荐 B，迁移风险更小。Reminder delivery 写 `ObjectKind="task"`、`ObjectID=tsk.UUID`。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -716,7 +716,7 @@ go test ./internal/storage ./internal/app -run 'TestNotificationDelivery|TestRem
 - Modify: `internal/app/service.go`
 - Modify: `internal/app/hook_event.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 覆盖：
 
@@ -725,7 +725,7 @@ go test ./internal/storage ./internal/app -run 'TestNotificationDelivery|TestRem
 - 跨 workspace sink UUID 创建失败。
 - `enqueueEventNotificationDeliveries` 对同一 event/rule/recipient 只生成一条 delivery。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -735,7 +735,7 @@ go test ./internal/app -run 'TestEventNotificationRule|TestEventNotificationDeli
 
 预期：FAIL，app 方法不存在。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 新增 app 输入/视图：
 
@@ -767,6 +767,7 @@ type EventNotificationRuleAddInput struct {
 
 - 事件类型必须在 allowed event set。
 - rule workspace 必须等于 event workspace。
+- project-scoped token 只能创建 / 修改自己可访问 project 下的 event notification rule，不能创建 workspace 级 rule，也不能把 project rule 清成 workspace rule。
 - project rule 只匹配同 project event。
 - filter 首版只对 task event 启用；project event 若提供 filter 则拒绝或忽略。推荐拒绝。
 - audience：
@@ -780,7 +781,8 @@ recipient 解析：
 - `assignees` 从 primary task 的 `Assignees` 取用户。
 - `explicit_users` 使用规则中的 `RecipientUserIDsJSON`。
 - `actor` 使用事件 envelope 的 `ActorUserID`，并通过 `resolveUserInfos` 转成完整 `task.UserInfo`。
-- 所有 recipient 必须去重，并且必须是当前 workspace member。
+- 创建 / 修改 rule 时，显式 recipient 必须是当前 workspace member。
+- 触发事件时，recipient 必须去重；如果规则创建后成员关系变化，已失效 recipient 跳过，不回滚业务写入。
 
 delivery dedupe key：
 
@@ -788,7 +790,7 @@ delivery dedupe key：
 workspace_id:rule_id:event_id:recipient_user_id
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -806,14 +808,14 @@ go test ./internal/app -run 'TestEventNotificationRule|TestEventNotificationDeli
 - Modify: `internal/app/event_notification.go`
 - Modify: `internal/app/event_notification_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在实际业务操作中验证：
 
 - `Done` 生成 `task.unblocked` 后，会因 rule 生成 notification delivery。
 - `ProjectAnnotate` 生成 `project.annotated` 后，`actor` audience rule 会生成 notification delivery。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -823,21 +825,24 @@ go test ./internal/app -run 'Test.*EventNotification.*Business|TestDone.*Unblock
 
 预期：FAIL，事件还未触发 notification rule。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 修改 `withAuditEntriesAndEvents` 末尾：
 
 ```go
-if err := txSvc.enqueueHookEvents(events); err != nil { return err }
-return txSvc.enqueueEventNotificationDeliveries(events)
+// 事务内只写业务事实与 audit；事件 delivery 是事务提交后的副作用。
+// delivery 入队失败不回滚业务事实，后续可通过 outbox/诊断指标增强可观测性。
+_ = s.enqueueHookEvents(events)
+_ = s.enqueueEventNotificationDeliveries(events)
+return nil
 ```
 
 注意：
 
-- 如果后续决定“delivery enqueue 失败不回滚业务事实”，应另起事务/outbox 规格；本轮先延续现有 hook enqueue 失败会返回错误的行为。
-- 两个 enqueue 都只写数据库，不调用外部网络。
+- delivery 入队是副作用，不能因为 sink/config/template 的临时问题回滚 `task done` / `project annotate` 等业务写入。
+- 两个 enqueue 都只写数据库，不调用外部网络；后续如需诊断失败原因，应补 outbox / audit / metric，而不是恢复业务回滚。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -866,7 +871,7 @@ git commit -m "feat: 添加事件通知规则"
 - Modify: `internal/remote/notification_rule.go`
 - Modify: `internal/remote/notification.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 CLI：
 
@@ -887,7 +892,7 @@ xuanchu notification rule add bad --event task.unblocked --url https://example.t
 
 list/info/modify/enable/disable/remove 均可用。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -897,14 +902,14 @@ go test ./internal/cli ./internal/remote -run 'TestCLINotificationRule|TestRemot
 
 预期：FAIL，命令不存在。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 - 在 `notification` 下新增 `rule` 子命令，不要放进 `reminder rule`。
 - 入参：`--event`、`--audience`、`--sink`、`--project`、`--recipient`、`--filter`、`--template-subject`、`--template-body`。
 - JSON 输出稳定。
 - remote mode 调用 HTTP `/api/v1/notification-rules`。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -922,7 +927,7 @@ go test ./internal/cli ./internal/remote -run 'TestCLINotificationRule|TestRemot
 - Modify: `internal/httpapi/router.go`
 - Modify: `docs/openapi/xuanchu-v1.yaml`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 覆盖：
 
@@ -931,7 +936,7 @@ go test ./internal/cli ./internal/remote -run 'TestCLINotificationRule|TestRemot
 - 跨 workspace sink UUID 不能绑定。
 - GET/list/info/patch/enable/disable/delete。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -941,7 +946,7 @@ go test ./internal/httpapi -run 'TestHTTPNotificationRule' -count=1
 
 预期：FAIL，路由不存在。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 路由：
 
@@ -955,7 +960,7 @@ go test ./internal/httpapi -run 'TestHTTPNotificationRule' -count=1
 
 字段使用 `sink` / `sink_id`。不要接受 `url`。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -979,7 +984,7 @@ go test ./internal/httpapi -run 'TestHTTPNotificationRule|TestHTTPNotificationSi
 - Modify: `internal/mcpserver/testdata/notification_rule_remove.schema.json`
 - Modify: `internal/mcpserver/testdata/list-tools-default.json`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 MCP tool list 必须包含：
 
@@ -993,7 +998,7 @@ MCP tool list 必须包含：
 
 不得包含点号命名。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run:
 
@@ -1003,7 +1008,7 @@ go test ./internal/mcpserver -run 'TestMCP.*NotificationRule|TestListTools' -cou
 
 预期：FAIL，tools 不存在。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 复用 app 方法，MCP input 字段：
 
@@ -1019,7 +1024,7 @@ TemplateBody string `json:"template_body,omitempty"`
 
 `sink` 按 request scope workspace 解析。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run:
 
@@ -1051,7 +1056,7 @@ git commit -m "feat: 暴露事件通知规则接口"
 - Modify: `docs/manual/reference/commands.md`
 - Modify: `docs/skills/*` 中涉及 Hook / notification / MCP 的 skill
 
-- [ ] **Step 1: 更新文档**
+- [x] **Step 1: 更新文档**
 
 必须写清：
 
@@ -1066,7 +1071,7 @@ git commit -m "feat: 暴露事件通知规则接口"
   - Priority 2：`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed`。
   - `task.due_soon` / `task.overdue` 属于 scheduler / reminder rule 生成的时间条件事件，不能和 `task.due_changed` 混为一类。
 
-- [ ] **Step 2: 搜索旧表达**
+- [x] **Step 2: 搜索旧表达**
 
 Run:
 
@@ -1086,7 +1091,7 @@ rg -n 'hook add .*--url|project\\.annotate|notification\\.rule|task\\.unblocked|
 **Files:**
 - No direct edits unless tests expose missing coverage.
 
-- [ ] **Step 1: 跑目标包测试**
+- [x] **Step 1: 跑目标包测试**
 
 ```bash
 go test ./internal/storage ./internal/app ./internal/cli ./internal/httpapi ./internal/mcpserver ./internal/hookruntime ./internal/notificationruntime -count=1
@@ -1094,7 +1099,7 @@ go test ./internal/storage ./internal/app ./internal/cli ./internal/httpapi ./in
 
 预期：PASS。
 
-- [ ] **Step 2: 跑全量测试**
+- [x] **Step 2: 跑全量测试**
 
 ```bash
 go test ./...
@@ -1102,7 +1107,7 @@ go test ./...
 
 预期：PASS。
 
-- [ ] **Step 3: 跑 CGO=0 测试**
+- [x] **Step 3: 跑 CGO=0 测试**
 
 ```bash
 CGO_ENABLED=0 go test ./...
@@ -1110,7 +1115,7 @@ CGO_ENABLED=0 go test ./...
 
 预期：PASS。
 
-- [ ] **Step 4: 跑 CGO=0 build**
+- [x] **Step 4: 跑 CGO=0 build**
 
 ```bash
 CGO_ENABLED=0 go build ./cmd/xuanchu
@@ -1118,7 +1123,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 预期：PASS。
 
-- [ ] **Step 5: diff check**
+- [x] **Step 5: diff check**
 
 ```bash
 git diff --check
@@ -1138,6 +1143,7 @@ git commit -m "docs: 更新事件通知与 Hook 文档"
 ## 实施注意事项
 
 - 如果 `EventNotificationRule` 与现有 `ReminderRule` 出现大量重复，不要先抽象合并；首版保持两个清晰模型，后续再考虑统一 notification rule family。
+- 计划中的 chunk 提交点用于执行节奏；本轮实际按用户后续要求合并为一次总提交。
 - `notification_sinks` 表名可以暂不改，避免无收益迁移；对外文档用 outbound sink 解释。
 - Hook delivery 继续独立于 notification delivery，避免把机器事件投递和用户通知混在一张 delivery 表中。
 - event notification rule 使用 notification delivery，是因为它最终投递的是用户通知消息。

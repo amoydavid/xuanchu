@@ -139,6 +139,66 @@ func (in ReminderRuleModifyInput) scopeInput() RequestScopeInput {
 	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
 }
 
+type NotificationRuleListInput struct {
+	Workspace       string `json:"workspace,omitempty"`
+	Project         string `json:"project,omitempty"`
+	ProjectID       string `json:"project_id,omitempty"`
+	IncludeDisabled bool   `json:"include_disabled,omitempty"`
+}
+
+func (in NotificationRuleListInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type NotificationRuleAddInput struct {
+	Workspace       string   `json:"workspace,omitempty"`
+	Project         string   `json:"project,omitempty"`
+	ProjectID       string   `json:"project_id,omitempty"`
+	Name            string   `json:"name" jsonschema:"rule name"`
+	Event           string   `json:"event" jsonschema:"event type such as task.unblocked"`
+	Filter          string   `json:"filter,omitempty" jsonschema:"task filter expression for task events"`
+	Audience        string   `json:"audience" jsonschema:"actor, assignees, explicit_users, or assignees_and_explicit_users"`
+	Recipients      []string `json:"recipients,omitempty" jsonschema:"explicit recipient user refs"`
+	Sink            string   `json:"sink" jsonschema:"notification sink name or ID"`
+	TemplateSubject string   `json:"template_subject,omitempty"`
+	TemplateBody    string   `json:"template_body,omitempty"`
+}
+
+func (in NotificationRuleAddInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type NotificationRuleRefInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Rule      string `json:"rule" jsonschema:"notification rule ID"`
+}
+
+func (in NotificationRuleRefInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
+type NotificationRuleModifyInput struct {
+	Workspace       string    `json:"workspace,omitempty"`
+	Project         string    `json:"project,omitempty"`
+	ProjectID       string    `json:"project_id,omitempty"`
+	Rule            string    `json:"rule" jsonschema:"notification rule ID"`
+	Name            *string   `json:"name,omitempty"`
+	ProjectRef      *string   `json:"project_ref,omitempty" jsonschema:"new rule project scope; empty clears project scope"`
+	Event           *string   `json:"event,omitempty"`
+	Filter          *string   `json:"filter,omitempty"`
+	Audience        *string   `json:"audience,omitempty"`
+	Recipients      *[]string `json:"recipients,omitempty"`
+	Sink            *string   `json:"sink,omitempty" jsonschema:"notification sink name or ID"`
+	TemplateSubject *string   `json:"template_subject,omitempty"`
+	TemplateBody    *string   `json:"template_body,omitempty"`
+}
+
+func (in NotificationRuleModifyInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
+}
+
 type NotificationDeliveryListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Sink      string `json:"sink,omitempty" jsonschema:"notification sink ID"`
@@ -345,6 +405,90 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": ruleID}, "deleted reminder rule")
 	})
 
+	addTool(s, &mcp.Tool{Name: "notification_rule_list", Description: "List event notification rules; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		projectRef := projectRefForScope(in.Project, in.ProjectID)
+		rows, err := svc.ListEventNotificationRules(projectRef, in.IncludeDisabled)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"rules": notificationRuleViewsForMCP(rows), "count": len(rows)}, fmt.Sprintf("%d notification rule(s)", len(rows)))
+	})
+
+	addTool(s, &mcp.Tool{Name: "notification_rule_add", Description: "Create an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.AddEventNotificationRule(app.EventNotificationRuleAddInput{
+			Name:            strings.TrimSpace(in.Name),
+			ProjectRef:      projectRefForScope(in.Project, in.ProjectID),
+			EventType:       strings.TrimSpace(in.Event),
+			FilterSource:    strings.TrimSpace(in.Filter),
+			AudienceType:    strings.TrimSpace(in.Audience),
+			Recipients:      in.Recipients,
+			SinkRef:         strings.TrimSpace(in.Sink),
+			TemplateSubject: in.TemplateSubject,
+			TemplateBody:    in.TemplateBody,
+		})
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "created notification rule "+view.Name)
+	})
+
+	addTool(s, &mcp.Tool{Name: "notification_rule_info", Description: "Get event notification rule details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.EventNotificationRuleInfo(strings.TrimSpace(in.Rule))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "notification rule "+view.Name)
+	})
+
+	addTool(s, &mcp.Tool{Name: "notification_rule_modify", Description: "Modify an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.ModifyEventNotificationRule(strings.TrimSpace(in.Rule), app.EventNotificationRuleModifyInput{
+			Name:            in.Name,
+			ProjectRef:      in.ProjectRef,
+			EventType:       in.Event,
+			FilterSource:    in.Filter,
+			AudienceType:    in.Audience,
+			Recipients:      in.Recipients,
+			SinkRef:         in.Sink,
+			TemplateSubject: in.TemplateSubject,
+			TemplateBody:    in.TemplateBody,
+		})
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "modified notification rule "+view.Name)
+	})
+
+	addTool(s, &mcp.Tool{Name: "notification_rule_enable", Description: "Enable an event notification rule; writes audit."}, notificationRuleToggleHandler(opts, true))
+	addTool(s, &mcp.Tool{Name: "notification_rule_disable", Description: "Disable an event notification rule; writes audit."}, notificationRuleToggleHandler(opts, false))
+
+	addTool(s, &mcp.Tool{Name: "notification_rule_remove", Description: "Delete an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		ruleID := strings.TrimSpace(in.Rule)
+		if err := svc.DeleteEventNotificationRule(ruleID); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"removed": ruleID}, "deleted notification rule")
+	})
+
 	addTool(s, &mcp.Tool{Name: "notification_delivery_list", Description: "List notification deliveries; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
@@ -424,6 +568,25 @@ func reminderRuleToggleHandler(opts Options, enabled bool) mcp.ToolHandlerFor[Re
 	}
 }
 
+func notificationRuleToggleHandler(opts Options, enabled bool) mcp.ToolHandlerFor[NotificationRuleRefInput, ToolEnvelope] {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		var view app.EventNotificationRuleView
+		if enabled {
+			view, err = svc.EnableEventNotificationRule(strings.TrimSpace(in.Rule))
+		} else {
+			view, err = svc.DisableEventNotificationRule(strings.TrimSpace(in.Rule))
+		}
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "notification rule "+view.Name)
+	}
+}
+
 func notificationSinkViewsForMCP(rows []app.NotificationSinkView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
@@ -488,6 +651,34 @@ func reminderRuleViewForMCP(row app.ReminderRuleView) map[string]any {
 	}
 }
 
+func notificationRuleViewsForMCP(rows []app.EventNotificationRuleView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notificationRuleViewForMCP(row))
+	}
+	return out
+}
+
+func notificationRuleViewForMCP(row app.EventNotificationRuleView) map[string]any {
+	return map[string]any{
+		"id":               row.ID,
+		"workspace_id":     row.WorkspaceID,
+		"project_id":       row.ProjectID,
+		"name":             row.Name,
+		"enabled":          row.Enabled,
+		"event_type":       row.EventType,
+		"filter_source":    row.FilterSource,
+		"audience_type":    row.AudienceType,
+		"recipient_users":  notificationUserInfosForMCP(row.RecipientUsers),
+		"sink_id":          row.SinkID,
+		"template_subject": row.TemplateSubject,
+		"template_body":    row.TemplateBody,
+		"created_by":       task.UserInfoToJSON(row.CreatedBy),
+		"created_at":       row.CreatedAt,
+		"modified_at":      row.ModifiedAt,
+	}
+}
+
 func notificationDeliveryViewsForMCP(rows []app.NotificationDeliveryView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
@@ -504,6 +695,8 @@ func notificationDeliveryViewForMCP(row app.NotificationDeliveryView) map[string
 		"rule_id":                       row.RuleID,
 		"sink_id":                       row.SinkID,
 		"task_uuid":                     row.TaskUUID,
+		"object_kind":                   row.ObjectKind,
+		"object_id":                     row.ObjectID,
 		"recipient":                     task.UserInfoToJSON(row.Recipient),
 		"event_id":                      row.EventID,
 		"event_type":                    row.EventType,

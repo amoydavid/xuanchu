@@ -291,7 +291,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 ## Tools
 
-当前提供 95 个 tools。
+当前提供 102 个 tools。
 
 ### 任务（16 tools）
 
@@ -914,7 +914,7 @@ Context 是预定义的查询过滤器，供 CLI 交互使用。Agent 可以读�
 
 ### Hook（10 tools）
 
-Hook 是事件驱动的 Webhook 端点。支持的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。
+Hook 是事件驱动的机器到机器出站集成。Hook 使用 workspace 级 notification sink，不直接接收 URL 或 secret。支持的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。
 
 #### `hook_add`
 
@@ -926,9 +926,8 @@ Hook 是事件驱动的 Webhook 端点。支持的事件：`task.created`、`tas
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
 | `name` | string | 是 | Hook 名称 |
-| `url` | string | 是 | Webhook URL |
+| `sink` | string | 是 | 当前 workspace 内的 notification sink 名称或 ID |
 | `events` | string[] | 是 | 事件类型列表 |
-| `secret` | string | 否 | HMAC 签名密钥 |
 | `active` | bool | 否 | 是否启用，默认 true |
 
 #### `hook_list`
@@ -957,9 +956,8 @@ Hook 是事件驱动的 Webhook 端点。支持的事件：`task.created`、`tas
 | `workspace` | string | 否 | |
 | `hook` | string | 是 | Hook ID |
 | `name` | string | 否 | |
-| `url` | string | 否 | |
+| `sink` | string | 否 | 当前 workspace 内的 notification sink 名称或 ID |
 | `events` | string[] | 否 | |
-| `secret` | string | 否 | |
 | `active` | bool | 否 | |
 
 #### `hook_remove`
@@ -1003,7 +1001,7 @@ Hook 是事件驱动的 Webhook 端点。支持的事件：`task.created`、`tas
 
 #### `hook_test`
 
-测试 Hook 配置（只读）。
+测试 Hook 配置，生成一次测试投递。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -1012,16 +1010,16 @@ Hook 是事件驱动的 Webhook 端点。支持的事件：`task.created`、`tas
 
 #### `hook_ping`
 
-Ping Hook（写审计日志）。
+Ping Hook，生成一次 ping 投递并写审计日志。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | |
 | `hook` | string | 是 | Hook ID |
 
-### 通知与提醒（17 tools）
+### 通知与提醒（24 tools）
 
-通知与提醒是时间驱动的投递能力。`notification_*` 管理 sink 和 delivery，`reminder_*` 管理基于 `due` 的提醒规则。
+通知与提醒包含三类能力：`notification_sink_*` 管理出站 sink，`reminder_rule_*` 管理基于时间和任务过滤器的提醒规则，`notification_rule_*` 管理基于事件的用户通知规则，`notification_delivery_*` 查看和 replay 投递记录。
 
 #### `notification_sink_add`
 
@@ -1173,6 +1171,79 @@ Ping Hook（写审计日志）。
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
 | `rule` | string | 是 | rule ID |
+
+#### `notification_rule_add`
+
+创建事件通知规则。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | project slug |
+| `project_id` | string | 否 | project UUID |
+| `name` | string | 是 | 规则名称 |
+| `event` | string | 是 | 事件类型，例如 `task.unblocked` |
+| `filter` | string | 否 | task 事件可用的任务过滤表达式 |
+| `audience` | string | 是 | `actor`、`assignees`、`explicit_users`、`assignees_and_explicit_users` |
+| `recipients` | string[] | 否 | 显式用户引用 |
+| `sink` | string | 是 | sink 名称或 ID |
+| `template_subject` | string | 否 | 通知标题模板 |
+| `template_body` | string | 否 | 通知正文模板 |
+
+当前允许的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。`assignees` 相关 audience 只支持 `task.*` 事件。
+
+#### `notification_rule_list`
+
+列出事件通知规则。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `include_disabled` | bool | 否 | 是否包含 disabled rule |
+
+#### `notification_rule_info`
+
+查看事件通知规则。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `rule` | string | 是 | notification rule ID |
+
+#### `notification_rule_modify`
+
+修改事件通知规则。未传字段保持不变。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | 当前访问 scope |
+| `project_id` | string | 否 | 当前访问 scope |
+| `rule` | string | 是 | notification rule ID |
+| `name` | string | 否 | |
+| `project_ref` | string | 否 | 新规则项目范围，空字符串表示清除项目范围 |
+| `event` | string | 否 | |
+| `filter` | string | 否 | |
+| `audience` | string | 否 | |
+| `recipients` | string[] | 否 | |
+| `sink` | string | 否 | sink 名称或 ID |
+| `template_subject` | string | 否 | |
+| `template_body` | string | 否 | |
+
+#### `notification_rule_enable` / `notification_rule_disable` / `notification_rule_remove`
+
+启用、禁用或删除事件通知规则。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `rule` | string | 是 | notification rule ID |
 
 #### `notification_delivery_list`
 

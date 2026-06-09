@@ -13,12 +13,12 @@ import (
 // helper: 创建 workspace hook 并返回 hook ID
 func createTestHook(t *testing.T, scoped *app.Service, name string) app.HookView {
 	t.Helper()
+	createHTTPTestSink(t, scoped, "hook-sink")
 	hook, err := scoped.AddHook(app.HookAddInput{
-		Name:        name,
-		ScopeType:   app.HookScopeWorkspace,
-		EventTypes:  []string{"task.created"},
-		EndpointURL: "https://example.com/webhook",
-		Secret:      "s3cret",
+		Name:       name,
+		ScopeType:  app.HookScopeWorkspace,
+		EventTypes: []string{"task.created"},
+		SinkRef:    "hook-sink",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -29,17 +29,42 @@ func createTestHook(t *testing.T, scoped *app.Service, name string) app.HookView
 // helper: 创建 project hook 并返回 hook ID
 func createTestProjectHook(t *testing.T, scoped *app.Service, projectRef string) app.HookView {
 	t.Helper()
+	createHTTPTestSink(t, scoped, "hook-sink")
 	hook, err := scoped.AddHook(app.HookAddInput{
-		Name:        "proj-hook",
-		ScopeType:   app.HookScopeProject,
-		ProjectRef:  projectRef,
-		EventTypes:  []string{"task.created"},
-		EndpointURL: "https://example.com/proj-webhook",
+		Name:       "proj-hook",
+		ScopeType:  app.HookScopeProject,
+		ProjectRef: projectRef,
+		EventTypes: []string{"task.created"},
+		SinkRef:    "hook-sink",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return hook
+}
+
+func createHTTPTestSink(t *testing.T, svc *app.Service, name string) app.NotificationSinkView {
+	t.Helper()
+	existing, err := svc.ListNotificationSinks(true)
+	if err == nil {
+		for _, sink := range existing {
+			if sink.Name == name {
+				return sink
+			}
+		}
+	}
+	sink, err := svc.AddNotificationSink(app.NotificationSinkAddInput{
+		Name:         name,
+		Type:         app.NotificationSinkTypeWebhook,
+		EndpointMode: app.NotificationEndpointStaticURL,
+		URL:          "https://example.com/webhook",
+		AllowedHosts: []string{"example.com"},
+		Secret:       "s3cret",
+	})
+	if err != nil {
+		t.Fatalf("AddNotificationSink(%s) error = %v", name, err)
+	}
+	return sink
 }
 
 // helper: 创建 dead-lettered delivery
@@ -89,19 +114,19 @@ func TestHookCreateWorkspaceHook(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "hook:write", "hook:read")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 
-	body := `{"name":"my-hook","scope_type":"workspace","event_types":["task.created","task.completed"],"endpoint_url":"https://example.com/hook","secret":"hunter2"}`
+	body := `{"name":"my-hook","scope_type":"workspace","event_types":["task.created","task.completed"],"sink":"hook-sink"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
 	var resp struct {
 		Data struct {
-			ID          string   `json:"id"`
-			Name        string   `json:"name"`
-			ScopeType   string   `json:"scope_type"`
-			EventTypes  []string `json:"event_types"`
-			EndpointURL string   `json:"endpoint_url"`
-			Enabled     bool     `json:"enabled"`
+			ID         string   `json:"id"`
+			Name       string   `json:"name"`
+			ScopeType  string   `json:"scope_type"`
+			EventTypes []string `json:"event_types"`
+			SinkID     string   `json:"sink_id"`
+			Enabled    bool     `json:"enabled"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
@@ -139,7 +164,7 @@ func TestHookCreateProjectHook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"name":"proj-hook","scope_type":"project","project_ref":"myproj","event_types":["task.created"],"endpoint_url":"https://example.com/proj"}`
+	body := `{"name":"proj-hook","scope_type":"project","project_ref":"myproj","event_types":["task.created"],"sink":"hook-sink"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
@@ -314,7 +339,7 @@ func TestHookWriteRequiresHookWriteScope(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "hook:read")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 
-	body := `{"name":"fail","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"https://example.com/hook"}`
+	body := `{"name":"fail","scope_type":"workspace","event_types":["task.created"],"sink":"hook-sink"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
 }
@@ -344,7 +369,7 @@ func TestHookWriteRequiresPermission(t *testing.T) {
 	srv := NewServer(Options{Store: store})
 
 	auth := map[string]string{"Authorization": "Bearer " + viewerToken.RawToken, "Content-Type": "application/json"}
-	body := `{"name":"fail","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"https://example.com/hook"}`
+	body := `{"name":"fail","scope_type":"workspace","event_types":["task.created"],"sink":"hook-sink"}`
 	rr := requestHTTPBody(t, srv, http.MethodPost, "/api/v1/hooks", body, auth)
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "permission_denied")
 }
@@ -533,12 +558,13 @@ func TestHookDeliveryInfoRespectsProjectTokenScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	createHTTPTestSink(t, ownerSvc, "hook-sink")
 	hook, err := ownerSvc.AddHook(app.HookAddInput{
-		Name:        "beta-hook",
-		ScopeType:   app.HookScopeProject,
-		ProjectRef:  projectB.ID,
-		EventTypes:  []string{"task.created"},
-		EndpointURL: "https://example.com/hook",
+		Name:       "beta-hook",
+		ScopeType:  app.HookScopeProject,
+		ProjectRef: projectB.ID,
+		EventTypes: []string{"task.created"},
+		SinkRef:    "hook-sink",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -600,7 +626,7 @@ func TestProjectScopedTokenCannotCreateWorkspaceHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := NewServer(Options{Store: store})
-	body := `{"name":"wide-hook","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"https://example.com/hook"}`
+	body := `{"name":"wide-hook","scope_type":"workspace","event_types":["task.created"],"sink":"hook-sink"}`
 	rr := requestHTTPBody(t, srv, http.MethodPost, "/api/v1/hooks", body, map[string]string{
 		"Authorization": "Bearer " + token.RawToken,
 		"Content-Type":  "application/json",
@@ -620,16 +646,25 @@ func TestHookCreateRejectsInvalidEventType(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "hook:write")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 
-	body := `{"name":"bad-event","scope_type":"workspace","event_types":["invalid.event"],"endpoint_url":"https://example.com/hook"}`
+	body := `{"name":"bad-event","scope_type":"workspace","event_types":["invalid.event"],"sink":"hook-sink"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "hook_event_types_invalid")
 }
 
-func TestHookCreateRejectsInvalidEndpoint(t *testing.T) {
+func TestHookCreateRejectsUnknownSink(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "hook:write")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 
-	body := `{"name":"bad-url","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"not-a-url"}`
+	body := `{"name":"bad-url","scope_type":"workspace","event_types":["task.created"],"sink":"missing-sink"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
-	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "hook_endpoint_invalid")
+	assertHTTPErrorCode(t, rr, http.StatusNotFound, "notification_sink_not_found")
+}
+
+func TestHookCreateRejectsDirectURL(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "hook:write")
+	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
+
+	body := `{"name":"bad-url","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"https://example.com/hook"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "hook_url_not_supported")
 }

@@ -109,6 +109,130 @@ func TestHTTPReminderRuleScheduleFilterLifecycle(t *testing.T) {
 	}
 }
 
+func TestHTTPEventNotificationRuleLifecycle(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "notification:write", "notification:read")
+	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
+
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink, err := svc.AddNotificationSink(app.NotificationSinkAddInput{Name: "openclaw", Type: "webhook", EndpointMode: "static_url", URL: "https://example.com/notify"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"name":"task-unblocked-openclaw","event_type":"task.unblocked","filter_source":"status:pending","audience_type":"assignees","sink":"` + sink.ID + `","template_subject":"任务已解除阻塞","template_body":"{{task.description}}"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules", body, auth)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var created struct {
+		Data struct {
+			ID              string `json:"id"`
+			Name            string `json:"name"`
+			EventType       string `json:"event_type"`
+			FilterSource    string `json:"filter_source"`
+			AudienceType    string `json:"audience_type"`
+			SinkID          string `json:"sink_id"`
+			TemplateSubject string `json:"template_subject"`
+			Enabled         bool   `json:"enabled"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Data.ID == "" || created.Data.EventType != "task.unblocked" || created.Data.AudienceType != "assignees" || created.Data.SinkID != sink.ID || !created.Data.Enabled {
+		t.Fatalf("created rule = %#v", created.Data)
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/notification-rules", auth)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "task-unblocked-openclaw") {
+		t.Fatalf("list status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	patch := `{"name":"task-unblocked-renamed","audience_type":"actor"}`
+	rr = requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/notification-rules/"+created.Data.ID, patch, auth)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("modify status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"audience_type":"actor"`) {
+		t.Fatalf("modify body=%s", rr.Body.String())
+	}
+
+	rr = requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules/"+created.Data.ID+"/disable", "", auth)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"enabled":false`) {
+		t.Fatalf("disable status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules/"+created.Data.ID+"/enable", "", auth)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"enabled":true`) {
+		t.Fatalf("enable status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = requestHTTPBody(t, fixture.server, http.MethodDelete, "/api/v1/notification-rules/"+created.Data.ID, "", auth)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/notification-rules/"+created.Data.ID, auth)
+	assertHTTPErrorCode(t, rr, http.StatusNotFound, "notification_rule_not_found")
+}
+
+func TestHTTPEventNotificationRuleRejectsURL(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "notification:write")
+	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
+
+	body := `{"name":"bad-url","event_type":"task.unblocked","audience_type":"actor","url":"https://example.com/notify"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules", body, auth)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "notification_rule_url_not_supported")
+
+	patch := `{"url":"https://example.com/notify"}`
+	rr = requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/notification-rules/missing", patch, auth)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "notification_rule_url_not_supported")
+
+	body = `{"name":"bad-endpoint-url","event_type":"task.unblocked","audience_type":"actor","endpoint_url":"https://example.com/notify"}`
+	rr = requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules", body, auth)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "notification_rule_url_not_supported")
+
+	patch = `{"endpoint_url":"https://example.com/notify"}`
+	rr = requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/notification-rules/missing", patch, auth)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "notification_rule_url_not_supported")
+}
+
+func TestHTTPEventNotificationRuleRejectsCrossWorkspaceSink(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "notification:write")
+	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
+
+	otherWS := storage.Workspace{ID: uuid.NewString(), Slug: "other", Name: "Other", CreatedAt: 1000, ModifiedAt: 1000}
+	if _, err := storage.NewWorkspaceRepository(fixture.server.store.DB()).Create(otherWS); err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	sink := storage.NotificationSink{
+		ID:                  uuid.NewString(),
+		WorkspaceID:         otherWS.ID,
+		Name:                "foreign",
+		Type:                "webhook",
+		EndpointMode:        "static_url",
+		URL:                 "https://example.com/notify",
+		AllowedHostsJSON:    `["example.com"]`,
+		HTTPMethod:          "POST",
+		HeaderTemplatesJSON: `[]`,
+		SecretRefsJSON:      `{}`,
+		Enabled:             &enabled,
+		TimeoutSeconds:      10,
+		MaxAttempts:         5,
+		CreatedBy:           getFirstUserID(t, fixture.server.store),
+		CreatedAt:           1000,
+		ModifiedAt:          1000,
+	}
+	if err := storage.NewNotificationSinkRepository(fixture.server.store.DB()).Create(sink); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"name":"foreign-sink","event_type":"task.unblocked","audience_type":"actor","sink":"` + sink.ID + `"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules", body, auth)
+	assertHTTPErrorCode(t, rr, http.StatusNotFound, "notification_sink_not_found")
+}
+
 func TestHTTPNotificationDeliveryReplay(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "notification:write", "notification:read")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}

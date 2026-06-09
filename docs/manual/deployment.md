@@ -62,18 +62,17 @@ xuanchu token create task-agent --scope 'task:*' --expires-in 720h
 
 ## Secret 安全
 
-建议使用 `--secret-stdin` 或 `--secret-file`，避免 secret 进入 shell history、process list 或 CI log。
+Hook 本身不再保存 URL 或 secret；出站 endpoint 和签名 secret 由 workspace 级 notification sink 管理。避免 secret 进入 shell history、process list 或 CI log，建议通过环境变量、secret manager 或 secret config 注入。
 
 ```bash
-echo "my-secret-key" | xuanchu hook add my-hook \
-  --secret-stdin \
-  --event task.created \
-  --url https://example.test/hook
+xuanchu notification sink add audit-stream \
+  --type webhook \
+  --url https://example.test/hook \
+  --secret "$WEBHOOK_SECRET"
 
 xuanchu hook add my-hook \
-  --secret-file /run/secrets/hook-secret \
   --event task.created \
-  --url https://example.test/hook
+  --sink audit-stream
 ```
 
 数据库文件和备份文件建议权限为 `0600`：

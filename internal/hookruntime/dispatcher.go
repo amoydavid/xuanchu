@@ -35,6 +35,7 @@ type DispatcherOptions struct {
 type Dispatcher struct {
 	opts         DispatcherOptions
 	hookRepo     *storage.HookRepository
+	sinkRepo     *storage.NotificationSinkRepository
 	deliveryRepo *storage.HookDeliveryRepository
 	rng          *rand.Rand
 	rngMu        sync.Mutex
@@ -78,6 +79,7 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	return &Dispatcher{
 		opts:         opts,
 		hookRepo:     storage.NewHookRepository(opts.Store.DB()),
+		sinkRepo:     storage.NewNotificationSinkRepository(opts.Store.DB()),
 		deliveryRepo: storage.NewHookDeliveryRepository(opts.Store.DB()),
 		rng:          rand.New(rand.NewSource(seed)),
 	}
@@ -192,8 +194,19 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, delivery storage.HookDeliv
 		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now)
 	}
 
+	sink, err := d.sinkRepo.GetByID(delivery.SinkID)
+	if err != nil {
+		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "sink not found")
+	}
+	if sink.WorkspaceID != delivery.WorkspaceID {
+		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "sink workspace mismatch")
+	}
+	if sink.Enabled == nil || !*sink.Enabled {
+		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now)
+	}
+
 	// SSRF 重新验证（防止 DNS rebinding 攻击）
-	if err := app.ValidateWebhookEndpointURL(ctx, hook.EndpointURL, d.opts.Resolver); err != nil {
+	if err := app.ValidateWebhookEndpointURL(ctx, delivery.ResolvedURL, d.opts.Resolver); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
@@ -201,18 +214,26 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, delivery storage.HookDeliv
 	}
 
 	// 构造请求
-	body := []byte(delivery.PayloadJSON)
+	bodyText := delivery.RenderedBody
+	if bodyText == "" {
+		bodyText = delivery.PayloadJSON
+	}
+	body := []byte(bodyText)
+	method := delivery.RenderedMethod
+	if method == "" {
+		method = http.MethodPost
+	}
 
 	timeout := time.Duration(hook.TimeoutSeconds) * time.Second
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, hook.EndpointURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, method, delivery.ResolvedURL, bytes.NewReader(body))
 	if err != nil {
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "build request: "+err.Error())
 	}
 
-	headers, err := HeadersForDelivery(delivery, hook, body, now, d.opts.Version)
+	headers, err := HeadersForDelivery(delivery, hook.ID, sink.Secret, body, now, d.opts.Version)
 	if err != nil {
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "build headers: "+err.Error())
 	}

@@ -95,8 +95,8 @@ weight: 210
 | `hook_scope_invalid` | hook scope 不是 workspace/project |
 | `hook_project_required` | project-scoped hook 缺少 project |
 | `hook_event_types_invalid` | event type 为空或不支持 |
-| `hook_endpoint_invalid` | endpoint URL 非法或被 SSRF 防护拦截 |
-| `hook_secret_invalid` | secret 非法或过长 |
+| `hook_sink_required` | hook 缺少 workspace 级 sink 引用 |
+| `hook_url_not_supported` | hook 使用 sink 模型，不支持直接传 `url` 或 `endpoint_url` |
 | `hook_timeout_invalid` | timeout 不在允许范围 |
 | `hook_max_attempts_invalid` | max attempts 不在允许范围 |
 | `hook_delivery_not_found` | delivery 不存在 |
@@ -108,9 +108,13 @@ weight: 210
 |---|---|
 | `notification_sink_invalid` | notification sink 参数非法，例如缺少 URL、动态 endpoint 缺少 allowed host、HTTP template body JSON 非法 |
 | `notification_sink_not_found` | notification sink 不存在，或不属于当前 workspace |
+| `notification_rule_invalid` | notification rule 参数非法，例如事件类型、filter 或 audience 不支持 |
+| `notification_rule_not_found` | notification rule 不存在，或不属于当前 workspace/project scope |
+| `notification_rule_url_not_supported` | notification rule 使用 sink 模型，不支持直接传 URL |
 | `reminder_rule_invalid` | reminder rule 参数非法，例如 `due_before` 缺少正数 offset、trigger/audience/repeat 不支持 |
 | `reminder_rule_not_found` | reminder rule 不存在，或不属于当前 workspace/project scope |
 | `audience_unsupported` | 当前版本不支持该 reminder audience，例如 project owner/maintainer |
+| `audience_unsupported_for_event` | 当前事件类型不支持所选 notification rule audience |
 | `notification_delivery_not_found` | notification delivery 不存在，或不属于当前 workspace |
 | `notification_delivery_not_replayable` | notification delivery 当前状态不可 replay |
 | `endpoint_template_invalid` | 动态 endpoint 模板非法，例如引用了 secret 变量 |

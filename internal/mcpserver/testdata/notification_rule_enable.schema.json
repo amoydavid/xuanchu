@@ -1,0 +1,40 @@
+{
+  "description": "Enable an event notification rule; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "rule": {
+        "description": "notification rule ID",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "rule"
+    ],
+    "type": "object"
+  },
+  "name": "notification_rule_enable",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

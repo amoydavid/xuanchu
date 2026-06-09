@@ -51,6 +51,28 @@ func (h *e2eTestHelper) createHookDirect(t *testing.T, endpointURL string, event
 	t.Helper()
 	enabled := true
 	typesJSON, _ := json.Marshal(eventTypes)
+	sink := storage.NotificationSink{
+		ID:                  uuid.NewString(),
+		WorkspaceID:         h.wsID,
+		Name:                "e2e-sink-" + uuid.NewString()[:8],
+		Type:                app.NotificationSinkTypeWebhook,
+		EndpointMode:        app.NotificationEndpointStaticURL,
+		URL:                 endpointURL,
+		AllowedHostsJSON:    `["127.0.0.1","localhost","example.com"]`,
+		HTTPMethod:          "POST",
+		HeaderTemplatesJSON: `[]`,
+		SecretRefsJSON:      `{}`,
+		Secret:              "e2e-secret",
+		Enabled:             &enabled,
+		TimeoutSeconds:      10,
+		MaxAttempts:         5,
+		CreatedBy:           h.userID,
+		CreatedAt:           100,
+		ModifiedAt:          100,
+	}
+	if err := storage.NewNotificationSinkRepository(h.store.DB()).Create(sink); err != nil {
+		t.Fatal(err)
+	}
 	row := storage.HookDefinition{
 		ID:             uuid.NewString(),
 		Name:           "e2e-hook",
@@ -58,8 +80,7 @@ func (h *e2eTestHelper) createHookDirect(t *testing.T, endpointURL string, event
 		WorkspaceID:    h.wsID,
 		ActorUserID:    h.userID,
 		EventTypesJSON: string(typesJSON),
-		EndpointURL:    endpointURL,
-		Secret:         "e2e-secret",
+		SinkID:         sink.ID,
 		Enabled:        &enabled,
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
@@ -142,8 +163,8 @@ func TestHookEndToEnd(t *testing.T) {
 
 	// 验证 headers
 	req := receivedRequests[0]
-	if v := req.Header.Get("Content-Type"); v != "application/json; charset=utf-8" {
-		t.Fatalf("Content-Type = %q, want application/json; charset=utf-8", v)
+	if v := req.Header.Get("Content-Type"); v != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", v)
 	}
 	if v := req.Header.Get("X-Xuanchu-Event"); v != "task.created" {
 		t.Fatalf("X-Xuanchu-Event = %q, want task.created", v)
@@ -347,10 +368,8 @@ func TestHookSecretNotInWebhookPayload(t *testing.T) {
 	}))
 	defer webhookTarget.Close()
 
-	secret := "super-secret-value-12345"
-	h.createHookDirect(t, webhookTarget.URL, []string{"task.created"}, func(hd *storage.HookDefinition) {
-		hd.Secret = secret
-	})
+	secret := "e2e-secret"
+	h.createHookDirect(t, webhookTarget.URL, []string{"task.created"})
 
 	_, _ = h.svc.Add(app.AddInput{Description: "secret test task"})
 
@@ -395,10 +414,10 @@ func TestHookSecretNotInDeliveryView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	createHTTPTestSink(t, svc, "hook-sink")
 	hook, err := svc.AddHook(app.HookAddInput{
 		Name: "delivery-secret-hook", ScopeType: app.HookScopeWorkspace,
-		EventTypes: []string{"task.created"}, EndpointURL: "https://example.com/hook",
-		Secret: secret,
+		EventTypes: []string{"task.created"}, SinkRef: "hook-sink",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -455,11 +474,33 @@ func TestHookEndToEndViaHTTPAPI(t *testing.T) {
 	userID := getFirstUserID(t, fixture.server.store)
 	enabled := true
 	typesJSON, _ := json.Marshal([]string{"task.created"})
+	sink := storage.NotificationSink{
+		ID:                  uuid.NewString(),
+		WorkspaceID:         wsID,
+		Name:                "http-e2e-sink",
+		Type:                app.NotificationSinkTypeWebhook,
+		EndpointMode:        app.NotificationEndpointStaticURL,
+		URL:                 webhookTarget.URL,
+		AllowedHostsJSON:    `["127.0.0.1","localhost"]`,
+		HTTPMethod:          "POST",
+		HeaderTemplatesJSON: `[]`,
+		SecretRefsJSON:      `{}`,
+		Secret:              "http-secret",
+		Enabled:             &enabled,
+		TimeoutSeconds:      10,
+		MaxAttempts:         5,
+		CreatedBy:           userID,
+		CreatedAt:           100,
+		ModifiedAt:          100,
+	}
+	if err := storage.NewNotificationSinkRepository(fixture.server.store.DB()).Create(sink); err != nil {
+		t.Fatal(err)
+	}
 	hook := storage.HookDefinition{
 		ID: uuid.NewString(), Name: "http-e2e-hook", ScopeType: "workspace",
 		WorkspaceID: wsID, ActorUserID: userID,
-		EventTypesJSON: string(typesJSON), EndpointURL: webhookTarget.URL,
-		Secret: "http-secret", Enabled: &enabled, TimeoutSeconds: 10, MaxAttempts: 5,
+		EventTypesJSON: string(typesJSON), SinkID: sink.ID,
+		Enabled: &enabled, TimeoutSeconds: 10, MaxAttempts: 5,
 		CreatedAt: 100, ModifiedAt: 100,
 	}
 	if err := storage.NewHookRepository(fixture.server.store.DB()).Create(hook); err != nil {
@@ -497,31 +538,25 @@ func TestHookEndToEndViaHTTPAPI(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// SSRF 测试: 通过 HTTP API 创建 hook 时拒绝私有地址
+// Hook 不再接受直接 URL；SSRF 校验由 workspace sink 负责。
 // ---------------------------------------------------------------------------
 
-func TestHookEndpointSSRFViaHTTPAPI(t *testing.T) {
+func TestHookDirectURLRejectedViaHTTPAPI(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "hook:write")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 
-	ssrfURLs := []struct {
+	cases := []struct {
 		name string
-		url  string
+		body string
 	}{
-		{"loopback", "https://localhost/webhook"},
-		{"127.0.0.1", "https://127.0.0.1/webhook"},
-		{"10.x", "https://10.0.0.1/webhook"},
-		{"172.16.x", "https://172.16.0.1/webhook"},
-		{"192.168.x", "https://192.168.1.1/webhook"},
-		{"169.254.x", "https://169.254.169.254/webhook"},
-		{"100.64.x", "https://100.64.0.1/webhook"},
+		{"url", `{"name":"url-hook","scope_type":"workspace","event_types":["task.created"],"url":"https://example.com/webhook"}`},
+		{"endpoint_url", `{"name":"endpoint-hook","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"https://example.com/webhook"}`},
 	}
 
-	for _, tc := range ssrfURLs {
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := `{"name":"ssrf-hook","scope_type":"workspace","event_types":["task.created"],"endpoint_url":"` + tc.url + `"}`
-			rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", body, auth)
-			assertHTTPErrorCode(t, rr, http.StatusBadRequest, "hook_endpoint_invalid")
+			rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/hooks", tc.body, auth)
+			assertHTTPErrorCode(t, rr, http.StatusBadRequest, "hook_url_not_supported")
 		})
 	}
 }

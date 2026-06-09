@@ -100,18 +100,22 @@ Agent token 明文只在创建响应中出现一次。admin token 不能访问�
 
 ## Secret 安全
 
+- Hook 不直接保存 URL 或 secret；出站 endpoint 和签名 secret 由 workspace 级 notification sink 管理
 - Secret 不会出现在 CLI/HTTP response、audit log、server log 中
-- 建议使用 `--secret-stdin` 或 `--secret-file`，避免 `--secret` 参数进入 shell history / process list / CI log：
+- 建议通过环境变量、CI secret 或 secret manager 写入 sink，避免 secret 进入 shell history / process list / CI log：
 
 ```bash
-# 从 stdin 读取 secret
-echo "my-secret-key" | ./xuanchu hook add my-hook --secret-stdin --event task.created --url https://example.test/hook
+# 先创建 workspace 级出站 sink
+./xuanchu notification sink add audit-stream \
+  --type webhook \
+  --url https://example.test/hook \
+  --secret "$WEBHOOK_SECRET"
 
-# 从文件读取 secret
-./xuanchu hook add my-hook --secret-file /run/secrets/hook-secret --event task.created --url https://example.test/hook
+# Hook 引用 sink，不直接接收 URL 或 secret
+./xuanchu hook add my-hook --event task.created --sink audit-stream
 ```
 
-- Hook secret 会随 SQLite 数据库和 `VACUUM INTO` 备份保存
+- Sink secret 会随 SQLite 数据库和 `VACUUM INTO` 备份保存
 - 建议数据库文件和备份文件权限为 `0600`：
 
 ```bash

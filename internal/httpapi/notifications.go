@@ -75,6 +75,34 @@ type reminderRuleModifyRequest struct {
 	SinkRef       *string   `json:"sink_ref,omitempty"`
 }
 
+type eventNotificationRuleRequest struct {
+	Name            string   `json:"name"`
+	ProjectRef      string   `json:"project_ref"`
+	EventType       string   `json:"event_type"`
+	FilterSource    string   `json:"filter_source"`
+	AudienceType    string   `json:"audience_type"`
+	Recipients      []string `json:"recipients"`
+	Sink            string   `json:"sink"`
+	URL             string   `json:"url,omitempty"`
+	EndpointURL     string   `json:"endpoint_url,omitempty"`
+	TemplateSubject string   `json:"template_subject"`
+	TemplateBody    string   `json:"template_body"`
+}
+
+type eventNotificationRuleModifyRequest struct {
+	Name            *string   `json:"name,omitempty"`
+	ProjectRef      *string   `json:"project_ref,omitempty"`
+	EventType       *string   `json:"event_type,omitempty"`
+	FilterSource    *string   `json:"filter_source,omitempty"`
+	AudienceType    *string   `json:"audience_type,omitempty"`
+	Recipients      *[]string `json:"recipients,omitempty"`
+	Sink            *string   `json:"sink,omitempty"`
+	URL             *string   `json:"url,omitempty"`
+	EndpointURL     *string   `json:"endpoint_url,omitempty"`
+	TemplateSubject *string   `json:"template_subject,omitempty"`
+	TemplateBody    *string   `json:"template_body,omitempty"`
+}
+
 func (s *Server) handleNotificationSinkList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
 	if err != nil {
@@ -366,6 +394,153 @@ func (s *Server) handleReminderRuleDelete(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleEventNotificationRuleList(w http.ResponseWriter, r *http.Request) {
+	projectRef := requestProjectRef(r)
+	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ListEventNotificationRules(projectRef, r.URL.Query().Get("all") == "true")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, eventNotificationRuleResponse(row))
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleEventNotificationRuleCreate(w http.ResponseWriter, r *http.Request) {
+	var req eventNotificationRuleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	if req.URL != "" || req.EndpointURL != "" {
+		writeError(w, http.StatusBadRequest, "notification_rule_url_not_supported", "notification rule uses sink, not url", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, req.ProjectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.AddEventNotificationRule(app.EventNotificationRuleAddInput{
+		Name:            req.Name,
+		ProjectRef:      req.ProjectRef,
+		EventType:       req.EventType,
+		FilterSource:    req.FilterSource,
+		AudienceType:    req.AudienceType,
+		Recipients:      req.Recipients,
+		SinkRef:         req.Sink,
+		TemplateSubject: req.TemplateSubject,
+		TemplateBody:    req.TemplateBody,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, eventNotificationRuleResponse(view), nil)
+}
+
+func (s *Server) handleEventNotificationRuleInfo(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.EventNotificationRuleInfo(chi.URLParam(r, "ruleID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
+}
+
+func (s *Server) handleEventNotificationRuleModify(w http.ResponseWriter, r *http.Request) {
+	var req eventNotificationRuleModifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	if req.URL != nil || req.EndpointURL != nil {
+		writeError(w, http.StatusBadRequest, "notification_rule_url_not_supported", "notification rule uses sink, not url", nil)
+		return
+	}
+	projectRef := ""
+	if req.ProjectRef != nil {
+		projectRef = *req.ProjectRef
+	}
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ModifyEventNotificationRule(chi.URLParam(r, "ruleID"), app.EventNotificationRuleModifyInput{
+		Name:            req.Name,
+		ProjectRef:      req.ProjectRef,
+		EventType:       req.EventType,
+		FilterSource:    req.FilterSource,
+		AudienceType:    req.AudienceType,
+		Recipients:      req.Recipients,
+		SinkRef:         req.Sink,
+		TemplateSubject: req.TemplateSubject,
+		TemplateBody:    req.TemplateBody,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
+}
+
+func (s *Server) handleEventNotificationRuleEnable(w http.ResponseWriter, r *http.Request) {
+	s.handleEventNotificationRuleToggle(w, r, true)
+}
+
+func (s *Server) handleEventNotificationRuleDisable(w http.ResponseWriter, r *http.Request) {
+	s.handleEventNotificationRuleToggle(w, r, false)
+}
+
+func (s *Server) handleEventNotificationRuleToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if enabled {
+		view, err := scoped.EnableEventNotificationRule(chi.URLParam(r, "ruleID"))
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
+		return
+	}
+	view, err := scoped.DisableEventNotificationRule(chi.URLParam(r, "ruleID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, eventNotificationRuleResponse(view), nil)
+}
+
+func (s *Server) handleEventNotificationRuleDelete(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.DeleteEventNotificationRule(chi.URLParam(r, "ruleID")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
 	if err != nil {
@@ -469,6 +644,26 @@ func reminderRuleResponse(row app.ReminderRuleView) map[string]any {
 	}
 }
 
+func eventNotificationRuleResponse(row app.EventNotificationRuleView) map[string]any {
+	return map[string]any{
+		"id":               row.ID,
+		"workspace_id":     row.WorkspaceID,
+		"project_id":       row.ProjectID,
+		"name":             row.Name,
+		"enabled":          row.Enabled,
+		"event_type":       row.EventType,
+		"filter_source":    row.FilterSource,
+		"audience_type":    row.AudienceType,
+		"recipient_users":  userInfosToJSON(row.RecipientUsers),
+		"sink_id":          row.SinkID,
+		"template_subject": row.TemplateSubject,
+		"template_body":    row.TemplateBody,
+		"created_by":       task.UserInfoToJSON(row.CreatedBy),
+		"created_at":       row.CreatedAt,
+		"modified_at":      row.ModifiedAt,
+	}
+}
+
 func notificationDeliveryResponse(row app.NotificationDeliveryView) map[string]any {
 	return map[string]any{
 		"id":                            row.ID,
@@ -477,6 +672,8 @@ func notificationDeliveryResponse(row app.NotificationDeliveryView) map[string]a
 		"rule_id":                       row.RuleID,
 		"sink_id":                       row.SinkID,
 		"task_uuid":                     row.TaskUUID,
+		"object_kind":                   row.ObjectKind,
+		"object_id":                     row.ObjectID,
 		"recipient":                     task.UserInfoToJSON(row.Recipient),
 		"event_id":                      row.EventID,
 		"event_type":                    row.EventType,

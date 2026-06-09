@@ -34,13 +34,7 @@
       "project_id": {
         "type": "string"
       },
-      "secret": {
-        "type": [
-          "null",
-          "string"
-        ]
-      },
-      "url": {
+      "sink": {
         "type": [
           "null",
           "string"

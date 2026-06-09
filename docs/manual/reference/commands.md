@@ -169,9 +169,9 @@ xuanchu mcp stdio
 
 ```bash
 xuanchu hook list [--project <slug>]
-xuanchu hook add <name> --event <event> --url <url> [--scope workspace|project] [--project <slug>] [--secret <secret>] [--secret-stdin] [--secret-file <path>] [--timeout <seconds>] [--max-attempts <n>]
+xuanchu hook add <name> --event <event> --sink <sink-id-or-name> [--scope workspace|project] [--project <slug>] [--timeout <seconds>] [--max-attempts <n>]
 xuanchu hook info <hook-id>
-xuanchu hook modify <hook-id> [--name <name>] [--event <event>] [--url <url>] [--secret-stdin] [--secret-file <path>] [--timeout <seconds>] [--max-attempts <n>]
+xuanchu hook modify <hook-id> [--name <name>] [--event <event>] [--sink <sink-id-or-name>] [--timeout <seconds>] [--max-attempts <n>]
 xuanchu hook enable <hook-id>
 xuanchu hook disable <hook-id>
 xuanchu hook delete <hook-id>
@@ -198,6 +198,14 @@ xuanchu reminder rule modify <rule-id> [--name <name>] [--schedule daily@HH:MM] 
 xuanchu reminder rule enable <rule-id>
 xuanchu reminder rule disable <rule-id>
 xuanchu reminder rule delete <rule-id>
+
+xuanchu notification rule list [--project <slug>] [--all]
+xuanchu notification rule add <name> --event <event> --audience actor|assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--filter <task-filter>] [--recipient <user-ref>] [--project <slug>] [--template-subject <template>] [--template-body <template>]
+xuanchu notification rule info <rule-id>
+xuanchu notification rule modify <rule-id> [--name <name>] [--event <event>] [--audience actor|assignees|explicit_users|assignees_and_explicit_users] [--sink <sink-id-or-name>] [--filter <task-filter>] [--recipient <user-ref>] [--project <slug>] [--template-subject <template>] [--template-body <template>]
+xuanchu notification rule enable <rule-id>
+xuanchu notification rule disable <rule-id>
+xuanchu notification rule delete <rule-id>
 
 xuanchu notification delivery list [--status queued|retry_wait|delivering|succeeded|dead_lettered|disabled_skipped] [--sink <sink-id>] [--limit <n>]
 xuanchu notification delivery info <delivery-id>

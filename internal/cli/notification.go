@@ -21,6 +21,7 @@ func newNotificationCommand(opts Options) *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newNotificationSinkCommand(opts))
+	cmd.AddCommand(newNotificationRuleCommand(opts))
 	cmd.AddCommand(newNotificationDeliveryCommand(opts))
 	return cmd
 }
@@ -622,6 +623,353 @@ func newNotificationDeliveryReplayCommand(opts Options) *cobra.Command {
 	}
 }
 
+func newNotificationRuleCommand(opts Options) *cobra.Command {
+	cmd := &cobra.Command{Use: "rule", Short: "管理事件通知规则", Args: cobra.NoArgs}
+	cmd.AddCommand(newNotificationRuleAddCommand(opts))
+	cmd.AddCommand(newNotificationRuleListCommand(opts))
+	cmd.AddCommand(newNotificationRuleInfoCommand(opts))
+	cmd.AddCommand(newNotificationRuleModifyCommand(opts))
+	cmd.AddCommand(newNotificationRuleEnableCommand(opts))
+	cmd.AddCommand(newNotificationRuleDisableCommand(opts))
+	cmd.AddCommand(newNotificationRuleDeleteCommand(opts))
+	return cmd
+}
+
+type notificationRuleCLIInput struct {
+	projectRef      string
+	eventType       string
+	filterSource    string
+	audience        string
+	recipients      []string
+	sinkRef         string
+	templateSubject string
+	templateBody    string
+	name            string
+}
+
+func bindNotificationRuleFlags(cmd *cobra.Command, input *notificationRuleCLIInput) {
+	cmd.Flags().StringVar(&input.projectRef, "project", "", "项目 slug")
+	cmd.Flags().StringVar(&input.eventType, "event", "", "事件类型，例如 task.unblocked")
+	cmd.Flags().StringVar(&input.filterSource, "filter", "", "任务过滤表达式，仅 task 事件支持")
+	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: actor、assignees、explicit_users、assignees_and_explicit_users")
+	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
+	cmd.Flags().StringVar(&input.sinkRef, "sink", "", "通知 sink 名称或 ID")
+	cmd.Flags().StringVar(&input.templateSubject, "template-subject", "", "通知标题模板")
+	cmd.Flags().StringVar(&input.templateBody, "template-body", "", "通知正文模板")
+}
+
+func (input notificationRuleCLIInput) toApp(name string) app.EventNotificationRuleAddInput {
+	return app.EventNotificationRuleAddInput{
+		Name:            name,
+		ProjectRef:      input.projectRef,
+		EventType:       input.eventType,
+		FilterSource:    input.filterSource,
+		AudienceType:    input.audience,
+		Recipients:      input.recipients,
+		SinkRef:         input.sinkRef,
+		TemplateSubject: input.templateSubject,
+		TemplateBody:    input.templateBody,
+	}
+}
+
+func (input notificationRuleCLIInput) toModifyApp(cmd *cobra.Command) app.EventNotificationRuleModifyInput {
+	var mod app.EventNotificationRuleModifyInput
+	if cmd.Flags().Changed("name") {
+		mod.Name = &input.name
+	}
+	if cmd.Flags().Changed("project") {
+		mod.ProjectRef = &input.projectRef
+	}
+	if cmd.Flags().Changed("event") {
+		mod.EventType = &input.eventType
+	}
+	if cmd.Flags().Changed("filter") {
+		mod.FilterSource = &input.filterSource
+	}
+	if cmd.Flags().Changed("audience") {
+		mod.AudienceType = &input.audience
+	}
+	if cmd.Flags().Changed("recipient") {
+		mod.Recipients = &input.recipients
+	}
+	if cmd.Flags().Changed("sink") {
+		mod.SinkRef = &input.sinkRef
+	}
+	if cmd.Flags().Changed("template-subject") {
+		mod.TemplateSubject = &input.templateSubject
+	}
+	if cmd.Flags().Changed("template-body") {
+		mod.TemplateBody = &input.templateBody
+	}
+	return mod
+}
+
+func newNotificationRuleAddCommand(opts Options) *cobra.Command {
+	var input notificationRuleCLIInput
+	cmd := &cobra.Command{
+		Use:   "add <name>",
+		Short: "创建事件通知规则",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			addInput := input.toApp(args[0])
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				view, err := client.AddEventNotificationRule(context.Background(), currentOpts.Workspace, notificationRuleInputToRemote(addInput))
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), notificationRuleViewForJSON(view))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Created notification rule %s (%s)\n", view.Name, view.ID)
+				return nil
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			view, err := svc.AddEventNotificationRule(addInput)
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), notificationRuleViewForJSON(view))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Created notification rule %s (%s)\n", view.Name, view.ID)
+			return nil
+		},
+	}
+	bindNotificationRuleFlags(cmd, &input)
+	return cmd
+}
+
+func newNotificationRuleListCommand(opts Options) *cobra.Command {
+	var projectRef string
+	var includeDisabled bool
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "列出事件通知规则",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				rows, err := client.ListEventNotificationRules(context.Background(), currentOpts.Workspace, projectRef, includeDisabled)
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), notificationRuleViewsForJSON(rows))
+				}
+				renderNotificationRuleList(cmd.OutOrStdout(), rows)
+				return nil
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			rows, err := svc.ListEventNotificationRules(projectRef, includeDisabled)
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), notificationRuleViewsForJSON(rows))
+			}
+			renderNotificationRuleList(cmd.OutOrStdout(), rows)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&projectRef, "project", "", "按项目过滤")
+	cmd.Flags().BoolVar(&includeDisabled, "all", false, "包含 disabled rule")
+	return cmd
+}
+
+func newNotificationRuleInfoCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "info <rule-id>",
+		Short: "显示事件通知规则详情",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			var view app.EventNotificationRuleView
+			var err error
+			if remoteMode, _, modeErr := isRemoteMode(currentOpts); modeErr != nil {
+				return modeErr
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				view, err = client.EventNotificationRuleInfo(context.Background(), args[0])
+			} else {
+				var closeFn func() error
+				var svc *app.Service
+				svc, closeFn, err = buildServiceFromCmd(cmd, opts)
+				if err == nil {
+					defer func() { _ = closeFn() }()
+					view, err = svc.EventNotificationRuleInfo(args[0])
+				}
+			}
+			if err != nil {
+				return err
+			}
+			return render.JSON(cmd.OutOrStdout(), notificationRuleViewForJSON(view))
+		},
+	}
+}
+
+func newNotificationRuleModifyCommand(opts Options) *cobra.Command {
+	var input notificationRuleCLIInput
+	cmd := &cobra.Command{
+		Use:   "modify <rule-id>",
+		Short: "修改事件通知规则",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			mod := input.toModifyApp(cmd)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				view, err := client.ModifyEventNotificationRule(context.Background(), args[0], notificationRuleModifyInputToRemote(mod))
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), notificationRuleViewForJSON(view))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Modified notification rule %s (%s)\n", view.Name, view.ID)
+				return nil
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			view, err := svc.ModifyEventNotificationRule(args[0], mod)
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), notificationRuleViewForJSON(view))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Modified notification rule %s (%s)\n", view.Name, view.ID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&input.name, "name", "", "新的规则名称")
+	bindNotificationRuleFlags(cmd, &input)
+	return cmd
+}
+
+func newNotificationRuleEnableCommand(opts Options) *cobra.Command {
+	return notificationRuleToggleCommand(opts, "enable", "启用事件通知规则", true)
+}
+
+func newNotificationRuleDisableCommand(opts Options) *cobra.Command {
+	return notificationRuleToggleCommand(opts, "disable", "禁用事件通知规则", false)
+}
+
+func notificationRuleToggleCommand(opts Options, use string, short string, enabled bool) *cobra.Command {
+	return &cobra.Command{
+		Use:   use + " <rule-id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			var view app.EventNotificationRuleView
+			var err error
+			if remoteMode, _, modeErr := isRemoteMode(currentOpts); modeErr != nil {
+				return modeErr
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if enabled {
+					view, err = client.EnableEventNotificationRule(context.Background(), args[0])
+				} else {
+					view, err = client.DisableEventNotificationRule(context.Background(), args[0])
+				}
+			} else {
+				var closeFn func() error
+				var svc *app.Service
+				svc, closeFn, err = buildServiceFromCmd(cmd, opts)
+				if err == nil {
+					defer func() { _ = closeFn() }()
+					if enabled {
+						view, err = svc.EnableEventNotificationRule(args[0])
+					} else {
+						view, err = svc.DisableEventNotificationRule(args[0])
+					}
+				}
+			}
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), notificationRuleViewForJSON(view))
+			}
+			if enabled {
+				fmt.Fprintf(cmd.OutOrStdout(), "Enabled notification rule %s\n", args[0])
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Disabled notification rule %s\n", args[0])
+			}
+			return nil
+		},
+	}
+}
+
+func newNotificationRuleDeleteCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:     "delete <rule-id>",
+		Aliases: []string{"remove"},
+		Short:   "删除事件通知规则",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				if err := client.DeleteEventNotificationRule(context.Background(), args[0]); err != nil {
+					return err
+				}
+			} else {
+				svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+				if err != nil {
+					return err
+				}
+				defer closeFn()
+				if err := svc.DeleteEventNotificationRule(args[0]); err != nil {
+					return err
+				}
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Deleted notification rule %s\n", args[0])
+			return nil
+		},
+	}
+}
+
 func newReminderCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{Use: "reminder", Short: "管理提醒规则", Args: cobra.NoArgs}
 	cmd.AddCommand(newReminderRuleCommand(opts))
@@ -1086,6 +1434,16 @@ func renderReminderRuleList(w interface{ Write([]byte) (int, error) }, rows []ap
 	}
 }
 
+func renderNotificationRuleList(w interface{ Write([]byte) (int, error) }, rows []app.EventNotificationRuleView) {
+	for _, row := range rows {
+		enabled := "disabled"
+		if row.Enabled {
+			enabled = "enabled"
+		}
+		fmt.Fprintf(w, "%s  %s  %s  %s  %s\n", shortID(row.ID), row.Name, row.EventType, row.AudienceType, enabled)
+	}
+}
+
 func renderNotificationDeliveryList(w interface{ Write([]byte) (int, error) }, rows []app.NotificationDeliveryView) {
 	for _, row := range rows {
 		fmt.Fprintf(w, "%s  %s  %s  %d  %s\n", shortID(row.ID), row.EventType, row.Status, row.AttemptCount, row.LastError)
@@ -1208,6 +1566,34 @@ func reminderRuleModifyInputToRemote(input app.ReminderRuleModifyInput) remote.R
 	}
 }
 
+func notificationRuleInputToRemote(input app.EventNotificationRuleAddInput) remote.EventNotificationRuleRequest {
+	return remote.EventNotificationRuleRequest{
+		Name:            input.Name,
+		ProjectRef:      input.ProjectRef,
+		EventType:       input.EventType,
+		FilterSource:    input.FilterSource,
+		AudienceType:    input.AudienceType,
+		Recipients:      input.Recipients,
+		Sink:            input.SinkRef,
+		TemplateSubject: input.TemplateSubject,
+		TemplateBody:    input.TemplateBody,
+	}
+}
+
+func notificationRuleModifyInputToRemote(input app.EventNotificationRuleModifyInput) remote.EventNotificationRuleModifyRequest {
+	return remote.EventNotificationRuleModifyRequest{
+		Name:            input.Name,
+		ProjectRef:      input.ProjectRef,
+		EventType:       input.EventType,
+		FilterSource:    input.FilterSource,
+		AudienceType:    input.AudienceType,
+		Recipients:      input.Recipients,
+		Sink:            input.SinkRef,
+		TemplateSubject: input.TemplateSubject,
+		TemplateBody:    input.TemplateBody,
+	}
+}
+
 func reminderRuleViewsForJSON(rows []app.ReminderRuleView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
@@ -1239,6 +1625,34 @@ func reminderRuleViewForJSON(row app.ReminderRuleView) map[string]any {
 	}
 }
 
+func notificationRuleViewsForJSON(rows []app.EventNotificationRuleView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notificationRuleViewForJSON(row))
+	}
+	return out
+}
+
+func notificationRuleViewForJSON(row app.EventNotificationRuleView) map[string]any {
+	return map[string]any{
+		"id":               row.ID,
+		"workspace_id":     row.WorkspaceID,
+		"project_id":       row.ProjectID,
+		"name":             row.Name,
+		"enabled":          row.Enabled,
+		"event_type":       row.EventType,
+		"filter_source":    row.FilterSource,
+		"audience_type":    row.AudienceType,
+		"recipient_users":  notificationUserInfosForJSON(row.RecipientUsers),
+		"sink_id":          row.SinkID,
+		"template_subject": row.TemplateSubject,
+		"template_body":    row.TemplateBody,
+		"created_by":       task.UserInfoToJSON(row.CreatedBy),
+		"created_at":       row.CreatedAt,
+		"modified_at":      row.ModifiedAt,
+	}
+}
+
 func notificationDeliveryViewsForJSON(rows []app.NotificationDeliveryView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
@@ -1255,6 +1669,8 @@ func notificationDeliveryViewForJSON(row app.NotificationDeliveryView) map[strin
 		"rule_id":                       row.RuleID,
 		"sink_id":                       row.SinkID,
 		"task_uuid":                     row.TaskUUID,
+		"object_kind":                   row.ObjectKind,
+		"object_id":                     row.ObjectID,
 		"recipient":                     task.UserInfoToJSON(row.Recipient),
 		"event_id":                      row.EventID,
 		"event_type":                    row.EventType,

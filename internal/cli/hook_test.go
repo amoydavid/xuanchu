@@ -19,6 +19,22 @@ func setupHookTestOpts(stdout, stderr *bytes.Buffer) Options {
 	return Options{Stdout: stdout, Stderr: stderr}
 }
 
+func setupHookSink(t *testing.T, db string, opts Options) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	localOpts := opts
+	localOpts.Stdout = &stdout
+	localOpts.Stderr = &stderr
+	cmd := NewRootCommand(localOpts)
+	err := Execute(cmd, localOpts, []string{"--db", db, "notification", "sink", "add", "hook-sink",
+		"--url", "https://example.com/webhook",
+		"--allowed-host", "example.com",
+		"--secret", "test-secret"})
+	if err != nil {
+		t.Fatalf("notification sink add error = %v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+	}
+}
+
 func TestHookCommandRegistered(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd := NewRootCommand(setupHookTestOpts(&stdout, &stderr))
@@ -51,13 +67,14 @@ func TestHookAddLocal(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 创建 hook
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	err := Execute(cmd, opts, []string{"--db", db, "hook", "add", "test-hook",
-		"--event", "task.created", "--url", "https://example.com/webhook"})
+		"--event", "task.created", "--sink", "hook-sink"})
 	if err != nil {
 		t.Fatalf("hook add error = %v", err)
 	}
@@ -79,11 +96,12 @@ func TestHookAddAndListLocal(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 添加 hook
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "hook", "add", "my-hook",
-		"--event", "task.created", "--event", "task.completed", "--url", "https://example.com/hook"}); err != nil {
+		"--event", "task.created", "--event", "task.completed", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add error = %v", err)
 	}
 
@@ -109,13 +127,14 @@ func TestHookAddAndInfoLocal(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 添加 hook 并捕获 ID
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "--json", "hook", "add", "info-hook",
-		"--event", "task.modified", "--url", "https://example.com/hook2"}); err != nil {
+		"--event", "task.modified", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add --json error = %v", err)
 	}
 	var addResult map[string]any
@@ -150,13 +169,14 @@ func TestHookDisableEnableLocal(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 添加 hook 并获取 ID
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "--json", "hook", "add", "toggle-hook",
-		"--event", "task.deleted", "--url", "https://example.com/hook3"}); err != nil {
+		"--event", "task.deleted", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add error = %v", err)
 	}
 	var addResult map[string]any
@@ -198,13 +218,14 @@ func TestHookDeleteLocal(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 添加 hook 并获取 ID
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "--json", "hook", "add", "del-hook",
-		"--event", "task.created", "--url", "https://example.com/hook4"}); err != nil {
+		"--event", "task.created", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add error = %v", err)
 	}
 	var addResult map[string]any
@@ -244,13 +265,14 @@ func TestHookAddJSON(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// JSON 输出
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	err := Execute(cmd, opts, []string{"--db", db, "--json", "hook", "add", "json-hook",
-		"--event", "task.created", "--url", "https://example.com/webhook"})
+		"--event", "task.created", "--sink", "hook-sink"})
 	if err != nil {
 		t.Fatalf("hook add --json error = %v", err)
 	}
@@ -261,8 +283,8 @@ func TestHookAddJSON(t *testing.T) {
 	if result["name"] != "json-hook" {
 		t.Fatalf("hook add JSON name = %v, want json-hook", result["name"])
 	}
-	if result["endpoint_url"] != "https://example.com/webhook" {
-		t.Fatalf("hook add JSON endpoint_url = %v", result["endpoint_url"])
+	if result["sink_name"] != "hook-sink" {
+		t.Fatalf("hook add JSON sink_name = %v", result["sink_name"])
 	}
 	// secret 不应出现在输出中
 	if _, ok := result["secret"]; ok {
@@ -280,16 +302,17 @@ func TestHookListJSON(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 添加两个 hooks
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "hook", "add", "hook-a",
-		"--event", "task.created", "--url", "https://example.com/a"}); err != nil {
+		"--event", "task.created", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add a error = %v", err)
 	}
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "hook", "add", "hook-b",
-		"--event", "task.completed", "--url", "https://example.com/b"}); err != nil {
+		"--event", "task.completed", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add b error = %v", err)
 	}
 
@@ -319,6 +342,7 @@ func TestHookAddProjectScope(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 创建项目
 	cmd = NewRootCommand(opts)
@@ -332,7 +356,7 @@ func TestHookAddProjectScope(t *testing.T) {
 	cmd = NewRootCommand(opts)
 	err := Execute(cmd, opts, []string{"--db", db, "hook", "add", "proj-hook",
 		"--scope", "project", "--project", "myproj",
-		"--event", "task.created", "--url", "https://example.com/proj-hook"})
+		"--event", "task.created", "--sink", "hook-sink"})
 	if err != nil {
 		t.Fatalf("hook add project-scoped error = %v", err)
 	}
@@ -351,13 +375,14 @@ func TestHookModifyLocal(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 添加 hook 并获取 ID
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	if err := Execute(cmd, opts, []string{"--db", db, "--json", "hook", "add", "mod-hook",
-		"--event", "task.created", "--url", "https://example.com/old"}); err != nil {
+		"--event", "task.created", "--sink", "hook-sink"}); err != nil {
 		t.Fatalf("hook add error = %v", err)
 	}
 	var addResult map[string]any
@@ -371,7 +396,7 @@ func TestHookModifyLocal(t *testing.T) {
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
 	err := Execute(cmd, opts, []string{"--db", db, "hook", "modify", hookID,
-		"--name", "renamed-hook", "--url", "https://example.com/new"})
+		"--name", "renamed-hook", "--sink", "hook-sink"})
 	if err != nil {
 		t.Fatalf("hook modify error = %v", err)
 	}
@@ -389,12 +414,12 @@ func TestHookModifyLocal(t *testing.T) {
 	if !strings.Contains(stdout.String(), "renamed-hook") {
 		t.Fatalf("hook info after modify = %q, want renamed-hook", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "https://example.com/new") {
-		t.Fatalf("hook info after modify = %q, want new URL", stdout.String())
+	if !strings.Contains(stdout.String(), "hook-sink") {
+		t.Fatalf("hook info after modify = %q, want sink", stdout.String())
 	}
 }
 
-func TestHookAddRequiresEventAndURL(t *testing.T) {
+func TestHookAddRequiresEventAndSink(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	db := setupHookTestDB(t)
 	opts := setupHookTestOpts(&stdout, &stderr)
@@ -404,19 +429,20 @@ func TestHookAddRequiresEventAndURL(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
-	// 缺少 --url
+	// 缺少 --sink
 	cmd = NewRootCommand(opts)
 	err := Execute(cmd, opts, []string{"--db", db, "hook", "add", "bad-hook", "--event", "task.created"})
 	if err == nil {
-		t.Fatal("hook add without --url should fail")
+		t.Fatal("hook add without --sink should fail")
 	}
 
 	// 缺少 --event
 	stdout.Reset()
 	stderr.Reset()
 	cmd = NewRootCommand(opts)
-	err = Execute(cmd, opts, []string{"--db", db, "hook", "add", "bad-hook", "--url", "https://example.com"})
+	err = Execute(cmd, opts, []string{"--db", db, "hook", "add", "bad-hook", "--sink", "hook-sink"})
 	if err == nil {
 		t.Fatal("hook add without --event should fail")
 	}
@@ -432,48 +458,12 @@ func TestHookInfoNotFound(t *testing.T) {
 	if err := Execute(cmd, opts, []string{"--db", db, "user", "add", "alice"}); err != nil {
 		t.Fatalf("user add error = %v", err)
 	}
+	setupHookSink(t, db, opts)
 
 	// 查询不存在的 hook
 	cmd = NewRootCommand(opts)
 	err := Execute(cmd, opts, []string{"--db", db, "hook", "info", "nonexistent-id"})
 	if err == nil {
 		t.Fatal("hook info nonexistent should fail")
-	}
-}
-
-func TestResolveSecretMutualExclusion(t *testing.T) {
-	_, err := resolveSecret("val", true, "", nil)
-	if err == nil {
-		t.Fatal("resolveSecret with both --secret and --secret-stdin should fail")
-	}
-
-	_, err = resolveSecret("val", false, "file.txt", nil)
-	if err == nil {
-		t.Fatal("resolveSecret with both --secret and --secret-file should fail")
-	}
-
-	_, err = resolveSecret("", true, "file.txt", nil)
-	if err == nil {
-		t.Fatal("resolveSecret with both --secret-stdin and --secret-file should fail")
-	}
-}
-
-func TestResolveSecretFromValue(t *testing.T) {
-	val, err := resolveSecret("mysecret", false, "", nil)
-	if err != nil {
-		t.Fatalf("resolveSecret error = %v", err)
-	}
-	if val != "mysecret" {
-		t.Fatalf("resolveSecret = %q, want mysecret", val)
-	}
-}
-
-func TestResolveSecretEmpty(t *testing.T) {
-	val, err := resolveSecret("", false, "", nil)
-	if err != nil {
-		t.Fatalf("resolveSecret error = %v", err)
-	}
-	if val != "" {
-		t.Fatalf("resolveSecret = %q, want empty", val)
 	}
 }

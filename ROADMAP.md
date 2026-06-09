@@ -34,7 +34,7 @@
 | M16 | 已完成 | 定时通知、动态 endpoint 与 HTTP request template sink |
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
 | v0.2.0 | 已完成 | 定时通知、动态 endpoint、HTTP request template sink 与 MCP Skill 文档整理 |
-| v0.3.0 | 规划中 | 事件通知、Hook sink 化与下一批语义事件 |
+| v0.3.0 | 进行中 | 事件通知、Hook sink 化与下一批语义事件 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -54,11 +54,11 @@ v0.2.0 在 v0.1.1 已具备的稳定短任务引用、CLI / HTTP / MCP / Remote 
 对应 milestone：
 
 - M16：定时通知、动态 endpoint 与 HTTP request template sink。
-- Agent Skill 文档整理：`docs/skills/*/SKILL.md` 已覆盖当前 95 个 MCP tool。
+- Agent Skill 文档整理：`docs/skills/*/SKILL.md` 已覆盖 v0.2.0 时的 95 个 MCP tool。
 
 ## v0.3.0：事件通知、Hook sink 化与语义事件补齐
 
-**状态：规划中。**
+**状态：进行中。**
 
 v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 outbound sink，并补齐事件触发的用户通知规则。当前规格和实现计划只实现首批事件，不一次性补完所有语义事件。
 
@@ -68,6 +68,19 @@ v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 ou
 - `sink-ref` 按 workspace 隔离，Hook / Notification Rule 保存 `sink_id`。
 - 新增或补齐 `project.annotated`、`project.denotated`、`task.unblocked`。
 - 新增 event notification rule，让 `task.unblocked` 等事件可以通过 OpenClaw 或其他 sink 通知用户。
+- notification delivery 增加 `object_kind` / `object_id`，同一张投递表可以承载 task、project 等事件对象；旧的 reminder delivery 继续使用 task 语义。
+- Hook delivery 生成时冻结 sink 渲染后的 URL、method、headers、body 和 content type，retry/replay 使用历史快照，不读取当前 sink 配置重渲染。
+
+当前事件白名单：
+
+- `task.created`
+- `task.modified`
+- `task.completed`
+- `task.deleted`
+- `project.archived`
+- `project.annotated`
+- `project.denotated`
+- `task.unblocked`
 
 下一大版本必须补充的 Priority 1 事件：
 

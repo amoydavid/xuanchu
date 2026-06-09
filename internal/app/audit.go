@@ -72,15 +72,17 @@ func (s *Service) withAuditAndEvents(fn func(*Service) (*AuditEntry, []HookEvent
 }
 
 func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []HookEvent, error)) error {
-	return s.store.Transaction(func(txStore *storage.Store) error {
+	var events []HookEvent
+	if err := s.store.Transaction(func(txStore *storage.Store) error {
 		txSvc, err := s.withStore(txStore)
 		if err != nil {
 			return err
 		}
-		entries, events, err := fn(txSvc)
+		entries, txEvents, err := fn(txSvc)
 		if err != nil {
 			return err
 		}
+		events = append([]HookEvent(nil), txEvents...)
 		for _, entry := range entries {
 			workspaceID := &txSvc.runtime.WorkspaceID
 			if entry.WorkspaceID != nil {
@@ -107,8 +109,16 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 				return err
 			}
 		}
-		return txSvc.enqueueHookEvents(events)
-	})
+		return nil
+	}); err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	_ = s.enqueueHookEvents(events)
+	_ = s.enqueueEventNotificationDeliveries(events)
+	return nil
 }
 
 func (s *Service) appendAdminAuditInTx(tx *Service, entry AuditEntry, adminTokenName string) error {

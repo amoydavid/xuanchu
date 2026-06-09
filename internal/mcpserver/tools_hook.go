@@ -25,9 +25,8 @@ type HookAddInput struct {
 	Project   string   `json:"project,omitempty"`
 	ProjectID string   `json:"project_id,omitempty"`
 	Name      string   `json:"name" jsonschema:"hook name"`
-	URL       string   `json:"url" jsonschema:"endpoint URL"`
-	Events    []string `json:"events" jsonschema:"event types (task.created, task.modified, task.completed, task.deleted, project.archived)"`
-	Secret    string   `json:"secret,omitempty" jsonschema:"optional webhook secret"`
+	Sink      string   `json:"sink" jsonschema:"workspace notification sink name or ID"`
+	Events    []string `json:"events" jsonschema:"event types (task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked)"`
 	Active    *bool    `json:"active,omitempty" jsonschema:"whether the hook is enabled (default true)"`
 }
 
@@ -52,9 +51,8 @@ type HookModifyInput struct {
 	ProjectID string   `json:"project_id,omitempty"`
 	Hook      string   `json:"hook" jsonschema:"hook ID"`
 	Name      *string  `json:"name,omitempty"`
-	URL       *string  `json:"url,omitempty"`
+	Sink      *string  `json:"sink,omitempty"`
 	Events    []string `json:"events,omitempty"`
-	Secret    *string  `json:"secret,omitempty"`
 	Active    *bool    `json:"active,omitempty"`
 }
 
@@ -113,12 +111,11 @@ func registerHookTools(s *mcp.Server, opts Options) {
 			scopeType = app.HookScopeProject
 		}
 		input := app.HookAddInput{
-			Name:        strings.TrimSpace(in.Name),
-			ScopeType:   scopeType,
-			ProjectRef:  projectRef,
-			EventTypes:  in.Events,
-			EndpointURL: strings.TrimSpace(in.URL),
-			Secret:      in.Secret,
+			Name:       strings.TrimSpace(in.Name),
+			ScopeType:  scopeType,
+			ProjectRef: projectRef,
+			EventTypes: in.Events,
+			SinkRef:    strings.TrimSpace(in.Sink),
 		}
 		view, err := svc.AddHook(input)
 		if err != nil {
@@ -152,9 +149,8 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		}
 		hookID := strings.TrimSpace(in.Hook)
 		mod := app.HookModifyInput{
-			Name:        in.Name,
-			EndpointURL: in.URL,
-			Secret:      in.Secret,
+			Name:    in.Name,
+			SinkRef: in.Sink,
 		}
 		if len(in.Events) > 0 {
 			mod.EventTypes = &in.Events
@@ -260,7 +256,9 @@ type hookView struct {
 	WorkspaceID    string   `json:"workspace_id"`
 	ProjectID      *string  `json:"project_id,omitempty"`
 	EventTypes     []string `json:"event_types"`
-	EndpointURL    string   `json:"endpoint_url"`
+	SinkID         string   `json:"sink_id"`
+	SinkName       string   `json:"sink_name"`
+	SinkType       string   `json:"sink_type"`
 	Enabled        bool     `json:"enabled"`
 	TimeoutSeconds int      `json:"timeout_seconds"`
 	MaxAttempts    int      `json:"max_attempts"`
@@ -297,7 +295,9 @@ func hookViewFromApp(v app.HookView) hookView {
 		WorkspaceID:    v.WorkspaceID,
 		ProjectID:      v.ProjectID,
 		EventTypes:     v.EventTypes,
-		EndpointURL:    v.EndpointURL,
+		SinkID:         v.SinkID,
+		SinkName:       v.SinkName,
+		SinkType:       v.SinkType,
 		Enabled:        v.Enabled,
 		TimeoutSeconds: v.TimeoutSeconds,
 		MaxAttempts:    v.MaxAttempts,

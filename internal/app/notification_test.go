@@ -382,6 +382,73 @@ func TestNotificationDeliveryListInfoReplay(t *testing.T) {
 	}
 }
 
+func TestNotificationDeliveryRespectsProjectScope(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 1000, "local", "local")
+	projectA, err := ownerSvc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectB, err := ownerSvc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink, err := ownerSvc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveryA := makeAppNotificationDelivery(ownerSvc.Runtime().WorkspaceID, sink.ID, storage.DeliveryStatusDeadLettered)
+	deliveryA.ProjectID = &projectA.ID
+	deliveryB := makeAppNotificationDelivery(ownerSvc.Runtime().WorkspaceID, sink.ID, storage.DeliveryStatusDeadLettered)
+	deliveryB.ProjectID = &projectB.ID
+	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{deliveryA, deliveryB}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "alpha-notification-token",
+		Scopes:        []string{"notification:read", "notification:write"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{projectA.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "notification:read",
+		RequiredPermission: PermissionNotificationRead,
+		WorkspaceRef:       "local",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopedSvc, err := NewService(ServiceOptions{
+		Store:        store,
+		Clock:        FixedClock{NowUnix: 1000},
+		Runtime:      &authorized.Runtime,
+		RequestScope: &authorized.Scope,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := scopedSvc.ListNotificationDeliveries("", storage.DeliveryStatusDeadLettered, 20, 0)
+	if err != nil {
+		t.Fatalf("ListNotificationDeliveries() error = %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != deliveryA.ID {
+		t.Fatalf("deliveries = %#v", rows)
+	}
+	_, err = scopedSvc.NotificationDeliveryInfo(deliveryB.ID)
+	assertRuntimeCode(t, err, "notification_delivery_not_found")
+	_, err = scopedSvc.ReplayNotificationDelivery(deliveryB.ID)
+	assertRuntimeCode(t, err, "notification_delivery_not_found")
+}
+
 func TestReminderRuleInfoDisableEnableDelete(t *testing.T) {
 	svc, cleanup := notificationTestEnv(t)
 	defer cleanup()

@@ -11,7 +11,7 @@
         ]
       },
       "events": {
-        "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived)",
+        "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked)",
         "items": {
           "type": "string"
         },
@@ -30,12 +30,8 @@
       "project_id": {
         "type": "string"
       },
-      "secret": {
-        "description": "optional webhook secret",
-        "type": "string"
-      },
-      "url": {
-        "description": "endpoint URL",
+      "sink": {
+        "description": "workspace notification sink name or ID",
         "type": "string"
       },
       "workspace": {
@@ -44,7 +40,7 @@
     },
     "required": [
       "name",
-      "url",
+      "sink",
       "events"
     ],
     "type": "object"

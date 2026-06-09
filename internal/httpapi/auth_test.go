@@ -26,6 +26,7 @@ func newHTTPServerWithTokenFixture(t *testing.T, scopes ...string) httpTokenFixt
 	if err != nil {
 		t.Fatal(err)
 	}
+	createHTTPTestSink(t, svc, "hook-sink")
 	created, err := svc.CreateToken(app.CreateTokenInput{
 		Name:          "http-test",
 		Scopes:        scopes,

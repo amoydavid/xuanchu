@@ -390,7 +390,15 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 		if err != nil {
 			return nil, nil, err
 		}
+		userInfos, err := tx.resolveUserInfos([]string{annotation.CreatedBy.ID})
+		if err != nil {
+			return nil, nil, err
+		}
 		result = annotation
+		if userInfo, ok := userInfos[annotation.CreatedBy.ID]; ok {
+			annotation.CreatedBy = userInfo
+			result = annotation
+		}
 		view := projectViewFromRow(project, 0)
 		event := buildProjectAnnotatedHookEvent(view, annotation, tx.runtime, tx.clock.Unix())
 		entry := AuditEntry{

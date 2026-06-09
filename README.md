@@ -9,7 +9,7 @@
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
 - `workspace` 作为企业 / 租户级隔离边界；`project` 表示企业内的真实项目
 - 支持多用户、权限、审计、行级隔离，并为 Agent token 和 MCP scope 预留边界
-- 支持服务端 Hook、定时通知、动态 endpoint 和 HTTP request template sink
+- 支持服务端 Hook、定时通知、事件通知规则、动态 endpoint 和 HTTP request template sink
 - 借鉴 Taskwarrior 的核心命令名、JSON 迁移格式与 urgency 公式；企业能力优先于完全兼容
 
 ## 详细需求
@@ -809,14 +809,19 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 
 ## 服务端 Webhook Hook
 
-`xuanchu server` 支持服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。
+`xuanchu server` 支持服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。Hook 使用 workspace 级 outbound sink；`--sink <sink-ref>` 可以是当前 workspace 内的 sink 名称或 ID，不能跨 workspace 引用。
 
 ```bash
+# 先创建出站 sink
+./xuanchu notification sink add audit-stream \
+  --type webhook \
+  --url https://example.test/xuanchu
+
 # 创建 workspace 级 hook
-./xuanchu hook add task-webhook --event task.created --event task.completed --url https://example.test/xuanchu
+./xuanchu hook add task-webhook --event task.created --event task.completed --sink audit-stream
 
 # 创建 project 级 hook
-./xuanchu hook add proj-webhook --scope project --project myproject --event task.modified --url https://example.test/hook
+./xuanchu hook add proj-webhook --scope project --project myproject --event task.modified --sink audit-stream
 
 # 查看 hook 列表
 ./xuanchu hook list
@@ -828,11 +833,16 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 ./xuanchu hook replay <delivery-id>
 ```
 
-Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。投递失败不会回滚已提交的 task/project 事务。所有 hook 配置变更和人工 replay 都会写入 audit log。
+Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。投递失败不会回滚已提交的 task/project 事务。生成 delivery 时会冻结 sink 渲染后的请求快照，后续 retry/replay 不重新渲染当前 sink。所有 hook 配置变更和人工 replay 都会写入 audit log。
 
-## 定时通知与第三方通知
+## 通知、提醒与第三方通知
 
-定时通知用于到期前和逾期后的提醒，和事件驱动 Hook 分开建模。管理员先创建 notification sink，再创建 reminder rule；新规则优先使用 `schedule + task filter` 描述“什么时候扫、扫哪些任务”，`xuanchu server` 的后台 scheduler 命中规则后生成 delivery。
+通知系统复用 notification sink，但规则分两类：
+
+- reminder rule：定时扫描任务过滤器，适合到期前和逾期后的提醒。
+- notification rule：监听事件并解析 audience，适合 `task.unblocked`、项目 annotation 等事件通知。
+
+管理员先创建 notification sink，再创建 reminder rule 或 notification rule；`xuanchu server` 的后台 scheduler / dispatcher 命中规则后生成 delivery。
 
 ```bash
 ./xuanchu notification sink add openclaw \
@@ -853,11 +863,16 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
   --audience assignees \
   --sink openclaw
 
+./xuanchu notification rule add task-unblocked \
+  --event task.unblocked \
+  --audience assignees \
+  --sink openclaw
+
 ./xuanchu notification delivery list --status dead_lettered
 ./xuanchu notification delivery replay <delivery-id>
 ```
 
-第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
+Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
 
 ## Impersonation
 

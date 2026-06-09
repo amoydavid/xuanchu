@@ -28,37 +28,64 @@ func SignatureSHA256(secret, deliveryID string, timestamp int64, body []byte) st
 }
 
 // HeadersForDelivery 构造投递所需的 HTTP 请求头。
-// 先恢复存储的 headers，再用运行时 headers 覆盖。
-// 如果 hook 有 secret，额外添加 timestamp 和 signature 头。
-func HeadersForDelivery(delivery storage.HookDelivery, hook storage.HookDefinition, body []byte, now int64, version string) (http.Header, error) {
+// 先恢复入队时冻结的模板 headers 和事件 headers，再用运行时 headers 覆盖。
+// 如果 sink 有 secret，额外添加 timestamp 和 signature 头。
+func HeadersForDelivery(delivery storage.HookDelivery, hookID string, secret string, body []byte, now int64, version string) (http.Header, error) {
 	headers := http.Header{}
+
+	if delivery.RenderedHeadersJSON != "" {
+		if err := mergeHeaderJSON(headers, []byte(delivery.RenderedHeadersJSON)); err != nil {
+			return nil, err
+		}
+	}
 
 	// 恢复存储的 headers
 	if delivery.HeadersJSON != "" {
-		var stored map[string]string
-		if err := json.Unmarshal([]byte(delivery.HeadersJSON), &stored); err != nil {
+		if err := mergeHeaderJSON(headers, []byte(delivery.HeadersJSON)); err != nil {
 			return nil, err
-		}
-		for k, v := range stored {
-			headers.Set(k, v)
 		}
 	}
 
 	// 运行时 headers 覆盖存储的
 	attempt := strconv.Itoa(delivery.AttemptCount)
-	headers.Set("Content-Type", "application/json; charset=utf-8")
+	contentType := delivery.RenderedContentType
+	if contentType == "" {
+		contentType = "application/json; charset=utf-8"
+	}
+	headers.Set("Content-Type", contentType)
 	headers.Set("X-Xuanchu-Delivery", delivery.ID)
-	headers.Set("X-Xuanchu-Hook-Id", hook.ID)
+	headers.Set("X-Xuanchu-Hook-Id", hookID)
 	headers.Set("X-Xuanchu-Attempt", attempt)
 	headers.Set("User-Agent", "xuanchu-webhook/"+version)
 
 	// 签名相关 headers（仅当 secret 存在时）
-	if hook.Secret != "" {
+	if secret != "" {
 		ts := strconv.FormatInt(now, 10)
 		headers.Set("X-Xuanchu-Timestamp", ts)
-		sig := SignatureSHA256(hook.Secret, delivery.ID, now, body)
+		sig := SignatureSHA256(secret, delivery.ID, now, body)
 		headers.Set("X-Xuanchu-Signature-256", sig)
 	}
 
 	return headers, nil
+}
+
+func mergeHeaderJSON(headers http.Header, raw []byte) error {
+	var multi map[string][]string
+	if err := json.Unmarshal(raw, &multi); err == nil {
+		for k, values := range multi {
+			headers.Del(k)
+			for _, value := range values {
+				headers.Add(k, value)
+			}
+		}
+		return nil
+	}
+	var single map[string]string
+	if err := json.Unmarshal(raw, &single); err != nil {
+		return err
+	}
+	for k, value := range single {
+		headers.Set(k, value)
+	}
+	return nil
 }

@@ -18,34 +18,35 @@ import (
 )
 
 type Service struct {
-	store                    *storage.Store
-	repo                     *storage.TaskRepository
-	projectRepo              *storage.ProjectRepository
-	configRepo               *storage.ConfigRepository
-	configDefRepo            *storage.ConfigDefinitionRepository
-	userRepo                 *storage.UserRepository
-	workspaceRepo            *storage.WorkspaceRepository
-	memberRepo               *storage.MemberRepository
-	auditRepo                auditAppenderLister
-	tokenRepo                *storage.TokenRepository
-	contextRepo              *storage.ContextRepository
-	udaRepo                  *storage.UDARepository
-	hookRepo                 *storage.HookRepository
-	hookDeliveryRepo         hookDeliveryEnqueuer
-	notificationSinkRepo     *storage.NotificationSinkRepository
-	reminderRuleRepo         *storage.ReminderRuleRepository
-	notificationDeliveryRepo *storage.NotificationDeliveryRepository
-	extIDRepo                *storage.ExternalIDRepository
-	runtimeConfig            map[string]string
-	runtimeOverrides         map[string]string
-	runtimeUDAs              map[string]uda.Definition
-	activeContextOverride    *string
-	runtime                  RuntimeContext
-	requestScope             *RequestScope
-	workspaceID              string
-	clock                    Clock
-	reports                  report.Registry
-	disableContext           bool
+	store                     *storage.Store
+	repo                      *storage.TaskRepository
+	projectRepo               *storage.ProjectRepository
+	configRepo                *storage.ConfigRepository
+	configDefRepo             *storage.ConfigDefinitionRepository
+	userRepo                  *storage.UserRepository
+	workspaceRepo             *storage.WorkspaceRepository
+	memberRepo                *storage.MemberRepository
+	auditRepo                 auditAppenderLister
+	tokenRepo                 *storage.TokenRepository
+	contextRepo               *storage.ContextRepository
+	udaRepo                   *storage.UDARepository
+	hookRepo                  *storage.HookRepository
+	hookDeliveryRepo          hookDeliveryEnqueuer
+	notificationSinkRepo      *storage.NotificationSinkRepository
+	reminderRuleRepo          *storage.ReminderRuleRepository
+	eventNotificationRuleRepo *storage.EventNotificationRuleRepository
+	notificationDeliveryRepo  *storage.NotificationDeliveryRepository
+	extIDRepo                 *storage.ExternalIDRepository
+	runtimeConfig             map[string]string
+	runtimeOverrides          map[string]string
+	runtimeUDAs               map[string]uda.Definition
+	activeContextOverride     *string
+	runtime                   RuntimeContext
+	requestScope              *RequestScope
+	workspaceID               string
+	clock                     Clock
+	reports                   report.Registry
+	disableContext            bool
 }
 
 type AddInput struct {
@@ -153,33 +154,34 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		return nil, err
 	}
 	svc := &Service{
-		store:                    opts.Store,
-		repo:                     storage.NewTaskRepository(opts.Store.DB()),
-		projectRepo:              storage.NewProjectRepository(opts.Store.DB()),
-		configRepo:               storage.NewConfigRepository(opts.Store.DB()),
-		configDefRepo:            storage.NewConfigDefinitionRepository(opts.Store.DB()),
-		userRepo:                 userRepo,
-		workspaceRepo:            workspaceRepo,
-		memberRepo:               memberRepo,
-		auditRepo:                auditRepo,
-		tokenRepo:                storage.NewTokenRepository(opts.Store.DB()),
-		contextRepo:              storage.NewContextRepository(opts.Store.DB()),
-		udaRepo:                  storage.NewUDARepository(opts.Store.DB()),
-		hookRepo:                 storage.NewHookRepository(opts.Store.DB()),
-		hookDeliveryRepo:         storage.NewHookDeliveryRepository(opts.Store.DB()),
-		notificationSinkRepo:     storage.NewNotificationSinkRepository(opts.Store.DB()),
-		reminderRuleRepo:         storage.NewReminderRuleRepository(opts.Store.DB()),
-		notificationDeliveryRepo: storage.NewNotificationDeliveryRepository(opts.Store.DB()),
-		extIDRepo:                storage.NewExternalIDRepository(opts.Store.DB()),
-		runtimeConfig:            runtimeConfig,
-		runtimeOverrides:         cloneStringMap(opts.RuntimeOverrides),
-		runtimeUDAs:              runtimeUDAs,
-		runtime:                  rt,
-		requestScope:             cloneRequestScope(opts.RequestScope),
-		workspaceID:              rt.WorkspaceID,
-		clock:                    opts.Clock,
-		reports:                  report.DefaultRegistry(),
-		disableContext:           opts.NoContext,
+		store:                     opts.Store,
+		repo:                      storage.NewTaskRepository(opts.Store.DB()),
+		projectRepo:               storage.NewProjectRepository(opts.Store.DB()),
+		configRepo:                storage.NewConfigRepository(opts.Store.DB()),
+		configDefRepo:             storage.NewConfigDefinitionRepository(opts.Store.DB()),
+		userRepo:                  userRepo,
+		workspaceRepo:             workspaceRepo,
+		memberRepo:                memberRepo,
+		auditRepo:                 auditRepo,
+		tokenRepo:                 storage.NewTokenRepository(opts.Store.DB()),
+		contextRepo:               storage.NewContextRepository(opts.Store.DB()),
+		udaRepo:                   storage.NewUDARepository(opts.Store.DB()),
+		hookRepo:                  storage.NewHookRepository(opts.Store.DB()),
+		hookDeliveryRepo:          storage.NewHookDeliveryRepository(opts.Store.DB()),
+		notificationSinkRepo:      storage.NewNotificationSinkRepository(opts.Store.DB()),
+		reminderRuleRepo:          storage.NewReminderRuleRepository(opts.Store.DB()),
+		eventNotificationRuleRepo: storage.NewEventNotificationRuleRepository(opts.Store.DB()),
+		notificationDeliveryRepo:  storage.NewNotificationDeliveryRepository(opts.Store.DB()),
+		extIDRepo:                 storage.NewExternalIDRepository(opts.Store.DB()),
+		runtimeConfig:             runtimeConfig,
+		runtimeOverrides:          cloneStringMap(opts.RuntimeOverrides),
+		runtimeUDAs:               runtimeUDAs,
+		runtime:                   rt,
+		requestScope:              cloneRequestScope(opts.RequestScope),
+		workspaceID:               rt.WorkspaceID,
+		clock:                     opts.Clock,
+		reports:                   report.DefaultRegistry(),
+		disableContext:            opts.NoContext,
 	}
 	if !opts.DisableScopeBootstrap {
 		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
@@ -219,6 +221,7 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	}
 	clone.notificationSinkRepo = storage.NewNotificationSinkRepository(store.DB())
 	clone.reminderRuleRepo = storage.NewReminderRuleRepository(store.DB())
+	clone.eventNotificationRuleRepo = storage.NewEventNotificationRuleRepository(store.DB())
 	clone.notificationDeliveryRepo = storage.NewNotificationDeliveryRepository(store.DB())
 	return &clone, nil
 }
@@ -631,15 +634,65 @@ func (s *Service) Done(target string) error {
 		return err
 	}
 	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		beforeTasks, err := tx.repo.List(tx.workspaceID, storage.ListOptions{
+			NowUnix: tx.clock.Unix(),
+			Query:   tx.projectScopeExpr(),
+			Dialect: tx.store.Dialect(),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		beforeBlocked, _ := buildDependencyState(beforeTasks, tx.clock.Unix())
 		doneTask, change, extraEntries, err := tx.doneLocked(target)
 		if err != nil {
 			return nil, nil, err
 		}
-		event := buildTaskHookEvent("task.completed", doneTask, tx.runtime, tx.clock.Unix())
+		now := tx.clock.Unix()
+		events := []HookEvent{buildTaskHookEvent("task.completed", doneTask, tx.runtime, now)}
+		unblocked, err := tx.taskUnblockedEventsAfterDone(beforeBlocked, doneTask, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		events = append(events, unblocked...)
 		entries := []AuditEntry{taskAuditEntry("task.done", doneTask.UUID, change)}
 		entries = append(entries, extraEntries...)
-		return entries, []HookEvent{event}, nil
+		return entries, events, nil
 	})
+}
+
+func (s *Service) taskUnblockedEventsAfterDone(beforeBlocked map[string]bool, doneTask task.Task, now int64) ([]HookEvent, error) {
+	afterTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
+		NowUnix: now,
+		Query:   s.projectScopeExpr(),
+		Dialect: s.store.Dialect(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	afterBlocked, _ := buildDependencyState(afterTasks, now)
+	events := []HookEvent{}
+	for _, candidate := range afterTasks {
+		if !taskDependsOn(candidate, doneTask.UUID) {
+			continue
+		}
+		if !beforeBlocked[candidate.UUID] || afterBlocked[candidate.UUID] {
+			continue
+		}
+		if !isDependencyEligible(candidate, now) {
+			continue
+		}
+		events = append(events, buildTaskUnblockedHookEvent(candidate, doneTask, s.runtime, now))
+	}
+	return events, nil
+}
+
+func taskDependsOn(tsk task.Task, depUUID string) bool {
+	for _, current := range tsk.Depends {
+		if current == depUUID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) doneLocked(target string) (task.Task, projectChange, []AuditEntry, error) {

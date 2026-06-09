@@ -45,6 +45,16 @@ type NotificationReminderContext struct {
 	WindowEnd       int64
 }
 
+type NotificationEventContext struct {
+	ID         string
+	Type       string
+	Version    int
+	OccurredAt int64
+	ObjectKind string
+	ObjectID   string
+	JSON       string
+}
+
 type NotificationRequestResolveInput struct {
 	Sink         NotificationSinkView
 	Workspace    NotificationWorkspaceContext
@@ -52,7 +62,9 @@ type NotificationRequestResolveInput struct {
 	Rule         NotificationRuleContext
 	Task         NotificationTaskContext
 	Recipient    task.UserInfo
+	Actor        task.UserInfo
 	Reminder     NotificationReminderContext
+	Event        NotificationEventContext
 	EventType    string
 	SecretValues map[string]string
 	ConfigValues map[string]string
@@ -90,7 +102,10 @@ func ResolveNotificationRequest(input NotificationRequestResolveInput) (Notifica
 	}
 	switch input.Sink.Type {
 	case NotificationSinkTypeHTTPTemplate:
-		out.RenderedMethod = http.MethodPost
+		out.RenderedMethod = strings.TrimSpace(input.Sink.HTTPMethod)
+		if out.RenderedMethod == "" {
+			out.RenderedMethod = http.MethodPost
+		}
 		headers := http.Header{}
 		for _, header := range input.Sink.HeaderTemplates {
 			value, err := renderNotificationTemplate(header.Value, input, true)
@@ -190,6 +205,8 @@ func allowedEndpointVariable(name string) bool {
 	switch {
 	case name == "workspace.id", name == "workspace.slug", name == "project.id", name == "project.slug", name == "rule.id", name == "rule.name", name == "recipient.id":
 		return true
+	case name == "event.id", name == "event.type", name == "event.object_kind", name == "event.object_id", name == "actor.id":
+		return true
 	case strings.HasPrefix(name, "recipient.external_ids."):
 		return true
 	default:
@@ -239,6 +256,24 @@ func notificationTemplateValue(name string, input NotificationRequestResolveInpu
 		return input.Rule.Name, nil
 	case "recipient.id":
 		return input.Recipient.ID, nil
+	case "actor.id":
+		return input.Actor.ID, nil
+	case "actor.name":
+		return input.Actor.Name, nil
+	case "event.id":
+		return input.Event.ID, nil
+	case "event.type":
+		return input.Event.Type, nil
+	case "event.version":
+		return strconv.Itoa(input.Event.Version), nil
+	case "event.occurred_at":
+		return strconvFormatInt64(input.Event.OccurredAt), nil
+	case "event.object_kind":
+		return input.Event.ObjectKind, nil
+	case "event.object_id":
+		return input.Event.ObjectID, nil
+	case "event.json":
+		return input.Event.JSON, nil
 	case "task.uuid":
 		return input.Task.UUID, nil
 	case "task.task_slug":
@@ -297,6 +332,9 @@ func secretAliasDeclared(refs []HTTPTemplateSecretRefInput, alias string) bool {
 }
 
 func buildNotificationPayloadJSON(input NotificationRequestResolveInput) (string, error) {
+	if input.Event.JSON != "" {
+		return input.Event.JSON, nil
+	}
 	eventType := input.EventType
 	if eventType == "" {
 		eventType = "task.due_soon"

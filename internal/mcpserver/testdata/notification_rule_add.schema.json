@@ -1,0 +1,75 @@
+{
+  "description": "Create an event notification rule; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "audience": {
+        "description": "actor, assignees, explicit_users, or assignees_and_explicit_users",
+        "type": "string"
+      },
+      "event": {
+        "description": "event type such as task.unblocked",
+        "type": "string"
+      },
+      "filter": {
+        "description": "task filter expression for task events",
+        "type": "string"
+      },
+      "name": {
+        "description": "rule name",
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "recipients": {
+        "description": "explicit recipient user refs",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "sink": {
+        "description": "notification sink name or ID",
+        "type": "string"
+      },
+      "template_body": {
+        "type": "string"
+      },
+      "template_subject": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "event",
+      "audience",
+      "sink"
+    ],
+    "type": "object"
+  },
+  "name": "notification_rule_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -3,25 +3,28 @@ title: "定时通知与第三方通知"
 weight: 86
 ---
 
-# 定时通知与第三方通知
+# 定时通知、事件通知与第三方通知
 
-Xuanchu 的通知系统用于“按任务状态和时间生成提醒”，例如任务到期前 4 小时通知负责人，或任务逾期后每天提醒一次。
+Xuanchu 的通知系统用于“按任务状态、时间或事件生成面向人的通知”，例如任务到期前 4 小时通知负责人，任务逾期后每天提醒一次，或任务解除阻塞后通知 assignee。
 
-通知系统由三类对象组成：
+通知系统由四类对象组成：
 
-- `notification sink`：通知投递目标。可以是 Xuanchu 标准 webhook，也可以是数据库保存的 HTTP request template。
+- `notification sink`：外部投递目标。可以是 Xuanchu 标准 webhook，也可以是数据库保存的 HTTP request template。Hook、reminder rule 和 notification rule 都通过 workspace 级 sink 出站。
 - `reminder rule`：定时提醒规则。新规则优先使用 `schedule + task filter`，兼容旧的 `due_before` 和 `overdue`。
+- `notification rule`：事件通知规则。监听某类事件，解析 audience 后生成面向人的 notification delivery。
 - `notification delivery`：一次实际投递记录。失败后可重试，dead-letter 后可人工 replay。
 
 Xuanchu 只负责规则评估、幂等生成 delivery、冻结请求快照和投递。OpenClaw、飞书、Slack、邮件等外部系统不内置在 Xuanchu 里，而是通过 sink 接入。
 
 ## 与 Hook 的区别
 
-Webhook Hook 是事件驱动：任务创建、修改、完成、删除后投递。
+Webhook Hook 是事件驱动的机器到机器集成：任务或项目事件发生后投递原始事件 envelope。
 
-定时通知是时间驱动：scheduler 按 reminder rule 的 schedule 执行 task filter，命中后生成 delivery。
+reminder rule 是时间驱动：scheduler 按 schedule 执行 task filter，命中后生成 delivery。
 
-两者都使用 outbox、重试、dead-letter 和人工 replay，但触发源不同。不要把定时提醒塞进 hook event。
+notification rule 是事件驱动的用户通知：事件发生后按 audience 解析 recipient，生成面向人的 delivery。
+
+三者都使用 outbox、重试、dead-letter 和人工 replay，但触发源、payload 和受众不同。不要把定时提醒塞进 hook event；也不要用 Hook 代替需要 recipient 的用户通知。
 
 ## 创建 OpenClaw sink
 
@@ -136,6 +139,61 @@ xuanchu reminder rule add overdue-daily \
 
 不支持 `project_owner` 或 `project_maintainer`。Xuanchu 当前没有稳定的项目负责人模型，不会把 `project.created_by` 当负责人。
 
+## 创建 notification rule
+
+notification rule 用于事件通知。它和 reminder rule 都使用 `notification delivery`，但不做定时扫描；事件进入 app 层后，规则按 `event_type`、可选 project scope 和可选 task filter 匹配。
+
+```bash
+xuanchu notification rule add task-unblocked \
+  --event task.unblocked \
+  --audience assignees \
+  --sink openclaw
+```
+
+按项目收窄，并只通知显式用户：
+
+```bash
+xuanchu notification rule add project-annotation-watch \
+  --project agentapi \
+  --event project.annotated \
+  --audience explicit_users \
+  --recipient alice \
+  --sink openclaw
+```
+
+task 事件可以额外加任务过滤表达式：
+
+```bash
+xuanchu notification rule add urgent-task-changes \
+  --event task.modified \
+  --filter 'priority:H or +urgent' \
+  --audience assignees_and_explicit_users \
+  --recipient pm@example.com \
+  --sink openclaw
+```
+
+当前代码允许的 notification rule 事件类型：
+
+- `task.created`
+- `task.modified`
+- `task.completed`
+- `task.deleted`
+- `project.archived`
+- `project.annotated`
+- `project.denotated`
+- `task.unblocked`
+
+当前不允许注册的事件包括：`task.started`、`task.stopped`、`task.annotated`、`task.denotated`、`task.dependency_added`、`task.dependency_removed`、`project.created`、`project.modified`。这些属于后续版本候选事件。
+
+notification rule 的 audience 支持：
+
+- `actor`
+- `explicit_users`
+- `assignees`
+- `assignees_and_explicit_users`
+
+`assignees` 和 `assignees_and_explicit_users` 只支持 `task.*` 事件；project 事件没有 task assignee 语义，应使用 `actor` 或 `explicit_users`。`--sink` 可以传当前 workspace 内的 sink name 或 sink UUID；跨 workspace sink 会被当作不存在处理。
+
 ## 查看和管理
 
 ```bash
@@ -152,6 +210,14 @@ xuanchu reminder rule modify <rule-id> --schedule daily@09:30 --filter 'end.isnu
 xuanchu reminder rule disable <rule-id>
 xuanchu reminder rule enable <rule-id>
 xuanchu reminder rule delete <rule-id>
+
+xuanchu notification rule list
+xuanchu notification rule list --project agentapi
+xuanchu notification rule info <rule-id>
+xuanchu notification rule modify <rule-id> --event task.unblocked --sink openclaw
+xuanchu notification rule disable <rule-id>
+xuanchu notification rule enable <rule-id>
+xuanchu notification rule delete <rule-id>
 ```
 
 查看投递记录：
@@ -169,6 +235,7 @@ xuanchu notification delivery replay <delivery-id>
 `xuanchu server` 会启动两个后台循环：
 
 - reminder scheduler：扫描 due task 和 reminder rule，生成 notification delivery。
+- event notification consumer：消费 app 层事件和 notification rule，生成 notification delivery。
 - notification dispatcher：领取 queued/retry_wait delivery 并投递。
 
 常用参数：
@@ -181,3 +248,5 @@ xuanchu server \
 ```
 
 投递失败不会修改任务状态，也不会回滚任务事务。delivery 自身记录 attempt、last error、next attempt 和 dead-letter 状态。
+
+事件通知 delivery 还会记录 `object_kind` / `object_id`，用于区分 task、project 等事件对象。旧 reminder delivery 仍保留 `task_uuid` 语义。

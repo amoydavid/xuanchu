@@ -17,7 +17,9 @@ type hookDTO struct {
 	WorkspaceID    string   `json:"workspace_id"`
 	ProjectID      *string  `json:"project_id,omitempty"`
 	EventTypes     []string `json:"event_types"`
-	EndpointURL    string   `json:"endpoint_url"`
+	SinkID         string   `json:"sink_id"`
+	SinkName       string   `json:"sink_name"`
+	SinkType       string   `json:"sink_type"`
 	Enabled        bool     `json:"enabled"`
 	TimeoutSeconds int      `json:"timeout_seconds"`
 	MaxAttempts    int      `json:"max_attempts"`
@@ -31,8 +33,7 @@ type HookCreateRequest struct {
 	ScopeType      string   `json:"scope_type"`
 	ProjectRef     string   `json:"project_ref,omitempty"`
 	EventTypes     []string `json:"event_types"`
-	EndpointURL    string   `json:"endpoint_url"`
-	Secret         string   `json:"secret,omitempty"`
+	Sink           string   `json:"sink"`
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
 	MaxAttempts    int      `json:"max_attempts,omitempty"`
 }
@@ -41,8 +42,7 @@ type HookCreateRequest struct {
 type HookModifyRequest struct {
 	Name           *string   `json:"name,omitempty"`
 	EventTypes     *[]string `json:"event_types,omitempty"`
-	EndpointURL    *string   `json:"endpoint_url,omitempty"`
-	Secret         *string   `json:"secret,omitempty"`
+	Sink           *string   `json:"sink,omitempty"`
 	TimeoutSeconds *int      `json:"timeout_seconds,omitempty"`
 	MaxAttempts    *int      `json:"max_attempts,omitempty"`
 }
@@ -192,7 +192,9 @@ func hookDTOToView(row hookDTO) app.HookView {
 		WorkspaceID:    row.WorkspaceID,
 		ProjectID:      row.ProjectID,
 		EventTypes:     row.EventTypes,
-		EndpointURL:    row.EndpointURL,
+		SinkID:         row.SinkID,
+		SinkName:       row.SinkName,
+		SinkType:       row.SinkType,
 		Enabled:        row.Enabled,
 		TimeoutSeconds: row.TimeoutSeconds,
 		MaxAttempts:    row.MaxAttempts,

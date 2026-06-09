@@ -165,3 +165,84 @@ func TestCLIReminderRuleScheduleFilterLifecycle(t *testing.T) {
 		t.Fatalf("modified schedule/filter = %#v", modified)
 	}
 }
+
+func TestCLINotificationRuleLifecycle(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	db := setupHookTestDB(t)
+	opts := setupHookTestOpts(&stdout, &stderr)
+
+	cmd := NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "notification", "sink", "add", "openclaw", "--url", "https://example.com/notify"}); err != nil {
+		t.Fatalf("sink add error = %v", err)
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "notification", "rule", "add", "task-unblocked-openclaw",
+		"--event", "task.unblocked",
+		"--filter", "end.isnull",
+		"--audience", "assignees",
+		"--sink", "openclaw",
+		"--template-subject", "任务已解除阻塞",
+		"--template-body", "{{task.description}}",
+	}); err != nil {
+		t.Fatalf("notification rule add error = %v", err)
+	}
+	var rule map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &rule); err != nil {
+		t.Fatalf("rule json error = %v: %s", err, stdout.String())
+	}
+	ruleID, _ := rule["id"].(string)
+	if ruleID == "" || rule["event_type"] != "task.unblocked" || rule["audience_type"] != "assignees" || rule["filter_source"] != "end.isnull" {
+		t.Fatalf("rule = %#v", rule)
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "notification", "rule", "list"}); err != nil {
+		t.Fatalf("notification rule list error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "task-unblocked-openclaw") {
+		t.Fatalf("rule list output = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "notification", "rule", "modify", ruleID, "--name", "task-unblocked-renamed", "--audience", "actor"}); err != nil {
+		t.Fatalf("notification rule modify error = %v", err)
+	}
+	var modified map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &modified); err != nil {
+		t.Fatalf("modified rule json error = %v: %s", err, stdout.String())
+	}
+	if modified["name"] != "task-unblocked-renamed" || modified["audience_type"] != "actor" {
+		t.Fatalf("modified rule = %#v", modified)
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "notification", "rule", "disable", ruleID}); err != nil {
+		t.Fatalf("notification rule disable error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Disabled notification rule") {
+		t.Fatalf("disable output = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "notification", "rule", "enable", ruleID}); err != nil {
+		t.Fatalf("notification rule enable error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Enabled notification rule") {
+		t.Fatalf("enable output = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "notification", "rule", "delete", ruleID}); err != nil {
+		t.Fatalf("notification rule delete error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Deleted notification rule") {
+		t.Fatalf("delete output = %q", stdout.String())
+	}
+}

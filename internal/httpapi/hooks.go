@@ -16,8 +16,9 @@ type hookCreateRequest struct {
 	ScopeType      string   `json:"scope_type"`
 	ProjectRef     string   `json:"project_ref,omitempty"`
 	EventTypes     []string `json:"event_types"`
-	EndpointURL    string   `json:"endpoint_url"`
-	Secret         string   `json:"secret,omitempty"`
+	Sink           string   `json:"sink"`
+	URL            *string  `json:"url,omitempty"`
+	EndpointURL    *string  `json:"endpoint_url,omitempty"`
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
 	MaxAttempts    int      `json:"max_attempts,omitempty"`
 }
@@ -25,8 +26,9 @@ type hookCreateRequest struct {
 type hookModifyRequest struct {
 	Name           *string   `json:"name,omitempty"`
 	EventTypes     *[]string `json:"event_types,omitempty"`
+	Sink           *string   `json:"sink,omitempty"`
+	URL            *string   `json:"url,omitempty"`
 	EndpointURL    *string   `json:"endpoint_url,omitempty"`
-	Secret         *string   `json:"secret,omitempty"`
 	TimeoutSeconds *int      `json:"timeout_seconds,omitempty"`
 	MaxAttempts    *int      `json:"max_attempts,omitempty"`
 }
@@ -38,7 +40,9 @@ type hookResponse struct {
 	WorkspaceID    string   `json:"workspace_id"`
 	ProjectID      *string  `json:"project_id,omitempty"`
 	EventTypes     []string `json:"event_types"`
-	EndpointURL    string   `json:"endpoint_url"`
+	SinkID         string   `json:"sink_id"`
+	SinkName       string   `json:"sink_name"`
+	SinkType       string   `json:"sink_type"`
 	Enabled        bool     `json:"enabled"`
 	TimeoutSeconds int      `json:"timeout_seconds"`
 	MaxAttempts    int      `json:"max_attempts"`
@@ -92,6 +96,10 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
+	if req.URL != nil || req.EndpointURL != nil {
+		writeError(w, http.StatusBadRequest, "hook_url_not_supported", "hook uses workspace sink; use sink instead of url", nil)
+		return
+	}
 	projectRef := req.ProjectRef
 	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, projectRef)
 	if err != nil {
@@ -103,8 +111,7 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 		ScopeType:      app.HookScopeType(req.ScopeType),
 		ProjectRef:     req.ProjectRef,
 		EventTypes:     req.EventTypes,
-		EndpointURL:    req.EndpointURL,
-		Secret:         req.Secret,
+		SinkRef:        req.Sink,
 		TimeoutSeconds: req.TimeoutSeconds,
 		MaxAttempts:    req.MaxAttempts,
 	})
@@ -141,12 +148,15 @@ func (s *Server) handleHookModify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
+	if req.URL != nil || req.EndpointURL != nil {
+		writeError(w, http.StatusBadRequest, "hook_url_not_supported", "hook uses workspace sink; use sink instead of url", nil)
+		return
+	}
 	hookID := chi.URLParam(r, "hookID")
 	updated, err := scoped.ModifyHook(hookID, app.HookModifyInput{
 		Name:           req.Name,
 		EventTypes:     req.EventTypes,
-		EndpointURL:    req.EndpointURL,
-		Secret:         req.Secret,
+		SinkRef:        req.Sink,
 		TimeoutSeconds: req.TimeoutSeconds,
 		MaxAttempts:    req.MaxAttempts,
 	})
@@ -268,7 +278,9 @@ func hookResponseFromView(view app.HookView) hookResponse {
 		WorkspaceID:    view.WorkspaceID,
 		ProjectID:      view.ProjectID,
 		EventTypes:     view.EventTypes,
-		EndpointURL:    view.EndpointURL,
+		SinkID:         view.SinkID,
+		SinkName:       view.SinkName,
+		SinkType:       view.SinkType,
 		Enabled:        view.Enabled,
 		TimeoutSeconds: view.TimeoutSeconds,
 		MaxAttempts:    view.MaxAttempts,

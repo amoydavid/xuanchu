@@ -56,6 +56,11 @@ func newTestStore(t *testing.T) *storage.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
+	wsID := mustLocalWorkspace(t, store)
+	sink := makeTestSink(t, wsID, "https://example.com/webhook")
+	if err := storage.NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
+		t.Fatal(err)
+	}
 	return store
 }
 
@@ -73,6 +78,34 @@ func int64Ptr(v int64) *int64 { return &v }
 func intPtr(v int) *int       { return &v }
 func strPtr(v string) *string { return &v }
 
+func makeTestSink(t *testing.T, wsID string, endpointURL string, overrides ...func(*storage.NotificationSink)) storage.NotificationSink {
+	t.Helper()
+	s := storage.NotificationSink{
+		ID:                  "sink-1",
+		WorkspaceID:         wsID,
+		Name:                "test-sink",
+		Type:                "webhook",
+		EndpointMode:        "static_url",
+		URL:                 endpointURL,
+		AllowedHostsJSON:    `[]`,
+		HTTPMethod:          "POST",
+		HeaderTemplatesJSON: `[]`,
+		BodyContentType:     "application/json",
+		SecretRefsJSON:      `{}`,
+		Secret:              "test-secret",
+		Enabled:             boolPtr(true),
+		TimeoutSeconds:      10,
+		MaxAttempts:         5,
+		CreatedBy:           "user-1",
+		CreatedAt:           100,
+		ModifiedAt:          100,
+	}
+	for _, fn := range overrides {
+		fn(&s)
+	}
+	return s
+}
+
 func makeTestHook(t *testing.T, wsID string, endpointURL string, overrides ...func(*storage.HookDefinition)) storage.HookDefinition {
 	t.Helper()
 	h := storage.HookDefinition{
@@ -82,8 +115,7 @@ func makeTestHook(t *testing.T, wsID string, endpointURL string, overrides ...fu
 		WorkspaceID:    wsID,
 		ActorUserID:    "user-1",
 		EventTypesJSON: `["task.created"]`,
-		EndpointURL:    endpointURL,
-		Secret:         "test-secret",
+		SinkID:         "sink-1",
 		Enabled:        boolPtr(true),
 		TimeoutSeconds: 10,
 		MaxAttempts:    5,
@@ -99,17 +131,23 @@ func makeTestHook(t *testing.T, wsID string, endpointURL string, overrides ...fu
 func makeTestDelivery(t *testing.T, hookID, wsID string, overrides ...func(*storage.HookDelivery)) storage.HookDelivery {
 	t.Helper()
 	d := storage.HookDelivery{
-		ID:          uuid.NewString(),
-		HookID:      hookID,
-		EventID:     uuid.NewString(),
-		EventType:   "task.created",
-		WorkspaceID: wsID,
-		ActorUserID: "user-1",
-		PayloadJSON: `{"test":true}`,
-		HeadersJSON: `{}`,
-		Status:      storage.DeliveryStatusQueued,
-		CreatedAt:   200,
-		ModifiedAt:  200,
+		ID:                  uuid.NewString(),
+		HookID:              hookID,
+		EventID:             uuid.NewString(),
+		EventType:           "task.created",
+		WorkspaceID:         wsID,
+		ActorUserID:         "user-1",
+		SinkID:              "sink-1",
+		ResolvedURL:         "https://example.com/webhook",
+		RenderedMethod:      http.MethodPost,
+		RenderedHeadersJSON: `{"Content-Type":["application/json"]}`,
+		RenderedBody:        `{"test":true}`,
+		RenderedContentType: "application/json",
+		PayloadJSON:         `{"test":true}`,
+		HeadersJSON:         `{}`,
+		Status:              storage.DeliveryStatusQueued,
+		CreatedAt:           200,
+		ModifiedAt:          200,
 	}
 	for _, fn := range overrides {
 		fn(&d)
@@ -122,13 +160,14 @@ func setupHookAndDelivery(t *testing.T, store *storage.Store, endpointURL string
 	wsID := mustLocalWorkspace(t, store)
 	hookRepo := storage.NewHookRepository(store.DB())
 	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
-
 	hook := makeTestHook(t, wsID, endpointURL)
 	if err := hookRepo.Create(hook); err != nil {
 		t.Fatal(err)
 	}
 
-	delivery := makeTestDelivery(t, hook.ID, wsID)
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = endpointURL
+	})
 	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +235,7 @@ func TestHeadersForDelivery(t *testing.T) {
 	body := []byte(`{"test":true}`)
 	now := int64(1700000000)
 
-	headers, err := HeadersForDelivery(delivery, hook, body, now, "1.0.0")
+	headers, err := HeadersForDelivery(delivery, hook.ID, hook.Secret, body, now, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +285,7 @@ func TestHeadersForDeliveryNoSecret(t *testing.T) {
 	body := []byte(`{}`)
 	now := int64(1700000000)
 
-	headers, err := HeadersForDelivery(delivery, hook, body, now, "dev")
+	headers, err := HeadersForDelivery(delivery, hook.ID, hook.Secret, body, now, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +419,9 @@ func TestDispatcherTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	delivery := makeTestDelivery(t, hook.ID, wsID)
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
+	})
 	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
@@ -609,6 +650,7 @@ func TestDispatcherMaxAttemptsDeadLetter(t *testing.T) {
 
 	// 创建一个已经 attempt_count=1 的 delivery（即将超出 max_attempts=1）
 	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
 		d.AttemptCount = 1 // ClaimDue 会再 +1，所以实际是 2
 		d.Status = storage.DeliveryStatusRetryWait
 		d.NextAttemptAt = int64Ptr(500) // 过去时间
@@ -656,7 +698,9 @@ func TestDispatcherDisabledHookSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	delivery := makeTestDelivery(t, hook.ID, wsID)
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
+	})
 	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +795,9 @@ func TestDispatcherDNSRebinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	delivery := makeTestDelivery(t, hook.ID, wsID)
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = "https://evil.example.com/webhook"
+	})
 	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
 		t.Fatal(err)
 	}
@@ -1010,7 +1056,7 @@ func TestDispatcherSignatureHeadersMatch(t *testing.T) {
 	defer server.Close()
 
 	store := newTestStore(t)
-	hook, delivery := setupHookAndDelivery(t, store, server.URL)
+	_, delivery := setupHookAndDelivery(t, store, server.URL)
 
 	clock := testClock{now: 1700000000}
 	d := NewDispatcher(DispatcherOptions{
@@ -1026,8 +1072,8 @@ func TestDispatcherSignatureHeadersMatch(t *testing.T) {
 	}
 
 	// 验证签名一致性
-	body := []byte(delivery.PayloadJSON)
-	expectedSig := SignatureSHA256(hook.Secret, delivery.ID, 1700000000, body)
+	body := []byte(delivery.RenderedBody)
+	expectedSig := SignatureSHA256("test-secret", delivery.ID, 1700000000, body)
 	gotSig := receivedHeaders.Get("X-Xuanchu-Signature-256")
 	if gotSig != expectedSig {
 		t.Fatalf("signature mismatch: got %q, want %q", gotSig, expectedSig)
@@ -1067,7 +1113,9 @@ func TestDispatcherRunOnceMultipleDeliveries(t *testing.T) {
 
 	deliveries := make([]storage.HookDelivery, 3)
 	for i := range deliveries {
-		deliveries[i] = makeTestDelivery(t, hook.ID, wsID)
+		deliveries[i] = makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ResolvedURL = server.URL
+		})
 	}
 	if err := deliveryRepo.Enqueue(deliveries); err != nil {
 		t.Fatal(err)
@@ -1124,7 +1172,9 @@ func TestDispatcherRunOnceRespectsBatchSize(t *testing.T) {
 	// 创建 5 个 delivery
 	deliveries := make([]storage.HookDelivery, 5)
 	for i := range deliveries {
-		deliveries[i] = makeTestDelivery(t, hook.ID, wsID)
+		deliveries[i] = makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ResolvedURL = server.URL
+		})
 	}
 	if err := deliveryRepo.Enqueue(deliveries); err != nil {
 		t.Fatal(err)

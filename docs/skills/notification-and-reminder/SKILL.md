@@ -1,14 +1,15 @@
 # 通知与提醒
 
-通过 Xuanchu MCP 管理 notification sink、reminder rule 和通知投递记录。
+通过 Xuanchu MCP 管理 notification sink、reminder rule、notification rule 和通知投递记录。
 
 ## 重要原则
 
 - 每次调用都显式传 `workspace`。
-- `notification_*` 管理投递目标和 delivery；`reminder_*` 管理时间驱动规则。
+- `notification_sink_*` 管理投递目标；`reminder_rule_*` 管理时间驱动提醒规则；`notification_rule_*` 管理事件通知规则；`notification_delivery_*` 管理 delivery。
 - 新 reminder rule 优先使用 `schedule_type` + `schedule_value` + `filter_source`，旧 `trigger_type/offset_seconds/after_seconds` 只作为兼容路径。
 - 动态 endpoint 必须配置 `allowed_hosts`；delivery 生成后会冻结 URL、header、body，replay 不重新渲染当前模板。
 - secret 不要直接写入 URL/body。HTTP template 中通过 `secret_refs` 引用 secret config。
+- `sink` 是 workspace 级资源引用，可以用名称或 ID；不能跨 workspace 引用。
 
 ## notification_sink_add — 创建 sink
 
@@ -141,6 +142,86 @@ reminder_rule_enable({"workspace": "dajee", "rule": "rule-id"})
 reminder_rule_remove({"workspace": "dajee", "rule": "rule-id"})
 ```
 
+## notification_rule_add — 创建事件通知规则
+
+notification rule 与 reminder rule 不同：它监听事件，不做定时扫描。`name`、`event`、`audience`、`sink` 必填。
+
+当前允许的事件：
+
+- `task.created`
+- `task.modified`
+- `task.completed`
+- `task.deleted`
+- `project.archived`
+- `project.annotated`
+- `project.denotated`
+- `task.unblocked`
+
+当前不允许注册的事件包括：`task.started`、`task.stopped`、`task.annotated`、`task.denotated`、`task.dependency_added`、`task.dependency_removed`、`project.created`、`project.modified`。
+
+通知任务解除阻塞后的 assignee：
+
+```json
+notification_rule_add({
+  "workspace": "dajee",
+  "name": "task-unblocked",
+  "event": "task.unblocked",
+  "audience": "assignees",
+  "sink": "openclaw"
+})
+```
+
+监听某项目的项目注释，并通知显式用户：
+
+```json
+notification_rule_add({
+  "workspace": "dajee",
+  "project": "agentapi",
+  "name": "project-annotation-watch",
+  "event": "project.annotated",
+  "audience": "explicit_users",
+  "recipients": ["alice"],
+  "sink": "openclaw"
+})
+```
+
+task 事件可以使用 `filter` 进一步过滤任务：
+
+```json
+notification_rule_add({
+  "workspace": "dajee",
+  "name": "urgent-task-changes",
+  "event": "task.modified",
+  "filter": "priority:H or +urgent",
+  "audience": "assignees_and_explicit_users",
+  "recipients": ["pm@example.com"],
+  "sink": "openclaw",
+  "template_subject": "任务事件 {{event.type}}",
+  "template_body": "{{event.json}}"
+})
+```
+
+audience 支持：
+
+- `actor`
+- `explicit_users`
+- `assignees`
+- `assignees_and_explicit_users`
+
+`assignees` 和 `assignees_and_explicit_users` 只支持 `task.*` 事件；project 事件没有 assignee 语义，应使用 `actor` 或 `explicit_users`。
+
+## notification rule 管理
+
+```json
+notification_rule_list({"workspace": "dajee"})
+notification_rule_list({"workspace": "dajee", "include_disabled": true})
+notification_rule_info({"workspace": "dajee", "rule": "rule-id"})
+notification_rule_modify({"workspace": "dajee", "rule": "rule-id", "event": "task.unblocked"})
+notification_rule_disable({"workspace": "dajee", "rule": "rule-id"})
+notification_rule_enable({"workspace": "dajee", "rule": "rule-id"})
+notification_rule_remove({"workspace": "dajee", "rule": "rule-id"})
+```
+
 ## delivery 查看与 replay
 
 ```json
@@ -150,3 +231,5 @@ notification_delivery_replay({"workspace": "dajee", "delivery_id": "delivery-id"
 ```
 
 `notification_delivery_replay` 只适用于 dead-lettered 或 skipped delivery，不会重新渲染 URL、header、body。
+
+事件通知 delivery 会包含 `object_kind` / `object_id`，用于标识事件对象；reminder delivery 继续以 task 为主。

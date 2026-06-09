@@ -13,6 +13,8 @@ func makeNotificationDelivery(wsID, sinkID, ruleID string, overrides ...func(*No
 		RuleID:                      ruleID,
 		SinkID:                      sinkID,
 		TaskUUID:                    uuid.NewString(),
+		ObjectKind:                  "task",
+		ObjectID:                    "",
 		RecipientUserID:             "user-1",
 		EventID:                     uuid.NewString(),
 		EventType:                   "task.due_soon",
@@ -33,6 +35,39 @@ func makeNotificationDelivery(wsID, sinkID, ruleID string, overrides ...func(*No
 		fn(&row)
 	}
 	return row
+}
+
+func TestNotificationDeliveryRepositoryStoresEventObject(t *testing.T) {
+	store, wsID := newNotificationTestStore(t)
+	sink := makeNotificationSink(wsID, "openclaw")
+	if err := NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
+		t.Fatal(err)
+	}
+	ruleRepo := NewEventNotificationRuleRepository(store.DB())
+	rule := makeEventNotificationRule(wsID, "project-note", sink.ID, "project.annotated", func(r *EventNotificationRule) {
+		r.AudienceType = "actor"
+	})
+	if err := ruleRepo.Create(rule); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewNotificationDeliveryRepository(store.DB())
+
+	delivery := makeNotificationDelivery(wsID, sink.ID, rule.ID, func(d *NotificationDelivery) {
+		d.TaskUUID = ""
+		d.ObjectKind = "project"
+		d.ObjectID = "project-1"
+		d.EventType = "project.annotated"
+	})
+	if err := repo.Enqueue([]NotificationDelivery{delivery}); err != nil {
+		t.Fatalf("Enqueue() error = %v", err)
+	}
+	got, err := repo.GetByID(delivery.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.TaskUUID != "" || got.ObjectKind != "project" || got.ObjectID != "project-1" {
+		t.Fatalf("event object fields = task_uuid:%q object:%s/%s", got.TaskUUID, got.ObjectKind, got.ObjectID)
+	}
 }
 
 func TestNotificationDeliveryRepositoryDedupeKeyUnique(t *testing.T) {

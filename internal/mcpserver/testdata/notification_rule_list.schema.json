@@ -1,0 +1,36 @@
+{
+  "description": "List event notification rules; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "include_disabled": {
+        "type": "boolean"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "notification_rule_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

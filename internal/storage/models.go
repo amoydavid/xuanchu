@@ -200,7 +200,8 @@ type HookDefinition struct {
 	ProjectID      *string `gorm:"index:idx_hooks_scope,priority:3"`
 	ActorUserID    string  `gorm:"not null;index"`
 	EventTypesJSON string  `gorm:"not null"`
-	EndpointURL    string  `gorm:"not null"`
+	SinkID         string  `gorm:"not null;index"`
+	EndpointURL    string  `gorm:"not null;default:''"`
 	Secret         string  `gorm:"not null;default:''"`
 	Enabled        *bool   `gorm:"not null;default:true;index:idx_hooks_enabled"`
 	TimeoutSeconds int     `gorm:"not null;default:10"`
@@ -210,24 +211,32 @@ type HookDefinition struct {
 }
 
 type HookDelivery struct {
-	ID             string  `gorm:"primaryKey"`
-	HookID         string  `gorm:"not null;index:idx_deliveries_due,priority:2;index:idx_deliveries_hook_status,priority:1"`
-	EventID        string  `gorm:"not null;index"`
-	EventType      string  `gorm:"not null;index"`
-	WorkspaceID    string  `gorm:"not null;index"`
-	ProjectID      *string `gorm:"index"`
-	ActorUserID    string  `gorm:"not null;index"`
-	PayloadJSON    string  `gorm:"not null"`
-	HeadersJSON    string  `gorm:"not null;default:'{}'"`
-	Status         string  `gorm:"not null;index:idx_deliveries_due,priority:1;index:idx_deliveries_hook_status,priority:2"`
-	AttemptCount   int     `gorm:"not null;default:0"`
-	NextAttemptAt  *int64  `gorm:"index:idx_deliveries_due,priority:3"`
-	ClaimExpiresAt *int64  `gorm:"index"`
-	LastAttemptAt  *int64
-	LastStatusCode *int
-	LastError      string
-	CreatedAt      int64 `gorm:"not null;index"`
-	ModifiedAt     int64 `gorm:"not null"`
+	ID                          string  `gorm:"primaryKey"`
+	HookID                      string  `gorm:"not null;index:idx_deliveries_due,priority:2;index:idx_deliveries_hook_status,priority:1"`
+	EventID                     string  `gorm:"not null;index"`
+	EventType                   string  `gorm:"not null;index"`
+	WorkspaceID                 string  `gorm:"not null;index"`
+	ProjectID                   *string `gorm:"index"`
+	ActorUserID                 string  `gorm:"not null;index"`
+	SinkID                      string  `gorm:"not null;default:'';index"`
+	ResolvedURL                 string  `gorm:"not null;default:''"`
+	ResolvedEndpointSource      string  `gorm:"not null;default:''"`
+	ResolvedEndpointFingerprint string  `gorm:"not null;default:''"`
+	RenderedMethod              string  `gorm:"not null;default:'POST'"`
+	RenderedHeadersJSON         string  `gorm:"not null;default:'{}'"`
+	RenderedBody                string  `gorm:"not null;default:''"`
+	RenderedContentType         string  `gorm:"not null;default:''"`
+	PayloadJSON                 string  `gorm:"not null"`
+	HeadersJSON                 string  `gorm:"not null;default:'{}'"`
+	Status                      string  `gorm:"not null;index:idx_deliveries_due,priority:1;index:idx_deliveries_hook_status,priority:2"`
+	AttemptCount                int     `gorm:"not null;default:0"`
+	NextAttemptAt               *int64  `gorm:"index:idx_deliveries_due,priority:3"`
+	ClaimExpiresAt              *int64  `gorm:"index"`
+	LastAttemptAt               *int64
+	LastStatusCode              *int
+	LastError                   string
+	CreatedAt                   int64 `gorm:"not null;index"`
+	ModifiedAt                  int64 `gorm:"not null"`
 }
 
 type NotificationSink struct {
@@ -275,13 +284,33 @@ type ReminderRule struct {
 	ModifiedAt           int64   `gorm:"not null"`
 }
 
+type EventNotificationRule struct {
+	ID                   string  `gorm:"primaryKey"`
+	WorkspaceID          string  `gorm:"not null;index:idx_event_notification_rules_workspace;uniqueIndex:idx_event_notification_rules_ws_name,priority:1"`
+	ProjectID            *string `gorm:"index"`
+	Name                 string  `gorm:"not null;uniqueIndex:idx_event_notification_rules_ws_name,priority:2"`
+	Enabled              *bool   `gorm:"not null;default:true;index"`
+	EventType            string  `gorm:"not null;index"`
+	FilterSource         string  `gorm:"not null;default:''"`
+	AudienceType         string  `gorm:"not null"`
+	RecipientUserIDsJSON string  `gorm:"not null;default:'[]'"`
+	SinkID               string  `gorm:"not null;index"`
+	TemplateSubject      string  `gorm:"not null;default:''"`
+	TemplateBody         string  `gorm:"not null;default:''"`
+	CreatedBy            string  `gorm:"not null;index"`
+	CreatedAt            int64   `gorm:"not null"`
+	ModifiedAt           int64   `gorm:"not null"`
+}
+
 type NotificationDelivery struct {
 	ID                          string  `gorm:"primaryKey"`
 	WorkspaceID                 string  `gorm:"not null;index"`
 	ProjectID                   *string `gorm:"index"`
 	RuleID                      string  `gorm:"not null;index"`
 	SinkID                      string  `gorm:"not null;index"`
-	TaskUUID                    string  `gorm:"not null;index"`
+	TaskUUID                    string  `gorm:"not null;default:'';index"`
+	ObjectKind                  string  `gorm:"not null;default:'task';index"`
+	ObjectID                    string  `gorm:"not null;default:'';index"`
 	RecipientUserID             string  `gorm:"not null;index"`
 	EventID                     string  `gorm:"not null;index"`
 	EventType                   string  `gorm:"not null;index"`

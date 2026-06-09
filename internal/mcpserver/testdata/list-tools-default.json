@@ -530,7 +530,7 @@
             ]
           },
           "events": {
-            "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived)",
+            "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked)",
             "items": {
               "type": "string"
             },
@@ -549,12 +549,8 @@
           "project_id": {
             "type": "string"
           },
-          "secret": {
-            "description": "optional webhook secret",
-            "type": "string"
-          },
-          "url": {
-            "description": "endpoint URL",
+          "sink": {
+            "description": "workspace notification sink name or ID",
             "type": "string"
           },
           "workspace": {
@@ -563,7 +559,7 @@
         },
         "required": [
           "name",
-          "url",
+          "sink",
           "events"
         ],
         "type": "object"
@@ -830,13 +826,7 @@
           "project_id": {
             "type": "string"
           },
-          "secret": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "url": {
+          "sink": {
             "type": [
               "null",
               "string"
@@ -1202,6 +1192,376 @@
         "type": "object"
       },
       "name": "notification_delivery_replay",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create an event notification rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "description": "actor, assignees, explicit_users, or assignees_and_explicit_users",
+            "type": "string"
+          },
+          "event": {
+            "description": "event type such as task.unblocked",
+            "type": "string"
+          },
+          "filter": {
+            "description": "task filter expression for task events",
+            "type": "string"
+          },
+          "name": {
+            "description": "rule name",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "recipients": {
+            "description": "explicit recipient user refs",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "sink": {
+            "description": "notification sink name or ID",
+            "type": "string"
+          },
+          "template_body": {
+            "type": "string"
+          },
+          "template_subject": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "event",
+          "audience",
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "notification_rule_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Disable an event notification rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "notification rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "notification_rule_disable",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Enable an event notification rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "notification rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "notification_rule_enable",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get event notification rule details; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "notification rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "notification_rule_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List event notification rules; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_disabled": {
+            "type": "boolean"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "notification_rule_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify an event notification rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "event": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "filter": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "project_ref": {
+            "description": "new rule project scope; empty clears project scope",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "rule": {
+            "description": "notification rule ID",
+            "type": "string"
+          },
+          "sink": {
+            "description": "notification sink name or ID",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "template_body": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "template_subject": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "notification_rule_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete an event notification rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "notification rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "notification_rule_remove",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

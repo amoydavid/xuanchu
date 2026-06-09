@@ -65,11 +65,21 @@ components:
         - token_not_found
         - hook_not_found
         - hook_event_types_invalid
-        - hook_endpoint_invalid
+        - hook_sink_required
+        - hook_url_not_supported
         - hook_scope_invalid
-        - hook_secret_invalid
         - hook_delivery_not_found
         - hook_delivery_not_replayable
+        - notification_sink_invalid
+        - notification_sink_not_found
+        - notification_rule_invalid
+        - notification_rule_not_found
+        - notification_rule_url_not_supported
+        - reminder_rule_invalid
+        - reminder_rule_not_found
+        - recipient_not_found
+        - recipient_not_member
+        - audience_unsupported_for_event
         - remote_server_invalid
     ErrorEnvelope:
       type: object
@@ -320,7 +330,7 @@ components:
           nullable: true
     Hook:
       type: object
-      required: [id, workspace_id, name, endpoint_url, event_types, scope_type, enabled, timeout_seconds, max_attempts, created_at, modified_at]
+      required: [id, workspace_id, name, sink_id, sink_name, sink_type, event_types, scope_type, enabled, timeout_seconds, max_attempts, created_at, modified_at]
       properties:
         id:
           type: string
@@ -335,9 +345,15 @@ components:
           description: Non-null when hook is scoped to a project.
         name:
           type: string
-        endpoint_url:
+        sink_id:
           type: string
-          format: uri
+          format: uuid
+          description: Workspace-scoped outbound sink UUID.
+        sink_name:
+          type: string
+        sink_type:
+          type: string
+          enum: [webhook, http_template]
         event_types:
           type: array
           items:
@@ -348,6 +364,9 @@ components:
               - task.completed
               - task.deleted
               - project.archived
+              - project.annotated
+              - project.denotated
+              - task.unblocked
         scope_type:
           type: string
           enum: [workspace, project]
@@ -369,13 +388,13 @@ components:
           format: int64
     HookCreateRequest:
       type: object
-      required: [name, endpoint_url, event_types]
+      required: [name, sink, event_types]
       properties:
         name:
           type: string
-        endpoint_url:
+        sink:
           type: string
-          format: uri
+          description: Sink name or UUID in the effective workspace.
         event_types:
           type: array
           items:
@@ -386,6 +405,9 @@ components:
               - task.completed
               - task.deleted
               - project.archived
+              - project.annotated
+              - project.denotated
+              - task.unblocked
           minItems: 1
         scope_type:
           type: string
@@ -395,10 +417,6 @@ components:
           type: string
           nullable: true
           description: Project slug or UUID. Required when scope_type is project.
-        secret:
-          type: string
-          nullable: true
-          description: Optional HMAC-SHA256 signing secret. Never returned in responses.
         timeout_seconds:
           type: integer
           minimum: 1
@@ -412,9 +430,9 @@ components:
       properties:
         name:
           type: string
-        endpoint_url:
+        sink:
           type: string
-          format: uri
+          description: Sink name or UUID in the effective workspace.
         event_types:
           type: array
           items:
@@ -425,10 +443,9 @@ components:
               - task.completed
               - task.deleted
               - project.archived
-        secret:
-          type: string
-          nullable: true
-          description: Replace the signing secret. Pass null or omit to keep existing.
+              - project.annotated
+              - project.denotated
+              - task.unblocked
         timeout_seconds:
           type: integer
           minimum: 1
@@ -513,6 +530,472 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/HookDelivery'
+    HTTPHeaderTemplate:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+    HTTPTemplateSecretRef:
+      type: object
+      required: [alias, config_key]
+      properties:
+        alias:
+          type: string
+        config_key:
+          type: string
+    NotificationSink:
+      type: object
+      required: [id, workspace_id, name, type, endpoint_mode, enabled, timeout_seconds, max_attempts, created_by, created_at, modified_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [webhook, http_template]
+        endpoint_mode:
+          type: string
+          enum: [static_url, template, config_value]
+        url:
+          type: string
+        url_template:
+          type: string
+        config_key:
+          type: string
+        allowed_hosts:
+          type: array
+          items:
+            type: string
+        http_method:
+          type: string
+          enum: [POST]
+        header_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HTTPHeaderTemplate'
+        body_template:
+          type: string
+        body_content_type:
+          type: string
+        secret_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/HTTPTemplateSecretRef'
+        enabled:
+          type: boolean
+        timeout_seconds:
+          type: integer
+        max_attempts:
+          type: integer
+        created_by:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    NotificationSinkRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [webhook, http_template]
+        endpoint_mode:
+          type: string
+          enum: [static_url, template, config_value]
+        url:
+          type: string
+        url_template:
+          type: string
+        config_key:
+          type: string
+        allowed_hosts:
+          type: array
+          items:
+            type: string
+        header_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HTTPHeaderTemplate'
+        body_template:
+          type: string
+        body_content_type:
+          type: string
+        secret_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/HTTPTemplateSecretRef'
+        secret:
+          type: string
+          description: Optional webhook signing secret. Never returned in responses.
+        timeout_seconds:
+          type: integer
+        max_attempts:
+          type: integer
+    NotificationSinkUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [webhook, http_template]
+        endpoint_mode:
+          type: string
+          enum: [static_url, template, config_value]
+        url:
+          type: string
+        url_template:
+          type: string
+        config_key:
+          type: string
+        allowed_hosts:
+          type: array
+          items:
+            type: string
+        header_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HTTPHeaderTemplate'
+        body_template:
+          type: string
+        body_content_type:
+          type: string
+        secret_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/HTTPTemplateSecretRef'
+        secret:
+          type: string
+          description: Replace webhook signing secret. Never returned in responses.
+        timeout_seconds:
+          type: integer
+        max_attempts:
+          type: integer
+    ReminderRule:
+      type: object
+      required: [id, workspace_id, name, enabled, trigger_type, repeat_policy, schedule_type, schedule_value, filter_source, audience_type, recipient_users, sink_id, created_by, created_at, modified_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        enabled:
+          type: boolean
+        trigger_type:
+          type: string
+        offset_seconds:
+          type: integer
+          format: int64
+        after_seconds:
+          type: integer
+          format: int64
+        repeat_policy:
+          type: string
+        schedule_type:
+          type: string
+        schedule_value:
+          type: string
+        filter_source:
+          type: string
+        audience_type:
+          type: string
+          enum: [assignees, explicit_users, assignees_and_explicit_users]
+        recipient_users:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        sink_id:
+          type: string
+          format: uuid
+        created_by:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    ReminderRuleRequest:
+      type: object
+      required: [name, audience_type, sink_ref]
+      properties:
+        name:
+          type: string
+        project_ref:
+          type: string
+        trigger_type:
+          type: string
+          enum: [due_before, overdue]
+        offset_seconds:
+          type: integer
+          format: int64
+        after_seconds:
+          type: integer
+          format: int64
+        repeat_policy:
+          type: string
+        schedule_type:
+          type: string
+        schedule_value:
+          type: string
+        filter_source:
+          type: string
+        audience_type:
+          type: string
+          enum: [assignees, explicit_users, assignees_and_explicit_users]
+        recipients:
+          type: array
+          items:
+            type: string
+        sink_ref:
+          type: string
+          description: Sink name or UUID in the effective workspace.
+    ReminderRuleUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        project_ref:
+          type: string
+          description: Empty string clears project scope.
+        trigger_type:
+          type: string
+          enum: [due_before, overdue]
+        offset_seconds:
+          type: integer
+          format: int64
+        after_seconds:
+          type: integer
+          format: int64
+        repeat_policy:
+          type: string
+        schedule_type:
+          type: string
+        schedule_value:
+          type: string
+        filter_source:
+          type: string
+        audience_type:
+          type: string
+          enum: [assignees, explicit_users, assignees_and_explicit_users]
+        recipients:
+          type: array
+          items:
+            type: string
+        sink_ref:
+          type: string
+          description: Sink name or UUID in the effective workspace.
+    NotificationRule:
+      type: object
+      required: [id, workspace_id, name, enabled, event_type, filter_source, audience_type, recipient_users, sink_id, template_subject, template_body, created_by, created_at, modified_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        enabled:
+          type: boolean
+        event_type:
+          type: string
+          enum: [task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked]
+        filter_source:
+          type: string
+        audience_type:
+          type: string
+          enum: [actor, assignees, explicit_users, assignees_and_explicit_users]
+        recipient_users:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        sink_id:
+          type: string
+          format: uuid
+        template_subject:
+          type: string
+        template_body:
+          type: string
+        created_by:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    NotificationRuleRequest:
+      type: object
+      required: [name, event_type, audience_type, sink]
+      properties:
+        name:
+          type: string
+        project_ref:
+          type: string
+        event_type:
+          type: string
+          enum: [task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked]
+        filter_source:
+          type: string
+        audience_type:
+          type: string
+          enum: [actor, assignees, explicit_users, assignees_and_explicit_users]
+        recipients:
+          type: array
+          items:
+            type: string
+        sink:
+          type: string
+          description: Sink name or UUID in the effective workspace. URL is rejected.
+        template_subject:
+          type: string
+        template_body:
+          type: string
+    NotificationRuleUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        project_ref:
+          type: string
+          description: Empty string clears project scope.
+        event_type:
+          type: string
+          enum: [task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked]
+        filter_source:
+          type: string
+        audience_type:
+          type: string
+          enum: [actor, assignees, explicit_users, assignees_and_explicit_users]
+        recipients:
+          type: array
+          items:
+            type: string
+        sink:
+          type: string
+          description: Sink name or UUID in the effective workspace. URL is rejected.
+        template_subject:
+          type: string
+        template_body:
+          type: string
+    NotificationDelivery:
+      type: object
+      required: [id, workspace_id, rule_id, sink_id, object_kind, object_id, recipient, event_id, event_type, resolved_url, rendered_method, rendered_headers, rendered_body, rendered_content_type, payload, status, attempt_count, created_at, modified_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        rule_id:
+          type: string
+          format: uuid
+        sink_id:
+          type: string
+          format: uuid
+        task_uuid:
+          type: string
+          nullable: true
+        object_kind:
+          type: string
+          description: Event object kind, for example task or project.
+        object_id:
+          type: string
+          description: Event object ID.
+        recipient:
+          type: object
+          additionalProperties: true
+        event_id:
+          type: string
+        event_type:
+          type: string
+        resolved_url:
+          type: string
+        resolved_endpoint_source:
+          type: string
+        resolved_endpoint_fingerprint:
+          type: string
+        rendered_method:
+          type: string
+        rendered_headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        rendered_body:
+          type: string
+        rendered_content_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [queued, delivering, succeeded, retry_wait, dead_lettered, disabled_skipped]
+        attempt_count:
+          type: integer
+        next_attempt_at:
+          type: integer
+          format: int64
+          nullable: true
+        claim_expires_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_attempt_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_status_code:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
   parameters:
     WorkspaceQuery:
       in: query
@@ -1583,6 +2066,308 @@ paths:
       responses:
         '200':
           description: Token revoked.
+  # ── Notification sinks, reminder rules, event notification rules ──
+  /api/v1/notification-sinks:
+    get:
+      summary: List notification sinks in the effective workspace.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - in: query
+          name: all
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Notification sink list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/NotificationSink'
+    post:
+      summary: Create a notification sink.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSinkRequest'
+      responses:
+        '201':
+          description: Notification sink created.
+  /api/v1/notification-sinks/{sinkID}:
+    parameters:
+      - in: path
+        name: sinkID
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get notification sink details.
+      responses:
+        '200':
+          description: Notification sink details.
+    patch:
+      summary: Modify notification sink.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSinkUpdateRequest'
+      responses:
+        '200':
+          description: Notification sink modified.
+    delete:
+      summary: Delete notification sink.
+      responses:
+        '204':
+          description: Notification sink deleted.
+  /api/v1/notification-sinks/{sinkID}/enable:
+    post:
+      summary: Enable notification sink.
+      parameters:
+        - in: path
+          name: sinkID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Notification sink enabled.
+  /api/v1/notification-sinks/{sinkID}/disable:
+    post:
+      summary: Disable notification sink.
+      parameters:
+        - in: path
+          name: sinkID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Notification sink disabled.
+  /api/v1/reminder-rules:
+    get:
+      summary: List reminder rules.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - in: query
+          name: all
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Reminder rule list.
+    post:
+      summary: Create a reminder rule.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReminderRuleRequest'
+      responses:
+        '201':
+          description: Reminder rule created.
+  /api/v1/reminder-rules/{ruleID}:
+    parameters:
+      - in: path
+        name: ruleID
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get reminder rule details.
+      responses:
+        '200':
+          description: Reminder rule details.
+    patch:
+      summary: Modify reminder rule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReminderRuleUpdateRequest'
+      responses:
+        '200':
+          description: Reminder rule modified.
+    delete:
+      summary: Delete reminder rule.
+      responses:
+        '204':
+          description: Reminder rule deleted.
+  /api/v1/reminder-rules/{ruleID}/enable:
+    post:
+      summary: Enable reminder rule.
+      parameters:
+        - in: path
+          name: ruleID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Reminder rule enabled.
+  /api/v1/reminder-rules/{ruleID}/disable:
+    post:
+      summary: Disable reminder rule.
+      parameters:
+        - in: path
+          name: ruleID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Reminder rule disabled.
+  /api/v1/notification-rules:
+    get:
+      summary: List event notification rules.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - $ref: '#/components/parameters/ProjectQuery'
+        - in: query
+          name: all
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Event notification rule list.
+    post:
+      summary: Create an event notification rule.
+      description: Uses sink; url and endpoint_url are rejected.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRuleRequest'
+      responses:
+        '201':
+          description: Event notification rule created.
+  /api/v1/notification-rules/{ruleID}:
+    parameters:
+      - in: path
+        name: ruleID
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get event notification rule details.
+      responses:
+        '200':
+          description: Event notification rule details.
+    patch:
+      summary: Modify event notification rule.
+      description: Uses sink; url and endpoint_url are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRuleUpdateRequest'
+      responses:
+        '200':
+          description: Event notification rule modified.
+    delete:
+      summary: Delete event notification rule.
+      responses:
+        '204':
+          description: Event notification rule deleted.
+  /api/v1/notification-rules/{ruleID}/enable:
+    post:
+      summary: Enable event notification rule.
+      parameters:
+        - in: path
+          name: ruleID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Event notification rule enabled.
+  /api/v1/notification-rules/{ruleID}/disable:
+    post:
+      summary: Disable event notification rule.
+      parameters:
+        - in: path
+          name: ruleID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Event notification rule disabled.
+  /api/v1/notification-deliveries:
+    get:
+      summary: List notification deliveries.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceQuery'
+        - in: query
+          name: sink
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification delivery list.
+  /api/v1/notification-deliveries/{deliveryID}:
+    parameters:
+      - in: path
+        name: deliveryID
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/WorkspaceQuery'
+    get:
+      summary: Get notification delivery details.
+      responses:
+        '200':
+          description: Notification delivery details.
+  /api/v1/notification-deliveries/{deliveryID}/replay:
+    post:
+      summary: Replay a dead-lettered or skipped notification delivery.
+      parameters:
+        - in: path
+          name: deliveryID
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/WorkspaceQuery'
+      responses:
+        '200':
+          description: Notification delivery replayed.
   # ── Hook management ───────────────────────────────────────
   /api/v1/hooks:
     get:

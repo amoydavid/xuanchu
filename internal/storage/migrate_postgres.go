@@ -7,7 +7,7 @@ func (s *Store) migratePostgres() error {
 		&Meta{}, &User{}, &Workspace{}, &Membership{},
 		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{},
 		&Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{},
-		&NotificationSink{}, &ReminderRule{}, &NotificationDelivery{},
+		&NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{},
 		&UserExternalID{}, &Task{},
 	); err != nil {
 		return err

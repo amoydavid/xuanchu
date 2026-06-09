@@ -81,16 +81,21 @@ curl -H "Authorization: Bearer $XUANCHU_TOKEN" https://xuanchu.example.com/api/v
 
 如果 token 过期或被撤销，请重新创建 token。
 
-## hook_endpoint_invalid
+## hook_url_not_supported
 
 常见原因：
 
-- URL 为空。
-- scheme 不是 `http` 或 `https`。
-- host 无法解析。
-- endpoint 解析到 loopback、私网、link-local、multicast 或 unspecified 地址。
+- 创建或修改 Hook 时仍传了 `url` 或 `endpoint_url`。
+- 使用了旧文档里的 `hook add --url ...` 写法。
 
-Hook endpoint 必须是 dispatcher 可以访问的公网或允许的外部地址。
+Hook 现在使用 workspace 级 sink。先创建 notification sink，再用 `hook add --sink <sink-ref>`：
+
+```bash
+xuanchu notification sink add audit-stream --type webhook --url https://example.test/hook
+xuanchu hook add audit --event task.created --sink audit-stream
+```
+
+如果是 sink endpoint 无法解析或被出站网络防护拒绝，错误通常会出现在 notification sink 或 delivery 阶段，例如 `notification_sink_invalid`、`endpoint_unresolved`、`endpoint_host_denied`。
 
 ## hook_delivery_not_replayable
 

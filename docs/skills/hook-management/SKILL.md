@@ -1,10 +1,10 @@
 # Hook 管理
 
-通过 Xuanchu MCP 管理 Webhook Hook——自动化事件通知机制。
+通过 Xuanchu MCP 管理 Webhook Hook——面向外部系统的事件投递机制。
 
 ## 基本概念
 
-Hook 是事件驱动的 Webhook 端点。当 xuanchu 中发生特定事件时，系统会向 Hook 的 URL 发送 HTTP POST 请求。
+Hook 是事件驱动的出站集成。当 xuanchu 中发生特定事件时，系统会通过 workspace 级 notification sink 投递 HTTP 请求。Hook 不直接保存 URL 或 secret。
 
 支持的事件类型：
 - `task.created` — 任务创建
@@ -12,23 +12,26 @@ Hook 是事件驱动的 Webhook 端点。当 xuanchu 中发生特定事件时，
 - `task.completed` — 任务完成
 - `task.deleted` — 任务删除
 - `project.archived` — 项目归档
+- `project.annotated` — 项目新增注释
+- `project.denotated` — 项目删除注释
+- `task.unblocked` — 任务依赖解除阻塞
 
 Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id`）。
+`sink` 可以是当前 workspace 内的 sink 名称或 ID；不能引用其他 workspace 的 sink。
 
 ## Hook 生命周期
 
 ### hook_add — 创建 Hook
 
-`name`、`url`、`events` 必填。
+`name`、`sink`、`events` 必填。
 
 ```json
 // 输入：workspace 级别
 {
   "workspace": "dajee",
   "name": "CI 触发器",
-  "url": "https://ci.example.com/webhook",
-  "events": ["task.completed", "task.deleted"],
-  "secret": "whsec_xxx"
+  "sink": "ci-webhook",
+  "events": ["task.completed", "task.deleted"]
 }
 
 // 输入：项目级别
@@ -36,7 +39,7 @@ Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
   "name": "PR 检查",
-  "url": "https://ci.example.com/pr-check",
+  "sink": "ci-webhook",
   "events": ["task.created"]
 }
 
@@ -49,7 +52,9 @@ Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id
       "scope_type": "workspace",
       "workspace_id": "ws-uuid-xxx",
       "event_types": ["task.completed", "task.deleted"],
-      "endpoint_url": "https://ci.example.com/webhook",
+      "sink_id": "sink-uuid-xxx",
+      "sink_name": "ci-webhook",
+      "sink_type": "webhook",
       "enabled": true
     }
   },
@@ -78,6 +83,7 @@ Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id
 ```json
 {"workspace": "dajee", "hook": "hook-uuid-xxx", "name": "CI/CD 触发器"}
 {"workspace": "dajee", "hook": "hook-uuid-xxx", "events": ["task.created", "task.completed"]}
+{"workspace": "dajee", "hook": "hook-uuid-xxx", "sink": "ci-webhook-prod"}
 {"workspace": "dajee", "hook": "hook-uuid-xxx", "active": false}
 ```
 
@@ -113,33 +119,27 @@ Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id
 
 ## 测试与诊断
 
-### hook_test — 测试 Hook 配置（只读）
-
-```json
-{"workspace": "dajee", "hook": "hook-uuid-xxx"}
-```
-
-### hook_ping — Ping Hook（写审计日志）
-
-```json
-{"workspace": "dajee", "hook": "hook-uuid-xxx"}
-```
-
 ## 典型 Agent 工作流
 
 **场景：用户说"帮我设置一个 CI webhook"**
 
 ```json
-// Step 1: 创建 Hook
+// Step 1: 确认或创建 notification sink
+notification_sink_add({
+  "workspace": "dajee",
+  "name": "ci-webhook",
+  "type": "webhook",
+  "url": "https://ci.example.com/webhook",
+  "secret": "webhook-secret"
+})
+
+// Step 2: 创建 Hook
 hook_add({
   "workspace": "dajee",
   "name": "CI 触发器",
-  "url": "https://ci.example.com/webhook",
+  "sink": "ci-webhook",
   "events": ["task.completed", "task.deleted"]
 })
-
-// Step 2: 确认配置
-hook_test({"workspace": "dajee", "hook": "返回的 hook ID"})
 
 // Step 3: 检查投递状态（完成任务后）
 hook_delivery_list({"workspace": "dajee", "hook": "hook-uuid-xxx", "limit": 5})
