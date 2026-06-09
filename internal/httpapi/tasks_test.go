@@ -39,12 +39,19 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 			return ""
 		}},
 		{name: "annotate", method: http.MethodPost, path: "/api/v1/tasks/api-1/annotations", body: `{"description":"note"}`, wantStatus: http.StatusOK},
-		{name: "denotate", method: http.MethodDelete, path: "/api/v1/tasks/api-1/annotations/1", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
+		{name: "denotate", method: http.MethodDelete, path: "/api/v1/tasks/api-1/annotations/{annotationID}", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
 			t.Helper()
 			if err := svc.Annotate(taskUUID, "note"); err != nil {
 				t.Fatal(err)
 			}
-			return ""
+			tsk, err := svc.Info(taskUUID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tsk.Annotations) != 1 || tsk.Annotations[0].ID == "" {
+				t.Fatalf("annotations = %#v, want one annotation with id", tsk.Annotations)
+			}
+			return tsk.Annotations[0].ID
 		}},
 		{name: "urgency", method: http.MethodGet, path: "/api/v1/tasks/api-1/urgency", wantStatus: http.StatusOK},
 		{name: "link add", method: http.MethodPost, path: "/api/v1/tasks/api-1/links", body: `{"type":"document","url":"https://example.com","title":"Example"}`, wantStatus: http.StatusCreated},
@@ -80,11 +87,12 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			linkID := ""
+			resourceID := ""
 			if tc.before != nil {
-				linkID = tc.before(t, svc, created.UUID)
+				resourceID = tc.before(t, svc, created.UUID)
 			}
-			path := strings.ReplaceAll(tc.path, "{linkID}", linkID)
+			path := strings.ReplaceAll(tc.path, "{linkID}", resourceID)
+			path = strings.ReplaceAll(path, "{annotationID}", resourceID)
 			headers := map[string]string{
 				"Authorization": "Bearer " + fixture.token,
 				"Content-Type":  "application/json",

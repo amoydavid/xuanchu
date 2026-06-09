@@ -107,6 +107,7 @@ func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 				return task.Task{}, err
 			}
 			out.Annotations[i] = task.Annotation{
+				ID:          annotation.ID,
 				Entry:       entry,
 				Description: annotation.Description,
 			}

@@ -181,8 +181,10 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		reports:                  report.DefaultRegistry(),
 		disableContext:           opts.NoContext,
 	}
-	if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
-		return nil, err
+	if !opts.DisableScopeBootstrap {
+		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
+			return nil, err
+		}
 	}
 	return svc, nil
 }
@@ -807,7 +809,7 @@ func (s *Service) annotateLocked(target, description string) (task.Task, project
 			}
 			entry++
 		}
-		if err := s.repo.AddAnnotation(s.workspaceID, tsk.UUID, task.Annotation{Entry: entry, Description: description}, entry); err != nil {
+		if err := s.repo.AddAnnotation(s.workspaceID, tsk.UUID, task.Annotation{ID: uuid.NewString(), Entry: entry, Description: description}, entry); err != nil {
 			if storage.IsUniqueConstraintError(err) {
 				now = entry + 1
 				continue
@@ -823,12 +825,12 @@ func (s *Service) annotateLocked(target, description string) (task.Task, project
 	return task.Task{}, projectChange{}, fmt.Errorf("annotation conflict could not be resolved")
 }
 
-func (s *Service) Denotate(target string, index int) error {
+func (s *Service) Denotate(target string, annotationID string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
 	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
-		denotatedTask, change, err := tx.denotateLocked(target, index)
+		denotatedTask, change, err := tx.denotateLocked(target, annotationID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -838,24 +840,28 @@ func (s *Service) Denotate(target string, index int) error {
 	})
 }
 
-func (s *Service) denotateLocked(target string, index int) (task.Task, projectChange, error) {
+func (s *Service) denotateLocked(target string, annotationID string) (task.Task, projectChange, error) {
+	annotationID = strings.TrimSpace(annotationID)
+	if annotationID == "" {
+		return task.Task{}, projectChange{}, fmt.Errorf("annotation id is required")
+	}
 	tsk, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
-	sort.Slice(tsk.Annotations, func(i, j int) bool {
-		return tsk.Annotations[i].Entry < tsk.Annotations[j].Entry
-	})
-	if index < 1 || index > len(tsk.Annotations) {
-		return task.Task{}, projectChange{}, fmt.Errorf("annotation %d not found", index)
-	}
-	tsk.Annotations = append(tsk.Annotations[:index-1], tsk.Annotations[index:]...)
-	tsk.Modified = s.clock.Unix()
-	if err := s.repo.Update(tsk); err != nil {
+	modified := s.clock.Unix()
+	if err := s.repo.DeleteAnnotation(s.workspaceID, tsk.UUID, annotationID, modified); err != nil {
+		if err == storage.ErrNotFound {
+			return task.Task{}, projectChange{}, fmt.Errorf("annotation %s not found", annotationID)
+		}
 		return task.Task{}, projectChange{}, err
 	}
-	return tsk, change, nil
+	updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	return updated, change, nil
 }
 
 func (s *Service) AppendDescription(target, suffix string) error {
@@ -1051,6 +1057,7 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 		if tsk.Modified == 0 {
 			tsk.Modified = s.clock.Unix()
 		}
+		ensureAnnotationIDs(tsk.Annotations)
 		if tsk.UDAs != nil {
 			normalized, err := s.normalizeImportedUDAs(tsk.UDAs)
 			if err != nil {
@@ -1131,6 +1138,7 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 		existing.Tags = tsk.Tags
 	}
 	if tsk.Annotations != nil {
+		ensureAnnotationIDs(tsk.Annotations)
 		existing.Annotations = tsk.Annotations
 	}
 	if tsk.Depends != nil {
@@ -1154,6 +1162,14 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 		return err
 	}
 	return s.repo.Update(existing)
+}
+
+func ensureAnnotationIDs(annotations []task.Annotation) {
+	for i := range annotations {
+		if strings.TrimSpace(annotations[i].ID) == "" {
+			annotations[i].ID = uuid.NewString()
+		}
+	}
 }
 
 func (s *Service) resolveImportedAssignees(values []task.AssigneeInfo) ([]task.AssigneeInfo, error) {

@@ -17,6 +17,7 @@ const (
 )
 
 type Annotation struct {
+	ID          string
 	Entry       int64
 	Description string
 }

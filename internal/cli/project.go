@@ -731,8 +731,8 @@ func renderAnnotations(cmd *cobra.Command, asJSON bool, annotations []task.Annot
 		fmt.Fprintln(cmd.OutOrStdout(), "No annotations.")
 		return nil
 	}
-	for i, a := range annotations {
-		fmt.Fprintf(cmd.OutOrStdout(), "%d [%s] %s\n", i+1, formatUnixTime(a.Entry), a.Description)
+	for _, a := range annotations {
+		fmt.Fprintf(cmd.OutOrStdout(), "%s [%s] %s\n", a.ID, formatUnixTime(a.Entry), a.Description)
 	}
 	return nil
 }

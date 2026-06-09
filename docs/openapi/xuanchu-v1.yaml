@@ -12,6 +12,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: xuanchu_pat or xuanchu_agent
+    serverAdminAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: xuanchu_admin
   schemas:
     ErrorCode:
       type: string
@@ -20,6 +24,12 @@ components:
         - auth_invalid_token
         - auth_token_expired
         - auth_token_revoked
+        - admin_auth_required
+        - admin_auth_invalid
+        - admin_token_ttl_invalid
+        - token_name_required
+        - token_scope_invalid
+        - token_project_scope_invalid
         - token_scope_denied
         - workspace_scope_denied
         - project_scope_denied
@@ -30,7 +40,12 @@ components:
         - task_uuid_invalid
         - assignee_not_found
         - assignee_not_member
+        - admin_workspace_exists
+        - admin_owner_required
+        - admin_owner_invalid
         - workspace_required
+        - workspace_not_found
+        - workspace_archived
         - project_not_found
         - project_mismatch
         - context_not_found
@@ -548,6 +563,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: Resource already exists or conflicts with current state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     PayloadTooLarge:
       description: Request body exceeds server limit.
       content:
@@ -562,6 +583,102 @@ paths:
       responses:
         '200':
           description: Server is healthy.
+  /api/v1/admin/workspaces:
+    post:
+      summary: Create workspace via server admin bootstrap token.
+      description: Uses a server admin token from `[server.admin]`, not a PAT or Agent token. The admin token cannot access ordinary API endpoints.
+      security:
+        - serverAdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, owner]
+              properties:
+                slug:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                visibility:
+                  type: string
+                  enum: [private, team, public]
+                owner:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                    email:
+                      type: string
+      responses:
+        '201':
+          description: Workspace created.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/workspaces/{workspace}/agent-tokens:
+    post:
+      summary: Create workspace-scoped agent token via server admin bootstrap token.
+      description: The raw agent token is returned once. Server admin token hash/verifier is never returned.
+      security:
+        - serverAdminAuth: []
+      parameters:
+        - in: path
+          name: workspace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name:
+                  type: string
+                user:
+                  type: string
+                  description: User ref. Defaults to the workspace owner when omitted.
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                project_refs:
+                  type: array
+                  items:
+                    type: string
+                project_ids:
+                  type: array
+                  items:
+                    type: string
+                expires_in:
+                  type: string
+                  description: Go time.ParseDuration expression, for example 24h.
+                expires_in_seconds:
+                  type: integer
+                  format: int64
+      responses:
+        '201':
+          description: Agent token created.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/me:
     get:
       summary: Current actor, token, visible workspaces, and effective workspace.
@@ -864,9 +981,9 @@ paths:
       responses:
         '200':
           description: Annotated task.
-  /api/v1/tasks/{taskRef}/annotations/{index}:
+  /api/v1/tasks/{taskRef}/annotations/{annotationID}:
     delete:
-      summary: Remove an annotation by 1-based index.
+      summary: Remove an annotation by annotation ID.
       parameters:
         - in: path
           name: taskRef
@@ -875,10 +992,10 @@ paths:
           schema:
             type: string
         - in: path
-          name: index
+          name: annotationID
           required: true
           schema:
-            type: integer
+            type: string
         - $ref: '#/components/parameters/WorkspaceQuery'
       responses:
         '200':

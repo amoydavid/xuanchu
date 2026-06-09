@@ -26,15 +26,16 @@ type RuntimeContext struct {
 }
 
 type ServiceOptions struct {
-	Store            *storage.Store
-	Clock            Clock
-	NoContext        bool
-	RuntimeConfig    map[string]string
-	RuntimeOverrides map[string]string
-	ActorRef         string
-	WorkspaceRef     string
-	Runtime          *RuntimeContext
-	RequestScope     *RequestScope
+	Store                 *storage.Store
+	Clock                 Clock
+	NoContext             bool
+	DisableScopeBootstrap bool
+	RuntimeConfig         map[string]string
+	RuntimeOverrides      map[string]string
+	ActorRef              string
+	WorkspaceRef          string
+	Runtime               *RuntimeContext
+	RequestScope          *RequestScope
 }
 
 type RuntimeError struct {

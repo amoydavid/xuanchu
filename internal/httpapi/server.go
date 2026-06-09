@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/config"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
@@ -18,6 +19,7 @@ type Options struct {
 	BodyLimitBytes int64
 	TestPanicRoute bool
 	Logger         *logging.Logger
+	Admin          config.AdminConfig
 }
 
 type Server struct {
@@ -27,6 +29,7 @@ type Server struct {
 	bodyLimitBytes int64
 	testPanicRoute bool
 	logger         *logging.Logger
+	admin          config.AdminConfig
 	router         *http.ServeMux
 }
 
@@ -44,6 +47,7 @@ func NewServer(opts Options) *Server {
 		bodyLimitBytes: opts.BodyLimitBytes,
 		testPanicRoute: opts.TestPanicRoute,
 		logger:         opts.Logger,
+		admin:          opts.Admin,
 	}
 	srv.router = srv.newRouter()
 	return srv

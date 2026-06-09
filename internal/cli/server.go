@@ -77,6 +77,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				Store:  store,
 				Stderr: cmd.ErrOrStderr(),
 				Logger: logger,
+				Admin:  cfg.ServerAdmin,
 			})
 			httpServer := &http.Server{
 				Addr:              listen,

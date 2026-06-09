@@ -431,7 +431,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
 | `id` | string | 是 | |
-| `annotation_index` | int | 是 | 1-based 注释索引（按时间排序） |
+| `annotation_id` | string | 是 | 任务注释 ID |
 
 #### `task_depends`
 

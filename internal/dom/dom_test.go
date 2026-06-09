@@ -47,7 +47,7 @@ func TestResolveM2Fields(t *testing.T) {
 	tsk := task.Task{
 		UUID: "u1", Description: "task", Status: task.StatusPending, Start: &start,
 		Depends:     []string{"dep1", "dep2"},
-		Annotations: []task.Annotation{{Entry: 1, Description: "note"}},
+		Annotations: []task.Annotation{{ID: "ann-1", Entry: 1, Description: "note"}},
 	}
 	if got, _ := Resolve(tsk, "start", 0); got != "10" {
 		t.Fatalf("start = %q", got)
@@ -55,7 +55,7 @@ func TestResolveM2Fields(t *testing.T) {
 	if got, _ := Resolve(tsk, "depends", 0); got != "dep1,dep2" {
 		t.Fatalf("depends = %q", got)
 	}
-	if got, _ := Resolve(tsk, "annotations", 0); !strings.Contains(got, "note") {
+	if got, _ := Resolve(tsk, "annotations", 0); !strings.Contains(got, "ann-1") || !strings.Contains(got, "note") {
 		t.Fatalf("annotations = %q", got)
 	}
 }

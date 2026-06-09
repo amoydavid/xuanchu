@@ -7,6 +7,7 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -216,7 +217,10 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 			return err
 		}
 		for _, a := range tsk.Annotations {
-			if err := tx.Create(&TaskAnnotation{TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description}).Error; err != nil {
+			if a.ID == "" {
+				a.ID = uuid.NewString()
+			}
+			if err := tx.Create(&TaskAnnotation{ID: a.ID, TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description}).Error; err != nil {
 				return err
 			}
 		}
@@ -259,13 +263,34 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 }
 
 func (r *TaskRepository) AddAnnotation(workspaceID, taskUUID string, annotation domain.Annotation, modified int64) error {
+	if annotation.ID == "" {
+		annotation.ID = uuid.NewString()
+	}
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&TaskAnnotation{
+			ID:          annotation.ID,
 			TaskUUID:    taskUUID,
 			Entry:       annotation.Entry,
 			Description: annotation.Description,
 		}).Error; err != nil {
 			return err
+		}
+		return tx.Model(&Task{}).
+			Where("workspace_id = ? AND uuid = ?", workspaceID, taskUUID).
+			Update("modified", modified).Error
+	})
+}
+
+func (r *TaskRepository) DeleteAnnotation(workspaceID, taskUUID, annotationID string, modified int64) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.
+			Where("id = ? AND task_uuid = ? AND EXISTS (SELECT 1 FROM tasks WHERE tasks.uuid = task_annotations.task_uuid AND tasks.workspace_id = ?)", annotationID, taskUUID, workspaceID).
+			Delete(&TaskAnnotation{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrNotFound
 		}
 		return tx.Model(&Task{}).
 			Where("workspace_id = ? AND uuid = ?", workspaceID, taskUUID).
@@ -349,7 +374,10 @@ func toModel(tsk domain.Task) Task {
 	}
 	annotations := make([]TaskAnnotation, 0, len(tsk.Annotations))
 	for _, a := range tsk.Annotations {
-		annotations = append(annotations, TaskAnnotation{TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description})
+		if a.ID == "" {
+			a.ID = uuid.NewString()
+		}
+		annotations = append(annotations, TaskAnnotation{ID: a.ID, TaskUUID: tsk.UUID, Entry: a.Entry, Description: a.Description})
 	}
 	depends := make([]TaskDependency, 0, len(tsk.Depends))
 	for _, d := range sortedUnique(tsk.Depends) {
@@ -392,7 +420,7 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 	sort.Strings(tags)
 	annotations := make([]domain.Annotation, 0, len(model.Annotations))
 	for _, a := range model.Annotations {
-		annotations = append(annotations, domain.Annotation{Entry: a.Entry, Description: a.Description})
+		annotations = append(annotations, domain.Annotation{ID: a.ID, Entry: a.Entry, Description: a.Description})
 	}
 	sort.Slice(annotations, func(i, j int) bool {
 		if annotations[i].Entry != annotations[j].Entry {

@@ -776,10 +776,24 @@ func TestTaskToolsAcceptTaskSlugRefs(t *testing.T) {
 			}
 		}},
 		{name: "task_denotate", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
-			if result := callTool(t, session, "task_annotate", TaskAnnotateInput{ID: slug, Annotation: "note"}); result.IsError {
-				t.Fatalf("task_annotate setup error: %v", parseError(t, result))
+			annotateResult := callTool(t, session, "task_annotate", TaskAnnotateInput{ID: slug, Annotation: "note"})
+			if annotateResult.IsError {
+				t.Fatalf("task_annotate setup error: %v", parseError(t, annotateResult))
 			}
-			result := callTool(t, session, "task_denotate", TaskDenotateInput{ID: slug, AnnotationIndex: 1})
+			taskObj := extractTask(t, parseEnvelope(t, annotateResult))
+			anns, ok := taskObj["annotations"].([]any)
+			if !ok || len(anns) == 0 {
+				t.Fatalf("annotations after annotate = %#v, want at least one", taskObj["annotations"])
+			}
+			firstAnn, ok := anns[0].(map[string]any)
+			if !ok {
+				t.Fatalf("first annotation type = %T, want object", anns[0])
+			}
+			annotationID, ok := firstAnn["id"].(string)
+			if !ok || annotationID == "" {
+				t.Fatalf("first annotation id = %#v, want non-empty string", firstAnn["id"])
+			}
+			result := callTool(t, session, "task_denotate", TaskDenotateInput{ID: slug, AnnotationID: annotationID})
 			if result.IsError {
 				t.Fatalf("task_denotate error: %v", parseError(t, result))
 			}
@@ -859,7 +873,7 @@ func TestTaskToolsRejectNumericTaskRefs(t *testing.T) {
 		{name: "task_start", tool: "task_start", input: TaskIDInput{ID: "1"}},
 		{name: "task_stop", tool: "task_stop", input: TaskIDInput{ID: "1"}},
 		{name: "task_annotate", tool: "task_annotate", input: TaskAnnotateInput{ID: "1", Annotation: "note"}},
-		{name: "task_denotate", tool: "task_denotate", input: TaskDenotateInput{ID: "1", AnnotationIndex: 1}},
+		{name: "task_denotate", tool: "task_denotate", input: TaskDenotateInput{ID: "1", AnnotationID: "annotation-id"}},
 		{name: "task_depends", tool: "task_depends", input: TaskDependsInput{ID: "1", Depends: []string{"00000000-0000-0000-0000-000000000001"}}},
 		{name: "task_link_add", tool: "task_link_add", input: TaskLinkAddInput{Task: "1", Type: "document", URL: "https://example.com/doc"}},
 		{name: "task_link_list", tool: "task_link_list", input: TaskLinkListInput{Task: "1"}},
@@ -1373,7 +1387,25 @@ func TestTaskDenotate(t *testing.T) {
 	callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid, Annotation: "note 1"})
 	callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid, Annotation: "note 2"})
 
-	result := callTool(t, session, "task_denotate", TaskDenotateInput{ID: uuid, AnnotationIndex: 1})
+	getResult := callTool(t, session, "task_get", TaskGetInput{ID: uuid})
+	if getResult.IsError {
+		t.Fatalf("task_get error: %v", parseError(t, getResult))
+	}
+	taskBefore := extractTask(t, parseEnvelope(t, getResult))
+	annsBefore, ok := taskBefore["annotations"].([]any)
+	if !ok || len(annsBefore) != 2 {
+		t.Fatalf("annotations before denotate = %#v, want 2", taskBefore["annotations"])
+	}
+	firstAnn, ok := annsBefore[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first annotation type = %T, want object", annsBefore[0])
+	}
+	annotationID, ok := firstAnn["id"].(string)
+	if !ok || annotationID == "" {
+		t.Fatalf("first annotation id = %#v, want non-empty string", firstAnn["id"])
+	}
+
+	result := callTool(t, session, "task_denotate", TaskDenotateInput{ID: uuid, AnnotationID: annotationID})
 	if result.IsError {
 		t.Fatalf("task_denotate error: %v", parseError(t, result))
 	}

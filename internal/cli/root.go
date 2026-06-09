@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
@@ -19,6 +18,7 @@ import (
 type Options struct {
 	Stdout    io.Writer
 	Stderr    io.Writer
+	Stdin     io.Reader
 	Version   string
 	SetLogger func(*logging.Logger)
 
@@ -67,6 +67,9 @@ func NewRootCommand(opts Options) *cobra.Command {
 	}
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
+	if opts.Stdin != nil {
+		cmd.SetIn(opts.Stdin)
+	}
 	cmd.SetVersionTemplate(fmt.Sprintf("xuanchu %s\n", opts.Version))
 
 	cmd.PersistentFlags().StringVar(&opts.DataDir, "data-dir", opts.DataDir, "data directory")
@@ -102,6 +105,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newReminderCommand(opts))
 	cmd.AddCommand(newAuditCommand(opts))
 	cmd.AddCommand(newTokenCommand(opts))
+	cmd.AddCommand(newAdminCommand(opts))
 	cmd.AddCommand(newScopeCommand(opts))
 	cmd.AddCommand(newMCPCommand(opts))
 	cmd.AddCommand(newServerCommand(opts))
@@ -430,13 +434,9 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", target)
 	case "denotate":
 		if len(actionArgs) != 1 {
-			return fmt.Errorf("denotate requires an index")
+			return fmt.Errorf("denotate requires an annotation id")
 		}
-		index, err := strconv.Atoi(actionArgs[0])
-		if err != nil {
-			return err
-		}
-		if err := svc.Denotate(target, index); err != nil {
+		if err := svc.Denotate(target, actionArgs[0]); err != nil {
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from task", target)
@@ -574,13 +574,9 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		fmt.Fprintln(cmd.OutOrStdout(), "Annotated task", positional[0])
 	case "denotate":
 		if len(actionArgs) != 1 {
-			return fmt.Errorf("denotate requires an index")
+			return fmt.Errorf("denotate requires an annotation id")
 		}
-		index, err := strconv.Atoi(actionArgs[0])
-		if err != nil {
-			return err
-		}
-		if _, err := client.DenotateTask(ctx, opts.Workspace, target, index); err != nil {
+		if _, err := client.DenotateTask(ctx, opts.Workspace, target, actionArgs[0]); err != nil {
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from task", positional[0])

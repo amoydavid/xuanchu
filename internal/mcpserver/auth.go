@@ -60,9 +60,10 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		// 尝试从 Authorization header 鉴权
 		if raw, headerOK := bearerTokenFromHeader(r.Header.Get("Authorization")); headerOK {
 			svc, err := app.NewService(app.ServiceOptions{
-				Store:   f.Store,
-				Clock:   f.Clock,
-				Runtime: &app.RuntimeContext{},
+				Store:                 f.Store,
+				Clock:                 f.Clock,
+				Runtime:               &app.RuntimeContext{},
+				DisableScopeBootstrap: true,
 			})
 			if err != nil {
 				return nil, err
@@ -91,9 +92,10 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 	}
 
 	baseSvc, err := app.NewService(app.ServiceOptions{
-		Store:   f.Store,
-		Clock:   f.Clock,
-		Runtime: &app.RuntimeContext{},
+		Store:                 f.Store,
+		Clock:                 f.Clock,
+		Runtime:               &app.RuntimeContext{},
+		DisableScopeBootstrap: true,
 	})
 	if err != nil {
 		return nil, err
@@ -217,9 +219,10 @@ func (f RuntimeFactory) AuthenticateHTTPRequest(r *http.Request) (*http.Request,
 		return nil, app.RuntimeError{Code: "auth_missing_token", Message: "missing bearer token"}
 	}
 	svc, err := app.NewService(app.ServiceOptions{
-		Store:   f.Store,
-		Clock:   f.Clock,
-		Runtime: &app.RuntimeContext{},
+		Store:                 f.Store,
+		Clock:                 f.Clock,
+		Runtime:               &app.RuntimeContext{},
+		DisableScopeBootstrap: true,
 	})
 	if err != nil {
 		return nil, err

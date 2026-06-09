@@ -111,6 +111,29 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 	})
 }
 
+func (s *Service) appendAdminAuditInTx(tx *Service, entry AuditEntry, adminTokenName string) error {
+	payload := map[string]any{}
+	for key, value := range entry.Payload {
+		payload[key] = value
+	}
+	payload["admin"] = true
+	payload["admin_token_name"] = adminTokenName
+	raw, err := marshalAuditPayload(payload)
+	if err != nil {
+		return err
+	}
+	return tx.auditRepo.Append(storage.AuditLogEntry{
+		ActorUserID: nil,
+		WorkspaceID: entry.WorkspaceID,
+		ProjectID:   entry.ProjectID,
+		Action:      entry.Action,
+		TargetType:  entry.TargetType,
+		TargetID:    entry.TargetID,
+		PayloadJSON: raw,
+		CreatedAt:   tx.clock.Unix(),
+	})
+}
+
 func marshalAuditPayload(payload map[string]any) (string, error) {
 	if len(payload) == 0 {
 		return "", nil

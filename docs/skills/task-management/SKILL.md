@@ -209,14 +209,14 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
 
 ### task_denotate — 移除注释
 
-`annotation_index` 是 1-based（按时间排序）。
+`annotation_id` 是任务注释的稳定 ID。先通过 `task_get` 或 `task_query` 读取 `annotations[].id`，不要使用显示顺序删除注释。
 
 ```json
 {
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
   "id": "a1b2c3d4-...",
-  "annotation_index": 1
+  "annotation_id": "annotation-uuid"
 }
 ```
 

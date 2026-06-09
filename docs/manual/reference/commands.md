@@ -42,7 +42,7 @@ xuanchu <target> delete
 xuanchu start <target>
 xuanchu stop <target>
 xuanchu annotate <target> <description...>
-xuanchu denotate <target> <index>
+xuanchu denotate <target> <annotation-id>
 xuanchu append <target> <text...>
 xuanchu prepend <target> <text...>
 xuanchu edit <target>

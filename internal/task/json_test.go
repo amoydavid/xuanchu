@@ -247,7 +247,7 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	tsk := Task{
 		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
-		Annotations: []Annotation{{Entry: 3, Description: "note"}},
+		Annotations: []Annotation{{ID: "ann-1", Entry: 3, Description: "note"}},
 		Depends:     []string{"dep"},
 		Recur:       &recur, Parent: &parent, Mask: &mask, IMask: &imask,
 	}
@@ -255,7 +255,7 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	if got.Start == nil || got.Wait == nil || got.Scheduled == nil || got.Until == nil {
 		t.Fatalf("date fields lost: %#v", got)
 	}
-	if len(got.Annotations) != 1 || got.Annotations[0].Description != "note" || !slices.Equal(got.Depends, []string{"dep"}) {
+	if len(got.Annotations) != 1 || got.Annotations[0].ID != "ann-1" || got.Annotations[0].Description != "note" || !slices.Equal(got.Depends, []string{"dep"}) {
 		t.Fatalf("compound fields lost: %#v", got)
 	}
 	if got.Recur == nil || got.Parent == nil || got.Mask == nil || got.IMask == nil {

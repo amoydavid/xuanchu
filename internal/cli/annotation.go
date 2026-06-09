@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -49,7 +48,7 @@ func newAnnotateCommand(opts Options) *cobra.Command {
 
 func newDenotateCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "denotate <target> <index>",
+		Use:   "denotate <target> <annotation-id>",
 		Short: "删除任务的注解",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,11 +64,7 @@ func newDenotateCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				index, err := strconv.Atoi(args[1])
-				if err != nil {
-					return err
-				}
-				if _, err := client.DenotateTask(context.Background(), currentOpts.Workspace, target, index); err != nil {
+				if _, err := client.DenotateTask(context.Background(), currentOpts.Workspace, target, args[1]); err != nil {
 					return err
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from task", args[0])
@@ -80,11 +75,7 @@ func newDenotateCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			index, err := strconv.Atoi(args[1])
-			if err != nil {
-				return err
-			}
-			if err := svc.Denotate(args[0], index); err != nil {
+			if err := svc.Denotate(args[0], args[1]); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "Removed annotation from task", args[0])

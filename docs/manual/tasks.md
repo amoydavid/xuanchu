@@ -109,10 +109,10 @@ xuanchu 1 stop
 ```bash
 xuanchu 1 annotate "called vendor, waiting for reply"
 xuanchu _get 1.annotations
-xuanchu 1 denotate 1
+xuanchu 1 denotate <annotation-id>
 ```
 
-annotation 包含时间戳和描述。`denotate` 的 index 从 1 开始。
+annotation 包含稳定 ID、时间戳和描述。删除 annotation 时必须使用 annotation ID；可以通过 `xuanchu _get 1.annotations`、`xuanchu 1 annotations` 或 JSON 输出中的 `annotations[].id` 获取。
 
 ## 描述编辑
 

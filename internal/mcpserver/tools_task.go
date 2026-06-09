@@ -146,11 +146,11 @@ func (in TaskLinkRemoveInput) scopeInput() RequestScopeInput {
 }
 
 type TaskDenotateInput struct {
-	Workspace       string `json:"workspace,omitempty"`
-	Project         string `json:"project,omitempty"`
-	ProjectID       string `json:"project_id,omitempty"`
-	ID              string `json:"id" jsonschema:"task reference: UUID or task_slug"`
-	AnnotationIndex int    `json:"annotation_index"`
+	Workspace    string `json:"workspace,omitempty"`
+	Project      string `json:"project,omitempty"`
+	ProjectID    string `json:"project_id,omitempty"`
+	ID           string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	AnnotationID string `json:"annotation_id" jsonschema:"annotation ID to remove"`
 }
 
 func (in TaskDenotateInput) scopeInput() RequestScopeInput {
@@ -338,7 +338,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Denotate(resolved.UUID, in.AnnotationIndex); err != nil {
+		if err := svc.Denotate(resolved.UUID, in.AnnotationID); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return taskAfterMutation(svc, resolved.UUID, "removed annotation")

@@ -54,6 +54,17 @@ func loadTomlConfigFile(path string) (map[string]string, error) {
 	return flattenTomlMap(raw, ""), nil
 }
 
+func loadTomlAdminConfigFile(path string, env map[string]string) (AdminConfig, error) {
+	var raw adminTomlRoot
+	if _, err := toml.DecodeFile(path, &raw); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return AdminConfig{}, os.ErrNotExist
+		}
+		return AdminConfig{}, err
+	}
+	return normalizeAdminConfig(raw, env)
+}
+
 func flattenTomlMap(values map[string]any, prefix string) map[string]string {
 	out := map[string]string{}
 	keys := make([]string, 0, len(values))

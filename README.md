@@ -23,7 +23,7 @@
 
 ## 状态
 
-完整 milestone 拆解与当前进度见 [ROADMAP.md](./ROADMAP.md)。
+README 只描述当前代码已经具备的能力和常用入口。完整 milestone、版本历史和后续计划见 [ROADMAP.md](./ROADMAP.md)；更细的变更历史以 git 记录为准。
 
 ## 快速开始
 
@@ -131,7 +131,7 @@ Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。
 ./xuanchu _show database.path active.user active.workspace active.context
 ```
 
-## M0 本地 CLI 用法
+## 本地 CLI 基础用法
 
 ```bash
 go build -o xuanchu ./cmd/xuanchu
@@ -172,7 +172,7 @@ go build -o xuanchu ./cmd/xuanchu
 
 默认数据库路径为 `~/.local/share/xuanchu/xuanchu.db`，可用 `--db` 或 `XUANCHU_DB` 环境变量覆盖。
 
-## M1 查询与报表用法
+## 查询、报表、Urgency 与 Helper
 
 ```bash
 # 布尔组合查询
@@ -218,7 +218,7 @@ go build -o xuanchu ./cmd/xuanchu
 
 `description:spec`、`description:/spec/` 和裸 `/spec/` **语义一致**，都按子串匹配；`description:` 不走字面相等。
 
-## M2 核心任务模型用法
+## 核心任务模型
 
 ```bash
 # waiting / active / ready / blocked / blocking 报表
@@ -232,7 +232,7 @@ go build -o xuanchu ./cmd/xuanchu
 # 注释与描述编辑
 ./xuanchu 1 annotate "called, left voicemail"
 ./xuanchu _get 1.annotations
-./xuanchu 1 denotate 1
+./xuanchu 1 denotate <annotation-id>
 ./xuanchu 1 append "with examples"
 ./xuanchu 1 prepend "[draft]"
 ./xuanchu 1 edit
@@ -250,7 +250,7 @@ go build -o xuanchu ./cmd/xuanchu
 ./xuanchu list
 ```
 
-M2 当前已经补齐这些能力：
+当前支持这些任务能力：
 
 - 任务字段：`start`、`wait`、`scheduled`、`until`、`annotations`、`depends`、`recur`、`parent`、`mask`、`imask`
 - 报表命令：`waiting`、`active`、`ready`、`blocked`、`blocking`
@@ -270,7 +270,7 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 - recurring parent 不接受 `wait`、`scheduled`、`depends`，避免模板字段被静默丢弃
 - `monthly` 目前直接沿用 Go `time.AddDate(0, n, 0)` 的月末滚动语义
 
-## M3 配置、Context、UDA 与 `.taskrc` 用法
+## 配置、Context、UDA 与 `.taskrc`
 
 ```bash
 # TOML / config / rc 覆盖
@@ -307,7 +307,7 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 ./xuanchu _version
 ```
 
-M3 新增 `~/.config/xuanchu/xuanchu.toml` 作为文件配置来源。TOML 使用标准解析器，支持普通 TOML 字符串、数组、dotted key 和多行字符串。一个最小示例：
+Xuanchu 支持用 `~/.config/xuanchu/xuanchu.toml` 作为文件配置来源。TOML 使用标准解析器，支持普通 TOML 字符串、数组、dotted key 和多行字符串。一个最小示例：
 
 ```toml
 [database]
@@ -376,7 +376,7 @@ rotate = "daily"
 不要把这些状态或内部 key 当作 TOML 配置写入：
 
 - `active.user`、`active.workspace`、`active.context`：只读状态输出，用 `user use`、`workspace use`、`context use/none` 修改。
-- `context.active`：M3 兼容旧 key，但 M4 起不再作为运行时 active context 来源。
+- `context.active`：兼容旧 key，但不作为运行时 active context 来源。
 - `active_user_id`、`active_workspace.<user>`、`active_context.<user>.<workspace>`：内部 SQLite meta，只用于迁移和运行时状态。
 
 想确认当前最终生效值，用：
@@ -400,7 +400,7 @@ rotate = "daily"
 
 UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA 写入为 RFC3339 UTC 字符串；查询 `estimate:3`、`reviewed:2026-05-28` 会结合当前 schema 编译。未定义的 JSON top-level 字段会作为 orphan UDA 保留并导出，普通 `modify` 不能修改 orphan UDA。
 
-`.taskrc` 在 M3 中的作用是**迁移和兼容性导入**：Xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。Xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
+`.taskrc` 的作用是**迁移和兼容性导入**：Xuanchu 只读解析它，把支持的 key 导入到 SQLite 配置、context 或 UDA schema，并生成 imported/skipped/unknown 报告。Xuanchu 不会修改原 `.taskrc`，也不会把 `.taskrc` 当成每次运行的完整配置源。
 
 当前 `.taskrc` 支持范围：
 
@@ -408,9 +408,9 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 - 识别但跳过：`data.location`、`report.*`、`calendar.*`、`burndown.*`、`news.*`、`sync.*`、`hooks.*`
 - 其它 key 进入 unknown 报告，不会让导入失败
 
-其中 `data.location` 会被识别但不会导入，因为 M3 的数据库路径只在启动前通过 `--db`、`XUANCHU_DB`、`--data-dir` 或 TOML 决定。M3 还不支持完整 Taskwarrior `.taskrc` 语义，不导入自定义 report DSL，也不运行 hooks。
+其中 `data.location` 会被识别但不会导入，因为数据库路径只在启动前通过 `--db`、`XUANCHU_DB`、`--data-dir` 或 TOML 决定。Xuanchu 不导入自定义 Taskwarrior report DSL，也不运行本地 shell hooks。
 
-## M4 企业 Workspace、权限与审计基础
+## 企业 Workspace、权限与审计
 
 ```bash
 # user
@@ -447,7 +447,7 @@ UDA 支持 `string`、`numeric`、`date`、`duration` 四种类型。date UDA �
 ./xuanchu audit list --limit 20 --json
 ```
 
-M4 新增了企业运行时基础：
+企业运行时支持：
 
 - `user list/add/use/info`
 - `workspace list/add/use/info/modify/archive`
@@ -455,7 +455,7 @@ M4 新增了企业运行时基础：
 - `audit list`
 - 全局 `--workspace <slug|uuid>` 一次性切到指定 workspace 执行命令
 
-在当前版本里，`workspace` 是企业 / 租户级隔离边界；`project` 已经是 workspace 内的一等实体。任务上仍保留 `project` 字符串字段做人类可读输出，但运行时写入、查询、权限、审计和后续 API/MCP scope 都以稳定 `project_id` 为准。
+`workspace` 是企业 / 租户级隔离边界；`project` 是 workspace 内的一等实体。任务上仍保留 `project` 字符串字段做人类可读输出，但运行时写入、查询、权限、审计和 API/MCP scope 都以稳定 `project_id` 为准。
 
 同一个 project slug 可以出现在不同 workspace 中。也就是说，`dajee/agentapi` 和 `partner/agentapi` 是两个不同项目；权限、token 和 MCP scope 必须以 `workspace + project` 或稳定 `project_id` 为准，不能把 slug 当全局唯一标识。
 
@@ -466,15 +466,7 @@ M4 新增了企业运行时基础：
 ./xuanchu --workspace partner list project:agentapi
 ```
 
-上面两条命令访问的是两个不同 workspace 里的同名 project。当前版本已经采用严格 project 注册：`xuanchu add ... project:<slug>` 和 `xuanchu 1 modify project:<slug>` 只能引用当前 workspace 内已存在、未归档的 project，不会运行时自动创建。脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令会报错，避免把任务写进错误租户。
-
-后续路线会基于已完成的 project 实体化继续往外开放协议层：
-
-- M5：已完成。project 已是 workspace 内的一等对象，采用严格 project 注册，并明确 workspace/project 配置边界。
-- M6：在稳定 project scope 上提供 HTTP/JSON API、远程 CLI 和 Agent token。
-- M7：提供企业 Agent MCP Server，让 Agent 通过受权限约束的 tool 操作任务。
-- M8：提供服务端 Hook / 自动化扩展与运维交付打磨。主线是内部事件触发的 webhook hook；不做业务域 adapter、不做 memory，也不做 replica/sync。
-- M16：提供规则驱动的定时通知，让任务到期前和逾期后可以通知 assignee，并支持 OpenClaw webhook 和第三方 HTTP request template。
+上面两条命令访问的是两个不同 workspace 里的同名 project。Xuanchu 采用严格 project 注册：`xuanchu add ... project:<slug>` 和 `xuanchu 1 modify project:<slug>` 只能引用当前 workspace 内已存在、未归档的 project，不会运行时自动创建。脚本、远程 API 和 MCP 应优先保存 `project_id`。如果同时指定 `--workspace` 和 `project_id`，该 project 必须属于这个 workspace；否则命令会报错，避免把任务写进错误租户。
 
 权限模型：
 
@@ -487,37 +479,18 @@ M4 新增了企业运行时基础：
 
 `audit list` 的 human 输出包含时间、actor、action、target type 和 target id。`--json` 会额外输出 `actor_user_id`、`actor_name`、`workspace_id`、`payload` 等字段，适合脚本处理。
 
-当前仍有一个刻意保留的限制：M4 **没有 `member delete`**。如果要临时撤销写权限，可用 `member role <user> viewer`。同时，`viewer` 仍能读取该 workspace 的任务、project、tag、UDA 和成员信息。
+当前没有 `member delete`。如果要临时撤销写权限，可用 `member role <user> viewer`。同时，`viewer` 仍能读取该 workspace 的任务、project、tag、UDA 和成员信息。
 
-### M4 升级说明
+## Project 实体与配置边界
 
-从 M3 升级到 M4 时，不需要手动执行迁移命令；第一次运行 `xuanchu` 会自动完成迁移。
-
-迁移后的默认状态：
-
-- 现有任务保留在 `local` workspace
-- 自动创建 `local` user
-- 自动创建 `local` workspace
-- 自动创建 `local user -> local workspace` 的 owner membership
-- 旧的 `context.active` SQLite meta 会迁移到 `(local user, local workspace)` 作用域的 active context
-- `local` user 的 email 保持空值，不会伪造测试邮箱
-
-注意：M4 **不再把 TOML `context.active` 当作运行时 active context 来源**。如果你之前只依赖 TOML 里的 active context，需要在升级后执行一次：
-
-```bash
-./xuanchu context use <name>
-```
-
-## M5 Project 实体与配置边界
-
-M5 现在已经落地。最重要的变化有四点：
+Project 与配置边界的关键规则：
 
 - 任务引用 project 前，必须先在当前 workspace 注册 project。
 - `project` 查询、context、helper、audit 都会先在当前 workspace 内把 slug 解析成稳定 `project_id`。
 - `project config` 继续是 project 级业务配置入口，但 key 的合法性现在由 workspace 内 `config schema` 决定，不再靠代码白名单。
 - JSON export 继续输出可读的 `project` slug，但脚本、API、token、MCP 应优先持有 `project_id`。
 
-一个完整的 M5 日常流大致是这样：
+一个完整的日常流大致是这样：
 
 ```bash
 # 先建 workspace，再注册 project
@@ -621,7 +594,7 @@ shared config 现在分成两层：
 
 现在会返回 `config_scope_not_allowed`，因为 `agent.background` 已有 schema，但只允许 `project` scope。
 
-### Helper 与 audit 的 M5 行为
+### Helper 与 audit 行为
 
 ```bash
 ./xuanchu _projects           # 当前 workspace 的 active project slug
@@ -637,24 +610,9 @@ shared config 现在分成两层：
 
 `audit list --project` 支持 slug 或 `project_id`，JSON 输出里会带 `project_id`，方便脚本继续串联。
 
-### M5 升级提示
+## Server、Token 与远程 CLI
 
-从 M4 升级到 M5 时，数据库会自动迁移：
-
-- 原有 `tasks.project` 会尽量回填到 `projects` 与 `tasks.project_id`
-- 不合法、冲突或无法安全归一化的旧 project 值会被跳过，并写入迁移报告
-
-如果本次启动存在跳过项，CLI 会在 `stderr` 打一行 warning。详细报告可用：
-
-```bash
-./xuanchu config get migration.m5.projects.skipped
-```
-
-这个 key 只用于迁移排障，不是业务配置。
-
-## M6 Server、Token 与远程 CLI
-
-M6 已经把 HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上。本地 CLI 仍然可以直接打开 SQLite；远程 CLI 通过 HTTP API 访问服务端，不会在 remote mode 下写本机任务库。
+HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上。本地 CLI 可以直接打开 SQLite 或 PostgreSQL；远程 CLI 通过 HTTP API 访问服务端，不会在 remote mode 下写本机任务库。
 
 启动服务端：
 
@@ -664,6 +622,55 @@ M6 已经把 HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app
 ```
 
 服务端不内置 TLS。生产部署应放在可信网络内，或使用 Nginx / Caddy 等反向代理做 TLS termination；不要把裸 HTTP token 服务直接暴露公网。服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口。
+
+### Server Admin Bootstrap
+
+Server admin token 是服务端控制面 bootstrap token，只能访问 `/api/v1/admin/*`，不会写入 `api_tokens`，也不能访问普通任务、workspace、token API。它用于在自动化部署或 Agent 平台初始化时创建 workspace，并给指定 workspace 创建受限 Agent token。
+
+先生成明文 token 和 hash：
+
+```bash
+./xuanchu admin token generate
+```
+
+把 hash 写入 `xuanchu.toml`，明文只交给部署系统或控制面调用方：
+
+```toml
+[server.admin]
+enabled = true
+
+[[server.admin.tokens]]
+name = "ops-primary"
+hash = "sha256:replace-with-token-hash"
+enabled = true
+```
+
+也可以用 `hash_env` 从环境变量读取 hash，便于轮换：
+
+```toml
+[[server.admin.tokens]]
+name = "ops-rotation"
+hash_env = "XUANCHU_ADMIN_TOKEN_HASH"
+enabled = true
+```
+
+明文丢失后不能从数据库或配置恢复，只能生成新 token 并替换 hash。普通 API token 不能访问 admin endpoint；admin token 也不能访问普通 API。
+
+典型 bootstrap 流程是先创建 workspace，再为该 workspace 创建 Agent token：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces \
+  -H "Authorization: Bearer $XUANCHU_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"slug":"team","owner":{"name":"alice","email":"alice@example.com"}}'
+
+curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces/team/agent-tokens \
+  -H "Authorization: Bearer $XUANCHU_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"openclaw","user":"alice@example.com","scopes":["task:read","task:write"],"expires_in":"24h"}'
+```
+
+创建 Agent token 的响应只会返回一次明文 `xuanchu_agent_...`，之后只能重新签发。常见错误包括：未启用 admin bootstrap 时返回 `route_not_found`，重复 workspace 返回 `admin_workspace_exists`，owner name/email 指向不同用户返回 `admin_owner_invalid`，非法 scope 返回 `token_scope_invalid`。
 
 创建第一个 token 建议在 server 启动前用本地 CLI 完成：
 
@@ -715,11 +722,11 @@ task:read task:write project:read project:write context:read context:write confi
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
 
-远程 CLI 已覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢；M6 不新增 aggregation endpoint。
+远程 CLI 覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢。
 
-## M7 MCP Server
+## MCP Server
 
-M7 让 Agent 通过 MCP 协议以结构化方式使用 Xuanchu。支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
+Agent 可以通过 MCP 协议以结构化方式使用 Xuanchu。MCP 支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。
 
 ### MCP stdio 模式
 
@@ -788,9 +795,9 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 - `xuanchu://project/{project_id}` — 项目元数据与 Agent 背景
 - `xuanchu://context/current` — 当前 context 与 scope
 
-### 远程管理命令收口
+### 远程管理命令
 
-M7 补齐了 M6 遗留的远程管理命令。以下命令均已支持远程模式，不会触碰客户端本地数据库：
+以下管理命令支持远程模式，不会触碰客户端本地数据库：
 
 ```bash
 ./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" workspace list
@@ -800,9 +807,9 @@ M7 补齐了 M6 遗留的远程管理命令。以下命令均已支持远程模�
 ./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" show date.format
 ```
 
-## M8 服务端 Webhook Hook
+## 服务端 Webhook Hook
 
-M8 为 `xuanchu server` 提供服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。
+`xuanchu server` 支持服务端 post-commit webhook hook。这里的 hook 是服务端出站 webhook，不是 Taskwarrior 的本地 shell hook。
 
 ```bash
 # 创建 workspace 级 hook
@@ -841,7 +848,7 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 
 ./xuanchu reminder rule add overdue-daily \
   --schedule daily@09:00 \
-  --filter 'end.isnull and (start.isnull or start.notnull) and due.before:now' \
+  --filter 'status:pending and end.isnull and due.before:now' \
   --repeat every:24h \
   --audience assignees \
   --sink openclaw
@@ -852,9 +859,9 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 
 第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
 
-## M10 Impersonation
+## Impersonation
 
-M10 让 Agent 平台可以持有一个带 `impersonate` scope 的 Agent token，以 workspace 成员的身份发起请求。
+Agent 平台可以持有一个带 `impersonate` scope 的 Agent token，以 workspace 成员的身份发起请求。
 
 ```bash
 # 创建可 impersonate 的 Agent token（需要 admin/owner）

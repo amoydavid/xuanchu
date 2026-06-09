@@ -29,6 +29,8 @@ func (s *Server) newRouter() *http.ServeMux {
 			panic("test panic")
 		})
 	}
+	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces", s.handleAdminWorkspaceCreate)
+	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces/{workspace}/agent-tokens", s.handleAdminAgentTokenCreate)
 	api.With(s.authMiddleware).Get("/api/v1/me", s.handleMe)
 	api.With(s.authMiddleware).Put("/api/v1/me/active_workspace", s.handleMeActiveWorkspace)
 	api.With(s.authMiddleware).Get("/api/v1/tasks", s.handleTaskList)
@@ -40,7 +42,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Post("/api/v1/tasks/{taskRef}/start", s.handleTaskStart)
 	api.With(s.authMiddleware).Post("/api/v1/tasks/{taskRef}/stop", s.handleTaskStop)
 	api.With(s.authMiddleware).Post("/api/v1/tasks/{taskRef}/annotations", s.handleTaskAnnotate)
-	api.With(s.authMiddleware).Delete("/api/v1/tasks/{taskRef}/annotations/{index}", s.handleTaskDenotate)
+	api.With(s.authMiddleware).Delete("/api/v1/tasks/{taskRef}/annotations/{annotationID}", s.handleTaskDenotate)
 	api.With(s.authMiddleware).Get("/api/v1/tasks/{taskRef}/urgency", s.handleTaskUrgency)
 	api.With(s.authMiddleware).Get("/api/v1/tasks/{taskRef}/links", s.handleTaskLinkList)
 	api.With(s.authMiddleware).Post("/api/v1/tasks/{taskRef}/links", s.handleTaskLinkAdd)

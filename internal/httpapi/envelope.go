@@ -56,6 +56,8 @@ func writeAppError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_delivery_not_found":
 			status = http.StatusNotFound
+		case "admin_workspace_exists":
+			status = http.StatusConflict
 		case "hook_delivery_not_replayable", "hook_endpoint_invalid", "hook_event_types_invalid", "hook_name_invalid", "hook_timeout_invalid", "hook_max_attempts_invalid", "hook_project_required", "hook_scope_invalid", "hook_secret_invalid", "notification_sink_invalid", "reminder_rule_invalid", "endpoint_unresolved", "endpoint_host_denied", "endpoint_mode_invalid", "endpoint_template_invalid", "audience_unsupported", "template_unresolved":
 			status = http.StatusBadRequest
 		case "route_not_found":

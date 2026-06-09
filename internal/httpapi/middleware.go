@@ -103,7 +103,12 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		svc, err := app.NewService(app.ServiceOptions{Store: s.store, Clock: s.effectiveClock(), Runtime: &app.RuntimeContext{}})
+		svc, err := app.NewService(app.ServiceOptions{
+			Store:                 s.store,
+			Clock:                 s.effectiveClock(),
+			Runtime:               &app.RuntimeContext{},
+			DisableScopeBootstrap: true,
+		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
 			return

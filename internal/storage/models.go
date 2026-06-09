@@ -167,9 +167,10 @@ type TaskTag struct {
 }
 
 type TaskAnnotation struct {
-	TaskUUID    string `gorm:"primaryKey;not null"`
-	Entry       int64  `gorm:"primaryKey;not null"`
-	Description string `gorm:"primaryKey;not null"`
+	ID          string `gorm:"primaryKey"`
+	TaskUUID    string `gorm:"not null;index:idx_task_annotations_task"`
+	Entry       int64  `gorm:"not null"`
+	Description string `gorm:"not null"`
 }
 
 type TaskDependency struct {

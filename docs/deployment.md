@@ -45,6 +45,47 @@ HTTP 3xx redirect 不会被自动跟随。
 
 ## Token 配置
 
+Server admin token 是 bootstrap 控制面 token，只能访问 `/api/v1/admin/*`，不写入 `api_tokens`，不能作为普通 API token 使用。生产配置只保存 hash：
+
+```bash
+./xuanchu admin token generate
+```
+
+```toml
+[server.admin]
+enabled = true
+
+[[server.admin.tokens]]
+name = "ops-primary"
+hash = "sha256:replace-with-token-hash"
+enabled = true
+```
+
+如果由部署系统注入 secret，推荐使用 `hash_env`：
+
+```toml
+[[server.admin.tokens]]
+name = "ops-rotation"
+hash_env = "XUANCHU_ADMIN_TOKEN_HASH"
+enabled = true
+```
+
+明文 admin token 丢失后只能轮换。调用 bootstrap API 时使用：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces \
+  -H "Authorization: Bearer $XUANCHU_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"slug":"team","owner":{"name":"alice","email":"alice@example.com"}}'
+
+curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces/team/agent-tokens \
+  -H "Authorization: Bearer $XUANCHU_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"openclaw","user":"alice@example.com","scopes":["task:read","task:write"],"expires_in":"24h"}'
+```
+
+Agent token 明文只在创建响应中出现一次。admin token 不能访问普通 API，普通 PAT/Agent token 也不能访问 `/api/v1/admin/*`。
+
 建议使用最小 scope 原则：
 
 ```bash

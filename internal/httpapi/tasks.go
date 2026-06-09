@@ -369,12 +369,12 @@ func (s *Server) handleTaskAnnotate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskDenotate(w http.ResponseWriter, r *http.Request) {
-	index, err := strconv.Atoi(chi.URLParam(r, "index"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "annotation_index_invalid", "annotation index is invalid", nil)
+	annotationID := strings.TrimSpace(chi.URLParam(r, "annotationID"))
+	if annotationID == "" {
+		writeError(w, http.StatusBadRequest, "annotation_id_required", "annotation id is required", nil)
 		return
 	}
-	s.handleTaskAction(w, r, func(svc *app.Service, id string) error { return svc.Denotate(id, index) })
+	s.handleTaskAction(w, r, func(svc *app.Service, id string) error { return svc.Denotate(id, annotationID) })
 }
 
 func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {

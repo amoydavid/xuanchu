@@ -40,9 +40,10 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		return nil, requestAuth{}, app.RuntimeError{Code: "api_internal", Message: "internal server error"}
 	}
 	baseSvc, err := app.NewService(app.ServiceOptions{
-		Store:   s.store,
-		Clock:   s.effectiveClock(),
-		Runtime: &app.RuntimeContext{},
+		Store:                 s.store,
+		Clock:                 s.effectiveClock(),
+		Runtime:               &app.RuntimeContext{},
+		DisableScopeBootstrap: true,
 	})
 	if err != nil {
 		return nil, requestAuth{}, err

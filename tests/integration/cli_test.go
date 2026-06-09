@@ -1598,14 +1598,35 @@ func TestCLIAnnotateDenotate(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "annotated task")
 	run(t, bin, "--db", db, "1", "annotate", "first note")
-	got := run(t, bin, "--db", db, "_get", "1.annotations")
-	if !strings.Contains(got, "first note") {
-		t.Fatalf("annotations output = %q", got)
+	exported := run(t, bin, "--db", db, "--json", "export")
+	var tasks []struct {
+		Annotations []struct {
+			ID          string `json:"id"`
+			Description string `json:"description"`
+		} `json:"annotations"`
 	}
-	run(t, bin, "--db", db, "1", "denotate", "1")
-	got = run(t, bin, "--db", db, "_get", "1.annotations")
-	if strings.Contains(got, "first note") {
-		t.Fatalf("annotation not removed: %q", got)
+	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+		t.Fatalf("export JSON = %q: %v", exported, err)
+	}
+	if len(tasks) != 1 || len(tasks[0].Annotations) != 1 || tasks[0].Annotations[0].Description != "first note" {
+		t.Fatalf("exported tasks = %#v, want one annotation", tasks)
+	}
+	annotation := tasks[0].Annotations[0]
+	if annotation.ID == "" {
+		t.Fatalf("annotation id is empty: %#v", annotation)
+	}
+	got := run(t, bin, "--db", db, "_get", "1.annotations")
+	if !strings.Contains(got, annotation.ID) || !strings.Contains(got, "first note") {
+		t.Fatalf("annotations output = %q, want id %q and note", got, annotation.ID)
+	}
+	run(t, bin, "--db", db, "1", "denotate", annotation.ID)
+	exported = run(t, bin, "--db", db, "--json", "export")
+	tasks = nil
+	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+		t.Fatalf("export JSON after denotate = %q: %v", exported, err)
+	}
+	if len(tasks) != 1 || len(tasks[0].Annotations) != 0 {
+		t.Fatalf("exported tasks after denotate = %#v, want no annotations", tasks)
 	}
 }
 

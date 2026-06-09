@@ -9,6 +9,7 @@ import (
 )
 
 type JSONAnnotation struct {
+	ID          string `json:"id,omitempty"`
 	Entry       string `json:"entry"`
 	Description string `json:"description"`
 }
@@ -256,7 +257,7 @@ func ToJSON(tsk Task) JSONTask {
 			}
 			out := make([]JSONAnnotation, len(tsk.Annotations))
 			for i, a := range tsk.Annotations {
-				out[i] = JSONAnnotation{Entry: formatUnix(a.Entry), Description: a.Description}
+				out[i] = JSONAnnotation{ID: a.ID, Entry: formatUnix(a.Entry), Description: a.Description}
 			}
 			return out
 		}(),
@@ -356,7 +357,7 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 		if err != nil {
 			return Task{}, err
 		}
-		annotations[i] = Annotation{Entry: entry, Description: a.Description}
+		annotations[i] = Annotation{ID: a.ID, Entry: entry, Description: a.Description}
 	}
 	return Task{
 		UUID:        dto.UUID,

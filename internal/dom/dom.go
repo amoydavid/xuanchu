@@ -63,7 +63,11 @@ func Resolve(tsk task.Task, field string, urgency float64) (string, error) {
 	case "annotations":
 		lines := make([]string, 0, len(tsk.Annotations))
 		for _, annotation := range tsk.Annotations {
-			lines = append(lines, strconv.FormatInt(annotation.Entry, 10)+":"+annotation.Description)
+			if annotation.ID == "" {
+				lines = append(lines, strconv.FormatInt(annotation.Entry, 10)+":"+annotation.Description)
+				continue
+			}
+			lines = append(lines, annotation.ID+" "+strconv.FormatInt(annotation.Entry, 10)+":"+annotation.Description)
 		}
 		return strings.Join(lines, "\n"), nil
 	case "recur":

@@ -241,8 +241,8 @@ func (c *Client) AnnotateTask(ctx context.Context, workspace, taskID, descriptio
 	return c.postTaskAction(ctx, workspace, taskID, "annotations", TextInput{Description: description})
 }
 
-func (c *Client) DenotateTask(ctx context.Context, workspace, taskID string, index int) (task.Task, error) {
-	path := taskPathWithSuffix(workspace, taskID, "/annotations/"+url.PathEscape(fmt.Sprintf("%d", index)))
+func (c *Client) DenotateTask(ctx context.Context, workspace, taskID string, annotationID string) (task.Task, error) {
+	path := taskPathWithSuffix(workspace, taskID, "/annotations/"+url.PathEscape(annotationID))
 	var envelope apiEnvelope[taskResponseJSON]
 	if err := c.delete(ctx, path, &envelope); err != nil {
 		return task.Task{}, err

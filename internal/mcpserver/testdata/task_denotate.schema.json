@@ -3,8 +3,9 @@
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "annotation_index": {
-        "type": "integer"
+      "annotation_id": {
+        "description": "annotation ID to remove",
+        "type": "string"
       },
       "id": {
         "description": "task reference: UUID or task_slug",
@@ -22,7 +23,7 @@
     },
     "required": [
       "id",
-      "annotation_index"
+      "annotation_id"
     ],
     "type": "object"
   },

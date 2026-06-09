@@ -19,6 +19,7 @@ type Config struct {
 	JSON         bool
 	Color        bool
 	Log          logging.LogConfig
+	ServerAdmin  AdminConfig
 }
 
 type Options struct {
@@ -52,20 +53,24 @@ func Resolve(opts Options) (Config, error) {
 		env = environ()
 	}
 
+	var tomlPath string
 	var tomlValues map[string]string
 	if opts.ConfigPath != "" {
-		values, err := loadTomlConfigFile(opts.ConfigPath)
+		tomlPath = opts.ConfigPath
+		values, err := loadTomlConfigFile(tomlPath)
 		if err != nil {
 			return Config{}, fmt.Errorf("--config: %w", err)
 		}
 		tomlValues = values
 	} else if configPath := env["XUANCHU_CONFIG"]; configPath != "" {
-		values, err := loadTomlConfigFile(configPath)
+		tomlPath = configPath
+		values, err := loadTomlConfigFile(tomlPath)
 		if err != nil {
 			return Config{}, fmt.Errorf("XUANCHU_CONFIG: %w", err)
 		}
 		tomlValues = values
-	} else if values, err := loadTomlConfig(configDir(home, env)); err == nil {
+	} else if path, values, err := loadTomlConfigWithPath(configDir(home, env)); err == nil {
+		tomlPath = path
 		tomlValues = values
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Config{}, err
@@ -131,6 +136,14 @@ func Resolve(opts Options) (Config, error) {
 		}
 		logCfg.File.Path = v
 	}
+	var adminCfg AdminConfig
+	if tomlPath != "" {
+		var err error
+		adminCfg, err = loadTomlAdminConfigFile(tomlPath, env)
+		if err != nil {
+			return Config{}, err
+		}
+	}
 
 	return Config{
 		DatabasePath: dbPath,
@@ -140,13 +153,15 @@ func Resolve(opts Options) (Config, error) {
 		JSON:         opts.JSON,
 		Color:        !opts.NoColor,
 		Log:          logCfg,
+		ServerAdmin:  adminCfg,
 	}, nil
 }
 
 func environ() map[string]string {
 	values := map[string]string{}
-	for _, key := range []string{"XUANCHU_DB", "XUANCHU_DB_URL", "XUANCHU_SERVER", "XUANCHU_TOKEN", "XUANCHU_CONFIG", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
-		if value := os.Getenv(key); value != "" {
+	for _, item := range os.Environ() {
+		key, value, ok := strings.Cut(item, "=")
+		if ok && value != "" {
 			values[key] = value
 		}
 	}

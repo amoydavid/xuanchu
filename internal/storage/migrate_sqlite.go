@@ -31,7 +31,7 @@ func (s *Store) migrateSQLite() error {
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &NotificationDelivery{}, &UserExternalID{}); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {
+	if err := s.db.AutoMigrate(&TaskTag{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {
 		return err
 	}
 	if err := s.prepareProjectSchemaForM5(); err != nil {
@@ -40,7 +40,108 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareTaskSlugSchemaForV011(); err != nil {
 		return err
 	}
+	if err := s.prepareTaskAnnotationIDsForV020(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *Store) prepareTaskAnnotationIDsForV020() error {
+	sqlDB, err := s.sqlDB()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	began := false
+	committed := false
+	defer func() {
+		if began && !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+		_, _ = conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	}()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	began = true
+
+	tx := m5MigrationTx{ctx: ctx, conn: conn}
+	hasTable, err := tableExists(tx, "task_annotations")
+	if err != nil {
+		return err
+	}
+	if !hasTable {
+		if err := createTaskAnnotationsWithIDs(tx); err != nil {
+			return err
+		}
+	} else {
+		hasID, err := columnExists(tx, "task_annotations", "id")
+		if err != nil {
+			return err
+		}
+		if !hasID {
+			if err := rebuildTaskAnnotationsWithIDs(tx); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func createTaskAnnotationsWithIDs(tx m5MigrationTx) error {
+	if err := tx.exec(`CREATE TABLE task_annotations (
+id TEXT PRIMARY KEY,
+task_uuid TEXT NOT NULL,
+entry INTEGER NOT NULL,
+description TEXT NOT NULL,
+CONSTRAINT fk_tasks_annotations FOREIGN KEY(task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+)`); err != nil {
+		return err
+	}
+	return tx.exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)")
+}
+
+func rebuildTaskAnnotationsWithIDs(tx m5MigrationTx) error {
+	if err := tx.exec("ALTER TABLE task_annotations RENAME TO task_annotations_old_v020"); err != nil {
+		return err
+	}
+	if err := createTaskAnnotationsWithIDs(tx); err != nil {
+		return err
+	}
+	rows, err := tx.query("SELECT task_uuid, entry, description FROM task_annotations_old_v020 ORDER BY task_uuid, entry, description")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskUUID, description string
+		var entry int64
+		if err := rows.Scan(&taskUUID, &entry, &description); err != nil {
+			return err
+		}
+		if err := tx.exec("INSERT INTO task_annotations(id, task_uuid, entry, description) VALUES(?, ?, ?, ?)", uuid.NewString(), taskUUID, entry, description); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := tx.exec("DROP TABLE task_annotations_old_v020"); err != nil {
+		return err
+	}
+	return tx.exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)")
 }
 
 func (s *Store) prepareReminderRuleScheduleColumns() error {
@@ -510,14 +611,15 @@ var m5TaskRelationSchemas = []m5TaskRelationSchema{
 	},
 	{
 		table:   "task_annotations",
-		columns: []string{"task_uuid", "entry", "description"},
+		columns: []string{"id", "task_uuid", "entry", "description"},
 		ddl: `CREATE TABLE task_annotations (
+	id TEXT PRIMARY KEY,
 	task_uuid TEXT NOT NULL,
 	entry INTEGER NOT NULL,
 	description TEXT NOT NULL,
-	PRIMARY KEY (task_uuid, entry, description),
 	CONSTRAINT fk_tasks_annotations FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
 )`,
+		indexes: []string{"CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)"},
 	},
 	{
 		table:   "task_dependencies",
@@ -620,7 +722,17 @@ func rebuildM5TaskRelationTable(tx m5MigrationTx, schema m5TaskRelationSchema) e
 		return err
 	}
 	columnList := strings.Join(schema.columns, ", ")
-	if err := tx.exec("INSERT INTO " + schema.table + "(" + columnList + ") SELECT " + columnList + " FROM " + oldTable); err != nil {
+	copySQL := "INSERT INTO " + schema.table + "(" + columnList + ") SELECT " + columnList + " FROM " + oldTable
+	if schema.table == "task_annotations" {
+		hasID, err := columnExists(tx, oldTable, "id")
+		if err != nil {
+			return err
+		}
+		if !hasID {
+			copySQL = "INSERT INTO task_annotations(id, task_uuid, entry, description) SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), task_uuid, entry, description FROM " + oldTable
+		}
+	}
+	if err := tx.exec(copySQL); err != nil {
 		return err
 	}
 	if err := tx.exec("DROP TABLE " + oldTable); err != nil {

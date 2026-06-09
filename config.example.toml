@@ -21,6 +21,26 @@ server = "http://127.0.0.1:8080"
 # 建议优先用环境变量 XUANCHU_TOKEN 注入；如果写进文件，务必把文件权限收紧到 0600
 token = "replace-with-your-token"
 
+[server.admin]
+enabled = false
+
+# Server admin token 只用于 /api/v1/admin/* bootstrap 控制面。
+# 生产建议使用 hash 或 hash_env，不要保存明文 token。
+# 生成方式：
+#   xuanchu admin token generate
+
+[[server.admin.tokens]]
+name = "ops-primary"
+hash = "sha256:replace-with-token-hash"
+enabled = false
+description = "server bootstrap token"
+
+[[server.admin.tokens]]
+name = "ops-rotation"
+hash_env = "XUANCHU_ADMIN_TOKEN_HASH"
+enabled = false
+description = "rotation token hash from deployment secret"
+
 [log]
 level = "info"
 format = "text"

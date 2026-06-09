@@ -39,12 +39,12 @@
 
 | Tool Name | Scope | Permission | App Method |
 |---|---|---|---|
-| `task_denotate` | task:write | PermissionTaskWrite | `Denotate(target, index)` |
+| `task_denotate` | task:write | PermissionTaskWrite | `Denotate(target, annotationID)` |
 | `task_link_list` | task:read | PermissionTaskRead | `Info(target)` → 提取 links |
 | `task_export` | task:read | PermissionTaskRead | `ExportWithInput(input)` |
 | `task_import` | task:write | PermissionTaskWrite | `Import(tasks)` |
 
-`task_denotate` 的 index 参数：现有 `Denotate(target, index int)` 接受 annotation 的序号。MCP 输入用 `annotation_index` int 字段。
+`task_denotate` 使用稳定 annotation ID 删除注释。MCP 输入用 `annotation_id` string 字段，调用前应先通过 `task_get` / `task_query` 读取 `annotations[].id`。
 
 `task_link_list` 复用 `task_get` 模式，返回 task 的 links 字段。可以单独提供一个轻量 tool，也可以从 `task_get` 的结果中提取。考虑到 Agent 明确想查 links 的场景，单独提供更友好。
 

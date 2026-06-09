@@ -55,6 +55,16 @@ type AuthenticatedToken struct {
 	User  storage.User
 }
 
+type createTokenStoredInput struct {
+	Name         string
+	TokenType    string
+	UserID       string
+	Scopes       []string
+	WorkspaceIDs []string
+	ProjectIDs   []string
+	ExpiresIn    *time.Duration
+}
+
 func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -99,6 +109,55 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 		return CreatedToken{}, err
 	}
 
+	var created CreatedToken
+	err = s.withAudit("token.create", func(tx *Service) (AuditEntry, error) {
+		storedToken, err := tx.createTokenStored(createTokenStoredInput{
+			Name:         name,
+			TokenType:    tokenType,
+			UserID:       targetUser.ID,
+			Scopes:       scopes.Values(),
+			WorkspaceIDs: workspaceIDs,
+			ProjectIDs:   projectIDs,
+			ExpiresIn:    input.ExpiresIn,
+		})
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		created = storedToken
+		return AuditEntry{
+			TargetType: "token",
+			TargetID:   created.Stored.ID,
+			Payload: map[string]any{
+				"name":          created.Stored.Name,
+				"type":          created.Stored.Type,
+				"user_id":       created.Stored.UserID,
+				"workspace_ids": workspaceIDs,
+				"project_ids":   projectIDs,
+				"scopes":        scopes.Values(),
+				"expires_at":    created.Stored.ExpiresAt,
+			},
+		}, nil
+	})
+	return created, err
+}
+
+func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return CreatedToken{}, RuntimeError{Code: "token_name_required", Message: "token name is required"}
+	}
+	tokenType := strings.TrimSpace(input.TokenType)
+	if tokenType == "" {
+		tokenType = auth.TokenTypePAT
+	}
+	scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
+		Type:         tokenType,
+		Scopes:       input.Scopes,
+		WorkspaceIDs: input.WorkspaceIDs,
+	})
+	if err != nil {
+		return CreatedToken{}, classifyTokenCreateError(err)
+	}
 	raw, prefix, hash, err := auth.GenerateToken(tokenType)
 	if err != nil {
 		return CreatedToken{}, err
@@ -109,23 +168,21 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 		value := createdAt + int64(input.ExpiresIn.Seconds())
 		expiresAt = &value
 	}
-
 	scopesJSON, err := marshalStringSlice(scopes.Values())
 	if err != nil {
 		return CreatedToken{}, err
 	}
-	workspaceJSON, err := marshalStringSlice(workspaceIDs)
+	workspaceJSON, err := marshalStringSlice(input.WorkspaceIDs)
 	if err != nil {
 		return CreatedToken{}, err
 	}
-	projectJSON, err := marshalStringSlice(projectIDs)
+	projectJSON, err := marshalStringSlice(input.ProjectIDs)
 	if err != nil {
 		return CreatedToken{}, err
 	}
-
 	stored := storage.ApiTokenEntry{
 		ID:               uuid.NewString(),
-		UserID:           targetUser.ID,
+		UserID:           input.UserID,
 		Name:             name,
 		Type:             tokenType,
 		TokenPrefix:      prefix,
@@ -136,32 +193,20 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 		CreatedAt:        createdAt,
 		ExpiresAt:        expiresAt,
 	}
-
-	var created CreatedToken
-	err = s.withAudit("token.create", func(tx *Service) (AuditEntry, error) {
-		if err := tx.tokenRepo.Create(stored); err != nil {
-			return AuditEntry{}, err
-		}
-		created = CreatedToken{
-			RawToken: raw,
-			View:     tokenViewFromEntry(stored, scopes.Values(), workspaceIDs, projectIDs),
-			Stored:   stored,
-		}
-		return AuditEntry{
-			TargetType: "token",
-			TargetID:   stored.ID,
-			Payload: map[string]any{
-				"name":          stored.Name,
-				"type":          stored.Type,
-				"user_id":       stored.UserID,
-				"workspace_ids": workspaceIDs,
-				"project_ids":   projectIDs,
-				"scopes":        scopes.Values(),
-				"expires_at":    expiresAt,
-			},
-		}, nil
-	})
-	return created, err
+	if err := s.tokenRepo.Create(stored); err != nil {
+		return CreatedToken{}, err
+	}
+	userInfo := task.UserInfo{ID: input.UserID}
+	if user, err := s.userRepo.GetByID(input.UserID); err == nil {
+		userInfo = task.UserInfo{ID: user.ID, Name: user.Name, Email: user.Email}
+	}
+	view := tokenViewFromEntry(stored, scopes.Values(), input.WorkspaceIDs, input.ProjectIDs)
+	view.User = userInfo
+	return CreatedToken{
+		RawToken: raw,
+		View:     view,
+		Stored:   stored,
+	}, nil
 }
 
 func (s *Service) ListTokens(input ListTokensInput) ([]TokenView, error) {

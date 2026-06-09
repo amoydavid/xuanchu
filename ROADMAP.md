@@ -33,6 +33,27 @@
 | M15 | 已完成 | MCP Tool 全量覆盖（74 tool）与 Agent Skill 文档 |
 | M16 | 已完成 | 定时通知、动态 endpoint 与 HTTP request template sink |
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
+| v0.2.0 | 已完成 | 定时通知、动态 endpoint、HTTP request template sink 与 MCP Skill 文档整理 |
+
+## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
+
+**状态：已完成。**
+
+v0.2.0 在 v0.1.1 已具备的稳定短任务引用、CLI / HTTP / MCP / Remote 基础上，把 M16 的定时通知能力整理为当前版本主线，并补齐面向 Agent 的 `docs/skills` 操作说明。
+
+核心能力：
+
+- 定时提醒规则优先使用 `schedule + task filter`，可表达每日固定时刻、未来 24 小时即将到期、已逾期、未开始、进行中等条件。
+- `notification sink` 支持标准 webhook 和 `http_template`；第三方固定 Web API 的 URL、header、body 模板和 secret ref 都保存在数据库中。
+- 动态 endpoint 支持 `template` 与 `config_value`，并通过 allowed host 做 SSRF 防护。
+- delivery 生成时冻结 resolved URL、method、headers、body、content type；retry/replay 不按当前 sink 模板重新渲染。
+- CLI、HTTP API、Remote Client、MCP 全部暴露 `schedule_type`、`schedule_value`、`filter_source`。
+- MCP tool 从 74 扩展到 95，并新增/整理 `docs/skills`，覆盖通知提醒、报表与 urgency、配置 schema、token scope、审计 action、project slug 规则等 Agent 调用说明。
+
+对应 milestone：
+
+- M16：定时通知、动态 endpoint 与 HTTP request template sink。
+- Agent Skill 文档整理：`docs/skills/*/SKILL.md` 已覆盖当前 95 个 MCP tool。
 
 ## v0.1.1：稳定短任务标识 task_slug
 
@@ -1004,7 +1025,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.1.0 已发布。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（95 tool）、服务端 Webhook Hook、定时通知、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
+v0.2.0 已完成。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（95 tool）、服务端 Webhook Hook、定时通知、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
 
 后续方向待定，可能包括：
 
