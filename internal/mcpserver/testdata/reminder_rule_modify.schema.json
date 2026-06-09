@@ -1,0 +1,79 @@
+{
+  "description": "Modify a reminder rule.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "after_seconds": {
+        "type": "integer"
+      },
+      "audience_type": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": [
+          "null",
+          "boolean"
+        ]
+      },
+      "name": {
+        "description": "reminder rule name",
+        "type": "string"
+      },
+      "offset_seconds": {
+        "type": "integer"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "project_ref": {
+        "type": "string"
+      },
+      "recipients": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "repeat_policy": {
+        "type": "string"
+      },
+      "sink_ref": {
+        "type": "string"
+      },
+      "task_filter": {
+        "type": "string"
+      },
+      "trigger_type": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "name": "reminder_rule_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -32,6 +32,9 @@ type Service struct {
 	udaRepo               *storage.UDARepository
 	hookRepo              *storage.HookRepository
 	hookDeliveryRepo      hookDeliveryEnqueuer
+	notificationSinkRepo  *storage.NotificationSinkRepository
+	reminderRuleRepo      *storage.ReminderRuleRepository
+	notificationRepo      *storage.NotificationDeliveryRepository
 	extIDRepo             *storage.ExternalIDRepository
 	runtimeConfig         map[string]string
 	runtimeOverrides      map[string]string
@@ -150,30 +153,33 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		return nil, err
 	}
 	svc := &Service{
-		store:            opts.Store,
-		repo:             storage.NewTaskRepository(opts.Store.DB()),
-		projectRepo:      storage.NewProjectRepository(opts.Store.DB()),
-		configRepo:       storage.NewConfigRepository(opts.Store.DB()),
-		configDefRepo:    storage.NewConfigDefinitionRepository(opts.Store.DB()),
-		userRepo:         userRepo,
-		workspaceRepo:    workspaceRepo,
-		memberRepo:       memberRepo,
-		auditRepo:        auditRepo,
-		tokenRepo:        storage.NewTokenRepository(opts.Store.DB()),
-		contextRepo:      storage.NewContextRepository(opts.Store.DB()),
-		udaRepo:          storage.NewUDARepository(opts.Store.DB()),
-		hookRepo:         storage.NewHookRepository(opts.Store.DB()),
-		hookDeliveryRepo: storage.NewHookDeliveryRepository(opts.Store.DB()),
-		extIDRepo:        storage.NewExternalIDRepository(opts.Store.DB()),
-		runtimeConfig:    runtimeConfig,
-		runtimeOverrides: cloneStringMap(opts.RuntimeOverrides),
-		runtimeUDAs:      runtimeUDAs,
-		runtime:          rt,
-		requestScope:     cloneRequestScope(opts.RequestScope),
-		workspaceID:      rt.WorkspaceID,
-		clock:            opts.Clock,
-		reports:          report.DefaultRegistry(),
-		disableContext:   opts.NoContext,
+		store:                opts.Store,
+		repo:                 storage.NewTaskRepository(opts.Store.DB()),
+		projectRepo:          storage.NewProjectRepository(opts.Store.DB()),
+		configRepo:           storage.NewConfigRepository(opts.Store.DB()),
+		configDefRepo:        storage.NewConfigDefinitionRepository(opts.Store.DB()),
+		userRepo:             userRepo,
+		workspaceRepo:        workspaceRepo,
+		memberRepo:           memberRepo,
+		auditRepo:            auditRepo,
+		tokenRepo:            storage.NewTokenRepository(opts.Store.DB()),
+		contextRepo:          storage.NewContextRepository(opts.Store.DB()),
+		udaRepo:              storage.NewUDARepository(opts.Store.DB()),
+		hookRepo:             storage.NewHookRepository(opts.Store.DB()),
+		hookDeliveryRepo:     storage.NewHookDeliveryRepository(opts.Store.DB()),
+		notificationSinkRepo: storage.NewNotificationSinkRepository(opts.Store.DB()),
+		reminderRuleRepo:     storage.NewReminderRuleRepository(opts.Store.DB()),
+		notificationRepo:     storage.NewNotificationDeliveryRepository(opts.Store.DB()),
+		extIDRepo:            storage.NewExternalIDRepository(opts.Store.DB()),
+		runtimeConfig:        runtimeConfig,
+		runtimeOverrides:     cloneStringMap(opts.RuntimeOverrides),
+		runtimeUDAs:          runtimeUDAs,
+		runtime:              rt,
+		requestScope:         cloneRequestScope(opts.RequestScope),
+		workspaceID:          rt.WorkspaceID,
+		clock:                opts.Clock,
+		reports:              report.DefaultRegistry(),
+		disableContext:       opts.NoContext,
 	}
 	if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
 		return nil, err
@@ -209,6 +215,9 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	if _, ok := s.hookDeliveryRepo.(*storage.HookDeliveryRepository); ok || s.hookDeliveryRepo == nil {
 		clone.hookDeliveryRepo = storage.NewHookDeliveryRepository(store.DB())
 	}
+	clone.notificationSinkRepo = storage.NewNotificationSinkRepository(store.DB())
+	clone.reminderRuleRepo = storage.NewReminderRuleRepository(store.DB())
+	clone.notificationRepo = storage.NewNotificationDeliveryRepository(store.DB())
 	return &clone, nil
 }
 

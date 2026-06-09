@@ -746,7 +746,7 @@ stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输�
 # Authorization: Bearer xuanchu_pat_xxx
 ```
 
-HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。`/mcp` 不在 OpenAPI 文档中。
+HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。给 Agent 的默认建议是 workspace-scoped Agent token，让它服务同一 workspace 内多个 project；只服务单项目时再用 project allowlist 收窄。`/mcp` 不在 OpenAPI 文档中。
 
 ### MCP tools 列表
 

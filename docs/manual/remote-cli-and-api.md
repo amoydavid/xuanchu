@@ -32,15 +32,16 @@ xuanchu token create admin \
 
 输出的 raw token 只显示一次。请妥善保存。
 
-创建 project-scoped Agent token：
+创建 workspace-scoped Agent token：
 
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project agentapi \
   --expires-in 720h
 ```
+
+workspace-scoped token 可服务同一 workspace 内多个 project。只允许访问单个 project 时，再加 `--project agentapi` 或 `--project-id <project-uuid>`。
 
 查看和撤销：
 
@@ -101,7 +102,7 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
 | `hook:read` / `hook:write` | hook definition、delivery、replay |
 | `impersonate` | 以其他用户身份操作（仅 agent token） |
 
-project-scoped token 读不到 scope 外的任务。单任务越界读取返回 `task_not_found`，避免泄露资源存在性。
+workspace-scoped token 没有 project allowlist，可访问该 workspace 内多个 project。project-scoped token 读不到 scope 外的任务；单任务越界读取返回 `task_not_found`，避免泄露资源存在性。
 
 ### Scope 通配符
 

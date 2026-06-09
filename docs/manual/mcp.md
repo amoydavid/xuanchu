@@ -9,7 +9,7 @@ xuanchu 可以作为 MCP Server，让 Agent 通过结构化 tools/resources 访�
 
 MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace；HTTP MCP 使用 Bearer token 绑定的 user 和 scope。完整身份初始化流程见 [身份与初始化](identity-and-initialization.md)。
 
-**重要原则：** 每个 MCP 调用都应通过参数显式指定 `workspace`、`project`/`project_id`，不要依赖隐式上下文状态（如 `context_set`/`workspace_use`）。如果不知道 workspace 或 project，先调用 `workspace_list`/`project_list` 发现，然后把参数带上。
+**重要原则：** 每个 MCP 调用都应通过参数显式指定 `workspace`，不要依赖隐式上下文状态（如 `context_set`/`workspace_use`）。任务要归属到某个 project，或查询需要收窄到某个 project 时，再显式传 `project`/`project_id`。如果不知道 workspace 或 project，先调用 `workspace_list`/`project_list` 发现。
 
 ## 运行模式
 
@@ -49,11 +49,10 @@ xuanchu server --listen :8080
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project agentapi \
   --expires-in 720h
 ```
 
-HTTP MCP 推荐使用 project-scoped Agent token。这样 Agent 即使拿到 MCP tools，也只能访问 token allowlist 内的 project。
+HTTP MCP 默认建议使用 workspace-scoped Agent token。Agent 通常要服务一个 workspace 里的多个 project；需要限制到单项目或外部集成最小权限时，再加 `--project <slug>` 或 `--project-id <uuid>` 收窄 allowlist。
 
 ## 在 Claude Code 中使用
 
@@ -254,7 +253,7 @@ Agent 不应该靠提示词决定权限。权限来自：
 
 - token capability
 - workspace scope
-- project scope
+- project scope（可为空；为空表示不按 project 收窄）
 - membership role
 
 stdio MCP 启动前，建议先确认本机 active user/workspace：
@@ -263,23 +262,25 @@ stdio MCP 启动前，建议先确认本机 active user/workspace：
 xuanchu _show active.user active.workspace
 ```
 
-HTTP MCP 接入前，建议为 Agent 创建 project-scoped token：
+HTTP MCP 接入前，建议为 Agent 创建 workspace-scoped token：
 
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project agentapi \
   --expires-in 720h
 ```
+
+如果这个 Agent 只允许服务单个 project，可以额外加 `--project agentapi` 或 `--project-id <project-uuid>`。
 
 ## 建议给 Agent 的提示词
 
 可以在 Agent 系统提示词或项目说明中加入：
 
 ```text
-你可以使用 Xuanchu MCP 管理任务。每次调用都必须通过参数显式指定 workspace 和 project_id，
-不要依赖隐式上下文。如果不知道 workspace 或 project，先调用 workspace_list / project_list 发现。
+你可以使用 Xuanchu MCP 管理任务。每次调用都必须通过参数显式指定 workspace，
+不要依赖隐式上下文。任务应归属某个 project 或查询要按 project 收窄时，再显式传 project_id。
+如果不知道 workspace 或 project，先调用 workspace_list / project_list 发现。
 查询任务用 task_query，读取单任务用 task_get，新增任务用 task_add。
 如果任务有执行者，请在 task_add / task_modify 里显式传 assignees。
 不要尝试访问 token scope 之外的 workspace/project。
@@ -1111,9 +1112,9 @@ MCP tool 返回统一 envelope：
 1. `me_get` 确认当前身份。
 2. `workspace_list` 发现可用 workspace。
 3. `project_list`（带 `workspace` 参数）发现项目。
-4. `task_query`（带 `workspace` + `project_id` 参数）查看待办。
-5. `task_add` / `task_modify`（带 `workspace` + `project_id` 参数）写入任务。
-6. `urgency_explain`（带 `workspace` + `project_id` 参数）理解排序原因。
+4. `task_query`（带 `workspace`；需要按项目收窄时再带 `project_id`）查看待办。
+5. `task_add` / `task_modify`（带 `workspace`；任务要归属项目时再带 `project_id`）写入任务。
+6. `urgency_explain`（带 `workspace`；需要按项目收窄时再带 `project_id`）理解排序原因。
 
 Assignee 用法（M9+）：
 

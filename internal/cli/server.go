@@ -16,6 +16,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/hookruntime"
 	"git.dajee.net/dajee/xuanchu/internal/httpapi"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/notificationruntime"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,8 @@ import (
 func newServerCommand(opts Options) *cobra.Command {
 	var listen string
 	var shutdownTimeout time.Duration
+	var reminderSchedulerInterval time.Duration
+	var notificationDispatcherInterval time.Duration
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "启动 HTTP API 服务器",
@@ -108,6 +111,48 @@ func newServerCommand(opts Options) *cobra.Command {
 				}
 			}()
 
+			reminderScheduler := app.NewReminderScheduler(app.ReminderSchedulerOptions{
+				Store:     store,
+				Clock:     app.RealClock{},
+				BatchSize: 200,
+			})
+			go func() {
+				ticker := time.NewTicker(reminderSchedulerInterval)
+				defer ticker.Stop()
+				for {
+					if _, err := reminderScheduler.RunOnce(ctx); err != nil && ctx.Err() == nil {
+						errCh <- fmt.Errorf("reminder scheduler: %w", err)
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+			}()
+
+			notificationDispatcher := notificationruntime.NewDispatcher(notificationruntime.DispatcherOptions{
+				Store:   store,
+				Clock:   app.RealClock{},
+				Version: "dev",
+			})
+			go func() {
+				ticker := time.NewTicker(notificationDispatcherInterval)
+				defer ticker.Stop()
+				for {
+					if err := notificationDispatcher.RunOnce(ctx); err != nil && ctx.Err() == nil {
+						errCh <- fmt.Errorf("notification dispatcher: %w", err)
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+			}()
+
 			select {
 			case err := <-errCh:
 				stop()
@@ -125,5 +170,7 @@ func newServerCommand(opts Options) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&listen, "listen", "", "HTTP listen address")
 	cmd.Flags().DurationVar(&shutdownTimeout, "shutdown-timeout", 30*time.Second, "graceful shutdown timeout")
+	cmd.Flags().DurationVar(&reminderSchedulerInterval, "reminder-scheduler-interval", 60*time.Second, "reminder scheduler poll interval")
+	cmd.Flags().DurationVar(&notificationDispatcherInterval, "notification-dispatcher-interval", 5*time.Second, "notification dispatcher poll interval")
 	return cmd
 }

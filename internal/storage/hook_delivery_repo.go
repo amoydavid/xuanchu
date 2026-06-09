@@ -65,7 +65,11 @@ func (r *HookDeliveryRepository) ClaimDue(now int64, claimExpiresAt int64, limit
 UPDATE hook_deliveries
 SET
 	status = ?,
-	claim_expires_at = ? + MAX(?, COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60),
+	claim_expires_at = CASE
+		WHEN CAST(? AS BIGINT) > COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60
+		THEN CAST(? AS BIGINT) + CAST(? AS BIGINT)
+		ELSE CAST(? AS BIGINT) + COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60
+	END,
 	attempt_count = attempt_count + 1,
 	modified_at = ?
 WHERE id IN (
@@ -78,8 +82,10 @@ WHERE id IN (
 )
 RETURNING *`,
 		DeliveryStatusDelivering,
+		baseTTL,
 		now,
 		baseTTL,
+		now,
 		now,
 		DeliveryStatusQueued,
 		DeliveryStatusRetryWait,

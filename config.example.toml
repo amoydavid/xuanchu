@@ -1,0 +1,32 @@
+# Xuanchu 本机配置示例
+# 复制到 ~/.config/xuanchu/xuanchu.toml，或通过 XUANCHU_CONFIG 指定
+# 这里的 key 只描述本机启动与展示配置，不是 workspace 业务配置
+
+[database]
+# SQLite 本地数据库路径
+path = "/absolute/path/to/xuanchu.db"
+# PostgreSQL 与 path 互斥，启用后请注释掉上面的 path
+# url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
+
+[display]
+color = true
+json = false
+
+[date]
+format = "rfc3339"
+
+[remote]
+# 远程 CLI / API 服务端地址
+server = "http://127.0.0.1:8080"
+# 建议优先用环境变量 XUANCHU_TOKEN 注入；如果写进文件，务必把文件权限收紧到 0600
+token = "replace-with-your-token"
+
+[log]
+level = "info"
+format = "text"
+
+[log.file]
+path = "/absolute/path/to/xuanchu.log"
+rotate = true
+max_size_mb = 20
+max_age_days = 14

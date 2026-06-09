@@ -1,0 +1,133 @@
+{
+  "description": "Modify a notification sink.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "allowed_hosts": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "body_content_type": {
+        "type": "string"
+      },
+      "body_template": {
+        "type": "string"
+      },
+      "config_key": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": [
+          "null",
+          "boolean"
+        ]
+      },
+      "endpoint_mode": {
+        "type": "string"
+      },
+      "header_templates": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "http_method": {
+        "type": "string"
+      },
+      "max_attempts": {
+        "type": "integer"
+      },
+      "name": {
+        "description": "notification sink name",
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "secret": {
+        "type": "string"
+      },
+      "secret_refs": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "type": "string"
+            },
+            "config_key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "alias",
+            "config_key"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "timeout_seconds": {
+        "type": "integer"
+      },
+      "type": {
+        "description": "webhook or http_template",
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "url_template": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "name": "notification_sink_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

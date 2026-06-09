@@ -98,6 +98,8 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newProjectCommand(opts))
 	cmd.AddCommand(newMemberCommand(opts))
 	cmd.AddCommand(newHookCommand(opts))
+	cmd.AddCommand(newNotificationCommand(opts))
+	cmd.AddCommand(newReminderCommand(opts))
 	cmd.AddCommand(newAuditCommand(opts))
 	cmd.AddCommand(newTokenCommand(opts))
 	cmd.AddCommand(newScopeCommand(opts))

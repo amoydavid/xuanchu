@@ -78,8 +78,8 @@ func TestExpandScopes_PlainScopeStillWorks(t *testing.T) {
 
 func TestScopeRegistryValues(t *testing.T) {
 	values := ScopeRegistryValues()
-	if len(values) != 16 {
-		t.Fatalf("expected 16 scopes, got %d", len(values))
+	if len(values) != 20 {
+		t.Fatalf("expected 20 scopes, got %d", len(values))
 	}
 	if values[0] != "task:read" {
 		t.Fatalf("expected first scope task:read, got %s", values[0])

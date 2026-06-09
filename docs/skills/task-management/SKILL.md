@@ -4,11 +4,12 @@
 
 ## 重要原则
 
-**每个 MCP 调用都必须显式指定作用域。** 不要依赖"当前上下文"或隐式状态。所有 task tool 都支持 `workspace`、`project`、`project_id` 参数，Agent 每次调用时应该把它们带上。
+**每个 MCP 调用都必须显式指定 workspace。** 不要依赖"当前上下文"或隐式状态。所有 task tool 都支持 `workspace`、`project`、`project_id` 参数；任务要归属某个 project，或查询要按 project 收窄时，再把 `project`/`project_id` 带上。
 
 正确做法：
 ```json
 task_add({"description": "修复白屏", "workspace": "dajee", "project_id": "proj-uuid-xxx"})
+task_query({"workspace": "dajee"})
 ```
 
 错误做法：
@@ -28,7 +29,7 @@ workspace_list({})
 // 2. 发现 workspace 下的项目
 project_list({"workspace": "dajee"})
 
-// 3. 拿到 project_id 后，后续所有调用都带上
+// 3. 任务需要归属或收窄到具体 project 时，带上 project_id
 ```
 
 ## 核心 CRUD

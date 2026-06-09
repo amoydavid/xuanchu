@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +20,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+)
+
+var (
+	buildXuanchuOnce sync.Once
+	buildXuanchuPath string
+	buildXuanchuErr  error
 )
 
 func TestCLIAddListInfo(t *testing.T) {
@@ -2155,13 +2163,23 @@ func TestCLIProjectSlugRejectsDigitStart(t *testing.T) {
 
 func buildXuanchu(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "xuanchu")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/xuanchu")
-	cmd.Dir = projectRoot(t)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build error = %v\n%s", err, out)
+	buildXuanchuOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "xuanchu-integration-")
+		if err != nil {
+			buildXuanchuErr = err
+			return
+		}
+		buildXuanchuPath = filepath.Join(dir, "xuanchu")
+		cmd := exec.Command("go", "build", "-o", buildXuanchuPath, "./cmd/xuanchu")
+		cmd.Dir = projectRoot(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			buildXuanchuErr = fmt.Errorf("go build error: %w\n%s", err, out)
+		}
+	})
+	if buildXuanchuErr != nil {
+		t.Fatal(buildXuanchuErr)
 	}
-	return bin
+	return buildXuanchuPath
 }
 
 func seedM4DatabaseWithTasksForCLI(t *testing.T, dbPath string, tasks []seedTask) {

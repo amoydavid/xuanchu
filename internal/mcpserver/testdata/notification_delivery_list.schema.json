@@ -1,0 +1,43 @@
+{
+  "description": "List notification deliveries.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "delivery": {
+        "description": "notification delivery ID",
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "delivery"
+    ],
+    "type": "object"
+  },
+  "name": "notification_delivery_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

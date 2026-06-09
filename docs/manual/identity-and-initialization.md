@@ -160,15 +160,16 @@ xuanchu token create admin-token --scope '*' --expires-in 720h
 xuanchu token create reader --scope '*:read' --expires-in 720h
 ```
 
-给 Agent 创建 project-scoped token：
+给 Agent 创建 workspace-scoped token：
 
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
   --scope task:read,task:write,project:read,context:read,config:read \
-  --project agentapi \
   --expires-in 720h
 ```
+
+这是 HTTP MCP 的默认建议，因为 Agent 通常服务一个 workspace 里的多个 project。如果只允许服务单个 project，再加 `--project agentapi` 或 `--project-id <project-uuid>`。
 
 token 创建后 raw token 只显示一次。后续只能撤销重建，不能再次查看原文。
 
@@ -211,7 +212,7 @@ HTTP MCP 使用 Bearer token 身份：
 
 - actor 来自 token 绑定的 user。
 - workspace 来自请求 scope / token default / token allowlist。
-- project scope 来自请求参数和 token project allowlist。
+- project scope 来自请求参数和 token project allowlist；token 没有 project allowlist 时，可在该 workspace 内访问多个 project。
 - 不读取调用者本机 TOML。
 - 不依赖调用者本机 `user use` 或 `workspace use`。
 
@@ -224,12 +225,12 @@ HTTP MCP 使用 Bearer token 身份：
 | 本地 CLI | `user use` active user | `workspace use` 或 `--workspace` | 当前 workspace 内解析 | 是 |
 | 远程 CLI | Bearer token 绑定 user | `--workspace` / token scope | `--project` / `--project-id` / token scope | 只读远程连接本机配置，不读业务规则 |
 | MCP stdio | 本机 active user | 本机 active workspace / tool scope | tool scope + 本地权限 | 是 |
-| MCP HTTP | Bearer token 绑定 user | token scope / tool scope | token project allowlist + tool scope | 否 |
+| MCP HTTP | Bearer token 绑定 user | token scope / tool scope | token project allowlist + tool scope；无 project allowlist 时为 workspace 内多项目 | 否 |
 
 ## 常见建议
 
 - 单人本地使用，可以接受默认 `local` user/workspace。
 - 团队使用，请显式创建 user、workspace 和 project。
 - 服务端部署，请先创建 admin token，再启动长期服务。
-- Agent 使用 HTTP MCP 时，优先创建 project-scoped Agent token。
+- Agent 使用 HTTP MCP 时，默认创建 workspace-scoped Agent token；只服务单项目或外部集成时再用 project allowlist 收窄。
 - 不要让 Agent 通过提示词“声明自己是谁”；真实身份必须来自 stdio runtime 或 HTTP token。

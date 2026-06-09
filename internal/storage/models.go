@@ -229,6 +229,79 @@ type HookDelivery struct {
 	ModifiedAt     int64 `gorm:"not null"`
 }
 
+type NotificationSink struct {
+	ID                  string `gorm:"primaryKey"`
+	WorkspaceID         string `gorm:"not null;index:idx_notification_sinks_workspace;uniqueIndex:idx_notification_sinks_ws_name,priority:1"`
+	Name                string `gorm:"not null;uniqueIndex:idx_notification_sinks_ws_name,priority:2"`
+	Type                string `gorm:"not null"`
+	EndpointMode        string `gorm:"not null"`
+	URL                 string `gorm:"not null;default:''"`
+	URLTemplate         string `gorm:"not null;default:''"`
+	ConfigKey           string `gorm:"not null;default:''"`
+	AllowedHostsJSON    string `gorm:"not null;default:'[]'"`
+	HTTPMethod          string `gorm:"not null;default:'POST'"`
+	HeaderTemplatesJSON string `gorm:"not null;default:'[]'"`
+	BodyTemplate        string `gorm:"not null;default:''"`
+	BodyContentType     string `gorm:"not null;default:''"`
+	SecretRefsJSON      string `gorm:"not null;default:'{}'"`
+	Secret              string `gorm:"not null;default:''"`
+	Enabled             *bool  `gorm:"not null;default:true;index"`
+	TimeoutSeconds      int    `gorm:"not null;default:10"`
+	MaxAttempts         int    `gorm:"not null;default:5"`
+	CreatedBy           string `gorm:"not null;index"`
+	CreatedAt           int64  `gorm:"not null"`
+	ModifiedAt          int64  `gorm:"not null"`
+}
+
+type ReminderRule struct {
+	ID                   string  `gorm:"primaryKey"`
+	WorkspaceID          string  `gorm:"not null;index:idx_reminder_rules_workspace;uniqueIndex:idx_reminder_rules_ws_name,priority:1"`
+	ProjectID            *string `gorm:"index"`
+	Name                 string  `gorm:"not null;uniqueIndex:idx_reminder_rules_ws_name,priority:2"`
+	Enabled              *bool   `gorm:"not null;default:true;index"`
+	TriggerType          string  `gorm:"not null;index"`
+	OffsetSeconds        int64   `gorm:"not null;default:0"`
+	AfterSeconds         int64   `gorm:"not null;default:0"`
+	RepeatPolicy         string  `gorm:"not null;default:'once'"`
+	TaskFilterJSON       string  `gorm:"not null;default:'{}'"`
+	AudienceType         string  `gorm:"not null"`
+	RecipientUserIDsJSON string  `gorm:"not null;default:'[]'"`
+	SinkID               string  `gorm:"not null;index"`
+	CreatedBy            string  `gorm:"not null;index"`
+	CreatedAt            int64   `gorm:"not null"`
+	ModifiedAt           int64   `gorm:"not null"`
+}
+
+type NotificationDelivery struct {
+	ID                          string  `gorm:"primaryKey"`
+	WorkspaceID                 string  `gorm:"not null;index"`
+	ProjectID                   *string `gorm:"index"`
+	RuleID                      string  `gorm:"not null;index"`
+	SinkID                      string  `gorm:"not null;index"`
+	TaskUUID                    string  `gorm:"not null;index"`
+	RecipientUserID             string  `gorm:"not null;index"`
+	EventID                     string  `gorm:"not null;index"`
+	EventType                   string  `gorm:"not null;index"`
+	DedupeKey                   string  `gorm:"not null;uniqueIndex"`
+	ResolvedURL                 string  `gorm:"not null"`
+	ResolvedEndpointSource      string  `gorm:"not null;default:''"`
+	ResolvedEndpointFingerprint string  `gorm:"not null;default:''"`
+	RenderedMethod              string  `gorm:"not null;default:'POST'"`
+	RenderedHeadersJSON         string  `gorm:"not null;default:'{}'"`
+	RenderedBody                string  `gorm:"not null;default:''"`
+	RenderedContentType         string  `gorm:"not null;default:''"`
+	PayloadJSON                 string  `gorm:"not null"`
+	Status                      string  `gorm:"not null;index:idx_notification_deliveries_due,priority:1"`
+	AttemptCount                int     `gorm:"not null;default:0"`
+	NextAttemptAt               *int64  `gorm:"index:idx_notification_deliveries_due,priority:2"`
+	ClaimExpiresAt              *int64  `gorm:"index"`
+	LastAttemptAt               *int64
+	LastStatusCode              *int
+	LastError                   string
+	CreatedAt                   int64 `gorm:"not null;index"`
+	ModifiedAt                  int64 `gorm:"not null"`
+}
+
 type UserExternalID struct {
 	ID         string `gorm:"primaryKey"`
 	UserID     string `gorm:"not null;index:idx_user_ext_id_user"`

@@ -242,6 +242,12 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"hook_list", "hook_add", "hook_info", "hook_modify", "hook_remove",
 		"hook_test", "hook_delivery_list", "hook_delivery_info",
 		"hook_delivery_redeliver", "hook_ping",
+		"notification_sink_add", "notification_sink_list", "notification_sink_info",
+		"notification_sink_modify", "notification_sink_enable", "notification_sink_disable",
+		"notification_sink_remove", "reminder_rule_add", "reminder_rule_list",
+		"reminder_rule_info", "reminder_rule_modify", "reminder_rule_enable",
+		"reminder_rule_disable", "reminder_rule_remove", "notification_delivery_list",
+		"notification_delivery_info", "notification_delivery_replay",
 		"token_list", "token_create", "token_modify", "token_revoke",
 		"audit_list", "scope_list", "me_get",
 	}
@@ -1351,6 +1357,57 @@ func TestMCPProjectScope(t *testing.T) {
 	}
 	if projectMap["slug"] != projectA.Slug {
 		t.Fatalf("project.list projects = %#v, want only project A", projects)
+	}
+}
+
+func TestMCPWorkspaceScopedTokenCanServeMultipleProjects(t *testing.T) {
+	store := newMCPTestStore(t)
+	owner := newMCPTestService(t, store)
+	projectA, err := owner.AddProject(app.AddProjectInput{Slug: "apia", Name: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectB, err := owner.AddProject(app.AddProjectInput{Slug: "apib", Name: "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.Add(app.AddInput{Description: "alpha task", Project: &projectA.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.Add(app.AddInput{Description: "beta task", Project: &projectB.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	token := mustCreateMCPToken(t, owner, []string{"task:read", "task:write", "project:read"}, []string{"local"}, nil)
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	queryAll := callTool(t, session, "task_query", TaskQueryInput{})
+	if queryAll.IsError {
+		t.Fatalf("task.query workspace scope error: %v", parseError(t, queryAll))
+	}
+	allTasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, queryAll)), "tasks")
+	if len(allTasks) != 2 {
+		t.Fatalf("workspace-scoped task.query count = %d, want 2", len(allTasks))
+	}
+
+	queryA := callTool(t, session, "task_query", TaskQueryInput{ProjectID: projectA.ID})
+	if queryA.IsError {
+		t.Fatalf("task.query project A error: %v", parseError(t, queryA))
+	}
+	tasksA := nestedSlice(t, envelopeData(t, parseEnvelope(t, queryA)), "tasks")
+	if len(tasksA) != 1 {
+		t.Fatalf("project A task.query count = %d, want 1", len(tasksA))
+	}
+
+	addB := callTool(t, session, "task_add", TaskAddInput{Description: "new beta task", ProjectID: projectB.ID})
+	if addB.IsError {
+		t.Fatalf("task.add project B error: %v", parseError(t, addB))
+	}
+	taskObj := extractTask(t, parseEnvelope(t, addB))
+	if taskObj["project"] != projectB.Slug {
+		t.Fatalf("task.add project = %v, want %s", taskObj["project"], projectB.Slug)
 	}
 }
 
