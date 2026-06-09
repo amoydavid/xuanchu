@@ -191,9 +191,10 @@ xuanchu notification sink disable <sink-id>
 xuanchu notification sink delete <sink-id>
 
 xuanchu reminder rule list [--project <slug>] [--all]
+xuanchu reminder rule add <name> --schedule daily@HH:MM --filter <task-filter> [--repeat once|every:<duration>] --audience assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--recipient <user-ref>] [--project <slug>]
 xuanchu reminder rule add <name> --trigger due_before|overdue [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] --audience assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--recipient <user-ref>] [--project <slug>]
 xuanchu reminder rule info <rule-id>
-xuanchu reminder rule modify <rule-id> [--name <name>] [--trigger due_before|overdue] [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] [--audience assignees|explicit_users|assignees_and_explicit_users] [--sink <sink-id-or-name>] [--recipient <user-ref>] [--project <slug>]
+xuanchu reminder rule modify <rule-id> [--name <name>] [--schedule daily@HH:MM] [--filter <task-filter>] [--trigger due_before|overdue] [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] [--audience assignees|explicit_users|assignees_and_explicit_users] [--sink <sink-id-or-name>] [--recipient <user-ref>] [--project <slug>]
 xuanchu reminder rule enable <rule-id>
 xuanchu reminder rule disable <rule-id>
 xuanchu reminder rule delete <rule-id>

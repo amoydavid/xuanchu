@@ -11,6 +11,8 @@ MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace�
 
 **重要原则：** 每个 MCP 调用都应通过参数显式指定 `workspace`，不要依赖隐式上下文状态（如 `context_set`/`workspace_use`）。任务要归属到某个 project，或查询需要收窄到某个 project 时，再显式传 `project`/`project_id`。如果不知道 workspace 或 project，先调用 `workspace_list`/`project_list` 发现。
 
+面向 Agent 的可复用操作说明放在 [`docs/skills`](../skills/)；那里按任务管理、项目管理、通知提醒、Token、审计等场景拆分，字段名以当前 MCP tool schema 为准。
+
 ## 运行模式
 
 本地 stdio MCP：
@@ -1103,13 +1105,18 @@ Ping Hook（写审计日志）。
 | `project` | string | 否 | project slug |
 | `project_id` | string | 否 | project UUID |
 | `name` | string | 是 | 规则名称 |
-| `trigger_type` | string | 是 | `due_before` 或 `overdue` |
+| `trigger_type` | string | 否 | 兼容路径：`due_before` 或 `overdue` |
 | `offset_seconds` | int64 | 否 | `due_before` 提前秒数 |
 | `after_seconds` | int64 | 否 | `overdue` 延迟秒数 |
 | `repeat_policy` | string | 否 | `once` 或 `every:<duration>` |
+| `schedule_type` | string | 否 | 新规则推荐：`daily_at`；也可用 `daily@HH:MM` |
+| `schedule_value` | string | 否 | 每日执行时间，例如 `08:50` |
+| `filter_source` | string | 否 | task filter 表达式，例如 `end.isnull and due.before:now` |
 | `audience_type` | string | 是 | `assignees`、`explicit_users`、`assignees_and_explicit_users` |
 | `recipients` | string[] | 否 | 显式用户引用 |
 | `sink` | string | 是 | sink 名称或 ID |
+
+新规则应优先传 `schedule_type/schedule_value/filter_source`。只有使用兼容触发器时才需要 `trigger_type`、`offset_seconds` 或 `after_seconds`。
 
 #### `reminder_rule_list`
 
@@ -1149,6 +1156,9 @@ Ping Hook（写审计日志）。
 | `offset_seconds` | int64 | 否 | |
 | `after_seconds` | int64 | 否 | |
 | `repeat_policy` | string | 否 | |
+| `schedule_type` | string | 否 | |
+| `schedule_value` | string | 否 | |
+| `filter_source` | string | 否 | |
 | `audience_type` | string | 否 | |
 | `recipients` | string[] | 否 | |
 | `sink` | string | 否 | sink 名称或 ID |

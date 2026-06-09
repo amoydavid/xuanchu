@@ -1842,9 +1842,10 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 	}
 
 	addRule := callTool(t, session, "reminder_rule_add", ReminderRuleAddInput{
-		Name:          "due-before",
-		TriggerType:   "due_before",
-		OffsetSeconds: 3600,
+		Name:          "due-soon-24h",
+		ScheduleType:  "daily_at",
+		ScheduleValue: "08:50",
+		FilterSource:  "end.isnull and start.isnull and due.after:now and due.before:now+24h",
 		AudienceType:  "assignees",
 		Sink:          sinkID,
 	})
@@ -1853,13 +1854,16 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 	}
 	ruleObj := nestedMap(t, envelopeData(t, parseEnvelope(t, addRule)), "rule")
 	ruleID, _ := ruleObj["id"].(string)
+	if ruleObj["schedule_type"] != "daily_at" || ruleObj["schedule_value"] != "08:50" || ruleObj["filter_source"] == "" {
+		t.Fatalf("reminder rule schedule/filter = %#v", ruleObj)
+	}
 
-	overdue := "overdue"
-	zero := int64(0)
+	scheduleValue := "09:00"
+	filterSource := "end.isnull and due.before:now"
 	modRule := callTool(t, session, "reminder_rule_modify", ReminderRuleModifyInput{
 		Rule:          ruleID,
-		TriggerType:   &overdue,
-		OffsetSeconds: &zero,
+		ScheduleValue: &scheduleValue,
+		FilterSource:  &filterSource,
 	})
 	if modRule.IsError {
 		t.Fatalf("reminder_rule_modify error: %v", parseError(t, modRule))

@@ -956,7 +956,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 - notification sink 支持 `webhook` 和 `http_template`。
 - endpoint 支持 `static_url`、`template`、`config_value` 三种模式；动态 endpoint 必须通过 allowed host 与 SSRF 校验。
 - HTTP request template 的 header/body/secret ref 保存在数据库中；delivery 生成时冻结 `resolved_url`、method、headers、body、content type。
-- reminder rule 支持 `due_before` 和 `overdue`；audience 首版支持 `assignees`、`explicit_users`、`assignees_and_explicit_users`。
+- reminder rule 支持兼容型 `due_before` / `overdue`，并支持新规则使用 `schedule + task filter` 表达每日固定时刻、即将到期、逾期、未开始、进行中等条件；audience 首版支持 `assignees`、`explicit_users`、`assignees_and_explicit_users`。
 - `xuanchu server` 启动 reminder scheduler 和 notification dispatcher 后台循环。
 - CLI、HTTP API、Remote Client、MCP 全部贯通；MCP tool 从 74 扩展到 95。
 - delivery 支持 retry、dead-letter、disabled-skip 和人工 replay；replay 使用冻结请求快照，不重新渲染当前 sink 模板。
@@ -974,6 +974,8 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 ```text
 docs/superpowers/specs/2026-06-08-xuanchu-scheduled-notification-design.md
 docs/superpowers/plans/2026-06-08-xuanchu-scheduled-notification-implementation.md
+docs/superpowers/specs/2026-06-08-xuanchu-scheduled-notification-rule-filter-extension-design.md
+docs/superpowers/plans/2026-06-08-xuanchu-scheduled-notification-rule-filter-extension-implementation.md
 ```
 
 ## v0.1.0：基础设施与发布准备

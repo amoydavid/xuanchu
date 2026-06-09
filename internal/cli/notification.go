@@ -690,6 +690,8 @@ func newReminderRuleAddCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&input.offset, "offset", "", "due_before 提前时间，例如 4h")
 	cmd.Flags().StringVar(&input.after, "after", "", "overdue 延迟时间，例如 0h")
 	cmd.Flags().StringVar(&input.repeat, "repeat", "", "重复策略: once 或 every:<duration>")
+	cmd.Flags().StringVar(&input.schedule, "schedule", "", "规则级调度，例如 daily@08:50")
+	cmd.Flags().StringVar(&input.filterSource, "filter", "", "任务过滤表达式，例如 due.before:now+24h")
 	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: assignees、explicit_users、assignees_and_explicit_users")
 	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
 	cmd.Flags().StringVar(&input.sinkRef, "sink", "", "通知 sink 名称或 ID")
@@ -697,15 +699,17 @@ func newReminderRuleAddCommand(opts Options) *cobra.Command {
 }
 
 type reminderRuleCLIInput struct {
-	projectRef string
-	trigger    string
-	offset     string
-	after      string
-	repeat     string
-	audience   string
-	recipients []string
-	sinkRef    string
-	name       string
+	projectRef   string
+	trigger      string
+	offset       string
+	after        string
+	repeat       string
+	schedule     string
+	filterSource string
+	audience     string
+	recipients   []string
+	sinkRef      string
+	name         string
 }
 
 func (input reminderRuleCLIInput) toApp(name string) (app.ReminderRuleAddInput, error) {
@@ -725,6 +729,7 @@ func (input reminderRuleCLIInput) toApp(name string) (app.ReminderRuleAddInput, 
 		}
 		afterSeconds = int64(d.Seconds())
 	}
+	scheduleType, scheduleValue := parseReminderScheduleFlag(input.schedule)
 	return app.ReminderRuleAddInput{
 		Name:          name,
 		ProjectRef:    input.projectRef,
@@ -732,6 +737,9 @@ func (input reminderRuleCLIInput) toApp(name string) (app.ReminderRuleAddInput, 
 		OffsetSeconds: offsetSeconds,
 		AfterSeconds:  afterSeconds,
 		RepeatPolicy:  input.repeat,
+		ScheduleType:  scheduleType,
+		ScheduleValue: scheduleValue,
+		FilterSource:  input.filterSource,
 		AudienceType:  input.audience,
 		Recipients:    input.recipients,
 		SinkRef:       input.sinkRef,
@@ -774,6 +782,14 @@ func (input reminderRuleCLIInput) toModifyApp(cmd *cobra.Command) (app.ReminderR
 	if cmd.Flags().Changed("repeat") {
 		mod.RepeatPolicy = &input.repeat
 	}
+	if cmd.Flags().Changed("schedule") {
+		scheduleType, scheduleValue := parseReminderScheduleFlag(input.schedule)
+		mod.ScheduleType = &scheduleType
+		mod.ScheduleValue = &scheduleValue
+	}
+	if cmd.Flags().Changed("filter") {
+		mod.FilterSource = &input.filterSource
+	}
 	if cmd.Flags().Changed("audience") {
 		mod.AudienceType = &input.audience
 	}
@@ -784,6 +800,14 @@ func (input reminderRuleCLIInput) toModifyApp(cmd *cobra.Command) (app.ReminderR
 		mod.SinkRef = &input.sinkRef
 	}
 	return mod, nil
+}
+
+func parseReminderScheduleFlag(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "daily@") {
+		return "daily_at", strings.TrimPrefix(value, "daily@")
+	}
+	return value, ""
 }
 
 func newReminderRuleListCommand(opts Options) *cobra.Command {
@@ -924,6 +948,8 @@ func newReminderRuleModifyCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&input.offset, "offset", "", "due_before 提前时间，例如 4h")
 	cmd.Flags().StringVar(&input.after, "after", "", "overdue 延迟时间，例如 0h")
 	cmd.Flags().StringVar(&input.repeat, "repeat", "", "重复策略: once 或 every:<duration>")
+	cmd.Flags().StringVar(&input.schedule, "schedule", "", "规则级调度，例如 daily@08:50")
+	cmd.Flags().StringVar(&input.filterSource, "filter", "", "任务过滤表达式，例如 due.before:now+24h")
 	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: assignees、explicit_users、assignees_and_explicit_users")
 	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
 	cmd.Flags().StringVar(&input.sinkRef, "sink", "", "通知 sink 名称或 ID")
@@ -1052,7 +1078,11 @@ func renderReminderRuleList(w interface{ Write([]byte) (int, error) }, rows []ap
 		if row.Enabled {
 			enabled = "enabled"
 		}
-		fmt.Fprintf(w, "%s  %s  %s  %s  %s\n", shortID(row.ID), row.Name, row.TriggerType, row.AudienceType, enabled)
+		trigger := row.TriggerType
+		if row.ScheduleType == "daily_at" && row.ScheduleValue != "" {
+			trigger = "daily@" + row.ScheduleValue
+		}
+		fmt.Fprintf(w, "%s  %s  %s  %s  %s\n", shortID(row.ID), row.Name, trigger, row.AudienceType, enabled)
 	}
 }
 
@@ -1152,6 +1182,9 @@ func reminderRuleInputToRemote(input app.ReminderRuleAddInput) remote.ReminderRu
 		OffsetSeconds: input.OffsetSeconds,
 		AfterSeconds:  input.AfterSeconds,
 		RepeatPolicy:  input.RepeatPolicy,
+		ScheduleType:  input.ScheduleType,
+		ScheduleValue: input.ScheduleValue,
+		FilterSource:  input.FilterSource,
 		AudienceType:  input.AudienceType,
 		Recipients:    input.Recipients,
 		SinkRef:       input.SinkRef,
@@ -1166,6 +1199,9 @@ func reminderRuleModifyInputToRemote(input app.ReminderRuleModifyInput) remote.R
 		OffsetSeconds: input.OffsetSeconds,
 		AfterSeconds:  input.AfterSeconds,
 		RepeatPolicy:  input.RepeatPolicy,
+		ScheduleType:  input.ScheduleType,
+		ScheduleValue: input.ScheduleValue,
+		FilterSource:  input.FilterSource,
 		AudienceType:  input.AudienceType,
 		Recipients:    input.Recipients,
 		SinkRef:       input.SinkRef,
@@ -1191,6 +1227,9 @@ func reminderRuleViewForJSON(row app.ReminderRuleView) map[string]any {
 		"offset_seconds":  row.OffsetSeconds,
 		"after_seconds":   row.AfterSeconds,
 		"repeat_policy":   row.RepeatPolicy,
+		"schedule_type":   row.ScheduleType,
+		"schedule_value":  row.ScheduleValue,
+		"filter_source":   row.FilterSource,
 		"audience_type":   row.AudienceType,
 		"recipient_users": notificationUserInfosForJSON(row.RecipientUsers),
 		"sink_id":         row.SinkID,

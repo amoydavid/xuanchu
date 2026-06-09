@@ -15,6 +15,12 @@
           "string"
         ]
       },
+      "filter_source": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "name": {
         "type": [
           "null",
@@ -58,6 +64,18 @@
       "rule": {
         "description": "reminder rule ID",
         "type": "string"
+      },
+      "schedule_type": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "schedule_value": {
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "sink": {
         "description": "notification sink name or ID",

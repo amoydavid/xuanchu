@@ -89,10 +89,13 @@ type ReminderRuleAddInput struct {
 	Project       string   `json:"project,omitempty"`
 	ProjectID     string   `json:"project_id,omitempty"`
 	Name          string   `json:"name" jsonschema:"rule name"`
-	TriggerType   string   `json:"trigger_type" jsonschema:"due_before or overdue"`
+	TriggerType   string   `json:"trigger_type,omitempty" jsonschema:"due_before or overdue"`
 	OffsetSeconds int64    `json:"offset_seconds,omitempty" jsonschema:"seconds before due for due_before"`
 	AfterSeconds  int64    `json:"after_seconds,omitempty" jsonschema:"seconds after due for overdue"`
 	RepeatPolicy  string   `json:"repeat_policy,omitempty" jsonschema:"once or every:<duration>"`
+	ScheduleType  string   `json:"schedule_type,omitempty" jsonschema:"daily_at or daily@HH:MM"`
+	ScheduleValue string   `json:"schedule_value,omitempty" jsonschema:"daily schedule time such as 08:50"`
+	FilterSource  string   `json:"filter_source,omitempty" jsonschema:"task filter expression for scheduled rules"`
 	AudienceType  string   `json:"audience_type" jsonschema:"assignees, explicit_users, or assignees_and_explicit_users"`
 	Recipients    []string `json:"recipients,omitempty" jsonschema:"explicit recipient user refs"`
 	Sink          string   `json:"sink" jsonschema:"notification sink name or ID"`
@@ -124,6 +127,9 @@ type ReminderRuleModifyInput struct {
 	OffsetSeconds *int64    `json:"offset_seconds,omitempty"`
 	AfterSeconds  *int64    `json:"after_seconds,omitempty"`
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
+	ScheduleType  *string   `json:"schedule_type,omitempty"`
+	ScheduleValue *string   `json:"schedule_value,omitempty"`
+	FilterSource  *string   `json:"filter_source,omitempty"`
 	AudienceType  *string   `json:"audience_type,omitempty"`
 	Recipients    *[]string `json:"recipients,omitempty"`
 	Sink          *string   `json:"sink,omitempty" jsonschema:"notification sink name or ID"`
@@ -274,6 +280,9 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 			OffsetSeconds: in.OffsetSeconds,
 			AfterSeconds:  in.AfterSeconds,
 			RepeatPolicy:  strings.TrimSpace(in.RepeatPolicy),
+			ScheduleType:  strings.TrimSpace(in.ScheduleType),
+			ScheduleValue: strings.TrimSpace(in.ScheduleValue),
+			FilterSource:  strings.TrimSpace(in.FilterSource),
 			AudienceType:  strings.TrimSpace(in.AudienceType),
 			Recipients:    in.Recipients,
 			SinkRef:       strings.TrimSpace(in.Sink),
@@ -308,6 +317,9 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 			OffsetSeconds: in.OffsetSeconds,
 			AfterSeconds:  in.AfterSeconds,
 			RepeatPolicy:  in.RepeatPolicy,
+			ScheduleType:  in.ScheduleType,
+			ScheduleValue: in.ScheduleValue,
+			FilterSource:  in.FilterSource,
 			AudienceType:  in.AudienceType,
 			Recipients:    in.Recipients,
 			SinkRef:       in.Sink,
@@ -464,6 +476,9 @@ func reminderRuleViewForMCP(row app.ReminderRuleView) map[string]any {
 		"offset_seconds":  row.OffsetSeconds,
 		"after_seconds":   row.AfterSeconds,
 		"repeat_policy":   row.RepeatPolicy,
+		"schedule_type":   row.ScheduleType,
+		"schedule_value":  row.ScheduleValue,
+		"filter_source":   row.FilterSource,
 		"audience_type":   row.AudienceType,
 		"recipient_users": notificationUserInfosForMCP(row.RecipientUsers),
 		"sink_id":         row.SinkID,

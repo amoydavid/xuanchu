@@ -49,6 +49,9 @@ type ReminderRuleRequest struct {
 	OffsetSeconds int64    `json:"offset_seconds"`
 	AfterSeconds  int64    `json:"after_seconds"`
 	RepeatPolicy  string   `json:"repeat_policy"`
+	ScheduleType  string   `json:"schedule_type"`
+	ScheduleValue string   `json:"schedule_value"`
+	FilterSource  string   `json:"filter_source"`
 	AudienceType  string   `json:"audience_type"`
 	Recipients    []string `json:"recipients"`
 	SinkRef       string   `json:"sink_ref"`
@@ -61,6 +64,9 @@ type ReminderRuleModifyRequest struct {
 	OffsetSeconds *int64    `json:"offset_seconds,omitempty"`
 	AfterSeconds  *int64    `json:"after_seconds,omitempty"`
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
+	ScheduleType  *string   `json:"schedule_type,omitempty"`
+	ScheduleValue *string   `json:"schedule_value,omitempty"`
+	FilterSource  *string   `json:"filter_source,omitempty"`
 	AudienceType  *string   `json:"audience_type,omitempty"`
 	Recipients    *[]string `json:"recipients,omitempty"`
 	SinkRef       *string   `json:"sink_ref,omitempty"`

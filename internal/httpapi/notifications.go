@@ -52,6 +52,9 @@ type reminderRuleRequest struct {
 	OffsetSeconds int64    `json:"offset_seconds"`
 	AfterSeconds  int64    `json:"after_seconds"`
 	RepeatPolicy  string   `json:"repeat_policy"`
+	ScheduleType  string   `json:"schedule_type"`
+	ScheduleValue string   `json:"schedule_value"`
+	FilterSource  string   `json:"filter_source"`
 	AudienceType  string   `json:"audience_type"`
 	Recipients    []string `json:"recipients"`
 	SinkRef       string   `json:"sink_ref"`
@@ -64,6 +67,9 @@ type reminderRuleModifyRequest struct {
 	OffsetSeconds *int64    `json:"offset_seconds,omitempty"`
 	AfterSeconds  *int64    `json:"after_seconds,omitempty"`
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
+	ScheduleType  *string   `json:"schedule_type,omitempty"`
+	ScheduleValue *string   `json:"schedule_value,omitempty"`
+	FilterSource  *string   `json:"filter_source,omitempty"`
 	AudienceType  *string   `json:"audience_type,omitempty"`
 	Recipients    *[]string `json:"recipients,omitempty"`
 	SinkRef       *string   `json:"sink_ref,omitempty"`
@@ -252,6 +258,9 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 		OffsetSeconds: req.OffsetSeconds,
 		AfterSeconds:  req.AfterSeconds,
 		RepeatPolicy:  req.RepeatPolicy,
+		ScheduleType:  req.ScheduleType,
+		ScheduleValue: req.ScheduleValue,
+		FilterSource:  req.FilterSource,
 		AudienceType:  req.AudienceType,
 		Recipients:    req.Recipients,
 		SinkRef:       req.SinkRef,
@@ -299,6 +308,9 @@ func (s *Server) handleReminderRuleModify(w http.ResponseWriter, r *http.Request
 		OffsetSeconds: req.OffsetSeconds,
 		AfterSeconds:  req.AfterSeconds,
 		RepeatPolicy:  req.RepeatPolicy,
+		ScheduleType:  req.ScheduleType,
+		ScheduleValue: req.ScheduleValue,
+		FilterSource:  req.FilterSource,
 		AudienceType:  req.AudienceType,
 		Recipients:    req.Recipients,
 		SinkRef:       req.SinkRef,
@@ -445,6 +457,9 @@ func reminderRuleResponse(row app.ReminderRuleView) map[string]any {
 		"offset_seconds":  row.OffsetSeconds,
 		"after_seconds":   row.AfterSeconds,
 		"repeat_policy":   row.RepeatPolicy,
+		"schedule_type":   row.ScheduleType,
+		"schedule_value":  row.ScheduleValue,
+		"filter_source":   row.FilterSource,
 		"audience_type":   row.AudienceType,
 		"recipient_users": userInfosToJSON(row.RecipientUsers),
 		"sink_id":         row.SinkID,

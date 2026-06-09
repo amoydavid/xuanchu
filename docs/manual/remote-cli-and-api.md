@@ -210,7 +210,7 @@ reminder rule：
 curl -X POST \
   -H "Authorization: Bearer $XUANCHU_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"due-before-4h","trigger_type":"due_before","offset_seconds":14400,"audience_type":"assignees","sink_ref":"openclaw"}' \
+  -d '{"name":"due-soon-24h","schedule_type":"daily_at","schedule_value":"08:50","filter_source":"end.isnull and start.isnull and due.after:now and due.before:now+24h","audience_type":"assignees","sink_ref":"openclaw"}' \
   'https://xuanchu.example.com/api/v1/reminder-rules?workspace=dajee'
 ```
 

@@ -10,7 +10,7 @@ Xuanchu 的通知系统用于“按任务状态和时间生成提醒”，例如
 通知系统由三类对象组成：
 
 - `notification sink`：通知投递目标。可以是 Xuanchu 标准 webhook，也可以是数据库保存的 HTTP request template。
-- `reminder rule`：定时提醒规则。首版支持 `due_before` 和 `overdue`。
+- `reminder rule`：定时提醒规则。新规则优先使用 `schedule + task filter`，兼容旧的 `due_before` 和 `overdue`。
 - `notification delivery`：一次实际投递记录。失败后可重试，dead-letter 后可人工 replay。
 
 Xuanchu 只负责规则评估、幂等生成 delivery、冻结请求快照和投递。OpenClaw、飞书、Slack、邮件等外部系统不内置在 Xuanchu 里，而是通过 sink 接入。
@@ -19,7 +19,7 @@ Xuanchu 只负责规则评估、幂等生成 delivery、冻结请求快照和投
 
 Webhook Hook 是事件驱动：任务创建、修改、完成、删除后投递。
 
-定时通知是时间驱动：scheduler 扫描 pending task 的 `due`，命中 reminder rule 后生成 delivery。
+定时通知是时间驱动：scheduler 按 reminder rule 的 schedule 执行 task filter，命中后生成 delivery。
 
 两者都使用 outbox、重试、dead-letter 和人工 replay，但触发源不同。不要把定时提醒塞进 hook event。
 
@@ -103,25 +103,30 @@ dispatcher 只读取 delivery 快照投递，不重新读取 sink 模板。这�
 
 ## 创建 reminder rule
 
-到期前 4 小时提醒任务 assignee：
+每天 8:50 对“未开始、未结束、未到期，并且 24 小时内即将到期”的任务提醒 assignee：
 
 ```bash
-xuanchu reminder rule add due-before-4h \
-  --trigger due_before \
-  --offset 4h \
+xuanchu reminder rule add due-soon-24h \
+  --schedule daily@08:50 \
+  --filter 'end.isnull and start.isnull and due.after:now and due.before:now+24h' \
   --audience assignees \
   --sink openclaw
 ```
 
-逾期后每天提醒：
+每天 9:00 对“未开始或进行中、未结束、已到期”的任务发送逾期通知；模板里可以引用 `{{reminder.overdue_sequence}}` 显示这是第几次逾期通知：
 
 ```bash
 xuanchu reminder rule add overdue-daily \
-  --trigger overdue \
+  --schedule daily@09:00 \
+  --filter 'status:pending and end.isnull and due.before:now' \
   --repeat every:24h \
   --audience assignees \
   --sink openclaw
 ```
+
+`--schedule daily@HH:MM` 会保存为 `schedule_type=daily_at` 和 `schedule_value=HH:MM`。`--filter` 使用 Xuanchu 查询表达式；`status:pending and end.isnull` 覆盖未完成任务，未开始可额外加 `start.isnull`，进行中可额外加 `start.notnull`。`now+24h`、`now-2h` 这类相对时间里的 duration 直接使用 Go `time.ParseDuration` 语法，例如 `24h`、`90m`、`2h30m`，不支持 `1d`。
+
+旧的 `--trigger due_before --offset 4h` 和 `--trigger overdue` 仍作为兼容路径保留。需要表达更丰富条件时，优先使用 `--schedule` 和 `--filter`。
 
 首版 audience 支持：
 
@@ -143,7 +148,7 @@ xuanchu notification sink delete <sink-id>
 
 xuanchu reminder rule list
 xuanchu reminder rule info <rule-id>
-xuanchu reminder rule modify <rule-id> --repeat every:12h
+xuanchu reminder rule modify <rule-id> --schedule daily@09:30 --filter 'end.isnull and due.before:now'
 xuanchu reminder rule disable <rule-id>
 xuanchu reminder rule enable <rule-id>
 xuanchu reminder rule delete <rule-id>

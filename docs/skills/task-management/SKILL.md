@@ -6,6 +6,8 @@
 
 **每个 MCP 调用都必须显式指定 workspace。** 不要依赖"当前上下文"或隐式状态。所有 task tool 都支持 `workspace`、`project`、`project_id` 参数；任务要归属某个 project，或查询要按 project 收窄时，再把 `project`/`project_id` 带上。
 
+`project` 字段使用项目 slug。项目 slug 只允许 3-10 位小写字母或数字，必须以字母开头；不要使用 `api-platform`、`ai_agent` 这类 workspace 风格 slug。任务引用则使用 UUID 或 `task_slug`，其中 `task_slug` 形如 `api-1`。
+
 正确做法：
 ```json
 task_add({"description": "修复白屏", "workspace": "dajee", "project_id": "proj-uuid-xxx"})
@@ -60,7 +62,7 @@ project_list({"workspace": "dajee"})
       "status": "pending",
       "priority": "H",
       "tags": ["bug", "frontend"],
-      "project": "api-platform",
+      "project": "apiplat",
       "assignees": [{"id": "...", "name": "alice"}],
       "annotations": [{"entry": 1748793600, "description": "客户反馈: Chrome 121 必现"}],
       "entry": 1748707200,
@@ -73,10 +75,10 @@ project_list({"workspace": "dajee"})
 
 ### task_query — 查询任务
 
-只读。`query` 支持 Taskwarrior 风格表达式：`description:关键词`、`tag:xxx`、`assignee:me`、`project:slug`、`priority:H`、`due.before:today`、`annotations contains "备注"`。裸字符串自动按 description 子串匹配。
+只读。`query` 支持 Taskwarrior 风格表达式：`description:关键词`、`tag:xxx`、`assignee:me`、`project:apiplat`、`priority:H`、`due.before:today`、`annotations contains "备注"`。裸字符串自动按 description 子串匹配。
 
 ```json
-// 输入：查看 dajee workspace 下 api-platform 项目的高优先级待办
+// 输入：查看 dajee workspace 下 apiplat 项目的高优先级待办
 {
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
@@ -104,7 +106,7 @@ project_list({"workspace": "dajee"})
 
 ### task_get — 读取单任务
 
-只读。HTTP 和 stdio MCP 模式都只能用 UUID 或 `task_slug`，不能使用本地 working-set 数字 ID。
+只读。MCP tool 是协议型接口，任务引用只能用 UUID 或 `task_slug`，不能使用本地 CLI 的 working-set 数字 ID。
 
 ```json
 // 输入
@@ -160,6 +162,14 @@ project_list({"workspace": "dajee"})
   "project_id": "proj-uuid-xxx",
   "id": "a1b2c3d4-...",
   "clear": ["priority", "assignees"]
+}
+
+// 输入：设置 UDA
+{
+  "workspace": "dajee",
+  "project_id": "proj-uuid-xxx",
+  "id": "a1b2c3d4-...",
+  "udas": {"estimate": "3h", "risk": "high"}
 }
 ```
 
@@ -281,24 +291,6 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
 }
 ```
 
-## 报表与评分
-
-### report_run — 运行内置报表
-
-只读。内置报表：`list`、`next`、`all`、`completed`、`deleted`、`waiting`、`active`、`ready`、`overdue`、`blocked`、`blocking`。
-
-```json
-{"workspace": "dajee", "project_id": "proj-uuid-xxx", "name": "next", "limit": 10}
-```
-
-### urgency_explain — 解释 urgency 评分
-
-只读。
-
-```json
-{"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-..."}
-```
-
 ## 典型 Agent 工作流
 
 **场景：用户说"帮我在 API 平台项目下创建一个修复白屏的任务"**
@@ -306,12 +298,12 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
 ```json
 // Step 1: 确认 workspace 和项目
 project_list({"workspace": "dajee"})
-// → 找到 api-platform 项目，拿到 project_id
+// → 找到 apiplat 项目，拿到 project_id
 
 // Step 2: 创建任务
 task_add({
   "workspace": "dajee",
-  "project_id": "proj-api-platform-uuid",
+  "project_id": "proj-uuid-xxx",
   "description": "修复登录页面白屏问题",
   "priority": "H",
   "tags": ["bug"]
@@ -320,7 +312,7 @@ task_add({
 // Step 3: 记录进展
 task_annotate({
   "workspace": "dajee",
-  "project_id": "proj-api-platform-uuid",
+  "project_id": "proj-uuid-xxx",
   "id": "新创建的任务 UUID",
   "annotation": "已创建，等待分配"
 })

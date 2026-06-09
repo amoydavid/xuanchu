@@ -2,6 +2,8 @@
 
 > **给 agentic workers 的要求：** 必须使用 `superpowers:subagent-driven-development`（如果当前环境支持子代理）或 `superpowers:executing-plans` 执行本计划。步骤使用 checkbox（`- [ ]`）语法跟踪进度。
 
+> **现状补充：** 本计划覆盖 M16 第一阶段 `trigger_type/offset/after` 兼容模型。后续已按 `docs/superpowers/plans/2026-06-08-xuanchu-scheduled-notification-rule-filter-extension-implementation.md` 扩展为 `schedule + task filter`，并要求 CLI、HTTP API、Remote Client、MCP 都暴露 `schedule_type/schedule_value/filter_source`。
+
 **目标：** 实现规则驱动的定时通知能力，让 Xuanchu 能在任务到期前和逾期后生成幂等通知，并通过动态、安全的 notification sink 投递给 OpenClaw 等外部 Agent 平台，或通过数据库保存的 HTTP request template 调用第三方固定 Web API。
 
 **架构：** 新增独立于 Hook 的通知域：`notification_sinks`、`reminder_rules`、`notification_deliveries` 三类存储模型；`internal/app` 负责 sink/rule 控制面、endpoint 与 request template 解析、scheduler 评估、recipient hydration 和 delivery view；`internal/notificationruntime` 负责按 delivery 冻结的 URL、method、header、body 快照投递。CLI、HTTP、Remote Client、MCP 都只是 `internal/app` 的薄壳，不复制业务逻辑。

@@ -11,6 +11,10 @@
         "description": "assignees, explicit_users, or assignees_and_explicit_users",
         "type": "string"
       },
+      "filter_source": {
+        "description": "task filter expression for scheduled rules",
+        "type": "string"
+      },
       "name": {
         "description": "rule name",
         "type": "string"
@@ -39,6 +43,14 @@
         "description": "once or every:\u003cduration\u003e",
         "type": "string"
       },
+      "schedule_type": {
+        "description": "daily_at or daily@HH:MM",
+        "type": "string"
+      },
+      "schedule_value": {
+        "description": "daily schedule time such as 08:50",
+        "type": "string"
+      },
       "sink": {
         "description": "notification sink name or ID",
         "type": "string"
@@ -53,7 +65,6 @@
     },
     "required": [
       "name",
-      "trigger_type",
       "audience_type",
       "sink"
     ],

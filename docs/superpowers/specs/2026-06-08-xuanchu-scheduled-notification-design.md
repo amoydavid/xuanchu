@@ -6,6 +6,8 @@
 
 **范围策略：** 本规格只设计 Xuanchu 侧的 reminder rule、scheduler、notification outbox、动态 endpoint resolver 和外部通知 sink 契约。Xuanchu 不内置 OpenClaw、飞书、Slack、邮件等具体 adapter，也不让 Agent 自己承担定时扫描职责。OpenClaw 这类 Agent 平台作为首个典型 sink：负责向用户发送消息、理解用户回复，并通过 Xuanchu HTTP/MCP 代表用户继续操作任务。
 
+**现状补充：** 本规格的 `trigger_type/offset/after` 是 M16 第一阶段兼容模型。实际日常规则已由扩展规格升级为 `schedule + task filter`，详见 `docs/superpowers/specs/2026-06-08-xuanchu-scheduled-notification-rule-filter-extension-design.md`。新规则应优先使用 `schedule_type/schedule_value/filter_source`，旧 trigger 字段保留用于兼容简单到期/逾期提醒。
+
 **需求来源：**
 
 - 当前任务模型已经支持 `due`、`status`、`project`、多 assignee、`task_slug`。

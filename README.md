@@ -825,7 +825,7 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 
 ## 定时通知与第三方通知
 
-定时通知用于到期前和逾期后的提醒，和事件驱动 Hook 分开建模。管理员先创建 notification sink，再创建 reminder rule，`xuanchu server` 的后台 scheduler 会扫描 pending task 并生成 delivery。
+定时通知用于到期前和逾期后的提醒，和事件驱动 Hook 分开建模。管理员先创建 notification sink，再创建 reminder rule；新规则优先使用 `schedule + task filter` 描述“什么时候扫、扫哪些任务”，`xuanchu server` 的后台 scheduler 命中规则后生成 delivery。
 
 ```bash
 ./xuanchu notification sink add openclaw \
@@ -833,9 +833,16 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
   --url https://openclaw.example.com/xuanchu/notifications \
   --secret "$WEBHOOK_SECRET"
 
-./xuanchu reminder rule add due-before-4h \
-  --trigger due_before \
-  --offset 4h \
+./xuanchu reminder rule add due-soon-24h \
+  --schedule daily@08:50 \
+  --filter 'end.isnull and start.isnull and due.after:now and due.before:now+24h' \
+  --audience assignees \
+  --sink openclaw
+
+./xuanchu reminder rule add overdue-daily \
+  --schedule daily@09:00 \
+  --filter 'end.isnull and (start.isnull or start.notnull) and due.before:now' \
+  --repeat every:24h \
   --audience assignees \
   --sink openclaw
 

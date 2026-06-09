@@ -76,6 +76,8 @@
 
 `slug` 必填，仅允许 `^[a-z0-9][a-z0-9_-]*$`。
 
+注意：这是 workspace slug 规则。project slug 更严格，只允许 3-10 位小写字母或数字，必须以字母开头，不能包含 `-` 或 `_`。
+
 ```json
 // 输入
 {"slug": "engineering", "name": "工程团队", "visibility": "team"}

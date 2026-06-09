@@ -4,19 +4,21 @@
 
 ## 重要原则
 
-**每个 MCP 调用都必须显式指定 `workspace`。** 项目操作通过 `project`（slug）或 `project_id`（UUID）定位。如果不知道项目 ID，先 `project_list` 查询。
+**每个 MCP 调用都必须显式指定 `workspace`。** 项目操作通过 `project`（项目 slug）或 `project_id`（UUID）定位。如果不知道项目 ID，先 `project_list` 查询。
+
+项目 slug 规则与 workspace slug 不同：创建项目时会转小写，只允许 3-10 位小写字母或数字，必须以字母开头，不能包含 `-`、`_` 或中文。示例：`api`、`apiplat`、`api9`。
 
 ## 项目生命周期
 
 ### project_add — 创建项目
 
-`slug` 必填，仅允许 `^[a-z0-9][a-z0-9_-]*$`。
+`slug` 必填。项目 slug 会转小写，只允许 3-10 位小写字母或数字，必须以字母开头；`api-platform`、`ai_agent`、`p1`、`1api` 都不是合法项目 slug。
 
 ```json
 // 输入
 {
   "workspace": "dajee",
-  "slug": "api-platform",
+  "slug": "apiplat",
   "name": "API 平台",
   "description": "核心 API 服务"
 }
@@ -26,13 +28,13 @@
   "data": {
     "project": {
       "id": "proj-uuid-xxx",
-      "slug": "api-platform",
+      "slug": "apiplat",
       "name": "API 平台",
       "description": "核心 API 服务",
       "archived": false
     }
   },
-  "rendered": "created project api-platform"
+  "rendered": "created project apiplat"
 }
 ```
 
@@ -51,7 +53,7 @@
 {
   "data": {
     "projects": [
-      {"id": "proj-uuid-xxx", "slug": "api-platform", "name": "API 平台", "archived": false}
+      {"id": "proj-uuid-xxx", "slug": "apiplat", "name": "API 平台", "archived": false}
     ],
     "count": 1
   },
@@ -65,7 +67,7 @@
 
 ```json
 // 输入：用 slug
-{"workspace": "dajee", "project": "api-platform"}
+{"workspace": "dajee", "project": "apiplat"}
 
 // 输入：用 UUID
 {"workspace": "dajee", "project_id": "proj-uuid-xxx"}
@@ -73,11 +75,20 @@
 // 返回
 {
   "data": {
-    "project": {"id": "proj-uuid-xxx", "slug": "api-platform", "name": "API 平台"},
+    "project": {"id": "proj-uuid-xxx", "slug": "apiplat", "name": "API 平台"},
     "config_summary": {"agent.background": "你是一个 API 开发助手"}
   },
-  "rendered": "project api-platform"
+  "rendered": "project apiplat"
 }
+```
+
+### project_get_current — 读取显式项目 scope
+
+只读。用于确认当前 tool call 参数中的 `project` / `project_id` 会解析到哪个项目；没有显式项目时返回 `project: null`。
+
+```json
+project_get_current({"workspace": "dajee", "project": "apiplat"})
+project_get_current({"workspace": "dajee"})
 ```
 
 ### project_modify — 修改项目
@@ -85,7 +96,7 @@
 ```json
 {
   "workspace": "dajee",
-  "project": "api-platform",
+  "project": "apiplat",
   "name": "API 平台 v2",
   "description": "下一代 API 网关"
 }
@@ -94,7 +105,7 @@
 ### project_archive — 归档项目
 
 ```json
-{"workspace": "dajee", "project": "api-platform"}
+{"workspace": "dajee", "project": "apiplat"}
 ```
 
 ## 注释
@@ -104,7 +115,7 @@
 ```json
 {
   "workspace": "dajee",
-  "project": "api-platform",
+  "project": "apiplat",
   "content": "决定使用 GraphQL 替代 REST"
 }
 ```
@@ -114,7 +125,7 @@
 只读。
 
 ```json
-{"workspace": "dajee", "project": "api-platform"}
+{"workspace": "dajee", "project": "apiplat"}
 ```
 
 ### project_denotate — 移除注释
@@ -122,7 +133,7 @@
 ```json
 {
   "workspace": "dajee",
-  "project": "api-platform",
+  "project": "apiplat",
   "annotation_id": "ann-uuid-xxx"
 }
 ```
@@ -134,7 +145,7 @@
 只读。默认 50 条。
 
 ```json
-{"workspace": "dajee", "project": "api-platform", "limit": 10}
+{"workspace": "dajee", "project": "apiplat", "limit": 10}
 ```
 
 ## 项目配置
@@ -146,7 +157,7 @@
 ```json
 {
   "workspace": "dajee",
-  "project": "api-platform",
+  "project": "apiplat",
   "key": "agent.background",
   "value": "你是一个 API 开发助手，负责 review 所有 API 变更"
 }
@@ -157,13 +168,13 @@
 只读。
 
 ```json
-{"workspace": "dajee", "project": "api-platform"}
+{"workspace": "dajee", "project": "apiplat"}
 ```
 
 ### project_config_unset
 
 ```json
-{"workspace": "dajee", "project": "api-platform", "key": "agent.handoff"}
+{"workspace": "dajee", "project": "apiplat", "key": "agent.handoff"}
 ```
 
 ## 典型 Agent 工作流
@@ -172,12 +183,12 @@
 
 ```json
 // Step 1: 创建项目
-project_add({"workspace": "dajee", "slug": "api-platform", "name": "API 平台"})
+project_add({"workspace": "dajee", "slug": "apiplat", "name": "API 平台"})
 
 // Step 2: 配置 Agent 指令
 project_config_set({
   "workspace": "dajee",
-  "project": "api-platform",
+  "project": "apiplat",
   "key": "agent.background",
   "value": "你负责管理 API 平台项目的所有任务"
 })
@@ -185,7 +196,7 @@ project_config_set({
 // Step 3: 创建首批任务
 task_add({
   "workspace": "dajee",
-  "project": "api-platform",
+  "project": "apiplat",
   "description": "搭建项目骨架"
 })
 ```

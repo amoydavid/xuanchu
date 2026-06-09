@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -70,6 +71,40 @@ func TestHTTPReminderRuleLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Data.ID == "" || resp.Data.TriggerType != "due_before" {
+		t.Fatalf("response = %#v", resp.Data)
+	}
+}
+
+func TestHTTPReminderRuleScheduleFilterLifecycle(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "notification:write", "notification:read", "reminder:write", "reminder:read")
+	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink, err := svc.AddNotificationSink(app.NotificationSinkAddInput{Name: "openclaw", Type: "webhook", EndpointMode: "static_url", URL: "https://example.com/notify"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filter := "end.isnull and start.isnull and due.after:now and due.before:now+24h"
+	body := `{"name":"due-soon-24h","schedule_type":"daily_at","schedule_value":"08:50","filter_source":` + strconv.Quote(filter) + `,"audience_type":"assignees","sink_ref":"` + sink.ID + `"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/reminder-rules", body, auth)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			ID            string `json:"id"`
+			ScheduleType  string `json:"schedule_type"`
+			ScheduleValue string `json:"schedule_value"`
+			FilterSource  string `json:"filter_source"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.ID == "" || resp.Data.ScheduleType != "daily_at" || resp.Data.ScheduleValue != "08:50" || resp.Data.FilterSource != filter {
 		t.Fatalf("response = %#v", resp.Data)
 	}
 }

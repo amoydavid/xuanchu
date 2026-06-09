@@ -68,10 +68,12 @@
 常见 `action` 值：
 - 任务：`task.add`、`task.done`、`task.delete`、`task.modify`、`task.annotate`、`task.denotate`、`task.import`
 - 项目：`project.add`、`project.modify`、`project.archive`、`project.annotate`、`project.denotate`
-- Workspace：`workspace.add`
-- 用户：`user.add`
-- Hook：`hook.add`、`hook.modified`、`hook.deleted`
-- Token：`token.created`、`token.modified`、`token.revoked`
+- Workspace：`workspace.add`、`workspace.modify`、`workspace.archive`、`workspace.use`
+- 用户与成员：`user.add`、`user.use`、`user.bind_external_id`、`user.unbind_external_id`、`member.add`、`member.role`
+- Context / Config：`context.define`、`context.use`、`context.none`、`context.delete`、`config.set`、`config.unset`、`config.schema.set`、`config.schema.delete`
+- Hook：`hook.create`、`hook.modify`、`hook.delete`、`hook.replay`
+- 通知与提醒：`notification.sink.create`、`notification.sink.modify`、`notification.sink.enable`、`notification.sink.disable`、`notification.sink.delete`、`notification.delivery.replay`、`reminder.rule.create`、`reminder.rule.modify`、`reminder.rule.enable`、`reminder.rule.disable`、`reminder.rule.delete`
+- Token：`token.create`、`token.modified`、`token.revoke`
 
 ## 可用权限
 
@@ -89,12 +91,14 @@
     "scopes": [
       "task:read", "task:write",
       "project:read", "project:write",
+      "context:read", "context:write",
       "workspace:read", "workspace:write",
       "config:read", "config:write",
       "hook:read", "hook:write",
+      "notification:read", "notification:write",
+      "reminder:read", "reminder:write",
       "token:read", "token:write",
       "audit:read",
-      "member:manage",
       "impersonate"
     ]
   }

@@ -103,17 +103,19 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
 常用 scope：
 - `task:read` / `task:write` — 任务读写
 - `project:read` / `project:write` — 项目读写
+- `context:read` / `context:write` — context 读写
 - `workspace:read` / `workspace:write` — workspace 读写
 - `config:read` / `config:write` — 配置读写
 - `hook:read` / `hook:write` — Hook 读写
+- `notification:read` / `notification:write` — notification sink 与 delivery 读写
+- `reminder:read` / `reminder:write` — reminder rule 读写
 - `token:read` / `token:write` — Token 读写
 - `audit:read` — 审计日志
-- `member:manage` — 成员管理
 - `impersonate` — 委托操作
-- `*` — 所有权限（通配符，静默剔除 `impersonate`）
+- `*` — 所有权限
 
 通配符扩展：
-- `*` → 所有非 impersonate scope
+- `*` → 所有 scope，包括 `impersonate`
 - `task:*` → `task:read` + `task:write`
 - `*:read` → 所有 `:read` scope
 

@@ -118,3 +118,50 @@ func TestCLIReminderRuleLifecycle(t *testing.T) {
 		t.Fatalf("rule list output = %q", stdout.String())
 	}
 }
+
+func TestCLIReminderRuleScheduleFilterLifecycle(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	db := setupHookTestDB(t)
+	opts := setupHookTestOpts(&stdout, &stderr)
+
+	cmd := NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "notification", "sink", "add", "openclaw", "--url", "https://example.com/notify"}); err != nil {
+		t.Fatalf("sink add error = %v", err)
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	filter := "end.isnull and start.isnull and due.after:now and due.before:now+24h"
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "reminder", "rule", "add", "due-soon-24h", "--schedule", "daily@08:50", "--filter", filter, "--audience", "assignees", "--sink", "openclaw"}); err != nil {
+		t.Fatalf("reminder rule add error = %v", err)
+	}
+	var rule map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &rule); err != nil {
+		t.Fatalf("rule json error = %v: %s", err, stdout.String())
+	}
+	if rule["schedule_type"] != "daily_at" || rule["schedule_value"] != "08:50" || rule["filter_source"] != filter {
+		t.Fatalf("rule schedule/filter = %#v", rule)
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "reminder", "rule", "list"}); err != nil {
+		t.Fatalf("reminder rule list error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "daily@08:50") {
+		t.Fatalf("rule list output = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "reminder", "rule", "modify", rule["id"].(string), "--schedule", "daily@09:30", "--filter", "end.isnull and due.before:now"}); err != nil {
+		t.Fatalf("reminder rule modify error = %v", err)
+	}
+	var modified map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &modified); err != nil {
+		t.Fatalf("modified rule json error = %v: %s", err, stdout.String())
+	}
+	if modified["schedule_type"] != "daily_at" || modified["schedule_value"] != "09:30" || modified["filter_source"] != "end.isnull and due.before:now" {
+		t.Fatalf("modified schedule/filter = %#v", modified)
+	}
+}
