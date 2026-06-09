@@ -202,4 +202,3 @@ func TestNotificationHeadersJSONShape(t *testing.T) {
 		t.Fatalf("headers marshal = %s, %v", data, err)
 	}
 }
-
