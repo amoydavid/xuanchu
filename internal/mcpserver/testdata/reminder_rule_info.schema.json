@@ -1,5 +1,5 @@
 {
-  "description": "Get reminder rule details.",
+  "description": "Get reminder rule details; read-only.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -10,7 +10,7 @@
         "type": "string"
       },
       "rule": {
-        "description": "reminder rule ID or name",
+        "description": "reminder rule ID",
         "type": "string"
       },
       "workspace": {

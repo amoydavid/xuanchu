@@ -1,5 +1,5 @@
 {
-  "description": "Modify a notification sink.",
+  "description": "Modify a notification sink; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -13,22 +13,28 @@
         ]
       },
       "body_content_type": {
-        "type": "string"
-      },
-      "body_template": {
-        "type": "string"
-      },
-      "config_key": {
-        "type": "string"
-      },
-      "enabled": {
         "type": [
           "null",
-          "boolean"
+          "string"
+        ]
+      },
+      "body_template": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "config_key": {
+        "type": [
+          "null",
+          "string"
         ]
       },
       "endpoint_mode": {
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "header_templates": {
         "items": {
@@ -52,24 +58,23 @@
           "array"
         ]
       },
-      "http_method": {
-        "type": "string"
-      },
       "max_attempts": {
-        "type": "integer"
+        "type": [
+          "null",
+          "integer"
+        ]
       },
       "name": {
-        "description": "notification sink name",
-        "type": "string"
-      },
-      "project": {
-        "type": "string"
-      },
-      "project_id": {
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "secret": {
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "secret_refs": {
         "items": {
@@ -93,25 +98,40 @@
           "array"
         ]
       },
+      "sink": {
+        "description": "notification sink ID",
+        "type": "string"
+      },
       "timeout_seconds": {
-        "type": "integer"
+        "type": [
+          "null",
+          "integer"
+        ]
       },
       "type": {
-        "description": "webhook or http_template",
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "url": {
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "url_template": {
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "workspace": {
         "type": "string"
       }
     },
     "required": [
-      "name"
+      "sink"
     ],
     "type": "object"
   },

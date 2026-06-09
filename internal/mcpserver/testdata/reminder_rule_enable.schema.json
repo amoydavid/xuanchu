@@ -1,5 +1,5 @@
 {
-  "description": "Enable a reminder rule.",
+  "description": "Enable a reminder rule; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -10,7 +10,7 @@
         "type": "string"
       },
       "rule": {
-        "description": "reminder rule ID or name",
+        "description": "reminder rule ID",
         "type": "string"
       },
       "workspace": {

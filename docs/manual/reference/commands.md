@@ -178,3 +178,27 @@ xuanchu hook delete <hook-id>
 xuanchu hook deliveries <hook-id> [--status queued|delivering|retry_wait|succeeded|dead_lettered|disabled_skipped] [--limit <n>]
 xuanchu hook replay <delivery-id>
 ```
+
+## Notification / Reminder
+
+```bash
+xuanchu notification sink list [--all]
+xuanchu notification sink add <name> --type webhook|http_template --url <url> [--endpoint-mode static_url|template|config_value] [--url-template <template>] [--config-key <key>] [--allowed-host <host>] [--header Name=Value] [--body-template <json>] [--body-template-file <path>] [--body-content-type <type>] [--secret-ref alias=config.key] [--secret <secret>] [--timeout <seconds>] [--max-attempts <n>]
+xuanchu notification sink info <sink-id>
+xuanchu notification sink modify <sink-id> [--name <name>] [--type webhook|http_template] [--url <url>] [--url-template <template>] [--config-key <key>] [--allowed-host <host>] [--header Name=Value] [--body-template <json>] [--body-template-file <path>] [--body-content-type <type>] [--secret-ref alias=config.key] [--secret <secret>] [--timeout <seconds>] [--max-attempts <n>]
+xuanchu notification sink enable <sink-id>
+xuanchu notification sink disable <sink-id>
+xuanchu notification sink delete <sink-id>
+
+xuanchu reminder rule list [--project <slug>] [--all]
+xuanchu reminder rule add <name> --trigger due_before|overdue [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] --audience assignees|explicit_users|assignees_and_explicit_users --sink <sink-id-or-name> [--recipient <user-ref>] [--project <slug>]
+xuanchu reminder rule info <rule-id>
+xuanchu reminder rule modify <rule-id> [--name <name>] [--trigger due_before|overdue] [--offset <duration>] [--after <duration>] [--repeat once|every:<duration>] [--audience assignees|explicit_users|assignees_and_explicit_users] [--sink <sink-id-or-name>] [--recipient <user-ref>] [--project <slug>]
+xuanchu reminder rule enable <rule-id>
+xuanchu reminder rule disable <rule-id>
+xuanchu reminder rule delete <rule-id>
+
+xuanchu notification delivery list [--status queued|retry_wait|delivering|succeeded|dead_lettered|disabled_skipped] [--sink <sink-id>] [--limit <n>]
+xuanchu notification delivery info <delivery-id>
+xuanchu notification delivery replay <delivery-id>
+```

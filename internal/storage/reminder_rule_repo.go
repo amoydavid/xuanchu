@@ -49,9 +49,15 @@ func (r *ReminderRuleRepository) List(workspaceID string, projectID *string, inc
 	return rows, err
 }
 
-func (r *ReminderRuleRepository) ListEnabled(workspaceID string) ([]ReminderRule, error) {
+func (r *ReminderRuleRepository) ListEnabledByWorkspace(workspaceID string) ([]ReminderRule, error) {
 	var rows []ReminderRule
 	err := r.db.Where("workspace_id = ? AND enabled = ?", workspaceID, true).Order("created_at ASC").Find(&rows).Error
+	return rows, err
+}
+
+func (r *ReminderRuleRepository) ListEnabled() ([]ReminderRule, error) {
+	var rows []ReminderRule
+	err := r.db.Where("enabled = ?", true).Order("created_at ASC").Find(&rows).Error
 	return rows, err
 }
 

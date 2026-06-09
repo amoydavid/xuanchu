@@ -8,63 +8,49 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
-type HTTPHeaderTemplateRequest struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-type HTTPTemplateSecretRefRequest struct {
-	Alias     string `json:"alias"`
-	ConfigKey string `json:"config_key"`
-}
-
-type NotificationSinkCreateRequest struct {
-	Name            string                         `json:"name"`
-	Type            string                         `json:"type"`
-	EndpointMode    string                         `json:"endpoint_mode"`
-	URL             string                         `json:"url,omitempty"`
-	URLTemplate     string                         `json:"url_template,omitempty"`
-	ConfigKey       string                         `json:"config_key,omitempty"`
-	AllowedHosts    []string                       `json:"allowed_hosts,omitempty"`
-	HTTPMethod      string                         `json:"http_method,omitempty"`
-	HeaderTemplates []HTTPHeaderTemplateRequest    `json:"header_templates,omitempty"`
-	BodyTemplate    string                         `json:"body_template,omitempty"`
-	BodyContentType string                         `json:"body_content_type,omitempty"`
-	SecretRefs      []HTTPTemplateSecretRefRequest `json:"secret_refs,omitempty"`
-	Secret          string                         `json:"secret,omitempty"`
-	TimeoutSeconds  int                            `json:"timeout_seconds,omitempty"`
-	MaxAttempts     int                            `json:"max_attempts,omitempty"`
+type NotificationSinkRequest struct {
+	Name            string                           `json:"name"`
+	Type            string                           `json:"type"`
+	EndpointMode    string                           `json:"endpoint_mode"`
+	URL             string                           `json:"url"`
+	URLTemplate     string                           `json:"url_template"`
+	ConfigKey       string                           `json:"config_key"`
+	AllowedHosts    []string                         `json:"allowed_hosts"`
+	HeaderTemplates []app.HTTPHeaderTemplateInput    `json:"header_templates"`
+	BodyTemplate    string                           `json:"body_template"`
+	BodyContentType string                           `json:"body_content_type"`
+	SecretRefs      []app.HTTPTemplateSecretRefInput `json:"secret_refs"`
+	Secret          string                           `json:"secret,omitempty"`
+	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty"`
+	MaxAttempts     int                              `json:"max_attempts,omitempty"`
 }
 
 type NotificationSinkModifyRequest struct {
-	Name            *string                         `json:"name,omitempty"`
-	Type            *string                         `json:"type,omitempty"`
-	EndpointMode    *string                         `json:"endpoint_mode,omitempty"`
-	URL             *string                         `json:"url,omitempty"`
-	URLTemplate     *string                         `json:"url_template,omitempty"`
-	ConfigKey       *string                         `json:"config_key,omitempty"`
-	AllowedHosts    *[]string                       `json:"allowed_hosts,omitempty"`
-	HTTPMethod      *string                         `json:"http_method,omitempty"`
-	HeaderTemplates *[]HTTPHeaderTemplateRequest    `json:"header_templates,omitempty"`
-	BodyTemplate    *string                         `json:"body_template,omitempty"`
-	BodyContentType *string                         `json:"body_content_type,omitempty"`
-	SecretRefs      *[]HTTPTemplateSecretRefRequest `json:"secret_refs,omitempty"`
-	Secret          *string                         `json:"secret,omitempty"`
-	TimeoutSeconds  *int                            `json:"timeout_seconds,omitempty"`
-	MaxAttempts     *int                            `json:"max_attempts,omitempty"`
-	Enabled         *bool                           `json:"enabled,omitempty"`
+	Name            *string                           `json:"name,omitempty"`
+	Type            *string                           `json:"type,omitempty"`
+	EndpointMode    *string                           `json:"endpoint_mode,omitempty"`
+	URL             *string                           `json:"url,omitempty"`
+	URLTemplate     *string                           `json:"url_template,omitempty"`
+	ConfigKey       *string                           `json:"config_key,omitempty"`
+	AllowedHosts    *[]string                         `json:"allowed_hosts,omitempty"`
+	HeaderTemplates *[]app.HTTPHeaderTemplateInput    `json:"header_templates,omitempty"`
+	BodyTemplate    *string                           `json:"body_template,omitempty"`
+	BodyContentType *string                           `json:"body_content_type,omitempty"`
+	SecretRefs      *[]app.HTTPTemplateSecretRefInput `json:"secret_refs,omitempty"`
+	Secret          *string                           `json:"secret,omitempty"`
+	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty"`
+	MaxAttempts     *int                              `json:"max_attempts,omitempty"`
 }
 
-type ReminderRuleCreateRequest struct {
+type ReminderRuleRequest struct {
 	Name          string   `json:"name"`
-	ProjectRef    string   `json:"project_ref,omitempty"`
+	ProjectRef    string   `json:"project_ref"`
 	TriggerType   string   `json:"trigger_type"`
-	OffsetSeconds int64    `json:"offset_seconds,omitempty"`
-	AfterSeconds  int64    `json:"after_seconds,omitempty"`
-	RepeatPolicy  string   `json:"repeat_policy,omitempty"`
-	TaskFilter    string   `json:"task_filter,omitempty"`
+	OffsetSeconds int64    `json:"offset_seconds"`
+	AfterSeconds  int64    `json:"after_seconds"`
+	RepeatPolicy  string   `json:"repeat_policy"`
 	AudienceType  string   `json:"audience_type"`
-	Recipients    []string `json:"recipients,omitempty"`
+	Recipients    []string `json:"recipients"`
 	SinkRef       string   `json:"sink_ref"`
 }
 
@@ -75,11 +61,9 @@ type ReminderRuleModifyRequest struct {
 	OffsetSeconds *int64    `json:"offset_seconds,omitempty"`
 	AfterSeconds  *int64    `json:"after_seconds,omitempty"`
 	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
-	TaskFilter    *string   `json:"task_filter,omitempty"`
 	AudienceType  *string   `json:"audience_type,omitempty"`
 	Recipients    *[]string `json:"recipients,omitempty"`
 	SinkRef       *string   `json:"sink_ref,omitempty"`
-	Enabled       *bool     `json:"enabled,omitempty"`
 }
 
 func (c *Client) ListNotificationSinks(ctx context.Context, workspace string, includeDisabled bool) ([]app.NotificationSinkView, error) {
@@ -97,7 +81,7 @@ func (c *Client) ListNotificationSinks(ctx context.Context, workspace string, in
 	return envelope.Data, nil
 }
 
-func (c *Client) AddNotificationSink(ctx context.Context, workspace string, input NotificationSinkCreateRequest) (app.NotificationSinkView, error) {
+func (c *Client) AddNotificationSink(ctx context.Context, workspace string, input NotificationSinkRequest) (app.NotificationSinkView, error) {
 	path := "/api/v1/notification-sinks"
 	if workspace != "" {
 		path += "?workspace=" + url.QueryEscape(workspace)
@@ -145,7 +129,7 @@ func (c *Client) DeleteNotificationSink(ctx context.Context, sinkID string) erro
 	return c.delete(ctx, "/api/v1/notification-sinks/"+url.PathEscape(sinkID), nil)
 }
 
-func (c *Client) ListReminderRules(ctx context.Context, workspace, projectRef string, includeDisabled bool) ([]app.ReminderRuleView, error) {
+func (c *Client) ListReminderRules(ctx context.Context, workspace string, projectRef string, includeDisabled bool) ([]app.ReminderRuleView, error) {
 	values := url.Values{}
 	if workspace != "" {
 		values.Set("workspace", workspace)
@@ -163,7 +147,7 @@ func (c *Client) ListReminderRules(ctx context.Context, workspace, projectRef st
 	return envelope.Data, nil
 }
 
-func (c *Client) AddReminderRule(ctx context.Context, workspace string, input ReminderRuleCreateRequest) (app.ReminderRuleView, error) {
+func (c *Client) AddReminderRule(ctx context.Context, workspace string, input ReminderRuleRequest) (app.ReminderRuleView, error) {
 	path := "/api/v1/reminder-rules"
 	if workspace != "" {
 		path += "?workspace=" + url.QueryEscape(workspace)
@@ -211,10 +195,13 @@ func (c *Client) DeleteReminderRule(ctx context.Context, ruleID string) error {
 	return c.delete(ctx, "/api/v1/reminder-rules/"+url.PathEscape(ruleID), nil)
 }
 
-func (c *Client) ListNotificationDeliveries(ctx context.Context, workspace, status string, limit int, offset int) ([]app.NotificationDeliveryView, error) {
+func (c *Client) ListNotificationDeliveries(ctx context.Context, workspace string, sinkID string, status string, limit int, offset int) ([]app.NotificationDeliveryView, error) {
 	values := url.Values{}
 	if workspace != "" {
 		values.Set("workspace", workspace)
+	}
+	if sinkID != "" {
+		values.Set("sink", sinkID)
 	}
 	if status != "" {
 		values.Set("status", status)

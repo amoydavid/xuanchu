@@ -29,6 +29,16 @@ xuanchu '(project:agentapi and +review) or priority:H' next
 
 `description:spec`、`description:/spec/` 和裸 `/spec/` 都按 description 子串匹配，不是正则。
 
+日期字段支持 `today`、`tomorrow`、`eod`、`eow`、`eom`、`Ndays`、RFC3339、`YYYY-MM-DD`，也支持以当前时间为基准的 `now` 和 `now +/- duration`。查询语法中的规范写法不带空格，例如：
+
+```bash
+xuanchu 'due.before:now+24h' list
+xuanchu 'due.after:now-2h' list
+xuanchu 'scheduled.before:now+2h30m' list
+```
+
+其中 `duration` 使用 Go `time.ParseDuration` 语法，支持 `h`、`m`、`s` 等单位；`now+1d`、`now+90min` 不是合法写法。
+
 ## 布尔组合
 
 ```bash

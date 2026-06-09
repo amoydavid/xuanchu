@@ -4,7 +4,7 @@
 
 **目标：** 实现规则驱动的定时通知能力，让 Xuanchu 能在任务到期前和逾期后生成幂等通知，并通过动态、安全的 notification sink 投递给 OpenClaw 等外部 Agent 平台，或通过数据库保存的 HTTP request template 调用第三方固定 Web API。
 
-**架构：** 新增独立于 Hook 的通知域：`notification_sinks`、`reminder_rules`、`notification_deliveries` 三类存储模型，其中 `reminder_rules` 显式保存 `schedule + task filter/query + audience + sink`；`internal/app` 负责 sink/rule 控制面、endpoint 与 request template 解析、scheduler 评估、recipient hydration 和 delivery view；`internal/notificationruntime` 负责按 delivery 冻结的 URL、method、header、body 快照投递。CLI、HTTP、Remote Client、MCP 都只是 `internal/app` 的薄壳，不复制业务逻辑。
+**架构：** 新增独立于 Hook 的通知域：`notification_sinks`、`reminder_rules`、`notification_deliveries` 三类存储模型；`internal/app` 负责 sink/rule 控制面、endpoint 与 request template 解析、scheduler 评估、recipient hydration 和 delivery view；`internal/notificationruntime` 负责按 delivery 冻结的 URL、method、header、body 快照投递。CLI、HTTP、Remote Client、MCP 都只是 `internal/app` 的薄壳，不复制业务逻辑。
 
 **技术栈：** Go 1.25、GORM、`github.com/glebarez/sqlite`、`gorm.io/driver/postgres`、Cobra、chi HTTP、现有 MCP server 模式、现有 Hook SSRF / 签名 / 重试策略。
 
@@ -19,7 +19,6 @@
 - `notification sink` CRUD，支持 `static_url`、`template`、`config_value` 三种 endpoint 解析模式。
 - `notification sink` 支持 `webhook` 与 `http_template` 两类：`webhook` 投递 Xuanchu 标准 envelope，`http_template` 使用数据库保存的 method/header/body 模板渲染第三方 HTTP 请求。
 - `reminder rule` CRUD，支持 `due_before` 和 `overdue` 两种 trigger。
-- reminder rule 需要持久化 task filter/query，而不是把候选任务筛选逻辑写死在调度代码里。
 - audience 首版只支持 `assignees`、`explicit_users`、`assignees_and_explicit_users`。
 - scheduler 根据 pending task + due + rule 生成幂等 notification delivery。
 - endpoint resolver 在生成 delivery 时固化 `resolved_url`，并校验 scheme、allowed host、SSRF。
@@ -105,7 +104,6 @@ func TestNotificationDeliveryRepositoryReplayKeepsResolvedURL(t *testing.T) {}
 - sink name 在同一 workspace 内唯一。
 - `http_template` sink 的 `HeaderTemplatesJSON`、`BodyTemplate`、`BodyContentType`、`SecretRefsJSON` 能完整保存和读取。
 - rule name 在同一 workspace 内唯一。
-- `TaskFilterJSON` 能完整保存和读取，且调度器不会再依赖写死的候选条件。
 - `NotificationDelivery.DedupeKey` 唯一，重复 enqueue 不报错、不新增重复记录。
 - `ClaimDue` 只领取 `queued` / `retry_wait` 且到期的 delivery。
 - `Requeue` 不改变 `ResolvedURL`、`RenderedMethod`、`RenderedHeadersJSON`、`RenderedBody`、`RenderedContentType`。
@@ -159,7 +157,6 @@ type ReminderRule struct {
     OffsetSeconds        int64   `gorm:"not null;default:0"`
     AfterSeconds         int64   `gorm:"not null;default:0"`
     RepeatPolicy         string  `gorm:"not null;default:'once'"`
-    TaskFilterJSON       string  `gorm:"not null;default:'{}'"`
     AudienceType         string  `gorm:"not null"`
     RecipientUserIDsJSON string  `gorm:"not null;default:'[]'"`
     SinkID               string  `gorm:"not null;index"`

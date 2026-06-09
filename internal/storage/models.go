@@ -263,7 +263,9 @@ type ReminderRule struct {
 	OffsetSeconds        int64   `gorm:"not null;default:0"`
 	AfterSeconds         int64   `gorm:"not null;default:0"`
 	RepeatPolicy         string  `gorm:"not null;default:'once'"`
-	TaskFilterJSON       string  `gorm:"not null;default:'{}'"`
+	ScheduleType         string  `gorm:"not null;default:'';index"`
+	ScheduleValue        string  `gorm:"not null;default:''"`
+	FilterSource         string  `gorm:"not null;default:''"`
 	AudienceType         string  `gorm:"not null"`
 	RecipientUserIDsJSON string  `gorm:"not null;default:'[]'"`
 	SinkID               string  `gorm:"not null;index"`

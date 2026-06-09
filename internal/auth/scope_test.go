@@ -22,7 +22,7 @@ func TestExpandScopes_ActionWildcard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []string{"task:read", "project:read", "context:read", "config:read", "workspace:read", "audit:read", "token:read", "hook:read"} {
+	for _, s := range []string{"task:read", "project:read", "context:read", "config:read", "workspace:read", "audit:read", "token:read", "hook:read", "notification:read", "reminder:read"} {
 		if !set.Has(s) {
 			t.Fatalf("missing %s", s)
 		}

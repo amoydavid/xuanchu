@@ -1,16 +1,10 @@
 {
-  "description": "Disable a notification sink.",
+  "description": "Disable a notification sink; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "project": {
-        "type": "string"
-      },
-      "project_id": {
-        "type": "string"
-      },
       "sink": {
-        "description": "sink ID or name",
+        "description": "notification sink ID",
         "type": "string"
       },
       "workspace": {

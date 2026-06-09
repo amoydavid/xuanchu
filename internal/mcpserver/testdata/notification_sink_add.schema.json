@@ -1,9 +1,10 @@
 {
-  "description": "Create a notification sink.",
+  "description": "Create a notification sink; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
       "allowed_hosts": {
+        "description": "allowed endpoint hosts for dynamic endpoints",
         "items": {
           "type": "string"
         },
@@ -13,24 +14,23 @@
         ]
       },
       "body_content_type": {
+        "description": "rendered body content type",
         "type": "string"
       },
       "body_template": {
+        "description": "HTTP body template persisted in the database",
         "type": "string"
       },
       "config_key": {
+        "description": "config key for config_value endpoint mode",
         "type": "string"
       },
-      "enabled": {
-        "type": [
-          "null",
-          "boolean"
-        ]
-      },
       "endpoint_mode": {
+        "description": "static_url, template, or config_value",
         "type": "string"
       },
       "header_templates": {
+        "description": "HTTP header templates persisted in the database",
         "items": {
           "additionalProperties": false,
           "properties": {
@@ -52,26 +52,19 @@
           "array"
         ]
       },
-      "http_method": {
-        "type": "string"
-      },
       "max_attempts": {
         "type": "integer"
       },
       "name": {
-        "description": "notification sink name",
-        "type": "string"
-      },
-      "project": {
-        "type": "string"
-      },
-      "project_id": {
+        "description": "sink name",
         "type": "string"
       },
       "secret": {
+        "description": "webhook signing secret",
         "type": "string"
       },
       "secret_refs": {
+        "description": "secret aliases backed by secret config keys",
         "items": {
           "additionalProperties": false,
           "properties": {
@@ -101,9 +94,11 @@
         "type": "string"
       },
       "url": {
+        "description": "static endpoint URL",
         "type": "string"
       },
       "url_template": {
+        "description": "controlled URL template",
         "type": "string"
       },
       "workspace": {

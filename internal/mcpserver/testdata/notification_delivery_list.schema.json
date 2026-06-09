@@ -1,17 +1,17 @@
 {
-  "description": "List notification deliveries.",
+  "description": "List notification deliveries; read-only.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "delivery": {
-        "description": "notification delivery ID",
-        "type": "string"
-      },
       "limit": {
         "type": "integer"
       },
       "offset": {
         "type": "integer"
+      },
+      "sink": {
+        "description": "notification sink ID",
+        "type": "string"
       },
       "status": {
         "type": "string"
@@ -20,9 +20,6 @@
         "type": "string"
       }
     },
-    "required": [
-      "delivery"
-    ],
     "type": "object"
   },
   "name": "notification_delivery_list",

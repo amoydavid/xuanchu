@@ -11,8 +11,23 @@ func ParseDate(value string, now time.Time, loc *time.Location) (int64, error) {
 	if loc == nil {
 		loc = time.Local
 	}
-	if rel, ok, err := parseRelativeDate(value, now, loc); ok || err != nil {
-		return rel, err
+	if value == "now" {
+		return now.Unix(), nil
+	}
+	if strings.HasPrefix(value, "now+") || strings.HasPrefix(value, "now-") {
+		sign := value[3]
+		durationText := value[4:]
+		if durationText == "" || strings.HasPrefix(durationText, "+") || strings.HasPrefix(durationText, "-") {
+			return 0, fmt.Errorf("unsupported date %q", value)
+		}
+		duration, err := time.ParseDuration(durationText)
+		if err != nil {
+			return 0, err
+		}
+		if sign == '-' {
+			duration = -duration
+		}
+		return now.Add(duration).Unix(), nil
 	}
 	if ts, err := time.Parse(time.RFC3339, value); err == nil {
 		return ts.Unix(), nil
@@ -42,35 +57,6 @@ func ParseDate(value string, now time.Time, loc *time.Location) (int64, error) {
 		return start.AddDate(0, 0, n).Unix(), nil
 	}
 	return 0, fmt.Errorf("unsupported date %q", value)
-}
-
-func parseRelativeDate(value string, now time.Time, loc *time.Location) (int64, bool, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return 0, false, nil
-	}
-	if strings.HasPrefix(trimmed, "now") {
-		offset := strings.TrimPrefix(trimmed, "now")
-		if offset == "" {
-			return now.In(loc).Unix(), true, nil
-		}
-		dur, err := time.ParseDuration(offset)
-		if err != nil {
-			return 0, true, err
-		}
-		return now.Add(dur).In(loc).Unix(), true, nil
-	}
-	if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "-") {
-		dur, err := time.ParseDuration(trimmed)
-		if err != nil {
-			return 0, true, err
-		}
-		return now.Add(dur).In(loc).Unix(), true, nil
-	}
-	if dur, err := time.ParseDuration(trimmed); err == nil {
-		return now.Add(dur).In(loc).Unix(), true, nil
-	}
-	return 0, false, nil
 }
 
 func ParseDateValue(raw string) Value {

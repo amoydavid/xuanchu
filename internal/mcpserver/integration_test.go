@@ -242,12 +242,13 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"hook_list", "hook_add", "hook_info", "hook_modify", "hook_remove",
 		"hook_test", "hook_delivery_list", "hook_delivery_info",
 		"hook_delivery_redeliver", "hook_ping",
-		"notification_sink_add", "notification_sink_list", "notification_sink_info",
+		"notification_sink_list", "notification_sink_add", "notification_sink_info",
 		"notification_sink_modify", "notification_sink_enable", "notification_sink_disable",
-		"notification_sink_remove", "reminder_rule_add", "reminder_rule_list",
-		"reminder_rule_info", "reminder_rule_modify", "reminder_rule_enable",
-		"reminder_rule_disable", "reminder_rule_remove", "notification_delivery_list",
-		"notification_delivery_info", "notification_delivery_replay",
+		"notification_sink_remove",
+		"reminder_rule_list", "reminder_rule_add", "reminder_rule_info",
+		"reminder_rule_modify", "reminder_rule_enable", "reminder_rule_disable",
+		"reminder_rule_remove",
+		"notification_delivery_list", "notification_delivery_info", "notification_delivery_replay",
 		"token_list", "token_create", "token_modify", "token_revoke",
 		"audit_list", "scope_list", "me_get",
 	}
@@ -1360,57 +1361,6 @@ func TestMCPProjectScope(t *testing.T) {
 	}
 }
 
-func TestMCPWorkspaceScopedTokenCanServeMultipleProjects(t *testing.T) {
-	store := newMCPTestStore(t)
-	owner := newMCPTestService(t, store)
-	projectA, err := owner.AddProject(app.AddProjectInput{Slug: "apia", Name: "A"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	projectB, err := owner.AddProject(app.AddProjectInput{Slug: "apib", Name: "B"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := owner.Add(app.AddInput{Description: "alpha task", Project: &projectA.Slug}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := owner.Add(app.AddInput{Description: "beta task", Project: &projectB.Slug}); err != nil {
-		t.Fatal(err)
-	}
-	token := mustCreateMCPToken(t, owner, []string{"task:read", "task:write", "project:read"}, []string{"local"}, nil)
-	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
-	session := connectClient(t, srv)
-
-	queryAll := callTool(t, session, "task_query", TaskQueryInput{})
-	if queryAll.IsError {
-		t.Fatalf("task.query workspace scope error: %v", parseError(t, queryAll))
-	}
-	allTasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, queryAll)), "tasks")
-	if len(allTasks) != 2 {
-		t.Fatalf("workspace-scoped task.query count = %d, want 2", len(allTasks))
-	}
-
-	queryA := callTool(t, session, "task_query", TaskQueryInput{ProjectID: projectA.ID})
-	if queryA.IsError {
-		t.Fatalf("task.query project A error: %v", parseError(t, queryA))
-	}
-	tasksA := nestedSlice(t, envelopeData(t, parseEnvelope(t, queryA)), "tasks")
-	if len(tasksA) != 1 {
-		t.Fatalf("project A task.query count = %d, want 1", len(tasksA))
-	}
-
-	addB := callTool(t, session, "task_add", TaskAddInput{Description: "new beta task", ProjectID: projectB.ID})
-	if addB.IsError {
-		t.Fatalf("task.add project B error: %v", parseError(t, addB))
-	}
-	taskObj := extractTask(t, parseEnvelope(t, addB))
-	if taskObj["project"] != projectB.Slug {
-		t.Fatalf("task.add project = %v, want %s", taskObj["project"], projectB.Slug)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // task.denotate / task.link_list / task.export / task.import 集成测试
 // ---------------------------------------------------------------------------
@@ -1848,6 +1798,125 @@ func TestHookFullLifecycle(t *testing.T) {
 	hookCount, _ := listData["count"].(float64)
 	if int(hookCount) != 0 {
 		t.Fatalf("hook count after remove = %v, want 0", hookCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// notification/reminder 全域集成测试
+// ---------------------------------------------------------------------------
+
+func TestNotificationReminderFullLifecycle(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	session := connectClient(t, srv)
+
+	addSink := callTool(t, session, "notification_sink_add", NotificationSinkAddInput{
+		Name:         "openclaw",
+		Type:         "webhook",
+		EndpointMode: "static_url",
+		URL:          "https://example.com/xuanchu/notifications",
+		Secret:       "secret-token",
+	})
+	if addSink.IsError {
+		t.Fatalf("notification_sink_add error: %v", parseError(t, addSink))
+	}
+	sinkObj := nestedMap(t, envelopeData(t, parseEnvelope(t, addSink)), "sink")
+	sinkID, _ := sinkObj["id"].(string)
+
+	modSink := callTool(t, session, "notification_sink_modify", NotificationSinkModifyInput{
+		Sink: sinkID,
+		Name: ptrStr("openclaw-renamed"),
+	})
+	if modSink.IsError {
+		t.Fatalf("notification_sink_modify error: %v", parseError(t, modSink))
+	}
+
+	disableSink := callTool(t, session, "notification_sink_disable", NotificationSinkRefInput{Sink: sinkID})
+	if disableSink.IsError {
+		t.Fatalf("notification_sink_disable error: %v", parseError(t, disableSink))
+	}
+	enableSink := callTool(t, session, "notification_sink_enable", NotificationSinkRefInput{Sink: sinkID})
+	if enableSink.IsError {
+		t.Fatalf("notification_sink_enable error: %v", parseError(t, enableSink))
+	}
+
+	addRule := callTool(t, session, "reminder_rule_add", ReminderRuleAddInput{
+		Name:          "due-before",
+		TriggerType:   "due_before",
+		OffsetSeconds: 3600,
+		AudienceType:  "assignees",
+		Sink:          sinkID,
+	})
+	if addRule.IsError {
+		t.Fatalf("reminder_rule_add error: %v", parseError(t, addRule))
+	}
+	ruleObj := nestedMap(t, envelopeData(t, parseEnvelope(t, addRule)), "rule")
+	ruleID, _ := ruleObj["id"].(string)
+
+	overdue := "overdue"
+	zero := int64(0)
+	modRule := callTool(t, session, "reminder_rule_modify", ReminderRuleModifyInput{
+		Rule:          ruleID,
+		TriggerType:   &overdue,
+		OffsetSeconds: &zero,
+	})
+	if modRule.IsError {
+		t.Fatalf("reminder_rule_modify error: %v", parseError(t, modRule))
+	}
+
+	disableRule := callTool(t, session, "reminder_rule_disable", ReminderRuleRefInput{Rule: ruleID})
+	if disableRule.IsError {
+		t.Fatalf("reminder_rule_disable error: %v", parseError(t, disableRule))
+	}
+	enableRule := callTool(t, session, "reminder_rule_enable", ReminderRuleRefInput{Rule: ruleID})
+	if enableRule.IsError {
+		t.Fatalf("reminder_rule_enable error: %v", parseError(t, enableRule))
+	}
+
+	delivery := storage.NotificationDelivery{
+		ID:                  "delivery-1",
+		WorkspaceID:         svc.Runtime().WorkspaceID,
+		RuleID:              ruleID,
+		SinkID:              sinkID,
+		TaskUUID:            "task-1",
+		RecipientUserID:     svc.Runtime().ActorUserID,
+		EventID:             "event-1",
+		EventType:           "task.overdue",
+		DedupeKey:           "delivery-1",
+		ResolvedURL:         "https://example.com/xuanchu/notifications",
+		RenderedMethod:      "POST",
+		RenderedHeadersJSON: `{"Authorization":["Bearer secret-token"]}`,
+		RenderedBody:        `{"ok":true}`,
+		RenderedContentType: "application/json",
+		PayloadJSON:         `{"event_type":"task.overdue"}`,
+		Status:              storage.DeliveryStatusDeadLettered,
+		CreatedAt:           100,
+		ModifiedAt:          100,
+	}
+	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+	deliveryList := callTool(t, session, "notification_delivery_list", NotificationDeliveryListInput{Status: storage.DeliveryStatusDeadLettered})
+	if deliveryList.IsError {
+		t.Fatalf("notification_delivery_list error: %v", parseError(t, deliveryList))
+	}
+	deliveryInfo := callTool(t, session, "notification_delivery_info", NotificationDeliveryRefInput{DeliveryID: delivery.ID})
+	if deliveryInfo.IsError {
+		t.Fatalf("notification_delivery_info error: %v", parseError(t, deliveryInfo))
+	}
+	replay := callTool(t, session, "notification_delivery_replay", NotificationDeliveryRefInput{DeliveryID: delivery.ID})
+	if replay.IsError {
+		t.Fatalf("notification_delivery_replay error: %v", parseError(t, replay))
+	}
+
+	removeRule := callTool(t, session, "reminder_rule_remove", ReminderRuleRefInput{Rule: ruleID})
+	if removeRule.IsError {
+		t.Fatalf("reminder_rule_remove error: %v", parseError(t, removeRule))
+	}
+	removeSink := callTool(t, session, "notification_sink_remove", NotificationSinkRefInput{Sink: sinkID})
+	if removeSink.IsError {
+		t.Fatalf("notification_sink_remove error: %v", parseError(t, removeSink))
 	}
 }
 

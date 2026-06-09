@@ -3,12 +3,15 @@ package notificationruntime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -33,9 +36,10 @@ type DispatcherOptions struct {
 
 type Dispatcher struct {
 	opts         DispatcherOptions
-	deliveryRepo *storage.NotificationDeliveryRepository
 	sinkRepo     *storage.NotificationSinkRepository
+	deliveryRepo *storage.NotificationDeliveryRepository
 	taskRepo     *storage.TaskRepository
+	validateURL  bool
 	rng          *rand.Rand
 	rngMu        sync.Mutex
 }
@@ -59,8 +63,9 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	if opts.Resolver == nil {
 		opts.Resolver = app.DefaultHookResolver()
 	}
+	validateURL := opts.Client == nil
 	if opts.Client == nil {
-		opts.Client = defaultClient(opts.Resolver)
+		opts.Client = defaultNotificationClient(opts.Resolver)
 	}
 	if opts.Client.CheckRedirect == nil {
 		opts.Client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -76,14 +81,18 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	}
 	return &Dispatcher{
 		opts:         opts,
-		deliveryRepo: storage.NewNotificationDeliveryRepository(opts.Store.DB()),
 		sinkRepo:     storage.NewNotificationSinkRepository(opts.Store.DB()),
+		deliveryRepo: storage.NewNotificationDeliveryRepository(opts.Store.DB()),
 		taskRepo:     storage.NewTaskRepository(opts.Store.DB()),
+		validateURL:  validateURL,
 		rng:          rand.New(rand.NewSource(seed)),
 	}
 }
 
-func defaultClient(resolver app.HookHostResolver) *http.Client {
+func defaultNotificationClient(resolver app.HookHostResolver) *http.Client {
+	if resolver == nil {
+		resolver = app.DefaultHookResolver()
+	}
 	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -122,15 +131,15 @@ func defaultClient(resolver app.HookHostResolver) *http.Client {
 func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	now := d.opts.Clock.Unix()
 	if _, err := d.deliveryRepo.RecoverStaleDelivering(now); err != nil {
-		return fmt.Errorf("recover stale deliveries: %w", err)
+		return fmt.Errorf("recover stale notification deliveries: %w", err)
 	}
 	claimExpiresAt := now + int64(d.opts.ClaimTTL.Seconds())
 	deliveries, err := d.deliveryRepo.ClaimDue(now, claimExpiresAt, d.opts.BatchSize)
 	if err != nil {
-		return fmt.Errorf("claim due deliveries: %w", err)
+		return fmt.Errorf("claim due notification deliveries: %w", err)
 	}
 	for _, delivery := range deliveries {
-		if ctx != nil && ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if err := d.dispatchOne(ctx, delivery, now); err != nil {
@@ -143,13 +152,13 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 func (d *Dispatcher) Run(ctx context.Context) error {
 	now := d.opts.Clock.Unix()
 	if _, err := d.deliveryRepo.RecoverStaleDelivering(now); err != nil {
-		return fmt.Errorf("recover stale deliveries: %w", err)
+		return fmt.Errorf("recover stale notification deliveries: %w", err)
 	}
 	ticker := time.NewTicker(d.opts.PollInterval)
 	defer ticker.Stop()
 	for {
 		if err := d.RunOnce(ctx); err != nil {
-			if ctx != nil && ctx.Err() != nil {
+			if ctx.Err() != nil {
 				return nil
 			}
 			return err
@@ -167,54 +176,95 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, delivery storage.Notificat
 	if err != nil {
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "notification sink not found")
 	}
-	if sink.WorkspaceID != delivery.WorkspaceID {
-		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "notification sink workspace mismatch")
+	if sink.Enabled == nil || !*sink.Enabled {
+		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "notification sink disabled")
 	}
-	if sink.Enabled != nil && !*sink.Enabled {
-		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "sink disabled")
+	if err := d.ensureTaskStillPending(delivery, now); err != nil {
+		return err
 	}
-	taskRow, err := d.taskRepo.GetByUUID(delivery.WorkspaceID, delivery.TaskUUID)
-	if err != nil {
-		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "task no longer matches")
-	}
-	if taskRow.Status != task.StatusPending && taskRow.Status != task.StatusWaiting {
-		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "task no longer matches")
-	}
-	if taskRow.Due == nil {
-		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "task no longer matches")
-	}
-	if err := app.ValidateWebhookEndpointURL(ctx, delivery.ResolvedURL, d.opts.Resolver); err != nil {
+	if err := d.validateEndpoint(ctx, delivery, sink); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "endpoint validation failed: "+err.Error())
 	}
+
 	body := []byte(delivery.RenderedBody)
+	method := delivery.RenderedMethod
+	if method == "" {
+		method = http.MethodPost
+	}
 	timeout := time.Duration(sink.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, delivery.RenderedMethod, delivery.ResolvedURL, bytes.NewReader(body))
+
+	req, err := http.NewRequestWithContext(reqCtx, method, delivery.ResolvedURL, bytes.NewReader(body))
 	if err != nil {
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "build request: "+err.Error())
 	}
-	headers, err := HeadersForDelivery(delivery, sink, body, now, d.opts.Version)
+	headers, err := headersForDelivery(delivery, sink, body, now, d.opts.Version)
 	if err != nil {
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, nil, "build headers: "+err.Error())
 	}
-	for k, vs := range headers {
-		for _, v := range vs {
-			req.Header.Add(k, v)
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
 		}
 	}
+
 	resp, err := d.opts.Client.Do(req)
 	if err != nil {
 		return d.handleFailure(delivery, sink, now, nil, err)
 	}
 	defer resp.Body.Close()
 	return d.handleResponse(delivery, sink, now, resp)
+}
+
+func (d *Dispatcher) ensureTaskStillPending(delivery storage.NotificationDelivery, now int64) error {
+	tsk, err := d.taskRepo.GetByUUID(delivery.WorkspaceID, delivery.TaskUUID)
+	if err == storage.ErrNotFound {
+		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "condition no longer matches")
+	}
+	if err != nil {
+		return err
+	}
+	if tsk.Status != task.StatusPending {
+		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now, "condition no longer matches")
+	}
+	return nil
+}
+
+func (d *Dispatcher) validateEndpoint(ctx context.Context, delivery storage.NotificationDelivery, sink storage.NotificationSink) error {
+	parsed, err := url.Parse(delivery.ResolvedURL)
+	if err != nil || parsed.Hostname() == "" {
+		return app.RuntimeError{Code: "notification_endpoint_invalid", Message: "invalid endpoint url"}
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return app.RuntimeError{Code: "notification_endpoint_invalid", Message: "unsupported endpoint scheme"}
+	}
+	var allowedHosts []string
+	if sink.AllowedHostsJSON != "" {
+		if err := jsonUnmarshalStringList(sink.AllowedHostsJSON, &allowedHosts); err != nil {
+			return err
+		}
+	}
+	if len(allowedHosts) > 0 && !slices.Contains(allowedHosts, parsed.Hostname()) {
+		return app.RuntimeError{Code: "endpoint_host_denied", Message: "endpoint host is not allowed"}
+	}
+	if d.validateURL {
+		return app.ValidateWebhookEndpointURL(ctx, delivery.ResolvedURL, d.opts.Resolver)
+	}
+	return nil
+}
+
+func jsonUnmarshalStringList(raw string, out *[]string) error {
+	if raw == "" {
+		return nil
+	}
+	return json.Unmarshal([]byte(raw), out)
 }
 
 func (d *Dispatcher) handleResponse(delivery storage.NotificationDelivery, sink storage.NotificationSink, now int64, resp *http.Response) error {
@@ -229,8 +279,7 @@ func (d *Dispatcher) handleResponse(delivery storage.NotificationDelivery, sink 
 	case statusCode >= 400 && statusCode < 500 && statusCode != 429:
 		return d.deliveryRepo.MarkDeadLettered(delivery.ID, now, &statusCode, message)
 	default:
-		retryAfter := parseRetryAfter(resp, now)
-		return d.handleRetry(delivery, sink, now, &statusCode, message, retryAfter)
+		return d.handleRetry(delivery, sink, now, &statusCode, message, parseRetryAfter(resp, now))
 	}
 }
 
@@ -262,8 +311,7 @@ func (d *Dispatcher) calculateBackoff(attemptCount int) time.Duration {
 	}
 	base := d.opts.RetryBaseDelay
 	if exponent > 0 {
-		multiplier := math.Pow(2, float64(exponent))
-		base = time.Duration(float64(base) * multiplier)
+		base = time.Duration(float64(base) * math.Pow(2, float64(exponent)))
 	}
 	if base > time.Hour {
 		base = time.Hour
@@ -283,8 +331,7 @@ func parseRetryAfter(resp *http.Response, now int64) time.Duration {
 		return time.Duration(seconds) * time.Second
 	}
 	if t, err := http.ParseTime(value); err == nil {
-		dur := t.Sub(time.Unix(now, 0))
-		if dur > 0 {
+		if dur := t.Sub(time.Unix(now, 0)); dur > 0 {
 			return dur
 		}
 	}

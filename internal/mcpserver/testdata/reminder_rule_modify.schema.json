@@ -1,26 +1,31 @@
 {
-  "description": "Modify a reminder rule.",
+  "description": "Modify a reminder rule; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
       "after_seconds": {
-        "type": "integer"
-      },
-      "audience_type": {
-        "type": "string"
-      },
-      "enabled": {
         "type": [
           "null",
-          "boolean"
+          "integer"
+        ]
+      },
+      "audience_type": {
+        "type": [
+          "null",
+          "string"
         ]
       },
       "name": {
-        "description": "reminder rule name",
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "offset_seconds": {
-        "type": "integer"
+        "type": [
+          "null",
+          "integer"
+        ]
       },
       "project": {
         "type": "string"
@@ -29,7 +34,11 @@
         "type": "string"
       },
       "project_ref": {
-        "type": "string"
+        "description": "new rule project scope; empty clears project scope",
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "recipients": {
         "items": {
@@ -41,23 +50,34 @@
         ]
       },
       "repeat_policy": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "rule": {
+        "description": "reminder rule ID",
         "type": "string"
       },
-      "sink_ref": {
-        "type": "string"
-      },
-      "task_filter": {
-        "type": "string"
+      "sink": {
+        "description": "notification sink name or ID",
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "trigger_type": {
-        "type": "string"
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "workspace": {
         "type": "string"
       }
     },
     "required": [
-      "name"
+      "rule"
     ],
     "type": "object"
   },

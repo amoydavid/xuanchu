@@ -10,13 +10,14 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/remote"
 	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 
 func newNotificationCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "notification",
-		Short: "管理定时通知",
+		Short: "管理通知 sink 和投递记录",
 		Args:  cobra.NoArgs,
 	}
 	cmd.AddCommand(newNotificationSinkCommand(opts))
@@ -25,11 +26,7 @@ func newNotificationCommand(opts Options) *cobra.Command {
 }
 
 func newNotificationSinkCommand(opts Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "sink",
-		Short: "管理通知投递目标",
-		Args:  cobra.NoArgs,
-	}
+	cmd := &cobra.Command{Use: "sink", Short: "管理通知 sink", Args: cobra.NoArgs}
 	cmd.AddCommand(newNotificationSinkAddCommand(opts))
 	cmd.AddCommand(newNotificationSinkListCommand(opts))
 	cmd.AddCommand(newNotificationSinkInfoCommand(opts))
@@ -40,85 +37,18 @@ func newNotificationSinkCommand(opts Options) *cobra.Command {
 	return cmd
 }
 
-func newNotificationDeliveryCommand(opts Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "delivery",
-		Short: "查看通知投递",
-		Args:  cobra.NoArgs,
-	}
-	cmd.AddCommand(newNotificationDeliveryListCommand(opts))
-	cmd.AddCommand(newNotificationDeliveryInfoCommand(opts))
-	cmd.AddCommand(newNotificationDeliveryReplayCommand(opts))
-	return cmd
-}
-
-func newReminderCommand(opts Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "reminder",
-		Short: "管理提醒规则",
-		Args:  cobra.NoArgs,
-	}
-	cmd.AddCommand(newReminderRuleCommand(opts))
-	return cmd
-}
-
-func newReminderRuleCommand(opts Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "rule",
-		Short: "管理提醒规则",
-		Args:  cobra.NoArgs,
-	}
-	cmd.AddCommand(newReminderRuleAddCommand(opts))
-	cmd.AddCommand(newReminderRuleListCommand(opts))
-	cmd.AddCommand(newReminderRuleInfoCommand(opts))
-	cmd.AddCommand(newReminderRuleModifyCommand(opts))
-	cmd.AddCommand(newReminderRuleEnableCommand(opts))
-	cmd.AddCommand(newReminderRuleDisableCommand(opts))
-	cmd.AddCommand(newReminderRuleDeleteCommand(opts))
-	return cmd
-}
-
 func newNotificationSinkAddCommand(opts Options) *cobra.Command {
-	var (
-		typ              string
-		endpointMode     string
-		url              string
-		urlTemplate      string
-		configKey        string
-		allowedHosts     []string
-		method           string
-		headerTemplates  []string
-		bodyTemplate     string
-		bodyTemplateFile string
-		bodyContentType  string
-		secretRefs       []string
-		secret           string
-		secretStdin      bool
-		timeout          int
-		maxAttempts      int
-	)
+	var input notificationSinkCLIInput
 	cmd := &cobra.Command{
 		Use:   "add <name>",
-		Short: "创建通知投递目标",
+		Short: "创建通知 sink",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			secretVal, err := resolveSecret(secret, secretStdin, "", cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
-			template, err := resolveBodyTemplate(bodyTemplate, bodyTemplateFile)
-			if err != nil {
-				return err
-			}
-			headerRows, err := parseTemplatePairs(headerTemplates, "header-template")
-			if err != nil {
-				return err
-			}
-			secretRowValues, err := parseSecretRefPairs(secretRefs)
-			if err != nil {
-				return err
-			}
 			currentOpts := optionsFromCmd(cmd, opts)
+			addInput, err := input.toApp(args[0])
+			if err != nil {
+				return err
+			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -126,28 +56,12 @@ func newNotificationSinkAddCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				view, err := client.AddNotificationSink(context.Background(), currentOpts.Workspace, remote.NotificationSinkCreateRequest{
-					Name:            args[0],
-					Type:            typ,
-					EndpointMode:    endpointMode,
-					URL:             url,
-					URLTemplate:     urlTemplate,
-					ConfigKey:       configKey,
-					AllowedHosts:    allowedHosts,
-					HTTPMethod:      method,
-					HeaderTemplates: headerRows,
-					BodyTemplate:    template,
-					BodyContentType: bodyContentType,
-					SecretRefs:      secretRowValues,
-					Secret:          secretVal,
-					TimeoutSeconds:  timeout,
-					MaxAttempts:     maxAttempts,
-				})
+				view, err := client.AddNotificationSink(context.Background(), currentOpts.Workspace, notificationSinkInputToRemote(addInput))
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), view)
+					return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Created notification sink %s (%s)\n", view.Name, view.ID)
 				return nil
@@ -157,57 +71,184 @@ func newNotificationSinkAddCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			view, err := svc.AddNotificationSink(app.NotificationSinkAddInput{
-				Name:            args[0],
-				Type:            typ,
-				EndpointMode:    endpointMode,
-				URL:             url,
-				URLTemplate:     urlTemplate,
-				ConfigKey:       configKey,
-				AllowedHosts:    allowedHosts,
-				HTTPMethod:      method,
-				HeaderTemplates: headerRowsToApp(headerRows),
-				BodyTemplate:    template,
-				BodyContentType: bodyContentType,
-				SecretRefs:      secretRowsToApp(secretRowValues),
-				Secret:          secretVal,
-				TimeoutSeconds:  timeout,
-				MaxAttempts:     maxAttempts,
-			})
+			view, err := svc.AddNotificationSink(addInput)
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), view)
+				return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created notification sink %s (%s)\n", view.Name, view.ID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&typ, "type", "webhook", "sink 类型: webhook 或 http_template")
-	cmd.Flags().StringVar(&endpointMode, "endpoint-mode", "static_url", "endpoint 解析模式")
-	cmd.Flags().StringVar(&url, "url", "", "固定 URL")
-	cmd.Flags().StringVar(&urlTemplate, "url-template", "", "URL 模板")
-	cmd.Flags().StringVar(&configKey, "config-key", "", "配置键")
-	cmd.Flags().StringArrayVar(&allowedHosts, "allowed-host", nil, "允许的 host（可重复）")
-	cmd.Flags().StringVar(&method, "method", "", "HTTP 方法")
-	cmd.Flags().StringArrayVar(&headerTemplates, "header-template", nil, "header 模板，格式 Name=template")
-	cmd.Flags().StringVar(&bodyTemplate, "body-template", "", "body 模板")
-	cmd.Flags().StringVar(&bodyTemplateFile, "body-template-file", "", "从文件读取 body 模板")
-	cmd.Flags().StringVar(&bodyContentType, "body-content-type", "", "body content-type")
-	cmd.Flags().StringArrayVar(&secretRefs, "secret-ref", nil, "secret 引用，格式 alias=config.key")
-	cmd.Flags().StringVar(&secret, "secret", "", "webhook secret")
-	cmd.Flags().BoolVar(&secretStdin, "secret-stdin", false, "从 stdin 读取 webhook secret")
-	cmd.Flags().IntVar(&timeout, "timeout", 0, "超时秒数")
-	cmd.Flags().IntVar(&maxAttempts, "max-attempts", 0, "最大重试次数")
+	bindNotificationSinkFlags(cmd, &input)
 	return cmd
+}
+
+type notificationSinkCLIInput struct {
+	name             string
+	typ              string
+	endpointMode     string
+	url              string
+	urlTemplate      string
+	configKey        string
+	allowedHosts     []string
+	headers          []string
+	bodyTemplate     string
+	bodyTemplateFile string
+	bodyContentType  string
+	secretRefs       []string
+	secret           string
+	timeoutSeconds   int
+	maxAttempts      int
+}
+
+func bindNotificationSinkFlags(cmd *cobra.Command, input *notificationSinkCLIInput) {
+	cmd.Flags().StringVar(&input.typ, "type", "webhook", "sink 类型: webhook 或 http_template")
+	cmd.Flags().StringVar(&input.endpointMode, "endpoint-mode", "static_url", "endpoint 模式: static_url、template、config_value")
+	cmd.Flags().StringVar(&input.url, "url", "", "固定 endpoint URL")
+	cmd.Flags().StringVar(&input.urlTemplate, "url-template", "", "受控 endpoint URL 模板")
+	cmd.Flags().StringVar(&input.configKey, "config-key", "", "读取 endpoint 的共享配置 key")
+	cmd.Flags().StringArrayVar(&input.allowedHosts, "allowed-host", nil, "允许的 endpoint host，可重复指定")
+	cmd.Flags().StringArrayVar(&input.headers, "header", nil, "HTTP 模板 header，格式 Name=Value，可重复指定")
+	cmd.Flags().StringVar(&input.bodyTemplate, "body-template", "", "HTTP 模板 body")
+	cmd.Flags().StringVar(&input.bodyTemplateFile, "body-template-file", "", "从文件读取 HTTP 模板 body 并保存到数据库")
+	cmd.Flags().StringVar(&input.bodyContentType, "body-content-type", "", "HTTP 模板 body content type")
+	cmd.Flags().StringArrayVar(&input.secretRefs, "secret-ref", nil, "secret 模板引用，格式 alias=config.key，可重复指定")
+	cmd.Flags().StringVar(&input.secret, "secret", "", "webhook 签名 secret")
+	cmd.Flags().IntVar(&input.timeoutSeconds, "timeout", 0, "超时秒数（默认 10）")
+	cmd.Flags().IntVar(&input.maxAttempts, "max-attempts", 0, "最大重试次数（默认 5）")
+}
+
+func (input notificationSinkCLIInput) toApp(name string) (app.NotificationSinkAddInput, error) {
+	body := input.bodyTemplate
+	if input.bodyTemplateFile != "" {
+		data, err := os.ReadFile(input.bodyTemplateFile)
+		if err != nil {
+			return app.NotificationSinkAddInput{}, err
+		}
+		body = string(data)
+	}
+	headers, err := parseHTTPHeaderTemplates(input.headers)
+	if err != nil {
+		return app.NotificationSinkAddInput{}, err
+	}
+	secretRefs, err := parseHTTPSecretRefs(input.secretRefs)
+	if err != nil {
+		return app.NotificationSinkAddInput{}, err
+	}
+	return app.NotificationSinkAddInput{
+		Name:            name,
+		Type:            input.typ,
+		EndpointMode:    input.endpointMode,
+		URL:             input.url,
+		URLTemplate:     input.urlTemplate,
+		ConfigKey:       input.configKey,
+		AllowedHosts:    input.allowedHosts,
+		HTTPMethod:      "POST",
+		HeaderTemplates: headers,
+		BodyTemplate:    body,
+		BodyContentType: input.bodyContentType,
+		SecretRefs:      secretRefs,
+		Secret:          input.secret,
+		TimeoutSeconds:  input.timeoutSeconds,
+		MaxAttempts:     input.maxAttempts,
+	}, nil
+}
+
+func (input notificationSinkCLIInput) toModifyApp(cmd *cobra.Command) (app.NotificationSinkModifyInput, error) {
+	var mod app.NotificationSinkModifyInput
+	if cmd.Flags().Changed("name") {
+		mod.Name = &input.name
+	}
+	if cmd.Flags().Changed("type") {
+		mod.Type = &input.typ
+	}
+	if cmd.Flags().Changed("endpoint-mode") {
+		mod.EndpointMode = &input.endpointMode
+	}
+	if cmd.Flags().Changed("url") {
+		mod.URL = &input.url
+	}
+	if cmd.Flags().Changed("url-template") {
+		mod.URLTemplate = &input.urlTemplate
+	}
+	if cmd.Flags().Changed("config-key") {
+		mod.ConfigKey = &input.configKey
+	}
+	if cmd.Flags().Changed("allowed-host") {
+		mod.AllowedHosts = &input.allowedHosts
+	}
+	if cmd.Flags().Changed("header") {
+		headers, err := parseHTTPHeaderTemplates(input.headers)
+		if err != nil {
+			return app.NotificationSinkModifyInput{}, err
+		}
+		mod.HeaderTemplates = &headers
+	}
+	if cmd.Flags().Changed("body-template") || cmd.Flags().Changed("body-template-file") {
+		body := input.bodyTemplate
+		if input.bodyTemplateFile != "" {
+			data, err := os.ReadFile(input.bodyTemplateFile)
+			if err != nil {
+				return app.NotificationSinkModifyInput{}, err
+			}
+			body = string(data)
+		}
+		mod.BodyTemplate = &body
+	}
+	if cmd.Flags().Changed("body-content-type") {
+		mod.BodyContentType = &input.bodyContentType
+	}
+	if cmd.Flags().Changed("secret-ref") {
+		secretRefs, err := parseHTTPSecretRefs(input.secretRefs)
+		if err != nil {
+			return app.NotificationSinkModifyInput{}, err
+		}
+		mod.SecretRefs = &secretRefs
+	}
+	if cmd.Flags().Changed("secret") {
+		mod.Secret = &input.secret
+	}
+	if cmd.Flags().Changed("timeout") {
+		mod.TimeoutSeconds = &input.timeoutSeconds
+	}
+	if cmd.Flags().Changed("max-attempts") {
+		mod.MaxAttempts = &input.maxAttempts
+	}
+	return mod, nil
+}
+
+func parseHTTPHeaderTemplates(values []string) ([]app.HTTPHeaderTemplateInput, error) {
+	out := make([]app.HTTPHeaderTemplateInput, 0, len(values))
+	for _, value := range values {
+		name, body, ok := strings.Cut(value, "=")
+		if !ok || strings.TrimSpace(name) == "" {
+			return nil, app.RuntimeError{Code: "notification_sink_invalid", Message: "header must use Name=Value"}
+		}
+		out = append(out, app.HTTPHeaderTemplateInput{Name: strings.TrimSpace(name), Value: body})
+	}
+	return out, nil
+}
+
+func parseHTTPSecretRefs(values []string) ([]app.HTTPTemplateSecretRefInput, error) {
+	out := make([]app.HTTPTemplateSecretRefInput, 0, len(values))
+	for _, value := range values {
+		alias, key, ok := strings.Cut(value, "=")
+		if !ok || strings.TrimSpace(alias) == "" || strings.TrimSpace(key) == "" {
+			return nil, app.RuntimeError{Code: "notification_sink_invalid", Message: "secret-ref must use alias=config.key"}
+		}
+		out = append(out, app.HTTPTemplateSecretRefInput{Alias: strings.TrimSpace(alias), ConfigKey: strings.TrimSpace(key)})
+	}
+	return out, nil
 }
 
 func newNotificationSinkListCommand(opts Options) *cobra.Command {
 	var includeDisabled bool
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出通知投递目标",
+		Short: "列出通知 sink",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -223,11 +264,9 @@ func newNotificationSinkListCommand(opts Options) *cobra.Command {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), rows)
+					return render.JSON(cmd.OutOrStdout(), notificationSinkViewsForJSON(rows))
 				}
-				for _, row := range rows {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", row.ID, row.Name, row.EndpointMode)
-				}
+				renderNotificationSinkList(cmd.OutOrStdout(), rows)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -240,22 +279,20 @@ func newNotificationSinkListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), rows)
+				return render.JSON(cmd.OutOrStdout(), notificationSinkViewsForJSON(rows))
 			}
-			for _, row := range rows {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", row.ID, row.Name, row.EndpointMode)
-			}
+			renderNotificationSinkList(cmd.OutOrStdout(), rows)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&includeDisabled, "all", false, "包含禁用项")
+	cmd.Flags().BoolVar(&includeDisabled, "all", false, "包含 disabled sink")
 	return cmd
 }
 
 func newNotificationSinkInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <sink>",
-		Short: "显示通知投递目标详情",
+		Use:   "info <sink-id>",
+		Short: "显示通知 sink 详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -266,74 +303,46 @@ func newNotificationSinkInfoCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				row, err := client.NotificationSinkInfo(context.Background(), args[0])
+				view, err := client.NotificationSinkInfo(context.Background(), args[0])
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), row)
+					return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 				}
-				return render.JSON(cmd.OutOrStdout(), row)
+				renderNotificationSinkInfo(cmd.OutOrStdout(), view)
+				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			row, err := svc.NotificationSinkInfo(args[0])
+			view, err := svc.NotificationSinkInfo(args[0])
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), row)
+				return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 			}
-			return render.JSON(cmd.OutOrStdout(), row)
+			renderNotificationSinkInfo(cmd.OutOrStdout(), view)
+			return nil
 		},
 	}
 }
 
 func newNotificationSinkModifyCommand(opts Options) *cobra.Command {
-	var (
-		typ              string
-		endpointMode     string
-		url              string
-		urlTemplate      string
-		configKey        string
-		allowedHosts     []string
-		method           string
-		headerTemplates  []string
-		bodyTemplate     string
-		bodyTemplateFile string
-		bodyContentType  string
-		secretRefs       []string
-		secret           string
-		secretStdin      bool
-		timeout          int
-		maxAttempts      int
-		enabled          bool
-	)
+	var input notificationSinkCLIInput
 	cmd := &cobra.Command{
-		Use:   "modify <sink>",
-		Short: "修改通知投递目标",
+		Use:   "modify <sink-id>",
+		Short: "修改通知 sink",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			secretVal, err := resolveSecret(secret, secretStdin, "", cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
-			template, err := resolveBodyTemplate(bodyTemplate, bodyTemplateFile)
-			if err != nil {
-				return err
-			}
-			headerRows, err := parseTemplatePairs(headerTemplates, "header-template")
-			if err != nil {
-				return err
-			}
-			secretRowValues, err := parseSecretRefPairs(secretRefs)
-			if err != nil {
-				return err
-			}
 			currentOpts := optionsFromCmd(cmd, opts)
+			mod, err := input.toModifyApp(cmd)
+			if err != nil {
+				return err
+			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -341,35 +350,14 @@ func newNotificationSinkModifyCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				var enabledPtr *bool
-				if cmd.Flags().Changed("enabled") {
-					enabledPtr = &enabled
-				}
-				view, err := client.ModifyNotificationSink(context.Background(), args[0], remote.NotificationSinkModifyRequest{
-					Type:            stringPtrIfSet(typ),
-					EndpointMode:    stringPtrIfSet(endpointMode),
-					URL:             stringPtrIfSet(url),
-					URLTemplate:     stringPtrIfSet(urlTemplate),
-					ConfigKey:       stringPtrIfSet(configKey),
-					AllowedHosts:    slicePtrIfSet(allowedHosts),
-					HTTPMethod:      stringPtrIfSet(method),
-					HeaderTemplates: headerTemplatesPtrIfSet(headerRows),
-					BodyTemplate:    stringPtrIfSet(template),
-					BodyContentType: stringPtrIfSet(bodyContentType),
-					SecretRefs:      secretRefsPtrIfSet(secretRowValues),
-					Secret:          stringPtrIfSet(secretVal),
-					TimeoutSeconds:  intPtrIfSet(timeout),
-					MaxAttempts:     intPtrIfSet(maxAttempts),
-					Enabled:         enabledPtr,
-					Name:            nil,
-				})
+				view, err := client.ModifyNotificationSink(context.Background(), args[0], notificationSinkModifyInputToRemote(mod))
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), view)
+					return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Modified notification sink %s\n", view.Name)
+				fmt.Fprintf(cmd.OutOrStdout(), "Modified notification sink %s (%s)\n", view.Name, view.ID)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -377,103 +365,34 @@ func newNotificationSinkModifyCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			var enabledPtr *bool
-			if cmd.Flags().Changed("enabled") {
-				enabledPtr = &enabled
-			}
-			view, err := svc.ModifyNotificationSink(args[0], app.NotificationSinkModifyInput{
-				Type:            stringPtrIfSet(typ),
-				EndpointMode:    stringPtrIfSet(endpointMode),
-				URL:             stringPtrIfSet(url),
-				URLTemplate:     stringPtrIfSet(urlTemplate),
-				ConfigKey:       stringPtrIfSet(configKey),
-				AllowedHosts:    slicePtrIfSet(allowedHosts),
-				HTTPMethod:      stringPtrIfSet(method),
-				HeaderTemplates: headerTemplatesPtrToAppIfSet(headerRows),
-				BodyTemplate:    stringPtrIfSet(template),
-				BodyContentType: stringPtrIfSet(bodyContentType),
-				SecretRefs:      secretRefsPtrToAppIfSet(secretRowValues),
-				Secret:          stringPtrIfSet(secretVal),
-				TimeoutSeconds:  intPtrIfSet(timeout),
-				MaxAttempts:     intPtrIfSet(maxAttempts),
-				Enabled:         enabledPtr,
-			})
+			view, err := svc.ModifyNotificationSink(args[0], mod)
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), view)
+				return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Modified notification sink %s\n", view.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Modified notification sink %s (%s)\n", view.Name, view.ID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&typ, "type", "", "sink 类型")
-	cmd.Flags().StringVar(&endpointMode, "endpoint-mode", "", "endpoint 模式")
-	cmd.Flags().StringVar(&url, "url", "", "固定 URL")
-	cmd.Flags().StringVar(&urlTemplate, "url-template", "", "URL 模板")
-	cmd.Flags().StringVar(&configKey, "config-key", "", "配置键")
-	cmd.Flags().StringArrayVar(&allowedHosts, "allowed-host", nil, "允许的 host")
-	cmd.Flags().StringVar(&method, "method", "", "HTTP 方法")
-	cmd.Flags().StringArrayVar(&headerTemplates, "header-template", nil, "header 模板")
-	cmd.Flags().StringVar(&bodyTemplate, "body-template", "", "body 模板")
-	cmd.Flags().StringVar(&bodyTemplateFile, "body-template-file", "", "body 模板文件")
-	cmd.Flags().StringVar(&bodyContentType, "body-content-type", "", "body content-type")
-	cmd.Flags().StringArrayVar(&secretRefs, "secret-ref", nil, "secret 引用")
-	cmd.Flags().StringVar(&secret, "secret", "", "webhook secret")
-	cmd.Flags().BoolVar(&secretStdin, "secret-stdin", false, "从 stdin 读取 webhook secret")
-	cmd.Flags().IntVar(&timeout, "timeout", 0, "超时秒数")
-	cmd.Flags().IntVar(&maxAttempts, "max-attempts", 0, "最大重试次数")
-	cmd.Flags().BoolVar(&enabled, "enabled", true, "启用状态")
+	cmd.Flags().StringVar(&input.name, "name", "", "新的 sink 名称")
+	bindNotificationSinkFlags(cmd, &input)
 	return cmd
 }
 
 func newNotificationSinkEnableCommand(opts Options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "enable <sink>",
-		Short: "启用通知投递目标",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			currentOpts := optionsFromCmd(cmd, opts)
-			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
-				return err
-			} else if remoteMode {
-				client, err := buildRemoteClient(currentOpts)
-				if err != nil {
-					return err
-				}
-				view, err := client.EnableNotificationSink(context.Background(), args[0])
-				if err != nil {
-					return err
-				}
-				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), view)
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Enabled notification sink %s\n", view.Name)
-				return nil
-			}
-			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
-			if err != nil {
-				return err
-			}
-			defer closeFn()
-			view, err := svc.EnableNotificationSink(args[0])
-			if err != nil {
-				return err
-			}
-			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), view)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Enabled notification sink %s\n", view.Name)
-			return nil
-		},
-	}
+	return notificationSinkToggleCommand(opts, "enable", "启用通知 sink", true)
 }
 
 func newNotificationSinkDisableCommand(opts Options) *cobra.Command {
+	return notificationSinkToggleCommand(opts, "disable", "禁用通知 sink", false)
+}
+
+func notificationSinkToggleCommand(opts Options, use string, short string, enabled bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "disable <sink>",
-		Short: "禁用通知投递目标",
+		Use:   use + " <sink-id>",
+		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -484,14 +403,23 @@ func newNotificationSinkDisableCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				view, err := client.DisableNotificationSink(context.Background(), args[0])
+				var view app.NotificationSinkView
+				if enabled {
+					view, err = client.EnableNotificationSink(context.Background(), args[0])
+				} else {
+					view, err = client.DisableNotificationSink(context.Background(), args[0])
+				}
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), view)
+					return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Disabled notification sink %s\n", view.Name)
+				if enabled {
+					fmt.Fprintf(cmd.OutOrStdout(), "Enabled notification sink %s\n", args[0])
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "Disabled notification sink %s\n", args[0])
+				}
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -499,14 +427,23 @@ func newNotificationSinkDisableCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			view, err := svc.DisableNotificationSink(args[0])
+			var view app.NotificationSinkView
+			if enabled {
+				view, err = svc.EnableNotificationSink(args[0])
+			} else {
+				view, err = svc.DisableNotificationSink(args[0])
+			}
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), view)
+				return render.JSON(cmd.OutOrStdout(), notificationSinkViewForJSON(view))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Disabled notification sink %s\n", view.Name)
+			if enabled {
+				fmt.Fprintf(cmd.OutOrStdout(), "Enabled notification sink %s\n", args[0])
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Disabled notification sink %s\n", args[0])
+			}
 			return nil
 		},
 	}
@@ -514,8 +451,8 @@ func newNotificationSinkDisableCommand(opts Options) *cobra.Command {
 
 func newNotificationSinkDeleteCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <sink>",
-		Short: "删除通知投递目标",
+		Use:   "delete <sink-id>",
+		Short: "删除通知 sink",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -546,13 +483,21 @@ func newNotificationSinkDeleteCommand(opts Options) *cobra.Command {
 	}
 }
 
+func newNotificationDeliveryCommand(opts Options) *cobra.Command {
+	cmd := &cobra.Command{Use: "delivery", Short: "管理通知投递记录", Args: cobra.NoArgs}
+	cmd.AddCommand(newNotificationDeliveryListCommand(opts))
+	cmd.AddCommand(newNotificationDeliveryInfoCommand(opts))
+	cmd.AddCommand(newNotificationDeliveryReplayCommand(opts))
+	return cmd
+}
+
 func newNotificationDeliveryListCommand(opts Options) *cobra.Command {
 	var status string
+	var sinkID string
 	var limit int
-	var offset int
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出通知投递",
+		Short: "列出通知投递记录",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -563,16 +508,14 @@ func newNotificationDeliveryListCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				rows, err := client.ListNotificationDeliveries(context.Background(), currentOpts.Workspace, status, limit, offset)
+				rows, err := client.ListNotificationDeliveries(context.Background(), currentOpts.Workspace, sinkID, status, limit, 0)
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), rows)
+					return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewsForJSON(rows))
 				}
-				for _, row := range rows {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", row.ID, row.EventType, row.Status)
-				}
+				renderNotificationDeliveryList(cmd.OutOrStdout(), rows)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -580,28 +523,26 @@ func newNotificationDeliveryListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			rows, err := svc.ListNotificationDeliveries(status, limit, offset)
+			rows, err := svc.ListNotificationDeliveries(sinkID, status, limit, 0)
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), rows)
+				return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewsForJSON(rows))
 			}
-			for _, row := range rows {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", row.ID, row.EventType, row.Status)
-			}
+			renderNotificationDeliveryList(cmd.OutOrStdout(), rows)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&status, "status", "", "投递状态")
-	cmd.Flags().IntVar(&limit, "limit", 50, "返回数量上限")
-	cmd.Flags().IntVar(&offset, "offset", 0, "偏移量")
+	cmd.Flags().StringVar(&status, "status", "", "按状态过滤")
+	cmd.Flags().StringVar(&sinkID, "sink", "", "按 sink ID 过滤")
+	cmd.Flags().IntVar(&limit, "limit", 50, "最大返回条数")
 	return cmd
 }
 
 func newNotificationDeliveryInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <delivery>",
+		Use:   "info <delivery-id>",
 		Short: "显示通知投递详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -613,30 +554,36 @@ func newNotificationDeliveryInfoCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				row, err := client.NotificationDeliveryInfo(context.Background(), args[0])
+				view, err := client.NotificationDeliveryInfo(context.Background(), args[0])
 				if err != nil {
 					return err
 				}
-				return render.JSON(cmd.OutOrStdout(), row)
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewForJSON(view))
+				}
+				return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewForJSON(view))
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			row, err := svc.NotificationDeliveryInfo(args[0])
+			view, err := svc.NotificationDeliveryInfo(args[0])
 			if err != nil {
 				return err
 			}
-			return render.JSON(cmd.OutOrStdout(), row)
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewForJSON(view))
+			}
+			return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewForJSON(view))
 		},
 	}
 }
 
 func newNotificationDeliveryReplayCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "replay <delivery>",
-		Short: "重试通知投递",
+		Use:   "replay <delivery-id>",
+		Short: "重放通知投递",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -647,14 +594,14 @@ func newNotificationDeliveryReplayCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				row, err := client.ReplayNotificationDelivery(context.Background(), args[0])
+				view, err := client.ReplayNotificationDelivery(context.Background(), args[0])
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), row)
+					return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewForJSON(view))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Replayed notification delivery %s\n", row.ID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Replayed notification delivery %s\n", view.ID)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -662,45 +609,49 @@ func newNotificationDeliveryReplayCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			row, err := svc.ReplayNotificationDelivery(args[0])
+			view, err := svc.ReplayNotificationDelivery(args[0])
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), row)
+				return render.JSON(cmd.OutOrStdout(), notificationDeliveryViewForJSON(view))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Replayed notification delivery %s\n", row.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Replayed notification delivery %s\n", view.ID)
 			return nil
 		},
 	}
 }
 
+func newReminderCommand(opts Options) *cobra.Command {
+	cmd := &cobra.Command{Use: "reminder", Short: "管理提醒规则", Args: cobra.NoArgs}
+	cmd.AddCommand(newReminderRuleCommand(opts))
+	return cmd
+}
+
+func newReminderRuleCommand(opts Options) *cobra.Command {
+	cmd := &cobra.Command{Use: "rule", Short: "管理提醒规则", Args: cobra.NoArgs}
+	cmd.AddCommand(newReminderRuleAddCommand(opts))
+	cmd.AddCommand(newReminderRuleListCommand(opts))
+	cmd.AddCommand(newReminderRuleInfoCommand(opts))
+	cmd.AddCommand(newReminderRuleModifyCommand(opts))
+	cmd.AddCommand(newReminderRuleEnableCommand(opts))
+	cmd.AddCommand(newReminderRuleDisableCommand(opts))
+	cmd.AddCommand(newReminderRuleDeleteCommand(opts))
+	return cmd
+}
+
 func newReminderRuleAddCommand(opts Options) *cobra.Command {
-	var (
-		projectRef string
-		trigger    string
-		offset     string
-		after      string
-		repeat     string
-		taskFilter string
-		audience   string
-		recipients []string
-		sinkRef    string
-	)
+	var input reminderRuleCLIInput
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "创建提醒规则",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			offsetSeconds, err := parseDurationSeconds(offset)
-			if err != nil {
-				return err
-			}
-			afterSeconds, err := parseDurationSeconds(after)
-			if err != nil {
-				return err
-			}
 			currentOpts := optionsFromCmd(cmd, opts)
+			addInput, err := input.toApp(args[0])
+			if err != nil {
+				return err
+			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -708,25 +659,14 @@ func newReminderRuleAddCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				row, err := client.AddReminderRule(context.Background(), currentOpts.Workspace, remote.ReminderRuleCreateRequest{
-					Name:          args[0],
-					ProjectRef:    projectRef,
-					TriggerType:   trigger,
-					OffsetSeconds: offsetSeconds,
-					AfterSeconds:  afterSeconds,
-					RepeatPolicy:  repeat,
-					TaskFilter:    taskFilter,
-					AudienceType:  audience,
-					Recipients:    recipients,
-					SinkRef:       sinkRef,
-				})
+				view, err := client.AddReminderRule(context.Background(), currentOpts.Workspace, reminderRuleInputToRemote(addInput))
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), row)
+					return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Created reminder rule %s (%s)\n", row.Name, row.ID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Created reminder rule %s (%s)\n", view.Name, view.ID)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -734,39 +674,116 @@ func newReminderRuleAddCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			row, err := svc.AddReminderRule(app.ReminderRuleAddInput{
-				Name:          args[0],
-				ProjectRef:    projectRef,
-				TriggerType:   trigger,
-				OffsetSeconds: offsetSeconds,
-				AfterSeconds:  afterSeconds,
-				RepeatPolicy:  repeat,
-				TaskFilter:    taskFilter,
-				AudienceType:  audience,
-				Recipients:    recipients,
-				SinkRef:       sinkRef,
-			})
+			view, err := svc.AddReminderRule(addInput)
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), row)
+				return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created reminder rule %s (%s)\n", row.Name, row.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Created reminder rule %s (%s)\n", view.Name, view.ID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&projectRef, "project", "", "项目 slug")
-	cmd.Flags().StringVar(&trigger, "trigger", "due_before", "触发类型")
-	cmd.Flags().StringVar(&offset, "offset", "0s", "提前时间")
-	cmd.Flags().StringVar(&after, "after", "0s", "逾期后时间")
-	cmd.Flags().StringVar(&repeat, "repeat", "once", "重复策略")
-	cmd.Flags().StringVar(&taskFilter, "task-filter", "", "任务筛选条件，使用 task query 语法")
-	cmd.Flags().StringVar(&audience, "audience", "assignees", "受众类型")
-	cmd.Flags().StringArrayVar(&recipients, "recipient", nil, "显式收件人")
-	cmd.Flags().StringVar(&sinkRef, "sink", "", "通知投递目标")
-	_ = cmd.MarkFlagRequired("sink")
+	cmd.Flags().StringVar(&input.projectRef, "project", "", "项目 slug")
+	cmd.Flags().StringVar(&input.trigger, "trigger", "", "触发类型: due_before 或 overdue")
+	cmd.Flags().StringVar(&input.offset, "offset", "", "due_before 提前时间，例如 4h")
+	cmd.Flags().StringVar(&input.after, "after", "", "overdue 延迟时间，例如 0h")
+	cmd.Flags().StringVar(&input.repeat, "repeat", "", "重复策略: once 或 every:<duration>")
+	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: assignees、explicit_users、assignees_and_explicit_users")
+	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
+	cmd.Flags().StringVar(&input.sinkRef, "sink", "", "通知 sink 名称或 ID")
 	return cmd
+}
+
+type reminderRuleCLIInput struct {
+	projectRef string
+	trigger    string
+	offset     string
+	after      string
+	repeat     string
+	audience   string
+	recipients []string
+	sinkRef    string
+	name       string
+}
+
+func (input reminderRuleCLIInput) toApp(name string) (app.ReminderRuleAddInput, error) {
+	var offsetSeconds int64
+	if input.offset != "" {
+		d, err := time.ParseDuration(input.offset)
+		if err != nil {
+			return app.ReminderRuleAddInput{}, err
+		}
+		offsetSeconds = int64(d.Seconds())
+	}
+	var afterSeconds int64
+	if input.after != "" {
+		d, err := time.ParseDuration(input.after)
+		if err != nil {
+			return app.ReminderRuleAddInput{}, err
+		}
+		afterSeconds = int64(d.Seconds())
+	}
+	return app.ReminderRuleAddInput{
+		Name:          name,
+		ProjectRef:    input.projectRef,
+		TriggerType:   input.trigger,
+		OffsetSeconds: offsetSeconds,
+		AfterSeconds:  afterSeconds,
+		RepeatPolicy:  input.repeat,
+		AudienceType:  input.audience,
+		Recipients:    input.recipients,
+		SinkRef:       input.sinkRef,
+	}, nil
+}
+
+func (input reminderRuleCLIInput) toModifyApp(cmd *cobra.Command) (app.ReminderRuleModifyInput, error) {
+	var mod app.ReminderRuleModifyInput
+	if cmd.Flags().Changed("name") {
+		mod.Name = &input.name
+	}
+	if cmd.Flags().Changed("project") {
+		mod.ProjectRef = &input.projectRef
+	}
+	if cmd.Flags().Changed("trigger") {
+		mod.TriggerType = &input.trigger
+	}
+	if cmd.Flags().Changed("offset") {
+		var offsetSeconds int64
+		if input.offset != "" {
+			d, err := time.ParseDuration(input.offset)
+			if err != nil {
+				return app.ReminderRuleModifyInput{}, err
+			}
+			offsetSeconds = int64(d.Seconds())
+		}
+		mod.OffsetSeconds = &offsetSeconds
+	}
+	if cmd.Flags().Changed("after") {
+		var afterSeconds int64
+		if input.after != "" {
+			d, err := time.ParseDuration(input.after)
+			if err != nil {
+				return app.ReminderRuleModifyInput{}, err
+			}
+			afterSeconds = int64(d.Seconds())
+		}
+		mod.AfterSeconds = &afterSeconds
+	}
+	if cmd.Flags().Changed("repeat") {
+		mod.RepeatPolicy = &input.repeat
+	}
+	if cmd.Flags().Changed("audience") {
+		mod.AudienceType = &input.audience
+	}
+	if cmd.Flags().Changed("recipient") {
+		mod.Recipients = &input.recipients
+	}
+	if cmd.Flags().Changed("sink") {
+		mod.SinkRef = &input.sinkRef
+	}
+	return mod, nil
 }
 
 func newReminderRuleListCommand(opts Options) *cobra.Command {
@@ -790,11 +807,9 @@ func newReminderRuleListCommand(opts Options) *cobra.Command {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), rows)
+					return render.JSON(cmd.OutOrStdout(), reminderRuleViewsForJSON(rows))
 				}
-				for _, row := range rows {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", row.ID, row.Name, row.TriggerType)
-				}
+				renderReminderRuleList(cmd.OutOrStdout(), rows)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -807,22 +822,20 @@ func newReminderRuleListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), rows)
+				return render.JSON(cmd.OutOrStdout(), reminderRuleViewsForJSON(rows))
 			}
-			for _, row := range rows {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", row.ID, row.Name, row.TriggerType)
-			}
+			renderReminderRuleList(cmd.OutOrStdout(), rows)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&projectRef, "project", "", "项目 slug")
-	cmd.Flags().BoolVar(&includeDisabled, "all", false, "包含禁用项")
+	cmd.Flags().StringVar(&projectRef, "project", "", "按项目过滤")
+	cmd.Flags().BoolVar(&includeDisabled, "all", false, "包含 disabled rule")
 	return cmd
 }
 
 func newReminderRuleInfoCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <rule>",
+		Use:   "info <rule-id>",
 		Short: "显示提醒规则详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -834,53 +847,44 @@ func newReminderRuleInfoCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				row, err := client.ReminderRuleInfo(context.Background(), args[0])
+				view, err := client.ReminderRuleInfo(context.Background(), args[0])
 				if err != nil {
 					return err
 				}
-				return render.JSON(cmd.OutOrStdout(), row)
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
+				}
+				return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			row, err := svc.ReminderRuleInfo(args[0])
+			view, err := svc.ReminderRuleInfo(args[0])
 			if err != nil {
 				return err
 			}
-			return render.JSON(cmd.OutOrStdout(), row)
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
+			}
+			return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 		},
 	}
 }
 
 func newReminderRuleModifyCommand(opts Options) *cobra.Command {
-	var (
-		projectRef string
-		trigger    string
-		offset     string
-		after      string
-		repeat     string
-		taskFilter string
-		audience   string
-		recipients []string
-		sinkRef    string
-		enabled    bool
-	)
+	var input reminderRuleCLIInput
 	cmd := &cobra.Command{
-		Use:   "modify <rule>",
+		Use:   "modify <rule-id>",
 		Short: "修改提醒规则",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			offsetSeconds, err := parseDurationSeconds(offset)
-			if err != nil {
-				return err
-			}
-			afterSeconds, err := parseDurationSeconds(after)
-			if err != nil {
-				return err
-			}
 			currentOpts := optionsFromCmd(cmd, opts)
+			mod, err := input.toModifyApp(cmd)
+			if err != nil {
+				return err
+			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -888,29 +892,14 @@ func newReminderRuleModifyCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				var enabledPtr *bool
-				if cmd.Flags().Changed("enabled") {
-					enabledPtr = &enabled
-				}
-				row, err := client.ModifyReminderRule(context.Background(), args[0], remote.ReminderRuleModifyRequest{
-					ProjectRef:    stringPtrIfSet(projectRef),
-					TriggerType:   stringPtrIfSet(trigger),
-					OffsetSeconds: int64PtrIfSet(offsetSeconds),
-					AfterSeconds:  int64PtrIfSet(afterSeconds),
-					RepeatPolicy:  stringPtrIfSet(repeat),
-					TaskFilter:    stringPtrIfSet(taskFilter),
-					AudienceType:  stringPtrIfSet(audience),
-					Recipients:    slicePtrIfSet(recipients),
-					SinkRef:       stringPtrIfSet(sinkRef),
-					Enabled:       enabledPtr,
-				})
+				view, err := client.ModifyReminderRule(context.Background(), args[0], reminderRuleModifyInputToRemote(mod))
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), row)
+					return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Modified reminder rule %s\n", row.Name)
+				fmt.Fprintf(cmd.OutOrStdout(), "Modified reminder rule %s (%s)\n", view.Name, view.ID)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -918,91 +907,41 @@ func newReminderRuleModifyCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			var enabledPtr *bool
-			if cmd.Flags().Changed("enabled") {
-				enabledPtr = &enabled
-			}
-			row, err := svc.ModifyReminderRule(args[0], app.ReminderRuleModifyInput{
-				ProjectRef:    stringPtrIfSet(projectRef),
-				TriggerType:   stringPtrIfSet(trigger),
-				OffsetSeconds: int64PtrIfSet(offsetSeconds),
-				AfterSeconds:  int64PtrIfSet(afterSeconds),
-				RepeatPolicy:  stringPtrIfSet(repeat),
-				TaskFilter:    stringPtrIfSet(taskFilter),
-				AudienceType:  stringPtrIfSet(audience),
-				Recipients:    slicePtrIfSet(recipients),
-				SinkRef:       stringPtrIfSet(sinkRef),
-				Enabled:       enabledPtr,
-			})
+			view, err := svc.ModifyReminderRule(args[0], mod)
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), row)
+				return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Modified reminder rule %s\n", row.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Modified reminder rule %s (%s)\n", view.Name, view.ID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&projectRef, "project", "", "项目 slug")
-	cmd.Flags().StringVar(&trigger, "trigger", "", "触发类型")
-	cmd.Flags().StringVar(&offset, "offset", "0s", "提前时间")
-	cmd.Flags().StringVar(&after, "after", "0s", "逾期后时间")
-	cmd.Flags().StringVar(&repeat, "repeat", "", "重复策略")
-	cmd.Flags().StringVar(&taskFilter, "task-filter", "", "任务筛选条件，使用 task query 语法")
-	cmd.Flags().StringVar(&audience, "audience", "", "受众类型")
-	cmd.Flags().StringArrayVar(&recipients, "recipient", nil, "显式收件人")
-	cmd.Flags().StringVar(&sinkRef, "sink", "", "通知投递目标")
-	cmd.Flags().BoolVar(&enabled, "enabled", true, "启用状态")
+	cmd.Flags().StringVar(&input.name, "name", "", "新的规则名称")
+	cmd.Flags().StringVar(&input.projectRef, "project", "", "项目 slug，传空字符串可清除项目范围")
+	cmd.Flags().StringVar(&input.trigger, "trigger", "", "触发类型: due_before 或 overdue")
+	cmd.Flags().StringVar(&input.offset, "offset", "", "due_before 提前时间，例如 4h")
+	cmd.Flags().StringVar(&input.after, "after", "", "overdue 延迟时间，例如 0h")
+	cmd.Flags().StringVar(&input.repeat, "repeat", "", "重复策略: once 或 every:<duration>")
+	cmd.Flags().StringVar(&input.audience, "audience", "", "受众: assignees、explicit_users、assignees_and_explicit_users")
+	cmd.Flags().StringArrayVar(&input.recipients, "recipient", nil, "显式 recipient，可重复指定")
+	cmd.Flags().StringVar(&input.sinkRef, "sink", "", "通知 sink 名称或 ID")
 	return cmd
 }
 
 func newReminderRuleEnableCommand(opts Options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "enable <rule>",
-		Short: "启用提醒规则",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			currentOpts := optionsFromCmd(cmd, opts)
-			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
-				return err
-			} else if remoteMode {
-				client, err := buildRemoteClient(currentOpts)
-				if err != nil {
-					return err
-				}
-				row, err := client.EnableReminderRule(context.Background(), args[0])
-				if err != nil {
-					return err
-				}
-				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), row)
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Enabled reminder rule %s\n", row.Name)
-				return nil
-			}
-			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
-			if err != nil {
-				return err
-			}
-			defer closeFn()
-			row, err := svc.EnableReminderRule(args[0])
-			if err != nil {
-				return err
-			}
-			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), row)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Enabled reminder rule %s\n", row.Name)
-			return nil
-		},
-	}
+	return reminderRuleToggleCommand(opts, "enable", "启用提醒规则", true)
 }
 
 func newReminderRuleDisableCommand(opts Options) *cobra.Command {
+	return reminderRuleToggleCommand(opts, "disable", "禁用提醒规则", false)
+}
+
+func reminderRuleToggleCommand(opts Options, use string, short string, enabled bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "disable <rule>",
-		Short: "禁用提醒规则",
+		Use:   use + " <rule-id>",
+		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
@@ -1013,14 +952,23 @@ func newReminderRuleDisableCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				row, err := client.DisableReminderRule(context.Background(), args[0])
+				var view app.ReminderRuleView
+				if enabled {
+					view, err = client.EnableReminderRule(context.Background(), args[0])
+				} else {
+					view, err = client.DisableReminderRule(context.Background(), args[0])
+				}
 				if err != nil {
 					return err
 				}
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), row)
+					return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Disabled reminder rule %s\n", row.Name)
+				if enabled {
+					fmt.Fprintf(cmd.OutOrStdout(), "Enabled reminder rule %s\n", args[0])
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "Disabled reminder rule %s\n", args[0])
+				}
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -1028,14 +976,23 @@ func newReminderRuleDisableCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			row, err := svc.DisableReminderRule(args[0])
+			var view app.ReminderRuleView
+			if enabled {
+				view, err = svc.EnableReminderRule(args[0])
+			} else {
+				view, err = svc.DisableReminderRule(args[0])
+			}
 			if err != nil {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), row)
+				return render.JSON(cmd.OutOrStdout(), reminderRuleViewForJSON(view))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Disabled reminder rule %s\n", row.Name)
+			if enabled {
+				fmt.Fprintf(cmd.OutOrStdout(), "Enabled reminder rule %s\n", args[0])
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Disabled reminder rule %s\n", args[0])
+			}
 			return nil
 		},
 	}
@@ -1043,7 +1000,7 @@ func newReminderRuleDisableCommand(opts Options) *cobra.Command {
 
 func newReminderRuleDeleteCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <rule>",
+		Use:   "delete <rule-id>",
 		Short: "删除提醒规则",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1075,132 +1032,219 @@ func newReminderRuleDeleteCommand(opts Options) *cobra.Command {
 	}
 }
 
-func resolveBodyTemplate(bodyTemplate, filePath string) (string, error) {
-	if bodyTemplate != "" && filePath != "" {
-		return "", fmt.Errorf("--body-template 和 --body-template-file 互斥，只能指定一个")
-	}
-	if filePath == "" {
-		return bodyTemplate, nil
-	}
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("读取 body template 文件 %s 失败: %w", filePath, err)
-	}
-	return strings.TrimRight(string(data), "\n"), nil
-}
-
-func parseTemplatePairs(values []string, flagName string) ([]remote.HTTPHeaderTemplateRequest, error) {
-	out := make([]remote.HTTPHeaderTemplateRequest, 0, len(values))
-	for _, raw := range values {
-		key, value, ok := strings.Cut(raw, "=")
-		if !ok {
-			return nil, fmt.Errorf("--%s 需要 Name=template 格式", flagName)
-		}
-		out = append(out, remote.HTTPHeaderTemplateRequest{Name: strings.TrimSpace(key), Value: value})
-	}
-	return out, nil
-}
-
-func parseSecretRefPairs(values []string) ([]remote.HTTPTemplateSecretRefRequest, error) {
-	out := make([]remote.HTTPTemplateSecretRefRequest, 0, len(values))
-	for _, raw := range values {
-		key, value, ok := strings.Cut(raw, "=")
-		if !ok {
-			return nil, fmt.Errorf("--secret-ref 需要 alias=config.key 格式")
-		}
-		out = append(out, remote.HTTPTemplateSecretRefRequest{Alias: strings.TrimSpace(key), ConfigKey: strings.TrimSpace(value)})
-	}
-	return out, nil
-}
-
-func secretRowsToApp(rows []remote.HTTPTemplateSecretRefRequest) []app.HTTPTemplateSecretRefInput {
-	out := make([]app.HTTPTemplateSecretRefInput, 0, len(rows))
+func renderNotificationSinkList(w interface{ Write([]byte) (int, error) }, rows []app.NotificationSinkView) {
 	for _, row := range rows {
-		out = append(out, app.HTTPTemplateSecretRefInput{Alias: row.Alias, ConfigKey: row.ConfigKey})
+		enabled := "disabled"
+		if row.Enabled {
+			enabled = "enabled"
+		}
+		fmt.Fprintf(w, "%s  %s  %s  %s  %s\n", shortID(row.ID), row.Name, row.Type, enabled, notificationSinkEndpoint(row))
+	}
+}
+
+func renderNotificationSinkInfo(w interface{ Write([]byte) (int, error) }, row app.NotificationSinkView) {
+	_ = render.JSON(w, notificationSinkViewForJSON(row))
+}
+
+func renderReminderRuleList(w interface{ Write([]byte) (int, error) }, rows []app.ReminderRuleView) {
+	for _, row := range rows {
+		enabled := "disabled"
+		if row.Enabled {
+			enabled = "enabled"
+		}
+		fmt.Fprintf(w, "%s  %s  %s  %s  %s\n", shortID(row.ID), row.Name, row.TriggerType, row.AudienceType, enabled)
+	}
+}
+
+func renderNotificationDeliveryList(w interface{ Write([]byte) (int, error) }, rows []app.NotificationDeliveryView) {
+	for _, row := range rows {
+		fmt.Fprintf(w, "%s  %s  %s  %d  %s\n", shortID(row.ID), row.EventType, row.Status, row.AttemptCount, row.LastError)
+	}
+}
+
+func notificationSinkEndpoint(row app.NotificationSinkView) string {
+	switch row.EndpointMode {
+	case app.NotificationEndpointTemplate:
+		return row.URLTemplate
+	case app.NotificationEndpointConfigValue:
+		return "config:" + row.ConfigKey
+	default:
+		return row.URL
+	}
+}
+
+func notificationSinkViewsForJSON(rows []app.NotificationSinkView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notificationSinkViewForJSON(row))
 	}
 	return out
 }
 
-func headerRowsToApp(rows []remote.HTTPHeaderTemplateRequest) []app.HTTPHeaderTemplateInput {
-	out := make([]app.HTTPHeaderTemplateInput, 0, len(rows))
+func notificationSinkViewForJSON(row app.NotificationSinkView) map[string]any {
+	return map[string]any{
+		"id":                row.ID,
+		"workspace_id":      row.WorkspaceID,
+		"name":              row.Name,
+		"type":              row.Type,
+		"endpoint_mode":     row.EndpointMode,
+		"url":               row.URL,
+		"url_template":      row.URLTemplate,
+		"config_key":        row.ConfigKey,
+		"allowed_hosts":     row.AllowedHosts,
+		"http_method":       row.HTTPMethod,
+		"header_templates":  row.HeaderTemplates,
+		"body_template":     row.BodyTemplate,
+		"body_content_type": row.BodyContentType,
+		"secret_refs":       row.SecretRefs,
+		"enabled":           row.Enabled,
+		"timeout_seconds":   row.TimeoutSeconds,
+		"max_attempts":      row.MaxAttempts,
+		"created_by":        task.UserInfoToJSON(row.CreatedBy),
+		"created_at":        row.CreatedAt,
+		"modified_at":       row.ModifiedAt,
+	}
+}
+
+func notificationSinkInputToRemote(input app.NotificationSinkAddInput) remote.NotificationSinkRequest {
+	return remote.NotificationSinkRequest{
+		Name:            input.Name,
+		Type:            input.Type,
+		EndpointMode:    input.EndpointMode,
+		URL:             input.URL,
+		URLTemplate:     input.URLTemplate,
+		ConfigKey:       input.ConfigKey,
+		AllowedHosts:    input.AllowedHosts,
+		HeaderTemplates: input.HeaderTemplates,
+		BodyTemplate:    input.BodyTemplate,
+		BodyContentType: input.BodyContentType,
+		SecretRefs:      input.SecretRefs,
+		Secret:          input.Secret,
+		TimeoutSeconds:  input.TimeoutSeconds,
+		MaxAttempts:     input.MaxAttempts,
+	}
+}
+
+func notificationSinkModifyInputToRemote(input app.NotificationSinkModifyInput) remote.NotificationSinkModifyRequest {
+	return remote.NotificationSinkModifyRequest{
+		Name:            input.Name,
+		Type:            input.Type,
+		EndpointMode:    input.EndpointMode,
+		URL:             input.URL,
+		URLTemplate:     input.URLTemplate,
+		ConfigKey:       input.ConfigKey,
+		AllowedHosts:    input.AllowedHosts,
+		HeaderTemplates: input.HeaderTemplates,
+		BodyTemplate:    input.BodyTemplate,
+		BodyContentType: input.BodyContentType,
+		SecretRefs:      input.SecretRefs,
+		Secret:          input.Secret,
+		TimeoutSeconds:  input.TimeoutSeconds,
+		MaxAttempts:     input.MaxAttempts,
+	}
+}
+
+func reminderRuleInputToRemote(input app.ReminderRuleAddInput) remote.ReminderRuleRequest {
+	return remote.ReminderRuleRequest{
+		Name:          input.Name,
+		ProjectRef:    input.ProjectRef,
+		TriggerType:   input.TriggerType,
+		OffsetSeconds: input.OffsetSeconds,
+		AfterSeconds:  input.AfterSeconds,
+		RepeatPolicy:  input.RepeatPolicy,
+		AudienceType:  input.AudienceType,
+		Recipients:    input.Recipients,
+		SinkRef:       input.SinkRef,
+	}
+}
+
+func reminderRuleModifyInputToRemote(input app.ReminderRuleModifyInput) remote.ReminderRuleModifyRequest {
+	return remote.ReminderRuleModifyRequest{
+		Name:          input.Name,
+		ProjectRef:    input.ProjectRef,
+		TriggerType:   input.TriggerType,
+		OffsetSeconds: input.OffsetSeconds,
+		AfterSeconds:  input.AfterSeconds,
+		RepeatPolicy:  input.RepeatPolicy,
+		AudienceType:  input.AudienceType,
+		Recipients:    input.Recipients,
+		SinkRef:       input.SinkRef,
+	}
+}
+
+func reminderRuleViewsForJSON(rows []app.ReminderRuleView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, app.HTTPHeaderTemplateInput{Name: row.Name, Value: row.Value})
+		out = append(out, reminderRuleViewForJSON(row))
 	}
 	return out
 }
 
-func headerTemplatesPtrIfSet(rows []remote.HTTPHeaderTemplateRequest) *[]remote.HTTPHeaderTemplateRequest {
-	if len(rows) == 0 {
-		return nil
+func reminderRuleViewForJSON(row app.ReminderRuleView) map[string]any {
+	return map[string]any{
+		"id":              row.ID,
+		"workspace_id":    row.WorkspaceID,
+		"project_id":      row.ProjectID,
+		"name":            row.Name,
+		"enabled":         row.Enabled,
+		"trigger_type":    row.TriggerType,
+		"offset_seconds":  row.OffsetSeconds,
+		"after_seconds":   row.AfterSeconds,
+		"repeat_policy":   row.RepeatPolicy,
+		"audience_type":   row.AudienceType,
+		"recipient_users": notificationUserInfosForJSON(row.RecipientUsers),
+		"sink_id":         row.SinkID,
+		"created_by":      task.UserInfoToJSON(row.CreatedBy),
+		"created_at":      row.CreatedAt,
+		"modified_at":     row.ModifiedAt,
 	}
-	return &rows
 }
 
-func secretRefsPtrIfSet(rows []remote.HTTPTemplateSecretRefRequest) *[]remote.HTTPTemplateSecretRefRequest {
-	if len(rows) == 0 {
-		return nil
-	}
-	return &rows
-}
-
-func headerTemplatesPtrToAppIfSet(rows []remote.HTTPHeaderTemplateRequest) *[]app.HTTPHeaderTemplateInput {
-	if len(rows) == 0 {
-		return nil
-	}
-	out := make([]app.HTTPHeaderTemplateInput, 0, len(rows))
+func notificationDeliveryViewsForJSON(rows []app.NotificationDeliveryView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, app.HTTPHeaderTemplateInput{Name: row.Name, Value: row.Value})
+		out = append(out, notificationDeliveryViewForJSON(row))
 	}
-	return &out
+	return out
 }
 
-func secretRefsPtrToAppIfSet(rows []remote.HTTPTemplateSecretRefRequest) *[]app.HTTPTemplateSecretRefInput {
-	if len(rows) == 0 {
-		return nil
+func notificationDeliveryViewForJSON(row app.NotificationDeliveryView) map[string]any {
+	return map[string]any{
+		"id":                            row.ID,
+		"workspace_id":                  row.WorkspaceID,
+		"project_id":                    row.ProjectID,
+		"rule_id":                       row.RuleID,
+		"sink_id":                       row.SinkID,
+		"task_uuid":                     row.TaskUUID,
+		"recipient":                     task.UserInfoToJSON(row.Recipient),
+		"event_id":                      row.EventID,
+		"event_type":                    row.EventType,
+		"resolved_url":                  row.ResolvedURL,
+		"resolved_endpoint_source":      row.ResolvedEndpointSource,
+		"resolved_endpoint_fingerprint": row.ResolvedEndpointFingerprint,
+		"rendered_method":               row.RenderedMethod,
+		"rendered_headers":              row.RenderedHeaders,
+		"rendered_body":                 row.RenderedBody,
+		"rendered_content_type":         row.RenderedContentType,
+		"payload":                       row.Payload,
+		"status":                        row.Status,
+		"attempt_count":                 row.AttemptCount,
+		"next_attempt_at":               row.NextAttemptAt,
+		"claim_expires_at":              row.ClaimExpiresAt,
+		"last_attempt_at":               row.LastAttemptAt,
+		"last_status_code":              row.LastStatusCode,
+		"last_error":                    row.LastError,
+		"created_at":                    row.CreatedAt,
+		"modified_at":                   row.ModifiedAt,
 	}
-	out := make([]app.HTTPTemplateSecretRefInput, 0, len(rows))
+}
+
+func notificationUserInfosForJSON(rows []task.UserInfo) []task.JSONUserInfo {
+	out := make([]task.JSONUserInfo, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, app.HTTPTemplateSecretRefInput{Alias: row.Alias, ConfigKey: row.ConfigKey})
+		out = append(out, task.UserInfoToJSON(row))
 	}
-	return &out
+	return out
 }
 
-func slicePtrIfSet(values []string) *[]string {
-	if len(values) == 0 {
-		return nil
-	}
-	return &values
-}
-
-func stringPtrIfSet(value string) *string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
-func intPtrIfSet(value int) *int {
-	if value == 0 {
-		return nil
-	}
-	return &value
-}
-
-func int64PtrIfSet(value int64) *int64 {
-	if value == 0 {
-		return nil
-	}
-	return &value
-}
-
-func parseDurationSeconds(raw string) (int64, error) {
-	if strings.TrimSpace(raw) == "" {
-		return 0, nil
-	}
-	dur, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, err
-	}
-	return int64(dur.Seconds()), nil
-}
+var _ = context.Background

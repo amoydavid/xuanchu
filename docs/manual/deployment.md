@@ -83,9 +83,9 @@ chmod 600 ~/.local/share/xuanchu/xuanchu.db
 chmod 600 /path/to/backup.db
 ```
 
-## Webhook 出站网络
+## 出站网络
 
-dispatcher 需要访问外部 webhook URL。默认禁止投递到私网、loopback、link-local、multicast、unspecified 等地址。
+hook dispatcher 和 notification dispatcher 需要访问外部 webhook / HTTP template URL。默认禁止投递到私网、loopback、link-local、multicast、unspecified 等地址。
 
 HTTP 3xx redirect 不会被自动跟随。
 
@@ -93,8 +93,11 @@ HTTP 3xx redirect 不会被自动跟随。
 
 - 服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口。
 - `xuanchu server` 启动后会自动运行 webhook dispatcher。
+- `xuanchu server` 启动后会自动运行 reminder scheduler 和 notification dispatcher。
 - Hook 投递失败不会回滚已提交的 task/project 事务。
+- Notification 投递失败不会修改任务状态。
 - Dead-lettered delivery 可通过 `xuanchu hook replay <delivery-id>` 手动重试。
+- Dead-lettered notification delivery 可通过 `xuanchu notification delivery replay <delivery-id>` 手动重试。
 
 ## PostgreSQL 部署
 
@@ -134,4 +137,3 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 ```bash
 scripts/release-build.sh
 ```
-

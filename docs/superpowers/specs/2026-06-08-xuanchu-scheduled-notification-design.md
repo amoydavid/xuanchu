@@ -36,27 +36,6 @@ Xuanchu 当前已经具备：
 
 因此，定时通知必须成为 Xuanchu 服务端的显式规则能力，而不是普通 Hook 的副作用。
 
-### 1.1 现状与目标模型的对应关系
-
-你前面提的四段式是对的，通知规则更清晰的目标形态应是：
-
-- `schedule`：什么时候触发
-- `task filter/query`：哪些任务进入候选集
-- `audience`：发给谁
-- `template`：怎么发、发到哪
-
-当前代码已经落库的部分是：
-
-- `reminder_rules`：`schedule + audience + sink 引用 + project scope`
-- `notification_sinks`：`template + endpoint resolver + secret/config 引用`
-- `notification_deliveries`：一次具体投递的快照、重试和状态
-
-当前**还没有独立持久化**的部分是：
-
-- `task filter/query`
-
-现在调度器里仍然是写死的候选任务条件，后面应该把它提升成规则字段，而不是继续藏在代码里。
-
 ## 2. 设计目标
 
 首版完成后，应支持：
@@ -196,7 +175,6 @@ Notification sink 不应该只支持一个写死 URL。现实集成里常见需�
 - `offset_seconds`
 - `after_seconds`
 - `repeat_policy`
-- `task_filter_json`
 - `audience_type`
 - `recipient_user_ids_json`
 - `sink_id`
@@ -221,8 +199,6 @@ Notification sink 不应该只支持一个写死 URL。现实集成里常见需�
 - `once`
 - `every:<duration>`
 
-`task_filter_json` 是 reminder rule 的独立查询条件，表达“哪些任务进入候选集”。它应当使用 Xuanchu 现有的结构化 query 表达，而不是靠硬编码的状态判断。
-
 规则：
 
 - `project_id` 为空表示 workspace 级规则。
@@ -231,20 +207,6 @@ Notification sink 不应该只支持一个写死 URL。现实集成里常见需�
 - `overdue` 可设置 `after_seconds >= 0`。
 - `repeat_policy=once` 表示同一任务、同一 recipient、同一 trigger 只通知一次。
 - `repeat_policy=every:24h` 表示按固定窗口重复通知，直到任务不再满足条件。
-- `task_filter_json` 与 `schedule` 是独立维度；比如“未开始/进行中但未结束”可以写成一个 or 组合过滤条件，而不是拆成多个 rule。
-
-### 5.1.1 四段式落库映射
-
-为了避免“逻辑上有四块，表里却只看见三块”的混乱，推荐把职责固定成下面这样：
-
-| 逻辑块 | 当前落点 | 说明 |
-|---|---|---|
-| schedule | `reminder_rules.trigger_type` / `offset_seconds` / `after_seconds` / `repeat_policy` | 只描述时间窗口，不描述任务筛选 |
-| task filter/query | `reminder_rules.task_filter_json` | 候选任务筛选条件，应该是结构化表达式，不是硬编码 SQL |
-| audience | `reminder_rules.audience_type` / `recipient_user_ids_json` | 决定最终收件人 |
-| template | `notification_sinks.*` | 决定 endpoint、HTTP 模板、secret 引用 |
-
-`notification_deliveries` 不属于规则定义层，它只保存一次投递的冻结快照和运行态状态。
 
 ### 5.2 Notification Sink
 

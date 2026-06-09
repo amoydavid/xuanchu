@@ -1,16 +1,10 @@
 {
-  "description": "Get notification sink details.",
+  "description": "Get notification sink details; read-only.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "project": {
-        "type": "string"
-      },
-      "project_id": {
-        "type": "string"
-      },
       "sink": {
-        "description": "sink ID or name",
+        "description": "notification sink ID",
         "type": "string"
       },
       "workspace": {

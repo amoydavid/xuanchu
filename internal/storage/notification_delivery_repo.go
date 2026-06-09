@@ -11,6 +11,14 @@ type NotificationDeliveryRepository struct {
 	db *gorm.DB
 }
 
+type NotificationDeliveryListOptions struct {
+	WorkspaceID string
+	SinkID      string
+	Status      string
+	Limit       int
+	Offset      int
+}
+
 func NewNotificationDeliveryRepository(db *gorm.DB) *NotificationDeliveryRepository {
 	return &NotificationDeliveryRepository{db: db}
 }
@@ -19,10 +27,18 @@ func (r *NotificationDeliveryRepository) Enqueue(rows []NotificationDelivery) er
 	if len(rows) == 0 {
 		return nil
 	}
-	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "dedupe_key"}},
-		DoNothing: true,
-	}).Create(&rows).Error
+	return r.db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "dedupe_key"}}, DoNothing: true}).Create(&rows).Error
+}
+
+func (r *NotificationDeliveryRepository) ExistsByDedupeKey(dedupeKey string) (bool, error) {
+	if dedupeKey == "" {
+		return false, nil
+	}
+	var count int64
+	if err := r.db.Model(&NotificationDelivery{}).Where("dedupe_key = ?", dedupeKey).Limit(1).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *NotificationDeliveryRepository) GetByID(id string) (NotificationDelivery, error) {
@@ -35,15 +51,27 @@ func (r *NotificationDeliveryRepository) GetByID(id string) (NotificationDeliver
 }
 
 func (r *NotificationDeliveryRepository) List(workspaceID string, status string, limit int, offset int) ([]NotificationDelivery, error) {
-	query := r.db.Where("workspace_id = ?", workspaceID)
-	if status != "" {
-		query = query.Where("status = ?", status)
+	return r.ListWithOptions(NotificationDeliveryListOptions{
+		WorkspaceID: workspaceID,
+		Status:      status,
+		Limit:       limit,
+		Offset:      offset,
+	})
+}
+
+func (r *NotificationDeliveryRepository) ListWithOptions(opts NotificationDeliveryListOptions) ([]NotificationDelivery, error) {
+	query := r.db.Where("workspace_id = ?", opts.WorkspaceID)
+	if opts.SinkID != "" {
+		query = query.Where("sink_id = ?", opts.SinkID)
 	}
-	if offset > 0 {
-		query = query.Offset(offset)
+	if opts.Status != "" {
+		query = query.Where("status = ?", opts.Status)
 	}
-	if limit > 0 {
-		query = query.Limit(limit)
+	if opts.Offset > 0 {
+		query = query.Offset(opts.Offset)
+	}
+	if opts.Limit > 0 {
+		query = query.Limit(opts.Limit)
 	}
 	var rows []NotificationDelivery
 	err := query.Order("created_at DESC").Find(&rows).Error
@@ -63,11 +91,7 @@ func (r *NotificationDeliveryRepository) ClaimDue(now int64, claimExpiresAt int6
 UPDATE notification_deliveries
 SET
 	status = ?,
-	claim_expires_at = CASE
-		WHEN CAST(? AS BIGINT) > 60
-		THEN CAST(? AS BIGINT) + CAST(? AS BIGINT)
-		ELSE CAST(? AS BIGINT) + 60
-	END,
+	claim_expires_at = ? + MAX(?, COALESCE((SELECT timeout_seconds FROM notification_sinks WHERE notification_sinks.id = notification_deliveries.sink_id), 0) + 60),
 	attempt_count = attempt_count + 1,
 	modified_at = ?
 WHERE id IN (
@@ -80,10 +104,8 @@ WHERE id IN (
 )
 RETURNING *`,
 		DeliveryStatusDelivering,
-		baseTTL,
 		now,
 		baseTTL,
-		now,
 		now,
 		DeliveryStatusQueued,
 		DeliveryStatusRetryWait,
@@ -145,6 +167,9 @@ func (r *NotificationDeliveryRepository) MarkDeadLettered(id string, now int64, 
 }
 
 func (r *NotificationDeliveryRepository) MarkDisabledSkipped(id string, now int64, message string) error {
+	if message == "" {
+		message = "notification disabled"
+	}
 	return r.db.Model(&NotificationDelivery{}).Where("id = ?", id).Updates(map[string]any{
 		"status":           DeliveryStatusDisabledSkipped,
 		"last_error":       message,

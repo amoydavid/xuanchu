@@ -1,19 +1,10 @@
 {
-  "description": "Replay notification delivery.",
+  "description": "Replay a dead-lettered or skipped notification delivery; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "delivery": {
+      "delivery_id": {
         "description": "notification delivery ID",
-        "type": "string"
-      },
-      "limit": {
-        "type": "integer"
-      },
-      "offset": {
-        "type": "integer"
-      },
-      "status": {
         "type": "string"
       },
       "workspace": {
@@ -21,7 +12,7 @@
       }
     },
     "required": [
-      "delivery"
+      "delivery_id"
     ],
     "type": "object"
   },
