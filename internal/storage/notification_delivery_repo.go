@@ -91,7 +91,7 @@ func (r *NotificationDeliveryRepository) ClaimDue(now int64, claimExpiresAt int6
 UPDATE notification_deliveries
 SET
 	status = ?,
-	claim_expires_at = ? + MAX(?, COALESCE((SELECT timeout_seconds FROM notification_sinks WHERE notification_sinks.id = notification_deliveries.sink_id), 0) + 60),
+	claim_expires_at = `+notificationClaimExpiresAtSQL()+`,
 	attempt_count = attempt_count + 1,
 	modified_at = ?
 WHERE id IN (
@@ -104,8 +104,10 @@ WHERE id IN (
 )
 RETURNING *`,
 		DeliveryStatusDelivering,
+		baseTTL,
 		now,
 		baseTTL,
+		now,
 		now,
 		DeliveryStatusQueued,
 		DeliveryStatusRetryWait,
@@ -113,6 +115,14 @@ RETURNING *`,
 		limit,
 	).Scan(&rows).Error
 	return rows, err
+}
+
+func notificationClaimExpiresAtSQL() string {
+	return `CASE
+		WHEN CAST(? AS BIGINT) > COALESCE((SELECT timeout_seconds FROM notification_sinks WHERE notification_sinks.id = notification_deliveries.sink_id), 0) + 60
+		THEN CAST(? AS BIGINT) + CAST(? AS BIGINT)
+		ELSE CAST(? AS BIGINT) + COALESCE((SELECT timeout_seconds FROM notification_sinks WHERE notification_sinks.id = notification_deliveries.sink_id), 0) + 60
+	END`
 }
 
 func (r *NotificationDeliveryRepository) RecoverStaleDelivering(now int64) (int64, error) {

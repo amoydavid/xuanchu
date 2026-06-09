@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -232,6 +233,16 @@ func TestNotificationDeliveryRepositoryClaimDue(t *testing.T) {
 	}
 	if claimed[0].Status != DeliveryStatusDelivering || claimed[0].AttemptCount != 1 {
 		t.Fatalf("claimed row status/attempt = %s/%d", claimed[0].Status, claimed[0].AttemptCount)
+	}
+}
+
+func TestNotificationDeliveryClaimDueSQLAvoidsPostgresUntypedMax(t *testing.T) {
+	sql := notificationClaimExpiresAtSQL()
+	if strings.Contains(sql, "MAX(?") {
+		t.Fatalf("claim expiry SQL contains untyped MAX parameter: %s", sql)
+	}
+	if !strings.Contains(sql, "CAST(? AS BIGINT)") || !strings.Contains(sql, "CASE") {
+		t.Fatalf("claim expiry SQL should cast bind params and use CASE: %s", sql)
 	}
 }
 
