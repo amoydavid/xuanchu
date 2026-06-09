@@ -34,6 +34,7 @@
 | M16 | 已完成 | 定时通知、动态 endpoint 与 HTTP request template sink |
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
 | v0.2.0 | 已完成 | 定时通知、动态 endpoint、HTTP request template sink 与 MCP Skill 文档整理 |
+| v0.3.0 | 规划中 | 事件通知、Hook sink 化与下一批语义事件 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -54,6 +55,62 @@ v0.2.0 在 v0.1.1 已具备的稳定短任务引用、CLI / HTTP / MCP / Remote 
 
 - M16：定时通知、动态 endpoint 与 HTTP request template sink。
 - Agent Skill 文档整理：`docs/skills/*/SKILL.md` 已覆盖当前 95 个 MCP tool。
+
+## v0.3.0：事件通知、Hook sink 化与语义事件补齐
+
+**状态：规划中。**
+
+v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 outbound sink，并补齐事件触发的用户通知规则。当前规格和实现计划只实现首批事件，不一次性补完所有语义事件。
+
+当前实现范围：
+
+- Hook 使用 `--sink <sink-ref>`，不再使用 `--url`。
+- `sink-ref` 按 workspace 隔离，Hook / Notification Rule 保存 `sink_id`。
+- 新增或补齐 `project.annotated`、`project.denotated`、`task.unblocked`。
+- 新增 event notification rule，让 `task.unblocked` 等事件可以通过 OpenClaw 或其他 sink 通知用户。
+
+下一大版本必须补充的 Priority 1 事件：
+
+- `task.assigned`
+- `task.unassigned`
+- `task.started`
+- `task.stopped`
+- `task.blocked`
+- `task.due_changed`
+- `task.priority_changed`
+- `task.project_changed`
+- `task.tags_changed`
+
+下一大版本候选的 Priority 2 事件：
+
+- `task.annotated`
+- `task.denotated`
+- `task.link_added`
+- `task.link_removed`
+- `project.created`
+- `project.updated`
+- `workspace.member_added`
+- `workspace.member_removed`
+- `workspace.member_role_changed`
+
+事件 payload 要求：
+
+- 所有 `task.*` 语义事件必须携带标准 task 快照，不只给 task UUID。
+- `task` 快照至少包含 `uuid`、`working_id`、`workspace_id`、`description`、`status`、`project`、`priority`、核心时间字段、`tags`、`assignees`、`depends`、`blocked`，可稳定计算时包含 `urgency`。
+- 事件差异信息放在 `task` 之外，例如 `previous_due` / `current_due`、`added_tags` / `removed_tags`、`previous_assignees` / `current_assignees`。
+- 用户字段继续使用 `task.UserInfo`，不输出裸 UUID。
+
+定时条件事件边界：
+
+- `task.due_soon`、`task.overdue` 如果进入统一事件体系，应由 scheduler / reminder rule 对时间条件扫描后生成。
+- `due` 字段被修改只触发 `task.due_changed`，不直接触发 `task.due_soon` 或 `task.overdue`。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-06-09-xuanchu-event-notification-and-hook-events-design.md
+docs/superpowers/plans/2026-06-09-xuanchu-event-notification-and-hook-events-implementation.md
+```
 
 ## v0.1.1：稳定短任务标识 task_slug
 
