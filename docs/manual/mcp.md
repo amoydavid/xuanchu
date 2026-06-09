@@ -288,7 +288,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 ## Tools
 
-当前提供 74 个 tools。
+当前提供 95 个 tools。
 
 ### 任务（16 tools）
 
@@ -1015,6 +1015,183 @@ Ping Hook（写审计日志）。
 |---|---|---|---|
 | `workspace` | string | 否 | |
 | `hook` | string | 是 | Hook ID |
+
+### 通知与提醒（17 tools）
+
+通知与提醒是时间驱动的投递能力。`notification_*` 管理 sink 和 delivery，`reminder_*` 管理基于 `due` 的提醒规则。
+
+#### `notification_sink_add`
+
+创建 notification sink。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `name` | string | 是 | sink 名称 |
+| `type` | string | 否 | `webhook` 或 `http_template` |
+| `endpoint_mode` | string | 否 | `static_url`、`template` 或 `config_value` |
+| `url` | string | 否 | static endpoint URL |
+| `url_template` | string | 否 | 动态 endpoint 模板 |
+| `config_key` | string | 否 | `config_value` endpoint 对应配置 key |
+| `allowed_hosts` | string[] | 否 | 动态 endpoint 允许的 host |
+| `header_templates` | object[] | 否 | HTTP header 模板，保存到数据库 |
+| `body_template` | string | 否 | HTTP body 模板，保存到数据库 |
+| `body_content_type` | string | 否 | body content type |
+| `secret_refs` | object[] | 否 | secret alias 到 secret config key 的映射 |
+| `secret` | string | 否 | webhook 签名 secret |
+| `timeout_seconds` | int | 否 | |
+| `max_attempts` | int | 否 | |
+
+#### `notification_sink_list`
+
+列出 notification sink。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `include_disabled` | bool | 否 | 是否包含 disabled sink |
+
+#### `notification_sink_info`
+
+查看 notification sink。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `sink` | string | 是 | sink ID |
+
+#### `notification_sink_modify`
+
+修改 notification sink。未传字段保持不变。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `sink` | string | 是 | sink ID |
+| `name` | string | 否 | |
+| `type` | string | 否 | |
+| `endpoint_mode` | string | 否 | |
+| `url` | string | 否 | |
+| `url_template` | string | 否 | |
+| `config_key` | string | 否 | |
+| `allowed_hosts` | string[] | 否 | |
+| `header_templates` | object[] | 否 | |
+| `body_template` | string | 否 | |
+| `body_content_type` | string | 否 | |
+| `secret_refs` | object[] | 否 | |
+| `secret` | string | 否 | |
+| `timeout_seconds` | int | 否 | |
+| `max_attempts` | int | 否 | |
+
+#### `notification_sink_enable` / `notification_sink_disable` / `notification_sink_remove`
+
+启用、禁用或删除 notification sink。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `sink` | string | 是 | sink ID |
+
+#### `reminder_rule_add`
+
+创建 reminder rule。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | project slug |
+| `project_id` | string | 否 | project UUID |
+| `name` | string | 是 | 规则名称 |
+| `trigger_type` | string | 是 | `due_before` 或 `overdue` |
+| `offset_seconds` | int64 | 否 | `due_before` 提前秒数 |
+| `after_seconds` | int64 | 否 | `overdue` 延迟秒数 |
+| `repeat_policy` | string | 否 | `once` 或 `every:<duration>` |
+| `audience_type` | string | 是 | `assignees`、`explicit_users`、`assignees_and_explicit_users` |
+| `recipients` | string[] | 否 | 显式用户引用 |
+| `sink` | string | 是 | sink 名称或 ID |
+
+#### `reminder_rule_list`
+
+列出 reminder rule。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `include_disabled` | bool | 否 | 是否包含 disabled rule |
+
+#### `reminder_rule_info`
+
+查看 reminder rule。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `rule` | string | 是 | rule ID |
+
+#### `reminder_rule_modify`
+
+修改 reminder rule。未传字段保持不变。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | 当前访问 scope |
+| `project_id` | string | 否 | 当前访问 scope |
+| `rule` | string | 是 | rule ID |
+| `name` | string | 否 | |
+| `project_ref` | string | 否 | 新规则项目范围，空字符串表示清除项目范围 |
+| `trigger_type` | string | 否 | |
+| `offset_seconds` | int64 | 否 | |
+| `after_seconds` | int64 | 否 | |
+| `repeat_policy` | string | 否 | |
+| `audience_type` | string | 否 | |
+| `recipients` | string[] | 否 | |
+| `sink` | string | 否 | sink 名称或 ID |
+
+#### `reminder_rule_enable` / `reminder_rule_disable` / `reminder_rule_remove`
+
+启用、禁用或删除 reminder rule。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `rule` | string | 是 | rule ID |
+
+#### `notification_delivery_list`
+
+列出 notification delivery。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `sink` | string | 否 | sink ID |
+| `status` | string | 否 | delivery 状态 |
+| `limit` | int | 否 | 默认 50 |
+| `offset` | int | 否 | |
+
+#### `notification_delivery_info`
+
+查看 notification delivery。只读。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `delivery_id` | string | 是 | delivery ID |
+
+#### `notification_delivery_replay`
+
+重放 `dead_lettered` 或 `disabled_skipped` notification delivery。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `delivery_id` | string | 是 | delivery ID |
 
 ### Token（4 tools）
 

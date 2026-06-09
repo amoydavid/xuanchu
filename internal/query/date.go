@@ -11,6 +11,24 @@ func ParseDate(value string, now time.Time, loc *time.Location) (int64, error) {
 	if loc == nil {
 		loc = time.Local
 	}
+	if value == "now" {
+		return now.Unix(), nil
+	}
+	if strings.HasPrefix(value, "now+") || strings.HasPrefix(value, "now-") {
+		sign := value[3]
+		durationText := value[4:]
+		if durationText == "" || strings.HasPrefix(durationText, "+") || strings.HasPrefix(durationText, "-") {
+			return 0, fmt.Errorf("unsupported date %q", value)
+		}
+		duration, err := time.ParseDuration(durationText)
+		if err != nil {
+			return 0, err
+		}
+		if sign == '-' {
+			duration = -duration
+		}
+		return now.Add(duration).Unix(), nil
+	}
 	if ts, err := time.Parse(time.RFC3339, value); err == nil {
 		return ts.Unix(), nil
 	}

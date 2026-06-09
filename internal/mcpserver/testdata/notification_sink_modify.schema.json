@@ -1,0 +1,153 @@
+{
+  "description": "Modify a notification sink; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "allowed_hosts": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "body_content_type": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "body_template": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "config_key": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "endpoint_mode": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "header_templates": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "max_attempts": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "name": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "secret": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "secret_refs": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "type": "string"
+            },
+            "config_key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "alias",
+            "config_key"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "sink": {
+        "description": "notification sink ID",
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "type": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "url": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "url_template": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sink"
+    ],
+    "type": "object"
+  },
+  "name": "notification_sink_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

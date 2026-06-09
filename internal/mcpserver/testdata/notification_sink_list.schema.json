@@ -1,0 +1,30 @@
+{
+  "description": "List notification sinks; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "include_disabled": {
+        "type": "boolean"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "notification_sink_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

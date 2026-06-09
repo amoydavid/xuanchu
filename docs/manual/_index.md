@@ -33,6 +33,7 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 1. 读 [远程 CLI 与 HTTP API](remote-cli-and-api.md)
 2. 读 [MCP 使用指南](mcp.md)
 3. 读 [Webhook Hook 使用指南](hooks.md)
+4. 需要定时提醒时读 [定时通知与第三方通知](notifications.md)
 
 ## 手册章节
 
@@ -46,6 +47,7 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 - [远程 CLI 与 HTTP API](remote-cli-and-api.md)
 - [MCP 使用指南](mcp.md)
 - [Webhook Hook 使用指南](hooks.md)
+- [定时通知与第三方通知](notifications.md)
 - [部署指南](deployment.md)
 - [备份与恢复](backup-restore.md)
 - [常见问题与排障](troubleshooting.md)
@@ -60,6 +62,7 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 - `context` 是默认查询过滤器，不是权限边界。
 - `token` 是远程 CLI、HTTP API 和 HTTP MCP 的访问凭证。
 - `hook` 是服务端内部事件发生后的异步 webhook 投递能力。
+- `notification sink` 是定时提醒投递目标；`reminder rule` 是基于 due 的定时提醒规则。
 
 ## 当前能力范围
 
@@ -73,4 +76,5 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 - HTTP/JSON API、远程 CLI、PAT / Agent token
 - MCP stdio 与 HTTP transport
 - 服务端 Webhook Hook、投递重试、dead-letter、manual replay
+- 定时通知、HTTP request template sink、动态 endpoint 与 delivery replay
 - PostgreSQL 后端支持（`--db-url`）

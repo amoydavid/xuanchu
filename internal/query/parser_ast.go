@@ -126,7 +126,7 @@ func parsePredicate(tok string) (Expr, error) {
 
 	name, value, ok := strings.Cut(tok, ":")
 	if !ok {
-		if attr, op, err := parseAttributeOperator(tok); err == nil && op == OpNotNull {
+		if attr, op, err := parseAttributeOperator(tok); err == nil && (op == OpIsNull || op == OpNotNull) {
 			return Predicate{Attribute: attr, Operator: op}, nil
 		}
 		if field, ok := parseUDANotNull(tok); ok {
@@ -233,6 +233,8 @@ func parseAttributeOperator(name string) (Attribute, Operator, error) {
 		return attr, OpBefore, nil
 	case "after":
 		return attr, OpAfter, nil
+	case "isnull":
+		return attr, OpIsNull, nil
 	case "notnull":
 		return attr, OpNotNull, nil
 	default:

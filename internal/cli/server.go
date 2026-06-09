@@ -16,6 +16,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/hookruntime"
 	"git.dajee.net/dajee/xuanchu/internal/httpapi"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/notificationruntime"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,8 @@ import (
 func newServerCommand(opts Options) *cobra.Command {
 	var listen string
 	var shutdownTimeout time.Duration
+	var reminderSchedulerInterval time.Duration
+	var notificationDispatcherInterval time.Duration
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "启动 HTTP API 服务器",
@@ -84,7 +87,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				IdleTimeout:       120 * time.Second,
 			}
 
-			errCh := make(chan error, 2)
+			errCh := make(chan error, 4)
 			go func() {
 				if err := httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					errCh <- err
@@ -93,18 +96,38 @@ func newServerCommand(opts Options) *cobra.Command {
 
 			fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: server listening on http://%s\n", ln.Addr().String())
 
-			// 启动 webhook 投递调度器
-			dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
-				Store:   store,
-				Clock:   app.RealClock{},
-				Version: "dev",
+			hookDispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
+				Store:        store,
+				Clock:        app.RealClock{},
+				Version:      "dev",
+				PollInterval: notificationDispatcherInterval,
+			})
+			notificationDispatcher := notificationruntime.NewDispatcher(notificationruntime.DispatcherOptions{
+				Store:        store,
+				Clock:        app.RealClock{},
+				Version:      "dev",
+				PollInterval: notificationDispatcherInterval,
+			})
+			reminderScheduler := app.NewReminderScheduler(app.ReminderSchedulerOptions{
+				Store: store,
+				Clock: app.RealClock{},
 			})
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
 			go func() {
-				if err := dispatcher.Run(ctx); err != nil {
+				if err := hookDispatcher.Run(ctx); err != nil {
 					errCh <- fmt.Errorf("hook dispatcher: %w", err)
+				}
+			}()
+			go func() {
+				if err := notificationDispatcher.Run(ctx); err != nil {
+					errCh <- fmt.Errorf("notification dispatcher: %w", err)
+				}
+			}()
+			go func() {
+				if err := runReminderSchedulerLoop(ctx, reminderScheduler, reminderSchedulerInterval); err != nil {
+					errCh <- fmt.Errorf("reminder scheduler: %w", err)
 				}
 			}()
 
@@ -125,5 +148,31 @@ func newServerCommand(opts Options) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&listen, "listen", "", "HTTP listen address")
 	cmd.Flags().DurationVar(&shutdownTimeout, "shutdown-timeout", 30*time.Second, "graceful shutdown timeout")
+	cmd.Flags().DurationVar(&reminderSchedulerInterval, "reminder-scheduler-interval", 60*time.Second, "reminder scheduler interval")
+	cmd.Flags().DurationVar(&notificationDispatcherInterval, "notification-dispatcher-interval", 5*time.Second, "notification dispatcher interval")
 	return cmd
+}
+
+func runReminderSchedulerLoop(ctx context.Context, scheduler *app.ReminderScheduler, interval time.Duration) error {
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+	if _, err := scheduler.RunOnce(ctx); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if _, err := scheduler.RunOnce(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+		}
+	}
 }

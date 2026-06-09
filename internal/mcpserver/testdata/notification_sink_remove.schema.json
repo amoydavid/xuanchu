@@ -1,0 +1,34 @@
+{
+  "description": "Delete a notification sink; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "sink": {
+        "description": "notification sink ID",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sink"
+    ],
+    "type": "object"
+  },
+  "name": "notification_sink_remove",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

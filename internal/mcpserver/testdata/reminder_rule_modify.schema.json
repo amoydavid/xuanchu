@@ -1,0 +1,99 @@
+{
+  "description": "Modify a reminder rule; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "after_seconds": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "audience_type": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "name": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "offset_seconds": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "project_ref": {
+        "description": "new rule project scope; empty clears project scope",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "recipients": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "repeat_policy": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "rule": {
+        "description": "reminder rule ID",
+        "type": "string"
+      },
+      "sink": {
+        "description": "notification sink name or ID",
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "trigger_type": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "rule"
+    ],
+    "type": "object"
+  },
+  "name": "reminder_rule_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

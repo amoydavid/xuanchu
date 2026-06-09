@@ -147,6 +147,47 @@ func TestCompileQueryDateEqualUsesLocalDayRange(t *testing.T) {
 	}
 }
 
+func TestCompileQueryDateBeforeSupportsNowRelativeDuration(t *testing.T) {
+	loc := time.FixedZone("TEST", 8*60*60)
+	now := time.Date(2026, 6, 8, 14, 30, 0, 0, loc)
+	expr, err := query.ParseQuery(`due.before:now+24h`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, args, err := CompileQuery(expr, QueryCompileOptions{NowUnix: now.Unix(), Location: loc})
+	if err != nil {
+		t.Fatalf("CompileQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "due < ?") {
+		t.Fatalf("sql = %q, want due before predicate", sql)
+	}
+	want := now.Add(24 * time.Hour).Unix()
+	if len(args) != 1 || args[0] != want {
+		t.Fatalf("args = %#v, want [%d]", args, want)
+	}
+}
+
+func TestCompileQueryDateAfterSupportsNowInBooleanExpression(t *testing.T) {
+	loc := time.FixedZone("TEST", 8*60*60)
+	now := time.Date(2026, 6, 8, 14, 30, 0, 0, loc)
+	expr, err := query.ParseQuery(`(start.isnull or start.notnull) and due.after:now`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, args, err := CompileQuery(expr, QueryCompileOptions{NowUnix: now.Unix(), Location: loc})
+	if err != nil {
+		t.Fatalf("CompileQuery() error = %v", err)
+	}
+	for _, part := range []string{"start IS NULL", "start IS NOT NULL", "due > ?"} {
+		if !strings.Contains(sql, part) {
+			t.Fatalf("sql = %s, missing %s", sql, part)
+		}
+	}
+	if len(args) != 1 || args[0] != now.Unix() {
+		t.Fatalf("args = %#v, want [%d]", args, now.Unix())
+	}
+}
+
 func TestCompileQueryUDAFilters(t *testing.T) {
 	expr, err := query.ParseQuery(`estimate:3 reviewed:2026-05-28 reviewed.notnull legacy:`)
 	if err != nil {

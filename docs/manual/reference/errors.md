@@ -102,6 +102,22 @@ weight: 210
 | `hook_delivery_not_found` | delivery 不存在 |
 | `hook_delivery_not_replayable` | delivery 当前状态不可 replay |
 
+## Notification / Reminder
+
+| 错误码 | 含义 |
+|---|---|
+| `notification_sink_invalid` | notification sink 参数非法，例如缺少 URL、动态 endpoint 缺少 allowed host、HTTP template body JSON 非法 |
+| `notification_sink_not_found` | notification sink 不存在，或不属于当前 workspace |
+| `reminder_rule_invalid` | reminder rule 参数非法，例如 `due_before` 缺少正数 offset、trigger/audience/repeat 不支持 |
+| `reminder_rule_not_found` | reminder rule 不存在，或不属于当前 workspace/project scope |
+| `audience_unsupported` | 当前版本不支持该 reminder audience，例如 project owner/maintainer |
+| `notification_delivery_not_found` | notification delivery 不存在，或不属于当前 workspace |
+| `notification_delivery_not_replayable` | notification delivery 当前状态不可 replay |
+| `endpoint_template_invalid` | 动态 endpoint 模板非法，例如引用了 secret 变量 |
+| `endpoint_unresolved` | endpoint 无法解析，例如 config_value 模式缺少配置值或 URL 非法 |
+| `endpoint_mode_invalid` | endpoint mode 不支持 |
+| `endpoint_host_denied` | endpoint host 不在 allowed host 列表内，或被出站网络防护拒绝 |
+
 ## API / 远程 CLI
 
 | 错误码 | 含义 |

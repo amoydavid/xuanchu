@@ -34,6 +34,7 @@ func RegisterTools(s *mcp.Server, opts Options) {
 	registerContextTools(s, opts)
 	registerConfigTools(s, opts)
 	registerHookTools(s, opts)
+	registerNotificationTools(s, opts)
 	registerTokenTools(s, opts)
 	registerMiscTools(s, opts)
 }

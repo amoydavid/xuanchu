@@ -1,0 +1,34 @@
+{
+  "description": "Replay a dead-lettered or skipped notification delivery; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "delivery_id": {
+        "description": "notification delivery ID",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "delivery_id"
+    ],
+    "type": "object"
+  },
+  "name": "notification_delivery_replay",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

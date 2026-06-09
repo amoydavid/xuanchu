@@ -1,0 +1,128 @@
+{
+  "description": "Create a notification sink; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "allowed_hosts": {
+        "description": "allowed endpoint hosts for dynamic endpoints",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "body_content_type": {
+        "description": "rendered body content type",
+        "type": "string"
+      },
+      "body_template": {
+        "description": "HTTP body template persisted in the database",
+        "type": "string"
+      },
+      "config_key": {
+        "description": "config key for config_value endpoint mode",
+        "type": "string"
+      },
+      "endpoint_mode": {
+        "description": "static_url, template, or config_value",
+        "type": "string"
+      },
+      "header_templates": {
+        "description": "HTTP header templates persisted in the database",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "max_attempts": {
+        "type": "integer"
+      },
+      "name": {
+        "description": "sink name",
+        "type": "string"
+      },
+      "secret": {
+        "description": "webhook signing secret",
+        "type": "string"
+      },
+      "secret_refs": {
+        "description": "secret aliases backed by secret config keys",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "type": "string"
+            },
+            "config_key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "alias",
+            "config_key"
+          ],
+          "type": "object"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "timeout_seconds": {
+        "type": "integer"
+      },
+      "type": {
+        "description": "webhook or http_template",
+        "type": "string"
+      },
+      "url": {
+        "description": "static endpoint URL",
+        "type": "string"
+      },
+      "url_template": {
+        "description": "controlled URL template",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "name": "notification_sink_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

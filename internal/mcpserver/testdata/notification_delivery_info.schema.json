@@ -1,0 +1,34 @@
+{
+  "description": "Get notification delivery details; read-only.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "delivery_id": {
+        "description": "notification delivery ID",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "delivery_id"
+    ],
+    "type": "object"
+  },
+  "name": "notification_delivery_info",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

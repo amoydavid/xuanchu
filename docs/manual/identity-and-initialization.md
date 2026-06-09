@@ -149,7 +149,7 @@ curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
 ```bash
 xuanchu --workspace dajee token create admin \
   --type pat \
-  --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write \
+  --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write,notification:read,notification:write,reminder:read,reminder:write \
   --expires-in 720h
 ```
 

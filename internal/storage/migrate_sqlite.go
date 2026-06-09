@@ -22,10 +22,13 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareWorkspaceSchemaForM4(); err != nil {
 		return err
 	}
+	if err := s.prepareReminderRuleScheduleColumns(); err != nil {
+		return err
+	}
 	if err := s.prepareProjectNextTaskSeqColumnForV011(); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &UserExternalID{}); err != nil {
+	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &NotificationDelivery{}, &UserExternalID{}); err != nil {
 		return err
 	}
 	if err := s.db.AutoMigrate(&TaskTag{}, &TaskAnnotation{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {
@@ -36,6 +39,29 @@ func (s *Store) migrateSQLite() error {
 	}
 	if err := s.prepareTaskSlugSchemaForV011(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (s *Store) prepareReminderRuleScheduleColumns() error {
+	if !s.db.Migrator().HasTable(&ReminderRule{}) {
+		return nil
+	}
+	columns := []struct {
+		name string
+		sql  string
+	}{
+		{name: "schedule_type", sql: "ALTER TABLE reminder_rules ADD COLUMN schedule_type TEXT NOT NULL DEFAULT ''"},
+		{name: "schedule_value", sql: "ALTER TABLE reminder_rules ADD COLUMN schedule_value TEXT NOT NULL DEFAULT ''"},
+		{name: "filter_source", sql: "ALTER TABLE reminder_rules ADD COLUMN filter_source TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, column := range columns {
+		if s.db.Migrator().HasColumn(&ReminderRule{}, column.name) {
+			continue
+		}
+		if err := s.db.Exec(column.sql).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }

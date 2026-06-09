@@ -9,6 +9,7 @@
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
 - `workspace` 作为企业 / 租户级隔离边界；`project` 表示企业内的真实项目
 - 支持多用户、权限、审计、行级隔离，并为 Agent token 和 MCP scope 预留边界
+- 支持服务端 Hook、定时通知、动态 endpoint 和 HTTP request template sink
 - 借鉴 Taskwarrior 的核心命令名、JSON 迁移格式与 urgency 公式；企业能力优先于完全兼容
 
 ## 详细需求
@@ -473,6 +474,7 @@ M4 新增了企业运行时基础：
 - M6：在稳定 project scope 上提供 HTTP/JSON API、远程 CLI 和 Agent token。
 - M7：提供企业 Agent MCP Server，让 Agent 通过受权限约束的 tool 操作任务。
 - M8：提供服务端 Hook / 自动化扩展与运维交付打磨。主线是内部事件触发的 webhook hook；不做业务域 adapter、不做 memory，也不做 replica/sync。
+- M16：提供规则驱动的定时通知，让任务到期前和逾期后可以通知 assignee，并支持 OpenClaw webhook 和第三方 HTTP request template。
 
 权限模型：
 
@@ -708,7 +710,7 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 常用 capability：
 
 ```text
-task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write impersonate
+task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write notification:read notification:write reminder:read reminder:write impersonate
 ```
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
@@ -752,27 +754,30 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 
 | Tool | 说明 |
 |---|---|
-| `task.add` | 添加任务 |
-| `task.modify` | 修改任务 |
-| `task.done` | 完成任务 |
-| `task.delete` | 删除任务 |
-| `task.query` | 通用查询，支持 filter、status、limit |
-| `task.get` | 按 UUID 读取任务；stdio 模式可使用工作集 ID |
-| `task.annotate` | 添加注释 |
-| `task.depends` | 添加依赖 |
-| `task.start` | 开始任务 |
-| `task.stop` | 停止任务 |
-| `report.run` | 运行预定义报表 |
-| `urgency.explain` | 解释 urgency 构成 |
-| `workspace.list` | 列出可见 workspace |
-| `workspace.current` | 当前 workspace |
-| `project.list` | 列出当前 workspace 项目 |
-| `project.get` | 读取单个项目 |
-| `project.current` | 当前 project scope |
-| `context.set` | 设置 active context |
-| `context.show` | 显示 active context |
-| `config.get` | 读取配置 |
-| `config.set` | 写入配置 |
+| `task_add` | 添加任务 |
+| `task_modify` | 修改任务 |
+| `task_done` | 完成任务 |
+| `task_delete` | 删除任务 |
+| `task_query` | 通用查询，支持 filter、status、limit |
+| `task_get` | 按 UUID 或 `task_slug` 读取任务 |
+| `task_annotate` | 添加注释 |
+| `task_depends` | 添加依赖 |
+| `task_start` | 开始任务 |
+| `task_stop` | 停止任务 |
+| `report_run` | 运行预定义报表 |
+| `urgency_explain` | 解释 urgency 构成 |
+| `workspace_list` | 列出可见 workspace |
+| `workspace_get_current` | 当前 workspace |
+| `project_list` | 列出当前 workspace 项目 |
+| `project_get` | 读取单个项目 |
+| `project_get_current` | 当前 project scope |
+| `context_set` | 设置 active context |
+| `context_get` | 显示 active context |
+| `config_get` | 读取配置 |
+| `config_set` | 写入配置 |
+| `notification_sink_add` | 创建通知 sink |
+| `reminder_rule_add` | 创建定时提醒规则 |
+| `notification_delivery_replay` | 重放失败通知投递 |
 
 每个 tool 返回 `{data, rendered}` 双格式：`data` 是结构化 JSON，`rendered` 是人类可读文本。
 
@@ -817,6 +822,28 @@ M8 为 `xuanchu server` 提供服务端 post-commit webhook hook。这里的 hoo
 ```
 
 Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`。投递失败不会回滚已提交的 task/project 事务。所有 hook 配置变更和人工 replay 都会写入 audit log。
+
+## 定时通知与第三方通知
+
+定时通知用于到期前和逾期后的提醒，和事件驱动 Hook 分开建模。管理员先创建 notification sink，再创建 reminder rule，`xuanchu server` 的后台 scheduler 会扫描 pending task 并生成 delivery。
+
+```bash
+./xuanchu notification sink add openclaw \
+  --type webhook \
+  --url https://openclaw.example.com/xuanchu/notifications \
+  --secret "$WEBHOOK_SECRET"
+
+./xuanchu reminder rule add due-before-4h \
+  --trigger due_before \
+  --offset 4h \
+  --audience assignees \
+  --sink openclaw
+
+./xuanchu notification delivery list --status dead_lettered
+./xuanchu notification delivery replay <delivery-id>
+```
+
+第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
 
 ## M10 Impersonation
 

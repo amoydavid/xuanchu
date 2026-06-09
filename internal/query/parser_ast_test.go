@@ -112,3 +112,30 @@ func TestParseQueryAssigneeAttribute(t *testing.T) {
 		t.Fatalf("String() = %q", got)
 	}
 }
+
+func TestParseQueryDateFieldKeepsNowRelativeValue(t *testing.T) {
+	expr, err := ParseQuery(`due.before:now+24h`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	pred, ok := expr.(Predicate)
+	if !ok {
+		t.Fatalf("ParseQuery() = %T, want Predicate", expr)
+	}
+	if pred.Value.Kind != ValueDate || pred.Value.Raw != "now+24h" {
+		t.Fatalf("value = %#v, want DateValue now+24h", pred.Value)
+	}
+	if got := expr.String(); got != `due before "now+24h"` {
+		t.Fatalf("String() = %q", got)
+	}
+}
+
+func TestParseQueryRecognizesIsNullModifier(t *testing.T) {
+	expr, err := ParseQuery(`start.isnull`)
+	if err != nil {
+		t.Fatalf("ParseQuery() error = %v", err)
+	}
+	if got := expr.String(); got != `start is_null` {
+		t.Fatalf("String() = %q", got)
+	}
+}

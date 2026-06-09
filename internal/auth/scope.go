@@ -15,6 +15,8 @@ var scopeRegistry = []string{
 	"audit:read",
 	"token:read", "token:write",
 	"hook:read", "hook:write",
+	"notification:read", "notification:write",
+	"reminder:read", "reminder:write",
 	"impersonate",
 }
 

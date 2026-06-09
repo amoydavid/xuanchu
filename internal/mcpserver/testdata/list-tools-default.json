@@ -1110,6 +1110,561 @@
       }
     },
     {
+      "description": "Get notification delivery details; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delivery_id": {
+            "description": "notification delivery ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id"
+        ],
+        "type": "object"
+      },
+      "name": "notification_delivery_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List notification deliveries; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "sink": {
+            "description": "notification sink ID",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "notification_delivery_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Replay a dead-lettered or skipped notification delivery; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delivery_id": {
+            "description": "notification delivery ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id"
+        ],
+        "type": "object"
+      },
+      "name": "notification_delivery_replay",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a notification sink; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_hosts": {
+            "description": "allowed endpoint hosts for dynamic endpoints",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "body_content_type": {
+            "description": "rendered body content type",
+            "type": "string"
+          },
+          "body_template": {
+            "description": "HTTP body template persisted in the database",
+            "type": "string"
+          },
+          "config_key": {
+            "description": "config key for config_value endpoint mode",
+            "type": "string"
+          },
+          "endpoint_mode": {
+            "description": "static_url, template, or config_value",
+            "type": "string"
+          },
+          "header_templates": {
+            "description": "HTTP header templates persisted in the database",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "max_attempts": {
+            "type": "integer"
+          },
+          "name": {
+            "description": "sink name",
+            "type": "string"
+          },
+          "secret": {
+            "description": "webhook signing secret",
+            "type": "string"
+          },
+          "secret_refs": {
+            "description": "secret aliases backed by secret config keys",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "alias": {
+                  "type": "string"
+                },
+                "config_key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "alias",
+                "config_key"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "type": {
+            "description": "webhook or http_template",
+            "type": "string"
+          },
+          "url": {
+            "description": "static endpoint URL",
+            "type": "string"
+          },
+          "url_template": {
+            "description": "controlled URL template",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "notification_sink_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Disable a notification sink; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sink": {
+            "description": "notification sink ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "notification_sink_disable",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Enable a notification sink; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sink": {
+            "description": "notification sink ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "notification_sink_enable",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get notification sink details; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sink": {
+            "description": "notification sink ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "notification_sink_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List notification sinks; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_disabled": {
+            "type": "boolean"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "notification_sink_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify a notification sink; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "body_content_type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "body_template": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "config_key": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endpoint_mode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "header_templates": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "max_attempts": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secret": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secret_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "alias": {
+                  "type": "string"
+                },
+                "config_key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "alias",
+                "config_key"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "sink": {
+            "description": "notification sink ID",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url_template": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "notification_sink_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete a notification sink; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sink": {
+            "description": "notification sink ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "notification_sink_remove",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Create a project in the effective workspace; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1584,6 +2139,378 @@
         "type": "object"
       },
       "name": "project_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a reminder rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "after_seconds": {
+            "description": "seconds after due for overdue",
+            "type": "integer"
+          },
+          "audience_type": {
+            "description": "assignees, explicit_users, or assignees_and_explicit_users",
+            "type": "string"
+          },
+          "name": {
+            "description": "rule name",
+            "type": "string"
+          },
+          "offset_seconds": {
+            "description": "seconds before due for due_before",
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "recipients": {
+            "description": "explicit recipient user refs",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "repeat_policy": {
+            "description": "once or every:\u003cduration\u003e",
+            "type": "string"
+          },
+          "sink": {
+            "description": "notification sink name or ID",
+            "type": "string"
+          },
+          "trigger_type": {
+            "description": "due_before or overdue",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "trigger_type",
+          "audience_type",
+          "sink"
+        ],
+        "type": "object"
+      },
+      "name": "reminder_rule_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Disable a reminder rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "reminder rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "reminder_rule_disable",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Enable a reminder rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "reminder rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "reminder_rule_enable",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get reminder rule details; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "reminder rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "reminder_rule_info",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List reminder rules; read-only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_disabled": {
+            "type": "boolean"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "reminder_rule_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify a reminder rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "after_seconds": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "audience_type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "offset_seconds": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "project_ref": {
+            "description": "new rule project scope; empty clears project scope",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "repeat_policy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rule": {
+            "description": "reminder rule ID",
+            "type": "string"
+          },
+          "sink": {
+            "description": "notification sink name or ID",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "trigger_type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "reminder_rule_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Delete a reminder rule; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "reminder rule ID",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "reminder_rule_remove",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

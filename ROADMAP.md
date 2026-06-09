@@ -31,6 +31,7 @@
 | M14 | 已完成 | 多数据库支持（SQLite / PostgreSQL） |
 | M14.1 | 已完成 | Token Scope 通配符与 Token Modify |
 | M15 | 已完成 | MCP Tool 全量覆盖（74 tool）与 Agent Skill 文档 |
+| M16 | 已完成 | 定时通知、动态 endpoint 与 HTTP request template sink |
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -943,6 +944,38 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 - `task_search` 全文搜索 tool（已讨论，方案 A：新增 Agent 友好搜索 tool，尚未实施）
 
+## M16：定时通知、动态 endpoint 与 HTTP request template sink
+
+**状态：已完成。**
+
+**目标：** 让 Xuanchu 能基于任务 `due` 和 reminder rule 生成定时通知，在到期前或逾期后提醒 assignee，并通过 OpenClaw webhook 或第三方固定 HTTP API 投递。
+
+**已交付内容：**
+
+- 新增 `notification_sinks`、`reminder_rules`、`notification_deliveries` 三类存储模型和 repository。
+- notification sink 支持 `webhook` 和 `http_template`。
+- endpoint 支持 `static_url`、`template`、`config_value` 三种模式；动态 endpoint 必须通过 allowed host 与 SSRF 校验。
+- HTTP request template 的 header/body/secret ref 保存在数据库中；delivery 生成时冻结 `resolved_url`、method、headers、body、content type。
+- reminder rule 支持 `due_before` 和 `overdue`；audience 首版支持 `assignees`、`explicit_users`、`assignees_and_explicit_users`。
+- `xuanchu server` 启动 reminder scheduler 和 notification dispatcher 后台循环。
+- CLI、HTTP API、Remote Client、MCP 全部贯通；MCP tool 从 74 扩展到 95。
+- delivery 支持 retry、dead-letter、disabled-skip 和人工 replay；replay 使用冻结请求快照，不重新渲染当前 sink 模板。
+- 新增中文手册 [定时通知与第三方通知](docs/manual/notifications.md)。
+
+**不进入 M16：**
+
+- 不内置 OpenClaw、飞书、Slack、邮件 adapter。
+- 不执行任意 shell、JS 或本地脚本。
+- 不支持 project owner / maintainer audience。
+- 不因为提醒而修改任务状态或 urgency。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-06-08-xuanchu-scheduled-notification-design.md
+docs/superpowers/plans/2026-06-08-xuanchu-scheduled-notification-implementation.md
+```
+
 ## v0.1.0：基础设施与发布准备
 
 **状态：已完成。**
@@ -969,7 +1002,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.1.0 已发布。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（74 tool）、服务端 Webhook Hook、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
+v0.1.0 已发布。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（95 tool）、服务端 Webhook Hook、定时通知、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
 
 后续方向待定，可能包括：
 

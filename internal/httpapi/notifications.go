@@ -1,0 +1,494 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+)
+
+type notificationSinkRequest struct {
+	Name            string                           `json:"name"`
+	Type            string                           `json:"type"`
+	EndpointMode    string                           `json:"endpoint_mode"`
+	URL             string                           `json:"url"`
+	URLTemplate     string                           `json:"url_template"`
+	ConfigKey       string                           `json:"config_key"`
+	AllowedHosts    []string                         `json:"allowed_hosts"`
+	HeaderTemplates []app.HTTPHeaderTemplateInput    `json:"header_templates"`
+	BodyTemplate    string                           `json:"body_template"`
+	BodyContentType string                           `json:"body_content_type"`
+	SecretRefs      []app.HTTPTemplateSecretRefInput `json:"secret_refs"`
+	Secret          string                           `json:"secret,omitempty"`
+	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty"`
+	MaxAttempts     int                              `json:"max_attempts,omitempty"`
+}
+
+type notificationSinkModifyRequest struct {
+	Name            *string                           `json:"name,omitempty"`
+	Type            *string                           `json:"type,omitempty"`
+	EndpointMode    *string                           `json:"endpoint_mode,omitempty"`
+	URL             *string                           `json:"url,omitempty"`
+	URLTemplate     *string                           `json:"url_template,omitempty"`
+	ConfigKey       *string                           `json:"config_key,omitempty"`
+	AllowedHosts    *[]string                         `json:"allowed_hosts,omitempty"`
+	HeaderTemplates *[]app.HTTPHeaderTemplateInput    `json:"header_templates,omitempty"`
+	BodyTemplate    *string                           `json:"body_template,omitempty"`
+	BodyContentType *string                           `json:"body_content_type,omitempty"`
+	SecretRefs      *[]app.HTTPTemplateSecretRefInput `json:"secret_refs,omitempty"`
+	Secret          *string                           `json:"secret,omitempty"`
+	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty"`
+	MaxAttempts     *int                              `json:"max_attempts,omitempty"`
+}
+
+type reminderRuleRequest struct {
+	Name          string   `json:"name"`
+	ProjectRef    string   `json:"project_ref"`
+	TriggerType   string   `json:"trigger_type"`
+	OffsetSeconds int64    `json:"offset_seconds"`
+	AfterSeconds  int64    `json:"after_seconds"`
+	RepeatPolicy  string   `json:"repeat_policy"`
+	AudienceType  string   `json:"audience_type"`
+	Recipients    []string `json:"recipients"`
+	SinkRef       string   `json:"sink_ref"`
+}
+
+type reminderRuleModifyRequest struct {
+	Name          *string   `json:"name,omitempty"`
+	ProjectRef    *string   `json:"project_ref,omitempty"`
+	TriggerType   *string   `json:"trigger_type,omitempty"`
+	OffsetSeconds *int64    `json:"offset_seconds,omitempty"`
+	AfterSeconds  *int64    `json:"after_seconds,omitempty"`
+	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
+	AudienceType  *string   `json:"audience_type,omitempty"`
+	Recipients    *[]string `json:"recipients,omitempty"`
+	SinkRef       *string   `json:"sink_ref,omitempty"`
+}
+
+func (s *Server) handleNotificationSinkList(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ListNotificationSinks(r.URL.Query().Get("all") == "true")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notificationSinkResponse(row))
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Request) {
+	var req notificationSinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.AddNotificationSink(app.NotificationSinkAddInput{
+		Name:            req.Name,
+		Type:            req.Type,
+		EndpointMode:    req.EndpointMode,
+		URL:             req.URL,
+		URLTemplate:     req.URLTemplate,
+		ConfigKey:       req.ConfigKey,
+		AllowedHosts:    req.AllowedHosts,
+		HTTPMethod:      "POST",
+		HeaderTemplates: req.HeaderTemplates,
+		BodyTemplate:    req.BodyTemplate,
+		BodyContentType: req.BodyContentType,
+		SecretRefs:      req.SecretRefs,
+		Secret:          req.Secret,
+		TimeoutSeconds:  req.TimeoutSeconds,
+		MaxAttempts:     req.MaxAttempts,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, notificationSinkResponse(view), nil)
+}
+
+func (s *Server) handleNotificationSinkInfo(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.NotificationSinkInfo(chi.URLParam(r, "sinkID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
+}
+
+func (s *Server) handleNotificationSinkModify(w http.ResponseWriter, r *http.Request) {
+	var req notificationSinkModifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ModifyNotificationSink(chi.URLParam(r, "sinkID"), app.NotificationSinkModifyInput{
+		Name:            req.Name,
+		Type:            req.Type,
+		EndpointMode:    req.EndpointMode,
+		URL:             req.URL,
+		URLTemplate:     req.URLTemplate,
+		ConfigKey:       req.ConfigKey,
+		AllowedHosts:    req.AllowedHosts,
+		HeaderTemplates: req.HeaderTemplates,
+		BodyTemplate:    req.BodyTemplate,
+		BodyContentType: req.BodyContentType,
+		SecretRefs:      req.SecretRefs,
+		Secret:          req.Secret,
+		TimeoutSeconds:  req.TimeoutSeconds,
+		MaxAttempts:     req.MaxAttempts,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
+}
+
+func (s *Server) handleNotificationSinkEnable(w http.ResponseWriter, r *http.Request) {
+	s.handleNotificationSinkToggle(w, r, true)
+}
+
+func (s *Server) handleNotificationSinkDisable(w http.ResponseWriter, r *http.Request) {
+	s.handleNotificationSinkToggle(w, r, false)
+}
+
+func (s *Server) handleNotificationSinkToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if enabled {
+		view, err := scoped.EnableNotificationSink(chi.URLParam(r, "sinkID"))
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
+		return
+	}
+	view, err := scoped.DisableNotificationSink(chi.URLParam(r, "sinkID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, notificationSinkResponse(view), nil)
+}
+
+func (s *Server) handleNotificationSinkDelete(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.DeleteNotificationSink(chi.URLParam(r, "sinkID")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleReminderRuleList(w http.ResponseWriter, r *http.Request) {
+	projectRef := requestProjectRef(r)
+	scoped, _, err := s.scopedService(r, "reminder:read", app.PermissionReminderRead, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ListReminderRules(projectRef, r.URL.Query().Get("all") == "true")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, reminderRuleResponse(row))
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request) {
+	var req reminderRuleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	projectRef := req.ProjectRef
+	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.AddReminderRule(app.ReminderRuleAddInput{
+		Name:          req.Name,
+		ProjectRef:    req.ProjectRef,
+		TriggerType:   req.TriggerType,
+		OffsetSeconds: req.OffsetSeconds,
+		AfterSeconds:  req.AfterSeconds,
+		RepeatPolicy:  req.RepeatPolicy,
+		AudienceType:  req.AudienceType,
+		Recipients:    req.Recipients,
+		SinkRef:       req.SinkRef,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, reminderRuleResponse(view), nil)
+}
+
+func (s *Server) handleReminderRuleInfo(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "reminder:read", app.PermissionReminderRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ReminderRuleInfo(chi.URLParam(r, "ruleID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
+}
+
+func (s *Server) handleReminderRuleModify(w http.ResponseWriter, r *http.Request) {
+	var req reminderRuleModifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	projectRef := ""
+	if req.ProjectRef != nil {
+		projectRef = *req.ProjectRef
+	}
+	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ModifyReminderRule(chi.URLParam(r, "ruleID"), app.ReminderRuleModifyInput{
+		Name:          req.Name,
+		ProjectRef:    req.ProjectRef,
+		TriggerType:   req.TriggerType,
+		OffsetSeconds: req.OffsetSeconds,
+		AfterSeconds:  req.AfterSeconds,
+		RepeatPolicy:  req.RepeatPolicy,
+		AudienceType:  req.AudienceType,
+		Recipients:    req.Recipients,
+		SinkRef:       req.SinkRef,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
+}
+
+func (s *Server) handleReminderRuleEnable(w http.ResponseWriter, r *http.Request) {
+	s.handleReminderRuleToggle(w, r, true)
+}
+
+func (s *Server) handleReminderRuleDisable(w http.ResponseWriter, r *http.Request) {
+	s.handleReminderRuleToggle(w, r, false)
+}
+
+func (s *Server) handleReminderRuleToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
+	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if enabled {
+		view, err := scoped.EnableReminderRule(chi.URLParam(r, "ruleID"))
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
+		return
+	}
+	view, err := scoped.DisableReminderRule(chi.URLParam(r, "ruleID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, reminderRuleResponse(view), nil)
+}
+
+func (s *Server) handleReminderRuleDelete(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.DeleteReminderRule(chi.URLParam(r, "ruleID")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return
+		}
+		limit = parsed
+	}
+	rows, err := scoped.ListNotificationDeliveries(r.URL.Query().Get("sink"), r.URL.Query().Get("status"), limit, 0)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notificationDeliveryResponse(row))
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleNotificationDeliveryInfo(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.NotificationDeliveryInfo(chi.URLParam(r, "deliveryID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, notificationDeliveryResponse(view), nil)
+}
+
+func (s *Server) handleNotificationDeliveryReplay(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ReplayNotificationDelivery(chi.URLParam(r, "deliveryID"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, notificationDeliveryResponse(view), nil)
+}
+
+func notificationSinkResponse(row app.NotificationSinkView) map[string]any {
+	return map[string]any{
+		"id":                row.ID,
+		"workspace_id":      row.WorkspaceID,
+		"name":              row.Name,
+		"type":              row.Type,
+		"endpoint_mode":     row.EndpointMode,
+		"url":               row.URL,
+		"url_template":      row.URLTemplate,
+		"config_key":        row.ConfigKey,
+		"allowed_hosts":     row.AllowedHosts,
+		"http_method":       row.HTTPMethod,
+		"header_templates":  row.HeaderTemplates,
+		"body_template":     row.BodyTemplate,
+		"body_content_type": row.BodyContentType,
+		"secret_refs":       row.SecretRefs,
+		"enabled":           row.Enabled,
+		"timeout_seconds":   row.TimeoutSeconds,
+		"max_attempts":      row.MaxAttempts,
+		"created_by":        task.UserInfoToJSON(row.CreatedBy),
+		"created_at":        row.CreatedAt,
+		"modified_at":       row.ModifiedAt,
+	}
+}
+
+func reminderRuleResponse(row app.ReminderRuleView) map[string]any {
+	return map[string]any{
+		"id":              row.ID,
+		"workspace_id":    row.WorkspaceID,
+		"project_id":      row.ProjectID,
+		"name":            row.Name,
+		"enabled":         row.Enabled,
+		"trigger_type":    row.TriggerType,
+		"offset_seconds":  row.OffsetSeconds,
+		"after_seconds":   row.AfterSeconds,
+		"repeat_policy":   row.RepeatPolicy,
+		"audience_type":   row.AudienceType,
+		"recipient_users": userInfosToJSON(row.RecipientUsers),
+		"sink_id":         row.SinkID,
+		"created_by":      task.UserInfoToJSON(row.CreatedBy),
+		"created_at":      row.CreatedAt,
+		"modified_at":     row.ModifiedAt,
+	}
+}
+
+func notificationDeliveryResponse(row app.NotificationDeliveryView) map[string]any {
+	return map[string]any{
+		"id":                            row.ID,
+		"workspace_id":                  row.WorkspaceID,
+		"project_id":                    row.ProjectID,
+		"rule_id":                       row.RuleID,
+		"sink_id":                       row.SinkID,
+		"task_uuid":                     row.TaskUUID,
+		"recipient":                     task.UserInfoToJSON(row.Recipient),
+		"event_id":                      row.EventID,
+		"event_type":                    row.EventType,
+		"resolved_url":                  row.ResolvedURL,
+		"resolved_endpoint_source":      row.ResolvedEndpointSource,
+		"resolved_endpoint_fingerprint": row.ResolvedEndpointFingerprint,
+		"rendered_method":               row.RenderedMethod,
+		"rendered_headers":              row.RenderedHeaders,
+		"rendered_body":                 row.RenderedBody,
+		"rendered_content_type":         row.RenderedContentType,
+		"payload":                       row.Payload,
+		"status":                        row.Status,
+		"attempt_count":                 row.AttemptCount,
+		"next_attempt_at":               row.NextAttemptAt,
+		"claim_expires_at":              row.ClaimExpiresAt,
+		"last_attempt_at":               row.LastAttemptAt,
+		"last_status_code":              row.LastStatusCode,
+		"last_error":                    row.LastError,
+		"created_at":                    row.CreatedAt,
+		"modified_at":                   row.ModifiedAt,
+	}
+}
+
+func userInfosToJSON(rows []task.UserInfo) []task.JSONUserInfo {
+	out := make([]task.JSONUserInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, task.UserInfoToJSON(row))
+	}
+	return out
+}

@@ -26,7 +26,7 @@ xuanchu server --listen :8080 --db-url "postgres://user:pass@localhost:5432/xuan
 ```bash
 xuanchu token create admin \
   --type pat \
-  --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write \
+  --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write,notification:read,notification:write,reminder:read,reminder:write \
   --expires-in 720h
 ```
 
@@ -99,6 +99,8 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
 | `token:read` / `token:write` | token list/create/modify/revoke |
 | `workspace:read` / `workspace:write` | workspace/member 管理 |
 | `hook:read` / `hook:write` | hook definition、delivery、replay |
+| `notification:read` / `notification:write` | notification sink、delivery、replay |
+| `reminder:read` / `reminder:write` | reminder rule 管理 |
 | `impersonate` | 以其他用户身份操作（仅 agent token） |
 
 project-scoped token 读不到 scope 外的任务。单任务越界读取返回 `task_not_found`，避免泄露资源存在性。
@@ -182,6 +184,45 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
 ```
 
 服务端模式下，`assignees` 只能引用当前 effective workspace 的成员；不存在的用户返回 `assignee_not_found`，跨 workspace 成员返回 `assignee_not_member`。
+
+### Notification / Reminder API
+
+notification sink：
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"openclaw","type":"webhook","endpoint_mode":"static_url","url":"https://openclaw.example.com/xuanchu/notifications","secret":"..."}' \
+  'https://xuanchu.example.com/api/v1/notification-sinks?workspace=dajee'
+
+curl -X PATCH \
+  -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"openclaw-prod"}' \
+  'https://xuanchu.example.com/api/v1/notification-sinks/<sink-id>?workspace=dajee'
+```
+
+reminder rule：
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"due-before-4h","trigger_type":"due_before","offset_seconds":14400,"audience_type":"assignees","sink_ref":"openclaw"}' \
+  'https://xuanchu.example.com/api/v1/reminder-rules?workspace=dajee'
+```
+
+delivery：
+
+```bash
+curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  'https://xuanchu.example.com/api/v1/notification-deliveries?workspace=dajee&status=dead_lettered'
+
+curl -X POST \
+  -H "Authorization: Bearer $XUANCHU_TOKEN" \
+  'https://xuanchu.example.com/api/v1/notification-deliveries/<delivery-id>/replay?workspace=dajee'
+```
 
 API 使用统一 envelope：
 

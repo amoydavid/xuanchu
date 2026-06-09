@@ -1,0 +1,77 @@
+{
+  "description": "Create a reminder rule; writes audit.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "after_seconds": {
+        "description": "seconds after due for overdue",
+        "type": "integer"
+      },
+      "audience_type": {
+        "description": "assignees, explicit_users, or assignees_and_explicit_users",
+        "type": "string"
+      },
+      "name": {
+        "description": "rule name",
+        "type": "string"
+      },
+      "offset_seconds": {
+        "description": "seconds before due for due_before",
+        "type": "integer"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "recipients": {
+        "description": "explicit recipient user refs",
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "repeat_policy": {
+        "description": "once or every:\u003cduration\u003e",
+        "type": "string"
+      },
+      "sink": {
+        "description": "notification sink name or ID",
+        "type": "string"
+      },
+      "trigger_type": {
+        "description": "due_before or overdue",
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "trigger_type",
+      "audience_type",
+      "sink"
+    ],
+    "type": "object"
+  },
+  "name": "reminder_rule_add",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}
