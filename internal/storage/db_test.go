@@ -187,6 +187,33 @@ func TestConfigDefinitionTableMigrated(t *testing.T) {
 	}
 }
 
+func TestNotificationSinkMaxConcurrencyColumnMigrated(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasColumn(&NotificationSink{}, "max_concurrency") {
+		t.Fatal("notification_sinks.max_concurrency column missing after migration")
+	}
+
+	var notNull int
+	var defaultValue sql.NullString
+	err = store.DB().Raw(`SELECT "notnull", dflt_value FROM pragma_table_info('notification_sinks') WHERE name = ?`, "max_concurrency").
+		Row().
+		Scan(&notNull, &defaultValue)
+	if err != nil {
+		t.Fatalf("pragma_table_info(max_concurrency) error = %v", err)
+	}
+	if notNull != 1 {
+		t.Fatalf("max_concurrency notnull = %d, want 1", notNull)
+	}
+	if !defaultValue.Valid || defaultValue.String != "0" {
+		t.Fatalf("max_concurrency default = %q valid=%v, want 0", defaultValue.String, defaultValue.Valid)
+	}
+}
+
 func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {

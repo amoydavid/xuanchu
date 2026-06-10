@@ -23,6 +23,7 @@ type NotificationSinkRequest struct {
 	Secret          string                           `json:"secret,omitempty"`
 	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty"`
 	MaxAttempts     int                              `json:"max_attempts,omitempty"`
+	MaxConcurrency  int                              `json:"max_concurrency,omitempty"`
 }
 
 type NotificationSinkModifyRequest struct {
@@ -40,6 +41,7 @@ type NotificationSinkModifyRequest struct {
 	Secret          *string                           `json:"secret,omitempty"`
 	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty"`
 	MaxAttempts     *int                              `json:"max_attempts,omitempty"`
+	MaxConcurrency  *int                              `json:"max_concurrency,omitempty"`
 }
 
 type ReminderRuleRequest struct {

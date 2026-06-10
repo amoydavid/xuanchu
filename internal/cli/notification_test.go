@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
 func TestNotificationCommandRegistered(t *testing.T) {
@@ -78,6 +80,67 @@ func TestCLINotificationSinkHTTPTemplateLifecycle(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Disabled notification sink") {
 		t.Fatalf("disable output = %q", stdout.String())
+	}
+}
+
+func TestNotificationSinkMaxConcurrency(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	db := setupHookTestDB(t)
+	opts := setupHookTestOpts(&stdout, &stderr)
+
+	cmd := NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "notification", "sink", "add", "openclaw", "--url", "https://example.com/notify", "--max-concurrency", "3"}); err != nil {
+		t.Fatalf("sink add error = %v", err)
+	}
+	var sink map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &sink); err != nil {
+		t.Fatalf("sink json error = %v: %s", err, stdout.String())
+	}
+	sinkID, _ := sink["id"].(string)
+	if sinkID == "" || sink["max_concurrency"] != float64(3) {
+		t.Fatalf("sink = %#v", sink)
+	}
+
+	stdout.Reset()
+	cmd = NewRootCommand(opts)
+	if err := Execute(cmd, opts, []string{"--db", db, "--json", "notification", "sink", "modify", sinkID, "--max-concurrency", "5"}); err != nil {
+		t.Fatalf("sink modify error = %v", err)
+	}
+	var modified map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &modified); err != nil {
+		t.Fatalf("modified sink json error = %v: %s", err, stdout.String())
+	}
+	if modified["max_concurrency"] != float64(5) {
+		t.Fatalf("modified sink = %#v", modified)
+	}
+}
+
+func TestNotificationSinkRemoteDTOIncludesMaxConcurrency(t *testing.T) {
+	addReq := notificationSinkInputToRemote(app.NotificationSinkAddInput{
+		Name:           "openclaw",
+		Type:           "webhook",
+		EndpointMode:   "static_url",
+		URL:            "https://example.com/notify",
+		MaxConcurrency: 3,
+	})
+	addJSON, err := json.Marshal(addReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(addJSON), `"max_concurrency":3`) {
+		t.Fatalf("add remote json = %s", string(addJSON))
+	}
+
+	maxConcurrency := 5
+	modReq := notificationSinkModifyInputToRemote(app.NotificationSinkModifyInput{
+		MaxConcurrency: &maxConcurrency,
+	})
+	modJSON, err := json.Marshal(modReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(modJSON), `"max_concurrency":5`) {
+		t.Fatalf("modify remote json = %s", string(modJSON))
 	}
 }
 

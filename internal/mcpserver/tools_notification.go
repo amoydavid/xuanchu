@@ -35,6 +35,7 @@ type NotificationSinkAddInput struct {
 	Secret          string                           `json:"secret,omitempty" jsonschema:"webhook signing secret"`
 	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty"`
 	MaxAttempts     int                              `json:"max_attempts,omitempty"`
+	MaxConcurrency  int                              `json:"max_concurrency,omitempty"`
 }
 
 func (in NotificationSinkAddInput) scopeInput() RequestScopeInput {
@@ -67,6 +68,7 @@ type NotificationSinkModifyInput struct {
 	Secret          *string                           `json:"secret,omitempty"`
 	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty"`
 	MaxAttempts     *int                              `json:"max_attempts,omitempty"`
+	MaxConcurrency  *int                              `json:"max_concurrency,omitempty"`
 }
 
 func (in NotificationSinkModifyInput) scopeInput() RequestScopeInput {
@@ -254,6 +256,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 			Secret:          in.Secret,
 			TimeoutSeconds:  in.TimeoutSeconds,
 			MaxAttempts:     in.MaxAttempts,
+			MaxConcurrency:  in.MaxConcurrency,
 		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -293,6 +296,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 			Secret:          in.Secret,
 			TimeoutSeconds:  in.TimeoutSeconds,
 			MaxAttempts:     in.MaxAttempts,
+			MaxConcurrency:  in.MaxConcurrency,
 		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -614,6 +618,7 @@ func notificationSinkViewForMCP(row app.NotificationSinkView) map[string]any {
 		"enabled":           row.Enabled,
 		"timeout_seconds":   row.TimeoutSeconds,
 		"max_attempts":      row.MaxAttempts,
+		"max_concurrency":   row.MaxConcurrency,
 		"created_by":        task.UserInfoToJSON(row.CreatedBy),
 		"created_at":        row.CreatedAt,
 		"modified_at":       row.ModifiedAt,

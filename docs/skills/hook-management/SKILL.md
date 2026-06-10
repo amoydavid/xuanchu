@@ -18,6 +18,7 @@ Hook 是事件驱动的出站集成。当 xuanchu 中发生特定事件时，系
 
 Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id`）。
 `sink` 可以是当前 workspace 内的 sink 名称或 ID；不能引用其他 workspace 的 sink。
+Hook 只引用 notification sink，不直接接收 URL 或 secret。sink 的 `max_concurrency` 控制同一 sink 的单进程出站并发；`0` 表示继承 dispatcher 默认 sink 并发。`xuanchu server` 内 hook dispatcher 与 notification dispatcher 共享同一个 sink limiter，同一 sink 的并发不会因为 Hook 和通知同时投递而翻倍。
 
 ## Hook 生命周期
 
@@ -129,8 +130,10 @@ notification_sink_add({
   "workspace": "dajee",
   "name": "ci-webhook",
   "type": "webhook",
+  "endpoint_mode": "static_url",
   "url": "https://ci.example.com/webhook",
-  "secret": "webhook-secret"
+  "secret": "webhook-secret",
+  "max_concurrency": 0
 })
 
 // Step 2: 创建 Hook

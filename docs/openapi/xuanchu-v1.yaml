@@ -548,7 +548,7 @@ components:
           type: string
     NotificationSink:
       type: object
-      required: [id, workspace_id, name, type, endpoint_mode, enabled, timeout_seconds, max_attempts, created_by, created_at, modified_at]
+      required: [id, workspace_id, name, type, endpoint_mode, enabled, timeout_seconds, max_attempts, max_concurrency, created_by, created_at, modified_at]
       properties:
         id:
           type: string
@@ -595,6 +595,10 @@ components:
           type: integer
         max_attempts:
           type: integer
+        max_concurrency:
+          type: integer
+          minimum: 0
+          description: 当前进程内该 sink 的最大并发投递数，0 表示继承默认 sink 并发；server 模式下继承 notification/hook dispatcher 统一计算出的默认值。
         created_by:
           type: object
           additionalProperties: true
@@ -645,6 +649,10 @@ components:
           type: integer
         max_attempts:
           type: integer
+        max_concurrency:
+          type: integer
+          minimum: 0
+          description: 当前进程内该 sink 的最大并发投递数，0 表示继承默认 sink 并发。
     NotificationSinkUpdateRequest:
       type: object
       properties:
@@ -685,6 +693,10 @@ components:
           type: integer
         max_attempts:
           type: integer
+        max_concurrency:
+          type: integer
+          minimum: 0
+          description: 当前进程内该 sink 的最大并发投递数，0 表示继承默认 sink 并发。
     ReminderRule:
       type: object
       required: [id, workspace_id, name, enabled, trigger_type, repeat_policy, schedule_type, schedule_value, filter_source, audience_type, recipient_users, sink_id, created_by, created_at, modified_at]

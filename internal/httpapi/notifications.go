@@ -26,6 +26,7 @@ type notificationSinkRequest struct {
 	Secret          string                           `json:"secret,omitempty"`
 	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty"`
 	MaxAttempts     int                              `json:"max_attempts,omitempty"`
+	MaxConcurrency  int                              `json:"max_concurrency,omitempty"`
 }
 
 type notificationSinkModifyRequest struct {
@@ -43,6 +44,7 @@ type notificationSinkModifyRequest struct {
 	Secret          *string                           `json:"secret,omitempty"`
 	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty"`
 	MaxAttempts     *int                              `json:"max_attempts,omitempty"`
+	MaxConcurrency  *int                              `json:"max_concurrency,omitempty"`
 }
 
 type reminderRuleRequest struct {
@@ -148,6 +150,7 @@ func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Req
 		Secret:          req.Secret,
 		TimeoutSeconds:  req.TimeoutSeconds,
 		MaxAttempts:     req.MaxAttempts,
+		MaxConcurrency:  req.MaxConcurrency,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -196,6 +199,7 @@ func (s *Server) handleNotificationSinkModify(w http.ResponseWriter, r *http.Req
 		Secret:          req.Secret,
 		TimeoutSeconds:  req.TimeoutSeconds,
 		MaxAttempts:     req.MaxAttempts,
+		MaxConcurrency:  req.MaxConcurrency,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -615,6 +619,7 @@ func notificationSinkResponse(row app.NotificationSinkView) map[string]any {
 		"enabled":           row.Enabled,
 		"timeout_seconds":   row.TimeoutSeconds,
 		"max_attempts":      row.MaxAttempts,
+		"max_concurrency":   row.MaxConcurrency,
 		"created_by":        task.UserInfoToJSON(row.CreatedBy),
 		"created_at":        row.CreatedAt,
 		"modified_at":       row.ModifiedAt,

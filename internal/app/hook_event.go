@@ -165,25 +165,6 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		if len(hooks) == 0 {
 			continue
 		}
-		envelope := map[string]any{
-			"event_id":       event.EventID,
-			"event_type":     event.EventType,
-			"event_version":  event.EventVersion,
-			"occurred_at":    event.OccurredAt,
-			"actor_user_id":  event.ActorUserID,
-			"workspace_id":   event.WorkspaceID,
-			"workspace_slug": event.WorkspaceSlug,
-			"project_id":     event.ProjectID,
-			"project_slug":   event.ProjectSlug,
-			"object_kind":    event.ObjectKind,
-			"object_id":      event.ObjectID,
-			"data":           event.Data,
-		}
-		payloadBytes, err := json.Marshal(envelope)
-		if err != nil {
-			return err
-		}
-
 		// 基础 headers（签名由 dispatcher 在发送时添加）
 		headers := map[string]string{
 			"X-Xuanchu-Event":         event.EventType,
@@ -198,12 +179,41 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		now := s.clock.Unix()
 		var deliveries []storage.HookDelivery
 		for _, hook := range hooks {
-			req, err := s.resolveHookDeliveryRequest(hook, event, string(payloadBytes))
+			deliveryID := uuid.NewString()
+			deliveryCtx := NotificationDeliveryContext{ID: deliveryID, Attempt: 1, WorkspaceID: event.WorkspaceID, SinkID: hook.SinkID}
+			objectCtx := NotificationObjectContext{Kind: event.ObjectKind, ID: event.ObjectID}
+			envelope := map[string]any{
+				"delivery_id":    deliveryID,
+				"attempt":        1,
+				"workspace_id":   event.WorkspaceID,
+				"sink_id":        hook.SinkID,
+				"hook_id":        hook.ID,
+				"rule_id":        hook.ID,
+				"created_at":     now,
+				"delivery":       map[string]any{"id": deliveryCtx.ID, "attempt": deliveryCtx.Attempt, "workspace_id": deliveryCtx.WorkspaceID, "sink_id": deliveryCtx.SinkID},
+				"object":         map[string]any{"kind": objectCtx.Kind, "id": objectCtx.ID},
+				"event_id":       event.EventID,
+				"event_type":     event.EventType,
+				"event_version":  event.EventVersion,
+				"occurred_at":    event.OccurredAt,
+				"actor_user_id":  event.ActorUserID,
+				"workspace_slug": event.WorkspaceSlug,
+				"project_id":     event.ProjectID,
+				"project_slug":   event.ProjectSlug,
+				"object_kind":    event.ObjectKind,
+				"object_id":      event.ObjectID,
+				"data":           event.Data,
+			}
+			payloadBytes, err := json.Marshal(envelope)
+			if err != nil {
+				return err
+			}
+			req, err := s.resolveHookDeliveryRequest(hook, event, deliveryCtx, objectCtx, string(payloadBytes))
 			if err != nil {
 				return err
 			}
 			deliveries = append(deliveries, storage.HookDelivery{
-				ID:                          uuid.NewString(),
+				ID:                          deliveryID,
 				HookID:                      hook.ID,
 				EventID:                     event.EventID,
 				EventType:                   event.EventType,
@@ -232,7 +242,7 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 	return nil
 }
 
-func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event HookEvent, envelopeJSON string) (NotificationResolvedRequest, error) {
+func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event HookEvent, delivery NotificationDeliveryContext, object NotificationObjectContext, envelopeJSON string) (NotificationResolvedRequest, error) {
 	sink, err := s.notificationSinkRepo.GetByID(hook.SinkID)
 	if err == storage.ErrNotFound {
 		return NotificationResolvedRequest{}, RuntimeError{Code: "notification_sink_not_found", Message: "notification sink not found"}
@@ -283,6 +293,8 @@ func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event 
 			JSON:       envelopeJSON,
 		},
 		EventType:    event.EventType,
+		Delivery:     delivery,
+		Object:       object,
 		ConfigValues: configValues,
 		SecretValues: secretValues,
 	})

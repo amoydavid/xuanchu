@@ -55,6 +55,18 @@ type NotificationEventContext struct {
 	JSON       string
 }
 
+type NotificationDeliveryContext struct {
+	ID          string
+	Attempt     int
+	WorkspaceID string
+	SinkID      string
+}
+
+type NotificationObjectContext struct {
+	Kind string
+	ID   string
+}
+
 type NotificationRequestResolveInput struct {
 	Sink         NotificationSinkView
 	Workspace    NotificationWorkspaceContext
@@ -66,6 +78,8 @@ type NotificationRequestResolveInput struct {
 	Reminder     NotificationReminderContext
 	Event        NotificationEventContext
 	EventType    string
+	Delivery     NotificationDeliveryContext
+	Object       NotificationObjectContext
 	SecretValues map[string]string
 	ConfigValues map[string]string
 }
@@ -207,6 +221,10 @@ func allowedEndpointVariable(name string) bool {
 		return true
 	case name == "event.id", name == "event.type", name == "event.object_kind", name == "event.object_id", name == "actor.id":
 		return true
+	case name == "delivery.id", name == "delivery.attempt", name == "delivery.workspace_id", name == "delivery.sink_id":
+		return true
+	case name == "object.kind", name == "object.id":
+		return true
 	case strings.HasPrefix(name, "recipient.external_ids."):
 		return true
 	default:
@@ -274,6 +292,18 @@ func notificationTemplateValue(name string, input NotificationRequestResolveInpu
 		return input.Event.ObjectID, nil
 	case "event.json":
 		return input.Event.JSON, nil
+	case "delivery.id":
+		return input.Delivery.ID, nil
+	case "delivery.attempt":
+		return strconv.Itoa(input.Delivery.Attempt), nil
+	case "delivery.workspace_id":
+		return input.Delivery.WorkspaceID, nil
+	case "delivery.sink_id":
+		return input.Delivery.SinkID, nil
+	case "object.kind":
+		return input.Object.Kind, nil
+	case "object.id":
+		return input.Object.ID, nil
 	case "task.uuid":
 		return input.Task.UUID, nil
 	case "task.task_slug":
@@ -340,12 +370,27 @@ func buildNotificationPayloadJSON(input NotificationRequestResolveInput) (string
 		eventType = "task.due_soon"
 	}
 	payload := map[string]any{
+		"delivery_id":   input.Delivery.ID,
+		"attempt":       input.Delivery.Attempt,
+		"workspace_id":  input.Delivery.WorkspaceID,
+		"sink_id":       input.Delivery.SinkID,
+		"rule_id":       input.Rule.ID,
+		"object_kind":   input.Object.Kind,
+		"object_id":     input.Object.ID,
+		"created_at":    input.Event.OccurredAt,
 		"event_type":    eventType,
 		"event_version": 1,
-		"workspace":     map[string]any{"id": input.Workspace.ID, "slug": input.Workspace.Slug, "name": input.Workspace.Name},
-		"rule":          map[string]any{"id": input.Rule.ID, "name": input.Rule.Name, "trigger_type": input.Rule.TriggerType},
-		"task":          map[string]any{"uuid": input.Task.UUID, "task_slug": input.Task.TaskSlug, "description": input.Task.Description, "status": input.Task.Status, "due": input.Task.Due},
-		"recipient":     task.UserInfoToJSON(input.Recipient),
+		"delivery": map[string]any{
+			"id":           input.Delivery.ID,
+			"attempt":      input.Delivery.Attempt,
+			"workspace_id": input.Delivery.WorkspaceID,
+			"sink_id":      input.Delivery.SinkID,
+		},
+		"object":    map[string]any{"kind": input.Object.Kind, "id": input.Object.ID},
+		"workspace": map[string]any{"id": input.Workspace.ID, "slug": input.Workspace.Slug, "name": input.Workspace.Name},
+		"rule":      map[string]any{"id": input.Rule.ID, "name": input.Rule.Name, "trigger_type": input.Rule.TriggerType},
+		"task":      map[string]any{"uuid": input.Task.UUID, "task_slug": input.Task.TaskSlug, "description": input.Task.Description, "status": input.Task.Status, "due": input.Task.Due},
+		"recipient": task.UserInfoToJSON(input.Recipient),
 		"reminder": map[string]any{
 			"sequence":         input.Reminder.Sequence,
 			"overdue_sequence": input.Reminder.OverdueSequence,
@@ -377,7 +422,7 @@ func validateJSONBodyTemplate(tpl string) error {
 
 func notificationTemplateVariableIsNumber(name string) bool {
 	switch name {
-	case "task.due", "reminder.sequence", "reminder.overdue_sequence", "reminder.window_start", "reminder.window_end":
+	case "task.due", "reminder.sequence", "reminder.overdue_sequence", "reminder.window_start", "reminder.window_end", "delivery.attempt":
 		return true
 	default:
 		return false

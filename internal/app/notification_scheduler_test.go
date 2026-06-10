@@ -64,6 +64,24 @@ func TestReminderSchedulerDueBeforeEnqueuesDelivery(t *testing.T) {
 	if !strings.Contains(rows[0].PayloadJSON, "openclaw-alice") {
 		t.Fatalf("payload missing recipient external id: %s", rows[0].PayloadJSON)
 	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rows[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("PayloadJSON invalid: %v", err)
+	}
+	if payload["delivery_id"] != rows[0].ID || payload["workspace_id"] != rows[0].WorkspaceID || payload["sink_id"] != rows[0].SinkID {
+		t.Fatalf("top-level delivery payload = %#v, delivery = %#v", payload, rows[0])
+	}
+	if payload["attempt"] != float64(1) {
+		t.Fatalf("payload attempt = %v, want 1", payload["attempt"])
+	}
+	delivery := payload["delivery"].(map[string]any)
+	if delivery["id"] != rows[0].ID || delivery["workspace_id"] != rows[0].WorkspaceID || delivery["sink_id"] != rows[0].SinkID {
+		t.Fatalf("delivery payload = %#v, delivery = %#v", delivery, rows[0])
+	}
+	object := payload["object"].(map[string]any)
+	if object["kind"] != "task" || object["id"] != rows[0].TaskUUID {
+		t.Fatalf("object payload = %#v", object)
+	}
 }
 
 func TestReminderSchedulerDedupePreventsDuplicateDelivery(t *testing.T) {

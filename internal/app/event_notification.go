@@ -529,7 +529,13 @@ func (s *Service) eventNotificationDeliveriesForRule(rule storage.EventNotificat
 	out := make([]storage.NotificationDelivery, 0, len(recipientIDs))
 	for _, recipientID := range recipientIDs {
 		recipient := userInfos[recipientID]
-		eventJSON, err := buildEventNotificationPayloadJSON(rule, event, workspace, projectCtx, actor, recipient)
+		deliveryID := uuid.NewString()
+		eventJSON, err := buildEventNotificationPayloadJSON(rule, event, workspace, projectCtx, actor, recipient, NotificationDeliveryContext{
+			ID:          deliveryID,
+			Attempt:     1,
+			WorkspaceID: event.WorkspaceID,
+			SinkID:      sink.ID,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -551,6 +557,8 @@ func (s *Service) eventNotificationDeliveriesForRule(rule storage.EventNotificat
 				JSON:       eventJSON,
 			},
 			EventType:    event.EventType,
+			Delivery:     NotificationDeliveryContext{ID: deliveryID, Attempt: 1, WorkspaceID: event.WorkspaceID, SinkID: sink.ID},
+			Object:       NotificationObjectContext{Kind: event.ObjectKind, ID: event.ObjectID},
 			ConfigValues: configValues,
 			SecretValues: secretValues,
 		})
@@ -558,7 +566,7 @@ func (s *Service) eventNotificationDeliveriesForRule(rule storage.EventNotificat
 			return nil, err
 		}
 		out = append(out, storage.NotificationDelivery{
-			ID:                          uuid.NewString(),
+			ID:                          deliveryID,
 			WorkspaceID:                 event.WorkspaceID,
 			ProjectID:                   event.ProjectID,
 			RuleID:                      rule.ID,
@@ -625,8 +633,16 @@ func (s *Service) eventNotificationRecipientIDs(rule storage.EventNotificationRu
 	return activeIDs, nil
 }
 
-func buildEventNotificationPayloadJSON(rule storage.EventNotificationRule, event HookEvent, workspace storage.Workspace, project *NotificationProjectContext, actor task.UserInfo, recipient task.UserInfo) (string, error) {
+func buildEventNotificationPayloadJSON(rule storage.EventNotificationRule, event HookEvent, workspace storage.Workspace, project *NotificationProjectContext, actor task.UserInfo, recipient task.UserInfo, delivery NotificationDeliveryContext) (string, error) {
 	payload := map[string]any{
+		"delivery_id":   delivery.ID,
+		"attempt":       delivery.Attempt,
+		"workspace_id":  delivery.WorkspaceID,
+		"sink_id":       delivery.SinkID,
+		"rule_id":       rule.ID,
+		"created_at":    event.OccurredAt,
+		"delivery":      map[string]any{"id": delivery.ID, "attempt": delivery.Attempt, "workspace_id": delivery.WorkspaceID, "sink_id": delivery.SinkID},
+		"object":        map[string]any{"kind": event.ObjectKind, "id": event.ObjectID},
 		"event_id":      event.EventID,
 		"event_type":    event.EventType,
 		"event_version": event.EventVersion,

@@ -1634,6 +1634,9 @@
           "max_attempts": {
             "type": "integer"
           },
+          "max_concurrency": {
+            "type": "integer"
+          },
           "name": {
             "description": "sink name",
             "type": "string"
@@ -1898,6 +1901,12 @@
             ]
           },
           "max_attempts": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "max_concurrency": {
             "type": [
               "null",
               "integer"

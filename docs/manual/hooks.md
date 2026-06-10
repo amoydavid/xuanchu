@@ -102,6 +102,10 @@ manual replay 会写 audit。
 
 xuanchu dispatcher 使用 delivery 里冻结的请求快照发送 HTTP 请求。标准 webhook sink 的 body 是稳定 JSON envelope；`http_template` sink 可以用模板改写 header/body。
 
+hook delivery 表是 hook dispatcher 的可靠队列。dispatcher 默认 `max_concurrency=1`，每轮按可用执行容量领取到期 delivery；超过进程级或 sink 级并发的 delivery 留在数据库队列中等待。sink `max_concurrency=0` 表示继承默认 sink 并发；`xuanchu server` 内 hook dispatcher 与 notification dispatcher 共享同一个 sink limiter。
+
+请求 body 中会包含稳定 `delivery_id`、`hook_id`、`rule_id`、`workspace_id`、`sink_id`、`object_kind`、`object_id`、`created_at`，供接收方幂等去重和审计。body 里的 `attempt` 是入队时冻结的初始上下文；本次 HTTP 请求真实尝试次数看 header `X-Xuanchu-Attempt`。
+
 常见 header：
 
 - `X-Xuanchu-Event`

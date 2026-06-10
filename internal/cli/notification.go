@@ -103,6 +103,7 @@ type notificationSinkCLIInput struct {
 	secret           string
 	timeoutSeconds   int
 	maxAttempts      int
+	maxConcurrency   int
 }
 
 func bindNotificationSinkFlags(cmd *cobra.Command, input *notificationSinkCLIInput) {
@@ -120,6 +121,7 @@ func bindNotificationSinkFlags(cmd *cobra.Command, input *notificationSinkCLIInp
 	cmd.Flags().StringVar(&input.secret, "secret", "", "webhook 签名 secret")
 	cmd.Flags().IntVar(&input.timeoutSeconds, "timeout", 0, "超时秒数（默认 10）")
 	cmd.Flags().IntVar(&input.maxAttempts, "max-attempts", 0, "最大重试次数（默认 5）")
+	cmd.Flags().IntVar(&input.maxConcurrency, "max-concurrency", 0, "最大并发投递数（0 表示继承默认值）")
 }
 
 func (input notificationSinkCLIInput) toApp(name string) (app.NotificationSinkAddInput, error) {
@@ -155,6 +157,7 @@ func (input notificationSinkCLIInput) toApp(name string) (app.NotificationSinkAd
 		Secret:          input.secret,
 		TimeoutSeconds:  input.timeoutSeconds,
 		MaxAttempts:     input.maxAttempts,
+		MaxConcurrency:  input.maxConcurrency,
 	}, nil
 }
 
@@ -217,6 +220,9 @@ func (input notificationSinkCLIInput) toModifyApp(cmd *cobra.Command) (app.Notif
 	}
 	if cmd.Flags().Changed("max-attempts") {
 		mod.MaxAttempts = &input.maxAttempts
+	}
+	if cmd.Flags().Changed("max-concurrency") {
+		mod.MaxConcurrency = &input.maxConcurrency
 	}
 	return mod, nil
 }
@@ -1488,6 +1494,7 @@ func notificationSinkViewForJSON(row app.NotificationSinkView) map[string]any {
 		"enabled":           row.Enabled,
 		"timeout_seconds":   row.TimeoutSeconds,
 		"max_attempts":      row.MaxAttempts,
+		"max_concurrency":   row.MaxConcurrency,
 		"created_by":        task.UserInfoToJSON(row.CreatedBy),
 		"created_at":        row.CreatedAt,
 		"modified_at":       row.ModifiedAt,
@@ -1510,6 +1517,7 @@ func notificationSinkInputToRemote(input app.NotificationSinkAddInput) remote.No
 		Secret:          input.Secret,
 		TimeoutSeconds:  input.TimeoutSeconds,
 		MaxAttempts:     input.MaxAttempts,
+		MaxConcurrency:  input.MaxConcurrency,
 	}
 }
 
@@ -1529,6 +1537,7 @@ func notificationSinkModifyInputToRemote(input app.NotificationSinkModifyInput) 
 		Secret:          input.Secret,
 		TimeoutSeconds:  input.TimeoutSeconds,
 		MaxAttempts:     input.MaxAttempts,
+		MaxConcurrency:  input.MaxConcurrency,
 	}
 }
 

@@ -244,9 +244,14 @@ xuanchu notification delivery replay <delivery-id>
 xuanchu server \
   --listen :8080 \
   --reminder-scheduler-interval 1m \
-  --notification-dispatcher-interval 5s
+  --notification-dispatcher-interval 5s \
+  --notification-dispatcher-max-concurrency 1
 ```
 
 投递失败不会修改任务状态，也不会回滚任务事务。delivery 自身记录 attempt、last error、next attempt 和 dead-letter 状态。
 
 事件通知 delivery 还会记录 `object_kind` / `object_id`，用于区分 task、project 等事件对象。旧 reminder delivery 仍保留 `task_uuid` 语义。
+
+delivery 表是唯一可靠队列。dispatcher 每轮先按可用执行容量领取少量 `queued` / 到期 `retry_wait` delivery，再立即投递；不会把大量 delivery 领取到进程内队列里慢慢等待。`batch_size` 是每轮查询上限，不是并发数。`max_concurrency` 默认 `1`，保持顺序投递；sink 的 `max_concurrency=0` 表示继承默认 sink 并发，显式大于 `0` 时限制该 workspace 内同一 sink 的并发。`xuanchu server` 内 notification dispatcher 和 hook dispatcher 共享同一个 sink limiter，同一 sink 的单进程并发不会因为两个 runtime 同时工作而翻倍。
+
+投递 payload / HTTP template context 会带稳定幂等字段：顶层 `delivery_id`、`attempt`、`workspace_id`、`sink_id`、`rule_id`、`object_kind`、`object_id`、`created_at`，以及嵌套 `delivery.id`、`delivery.attempt`、`object.kind`、`object.id`。body 中的 `attempt` 是入队时冻结的初始上下文；本次 HTTP 请求真实尝试次数看 header `X-Xuanchu-Attempt`。

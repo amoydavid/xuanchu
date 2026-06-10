@@ -16,7 +16,7 @@ func TestHTTPNotificationSinkLifecycle(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "notification:write", "notification:read")
 	auth := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 
-	body := `{"name":"openclaw","type":"webhook","endpoint_mode":"static_url","url":"https://example.com/notify","secret":"hunter2"}`
+	body := `{"name":"openclaw","type":"webhook","endpoint_mode":"static_url","url":"https://example.com/notify","secret":"hunter2","max_concurrency":3}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-sinks", body, auth)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
@@ -26,16 +26,29 @@ func TestHTTPNotificationSinkLifecycle(t *testing.T) {
 	}
 	var resp struct {
 		Data struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-			Type string `json:"type"`
+			ID             string `json:"id"`
+			Name           string `json:"name"`
+			Type           string `json:"type"`
+			MaxConcurrency int    `json:"max_concurrency"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Data.ID == "" || resp.Data.Name != "openclaw" || resp.Data.Type != "webhook" {
+	if resp.Data.ID == "" || resp.Data.Name != "openclaw" || resp.Data.Type != "webhook" || resp.Data.MaxConcurrency != 3 {
 		t.Fatalf("response = %#v", resp.Data)
+	}
+
+	patch := `{"max_concurrency":5}`
+	rr = requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/notification-sinks/"+resp.Data.ID, patch, auth)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("modify status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.MaxConcurrency != 5 {
+		t.Fatalf("modified max_concurrency = %d, want 5; body=%s", resp.Data.MaxConcurrency, rr.Body.String())
 	}
 
 	rr = requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-sinks/"+resp.Data.ID+"/disable", "", auth)

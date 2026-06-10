@@ -7,11 +7,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
 )
 
@@ -75,6 +80,35 @@ func makeRuntimeDelivery(wsID, sinkID string, endpoint string) storage.Notificat
 	}
 }
 
+func mustCreateRuntimeTask(t *testing.T, store *storage.Store, wsID, taskUUID string) {
+	t.Helper()
+	if _, err := storage.NewTaskRepository(store.DB()).Create(task.Task{
+		UUID:        taskUUID,
+		WorkspaceID: wsID,
+		Description: "runtime task",
+		Status:      task.StatusPending,
+		Entry:       100,
+		Modified:    100,
+	}); err != nil {
+		t.Fatalf("Create task %s error = %v", taskUUID, err)
+	}
+}
+
+func mustCreateRuntimeSink(t *testing.T, store *storage.Store, sink storage.NotificationSink) {
+	t.Helper()
+	if err := storage.NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustEnqueueRuntimeDelivery(t *testing.T, store *storage.Store, delivery storage.NotificationDelivery) {
+	t.Helper()
+	mustCreateRuntimeTask(t, store, delivery.WorkspaceID, delivery.TaskUUID)
+	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNotificationDispatcherHTTPTemplateUsesRenderedRequestSnapshot(t *testing.T) {
 	var receivedBody []byte
 	var receivedHeader string
@@ -88,13 +122,9 @@ func TestNotificationDispatcherHTTPTemplateUsesRenderedRequestSnapshot(t *testin
 	store := newNotificationRuntimeStore(t)
 	ws, _ := store.LocalWorkspace()
 	sink := makeRuntimeSink(ws.ID, server.URL)
-	if err := storage.NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
-		t.Fatal(err)
-	}
+	mustCreateRuntimeSink(t, store, sink)
 	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
-	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
-		t.Fatal(err)
-	}
+	mustEnqueueRuntimeDelivery(t, store, delivery)
 
 	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: app.DefaultHookResolver()})
 	if err := dispatcher.RunOnce(context.Background()); err != nil {
@@ -125,15 +155,11 @@ func TestNotificationDispatcherDoesNotUseCurrentSinkTemplateOnRetry(t *testing.T
 	ws, _ := store.LocalWorkspace()
 	sink := makeRuntimeSink(ws.ID, server.URL)
 	sink.BodyTemplate = `{"current":true}`
-	if err := storage.NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
-		t.Fatal(err)
-	}
+	mustCreateRuntimeSink(t, store, sink)
 	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
 	delivery.Status = storage.DeliveryStatusRetryWait
 	delivery.NextAttemptAt = int64Ptr(900)
-	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
-		t.Fatal(err)
-	}
+	mustEnqueueRuntimeDelivery(t, store, delivery)
 
 	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: app.DefaultHookResolver()})
 	if err := dispatcher.RunOnce(context.Background()); err != nil {
@@ -153,13 +179,9 @@ func TestNotificationDispatcherHTTP500Retries(t *testing.T) {
 	store := newNotificationRuntimeStore(t)
 	ws, _ := store.LocalWorkspace()
 	sink := makeRuntimeSink(ws.ID, server.URL)
-	if err := storage.NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
-		t.Fatal(err)
-	}
+	mustCreateRuntimeSink(t, store, sink)
 	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
-	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
-		t.Fatal(err)
-	}
+	mustEnqueueRuntimeDelivery(t, store, delivery)
 	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: app.DefaultHookResolver(), RetryBaseDelay: time.Second})
 	if err := dispatcher.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce() error = %v", err)
@@ -175,13 +197,9 @@ func TestNotificationDispatcherDisabledSinkSkipped(t *testing.T) {
 	ws, _ := store.LocalWorkspace()
 	sink := makeRuntimeSink(ws.ID, "https://example.com/notify")
 	sink.Enabled = boolPtr(false)
-	if err := storage.NewNotificationSinkRepository(store.DB()).Create(sink); err != nil {
-		t.Fatal(err)
-	}
+	mustCreateRuntimeSink(t, store, sink)
 	delivery := makeRuntimeDelivery(ws.ID, sink.ID, "https://example.com/notify")
-	if err := storage.NewNotificationDeliveryRepository(store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
-		t.Fatal(err)
-	}
+	mustEnqueueRuntimeDelivery(t, store, delivery)
 	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}})
 	if err := dispatcher.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce() error = %v", err)
@@ -200,5 +218,310 @@ func TestNotificationHeadersJSONShape(t *testing.T) {
 	data, err := json.Marshal(headers)
 	if err != nil || len(data) == 0 {
 		t.Fatalf("headers marshal = %s, %v", data, err)
+	}
+}
+
+func TestDispatcherClaimLimitUsesConcurrencyAndPrefetch(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	for i := 0; i < 5; i++ {
+		delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+		delivery.TaskUUID = "task-claim-" + strconv.Itoa(i)
+		delivery.CreatedAt = int64(100 + i)
+		delivery.ModifiedAt = delivery.CreatedAt
+		mustEnqueueRuntimeDelivery(t, store, delivery)
+	}
+
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:          store,
+		Clock:          testClock{now: 1000},
+		Client:         server.Client(),
+		Resolver:       app.DefaultHookResolver(),
+		BatchSize:      10,
+		MaxConcurrency: 2,
+		PrefetchFactor: 2,
+	})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+
+	if requests.Load() != 4 {
+		t.Fatalf("requests = %d, want 4", requests.Load())
+	}
+	var queued int64
+	if err := store.DB().Model(&storage.NotificationDelivery{}).Where("status = ?", storage.DeliveryStatusQueued).Count(&queued).Error; err != nil {
+		t.Fatal(err)
+	}
+	if queued != 1 {
+		t.Fatalf("queued = %d, want 1", queued)
+	}
+}
+
+func TestDispatcherRunOnceUsesWorkerPoolAndWaits(t *testing.T) {
+	var active atomic.Int64
+	var maxActive atomic.Int64
+	release := make(chan struct{})
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			previous := maxActive.Load()
+			if current <= previous || maxActive.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		if current == 2 {
+			once.Do(func() { close(release) })
+		}
+		select {
+		case <-release:
+		case <-time.After(300 * time.Millisecond):
+			once.Do(func() { close(release) })
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	for i := 0; i < 2; i++ {
+		delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+		delivery.TaskUUID = "task-worker-" + strconv.Itoa(i)
+		delivery.CreatedAt = int64(100 + i)
+		delivery.ModifiedAt = delivery.CreatedAt
+		mustEnqueueRuntimeDelivery(t, store, delivery)
+	}
+
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:          store,
+		Clock:          testClock{now: 1000},
+		Client:         server.Client(),
+		Resolver:       app.DefaultHookResolver(),
+		MaxConcurrency: 2,
+	})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if maxActive.Load() != 2 {
+		t.Fatalf("max active requests = %d, want 2", maxActive.Load())
+	}
+	var succeeded int64
+	if err := store.DB().Model(&storage.NotificationDelivery{}).Where("status = ?", storage.DeliveryStatusSucceeded).Count(&succeeded).Error; err != nil {
+		t.Fatal(err)
+	}
+	if succeeded != 2 {
+		t.Fatalf("succeeded = %d, want 2", succeeded)
+	}
+}
+
+func TestDispatcherAttemptHeaderUsesClaimedAttemptCount(t *testing.T) {
+	var attemptHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attemptHeader = r.Header.Get("X-Xuanchu-Attempt")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+	delivery.AttemptCount = 1
+	delivery.Status = storage.DeliveryStatusRetryWait
+	delivery.NextAttemptAt = int64Ptr(900)
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: app.DefaultHookResolver()})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if attemptHeader != "2" {
+		t.Fatalf("X-Xuanchu-Attempt = %q, want 2", attemptHeader)
+	}
+}
+
+func TestDispatcherSinkLimiterRequeuesWithoutHTTP(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	sink.MaxConcurrency = 1
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	limiter := runtimeutil.NewSinkLimiter()
+	if !limiter.TryAcquire(sink.ID, 1) {
+		t.Fatal("pre-acquire sink token failed")
+	}
+	defer limiter.Release(sink.ID)
+
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:       store,
+		Clock:       testClock{now: 1000},
+		Client:      server.Client(),
+		Resolver:    app.DefaultHookResolver(),
+		SinkLimiter: limiter,
+	})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	got, err := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != storage.DeliveryStatusQueued {
+		t.Fatalf("status = %q, want queued", got.Status)
+	}
+	if got.ClaimExpiresAt != nil {
+		t.Fatalf("claim_expires_at = %#v, want nil", got.ClaimExpiresAt)
+	}
+}
+
+func TestDispatcherDoesNotLeaveSinkLimitedDeliveryDelivering(t *testing.T) {
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, "https://example.com/notify")
+	sink.MaxConcurrency = 1
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, "https://example.com/notify")
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	limiter := runtimeutil.NewSinkLimiter()
+	if !limiter.TryAcquire(sink.ID, 1) {
+		t.Fatal("pre-acquire sink token failed")
+	}
+	defer limiter.Release(sink.ID)
+
+	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, SinkLimiter: limiter})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+
+	var delivering int64
+	if err := store.DB().Model(&storage.NotificationDelivery{}).Where("status = ?", storage.DeliveryStatusDelivering).Count(&delivering).Error; err != nil {
+		t.Fatal(err)
+	}
+	if delivering != 0 {
+		t.Fatalf("delivering = %d, want 0", delivering)
+	}
+}
+
+func TestDispatcherStaleRecoveryClaimsRecoveredDelivery(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+	delivery.Status = storage.DeliveryStatusDelivering
+	delivery.ClaimExpiresAt = int64Ptr(500)
+	delivery.AttemptCount = 1
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: app.DefaultHookResolver()})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("requests = %d, want 1", requests.Load())
+	}
+	got, err := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != storage.DeliveryStatusSucceeded {
+		t.Fatalf("status = %q, want succeeded", got.Status)
+	}
+}
+
+func TestDispatcherFutureDeliveringIsNotRecovered(t *testing.T) {
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, "https://example.com/notify")
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, "https://example.com/notify")
+	delivery.Status = storage.DeliveryStatusDelivering
+	delivery.ClaimExpiresAt = int64Ptr(1500)
+	delivery.AttemptCount = 1
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	got, err := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != storage.DeliveryStatusDelivering {
+		t.Fatalf("status = %q, want delivering", got.Status)
+	}
+	if got.ClaimExpiresAt == nil || *got.ClaimExpiresAt != 1500 {
+		t.Fatalf("claim_expires_at = %#v, want 1500", got.ClaimExpiresAt)
+	}
+}
+
+func TestDispatcherRetryWaitFutureIsNotClaimed(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+	delivery.Status = storage.DeliveryStatusRetryWait
+	delivery.NextAttemptAt = int64Ptr(1500)
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	dispatcher := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: app.DefaultHookResolver()})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	got, err := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != storage.DeliveryStatusRetryWait {
+		t.Fatalf("status = %q, want retry_wait", got.Status)
+	}
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want 0", got.AttemptCount)
 	}
 }

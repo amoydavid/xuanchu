@@ -17,21 +17,26 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type DispatcherOptions struct {
-	Store          *storage.Store
-	Clock          app.Clock
-	Client         *http.Client
-	Resolver       app.HookHostResolver
-	Version        string
-	BatchSize      int
-	PollInterval   time.Duration
-	RetryBaseDelay time.Duration
-	ClaimTTL       time.Duration
-	JitterSeed     int64
+	Store                  *storage.Store
+	Clock                  app.Clock
+	Client                 *http.Client
+	Resolver               app.HookHostResolver
+	Version                string
+	BatchSize              int
+	PollInterval           time.Duration
+	RetryBaseDelay         time.Duration
+	ClaimTTL               time.Duration
+	MaxConcurrency         int
+	PrefetchFactor         int
+	DefaultSinkConcurrency int
+	SinkLimiter            *runtimeutil.SinkLimiter
+	JitterSeed             int64
 }
 
 type Dispatcher struct {
@@ -56,6 +61,14 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	}
 	if opts.ClaimTTL == 0 {
 		opts.ClaimTTL = 5 * time.Minute
+	}
+	opts.MaxConcurrency = runtimeutil.EffectiveConcurrency(opts.MaxConcurrency)
+	opts.PrefetchFactor = runtimeutil.EffectivePrefetchFactor(opts.PrefetchFactor)
+	if opts.DefaultSinkConcurrency <= 0 {
+		opts.DefaultSinkConcurrency = opts.MaxConcurrency
+	}
+	if opts.SinkLimiter == nil {
+		opts.SinkLimiter = runtimeutil.NewSinkLimiter()
 	}
 	if opts.Version == "" {
 		opts.Version = "dev"
@@ -134,19 +147,54 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		return fmt.Errorf("recover stale notification deliveries: %w", err)
 	}
 	claimExpiresAt := now + int64(d.opts.ClaimTTL.Seconds())
-	deliveries, err := d.deliveryRepo.ClaimDue(now, claimExpiresAt, d.opts.BatchSize)
+	claimLimit := runtimeutil.ClaimLimit(d.opts.BatchSize, d.opts.MaxConcurrency, d.opts.PrefetchFactor)
+	deliveries, err := d.deliveryRepo.ClaimDue(now, claimExpiresAt, claimLimit)
 	if err != nil {
 		return fmt.Errorf("claim due notification deliveries: %w", err)
 	}
+	if len(deliveries) == 0 {
+		return nil
+	}
+
+	jobs := make(chan storage.NotificationDelivery)
+	var wg sync.WaitGroup
+	var firstErr error
+	var errOnce sync.Once
+	recordErr := func(err error) {
+		if err == nil {
+			return
+		}
+		errOnce.Do(func() { firstErr = err })
+	}
+
+	workerCount := d.opts.MaxConcurrency
+	if workerCount > len(deliveries) {
+		workerCount = len(deliveries)
+	}
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for delivery := range jobs {
+				if ctx.Err() != nil {
+					recordErr(ctx.Err())
+					continue
+				}
+				recordErr(d.dispatchOne(ctx, delivery, now))
+			}
+		}()
+	}
+
 	for _, delivery := range deliveries {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			recordErr(ctx.Err())
+			break
 		}
-		if err := d.dispatchOne(ctx, delivery, now); err != nil {
-			return err
-		}
+		jobs <- delivery
 	}
-	return nil
+	close(jobs)
+	wg.Wait()
+	return firstErr
 }
 
 func (d *Dispatcher) Run(ctx context.Context) error {
@@ -182,6 +230,12 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, delivery storage.Notificat
 	if err := d.ensureTaskStillPending(delivery, now); err != nil {
 		return err
 	}
+	sinkLimit := runtimeutil.EffectiveSinkConcurrency(sink.MaxConcurrency, d.opts.DefaultSinkConcurrency)
+	if !d.opts.SinkLimiter.TryAcquire(sink.ID, sinkLimit) {
+		return d.deliveryRepo.Requeue(delivery.ID, now)
+	}
+	defer d.opts.SinkLimiter.Release(sink.ID)
+
 	if err := d.validateEndpoint(ctx, delivery, sink); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err

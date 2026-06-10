@@ -7,19 +7,30 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/logging"
 )
 
 type Config struct {
-	DatabasePath string
-	DatabaseURL  string
-	RemoteServer string
-	RemoteToken  string
-	JSON         bool
-	Color        bool
-	Log          logging.LogConfig
-	ServerAdmin  AdminConfig
+	DatabasePath           string
+	DatabaseURL            string
+	RemoteServer           string
+	RemoteToken            string
+	JSON                   bool
+	Color                  bool
+	Log                    logging.LogConfig
+	ServerAdmin            AdminConfig
+	NotificationDispatcher DispatcherConfig
+	HookDispatcher         DispatcherConfig
+}
+
+type DispatcherConfig struct {
+	MaxConcurrency int
+	BatchSize      int
+	PrefetchFactor int
+	PollInterval   time.Duration
+	ClaimTTL       time.Duration
 }
 
 type Options struct {
@@ -145,15 +156,26 @@ func Resolve(opts Options) (Config, error) {
 		}
 	}
 
+	notificationDispatcher, err := parseDispatcherConfig(tomlValues, "notifications.dispatcher")
+	if err != nil {
+		return Config{}, err
+	}
+	hookDispatcher, err := parseDispatcherConfig(tomlValues, "hooks.dispatcher")
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
-		DatabasePath: dbPath,
-		DatabaseURL:  dbURL,
-		RemoteServer: server,
-		RemoteToken:  token,
-		JSON:         opts.JSON,
-		Color:        !opts.NoColor,
-		Log:          logCfg,
-		ServerAdmin:  adminCfg,
+		DatabasePath:           dbPath,
+		DatabaseURL:            dbURL,
+		RemoteServer:           server,
+		RemoteToken:            token,
+		JSON:                   opts.JSON,
+		Color:                  !opts.NoColor,
+		Log:                    logCfg,
+		ServerAdmin:            adminCfg,
+		NotificationDispatcher: notificationDispatcher,
+		HookDispatcher:         hookDispatcher,
 	}, nil
 }
 
@@ -208,4 +230,58 @@ func parseLogConfig(values map[string]string) logging.LogConfig {
 		cfg.File = fc
 	}
 	return cfg
+}
+
+func parseDispatcherConfig(values map[string]string, prefix string) (DispatcherConfig, error) {
+	cfg := DispatcherConfig{
+		MaxConcurrency: 1,
+		BatchSize:      50,
+		PrefetchFactor: 1,
+		PollInterval:   5 * time.Second,
+		ClaimTTL:       5 * time.Minute,
+	}
+	if values == nil {
+		return cfg, nil
+	}
+	var err error
+	if cfg.MaxConcurrency, err = parsePositiveIntField(values, prefix+".max_concurrency", cfg.MaxConcurrency); err != nil {
+		return DispatcherConfig{}, err
+	}
+	if cfg.BatchSize, err = parsePositiveIntField(values, prefix+".batch_size", cfg.BatchSize); err != nil {
+		return DispatcherConfig{}, err
+	}
+	if cfg.PrefetchFactor, err = parsePositiveIntField(values, prefix+".prefetch_factor", cfg.PrefetchFactor); err != nil {
+		return DispatcherConfig{}, err
+	}
+	if cfg.PollInterval, err = parsePositiveDurationField(values, prefix+".poll_interval", cfg.PollInterval); err != nil {
+		return DispatcherConfig{}, err
+	}
+	if cfg.ClaimTTL, err = parsePositiveDurationField(values, prefix+".claim_ttl", cfg.ClaimTTL); err != nil {
+		return DispatcherConfig{}, err
+	}
+	return cfg, nil
+}
+
+func parsePositiveIntField(values map[string]string, key string, fallback int) (int, error) {
+	value, ok := values[key]
+	if !ok || value == "" {
+		return fallback, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return n, nil
+}
+
+func parsePositiveDurationField(values map[string]string, key string, fallback time.Duration) (time.Duration, error) {
+	value, ok := values[key]
+	if !ok || value == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return d, nil
 }

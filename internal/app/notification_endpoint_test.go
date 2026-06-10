@@ -128,6 +128,55 @@ func TestNotificationRequestTemplateRendersReminderContext(t *testing.T) {
 	}
 }
 
+func TestResolveNotificationRequestProvidesDeliveryTemplateContext(t *testing.T) {
+	req, err := ResolveNotificationRequest(NotificationRequestResolveInput{
+		Sink: NotificationSinkView{
+			ID:              "sink-1",
+			Type:            "http_template",
+			EndpointMode:    "static_url",
+			URL:             "https://example.com/notify",
+			AllowedHosts:    []string{"example.com"},
+			HeaderTemplates: []HTTPHeaderTemplateInput{{Name: "X-Delivery", Value: "{{delivery.id}}"}},
+			BodyTemplate:    `{"delivery_id":"{{delivery.id}}","attempt":{{delivery.attempt}},"workspace_id":"{{delivery.workspace_id}}","sink_id":"{{delivery.sink_id}}","object_kind":"{{object.kind}}","object_id":"{{object.id}}"}`,
+			BodyContentType: "application/json",
+		},
+		Workspace: NotificationWorkspaceContext{ID: "ws-1", Slug: "dajee", Name: "Dajee"},
+		Rule:      NotificationRuleContext{ID: "rule-1", Name: "due-before", TriggerType: "due_before"},
+		Task:      NotificationTaskContext{UUID: "task-1", TaskSlug: "agentapi-1", Description: "完成 OAuth", Status: "pending"},
+		Recipient: task.UserInfo{ID: "u-1", Name: "Alice"},
+		Delivery:  NotificationDeliveryContext{ID: "delivery-1", Attempt: 1, WorkspaceID: "ws-1", SinkID: "sink-1"},
+		Object:    NotificationObjectContext{Kind: "task", ID: "task-1"},
+	})
+	if err != nil {
+		t.Fatalf("ResolveNotificationRequest() error = %v", err)
+	}
+	if req.RenderedBody != `{"delivery_id":"delivery-1","attempt":1,"workspace_id":"ws-1","sink_id":"sink-1","object_kind":"task","object_id":"task-1"}` {
+		t.Fatalf("RenderedBody = %q", req.RenderedBody)
+	}
+	var headers map[string][]string
+	if err := json.Unmarshal([]byte(req.RenderedHeadersJSON), &headers); err != nil {
+		t.Fatalf("headers json invalid: %v", err)
+	}
+	if got := headers["X-Delivery"]; len(got) != 1 || got[0] != "delivery-1" {
+		t.Fatalf("X-Delivery = %#v", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(req.PayloadJSON), &payload); err != nil {
+		t.Fatalf("PayloadJSON invalid: %v", err)
+	}
+	if payload["delivery_id"] != "delivery-1" || payload["attempt"] != float64(1) || payload["workspace_id"] != "ws-1" || payload["sink_id"] != "sink-1" {
+		t.Fatalf("top-level delivery payload = %#v", payload)
+	}
+	delivery := payload["delivery"].(map[string]any)
+	if delivery["id"] != "delivery-1" || delivery["attempt"] != float64(1) || delivery["workspace_id"] != "ws-1" || delivery["sink_id"] != "sink-1" {
+		t.Fatalf("delivery payload = %#v", delivery)
+	}
+	object := payload["object"].(map[string]any)
+	if object["kind"] != "task" || object["id"] != "task-1" {
+		t.Fatalf("object payload = %#v", object)
+	}
+}
+
 func TestNotificationRequestTemplateMissingSecretDeadLettersRecipient(t *testing.T) {
 	_, err := ResolveNotificationRequest(NotificationRequestResolveInput{
 		Sink: NotificationSinkView{

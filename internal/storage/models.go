@@ -258,6 +258,7 @@ type NotificationSink struct {
 	Enabled             *bool  `gorm:"not null;default:true;index"`
 	TimeoutSeconds      int    `gorm:"not null;default:10"`
 	MaxAttempts         int    `gorm:"not null;default:5"`
+	MaxConcurrency      int    `gorm:"not null;default:0"`
 	CreatedBy           string `gorm:"not null;index"`
 	CreatedAt           int64  `gorm:"not null"`
 	ModifiedAt          int64  `gorm:"not null"`

@@ -14,21 +14,26 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 // DispatcherOptions 配置 webhook 投递调度器。
 type DispatcherOptions struct {
-	Store          *storage.Store
-	Clock          app.Clock
-	Client         *http.Client
-	Resolver       app.HookHostResolver
-	Version        string
-	BatchSize      int
-	PollInterval   time.Duration
-	RetryBaseDelay time.Duration
-	ClaimTTL       time.Duration
-	JitterSeed     int64
+	Store                  *storage.Store
+	Clock                  app.Clock
+	Client                 *http.Client
+	Resolver               app.HookHostResolver
+	Version                string
+	BatchSize              int
+	PollInterval           time.Duration
+	RetryBaseDelay         time.Duration
+	ClaimTTL               time.Duration
+	MaxConcurrency         int
+	PrefetchFactor         int
+	DefaultSinkConcurrency int
+	SinkLimiter            *runtimeutil.SinkLimiter
+	JitterSeed             int64
 }
 
 // Dispatcher 负责 webhook 投递的主循环。
@@ -54,6 +59,14 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	}
 	if opts.ClaimTTL == 0 {
 		opts.ClaimTTL = 5 * time.Minute
+	}
+	opts.MaxConcurrency = runtimeutil.EffectiveConcurrency(opts.MaxConcurrency)
+	opts.PrefetchFactor = runtimeutil.EffectivePrefetchFactor(opts.PrefetchFactor)
+	if opts.DefaultSinkConcurrency <= 0 {
+		opts.DefaultSinkConcurrency = opts.MaxConcurrency
+	}
+	if opts.SinkLimiter == nil {
+		opts.SinkLimiter = runtimeutil.NewSinkLimiter()
 	}
 	if opts.Version == "" {
 		opts.Version = "dev"
@@ -138,7 +151,8 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	claimExpiresAt := now + int64(d.opts.ClaimTTL.Seconds())
 
 	// 领取到期投递
-	deliveries, err := d.deliveryRepo.ClaimDue(now, claimExpiresAt, d.opts.BatchSize)
+	claimLimit := runtimeutil.ClaimLimit(d.opts.BatchSize, d.opts.MaxConcurrency, d.opts.PrefetchFactor)
+	deliveries, err := d.deliveryRepo.ClaimDue(now, claimExpiresAt, claimLimit)
 	if err != nil {
 		return fmt.Errorf("claim due deliveries: %w", err)
 	}
@@ -146,11 +160,36 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		return nil
 	}
 
+	sem := make(chan struct{}, d.opts.MaxConcurrency)
+	errCh := make(chan error, len(deliveries))
+	var wg sync.WaitGroup
+	startErr := error(nil)
 	for _, delivery := range deliveries {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if err := ctx.Err(); err != nil {
+			startErr = err
+			break
 		}
-		if err := d.dispatchOne(ctx, delivery, now); err != nil {
+		select {
+		case <-ctx.Done():
+			startErr = ctx.Err()
+			goto wait
+		case sem <- struct{}{}:
+		}
+		wg.Add(1)
+		go func(delivery storage.HookDelivery) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			errCh <- d.dispatchOne(ctx, delivery, d.opts.Clock.Unix())
+		}(delivery)
+	}
+wait:
+	wg.Wait()
+	close(errCh)
+	if startErr != nil {
+		return startErr
+	}
+	for err := range errCh {
+		if err != nil {
 			return err
 		}
 	}
@@ -204,6 +243,11 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, delivery storage.HookDeliv
 	if sink.Enabled == nil || !*sink.Enabled {
 		return d.deliveryRepo.MarkDisabledSkipped(delivery.ID, now)
 	}
+	sinkLimit := runtimeutil.EffectiveSinkConcurrency(sink.MaxConcurrency, d.opts.DefaultSinkConcurrency)
+	if !d.opts.SinkLimiter.TryAcquire(delivery.SinkID, sinkLimit) {
+		return d.deliveryRepo.Requeue(delivery.ID, now)
+	}
+	defer d.opts.SinkLimiter.Release(delivery.SinkID)
 
 	// SSRF 重新验证（防止 DNS rebinding 攻击）
 	if err := app.ValidateWebhookEndpointURL(ctx, delivery.ResolvedURL, d.opts.Resolver); err != nil {

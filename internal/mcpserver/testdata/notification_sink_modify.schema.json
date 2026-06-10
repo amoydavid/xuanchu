@@ -64,6 +64,12 @@
           "integer"
         ]
       },
+      "max_concurrency": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
       "name": {
         "type": [
           "null",

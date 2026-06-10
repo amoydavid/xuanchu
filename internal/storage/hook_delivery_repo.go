@@ -65,11 +65,7 @@ func (r *HookDeliveryRepository) ClaimDue(now int64, claimExpiresAt int64, limit
 UPDATE hook_deliveries
 SET
 	status = ?,
-	claim_expires_at = CASE
-		WHEN CAST(? AS BIGINT) > COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60
-		THEN CAST(? AS BIGINT) + CAST(? AS BIGINT)
-		ELSE CAST(? AS BIGINT) + COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60
-	END,
+	claim_expires_at = `+hookClaimExpiresAtSQL()+`,
 	attempt_count = attempt_count + 1,
 	modified_at = ?
 WHERE id IN (
@@ -93,6 +89,14 @@ RETURNING *`,
 		limit,
 	).Scan(&rows).Error
 	return rows, err
+}
+
+func hookClaimExpiresAtSQL() string {
+	return `CASE
+		WHEN CAST(? AS BIGINT) > COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60
+		THEN CAST(? AS BIGINT) + CAST(? AS BIGINT)
+		ELSE CAST(? AS BIGINT) + COALESCE((SELECT timeout_seconds FROM hook_definitions WHERE hook_definitions.id = hook_deliveries.hook_id), 0) + 60
+	END`
 }
 
 func (r *HookDeliveryRepository) RecoverStaleDelivering(now int64) (int64, error) {

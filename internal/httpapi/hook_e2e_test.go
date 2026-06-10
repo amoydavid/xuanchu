@@ -254,7 +254,7 @@ func TestHookEndToEndModifiedPayloadStability(t *testing.T) {
 	_ = h.svc.Modify(created.UUID, app.ModifyInput{Description: &modified})
 
 	dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
-		Store: h.store, Clock: h.clock, Client: webhookTarget.Client(), Resolver: publicTestResolver{},
+		Store: h.store, Clock: h.clock, Client: webhookTarget.Client(), Resolver: publicTestResolver{}, MaxConcurrency: 2,
 	})
 	_ = dispatcher.RunOnce(context.Background())
 

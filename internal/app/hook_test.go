@@ -986,6 +986,26 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	if payload["object_kind"] != "task" {
 		t.Fatalf("payload object_kind = %v, want task", payload["object_kind"])
 	}
+	if payload["delivery_id"] != d.ID || payload["workspace_id"] != d.WorkspaceID || payload["sink_id"] != d.SinkID {
+		t.Fatalf("top-level delivery payload = %#v, delivery = %#v", payload, d)
+	}
+	if payload["hook_id"] != hook.ID || payload["rule_id"] != hook.ID {
+		t.Fatalf("hook/rule payload = %#v, want hook_id/rule_id %q", payload, hook.ID)
+	}
+	if payload["created_at"] != float64(d.CreatedAt) {
+		t.Fatalf("created_at = %v, want %d", payload["created_at"], d.CreatedAt)
+	}
+	if payload["attempt"] != float64(1) {
+		t.Fatalf("payload attempt = %v, want 1", payload["attempt"])
+	}
+	delivery := payload["delivery"].(map[string]any)
+	if delivery["id"] != d.ID || delivery["workspace_id"] != d.WorkspaceID || delivery["sink_id"] != d.SinkID {
+		t.Fatalf("delivery payload = %#v, delivery = %#v", delivery, d)
+	}
+	object := payload["object"].(map[string]any)
+	if object["kind"] != "task" || object["id"] != created.UUID {
+		t.Fatalf("object payload = %#v", object)
+	}
 	data, ok := payload["data"].(map[string]any)
 	if !ok {
 		t.Fatalf("payload data = %T, want map[string]any", payload["data"])
@@ -1024,6 +1044,81 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 
 	// 确保 store 已关闭（defer 会处理）
 	_ = store
+}
+
+func TestHookHTTPTemplateDeliveryContext(t *testing.T) {
+	svc, store, cleanup := hookTestEnv(t)
+	defer cleanup()
+	sinkRepo := storage.NewNotificationSinkRepository(store.DB())
+	enabled := true
+	if err := sinkRepo.Create(storage.NotificationSink{
+		ID:                  "sink-hook-template",
+		WorkspaceID:         svc.workspaceID,
+		Name:                "hook-template",
+		Type:                NotificationSinkTypeHTTPTemplate,
+		EndpointMode:        NotificationEndpointStaticURL,
+		URL:                 "https://example.com/webhook",
+		AllowedHostsJSON:    `["example.com"]`,
+		HTTPMethod:          "POST",
+		HeaderTemplatesJSON: `[{"name":"X-Delivery","value":"{{delivery.id}}"},{"name":"X-Object","value":"{{object.kind}}/{{object.id}}"}]`,
+		BodyTemplate:        `{"delivery_id":"{{delivery.id}}","attempt":{{delivery.attempt}},"workspace_id":"{{delivery.workspace_id}}","sink_id":"{{delivery.sink_id}}","object_kind":"{{object.kind}}","object_id":"{{object.id}}"}`,
+		BodyContentType:     "application/json",
+		SecretRefsJSON:      `{}`,
+		Enabled:             &enabled,
+		TimeoutSeconds:      10,
+		MaxAttempts:         5,
+		CreatedBy:           svc.runtime.ActorUserID,
+		CreatedAt:           100,
+		ModifiedAt:          100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hook, err := svc.AddHook(HookAddInput{
+		Name:           "template-hook",
+		ScopeType:      HookScopeWorkspace,
+		EventTypes:     []string{"task.created"},
+		SinkRef:        "hook-template",
+		TimeoutSeconds: 10,
+		MaxAttempts:    5,
+	})
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	created, err := svc.Add(AddInput{Description: "templated hook"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	rows, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListByHook() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("delivery count = %d, want 1", len(rows))
+	}
+	row := rows[0]
+	var body map[string]any
+	if err := json.Unmarshal([]byte(row.RenderedBody), &body); err != nil {
+		t.Fatalf("RenderedBody json error = %v body=%q", err, row.RenderedBody)
+	}
+	if body["delivery_id"] != row.ID || body["workspace_id"] != row.WorkspaceID || body["sink_id"] != row.SinkID {
+		t.Fatalf("body delivery fields = %#v, row = %#v", body, row)
+	}
+	if body["attempt"] != float64(1) {
+		t.Fatalf("body attempt = %v, want 1", body["attempt"])
+	}
+	if body["object_kind"] != "task" || body["object_id"] != created.UUID {
+		t.Fatalf("body object fields = %#v", body)
+	}
+	var headers map[string][]string
+	if err := json.Unmarshal([]byte(row.RenderedHeadersJSON), &headers); err != nil {
+		t.Fatalf("RenderedHeadersJSON error = %v", err)
+	}
+	if got := headers["X-Delivery"]; len(got) != 1 || got[0] != row.ID {
+		t.Fatalf("X-Delivery = %#v, want %q", got, row.ID)
+	}
+	if got := headers["X-Object"]; len(got) != 1 || got[0] != "task/"+created.UUID {
+		t.Fatalf("X-Object = %#v, want task/%s", got, created.UUID)
+	}
 }
 
 func TestHookTaskCreatedPayloadOmitsTaskSlugWithoutProject(t *testing.T) {

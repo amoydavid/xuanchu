@@ -1875,24 +1875,68 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 	session := connectClient(t, srv)
 
 	addSink := callTool(t, session, "notification_sink_add", NotificationSinkAddInput{
-		Name:         "openclaw",
-		Type:         "webhook",
-		EndpointMode: "static_url",
-		URL:          "https://example.com/xuanchu/notifications",
-		Secret:       "secret-token",
+		Name:           "openclaw",
+		Type:           "webhook",
+		EndpointMode:   "static_url",
+		URL:            "https://example.com/xuanchu/notifications",
+		Secret:         "secret-token",
+		MaxConcurrency: 3,
 	})
 	if addSink.IsError {
 		t.Fatalf("notification_sink_add error: %v", parseError(t, addSink))
 	}
 	sinkObj := nestedMap(t, envelopeData(t, parseEnvelope(t, addSink)), "sink")
 	sinkID, _ := sinkObj["id"].(string)
+	if sinkObj["max_concurrency"] != float64(3) {
+		t.Fatalf("add sink max_concurrency = %v, want 3; sink=%#v", sinkObj["max_concurrency"], sinkObj)
+	}
 
+	maxConcurrency := 5
 	modSink := callTool(t, session, "notification_sink_modify", NotificationSinkModifyInput{
-		Sink: sinkID,
-		Name: ptrStr("openclaw-renamed"),
+		Sink:           sinkID,
+		Name:           ptrStr("openclaw-renamed"),
+		MaxConcurrency: &maxConcurrency,
 	})
 	if modSink.IsError {
 		t.Fatalf("notification_sink_modify error: %v", parseError(t, modSink))
+	}
+	modSinkObj := nestedMap(t, envelopeData(t, parseEnvelope(t, modSink)), "sink")
+	if modSinkObj["max_concurrency"] != float64(5) {
+		t.Fatalf("modify sink max_concurrency = %v, want 5; sink=%#v", modSinkObj["max_concurrency"], modSinkObj)
+	}
+	infoSink := callTool(t, session, "notification_sink_info", NotificationSinkRefInput{Sink: sinkID})
+	if infoSink.IsError {
+		t.Fatalf("notification_sink_info error: %v", parseError(t, infoSink))
+	}
+	infoSinkObj := nestedMap(t, envelopeData(t, parseEnvelope(t, infoSink)), "sink")
+	if infoSinkObj["max_concurrency"] != float64(5) {
+		t.Fatalf("info sink max_concurrency = %v, want 5; sink=%#v", infoSinkObj["max_concurrency"], infoSinkObj)
+	}
+	listSinks := callTool(t, session, "notification_sink_list", NotificationSinkListInput{})
+	if listSinks.IsError {
+		t.Fatalf("notification_sink_list error: %v", parseError(t, listSinks))
+	}
+	listData := envelopeData(t, parseEnvelope(t, listSinks))
+	sinks := nestedSlice(t, listData, "sinks")
+	if len(sinks) == 0 {
+		t.Fatalf("notification_sink_list returned no sinks")
+	}
+	var listSinkObj map[string]any
+	for _, sink := range sinks {
+		obj, ok := sink.(map[string]any)
+		if !ok {
+			t.Fatalf("listed sink type = %T, want map", sink)
+		}
+		if obj["id"] == sinkID {
+			listSinkObj = obj
+			break
+		}
+	}
+	if listSinkObj == nil {
+		t.Fatalf("notification_sink_list did not include sink %s: %#v", sinkID, sinks)
+	}
+	if listSinkObj["max_concurrency"] != float64(5) {
+		t.Fatalf("list sink max_concurrency = %v, want 5; sink=%#v", listSinkObj["max_concurrency"], listSinkObj)
 	}
 
 	disableSink := callTool(t, session, "notification_sink_disable", NotificationSinkRefInput{Sink: sinkID})

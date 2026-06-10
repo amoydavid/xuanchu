@@ -24,6 +24,22 @@ token = "replace-with-your-token"
 [server.admin]
 enabled = false
 
+[notifications.dispatcher]
+# dispatcher 级并发。默认 1，保持顺序投递；需要吞吐时再显式调大。
+max_concurrency = 1
+# 每轮最多从数据库领取多少条。它是查询上限，不是并发数。
+batch_size = 50
+prefetch_factor = 1
+poll_interval = "5s"
+claim_ttl = "5m"
+
+[hooks.dispatcher]
+max_concurrency = 1
+batch_size = 50
+prefetch_factor = 1
+poll_interval = "5s"
+claim_ttl = "5m"
+
 # Server admin token 只用于 /api/v1/admin/* bootstrap 控制面。
 # 生产建议使用 hash 或 hash_env，不要保存明文 token。
 # 生成方式：

@@ -1021,6 +1021,8 @@ Ping Hook，生成一次 ping 投递并写审计日志。
 
 通知与提醒包含三类能力：`notification_sink_*` 管理出站 sink，`reminder_rule_*` 管理基于时间和任务过滤器的提醒规则，`notification_rule_*` 管理基于事件的用户通知规则，`notification_delivery_*` 查看和 replay 投递记录。
 
+Notification sink 支持 `max_concurrency` 控制同一 sink 的单进程出站并发。`0` 表示继承 dispatcher 默认 sink 并发；显式大于 `0` 时限制该 workspace 内同一 sink 的并发。`notification_sink_list` / `notification_sink_info` 返回的 sink 对象会包含该字段。
+
 #### `notification_sink_add`
 
 创建 notification sink。
@@ -1042,6 +1044,7 @@ Ping Hook，生成一次 ping 投递并写审计日志。
 | `secret` | string | 否 | webhook 签名 secret |
 | `timeout_seconds` | int | 否 | |
 | `max_attempts` | int | 否 | |
+| `max_concurrency` | int | 否 | sink 级并发；`0` 表示继承 dispatcher 默认 sink 并发 |
 
 #### `notification_sink_list`
 
@@ -1083,6 +1086,7 @@ Ping Hook，生成一次 ping 投递并写审计日志。
 | `secret` | string | 否 | |
 | `timeout_seconds` | int | 否 | |
 | `max_attempts` | int | 否 | |
+| `max_concurrency` | int | 否 | sink 级并发；`0` 表示继承 dispatcher 默认 sink 并发 |
 
 #### `notification_sink_enable` / `notification_sink_disable` / `notification_sink_remove`
 

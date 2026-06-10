@@ -10,10 +10,12 @@
 - 动态 endpoint 必须配置 `allowed_hosts`；delivery 生成后会冻结 URL、header、body，replay 不重新渲染当前模板。
 - secret 不要直接写入 URL/body。HTTP template 中通过 `secret_refs` 引用 secret config。
 - `sink` 是 workspace 级资源引用，可以用名称或 ID；不能跨 workspace 引用。
+- delivery 表是通知投递的可靠队列。dispatcher 每轮按可用容量领取到期 delivery；`batch_size` 只是每轮查询上限，不是并发数。
+- dispatcher 默认 `max_concurrency=1`。sink 的 `max_concurrency=0` 表示继承 dispatcher 默认 sink 并发；显式大于 `0` 时限制该 workspace 内同一 sink 的并发。
 
 ## notification_sink_add — 创建 sink
 
-`name` 必填。`type` 可为 `webhook` 或 `http_template`；`endpoint_mode` 可为 `static_url`、`template`、`config_value`。
+`name` 必填。`type` 可为 `webhook` 或 `http_template`；`endpoint_mode` 可为 `static_url`、`template`、`config_value`。`max_concurrency` 可选，`0` 表示继承 dispatcher 默认 sink 并发。
 
 ```json
 // OpenClaw 标准 webhook
@@ -23,7 +25,8 @@ notification_sink_add({
   "type": "webhook",
   "endpoint_mode": "static_url",
   "url": "https://openclaw.example.com/xuanchu/notifications",
-  "secret": "webhook-secret"
+  "secret": "webhook-secret",
+  "max_concurrency": 0
 })
 
 // 按 project 配置读取 endpoint
@@ -33,7 +36,8 @@ notification_sink_add({
   "type": "webhook",
   "endpoint_mode": "config_value",
   "config_key": "integrations.openclaw.notification_url",
-  "allowed_hosts": ["openclaw.example.com"]
+  "allowed_hosts": ["openclaw.example.com"],
+  "max_concurrency": 1
 })
 ```
 
@@ -57,7 +61,8 @@ notification_sink_add({
     {"alias": "feishu_bot_token", "config_key": "integrations.feishu.bot_token"}
   ],
   "body_content_type": "application/json",
-  "body_template": "{\"msg_type\":\"text\",\"content\":{\"text\":\"任务 {{task.task_slug}} 即将到期：{{task.description}}\"}}"
+  "body_template": "{\"msg_type\":\"text\",\"content\":{\"text\":\"任务 {{task.task_slug}} 即将到期：{{task.description}}\"}}",
+  "max_concurrency": 0
 })
 ```
 
@@ -77,6 +82,7 @@ notification_sink_list({"workspace": "dajee"})
 notification_sink_list({"workspace": "dajee", "include_disabled": true})
 notification_sink_info({"workspace": "dajee", "sink": "sink-id-or-name"})
 notification_sink_modify({"workspace": "dajee", "sink": "sink-id", "name": "openclaw-prod"})
+notification_sink_modify({"workspace": "dajee", "sink": "sink-id", "max_concurrency": 2})
 notification_sink_disable({"workspace": "dajee", "sink": "sink-id"})
 notification_sink_enable({"workspace": "dajee", "sink": "sink-id"})
 notification_sink_remove({"workspace": "dajee", "sink": "sink-id"})

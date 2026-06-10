@@ -52,6 +52,39 @@ func TestAddNotificationSinkStaticURL(t *testing.T) {
 	}
 }
 
+func TestAddNotificationSinkMaxConcurrency(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+
+	input := defaultNotificationSinkInput()
+	input.MaxConcurrency = 3
+	view, err := svc.AddNotificationSink(input)
+	if err != nil {
+		t.Fatalf("AddNotificationSink() error = %v", err)
+	}
+	if view.MaxConcurrency != 3 {
+		t.Fatalf("MaxConcurrency = %d, want 3", view.MaxConcurrency)
+	}
+
+	info, err := svc.NotificationSinkInfo(view.ID)
+	if err != nil {
+		t.Fatalf("NotificationSinkInfo() error = %v", err)
+	}
+	if info.MaxConcurrency != 3 {
+		t.Fatalf("info MaxConcurrency = %d, want 3", info.MaxConcurrency)
+	}
+}
+
+func TestAddNotificationSinkRejectsNegativeMaxConcurrency(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+
+	input := defaultNotificationSinkInput()
+	input.MaxConcurrency = -1
+	_, err := svc.AddNotificationSink(input)
+	assertRuntimeCode(t, err, "notification_sink_invalid")
+}
+
 func TestAddNotificationSinkHTTPTemplateStoresHeaderAndBodyTemplates(t *testing.T) {
 	svc, cleanup := notificationTestEnv(t)
 	defer cleanup()
@@ -342,6 +375,52 @@ func TestModifyNotificationSink(t *testing.T) {
 	if modified.Name != name || modified.URL != url || modified.TimeoutSeconds != timeout {
 		t.Fatalf("modified sink = %#v", modified)
 	}
+}
+
+func TestModifyNotificationSinkMaxConcurrency(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	maxConcurrency := 7
+	modified, err := svc.ModifyNotificationSink(sink.ID, NotificationSinkModifyInput{
+		MaxConcurrency: &maxConcurrency,
+	})
+	if err != nil {
+		t.Fatalf("ModifyNotificationSink() error = %v", err)
+	}
+	if modified.MaxConcurrency != maxConcurrency {
+		t.Fatalf("MaxConcurrency = %d, want %d", modified.MaxConcurrency, maxConcurrency)
+	}
+
+	inheritDefault := 0
+	modified, err = svc.ModifyNotificationSink(sink.ID, NotificationSinkModifyInput{
+		MaxConcurrency: &inheritDefault,
+	})
+	if err != nil {
+		t.Fatalf("ModifyNotificationSink(reset) error = %v", err)
+	}
+	if modified.MaxConcurrency != 0 {
+		t.Fatalf("reset MaxConcurrency = %d, want 0", modified.MaxConcurrency)
+	}
+}
+
+func TestModifyNotificationSinkRejectsNegativeMaxConcurrency(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	maxConcurrency := -1
+	_, err = svc.ModifyNotificationSink(sink.ID, NotificationSinkModifyInput{
+		MaxConcurrency: &maxConcurrency,
+	})
+	assertRuntimeCode(t, err, "notification_sink_invalid")
 }
 
 func TestNotificationDeliveryListInfoReplay(t *testing.T) {

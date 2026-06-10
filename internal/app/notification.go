@@ -49,6 +49,7 @@ type NotificationSinkAddInput struct {
 	Secret          string
 	TimeoutSeconds  int
 	MaxAttempts     int
+	MaxConcurrency  int
 }
 
 type NotificationSinkModifyInput struct {
@@ -67,6 +68,7 @@ type NotificationSinkModifyInput struct {
 	Secret          *string
 	TimeoutSeconds  *int
 	MaxAttempts     *int
+	MaxConcurrency  *int
 }
 
 type NotificationSinkView struct {
@@ -87,6 +89,7 @@ type NotificationSinkView struct {
 	Enabled         bool                         `json:"enabled"`
 	TimeoutSeconds  int                          `json:"timeout_seconds"`
 	MaxAttempts     int                          `json:"max_attempts"`
+	MaxConcurrency  int                          `json:"max_concurrency"`
 	CreatedBy       task.UserInfo                `json:"created_by"`
 	CreatedAt       int64                        `json:"created_at"`
 	ModifiedAt      int64                        `json:"modified_at"`
@@ -205,6 +208,7 @@ func (s *Service) AddNotificationSink(input NotificationSinkAddInput) (Notificat
 		Enabled:             &enabled,
 		TimeoutSeconds:      normalized.TimeoutSeconds,
 		MaxAttempts:         normalized.MaxAttempts,
+		MaxConcurrency:      normalized.MaxConcurrency,
 		CreatedBy:           s.runtime.ActorUserID,
 		CreatedAt:           now,
 		ModifiedAt:          now,
@@ -309,6 +313,7 @@ func (s *Service) ModifyNotificationSink(sinkID string, input NotificationSinkMo
 	row.Secret = normalized.Secret
 	row.TimeoutSeconds = normalized.TimeoutSeconds
 	row.MaxAttempts = normalized.MaxAttempts
+	row.MaxConcurrency = normalized.MaxConcurrency
 	row.ModifiedAt = now
 	var view NotificationSinkView
 	err = s.withAudit("notification.sink.modify", func(tx *Service) (AuditEntry, error) {
@@ -842,6 +847,9 @@ func normalizeNotificationSinkInput(s *Service, input NotificationSinkAddInput) 
 	if err := validateMaxAttempts(input.MaxAttempts); err != nil {
 		return input, err
 	}
+	if input.MaxConcurrency < 0 {
+		return input, RuntimeError{Code: "notification_sink_invalid", Message: "max concurrency must be non-negative"}
+	}
 	return input, nil
 }
 
@@ -862,6 +870,7 @@ func notificationSinkAddInputFromRow(row storage.NotificationSink) NotificationS
 		Secret:          row.Secret,
 		TimeoutSeconds:  row.TimeoutSeconds,
 		MaxAttempts:     row.MaxAttempts,
+		MaxConcurrency:  row.MaxConcurrency,
 	}
 }
 
@@ -910,6 +919,9 @@ func applyNotificationSinkModifyInput(input *NotificationSinkAddInput, mod Notif
 	}
 	if mod.MaxAttempts != nil {
 		input.MaxAttempts = *mod.MaxAttempts
+	}
+	if mod.MaxConcurrency != nil {
+		input.MaxConcurrency = *mod.MaxConcurrency
 	}
 }
 
@@ -1139,6 +1151,7 @@ func notificationSinkViewFromRow(row storage.NotificationSink, createdBy task.Us
 		Enabled:         enabled,
 		TimeoutSeconds:  row.TimeoutSeconds,
 		MaxAttempts:     row.MaxAttempts,
+		MaxConcurrency:  row.MaxConcurrency,
 		CreatedBy:       createdBy,
 		CreatedAt:       row.CreatedAt,
 		ModifiedAt:      row.ModifiedAt,

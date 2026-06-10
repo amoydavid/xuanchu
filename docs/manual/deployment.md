@@ -95,6 +95,9 @@ HTTP 3xx redirect 不会被自动跟随。
 - `xuanchu server` 启动后会自动运行 reminder scheduler 和 notification dispatcher。
 - Hook 投递失败不会回滚已提交的 task/project 事务。
 - Notification 投递失败不会修改任务状态。
+- Hook / Notification delivery 表是可靠队列；进程内 worker 只做短暂执行协调。`batch_size` 是每轮查询上限，`max_concurrency` 才是同时出站 HTTP 请求数。
+- 单实例默认 `max_concurrency=1`。多实例部署时，总体出站并发约等于单实例配置乘以副本数；首版不提供跨实例严格全局并发。
+- notification dispatcher 和 hook dispatcher 在同一个 server 进程内共享 sink limiter，同一 sink 的单进程并发不会因为两个 runtime 同时运行而翻倍。
 - Dead-lettered delivery 可通过 `xuanchu hook replay <delivery-id>` 手动重试。
 - Dead-lettered notification delivery 可通过 `xuanchu notification delivery replay <delivery-id>` 手动重试。
 

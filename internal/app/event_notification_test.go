@@ -157,6 +157,20 @@ func TestDoneUnblockedEnqueuesEventNotificationForAssignee(t *testing.T) {
 	if payload["event_type"] != "task.unblocked" {
 		t.Fatalf("payload event_type = %v", payload["event_type"])
 	}
+	if payload["delivery_id"] != rows[0].ID || payload["workspace_id"] != rows[0].WorkspaceID || payload["sink_id"] != rows[0].SinkID {
+		t.Fatalf("top-level delivery payload = %#v, delivery = %#v", payload, rows[0])
+	}
+	if payload["attempt"] != float64(1) {
+		t.Fatalf("payload attempt = %v, want 1", payload["attempt"])
+	}
+	delivery := payload["delivery"].(map[string]any)
+	if delivery["id"] != rows[0].ID || delivery["workspace_id"] != rows[0].WorkspaceID || delivery["sink_id"] != rows[0].SinkID {
+		t.Fatalf("delivery payload = %#v, delivery = %#v", delivery, rows[0])
+	}
+	object := payload["object"].(map[string]any)
+	if object["kind"] != "task" || object["id"] != rows[0].ObjectID {
+		t.Fatalf("object payload = %#v", object)
+	}
 	recipient := payload["recipient"].(map[string]any)
 	if recipient["id"] != assignee.ID {
 		t.Fatalf("recipient = %#v", recipient)

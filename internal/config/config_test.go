@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveDatabasePathPrefersExplicitDB(t *testing.T) {
@@ -114,6 +115,150 @@ func TestResolveReadsRemoteSettingsFromToml(t *testing.T) {
 	}
 	if cfg.RemoteToken != "xuanchu_pat_toml" {
 		t.Fatalf("RemoteToken = %q", cfg.RemoteToken)
+	}
+}
+
+func TestResolveReadsDispatcherConfigFromToml(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"[notifications.dispatcher]",
+		"max_concurrency = 4",
+		"batch_size = 20",
+		"prefetch_factor = 2",
+		`poll_interval = "3s"`,
+		`claim_ttl = "7m"`,
+		"",
+		"[hooks.dispatcher]",
+		"max_concurrency = 3",
+		"batch_size = 15",
+		"prefetch_factor = 1",
+		`poll_interval = "4s"`,
+		`claim_ttl = "8m"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{ConfigPath: path, HomeDir: dir, Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.NotificationDispatcher.MaxConcurrency != 4 {
+		t.Fatalf("NotificationDispatcher.MaxConcurrency = %d, want 4", cfg.NotificationDispatcher.MaxConcurrency)
+	}
+	if cfg.NotificationDispatcher.BatchSize != 20 {
+		t.Fatalf("NotificationDispatcher.BatchSize = %d, want 20", cfg.NotificationDispatcher.BatchSize)
+	}
+	if cfg.NotificationDispatcher.PrefetchFactor != 2 {
+		t.Fatalf("NotificationDispatcher.PrefetchFactor = %d, want 2", cfg.NotificationDispatcher.PrefetchFactor)
+	}
+	if cfg.NotificationDispatcher.PollInterval != 3*time.Second {
+		t.Fatalf("NotificationDispatcher.PollInterval = %v, want 3s", cfg.NotificationDispatcher.PollInterval)
+	}
+	if cfg.NotificationDispatcher.ClaimTTL != 7*time.Minute {
+		t.Fatalf("NotificationDispatcher.ClaimTTL = %v, want 7m", cfg.NotificationDispatcher.ClaimTTL)
+	}
+	if cfg.HookDispatcher.MaxConcurrency != 3 {
+		t.Fatalf("HookDispatcher.MaxConcurrency = %d, want 3", cfg.HookDispatcher.MaxConcurrency)
+	}
+	if cfg.HookDispatcher.BatchSize != 15 {
+		t.Fatalf("HookDispatcher.BatchSize = %d, want 15", cfg.HookDispatcher.BatchSize)
+	}
+	if cfg.HookDispatcher.PollInterval != 4*time.Second {
+		t.Fatalf("HookDispatcher.PollInterval = %v, want 4s", cfg.HookDispatcher.PollInterval)
+	}
+	if cfg.HookDispatcher.ClaimTTL != 8*time.Minute {
+		t.Fatalf("HookDispatcher.ClaimTTL = %v, want 8m", cfg.HookDispatcher.ClaimTTL)
+	}
+}
+
+func TestResolveDispatcherConfigDefaults(t *testing.T) {
+	cfg, err := Resolve(Options{HomeDir: "/home/alice", Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	assertDefaultDispatcherConfig(t, "NotificationDispatcher", cfg.NotificationDispatcher)
+	assertDefaultDispatcherConfig(t, "HookDispatcher", cfg.HookDispatcher)
+}
+
+func assertDefaultDispatcherConfig(t *testing.T, name string, cfg DispatcherConfig) {
+	t.Helper()
+	if cfg.MaxConcurrency != 1 {
+		t.Fatalf("%s.MaxConcurrency = %d, want 1", name, cfg.MaxConcurrency)
+	}
+	if cfg.BatchSize != 50 {
+		t.Fatalf("%s.BatchSize = %d, want 50", name, cfg.BatchSize)
+	}
+	if cfg.PrefetchFactor != 1 {
+		t.Fatalf("%s.PrefetchFactor = %d, want 1", name, cfg.PrefetchFactor)
+	}
+	if cfg.PollInterval != 5*time.Second {
+		t.Fatalf("%s.PollInterval = %v, want 5s", name, cfg.PollInterval)
+	}
+	if cfg.ClaimTTL != 5*time.Minute {
+		t.Fatalf("%s.ClaimTTL = %v, want 5m", name, cfg.ClaimTTL)
+	}
+}
+
+func TestResolveRejectsInvalidDispatcherConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "negative int",
+			body: strings.Join([]string{
+				"[notifications.dispatcher]",
+				"max_concurrency = -1",
+				"",
+			}, "\n"),
+			want: "notifications.dispatcher.max_concurrency",
+		},
+		{
+			name: "zero int",
+			body: strings.Join([]string{
+				"[hooks.dispatcher]",
+				"batch_size = 0",
+				"",
+			}, "\n"),
+			want: "hooks.dispatcher.batch_size",
+		},
+		{
+			name: "invalid duration",
+			body: strings.Join([]string{
+				"[notifications.dispatcher]",
+				`claim_ttl = "soon"`,
+				"",
+			}, "\n"),
+			want: "notifications.dispatcher.claim_ttl",
+		},
+		{
+			name: "zero duration",
+			body: strings.Join([]string{
+				"[hooks.dispatcher]",
+				`poll_interval = "0s"`,
+				"",
+			}, "\n"),
+			want: "hooks.dispatcher.poll_interval",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "xuanchu.toml")
+			if err := os.WriteFile(path, []byte(tt.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Resolve(Options{ConfigPath: path, HomeDir: dir, Env: map[string]string{}})
+			if err == nil {
+				t.Fatal("Resolve() error = nil, want invalid dispatcher config error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Resolve() error = %q, want contains %q", err.Error(), tt.want)
+			}
+		})
 	}
 }
 

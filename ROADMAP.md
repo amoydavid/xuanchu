@@ -70,7 +70,7 @@ v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 ou
 - 新增 event notification rule，让 `task.unblocked` 等事件可以通过 OpenClaw 或其他 sink 通知用户。
 - notification delivery 增加 `object_kind` / `object_id`，同一张投递表可以承载 task、project 等事件对象；旧的 reminder delivery 继续使用 task 语义。
 - Hook delivery 生成时冻结 sink 渲染后的 URL、method、headers、body 和 content type，retry/replay 使用历史快照，不读取当前 sink 配置重渲染。
-- Notification / Hook dispatcher 后续需要补齐并发、背压和可靠投递运行时：DB delivery 表是唯一可靠队列，进程内 worker 只做短暂执行协调；claim 数量受可用并发约束，系统重启后通过 stale recovery 恢复过期 `delivering`。
+- Notification / Hook dispatcher 已补齐单进程并发、背压和可靠投递运行时：DB delivery 表是唯一可靠队列，进程内 worker 只做短暂执行协调；claim 数量受可用并发约束，系统重启后通过 stale recovery 恢复过期 `delivering`。单进程内两个 dispatcher 共享 sink limiter；多实例部署暂不提供全局严格并发上限。
 
 当前事件白名单：
 
@@ -125,6 +125,7 @@ v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 ou
 docs/superpowers/specs/2026-06-09-xuanchu-event-notification-and-hook-events-design.md
 docs/superpowers/plans/2026-06-09-xuanchu-event-notification-and-hook-events-implementation.md
 docs/superpowers/specs/2026-06-10-xuanchu-dispatcher-concurrency-backpressure-design.md
+docs/superpowers/plans/2026-06-10-xuanchu-dispatcher-concurrency-backpressure-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

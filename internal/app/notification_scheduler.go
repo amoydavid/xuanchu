@@ -317,6 +317,8 @@ func schedulerScopedConfigValue(configRepo *storage.ConfigRepository, configDefR
 func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule, sink storage.NotificationSink, workspace storage.Workspace, project *NotificationProjectContext, tsk task.Task, recipient task.UserInfo, configValues map[string]string, secretValues map[string]string, now int64) (storage.NotificationDelivery, error) {
 	sinkView := notificationSinkViewFromRow(sink, task.UserInfo{ID: sink.CreatedBy, Name: sink.CreatedBy})
 	eventType := reminderEventType(rule, tsk, now)
+	deliveryID := uuid.NewString()
+	eventID := uuid.NewString()
 	windowStart, windowEnd := reminderWindow(rule, tsk, now, time.Local)
 	sequence, err := reminderDeliverySequence(db, rule, tsk, recipient)
 	if err != nil {
@@ -334,7 +336,10 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 		Task:         NotificationTaskContext{UUID: tsk.UUID, TaskSlug: taskRefForNotification(tsk), Description: tsk.Description, Status: tsk.Status, Due: tsk.Due},
 		Recipient:    recipient,
 		Reminder:     NotificationReminderContext{Sequence: sequence, OverdueSequence: overdueSequence, WindowStart: windowStart, WindowEnd: windowEnd},
+		Event:        NotificationEventContext{ID: eventID, Type: eventType, Version: 1, ObjectKind: "task", ObjectID: tsk.UUID},
 		EventType:    eventType,
+		Delivery:     NotificationDeliveryContext{ID: deliveryID, Attempt: 1, WorkspaceID: rule.WorkspaceID, SinkID: sink.ID},
+		Object:       NotificationObjectContext{Kind: "task", ID: tsk.UUID},
 		ConfigValues: configValues,
 		SecretValues: secretValues,
 	})
@@ -343,7 +348,7 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 	}
 	window := scheduleDateKey(rule, tsk, now, time.Local)
 	return storage.NotificationDelivery{
-		ID:                          uuid.NewString(),
+		ID:                          deliveryID,
 		WorkspaceID:                 rule.WorkspaceID,
 		ProjectID:                   rule.ProjectID,
 		RuleID:                      rule.ID,
@@ -352,7 +357,7 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 		ObjectKind:                  "task",
 		ObjectID:                    tsk.UUID,
 		RecipientUserID:             recipient.ID,
-		EventID:                     uuid.NewString(),
+		EventID:                     eventID,
 		EventType:                   eventType,
 		DedupeKey:                   fmt.Sprintf("%s:%s:%s:%s:%s", rule.WorkspaceID, rule.ID, tsk.UUID, recipient.ID, window),
 		ResolvedURL:                 req.ResolvedURL,

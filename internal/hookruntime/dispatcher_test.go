@@ -3,6 +3,7 @@ package hookruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -10,9 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/google/uuid"
 )
@@ -428,10 +431,11 @@ func TestDispatcherTimeout(t *testing.T) {
 
 	clock := testClock{now: 1000}
 	d := NewDispatcher(DispatcherOptions{
-		Store:    store,
-		Clock:    clock,
-		Client:   server.Client(),
-		Resolver: mockResolver{},
+		Store:          store,
+		Clock:          clock,
+		Client:         server.Client(),
+		Resolver:       mockResolver{},
+		MaxConcurrency: 3,
 	})
 
 	if err := d.RunOnce(context.Background()); err != nil {
@@ -486,10 +490,11 @@ func TestDispatcherHTTP500(t *testing.T) {
 
 	clock := testClock{now: 1000}
 	d := NewDispatcher(DispatcherOptions{
-		Store:    store,
-		Clock:    clock,
-		Client:   server.Client(),
-		Resolver: mockResolver{},
+		Store:          store,
+		Clock:          clock,
+		Client:         server.Client(),
+		Resolver:       mockResolver{},
+		MaxConcurrency: 3,
 	})
 
 	if err := d.RunOnce(context.Background()); err != nil {
@@ -549,10 +554,11 @@ func TestDispatcherHTTP429(t *testing.T) {
 
 	clock := testClock{now: 1000}
 	d := NewDispatcher(DispatcherOptions{
-		Store:    store,
-		Clock:    clock,
-		Client:   server.Client(),
-		Resolver: mockResolver{},
+		Store:          store,
+		Clock:          clock,
+		Client:         server.Client(),
+		Resolver:       mockResolver{},
+		MaxConcurrency: 3,
 	})
 
 	if err := d.RunOnce(context.Background()); err != nil {
@@ -1123,10 +1129,11 @@ func TestDispatcherRunOnceMultipleDeliveries(t *testing.T) {
 
 	clock := testClock{now: 1000}
 	d := NewDispatcher(DispatcherOptions{
-		Store:    store,
-		Clock:    clock,
-		Client:   server.Client(),
-		Resolver: mockResolver{},
+		Store:          store,
+		Clock:          clock,
+		Client:         server.Client(),
+		Resolver:       mockResolver{},
+		MaxConcurrency: 3,
 	})
 
 	if err := d.RunOnce(context.Background()); err != nil {
@@ -1182,11 +1189,12 @@ func TestDispatcherRunOnceRespectsBatchSize(t *testing.T) {
 
 	clock := testClock{now: 1000}
 	d := NewDispatcher(DispatcherOptions{
-		Store:     store,
-		Clock:     clock,
-		Client:    server.Client(),
-		BatchSize: 2, // 每次只取 2 个
-		Resolver:  mockResolver{},
+		Store:          store,
+		Clock:          clock,
+		Client:         server.Client(),
+		BatchSize:      2, // 每次只取 2 个
+		MaxConcurrency: 2,
+		Resolver:       mockResolver{},
 	})
 
 	// 第一次 RunOnce 只取 2 个
@@ -1199,5 +1207,429 @@ func TestDispatcherRunOnceRespectsBatchSize(t *testing.T) {
 	mu.Unlock()
 	if firstCount != 2 {
 		t.Fatalf("first batch count = %d, want 2", firstCount)
+	}
+}
+
+func TestHookDispatcherClaimLimitUsesMaxConcurrency(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ResolvedURL = server.URL
+			d.CreatedAt = int64(100 + i)
+			d.ModifiedAt = d.CreatedAt
+		})
+		if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d := NewDispatcher(DispatcherOptions{
+		Store:          store,
+		Clock:          testClock{now: 1000},
+		Client:         server.Client(),
+		Resolver:       mockResolver{},
+		BatchSize:      50,
+		MaxConcurrency: 3,
+		PrefetchFactor: 1,
+	})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 3 {
+		t.Fatalf("requests = %d, want 3", requests.Load())
+	}
+	var queued int64
+	if err := store.DB().Model(&storage.HookDelivery{}).Where("status = ?", storage.DeliveryStatusQueued).Count(&queued).Error; err != nil {
+		t.Fatal(err)
+	}
+	if queued != 7 {
+		t.Fatalf("queued = %d, want 7", queued)
+	}
+}
+
+func TestHookDispatcherMaxConcurrencyBoundsInflightRequests(t *testing.T) {
+	var active atomic.Int64
+	var maxActive atomic.Int64
+	release := make(chan struct{})
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			previous := maxActive.Load()
+			if current <= previous || maxActive.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		if current == 2 {
+			once.Do(func() { close(release) })
+		}
+		select {
+		case <-release:
+		case <-time.After(300 * time.Millisecond):
+			once.Do(func() { close(release) })
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6; i++ {
+		delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ResolvedURL = server.URL
+			d.CreatedAt = int64(100 + i)
+			d.ModifiedAt = d.CreatedAt
+		})
+		if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: mockResolver{}, MaxConcurrency: 2})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if maxActive.Load() > 2 {
+		t.Fatalf("max active requests = %d, want <= 2", maxActive.Load())
+	}
+}
+
+func TestHookDispatcherSendsAttemptHeaderFromClaimedDelivery(t *testing.T) {
+	var attemptHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attemptHeader = r.Header.Get("X-Xuanchu-Attempt")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
+		d.Status = storage.DeliveryStatusRetryWait
+		d.NextAttemptAt = int64Ptr(900)
+		d.AttemptCount = 1
+	})
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: mockResolver{}})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if attemptHeader != "2" {
+		t.Fatalf("X-Xuanchu-Attempt = %q, want 2", attemptHeader)
+	}
+}
+
+type blockingRoundTripper struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (rt blockingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	close(rt.started)
+	select {
+	case <-rt.release:
+	case <-req.Context().Done():
+		<-rt.release
+		return nil, req.Context().Err()
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("ok")),
+		Header:     make(http.Header),
+		Request:    req,
+	}, nil
+}
+
+func TestHookDispatcherRunOnceWaitsForStartedWorkersOnCancel(t *testing.T) {
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, "https://example.com/webhook")
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ID = uuid.NewString()
+			d.ResolvedURL = "https://example.com/webhook"
+			d.CreatedAt = int64(100 + i)
+			d.ModifiedAt = d.CreatedAt
+		})
+		if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client := &http.Client{Transport: blockingRoundTripper{started: started, release: release}}
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:          store,
+		Clock:          testClock{now: 1000},
+		Client:         client,
+		Resolver:       mockResolver{},
+		MaxConcurrency: 1,
+		PrefetchFactor: 2,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- dispatcher.RunOnce(ctx)
+	}()
+	<-started
+	cancel()
+
+	select {
+	case err := <-done:
+		t.Fatalf("RunOnce returned before started worker finished: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("RunOnce() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunOnce did not return after worker was released")
+	}
+}
+
+func TestHookDispatcherSinkMaxConcurrencyBoundsInflightPerSink(t *testing.T) {
+	var active atomic.Int64
+	var maxActive atomic.Int64
+	release := make(chan struct{})
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			previous := maxActive.Load()
+			if current <= previous || maxActive.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		once.Do(func() { close(release) })
+		select {
+		case <-release:
+		case <-time.After(300 * time.Millisecond):
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	sinkRepo := storage.NewNotificationSinkRepository(store.DB())
+	if err := sinkRepo.Update(makeTestSink(t, wsID, server.URL, func(s *storage.NotificationSink) {
+		s.ID = "sink-1"
+		s.MaxConcurrency = 1
+	})); err != nil {
+		t.Fatal(err)
+	}
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ResolvedURL = server.URL
+			d.CreatedAt = int64(100 + i)
+			d.ModifiedAt = d.CreatedAt
+		})
+		if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: mockResolver{}, MaxConcurrency: 4})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if maxActive.Load() > 1 {
+		t.Fatalf("max active requests = %d, want <= 1", maxActive.Load())
+	}
+}
+
+func TestHookDispatcherDoesNotLeaveSinkLimitedDeliveriesDelivering(t *testing.T) {
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	sinkRepo := storage.NewNotificationSinkRepository(store.DB())
+	if err := sinkRepo.Update(makeTestSink(t, wsID, "https://example.com/webhook", func(s *storage.NotificationSink) {
+		s.ID = "sink-1"
+		s.MaxConcurrency = 1
+	})); err != nil {
+		t.Fatal(err)
+	}
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, "https://example.com/webhook")
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID)
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+	limiter := runtimeutil.NewSinkLimiter()
+	if !limiter.TryAcquire("sink-1", 1) {
+		t.Fatal("pre-acquire sink token failed")
+	}
+	defer limiter.Release("sink-1")
+
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, SinkLimiter: limiter})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	var delivering int64
+	if err := store.DB().Model(&storage.HookDelivery{}).Where("status = ?", storage.DeliveryStatusDelivering).Count(&delivering).Error; err != nil {
+		t.Fatal(err)
+	}
+	if delivering != 0 {
+		t.Fatalf("delivering = %d, want 0", delivering)
+	}
+	got := getDelivery(t, store, delivery.ID)
+	if got.Status != storage.DeliveryStatusQueued {
+		t.Fatalf("status = %q, want queued", got.Status)
+	}
+}
+
+func TestHookDispatcherRecoversStaleDeliveringOnRunOnce(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
+		d.Status = storage.DeliveryStatusDelivering
+		d.ClaimExpiresAt = int64Ptr(999)
+		d.AttemptCount = 1
+	})
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: mockResolver{}})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("requests = %d, want 1", requests.Load())
+	}
+	got := getDelivery(t, store, delivery.ID)
+	if got.Status != storage.DeliveryStatusSucceeded {
+		t.Fatalf("status = %q, want succeeded", got.Status)
+	}
+}
+
+func TestHookDispatcherKeepsFutureDeliveringInvisible(t *testing.T) {
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, "https://example.com/webhook")
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.Status = storage.DeliveryStatusDelivering
+		d.ClaimExpiresAt = int64Ptr(1200)
+		d.AttemptCount = 1
+	})
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	got := getDelivery(t, store, delivery.ID)
+	if got.Status != storage.DeliveryStatusDelivering {
+		t.Fatalf("status = %q, want delivering", got.Status)
+	}
+}
+
+func TestHookDispatcherRetryWaitSurvivesUntilNextAttempt(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
+		d.Status = storage.DeliveryStatusRetryWait
+		d.NextAttemptAt = int64Ptr(1200)
+	})
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+	d := NewDispatcher(DispatcherOptions{Store: store, Clock: testClock{now: 1000}, Client: server.Client(), Resolver: mockResolver{}})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	got := getDelivery(t, store, delivery.ID)
+	if got.Status != storage.DeliveryStatusRetryWait {
+		t.Fatalf("status = %q, want retry_wait", got.Status)
+	}
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want 0", got.AttemptCount)
 	}
 }
