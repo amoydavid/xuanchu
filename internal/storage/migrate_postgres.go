@@ -1,6 +1,10 @@
 package storage
 
-import "gorm.io/gorm"
+import (
+	"database/sql"
+
+	"gorm.io/gorm"
+)
 
 func (s *Store) migratePostgres() error {
 	if err := s.db.AutoMigrate(
@@ -23,12 +27,12 @@ func (s *Store) migratePostgres() error {
 
 func (s *Store) prepareTaskAnnotationIDsPostgres() error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		var tableName string
+		var tableName sql.NullString
 		err := tx.Raw("SELECT to_regclass('public.task_annotations')::text").Scan(&tableName).Error
 		if err != nil {
 			return err
 		}
-		if tableName == "" {
+		if !postgresRegclassFound(tableName) {
 			return nil
 		}
 		var idColumnCount int64
@@ -60,4 +64,8 @@ WHERE table_schema = current_schema()
 		}
 		return tx.Exec("CREATE INDEX IF NOT EXISTS idx_task_annotations_task ON task_annotations(task_uuid)").Error
 	})
+}
+
+func postgresRegclassFound(name sql.NullString) bool {
+	return name.Valid && name.String != ""
 }

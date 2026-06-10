@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"os"
 	"testing"
 	"time"
@@ -48,6 +49,15 @@ func TestPostgres_Migration(t *testing.T) {
 		if !db.Migrator().HasTable(table) {
 			t.Errorf("table %q not found after migration", table)
 		}
+	}
+}
+
+func TestPostgresRegclassFoundHandlesNull(t *testing.T) {
+	if postgresRegclassFound(sql.NullString{}) {
+		t.Fatal("NULL regclass should be treated as table not found")
+	}
+	if !postgresRegclassFound(sql.NullString{String: "task_annotations", Valid: true}) {
+		t.Fatal("valid regclass should be treated as table found")
 	}
 }
 
