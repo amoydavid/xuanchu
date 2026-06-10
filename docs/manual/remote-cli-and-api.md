@@ -26,7 +26,7 @@ xuanchu server --listen :8080 --db-url "postgres://user:pass@localhost:5432/xuan
 ```bash
 xuanchu token create admin \
   --type pat \
-  --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write,notification:read,notification:write,reminder:read,reminder:write \
+  --scope '*' \
   --expires-in 720h
 ```
 
@@ -37,11 +37,11 @@ xuanchu token create admin \
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
-  --scope task:read,task:write,project:read,context:read,config:read \
+  --scope '*' \
   --expires-in 720h
 ```
 
-workspace-scoped token 可服务同一 workspace 内多个 project。只允许访问单个 project 时，再加 `--project agentapi` 或 `--project-id <project-uuid>`。
+通用 workspace Agent token 建议直接授予 `*` scope，让它覆盖 MCP/远程 API 中的用户、成员、项目、任务、配置、通知、token 等完整工作流。`*` 只是 capability 上限，最终仍会被 token workspace/project allowlist 和绑定用户的 membership role 收窄。只允许访问单个 project 时，再加 `--project agentapi` 或 `--project-id <project-uuid>`。
 
 查看和撤销：
 
@@ -94,8 +94,7 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" \
 | `task:read` / `task:write` | task、report、import/export、urgency |
 | `project:read` / `project:write` | project 与 project config |
 | `context:read` / `context:write` | context |
-| `config:read` / `config:write` | workspace 业务配置 |
-| `config.schema.read` / `config.schema.write` | shared config schema 定义 |
+| `config:read` / `config:write` | 配置值和 shared config schema 定义 |
 | `audit:read` | audit list |
 | `token:read` / `token:write` | token list/create/modify/revoke |
 | `workspace:read` / `workspace:write` | workspace/member 管理 |

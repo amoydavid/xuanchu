@@ -58,11 +58,11 @@ xuanchu server --listen :8080
 
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
-  --scope task:read,task:write,project:read,context:read,config:read \
+  --scope '*' \
   --expires-in 720h
 ```
 
-HTTP MCP 默认建议使用 workspace-scoped Agent token。Agent 通常要服务一个 workspace 里的多个 project；需要限制到单项目或外部集成最小权限时，再加 `--project <slug>` 或 `--project-id <uuid>` 收窄 allowlist。
+HTTP MCP 默认建议使用带 `*` scope 的 workspace-scoped Agent token。Agent 通常要服务一个 workspace 里的多个 project，并可能调用用户、成员、项目、任务、配置、通知、token 等多类写操作；scope 给窄后很容易在 tool 调用时遇到 `token_scope_denied`。如果只允许服务单个 project，再加 `--project <slug>` 或 `--project-id <uuid>` 收窄 allowlist。
 
 ## 在 Claude Code 中使用
 
@@ -277,11 +277,11 @@ HTTP MCP 接入前，建议为 Agent 创建 workspace-scoped token：
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
-  --scope task:read,task:write,project:read,context:read,config:read \
+  --scope '*' \
   --expires-in 720h
 ```
 
-如果这个 Agent 只允许服务单个 project，可以额外加 `--project agentapi` 或 `--project-id <project-uuid>`。
+这个 `*` 是 token capability 上限，实际权限仍会被 workspace/project allowlist 和绑定用户的 membership role 收窄。如果这个 Agent 只允许服务单个 project，可以额外加 `--project agentapi` 或 `--project-id <project-uuid>`。
 
 ## 建议给 Agent 的提示词
 

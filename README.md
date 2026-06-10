@@ -679,16 +679,16 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces \
 curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces/team/agent-tokens \
   -H "Authorization: Bearer $XUANCHU_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"openclaw","user":"alice@example.com","scopes":["task:read","task:write"],"expires_in":"24h"}'
+  -d '{"name":"openclaw","user":"alice@example.com","scopes":["*"],"expires_in":"24h"}'
 ```
 
-创建 Agent token 的响应只会返回一次明文 `xuanchu_agent_...`，之后只能重新签发。常见错误包括：未启用 admin bootstrap 时返回 `route_not_found`，重复 workspace 返回 `admin_workspace_exists`，owner name/email 指向不同用户返回 `admin_owner_invalid`，非法 scope 返回 `token_scope_invalid`。
+通用 workspace Agent token 建议直接授予 `*` scope。这类 token 通常代表一个 Agent 平台在某个 workspace 内执行项目、任务、用户、成员、通知、token 管理等完整工作流；权限仍会被 token 的 workspace/project allowlist 和绑定用户的 membership role 继续收窄。创建 Agent token 的响应只会返回一次明文 `xuanchu_agent_...`，之后只能重新签发。常见错误包括：未启用 admin bootstrap 时返回 `route_not_found`，重复 workspace 返回 `admin_workspace_exists`，owner name/email 指向不同用户返回 `admin_owner_invalid`，非法 scope 返回 `token_scope_invalid`。
 
 创建第一个 token 建议在 server 启动前用本地 CLI 完成：
 
 ```bash
 ./xuanchu --workspace local token create cli \
-  --scope task:read,task:write,project:read,project:write,context:read,context:write,config:read,config:write,audit:read,token:read,token:write \
+  --scope '*' \
   --expires-in 720h
 ```
 
@@ -726,7 +726,7 @@ Token scope 是收窄，不是放大。最终权限是：
 membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
 ```
 
-常用 capability：
+常用 capability 可通过 `xuanchu scope list` 查看。通用 workspace Agent token 推荐使用 `*`，专用集成 token 再按场景收窄：
 
 ```text
 task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write notification:read notification:write reminder:read reminder:write impersonate
@@ -767,7 +767,7 @@ stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输�
 # Authorization: Bearer xuanchu_pat_xxx
 ```
 
-HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。给 Agent 的默认建议是 workspace-scoped Agent token，让它服务同一 workspace 内多个 project；只服务单项目时再用 project allowlist 收窄。`/mcp` 不在 OpenAPI 文档中。
+HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。给 Agent 的默认建议是带 `*` scope 的 workspace-scoped Agent token，让它服务同一 workspace 内多个 project，并覆盖用户、成员、项目、任务、配置、通知、token 等完整 tool 集；只服务单项目时再用 project allowlist 收窄。`/mcp` 不在 OpenAPI 文档中。
 
 ### MCP tools 列表
 
@@ -899,7 +899,7 @@ Agent 平台可以持有一个带 `impersonate` scope 的 Agent token，以 work
 # 创建可 impersonate 的 Agent token（需要 admin/owner）
 ./xuanchu --workspace local token create pm-agent \
   --type agent \
-  --scope task:read,task:write,impersonate \
+  --scope '*' \
   --expires-in 8760h
 
 # 远程 CLI 使用 impersonation

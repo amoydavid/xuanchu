@@ -149,7 +149,7 @@ curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
 ```bash
 xuanchu --workspace dajee token create admin \
   --type pat \
-  --scope task:read,task:write,project:read,project:write,workspace:read,workspace:write,token:read,token:write,audit:read,hook:read,hook:write,notification:read,notification:write,reminder:read,reminder:write \
+  --scope '*' \
   --expires-in 720h
 ```
 
@@ -165,11 +165,11 @@ xuanchu token create reader --scope '*:read' --expires-in 720h
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
   --type agent \
-  --scope task:read,task:write,project:read,context:read,config:read \
+  --scope '*' \
   --expires-in 720h
 ```
 
-这是 HTTP MCP 的默认建议，因为 Agent 通常服务一个 workspace 里的多个 project。如果只允许服务单个 project，再加 `--project agentapi` 或 `--project-id <project-uuid>`。
+这是 HTTP MCP 的默认建议，因为 Agent 通常服务一个 workspace 里的多个 project，并需要覆盖用户、成员、项目、任务、配置、通知、token 等完整工具集。`*` 只是 token capability 上限，实际权限还会被 workspace/project allowlist 和绑定用户的 membership role 收窄。如果只允许服务单个 project，再加 `--project agentapi` 或 `--project-id <project-uuid>`。
 
 token 创建后 raw token 只显示一次。后续只能撤销重建，不能再次查看原文。
 
@@ -232,5 +232,5 @@ HTTP MCP 使用 Bearer token 身份：
 - 单人本地使用，可以接受默认 `local` user/workspace。
 - 团队使用，请显式创建 user、workspace 和 project。
 - 服务端部署，请先创建 admin token，再启动长期服务。
-- Agent 使用 HTTP MCP 时，默认创建 workspace-scoped Agent token；只服务单项目或外部集成时再用 project allowlist 收窄。
+- Agent 使用 HTTP MCP 时，默认创建带 `*` scope 的 workspace-scoped Agent token；只服务单项目时再用 project allowlist 收窄。
 - 不要让 Agent 通过提示词“声明自己是谁”；真实身份必须来自 stdio runtime 或 HTTP token。

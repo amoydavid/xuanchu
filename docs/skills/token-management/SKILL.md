@@ -51,7 +51,7 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
 {
   "workspace": "dajee",
   "name": "claude-agent",
-  "scope": ["task:read", "task:write", "project:read", "config:read"],
+  "scope": ["*"],
   "expires_in_seconds": 2592000
 }
 
@@ -72,7 +72,7 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
       "name": "claude-agent",
       "type": "agent",
       "user": {"id": "user-uuid-xxx", "name": "local"},
-      "scopes": ["task:read", "task:write", "project:read", "config:read"],
+      "scopes": ["task:read", "task:write", "project:read", "..."],
       "raw_token": "xuanchu_agent_def456xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     }
   },
@@ -114,6 +114,8 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
 - `impersonate` — 委托操作
 - `*` — 所有权限
 
+通用 HTTP MCP / workspace Agent token 默认使用 `["*"]`，让 Agent 覆盖用户、成员、项目、任务、配置、通知、token 等完整工具集。`*` 是 token capability 上限，实际权限仍会被 workspace/project allowlist 和绑定用户的 membership role 收窄。只有专用自动化 token 才按场景改成最小 scope。
+
 通配符扩展：
 - `*` → 所有 scope，包括 `impersonate`
 - `task:*` → `task:read` + `task:write`
@@ -128,7 +130,7 @@ Token 创建时返回原始 secret，**仅此一次**。后续只能看到 prefi
 token_create({
   "workspace": "dajee",
   "name": "claude-agent",
-  "scope": ["task:read", "task:write", "project:read", "config:read"],
+  "scope": ["*"],
   "expires_in_seconds": 2592000
 })
 

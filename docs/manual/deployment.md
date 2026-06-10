@@ -38,7 +38,16 @@ server {
 
 ## Token 配置
 
-建议使用最小 scope 原则：
+通用 workspace Agent token 建议使用全量 scope，再用 workspace/project allowlist 和绑定用户的 membership role 收窄实际权限：
+
+```bash
+xuanchu --workspace dajee token create mcp-agent \
+  --type agent \
+  --scope '*' \
+  --expires-in 720h
+```
+
+专用自动化 token 仍建议使用最小 scope 原则：
 
 ```bash
 xuanchu token create hook-admin \
@@ -50,7 +59,7 @@ xuanchu token create readonly \
   --expires-in 720h
 ```
 
-避免使用全 scope token，减少 token 泄露时的攻击面。
+避免把全 scope token 用在只做单一工作的脚本里，减少 token 泄露时的攻击面。
 
 使用 `xuanchu scope list` 查看所有可用 scope。通配符可以简化 scope 配置：
 
