@@ -27,7 +27,7 @@ ROADMAP 明确列出 9 个 Priority 1 事件需要在 v0.3.0 中补齐。补齐�
 | `task.unassigned` | assignee 列表移除成员 | `removed_assignees` / `current_assignees` |
 | `task.started` | `start` 操作 | 无额外差异 |
 | `task.stopped` | `stop` 操作 | 无额外差异 |
-| `task.blocked` | 任务从未 blocked 变为 blocked | `blocking_dependencies` |
+| `task.blocked` | 任务从未 blocked 变为 blocked（modify 新增依赖 / add 带依赖） | `blocking_dependencies` |
 | `task.due_changed` | due 字段变更 | `previous_due` / `current_due` |
 | `task.priority_changed` | priority 字段变更 | `previous_priority` / `current_priority` |
 | `task.project_changed` | project 字段变更 | `previous_project` / `current_project` |
@@ -59,7 +59,7 @@ task.modified
 ### 4.3 其他写操作
 
 - `add` → `task.created`（不变）
-- `done` → `task.completed` + `task.unblocked`（不变）+ `task.blocked`（如有）
+- `done` → `task.completed` + `task.unblocked`（不变）
 - `delete` → `task.deleted`（不变）
 - `annotate` / `denotate` / `append` / `prepend` / `edit` → `task.modified`（不变，不加细粒度）
 
@@ -83,7 +83,8 @@ task.modified, task.assigned, task.priority_changed
 
 - **modify 新增依赖**：如果新增的依赖目标未完成，且被修改任务从 non-blocked 变为 blocked
 - **add 新建任务带依赖**：如果新建任务已有未完成依赖
-- **done 导致其他任务 blocked**：完成一个任务后，依赖它的其他任务可能从 non-blocked 变为 blocked（罕见场景：多个依赖且部分完成）
+
+注意：`done` 完成任务只会让依赖它的任务 unblocked，不会让任何任务变成 blocked，因此 done 不需要检测 `task.blocked`。
 
 检测策略与 `task.unblocked` 对称：在操作前后各跑一次 `buildDependencyState`，找出从 non-blocked 变为 blocked 的任务。
 
@@ -192,9 +193,10 @@ Done(target)
   doneTask = doneLocked(target)
   events = [buildTaskHookEvent("task.completed", doneTask, ...)]
   unblocked = taskUnblockedEventsAfterDone(...)
-  blocked = detectNewlyBlockedAfterDone(...)
-  events += unblocked + blocked
+  events += unblocked
 ```
+
+Done 只会 unblock 依赖它的任务，不会产生 `task.blocked` 事件。
 
 ### 6.6 不变的写路径
 
