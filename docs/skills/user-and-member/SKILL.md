@@ -83,20 +83,21 @@
 ## 外部 ID 绑定
 
 admin/owner 可为他人绑定，普通用户只能绑定自己。
+绑定飞书用户时，推荐使用 `feishu_user_id` 作为 `provider`，并将飞书 `user_id` 作为 `external_id`，便于跨应用统一身份。
 
 ### user_bind — 绑定外部 ID
 
 ```json
 {
   "user": "alice",
-  "provider": "feishu",
-  "external_id": "ou_36093ec6279eebf7f9ae75a30dca12fc"
+  "provider": "feishu_user_id",
+  "external_id": "d8c6g9xx"
 }
 
 // 返回
 {
-  "data": {"provider": "feishu", "external_id": "ou_36093ec6279eebf7f9ae75a30dca12fc"},
-  "rendered": "Bound feishu:ou_36093ec6279eebf7f9ae75a30dca12fc to alice"
+  "data": {"provider": "feishu_user_id", "external_id": "d8c6g9xx"},
+  "rendered": "Bound feishu_user_id:d8c6g9xx to alice"
 }
 ```
 
@@ -173,7 +174,7 @@ admin/owner 可为他人绑定，普通用户只能绑定自己。
 user_add({"name": "张三"})
 
 // Step 2: 绑定飞书 ID
-user_bind({"user": "张三", "provider": "feishu", "external_id": "ou_xxx"})
+user_bind({"user": "张三", "provider": "feishu_user_id", "external_id": "d8c6g9xx"})
 
 // Step 3: 加入 workspace
 member_add({"workspace": "dajee", "user": "张三", "role": "member"})

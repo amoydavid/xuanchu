@@ -765,12 +765,12 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `user_bind`
 
-为用户绑定外部 ID（如 `feishu:ou_xxxxx`）。admin/owner 可操作其他用户；普通用户只能绑定自己。
+为用户绑定外部 ID（如 `feishu_user_id:d8c6g9xx`）。绑定飞书用户时，推荐使用 `feishu_user_id` 作为 `provider`，并将飞书 `user_id` 作为 `external_id`，便于跨应用统一身份。admin/owner 可操作其他用户；普通用户只能绑定自己。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `user` | string | 是 | |
-| `provider` | string | 是 | 提供商标识（如 `feishu`） |
+| `provider` | string | 是 | 提供商标识（飞书用户推荐 `feishu_user_id`） |
 | `external_id` | string | 是 | 外部系统 ID |
 
 #### `user_unbind`

@@ -15,9 +15,9 @@ type UserInfoInput struct {
 }
 
 type UserBindInput struct {
-	User       string `json:"user"`
-	Provider   string `json:"provider"`
-	ExternalID string `json:"external_id"`
+	User       string `json:"user" jsonschema:"user name, email, or UUID"`
+	Provider   string `json:"provider" jsonschema:"external ID provider. For Feishu users, prefer feishu_user_id"`
+	ExternalID string `json:"external_id" jsonschema:"external ID value. For Feishu users, pass the user's Feishu user_id (not open_id/union_id) for cross-app identity consistency"`
 }
 
 type UserUnbindInput struct {
@@ -66,7 +66,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "user "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. feishu:ou_xxxxx) to a xuanchu user. Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. feishu_user_id:d8c6g9xx) to a xuanchu user. For Feishu users, prefer provider feishu_user_id with the user's user_id so identities stay consistent across apps. Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
