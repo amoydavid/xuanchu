@@ -1371,6 +1371,16 @@ func (rt blockingRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	}, nil
 }
 
+type cancelingRoundTripper struct {
+	started chan struct{}
+}
+
+func (rt cancelingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	close(rt.started)
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
 func TestHookDispatcherRunOnceWaitsForStartedWorkersOnCancel(t *testing.T) {
 	store := newTestStore(t)
 	wsID := mustLocalWorkspace(t, store)
@@ -1425,6 +1435,189 @@ func TestHookDispatcherRunOnceWaitsForStartedWorkersOnCancel(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("RunOnce did not return after worker was released")
+	}
+}
+
+func TestHookDispatcherRunOnceSkipsClaimWhenDraining(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	if err := storage.NewNotificationSinkRepository(store.DB()).Update(makeTestSink(t, wsID, server.URL, func(s *storage.NotificationSink) {
+		s.ID = "sink-1"
+	})); err != nil {
+		t.Fatal(err)
+	}
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, server.URL)
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+		d.ResolvedURL = server.URL
+	})
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	shutdown.StopAccepting()
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:    store,
+		Clock:    testClock{now: 1000},
+		Client:   server.Client(),
+		Resolver: mockResolver{},
+		Shutdown: shutdown,
+	})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	got := getDelivery(t, store, delivery.ID)
+	if got.Status != storage.DeliveryStatusQueued {
+		t.Fatalf("status = %q, want queued", got.Status)
+	}
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want 0", got.AttemptCount)
+	}
+}
+
+func TestHookDispatcherDrainWaitsAndRequeuesNotStartedDelivery(t *testing.T) {
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, "https://example.com/webhook")
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, 2)
+	for i := 0; i < 2; i++ {
+		delivery := makeTestDelivery(t, hook.ID, wsID, func(d *storage.HookDelivery) {
+			d.ResolvedURL = "https://example.com/webhook"
+			d.CreatedAt = int64(100 + i)
+			d.ModifiedAt = d.CreatedAt
+		})
+		ids = append(ids, delivery.ID)
+		if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:          store,
+		Clock:          testClock{now: 1000},
+		Client:         &http.Client{Transport: blockingRoundTripper{started: started, release: release}},
+		Resolver:       mockResolver{},
+		MaxConcurrency: 1,
+		PrefetchFactor: 2,
+		Shutdown:       shutdown,
+	})
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- dispatcher.RunOnce(context.Background())
+	}()
+	<-started
+
+	drainDone := make(chan error, 1)
+	go func() {
+		drainDone <- shutdown.Drain(context.Background())
+	}()
+	select {
+	case err := <-drainDone:
+		t.Fatalf("Drain returned before worker finished: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("RunOnce() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunOnce did not return")
+	}
+	select {
+	case err := <-drainDone:
+		if err != nil {
+			t.Fatalf("Drain() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Drain did not return")
+	}
+
+	first := getDelivery(t, store, ids[0])
+	second := getDelivery(t, store, ids[1])
+	if first.Status != storage.DeliveryStatusSucceeded {
+		t.Fatalf("first status = %q, want succeeded", first.Status)
+	}
+	if second.Status != storage.DeliveryStatusQueued {
+		t.Fatalf("second status = %q, want queued", second.Status)
+	}
+	if second.ClaimExpiresAt != nil {
+		t.Fatalf("second claim_expires_at = %#v, want nil", second.ClaimExpiresAt)
+	}
+	if second.AttemptCount != 0 {
+		t.Fatalf("second attempt_count = %d, want reverted to 0", second.AttemptCount)
+	}
+}
+
+func TestHookDispatcherForceCancelCancelsStartedDelivery(t *testing.T) {
+	store := newTestStore(t)
+	wsID := mustLocalWorkspace(t, store)
+	hookRepo := storage.NewHookRepository(store.DB())
+	deliveryRepo := storage.NewHookDeliveryRepository(store.DB())
+	hook := makeTestHook(t, wsID, "https://example.com/webhook")
+	if err := hookRepo.Create(hook); err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeTestDelivery(t, hook.ID, wsID)
+	if err := deliveryRepo.Enqueue([]storage.HookDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{})
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:    store,
+		Clock:    testClock{now: 1000},
+		Client:   &http.Client{Transport: cancelingRoundTripper{started: started}},
+		Resolver: mockResolver{},
+		Shutdown: shutdown,
+	})
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- dispatcher.RunOnce(context.Background())
+	}()
+	<-started
+	shutdown.ForceCancel()
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("RunOnce() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunOnce did not return after ForceCancel")
+	}
+
+	got := getDelivery(t, store, delivery.ID)
+	if got.Status != storage.DeliveryStatusRetryWait {
+		t.Fatalf("status = %q, want retry_wait", got.Status)
+	}
+	if !strings.Contains(got.LastError, "context canceled") {
+		t.Fatalf("last_error = %q, want context canceled", got.LastError)
 	}
 }
 

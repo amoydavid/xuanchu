@@ -712,6 +712,44 @@ func TestHookDeliveryRequeue(t *testing.T) {
 	}
 }
 
+func TestHookDeliveryReleaseClaimRevertsClaimAttempt(t *testing.T) {
+	store, wsID := newHookTestStore(t)
+	repo := NewHookDeliveryRepository(store.DB())
+	hookID := "hook-1"
+
+	d := makeDelivery(t, hookID, wsID)
+	if err := repo.Enqueue([]HookDelivery{d}); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err := repo.ClaimDue(200, 500, 1)
+	if err != nil {
+		t.Fatalf("ClaimDue() error = %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].AttemptCount != 1 {
+		t.Fatalf("claimed = %#v, want one claimed attempt", claimed)
+	}
+	if err := repo.ReleaseClaim(d.ID, 250); err != nil {
+		t.Fatalf("ReleaseClaim() error = %v", err)
+	}
+	got, err := repo.GetByID(d.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != DeliveryStatusQueued {
+		t.Fatalf("status = %q, want queued", got.Status)
+	}
+	if got.ClaimExpiresAt != nil {
+		t.Fatalf("claim_expires_at = %#v, want nil", got.ClaimExpiresAt)
+	}
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want reverted to 0", got.AttemptCount)
+	}
+	if got.ModifiedAt != 250 {
+		t.Fatalf("modified_at = %d, want 250", got.ModifiedAt)
+	}
+}
+
 func TestHookDeliveryListByHook(t *testing.T) {
 	store, wsID := newHookTestStore(t)
 	repo := NewHookDeliveryRepository(store.DB())

@@ -76,7 +76,7 @@ type meView struct {
 }
 
 func registerMiscTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{
+	addTool(s, opts, &mcp.Tool{
 		Name:        "audit_list",
 		Description: "List audit log entries for the current workspace.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in AuditListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -110,7 +110,7 @@ func registerMiscTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d audit log entry(s)", len(views)))
 	})
 
-	addTool(s, &mcp.Tool{
+	addTool(s, opts, &mcp.Tool{
 		Name:        "scope_list",
 		Description: "List all available token scopes.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in ScopeListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -119,7 +119,7 @@ func registerMiscTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d scope(s)", len(scopes)))
 	})
 
-	addTool(s, &mcp.Tool{
+	addTool(s, opts, &mcp.Tool{
 		Name:        "me_get",
 		Description: "Get the current authenticated user info.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in MeGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {

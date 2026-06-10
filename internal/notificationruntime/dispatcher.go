@@ -36,6 +36,7 @@ type DispatcherOptions struct {
 	PrefetchFactor         int
 	DefaultSinkConcurrency int
 	SinkLimiter            *runtimeutil.SinkLimiter
+	Shutdown               *runtimeutil.ShutdownCoordinator
 	JitterSeed             int64
 }
 
@@ -69,6 +70,9 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	}
 	if opts.SinkLimiter == nil {
 		opts.SinkLimiter = runtimeutil.NewSinkLimiter()
+	}
+	if opts.Shutdown == nil {
+		opts.Shutdown = runtimeutil.NewShutdownCoordinator()
 	}
 	if opts.Version == "" {
 		opts.Version = "dev"
@@ -146,6 +150,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	if _, err := d.deliveryRepo.RecoverStaleDelivering(now); err != nil {
 		return fmt.Errorf("recover stale notification deliveries: %w", err)
 	}
+	if !d.opts.Shutdown.Accepting() {
+		return nil
+	}
 	claimExpiresAt := now + int64(d.opts.ClaimTTL.Seconds())
 	claimLimit := runtimeutil.ClaimLimit(d.opts.BatchSize, d.opts.MaxConcurrency, d.opts.PrefetchFactor)
 	deliveries, err := d.deliveryRepo.ClaimDue(now, claimExpiresAt, claimLimit)
@@ -156,7 +163,6 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		return nil
 	}
 
-	jobs := make(chan storage.NotificationDelivery)
 	var wg sync.WaitGroup
 	var firstErr error
 	var errOnce sync.Once
@@ -167,32 +173,56 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		errOnce.Do(func() { firstErr = err })
 	}
 
-	workerCount := d.opts.MaxConcurrency
-	if workerCount > len(deliveries) {
-		workerCount = len(deliveries)
-	}
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for delivery := range jobs {
-				if ctx.Err() != nil {
-					recordErr(ctx.Err())
-					continue
-				}
-				recordErr(d.dispatchOne(ctx, delivery, now))
-			}
-		}()
-	}
-
-	for _, delivery := range deliveries {
-		if ctx.Err() != nil {
-			recordErr(ctx.Err())
+	sem := make(chan struct{}, d.opts.MaxConcurrency)
+	requeueFrom := len(deliveries)
+	for i, delivery := range deliveries {
+		if err := ctx.Err(); err != nil {
+			recordErr(err)
+			requeueFrom = i
 			break
 		}
-		jobs <- delivery
+		done, ok := d.opts.Shutdown.Begin()
+		if !ok {
+			if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+				recordErr(err)
+			}
+			requeueFrom = i + 1
+			break
+		}
+		select {
+		case <-ctx.Done():
+			recordErr(ctx.Err())
+			if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+				recordErr(err)
+			}
+			done()
+			requeueFrom = i + 1
+			goto wait
+		case sem <- struct{}{}:
+		}
+		if !d.opts.Shutdown.Accepting() {
+			<-sem
+			if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+				recordErr(err)
+			}
+			done()
+			requeueFrom = i + 1
+			break
+		}
+		wg.Add(1)
+		go func(delivery storage.NotificationDelivery, done func()) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			defer done()
+			recordErr(d.dispatchOne(d.opts.Shutdown.Context(), delivery, d.opts.Clock.Unix()))
+		}(delivery, done)
 	}
-	close(jobs)
+wait:
+	for _, delivery := range deliveries[requeueFrom:] {
+		if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+			recordErr(err)
+		}
+	}
 	wg.Wait()
 	return firstErr
 }
@@ -205,6 +235,9 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(d.opts.PollInterval)
 	defer ticker.Stop()
 	for {
+		if !d.opts.Shutdown.Accepting() {
+			return nil
+		}
 		if err := d.RunOnce(ctx); err != nil {
 			if ctx.Err() != nil {
 				return nil

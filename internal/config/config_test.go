@@ -182,6 +182,86 @@ func TestResolveDispatcherConfigDefaults(t *testing.T) {
 	assertDefaultDispatcherConfig(t, "HookDispatcher", cfg.HookDispatcher)
 }
 
+func TestResolveReadsShutdownConfigFromToml(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"[server.shutdown]",
+		`timeout = "45s"`,
+		`force_timeout = "7s"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{ConfigPath: path, HomeDir: dir, Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Shutdown.Timeout != 45*time.Second {
+		t.Fatalf("Shutdown.Timeout = %v, want 45s", cfg.Shutdown.Timeout)
+	}
+	if cfg.Shutdown.ForceTimeout != 7*time.Second {
+		t.Fatalf("Shutdown.ForceTimeout = %v, want 7s", cfg.Shutdown.ForceTimeout)
+	}
+}
+
+func TestResolveShutdownConfigDefaults(t *testing.T) {
+	cfg, err := Resolve(Options{HomeDir: "/home/alice", Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Shutdown.Timeout != 30*time.Second {
+		t.Fatalf("Shutdown.Timeout = %v, want 30s", cfg.Shutdown.Timeout)
+	}
+	if cfg.Shutdown.ForceTimeout != 5*time.Second {
+		t.Fatalf("Shutdown.ForceTimeout = %v, want 5s", cfg.Shutdown.ForceTimeout)
+	}
+}
+
+func TestResolveRejectsInvalidShutdownConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "invalid timeout",
+			body: strings.Join([]string{
+				"[server.shutdown]",
+				`timeout = "soon"`,
+				"",
+			}, "\n"),
+			want: "server.shutdown.timeout",
+		},
+		{
+			name: "zero force timeout",
+			body: strings.Join([]string{
+				"[server.shutdown]",
+				`force_timeout = "0s"`,
+				"",
+			}, "\n"),
+			want: "server.shutdown.force_timeout",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "xuanchu.toml")
+			if err := os.WriteFile(path, []byte(tt.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Resolve(Options{ConfigPath: path, HomeDir: dir, Env: map[string]string{}})
+			if err == nil {
+				t.Fatal("Resolve() error = nil, want invalid shutdown config error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Resolve() error = %q, want contains %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
 func assertDefaultDispatcherConfig(t *testing.T, name string, cfg DispatcherConfig) {
 	t.Helper()
 	if cfg.MaxConcurrency != 1 {

@@ -223,7 +223,7 @@ dispatcher 行为：
 注意：
 
 - `SinkLimiter` token 必须在 worker 结束时释放，即使 force cancel。
-- `Requeue` 不应增加 `attempt_count`。如果当前 claim 已经预增 attempt，首版可接受，但要记录后续优化；更好的做法是新增 `ReleaseClaim` 或 `RequeueClaimed`，重置状态但不再修改 attempt。
+- 已 claim 但尚未开始投递的 delivery 使用 `ReleaseClaim` 释放，撤销 claim 时预增的 `attempt_count`，避免停机消耗真实投递次数。
 - 如果进程在 requeue 前崩溃，stale recovery 仍可恢复。
 
 ## 状态流
@@ -332,9 +332,17 @@ notification 和 hook 都需要覆盖：
 - 强制超时后没有 delivery 永久卡在 `delivering`。
 - MCP stdio 不污染 stdout。
 
+## 落地状态
+
+当前实现按 implementation plan 落地到 `xuanchu server`、HTTP API、HTTP MCP、stdio MCP、notification dispatcher 和 hook dispatcher。HTTP / MCP 新工作在 draining 后返回 `server_draining`，dispatcher draining 后不再 claim，已领取但尚未开始的 delivery 使用 `ReleaseClaim` 回到队列，并撤销本次 claim 预增的 `attempt_count`。
+
+实际差异：
+
+- 端到端进程级停机行为主要由运行时单元测试和现有 integration 套件覆盖，本轮没有新增耗时的外部进程级阻塞 webhook 集成测试。
+
 ## 后续扩展
 
 - 按 runtime 拆分 shutdown timeout。
 - 暴露 `/api/v1/admin/shutdown-status` 查看 draining 状态。
 - 为多实例部署增加 coordinator lease，但这不属于当前版本范围。
-- 对已 claim 未开始的 delivery 增加不递增 attempt 的 release 语义，减少 shutdown 时的 attempt 噪音。
+- 后续如需要更强的“停止接收新工作”定义，可把 dispatcher 的 claim 与 worker 启动边界继续细化为显式 pending 状态；当前实现把 `Begin()` 成功后的 delivery 视为 in-flight，drain 会等待或释放。

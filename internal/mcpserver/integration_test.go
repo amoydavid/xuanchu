@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -321,6 +322,63 @@ func TestListToolsWithRegistered(t *testing.T) {
 	}
 }
 
+func TestMCPToolReturnsServerDrainingWhenShutdownStarted(t *testing.T) {
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	shutdown.StopAccepting()
+	srv, _ := newTestServerWithOptions(t, Options{Shutdown: shutdown})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task_query", map[string]any{})
+	errResult := parseError(t, result)
+	if errResult.Code != "server_draining" {
+		t.Fatalf("error code = %q, want server_draining; message=%q", errResult.Code, errResult.Message)
+	}
+}
+
+func TestMCPToolContextCanceledOnShutdownForceCancel(t *testing.T) {
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	started := make(chan struct{})
+	done := make(chan struct{})
+	addTool(srv, Options{Shutdown: shutdown}, &mcp.Tool{Name: "test_shutdown"}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, ToolEnvelope, error) {
+		close(started)
+		<-ctx.Done()
+		close(done)
+		return successWithEnvelope(map[string]any{"canceled": true}, "canceled")
+	})
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	go func() {
+		if err := srv.Run(context.Background(), serverTransport); err != nil {
+			t.Logf("server run: %v", err)
+		}
+	}()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	defer session.Close()
+
+	callDone := make(chan struct{})
+	go func() {
+		_, _ = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "test_shutdown", Arguments: map[string]any{}})
+		close(callDone)
+	}()
+	<-started
+	shutdown.ForceCancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("tool context was not canceled after ForceCancel")
+	}
+	select {
+	case <-callDone:
+	case <-time.After(time.Second):
+		t.Fatal("tool call did not return after ForceCancel")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // task.add 集成测试
 // ---------------------------------------------------------------------------
@@ -455,7 +513,7 @@ func TestTaskGetHonorsExplicitProjectScope(t *testing.T) {
 
 func TestAddToolConvertsReturnedErrorToStructuredToolError(t *testing.T) {
 	srv, _ := newTestServer(t)
-	addTool(srv, &mcp.Tool{Name: "test.error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(srv, Options{}, &mcp.Tool{Name: "test.error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, ToolEnvelope, error) {
 		return nil, ToolEnvelope{}, app.RuntimeError{Code: "synthetic_error", Message: "synthetic failure"}
 	})
 	session := connectClient(t, srv)

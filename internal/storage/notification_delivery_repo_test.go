@@ -290,3 +290,49 @@ func TestNotificationDeliveryRepositoryReplayKeepsResolvedRequestSnapshot(t *tes
 		t.Fatalf("Status = %q, want queued", got.Status)
 	}
 }
+
+func TestNotificationDeliveryReleaseClaimRevertsClaimAttempt(t *testing.T) {
+	store, wsID := newNotificationTestStore(t)
+	sinkRepo := NewNotificationSinkRepository(store.DB())
+	sink := makeNotificationSink(wsID, "openclaw")
+	if err := sinkRepo.Create(sink); err != nil {
+		t.Fatal(err)
+	}
+	ruleRepo := NewReminderRuleRepository(store.DB())
+	rule := makeReminderRule(wsID, "due-before", sink.ID)
+	if err := ruleRepo.Create(rule); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewNotificationDeliveryRepository(store.DB())
+	delivery := makeNotificationDelivery(wsID, sink.ID, rule.ID)
+	if err := repo.Enqueue([]NotificationDelivery{delivery}); err != nil {
+		t.Fatalf("Enqueue() error = %v", err)
+	}
+
+	claimed, err := repo.ClaimDue(200, 500, 1)
+	if err != nil {
+		t.Fatalf("ClaimDue() error = %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].AttemptCount != 1 {
+		t.Fatalf("claimed = %#v, want one claimed attempt", claimed)
+	}
+	if err := repo.ReleaseClaim(delivery.ID, 250); err != nil {
+		t.Fatalf("ReleaseClaim() error = %v", err)
+	}
+	got, err := repo.GetByID(delivery.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.Status != DeliveryStatusQueued {
+		t.Fatalf("Status = %q, want queued", got.Status)
+	}
+	if got.ClaimExpiresAt != nil {
+		t.Fatalf("claim_expires_at = %#v, want nil", got.ClaimExpiresAt)
+	}
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want reverted to 0", got.AttemptCount)
+	}
+	if got.ModifiedAt != 250 {
+		t.Fatalf("modified_at = %d, want 250", got.ModifiedAt)
+	}
+}

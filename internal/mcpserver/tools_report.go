@@ -35,7 +35,7 @@ func (in UrgencyExplainInput) scopeInput() RequestScopeInput {
 }
 
 func registerReportTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "report_run", Description: "Run a task report; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReportRunInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "report_run", Description: "Run a task report; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReportRunInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		limit, err := limitOrDefault(in.Limit)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -68,7 +68,7 @@ func registerReportTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, renderTaskList(rows))
 	})
 
-	addTool(s, &mcp.Tool{Name: "urgency_explain", Description: "Explain task urgency; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UrgencyExplainInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "urgency_explain", Description: "Explain task urgency; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UrgencyExplainInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

@@ -6,6 +6,7 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -27,4 +28,5 @@ type Options struct {
 	Request            *http.Request
 	LocalRuntimeValues map[string]string
 	Logger             *logging.Logger
+	Shutdown           *runtimeutil.ShutdownCoordinator
 }

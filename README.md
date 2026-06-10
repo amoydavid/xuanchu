@@ -318,6 +318,10 @@ color = true
 
 [date]
 format = "rfc3339"
+
+[server.shutdown]
+timeout = "30s"
+force_timeout = "5s"
 ```
 
 ### `xuanchu.toml` 可配置项
@@ -332,6 +336,8 @@ format = "rfc3339"
 | `[display] color = true` | `color` | `true` / `false` | 是否启用 human 输出颜色。也可直接写 `color = true`。 |
 | `[display] json = false` | `json` | `true` / `false` | 默认是否输出 JSON。CLI 的 `--json` 优先级更高。也可直接写 `json = false`。 |
 | `[date] format = "rfc3339"` | `date.format` | `rfc3339` / `epoch` | `_show`、`config get` 和部分脚本输出使用的日期格式。 |
+| `[server.shutdown] timeout = "30s"` | `server.shutdown.timeout` | Go duration | `xuanchu server` 或 `xuanchu mcp stdio` 收到 SIGTERM / SIGINT 后等待已开始工作完成的整体 drain 时间。 |
+| `[server.shutdown] force_timeout = "5s"` | `server.shutdown.force_timeout` | Go duration | drain 超时后强制取消剩余工作，再等待运行时清理资源的时间。 |
 | `[log] level = "info"` | `log.level` | `debug` / `info` / `warn` / `error` | 日志级别。环境变量 `XUANCHU_LOG_LEVEL` 优先。 |
 | `[log] format = "text"` | `log.format` | `text` / `json` | 日志格式。 |
 | `[log] file = "..."` | `log.file` | 文件路径 | 日志文件路径。支持 `~` 展开。环境变量 `XUANCHU_LOG_FILE` 优先。 |
@@ -349,6 +355,10 @@ json = false
 
 [date]
 format = "rfc3339"
+
+[server.shutdown]
+timeout = "30s"
+force_timeout = "5s"
 
 [log]
 level = "info"
@@ -623,6 +633,8 @@ HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上�
 
 服务端不内置 TLS。生产部署应放在可信网络内，或使用 Nginx / Caddy 等反向代理做 TLS termination；不要把裸 HTTP token 服务直接暴露公网。服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口。
 
+收到 SIGTERM / SIGINT 时，`xuanchu server` 会先停止接收新 HTTP/MCP 请求、停止 dispatcher 领取新 delivery，再等待已开始的 HTTP handler、MCP tool call、hook / notification 投递完成。`--shutdown-timeout` 控制整体 drain 时间，`--shutdown-force-timeout` 控制超时后强制取消的清理等待时间；两者也可以写在 `[server.shutdown]` 中。
+
 ### Server Admin Bootstrap
 
 Server admin token 是服务端控制面 bootstrap token，只能访问 `/api/v1/admin/*`，不会写入 `api_tokens`，也不能访问普通任务、workspace、token API。它用于在自动化部署或 Agent 平台初始化时创建 workspace，并给指定 workspace 创建受限 Agent token。
@@ -740,7 +752,7 @@ Agent 可以通过 MCP 协议以结构化方式使用 Xuanchu。MCP 支持 stdio
 ./xuanchu --db ./xuanchu.db mcp stdio
 ```
 
-stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输出 MCP JSON-RPC 协议帧，不会混入迁移 warning 或日志。
+stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输出 MCP JSON-RPC 协议帧，不会混入迁移 warning 或日志。收到 SIGTERM / SIGINT 后，stdio MCP 会停止开始新的 tool call，等待已开始 tool 完成；超时后才强制取消，shutdown 日志写 stderr。
 
 ### MCP HTTP 模式
 
@@ -876,6 +888,8 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。
 
 notification / hook delivery 表是出站投递的可靠队列；进程内 worker 只做短暂执行协调。dispatcher 默认 `max_concurrency=1`，`batch_size` 只是每轮查询上限。sink 的 `max_concurrency=0` 表示继承默认 sink 并发；`xuanchu server` 内 notification dispatcher 和 hook dispatcher 共享同一个 sink limiter。同一个 delivery payload 会带稳定 `delivery_id`，接收方可据此幂等去重；本次 HTTP 请求真实尝试次数看 `X-Xuanchu-Attempt` header。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
+
+服务停机时，dispatcher 不会再领取新的 delivery；已经开始的投递会在 `server.shutdown.timeout` 内继续执行。已领取但尚未开始的 delivery 会尽快回到队列，超时强制取消时仍由数据库中的 stale recovery 兜底。
 
 ## Impersonation
 

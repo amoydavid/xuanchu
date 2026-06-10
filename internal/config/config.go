@@ -23,6 +23,7 @@ type Config struct {
 	ServerAdmin            AdminConfig
 	NotificationDispatcher DispatcherConfig
 	HookDispatcher         DispatcherConfig
+	Shutdown               ShutdownConfig
 }
 
 type DispatcherConfig struct {
@@ -31,6 +32,11 @@ type DispatcherConfig struct {
 	PrefetchFactor int
 	PollInterval   time.Duration
 	ClaimTTL       time.Duration
+}
+
+type ShutdownConfig struct {
+	Timeout      time.Duration
+	ForceTimeout time.Duration
 }
 
 type Options struct {
@@ -164,6 +170,10 @@ func Resolve(opts Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	shutdownCfg, err := parseShutdownConfig(tomlValues)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		DatabasePath:           dbPath,
@@ -176,6 +186,7 @@ func Resolve(opts Options) (Config, error) {
 		ServerAdmin:            adminCfg,
 		NotificationDispatcher: notificationDispatcher,
 		HookDispatcher:         hookDispatcher,
+		Shutdown:               shutdownCfg,
 	}, nil
 }
 
@@ -258,6 +269,24 @@ func parseDispatcherConfig(values map[string]string, prefix string) (DispatcherC
 	}
 	if cfg.ClaimTTL, err = parsePositiveDurationField(values, prefix+".claim_ttl", cfg.ClaimTTL); err != nil {
 		return DispatcherConfig{}, err
+	}
+	return cfg, nil
+}
+
+func parseShutdownConfig(values map[string]string) (ShutdownConfig, error) {
+	cfg := ShutdownConfig{
+		Timeout:      30 * time.Second,
+		ForceTimeout: 5 * time.Second,
+	}
+	if values == nil {
+		return cfg, nil
+	}
+	var err error
+	if cfg.Timeout, err = parsePositiveDurationField(values, "server.shutdown.timeout", cfg.Timeout); err != nil {
+		return ShutdownConfig{}, err
+	}
+	if cfg.ForceTimeout, err = parsePositiveDurationField(values, "server.shutdown.force_timeout", cfg.ForceTimeout); err != nil {
+		return ShutdownConfig{}, err
 	}
 	return cfg, nil
 }

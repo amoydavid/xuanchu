@@ -97,7 +97,7 @@ type ProjectConfigListInput struct {
 }
 
 func registerProjectTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "project_list", Description: "List projects in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_list", Description: "List projects in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "project:read", app.PermissionProjectRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -110,7 +110,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d project(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_get", Description: "Get one project and its agent-readable config; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_get", Description: "Get one project and its agent-readable config; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -131,7 +131,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "project "+project.Slug)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_get_current", Description: "Read explicit effective project scope; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectCurrentInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_get_current", Description: "Read explicit effective project scope; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectCurrentInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "project:read", app.PermissionProjectRead)
 		if err != nil {
@@ -147,7 +147,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"project": projectViewFromApp(project)}, "project "+project.Slug)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_annotate", Description: "Add an annotation to a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAnnotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_annotate", Description: "Add an annotation to a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAnnotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -164,7 +164,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "annotated project")
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_denotate", Description: "Remove an annotation from a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectDenotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_denotate", Description: "Remove an annotation from a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectDenotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -179,7 +179,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": in.AnnotationID}, "removed annotation")
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_list_annotations", Description: "List annotations on a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAnnotationsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_list_annotations", Description: "List annotations on a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAnnotationsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -196,7 +196,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d annotation(s)", len(annotations)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_list_timeline", Description: "List timeline entries for a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectTimelineInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_list_timeline", Description: "List timeline entries for a project; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectTimelineInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -220,7 +220,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d timeline entry/entries", len(entries)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_add", Description: "Create a project in the effective workspace; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_add", Description: "Create a project in the effective workspace; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "project:write", app.PermissionProjectManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -232,7 +232,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"project": projectViewFromApp(view)}, "created project "+view.Slug)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_modify", Description: "Modify a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_modify", Description: "Modify a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -251,7 +251,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"project": projectViewFromApp(view)}, "modified project "+view.Slug)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_archive", Description: "Archive a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectArchiveInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_archive", Description: "Archive a project; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectArchiveInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -267,7 +267,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"project": projectViewFromApp(view)}, "archived project "+view.Slug)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_config_set", Description: "Set a project config value; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_config_set", Description: "Set a project config value; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -282,7 +282,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"key": in.Key, "value": in.Value}, "set config "+in.Key)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_config_unset", Description: "Remove a project config value; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigUnsetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_config_unset", Description: "Remove a project config value; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigUnsetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
@@ -297,7 +297,7 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"key": in.Key}, "unset config "+in.Key)
 	})
 
-	addTool(s, &mcp.Tool{Name: "project_config_list", Description: "List project config values; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_config_list", Description: "List project config values; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		ref := projectRefForScope(in.Project, in.ProjectID)
 		if strings.TrimSpace(ref) == "" {
 			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})

@@ -25,7 +25,7 @@ type ContextDeleteInput struct {
 }
 
 func registerContextTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "context_get", Description: "Show active or named context; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "context_get", Description: "Show active or named context; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:read", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -37,7 +37,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"context": view}, "context "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "context_set", Description: "Set active context; writes actor workspace state."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "context_set", Description: "Set active context; writes actor workspace state."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:write", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -59,7 +59,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"context": view}, "context "+name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "context_none", Description: "Clear the active context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "context_none", Description: "Clear the active context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionContextManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -70,7 +70,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"context": nil}, "context none")
 	})
 
-	addTool(s, &mcp.Tool{Name: "context_list", Description: "List all contexts in the workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "context_list", Description: "List all contexts in the workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -88,7 +88,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d context(s)", len(views)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "context_delete", Description: "Delete a named context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "context_delete", Description: "Delete a named context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionContextManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

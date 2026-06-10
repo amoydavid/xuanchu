@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -323,6 +324,199 @@ func TestDispatcherRunOnceUsesWorkerPoolAndWaits(t *testing.T) {
 	}
 	if succeeded != 2 {
 		t.Fatalf("succeeded = %d, want 2", succeeded)
+	}
+}
+
+type blockingNotificationRoundTripper struct {
+	started chan struct{}
+	release chan struct{}
+	once    *sync.Once
+}
+
+func (rt blockingNotificationRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.once.Do(func() { close(rt.started) })
+	select {
+	case <-rt.release:
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("ok")),
+		Header:     make(http.Header),
+		Request:    req,
+	}, nil
+}
+
+func TestNotificationDispatcherRunOnceSkipsClaimWhenDraining(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	shutdown.StopAccepting()
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:    store,
+		Clock:    testClock{now: 1000},
+		Client:   server.Client(),
+		Resolver: app.DefaultHookResolver(),
+		Shutdown: shutdown,
+	})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	got, err := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != storage.DeliveryStatusQueued {
+		t.Fatalf("status = %q, want queued", got.Status)
+	}
+	if got.AttemptCount != 0 {
+		t.Fatalf("attempt_count = %d, want 0", got.AttemptCount)
+	}
+}
+
+func TestNotificationDispatcherDrainWaitsAndRequeuesNotStartedDelivery(t *testing.T) {
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, "https://example.com/notify")
+	mustCreateRuntimeSink(t, store, sink)
+	ids := make([]string, 0, 2)
+	for i := 0; i < 2; i++ {
+		delivery := makeRuntimeDelivery(ws.ID, sink.ID, "https://example.com/notify")
+		delivery.TaskUUID = "task-drain-" + strconv.Itoa(i)
+		delivery.CreatedAt = int64(100 + i)
+		delivery.ModifiedAt = delivery.CreatedAt
+		ids = append(ids, delivery.ID)
+		mustEnqueueRuntimeDelivery(t, store, delivery)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:          store,
+		Clock:          testClock{now: 1000},
+		Client:         &http.Client{Transport: blockingNotificationRoundTripper{started: started, release: release, once: &sync.Once{}}},
+		Resolver:       app.DefaultHookResolver(),
+		MaxConcurrency: 1,
+		PrefetchFactor: 2,
+		Shutdown:       shutdown,
+	})
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- dispatcher.RunOnce(context.Background())
+	}()
+	<-started
+
+	drainDone := make(chan error, 1)
+	go func() {
+		drainDone <- shutdown.Drain(context.Background())
+	}()
+	select {
+	case err := <-drainDone:
+		t.Fatalf("Drain returned before worker finished: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("RunOnce() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunOnce did not return")
+	}
+	select {
+	case err := <-drainDone:
+		if err != nil {
+			t.Fatalf("Drain() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Drain did not return")
+	}
+
+	repo := storage.NewNotificationDeliveryRepository(store.DB())
+	first, err := repo.GetByID(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repo.GetByID(ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != storage.DeliveryStatusSucceeded {
+		t.Fatalf("first status = %q, want succeeded", first.Status)
+	}
+	if second.Status != storage.DeliveryStatusQueued {
+		t.Fatalf("second status = %q, want queued", second.Status)
+	}
+	if second.ClaimExpiresAt != nil {
+		t.Fatalf("second claim_expires_at = %#v, want nil", second.ClaimExpiresAt)
+	}
+	if second.AttemptCount != 0 {
+		t.Fatalf("second attempt_count = %d, want reverted to 0", second.AttemptCount)
+	}
+}
+
+func TestNotificationDispatcherForceCancelCancelsStartedDelivery(t *testing.T) {
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, "https://example.com/notify")
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, "https://example.com/notify")
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	shutdown := runtimeutil.NewShutdownCoordinator()
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:    store,
+		Clock:    testClock{now: 1000},
+		Client:   &http.Client{Transport: blockingNotificationRoundTripper{started: started, release: release, once: &sync.Once{}}},
+		Resolver: app.DefaultHookResolver(),
+		Shutdown: shutdown,
+	})
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- dispatcher.RunOnce(context.Background())
+	}()
+	<-started
+	shutdown.ForceCancel()
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("RunOnce() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunOnce did not return after ForceCancel")
+	}
+	close(release)
+
+	got, err := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != storage.DeliveryStatusRetryWait {
+		t.Fatalf("status = %q, want retry_wait", got.Status)
+	}
+	if !strings.Contains(got.LastError, "context canceled") {
+		t.Fatalf("last_error = %q, want context canceled", got.LastError)
 	}
 }
 

@@ -196,3 +196,15 @@ func (r *NotificationDeliveryRepository) Requeue(id string, now int64) error {
 		"modified_at":      now,
 	}).Error
 }
+
+func (r *NotificationDeliveryRepository) ReleaseClaim(id string, now int64) error {
+	return r.db.Model(&NotificationDelivery{}).
+		Where("id = ? AND status = ?", id, DeliveryStatusDelivering).
+		Updates(map[string]any{
+			"status":           DeliveryStatusQueued,
+			"next_attempt_at":  nil,
+			"claim_expires_at": nil,
+			"attempt_count":    gorm.Expr("CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END"),
+			"modified_at":      now,
+		}).Error
+}

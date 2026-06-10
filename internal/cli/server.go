@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 func newServerCommand(opts Options) *cobra.Command {
 	var listen string
 	var shutdownTimeout time.Duration
+	var shutdownForceTimeout time.Duration
 	var reminderSchedulerInterval time.Duration
 	var notificationDispatcherInterval time.Duration
 	var hookDispatcherInterval time.Duration
@@ -58,6 +60,19 @@ func newServerCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			shutdownFlags := serverShutdownFlagOverrides{}
+			if cmd.Flags().Changed("shutdown-timeout") {
+				shutdownFlags.Timeout = &shutdownTimeout
+			}
+			if cmd.Flags().Changed("shutdown-force-timeout") {
+				shutdownFlags.ForceTimeout = &shutdownForceTimeout
+			}
+			shutdownOptions, err := buildServerShutdownOptions(cfg, shutdownFlags)
+			if err != nil {
+				return err
+			}
+			shutdownTimeout = shutdownOptions.Timeout
+			shutdown := runtimeutil.NewShutdownCoordinator()
 			dbTarget := cfg.DatabaseURL
 			if dbTarget == "" {
 				dbTarget = cfg.DatabasePath
@@ -84,10 +99,11 @@ func newServerCommand(opts Options) *cobra.Command {
 			defer ln.Close()
 
 			handler := httpapi.NewServer(httpapi.Options{
-				Store:  store,
-				Stderr: cmd.ErrOrStderr(),
-				Logger: logger,
-				Admin:  cfg.ServerAdmin,
+				Store:    store,
+				Stderr:   cmd.ErrOrStderr(),
+				Logger:   logger,
+				Admin:    cfg.ServerAdmin,
+				Shutdown: shutdown,
 			})
 			httpServer := &http.Server{
 				Addr:              listen,
@@ -147,52 +163,123 @@ func newServerCommand(opts Options) *cobra.Command {
 			hookOptions.Store = store
 			hookOptions.Clock = app.RealClock{}
 			hookOptions.Version = "dev"
+			hookOptions.Shutdown = shutdown
 			hookDispatcher := hookruntime.NewDispatcher(hookOptions)
 			notificationOptions := runtimeOptions.Notification
 			notificationOptions.Store = store
 			notificationOptions.Clock = app.RealClock{}
 			notificationOptions.Version = "dev"
+			notificationOptions.Shutdown = shutdown
 			notificationDispatcher := notificationruntime.NewDispatcher(notificationOptions)
 			reminderScheduler := app.NewReminderScheduler(app.ReminderSchedulerOptions{
 				Store: store,
 				Clock: app.RealClock{},
 			})
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
+			runCtx, cancelRun := context.WithCancel(context.Background())
+			defer cancelRun()
+			signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stopSignals()
 
+			var runtimeWG sync.WaitGroup
+			runtimeWG.Add(3)
 			go func() {
-				if err := hookDispatcher.Run(ctx); err != nil {
+				defer runtimeWG.Done()
+				if err := hookDispatcher.Run(runCtx); err != nil {
 					errCh <- fmt.Errorf("hook dispatcher: %w", err)
 				}
 			}()
 			go func() {
-				if err := notificationDispatcher.Run(ctx); err != nil {
+				defer runtimeWG.Done()
+				if err := notificationDispatcher.Run(runCtx); err != nil {
 					errCh <- fmt.Errorf("notification dispatcher: %w", err)
 				}
 			}()
 			go func() {
-				if err := runReminderSchedulerLoop(ctx, reminderScheduler, reminderSchedulerInterval); err != nil {
+				defer runtimeWG.Done()
+				if err := runReminderSchedulerLoop(runCtx, reminderScheduler, reminderSchedulerInterval); err != nil {
 					errCh <- fmt.Errorf("reminder scheduler: %w", err)
 				}
 			}()
 
 			select {
 			case err := <-errCh:
-				stop()
+				stopSignals()
+				cancelRun()
+				shutdown.ForceCancel()
 				return err
-			case <-ctx.Done():
+			case <-signalCtx.Done():
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			fmt.Fprintln(cmd.ErrOrStderr(), "xuanchu: shutdown: signal received")
+			shutdown.StopAccepting()
+			cancelRun()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownOptions.Timeout)
 			defer cancel()
-			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				return err
+			httpDone := make(chan error, 1)
+			go func() { httpDone <- httpServer.Shutdown(shutdownCtx) }()
+			drainDone := make(chan error, 1)
+			go func() { drainDone <- shutdown.Drain(shutdownCtx) }()
+			runtimeDone := make(chan struct{})
+			go func() {
+				runtimeWG.Wait()
+				close(runtimeDone)
+			}()
+
+			var httpErr error
+			var drainErr error
+			httpPending := true
+			drainPending := true
+			runtimePending := true
+			for httpPending || drainPending || runtimePending {
+				select {
+				case err := <-httpDone:
+					httpErr = err
+					httpPending = false
+					httpDone = nil
+				case err := <-drainDone:
+					drainErr = err
+					drainPending = false
+					drainDone = nil
+				case <-runtimeDone:
+					runtimePending = false
+					runtimeDone = nil
+				case <-shutdownCtx.Done():
+					shutdown.ForceCancel()
+					_ = httpServer.Close()
+					forceCtx, forceCancel := context.WithTimeout(context.Background(), shutdownOptions.ForceTimeout)
+					defer forceCancel()
+					for httpPending || drainPending || runtimePending {
+						select {
+						case err := <-httpDone:
+							httpErr = err
+							httpPending = false
+							httpDone = nil
+						case err := <-drainDone:
+							drainErr = err
+							drainPending = false
+							drainDone = nil
+						case <-runtimeDone:
+							runtimePending = false
+							runtimeDone = nil
+						case <-forceCtx.Done():
+							return fmt.Errorf("shutdown force timeout: %w", forceCtx.Err())
+						}
+					}
+					return fmt.Errorf("shutdown timeout: %w", shutdownCtx.Err())
+				}
+			}
+			if httpErr != nil {
+				return httpErr
+			}
+			if drainErr != nil {
+				return drainErr
 			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&listen, "listen", "", "HTTP listen address")
 	cmd.Flags().DurationVar(&shutdownTimeout, "shutdown-timeout", 30*time.Second, "graceful shutdown timeout")
+	cmd.Flags().DurationVar(&shutdownForceTimeout, "shutdown-force-timeout", 5*time.Second, "forced shutdown cleanup timeout")
 	cmd.Flags().DurationVar(&reminderSchedulerInterval, "reminder-scheduler-interval", 60*time.Second, "reminder scheduler interval")
 	cmd.Flags().DurationVar(&notificationDispatcherInterval, "notification-dispatcher-interval", 5*time.Second, "notification dispatcher interval")
 	cmd.Flags().DurationVar(&hookDispatcherInterval, "hook-dispatcher-interval", 5*time.Second, "hook dispatcher interval")
@@ -205,6 +292,40 @@ func newServerCommand(opts Options) *cobra.Command {
 	cmd.Flags().DurationVar(&notificationClaimTTL, "notification-dispatcher-claim-ttl", 0, "notification dispatcher stale claim TTL")
 	cmd.Flags().DurationVar(&hookClaimTTL, "hook-dispatcher-claim-ttl", 0, "hook dispatcher stale claim TTL")
 	return cmd
+}
+
+type serverShutdownFlagOverrides struct {
+	Timeout      *time.Duration
+	ForceTimeout *time.Duration
+}
+
+type serverShutdownOptions struct {
+	Timeout      time.Duration
+	ForceTimeout time.Duration
+}
+
+func buildServerShutdownOptions(cfg config.Config, flags serverShutdownFlagOverrides) (serverShutdownOptions, error) {
+	timeout := cfg.Shutdown.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	forceTimeout := cfg.Shutdown.ForceTimeout
+	if forceTimeout == 0 {
+		forceTimeout = 5 * time.Second
+	}
+	if flags.Timeout != nil {
+		timeout = *flags.Timeout
+	}
+	if flags.ForceTimeout != nil {
+		forceTimeout = *flags.ForceTimeout
+	}
+	if timeout <= 0 {
+		return serverShutdownOptions{}, fmt.Errorf("shutdown-timeout must be positive")
+	}
+	if forceTimeout <= 0 {
+		return serverShutdownOptions{}, fmt.Errorf("shutdown-force-timeout must be positive")
+	}
+	return serverShutdownOptions{Timeout: timeout, ForceTimeout: forceTimeout}, nil
 }
 
 type serverDispatcherFlagOverrides struct {

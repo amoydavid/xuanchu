@@ -64,7 +64,7 @@ type ConfigSchemaDeleteInput struct {
 }
 
 func registerConfigTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "config_get", Description: "Read workspace, project, or stdio local config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_get", Description: "Read workspace, project, or stdio local config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		scope := normalizeConfigScope(in.Scope)
 		key := strings.TrimSpace(in.Key)
 		switch scope {
@@ -110,7 +110,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		}
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_set", Description: "Write workspace or project config; writes audit for shared config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_set", Description: "Write workspace or project config; writes audit for shared config."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		scope := normalizeConfigScope(in.Scope)
 		key := strings.TrimSpace(in.Key)
 		switch scope {
@@ -141,7 +141,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		}
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_unset", Description: "Unset (delete) a workspace config key."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigUnsetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_unset", Description: "Unset (delete) a workspace config key."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigUnsetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionUDAManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -152,7 +152,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(nil, "unset "+in.Key)
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_list", Description: "List all config values; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_list", Description: "List all config values; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -165,7 +165,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d config value(s)", len(values)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_schema_list", Description: "List config schema definitions in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_schema_list", Description: "List config schema definitions in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionConfigSchemaRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -177,7 +177,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"definitions": rows, "count": len(rows)}, fmt.Sprintf("%d config schema definition(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_schema_get", Description: "Get one config schema definition; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_schema_get", Description: "Get one config schema definition; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionConfigSchemaRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -192,7 +192,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"definition": row}, "config schema "+row.Key)
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_schema_set", Description: "Create or update a config schema definition; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_schema_set", Description: "Create or update a config schema definition; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionConfigSchemaWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -221,7 +221,7 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"definition": row}, "set config schema "+row.Key)
 	})
 
-	addTool(s, &mcp.Tool{Name: "config_schema_delete", Description: "Delete a config schema definition; optional purge also removes existing values."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "config_schema_delete", Description: "Delete a config schema definition; optional purge also removes existing values."}, func(ctx context.Context, req *mcp.CallToolRequest, in ConfigSchemaDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionConfigSchemaWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

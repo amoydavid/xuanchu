@@ -33,6 +33,7 @@ type DispatcherOptions struct {
 	PrefetchFactor         int
 	DefaultSinkConcurrency int
 	SinkLimiter            *runtimeutil.SinkLimiter
+	Shutdown               *runtimeutil.ShutdownCoordinator
 	JitterSeed             int64
 }
 
@@ -67,6 +68,9 @@ func NewDispatcher(opts DispatcherOptions) *Dispatcher {
 	}
 	if opts.SinkLimiter == nil {
 		opts.SinkLimiter = runtimeutil.NewSinkLimiter()
+	}
+	if opts.Shutdown == nil {
+		opts.Shutdown = runtimeutil.NewShutdownCoordinator()
 	}
 	if opts.Version == "" {
 		opts.Version = "dev"
@@ -146,6 +150,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	if _, err := d.deliveryRepo.RecoverStaleDelivering(now); err != nil {
 		return fmt.Errorf("recover stale deliveries: %w", err)
 	}
+	if !d.opts.Shutdown.Accepting() {
+		return nil
+	}
 
 	// 计算领取消耗时间
 	claimExpiresAt := now + int64(d.opts.ClaimTTL.Seconds())
@@ -164,25 +171,55 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	errCh := make(chan error, len(deliveries))
 	var wg sync.WaitGroup
 	startErr := error(nil)
-	for _, delivery := range deliveries {
+	requeueFrom := len(deliveries)
+	for i, delivery := range deliveries {
 		if err := ctx.Err(); err != nil {
 			startErr = err
+			requeueFrom = i
+			break
+		}
+		done, ok := d.opts.Shutdown.Begin()
+		if !ok {
+			if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+				errCh <- err
+			}
+			requeueFrom = i + 1
 			break
 		}
 		select {
 		case <-ctx.Done():
 			startErr = ctx.Err()
+			if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+				errCh <- err
+			}
+			done()
+			requeueFrom = i + 1
 			goto wait
 		case sem <- struct{}{}:
 		}
+		if !d.opts.Shutdown.Accepting() {
+			<-sem
+			if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+				errCh <- err
+			}
+			done()
+			requeueFrom = i + 1
+			break
+		}
 		wg.Add(1)
-		go func(delivery storage.HookDelivery) {
+		go func(delivery storage.HookDelivery, done func()) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			errCh <- d.dispatchOne(ctx, delivery, d.opts.Clock.Unix())
-		}(delivery)
+			defer done()
+			errCh <- d.dispatchOne(d.opts.Shutdown.Context(), delivery, d.opts.Clock.Unix())
+		}(delivery, done)
 	}
 wait:
+	for _, delivery := range deliveries[requeueFrom:] {
+		if err := d.deliveryRepo.ReleaseClaim(delivery.ID, d.opts.Clock.Unix()); err != nil {
+			errCh <- err
+		}
+	}
 	wg.Wait()
 	close(errCh)
 	if startErr != nil {
@@ -207,6 +244,9 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(d.opts.PollInterval)
 	defer ticker.Stop()
 	for {
+		if !d.opts.Shutdown.Accepting() {
+			return nil
+		}
 		if err := d.RunOnce(ctx); err != nil {
 			if ctx.Err() != nil {
 				return nil

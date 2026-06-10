@@ -59,7 +59,7 @@ func (in TokenRevokeInput) scopeInput() RequestScopeInput {
 }
 
 func registerTokenTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "token_list", Description: "List API tokens; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "token_list", Description: "List API tokens; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:read", app.PermissionTokenRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -72,7 +72,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d token(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "token_create", Description: "Create an API token. The raw secret is returned only at creation time."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenCreateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "token_create", Description: "Create an API token. The raw secret is returned only at creation time."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenCreateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -96,7 +96,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "token "+created.View.Name+" created")
 	})
 
-	addTool(s, &mcp.Tool{Name: "token_modify", Description: "Modify an API token's name, scope, or expiration."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "token_modify", Description: "Modify an API token's name, scope, or expiration."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -119,7 +119,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "token "+result.Name+" updated")
 	})
 
-	addTool(s, &mcp.Tool{Name: "token_revoke", Description: "Revoke an API token."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenRevokeInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "token_revoke", Description: "Revoke an API token."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenRevokeInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

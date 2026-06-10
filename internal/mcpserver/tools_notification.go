@@ -223,7 +223,7 @@ func (in NotificationDeliveryRefInput) scopeInput() RequestScopeInput {
 }
 
 func registerNotificationTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "notification_sink_list", Description: "List notification sinks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_list", Description: "List notification sinks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -235,7 +235,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"sinks": notificationSinkViewsForMCP(rows), "count": len(rows)}, fmt.Sprintf("%d notification sink(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_sink_add", Description: "Create a notification sink; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_add", Description: "Create a notification sink; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -264,7 +264,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"sink": notificationSinkViewForMCP(view)}, "created notification sink "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_sink_info", Description: "Get notification sink details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_info", Description: "Get notification sink details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -276,7 +276,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"sink": notificationSinkViewForMCP(view)}, "notification sink "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_sink_modify", Description: "Modify a notification sink; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_modify", Description: "Modify a notification sink; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -304,10 +304,10 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"sink": notificationSinkViewForMCP(view)}, "modified notification sink "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_sink_enable", Description: "Enable a notification sink; writes audit."}, notificationSinkToggleHandler(opts, true))
-	addTool(s, &mcp.Tool{Name: "notification_sink_disable", Description: "Disable a notification sink; writes audit."}, notificationSinkToggleHandler(opts, false))
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_enable", Description: "Enable a notification sink; writes audit."}, notificationSinkToggleHandler(opts, true))
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_disable", Description: "Disable a notification sink; writes audit."}, notificationSinkToggleHandler(opts, false))
 
-	addTool(s, &mcp.Tool{Name: "notification_sink_remove", Description: "Delete a notification sink; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_sink_remove", Description: "Delete a notification sink; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationSinkRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -319,7 +319,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": sinkID}, "deleted notification sink")
 	})
 
-	addTool(s, &mcp.Tool{Name: "reminder_rule_list", Description: "List reminder rules; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_list", Description: "List reminder rules; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "reminder:read", app.PermissionReminderRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -332,7 +332,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rules": reminderRuleViewsForMCP(rows), "count": len(rows)}, fmt.Sprintf("%d reminder rule(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "reminder_rule_add", Description: "Create a reminder rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_add", Description: "Create a reminder rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "reminder:write", app.PermissionReminderWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -357,7 +357,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rule": reminderRuleViewForMCP(view)}, "created reminder rule "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "reminder_rule_info", Description: "Get reminder rule details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_info", Description: "Get reminder rule details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "reminder:read", app.PermissionReminderRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -369,7 +369,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rule": reminderRuleViewForMCP(view)}, "reminder rule "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "reminder_rule_modify", Description: "Modify a reminder rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_modify", Description: "Modify a reminder rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "reminder:write", app.PermissionReminderWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -394,10 +394,10 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rule": reminderRuleViewForMCP(view)}, "modified reminder rule "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "reminder_rule_enable", Description: "Enable a reminder rule; writes audit."}, reminderRuleToggleHandler(opts, true))
-	addTool(s, &mcp.Tool{Name: "reminder_rule_disable", Description: "Disable a reminder rule; writes audit."}, reminderRuleToggleHandler(opts, false))
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_enable", Description: "Enable a reminder rule; writes audit."}, reminderRuleToggleHandler(opts, true))
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_disable", Description: "Disable a reminder rule; writes audit."}, reminderRuleToggleHandler(opts, false))
 
-	addTool(s, &mcp.Tool{Name: "reminder_rule_remove", Description: "Delete a reminder rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "reminder_rule_remove", Description: "Delete a reminder rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ReminderRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "reminder:write", app.PermissionReminderWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -409,7 +409,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": ruleID}, "deleted reminder rule")
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_rule_list", Description: "List event notification rules; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_list", Description: "List event notification rules; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -422,7 +422,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rules": notificationRuleViewsForMCP(rows), "count": len(rows)}, fmt.Sprintf("%d notification rule(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_rule_add", Description: "Create an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_add", Description: "Create an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -444,7 +444,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "created notification rule "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_rule_info", Description: "Get event notification rule details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_info", Description: "Get event notification rule details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -456,7 +456,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "notification rule "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_rule_modify", Description: "Modify an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_modify", Description: "Modify an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -478,10 +478,10 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"rule": notificationRuleViewForMCP(view)}, "modified notification rule "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_rule_enable", Description: "Enable an event notification rule; writes audit."}, notificationRuleToggleHandler(opts, true))
-	addTool(s, &mcp.Tool{Name: "notification_rule_disable", Description: "Disable an event notification rule; writes audit."}, notificationRuleToggleHandler(opts, false))
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_enable", Description: "Enable an event notification rule; writes audit."}, notificationRuleToggleHandler(opts, true))
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_disable", Description: "Disable an event notification rule; writes audit."}, notificationRuleToggleHandler(opts, false))
 
-	addTool(s, &mcp.Tool{Name: "notification_rule_remove", Description: "Delete an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_rule_remove", Description: "Delete an event notification rule; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationRuleRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -493,7 +493,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": ruleID}, "deleted notification rule")
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_delivery_list", Description: "List notification deliveries; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_delivery_list", Description: "List notification deliveries; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -509,7 +509,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"deliveries": notificationDeliveryViewsForMCP(rows), "count": len(rows)}, fmt.Sprintf("%d notification delivery/ies", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_delivery_info", Description: "Get notification delivery details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_delivery_info", Description: "Get notification delivery details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:read", app.PermissionNotificationRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -521,7 +521,7 @@ func registerNotificationTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"delivery": notificationDeliveryViewForMCP(view)}, "notification delivery "+view.ID)
 	})
 
-	addTool(s, &mcp.Tool{Name: "notification_delivery_replay", Description: "Replay a dead-lettered or skipped notification delivery; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "notification_delivery_replay", Description: "Replay a dead-lettered or skipped notification delivery; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in NotificationDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "notification:write", app.PermissionNotificationWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

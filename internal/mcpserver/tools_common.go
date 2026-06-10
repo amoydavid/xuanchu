@@ -11,6 +11,7 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/render"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
@@ -44,7 +45,7 @@ func resolveToolTaskRef(svc *app.Service, ref, fieldName string, write bool) (ta
 	return svc.ResolveProtocolTarget(ref)
 }
 
-func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
+func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
 	inputSchema, err := jsonschema.For[In](nil)
 	if err != nil {
 		panic(err)
@@ -57,13 +58,23 @@ func addTool[In any](s *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[I
 	tool.InputSchema = inputSchema
 	tool.OutputSchema = outputSchema
 	s.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if opts.Shutdown != nil {
+			done, ok := opts.Shutdown.Begin()
+			if !ok {
+				return businessErrorResult(app.RuntimeError{Code: "server_draining", Message: "server is shutting down"}), nil
+			}
+			defer done()
+			var cancel context.CancelFunc
+			ctx, cancel = runtimeutil.ContextWithCancelOnEither(ctx, opts.Shutdown.Context())
+			defer cancel()
+		}
 		var result *mcp.CallToolResult
 		var handlerErr error
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					if mcpLogger != nil {
-						mcpLogger.Error("panic in tool", "tool", tool.Name, "panic", r, "stack", string(debug.Stack()))
+					if opts.Logger != nil {
+						opts.Logger.Error("panic in tool", "tool", tool.Name, "panic", r, "stack", string(debug.Stack()))
 					}
 					var res mcp.CallToolResult
 					res.SetError(fmt.Errorf("internal error"))

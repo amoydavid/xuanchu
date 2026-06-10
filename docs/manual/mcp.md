@@ -21,6 +21,14 @@ MCP 调用必须有明确身份。stdio MCP 使用本机 active user/workspace�
 xuanchu mcp stdio
 ```
 
+stdio MCP 支持可靠停机参数：
+
+```bash
+xuanchu mcp stdio --shutdown-timeout 30s --shutdown-force-timeout 5s
+```
+
+收到 SIGTERM / SIGINT 后，stdio MCP 会停止开始新的 tool call，等待已开始的 tool call 在 `shutdown-timeout` 内完成；超时后才强制取消。停机日志只写 stderr，不会污染 stdout 中的 MCP JSON-RPC 协议帧。
+
 HTTP MCP：
 
 ```bash

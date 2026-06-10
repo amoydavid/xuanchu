@@ -24,6 +24,12 @@ token = "replace-with-your-token"
 [server.admin]
 enabled = false
 
+[server.shutdown]
+# 收到 SIGTERM / SIGINT 后等待已开始工作完成的整体 drain 时间。
+timeout = "30s"
+# drain 超时后发出强制取消，再等待运行时清理资源的时间。
+force_timeout = "5s"
+
 [notifications.dispatcher]
 # dispatcher 级并发。默认 1，保持顺序投递；需要吞吐时再显式调大。
 max_concurrency = 1

@@ -1,11 +1,8 @@
 package mcpserver
 
 import (
-	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-var mcpLogger *logging.Logger
 
 func NewServer(opts Options) *mcp.Server {
 	version := opts.Version
@@ -22,9 +19,6 @@ func NewServer(opts Options) *mcp.Server {
 }
 
 func RegisterTools(s *mcp.Server, opts Options) {
-	if opts.Logger != nil {
-		mcpLogger = opts.Logger
-	}
 	registerTaskTools(s, opts)
 	registerReportTools(s, opts)
 	registerWorkspaceTools(s, opts)

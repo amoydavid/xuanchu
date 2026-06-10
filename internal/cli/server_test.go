@@ -118,6 +118,8 @@ func TestServerHookDispatcherIntervalFlagWinsOverLegacyInterval(t *testing.T) {
 func TestServerCommandRegistersDispatcherRuntimeFlags(t *testing.T) {
 	cmd := newServerCommand(Options{})
 	for _, name := range []string{
+		"shutdown-timeout",
+		"shutdown-force-timeout",
 		"notification-dispatcher-max-concurrency",
 		"notification-dispatcher-batch-size",
 		"notification-dispatcher-prefetch-factor",
@@ -132,6 +134,57 @@ func TestServerCommandRegistersDispatcherRuntimeFlags(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("server flag %q not registered", name)
 		}
+	}
+}
+
+func TestServerShutdownOptionsUseConfigAndFlags(t *testing.T) {
+	cfg := config.Config{
+		Shutdown: config.ShutdownConfig{
+			Timeout:      30 * time.Second,
+			ForceTimeout: 5 * time.Second,
+		},
+	}
+	flags := serverShutdownFlagOverrides{
+		Timeout:      ptrDuration(45 * time.Second),
+		ForceTimeout: ptrDuration(9 * time.Second),
+	}
+	opts, err := buildServerShutdownOptions(cfg, flags)
+	if err != nil {
+		t.Fatalf("buildServerShutdownOptions() error = %v", err)
+	}
+	if opts.Timeout != 45*time.Second {
+		t.Fatalf("Timeout = %v, want 45s", opts.Timeout)
+	}
+	if opts.ForceTimeout != 9*time.Second {
+		t.Fatalf("ForceTimeout = %v, want 9s", opts.ForceTimeout)
+	}
+}
+
+func TestServerShutdownOptionsRejectInvalidFlags(t *testing.T) {
+	cfg := config.Config{
+		Shutdown: config.ShutdownConfig{
+			Timeout:      30 * time.Second,
+			ForceTimeout: 5 * time.Second,
+		},
+	}
+	tests := []struct {
+		name  string
+		flags serverShutdownFlagOverrides
+		want  string
+	}{
+		{name: "timeout", flags: serverShutdownFlagOverrides{Timeout: ptrDuration(0)}, want: "shutdown-timeout"},
+		{name: "force timeout", flags: serverShutdownFlagOverrides{ForceTimeout: ptrDuration(-time.Second)}, want: "shutdown-force-timeout"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildServerShutdownOptions(cfg, tt.flags)
+			if err == nil {
+				t.Fatal("buildServerShutdownOptions() error = nil, want invalid flag error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want contains %q", err.Error(), tt.want)
+			}
+		})
 	}
 }
 

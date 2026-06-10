@@ -7,6 +7,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/config"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
+	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -20,6 +21,7 @@ type Options struct {
 	TestPanicRoute bool
 	Logger         *logging.Logger
 	Admin          config.AdminConfig
+	Shutdown       *runtimeutil.ShutdownCoordinator
 }
 
 type Server struct {
@@ -30,6 +32,7 @@ type Server struct {
 	testPanicRoute bool
 	logger         *logging.Logger
 	admin          config.AdminConfig
+	shutdown       *runtimeutil.ShutdownCoordinator
 	router         *http.ServeMux
 }
 
@@ -48,6 +51,7 @@ func NewServer(opts Options) *Server {
 		testPanicRoute: opts.TestPanicRoute,
 		logger:         opts.Logger,
 		admin:          opts.Admin,
+		shutdown:       opts.Shutdown,
 	}
 	srv.router = srv.newRouter()
 	return srv

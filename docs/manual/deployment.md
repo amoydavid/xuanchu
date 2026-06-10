@@ -101,6 +101,43 @@ HTTP 3xx redirect 不会被自动跟随。
 - Dead-lettered delivery 可通过 `xuanchu hook replay <delivery-id>` 手动重试。
 - Dead-lettered notification delivery 可通过 `xuanchu notification delivery replay <delivery-id>` 手动重试。
 
+## 可靠停机
+
+`xuanchu server` 收到 SIGTERM / SIGINT 后会进入两阶段停机：
+
+1. 停止接收新 HTTP / MCP 请求，停止 hook / notification dispatcher 领取新的 delivery。
+2. 在 `server.shutdown.timeout` 内等待已开始的 HTTP handler、MCP tool call 和出站投递自然完成。
+3. 超时后触发强制取消，再用 `server.shutdown.force_timeout` 等待运行时清理。
+
+示例配置：
+
+```toml
+[server.shutdown]
+timeout = "30s"
+force_timeout = "5s"
+```
+
+systemd 示例：
+
+```ini
+[Unit]
+Description=Xuanchu task server
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/xuanchu --config /etc/xuanchu/config.toml server --listen :8080
+KillSignal=SIGTERM
+TimeoutStopSec=45s
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`TimeoutStopSec` 应大于 `server.shutdown.timeout + server.shutdown.force_timeout`，否则 systemd 可能在 xuanchu 自己完成 drain 前发送 SIGKILL。容器平台的 termination grace period 也按同样规则设置。
+
+已领取但尚未开始投递的 delivery 会尽快回到队列；进程异常退出或强制取消时，仍由数据库 stale recovery 兜底，因此接收方应继续按 `delivery_id` 做幂等。
+
 ## PostgreSQL 部署
 
 使用 `--db-url` 指定 PostgreSQL 连接字符串：

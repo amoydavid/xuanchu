@@ -86,7 +86,7 @@ func (in HookDeliveryRefInput) scopeInput() RequestScopeInput {
 }
 
 func registerHookTools(s *mcp.Server, opts Options) {
-	addTool(s, &mcp.Tool{Name: "hook_list", Description: "List all hooks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_list", Description: "List all hooks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:read", app.PermissionHookRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -100,7 +100,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d hook(s)", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_add", Description: "Create a hook; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_add", Description: "Create a hook; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:write", app.PermissionHookWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -130,7 +130,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"hook": hookViewFromApp(view)}, "created hook "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_info", Description: "Get hook details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_info", Description: "Get hook details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:read", app.PermissionHookRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -142,7 +142,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"hook": hookViewFromApp(view)}, "hook "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_modify", Description: "Modify a hook; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_modify", Description: "Modify a hook; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:write", app.PermissionHookWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -172,7 +172,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"hook": hookViewFromApp(view)}, "modified hook "+view.Name)
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_remove", Description: "Delete a hook; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_remove", Description: "Delete a hook; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:write", app.PermissionHookWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -183,7 +183,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"removed": strings.TrimSpace(in.Hook)}, "deleted hook")
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_delivery_list", Description: "List hook deliveries; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookDeliveryListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_delivery_list", Description: "List hook deliveries; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookDeliveryListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:read", app.PermissionHookRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -200,7 +200,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, fmt.Sprintf("%d delivery/ies", len(rows)))
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_delivery_info", Description: "Get delivery details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_delivery_info", Description: "Get delivery details; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:read", app.PermissionHookRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -212,7 +212,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"delivery": hookDeliveryViewFromApp(view)}, "delivery "+view.ID)
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_delivery_redeliver", Description: "Redeliver a hook delivery; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_delivery_redeliver", Description: "Redeliver a hook delivery; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookDeliveryRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:write", app.PermissionHookWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -224,7 +224,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"delivery": hookDeliveryViewFromApp(view)}, "replayed delivery "+view.ID)
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_test", Description: "Get hook details for testing; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_test", Description: "Get hook details for testing; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:read", app.PermissionHookRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -236,7 +236,7 @@ func registerHookTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(map[string]any{"hook": hookViewFromApp(view), "status": "reachable"}, "hook "+view.Name+" is configured")
 	})
 
-	addTool(s, &mcp.Tool{Name: "hook_ping", Description: "Ping a hook by fetching its info; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "hook_ping", Description: "Ping a hook by fetching its info; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in HookRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "hook:write", app.PermissionHookWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

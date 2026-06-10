@@ -12,6 +12,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	root := http.NewServeMux()
 	api := chi.NewRouter()
 
+	api.Use(s.shutdownMiddleware)
 	api.Use(s.requestIDMiddleware)
 	api.Use(s.recovererMiddleware)
 	api.Use(s.accessLogMiddleware)
@@ -143,12 +144,14 @@ func (s *Server) handleMCP() http.Handler {
 			authReq = mcpserver.SetHTTPAuthContext(r, authn.Authn)
 		}
 		return mcpserver.NewServer(mcpserver.Options{
-			Store:   s.store,
-			Clock:   s.effectiveClock(),
-			Version: "dev",
-			Mode:    mcpserver.ModeHTTP,
-			Stderr:  s.stderr,
-			Request: authReq,
+			Store:    s.store,
+			Clock:    s.effectiveClock(),
+			Version:  "dev",
+			Mode:     mcpserver.ModeHTTP,
+			Stderr:   s.stderr,
+			Request:  authReq,
+			Logger:   s.logger,
+			Shutdown: s.shutdown,
 		})
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 }
