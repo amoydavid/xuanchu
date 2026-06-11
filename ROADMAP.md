@@ -37,7 +37,7 @@
 | v0.3.0 | 已完成 | 事件通知、Hook sink 化、Dispatcher 并发背压与 P1 语义事件补齐 |
 | v0.3.1 | 已完成 | 事件通知稳定化、迁移说明与发布打磨 |
 | v0.3.2 | 已完成 | 日志可观测性与 HTTP MCP 反向代理 Host 修复 |
-| v0.3.3 | 规划中 | 自动化 E2E 覆盖矩阵与 PostgreSQL 覆盖补强 |
+| v0.3.3 | 已完成 | 自动化 E2E 覆盖矩阵与 PostgreSQL 覆盖补强 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -165,6 +165,27 @@ v0.3.1 是 v0.3.0 的稳定化补丁，不新增事件类型，不新增数据�
 
 ```text
 docs/releases/v0.3.1.md
+```
+
+## v0.3.3：E2E 覆盖矩阵与 PostgreSQL 覆盖补强
+
+**状态：已完成。**
+
+v0.3.3 不新增用户可见功能，重点是提升发布前验证可信度，把真实进程、真实 server、真实 HTTP/MCP transport 和 PostgreSQL opt-in 后端纳入自动化覆盖。
+
+已补齐的覆盖：
+
+- Remote CLI 写入与 HTTP API 查询在同一真实 `xuanchu server` 进程上保持一致，且 remote mode 不污染客户端本地 DB。
+- HTTP MCP 使用真实 streamable transport 调用 `task_add` / `task_query`，断言 `structuredContent` 可读，并覆盖 project allowlist 越权失败边界。
+- stdio MCP 使用真实 `xuanchu mcp stdio` 进程调用 tool，日志写入文件，不污染 JSON-RPC stdout。
+- 真实 server dispatcher smoke 覆盖 Hook delivery 和 notification delivery 被运行时领取、状态推进、operation log 落盘和 secret 不泄露；本地回环 endpoint 按 SSRF 防护进入 dead-letter。
+- PostgreSQL E2E 通过 `XUANCHU_E2E_POSTGRES_ADMIN_URL` opt-in 自动创建和删除 `xuanchu_e2e_*` 临时数据库，覆盖 server、HTTP API、HTTP MCP Host guard、MCP tool 和日志字段。
+- SQLite migration smoke 验证旧 schema 迁移后 `--json` stdout 保持纯 JSON，并可继续写入和查询。
+
+发布说明：
+
+```text
+docs/releases/v0.3.3.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1137,7 +1158,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.3.2 已完成。当前优先做 v0.3.3 测试补强：建立自动化 E2E 覆盖矩阵，补齐真实进程下的 Remote CLI/API、HTTP MCP、stdio MCP、Hook/Notification runtime、PostgreSQL 后端和 migration smoke。
+v0.3.3 已完成。当前下一步暂不继续优化 MCP tool 能力，也不做多端 sync；后续方向应围绕稳定性、运维体验或外部 adapter 生态继续拆分。
 
 v0.3.3 之后的方向待定，可能包括：
 

@@ -91,6 +91,29 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 `--db-url` 和 `--db` 互斥。未指定 `--db-url` 时使用 SQLite（默认行为不变）。
 
+## 开发测试
+
+默认测试不依赖 PostgreSQL 或外部服务：
+
+```bash
+go test ./...
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build ./cmd/xuanchu
+```
+
+真实进程 E2E 集中在 `tests/integration`，覆盖本地 CLI、远程 CLI / HTTP API、HTTP MCP、stdio MCP、server dispatcher 运行时和 SQLite migration smoke：
+
+```bash
+go test ./tests/integration -count=1
+```
+
+PostgreSQL E2E 是显式 opt-in。测试会用 admin URL 创建并删除 `xuanchu_e2e_*` 临时数据库：
+
+```bash
+XUANCHU_E2E_POSTGRES_ADMIN_URL='postgres://mac@127.0.0.1:5432/postgres?sslmode=disable' \
+  go test ./tests/integration -run TestPostgresE2E -count=1
+```
+
 ## 命令和参数怎么写
 
 任务属性一般写成 `key:value`，标签写成 `+tag` 或 `-tag`：
