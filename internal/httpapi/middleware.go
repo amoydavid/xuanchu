@@ -27,6 +27,8 @@ type requestAuth struct {
 type requestLogState struct {
 	actorID            string
 	tokenID            string
+	workspaceID        string
+	workspaceRef       string
 	delegatorUserID    string
 	delegatorTokenID   string
 	impersonateAttempt string
@@ -70,6 +72,37 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 		if state.impersonateAttempt != "" {
 			extra += fmt.Sprintf(" impersonate_attempt=%s", state.impersonateAttempt)
 		}
+		duration := time.Since(start)
+		if s.logger != nil {
+			args := []any{
+				"component", "http",
+				"operation", "http_request",
+				"request_id", requestIDFromContext(r.Context()),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", recorder.status,
+				"actor_user_id", state.actorID,
+				"token_id", state.tokenID,
+				"duration_ms", duration.Milliseconds(),
+			}
+			if state.workspaceID != "" {
+				args = append(args,
+					"workspace_id", state.workspaceID,
+					"workspace_ref", state.workspaceRef,
+				)
+			}
+			if state.delegatorUserID != "" {
+				args = append(args,
+					"delegator_user_id", state.delegatorUserID,
+					"delegator_token_id", state.delegatorTokenID,
+				)
+			}
+			if state.impersonateAttempt != "" {
+				args = append(args, "impersonate_attempt", state.impersonateAttempt)
+			}
+			s.logger.Info("http request", args...)
+			return
+		}
 		fmt.Fprintf(s.stderr, "%s %s %d actor_user_id=%s token_id=%s%s duration=%s\n",
 			r.Method,
 			r.URL.Path,
@@ -77,9 +110,16 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 			state.actorID,
 			state.tokenID,
 			extra,
-			time.Since(start).Truncate(time.Millisecond),
+			duration.Truncate(time.Millisecond),
 		)
 	})
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(requestContextKey("request_id")).(string); ok && v != "" {
+		return v
+	}
+	return "-"
 }
 
 func (s *Server) bodyLimitMiddleware(next http.Handler) http.Handler {
@@ -126,6 +166,8 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
 			state.actorID = authn.User.ID
 			state.tokenID = authn.Token.ID
+			state.workspaceID = effective.ID
+			state.workspaceRef = effective.Slug
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey, requestAuth{
 			Authn:              authn,

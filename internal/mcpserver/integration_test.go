@@ -1,15 +1,18 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -524,6 +527,40 @@ func TestAddToolConvertsReturnedErrorToStructuredToolError(t *testing.T) {
 	}
 	if code := parseError(t, result).Code; code != "synthetic_error" {
 		t.Fatalf("test.error code = %q, want synthetic_error", code)
+	}
+}
+
+func TestAddToolWritesOperationLog(t *testing.T) {
+	var buf bytes.Buffer
+	logger, closeLogger, err := logging.Setup(logging.LogConfig{Format: "text"}, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeLogger() })
+
+	srv, _ := newTestServer(t)
+	addTool(srv, Options{Mode: ModeStdio, Logger: logger}, &mcp.Tool{Name: "test_log"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, ToolEnvelope, error) {
+		return successResult(map[string]any{"ok": true}, "ok")
+	})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "test_log", struct{}{})
+	if result.IsError {
+		t.Fatalf("test_log returned error: %s", renderedText(result))
+	}
+
+	logText := buf.String()
+	for _, want := range []string{
+		"component=mcp",
+		"operation=mcp_tool_call",
+		"tool=test_log",
+		"mode=stdio",
+		"result=success",
+		"duration_ms=",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("log = %q, want substring %q", logText, want)
+		}
 	}
 }
 

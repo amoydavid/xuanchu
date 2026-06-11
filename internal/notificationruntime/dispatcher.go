@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -38,6 +39,7 @@ type DispatcherOptions struct {
 	SinkLimiter            *runtimeutil.SinkLimiter
 	Shutdown               *runtimeutil.ShutdownCoordinator
 	JitterSeed             int64
+	Logger                 *logging.Logger
 }
 
 type Dispatcher struct {
@@ -214,7 +216,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			defer done()
-			recordErr(d.dispatchOne(d.opts.Shutdown.Context(), delivery, d.opts.Clock.Unix()))
+			err := d.dispatchOne(d.opts.Shutdown.Context(), delivery, d.opts.Clock.Unix())
+			d.logDeliveryAttempt(delivery, err)
+			recordErr(err)
 		}(delivery, done)
 	}
 wait:
@@ -225,6 +229,55 @@ wait:
 	}
 	wg.Wait()
 	return firstErr
+}
+
+func (d *Dispatcher) logDeliveryAttempt(delivery storage.NotificationDelivery, err error) {
+	if d.opts.Logger == nil {
+		return
+	}
+	objectKind := delivery.ObjectKind
+	if objectKind == "" {
+		objectKind = "task"
+	}
+	objectID := delivery.ObjectID
+	if objectID == "" {
+		objectID = delivery.TaskUUID
+	}
+	args := []any{
+		"component", "notification_dispatcher",
+		"operation", "notification_delivery_attempt",
+		"delivery_id", delivery.ID,
+		"rule_id", delivery.RuleID,
+		"sink_id", delivery.SinkID,
+		"event_type", delivery.EventType,
+		"object_kind", objectKind,
+		"object_id", objectID,
+		"attempt", delivery.AttemptCount,
+	}
+	if err != nil {
+		args = append(args, "result", "error", "error", err.Error())
+		d.opts.Logger.Warn("notification delivery attempt", args...)
+		return
+	}
+	updated, getErr := d.deliveryRepo.GetByID(delivery.ID)
+	if getErr != nil {
+		args = append(args, "result", "error", "error", getErr.Error())
+		d.opts.Logger.Warn("notification delivery attempt", args...)
+		return
+	}
+	result := string(updated.Status)
+	if updated.Status == storage.DeliveryStatusSucceeded {
+		result = "success"
+	}
+	if updated.NextAttemptAt != nil {
+		args = append(args, "next_attempt_at", *updated.NextAttemptAt)
+	}
+	args = append(args, "result", result)
+	if result == "success" {
+		d.opts.Logger.Info("notification delivery attempt", args...)
+		return
+	}
+	d.opts.Logger.Warn("notification delivery attempt", args...)
 }
 
 func (d *Dispatcher) Run(ctx context.Context) error {

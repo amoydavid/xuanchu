@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/mcpserver"
 	"github.com/go-chi/chi/v5"
@@ -131,18 +134,23 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Get("/api/v1/notification-deliveries", s.handleNotificationDeliveryList)
 	api.With(s.authMiddleware).Get("/api/v1/notification-deliveries/{deliveryID}", s.handleNotificationDeliveryInfo)
 	api.With(s.authMiddleware).Post("/api/v1/notification-deliveries/{deliveryID}/replay", s.handleNotificationDeliveryReplay)
-	api.With(s.authMiddleware).Handle("/mcp", s.handleMCP())
+	api.With(s.mcpHostProtectionMiddleware, s.authMiddleware).Handle("/mcp", s.handleMCP())
 
 	root.Handle("/", api)
 	return root
 }
 
 func (s *Server) handleMCP() http.Handler {
+	opts := &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true}
+	if len(s.mcpTrustedProxyHosts) > 0 {
+		opts.DisableLocalhostProtection = true
+	}
 	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		authReq := r
 		if authn, ok := authFromContext(r.Context()); ok {
 			authReq = mcpserver.SetHTTPAuthContext(r, authn.Authn)
 		}
+		authReq.Header.Set("X-Request-Id", requestIDFromContext(r.Context()))
 		return mcpserver.NewServer(mcpserver.Options{
 			Store:    s.store,
 			Clock:    s.effectiveClock(),
@@ -153,5 +161,81 @@ func (s *Server) handleMCP() http.Handler {
 			Logger:   s.logger,
 			Shutdown: s.shutdown,
 		})
-	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	}, opts)
+}
+
+func (s *Server) mcpHostProtectionMiddleware(next http.Handler) http.Handler {
+	allowed := map[string]struct{}{}
+	for _, host := range s.mcpTrustedProxyHosts {
+		allowed[host] = struct{}{}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !requestArrivedOnLoopback(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		host := normalizeMCPHost(r.Host)
+		if isLoopbackHTTPHost(host) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if _, ok := allowed[host]; ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		http.Error(w, fmt.Sprintf("Forbidden: invalid Host header %q", r.Host), http.StatusForbidden)
+	})
+}
+
+func requestArrivedOnLoopback(r *http.Request) bool {
+	addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if !ok || addr == nil {
+		return false
+	}
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		host = addr.String()
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+func isLoopbackHTTPHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+func normalizeMCPTrustedProxyHosts(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		host := normalizeMCPHost(value)
+		if host == "" || host == "*" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		out = append(out, host)
+	}
+	return out
+}
+
+func normalizeMCPHost(value string) string {
+	host := strings.ToLower(strings.TrimSpace(value))
+	if host == "" {
+		return ""
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	} else if strings.HasPrefix(host, "[") && strings.Contains(host, "]") {
+		if end := strings.Index(host, "]"); end > 0 {
+			host = host[1:end]
+		}
+	}
+	return strings.Trim(host, "[]")
 }

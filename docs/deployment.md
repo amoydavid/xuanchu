@@ -30,6 +30,15 @@ server {
 }
 ```
 
+HTTP MCP 的 `/mcp` endpoint 使用 MCP SDK 的 localhost protection。后端监听 `127.0.0.1:<port>` 或 `[::1]:<port>`，且反向代理保留公网 Host 时，需要在 `xuanchu.toml` 显式声明可信反代域名：
+
+```toml
+[server.mcp]
+trusted_proxy_hosts = ["xuanchu.example.com"]
+```
+
+nginx 应继续使用 `proxy_set_header Host $host;` 保留真实外部 Host。不要把 Host 改写成 `127.0.0.1:8080` 来绕过保护；那会让服务端失去真实入口 Host，也不利于排障。
+
 ## Webhook 出站网络
 
 xuanchu dispatcher 需要访问外部 webhook URL。默认禁止投递到以下地址：
@@ -158,5 +167,6 @@ def verify_signature(secret, delivery_id, timestamp, body, signature):
 
 - 服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口
 - `xuanchu dispatcher` 在 server 启动后自动运行，负责 webhook 出站投递
+- 推荐配置日志文件，并让 systemd/journald 继续收 stderr。日志文件会记录 server lifecycle、HTTP access、MCP tool/resource、notification/hook dispatcher 和 reminder scheduler 的结构化 operation log；不会记录 token、secret 或 request/response body。
 - Hook 投递失败不会回滚已提交的 task/project 事务
 - Dead-lettered 投递可通过 `xuanchu hook replay <delivery-id>` 手动重试

@@ -340,8 +340,10 @@ force_timeout = "5s"
 | `[server.shutdown] force_timeout = "5s"` | `server.shutdown.force_timeout` | Go duration | drain 超时后强制取消剩余工作，再等待运行时清理资源的时间。 |
 | `[log] level = "info"` | `log.level` | `debug` / `info` / `warn` / `error` | 日志级别。环境变量 `XUANCHU_LOG_LEVEL` 优先。 |
 | `[log] format = "text"` | `log.format` | `text` / `json` | 日志格式。 |
-| `[log] file = "..."` | `log.file` | 文件路径 | 日志文件路径。支持 `~` 展开。环境变量 `XUANCHU_LOG_FILE` 优先。 |
-| `[log] rotate = "daily"` | `log.rotate` | `daily` / `size` / `none` | 日志轮转模式。`daily` 按日期切割，`size` 按 10MB 切割，`none` 不轮转。 |
+| `[log.file] path = "..."` | `log.file.path` | 文件路径 | 推荐写法。日志文件路径，支持 `~` 展开。环境变量 `XUANCHU_LOG_FILE` 优先。 |
+| `[log.file] rotate = "daily"` | `log.file.rotate` | `daily` / `size` / `none` | 推荐写法。日志轮转模式。`daily` 按日期切割，`size` 按 10MB 切割，`none` 不轮转。 |
+| `[log] file = "..."` | `log.file` | 文件路径 | 兼容旧文档写法，等价于 `log.file.path`。如果两种写法同时存在，`[log.file] path` 优先。 |
+| `[server.mcp] trusted_proxy_hosts = [...]` | `server.mcp.trusted_proxy_hosts` | hostname 列表 | 仅用于 HTTP MCP 反向代理。后端监听 loopback 且 nginx 保留公网 Host 时，把可信公网域名加入 allowlist。 |
 
 一个完整的本机配置例子：
 
@@ -363,9 +365,16 @@ force_timeout = "5s"
 [log]
 level = "info"
 format = "text"
-file = "~/.local/share/xuanchu/logs/xuanchu.log"
+
+[log.file]
+path = "~/.local/share/xuanchu/logs/xuanchu.log"
 rotate = "daily"
+
+[server.mcp]
+trusted_proxy_hosts = ["xuanchu.example.com"]
 ```
+
+`xuanchu server` 的日志会同时写 stderr 和配置的日志文件。结构化 operation log 覆盖 server lifecycle、HTTP access、HTTP MCP tool/resource 调用、notification/hook dispatcher 投递和 reminder scheduler 扫描。日志字段包含 `component`、`operation`、`request_id`、`actor_user_id`、`token_id`、`delivery_id`、`rule_id`、`result` 等运维排障字段；不会记录 Bearer token、webhook secret、HTTP request/response body 或渲染后的 Authorization header。
 
 不要把这些业务配置长期写进 TOML：
 
@@ -768,6 +777,19 @@ stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输�
 ```
 
 HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。给 Agent 的默认建议是带 `*` scope 的 workspace-scoped Agent token，让它服务同一 workspace 内多个 project，并覆盖用户、成员、项目、任务、配置、通知、token 等完整 tool 集；只服务单项目时再用 project allowlist 收窄。`/mcp` 不在 OpenAPI 文档中。
+
+如果 HTTP MCP 通过 nginx 等反向代理暴露公网域名，推荐保留真实 Host：
+
+```nginx
+proxy_set_header Host $host;
+```
+
+当后端监听 `127.0.0.1:<port>` 或 `[::1]:<port>` 时，MCP SDK 的 localhost protection 会拒绝未配置的外部 Host。生产部署应显式配置可信域名，而不是把 Host 改写成后端地址：
+
+```toml
+[server.mcp]
+trusted_proxy_hosts = ["xuanchu.example.com"]
+```
 
 ### MCP tools 列表
 

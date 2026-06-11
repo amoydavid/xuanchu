@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"github.com/google/uuid"
@@ -15,7 +16,7 @@ import (
 
 func RegisterResources(s *mcp.Server, opts Options) {
 	// workspace/current — 静态 resource
-	s.AddResource(&mcp.Resource{
+	addResource(s, opts, &mcp.Resource{
 		Name:        "workspace-current",
 		Title:       "当前工作区",
 		Description: "返回当前生效的 workspace 信息，包括 ID、slug、名称、角色和可见 project 摘要。",
@@ -34,7 +35,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 	})
 
 	// workspace/{workspace_id} — template resource
-	s.AddResourceTemplate(&mcp.ResourceTemplate{
+	addResourceTemplate(s, opts, &mcp.ResourceTemplate{
 		Name:        "workspace-by-id",
 		Title:       "指定工作区",
 		Description: "按 ID 或 slug 返回指定 workspace 信息。",
@@ -62,7 +63,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 	})
 
 	// project/{project_id} — template resource
-	s.AddResourceTemplate(&mcp.ResourceTemplate{
+	addResourceTemplate(s, opts, &mcp.ResourceTemplate{
 		Name:        "project-by-id",
 		Title:       "指定项目",
 		Description: "按 ID 或 slug 返回指定 project 详情，仅暴露 agent.* 配置项。",
@@ -93,7 +94,7 @@ func RegisterResources(s *mcp.Server, opts Options) {
 	})
 
 	// context/current — 静态 resource
-	s.AddResource(&mcp.Resource{
+	addResource(s, opts, &mcp.Resource{
 		Name:        "context-current",
 		Title:       "当前上下文",
 		Description: "返回当前活跃 context 的名称、过滤表达式和生效范围。",
@@ -110,6 +111,55 @@ func RegisterResources(s *mcp.Server, opts Options) {
 		}
 		return jsonResource("xuanchu://context/current", data)
 	})
+}
+
+func addResource(s *mcp.Server, opts Options, resource *mcp.Resource, handler func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)) {
+	s.AddResource(resource, func(ctx context.Context, req *mcp.ReadResourceRequest) (result *mcp.ReadResourceResult, err error) {
+		start := time.Now()
+		defer func() {
+			uri := resource.URI
+			if req != nil && req.Params.URI != "" {
+				uri = req.Params.URI
+			}
+			logMCPResourceRead(opts, uri, start, err)
+		}()
+		return handler(ctx, req)
+	})
+}
+
+func addResourceTemplate(s *mcp.Server, opts Options, resource *mcp.ResourceTemplate, handler func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)) {
+	s.AddResourceTemplate(resource, func(ctx context.Context, req *mcp.ReadResourceRequest) (result *mcp.ReadResourceResult, err error) {
+		start := time.Now()
+		defer func() {
+			uri := resource.URITemplate
+			if req != nil && req.Params.URI != "" {
+				uri = req.Params.URI
+			}
+			logMCPResourceRead(opts, uri, start, err)
+		}()
+		return handler(ctx, req)
+	})
+}
+
+func logMCPResourceRead(opts Options, uri string, start time.Time, err error) {
+	if opts.Logger == nil {
+		return
+	}
+	args := []any{
+		"component", "mcp",
+		"operation", "mcp_resource_read",
+		"resource", uri,
+		"mode", string(opts.Mode),
+		"duration_ms", time.Since(start).Milliseconds(),
+	}
+	args = appendMCPRequestLogFields(args, opts)
+	if err != nil {
+		args = append(args, "result", "error", "error_code", "mcp_resource_error", "error", err.Error())
+		opts.Logger.Warn("mcp resource read", args...)
+		return
+	}
+	args = append(args, "result", "success")
+	opts.Logger.Info("mcp resource read", args...)
 }
 
 // ---- data 构造 ----

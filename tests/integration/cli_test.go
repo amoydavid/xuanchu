@@ -238,6 +238,51 @@ func TestCLIServerHealthz(t *testing.T) {
 	}
 }
 
+func TestCLIServerWritesOperationLogsToConfiguredFile(t *testing.T) {
+	bin := buildXuanchu(t)
+	dir := t.TempDir()
+	db := filepath.Join(dir, "xuanchu.db")
+	logPath := filepath.Join(dir, "xuanchu.log")
+	configPath := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(configPath, []byte(strings.Join([]string{
+		"[log]",
+		`level = "info"`,
+		`format = "text"`,
+		`file = "` + logPath + `"`,
+		`rotate = "none"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd, baseURL := startXuanchuServer(t, bin, "--config", configPath, "--db", db)
+	resp, err := http.Get(baseURL + "/healthz")
+	if err != nil {
+		stopXuanchuServer(t, cmd)
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	stopXuanchuServer(t, cmd)
+
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logText := string(logBytes)
+	for _, want := range []string{
+		"component=server",
+		"operation=server_listening",
+		"component=http",
+		"operation=http_request",
+		"path=/healthz",
+		"operation=shutdown_signal",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("log file = %q, want substring %q", logText, want)
+		}
+	}
+}
+
 func TestMCPStdioListTools(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")

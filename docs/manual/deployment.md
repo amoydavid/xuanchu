@@ -36,6 +36,37 @@ server {
 }
 ```
 
+如果公网 HTTP MCP 也走这个反向代理，保留真实 Host：
+
+```nginx
+proxy_set_header Host $host;
+```
+
+后端监听 loopback 地址时，需要把公网域名加入 MCP 可信反代 Host allowlist：
+
+```toml
+[server.mcp]
+trusted_proxy_hosts = ["xuanchu.example.com"]
+```
+
+这个配置只影响 `/mcp`，不影响 REST API。未配置时，`Host: xuanchu.example.com` 到达本机 loopback 后端会被 MCP localhost protection 拒绝；不要通过把 Host 改写成 `127.0.0.1:8080` 来规避。
+
+## 日志
+
+生产部署建议同时保留 stderr 和日志文件。stderr 交给 systemd/journald；日志文件用于排查历史操作：
+
+```toml
+[log]
+level = "info"
+format = "json"
+
+[log.file]
+path = "/var/log/xuanchu/xuanchu.log"
+rotate = "daily"
+```
+
+`[log] file = "..."` 仍作为兼容写法支持，但推荐新配置使用 `[log.file] path = "..."`。日志会记录 server lifecycle、HTTP access、MCP tool/resource、notification/hook dispatcher 和 reminder scheduler 的结构化 operation log。不要依赖 operation log 做权限审计；权限审计继续看数据库里的 audit log。
+
 ## Token 配置
 
 通用 workspace Agent token 建议使用全量 scope，再用 workspace/project allowlist 和绑定用户的 membership role 收窄实际权限：

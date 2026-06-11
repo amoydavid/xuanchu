@@ -130,6 +130,7 @@ func TestServerCommandRegistersDispatcherRuntimeFlags(t *testing.T) {
 		"hook-dispatcher-prefetch-factor",
 		"hook-dispatcher-interval",
 		"hook-dispatcher-claim-ttl",
+		"mcp-trusted-proxy-host",
 	} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("server flag %q not registered", name)
@@ -226,6 +227,39 @@ func TestServerDispatcherRuntimeOptionsRejectInvalidFlags(t *testing.T) {
 				t.Fatalf("error = %q, want contains %q", err.Error(), tt.want)
 			}
 		})
+	}
+}
+
+func TestServerMCPOptionsUseConfigAndFlags(t *testing.T) {
+	cfg := config.Config{
+		ServerMCP: config.MCPConfig{
+			TrustedProxyHosts: []string{"config.example.com"},
+		},
+	}
+	opts, err := buildServerMCPOptions(cfg, nil)
+	if err != nil {
+		t.Fatalf("buildServerMCPOptions() error = %v", err)
+	}
+	if strings.Join(opts.TrustedProxyHosts, ",") != "config.example.com" {
+		t.Fatalf("TrustedProxyHosts = %#v, want config host", opts.TrustedProxyHosts)
+	}
+
+	opts, err = buildServerMCPOptions(cfg, []string{"flag.example.com"})
+	if err != nil {
+		t.Fatalf("buildServerMCPOptions() flag error = %v", err)
+	}
+	if strings.Join(opts.TrustedProxyHosts, ",") != "flag.example.com" {
+		t.Fatalf("TrustedProxyHosts = %#v, want flag host", opts.TrustedProxyHosts)
+	}
+}
+
+func TestServerMCPOptionsRejectWildcardFlag(t *testing.T) {
+	_, err := buildServerMCPOptions(config.Config{}, []string{"*.example.com"})
+	if err == nil {
+		t.Fatal("buildServerMCPOptions() error = nil, want wildcard rejection")
+	}
+	if !strings.Contains(err.Error(), "mcp-trusted-proxy-host") {
+		t.Fatalf("error = %q, want mcp-trusted-proxy-host", err.Error())
 	}
 }
 

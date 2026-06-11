@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -17,6 +18,7 @@ type ReminderSchedulerOptions struct {
 	Store     *storage.Store
 	Clock     Clock
 	BatchSize int
+	Logger    *logging.Logger
 }
 
 type ReminderSchedulerRunResult struct {
@@ -29,6 +31,7 @@ type ReminderScheduler struct {
 	store     *storage.Store
 	clock     Clock
 	batchSize int
+	logger    *logging.Logger
 }
 
 func NewReminderScheduler(opts ReminderSchedulerOptions) *ReminderScheduler {
@@ -38,10 +41,31 @@ func NewReminderScheduler(opts ReminderSchedulerOptions) *ReminderScheduler {
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 500
 	}
-	return &ReminderScheduler{store: opts.Store, clock: opts.Clock, batchSize: opts.BatchSize}
+	return &ReminderScheduler{store: opts.Store, clock: opts.Clock, batchSize: opts.BatchSize, logger: opts.Logger}
 }
 
-func (s *ReminderScheduler) RunOnce(ctx context.Context) (ReminderSchedulerRunResult, error) {
+func (s *ReminderScheduler) RunOnce(ctx context.Context) (result ReminderSchedulerRunResult, err error) {
+	start := time.Now()
+	defer func() {
+		if s.logger == nil {
+			return
+		}
+		args := []any{
+			"component", "reminder_scheduler",
+			"operation", "reminder_rule_scan",
+			"rules_checked", result.RulesChecked,
+			"deliveries_enqueued", result.DeliveriesEnqueued,
+			"recipients_skipped", result.RecipientsSkipped,
+			"duration_ms", time.Since(start).Milliseconds(),
+		}
+		if err != nil {
+			args = append(args, "result", "error", "error", err.Error())
+			s.logger.Warn("reminder rule scan", args...)
+			return
+		}
+		args = append(args, "result", "success")
+		s.logger.Info("reminder rule scan", args...)
+	}()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -61,7 +85,7 @@ func (s *ReminderScheduler) RunOnce(ctx context.Context) (ReminderSchedulerRunRe
 		return ReminderSchedulerRunResult{}, err
 	}
 	now := s.clock.Unix()
-	result := ReminderSchedulerRunResult{RulesChecked: len(rules)}
+	result = ReminderSchedulerRunResult{RulesChecked: len(rules)}
 	for _, rule := range rules {
 		if ctx.Err() != nil {
 			return result, ctx.Err()

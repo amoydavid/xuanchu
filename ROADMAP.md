@@ -35,7 +35,8 @@
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
 | v0.2.0 | 已完成 | 定时通知、动态 endpoint、HTTP request template sink 与 MCP Skill 文档整理 |
 | v0.3.0 | 已完成 | 事件通知、Hook sink 化、Dispatcher 并发背压与 P1 语义事件补齐 |
-| v0.3.1 | 规划中 | 事件通知稳定化、迁移说明与发布打磨 |
+| v0.3.1 | 已完成 | 事件通知稳定化、迁移说明与发布打磨 |
+| v0.3.2 | 进行中 | 日志可观测性与 HTTP MCP 反向代理 Host 修复 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -1073,7 +1074,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 **不进入 M15：**
 
-- `task_search` 全文搜索 tool（已讨论，方案 A：新增 Agent 友好搜索 tool，尚未实施）
+- `task_search` 全文搜索 tool。
 
 ## M16：定时通知、动态 endpoint 与 HTTP request template sink
 
@@ -1135,11 +1136,9 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.3.0 已完成。当前优先做 v0.3.1 稳定化补丁：不扩大功能范围，集中补齐事件通知的迁移说明、手册一致性和发布验收清单。
+v0.3.1 已完成。当前优先做 v0.3.2 运维补丁：补齐 server operation log，修复 HTTP MCP 经反向代理保留公网 Host 时被 localhost protection 拒绝的问题。
 
-v0.3.1 之后的方向待定，可能包括：
+v0.3.2 之后的方向待定，可能包括：
 
-- `task_search` Agent 友好全文搜索 tool
 - 性能优化与大 workspace 场景验证
 - 外部系统 adapter 生态
-- 多端同步与 replica

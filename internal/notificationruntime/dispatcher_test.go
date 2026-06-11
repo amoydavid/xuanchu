@@ -1,6 +1,7 @@
 package notificationruntime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -140,6 +142,54 @@ func TestNotificationDispatcherHTTPTemplateUsesRenderedRequestSnapshot(t *testin
 	got, _ := storage.NewNotificationDeliveryRepository(store.DB()).GetByID(delivery.ID)
 	if got.Status != storage.DeliveryStatusSucceeded {
 		t.Fatalf("status = %q, want succeeded", got.Status)
+	}
+}
+
+func TestNotificationDispatcherWritesOperationLog(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger, closeLogger, err := logging.Setup(logging.LogConfig{Format: "text"}, &logBuf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeLogger() })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newNotificationRuntimeStore(t)
+	ws, _ := store.LocalWorkspace()
+	sink := makeRuntimeSink(ws.ID, server.URL)
+	mustCreateRuntimeSink(t, store, sink)
+	delivery := makeRuntimeDelivery(ws.ID, sink.ID, server.URL)
+	mustEnqueueRuntimeDelivery(t, store, delivery)
+
+	dispatcher := NewDispatcher(DispatcherOptions{
+		Store:    store,
+		Clock:    testClock{now: 1000},
+		Client:   server.Client(),
+		Resolver: app.DefaultHookResolver(),
+		Logger:   logger,
+	})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+
+	logText := logBuf.String()
+	for _, want := range []string{
+		"component=notification_dispatcher",
+		"operation=notification_delivery_attempt",
+		"delivery_id=" + delivery.ID,
+		"sink_id=" + sink.ID,
+		"event_type=task.due_soon",
+		"object_kind=task",
+		"object_id=task-1",
+		"result=success",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("log = %q, want substring %q", logText, want)
+		}
 	}
 }
 

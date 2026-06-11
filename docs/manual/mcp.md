@@ -43,6 +43,21 @@ HTTP MCP endpoint：
 
 HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token scope。
 
+如果 HTTP MCP 通过 nginx/Caddy 暴露公网域名，并且后端只监听 `127.0.0.1:<port>`，需要显式配置可信反代 Host：
+
+```toml
+[server.mcp]
+trusted_proxy_hosts = ["xuanchu.example.com"]
+```
+
+反向代理应保留真实 Host，例如 nginx：
+
+```nginx
+proxy_set_header Host $host;
+```
+
+未配置 allowlist 时，MCP SDK 会在 loopback 后端上拒绝公网 Host，返回 `403 Forbidden: invalid Host header`。不要把 Host 改写成后端地址作为长期部署方案。
+
 ## 接入前准备
 
 如果使用本地 stdio MCP，先确认 `xuanchu` 在 PATH 中，或记录完整路径：

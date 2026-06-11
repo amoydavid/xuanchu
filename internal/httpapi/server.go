@@ -14,26 +14,28 @@ import (
 const defaultBodyLimitBytes int64 = 10 << 20
 
 type Options struct {
-	Store          *storage.Store
-	Clock          app.Clock
-	Stderr         io.Writer
-	BodyLimitBytes int64
-	TestPanicRoute bool
-	Logger         *logging.Logger
-	Admin          config.AdminConfig
-	Shutdown       *runtimeutil.ShutdownCoordinator
+	Store                *storage.Store
+	Clock                app.Clock
+	Stderr               io.Writer
+	BodyLimitBytes       int64
+	TestPanicRoute       bool
+	Logger               *logging.Logger
+	Admin                config.AdminConfig
+	Shutdown             *runtimeutil.ShutdownCoordinator
+	MCPTrustedProxyHosts []string
 }
 
 type Server struct {
-	store          *storage.Store
-	clock          app.Clock
-	stderr         io.Writer
-	bodyLimitBytes int64
-	testPanicRoute bool
-	logger         *logging.Logger
-	admin          config.AdminConfig
-	shutdown       *runtimeutil.ShutdownCoordinator
-	router         *http.ServeMux
+	store                *storage.Store
+	clock                app.Clock
+	stderr               io.Writer
+	bodyLimitBytes       int64
+	testPanicRoute       bool
+	logger               *logging.Logger
+	admin                config.AdminConfig
+	shutdown             *runtimeutil.ShutdownCoordinator
+	mcpTrustedProxyHosts []string
+	router               *http.ServeMux
 }
 
 func NewServer(opts Options) *Server {
@@ -44,14 +46,15 @@ func NewServer(opts Options) *Server {
 		opts.BodyLimitBytes = defaultBodyLimitBytes
 	}
 	srv := &Server{
-		store:          opts.Store,
-		clock:          opts.Clock,
-		stderr:         opts.Stderr,
-		bodyLimitBytes: opts.BodyLimitBytes,
-		testPanicRoute: opts.TestPanicRoute,
-		logger:         opts.Logger,
-		admin:          opts.Admin,
-		shutdown:       opts.Shutdown,
+		store:                opts.Store,
+		clock:                opts.Clock,
+		stderr:               opts.Stderr,
+		bodyLimitBytes:       opts.BodyLimitBytes,
+		testPanicRoute:       opts.TestPanicRoute,
+		logger:               opts.Logger,
+		admin:                opts.Admin,
+		shutdown:             opts.Shutdown,
+		mcpTrustedProxyHosts: normalizeMCPTrustedProxyHosts(opts.MCPTrustedProxyHosts),
 	}
 	srv.router = srv.newRouter()
 	return srv

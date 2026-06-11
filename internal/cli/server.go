@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,6 +39,7 @@ func newServerCommand(opts Options) *cobra.Command {
 	var hookPrefetchFactor int
 	var notificationClaimTTL time.Duration
 	var hookClaimTTL time.Duration
+	var mcpTrustedProxyHosts []string
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "启动 HTTP API 服务器",
@@ -72,6 +74,14 @@ func newServerCommand(opts Options) *cobra.Command {
 				return err
 			}
 			shutdownTimeout = shutdownOptions.Timeout
+			mcpFlagHosts := []string(nil)
+			if cmd.Flags().Changed("mcp-trusted-proxy-host") {
+				mcpFlagHosts = mcpTrustedProxyHosts
+			}
+			mcpOptions, err := buildServerMCPOptions(cfg, mcpFlagHosts)
+			if err != nil {
+				return err
+			}
 			shutdown := runtimeutil.NewShutdownCoordinator()
 			dbTarget := cfg.DatabaseURL
 			if dbTarget == "" {
@@ -99,11 +109,12 @@ func newServerCommand(opts Options) *cobra.Command {
 			defer ln.Close()
 
 			handler := httpapi.NewServer(httpapi.Options{
-				Store:    store,
-				Stderr:   cmd.ErrOrStderr(),
-				Logger:   logger,
-				Admin:    cfg.ServerAdmin,
-				Shutdown: shutdown,
+				Store:                store,
+				Stderr:               cmd.ErrOrStderr(),
+				Logger:               logger,
+				Admin:                cfg.ServerAdmin,
+				Shutdown:             shutdown,
+				MCPTrustedProxyHosts: mcpOptions.TrustedProxyHosts,
 			})
 			httpServer := &http.Server{
 				Addr:              listen,
@@ -121,7 +132,12 @@ func newServerCommand(opts Options) *cobra.Command {
 				}
 			}()
 
-			fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: server listening on http://%s\n", ln.Addr().String())
+			logger.Info("server listening",
+				"component", "server",
+				"operation", "server_listening",
+				"addr", ln.Addr().String(),
+				"url", "http://"+ln.Addr().String(),
+			)
 
 			flags := serverDispatcherFlagOverrides{}
 			if cmd.Flags().Changed("notification-dispatcher-interval") {
@@ -164,16 +180,19 @@ func newServerCommand(opts Options) *cobra.Command {
 			hookOptions.Clock = app.RealClock{}
 			hookOptions.Version = "dev"
 			hookOptions.Shutdown = shutdown
+			hookOptions.Logger = logger
 			hookDispatcher := hookruntime.NewDispatcher(hookOptions)
 			notificationOptions := runtimeOptions.Notification
 			notificationOptions.Store = store
 			notificationOptions.Clock = app.RealClock{}
 			notificationOptions.Version = "dev"
 			notificationOptions.Shutdown = shutdown
+			notificationOptions.Logger = logger
 			notificationDispatcher := notificationruntime.NewDispatcher(notificationOptions)
 			reminderScheduler := app.NewReminderScheduler(app.ReminderSchedulerOptions{
-				Store: store,
-				Clock: app.RealClock{},
+				Store:  store,
+				Clock:  app.RealClock{},
+				Logger: logger,
 			})
 			runCtx, cancelRun := context.WithCancel(context.Background())
 			defer cancelRun()
@@ -210,7 +229,10 @@ func newServerCommand(opts Options) *cobra.Command {
 			case <-signalCtx.Done():
 			}
 
-			fmt.Fprintln(cmd.ErrOrStderr(), "xuanchu: shutdown: signal received")
+			logger.Info("shutdown signal received",
+				"component", "server",
+				"operation", "shutdown_signal",
+			)
 			shutdown.StopAccepting()
 			cancelRun()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownOptions.Timeout)
@@ -246,6 +268,11 @@ func newServerCommand(opts Options) *cobra.Command {
 				case <-shutdownCtx.Done():
 					shutdown.ForceCancel()
 					_ = httpServer.Close()
+					logger.Warn("shutdown timeout",
+						"component", "server",
+						"operation", "shutdown_timeout",
+						"timeout_ms", shutdownOptions.Timeout.Milliseconds(),
+					)
 					forceCtx, forceCancel := context.WithTimeout(context.Background(), shutdownOptions.ForceTimeout)
 					defer forceCancel()
 					for httpPending || drainPending || runtimePending {
@@ -262,6 +289,11 @@ func newServerCommand(opts Options) *cobra.Command {
 							runtimePending = false
 							runtimeDone = nil
 						case <-forceCtx.Done():
+							logger.Error("shutdown force timeout",
+								"component", "server",
+								"operation", "shutdown_force_timeout",
+								"timeout_ms", shutdownOptions.ForceTimeout.Milliseconds(),
+							)
 							return fmt.Errorf("shutdown force timeout: %w", forceCtx.Err())
 						}
 					}
@@ -283,6 +315,7 @@ func newServerCommand(opts Options) *cobra.Command {
 	cmd.Flags().DurationVar(&reminderSchedulerInterval, "reminder-scheduler-interval", 60*time.Second, "reminder scheduler interval")
 	cmd.Flags().DurationVar(&notificationDispatcherInterval, "notification-dispatcher-interval", 5*time.Second, "notification dispatcher interval")
 	cmd.Flags().DurationVar(&hookDispatcherInterval, "hook-dispatcher-interval", 5*time.Second, "hook dispatcher interval")
+	cmd.Flags().StringArrayVar(&mcpTrustedProxyHosts, "mcp-trusted-proxy-host", nil, "trusted external Host for HTTP MCP reverse proxy; repeatable")
 	cmd.Flags().IntVar(&notificationMaxConcurrency, "notification-dispatcher-max-concurrency", 0, "notification dispatcher max concurrency")
 	cmd.Flags().IntVar(&hookMaxConcurrency, "hook-dispatcher-max-concurrency", 0, "hook dispatcher max concurrency")
 	cmd.Flags().IntVar(&notificationBatchSize, "notification-dispatcher-batch-size", 0, "notification dispatcher delivery claim batch size")
@@ -292,6 +325,25 @@ func newServerCommand(opts Options) *cobra.Command {
 	cmd.Flags().DurationVar(&notificationClaimTTL, "notification-dispatcher-claim-ttl", 0, "notification dispatcher stale claim TTL")
 	cmd.Flags().DurationVar(&hookClaimTTL, "hook-dispatcher-claim-ttl", 0, "hook dispatcher stale claim TTL")
 	return cmd
+}
+
+type serverMCPOptions struct {
+	TrustedProxyHosts []string
+}
+
+func buildServerMCPOptions(cfg config.Config, flagHosts []string) (serverMCPOptions, error) {
+	hosts := cfg.ServerMCP.TrustedProxyHosts
+	if flagHosts != nil {
+		hosts = flagHosts
+	}
+	out := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		if strings.Contains(strings.TrimSpace(host), "*") {
+			return serverMCPOptions{}, fmt.Errorf("mcp-trusted-proxy-host cannot contain wildcard host")
+		}
+		out = append(out, host)
+	}
+	return serverMCPOptions{TrustedProxyHosts: out}, nil
 }
 
 type serverShutdownFlagOverrides struct {

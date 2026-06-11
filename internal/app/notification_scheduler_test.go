@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -81,6 +83,51 @@ func TestReminderSchedulerDueBeforeEnqueuesDelivery(t *testing.T) {
 	object := payload["object"].(map[string]any)
 	if object["kind"] != "task" || object["id"] != rows[0].TaskUUID {
 		t.Fatalf("object payload = %#v", object)
+	}
+}
+
+func TestReminderSchedulerWritesOperationLog(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger, closeLogger, err := logging.Setup(logging.LogConfig{Format: "text"}, &logBuf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeLogger() })
+
+	store := newTestStore(t)
+	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 1000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = createSchedulerAssignee(t, svc, store, "alice")
+	due := int64(2000)
+	if _, err := svc.Add(AddInput{Description: "完成 OAuth", Due: &due, Assignees: []string{"alice"}}); err != nil {
+		t.Fatalf("Add task error = %v", err)
+	}
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatalf("AddNotificationSink error = %v", err)
+	}
+	if _, err := svc.AddReminderRule(ReminderRuleAddInput{Name: "due-before", TriggerType: "due_before", OffsetSeconds: 1200, AudienceType: "assignees", SinkRef: sink.ID}); err != nil {
+		t.Fatalf("AddReminderRule error = %v", err)
+	}
+
+	scheduler := NewReminderScheduler(ReminderSchedulerOptions{Store: store, Clock: FixedClock{NowUnix: 1000}, Logger: logger})
+	if _, err := scheduler.RunOnce(t.Context()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+
+	logText := logBuf.String()
+	for _, want := range []string{
+		"component=reminder_scheduler",
+		"operation=reminder_rule_scan",
+		"rules_checked=1",
+		"deliveries_enqueued=1",
+		"result=success",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("log = %q, want substring %q", logText, want)
+		}
 	}
 }
 

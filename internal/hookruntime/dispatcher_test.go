@@ -1,6 +1,7 @@
 package hookruntime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/google/uuid"
@@ -370,6 +372,53 @@ func TestDispatcherRunOnceDeliversWebhook(t *testing.T) {
 	got := getDelivery(t, store, delivery.ID)
 	if got.Status != storage.DeliveryStatusSucceeded {
 		t.Fatalf("status = %q, want succeeded", got.Status)
+	}
+}
+
+func TestHookDispatcherWritesOperationLog(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger, closeLogger, err := logging.Setup(logging.LogConfig{Format: "text"}, &logBuf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeLogger() })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := newTestStore(t)
+	hook, delivery := setupHookAndDelivery(t, store, server.URL)
+	delivery.PayloadJSON = `{"object_kind":"task","object_id":"task-1"}`
+	if err := store.DB().Model(&storage.HookDelivery{}).Where("id = ?", delivery.ID).Update("payload_json", delivery.PayloadJSON).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	d := NewDispatcher(DispatcherOptions{
+		Store:    store,
+		Clock:    testClock{now: 1000},
+		Client:   server.Client(),
+		Resolver: mockResolver{},
+		Logger:   logger,
+	})
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+
+	logText := logBuf.String()
+	for _, want := range []string{
+		"component=hook_dispatcher",
+		"operation=hook_delivery_attempt",
+		"delivery_id=" + delivery.ID,
+		"hook_id=" + hook.ID,
+		"object_kind=task",
+		"object_id=task-1",
+		"result=success",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("log = %q, want substring %q", logText, want)
+		}
 	}
 }
 

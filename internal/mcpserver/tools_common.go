@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/render"
@@ -57,7 +58,11 @@ func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.To
 	}
 	tool.InputSchema = inputSchema
 	tool.OutputSchema = outputSchema
-	s.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (out *mcp.CallToolResult, err error) {
+		start := time.Now()
+		defer func() {
+			logMCPToolCall(opts, tool.Name, start, out, err)
+		}()
 		if opts.Shutdown != nil {
 			done, ok := opts.Shutdown.Begin()
 			if !ok {
@@ -99,6 +104,67 @@ func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.To
 		}
 		return result, nil
 	})
+}
+
+func logMCPToolCall(opts Options, toolName string, start time.Time, result *mcp.CallToolResult, err error) {
+	if opts.Logger == nil {
+		return
+	}
+	args := []any{
+		"component", "mcp",
+		"operation", "mcp_tool_call",
+		"tool", toolName,
+		"mode", string(opts.Mode),
+		"duration_ms", time.Since(start).Milliseconds(),
+	}
+	args = appendMCPRequestLogFields(args, opts)
+	if err != nil {
+		args = append(args, "result", "error", "error_code", "mcp_error", "error", err.Error())
+		opts.Logger.Warn("mcp tool call", args...)
+		return
+	}
+	if result != nil && result.IsError {
+		args = append(args, "result", "error")
+		if code := toolErrorCode(result); code != "" {
+			args = append(args, "error_code", code)
+		}
+		opts.Logger.Warn("mcp tool call", args...)
+		return
+	}
+	args = append(args, "result", "success")
+	opts.Logger.Info("mcp tool call", args...)
+}
+
+func appendMCPRequestLogFields(args []any, opts Options) []any {
+	if opts.Request == nil {
+		return args
+	}
+	requestID := strings.TrimSpace(opts.Request.Header.Get("X-Request-Id"))
+	if requestID != "" {
+		args = append(args, "request_id", requestID)
+	}
+	if authn, ok := authFromHTTPRequest(opts.Request); ok {
+		args = append(args,
+			"actor_user_id", authn.User.ID,
+			"token_id", authn.Token.ID,
+		)
+	}
+	return args
+}
+
+func toolErrorCode(result *mcp.CallToolResult) string {
+	if result == nil {
+		return ""
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		return ""
+	}
+	var toolErr ToolError
+	if err := json.Unmarshal(raw, &toolErr); err == nil {
+		return toolErr.Code
+	}
+	return ""
 }
 
 func patchInputSchema[In any](schema *jsonschema.Schema) {

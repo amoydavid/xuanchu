@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,9 +22,14 @@ type Config struct {
 	Color                  bool
 	Log                    logging.LogConfig
 	ServerAdmin            AdminConfig
+	ServerMCP              MCPConfig
 	NotificationDispatcher DispatcherConfig
 	HookDispatcher         DispatcherConfig
 	Shutdown               ShutdownConfig
+}
+
+type MCPConfig struct {
+	TrustedProxyHosts []string
 }
 
 type DispatcherConfig struct {
@@ -170,6 +176,10 @@ func Resolve(opts Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	serverMCP, err := parseMCPConfig(tomlValues)
+	if err != nil {
+		return Config{}, err
+	}
 	shutdownCfg, err := parseShutdownConfig(tomlValues)
 	if err != nil {
 		return Config{}, err
@@ -184,6 +194,7 @@ func Resolve(opts Options) (Config, error) {
 		Color:                  !opts.NoColor,
 		Log:                    logCfg,
 		ServerAdmin:            adminCfg,
+		ServerMCP:              serverMCP,
 		NotificationDispatcher: notificationDispatcher,
 		HookDispatcher:         hookDispatcher,
 		Shutdown:               shutdownCfg,
@@ -223,17 +234,17 @@ func parseLogConfig(values map[string]string) logging.LogConfig {
 	if v, ok := values["log.format"]; ok {
 		cfg.Format = v
 	}
-	if _, ok := values["log.file.path"]; ok {
-		fc := &logging.FileConfig{Path: values["log.file.path"]}
-		if v, ok := values["log.file.rotate"]; ok {
+	if path, ok := firstValue(values, "log.file.path", "log.file"); ok {
+		fc := &logging.FileConfig{Path: path}
+		if v, ok := firstValue(values, "log.file.rotate", "log.rotate"); ok {
 			fc.Rotate = v
 		}
-		if v, ok := values["log.file.max_size_mb"]; ok {
+		if v, ok := firstValue(values, "log.file.max_size_mb", "log.max_size_mb"); ok {
 			if n, err := strconv.Atoi(v); err == nil {
 				fc.MaxSizeMB = n
 			}
 		}
-		if v, ok := values["log.file.max_age_days"]; ok {
+		if v, ok := firstValue(values, "log.file.max_age_days", "log.max_age_days"); ok {
 			if n, err := strconv.Atoi(v); err == nil {
 				fc.MaxAgeDays = n
 			}
@@ -241,6 +252,58 @@ func parseLogConfig(values map[string]string) logging.LogConfig {
 		cfg.File = fc
 	}
 	return cfg
+}
+
+func parseMCPConfig(values map[string]string) (MCPConfig, error) {
+	cfg := MCPConfig{}
+	if values == nil {
+		return cfg, nil
+	}
+	raw := values["server.mcp.trusted_proxy_hosts"]
+	if strings.TrimSpace(raw) == "" {
+		return cfg, nil
+	}
+	seen := map[string]struct{}{}
+	for _, item := range strings.Split(raw, ",") {
+		host := normalizeTrustedProxyHost(item)
+		if host == "" {
+			continue
+		}
+		if strings.Contains(host, "*") {
+			return MCPConfig{}, errors.New("server.mcp.trusted_proxy_hosts cannot contain wildcard host")
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		cfg.TrustedProxyHosts = append(cfg.TrustedProxyHosts, host)
+	}
+	return cfg, nil
+}
+
+func normalizeTrustedProxyHost(value string) string {
+	host := strings.ToLower(strings.TrimSpace(value))
+	if host == "" {
+		return ""
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	} else if strings.HasPrefix(host, "[") && strings.Contains(host, "]") {
+		if end := strings.Index(host, "]"); end > 0 {
+			host = host[1:end]
+		}
+	}
+	host = strings.Trim(host, "[]")
+	return host
+}
+
+func firstValue(values map[string]string, keys ...string) (string, bool) {
+	for _, key := range keys {
+		if v, ok := values[key]; ok {
+			return v, true
+		}
+	}
+	return "", false
 }
 
 func parseDispatcherConfig(values map[string]string, prefix string) (DispatcherConfig, error) {

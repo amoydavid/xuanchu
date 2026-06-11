@@ -3,6 +3,7 @@ package hookruntime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
@@ -35,6 +37,7 @@ type DispatcherOptions struct {
 	SinkLimiter            *runtimeutil.SinkLimiter
 	Shutdown               *runtimeutil.ShutdownCoordinator
 	JitterSeed             int64
+	Logger                 *logging.Logger
 }
 
 // Dispatcher 负责 webhook 投递的主循环。
@@ -211,7 +214,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			defer done()
-			errCh <- d.dispatchOne(d.opts.Shutdown.Context(), delivery, d.opts.Clock.Unix())
+			err := d.dispatchOne(d.opts.Shutdown.Context(), delivery, d.opts.Clock.Unix())
+			d.logDeliveryAttempt(delivery, err)
+			errCh <- err
 		}(delivery, done)
 	}
 wait:
@@ -231,6 +236,69 @@ wait:
 		}
 	}
 	return nil
+}
+
+func (d *Dispatcher) logDeliveryAttempt(delivery storage.HookDelivery, err error) {
+	if d.opts.Logger == nil {
+		return
+	}
+	args := []any{
+		"component", "hook_dispatcher",
+		"operation", "hook_delivery_attempt",
+		"delivery_id", delivery.ID,
+		"hook_id", delivery.HookID,
+		"sink_id", delivery.SinkID,
+		"event_type", delivery.EventType,
+		"workspace_id", delivery.WorkspaceID,
+		"attempt", delivery.AttemptCount,
+	}
+	if delivery.ProjectID != nil {
+		args = append(args, "project_id", *delivery.ProjectID)
+	}
+	if objectKind, objectID := hookDeliveryObject(delivery); objectKind != "" || objectID != "" {
+		args = append(args, "object_kind", objectKind, "object_id", objectID)
+	}
+	if err != nil {
+		args = append(args, "result", "error", "error", err.Error())
+		d.opts.Logger.Warn("hook delivery attempt", args...)
+		return
+	}
+	updated, getErr := d.deliveryRepo.GetByID(delivery.ID)
+	if getErr != nil {
+		args = append(args, "result", "error", "error", getErr.Error())
+		d.opts.Logger.Warn("hook delivery attempt", args...)
+		return
+	}
+	result := string(updated.Status)
+	if updated.Status == storage.DeliveryStatusSucceeded {
+		result = "success"
+	}
+	if updated.NextAttemptAt != nil {
+		args = append(args, "next_attempt_at", *updated.NextAttemptAt)
+	}
+	args = append(args, "result", result)
+	if result == "success" {
+		d.opts.Logger.Info("hook delivery attempt", args...)
+		return
+	}
+	d.opts.Logger.Warn("hook delivery attempt", args...)
+}
+
+func hookDeliveryObject(delivery storage.HookDelivery) (string, string) {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(delivery.PayloadJSON), &payload); err != nil {
+		return "", ""
+	}
+	objectKind, _ := payload["object_kind"].(string)
+	objectID, _ := payload["object_id"].(string)
+	if objectKind != "" || objectID != "" {
+		return objectKind, objectID
+	}
+	if object, ok := payload["object"].(map[string]any); ok {
+		objectKind, _ = object["kind"].(string)
+		objectID, _ = object["id"].(string)
+	}
+	return objectKind, objectID
 }
 
 // Run 启动持续的投递循环，直到 context 被取消。

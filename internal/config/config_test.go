@@ -206,6 +206,101 @@ func TestResolveReadsShutdownConfigFromToml(t *testing.T) {
 	}
 }
 
+func TestResolveLogConfigAcceptsReadmeStyleLogFile(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := filepath.Join(dir, "xuanchu.toml")
+	logPath := filepath.Join(dir, "xuanchu.log")
+	if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
+		"[log]",
+		`level = "info"`,
+		`format = "text"`,
+		`file = "` + logPath + `"`,
+		`rotate = "none"`,
+		`max_size_mb = 12`,
+		`max_age_days = 3`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{
+		ConfigPath: tomlPath,
+		HomeDir:    "/home/alice",
+		Env:        map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Log.File == nil {
+		t.Fatal("Log.File is nil")
+	}
+	if cfg.Log.File.Path != logPath {
+		t.Fatalf("Log.File.Path = %q, want %q", cfg.Log.File.Path, logPath)
+	}
+	if cfg.Log.File.Rotate != "none" {
+		t.Fatalf("Log.File.Rotate = %q, want none", cfg.Log.File.Rotate)
+	}
+	if cfg.Log.File.MaxSizeMB != 12 {
+		t.Fatalf("Log.File.MaxSizeMB = %d, want 12", cfg.Log.File.MaxSizeMB)
+	}
+	if cfg.Log.File.MaxAgeDays != 3 {
+		t.Fatalf("Log.File.MaxAgeDays = %d, want 3", cfg.Log.File.MaxAgeDays)
+	}
+}
+
+func TestResolveMCPTrustedProxyHostsFromToml(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
+		"[server.mcp]",
+		`trusted_proxy_hosts = ["Xuanchu.Example.Com", "mcp.example.com:443", ""]`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{
+		ConfigPath: tomlPath,
+		HomeDir:    "/home/alice",
+		Env:        map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	want := []string{"xuanchu.example.com", "mcp.example.com"}
+	if strings.Join(cfg.ServerMCP.TrustedProxyHosts, ",") != strings.Join(want, ",") {
+		t.Fatalf("ServerMCP.TrustedProxyHosts = %#v, want %#v", cfg.ServerMCP.TrustedProxyHosts, want)
+	}
+}
+
+func TestResolveMCPTrustedProxyHostsRejectsWildcard(t *testing.T) {
+	for _, host := range []string{"*", "*.example.com"} {
+		t.Run(host, func(t *testing.T) {
+			dir := t.TempDir()
+			tomlPath := filepath.Join(dir, "xuanchu.toml")
+			if err := os.WriteFile(tomlPath, []byte(strings.Join([]string{
+				"[server.mcp]",
+				`trusted_proxy_hosts = ["` + host + `"]`,
+				"",
+			}, "\n")), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Resolve(Options{
+				ConfigPath: tomlPath,
+				HomeDir:    "/home/alice",
+				Env:        map[string]string{},
+			})
+			if err == nil {
+				t.Fatal("Resolve() error = nil, want wildcard rejection")
+			}
+			if !strings.Contains(err.Error(), "server.mcp.trusted_proxy_hosts") {
+				t.Fatalf("Resolve() error = %q, want trusted proxy host error", err.Error())
+			}
+		})
+	}
+}
+
 func TestResolveShutdownConfigDefaults(t *testing.T) {
 	cfg, err := Resolve(Options{HomeDir: "/home/alice", Env: map[string]string{}})
 	if err != nil {

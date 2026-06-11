@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -59,6 +61,42 @@ func TestResourcesListIncludesStaticResources(t *testing.T) {
 	for _, want := range allResourceURIs() {
 		if !uris[want] {
 			t.Errorf("missing static resource %q in list; got URIs: %v", want, uris)
+		}
+	}
+}
+
+func TestResourceReadWritesOperationLog(t *testing.T) {
+	var buf bytes.Buffer
+	logger, closeLogger, err := logging.Setup(logging.LogConfig{Format: "text"}, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = closeLogger() })
+
+	store := newMCPTestStore(t)
+	session := setupResourceTestServer(t, Options{
+		Store:   store,
+		Clock:   testClock{now: 100},
+		Version: "test",
+		Mode:    ModeStdio,
+		Logger:  logger,
+	})
+
+	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "xuanchu://workspace/current"}); err != nil {
+		t.Fatalf("ReadResource: %v", err)
+	}
+
+	logText := buf.String()
+	for _, want := range []string{
+		"component=mcp",
+		"operation=mcp_resource_read",
+		"resource=xuanchu://workspace/current",
+		"mode=stdio",
+		"result=success",
+		"duration_ms=",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("log = %q, want substring %q", logText, want)
 		}
 	}
 }
