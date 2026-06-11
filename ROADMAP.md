@@ -34,7 +34,7 @@
 | M16 | 已完成 | 定时通知、动态 endpoint 与 HTTP request template sink |
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
 | v0.2.0 | 已完成 | 定时通知、动态 endpoint、HTTP request template sink 与 MCP Skill 文档整理 |
-| v0.3.0 | 进行中 | 事件通知、Hook sink 化与下一批语义事件 |
+| v0.3.0 | 已完成 | 事件通知、Hook sink 化、Dispatcher 并发背压与 P1 语义事件补齐 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -58,9 +58,9 @@ v0.2.0 在 v0.1.1 已具备的稳定短任务引用、CLI / HTTP / MCP / Remote 
 
 ## v0.3.0：事件通知、Hook sink 化与语义事件补齐
 
-**状态：进行中。**
+**状态：已完成。**
 
-v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 outbound sink，并补齐事件触发的用户通知规则。当前规格和实现计划只实现首批事件，不一次性补完所有语义事件。
+v0.3.0 把 Hook 从直接 URL 收敛到 workspace 级 outbound sink，补齐事件触发的用户通知规则，并完成了 9 个 Priority 1 语义事件的补齐。
 
 当前实现范围：
 
@@ -1107,7 +1107,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.2.0 已完成。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（95 tool）、服务端 Webhook Hook、定时通知、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
+v0.3.0 已完成。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（95+ tool）、服务端 Webhook Hook、定时通知、事件通知规则、17 个语义事件、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
 
 后续方向待定，可能包括：
 
