@@ -37,7 +37,7 @@
 | v0.3.0 | 已完成 | 事件通知、Hook sink 化、Dispatcher 并发背压与 P1 语义事件补齐 |
 | v0.3.1 | 已完成 | 事件通知稳定化、迁移说明与发布打磨 |
 | v0.3.2 | 已完成 | 日志可观测性与 HTTP MCP 反向代理 Host 修复 |
-| v0.3.3 | 规划中 | 自动化 E2E 与 PostgreSQL 覆盖补强 |
+| v0.3.3 | 规划中 | 自动化 E2E 覆盖矩阵与 PostgreSQL 覆盖补强 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -1137,7 +1137,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.3.2 已完成。当前优先做 v0.3.3 测试补强：把 PostgreSQL、真实 `xuanchu server`、HTTP MCP 反代 Host allowlist 和 operation log 落盘纳入可重复的自动化 E2E 覆盖。
+v0.3.2 已完成。当前优先做 v0.3.3 测试补强：建立自动化 E2E 覆盖矩阵，补齐真实进程下的 Remote CLI/API、HTTP MCP、stdio MCP、Hook/Notification runtime、PostgreSQL 后端和 migration smoke。
 
 v0.3.3 之后的方向待定，可能包括：
 
