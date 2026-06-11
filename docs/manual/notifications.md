@@ -194,6 +194,16 @@ xuanchu notification rule add urgent-task-changes \
 
 当前不允许注册的候选事件包括：`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed`。
 
+事件语义和 Hook 保持一致：
+
+- `start` 只触发 `task.started`。
+- `stop` 只触发 `task.stopped`。
+- 普通编辑触发 `task.modified`。
+- assignee、due、priority、project、tags、blocked 状态变化会额外触发对应的细粒度事件。
+- `task.blocked` 只表示从非 blocked 进入 blocked；`task.unblocked` 只表示解除 blocked。
+
+如果用户通知规则原本依赖 `task.modified` 覆盖所有任务变化，应按通知意图拆成多个规则。例如开始任务通知订阅 `task.started`，到期时间变更通知订阅 `task.due_changed`。这样可以避免在接收端再次解析 payload 判断变化类型。
+
 notification rule 的 audience 支持：
 
 - `actor`

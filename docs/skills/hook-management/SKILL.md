@@ -29,6 +29,11 @@ Hook 可挂载在 workspace 级别或 project 级别（传 `project`/`project_id
 `sink` 可以是当前 workspace 内的 sink 名称或 ID；不能引用其他 workspace 的 sink。
 Hook 只引用 notification sink，不直接接收 URL 或 secret。sink 的 `max_concurrency` 控制同一 sink 的单进程出站并发；`0` 表示继承 dispatcher 默认 sink 并发。`xuanchu server` 内 hook dispatcher 与 notification dispatcher 共享同一个 sink limiter，同一 sink 的并发不会因为 Hook 和通知同时投递而翻倍。
 
+事件订阅建议：
+- `start` 只触发 `task.started`，`stop` 只触发 `task.stopped`；不要只靠 `task.modified` 捕获开始或停止任务。
+- assignee、due、priority、project、tags、blocked 状态变化应优先订阅对应细粒度事件。
+- `task.blocked` 表示从非 blocked 进入 blocked，`task.unblocked` 表示解除 blocked。
+
 ## Hook 生命周期
 
 ### hook_add — 创建 Hook

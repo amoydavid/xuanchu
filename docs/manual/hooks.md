@@ -33,6 +33,33 @@ Hook 不是业务域 adapter 市场。Xuanchu 不内置飞书、Jira、Slack ada
 
 说明：当前代码白名单只包含以上事件。`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed` 等 Priority 2 事件属于后续版本候选，不能在当前 hook 中注册。
 
+## 事件语义与迁移
+
+从 v0.3.0 开始，Hook 事件语义按具体动作拆分，不再把所有任务动作都折叠进 `task.modified`：
+
+- `xuanchu start <task>` 只触发 `task.started`。
+- `xuanchu stop <task>` 只触发 `task.stopped`。
+- 普通 `modify` 触发 `task.modified`。
+- assignee、due、priority、project、tags、blocked 状态变化会额外触发对应的细粒度事件。
+- 任务从非 blocked 变为 blocked 时触发 `task.blocked`；从 blocked 变为非 blocked 时触发 `task.unblocked`。
+
+如果旧集成曾经只监听 `task.modified` 来捕获所有任务变化，需要按真实用途补充订阅：
+
+```bash
+xuanchu hook add task-change-watch \
+  --event task.modified \
+  --event task.started \
+  --event task.stopped \
+  --event task.due_changed \
+  --event task.priority_changed \
+  --event task.tags_changed \
+  --event task.blocked \
+  --event task.unblocked \
+  --sink audit-stream
+```
+
+字段级自动化建议直接订阅细粒度事件。这样接收方不需要从宽泛的 `task.modified` payload 中再次推断变化类型。
+
 ## 创建 sink
 
 Hook 不直接保存 URL 或 secret。目标 endpoint、header、body、secret、动态 endpoint allowlist 都由 notification sink 描述：

@@ -35,6 +35,7 @@
 | v0.1.1 | 已完成 | 稳定短任务标识 `task_slug` |
 | v0.2.0 | 已完成 | 定时通知、动态 endpoint、HTTP request template sink 与 MCP Skill 文档整理 |
 | v0.3.0 | 已完成 | 事件通知、Hook sink 化、Dispatcher 并发背压与 P1 语义事件补齐 |
+| v0.3.1 | 规划中 | 事件通知稳定化、迁移说明与发布打磨 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -135,6 +136,33 @@ docs/superpowers/specs/2026-06-09-xuanchu-event-notification-and-hook-events-des
 docs/superpowers/plans/2026-06-09-xuanchu-event-notification-and-hook-events-implementation.md
 docs/superpowers/specs/2026-06-10-xuanchu-dispatcher-concurrency-backpressure-design.md
 docs/superpowers/plans/2026-06-10-xuanchu-dispatcher-concurrency-backpressure-implementation.md
+```
+
+## v0.3.1：事件通知稳定化与发布打磨
+
+**状态：规划中。**
+
+v0.3.1 是 v0.3.0 的稳定化补丁，不新增事件类型，不新增数据库 schema，也不扩大外部 adapter 范围。目标是把事件通知、Hook sink 化、dispatcher 并发背压和 17 个语义事件整理成清晰的迁移说明、运维说明和发布验收清单。
+
+计划范围：
+
+- 新增 v0.3.1 release notes，明确版本边界、迁移提示和发布验收命令。
+- 补齐 Hook / notification rule 文档中的事件语义说明，特别是 `start` / `stop` 不再依赖 `task.modified` 的迁移提示。
+- 明确普通 `task.modified` 与细粒度语义事件可以并存：字段级变化应优先订阅 `task.assigned`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed` 等事件。
+- 强化 delivery 快照冻结、retry/replay 不重渲染 sink 模板、`delivery_id` 幂等、`X-Xuanchu-Attempt` 表示真实 HTTP 尝试次数等运维说明。
+- 保持 README、manual、release notes 对 Hook sink 化和 notification rule 的描述一致。
+
+不进入 v0.3.1：
+
+- 不新增 Priority 2 事件。
+- 不实现 `task_search`。
+- 不内置飞书、Slack、邮件或其他第三方 adapter。
+- 不调整现有数据库 schema。
+
+发布说明：
+
+```text
+docs/releases/v0.3.1.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1107,9 +1135,9 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.3.0 已完成。Xuanchu 已具备从本地 CLI 到远程 CLI、HTTP API、MCP Server（95+ tool）、服务端 Webhook Hook、定时通知、事件通知规则、17 个语义事件、Token 委托、用户外部 ID 绑定、任务外部关联、项目 Annotation 与 Timeline、多数据库支持（SQLite / PostgreSQL）、通用日志与全层 panic recovery 的完整能力栈。
+v0.3.0 已完成。当前优先做 v0.3.1 稳定化补丁：不扩大功能范围，集中补齐事件通知的迁移说明、手册一致性和发布验收清单。
 
-后续方向待定，可能包括：
+v0.3.1 之后的方向待定，可能包括：
 
 - `task_search` Agent 友好全文搜索 tool
 - 性能优化与大 workspace 场景验证

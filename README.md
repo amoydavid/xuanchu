@@ -847,6 +847,8 @@ HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`members
 
 Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`。投递失败不会回滚已提交的 task/project 事务。生成 delivery 时会冻结 sink 渲染后的请求快照，后续 retry/replay 不重新渲染当前 sink。所有 hook 配置变更和人工 replay 都会写入 audit log。
 
+迁移提示：Hook 不再直接保存 URL 或 secret，旧的直接 URL hook 需要先创建 notification sink，再用 `--sink <sink-ref>` 绑定。`start` 只触发 `task.started`，`stop` 只触发 `task.stopped`；如果旧集成只监听 `task.modified` 来捕获开始或停止任务，需要补充订阅这两个事件。字段级变化可以订阅对应细粒度事件，例如 `task.due_changed`、`task.priority_changed`、`task.tags_changed`、`task.blocked`、`task.unblocked`。
+
 ## 通知、提醒与第三方通知
 
 通知系统复用 notification sink，但规则分两类：
@@ -888,6 +890,8 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。
 
 notification / hook delivery 表是出站投递的可靠队列；进程内 worker 只做短暂执行协调。dispatcher 默认 `max_concurrency=1`，`batch_size` 只是每轮查询上限。sink 的 `max_concurrency=0` 表示继承默认 sink 并发；`xuanchu server` 内 notification dispatcher 和 hook dispatcher 共享同一个 sink limiter。同一个 delivery payload 会带稳定 `delivery_id`，接收方可据此幂等去重；本次 HTTP 请求真实尝试次数看 `X-Xuanchu-Attempt` header。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
+
+事件通知建议优先订阅具体语义事件，减少对宽泛 `task.modified` 的依赖。`assignees` 和 `assignees_and_explicit_users` audience 只适用于 `task.*` 事件；project 事件应使用 `actor` 或 `explicit_users`。
 
 服务停机时，dispatcher 不会再领取新的 delivery；已经开始的投递会在 `server.shutdown.timeout` 内继续执行。已领取但尚未开始的 delivery 会尽快回到队列，超时强制取消时仍由数据库中的 stale recovery 兜底。
 

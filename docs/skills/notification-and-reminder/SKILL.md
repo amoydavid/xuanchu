@@ -174,6 +174,11 @@ notification rule 与 reminder rule 不同：它监听事件，不做定时扫�
 
 当前不允许注册的候选事件包括：`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed`。
 
+事件订阅建议：
+- `start` 只触发 `task.started`，`stop` 只触发 `task.stopped`；开始/停止通知应分别创建对应规则。
+- 普通编辑使用 `task.modified`；字段级通知优先使用 `task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed` 等细粒度事件。
+- `task.blocked` 表示进入阻塞，`task.unblocked` 表示解除阻塞。
+
 通知任务解除阻塞后的 assignee：
 
 ```json
