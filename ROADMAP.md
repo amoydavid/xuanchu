@@ -78,12 +78,21 @@ v0.3.0 的当前实现重点是把 Hook 从直接 URL 收敛到 workspace 级 ou
 - `task.modified`
 - `task.completed`
 - `task.deleted`
+- `task.started`
+- `task.stopped`
+- `task.assigned`
+- `task.unassigned`
+- `task.blocked`
+- `task.due_changed`
+- `task.priority_changed`
+- `task.project_changed`
+- `task.tags_changed`
 - `project.archived`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`
 
-下一大版本必须补充的 Priority 1 事件：
+已补齐的 Priority 1 语义事件：
 
 - `task.assigned`
 - `task.unassigned`

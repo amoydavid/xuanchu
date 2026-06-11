@@ -158,12 +158,21 @@ notification rule 与 reminder rule 不同：它监听事件，不做定时扫�
 - `task.modified`
 - `task.completed`
 - `task.deleted`
+- `task.started`
+- `task.stopped`
+- `task.assigned`
+- `task.unassigned`
+- `task.blocked`
+- `task.due_changed`
+- `task.priority_changed`
+- `task.project_changed`
+- `task.tags_changed`
 - `project.archived`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`
 
-当前不允许注册的事件包括：`task.started`、`task.stopped`、`task.annotated`、`task.denotated`、`task.dependency_added`、`task.dependency_removed`、`project.created`、`project.modified`。
+当前不允许注册的候选事件包括：`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed`。
 
 通知任务解除阻塞后的 assignee：
 

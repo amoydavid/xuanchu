@@ -335,8 +335,11 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 			return nil, nil, err
 		}
 		event := buildTaskHookEvent("task.created", created, tx.runtime, tx.clock.Unix())
+		blocked := tx.detectBlockedEventsAfterAdd(created)
+		events := []HookEvent{event}
+		events = append(events, blocked...)
 		entry := taskAuditEntry("task.add", created.UUID, change)
-		return &entry, []HookEvent{event}, nil
+		return &entry, events, nil
 	})
 	return created, err
 }
@@ -372,7 +375,10 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 			return nil, nil, err
 		}
 		event := buildTaskHookEvent("task.created", created, tx.runtime, tx.clock.Unix())
-		return entries, []HookEvent{event}, nil
+		blocked := tx.detectBlockedEventsAfterAdd(created)
+		events := []HookEvent{event}
+		events = append(events, blocked...)
+		return entries, events, nil
 	})
 	return created, err
 }
@@ -495,13 +501,24 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		return err
 	}
 	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		before, err := tx.resolveTargetForWrite(target)
+		if err != nil {
+			return nil, nil, err
+		}
 		modified, change, err := tx.modifyLocked(target, input)
 		if err != nil {
 			return nil, nil, err
 		}
-		event := buildTaskHookEvent("task.modified", modified, tx.runtime, tx.clock.Unix())
+		now := tx.clock.Unix()
+		diff := diffTaskChanges(before, modified)
+		diff = tx.hydrateAssigneeDiff(diff, before.Assignees, modified.Assignees)
+		fineGrained := buildFineGrainedEvents(diff, modified, tx.runtime, now)
+		blocked := tx.detectBlockedEventsAfterModify(before, modified)
+		events := []HookEvent{buildTaskHookEvent("task.modified", modified, tx.runtime, now)}
+		events = append(events, fineGrained...)
+		events = append(events, blocked...)
 		entry := taskAuditEntry("task.modify", modified.UUID, change)
-		return &entry, []HookEvent{event}, nil
+		return &entry, events, nil
 	})
 }
 
@@ -764,7 +781,7 @@ func (s *Service) Start(target string) error {
 		if err != nil {
 			return nil, nil, err
 		}
-		event := buildTaskHookEvent("task.modified", startedTask, tx.runtime, tx.clock.Unix())
+		event := buildTaskHookEvent("task.started", startedTask, tx.runtime, tx.clock.Unix())
 		entry := taskAuditEntry("task.start", startedTask.UUID, change)
 		return &entry, []HookEvent{event}, nil
 	})
@@ -798,7 +815,7 @@ func (s *Service) Stop(target string) error {
 		if err != nil {
 			return nil, nil, err
 		}
-		event := buildTaskHookEvent("task.modified", stoppedTask, tx.runtime, tx.clock.Unix())
+		event := buildTaskHookEvent("task.stopped", stoppedTask, tx.runtime, tx.clock.Unix())
 		entry := taskAuditEntry("task.stop", stoppedTask.UUID, change)
 		return &entry, []HookEvent{event}, nil
 	})

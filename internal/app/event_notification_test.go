@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -44,6 +45,35 @@ func TestAddEventNotificationRuleCreatesRule(t *testing.T) {
 	}
 	if rule.EventType != "task.unblocked" || rule.AudienceType != "assignees" || rule.SinkID != sink.ID {
 		t.Fatalf("rule = %#v", rule)
+	}
+}
+
+func TestAddEventNotificationRuleAllowsAllSemanticEventTypes(t *testing.T) {
+	svc, _ := eventNotificationTestEnv(t)
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatalf("AddNotificationSink() error = %v", err)
+	}
+
+	for _, eventType := range allSemanticEventTypes() {
+		t.Run(eventType, func(t *testing.T) {
+			audience := "actor"
+			if eventType == "task.unblocked" {
+				audience = "assignees"
+			}
+			rule, err := svc.AddEventNotificationRule(EventNotificationRuleAddInput{
+				Name:         "rule-" + strings.NewReplacer(".", "-", "_", "-").Replace(eventType),
+				EventType:    eventType,
+				AudienceType: audience,
+				SinkRef:      sink.ID,
+			})
+			if err != nil {
+				t.Fatalf("AddEventNotificationRule(%s) error = %v", eventType, err)
+			}
+			if rule.EventType != eventType {
+				t.Fatalf("EventType = %q, want %q", rule.EventType, eventType)
+			}
+		})
 	}
 }
 

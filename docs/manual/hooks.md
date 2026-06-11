@@ -17,12 +17,21 @@ Hook 不是业务域 adapter 市场。Xuanchu 不内置飞书、Jira、Slack ada
 - `task.modified`
 - `task.completed`
 - `task.deleted`
+- `task.started`
+- `task.stopped`
+- `task.assigned`
+- `task.unassigned`
+- `task.blocked`
+- `task.due_changed`
+- `task.priority_changed`
+- `task.project_changed`
+- `task.tags_changed`
 - `project.archived`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`
 
-说明：当前代码白名单只包含以上事件。`task.started`、`task.stopped`、`task.annotated`、`task.denotated`、`task.dependency_added`、`task.dependency_removed`、`project.created`、`project.modified` 等事件属于后续版本候选，不能在当前 hook 中注册。
+说明：当前代码白名单只包含以上事件。`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed` 等 Priority 2 事件属于后续版本候选，不能在当前 hook 中注册。
 
 ## 创建 sink
 

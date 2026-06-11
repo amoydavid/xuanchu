@@ -137,6 +137,12 @@ func buildTaskUnblockedHookEvent(tsk task.Task, completedTask task.Task, runtime
 	return event
 }
 
+func buildTaskBlockedHookEvent(tsk task.Task, blockingDeps []string, runtime RuntimeContext, now int64) HookEvent {
+	event := buildTaskHookEvent("task.blocked", tsk, runtime, now)
+	event.Data["blocking_dependencies"] = blockingDeps
+	return event
+}
+
 func projectViewToMap(pv ProjectView) map[string]any {
 	return map[string]any{
 		"id":           pv.ID,

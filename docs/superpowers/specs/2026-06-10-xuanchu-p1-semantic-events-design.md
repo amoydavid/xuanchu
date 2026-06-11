@@ -1,7 +1,7 @@
 # v0.3.0 Priority 1 语义事件补齐
 
 **日期：** 2026-06-10
-**状态：** 设计中
+**状态：** 已实现
 **版本：** v0.3.0
 **对应 ROADMAP：** v0.3.0 事件通知、Hook sink 化与语义事件补齐
 
@@ -406,4 +406,4 @@ notification rule 的 `normalizeEventNotificationRuleFields` 复用同一白名�
 ## 12. 规格与实施计划
 
 - Spec：`docs/superpowers/specs/2026-06-10-xuanchu-p1-semantic-events-design.md`（本文档）
-- Plan：`docs/superpowers/plans/2026-06-10-xuanchu-p1-semantic-events-implementation.md`（待写）
+- Plan：`docs/superpowers/plans/2026-06-10-xuanchu-p1-semantic-events-implementation.md`

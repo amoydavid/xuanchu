@@ -530,7 +530,7 @@
             ]
           },
           "events": {
-            "description": "event types (task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked)",
+            "description": "event types (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)",
             "items": {
               "type": "string"
             },
@@ -1217,7 +1217,7 @@
             "type": "string"
           },
           "event": {
-            "description": "event type such as task.unblocked",
+            "description": "event type (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)",
             "type": "string"
           },
           "filter": {

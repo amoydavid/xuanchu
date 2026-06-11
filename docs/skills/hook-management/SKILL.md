@@ -11,6 +11,15 @@ Hook 是事件驱动的出站集成。当 xuanchu 中发生特定事件时，系
 - `task.modified` — 任务修改
 - `task.completed` — 任务完成
 - `task.deleted` — 任务删除
+- `task.started` — 任务开始
+- `task.stopped` — 任务停止
+- `task.assigned` — 任务新增负责人
+- `task.unassigned` — 任务移除负责人
+- `task.blocked` — 任务进入阻塞状态
+- `task.due_changed` — 任务 due 字段变更
+- `task.priority_changed` — 任务 priority 字段变更
+- `task.project_changed` — 任务 project 字段变更
+- `task.tags_changed` — 任务 tags 变更
 - `project.archived` — 项目归档
 - `project.annotated` — 项目新增注释
 - `project.denotated` — 项目删除注释

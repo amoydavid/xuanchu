@@ -22,14 +22,23 @@ const (
 
 // 允许的 hook 事件类型。
 var allowedHookEventTypes = map[string]bool{
-	"task.created":      true,
-	"task.modified":     true,
-	"task.completed":    true,
-	"task.deleted":      true,
-	"project.archived":  true,
-	"project.annotated": true,
-	"project.denotated": true,
-	"task.unblocked":    true,
+	"task.created":          true,
+	"task.modified":         true,
+	"task.completed":        true,
+	"task.deleted":          true,
+	"task.started":          true,
+	"task.stopped":          true,
+	"task.assigned":         true,
+	"task.unassigned":       true,
+	"task.blocked":          true,
+	"task.due_changed":      true,
+	"task.priority_changed": true,
+	"task.project_changed":  true,
+	"task.tags_changed":     true,
+	"task.unblocked":        true,
+	"project.archived":      true,
+	"project.annotated":     true,
+	"project.denotated":     true,
 }
 
 // HookAddInput 创建 hook 的输入参数。

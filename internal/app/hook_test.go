@@ -683,6 +683,43 @@ func TestHookEventTypeValidation(t *testing.T) {
 	}
 }
 
+func TestHookAllowsAllSemanticEventTypes(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	input := defaultHookInput()
+	input.EventTypes = allSemanticEventTypes()
+	created, err := svc.AddHook(input)
+	if err != nil {
+		t.Fatalf("AddHook() with semantic events error = %v", err)
+	}
+	if len(created.EventTypes) != len(allSemanticEventTypes()) {
+		t.Fatalf("event_types count = %d, want %d", len(created.EventTypes), len(allSemanticEventTypes()))
+	}
+}
+
+func allSemanticEventTypes() []string {
+	return []string{
+		"task.created",
+		"task.modified",
+		"task.completed",
+		"task.deleted",
+		"task.started",
+		"task.stopped",
+		"task.assigned",
+		"task.unassigned",
+		"task.blocked",
+		"task.due_changed",
+		"task.priority_changed",
+		"task.project_changed",
+		"task.tags_changed",
+		"task.unblocked",
+		"project.archived",
+		"project.annotated",
+		"project.denotated",
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestHookModifyEmptyEventTypes: 传空 event types 应报错
 // ---------------------------------------------------------------------------
@@ -1234,7 +1271,7 @@ func TestHookEventsForWriteOperations(t *testing.T) {
 	// 创建监听所有任务事件的 hook
 	hook, err := svc.AddHook(HookAddInput{
 		Name: "all-events", ScopeType: HookScopeWorkspace,
-		EventTypes:     []string{"task.created", "task.modified", "task.completed", "task.deleted"},
+		EventTypes:     []string{"task.created", "task.modified", "task.completed", "task.deleted", "task.started", "task.stopped"},
 		SinkRef:        "hook-sink",
 		TimeoutSeconds: 10, MaxAttempts: 5,
 	})
@@ -1256,19 +1293,19 @@ func TestHookEventsForWriteOperations(t *testing.T) {
 	}
 	assertDeliveryEventType(t, svc, hook.ID, "task.modified")
 
-	// Start -> task.modified
+	// Start -> task.started
 	err = svc.Start(created.UUID)
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	assertDeliveryEventType(t, svc, hook.ID, "task.modified")
+	assertDeliveryEventType(t, svc, hook.ID, "task.started")
 
-	// Stop -> task.modified
+	// Stop -> task.stopped
 	err = svc.Stop(created.UUID)
 	if err != nil {
 		t.Fatalf("Stop() error = %v", err)
 	}
-	assertDeliveryEventType(t, svc, hook.ID, "task.modified")
+	assertDeliveryEventType(t, svc, hook.ID, "task.stopped")
 
 	// Annotate -> task.modified
 	err = svc.Annotate(created.UUID, "my annotation")
@@ -1771,5 +1808,286 @@ func TestHookTaskUnblockedEventNotGeneratedForCompletedDependent(t *testing.T) {
 	}
 	if len(deliveries) != 0 {
 		t.Fatalf("deliveries count = %d, want 0", len(deliveries))
+	}
+}
+
+func TestHookBlockedEventOnAddWithDependency(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "blocked-hook", ScopeType: HookScopeWorkspace,
+		EventTypes:     []string{"task.blocked"},
+		SinkRef:        "hook-sink",
+		TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocker, err := svc.Add(AddInput{Description: "blocker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.Add(AddInput{
+		Description: "blocked task",
+		Depends:     []string{blocker.UUID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) == 0 {
+		t.Fatal("expected task.blocked delivery")
+	}
+	if deliveries[0].EventType != "task.blocked" {
+		t.Fatalf("event_type = %q, want task.blocked", deliveries[0].EventType)
+	}
+}
+
+func TestHookBlockedEventOnModifyAddDependency(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "blocked-hook", ScopeType: HookScopeWorkspace,
+		EventTypes:     []string{"task.blocked"},
+		SinkRef:        "hook-sink",
+		TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocker, err := svc.Add(AddInput{Description: "blocker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := svc.Add(AddInput{Description: "target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = svc.Modify(target.UUID, ModifyInput{
+		AddDepends: []string{blocker.UUID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertDeliveryEventType(t, svc, hook.ID, "task.blocked")
+}
+
+func TestHookModifyFineGrainedEventPayloads(t *testing.T) {
+	svc, store, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	user := mustCreateUserRecord(t, store, storage.User{
+		ID:         "user-modifier",
+		Name:       "modifier",
+		Email:      strptr("modifier@example.com"),
+		CreatedAt:  1000,
+		ModifiedAt: 1000,
+	})
+	assignee := mustCreateUserRecord(t, store, storage.User{
+		ID:         "user-assignee",
+		Name:       "assignee",
+		Email:      strptr("assignee@example.com"),
+		CreatedAt:  1000,
+		ModifiedAt: 1000,
+	})
+	mustUpsertMembershipRecord(t, store, storage.Membership{
+		UserID:      user.ID,
+		WorkspaceID: svc.workspaceID,
+		Role:        string(RoleMember),
+		JoinedAt:    1000,
+		ModifiedAt:  1000,
+	})
+	mustUpsertMembershipRecord(t, store, storage.Membership{
+		UserID:      assignee.ID,
+		WorkspaceID: svc.workspaceID,
+		Role:        string(RoleMember),
+		JoinedAt:    1000,
+		ModifiedAt:  1000,
+	})
+
+	if err := svc.BindExternalID(user.ID, "feishu", "ou_modifier"); err != nil {
+		t.Fatal(err)
+	}
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "fine-grained-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{
+			"task.modified", "task.priority_changed", "task.tags_changed",
+			"task.due_changed", "task.project_changed", "task.assigned", "task.unassigned",
+		},
+		SinkRef:        "hook-sink",
+		TimeoutSeconds: 10,
+		MaxAttempts:    5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldProject, err := svc.AddProject(AddProjectInput{Slug: "oldproj", Name: "Old Project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newProject, err := svc.AddProject(AddProjectInput{Slug: "newproj", Name: "New Project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldDue := int64(1000)
+	newDue := int64(2000)
+	created, err := svc.Add(AddInput{
+		Description: "fine-grained task",
+		Project:     &oldProject.Slug,
+		Priority:    strptr("M"),
+		Due:         &oldDue,
+		Assignees:   []string{assignee.ID},
+		Tags:        []string{"docs"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Modify(created.UUID, ModifyInput{
+		Project:         &newProject.Slug,
+		Priority:        strptr("H"),
+		Due:             &newDue,
+		AddTags:         []string{"urgent"},
+		RemoveTags:      []string{"docs"},
+		AddAssignees:    []string{user.ID},
+		RemoveAssignees: []string{assignee.ID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloads := map[string]map[string]any{}
+	for _, d := range deliveries {
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(d.PayloadJSON), &payload); err != nil {
+			t.Fatalf("payload unmarshal for %s: %v", d.EventType, err)
+		}
+		data, ok := payload["data"].(map[string]any)
+		if !ok {
+			t.Fatalf("payload data for %s = %#v, want object", d.EventType, payload["data"])
+		}
+		if _, ok := data["task"].(map[string]any); !ok {
+			t.Fatalf("payload data for %s missing task snapshot: %#v", d.EventType, data)
+		}
+		payloads[d.EventType] = data
+	}
+
+	if payloads["task.priority_changed"]["previous_priority"] != "M" || payloads["task.priority_changed"]["current_priority"] != "H" {
+		t.Fatalf("priority payload = %#v", payloads["task.priority_changed"])
+	}
+	if payloads["task.due_changed"]["previous_due"] != float64(oldDue) || payloads["task.due_changed"]["current_due"] != float64(newDue) {
+		t.Fatalf("due payload = %#v", payloads["task.due_changed"])
+	}
+	if payloads["task.project_changed"]["previous_project"] != oldProject.Slug || payloads["task.project_changed"]["current_project"] != newProject.Slug {
+		t.Fatalf("project payload = %#v", payloads["task.project_changed"])
+	}
+	if got := payloads["task.tags_changed"]["added_tags"]; !stringSlicePayloadEqual(got, []string{"urgent"}) {
+		t.Fatalf("added_tags = %#v, want [urgent]", got)
+	}
+	if got := payloads["task.tags_changed"]["removed_tags"]; !stringSlicePayloadEqual(got, []string{"docs"}) {
+		t.Fatalf("removed_tags = %#v, want [docs]", got)
+	}
+	if got := payloads["task.tags_changed"]["current_tags"]; !stringSlicePayloadEqual(got, []string{"urgent"}) {
+		t.Fatalf("current_tags = %#v, want [urgent]", got)
+	}
+
+	assertUserInfoPayload(t, payloads["task.assigned"]["added_assignees"], user.ID, user.Name, user.Email)
+	assertUserInfoPayload(t, payloads["task.assigned"]["current_assignees"], user.ID, user.Name, user.Email)
+	assertUserInfoPayload(t, payloads["task.unassigned"]["removed_assignees"], assignee.ID, assignee.Name, assignee.Email)
+	assertUserInfoPayload(t, payloads["task.unassigned"]["current_assignees"], user.ID, user.Name, user.Email)
+}
+
+func stringSlicePayloadEqual(got any, want []string) bool {
+	values, ok := got.([]any)
+	if !ok || len(values) != len(want) {
+		return false
+	}
+	for i, wantValue := range want {
+		if values[i] != wantValue {
+			return false
+		}
+	}
+	return true
+}
+
+func assertUserInfoPayload(t *testing.T, got any, wantID, wantName string, wantEmail *string) {
+	t.Helper()
+	values, ok := got.([]any)
+	if !ok || len(values) != 1 {
+		t.Fatalf("user info payload = %#v, want single user", got)
+	}
+	user, ok := values[0].(map[string]any)
+	if !ok {
+		t.Fatalf("user info = %#v, want object", values[0])
+	}
+	if user["id"] != wantID || user["name"] != wantName {
+		t.Fatalf("user info = %#v, want id %q name %q", user, wantID, wantName)
+	}
+	if wantEmail == nil {
+		if user["email"] != nil {
+			t.Fatalf("user email = %#v, want nil", user["email"])
+		}
+	} else if user["email"] != *wantEmail {
+		t.Fatalf("user email = %#v, want %q", user["email"], *wantEmail)
+	}
+	if _, ok := user["external_ids"].([]any); !ok {
+		t.Fatalf("user external_ids = %#v, want array", user["external_ids"])
+	}
+}
+
+func TestHookBlockedEventNotGeneratedWhenTaskAlreadyBlocked(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "blocked-hook", ScopeType: HookScopeWorkspace,
+		EventTypes:     []string{"task.blocked"},
+		SinkRef:        "hook-sink",
+		TimeoutSeconds: 10, MaxAttempts: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocker1, err := svc.Add(AddInput{Description: "blocker one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocker2, err := svc.Add(AddInput{Description: "blocker two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := svc.Add(AddInput{Description: "target", Depends: []string{blocker1.UUID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Modify(target.UUID, ModifyInput{AddDepends: []string{blocker2.UUID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries count = %d, want only initial add blocked event", len(deliveries))
 	}
 }

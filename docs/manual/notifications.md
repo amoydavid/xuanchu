@@ -178,12 +178,21 @@ xuanchu notification rule add urgent-task-changes \
 - `task.modified`
 - `task.completed`
 - `task.deleted`
+- `task.started`
+- `task.stopped`
+- `task.assigned`
+- `task.unassigned`
+- `task.blocked`
+- `task.due_changed`
+- `task.priority_changed`
+- `task.project_changed`
+- `task.tags_changed`
 - `project.archived`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`
 
-当前不允许注册的事件包括：`task.started`、`task.stopped`、`task.annotated`、`task.denotated`、`task.dependency_added`、`task.dependency_removed`、`project.created`、`project.modified`。这些属于后续版本候选事件。
+当前不允许注册的候选事件包括：`task.annotated`、`task.denotated`、`task.link_added`、`task.link_removed`、`project.created`、`project.updated`、`workspace.member_added`、`workspace.member_removed`、`workspace.member_role_changed`。
 
 notification rule 的 audience 支持：
 

@@ -157,7 +157,7 @@ type NotificationRuleAddInput struct {
 	Project         string   `json:"project,omitempty"`
 	ProjectID       string   `json:"project_id,omitempty"`
 	Name            string   `json:"name" jsonschema:"rule name"`
-	Event           string   `json:"event" jsonschema:"event type such as task.unblocked"`
+	Event           string   `json:"event" jsonschema:"event type (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)"`
 	Filter          string   `json:"filter,omitempty" jsonschema:"task filter expression for task events"`
 	Audience        string   `json:"audience" jsonschema:"actor, assignees, explicit_users, or assignees_and_explicit_users"`
 	Recipients      []string `json:"recipients,omitempty" jsonschema:"explicit recipient user refs"`

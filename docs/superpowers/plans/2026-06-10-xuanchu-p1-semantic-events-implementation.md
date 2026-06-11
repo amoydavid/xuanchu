@@ -1,6 +1,6 @@
 # P1 语义事件补齐 Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为 Xuanchu 补齐 9 个 Priority 1 语义事件，让 Hook 和 notification rule 可以按字段级粒度精确订阅任务变更。
 
@@ -35,7 +35,7 @@
 - Create: `internal/app/task_change_events.go`
 - Create: `internal/app/task_change_events_test.go`
 
-- [ ] **Step 1: 写 TaskChangeDiff 结构体和 diffTaskChanges 的测试**
+- [x] **Step 1: 写 TaskChangeDiff 结构体和 diffTaskChanges 的测试**
 
 ```go
 // internal/app/task_change_events_test.go
@@ -147,12 +147,12 @@ func TestDiffTaskChanges_AssigneesChanged(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestDiffTaskChanges -v`
 Expected: 编译失败，diffTaskChanges 未定义
 
-- [ ] **Step 3: 实现 diffTaskChanges**
+- [x] **Step 3: 实现 diffTaskChanges**
 
 ```go
 // internal/app/task_change_events.go
@@ -281,12 +281,12 @@ func stringSetDifference(a, b map[string]bool) []string {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestDiffTaskChanges -v`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/app/task_change_events.go internal/app/task_change_events_test.go
@@ -299,7 +299,7 @@ git commit -m "feat: 新增 TaskChangeDiff 结构体和 diffTaskChanges"
 - Modify: `internal/app/task_change_events.go`
 - Modify: `internal/app/task_change_events_test.go`
 
-- [ ] **Step 1: 写 buildFineGrainedEvents 的测试**
+- [x] **Step 1: 写 buildFineGrainedEvents 的测试**
 
 在 `task_change_events_test.go` 中追加：
 
@@ -385,12 +385,12 @@ func TestBuildFineGrainedEvents_ProjectChanged(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestBuildFineGrainedEvents -v`
 Expected: 编译失败
 
-- [ ] **Step 3: 实现 buildFineGrainedEvents**
+- [x] **Step 3: 实现 buildFineGrainedEvents**
 
 在 `task_change_events.go` 中追加：
 
@@ -470,12 +470,12 @@ func currentAssigneeInfos(current []task.AssigneeInfo, added, removed []task.Use
 
 注意：`buildTaskHookEvent` 已在 `hook_event.go` 中定义。`task.UserInfoToJSON` 已在 `task` 包中定义。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestBuildFineGrainedEvents -v`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/app/task_change_events.go internal/app/task_change_events_test.go
@@ -487,7 +487,7 @@ git commit -m "feat: 实现 buildFineGrainedEvents 细粒度事件构建器"
 **Files:**
 - Modify: `internal/app/hook.go:24-33`
 
-- [ ] **Step 1: 扩展白名单**
+- [x] **Step 1: 扩展白名单**
 
 将 `internal/app/hook.go` 中的 `allowedHookEventTypes` 从：
 
@@ -528,12 +528,12 @@ var allowedHookEventTypes = map[string]bool{
 }
 ```
 
-- [ ] **Step 2: 验证现有测试不受影响**
+- [x] **Step 2: 验证现有测试不受影响**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestHook -v -count=1 | tail -30`
 Expected: PASS
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add internal/app/hook.go
@@ -550,7 +550,7 @@ git commit -m "feat: 扩展 allowedHookEventTypes 白名单至 17 个事件类�
 - Modify: `internal/app/service.go` — `Start` 方法（约 line 758-770）
 - Modify: `internal/app/service.go` — `Stop` 方法（约 line 792-804）
 
-- [ ] **Step 1: 修改 Start 方法**
+- [x] **Step 1: 修改 Start 方法**
 
 在 `internal/app/service.go` 中，将 `Start` 方法从：
 
@@ -590,7 +590,7 @@ func (s *Service) Start(target string) error {
 }
 ```
 
-- [ ] **Step 2: 修改 Stop 方法**
+- [x] **Step 2: 修改 Stop 方法**
 
 将 `Stop` 方法从：
 
@@ -604,7 +604,7 @@ event := buildTaskHookEvent("task.modified", stoppedTask, tx.runtime, tx.clock.U
 event := buildTaskHookEvent("task.stopped", stoppedTask, tx.runtime, tx.clock.Unix())
 ```
 
-- [ ] **Step 3: 更新 TestHookEventsForWriteOperations 测试**
+- [x] **Step 3: 更新 TestHookEventsForWriteOperations 测试**
 
 在 `internal/app/hook_test.go` 的 `TestHookEventsForWriteOperations` 中：
 
@@ -629,12 +629,12 @@ assertDeliveryEventType(t, svc, hook.ID, "task.started")
 assertDeliveryEventType(t, svc, hook.ID, "task.stopped")
 ```
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestHookEventsForWriteOperations -v -count=1`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/app/service.go internal/app/hook_test.go
@@ -650,7 +650,7 @@ git commit -m "feat: start/stop 改用 task.started/task.stopped 事件"
 **Files:**
 - Modify: `internal/app/service.go` — `Modify` 方法（约 line 493-506）
 
-- [ ] **Step 1: 修改 Modify 方法**
+- [x] **Step 1: 修改 Modify 方法**
 
 将 `Modify` 方法从：
 
@@ -701,7 +701,7 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 }
 ```
 
-- [ ] **Step 2: 实现 hydrateAssigneeDiff**
+- [x] **Step 2: 实现 hydrateAssigneeDiff**
 
 在 `task_change_events.go` 中追加：
 
@@ -738,7 +738,7 @@ func (s *Service) hydrateAssigneeDiff(diff TaskChangeDiff, before, after []task.
 }
 ```
 
-- [ ] **Step 3: 写 Modify 细粒度事件的集成测试**
+- [x] **Step 3: 写 Modify 细粒度事件的集成测试**
 
 在 `internal/app/hook_test.go` 中追加新测试：
 
@@ -800,12 +800,12 @@ func TestHookModifyFineGrainedEvents(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestHookModifyFineGrainedEvents -v -count=1`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/app/service.go internal/app/task_change_events.go internal/app/hook_test.go
@@ -824,7 +824,7 @@ git commit -m "feat: modify 写路径叠加细粒度事件"
 - Modify: `internal/app/service.go` — Add 方法补充 blocked 检测
 - Modify: `internal/app/hook_test.go`
 
-- [ ] **Step 1: 在 hook_event.go 中新增 buildTaskBlockedHookEvent**
+- [x] **Step 1: 在 hook_event.go 中新增 buildTaskBlockedHookEvent**
 
 在 `internal/app/hook_event.go` 中追加：
 
@@ -836,7 +836,7 @@ func buildTaskBlockedHookEvent(tsk task.Task, blockingDeps []string, runtime Run
 }
 ```
 
-- [ ] **Step 2: 实现 detectBlockedEventsAfterModify 和 detectBlockedEventsAfterAdd**
+- [x] **Step 2: 实现 detectBlockedEventsAfterModify 和 detectBlockedEventsAfterAdd**
 
 在 `task_change_events.go` 中追加：
 
@@ -897,7 +897,7 @@ func (s *Service) detectBlockedEventsAfterAdd(created task.Task) []HookEvent {
 }
 ```
 
-- [ ] **Step 3: 修改 Add 方法补充 blocked 事件**
+- [x] **Step 3: 修改 Add 方法补充 blocked 事件**
 
 在 `service.go` 的 `Add` 方法中，将：
 
@@ -920,7 +920,7 @@ return &entry, events, nil
 
 同样修改 `AddWithAnnotations` 中的 `return entries, []HookEvent{event}, nil`。
 
-- [ ] **Step 4: 写 blocked 事件测试**
+- [x] **Step 4: 写 blocked 事件测试**
 
 在 `hook_test.go` 中追加：
 
@@ -1000,12 +1000,12 @@ func TestHookBlockedEventOnModifyAddDependency(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/app/ -run TestHookBlockedEvent -v -count=1`
 Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/app/task_change_events.go internal/app/hook_event.go internal/app/service.go internal/app/hook_test.go
@@ -1022,7 +1022,7 @@ git commit -m "feat: 实现 task.blocked 事件检测"
 - Modify: `internal/mcpserver/tools_hook.go:29`
 - Modify: `internal/mcpserver/tools_notification.go:160`
 
-- [ ] **Step 1: 更新 tools_hook.go Events 字段 description**
+- [x] **Step 1: 更新 tools_hook.go Events 字段 description**
 
 将 `Events` 字段的 jsonschema description 更新为包含全部 17 个事件类型：
 
@@ -1030,7 +1030,7 @@ git commit -m "feat: 实现 task.blocked 事件检测"
 Events    []string `json:"events" jsonschema:"event types (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)"`
 ```
 
-- [ ] **Step 2: 更新 tools_notification.go Event 字段 description**
+- [x] **Step 2: 更新 tools_notification.go Event 字段 description**
 
 将 `Event` 字段的 jsonschema description 更新：
 
@@ -1038,12 +1038,12 @@ Events    []string `json:"events" jsonschema:"event types (task.created, task.mo
 Event           string   `json:"event" jsonschema:"event type (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)"`
 ```
 
-- [ ] **Step 3: 验证 MCP golden test**
+- [x] **Step 3: 验证 MCP golden test**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/mcpserver/ -run TestToolSchema -v -count=1`
 Expected: 可能需要更新 golden 文件。如果失败，用 `-update` 更新。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add internal/mcpserver/tools_hook.go internal/mcpserver/tools_notification.go
@@ -1055,7 +1055,7 @@ git commit -m "feat: 更新 MCP tool schema description 包含新事件类型"
 **Files:**
 - Modify: `internal/mcpserver/testdata/*.json`（如有 golden test 需要更新）
 
-- [ ] **Step 1: 运行 golden test 确认是否需要更新**
+- [x] **Step 1: 运行 golden test 确认是否需要更新**
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/mcpserver/ -run TestToolSchema -v -count=1`
 
@@ -1063,7 +1063,7 @@ Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/mcpserver/ -r
 
 Run: `cd /Users/mac/code/projects/dajee/task && go test ./internal/mcpserver/ -run TestToolSchema -update -count=1`
 
-- [ ] **Step 2: 提交更新的 golden 文件（如有）**
+- [x] **Step 2: 提交更新的 golden 文件（如有）**
 
 ```bash
 git add internal/mcpserver/testdata/
@@ -1072,7 +1072,7 @@ git commit -m "chore: 更新 MCP schema golden test"
 
 ### Task 9: 全量测试验证
 
-- [ ] **Step 1: 运行全量测试**
+- [x] **Step 1: 运行全量测试**
 
 ```bash
 cd /Users/mac/code/projects/dajee/task && go test ./... -count=1
@@ -1080,7 +1080,7 @@ cd /Users/mac/code/projects/dajee/task && go test ./... -count=1
 
 Expected: PASS
 
-- [ ] **Step 2: 运行 CGO_ENABLED=0 测试**
+- [x] **Step 2: 运行 CGO_ENABLED=0 测试**
 
 ```bash
 cd /Users/mac/code/projects/dajee/task && CGO_ENABLED=0 go test ./... -count=1
@@ -1088,7 +1088,7 @@ cd /Users/mac/code/projects/dajee/task && CGO_ENABLED=0 go test ./... -count=1
 
 Expected: PASS
 
-- [ ] **Step 3: 运行 CGO_ENABLED=0 构建**
+- [x] **Step 3: 运行 CGO_ENABLED=0 构建**
 
 ```bash
 cd /Users/mac/code/projects/dajee/task && CGO_ENABLED=0 go build ./cmd/xuanchu
@@ -1096,7 +1096,7 @@ cd /Users/mac/code/projects/dajee/task && CGO_ENABLED=0 go build ./cmd/xuanchu
 
 Expected: 成功
 
-- [ ] **Step 4: 提交所有改动（如有遗漏）**
+- [x] **Step 4: 提交所有改动（如有遗漏）**
 
 检查 `git status`，确保所有改动已提交。
 
@@ -1104,16 +1104,16 @@ Expected: 成功
 
 ## 验收清单
 
-- [ ] `allowedHookEventTypes` 包含全部 17 个事件类型
-- [ ] Hook 和 notification rule 可订阅全部新事件类型
-- [ ] `Modify` 按实际变更字段发射 `task.modified` + 细粒度事件
-- [ ] `Start` 只发射 `task.started`，不再发射 `task.modified`
-- [ ] `Stop` 只发射 `task.stopped`，不再发射 `task.modified`
-- [ ] 细粒度事件 payload 包含标准 task 快照和差异字段
-- [ ] `task.blocked` 在 add 带依赖和 modify 新增依赖时正确触发
-- [ ] `task.unblocked` 继续正常工作
-- [ ] `annotate`、`denotate`、`append`、`prepend`、`edit` 继续只发射 `task.modified`
-- [ ] 现有 `task.created`、`task.completed`、`task.deleted` 行为不变
-- [ ] `go test ./...` 通过
-- [ ] `CGO_ENABLED=0 go test ./...` 通过
-- [ ] `CGO_ENABLED=0 go build ./cmd/xuanchu` 通过
+- [x] `allowedHookEventTypes` 包含全部 17 个事件类型
+- [x] Hook 和 notification rule 可订阅全部新事件类型
+- [x] `Modify` 按实际变更字段发射 `task.modified` + 细粒度事件
+- [x] `Start` 只发射 `task.started`，不再发射 `task.modified`
+- [x] `Stop` 只发射 `task.stopped`，不再发射 `task.modified`
+- [x] 细粒度事件 payload 包含标准 task 快照和差异字段
+- [x] `task.blocked` 在 add 带依赖和 modify 新增依赖时正确触发
+- [x] `task.unblocked` 继续正常工作
+- [x] `annotate`、`denotate`、`append`、`prepend`、`edit` 继续只发射 `task.modified`
+- [x] 现有 `task.created`、`task.completed`、`task.deleted` 行为不变
+- [x] `go test ./...` 通过
+- [x] `CGO_ENABLED=0 go test ./...` 通过
+- [x] `CGO_ENABLED=0 go build ./cmd/xuanchu` 通过

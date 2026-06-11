@@ -363,6 +363,15 @@ components:
               - task.modified
               - task.completed
               - task.deleted
+              - task.started
+              - task.stopped
+              - task.assigned
+              - task.unassigned
+              - task.blocked
+              - task.due_changed
+              - task.priority_changed
+              - task.project_changed
+              - task.tags_changed
               - project.archived
               - project.annotated
               - project.denotated
@@ -404,6 +413,15 @@ components:
               - task.modified
               - task.completed
               - task.deleted
+              - task.started
+              - task.stopped
+              - task.assigned
+              - task.unassigned
+              - task.blocked
+              - task.due_changed
+              - task.priority_changed
+              - task.project_changed
+              - task.tags_changed
               - project.archived
               - project.annotated
               - project.denotated
@@ -442,6 +460,15 @@ components:
               - task.modified
               - task.completed
               - task.deleted
+              - task.started
+              - task.stopped
+              - task.assigned
+              - task.unassigned
+              - task.blocked
+              - task.due_changed
+              - task.priority_changed
+              - task.project_changed
+              - task.tags_changed
               - project.archived
               - project.annotated
               - project.denotated
@@ -841,7 +868,7 @@ components:
           type: boolean
         event_type:
           type: string
-          enum: [task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked]
+          enum: [task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated]
         filter_source:
           type: string
         audience_type:
@@ -878,7 +905,7 @@ components:
           type: string
         event_type:
           type: string
-          enum: [task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked]
+          enum: [task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated]
         filter_source:
           type: string
         audience_type:
@@ -905,7 +932,7 @@ components:
           description: Empty string clears project scope.
         event_type:
           type: string
-          enum: [task.created, task.modified, task.completed, task.deleted, project.archived, project.annotated, project.denotated, task.unblocked]
+          enum: [task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated]
         filter_source:
           type: string
         audience_type:

@@ -922,7 +922,7 @@ Context 是预定义的查询过滤器，供 CLI 交互使用。Agent 可以读�
 
 ### Hook（10 tools）
 
-Hook 是事件驱动的机器到机器出站集成。Hook 使用 workspace 级 notification sink，不直接接收 URL 或 secret。支持的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。
+Hook 是事件驱动的机器到机器出站集成。Hook 使用 workspace 级 notification sink，不直接接收 URL 或 secret。支持的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`。
 
 #### `hook_add`
 
@@ -1202,7 +1202,7 @@ Notification sink 支持 `max_concurrency` 控制同一 sink 的单进程出站�
 | `template_subject` | string | 否 | 通知标题模板 |
 | `template_body` | string | 否 | 通知正文模板 |
 
-当前允许的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`project.archived`、`project.annotated`、`project.denotated`、`task.unblocked`。`assignees` 相关 audience 只支持 `task.*` 事件。
+当前允许的事件：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`。`assignees` 相关 audience 只支持 `task.*` 事件。
 
 #### `notification_rule_list`
 
