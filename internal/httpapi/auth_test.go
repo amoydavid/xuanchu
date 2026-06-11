@@ -87,11 +87,36 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	body := rr.Body.String()
-	for _, want := range []string{`"name":"local"`, `"type":"pat"`, `"slug":"local"`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body = %s, want %s", body, want)
-		}
+	var payload struct {
+		Data struct {
+			Actor struct {
+				ID          string          `json:"id"`
+				Name        string          `json:"name"`
+				Email       *string         `json:"email"`
+				ExternalIDs json.RawMessage `json:"external_ids"`
+			} `json:"actor"`
+			Token struct {
+				Type string `json:"type"`
+			} `json:"token"`
+			EffectiveWorkspace struct {
+				Slug string `json:"slug"`
+			} `json:"effective_workspace"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.Actor.Name != "local" || payload.Data.Actor.ID == "" {
+		t.Fatalf("actor = %#v body=%s", payload.Data.Actor, rr.Body.String())
+	}
+	if payload.Data.Actor.ExternalIDs == nil {
+		t.Fatalf("actor.external_ids missing: %s", rr.Body.String())
+	}
+	if payload.Data.Token.Type != "pat" {
+		t.Fatalf("token.type = %q, want pat", payload.Data.Token.Type)
+	}
+	if payload.Data.EffectiveWorkspace.Slug != "local" {
+		t.Fatalf("effective_workspace.slug = %q, want local", payload.Data.EffectiveWorkspace.Slug)
 	}
 }
 

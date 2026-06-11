@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/config"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -62,6 +64,38 @@ func TestErrorEnvelopeForUnknownRoute(t *testing.T) {
 	rr = httptest.NewRecorder()
 	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/healthz", nil))
 	assertHTTPErrorCode(t, rr, http.StatusMethodNotAllowed, "method_not_allowed")
+}
+
+func TestConsoleRoutesDoNotInterceptAPIOrMCP(t *testing.T) {
+	srv := NewServer(Options{
+		Store: openHTTPTestStore(t),
+		Console: config.ConsoleConfig{
+			Enabled:     true,
+			BasePath:    "/console",
+			AssetsCache: time.Hour,
+			AuthMode:    "bearer",
+		},
+	})
+
+	for _, path := range []string{"/console", "/console/", "/console/tasks"} {
+		t.Run(path, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
+			if rr.Code != http.StatusOK && rr.Code != http.StatusPermanentRedirect {
+				t.Fatalf("status = %d, want console response body=%s", rr.Code, rr.Body.String())
+			}
+		})
+	}
+
+	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/missing", nil))
+	assertHTTPErrorCode(t, rr, http.StatusNotFound, "route_not_found")
+
+	rr = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{}`)))
+	if rr.Code == http.StatusOK && strings.Contains(rr.Body.String(), "Xuanchu Console") {
+		t.Fatalf("/mcp was served by console fallback: %s", rr.Body.String())
+	}
 }
 
 func TestPanicIsRecoveredAsErrorEnvelope(t *testing.T) {

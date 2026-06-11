@@ -40,6 +40,8 @@ func newServerCommand(opts Options) *cobra.Command {
 	var notificationClaimTTL time.Duration
 	var hookClaimTTL time.Duration
 	var mcpTrustedProxyHosts []string
+	var consoleEnabled bool
+	var consoleBasePath string
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "启动 HTTP API 服务器",
@@ -82,6 +84,17 @@ func newServerCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			consoleFlags := serverConsoleFlagOverrides{}
+			if cmd.Flags().Changed("console") {
+				consoleFlags.Enabled = &consoleEnabled
+			}
+			if cmd.Flags().Changed("console-base-path") {
+				consoleFlags.BasePath = &consoleBasePath
+			}
+			consoleOptions, err := buildServerConsoleOptions(cfg, consoleFlags)
+			if err != nil {
+				return err
+			}
 			shutdown := runtimeutil.NewShutdownCoordinator()
 			dbTarget := cfg.DatabaseURL
 			if dbTarget == "" {
@@ -113,6 +126,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				Stderr:               cmd.ErrOrStderr(),
 				Logger:               logger,
 				Admin:                cfg.ServerAdmin,
+				Console:              consoleOptions,
 				Shutdown:             shutdown,
 				MCPTrustedProxyHosts: mcpOptions.TrustedProxyHosts,
 			})
@@ -324,7 +338,34 @@ func newServerCommand(opts Options) *cobra.Command {
 	cmd.Flags().IntVar(&hookPrefetchFactor, "hook-dispatcher-prefetch-factor", 0, "hook dispatcher claim prefetch factor")
 	cmd.Flags().DurationVar(&notificationClaimTTL, "notification-dispatcher-claim-ttl", 0, "notification dispatcher stale claim TTL")
 	cmd.Flags().DurationVar(&hookClaimTTL, "hook-dispatcher-claim-ttl", 0, "hook dispatcher stale claim TTL")
+	cmd.Flags().BoolVar(&consoleEnabled, "console", true, "enable embedded Web Admin Console")
+	cmd.Flags().StringVar(&consoleBasePath, "console-base-path", "", "Web Admin Console base path")
 	return cmd
+}
+
+type serverConsoleFlagOverrides struct {
+	Enabled  *bool
+	BasePath *string
+}
+
+func buildServerConsoleOptions(cfg config.Config, flags serverConsoleFlagOverrides) (config.ConsoleConfig, error) {
+	console := cfg.Console
+	if flags.Enabled != nil {
+		console.Enabled = *flags.Enabled
+	}
+	if flags.BasePath != nil {
+		console.BasePath = *flags.BasePath
+	}
+	if err := config.ValidateConsoleBasePath(console.BasePath); err != nil {
+		return config.ConsoleConfig{}, fmt.Errorf("%s", strings.Replace(err.Error(), "server.console.base_path", "console-base-path", 1))
+	}
+	if console.AuthMode == "" {
+		console.AuthMode = "bearer"
+	}
+	if console.AuthMode != "bearer" {
+		return config.ConsoleConfig{}, fmt.Errorf("console auth mode must be bearer")
+	}
+	return console, nil
 }
 
 type serverMCPOptions struct {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/mcpserver"
+	"git.dajee.net/dajee/xuanchu/internal/webconsole"
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -136,6 +137,15 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Post("/api/v1/notification-deliveries/{deliveryID}/replay", s.handleNotificationDeliveryReplay)
 	api.With(s.mcpHostProtectionMiddleware, s.authMiddleware).Handle("/mcp", s.handleMCP())
 
+	if s.console.Enabled {
+		handler := webconsole.Handler(webconsole.Options{
+			Enabled:     true,
+			BasePath:    s.console.BasePath,
+			AssetsCache: s.console.AssetsCache,
+		})
+		root.Handle(s.console.BasePath, handler)
+		root.Handle(s.console.BasePath+"/", handler)
+	}
 	root.Handle("/", api)
 	return root
 }

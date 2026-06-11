@@ -13,6 +13,18 @@ xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
 xuanchu server --listen :8080 --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 ```
 
+Web Admin Console 默认挂载在 `/console`：
+
+```text
+https://xuanchu.example.com/console
+```
+
+如需关闭：
+
+```bash
+xuanchu server --listen :8080 --console=false
+```
+
 服务端不内置 TLS。生产部署应放在可信网络内，或使用反向代理做 TLS termination。
 
 ## 反向代理 / TLS
@@ -68,6 +80,8 @@ rotate = "daily"
 `[log] file = "..."` 仍作为兼容写法支持，但推荐新配置使用 `[log.file] path = "..."`。日志会记录 server lifecycle、HTTP access、MCP tool/resource、notification/hook dispatcher 和 reminder scheduler 的结构化 operation log。不要依赖 operation log 做权限审计；权限审计继续看数据库里的 audit log。
 
 ## Token 配置
+
+Web Admin Console 使用同一套 PAT / Agent token。浏览器端 token 只保存在当前 tab 的 `sessionStorage`，但网络传输仍然必须依赖 TLS 或可信内网。
 
 通用 workspace Agent token 建议使用全量 scope，再用 workspace/project allowlist 和绑定用户的 membership role 收窄实际权限：
 
@@ -207,6 +221,8 @@ PostgreSQL 备份请使用 `pg_dump`，不要使用 SQLite 备份命令。
 项目保持零 CGO。发布构建应验证：
 
 ```bash
+make web-console-check
+make web-console-build
 CGO_ENABLED=0 go test ./...
 CGO_ENABLED=0 go build ./cmd/xuanchu
 ```

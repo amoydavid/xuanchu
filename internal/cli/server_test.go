@@ -118,6 +118,8 @@ func TestServerHookDispatcherIntervalFlagWinsOverLegacyInterval(t *testing.T) {
 func TestServerCommandRegistersDispatcherRuntimeFlags(t *testing.T) {
 	cmd := newServerCommand(Options{})
 	for _, name := range []string{
+		"console",
+		"console-base-path",
 		"shutdown-timeout",
 		"shutdown-force-timeout",
 		"notification-dispatcher-max-concurrency",
@@ -135,6 +137,48 @@ func TestServerCommandRegistersDispatcherRuntimeFlags(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("server flag %q not registered", name)
 		}
+	}
+}
+
+func TestServerConsoleOptionsUseConfigAndFlags(t *testing.T) {
+	cfg := config.Config{
+		Console: config.ConsoleConfig{
+			Enabled:     true,
+			BasePath:    "/console",
+			AssetsCache: time.Hour,
+			AuthMode:    "bearer",
+		},
+	}
+	disabled := false
+	basePath := "/ops"
+	opts, err := buildServerConsoleOptions(cfg, serverConsoleFlagOverrides{
+		Enabled:  &disabled,
+		BasePath: &basePath,
+	})
+	if err != nil {
+		t.Fatalf("buildServerConsoleOptions() error = %v", err)
+	}
+	if opts.Enabled {
+		t.Fatal("Enabled = true, want false flag override")
+	}
+	if opts.BasePath != "/ops" {
+		t.Fatalf("BasePath = %q, want /ops", opts.BasePath)
+	}
+	if opts.AssetsCache != time.Hour {
+		t.Fatalf("AssetsCache = %v, want config 1h", opts.AssetsCache)
+	}
+}
+
+func TestServerConsoleOptionsRejectInvalidBasePathFlag(t *testing.T) {
+	basePath := "console"
+	_, err := buildServerConsoleOptions(config.Config{
+		Console: config.ConsoleConfig{Enabled: true, BasePath: "/console", AuthMode: "bearer"},
+	}, serverConsoleFlagOverrides{BasePath: &basePath})
+	if err == nil {
+		t.Fatal("buildServerConsoleOptions() error = nil, want invalid flag error")
+	}
+	if !strings.Contains(err.Error(), "console-base-path") {
+		t.Fatalf("error = %q, want console-base-path", err.Error())
 	}
 }
 

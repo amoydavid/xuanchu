@@ -23,9 +23,17 @@ type Config struct {
 	Log                    logging.LogConfig
 	ServerAdmin            AdminConfig
 	ServerMCP              MCPConfig
+	Console                ConsoleConfig
 	NotificationDispatcher DispatcherConfig
 	HookDispatcher         DispatcherConfig
 	Shutdown               ShutdownConfig
+}
+
+type ConsoleConfig struct {
+	Enabled     bool
+	BasePath    string
+	AssetsCache time.Duration
+	AuthMode    string
 }
 
 type MCPConfig struct {
@@ -180,6 +188,10 @@ func Resolve(opts Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	consoleCfg, err := parseConsoleConfig(tomlValues, env)
+	if err != nil {
+		return Config{}, err
+	}
 	shutdownCfg, err := parseShutdownConfig(tomlValues)
 	if err != nil {
 		return Config{}, err
@@ -195,6 +207,7 @@ func Resolve(opts Options) (Config, error) {
 		Log:                    logCfg,
 		ServerAdmin:            adminCfg,
 		ServerMCP:              serverMCP,
+		Console:                consoleCfg,
 		NotificationDispatcher: notificationDispatcher,
 		HookDispatcher:         hookDispatcher,
 		Shutdown:               shutdownCfg,
@@ -279,6 +292,67 @@ func parseMCPConfig(values map[string]string) (MCPConfig, error) {
 		cfg.TrustedProxyHosts = append(cfg.TrustedProxyHosts, host)
 	}
 	return cfg, nil
+}
+
+func parseConsoleConfig(values map[string]string, env map[string]string) (ConsoleConfig, error) {
+	cfg := ConsoleConfig{
+		Enabled:     true,
+		BasePath:    "/console",
+		AssetsCache: time.Hour,
+		AuthMode:    "bearer",
+	}
+	var err error
+	if values != nil {
+		if v, ok := values["server.console.enabled"]; ok && v != "" {
+			cfg.Enabled, err = strconv.ParseBool(v)
+			if err != nil {
+				return ConsoleConfig{}, fmt.Errorf("server.console.enabled must be a boolean")
+			}
+		}
+		if v, ok := values["server.console.base_path"]; ok {
+			cfg.BasePath = v
+		}
+		if v, ok := values["server.console.assets_cache"]; ok && v != "" {
+			cfg.AssetsCache, err = time.ParseDuration(v)
+			if err != nil || cfg.AssetsCache < 0 {
+				return ConsoleConfig{}, fmt.Errorf("server.console.assets_cache must be a non-negative duration")
+			}
+		}
+		if v, ok := values["server.console.auth_mode"]; ok && v != "" {
+			cfg.AuthMode = v
+		}
+	}
+	if v := env["XUANCHU_CONSOLE_ENABLED"]; v != "" {
+		cfg.Enabled, err = strconv.ParseBool(v)
+		if err != nil {
+			return ConsoleConfig{}, fmt.Errorf("XUANCHU_CONSOLE_ENABLED must be a boolean")
+		}
+	}
+	if v, ok := env["XUANCHU_CONSOLE_BASE_PATH"]; ok {
+		cfg.BasePath = v
+	}
+	if err := ValidateConsoleBasePath(cfg.BasePath); err != nil {
+		return ConsoleConfig{}, err
+	}
+	if cfg.AuthMode != "bearer" {
+		return ConsoleConfig{}, fmt.Errorf("server.console.auth_mode must be bearer")
+	}
+	return cfg, nil
+}
+
+func ValidateConsoleBasePath(basePath string) error {
+	if !strings.HasPrefix(basePath, "/") || basePath == "/" {
+		return fmt.Errorf("server.console.base_path must be an absolute non-root path")
+	}
+	if strings.HasSuffix(basePath, "/") {
+		return fmt.Errorf("server.console.base_path must not end with /")
+	}
+	for _, reserved := range []string{"/api", "/api/v1", "/mcp", "/healthz"} {
+		if basePath == reserved || strings.HasPrefix(basePath, reserved+"/") {
+			return fmt.Errorf("server.console.base_path conflicts with reserved route %s", reserved)
+		}
+	}
+	return nil
 }
 
 func normalizeTrustedProxyHost(value string) string {

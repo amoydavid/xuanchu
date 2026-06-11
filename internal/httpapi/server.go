@@ -21,6 +21,7 @@ type Options struct {
 	TestPanicRoute       bool
 	Logger               *logging.Logger
 	Admin                config.AdminConfig
+	Console              config.ConsoleConfig
 	Shutdown             *runtimeutil.ShutdownCoordinator
 	MCPTrustedProxyHosts []string
 }
@@ -33,6 +34,7 @@ type Server struct {
 	testPanicRoute       bool
 	logger               *logging.Logger
 	admin                config.AdminConfig
+	console              config.ConsoleConfig
 	shutdown             *runtimeutil.ShutdownCoordinator
 	mcpTrustedProxyHosts []string
 	router               *http.ServeMux
@@ -53,6 +55,7 @@ func NewServer(opts Options) *Server {
 		testPanicRoute:       opts.TestPanicRoute,
 		logger:               opts.Logger,
 		admin:                opts.Admin,
+		console:              opts.Console,
 		shutdown:             opts.Shutdown,
 		mcpTrustedProxyHosts: normalizeMCPTrustedProxyHosts(opts.MCPTrustedProxyHosts),
 	}

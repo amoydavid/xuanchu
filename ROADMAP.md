@@ -38,6 +38,7 @@
 | v0.3.1 | 已完成 | 事件通知稳定化、迁移说明与发布打磨 |
 | v0.3.2 | 已完成 | 日志可观测性与 HTTP MCP 反向代理 Host 修复 |
 | v0.3.3 | 已完成 | 自动化 E2E 覆盖矩阵与 PostgreSQL 覆盖补强 |
+| v0.4.0 | 实施中 | 嵌入式 Web Admin Console |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -186,6 +187,33 @@ v0.3.3 不新增用户可见功能，重点是提升发布前验证可信度，�
 
 ```text
 docs/releases/v0.3.3.md
+```
+
+## v0.4.0：嵌入式 Web Admin Console
+
+**状态：实施中。**
+
+v0.4.0 在保持单一 `xuanchu` 二进制发布的前提下，新增 `/console` Web Admin Console。Console 是面向管理员和 Agent 平台运维者的浏览器入口，不是完整项目管理 UI。
+
+当前范围：
+
+- Go server 继续提供 `/api/v1/*`、`/mcp` 和后台 dispatcher，新增 `/console` 静态资源和 SPA fallback。
+- 前端源码位于 `web`，使用 pnpm、Vite 8、React、shadcn/ui、i18n 和 light/dark/system theme。
+- 前端构建产物输出到 `internal/webconsole/dist`，通过 Go `embed` 打入二进制。
+- Console 使用 Bearer token 登录，token 保存在当前 tab 的 `sessionStorage`，所有数据访问走现有 HTTP API。
+- 普通 Go build 不依赖 Node.js；发布构建先刷新 Web Console dist。
+
+不进入 v0.4.0：
+
+- 不实现完整任务看板或项目管理 UI。
+- 不新增 cookie session / SSO。
+- 不让浏览器直接访问 MCP 或数据库。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-06-11-xuanchu-v0.4.0-web-admin-console-design.md
+docs/superpowers/plans/2026-06-11-xuanchu-v0.4.0-web-admin-console-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

@@ -6,6 +6,7 @@
 命令行输出为 `xuanchu`，Xuanchu 是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
 
 - 单一二进制：同时承担 **本地 CLI / 远程 CLI 客户端 / HTTP API 服务端 / MCP Server** 四种形态
+- 嵌入式 Web Admin Console：同一 server 在 `/console` 提供运维入口
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
 - `workspace` 作为企业 / 租户级隔离边界；`project` 表示企业内的真实项目
 - 支持多用户、权限、审计、行级隔离，并为 Agent token 和 MCP scope 预留边界
@@ -661,6 +662,30 @@ HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上�
 ```bash
 ./xuanchu server --listen :8080
 ./xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
+```
+
+服务端默认启用 Web Admin Console，浏览器访问：
+
+```text
+http://127.0.0.1:8080/console
+```
+
+Console 使用现有 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求仍走 `/api/v1/*`。如果需要关闭 Console：
+
+```bash
+./xuanchu server --listen :8080 --console=false
+```
+
+前端源码在 `web`，开发态可使用：
+
+```bash
+make web-console-dev
+```
+
+发布构建会先刷新 `internal/webconsole/dist`，再把静态资源嵌入单个 `xuanchu` 二进制：
+
+```bash
+make build-release
 ```
 
 服务端不内置 TLS。生产部署应放在可信网络内，或使用 Nginx / Caddy 等反向代理做 TLS termination；不要把裸 HTTP token 服务直接暴露公网。服务端运行期间 SQLite 支持多进程读写排队，但生产建议同一时间只有一个主要写入口。

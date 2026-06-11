@@ -8,9 +8,11 @@ GOOS   ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
 DIST_DIR := dist
+WEB_DIR := web
 
 .PHONY: all build build-linux build-darwin build-release \
         test lint vet clean install \
+        web-console-build web-console-check web-console-dev \
         $(BINARY)
 
 all: build
@@ -29,7 +31,16 @@ build-darwin: ## 本地 macOS 构建
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=darwin GOARCH=arm64 \
 		go build $(LDFLAGS) -o $(BINARY) $(CMD)
 
-build-release: ## 发布构建：linux/amd64 + linux/arm64 + darwin/arm64
+web-console-build: ## 构建嵌入式 Web Admin Console dist
+	cd $(WEB_DIR) && pnpm build
+
+web-console-check: ## 检查 Web Admin Console 前端
+	cd $(WEB_DIR) && pnpm test && pnpm typecheck
+
+web-console-dev: ## 启动 Web Admin Console 开发服务器
+	cd $(WEB_DIR) && pnpm dev
+
+build-release: web-console-build ## 发布构建：linux/amd64 + linux/arm64 + darwin/arm64
 	@mkdir -p $(DIST_DIR)
 	@set -e; \
 	for target in linux/amd64 linux/arm64 darwin/arm64; do \

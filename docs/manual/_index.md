@@ -48,6 +48,7 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 - [MCP 使用指南](mcp.md)
 - [Webhook Hook 使用指南](hooks.md)
 - [定时通知与第三方通知](notifications.md)
+- [Web Admin Console](web-console.md)
 - [部署指南](deployment.md)
 - [备份与恢复](backup-restore.md)
 - [常见问题与排障](troubleshooting.md)
@@ -74,6 +75,7 @@ Xuanchu 的命令行名是 `xuanchu`。它是一个 Taskwarrior 风格的企业�
 - 多 user、多 workspace、member role、audit
 - project 实体化与 project 级配置
 - HTTP/JSON API、远程 CLI、PAT / Agent token
+- 嵌入式 Web Admin Console（`/console`）
 - MCP stdio 与 HTTP transport
 - 服务端 Webhook Hook、投递重试、dead-letter、manual replay
 - 定时通知、HTTP request template sink、动态 endpoint 与 delivery replay

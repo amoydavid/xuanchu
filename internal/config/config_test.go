@@ -182,6 +182,83 @@ func TestResolveDispatcherConfigDefaults(t *testing.T) {
 	assertDefaultDispatcherConfig(t, "HookDispatcher", cfg.HookDispatcher)
 }
 
+func TestResolveConsoleConfigDefaults(t *testing.T) {
+	cfg, err := Resolve(Options{HomeDir: "/home/alice", Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if !cfg.Console.Enabled {
+		t.Fatal("Console.Enabled = false, want true")
+	}
+	if cfg.Console.BasePath != "/console" {
+		t.Fatalf("Console.BasePath = %q, want /console", cfg.Console.BasePath)
+	}
+	if cfg.Console.AssetsCache != time.Hour {
+		t.Fatalf("Console.AssetsCache = %v, want 1h", cfg.Console.AssetsCache)
+	}
+	if cfg.Console.AuthMode != "bearer" {
+		t.Fatalf("Console.AuthMode = %q, want bearer", cfg.Console.AuthMode)
+	}
+}
+
+func TestResolveConsoleConfigReadsTomlAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"[server.console]",
+		"enabled = false",
+		`base_path = "/admin"`,
+		`assets_cache = "30m"`,
+		`auth_mode = "bearer"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{
+		ConfigPath: path,
+		HomeDir:    "/home/alice",
+		Env: map[string]string{
+			"XUANCHU_CONSOLE_ENABLED":   "true",
+			"XUANCHU_CONSOLE_BASE_PATH": "/ops",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if !cfg.Console.Enabled {
+		t.Fatal("Console.Enabled = false, want env override true")
+	}
+	if cfg.Console.BasePath != "/ops" {
+		t.Fatalf("Console.BasePath = %q, want /ops", cfg.Console.BasePath)
+	}
+	if cfg.Console.AssetsCache != 30*time.Minute {
+		t.Fatalf("Console.AssetsCache = %v, want 30m", cfg.Console.AssetsCache)
+	}
+	if cfg.Console.AuthMode != "bearer" {
+		t.Fatalf("Console.AuthMode = %q, want bearer", cfg.Console.AuthMode)
+	}
+}
+
+func TestResolveConsoleConfigRejectsInvalidBasePath(t *testing.T) {
+	for _, basePath := range []string{"", "/", "console", "/api", "/api/v1", "/mcp", "/healthz"} {
+		t.Run(basePath, func(t *testing.T) {
+			_, err := Resolve(Options{
+				HomeDir: "/home/alice",
+				Env: map[string]string{
+					"XUANCHU_CONSOLE_BASE_PATH": basePath,
+				},
+			})
+			if err == nil {
+				t.Fatal("Resolve() error = nil, want invalid console base path")
+			}
+			if !strings.Contains(err.Error(), "server.console.base_path") {
+				t.Fatalf("error = %q, want server.console.base_path", err.Error())
+			}
+		})
+	}
+}
+
 func TestResolveReadsShutdownConfigFromToml(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "xuanchu.toml")
