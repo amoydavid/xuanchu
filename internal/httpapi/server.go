@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"io"
 	"net/http"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/config"
@@ -12,6 +15,7 @@ import (
 )
 
 const defaultBodyLimitBytes int64 = 10 << 20
+const defaultAdminSetupTTL = 30 * time.Minute
 
 type Options struct {
 	Store                *storage.Store
@@ -21,9 +25,15 @@ type Options struct {
 	TestPanicRoute       bool
 	Logger               *logging.Logger
 	Admin                config.AdminConfig
+	AdminSetup           AdminSetupOptions
 	Console              config.ConsoleConfig
 	Shutdown             *runtimeutil.ShutdownCoordinator
 	MCPTrustedProxyHosts []string
+}
+
+type AdminSetupOptions struct {
+	Code string
+	TTL  time.Duration
 }
 
 type Server struct {
@@ -34,6 +44,7 @@ type Server struct {
 	testPanicRoute       bool
 	logger               *logging.Logger
 	admin                config.AdminConfig
+	adminSetup           *adminSetupState
 	console              config.ConsoleConfig
 	shutdown             *runtimeutil.ShutdownCoordinator
 	mcpTrustedProxyHosts []string
@@ -55,6 +66,7 @@ func NewServer(opts Options) *Server {
 		testPanicRoute:       opts.TestPanicRoute,
 		logger:               opts.Logger,
 		admin:                opts.Admin,
+		adminSetup:           newAdminSetupState(opts.AdminSetup, opts.Clock),
 		console:              opts.Console,
 		shutdown:             opts.Shutdown,
 		mcpTrustedProxyHosts: normalizeMCPTrustedProxyHosts(opts.MCPTrustedProxyHosts),
@@ -69,4 +81,12 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
+}
+
+func generateAdminSetupCode() string {
+	buf := make([]byte, 18)
+	if _, err := rand.Read(buf); err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(buf)
 }

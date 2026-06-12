@@ -20,6 +20,13 @@ func GenerateAdminToken() (raw string, hash string, err error) {
 	return raw, HashAdminToken(raw), nil
 }
 
+func AdminTokenDisplayPrefix(raw string) string {
+	if len(raw) > 16 {
+		return raw[:16]
+	}
+	return raw
+}
+
 func HashAdminToken(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return "sha256:" + hex.EncodeToString(sum[:])

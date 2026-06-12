@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next"
 import { DataTable, type Column } from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { apiGet, ApiError } from "@/lib/api"
+import { ApiError } from "@/lib/api"
 import { PageHeader } from "./OverviewPage"
 
 type Row = Record<string, unknown>
@@ -28,7 +29,7 @@ export function ResourcePage({
   const query = useQuery({
     enabled,
     queryKey: ["resource", path],
-    queryFn: () => apiGet<unknown>(path),
+    queryFn: () => workspaceApiGet<unknown>(path),
   })
 
   return (
@@ -49,7 +50,11 @@ export function ResourcePage({
           {errorMessage(query.error, t("common.error"))}
         </div>
       ) : (
-        <DataTable columns={columns} empty={t("common.empty")} rows={normalizeRows(query.data)} />
+        <DataTable
+          columns={columns}
+          empty={t("common.empty")}
+          rows={normalizeRows(query.data)}
+        />
       )}
     </div>
   )

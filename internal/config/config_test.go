@@ -190,8 +190,8 @@ func TestResolveConsoleConfigDefaults(t *testing.T) {
 	if !cfg.Console.Enabled {
 		t.Fatal("Console.Enabled = false, want true")
 	}
-	if cfg.Console.BasePath != "/console" {
-		t.Fatalf("Console.BasePath = %q, want /console", cfg.Console.BasePath)
+	if cfg.Console.BasePath != "/" {
+		t.Fatalf("Console.BasePath = %q, want /", cfg.Console.BasePath)
 	}
 	if cfg.Console.AssetsCache != time.Hour {
 		t.Fatalf("Console.AssetsCache = %v, want 1h", cfg.Console.AssetsCache)
@@ -241,7 +241,7 @@ func TestResolveConsoleConfigReadsTomlAndEnv(t *testing.T) {
 }
 
 func TestResolveConsoleConfigRejectsInvalidBasePath(t *testing.T) {
-	for _, basePath := range []string{"", "/", "console", "/api", "/api/v1", "/mcp", "/healthz"} {
+	for _, basePath := range []string{"", "console", "/api", "/api/v1", "/mcp", "/healthz"} {
 		t.Run(basePath, func(t *testing.T) {
 			_, err := Resolve(Options{
 				HomeDir: "/home/alice",

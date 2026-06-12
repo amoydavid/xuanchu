@@ -39,6 +39,8 @@
 | v0.3.2 | 已完成 | 日志可观测性与 HTTP MCP 反向代理 Host 修复 |
 | v0.3.3 | 已完成 | 自动化 E2E 覆盖矩阵与 PostgreSQL 覆盖补强 |
 | v0.4.0 | 实施中 | 嵌入式 Web Admin Console |
+| v0.4.1 | 实施中 | Server Admin Console 与 Workspace Bootstrap |
+| v0.4.2 | 规划中 | Project Readonly View 与 SSO 入口预留 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -214,6 +216,67 @@ v0.4.0 在保持单一 `xuanchu` 二进制发布的前提下，新增 `/console`
 ```text
 docs/superpowers/specs/2026-06-11-xuanchu-v0.4.0-web-admin-console-design.md
 docs/superpowers/plans/2026-06-11-xuanchu-v0.4.0-web-admin-console-implementation.md
+```
+
+## v0.4.1：Server Admin Console 与 Workspace Bootstrap
+
+**状态：实施中。**
+
+v0.4.1 在 v0.4.0 的 Web Console 基础上补齐 server admin bootstrap 闭环。普通 Console 继续使用 `/` 和 PAT / Agent token；server admin 使用独立入口 `/admin/login` 和 `xuanchu_admin_...` token。
+
+当前范围：
+
+- 新增独立 `server_admin_tokens` verifier 表，server admin token 不写入普通 `api_tokens`。
+- 新增 `GET /api/v1/admin/status` 与 `POST /api/v1/admin/setup`；无有效 admin token 时，server 启动输出一次性 setup-code，引导 `/admin/setup` 生成第一个 admin token。
+- 新增 `GET /api/v1/admin/session` 校验 admin token 并返回控制面能力。
+- 新增 `POST /api/v1/admin/workspaces/{workspace}/admins`，用于为已有 workspace 创建或提升 owner/admin。
+- 前端按 `features/admin/session`、`features/admin/setup`、`features/admin/bootstrap`、`features/workspace/session` 分层，admin token 与普通 token 分开保存和发送。
+- `/admin/login` 根据 admin status 显示禁用、首次初始化或 token 登录状态；`/admin/setup` 只使用 setup-code，不自动保存 raw admin token。
+- Admin 页面提供创建 workspace、创建或提升 workspace 管理员、创建管理员 Agent token 的向导。
+- raw Agent token 只在创建结果中显示一次，不写入浏览器 storage。
+
+不进入 v0.4.1：
+
+- 不做完整租户管理平台。
+- 不让 server admin token 访问普通 workspace 数据。
+- 不引入 cookie session、SSO 或细粒度 server admin RBAC。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-06-12-xuanchu-v0.4.1-server-admin-console-design.md
+docs/superpowers/plans/2026-06-12-xuanchu-v0.4.1-server-admin-console-implementation.md
+```
+
+## v0.4.2：Project Readonly View 与 SSO 入口预留
+
+**状态：规划中。**
+
+v0.4.2 在普通 Web Console 中新增面向企业协作链接的项目只读页。目标是让飞书、企业门户或其它内部系统可以发送一个安全的项目链接，用户点击后查看指定 workspace/project 的任务情况。
+
+当前范围：
+
+- 新增层级 URL：`/workspaces/{workspaceSlug}/projects/{projectSlug}`。
+- 页面只读展示项目元数据、任务状态摘要、负责人摘要、任务列表和可选最近动态。
+- 任务列表可进入 `/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{taskRef}` 只读详情页，并可返回项目页。
+- 未登录访问 deep link 时保留目标路径，登录成功后回到原项目页。
+- 全部数据继续通过现有 `/api/v1/*` 读取，不新增 console-only 权限模型。
+- 继续使用 PAT / Agent token；权限仍由 membership、token scope、workspace allowlist 和 project allowlist 共同决定。
+- 为后续 `/sso/{provider}?redirect=...` 企业 SSO 接入预留 redirect 语义。
+
+不进入 v0.4.2：
+
+- 不接入飞书 OAuth。
+- 不接入企业授权中心。
+- 不实现 OIDC / OAuth2 provider 配置。
+- 不新增 cookie web session。
+- 不做匿名分享链接或一次性外链 token。
+- 不提供项目写操作或拖拽看板。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-06-12-xuanchu-v0.4.2-project-readonly-view-design.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

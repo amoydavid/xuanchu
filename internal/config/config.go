@@ -297,7 +297,7 @@ func parseMCPConfig(values map[string]string) (MCPConfig, error) {
 func parseConsoleConfig(values map[string]string, env map[string]string) (ConsoleConfig, error) {
 	cfg := ConsoleConfig{
 		Enabled:     true,
-		BasePath:    "/console",
+		BasePath:    "/",
 		AssetsCache: time.Hour,
 		AuthMode:    "bearer",
 	}
@@ -341,10 +341,10 @@ func parseConsoleConfig(values map[string]string, env map[string]string) (Consol
 }
 
 func ValidateConsoleBasePath(basePath string) error {
-	if !strings.HasPrefix(basePath, "/") || basePath == "/" {
-		return fmt.Errorf("server.console.base_path must be an absolute non-root path")
+	if !strings.HasPrefix(basePath, "/") {
+		return fmt.Errorf("server.console.base_path must be an absolute path")
 	}
-	if strings.HasSuffix(basePath, "/") {
+	if basePath != "/" && strings.HasSuffix(basePath, "/") {
 		return fmt.Errorf("server.console.base_path must not end with /")
 	}
 	for _, reserved := range []string{"/api", "/api/v1", "/mcp", "/healthz"} {

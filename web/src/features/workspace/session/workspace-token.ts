@@ -1,13 +1,13 @@
 const tokenKey = "xuanchu.console.token"
 
-export function getToken(): string | null {
+export function getWorkspaceToken(): string | null {
   return sessionStorage.getItem(tokenKey)
 }
 
-export function setToken(token: string): void {
+export function setWorkspaceToken(token: string): void {
   sessionStorage.setItem(tokenKey, token)
 }
 
-export function clearToken(): void {
+export function clearWorkspaceToken(): void {
   sessionStorage.removeItem(tokenKey)
 }

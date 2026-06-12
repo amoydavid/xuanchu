@@ -113,6 +113,18 @@ type ApiToken struct {
 	LastUsedAt       *int64
 }
 
+type ServerAdminToken struct {
+	ID          string `gorm:"primaryKey"`
+	Name        string `gorm:"not null"`
+	TokenPrefix string `gorm:"not null;uniqueIndex:idx_server_admin_tokens_prefix"`
+	TokenHash   string `gorm:"not null"`
+	Enabled     bool   `gorm:"not null;index"`
+	CreatedAt   int64  `gorm:"not null"`
+	RevokedAt   *int64
+	LastUsedAt  *int64
+	Description string `gorm:"not null;default:''"`
+}
+
 type Context struct {
 	WorkspaceID  string `gorm:"primaryKey;not null"`
 	Name         string `gorm:"primaryKey;not null"`

@@ -1,0 +1,1 @@
+import{t as e}from"./useQuery-D8kX-V-q.js";import{t}from"./workspace-api-MnQLXAsx.js";function n(n=!0){return e({enabled:n,queryKey:[`me`],queryFn:()=>t(`/api/v1/me`),retry:!1})}export{n as t};

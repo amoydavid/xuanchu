@@ -26,6 +26,9 @@ components:
         - auth_token_revoked
         - admin_auth_required
         - admin_auth_invalid
+        - admin_setup_required
+        - admin_setup_invalid
+        - admin_setup_completed
         - admin_token_ttl_invalid
         - token_name_required
         - token_scope_invalid
@@ -96,6 +99,42 @@ components:
             details:
               type: object
               additionalProperties: true
+    AdminStatus:
+      type: object
+      required: [status, enabled, setup_required]
+      properties:
+        status:
+          type: string
+          enum: [disabled, setup_required, login_required]
+        enabled:
+          type: boolean
+        setup_required:
+          type: boolean
+        setup_code_expires_at:
+          type: integer
+          format: int64
+          description: Present only when setup is required. The setup code itself is never returned by API.
+    AdminSetupResult:
+      type: object
+      required: [token, token_name, token_prefix]
+      properties:
+        token:
+          type: string
+          description: Raw xuanchu_admin token. Returned once.
+        token_name:
+          type: string
+        token_prefix:
+          type: string
+    AdminSession:
+      type: object
+      required: [token_name, capabilities]
+      properties:
+        token_name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
     Task:
       type: object
       additionalProperties: true
@@ -1105,10 +1144,83 @@ paths:
       responses:
         '200':
           description: Server is healthy.
+  /api/v1/admin/status:
+    get:
+      security: []
+      summary: Inspect server admin control-plane status.
+      description: Anonymous endpoint. It never returns setup-code, token hashes, raw tokens, token counts, or config paths.
+      responses:
+        '200':
+          description: Admin status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AdminStatus'
+  /api/v1/admin/setup:
+    post:
+      security: []
+      summary: Create the first server admin token with a setup-code.
+      description: Available only when `[server.admin]` is enabled and no valid admin token verifier exists. The raw admin token is returned once and its SHA-256 verifier is stored in `server_admin_tokens`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [setup_code]
+              properties:
+                setup_code:
+                  type: string
+                name:
+                  type: string
+      responses:
+        '201':
+          description: First admin token created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AdminSetupResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/session:
+    get:
+      summary: Validate server admin token.
+      description: Uses a server admin token from `server_admin_tokens` or the deprecated `[server.admin.tokens]` compatibility config. Returns `admin_setup_required` when admin is enabled but no valid admin token verifier exists.
+      security:
+        - serverAdminAuth: []
+      responses:
+        '200':
+          description: Admin session.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AdminSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/admin/workspaces:
     post:
       summary: Create workspace via server admin bootstrap token.
-      description: Uses a server admin token from `[server.admin]`, not a PAT or Agent token. The admin token cannot access ordinary API endpoints.
+      description: Uses a server admin token from `server_admin_tokens` or the deprecated `[server.admin.tokens]` compatibility config, not a PAT or Agent token. The admin token cannot access ordinary API endpoints.
       security:
         - serverAdminAuth: []
       requestBody:

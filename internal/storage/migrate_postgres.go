@@ -9,7 +9,7 @@ import (
 func (s *Store) migratePostgres() error {
 	if err := s.db.AutoMigrate(
 		&Meta{}, &User{}, &Workspace{}, &Membership{},
-		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{},
+		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{},
 		&Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{},
 		&NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{},
 		&UserExternalID{}, &Task{},

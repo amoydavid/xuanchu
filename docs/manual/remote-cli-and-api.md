@@ -19,9 +19,9 @@ xuanchu server --listen :8080 --db-url "postgres://user:pass@localhost:5432/xuan
 
 生产环境建议放在反向代理之后做 TLS termination。详见 [部署指南](deployment.md)。
 
-## 创建 token
+## 创建远程访问 token
 
-第一个 admin token 建议在 server 启动前用本地 CLI 创建：
+远程 CLI 和普通 HTTP API 使用 PAT 或 Agent token，不使用 server admin token。第一个远程访问 PAT 可以在 server 启动前用本地 CLI 创建：
 
 ```bash
 xuanchu token create admin \

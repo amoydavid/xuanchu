@@ -31,6 +31,20 @@ type AdminCreateWorkspaceResult struct {
 	Owner     UserView
 }
 
+type AdminCreateWorkspaceAdminInput struct {
+	AdminTokenName string
+	WorkspaceRef   string
+	Name           string
+	Email          string
+	Role           Role
+}
+
+type AdminCreateWorkspaceAdminResult struct {
+	Workspace  WorkspaceView
+	Admin      UserView
+	Membership MemberView
+}
+
 type AdminCreateAgentTokenInput struct {
 	AdminTokenName string
 	WorkspaceRef   string
@@ -134,6 +148,108 @@ func (s *Service) AdminCreateWorkspace(input AdminCreateWorkspaceInput) (AdminCr
 	return result, err
 }
 
+func (s *Service) AdminCreateWorkspaceAdmin(input AdminCreateWorkspaceAdminInput) (AdminCreateWorkspaceAdminResult, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return AdminCreateWorkspaceAdminResult{}, RuntimeError{Code: "admin_owner_required", Message: "admin name is required"}
+	}
+	email := strings.TrimSpace(input.Email)
+	role, err := normalizeAdminBootstrapRole(input.Role)
+	if err != nil {
+		return AdminCreateWorkspaceAdminResult{}, err
+	}
+	var result AdminCreateWorkspaceAdminResult
+	err = s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
+		}
+		workspace, err := lookupWorkspace(txSvc.workspaceRepo, strings.TrimSpace(input.WorkspaceRef))
+		if err != nil {
+			return err
+		}
+		if workspace.ArchivedAt != nil {
+			return RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+		}
+		user, err := txSvc.findOrCreateAdminOwner(name, email)
+		if err != nil {
+			return err
+		}
+		now := txSvc.clock.Unix()
+		member, err := txSvc.memberRepo.Get(user.ID, workspace.ID)
+		action := ""
+		switch {
+		case err == storage.ErrNotFound:
+			member = storage.Membership{
+				UserID:      user.ID,
+				WorkspaceID: workspace.ID,
+				Role:        string(role),
+				JoinedAt:    now,
+				ModifiedAt:  now,
+			}
+			if err := txSvc.memberRepo.Upsert(member); err != nil {
+				return err
+			}
+			action = "admin.workspace_admin.create"
+		case err != nil:
+			return err
+		default:
+			currentRole := Role(member.Role)
+			if currentRole == RoleOwner && role == RoleAdmin {
+				return RuntimeError{Code: "admin_role_invalid", Message: "cannot downgrade existing owner"}
+			}
+			if currentRole != role {
+				if err := txSvc.memberRepo.UpdateRole(user.ID, workspace.ID, string(role), now); err != nil {
+					return err
+				}
+				member.Role = string(role)
+				member.ModifiedAt = now
+				action = "admin.workspace_admin.promote"
+			}
+		}
+		if user.DefaultWorkspaceID == nil || *user.DefaultWorkspaceID == "" {
+			if err := txSvc.userRepo.UpdateDefaultWorkspace(user.ID, workspace.ID, now); err != nil {
+				return err
+			}
+			user.DefaultWorkspaceID = &workspace.ID
+		}
+		if action != "" {
+			if err := txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
+				Action:      action,
+				WorkspaceID: &workspace.ID,
+				TargetType:  "member",
+				TargetID:    user.ID,
+				Payload: map[string]any{
+					"user_id":        user.ID,
+					"workspace_id":   workspace.ID,
+					"workspace_slug": workspace.Slug,
+					"role":           role,
+				},
+			}, input.AdminTokenName); err != nil {
+				return err
+			}
+		}
+		extByUser, err := txSvc.loadExternalIDsByUsers([]string{user.ID})
+		if err != nil {
+			return err
+		}
+		result = AdminCreateWorkspaceAdminResult{
+			Workspace: workspaceViewFromRow(workspace, role, false),
+			Admin:     userViewFromRow(user, false, extByUser[user.ID]),
+			Membership: MemberView{
+				UserID:     user.ID,
+				Name:       user.Name,
+				Email:      user.Email,
+				Role:       Role(member.Role),
+				JoinedAt:   member.JoinedAt,
+				ModifiedAt: member.ModifiedAt,
+			},
+		}
+		return nil
+	})
+	return result, err
+}
+
 func (s *Service) AdminCreateWorkspaceAgentToken(input AdminCreateAgentTokenInput) (CreatedToken, error) {
 	var created CreatedToken
 	err := s.store.Transaction(func(txStore *storage.Store) error {
@@ -193,6 +309,18 @@ func (s *Service) AdminCreateWorkspaceAgentToken(input AdminCreateAgentTokenInpu
 		return nil
 	})
 	return created, err
+}
+
+func normalizeAdminBootstrapRole(role Role) (Role, error) {
+	if role == "" {
+		return RoleOwner, nil
+	}
+	switch role {
+	case RoleOwner, RoleAdmin:
+		return role, nil
+	default:
+		return "", RuntimeError{Code: "admin_role_invalid", Message: "admin role must be owner or admin"}
+	}
 }
 
 func (s *Service) findOrCreateAdminOwner(name, email string) (storage.User, error) {

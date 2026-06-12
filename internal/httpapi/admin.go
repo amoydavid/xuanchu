@@ -21,6 +21,23 @@ type adminCreateWorkspaceRequest struct {
 	} `json:"owner"`
 }
 
+type adminCreateWorkspaceAdminRequest struct {
+	Name  string `json:"name"`
+	Email string `json:"email,omitempty"`
+	Role  string `json:"role,omitempty"`
+}
+
+type adminUserResponse struct {
+	ID                 string               `json:"id"`
+	Name               string               `json:"name"`
+	Email              *string              `json:"email,omitempty"`
+	DefaultWorkspaceID *string              `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []externalIDResponse `json:"external_ids"`
+	Active             bool                 `json:"active"`
+	CreatedAt          int64                `json:"created_at"`
+	ModifiedAt         int64                `json:"modified_at"`
+}
+
 type adminCreateAgentTokenRequest struct {
 	Name             string   `json:"name"`
 	User             string   `json:"user,omitempty"`
@@ -29,6 +46,18 @@ type adminCreateAgentTokenRequest struct {
 	ProjectIDs       []string `json:"project_ids,omitempty"`
 	ExpiresIn        string   `json:"expires_in,omitempty"`
 	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty"`
+}
+
+func (s *Server) handleAdminSession(w http.ResponseWriter, r *http.Request) {
+	admin, _ := adminAuthFromContext(r.Context())
+	writeSuccess(w, http.StatusOK, map[string]any{
+		"token_name": admin.TokenName,
+		"capabilities": []string{
+			"workspace:create",
+			"workspace_admin:create",
+			"agent_token:create",
+		},
+	}, nil)
 }
 
 func (s *Server) handleAdminWorkspaceCreate(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +95,44 @@ func (s *Server) handleAdminWorkspaceCreate(w http.ResponseWriter, r *http.Reque
 	writeSuccess(w, http.StatusCreated, map[string]any{
 		"workspace": workspaceResponseFromView(result.Workspace),
 		"owner":     userResponseFromView(result.Owner),
+	}, nil)
+}
+
+func (s *Server) handleAdminWorkspaceAdminCreate(w http.ResponseWriter, r *http.Request) {
+	var req adminCreateWorkspaceAdminRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := app.NewService(app.ServiceOptions{
+		Store:                 s.store,
+		Clock:                 s.effectiveClock(),
+		Runtime:               &app.RuntimeContext{ActorName: "server-admin"},
+		DisableScopeBootstrap: true,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result, err := svc.AdminCreateWorkspaceAdmin(app.AdminCreateWorkspaceAdminInput{
+		AdminTokenName: admin.TokenName,
+		WorkspaceRef:   chi.URLParam(r, "workspace"),
+		Name:           req.Name,
+		Email:          req.Email,
+		Role:           app.Role(req.Role),
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, map[string]any{
+		"workspace": workspaceResponseFromView(result.Workspace),
+		"admin":     adminUserResponseFromView(result.Admin),
+		"membership": map[string]any{
+			"role":      result.Membership.Role,
+			"joined_at": result.Membership.JoinedAt,
+		},
 	}, nil)
 }
 
@@ -129,4 +196,21 @@ func parseAdminTokenTTL(w http.ResponseWriter, req adminCreateAgentTokenRequest)
 		return &value, true
 	}
 	return nil, true
+}
+
+func adminUserResponseFromView(user app.UserView) adminUserResponse {
+	extIDs := make([]externalIDResponse, 0, len(user.ExternalIDs))
+	for _, eid := range user.ExternalIDs {
+		extIDs = append(extIDs, externalIDResponse{Provider: eid.Provider, ExternalID: eid.ExternalID})
+	}
+	return adminUserResponse{
+		ID:                 user.ID,
+		Name:               user.Name,
+		Email:              user.Email,
+		DefaultWorkspaceID: user.DefaultWorkspaceID,
+		ExternalIDs:        extIDs,
+		Active:             user.Active,
+		CreatedAt:          user.CreatedAt,
+		ModifiedAt:         user.ModifiedAt,
+	}
 }

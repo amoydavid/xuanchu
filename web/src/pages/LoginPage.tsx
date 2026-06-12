@@ -3,19 +3,21 @@ import type { FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
+import { ProductLogo } from "@/components/ProductLogo"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
+import { setWorkspaceToken } from "@/features/workspace/session/workspace-token"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { apiGet } from "@/lib/api"
-import { setToken } from "@/lib/token"
 
 type LoginPageProps = {
   onSignedIn: () => void
+  redirectPath?: string
 }
 
-export function LoginPage({ onSignedIn }: LoginPageProps) {
+export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
   const { t } = useTranslation()
   const [token, setTokenValue] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -26,8 +28,8 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
     setSubmitting(true)
     setError(null)
     try {
-      setToken(token.trim())
-      await apiGet("/api/v1/me")
+      setWorkspaceToken(token.trim())
+      await workspaceApiGet("/api/v1/me")
       onSignedIn()
     } catch {
       setError(t("auth.failed"))
@@ -39,7 +41,7 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
   return (
     <main className="min-h-svh bg-background text-foreground">
       <div className="flex h-12 items-center justify-between border-b px-4">
-        <div className="text-sm font-medium">{t("app.title")}</div>
+        <ProductLogo />
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
           <ThemeToggle />
@@ -47,12 +49,25 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
       </div>
       <div className="mx-auto flex min-h-[calc(100svh-3rem)] max-w-md flex-col justify-center px-6">
         <div className="mb-6">
+          <ProductLogo
+            className="mb-5"
+            markClassName="size-14"
+            showWordmark={false}
+          />
           <h1 className="text-xl font-semibold tracking-normal">
             {t("auth.signInTitle")}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {t("auth.sessionOnly")}
           </p>
+          {redirectPath ? (
+            <div className="mt-4 border bg-card p-3 text-xs">
+              <div className="text-muted-foreground">{t("auth.continueTo")}</div>
+              <code className="mt-1 block break-all text-foreground">
+                {redirectPath}
+              </code>
+            </div>
+          ) : null}
         </div>
         <form className="space-y-4" onSubmit={submit}>
           <div className="space-y-2">
@@ -75,6 +90,14 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
           <Button disabled={submitting || token.trim() === ""} type="submit">
             {t("auth.signIn")}
           </Button>
+          <div>
+            <a
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              href="/admin/login"
+            >
+              {t("auth.adminLoginLink")}
+            </a>
+          </div>
         </form>
       </div>
     </main>

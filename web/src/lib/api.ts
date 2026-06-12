@@ -1,11 +1,17 @@
-import { clearToken, getToken } from "./token"
-
 type Envelope<T> = {
   data?: T
   error?: {
     code?: string
     message?: string
   }
+}
+
+type RequestJsonOptions = {
+  body?: unknown
+  getToken?: () => string | null
+  method: string
+  onUnauthorized?: () => void
+  path: string
 }
 
 export class ApiError extends Error {
@@ -20,8 +26,14 @@ export class ApiError extends Error {
   }
 }
 
-async function apiRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = getToken()
+export async function requestJson<T>({
+  body,
+  getToken,
+  method,
+  onUnauthorized,
+  path,
+}: RequestJsonOptions): Promise<T> {
+  const token = getToken?.()
   const headers: Record<string, string> = {
     Accept: "application/json",
   }
@@ -39,26 +51,10 @@ async function apiRequest<T>(method: string, path: string, body?: unknown): Prom
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>
   if (!response.ok) {
     if (response.status === 401) {
-      clearToken()
+      onUnauthorized?.()
     }
     const code = payload.error?.code || "unknown"
     throw new ApiError(response.status, code, code)
   }
   return payload.data as T
-}
-
-export function apiGet<T>(path: string): Promise<T> {
-  return apiRequest<T>("GET", path)
-}
-
-export function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  return apiRequest<T>("POST", path, body)
-}
-
-export function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  return apiRequest<T>("PATCH", path, body)
-}
-
-export function apiDelete<T>(path: string): Promise<T> {
-  return apiRequest<T>("DELETE", path)
 }

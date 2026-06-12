@@ -13,11 +13,19 @@ xuanchu server --listen 127.0.0.1:8080 --db ./xuanchu.db
 xuanchu server --listen :8080 --db-url "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 ```
 
-Web Admin Console 默认挂载在 `/console`：
+Web Admin Console 默认挂载在 `/`：
 
 ```text
-https://xuanchu.example.com/console
+https://xuanchu.example.com/
 ```
+
+Server admin bootstrap 入口是：
+
+```text
+https://xuanchu.example.com/admin/login
+```
+
+该入口只接受 `xuanchu_admin_...` token，并且只访问 `/api/v1/admin/*`。普通 workspace Console 继续使用 PAT / Agent token。
 
 如需关闭：
 
@@ -82,6 +90,17 @@ rotate = "daily"
 ## Token 配置
 
 Web Admin Console 使用同一套 PAT / Agent token。浏览器端 token 只保存在当前 tab 的 `sessionStorage`，但网络传输仍然必须依赖 TLS 或可信内网。
+
+Server admin token 不写入普通 `api_tokens`。首选做法是只在配置中启用控制面：
+
+```toml
+[server.admin]
+enabled = true
+```
+
+如果数据库里还没有有效 admin token，`xuanchu server` 启动后会在 stderr 输出一次性 setup-code 和 `/admin/setup` 地址。使用 setup-code 创建第一个 `xuanchu_admin_...` token 后，服务端会把 SHA-256 verifier 写入 `server_admin_tokens`，新 token 立刻可用于 `/admin/login`，不需要重启。
+
+admin token 只能访问 `/api/v1/admin/*`，用于创建 workspace、workspace 管理员和管理员 Agent token；不要把它交给普通自动化脚本。`[[server.admin.tokens]]` / `hash_env` 作为兼容路径仍可使用，但新部署不再建议把长期 admin token hash 作为主配置。
 
 通用 workspace Agent token 建议使用全量 scope，再用 workspace/project allowlist 和绑定用户的 membership role 收窄实际权限：
 

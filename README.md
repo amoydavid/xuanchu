@@ -6,7 +6,7 @@
 命令行输出为 `xuanchu`，Xuanchu 是一个用 **纯 Go** 实现的企业任务运行时。它借鉴 Taskwarrior 的 CLI、查询语言、任务字段和 urgency 思路，但产品目标不是做完整 Taskwarrior clone，而是服务企业项目协作和 Agent MCP：
 
 - 单一二进制：同时承担 **本地 CLI / 远程 CLI 客户端 / HTTP API 服务端 / MCP Server** 四种形态
-- 嵌入式 Web Admin Console：同一 server 在 `/console` 提供运维入口
+- 嵌入式 Web Admin Console：同一 server 在 `/` 提供普通运维入口，`/admin/login` 提供 server admin bootstrap 入口
 - 数据库：**SQLite（GORM + `github.com/glebarez/sqlite`，零 CGO）**，可跨平台交叉编译
 - `workspace` 作为企业 / 租户级隔离边界；`project` 表示企业内的真实项目
 - 支持多用户、权限、审计、行级隔离，并为 Agent token 和 MCP scope 预留边界
@@ -91,6 +91,43 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 ```
 
 `--db-url` 和 `--db` 互斥。未指定 `--db-url` 时使用 SQLite（默认行为不变）。
+
+## Web Console
+
+`xuanchu server` 默认在 `/` 提供嵌入式 Web Console。普通入口使用 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求继续走 `/api/v1/*`，不绕过 workspace membership、token scope、workspace allowlist 或 project allowlist。
+
+普通 Console 支持项目只读深链，适合放进飞书卡片、企业门户或内部系统消息中：
+
+```text
+http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>
+```
+
+该页面只展示项目元数据、任务摘要和任务列表，不提供写操作。任务标识和描述可以点击进入只读任务详情页：
+
+```text
+http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
+```
+
+任务详情页提供“返回项目”入口。未登录用户会先看到普通 token 登录页，登录成功后回到原项目页或任务详情页。当前版本只保留 redirect 语义，尚未接入企业 SSO 或飞书 OAuth。
+
+Server admin bootstrap 使用独立入口：
+
+```text
+http://127.0.0.1:8080/admin/login
+```
+
+启用 `[server.admin]` 后，如果数据库中还没有有效的 server admin token，`xuanchu server` 启动时会在控制台输出一次性 setup-code。打开 `/admin/setup` 输入该 setup-code，即可生成第一个 `xuanchu_admin_...` token；token 明文只显示一次，数据库只保存 SHA-256 verifier。
+
+admin token 只用于 `/api/v1/admin/*` 控制面接口，可以在页面中创建 workspace、创建或提升 workspace 管理员，并为该管理员创建 workspace-scoped Agent token。它不能访问普通任务、项目、通知、Hook 或 MCP 接口。`xuanchu admin token generate/hash` 仍保留为兼容和运维工具，但不再是首选初始化路径。
+
+前端开发和构建：
+
+```bash
+pnpm --dir web dev
+pnpm --dir web build
+```
+
+`pnpm --dir web build` 会刷新 `internal/webconsole/dist`，发布二进制通过 Go `embed` 打包这些产物，运行时不需要 Node.js。
 
 ## 开发测试
 
@@ -667,7 +704,7 @@ HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上�
 服务端默认启用 Web Admin Console，浏览器访问：
 
 ```text
-http://127.0.0.1:8080/console
+http://127.0.0.1:8080/
 ```
 
 Console 使用现有 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求仍走 `/api/v1/*`。如果需要关闭 Console：
@@ -696,25 +733,24 @@ make build-release
 
 Server admin token 是服务端控制面 bootstrap token，只能访问 `/api/v1/admin/*`，不会写入 `api_tokens`，也不能访问普通任务、workspace、token API。它用于在自动化部署或 Agent 平台初始化时创建 workspace，并给指定 workspace 创建受限 Agent token。
 
-先生成明文 token 和 hash：
-
-```bash
-./xuanchu admin token generate
-```
-
-把 hash 写入 `xuanchu.toml`，明文只交给部署系统或控制面调用方：
+首选初始化流程：
 
 ```toml
 [server.admin]
 enabled = true
-
-[[server.admin.tokens]]
-name = "ops-primary"
-hash = "sha256:replace-with-token-hash"
-enabled = true
 ```
 
-也可以用 `hash_env` 从环境变量读取 hash，便于轮换：
+启动 server 后，如果还没有有效 admin token，stderr 会出现类似输出：
+
+```text
+xuanchu: server admin setup required
+setup-code: 9d4u...
+open: http://127.0.0.1:8080/admin/setup
+```
+
+打开 `/admin/setup` 输入 setup-code，系统会生成第一个 `xuanchu_admin_...` token，并把 verifier 写入 `server_admin_tokens`。新 token 可立即用于 `/admin/login`，不需要重启服务。
+
+旧的配置文件 verifier 仍作为兼容路径保留，但不建议作为新部署的主路径：
 
 ```toml
 [[server.admin.tokens]]
@@ -723,7 +759,7 @@ hash_env = "XUANCHU_ADMIN_TOKEN_HASH"
 enabled = true
 ```
 
-明文丢失后不能从数据库或配置恢复，只能生成新 token 并替换 hash。普通 API token 不能访问 admin endpoint；admin token 也不能访问普通 API。
+明文丢失后不能从数据库或配置恢复，只能重新生成新的 admin token verifier。普通 API token 不能访问 admin endpoint；admin token 也不能访问普通 API。
 
 典型 bootstrap 流程是先创建 workspace，再为该 workspace 创建 Agent token：
 

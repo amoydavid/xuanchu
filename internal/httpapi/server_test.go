@@ -71,23 +71,32 @@ func TestConsoleRoutesDoNotInterceptAPIOrMCP(t *testing.T) {
 		Store: openHTTPTestStore(t),
 		Console: config.ConsoleConfig{
 			Enabled:     true,
-			BasePath:    "/console",
+			BasePath:    "/",
 			AssetsCache: time.Hour,
 			AuthMode:    "bearer",
 		},
 	})
 
-	for _, path := range []string{"/console", "/console/", "/console/tasks"} {
+	for _, path := range []string{"/", "/tasks"} {
 		t.Run(path, func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
-			if rr.Code != http.StatusOK && rr.Code != http.StatusPermanentRedirect {
+			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want console response body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "<div id=\"root\"></div>") {
+				t.Fatalf("body = %s, want console html", rr.Body.String())
 			}
 		})
 	}
 
 	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/console", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("/console status = %d, want 404 body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
 	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/missing", nil))
 	assertHTTPErrorCode(t, rr, http.StatusNotFound, "route_not_found")
 

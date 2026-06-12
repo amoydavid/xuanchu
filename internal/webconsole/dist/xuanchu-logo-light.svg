@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Xuanchu logo light</title>
+  <defs>
+    <radialGradient id="glowGoldLight" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#fbbf24" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="starGoldLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fcd34d"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <path d="M60 150 L140 200 L215 235 L290 250 L300 345 L420 360 L415 245 L290 250"
+    fill="none" stroke="#1f2a44" stroke-width="12" stroke-linecap="round"
+    stroke-linejoin="round" opacity="0.45"/>
+  <circle cx="60" cy="150" r="17" fill="#1f2a44"/>
+  <circle cx="140" cy="200" r="17" fill="#1f2a44"/>
+  <circle cx="215" cy="235" r="17" fill="#1f2a44"/>
+  <circle cx="290" cy="250" r="17" fill="#1f2a44"/>
+  <circle cx="300" cy="345" r="17" fill="#1f2a44"/>
+  <circle cx="415" cy="245" r="19" fill="#1f2a44"/>
+  <circle cx="420" cy="360" r="62" fill="url(#glowGoldLight)" opacity="0.5"/>
+  <path d="M420 314 C426 345 436 354 466 360 C436 366 426 375 420 406 C414 375 404 366 374 360 C404 354 414 345 420 314 Z"
+    fill="url(#starGoldLight)"/>
+</svg>

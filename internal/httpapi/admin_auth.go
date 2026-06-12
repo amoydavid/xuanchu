@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
 type adminAuthInfo struct {
@@ -24,9 +25,31 @@ func (s *Server) adminAuthMiddleware(next http.Handler) http.Handler {
 			writeError(w, http.StatusNotFound, "route_not_found", "route not found", nil)
 			return
 		}
+		setupRequired, err := s.adminSetupRequired()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
+			return
+		}
+		if setupRequired {
+			writeError(w, http.StatusUnauthorized, "admin_setup_required", "admin setup is required", nil)
+			return
+		}
 		raw, ok := bearerToken(r.Header.Get("Authorization"))
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "admin_auth_required", "admin token is required", nil)
+			return
+		}
+		prefix := auth.AdminTokenDisplayPrefix(raw)
+		repo := storage.NewServerAdminTokenRepository(s.store.DB())
+		if row, err := repo.GetByPrefix(prefix); err == nil {
+			if row.Enabled && row.RevokedAt == nil && auth.VerifyAdminToken(raw, row.TokenHash) {
+				_ = repo.TouchLastUsed(row.ID, s.effectiveClock().Unix())
+				ctx := context.WithValue(r.Context(), adminAuthContextKey{}, adminAuthInfo{TokenName: row.Name})
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+		} else if err != storage.ErrNotFound {
+			writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
 			return
 		}
 		for _, token := range s.admin.Tokens {

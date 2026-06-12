@@ -34,7 +34,11 @@ func (s *Server) newRouter() *http.ServeMux {
 			panic("test panic")
 		})
 	}
+	api.Get("/api/v1/admin/status", s.handleAdminStatus)
+	api.Post("/api/v1/admin/setup", s.handleAdminSetup)
+	api.With(s.adminAuthMiddleware).Get("/api/v1/admin/session", s.handleAdminSession)
 	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces", s.handleAdminWorkspaceCreate)
+	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces/{workspace}/admins", s.handleAdminWorkspaceAdminCreate)
 	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces/{workspace}/agent-tokens", s.handleAdminAgentTokenCreate)
 	api.With(s.authMiddleware).Get("/api/v1/me", s.handleMe)
 	api.With(s.authMiddleware).Put("/api/v1/me/active_workspace", s.handleMeActiveWorkspace)
@@ -143,6 +147,13 @@ func (s *Server) newRouter() *http.ServeMux {
 			BasePath:    s.console.BasePath,
 			AssetsCache: s.console.AssetsCache,
 		})
+		if strings.TrimRight(s.console.BasePath, "/") == "" {
+			root.Handle("/api/", api)
+			root.Handle("/healthz", api)
+			root.Handle("/mcp", api)
+			root.Handle("/", handler)
+			return root
+		}
 		root.Handle(s.console.BasePath, handler)
 		root.Handle(s.console.BasePath+"/", handler)
 	}

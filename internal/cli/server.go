@@ -152,6 +152,9 @@ func newServerCommand(opts Options) *cobra.Command {
 				"addr", ln.Addr().String(),
 				"url", "http://"+ln.Addr().String(),
 			)
+			if err := handler.WriteAdminSetupInstructions("http://" + ln.Addr().String()); err != nil {
+				return err
+			}
 
 			flags := serverDispatcherFlagOverrides{}
 			if cmd.Flags().Changed("notification-dispatcher-interval") {

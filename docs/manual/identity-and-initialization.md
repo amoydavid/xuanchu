@@ -231,6 +231,6 @@ HTTP MCP 使用 Bearer token 身份：
 
 - 单人本地使用，可以接受默认 `local` user/workspace。
 - 团队使用，请显式创建 user、workspace 和 project。
-- 服务端部署，请先创建 admin token，再启动长期服务。
+- 服务端超管请启用 `[server.admin]` 后通过启动时输出的 setup-code 和 `/admin/setup` 创建第一个 `xuanchu_admin_...` token；远程 CLI / HTTP API 的业务访问再用 PAT 或 Agent token。
 - Agent 使用 HTTP MCP 时，默认创建带 `*` scope 的 workspace-scoped Agent token；只服务单项目时再用 project allowlist 收窄。
 - 不要让 Agent 通过提示词“声明自己是谁”；真实身份必须来自 stdio runtime 或 HTTP token。
