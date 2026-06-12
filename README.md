@@ -96,6 +96,8 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 `xuanchu server` 默认在 `/` 提供嵌入式 Web Console。普通入口使用 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求继续走 `/api/v1/*`，不绕过 workspace membership、token scope、workspace allowlist 或 project allowlist。
 
+仓库只跟踪 `internal/webconsole/dist/.gitkeep`，不跟踪前端构建产物。日常前端开发使用 `pnpm --dir web dev` 并代理到 Go HTTP API；发布二进制必须使用 `make build-release`，或先运行 `make web-console-build` 再执行 Go 构建，确保真实 Web Console 静态资源被 embed 进二进制。
+
 普通 Console 支持项目只读深链，适合放进飞书卡片、企业门户或内部系统消息中：
 
 ```text

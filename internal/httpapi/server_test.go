@@ -75,6 +75,14 @@ func TestConsoleRoutesDoNotInterceptAPIOrMCP(t *testing.T) {
 			AssetsCache: time.Hour,
 			AuthMode:    "bearer",
 		},
+		TestConsoleHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/", "/tasks":
+				_, _ = w.Write([]byte("<div id=\"root\"></div>"))
+			default:
+				http.NotFound(w, r)
+			}
+		}),
 	})
 
 	for _, path := range []string{"/", "/tasks"} {

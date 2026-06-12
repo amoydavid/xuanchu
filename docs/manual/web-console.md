@@ -111,6 +111,8 @@ Admin 页面创建的 Agent token 明文只在创建结果里显示一次。页�
 
 前端源码在仓库根目录的 `web`，使用 pnpm、Vite 8、React、shadcn/ui 和 i18n。
 
+仓库不跟踪 `internal/webconsole/dist` 下的真实构建产物，只保留 `internal/webconsole/dist/.gitkeep` 让 Go embed 路径稳定存在。这样可以避免 Vite hash 文件和拆包产物给 Git 带来噪音。
+
 常用命令：
 
 ```bash
@@ -120,6 +122,16 @@ make web-console-build
 ```
 
 开发服务器会代理 `/api/v1/*` 到 `VITE_XUANCHU_API_TARGET`，默认是 `http://127.0.0.1:8080`。
+
+日常开发建议使用 `make web-console-dev`，前端由 Vite dev server 提供，Go server 只需要提供 HTTP API。此时不需要生成 `internal/webconsole/dist`。
+
+发布或验证嵌入式 Console 时必须运行：
+
+```bash
+make web-console-build
+```
+
+该命令会重新生成被 Git 忽略的 `internal/webconsole/dist`。随后执行 `go build` 或 `make build-release` 时，Go `embed` 会把当前 dist 内容打进二进制。`make build-release` 已经依赖 `web-console-build`，因此 release 包会自动包含最新前端资源。
 
 ## 部署安全
 

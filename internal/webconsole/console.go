@@ -23,13 +23,21 @@ func Handler(opts Options) http.Handler {
 	if !opts.Enabled {
 		return http.NotFoundHandler()
 	}
-	basePath := strings.TrimRight(opts.BasePath, "/")
-	if basePath == "" {
-		basePath = "/"
-	}
 	dist, err := fs.Sub(embeddedDist, "dist")
 	if err != nil {
 		return http.NotFoundHandler()
+	}
+	return handlerWithDist(opts, dist)
+}
+
+// handlerWithDist 让单元测试注入最小前端产物，避免测试依赖真实构建后的 dist。
+func handlerWithDist(opts Options, dist fs.FS) http.Handler {
+	if !opts.Enabled {
+		return http.NotFoundHandler()
+	}
+	basePath := strings.TrimRight(opts.BasePath, "/")
+	if basePath == "" {
+		basePath = "/"
 	}
 	return &handler{
 		basePath:    basePath,

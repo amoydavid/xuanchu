@@ -20,6 +20,7 @@ all: build
 build: $(BINARY)
 
 $(BINARY):
+	@# 普通 Go 构建不会重新生成 Web Console dist；发布包请使用 build-release。
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build $(LDFLAGS) -o $(BINARY) $(CMD)
 
@@ -31,7 +32,7 @@ build-darwin: ## 本地 macOS 构建
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=darwin GOARCH=arm64 \
 		go build $(LDFLAGS) -o $(BINARY) $(CMD)
 
-web-console-build: ## 构建嵌入式 Web Admin Console dist
+web-console-build: ## 构建嵌入式 Web Admin Console dist（产物被 git 忽略）
 	cd $(WEB_DIR) && pnpm build
 
 web-console-check: ## 检查 Web Admin Console 前端

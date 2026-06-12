@@ -1,4 +1,5 @@
 import path from "node:path"
+import { writeFileSync } from "node:fs"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv } from "vite"
@@ -14,7 +15,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: normalizedConsoleBase,
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), preserveDistGitkeep()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
@@ -43,3 +44,16 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
+function preserveDistGitkeep() {
+  return {
+    name: "xuanchu-preserve-webconsole-dist-gitkeep",
+    closeBundle() {
+      // dist 真实产物被 git 忽略；构建后写回占位文件，避免工作区出现删除噪音。
+      writeFileSync(
+        path.resolve(__dirname, "../internal/webconsole/dist/.gitkeep"),
+        ""
+      )
+    },
+  }
+}

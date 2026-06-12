@@ -1,1 +1,0 @@
-import{f as e}from"./utils-vIaDAucR.js";import{t}from"./OverviewPage-BaxOTukC.js";import{t as n}from"./useMe-BSFRSCHn.js";var r=e();function i(){return(0,r.jsx)(t,{me:n().data})}export{i as OverviewRoute};

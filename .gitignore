@@ -6,6 +6,8 @@ CLAUDE.md
 /bin/
 /build/
 /dist/
+/internal/webconsole/dist/*
+!/internal/webconsole/dist/.gitkeep
 
 # Go tooling
 *.test

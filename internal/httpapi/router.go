@@ -142,11 +142,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.mcpHostProtectionMiddleware, s.authMiddleware).Handle("/mcp", s.handleMCP())
 
 	if s.console.Enabled {
-		handler := webconsole.Handler(webconsole.Options{
-			Enabled:     true,
-			BasePath:    s.console.BasePath,
-			AssetsCache: s.console.AssetsCache,
-		})
+		handler := s.consoleHandler()
 		if strings.TrimRight(s.console.BasePath, "/") == "" {
 			root.Handle("/api/", api)
 			root.Handle("/healthz", api)
@@ -159,6 +155,17 @@ func (s *Server) newRouter() *http.ServeMux {
 	}
 	root.Handle("/", api)
 	return root
+}
+
+func (s *Server) consoleHandler() http.Handler {
+	if s.testConsoleHandler != nil {
+		return s.testConsoleHandler
+	}
+	return webconsole.Handler(webconsole.Options{
+		Enabled:     true,
+		BasePath:    s.console.BasePath,
+		AssetsCache: s.console.AssetsCache,
+	})
 }
 
 func (s *Server) handleMCP() http.Handler {

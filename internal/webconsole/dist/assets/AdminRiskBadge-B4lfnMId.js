@@ -1,1 +1,0 @@
-import{f as e}from"./utils-vIaDAucR.js";import{i as t,o as n}from"./api-BARBBKnM.js";import{o as r}from"./admin-api-DYMcK6QX.js";var i=e();function a(){let{t:e}=n();return(0,i.jsxs)(t,{className:`gap-1 border-destructive/40 bg-destructive/10 text-destructive`,variant:`outline`,children:[(0,i.jsx)(r,{className:`size-3`}),e(`admin.highRisk`)]})}export{a as t};

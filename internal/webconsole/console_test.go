@@ -6,11 +6,21 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
+var testDist = fstest.MapFS{
+	"assets/app.css":    {Data: []byte("body{color:#111}")},
+	"assets/app.js":     {Data: []byte("document.body.dataset.app='xuanchu'")},
+	"favicon.svg":       {Data: []byte("<svg xmlns=\"http://www.w3.org/2000/svg\"/>")},
+	"index.html":        {Data: []byte("<!doctype html><div id=\"root\"></div><script type=\"module\" src=\"/assets/app.js\"></script>")},
+	"xuanchu-logo.svg":  {Data: []byte("<svg xmlns=\"http://www.w3.org/2000/svg\"/>")},
+	"assets/font.woff2": {Data: []byte("font")},
+}
+
 func TestHandlerServesConsoleAndFallback(t *testing.T) {
-	handler := Handler(Options{
+	handler := testHandler(Options{
 		Enabled:     true,
 		BasePath:    "/console",
 		AssetsCache: time.Hour,
@@ -35,7 +45,7 @@ func TestHandlerServesConsoleAndFallback(t *testing.T) {
 }
 
 func TestHandlerRedirectsBareBasePath(t *testing.T) {
-	handler := Handler(Options{Enabled: true, BasePath: "/console"})
+	handler := testHandler(Options{Enabled: true, BasePath: "/console"})
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/console", nil))
 	if rr.Code != http.StatusPermanentRedirect {
@@ -47,8 +57,8 @@ func TestHandlerRedirectsBareBasePath(t *testing.T) {
 }
 
 func TestHandlerServesAssetsWithCache(t *testing.T) {
-	assetPath := findEmbeddedJSAsset(t)
-	handler := Handler(Options{
+	assetPath := findTestAsset(t, ".js")
+	handler := testHandler(Options{
 		Enabled:     true,
 		BasePath:    "/console",
 		AssetsCache: time.Hour,
@@ -67,8 +77,8 @@ func TestHandlerServesAssetsWithCache(t *testing.T) {
 }
 
 func TestHandlerServesCSSWithContentType(t *testing.T) {
-	assetPath := findEmbeddedAsset(t, ".css")
-	handler := Handler(Options{
+	assetPath := findTestAsset(t, ".css")
+	handler := testHandler(Options{
 		Enabled:     true,
 		BasePath:    "/console",
 		AssetsCache: time.Hour,
@@ -87,7 +97,7 @@ func TestHandlerServesCSSWithContentType(t *testing.T) {
 }
 
 func TestHandlerServesRootStaticAssetsWithCache(t *testing.T) {
-	handler := Handler(Options{
+	handler := testHandler(Options{
 		Enabled:     true,
 		BasePath:    "/console",
 		AssetsCache: time.Hour,
@@ -117,15 +127,15 @@ func TestHandlerDisabledReturnsNotFound(t *testing.T) {
 	}
 }
 
-func findEmbeddedJSAsset(t *testing.T) string {
-	return findEmbeddedAsset(t, ".js")
+func testHandler(opts Options) http.Handler {
+	return handlerWithDist(opts, testDist)
 }
 
-func findEmbeddedAsset(t *testing.T, suffix string) string {
+func findTestAsset(t *testing.T, suffix string) string {
 	t.Helper()
-	entries, err := fs.ReadDir(embeddedDist, "dist/assets")
+	entries, err := fs.ReadDir(testDist, "assets")
 	if err != nil {
-		t.Fatalf("ReadDir dist/assets: %v", err)
+		t.Fatalf("ReadDir assets: %v", err)
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
