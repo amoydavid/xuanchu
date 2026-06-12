@@ -1,26 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Xuanchu logo dark</title>
-  <defs>
-    <radialGradient id="glowGoldDark" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.55"/>
-      <stop offset="60%" stop-color="#fbbf24" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="starGoldDark" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fcd34d"/>
-      <stop offset="100%" stop-color="#f59e0b"/>
-    </linearGradient>
-  </defs>
-  <path d="M60 150 L140 200 L215 235 L290 250 L300 345 L420 360 L415 245 L290 250"
-    fill="none" stroke="#e8edf7" stroke-width="12" stroke-linecap="round"
-    stroke-linejoin="round" opacity="0.4"/>
-  <circle cx="60" cy="150" r="17" fill="#e8edf7"/>
-  <circle cx="140" cy="200" r="17" fill="#e8edf7"/>
-  <circle cx="215" cy="235" r="17" fill="#e8edf7"/>
-  <circle cx="290" cy="250" r="17" fill="#e8edf7"/>
-  <circle cx="300" cy="345" r="17" fill="#e8edf7"/>
-  <circle cx="415" cy="245" r="19" fill="#e8edf7"/>
-  <circle cx="420" cy="360" r="72" fill="url(#glowGoldDark)"/>
-  <path d="M420 314 C426 345 436 354 466 360 C436 366 426 375 420 406 C414 375 404 366 374 360 C404 354 414 345 420 314 Z"
-    fill="url(#starGoldDark)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="64" height="64">
+  <style>
+    .xc-top { fill: #10b981; }
+    .xc-left { fill: #059669; }
+    .xc-right { fill: #047857; }
+    .xc-accent { fill: #a7f3d0; }
+    @media (prefers-color-scheme: dark) {
+      .xc-top { fill: #34d399; }
+      .xc-left { fill: #065f46; }
+      .xc-right { fill: #022c22; }
+      .xc-accent { fill: #ecfdf5; }
+    }
+  </style>
+  <!-- 右侧面基石 -->
+  <path class="xc-right" d="M50 55 L90 35 L90 70 L50 90 Z"></path>
+  <!-- 左侧面基石 -->
+  <path class="xc-left" d="M10 35 L50 55 L50 90 L10 70 Z"></path>
+  <!-- 顶部平台 (璇玉) -->
+  <path class="xc-top" d="M50 15 L90 35 L50 55 L10 35 Z"></path>
+  <!-- 顶部精密纹路 (MCP枢纽) -->
+  <path class="xc-accent" d="M50 25 L70 35 L50 45 L30 35 Z"></path>
+  <circle class="xc-accent" cx="50" cy="35" r="5"></circle>
 </svg>
