@@ -127,6 +127,72 @@ func TestHandlerDisabledReturnsNotFound(t *testing.T) {
 	}
 }
 
+// TestHandlerServesWorkspaceDeepLinksAtRoot 覆盖 v0.4.2 的项目只读 deep link：
+// 直接访问或刷新 /workspaces/{slug}/projects/{slug}[...] 必须返回 SPA index.html，
+// 让前端路由接管，而不是 404。basePath="/" 是生产 server 的默认形态。
+func TestHandlerServesWorkspaceDeepLinksAtRoot(t *testing.T) {
+	handler := testHandler(Options{Enabled: true, BasePath: "/"})
+
+	cases := []string{
+		"/",
+		"/tasks",
+		"/admin/login",
+		"/admin/setup",
+		"/workspaces/acme",
+		"/workspaces/acme/projects/agentapi",
+		"/workspaces/acme/projects/agentapi/tasks/ag-23",
+	}
+	for _, p := range cases {
+		t.Run(p, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, p, nil))
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "<div id=\"root\"></div>") {
+				t.Fatalf("body = %q, want SPA index.html", rr.Body.String())
+			}
+		})
+	}
+}
+
+// TestHandlerServesWorkspaceDeepLinksWithBasePath 确认带 BasePath 时多段 deep link 同样 fallback。
+func TestHandlerServesWorkspaceDeepLinksWithBasePath(t *testing.T) {
+	handler := testHandler(Options{Enabled: true, BasePath: "/console"})
+
+	for _, p := range []string{
+		"/console/workspaces/acme/projects/agentapi",
+		"/console/workspaces/acme/projects/agentapi/tasks/ag-23",
+	} {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, p, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200 body=%s", p, rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), "<div id=\"root\"></div>") {
+			t.Fatalf("%s body = %q, want SPA index.html", p, rr.Body.String())
+		}
+	}
+}
+
+// TestHandlerStillRejectsUnknownTopLevel 确认前缀放行没有削弱安全：
+// 任意未知的顶层路径仍然 404，避免把所有路径都当成 SPA 路由。
+func TestHandlerStillRejectsUnknownTopLevel(t *testing.T) {
+	handler := testHandler(Options{Enabled: true, BasePath: "/"})
+
+	for _, p := range []string{
+		"/random-unknown-page",
+		"/foo/bar/baz",
+		"/workspaces2/evil",
+	} {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, p, nil))
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404 (unknown path must not fallback)", p, rr.Code)
+		}
+	}
+}
+
 func testHandler(opts Options) http.Handler {
 	return handlerWithDist(opts, testDist)
 }

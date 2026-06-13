@@ -52,6 +52,11 @@ type handler struct {
 	dist        fs.FS
 }
 
+// spaRoutes 是允许 fallback 到 index.html 的精确路径。
+// spaPrefixes 是允许 fallback 的路径前缀，用于 /workspaces/.../projects/...
+// 这类多段 deep link：直接访问或刷新这些 URL 时，服务端也要返回 index.html，
+// 让前端路由接管，而不是 404。前缀用末尾 "/" 表示只匹配路径段，避免误命中
+// 名字相近的静态文件或未来新增的顶层 API 前缀。
 var spaRoutes = map[string]struct{}{
 	"":              {},
 	"admin":         {},
@@ -66,6 +71,12 @@ var spaRoutes = map[string]struct{}{
 	"tasks":         {},
 	"tokens":        {},
 	"workspaces":    {},
+}
+
+var spaPrefixes = []string{
+	// workspaces 下是多段 SPA 路由，例如
+	// /workspaces/{slug}/projects/{slug} 和 /workspaces/{slug}/projects/{slug}/tasks/{ref}
+	"workspaces/",
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -109,11 +120,18 @@ func (h *handler) servePath(w http.ResponseWriter, r *http.Request, rel string) 
 		h.serveFile(w, r, rel)
 		return
 	}
-	if _, ok := spaRoutes[strings.Trim(rel, "/")]; !ok {
-		http.NotFound(w, r)
+	trimmed := strings.Trim(rel, "/")
+	if _, ok := spaRoutes[trimmed]; ok {
+		h.serveIndex(w, r)
 		return
 	}
-	h.serveIndex(w, r)
+	for _, prefix := range spaPrefixes {
+		if strings.HasPrefix(trimmed+"/", prefix) {
+			h.serveIndex(w, r)
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
 
 func (h *handler) serveIndex(w http.ResponseWriter, r *http.Request) {
