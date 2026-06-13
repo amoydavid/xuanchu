@@ -38,9 +38,9 @@
 | v0.3.1 | 已完成 | 事件通知稳定化、迁移说明与发布打磨 |
 | v0.3.2 | 已完成 | 日志可观测性与 HTTP MCP 反向代理 Host 修复 |
 | v0.3.3 | 已完成 | 自动化 E2E 覆盖矩阵与 PostgreSQL 覆盖补强 |
-| v0.4.0 | 实施中 | 嵌入式 Web Admin Console |
-| v0.4.1 | 实施中 | Server Admin Console 与 Workspace Bootstrap |
-| v0.4.2 | 规划中 | Project Readonly View 与 SSO 入口预留 |
+| v0.4.0 | 已完成 | 嵌入式 Web Admin Console |
+| v0.4.1 | 已完成 | Server Admin Console 与 Workspace Bootstrap |
+| v0.4.2 | 已完成 | Project Readonly View 与 SSO 入口预留 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -193,7 +193,7 @@ docs/releases/v0.3.3.md
 
 ## v0.4.0：嵌入式 Web Admin Console
 
-**状态：实施中。**
+**状态：已完成。**
 
 v0.4.0 在保持单一 `xuanchu` 二进制发布的前提下，新增 `/console` Web Admin Console。Console 是面向管理员和 Agent 平台运维者的浏览器入口，不是完整项目管理 UI。
 
@@ -220,7 +220,7 @@ docs/superpowers/plans/2026-06-11-xuanchu-v0.4.0-web-admin-console-implementatio
 
 ## v0.4.1：Server Admin Console 与 Workspace Bootstrap
 
-**状态：实施中。**
+**状态：已完成。**
 
 v0.4.1 在 v0.4.0 的 Web Console 基础上补齐 server admin bootstrap 闭环。普通 Console 继续使用 `/` 和 PAT / Agent token；server admin 使用独立入口 `/admin/login` 和 `xuanchu_admin_...` token。
 
@@ -250,7 +250,7 @@ docs/superpowers/plans/2026-06-12-xuanchu-v0.4.1-server-admin-console-implementa
 
 ## v0.4.2：Project Readonly View 与 SSO 入口预留
 
-**状态：规划中。**
+**状态：已完成。**
 
 v0.4.2 在普通 Web Console 中新增面向企业协作链接的项目只读页。目标是让飞书、企业门户或其它内部系统可以发送一个安全的项目链接，用户点击后查看指定 workspace/project 的任务情况。
 
@@ -263,6 +263,13 @@ v0.4.2 在普通 Web Console 中新增面向企业协作链接的项目只读页
 - 全部数据继续通过现有 `/api/v1/*` 读取，不新增 console-only 权限模型。
 - 继续使用 PAT / Agent token；权限仍由 membership、token scope、workspace allowlist 和 project allowlist 共同决定。
 - 为后续 `/sso/{provider}?redirect=...` 企业 SSO 接入预留 redirect 语义。
+
+已交付内容：
+
+- `features/workspace/project-readonly` 切片：API 类型、纯函数 stats、项目摘要、任务列表、活动、项目页和任务详情页。
+- `/workspaces/$workspaceSlug/projects/$projectSlug` 和 `.../tasks/$taskRef` 两条路由挂在 `WorkspaceRootRoute` 下，使用普通 `workspaceApiGet` bearer-token client。
+- 登录 redirect 保留：未登录访问 deep link 时显示目标路径提示，登录成功后回跳，并对绝对 URL、`/admin` 等路径做 sanitize。
+- SPA fallback 修复：多段 deep link 直接访问或刷新时，服务端 console handler 现在对 `workspaces/` 前缀放行，返回 index.html 让前端路由接管，不再返回 404。未知顶层路径仍返回 404。
 
 不进入 v0.4.2：
 
@@ -1249,9 +1256,12 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.3.3 已完成。当前下一步暂不继续优化 MCP tool 能力，也不做多端 sync；后续方向应围绕稳定性、运维体验或外部 adapter 生态继续拆分。
+v0.4.2 已完成。Web Console 三件套（普通 console、server admin bootstrap、项目只读 deep link）已全部交付，单一 `xuanchu` 二进制可在浏览器中完成 workspace bootstrap、admin token 初始化和项目任务只读查看。
 
-v0.3.3 之后的方向待定，可能包括：
+v0.4.2 之后的方向待定，可能包括：
 
-- 性能优化与大 workspace 场景验证
-- 外部系统 adapter 生态
+- 企业 SSO / 飞书 OAuth 接入（v0.4.2 已为 `/sso/{provider}?redirect=...` 预留 redirect 语义）。
+- Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。
+- `task_search` 全文搜索 MCP tool（M15 明确「不进入」，但 Agent 需求真实）。
+- 性能优化与大 workspace 场景验证。
+- 外部系统 adapter 生态。
