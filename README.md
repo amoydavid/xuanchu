@@ -607,17 +607,21 @@ Project 与配置边界的关键规则：
 当前支持这些命令：
 
 ```bash
-./xuanchu project list [--all]
+./xuanchu project list [--all] [--status open|planning|active|archived|cancelled|all]
 ./xuanchu project add <slug> name:<name> [description:<text>]
 ./xuanchu project info <slug|project-id>
 ./xuanchu project modify <slug|project-id> [name:<name>] [description:<text>]
 ./xuanchu project archive <slug|project-id>
+./xuanchu project transition <slug|project-id> <planning|active|archived|cancelled>
 ```
 
 说明：
 
-- `project list` 默认只列 active project；加 `--all` 才包含 archived。
-- `project info` / `modify` / `archive` 既接受 slug，也接受稳定 `project_id`。
+- project 有四种状态：`planning`（预立项）/ `active`（立项在跑）/ `archived`（结束归档）/ `cancelled`（取消）。新建 project 默认 `planning`。
+- `project transition` 在任意状态间自由转移（含 `archived → active` 重新激活），转移后自动追加一条项目变更注解并写入审计；触发 `project.transitioned` 事件。
+- `planning` / `active` 可写（add task、annotate、config）；`archived` / `cancelled` 禁止写操作，但始终允许 `transition`。
+- `project list` 默认只列进行中的 project（`open` = planning + active）；`--all` 或 `--status all` 列全部；`--status` 可按具体状态过滤。
+- `project info` / `modify` / `archive` / `transition` 既接受 slug，也接受稳定 `project_id`。
 - slug 只在当前 effective workspace 内解析，不做跨 workspace 搜索。
 
 ### `config schema` 与 `project config`
@@ -953,7 +957,7 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 ./xuanchu hook replay <delivery-id>
 ```
 
-Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`。投递失败不会回滚已提交的 task/project 事务。生成 delivery 时会冻结 sink 渲染后的请求快照，后续 retry/replay 不重新渲染当前 sink。所有 hook 配置变更和人工 replay 都会写入 audit log。
+Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`、`project.transitioned`。投递失败不会回滚已提交的 task/project 事务。生成 delivery 时会冻结 sink 渲染后的请求快照，后续 retry/replay 不重新渲染当前 sink。所有 hook 配置变更和人工 replay 都会写入 audit log。
 
 迁移提示：Hook 不再直接保存 URL 或 secret，旧的直接 URL hook 需要先创建 notification sink，再用 `--sink <sink-ref>` 绑定。`start` 只触发 `task.started`，`stop` 只触发 `task.stopped`；如果旧集成只监听 `task.modified` 来捕获开始或停止任务，需要补充订阅这两个事件。字段级变化可以订阅对应细粒度事件，例如 `task.due_changed`、`task.priority_changed`、`task.tags_changed`、`task.blocked`、`task.unblocked`。
 
@@ -995,7 +999,7 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 ./xuanchu notification delivery replay <delivery-id>
 ```
 
-Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。
+Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`、`project.transitioned`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。
 
 notification / hook delivery 表是出站投递的可靠队列；进程内 worker 只做短暂执行协调。dispatcher 默认 `max_concurrency=1`，`batch_size` 只是每轮查询上限。sink 的 `max_concurrency=0` 表示继承默认 sink 并发；`xuanchu server` 内 notification dispatcher 和 hook dispatcher 共享同一个 sink limiter。同一个 delivery payload 会带稳定 `delivery_id`，接收方可据此幂等去重；本次 HTTP 请求真实尝试次数看 `X-Xuanchu-Attempt` header。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
 

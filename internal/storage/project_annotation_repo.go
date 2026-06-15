@@ -30,6 +30,17 @@ func (r *ProjectAnnotationRepository) Create(annotation ProjectAnnotation) (Proj
 	return annotation, nil
 }
 
+func (r *ProjectAnnotationRepository) MaxEntryByProject(projectID string) (int64, error) {
+	var maxEntry int64
+	if err := r.db.Model(&ProjectAnnotation{}).
+		Where("project_id = ?", projectID).
+		Select("COALESCE(MAX(entry), -1)").
+		Scan(&maxEntry).Error; err != nil {
+		return 0, err
+	}
+	return maxEntry, nil
+}
+
 func (r *ProjectAnnotationRepository) Delete(id string) error {
 	result := r.db.Where("id = ?", id).Delete(&ProjectAnnotation{})
 	if result.Error != nil {

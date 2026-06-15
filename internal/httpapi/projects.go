@@ -57,7 +57,11 @@ func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	rows, err := scoped.ListProjects(r.URL.Query().Get("all") == "true")
+	statusFilter := r.URL.Query().Get("status")
+	if statusFilter == "" && r.URL.Query().Get("all") == "true" {
+		statusFilter = "all"
+	}
+	rows, err := scoped.ListProjectsByStatus(statusFilter)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -141,6 +145,28 @@ func (s *Server) handleProjectArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	project, err := scoped.ArchiveProject(ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, projectResponseFromView(project), nil)
+}
+
+func (s *Server) handleProjectTransition(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	project, err := scoped.TransitionProject(ref, strings.TrimSpace(req.Status))
 	if err != nil {
 		writeAppError(w, err)
 		return

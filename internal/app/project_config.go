@@ -184,7 +184,7 @@ func normalizeScopedConfigKey(key string) (string, error) {
 }
 
 func ensureProjectConfigWritable(project storage.Project) error {
-	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if isProjectClosed(project) {
 		return RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	return nil

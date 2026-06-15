@@ -12,6 +12,7 @@ import (
 type ProjectListInput struct {
 	Workspace       string `json:"workspace,omitempty"`
 	IncludeArchived bool   `json:"include_archived,omitempty"`
+	Status          string `json:"status,omitempty"`
 }
 
 type ProjectGetInput struct {
@@ -75,6 +76,13 @@ type ProjectArchiveInput struct {
 	ProjectID string `json:"project_id,omitempty"`
 }
 
+type ProjectTransitionInput struct {
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Status    string `json:"status"`
+}
+
 type ProjectConfigSetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
@@ -97,12 +105,19 @@ type ProjectConfigListInput struct {
 }
 
 func registerProjectTools(s *mcp.Server, opts Options) {
-	addTool(s, opts, &mcp.Tool{Name: "project_list", Description: "List projects in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "project_list", Description: "List projects in the effective workspace; filter by status (open/planning/active/archived/cancelled/all); read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "project:read", app.PermissionProjectRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		rows, err := svc.ListProjects(in.IncludeArchived)
+		var rows []app.ProjectView
+		if strings.TrimSpace(in.Status) != "" {
+			rows, err = svc.ListProjectsByStatus(in.Status)
+		} else if in.IncludeArchived {
+			rows, err = svc.ListProjectsByStatus("all")
+		} else {
+			rows, err = svc.ListProjectsByStatus("open")
+		}
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -265,6 +280,22 @@ func registerProjectTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(map[string]any{"project": projectViewFromApp(view)}, "archived project "+view.Slug)
+	})
+
+	addTool(s, opts, &mcp.Tool{Name: "project_transition", Description: "Transition a project to planning/active/archived/cancelled; any direction allowed; records an annotation and writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectTransitionInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+		ref := projectRefForScope(in.Project, in.ProjectID)
+		if strings.TrimSpace(ref) == "" {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "project_not_found", Message: "project reference is required"})
+		}
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}, "project:write", app.PermissionProjectManage)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.TransitionProject(ref, strings.TrimSpace(in.Status))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(map[string]any{"project": projectViewFromApp(view)}, "transitioned project "+view.Slug+" to "+view.Status)
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "project_config_set", Description: "Set a project config value; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in ProjectConfigSetInput) (*mcp.CallToolResult, ToolEnvelope, error) {

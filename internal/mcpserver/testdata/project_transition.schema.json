@@ -1,10 +1,13 @@
 {
-  "description": "List projects in the effective workspace; filter by status (open/planning/active/archived/cancelled/all); read-only.",
+  "description": "Transition a project to planning/active/archived/cancelled; any direction allowed; records an annotation and writes audit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
-      "include_archived": {
-        "type": "boolean"
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
       },
       "status": {
         "type": "string"
@@ -13,9 +16,12 @@
         "type": "string"
       }
     },
+    "required": [
+      "status"
+    ],
     "type": "object"
   },
-  "name": "project_list",
+  "name": "project_transition",
   "outputSchema": {
     "additionalProperties": false,
     "properties": {

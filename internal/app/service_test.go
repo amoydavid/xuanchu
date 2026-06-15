@@ -4901,3 +4901,192 @@ func TestServiceProjectAnnotateTimestampConflict(t *testing.T) {
 		t.Fatalf("annotations count = %d, want 2", len(annotations))
 	}
 }
+
+func TestServiceAddProjectDefaultsToPlanning(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.Status != string(storage.ProjectStatusPlanning) {
+		t.Fatalf("Status = %q, want planning", project.Status)
+	}
+}
+
+func TestServiceTransitionProjectFreeTransition(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusActive))
+	if err != nil {
+		t.Fatalf("planning->active: %v", err)
+	}
+	if view.Status != string(storage.ProjectStatusActive) {
+		t.Fatalf("Status = %q, want active", view.Status)
+	}
+	view, err = svc.TransitionProject(project.ID, string(storage.ProjectStatusArchived))
+	if err != nil {
+		t.Fatalf("active->archived: %v", err)
+	}
+	if view.ArchivedAt == nil {
+		t.Fatal("ArchivedAt = nil after ->archived")
+	}
+	view, err = svc.TransitionProject(project.ID, string(storage.ProjectStatusActive))
+	if err != nil {
+		t.Fatalf("archived->active: %v", err)
+	}
+	if view.ArchivedAt != nil {
+		t.Fatalf("ArchivedAt = %v, want nil after reactivation", view.ArchivedAt)
+	}
+	view, err = svc.TransitionProject(project.ID, string(storage.ProjectStatusCancelled))
+	if err != nil {
+		t.Fatalf("active->cancelled: %v", err)
+	}
+	if view.Status != string(storage.ProjectStatusCancelled) {
+		t.Fatalf("Status = %q, want cancelled", view.Status)
+	}
+	view, err = svc.TransitionProject(project.ID, string(storage.ProjectStatusPlanning))
+	if err != nil {
+		t.Fatalf("cancelled->planning: %v", err)
+	}
+	if view.Status != string(storage.ProjectStatusPlanning) {
+		t.Fatalf("Status = %q, want planning", view.Status)
+	}
+}
+
+func TestServiceTransitionProjectRejectsInvalidStatus(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TransitionProject(project.ID, "unknown"); err == nil {
+		t.Fatal("TransitionProject(unknown) error = nil, want error")
+	}
+}
+
+func TestServiceTransitionProjectWritesAnnotation(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusActive)); err != nil {
+		t.Fatal(err)
+	}
+	annotations, err := svc.ProjectAnnotations("testproj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 1 {
+		t.Fatalf("annotations = %d, want 1 transition note", len(annotations))
+	}
+	if !strings.Contains(annotations[0].Content, "状态变更") {
+		t.Fatalf("annotation content = %q, want transition note", annotations[0].Content)
+	}
+}
+
+func TestServiceTransitionProjectClosedRejectsWriteButAllowsTransition(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusCancelled)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ProjectAnnotate("testproj", "should fail"); err == nil {
+		t.Fatal("ProjectAnnotate(cancelled) error = nil, want error")
+	}
+	view, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusActive))
+	if err != nil {
+		t.Fatalf("cancelled->active: %v", err)
+	}
+	if view.Status != string(storage.ProjectStatusActive) {
+		t.Fatalf("Status = %q, want active after revive", view.Status)
+	}
+}
+
+func TestServiceProjectPlanningAllowsWrite(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	if _, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ProjectAnnotate("testproj", "planning note"); err != nil {
+		t.Fatalf("ProjectAnnotate(planning) error = %v", err)
+	}
+}
+
+func TestServiceTransitionProjectSameStatusRejects(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.TransitionProject(project.ID, string(storage.ProjectStatusPlanning))
+	if err == nil {
+		t.Fatal("TransitionProject(same status) error = nil, want error")
+	}
+	if rr, ok := err.(RuntimeError); !ok || rr.Code != "project_already_in_status" {
+		t.Fatalf("TransitionProject(same status) err = %#v, want project_already_in_status", err)
+	}
+}
+
+func TestServiceTransitionProjectArchivedToCancelledClearsArchivedAt(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "testproj", Name: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusActive)); err != nil {
+		t.Fatal(err)
+	}
+	archived, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusArchived))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archived.ArchivedAt == nil {
+		t.Fatal("ArchivedAt = nil after ->archived")
+	}
+	cancelled, err := svc.TransitionProject(project.ID, string(storage.ProjectStatusCancelled))
+	if err != nil {
+		t.Fatalf("archived->cancelled: %v", err)
+	}
+	if cancelled.Status != string(storage.ProjectStatusCancelled) {
+		t.Fatalf("Status = %q, want cancelled", cancelled.Status)
+	}
+	if cancelled.ArchivedAt != nil {
+		t.Fatalf("ArchivedAt = %v, want nil after archived->cancelled", cancelled.ArchivedAt)
+	}
+}
+
+func TestServiceListProjectsByStatusInvalidFilter(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	_, err := svc.ListProjectsByStatus("garbage")
+	if err == nil {
+		t.Fatal("ListProjectsByStatus(invalid) error = nil, want error")
+	}
+	if rr, ok := err.(RuntimeError); !ok || rr.Code != "project_invalid_status_filter" {
+		t.Fatalf("ListProjectsByStatus(invalid) err = %#v, want project_invalid_status_filter", err)
+	}
+}

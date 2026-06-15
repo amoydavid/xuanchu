@@ -1960,6 +1960,89 @@ func TestCLIProjectLifecycle(t *testing.T) {
 	}
 }
 
+func TestCLIProjectTransition(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+
+	run(t, bin, "--db", db, "project", "add", "crowdfund", "name:众筹产品")
+	// 新建默认 planning
+	infoJSON := run(t, bin, "--db", db, "--json", "project", "info", "crowdfund")
+	var info map[string]any
+	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil {
+		t.Fatalf("json.Unmarshal(info) error = %v", err)
+	}
+	if info["status"] != "planning" {
+		t.Fatalf("new project status = %#v, want planning", info["status"])
+	}
+
+	// list 默认 open 含 planning
+	listOut := run(t, bin, "--db", db, "project", "list")
+	if !strings.Contains(listOut, "crowdfund") {
+		t.Fatalf("project list (open) = %q, want to contain planning project", listOut)
+	}
+
+	// planning -> active
+	transOut := run(t, bin, "--db", db, "project", "transition", "crowdfund", "active")
+	if !strings.Contains(transOut, "Transitioned project crowdfund to active") {
+		t.Fatalf("transition output = %q", transOut)
+	}
+	// active -> archived
+	run(t, bin, "--db", db, "project", "transition", "crowdfund", "archived")
+	// archived -> active (重新激活)
+	run(t, bin, "--db", db, "project", "transition", "crowdfund", "active")
+	// active -> cancelled
+	run(t, bin, "--db", db, "project", "transition", "crowdfund", "cancelled")
+	infoJSON = run(t, bin, "--db", db, "--json", "project", "info", "crowdfund")
+	var cancelledInfo map[string]any
+	if err := json.Unmarshal([]byte(infoJSON), &cancelledInfo); err != nil {
+		t.Fatalf("json.Unmarshal(cancelled) error = %v", err)
+	}
+	if cancelledInfo["status"] != "cancelled" {
+		t.Fatalf("status = %#v, want cancelled", cancelledInfo["status"])
+	}
+
+	// cancelled 禁止 annotate
+	if _, err := runErr(t, bin, "--db", db, "project", "annotate", "crowdfund", "should fail"); err == nil {
+		t.Fatal("annotate cancelled project error = nil, want failure")
+	}
+
+	// --status 过滤：crowdfund 处于 cancelled
+	run(t, bin, "--db", db, "project", "add", "other", "name:Other")
+	cancelledList := run(t, bin, "--db", db, "project", "list", "--status", "cancelled")
+	if !strings.Contains(cancelledList, "crowdfund") || strings.Contains(cancelledList, "other") {
+		t.Fatalf("--status cancelled = %q", cancelledList)
+	}
+	openList := run(t, bin, "--db", db, "project", "list", "--status", "open")
+	if !strings.Contains(openList, "other") || strings.Contains(openList, "crowdfund") {
+		t.Fatalf("--status open = %q", openList)
+	}
+
+	// cancelled 可复活
+	run(t, bin, "--db", db, "project", "transition", "crowdfund", "active")
+
+	// 非法状态
+	if _, err := runErr(t, bin, "--db", db, "project", "transition", "crowdfund", "unknown"); err == nil {
+		t.Fatal("transition to unknown error = nil, want failure")
+	}
+
+	// 转移写入项目变更注解（timeline 可见）
+	timelineJSON := run(t, bin, "--db", db, "--json", "project", "timeline", "crowdfund", "--limit", "20")
+	var timeline []map[string]any
+	if err := json.Unmarshal([]byte(timelineJSON), &timeline); err != nil {
+		t.Fatalf("json.Unmarshal(timeline) error = %v; output = %q", err, timelineJSON)
+	}
+	foundTransition := false
+	for _, entry := range timeline {
+		if content, _ := entry["content"].(string); strings.Contains(content, "状态变更") {
+			foundTransition = true
+			break
+		}
+	}
+	if !foundTransition {
+		t.Fatalf("timeline missing transition annotation: %#v", timeline)
+	}
+}
+
 func TestCLIProjectWorkspaceIsolation(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")

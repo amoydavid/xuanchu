@@ -67,6 +67,28 @@ func buildProjectArchivedHookEvent(pv ProjectView, runtime RuntimeContext, now i
 	}
 }
 
+// buildProjectTransitionedHookEvent 构建项目状态转移的 hook 事件。
+func buildProjectTransitionedHookEvent(pv ProjectView, fromStatus, toStatus string, runtime RuntimeContext, now int64) HookEvent {
+	return HookEvent{
+		EventID:       uuid.NewString(),
+		EventType:     "project.transitioned",
+		EventVersion:  1,
+		OccurredAt:    now,
+		ActorUserID:   runtime.ActorUserID,
+		WorkspaceID:   pv.WorkspaceID,
+		WorkspaceSlug: runtime.WorkspaceSlug,
+		ProjectID:     &pv.ID,
+		ProjectSlug:   &pv.Slug,
+		ObjectKind:    "project",
+		ObjectID:      pv.ID,
+		Data: map[string]any{
+			"project":     projectViewToMap(pv),
+			"from_status": fromStatus,
+			"to_status":   toStatus,
+		},
+	}
+}
+
 func buildTaskPayload(tsk task.Task) map[string]any {
 	return map[string]any{
 		"task":      task.ToJSON(tsk),

@@ -261,7 +261,7 @@ func buildWorkspaceData(info app.WorkspaceView, projects []app.ProjectView) *wor
 }
 
 func buildProjectData(info app.ProjectView, agentConfig map[string]string) *projectResourceData {
-	archived := info.ArchivedAt != nil
+	archived := app.IsProjectStatusClosed(info.Status)
 	return &projectResourceData{
 		ID:          info.ID,
 		Slug:        info.Slug,

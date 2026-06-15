@@ -25,6 +25,7 @@ func newProjectCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newProjectInfoCommand(opts))
 	cmd.AddCommand(newProjectModifyCommand(opts))
 	cmd.AddCommand(newProjectArchiveCommand(opts))
+	cmd.AddCommand(newProjectTransitionCommand(opts))
 	cmd.AddCommand(newProjectConfigCommand(opts))
 	cmd.AddCommand(newProjectAnnotateCommand(opts))
 	cmd.AddCommand(newProjectAnnotationsCommand(opts))
@@ -35,12 +36,34 @@ func newProjectCommand(opts Options) *cobra.Command {
 
 func newProjectListCommand(opts Options) *cobra.Command {
 	var includeArchived bool
+	var statusFilter string
+	renderProjects := func(cmd *cobra.Command, asJSON bool, projects []app.ProjectView) {
+		if asJSON {
+			_ = render.JSON(cmd.OutOrStdout(), projectViewsForJSON(projects))
+			return
+		}
+		for _, project := range projects {
+			suffix := ""
+			if project.Status != "" && project.Status != "active" {
+				suffix = " " + project.Status
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %s%s\n", project.Slug, project.Name, suffix)
+		}
+	}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "列出所有项目",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
+			effective := statusFilter
+			if !cmd.Flags().Changed("status") {
+				if includeArchived {
+					effective = "all"
+				} else {
+					effective = "open"
+				}
+			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
@@ -48,20 +71,11 @@ func newProjectListCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				projects, err := client.ListProjects(context.Background(), currentOpts.Workspace, includeArchived)
+				projects, err := client.ListProjectsByStatus(context.Background(), currentOpts.Workspace, effective)
 				if err != nil {
 					return err
 				}
-				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), projectViewsForJSON(projects))
-				}
-				for _, project := range projects {
-					archived := ""
-					if project.ArchivedAt != nil {
-						archived = " archived"
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "%s %s%s\n", project.Slug, project.Name, archived)
-				}
+				renderProjects(cmd, currentOpts.JSON, projects)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -69,24 +83,16 @@ func newProjectListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			projects, err := svc.ListProjects(includeArchived)
+			projects, err := svc.ListProjectsByStatus(effective)
 			if err != nil {
 				return err
 			}
-			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), projectViewsForJSON(projects))
-			}
-			for _, project := range projects {
-				archived := ""
-				if project.ArchivedAt != nil {
-					archived = " archived"
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s %s%s\n", project.Slug, project.Name, archived)
-			}
+			renderProjects(cmd, currentOpts.JSON, projects)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&includeArchived, "all", false, "include archived projects")
+	cmd.Flags().StringVar(&statusFilter, "status", "open", "filter by status: open|planning|active|archived|cancelled|all")
 	return cmd
 }
 
@@ -299,6 +305,48 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\n", args[0])
+			return nil
+		},
+	}
+}
+
+func newProjectTransitionCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "transition <slug|uuid> <planning|active|archived|cancelled>",
+		Short: "转移项目状态",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			currentOpts := optionsFromCmd(cmd, opts)
+			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
+				return err
+			} else if remoteMode {
+				client, err := buildRemoteClient(currentOpts)
+				if err != nil {
+					return err
+				}
+				project, err := client.TransitionProject(context.Background(), currentOpts.Workspace, args[0], args[1])
+				if err != nil {
+					return err
+				}
+				if currentOpts.JSON {
+					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Transitioned project %s to %s\n", project.Slug, args[1])
+				return nil
+			}
+			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+			project, err := svc.TransitionProject(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Transitioned project %s to %s\n", project.Slug, args[1])
 			return nil
 		},
 	}

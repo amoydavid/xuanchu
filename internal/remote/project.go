@@ -94,6 +94,34 @@ func (c *Client) ArchiveProject(ctx context.Context, workspace, ref string) (app
 	return projectDTOToView(envelope.Data), nil
 }
 
+func (c *Client) ListProjectsByStatus(ctx context.Context, workspace, statusFilter string) ([]app.ProjectView, error) {
+	values := url.Values{}
+	if workspace != "" {
+		values.Set("workspace", workspace)
+	}
+	if statusFilter != "" {
+		values.Set("status", statusFilter)
+	}
+	var envelope apiEnvelope[[]projectDTO]
+	if err := c.get(ctx, "/api/v1/projects", values, &envelope); err != nil {
+		return nil, err
+	}
+	out := make([]app.ProjectView, 0, len(envelope.Data))
+	for _, row := range envelope.Data {
+		out = append(out, projectDTOToView(row))
+	}
+	return out, nil
+}
+
+func (c *Client) TransitionProject(ctx context.Context, workspace, ref, status string) (app.ProjectView, error) {
+	path := projectPathWithSuffix(workspace, ref, "/transition")
+	var envelope apiEnvelope[projectDTO]
+	if err := c.post(ctx, path, map[string]any{"status": status}, &envelope); err != nil {
+		return app.ProjectView{}, err
+	}
+	return projectDTOToView(envelope.Data), nil
+}
+
 func projectPath(workspace, ref string) string {
 	return projectPathWithSuffix(workspace, ref, "")
 }

@@ -2377,12 +2377,15 @@
       }
     },
     {
-      "description": "List projects in the effective workspace; read-only.",
+      "description": "List projects in the effective workspace; filter by status (open/planning/active/archived/cancelled/all); read-only.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "include_archived": {
             "type": "boolean"
+          },
+          "status": {
+            "type": "string"
           },
           "workspace": {
             "type": "string"
@@ -2508,6 +2511,45 @@
         "type": "object"
       },
       "name": "project_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Transition a project to planning/active/archived/cancelled; any direction allowed; records an annotation and writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "name": "project_transition",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

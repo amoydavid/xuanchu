@@ -44,7 +44,7 @@ func (s *Service) resolveActiveProjectBinding(ref *string) (projectBinding, erro
 	if err := s.ensureProjectScope(&project.ID); err != nil {
 		return projectBinding{}, err
 	}
-	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if isProjectClosed(project) {
 		return projectBinding{}, RuntimeError{
 			Code:    "project_archived",
 			Message: fmt.Sprintf("project %q is archived", project.Slug),
@@ -133,7 +133,7 @@ func projectBindingFromProject(project storage.Project) projectBinding {
 	return projectBinding{
 		ID:       cloneStringPtr(&project.ID),
 		Slug:     cloneStringPtr(&project.Slug),
-		Archived: project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil,
+		Archived: isProjectClosed(project),
 	}
 }
 

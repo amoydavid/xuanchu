@@ -76,6 +76,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Get("/api/v1/projects/{projectRef}", s.handleProjectInfo)
 	api.With(s.authMiddleware).Patch("/api/v1/projects/{projectRef}", s.handleProjectModify)
 	api.With(s.authMiddleware).Post("/api/v1/projects/{projectRef}/archive", s.handleProjectArchive)
+	api.With(s.authMiddleware).Post("/api/v1/projects/{projectRef}/transition", s.handleProjectTransition)
 	api.With(s.authMiddleware).Get("/api/v1/projects/{projectRef}/config", s.handleProjectConfigList)
 	api.With(s.authMiddleware).Get("/api/v1/projects/{projectRef}/config/{key}", s.handleProjectConfigGet)
 	api.With(s.authMiddleware).Put("/api/v1/projects/{projectRef}/config/{key}", s.handleProjectConfigSet)

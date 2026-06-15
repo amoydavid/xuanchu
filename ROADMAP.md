@@ -41,6 +41,7 @@
 | v0.4.0 | 已完成 | 嵌入式 Web Admin Console |
 | v0.4.1 | 已完成 | Server Admin Console 与 Workspace Bootstrap |
 | v0.4.2 | 已完成 | Project Readonly View 与 SSO 入口预留 |
+| v0.4.3 | 已完成 | Project 生命周期状态机（planning/active/archived/cancelled） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -284,6 +285,34 @@ v0.4.2 在普通 Web Console 中新增面向企业协作链接的项目只读页
 
 ```text
 docs/superpowers/specs/2026-06-12-xuanchu-v0.4.2-project-readonly-view-design.md
+```
+
+## v0.4.3：Project 生命周期状态机
+
+**状态：已完成。**
+
+为 project 引入完整生命周期状态机，支持「预立项 / 立项在跑 / 结束归档 / 取消」四态，覆盖电商众筹等需要产品阶段管理的场景。
+
+当前范围：
+
+- project 状态从 `active/archived` 两态扩展为 `planning/active/archived/cancelled` 四态；新建 project 默认 `planning`。
+- `project transition` 命令支持任意状态间自由转移（含 `archived → active` 重新激活），系统不限制转移方向。
+- 转移后的写权限由目标状态固定约束：`planning/active` 可写，`archived/cancelled` 禁写；`transition` 始终允许。
+- 每次转移自动追加一条项目变更注解（进入 timeline），并触发 `project.transitioned` hook 事件与审计。
+- `project list --status`、`GET /api/v1/projects?status=`、MCP `project_transition` 全链路支持。
+
+不进入 v0.4.3：
+
+- 不引入状态转移白名单（转移完全自由）。
+- 不新增 project 级 RBAC。
+- 无 schema 变更、无数据迁移（status 为 string，新值即用）。
+- 产品级业务属性（定价/财务等）不在本版本，复用 scoped config，见使用说明。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-06-15-xuanchu-project-lifecycle-design.md
+docs/superpowers/plans/2026-06-15-xuanchu-project-lifecycle-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

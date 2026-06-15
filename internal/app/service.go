@@ -1954,7 +1954,7 @@ func (s *Service) recurringArchivedProjectWarning(parent task.Task, child task.T
 	if err != nil {
 		return nil, RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
 	}
-	if project.Status != string(storage.ProjectStatusArchived) && project.ArchivedAt == nil {
+	if !isProjectClosed(project) {
 		return nil, nil
 	}
 	projectID := project.ID

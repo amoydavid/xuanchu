@@ -349,6 +349,67 @@ func TestHookEndToEndProjectArchivedPayloadStability(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// E2E: project.transitioned 事件 + 转 archived 双事件向后兼容
+// ---------------------------------------------------------------------------
+
+func TestHookEndToEndProjectTransitionedPayload(t *testing.T) {
+	h := newE2EHelper(t)
+
+	var mu sync.Mutex
+	var receivedBodies []string
+	webhookTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		receivedBodies = append(receivedBodies, string(body))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhookTarget.Close()
+
+	h.createHookDirect(t, webhookTarget.URL, []string{"project.transitioned", "project.archived"})
+
+	proj, _ := h.svc.AddProject(app.AddProjectInput{Slug: "trproj", Name: "TR Project"})
+	_, _ = h.svc.TransitionProject(proj.Slug, "active")
+	_, _ = h.svc.TransitionProject(proj.Slug, "archived")
+
+	dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
+		Store: h.store, Clock: h.clock, Client: webhookTarget.Client(), Resolver: publicTestResolver{},
+	})
+	// 多次 RunOnce 确保所有 due delivery 投递完成
+	for i := 0; i < 4; i++ {
+		_ = dispatcher.RunOnce(context.Background())
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	eventCounts := map[string]int{}
+	var transitionedPayload map[string]any
+	for _, body := range receivedBodies {
+		var p map[string]any
+		json.Unmarshal([]byte(body), &p)
+		et, _ := p["event_type"].(string)
+		eventCounts[et]++
+		if et == "project.transitioned" {
+			transitionedPayload = p
+		}
+	}
+	if eventCounts["project.transitioned"] == 0 {
+		t.Fatal("no project.transitioned event received")
+	}
+	if eventCounts["project.archived"] == 0 {
+		t.Fatal("no project.archived event received (向后兼容)")
+	}
+	if transitionedPayload == nil {
+		t.Fatal("no project.transitioned payload received")
+	}
+	data, _ := transitionedPayload["data"].(map[string]any)
+	if data["from_status"] == nil || data["to_status"] == nil {
+		t.Fatalf("transitioned payload missing from_status/to_status: %#v", data)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Secret 泄露测试: webhook payload 和 headers 不包含 secret 原文
 // ---------------------------------------------------------------------------
 

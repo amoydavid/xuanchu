@@ -88,11 +88,17 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 	return created, err
 }
 
-func (s *Service) ListProjects(includeArchived bool) ([]ProjectView, error) {
+func (s *Service) ListProjectsByStatus(statusFilter string) ([]ProjectView, error) {
 	if err := s.Require(PermissionProjectRead); err != nil {
 		return nil, err
 	}
-	rows, err := s.projectRepo.List(s.workspaceID, includeArchived)
+	if statusFilter == "" {
+		statusFilter = "open"
+	}
+	if !isValidProjectStatusFilter(statusFilter) {
+		return nil, RuntimeError{Code: "project_invalid_status_filter", Message: fmt.Sprintf("invalid project status filter %q", statusFilter)}
+	}
+	rows, err := s.projectRepo.ListByStatus(s.workspaceID, statusFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +115,13 @@ func (s *Service) ListProjects(includeArchived bool) ([]ProjectView, error) {
 		views = append(views, projectViewFromRow(row, counts[row.ID]))
 	}
 	return filterProjectsByScope(s.requestScope, views), nil
+}
+
+func (s *Service) ListProjects(includeArchived bool) ([]ProjectView, error) {
+	if includeArchived {
+		return s.ListProjectsByStatus("all")
+	}
+	return s.ListProjectsByStatus("open")
 }
 
 func (s *Service) ProjectInfo(ref string) (ProjectView, error) {
@@ -146,7 +159,7 @@ func (s *Service) ModifyProject(ref string, input ModifyProjectInput) error {
 	if err != nil {
 		return err
 	}
-	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if isProjectClosed(project) {
 		return RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	normalized, err := normalizeProjectModifyInput(input)
@@ -174,7 +187,7 @@ func (s *Service) ArchiveProject(ref string) (ProjectView, error) {
 	if err != nil {
 		return ProjectView{}, err
 	}
-	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if isProjectClosed(project) {
 		return ProjectView{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	var archived ProjectView
@@ -233,7 +246,7 @@ func (s *Service) addProjectLocked(slug, name, description string) (storage.Proj
 		Slug:         slug,
 		Name:         name,
 		Description:  description,
-		Status:       string(storage.ProjectStatusActive),
+		Status:       string(storage.ProjectStatusPlanning),
 		SettingsJSON: "{}",
 		CreatedAt:    now,
 		ModifiedAt:   now,
@@ -426,13 +439,38 @@ func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnno
 	if err != nil {
 		return ProjectAnnotationInfo{}, storage.Project{}, err
 	}
-	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if isProjectClosed(project) {
 		return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+	}
+	created, err := s.writeProjectAnnotation(project, content)
+	if err != nil {
+		return ProjectAnnotationInfo{}, storage.Project{}, err
+	}
+	project.ModifiedAt = s.clock.Unix()
+	if err := s.projectRepo.Update(project); err != nil {
+		return ProjectAnnotationInfo{}, storage.Project{}, err
+	}
+	return projectAnnotationInfoFromModel(created), project, nil
+}
+
+// writeProjectAnnotation 写入一条项目注解，不做 closed 校验，也不更新 project.ModifiedAt。
+// 调用方负责在必要时更新 project 的修改时间。TransitionProject 复用它记录状态变更。
+func (s *Service) writeProjectAnnotation(project storage.Project, content string) (storage.ProjectAnnotation, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return storage.ProjectAnnotation{}, RuntimeError{Code: "annotation_content_required", Message: "annotation content is required"}
 	}
 	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	now := s.clock.Unix()
-	for attempts := 0; attempts < 3; attempts++ {
+	for attempts := 0; attempts < 5; attempts++ {
+		maxEntry, err := repo.MaxEntryByProject(project.ID)
+		if err != nil {
+			return storage.ProjectAnnotation{}, err
+		}
 		entry := now + int64(attempts)
+		if maxEntry+1 > entry {
+			entry = maxEntry + 1
+		}
 		annotation := storage.ProjectAnnotation{
 			ID:        uuid.NewString(),
 			ProjectID: project.ID,
@@ -446,15 +484,11 @@ func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnno
 			if storage.IsUniqueConstraintError(err) {
 				continue
 			}
-			return ProjectAnnotationInfo{}, storage.Project{}, err
+			return storage.ProjectAnnotation{}, err
 		}
-		project.ModifiedAt = now
-		if err := s.projectRepo.Update(project); err != nil {
-			return ProjectAnnotationInfo{}, storage.Project{}, err
-		}
-		return projectAnnotationInfoFromModel(created), project, nil
+		return created, nil
 	}
-	return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "annotation_conflict", Message: "annotation conflict could not be resolved"}
+	return storage.ProjectAnnotation{}, RuntimeError{Code: "annotation_conflict", Message: "annotation conflict could not be resolved"}
 }
 
 func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
@@ -487,7 +521,7 @@ func (s *Service) projectDenotateLocked(projectRef, annotationID string) (storag
 	if err != nil {
 		return storage.Project{}, "", err
 	}
-	if project.Status == string(storage.ProjectStatusArchived) || project.ArchivedAt != nil {
+	if isProjectClosed(project) {
 		return storage.Project{}, "", RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	repo := storage.NewProjectAnnotationRepository(s.store.DB())
@@ -553,4 +587,91 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 		})
 	}
 	return out, nil
+}
+
+func isProjectClosed(project storage.Project) bool {
+	return storage.IsProjectClosedStatus(project.Status)
+}
+
+// IsProjectStatusClosed 判断给定状态是否属于关闭态（archived/cancelled），供其它包复用。
+func IsProjectStatusClosed(status string) bool {
+	return storage.IsProjectClosedStatus(status)
+}
+
+func isValidProjectStatusFilter(filter string) bool {
+	switch filter {
+	case "open", "planning", "active", "archived", "cancelled", "all":
+		return true
+	}
+	return false
+}
+
+func projectStatusLabel(status string) string {
+	switch storage.ProjectStatus(status) {
+	case storage.ProjectStatusPlanning:
+		return "预立项"
+	case storage.ProjectStatusActive:
+		return "立项在跑"
+	case storage.ProjectStatusArchived:
+		return "结束归档"
+	case storage.ProjectStatusCancelled:
+		return "取消"
+	}
+	return status
+}
+
+// TransitionProject 将项目转移到指定状态。任意状态间可自由转移（含 archived→active 重新激活）。
+// 转移后自动追加一条项目变更注解，并触发 project.transitioned 事件与审计。
+func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, error) {
+	if err := s.Require(PermissionProjectManage); err != nil {
+		return ProjectView{}, err
+	}
+	if !storage.IsValidProjectStatus(toStatus) {
+		return ProjectView{}, RuntimeError{Code: "project_invalid_status", Message: fmt.Sprintf("invalid project status %q", toStatus)}
+	}
+	project, err := s.ResolveProject(projectRef)
+	if err != nil {
+		return ProjectView{}, err
+	}
+	fromStatus := project.Status
+	if fromStatus == toStatus {
+		return ProjectView{}, RuntimeError{Code: "project_already_in_status", Message: fmt.Sprintf("project %q is already in status %q", project.Slug, toStatus)}
+	}
+	var result ProjectView
+	err = s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		now := tx.clock.Unix()
+		if err := tx.projectRepo.UpdateStatus(project.WorkspaceID, project.ID, toStatus, now); err != nil {
+			return nil, nil, err
+		}
+		annotationContent := fmt.Sprintf("状态变更：%s → %s", projectStatusLabel(fromStatus), projectStatusLabel(toStatus))
+		if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
+			return nil, nil, err
+		}
+		updated, err := tx.projectRepo.GetByID(project.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		view, err := tx.projectViewForRow(updated)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = view
+		events := []HookEvent{buildProjectTransitionedHookEvent(view, fromStatus, toStatus, tx.runtime, now)}
+		if toStatus == string(storage.ProjectStatusArchived) {
+			events = append(events, buildProjectArchivedHookEvent(view, tx.runtime, now))
+		}
+		entry := AuditEntry{
+			WorkspaceID: &project.WorkspaceID,
+			ProjectID:   &project.ID,
+			TargetType:  "project",
+			TargetID:    project.ID,
+			Action:      "project.transition",
+			Payload: map[string]any{
+				"from_status": fromStatus,
+				"to_status":   toStatus,
+			},
+		}
+		return []AuditEntry{entry}, events, nil
+	})
+	return result, err
 }

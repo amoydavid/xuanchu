@@ -260,7 +260,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"workspace_list", "workspace_get_current",
 		"workspace_info", "workspace_add", "workspace_modify", "workspace_archive", "workspace_use",
 		"project_list", "project_get", "project_get_current",
-		"project_add", "project_modify", "project_archive",
+		"project_add", "project_modify", "project_archive", "project_transition",
 		"project_annotate", "project_denotate",
 		"project_list_annotations", "project_list_timeline",
 		"project_config_list", "project_config_set", "project_config_unset",
@@ -1670,6 +1670,42 @@ func TestProjectAddModifyArchive(t *testing.T) {
 	archive := callTool(t, session, "project_archive", ProjectArchiveInput{Project: "myproj"})
 	if archive.IsError {
 		t.Fatalf("project_archive error: %v", parseError(t, archive))
+	}
+}
+
+func TestProjectTransitionAndListStatus(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "project_add", ProjectAddInput{Slug: "trproj", Name: "TR Project"})
+
+	// 新建默认 planning
+	get := callTool(t, session, "project_get", ProjectGetInput{Project: "trproj"})
+	projData := nestedMap(t, envelopeData(t, parseEnvelope(t, get)), "project")
+	if projData["status"] != "planning" {
+		t.Fatalf("new project status = %v, want planning", projData["status"])
+	}
+
+	// project_transition planning -> active
+	tr := callTool(t, session, "project_transition", ProjectTransitionInput{Project: "trproj", Status: "active"})
+	if tr.IsError {
+		t.Fatalf("project_transition error: %v", parseError(t, tr))
+	}
+	trProj := nestedMap(t, envelopeData(t, parseEnvelope(t, tr)), "project")
+	if trProj["status"] != "active" {
+		t.Fatalf("status = %v, want active", trProj["status"])
+	}
+
+	// project_list status=active 含 trproj；status=planning 不含
+	activeList := callTool(t, session, "project_list", ProjectListInput{Status: "active"})
+	activeData := envelopeData(t, parseEnvelope(t, activeList))
+	if count, _ := activeData["count"].(float64); count != 1 {
+		t.Fatalf("project_list status=active count = %v, want 1", activeData["count"])
+	}
+	planningList := callTool(t, session, "project_list", ProjectListInput{Status: "planning"})
+	planningData := envelopeData(t, parseEnvelope(t, planningList))
+	if count, _ := planningData["count"].(float64); count != 0 {
+		t.Fatalf("project_list status=planning count = %v, want 0", planningData["count"])
 	}
 }
 

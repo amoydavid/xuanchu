@@ -287,3 +287,121 @@ func projectSlugsForRepo(projects []Project) []string {
 	}
 	return slugs
 }
+
+func TestProjectStatusHelpers(t *testing.T) {
+	for _, s := range []string{"planning", "active", "archived", "cancelled"} {
+		if !IsValidProjectStatus(s) {
+			t.Fatalf("IsValidProjectStatus(%q) = false, want true", s)
+		}
+	}
+	if IsValidProjectStatus("unknown") {
+		t.Fatal("IsValidProjectStatus(unknown) = true, want false")
+	}
+	for _, closed := range []string{"archived", "cancelled"} {
+		if !IsProjectClosedStatus(closed) {
+			t.Fatalf("IsProjectClosedStatus(%q) = false, want true", closed)
+		}
+	}
+	for _, open := range []string{"planning", "active"} {
+		if IsProjectClosedStatus(open) {
+			t.Fatalf("IsProjectClosedStatus(%q) = true, want false", open)
+		}
+	}
+}
+
+func TestProjectRepositoryListByStatus(t *testing.T) {
+	_, repo, ws := newProjectRepoTest(t)
+	alpha, err := repo.Create(testProject("p-alpha", ws.ID, "alpha", 100))
+	if err != nil {
+		t.Fatalf("Create(alpha) error = %v", err)
+	}
+	beta, err := repo.Create(testProject("p-beta", ws.ID, "beta", 101))
+	if err != nil {
+		t.Fatalf("Create(beta) error = %v", err)
+	}
+	gamma, err := repo.Create(testProject("p-gamma", ws.ID, "gamma", 102))
+	if err != nil {
+		t.Fatalf("Create(gamma) error = %v", err)
+	}
+	delta, err := repo.Create(testProject("p-delta", ws.ID, "delta", 103))
+	if err != nil {
+		t.Fatalf("Create(delta) error = %v", err)
+	}
+	_ = alpha
+	if err := repo.UpdateStatus(ws.ID, beta.ID, string(ProjectStatusPlanning), 200); err != nil {
+		t.Fatalf("UpdateStatus(beta->planning) error = %v", err)
+	}
+	if err := repo.UpdateStatus(ws.ID, gamma.ID, string(ProjectStatusArchived), 300); err != nil {
+		t.Fatalf("UpdateStatus(gamma->archived) error = %v", err)
+	}
+	if err := repo.UpdateStatus(ws.ID, delta.ID, string(ProjectStatusCancelled), 400); err != nil {
+		t.Fatalf("UpdateStatus(delta->cancelled) error = %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		filter string
+		want   []string
+	}{
+		{"open", "open", []string{"alpha", "beta"}},
+		{"planning", "planning", []string{"beta"}},
+		{"active", "active", []string{"alpha"}},
+		{"archived", "archived", []string{"gamma"}},
+		{"cancelled", "cancelled", []string{"delta"}},
+		{"all", "all", []string{"alpha", "beta", "delta", "gamma"}},
+		{"empty defaults to all", "", []string{"alpha", "beta", "delta", "gamma"}},
+	}
+	for _, tc := range tests {
+		got, err := repo.ListByStatus(ws.ID, tc.filter)
+		if err != nil {
+			t.Fatalf("ListByStatus(%s) error = %v", tc.name, err)
+		}
+		if slugs := projectSlugsForRepo(got); !reflect.DeepEqual(slugs, tc.want) {
+			t.Fatalf("ListByStatus(%s) = %#v, want %#v", tc.name, slugs, tc.want)
+		}
+	}
+}
+
+func TestProjectRepositoryUpdateStatus(t *testing.T) {
+	_, repo, ws := newProjectRepoTest(t)
+	created, err := repo.Create(testProject("p1", ws.ID, "alpha", 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if err := repo.UpdateStatus(ws.ID, created.ID, string(ProjectStatusArchived), 200); err != nil {
+		t.Fatalf("UpdateStatus(->archived) error = %v", err)
+	}
+	archived, err := repo.GetByID(created.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if archived.Status != string(ProjectStatusArchived) {
+		t.Fatalf("Status = %q, want archived", archived.Status)
+	}
+	if archived.ArchivedAt == nil || *archived.ArchivedAt != 200 {
+		t.Fatalf("ArchivedAt = %v, want 200", archived.ArchivedAt)
+	}
+
+	if err := repo.UpdateStatus(ws.ID, created.ID, string(ProjectStatusActive), 300); err != nil {
+		t.Fatalf("UpdateStatus(->active) error = %v", err)
+	}
+	reactivated, err := repo.GetByID(created.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if reactivated.Status != string(ProjectStatusActive) {
+		t.Fatalf("Status = %q, want active", reactivated.Status)
+	}
+	if reactivated.ArchivedAt != nil {
+		t.Fatalf("ArchivedAt = %v, want nil after reactivation", reactivated.ArchivedAt)
+	}
+
+	if err := repo.UpdateStatus(ws.ID, created.ID, "unknown", 400); err == nil {
+		t.Fatal("UpdateStatus(unknown) error = nil, want error")
+	}
+
+	if err := repo.UpdateStatus(ws.ID, "nonexistent", string(ProjectStatusActive), 500); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpdateStatus(nonexistent) error = %v, want ErrNotFound", err)
+	}
+}

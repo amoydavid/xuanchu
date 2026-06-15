@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"gorm.io/gorm"
@@ -11,9 +12,26 @@ import (
 type ProjectStatus string
 
 const (
-	ProjectStatusActive   ProjectStatus = "active"
-	ProjectStatusArchived ProjectStatus = "archived"
+	ProjectStatusPlanning  ProjectStatus = "planning"
+	ProjectStatusActive    ProjectStatus = "active"
+	ProjectStatusArchived  ProjectStatus = "archived"
+	ProjectStatusCancelled ProjectStatus = "cancelled"
 )
+
+func IsValidProjectStatus(status string) bool {
+	switch ProjectStatus(status) {
+	case ProjectStatusPlanning, ProjectStatusActive, ProjectStatusArchived, ProjectStatusCancelled:
+		return true
+	}
+	return false
+}
+
+// IsProjectClosedStatus 判断状态是否为关闭态（archived/cancelled）。
+// 约定：cancelled 不设 ArchivedAt，仅靠 status 判别；archived 必设 ArchivedAt。
+// 所有写路径（UpdateStatus/Archive）必须保持 status 与 ArchivedAt 的一致性。
+func IsProjectClosedStatus(status string) bool {
+	return status == string(ProjectStatusArchived) || status == string(ProjectStatusCancelled)
+}
 
 var ErrAlreadyArchived = errors.New("project already archived")
 
@@ -125,7 +143,7 @@ func (r *ProjectRepository) Archive(workspaceID, id string, now int64) error {
 	if err != nil {
 		return err
 	}
-	if project.Status == string(ProjectStatusArchived) || project.ArchivedAt != nil {
+	if IsProjectClosedStatus(project.Status) {
 		return ErrAlreadyArchived
 	}
 	result := r.db.Model(&Project{}).
@@ -135,6 +153,49 @@ func (r *ProjectRepository) Archive(workspaceID, id string, now int64) error {
 			"archived_at": now,
 			"modified_at": now,
 		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *ProjectRepository) ListByStatus(workspaceID, statusFilter string) ([]Project, error) {
+	var projects []Project
+	query := r.db.Where("workspace_id = ?", workspaceID)
+	switch statusFilter {
+	case "all", "":
+	case "open":
+		query = query.Where("status IN ?", []string{string(ProjectStatusPlanning), string(ProjectStatusActive)})
+	case "planning", "active", "archived", "cancelled":
+		query = query.Where("status = ?", statusFilter)
+	default:
+		return nil, fmt.Errorf("invalid project status filter: %s", statusFilter)
+	}
+	if err := query.Order("slug ASC").Find(&projects).Error; err != nil {
+		return nil, err
+	}
+	return projects, nil
+}
+
+func (r *ProjectRepository) UpdateStatus(workspaceID, projectID, status string, now int64) error {
+	if !IsValidProjectStatus(status) {
+		return fmt.Errorf("invalid project status: %s", status)
+	}
+	updates := map[string]any{
+		"status":      status,
+		"modified_at": now,
+	}
+	if status == string(ProjectStatusArchived) {
+		updates["archived_at"] = now
+	} else {
+		updates["archived_at"] = nil
+	}
+	result := r.db.Model(&Project{}).
+		Where("workspace_id = ? AND id = ?", workspaceID, projectID).
+		Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}
