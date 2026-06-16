@@ -68,7 +68,6 @@ export function ScopeEditor({
           (action) => `${group.resource}:${action}`
         )
         const allChecked = groupScopes.every((s) => valueSet.has(s))
-        const someChecked = groupScopes.some((s) => valueSet.has(s))
         return (
           <div key={group.resource} className="space-y-2">
             <div className="flex items-center justify-between">
@@ -99,7 +98,6 @@ export function ScopeEditor({
                 </label>
               ))}
             </div>
-            {someChecked && !allChecked ? null : null}
           </div>
         )
       })}

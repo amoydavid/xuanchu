@@ -82,18 +82,6 @@ export function TokenForm({
     next: TokenFormValues[K]
   ) => setValues((prev) => ({ ...prev, [key]: next }))
 
-  const toggleInList = (key: "workspaces" | "projects", ref: string) => {
-    setValues((prev) => {
-      const list = prev[key]
-      return {
-        ...prev,
-        [key]: list.includes(ref)
-          ? list.filter((item) => item !== ref)
-          : [...list, ref],
-      }
-    })
-  }
-
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     setFormError(null)
@@ -144,10 +132,10 @@ export function TokenForm({
 
       <Field label={t("token.field.workspaces")}>
         <WorkspacePicker
+          loading={workspacesQuery.isLoading}
+          onChange={(refs) => update("workspaces", refs)}
           options={workspaces}
           selected={values.workspaces}
-          onToggle={(ref) => toggleInList("workspaces", ref)}
-          loading={workspacesQuery.isLoading}
         />
       </Field>
 
@@ -232,12 +220,12 @@ function Field({
 
 function WorkspacePicker({
   loading,
-  onToggle,
+  onChange,
   options,
   selected,
 }: {
   loading?: boolean
-  onToggle: (ref: string) => void
+  onChange: (refs: string[]) => void
   options: WorkspaceItem[]
   selected: string[]
 }) {
@@ -248,11 +236,21 @@ function WorkspacePicker({
   if (options.length === 0) {
     return <p className="text-xs text-muted-foreground">{t("common.empty")}</p>
   }
-  const selectedSet = new Set(selected)
+  // 把 selected 里的 workspace ID 归一化为 slug，保证编辑预填（ID）与
+  // toggle 输出（slug）一致，避免混用导致 sameSet 误判。
+  const idToSlug = new Map(options.map((ws) => [ws.id, ws.slug]))
+  const normalized = selected.map((ref) => idToSlug.get(ref) ?? ref)
+  const selectedSet = new Set(normalized)
+  const toggle = (slug: string) => {
+    const next = selectedSet.has(slug)
+      ? normalized.filter((ref) => ref !== slug)
+      : [...normalized, slug]
+    onChange(next)
+  }
   return (
     <div className="flex flex-wrap gap-3 rounded-none border p-2">
       {options.map((ws) => {
-        const isSelected = selectedSet.has(ws.slug) || selectedSet.has(ws.id)
+        const isSelected = selectedSet.has(ws.slug)
         return (
           <label
             className="flex cursor-pointer items-center gap-1.5 text-sm"
@@ -260,7 +258,7 @@ function WorkspacePicker({
           >
             <input
               checked={isSelected}
-              onChange={() => onToggle(ws.slug)}
+              onChange={() => toggle(ws.slug)}
               type="checkbox"
             />
             <span>{ws.name || ws.slug}</span>

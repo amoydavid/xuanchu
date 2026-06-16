@@ -42,9 +42,10 @@ export function TokensPage() {
   const [editTarget, setEditTarget] = useState<TokenRow | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<TokenRow | null>(null)
 
-  // 判断当前 token 是否有 impersonate / admin 能力（用于 scope 编辑器显示 impersonate）
-  const tokenScopes = me.data?.token?.scopes ?? []
-  const canImpersonate = tokenScopes.includes("impersonate")
+  // 是否可分配 impersonate scope：对齐后端 tokenManageAllowed（仅 admin/owner）。
+  // 用 effective role 判断，而非当前 token 的 scope。
+  const role = me.data?.effective_role ?? ""
+  const canImpersonate = role === "admin" || role === "owner"
 
   return (
     <div className="space-y-4">

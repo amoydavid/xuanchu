@@ -714,6 +714,55 @@ func TestModifyTokenRejectsEmptyScopes(t *testing.T) {
 	}
 }
 
+func TestModifyTokenRejectsNonOwner(t *testing.T) {
+	store := newTestStore(t)
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// owner 在 local 建一个 token
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "owner-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 另一个 member 用户加入 local（member role，无 token:write）
+	memberUser := mustCreateUserRecord(t, store, storage.User{
+		ID: "user-other", Name: "other", CreatedAt: 100, ModifiedAt: 100,
+	})
+	mustUpsertMembershipRecord(t, store, storage.Membership{
+		UserID: memberUser.ID, WorkspaceID: ws.ID,
+		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
+	})
+	memberSvc := newTestServiceWithRuntime(t, store, 100, "other", "local")
+
+	// member 尝试修改 owner 的 token：非 owner 且 role 非 admin/owner → 拒绝
+	newName := "hijacked"
+	_, err = memberSvc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Name:    &newName,
+	})
+	assertRuntimeCode(t, err, "permission_denied")
+
+	// owner 自己改则成功
+	view, err := ownerSvc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Name:    &newName,
+	})
+	if err != nil {
+		t.Fatalf("owner ModifyToken() error = %v", err)
+	}
+	if view.Name != "hijacked" {
+		t.Fatalf("name = %q, want hijacked", view.Name)
+	}
+}
+
 func TestAuthenticateBearerToken(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

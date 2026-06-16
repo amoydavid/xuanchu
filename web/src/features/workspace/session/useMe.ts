@@ -6,6 +6,7 @@ export type MeResponse = {
   actor: { name: string }
   token: { type: string; scopes: string[] }
   effective_workspace: { slug: string }
+  effective_role: string
 }
 
 export function useMe(enabled = true) {

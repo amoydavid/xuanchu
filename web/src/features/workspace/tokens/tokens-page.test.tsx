@@ -70,6 +70,7 @@ describe("TokensPage", () => {
             actor: { name: "local" },
             token: { type: "pat", scopes: ["token:read", "token:write"] },
             effective_workspace: { slug: "local" },
+            effective_role: "owner",
           })
         }
         if (url.includes("/api/v1/tokens")) {
@@ -106,6 +107,7 @@ describe("TokensPage", () => {
             actor: { name: "local" },
             token: { type: "pat", scopes: ["token:read"] },
             effective_workspace: { slug: "local" },
+            effective_role: "owner",
           })
         }
         if (url.includes("/api/v1/tokens")) {
@@ -150,6 +152,7 @@ describe("TokensPage", () => {
             actor: { name: "local" },
             token: { type: "pat", scopes: [] },
             effective_workspace: { slug: "local" },
+            effective_role: "owner",
           })
         }
         return Promise.resolve(
