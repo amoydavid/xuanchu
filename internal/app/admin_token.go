@@ -247,7 +247,7 @@ func validateAdminTokenScopes(tokenType string, requested []string, workspaceIDs
 	if tokenType == auth.TokenTypePAT {
 		var filtered []string
 		for _, s := range retained {
-			if s != "impersonate" {
+			if s != auth.ScopeImpersonate {
 				filtered = append(filtered, s)
 			}
 		}

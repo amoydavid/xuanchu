@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -86,7 +87,7 @@ const (
 
 func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -171,7 +172,7 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 	if projectRef == "" {
 		projectRef = strings.TrimSpace(req.Project)
 	}
-	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -232,7 +233,7 @@ func (s *Server) ensureTaskAddProjectRefs(w http.ResponseWriter, r *http.Request
 		workspaceRef = authn.EffectiveWorkspace.ID
 	}
 	preflightSvc, _, err := s.scopedServiceFor(r, scopedServiceInput{
-		Capability:   "task:write",
+		Capability:   auth.ScopeTaskWrite,
 		Permission:   app.PermissionTaskWrite,
 		WorkspaceRef: workspaceRef,
 	})
@@ -252,7 +253,7 @@ func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -282,7 +283,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 	if projectRef == "" && req.Project != nil {
 		projectRef = strings.TrimSpace(*req.Project)
 	}
-	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -382,7 +383,7 @@ func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -410,7 +411,7 @@ func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -433,7 +434,7 @@ func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -456,7 +457,7 @@ func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "link_id_required", "link ID is required", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -475,7 +476,7 @@ func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -514,7 +515,7 @@ func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn fun
 	if !ok {
 		return
 	}
-	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return

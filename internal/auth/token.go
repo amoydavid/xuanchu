@@ -65,7 +65,7 @@ func ValidateTokenCreate(opts CreateTokenOptions) (ScopeSet, error) {
 		return nil, err
 	}
 	if opts.Type == TokenTypePAT {
-		delete(scopes, "impersonate")
+		delete(scopes, ScopeImpersonate)
 	}
 	return scopes, nil
 }

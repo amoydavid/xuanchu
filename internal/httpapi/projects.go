@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -52,7 +53,7 @@ type projectResponse struct {
 }
 
 func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -74,7 +75,7 @@ func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -97,7 +98,7 @@ func (s *Server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProjectInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -117,7 +118,7 @@ func (s *Server) handleProjectModify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -139,7 +140,7 @@ func (s *Server) handleProjectModify(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleProjectArchive(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -161,7 +162,7 @@ func (s *Server) handleProjectTransition(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -176,7 +177,7 @@ func (s *Server) handleProjectTransition(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleProjectConfigList(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectConfigRead, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectConfigRead, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -191,7 +192,7 @@ func (s *Server) handleProjectConfigList(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleProjectConfigGet(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectConfigRead, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectConfigRead, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -215,7 +216,7 @@ func (s *Server) handleProjectConfigSet(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectConfigWrite, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectConfigWrite, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -229,7 +230,7 @@ func (s *Server) handleProjectConfigSet(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleProjectConfigUnset(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectConfigWrite, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectConfigWrite, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -294,7 +295,7 @@ type timelineEntryResponse struct {
 
 func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -314,7 +315,7 @@ func (s *Server) handleProjectAnnotationAdd(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) handleProjectAnnotationList(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectRead, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -330,7 +331,7 @@ func (s *Server) handleProjectAnnotationList(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleProjectAnnotationDelete(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
 	annotationID := chi.URLParam(r, "annotationID")
-	scoped, _, err := s.scopedService(r, "project:write", app.PermissionProjectManage, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectWrite, app.PermissionProjectManage, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -344,7 +345,7 @@ func (s *Server) handleProjectAnnotationDelete(w http.ResponseWriter, r *http.Re
 
 func (s *Server) handleProjectTimeline(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "projectRef")
-	scoped, _, err := s.scopedService(r, "project:read", app.PermissionProjectRead, ref)
+	scoped, _, err := s.scopedService(r, auth.ScopeProjectRead, app.PermissionProjectRead, ref)
 	if err != nil {
 		writeAppError(w, err)
 		return

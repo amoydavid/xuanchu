@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
@@ -36,7 +37,7 @@ type bindExternalIDRequest struct {
 }
 
 func (s *Server) handleUserList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "workspace:read", app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -55,7 +56,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -74,7 +75,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "user")
-	scoped, _, err := s.scopedService(r, "workspace:read", app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -123,7 +124,7 @@ func (s *Server) handleExternalIDBind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_input", "provider and external_id are required", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -144,7 +145,7 @@ func (s *Server) handleExternalIDUnbind(w http.ResponseWriter, r *http.Request) 
 	userRef := chi.URLParam(r, "user")
 	provider := chi.URLParam(r, "provider")
 	externalID := chi.URLParam(r, "externalID")
-	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -163,7 +164,7 @@ func (s *Server) handleExternalIDUnbind(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleExternalIDList(w http.ResponseWriter, r *http.Request) {
 	userRef := chi.URLParam(r, "user")
-	scoped, _, err := s.scopedService(r, "workspace:read", app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return

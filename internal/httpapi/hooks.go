@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -73,7 +74,7 @@ type hookDeliveryResponse struct {
 
 func (s *Server) handleHookList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
-	scoped, _, err := s.scopedService(r, "hook:read", app.PermissionHookRead, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -101,7 +102,7 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projectRef := req.ProjectRef
-	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -123,7 +124,7 @@ func (s *Server) handleHookCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHookInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:read", app.PermissionHookRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -138,7 +139,7 @@ func (s *Server) handleHookInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHookModify(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -168,7 +169,7 @@ func (s *Server) handleHookModify(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHookDelete(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -182,7 +183,7 @@ func (s *Server) handleHookDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHookEnable(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -197,7 +198,7 @@ func (s *Server) handleHookEnable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHookDisable(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -212,7 +213,7 @@ func (s *Server) handleHookDisable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHookDeliveryList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:read", app.PermissionHookRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -241,7 +242,7 @@ func (s *Server) handleHookDeliveryList(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleHookDeliveryInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:read", app.PermissionHookRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookRead, app.PermissionHookRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -256,7 +257,7 @@ func (s *Server) handleHookDeliveryInfo(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleHookDeliveryReplay(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "hook:write", app.PermissionHookWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeHookWrite, app.PermissionHookWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return

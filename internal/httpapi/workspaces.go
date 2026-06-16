@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -46,7 +47,7 @@ type memberResponse struct {
 }
 
 func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "workspace:read", app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -61,7 +62,7 @@ func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWorkspaceInfo(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:read", app.PermissionWorkspaceRead, ref, "")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, ref, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -80,7 +81,7 @@ func (s *Server) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -110,7 +111,7 @@ func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ref := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:write", app.PermissionWorkspaceModify, ref, "")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, ref, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -133,7 +134,7 @@ func (s *Server) handleWorkspaceModify(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWorkspaceArchive(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:write", app.PermissionWorkspaceArchive, ref, "")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceArchive, ref, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -147,7 +148,7 @@ func (s *Server) handleWorkspaceArchive(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleMemberList(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:read", app.PermissionWorkspaceRead, workspace, "")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, workspace, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -167,7 +168,7 @@ func (s *Server) handleMemberAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workspace := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:write", app.PermissionMemberManage, workspace, "")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -187,7 +188,7 @@ func (s *Server) handleMemberRole(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace := chi.URLParam(r, "workspace")
 	user := chi.URLParam(r, "user")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, "workspace:write", app.PermissionMemberManage, workspace, "")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
