@@ -117,6 +117,49 @@ func TestTokenRepositoryRevokeAndListByUser(t *testing.T) {
 	}
 }
 
+func TestTokenRepositoryListAll(t *testing.T) {
+	store := newTokenRepoTestStore(t)
+	repo := NewTokenRepository(store.DB())
+	revokedAt := int64(999)
+	// 建 3 个 token：2 个有效（不同 user）、1 个已吊销
+	rows := []ApiTokenEntry{
+		{ID: "tok1", UserID: "u1", Name: "a", Type: "pat", TokenPrefix: "xuanchu_pat_a1", TokenHash: strings.Repeat("a", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 100},
+		{ID: "tok2", UserID: "u2", Name: "b", Type: "agent", TokenPrefix: "xuanchu_agent_b2", TokenHash: strings.Repeat("b", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `["w1"]`, ProjectIDsJSON: `[]`, CreatedAt: 200},
+		{ID: "tok3", UserID: "u1", Name: "c", Type: "pat", TokenPrefix: "xuanchu_pat_c3", TokenHash: strings.Repeat("c", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 50, RevokedAt: &revokedAt},
+	}
+	for _, row := range rows {
+		if err := repo.Create(row); err != nil {
+			t.Fatalf("Create(%s) error = %v", row.ID, err)
+		}
+	}
+
+	// includeRevoked=true：返回全部 3 个，按 created_at DESC 排序（tok2=200, tok1=100, tok3=50）
+	all, err := repo.ListAll(true)
+	if err != nil {
+		t.Fatalf("ListAll(true) error = %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("ListAll(true) len = %d, want 3: %#v", len(all), all)
+	}
+	if all[0].ID != "tok2" || all[2].ID != "tok3" {
+		t.Fatalf("ListAll(true) order = %s,%s,%s, want tok2,tok1,tok3", all[0].ID, all[1].ID, all[2].ID)
+	}
+
+	// includeRevoked=false：过滤掉 tok3
+	active, err := repo.ListAll(false)
+	if err != nil {
+		t.Fatalf("ListAll(false) error = %v", err)
+	}
+	if len(active) != 2 {
+		t.Fatalf("ListAll(false) len = %d, want 2", len(active))
+	}
+	for _, row := range active {
+		if row.ID == "tok3" {
+			t.Fatalf("ListAll(false) should exclude revoked tok3")
+		}
+	}
+}
+
 func TestTokenRepository_Update(t *testing.T) {
 	store := newTokenRepoTestStore(t)
 	repo := NewTokenRepository(store.DB())

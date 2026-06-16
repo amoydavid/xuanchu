@@ -73,6 +73,7 @@ export const enUS = {
     riskLabel: "Admin risk",
     nav: {
       bootstrap: "Bootstrap control plane",
+      tokens: "Token management",
     },
     form: {
       workspaceSlug: "Workspace slug",
@@ -111,6 +112,13 @@ export const enUS = {
       admin_setup_invalid: "Setup code is invalid or expired",
       admin_setup_completed: "Admin setup is already completed",
       unknown: "Request failed",
+    },
+    token: {
+      title: "Token management",
+      global: "Global",
+      showRevoked: "Show revoked",
+      modifyAuditHint: "Admin changes are recorded to the audit log (admin.token.modify).",
+      revokeAuditHint: "This action is performed as admin and recorded to the audit log.",
     },
   },
   common: {

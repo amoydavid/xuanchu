@@ -441,3 +441,131 @@ func TestAdminCreateWorkspaceAgentTokenRejectsInvalidProjectScope(t *testing.T) 
 	})
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "token_project_scope_invalid")
 }
+
+// newAdminTokenFixture 建一个启用 admin 的 server，预建一个 workspace + agent token。
+// 返回 server、adminRaw token、已建 token 的 id（供 modify/revoke 测试）。
+func newAdminTokenFixture(t *testing.T) (*Server, string, string) {
+	t.Helper()
+	fixture := newHTTPServerWithTokenFixture(t, "token:write")
+	adminRaw := "xuanchu_admin_secret"
+	fixture.server.admin = config.AdminConfig{
+		Enabled: true,
+		Tokens:  []config.AdminTokenConfig{{Name: "ops", Hash: auth.HashAdminToken(adminRaw), Enabled: true}},
+	}
+	fixture.server.router = fixture.server.newRouter()
+	adminHeaders := map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+		"Content-Type":  "application/json",
+	}
+	// 建 workspace + agent token
+	requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/admin/workspaces", `{"slug":"dajee","owner":{"name":"alice","email":"alice@example.com"}}`, adminHeaders)
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/admin/workspaces/dajee/agent-tokens", `{"name":"ci","user":"alice@example.com","scopes":["task:read"]}`, adminHeaders)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create agent token status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	return fixture.server, adminRaw, created.Data.ID
+}
+
+func TestAdminTokenListHTTP(t *testing.T) {
+	srv, adminRaw, tokenID := newAdminTokenFixture(t)
+	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/admin/tokens?all=true", map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+			User struct {
+				Name string `json:"name"`
+			} `json:"user"`
+			Scopes       []string `json:"scopes"`
+			WorkspaceIDs []string `json:"workspace_ids"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tk := range payload.Data {
+		if tk.ID == tokenID {
+			found = true
+			if tk.User.Name != "alice" {
+				t.Fatalf("user name = %q, want alice", tk.User.Name)
+			}
+			if len(tk.WorkspaceIDs) == 0 {
+				t.Fatalf("workspace_ids should not be empty for agent token")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("token %s not in list: %#v", tokenID, payload.Data)
+	}
+}
+
+func TestAdminTokenRevokeHTTP(t *testing.T) {
+	srv, adminRaw, tokenID := newAdminTokenFixture(t)
+	rr := requestHTTP(t, srv, http.MethodDelete, "/api/v1/admin/tokens/"+tokenID, map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	// 再次 list（all=true）应显示已吊销
+	rr = requestHTTP(t, srv, http.MethodGet, "/api/v1/admin/tokens?all=true", map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+	})
+	var payload struct {
+		Data []struct {
+			ID        string  `json:"id"`
+			RevokedAt *int64 `json:"revoked_at"`
+		} `json:"data"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &payload)
+	for _, tk := range payload.Data {
+		if tk.ID == tokenID && tk.RevokedAt == nil {
+			t.Fatalf("token %s should have revoked_at set", tokenID)
+		}
+	}
+}
+
+func TestAdminTokenModifyHTTP(t *testing.T) {
+	srv, adminRaw, tokenID := newAdminTokenFixture(t)
+	body := `{"scopes":["task:read","task:write"]}`
+	rr := requestHTTPBody(t, srv, http.MethodPatch, "/api/v1/admin/tokens/"+tokenID, body, map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+		"Content-Type":  "application/json",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("modify status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Scopes []string `json:"scopes"`
+		} `json:"data"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &payload)
+	if len(payload.Data.Scopes) != 2 {
+		t.Fatalf("scopes = %v, want 2", payload.Data.Scopes)
+	}
+}
+
+func TestAdminTokenRequiresAdminAuth(t *testing.T) {
+	srv, adminRaw, _ := newAdminTokenFixture(t)
+	// 用普通 PAT（fixture.token）而非 admin token 访问
+	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/admin/tokens", map[string]string{
+		"Authorization": "Bearer " + adminRaw + "-wrong",
+	})
+	assertHTTPErrorCode(t, rr, http.StatusUnauthorized, "admin_auth_invalid")
+	_ = adminRaw
+}

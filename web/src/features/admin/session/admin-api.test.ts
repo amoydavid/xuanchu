@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ApiError } from "@/lib/api"
 
-import { adminApiGet } from "./admin-api"
+import { adminApiDelete, adminApiGet, adminApiPatch } from "./admin-api"
 import { setAdminToken } from "./admin-token"
 
 describe("admin api client", () => {
@@ -15,6 +15,15 @@ describe("admin api client", () => {
     await expect(adminApiGet("/api/v1/me")).rejects.toMatchObject({
       code: "admin_api_path_invalid",
     } satisfies Partial<ApiError>)
+  })
+
+  it("rejects non-admin paths for patch and delete", async () => {
+    await expect(
+      adminApiPatch("/api/v1/tokens/x", { name: "y" })
+    ).rejects.toMatchObject({ code: "admin_api_path_invalid" })
+    await expect(
+      adminApiDelete("/api/v1/tokens/x")
+    ).rejects.toMatchObject({ code: "admin_api_path_invalid" })
   })
 
   it("attaches admin bearer token only for admin paths", async () => {

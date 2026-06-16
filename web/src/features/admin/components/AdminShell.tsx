@@ -1,5 +1,5 @@
 import type React from "react"
-import { LogOut, RefreshCw, ShieldAlert } from "lucide-react"
+import { KeyRound, LogOut, RefreshCw, ShieldAlert } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
@@ -31,13 +31,20 @@ export function AdminShell({
         <div className="flex h-12 items-center border-b px-4 text-sm font-medium">
           <ProductLogo />
         </div>
-        <nav aria-label={t("admin.navLabel")} className="p-2">
+        <nav aria-label={t("admin.navLabel")} className="space-y-1 p-2">
           <a
-            className="flex h-8 w-full items-center gap-2 border-l-2 border-l-foreground bg-muted px-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-8 w-full items-center gap-2 border-l-2 border-l-transparent px-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             href="/admin"
           >
             <ShieldAlert className="size-3.5" />
             {t("admin.nav.bootstrap")}
+          </a>
+          <a
+            className="flex h-8 w-full items-center gap-2 border-l-2 border-l-transparent px-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            href="/admin/tokens"
+          >
+            <KeyRound className="size-3.5" />
+            {t("admin.nav.tokens")}
           </a>
         </nav>
         <div className="absolute inset-x-0 bottom-0 border-t p-3">

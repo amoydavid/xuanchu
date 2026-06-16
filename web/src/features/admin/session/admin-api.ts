@@ -30,3 +30,11 @@ export function adminApiGet<T>(path: string): Promise<T> {
 export function adminApiPost<T>(path: string, body?: unknown): Promise<T> {
   return adminRequest<T>("POST", path, body)
 }
+
+export function adminApiPatch<T>(path: string, body: unknown): Promise<T> {
+  return adminRequest<T>("PATCH", path, body)
+}
+
+export function adminApiDelete<T>(path: string): Promise<T> {
+  return adminRequest<T>("DELETE", path)
+}

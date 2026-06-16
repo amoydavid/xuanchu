@@ -62,6 +62,7 @@ var spaRoutes = map[string]struct{}{
 	"admin":         {},
 	"admin/login":   {},
 	"admin/setup":   {},
+	"admin/tokens":  {},
 	"audit":         {},
 	"hooks":         {},
 	"members":       {},

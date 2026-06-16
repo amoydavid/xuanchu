@@ -42,7 +42,7 @@
 | v0.4.1 | 已完成 | Server Admin Console 与 Workspace Bootstrap |
 | v0.4.2 | 已完成 | Project Readonly View 与 SSO 入口预留 |
 | v0.4.3 | 已完成 | Project 生命周期状态机（planning/active/archived/cancelled） |
-| v0.4.4 | 已完成 | Web Console Token 完整管理（创建/修改/吊销） |
+| v0.4.4 | 已完成 | Web Console Token 完整管理 + Admin 工作台 Token 管控 |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -345,7 +345,16 @@ docs/superpowers/plans/2026-06-15-xuanchu-project-lifecycle-implementation.md
 ```text
 docs/superpowers/specs/2026-06-16-xuanchu-token-management-console-design.md
 docs/superpowers/plans/2026-06-16-xuanchu-token-management-console-implementation.md
+docs/superpowers/specs/2026-06-16-xuanchu-admin-token-management-design.md
+docs/superpowers/plans/2026-06-16-xuanchu-admin-token-management-implementation.md
 ```
+
+v0.4.4 同时补齐 Admin 工作台 Token 管控：
+
+- `/admin/tokens` 页面：跨 workspace 列出全部 token（含 user name+email、workspace_ids、scopes、状态、最后使用），server admin 可吊销任意 token、修改 name/scope/过期。
+- 后端 `GET/PATCH/DELETE /api/v1/admin/tokens/{ref}`，admin 路径绕过 workspace role 校验，所有操作走 `appendAdminAuditInTx` 审计（`admin.token.modify` / `admin.token.revoke`，payload 标记 `admin:true`）。
+- `UserRepository.ListByIDs` 批量解析 user info，避免 N+1。
+- admin modify 不改 workspace/project 绑定（语义复杂，由 token owner 在普通 console 自服务）；admin 不创建 token（走 bootstrap 或普通 console）。
 
 ## v0.1.1：稳定短任务标识 task_slug
 

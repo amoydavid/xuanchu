@@ -54,6 +54,12 @@ const AdminDashboardRoute = lazy(() =>
   }))
 )
 
+const AdminTokensRoute = lazy(() =>
+  import("@/routes/admin/AdminTokensRoute").then((module) => ({
+    default: module.AdminTokensRoute,
+  }))
+)
+
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
 })
@@ -92,6 +98,12 @@ const adminDashboardRoute = createRoute({
   getParentRoute: () => adminGuardRoute,
   path: "/admin",
   component: lazyRoute(AdminDashboardRoute),
+})
+
+const adminTokensRoute = createRoute({
+  getParentRoute: () => adminGuardRoute,
+  path: "/admin/tokens",
+  component: lazyRoute(AdminTokensRoute),
 })
 
 const projectReadonlyRoute = createRoute({
@@ -134,7 +146,7 @@ const routeTree = rootRoute.addChildren([
   ]),
   adminLoginRoute,
   adminSetupRoute,
-  adminGuardRoute.addChildren([adminDashboardRoute]),
+  adminGuardRoute.addChildren([adminDashboardRoute, adminTokensRoute]),
 ])
 
 export const router = createRouter({ routeTree })

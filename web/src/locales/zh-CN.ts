@@ -71,6 +71,7 @@ export const zhCN = {
     riskLabel: "Admin 风险",
     nav: {
       bootstrap: "初始化控制面",
+      tokens: "Token 管理",
     },
     form: {
       workspaceSlug: "工作区 slug",
@@ -109,6 +110,13 @@ export const zhCN = {
       admin_setup_invalid: "Setup code 无效或已过期",
       admin_setup_completed: "超管初始化已经完成",
       unknown: "请求失败",
+    },
+    token: {
+      title: "Token 管理",
+      global: "全局",
+      showRevoked: "显示已吊销",
+      modifyAuditHint: "admin 修改将记录到审计日志（admin.token.modify）。",
+      revokeAuditHint: "此操作以 admin 身份执行，将记录审计日志。",
     },
   },
   common: {

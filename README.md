@@ -124,6 +124,8 @@ http://127.0.0.1:8080/admin/login
 
 admin token 只用于 `/api/v1/admin/*` 控制面接口，可以在页面中创建 workspace、创建或提升 workspace 管理员，并为该管理员创建 workspace-scoped Agent token。它不能访问普通任务、项目、通知、Hook 或 MCP 接口。`xuanchu admin token generate/hash` 仍保留为兼容和运维工具，但不再是首选初始化路径。
 
+Admin 工作台的 `/admin/tokens` 页面提供跨 workspace 的 token 管控：列出所有 workspace 的全部 token（含 user、workspace、scope、状态）、吊销失控 token、修改 token 的 name / scope / 过期时间。这是运维管控视角，与普通用户在 `/tokens` 的自服务管理是两个边界——admin 操作绕过 workspace role 校验，但所有变更记录到审计日志（`admin.token.modify` / `admin.token.revoke`，payload 标记 `admin:true`）。admin 不创建 token（创建走 bootstrap 或普通 console），也不修改 token 的 workspace/project 绑定（由 token owner 自服务）。
+
 前端开发和构建：
 
 ```bash
