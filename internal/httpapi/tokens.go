@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -54,7 +55,7 @@ type createdTokenResponse struct {
 }
 
 func (s *Server) handleTokenList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "token:read", app.PermissionTokenRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -79,7 +80,7 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, authn, err := s.scopedService(r, "token:write", app.PermissionTokenWrite, "")
+	scoped, authn, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -114,7 +115,7 @@ func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
-	scoped, authn, err := s.scopedService(r, "token:write", app.PermissionTokenWrite, "")
+	scoped, authn, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -127,7 +128,7 @@ func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "token:write", app.PermissionTokenWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeTokenWrite, app.PermissionTokenWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return

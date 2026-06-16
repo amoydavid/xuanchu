@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -106,7 +107,7 @@ type eventNotificationRuleModifyRequest struct {
 }
 
 func (s *Server) handleNotificationSinkList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -129,7 +130,7 @@ func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -160,7 +161,7 @@ func (s *Server) handleNotificationSinkCreate(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleNotificationSinkInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -179,7 +180,7 @@ func (s *Server) handleNotificationSinkModify(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -217,7 +218,7 @@ func (s *Server) handleNotificationSinkDisable(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleNotificationSinkToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -240,7 +241,7 @@ func (s *Server) handleNotificationSinkToggle(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleNotificationSinkDelete(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -254,7 +255,7 @@ func (s *Server) handleNotificationSinkDelete(w http.ResponseWriter, r *http.Req
 
 func (s *Server) handleReminderRuleList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
-	scoped, _, err := s.scopedService(r, "reminder:read", app.PermissionReminderRead, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeReminderRead, app.PermissionReminderRead, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -278,7 +279,7 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 		return
 	}
 	projectRef := req.ProjectRef
-	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -305,7 +306,7 @@ func (s *Server) handleReminderRuleCreate(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleReminderRuleInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "reminder:read", app.PermissionReminderRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeReminderRead, app.PermissionReminderRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -328,7 +329,7 @@ func (s *Server) handleReminderRuleModify(w http.ResponseWriter, r *http.Request
 	if req.ProjectRef != nil {
 		projectRef = *req.ProjectRef
 	}
-	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -363,7 +364,7 @@ func (s *Server) handleReminderRuleDisable(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleReminderRuleToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
-	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -386,7 +387,7 @@ func (s *Server) handleReminderRuleToggle(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleReminderRuleDelete(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "reminder:write", app.PermissionReminderWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeReminderWrite, app.PermissionReminderWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -400,7 +401,7 @@ func (s *Server) handleReminderRuleDelete(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleEventNotificationRuleList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
-	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -427,7 +428,7 @@ func (s *Server) handleEventNotificationRuleCreate(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "notification_rule_url_not_supported", "notification rule uses sink, not url", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, req.ProjectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, req.ProjectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -451,7 +452,7 @@ func (s *Server) handleEventNotificationRuleCreate(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) handleEventNotificationRuleInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -478,7 +479,7 @@ func (s *Server) handleEventNotificationRuleModify(w http.ResponseWriter, r *htt
 	if req.ProjectRef != nil {
 		projectRef = *req.ProjectRef
 	}
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -510,7 +511,7 @@ func (s *Server) handleEventNotificationRuleDisable(w http.ResponseWriter, r *ht
 }
 
 func (s *Server) handleEventNotificationRuleToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -533,7 +534,7 @@ func (s *Server) handleEventNotificationRuleToggle(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) handleEventNotificationRuleDelete(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -546,7 +547,7 @@ func (s *Server) handleEventNotificationRuleDelete(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -573,7 +574,7 @@ func (s *Server) handleNotificationDeliveryList(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleNotificationDeliveryInfo(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:read", app.PermissionNotificationRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationRead, app.PermissionNotificationRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -587,7 +588,7 @@ func (s *Server) handleNotificationDeliveryInfo(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleNotificationDeliveryReplay(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "notification:write", app.PermissionNotificationWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return

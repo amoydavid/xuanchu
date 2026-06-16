@@ -102,7 +102,7 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 	if err != nil {
 		return CreatedToken{}, classifyTokenCreateError(err)
 	}
-	if scopes.Has("impersonate") && !tokenManageAllowed(s.runtime.Role) {
+	if scopes.Has(auth.ScopeImpersonate) && !tokenManageAllowed(s.runtime.Role) {
 		return CreatedToken{}, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can create tokens with impersonate scope"}
 	}
 	if err := enforceTokenCreateLimit(input.ParentToken, scopes.Values(), workspaceIDs, projectIDs); err != nil {
@@ -622,7 +622,7 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 		if err != nil {
 			return nil, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
 		}
-		if scopes.Has("impersonate") && !tokenManageAllowed(s.runtime.Role) {
+		if scopes.Has(auth.ScopeImpersonate) && !tokenManageAllowed(s.runtime.Role) {
 			return nil, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can assign impersonate scope"}
 		}
 		// 越权防护由 resolveTokenWorkspaces 的角色校验承担；modify 无父 token 概念，不调 enforceTokenCreateLimit。

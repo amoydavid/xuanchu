@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -28,7 +29,7 @@ const auditMaxLimit = 1000
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -51,7 +52,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, requestProjectRef(r))
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, requestProjectRef(r))
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -83,7 +84,7 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	scoped, _, err := s.scopedService(r, "audit:read", app.PermissionAuditRead, requestProjectRef(r))
+	scoped, _, err := s.scopedService(r, auth.ScopeAuditRead, app.PermissionAuditRead, requestProjectRef(r))
 	if err != nil {
 		writeAppError(w, err)
 		return

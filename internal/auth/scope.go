@@ -6,18 +6,43 @@ import (
 	"strings"
 )
 
+// Scope 常量。所有 token scope 字符串集中定义，避免散落各处的字面量拼写错误。
+// 格式: resource:action（如 "task:read"），impersonate 为独立特殊 scope。
+const (
+	ScopeTaskRead         = "task:read"
+	ScopeTaskWrite        = "task:write"
+	ScopeProjectRead      = "project:read"
+	ScopeProjectWrite     = "project:write"
+	ScopeContextRead      = "context:read"
+	ScopeContextWrite     = "context:write"
+	ScopeConfigRead       = "config:read"
+	ScopeConfigWrite      = "config:write"
+	ScopeWorkspaceRead    = "workspace:read"
+	ScopeWorkspaceWrite   = "workspace:write"
+	ScopeAuditRead        = "audit:read"
+	ScopeTokenRead        = "token:read"
+	ScopeTokenWrite       = "token:write"
+	ScopeHookRead         = "hook:read"
+	ScopeHookWrite        = "hook:write"
+	ScopeNotificationRead = "notification:read"
+	ScopeNotificationWrite = "notification:write"
+	ScopeReminderRead     = "reminder:read"
+	ScopeReminderWrite    = "reminder:write"
+	ScopeImpersonate      = "impersonate"
+)
+
 var scopeRegistry = []string{
-	"task:read", "task:write",
-	"project:read", "project:write",
-	"context:read", "context:write",
-	"config:read", "config:write",
-	"workspace:read", "workspace:write",
-	"audit:read",
-	"token:read", "token:write",
-	"hook:read", "hook:write",
-	"notification:read", "notification:write",
-	"reminder:read", "reminder:write",
-	"impersonate",
+	ScopeTaskRead, ScopeTaskWrite,
+	ScopeProjectRead, ScopeProjectWrite,
+	ScopeContextRead, ScopeContextWrite,
+	ScopeConfigRead, ScopeConfigWrite,
+	ScopeWorkspaceRead, ScopeWorkspaceWrite,
+	ScopeAuditRead,
+	ScopeTokenRead, ScopeTokenWrite,
+	ScopeHookRead, ScopeHookWrite,
+	ScopeNotificationRead, ScopeNotificationWrite,
+	ScopeReminderRead, ScopeReminderWrite,
+	ScopeImpersonate,
 }
 
 var scopeLookup map[string]struct{}

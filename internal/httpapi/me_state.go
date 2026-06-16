@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
@@ -17,7 +18,7 @@ func (s *Server) handleMeActiveWorkspace(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "workspace:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -26,7 +27,7 @@ func (s *Server) handleMeActiveWorkspace(w http.ResponseWriter, r *http.Request)
 		writeAppError(w, err)
 		return
 	}
-	scoped2, _, err := s.scopedServiceWithWorkspace(r, "workspace:read", app.PermissionWorkspaceRead, req.Workspace, "")
+	scoped2, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, req.Workspace, "")
 	if err != nil {
 		writeAppError(w, err)
 		return

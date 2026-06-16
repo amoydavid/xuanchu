@@ -113,7 +113,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		if input.Token.Token.Type != auth.TokenTypeAgent {
 			return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "impersonation requires agent token"}
 		}
-		if !scope.HasCapability("impersonate") {
+		if !scope.HasCapability(auth.ScopeImpersonate) {
 			return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "token does not have impersonate scope"}
 		}
 	}

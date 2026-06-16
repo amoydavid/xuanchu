@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 )
 
@@ -35,7 +36,7 @@ type configSchemaRequest struct {
 }
 
 func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "context:read", app.PermissionContextUse, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -69,7 +70,7 @@ func (s *Server) handleContextDefine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextManage, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextManage, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -83,7 +84,7 @@ func (s *Server) handleContextDefine(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	scoped, _, err := s.scopedService(r, "context:read", app.PermissionContextUse, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -114,7 +115,7 @@ func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleContextDelete(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextManage, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextManage, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -127,7 +128,7 @@ func (s *Server) handleContextDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextUse, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -140,7 +141,7 @@ func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "context:write", app.PermissionContextUse, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -153,7 +154,7 @@ func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfigList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "config:read", app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -178,7 +179,7 @@ func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not available over HTTP", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:read", app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -206,7 +207,7 @@ func (s *Server) handleConfigSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -224,7 +225,7 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "config_scope_invalid", "local config is not writable over HTTP", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:write", app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -237,7 +238,7 @@ func (s *Server) handleConfigUnset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfigSchemaList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "config:read", app.PermissionConfigSchemaRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -251,7 +252,7 @@ func (s *Server) handleConfigSchemaList(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleConfigSchemaGet(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, "config:read", app.PermissionConfigSchemaRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -274,7 +275,7 @@ func (s *Server) handleConfigSchemaSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, _, err := s.scopedService(r, "config:write", app.PermissionConfigSchemaWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionConfigSchemaWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -308,7 +309,7 @@ func (s *Server) handleConfigSchemaSet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConfigSchemaDelete(w http.ResponseWriter, r *http.Request) {
 	purge := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("purge")), "true")
-	scoped, _, err := s.scopedService(r, "config:write", app.PermissionConfigSchemaWrite, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigWrite, app.PermissionConfigSchemaWrite, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
