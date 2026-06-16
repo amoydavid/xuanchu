@@ -9,12 +9,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-import {
-  TokenForm,
-  tokenErrorMessage,
-  valuesToModifyInput,
-} from "./token-form"
-import type { TokenRow } from "./token-api"
+import { TokenForm, valuesToModifyInput } from "./token-form"
+import { tokenErrorMessage, type TokenRow } from "./token-api"
 import { useModifyTokenMutation } from "./use-token-mutations"
 
 type TokenEditDialogProps = {

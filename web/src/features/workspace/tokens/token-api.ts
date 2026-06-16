@@ -1,5 +1,7 @@
 // Token 相关类型与 API 契约，对齐后端 tokenResponse / createdTokenResponse。
 
+import { ApiError } from "@/lib/api"
+
 /** 列表/详情返回的 token 行，对齐后端 tokenResponse。 */
 export type TokenRow = {
   id: string
@@ -114,4 +116,27 @@ export function expiresSecondsToPreset(
     preset: "custom",
     customIso: new Date(expiresAt * 1000).toISOString().slice(0, 16),
   }
+}
+
+/** 比较两个字符串数组是否含相同元素集合（顺序无关）。供普通/admin token 表单复用。 */
+export function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  for (const item of b) {
+    if (!set.has(item)) return false
+  }
+  return true
+}
+
+/** 从 ApiError 提取 token i18n 错误文案，未知 code 回退通用文案。供普通/admin 复用。 */
+export function tokenErrorMessage(
+  err: unknown,
+  t: (key: string) => string
+): string {
+  if (err instanceof ApiError) {
+    const key = `token.errors.${err.code}`
+    const translated = t(key)
+    return translated === key ? t("token.errors.unknown") : translated
+  }
+  return t("token.errors.unknown")
 }

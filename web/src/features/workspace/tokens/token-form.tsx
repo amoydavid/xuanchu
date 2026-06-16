@@ -12,12 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
-import { ApiError } from "@/lib/api"
 
 import { ScopeEditor } from "./scope-editor"
 import {
   expiresSecondsToPreset,
   presetToExpiresSeconds,
+  sameSet,
   type ExpiresPreset,
   type TokenFormValues,
   type TokenRow,
@@ -338,23 +338,4 @@ export function valuesToModifyInput(
     input.expires_in_seconds = newExpires
   }
   return input
-}
-
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const set = new Set(a)
-  for (const item of b) {
-    if (!set.has(item)) return false
-  }
-  return true
-}
-
-/** 从 ApiError 提取 i18n 错误文案。 */
-export function tokenErrorMessage(err: unknown, t: (key: string) => string): string {
-  if (err instanceof ApiError) {
-    const key = `token.errors.${err.code}`
-    const translated = t(key)
-    return translated === key ? t("token.errors.unknown") : translated
-  }
-  return t("token.errors.unknown")
 }

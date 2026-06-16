@@ -21,9 +21,10 @@ import { ScopeEditor } from "@/features/workspace/tokens/scope-editor"
 import {
   expiresSecondsToPreset,
   presetToExpiresSeconds,
+  sameSet,
+  tokenErrorMessage,
   type ExpiresPreset,
 } from "@/features/workspace/tokens/token-api"
-import { ApiError } from "@/lib/api"
 
 import type { AdminTokenRow, AdminTokenModifyInput } from "./admin-token-api"
 import { useAdminModifyTokenMutation } from "./use-admin-token-mutations"
@@ -181,22 +182,4 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
       </div>
     </div>
   )
-}
-
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const set = new Set(a)
-  for (const item of b) {
-    if (!set.has(item)) return false
-  }
-  return true
-}
-
-function tokenErrorMessage(err: unknown, t: (key: string) => string): string {
-  if (err instanceof ApiError) {
-    const key = `token.errors.${err.code}`
-    const translated = t(key)
-    return translated === key ? t("token.errors.unknown") : translated
-  }
-  return t("token.errors.unknown")
 }
