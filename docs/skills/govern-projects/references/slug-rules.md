@@ -1,20 +1,12 @@
 # Slug 规则
 
-xuanchu 中有两类 slug，规则不同，CIO 高频踩坑。
+Xuanchu 中有两类 slug，规则不同，CIO 高频踩坑。
 
 ## 对比表
 
 | 类型 | 规则 | 合法示例 | 非法示例 |
 |---|---|---|---|
-| workspace slug | `^[a-z0-9][a-z0-9_-]*# Slug 规则
-
-xuanchu 中有两类 slug，规则不同，CIO 高频踩坑。
-
-## 对比表
-
-| 类型 | 规则 | 合法示例 | 非法示例 |
-|---|---|---|---|
-，允许 `-` `_`，无额外字符约束 | `engineering`、`api-platform`、`ai_agent` | `API`、`工程`、`-api` |
+| workspace slug | `^[a-z0-9][a-z0-9_-]*$`，允许 `-` `_`，无额外字符约束 | `engineering`、`api-platform`、`ai_agent` | `API`、`工程`、`-api` |
 | project slug | 3-10 位小写字母或数字，**必须以字母开头**，不能含 `-` `_` 中文 | `api`、`apiplat`、`api9` | `api-platform`、`ai_agent`、`1api`、`p1` |
 
 ## 关键差异

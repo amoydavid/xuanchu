@@ -13,6 +13,7 @@ CIO agent 把每个项目对应的 IM 群（外部飞书群）接上通知，让
 
 ## 核心原则
 
+- **每次调用都显式传 `workspace`**，不依赖隐式状态。
 - **三层模型**：sink = 投递目标（`webhook` / `http_template`）；rule = 规则（`reminder` 定时扫描 vs `notification` 事件触发）；hook = 出站集成。三者都通过 sink 实际投递。
 - sink 是 workspace 级资源引用（可用名称或 ID），**不能跨 workspace 引用**。
 - **secret 走 `secret_refs`**，不直接写 URL/body。HTTP template 中通过别名引用 secret config。

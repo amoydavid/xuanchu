@@ -14,6 +14,7 @@ CIO agent 的后台运维：给别的系统/agent 发 token、调排序权重、
 ## 核心原则
 
 - **CIO 自身用后台手动建的 `["*"]` agent_token**，本 skill 不教它给自己建 token。这里讲的 token 操作是给别的系统/agent 发凭证。
+- **每次调用都显式传 `workspace`**，不依赖隐式状态。
 - 给别的系统发 token：通用 `["*"]` 或最小化专用 scope；**raw_token 只出现一次，必须保存**。
 - config 三级 scope：`workspace`（业务键 `urgency.*` / `date.*`，**不支持 `agent.*`**）/ `project` / `local`（仅 stdio 只读）。
 - agent 指令走 project 级 `agent.*`；写自定义键前先 `config_schema_set` 定义。

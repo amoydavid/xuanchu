@@ -20,9 +20,9 @@ Xuanchu 的配置键按用途分组。写自定义键前必须用 `config_schema
 |---|---|---|
 | `integrations.feishu.webhook_url` | project | 飞书群机器人地址（sink 用 `config_value` 读） |
 | `integrations.feishu.bot_token` | workspace/project（secret） | 飞书机器人 token，模板用 `secret_refs` 引用 |
-| `im.group_id` | project | IM 群 ID（CIO agent 自身逻辑用，`project_get` 的 config_summary 可读） |
+| `im.group_id` | project | IM 群 ID（CIO agent 自身逻辑用；不在 config_summary 白名单内，用 `config_get` scope=project 读） |
 
-群绑定的完整端到端流程见 wire-up-automation skill 的 references/feishu-bot-setup.md。。
+群绑定的完整端到端流程见 wire-up-automation skill 的 references/feishu-bot-setup.md。
 
 ## 业务键（workspace 级）
 
