@@ -24,6 +24,19 @@ export function AdminShell({
   tokenName,
 }: AdminShellProps) {
   const { t } = useTranslation()
+  // admin 页面用 <a href> 真实导航（整页刷新），用 window.location.pathname 判断当前页，
+  // 不依赖 Router context，避免测试环境无 Router provider 时崩溃。
+  const pathname = typeof window !== "undefined" ? window.location.pathname : ""
+
+  const navItemClass = (href: string) => {
+    const active = pathname === href
+    return [
+      "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs font-medium transition-colors hover:bg-muted hover:text-foreground",
+      active
+        ? "border-l-foreground bg-muted text-foreground"
+        : "border-l-transparent text-muted-foreground",
+    ].join(" ")
+  }
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -32,17 +45,11 @@ export function AdminShell({
           <ProductLogo />
         </div>
         <nav aria-label={t("admin.navLabel")} className="space-y-1 p-2">
-          <a
-            className="flex h-8 w-full items-center gap-2 border-l-2 border-l-transparent px-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            href="/admin"
-          >
+          <a className={navItemClass("/admin")} href="/admin">
             <ShieldAlert className="size-3.5" />
             {t("admin.nav.bootstrap")}
           </a>
-          <a
-            className="flex h-8 w-full items-center gap-2 border-l-2 border-l-transparent px-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            href="/admin/tokens"
-          >
+          <a className={navItemClass("/admin/tokens")} href="/admin/tokens">
             <KeyRound className="size-3.5" />
             {t("admin.nav.tokens")}
           </a>

@@ -53,7 +53,7 @@ func (s *Service) AdminRevokeToken(tokenRef, adminTokenName string) error {
 // AdminModifyTokenInput admin 修改 token 入参。
 // 不含 WorkspaceRefs/ProjectRefs：admin 不改 workspace/project 绑定（语义复杂，由 token owner 在普通 console 自服务）。
 type AdminModifyTokenInput struct {
-	TokenID        string
+	TokenRef       string // ID 或 prefix，与 AdminRevokeToken 一致
 	Name           *string
 	Scopes         *[]string
 	ExpiresIn      *time.Duration
@@ -61,10 +61,11 @@ type AdminModifyTokenInput struct {
 }
 
 // AdminModifyToken 以 admin 身份修改 token 的 name/scope/过期，绕过 owner 校验。
+// TokenRef 支持 ID 或 prefix，与 AdminRevokeToken 的解析行为一致。
 func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, error) {
-	existing, err := s.tokenRepo.GetByID(input.TokenID)
+	existing, err := s.resolveAdminTokenRef(input.TokenRef)
 	if err != nil {
-		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
+		return nil, err
 	}
 	// admin 不校验 owner（admin 即最高权限），但仍拦截已吊销/已过期
 	if existing.RevokedAt != nil {
@@ -116,7 +117,7 @@ func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, err
 			if err != nil {
 				return err
 			}
-			if err := txSvc.tokenRepo.Update(input.TokenID, updates); err != nil {
+			if err := txSvc.tokenRepo.Update(existing.ID, updates); err != nil {
 				return err
 			}
 			return txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
@@ -134,7 +135,7 @@ func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, err
 		}
 	}
 
-	updated, err := s.tokenRepo.GetByID(input.TokenID)
+	updated, err := s.tokenRepo.GetByID(existing.ID)
 	if err != nil {
 		return nil, RuntimeError{Code: "token_not_found", Message: "failed to reload token"}
 	}
@@ -157,11 +158,14 @@ func (s *Service) fillTokenViews(rows []storage.ApiTokenEntry) []TokenView {
 			userIDs = append(userIDs, row.UserID)
 		}
 	}
-	// 单次批量查询
-	users, _ := s.userRepo.ListByIDs(userIDs)
+	// 单次批量查询。失败时降级为 fallback user（token 仍可列出），
+	// 不阻断列表——DB 异常会在 ListAll 阶段就已暴露。
+	users, userErr := s.userRepo.ListByIDs(userIDs)
 	userMap := make(map[string]storage.User, len(users))
-	for _, u := range users {
-		userMap[u.ID] = u
+	if userErr == nil {
+		for _, u := range users {
+			userMap[u.ID] = u
+		}
 	}
 
 	out := make([]TokenView, 0, len(rows))
@@ -176,4 +180,14 @@ func (s *Service) fillTokenViews(rows []storage.ApiTokenEntry) []TokenView {
 		out = append(out, view)
 	}
 	return out
+}
+
+// resolveAdminTokenRef 按 ID 或 prefix 解析 token，供 admin modify 等非事务路径复用。
+// 与 AdminRevokeToken 事务内的解析行为一致。
+func (s *Service) resolveAdminTokenRef(ref string) (storage.ApiTokenEntry, error) {
+	entry, err := s.tokenRepo.GetByIDOrPrefix(strings.TrimSpace(ref))
+	if err != nil {
+		return storage.ApiTokenEntry{}, RuntimeError{Code: "token_not_found", Message: "token not found"}
+	}
+	return entry, nil
 }

@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/dialog"
 
 import { TokenCreatedResult } from "./token-created-result"
-import { TokenForm, tokenErrorMessage, valuesToCreateInput } from "./token-form"
+import { TokenForm, valuesToCreateInput } from "./token-form"
+import { tokenErrorMessage } from "./token-api"
 import { useCreateTokenMutation } from "./use-token-mutations"
 
 type TokenCreateDialogProps = {

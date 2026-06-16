@@ -199,7 +199,7 @@ func TestAdminModifyTokenScopes(t *testing.T) {
 	}
 
 	view, err := adminSvc.AdminModifyToken(AdminModifyTokenInput{
-		TokenID:        created.View.ID,
+		TokenRef:       created.View.ID,
 		Scopes:         &[]string{"task:read", "task:write"},
 		AdminTokenName: "admin-ops",
 	})
@@ -212,7 +212,7 @@ func TestAdminModifyTokenScopes(t *testing.T) {
 
 	// 空 scope 被拒
 	_, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
-		TokenID: created.View.ID,
+		TokenRef: created.View.ID,
 		Scopes:  &[]string{},
 	})
 	if err == nil {
@@ -240,7 +240,7 @@ func TestAdminModifyTokenExpires(t *testing.T) {
 	// 设过期
 	ttl := 720 * time.Hour
 	view, err := adminSvc.AdminModifyToken(AdminModifyTokenInput{
-		TokenID:   created.View.ID,
+		TokenRef:   created.View.ID,
 		ExpiresIn: &ttl,
 	})
 	if err != nil {
@@ -253,7 +253,7 @@ func TestAdminModifyTokenExpires(t *testing.T) {
 	// 清过期
 	zero := time.Duration(0)
 	view, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
-		TokenID:   created.View.ID,
+		TokenRef:   created.View.ID,
 		ExpiresIn: &zero,
 	})
 	if err != nil {
@@ -286,8 +286,43 @@ func TestAdminModifyTokenRejectsRevoked(t *testing.T) {
 
 	newName := "x"
 	_, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
-		TokenID: created.View.ID,
+		TokenRef: created.View.ID,
 		Name:    &newName,
 	})
 	assertRuntimeCode(t, err, "token_revoked")
+}
+
+func TestAdminModifyTokenAcceptsPrefixRef(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adminSvc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 用 prefix（非完整 ID）调用 modify，应成功解析
+	renamed := "renamed-by-prefix"
+	view, err := adminSvc.AdminModifyToken(AdminModifyTokenInput{
+		TokenRef: created.View.Prefix,
+		Name:     &renamed,
+	})
+	if err != nil {
+		t.Fatalf("AdminModifyToken(prefix) error = %v", err)
+	}
+	if view.Name != "renamed-by-prefix" {
+		t.Fatalf("name = %q, want renamed-by-prefix", view.Name)
+	}
+	if view.ID != created.View.ID {
+		t.Fatalf("id = %q, want %q (same token)", view.ID, created.View.ID)
+	}
 }

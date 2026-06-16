@@ -271,7 +271,7 @@ func (s *Server) handleAdminTokenModify(w http.ResponseWriter, r *http.Request) 
 		ttl = &value
 	}
 	view, err := svc.AdminModifyToken(app.AdminModifyTokenInput{
-		TokenID:        chi.URLParam(r, "tokenRef"),
+		TokenRef:       chi.URLParam(r, "tokenRef"),
 		Name:           req.Name,
 		Scopes:         req.Scopes,
 		ExpiresIn:      ttl,
