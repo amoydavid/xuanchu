@@ -168,10 +168,10 @@ export function AdminLoginPage({ onSignedIn }: AdminLoginPageProps) {
               className="w-full justify-start px-0"
               variant="link"
             >
-              <a href="/">
+              <Link to="/">
                 <ArrowLeft className="size-4" />
                 {t("admin.backToWorkspaceConsole")}
-              </a>
+              </Link>
             </Button>
             </form>
           )}
