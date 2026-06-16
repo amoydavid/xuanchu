@@ -41,6 +41,19 @@ func (r *UserRepository) List() ([]User, error) {
 	return users, nil
 }
 
+// ListByIDs 按 ID 批量查询用户（参数绑定，防注入）。
+// ids 为空时直接返回空切片，不查 DB。供 admin 批量解析 token 的 user info，避免 N+1。
+func (r *UserRepository) ListByIDs(ids []string) ([]User, error) {
+	if len(ids) == 0 {
+		return []User{}, nil
+	}
+	var users []User
+	if err := r.db.Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 func (r *UserRepository) UpdateDefaultWorkspace(userID, workspaceID string, modifiedAt int64) error {
 	result := r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
 		"default_workspace_id": workspaceID,

@@ -76,6 +76,24 @@ func (r *TokenRepository) ListByUser(userID string, includeRevoked bool) ([]ApiT
 	return out, nil
 }
 
+// ListAll 返回全部 token（跨 workspace，供 admin 管控用）。
+// includeRevoked=false 时过滤已吊销。
+func (r *TokenRepository) ListAll(includeRevoked bool) ([]ApiTokenEntry, error) {
+	var rows []ApiToken
+	query := r.db.Model(&ApiToken{})
+	if !includeRevoked {
+		query = query.Where("revoked_at IS NULL")
+	}
+	if err := query.Order("created_at DESC").Order("id DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]ApiTokenEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, apiTokenEntry(row))
+	}
+	return out, nil
+}
+
 func (r *TokenRepository) GetByPrefix(prefix string) (ApiTokenEntry, error) {
 	var row ApiToken
 	err := r.db.Where("token_prefix = ?", prefix).First(&row).Error
