@@ -8,7 +8,7 @@
 
 ## 项目（project.*）
 
-- `project.add`、`project.modify`、`project.archive`、`project.annotate`、`project.denotated`、`project.config.set`、`project.config.unset`
+- `project.add`、`project.modify`、`project.archive`、`project.annotate`、`project.denotate`、`project.config.set`、`project.config.unset`
 
 ## Workspace（workspace.*）
 

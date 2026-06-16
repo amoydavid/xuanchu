@@ -1,6 +1,6 @@
 ---
 name: report-and-review
-description: 在 IM 群里发日报/周报、解释任务 urgency 排序理由、查审计日志排查谁改了或删了什么。用户提到周报、今天该做什么、为什么先做这个、谁删了任务、审计、排查操作记录时使用。
+description: 在 IM 群里发待办和逾期汇总、解释任务 urgency 排序理由、查审计日志排查谁改了或删了什么。用户提到日报、周报、今天该做什么、为什么先做这个、谁删了任务、审计、排查操作记录时使用。
 ---
 
 # 汇报与审计
@@ -27,6 +27,7 @@ CIO agent 在项目群里广播状态、解释排序、排查问题。这是 age
 1. report_run({"workspace":"dajee","name":"next","limit":10})   // 今日该做的
 2. report_run({"workspace":"dajee","name":"overdue"})            // 逾期
 3. // CIO 汇总成消息发群
+// 发周报可用 report_run name:"completed" + query 叠加时间过滤
 ```
 
 ### 场景 B：解释排序
@@ -41,8 +42,9 @@ CIO agent 在项目群里广播状态、解释排序、排查问题。这是 age
 ### 场景 C：排查"谁删了任务"
 
 ```
-1. audit_list({"workspace":"dajee","limit":20,"actor":"bob"})
-2. // 过滤 action 为 task.delete 的条目，看 payload 和 target_id
+1. audit_list({"workspace":"dajee","limit":50})                  // 先看最近操作
+2. audit_list({"workspace":"dajee","limit":20,"actor":"bob"})     // 再用 actor 收窄
+3. // 过滤 action 为 task.delete 的条目，看 payload 和 target_id
 ```
 
 ## 易错点
