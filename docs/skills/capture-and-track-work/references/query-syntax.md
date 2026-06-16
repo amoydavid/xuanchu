@@ -15,7 +15,7 @@
 | `priority:H` | 某优先级（H/M/L） |
 | `due.before:today` / `due.before:now` | due 早于今天/现在 |
 | `due.before:now+24h` | due 在未来 24 小时内 |
-| `status:pending` / `status:completed` | 状态过滤 |
+| `status:pending` / `status:completed` / `status:waiting` | 状态过滤（waiting = 等待中，如设了未来 wait） |
 | `annotations contains "备注文本"` | 注释含某文本 |
 | `+urgent` | 含某标签（标签简写） |
 

@@ -32,7 +32,7 @@
       "tags": ["bug", "frontend"],
       "project": "apiplat",
       "assignees": [{"id": "...", "name": "alice"}],
-      "annotations": [{"entry": 1748793600, "description": "客户反馈: Chrome 121 必现"}],
+      "annotations": [{"id": "annotation-uuid", "entry": 1748793600, "description": "客户反馈: Chrome 121 必现"}],
       "entry": 1748707200,
       "urgency": 8.9
     }
@@ -177,7 +177,9 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
 
 ### task_denotate — 移除注释
 
-`annotation_id` 是任务注释的稳定 ID。先通过 `task_get` 或 `task_query` 读取 `annotations[].id`，不要使用显示顺序删除注释。
+`annotation_id` 是任务注释的稳定 ID。先通过 `task_get`（返回的 annotation 含 `id`）读取 `annotations[].id`，不要使用显示顺序删除注释。
+
+> `task_query` 的返回默认不带 annotations；要拿 annotation ID 用 `task_get`。
 
 ```json
 {
@@ -246,6 +248,8 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
 ```
 
 ### task_import — 导入
+
+`entry` / `modified` 用 ISO8601 字符串（与 `task_add` / `task_modify` 的 `due` 用 Unix 秒不同）。
 
 ```json
 {
