@@ -1,6 +1,6 @@
 # config_summary 动态过滤 设计
 
-> 状态：设计稿，待评审
+> 状态：已实现（2026-06-16）
 > 日期：2026-06-16
 > 背景：在 Agent Skill 文档重构过程中发现 `project_get` 的 `config_summary` 用编译期硬编码白名单（4 个 `agent.*` 键）过滤，与"config schema 运行时可定义"的设计相矛盾，会卡住后续所有集成场景。
 
