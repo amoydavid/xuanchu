@@ -72,7 +72,15 @@ export function resourceConfig(
         title: t("page.members"),
         path: `/api/v1/workspaces/${workspaceSlug ?? ""}/members`,
         columns: [
-          { key: "user", header: t("common.actor"), render: userCell("user") },
+          {
+            key: "name",
+            header: t("common.actor"),
+            render: (row) => {
+              const name = String(row["name"] ?? "")
+              const email = row["email"] ? String(row["email"]) : ""
+              return email ? `${name} (${email})` : name
+            },
+          },
           {
             key: "role",
             header: t("resource.role"),
