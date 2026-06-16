@@ -172,6 +172,32 @@ func (s *Service) ProjectConfigList(projectRef string) (map[string]string, error
 	return s.configRepo.ListScope(s.workspaceID, storage.ConfigScopeProject, project.ID)
 }
 
+// ProjectConfigSummary 返回 project 配置中非 secret 的键值对，供 agent 读取。
+// schema 标记为 secret 的键被排除；无 schema 定义的键视为非 secret，照常返回。
+func (s *Service) ProjectConfigSummary(projectRef string) (map[string]string, error) {
+	all, err := s.ProjectConfigList(projectRef)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(all))
+	for k, v := range all {
+		if s.configKeyIsSecret(k) {
+			continue
+		}
+		out[k] = v
+	}
+	return out, nil
+}
+
+// configKeyIsSecret 查询某 key 的 schema 是否标记为 secret。无 schema 视为非 secret。
+func (s *Service) configKeyIsSecret(key string) bool {
+	def, ok, err := s.configDefRepo.Get(s.workspaceID, key)
+	if err != nil || !ok {
+		return false
+	}
+	return def.Secret
+}
+
 func normalizeScopedConfigKey(key string) (string, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {

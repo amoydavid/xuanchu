@@ -277,9 +277,9 @@ func TestReadProjectByID(t *testing.T) {
 		t.Errorf("slug = %q, want backend", data.Slug)
 	}
 
-	// 验证只暴露 agent.* 配置，context.default 不应出现
-	if _, ok := data.AgentConfig["context.default"]; ok {
-		t.Error("context.default should not be exposed in project resource (not agent.* prefix)")
+	// context.default 是合法的非 secret 键，应随非 secret 配置一起暴露
+	if data.AgentConfig["context.default"] != "sprint" {
+		t.Errorf("context.default = %q, want sprint", data.AgentConfig["context.default"])
 	}
 	if data.AgentConfig["agent.background"] != "true" {
 		t.Errorf("agent.background = %q, want true", data.AgentConfig["agent.background"])
@@ -448,21 +448,50 @@ func TestReadWorkspaceCurrentIncludesProjects(t *testing.T) {
 	}
 }
 
-func TestProjectResourceOnlyExposesAllowedAgentKeys(t *testing.T) {
+func TestProjectResourceExposesNonSecretKeys(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)
 	proj, err := svc.AddProject(app.AddProjectInput{Slug: "secure", Name: "Secure"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 设置所有允许的 agent keys
-	for _, key := range allowedAgentKeys {
-		if err := svc.ProjectConfigSet(proj.Slug, key, "test-value"); err != nil {
-			t.Fatal(err)
-		}
+	// 定义三个 schema：一个普通键，一个 secret 键，一个普通键（im.group_id）
+	if err := svc.ConfigSchemaSet(app.ConfigSchemaInput{
+		Key:           "integrations.feishu.webhook_url",
+		ValueType:     string(app.ConfigValueTypeString),
+		AllowedScopes: []string{string(app.ConfigAllowedScopeProject)},
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet(webhook_url): %v", err)
 	}
-	// context.default 是合法 key 但不是 agent.* 前缀
-	if err := svc.ProjectConfigSet(proj.Slug, "context.default", "should-not-appear"); err != nil {
+	if err := svc.ConfigSchemaSet(app.ConfigSchemaInput{
+		Key:           "integrations.feishu.bot_token",
+		ValueType:     string(app.ConfigValueTypeString),
+		AllowedScopes: []string{string(app.ConfigAllowedScopeWorkspace), string(app.ConfigAllowedScopeProject)},
+		Secret:        true,
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet(bot_token): %v", err)
+	}
+	if err := svc.ConfigSchemaSet(app.ConfigSchemaInput{
+		Key:           "im.group_id",
+		ValueType:     string(app.ConfigValueTypeString),
+		AllowedScopes: []string{string(app.ConfigAllowedScopeProject)},
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet(group_id): %v", err)
+	}
+	// 普通键（有 schema，非 secret）——应出现
+	if err := svc.ProjectConfigSet(proj.Slug, "integrations.feishu.webhook_url", "https://open.feishu.cn/hook/xxx"); err != nil {
+		t.Fatal(err)
+	}
+	// secret 键（有 schema，secret:true）——应被排除
+	if err := svc.ProjectConfigSet(proj.Slug, "integrations.feishu.bot_token", "t-secret-value"); err != nil {
+		t.Fatal(err)
+	}
+	// agent 指令键——应出现
+	if err := svc.ProjectConfigSet(proj.Slug, "agent.background", "bg"); err != nil {
+		t.Fatal(err)
+	}
+	// 普通键 im.group_id（有 schema，非 secret）——应出现
+	if err := svc.ProjectConfigSet(proj.Slug, "im.group_id", "oc_yyy"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -486,16 +515,21 @@ func TestProjectResourceOnlyExposesAllowedAgentKeys(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	// context.default 不是 agent.* 前缀，不应出现
-	if _, ok := data.AgentConfig["context.default"]; ok {
-		t.Error("context.default should not be exposed (not agent.* prefix)")
+	// 普通键出现
+	if data.AgentConfig["integrations.feishu.webhook_url"] != "https://open.feishu.cn/hook/xxx" {
+		t.Errorf("webhook_url = %q, want exposed", data.AgentConfig["integrations.feishu.webhook_url"])
 	}
-
-	// 白名单内的 key 都应出现
-	for _, key := range allowedAgentKeys {
-		if _, ok := data.AgentConfig[key]; !ok {
-			t.Errorf("expected %q in agent_config, not found", key)
-		}
+	// agent 指令键出现
+	if data.AgentConfig["agent.background"] != "bg" {
+		t.Errorf("agent.background = %q, want bg", data.AgentConfig["agent.background"])
+	}
+	// 普通键 im.group_id（有 schema，非 secret）——应出现
+	if data.AgentConfig["im.group_id"] != "oc_yyy" {
+		t.Errorf("im.group_id = %q, want oc_yyy", data.AgentConfig["im.group_id"])
+	}
+	// secret 键被排除
+	if _, ok := data.AgentConfig["integrations.feishu.bot_token"]; ok {
+		t.Error("secret key integrations.feishu.bot_token should NOT be exposed")
 	}
 }
 

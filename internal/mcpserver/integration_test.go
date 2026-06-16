@@ -1230,8 +1230,8 @@ func TestMCPProjectTools(t *testing.T) {
 	if configSummary["agent.background"] != "Background" {
 		t.Fatalf("agent.background = %v, want Background", configSummary["agent.background"])
 	}
-	if _, ok := configSummary["context.default"]; ok {
-		t.Fatal("context.default must not be exposed in MCP project config summary")
+	if configSummary["context.default"] != "legacy" {
+		t.Fatalf("context.default = %v, want legacy (non-secret keys are exposed)", configSummary["context.default"])
 	}
 
 	missing := callTool(t, session, "project_get", ProjectGetInput{})

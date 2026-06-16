@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -350,19 +349,10 @@ func contextSummaryFromService(svc *app.Service) (*contextSummary, error) {
 	return &contextSummary{Name: name, Filter: filter}, nil
 }
 
-// filterAgentConfig 只保留 spec 允许暴露给 Agent 的 project 配置项。
+// filterAgentConfig 返回 project 配置中非 secret 的键值对，供 agent 读取。
+// schema 标记为 secret 的键被排除；无 schema 定义的键视为非 secret，照常返回。
 func filterAgentConfig(svc *app.Service, projectRef string) (map[string]string, error) {
-	all, err := svc.ProjectConfigList(projectRef)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]string)
-	for k, v := range all {
-		if isAllowedAgentKey(k) {
-			out[k] = v
-		}
-	}
-	return out, nil
+	return svc.ProjectConfigSummary(projectRef)
 }
 
 // jsonResource 将任意数据序列化为 JSON text resource content。
@@ -412,16 +402,4 @@ func allResourceTemplateURIs() []string {
 	}
 }
 
-// allowedAgentKeys 是 project resource 允许暴露的 agent.* 配置键白名单。
-// 只包含当前 app 层 projectConfigKeys 中 agent.* 前缀的键。
-var allowedAgentKeys = []string{
-	"agent.background",
-	"agent.constraints",
-	"agent.default_context",
-	"agent.handoff",
-}
-
-// isAllowedAgentKey 检查键是否在允许的 agent.* 白名单中。
-func isAllowedAgentKey(key string) bool {
-	return slices.Contains(allowedAgentKeys, key)
-}
+// （历史：曾用硬编码 agent.* 白名单过滤 config_summary，已改为基于 schema secret 标记的动态过滤，见 app.ProjectConfigSummary。）
