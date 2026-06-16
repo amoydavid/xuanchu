@@ -49,6 +49,9 @@ CIO agent 把每个项目对应的 IM 群（外部飞书群）接上通知，让
 - dispatcher 默认 `max_concurrency=1`；sink `max_concurrency=0` 表示继承 dispatcher 默认 sink 并发，显式大于 0 才限制。
 - `assignees` / `assignees_and_explicit_users` audience 只支持 `task.*` 事件；project 事件没有 assignee 语义，用 `actor` 或 `explicit_users`。
 - `start` 只触发 `task.started`，`stop` 只触发 `task.stopped`——不要只靠 `task.modified` 捕获开始/停止。
+- **字段名差一字**：reminder rule 用 `audience_type`，notification rule 用 `audience`，二者同义。
+- notification rule 的 `recipients` 在 audience 为 `explicit_users` / `assignees_and_explicit_users` 时必填。
+- `repeat_policy` 用 `every:<duration>` 格式（如 `every:24h`），duration 同样受 Go `time.ParseDuration` 约束，**不支持 `1d`**。
 
 ## 参考文档
 
