@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -29,10 +30,10 @@ func (s *Service) AdminRevokeToken(tokenRef, adminTokenName string) error {
 		}
 		entry, err := txSvc.tokenRepo.GetByIDOrPrefix(ref)
 		if err != nil {
-			return RuntimeError{Code: "token_not_found", Message: "token not found"}
+			return classifyAdminTokenLookupError(err)
 		}
 		if entry.RevokedAt != nil {
-			return RuntimeError{Code: "token_revoked", Message: "token already revoked"}
+			return RuntimeError{Code: "token_revoked", Message: "token is already revoked"}
 		}
 		if err := txSvc.tokenRepo.Revoke(entry.ID, txSvc.clock.Unix()); err != nil {
 			return err
@@ -62,65 +63,69 @@ type AdminModifyTokenInput struct {
 
 // AdminModifyToken 以 admin 身份修改 token 的 name/scope/过期，绕过 owner 校验。
 // TokenRef 支持 ID 或 prefix，与 AdminRevokeToken 的解析行为一致。
+// 解析、校验、更新在同一事务内，避免 TOCTOU（查改间隙 token 被吊销）。
 func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, error) {
-	existing, err := s.resolveAdminTokenRef(input.TokenRef)
-	if err != nil {
-		return nil, err
-	}
-	// admin 不校验 owner（admin 即最高权限），但仍拦截已吊销/已过期
-	if existing.RevokedAt != nil {
-		return nil, RuntimeError{Code: "token_revoked", Message: "cannot modify a revoked token"}
-	}
-	if existing.ExpiresAt != nil && *existing.ExpiresAt < s.clock.Unix() {
-		return nil, RuntimeError{Code: "token_expired", Message: "cannot modify an expired token"}
-	}
+	ref := strings.TrimSpace(input.TokenRef)
+	var updated storage.ApiTokenEntry
+	tokenFound := false
 
-	updates := storage.TokenUpdates{}
-	dirty := false
-
-	if input.Name != nil {
-		updates.Name = input.Name
-		dirty = true
-	}
-
-	if input.Scopes != nil {
-		// admin 不改 workspace，用 existing workspace 校验 scope 一致性
-		scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
-			Type:         existing.Type,
-			Scopes:       *input.Scopes,
-			WorkspaceIDs: parseIDsFromJSON(existing.WorkspaceIDsJSON),
-		})
+	if err := s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
 		if err != nil {
-			return nil, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
+			return err
 		}
-		// admin role 恒允许 impersonate（tokenManageAllowed 对 admin 返回 true）
-		sj, _ := marshalStringSlice(scopes.Values())
-		updates.ScopesJSON = &sj
-		dirty = true
-	}
-
-	if input.ExpiresIn != nil {
-		if *input.ExpiresIn == 0 {
-			updates.ClearExpiresAt = true
-		} else if *input.ExpiresIn < 0 {
-			return nil, RuntimeError{Code: "token_scope_invalid", Message: "expires-in must be a positive duration"}
-		} else {
-			ts := s.clock.Unix() + int64(input.ExpiresIn.Seconds())
-			updates.ExpiresAt = &ts
+		existing, err := txSvc.tokenRepo.GetByIDOrPrefix(ref)
+		if err != nil {
+			return classifyAdminTokenLookupError(err)
 		}
-		dirty = true
-	}
+		// admin 不校验 owner（admin 即最高权限），但仍拦截已吊销/已过期
+		if existing.RevokedAt != nil {
+			return RuntimeError{Code: "token_revoked", Message: "token is already revoked"}
+		}
+		if existing.ExpiresAt != nil && *existing.ExpiresAt < txSvc.clock.Unix() {
+			return RuntimeError{Code: "token_expired", Message: "token is expired"}
+		}
 
-	if dirty {
-		if err := s.store.Transaction(func(txStore *storage.Store) error {
-			txSvc, err := s.withStore(txStore)
+		updates := storage.TokenUpdates{}
+		dirty := false
+
+		if input.Name != nil {
+			updates.Name = input.Name
+			dirty = true
+		}
+
+		if input.Scopes != nil {
+			// admin 不改 workspace，用 existing workspace 校验 scope 一致性
+			scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
+				Type:         existing.Type,
+				Scopes:       *input.Scopes,
+				WorkspaceIDs: parseIDsFromJSON(existing.WorkspaceIDsJSON),
+			})
 			if err != nil {
-				return err
+				return RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
 			}
+			sj, _ := marshalStringSlice(scopes.Values())
+			updates.ScopesJSON = &sj
+			dirty = true
+		}
+
+		if input.ExpiresIn != nil {
+			if *input.ExpiresIn == 0 {
+				updates.ClearExpiresAt = true
+			} else if *input.ExpiresIn < 0 {
+				return RuntimeError{Code: "token_scope_invalid", Message: "expires-in must be a positive duration"}
+			} else {
+				ts := txSvc.clock.Unix() + int64(input.ExpiresIn.Seconds())
+				updates.ExpiresAt = &ts
+			}
+			dirty = true
+		}
+
+		if dirty {
 			if err := txSvc.tokenRepo.Update(existing.ID, updates); err != nil {
 				return err
 			}
-			return txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
+			if err := txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
 				Action:     "admin.token.modify",
 				TargetType: "token",
 				TargetID:   existing.ID,
@@ -129,15 +134,26 @@ func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, err
 					"name":    existing.Name,
 					"changes": updates.ChangedFields(),
 				},
-			}, input.AdminTokenName)
-		}); err != nil {
-			return nil, RuntimeError{Code: "token_update_failed", Message: "failed to update token"}
+			}, input.AdminTokenName); err != nil {
+				return err
+			}
 		}
+
+		updated = existing // 重新查询拿最新值
+		// 事务内重新加载，拿到 update 后的最终状态
+		reloaded, err := txSvc.tokenRepo.GetByID(existing.ID)
+		if err != nil {
+			return err
+		}
+		updated = reloaded
+		tokenFound = true
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
-	updated, err := s.tokenRepo.GetByID(existing.ID)
-	if err != nil {
-		return nil, RuntimeError{Code: "token_not_found", Message: "failed to reload token"}
+	if !tokenFound {
+		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
 	}
 	views := s.fillTokenViews([]storage.ApiTokenEntry{updated})
 	return &views[0], nil
@@ -182,12 +198,11 @@ func (s *Service) fillTokenViews(rows []storage.ApiTokenEntry) []TokenView {
 	return out
 }
 
-// resolveAdminTokenRef 按 ID 或 prefix 解析 token，供 admin modify 等非事务路径复用。
-// 与 AdminRevokeToken 事务内的解析行为一致。
-func (s *Service) resolveAdminTokenRef(ref string) (storage.ApiTokenEntry, error) {
-	entry, err := s.tokenRepo.GetByIDOrPrefix(strings.TrimSpace(ref))
-	if err != nil {
-		return storage.ApiTokenEntry{}, RuntimeError{Code: "token_not_found", Message: "token not found"}
+// classifyAdminTokenLookupError 把 token repo 的查找错误映射为语义化的 RuntimeError。
+// 区分「不存在」与「prefix 歧义」，便于 admin 判断是 ref 写错还是太短。
+func classifyAdminTokenLookupError(err error) error {
+	if errors.Is(err, storage.ErrAmbiguousTokenRef) {
+		return RuntimeError{Code: "token_ambiguous_ref", Message: "token reference matches multiple tokens, use a longer prefix or full ID"}
 	}
-	return entry, nil
+	return RuntimeError{Code: "token_not_found", Message: "token not found"}
 }
