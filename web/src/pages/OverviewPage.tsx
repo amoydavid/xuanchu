@@ -8,16 +8,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
+import type { MeResponse } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
 
 type Row = Record<string, unknown>
 
 type OverviewPageProps = {
-  me?: {
-    actor: { name: string }
-    token: { type: string; scopes: string[] }
-    effective_workspace: { slug: string }
-  }
+  me?: MeResponse
 }
 
 export function OverviewPage({ me }: OverviewPageProps) {
@@ -87,7 +84,7 @@ export function OverviewPage({ me }: OverviewPageProps) {
         {[
           [t("overview.currentActor"), me?.actor.name ?? "-"],
           [t("overview.tokenType"), me?.token.type ?? "-"],
-          [t("overview.scope"), me?.token.scopes.join(", ") || "-"],
+          [t("overview.scope"), (me?.token.scopes ?? []).join(", ") || "-"],
         ].map(([label, value]) => (
           <div className="border bg-card p-3" key={label}>
             <div className="text-xs text-muted-foreground">{label}</div>

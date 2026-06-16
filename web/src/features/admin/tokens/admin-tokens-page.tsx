@@ -128,13 +128,13 @@ export function AdminTokensPage() {
                         ) : null}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {row.workspace_ids.length > 0
-                          ? row.workspace_ids.join(", ")
+                        {(row.workspace_ids ?? []).length > 0
+                          ? (row.workspace_ids ?? []).join(", ")
                           : t("admin.token.global")}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
-                          {row.scopes.length} {t("token.field.scopes")}
+                          {(row.scopes ?? []).length} {t("token.field.scopes")}
                         </Badge>
                       </TableCell>
                       <TableCell>

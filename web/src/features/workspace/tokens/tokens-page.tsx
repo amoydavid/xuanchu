@@ -122,7 +122,7 @@ export function TokensPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
-                          {row.scopes.length} {t("token.field.scopes")}
+                          {(row.scopes ?? []).length} {t("token.field.scopes")}
                         </Badge>
                       </TableCell>
                       <TableCell>

@@ -7,9 +7,9 @@ export type AdminTokenRow = {
   name: string
   type: string
   user: { id: string; name: string; email?: string | null }
-  workspace_ids: string[]
-  project_ids: string[]
-  scopes: string[]
+  workspace_ids: string[] | null
+  project_ids: string[] | null
+  scopes: string[] | null
   created_at: number
   expires_at?: number | null
   revoked_at?: number | null

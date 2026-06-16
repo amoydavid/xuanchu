@@ -322,13 +322,13 @@ export function valuesToModifyInput(
   if (!initial || values.name.trim() !== initial.name) {
     input.name = values.name.trim()
   }
-  if (!initial || !sameSet(values.scopes, initial.scopes)) {
+  if (!initial || !sameSet(values.scopes, initial.scopes ?? [])) {
     input.scopes = values.scopes
   }
-  if (!initial || !sameSet(values.workspaces, initial.workspace_ids)) {
+  if (!initial || !sameSet(values.workspaces, initial.workspace_ids ?? [])) {
     input.workspaces = values.workspaces
   }
-  if (!initial || !sameSet(values.projects, initial.project_ids)) {
+  if (!initial || !sameSet(values.projects, initial.project_ids ?? [])) {
     input.projects = values.projects
   }
   const newExpires = presetToExpiresSeconds(values.expiresPreset, values.expiresAt)

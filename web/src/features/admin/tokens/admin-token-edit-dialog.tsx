@@ -64,7 +64,7 @@ export function AdminTokenEditDialog({
     if (name.trim() !== token.name) {
       input.name = name.trim()
     }
-    if (!sameSet(scopes, token.scopes)) {
+    if (!sameSet(scopes, token.scopes ?? [])) {
       input.scopes = scopes
     }
     const newExpires = presetToExpiresSeconds(expiresPreset, expiresAt)
@@ -98,8 +98,8 @@ export function AdminTokenEditDialog({
           <ReadonlyField
             label={t("token.field.workspaces")}
             value={
-              token.workspace_ids.length > 0
-                ? token.workspace_ids.join(", ")
+              (token.workspace_ids ?? []).length > 0
+                ? (token.workspace_ids ?? []).join(", ")
                 : t("admin.token.global")
             }
           />

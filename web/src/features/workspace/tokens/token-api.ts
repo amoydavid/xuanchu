@@ -2,16 +2,17 @@
 
 import { ApiError } from "@/lib/api"
 
-/** 列表/详情返回的 token 行，对齐后端 tokenResponse。 */
+/** 列表/详情返回的 token 行，对齐后端 tokenResponse。
+ * 注意：workspace_ids/project_ids/scopes 后端可能返回 null（无绑定时），故标为可空。 */
 export type TokenRow = {
   id: string
   prefix: string
   name: string
   type: string
   user: { id: string; name: string; email?: string | null }
-  workspace_ids: string[]
-  project_ids: string[]
-  scopes: string[]
+  workspace_ids: string[] | null
+  project_ids: string[] | null
+  scopes: string[] | null
   created_at: number
   expires_at?: number | null
   revoked_at?: number | null

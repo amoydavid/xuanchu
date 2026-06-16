@@ -30,6 +30,7 @@ describe("OverviewPage", () => {
           me={{
             actor: { name: "local" },
             effective_workspace: { slug: "local" },
+            effective_role: "owner",
             token: { scopes: ["*"], type: "pat" },
           }}
         />

@@ -4,7 +4,7 @@ import { workspaceApiGet } from "./workspace-api"
 
 export type MeResponse = {
   actor: { name: string }
-  token: { type: string; scopes: string[] }
+  token: { type: string; scopes: string[] | null }
   effective_workspace: { slug: string }
   effective_role: string
 }
