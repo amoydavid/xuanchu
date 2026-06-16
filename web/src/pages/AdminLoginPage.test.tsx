@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { i18n } from "@/i18n"
+import { renderWithRouter } from "@/test/router-wrapper"
 
 import { AdminLoginPage } from "./AdminLoginPage"
 
@@ -38,16 +39,20 @@ describe("AdminLoginPage", () => {
       )
 
     render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <AdminLoginPage onSignedIn={onSignedIn} />
-        </TooltipProvider>
-      </ThemeProvider>
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminLoginPage onSignedIn={onSignedIn} />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
     )
 
-    expect(
-      screen.getByRole("heading", { name: "Server Admin Control Plane" })
-    ).toBeTruthy()
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Server Admin Control Plane" })
+      ).toBeTruthy()
+    })
     expect(screen.getByText("High risk")).toBeTruthy()
     await userEvent.type(
       screen.getByLabelText("Admin token"),
@@ -84,13 +89,18 @@ describe("AdminLoginPage", () => {
       )
 
     render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <AdminLoginPage onSignedIn={vi.fn()} />
-        </TooltipProvider>
-      </ThemeProvider>
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminLoginPage onSignedIn={vi.fn()} />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
     )
 
+    await waitFor(() => {
+      expect(screen.getByLabelText("Admin token")).toBeTruthy()
+    })
     await userEvent.type(screen.getByLabelText("Admin token"), "bad")
     await userEvent.click(screen.getByRole("button", { name: "Authenticate" }))
     expect(await screen.findByText("Admin authentication failed")).toBeTruthy()
@@ -107,11 +117,13 @@ describe("AdminLoginPage", () => {
     )
 
     render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <AdminLoginPage onSignedIn={vi.fn()} />
-        </TooltipProvider>
-      </ThemeProvider>
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminLoginPage onSignedIn={vi.fn()} />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
     )
 
     const link = await screen.findByRole("link", {

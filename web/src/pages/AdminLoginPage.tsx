@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import type { FormEvent } from "react"
 import { ArrowLeft, ShieldAlert, ShieldCheck } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { Link } from "@tanstack/react-router"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
@@ -106,17 +107,17 @@ export function AdminLoginPage({ onSignedIn }: AdminLoginPageProps) {
                 </AlertDescription>
               </Alert>
               <Button asChild className="w-full">
-                <a href="/admin/setup">{t("admin.openAdminSetup")}</a>
+                <Link to="/admin/setup">{t("admin.openAdminSetup")}</Link>
               </Button>
               <Button
                 asChild
                 className="w-full justify-start px-0"
                 variant="link"
               >
-                <a href="/">
+                <Link to="/">
                   <ArrowLeft className="size-4" />
                   {t("admin.backToWorkspaceConsole")}
-                </a>
+                </Link>
               </Button>
             </div>
           ) : disabled ? (
@@ -130,10 +131,10 @@ export function AdminLoginPage({ onSignedIn }: AdminLoginPageProps) {
                 className="w-full justify-start px-0"
                 variant="link"
               >
-                <a href="/">
+                <Link to="/">
                   <ArrowLeft className="size-4" />
                   {t("admin.backToWorkspaceConsole")}
-                </a>
+                </Link>
               </Button>
             </div>
           ) : (
