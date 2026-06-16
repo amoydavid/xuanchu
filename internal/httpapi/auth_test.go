@@ -101,6 +101,7 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 			EffectiveWorkspace struct {
 				Slug string `json:"slug"`
 			} `json:"effective_workspace"`
+			EffectiveRole string `json:"effective_role"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
@@ -117,6 +118,9 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 	}
 	if payload.Data.EffectiveWorkspace.Slug != "local" {
 		t.Fatalf("effective_workspace.slug = %q, want local", payload.Data.EffectiveWorkspace.Slug)
+	}
+	if payload.Data.EffectiveRole != "owner" {
+		t.Fatalf("effective_role = %q, want owner", payload.Data.EffectiveRole)
 	}
 }
 

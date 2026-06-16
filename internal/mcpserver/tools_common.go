@@ -252,3 +252,12 @@ func stringPtrFromValue(value string) *string {
 	}
 	return &value
 }
+
+// ptrToStringSlice 把切片转为指针：nil 切片返回 nil（表示「不修改」），
+// 非 nil 切片返回指针（含空切片，表示「清空」）。
+func ptrToStringSlice(values []string) *[]string {
+	if values == nil {
+		return nil
+	}
+	return &values
+}

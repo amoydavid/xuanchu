@@ -42,6 +42,7 @@
 | v0.4.1 | 已完成 | Server Admin Console 与 Workspace Bootstrap |
 | v0.4.2 | 已完成 | Project Readonly View 与 SSO 入口预留 |
 | v0.4.3 | 已完成 | Project 生命周期状态机（planning/active/archived/cancelled） |
+| v0.4.4 | 已完成 | Web Console Token 完整管理（创建/修改/吊销） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -313,6 +314,37 @@ docs/superpowers/specs/2026-06-12-xuanchu-v0.4.2-project-readonly-view-design.md
 ```text
 docs/superpowers/specs/2026-06-15-xuanchu-project-lifecycle-design.md
 docs/superpowers/plans/2026-06-15-xuanchu-project-lifecycle-implementation.md
+```
+
+## v0.4.4：Web Console Token 完整管理
+
+**状态：已完成。**
+
+把 Web Console `/tokens` 页面从只读列表升级为完整 CRUD，并扩展后端 `PATCH /api/v1/tokens/{ref}` 支持工作空间与项目范围修改。
+
+当前范围：
+
+- `/tokens` 列表显示 scopes 数量、状态（有效/过期/已吊销）、最后使用时间，每行提供编辑/吊销操作菜单。
+- 创建 PAT / Agent token：选择类型、按资源分组勾选 scope、绑定工作空间（agent 必填）、项目范围、过期时间（永不过期/7/30/90 天/自定义）。
+- 编辑 token：名称、scope、过期时间、工作空间与项目范围；类型创建后锁定不可改。
+- 吊销 token：AlertDialog 二次确认，吊销不可逆。
+- 创建后明文 token 仅展示一次，列表只保留 prefix。
+- 后端 `ModifyToken` 接通 workspace/project 解析，统一 nil（不改）与空切片（清空）语义；agent token 清空工作空间被拒（`token_agent_requires_workspace`）。
+- Storage `ChangedFields` 补齐 workspace_ids/project_ids 审计输出。
+- 修复前端测试环境（React 19 dev build + act 标记），恢复全部组件测试。
+
+不进入 v0.4.4：
+
+- 不新增 token `description` 字段（需 schema migration）。
+- 不支持 token 类型互转（PAT ↔ Agent）。
+- 不实现 token 轮换 / 自动续期。
+- 不改动 server-admin token（独立表、bootstrap 专用）。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-06-16-xuanchu-token-management-console-design.md
+docs/superpowers/plans/2026-06-16-xuanchu-token-management-console-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

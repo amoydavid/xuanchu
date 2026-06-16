@@ -12,6 +12,7 @@ type meResponse struct {
 	Token              tokenView        `json:"token"`
 	VisibleWorkspaces  []workspaceView  `json:"visible_workspaces"`
 	EffectiveWorkspace workspaceView    `json:"effective_workspace"`
+	EffectiveRole      string           `json:"effective_role"`
 }
 
 type userInfoResponse struct {
@@ -74,6 +75,15 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		visible = append(visible, workspaceView{ID: row.Workspace.ID, Slug: row.Workspace.Slug})
 	}
 
+	// 从可见 workspace 列表中提取 effective workspace 的角色，供前端判断管理能力。
+	effectiveRole := ""
+	for _, row := range authn.VisibleWorkspaces {
+		if row.Workspace.ID == authn.EffectiveWorkspace.ID {
+			effectiveRole = row.Role
+			break
+		}
+	}
+
 	writeSuccess(w, http.StatusOK, meResponse{
 		Actor: userInfoResponseFromInfo(actor),
 		Token: tokenView{
@@ -84,6 +94,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		},
 		VisibleWorkspaces:  visible,
 		EffectiveWorkspace: workspaceView{ID: authn.EffectiveWorkspace.ID, Slug: authn.EffectiveWorkspace.Slug},
+		EffectiveRole:      effectiveRole,
 	}, nil)
 }
 

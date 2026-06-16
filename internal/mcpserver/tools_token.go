@@ -109,7 +109,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		result, err := svc.ModifyToken(app.ModifyTokenInput{
 			TokenID:   in.TokenRef,
 			Name:      in.Name,
-			Scopes:    in.Scope,
+			Scopes:    ptrToStringSlice(in.Scope),
 			ExpiresIn: expiresIn,
 		})
 		if err != nil {

@@ -106,6 +106,17 @@ const projectTaskDetailRoute = createRoute({
   component: lazyRoute(ProjectTaskDetailRoute),
 })
 
+const TokensRoute = lazy(() =>
+  import("@/routes/workspace/TokensRoute").then((module) => ({
+    default: module.TokensRoute,
+  }))
+)
+const tokensRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/tokens",
+  component: lazyRoute(TokensRoute),
+})
+
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
@@ -113,7 +124,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("projects", "/projects"),
     createResourceRoute("workspaces", "/workspaces"),
     createResourceRoute("members", "/members"),
-    createResourceRoute("tokens", "/tokens"),
+    tokensRoute,
     createResourceRoute("hooks", "/hooks"),
     createResourceRoute("notifications", "/notifications"),
     createResourceRoute("audit", "/audit"),
