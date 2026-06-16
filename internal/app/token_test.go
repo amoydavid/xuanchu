@@ -306,7 +306,7 @@ func TestModifyTokenScopes(t *testing.T) {
 
 	view, err := svc.ModifyToken(ModifyTokenInput{
 		TokenID: created.View.ID,
-		Scopes:  []string{"task:read", "task:write"},
+		Scopes:  &[]string{"task:read", "task:write"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestModifyTokenScopesWildcard(t *testing.T) {
 
 	view, err := svc.ModifyToken(ModifyTokenInput{
 		TokenID: created.View.ID,
-		Scopes:  []string{"task:*"},
+		Scopes:  &[]string{"task:*"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -366,7 +366,7 @@ func TestModifyTokenPATSilentlyDropsImpersonate(t *testing.T) {
 
 	view, err := svc.ModifyToken(ModifyTokenInput{
 		TokenID: created.View.ID,
-		Scopes:  []string{"task:read", "impersonate"},
+		Scopes:  &[]string{"task:read", "impersonate"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -519,7 +519,7 @@ func TestModifyTokenRejectsInvalidScope(t *testing.T) {
 
 	_, err = svc.ModifyToken(ModifyTokenInput{
 		TokenID: created.View.ID,
-		Scopes:  []string{"invalid:scope"},
+		Scopes:  &[]string{"invalid:scope"},
 	})
 	assertRuntimeCode(t, err, "token_scope_invalid")
 }
@@ -548,6 +548,169 @@ func TestModifyTokenNoChangesReturnsCurrentView(t *testing.T) {
 	}
 	if len(view.Scopes) != 1 || view.Scopes[0] != "task:read" {
 		t.Fatalf("scopes = %v, want [task:read]", view.Scopes)
+	}
+}
+
+func TestModifyTokenWorkspaces(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	// 建第二个 workspace（owner 默认在 local，有权）
+	other, err := svc.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID:       created.View.ID,
+		WorkspaceRefs: &[]string{"team"},
+	})
+	if err != nil {
+		t.Fatalf("ModifyToken() error = %v", err)
+	}
+	if len(view.WorkspaceIDs) != 1 || view.WorkspaceIDs[0] != other.ID {
+		t.Fatalf("workspace_ids = %v, want [%s]", view.WorkspaceIDs, other.ID)
+	}
+	// 审计记录应含 workspace_ids 变更
+	audits := mustListAudit(t, svc)
+	found := false
+	for _, row := range audits {
+		if row.Action != "token.modified" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
+			continue
+		}
+		changes, _ := payload["changes"].(map[string]any)
+		if _, ok := changes["workspace_ids"]; ok {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("audit missing workspace_ids change: %#v", audits)
+	}
+}
+
+func TestModifyTokenProjects(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	// 建一个属于 local（当前 runtime workspace）的 project
+	project, err := svc.AddProject(AddProjectInput{Slug: "demo", Name: "Demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID:     created.View.ID,
+		ProjectRefs: &[]string{"demo"},
+	})
+	if err != nil {
+		t.Fatalf("ModifyToken() error = %v", err)
+	}
+	if len(view.ProjectIDs) != 1 || view.ProjectIDs[0] != project.ID {
+		t.Fatalf("project_ids = %v, want [%s]", view.ProjectIDs, project.ID)
+	}
+}
+
+func TestModifyTokenAgentRejectsEmptyWorkspace(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ModifyToken(ModifyTokenInput{
+		TokenID:       created.View.ID,
+		WorkspaceRefs: &[]string{},
+	})
+	assertRuntimeCode(t, err, "token_agent_requires_workspace")
+}
+
+func TestModifyTokenProjectNotInWorkspace(t *testing.T) {
+	store := newTestStore(t)
+	// owner 在 local
+	ownerLocal := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	// 建第二个 workspace team，owner 加入
+	team, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "team", Name: "Team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 在 team 下建 project（切 runtime 到 team）
+	ownerTeam := newTestServiceWithRuntime(t, store, 100, "local", "team")
+	teamProject, err := ownerTeam.AddProject(AddProjectInput{Slug: "teamproj", Name: "TeamProj"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// token 绑定 local，尝试把 team 的 project 加进去应失败
+	created, err := ownerLocal.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = ownerLocal.ModifyToken(ModifyTokenInput{
+		TokenID:     created.View.ID,
+		ProjectRefs: &[]string{teamProject.ID},
+	})
+	if err == nil {
+		t.Fatalf("ModifyToken() error = nil, want project scope invalid (project not in local, team=%s)", team.ID)
+	}
+}
+
+func TestModifyTokenRejectsEmptyScopes(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.ID,
+		Scopes:  &[]string{},
+	})
+	if err == nil {
+		t.Fatal("ModifyToken() error = nil, want scope invalid (empty scopes rejected)")
 	}
 }
 

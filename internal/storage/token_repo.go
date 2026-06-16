@@ -34,6 +34,12 @@ func (u TokenUpdates) ChangedFields() map[string]any {
 	if u.ScopesJSON != nil {
 		attrs["scopes"] = *u.ScopesJSON
 	}
+	if u.WorkspaceIDsJSON != nil {
+		attrs["workspace_ids"] = *u.WorkspaceIDsJSON
+	}
+	if u.ProjectIDsJSON != nil {
+		attrs["project_ids"] = *u.ProjectIDsJSON
+	}
 	if u.ClearExpiresAt {
 		attrs["expires_at"] = nil
 	} else if u.ExpiresAt != nil {

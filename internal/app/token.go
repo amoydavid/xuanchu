@@ -532,10 +532,12 @@ func tokenManageAllowed(role Role) bool {
 }
 
 type ModifyTokenInput struct {
-	TokenID   string
-	Name      *string
-	Scopes    []string
-	ExpiresIn *time.Duration
+	TokenID       string
+	Name          *string
+	Scopes        *[]string
+	WorkspaceRefs *[]string
+	ProjectRefs   *[]string
+	ExpiresIn     *time.Duration
 }
 
 func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
@@ -559,14 +561,60 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 		dirty = true
 	}
 
+	// 解析 workspace：nil = 不改；非 nil = 替换（含空切片 = 清空）。
+	// 最终 workspace 集合用于校验 scope 和 project 的一致性。
+	finalWorkspaceIDs := parseIDsFromJSON(existing.WorkspaceIDsJSON)
+	if input.WorkspaceRefs != nil {
+		workspaces, err := s.resolveTokenWorkspaces(*input.WorkspaceRefs)
+		if err != nil {
+			return nil, err
+		}
+		finalWorkspaceIDs = make([]string, 0, len(workspaces))
+		for _, workspace := range workspaces {
+			finalWorkspaceIDs = append(finalWorkspaceIDs, workspace.ID)
+		}
+		if existing.Type == auth.TokenTypeAgent && len(finalWorkspaceIDs) == 0 {
+			return nil, RuntimeError{Code: "token_agent_requires_workspace", Message: "agent token requires at least one workspace"}
+		}
+		wj, _ := marshalStringSlice(finalWorkspaceIDs)
+		updates.WorkspaceIDsJSON = &wj
+		dirty = true
+	}
+
+	// 解析 project：nil = 不改；非 nil = 替换。project 必须属于最终 workspace 集合。
+	var finalProjectIDs []string
+	if input.ProjectRefs != nil {
+		workspacesForProjects, err := s.resolveTokenWorkspaces(firstNonNilSlice(input.WorkspaceRefs, parseIDsFromJSON(existing.WorkspaceIDsJSON)))
+		if err != nil {
+			return nil, err
+		}
+		projects, err := s.resolveTokenProjects(workspacesForProjects, *input.ProjectRefs)
+		if err != nil {
+			return nil, err
+		}
+		finalProjectIDs = make([]string, 0, len(projects))
+		for _, project := range projects {
+			finalProjectIDs = append(finalProjectIDs, project.ID)
+		}
+		pj, _ := marshalStringSlice(finalProjectIDs)
+		updates.ProjectIDsJSON = &pj
+		dirty = true
+	}
+
 	if input.Scopes != nil {
 		scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
 			Type:         existing.Type,
-			Scopes:       input.Scopes,
-			WorkspaceIDs: parseIDsFromJSON(existing.WorkspaceIDsJSON),
+			Scopes:       *input.Scopes,
+			WorkspaceIDs: finalWorkspaceIDs,
 		})
 		if err != nil {
 			return nil, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
+		}
+		if scopes.Has("impersonate") && !tokenManageAllowed(s.runtime.Role) {
+			return nil, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can assign impersonate scope"}
+		}
+		if err := enforceTokenCreateLimit(nil, scopes.Values(), finalWorkspaceIDs, finalProjectIDs); err != nil {
+			return nil, err
 		}
 		sj, _ := marshalStringSlice(scopes.Values())
 		updates.ScopesJSON = &sj
@@ -612,6 +660,15 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 
 	view := tokenEntryToView(updated)
 	return &view, nil
+}
+
+// firstNonNilSlice 返回 primary（若非 nil），否则 fallback。
+// 用于 project 解析时确定 workspace 集合：若本次修改了 workspace 就用新的，否则用 existing。
+func firstNonNilSlice(primary *[]string, fallback []string) []string {
+	if primary != nil {
+		return *primary
+	}
+	return fallback
 }
 
 func tokenEntryToView(row storage.ApiTokenEntry) TokenView {

@@ -261,7 +261,7 @@ func newTokenModifyCommand(opts Options) *cobra.Command {
 				input.Name = &name
 			}
 			if cmd.Flags().Changed("scope") {
-				input.Scopes = scopes
+				input.Scopes = &scopes
 			}
 			if ttl != nil {
 				input.ExpiresIn = ttl

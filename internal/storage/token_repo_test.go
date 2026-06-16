@@ -187,3 +187,62 @@ func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
 		t.Fatalf("expected nil ExpiresAt, got %d", *updated.ExpiresAt)
 	}
 }
+
+func TestTokenUpdatesChangedFieldsIncludesWorkspaceAndProject(t *testing.T) {
+	name := "renamed"
+	scopes := `["task:read"]`
+	workspaces := `["w1","w2"]`
+	projects := `["p1"]`
+	expires := int64(999)
+
+	// 全字段
+	got := TokenUpdates{
+		Name:             &name,
+		ScopesJSON:       &scopes,
+		WorkspaceIDsJSON: &workspaces,
+		ProjectIDsJSON:   &projects,
+		ExpiresAt:        &expires,
+	}.ChangedFields()
+	if got["name"] != name {
+		t.Fatalf("name = %v", got["name"])
+	}
+	if got["scopes"] != scopes {
+		t.Fatalf("scopes = %v", got["scopes"])
+	}
+	if got["workspace_ids"] != workspaces {
+		t.Fatalf("workspace_ids = %v", got["workspace_ids"])
+	}
+	if got["project_ids"] != projects {
+		t.Fatalf("project_ids = %v", got["project_ids"])
+	}
+	if got["expires_at"] != expires {
+		t.Fatalf("expires_at = %v", got["expires_at"])
+	}
+
+	// 仅 workspace/project，不含其它字段
+	got = TokenUpdates{
+		WorkspaceIDsJSON: &workspaces,
+		ProjectIDsJSON:   &projects,
+	}.ChangedFields()
+	if _, ok := got["name"]; ok {
+		t.Fatalf("unexpected name field")
+	}
+	if _, ok := got["scopes"]; ok {
+		t.Fatalf("unexpected scopes field")
+	}
+	if _, ok := got["expires_at"]; ok {
+		t.Fatalf("unexpected expires_at field")
+	}
+	if got["workspace_ids"] != workspaces {
+		t.Fatalf("workspace_ids = %v", got["workspace_ids"])
+	}
+	if got["project_ids"] != projects {
+		t.Fatalf("project_ids = %v", got["project_ids"])
+	}
+
+	// ClearExpiresAt 输出 nil
+	got = TokenUpdates{ClearExpiresAt: true}.ChangedFields()
+	if got["expires_at"] != nil {
+		t.Fatalf("expected nil expires_at, got %v", got["expires_at"])
+	}
+}

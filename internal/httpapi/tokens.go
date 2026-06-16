@@ -27,9 +27,13 @@ type tokenResponse struct {
 }
 
 type modifyTokenRequest struct {
-	Name             *string  `json:"name,omitempty"`
-	Scopes           []string `json:"scopes,omitempty"`
-	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty"`
+	Name             *string   `json:"name,omitempty"`
+	Scopes           *[]string `json:"scopes,omitempty"`
+	Workspaces       *[]string `json:"workspaces,omitempty"`
+	WorkspaceIDs     *[]string `json:"workspace_ids,omitempty"`
+	Projects         *[]string `json:"projects,omitempty"`
+	ProjectIDs       *[]string `json:"project_ids,omitempty"`
+	ExpiresInSeconds *int64    `json:"expires_in_seconds,omitempty"`
 }
 
 type createTokenRequest struct {
@@ -139,10 +143,12 @@ func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
 		ttl = &value
 	}
 	view, err := scoped.ModifyToken(app.ModifyTokenInput{
-		TokenID:   chi.URLParam(r, "tokenRef"),
-		Name:      req.Name,
-		Scopes:    req.Scopes,
-		ExpiresIn: ttl,
+		TokenID:       chi.URLParam(r, "tokenRef"),
+		Name:          req.Name,
+		Scopes:        req.Scopes,
+		WorkspaceRefs: mergeRefs(req.Workspaces, req.WorkspaceIDs),
+		ProjectRefs:   mergeRefs(req.Projects, req.ProjectIDs),
+		ExpiresIn:     ttl,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -166,4 +172,32 @@ func tokenResponseFromView(view app.TokenView) tokenResponse {
 		RevokedAt:    view.RevokedAt,
 		LastUsedAt:   view.LastUsedAt,
 	}
+}
+
+// mergeRefs 合并两组 ref（slugs 与 ids）。
+// 两者都为 nil 时返回 nil（表示「不修改」）；
+// 任一非 nil 时合并去重并返回非 nil（含结果为空切片，表示「清空」）。
+func mergeRefs(primary, secondary *[]string) *[]string {
+	if primary == nil && secondary == nil {
+		return nil
+	}
+	merged := append([]string(nil), derefStrings(primary)...)
+	merged = append(merged, derefStrings(secondary)...)
+	seen := make(map[string]struct{}, len(merged))
+	out := make([]string, 0, len(merged))
+	for _, ref := range merged {
+		if _, ok := seen[ref]; ok {
+			continue
+		}
+		seen[ref] = struct{}{}
+		out = append(out, ref)
+	}
+	return &out
+}
+
+func derefStrings(value *[]string) []string {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
