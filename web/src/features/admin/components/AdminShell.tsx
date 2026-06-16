@@ -1,6 +1,7 @@
 import type React from "react"
 import { KeyRound, LogOut, RefreshCw, ShieldAlert } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { Link } from "@tanstack/react-router"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
@@ -17,6 +18,11 @@ type AdminShellProps = {
   tokenName?: string
 }
 
+const navLinkBase =
+  "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs font-medium transition-colors hover:bg-muted hover:text-foreground border-l-transparent text-muted-foreground"
+const navLinkActive =
+  "border-l-foreground bg-muted text-foreground"
+
 export function AdminShell({
   children,
   onLogout,
@@ -24,19 +30,6 @@ export function AdminShell({
   tokenName,
 }: AdminShellProps) {
   const { t } = useTranslation()
-  // admin 页面用 <a href> 真实导航（整页刷新），用 window.location.pathname 判断当前页，
-  // 不依赖 Router context，避免测试环境无 Router provider 时崩溃。
-  const pathname = typeof window !== "undefined" ? window.location.pathname : ""
-
-  const navItemClass = (href: string) => {
-    const active = pathname === href
-    return [
-      "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs font-medium transition-colors hover:bg-muted hover:text-foreground",
-      active
-        ? "border-l-foreground bg-muted text-foreground"
-        : "border-l-transparent text-muted-foreground",
-    ].join(" ")
-  }
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -45,14 +38,23 @@ export function AdminShell({
           <ProductLogo />
         </div>
         <nav aria-label={t("admin.navLabel")} className="space-y-1 p-2">
-          <a className={navItemClass("/admin")} href="/admin">
+          <Link
+            activeOptions={{ exact: true }}
+            activeProps={{ className: navLinkActive }}
+            className={navLinkBase}
+            to="/admin"
+          >
             <ShieldAlert className="size-3.5" />
             {t("admin.nav.bootstrap")}
-          </a>
-          <a className={navItemClass("/admin/tokens")} href="/admin/tokens">
+          </Link>
+          <Link
+            activeProps={{ className: navLinkActive }}
+            className={navLinkBase}
+            to="/admin/tokens"
+          >
             <KeyRound className="size-3.5" />
             {t("admin.nav.tokens")}
-          </a>
+          </Link>
         </nav>
         <div className="absolute inset-x-0 bottom-0 border-t p-3">
           <div className="mb-2 text-[11px] text-muted-foreground uppercase">

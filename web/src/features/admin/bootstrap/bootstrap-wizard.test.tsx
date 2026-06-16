@@ -1,5 +1,13 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -8,6 +16,24 @@ import { i18n } from "@/i18n"
 
 import { BootstrapWizard } from "./bootstrap-wizard"
 
+// AdminShell 的 <Link> 需要 Router context。测试里用最小 memory router 包裹。
+function wrapWithRouter(ui: React.ReactElement) {
+  const rootRoute = createRootRoute({
+    component: () => <Outlet />,
+  })
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/admin",
+    component: () => ui,
+  })
+  const routeTree = rootRoute.addChildren([indexRoute])
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ["/admin"] }),
+  })
+  return <RouterProvider router={router} />
+}
+
 describe("admin console i18n", () => {
   beforeEach(async () => {
     localStorage.clear()
@@ -15,22 +41,27 @@ describe("admin console i18n", () => {
     await i18n.changeLanguage("zh-CN")
   })
 
-  it("renders server admin shell and bootstrap wizard in Chinese", () => {
+  it("renders server admin shell and bootstrap wizard in Chinese", async () => {
     render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <AdminShell
-            onLogout={vi.fn()}
-            onRefresh={vi.fn()}
-            tokenName="local-admin"
-          >
-            <BootstrapWizard />
-          </AdminShell>
-        </TooltipProvider>
-      </ThemeProvider>
+      wrapWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminShell
+              onLogout={vi.fn()}
+              onRefresh={vi.fn()}
+              tokenName="local-admin"
+            >
+              <BootstrapWizard />
+            </AdminShell>
+          </TooltipProvider>
+        </ThemeProvider>
+      )
     )
 
-    expect(screen.getByText("服务端超管 · local-admin")).toBeTruthy()
+    // RouterProvider 异步加载，等 shell 标题渲染后再断言
+    await waitFor(() => {
+      expect(screen.getByText("服务端超管 · local-admin")).toBeTruthy()
+    })
     expect(
       screen.getByRole("navigation", { name: "服务端超管导航" })
     ).toBeTruthy()
