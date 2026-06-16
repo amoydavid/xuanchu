@@ -117,6 +117,28 @@ func TestAdminCreateWorkspaceAgentTokenRejectsNonMember(t *testing.T) {
 	}
 }
 
+func TestAdminCreateWorkspaceAgentTokenRejectsInvalidScope(t *testing.T) {
+	store := newTestStore(t)
+	svc := newAdminTestService(t, store)
+	_, err := svc.AdminCreateWorkspace(AdminCreateWorkspaceInput{
+		AdminTokenName: "ops",
+		Slug:           "dajee",
+		Owner:          AdminOwnerInput{Name: "alice"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// user:read 不在 scopeRegistry，应被 createTokenStored 的 ValidateTokenCreate 拒绝
+	_, err = svc.AdminCreateWorkspaceAgentToken(AdminCreateAgentTokenInput{
+		AdminTokenName: "ops",
+		WorkspaceRef:   "dajee",
+		Name:           "bad-scope",
+		UserRef:        "alice",
+		Scopes:         []string{"task:read", "user:read"},
+	})
+	assertRuntimeCode(t, err, "token_scope_invalid")
+}
+
 func TestAdminCreateWorkspaceRejectsOwnerNameEmailConflict(t *testing.T) {
 	store := newTestStore(t)
 	svc := newAdminTestService(t, store)
