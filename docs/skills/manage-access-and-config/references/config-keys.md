@@ -20,7 +20,7 @@ Xuanchu 的配置键按用途分组。写自定义键前必须用 `config_schema
 |---|---|---|
 | `integrations.feishu.webhook_url` | project | 飞书群机器人地址（sink 用 `config_value` 读） |
 | `integrations.feishu.bot_token` | workspace/project（secret） | 飞书机器人 token，模板用 `secret_refs` 引用 |
-| `im.group_id` | project | IM 群 ID（CIO agent 自身逻辑用；不在 config_summary 白名单内，用 `config_get` scope=project 读） |
+| `im.group_id` | project | IM 群 ID（CIO agent 自身逻辑用，可经 `project_get` 的 config_summary 读） |
 
 群绑定的完整端到端流程见 wire-up-automation skill 的 references/feishu-bot-setup.md。
 
@@ -36,5 +36,5 @@ Xuanchu 的配置键按用途分组。写自定义键前必须用 `config_schema
 - **workspace 级只支持业务键**（`urgency.*` / `date.*`），不支持 `agent.*`。
 - **agent 指令必须 project 级**。
 - 写自定义键前**必须 `config_schema_set` 定义** schema（key / value_type / allowed_scopes）。
-- `secret: true` 的键值不回显，通过 `secret_refs` 在模板里用 `{{secret.<alias>}}` 引用。
-- `project_get` 的 `config_summary` 只暴露一个**固定白名单**（`agent.background`/`agent.constraints`/`agent.default_context`/`agent.handoff` 这 4 个），不是所有 `agent.` 前缀键，更不含其他键。读其他 project 配置（如 `im.group_id`、`integrations.*`）用 `config_get` + `scope:"project"` 或 `project_config_list`。
+- `secret: true` 的键值不回显到 `config_summary`（用 `config_get` scope=project 单独读，或通过 `secret_refs` 在模板里引用）。
+- `project_get` 的 `config_summary` 暴露该 project 全部**非 secret** 配置（agent 指令、群绑定等集成键都可见）。secret 键（schema 标 `secret:true`，如 `integrations.feishu.bot_token`）不回显。

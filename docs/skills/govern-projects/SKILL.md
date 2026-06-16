@@ -16,7 +16,7 @@ CIO agent 作为所有项目的总管，负责建立项目结构、拉人分派�
 - **每次调用都显式传 `workspace`。** 不要依赖隐式状态；CIO 通过参数定位，不用 `workspace_use`/`user_use` 切换隐式上下文（那两个只影响 stdio MCP）。
 - project 用 `project`(slug) 或 `project_id`(UUID) 定位。不知道 project_id 时先 `project_list`。
 - 成员操作必须指定 `workspace`；用户操作在全局范围，但创建用户后会自动生成 personal workspace。
-- `project_get` 的 `config_summary` 只暴露一个固定白名单（`agent.background`/`agent.constraints`/`agent.default_context`/`agent.handoff`），其他 project 配置不在其中。
+- `project_get` 的 `config_summary` 暴露该 project 全部非 secret 配置（含 agent 指令、群绑定等集成键）；secret 键（schema 标 `secret:true`）不回显。
 
 ## 标准工作流
 
