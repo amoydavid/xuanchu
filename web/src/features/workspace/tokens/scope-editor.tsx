@@ -38,6 +38,16 @@ export function ScopeEditor({
   const { t } = useTranslation()
   const valueSet = new Set(value)
 
+  // 已知 scope 全集（分组定义的 + impersonate），用于识别 value 里的未知 scope
+  const knownScopes = new Set<string>()
+  for (const group of SCOPE_GROUPS) {
+    for (const action of group.actions) {
+      knownScopes.add(`${group.resource}:${action}`)
+    }
+  }
+  knownScopes.add("impersonate")
+  const unknownScopes = value.filter((s) => !knownScopes.has(s))
+
   const toggle = (scope: string, checked: boolean) => {
     const next = new Set(valueSet)
     if (checked) {
@@ -115,6 +125,31 @@ export function ScopeEditor({
             />
             <span>impersonate</span>
           </label>
+        </div>
+      ) : null}
+      {unknownScopes.length > 0 ? (
+        <div className="space-y-2 border-t pt-3">
+          <Label className="text-xs text-muted-foreground">
+            {t("token.unknownScopes")}
+          </Label>
+          <div className="flex flex-wrap gap-2">
+            {unknownScopes.map((scope) => (
+              <span
+                className="inline-flex items-center gap-1 rounded-none border bg-muted/50 px-2 py-0.5 text-xs"
+                key={scope}
+              >
+                <code>{scope}</code>
+                <button
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => toggle(scope, false)}
+                  title={t("token.removeScope")}
+                  type="button"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>

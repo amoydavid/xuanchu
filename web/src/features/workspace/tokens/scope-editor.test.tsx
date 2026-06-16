@@ -52,4 +52,16 @@ describe("ScopeEditor", () => {
     fireEvent.click(screen.getAllByText("清空")[0])
     expect(onChange).toHaveBeenCalledWith([])
   })
+
+  it("renders unknown legacy scopes with remove buttons", () => {
+    const onChange = vi.fn()
+    renderEditor({ value: ["task:read", "user:read"], onChange })
+    // user:read 不在任何已知分组，应显示在「未识别」区
+    expect(screen.getByText("user:read")).toBeTruthy()
+    // 点击移除按钮（✕）
+    const removeBtn = screen.getByTitle("移除")
+    fireEvent.click(removeBtn)
+    // 应移除 user:read，保留 task:read
+    expect(onChange).toHaveBeenCalledWith(["task:read"])
+  })
 })

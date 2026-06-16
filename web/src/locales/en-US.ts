@@ -230,6 +230,8 @@ export const enUS = {
     copied: "Copied",
     selectAll: "Select all",
     clearAll: "Clear",
+    unknownScopes: "Unrecognized scopes (legacy, removable)",
+    removeScope: "Remove",
     field: {
       name: "Name",
       type: "Type",

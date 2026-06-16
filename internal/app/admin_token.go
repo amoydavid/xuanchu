@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -95,16 +97,14 @@ func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, err
 		}
 
 		if input.Scopes != nil {
-			// admin 不改 workspace，用 existing workspace 校验 scope 一致性
-			scopes, err := auth.ValidateTokenCreate(auth.CreateTokenOptions{
-				Type:         existing.Type,
-				Scopes:       *input.Scopes,
-				WorkspaceIDs: parseIDsFromJSON(existing.WorkspaceIDsJSON),
-			})
+			// admin 不改 workspace，用 existing workspace 校验 scope 一致性。
+			// 对存量 scope（token 原有但可能不在 registry 的历史遗留 scope，如 user:read）
+			// 保持宽容：保留不校验；只校验用户新增的 scope 是否合法。
+			finalScopes, err := validateAdminTokenScopes(existing.Type, *input.Scopes, parseIDsFromJSON(existing.WorkspaceIDsJSON), parseIDsFromJSON(existing.ScopesJSON))
 			if err != nil {
 				return RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
 			}
-			sj, _ := marshalStringSlice(scopes.Values())
+			sj, _ := marshalStringSlice(finalScopes)
 			updates.ScopesJSON = &sj
 			dirty = true
 		}
@@ -205,4 +205,68 @@ func classifyAdminTokenLookupError(err error) error {
 		return RuntimeError{Code: "token_ambiguous_ref", Message: "token reference matches multiple tokens, use a longer prefix or full ID"}
 	}
 	return RuntimeError{Code: "token_not_found", Message: "token not found"}
+}
+
+// validateAdminTokenScopes 校验 admin 修改后的 scope 集合。
+// 与普通 ValidateTokenCreate 的区别：对存量 scope（existingScopes 中已有但可能不在 registry
+// 的历史遗留 scope，如 user:read）保持宽容——保留不校验；只校验用户新增的 scope 是否合法。
+// 这样存量含遗留 scope 的 token 仍可正常编辑其它字段或增减合法 scope。
+func validateAdminTokenScopes(tokenType string, requested []string, workspaceIDs []string, existingScopes []string) ([]string, error) {
+	existingSet := make(map[string]bool, len(existingScopes))
+	for _, s := range existingScopes {
+		existingSet[s] = true
+	}
+	// 分离存量 scope（宽容）与新增 scope（严格校验）
+	var retained []string
+	var newScopes []string
+	for _, s := range requested {
+		if existingSet[s] {
+			retained = append(retained, s) // 存量，保留不校验
+		} else {
+			newScopes = append(newScopes, s) // 新增，需校验
+		}
+	}
+	// 校验 agent token 的 workspace/scope 非空约束（基于 requested 全集）
+	if tokenType == auth.TokenTypeAgent {
+		if len(workspaceIDs) == 0 {
+			return nil, fmt.Errorf("agent token requires at least one workspace")
+		}
+		if len(requested) == 0 {
+			return nil, fmt.Errorf("agent token requires explicit scopes")
+		}
+	}
+	// 只对新增 scope 做 ParseScopes 校验（合法性与通配符展开）
+	if len(newScopes) > 0 {
+		parsed, err := auth.ParseScopes(newScopes)
+		if err != nil {
+			return nil, err
+		}
+		newScopes = parsed.Values()
+	}
+	// PAT 自动剥离 impersonate
+	if tokenType == auth.TokenTypePAT {
+		var filtered []string
+		for _, s := range retained {
+			if s != "impersonate" {
+				filtered = append(filtered, s)
+			}
+		}
+		return uniqueSorted(append(filtered, newScopes...)), nil
+	}
+	all := append(append([]string{}, retained...), newScopes...)
+	return uniqueSorted(all), nil
+}
+
+// uniqueSorted 去重并排序字符串切片。
+func uniqueSorted(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

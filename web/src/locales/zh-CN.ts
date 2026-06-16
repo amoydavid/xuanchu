@@ -227,6 +227,8 @@ export const zhCN = {
     copied: "已复制",
     selectAll: "全选",
     clearAll: "清空",
+    unknownScopes: "未识别的权限（历史遗留，可移除）",
+    removeScope: "移除",
     field: {
       name: "名称",
       type: "类型",

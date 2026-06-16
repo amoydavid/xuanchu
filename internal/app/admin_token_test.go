@@ -414,3 +414,73 @@ func TestAdminModifyTokenRejectsAmbiguousPrefix(t *testing.T) {
 	})
 	assertRuntimeCode(t, err, "token_ambiguous_ref")
 }
+
+func TestAdminModifyTokenToleratesLegacyScope(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+
+	// 建一个 agent token，然后直接改库给它塞一个不在 registry 的历史遗留 scope（user:read）
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "legacy",
+		Type:          "agent",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 直接更新 storage，注入遗留 scope
+	legacyScopes := `["task:read","user:read"]`
+	if err := store.DB().Model(&storage.ApiToken{}).Where("id = ?", created.View.ID).Update("scopes_json", legacyScopes).Error; err != nil {
+		t.Fatalf("inject legacy scope: %v", err)
+	}
+
+	adminSvc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 改 name（不动 scope）应成功
+	newName := "renamed"
+	view, err := adminSvc.AdminModifyToken(AdminModifyTokenInput{
+		TokenRef: created.View.ID,
+		Name:     &newName,
+	})
+	if err != nil {
+		t.Fatalf("modify name with legacy scope: %v", err)
+	}
+	if view.Name != "renamed" {
+		t.Fatalf("name = %q", view.Name)
+	}
+
+	// 同时新增 task:write（保留存量 user:read）应成功
+	addScopes := []string{"task:read", "task:write", "user:read"}
+	view, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
+		TokenRef: created.View.ID,
+		Scopes:   &addScopes,
+	})
+	if err != nil {
+		t.Fatalf("modify scopes keeping legacy: %v", err)
+	}
+	// user:read 应被保留，task:write 应被新增
+	scopeSet := make(map[string]bool)
+	for _, s := range view.Scopes {
+		scopeSet[s] = true
+	}
+	if !scopeSet["user:read"] {
+		t.Fatalf("legacy scope user:read should be retained: %v", view.Scopes)
+	}
+	if !scopeSet["task:write"] {
+		t.Fatalf("new scope task:write should be added: %v", view.Scopes)
+	}
+
+	// 但新增不合法的 scope 仍应被拒
+	badScopes := []string{"task:read", "user:read", "bogus:action"}
+	_, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
+		TokenRef: created.View.ID,
+		Scopes:   &badScopes,
+	})
+	if err == nil {
+		t.Fatal("adding unknown scope bogus:action should be rejected")
+	}
+}
