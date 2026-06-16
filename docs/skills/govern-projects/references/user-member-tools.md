@@ -28,8 +28,11 @@
 支持按 `name`、`email` 或 UUID 查找。
 
 ```json
-// 输入
+// 输入：按用户名
 {"user": "alice"}
+
+// 输入：按邮箱
+{"user": "alice@example.com"}
 
 // 返回
 {
@@ -39,7 +42,7 @@
       "name": "alice",
       "email": "alice@example.com",
       "external_ids": [
-        {"provider": "feishu", "external_id": "ou_12345"}
+        {"provider": "feishu_user_id", "external_id": "d8c6g9xx"}
       ]
     }
   },
@@ -105,7 +108,7 @@ admin/owner 可为他人绑定，普通用户只能绑定自己。
 // 返回
 {
   "data": {
-    "external_ids": [{"provider": "feishu", "external_id": "ou_xxx"}],
+    "external_ids": [{"provider": "feishu_user_id", "external_id": "d8c6g9xx"}],
     "count": 1
   }
 }
@@ -116,8 +119,8 @@ admin/owner 可为他人绑定，普通用户只能绑定自己。
 ```json
 {
   "user": "alice",
-  "provider": "feishu",
-  "external_id": "ou_36093ec6279eebf7f9ae75a30dca12fc"
+  "provider": "feishu_user_id",
+  "external_id": "d8c6g9xx"
 }
 ```
 
