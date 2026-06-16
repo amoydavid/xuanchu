@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
+import { Link } from "@tanstack/react-router"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,7 +27,10 @@ export function ProjectTaskDetailPage({
     queryKey: ["project-readonly", workspaceSlug, projectSlug, "task", taskRef],
     queryFn: () => getProjectReadonlyTask(workspaceSlug, taskRef),
   })
-  const projectHref = `/workspaces/${encodeURIComponent(workspaceSlug)}/projects/${encodeURIComponent(projectSlug)}`
+  const projectLinkProps = {
+    to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+    params: { workspaceSlug, projectSlug },
+  } as const
 
   if (task.isPending) {
     return <TaskDetailSkeleton />
@@ -44,7 +48,7 @@ export function ProjectTaskDetailPage({
           {task.error instanceof ApiError ? task.error.code : "unknown"}
         </p>
         <Button asChild className="mt-5" variant="outline">
-          <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
+          <Link {...projectLinkProps}>{t("projectReadonly.backToProject")}</Link>
         </Button>
       </section>
     )
@@ -55,7 +59,7 @@ export function ProjectTaskDetailPage({
   if (!taskBelongsToProject(taskData, projectSlug)) {
     return (
       <TaskUnavailable
-        href={projectHref}
+        linkProps={projectLinkProps}
         title={t("projectReadonly.taskNotFoundTitle")}
         backLabel={t("projectReadonly.backToProject")}
       />
@@ -85,7 +89,7 @@ export function ProjectTaskDetailPage({
             </div>
           </div>
           <Button asChild variant="outline">
-            <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
+            <Link {...projectLinkProps}>{t("projectReadonly.backToProject")}</Link>
           </Button>
         </div>
       </section>
@@ -97,18 +101,18 @@ export function ProjectTaskDetailPage({
 
 function TaskUnavailable({
   backLabel,
-  href,
+  linkProps,
   title,
 }: {
   backLabel: string
-  href: string
+  linkProps: { to: string; params: Record<string, string> }
   title: string
 }) {
   return (
     <section className="max-w-2xl border bg-card p-6">
       <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
       <Button asChild className="mt-5" variant="outline">
-        <a href={href}>{backLabel}</a>
+        <Link {...linkProps}>{backLabel}</Link>
       </Button>
     </section>
   )

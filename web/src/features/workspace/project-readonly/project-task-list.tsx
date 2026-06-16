@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -52,40 +54,43 @@ export function ProjectTaskList({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tasks.map((task) => (
-              <TableRow key={task.uuid}>
-                <TableCell>
-                  <a
-                    className="text-foreground underline-offset-4 hover:underline"
-                    href={taskDetailHref(workspaceSlug, projectSlug, task)}
-                  >
-                    <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
-                  </a>
-                </TableCell>
-                <TableCell>
-                  <a
-                    className="text-foreground underline-offset-4 hover:underline"
-                    href={taskDetailHref(workspaceSlug, projectSlug, task)}
-                  >
-                    {task.description}
-                  </a>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">{task.status}</Badge>
-                </TableCell>
-                <TableCell>{assigneeNames(task)}</TableCell>
-                <TableCell>{formatUnixDate(task.due)}</TableCell>
-              </TableRow>
-            ))}
+            {tasks.map((task) => {
+              const linkProps = taskDetailLinkProps(workspaceSlug, projectSlug, task)
+              return (
+                <TableRow key={task.uuid}>
+                  <TableCell>
+                    <Link
+                      className="text-foreground underline-offset-4 hover:underline"
+                      {...linkProps}
+                    >
+                      <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      className="text-foreground underline-offset-4 hover:underline"
+                      {...linkProps}
+                    >
+                      {task.description}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{task.status}</Badge>
+                  </TableCell>
+                  <TableCell>{assigneeNames(task)}</TableCell>
+                  <TableCell>{formatUnixDate(task.due)}</TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>
       <div className="space-y-2 md:hidden">
         {tasks.map((task) => (
-          <a
+          <Link
             className="block border bg-card p-3 text-foreground transition-colors hover:bg-muted"
-            href={taskDetailHref(workspaceSlug, projectSlug, task)}
             key={task.uuid}
+            {...taskDetailLinkProps(workspaceSlug, projectSlug, task)}
           >
             <div className="flex items-center justify-between gap-2 text-xs">
               <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
@@ -98,20 +103,26 @@ export function ProjectTaskList({
             <div className="mt-2 text-xs text-muted-foreground">
               {assigneeNames(task)} · {formatUnixDate(task.due)}
             </div>
-          </a>
+          </Link>
         ))}
       </div>
     </section>
   )
 }
 
-function taskDetailHref(
+function taskDetailLinkProps(
   workspaceSlug: string,
   projectSlug: string,
   task: ProjectReadonlyTask
-): string {
-  const taskRef = task.task_slug || task.uuid
-  return `/workspaces/${encodeURIComponent(workspaceSlug)}/projects/${encodeURIComponent(projectSlug)}/tasks/${encodeURIComponent(taskRef)}`
+) {
+  return {
+    to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+    params: {
+      workspaceSlug,
+      projectSlug,
+      taskRef: task.task_slug || task.uuid,
+    },
+  } as const
 }
 
 function assigneeNames(task: ProjectReadonlyTask): string {

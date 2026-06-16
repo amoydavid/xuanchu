@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { setWorkspaceToken } from "@/features/workspace/session/workspace-token"
 import { i18n } from "@/i18n"
+import { renderWithRouter } from "@/test/router-wrapper"
 
 import { ProjectTaskDetailPage } from "./project-task-detail-page"
 
@@ -14,17 +15,19 @@ function renderPage() {
     defaultOptions: { queries: { retry: false } },
   })
   render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <TooltipProvider>
-          <ProjectTaskDetailPage
-            projectSlug="agentapi"
-            taskRef="ag-23"
-            workspaceSlug="acme"
-          />
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    renderWithRouter(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <ProjectTaskDetailPage
+              projectSlug="agentapi"
+              taskRef="ag-23"
+              workspaceSlug="acme"
+            />
+          </TooltipProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    )
   )
 }
 

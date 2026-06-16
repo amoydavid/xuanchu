@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { i18n } from "@/i18n"
+import { renderWithRouter } from "@/test/router-wrapper"
 
 import { AdminSetupPage } from "./AdminSetupPage"
 
@@ -30,16 +31,20 @@ describe("AdminSetupPage", () => {
     )
 
     render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <AdminSetupPage />
-        </TooltipProvider>
-      </ThemeProvider>
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <AdminSetupPage />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
     )
 
-    expect(
-      screen.getByRole("heading", { name: "Create server admin token" })
-    ).toBeTruthy()
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Create server admin token" })
+      ).toBeTruthy()
+    })
     await userEvent.type(screen.getByLabelText("Setup code"), "setup-code")
     await userEvent.clear(screen.getByLabelText("Token name"))
     await userEvent.type(screen.getByLabelText("Token name"), "primary")

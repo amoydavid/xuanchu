@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { FormEvent } from "react"
 import { ArrowLeft, Check, Copy, KeyRound, ShieldCheck } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { Link } from "@tanstack/react-router"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
@@ -116,7 +117,7 @@ export function AdminSetupPage() {
                   {t("admin.copy")}
                 </Button>
                 <Button asChild>
-                  <a href="/admin/login">{t("admin.goToAdminLogin")}</a>
+                  <Link to="/admin/login">{t("admin.goToAdminLogin")}</Link>
                 </Button>
               </div>
             </div>
@@ -165,10 +166,10 @@ export function AdminSetupPage() {
                 className="w-full justify-start px-0"
                 variant="link"
               >
-                <a href="/admin/login">
+                <Link to="/admin/login">
                   <ArrowLeft className="size-4" />
                   {t("admin.backToAdminLogin")}
-                </a>
+                </Link>
               </Button>
             </form>
           )}

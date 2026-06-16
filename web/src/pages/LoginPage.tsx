@@ -1,6 +1,7 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { useTranslation } from "react-i18next"
+import { Link } from "@tanstack/react-router"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
@@ -91,12 +92,12 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
             {t("auth.signIn")}
           </Button>
           <div>
-            <a
+            <Link
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-              href="/admin/login"
+              to="/admin/login"
             >
               {t("auth.adminLoginLink")}
-            </a>
+            </Link>
           </div>
         </form>
       </div>
