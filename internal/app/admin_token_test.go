@@ -326,3 +326,91 @@ func TestAdminModifyTokenAcceptsPrefixRef(t *testing.T) {
 		t.Fatalf("id = %q, want %q (same token)", view.ID, created.View.ID)
 	}
 }
+
+func TestAdminModifyTokenAudits(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:   "audit-pat",
+		Type:   "pat",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adminSvc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newName := "renamed"
+	_, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
+		TokenRef:       created.View.ID,
+		Name:           &newName,
+		AdminTokenName: "admin-ops",
+	})
+	if err != nil {
+		t.Fatalf("AdminModifyToken() error = %v", err)
+	}
+
+	// 审计应含 admin.token.modify + admin:true + admin_token_name + changes
+	rows, err := adminSvc.auditRepo.List(storage.AuditListOptions{Limit: 50})
+	if err != nil {
+		t.Fatalf("auditRepo.List() error = %v", err)
+	}
+	found := false
+	for _, row := range rows {
+		if row.Action != "admin.token.modify" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
+			continue
+		}
+		if payload["admin"] == true && payload["admin_token_name"] == "admin-ops" {
+			if changes, ok := payload["changes"].(map[string]any); ok {
+				if _, hasName := changes["name"]; hasName {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("audit missing admin.token.modify with admin:true and changes.name")
+	}
+}
+
+func TestAdminModifyTokenRejectsAmbiguousPrefix(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	_, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:   "a",
+		Type:   "pat",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ownerSvc.CreateToken(CreateTokenInput{
+		Name:   "b",
+		Type:   "pat",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adminSvc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 用公共前缀 "xuanchu" 调 modify，应返回 token_ambiguous_ref 而非 token_not_found
+	newName := "x"
+	_, err = adminSvc.AdminModifyToken(AdminModifyTokenInput{
+		TokenRef: "xuanchu",
+		Name:     &newName,
+	})
+	assertRuntimeCode(t, err, "token_ambiguous_ref")
+}
