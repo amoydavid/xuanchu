@@ -35,14 +35,16 @@ config_schema_get({"workspace": "dajee", "key": "integrations.openclaw.notificat
 需要枚举约束时用 `enum_values`，**不要把 `value_type` 写成 `enum`**。
 
 ```json
+// 飞书群机器人 webhook（project 级，与本 skill 群绑定场景呼应）
 config_schema_set({
   "workspace": "dajee",
-  "key": "integrations.openclaw.notification_url",
+  "key": "integrations.feishu.webhook_url",
   "value_type": "string",
   "allowed_scopes": ["project"],
-  "label": "OpenClaw 通知地址"
+  "label": "飞书群机器人 webhook 地址"
 })
 
+// secret 配置（bot_token）
 config_schema_set({
   "workspace": "dajee",
   "key": "integrations.feishu.bot_token",
@@ -51,6 +53,7 @@ config_schema_set({
   "secret": true
 })
 
+// 枚举约束
 config_schema_set({
   "workspace": "dajee",
   "key": "integrations.openclaw.channel",

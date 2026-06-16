@@ -10,7 +10,7 @@ xuanchu 没有"群/chat"实体。用 **project config 键**记录群信息：
 |---|---|---|
 | `integrations.feishu.webhook_url` | project | 本群飞书机器人地址（sink 用 `config_value` 读） |
 | `integrations.feishu.bot_token` | workspace/project（secret） | 飞书机器人 token，模板用 `secret_refs` 引用 |
-| `im.group_id` | project | 群 ID（CIO agent 自身逻辑用，`project_get` 的 `config_summary` 可读） |
+| `im.group_id` | project | 群 ID（CIO agent 自身逻辑用，用 `config_get` scope=project 或 `project_config_list` 读；不在 `project_get` 的 config_summary 白名单内） |
 
 **关键**：一个 sink 被多个 project 共享，投递时按当前 project 解析各自的 webhook URL。这样建一次 sink、给每个 project 各配一个群地址即可。
 
@@ -161,5 +161,5 @@ reminder_rule_add({
 
 1. `notification_delivery_list({"workspace":"dajee","status":"dead_lettered","limit":20})` — 看是否有失败投递
 2. `notification_delivery_info({"workspace":"dajee","delivery_id":"..."})` — 看具体失败原因（URL/host/body 格式）
-3. 确认 project 是否配了 `integrations.feishu.webhook_url`（`project_get` 看 config_summary，或 `config_get` scope=project）
+3. 确认 project 是否配了 `integrations.feishu.webhook_url`（用 `config_get` scope=project 读，**不**在 `project_get` 的 config_summary 白名单内）
 4. 修复后对 dead-lettered delivery 调 `notification_delivery_replay` 重试（注意：不重新渲染模板，只重发已冻结内容；新内容要等下次触发）

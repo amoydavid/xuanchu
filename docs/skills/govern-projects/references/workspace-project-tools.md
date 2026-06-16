@@ -150,7 +150,7 @@
 
 ### project_get — 读取项目详情（只读）
 
-返回 `config_summary`（包含以 `agent.` 开头的配置项）。
+返回 `config_summary`（仅含固定白名单的 agent 指令键：`agent.background`/`agent.constraints`/`agent.default_context`/`agent.handoff`；其他 project 配置用 `config_get` scope=project 读）。
 
 ```json
 // 输入：用 slug

@@ -39,7 +39,7 @@ CIO agent 的后台运维：给别的系统/agent 发 token、调排序权重、
 
 ```
 1. config_schema_set({"workspace":"dajee","key":"integrations.feishu.webhook_url","value_type":"string","allowed_scopes":["project"]})
-2. // 之后用 project_config_set 写值（详见 wire-up-automation skill 的飞书集成）
+2. // 之后用 project_config_set 写值（详见 wire-up-automation skill 的 references/feishu-bot-setup.md）
 ```
 
 ## 易错点
