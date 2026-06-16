@@ -40,9 +40,9 @@ function defaultValues(mode: "create" | "edit", initial?: TokenRow): TokenFormVa
     return {
       name: initial.name,
       type: initial.type,
-      workspaces: [...initial.workspace_ids],
-      scopes: [...initial.scopes],
-      projects: [...initial.project_ids],
+      workspaces: [...(initial.workspace_ids ?? [])],
+      scopes: [...(initial.scopes ?? [])],
+      projects: [...(initial.project_ids ?? [])],
       expiresPreset: preset,
       expiresAt: customIso,
     }

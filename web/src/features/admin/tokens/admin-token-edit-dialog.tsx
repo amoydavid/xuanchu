@@ -49,7 +49,7 @@ export function AdminTokenEditDialog({
     token.expires_at
   )
   const [name, setName] = useState(token.name)
-  const [scopes, setScopes] = useState<string[]>([...token.scopes])
+  const [scopes, setScopes] = useState<string[]>([...(token.scopes ?? [])])
   const [expiresPreset, setExpiresPreset] = useState<ExpiresPreset>(initPreset)
   const [expiresAt, setExpiresAt] = useState(initCustom)
 
