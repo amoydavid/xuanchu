@@ -43,6 +43,7 @@
 | v0.4.2 | 已完成 | Project Readonly View 与 SSO 入口预留 |
 | v0.4.3 | 已完成 | Project 生命周期状态机（planning/active/archived/cancelled） |
 | v0.4.4 | 已完成 | Web Console Token 完整管理 + Admin 工作台 Token 管控 |
+| docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -63,6 +64,8 @@ v0.2.0 在 v0.1.1 已具备的稳定短任务引用、CLI / HTTP / MCP / Remote 
 
 - M16：定时通知、动态 endpoint 与 HTTP request template sink。
 - Agent Skill 文档整理：`docs/skills/*/SKILL.md` 已覆盖 v0.2.0 时的 95 个 MCP tool。
+
+> **后续重构（docs）**：原 v0.2.0 整理的 10 个资源维度 skill 文档（按 task/project/workspace/token 等 DB 实体切分）不符合 agentskills.io 规范（缺 frontmatter、写成 API 手册）。已按「CIO agent」（OpenClaw/Hermes 类自主 agent，担任所有项目总管）的使用视角重构成 5 个合规 skill：`govern-projects`、`wire-up-automation`、`capture-and-track-work`、`report-and-review`、`manage-access-and-config`。每个含 YAML frontmatter、主文件 ≤150 行、完整 JSON 下沉到 `references/`。设计见 `docs/superpowers/specs/2026-06-16-agent-skills-rewrite-design.md`。
 
 ## v0.3.0：事件通知、Hook sink 化与语义事件补齐
 
