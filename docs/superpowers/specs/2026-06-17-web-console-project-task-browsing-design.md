@@ -219,15 +219,14 @@ GET /api/v1/tasks/{taskRef}/annotations?offset=<int>&limit=<int>
 
 | 字段 | 说明 |
 |---|---|
-| `task_count` | 项目下任务总数 |
-| `pending_count` | pending 状态数 |
-| `active_count` | active（started）状态数 |
-| `completed_count` | completed 状态数 |
+| `task_count` | 项目下任务总数（不含 deleted） |
+| `pending_count` | status=pending 的任务数 |
+| `completed_count` | status=completed 的任务数 |
 
-- **handler**：`internal/httpapi/projects.go` `handleProjectList`。
-- **app 层**：扩展 project view struct，新增聚合方法（一次查询按 project 分组聚合，避免 N+1）。
-- **storage 层**：新增按 project uuid 批量聚合任务状态计数的查询。
-- 进度百分比由前端算（`completed_count / task_count`），后端只返原始计数。
+- 说明：后端 task status 只有 `pending`/`completed`/`waiting`/`recurring`/`deleted` 五种，**没有 `active`/`started`**。"进行中"在数据层是 pending 且 `Start != nil`，不是独立 status。因此聚合只返回 pending / completed 两个核心分项（外加已有的 task_count 总数）。前端进度百分比 = `completed_count / task_count`。
+- **handler**：`internal/httpapi/projects.go` `handleProjectList`，扩展 `projectResponse` 结构。
+- **app 层**：`ProjectView` 补 `PendingCount`/`CompletedCount` 字段；`ListProjectsByStatus` 改用新的批量分项聚合（替换或扩展 `projectRepo.TaskCounts`）。
+- **storage 层**：新增按 project 分组、按 status 分桶的聚合查询（一条 SQL 带 `GROUP BY project_id, status`），避免 N+1。
 
 ### 4.4 JSONTask 字段说明（前端实现参考）
 
@@ -264,7 +263,7 @@ UDAs 前端归类时需排除的已知保留字段集合：上述所有标准字
 
 - `GET /api/v1/tasks/{ref}/annotations?offset=&limit=` 返回分页注解 + total。
 - `GET /api/v1/tasks?status=&priority=&assignee=&due_after=&due_before=&tags=&q=` 正确过滤，与原 `query=` 共存。
-- `GET /api/v1/projects` 每项目含 task_count / pending_count / active_count / completed_count。
+- `GET /api/v1/projects` 每项目含 task_count / pending_count / completed_count。
 - 所有新接口在 `/api/v1/` 下。
 - 用户身份字段用 `task.UserInfo`。
 
