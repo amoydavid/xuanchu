@@ -22,6 +22,21 @@ describe("extractUDAs", () => {
   it("returns empty array when only reserved fields present", () => {
     expect(extractUDAs({ uuid: "u1", status: "pending" })).toEqual([])
   })
+
+  it("excludes relation expansion fields (depends_info/parent_info) added by backend", () => {
+    // 回归保护：后端给 JSONTask 新增的 depends_info/parent_info 必须被识别为标准字段，
+    // 否则会被误显示为自定义 UDA（曾出现过的真实 bug）。
+    const task = {
+      uuid: "u1",
+      status: "pending",
+      depends: ["dep-1"],
+      depends_info: [{ uuid: "dep-1", description: "依赖任务" }],
+      parent: "p1",
+      parent_info: { uuid: "p1", description: "父任务" },
+      estimate: "4h",
+    }
+    expect(extractUDAs(task)).toEqual([["estimate", "4h"]])
+  })
 })
 
 describe("formatUDAValue", () => {

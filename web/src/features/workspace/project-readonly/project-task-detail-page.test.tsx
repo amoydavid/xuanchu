@@ -195,14 +195,15 @@ describe("ProjectTaskDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Task with dependency")).toBeTruthy()
     })
-    // 依赖渲染为可读描述 + 可点击链接，而非裸 UUID
-    const depLink = screen.getByText("Dependency task")
+    // 依赖以 task_slug 为主标识渲染为可点击链接，而非裸 UUID
+    const depLink = screen.getByText("ag-12").closest("a")
     expect(depLink).toBeTruthy()
-    expect(depLink.getAttribute("href")).toBe(
+    expect(depLink?.getAttribute("href")).toBe(
       "/workspaces/acme/projects/agentapi/tasks/ag-12"
     )
-    // task_slug 作为副标识展示
-    expect(screen.getByText("ag-12")).toBeTruthy()
+    // 描述作为截断文本 + title 悬浮展示
+    expect(screen.getByText("Dependency task")).toBeTruthy()
+    expect(depLink?.getAttribute("title")).toBe("Dependency task")
     // 不应直接渲染裸 UUID
     expect(screen.queryByText("dep-uuid-1")).toBeNull()
   })

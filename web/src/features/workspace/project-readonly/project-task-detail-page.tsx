@@ -328,6 +328,8 @@ function TaskSidePanel({
 }
 
 // TaskRefLinks 把任务引用渲染为可点击链接列表。
+// 侧边栏空间狭窄，采用垂直堆叠：每行一个引用，以 task_slug 为主标识（紧凑），
+// 描述截断为单行并把全文放 title 属性供 hover 查看。
 // refs 含可读描述时用描述，否则回退显示 uuid（后端未填充 _info 的兜底）。
 function TaskRefLinks({
   refs,
@@ -341,27 +343,26 @@ function TaskRefLinks({
   projectSlug: string
 }) {
   return (
-    <div className="flex flex-wrap gap-x-2 gap-y-1">
-      {uuids.map((uuid, index) => {
+    <div className="flex flex-col gap-1">
+      {uuids.map((uuid) => {
         const info = refs?.find((r) => r.uuid === uuid)
-        const label = info
-          ? info.description || info.task_slug || uuid.slice(0, 8)
-          : uuid.slice(0, 8)
         const taskRef = info?.task_slug || uuid
+        const label = info?.task_slug || uuid.slice(0, 8)
         return (
-          <span key={uuid} className="inline-flex items-center gap-1">
-            {index > 0 ? <span className="text-muted-foreground">,</span> : null}
-            <Link
-              className="font-medium text-primary underline-offset-4 hover:underline"
-              to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
-              params={{ workspaceSlug, projectSlug, taskRef }}
-            >
-              {label}
-            </Link>
-            {info?.task_slug ? (
-              <code className="text-xs text-muted-foreground">{info.task_slug}</code>
+          <Link
+            className="inline-flex items-center gap-1.5 font-medium text-primary underline-offset-4 hover:underline"
+            key={uuid}
+            title={info?.description}
+            to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
+            params={{ workspaceSlug, projectSlug, taskRef }}
+          >
+            <code className="text-xs">{label}</code>
+            {info?.description ? (
+              <span className="truncate text-xs text-muted-foreground">
+                {info.description}
+              </span>
             ) : null}
-          </span>
+          </Link>
         )
       })}
     </div>

@@ -65,6 +65,39 @@ export type ProjectReadonlyTaskLink = {
   created_by?: { id?: string; name?: string; email?: string }
 }
 
+// STANDARD_TASK_FIELDS 是 ProjectReadonlyTask 的所有已知字段名（即非 UDA 字段）。
+// 它与上面的类型定义同处维护——新增标准字段时，类型和这份清单必须一起更新，
+// 否则 extractUDAs 会把新字段误判为 UDA（这正是 depends_info 曾被误显示的根因）。
+export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
+  "uuid",
+  "task_slug",
+  "description",
+  "status",
+  "project",
+  "project_id",
+  "project_seq",
+  "priority",
+  "due",
+  "entry",
+  "modified",
+  "recur",
+  "start",
+  "wait",
+  "scheduled",
+  "until",
+  "end",
+  "parent",
+  "parent_info",
+  "annotations",
+  "depends",
+  "depends_info",
+  "assignees",
+  "tags",
+  "links",
+  "mask",
+  "imask",
+])
+
 // AnnotationPage 是 GET /tasks/{ref}/annotations 的分页响应。
 export type AnnotationPage = {
   annotations: Array<{ id?: string; entry?: string; description: string }>
