@@ -327,9 +327,9 @@ function TaskSidePanel({
   )
 }
 
-// TaskRefLinks 把任务引用渲染为可点击链接列表。
-// 侧边栏空间狭窄，采用垂直堆叠：每行一个引用，以 task_slug 为主标识（紧凑），
-// 描述截断为单行并把全文放 title 属性供 hover 查看。
+// TaskRefLinks 把任务引用渲染为可点击链接列表，垂直堆叠。
+// 每个引用：描述（标题）作主链接，task_slug 作小字 label 放在下方。
+// 侧边栏狭窄，垂直布局 + 描述截断避免长文本撑乱排版。
 // refs 含可读描述时用描述，否则回退显示 uuid（后端未填充 _info 的兜底）。
 function TaskRefLinks({
   refs,
@@ -343,25 +343,24 @@ function TaskRefLinks({
   projectSlug: string
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       {uuids.map((uuid) => {
         const info = refs?.find((r) => r.uuid === uuid)
         const taskRef = info?.task_slug || uuid
-        const label = info?.task_slug || uuid.slice(0, 8)
+        const title = info?.description || info?.task_slug || uuid.slice(0, 8)
         return (
           <Link
-            className="inline-flex items-center gap-1.5 font-medium text-primary underline-offset-4 hover:underline"
+            className="block"
             key={uuid}
-            title={info?.description}
             to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
             params={{ workspaceSlug, projectSlug, taskRef }}
           >
-            <code className="text-xs">{label}</code>
-            {info?.description ? (
-              <span className="truncate text-xs text-muted-foreground">
-                {info.description}
-              </span>
+            {info?.task_slug ? (
+              <code className="text-[11px] text-muted-foreground">{info.task_slug}</code>
             ) : null}
+            <span className="block truncate font-medium text-primary underline-offset-4 hover:underline">
+              {title}
+            </span>
           </Link>
         )
       })}
