@@ -217,6 +217,12 @@ export const enUS = {
     tasks: "Tasks",
     depends: "Depends",
     unassigned: "Unassigned",
+    links: "Links",
+    attributes: "Attributes",
+    customFields: "Custom fields",
+    entry: "Created",
+    modified: "Modified",
+    recur: "Recurrence",
   },
   projects: {
     title: "Projects",

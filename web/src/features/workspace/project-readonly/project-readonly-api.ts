@@ -31,10 +31,36 @@ export type ProjectReadonlyTask = {
   due?: number | null
   entry?: string
   modified?: string
-  annotations?: Array<{ id?: string; description: string }>
+  recur?: string
+  start?: number | null
+  wait?: number | null
+  scheduled?: number | null
+  until?: number | null
+  parent?: string
+  annotations?: Array<{ id?: string; entry?: string; description: string }>
   depends?: string[]
   assignees?: ProjectReadonlyAssignee[]
   tags?: string[]
+  links?: ProjectReadonlyTaskLink[]
+  // UDAs 在后端平铺为顶层字段，此处用索引签名容纳任意自定义字段。
+  [key: string]: unknown
+}
+
+export type ProjectReadonlyTaskLink = {
+  id: string
+  type: string
+  url: string
+  title?: string
+  created_at?: string
+  created_by?: { id?: string; name?: string; email?: string }
+}
+
+// AnnotationPage 是 GET /tasks/{ref}/annotations 的分页响应。
+export type AnnotationPage = {
+  annotations: Array<{ id?: string; entry?: string; description: string }>
+  total: number
+  offset: number
+  limit: number
 }
 
 export type ProjectReadonlyTimelineEntry = {
@@ -72,6 +98,15 @@ export function projectReadonlyTimelinePath(
   return `/api/v1/projects/${encodeURIComponent(projectSlug)}/timeline?workspace=${encodeURIComponent(workspaceSlug)}&limit=20`
 }
 
+export function projectReadonlyAnnotationsPath(
+  workspaceSlug: string,
+  taskRef: string,
+  offset: number,
+  limit: number
+) {
+  return `/api/v1/tasks/${encodeURIComponent(taskRef)}/annotations?workspace=${encodeURIComponent(workspaceSlug)}&offset=${offset}&limit=${limit}`
+}
+
 export function getProjectReadonlyProject(
   workspaceSlug: string,
   projectSlug: string
@@ -102,5 +137,16 @@ export function getProjectReadonlyTimeline(
 ) {
   return workspaceApiGet<ProjectReadonlyTimelineEntry[]>(
     projectReadonlyTimelinePath(workspaceSlug, projectSlug)
+  )
+}
+
+export function getProjectReadonlyAnnotations(
+  workspaceSlug: string,
+  taskRef: string,
+  offset: number,
+  limit: number
+) {
+  return workspaceApiGet<AnnotationPage>(
+    projectReadonlyAnnotationsPath(workspaceSlug, taskRef, offset, limit)
   )
 }

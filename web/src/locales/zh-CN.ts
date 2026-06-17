@@ -213,6 +213,12 @@ export const zhCN = {
     taskNotFoundTitle: "任务不存在或不可见",
     tasks: "任务",
     depends: "依赖",
+    links: "关联",
+    attributes: "属性",
+    customFields: "自定义字段",
+    entry: "创建时间",
+    modified: "修改时间",
+    recur: "循环",
     unassigned: "未分配",
   },
   projects: {

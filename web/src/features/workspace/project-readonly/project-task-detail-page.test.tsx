@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -103,5 +103,71 @@ describe("ProjectTaskDetailPage", () => {
     expect(
       screen.getByRole("link", { name: "返回项目" }).getAttribute("href")
     ).toBe("/workspaces/acme/projects/agentapi")
+  })
+
+  it("shows first 3 annotations with load-more, and renders links + UDAs", async () => {
+    const annotations = Array.from({ length: 5 }, (_, i) => ({
+      id: `note-${i}`,
+      entry: "2026-06-01T00:00:00Z",
+      description: `note-${i}`,
+    }))
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path.startsWith("/api/v1/tasks/ag-23/annotations")) {
+        // 模拟第二页：offset=3 limit=10 → 返回剩余 2 条
+        return ok({
+          annotations: annotations.slice(3),
+          total: 5,
+          offset: 3,
+          limit: 10,
+        })
+      }
+      return ok({
+        uuid: "task-1",
+        task_slug: "ag-23",
+        description: "Task with links and UDAs",
+        status: "pending",
+        project: "agentapi",
+        annotations,
+        links: [
+          {
+            id: "link-1",
+            type: "spec",
+            url: "https://example.com/spec.md",
+            title: "Design doc",
+            created_by: { id: "u1", name: "张三" },
+          },
+        ],
+        estimate: "4h",
+        sprint: "26W24",
+      })
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("Task with links and UDAs")).toBeTruthy()
+    })
+    // 首屏只渲染前 3 条注解
+    expect(screen.getByText("note-0")).toBeTruthy()
+    expect(screen.getByText("note-2")).toBeTruthy()
+    expect(screen.queryByText("note-3")).toBeNull()
+    // 「查看更多 2 条」按钮存在
+    const moreBtn = screen.getByText("查看更多 2 条 ↓")
+    expect(moreBtn).toBeTruthy()
+    // links 渲染
+    expect(screen.getByText("Design doc")).toBeTruthy()
+    // UDA 渲染
+    expect(screen.getByText("4h")).toBeTruthy()
+    expect(screen.getByText("26W24")).toBeTruthy()
+
+    // 点击查看更多，触发分页请求并显示剩余注解
+    await act(async () => {
+      moreBtn.click()
+    })
+    await waitFor(() => {
+      expect(screen.getByText("note-3")).toBeTruthy()
+      expect(screen.getByText("note-4")).toBeTruthy()
+    })
   })
 })
