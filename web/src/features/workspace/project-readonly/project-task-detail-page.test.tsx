@@ -206,4 +206,36 @@ describe("ProjectTaskDetailPage", () => {
     // 不应直接渲染裸 UUID
     expect(screen.queryByText("dep-uuid-1")).toBeNull()
   })
+
+  it("renders reverse dependency (blocking) section when blocked_by_info present", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      ok({
+        uuid: "task-1",
+        task_slug: "ag-23",
+        description: "Task that blocks others",
+        status: "pending",
+        project: "agentapi",
+        blocked_by_info: [
+          {
+            uuid: "blocked-uuid-1",
+            description: "Task waiting on me",
+            task_slug: "ag-12",
+          },
+        ],
+      })
+    )
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("Task that blocks others")).toBeTruthy()
+    })
+    // 「阻塞了」反向关系渲染为可点击链接
+    const blockedLink = screen.getByText("Task waiting on me").closest("a")
+    expect(blockedLink).toBeTruthy()
+    expect(blockedLink?.getAttribute("href")).toBe(
+      "/workspaces/acme/projects/agentapi/tasks/ag-12"
+    )
+    expect(screen.queryByText("blocked-uuid-1")).toBeNull()
+  })
 })

@@ -38,6 +38,8 @@ export type ProjectReadonlyTask = {
   until?: number | null
   parent?: string
   parent_info?: ProjectReadonlyTaskRef
+  // blocked_by_info 是被当前任务阻塞的任务（反向依赖），对齐后端 blocked_by_info。
+  blocked_by_info?: ProjectReadonlyTaskRef[]
   annotations?: Array<{ id?: string; entry?: string; description: string }>
   depends?: string[]
   depends_info?: ProjectReadonlyTaskRef[]
@@ -88,6 +90,7 @@ export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
   "end",
   "parent",
   "parent_info",
+  "blocked_by_info",
   "annotations",
   "depends",
   "depends_info",

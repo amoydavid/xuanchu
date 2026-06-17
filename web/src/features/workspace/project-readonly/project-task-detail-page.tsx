@@ -289,7 +289,7 @@ function TaskSidePanel({
       {/* depends/parent 是任务引用，渲染为可点击链接而非裸 UUID。 */}
       {task.depends && task.depends.length > 0 ? (
         <div>
-          <div className="text-xs text-muted-foreground">{t("projectReadonly.depends")}</div>
+          <div className="text-xs text-muted-foreground">{t("projectReadonly.dependsOn")}</div>
           <TaskRefLinks
             refs={task.depends_info}
             uuids={task.depends}
@@ -304,6 +304,17 @@ function TaskSidePanel({
           <TaskRefLinks
             refs={task.parent_info ? [task.parent_info] : undefined}
             uuids={[task.parent]}
+            workspaceSlug={workspaceSlug}
+            projectSlug={projectSlug}
+          />
+        </div>
+      ) : null}
+      {task.blocked_by_info && task.blocked_by_info.length > 0 ? (
+        <div>
+          <div className="text-xs text-muted-foreground">{t("projectReadonly.blocking")}</div>
+          <TaskRefLinks
+            refs={task.blocked_by_info}
+            uuids={task.blocked_by_info.map((r) => r.uuid)}
             workspaceSlug={workspaceSlug}
             projectSlug={projectSlug}
           />
