@@ -13,6 +13,7 @@ import {
   getProjectReadonlyTask,
   type ProjectReadonlyTask,
   type ProjectReadonlyTaskLink,
+  type ProjectReadonlyTaskRef,
 } from "./project-readonly-api"
 import { extractUDAs, formatUDAValue } from "./uda"
 
@@ -115,7 +116,7 @@ export function ProjectTaskDetailPage({
           />
           <TaskLinks links={taskData.links} title={t("projectReadonly.links")} />
         </div>
-        <TaskSidePanel task={taskData} t={t} />
+        <TaskSidePanel task={taskData} t={t} workspaceSlug={workspaceSlug} projectSlug={projectSlug} />
       </div>
     </div>
   )
@@ -249,22 +250,26 @@ function TaskLinks({
   )
 }
 
-// TaskSidePanel 是右侧属性栏：常用字段 + UDAs。
+// TaskSidePanel 是右侧属性栏：常用字段 + depends/parent 可跳转链接 + UDAs。
 function TaskSidePanel({
   task,
   t,
+  workspaceSlug,
+  projectSlug,
 }: {
   task: ProjectReadonlyTask
   t: (key: string) => string
+  workspaceSlug: string
+  projectSlug: string
 }) {
   const udas = extractUDAs(task)
+  // 纯文本字段：不涉及任务引用，直接字符串渲染。
   const fields: Array<[string, string]> = [
     [t("common.status"), task.status],
     [t("projectReadonly.priority"), task.priority || "-"],
     [t("projectReadonly.assignee"), assigneeNames(task)],
     [t("projectReadonly.due"), formatUnixDate(task.due)],
     [t("projectReadonly.tags"), task.tags?.join(", ") || "-"],
-    [t("projectReadonly.depends"), task.depends?.join(", ") || "-"],
     [t("projectReadonly.entry"), formatRFCDate(task.entry)],
     [t("projectReadonly.modified"), formatRFCDate(task.modified)],
     ...(task.recur ? [[t("projectReadonly.recur"), task.recur] as [string, string]] : []),
@@ -281,6 +286,29 @@ function TaskSidePanel({
           <div className="font-medium">{value}</div>
         </div>
       ))}
+      {/* depends/parent 是任务引用，渲染为可点击链接而非裸 UUID。 */}
+      {task.depends && task.depends.length > 0 ? (
+        <div>
+          <div className="text-xs text-muted-foreground">{t("projectReadonly.depends")}</div>
+          <TaskRefLinks
+            refs={task.depends_info}
+            uuids={task.depends}
+            workspaceSlug={workspaceSlug}
+            projectSlug={projectSlug}
+          />
+        </div>
+      ) : null}
+      {task.parent ? (
+        <div>
+          <div className="text-xs text-muted-foreground">{t("projectReadonly.parent")}</div>
+          <TaskRefLinks
+            refs={task.parent_info ? [task.parent_info] : undefined}
+            uuids={[task.parent]}
+            workspaceSlug={workspaceSlug}
+            projectSlug={projectSlug}
+          />
+        </div>
+      ) : null}
       {udas.length > 0 ? (
         <>
           <Separator />
@@ -296,6 +324,47 @@ function TaskSidePanel({
         </>
       ) : null}
     </aside>
+  )
+}
+
+// TaskRefLinks 把任务引用渲染为可点击链接列表。
+// refs 含可读描述时用描述，否则回退显示 uuid（后端未填充 _info 的兜底）。
+function TaskRefLinks({
+  refs,
+  uuids,
+  workspaceSlug,
+  projectSlug,
+}: {
+  refs?: ProjectReadonlyTaskRef[]
+  uuids: string[]
+  workspaceSlug: string
+  projectSlug: string
+}) {
+  return (
+    <div className="flex flex-wrap gap-x-2 gap-y-1">
+      {uuids.map((uuid, index) => {
+        const info = refs?.find((r) => r.uuid === uuid)
+        const label = info
+          ? info.description || info.task_slug || uuid.slice(0, 8)
+          : uuid.slice(0, 8)
+        const taskRef = info?.task_slug || uuid
+        return (
+          <span key={uuid} className="inline-flex items-center gap-1">
+            {index > 0 ? <span className="text-muted-foreground">,</span> : null}
+            <Link
+              className="font-medium text-primary underline-offset-4 hover:underline"
+              to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
+              params={{ workspaceSlug, projectSlug, taskRef }}
+            >
+              {label}
+            </Link>
+            {info?.task_slug ? (
+              <code className="text-xs text-muted-foreground">{info.task_slug}</code>
+            ) : null}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 

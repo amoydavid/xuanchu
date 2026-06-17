@@ -217,6 +217,7 @@ export const enUS = {
     taskNotFoundTitle: "Task not found or not visible",
     tasks: "Tasks",
     depends: "Depends",
+    parent: "Parent",
     unassigned: "Unassigned",
     links: "Links",
     attributes: "Attributes",

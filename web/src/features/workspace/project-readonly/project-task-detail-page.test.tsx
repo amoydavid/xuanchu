@@ -170,4 +170,40 @@ describe("ProjectTaskDetailPage", () => {
       expect(screen.getByText("note-4")).toBeTruthy()
     })
   })
+
+  it("renders depends as clickable links using depends_info, not raw UUIDs", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      ok({
+        uuid: "task-1",
+        task_slug: "ag-23",
+        description: "Task with dependency",
+        status: "pending",
+        project: "agentapi",
+        depends: ["dep-uuid-1"],
+        depends_info: [
+          {
+            uuid: "dep-uuid-1",
+            description: "Dependency task",
+            task_slug: "ag-12",
+          },
+        ],
+      })
+    )
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("Task with dependency")).toBeTruthy()
+    })
+    // 依赖渲染为可读描述 + 可点击链接，而非裸 UUID
+    const depLink = screen.getByText("Dependency task")
+    expect(depLink).toBeTruthy()
+    expect(depLink.getAttribute("href")).toBe(
+      "/workspaces/acme/projects/agentapi/tasks/ag-12"
+    )
+    // task_slug 作为副标识展示
+    expect(screen.getByText("ag-12")).toBeTruthy()
+    // 不应直接渲染裸 UUID
+    expect(screen.queryByText("dep-uuid-1")).toBeNull()
+  })
 })

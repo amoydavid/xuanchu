@@ -214,6 +214,7 @@ export const zhCN = {
     taskNotFoundTitle: "任务不存在或不可见",
     tasks: "任务",
     depends: "依赖",
+    parent: "父任务",
     links: "关联",
     attributes: "属性",
     customFields: "自定义字段",

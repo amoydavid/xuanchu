@@ -37,13 +37,23 @@ export type ProjectReadonlyTask = {
   scheduled?: number | null
   until?: number | null
   parent?: string
+  parent_info?: ProjectReadonlyTaskRef
   annotations?: Array<{ id?: string; entry?: string; description: string }>
   depends?: string[]
+  depends_info?: ProjectReadonlyTaskRef[]
   assignees?: ProjectReadonlyAssignee[]
   tags?: string[]
   links?: ProjectReadonlyTaskLink[]
   // UDAs 在后端平铺为顶层字段，此处用索引签名容纳任意自定义字段。
   [key: string]: unknown
+}
+
+// ProjectReadonlyTaskRef 是任务的轻量引用，对齐后端 JSONTaskRef，
+// 用于 depends_info/parent_info：把裸 UUID 展开为描述 + 稳定短标识。
+export type ProjectReadonlyTaskRef = {
+  uuid: string
+  description: string
+  task_slug?: string
 }
 
 export type ProjectReadonlyTaskLink = {
