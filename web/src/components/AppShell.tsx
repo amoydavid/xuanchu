@@ -2,7 +2,6 @@ import {
   Activity,
   Bell,
   Boxes,
-  ClipboardList,
   FileClock,
   KeyRound,
   LogOut,
@@ -25,7 +24,6 @@ import { cn } from "@/lib/utils"
 
 export type PageKey =
   | "overview"
-  | "tasks"
   | "projects"
   | "workspaces"
   | "members"
@@ -41,7 +39,6 @@ const navItems: Array<{
   to: string
 }> = [
   { key: "overview", icon: Activity, to: "/" },
-  { key: "tasks", icon: ClipboardList, to: "/tasks" },
   { key: "projects", icon: Boxes, to: "/projects" },
   { key: "workspaces", icon: Boxes, to: "/workspaces" },
   { key: "members", icon: Users, to: "/members" },

@@ -3,6 +3,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  redirect,
 } from "@tanstack/react-router"
 import { Suspense, lazy, type ComponentType } from "react"
 
@@ -26,6 +27,11 @@ const ResourceRoute = lazy(() =>
 const ProjectReadonlyRoute = lazy(() =>
   import("@/routes/workspace/ProjectReadonlyRoute").then((module) => ({
     default: module.ProjectReadonlyRoute,
+  }))
+)
+const ProjectsListRoute = lazy(() =>
+  import("@/routes/workspace/ProjectsListRoute").then((module) => ({
+    default: module.ProjectsListRoute,
   }))
 )
 const ProjectTaskDetailRoute = lazy(() =>
@@ -112,6 +118,22 @@ const projectReadonlyRoute = createRoute({
   component: lazyRoute(ProjectReadonlyRoute),
 })
 
+const projectsListRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/projects",
+  component: lazyRoute(ProjectsListRoute),
+})
+
+// /tasks 已下线：任务统一从项目入口浏览，旧链接重定向到 /projects。
+const tasksRedirectRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/tasks",
+  beforeLoad: () => {
+    throw redirect({ to: "/projects" })
+  },
+  component: () => null,
+})
+
 const projectTaskDetailRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
@@ -132,8 +154,8 @@ const tokensRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
-    createResourceRoute("tasks", "/tasks"),
-    createResourceRoute("projects", "/projects"),
+    tasksRedirectRoute,
+    projectsListRoute,
     createResourceRoute("workspaces", "/workspaces"),
     createResourceRoute("members", "/members"),
     tokensRoute,

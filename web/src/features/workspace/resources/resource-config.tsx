@@ -16,42 +16,6 @@ export function resourceConfig(
   workspaceSlug?: string
 ): React.ComponentProps<typeof ResourcePage> {
   switch (page) {
-    case "tasks":
-      return {
-        title: t("page.tasks"),
-        path: "/api/v1/tasks?limit=50",
-        columns: [
-          {
-            key: "description",
-            header: t("common.name"),
-            render: textCell("description"),
-          },
-          {
-            key: "status",
-            header: t("common.status"),
-            render: statusCell("status"),
-          },
-          {
-            key: "project",
-            header: t("overview.projects"),
-            render: textCell("project"),
-          },
-        ],
-      }
-    case "projects":
-      return {
-        title: t("page.projects"),
-        path: "/api/v1/projects",
-        columns: [
-          { key: "slug", header: t("resource.slug"), render: textCell("slug") },
-          { key: "name", header: t("common.name"), render: textCell("name") },
-          {
-            key: "archived",
-            header: t("resource.archived"),
-            render: statusCell("archived"),
-          },
-        ],
-      }
     case "workspaces":
       return {
         title: t("page.workspaces"),
