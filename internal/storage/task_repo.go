@@ -136,6 +136,25 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 	return out, nil
 }
 
+// ListDependents 返回依赖指定任务（depends_on = taskUUID）的活任务列表，
+// 即被 taskUUID 阻塞的任务。用于任务详情页的反向关系展示。
+func (r *TaskRepository) ListDependents(workspaceID, taskUUID string) ([]domain.Task, error) {
+	var depRows []TaskDependency
+	if err := r.db.
+		Where("depends_on = ?", taskUUID).
+		Find(&depRows).Error; err != nil {
+		return nil, err
+	}
+	if len(depRows) == 0 {
+		return nil, nil
+	}
+	dependentUUIDs := make([]string, 0, len(depRows))
+	for _, row := range depRows {
+		dependentUUIDs = append(dependentUUIDs, row.TaskUUID)
+	}
+	return r.ListByUUIDs(workspaceID, dependentUUIDs)
+}
+
 func (r *TaskRepository) GetByUUID(workspaceID, uuid string) (domain.Task, error) {
 	var model Task
 	err := r.preloadAssociations().Where("workspace_id = ? AND uuid = ?", workspaceID, uuid).First(&model).Error

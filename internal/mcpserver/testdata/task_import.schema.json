@@ -84,6 +84,34 @@
                 "array"
               ]
             },
+            "blocked_by_info": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "task_slug": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "uuid": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "uuid",
+                  "description"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
             "depends": {
               "items": {
                 "type": "string"

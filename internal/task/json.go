@@ -64,6 +64,8 @@ type JSONTask struct {
 	Recur       *string             `json:"recur,omitempty"`
 	Parent      *string             `json:"parent,omitempty"`
 	ParentInfo  *JSONTaskRef        `json:"parent_info,omitempty"`
+	// BlockedByInfo 是被当前任务阻塞的任务列表（反向依赖），供 UI 展示「阻塞了」关系。
+	BlockedByInfo []JSONTaskRef `json:"blocked_by_info,omitempty"`
 	Mask        *string             `json:"mask,omitempty"`
 	IMask       *int                `json:"imask,omitempty"`
 	Assignees   []JSONAssignee      `json:"assignees,omitempty"`
@@ -135,6 +137,9 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	}
 	if t.ParentInfo != nil {
 		wire["parent_info"] = t.ParentInfo
+	}
+	if t.BlockedByInfo != nil {
+		wire["blocked_by_info"] = t.BlockedByInfo
 	}
 	if t.Mask != nil {
 		wire["mask"] = t.Mask
@@ -439,10 +444,11 @@ func coreJSONFields() []string {
 
 func reservedJSONFields() map[string]struct{} {
 	return map[string]struct{}{
-		"project_id":   {},
-		"project_seq":  {},
-		"depends_info": {},
-		"parent_info":  {},
+		"project_id":    {},
+		"project_seq":   {},
+		"depends_info":  {},
+		"parent_info":   {},
+		"blocked_by_info": {},
 	}
 }
 

@@ -784,12 +784,17 @@ func TestHandleTaskInfoReturnsDependsInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// blockedTask 依赖 dep，因此 dep 的详情页应返回 blocked_by_info 含 blockedTask。
+	if _, err := svc.Add(app.AddInput{Description: "blocked by dependency", Project: &projectRef, Depends: []string{dep.UUID}}); err != nil {
+		t.Fatal(err)
+	}
 	// 主任务依赖 dep，验证返回体含 depends_info（可读描述 + task_slug）。
 	main, err := svc.Add(app.AddInput{Description: "main task", Project: &projectRef, Depends: []string{dep.UUID}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// main 的详情：含 depends_info（指向 dep）。
 	rr := requestHTTP(t, fixture.server, http.MethodGet,
 		"/api/v1/tasks/"+main.UUID, restfulFilterHeader(fixture.token))
 	if rr.Code != http.StatusOK {
@@ -801,5 +806,19 @@ func TestHandleTaskInfoReturnsDependsInfo(t *testing.T) {
 	}
 	if !strings.Contains(body, "dependency task") || !strings.Contains(body, "api-1") {
 		t.Fatalf("depends_info not enriched with description/slug: %s", body)
+	}
+
+	// dep 的详情：含 blocked_by_info（被 main 和 blockedTask 阻塞）。
+	rr = requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks/"+dep.UUID, restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("dep status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body = rr.Body.String()
+	if !strings.Contains(body, `"blocked_by_info"`) {
+		t.Fatalf("response missing blocked_by_info: %s", body)
+	}
+	if !strings.Contains(body, "main task") || !strings.Contains(body, "blocked by dependency") {
+		t.Fatalf("blocked_by_info not enriched: %s", body)
 	}
 }

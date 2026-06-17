@@ -860,6 +860,21 @@ func (s *Service) ResolveTaskRefs(uuids []string) ([]task.JSONTaskRef, error) {
 	if err != nil {
 		return nil, err
 	}
+	return tasksToRefs(tasks), nil
+}
+
+// ResolveDependents 返回依赖指定任务的任务（反向依赖），即被 taskUUID 阻塞的任务。
+// 用于任务详情页「阻塞了」反向关系展示。
+func (s *Service) ResolveDependents(taskUUID string) ([]task.JSONTaskRef, error) {
+	tasks, err := s.repo.ListDependents(s.workspaceID, taskUUID)
+	if err != nil {
+		return nil, err
+	}
+	return tasksToRefs(tasks), nil
+}
+
+// tasksToRefs 把领域任务列表转为轻量 JSONTaskRef（带描述 + task_slug）。
+func tasksToRefs(tasks []task.Task) []task.JSONTaskRef {
 	out := make([]task.JSONTaskRef, 0, len(tasks))
 	for _, tsk := range tasks {
 		ref := task.JSONTaskRef{UUID: tsk.UUID, Description: tsk.Description}
@@ -869,7 +884,7 @@ func (s *Service) ResolveTaskRefs(uuids []string) ([]task.JSONTaskRef, error) {
 		}
 		out = append(out, ref)
 	}
-	return out, nil
+	return out
 }
 
 // taskSlugOf 计算任务的稳定短标识（与 task.ToJSON 一致）。

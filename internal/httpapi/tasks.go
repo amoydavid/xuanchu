@@ -327,7 +327,7 @@ func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, taskToJSONWithRefs(scoped, tsk), nil)
 }
 
-// taskToJSONWithRefs 序列化任务并填充 depends_info/parent_info，
+// taskToJSONWithRefs 序列化任务并填充 depends_info/parent_info/blocked_by_info，
 // 把裸 UUID 展开为带描述和 task_slug 的可读引用（用于 web 详情页展示和跳转）。
 // 找不到的引用 UUID 会被忽略，前端回退显示原始 UUID。
 func taskToJSONWithRefs(svc *app.Service, tsk task.Task) task.JSONTask {
@@ -341,6 +341,10 @@ func taskToJSONWithRefs(svc *app.Service, tsk task.Task) task.JSONTask {
 		if err == nil && len(parentRefs) > 0 {
 			out.ParentInfo = &parentRefs[0]
 		}
+	}
+	blockedBy, err := svc.ResolveDependents(tsk.UUID)
+	if err == nil && len(blockedBy) > 0 {
+		out.BlockedByInfo = blockedBy
 	}
 	return out
 }

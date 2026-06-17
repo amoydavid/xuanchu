@@ -602,3 +602,51 @@ func mkDomainTask(uuid, wsID, desc string) domain.Task {
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 	}
 }
+
+func TestTaskRepositoryListDependents(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+	// a 被 b、c 依赖（b.depends=[a], c.depends=[a]）；d 不依赖任何。
+	a, err := repo.Create(mkDomainTask("t-a", ws.ID, "alpha"))
+	if err != nil {
+		t.Fatalf("Create(a) error = %v", err)
+	}
+	if _, err := repo.Create(domain.Task{
+		UUID: "t-b", WorkspaceID: ws.ID, Description: "beta",
+		Status: domain.StatusPending, Entry: 100, Modified: 100,
+		Depends: []string{a.UUID},
+	}); err != nil {
+		t.Fatalf("Create(b) error = %v", err)
+	}
+	if _, err := repo.Create(domain.Task{
+		UUID: "t-c", WorkspaceID: ws.ID, Description: "gamma",
+		Status: domain.StatusPending, Entry: 100, Modified: 100,
+		Depends: []string{a.UUID},
+	}); err != nil {
+		t.Fatalf("Create(c) error = %v", err)
+	}
+	if _, err := repo.Create(mkDomainTask("t-d", ws.ID, "delta")); err != nil {
+		t.Fatalf("Create(d) error = %v", err)
+	}
+
+	// a 阻塞了 b 和 c。
+	got, err := repo.ListDependents(ws.ID, a.UUID)
+	if err != nil {
+		t.Fatalf("ListDependents() error = %v", err)
+	}
+	descs := make(map[string]bool, len(got))
+	for _, tsk := range got {
+		descs[tsk.Description] = true
+	}
+	if len(got) != 2 || !descs["beta"] || !descs["gamma"] {
+		t.Fatalf("ListDependents(a) = %#v, want beta+gamma", got)
+	}
+
+	// d 不阻塞任何任务。
+	got, err = repo.ListDependents(ws.ID, "t-d")
+	if err != nil {
+		t.Fatalf("ListDependents(d) error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("ListDependents(d) = %#v, want empty", got)
+	}
+}

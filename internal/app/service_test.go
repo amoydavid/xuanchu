@@ -5228,3 +5228,39 @@ func TestServiceResolveTaskRefs(t *testing.T) {
 		t.Fatalf("empty: got=%v err=%v", got, err)
 	}
 }
+
+func TestServiceResolveDependents(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	proj, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	projectRef := proj.Slug
+	// a 是被依赖的任务；b、c 都依赖 a。
+	a, err := svc.Add(AddInput{Description: "alpha", Project: &projectRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "beta depends on alpha", Project: &projectRef, Depends: []string{a.UUID}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "gamma depends on alpha", Project: &projectRef, Depends: []string{a.UUID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	dependents, err := svc.ResolveDependents(a.UUID)
+	if err != nil {
+		t.Fatalf("ResolveDependents() error = %v", err)
+	}
+	if len(dependents) != 2 {
+		t.Fatalf("len = %d, want 2", len(dependents))
+	}
+	descs := make(map[string]bool, len(dependents))
+	for _, d := range dependents {
+		descs[d.Description] = true
+	}
+	if !descs["beta depends on alpha"] || !descs["gamma depends on alpha"] {
+		t.Fatalf("dependents = %#v, want beta+gamma", dependents)
+	}
+}
