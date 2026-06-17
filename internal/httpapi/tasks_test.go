@@ -516,3 +516,178 @@ func TestTaskLinkRemoveNotFound(t *testing.T) {
 	rr := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/tasks/"+created.UUID+"/links/nonexistent-link-id", headers)
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "link_not_found")
 }
+
+// restfulFilterHeader 构造带 token 的认证头，供 restful 过滤测试复用。
+func restfulFilterHeader(token string) map[string]string {
+	return map[string]string{"Authorization": "Bearer " + token}
+}
+
+func TestHandleTaskList_RestfulStatusFilter(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := svc.Add(app.AddInput{Description: "restful pending task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := svc.Add(app.AddInput{Description: "restful completed task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(completed.UUID); err != nil {
+		t.Fatal(err)
+	}
+	_ = pending
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?status=pending&no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "restful pending task") || strings.Contains(body, "restful completed task") {
+		t.Fatalf("status filter failed: %s", body)
+	}
+}
+
+func TestHandleTaskList_RestfulPriorityFilter(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	high := "H"
+	if _, err := svc.Add(app.AddInput{Description: "restful high pri", Priority: &high}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "restful no pri"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?priority=H&no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "restful high pri") || strings.Contains(body, "restful no pri") {
+		t.Fatalf("priority filter failed: %s", body)
+	}
+}
+
+func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := int64(1)
+	future := int64(1893456000) // 2030-01-01
+	if _, err := svc.Add(app.AddInput{Description: "restful past due", Due: &past}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "restful future due", Due: &future}); err != nil {
+		t.Fatal(err)
+	}
+	hdr := restfulFilterHeader(fixture.token)
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?due_before=2025-01-01&no_context=true", hdr)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("due_before status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if b := rr.Body.String(); !strings.Contains(b, "restful past due") || strings.Contains(b, "restful future due") {
+		t.Fatalf("due_before filter failed: %s", b)
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?due_after=2025-01-01&no_context=true", hdr)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("due_after status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if b := rr.Body.String(); !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
+		t.Fatalf("due_after filter failed: %s", b)
+	}
+}
+
+func TestHandleTaskList_RestfulQFilter(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "needle in haystack"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "completely unrelated"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?q=needle&no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "needle in haystack") || strings.Contains(body, "completely unrelated") {
+		t.Fatalf("q filter failed: %s", body)
+	}
+}
+
+func TestHandleTaskList_RestfulTagsFilter(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "restful tagged", Tags: []string{"web"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "restful untagged"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?tags=web&no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "restful tagged") || strings.Contains(body, "restful untagged") {
+		t.Fatalf("tags filter failed: %s", body)
+	}
+}
+
+func TestHandleTaskList_RestfulAssigneeFilter(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "restful assigned to me", Assignees: []string{"local"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Description: "restful unassigned"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// assignee=me 会由 app 层解析为当前 actor（fixture token 即 workspace "local" 成员）。
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?assignee=me&no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "restful assigned to me") || strings.Contains(body, "restful unassigned") {
+		t.Fatalf("assignee filter failed: %s", body)
+	}
+}
+
+func TestHandleTaskList_RestfulBadDate(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read")
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?due_after=not-a-date", restfulFilterHeader(fixture.token))
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_filter")
+}

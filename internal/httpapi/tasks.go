@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +86,60 @@ const (
 	taskListMaxLimit     = 1000
 )
 
+// restfulTaskFilters 把 restful 风格的 query 参数翻译成 query DSL，
+// 与原有 query=/filter= 表达式合并。参数校验失败返回 error。
+//
+// 这些参数与 taskwarrior 风格的 query=/filter= 并存，翻译后用 query.And 合并，
+// 便于前端用可读 URL（如 ?status=pending&priority=H）而不必直接拼 DSL。
+func restfulTaskFilters(q url.Values) (query.Expr, error) {
+	var expr query.Expr
+	add := func(e query.Expr) { expr = query.And(expr, e) }
+
+	if v := strings.TrimSpace(q.Get("status")); v != "" {
+		add(query.Predicate{Attribute: query.AttrStatus, Operator: query.OpEqual, Value: query.StringValue(v)})
+	}
+	if v := strings.TrimSpace(q.Get("priority")); v != "" {
+		add(query.Predicate{Attribute: query.AttrPriority, Operator: query.OpEqual, Value: query.StringValue(v)})
+	}
+	if v := strings.TrimSpace(q.Get("assignee")); v != "" {
+		add(query.Predicate{Attribute: query.AttrAssignee, Operator: query.OpEqual, Value: query.StringValue(v)})
+	}
+	if v := strings.TrimSpace(q.Get("due_after")); v != "" {
+		pred, err := datePredicate(query.AttrDue, query.OpAfter, v)
+		if err != nil {
+			return nil, err
+		}
+		add(pred)
+	}
+	if v := strings.TrimSpace(q.Get("due_before")); v != "" {
+		pred, err := datePredicate(query.AttrDue, query.OpBefore, v)
+		if err != nil {
+			return nil, err
+		}
+		add(pred)
+	}
+	if v := strings.TrimSpace(q.Get("q")); v != "" {
+		add(query.Predicate{Attribute: query.AttrBare, Operator: query.OpContains, Value: query.BareValue(v)})
+	}
+	if v := strings.TrimSpace(q.Get("tags")); v != "" {
+		for _, tag := range strings.Split(v, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
+				continue
+			}
+			add(query.Predicate{Attribute: query.AttrTag, Operator: query.OpHasTag, Value: query.StringValue(tag)})
+		}
+	}
+	return expr, nil
+}
+
+func datePredicate(attr query.Attribute, op query.Operator, raw string) (query.Expr, error) {
+	if _, err := time.Parse("2006-01-02", raw); err != nil {
+		return nil, fmt.Errorf("invalid date %q (expected YYYY-MM-DD)", raw)
+	}
+	return query.Predicate{Attribute: attr, Operator: op, Value: query.DateValue(raw)}, nil
+}
+
 func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
@@ -129,6 +184,12 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		}
 		input.Query = expr
 	}
+	restful, err := restfulTaskFilters(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_filter", err.Error(), nil)
+		return
+	}
+	input.Query = query.And(input.Query, restful)
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
 		if err != nil {
