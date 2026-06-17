@@ -849,6 +849,50 @@ func TestListProjectsCountsArchivedProjectTasksExcludingDeleted(t *testing.T) {
 	}
 }
 
+func TestListProjectsReturnsStatusBreakdown(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	projectRef := created.Slug
+	if _, err := svc.Add(AddInput{Description: "p1", Project: &projectRef}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Description: "p2", Project: &projectRef}); err != nil {
+		t.Fatal(err)
+	}
+	done, err := svc.Add(AddInput{Description: "done", Project: &projectRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(done.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	projects, err := svc.ListProjects(false)
+	if err != nil {
+		t.Fatalf("ListProjects() error = %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("ListProjects() = %d projects, want 1", len(projects))
+	}
+	p := projects[0]
+	if p.TaskCount != 3 || p.PendingCount != 2 || p.CompletedCount != 1 {
+		t.Fatalf("counts = total=%d pending=%d completed=%d, want 3/2/1", p.TaskCount, p.PendingCount, p.CompletedCount)
+	}
+
+	// ProjectInfo 单项目路径也应返回分项。
+	info, err := svc.ProjectInfo(created.Slug)
+	if err != nil {
+		t.Fatalf("ProjectInfo() error = %v", err)
+	}
+	if info.TaskCount != 3 || info.PendingCount != 2 || info.CompletedCount != 1 {
+		t.Fatalf("info counts = total=%d pending=%d completed=%d, want 3/2/1", info.TaskCount, info.PendingCount, info.CompletedCount)
+	}
+}
+
 func TestProjectAuditEntriesIncludeProjectID(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")

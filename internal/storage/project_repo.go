@@ -232,6 +232,47 @@ func (r *ProjectRepository) TaskCounts(workspaceID string, projectIDs []string) 
 	return counts, nil
 }
 
+// ProjectTaskCounts 是单个项目的任务状态分项计数（不含 deleted）。
+type ProjectTaskCounts struct {
+	Total     int
+	Pending   int
+	Completed int
+}
+
+// TaskStatusCounts 按 project 分组返回任务状态分项计数（一条 SQL，GROUP BY project_id, status）。
+// deleted 状态不计入。projectIDs 中的项目若无任务，对应值为零值。
+func (r *ProjectRepository) TaskStatusCounts(workspaceID string, projectIDs []string) (map[string]ProjectTaskCounts, error) {
+	out := make(map[string]ProjectTaskCounts, len(projectIDs))
+	if len(projectIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		ProjectID string
+		Status    string
+		Count     int
+	}
+	var rows []row
+	if err := r.db.Model(&Task{}).
+		Select("project_id, status, COUNT(*) AS count").
+		Where("workspace_id = ? AND project_id IN ? AND status <> ?", workspaceID, projectIDs, domain.StatusDeleted).
+		Group("project_id, status").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		c := out[r.ProjectID]
+		c.Total += r.Count
+		switch r.Status {
+		case domain.StatusPending:
+			c.Pending += r.Count
+		case domain.StatusCompleted:
+			c.Completed += r.Count
+		}
+		out[r.ProjectID] = c
+	}
+	return out, nil
+}
+
 func (r *ProjectRepository) find(query string, args ...any) (Project, error) {
 	var project Project
 	err := r.db.Where(query, args...).First(&project).Error

@@ -46,6 +46,8 @@ type projectResponse struct {
 	Description       string                          `json:"description,omitempty"`
 	Status            string                          `json:"status"`
 	TaskCount         int                             `json:"task_count"`
+	PendingCount      int                             `json:"pending_count"`
+	CompletedCount    int                             `json:"completed_count"`
 	CreatedAt         int64                           `json:"created_at"`
 	ModifiedAt        int64                           `json:"modified_at"`
 	ArchivedAt        *int64                          `json:"archived_at,omitempty"`
@@ -249,9 +251,11 @@ func projectResponseFromView(view app.ProjectView) projectResponse {
 		Slug:        view.Slug,
 		Name:        view.Name,
 		Description: view.Description,
-		Status:      view.Status,
-		TaskCount:   view.TaskCount,
-		CreatedAt:   view.CreatedAt,
+		Status:         view.Status,
+		TaskCount:      view.TaskCount,
+		PendingCount:   view.PendingCount,
+		CompletedCount: view.CompletedCount,
+		CreatedAt:      view.CreatedAt,
 		ModifiedAt:  view.ModifiedAt,
 		ArchivedAt:  view.ArchivedAt,
 	}

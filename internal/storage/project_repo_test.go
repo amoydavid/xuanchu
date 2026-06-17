@@ -238,6 +238,36 @@ func TestProjectRepositoryTaskCountsIgnoresDeletedTasks(t *testing.T) {
 	}
 }
 
+func TestProjectRepositoryTaskStatusCounts(t *testing.T) {
+	store, repo, ws := newProjectRepoTest(t)
+	alpha, err := repo.Create(testProject("p-alpha", ws.ID, "alpha", 100))
+	if err != nil {
+		t.Fatalf("Create(alpha) error = %v", err)
+	}
+	beta, err := repo.Create(testProject("p-beta", ws.ID, "beta", 101))
+	if err != nil {
+		t.Fatalf("Create(beta) error = %v", err)
+	}
+	// alpha: 2 pending + 1 completed + 1 deleted(不计入) → total 3
+	insertTaskForProjectCount(t, store, "a1", ws.ID, alpha.ID, "pending")
+	insertTaskForProjectCount(t, store, "a2", ws.ID, alpha.ID, "pending")
+	insertTaskForProjectCount(t, store, "a3", ws.ID, alpha.ID, "completed")
+	insertTaskForProjectCount(t, store, "a4", ws.ID, alpha.ID, "deleted")
+	// beta: 1 completed → total 1
+	insertTaskForProjectCount(t, store, "b1", ws.ID, beta.ID, "completed")
+
+	counts, err := repo.TaskStatusCounts(ws.ID, []string{alpha.ID, beta.ID})
+	if err != nil {
+		t.Fatalf("TaskStatusCounts() error = %v", err)
+	}
+	if counts[alpha.ID] != (ProjectTaskCounts{Total: 3, Pending: 2, Completed: 1}) {
+		t.Fatalf("alpha counts = %#v, want {Total:3 Pending:2 Completed:1}", counts[alpha.ID])
+	}
+	if counts[beta.ID] != (ProjectTaskCounts{Total: 1, Pending: 0, Completed: 1}) {
+		t.Fatalf("beta counts = %#v, want {Total:1 Pending:0 Completed:1}", counts[beta.ID])
+	}
+}
+
 func testProject(id, workspaceID, slug string, now int64) Project {
 	return Project{
 		ID:           id,

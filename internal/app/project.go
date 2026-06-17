@@ -42,6 +42,8 @@ type ProjectView struct {
 	Description       string
 	Status            string
 	TaskCount         int
+	PendingCount      int
+	CompletedCount    int
 	CreatedAt         int64
 	ModifiedAt        int64
 	ArchivedAt        *int64
@@ -77,7 +79,7 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		created = projectViewFromRow(project, 0)
+		created = projectViewFromRow(project, storage.ProjectTaskCounts{})
 		return AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
 			ProjectID:   &project.ID,
@@ -106,7 +108,7 @@ func (s *Service) ListProjectsByStatus(statusFilter string) ([]ProjectView, erro
 	for _, row := range rows {
 		projectIDs = append(projectIDs, row.ID)
 	}
-	counts, err := s.projectRepo.TaskCounts(s.workspaceID, projectIDs)
+	counts, err := s.projectRepo.TaskStatusCounts(s.workspaceID, projectIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +298,7 @@ func (s *Service) archiveProjectLocked(project storage.Project) error {
 }
 
 func (s *Service) projectViewForRow(project storage.Project) (ProjectView, error) {
-	counts, err := s.projectRepo.TaskCounts(project.WorkspaceID, []string{project.ID})
+	counts, err := s.projectRepo.TaskStatusCounts(project.WorkspaceID, []string{project.ID})
 	if err != nil {
 		return ProjectView{}, err
 	}
@@ -312,17 +314,19 @@ func (s *Service) projectViewForRow(project storage.Project) (ProjectView, error
 	return view, nil
 }
 
-func projectViewFromRow(project storage.Project, taskCount int) ProjectView {
+func projectViewFromRow(project storage.Project, counts storage.ProjectTaskCounts) ProjectView {
 	return ProjectView{
-		ID:          project.ID,
-		WorkspaceID: project.WorkspaceID,
-		Slug:        project.Slug,
-		Name:        project.Name,
-		Description: project.Description,
-		Status:      project.Status,
-		TaskCount:   taskCount,
-		CreatedAt:   project.CreatedAt,
-		ModifiedAt:  project.ModifiedAt,
+		ID:             project.ID,
+		WorkspaceID:    project.WorkspaceID,
+		Slug:           project.Slug,
+		Name:           project.Name,
+		Description:    project.Description,
+		Status:         project.Status,
+		TaskCount:      counts.Total,
+		PendingCount:   counts.Pending,
+		CompletedCount: counts.Completed,
+		CreatedAt:      project.CreatedAt,
+		ModifiedAt:     project.ModifiedAt,
 		ArchivedAt:  project.ArchivedAt,
 	}
 }
@@ -412,7 +416,7 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 			annotation.CreatedBy = userInfo
 			result = annotation
 		}
-		view := projectViewFromRow(project, 0)
+		view := projectViewFromRow(project, storage.ProjectTaskCounts{})
 		event := buildProjectAnnotatedHookEvent(view, annotation, tx.runtime, tx.clock.Unix())
 		entry := AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
@@ -500,7 +504,7 @@ func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
 		if err != nil {
 			return nil, nil, err
 		}
-		view := projectViewFromRow(project, 0)
+		view := projectViewFromRow(project, storage.ProjectTaskCounts{})
 		event := buildProjectDenotatedHookEvent(view, annotationID, tx.runtime, tx.clock.Unix())
 		entry := AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
