@@ -5090,3 +5090,53 @@ func TestServiceListProjectsByStatusInvalidFilter(t *testing.T) {
 		t.Fatalf("ListProjectsByStatus(invalid) err = %#v, want project_invalid_status_filter", err)
 	}
 }
+
+func TestServiceListAnnotationsPagination(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	tsk, err := svc.Add(AddInput{Description: "annotated task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	want := []string{"note-0", "note-1", "note-2", "note-3", "note-4"}
+	for _, desc := range want {
+		if err := svc.Annotate(tsk.UUID, desc); err != nil {
+			t.Fatalf("Annotate(%s) error = %v", desc, err)
+		}
+	}
+
+	// 第一页 limit=3，total=5。
+	page1, total, err := svc.ListAnnotations(tsk.UUID, 0, 3)
+	if err != nil {
+		t.Fatalf("ListAnnotations(page1) error = %v", err)
+	}
+	if total != 5 {
+		t.Fatalf("total = %d, want 5", total)
+	}
+	if len(page1) != 3 {
+		t.Fatalf("page1 len = %d, want 3", len(page1))
+	}
+
+	// 第二页 offset=3 limit=10，应返回剩余 2 条。
+	page2, total, err := svc.ListAnnotations(tsk.UUID, 3, 10)
+	if err != nil {
+		t.Fatalf("ListAnnotations(page2) error = %v", err)
+	}
+	if total != 5 || len(page2) != 2 {
+		t.Fatalf("page2: total=%d len=%d", total, len(page2))
+	}
+
+	// 两页合并应覆盖全部 5 条注解（顺序不假设，因为固定时钟下 entry 相同）。
+	seen := map[string]bool{}
+	for _, a := range append(append([]task.Annotation{}, page1...), page2...) {
+		seen[a.Description] = true
+	}
+	for _, desc := range want {
+		if !seen[desc] {
+			t.Fatalf("missing %q in pages: %#v", desc, seen)
+		}
+	}
+	if len(seen) != 5 {
+		t.Fatalf("dedup count = %d, want 5 distinct", len(seen))
+	}
+}

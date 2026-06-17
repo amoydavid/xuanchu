@@ -251,16 +251,7 @@ func ToJSON(tsk Task) JSONTask {
 		Wait:      formatUnixPtr(tsk.Wait),
 		Scheduled: formatUnixPtr(tsk.Scheduled),
 		Until:     formatUnixPtr(tsk.Until),
-		Annotations: func() []JSONAnnotation {
-			if tsk.Annotations == nil {
-				return nil
-			}
-			out := make([]JSONAnnotation, len(tsk.Annotations))
-			for i, a := range tsk.Annotations {
-				out[i] = JSONAnnotation{ID: a.ID, Entry: formatUnix(a.Entry), Description: a.Description}
-			}
-			return out
-		}(),
+		Annotations: AnnotationsToJSON(tsk.Annotations),
 		Depends: tsk.Depends,
 		Recur:   tsk.Recur,
 		Parent:  tsk.Parent,
@@ -486,6 +477,19 @@ func jsonAssigneeFromStringRef(ref string) JSONAssignee {
 		return JSONAssignee{Email: &ref}
 	}
 	return JSONAssignee{UserID: ref}
+}
+
+// AnnotationsToJSON 把注解列表序列化为 JSONAnnotation，供 GET /tasks/{ref}/annotations 等独立端点复用。
+// nil 输入返回 nil（保证 omitempty 生效）。
+func AnnotationsToJSON(in []Annotation) []JSONAnnotation {
+	if in == nil {
+		return nil
+	}
+	out := make([]JSONAnnotation, len(in))
+	for i, a := range in {
+		out[i] = JSONAnnotation{ID: a.ID, Entry: formatUnix(a.Entry), Description: a.Description}
+	}
+	return out
 }
 
 func formatUnix(sec int64) string {

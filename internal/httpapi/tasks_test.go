@@ -691,3 +691,80 @@ func TestHandleTaskList_RestfulBadDate(t *testing.T) {
 		"/api/v1/tasks?due_after=not-a-date", restfulFilterHeader(fixture.token))
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_filter")
 }
+
+func TestHandleTaskAnnotationListPagination(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "annotated for list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := svc.Annotate(created.UUID, "ann-"+string(rune('a'+i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hdr := restfulFilterHeader(fixture.token)
+
+	// 第一页 limit=2。
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks/"+created.UUID+"/annotations?offset=0&limit=2", hdr)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var page struct {
+		Data struct {
+			Annotations []map[string]any `json:"annotations"`
+			Total       int              `json:"total"`
+			Offset      int              `json:"offset"`
+			Limit       int              `json:"limit"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(rr.Body.String()), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Data.Total != 5 || len(page.Data.Annotations) != 2 || page.Data.Offset != 0 || page.Data.Limit != 2 {
+		t.Fatalf("page1 = %+v", page.Data)
+	}
+
+	// 第二页 offset=2 limit=2。
+	rr = requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks/"+created.UUID+"/annotations?offset=2&limit=2", hdr)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("page2 status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal([]byte(rr.Body.String()), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Data.Total != 5 || len(page.Data.Annotations) != 2 || page.Data.Offset != 2 {
+		t.Fatalf("page2 = %+v", page.Data)
+	}
+
+	// 第三页 offset=4 limit=2，只剩 1 条。
+	rr = requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks/"+created.UUID+"/annotations?offset=4&limit=2", hdr)
+	if err := json.Unmarshal([]byte(rr.Body.String()), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Data.Total != 5 || len(page.Data.Annotations) != 1 {
+		t.Fatalf("page3 = %+v", page.Data)
+	}
+}
+
+func TestHandleTaskAnnotationListBadLimit(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Description: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks/"+created.UUID+"/annotations?limit=101", restfulFilterHeader(fixture.token))
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_limit")
+}

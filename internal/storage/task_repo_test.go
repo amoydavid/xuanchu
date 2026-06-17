@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -488,6 +489,55 @@ func TestTaskRepositoryAddAnnotationAppendsWithoutReplacingExisting(t *testing.T
 	}
 	if got.Annotations[0].Description != "first" || got.Annotations[1].Description != "second" {
 		t.Fatalf("Annotations order/content = %#v", got.Annotations)
+	}
+}
+
+func TestTaskRepositoryListAnnotationsPagination(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+	if _, err := repo.Create(domain.Task{
+		UUID:        "task-1",
+		WorkspaceID: ws.ID,
+		Description: "annotated",
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	// 写入 7 条注解，entry 递增。ID 留空，由 AddAnnotation 自动生成。
+	for i := 0; i < 7; i++ {
+		entry := int64(200 + i)
+		if err := repo.AddAnnotation(ws.ID, "task-1", domain.Annotation{
+			Entry:       entry,
+			Description: fmt.Sprintf("note-%d", i),
+		}, entry); err != nil {
+			t.Fatalf("AddAnnotation(%d) error = %v", i, err)
+		}
+	}
+
+	// offset=3 limit=2 应返回 entry 倒序的第 4、3 条（note-3、note-2），total=7。
+	got, total, err := repo.ListAnnotations(ws.ID, "task-1", 3, 2)
+	if err != nil {
+		t.Fatalf("ListAnnotations() error = %v", err)
+	}
+	if total != 7 {
+		t.Fatalf("total = %d, want 7", total)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	// entry 倒序：note-3 (entry 203) 在前。
+	if got[0].Description != "note-3" || got[1].Description != "note-2" {
+		t.Fatalf("order = %#v", got)
+	}
+
+	// 越界 offset 返回空但 total 仍为 7。
+	got, total, err = repo.ListAnnotations(ws.ID, "task-1", 100, 10)
+	if err != nil {
+		t.Fatalf("ListAnnotations(oob) error = %v", err)
+	}
+	if total != 7 || len(got) != 0 {
+		t.Fatalf("oob: total=%d len=%d", total, len(got))
 	}
 }
 

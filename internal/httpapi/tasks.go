@@ -439,6 +439,48 @@ func (s *Server) handleTaskDenotate(w http.ResponseWriter, r *http.Request) {
 	s.handleTaskAction(w, r, func(svc *app.Service, id string) error { return svc.Denotate(id, annotationID) })
 }
 
+// handleTaskAnnotationList 处理 GET /api/v1/tasks/{taskRef}/annotations，
+// 按 entry 倒序分页返回注解。
+func (s *Server) handleTaskAnnotationList(w http.ResponseWriter, r *http.Request) {
+	taskRef, ok := requireTaskRef(w, r)
+	if !ok {
+		return
+	}
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	offset := 0
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		offset, err = strconv.Atoi(raw)
+		if err != nil || offset < 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_offset", "invalid offset", nil)
+			return
+		}
+	}
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil || limit <= 0 || limit > 100 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "limit must be between 1 and 100", nil)
+			return
+		}
+	}
+	annotations, total, err := scoped.ListAnnotations(taskRef, offset, limit)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]any{
+		"annotations": task.AnnotationsToJSON(annotations),
+		"total":       total,
+		"offset":      offset,
+		"limit":       limit,
+	}, nil)
+}
+
+
 func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
 	taskRef, ok := requireTaskRef(w, r)
 	if !ok {

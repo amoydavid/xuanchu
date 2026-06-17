@@ -837,6 +837,19 @@ func (s *Service) stopLocked(target string) (task.Task, projectChange, error) {
 	return tsk, change, nil
 }
 
+// ListAnnotations 按 entry 倒序分页返回某任务的注解，total 为该任务注解总数。
+// 读操作：只需 task:read 权限。
+func (s *Service) ListAnnotations(target string, offset, limit int) ([]task.Annotation, int, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return nil, 0, err
+	}
+	tsk, err := s.resolveTargetForRead(target)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.repo.ListAnnotations(s.workspaceID, tsk.UUID, offset, limit)
+}
+
 func (s *Service) Annotate(target, description string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err

@@ -300,6 +300,35 @@ func (r *TaskRepository) DeleteAnnotation(workspaceID, taskUUID, annotationID st
 
 var ErrNotFound = errors.New("task not found")
 
+// ListAnnotations 按 entry 倒序分页返回某任务的注解，total 为该任务注解总数。
+// 校验注解归属当前 workspace 下的任务，避免跨 workspace 泄漏。
+func (r *TaskRepository) ListAnnotations(workspaceID, taskUUID string, offset, limit int) ([]domain.Annotation, int, error) {
+	scope := "EXISTS (SELECT 1 FROM tasks WHERE tasks.uuid = task_annotations.task_uuid AND tasks.workspace_id = ?)"
+	var total int64
+	if err := r.db.Model(&TaskAnnotation{}).
+		Where("task_uuid = ? AND "+scope, taskUUID, workspaceID).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	var rows []TaskAnnotation
+	if err := r.db.
+		Where("task_uuid = ? AND "+scope, taskUUID, workspaceID).
+		Order("entry DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	out := make([]domain.Annotation, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.Annotation{ID: row.ID, Entry: row.Entry, Description: row.Description})
+	}
+	return out, int(total), nil
+}
+
 func (r *TaskRepository) Projects(workspaceID string) ([]string, error) {
 	var projects []string
 	err := r.db.Model(&Task{}).
