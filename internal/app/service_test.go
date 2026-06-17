@@ -5184,3 +5184,47 @@ func TestServiceListAnnotationsPagination(t *testing.T) {
 		t.Fatalf("dedup count = %d, want 5 distinct", len(seen))
 	}
 }
+
+func TestServiceResolveTaskRefs(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	proj, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+	projectRef := proj.Slug
+	// 两个带 project 的依赖任务（有 task_slug）。
+	dep1, err := svc.Add(AddInput{Description: "write schema", Project: &projectRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep2, err := svc.Add(AddInput{Description: "write tests", Project: &projectRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refs, err := svc.ResolveTaskRefs([]string{dep1.UUID, dep2.UUID, "nonexistent-uuid"})
+	if err != nil {
+		t.Fatalf("ResolveTaskRefs() error = %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("len = %d, want 2 (nonexistent excluded)", len(refs))
+	}
+	byUUID := map[string]task.JSONTaskRef{}
+	for _, r := range refs {
+		byUUID[r.UUID] = r
+	}
+	r1 := byUUID[dep1.UUID]
+	if r1.Description != "write schema" || r1.TaskSlug == nil || *r1.TaskSlug != "api-1" {
+		t.Fatalf("dep1 ref = %#v, want description=write schema task_slug=api-1", r1)
+	}
+	r2 := byUUID[dep2.UUID]
+	if r2.Description != "write tests" || r2.TaskSlug == nil || *r2.TaskSlug != "api-2" {
+		t.Fatalf("dep2 ref = %#v, want description=write tests task_slug=api-2", r2)
+	}
+
+	// 空输入不报错。
+	if got, err := svc.ResolveTaskRefs(nil); err != nil || got != nil {
+		t.Fatalf("empty: got=%v err=%v", got, err)
+	}
+}

@@ -60,13 +60,23 @@ type JSONTask struct {
 	Until       *string             `json:"until,omitempty"`
 	Annotations []JSONAnnotation    `json:"annotations,omitempty"`
 	Depends     []string            `json:"depends,omitempty"`
+	DependsInfo []JSONTaskRef       `json:"depends_info,omitempty"`
 	Recur       *string             `json:"recur,omitempty"`
 	Parent      *string             `json:"parent,omitempty"`
+	ParentInfo  *JSONTaskRef        `json:"parent_info,omitempty"`
 	Mask        *string             `json:"mask,omitempty"`
 	IMask       *int                `json:"imask,omitempty"`
 	Assignees   []JSONAssignee      `json:"assignees,omitempty"`
 	Links       []JSONTaskLink      `json:"links,omitempty"`
 	UDAs        map[string]UDAValue `json:"-"`
+}
+
+// JSONTaskRef 是任务的轻量引用，用于 depends_info/parent_info，
+// 把裸 UUID 展开为人类可读的描述 + 稳定短标识，便于 UI 展示和跳转。
+type JSONTaskRef struct {
+	UUID        string  `json:"uuid"`
+	Description string  `json:"description"`
+	TaskSlug    *string `json:"task_slug,omitempty"`
 }
 
 func (t JSONTask) MarshalJSON() ([]byte, error) {
@@ -114,11 +124,17 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	if t.Depends != nil {
 		wire["depends"] = t.Depends
 	}
+	if t.DependsInfo != nil {
+		wire["depends_info"] = t.DependsInfo
+	}
 	if t.Recur != nil {
 		wire["recur"] = t.Recur
 	}
 	if t.Parent != nil {
 		wire["parent"] = t.Parent
+	}
+	if t.ParentInfo != nil {
+		wire["parent_info"] = t.ParentInfo
 	}
 	if t.Mask != nil {
 		wire["mask"] = t.Mask
@@ -423,8 +439,10 @@ func coreJSONFields() []string {
 
 func reservedJSONFields() map[string]struct{} {
 	return map[string]struct{}{
-		"project_id":  {},
-		"project_seq": {},
+		"project_id":   {},
+		"project_seq":  {},
+		"depends_info": {},
+		"parent_info":  {},
 	}
 }
 

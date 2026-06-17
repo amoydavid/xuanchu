@@ -768,3 +768,38 @@ func TestHandleTaskAnnotationListBadLimit(t *testing.T) {
 		"/api/v1/tasks/"+created.UUID+"/annotations?limit=101", restfulFilterHeader(fixture.token))
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_limit")
 }
+
+func TestHandleTaskInfoReturnsDependsInfo(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proj, err := svc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectRef := proj.Slug
+	dep, err := svc.Add(app.AddInput{Description: "dependency task", Project: &projectRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 主任务依赖 dep，验证返回体含 depends_info（可读描述 + task_slug）。
+	main, err := svc.Add(app.AddInput{Description: "main task", Project: &projectRef, Depends: []string{dep.UUID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks/"+main.UUID, restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `"depends_info"`) {
+		t.Fatalf("response missing depends_info: %s", body)
+	}
+	if !strings.Contains(body, "dependency task") || !strings.Contains(body, "api-1") {
+		t.Fatalf("depends_info not enriched with description/slug: %s", body)
+	}
+}

@@ -541,6 +541,50 @@ func TestTaskRepositoryListAnnotationsPagination(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryListByUUIDs(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+	if _, err := repo.Create(domain.Task{
+		UUID: "t-a", WorkspaceID: ws.ID, Description: "alpha",
+		Status: domain.StatusPending, Entry: 100, Modified: 100,
+	}); err != nil {
+		t.Fatalf("Create(a) error = %v", err)
+	}
+	if _, err := repo.Create(domain.Task{
+		UUID: "t-b", WorkspaceID: ws.ID, Description: "beta",
+		Status: domain.StatusPending, Entry: 100, Modified: 100,
+	}); err != nil {
+		t.Fatalf("Create(b) error = %v", err)
+	}
+	// deleted 任务不应返回
+	if _, err := repo.Create(domain.Task{
+		UUID: "t-c", WorkspaceID: ws.ID, Description: "gamma",
+		Status: domain.StatusDeleted, Entry: 100, Modified: 100,
+	}); err != nil {
+		t.Fatalf("Create(c) error = %v", err)
+	}
+
+	// 查存在的 + 不存在的 + deleted 的，只应返回存在的活任务。
+	got, err := repo.ListByUUIDs(ws.ID, []string{"t-a", "t-b", "missing", "t-c"})
+	if err != nil {
+		t.Fatalf("ListByUUIDs() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 (deleted/missing excluded)", len(got))
+	}
+	descs := make(map[string]bool, len(got))
+	for _, tsk := range got {
+		descs[tsk.Description] = true
+	}
+	if !descs["alpha"] || !descs["beta"] {
+		t.Fatalf("results = %#v, want alpha+beta", got)
+	}
+
+	// 空 uuids 不报错。
+	if got, err := repo.ListByUUIDs(ws.ID, nil); err != nil || got != nil {
+		t.Fatalf("empty: got=%v err=%v", got, err)
+	}
+}
+
 func createTestUser(t *testing.T, store *Store, user User) {
 	t.Helper()
 	if err := store.DB().Create(&user).Error; err != nil {

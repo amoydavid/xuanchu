@@ -324,7 +324,25 @@ func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, task.ToJSON(tsk), nil)
+	writeSuccess(w, http.StatusOK, taskToJSONWithRefs(scoped, tsk), nil)
+}
+
+// taskToJSONWithRefs 序列化任务并填充 depends_info/parent_info，
+// 把裸 UUID 展开为带描述和 task_slug 的可读引用（用于 web 详情页展示和跳转）。
+// 找不到的引用 UUID 会被忽略，前端回退显示原始 UUID。
+func taskToJSONWithRefs(svc *app.Service, tsk task.Task) task.JSONTask {
+	out := task.ToJSON(tsk)
+	refs, err := svc.ResolveTaskRefs(tsk.Depends)
+	if err == nil && len(refs) > 0 {
+		out.DependsInfo = refs
+	}
+	if tsk.Parent != nil {
+		parentRefs, err := svc.ResolveTaskRefs([]string{*tsk.Parent})
+		if err == nil && len(parentRefs) > 0 {
+			out.ParentInfo = &parentRefs[0]
+		}
+	}
+	return out
 }
 
 func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {

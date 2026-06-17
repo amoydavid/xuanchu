@@ -850,6 +850,36 @@ func (s *Service) ListAnnotations(target string, offset, limit int) ([]task.Anno
 	return s.repo.ListAnnotations(s.workspaceID, tsk.UUID, offset, limit)
 }
 
+// ResolveTaskRefs 把一组任务 UUID 解析为带描述和 task_slug 的轻量引用，
+// 用于 depends_info/parent_info 等可读展示。找不到或已删除的 UUID 被忽略。
+func (s *Service) ResolveTaskRefs(uuids []string) ([]task.JSONTaskRef, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	tasks, err := s.repo.ListByUUIDs(s.workspaceID, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]task.JSONTaskRef, 0, len(tasks))
+	for _, tsk := range tasks {
+		ref := task.JSONTaskRef{UUID: tsk.UUID, Description: tsk.Description}
+		if slug := taskSlugOf(tsk); slug != "" {
+			s := slug
+			ref.TaskSlug = &s
+		}
+		out = append(out, ref)
+	}
+	return out, nil
+}
+
+// taskSlugOf 计算任务的稳定短标识（与 task.ToJSON 一致）。
+func taskSlugOf(tsk task.Task) string {
+	if tsk.Project == nil || *tsk.Project == "" || tsk.ProjectSeq == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s-%d", *tsk.Project, *tsk.ProjectSeq)
+}
+
 func (s *Service) Annotate(target, description string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err

@@ -156,6 +156,36 @@ func (r *TaskRepository) GetByUUID(workspaceID, uuid string) (domain.Task, error
 	return fromModel(model, usersByID, linksByTask), nil
 }
 
+// ListByUUIDs 批量按 UUID 返回任务（仅限当前 workspace，不含 deleted）。
+// 用于解析 depends/parent 等任务引用的可读信息。找不到的 UUID 不会出现在结果中。
+func (r *TaskRepository) ListByUUIDs(workspaceID string, uuids []string) ([]domain.Task, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	var models []Task
+	if err := r.preloadAssociations().
+		Where("workspace_id = ? AND uuid IN ? AND status <> ?", workspaceID, uuids, domain.StatusDeleted).
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	if len(models) == 0 {
+		return nil, nil
+	}
+	usersByID, err := r.loadAssigneeUsers(models)
+	if err != nil {
+		return nil, err
+	}
+	linksByTask, err := r.loadLinksByTask(models)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Task, 0, len(models))
+	for _, model := range models {
+		out = append(out, fromModel(model, usersByID, linksByTask))
+	}
+	return out, nil
+}
+
 func (r *TaskRepository) GetByProjectSeq(workspaceID, projectID string, seq int64) (domain.Task, error) {
 	var model Task
 	err := r.preloadAssociations().
