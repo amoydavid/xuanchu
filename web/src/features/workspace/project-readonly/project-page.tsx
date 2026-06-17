@@ -1,19 +1,22 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useSearch } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ApiError } from "@/lib/api"
 import {
   getProjectReadonlyProject,
   getProjectReadonlyTasks,
   getProjectReadonlyTimeline,
 } from "./project-readonly-api"
 import { ProjectActivity } from "./project-activity"
+import { ProjectFilterToolbar } from "./project-filter-toolbar"
+import { filterToTaskQuery, type TaskFilter } from "./project-filter"
 import { ProjectSummary } from "./project-summary"
 import { ProjectTaskList } from "./project-task-list"
 import { buildProjectStats, summarizeAssignees } from "./project-stats"
-import { ApiError } from "@/lib/api"
 
 type ProjectReadonlyPageProps = {
   projectSlug: string
@@ -27,13 +30,26 @@ export function ProjectReadonlyPage({
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const [now] = useState(() => Math.floor(Date.now() / 1000))
+  // filter 来自 URL search（validateSearch 已限定为字符串字段）。
+  const search = useSearch({ strict: false }) as Partial<TaskFilter>
+  const filter: TaskFilter = {
+    status: typeof search.status === "string" ? search.status : undefined,
+    priority: typeof search.priority === "string" ? search.priority : undefined,
+    assignee: typeof search.assignee === "string" ? search.assignee : undefined,
+    due_after: typeof search.due_after === "string" ? search.due_after : undefined,
+    due_before: typeof search.due_before === "string" ? search.due_before : undefined,
+    tags: typeof search.tags === "string" ? search.tags : undefined,
+    q: typeof search.q === "string" ? search.q : undefined,
+  }
+  const filterQuery = useMemo(() => filterToTaskQuery(filter), [filter])
+
   const project = useQuery({
     queryKey: ["project-readonly", workspaceSlug, projectSlug, "project"],
     queryFn: () => getProjectReadonlyProject(workspaceSlug, projectSlug),
   })
   const tasks = useQuery({
-    queryKey: ["project-readonly", workspaceSlug, projectSlug, "tasks"],
-    queryFn: () => getProjectReadonlyTasks(workspaceSlug, projectSlug),
+    queryKey: ["project-readonly", workspaceSlug, projectSlug, "tasks", filterQuery],
+    queryFn: () => getProjectReadonlyTasks(workspaceSlug, projectSlug, filterQuery),
   })
   const timeline = useQuery({
     queryKey: ["project-readonly", workspaceSlug, projectSlug, "timeline"],
@@ -102,6 +118,10 @@ export function ProjectReadonlyPage({
         stats={stats}
         t={t}
         workspaceSlug={workspaceSlug}
+      />
+      <ProjectFilterToolbar
+        filter={filter}
+        toParams={{ workspaceSlug, projectSlug }}
       />
       <ProjectTaskList
         emptyExample={`xuanchu --workspace ${workspaceSlug} add "Design API" project:${projectSlug}`}

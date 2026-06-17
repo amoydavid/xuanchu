@@ -82,9 +82,11 @@ export function projectReadonlyProjectPath(
 
 export function projectReadonlyTasksPath(
   workspaceSlug: string,
-  projectSlug: string
+  projectSlug: string,
+  filterQuery = ""
 ) {
-  return `/api/v1/tasks?workspace=${encodeURIComponent(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}&limit=200`
+  const base = `/api/v1/tasks?workspace=${encodeURIComponent(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}&limit=200`
+  return filterQuery ? `${base}&${filterQuery}` : base
 }
 
 export function projectReadonlyTaskPath(workspaceSlug: string, taskRef: string) {
@@ -118,10 +120,11 @@ export function getProjectReadonlyProject(
 
 export function getProjectReadonlyTasks(
   workspaceSlug: string,
-  projectSlug: string
+  projectSlug: string,
+  filterQuery = ""
 ) {
   return workspaceApiGet<ProjectReadonlyTask[]>(
-    projectReadonlyTasksPath(workspaceSlug, projectSlug)
+    projectReadonlyTasksPath(workspaceSlug, projectSlug, filterQuery)
   )
 }
 

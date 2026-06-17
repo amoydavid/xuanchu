@@ -132,6 +132,7 @@ export const zhCN = {
     system: "跟随系统",
     search: "搜索",
     filter: "筛选",
+    clear: "清除全部",
     actions: "操作",
     details: "详情",
     name: "名称",

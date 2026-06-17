@@ -116,6 +116,24 @@ const projectReadonlyRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/workspaces/$workspaceSlug/projects/$projectSlug",
   component: lazyRoute(ProjectReadonlyRoute),
+  validateSearch: (search: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const key of [
+      "status",
+      "priority",
+      "assignee",
+      "due_after",
+      "due_before",
+      "tags",
+      "q",
+    ]) {
+      const value = search[key]
+      if (typeof value === "string" && value !== "") {
+        out[key] = value
+      }
+    }
+    return out
+  },
 })
 
 const projectsListRoute = createRoute({

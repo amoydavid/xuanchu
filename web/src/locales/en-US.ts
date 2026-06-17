@@ -134,6 +134,7 @@ export const enUS = {
     system: "System",
     search: "Search",
     filter: "Filter",
+    clear: "Clear all",
     actions: "Actions",
     details: "Details",
     name: "Name",
