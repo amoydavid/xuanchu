@@ -154,5 +154,9 @@ export function resourceConfig(
           },
         ],
       }
+    default:
+      // projects 等页面有独立路由（不经 ResourcePage），这里不应被调用到。
+      // 保留 default 以满足 PageKey 联合类型的穷尽检查。
+      throw new Error(`resourceConfig: unsupported page "${String(page)}"`)
   }
 }
