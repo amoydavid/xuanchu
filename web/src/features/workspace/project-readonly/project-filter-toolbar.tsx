@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -104,16 +105,16 @@ export function ProjectFilterToolbar({
           </SelectContent>
         </Select>
 
-        <Input
+        <DebouncedInput
           className="h-8 w-32"
-          onChange={(e) => setFilter("assignee", e.target.value)}
+          onCommit={(v) => setFilter("assignee", v)}
           placeholder={t("projectReadonly.assignee")}
           value={filter.assignee ?? ""}
         />
 
-        <Input
+        <DebouncedInput
           className="h-8 w-36"
-          onChange={(e) => setFilter("q", e.target.value)}
+          onCommit={(v) => setFilter("q", v)}
           placeholder={t("common.search")}
           value={filter.q ?? ""}
         />
@@ -141,5 +142,44 @@ export function ProjectFilterToolbar({
         </div>
       ) : null}
     </section>
+  )
+}
+
+// DebouncedInput 是文本输入框，本地维护输入态，在失焦或回车时才把值提交到 URL，
+// 避免用户打字时每个按键都触发一次 navigate + 请求。
+// 外部 value 变化（如 URL 同步、清除全部）会同步回本地。
+function DebouncedInput({
+  className,
+  onCommit,
+  placeholder,
+  value,
+}: {
+  className?: string
+  onCommit: (value: string) => void
+  placeholder?: string
+  value: string
+}) {
+  const [local, setLocal] = useState(value)
+  useEffect(() => {
+    setLocal(value)
+  }, [value])
+  const commit = () => {
+    if (local !== value) {
+      onCommit(local)
+    }
+  }
+  return (
+    <Input
+      className={className}
+      onBlur={commit}
+      onChange={(e) => setLocal(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commit()
+        }
+      }}
+      placeholder={placeholder}
+      value={local}
+    />
   )
 }

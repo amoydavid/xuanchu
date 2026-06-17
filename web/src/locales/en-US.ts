@@ -221,6 +221,7 @@ export const enUS = {
     links: "Links",
     attributes: "Attributes",
     customFields: "Custom fields",
+    loadMoreAnnotations: "Load {{n}} more ↓",
     entry: "Created",
     modified: "Modified",
     recur: "Recurrence",

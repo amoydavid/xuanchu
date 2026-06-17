@@ -217,6 +217,7 @@ export const zhCN = {
     links: "关联",
     attributes: "属性",
     customFields: "自定义字段",
+    loadMoreAnnotations: "查看更多 {{n}} 条 ↓",
     entry: "创建时间",
     modified: "修改时间",
     recur: "循环",

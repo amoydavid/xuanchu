@@ -111,6 +111,7 @@ export function ProjectTaskDetailPage({
             workspaceSlug={workspaceSlug}
             taskRef={taskRef}
             title={t("projectReadonly.annotations")}
+            t={t}
           />
           <TaskLinks links={taskData.links} title={t("projectReadonly.links")} />
         </div>
@@ -146,11 +147,13 @@ function TaskAnnotationsLazy({
   workspaceSlug,
   taskRef,
   title,
+  t,
 }: {
   task: ProjectReadonlyTask
   workspaceSlug: string
   taskRef: string
   title: string
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const all = task.annotations ?? []
   const [shown, setShown] = useState(all.slice(0, INITIAL_ANNOTATIONS))
@@ -202,8 +205,8 @@ function TaskAnnotationsLazy({
           variant="ghost"
         >
           {loading
-            ? "..."
-            : `查看更多 ${total - shown.length} 条 ↓`}
+            ? t("common.loading")
+            : t("projectReadonly.loadMoreAnnotations", { n: total - shown.length })}
         </Button>
       ) : null}
     </section>

@@ -32,3 +32,4 @@ cover.out
 deploy.yaml
 .data/
 config.toml
+.superpowers/

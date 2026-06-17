@@ -480,7 +480,6 @@ func (s *Server) handleTaskAnnotationList(w http.ResponseWriter, r *http.Request
 	}, nil)
 }
 
-
 func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
 	taskRef, ok := requireTaskRef(w, r)
 	if !ok {

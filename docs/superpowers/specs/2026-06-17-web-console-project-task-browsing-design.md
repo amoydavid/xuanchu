@@ -68,8 +68,9 @@
 | 项目名 | name / slug | `GET /projects` |
 | 状态 | active / pending / archived badge | `GET /projects` |
 | 进度 | 进度条 + 百分比（completed / total） | 新增聚合字段 |
-| 负责人 | UserInfo（主负责人） | `GET /projects` |
 | 任务数 | total / pending 计数 | 新增聚合字段 |
+
+> **实现降级（2026-06-17 评审）：** 原设计含「负责人」列，但当前 Project 数据模型没有 owner/负责人字段（只有任务的 assignees，项目本身无负责人概念）。补齐该列需要新增 schema 字段，超出本次范围。本次不实现该列，待后续引入项目负责人模型时再补。
 
 行点击 → 项目详情页。支持按列排序。
 
