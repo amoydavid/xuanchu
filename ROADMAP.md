@@ -43,6 +43,7 @@
 | v0.4.2 | 已完成 | Project Readonly View 与 SSO 入口预留 |
 | v0.4.3 | 已完成 | Project 生命周期状态机（planning/active/archived/cancelled） |
 | v0.4.4 | 已完成 | Web Console Token 完整管理 + Admin 工作台 Token 管控 |
+| v0.4.5 | 已完成 | Web Console 项目-任务浏览体验重构（项目表格主入口 + 任务详情增强 + 过滤工具栏） |
 | docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -358,6 +359,36 @@ v0.4.4 同时补齐 Admin 工作台 Token 管控：
 - 后端 `GET/PATCH/DELETE /api/v1/admin/tokens/{ref}`，admin 路径绕过 workspace role 校验，所有操作走 `appendAdminAuditInTx` 审计（`admin.token.modify` / `admin.token.revoke`，payload 标记 `admin:true`）。
 - `UserRepository.ListByIDs` 批量解析 user info，避免 N+1。
 - admin modify 不改 workspace/project 绑定（语义复杂，由 token owner 在普通 console 自服务）；admin 不创建 token（走 bootstrap 或普通 console）。
+
+## v0.4.5：Web Console 项目-任务浏览体验重构
+
+**状态：已完成。**
+
+把 v0.4.2 已具备但未挂入侧边栏的 project-readonly 视图扶正为主体验，补全任务详情，加 shadcn 过滤工具栏，打通「项目 → 任务 → 详情」完整浏览路径。
+
+当前范围：
+
+- 移除侧边栏 `/tasks` 入口（旧链接重定向到 `/projects`），项目表格成为任务浏览主入口。
+- `/projects` 项目表格：项目名 / 状态 / 进度条 / 任务数，行可点击进入项目详情。
+- 项目详情页任务表格上方新增过滤工具栏（status / priority / assignee / 搜索），过滤条件同步 URL，刷新/分享保留；活跃条件以可移除 chip 呈现。
+- 任务详情页重构为左右布局：主区域放注解（首屏 3 条 + 懒加载更多）和关联链接 links；右侧属性栏放常用字段（status/priority/assignee/due/tags/depends/entry/modified/recur）与动态 UDAs。
+- 后端 `GET /tasks` 新增 restful 风格过滤参数（status/priority/assignee/due_after/due_before/tags/q），内部翻译成现有 query DSL，与 `query=`/`filter=` 共存。
+- 后端新增 `GET /tasks/{ref}/annotations` 分页端点，支持 offset/limit。
+- 后端 `GET /projects` 响应补 pending_count / completed_count 分项计数（一条 SQL 按 status 分桶）。
+
+不进入 v0.4.5：
+
+- 任务编辑/状态变更（仍是只读浏览）。
+- 全局跨项目任务检索（已移除 `/tasks` 入口）。
+- 拖拽看板 / 批量操作。
+- 飞书 SSO / 授权中心（属 v0.4.2 预留边界）。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-06-17-web-console-project-task-browsing-design.md
+docs/superpowers/plans/2026-06-17-web-console-project-task-browsing.md
+```
 
 ## v0.1.1：稳定短任务标识 task_slug
 

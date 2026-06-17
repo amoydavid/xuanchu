@@ -112,6 +112,9 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 
 任务详情页提供“返回项目”入口。未登录用户会先看到普通 token 登录页，登录成功后回到原项目页或任务详情页。当前版本只保留 redirect 语义，尚未接入企业 SSO 或飞书 OAuth。
 
+侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），点击某行进入项目详情页，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入只读任务详情页，查看描述、注解（支持懒加载更多）、关联链接、属性与自定义字段（UDAs）。
+
+
 普通 Console 的 `/tokens` 页面支持 PAT / Agent token 的完整生命周期管理：创建（选择类型、scope、工作空间范围、过期时间）、编辑（名称、scope、过期时间、工作空间与项目范围）、吊销。创建后的明文 token 仅展示一次，列表中只能看到 prefix。scope 编辑按资源分组勾选，提交展开后的具体 scope；agent token 必须绑定至少一个工作空间。
 
 Server admin bootstrap 使用独立入口：
