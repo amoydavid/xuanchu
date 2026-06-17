@@ -218,6 +218,14 @@ export const enUS = {
     depends: "Depends",
     unassigned: "Unassigned",
   },
+  projects: {
+    title: "Projects",
+    colName: "Project",
+    colProgress: "Progress",
+    colTaskCount: "Tasks (pending / total)",
+    colTaskCountHint: "The tasks column shows “pending / total”; progress is the completed ratio.",
+    empty: "No projects",
+  },
   token: {
     title: "Tokens & Agents",
     create: "Create Token",

@@ -19,10 +19,12 @@ export function DataTable<T>({
   columns,
   empty,
   rows,
+  onRowClick,
 }: {
   columns: Column<T>[]
   empty: string
   rows: T[]
+  onRowClick?: (row: T) => void
 }) {
   return (
     <div className="rounded-none border bg-card">
@@ -48,7 +50,11 @@ export function DataTable<T>({
             </TableRow>
           ) : (
             rows.map((row, index) => (
-              <TableRow key={index}>
+              <TableRow
+                key={index}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={onRowClick ? "cursor-pointer" : undefined}
+              >
                 {columns.map((column) => (
                   <TableCell key={column.key}>{column.render(row)}</TableCell>
                 ))}

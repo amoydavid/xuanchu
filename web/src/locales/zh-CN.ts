@@ -215,6 +215,14 @@ export const zhCN = {
     depends: "依赖",
     unassigned: "未分配",
   },
+  projects: {
+    title: "项目",
+    colName: "项目",
+    colProgress: "进度",
+    colTaskCount: "任务（待处理 / 总数）",
+    colTaskCountHint: "任务数列显示「待处理 / 总数」，进度为已完成占比。",
+    empty: "暂无项目",
+  },
   token: {
     title: "令牌与 Agent",
     create: "创建 Token",
