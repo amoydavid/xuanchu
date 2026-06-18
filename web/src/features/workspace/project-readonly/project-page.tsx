@@ -32,15 +32,28 @@ export function ProjectReadonlyPage({
   const [now] = useState(() => Math.floor(Date.now() / 1000))
   // filter 来自 URL search（validateSearch 已限定为字符串字段）。
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
-  const filter: TaskFilter = {
-    status: typeof search.status === "string" ? search.status : undefined,
-    priority: typeof search.priority === "string" ? search.priority : undefined,
-    assignee: typeof search.assignee === "string" ? search.assignee : undefined,
-    due_after: typeof search.due_after === "string" ? search.due_after : undefined,
-    due_before: typeof search.due_before === "string" ? search.due_before : undefined,
-    tags: typeof search.tags === "string" ? search.tags : undefined,
-    q: typeof search.q === "string" ? search.q : undefined,
-  }
+  const filter: TaskFilter = useMemo(
+    () => ({
+      status: typeof search.status === "string" ? search.status : undefined,
+      priority: typeof search.priority === "string" ? search.priority : undefined,
+      assignee: typeof search.assignee === "string" ? search.assignee : undefined,
+      due_after:
+        typeof search.due_after === "string" ? search.due_after : undefined,
+      due_before:
+        typeof search.due_before === "string" ? search.due_before : undefined,
+      tags: typeof search.tags === "string" ? search.tags : undefined,
+      q: typeof search.q === "string" ? search.q : undefined,
+    }),
+    [
+      search.assignee,
+      search.due_after,
+      search.due_before,
+      search.priority,
+      search.q,
+      search.status,
+      search.tags,
+    ]
+  )
   const filterQuery = useMemo(() => filterToTaskQuery(filter), [filter])
 
   const project = useQuery({

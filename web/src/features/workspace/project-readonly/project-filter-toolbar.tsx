@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -107,6 +107,7 @@ export function ProjectFilterToolbar({
 
         <DebouncedInput
           className="h-8 w-32"
+          key={`assignee:${filter.assignee ?? ""}`}
           onCommit={(v) => setFilter("assignee", v)}
           placeholder={t("projectReadonly.assignee")}
           value={filter.assignee ?? ""}
@@ -114,6 +115,7 @@ export function ProjectFilterToolbar({
 
         <DebouncedInput
           className="h-8 w-36"
+          key={`q:${filter.q ?? ""}`}
           onCommit={(v) => setFilter("q", v)}
           placeholder={t("common.search")}
           value={filter.q ?? ""}
@@ -147,7 +149,7 @@ export function ProjectFilterToolbar({
 
 // DebouncedInput 是文本输入框，本地维护输入态，在失焦或回车时才把值提交到 URL，
 // 避免用户打字时每个按键都触发一次 navigate + 请求。
-// 外部 value 变化（如 URL 同步、清除全部）会同步回本地。
+// 外部 value 变化（如 URL 同步、清除全部）由调用方 key 变化重建输入框。
 function DebouncedInput({
   className,
   onCommit,
@@ -160,9 +162,6 @@ function DebouncedInput({
   value: string
 }) {
   const [local, setLocal] = useState(value)
-  useEffect(() => {
-    setLocal(value)
-  }, [value])
   const commit = () => {
     if (local !== value) {
       onCommit(local)
