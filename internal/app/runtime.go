@@ -3,16 +3,17 @@ package app
 import (
 	"fmt"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
-type Role string
+type Role = authz.Role
 
 const (
-	RoleOwner  Role = "owner"
-	RoleAdmin  Role = "admin"
-	RoleMember Role = "member"
-	RoleViewer Role = "viewer"
+	RoleOwner  = authz.RoleOwner
+	RoleAdmin  = authz.RoleAdmin
+	RoleMember = authz.RoleMember
+	RoleViewer = authz.RoleViewer
 )
 
 type RuntimeContext struct {
