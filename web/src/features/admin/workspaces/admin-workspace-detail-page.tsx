@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -192,6 +192,14 @@ function ActingSessionDialog({
   )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 每次打开 dialog 时把选中项重置为第一个候选，避免上次会话残留的选中态。
+  // 依赖 firstCandidate.id 而非整个对象，避免 query refetch 造成多余重置。
+  useEffect(() => {
+    if (open && firstCandidate) {
+      setSelectedUserId(firstCandidate.user.id)
+    }
+  }, [open, firstCandidate?.user.id])
 
   // 当 candidates 变化时同步默认选中项。
   const candidate =

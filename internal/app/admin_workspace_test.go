@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -334,6 +335,52 @@ func TestAdminCreateActingSessionRejectsArchivedWorkspace(t *testing.T) {
 		t.Fatal("expected error for archived workspace")
 	}
 	assertRuntimeCode(t, err, "workspace_archived")
+}
+
+// TestAdminCreateActingSessionWritesAuditablePayload 验证 acting session 创建的 audit
+// 记录 workspace / actor / role / expires_at / admin token name，且不泄漏 raw token。
+func TestAdminCreateActingSessionWritesAuditablePayload(t *testing.T) {
+	store := newTestStore(t)
+	svc := newAdminWorkspaceTestService(t, store)
+	seedAdminWorkspaces(t, svc)
+
+	created, err := svc.AdminCreateActingSession(AdminCreateActingSessionInput{
+		AdminTokenName: "ops",
+		WorkspaceRef:   "dajee",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := storage.NewAuditRepository(store.DB()).List(storage.AuditListOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 || rows[0].Action != "admin.acting_session.create" {
+		t.Fatalf("audit rows = %#v", rows)
+	}
+	row := rows[0]
+	if row.TargetID != created.SessionID {
+		t.Fatalf("target id = %q, want %q", row.TargetID, created.SessionID)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"workspace_id", "workspace_slug", "actor_user_id", "role", "expires_at", "admin_token_name"} {
+		if _, ok := payload[key]; !ok {
+			t.Fatalf("payload missing %q: %#v", key, payload)
+		}
+	}
+	if payload["admin_token_name"] != "ops" {
+		t.Fatalf("admin_token_name = %#v", payload["admin_token_name"])
+	}
+	if payload["actor_user_id"] != created.Actor.ID {
+		t.Fatalf("actor_user_id = %#v, want %s", payload["actor_user_id"], created.Actor.ID)
+	}
+	if strings.Contains(row.PayloadJSON, created.Token) {
+		t.Fatalf("audit payload leaked raw acting token")
+	}
 }
 
 func TestAdminCreateActingSessionRejectsNonOwnerAdminTarget(t *testing.T) {
