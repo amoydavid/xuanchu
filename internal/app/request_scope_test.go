@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -411,6 +412,77 @@ func TestExplicitProjectScopeFiltersSingleTaskOperations(t *testing.T) {
 	}
 }
 
+func TestAuthorizeTokenRequestReturnsDecision(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "cli",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	if authorized.Decision.Principal.UserID != authn.User.ID {
+		t.Fatalf("principal = %#v, want token user %s", authorized.Decision.Principal, authn.User.ID)
+	}
+	if authorized.Decision.Delegator != nil {
+		t.Fatalf("delegator = %#v, want nil", authorized.Decision.Delegator)
+	}
+	if authorized.Decision.Tenant.WorkspaceID != authorized.Workspace.ID {
+		t.Fatalf("tenant = %#v, workspace = %#v", authorized.Decision.Tenant, authorized.Workspace)
+	}
+	if authorized.Decision.Credential.TokenID != created.View.ID {
+		t.Fatalf("credential token id = %q, want %q", authorized.Decision.Credential.TokenID, created.View.ID)
+	}
+	if authorized.Decision.Credential.Kind != authz.CredentialPAT {
+		t.Fatalf("credential kind = %q, want %q", authorized.Decision.Credential.Kind, authz.CredentialPAT)
+	}
+	if authorized.Decision.Role != RoleOwner {
+		t.Fatalf("role = %q, want owner", authorized.Decision.Role)
+	}
+}
+
+func TestRuntimeContextFromDecision(t *testing.T) {
+	delegator := &authz.Delegator{UserID: "service-user", TokenID: "tok-1"}
+	decision := authz.Decision{
+		Principal: authz.Principal{UserID: "alice-id", UserName: "alice"},
+		Delegator: delegator,
+		Tenant:    authz.TenantScope{WorkspaceID: "ws-1", WorkspaceSlug: "team"},
+		Role:      RoleMember,
+	}
+	rt := runtimeContextFromDecision(decision)
+	if rt.ActorUserID != "alice-id" || rt.ActorName != "alice" || rt.WorkspaceID != "ws-1" || rt.WorkspaceSlug != "team" || rt.Role != RoleMember {
+		t.Fatalf("runtime = %#v", rt)
+	}
+	if rt.DelegatorUserID != "service-user" || rt.DelegatorTokenID != "tok-1" {
+		t.Fatalf("delegator runtime fields = %#v", rt)
+	}
+
+	// 无 delegator 时，runtime 不应填 delegator 字段。
+	rtNoDelegator := runtimeContextFromDecision(authz.Decision{
+		Principal: authz.Principal{UserID: "bob", UserName: "bob"},
+		Tenant:    authz.TenantScope{WorkspaceID: "ws", WorkspaceSlug: "ws"},
+		Role:      RoleOwner,
+	})
+	if rtNoDelegator.DelegatorUserID != "" || rtNoDelegator.DelegatorTokenID != "" {
+		t.Fatalf("delegator runtime fields should be empty = %#v", rtNoDelegator)
+	}
+}
+
 func TestAuthorizeTokenRequestImpersonationUsesSubjectMembership(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
@@ -459,6 +531,18 @@ func TestAuthorizeTokenRequestImpersonationUsesSubjectMembership(t *testing.T) {
 	}
 	if authorized.Runtime.Role != RoleMember {
 		t.Fatalf("role = %q, want member", authorized.Runtime.Role)
+	}
+	if authorized.Decision.Delegator == nil {
+		t.Fatal("decision delegator = nil, want delegator for impersonation")
+	}
+	if authorized.Decision.Delegator.TokenID != created.View.ID {
+		t.Fatalf("decision delegator token = %q, want %q", authorized.Decision.Delegator.TokenID, created.View.ID)
+	}
+	if authorized.Decision.Principal.UserID != aliceUser.ID {
+		t.Fatalf("decision principal = %q, want subject %q", authorized.Decision.Principal.UserID, aliceUser.ID)
+	}
+	if authorized.Decision.Credential.Kind != authz.CredentialAgent {
+		t.Fatalf("decision credential kind = %q, want %q", authorized.Decision.Credential.Kind, authz.CredentialAgent)
 	}
 }
 

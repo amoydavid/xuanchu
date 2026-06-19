@@ -30,6 +30,7 @@ type AuthorizedRequest struct {
 	Scope     RequestScope
 	Workspace storage.Workspace
 	Project   *storage.Project
+	Decision  authz.Decision
 }
 
 type ResolveMode int
@@ -154,15 +155,35 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		effectiveScope.ProjectIDs = []string{project.ID}
 	}
 
-	runtime := RuntimeContext{
-		ActorUserID:      subjectUser.ID,
-		ActorName:        subjectUser.Name,
-		WorkspaceID:      workspace.ID,
-		WorkspaceSlug:    workspace.Slug,
-		Role:             Role(member.Role),
-		DelegatorTokenID: delegatorTokenID,
-		DelegatorUserID:  delegatorUserID,
+	decision := authz.Decision{
+		Principal: authz.Principal{
+			UserID:   subjectUser.ID,
+			UserName: subjectUser.Name,
+		},
+		Credential: authz.Credential{
+			Kind:         credentialKindFromTokenType(input.Token.Token.Type),
+			TokenID:      input.Token.Token.ID,
+			TokenUserID:  tokenUser.ID,
+			Capabilities: append([]string(nil), scope.Capabilities...),
+			WorkspaceIDs: append([]string(nil), scope.WorkspaceIDs...),
+			ProjectIDs:   append([]string(nil), scope.ProjectIDs...),
+		},
+		Tenant: authz.TenantScope{
+			WorkspaceID:   workspace.ID,
+			WorkspaceSlug: workspace.Slug,
+		},
+		Role:         Role(member.Role),
+		RequestScope: effectiveScope,
 	}
+	if project != nil {
+		projectID := project.ID
+		decision.Tenant.ProjectID = &projectID
+	}
+	if delegatorTokenID != "" {
+		decision.Delegator = &authz.Delegator{UserID: delegatorUserID, TokenID: delegatorTokenID}
+	}
+
+	runtime := runtimeContextFromDecision(decision)
 	if err := requireRolePermission(runtime.Role, input.RequiredPermission); err != nil {
 		return AuthorizedRequest{}, err
 	}
@@ -171,7 +192,37 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		Scope:     effectiveScope,
 		Workspace: workspace,
 		Project:   project,
+		Decision:  decision,
 	}, nil
+}
+
+// credentialKindFromTokenType 把存储层 token type 映射为 authz.CredentialKind。
+func credentialKindFromTokenType(tokenType string) authz.CredentialKind {
+	switch tokenType {
+	case auth.TokenTypeAgent:
+		return authz.CredentialAgent
+	case auth.TokenTypePAT:
+		return authz.CredentialPAT
+	default:
+		return authz.CredentialKind(tokenType)
+	}
+}
+
+// runtimeContextFromDecision 由授权决策生成运行时上下文。
+// Decision 是授权边界的统一输出，RuntimeContext 是 app service 内部执行所需的派生形态。
+func runtimeContextFromDecision(decision authz.Decision) RuntimeContext {
+	rt := RuntimeContext{
+		ActorUserID:   decision.Principal.UserID,
+		ActorName:     decision.Principal.UserName,
+		WorkspaceID:   decision.Tenant.WorkspaceID,
+		WorkspaceSlug: decision.Tenant.WorkspaceSlug,
+		Role:          decision.Role,
+	}
+	if decision.Delegator != nil {
+		rt.DelegatorUserID = decision.Delegator.UserID
+		rt.DelegatorTokenID = decision.Delegator.TokenID
+	}
+	return rt
 }
 
 func (s *Service) resolveRequestWorkspace(user storage.User, scope RequestScope, ref string) (storage.Workspace, error) {
