@@ -22,6 +22,10 @@ func TestStatusForAppErrorCodeAuthorizationBoundary(t *testing.T) {
 		{authz.CodeMembershipNotFound, http.StatusForbidden},
 		{authz.CodePermissionDenied, http.StatusForbidden},
 		{authz.CodeWorkspaceRequired, http.StatusBadRequest},
+		// acting token 过期按 spec §10 映射为 401
+		{"admin_acting_session_expired", http.StatusUnauthorized},
+		// 吊销不存在的 acting session 映射为 404
+		{"admin_acting_not_found", http.StatusNotFound},
 	}
 	for _, tt := range tests {
 		if got := statusForAppErrorCode(tt.code); got != tt.want {

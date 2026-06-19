@@ -2,7 +2,6 @@ import { ApiError, requestJson } from "@/lib/api"
 
 import {
   clearAdminActingSession,
-  clearAdminActingToken,
   clearWorkspaceToken,
   getAdminActingToken,
   getWorkspaceToken,
@@ -25,16 +24,28 @@ async function workspaceRequest<T>(
 ): Promise<T> {
   assertWorkspacePath(path)
   // acting mode：优先用 acting token。普通 workspace token 作为 fallback。
-  // 如果 acting token 存在，401 时只清理 acting session（保留 admin token 和普通 workspace token）。
+  // 如果 acting token 存在，401 时只清理 acting session（保留 admin token 和普通 workspace token），
+  // 并跳回 /admin/workspaces，避免无声地降级为普通 workspace 身份继续操作。
   const actingToken = getAdminActingToken()
   const usingActing = actingToken !== null
   return requestJson<T>({
     body,
     getToken: usingActing ? getAdminActingToken : getWorkspaceToken,
     method,
-    onUnauthorized: usingActing ? clearAdminActingSession : clearWorkspaceToken,
+    onUnauthorized: usingActing ? clearAdminActingSessionAndReturn : clearWorkspaceToken,
     path,
   })
+}
+
+// clearAdminActingSessionAndReturn 清理 acting session 并跳回超管界面。
+// 这是 spec §8.2 的过期/失效语义：acting token 失效后不要无声降级，
+// 必须让用户回到 /admin/workspaces 并（通过 admin token 仍在 sessionStorage）保持超管登录。
+function clearAdminActingSessionAndReturn() {
+  clearAdminActingSession()
+  // 避免在非浏览器环境（单测）抛错；jsdom 会忽略不支持的导航。
+  if (typeof window !== "undefined" && window.location) {
+    window.location.assign("/admin/workspaces")
+  }
 }
 
 export function workspaceApiGet<T>(path: string): Promise<T> {
@@ -52,6 +63,3 @@ export function workspaceApiPatch<T>(path: string, body: unknown): Promise<T> {
 export function workspaceApiDelete<T>(path: string): Promise<T> {
   return workspaceRequest<T>("DELETE", path)
 }
-
-// 仅供 workspace-token.ts 之外的内部测试/调试使用：直接清理 acting token（不清 context）。
-export const _clearAdminActingTokenForTests = clearAdminActingToken

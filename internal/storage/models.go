@@ -48,7 +48,7 @@ type AuditLog struct {
 	DelegatorUserID         *string `gorm:"index"`
 	AdminActingSessionID    *string `gorm:"index"`
 	DelegatorAdminTokenID   *string `gorm:"index"`
-	DelegatorAdminTokenName string
+	DelegatorAdminTokenName string  `gorm:"not null;default:''"`
 	CreatedAt               int64   `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc"`
 }
 

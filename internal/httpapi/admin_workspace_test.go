@@ -188,6 +188,38 @@ func TestAdminActingSessionRawTokenNotInAuditPayload(t *testing.T) {
 	}
 }
 
+func TestAdminActingSessionExpiredReturnsUnauthorizedHTTP(t *testing.T) {
+	fixture, adminRaw := newAdminHTTPFixture(t)
+	// 创建一个 1 秒 TTL 的 acting session。
+	createRR := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/admin/workspaces/dajee/acting-sessions", `{"expires_in":"1s"}`, map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+		"Content-Type":  "application/json",
+	})
+	if createRR.Code != http.StatusCreated {
+		t.Fatalf("create acting session: status=%d body=%s", createRR.Code, createRR.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createRR.Body).Decode(&envelope); err != nil {
+		t.Fatal(err)
+	}
+	actingToken := envelope.Data.Token
+
+	// 直接把 session 标记过期（避免真实等待 1 秒带来的 flake）。
+	if err := fixture.server.store.DB().Exec("UPDATE admin_acting_sessions SET expires_at = 1").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// 过期的 acting token 访问普通 API 必须返回 401 + admin_acting_session_expired。
+	meRR := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/me", map[string]string{
+		"Authorization": "Bearer " + actingToken,
+	})
+	assertHTTPErrorCode(t, meRR, http.StatusUnauthorized, "admin_acting_session_expired")
+}
+
 func TestNormalTokenCannotAccessAdminWorkspaceEndpoints(t *testing.T) {
 	fixture, _ := newAdminHTTPFixture(t)
 	// fixture.token 是普通 workspace token。

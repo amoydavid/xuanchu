@@ -16,12 +16,15 @@ func statusForAppErrorCode(code string) int {
 	// 认证与授权边界
 	case authz.CodeAuthMissingToken, authz.CodeAuthInvalidToken, authz.CodeAuthTokenExpired, authz.CodeAuthTokenRevoked:
 		return http.StatusUnauthorized
+	case "admin_acting_session_expired":
+		// acting token 过期属于认证失败：spec §10 规定 401。
+		return http.StatusUnauthorized
 	case authz.CodeTokenScopeDenied, authz.CodeWorkspaceScopeDenied, authz.CodeProjectScopeDenied, authz.CodeMembershipNotFound, authz.CodePermissionDenied:
 		return http.StatusForbidden
 	case authz.CodeWorkspaceRequired:
 		return http.StatusBadRequest
 	// 资源不存在
-	case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found":
+	case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found", "admin_acting_not_found":
 		return http.StatusNotFound
 	case "workspace_archived":
 		return http.StatusBadRequest
