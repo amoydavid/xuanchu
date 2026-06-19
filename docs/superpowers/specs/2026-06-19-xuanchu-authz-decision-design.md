@@ -89,9 +89,11 @@ internal/authz
 
 该包只表达“授权决策”本身，不直接持有 HTTP、MCP、Cobra、GORM 细节。数据读取仍通过 app/storage 现有 repository 或由 app 层组装输入。
 
-### 2.3 分阶段实施
+### 2.3 交付范围与分阶段实施
 
-本 spec 覆盖两个目标，但实施必须分阶段：
+本 spec 的交付范围明确包含 Phase 1 和 Phase 2。两者都必须完成，不能只做 Phase 1 后把错误语义整理长期搁置。
+
+实施仍然必须分阶段，原因是 Phase 1 追求行为等价，Phase 2 会集中触碰错误分类和文档表达，混在一起会增加回归风险：
 
 1. **Phase 1：内部结构整理**
    - 抽出 Authorization Decision 概念。
@@ -102,13 +104,15 @@ internal/authz
    - 在 Phase 1 稳定后，再集中整理错误分类和映射。
    - 允许改进错误信息，但默认不破坏现有错误码，除非有明确兼容策略。
 
+Phase 3 只作为未来浏览器认证接入的预留方向，不属于本 spec 的交付范围。
+
 ## 3. 目标
 
 1. 建立统一的授权概念模型：Credential、Principal、Delegator、TenantScope、Capability、Permission、Decision。
 2. 将 HTTP/MCP 的授权流程收敛到同一个授权决策入口，减少重复分支。
 3. 保持现有行为等价：角色权限、token scope、workspace/project allowlist、impersonation 结果不变。
 4. 为未来浏览器 session 接入预留 Credential 类型，不实现 SSO。
-5. 为后续错误语义整理建立集中出口。
+5. 完成授权错误语义整理，让错误码、HTTP status 映射和文档表达有集中出口。
 6. 不破坏 `CGO_ENABLED=0` 测试和构建要求。
 
 ## 4. 非目标
@@ -439,6 +443,8 @@ Phase 2 再集中整理错误边界。建议先冻结以下分类：
 
 ## 10. 迁移计划
 
+Phase 1 和 Phase 2 都是本 spec 的必交付范围。implementation plan 应覆盖两个阶段，并把两阶段拆成独立检查点；执行上可以先合入 Phase 1，再继续 Phase 2，但不能把 Phase 2 当作另一个未来特性重新排期。
+
 ### Phase 1：等价重构
 
 1. 新增 `internal/authz` 纯模型和 policy。
@@ -548,6 +554,8 @@ git diff --check
 
 ## 13. 验收标准
 
+整体验收要求：Phase 1 和 Phase 2 均完成并通过验证后，才视为本 spec 完成。
+
 Phase 1 完成时：
 
 - 代码中存在清晰的 Authorization Decision 概念。
@@ -563,10 +571,17 @@ Phase 2 完成时：
 - README 或 manual 文档说明 token scope、membership role、impersonation、server admin token 的边界。
 - 错误语义相关测试覆盖主要分支。
 
+本 spec 完成时：
+
+- Phase 1 的授权决策层已经落地，并被 HTTP API / HTTP MCP 复用。
+- Phase 2 的错误语义整理已经落地，并同步测试和文档。
+- `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu`、`go vet ./...`、`git diff --check` 均通过。
+
 ## 14. 推荐实施顺序
 
-1. 写 implementation plan，仅覆盖 Phase 1。
-2. Phase 1 完成并验证后，再写 Phase 2 plan。
-3. Phase 2 完成后，再评估是否需要浏览器 SSO / 飞书登录 spec。
+1. 写一份覆盖 Phase 1 和 Phase 2 的 implementation plan。
+2. plan 中把 Phase 1 作为第一个可验证检查点：完成等价重构，保持现有错误码和外部行为不变。
+3. plan 中把 Phase 2 作为第二个可验证检查点：完成错误语义集中定义、HTTP status 映射、测试和文档同步。
+4. Phase 1/Phase 2 都完成后，再评估是否需要浏览器 SSO / 飞书登录 spec。
 
 不要把 SSO、organization、SCIM 或飞书导入混入本次重构。先把授权决策层变清楚，再接外部身份。
