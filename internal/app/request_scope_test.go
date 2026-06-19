@@ -7,6 +7,28 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
+func TestNewRequestScopeUsesAuthzScopeSemantics(t *testing.T) {
+	scope := NewRequestScope(TokenView{
+		ID:           "tok-1",
+		Type:         "agent",
+		WorkspaceIDs: []string{"ws-1"},
+		ProjectIDs:   []string{"p-1"},
+		Scopes:       []string{"task:read"},
+	})
+	if scope.TokenID != "tok-1" || scope.TokenType != "agent" {
+		t.Fatalf("scope identity = %#v", scope)
+	}
+	if !scope.HasCapability("task:read") || scope.HasCapability("task:write") {
+		t.Fatalf("capability behavior changed: %#v", scope)
+	}
+	if !scope.AllowsWorkspace("ws-1") || scope.AllowsWorkspace("ws-2") {
+		t.Fatalf("workspace allowlist behavior changed: %#v", scope)
+	}
+	if !scope.AllowsProject("p-1") || scope.AllowsProject("p-2") {
+		t.Fatalf("project allowlist behavior changed: %#v", scope)
+	}
+}
+
 func TestAuthorizeTokenRequestRejectsMissingCapability(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

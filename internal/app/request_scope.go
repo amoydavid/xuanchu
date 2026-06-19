@@ -2,23 +2,18 @@ package app
 
 import (
 	"errors"
-	"slices"
 	"strconv"
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
-type RequestScope struct {
-	TokenID      string
-	TokenType    string
-	WorkspaceIDs []string
-	ProjectIDs   []string
-	Capabilities []string
-}
+// RequestScope 复用 authz.RequestScope，保持 app 层现有 API 稳定。
+type RequestScope = authz.RequestScope
 
 type RequestAuthorizationInput struct {
 	Token              AuthenticatedToken
@@ -54,41 +49,15 @@ func NewRequestScope(token TokenView) RequestScope {
 	}
 }
 
-func (s RequestScope) HasCapability(capability string) bool {
-	if strings.TrimSpace(capability) == "" {
-		return true
-	}
-	return slices.Contains(s.Capabilities, capability)
-}
-
-func (s RequestScope) RestrictsWorkspaces() bool {
-	return len(s.WorkspaceIDs) > 0
-}
-
-func (s RequestScope) RestrictsProjects() bool {
-	return len(s.ProjectIDs) > 0
-}
-
-func (s RequestScope) AllowsWorkspace(id string) bool {
-	if !s.RestrictsWorkspaces() {
-		return true
-	}
-	return slices.Contains(s.WorkspaceIDs, id)
-}
-
-func (s RequestScope) AllowsProject(id string) bool {
-	if !s.RestrictsProjects() {
-		return true
-	}
-	return slices.Contains(s.ProjectIDs, id)
-}
-
-func (s RequestScope) projectFilterExpr() query.Expr {
-	if !s.RestrictsProjects() {
+// requestScopeProjectFilterExpr 把 RequestScope 的 project allowlist
+// 转换为 query.Expr。因为 RequestScope 现在是导入的类型别名，
+// 不能直接给它加方法，所以使用自由函数。
+func requestScopeProjectFilterExpr(scope *RequestScope) query.Expr {
+	if scope == nil || !scope.RestrictsProjects() {
 		return nil
 	}
 	var expr query.Expr
-	for _, projectID := range s.ProjectIDs {
+	for _, projectID := range scope.ProjectIDs {
 		predicate := query.Predicate{
 			Attribute: query.AttrProjectID,
 			Operator:  query.OpEqual,
@@ -269,7 +238,7 @@ func (s *Service) projectScopeExpr() query.Expr {
 	if s.requestScope == nil {
 		return nil
 	}
-	return s.requestScope.projectFilterExpr()
+	return requestScopeProjectFilterExpr(s.requestScope)
 }
 
 func (s *Service) allowsProjectID(projectID *string) bool {
