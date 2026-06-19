@@ -6,13 +6,21 @@ import { AppShell } from "@/components/AppShell"
 import {
   getWorkspaceToken,
   clearWorkspaceToken,
+  getAdminActingToken,
+  clearAdminActingSession,
 } from "@/features/workspace/session/workspace-token"
 import { useMe } from "@/features/workspace/session/useMe"
 import { LoginPage } from "@/pages/LoginPage"
 import { ApiError } from "@/lib/api"
 
 export function WorkspaceRootRoute() {
-  const [signedIn, setSignedIn] = useState(() => getWorkspaceToken() !== null)
+  // signedIn 涵盖两种登录态：
+  // - 普通 workspace token（PAT/Agent）
+  // - server admin acting token（acting mode 从 /admin/workspaces 进入）
+  // acting token 失效时由 workspace-api 的 onUnauthorized 清理并跳回 /admin/workspaces。
+  const [signedIn, setSignedIn] = useState(
+    () => getWorkspaceToken() !== null || getAdminActingToken() !== null
+  )
   const queryClient = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
@@ -22,7 +30,12 @@ export function WorkspaceRootRoute() {
 
   useEffect(() => {
     if (authFailed) {
-      clearWorkspaceToken()
+      // 区分清理对象：acting mode 下只清 acting session，普通模式清 workspace token。
+      if (getAdminActingToken() !== null) {
+        clearAdminActingSession()
+      } else {
+        clearWorkspaceToken()
+      }
     }
   }, [authFailed])
 
@@ -45,7 +58,13 @@ export function WorkspaceRootRoute() {
     <AppShell
       actorName={me.data?.actor.name}
       onLogout={() => {
-        clearWorkspaceToken()
+        // acting mode 退出只清 acting session（admin token 留给超管控制面）；
+        // 普通模式清 workspace token。
+        if (getAdminActingToken() !== null) {
+          clearAdminActingSession()
+        } else {
+          clearWorkspaceToken()
+        }
         queryClient.clear()
         setSignedIn(false)
       }}
