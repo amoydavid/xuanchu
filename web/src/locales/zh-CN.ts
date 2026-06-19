@@ -151,9 +151,11 @@ export const zhCN = {
       confirm: "进入 Workspace",
       delegator: "由 server admin {{adminTokenName}} 委托",
       banner: "正在以 {{workspace}} 的 {{actor}}（{{role}}）身份操作 · 由 server admin {{adminTokenName}} 委托",
-      returnToAdmin: "返回超管界面",
+      returnToAdmin: "返回超管",
       ttlLabel: "有效期（可选）",
       ttlPlaceholder: "如 2h",
+      headerSubtitle: "Acting · {{workspace}}",
+      headerTitle: "{{actor}}（{{role}}）· 超管委托",
     },
   },
   common: {

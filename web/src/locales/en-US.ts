@@ -156,6 +156,8 @@ export const enUS = {
       returnToAdmin: "Return to admin",
       ttlLabel: "Expires in (optional)",
       ttlPlaceholder: "e.g. 2h",
+      headerSubtitle: "Acting · {{workspace}}",
+      headerTitle: "{{actor}} ({{role}}) · admin-delegated",
     },
   },
   common: {

@@ -53,7 +53,7 @@ describe("AppShell", () => {
     expect(onLogout).toHaveBeenCalledTimes(1)
   })
 
-  it("renders acting banner when acting context exists", () => {
+  it("replaces logout with acting indicator + return-to-admin in acting mode", () => {
     setAdminActingToken("xuanchu_act_test")
     setAdminActingContext({
       workspaceSlug: "dajee",
@@ -73,13 +73,14 @@ describe("AppShell", () => {
       </ThemeProvider>
     )
 
-    // banner 必须展示 workspace、actor、role、admin 来源。
-    expect(screen.getByText(/正在以 Dajee 的 alice/)).toBeTruthy()
-    expect(screen.getByText(/ops 委托/)).toBeTruthy()
-    expect(screen.getByText("返回超管界面")).toBeTruthy()
+    // acting mode：header 显示 actor（alice）+ role，且右上角是「返回超管」而非「退出」。
+    expect(screen.getByText(/alice（owner/)).toBeTruthy()
+    expect(screen.getByText("返回超管")).toBeTruthy()
+    // 不应出现普通退出按钮。
+    expect(screen.queryByText("退出")).toBeNull()
   })
 
-  it("does not render acting banner in regular workspace console", () => {
+  it("shows regular logout button in normal workspace console", () => {
     render(
       <ThemeProvider>
         <TooltipProvider>
@@ -89,6 +90,8 @@ describe("AppShell", () => {
         </TooltipProvider>
       </ThemeProvider>
     )
-    expect(screen.queryByText("返回超管界面")).toBeNull()
+    // 普通模式有「退出」，没有「返回超管」。
+    expect(screen.getByText("退出")).toBeTruthy()
+    expect(screen.queryByText("返回超管")).toBeNull()
   })
 })

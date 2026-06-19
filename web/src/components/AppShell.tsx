@@ -8,6 +8,7 @@ import {
   LogOut,
   RefreshCw,
   Settings,
+  ShieldAlert,
   Users,
   Webhook,
 } from "lucide-react"
@@ -24,6 +25,7 @@ import { Separator } from "@/components/ui/separator"
 import {
   clearAdminActingSession,
   getAdminActingContext,
+  type ActingContext,
 } from "@/features/workspace/session/workspace-token"
 import { cn } from "@/lib/utils"
 
@@ -70,6 +72,8 @@ export function AppShell({
   workspaceSlug?: string
 }) {
   const { t } = useTranslation()
+  const actingContext = getAdminActingContext()
+  const acting = actingContext !== null
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -108,16 +112,42 @@ export function AppShell({
         </div>
       </aside>
       <div className="md:pl-56">
-        <ActingBanner />
-        <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur">
-          <div className="min-w-0">
-            <div className="truncate text-xs text-muted-foreground">
-              {workspaceSlug
-                ? `${t("shell.workspace")}: ${workspaceSlug}`
-                : t("shell.workspace")}
-            </div>
-            <div className="truncate text-sm font-medium">
-              {actorName ? `${actorName} · ${tokenType ?? ""}` : t("app.title")}
+        <header
+          className={cn(
+            "sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur",
+            acting && "bg-amber-50/95 dark:bg-amber-950/40"
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {acting ? (
+              <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            ) : null}
+            <div className="min-w-0">
+              <div className="truncate text-xs text-muted-foreground">
+                {acting
+                  ? t("admin.acting.headerSubtitle", {
+                      workspace: workspaceSlug ?? "",
+                    })
+                  : workspaceSlug
+                    ? `${t("shell.workspace")}: ${workspaceSlug}`
+                    : t("shell.workspace")}
+              </div>
+              <div
+                className={cn(
+                  "truncate text-sm font-medium",
+                  acting && "text-amber-900 dark:text-amber-100"
+                )}
+              >
+                {acting && actingContext
+                  ? t("admin.acting.headerTitle", {
+                      workspace: actingContext.workspaceName,
+                      actor: actingContext.actorName,
+                      role: actingContext.role,
+                    })
+                  : actorName
+                    ? `${actorName} · ${tokenType ?? ""}`
+                    : t("app.title")}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -132,10 +162,14 @@ export function AppShell({
             <Separator className="h-5" orientation="vertical" />
             <LanguageSwitcher />
             <ThemeToggle />
-            <Button onClick={onLogout} size="sm" variant="outline">
-              <LogOut className="size-4" />
-              {t("auth.logout")}
-            </Button>
+            {acting && actingContext ? (
+              <ReturnToAdminButton context={actingContext} />
+            ) : (
+              <Button onClick={onLogout} size="sm" variant="outline">
+                <LogOut className="size-4" />
+                {t("auth.logout")}
+              </Button>
+            )}
           </div>
         </header>
         <main className="px-4 py-5">{children}</main>
@@ -144,39 +178,25 @@ export function AppShell({
   )
 }
 
-// ActingBanner 在 acting mode 下持续显示，提醒用户当前以 workspace
-// 管理员身份操作。点击「返回超管界面」清理 acting token/context，跳回 workspace 详情。
-// 普通 workspace console（无 acting context）不渲染任何东西。
-function ActingBanner() {
+// ReturnToAdminButton 替换 acting mode 下的「退出」按钮。
+// 用 amber 色调 + 左箭头 + 超管标识，明确表示当前是 acting 会话，
+// 点击清理 acting session 并跳回发起 acting 的 workspace 详情页。
+function ReturnToAdminButton({ context }: { context: ActingContext }) {
   const { t } = useTranslation()
-  const context = getAdminActingContext()
-  if (!context) {
-    return null
-  }
   return (
-    <div className="flex items-center justify-between gap-3 border-b bg-amber-100 px-4 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-      <div className="truncate">
-        {t("admin.acting.banner", {
-          workspace: context.workspaceName,
-          actor: context.actorName,
-          role: context.role,
-          adminTokenName: context.adminTokenName,
-        })}
-      </div>
-      <Button
-        onClick={() => {
-          clearAdminActingSession()
-          // 返回到发起 acting 的 workspace 详情页。
-          window.location.assign(
-            `/admin/workspaces/${encodeURIComponent(context.workspaceSlug)}`
-          )
-        }}
-        size="sm"
-        variant="outline"
-      >
-        <ArrowLeft className="size-4" />
-        {t("admin.acting.returnToAdmin")}
-      </Button>
-    </div>
+    <Button
+      className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 hover:text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-100 dark:hover:bg-amber-800"
+      onClick={() => {
+        clearAdminActingSession()
+        window.location.assign(
+          `/admin/workspaces/${encodeURIComponent(context.workspaceSlug)}`
+        )
+      }}
+      size="sm"
+      variant="outline"
+    >
+      <ArrowLeft className="size-4" />
+      {t("admin.acting.returnToAdmin")}
+    </Button>
   )
 }
