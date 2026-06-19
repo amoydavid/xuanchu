@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -76,7 +77,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		}
 	}
 	if !ok {
-		return nil, app.RuntimeError{Code: "auth_missing_token", Message: "missing bearer token"}
+		return nil, app.RuntimeError{Code: authz.CodeAuthMissingToken, Message: "missing bearer token"}
 	}
 	workspaceRef := strings.TrimSpace(input.Workspace)
 	if workspaceRef == "" {
@@ -87,7 +88,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		if visible, err := visibleWorkspacesForToken(f.Store, authn); err != nil {
 			return nil, err
 		} else if len(visible) > 1 {
-			return nil, app.RuntimeError{Code: "workspace_required", Message: "workspace is required to resolve project slug"}
+			return nil, app.RuntimeError{Code: authz.CodeWorkspaceRequired, Message: "workspace is required to resolve project slug"}
 		}
 	}
 
@@ -216,7 +217,7 @@ func (f RuntimeFactory) AuthenticateHTTPRequest(r *http.Request) (*http.Request,
 	}
 	raw, ok := bearerTokenFromHeader(r.Header.Get("Authorization"))
 	if !ok {
-		return nil, app.RuntimeError{Code: "auth_missing_token", Message: "missing bearer token"}
+		return nil, app.RuntimeError{Code: authz.CodeAuthMissingToken, Message: "missing bearer token"}
 	}
 	svc, err := app.NewService(app.ServiceOptions{
 		Store:                 f.Store,

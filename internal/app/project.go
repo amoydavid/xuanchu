@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -67,7 +68,7 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 		return ProjectView{}, err
 	}
 	if s.hasProjectScope() {
-		return ProjectView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return ProjectView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	slug, name, description, err := normalizeProjectCreateInput(input)
 	if err != nil {

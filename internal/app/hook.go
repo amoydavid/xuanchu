@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -137,7 +138,7 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		return HookView{}, RuntimeError{Code: "hook_scope_invalid", Message: "hook scope must be workspace or project"}
 	}
 	if scopeType == string(HookScopeWorkspace) && s.hasProjectScope() {
-		return HookView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot create workspace-scoped hook"}
+		return HookView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot create workspace-scoped hook"}
 	}
 
 	var projectID *string
@@ -535,7 +536,7 @@ func (s *Service) ensureWritableHookScope(row storage.HookDefinition) error {
 	if s.allowsProjectID(row.ProjectID) {
 		return nil
 	}
-	return RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+	return RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 }
 
 func (s *Service) ensureReadableDeliveryScope(row storage.HookDelivery) error {

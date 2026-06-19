@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -543,7 +544,7 @@ func (s *Service) ModifyReminderRule(ruleID string, input ReminderRuleModifyInpu
 		return ReminderRuleView{}, RuntimeError{Code: "reminder_rule_not_found", Message: "reminder rule not found"}
 	}
 	if !s.allowsProjectID(row.ProjectID) {
-		return ReminderRuleView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return ReminderRuleView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	candidate := reminderRuleAddInputFromRow(row)
 	var projectID = row.ProjectID
@@ -637,7 +638,7 @@ func (s *Service) toggleReminderRule(ruleID string, enabled bool, action string)
 		return ReminderRuleView{}, RuntimeError{Code: "reminder_rule_not_found", Message: "reminder rule not found"}
 	}
 	if !s.allowsProjectID(row.ProjectID) {
-		return ReminderRuleView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return ReminderRuleView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	row.Enabled = &enabled
 	row.ModifiedAt = s.clock.Unix()
@@ -674,7 +675,7 @@ func (s *Service) DeleteReminderRule(ruleID string) error {
 		return RuntimeError{Code: "reminder_rule_not_found", Message: "reminder rule not found"}
 	}
 	if !s.allowsProjectID(row.ProjectID) {
-		return RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	return s.withAudit("reminder.rule.delete", func(tx *Service) (AuditEntry, error) {
 		if err := tx.reminderRuleRepo.Delete(ruleID); err != nil {

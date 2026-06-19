@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -67,7 +68,7 @@ func (s *Service) applyProjectBinding(tsk *task.Task, slug *string) (projectChan
 func (s *Service) applyProjectBindingFrom(tsk *task.Task, slug *string, before projectBinding) (projectChange, error) {
 	if slug == nil {
 		if s.hasProjectScope() && !s.allowsProjectID(tsk.ProjectID) {
-			return projectChange{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+			return projectChange{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 		}
 		if before.ID != nil && tsk.ProjectID == nil {
 			tsk.ProjectID = cloneStringPtr(before.ID)
@@ -78,7 +79,7 @@ func (s *Service) applyProjectBindingFrom(tsk *task.Task, slug *string, before p
 	}
 	if strings.TrimSpace(*slug) == "" {
 		if s.hasProjectScope() {
-			return projectChange{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+			return projectChange{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 		}
 		clearProjectBinding(tsk)
 		return projectChange{Before: before, After: projectBinding{}}, nil

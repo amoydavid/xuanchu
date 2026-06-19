@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/google/uuid"
 )
@@ -139,7 +140,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, ok := bearerToken(r.Header.Get("Authorization"))
 		if !ok {
-			writeError(w, http.StatusUnauthorized, "auth_missing_token", "missing bearer token", nil)
+			writeError(w, http.StatusUnauthorized, authz.CodeAuthMissingToken, "missing bearer token", nil)
 			return
 		}
 
@@ -211,7 +212,7 @@ func (s *Server) visibleAndEffectiveWorkspaces(authn app.AuthenticatedToken) ([]
 	}
 	filtered := filterVisibleWorkspaces(rows, authn.Token.WorkspaceIDs)
 	if len(filtered) == 0 {
-		return nil, storage.Workspace{}, app.RuntimeError{Code: "workspace_scope_denied", Message: "workspace scope denied"}
+		return nil, storage.Workspace{}, app.RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "workspace scope denied"}
 	}
 	return filtered, chooseEffectiveWorkspace(authn.User, filtered), nil
 }

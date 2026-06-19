@@ -334,11 +334,11 @@ func (s *Service) useWorkspaceLocked(ref string) (storage.Workspace, error) {
 		return storage.Workspace{}, err
 	}
 	if workspace.ArchivedAt != nil {
-		return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	if _, err := s.memberRepo.Get(s.runtime.ActorUserID, workspace.ID); err != nil {
 		if err == storage.ErrNotFound {
-			return storage.Workspace{}, RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
+			return storage.Workspace{}, RuntimeError{Code: authz.CodeMembershipNotFound, Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
 		}
 		return storage.Workspace{}, err
 	}
@@ -362,7 +362,7 @@ func (s *Service) ModifyWorkspace(ref string, input ModifyWorkspaceInput) error 
 		return err
 	}
 	if workspace.ArchivedAt != nil {
-		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	if err := requireRolePermission(role, PermissionWorkspaceModify); err != nil {
 		return err
@@ -397,7 +397,7 @@ func (s *Service) ArchiveWorkspace(ref string) error {
 		return err
 	}
 	if workspace.ArchivedAt != nil {
-		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	if err := requireRolePermission(role, PermissionWorkspaceArchive); err != nil {
 		return err
@@ -492,7 +492,7 @@ func (s *Service) ListMembers(workspaceRef string) ([]MemberView, error) {
 		return nil, err
 	}
 	if workspace.ArchivedAt != nil {
-		return nil, RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return nil, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	rows, err := s.memberRepo.List(workspace.ID)
 	if err != nil {
@@ -518,7 +518,7 @@ func (s *Service) AddMember(input AddMemberInput) error {
 		return err
 	}
 	if workspace.ArchivedAt != nil {
-		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	targetRole, err := normalizeRole(input.Role, RoleMember)
 	if err != nil {
@@ -565,7 +565,7 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error {
 		return err
 	}
 	if workspace.ArchivedAt != nil {
-		return RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 	user, err := s.resolveUser(input.UserRef)
 	if err != nil {
@@ -645,7 +645,7 @@ func (s *Service) resolveWorkspaceForActor(ref string) (storage.Workspace, Role,
 	}
 	member, err := s.memberRepo.Get(s.runtime.ActorUserID, workspace.ID)
 	if err == storage.ErrNotFound {
-		return storage.Workspace{}, "", RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
+		return storage.Workspace{}, "", RuntimeError{Code: authz.CodeMembershipNotFound, Message: fmt.Sprintf("user %q is not a member of workspace %q", s.runtime.ActorName, workspace.Slug)}
 	}
 	if err != nil {
 		return storage.Workspace{}, "", err
@@ -657,7 +657,7 @@ func requireRolePermission(role Role, permission Permission) error {
 	if authz.AllowedForRole(role, permission) {
 		return nil
 	}
-	return PermissionError{Code: "permission_denied", Message: "permission denied"}
+	return PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 }
 
 func requireMemberManagement(actorRole, targetRole, currentRole Role) error {
@@ -743,7 +743,7 @@ func (s *Service) BindExternalID(userID, provider, externalID string) error {
 	}
 	if userID != s.runtime.ActorUserID {
 		if err := requireRolePermission(s.runtime.Role, PermissionWorkspaceModify); err != nil {
-			return RuntimeError{Code: "permission_denied", Message: "only admin/owner can bind external IDs for other users"}
+			return RuntimeError{Code: authz.CodePermissionDenied, Message: "only admin/owner can bind external IDs for other users"}
 		}
 	}
 	return s.withAudit("user.bind_external_id", func(tx *Service) (AuditEntry, error) {
@@ -773,7 +773,7 @@ func (s *Service) UnbindExternalID(userID, provider, externalID string) error {
 	}
 	if userID != s.runtime.ActorUserID {
 		if err := requireRolePermission(s.runtime.Role, PermissionWorkspaceModify); err != nil {
-			return RuntimeError{Code: "permission_denied", Message: "only admin/owner can unbind external IDs for other users"}
+			return RuntimeError{Code: authz.CodePermissionDenied, Message: "only admin/owner can unbind external IDs for other users"}
 		}
 	}
 	return s.withAudit("user.unbind_external_id", func(tx *Service) (AuditEntry, error) {

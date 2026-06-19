@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -103,7 +104,7 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 		return CreatedToken{}, classifyTokenCreateError(err)
 	}
 	if scopes.Has(auth.ScopeImpersonate) && !tokenManageAllowed(s.runtime.Role) {
-		return CreatedToken{}, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can create tokens with impersonate scope"}
+		return CreatedToken{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "only admin or owner can create tokens with impersonate scope"}
 	}
 	if err := enforceTokenCreateLimit(input.ParentToken, scopes.Values(), workspaceIDs, projectIDs); err != nil {
 		return CreatedToken{}, err
@@ -251,7 +252,7 @@ func (s *Service) revokeToken(ref string, limit *TokenView) error {
 		return err
 	}
 	if entry.UserID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
-		return PermissionError{Code: "permission_denied", Message: "permission denied"}
+		return PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 	if err := enforceTokenRevokeLimit(limit, entry); err != nil {
 		return err
@@ -277,13 +278,13 @@ func enforceTokenCreateLimit(parent *TokenView, scopes, workspaceIDs, projectIDs
 	}
 	for _, scope := range scopes {
 		if !slices.Contains(parent.Scopes, scope) {
-			return RuntimeError{Code: "token_scope_denied", Message: "new token scope exceeds current token"}
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "new token scope exceeds current token"}
 		}
 	}
-	if err := requireSubsetWhenRestricted(parent.WorkspaceIDs, workspaceIDs, "workspace_scope_denied", "new token workspace scope exceeds current token"); err != nil {
+	if err := requireSubsetWhenRestricted(parent.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "new token workspace scope exceeds current token"); err != nil {
 		return err
 	}
-	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, "project_scope_denied", "new token project scope exceeds current token")
+	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "new token project scope exceeds current token")
 }
 
 func enforceTokenRevokeLimit(parent *TokenView, entry storage.ApiTokenEntry) error {
@@ -298,10 +299,10 @@ func enforceTokenRevokeLimit(parent *TokenView, entry storage.ApiTokenEntry) err
 	if err != nil {
 		return err
 	}
-	if err := requireSubsetWhenRestricted(parent.WorkspaceIDs, workspaceIDs, "workspace_scope_denied", "target token workspace scope is outside current token"); err != nil {
+	if err := requireSubsetWhenRestricted(parent.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current token"); err != nil {
 		return err
 	}
-	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, "project_scope_denied", "target token project scope is outside current token")
+	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current token")
 }
 
 func requireSubsetWhenRestricted(parent, child []string, code, message string) error {
@@ -322,7 +323,7 @@ func requireSubsetWhenRestricted(parent, child []string, code, message string) e
 func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return AuthenticatedToken{}, RuntimeError{Code: "auth_invalid_token", Message: "invalid token"}
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
 	}
 	prefix := raw
 	if len(prefix) > 16 {
@@ -330,20 +331,20 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	}
 	row, err := s.tokenRepo.GetByPrefix(prefix)
 	if err == storage.ErrNotFound {
-		return AuthenticatedToken{}, RuntimeError{Code: "auth_invalid_token", Message: "invalid token"}
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
 	}
 	if err != nil {
 		return AuthenticatedToken{}, err
 	}
 	if !auth.VerifyTokenHash(raw, row.TokenHash) {
-		return AuthenticatedToken{}, RuntimeError{Code: "auth_invalid_token", Message: "invalid token"}
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
 	}
 	now := s.clock.Unix()
 	if row.RevokedAt != nil {
-		return AuthenticatedToken{}, RuntimeError{Code: "auth_token_revoked", Message: "token revoked"}
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthTokenRevoked, Message: "token revoked"}
 	}
 	if row.ExpiresAt != nil && now > *row.ExpiresAt {
-		return AuthenticatedToken{}, RuntimeError{Code: "auth_token_expired", Message: "token expired"}
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthTokenExpired, Message: "token expired"}
 	}
 	user, err := s.userRepo.GetByID(row.UserID)
 	if err != nil {
@@ -379,7 +380,7 @@ func (s *Service) resolveTokenTargetUser(ref string) (storage.User, error) {
 		return storage.User{}, err
 	}
 	if user.ID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
-		return storage.User{}, PermissionError{Code: "permission_denied", Message: "permission denied"}
+		return storage.User{}, PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 	return user, nil
 }
@@ -393,7 +394,7 @@ func (s *Service) resolveTokenListUser(ref string) (storage.User, error) {
 		return storage.User{}, err
 	}
 	if user.ID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
-		return storage.User{}, PermissionError{Code: "permission_denied", Message: "permission denied"}
+		return storage.User{}, PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 	return user, nil
 }
@@ -548,7 +549,7 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 
 	// 只有 token 的 owner 或 admin/owner 角色可以修改，与 RevokeToken 保持一致。
 	if existing.UserID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
-		return nil, PermissionError{Code: "permission_denied", Message: "permission denied"}
+		return nil, PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 
 	if existing.RevokedAt != nil {
@@ -623,7 +624,7 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 			return nil, RuntimeError{Code: "token_scope_invalid", Message: err.Error()}
 		}
 		if scopes.Has(auth.ScopeImpersonate) && !tokenManageAllowed(s.runtime.Role) {
-			return nil, RuntimeError{Code: "token_scope_denied", Message: "only admin or owner can assign impersonate scope"}
+			return nil, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "only admin or owner can assign impersonate scope"}
 		}
 		// 越权防护由 resolveTokenWorkspaces 的角色校验承担；modify 无父 token 概念，不调 enforceTokenCreateLimit。
 		sj, _ := marshalStringSlice(scopes.Values())

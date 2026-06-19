@@ -76,15 +76,15 @@ func requestScopeProjectFilterExpr(scope *RequestScope) query.Expr {
 func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (AuthorizedRequest, error) {
 	scope := NewRequestScope(input.Token.Token)
 	if !scope.HasCapability(input.RequiredCapability) {
-		return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "token scope denied"}
+		return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "token scope denied"}
 	}
 	subjectUserRef := strings.TrimSpace(input.SubjectUserRef)
 	if subjectUserRef != "" {
 		if input.Token.Token.Type != auth.TokenTypeAgent {
-			return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "impersonation requires agent token"}
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "impersonation requires agent token"}
 		}
 		if !scope.HasCapability(auth.ScopeImpersonate) {
-			return AuthorizedRequest{}, RuntimeError{Code: "token_scope_denied", Message: "token does not have impersonate scope"}
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "token does not have impersonate scope"}
 		}
 	}
 
@@ -120,15 +120,15 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	var delegatorUserID string
 	if subjectUserRef != "" {
 		if workspaceRef == "" && scope.RestrictsWorkspaces() && len(scope.WorkspaceIDs) > 1 {
-			return AuthorizedRequest{}, RuntimeError{Code: "workspace_required", Message: "workspace must be specified for impersonation with multiple visible workspaces"}
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeWorkspaceRequired, Message: "workspace must be specified for impersonation with multiple visible workspaces"}
 		}
 		subjectUser, err = s.resolveUser(subjectUserRef)
 		if err != nil {
-			return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "impersonation target user not found"}
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeMembershipNotFound, Message: "impersonation target user not found"}
 		}
 		_, err = s.memberRepo.Get(subjectUser.ID, workspace.ID)
 		if err == storage.ErrNotFound {
-			return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "impersonation target is not a member of workspace"}
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeMembershipNotFound, Message: "impersonation target is not a member of workspace"}
 		}
 		if err != nil {
 			return AuthorizedRequest{}, err
@@ -141,7 +141,7 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 
 	member, err := s.memberRepo.Get(subjectUser.ID, workspace.ID)
 	if err == storage.ErrNotFound {
-		return AuthorizedRequest{}, RuntimeError{Code: "membership_not_found", Message: "user is not a member of workspace"}
+		return AuthorizedRequest{}, RuntimeError{Code: authz.CodeMembershipNotFound, Message: "user is not a member of workspace"}
 	}
 	if err != nil {
 		return AuthorizedRequest{}, err
@@ -233,10 +233,10 @@ func (s *Service) resolveRequestWorkspace(user storage.User, scope RequestScope,
 			return storage.Workspace{}, err
 		}
 		if workspace.ArchivedAt != nil {
-			return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+			return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
 		}
 		if !scope.AllowsWorkspace(workspace.ID) {
-			return storage.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access workspace"}
+			return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "token cannot access workspace"}
 		}
 		return workspace, nil
 	}
@@ -246,22 +246,22 @@ func (s *Service) resolveRequestWorkspace(user storage.User, scope RequestScope,
 			return storage.Workspace{}, err
 		}
 		if workspace.ArchivedAt != nil {
-			return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+			return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
 		}
 		return workspace, nil
 	}
 	if user.DefaultWorkspaceID == nil || strings.TrimSpace(*user.DefaultWorkspaceID) == "" {
-		return storage.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "workspace must be specified"}
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "workspace must be specified"}
 	}
 	workspace, err := s.workspaceRepo.GetByID(*user.DefaultWorkspaceID)
 	if err != nil {
 		return storage.Workspace{}, err
 	}
 	if workspace.ArchivedAt != nil {
-		return storage.Workspace{}, RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
 	}
 	if !scope.AllowsWorkspace(workspace.ID) {
-		return storage.Workspace{}, RuntimeError{Code: "workspace_scope_denied", Message: "token cannot access default workspace; specify workspace"}
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "token cannot access default workspace; specify workspace"}
 	}
 	return workspace, nil
 }
@@ -276,7 +276,7 @@ func (s *Service) resolveRequestProject(workspaceID string, scope RequestScope, 
 		return nil, err
 	}
 	if !scope.AllowsProject(project.ID) {
-		return nil, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return nil, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	return &project, nil
 }
@@ -313,14 +313,14 @@ func (s *Service) ensureWritableTaskScope(tsk task.Task) error {
 	if s.allowsProjectID(tsk.ProjectID) {
 		return nil
 	}
-	return RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+	return RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 }
 
 func (s *Service) ensureProjectScope(projectID *string) error {
 	if s.allowsProjectID(projectID) {
 		return nil
 	}
-	return RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+	return RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 }
 
 func (s *Service) resolveTargetForRead(target string) (task.Task, error) {

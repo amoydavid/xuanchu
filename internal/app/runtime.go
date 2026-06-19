@@ -68,12 +68,12 @@ func ResolveRuntimeContext(store *storage.Store, userRepo *storage.UserRepositor
 		return RuntimeContext{}, err
 	}
 	if workspace.ArchivedAt != nil {
-		return RuntimeContext{}, RuntimeError{Code: "workspace_archived", Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+		return RuntimeContext{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
 	}
 
 	member, err := memberRepo.Get(user.ID, workspace.ID)
 	if err == storage.ErrNotFound {
-		return RuntimeContext{}, RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", user.Name, workspace.Slug)}
+		return RuntimeContext{}, RuntimeError{Code: authz.CodeMembershipNotFound, Message: fmt.Sprintf("user %q is not a member of workspace %q", user.Name, workspace.Slug)}
 	}
 	if err != nil {
 		return RuntimeContext{}, err

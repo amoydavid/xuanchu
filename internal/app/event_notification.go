@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -67,7 +68,7 @@ func (s *Service) AddEventNotificationRule(input EventNotificationRuleAddInput) 
 		}
 		projectID = &project.ID
 	} else if s.hasProjectScope() {
-		return EventNotificationRuleView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot create workspace scoped notification rule"}
+		return EventNotificationRuleView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot create workspace scoped notification rule"}
 	}
 	name, sink, recipientIDs, eventType, filterSource, audience, err := s.normalizeEventNotificationRuleFields(input)
 	if err != nil {
@@ -184,7 +185,7 @@ func (s *Service) ModifyEventNotificationRule(ruleID string, input EventNotifica
 		return EventNotificationRuleView{}, RuntimeError{Code: "notification_rule_not_found", Message: "notification rule not found"}
 	}
 	if !s.allowsProjectID(row.ProjectID) {
-		return EventNotificationRuleView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return EventNotificationRuleView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	candidate := eventNotificationRuleAddInputFromRow(row)
 	var projectID = row.ProjectID
@@ -192,7 +193,7 @@ func (s *Service) ModifyEventNotificationRule(ruleID string, input EventNotifica
 		candidate.ProjectRef = strings.TrimSpace(*input.ProjectRef)
 		if candidate.ProjectRef == "" {
 			if s.hasProjectScope() {
-				return EventNotificationRuleView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot create workspace scoped notification rule"}
+				return EventNotificationRuleView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot create workspace scoped notification rule"}
 			}
 			projectID = nil
 		} else {
@@ -277,7 +278,7 @@ func (s *Service) DeleteEventNotificationRule(ruleID string) error {
 		return RuntimeError{Code: "notification_rule_not_found", Message: "notification rule not found"}
 	}
 	if !s.allowsProjectID(row.ProjectID) {
-		return RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	return s.withAudit("notification.rule.delete", func(tx *Service) (AuditEntry, error) {
 		if err := tx.eventNotificationRuleRepo.Delete(ruleID); err != nil {
@@ -299,7 +300,7 @@ func (s *Service) toggleEventNotificationRule(ruleID string, enabled bool, actio
 		return EventNotificationRuleView{}, RuntimeError{Code: "notification_rule_not_found", Message: "notification rule not found"}
 	}
 	if !s.allowsProjectID(row.ProjectID) {
-		return EventNotificationRuleView{}, RuntimeError{Code: "project_scope_denied", Message: "token cannot access project"}
+		return EventNotificationRuleView{}, RuntimeError{Code: authz.CodeProjectScopeDenied, Message: "token cannot access project"}
 	}
 	row.Enabled = &enabled
 	row.ModifiedAt = s.clock.Unix()

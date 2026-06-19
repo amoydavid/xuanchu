@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -169,7 +170,7 @@ func (s *Service) AdminCreateWorkspaceAdmin(input AdminCreateWorkspaceAdminInput
 			return err
 		}
 		if workspace.ArchivedAt != nil {
-			return RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+			return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
 		}
 		user, err := txSvc.findOrCreateAdminOwner(name, email)
 		if err != nil {
@@ -262,14 +263,14 @@ func (s *Service) AdminCreateWorkspaceAgentToken(input AdminCreateAgentTokenInpu
 			return err
 		}
 		if workspace.ArchivedAt != nil {
-			return RuntimeError{Code: "workspace_archived", Message: "workspace is archived"}
+			return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
 		}
 		user, err := txSvc.resolveAdminAgentTokenUser(workspace, input.UserRef)
 		if err != nil {
 			return err
 		}
 		if _, err := txSvc.memberRepo.Get(user.ID, workspace.ID); err == storage.ErrNotFound {
-			return RuntimeError{Code: "membership_not_found", Message: fmt.Sprintf("user %q is not a member of workspace %q", user.Name, workspace.Slug)}
+			return RuntimeError{Code: authz.CodeMembershipNotFound, Message: fmt.Sprintf("user %q is not a member of workspace %q", user.Name, workspace.Slug)}
 		} else if err != nil {
 			return err
 		}
