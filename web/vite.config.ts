@@ -7,7 +7,7 @@ import { defineConfig, loadEnv } from "vite"
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
-  const apiTarget = env.VITE_XUANCHU_API_TARGET || "http://127.0.0.1:8080"
+  const apiTarget = env.VITE_XUANCHU_API_TARGET || "http://127.0.0.1:9090"
   const consoleBase = env.VITE_XUANCHU_CONSOLE_BASE || "/"
   const normalizedConsoleBase = consoleBase.endsWith("/")
     ? consoleBase

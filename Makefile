@@ -13,6 +13,7 @@ WEB_DIR := web
 .PHONY: all build build-linux build-darwin build-release \
         test lint vet clean install \
         web-console-build web-console-check web-console-dev \
+        dev \
         $(BINARY)
 
 all: build
@@ -40,6 +41,11 @@ web-console-check: ## 检查 Web Admin Console 前端
 
 web-console-dev: ## 启动 Web Admin Console 开发服务器
 	cd $(WEB_DIR) && pnpm dev
+
+# 监听地址可通过 LISTEN=127.0.0.1:9090 make dev 覆盖
+LISTEN ?= 127.0.0.1:9090
+dev: ## 用 go run 启动开发服务器，读取项目根目录下的 config.toml
+	go run $(CMD) --config config.toml server --listen $(LISTEN)
 
 build-release: web-console-build ## 发布构建：linux/amd64 + linux/arm64 + darwin/arm64
 	@mkdir -p $(DIST_DIR)
