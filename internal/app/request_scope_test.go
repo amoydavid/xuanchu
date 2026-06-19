@@ -682,6 +682,45 @@ func TestAuthorizeTokenRequestImpersonationWorkspaceRequiredMultiWorkspace(t *te
 	assertRuntimeCode(t, err, "workspace_required")
 }
 
+func TestAuthorizeTokenRequestRejectsInsufficientRole(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	viewerUser := mustCreateUserRecord(t, store, storage.User{
+		ID: "user-viewer-role", Name: "viewer-role", CreatedAt: 100, ModifiedAt: 100,
+	})
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustUpsertMembershipRecord(t, store, storage.Membership{
+		UserID: viewerUser.ID, WorkspaceID: ws.ID,
+		Role: string(RoleViewer), JoinedAt: 100, ModifiedAt: 100,
+	})
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "imp-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:write", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// impersonation 到 viewer，但要求 task.write；viewer 没有 task.write 角色权限，
+	// 应返回 permission_denied。
+	_, err = ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:write",
+		RequiredPermission: PermissionTaskWrite,
+		WorkspaceRef:       "local",
+		SubjectUserRef:     "viewer-role",
+	})
+	assertRuntimeCode(t, err, "permission_denied")
+}
+
 func TestImpersonatedTaskActionRecordsDelegatorInAudit(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
