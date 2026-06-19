@@ -116,7 +116,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		Store:        f.Store,
 		Clock:        f.Clock,
 		Runtime:      &authorized.Runtime,
-		RequestScope: &authorized.Scope,
+		RequestScope: &authorized.Decision.RequestScope,
 	})
 	if err != nil {
 		return nil, err

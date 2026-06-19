@@ -171,6 +171,60 @@ func TestRuntimeFactoryServiceForHTTPProjectIDSelectsOwningWorkspace(t *testing.
 	}
 }
 
+// TestServiceForHTTPUsesImpersonationDecision 验证 HTTP MCP 经授权 Decision 后，
+// runtime 的 actor 为 subject，且 delegator 字段被填充。
+func TestServiceForHTTPUsesImpersonationDecision(t *testing.T) {
+	store := newMCPTestStore(t)
+	owner := newMCPTestService(t, store)
+	alice, err := storage.NewUserRepository(store.DB()).Create(storage.User{
+		ID: "user-alice-mcp", Name: "alice-mcp", CreatedAt: 100, ModifiedAt: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.NewMemberRepository(store.DB()).Upsert(storage.Membership{
+		UserID: alice.ID, WorkspaceID: ws.ID,
+		Role: string(app.RoleMember), JoinedAt: 100, ModifiedAt: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := owner.CreateToken(app.CreateTokenInput{
+		Name:          "imp-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	req.Header.Set("X-Xuanchu-As", "alice-mcp")
+	factory := RuntimeFactory{Store: store, Clock: testClock{now: 100}}
+
+	svc, err := factory.ServiceForHTTP(req, RequestScopeInput{Workspace: "local"}, "task:read", app.PermissionTaskRead)
+	if err != nil {
+		t.Fatalf("ServiceForHTTP() error = %v", err)
+	}
+	rt := svc.Runtime()
+	if rt.ActorUserID != alice.ID {
+		t.Fatalf("actor = %q, want subject %q", rt.ActorUserID, alice.ID)
+	}
+	if rt.DelegatorTokenID != created.View.ID {
+		t.Fatalf("delegator token = %q, want %q", rt.DelegatorTokenID, created.View.ID)
+	}
+	if rt.DelegatorUserID == "" {
+		t.Fatal("delegator user id is empty")
+	}
+	if rt.Role != app.RoleMember {
+		t.Fatalf("role = %q, want member", rt.Role)
+	}
+}
+
 func assertMCPRuntimeCode(t *testing.T, err error, want string) {
 	t.Helper()
 	if err == nil {
