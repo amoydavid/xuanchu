@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/mcpserver"
 	"git.dajee.net/dajee/xuanchu/internal/webconsole"
 	"github.com/go-chi/chi/v5"
@@ -38,8 +39,12 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.Post("/api/v1/admin/setup", s.handleAdminSetup)
 	api.With(s.adminAuthMiddleware).Get("/api/v1/admin/session", s.handleAdminSession)
 	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces", s.handleAdminWorkspaceCreate)
+	api.With(s.adminAuthMiddleware).Get("/api/v1/admin/workspaces", s.handleAdminWorkspaceList)
+	api.With(s.adminAuthMiddleware).Get("/api/v1/admin/workspaces/{workspace}", s.handleAdminWorkspaceInfo)
 	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces/{workspace}/admins", s.handleAdminWorkspaceAdminCreate)
 	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces/{workspace}/agent-tokens", s.handleAdminAgentTokenCreate)
+	api.With(s.adminAuthMiddleware).Post("/api/v1/admin/workspaces/{workspace}/acting-sessions", s.handleAdminActingSessionCreate)
+	api.With(s.adminAuthMiddleware).Delete("/api/v1/admin/acting-sessions/{sessionID}", s.handleAdminActingSessionRevoke)
 	api.With(s.adminAuthMiddleware).Get("/api/v1/admin/tokens", s.handleAdminTokenList)
 	api.With(s.adminAuthMiddleware).Patch("/api/v1/admin/tokens/{tokenRef}", s.handleAdminTokenModify)
 	api.With(s.adminAuthMiddleware).Delete("/api/v1/admin/tokens/{tokenRef}", s.handleAdminTokenRevoke)
@@ -144,7 +149,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	api.With(s.authMiddleware).Get("/api/v1/notification-deliveries", s.handleNotificationDeliveryList)
 	api.With(s.authMiddleware).Get("/api/v1/notification-deliveries/{deliveryID}", s.handleNotificationDeliveryInfo)
 	api.With(s.authMiddleware).Post("/api/v1/notification-deliveries/{deliveryID}/replay", s.handleNotificationDeliveryReplay)
-	api.With(s.mcpHostProtectionMiddleware, s.authMiddleware).Handle("/mcp", s.handleMCP())
+	api.With(s.mcpHostProtectionMiddleware, s.authMiddleware, s.rejectActingTokenMiddleware).Handle("/mcp", s.handleMCP())
 
 	if s.console.Enabled {
 		handler := s.consoleHandler()
@@ -195,6 +200,21 @@ func (s *Server) handleMCP() http.Handler {
 			Shutdown: s.shutdown,
 		})
 	}, opts)
+}
+
+// rejectActingTokenMiddleware 拒绝 acting token（xuanchu_act_）访问受保护端点。
+// acting token 是浏览器短期委托凭证，只面向普通 HTTP API；
+// HTTP MCP 和任何明确不信任 acting token 的端点都应挂上该中间件。
+func (s *Server) rejectActingTokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if authn, ok := authFromContext(r.Context()); ok {
+			if authn.Authn.Token.Type == auth.TokenTypeAdminActing {
+				writeError(w, http.StatusUnauthorized, "admin_acting_not_allowed", "acting token is not allowed on this endpoint", nil)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) mcpHostProtectionMiddleware(next http.Handler) http.Handler {

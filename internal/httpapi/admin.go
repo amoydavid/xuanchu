@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type adminCreateWorkspaceRequest struct {
@@ -54,8 +55,12 @@ func (s *Server) handleAdminSession(w http.ResponseWriter, r *http.Request) {
 		"token_name": admin.TokenName,
 		"capabilities": []string{
 			"workspace:create",
+			"workspace:list",
+			"workspace:read",
 			"workspace_admin:create",
 			"agent_token:create",
+			"acting_session:create",
+			"acting_session:revoke",
 			"token:list",
 			"token:modify",
 			"token:revoke",
@@ -199,6 +204,231 @@ func parseAdminTokenTTL(w http.ResponseWriter, req adminCreateAgentTokenRequest)
 		return &value, true
 	}
 	return nil, true
+}
+
+// adminWorkspaceSummaryResponse 是 admin workspace 列表的一行。
+type adminWorkspaceSummaryResponse struct {
+	ID           string               `json:"id"`
+	Slug         string               `json:"slug"`
+	Name         string               `json:"name"`
+	Description  string               `json:"description"`
+	Visibility   string               `json:"visibility"`
+	CreatedBy    *task.JSONUserInfo   `json:"created_by,omitempty"`
+	MemberCounts adminMemberCounts    `json:"member_counts"`
+	TokenCounts  adminTokenCounts     `json:"token_counts"`
+	ArchivedAt   *int64               `json:"archived_at,omitempty"`
+	CreatedAt    int64                `json:"created_at"`
+	ModifiedAt   int64                `json:"modified_at"`
+}
+
+type adminMemberCounts struct {
+	Owner  int64 `json:"owner"`
+	Admin  int64 `json:"admin"`
+	Member int64 `json:"member"`
+	Viewer int64 `json:"viewer"`
+}
+
+type adminTokenCounts struct {
+	Active  int64 `json:"active"`
+	Expired int64 `json:"expired"`
+	Revoked int64 `json:"revoked"`
+}
+
+type adminWorkspaceMemberResponse struct {
+	User       task.JSONUserInfo `json:"user"`
+	Role       string            `json:"role"`
+	JoinedAt   int64             `json:"joined_at"`
+	ModifiedAt int64             `json:"modified_at"`
+}
+
+type adminActingCandidateResponse struct {
+	User task.JSONUserInfo `json:"user"`
+	Role string            `json:"role"`
+}
+
+type adminWorkspaceDetailResponse struct {
+	Workspace        workspaceResponse               `json:"workspace"`
+	Members          []adminWorkspaceMemberResponse  `json:"members"`
+	TokenCounts      adminTokenCounts                `json:"token_counts"`
+	ActingCandidates []adminActingCandidateResponse  `json:"acting_candidates"`
+}
+
+type adminCreateActingSessionRequest struct {
+	User       string `json:"user,omitempty"`
+	ExpiresIn  string `json:"expires_in,omitempty"`
+	ExpiresInSeconds *int64 `json:"expires_in_seconds,omitempty"`
+}
+
+type adminActingSessionResponse struct {
+	Token          string             `json:"token"`
+	ExpiresAt      int64              `json:"expires_at"`
+	Workspace      workspaceResponse  `json:"workspace"`
+	Actor          task.JSONUserInfo  `json:"actor"`
+	Role           string             `json:"role"`
+	AdminTokenName string             `json:"admin_token_name"`
+}
+
+func newAdminWorkspaceService(s *Server, r *http.Request) (*app.Service, error) {
+	return app.NewService(app.ServiceOptions{
+		Store:                 s.store,
+		Clock:                 s.effectiveClock(),
+		Runtime:               &app.RuntimeContext{ActorName: "server-admin"},
+		DisableScopeBootstrap: true,
+	})
+}
+
+func (s *Server) handleAdminWorkspaceList(w http.ResponseWriter, r *http.Request) {
+	svc, err := newAdminWorkspaceService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := svc.AdminListWorkspaces(r.URL.Query().Get("all") == "true")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]adminWorkspaceSummaryResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, adminWorkspaceSummaryResponseFromView(row))
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleAdminWorkspaceInfo(w http.ResponseWriter, r *http.Request) {
+	svc, err := newAdminWorkspaceService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	detail, err := svc.AdminWorkspaceInfo(chi.URLParam(r, "workspace"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	members := make([]adminWorkspaceMemberResponse, 0, len(detail.Members))
+	for _, m := range detail.Members {
+		members = append(members, adminWorkspaceMemberResponse{
+			User:       task.UserInfoToJSON(m.User),
+			Role:       string(m.Role),
+			JoinedAt:   m.JoinedAt,
+			ModifiedAt: m.ModifiedAt,
+		})
+	}
+	candidates := make([]adminActingCandidateResponse, 0, len(detail.ActingCandidates))
+	for _, c := range detail.ActingCandidates {
+		candidates = append(candidates, adminActingCandidateResponse{
+			User: task.UserInfoToJSON(c.User),
+			Role: string(c.Role),
+		})
+	}
+	writeSuccess(w, http.StatusOK, adminWorkspaceDetailResponse{
+		Workspace:        workspaceResponseFromView(detail.Workspace),
+		Members:          members,
+		TokenCounts:      adminTokenCounts(detail.TokenCounts),
+		ActingCandidates: candidates,
+	}, nil)
+}
+
+func (s *Server) handleAdminActingSessionCreate(w http.ResponseWriter, r *http.Request) {
+	var req adminCreateActingSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	ttl, ok := parseAdminActingTTL(w, req)
+	if !ok {
+		return
+	}
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := newAdminWorkspaceService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	created, err := svc.AdminCreateActingSession(app.AdminCreateActingSessionInput{
+		AdminTokenID:   admin.TokenID,
+		AdminTokenName: admin.TokenName,
+		WorkspaceRef:   chi.URLParam(r, "workspace"),
+		UserRef:        req.User,
+		ExpiresIn:      ttl,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, adminActingSessionResponse{
+		Token:          created.Token,
+		ExpiresAt:      created.ExpiresAt,
+		Workspace:      workspaceResponseFromView(created.Workspace),
+		Actor:          task.UserInfoToJSON(created.Actor),
+		Role:           string(created.Role),
+		AdminTokenName: created.AdminTokenName,
+	}, nil)
+}
+
+func (s *Server) handleAdminActingSessionRevoke(w http.ResponseWriter, r *http.Request) {
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := newAdminWorkspaceService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := svc.AdminRevokeActingSession(chi.URLParam(r, "sessionID"), admin.TokenName); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func parseAdminActingTTL(w http.ResponseWriter, req adminCreateActingSessionRequest) (*time.Duration, bool) {
+	if req.ExpiresIn != "" {
+		value, err := time.ParseDuration(req.ExpiresIn)
+		if err != nil || value <= 0 {
+			writeError(w, http.StatusBadRequest, "admin_token_ttl_invalid", "expires_in is invalid", nil)
+			return nil, false
+		}
+		return &value, true
+	}
+	if req.ExpiresInSeconds != nil {
+		if *req.ExpiresInSeconds <= 0 {
+			writeError(w, http.StatusBadRequest, "admin_token_ttl_invalid", "expires_in_seconds is invalid", nil)
+			return nil, false
+		}
+		value := time.Duration(*req.ExpiresInSeconds) * time.Second
+		return &value, true
+	}
+	return nil, true
+}
+
+func adminWorkspaceSummaryResponseFromView(row app.AdminWorkspaceSummaryView) adminWorkspaceSummaryResponse {
+	var createdBy *task.JSONUserInfo
+	if row.CreatedBy != nil {
+		jui := task.UserInfoToJSON(*row.CreatedBy)
+		createdBy = &jui
+	}
+	return adminWorkspaceSummaryResponse{
+		ID:          row.ID,
+		Slug:        row.Slug,
+		Name:        row.Name,
+		Description: row.Description,
+		Visibility:  row.Visibility,
+		CreatedBy:   createdBy,
+		MemberCounts: adminMemberCounts{
+			Owner:  row.MemberCounts.Owner,
+			Admin:  row.MemberCounts.Admin,
+			Member: row.MemberCounts.Member,
+			Viewer: row.MemberCounts.Viewer,
+		},
+		TokenCounts: adminTokenCounts{
+			Active:  row.TokenCounts.Active,
+			Expired: row.TokenCounts.Expired,
+			Revoked: row.TokenCounts.Revoked,
+		},
+		ArchivedAt: row.ArchivedAt,
+		CreatedAt:  row.CreatedAt,
+		ModifiedAt: row.ModifiedAt,
+	}
 }
 
 func adminUserResponseFromView(user app.UserView) adminUserResponse {

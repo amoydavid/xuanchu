@@ -54,6 +54,16 @@ type CreatedToken struct {
 type AuthenticatedToken struct {
 	Token TokenView
 	User  storage.User
+	// AdminActingTrace 在 acting token 鉴权时填充，用于把 server admin 来源
+	// 透传到后续授权和审计。普通 PAT/Agent token 为 nil。
+	AdminActingTrace *AdminActingTrace
+}
+
+// AdminActingTrace 携带 acting session 的委托链信息，授权时拷贝到 RuntimeContext。
+type AdminActingTrace struct {
+	SessionID               string
+	DelegatorAdminTokenID   *string
+	DelegatorAdminTokenName string
 }
 
 type createTokenStoredInput struct {
@@ -325,6 +335,9 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	if raw == "" {
 		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
 	}
+	if strings.HasPrefix(raw, auth.ActingTokenPrefix) {
+		return s.authenticateActingToken(raw)
+	}
 	prefix := raw
 	if len(prefix) > 16 {
 		prefix = prefix[:16]
@@ -369,6 +382,88 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 		Token: tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs),
 		User:  user,
 	}, nil
+}
+
+// authenticateActingToken 解析 xuanchu_act_ 前缀的短期 acting token。
+// 与普通 token 的差异：走 admin_acting_sessions；拒绝 revoked/expired；
+// workspace scope 只绑定 session 中的单一 workspace；type 为 admin_acting；
+// 携带 AdminActingTrace 供后续授权把 server admin 来源写入 audit。
+// 注意：不信任 session.Role 快照；实际授权由 AuthorizeTokenRequest 用当前 membership role 决定。
+func (s *Service) authenticateActingToken(raw string) (AuthenticatedToken, error) {
+	prefix := raw
+	if len(prefix) > 16 {
+		prefix = prefix[:16]
+	}
+	session, err := s.adminActingSessionRepo.GetByPrefix(prefix)
+	if err == storage.ErrNotFound {
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
+	}
+	if err != nil {
+		return AuthenticatedToken{}, err
+	}
+	if !auth.VerifyActingToken(raw, session.TokenHash) {
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
+	}
+	now := s.clock.Unix()
+	if session.RevokedAt != nil {
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "acting session revoked"}
+	}
+	if session.ExpiresAt <= now {
+		return AuthenticatedToken{}, RuntimeError{Code: "admin_acting_session_expired", Message: "acting session expired"}
+	}
+	user, err := s.userRepo.GetByID(session.ActorUserID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
+		}
+		return AuthenticatedToken{}, err
+	}
+	// acting token 的能力上限 = HTTP console 的全部 scope（剥离 impersonate）。
+	scopes := auth.ScopeRegistryValues()
+	filtered := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if scope == auth.ScopeImpersonate {
+			continue
+		}
+		filtered = append(filtered, scope)
+	}
+	_ = s.adminActingSessionRepo.TouchLastUsed(session.ID, now)
+	view := TokenView{
+		ID:           session.ID,
+		Prefix:       session.TokenPrefix,
+		Name:         "admin-acting-" + session.AdminTokenName,
+		Type:         auth.TokenTypeAdminActing,
+		User:         task.UserInfo{ID: user.ID},
+		WorkspaceIDs: []string{session.WorkspaceID},
+		ProjectIDs:   nil,
+		Scopes:       filtered,
+		CreatedAt:    session.CreatedAt,
+		ExpiresAt:    &session.ExpiresAt,
+		LastUsedAt:   ptrInt64From(session.LastUsedAt, now),
+	}
+	return AuthenticatedToken{
+		Token: view,
+		User:  user,
+		AdminActingTrace: &AdminActingTrace{
+			SessionID:               session.ID,
+			DelegatorAdminTokenID:   session.AdminTokenID,
+			DelegatorAdminTokenName: session.AdminTokenName,
+		},
+	}, nil
+}
+
+func ptrInt64From(value *int64, fallback int64) *int64 {
+	if value != nil {
+		return value
+	}
+	return &fallback
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func (s *Service) resolveTokenTargetUser(ref string) (storage.User, error) {

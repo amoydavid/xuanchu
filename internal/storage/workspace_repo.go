@@ -40,6 +40,43 @@ func (r *WorkspaceRepository) GetBySlug(slug string) (Workspace, error) {
 	return r.find("slug = ?", slug)
 }
 
+// ListAll 返回全部 workspace（跨用户），供 server admin 管控用。
+// includeArchived=false 时只返回未归档 workspace，与 ListVisibleForUser 的归档语义一致。
+func (r *WorkspaceRepository) ListAll(includeArchived bool) ([]Workspace, error) {
+	query := r.db.Model(&Workspace{})
+	if !includeArchived {
+		query = query.Where("archived_at IS NULL")
+	}
+	query = query.Order("slug ASC")
+	var rows []Workspace
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// CountMembersByRole 返回 workspace 内每个 role 的成员数，供 admin 控制面摘要用。
+// 只统计 owner/admin/member/viewer 四种 role。
+func (r *WorkspaceRepository) CountMembersByRole(workspaceID string) (map[string]int64, error) {
+	type counts struct {
+		Role  string
+		Count int64
+	}
+	var rows []counts
+	if err := r.db.Table("memberships").
+		Select("role, count(*) as count").
+		Where("workspace_id = ?", workspaceID).
+		Group("role").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := map[string]int64{"owner": 0, "admin": 0, "member": 0, "viewer": 0}
+	for _, row := range rows {
+		out[row.Role] = row.Count
+	}
+	return out, nil
+}
+
 func (r *WorkspaceRepository) ListVisibleForUser(userID string, includeArchived bool) ([]WorkspaceWithRole, error) {
 	type row struct {
 		Workspace

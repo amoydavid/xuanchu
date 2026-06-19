@@ -84,6 +84,10 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 	subjectUserRef := strings.TrimSpace(input.SubjectUserRef)
 	if subjectUserRef != "" {
+		// acting token 是浏览器短期委托凭证，不允许与 X-Xuanchu-As 组合做 impersonation。
+		if input.Token.Token.Type == auth.TokenTypeAdminActing {
+			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "acting token cannot impersonate"}
+		}
 		if input.Token.Token.Type != auth.TokenTypeAgent {
 			return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "impersonation requires agent token"}
 		}
@@ -188,6 +192,12 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 
 	runtime := runtimeContextFromDecision(decision)
+	// acting token 的 server admin 委托链需要透传到 audit，与普通 user-agent impersonation 独立。
+	if input.Token.AdminActingTrace != nil {
+		runtime.AdminActingSessionID = input.Token.AdminActingTrace.SessionID
+		runtime.DelegatorAdminTokenID = derefString(input.Token.AdminActingTrace.DelegatorAdminTokenID)
+		runtime.DelegatorAdminTokenName = input.Token.AdminActingTrace.DelegatorAdminTokenName
+	}
 	if err := requireRolePermission(runtime.Role, input.RequiredPermission); err != nil {
 		return AuthorizedRequest{}, err
 	}

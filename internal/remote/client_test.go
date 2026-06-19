@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +60,33 @@ func TestRemoteClientOmitsAsHeaderWhenEmpty(t *testing.T) {
 	}
 	if receivedAs != "" {
 		t.Fatalf("X-Xuanchu-As = %q, want empty", receivedAs)
+	}
+}
+
+func TestRemoteClientRejectsActingTokenPrefix(t *testing.T) {
+	_, err := NewClient(Options{
+		BaseURL: "http://127.0.0.1:8080",
+		Token:   "xuanchu_act_test",
+	})
+	if err == nil {
+		t.Fatal("expected error for acting token")
+	}
+	if !strings.Contains(err.Error(), "acting") {
+		t.Fatalf("error = %v, want acting token rejection", err)
+	}
+	// 错误应携带稳定的 code，便于上层识别。
+	if apiErr, ok := err.(APIError); !ok || apiErr.Code != "remote_acting_token_not_allowed" {
+		t.Fatalf("error = %v, want APIError with remote_acting_token_not_allowed", err)
+	}
+}
+
+func TestRemoteClientAcceptsPATAndAgentTokens(t *testing.T) {
+	for _, token := range []string{"xuanchu_pat_abc", "xuanchu_agent_def"} {
+		if _, err := NewClient(Options{
+			BaseURL: "http://127.0.0.1:8080",
+			Token:   token,
+		}); err != nil {
+			t.Fatalf("NewClient(%s) error = %v", token, err)
+		}
 	}
 }

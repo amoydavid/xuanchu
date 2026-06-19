@@ -28,6 +28,7 @@ type Service struct {
 	memberRepo                *storage.MemberRepository
 	auditRepo                 auditAppenderLister
 	tokenRepo                 *storage.TokenRepository
+	adminActingSessionRepo    adminActingSessionStore
 	contextRepo               *storage.ContextRepository
 	udaRepo                   *storage.UDARepository
 	hookRepo                  *storage.HookRepository
@@ -47,6 +48,16 @@ type Service struct {
 	clock                     Clock
 	reports                   report.Registry
 	disableContext            bool
+}
+
+// adminActingSessionStore 是 admin acting session 仓储在 app 层的最小接口。
+// 生产环境绑定 storage.AdminActingSessionRepository；测试可注入替代品。
+type adminActingSessionStore interface {
+	Create(storage.AdminActingSessionEntry) error
+	GetByPrefix(prefix string) (storage.AdminActingSessionEntry, error)
+	GetByID(id string) (storage.AdminActingSessionEntry, error)
+	TouchLastUsed(id string, ts int64) error
+	Revoke(id string, ts int64) error
 }
 
 type AddInput struct {
@@ -164,6 +175,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		memberRepo:                memberRepo,
 		auditRepo:                 auditRepo,
 		tokenRepo:                 storage.NewTokenRepository(opts.Store.DB()),
+		adminActingSessionRepo:    storage.NewAdminActingSessionRepository(opts.Store.DB()),
 		contextRepo:               storage.NewContextRepository(opts.Store.DB()),
 		udaRepo:                   storage.NewUDARepository(opts.Store.DB()),
 		hookRepo:                  storage.NewHookRepository(opts.Store.DB()),
@@ -211,6 +223,13 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 		clone.auditRepo = storage.NewAuditRepository(store.DB())
 	}
 	clone.tokenRepo = storage.NewTokenRepository(store.DB())
+	// 测试可注入自定义 acting session 仓储；生产路径使用 tx 绑定的仓储。
+	if prod, ok := s.adminActingSessionRepo.(*storage.AdminActingSessionRepository); ok || s.adminActingSessionRepo == nil {
+		_ = prod
+		clone.adminActingSessionRepo = storage.NewAdminActingSessionRepository(store.DB())
+	} else {
+		clone.adminActingSessionRepo = s.adminActingSessionRepo
+	}
 	clone.contextRepo = storage.NewContextRepository(store.DB())
 	clone.udaRepo = storage.NewUDARepository(store.DB())
 	clone.hookRepo = storage.NewHookRepository(store.DB())

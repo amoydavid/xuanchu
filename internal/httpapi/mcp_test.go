@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +92,40 @@ func TestMCPRejectsUntrustedProxyHost(t *testing.T) {
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusForbidden, rr.Body.String())
 	}
+}
+
+func TestMCPRejectsActingToken(t *testing.T) {
+	fixture, _ := newAdminHTTPFixture(t)
+	// 创建一个 acting token。
+	createRR := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/admin/workspaces/dajee/acting-sessions", `{}`, map[string]string{
+		"Authorization": "Bearer xuanchu_admin_secret",
+		"Content-Type":  "application/json",
+	})
+	if createRR.Code != http.StatusCreated {
+		t.Fatalf("create acting session: status=%d body=%s", createRR.Code, createRR.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createRR.Body).Decode(&envelope); err != nil {
+		t.Fatal(err)
+	}
+	actingToken := envelope.Data.Token
+	if actingToken == "" {
+		t.Fatal("missing acting token")
+	}
+
+	// acting token 调用 /mcp 应被拒绝。
+	req := mcpLoopbackRequest(http.MethodPost, "/mcp", strings.NewReader(`{}`))
+	req.Host = "127.0.0.1"
+	req.Header.Set("Authorization", "Bearer "+actingToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	rr := httptest.NewRecorder()
+	fixture.server.Router().ServeHTTP(rr, req)
+	assertHTTPErrorCode(t, rr, http.StatusUnauthorized, "admin_acting_not_allowed")
 }
 
 func mcpLoopbackRequest(method, target string, body *strings.Reader) *http.Request {

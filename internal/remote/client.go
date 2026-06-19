@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 )
 
 type Client struct {
@@ -61,6 +63,12 @@ func NewClient(opts Options) (*Client, error) {
 	token := strings.TrimSpace(opts.Token)
 	if token == "" {
 		return nil, fmt.Errorf("remote token is required")
+	}
+	// acting token 是浏览器短期委托凭证，不开放给 remote CLI / 长期自动化。
+	// 这里在客户端侧拒绝 xuanchu_act_ 前缀，避免用户把浏览器委托误当机器 token。
+	// 调用者绕过 CLI 直接构造 HTTP 请求时，服务端仍按普通 HTTP acting 规则处理。
+	if strings.HasPrefix(token, auth.ActingTokenPrefix) {
+		return nil, APIError{Code: "remote_acting_token_not_allowed", Message: "acting token is not allowed for remote CLI; use a PAT or agent token"}
 	}
 	httpClient := opts.HTTPClient
 	if httpClient == nil {

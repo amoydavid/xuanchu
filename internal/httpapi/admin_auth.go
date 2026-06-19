@@ -9,6 +9,8 @@ import (
 )
 
 type adminAuthInfo struct {
+	// TokenID 是 DB 持久化 server admin token 的 ID；配置文件 hash token 无 ID 时为 nil。
+	TokenID *string
 	TokenName string
 }
 
@@ -44,7 +46,8 @@ func (s *Server) adminAuthMiddleware(next http.Handler) http.Handler {
 		if row, err := repo.GetByPrefix(prefix); err == nil {
 			if row.Enabled && row.RevokedAt == nil && auth.VerifyAdminToken(raw, row.TokenHash) {
 				_ = repo.TouchLastUsed(row.ID, s.effectiveClock().Unix())
-				ctx := context.WithValue(r.Context(), adminAuthContextKey{}, adminAuthInfo{TokenName: row.Name})
+				tokenID := row.ID
+				ctx := context.WithValue(r.Context(), adminAuthContextKey{}, adminAuthInfo{TokenID: &tokenID, TokenName: row.Name})
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
