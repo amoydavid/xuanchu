@@ -12,17 +12,20 @@ import (
 )
 
 type auditResponse struct {
-	ID               int64              `json:"id"`
-	Actor            *task.JSONUserInfo `json:"actor,omitempty"`
-	WorkspaceID      *string            `json:"workspace_id"`
-	ProjectID        *string            `json:"project_id"`
-	Action           string             `json:"action"`
-	TargetType       string             `json:"target_type"`
-	TargetID         string             `json:"target_id"`
-	Payload          json.RawMessage    `json:"payload,omitempty"`
-	DelegatorTokenID *string            `json:"delegator_token_id,omitempty"`
-	DelegatorUser    *task.JSONUserInfo `json:"delegator_user,omitempty"`
-	CreatedAt        int64              `json:"created_at"`
+	ID                      int64              `json:"id"`
+	Actor                   *task.JSONUserInfo `json:"actor,omitempty"`
+	WorkspaceID             *string            `json:"workspace_id"`
+	ProjectID               *string            `json:"project_id"`
+	Action                  string             `json:"action"`
+	TargetType              string             `json:"target_type"`
+	TargetID                string             `json:"target_id"`
+	Payload                 json.RawMessage    `json:"payload,omitempty"`
+	DelegatorTokenID        *string            `json:"delegator_token_id,omitempty"`
+	DelegatorUser           *task.JSONUserInfo `json:"delegator_user,omitempty"`
+	AdminActingSessionID    *string            `json:"admin_acting_session_id,omitempty"`
+	DelegatorAdminTokenID   *string            `json:"delegator_admin_token_id,omitempty"`
+	DelegatorAdminTokenName string             `json:"delegator_admin_token_name,omitempty"`
+	CreatedAt               int64              `json:"created_at"`
 }
 
 const auditMaxLimit = 1000
@@ -101,14 +104,17 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 	out := make([]auditResponse, 0, len(rows))
 	for _, row := range rows {
 		item := auditResponse{
-			ID:               row.ID,
-			WorkspaceID:      row.WorkspaceID,
-			ProjectID:        row.ProjectID,
-			Action:           row.Action,
-			TargetType:       row.TargetType,
-			TargetID:         row.TargetID,
-			DelegatorTokenID: row.DelegatorTokenID,
-			CreatedAt:        row.CreatedAt,
+			ID:                      row.ID,
+			WorkspaceID:             row.WorkspaceID,
+			ProjectID:               row.ProjectID,
+			Action:                  row.Action,
+			TargetType:              row.TargetType,
+			TargetID:                row.TargetID,
+			DelegatorTokenID:        row.DelegatorTokenID,
+			AdminActingSessionID:    row.AdminActingSessionID,
+			DelegatorAdminTokenID:   row.DelegatorAdminTokenID,
+			DelegatorAdminTokenName: row.DelegatorAdminTokenName,
+			CreatedAt:               row.CreatedAt,
 		}
 		if row.Actor != nil {
 			jui := task.UserInfoToJSON(*row.Actor)

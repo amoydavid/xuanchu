@@ -36,17 +36,20 @@ type Membership struct {
 }
 
 type AuditLog struct {
-	ID               int64   `gorm:"primaryKey;autoIncrement"`
-	ActorUserID      *string `gorm:"index"`
-	WorkspaceID      *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1"`
-	ProjectID        *string `gorm:"index:idx_audit_project_time,priority:2"`
-	Action           string  `gorm:"not null;index"`
-	TargetType       string
-	TargetID         string
-	PayloadJSON      string
-	DelegatorTokenID *string `gorm:"index"`
-	DelegatorUserID  *string `gorm:"index"`
-	CreatedAt        int64   `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc"`
+	ID                      int64   `gorm:"primaryKey;autoIncrement"`
+	ActorUserID             *string `gorm:"index"`
+	WorkspaceID             *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1"`
+	ProjectID               *string `gorm:"index:idx_audit_project_time,priority:2"`
+	Action                  string  `gorm:"not null;index"`
+	TargetType              string
+	TargetID                string
+	PayloadJSON             string
+	DelegatorTokenID        *string `gorm:"index"`
+	DelegatorUserID         *string `gorm:"index"`
+	AdminActingSessionID    *string `gorm:"index"`
+	DelegatorAdminTokenID   *string `gorm:"index"`
+	DelegatorAdminTokenName string
+	CreatedAt               int64   `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc"`
 }
 
 type Project struct {
@@ -123,6 +126,24 @@ type ServerAdminToken struct {
 	RevokedAt   *int64
 	LastUsedAt  *int64
 	Description string `gorm:"not null;default:''"`
+}
+
+// AdminActingSession 是 server admin 委托签发的短期 acting session。
+// acting token 只保存在当前浏览器 tab，不进入普通 api_tokens 表。
+// Role 是创建时的快照，只用于审计展示，不作为后续授权来源。
+type AdminActingSession struct {
+	ID             string `gorm:"primaryKey"`
+	TokenPrefix    string `gorm:"not null;uniqueIndex:idx_admin_acting_sessions_prefix"`
+	TokenHash      string `gorm:"not null"`
+	AdminTokenID   *string `gorm:"index"`
+	AdminTokenName string `gorm:"not null"`
+	WorkspaceID    string `gorm:"not null;index"`
+	ActorUserID    string `gorm:"not null;index"`
+	Role           string `gorm:"not null"`
+	CreatedAt      int64  `gorm:"not null"`
+	ExpiresAt      int64  `gorm:"not null;index"`
+	RevokedAt      *int64
+	LastUsedAt     *int64
 }
 
 type Context struct {

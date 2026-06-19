@@ -25,6 +25,11 @@ type RuntimeContext struct {
 	Role             Role
 	DelegatorTokenID string
 	DelegatorUserID  string
+	// 以下三个字段由 server admin acting session 委托链路填充，
+	// 与普通 user-agent impersonation 的 DelegatorTokenID/DelegatorUserID 独立。
+	AdminActingSessionID    string
+	DelegatorAdminTokenID   string
+	DelegatorAdminTokenName string
 }
 
 type ServiceOptions struct {

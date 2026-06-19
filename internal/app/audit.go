@@ -25,17 +25,20 @@ type AuditEntry struct {
 }
 
 type AuditLogView struct {
-	ID               int64
-	Actor            *task.UserInfo
-	WorkspaceID      *string
-	ProjectID        *string
-	Action           string
-	TargetType       string
-	TargetID         string
-	PayloadJSON      string
-	DelegatorTokenID *string
-	DelegatorUser    *task.UserInfo
-	CreatedAt        int64
+	ID                      int64
+	Actor                   *task.UserInfo
+	WorkspaceID             *string
+	ProjectID               *string
+	Action                  string
+	TargetType              string
+	TargetID                string
+	PayloadJSON             string
+	DelegatorTokenID        *string
+	DelegatorUser           *task.UserInfo
+	AdminActingSessionID    *string
+	DelegatorAdminTokenID   *string
+	DelegatorAdminTokenName string
+	CreatedAt               int64
 }
 
 func (s *Service) withAudit(action string, fn func(*Service) (AuditEntry, error)) error {
@@ -89,16 +92,19 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 				workspaceID = entry.WorkspaceID
 			}
 			row := storage.AuditLogEntry{
-				ActorUserID:      &txSvc.runtime.ActorUserID,
-				WorkspaceID:      workspaceID,
-				ProjectID:        entry.ProjectID,
-				Action:           entry.Action,
-				TargetType:       entry.TargetType,
-				TargetID:         entry.TargetID,
-				PayloadJSON:      "",
-				DelegatorTokenID: stringPtr(txSvc.runtime.DelegatorTokenID),
-				DelegatorUserID:  stringPtr(txSvc.runtime.DelegatorUserID),
-				CreatedAt:        txSvc.clock.Unix(),
+				ActorUserID:             &txSvc.runtime.ActorUserID,
+				WorkspaceID:             workspaceID,
+				ProjectID:               entry.ProjectID,
+				Action:                  entry.Action,
+				TargetType:              entry.TargetType,
+				TargetID:                entry.TargetID,
+				PayloadJSON:             "",
+				DelegatorTokenID:        stringPtr(txSvc.runtime.DelegatorTokenID),
+				DelegatorUserID:         stringPtr(txSvc.runtime.DelegatorUserID),
+				AdminActingSessionID:    stringPtr(txSvc.runtime.AdminActingSessionID),
+				DelegatorAdminTokenID:   stringPtr(txSvc.runtime.DelegatorAdminTokenID),
+				DelegatorAdminTokenName: txSvc.runtime.DelegatorAdminTokenName,
+				CreatedAt:               txSvc.clock.Unix(),
 			}
 			payload, err := marshalAuditPayload(entry.Payload)
 			if err != nil {
@@ -192,15 +198,18 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 	}
 	for _, row := range rows {
 		view := AuditLogView{
-			ID:               row.ID,
-			WorkspaceID:      row.WorkspaceID,
-			ProjectID:        row.ProjectID,
-			Action:           row.Action,
-			TargetType:       row.TargetType,
-			TargetID:         row.TargetID,
-			PayloadJSON:      row.PayloadJSON,
-			DelegatorTokenID: row.DelegatorTokenID,
-			CreatedAt:        row.CreatedAt,
+			ID:                      row.ID,
+			WorkspaceID:             row.WorkspaceID,
+			ProjectID:               row.ProjectID,
+			Action:                  row.Action,
+			TargetType:              row.TargetType,
+			TargetID:                row.TargetID,
+			PayloadJSON:             row.PayloadJSON,
+			DelegatorTokenID:        row.DelegatorTokenID,
+			AdminActingSessionID:    row.AdminActingSessionID,
+			DelegatorAdminTokenID:   row.DelegatorAdminTokenID,
+			DelegatorAdminTokenName: row.DelegatorAdminTokenName,
+			CreatedAt:               row.CreatedAt,
 		}
 		if row.ActorUserID != nil {
 			ui := userInfos[*row.ActorUserID]

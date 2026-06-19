@@ -10,17 +10,20 @@ import (
 var ErrInvalidAuditScope = errors.New("invalid audit scope")
 
 type AuditLogEntry struct {
-	ID               int64
-	ActorUserID      *string
-	WorkspaceID      *string
-	ProjectID        *string
-	Action           string
-	TargetType       string
-	TargetID         string
-	PayloadJSON      string
-	DelegatorTokenID *string
-	DelegatorUserID  *string
-	CreatedAt        int64
+	ID                      int64
+	ActorUserID             *string
+	WorkspaceID             *string
+	ProjectID               *string
+	Action                  string
+	TargetType              string
+	TargetID                string
+	PayloadJSON             string
+	DelegatorTokenID        *string
+	DelegatorUserID         *string
+	AdminActingSessionID    *string
+	DelegatorAdminTokenID   *string
+	DelegatorAdminTokenName string
+	CreatedAt               int64
 }
 
 type AuditListOptions struct {
@@ -40,17 +43,20 @@ func NewAuditRepository(db *gorm.DB) *AuditRepository {
 
 func (r *AuditRepository) Append(entry AuditLogEntry) error {
 	return r.db.Create(&AuditLog{
-		ID:               entry.ID,
-		ActorUserID:      entry.ActorUserID,
-		WorkspaceID:      entry.WorkspaceID,
-		ProjectID:        entry.ProjectID,
-		Action:           entry.Action,
-		TargetType:       entry.TargetType,
-		TargetID:         entry.TargetID,
-		PayloadJSON:      entry.PayloadJSON,
-		DelegatorTokenID: entry.DelegatorTokenID,
-		DelegatorUserID:  entry.DelegatorUserID,
-		CreatedAt:        entry.CreatedAt,
+		ID:                      entry.ID,
+		ActorUserID:             entry.ActorUserID,
+		WorkspaceID:             entry.WorkspaceID,
+		ProjectID:               entry.ProjectID,
+		Action:                  entry.Action,
+		TargetType:              entry.TargetType,
+		TargetID:                entry.TargetID,
+		PayloadJSON:             entry.PayloadJSON,
+		DelegatorTokenID:        entry.DelegatorTokenID,
+		DelegatorUserID:         entry.DelegatorUserID,
+		AdminActingSessionID:    entry.AdminActingSessionID,
+		DelegatorAdminTokenID:   entry.DelegatorAdminTokenID,
+		DelegatorAdminTokenName: entry.DelegatorAdminTokenName,
+		CreatedAt:               entry.CreatedAt,
 	}).Error
 }
 
@@ -76,17 +82,20 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 	out := make([]AuditLogEntry, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, AuditLogEntry{
-			ID:               row.ID,
-			ActorUserID:      row.ActorUserID,
-			WorkspaceID:      row.WorkspaceID,
-			ProjectID:        row.ProjectID,
-			Action:           row.Action,
-			TargetType:       row.TargetType,
-			TargetID:         row.TargetID,
-			PayloadJSON:      row.PayloadJSON,
-			DelegatorTokenID: row.DelegatorTokenID,
-			DelegatorUserID:  row.DelegatorUserID,
-			CreatedAt:        row.CreatedAt,
+			ID:                      row.ID,
+			ActorUserID:             row.ActorUserID,
+			WorkspaceID:             row.WorkspaceID,
+			ProjectID:               row.ProjectID,
+			Action:                  row.Action,
+			TargetType:              row.TargetType,
+			TargetID:                row.TargetID,
+			PayloadJSON:             row.PayloadJSON,
+			DelegatorTokenID:        row.DelegatorTokenID,
+			DelegatorUserID:         row.DelegatorUserID,
+			AdminActingSessionID:    row.AdminActingSessionID,
+			DelegatorAdminTokenID:   row.DelegatorAdminTokenID,
+			DelegatorAdminTokenName: row.DelegatorAdminTokenName,
+			CreatedAt:               row.CreatedAt,
 		})
 	}
 	return out, nil
