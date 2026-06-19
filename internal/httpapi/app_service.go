@@ -67,15 +67,20 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		Store:        s.store,
 		Clock:        s.effectiveClock(),
 		Runtime:      &authorized.Runtime,
-		RequestScope: &authorized.Scope,
+		RequestScope: &authorized.Decision.RequestScope,
 	})
 	if err != nil {
 		return nil, requestAuth{}, err
 	}
 	authn.EffectiveWorkspace = authorized.Workspace
-	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok && authorized.Runtime.DelegatorTokenID != "" {
-		state.delegatorUserID = authorized.Runtime.DelegatorUserID
-		state.delegatorTokenID = authorized.Runtime.DelegatorTokenID
+	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
+		state.actorID = authorized.Decision.Principal.UserID
+		state.workspaceID = authorized.Decision.Tenant.WorkspaceID
+		state.workspaceRef = authorized.Decision.Tenant.WorkspaceSlug
+		if authorized.Decision.Delegator != nil {
+			state.delegatorUserID = authorized.Decision.Delegator.UserID
+			state.delegatorTokenID = authorized.Decision.Delegator.TokenID
+		}
 	}
 	return scoped, authn, nil
 }

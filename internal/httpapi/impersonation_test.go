@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
@@ -122,6 +124,36 @@ func TestImpersonationTaskActionUsesSubjectIdentity(t *testing.T) {
 	}
 	if len(list.Data) != 1 || list.Data[0].Description != "alice task" {
 		t.Fatalf("tasks = %s", rr.Body.String())
+	}
+}
+
+// TestHTTPImpersonationUsesDecisionForAccessLog 验证授权 Decision 驱动 access log：
+// impersonation 成功后，stderr 中应出现 delegator_user_id / delegator_token_id，
+// 且 actor 为 subject 用户。这是 Decision 被消费的回归断言。
+func TestHTTPImpersonationUsesDecisionForAccessLog(t *testing.T) {
+	store, _, ownerSvc, agentToken, agentTokenID, aliceUser := newHTTPImpersonationFixture(t)
+	_ = ownerSvc
+
+	var stderr bytes.Buffer
+	srv := NewServer(Options{Store: store, Stderr: &stderr})
+
+	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
+		"Authorization": "Bearer " + agentToken,
+		"X-Xuanchu-As":  "alice-imp",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	logOutput := stderr.String()
+	if !strings.Contains(logOutput, "delegator_user_id=") {
+		t.Fatalf("access log missing delegator_user_id: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "delegator_token_id="+agentTokenID) {
+		t.Fatalf("access log missing delegator_token_id=%s: %s", agentTokenID, logOutput)
+	}
+	if !strings.Contains(logOutput, "actor_user_id="+aliceUser.ID) {
+		t.Fatalf("access log missing actor_user_id=%s: %s", aliceUser.ID, logOutput)
 	}
 }
 
