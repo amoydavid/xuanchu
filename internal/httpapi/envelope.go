@@ -46,33 +46,12 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func writeAppError(w http.ResponseWriter, err error) {
 	var runtimeErr app.RuntimeError
 	if errors.As(err, &runtimeErr) {
-		status := http.StatusBadRequest
-		switch runtimeErr.Code {
-		case "auth_missing_token", "auth_invalid_token", "auth_token_expired", "auth_token_revoked":
-			status = http.StatusUnauthorized
-		case "token_scope_denied", "workspace_scope_denied", "project_scope_denied", "membership_not_found":
-			status = http.StatusForbidden
-		case "workspace_required":
-			status = http.StatusBadRequest
-		case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found":
-			status = http.StatusNotFound
-		case "admin_workspace_exists":
-			status = http.StatusConflict
-		case "hook_delivery_not_replayable", "hook_endpoint_invalid", "hook_event_types_invalid", "hook_name_invalid", "hook_timeout_invalid", "hook_max_attempts_invalid", "hook_project_required", "hook_scope_invalid", "hook_secret_invalid", "notification_sink_invalid", "reminder_rule_invalid", "notification_rule_invalid", "endpoint_unresolved", "endpoint_host_denied", "endpoint_mode_invalid", "endpoint_template_invalid", "audience_unsupported", "audience_unsupported_for_event", "template_unresolved", "token_ambiguous_ref":
-			status = http.StatusBadRequest
-		case "token_list_failed":
-			status = http.StatusInternalServerError
-		case "route_not_found":
-			status = http.StatusNotFound
-		case "method_not_allowed":
-			status = http.StatusMethodNotAllowed
-		}
-		writeError(w, status, runtimeErr.Code, runtimeErr.Message, nil)
+		writeError(w, statusForAppErrorCode(runtimeErr.Code), runtimeErr.Code, runtimeErr.Message, nil)
 		return
 	}
 	var permissionErr app.PermissionError
 	if errors.As(err, &permissionErr) {
-		writeError(w, http.StatusForbidden, permissionErr.Code, permissionErr.Message, nil)
+		writeError(w, statusForAppErrorCode(permissionErr.Code), permissionErr.Code, permissionErr.Message, nil)
 		return
 	}
 	writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
