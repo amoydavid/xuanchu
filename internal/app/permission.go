@@ -33,14 +33,8 @@ const (
 	PermissionReminderWrite      = authz.PermissionReminderWrite
 )
 
-type PermissionError struct {
-	Code    string
-	Message string
-}
-
-func (e PermissionError) Error() string {
-	return e.Message
-}
+// PermissionError 复用 authz.PermissionError，保持 app 层现有 API 稳定。
+type PermissionError = authz.PermissionError
 
 func (s *Service) Require(p Permission) error {
 	return requireRolePermission(s.runtime.Role, p)
