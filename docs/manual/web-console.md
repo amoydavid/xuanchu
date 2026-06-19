@@ -55,6 +55,10 @@ Console 没有特殊超级权限。实际权限仍然是：
 membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
 ```
 
+普通 Console 的 token 登录不是浏览器 SSO。它只是把 PAT / Agent token 放入当前 tab 的 `sessionStorage`；服务端仍按 Bearer token 走同一套 Authorization Decision，没有独立的浏览器会话或 cookie。未来的 OIDC / 飞书 OAuth 登录会引入独立的 browser session 凭证类型，权限仍由本地 membership role 决定。
+
+Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` 控制面中间件，不进入普通业务 Authorization Decision：它不能访问任务、项目、通知、Hook 或 MCP 接口，只用于部署期创建 workspace 和 workspace-scoped Agent token。普通 PAT / Agent token 同样不能访问 admin 控制面。
+
 通用 workspace Agent token 可以使用 `--scope '*'`，再通过 workspace/project allowlist 和成员角色收窄实际权限。只做单一自动化的 token 仍应使用最小 scope。
 
 ## 项目只读链接

@@ -832,6 +832,30 @@ Token scope 是收窄，不是放大。最终权限是：
 membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
 ```
 
+服务端把这条交集规则统一表达为授权决策（Authorization Decision），HTTP API、HTTP MCP、远程 CLI 共用同一个决策入口：
+
+| 概念 | 说明 |
+|---|---|
+| Principal | 本次业务 actor。普通 token 为 token 绑定用户；impersonation 为 `X-Xuanchu-As` 目标用户。 |
+| Credential | 请求凭证。PAT / Agent token 只提供 capability 和 allowlist，不能放大 membership role。 |
+| TenantScope | effective workspace 和可选 project。workspace 是隔离边界，project 是收窄边界。 |
+| Decision | `principal + credential + tenant + role + request scope` 的最终授权结果。 |
+
+授权边界错误有集中定义，HTTP status 映射也集中维护：
+
+| 错误码 | HTTP | 语义 |
+|---|---|---|
+| `auth_missing_token` | 401 | 缺少 Bearer token |
+| `auth_invalid_token` | 401 | token 不存在或 hash 不匹配 |
+| `auth_token_revoked` | 401 | token 已吊销 |
+| `auth_token_expired` | 401 | token 已过期 |
+| `token_scope_denied` | 403 | token capability 不允许本操作（含 PAT/Agent 类型不满足 impersonation 要求） |
+| `workspace_scope_denied` | 403 | token workspace allowlist 不允许 |
+| `project_scope_denied` | 403 | token project allowlist 不允许 |
+| `membership_not_found` | 403 | principal 不是 workspace 成员，或 impersonation subject 不可用 |
+| `permission_denied` | 403 | membership role 不允许本操作 |
+| `workspace_required` | 400 | 多 workspace 可见场景下无法安全推断 workspace |
+
 常用 capability 可通过 `xuanchu scope list` 查看。通用 workspace Agent token 推荐使用 `*`，专用集成 token 再按场景收窄：
 
 ```text

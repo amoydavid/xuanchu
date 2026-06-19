@@ -43,6 +43,10 @@ HTTP MCP endpoint：
 
 HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token scope。
 
+HTTP MCP 与 HTTP API 共享同一授权决策：Bearer token、workspace/project 参数、`X-Xuanchu-As` impersonation、token scope 和 membership role 的结果一致。同一个 token 和 workspace/project 组合下，`task_query`（MCP）与 `GET /api/v1/tasks`（HTTP API）返回相同的可见任务集；权限不足时返回相同的错误码与 HTTP status。
+
+stdio MCP 继续沿用本地 active user/workspace，不支持 impersonation。
+
 如果 HTTP MCP 通过 nginx/Caddy 暴露公网域名，并且后端只监听 `127.0.0.1:<port>`，需要显式配置可信反代 Host：
 
 ```toml
