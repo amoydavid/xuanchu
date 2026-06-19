@@ -66,6 +66,18 @@ const AdminTokensRoute = lazy(() =>
   }))
 )
 
+const AdminWorkspacesRoute = lazy(() =>
+  import("@/routes/admin/AdminWorkspacesRoute").then((module) => ({
+    default: module.AdminWorkspacesRoute,
+  }))
+)
+
+const AdminWorkspaceDetailRoute = lazy(() =>
+  import("@/routes/admin/AdminWorkspaceDetailRoute").then((module) => ({
+    default: module.AdminWorkspaceDetailRoute,
+  }))
+)
+
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
 })
@@ -110,6 +122,18 @@ const adminTokensRoute = createRoute({
   getParentRoute: () => adminGuardRoute,
   path: "/admin/tokens",
   component: lazyRoute(AdminTokensRoute),
+})
+
+const adminWorkspacesRoute = createRoute({
+  getParentRoute: () => adminGuardRoute,
+  path: "/admin/workspaces",
+  component: lazyRoute(AdminWorkspacesRoute),
+})
+
+const adminWorkspaceDetailRoute = createRoute({
+  getParentRoute: () => adminGuardRoute,
+  path: "/admin/workspaces/$workspaceSlug",
+  component: lazyRoute(AdminWorkspaceDetailRoute),
 })
 
 const projectReadonlyRoute = createRoute({
@@ -186,7 +210,12 @@ const routeTree = rootRoute.addChildren([
   ]),
   adminLoginRoute,
   adminSetupRoute,
-  adminGuardRoute.addChildren([adminDashboardRoute, adminTokensRoute]),
+  adminGuardRoute.addChildren([
+    adminDashboardRoute,
+    adminTokensRoute,
+    adminWorkspacesRoute,
+    adminWorkspaceDetailRoute,
+  ]),
 ])
 
 export const router = createRouter({ routeTree })

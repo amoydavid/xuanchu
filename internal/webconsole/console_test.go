@@ -138,6 +138,8 @@ func TestHandlerServesWorkspaceDeepLinksAtRoot(t *testing.T) {
 		"/tasks",
 		"/admin/login",
 		"/admin/setup",
+		"/admin/workspaces",
+		"/admin/workspaces/dajee",
 		"/workspaces/acme",
 		"/workspaces/acme/projects/agentapi",
 		"/workspaces/acme/projects/agentapi/tasks/ag-23",

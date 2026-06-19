@@ -1,5 +1,5 @@
 import type React from "react"
-import { KeyRound, LogOut, RefreshCw, ShieldAlert } from "lucide-react"
+import { Building2, KeyRound, LogOut, RefreshCw, ShieldAlert } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 
@@ -46,6 +46,14 @@ export function AdminShell({
           >
             <ShieldAlert className="size-3.5" />
             {t("admin.nav.bootstrap")}
+          </Link>
+          <Link
+            activeProps={{ className: navLinkActive }}
+            className={navLinkBase}
+            to="/admin/workspaces"
+          >
+            <Building2 className="size-3.5" />
+            {t("admin.nav.workspaces")}
           </Link>
           <Link
             activeProps={{ className: navLinkActive }}

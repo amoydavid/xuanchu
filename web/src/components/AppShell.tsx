@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeft,
   Bell,
   Boxes,
   FileClock,
@@ -20,6 +21,10 @@ import { RiskBadge } from "@/components/RiskBadge"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import {
+  clearAdminActingSession,
+  getAdminActingContext,
+} from "@/features/workspace/session/workspace-token"
 import { cn } from "@/lib/utils"
 
 export type PageKey =
@@ -103,6 +108,7 @@ export function AppShell({
         </div>
       </aside>
       <div className="md:pl-56">
+        <ActingBanner />
         <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur">
           <div className="min-w-0">
             <div className="truncate text-xs text-muted-foreground">
@@ -134,6 +140,43 @@ export function AppShell({
         </header>
         <main className="px-4 py-5">{children}</main>
       </div>
+    </div>
+  )
+}
+
+// ActingBanner 在 acting mode 下持续显示，提醒用户当前以 workspace
+// 管理员身份操作。点击「返回超管界面」清理 acting token/context，跳回 workspace 详情。
+// 普通 workspace console（无 acting context）不渲染任何东西。
+function ActingBanner() {
+  const { t } = useTranslation()
+  const context = getAdminActingContext()
+  if (!context) {
+    return null
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 border-b bg-amber-100 px-4 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+      <div className="truncate">
+        {t("admin.acting.banner", {
+          workspace: context.workspaceName,
+          actor: context.actorName,
+          role: context.role,
+          adminTokenName: context.adminTokenName,
+        })}
+      </div>
+      <Button
+        onClick={() => {
+          clearAdminActingSession()
+          // 返回到发起 acting 的 workspace 详情页。
+          window.location.assign(
+            `/admin/workspaces/${encodeURIComponent(context.workspaceSlug)}`
+          )
+        }}
+        size="sm"
+        variant="outline"
+      >
+        <ArrowLeft className="size-4" />
+        {t("admin.acting.returnToAdmin")}
+      </Button>
     </div>
   )
 }

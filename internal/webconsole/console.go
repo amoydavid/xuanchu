@@ -58,26 +58,29 @@ type handler struct {
 // 让前端路由接管，而不是 404。前缀用末尾 "/" 表示只匹配路径段，避免误命中
 // 名字相近的静态文件或未来新增的顶层 API 前缀。
 var spaRoutes = map[string]struct{}{
-	"":              {},
-	"admin":         {},
-	"admin/login":   {},
-	"admin/setup":   {},
-	"admin/tokens":  {},
-	"audit":         {},
-	"hooks":         {},
-	"members":       {},
-	"notifications": {},
-	"projects":      {},
-	"settings":      {},
-	"tasks":         {},
-	"tokens":        {},
-	"workspaces":    {},
+	"":                  {},
+	"admin":             {},
+	"admin/login":       {},
+	"admin/setup":       {},
+	"admin/tokens":      {},
+	"admin/workspaces":  {},
+	"audit":             {},
+	"hooks":             {},
+	"members":           {},
+	"notifications":     {},
+	"projects":          {},
+	"settings":          {},
+	"tasks":             {},
+	"tokens":            {},
+	"workspaces":        {},
 }
 
 var spaPrefixes = []string{
 	// workspaces 下是多段 SPA 路由，例如
 	// /workspaces/{slug}/projects/{slug} 和 /workspaces/{slug}/projects/{slug}/tasks/{ref}
 	"workspaces/",
+	// admin/workspaces/{slug} 是 workspace 控制面详情 deep link，刷新也要返回 index.html。
+	"admin/workspaces/",
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
