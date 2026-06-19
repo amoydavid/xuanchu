@@ -73,6 +73,10 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		return nil, requestAuth{}, err
 	}
 	authn.EffectiveWorkspace = authorized.Workspace
+	// 用授权决策覆盖 access log state。注意：只有走 scopedServiceFor 的 handler
+	// 才会到这里，因此 access log 中的 actor/workspace 对于这些请求是「实际解析到的
+	// 业务身份」（impersonation 时为 subject），比 authMiddleware 写入的 token 默认值
+	// 更准确。未走 scopedServiceFor 的 handler 仍保留 authMiddleware 写入的默认值。
 	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
 		state.actorID = authorized.Decision.Principal.UserID
 		state.workspaceID = authorized.Decision.Tenant.WorkspaceID

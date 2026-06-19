@@ -173,6 +173,35 @@ func TestRuntimeFactoryServiceForHTTPProjectIDSelectsOwningWorkspace(t *testing.
 
 // TestServiceForHTTPUsesImpersonationDecision 验证 HTTP MCP 经授权 Decision 后，
 // runtime 的 actor 为 subject，且 delegator 字段被填充。
+// TestServiceForHTTPImpersonationWorkspaceRequired 验证 HTTP MCP 在 impersonation +
+// 多 workspace 歧义场景下，与 HTTP API 一样返回 workspace_required。
+// 这是 spec §11.1「HTTP MCP 与 HTTP API 行为一致」的回归断言。
+func TestServiceForHTTPImpersonationWorkspaceRequired(t *testing.T) {
+	store := newMCPTestStore(t)
+	owner := newMCPTestService(t, store)
+	if _, err := owner.AddWorkspace(app.AddWorkspaceInput{Slug: "team", Name: "Team"}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := owner.CreateToken(app.CreateTokenInput{
+		Name:          "multi-ws-agent",
+		Type:          "agent",
+		Scopes:        []string{"task:read", "impersonate"},
+		WorkspaceRefs: []string{"local", "team"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	req.Header.Set("X-Xuanchu-As", "local")
+	factory := RuntimeFactory{Store: store, Clock: testClock{now: 100}}
+
+	// 不显式 workspace，token 可见 local + team，应返回 workspace_required，
+	// 与 HTTP API TestImpersonationWorkspaceRequiredForMultiWorkspace 一致。
+	_, err = factory.ServiceForHTTP(req, RequestScopeInput{}, "task:read", app.PermissionTaskRead)
+	assertMCPRuntimeCode(t, err, "workspace_required")
+}
+
 func TestServiceForHTTPUsesImpersonationDecision(t *testing.T) {
 	store := newMCPTestStore(t)
 	owner := newMCPTestService(t, store)

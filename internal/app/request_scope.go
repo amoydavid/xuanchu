@@ -25,6 +25,10 @@ type RequestAuthorizationInput struct {
 	SubjectUserRef     string
 }
 
+// AuthorizedRequest 是授权入口的输出。
+//
+// Scope 与 Decision.RequestScope 是同一个 effectiveScope 的两份引用：
+// Scope 保留是为了兼容历史调用点（主要是测试），新代码应优先使用 Decision。
 type AuthorizedRequest struct {
 	Runtime   RuntimeContext
 	Scope     RequestScope
