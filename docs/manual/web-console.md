@@ -111,6 +111,26 @@ Server admin token 不是 PAT，也不是 Agent token。它只用于 server cont
 
 Admin 页面创建的 Agent token 明文只在创建结果里显示一次。页面不会把 raw Agent token 写入 storage；关闭结果或刷新页面后无法恢复。
 
+## Workspace 管理与 acting mode
+
+server admin 登录后，`/admin/workspaces` 提供 workspace 控制面：
+
+- 列出全部 workspace（默认只显示未归档，可勾选「显示已归档」）。
+- workspace 详情展示 owner/admin/member 摘要和 token 计数（有效 / 已吊销 / 已过期）。
+- 从任意未归档 workspace 创建短期 acting session，以该 workspace 的 owner/admin 身份进入普通 Workspace Console。
+
+acting session 是**短期浏览器委托凭证**，不是长期 token：
+
+- server admin 调用 `POST /api/v1/admin/workspaces/{workspace}/acting-sessions` 创建。服务端签发 `xuanchu_act_...` token，raw token 只在创建响应中返回一次，数据库只保存 SHA-256 hash。
+- acting token 只保存在当前浏览器 tab 的 `sessionStorage["xuanchu.console.admin_acting_token"]`，与普通 workspace token（`xuanchu.console.token`）和 server admin token（`xuanchu.console.admin_token`）分开清理。
+- acting token 绑定单一 workspace；普通 HTTP API 接受它，但 HTTP MCP、stdio MCP 和 remote CLI client 都拒绝它（remote CLI 在客户端侧直接拒绝 `xuanchu_act_` 前缀，不发请求）。
+- acting token 的能力上限是 Workspace Console 的全部 scope（剥离 `impersonate`）；实际访问还由绑定 actor 的**当前** workspace membership role 和 project allowlist 收窄。session 中保存的 role 只是审计展示用的快照，不作为后续授权来源。
+- 默认 TTL 2 小时。
+- acting mode 下普通 workspace 操作仍以被切换的用户作为 actor，但 audit 额外记录 `admin_acting_session_id`、`delegator_admin_token_id`、`delegator_admin_token_name`，可追溯到发起委托的 server admin。
+- Workspace Console 顶部持续显示 acting banner，提醒当前以哪个 workspace 的哪个管理员身份操作，并提供「返回超管界面」按钮。
+- 「返回超管界面」清理 acting token + acting context，**保留** server admin token，并跳回 `/admin/workspaces/{workspace}`。
+- acting token 过期或被吊销后，普通 API 返回 `admin_acting_session_expired` 或 `auth_invalid_token`，前端清理 acting session。
+
 ## 前端开发
 
 前端源码在仓库根目录的 `web`，使用 pnpm、Vite 8、React、shadcn/ui 和 i18n。

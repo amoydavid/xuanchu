@@ -127,6 +127,8 @@ http://127.0.0.1:8080/admin/login
 
 admin token 只用于 `/api/v1/admin/*` 控制面接口，可以在页面中创建 workspace、创建或提升 workspace 管理员，并为该管理员创建 workspace-scoped Agent token。它不能访问普通任务、项目、通知、Hook 或 MCP 接口。`xuanchu admin token generate/hash` 仍保留为兼容和运维工具，但不再是首选初始化路径。
 
+Admin 工作台的 `/admin/workspaces` 提供 workspace 控制面：列出全部 workspace（含已归档）、查看 owner/admin/member 摘要与 token 计数、从任意未归档 workspace 创建短期 acting session 进入该 workspace 的管理员视角。acting token（`xuanchu_act_` 前缀）只面向浏览器 Workspace Console 的普通 `/api/v1/*`，默认 TTL 2 小时，绑定单一 workspace，实际权限由绑定 actor 的当前 workspace membership role 决定；它不能用于 HTTP MCP、stdio MCP，remote CLI client 也会在客户端侧直接拒绝该前缀。acting mode 下普通操作仍记录到审计日志，并额外带上 `admin_acting_session_id`、`delegator_admin_token_id`、`delegator_admin_token_name`，可追溯到发起委托的 server admin。Workspace Console 顶部持续显示 acting banner，用户点击「返回超管界面」清理 acting session 但保留 admin token。
+
 Admin 工作台的 `/admin/tokens` 页面提供跨 workspace 的 token 管控：列出所有 workspace 的全部 token（含 user、workspace、scope、状态）、吊销失控 token、修改 token 的 name / scope / 过期时间。这是运维管控视角，与普通用户在 `/tokens` 的自服务管理是两个边界——admin 操作绕过 workspace role 校验，但所有变更记录到审计日志（`admin.token.modify` / `admin.token.revoke`，payload 标记 `admin:true`）。admin 不创建 token（创建走 bootstrap 或普通 console），也不修改 token 的 workspace/project 绑定（由 token owner 自服务）。
 
 前端开发和构建：

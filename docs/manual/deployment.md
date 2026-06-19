@@ -100,7 +100,9 @@ enabled = true
 
 如果数据库里还没有有效 admin token，`xuanchu server` 启动后会在 stderr 输出一次性 setup-code 和 `/admin/setup` 地址。使用 setup-code 创建第一个 `xuanchu_admin_...` token 后，服务端会把 SHA-256 verifier 写入 `server_admin_tokens`，新 token 立刻可用于 `/admin/login`，不需要重启。
 
-admin token 只能访问 `/api/v1/admin/*`，用于创建 workspace、workspace 管理员和管理员 Agent token；不要把它交给普通自动化脚本。`[[server.admin.tokens]]` / `hash_env` 作为兼容路径仍可使用，但新部署不再建议把长期 admin token hash 作为主配置。
+admin token 只能访问 `/api/v1/admin/*`，用于创建 workspace、workspace 管理员、管理员 Agent token 和短期 acting session；不要把它交给普通自动化脚本。`[[server.admin.tokens]]` / `hash_env` 作为兼容路径仍可使用，但新部署不再建议把长期 admin token hash 作为主配置。
+
+admin token 通过 `/api/v1/admin/workspaces/{workspace}/acting-sessions` 签发的短期 acting token（`xuanchu_act_` 前缀）只面向浏览器 Workspace Console 的普通 `/api/v1/*`，**不能**用于 HTTP MCP、stdio MCP 或 remote CLI client（remote CLI 在客户端侧直接拒绝该前缀）。acting token 默认 TTL 2 小时，绑定单一 workspace，实际权限由绑定 actor 的当前 workspace membership role 决定，不信任 session 创建时的 role 快照。
 
 通用 workspace Agent token 建议使用全量 scope，再用 workspace/project allowlist 和绑定用户的 membership role 收窄实际权限：
 

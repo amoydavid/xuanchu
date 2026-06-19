@@ -11,7 +11,9 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: xuanchu_pat or xuanchu_agent
+      bearerFormat: xuanchu_pat, xuanchu_agent, or xuanchu_act
+      description: |
+        Ordinary workspace API endpoints accept PAT (`xuanchu_pat_`), Agent (`xuanchu_agent_`), or short-lived server-admin acting tokens (`xuanchu_act_`). Acting tokens bind to exactly one workspace and are rejected by HTTP MCP, stdio MCP, and the remote CLI client.
     serverAdminAuth:
       type: http
       scheme: bearer
@@ -46,6 +48,11 @@ components:
         - admin_workspace_exists
         - admin_owner_required
         - admin_owner_invalid
+        - admin_acting_target_invalid
+        - admin_acting_session_expired
+        - admin_acting_not_found
+        - admin_acting_not_allowed
+        - remote_acting_token_not_allowed
         - workspace_required
         - workspace_not_found
         - workspace_archived
@@ -135,6 +142,176 @@ components:
           type: array
           items:
             type: string
+    UserInfo:
+      type: object
+      description: Unified user identity JSON shape used by all user references (created_by, actor, members, delegator). Never emits a bare UUID.
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        external_ids:
+          type: array
+          items:
+            type: object
+            required: [provider, external_id]
+            properties:
+              provider:
+                type: string
+              external_id:
+                type: string
+    AdminWorkspaceSummary:
+      type: object
+      required: [id, slug, name, visibility, member_counts, token_counts, created_at, modified_at]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          enum: [private, team, public]
+        created_by:
+          allOf:
+            - $ref: '#/components/schemas/UserInfo'
+          nullable: true
+        member_counts:
+          type: object
+          required: [owner, admin, member, viewer]
+          properties:
+            owner:
+              type: integer
+              format: int64
+            admin:
+              type: integer
+              format: int64
+            member:
+              type: integer
+              format: int64
+            viewer:
+              type: integer
+              format: int64
+        token_counts:
+          type: object
+          required: [active, expired, revoked]
+          properties:
+            active:
+              type: integer
+              format: int64
+            expired:
+              type: integer
+              format: int64
+            revoked:
+              type: integer
+              format: int64
+        archived_at:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
+    AdminWorkspaceDetail:
+      type: object
+      required: [workspace, members, token_counts, acting_candidates]
+      properties:
+        workspace:
+          type: object
+          required: [id, slug, name, visibility]
+          properties:
+            id:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+            description:
+              type: string
+            visibility:
+              type: string
+              enum: [private, team, public]
+            archived_at:
+              type: integer
+              format: int64
+              nullable: true
+        members:
+          type: array
+          items:
+            type: object
+            required: [user, role, joined_at, modified_at]
+            properties:
+              user:
+                $ref: '#/components/schemas/UserInfo'
+              role:
+                type: string
+              joined_at:
+                type: integer
+                format: int64
+              modified_at:
+                type: integer
+                format: int64
+        token_counts:
+          type: object
+          required: [active, expired, revoked]
+          properties:
+            active:
+              type: integer
+              format: int64
+            expired:
+              type: integer
+              format: int64
+            revoked:
+              type: integer
+              format: int64
+        acting_candidates:
+          type: array
+          description: Owner/admin members that an acting session can impersonate. Empty for workspaces that still need an admin created.
+          items:
+            type: object
+            required: [user, role]
+            properties:
+              user:
+                $ref: '#/components/schemas/UserInfo'
+              role:
+                type: string
+    AdminActingSession:
+      type: object
+      required: [token, expires_at, workspace, actor, role, admin_token_name]
+      properties:
+        token:
+          type: string
+          description: Raw xuanchu_act token. Returned once.
+        expires_at:
+          type: integer
+          format: int64
+        workspace:
+          type: object
+          required: [id, slug, name]
+          properties:
+            id:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+        actor:
+          $ref: '#/components/schemas/UserInfo'
+        role:
+          type: string
+          description: Role snapshot at creation time, for audit/display only. Authorization reloads the actor's current workspace membership role.
+        admin_token_name:
+          type: string
     Task:
       type: object
       additionalProperties: true
@@ -1311,6 +1488,117 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/workspaces:
+    get:
+      summary: List all workspaces (server admin control plane).
+      description: Returns a server-admin view of all workspaces, not filtered by actor membership. Token counts classify active/expired/revoked tokens per workspace by parsing each token's bound workspace list. User references use the unified UserInfo JSON shape.
+      security:
+        - serverAdminAuth: []
+      parameters:
+        - in: query
+          name: all
+          schema:
+            type: boolean
+          description: When true, include archived workspaces. Defaults to false.
+      responses:
+        '200':
+          description: Workspace summary list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminWorkspaceSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/workspaces/{workspace}:
+    get:
+      summary: Get workspace control-plane detail (members, token counts, acting candidates).
+      description: workspace ref accepts slug or UUID. Acting candidates are owner/admin members that an acting session can impersonate. Archived workspaces can be read but cannot create admins, agent tokens, or acting sessions.
+      security:
+        - serverAdminAuth: []
+      parameters:
+        - in: path
+          name: workspace
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workspace control-plane detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminWorkspaceDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/workspaces/{workspace}/acting-sessions:
+    post:
+      summary: Create a short-lived server admin acting session.
+      description: |
+        Issues a browser-only acting token (prefix `xuanchu_act_`) that lets the server admin operate a single un-archived workspace as a chosen owner/admin. The raw token is returned only in this response and is stored only as a sha256 hash. The acting token is accepted by ordinary `/api/v1/*` endpoints (bound to the single workspace, scoped to console capabilities minus impersonate) but is rejected by HTTP MCP, stdio MCP, and the remote CLI client.
+
+        Authorization does not trust the role snapshot stored on the session: the bound actor's current workspace membership role is loaded on each authorized request. Audit records carry `admin_acting_session_id`, `delegator_admin_token_id`, and `delegator_admin_token_name` so ordinary workspace operations performed in acting mode remain traceable to the server admin that delegated them.
+      security:
+        - serverAdminAuth: []
+      parameters:
+        - in: path
+          name: workspace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  type: string
+                  description: User ref (id, name, or email). Defaults to the first owner, then the first admin.
+                expires_in:
+                  type: string
+                  description: Go time.ParseDuration expression, for example 2h. Defaults to 2h.
+                expires_in_seconds:
+                  type: integer
+                  format: int64
+      responses:
+        '201':
+          description: Acting session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminActingSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/acting-sessions/{sessionID}:
+    delete:
+      summary: Revoke a server admin acting session.
+      description: Lets the server admin proactively revoke a still-valid acting session before its TTL expires.
+      security:
+        - serverAdminAuth: []
+      parameters:
+        - in: path
+          name: sessionID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Acting session revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
   /api/v1/me:
