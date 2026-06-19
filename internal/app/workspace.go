@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -653,42 +654,10 @@ func (s *Service) resolveWorkspaceForActor(ref string) (storage.Workspace, Role,
 }
 
 func requireRolePermission(role Role, permission Permission) error {
-	if allowedForRole(role, permission) {
+	if authz.AllowedForRole(role, permission) {
 		return nil
 	}
 	return PermissionError{Code: "permission_denied", Message: "permission denied"}
-}
-
-func allowedForRole(role Role, p Permission) bool {
-	switch role {
-	case RoleOwner:
-		return true
-	case RoleAdmin:
-		switch p {
-		case PermissionTaskRead, PermissionTaskWrite,
-			PermissionProjectRead, PermissionProjectManage, PermissionProjectConfigRead, PermissionProjectConfigWrite,
-			PermissionConfigSchemaRead, PermissionConfigSchemaWrite,
-			PermissionContextUse, PermissionContextManage, PermissionUDAManage, PermissionWorkspaceRead, PermissionWorkspaceModify, PermissionMemberManage, PermissionAuditRead,
-			PermissionTokenRead, PermissionTokenWrite,
-			PermissionHookRead, PermissionHookWrite,
-			PermissionNotificationRead, PermissionNotificationWrite, PermissionReminderRead, PermissionReminderWrite:
-			return true
-		}
-	case RoleMember:
-		switch p {
-		case PermissionTaskRead, PermissionTaskWrite,
-			PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead,
-			PermissionContextUse, PermissionContextManage, PermissionWorkspaceRead,
-			PermissionReminderRead:
-			return true
-		}
-	case RoleViewer:
-		switch p {
-		case PermissionTaskRead, PermissionProjectRead, PermissionProjectConfigRead, PermissionConfigSchemaRead, PermissionContextUse, PermissionWorkspaceRead:
-			return true
-		}
-	}
-	return false
 }
 
 func requireMemberManagement(actorRole, targetRole, currentRole Role) error {

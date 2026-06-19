@@ -3,16 +3,18 @@ package app
 import (
 	"fmt"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
-type Role string
+// Role 复用 authz.Role，保持 app 层现有 API 稳定。
+type Role = authz.Role
 
 const (
-	RoleOwner  Role = "owner"
-	RoleAdmin  Role = "admin"
-	RoleMember Role = "member"
-	RoleViewer Role = "viewer"
+	RoleOwner  = authz.RoleOwner
+	RoleAdmin  = authz.RoleAdmin
+	RoleMember = authz.RoleMember
+	RoleViewer = authz.RoleViewer
 )
 
 type RuntimeContext struct {

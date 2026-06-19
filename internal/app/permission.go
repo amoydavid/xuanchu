@@ -1,33 +1,36 @@
 package app
 
-type Permission string
+import "git.dajee.net/dajee/xuanchu/internal/authz"
+
+// Permission 复用 authz.Permission，保持 app 层现有 API 稳定。
+type Permission = authz.Permission
 
 const (
-	PermissionTaskWrite          Permission = "task.write"
-	PermissionTaskRead           Permission = "task.read"
-	PermissionProjectRead        Permission = "project.read"
-	PermissionProjectManage      Permission = "project.manage"
-	PermissionProjectConfigRead  Permission = "project.config.read"
-	PermissionProjectConfigWrite Permission = "project.config.write"
-	PermissionConfigSchemaRead   Permission = "config.schema.read"
-	PermissionConfigSchemaWrite  Permission = "config.schema.write"
-	PermissionContextUse         Permission = "context.use"
-	PermissionContextManage      Permission = "context.manage"
-	PermissionUDAManage          Permission = "uda.manage"
-	PermissionWorkspaceRead      Permission = "workspace.read"
-	PermissionWorkspaceModify    Permission = "workspace.modify"
-	PermissionWorkspaceArchive   Permission = "workspace.archive"
-	PermissionMemberManage       Permission = "member.manage"
-	PermissionMemberManageOwner  Permission = "member.manage.owner"
-	PermissionAuditRead          Permission = "audit.read"
-	PermissionTokenRead          Permission = "token.read"
-	PermissionTokenWrite         Permission = "token.write"
-	PermissionHookRead           Permission = "hook.read"
-	PermissionHookWrite          Permission = "hook.write"
-	PermissionNotificationRead   Permission = "notification.read"
-	PermissionNotificationWrite  Permission = "notification.write"
-	PermissionReminderRead       Permission = "reminder.read"
-	PermissionReminderWrite      Permission = "reminder.write"
+	PermissionTaskWrite          = authz.PermissionTaskWrite
+	PermissionTaskRead           = authz.PermissionTaskRead
+	PermissionProjectRead        = authz.PermissionProjectRead
+	PermissionProjectManage      = authz.PermissionProjectManage
+	PermissionProjectConfigRead  = authz.PermissionProjectConfigRead
+	PermissionProjectConfigWrite = authz.PermissionProjectConfigWrite
+	PermissionConfigSchemaRead   = authz.PermissionConfigSchemaRead
+	PermissionConfigSchemaWrite  = authz.PermissionConfigSchemaWrite
+	PermissionContextUse         = authz.PermissionContextUse
+	PermissionContextManage      = authz.PermissionContextManage
+	PermissionUDAManage          = authz.PermissionUDAManage
+	PermissionWorkspaceRead      = authz.PermissionWorkspaceRead
+	PermissionWorkspaceModify    = authz.PermissionWorkspaceModify
+	PermissionWorkspaceArchive   = authz.PermissionWorkspaceArchive
+	PermissionMemberManage       = authz.PermissionMemberManage
+	PermissionMemberManageOwner  = authz.PermissionMemberManageOwner
+	PermissionAuditRead          = authz.PermissionAuditRead
+	PermissionTokenRead          = authz.PermissionTokenRead
+	PermissionTokenWrite         = authz.PermissionTokenWrite
+	PermissionHookRead           = authz.PermissionHookRead
+	PermissionHookWrite          = authz.PermissionHookWrite
+	PermissionNotificationRead   = authz.PermissionNotificationRead
+	PermissionNotificationWrite  = authz.PermissionNotificationWrite
+	PermissionReminderRead       = authz.PermissionReminderRead
+	PermissionReminderWrite      = authz.PermissionReminderWrite
 )
 
 type PermissionError struct {
