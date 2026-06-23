@@ -14,7 +14,7 @@ import (
 
 func newAddCommand(opts Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "add [description] [modifications...]",
+		Use:   "add [title] [modifications...]",
 		Short: "添加新任务",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -31,7 +31,8 @@ func newAddCommand(opts Options) *cobra.Command {
 					return err
 				}
 				created, err := client.AddTask(context.Background(), currentOpts.Workspace, remote.AddTaskInput{
-					Description: parsed.Description,
+					Title:       parsed.Title,
+					Description: parsed.Mod.Description,
 					Project:     firstNonEmpty(stringValue(parsed.Mod.Project), currentOpts.Project),
 					ProjectID:   currentOpts.ProjectID,
 					Priority:    stringValue(parsed.Mod.Priority),
@@ -60,7 +61,8 @@ func newAddCommand(opts Options) *cobra.Command {
 			}
 			defer closeFn()
 			created, err := svc.Add(app.AddInput{
-				Description: parsed.Description,
+				Title:       parsed.Title,
+				Description: parsed.Mod.Description,
 				Project:     parsed.Mod.Project,
 				Priority:    parsed.Mod.Priority,
 				Due:         parsed.Mod.Due,

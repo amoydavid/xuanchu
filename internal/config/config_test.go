@@ -825,6 +825,9 @@ func TestResolve_DBURLOnly(t *testing.T) {
 	if cfg.DatabasePath != "" {
 		t.Errorf("got %q", cfg.DatabasePath)
 	}
+	if cfg.DatabaseTarget() != "postgres://host/db" {
+		t.Errorf("DatabaseTarget() = %q", cfg.DatabaseTarget())
+	}
 }
 
 func TestResolve_DBURLEnvVar(t *testing.T) {
@@ -861,6 +864,13 @@ func TestResolve_DBURLEnvOverridesDBEnv(t *testing.T) {
 	}
 	if cfg.DatabasePath != "" {
 		t.Errorf("got %q", cfg.DatabasePath)
+	}
+}
+
+func TestConfigDatabaseTargetUsesPathWhenURLUnset(t *testing.T) {
+	cfg := Config{DatabasePath: "/path/to.db"}
+	if cfg.DatabaseTarget() != "/path/to.db" {
+		t.Errorf("DatabaseTarget() = %q", cfg.DatabaseTarget())
 	}
 }
 

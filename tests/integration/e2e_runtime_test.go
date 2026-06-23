@@ -35,7 +35,7 @@ func TestE2EServerRuntimeDispatchersAttemptHookDelivery(t *testing.T) {
 		"--audience", "actor",
 		"--sink", "runtime-hook-sink",
 		"--template-subject", "Runtime notification",
-		"--template-body", "{{event.type}} {{task.description}}",
+		"--template-body", "{{event.type}} {{task.title}}",
 	)
 	ruleID, _ := parseJSONMap(t, ruleOut)["id"].(string)
 	if ruleID == "" {

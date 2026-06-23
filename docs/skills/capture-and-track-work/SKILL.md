@@ -25,7 +25,7 @@ CIO agent 把 IM 群里冒出来的工作变成结构化任务，跟踪到完成
 群里说的事变成可追踪任务，记上下文，关联外部材料。
 
 ```
-1. task_add({"workspace":"dajee","project_id":"...","description":"修复白屏","priority":"H"})
+1. task_add({"workspace":"dajee","project_id":"...","title":"修复白屏","priority":"H"})
 2. task_annotate({"workspace":"dajee","project_id":"...","id":"新任务uuid","annotation":"客户反馈 Chrome 121 必现"})
 3. task_link_add({"workspace":"dajee","project_id":"...","task":"...","type":"pr","url":"https://github.com/.../pull/42"})
 4. // CIO 自己认领就 task_start，做完 task_done

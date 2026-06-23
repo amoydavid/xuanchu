@@ -13,8 +13,13 @@ func Resolve(tsk task.Task, field string, urgency float64) (string, error) {
 	switch field {
 	case "uuid":
 		return tsk.UUID, nil
+	case "title":
+		return tsk.Title, nil
 	case "description":
-		return tsk.Description, nil
+		if tsk.Description == nil {
+			return "", nil
+		}
+		return *tsk.Description, nil
 	case "status":
 		return tsk.Status, nil
 	case "entry":

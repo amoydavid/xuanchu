@@ -315,14 +315,18 @@ components:
     Task:
       type: object
       additionalProperties: true
+      required: [uuid, title, status, entry, modified]
       properties:
         uuid:
           type: string
         task_slug:
           type: string
           nullable: true
+        title:
+          type: string
         description:
           type: string
+          nullable: true
         project:
           type: string
           nullable: true
@@ -331,6 +335,12 @@ components:
           nullable: true
         status:
           type: string
+        entry:
+          type: string
+          format: date-time
+        modified:
+          type: string
+          format: date-time
         assignees:
           type: array
           items:
@@ -1674,8 +1684,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [description]
+              required: [title]
               properties:
+                title:
+                  type: string
                 description:
                   type: string
                 project:
@@ -1750,8 +1762,12 @@ paths:
             schema:
               type: object
               properties:
+                title:
+                  type: string
                 description:
                   type: string
+                clear_description:
+                  type: boolean
                 project:
                   type: string
                 project_id:
@@ -2405,6 +2421,14 @@ paths:
       summary: Import Taskwarrior-compatible JSON tasks.
       parameters:
         - $ref: '#/components/parameters/WorkspaceQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Task'
       responses:
         '200':
           description: Imported count.

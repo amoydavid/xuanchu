@@ -6,6 +6,7 @@ describe("extractUDAs", () => {
   it("returns only non-reserved, non-empty fields", () => {
     const task = {
       uuid: "u1",
+      title: "title",
       description: "desc",
       status: "pending",
       due: 100,
@@ -30,9 +31,9 @@ describe("extractUDAs", () => {
       uuid: "u1",
       status: "pending",
       depends: ["dep-1"],
-      depends_info: [{ uuid: "dep-1", description: "依赖任务" }],
+      depends_info: [{ uuid: "dep-1", title: "依赖任务" }],
       parent: "p1",
-      parent_info: { uuid: "p1", description: "父任务" },
+      parent_info: { uuid: "p1", title: "父任务" },
       estimate: "4h",
     }
     expect(extractUDAs(task)).toEqual([["estimate", "4h"]])

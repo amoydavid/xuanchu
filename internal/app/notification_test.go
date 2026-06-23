@@ -114,7 +114,7 @@ func TestAddNotificationSinkHTTPTemplateStoresHeaderAndBodyTemplates(t *testing.
 		HTTPMethod:      "POST",
 		HeaderTemplates: []HTTPHeaderTemplateInput{{Name: "Content-Type", Value: "application/json"}, {Name: "Authorization", Value: "Bearer {{secret.feishu_bot_token}}"}},
 		BodyContentType: "application/json",
-		BodyTemplate:    `{"msg_type":"text","content":{"text":"任务 {{task.task_slug}} 即将到期：{{task.description}}"}}`,
+		BodyTemplate:    `{"msg_type":"text","content":{"text":"任务 {{task.task_slug}} 即将到期：{{task.title}}"}}`,
 		SecretRefs:      []HTTPTemplateSecretRefInput{{Alias: "feishu_bot_token", ConfigKey: "integrations.feishu.bot_token"}},
 	})
 	if err != nil {

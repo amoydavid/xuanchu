@@ -60,7 +60,8 @@ type TaskLinkInfo struct {
 type Task struct {
 	UUID        string
 	WorkspaceID string
-	Description string
+	Title       string
+	Description *string
 	Status      string
 	Entry       int64
 	Modified    int64
@@ -87,8 +88,8 @@ type Task struct {
 }
 
 func (t Task) Validate() error {
-	if strings.TrimSpace(t.Description) == "" {
-		return errors.New("description is required")
+	if strings.TrimSpace(t.Title) == "" {
+		return errors.New("title is required")
 	}
 	switch t.Status {
 	case StatusPending, StatusCompleted, StatusDeleted, StatusWaiting, StatusRecurring:

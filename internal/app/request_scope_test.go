@@ -68,15 +68,15 @@ func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(home) error = %v", err)
 	}
-	workTask, err := ownerSvc.Add(AddInput{Description: "work task", Project: strptr(work.Slug)})
+	workTask, err := ownerSvc.Add(AddInput{Title: "work task", Project: strptr(work.Slug)})
 	if err != nil {
 		t.Fatalf("Add(work task) error = %v", err)
 	}
-	homeTask, err := ownerSvc.Add(AddInput{Description: "home task", Project: strptr(home.Slug)})
+	homeTask, err := ownerSvc.Add(AddInput{Title: "home task", Project: strptr(home.Slug)})
 	if err != nil {
 		t.Fatalf("Add(home task) error = %v", err)
 	}
-	if _, err := ownerSvc.Add(AddInput{Description: "inbox task"}); err != nil {
+	if _, err := ownerSvc.Add(AddInput{Title: "inbox task"}); err != nil {
 		t.Fatalf("Add(inbox task) error = %v", err)
 	}
 
@@ -132,7 +132,7 @@ func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
 		assertRuntimeCode(t, err, "project_scope_denied")
 	}
 
-	if _, err := scopedSvc.Add(AddInput{Description: "scoped inbox"}); err == nil {
+	if _, err := scopedSvc.Add(AddInput{Title: "scoped inbox"}); err == nil {
 		t.Fatal("Add(no project) error = nil")
 	} else {
 		assertRuntimeCode(t, err, "project_scope_denied")
@@ -147,7 +147,7 @@ func TestProjectScopedImportCannotClearProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(work) error = %v", err)
 	}
-	workTask, err := ownerSvc.Add(AddInput{Description: "work task", Project: strptr(work.Slug)})
+	workTask, err := ownerSvc.Add(AddInput{Title: "work task", Project: strptr(work.Slug)})
 	if err != nil {
 		t.Fatalf("Add(work task) error = %v", err)
 	}
@@ -209,10 +209,10 @@ func TestProjectScopedServiceFiltersProjectsAndAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(beta) error = %v", err)
 	}
-	if _, err := ownerSvc.Add(AddInput{Description: "alpha task", Project: strptr(alpha.Slug)}); err != nil {
+	if _, err := ownerSvc.Add(AddInput{Title: "alpha task", Project: strptr(alpha.Slug)}); err != nil {
 		t.Fatalf("Add(alpha task) error = %v", err)
 	}
-	if _, err := ownerSvc.Add(AddInput{Description: "beta task", Project: strptr(beta.Slug)}); err != nil {
+	if _, err := ownerSvc.Add(AddInput{Title: "beta task", Project: strptr(beta.Slug)}); err != nil {
 		t.Fatalf("Add(beta task) error = %v", err)
 	}
 
@@ -363,7 +363,7 @@ func TestExplicitProjectScopeFiltersSingleTaskOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(beta) error = %v", err)
 	}
-	alphaTask, err := ownerSvc.Add(AddInput{Description: "alpha task", Project: strptr(alpha.Slug)})
+	alphaTask, err := ownerSvc.Add(AddInput{Title: "alpha task", Project: strptr(alpha.Slug)})
 	if err != nil {
 		t.Fatalf("Add(alpha task) error = %v", err)
 	}
@@ -767,7 +767,7 @@ func TestImpersonatedTaskActionRecordsDelegatorInAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService(impersonated) error = %v", err)
 	}
-	if _, err := impersonatedSvc.Add(AddInput{Description: "impersonated task"}); err != nil {
+	if _, err := impersonatedSvc.Add(AddInput{Title: "impersonated task"}); err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 

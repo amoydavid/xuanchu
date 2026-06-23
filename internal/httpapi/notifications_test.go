@@ -135,7 +135,7 @@ func TestHTTPEventNotificationRuleLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"name":"task-unblocked-openclaw","event_type":"task.unblocked","filter_source":"status:pending","audience_type":"assignees","sink":"` + sink.ID + `","template_subject":"任务已解除阻塞","template_body":"{{task.description}}"}`
+	body := `{"name":"task-unblocked-openclaw","event_type":"task.unblocked","filter_source":"status:pending","audience_type":"assignees","sink":"` + sink.ID + `","template_subject":"任务已解除阻塞","template_body":"{{task.title}}"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-rules", body, auth)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create status = %d body=%s", rr.Code, rr.Body.String())

@@ -250,6 +250,7 @@ export const zhCN = {
     recentActivity: "最近动态",
     status: "任务状态",
     tags: "标签",
+    title: "标题",
     taskNotFoundTitle: "任务不存在或不可见",
     tasks: "任务",
     depends: "依赖",

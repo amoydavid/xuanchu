@@ -234,6 +234,7 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		model := toModel(tsk)
 		if err := tx.Model(&Task{}).Where("uuid = ? AND workspace_id = ?", tsk.UUID, tsk.WorkspaceID).Updates(map[string]any{
+			"title":       model.Title,
 			"description": model.Description,
 			"status":      model.Status,
 			"modified":    model.Modified,
@@ -480,7 +481,7 @@ func toModel(tsk domain.Task) Task {
 		})
 	}
 	return Task{
-		UUID: tsk.UUID, WorkspaceID: tsk.WorkspaceID, Description: tsk.Description,
+		UUID: tsk.UUID, WorkspaceID: tsk.WorkspaceID, Title: tsk.Title, Description: tsk.Description,
 		Status: tsk.Status, Entry: tsk.Entry, Modified: tsk.Modified,
 		EndTS: tsk.End, Due: tsk.Due, Project: tsk.Project, ProjectID: tsk.ProjectID, ProjectSeq: tsk.ProjectSeq, Priority: tsk.Priority,
 		Tags:  tags,
@@ -527,7 +528,7 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 		udas[value.Name] = domain.UDAValue{Name: value.Name, Raw: value.Value, Type: value.ValueType, Orphan: value.Orphan}
 	}
 	return domain.Task{
-		UUID: model.UUID, WorkspaceID: model.WorkspaceID, Description: model.Description,
+		UUID: model.UUID, WorkspaceID: model.WorkspaceID, Title: model.Title, Description: model.Description,
 		Status: model.Status, Entry: model.Entry, Modified: model.Modified,
 		End: model.EndTS, Due: model.Due, Project: model.Project, ProjectID: model.ProjectID, ProjectSeq: model.ProjectSeq, Priority: model.Priority,
 		Tags:  tags,

@@ -11,7 +11,8 @@ import (
 type EditableTask struct {
 	UUID        string                `json:"uuid"`
 	Entry       string                `json:"entry"`
-	Description string                `json:"description"`
+	Title       string                `json:"title"`
+	Description *string               `json:"description,omitempty"`
 	Status      string                `json:"status"`
 	Project     *string               `json:"project,omitempty"`
 	Priority    *string               `json:"priority,omitempty"`
@@ -33,6 +34,7 @@ func FromTask(tsk task.Task) EditableTask {
 	return EditableTask{
 		UUID:        dto.UUID,
 		Entry:       dto.Entry,
+		Title:       dto.Title,
 		Description: dto.Description,
 		Status:      dto.Status,
 		Project:     dto.Project,
@@ -83,6 +85,7 @@ func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 	if err != nil {
 		return task.Task{}, err
 	}
+	out.Title = edited.Title
 	out.Description = edited.Description
 	out.Status = edited.Status
 	out.Project = edited.Project

@@ -74,7 +74,7 @@ describe("ProjectReadonlyPage", () => {
             {
               uuid: "task-1",
               task_slug: "ag-23",
-              description: "Design task.query schema",
+              title: "Design task.query schema",
               status: "pending",
               priority: "H",
               due: 1_900_000_000,
@@ -83,7 +83,7 @@ describe("ProjectReadonlyPage", () => {
             {
               uuid: "task-2",
               task_slug: "ag-24",
-              description: "Review SSO redirect flow",
+              title: "Review SSO redirect flow",
               status: "active",
               assignees: [{ user_id: "u2", name: "李四" }],
             },

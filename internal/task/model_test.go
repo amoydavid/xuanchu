@@ -2,30 +2,42 @@ package task
 
 import "testing"
 
-func TestValidateRequiresDescription(t *testing.T) {
-	tsk := Task{Description: "   ", Status: StatusPending}
+func TestValidateRequiresTitle(t *testing.T) {
+	tsk := Task{Title: "   ", Status: StatusPending}
 	if err := tsk.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want error")
 	}
 }
 
+func TestValidateAllowsEmptyDescription(t *testing.T) {
+	tsk := Task{Title: "hello", Status: StatusPending}
+	if err := tsk.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	empty := ""
+	tsk.Description = &empty
+	if err := tsk.Validate(); err != nil {
+		t.Fatalf("Validate(empty detailed description) error = %v, want nil", err)
+	}
+}
+
 func TestValidateRejectsInvalidPriority(t *testing.T) {
 	priority := "X"
-	tsk := Task{Description: "hello", Status: StatusPending, Priority: &priority}
+	tsk := Task{Title: "hello", Status: StatusPending, Priority: &priority}
 	if err := tsk.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want error")
 	}
 }
 
 func TestValidateAllowsM2StatusesAndFields(t *testing.T) {
-	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusWaiting, Entry: 1, Modified: 1}
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "task", Status: StatusWaiting, Entry: 1, Modified: 1}
 	if err := tsk.Validate(); err != nil {
 		t.Fatalf("Validate(waiting) error = %v", err)
 	}
 }
 
 func TestValidateRecurringRequiresRecurAndDue(t *testing.T) {
-	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "parent", Status: StatusRecurring, Entry: 1, Modified: 1}
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "parent", Status: StatusRecurring, Entry: 1, Modified: 1}
 	if err := tsk.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want recurring validation error")
 	}
@@ -45,7 +57,7 @@ func TestValidateRecurringRequiresRecurAndDue(t *testing.T) {
 
 func TestValidateRejectsUnsupportedRecurrence(t *testing.T) {
 	recur := "fortnightly"
-	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusPending, Entry: 1, Modified: 1, Recur: &recur}
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "task", Status: StatusPending, Entry: 1, Modified: 1, Recur: &recur}
 	if err := tsk.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want recurrence validation error")
 	}
@@ -53,7 +65,7 @@ func TestValidateRejectsUnsupportedRecurrence(t *testing.T) {
 
 func TestAnnotationValidateRejectsEmptyDescription(t *testing.T) {
 	tsk := Task{
-		UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusPending, Entry: 1, Modified: 1,
+		UUID: "u1", WorkspaceID: "w1", Title: "task", Status: StatusPending, Entry: 1, Modified: 1,
 		Annotations: []Annotation{{Entry: 10, Description: "  "}},
 	}
 	if err := tsk.Validate(); err == nil {
@@ -62,7 +74,7 @@ func TestAnnotationValidateRejectsEmptyDescription(t *testing.T) {
 }
 
 func TestStartStopHelpers(t *testing.T) {
-	tsk := Task{UUID: "u1", WorkspaceID: "w1", Description: "task", Status: StatusPending, Entry: 1, Modified: 1}
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "task", Status: StatusPending, Entry: 1, Modified: 1}
 	tsk.StartTask(100)
 	if tsk.Start == nil || *tsk.Start != 100 || tsk.Modified != 100 {
 		t.Fatalf("StartTask did not set start/modified: %#v", tsk)
@@ -75,7 +87,7 @@ func TestStartStopHelpers(t *testing.T) {
 
 func TestCompleteSetsStatusAndEnd(t *testing.T) {
 	now := int64(100)
-	tsk := Task{Description: "hello", Status: StatusPending}
+	tsk := Task{Title: "hello", Status: StatusPending}
 	tsk.Complete(now)
 	if tsk.Status != StatusCompleted {
 		t.Fatalf("Status = %q", tsk.Status)

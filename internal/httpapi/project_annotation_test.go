@@ -107,7 +107,7 @@ func TestProjectTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tsk, err := svc.Add(app.AddInput{Description: "timeline task", Project: &project.Slug})
+	tsk, err := svc.Add(app.AddInput{Title: "timeline task", Project: &project.Slug})
 	if err != nil {
 		t.Fatal(err)
 	}

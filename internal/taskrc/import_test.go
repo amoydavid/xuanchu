@@ -22,7 +22,7 @@ dateformat = Y-M-D
 context.work = project:work
 uda.estimate.type = numeric
 uda.estimate.values = 1,2,3,5
-report.next.columns = id,description
+report.next.columns = id,title
 include `+included+`
 `), 0o644); err != nil {
 		t.Fatal(err)

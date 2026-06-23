@@ -247,7 +247,7 @@ func TestCLINotificationRuleLifecycle(t *testing.T) {
 		"--audience", "assignees",
 		"--sink", "openclaw",
 		"--template-subject", "任务已解除阻塞",
-		"--template-body", "{{task.description}}",
+		"--template-body", "{{task.title}}",
 	}); err != nil {
 		t.Fatalf("notification rule add error = %v", err)
 	}

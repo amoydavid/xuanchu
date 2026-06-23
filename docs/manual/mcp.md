@@ -331,7 +331,8 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | workspace slug 或 UUID |
 | `project` | string | 否 | project slug |
 | `project_id` | string | 否 | project UUID |
-| `description` | string | 是 | 任务描述 |
+| `title` | string | 是 | 任务标题 |
+| `description` | string | 否 | 详细描述 |
 | `tags` | string[] | 否 | 要添加的标签 |
 | `assignees` | string[] | 否 | workspace 用户引用（name/email/UUID/外部ID） |
 | `priority` | string | 否 | `H`/`M`/`L` |
@@ -377,7 +378,9 @@ xuanchu --workspace dajee token create mcp-agent \
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
 | `id` | string | 是 | 任务 UUID 或 `task_slug` |
-| `description` | string | 否 | 新描述 |
+| `title` | string | 否 | 新标题 |
+| `description` | string | 否 | 新详细描述 |
+| `clear_description` | bool | 否 | 清空详细描述 |
 | `priority` | string | 否 | `H`/`M`/`L` |
 | `due` | int64 | 否 | unix 秒 |
 | `wait` | int64 | 否 | unix 秒 |
@@ -527,7 +530,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `tasks` | array | 是 | JSON 任务数组（`uuid`/`description`/`status`/`entry`/`modified` 必填） |
+| `tasks` | array | 是 | JSON 任务数组（`uuid`/`title`/`status`/`entry`/`modified` 必填，`description` 可选） |
 
 ### 报表与 Urgency（2 tools）
 

@@ -36,7 +36,7 @@ func TestTaskRepositoryCreateAndList(t *testing.T) {
 	created, err := repo.Create(domain.Task{
 		UUID:        "task-1",
 		WorkspaceID: ws.ID,
-		Description: "write spec",
+		Title:       "write spec",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -53,11 +53,53 @@ func TestTaskRepositoryCreateAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].Description != "write spec" {
+	if len(tasks) != 1 || tasks[0].Title != "write spec" {
 		t.Fatalf("tasks = %#v", tasks)
 	}
 	if len(tasks[0].Tags) != 1 || tasks[0].Tags[0] != "planning" {
 		t.Fatalf("tags = %#v", tasks[0].Tags)
+	}
+}
+
+func TestTaskRepositoryRoundTripsTitleAndOptionalDescription(t *testing.T) {
+	_, repo, ws := newTestRepo(t)
+	detail := "详细描述"
+
+	created, err := repo.Create(domain.Task{
+		UUID:        "task-title-description",
+		WorkspaceID: ws.ID,
+		Title:       "任务标题",
+		Description: &detail,
+		Status:      domain.StatusPending,
+		Entry:       100,
+		Modified:    100,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Title != "任务标题" || created.Description == nil || *created.Description != detail {
+		t.Fatalf("created text fields = title %q description %#v", created.Title, created.Description)
+	}
+
+	got, err := repo.GetByUUID(ws.ID, "task-title-description")
+	if err != nil {
+		t.Fatalf("GetByUUID() error = %v", err)
+	}
+	if got.Title != "任务标题" || got.Description == nil || *got.Description != detail {
+		t.Fatalf("got text fields = title %q description %#v", got.Title, got.Description)
+	}
+
+	got.Description = nil
+	got.Modified = 200
+	if err := repo.Update(got); err != nil {
+		t.Fatalf("Update(clear description) error = %v", err)
+	}
+	cleared, err := repo.GetByUUID(ws.ID, "task-title-description")
+	if err != nil {
+		t.Fatalf("GetByUUID(cleared) error = %v", err)
+	}
+	if cleared.Title != "任务标题" || cleared.Description != nil {
+		t.Fatalf("cleared text fields = title %q description %#v", cleared.Title, cleared.Description)
 	}
 }
 
@@ -71,7 +113,7 @@ func TestTaskRepositoryUpdateReplacesTags(t *testing.T) {
 	repo := NewTaskRepository(store.DB())
 
 	_, err = repo.Create(domain.Task{
-		UUID: "task-1", WorkspaceID: ws.ID, Description: "write spec",
+		UUID: "task-1", WorkspaceID: ws.ID, Title: "write spec",
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 		Tags: []string{"old"},
 	})
@@ -106,7 +148,7 @@ func TestTaskRepositoryCreateAndGetAssignees(t *testing.T) {
 	created, err := repo.Create(domain.Task{
 		UUID:        "task-assignees",
 		WorkspaceID: ws.ID,
-		Description: "write spec",
+		Title:       "write spec",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -146,7 +188,7 @@ func TestTaskRepositoryUpdateAssignees(t *testing.T) {
 	if _, err := repo.Create(domain.Task{
 		UUID:        "task-update-assignees",
 		WorkspaceID: ws.ID,
-		Description: "write spec",
+		Title:       "write spec",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -189,7 +231,7 @@ func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 	recur, parent, mask := "weekly", "parent-uuid", "mask"
 	imask := 1
 	tsk := domain.Task{
-		UUID: "u1", WorkspaceID: ws.ID, Description: "m2 task", Status: domain.StatusPending,
+		UUID: "u1", WorkspaceID: ws.ID, Title: "m2 task", Status: domain.StatusPending,
 		Entry: 1, Modified: 2, Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
 		Annotations: []domain.Annotation{{Entry: 3, Description: "note"}},
 		Depends:     []string{"dep-1", "dep-2"},
@@ -232,7 +274,7 @@ func TestTaskRepositoryCreateUpdateAndListProjectID(t *testing.T) {
 	created, err := repo.Create(domain.Task{
 		UUID:        "task-project",
 		WorkspaceID: ws.ID,
-		Description: "project task",
+		Title:       "project task",
 		Status:      domain.StatusPending,
 		Entry:       1,
 		Modified:    1,
@@ -284,7 +326,7 @@ func TestTaskRepositoryPersistsProjectSeq(t *testing.T) {
 	created, err := repo.Create(domain.Task{
 		UUID:        "task-project-seq",
 		WorkspaceID: ws.ID,
-		Description: "project task",
+		Title:       "project task",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -339,7 +381,7 @@ func TestTaskRepositoryGetByProjectSeq(t *testing.T) {
 	if _, err := repo.Create(domain.Task{
 		UUID:        "task-api-1",
 		WorkspaceID: ws.ID,
-		Description: "api task",
+		Title:       "api task",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -352,7 +394,7 @@ func TestTaskRepositoryGetByProjectSeq(t *testing.T) {
 	if _, err := repo.Create(domain.Task{
 		UUID:        "task-other-1",
 		WorkspaceID: other.ID,
-		Description: "other task",
+		Title:       "other task",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -387,7 +429,7 @@ func TestTaskRepositoryUpdateClearsProjectID(t *testing.T) {
 	created, err := repo.Create(domain.Task{
 		UUID:        "task-clear-project",
 		WorkspaceID: ws.ID,
-		Description: "project task",
+		Title:       "project task",
 		Status:      domain.StatusPending,
 		Entry:       1,
 		Modified:    1,
@@ -424,7 +466,7 @@ func TestTaskRepositoryForeignKeyRejectsCrossWorkspaceProjectID(t *testing.T) {
 	}
 
 	err = store.DB().Exec(`
-INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id)
+INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project, project_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"cross-project-task", ws.ID, "bad project", domain.StatusPending, int64(1), int64(1), "api", project.ID,
 	).Error
@@ -439,7 +481,7 @@ func TestTaskRepositoryRecurringChildUniqueByParentAndDue(t *testing.T) {
 	recur := "daily"
 	due := int64(100)
 	first, existing, err := repo.CreateRecurringChild(domain.Task{
-		UUID: "child-1", WorkspaceID: ws.ID, Description: "child", Status: domain.StatusPending,
+		UUID: "child-1", WorkspaceID: ws.ID, Title: "child", Status: domain.StatusPending,
 		Entry: 1, Modified: 1, Due: &due, Parent: &parent, Recur: &recur,
 	})
 	if err != nil {
@@ -449,7 +491,7 @@ func TestTaskRepositoryRecurringChildUniqueByParentAndDue(t *testing.T) {
 		t.Fatal("CreateRecurringChild(first) existing = true, want false")
 	}
 	second, existing, err := repo.CreateRecurringChild(domain.Task{
-		UUID: "child-2", WorkspaceID: ws.ID, Description: "child", Status: domain.StatusPending,
+		UUID: "child-2", WorkspaceID: ws.ID, Title: "child", Status: domain.StatusPending,
 		Entry: 2, Modified: 2, Due: &due, Parent: &parent, Recur: &recur,
 	})
 	if err != nil {
@@ -468,7 +510,7 @@ func TestTaskRepositoryAddAnnotationAppendsWithoutReplacingExisting(t *testing.T
 	if _, err := repo.Create(domain.Task{
 		UUID:        "task-1",
 		WorkspaceID: ws.ID,
-		Description: "annotated",
+		Title:       "annotated",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -497,7 +539,7 @@ func TestTaskRepositoryListAnnotationsPagination(t *testing.T) {
 	if _, err := repo.Create(domain.Task{
 		UUID:        "task-1",
 		WorkspaceID: ws.ID,
-		Description: "annotated",
+		Title:       "annotated",
 		Status:      domain.StatusPending,
 		Entry:       100,
 		Modified:    100,
@@ -544,20 +586,20 @@ func TestTaskRepositoryListAnnotationsPagination(t *testing.T) {
 func TestTaskRepositoryListByUUIDs(t *testing.T) {
 	_, repo, ws := newTestRepo(t)
 	if _, err := repo.Create(domain.Task{
-		UUID: "t-a", WorkspaceID: ws.ID, Description: "alpha",
+		UUID: "t-a", WorkspaceID: ws.ID, Title: "alpha",
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 	}); err != nil {
 		t.Fatalf("Create(a) error = %v", err)
 	}
 	if _, err := repo.Create(domain.Task{
-		UUID: "t-b", WorkspaceID: ws.ID, Description: "beta",
+		UUID: "t-b", WorkspaceID: ws.ID, Title: "beta",
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 	}); err != nil {
 		t.Fatalf("Create(b) error = %v", err)
 	}
 	// deleted 任务不应返回
 	if _, err := repo.Create(domain.Task{
-		UUID: "t-c", WorkspaceID: ws.ID, Description: "gamma",
+		UUID: "t-c", WorkspaceID: ws.ID, Title: "gamma",
 		Status: domain.StatusDeleted, Entry: 100, Modified: 100,
 	}); err != nil {
 		t.Fatalf("Create(c) error = %v", err)
@@ -573,7 +615,7 @@ func TestTaskRepositoryListByUUIDs(t *testing.T) {
 	}
 	descs := make(map[string]bool, len(got))
 	for _, tsk := range got {
-		descs[tsk.Description] = true
+		descs[tsk.Title] = true
 	}
 	if !descs["alpha"] || !descs["beta"] {
 		t.Fatalf("results = %#v, want alpha+beta", got)
@@ -598,7 +640,7 @@ func stringPtr(value string) *string {
 
 func mkDomainTask(uuid, wsID, desc string) domain.Task {
 	return domain.Task{
-		UUID: uuid, WorkspaceID: wsID, Description: desc,
+		UUID: uuid, WorkspaceID: wsID, Title: desc,
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 	}
 }
@@ -611,14 +653,14 @@ func TestTaskRepositoryListDependents(t *testing.T) {
 		t.Fatalf("Create(a) error = %v", err)
 	}
 	if _, err := repo.Create(domain.Task{
-		UUID: "t-b", WorkspaceID: ws.ID, Description: "beta",
+		UUID: "t-b", WorkspaceID: ws.ID, Title: "beta",
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 		Depends: []string{a.UUID},
 	}); err != nil {
 		t.Fatalf("Create(b) error = %v", err)
 	}
 	if _, err := repo.Create(domain.Task{
-		UUID: "t-c", WorkspaceID: ws.ID, Description: "gamma",
+		UUID: "t-c", WorkspaceID: ws.ID, Title: "gamma",
 		Status: domain.StatusPending, Entry: 100, Modified: 100,
 		Depends: []string{a.UUID},
 	}); err != nil {
@@ -635,7 +677,7 @@ func TestTaskRepositoryListDependents(t *testing.T) {
 	}
 	descs := make(map[string]bool, len(got))
 	for _, tsk := range got {
-		descs[tsk.Description] = true
+		descs[tsk.Title] = true
 	}
 	if len(got) != 2 || !descs["beta"] || !descs["gamma"] {
 		t.Fatalf("ListDependents(a) = %#v, want beta+gamma", got)

@@ -357,7 +357,7 @@ func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule
 		Workspace:    NotificationWorkspaceContext{ID: workspace.ID, Slug: workspace.Slug, Name: workspace.Name},
 		Project:      project,
 		Rule:         NotificationRuleContext{ID: rule.ID, Name: rule.Name, TriggerType: rule.TriggerType},
-		Task:         NotificationTaskContext{UUID: tsk.UUID, TaskSlug: taskRefForNotification(tsk), Description: tsk.Description, Status: tsk.Status, Due: tsk.Due},
+		Task:         NotificationTaskContext{UUID: tsk.UUID, TaskSlug: taskRefForNotification(tsk), Title: tsk.Title, Description: optionalTextValue(tsk.Description), Status: tsk.Status, Due: tsk.Due},
 		Recipient:    recipient,
 		Reminder:     NotificationReminderContext{Sequence: sequence, OverdueSequence: overdueSequence, WindowStart: windowStart, WindowEnd: windowEnd},
 		Event:        NotificationEventContext{ID: eventID, Type: eventType, Version: 1, ObjectKind: "task", ObjectID: tsk.UUID},

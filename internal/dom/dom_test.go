@@ -9,8 +9,8 @@ import (
 
 func TestResolveTaskField(t *testing.T) {
 	project := "work"
-	tsk := task.Task{UUID: "u1", Description: "write spec", Status: task.StatusPending, Project: &project, Tags: []string{"next"}}
-	got, err := Resolve(tsk, "description", 12.5)
+	tsk := task.Task{UUID: "u1", Title: "write spec", Status: task.StatusPending, Project: &project, Tags: []string{"next"}}
+	got, err := Resolve(tsk, "title", 12.5)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
@@ -45,7 +45,7 @@ func TestResolveMissingVirtualTagReturnsEmpty(t *testing.T) {
 func TestResolveM2Fields(t *testing.T) {
 	start := int64(10)
 	tsk := task.Task{
-		UUID: "u1", Description: "task", Status: task.StatusPending, Start: &start,
+		UUID: "u1", Title: "task", Status: task.StatusPending, Start: &start,
 		Depends:     []string{"dep1", "dep2"},
 		Annotations: []task.Annotation{{ID: "ann-1", Entry: 1, Description: "note"}},
 	}

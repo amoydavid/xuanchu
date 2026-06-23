@@ -62,11 +62,7 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			dbTarget := cfg.DatabaseURL
-			if dbTarget == "" {
-				dbTarget = cfg.DatabasePath
-			}
-			store, err := storage.Open(dbTarget)
+			store, err := storage.Open(cfg.DatabaseTarget())
 			if err != nil {
 				return err
 			}

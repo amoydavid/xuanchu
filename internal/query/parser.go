@@ -10,12 +10,12 @@ import (
 
 // ParsedAdd is the structured result of ParseAddArgs.
 type ParsedAdd struct {
-	Description string
-	Mod         task.Modification
+	Title string
+	Mod   task.Modification
 }
 
 func ParseAddArgs(args []string) (ParsedAdd, error) {
-	var desc []string
+	var titleParts []string
 	mod := task.Modification{}
 	for _, arg := range args {
 		applied, err := applyModificationToken(arg, &mod)
@@ -25,13 +25,13 @@ func ParseAddArgs(args []string) (ParsedAdd, error) {
 		if applied {
 			continue
 		}
-		desc = append(desc, arg)
+		titleParts = append(titleParts, arg)
 	}
-	description := strings.TrimSpace(strings.Join(desc, " "))
-	if description == "" {
-		return ParsedAdd{}, errors.New("description is required")
+	title := strings.TrimSpace(strings.Join(titleParts, " "))
+	if title == "" {
+		return ParsedAdd{}, errors.New("title is required")
 	}
-	return ParsedAdd{Description: description, Mod: mod}, nil
+	return ParsedAdd{Title: title, Mod: mod}, nil
 }
 
 func ParseModifyArgs(args []string) (task.Modification, error) {
@@ -82,6 +82,10 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 	case strings.HasPrefix(arg, "priority:"):
 		value := strings.TrimPrefix(arg, "priority:")
 		mod.Priority = &value
+		return true, nil
+	case strings.HasPrefix(arg, "title:"):
+		value := strings.TrimPrefix(arg, "title:")
+		mod.Title = &value
 		return true, nil
 	case strings.HasPrefix(arg, "description:"):
 		value := strings.TrimPrefix(arg, "description:")
@@ -174,7 +178,7 @@ func isPotentialUDAName(name string) bool {
 		return false
 	}
 	switch name {
-	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "project_seq", "task_slug", "priority", "depends", "annotations", "recur", "parent", "assignee", "tag", "mask", "imask":
+	case "uuid", "title", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "project_seq", "task_slug", "priority", "depends", "annotations", "recur", "parent", "assignee", "tag", "mask", "imask":
 		return false
 	default:
 		return true

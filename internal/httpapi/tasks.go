@@ -18,7 +18,8 @@ import (
 )
 
 type addTaskRequest struct {
-	Description string            `json:"description"`
+	Title       string            `json:"title"`
+	Description *string           `json:"description,omitempty"`
 	Project     string            `json:"project,omitempty"`
 	ProjectID   string            `json:"project_id,omitempty"`
 	Priority    string            `json:"priority,omitempty"`
@@ -34,7 +35,9 @@ type addTaskRequest struct {
 }
 
 type modifyTaskRequest struct {
+	Title           *string           `json:"title,omitempty"`
 	Description     *string           `json:"description,omitempty"`
+	ClearDescription bool              `json:"clear_description,omitempty"`
 	Project         *string           `json:"project,omitempty"`
 	ProjectID       *string           `json:"project_id,omitempty"`
 	Priority        *string           `json:"priority,omitempty"`
@@ -260,7 +263,8 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		projectPtr = &project
 	}
 	created, err := scoped.Add(app.AddInput{
-		Description: strings.TrimSpace(req.Description),
+		Title:       strings.TrimSpace(req.Title),
+		Description: req.Description,
 		Project:     projectPtr,
 		Priority:    priority,
 		Due:         req.Due,
@@ -392,7 +396,9 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		project = &view.Slug
 	}
 	if err := scoped.Modify(resolved.UUID, app.ModifyInput{
+		Title:           req.Title,
 		Description:     req.Description,
+		ClearDescription: req.ClearDescription,
 		Project:         project,
 		ClearProject:    req.ClearProject,
 		Priority:        req.Priority,

@@ -110,7 +110,7 @@ func ParseValuesCSV(raw string) []string {
 
 func isReservedName(name string) bool {
 	switch name {
-	case "uuid", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "project_seq", "task_slug", "priority", "depends", "annotations", "recur", "parent", "tag", "mask", "imask":
+	case "uuid", "title", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "project_seq", "task_slug", "priority", "depends", "annotations", "recur", "parent", "tag", "mask", "imask":
 		return true
 	default:
 		return false

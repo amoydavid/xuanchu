@@ -11,16 +11,16 @@ const now = 1_800_000_000
 describe("project readonly stats", () => {
   it("counts task statuses, overdue tasks, and high priority tasks", () => {
     const tasks: ProjectTask[] = [
-      { uuid: "1", description: "pending", status: "pending", due: now - 10 },
-      { uuid: "2", description: "active", status: "active", priority: "H" },
+      { uuid: "1", title: "pending", status: "pending", due: now - 10 },
+      { uuid: "2", title: "active", status: "active", priority: "H" },
       {
         uuid: "3",
-        description: "completed",
+        title: "completed",
         status: "completed",
         due: now - 20,
         priority: "H",
       },
-      { uuid: "4", description: "deleted", status: "deleted", due: now - 30 },
+      { uuid: "4", title: "deleted", status: "deleted", due: now - 30 },
     ]
 
     expect(buildProjectStats(tasks, now)).toEqual({
@@ -37,24 +37,24 @@ describe("project readonly stats", () => {
     const tasks: ProjectTask[] = [
       {
         uuid: "1",
-        description: "alice overdue",
+        title: "alice overdue",
         status: "pending",
         due: now - 10,
         assignees: [{ user_id: "u1", name: "Alice" }],
       },
       {
         uuid: "2",
-        description: "alice active",
+        title: "alice active",
         status: "active",
         assignees: [{ user_id: "u1", name: "Alice" }],
       },
       {
         uuid: "3",
-        description: "bob completed",
+        title: "bob completed",
         status: "completed",
         assignees: [{ user_id: "u2", name: "Bob" }],
       },
-      { uuid: "4", description: "unassigned", status: "pending" },
+      { uuid: "4", title: "unassigned", status: "pending" },
     ]
 
     expect(summarizeAssignees(tasks, now, "未分配")).toEqual([

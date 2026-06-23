@@ -11,7 +11,7 @@ CIO 在群里处理工作的典型链路。
 task_add({
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
-  "description": "修复登录页面白屏问题",
+  "title": "修复登录页面白屏问题",
   "priority": "H",
   "tags": ["bug"]
 })
@@ -109,7 +109,7 @@ task_import({
   "workspace": "dajee",
   "project_id": "proj-uuid-yyy",
   "tasks": [
-    {"uuid": "imported-001", "description": "导入的任务", "status": "pending", "entry": "2025-06-01T00:00:00Z", "modified": "2025-06-01T00:00:00Z"}
+    {"uuid": "imported-001", "title": "导入的任务", "status": "pending", "entry": "2025-06-01T00:00:00Z", "modified": "2025-06-01T00:00:00Z"}
   ]
 })
 ```

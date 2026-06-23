@@ -119,7 +119,7 @@ func TestNotificationSinkRepositoryStoresHTTPTemplateFields(t *testing.T) {
 		s.ConfigKey = "integrations.feishu.webhook_url"
 		s.AllowedHostsJSON = `["open.feishu.cn"]`
 		s.HeaderTemplatesJSON = `[{"name":"Content-Type","value":"application/json"},{"name":"Authorization","value":"Bearer {{secret.feishu_bot_token}}"}]`
-		s.BodyTemplate = `{"msg_type":"text","content":{"text":"任务 {{task.task_slug}} 即将到期：{{task.description}}"}}`
+		s.BodyTemplate = `{"msg_type":"text","content":{"text":"任务 {{task.task_slug}} 即将到期：{{task.title}}"}}`
 		s.BodyContentType = "application/json"
 		s.SecretRefsJSON = `{"feishu_bot_token":{"config_key":"integrations.feishu.bot_token"}}`
 	})

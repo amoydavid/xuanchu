@@ -85,10 +85,10 @@ func TestPostgresE2EServerHTTPMCPAndLogs(t *testing.T) {
 		t.Fatalf("PostgreSQL project add response = %#v", project)
 	}
 	task := httpJSON(t, http.MethodPost, baseURL+"/api/v1/tasks", map[string]any{
-		"description": "postgres http api task",
-		"project":     "pge2e",
+		"title":   "postgres http api task",
+		"project": "pge2e",
 	}, authHeaders(token))
-	if nestedMap(t, task, "data")["description"] != "postgres http api task" {
+	if nestedMap(t, task, "data")["title"] != "postgres http api task" {
 		t.Fatalf("PostgreSQL task add response = %#v", task)
 	}
 
@@ -97,15 +97,15 @@ func TestPostgresE2EServerHTTPMCPAndLogs(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "task_add",
 		Arguments: map[string]any{
-			"description": "postgres mcp task",
-			"project":     "pge2e",
+			"title":   "postgres mcp task",
+			"project": "pge2e",
 		},
 	})
 	if err != nil {
 		t.Fatalf("PostgreSQL HTTP MCP task_add error = %v", err)
 	}
 	env := mcpStructuredMap(t, result)
-	if nestedMap(t, nestedMap(t, env, "data"), "task")["description"] != "postgres mcp task" {
+	if nestedMap(t, nestedMap(t, env, "data"), "task")["title"] != "postgres mcp task" {
 		t.Fatalf("PostgreSQL HTTP MCP structured content = %#v", env)
 	}
 

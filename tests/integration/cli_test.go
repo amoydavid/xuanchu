@@ -838,7 +838,7 @@ func TestCLIUDAConfigAndImport(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "orphan.json")
-	if err := os.WriteFile(path, []byte(`[{"uuid":"u1","description":"legacy task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(`[{"uuid":"u1","title":"legacy task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	run(t, bin, "--db", db, "import", path)
@@ -864,7 +864,7 @@ func TestCLIImportTaskRC(t *testing.T) {
 		"uda.estimate.type=numeric",
 		"uda.estimate.values=1,2,3",
 		"urgency.uda.estimate.coefficient=2",
-		"report.next.columns=id,description",
+		"report.next.columns=id,title",
 		"unknown.value=yes",
 		"",
 	}, "\n")), 0o644); err != nil {
@@ -1064,7 +1064,7 @@ func TestCLIConfigAndShowHideLegacyContextKeys(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "add", "one")
-	run(t, bin, "--db", db, "context", "define", "work", "description:one")
+	run(t, bin, "--db", db, "context", "define", "work", "title:one")
 	run(t, bin, "--db", db, "context", "use", "work")
 
 	cmd := exec.Command(bin, "--db", db, "_show", "context.active")
@@ -1240,7 +1240,7 @@ func TestCLIWorkspaceIsolation(t *testing.T) {
 		{name: "unique", args: []string{"_unique", "estimate"}, wantWork: "2", wantLocal: "1"},
 		{name: "ids", args: []string{"_ids", "project:same"}, wantWork: "1", wantLocal: "1"},
 		{name: "uuids", args: []string{"_uuids", "project:same"}, wantWork: "", wantLocal: ""},
-		{name: "get", args: []string{"_get", "1.description"}, wantWork: "work task", wantLocal: "local task"},
+		{name: "get", args: []string{"_get", "1.title"}, wantWork: "work task", wantLocal: "local task"},
 		{name: "urgency", args: []string{"_urgency", "1"}, wantWork: "", wantLocal: ""},
 	} {
 		workOut := run(t, bin, append([]string{"--db", db}, tc.args...)...)
@@ -1285,8 +1285,8 @@ func TestCLIJSONFlagProducesMachineReadableOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(addOut), &created); err != nil {
 		t.Fatalf("add --json output is not JSON: %v\n%s", err, addOut)
 	}
-	if created["description"] != "write spec" {
-		t.Fatalf("created description = %#v", created["description"])
+	if created["title"] != "write spec" {
+		t.Fatalf("created title = %#v", created["title"])
 	}
 
 	listOut := run(t, bin, "--db", db, "--json", "list")
@@ -1294,7 +1294,7 @@ func TestCLIJSONFlagProducesMachineReadableOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
 		t.Fatalf("list --json output is not JSON: %v\n%s", err, listOut)
 	}
-	if len(listed) != 1 || listed[0]["description"] != "write spec" {
+	if len(listed) != 1 || listed[0]["title"] != "write spec" {
 		t.Fatalf("listed = %#v", listed)
 	}
 }
@@ -1381,7 +1381,7 @@ func TestCLIInfoShowsAllM0Fields(t *testing.T) {
 	run(t, bin, "--db", db, "project", "add", "xuanchu", "name:Xuanchu")
 	run(t, bin, "--db", db, "add", "write", "spec", "project:xuanchu", "priority:H", "due:2030-01-01", "+planning")
 	out := run(t, bin, "--db", db, "info", "1")
-	for _, want := range []string{"UUID:", "Status:", "Description:", "Entry:", "Modified:", "Due:", "Project:", "Priority:", "Tags:"} {
+	for _, want := range []string{"UUID:", "Status:", "Title:", "Description:", "Entry:", "Modified:", "Due:", "Project:", "Priority:", "Tags:"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("info output missing %q: %q", want, out)
 		}
@@ -1435,7 +1435,7 @@ func TestCLIHelpers(t *testing.T) {
 	if nextID == "" {
 		t.Fatal("_ids +next returned empty result")
 	}
-	got := run(t, bin, "--db", db, "_get", nextID+".description", nextID+".tag.next", nextID+".tag.missing", nextID+".urgency")
+	got := run(t, bin, "--db", db, "_get", nextID+".title", nextID+".tag.next", nextID+".tag.missing", nextID+".urgency")
 	if !strings.Contains(got, "work task") || !strings.Contains(got, "next") {
 		t.Fatalf("_get output = %q", got)
 	}
@@ -1527,7 +1527,7 @@ func TestCLIIDsReturnDefaultWorkingSetIDs(t *testing.T) {
 	if strings.TrimSpace(ids) != "2" {
 		t.Fatalf("_ids output = %q, want 2", ids)
 	}
-	get := run(t, bin, "--db", db, "_get", strings.TrimSpace(ids)+".description")
+	get := run(t, bin, "--db", db, "_get", strings.TrimSpace(ids)+".title")
 	if strings.TrimSpace(get) != "second" {
 		t.Fatalf("_get for _ids output = %q, want second", get)
 	}
@@ -1577,18 +1577,18 @@ func TestCLIDueStoredAsEndOfDay(t *testing.T) {
 	}
 }
 
-func TestCLIDescriptionAttributeUsesSubstring(t *testing.T) {
+func TestCLITitleAttributeUsesSubstring(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 	run(t, bin, "--db", db, "add", "write", "spec")
 	run(t, bin, "--db", db, "add", "other", "task")
 
-	out := run(t, bin, "--db", db, "description:spec", "list")
+	out := run(t, bin, "--db", db, "title:spec", "list")
 	if !strings.Contains(out, "write spec") {
-		t.Fatalf("description:spec list missing write spec: %q", out)
+		t.Fatalf("title:spec list missing write spec: %q", out)
 	}
 	if strings.Contains(out, "other task") {
-		t.Fatalf("description:spec list should not match other task: %q", out)
+		t.Fatalf("title:spec list should not match other task: %q", out)
 	}
 }
 
@@ -1721,9 +1721,9 @@ func TestCLIListShowsWorkingSetIDWhenWaitingTaskIsHidden(t *testing.T) {
 	if !strings.Contains(list, "2") || !strings.Contains(list, "visible task") {
 		t.Fatalf("list output = %q, want visible task with working-set ID 2", list)
 	}
-	got := run(t, bin, "--db", db, "_get", "2.description")
+	got := run(t, bin, "--db", db, "_get", "2.title")
 	if strings.TrimSpace(got) != "visible task" {
-		t.Fatalf("_get 2.description = %q, want visible task", got)
+		t.Fatalf("_get 2.title = %q, want visible task", got)
 	}
 }
 
@@ -1788,9 +1788,9 @@ func TestCLIAppendPrepend(t *testing.T) {
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "1", "append", "end")
 	run(t, bin, "--db", db, "1", "prepend", "start")
-	got := run(t, bin, "--db", db, "_get", "1.description")
+	got := run(t, bin, "--db", db, "_get", "1.title")
 	if !strings.Contains(got, "start middle end") {
-		t.Fatalf("description = %q", got)
+		t.Fatalf("title = %q", got)
 	}
 }
 
@@ -1800,9 +1800,9 @@ func TestCLIAppendPrependCommands(t *testing.T) {
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "append", "1", "tail", "text")
 	run(t, bin, "--db", db, "prepend", "1", "head", "text")
-	got := run(t, bin, "--db", db, "_get", "1.description")
+	got := run(t, bin, "--db", db, "_get", "1.title")
 	if !strings.Contains(got, "head text middle tail text") {
-		t.Fatalf("description = %q", got)
+		t.Fatalf("title = %q", got)
 	}
 }
 
@@ -1852,7 +1852,7 @@ func main() {
 	if err != nil { panic(err) }
 	var doc map[string]any
 	if err := json.Unmarshal(data, &doc); err != nil { panic(err) }
-	doc["description"] = "edited task"
+	doc["title"] = "edited task"
 	data, err = json.Marshal(doc)
 	if err != nil { panic(err) }
 	if err := os.WriteFile(path, data, 0o600); err != nil { panic(err) }
@@ -1864,9 +1864,9 @@ func main() {
 	if err != nil {
 		t.Fatalf("edit failed: %v\n%s", err, out)
 	}
-	got := run(t, bin, "--db", db, "_get", "1.description")
+	got := run(t, bin, "--db", db, "_get", "1.title")
 	if !strings.Contains(got, "edited task") {
-		t.Fatalf("description = %q", got)
+		t.Fatalf("title = %q", got)
 	}
 }
 
@@ -2358,7 +2358,8 @@ func seedM4DatabaseWithTasksForCLI(t *testing.T, dbPath string, tasks []seedTask
 	mustExecSQL(t, db, `CREATE TABLE tasks (
 uuid TEXT PRIMARY KEY,
 workspace_id TEXT NOT NULL,
-description TEXT NOT NULL,
+title TEXT NOT NULL,
+description TEXT,
 status TEXT NOT NULL,
 entry INTEGER NOT NULL,
 modified INTEGER NOT NULL,
@@ -2401,7 +2402,7 @@ i_mask INTEGER
 		if slug == "" {
 			slug = "local"
 		}
-		mustExecSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES(?, ?, ?, 'pending', ?, ?, ?)`,
+		mustExecSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project) VALUES(?, ?, ?, 'pending', ?, ?, ?)`,
 			task.UUID, workspaces[slug], "task "+task.UUID, task.Entry, task.Entry, task.Project)
 	}
 }

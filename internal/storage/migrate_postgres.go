@@ -28,7 +28,7 @@ func (s *Store) migratePostgres() error {
 func (s *Store) prepareTaskAnnotationIDsPostgres() error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		var tableName sql.NullString
-		err := tx.Raw("SELECT to_regclass('public.task_annotations')::text").Scan(&tableName).Error
+		err := tx.Raw("SELECT to_regclass('task_annotations')::text").Scan(&tableName).Error
 		if err != nil {
 			return err
 		}

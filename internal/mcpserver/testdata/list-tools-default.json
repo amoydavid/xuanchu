@@ -3062,8 +3062,11 @@
             ]
           },
           "description": {
-            "description": "task description",
-            "type": "string"
+            "description": "task details",
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "due": {
             "description": "unix seconds",
@@ -3100,6 +3103,10 @@
               "array"
             ]
           },
+          "title": {
+            "description": "task title",
+            "type": "string"
+          },
           "until": {
             "description": "unix seconds",
             "type": [
@@ -3120,7 +3127,7 @@
           }
         },
         "required": [
-          "description"
+          "title"
         ],
         "type": "object"
       },
@@ -3524,14 +3531,14 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
-                      "description": {
-                        "type": "string"
-                      },
                       "task_slug": {
                         "type": [
                           "null",
                           "string"
                         ]
+                      },
+                      "title": {
+                        "type": "string"
                       },
                       "uuid": {
                         "type": "string"
@@ -3539,7 +3546,7 @@
                     },
                     "required": [
                       "uuid",
-                      "description"
+                      "title"
                     ],
                     "type": "object"
                   },
@@ -3561,14 +3568,14 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
-                      "description": {
-                        "type": "string"
-                      },
                       "task_slug": {
                         "type": [
                           "null",
                           "string"
                         ]
+                      },
+                      "title": {
+                        "type": "string"
                       },
                       "uuid": {
                         "type": "string"
@@ -3576,7 +3583,7 @@
                     },
                     "required": [
                       "uuid",
-                      "description"
+                      "title"
                     ],
                     "type": "object"
                   },
@@ -3586,7 +3593,10 @@
                   ]
                 },
                 "description": {
-                  "type": "string"
+                  "type": [
+                    "null",
+                    "string"
+                  ]
                 },
                 "due": {
                   "type": [
@@ -3705,14 +3715,14 @@
                 "parent_info": {
                   "additionalProperties": false,
                   "properties": {
-                    "description": {
-                      "type": "string"
-                    },
                     "task_slug": {
                       "type": [
                         "null",
                         "string"
                       ]
+                    },
+                    "title": {
+                      "type": "string"
                     },
                     "uuid": {
                       "type": "string"
@@ -3720,7 +3730,7 @@
                   },
                   "required": [
                     "uuid",
-                    "description"
+                    "title"
                   ],
                   "type": [
                     "null",
@@ -3775,6 +3785,9 @@
                     "string"
                   ]
                 },
+                "title": {
+                  "type": "string"
+                },
                 "until": {
                   "type": [
                     "null",
@@ -3793,7 +3806,7 @@
               },
               "required": [
                 "uuid",
-                "description",
+                "title",
                 "status",
                 "entry",
                 "modified"
@@ -4063,6 +4076,12 @@
             "type": [
               "null",
               "array"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
             ]
           },
           "udas": {

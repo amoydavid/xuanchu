@@ -61,7 +61,8 @@ type adminActingSessionStore interface {
 }
 
 type AddInput struct {
-	Description string
+	Title       string
+	Description *string
 	Project     *string
 	Priority    *string
 	Due         *int64
@@ -91,30 +92,32 @@ type ExportInput struct {
 }
 
 type ModifyInput struct {
-	Description     *string
-	Project         *string
-	ClearProject    bool
-	Priority        *string
-	ClearPriority   bool
-	Due             *int64
-	ClearDue        bool
-	Wait            *int64
-	ClearWait       bool
-	Scheduled       *int64
-	ClearScheduled  bool
-	Until           *int64
-	ClearUntil      bool
-	AddDepends      []string
-	ClearDepends    bool
-	Recur           *string
-	ClearRecur      bool
-	AddAssignees    []string
-	RemoveAssignees []string
-	ClearAssignees  bool
-	AddTags         []string
-	RemoveTags      []string
-	UDAs            map[string]string
-	ClearUDAs       []string
+	Title            *string
+	Description      *string
+	ClearDescription bool
+	Project          *string
+	ClearProject     bool
+	Priority         *string
+	ClearPriority    bool
+	Due              *int64
+	ClearDue         bool
+	Wait             *int64
+	ClearWait        bool
+	Scheduled        *int64
+	ClearScheduled   bool
+	Until            *int64
+	ClearUntil       bool
+	AddDepends       []string
+	ClearDepends     bool
+	Recur            *string
+	ClearRecur       bool
+	AddAssignees     []string
+	RemoveAssignees  []string
+	ClearAssignees   bool
+	AddTags          []string
+	RemoveTags       []string
+	UDAs             map[string]string
+	ClearUDAs        []string
 }
 
 type ReportInput struct {
@@ -205,6 +208,24 @@ func NewService(opts ServiceOptions) (*Service, error) {
 
 func (s *Service) Clock() Clock {
 	return s.clock
+}
+
+func normalizeOptionalText(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func optionalTextValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func (s *Service) withStore(store *storage.Store) (*Service, error) {
@@ -416,7 +437,7 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 		return task.Task{}, projectChange{}, err
 	}
 	tsk := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
+		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Assignees: assignees, Depends: depends,
@@ -548,8 +569,14 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 	}
 	now := s.clock.Unix()
 	change := projectChangeForTask(tsk)
+	if input.Title != nil {
+		tsk.Title = strings.TrimSpace(*input.Title)
+	}
 	if input.Description != nil {
-		tsk.Description = *input.Description
+		tsk.Description = normalizeOptionalText(input.Description)
+	}
+	if input.ClearDescription {
+		tsk.Description = nil
 	}
 	if input.Project != nil {
 		change, err = s.applyProjectBinding(&tsk, input.Project)
@@ -869,7 +896,7 @@ func (s *Service) ListAnnotations(target string, offset, limit int) ([]task.Anno
 	return s.repo.ListAnnotations(s.workspaceID, tsk.UUID, offset, limit)
 }
 
-// ResolveTaskRefs 把一组任务 UUID 解析为带描述和 task_slug 的轻量引用，
+// ResolveTaskRefs 把一组任务 UUID 解析为带标题和 task_slug 的轻量引用，
 // 用于 depends_info/parent_info 等可读展示。找不到或已删除的 UUID 被忽略。
 func (s *Service) ResolveTaskRefs(uuids []string) ([]task.JSONTaskRef, error) {
 	if len(uuids) == 0 {
@@ -892,11 +919,11 @@ func (s *Service) ResolveDependents(taskUUID string) ([]task.JSONTaskRef, error)
 	return tasksToRefs(tasks), nil
 }
 
-// tasksToRefs 把领域任务列表转为轻量 JSONTaskRef（带描述 + task_slug）。
+// tasksToRefs 把领域任务列表转为轻量 JSONTaskRef（带标题 + task_slug）。
 func tasksToRefs(tasks []task.Task) []task.JSONTaskRef {
 	out := make([]task.JSONTaskRef, 0, len(tasks))
 	for _, tsk := range tasks {
-		ref := task.JSONTaskRef{UUID: tsk.UUID, Description: tsk.Description}
+		ref := task.JSONTaskRef{UUID: tsk.UUID, Title: tsk.Title}
 		if slug := taskSlugOf(tsk); slug != "" {
 			s := slug
 			ref.TaskSlug = &s
@@ -1034,9 +1061,9 @@ func (s *Service) appendDescriptionLocked(target, suffix string) (task.Task, pro
 	change := projectChangeForTask(tsk)
 	suffix = strings.TrimSpace(suffix)
 	if suffix == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("title text is required")
 	}
-	tsk.Description = tsk.Description + " " + suffix
+	tsk.Title = strings.TrimSpace(tsk.Title + " " + suffix)
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -1067,9 +1094,9 @@ func (s *Service) prependDescriptionLocked(target, prefix string) (task.Task, pr
 	change := projectChangeForTask(tsk)
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("title text is required")
 	}
-	tsk.Description = prefix + " " + tsk.Description
+	tsk.Title = strings.TrimSpace(prefix + " " + tsk.Title)
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -1234,8 +1261,11 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	if err := s.normalizeImportedProjectUpdate(existing, &tsk); err != nil {
 		return err
 	}
-	if tsk.Description != "" {
-		existing.Description = tsk.Description
+	if tsk.Title != "" {
+		existing.Title = tsk.Title
+	}
+	if dto.Description != nil {
+		existing.Description = normalizeOptionalText(dto.Description)
 	}
 	if tsk.Status != "" {
 		existing.Status = tsk.Status
@@ -1837,7 +1867,7 @@ func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, p
 		return task.Task{}, projectChange{}, err
 	}
 	parent := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: input.Description,
+		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
 		Status: task.StatusRecurring, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Assignees: assignees, Until: input.Until, Recur: input.Recur,
@@ -1899,7 +1929,7 @@ func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task
 		return task.Task{}, nil, nil
 	}
 	child := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Description: parent.Description,
+		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: parent.Title, Description: cloneStringPtr(parent.Description),
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: due, Project: parent.Project, ProjectID: parent.ProjectID, Priority: parent.Priority, Tags: parent.Tags,
 		Assignees: cloneAssigneeInfos(parent.Assignees), Until: parent.Until, Recur: parent.Recur,

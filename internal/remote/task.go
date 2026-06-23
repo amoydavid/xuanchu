@@ -24,7 +24,8 @@ type ListTasksInput struct {
 }
 
 type AddTaskInput struct {
-	Description string            `json:"description"`
+	Title       string            `json:"title"`
+	Description *string           `json:"description,omitempty"`
 	Project     string            `json:"project,omitempty"`
 	ProjectID   string            `json:"project_id,omitempty"`
 	Priority    string            `json:"priority,omitempty"`
@@ -40,31 +41,33 @@ type AddTaskInput struct {
 }
 
 type ModifyTaskInput struct {
-	Description     *string           `json:"description,omitempty"`
-	Project         *string           `json:"project,omitempty"`
-	ProjectID       *string           `json:"project_id,omitempty"`
-	Priority        *string           `json:"priority,omitempty"`
-	ClearProject    bool              `json:"clear_project,omitempty"`
-	ClearPriority   bool              `json:"clear_priority,omitempty"`
-	Due             *int64            `json:"due,omitempty"`
-	ClearDue        bool              `json:"clear_due,omitempty"`
-	Wait            *int64            `json:"wait,omitempty"`
-	ClearWait       bool              `json:"clear_wait,omitempty"`
-	Scheduled       *int64            `json:"scheduled,omitempty"`
-	ClearScheduled  bool              `json:"clear_scheduled,omitempty"`
-	Until           *int64            `json:"until,omitempty"`
-	ClearUntil      bool              `json:"clear_until,omitempty"`
-	Assignees       []string          `json:"assignees,omitempty"`
-	RemoveAssignees []string          `json:"remove_assignees,omitempty"`
-	ClearAssignees  bool              `json:"clear_assignees,omitempty"`
-	Depends         []string          `json:"depends,omitempty"`
-	ClearDepends    bool              `json:"clear_depends,omitempty"`
-	Recur           *string           `json:"recur,omitempty"`
-	ClearRecur      bool              `json:"clear_recur,omitempty"`
-	Tags            []string          `json:"tags,omitempty"`
-	RemoveTags      []string          `json:"remove_tags,omitempty"`
-	UDAs            map[string]string `json:"udas,omitempty"`
-	ClearUDAs       []string          `json:"clear_udas,omitempty"`
+	Title            *string           `json:"title,omitempty"`
+	Description      *string           `json:"description,omitempty"`
+	ClearDescription bool              `json:"clear_description,omitempty"`
+	Project          *string           `json:"project,omitempty"`
+	ProjectID        *string           `json:"project_id,omitempty"`
+	Priority         *string           `json:"priority,omitempty"`
+	ClearProject     bool              `json:"clear_project,omitempty"`
+	ClearPriority    bool              `json:"clear_priority,omitempty"`
+	Due              *int64            `json:"due,omitempty"`
+	ClearDue         bool              `json:"clear_due,omitempty"`
+	Wait             *int64            `json:"wait,omitempty"`
+	ClearWait        bool              `json:"clear_wait,omitempty"`
+	Scheduled        *int64            `json:"scheduled,omitempty"`
+	ClearScheduled   bool              `json:"clear_scheduled,omitempty"`
+	Until            *int64            `json:"until,omitempty"`
+	ClearUntil       bool              `json:"clear_until,omitempty"`
+	Assignees        []string          `json:"assignees,omitempty"`
+	RemoveAssignees  []string          `json:"remove_assignees,omitempty"`
+	ClearAssignees   bool              `json:"clear_assignees,omitempty"`
+	Depends          []string          `json:"depends,omitempty"`
+	ClearDepends     bool              `json:"clear_depends,omitempty"`
+	Recur            *string           `json:"recur,omitempty"`
+	ClearRecur       bool              `json:"clear_recur,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	RemoveTags       []string          `json:"remove_tags,omitempty"`
+	UDAs             map[string]string `json:"udas,omitempty"`
+	ClearUDAs        []string          `json:"clear_udas,omitempty"`
 }
 
 type TextInput struct {

@@ -675,7 +675,8 @@ func eventNotificationTaskContext(event HookEvent) NotificationTaskContext {
 	return NotificationTaskContext{
 		UUID:        tsk.UUID,
 		TaskSlug:    taskRefForNotification(tsk),
-		Description: tsk.Description,
+		Title:       tsk.Title,
+		Description: optionalTextValue(tsk.Description),
 		Status:      tsk.Status,
 		Due:         tsk.Due,
 	}

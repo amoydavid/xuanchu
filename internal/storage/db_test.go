@@ -45,6 +45,23 @@ func TestOpen_UnsupportedScheme(t *testing.T) {
 	}
 }
 
+func TestTransactionPreservesDialect(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if err := store.Transaction(func(txStore *Store) error {
+		if got := txStore.Dialect(); got != store.Dialect() {
+			t.Fatalf("transaction Dialect() = %q, want %q", got, store.Dialect())
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("Transaction() error = %v", err)
+	}
+}
+
 func TestOpenInitializesLocalUserWorkspaceAndMembership(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
 
@@ -614,7 +631,7 @@ func TestOpenEnablesForeignKeyChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = store.DB().Exec(`INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+	err = store.DB().Exec(`INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project, project_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		"task-1", ws.ID, "x", "pending", 1, 1, "api", project.ID).Error
 	if err == nil {
 		t.Fatal("cross-workspace task project_id insert succeeded, want FK failure")
@@ -935,7 +952,8 @@ func seedOldM5DatabaseForTaskSlug(t *testing.T, dbPath, projectSlug string) {
 	execSQL(t, db, `CREATE TABLE tasks (
 	uuid TEXT PRIMARY KEY,
 	workspace_id TEXT NOT NULL,
-	description TEXT NOT NULL,
+	title TEXT NOT NULL,
+	description TEXT,
 	status TEXT NOT NULL,
 	entry INTEGER NOT NULL,
 	modified INTEGER NOT NULL,
@@ -964,8 +982,8 @@ func seedOldM5DatabaseForTaskSlug(t *testing.T, dbPath, projectSlug string) {
 
 	execSQL(t, db, `INSERT INTO workspaces(id, slug, name, visibility, settings_json, created_at, modified_at) VALUES('ws-local', 'local', 'Local', 'private', '{}', 1, 1)`)
 	execSQL(t, db, `INSERT INTO projects(id, workspace_id, slug, name, description, status, settings_json, created_at, modified_at) VALUES('project-api', 'ws-local', ?, 'API', '', 'active', '{}', 1, 1)`, projectSlug)
-	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES('task-b', 'ws-local', 'task b', 'pending', 20, 20, ?, 'project-api')`, projectSlug)
-	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES('task-a', 'ws-local', 'task a', 'pending', 10, 10, ?, 'project-api')`, projectSlug)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project, project_id) VALUES('task-b', 'ws-local', 'task b', 'pending', 20, 20, ?, 'project-api')`, projectSlug)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project, project_id) VALUES('task-a', 'ws-local', 'task a', 'pending', 10, 10, ?, 'project-api')`, projectSlug)
 }
 
 func seedM4DatabaseWithTasks(t *testing.T, dbPath string, tasks []seedTask) {
@@ -1020,7 +1038,7 @@ func seedM4DatabaseWithTasks(t *testing.T, dbPath string, tasks []seedTask) {
 		if slug == "" {
 			slug = "local"
 		}
-		execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES(?, ?, ?, 'pending', ?, ?, ?)`,
+		execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project) VALUES(?, ?, ?, 'pending', ?, ?, ?)`,
 			task.UUID, workspaces[slug], "task "+task.UUID, task.Entry, task.Entry, task.Project)
 		for _, tag := range task.Tags {
 			execSQL(t, db, `INSERT INTO task_tags(task_uuid, tag) VALUES(?, ?)`, task.UUID, tag)
@@ -1119,7 +1137,8 @@ func (m4GORMUDADefinition) TableName() string { return "uda_definitions" }
 type m4GORMTask struct {
 	UUID        string `gorm:"primaryKey"`
 	WorkspaceID string `gorm:"not null;index"`
-	Description string `gorm:"not null"`
+	Title       string `gorm:"not null"`
+	Description *string
 	Status      string `gorm:"not null;index"`
 	Entry       int64  `gorm:"not null"`
 	Modified    int64  `gorm:"not null"`
@@ -1205,8 +1224,8 @@ func seedM4GORMDatabaseWithTaskRelations(t *testing.T, dbPath string) {
 		t.Fatal(err)
 	}
 	execSQL(t, db, `INSERT INTO workspaces(id, slug, name, visibility, settings_json, created_at, modified_at) VALUES('ws-local', 'local', 'Local', 'private', '{}', 1, 1)`)
-	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES('dep', 'ws-local', 'dep', 'pending', 1, 1, 'api')`)
-	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project) VALUES('task-1', 'ws-local', 'task 1', 'pending', 2, 2, 'api')`)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project) VALUES('dep', 'ws-local', 'dep', 'pending', 1, 1, 'api')`)
+	execSQL(t, db, `INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project) VALUES('task-1', 'ws-local', 'task 1', 'pending', 2, 2, 'api')`)
 	execSQL(t, db, `INSERT INTO task_tags(task_uuid, tag) VALUES('task-1', 'one')`)
 	execSQL(t, db, `INSERT INTO task_annotations(task_uuid, entry, description) VALUES('task-1', 3, 'note')`)
 	execSQL(t, db, `INSERT INTO task_dependencies(task_uuid, depends_on) VALUES('task-1', 'dep')`)

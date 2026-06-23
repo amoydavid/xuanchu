@@ -15,8 +15,8 @@ import (
 
 func TestListWithQueryExprSupportsOrAndTags(t *testing.T) {
 	store, repo, ws := newQueryTestStore(t)
-	mustCreate(t, repo, domain.Task{UUID: "1", WorkspaceID: ws.ID, Description: "work task", Status: domain.StatusPending, Entry: 1, Modified: 1, Tags: []string{"work"}})
-	mustCreate(t, repo, domain.Task{UUID: "2", WorkspaceID: ws.ID, Description: "home task", Status: domain.StatusPending, Entry: 2, Modified: 2, Tags: []string{"home"}})
+	mustCreate(t, repo, domain.Task{UUID: "1", WorkspaceID: ws.ID, Title: "work task", Status: domain.StatusPending, Entry: 1, Modified: 1, Tags: []string{"work"}})
+	mustCreate(t, repo, domain.Task{UUID: "2", WorkspaceID: ws.ID, Title: "home task", Status: domain.StatusPending, Entry: 2, Modified: 2, Tags: []string{"home"}})
 	t.Cleanup(func() { _ = store.Close() })
 
 	expr, err := query.ParseQuery(`+work or /home/`)
@@ -34,7 +34,7 @@ func TestListWithQueryExprSupportsOrAndTags(t *testing.T) {
 
 func TestListWithQueryExprUsesBoundParameters(t *testing.T) {
 	store, repo, ws := newQueryTestStore(t)
-	mustCreate(t, repo, domain.Task{UUID: "1", WorkspaceID: ws.ID, Description: "safe", Status: domain.StatusPending, Entry: 1, Modified: 1})
+	mustCreate(t, repo, domain.Task{UUID: "1", WorkspaceID: ws.ID, Title: "safe", Status: domain.StatusPending, Entry: 1, Modified: 1})
 	t.Cleanup(func() { _ = store.Close() })
 
 	expr, err := query.ParseQuery(`/x%' OR 1=1 --/`)
@@ -64,13 +64,14 @@ func TestCompileQueryXorUsesBooleanCoalesce(t *testing.T) {
 	}
 }
 
-func TestCompileQueryDescriptionUsesSubstring(t *testing.T) {
+func TestCompileQueryTitleAndDescriptionUseSeparateColumns(t *testing.T) {
 	store, repo, ws := newQueryTestStore(t)
 	t.Cleanup(func() { _ = store.Close() })
-	mustCreate(t, repo, domain.Task{UUID: "1", WorkspaceID: ws.ID, Description: "write spec", Status: domain.StatusPending, Entry: 1, Modified: 1})
-	mustCreate(t, repo, domain.Task{UUID: "2", WorkspaceID: ws.ID, Description: "other", Status: domain.StatusPending, Entry: 1, Modified: 1})
+	detail := "long spec detail"
+	mustCreate(t, repo, domain.Task{UUID: "1", WorkspaceID: ws.ID, Title: "write spec", Description: &detail, Status: domain.StatusPending, Entry: 1, Modified: 1})
+	mustCreate(t, repo, domain.Task{UUID: "2", WorkspaceID: ws.ID, Title: "other", Status: domain.StatusPending, Entry: 1, Modified: 1})
 
-	expr, err := query.ParseQuery(`description:spec`)
+	expr, err := query.ParseQuery(`title:spec`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +81,18 @@ func TestCompileQueryDescriptionUsesSubstring(t *testing.T) {
 	}
 	if len(tasks) != 1 || tasks[0].UUID != "1" {
 		t.Fatalf("tasks = %#v, want only write spec", tasks)
+	}
+
+	expr, err = query.ParseQuery(`description:detail`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err = repo.List(ws.ID, ListOptions{Query: expr})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].UUID != "1" {
+		t.Fatalf("tasks = %#v, want only detailed task", tasks)
 	}
 }
 
@@ -271,10 +284,10 @@ func TestQueryXorTruthTable(t *testing.T) {
 	store, repo, ws := newQueryTestStore(t)
 	now := int64(1000)
 	due := now + 3600
-	mustCreate(t, repo, domain.Task{UUID: "a", WorkspaceID: ws.ID, Description: "both true", Status: domain.StatusPending, Entry: 1, Modified: 1, Tags: []string{"work"}})
-	mustCreate(t, repo, domain.Task{UUID: "b", WorkspaceID: ws.ID, Description: "tag only", Status: domain.StatusPending, Entry: 1, Modified: 1, Due: &due, Tags: []string{"work"}})
-	mustCreate(t, repo, domain.Task{UUID: "c", WorkspaceID: ws.ID, Description: "null due only", Status: domain.StatusPending, Entry: 1, Modified: 1})
-	mustCreate(t, repo, domain.Task{UUID: "d", WorkspaceID: ws.ID, Description: "both false", Status: domain.StatusPending, Entry: 1, Modified: 1, Due: &due})
+	mustCreate(t, repo, domain.Task{UUID: "a", WorkspaceID: ws.ID, Title: "both true", Status: domain.StatusPending, Entry: 1, Modified: 1, Tags: []string{"work"}})
+	mustCreate(t, repo, domain.Task{UUID: "b", WorkspaceID: ws.ID, Title: "tag only", Status: domain.StatusPending, Entry: 1, Modified: 1, Due: &due, Tags: []string{"work"}})
+	mustCreate(t, repo, domain.Task{UUID: "c", WorkspaceID: ws.ID, Title: "null due only", Status: domain.StatusPending, Entry: 1, Modified: 1})
+	mustCreate(t, repo, domain.Task{UUID: "d", WorkspaceID: ws.ID, Title: "both false", Status: domain.StatusPending, Entry: 1, Modified: 1, Due: &due})
 	t.Cleanup(func() { _ = store.Close() })
 
 	expr, err := query.ParseQuery(`+work xor due:`)
@@ -325,7 +338,7 @@ func TestCompileQueryAssigneePredicate(t *testing.T) {
 	mustCreate(t, repo, domain.Task{
 		UUID:        "task-a",
 		WorkspaceID: ws.ID,
-		Description: "task a",
+		Title:       "task a",
 		Status:      domain.StatusPending,
 		Entry:       1,
 		Modified:    1,
@@ -334,7 +347,7 @@ func TestCompileQueryAssigneePredicate(t *testing.T) {
 	mustCreate(t, repo, domain.Task{
 		UUID:        "task-b",
 		WorkspaceID: ws.ID,
-		Description: "task b",
+		Title:       "task b",
 		Status:      domain.StatusPending,
 		Entry:       1,
 		Modified:    1,

@@ -14,6 +14,7 @@ type Attribute string
 
 const (
 	AttrUUID        Attribute = "uuid"
+	AttrTitle       Attribute = "title"
 	AttrDescription Attribute = "description"
 	AttrStatus      Attribute = "status"
 	AttrEntry       Attribute = "entry"

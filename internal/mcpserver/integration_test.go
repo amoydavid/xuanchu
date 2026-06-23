@@ -391,7 +391,7 @@ func TestTaskAddBasic(t *testing.T) {
 	session := connectClient(t, srv)
 
 	result := callTool(t, session, "task_add", TaskAddInput{
-		Description: "buy milk",
+		Title: "buy milk",
 	})
 	if result.IsError {
 		t.Fatalf("unexpected error: %v", parseError(t, result))
@@ -406,8 +406,8 @@ func TestTaskAddBasic(t *testing.T) {
 	if !ok {
 		t.Fatalf("task type = %T, want map", dataMap["task"])
 	}
-	if taskObj["description"] != "buy milk" {
-		t.Fatalf("description = %v, want buy milk", taskObj["description"])
+	if taskObj["title"] != "buy milk" {
+		t.Fatalf("title = %v, want buy milk", taskObj["title"])
 	}
 	if taskObj["uuid"] == nil || taskObj["uuid"] == "" {
 		t.Fatal("uuid is empty")
@@ -422,8 +422,8 @@ func TestTaskAddAndGetAssignees(t *testing.T) {
 	session := connectClient(t, srv)
 
 	result := callTool(t, session, "task_add", TaskAddInput{
-		Description: "assigned task",
-		Assignees:   []string{"local"},
+		Title:     "assigned task",
+		Assignees: []string{"local"},
 	})
 	if result.IsError {
 		t.Fatalf("unexpected error: %v", parseError(t, result))
@@ -451,13 +451,13 @@ func TestTaskAddAndGetAssignees(t *testing.T) {
 	}
 }
 
-func TestTaskAddMissingDescription(t *testing.T) {
+func TestTaskAddMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
 	result := callTool(t, session, "task_add", TaskAddInput{})
 	if !result.IsError {
-		t.Fatal("expected IsError=true for missing description")
+		t.Fatal("expected IsError=true for missing title")
 	}
 }
 
@@ -470,7 +470,7 @@ func TestTaskGetByID(t *testing.T) {
 	session := connectClient(t, srv)
 
 	// 先创建
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "test task"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "test task"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	// 再查询
@@ -479,8 +479,8 @@ func TestTaskGetByID(t *testing.T) {
 		t.Fatalf("unexpected error: %v", parseError(t, getResult))
 	}
 	taskObj := extractTask(t, parseEnvelope(t, getResult))
-	if taskObj["description"] != "test task" {
-		t.Fatalf("description = %v, want test task", taskObj["description"])
+	if taskObj["title"] != "test task" {
+		t.Fatalf("title = %v, want test task", taskObj["title"])
 	}
 }
 
@@ -495,7 +495,7 @@ func TestTaskGetHonorsExplicitProjectScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskA, err := svc.Add(app.AddInput{Description: "alpha task", Project: &alpha.Slug})
+	taskA, err := svc.Add(app.AddInput{Title: "alpha task", Project: &alpha.Slug})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,8 +582,8 @@ func TestTaskQueryReturnsTasks(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "task_add", TaskAddInput{Description: "task 1"})
-	callTool(t, session, "task_add", TaskAddInput{Description: "task 2"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "task 1"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "task 2"})
 
 	result := callTool(t, session, "task_query", TaskQueryInput{})
 	if result.IsError {
@@ -604,8 +604,8 @@ func TestTaskQueryCanIncludeCompletedAndDeleted(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	doneUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "done item"})))
-	deleteUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "deleted item"})))
+	doneUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "done item"})))
+	deleteUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "deleted item"})))
 	if result := callTool(t, session, "task_done", TaskIDInput{ID: doneUUID}); result.IsError {
 		t.Fatalf("task.done error: %v", parseError(t, result))
 	}
@@ -631,7 +631,7 @@ func TestTaskDone(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "finish report"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "finish report"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	doneResult := callTool(t, session, "task_done", TaskIDInput{ID: uuid})
@@ -652,7 +652,7 @@ func TestTaskDelete(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "delete me"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "delete me"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	delResult := callTool(t, session, "task_delete", TaskIDInput{ID: uuid})
@@ -673,12 +673,12 @@ func TestTaskModify(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "original"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "original"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	modResult := callTool(t, session, "task_modify", TaskModifyInput{
-		ID:          uuid,
-		Description: ptrStr("updated"),
+		ID:    uuid,
+		Title: ptrStr("updated"),
 	})
 	if modResult.IsError {
 		t.Fatalf("unexpected error: %v", parseError(t, modResult))
@@ -687,8 +687,8 @@ func TestTaskModify(t *testing.T) {
 	// 验证更新
 	getResult := callTool(t, session, "task_get", TaskGetInput{ID: uuid})
 	taskObj := extractTask(t, parseEnvelope(t, getResult))
-	if taskObj["description"] != "updated" {
-		t.Fatalf("description = %v, want updated", taskObj["description"])
+	if taskObj["title"] != "updated" {
+		t.Fatalf("title = %v, want updated", taskObj["title"])
 	}
 }
 
@@ -697,8 +697,8 @@ func TestTaskModifyClearFields(t *testing.T) {
 	session := connectClient(t, srv)
 
 	addResult := callTool(t, session, "task_add", TaskAddInput{
-		Description: "clear test",
-		Priority:    "H",
+		Title:    "clear test",
+		Priority: "H",
 	})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
@@ -721,7 +721,7 @@ func TestTaskModifyAssigneesAndClear(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "assign later"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "assign later"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	modResult := callTool(t, session, "task_modify", TaskModifyInput{
@@ -754,7 +754,7 @@ func TestTaskModifyAssigneesAndClear(t *testing.T) {
 func TestTaskModifyRejectsUnknownClearField(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "unknown clear"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "unknown clear"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	result := callTool(t, session, "task_modify", TaskModifyInput{ID: uuid, Clear: []string{"priorty"}})
@@ -774,7 +774,7 @@ func TestTaskAnnotate(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "annotate me"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "annotate me"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	annResult := callTool(t, session, "task_annotate", TaskAnnotateInput{
@@ -790,7 +790,7 @@ func TestTaskAnnotateMissingDescription(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "annotate me"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "annotate me"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	result := callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid})
@@ -807,7 +807,7 @@ func TestTaskStartStop(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "start stop"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "start stop"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	startResult := callTool(t, session, "task_start", TaskIDInput{ID: uuid})
@@ -829,8 +829,8 @@ func TestTaskDepends(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	uuid1 := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "task 1"})))
-	uuid2 := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "task 2"})))
+	uuid1 := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "task 1"})))
+	uuid2 := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "task 2"})))
 
 	depResult := callTool(t, session, "task_depends", TaskDependsInput{
 		ID:      uuid2,
@@ -863,7 +863,7 @@ func TestTaskToolsAcceptTaskSlugRefs(t *testing.T) {
 		}},
 		{name: "task_modify", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
 			desc := "updated"
-			result := callTool(t, session, "task_modify", TaskModifyInput{ID: slug, Description: &desc})
+			result := callTool(t, session, "task_modify", TaskModifyInput{ID: slug, Title: &desc})
 			if result.IsError {
 				t.Fatalf("task_modify error: %v", parseError(t, result))
 			}
@@ -974,13 +974,13 @@ func TestTaskToolsAcceptTaskSlugRefs(t *testing.T) {
 			srv, _ := newTestServer(t)
 			session := connectClient(t, srv)
 			callTool(t, session, "project_add", ProjectAddInput{Slug: "api", Name: "API"})
-			add := callTool(t, session, "task_add", TaskAddInput{Description: "slug task", Project: "api"})
+			add := callTool(t, session, "task_add", TaskAddInput{Title: "slug task", Project: "api"})
 			taskObj := extractTask(t, parseEnvelope(t, add))
 			slug, _ := taskObj["task_slug"].(string)
 			if slug != "api-1" {
 				t.Fatalf("task_slug = %v, want api-1", taskObj["task_slug"])
 			}
-			depUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "dependency", Project: "api"})))
+			depUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "dependency", Project: "api"})))
 			tc.run(t, session, slug, depUUID)
 		})
 	}
@@ -993,7 +993,7 @@ func TestTaskToolsRejectNumericTaskRefs(t *testing.T) {
 		input any
 	}{
 		{name: "task_get", tool: "task_get", input: TaskGetInput{ID: "1"}},
-		{name: "task_modify", tool: "task_modify", input: TaskModifyInput{ID: "1", Description: ptrStr("updated")}},
+		{name: "task_modify", tool: "task_modify", input: TaskModifyInput{ID: "1", Title: ptrStr("updated")}},
 		{name: "task_done", tool: "task_done", input: TaskIDInput{ID: "1"}},
 		{name: "task_delete", tool: "task_delete", input: TaskIDInput{ID: "1"}},
 		{name: "task_start", tool: "task_start", input: TaskIDInput{ID: "1"}},
@@ -1030,7 +1030,7 @@ func TestReportRun(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "task_add", TaskAddInput{Description: "report task"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "report task"})
 
 	result := callTool(t, session, "report_run", ReportRunInput{Name: "list"})
 	if result.IsError {
@@ -1051,8 +1051,8 @@ func TestReportRunLimit(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "task_add", TaskAddInput{Description: "report task 1"})
-	callTool(t, session, "task_add", TaskAddInput{Description: "report task 2"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "report task 1"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "report task 2"})
 
 	result := callTool(t, session, "report_run", ReportRunInput{Name: "list", Limit: 1})
 	if result.IsError {
@@ -1097,7 +1097,7 @@ func TestUrgencyExplain(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "urgency task"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "urgency task"})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 
 	explainResult := callTool(t, session, "urgency_explain", UrgencyExplainInput{ID: uuid})
@@ -1125,7 +1125,7 @@ func TestWriteOperationsCreateAuditEntries(t *testing.T) {
 	session := connectClient(t, srv)
 
 	// 创建任务（写操作应产生 audit）
-	addResult := callTool(t, session, "task_add", TaskAddInput{Description: "audit check"})
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "audit check"})
 	if addResult.IsError {
 		t.Fatalf("unexpected error: %v", parseError(t, addResult))
 	}
@@ -1138,7 +1138,7 @@ func TestWriteOperationsCreateAuditEntries(t *testing.T) {
 	}
 
 	// 创建新任务并删除
-	uuid2 := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "delete audit"})))
+	uuid2 := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "delete audit"})))
 
 	delResult := callTool(t, session, "task_delete", TaskIDInput{ID: uuid2})
 	if delResult.IsError {
@@ -1419,7 +1419,7 @@ func TestMCPAgentFlow(t *testing.T) {
 		t.Fatalf("empty project task count = %v, want 0", count)
 	}
 
-	add := callTool(t, session, "task_add", TaskAddInput{Description: "ship MCP", ProjectID: project.ID})
+	add := callTool(t, session, "task_add", TaskAddInput{Title: "ship MCP", ProjectID: project.ID})
 	if add.IsError {
 		t.Fatalf("task.add error: %v", parseError(t, add))
 	}
@@ -1458,7 +1458,7 @@ func TestMCPProjectScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskB, err := owner.Add(app.AddInput{Description: "hidden", Project: &projectB.Slug})
+	taskB, err := owner.Add(app.AddInput{Title: "hidden", Project: &projectB.Slug})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1509,7 +1509,7 @@ func TestTaskDenotate(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	uuid := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "denotate me"})))
+	uuid := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "denotate me"})))
 	callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid, Annotation: "note 1"})
 	callTool(t, session, "task_annotate", TaskAnnotateInput{ID: uuid, Annotation: "note 2"})
 
@@ -1546,7 +1546,7 @@ func TestTaskLinkList(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	uuid := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Description: "link test"})))
+	uuid := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "link test"})))
 	callTool(t, session, "task_link_add", TaskLinkAddInput{Task: uuid, Type: "document", URL: "https://example.com/doc"})
 
 	result := callTool(t, session, "task_link_list", TaskLinkListInput{Task: uuid})
@@ -1564,7 +1564,7 @@ func TestTaskExportImport(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "task_add", TaskAddInput{Description: "export me"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "export me"})
 
 	exportResult := callTool(t, session, "task_export", TaskExportInput{})
 	if exportResult.IsError {
@@ -1578,7 +1578,7 @@ func TestTaskExportImport(t *testing.T) {
 
 	importResult := callTool(t, session, "task_import", TaskImportInput{
 		Tasks: []task.JSONTask{
-			{UUID: "imported-uuid-1", Description: "imported task", Status: "pending", Entry: "2025-06-01T00:00:00Z", Modified: "2025-06-01T00:00:00Z"},
+			{UUID: "imported-uuid-1", Title: "imported task", Status: "pending", Entry: "2025-06-01T00:00:00Z", Modified: "2025-06-01T00:00:00Z"},
 		},
 	})
 	if importResult.IsError {
@@ -2123,7 +2123,7 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 		Audience:        "assignees",
 		Sink:            sinkID,
 		TemplateSubject: "任务已解除阻塞",
-		TemplateBody:    "{{task.description}}",
+		TemplateBody:    "{{task.title}}",
 	})
 	if addNotificationRule.IsError {
 		t.Fatalf("notification_rule_add error: %v", parseError(t, addNotificationRule))
@@ -2262,7 +2262,7 @@ func TestAuditList(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	callTool(t, session, "task_add", TaskAddInput{Description: "audit test task"})
+	callTool(t, session, "task_add", TaskAddInput{Title: "audit test task"})
 
 	result := callTool(t, session, "audit_list", AuditListInput{})
 	if result.IsError {

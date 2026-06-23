@@ -24,7 +24,7 @@ func TestAdminActingAuditTrace(t *testing.T) {
 	rt.DelegatorAdminTokenName = "ops-primary"
 	svc.runtime = rt
 
-	if _, err := svc.Add(AddInput{Description: "via acting"}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "via acting"}); err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 

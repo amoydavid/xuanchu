@@ -94,6 +94,12 @@
           "array"
         ]
       },
+      "title": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
       "udas": {
         "additionalProperties": {
           "type": "string"

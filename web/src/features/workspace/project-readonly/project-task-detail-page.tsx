@@ -87,8 +87,13 @@ export function ProjectTaskDetailPage({
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-normal">
-              {taskData.description}
+              {taskData.title}
             </h1>
+            {taskData.description ? (
+              <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                {taskData.description}
+              </p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge variant="outline">{taskData.status}</Badge>
               {taskData.priority ? (
@@ -339,9 +344,9 @@ function TaskSidePanel({
 }
 
 // TaskRefLinks 把任务引用渲染为可点击链接列表，垂直堆叠。
-// 每个引用：描述（标题）作主链接，task_slug 作小字 label 放在下方。
-// 侧边栏狭窄，垂直布局 + 描述截断避免长文本撑乱排版。
-// refs 含可读描述时用描述，否则回退显示 uuid（后端未填充 _info 的兜底）。
+// 每个引用：标题作主链接，task_slug 作小字 label 放在下方。
+// 侧边栏狭窄，垂直布局 + 标题截断避免长文本撑乱排版。
+// refs 含可读标题时用标题，否则回退显示 uuid（后端未填充 _info 的兜底）。
 function TaskRefLinks({
   refs,
   uuids,
@@ -358,7 +363,7 @@ function TaskRefLinks({
       {uuids.map((uuid) => {
         const info = refs?.find((r) => r.uuid === uuid)
         const taskRef = info?.task_slug || uuid
-        const title = info?.description || info?.task_slug || uuid.slice(0, 8)
+        const title = info?.title || info?.task_slug || uuid.slice(0, 8)
         return (
           <Link
             className="block"

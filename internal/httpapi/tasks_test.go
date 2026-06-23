@@ -27,7 +27,7 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 	}{
 		{name: "info", method: http.MethodGet, path: "/api/v1/tasks/api-1", wantStatus: http.StatusOK},
 		{name: "list target", method: http.MethodGet, path: "/api/v1/tasks?target=api-1", wantStatus: http.StatusOK},
-		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/api-1", body: `{"description":"updated"}`, wantStatus: http.StatusOK},
+		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/api-1", body: `{"title":"updated"}`, wantStatus: http.StatusOK},
 		{name: "done", method: http.MethodPost, path: "/api/v1/tasks/api-1/done", wantStatus: http.StatusOK},
 		{name: "delete", method: http.MethodDelete, path: "/api/v1/tasks/api-1", wantStatus: http.StatusOK},
 		{name: "start", method: http.MethodPost, path: "/api/v1/tasks/api-1/start", wantStatus: http.StatusOK},
@@ -83,7 +83,7 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			created, err := svc.Add(app.AddInput{Description: "slug task", Project: &project.Slug})
+			created, err := svc.Add(app.AddInput{Title: "slug task", Project: &project.Slug})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -124,7 +124,7 @@ func TestTaskHTTPRejectsNumericTaskRefs(t *testing.T) {
 		{name: "info huge numeric", method: http.MethodGet, path: "/api/v1/tasks/999999999999999999999999999999"},
 		{name: "list target", method: http.MethodGet, path: "/api/v1/tasks?target=1"},
 		{name: "list target huge numeric", method: http.MethodGet, path: "/api/v1/tasks?target=999999999999999999999999999999"},
-		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/1", body: `{"description":"updated"}`},
+		{name: "modify", method: http.MethodPatch, path: "/api/v1/tasks/1", body: `{"title":"updated"}`},
 		{name: "delete", method: http.MethodDelete, path: "/api/v1/tasks/1"},
 		{name: "done", method: http.MethodPost, path: "/api/v1/tasks/1/done"},
 		{name: "start", method: http.MethodPost, path: "/api/v1/tasks/1/start"},
@@ -168,7 +168,7 @@ func TestTaskAddRejectsProjectMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"description":"mismatch","project":"alpha","project_id":"` + beta.ID + `"}`
+	body := `{"title":"mismatch","project":"alpha","project_id":"` + beta.ID + `"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", body, map[string]string{
 		"Authorization": "Bearer " + fixture.token,
 		"Content-Type":  "application/json",
@@ -196,7 +196,7 @@ func TestTaskListProjectIDSelectsOwningWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workSvc.Add(app.AddInput{Description: "work task", Project: &project.Slug}); err != nil {
+	if _, err := workSvc.Add(app.AddInput{Title: "work task", Project: &project.Slug}); err != nil {
 		t.Fatal(err)
 	}
 	created, err := svc.CreateToken(app.CreateTokenInput{
@@ -226,10 +226,10 @@ func TestTaskListAcceptsQueryParameter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "next task", Tags: []string{"next"}}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "next task", Tags: []string{"next"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "plain task"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "plain task"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -251,10 +251,10 @@ func TestTaskListNoContextBypassesActiveContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "context task", Tags: []string{"ctx"}}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "context task", Tags: []string{"ctx"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "plain task"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "plain task"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.DefineContext("ctx", "+ctx"); err != nil {
@@ -306,7 +306,7 @@ func TestTaskListDefaultLimitDoesNotRejectEmptyLimit(t *testing.T) {
 func TestTaskAddAcceptsDueField(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 
-	body := `{"description":"deadline","due":1893456000}`
+	body := `{"title":"deadline","due":1893456000}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", body, map[string]string{
 		"Authorization": "Bearer " + fixture.token,
 		"Content-Type":  "application/json",
@@ -330,7 +330,7 @@ func TestTaskAddAcceptsDueField(t *testing.T) {
 func TestTaskAddAssignees(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 
-	body := `{"description":"assigned","assignees":["local"]}`
+	body := `{"title":"assigned","assignees":["local"]}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", body, map[string]string{
 		"Authorization": "Bearer " + fixture.token,
 		"Content-Type":  "application/json",
@@ -359,7 +359,7 @@ func TestTaskModifyAssignees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "assigned later"})
+	created, err := svc.Add(app.AddInput{Title: "assigned later"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,10 +393,10 @@ func TestTaskListByAssignee(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "mine", Assignees: []string{"local"}}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "mine", Assignees: []string{"local"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "plain"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "plain"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -418,7 +418,7 @@ func TestTaskLinkAddAndList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "link test"})
+	created, err := svc.Add(app.AddInput{Title: "link test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestTaskLinkAddRejectsMissingType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "link test"})
+	created, err := svc.Add(app.AddInput{Title: "link test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +470,7 @@ func TestTaskLinkRemoveAndVerify(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "link test"})
+	created, err := svc.Add(app.AddInput{Title: "link test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +504,7 @@ func TestTaskLinkRemoveNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "link test"})
+	created, err := svc.Add(app.AddInput{Title: "link test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,11 +528,11 @@ func TestHandleTaskList_RestfulStatusFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := svc.Add(app.AddInput{Description: "restful pending task"})
+	pending, err := svc.Add(app.AddInput{Title: "restful pending task"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	completed, err := svc.Add(app.AddInput{Description: "restful completed task"})
+	completed, err := svc.Add(app.AddInput{Title: "restful completed task"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,10 +559,10 @@ func TestHandleTaskList_RestfulPriorityFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	high := "H"
-	if _, err := svc.Add(app.AddInput{Description: "restful high pri", Priority: &high}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful high pri", Priority: &high}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "restful no pri"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful no pri"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -585,10 +585,10 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 	}
 	past := int64(1)
 	future := int64(1893456000) // 2030-01-01
-	if _, err := svc.Add(app.AddInput{Description: "restful past due", Due: &past}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful past due", Due: &past}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "restful future due", Due: &future}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful future due", Due: &future}); err != nil {
 		t.Fatal(err)
 	}
 	hdr := restfulFilterHeader(fixture.token)
@@ -618,10 +618,10 @@ func TestHandleTaskList_RestfulQFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "needle in haystack"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "needle in haystack"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "completely unrelated"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "completely unrelated"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -642,10 +642,10 @@ func TestHandleTaskList_RestfulTagsFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "restful tagged", Tags: []string{"web"}}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful tagged", Tags: []string{"web"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "restful untagged"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful untagged"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -666,10 +666,10 @@ func TestHandleTaskList_RestfulAssigneeFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "restful assigned to me", Assignees: []string{"local"}}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful assigned to me", Assignees: []string{"local"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "restful unassigned"}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "restful unassigned"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -698,7 +698,7 @@ func TestHandleTaskAnnotationListPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "annotated for list"})
+	created, err := svc.Add(app.AddInput{Title: "annotated for list"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,7 +760,7 @@ func TestHandleTaskAnnotationListBadLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := svc.Add(app.AddInput{Description: "x"})
+	created, err := svc.Add(app.AddInput{Title: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,16 +780,16 @@ func TestHandleTaskInfoReturnsDependsInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectRef := proj.Slug
-	dep, err := svc.Add(app.AddInput{Description: "dependency task", Project: &projectRef})
+	dep, err := svc.Add(app.AddInput{Title: "dependency task", Project: &projectRef})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// blockedTask 依赖 dep，因此 dep 的详情页应返回 blocked_by_info 含 blockedTask。
-	if _, err := svc.Add(app.AddInput{Description: "blocked by dependency", Project: &projectRef, Depends: []string{dep.UUID}}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "blocked by dependency", Project: &projectRef, Depends: []string{dep.UUID}}); err != nil {
 		t.Fatal(err)
 	}
 	// 主任务依赖 dep，验证返回体含 depends_info（可读描述 + task_slug）。
-	main, err := svc.Add(app.AddInput{Description: "main task", Project: &projectRef, Depends: []string{dep.UUID}})
+	main, err := svc.Add(app.AddInput{Title: "main task", Project: &projectRef, Depends: []string{dep.UUID}})
 	if err != nil {
 		t.Fatal(err)
 	}

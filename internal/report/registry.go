@@ -38,5 +38,5 @@ func mustDefinition(def Definition) Definition {
 }
 
 func defaultColumns() []string {
-	return []string{"id", "uuid", "priority", "project", "tags", "description"}
+	return []string{"id", "uuid", "priority", "project", "tags", "title"}
 }

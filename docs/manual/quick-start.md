@@ -101,7 +101,7 @@ xuanchu 要求先注册 project，再把任务放进 project。
 ```bash
 ./xuanchu _ids +review
 ./xuanchu _uuids project:agentapi
-./xuanchu _get 1.uuid 1.description 1.urgency
+./xuanchu _get 1.uuid 1.title 1.urgency
 ```
 
 ## 7. 一次完整日常流程

@@ -102,7 +102,7 @@ func TestImpersonationReturnsMembershipNotFoundForUnknownUser(t *testing.T) {
 func TestImpersonationTaskActionUsesSubjectIdentity(t *testing.T) {
 	_, srv, ownerSvc, agentToken, _, aliceUser := newHTTPImpersonationFixture(t)
 
-	ownerSvc.Add(app.AddInput{Description: "alice task", Assignees: []string{aliceUser.ID}})
+	ownerSvc.Add(app.AddInput{Title: "alice task", Assignees: []string{aliceUser.ID}})
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + agentToken,
@@ -113,8 +113,8 @@ func TestImpersonationTaskActionUsesSubjectIdentity(t *testing.T) {
 	}
 	var list struct {
 		Data []struct {
-			Description string `json:"description"`
-			Assignees   []struct {
+			Title     string `json:"title"`
+			Assignees []struct {
 				Name string `json:"name"`
 			} `json:"assignees"`
 		} `json:"data"`
@@ -122,7 +122,7 @@ func TestImpersonationTaskActionUsesSubjectIdentity(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Data) != 1 || list.Data[0].Description != "alice task" {
+	if len(list.Data) != 1 || list.Data[0].Title != "alice task" {
 		t.Fatalf("tasks = %s", rr.Body.String())
 	}
 }
@@ -160,7 +160,7 @@ func TestHTTPImpersonationUsesDecisionForAccessLog(t *testing.T) {
 func TestImpersonationWithoutHeaderUsesTokenIdentity(t *testing.T) {
 	_, srv, ownerSvc, agentToken, _, _ := newHTTPImpersonationFixture(t)
 
-	ownerSvc.Add(app.AddInput{Description: "owner task"})
+	ownerSvc.Add(app.AddInput{Title: "owner task"})
 
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{
 		"Authorization": "Bearer " + agentToken,

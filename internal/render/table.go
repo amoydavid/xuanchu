@@ -17,7 +17,7 @@ func TaskList(w io.Writer, tasks []task.Task) {
 
 func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"ID", "SLUG", "UUID", "PRI", "PROJECT", "ASSIGNEES", "TAGS", "DESCRIPTION"})
+	table.SetHeader([]string{"ID", "SLUG", "UUID", "PRI", "PROJECT", "ASSIGNEES", "TAGS", "TITLE"})
 	table.SetBorder(false)
 	table.SetHeaderLine(true)
 	table.SetAutoWrapText(false)
@@ -58,7 +58,7 @@ func TaskListWithIDs(w io.Writer, tasks []task.Task, ids []int) {
 			project,
 			formatAssignees(tsk.Assignees),
 			strings.Join(tsk.Tags, ","),
-			tsk.Description,
+			tsk.Title,
 		})
 	}
 	table.Render()
@@ -81,7 +81,8 @@ func TaskInfo(w io.Writer, tsk task.Task) {
 	rows := [][]string{
 		{"UUID:", tsk.UUID},
 		{"Status:", string(tsk.Status)},
-		{"Description:", tsk.Description},
+		{"Title:", tsk.Title},
+		{"Description:", stringPtrValue(tsk.Description)},
 		{"Entry:", formatUnix(tsk.Entry)},
 		{"Modified:", formatUnix(tsk.Modified)},
 		{"End:", formatUnixPtr(tsk.End)},

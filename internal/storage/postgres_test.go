@@ -90,7 +90,7 @@ func TestPostgres_TaskCRUD(t *testing.T) {
 	tsk := task.Task{
 		UUID:        uuid.NewString(),
 		WorkspaceID: ws.ID,
-		Description: "PostgreSQL test task",
+		Title:       "PostgreSQL test task",
 		Status:      "pending",
 		Entry:       now,
 		Modified:    now,

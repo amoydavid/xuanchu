@@ -89,7 +89,7 @@ notification_sink_add({
     {"name": "Content-Type", "value": "application/json"}
   ],
   "body_content_type": "application/json",
-  "body_template": "{\"msg_type\":\"text\",\"content\":{\"text\":\"[{{project.slug}}] 任务 {{task.task_slug}} {{event.type}}：{{task.description}}\"}}",
+  "body_template": "{\"msg_type\":\"text\",\"content\":{\"text\":\"[{{project.slug}}] 任务 {{task.task_slug}} {{event.type}}：{{task.title}}\"}}",
   "max_concurrency": 0
 })
 ```
