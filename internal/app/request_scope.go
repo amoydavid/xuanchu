@@ -2,23 +2,17 @@ package app
 
 import (
 	"errors"
-	"slices"
 	"strconv"
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
-type RequestScope struct {
-	TokenID      string
-	TokenType    string
-	WorkspaceIDs []string
-	ProjectIDs   []string
-	Capabilities []string
-}
+type RequestScope = authz.RequestScope
 
 type RequestAuthorizationInput struct {
 	Token              AuthenticatedToken
@@ -35,6 +29,7 @@ type AuthorizedRequest struct {
 	Scope     RequestScope
 	Workspace storage.Workspace
 	Project   *storage.Project
+	Decision  authz.Decision
 }
 
 type ResolveMode int
@@ -54,41 +49,12 @@ func NewRequestScope(token TokenView) RequestScope {
 	}
 }
 
-func (s RequestScope) HasCapability(capability string) bool {
-	if strings.TrimSpace(capability) == "" {
-		return true
-	}
-	return slices.Contains(s.Capabilities, capability)
-}
-
-func (s RequestScope) RestrictsWorkspaces() bool {
-	return len(s.WorkspaceIDs) > 0
-}
-
-func (s RequestScope) RestrictsProjects() bool {
-	return len(s.ProjectIDs) > 0
-}
-
-func (s RequestScope) AllowsWorkspace(id string) bool {
-	if !s.RestrictsWorkspaces() {
-		return true
-	}
-	return slices.Contains(s.WorkspaceIDs, id)
-}
-
-func (s RequestScope) AllowsProject(id string) bool {
-	if !s.RestrictsProjects() {
-		return true
-	}
-	return slices.Contains(s.ProjectIDs, id)
-}
-
-func (s RequestScope) projectFilterExpr() query.Expr {
-	if !s.RestrictsProjects() {
+func requestScopeProjectFilterExpr(scope *RequestScope) query.Expr {
+	if scope == nil || !scope.RestrictsProjects() {
 		return nil
 	}
 	var expr query.Expr
-	for _, projectID := range s.ProjectIDs {
+	for _, projectID := range scope.ProjectIDs {
 		predicate := query.Predicate{
 			Attribute: query.AttrProjectID,
 			Operator:  query.OpEqual,
@@ -185,15 +151,34 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		effectiveScope.ProjectIDs = []string{project.ID}
 	}
 
-	runtime := RuntimeContext{
-		ActorUserID:      subjectUser.ID,
-		ActorName:        subjectUser.Name,
-		WorkspaceID:      workspace.ID,
-		WorkspaceSlug:    workspace.Slug,
-		Role:             Role(member.Role),
-		DelegatorTokenID: delegatorTokenID,
-		DelegatorUserID:  delegatorUserID,
+	decision := authz.Decision{
+		Principal: authz.Principal{
+			UserID:   subjectUser.ID,
+			UserName: subjectUser.Name,
+		},
+		Credential: authz.Credential{
+			Kind:         credentialKindFromTokenType(input.Token.Token.Type),
+			TokenID:      input.Token.Token.ID,
+			TokenUserID:  tokenUser.ID,
+			Capabilities: append([]string(nil), scope.Capabilities...),
+			WorkspaceIDs: append([]string(nil), scope.WorkspaceIDs...),
+			ProjectIDs:   append([]string(nil), scope.ProjectIDs...),
+		},
+		Tenant: authz.TenantScope{
+			WorkspaceID:   workspace.ID,
+			WorkspaceSlug: workspace.Slug,
+		},
+		Role:         Role(member.Role),
+		RequestScope: effectiveScope,
 	}
+	if project != nil {
+		decision.Tenant.ProjectID = &project.ID
+	}
+	if delegatorTokenID != "" {
+		decision.Delegator = &authz.Delegator{UserID: delegatorUserID, TokenID: delegatorTokenID}
+	}
+
+	runtime := runtimeContextFromDecision(decision)
 	if err := requireRolePermission(runtime.Role, input.RequiredPermission); err != nil {
 		return AuthorizedRequest{}, err
 	}
@@ -202,7 +187,34 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		Scope:     effectiveScope,
 		Workspace: workspace,
 		Project:   project,
+		Decision:  decision,
 	}, nil
+}
+
+func credentialKindFromTokenType(tokenType string) authz.CredentialKind {
+	switch tokenType {
+	case auth.TokenTypeAgent:
+		return authz.CredentialAgent
+	case auth.TokenTypePAT:
+		return authz.CredentialPAT
+	default:
+		return authz.CredentialKind(tokenType)
+	}
+}
+
+func runtimeContextFromDecision(decision authz.Decision) RuntimeContext {
+	rt := RuntimeContext{
+		ActorUserID:   decision.Principal.UserID,
+		ActorName:     decision.Principal.UserName,
+		WorkspaceID:   decision.Tenant.WorkspaceID,
+		WorkspaceSlug: decision.Tenant.WorkspaceSlug,
+		Role:          decision.Role,
+	}
+	if decision.Delegator != nil {
+		rt.DelegatorUserID = decision.Delegator.UserID
+		rt.DelegatorTokenID = decision.Delegator.TokenID
+	}
+	return rt
 }
 
 func (s *Service) resolveRequestWorkspace(user storage.User, scope RequestScope, ref string) (storage.Workspace, error) {
@@ -269,7 +281,7 @@ func (s *Service) projectScopeExpr() query.Expr {
 	if s.requestScope == nil {
 		return nil
 	}
-	return s.requestScope.projectFilterExpr()
+	return requestScopeProjectFilterExpr(s.requestScope)
 }
 
 func (s *Service) allowsProjectID(projectID *string) bool {

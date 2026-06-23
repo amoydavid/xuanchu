@@ -3,9 +3,32 @@ package app
 import (
 	"testing"
 
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
+
+func TestNewRequestScopeUsesAuthzScopeSemantics(t *testing.T) {
+	scope := NewRequestScope(TokenView{
+		ID:           "tok-1",
+		Type:         "agent",
+		WorkspaceIDs: []string{"ws-1"},
+		ProjectIDs:   []string{"p-1"},
+		Scopes:       []string{"task:read"},
+	})
+	if scope.TokenID != "tok-1" || scope.TokenType != "agent" {
+		t.Fatalf("scope identity = %#v", scope)
+	}
+	if !scope.HasCapability("task:read") || scope.HasCapability("task:write") {
+		t.Fatalf("capability behavior changed: %#v", scope)
+	}
+	if !scope.AllowsWorkspace("ws-1") || scope.AllowsWorkspace("ws-2") {
+		t.Fatalf("workspace allowlist behavior changed: %#v", scope)
+	}
+	if !scope.AllowsProject("p-1") || scope.AllowsProject("p-2") {
+		t.Fatalf("project allowlist behavior changed: %#v", scope)
+	}
+}
 
 func TestAuthorizeTokenRequestRejectsMissingCapability(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
@@ -31,6 +54,50 @@ func TestAuthorizeTokenRequestRejectsMissingCapability(t *testing.T) {
 		WorkspaceRef:       "local",
 	})
 	assertRuntimeCode(t, err, "token_scope_denied")
+}
+
+func TestAuthorizeTokenRequestReturnsDecision(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name:          "cli",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	if authorized.Decision.Principal.UserID != authn.User.ID {
+		t.Fatalf("principal = %#v, want token user %s", authorized.Decision.Principal, authn.User.ID)
+	}
+	if authorized.Decision.Delegator != nil {
+		t.Fatalf("delegator = %#v, want nil", authorized.Decision.Delegator)
+	}
+	if authorized.Decision.Tenant.WorkspaceID != authorized.Workspace.ID {
+		t.Fatalf("tenant = %#v, workspace = %#v", authorized.Decision.Tenant, authorized.Workspace)
+	}
+	if authorized.Decision.Credential.TokenID != created.View.ID {
+		t.Fatalf("credential token id = %q, want %q", authorized.Decision.Credential.TokenID, created.View.ID)
+	}
+	if authorized.Decision.Credential.Kind != authz.CredentialPAT {
+		t.Fatalf("credential kind = %q, want %q", authorized.Decision.Credential.Kind, authz.CredentialPAT)
+	}
+	if authorized.Decision.Role != RoleOwner {
+		t.Fatalf("role = %q, want owner", authorized.Decision.Role)
+	}
 }
 
 func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
@@ -438,6 +505,15 @@ func TestAuthorizeTokenRequestImpersonationUsesSubjectMembership(t *testing.T) {
 	if authorized.Runtime.Role != RoleMember {
 		t.Fatalf("role = %q, want member", authorized.Runtime.Role)
 	}
+	if authorized.Decision.Delegator == nil {
+		t.Fatal("decision delegator is nil")
+	}
+	if authorized.Decision.Delegator.TokenID != created.View.ID {
+		t.Fatalf("decision delegator token = %q, want %q", authorized.Decision.Delegator.TokenID, created.View.ID)
+	}
+	if authorized.Decision.Principal.UserID != aliceUser.ID {
+		t.Fatalf("decision principal = %q, want %q", authorized.Decision.Principal.UserID, aliceUser.ID)
+	}
 }
 
 func TestAuthorizeTokenRequestImpersonationRejectsUnknownUser(t *testing.T) {
@@ -574,6 +650,26 @@ func TestAuthorizeTokenRequestImpersonationWorkspaceRequiredMultiWorkspace(t *te
 		SubjectUserRef:     "local",
 	})
 	assertRuntimeCode(t, err, "workspace_required")
+}
+
+func TestRuntimeContextFromDecision(t *testing.T) {
+	delegator := &authz.Delegator{UserID: "service-user", TokenID: "tok-1"}
+	decision := authz.Decision{
+		Principal: authz.Principal{UserID: "alice-id", UserName: "alice"},
+		Delegator: delegator,
+		Tenant: authz.TenantScope{
+			WorkspaceID:   "ws-1",
+			WorkspaceSlug: "team",
+		},
+		Role: RoleMember,
+	}
+	rt := runtimeContextFromDecision(decision)
+	if rt.ActorUserID != "alice-id" || rt.ActorName != "alice" || rt.WorkspaceID != "ws-1" || rt.WorkspaceSlug != "team" || rt.Role != RoleMember {
+		t.Fatalf("runtime = %#v", rt)
+	}
+	if rt.DelegatorUserID != "service-user" || rt.DelegatorTokenID != "tok-1" {
+		t.Fatalf("delegator runtime fields = %#v", rt)
+	}
 }
 
 func TestImpersonatedTaskActionRecordsDelegatorInAudit(t *testing.T) {
