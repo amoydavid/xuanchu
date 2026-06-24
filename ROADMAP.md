@@ -151,11 +151,11 @@ docs/superpowers/plans/2026-06-10-xuanchu-dispatcher-concurrency-backpressure-im
 
 ## v0.3.1：事件通知稳定化与发布打磨
 
-**状态：规划中。**
+**状态：已完成。**
 
 v0.3.1 是 v0.3.0 的稳定化补丁，不新增事件类型，不新增数据库 schema，也不扩大外部 adapter 范围。目标是把事件通知、Hook sink 化、dispatcher 并发背压和 17 个语义事件整理成清晰的迁移说明、运维说明和发布验收清单。
 
-计划范围：
+已交付范围：
 
 - 新增 v0.3.1 release notes，明确版本边界、迁移提示和发布验收命令。
 - 补齐 Hook / notification rule 文档中的事件语义说明，特别是 `start` / `stop` 不再依赖 `task.modified` 的迁移提示。
@@ -166,7 +166,6 @@ v0.3.1 是 v0.3.0 的稳定化补丁，不新增事件类型，不新增数据�
 不进入 v0.3.1：
 
 - 不新增 Priority 2 事件。
-- 不实现 `task_search`。
 - 不内置飞书、Slack、邮件或其他第三方 adapter。
 - 不调整现有数据库 schema。
 
@@ -1296,10 +1295,6 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 - 8 个 Agent Skill 文档（`docs/skills/*/SKILL.md`），每个 tool 含 MCP 调用示例（输入/输出 JSON）
 - Skill 文档明确指导 Agent "每次调用显式传 workspace/project，不依赖 context_set / workspace_use 隐式状态"
 
-**不进入 M15：**
-
-- `task_search` 全文搜索 tool。
-
 ## M16：定时通知、动态 endpoint 与 HTTP request template sink
 
 **状态：已完成。**
@@ -1360,12 +1355,11 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.4.2 已完成。Web Console 三件套（普通 console、server admin bootstrap、项目只读 deep link）已全部交付，单一 `xuanchu` 二进制可在浏览器中完成 workspace bootstrap、admin token 初始化和项目任务只读查看。
+v0.4.5 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务浏览主体验，普通 Console、Server Admin Console、Admin workspace acting、Token 管控、项目表格、任务过滤与任务详情都已进入主线。随后完成的授权决策层重构已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`，但不改变浏览器登录边界：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
 
-v0.4.2 之后的方向待定，可能包括：
+v0.4.5 之后的方向待定，建议优先在以下几类中选择：
 
-- 企业 SSO / 飞书 OAuth 接入（v0.4.2 已为 `/sso/{provider}?redirect=...` 预留 redirect 语义）。
+- 企业 SSO / 飞书 OAuth 接入（v0.4.2 已为 `/sso/{provider}?redirect=...` 预留 redirect 语义；认证只负责外部身份映射，授权继续由 Xuanchu membership、role、scope 和 allowlist 决定）。
 - Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。
-- `task_search` 全文搜索 MCP tool（M15 明确「不进入」，但 Agent 需求真实）。
 - 性能优化与大 workspace 场景验证。
 - 外部系统 adapter 生态。

@@ -1,9 +1,9 @@
 # Web Console 项目-任务浏览体验重构
 
 **日期：** 2026-06-17
-**状态：** 草案
-**版本：** v0.4.3（承接 v0.4.2 project-readonly view）
-**对应 ROADMAP：** v0.4.0 Web Admin Console 后续增强
+**状态：** 已完成
+**版本：** v0.4.5（承接 v0.4.2 project-readonly view）
+**对应 ROADMAP：** v0.4.5 Web Console 项目-任务浏览体验重构
 
 ## 1. 背景
 
