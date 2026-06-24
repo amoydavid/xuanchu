@@ -27,6 +27,7 @@ Hook 不是业务域 adapter 市场。Xuanchu 不内置飞书、Jira、Slack ada
 - `task.project_changed`
 - `task.tags_changed`
 - `project.archived`
+- `project.transitioned`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`

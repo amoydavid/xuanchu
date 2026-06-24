@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -53,6 +54,96 @@ func TestHealthzIsAnonymous(t *testing.T) {
 	if strings.Contains(rr.Body.String(), "schema") || strings.Contains(rr.Body.String(), "database") {
 		t.Fatalf("healthz leaked details: %s", rr.Body.String())
 	}
+}
+
+func TestOpenAPIIsGeneratedFromRegisteredHTTPRoutes(t *testing.T) {
+	srv := NewServer(Options{Store: openHTTPTestStore(t)})
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	srv.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var doc struct {
+		OpenAPI string `json:"openapi"`
+		Info    struct {
+			Title   string `json:"title"`
+			Version string `json:"version"`
+		} `json:"info"`
+		Paths map[string]map[string]any `json:"paths"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid OpenAPI JSON: %v body=%s", err, rr.Body.String())
+	}
+	if doc.OpenAPI == "" || doc.Info.Title != "Xuanchu HTTP API" || doc.Info.Version != "v1" {
+		t.Fatalf("unexpected OpenAPI metadata: %#v", doc)
+	}
+	for _, path := range []string{
+		"/api/v1/tasks/{taskRef}/links",
+		"/api/v1/config-schema/{key}",
+		"/api/v1/projects/{projectRef}/timeline",
+	} {
+		if _, ok := doc.Paths[path]; !ok {
+			t.Fatalf("OpenAPI paths missing %s", path)
+		}
+	}
+	if _, ok := doc.Paths["/mcp"]; ok {
+		t.Fatalf("OpenAPI unexpectedly documented /mcp")
+	}
+	if _, ok := doc.Paths["/api/v1/__panic"]; ok {
+		t.Fatalf("OpenAPI unexpectedly documented test panic route")
+	}
+}
+
+func TestOpenAPIIncludesEveryRegisteredHTTPRoute(t *testing.T) {
+	srv := NewServer(Options{Store: openHTTPTestStore(t)})
+	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/openapi.json", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var doc struct {
+		Paths map[string]map[string]any `json:"paths"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid OpenAPI JSON: %v body=%s", err, rr.Body.String())
+	}
+	for _, route := range srv.humaRoutes() {
+		pathItem, ok := doc.Paths[route.Path]
+		if !ok {
+			t.Fatalf("OpenAPI paths missing %s", route.Path)
+		}
+		if _, ok := pathItem[strings.ToLower(route.Method)]; !ok {
+			t.Fatalf("OpenAPI path %s missing method %s", route.Path, route.Method)
+		}
+	}
+	if got, want := countOpenAPIOperations(doc.Paths), len(srv.humaRoutes()); got != want {
+		t.Fatalf("OpenAPI operation count = %d, want %d", got, want)
+	}
+}
+
+func countOpenAPIOperations(paths map[string]map[string]any) int {
+	methods := map[string]struct{}{
+		"get":     {},
+		"post":    {},
+		"put":     {},
+		"patch":   {},
+		"delete":  {},
+		"head":    {},
+		"options": {},
+		"trace":   {},
+	}
+	total := 0
+	for _, pathItem := range paths {
+		for method := range pathItem {
+			if _, ok := methods[method]; ok {
+				total++
+			}
+		}
+	}
+	return total
 }
 
 func TestErrorEnvelopeForUnknownRoute(t *testing.T) {

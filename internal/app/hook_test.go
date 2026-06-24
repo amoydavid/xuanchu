@@ -715,6 +715,7 @@ func allSemanticEventTypes() []string {
 		"task.tags_changed",
 		"task.unblocked",
 		"project.archived",
+		"project.transitioned",
 		"project.annotated",
 		"project.denotated",
 	}

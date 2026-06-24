@@ -868,6 +868,16 @@ project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取
 
 远程 CLI 覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢。
 
+OpenAPI 3 文档由 `internal/httpapi` 的 Huma code-first route 注册在运行时生成，不提交静态 YAML 产物。启动 server 后可以直接访问：
+
+```text
+http://127.0.0.1:8080/docs
+http://127.0.0.1:8080/openapi.json
+http://127.0.0.1:8080/openapi.yaml
+http://127.0.0.1:8080/openapi-3.0.json
+http://127.0.0.1:8080/openapi-3.0.yaml
+```
+
 ## MCP Server
 
 Agent 可以通过 MCP 协议以结构化方式使用 Xuanchu。MCP 支持 stdio 和 HTTP 两种传输方式，所有 tool 调用都经过与 CLI/API 相同的 `internal/app` service、权限和审计路径。

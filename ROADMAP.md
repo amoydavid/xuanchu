@@ -44,6 +44,7 @@
 | v0.4.3 | 已完成 | Project 生命周期状态机（planning/active/archived/cancelled） |
 | v0.4.4 | 已完成 | Web Console Token 完整管理 + Admin 工作台 Token 管控 |
 | v0.4.5 | 已完成 | Web Console 项目-任务浏览体验重构（项目表格主入口 + 任务详情增强 + 过滤工具栏） |
+| v0.4.6 | 已完成 | OpenAPI 运行时生成与文档口径收敛 |
 | docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -100,6 +101,7 @@ v0.3.0 把 Hook 从直接 URL 收敛到 workspace 级 outbound sink，补齐事�
 - `task.project_changed`
 - `task.tags_changed`
 - `project.archived`
+- `project.transitioned`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`
@@ -388,6 +390,14 @@ v0.4.4 同时补齐 Admin 工作台 Token 管控：
 docs/superpowers/specs/2026-06-17-web-console-project-task-browsing-design.md
 docs/superpowers/plans/2026-06-17-web-console-project-task-browsing.md
 ```
+
+## v0.4.6：OpenAPI 运行时生成与文档口径收敛
+
+**状态：已完成。**
+
+本版本把 HTTP API 路由注册与 OpenAPI 文档生成收敛到同一份 `internal/httpapi` route 表，不再维护静态 `docs/openapi/xuanchu-v1.yaml`。`xuanchu server` 启动后直接提供 `/docs`、`/openapi.json`、`/openapi.yaml`、`/openapi-3.0.json`、`/openapi-3.0.yaml`。
+
+同时补齐 Hook / notification / MCP / Agent Skill 文档里的事件白名单，使其与当前代码允许的 `project.transitioned` 事件保持一致。
 
 ## v0.1.1：稳定短任务标识 task_slug
 
@@ -831,7 +841,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - context/config。
   - workspace/member 基础管理。
   - import/export。
-- OpenAPI 3 文档维护在 `docs/openapi/xuanchu-v1.yaml`。
+- OpenAPI 3 文档由 `internal/httpapi` 的 Huma code-first route 注册在运行时生成，访问 `/docs` 或 `/openapi.*`，不提交静态 YAML 产物。
 - 鉴权：
   - PAT。
   - Agent token。
@@ -1355,9 +1365,9 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.4.5 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务浏览主体验，普通 Console、Server Admin Console、Admin workspace acting、Token 管控、项目表格、任务过滤与任务详情都已进入主线。随后完成的授权决策层重构已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`，但不改变浏览器登录边界：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
+v0.4.6 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务浏览主体验，普通 Console、Server Admin Console、Admin workspace acting、Token 管控、项目表格、任务过滤与任务详情都已进入主线。随后完成的授权决策层重构已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界不变：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
 
-v0.4.5 之后的方向待定，建议优先在以下几类中选择：
+v0.4.6 之后的方向待定，建议优先在以下几类中选择：
 
 - 企业 SSO / 飞书 OAuth 接入（v0.4.2 已为 `/sso/{provider}?redirect=...` 预留 redirect 语义；认证只负责外部身份映射，授权继续由 Xuanchu membership、role、scope 和 allowlist 决定）。
 - Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。

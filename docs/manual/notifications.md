@@ -188,6 +188,7 @@ xuanchu notification rule add urgent-task-changes \
 - `task.project_changed`
 - `task.tags_changed`
 - `project.archived`
+- `project.transitioned`
 - `project.annotated`
 - `project.denotated`
 - `task.unblocked`

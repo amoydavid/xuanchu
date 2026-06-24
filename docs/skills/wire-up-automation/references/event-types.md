@@ -26,6 +26,7 @@ notification rule 和 hook 共用以下事件清单。
 | 事件 | 含义 |
 |---|---|
 | `project.archived` | 项目归档 |
+| `project.transitioned` | 项目状态转移 |
 | `project.annotated` | 项目新增注释 |
 | `project.denotated` | 项目删除注释 |
 

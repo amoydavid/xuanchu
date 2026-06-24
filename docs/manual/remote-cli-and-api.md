@@ -244,10 +244,14 @@ API 使用统一 envelope：
 }
 ```
 
-OpenAPI 文件在：
+OpenAPI 文档由 Huma code-first route 注册在运行时生成，不提交静态 YAML 产物。启动 `xuanchu server` 后可以访问：
 
 ```text
-docs/openapi/xuanchu-v1.yaml
+http://127.0.0.1:8080/docs
+http://127.0.0.1:8080/openapi.json
+http://127.0.0.1:8080/openapi.yaml
+http://127.0.0.1:8080/openapi-3.0.json
+http://127.0.0.1:8080/openapi-3.0.yaml
 ```
 
 ## Impersonation（M10）
