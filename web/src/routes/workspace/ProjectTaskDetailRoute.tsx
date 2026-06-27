@@ -1,6 +1,6 @@
 import { useParams } from "@tanstack/react-router"
 
-import { ProjectTaskDetailPage } from "@/features/workspace/project-readonly/project-task-detail-page"
+import { TaskDetailPage } from "@/features/workspace/project-workbench/task-detail/task-detail-page"
 
 export function ProjectTaskDetailRoute() {
   const params = useParams({ strict: false }) as {
@@ -10,7 +10,7 @@ export function ProjectTaskDetailRoute() {
   }
 
   return (
-    <ProjectTaskDetailPage
+    <TaskDetailPage
       projectSlug={params.projectSlug}
       taskRef={params.taskRef}
       workspaceSlug={params.workspaceSlug}

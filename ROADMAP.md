@@ -1365,7 +1365,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.4.6 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务浏览主体验，普通 Console、Server Admin Console、Admin workspace acting、Token 管控、项目表格、任务过滤与任务详情都已进入主线。随后完成的授权决策层重构已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界不变：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
+v0.4.6 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，普通 Console、Server Admin Console、Admin workspace acting、Token 管控、项目表格、任务过滤、任务详情和项目上下文内编辑都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理；写操作继续由 membership、token scope、workspace/project allowlist 和 closed project 状态共同约束。随后完成的授权决策层重构已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界不变：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
 
 v0.4.6 之后的方向待定，建议优先在以下几类中选择：
 

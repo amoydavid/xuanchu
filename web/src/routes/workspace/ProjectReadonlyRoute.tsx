@@ -1,6 +1,6 @@
 import { useParams } from "@tanstack/react-router"
 
-import { ProjectReadonlyPage } from "@/features/workspace/project-readonly/project-page"
+import { ProjectWorkbenchPage } from "@/features/workspace/project-workbench/project/project-workbench-page"
 
 export function ProjectReadonlyRoute() {
   const params = useParams({ strict: false }) as {
@@ -9,7 +9,7 @@ export function ProjectReadonlyRoute() {
   }
 
   return (
-    <ProjectReadonlyPage
+    <ProjectWorkbenchPage
       projectSlug={params.projectSlug}
       workspaceSlug={params.workspaceSlug}
     />

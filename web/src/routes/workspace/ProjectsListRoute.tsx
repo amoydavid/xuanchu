@@ -1,6 +1,6 @@
 import { useMe } from "@/features/workspace/session/useMe"
 
-import { ProjectsListPage } from "@/features/workspace/projects/projects-list-page"
+import { ProjectsListPage } from "@/features/workspace/project-workbench/projects/projects-list-page"
 
 export function ProjectsListRoute() {
   const me = useMe()

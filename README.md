@@ -98,21 +98,21 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 仓库只跟踪 `internal/webconsole/dist/.gitkeep`，不跟踪前端构建产物。日常前端开发使用 `pnpm --dir web dev` 并代理到 Go HTTP API；发布二进制必须使用 `make build-release`，或先运行 `make web-console-build` 再执行 Go 构建，确保真实 Web Console 静态资源被 embed 进二进制。
 
-普通 Console 支持项目只读深链，适合放进飞书卡片、企业门户或内部系统消息中：
+普通 Console 支持项目工作台深链，适合放进飞书卡片、企业门户或内部系统消息中：
 
 ```text
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>
 ```
 
-该页面只展示项目元数据、任务摘要和任务列表，不提供写操作。任务标识和描述可以点击进入只读任务详情页：
+该页面展示项目元数据、任务摘要、过滤工具栏、任务快速创建入口和可编辑任务表格。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在项目上下文内创建任务，并 inline 修改任务 title、priority、due 等常用字段。
 
 ```text
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
 ```
 
-任务详情页提供“返回项目”入口。未登录用户会先看到普通 token 登录页，登录成功后回到原项目页或任务详情页。当前版本只保留 redirect 语义，尚未接入企业 SSO 或飞书 OAuth。
+任务详情页提供“返回项目”入口，并支持 title / description inline 编辑、start / stop / done / delete 操作、注解添加/删除、链接添加/删除，以及右侧属性栏编辑。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页，登录成功后回到原项目页或任务详情页。当前版本只保留 redirect 语义，尚未接入企业 SSO 或飞书 OAuth。
 
-侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），点击某行进入项目详情页，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入只读任务详情页，查看描述、注解（支持懒加载更多）、关联链接、属性与自定义字段（UDAs）。
+侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目工作台，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，查看并编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。
 
 
 普通 Console 的 `/tokens` 页面支持 PAT / Agent token 的完整生命周期管理：创建（选择类型、scope、工作空间范围、过期时间）、编辑（名称、scope、过期时间、工作空间与项目范围）、吊销。创建后的明文 token 仅展示一次，列表中只能看到 prefix。scope 编辑按资源分组勾选，提交展开后的具体 scope；agent token 必须绑定至少一个工作空间。
