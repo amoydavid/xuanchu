@@ -132,16 +132,16 @@ type ServerAdminToken struct {
 // acting token 只保存在当前浏览器 tab，不进入普通 api_tokens 表。
 // Role 是创建时的快照，只用于审计展示，不作为后续授权来源。
 type AdminActingSession struct {
-	ID             string `gorm:"primaryKey"`
-	TokenPrefix    string `gorm:"not null;uniqueIndex:idx_admin_acting_sessions_prefix"`
-	TokenHash      string `gorm:"not null"`
+	ID             string  `gorm:"primaryKey"`
+	TokenPrefix    string  `gorm:"not null;uniqueIndex:idx_admin_acting_sessions_prefix"`
+	TokenHash      string  `gorm:"not null"`
 	AdminTokenID   *string `gorm:"index"`
-	AdminTokenName string `gorm:"not null"`
-	WorkspaceID    string `gorm:"not null;index"`
-	ActorUserID    string `gorm:"not null;index"`
-	Role           string `gorm:"not null"`
-	CreatedAt      int64  `gorm:"not null"`
-	ExpiresAt      int64  `gorm:"not null;index"`
+	AdminTokenName string  `gorm:"not null"`
+	WorkspaceID    string  `gorm:"not null;index"`
+	ActorUserID    string  `gorm:"not null;index"`
+	Role           string  `gorm:"not null"`
+	CreatedAt      int64   `gorm:"not null"`
+	ExpiresAt      int64   `gorm:"not null;index"`
 	RevokedAt      *int64
 	LastUsedAt     *int64
 }
@@ -168,7 +168,8 @@ type UDADefinition struct {
 type Task struct {
 	UUID        string `gorm:"primaryKey"`
 	WorkspaceID string `gorm:"not null;uniqueIndex:idx_tasks_ws_project_seq,priority:1"`
-	Description string `gorm:"not null"`
+	Title       string `gorm:"not null"`
+	Description *string
 	Status      string `gorm:"not null;index"`
 	Entry       int64  `gorm:"not null"`
 	Modified    int64  `gorm:"not null"`

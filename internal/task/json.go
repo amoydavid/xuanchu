@@ -43,52 +43,56 @@ type JSONTaskLink struct {
 }
 
 type JSONTask struct {
-	UUID        string              `json:"uuid"`
-	Description string              `json:"description"`
-	Status      string              `json:"status"`
-	Entry       string              `json:"entry"`
-	Modified    string              `json:"modified"`
-	End         *string             `json:"end,omitempty"`
-	Due         *string             `json:"due,omitempty"`
-	Project     *string             `json:"project,omitempty"`
-	TaskSlug    *string             `json:"task_slug,omitempty"`
-	Priority    *string             `json:"priority,omitempty"`
-	Tags        []string            `json:"tags,omitempty"`
-	Start       *string             `json:"start,omitempty"`
-	Wait        *string             `json:"wait,omitempty"`
-	Scheduled   *string             `json:"scheduled,omitempty"`
-	Until       *string             `json:"until,omitempty"`
-	Annotations []JSONAnnotation    `json:"annotations,omitempty"`
-	Depends     []string            `json:"depends,omitempty"`
-	DependsInfo []JSONTaskRef       `json:"depends_info,omitempty"`
-	Recur       *string             `json:"recur,omitempty"`
-	Parent      *string             `json:"parent,omitempty"`
-	ParentInfo  *JSONTaskRef        `json:"parent_info,omitempty"`
+	UUID        string           `json:"uuid"`
+	Title       string           `json:"title"`
+	Description *string          `json:"description,omitempty"`
+	Status      string           `json:"status"`
+	Entry       string           `json:"entry"`
+	Modified    string           `json:"modified"`
+	End         *string          `json:"end,omitempty"`
+	Due         *string          `json:"due,omitempty"`
+	Project     *string          `json:"project,omitempty"`
+	TaskSlug    *string          `json:"task_slug,omitempty"`
+	Priority    *string          `json:"priority,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
+	Start       *string          `json:"start,omitempty"`
+	Wait        *string          `json:"wait,omitempty"`
+	Scheduled   *string          `json:"scheduled,omitempty"`
+	Until       *string          `json:"until,omitempty"`
+	Annotations []JSONAnnotation `json:"annotations,omitempty"`
+	Depends     []string         `json:"depends,omitempty"`
+	DependsInfo []JSONTaskRef    `json:"depends_info,omitempty"`
+	Recur       *string          `json:"recur,omitempty"`
+	Parent      *string          `json:"parent,omitempty"`
+	ParentInfo  *JSONTaskRef     `json:"parent_info,omitempty"`
 	// BlockedByInfo 是被当前任务阻塞的任务列表（反向依赖），供 UI 展示「阻塞了」关系。
-	BlockedByInfo []JSONTaskRef `json:"blocked_by_info,omitempty"`
-	Mask        *string             `json:"mask,omitempty"`
-	IMask       *int                `json:"imask,omitempty"`
-	Assignees   []JSONAssignee      `json:"assignees,omitempty"`
-	Links       []JSONTaskLink      `json:"links,omitempty"`
-	UDAs        map[string]UDAValue `json:"-"`
+	BlockedByInfo []JSONTaskRef       `json:"blocked_by_info,omitempty"`
+	Mask          *string             `json:"mask,omitempty"`
+	IMask         *int                `json:"imask,omitempty"`
+	Assignees     []JSONAssignee      `json:"assignees,omitempty"`
+	Links         []JSONTaskLink      `json:"links,omitempty"`
+	UDAs          map[string]UDAValue `json:"-"`
 }
 
 // JSONTaskRef 是任务的轻量引用，用于 depends_info/parent_info，
-// 把裸 UUID 展开为人类可读的描述 + 稳定短标识，便于 UI 展示和跳转。
+// 把裸 UUID 展开为人类可读的标题 + 稳定短标识，便于 UI 展示和跳转。
 type JSONTaskRef struct {
-	UUID        string  `json:"uuid"`
-	Description string  `json:"description"`
-	TaskSlug    *string `json:"task_slug,omitempty"`
+	UUID     string  `json:"uuid"`
+	Title    string  `json:"title"`
+	TaskSlug *string `json:"task_slug,omitempty"`
 }
 
 func (t JSONTask) MarshalJSON() ([]byte, error) {
 	type alias JSONTask
 	wire := map[string]any{
-		"uuid":        t.UUID,
-		"description": t.Description,
-		"status":      t.Status,
-		"entry":       t.Entry,
-		"modified":    t.Modified,
+		"uuid":     t.UUID,
+		"title":    t.Title,
+		"status":   t.Status,
+		"entry":    t.Entry,
+		"modified": t.Modified,
+	}
+	if t.Description != nil {
+		wire["description"] = t.Description
 	}
 	if t.End != nil {
 		wire["end"] = t.End
@@ -166,7 +170,8 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 func (t *JSONTask) UnmarshalJSON(data []byte) error {
 	var core struct {
 		UUID        string           `json:"uuid"`
-		Description string           `json:"description"`
+		Title       string           `json:"title"`
+		Description *string          `json:"description,omitempty"`
 		Status      string           `json:"status"`
 		Entry       string           `json:"entry"`
 		Modified    string           `json:"modified"`
@@ -234,6 +239,7 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 		t.UDAs = nil
 	}
 	t.UUID = core.UUID
+	t.Title = core.Title
 	t.Description = core.Description
 	t.Status = core.Status
 	t.Entry = core.Entry
@@ -264,20 +270,20 @@ func ToJSON(tsk Task) JSONTask {
 		taskSlug = &value
 	}
 	return JSONTask{
-		UUID: tsk.UUID, Description: tsk.Description, Status: tsk.Status,
+		UUID: tsk.UUID, Title: tsk.Title, Description: tsk.Description, Status: tsk.Status,
 		Entry: formatUnix(tsk.Entry), Modified: formatUnix(tsk.Modified),
 		End: formatUnixPtr(tsk.End), Due: formatUnixPtr(tsk.Due),
 		Project: tsk.Project, TaskSlug: taskSlug, Priority: tsk.Priority, Tags: tsk.Tags,
-		Start:     formatUnixPtr(tsk.Start),
-		Wait:      formatUnixPtr(tsk.Wait),
-		Scheduled: formatUnixPtr(tsk.Scheduled),
-		Until:     formatUnixPtr(tsk.Until),
+		Start:       formatUnixPtr(tsk.Start),
+		Wait:        formatUnixPtr(tsk.Wait),
+		Scheduled:   formatUnixPtr(tsk.Scheduled),
+		Until:       formatUnixPtr(tsk.Until),
 		Annotations: AnnotationsToJSON(tsk.Annotations),
-		Depends: tsk.Depends,
-		Recur:   tsk.Recur,
-		Parent:  tsk.Parent,
-		Mask:    tsk.Mask,
-		IMask:   tsk.IMask,
+		Depends:     tsk.Depends,
+		Recur:       tsk.Recur,
+		Parent:      tsk.Parent,
+		Mask:        tsk.Mask,
+		IMask:       tsk.IMask,
 		Assignees: func() []JSONAssignee {
 			if tsk.Assignees == nil {
 				return nil
@@ -326,6 +332,9 @@ func FromJSON(dto JSONTask) Task {
 }
 
 func FromJSONStrict(dto JSONTask) (Task, error) {
+	if strings.TrimSpace(dto.Title) == "" {
+		return Task{}, fmt.Errorf("title is required")
+	}
 	entry, err := parseUnixString("entry", dto.Entry)
 	if err != nil {
 		return Task{}, err
@@ -373,6 +382,7 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 	}
 	return Task{
 		UUID:        dto.UUID,
+		Title:       dto.Title,
 		Description: dto.Description,
 		Status:      dto.Status,
 		Entry:       entry,
@@ -439,15 +449,15 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 }
 
 func coreJSONFields() []string {
-	return []string{"uuid", "description", "status", "entry", "modified", "end", "due", "project", "task_slug", "project_seq", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links"}
+	return []string{"uuid", "title", "description", "status", "entry", "modified", "end", "due", "project", "task_slug", "project_seq", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links"}
 }
 
 func reservedJSONFields() map[string]struct{} {
 	return map[string]struct{}{
-		"project_id":    {},
-		"project_seq":   {},
-		"depends_info":  {},
-		"parent_info":   {},
+		"project_id":      {},
+		"project_seq":     {},
+		"depends_info":    {},
+		"parent_info":     {},
 		"blocked_by_info": {},
 	}
 }

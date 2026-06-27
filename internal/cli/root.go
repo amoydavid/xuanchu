@@ -370,6 +370,7 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			return err
 		}
 		if err := svc.Modify(target, app.ModifyInput{
+			Title:           mod.Title,
 			Description:     mod.Description,
 			Project:         mod.Project,
 			Priority:        mod.Priority,
@@ -509,6 +510,7 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 			return err
 		}
 		_, err = client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{
+			Title:           mod.Title,
 			Description:     mod.Description,
 			Project:         mod.Project,
 			Priority:        mod.Priority,
@@ -589,11 +591,11 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 			return err
 		}
 		text := strings.Join(actionArgs, " ")
-		description := tsk.Description + " " + text
+		title := strings.TrimSpace(tsk.Title + " " + text)
 		if action == "prepend" {
-			description = text + " " + tsk.Description
+			title = strings.TrimSpace(text + " " + tsk.Title)
 		}
-		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Description: &description}); err != nil {
+		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Title: &title}); err != nil {
 			return err
 		}
 		if action == "append" {
@@ -733,11 +735,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if opts.SetLogger != nil {
 		opts.SetLogger(logger)
 	}
-	dbTarget := cfg.DatabaseURL
-	if dbTarget == "" {
-		dbTarget = cfg.DatabasePath
-	}
-	store, err := storage.Open(dbTarget)
+	store, err := storage.Open(cfg.DatabaseTarget())
 	if err != nil {
 		return nil, nil, err
 	}

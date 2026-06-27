@@ -113,12 +113,18 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 	case query.AttrUUID:
 		return compareColumn("uuid", p.Operator, value, nil, opts.Dialect)
 	case query.AttrBare:
-		return fmt.Sprintf("description %s ?", likeOp(opts.Dialect)), []any{"%" + value + "%"}, nil
+		return fmt.Sprintf("title %s ?", likeOp(opts.Dialect)), []any{"%" + value + "%"}, nil
+	case query.AttrTitle:
+		// title: 始终按子串匹配，无论是 title:abc、title:'abc def'
+		// 还是 title:/abc/。这与 /abc/ 短语一致。
+		if p.Operator == query.OpEqual || p.Operator == query.OpContains {
+			return fmt.Sprintf("title %s ?", likeOp(opts.Dialect)), []any{"%" + value + "%"}, nil
+		}
+		return compareColumn("title", p.Operator, value, nil, opts.Dialect)
 	case query.AttrUDA:
 		return compileUDAPredicate(p, opts)
 	case query.AttrDescription:
-		// description: 始终按子串匹配，无论是 description:abc、description:'abc def'
-		// 还是 description:/abc/。这与 /abc/ 短语一致，避免 OpEqual 字面相等带来的反直觉。
+		// description: 查询任务详情，而不是标题。
 		if p.Operator == query.OpEqual || p.Operator == query.OpContains {
 			return fmt.Sprintf("description %s ?", likeOp(opts.Dialect)), []any{"%" + value + "%"}, nil
 		}

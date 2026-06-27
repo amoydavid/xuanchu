@@ -52,7 +52,8 @@ describe("ProjectTaskDetailPage", () => {
       ok({
         uuid: "task-1",
         task_slug: "ag-23",
-        description: "Design task.query schema",
+        title: "Design task.query schema",
+        description: "Detail body for schema review",
         status: "pending",
         priority: "H",
         due: 1_900_000_000,
@@ -70,6 +71,7 @@ describe("ProjectTaskDetailPage", () => {
       expect(screen.getByRole("heading", { name: "Design task.query schema" })).toBeTruthy()
     })
     expect(screen.getByText("acme / agentapi / ag-23")).toBeTruthy()
+    expect(screen.getByText("Detail body for schema review")).toBeTruthy()
     expect(screen.getAllByText("pending").length).toBeGreaterThan(0)
     expect(screen.getAllByText("H").length).toBeGreaterThan(0)
     expect(screen.getByText("张三")).toBeTruthy()
@@ -88,7 +90,7 @@ describe("ProjectTaskDetailPage", () => {
       ok({
         uuid: "task-1",
         task_slug: "other-23",
-        description: "Other project task",
+        title: "Other project task",
         status: "pending",
         project: "other",
       })
@@ -125,7 +127,7 @@ describe("ProjectTaskDetailPage", () => {
       return ok({
         uuid: "task-1",
         task_slug: "ag-23",
-        description: "Task with links and UDAs",
+        title: "Task with links and UDAs",
         status: "pending",
         project: "agentapi",
         annotations,
@@ -176,14 +178,14 @@ describe("ProjectTaskDetailPage", () => {
       ok({
         uuid: "task-1",
         task_slug: "ag-23",
-        description: "Task with dependency",
+        title: "Task with dependency",
         status: "pending",
         project: "agentapi",
         depends: ["dep-uuid-1"],
         depends_info: [
           {
             uuid: "dep-uuid-1",
-            description: "Dependency task",
+            title: "Dependency task",
             task_slug: "ag-12",
           },
         ],
@@ -212,13 +214,13 @@ describe("ProjectTaskDetailPage", () => {
       ok({
         uuid: "task-1",
         task_slug: "ag-23",
-        description: "Task that blocks others",
+        title: "Task that blocks others",
         status: "pending",
         project: "agentapi",
         blocked_by_info: [
           {
             uuid: "blocked-uuid-1",
-            description: "Task waiting on me",
+            title: "Task waiting on me",
             task_slug: "ag-12",
           },
         ],

@@ -527,11 +527,7 @@ func runtimeFromOptions(opts Options) (config.Runtime, error) {
 	if err != nil {
 		return config.Runtime{}, err
 	}
-	dbTarget := cfg.DatabaseURL
-	if dbTarget == "" {
-		dbTarget = cfg.DatabasePath
-	}
-	store, err := storage.Open(dbTarget)
+	store, err := storage.Open(cfg.DatabaseTarget())
 	if err != nil {
 		return config.Runtime{}, err
 	}

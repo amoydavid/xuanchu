@@ -29,6 +29,13 @@ type Config struct {
 	Shutdown               ShutdownConfig
 }
 
+func (c Config) DatabaseTarget() string {
+	if c.DatabaseURL != "" {
+		return c.DatabaseURL
+	}
+	return c.DatabasePath
+}
+
 type ConsoleConfig struct {
 	Enabled     bool
 	BasePath    string

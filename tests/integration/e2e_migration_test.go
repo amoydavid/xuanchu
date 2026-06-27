@@ -39,11 +39,11 @@ func TestE2ESQLiteMigrationKeepsJSONStdoutClean(t *testing.T) {
 
 	add := run(t, bin, "--db", db, "--json", "add", "post migration task", "project:legacy")
 	created := parseJSONMap(t, add)
-	if created["description"] != "post migration task" {
+	if created["title"] != "post migration task" {
 		t.Fatalf("post migration add output = %#v", created)
 	}
 	info := run(t, bin, "--db", db, "--json", "info", "2")
-	if parseJSONMap(t, info)["description"] != "post migration task" {
+	if parseJSONMap(t, info)["title"] != "post migration task" {
 		t.Fatalf("post migration info output = %s", info)
 	}
 }

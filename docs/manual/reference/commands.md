@@ -23,7 +23,7 @@ xuanchu --server https://xuanchu.example.com --token "$XUANCHU_TOKEN" list
 ## 任务
 
 ```bash
-xuanchu add "Description" project:<project> +tag due:tomorrow
+xuanchu add "Title" project:<project> +tag due:tomorrow
 xuanchu list [filters...]
 xuanchu next [filters...]
 xuanchu all [filters...]

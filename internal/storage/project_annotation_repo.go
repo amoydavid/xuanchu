@@ -96,7 +96,7 @@ SELECT source_type, source_id, source_label, entry, content, created_by FROM (
            entry, content, created_by
     FROM project_annotations WHERE project_id = ?
     UNION ALL
-    SELECT 'task' AS source_type, t.uuid AS source_id, t.description AS source_label,
+    SELECT 'task' AS source_type, t.uuid AS source_id, t.title AS source_label,
            ta.entry, ta.description AS content, '' AS created_by
     FROM task_annotations ta
     JOIN tasks t ON t.uuid = ta.task_uuid

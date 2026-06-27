@@ -47,7 +47,7 @@ export function ProjectTaskList({
           <TableHeader>
             <TableRow>
               <TableHead>{t("projectReadonly.identifier")}</TableHead>
-              <TableHead>{t("projectReadonly.description")}</TableHead>
+              <TableHead>{t("projectReadonly.title")}</TableHead>
               <TableHead>{t("common.status")}</TableHead>
               <TableHead>{t("projectReadonly.assignee")}</TableHead>
               <TableHead>{t("projectReadonly.due")}</TableHead>
@@ -71,7 +71,7 @@ export function ProjectTaskList({
                       className="text-foreground underline-offset-4 hover:underline"
                       {...linkProps}
                     >
-                      {task.description}
+                      {task.title}
                     </Link>
                   </TableCell>
                   <TableCell>
@@ -99,7 +99,7 @@ export function ProjectTaskList({
                 {task.priority ? ` ${task.priority}` : ""}
               </span>
             </div>
-            <div className="mt-2 line-clamp-2 text-sm">{task.description}</div>
+            <div className="mt-2 line-clamp-2 text-sm">{task.title}</div>
             <div className="mt-2 text-xs text-muted-foreground">
               {assigneeNames(task)} · {formatUnixDate(task.due)}
             </div>

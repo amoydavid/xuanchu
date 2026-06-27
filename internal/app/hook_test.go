@@ -980,7 +980,7 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	}
 
 	// 创建任务
-	created, err := svc.Add(AddInput{Description: "test task", Project: &project.Slug})
+	created, err := svc.Add(AddInput{Title: "test task", Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1061,8 +1061,8 @@ func TestHookDeliveryEnqueuedOnTaskCreated(t *testing.T) {
 	if taskData["uuid"] != created.UUID {
 		t.Fatalf("task.uuid = %v, want %s", taskData["uuid"], created.UUID)
 	}
-	if taskData["description"] != "test task" {
-		t.Fatalf("task.description = %v, want test task", taskData["description"])
+	if taskData["title"] != "test task" {
+		t.Fatalf("task.title = %v, want test task", taskData["title"])
 	}
 	if taskData["task_slug"] != "api-1" {
 		t.Fatalf("task.task_slug = %v, want api-1", taskData["task_slug"])
@@ -1122,7 +1122,7 @@ func TestHookHTTPTemplateDeliveryContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "templated hook"})
+	created, err := svc.Add(AddInput{Title: "templated hook"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1171,7 +1171,7 @@ func TestHookTaskCreatedPayloadOmitsTaskSlugWithoutProject(t *testing.T) {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
-	if _, err := svc.Add(AddInput{Description: "no project"}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "no project"}); err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 	deliveries, err := svc.hookDeliveryRepo.ListByHook(hook.ID, "", 10, 0)
@@ -1223,7 +1223,7 @@ func TestHookPayloadIncludesAssignees(t *testing.T) {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
-	created, err := svc.Add(AddInput{Description: "assigned hook task", Assignees: []string{"hook-assignee"}})
+	created, err := svc.Add(AddInput{Title: "assigned hook task", Assignees: []string{"hook-assignee"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1281,7 +1281,7 @@ func TestHookEventsForWriteOperations(t *testing.T) {
 	}
 
 	// Add -> task.created
-	created, err := svc.Add(AddInput{Description: "task1"})
+	created, err := svc.Add(AddInput{Title: "task1"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1323,7 +1323,7 @@ func TestHookEventsForWriteOperations(t *testing.T) {
 	assertDeliveryEventType(t, svc, hook.ID, "task.completed")
 
 	// Create another task for delete
-	toDelete, err := svc.Add(AddInput{Description: "task to delete"})
+	toDelete, err := svc.Add(AddInput{Title: "task to delete"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1388,7 +1388,7 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 
 	// 创建带 project 的任务 -> 两个 hook 都应收到
 	p := "isolated"
-	_, err = svc.Add(AddInput{Description: "in project", Project: &p})
+	_, err = svc.Add(AddInput{Title: "in project", Project: &p})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1402,7 +1402,7 @@ func TestHookProjectScopeIsolation(t *testing.T) {
 	}
 
 	// 创建无 project 的任务 -> 只有 workspace hook 应收到
-	_, err = svc.Add(AddInput{Description: "no project"})
+	_, err = svc.Add(AddInput{Title: "no project"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1438,7 +1438,7 @@ func TestHookWorkspaceScopeNoProject(t *testing.T) {
 		t.Fatalf("AddHook() error = %v", err)
 	}
 
-	created, err := svc.Add(AddInput{Description: "finish me"})
+	created, err := svc.Add(AddInput{Title: "finish me"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1492,7 +1492,7 @@ func TestHookDeliveryFailureDoesNotRollBackTaskWrite(t *testing.T) {
 	svc.hookDeliveryRepo = &failingDeliveryRepo{}
 
 	// 创建任务应该成功，hook delivery 属于事务提交后的副作用
-	created, err := svc.Add(AddInput{Description: "should not rollback"})
+	created, err := svc.Add(AddInput{Title: "should not rollback"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1502,8 +1502,8 @@ func TestHookDeliveryFailureDoesNotRollBackTaskWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Info(created) error = %v", err)
 	}
-	if got.Description != "should not rollback" {
-		t.Fatalf("description = %q", got.Description)
+	if got.Title != "should not rollback" {
+		t.Fatalf("title = %q", got.Title)
 	}
 }
 
@@ -1515,7 +1515,7 @@ func TestHookDeliveryActorResolvedToUserInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
 	}
-	if _, err := svc.Add(AddInput{Description: "actor user info"}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "actor user info"}); err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 	rows, err := svc.ListHookDeliveries(hook.ID, "", 10, 0)
@@ -1709,11 +1709,11 @@ func TestHookTaskUnblockedEventForLastDependency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
 	}
-	blocker, err := svc.Add(AddInput{Description: "prepare api"})
+	blocker, err := svc.Add(AddInput{Title: "prepare api"})
 	if err != nil {
 		t.Fatalf("Add(blocker) error = %v", err)
 	}
-	blocked, err := svc.Add(AddInput{Description: "integrate client"})
+	blocked, err := svc.Add(AddInput{Title: "integrate client"})
 	if err != nil {
 		t.Fatalf("Add(blocked) error = %v", err)
 	}
@@ -1761,9 +1761,9 @@ func TestHookTaskUnblockedEventNotGeneratedWhenOtherBlockersRemain(t *testing.T)
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
 	}
-	blocker1, _ := svc.Add(AddInput{Description: "prepare api"})
-	blocker2, _ := svc.Add(AddInput{Description: "prepare data"})
-	blocked, _ := svc.Add(AddInput{Description: "integrate client"})
+	blocker1, _ := svc.Add(AddInput{Title: "prepare api"})
+	blocker2, _ := svc.Add(AddInput{Title: "prepare data"})
+	blocked, _ := svc.Add(AddInput{Title: "integrate client"})
 	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker1.UUID, blocker2.UUID}}); err != nil {
 		t.Fatalf("Modify(depends) error = %v", err)
 	}
@@ -1791,8 +1791,8 @@ func TestHookTaskUnblockedEventNotGeneratedForCompletedDependent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddHook() error = %v", err)
 	}
-	blocker, _ := svc.Add(AddInput{Description: "prepare api"})
-	dependent, _ := svc.Add(AddInput{Description: "integrate client"})
+	blocker, _ := svc.Add(AddInput{Title: "prepare api"})
+	dependent, _ := svc.Add(AddInput{Title: "integrate client"})
 	if err := svc.Modify(dependent.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
 		t.Fatalf("Modify(depends) error = %v", err)
 	}
@@ -1826,14 +1826,14 @@ func TestHookBlockedEventOnAddWithDependency(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blocker, err := svc.Add(AddInput{Description: "blocker"})
+	blocker, err := svc.Add(AddInput{Title: "blocker"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	_, err = svc.Add(AddInput{
-		Description: "blocked task",
-		Depends:     []string{blocker.UUID},
+		Title:   "blocked task",
+		Depends: []string{blocker.UUID},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1865,12 +1865,12 @@ func TestHookBlockedEventOnModifyAddDependency(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blocker, err := svc.Add(AddInput{Description: "blocker"})
+	blocker, err := svc.Add(AddInput{Title: "blocker"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	target, err := svc.Add(AddInput{Description: "target"})
+	target, err := svc.Add(AddInput{Title: "target"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1947,12 +1947,12 @@ func TestHookModifyFineGrainedEventPayloads(t *testing.T) {
 	oldDue := int64(1000)
 	newDue := int64(2000)
 	created, err := svc.Add(AddInput{
-		Description: "fine-grained task",
-		Project:     &oldProject.Slug,
-		Priority:    strptr("M"),
-		Due:         &oldDue,
-		Assignees:   []string{assignee.ID},
-		Tags:        []string{"docs"},
+		Title:     "fine-grained task",
+		Project:   &oldProject.Slug,
+		Priority:  strptr("M"),
+		Due:       &oldDue,
+		Assignees: []string{assignee.ID},
+		Tags:      []string{"docs"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2067,15 +2067,15 @@ func TestHookBlockedEventNotGeneratedWhenTaskAlreadyBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blocker1, err := svc.Add(AddInput{Description: "blocker one"})
+	blocker1, err := svc.Add(AddInput{Title: "blocker one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocker2, err := svc.Add(AddInput{Description: "blocker two"})
+	blocker2, err := svc.Add(AddInput{Title: "blocker two"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := svc.Add(AddInput{Description: "target", Depends: []string{blocker1.UUID}})
+	target, err := svc.Add(AddInput{Title: "target", Depends: []string{blocker1.UUID}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,8 +24,8 @@ func TestE2EHTTPMCPTaskToolGoldenPath(t *testing.T) {
 	add, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "task_add",
 		Arguments: map[string]any{
-			"description": "http mcp e2e task",
-			"tags":        []string{"e2e"},
+			"title": "http mcp e2e task",
+			"tags":  []string{"e2e"},
 		},
 	})
 	if err != nil {
@@ -33,7 +33,7 @@ func TestE2EHTTPMCPTaskToolGoldenPath(t *testing.T) {
 	}
 	addEnv := mcpStructuredMap(t, add)
 	taskObj := nestedMap(t, nestedMap(t, addEnv, "data"), "task")
-	if taskObj["uuid"] == "" || taskObj["description"] != "http mcp e2e task" {
+	if taskObj["uuid"] == "" || taskObj["title"] != "http mcp e2e task" {
 		t.Fatalf("task_add structured content = %#v", addEnv)
 	}
 
@@ -46,7 +46,7 @@ func TestE2EHTTPMCPTaskToolGoldenPath(t *testing.T) {
 	}
 	queryEnv := mcpStructuredMap(t, query)
 	tasks, _ := nestedMap(t, queryEnv, "data")["tasks"].([]any)
-	if !jsonArrayContainsString(tasks, "description", "http mcp e2e task") {
+	if !jsonArrayContainsString(tasks, "title", "http mcp e2e task") {
 		t.Fatalf("task_query structured content = %#v", queryEnv)
 	}
 
@@ -78,8 +78,8 @@ func TestE2EHTTPMCPProjectAllowlistRejectsCrossProject(t *testing.T) {
 	allowed, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "task_add",
 		Arguments: map[string]any{
-			"project":     "allowed",
-			"description": "allowed project task",
+			"project": "allowed",
+			"title":   "allowed project task",
 		},
 	})
 	if err != nil {
@@ -117,14 +117,14 @@ func TestE2EMCPStdioTaskToolGoldenPath(t *testing.T) {
 
 	add, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "task_add",
-		Arguments: map[string]any{"description": "stdio mcp e2e task"},
+		Arguments: map[string]any{"title": "stdio mcp e2e task"},
 	})
 	if err != nil {
 		t.Fatalf("stdio MCP task_add error = %v", err)
 	}
 	addEnv := mcpStructuredMap(t, add)
 	taskObj := nestedMap(t, nestedMap(t, addEnv, "data"), "task")
-	if taskObj["uuid"] == "" || taskObj["description"] != "stdio mcp e2e task" {
+	if taskObj["uuid"] == "" || taskObj["title"] != "stdio mcp e2e task" {
 		t.Fatalf("stdio task_add structured content = %#v", addEnv)
 	}
 
@@ -137,7 +137,7 @@ func TestE2EMCPStdioTaskToolGoldenPath(t *testing.T) {
 	}
 	queryEnv := mcpStructuredMap(t, query)
 	tasks, _ := nestedMap(t, queryEnv, "data")["tasks"].([]any)
-	if !jsonArrayContainsString(tasks, "description", "stdio mcp e2e task") {
+	if !jsonArrayContainsString(tasks, "title", "stdio mcp e2e task") {
 		t.Fatalf("stdio task_query structured content = %#v", queryEnv)
 	}
 

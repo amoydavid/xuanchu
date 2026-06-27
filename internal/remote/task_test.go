@@ -9,7 +9,7 @@ import (
 func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 	raw := `{
 		"uuid":"u1",
-		"description":"remote",
+		"title":"remote",
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
@@ -35,7 +35,7 @@ func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 func TestRemoteTaskResponseRejectsMismatchedTaskSlugProject(t *testing.T) {
 	raw := `{
 		"uuid":"u1",
-		"description":"remote",
+		"title":"remote",
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",

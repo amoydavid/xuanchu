@@ -13,10 +13,10 @@ func TestTaskListShowsAssignees(t *testing.T) {
 	project := "api"
 	projectSeq := int64(3)
 	TaskList(&buf, []task.Task{{
-		UUID:        "12345678-1234-1234-1234-123456789abc",
-		Description: "assigned task",
-		Project:     &project,
-		ProjectSeq:  &projectSeq,
+		UUID:       "12345678-1234-1234-1234-123456789abc",
+		Title:      "assigned task",
+		Project:    &project,
+		ProjectSeq: &projectSeq,
 		Assignees: []task.AssigneeInfo{{
 			UserID: "user-local",
 			Name:   "local",
@@ -37,10 +37,10 @@ func TestTaskInfoFormatsEmailAssigneeWithAtPrefix(t *testing.T) {
 	project := "api"
 	projectSeq := int64(3)
 	TaskInfo(&buf, task.Task{
-		UUID:        "12345678-1234-1234-1234-123456789abc",
-		Description: "assigned task",
-		Project:     &project,
-		ProjectSeq:  &projectSeq,
+		UUID:       "12345678-1234-1234-1234-123456789abc",
+		Title:      "assigned task",
+		Project:    &project,
+		ProjectSeq: &projectSeq,
 		Assignees: []task.AssigneeInfo{{
 			UserID: "user-alice",
 			Email:  &email,

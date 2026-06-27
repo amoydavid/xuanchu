@@ -121,7 +121,7 @@ func parsePredicate(tok string) (Expr, error) {
 	case strings.HasPrefix(tok, "-") && len(tok) > 1:
 		return Predicate{Attribute: AttrTag, Operator: OpMissingTag, Value: StringValue(tok[1:])}, nil
 	case strings.HasPrefix(tok, "/") && strings.HasSuffix(tok, "/") && len(tok) >= 2:
-		return Predicate{Attribute: AttrDescription, Operator: OpContains, Value: StringValue(strings.Trim(tok, "/"))}, nil
+		return Predicate{Attribute: AttrTitle, Operator: OpContains, Value: StringValue(strings.Trim(tok, "/"))}, nil
 	}
 
 	name, value, ok := strings.Cut(tok, ":")
@@ -161,7 +161,7 @@ func parsePredicate(tok string) (Expr, error) {
 	if attr == AttrAnnotations {
 		return Predicate{Attribute: attr, Operator: OpContains, Value: StringValue(value)}, nil
 	}
-	if attr == AttrDescription && strings.HasPrefix(value, "/") && strings.HasSuffix(value, "/") {
+	if (attr == AttrTitle || attr == AttrDescription) && strings.HasPrefix(value, "/") && strings.HasSuffix(value, "/") {
 		return Predicate{Attribute: attr, Operator: OpContains, Value: StringValue(strings.Trim(value, "/"))}, nil
 	}
 	return Predicate{Attribute: attr, Operator: op, Value: StringValue(value)}, nil
@@ -215,7 +215,7 @@ func isBuiltInAttribute(name string) bool {
 func parseAttributeOperator(name string) (Attribute, Operator, error) {
 	base, suffix, hasSuffix := strings.Cut(name, ".")
 	attr := map[string]Attribute{
-		"uuid": AttrUUID, "description": AttrDescription,
+		"uuid": AttrUUID, "title": AttrTitle, "description": AttrDescription,
 		"status": AttrStatus, "entry": AttrEntry, "modified": AttrModified,
 		"end": AttrEnd, "due": AttrDue, "start": AttrStart, "wait": AttrWait,
 		"scheduled": AttrScheduled, "until": AttrUntil, "project": AttrProject,

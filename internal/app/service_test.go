@@ -101,7 +101,7 @@ func TestServiceAddListInfo(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	created, err := svc.Add(AddInput{Description: "write spec", Tags: []string{"planning"}})
+	created, err := svc.Add(AddInput{Title: "write spec", Tags: []string{"planning"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -113,7 +113,7 @@ func TestServiceAddListInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].Description != "write spec" {
+	if len(tasks) != 1 || tasks[0].Title != "write spec" {
 		t.Fatalf("tasks = %#v", tasks)
 	}
 
@@ -197,7 +197,7 @@ func TestNewServiceWorkspaceOverride(t *testing.T) {
 func TestViewerCannotModifyTasks(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	created, err := ownerSvc.Add(AddInput{Description: "owner task"})
+	created, err := ownerSvc.Add(AddInput{Title: "owner task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -257,8 +257,8 @@ func TestServiceAddResolvesAssigneesInWorkspace(t *testing.T) {
 	})
 
 	created, err := ownerSvc.Add(AddInput{
-		Description: "write spec",
-		Assignees:   []string{"alice"},
+		Title:     "write spec",
+		Assignees: []string{"alice"},
 	})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
@@ -293,7 +293,7 @@ func TestServiceModifyRejectsCrossWorkspaceAssignee(t *testing.T) {
 		JoinedAt:    100,
 		ModifiedAt:  100,
 	})
-	created, err := localSvc.Add(AddInput{Description: "write spec"})
+	created, err := localSvc.Add(AddInput{Title: "write spec"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -316,13 +316,13 @@ func TestServiceListExpandsAssigneeMe(t *testing.T) {
 		t.Fatalf("GetByName(local) error = %v", err)
 	}
 	mine, err := svc.Add(AddInput{
-		Description: "my task",
-		Assignees:   []string{localUser.ID},
+		Title:     "my task",
+		Assignees: []string{localUser.ID},
 	})
 	if err != nil {
 		t.Fatalf("Add(my task) error = %v", err)
 	}
-	if _, err := svc.Add(AddInput{Description: "other task"}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "other task"}); err != nil {
 		t.Fatalf("Add(other task) error = %v", err)
 	}
 
@@ -342,11 +342,11 @@ func TestServiceListExpandsAssigneeMe(t *testing.T) {
 func TestServiceContextFilterResolvesAssigneeMe(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	mine, err := svc.Add(AddInput{Description: "my context task", Assignees: []string{"local"}})
+	mine, err := svc.Add(AddInput{Title: "my context task", Assignees: []string{"local"}})
 	if err != nil {
 		t.Fatalf("Add(my context task) error = %v", err)
 	}
-	if _, err := svc.Add(AddInput{Description: "other context task"}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "other context task"}); err != nil {
 		t.Fatalf("Add(other context task) error = %v", err)
 	}
 	if err := svc.DefineContext("mine", "assignee:me"); err != nil {
@@ -394,7 +394,7 @@ func TestServiceModifyClearAndAddAssigneesReplacesSet(t *testing.T) {
 		JoinedAt:    100,
 		ModifiedAt:  100,
 	})
-	created, err := svc.Add(AddInput{Description: "replace assignees", Assignees: []string{"local"}})
+	created, err := svc.Add(AddInput{Title: "replace assignees", Assignees: []string{"local"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -499,8 +499,8 @@ func TestServiceAddResolvesAssigneeByExternalID(t *testing.T) {
 	}
 
 	created, err := svc.Add(AddInput{
-		Description: "external assign test",
-		Assignees:   []string{"feishu:ou_ext_assign"},
+		Title:     "external assign test",
+		Assignees: []string{"feishu:ou_ext_assign"},
 	})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
@@ -816,14 +816,14 @@ func TestListProjectsCountsArchivedProjectTasksExcludingDeleted(t *testing.T) {
 		t.Fatalf("AddProject() error = %v", err)
 	}
 	projectRef := created.Slug
-	if _, err := svc.Add(AddInput{Description: "pending task", Project: &projectRef}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "pending task", Project: &projectRef}); err != nil {
 		t.Fatalf("Add(pending task) error = %v", err)
 	}
-	doneTask, err := svc.Add(AddInput{Description: "done task", Project: &projectRef})
+	doneTask, err := svc.Add(AddInput{Title: "done task", Project: &projectRef})
 	if err != nil {
 		t.Fatalf("Add(done task) error = %v", err)
 	}
-	deletedTask, err := svc.Add(AddInput{Description: "deleted task", Project: &projectRef})
+	deletedTask, err := svc.Add(AddInput{Title: "deleted task", Project: &projectRef})
 	if err != nil {
 		t.Fatalf("Add(deleted task) error = %v", err)
 	}
@@ -857,13 +857,13 @@ func TestListProjectsReturnsStatusBreakdown(t *testing.T) {
 		t.Fatalf("AddProject() error = %v", err)
 	}
 	projectRef := created.Slug
-	if _, err := svc.Add(AddInput{Description: "p1", Project: &projectRef}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "p1", Project: &projectRef}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "p2", Project: &projectRef}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "p2", Project: &projectRef}); err != nil {
 		t.Fatal(err)
 	}
-	done, err := svc.Add(AddInput{Description: "done", Project: &projectRef})
+	done, err := svc.Add(AddInput{Title: "done", Project: &projectRef})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1429,7 +1429,7 @@ func TestTaskWriteCreatesAuditInSameTransaction(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	created, err := svc.Add(AddInput{Description: "audit me"})
+	created, err := svc.Add(AddInput{Title: "audit me"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1449,7 +1449,7 @@ func TestReadMethodsRequireTaskReadPermission(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	created, err := svc.Add(AddInput{Description: "read me"})
+	created, err := svc.Add(AddInput{Title: "read me"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1502,7 +1502,7 @@ func TestAuditFailureRollsBackTaskWrite(t *testing.T) {
 	defer closeFn()
 
 	svc.auditRepo = &failingAuditRepo{}
-	if _, err := svc.Add(AddInput{Description: "should rollback"}); err == nil {
+	if _, err := svc.Add(AddInput{Title: "should rollback"}); err == nil {
 		t.Fatal("Add() error = nil, want audit failure")
 	}
 	tasks, err := svc.List(ListInput{})
@@ -1518,7 +1518,7 @@ func TestModifyCreatesAuditEntry(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	created, err := svc.Add(AddInput{Description: "before"})
+	created, err := svc.Add(AddInput{Title: "before"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1587,9 +1587,9 @@ func TestImportCreatesAuditEntry(t *testing.T) {
 	defer closeFn()
 
 	count, err := svc.Import([]task.JSONTask{{
-		Description: "imported task",
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
+		Title:    "imported task",
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:40Z",
 	}})
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1630,12 +1630,12 @@ func TestServiceImportNormalizesProjectOnCreate(t *testing.T) {
 	}
 
 	count, err := svc.Import([]task.JSONTask{{
-		UUID:        "import-project-create",
-		Description: "imported task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Project:     strptr("  " + strings.ToUpper(project.Slug) + "  "),
+		UUID:     "import-project-create",
+		Title:    "imported task",
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:40Z",
+		Project:  strptr("  " + strings.ToUpper(project.Slug) + "  "),
 	}})
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1661,12 +1661,12 @@ func TestServiceImportAssigneesFromObjectArray(t *testing.T) {
 	defer closeFn()
 
 	count, err := svc.Import([]task.JSONTask{{
-		UUID:        "import-assignee-object",
-		Description: "imported task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Assignees:   []task.JSONAssignee{{Name: "local"}},
+		UUID:      "import-assignee-object",
+		Title:     "imported task",
+		Status:    task.StatusPending,
+		Entry:     "1970-01-01T00:01:40Z",
+		Modified:  "1970-01-01T00:01:40Z",
+		Assignees: []task.JSONAssignee{{Name: "local"}},
 	}})
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1689,12 +1689,12 @@ func TestServiceImportAssigneesFromStringArray(t *testing.T) {
 	defer closeFn()
 
 	count, err := svc.Import([]task.JSONTask{{
-		UUID:        "import-assignee-string",
-		Description: "imported task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Assignees:   []task.JSONAssignee{{UserID: "local"}},
+		UUID:      "import-assignee-string",
+		Title:     "imported task",
+		Status:    task.StatusPending,
+		Entry:     "1970-01-01T00:01:40Z",
+		Modified:  "1970-01-01T00:01:40Z",
+		Assignees: []task.JSONAssignee{{UserID: "local"}},
 	}})
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1716,13 +1716,14 @@ func TestServiceImportClearsAssigneesWithExplicitEmptyArray(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	created, err := svc.Add(AddInput{Description: "assigned task", Assignees: []string{"local"}})
+	created, err := svc.Add(AddInput{Title: "assigned task", Assignees: []string{"local"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 
 	count, err := svc.Import([]task.JSONTask{{
 		UUID:      created.UUID,
+		Title:     created.Title,
 		Entry:     "1970-01-01T00:01:40Z",
 		Modified:  "1970-01-01T00:01:40Z",
 		Assignees: []task.JSONAssignee{},
@@ -1747,7 +1748,7 @@ func TestServiceExportIncludesAssignees(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	created, err := svc.Add(AddInput{Description: "assigned task", Assignees: []string{"local"}})
+	created, err := svc.Add(AddInput{Title: "assigned task", Assignees: []string{"local"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -1781,23 +1782,23 @@ func TestServiceImportNormalizesProjectOnUpdate(t *testing.T) {
 	}
 
 	if _, err := svc.Import([]task.JSONTask{{
-		UUID:        "import-project-update",
-		Description: "imported task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Project:     &projectA.Slug,
+		UUID:     "import-project-update",
+		Title:    "imported task",
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:40Z",
+		Project:  &projectA.Slug,
 	}}); err != nil {
 		t.Fatalf("Import(create) error = %v", err)
 	}
 
 	if _, err := svc.Import([]task.JSONTask{{
-		UUID:        "import-project-update",
-		Description: "imported task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Project:     strptr(" " + strings.ToUpper(projectB.Slug) + " "),
+		UUID:     "import-project-update",
+		Title:    "imported task",
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:40Z",
+		Project:  strptr(" " + strings.ToUpper(projectB.Slug) + " "),
 	}}); err != nil {
 		t.Fatalf("Import(update) error = %v", err)
 	}
@@ -1825,20 +1826,20 @@ func TestImportRejectsUnregisteredProjectAtomically(t *testing.T) {
 
 	count, err := svc.Import([]task.JSONTask{
 		{
-			UUID:        "import-known",
-			Description: "known project task",
-			Status:      task.StatusPending,
-			Entry:       "1970-01-01T00:01:40Z",
-			Modified:    "1970-01-01T00:01:40Z",
-			Project:     &validProject.Slug,
+			UUID:     "import-known",
+			Title:    "known project task",
+			Status:   task.StatusPending,
+			Entry:    "1970-01-01T00:01:40Z",
+			Modified: "1970-01-01T00:01:40Z",
+			Project:  &validProject.Slug,
 		},
 		{
-			UUID:        "import-missing",
-			Description: "missing project task",
-			Status:      task.StatusPending,
-			Entry:       "1970-01-01T00:01:41Z",
-			Modified:    "1970-01-01T00:01:41Z",
-			Project:     strptr("missing"),
+			UUID:     "import-missing",
+			Title:    "missing project task",
+			Status:   task.StatusPending,
+			Entry:    "1970-01-01T00:01:41Z",
+			Modified: "1970-01-01T00:01:41Z",
+			Project:  strptr("missing"),
 		},
 	})
 	if err == nil {
@@ -1866,12 +1867,12 @@ func TestImportAllowsArchivedProjectRoundTripOnlyForExistingBinding(t *testing.T
 		t.Fatalf("AddProject(legacy) error = %v", err)
 	}
 	count, err := svc.Import([]task.JSONTask{{
-		UUID:        "legacy-task",
-		Description: "legacy task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Project:     &project.Slug,
+		UUID:     "legacy-task",
+		Title:    "legacy task",
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:40Z",
+		Project:  &project.Slug,
 	}})
 	if err != nil || count != 1 {
 		t.Fatalf("Import(initial legacy task) = (%d, %v), want (1, nil)", count, err)
@@ -1881,12 +1882,12 @@ func TestImportAllowsArchivedProjectRoundTripOnlyForExistingBinding(t *testing.T
 	}
 
 	if _, err := svc.Import([]task.JSONTask{{
-		UUID:        "legacy-task",
-		Description: "legacy task updated",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:42Z",
-		Project:     &project.Slug,
+		UUID:     "legacy-task",
+		Title:    "legacy task updated",
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:42Z",
+		Project:  &project.Slug,
 	}}); err != nil {
 		t.Fatalf("Import(round-trip archived project) error = %v", err)
 	}
@@ -1898,17 +1899,17 @@ func TestImportAllowsArchivedProjectRoundTripOnlyForExistingBinding(t *testing.T
 	if got.Project == nil || *got.Project != project.Slug || got.ProjectID == nil || *got.ProjectID != project.ID {
 		t.Fatalf("legacy task project binding = (%#v, %#v), want (%q, %q)", got.Project, got.ProjectID, project.Slug, project.ID)
 	}
-	if got.Description != "legacy task updated" {
-		t.Fatalf("legacy task description = %q, want updated", got.Description)
+	if got.Title != "legacy task updated" {
+		t.Fatalf("legacy task title = %q, want updated", got.Title)
 	}
 
 	if _, err := svc.Import([]task.JSONTask{{
-		UUID:        "new-archived-task",
-		Description: "new archived task",
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:45Z",
-		Modified:    "1970-01-01T00:01:45Z",
-		Project:     &project.Slug,
+		UUID:     "new-archived-task",
+		Title:    "new archived task",
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:45Z",
+		Modified: "1970-01-01T00:01:45Z",
+		Project:  &project.Slug,
 	}}); err == nil {
 		t.Fatal("Import(new archived project task) error = nil, want project_archived")
 	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
@@ -1923,7 +1924,7 @@ func TestExportRejectsProjectInvariantViolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(api) error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "broken export task", Project: &project.Slug})
+	created, err := svc.Add(AddInput{Title: "broken export task", Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add(task) error = %v", err)
 	}
@@ -1948,7 +1949,7 @@ func TestProjectSeqInvariantViolationOnInfoAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(api) error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "broken project seq", Project: &project.Slug})
+	created, err := svc.Add(AddInput{Title: "broken project seq", Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add(task) error = %v", err)
 	}
@@ -1981,11 +1982,11 @@ func TestRecurringChildOnArchivedProjectWritesAuditWarning(t *testing.T) {
 	until := mustUnix(t, "2030-01-03T23:59:59Z")
 	recur := "daily"
 	parent, err := svc.Add(AddInput{
-		Description: "legacy recurring task",
-		Project:     &project.Slug,
-		Due:         &due,
-		Until:       &until,
-		Recur:       &recur,
+		Title:   "legacy recurring task",
+		Project: &project.Slug,
+		Due:     &due,
+		Until:   &until,
+		Recur:   &recur,
 	})
 	if err != nil {
 		t.Fatalf("Add(recurring) error = %v", err)
@@ -2060,19 +2061,19 @@ func TestAddTaskRequiresActiveProject(t *testing.T) {
 		t.Fatalf("AddProject(api) error = %v", err)
 	}
 
-	if _, err := svc.Add(AddInput{Description: "missing project", Project: strptr("missing")}); err == nil {
+	if _, err := svc.Add(AddInput{Title: "missing project", Project: strptr("missing")}); err == nil {
 		t.Fatal("Add(missing project) error = nil, want project_not_found")
 	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_not_found" {
 		t.Fatalf("Add(missing project) err = %#v, want RuntimeError(project_not_found)", err)
 	}
 
-	if _, err := svc.Add(AddInput{Description: "archived project", Project: &archived.Slug}); err == nil {
+	if _, err := svc.Add(AddInput{Title: "archived project", Project: &archived.Slug}); err == nil {
 		t.Fatal("Add(archived project) error = nil, want project_archived")
 	} else if runtimeErr, ok := err.(RuntimeError); !ok || runtimeErr.Code != "project_archived" {
 		t.Fatalf("Add(archived project) err = %#v, want RuntimeError(project_archived)", err)
 	}
 
-	created, err := svc.Add(AddInput{Description: "active project", Project: strptr("  " + strings.ToUpper(active.Slug) + "  ")})
+	created, err := svc.Add(AddInput{Title: "active project", Project: strptr("  " + strings.ToUpper(active.Slug) + "  ")})
 	if err != nil {
 		t.Fatalf("Add(active project) error = %v", err)
 	}
@@ -2098,15 +2099,15 @@ func TestAddAssignsProjectSeqPerProject(t *testing.T) {
 
 	apiSlug := api.Slug
 	webSlug := web.Slug
-	first, err := svc.Add(AddInput{Description: "one", Project: &apiSlug})
+	first, err := svc.Add(AddInput{Title: "one", Project: &apiSlug})
 	if err != nil {
 		t.Fatalf("Add(first) error = %v", err)
 	}
-	second, err := svc.Add(AddInput{Description: "two", Project: &apiSlug})
+	second, err := svc.Add(AddInput{Title: "two", Project: &apiSlug})
 	if err != nil {
 		t.Fatalf("Add(second) error = %v", err)
 	}
-	third, err := svc.Add(AddInput{Description: "three", Project: &webSlug})
+	third, err := svc.Add(AddInput{Title: "three", Project: &webSlug})
 	if err != nil {
 		t.Fatalf("Add(third) error = %v", err)
 	}
@@ -2127,7 +2128,7 @@ func TestModifyTaskProjectReassignsProjectSeqAndClears(t *testing.T) {
 		t.Fatalf("AddProject(web) error = %v", err)
 	}
 	apiSlug := api.Slug
-	created, err := svc.Add(AddInput{Description: "move me", Project: &apiSlug})
+	created, err := svc.Add(AddInput{Title: "move me", Project: &apiSlug})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -2173,7 +2174,7 @@ func TestResolveTaskRefModesAndWorkspaceIsolation(t *testing.T) {
 		t.Fatalf("AddProject(local api) error = %v", err)
 	}
 	apiSlug := api.Slug
-	localTask, err := localSvc.Add(AddInput{Description: "local task", Project: &apiSlug})
+	localTask, err := localSvc.Add(AddInput{Title: "local task", Project: &apiSlug})
 	if err != nil {
 		t.Fatalf("Add(local task) error = %v", err)
 	}
@@ -2207,7 +2208,7 @@ func TestResolveTaskRefModesAndWorkspaceIsolation(t *testing.T) {
 		t.Fatalf("AddProject(team api) error = %v", err)
 	}
 	teamSlug := teamAPI.Slug
-	teamTask, err := teamSvc.Add(AddInput{Description: "team task", Project: &teamSlug})
+	teamTask, err := teamSvc.Add(AddInput{Title: "team task", Project: &teamSlug})
 	if err != nil {
 		t.Fatalf("Add(team task) error = %v", err)
 	}
@@ -2236,15 +2237,15 @@ func TestModifyTaskProjectClearsAndRejectsArchivedAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(next) error = %v", err)
 	}
-	clearTask, err := svc.Add(AddInput{Description: "clear me", Project: &current.Slug})
+	clearTask, err := svc.Add(AddInput{Title: "clear me", Project: &current.Slug})
 	if err != nil {
 		t.Fatalf("Add(clear task) error = %v", err)
 	}
-	moveTask, err := svc.Add(AddInput{Description: "move me", Project: &current.Slug})
+	moveTask, err := svc.Add(AddInput{Title: "move me", Project: &current.Slug})
 	if err != nil {
 		t.Fatalf("Add(move task) error = %v", err)
 	}
-	rejectTask, err := svc.Add(AddInput{Description: "reject me", Project: &current.Slug})
+	rejectTask, err := svc.Add(AddInput{Title: "reject me", Project: &current.Slug})
 	if err != nil {
 		t.Fatalf("Add(reject task) error = %v", err)
 	}
@@ -2300,7 +2301,7 @@ func TestTaskAuditEntriesTrackProjectChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(beta) error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "audited task", Project: &projectA.Slug})
+	created, err := svc.Add(AddInput{Title: "audited task", Project: &projectA.Slug})
 	if err != nil {
 		t.Fatalf("Add(task) error = %v", err)
 	}
@@ -2378,7 +2379,7 @@ func TestReplaceEditableTaskNormalizesProjectAndIgnoresForgedProjectID(t *testin
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "editable task"})
+	created, err := svc.Add(AddInput{Title: "editable task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -2414,7 +2415,7 @@ func TestReplaceEditableTaskClearsProjectFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject() error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "editable task", Project: &project.Slug})
+	created, err := svc.Add(AddInput{Title: "editable task", Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -2454,7 +2455,7 @@ func TestReplaceEditableTaskAuditUsesOriginalProjectAsBefore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(beta) error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "editable task", Project: &projectA.Slug})
+	created, err := svc.Add(AddInput{Title: "editable task", Project: &projectA.Slug})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -2517,7 +2518,7 @@ func TestServicePersistsUDAValues(t *testing.T) {
 	if err := svc.DefineUDA("estimate", "numeric", "Estimate", []string{"1", "2", "3", "5"}, ""); err != nil {
 		t.Fatalf("DefineUDA() error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "task", UDAs: map[string]string{"estimate": "3"}})
+	created, err := svc.Add(AddInput{Title: "task", UDAs: map[string]string{"estimate": "3"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -2615,7 +2616,7 @@ func TestConfigSetOverridesRuntimeUDADefaults(t *testing.T) {
 	if values["uda.estimate.type"] != "numeric" {
 		t.Fatalf("ConfigValues()[uda.estimate.type] = %q, want numeric from DB", values["uda.estimate.type"])
 	}
-	if _, err := svc.Add(AddInput{Description: "bad estimate", UDAs: map[string]string{"estimate": "not-number"}}); err == nil {
+	if _, err := svc.Add(AddInput{Title: "bad estimate", UDAs: map[string]string{"estimate": "not-number"}}); err == nil {
 		t.Fatal("Add() error = nil, want DB numeric schema to override runtime string default")
 	}
 }
@@ -3098,7 +3099,7 @@ func TestUrgencyUsesConfiguredUDACoefficients(t *testing.T) {
 	if err := svc.SetConfig("urgency.uda.estimate.3.coefficient", "7"); err != nil {
 		t.Fatalf("SetConfig(uda value coefficient) error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "estimated", UDAs: map[string]string{"estimate": "3"}})
+	created, err := svc.Add(AddInput{Title: "estimated", UDAs: map[string]string{"estimate": "3"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -3133,7 +3134,7 @@ func TestUrgencyUsesRuntimeUDACoefficients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "runtime estimated", UDAs: map[string]string{"estimate": "3"}})
+	created, err := svc.Add(AddInput{Title: "runtime estimated", UDAs: map[string]string{"estimate": "3"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -3151,7 +3152,7 @@ func TestImportPreservesOrphanUDA(t *testing.T) {
 	defer closeFn()
 
 	var payload []task.JSONTask
-	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), &payload); err != nil {
+	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), &payload); err != nil {
 		t.Fatalf("UnmarshalJSONTasks() error = %v", err)
 	}
 	if _, err := svc.Import(payload); err != nil {
@@ -3166,7 +3167,7 @@ func TestImportPreservesOrphanUDA(t *testing.T) {
 		t.Fatalf("legacy UDA = %#v", legacy)
 	}
 	var updated []task.JSONTask
-	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"new"}]`), &updated); err != nil {
+	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"new"}]`), &updated); err != nil {
 		t.Fatalf("UnmarshalJSONTasks(update) error = %v", err)
 	}
 	if _, err := svc.Import(updated); err != nil {
@@ -3182,7 +3183,7 @@ func TestModifyRejectsOrphanUDA(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 	var payload []task.JSONTask
-	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), &payload); err != nil {
+	if err := task.UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), &payload); err != nil {
 		t.Fatalf("UnmarshalJSONTasks() error = %v", err)
 	}
 	if _, err := svc.Import(payload); err != nil {
@@ -3202,10 +3203,10 @@ func TestUniqueHelperSupportsUDA(t *testing.T) {
 	if err := svc.DefineUDA("estimate", "numeric", "Estimate", nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "one", UDAs: map[string]string{"estimate": "3"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "one", UDAs: map[string]string{"estimate": "3"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "two", UDAs: map[string]string{"estimate": "5"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "two", UDAs: map[string]string{"estimate": "5"}}); err != nil {
 		t.Fatal(err)
 	}
 	values, err := svc.UniqueValues("estimate", ListInput{})
@@ -3257,7 +3258,7 @@ func TestUniqueValuesProjectUsesValidatedBindingsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddProject(api) error = %v", err)
 	}
-	created, err := svc.Add(AddInput{Description: "project task", Project: &project.Slug})
+	created, err := svc.Add(AddInput{Title: "project task", Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add(task) error = %v", err)
 	}
@@ -3422,10 +3423,10 @@ func TestContextFilterAppliesToListAndReports(t *testing.T) {
 	if _, err := svc.AddProject(AddProjectInput{Slug: "home", Name: "Home"}); err != nil {
 		t.Fatalf("AddProject(home) error = %v", err)
 	}
-	if _, err := svc.Add(AddInput{Description: "work task", Project: strptr("work")}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "work task", Project: strptr("work")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "home task", Project: strptr("home")}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "home task", Project: strptr("home")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.DefineContext("work", "project:work"); err != nil {
@@ -3438,14 +3439,14 @@ func TestContextFilterAppliesToListAndReports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 || tasks[0].Description != "work task" {
+	if len(tasks) != 1 || tasks[0].Title != "work task" {
 		t.Fatalf("List with context = %#v", tasks)
 	}
 	all, err := svc.RunReport(ReportInput{Name: "all"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all.Tasks) != 1 || all.Tasks[0].Description != "work task" {
+	if len(all.Tasks) != 1 || all.Tasks[0].Title != "work task" {
 		t.Fatalf("all report with context = %#v", all.Tasks)
 	}
 }
@@ -3457,7 +3458,7 @@ func TestProjectQueryResolvesWithinCurrentWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("local AddProject(same) error = %v", err)
 	}
-	if _, err := ownerLocal.Add(AddInput{Description: "local task", Project: &localProject.Slug}); err != nil {
+	if _, err := ownerLocal.Add(AddInput{Title: "local task", Project: &localProject.Slug}); err != nil {
 		t.Fatalf("local Add(task) error = %v", err)
 	}
 
@@ -3470,7 +3471,7 @@ func TestProjectQueryResolvesWithinCurrentWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("work AddProject(same) error = %v", err)
 	}
-	workTask, err := ownerWork.Add(AddInput{Description: "work task", Project: &workProject.Slug})
+	workTask, err := ownerWork.Add(AddInput{Title: "work task", Project: &workProject.Slug})
 	if err != nil {
 		t.Fatalf("work Add(task) error = %v", err)
 	}
@@ -3509,7 +3510,7 @@ func TestContextFilterResolvesProjectWithinWorkspace(t *testing.T) {
 	if _, err := ownerLocal.AddProject(AddProjectInput{Slug: "same", Name: "Local Same"}); err != nil {
 		t.Fatalf("local AddProject(same) error = %v", err)
 	}
-	if _, err := ownerLocal.Add(AddInput{Description: "local task", Project: strptr("same")}); err != nil {
+	if _, err := ownerLocal.Add(AddInput{Title: "local task", Project: strptr("same")}); err != nil {
 		t.Fatalf("local Add(task) error = %v", err)
 	}
 
@@ -3521,7 +3522,7 @@ func TestContextFilterResolvesProjectWithinWorkspace(t *testing.T) {
 	if _, err := ownerWork.AddProject(AddProjectInput{Slug: "same", Name: "Work Same"}); err != nil {
 		t.Fatalf("work AddProject(same) error = %v", err)
 	}
-	workTask, err := ownerWork.Add(AddInput{Description: "work task", Project: strptr("same")})
+	workTask, err := ownerWork.Add(AddInput{Title: "work task", Project: strptr("same")})
 	if err != nil {
 		t.Fatalf("work Add(task) error = %v", err)
 	}
@@ -3549,10 +3550,10 @@ func TestNoContextBypassesActiveContext(t *testing.T) {
 	if _, err := svc.AddProject(AddProjectInput{Slug: "home", Name: "Home"}); err != nil {
 		t.Fatalf("AddProject(home) error = %v", err)
 	}
-	if _, err := svc.Add(AddInput{Description: "work task", Project: strptr("work")}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "work task", Project: strptr("work")}); err != nil {
 		t.Fatalf("Add(work task) error = %v", err)
 	}
-	if _, err := svc.Add(AddInput{Description: "home task", Project: strptr("home")}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "home task", Project: strptr("home")}); err != nil {
 		t.Fatalf("Add(home task) error = %v", err)
 	}
 	if err := svc.DefineContext("work", "project:work"); err != nil {
@@ -3637,13 +3638,13 @@ func TestExportWithInputFiltersByProjectID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "alpha task", Project: strptr("alpha")}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "alpha task", Project: strptr("alpha")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "beta task", Project: strptr("beta")}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "beta task", Project: strptr("beta")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "no project"}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "no project"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3666,7 +3667,7 @@ func TestExportWithInputFiltersByProjectID(t *testing.T) {
 			}
 			got := make([]string, 0, len(tasks))
 			for _, tsk := range tasks {
-				got = append(got, tsk.Description)
+				got = append(got, tsk.Title)
 			}
 			sort.Strings(got)
 			want := append([]string(nil), tc.want...)
@@ -3686,7 +3687,7 @@ func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	svc, _ := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: 100}})
 
-	_, err = svc.Add(AddInput{Description: "write spec"})
+	_, err = svc.Add(AddInput{Title: "write spec"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -3713,8 +3714,8 @@ func TestServiceModifyDoneDeleteByNumber(t *testing.T) {
 func TestServiceM2Mutations(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	dep, _ := svc.Add(AddInput{Description: "dep"})
-	tsk, _ := svc.Add(AddInput{Description: "task"})
+	dep, _ := svc.Add(AddInput{Title: "dep"})
+	tsk, _ := svc.Add(AddInput{Title: "task"})
 
 	if err := svc.Modify(tsk.UUID, ModifyInput{AddDepends: []string{dep.UUID}}); err != nil {
 		t.Fatalf("Modify(depends) error = %v", err)
@@ -3735,7 +3736,7 @@ func TestServiceM2Mutations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Start == nil || len(got.Depends) != 1 || len(got.Annotations) != 1 || got.Description != "prefix task suffix" {
+	if got.Start == nil || len(got.Depends) != 1 || len(got.Annotations) != 1 || got.Title != "prefix task suffix" {
 		t.Fatalf("M2 fields not updated: %#v", got)
 	}
 	if err := svc.Stop(tsk.UUID); err != nil {
@@ -3750,8 +3751,8 @@ func TestServiceM2Mutations(t *testing.T) {
 func TestServiceRejectsDependencyCycle(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	a, _ := svc.Add(AddInput{Description: "a"})
-	b, _ := svc.Add(AddInput{Description: "b"})
+	a, _ := svc.Add(AddInput{Title: "a"})
+	b, _ := svc.Add(AddInput{Title: "b"})
 	if err := svc.Modify(a.UUID, ModifyInput{AddDepends: []string{b.UUID}}); err != nil {
 		t.Fatalf("Modify(a depends b) error = %v", err)
 	}
@@ -3763,8 +3764,8 @@ func TestServiceRejectsDependencyCycle(t *testing.T) {
 func TestServiceAddResolvesDependencyTargets(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	dep, _ := svc.Add(AddInput{Description: "dep"})
-	tsk, err := svc.Add(AddInput{Description: "task", Depends: []string{"1"}})
+	dep, _ := svc.Add(AddInput{Title: "dep"})
+	tsk, err := svc.Add(AddInput{Title: "task", Depends: []string{"1"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -3780,7 +3781,7 @@ func TestServiceAddResolvesDependencyTargets(t *testing.T) {
 func TestServiceRejectsRecurringUnsupportedFields(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	dep, _ := svc.Add(AddInput{Description: "dep"})
+	dep, _ := svc.Add(AddInput{Title: "dep"})
 	due := int64(200)
 	wait := int64(150)
 	scheduled := int64(160)
@@ -3789,9 +3790,9 @@ func TestServiceRejectsRecurringUnsupportedFields(t *testing.T) {
 		name  string
 		input AddInput
 	}{
-		{name: "wait", input: AddInput{Description: "task", Due: &due, Recur: &recur, Wait: &wait}},
-		{name: "scheduled", input: AddInput{Description: "task", Due: &due, Recur: &recur, Scheduled: &scheduled}},
-		{name: "depends", input: AddInput{Description: "task", Due: &due, Recur: &recur, Depends: []string{dep.UUID}}},
+		{name: "wait", input: AddInput{Title: "task", Due: &due, Recur: &recur, Wait: &wait}},
+		{name: "scheduled", input: AddInput{Title: "task", Due: &due, Recur: &recur, Scheduled: &scheduled}},
+		{name: "depends", input: AddInput{Title: "task", Due: &due, Recur: &recur, Depends: []string{dep.UUID}}},
 	} {
 		if _, err := svc.Add(tc.input); err == nil {
 			t.Fatalf("Add(%s) error = nil, want error", tc.name)
@@ -3802,10 +3803,10 @@ func TestServiceRejectsRecurringUnsupportedFields(t *testing.T) {
 func TestServiceRejectsDeepDependencyCycle(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	a, _ := svc.Add(AddInput{Description: "a"})
-	b, _ := svc.Add(AddInput{Description: "b"})
-	c, _ := svc.Add(AddInput{Description: "c"})
-	d, _ := svc.Add(AddInput{Description: "d"})
+	a, _ := svc.Add(AddInput{Title: "a"})
+	b, _ := svc.Add(AddInput{Title: "b"})
+	c, _ := svc.Add(AddInput{Title: "c"})
+	d, _ := svc.Add(AddInput{Title: "d"})
 	if err := svc.Modify(a.UUID, ModifyInput{AddDepends: []string{b.UUID}}); err != nil {
 		t.Fatalf("Modify(a depends b) error = %v", err)
 	}
@@ -3823,9 +3824,9 @@ func TestServiceRejectsDeepDependencyCycle(t *testing.T) {
 func TestServiceModifyClearDependsBeforeAdding(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	dep1, _ := svc.Add(AddInput{Description: "dep1"})
-	dep2, _ := svc.Add(AddInput{Description: "dep2"})
-	tsk, _ := svc.Add(AddInput{Description: "task"})
+	dep1, _ := svc.Add(AddInput{Title: "dep1"})
+	dep2, _ := svc.Add(AddInput{Title: "dep2"})
+	tsk, _ := svc.Add(AddInput{Title: "task"})
 	if err := svc.Modify(tsk.UUID, ModifyInput{AddDepends: []string{dep1.UUID}}); err != nil {
 		t.Fatalf("Modify(initial depends) error = %v", err)
 	}
@@ -3844,7 +3845,7 @@ func TestServiceModifyClearDependsBeforeAdding(t *testing.T) {
 func TestServiceRejectsBlankAnnotateAppendAndPrepend(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	tsk, _ := svc.Add(AddInput{Description: "task"})
+	tsk, _ := svc.Add(AddInput{Title: "task"})
 	for _, tc := range []struct {
 		name string
 		run  func() error
@@ -3861,8 +3862,8 @@ func TestServiceRejectsBlankAnnotateAppendAndPrepend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveTarget() error = %v", err)
 	}
-	if got.Description != "task" {
-		t.Fatalf("Description = %q, want unchanged", got.Description)
+	if got.Title != "task" {
+		t.Fatalf("Title = %q, want unchanged", got.Title)
 	}
 	if len(got.Annotations) != 0 {
 		t.Fatalf("Annotations = %#v, want empty", got.Annotations)
@@ -3872,7 +3873,7 @@ func TestServiceRejectsBlankAnnotateAppendAndPrepend(t *testing.T) {
 func TestServiceAllowsAnnotationMultiline(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	tsk, _ := svc.Add(AddInput{Description: "task"})
+	tsk, _ := svc.Add(AddInput{Title: "task"})
 	if err := svc.Annotate(tsk.UUID, "line1\nline2"); err != nil {
 		t.Fatalf("Annotate() error = %v", err)
 	}
@@ -3891,7 +3892,7 @@ func TestServiceAllowsAnnotationMultiline(t *testing.T) {
 func TestServiceAllowsDuplicateAnnotationsInSameSecond(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	tsk, _ := svc.Add(AddInput{Description: "task"})
+	tsk, _ := svc.Add(AddInput{Title: "task"})
 	if err := svc.Annotate(tsk.UUID, "note"); err != nil {
 		t.Fatalf("Annotate(first) error = %v", err)
 	}
@@ -3913,7 +3914,7 @@ func TestServiceAllowsDuplicateAnnotationsInSameSecond(t *testing.T) {
 func TestServiceDeleteAndStopRejectTerminalStates(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	completed, err := svc.Add(AddInput{Description: "done task"})
+	completed, err := svc.Add(AddInput{Title: "done task"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3927,7 +3928,7 @@ func TestServiceDeleteAndStopRejectTerminalStates(t *testing.T) {
 		t.Fatal("Stop(completed) error = nil, want terminal-state guard")
 	}
 
-	deleted, err := svc.Add(AddInput{Description: "deleted task"})
+	deleted, err := svc.Add(AddInput{Title: "deleted task"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3945,17 +3946,17 @@ func TestServiceDeleteAndStopRejectTerminalStates(t *testing.T) {
 func TestServiceImportClearsTagsWithExplicitEmptyArray(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	created, err := svc.Add(AddInput{Description: "task", Tags: []string{"one", "two"}})
+	created, err := svc.Add(AddInput{Title: "task", Tags: []string{"one", "two"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 	if _, err := svc.Import([]task.JSONTask{{
-		UUID:        created.UUID,
-		Description: created.Description,
-		Status:      task.StatusPending,
-		Entry:       "1970-01-01T00:01:40Z",
-		Modified:    "1970-01-01T00:01:40Z",
-		Tags:        []string{},
+		UUID:     created.UUID,
+		Title:    created.Title,
+		Status:   task.StatusPending,
+		Entry:    "1970-01-01T00:01:40Z",
+		Modified: "1970-01-01T00:01:40Z",
+		Tags:     []string{},
 	}}); err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
@@ -3974,14 +3975,14 @@ func TestServiceImportClearsTagsWithExplicitEmptyArray(t *testing.T) {
 func TestServiceImportDoesNotClearTagsWhenFieldMissing(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	created, err := svc.Add(AddInput{Description: "task", Tags: []string{"one", "two"}})
+	created, err := svc.Add(AddInput{Title: "task", Tags: []string{"one", "two"}})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 	raw := `[
 		{
 			"uuid": "` + created.UUID + `",
-			"description": "task",
+			"title": "task",
 			"status": "pending",
 			"entry": "1970-01-01T00:01:40Z",
 			"modified": "1970-01-01T00:01:40Z"
@@ -4009,18 +4010,18 @@ func TestServiceImportIsAtomicOnFailure(t *testing.T) {
 
 	payload := []task.JSONTask{
 		{
-			UUID:        "ok-1",
-			Description: "first",
-			Status:      task.StatusPending,
-			Entry:       "1970-01-01T00:01:40Z",
-			Modified:    "1970-01-01T00:01:40Z",
+			UUID:     "ok-1",
+			Title:    "first",
+			Status:   task.StatusPending,
+			Entry:    "1970-01-01T00:01:40Z",
+			Modified: "1970-01-01T00:01:40Z",
 		},
 		{
-			UUID:        "bad-2",
-			Description: "second",
-			Status:      task.StatusPending,
-			Entry:       "not-a-date",
-			Modified:    "1970-01-01T00:01:40Z",
+			UUID:     "bad-2",
+			Title:    "second",
+			Status:   task.StatusPending,
+			Entry:    "not-a-date",
+			Modified: "1970-01-01T00:01:40Z",
 		},
 	}
 
@@ -4053,10 +4054,10 @@ func TestDefaultWorkingSetKeepsWaitingTasksAddressable(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 	wait := int64(200)
-	if _, err := svc.Add(AddInput{Description: "hidden wait", Wait: &wait}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "hidden wait", Wait: &wait}); err != nil {
 		t.Fatalf("Add(waiting) error = %v", err)
 	}
-	visible, err := svc.Add(AddInput{Description: "visible"})
+	visible, err := svc.Add(AddInput{Title: "visible"})
 	if err != nil {
 		t.Fatalf("Add(visible) error = %v", err)
 	}
@@ -4065,7 +4066,7 @@ func TestDefaultWorkingSetKeepsWaitingTasksAddressable(t *testing.T) {
 		t.Fatalf("ResolveTarget(1) error = %v", err)
 	}
 	if got.UUID == visible.UUID {
-		t.Fatalf("ResolveTarget(1) should keep waiting task addressable before visible %q", visible.Description)
+		t.Fatalf("ResolveTarget(1) should keep waiting task addressable before visible %q", visible.Title)
 	}
 }
 
@@ -4074,11 +4075,11 @@ func TestServiceM2Reports(t *testing.T) {
 	defer closeFn()
 	waitUntil := int64(200)
 	expiredUntil := int64(90)
-	active, _ := svc.Add(AddInput{Description: "active"})
-	waiting, _ := svc.Add(AddInput{Description: "waiting", Wait: &waitUntil})
-	expired, _ := svc.Add(AddInput{Description: "expired", Until: &expiredUntil})
-	dep, _ := svc.Add(AddInput{Description: "dep"})
-	blocked, _ := svc.Add(AddInput{Description: "blocked"})
+	active, _ := svc.Add(AddInput{Title: "active"})
+	waiting, _ := svc.Add(AddInput{Title: "waiting", Wait: &waitUntil})
+	expired, _ := svc.Add(AddInput{Title: "expired", Until: &expiredUntil})
+	dep, _ := svc.Add(AddInput{Title: "dep"})
+	blocked, _ := svc.Add(AddInput{Title: "blocked"})
 	if err := svc.Start(active.UUID); err != nil {
 		t.Fatalf("Start(active) error = %v", err)
 	}
@@ -4117,8 +4118,8 @@ func TestUntilExpiredDependencyDoesNotBlockLiveTask(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 	expiredUntil := int64(90)
-	expired, _ := svc.Add(AddInput{Description: "expired", Until: &expiredUntil})
-	live, _ := svc.Add(AddInput{Description: "live"})
+	expired, _ := svc.Add(AddInput{Title: "expired", Until: &expiredUntil})
+	live, _ := svc.Add(AddInput{Title: "live"})
 	if err := svc.Modify(live.UUID, ModifyInput{AddDepends: []string{expired.UUID}}); err != nil {
 		t.Fatalf("Modify(live depends expired) error = %v", err)
 	}
@@ -4141,9 +4142,9 @@ func TestUntilExpiredDependencyDoesNotBlockLiveTask(t *testing.T) {
 func TestUrgencyUsesDependencyState(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	blocker, _ := svc.Add(AddInput{Description: "blocker"})
-	blocked, _ := svc.Add(AddInput{Description: "blocked"})
-	plain, _ := svc.Add(AddInput{Description: "plain"})
+	blocker, _ := svc.Add(AddInput{Title: "blocker"})
+	blocked, _ := svc.Add(AddInput{Title: "blocked"})
+	plain, _ := svc.Add(AddInput{Title: "plain"})
 	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
 		t.Fatal(err)
 	}
@@ -4166,7 +4167,7 @@ func TestDoneChildDoesNotRecurWhenParentDeleted(t *testing.T) {
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	until := mustUnix(t, "2030-02-01T23:59:59Z")
 	recur := "daily"
-	parent, err := svc.Add(AddInput{Description: "daily task", Due: &due, Until: &until, Recur: &recur})
+	parent, err := svc.Add(AddInput{Title: "daily task", Due: &due, Until: &until, Recur: &recur})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4199,7 +4200,7 @@ func TestServiceRecurringAddAndDoneCreatesNextChild(t *testing.T) {
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	until := mustUnix(t, "2030-02-01T23:59:59Z")
 	recur := "daily"
-	parent, err := svc.Add(AddInput{Description: "daily task", Due: &due, Until: &until, Recur: &recur})
+	parent, err := svc.Add(AddInput{Title: "daily task", Due: &due, Until: &until, Recur: &recur})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4236,7 +4237,7 @@ func TestRecurringChildAssignsNewProjectSeq(t *testing.T) {
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	until := mustUnix(t, "2030-02-01T23:59:59Z")
 	recur := "daily"
-	parent, err := svc.Add(AddInput{Description: "daily project task", Due: &due, Until: &until, Recur: &recur, Project: &project.Slug})
+	parent, err := svc.Add(AddInput{Title: "daily project task", Due: &due, Until: &until, Recur: &recur, Project: &project.Slug})
 	if err != nil {
 		t.Fatalf("Add(recurring project task) error = %v", err)
 	}
@@ -4270,7 +4271,7 @@ func TestServiceRecurringTaskPreservesAssignees(t *testing.T) {
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	until := mustUnix(t, "2030-02-01T23:59:59Z")
 	recur := "daily"
-	parent, err := svc.Add(AddInput{Description: "daily assigned task", Due: &due, Until: &until, Recur: &recur, Assignees: []string{"local"}})
+	parent, err := svc.Add(AddInput{Title: "daily assigned task", Due: &due, Until: &until, Recur: &recur, Assignees: []string{"local"}})
 	if err != nil {
 		t.Fatalf("Add(recurring assigned) error = %v", err)
 	}
@@ -4302,7 +4303,7 @@ func TestServiceRecurringTaskRejectsMissingAssignee(t *testing.T) {
 	defer closeFn()
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	recur := "daily"
-	_, err := svc.Add(AddInput{Description: "daily bad assignee", Due: &due, Recur: &recur, Assignees: []string{"missing-assignee"}})
+	_, err := svc.Add(AddInput{Title: "daily bad assignee", Due: &due, Recur: &recur, Assignees: []string{"missing-assignee"}})
 	if err == nil {
 		t.Fatal("Add(recurring missing assignee) error = nil, want assignee_not_found")
 	}
@@ -4318,7 +4319,7 @@ func TestRecurringStopsAtUntil(t *testing.T) {
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	until := due
 	recur := "daily"
-	if _, err := svc.Add(AddInput{Description: "daily", Due: &due, Until: &until, Recur: &recur}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "daily", Due: &due, Until: &until, Recur: &recur}); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := svc.List(ListInput{})
@@ -4344,7 +4345,7 @@ func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
 	store := newTestStore(t)
 	ownerLocalCreate := newTestServiceWithRuntime(t, store, 100, "local", "local")
 	waitLocal := int64(200)
-	localWaiting, err := ownerLocalCreate.Add(AddInput{Description: "local waiting", Wait: &waitLocal})
+	localWaiting, err := ownerLocalCreate.Add(AddInput{Title: "local waiting", Wait: &waitLocal})
 	if err != nil {
 		t.Fatalf("Add(local waiting) error = %v", err)
 	}
@@ -4355,7 +4356,7 @@ func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
 	}
 	ownerWorkCreate := newTestServiceWithRuntime(t, store, 100, "local", work.Slug)
 	waitWork := int64(200)
-	if _, err := ownerWorkCreate.Add(AddInput{Description: "work waiting", Wait: &waitWork}); err != nil {
+	if _, err := ownerWorkCreate.Add(AddInput{Title: "work waiting", Wait: &waitWork}); err != nil {
 		t.Fatalf("Add(work waiting) error = %v", err)
 	}
 
@@ -4373,7 +4374,7 @@ func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("viewer List() error = %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].Description != "work waiting" {
+	if len(tasks) != 1 || tasks[0].Title != "work waiting" {
 		t.Fatalf("viewer tasks = %#v", tasks)
 	}
 
@@ -4398,7 +4399,7 @@ func TestDoneRecurringTaskKeepsAuditAndNextChildInSameWorkspace(t *testing.T) {
 	due := mustUnix(t, "2030-01-01T23:59:59Z")
 	until := mustUnix(t, "2030-02-01T23:59:59Z")
 	recur := "daily"
-	parent, err := svc.Add(AddInput{Description: "daily work task", Due: &due, Until: &until, Recur: &recur})
+	parent, err := svc.Add(AddInput{Title: "daily work task", Due: &due, Until: &until, Recur: &recur})
 	if err != nil {
 		t.Fatalf("Add(recurring) error = %v", err)
 	}
@@ -4502,7 +4503,7 @@ func TestServiceTaskAddLink(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4537,7 +4538,7 @@ func TestServiceTaskAddLinkDuplicateURL(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4561,7 +4562,7 @@ func TestServiceTaskRemoveLink(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4588,7 +4589,7 @@ func TestServiceTaskRemoveLinkNotFound(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4607,11 +4608,11 @@ func TestServiceTaskRemoveLinkWrongTask(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	task1, err := svc.Add(AddInput{Description: "task one"})
+	task1, err := svc.Add(AddInput{Title: "task one"})
 	if err != nil {
 		t.Fatalf("Add(task1) error = %v", err)
 	}
-	task2, err := svc.Add(AddInput{Description: "task two"})
+	task2, err := svc.Add(AddInput{Title: "task two"})
 	if err != nil {
 		t.Fatalf("Add(task2) error = %v", err)
 	}
@@ -4635,7 +4636,7 @@ func TestServiceTaskAddLinkRejectsCompletedTask(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4657,7 +4658,7 @@ func TestServiceTaskAddLinkUpdatesModifiedTimestamp(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4682,7 +4683,7 @@ func TestServiceTaskAddLinkRequiresTypeAndURL(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	created, err := svc.Add(AddInput{Description: "test task"})
+	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -4885,7 +4886,7 @@ func TestServiceProjectTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	task, err := svc.Add(AddInput{Description: "task", Project: &project.Slug})
+	task, err := svc.Add(AddInput{Title: "task", Project: &project.Slug})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5138,7 +5139,7 @@ func TestServiceListProjectsByStatusInvalidFilter(t *testing.T) {
 func TestServiceListAnnotationsPagination(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
-	tsk, err := svc.Add(AddInput{Description: "annotated task"})
+	tsk, err := svc.Add(AddInput{Title: "annotated task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -5194,11 +5195,11 @@ func TestServiceResolveTaskRefs(t *testing.T) {
 	}
 	projectRef := proj.Slug
 	// 两个带 project 的依赖任务（有 task_slug）。
-	dep1, err := svc.Add(AddInput{Description: "write schema", Project: &projectRef})
+	dep1, err := svc.Add(AddInput{Title: "write schema", Project: &projectRef})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dep2, err := svc.Add(AddInput{Description: "write tests", Project: &projectRef})
+	dep2, err := svc.Add(AddInput{Title: "write tests", Project: &projectRef})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5215,11 +5216,11 @@ func TestServiceResolveTaskRefs(t *testing.T) {
 		byUUID[r.UUID] = r
 	}
 	r1 := byUUID[dep1.UUID]
-	if r1.Description != "write schema" || r1.TaskSlug == nil || *r1.TaskSlug != "api-1" {
+	if r1.Title != "write schema" || r1.TaskSlug == nil || *r1.TaskSlug != "api-1" {
 		t.Fatalf("dep1 ref = %#v, want description=write schema task_slug=api-1", r1)
 	}
 	r2 := byUUID[dep2.UUID]
-	if r2.Description != "write tests" || r2.TaskSlug == nil || *r2.TaskSlug != "api-2" {
+	if r2.Title != "write tests" || r2.TaskSlug == nil || *r2.TaskSlug != "api-2" {
 		t.Fatalf("dep2 ref = %#v, want description=write tests task_slug=api-2", r2)
 	}
 
@@ -5238,14 +5239,14 @@ func TestServiceResolveDependents(t *testing.T) {
 	}
 	projectRef := proj.Slug
 	// a 是被依赖的任务；b、c 都依赖 a。
-	a, err := svc.Add(AddInput{Description: "alpha", Project: &projectRef})
+	a, err := svc.Add(AddInput{Title: "alpha", Project: &projectRef})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "beta depends on alpha", Project: &projectRef, Depends: []string{a.UUID}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "beta depends on alpha", Project: &projectRef, Depends: []string{a.UUID}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "gamma depends on alpha", Project: &projectRef, Depends: []string{a.UUID}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "gamma depends on alpha", Project: &projectRef, Depends: []string{a.UUID}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5256,11 +5257,11 @@ func TestServiceResolveDependents(t *testing.T) {
 	if len(dependents) != 2 {
 		t.Fatalf("len = %d, want 2", len(dependents))
 	}
-	descs := make(map[string]bool, len(dependents))
+	titles := make(map[string]bool, len(dependents))
 	for _, d := range dependents {
-		descs[d.Description] = true
+		titles[d.Title] = true
 	}
-	if !descs["beta depends on alpha"] || !descs["gamma depends on alpha"] {
+	if !titles["beta depends on alpha"] || !titles["gamma depends on alpha"] {
 		t.Fatalf("dependents = %#v, want beta+gamma", dependents)
 	}
 }

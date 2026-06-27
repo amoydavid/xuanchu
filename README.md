@@ -191,7 +191,7 @@ XUANCHU_E2E_POSTGRES_ADMIN_URL='postgres://mac@127.0.0.1:5432/postgres?sslmode=d
 ./xuanchu '(project:agentapi and +review) or priority:H' next
 ```
 
-Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。`/text/` 是 description 子串匹配，不是正则。
+Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。`/text/` 是 title 子串匹配，不是正则。
 
 脚本里建议优先使用这些稳定接口：
 
@@ -199,7 +199,7 @@ Shell 会吃掉括号、空格和 `+` 等字符，复杂查询建议加引号。
 ./xuanchu --json export
 ./xuanchu _ids +next
 ./xuanchu _uuids project:agentapi
-./xuanchu _get 1.uuid 1.description 1.urgency
+./xuanchu _get 1.uuid 1.title 1.urgency
 ./xuanchu _show database.path active.user active.workspace active.context
 ```
 
@@ -263,7 +263,7 @@ go build -o xuanchu ./cmd/xuanchu
 ./xuanchu _urgency 1
 
 # DOM helper
-./xuanchu _get 1.description 1.uuid 1.urgency 1.tag.next
+./xuanchu _get 1.title 1.uuid 1.urgency 1.tag.next
 ./xuanchu _ids +next
 ./xuanchu _uuids project:agentapi
 ./xuanchu _projects
@@ -286,9 +286,9 @@ go build -o xuanchu ./cmd/xuanchu
 
 查询时日期等值也用自然日范围，例如 `due:2030-01-01` 等价于 `[2030-01-01 00:00:00, 2030-01-01 23:59:59]`，跨 DST 与时区也稳定。
 
-### description 子串匹配
+### title / description 子串匹配
 
-`description:spec`、`description:/spec/` 和裸 `/spec/` **语义一致**，都按子串匹配；`description:` 不走字面相等。
+`title:spec`、`title:/spec/` 和裸 `/spec/` **语义一致**，都按标题子串匹配；`description:` 只匹配可选的详细描述，也不走字面相等。
 
 ## 核心任务模型
 

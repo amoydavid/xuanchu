@@ -3,7 +3,7 @@ package storage
 import "strings"
 
 var m5TaskColumns = []string{
-	"uuid", "workspace_id", "description", "status", "entry", "modified",
+	"uuid", "workspace_id", "title", "description", "status", "entry", "modified",
 	"end_ts", "due", "project", "priority",
 	"start", "wait", "scheduled", "until",
 	"recur", "parent", "mask", "i_mask",
@@ -47,10 +47,11 @@ var m5TaskIndexes = []string{
 }
 
 var m4TasksDDL = `CREATE TABLE tasks (
-	uuid TEXT PRIMARY KEY,
-	workspace_id TEXT NOT NULL,
-	description TEXT NOT NULL,
-	status TEXT NOT NULL,
+		uuid TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT,
+		status TEXT NOT NULL,
 	entry INTEGER NOT NULL,
 	modified INTEGER NOT NULL,
 	end_ts INTEGER,

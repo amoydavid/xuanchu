@@ -2,6 +2,8 @@
 
 所有写操作都会记审计日志。只读操作不记。
 
+`description` 字段都是给使用者看的说明文本，默认按 Markdown 编写；技术上仍作为普通字符串传输和存储。
+
 ## Workspace 操作
 
 ### workspace_list — 列出 workspace（只读）
@@ -52,7 +54,7 @@
       "id": "ws-uuid-xxx",
       "slug": "engineering",
       "name": "工程团队",
-      "description": "公司核心工程团队",
+      "description": "公司核心工程团队\n\n- 后端平台\n- 前端体验",
       "visibility": "team",
       "created_by": {"id": "...", "name": "alice"},
       "role": "admin"
@@ -80,7 +82,7 @@
 ### workspace_modify — 修改 workspace
 
 ```json
-{"workspace": "engineering", "name": "工程部", "description": "合并后的工程部门"}
+{"workspace": "engineering", "name": "工程部", "description": "合并后的工程部门\n\n- 平台组\n- 应用组"}
 ```
 
 ### workspace_use — 切换 active workspace
@@ -109,7 +111,7 @@
   "workspace": "dajee",
   "slug": "apiplat",
   "name": "API 平台",
-  "description": "核心 API 服务"
+  "description": "核心 API 服务\n\n- 对外 REST API\n- 内部 GraphQL 网关"
 }
 
 // 返回
@@ -119,7 +121,7 @@
       "id": "proj-uuid-xxx",
       "slug": "apiplat",
       "name": "API 平台",
-      "description": "核心 API 服务",
+      "description": "核心 API 服务\n\n- 对外 REST API\n- 内部 GraphQL 网关",
       "archived": false
     }
   },
@@ -185,7 +187,7 @@ project_get_current({"workspace": "dajee"})
   "workspace": "dajee",
   "project": "apiplat",
   "name": "API 平台 v2",
-  "description": "下一代 API 网关"
+  "description": "下一代 API 网关\n\n- 多租户路由\n- 鉴权策略下沉"
 }
 ```
 

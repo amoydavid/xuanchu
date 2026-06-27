@@ -33,7 +33,7 @@ func TestReminderSchedulerDueBeforeEnqueuesDelivery(t *testing.T) {
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
 	due := int64(2000)
-	_, err = svc.Add(AddInput{Description: "完成 OAuth", Due: &due, Assignees: []string{"alice"}})
+	_, err = svc.Add(AddInput{Title: "完成 OAuth", Due: &due, Assignees: []string{"alice"}})
 	if err != nil {
 		t.Fatalf("Add task error = %v", err)
 	}
@@ -101,7 +101,7 @@ func TestReminderSchedulerWritesOperationLog(t *testing.T) {
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := int64(2000)
-	if _, err := svc.Add(AddInput{Description: "完成 OAuth", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "完成 OAuth", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatalf("Add task error = %v", err)
 	}
 	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -139,7 +139,7 @@ func TestReminderSchedulerDedupePreventsDuplicateDelivery(t *testing.T) {
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := int64(2000)
-	if _, err := svc.Add(AddInput{Description: "完成 OAuth", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "完成 OAuth", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -171,7 +171,7 @@ func TestReminderSchedulerDailyFilterEnqueuesOncePerDay(t *testing.T) {
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -220,7 +220,7 @@ func TestReminderSchedulerDailyFilterReminderSequenceAndWindow(t *testing.T) {
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 7, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "已经逾期", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "已经逾期", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, err := svc.AddNotificationSink(NotificationSinkAddInput{
@@ -314,7 +314,7 @@ func TestReminderSchedulerDailyDueSoonReminderOverdueSequenceIsZero(t *testing.T
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -365,7 +365,7 @@ func TestReminderSchedulerDailyFilterNotDueBeforeNowIsNotOverdue(t *testing.T) {
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "未逾期任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "未逾期任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -416,7 +416,7 @@ func TestReminderSchedulerDailyFilterOrFutureBranchIsNotOverdue(t *testing.T) {
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 10, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "未来任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "未来任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -467,7 +467,7 @@ func TestReminderSchedulerSequenceCountsDifferentEventTypeHistory(t *testing.T) 
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	created, err := svc.Add(AddInput{Description: "今日要完成", Due: &due, Assignees: []string{"alice"}})
+	created, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +528,7 @@ func TestReminderSchedulerDedupeIgnoresEventType(t *testing.T) {
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	created, err := svc.Add(AddInput{Description: "今日要完成", Due: &due, Assignees: []string{"alice"}})
+	created, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func TestReminderSchedulerDailyFilterSkipsBeforeScheduleTime(t *testing.T) {
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "今日要完成", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -624,10 +624,10 @@ func TestReminderSchedulerDailyFilterHonorsProjectScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "alpha task", Project: &projectA.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "alpha task", Project: &projectA.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "beta task", Project: &projectB.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "beta task", Project: &projectB.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -677,10 +677,10 @@ func TestReminderSchedulerDailyFilterAppliesProjectScopeBeforeLimit(t *testing.T
 		t.Fatal(err)
 	}
 	due := time.Date(2026, 6, 8, 17, 0, 0, 0, time.Local).Unix()
-	if _, err := svc.Add(AddInput{Description: "beta first", Project: &projectB.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "beta first", Project: &projectB.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "alpha target", Project: &projectA.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "alpha target", Project: &projectA.Slug, Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -721,14 +721,14 @@ func TestReminderSchedulerSkipsCompletedDeletedAndNoDue(t *testing.T) {
 	}
 	_ = createSchedulerAssignee(t, svc, store, "alice")
 	due := int64(900)
-	completed, err := svc.Add(AddInput{Description: "done", Due: &due, Assignees: []string{"alice"}})
+	completed, err := svc.Add(AddInput{Title: "done", Due: &due, Assignees: []string{"alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Done(completed.UUID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(AddInput{Description: "no due", Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "no due", Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -756,7 +756,7 @@ func TestReminderSchedulerPayloadUsesFullUserInfo(t *testing.T) {
 	}
 	alice := createSchedulerAssignee(t, svc, store, "alice")
 	due := int64(900)
-	if _, err := svc.Add(AddInput{Description: "逾期任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
+	if _, err := svc.Add(AddInput{Title: "逾期任务", Due: &due, Assignees: []string{"alice"}}); err != nil {
 		t.Fatal(err)
 	}
 	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
@@ -824,7 +824,7 @@ func TestReminderSchedulerResolvesProjectConfigEndpointAndSecrets(t *testing.T) 
 		AllowedHosts:    []string{"example.com"},
 		HeaderTemplates: []HTTPHeaderTemplateInput{{Name: "Authorization", Value: "Bearer {{secret.notify_token}}"}},
 		BodyContentType: "application/json",
-		BodyTemplate:    `{"text":"任务 {{task.task_slug}} 即将到期：{{task.description}}"}`,
+		BodyTemplate:    `{"text":"任务 {{task.task_slug}} 即将到期：{{task.title}}"}`,
 		SecretRefs:      []HTTPTemplateSecretRefInput{{Alias: "notify_token", ConfigKey: "integrations.notify.token"}},
 	})
 	if err != nil {
@@ -834,7 +834,7 @@ func TestReminderSchedulerResolvesProjectConfigEndpointAndSecrets(t *testing.T) 
 	if _, err := storage.NewTaskRepository(store.DB()).Create(task.Task{
 		UUID:        uuid.NewString(),
 		WorkspaceID: svc.Runtime().WorkspaceID,
-		Description: "完成 OAuth",
+		Title:       "完成 OAuth",
 		Status:      task.StatusPending,
 		Entry:       1000,
 		Modified:    1000,

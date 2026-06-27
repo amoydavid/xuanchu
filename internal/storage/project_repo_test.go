@@ -303,7 +303,7 @@ func createTestWorkspace(t *testing.T, store *Store, slug string) Workspace {
 func insertTaskForProjectCount(t *testing.T, store *Store, uuid, workspaceID, projectID, status string) {
 	t.Helper()
 	if err := store.DB().Exec(
-		`INSERT INTO tasks(uuid, workspace_id, description, status, entry, modified, project, project_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tasks(uuid, workspace_id, title, status, entry, modified, project, project_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		uuid, workspaceID, "task "+uuid, status, int64(100), int64(100), "project", projectID,
 	).Error; err != nil {
 		t.Fatalf("insert task %q: %v", uuid, err)

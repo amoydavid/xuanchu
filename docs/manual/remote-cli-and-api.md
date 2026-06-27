@@ -156,7 +156,7 @@ curl -H "Authorization: Bearer $XUANCHU_TOKEN" \
 curl -X POST \
   -H "Authorization: Bearer $XUANCHU_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"description":"Review MCP docs","project":"agentapi","tags":["review"],"assignees":["alice"]}' \
+  -d '{"title":"Review MCP docs","description":"Read the latest API notes","project":"agentapi","tags":["review"],"assignees":["alice"]}' \
   'https://xuanchu.example.com/api/v1/tasks?workspace=dajee'
 ```
 

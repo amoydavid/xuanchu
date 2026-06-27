@@ -5,13 +5,13 @@ import (
 	"time"
 )
 
-func TestParseAddArgsSeparatesDescriptionAndMods(t *testing.T) {
+func TestParseAddArgsSeparatesTitleAndMods(t *testing.T) {
 	parsed, err := ParseAddArgs([]string{"write", "spec", "project:xuanchu", "+planning", "priority:H"})
 	if err != nil {
 		t.Fatalf("ParseAddArgs() error = %v", err)
 	}
-	if parsed.Description != "write spec" {
-		t.Fatalf("Description = %q", parsed.Description)
+	if parsed.Title != "write spec" {
+		t.Fatalf("Title = %q", parsed.Title)
 	}
 	if parsed.Mod.Project == nil || *parsed.Mod.Project != "xuanchu" {
 		t.Fatalf("Project = %#v", parsed.Mod.Project)
@@ -29,8 +29,8 @@ func TestParseAddArgsRecognizesAssignees(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseAddArgs() error = %v", err)
 	}
-	if parsed.Description != "write spec" {
-		t.Fatalf("Description = %q", parsed.Description)
+	if parsed.Title != "write spec" {
+		t.Fatalf("Title = %q", parsed.Title)
 	}
 	if got := parsed.Mod.AddAssignees; len(got) != 2 || got[0] != "alice" || got[1] != "bob@example.com" {
 		t.Fatalf("AddAssignees = %#v", got)

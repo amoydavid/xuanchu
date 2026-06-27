@@ -24,8 +24,11 @@
         ]
       },
       "description": {
-        "description": "task description",
-        "type": "string"
+        "description": "task details",
+        "type": [
+          "null",
+          "string"
+        ]
       },
       "due": {
         "description": "unix seconds",
@@ -62,6 +65,10 @@
           "array"
         ]
       },
+      "title": {
+        "description": "task title",
+        "type": "string"
+      },
       "until": {
         "description": "unix seconds",
         "type": [
@@ -82,7 +89,7 @@
       }
     },
     "required": [
-      "description"
+      "title"
     ],
     "type": "object"
   },

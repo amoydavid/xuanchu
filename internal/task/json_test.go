@@ -9,10 +9,11 @@ import (
 	"testing"
 )
 
-func TestTaskJSONUsesTaskwarriorFieldNames(t *testing.T) {
+func TestTaskJSONUsesTitleAsPrimaryField(t *testing.T) {
 	priority := "H"
+	detail := "long form detail"
 	tsk := Task{
-		UUID: "u1", Description: "write spec", Status: StatusPending,
+		UUID: "u1", Title: "write spec", Description: &detail, Status: StatusPending,
 		Entry: 100, Modified: 100, Priority: &priority, Tags: []string{"planning"},
 	}
 	dto := ToJSON(tsk)
@@ -20,10 +21,50 @@ func TestTaskJSONUsesTaskwarriorFieldNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal() error = %v", err)
 	}
-	for _, field := range []string{`"uuid"`, `"description"`, `"status"`, `"entry"`, `"modified"`, `"priority"`, `"tags"`} {
+	for _, field := range []string{`"uuid"`, `"title"`, `"description"`, `"status"`, `"entry"`, `"modified"`, `"priority"`, `"tags"`} {
 		if !strings.Contains(string(data), field) {
 			t.Fatalf("JSON %s missing field %s", data, field)
 		}
+	}
+	if strings.Contains(string(data), `"description":"write spec"`) {
+		t.Fatalf("description should not carry title: %s", data)
+	}
+}
+
+func TestTaskJSONOmitsEmptyDescription(t *testing.T) {
+	dto := ToJSON(Task{UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2})
+	data, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte(`"description"`)) {
+		t.Fatalf("description should be omitted when empty: %s", data)
+	}
+	if !bytes.Contains(data, []byte(`"title":"task"`)) {
+		t.Fatalf("title missing: %s", data)
+	}
+}
+
+func TestJSONTaskImportRequiresTitleAndAllowsOptionalDescription(t *testing.T) {
+	var dto JSONTask
+	raw := `{"uuid":"u1","title":"task title","description":"task detail","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}`
+	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
+		t.Fatalf("Unmarshal(title) error = %v", err)
+	}
+	got, err := FromJSONStrict(dto)
+	if err != nil {
+		t.Fatalf("FromJSONStrict(title) error = %v", err)
+	}
+	if got.Title != "task title" || got.Description == nil || *got.Description != "task detail" {
+		t.Fatalf("task text = title %q description %#v", got.Title, got.Description)
+	}
+
+	raw = `{"uuid":"u1","description":"legacy title","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}`
+	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
+		t.Fatalf("Unmarshal(missing title) error = %v", err)
+	}
+	if _, err := FromJSONStrict(dto); err == nil || !strings.Contains(err.Error(), "title") {
+		t.Fatalf("FromJSONStrict(missing title) error = %v, want title error", err)
 	}
 }
 
@@ -31,13 +72,13 @@ func TestJSONTaskExportsTaskSlugWhenProjectSeqPresent(t *testing.T) {
 	project := "api"
 	seq := int64(12)
 	dto := ToJSON(Task{
-		UUID:        "u1",
-		Description: "task",
-		Status:      StatusPending,
-		Entry:       1,
-		Modified:    2,
-		Project:     &project,
-		ProjectSeq:  &seq,
+		UUID:       "u1",
+		Title:      "task",
+		Status:     StatusPending,
+		Entry:      1,
+		Modified:   2,
+		Project:    &project,
+		ProjectSeq: &seq,
 	})
 	data, err := json.Marshal(dto)
 	if err != nil {
@@ -50,7 +91,7 @@ func TestJSONTaskExportsTaskSlugWhenProjectSeqPresent(t *testing.T) {
 
 func TestJSONTaskOmitsTaskSlugWithoutProject(t *testing.T) {
 	seq := int64(12)
-	dto := ToJSON(Task{UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2, ProjectSeq: &seq})
+	dto := ToJSON(Task{UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2, ProjectSeq: &seq})
 	data, err := json.Marshal(dto)
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +103,7 @@ func TestJSONTaskOmitsTaskSlugWithoutProject(t *testing.T) {
 
 func TestJSONTaskAcceptsExportedTaskSlugButDoesNotImportProjectSeq(t *testing.T) {
 	var dto JSONTask
-	raw := `{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project":"api","task_slug":"api-12"}`
+	raw := `{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project":"api","task_slug":"api-12"}`
 	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
 		t.Fatalf("Unmarshal(task_slug) error = %v", err)
 	}
@@ -77,7 +118,7 @@ func TestJSONTaskAcceptsExportedTaskSlugButDoesNotImportProjectSeq(t *testing.T)
 
 func TestJSONTaskRejectsReadonlyProjectSeq(t *testing.T) {
 	var dto JSONTask
-	raw := `{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_seq":1}`
+	raw := `{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_seq":1}`
 	err := json.Unmarshal([]byte(raw), &dto)
 	if err == nil || !strings.Contains(err.Error(), "project_seq") {
 		t.Fatalf("Unmarshal(project_seq) error = %v, want readonly/reserved", err)
@@ -87,11 +128,11 @@ func TestJSONTaskRejectsReadonlyProjectSeq(t *testing.T) {
 func TestJSONTaskExportsAssignees(t *testing.T) {
 	email := "alice@example.com"
 	tsk := Task{
-		UUID:        "u1",
-		Description: "write spec",
-		Status:      StatusPending,
-		Entry:       100,
-		Modified:    100,
+		UUID:     "u1",
+		Title:    "write spec",
+		Status:   StatusPending,
+		Entry:    100,
+		Modified: 100,
 		Assignees: []AssigneeInfo{
 			{UserID: "user-alice", Name: "alice", Email: &email},
 			{UserID: "user-bob", Name: "bob"},
@@ -120,7 +161,7 @@ func TestJSONTaskImportSupportsObjectAssignees(t *testing.T) {
 	var dto JSONTask
 	err := json.Unmarshal([]byte(`{
 		"uuid":"u1",
-		"description":"task",
+		"title":"task",
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
@@ -152,7 +193,7 @@ func TestJSONTaskImportSupportsStringAssignees(t *testing.T) {
 	var dto JSONTask
 	err := json.Unmarshal([]byte(`{
 		"uuid":"u1",
-		"description":"task",
+		"title":"task",
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
@@ -180,11 +221,11 @@ func TestJSONTaskImportSupportsStringAssignees(t *testing.T) {
 func TestJSONTaskExportsAssigneeExternalIDs(t *testing.T) {
 	email := "alice@example.com"
 	tsk := Task{
-		UUID:        "u1",
-		Description: "test",
-		Status:      StatusPending,
-		Entry:       1700000000,
-		Modified:    1700000000,
+		UUID:     "u1",
+		Title:    "test",
+		Status:   StatusPending,
+		Entry:    1700000000,
+		Modified: 1700000000,
 		Assignees: []AssigneeInfo{
 			{
 				UserID: "user-1",
@@ -216,7 +257,7 @@ func TestJSONTaskImportPreservesAssigneeExternalIDs(t *testing.T) {
 	var dto JSONTask
 	err := json.Unmarshal([]byte(`{
 		"uuid":"u2",
-		"description":"test",
+		"title":"test",
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
@@ -245,7 +286,7 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	recur, parent, mask := "weekly", "parent", "mask"
 	imask := 2
 	tsk := Task{
-		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
 		Annotations: []Annotation{{ID: "ann-1", Entry: 3, Description: "note"}},
 		Depends:     []string{"dep"},
@@ -265,7 +306,7 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 
 func TestTaskJSONCarriesUDAFields(t *testing.T) {
 	tsk := Task{
-		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		UDAs: map[string]UDAValue{
 			"estimate": {Name: "estimate", Raw: "3", Type: "numeric"},
 			"reviewed": {Name: "reviewed", Raw: "2026-05-28T00:00:00Z", Type: "date"},
@@ -290,7 +331,7 @@ func TestTaskJSONCarriesUDAFields(t *testing.T) {
 
 func TestJSONTaskSkipsReservedUDAFields(t *testing.T) {
 	tsk := Task{
-		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		UDAs: map[string]UDAValue{
 			"estimate":   {Name: "estimate", Raw: "3", Type: "numeric"},
 			"project_id": {Name: "project_id", Raw: "project-1", Type: "string"},
@@ -310,7 +351,7 @@ func TestJSONTaskSkipsReservedUDAFields(t *testing.T) {
 
 func TestUnmarshalJSONTasksPreservesOrphanUDA(t *testing.T) {
 	var tasks []JSONTask
-	err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":{"x":1}}]`), &tasks)
+	err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":{"x":1}}]`), &tasks)
 	if err != nil {
 		t.Fatalf("UnmarshalJSONTasks(orphan) error = %v", err)
 	}
@@ -323,7 +364,7 @@ func TestUnmarshalJSONTasksPreservesOrphanUDA(t *testing.T) {
 
 func TestJSONTaskRejectsProjectIDAsReservedField(t *testing.T) {
 	var dto JSONTask
-	err := json.Unmarshal([]byte(`{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_id":"p1"}`), &dto)
+	err := json.Unmarshal([]byte(`{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_id":"p1"}`), &dto)
 	if err == nil || !strings.Contains(err.Error(), "project_id") {
 		t.Fatalf("Unmarshal(project_id) error = %v, want reserved project_id", err)
 	}
@@ -333,13 +374,13 @@ func TestJSONTaskDoesNotExportProjectID(t *testing.T) {
 	project := "api"
 	projectID := "project-1"
 	data, err := json.Marshal(ToJSON(Task{
-		UUID:        "u1",
-		Description: "task",
-		Status:      StatusPending,
-		Entry:       1,
-		Modified:    2,
-		Project:     &project,
-		ProjectID:   &projectID,
+		UUID:      "u1",
+		Title:     "task",
+		Status:    StatusPending,
+		Entry:     1,
+		Modified:  2,
+		Project:   &project,
+		ProjectID: &projectID,
 	}))
 	if err != nil {
 		t.Fatalf("Marshal(task with ProjectID) error = %v", err)
@@ -351,7 +392,7 @@ func TestJSONTaskDoesNotExportProjectID(t *testing.T) {
 
 func TestJSONTaskKeepsOrphanUDAButRejectsReservedProjectID(t *testing.T) {
 	var dto JSONTask
-	err := json.Unmarshal([]byte(`{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":"kept"}`), &dto)
+	err := json.Unmarshal([]byte(`{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","legacy_field":"kept"}`), &dto)
 	if err != nil {
 		t.Fatalf("Unmarshal(orphan UDA) error = %v", err)
 	}
@@ -363,7 +404,7 @@ func TestJSONTaskKeepsOrphanUDAButRejectsReservedProjectID(t *testing.T) {
 		t.Fatalf("project_id entered orphan UDA: %#v", dto.UDAs)
 	}
 
-	err = json.Unmarshal([]byte(`{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_id":"p1"}`), &dto)
+	err = json.Unmarshal([]byte(`{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","project_id":"p1"}`), &dto)
 	if err == nil || !strings.Contains(err.Error(), "project_id") {
 		t.Fatalf("Unmarshal(project_id) error = %v, want reserved project_id", err)
 	}
@@ -371,11 +412,11 @@ func TestJSONTaskKeepsOrphanUDAButRejectsReservedProjectID(t *testing.T) {
 
 func TestFromJSONStrictRejectsInvalidDate(t *testing.T) {
 	_, err := FromJSONStrict(JSONTask{
-		UUID:        "u1",
-		Description: "task",
-		Status:      StatusPending,
-		Entry:       "1970-01-01T00:00:01Z",
-		Modified:    "not-a-date",
+		UUID:     "u1",
+		Title:    "task",
+		Status:   StatusPending,
+		Entry:    "1970-01-01T00:00:01Z",
+		Modified: "not-a-date",
 	})
 	if err == nil {
 		t.Fatal("FromJSONStrict() error = nil, want invalid date error")
@@ -384,7 +425,7 @@ func TestFromJSONStrictRejectsInvalidDate(t *testing.T) {
 
 func TestUnmarshalJSONTasksPreservesNilVsEmptySlices(t *testing.T) {
 	var missing []JSONTask
-	if err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`), &missing); err != nil {
+	if err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`), &missing); err != nil {
 		t.Fatalf("UnmarshalJSONTasks(missing) error = %v", err)
 	}
 	if missing[0].Tags != nil {
@@ -392,7 +433,7 @@ func TestUnmarshalJSONTasksPreservesNilVsEmptySlices(t *testing.T) {
 	}
 
 	var empty []JSONTask
-	if err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","tags":[],"annotations":[],"depends":[]}]`), &empty); err != nil {
+	if err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z","tags":[],"annotations":[],"depends":[]}]`), &empty); err != nil {
 		t.Fatalf("UnmarshalJSONTasks(empty) error = %v", err)
 	}
 	if empty[0].Tags == nil || empty[0].Annotations == nil || empty[0].Depends == nil {
@@ -405,7 +446,7 @@ func TestUnmarshalJSONTasksPreservesNilVsEmptySlices(t *testing.T) {
 
 func TestJSONTaskExportsLinks(t *testing.T) {
 	tsk := Task{
-		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Links: []TaskLinkInfo{
 			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: UserInfo{ID: "user-1"}},
 			{ID: "link-2", Type: "pr", URL: "https://github.com/pull/1", CreatedAt: 1700000001, CreatedBy: UserInfo{ID: "user-2"}},
@@ -437,7 +478,7 @@ func TestJSONTaskImportLinks(t *testing.T) {
 	var dto JSONTask
 	err := json.Unmarshal([]byte(`{
 		"uuid":"u1",
-		"description":"test",
+		"title":"test",
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
@@ -463,7 +504,7 @@ func TestJSONTaskImportLinks(t *testing.T) {
 
 func TestJSONTaskLinksRoundTrip(t *testing.T) {
 	tsk := Task{
-		UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2,
+		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Links: []TaskLinkInfo{
 			{ID: "link-1", Type: "document", URL: "https://example.com/doc", Title: "需求文档", CreatedAt: 1700000000, CreatedBy: UserInfo{ID: "user-1"}},
 		},
@@ -478,7 +519,7 @@ func TestJSONTaskLinksRoundTrip(t *testing.T) {
 }
 
 func TestJSONTaskNilLinksOmitted(t *testing.T) {
-	tsk := Task{UUID: "u1", Description: "task", Status: StatusPending, Entry: 1, Modified: 2}
+	tsk := Task{UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2}
 	data, err := json.Marshal(ToJSON(tsk))
 	if err != nil {
 		t.Fatalf("Marshal error = %v", err)
@@ -490,7 +531,7 @@ func TestJSONTaskNilLinksOmitted(t *testing.T) {
 
 func TestJSONTaskEmptyLinksPreserved(t *testing.T) {
 	data, err := json.Marshal(JSONTask{
-		UUID: "u1", Description: "task", Status: StatusPending,
+		UUID: "u1", Title: "task", Status: StatusPending,
 		Entry: "1970-01-01T00:00:01Z", Modified: "1970-01-01T00:00:02Z",
 		Links: []JSONTaskLink{},
 	})
@@ -504,11 +545,11 @@ func TestJSONTaskEmptyLinksPreserved(t *testing.T) {
 
 func TestMarshalJSONTaskOmitsNilSlicesAndKeepsEmptyTagsWhenRequested(t *testing.T) {
 	nilJSON, err := json.Marshal(JSONTask{
-		UUID:        "u1",
-		Description: "task",
-		Status:      StatusPending,
-		Entry:       "1970-01-01T00:00:01Z",
-		Modified:    "1970-01-01T00:00:02Z",
+		UUID:     "u1",
+		Title:    "task",
+		Status:   StatusPending,
+		Entry:    "1970-01-01T00:00:01Z",
+		Modified: "1970-01-01T00:00:02Z",
 	})
 	if err != nil {
 		t.Fatalf("Marshal(nil JSONTask) error = %v", err)
@@ -518,12 +559,12 @@ func TestMarshalJSONTaskOmitsNilSlicesAndKeepsEmptyTagsWhenRequested(t *testing.
 	}
 
 	emptyJSON, err := json.Marshal(JSONTask{
-		UUID:        "u1",
-		Description: "task",
-		Status:      StatusPending,
-		Entry:       "1970-01-01T00:00:01Z",
-		Modified:    "1970-01-01T00:00:02Z",
-		Tags:        []string{},
+		UUID:     "u1",
+		Title:    "task",
+		Status:   StatusPending,
+		Entry:    "1970-01-01T00:00:01Z",
+		Modified: "1970-01-01T00:00:02Z",
+		Tags:     []string{},
 	})
 	if err != nil {
 		t.Fatalf("Marshal(empty JSONTask) error = %v", err)
@@ -542,7 +583,7 @@ func TestUnmarshalJSONTasksRejectsInvalidJSON(t *testing.T) {
 
 func TestUnmarshalJSONTasksReadsArray(t *testing.T) {
 	var tasks []JSONTask
-	err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`), &tasks)
+	err := UnmarshalJSONTasks(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`), &tasks)
 	if err != nil {
 		t.Fatalf("UnmarshalJSONTasks() error = %v", err)
 	}
@@ -553,11 +594,11 @@ func TestUnmarshalJSONTasksReadsArray(t *testing.T) {
 
 func TestMarshalJSONTasksWritesArray(t *testing.T) {
 	data, err := MarshalJSONTasks([]JSONTask{{
-		UUID:        "u1",
-		Description: "task",
-		Status:      StatusPending,
-		Entry:       "1970-01-01T00:00:01Z",
-		Modified:    "1970-01-01T00:00:02Z",
+		UUID:     "u1",
+		Title:    "task",
+		Status:   StatusPending,
+		Entry:    "1970-01-01T00:00:01Z",
+		Modified: "1970-01-01T00:00:02Z",
 	}})
 	if err != nil {
 		t.Fatalf("MarshalJSONTasks() error = %v", err)
@@ -569,7 +610,7 @@ func TestMarshalJSONTasksWritesArray(t *testing.T) {
 
 func TestUnmarshalJSONTasksFromReader(t *testing.T) {
 	var tasks []JSONTask
-	err := UnmarshalJSONTasks(io.NopCloser(strings.NewReader(`[{"uuid":"u1","description":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`)), &tasks)
+	err := UnmarshalJSONTasks(io.NopCloser(strings.NewReader(`[{"uuid":"u1","title":"task","status":"pending","entry":"1970-01-01T00:00:01Z","modified":"1970-01-01T00:00:02Z"}]`)), &tasks)
 	if err != nil {
 		t.Fatalf("UnmarshalJSONTasks(reader) error = %v", err)
 	}

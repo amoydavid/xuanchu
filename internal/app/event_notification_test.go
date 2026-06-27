@@ -127,8 +127,8 @@ func TestEventNotificationDeliveryDedupesSameEventRuleRecipient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddEventNotificationRule() error = %v", err)
 	}
-	blocker, _ := svc.Add(AddInput{Description: "blocker"})
-	blocked, _ := svc.Add(AddInput{Description: "blocked", Assignees: []string{assignee.Name}})
+	blocker, _ := svc.Add(AddInput{Title: "blocker"})
+	blocked, _ := svc.Add(AddInput{Title: "blocked", Assignees: []string{assignee.Name}})
 	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
 		t.Fatalf("Modify(depends) error = %v", err)
 	}
@@ -161,8 +161,8 @@ func TestDoneUnblockedEnqueuesEventNotificationForAssignee(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddEventNotificationRule() error = %v", err)
 	}
-	blocker, _ := svc.Add(AddInput{Description: "prepare api"})
-	blocked, _ := svc.Add(AddInput{Description: "integrate client", Assignees: []string{assignee.Name}})
+	blocker, _ := svc.Add(AddInput{Title: "prepare api"})
+	blocked, _ := svc.Add(AddInput{Title: "integrate client", Assignees: []string{assignee.Name}})
 	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
 		t.Fatalf("Modify(depends) error = %v", err)
 	}
@@ -223,8 +223,8 @@ func TestEventNotificationSkipsStaleRecipientWithoutRollback(t *testing.T) {
 	if err := store.DB().Where("user_id = ? AND workspace_id = ?", assignee.ID, svc.Runtime().WorkspaceID).Delete(&storage.Membership{}).Error; err != nil {
 		t.Fatalf("Delete stale membership error = %v", err)
 	}
-	blocker, _ := svc.Add(AddInput{Description: "stale blocker"})
-	blocked, _ := svc.Add(AddInput{Description: "stale blocked"})
+	blocker, _ := svc.Add(AddInput{Title: "stale blocker"})
+	blocked, _ := svc.Add(AddInput{Title: "stale blocked"})
 	if err := svc.Modify(blocked.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
 		t.Fatalf("Modify(depends) error = %v", err)
 	}

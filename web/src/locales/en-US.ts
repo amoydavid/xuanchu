@@ -253,6 +253,7 @@ export const enUS = {
     recentActivity: "Recent activity",
     status: "Task status",
     tags: "Tags",
+    title: "Title",
     taskNotFoundTitle: "Task not found or not visible",
     tasks: "Tasks",
     depends: "Depends",

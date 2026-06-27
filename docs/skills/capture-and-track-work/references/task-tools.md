@@ -6,14 +6,15 @@
 
 ### task_add — 创建任务
 
-`description` 必填。
+`title` 必填，`description` 是可选详细描述。面向使用者时，`description` 默认按 Markdown 文本来写；技术上仍作为普通字符串传输和存储。
 
 ```json
 // 输入
 {
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
-  "description": "修复登录页面白屏问题",
+  "title": "修复登录页面白屏问题",
+  "description": "客户反馈: Chrome 121 必现。\n\n- 需要先确认复现路径\n- 关联最近一次前端发布",
   "priority": "H",
   "tags": ["bug", "frontend"],
   "assignees": ["alice"],
@@ -26,7 +27,8 @@
   "data": {
     "task": {
       "uuid": "a1b2c3d4-...",
-      "description": "修复登录页面白屏问题",
+      "title": "修复登录页面白屏问题",
+      "description": "客户反馈: Chrome 121 必现。\n\n- 需要先确认复现路径\n- 关联最近一次前端发布",
       "status": "pending",
       "priority": "H",
       "tags": ["bug", "frontend"],
@@ -43,7 +45,7 @@
 
 ### task_query — 查询任务（只读）
 
-`query` 支持 Taskwarrior 风格表达式（语法见 query-syntax.md）。裸字符串自动按 description 子串匹配。
+`query` 支持 Taskwarrior 风格表达式（语法见 query-syntax.md）。裸字符串自动按 title 子串匹配。
 
 ```json
 // 输入：查看高优先级待办
@@ -54,17 +56,23 @@
   "limit": 10
 }
 
-// 输入：搜索描述包含"白屏"的任务
+// 输入：搜索标题包含"白屏"的任务（裸字符串等价于 title:白屏）
 {
   "workspace": "dajee",
   "query": "白屏"
+}
+
+// 输入：搜索详细描述包含"Chrome 121"的任务
+{
+  "workspace": "dajee",
+  "query": "description:\"Chrome 121\""
 }
 
 // 返回
 {
   "data": {
     "tasks": [
-      {"uuid": "a1b2c3d4-...", "description": "修复登录页面白屏问题", "status": "pending", "priority": "H", "urgency": 8.9}
+      {"uuid": "a1b2c3d4-...", "title": "修复登录页面白屏问题", "status": "pending", "priority": "H", "urgency": 8.9}
     ],
     "count": 1
   },
@@ -89,7 +97,8 @@
   "data": {
     "task": {
       "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "description": "修复登录页面白屏问题",
+      "title": "修复登录页面白屏问题",
+      "description": "客户反馈: Chrome 121 必现。\n\n- 需要先确认复现路径\n- 关联最近一次前端发布",
       "status": "pending",
       "priority": "H",
       "tags": ["bug", "frontend"],
@@ -106,12 +115,12 @@
 ### task_modify — 修改任务
 
 ```json
-// 修改描述和优先级
+// 修改标题和优先级
 {
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
   "id": "a1b2c3d4-...",
-  "description": "修复登录页面白屏问题（已定位根因）",
+  "title": "修复登录页面白屏问题（已定位根因）",
   "priority": "M"
 }
 
@@ -256,7 +265,7 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
   "tasks": [
-    {"uuid": "imported-001", "description": "导入的任务", "status": "pending", "entry": "2025-06-01T00:00:00Z", "modified": "2025-06-01T00:00:00Z"}
+    {"uuid": "imported-001", "title": "导入的任务", "status": "pending", "entry": "2025-06-01T00:00:00Z", "modified": "2025-06-01T00:00:00Z"}
   ]
 }
 ```

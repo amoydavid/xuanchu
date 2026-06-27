@@ -122,7 +122,7 @@ func TestHookEndToEnd(t *testing.T) {
 	hook := h.createHookDirect(t, webhookTarget.URL, []string{"task.created"})
 
 	// 通过 app service 创建任务
-	created, err := h.svc.Add(app.AddInput{Description: "e2e test task"})
+	created, err := h.svc.Add(app.AddInput{Title: "e2e test task"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -214,8 +214,8 @@ func TestHookEndToEnd(t *testing.T) {
 	if taskData["uuid"] != created.UUID {
 		t.Fatalf("task.uuid = %v, want %s", taskData["uuid"], created.UUID)
 	}
-	if taskData["description"] != "e2e test task" {
-		t.Fatalf("task.description = %v, want e2e test task", taskData["description"])
+	if taskData["title"] != "e2e test task" {
+		t.Fatalf("task.title = %v, want e2e test task", taskData["title"])
 	}
 
 	// 验证 delivery 状态变为 succeeded
@@ -249,7 +249,7 @@ func TestHookEndToEndModifiedPayloadStability(t *testing.T) {
 	h.createHookDirect(t, webhookTarget.URL, []string{"task.created", "task.modified"})
 
 	// 创建并修改任务
-	created, _ := h.svc.Add(app.AddInput{Description: "original"})
+	created, _ := h.svc.Add(app.AddInput{Title: "original"})
 	modified := "modified"
 	_ = h.svc.Modify(created.UUID, app.ModifyInput{Description: &modified})
 
@@ -432,7 +432,7 @@ func TestHookSecretNotInWebhookPayload(t *testing.T) {
 	secret := "e2e-secret"
 	h.createHookDirect(t, webhookTarget.URL, []string{"task.created"})
 
-	_, _ = h.svc.Add(app.AddInput{Description: "secret test task"})
+	_, _ = h.svc.Add(app.AddInput{Title: "secret test task"})
 
 	dispatcher := hookruntime.NewDispatcher(hookruntime.DispatcherOptions{
 		Store: h.store, Clock: h.clock, Client: webhookTarget.Client(), Resolver: publicTestResolver{},
@@ -484,7 +484,7 @@ func TestHookSecretNotInDeliveryView(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _ = svc.Add(app.AddInput{Description: "delivery secret test"})
+	_, _ = svc.Add(app.AddInput{Title: "delivery secret test"})
 
 	deliveries, _ := svc.ListHookDeliveries(hook.ID, "", 10, 0)
 	if len(deliveries) != 1 {
@@ -569,7 +569,7 @@ func TestHookEndToEndViaHTTPAPI(t *testing.T) {
 	}
 
 	// 通过 HTTP API 创建任务
-	taskBody := `{"description":"http e2e task"}`
+	taskBody := `{"title":"http e2e task"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", taskBody, auth)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create task status = %d body=%s", rr.Code, rr.Body.String())

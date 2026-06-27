@@ -88,7 +88,7 @@ func mustCreateRuntimeTask(t *testing.T, store *storage.Store, wsID, taskUUID st
 	if _, err := storage.NewTaskRepository(store.DB()).Create(task.Task{
 		UUID:        taskUUID,
 		WorkspaceID: wsID,
-		Description: "runtime task",
+		Title:       "runtime task",
 		Status:      task.StatusPending,
 		Entry:       100,
 		Modified:    100,

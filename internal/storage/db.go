@@ -65,7 +65,7 @@ func (s *Store) DB() *gorm.DB {
 
 func (s *Store) Transaction(fn func(*Store) error) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		return fn(&Store{db: tx})
+		return fn(&Store{db: tx, dialect: s.dialect})
 	})
 }
 

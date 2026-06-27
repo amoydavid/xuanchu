@@ -33,6 +33,7 @@ type NotificationRuleContext struct {
 type NotificationTaskContext struct {
 	UUID        string
 	TaskSlug    string
+	Title       string
 	Description string
 	Status      string
 	Due         *int64
@@ -308,6 +309,8 @@ func notificationTemplateValue(name string, input NotificationRequestResolveInpu
 		return input.Task.UUID, nil
 	case "task.task_slug":
 		return input.Task.TaskSlug, nil
+	case "task.title":
+		return input.Task.Title, nil
 	case "task.description":
 		return input.Task.Description, nil
 	case "task.status":
@@ -389,7 +392,7 @@ func buildNotificationPayloadJSON(input NotificationRequestResolveInput) (string
 		"object":    map[string]any{"kind": input.Object.Kind, "id": input.Object.ID},
 		"workspace": map[string]any{"id": input.Workspace.ID, "slug": input.Workspace.Slug, "name": input.Workspace.Name},
 		"rule":      map[string]any{"id": input.Rule.ID, "name": input.Rule.Name, "trigger_type": input.Rule.TriggerType},
-		"task":      map[string]any{"uuid": input.Task.UUID, "task_slug": input.Task.TaskSlug, "description": input.Task.Description, "status": input.Task.Status, "due": input.Task.Due},
+		"task":      map[string]any{"uuid": input.Task.UUID, "task_slug": input.Task.TaskSlug, "title": input.Task.Title, "description": input.Task.Description, "status": input.Task.Status, "due": input.Task.Due},
 		"recipient": task.UserInfoToJSON(input.Recipient),
 		"reminder": map[string]any{
 			"sequence":         input.Reminder.Sequence,

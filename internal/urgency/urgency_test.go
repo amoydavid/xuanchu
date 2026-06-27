@@ -9,7 +9,7 @@ import (
 func TestExplainIncludesNextAndPriority(t *testing.T) {
 	priority := "H"
 	tsk := task.Task{
-		UUID: "u1", Description: "important", Status: task.StatusPending,
+		UUID: "u1", Title: "important", Status: task.StatusPending,
 		Entry: 0, Modified: 0, Priority: &priority, Tags: []string{"next"},
 	}
 	explain := Explain(tsk, Options{NowUnix: 86400})
@@ -22,7 +22,7 @@ func TestExplainIncludesNextAndPriority(t *testing.T) {
 }
 
 func TestExplainTotalEqualsItemSum(t *testing.T) {
-	tsk := task.Task{UUID: "u1", Description: "task", Status: task.StatusPending, Entry: 0, Modified: 0, Tags: []string{"a", "b"}}
+	tsk := task.Task{UUID: "u1", Title: "task", Status: task.StatusPending, Entry: 0, Modified: 0, Tags: []string{"a", "b"}}
 	explain := Explain(tsk, Options{NowUnix: 86400})
 	var sum float64
 	for _, item := range explain.Items {
@@ -46,7 +46,7 @@ func TestDueContributionBoundaries(t *testing.T) {
 		{name: "thirty days", days: 30, wantPositive: false},
 	} {
 		due := now + tc.days*86400
-		tsk := task.Task{UUID: "u1", Description: "task", Status: task.StatusPending, Entry: now - 86400, Modified: now - 86400, Due: &due}
+		tsk := task.Task{UUID: "u1", Title: "task", Status: task.StatusPending, Entry: now - 86400, Modified: now - 86400, Due: &due}
 		explain := Explain(tsk, Options{NowUnix: now})
 		got := hasItem(explain, "due")
 		if got != tc.wantPositive {
@@ -57,7 +57,7 @@ func TestDueContributionBoundaries(t *testing.T) {
 
 func TestPriorityAndMultipleTags(t *testing.T) {
 	for _, priority := range []string{"L", "M", "H"} {
-		tsk := task.Task{UUID: "u1", Description: "task", Status: task.StatusPending, Entry: 0, Modified: 0, Priority: &priority, Tags: []string{"a", "b", "c"}}
+		tsk := task.Task{UUID: "u1", Title: "task", Status: task.StatusPending, Entry: 0, Modified: 0, Priority: &priority, Tags: []string{"a", "b", "c"}}
 		explain := Explain(tsk, Options{NowUnix: 86400})
 		if !hasItem(explain, "priority."+priority) || !hasItem(explain, "tags") {
 			t.Fatalf("priority %s items = %#v", priority, explain.Items)
@@ -69,7 +69,7 @@ func TestExplainIncludesM2Contributions(t *testing.T) {
 	start := int64(10)
 	wait := int64(200)
 	tsk := task.Task{
-		UUID: "u1", Description: "task", Status: task.StatusWaiting, Entry: 0, Modified: 0,
+		UUID: "u1", Title: "task", Status: task.StatusWaiting, Entry: 0, Modified: 0,
 		Start: &start, Wait: &wait,
 		Annotations: []task.Annotation{{Entry: 1, Description: "note"}},
 		Depends:     []string{"dep"},
@@ -84,7 +84,7 @@ func TestExplainIncludesM2Contributions(t *testing.T) {
 
 func TestExplainIncludesUDAContribution(t *testing.T) {
 	tsk := task.Task{
-		UUID: "u1", Description: "task", Status: task.StatusPending, Entry: 0, Modified: 0,
+		UUID: "u1", Title: "task", Status: task.StatusPending, Entry: 0, Modified: 0,
 		UDAs: map[string]task.UDAValue{"estimate": {Name: "estimate", Raw: "3", Type: "numeric"}},
 	}
 	explain := Explain(tsk, Options{NowUnix: 100, UDACoefficients: map[string]float64{"estimate": 2}, UDAValueCoefficients: map[string]float64{"estimate.3": 5}})

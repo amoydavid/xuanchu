@@ -25,9 +25,9 @@ xuanchu '(project:agentapi and +review) or priority:H' next
 | `due:today` | 今天截止 |
 | `due.before:tomorrow` | 明天前截止 |
 | `due.after:2days` | 两天后之后截止 |
-| `/schema/` | description 子串匹配 |
+| `/schema/` | title 子串匹配 |
 
-`description:spec`、`description:/spec/` 和裸 `/spec/` 都按 description 子串匹配，不是正则。
+`title:spec`、`title:/spec/` 和裸 `/spec/` 都按 title 子串匹配，不是正则。`description:` 只匹配可选的详细描述。
 
 日期字段支持 `today`、`tomorrow`、`eod`、`eow`、`eom`、`Ndays`、RFC3339、`YYYY-MM-DD`，也支持以当前时间为基准的 `now` 和 `now +/- duration`。查询语法中的规范写法不带空格，例如：
 
@@ -109,7 +109,7 @@ xuanchu _projects
 xuanchu _tags
 xuanchu _udas
 xuanchu _unique project
-xuanchu _get 1.uuid 1.description 1.urgency
+xuanchu _get 1.uuid 1.title 1.urgency
 xuanchu _show database.path active.user active.workspace active.context
 xuanchu _version
 ```

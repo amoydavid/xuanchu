@@ -1,6 +1,7 @@
 package task
 
 type Modification struct {
+	Title           *string
 	Description     *string
 	Project         *string
 	Priority        *string
@@ -26,7 +27,8 @@ type Modification struct {
 }
 
 func (m Modification) Empty() bool {
-	return m.Description == nil &&
+	return m.Title == nil &&
+		m.Description == nil &&
 		m.Project == nil &&
 		m.Priority == nil &&
 		m.Due == nil && !m.ClearDue &&

@@ -9,7 +9,7 @@ import (
 func intptr(i int64) *int64 { return &i }
 
 func TestDiffTaskChanges_NoChanges(t *testing.T) {
-	before := task.Task{UUID: "a", Description: "test"}
+	before := task.Task{UUID: "a", Title: "test"}
 	after := before
 	diff := diffTaskChanges(before, after)
 	if diff.PriorityChanged || diff.DueChanged || diff.ProjectChanged || diff.TagsChanged || diff.AssigneesChanged {

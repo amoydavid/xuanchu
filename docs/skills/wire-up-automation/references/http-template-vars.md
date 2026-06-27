@@ -17,7 +17,7 @@ body 和 header 模板可用以下全部变量：
 | 事件 | `event.id` / `event.type` / `event.version` / `event.occurred_at` / `event.object_kind` / `event.object_id` / `event.json` | 事件上下文（事件通知才有；`event.json` 是整条事件 JSON） |
 | 投递 | `delivery.id` / `delivery.attempt` / `delivery.workspace_id` / `delivery.sink_id` | 本次投递 |
 | 对象 | `object.kind` / `object.id` | 事件对象 |
-| 任务 | `task.uuid` / `task.task_slug` / `task.description` / `task.status` / `task.due` | 任务字段（`task.due` 为空时输出空串） |
+| 任务 | `task.uuid` / `task.task_slug` / `task.title` / `task.description` / `task.status` / `task.due` | 任务字段（`task.description` 是可选详情，默认是 Markdown 原文；`task.due` 为空时输出空串） |
 | 提醒 | `reminder.sequence` / `reminder.overdue_sequence` / `reminder.window_start` / `reminder.window_end` | 提醒上下文（reminder 才有） |
 | 密钥 | `secret.<alias>` | 通过 `secret_refs` 声明别名引用 secret config |
 

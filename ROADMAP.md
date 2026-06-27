@@ -133,7 +133,7 @@ v0.3.0 把 Hook 从直接 URL 收敛到 workspace 级 outbound sink，补齐事�
 事件 payload 要求：
 
 - 所有 `task.*` 语义事件必须携带标准 task 快照，不只给 task UUID。
-- `task` 快照至少包含 `uuid`、`working_id`、`workspace_id`、`description`、`status`、`project`、`priority`、核心时间字段、`tags`、`assignees`、`depends`、`blocked`，可稳定计算时包含 `urgency`。
+- `task` 快照至少包含 `uuid`、`working_id`、`workspace_id`、`title`、可选 `description`、`status`、`project`、`priority`、核心时间字段、`tags`、`assignees`、`depends`、`blocked`，可稳定计算时包含 `urgency`。
 - 事件差异信息放在 `task` 之外，例如 `previous_due` / `current_due`、`added_tags` / `removed_tags`、`previous_assignees` / `current_assignees`。
 - 用户字段继续使用 `task.UserInfo`，不输出裸 UUID。
 
@@ -480,7 +480,7 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
   - 支持 `+next`、due/overdue、priority、age、tag、project 等 M1 可计算项。
   - 提供 explain 结构，为后续 MCP `urgency.explain` 复用。
 - `internal/dom` 第一版：
-  - `_get 1.description`
+  - `_get 1.title`
   - `_get 1.uuid`
   - `_get 1.entry`
   - `_get 1.modified`

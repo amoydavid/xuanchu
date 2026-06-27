@@ -52,7 +52,7 @@ notification_sink_add({
     {"alias": "feishu_bot_token", "config_key": "integrations.feishu.bot_token"}
   ],
   "body_content_type": "application/json",
-  "body_template": "{\"msg_type\":\"text\",\"content\":{\"text\":\"任务 {{task.task_slug}} 即将到期：{{task.description}}\"}}",
+  "body_template": "{\"msg_type\":\"text\",\"content\":{\"text\":\"任务 {{task.task_slug}} 即将到期：{{task.title}}\"}}",
   "max_concurrency": 0
 })
 ```

@@ -23,7 +23,8 @@ export type ProjectReadonlyAssignee = {
 export type ProjectReadonlyTask = {
   uuid: string
   task_slug?: string
-  description: string
+  title: string
+  description?: string
   status: string
   project?: string
   project_id?: string
@@ -51,10 +52,10 @@ export type ProjectReadonlyTask = {
 }
 
 // ProjectReadonlyTaskRef 是任务的轻量引用，对齐后端 JSONTaskRef，
-// 用于 depends_info/parent_info：把裸 UUID 展开为描述 + 稳定短标识。
+// 用于 depends_info/parent_info：把裸 UUID 展开为标题 + 稳定短标识。
 export type ProjectReadonlyTaskRef = {
   uuid: string
-  description: string
+  title: string
   task_slug?: string
 }
 
@@ -73,6 +74,7 @@ export type ProjectReadonlyTaskLink = {
 export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
   "uuid",
   "task_slug",
+  "title",
   "description",
   "status",
   "project",

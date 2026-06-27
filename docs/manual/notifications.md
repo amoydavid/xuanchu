@@ -89,7 +89,7 @@ xuanchu notification sink add feishu-bot \
   --header 'Authorization=Bearer {{secret.feishu_bot_token}}' \
   --secret-ref feishu_bot_token=integrations.feishu.bot_token \
   --body-content-type application/json \
-  --body-template '{"msg_type":"text","content":{"text":"任务 {{task.task_slug}} 即将到期：{{task.description}}"}}'
+  --body-template '{"msg_type":"text","content":{"text":"任务 {{task.task_slug}} 即将到期：{{task.title}}"}}'
 ```
 
 模板里的 header/body 会保存在 `notification_sinks` 表中。secret 不直接写进模板，使用 `--secret-ref alias=config.key` 引用 secret config。

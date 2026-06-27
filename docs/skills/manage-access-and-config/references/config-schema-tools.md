@@ -33,6 +33,7 @@ config_schema_get({"workspace": "dajee", "key": "integrations.openclaw.notificat
 `value_type` 支持 `string`、`number`、`boolean`、`json`。
 `allowed_scopes` 可包含 `workspace`、`project`。
 需要枚举约束时用 `enum_values`，**不要把 `value_type` 写成 `enum`**。
+`description` 是给使用者看的字段说明，默认按 Markdown 编写；技术上仍作为普通字符串传输和存储。
 
 ```json
 // 飞书群机器人 webhook（project 级，与本 skill 群绑定场景呼应）
@@ -41,7 +42,8 @@ config_schema_set({
   "key": "integrations.feishu.webhook_url",
   "value_type": "string",
   "allowed_scopes": ["project"],
-  "label": "飞书群机器人 webhook 地址"
+  "label": "飞书群机器人 webhook 地址",
+  "description": "项目群机器人地址。\n\n- 每个项目单独配置\n- 只允许飞书开放平台域名"
 })
 
 // secret 配置（bot_token）

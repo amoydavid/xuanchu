@@ -15,7 +15,8 @@ type TaskAddInput struct {
 	Workspace   string   `json:"workspace,omitempty" jsonschema:"workspace slug or UUID"`
 	Project     string   `json:"project,omitempty" jsonschema:"project slug in the effective workspace"`
 	ProjectID   string   `json:"project_id,omitempty" jsonschema:"stable project UUID"`
-	Description string   `json:"description" jsonschema:"task description"`
+	Title       string   `json:"title" jsonschema:"task title"`
+	Description *string  `json:"description,omitempty" jsonschema:"task details"`
 	Tags        []string `json:"tags,omitempty" jsonschema:"task tags to add"`
 	Assignees   []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
 	Priority    string   `json:"priority,omitempty"`
@@ -62,6 +63,7 @@ type TaskModifyInput struct {
 	Project         string            `json:"project,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
 	ID              string            `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	Title           *string           `json:"title,omitempty"`
 	Description     *string           `json:"description,omitempty"`
 	Priority        *string           `json:"priority,omitempty"`
 	Due             *int64            `json:"due,omitempty"`
@@ -201,7 +203,8 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		}
 		priority := stringPtrFromValue(in.Priority)
 		created, err := svc.AddWithAnnotations(app.AddInput{
-			Description: strings.TrimSpace(in.Description),
+			Title:       strings.TrimSpace(in.Title),
+			Description: in.Description,
 			Project:     project,
 			Priority:    priority,
 			Due:         in.Due,
@@ -400,6 +403,7 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 		return businessErrorWithEnvelope(err)
 	}
 	mod := app.ModifyInput{
+		Title:           in.Title,
 		Description:     in.Description,
 		Project:         project,
 		Priority:        in.Priority,
@@ -538,6 +542,8 @@ func applyClearFields(fields []string, mod *app.ModifyInput) error {
 			mod.ClearProject = true
 		case "priority":
 			mod.ClearPriority = true
+		case "description":
+			mod.ClearDescription = true
 		case "due":
 			mod.ClearDue = true
 		case "wait":

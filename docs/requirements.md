@@ -107,7 +107,8 @@ M6 已实现的 capability：
 |---|---|---|
 | `uuid` | UUID v4 | 永久唯一 ID `[7]` |
 | `id` | int (派生) | working set 中的行号，可与 UUID 互换使用 `[7]` |
-| `description` | string | 必填；UTF-8；不允许换行 `[15]` |
+| `title` | string | 必填；UTF-8；不允许换行 |
+| `description` | string? | 可选详细描述；允许为空 |
 | `status` | enum | `pending`(P) / `completed`(C) / `deleted`(D) / `recurring`(R) / `waiting`(W) `[4][15]` |
 | `entry` | timestamp | 创建时间 |
 | `modified` | timestamp | 最近修改 |
@@ -301,7 +302,7 @@ task 12 done /typo/fix typo/ +reviewed
 
 Taskwarrior 提供一套类似浏览器 DOM 的引用语法 `[8]`，例如：
 
-- `task _get 12.description` · `task _get 12.entry 12.modified`（多字段）
+- `task _get 12.title` · `task _get 12.entry 12.modified`（多字段）
 - `<date>.weekday`（0=Sun~6=Sat）· `<date>.julian`（年内日序）`[8]`
 - 虚拟标签：`task _get 1.tag.DUE` 在虚拟标签满足时输出 `DUE`，否则空且非零退出码 `[8]`
 
@@ -408,7 +409,7 @@ M5 起，project 配置只通过 `project config get/set/unset/list <project>` �
 
 | Tool | 描述 | 关键参数 |
 |---|---|---|
-| `task.add` | 添加任务 | `workspace_id, description, project?, tags?, due?, ...` |
+| `task.add` | 添加任务 | `workspace_id, title, description?, project?, tags?, due?, ...` |
 | `task.modify` | 修改 | `filter \| uuid`, modifications |
 | `task.done` | 完成 | `uuid \| id` |
 | `task.delete` | 删除 | 同上 |
@@ -565,7 +566,8 @@ CREATE TABLE tasks (
   uuid          TEXT PRIMARY KEY,
   workspace_id  TEXT NOT NULL REFERENCES workspaces(id),
   project_id    TEXT,
-  description   TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  description   TEXT,
   status        TEXT NOT NULL,            -- pending/completed/deleted/waiting/recurring
   entry         INTEGER NOT NULL,
   modified      INTEGER NOT NULL,
@@ -732,10 +734,11 @@ CREATE INDEX idx_audit_project_time ON audit_logs(workspace_id, project_id, crea
 // task.add
 {
   "type": "object",
-  "required": ["workspace_id", "description"],
+  "required": ["workspace_id", "title"],
   "properties": {
     "workspace_id": {"type": "string", "format": "uuid"},
-    "description":  {"type": "string", "minLength": 1},
+    "title":        {"type": "string", "minLength": 1},
+    "description":  {"type": "string"},
     "project":      {"type": "string", "description": "当前 workspace 内的企业项目 slug；不同 workspace 可以重复"},
     "project_id":   {"type": "string", "format": "uuid", "description": "M5 后优先使用的稳定 project 身份"},
     "tags":         {"type": "array", "items": {"type": "string"}},

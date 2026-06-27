@@ -96,11 +96,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				return err
 			}
 			shutdown := runtimeutil.NewShutdownCoordinator()
-			dbTarget := cfg.DatabaseURL
-			if dbTarget == "" {
-				dbTarget = cfg.DatabasePath
-			}
-			store, err := storage.Open(dbTarget)
+			store, err := storage.Open(cfg.DatabaseTarget())
 			if err != nil {
 				return err
 			}

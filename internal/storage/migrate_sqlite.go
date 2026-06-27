@@ -543,12 +543,12 @@ func isValidM5ProjectSlug(slug string) bool {
 
 func copyM4TasksToM5(tx m5MigrationTx) error {
 	return tx.exec(`INSERT INTO tasks (
-  uuid, workspace_id, description, status, entry, modified,
+  uuid, workspace_id, title, description, status, entry, modified,
   end_ts, due, project, priority, start, wait, scheduled, until,
   recur, parent, mask, i_mask, project_id
 )
 SELECT
-  t.uuid, t.workspace_id, t.description, t.status, t.entry, t.modified,
+  t.uuid, t.workspace_id, t.title, t.description, t.status, t.entry, t.modified,
   t.end_ts, t.due,
   CASE
     WHEN p.id IS NOT NULL THEN p.slug

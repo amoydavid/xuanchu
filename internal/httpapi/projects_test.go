@@ -26,13 +26,13 @@ func TestHandleProjectListReturnsStatusBreakdown(t *testing.T) {
 		t.Fatalf("AddProject() error = %v", err)
 	}
 	projectRef := created.Slug
-	if _, err := svc.Add(app.AddInput{Description: "p1", Project: &projectRef}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "p1", Project: &projectRef}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Add(app.AddInput{Description: "p2", Project: &projectRef}); err != nil {
+	if _, err := svc.Add(app.AddInput{Title: "p2", Project: &projectRef}); err != nil {
 		t.Fatal(err)
 	}
-	done, err := svc.Add(app.AddInput{Description: "done", Project: &projectRef})
+	done, err := svc.Add(app.AddInput{Title: "done", Project: &projectRef})
 	if err != nil {
 		t.Fatal(err)
 	}
