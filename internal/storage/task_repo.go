@@ -348,6 +348,23 @@ func (r *TaskRepository) DeleteAnnotation(workspaceID, taskUUID, annotationID st
 	})
 }
 
+func (r *TaskRepository) UpdateAnnotation(workspaceID, taskUUID, annotationID, description string, modified int64) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&TaskAnnotation{}).
+			Where("id = ? AND task_uuid = ? AND EXISTS (SELECT 1 FROM tasks WHERE tasks.uuid = task_annotations.task_uuid AND tasks.workspace_id = ?)", annotationID, taskUUID, workspaceID).
+			Update("description", description)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		return tx.Model(&Task{}).
+			Where("workspace_id = ? AND uuid = ?", workspaceID, taskUUID).
+			Update("modified", modified).Error
+	})
+}
+
 var ErrNotFound = errors.New("task not found")
 
 // ListAnnotations 按 entry 倒序分页返回某任务的注解，total 为该任务注解总数。

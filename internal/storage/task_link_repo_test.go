@@ -140,6 +140,41 @@ func TestTaskLinkRepoGetByIDNotFound(t *testing.T) {
 	}
 }
 
+func TestTaskLinkRepoUpdate(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ws, _ := store.LocalWorkspace()
+	taskRepo := NewTaskRepository(store.DB())
+	linkRepo := NewTaskLinkRepository(store.DB())
+
+	taskUUID := uuid.NewString()
+	_, err = taskRepo.Create(mkDomainTask(taskUUID, ws.ID, "test task"))
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	created, err := linkRepo.Create(TaskLink{
+		ID: uuid.NewString(), TaskUUID: taskUUID, Type: "document",
+		URL: "https://example.com/old", Title: "Old", CreatedAt: 1700000000, CreatedBy: "u1",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	created.Type = "spec"
+	created.URL = "https://example.com/spec"
+	created.Title = "Spec"
+	updated, err := linkRepo.Update(created)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Type != "spec" || updated.URL != "https://example.com/spec" || updated.Title != "Spec" {
+		t.Fatalf("updated = %#v", updated)
+	}
+}
+
 func TestTaskLinkRepoDelete(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {

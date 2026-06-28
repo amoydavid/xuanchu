@@ -44,9 +44,9 @@ describe("ProjectFilterToolbar", () => {
       />
     )
 
-    expect(screen.getByPlaceholderText<HTMLInputElement>("Assignee").value).toBe(
-      "alice"
-    )
+    expect(
+      screen.getByPlaceholderText<HTMLInputElement>("Assignee").value
+    ).toBe("alice")
 
     rerender(
       <ProjectFilterToolbar
@@ -55,6 +55,28 @@ describe("ProjectFilterToolbar", () => {
       />
     )
 
-    expect(screen.getByPlaceholderText<HTMLInputElement>("Assignee").value).toBe("")
+    expect(
+      screen.getByPlaceholderText<HTMLInputElement>("Assignee").value
+    ).toBe("")
+  })
+
+  it("uses shadcn buttons for active filter chips", () => {
+    render(
+      <ProjectFilterToolbar
+        filter={{ q: "needle", status: "pending" }}
+        toParams={{ projectSlug: "agentapi", workspaceSlug: "acme" }}
+      />
+    )
+
+    expect(
+      screen
+        .getByRole("button", { name: "status=pending" })
+        .getAttribute("data-slot")
+    ).toBe("button")
+    expect(
+      screen
+        .getByRole("button", { name: "Clear all" })
+        .getAttribute("data-slot")
+    ).toBe("button")
   })
 })

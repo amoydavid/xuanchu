@@ -181,6 +181,7 @@ function TaskCard({
   workspaceSlug: string
 }) {
   const taskRef = taskReference(task)
+  const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   return (
     <article className="border bg-card p-3">
       <div className="flex items-center justify-between gap-2 text-xs">
@@ -189,10 +190,44 @@ function TaskCard({
         </TaskLink>
         <Badge variant="outline">{task.status}</Badge>
       </div>
-      <div className="mt-2 line-clamp-2 text-sm">{task.title}</div>
-      <div className="mt-2 text-xs text-muted-foreground">
-        {task.priority || "-"} · {assigneeNames(task)} ·{" "}
-        {formatUnixDate(unixLikeToNumber(task.due))}
+      <div className="mt-2">
+        <InlineTextEditor
+          ariaLabel={`编辑移动任务标题 ${taskRef}`}
+          disabled={!canWrite}
+          displayClassName="max-w-full text-sm font-medium"
+          onSave={async (title) => {
+            await modify.mutateAsync({ title })
+          }}
+          value={task.title}
+          validate={(title) => (title.trim() ? null : "标题不能为空")}
+        />
+      </div>
+      <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+        <InlineSelectEditor
+          ariaLabel={`移动任务优先级 ${taskRef}`}
+          className="h-7 w-full"
+          disabled={!canWrite}
+          onSave={async (priority) => {
+            await modify.mutateAsync(
+              priority === "none" ? { clear_priority: true } : { priority }
+            )
+          }}
+          options={priorityOptions}
+          placeholder="-"
+          value={task.priority ?? "none"}
+        />
+        <InlineDateEditor
+          ariaLabel={`移动任务截止日期 ${taskRef}`}
+          className="h-7 w-full"
+          disabled={!canWrite}
+          onSave={async (due) => {
+            await modify.mutateAsync(due === null ? { clear_due: true } : { due })
+          }}
+          value={unixLikeToNumber(task.due)}
+        />
+      </div>
+      <div className="mt-2 truncate text-xs text-muted-foreground">
+        {assigneeNames(task)}
       </div>
       <div className="mt-3">
         <TaskRowActions
@@ -204,11 +239,6 @@ function TaskCard({
           workspaceSlug={workspaceSlug}
         />
       </div>
-      {!canWrite ? null : (
-        <div className="mt-2 text-xs text-muted-foreground">
-          更多编辑请打开详情页
-        </div>
-      )}
     </article>
   )
 }
@@ -251,13 +281,6 @@ function assigneeNames(task: ProjectWorkbenchTask): string {
     .map((assignee) => assignee.name || assignee.email || assignee.user_id || assignee.id)
     .filter(Boolean)
     .join(", ")
-}
-
-function formatUnixDate(value?: number | null): string {
-  if (typeof value !== "number") {
-    return "-"
-  }
-  return new Date(value * 1000).toISOString().slice(0, 10)
 }
 
 function unixLikeToNumber(value: string | number | null | undefined) {

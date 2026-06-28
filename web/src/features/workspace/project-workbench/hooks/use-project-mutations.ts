@@ -9,9 +9,11 @@ import {
   type ProjectStatus,
 } from "../api/project-api"
 import { projectQueryKeys } from "./use-project-data"
+import { useEditFeedback } from "../shared/edit-feedback"
 
 export function useCreateProjectMutation(workspaceSlug: string) {
   const queryClient = useQueryClient()
+  const feedback = useEditFeedback()
   return useMutation({
     mutationFn: (input: ProjectCreateInput) =>
       createProject(workspaceSlug, input),
@@ -19,6 +21,7 @@ export function useCreateProjectMutation(workspaceSlug: string) {
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectsPrefix(workspaceSlug),
       })
+      feedback.success("已创建：项目")
     },
   })
 }
@@ -28,6 +31,7 @@ export function useModifyProjectMutation(
   projectSlug: string
 ) {
   const queryClient = useQueryClient()
+  const feedback = useEditFeedback()
   return useMutation({
     mutationFn: (input: ProjectModifyInput) =>
       modifyProject(workspaceSlug, projectSlug, input),
@@ -38,6 +42,7 @@ export function useModifyProjectMutation(
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectsPrefix(workspaceSlug),
       })
+      feedback.success("已保存：项目")
     },
   })
 }
@@ -47,6 +52,7 @@ export function useTransitionProjectMutation(
   projectSlug: string
 ) {
   const queryClient = useQueryClient()
+  const feedback = useEditFeedback()
   return useMutation({
     mutationFn: (status: ProjectStatus | string) =>
       transitionProject(workspaceSlug, projectSlug, status),
@@ -66,6 +72,7 @@ export function useTransitionProjectMutation(
           projectSlug
         ),
       })
+      feedback.success("已更新：项目状态")
     },
   })
 }

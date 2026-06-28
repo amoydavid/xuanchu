@@ -1,7 +1,9 @@
 import { useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
+import { XIcon } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -51,7 +53,9 @@ export function ProjectFilterToolbar({
       to,
       params: toParams,
       search: (prev) => {
-        const next: Record<string, string> = { ...(prev as Record<string, string>) }
+        const next: Record<string, string> = {
+          ...(prev as Record<string, string>),
+        }
         if (value) {
           next[key] = value
         } else {
@@ -96,7 +100,9 @@ export function ProjectFilterToolbar({
             <SelectValue placeholder={t("projectReadonly.priority")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all">{t("projectReadonly.priority")}</SelectItem>
+            <SelectItem value="__all">
+              {t("projectReadonly.priority")}
+            </SelectItem>
             {PRIORITY_OPTIONS.map((p) => (
               <SelectItem key={p} value={p}>
                 {p}
@@ -125,22 +131,29 @@ export function ProjectFilterToolbar({
       {!emptyFilter(filter) ? (
         <div className="flex flex-wrap items-center gap-2">
           {active.map(([key, value]) => (
-            <button
-              className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+            <Button
+              className="rounded-full bg-primary/10 px-2 py-0.5 text-primary hover:bg-primary/15 hover:text-primary"
               key={key}
               onClick={() => setFilter(key, "")}
+              size="xs"
               type="button"
+              variant="ghost"
             >
-              {FILTER_LABELS[key]}={value} ✕
-            </button>
+              <span>
+                {FILTER_LABELS[key]}={value}
+              </span>
+              <XIcon className="size-3" />
+            </Button>
           ))}
-          <button
-            className="text-xs text-muted-foreground underline"
+          <Button
+            className="text-muted-foreground"
             onClick={clearAll}
+            size="xs"
             type="button"
+            variant="ghost"
           >
             {t("common.clear")}
-          </button>
+          </Button>
         </div>
       ) : null}
     </section>

@@ -25,6 +25,11 @@ describe("ScopeEditor", () => {
     renderEditor({ value: [], onChange: () => {} })
     // 每组都有「全选」按钮，10 组
     expect(screen.getAllByText("全选").length).toBe(10)
+    expect(
+      screen
+        .getAllByRole("button", { name: "全选" })[0]
+        .getAttribute("data-slot")
+    ).toBe("button")
   })
 
   it("hides impersonate when canImpersonate is false", () => {
@@ -59,7 +64,8 @@ describe("ScopeEditor", () => {
     // user:read 不在任何已知分组，应显示在「未识别」区
     expect(screen.getByText("user:read")).toBeTruthy()
     // 点击移除按钮（✕）
-    const removeBtn = screen.getByTitle("移除")
+    const removeBtn = screen.getByRole("button", { name: "移除" })
+    expect(removeBtn.getAttribute("data-slot")).toBe("button")
     fireEvent.click(removeBtn)
     // 应移除 user:read，保留 task:read
     expect(onChange).toHaveBeenCalledWith(["task:read"])

@@ -1014,6 +1014,49 @@ func (s *Service) Denotate(target string, annotationID string) error {
 	})
 }
 
+func (s *Service) UpdateAnnotation(target, annotationID, description string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		updatedTask, change, err := tx.updateAnnotationLocked(target, annotationID, description)
+		if err != nil {
+			return nil, nil, err
+		}
+		event := buildTaskHookEvent("task.modified", updatedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.annotation.update", updatedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
+	})
+}
+
+func (s *Service) updateAnnotationLocked(target, annotationID, description string) (task.Task, projectChange, error) {
+	annotationID = strings.TrimSpace(annotationID)
+	if annotationID == "" {
+		return task.Task{}, projectChange{}, fmt.Errorf("annotation id is required")
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return task.Task{}, projectChange{}, fmt.Errorf("annotation description is required")
+	}
+	tsk, err := s.resolveTargetForWrite(target)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	change := projectChangeForTask(tsk)
+	modified := s.clock.Unix()
+	if err := s.repo.UpdateAnnotation(s.workspaceID, tsk.UUID, annotationID, description, modified); err != nil {
+		if err == storage.ErrNotFound {
+			return task.Task{}, projectChange{}, fmt.Errorf("annotation %s not found", annotationID)
+		}
+		return task.Task{}, projectChange{}, err
+	}
+	updated, err := s.repo.GetByUUID(s.workspaceID, tsk.UUID)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	return updated, change, nil
+}
+
 func (s *Service) denotateLocked(target string, annotationID string) (task.Task, projectChange, error) {
 	annotationID = strings.TrimSpace(annotationID)
 	if annotationID == "" {

@@ -498,6 +498,35 @@ func TestTaskLinkRemoveAndVerify(t *testing.T) {
 	}
 }
 
+func TestTaskLinkUpdate(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Title: "link update"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkInfo, err := svc.TaskAddLink(created.UUID, "document", "https://example.com/old", "Old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	body := `{"type":"spec","url":"https://example.com/spec","title":"Spec"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tasks/"+created.UUID+"/links/"+linkInfo.ID, body, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update link status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"spec"`) || !strings.Contains(rr.Body.String(), `"title":"Spec"`) {
+		t.Fatalf("update link body = %s", rr.Body.String())
+	}
+}
+
 func TestTaskLinkRemoveNotFound(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
@@ -751,6 +780,41 @@ func TestHandleTaskAnnotationListPagination(t *testing.T) {
 	}
 	if page.Data.Total != 5 || len(page.Data.Annotations) != 1 {
 		t.Fatalf("page3 = %+v", page.Data)
+	}
+}
+
+func TestHandleTaskAnnotationUpdate(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Title: "annotation update"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Annotate(created.UUID, "old note"); err != nil {
+		t.Fatal(err)
+	}
+	annotated, err := svc.Info(created.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotated.Annotations) != 1 || annotated.Annotations[0].ID == "" {
+		t.Fatalf("annotations = %#v, want one annotation with id", annotated.Annotations)
+	}
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	body := `{"description":"updated note"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tasks/"+created.UUID+"/annotations/"+annotated.Annotations[0].ID, body, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update annotation status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "updated note") || strings.Contains(rr.Body.String(), "old note") {
+		t.Fatalf("update annotation body = %s", rr.Body.String())
 	}
 }
 

@@ -217,6 +217,18 @@ export function deleteTaskAnnotation(
   )
 }
 
+export function updateTaskAnnotation(
+  workspaceSlug: string,
+  taskRef: string,
+  annotationID: string,
+  input: TaskAnnotationInput
+): Promise<ProjectTask> {
+  return workspaceApiPatch<ProjectTask>(
+    taskAnnotationItemPath(workspaceSlug, taskRef, annotationID),
+    input
+  )
+}
+
 export function getTaskLinks(
   workspaceSlug: string,
   taskRef: string
@@ -244,5 +256,17 @@ export function deleteTaskLink(
 ): Promise<ProjectTask> {
   return workspaceApiDelete<ProjectTask>(
     taskLinkItemPath(workspaceSlug, taskRef, linkID)
+  )
+}
+
+export function updateTaskLink(
+  workspaceSlug: string,
+  taskRef: string,
+  linkID: string,
+  input: TaskLinkInput
+): Promise<ProjectWorkbenchTaskLink> {
+  return workspaceApiPatch<ProjectWorkbenchTaskLink>(
+    taskLinkItemPath(workspaceSlug, taskRef, linkID),
+    input
   )
 }

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api"
+import { navigateToDocument } from "@/lib/browser-navigation"
 import {
   getProjectReadonlyProject,
   getProjectReadonlyTasks,
@@ -172,7 +173,7 @@ function ProjectState({
       {detail ? <code className="mt-4 block text-xs">{detail}</code> : null}
       <Button
         className="mt-5"
-        onClick={onAction ?? (() => (window.location.href = "/"))}
+        onClick={onAction ?? (() => navigateToDocument("/"))}
         variant="outline"
       >
         {actionLabel}

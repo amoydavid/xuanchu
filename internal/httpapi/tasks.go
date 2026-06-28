@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -35,33 +35,33 @@ type addTaskRequest struct {
 }
 
 type modifyTaskRequest struct {
-	Title           *string           `json:"title,omitempty"`
-	Description     *string           `json:"description,omitempty"`
+	Title            *string           `json:"title,omitempty"`
+	Description      *string           `json:"description,omitempty"`
 	ClearDescription bool              `json:"clear_description,omitempty"`
-	Project         *string           `json:"project,omitempty"`
-	ProjectID       *string           `json:"project_id,omitempty"`
-	Priority        *string           `json:"priority,omitempty"`
-	ClearProject    bool              `json:"clear_project,omitempty"`
-	ClearPriority   bool              `json:"clear_priority,omitempty"`
-	Due             *int64            `json:"due,omitempty"`
-	ClearDue        bool              `json:"clear_due,omitempty"`
-	Wait            *int64            `json:"wait,omitempty"`
-	ClearWait       bool              `json:"clear_wait,omitempty"`
-	Scheduled       *int64            `json:"scheduled,omitempty"`
-	ClearScheduled  bool              `json:"clear_scheduled,omitempty"`
-	Until           *int64            `json:"until,omitempty"`
-	ClearUntil      bool              `json:"clear_until,omitempty"`
-	Assignees       []string          `json:"assignees,omitempty"`
-	RemoveAssignees []string          `json:"remove_assignees,omitempty"`
-	ClearAssignees  bool              `json:"clear_assignees,omitempty"`
-	Depends         []string          `json:"depends,omitempty"`
-	ClearDepends    bool              `json:"clear_depends,omitempty"`
-	Recur           *string           `json:"recur,omitempty"`
-	ClearRecur      bool              `json:"clear_recur,omitempty"`
-	Tags            []string          `json:"tags,omitempty"`
-	RemoveTags      []string          `json:"remove_tags,omitempty"`
-	UDAs            map[string]string `json:"udas,omitempty"`
-	ClearUDAs       []string          `json:"clear_udas,omitempty"`
+	Project          *string           `json:"project,omitempty"`
+	ProjectID        *string           `json:"project_id,omitempty"`
+	Priority         *string           `json:"priority,omitempty"`
+	ClearProject     bool              `json:"clear_project,omitempty"`
+	ClearPriority    bool              `json:"clear_priority,omitempty"`
+	Due              *int64            `json:"due,omitempty"`
+	ClearDue         bool              `json:"clear_due,omitempty"`
+	Wait             *int64            `json:"wait,omitempty"`
+	ClearWait        bool              `json:"clear_wait,omitempty"`
+	Scheduled        *int64            `json:"scheduled,omitempty"`
+	ClearScheduled   bool              `json:"clear_scheduled,omitempty"`
+	Until            *int64            `json:"until,omitempty"`
+	ClearUntil       bool              `json:"clear_until,omitempty"`
+	Assignees        []string          `json:"assignees,omitempty"`
+	RemoveAssignees  []string          `json:"remove_assignees,omitempty"`
+	ClearAssignees   bool              `json:"clear_assignees,omitempty"`
+	Depends          []string          `json:"depends,omitempty"`
+	ClearDepends     bool              `json:"clear_depends,omitempty"`
+	Recur            *string           `json:"recur,omitempty"`
+	ClearRecur       bool              `json:"clear_recur,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	RemoveTags       []string          `json:"remove_tags,omitempty"`
+	UDAs             map[string]string `json:"udas,omitempty"`
+	ClearUDAs        []string          `json:"clear_udas,omitempty"`
 }
 
 type textRequest struct {
@@ -396,32 +396,32 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		project = &view.Slug
 	}
 	if err := scoped.Modify(resolved.UUID, app.ModifyInput{
-		Title:           req.Title,
-		Description:     req.Description,
+		Title:            req.Title,
+		Description:      req.Description,
 		ClearDescription: req.ClearDescription,
-		Project:         project,
-		ClearProject:    req.ClearProject,
-		Priority:        req.Priority,
-		ClearPriority:   req.ClearPriority,
-		Due:             req.Due,
-		ClearDue:        req.ClearDue,
-		Wait:            req.Wait,
-		ClearWait:       req.ClearWait,
-		Scheduled:       req.Scheduled,
-		ClearScheduled:  req.ClearScheduled,
-		Until:           req.Until,
-		ClearUntil:      req.ClearUntil,
-		AddAssignees:    req.Assignees,
-		RemoveAssignees: req.RemoveAssignees,
-		ClearAssignees:  req.ClearAssignees,
-		AddDepends:      req.Depends,
-		ClearDepends:    req.ClearDepends,
-		Recur:           req.Recur,
-		ClearRecur:      req.ClearRecur,
-		AddTags:         req.Tags,
-		RemoveTags:      req.RemoveTags,
-		UDAs:            req.UDAs,
-		ClearUDAs:       req.ClearUDAs,
+		Project:          project,
+		ClearProject:     req.ClearProject,
+		Priority:         req.Priority,
+		ClearPriority:    req.ClearPriority,
+		Due:              req.Due,
+		ClearDue:         req.ClearDue,
+		Wait:             req.Wait,
+		ClearWait:        req.ClearWait,
+		Scheduled:        req.Scheduled,
+		ClearScheduled:   req.ClearScheduled,
+		Until:            req.Until,
+		ClearUntil:       req.ClearUntil,
+		AddAssignees:     req.Assignees,
+		RemoveAssignees:  req.RemoveAssignees,
+		ClearAssignees:   req.ClearAssignees,
+		AddDepends:       req.Depends,
+		ClearDepends:     req.ClearDepends,
+		Recur:            req.Recur,
+		ClearRecur:       req.ClearRecur,
+		AddTags:          req.Tags,
+		RemoveTags:       req.RemoveTags,
+		UDAs:             req.UDAs,
+		ClearUDAs:        req.ClearUDAs,
 	}); err != nil {
 		writeAppError(w, err)
 		return
@@ -465,6 +465,26 @@ func (s *Server) handleTaskDenotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.handleTaskAction(w, r, func(svc *app.Service, id string) error { return svc.Denotate(id, annotationID) })
+}
+
+func (s *Server) handleTaskAnnotationUpdate(w http.ResponseWriter, r *http.Request) {
+	var req textRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	annotationID := strings.TrimSpace(chi.URLParam(r, "annotationID"))
+	if annotationID == "" {
+		writeError(w, http.StatusBadRequest, "annotation_id_required", "annotation id is required", nil)
+		return
+	}
+	text := req.Description
+	if text == "" {
+		text = req.Text
+	}
+	s.handleTaskAction(w, r, func(svc *app.Service, id string) error {
+		return svc.UpdateAnnotation(id, annotationID, text)
+	})
 }
 
 // handleTaskAnnotationList 处理 GET /api/v1/tasks/{taskRef}/annotations，
@@ -602,6 +622,39 @@ func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeTaskAfterMutation(w, scoped, resolved.UUID)
+}
+
+func (s *Server) handleTaskLinkUpdate(w http.ResponseWriter, r *http.Request) {
+	var req addLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	taskRef, ok := requireTaskRef(w, r)
+	if !ok {
+		return
+	}
+	linkID := strings.TrimSpace(chi.URLParam(r, "linkID"))
+	if linkID == "" {
+		writeError(w, http.StatusBadRequest, "link_id_required", "link ID is required", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	link, err := scoped.TaskUpdateLink(resolved.UUID, linkID, req.Type, req.URL, req.Title)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, taskLinkToJSON(link), nil)
 }
 
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {

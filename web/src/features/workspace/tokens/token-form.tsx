@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
 
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -34,7 +36,10 @@ type TokenFormProps = {
   canImpersonate?: boolean
 }
 
-function defaultValues(mode: "create" | "edit", initial?: TokenRow): TokenFormValues {
+function defaultValues(
+  mode: "create" | "edit",
+  initial?: TokenRow
+): TokenFormValues {
   if (mode === "edit" && initial) {
     const { preset, customIso } = expiresSecondsToPreset(initial.expires_at)
     return {
@@ -156,11 +161,15 @@ export function TokenForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="never">{t("token.expiresPreset.never")}</SelectItem>
+            <SelectItem value="never">
+              {t("token.expiresPreset.never")}
+            </SelectItem>
             <SelectItem value="7d">{t("token.expiresPreset.7d")}</SelectItem>
             <SelectItem value="30d">{t("token.expiresPreset.30d")}</SelectItem>
             <SelectItem value="90d">{t("token.expiresPreset.90d")}</SelectItem>
-            <SelectItem value="custom">{t("token.expiresPreset.custom")}</SelectItem>
+            <SelectItem value="custom">
+              {t("token.expiresPreset.custom")}
+            </SelectItem>
           </SelectContent>
         </Select>
         {values.expiresPreset === "custom" ? (
@@ -186,13 +195,13 @@ export function TokenForm({
       ) : null}
 
       <div className="flex justify-end gap-2 pt-2">
-        <button
-          className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-          disabled={submitting}
-          type="submit"
-        >
-          {submitting ? "..." : mode === "create" ? t("token.create") : t("token.save")}
-        </button>
+        <Button disabled={submitting} size="sm" type="submit">
+          {submitting
+            ? "..."
+            : mode === "create"
+              ? t("token.create")
+              : t("token.save")}
+        </Button>
       </div>
     </form>
   )
@@ -211,9 +220,7 @@ function Field({
     <div className="space-y-2">
       <Label>{label}</Label>
       {children}
-      {hint ? (
-        <p className="text-xs text-muted-foreground">{hint}</p>
-      ) : null}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   )
 }
@@ -256,10 +263,10 @@ function WorkspacePicker({
             className="flex cursor-pointer items-center gap-1.5 text-sm"
             key={ws.id}
           >
-            <input
+            <Checkbox
+              aria-label={ws.name || ws.slug}
               checked={isSelected}
-              onChange={() => toggle(ws.slug)}
-              type="checkbox"
+              onCheckedChange={() => toggle(ws.slug)}
             />
             <span>{ws.name || ws.slug}</span>
           </label>
@@ -331,7 +338,10 @@ export function valuesToModifyInput(
   if (!initial || !sameSet(values.projects, initial.project_ids ?? [])) {
     input.projects = values.projects
   }
-  const newExpires = presetToExpiresSeconds(values.expiresPreset, values.expiresAt)
+  const newExpires = presetToExpiresSeconds(
+    values.expiresPreset,
+    values.expiresAt
+  )
   const oldExpires = initial?.expires_at ?? null
   // null = 永不过期；比较是否一致
   if ((newExpires ?? null) !== (oldExpires ?? null)) {

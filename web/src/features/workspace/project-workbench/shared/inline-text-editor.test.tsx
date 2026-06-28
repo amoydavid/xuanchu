@@ -4,6 +4,7 @@ import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import { InlineTextEditor } from "./inline-text-editor"
+import { EditFeedbackProvider } from "./edit-feedback"
 
 describe("InlineTextEditor", () => {
   it("saves edited value with Enter", async () => {
@@ -23,6 +24,9 @@ describe("InlineTextEditor", () => {
     }
     render(<ControlledEditor />)
 
+    expect(
+      screen.getByRole("button", { name: "标题" }).getAttribute("data-slot")
+    ).toBe("button")
     await userEvent.click(screen.getByText("旧标题"))
     await userEvent.clear(screen.getByLabelText("标题"))
     await userEvent.type(screen.getByLabelText("标题"), "新标题{Enter}")
@@ -33,17 +37,44 @@ describe("InlineTextEditor", () => {
     expect(screen.getByText("新标题")).toBeTruthy()
   })
 
+  it("trims saved values and skips unchanged blur saves", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<InlineTextEditor ariaLabel="标题" value="旧标题" onSave={onSave} />)
+
+    await userEvent.click(screen.getByText("旧标题"))
+    await userEvent.tab()
+    expect(onSave).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText("旧标题"))
+    await userEvent.clear(screen.getByLabelText("标题"))
+    await userEvent.type(screen.getByLabelText("标题"), "  新标题  {Enter}")
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1)
+    })
+    expect(onSave).toHaveBeenCalledWith("新标题")
+  })
+
   it("keeps editing state when save fails", async () => {
     const onSave = vi.fn().mockRejectedValue(new Error("scope denied"))
-    render(<InlineTextEditor ariaLabel="标题" value="旧标题" onSave={onSave} />)
+    render(
+      <EditFeedbackProvider>
+        <InlineTextEditor ariaLabel="标题" value="旧标题" onSave={onSave} />
+      </EditFeedbackProvider>
+    )
 
     await userEvent.click(screen.getByText("旧标题"))
     await userEvent.clear(screen.getByLabelText("标题"))
     await userEvent.type(screen.getByLabelText("标题"), "新标题{Enter}")
 
-    expect(await screen.findByText(/scope denied/)).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getAllByText(/scope denied/).length).toBeGreaterThan(0)
+    })
     expect((screen.getByLabelText("标题") as HTMLInputElement).value).toBe(
       "新标题"
+    )
+    expect(screen.getByRole("alert").textContent).toContain(
+      "标题：scope denied"
     )
   })
 

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
+import { navigateToDocument } from "@/lib/browser-navigation"
 import { ProjectActivity } from "@/features/workspace/project-readonly/project-activity"
 import { ProjectFilterToolbar } from "@/features/workspace/project-readonly/project-filter-toolbar"
 import {
@@ -23,10 +24,12 @@ import {
   useProjectTasksQuery,
   useProjectTimelineQuery,
 } from "../hooks/use-project-data"
+import { EditFeedbackProvider, useEditFeedback } from "../shared/edit-feedback"
 import { TaskQuickCreate } from "../tasks/task-quick-create"
 import { TaskTable } from "../tasks/task-table"
 import { ProjectClosedBanner } from "./project-closed-banner"
 import { ProjectHeaderEditor } from "./project-header-editor"
+import { isClosedProjectStatus } from "./project-status-menu"
 
 type ProjectWorkbenchPageProps = {
   projectSlug: string
@@ -37,7 +40,21 @@ export function ProjectWorkbenchPage({
   projectSlug,
   workspaceSlug,
 }: ProjectWorkbenchPageProps) {
-  const [copied, setCopied] = useState(false)
+  return (
+    <EditFeedbackProvider>
+      <ProjectWorkbenchPageContent
+        projectSlug={projectSlug}
+        workspaceSlug={workspaceSlug}
+      />
+    </EditFeedbackProvider>
+  )
+}
+
+function ProjectWorkbenchPageContent({
+  projectSlug,
+  workspaceSlug,
+}: ProjectWorkbenchPageProps) {
+  const feedback = useEditFeedback()
   const [now] = useState(() => Math.floor(Date.now() / 1000))
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
   const filter: TaskFilter = useMemo(
@@ -125,20 +142,20 @@ export function ProjectWorkbenchPage({
     )
   }
 
+  const canEditTasks =
+    canCreateTask && !isClosedProjectStatus(project.data.status)
+
   return (
     <div className="space-y-5">
       <ProjectHeaderEditor
         canManage={canManage}
         onCopyLink={() => {
           void navigator.clipboard?.writeText(window.location.href)
-          setCopied(true)
+          feedback.success("链接已复制")
         }}
         project={project.data}
         workspaceSlug={workspaceSlug}
       />
-      {copied ? (
-        <div className="text-xs text-muted-foreground">链接已复制</div>
-      ) : null}
       <ProjectClosedBanner canManage={canManage} status={project.data.status} />
       <ProjectStatsGrid stats={stats} />
       <ProjectFilterToolbar
@@ -153,7 +170,7 @@ export function ProjectWorkbenchPage({
         workspaceSlug={workspaceSlug}
       />
       <TaskTable
-        canWrite={canCreateTask}
+        canWrite={canEditTasks}
         projectSlug={projectSlug}
         tasks={taskRows}
         workspaceSlug={workspaceSlug}
@@ -237,7 +254,7 @@ function ProjectState({
       {detail ? <code className="mt-4 block text-xs">{detail}</code> : null}
       <Button
         className="mt-5"
-        onClick={onAction ?? (() => (window.location.href = "/"))}
+        onClick={onAction ?? (() => navigateToDocument("/"))}
         variant="outline"
       >
         {actionLabel}

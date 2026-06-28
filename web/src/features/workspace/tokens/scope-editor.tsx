@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next"
+import { X } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 
@@ -57,20 +59,19 @@ export function ScopeEditor({
               <Label className="text-xs text-muted-foreground">
                 {t(group.i18nKey)}
               </Label>
-              <button
-                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              <Button
+                className="text-muted-foreground"
                 onClick={() => toggleGroup(group, !allChecked)}
+                size="xs"
                 type="button"
+                variant="ghost"
               >
                 {allChecked ? t("token.clearAll") : t("token.selectAll")}
-              </button>
+              </Button>
             </div>
             <div className="flex flex-wrap gap-4 pl-1">
               {group.scopes.map((scope) => (
-                <label
-                  key={scope}
-                  className="flex items-center gap-2 text-sm"
-                >
+                <label key={scope} className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={valueSet.has(scope)}
                     onCheckedChange={(checked) =>
@@ -112,14 +113,17 @@ export function ScopeEditor({
                 key={scope}
               >
                 <code>{scope}</code>
-                <button
+                <Button
+                  aria-label={t("token.removeScope")}
                   className="text-muted-foreground hover:text-destructive"
                   onClick={() => toggle(scope, false)}
+                  size="icon-xs"
                   title={t("token.removeScope")}
                   type="button"
+                  variant="ghost"
                 >
-                  ✕
-                </button>
+                  <X className="size-3" />
+                </Button>
               </span>
             ))}
           </div>

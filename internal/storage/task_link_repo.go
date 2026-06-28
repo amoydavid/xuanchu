@@ -33,6 +33,23 @@ func (r *TaskLinkRepository) GetByID(id string) (TaskLink, error) {
 	return link, nil
 }
 
+func (r *TaskLinkRepository) Update(link TaskLink) (TaskLink, error) {
+	result := r.db.Model(&TaskLink{}).
+		Where("id = ?", link.ID).
+		Updates(map[string]any{
+			"type":  link.Type,
+			"url":   link.URL,
+			"title": link.Title,
+		})
+	if result.Error != nil {
+		return TaskLink{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return TaskLink{}, ErrNotFound
+	}
+	return r.GetByID(link.ID)
+}
+
 func (r *TaskLinkRepository) ListByTaskUUID(taskUUID string) ([]TaskLink, error) {
 	var links []TaskLink
 	if err := r.db.Where("task_uuid = ?", taskUUID).Order("created_at ASC").Find(&links).Error; err != nil {

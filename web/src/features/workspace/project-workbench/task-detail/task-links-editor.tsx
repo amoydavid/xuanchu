@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { PlusIcon, Trash2Icon } from "lucide-react"
+import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import type { ProjectWorkbenchTaskLink } from "../api/project-api"
 import { useTaskLinkMutations } from "../hooks/use-task-mutations"
 import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
+import { useEditFeedback } from "../shared/edit-feedback"
 
 type TaskLinksEditorProps = {
   canWrite: boolean
@@ -30,15 +31,18 @@ export function TaskLinksEditor({
   taskRef,
   workspaceSlug,
 }: TaskLinksEditorProps) {
+  const feedback = useEditFeedback()
   const [open, setOpen] = useState(false)
   const [type, setType] = useState("")
   const [url, setURL] = useState("")
   const [title, setTitle] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [editingLink, setEditingLink] =
+    useState<ProjectWorkbenchTaskLink | null>(null)
   const [deleteID, setDeleteID] = useState<string | null>(null)
   const mutations = useTaskLinkMutations(workspaceSlug, projectSlug, taskRef)
 
-  const add = async () => {
+  const save = async () => {
     const normalizedType = type.trim()
     const normalizedURL = url.trim()
     const normalizedTitle = title.trim()
@@ -52,17 +56,22 @@ export function TaskLinksEditor({
     }
     setError(null)
     try {
-      await mutations.add.mutateAsync({
+      const input = {
         ...(normalizedTitle ? { title: normalizedTitle } : {}),
         type: normalizedType,
         url: normalizedURL,
-      })
-      setType("")
-      setURL("")
-      setTitle("")
+      }
+      if (editingLink) {
+        await mutations.update.mutateAsync({ input, linkID: editingLink.id })
+      } else {
+        await mutations.add.mutateAsync(input)
+      }
+      resetForm()
       setOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      feedback.failure(editingLink ? "编辑链接" : "添加链接", message)
     }
   }
 
@@ -73,7 +82,7 @@ export function TaskLinksEditor({
         {canWrite ? (
           <Button
             onClick={() => {
-              setError(null)
+              resetForm()
               setOpen(true)
             }}
             size="sm"
@@ -110,15 +119,33 @@ export function TaskLinksEditor({
                 </span>
               </div>
               {canWrite ? (
-                <Button
-                  aria-label="删除链接"
-                  onClick={() => setDeleteID(link.id)}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2Icon />
-                </Button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    aria-label="编辑链接"
+                    onClick={() => {
+                      setEditingLink(link)
+                      setType(link.type)
+                      setURL(link.url)
+                      setTitle(link.title ?? "")
+                      setError(null)
+                      setOpen(true)
+                    }}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <PencilIcon />
+                  </Button>
+                  <Button
+                    aria-label="删除链接"
+                    onClick={() => setDeleteID(link.id)}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
               ) : null}
             </li>
           ))}
@@ -127,7 +154,7 @@ export function TaskLinksEditor({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>添加链接</DialogTitle>
+            <DialogTitle>{editingLink ? "编辑链接" : "添加链接"}</DialogTitle>
             <DialogDescription>
               链接用于关联规格、外部文档或运行产物。
             </DialogDescription>
@@ -168,9 +195,9 @@ export function TaskLinksEditor({
               取消
             </Button>
             <Button
-              disabled={mutations.add.isPending}
+              disabled={mutations.add.isPending || mutations.update.isPending}
               onClick={() => {
-                void add()
+                void save()
               }}
               type="button"
             >
@@ -200,6 +227,14 @@ export function TaskLinksEditor({
       />
     </section>
   )
+
+  function resetForm() {
+    setEditingLink(null)
+    setType("")
+    setURL("")
+    setTitle("")
+    setError(null)
+  }
 }
 
 function isValidURL(value: string): boolean {

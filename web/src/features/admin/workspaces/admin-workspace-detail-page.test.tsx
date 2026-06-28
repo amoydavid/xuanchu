@@ -13,9 +13,14 @@ import {
 } from "@/features/workspace/session/workspace-token"
 import { setAdminToken } from "@/features/admin/session/admin-token"
 import { i18n } from "@/i18n"
+import { navigateToDocument } from "@/lib/browser-navigation"
 
 import { AdminWorkspaceDetailPage } from "./admin-workspace-detail-page"
 import type { AdminWorkspaceDetail } from "./admin-workspace-api"
+
+vi.mock("@/lib/browser-navigation", () => ({
+  navigateToDocument: vi.fn(),
+}))
 
 function renderPage(workspaceSlug: string) {
   const queryClient = new QueryClient({
@@ -73,6 +78,7 @@ describe("AdminWorkspaceDetailPage", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.mocked(navigateToDocument).mockClear()
   })
 
   it("renders members and token counts", async () => {
@@ -133,6 +139,7 @@ describe("AdminWorkspaceDetailPage", () => {
     expect(ctx?.actorName).toBe("alice")
     expect(ctx?.workspaceSlug).toBe("dajee")
     expect(ctx?.adminTokenName).toBe("ops")
+    expect(navigateToDocument).toHaveBeenCalledWith("/workspaces/dajee/projects")
     // 普通 workspace token 不应被覆盖。
     expect(clearWorkspaceToken !== undefined).toBe(true)
     // admin token 必须保留。

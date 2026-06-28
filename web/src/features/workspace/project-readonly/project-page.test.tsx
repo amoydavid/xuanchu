@@ -31,7 +31,9 @@ function renderPage(workspaceSlug = "acme", projectSlug = "agentapi") {
 }
 
 function ok(data: unknown) {
-  return Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }))
+  return Promise.resolve(
+    new Response(JSON.stringify({ data }), { status: 200 })
+  )
 }
 
 function apiError(status: number, code: string) {
@@ -90,8 +92,7 @@ describe("ProjectReadonlyPage", () => {
           ])
         }
         if (
-          path ===
-          "/api/v1/projects/agentapi/timeline?workspace=acme&limit=20"
+          path === "/api/v1/projects/agentapi/timeline?workspace=acme&limit=20"
         ) {
           return ok([
             {
@@ -111,8 +112,15 @@ describe("ProjectReadonlyPage", () => {
     })
     expect(screen.getByText("AI Agent Platform")).toBeTruthy()
     expect(screen.getByText("只读")).toBeTruthy()
-    expect(screen.getAllByText("Design task.query schema").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Review SSO redirect flow").length).toBeGreaterThan(0)
+    expect(
+      screen.getByRole("button", { name: "复制链接" }).getAttribute("data-slot")
+    ).toBe("button")
+    expect(
+      screen.getAllByText("Design task.query schema").length
+    ).toBeGreaterThan(0)
+    expect(
+      screen.getAllByText("Review SSO redirect flow").length
+    ).toBeGreaterThan(0)
     expect(
       screen
         .getAllByRole("link", { name: /Design task.query schema/ })[0]

@@ -10,10 +10,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 type ProjectRowActionsProps = {
+  onOpen: (projectSlug: string) => void
   projectSlug: string
 }
 
-export function ProjectRowActions({ projectSlug }: ProjectRowActionsProps) {
+export function ProjectRowActions({ onOpen, projectSlug }: ProjectRowActionsProps) {
   const { t } = useTranslation()
 
   return (
@@ -29,10 +30,8 @@ export function ProjectRowActions({ projectSlug }: ProjectRowActionsProps) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem>{t("projectWorkbench.projects.open")}</DropdownMenuItem>
-          <DropdownMenuItem>{t("common.details")}</DropdownMenuItem>
-          <DropdownMenuItem>
-            {t("projectWorkbench.projects.settings")}
+          <DropdownMenuItem onSelect={() => onOpen(projectSlug)}>
+            {t("projectWorkbench.projects.open")}
           </DropdownMenuItem>
           <DropdownMenuItem disabled>{projectSlug}</DropdownMenuItem>
         </DropdownMenuContent>

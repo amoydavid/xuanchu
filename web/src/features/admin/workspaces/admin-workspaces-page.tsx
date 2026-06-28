@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ApiError } from "@/lib/api"
+import { navigateToDocument } from "@/lib/browser-navigation"
 
 import { listAdminWorkspaces } from "./admin-workspace-api"
 
@@ -25,7 +26,7 @@ export function AdminWorkspacesPage() {
   const openWorkspace = (slug: string) => {
     // admin 页面是 SPA fallback，直接用浏览器导航即可，
     // 不依赖 TanStack router 的类型化 to，避免跨路由注册耦合。
-    window.location.assign(`/admin/workspaces/${encodeURIComponent(slug)}`)
+    navigateToDocument(`/admin/workspaces/${encodeURIComponent(slug)}`)
   }
 
   const query = useQuery({

@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { addTaskAnnotation, deleteTaskAnnotation } from "../api/task-api"
+import {
+  addTaskAnnotation,
+  deleteTaskAnnotation,
+  updateTaskAnnotation,
+} from "../api/task-api"
 import { TaskAnnotationsEditor } from "./task-annotations-editor"
 
 vi.mock("../api/task-api", async () => {
@@ -15,6 +19,7 @@ vi.mock("../api/task-api", async () => {
     ...actual,
     addTaskAnnotation: vi.fn(),
     deleteTaskAnnotation: vi.fn(),
+    updateTaskAnnotation: vi.fn(),
   }
 })
 
@@ -47,6 +52,12 @@ describe("TaskAnnotationsEditor", () => {
       uuid: "task-1",
       title: "任务",
       status: "pending",
+    })
+    vi.mocked(updateTaskAnnotation).mockResolvedValue({
+      uuid: "task-1",
+      title: "任务",
+      status: "pending",
+      annotations: [{ id: "note-1", description: "更新注解" }],
     })
   })
 
@@ -114,5 +125,35 @@ describe("TaskAnnotationsEditor", () => {
     await userEvent.click(screen.getByRole("button", { name: "删除" }))
 
     expect(deleteTaskAnnotation).toHaveBeenCalledWith("acme", "ads-1", "note-1")
+  })
+
+  it("edits an annotation and keeps dialog open on failure", async () => {
+    vi.mocked(updateTaskAnnotation).mockRejectedValueOnce(new Error("denied"))
+    render(
+      <TaskAnnotationsEditor
+        annotations={[{ id: "note-1", description: "旧注解" }]}
+        canWrite={true}
+        projectSlug="adsops"
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑注解" }))
+    await userEvent.clear(screen.getByLabelText("编辑注解内容"))
+    await userEvent.type(screen.getByLabelText("编辑注解内容"), "更新注解")
+    await userEvent.click(screen.getByRole("button", { name: "保存注解" }))
+
+    expect(updateTaskAnnotation).toHaveBeenCalledWith(
+      "acme",
+      "ads-1",
+      "note-1",
+      { description: "更新注解" }
+    )
+    expect(await screen.findByText("denied")).toBeTruthy()
+    expect(
+      (screen.getByLabelText("编辑注解内容") as HTMLTextAreaElement).value
+    ).toBe("更新注解")
   })
 })

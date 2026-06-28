@@ -1,8 +1,17 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
+import { PencilIcon } from "lucide-react"
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { useEditFeedback } from "./edit-feedback"
 
 type InlineTextEditorProps = {
   ariaLabel: string
@@ -29,19 +38,27 @@ export function InlineTextEditor({
   validate,
   value,
 }: InlineTextEditorProps) {
+  const feedback = useEditFeedback()
   const normalizedValue = value ?? ""
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(normalizedValue)
+  const [draftState, setDraftState] = useState(() => ({
+    source: normalizedValue,
+    value: normalizedValue,
+  }))
+  const draft =
+    editing || draftState.source === normalizedValue
+      ? draftState.value
+      : normalizedValue
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const ignoreNextBlurRef = useRef(false)
+  const lastSubmittedRef = useRef<string | null>(null)
+  const savingRef = useRef(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
-  useEffect(() => {
-    if (!editing) {
-      setDraft(normalizedValue)
-    }
-  }, [editing, normalizedValue])
+  const setDraft = (next: string) =>
+    setDraftState({ source: normalizedValue, value: next })
 
   useEffect(() => {
     if (editing) {
@@ -52,48 +69,74 @@ export function InlineTextEditor({
   }, [editing, multiline])
 
   const cancel = () => {
-    setDraft(normalizedValue)
+    ignoreNextBlurRef.current = true
+    setDraftState({ source: normalizedValue, value: normalizedValue })
     setError(null)
     setEditing(false)
   }
 
   const save = async () => {
-    const validationError = validate?.(draft)
+    if (savingRef.current) {
+      return
+    }
+    const nextValue = draft.trim()
+    const validationError = validate?.(nextValue)
     if (validationError) {
       setError(validationError)
       return
     }
+    if (nextValue === normalizedValue.trim()) {
+      setDraft(normalizedValue)
+      setError(null)
+      setEditing(false)
+      return
+    }
+    if (nextValue === lastSubmittedRef.current) {
+      return
+    }
+    lastSubmittedRef.current = nextValue
+    savingRef.current = true
     setSaving(true)
     setError(null)
     try {
-      await onSave(draft)
+      await onSave(nextValue)
       setEditing(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      lastSubmittedRef.current = null
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      feedback.failure(ariaLabel, message)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
 
   if (!editing) {
     return (
-      <button
+      <Button
         aria-label={ariaLabel}
         className={cn(
-          "block min-h-6 max-w-full truncate rounded-sm text-left outline-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60",
+          "group h-auto min-h-6 max-w-full justify-start rounded-sm px-1 py-0 text-left font-normal hover:bg-muted disabled:opacity-60",
           displayClassName
         )}
         disabled={disabled}
         onClick={() => {
           if (!disabled) {
+            setDraftState({ source: normalizedValue, value: normalizedValue })
             setError(null)
             setEditing(true)
           }
         }}
+        size="xs"
         type="button"
+        variant="ghost"
       >
-        {normalizedValue || emptyLabel}
-      </button>
+        <span className="truncate">{normalizedValue || emptyLabel}</span>
+        {!disabled ? (
+          <PencilIcon className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60" />
+        ) : null}
+      </Button>
     )
   }
 
@@ -103,21 +146,31 @@ export function InlineTextEditor({
     className,
     disabled: saving,
     onBlur: () => {
+      if (ignoreNextBlurRef.current) {
+        ignoreNextBlurRef.current = false
+        return
+      }
       if (!saving) {
         void save()
       }
     },
     onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setDraft(event.target.value)
+      lastSubmittedRef.current = null
       setError(null)
     },
-    onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    onKeyDown: (
+      event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+    ) => {
       if (event.key === "Escape") {
         event.preventDefault()
         cancel()
         return
       }
-      if (event.key === "Enter" && (!multiline || event.metaKey || event.ctrlKey)) {
+      if (
+        event.key === "Enter" &&
+        (!multiline || event.metaKey || event.ctrlKey)
+      ) {
         event.preventDefault()
         void save()
       }
@@ -133,7 +186,9 @@ export function InlineTextEditor({
       ) : (
         <Input {...commonProps} ref={inputRef} />
       )}
-      {error ? <span className="mt-1 block text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span className="mt-1 block text-xs text-destructive">{error}</span>
+      ) : null}
     </span>
   )
 }

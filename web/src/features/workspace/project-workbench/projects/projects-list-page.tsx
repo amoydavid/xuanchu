@@ -87,7 +87,9 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
     {
       key: "actions",
       header: t("common.actions"),
-      render: (project) => <ProjectRowActions projectSlug={project.slug} />,
+      render: (project) => (
+        <ProjectRowActions onOpen={openProject} projectSlug={project.slug} />
+      ),
     },
   ]
 

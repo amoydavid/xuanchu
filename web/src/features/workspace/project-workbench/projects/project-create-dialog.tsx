@@ -1,5 +1,5 @@
 import type { FormEvent } from "react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -48,17 +48,21 @@ export function ProjectCreateDialog({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!open) {
-      setSlug("")
-      setName("")
-      setDescription("")
-      setFieldErrors({})
-      setSubmitError(null)
-      createProject.reset()
+  function resetForm() {
+    setSlug("")
+    setName("")
+    setDescription("")
+    setFieldErrors({})
+    setSubmitError(null)
+    createProject.reset()
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      resetForm()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+    onOpenChange(nextOpen)
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -85,6 +89,7 @@ export function ProjectCreateDialog({
         name: normalizedName,
         ...(normalizedDescription ? { description: normalizedDescription } : {}),
       })
+      resetForm()
       onCreated(project)
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "unknown"
@@ -97,7 +102,7 @@ export function ProjectCreateDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form className="space-y-4" onSubmit={handleSubmit}>
           <DialogHeader>
@@ -164,7 +169,7 @@ export function ProjectCreateDialog({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               {t("projectWorkbench.projects.create.cancel")}
             </Button>
             <Button type="submit" disabled={createProject.isPending}>

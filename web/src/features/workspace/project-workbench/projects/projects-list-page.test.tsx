@@ -113,6 +113,39 @@ describe("ProjectWorkbench ProjectsListPage", () => {
     )
   })
 
+  it("opens projects from the row actions menu without fake menu items", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      ok([
+        {
+          id: "p1",
+          workspace_id: "w1",
+          slug: "api",
+          name: "API Platform",
+          status: "active",
+          task_count: 4,
+          pending_count: 2,
+          completed_count: 2,
+          created_at: 1,
+          modified_at: 1,
+        },
+      ])
+    )
+
+    renderPage()
+
+    const apiRow = await screen.findByRole("row", { name: /API Platform/ })
+    await userEvent.click(within(apiRow).getByRole("button", { name: "项目操作" }))
+
+    expect(screen.queryByRole("menuitem", { name: "详情" })).toBeNull()
+    expect(screen.queryByRole("menuitem", { name: "设置" })).toBeNull()
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "打开" }))
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+      params: { workspaceSlug: "acme", projectSlug: "api" },
+    })
+  })
+
   it("opens create dialog, validates fields, posts the project, and navigates to the new project", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

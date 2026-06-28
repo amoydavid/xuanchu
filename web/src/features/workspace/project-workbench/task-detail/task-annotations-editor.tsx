@@ -1,11 +1,20 @@
 import { useState } from "react"
-import { Trash2Icon } from "lucide-react"
+import { PencilIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import type { TaskAnnotation } from "../api/task-api"
 import { useTaskAnnotationMutations } from "../hooks/use-task-mutations"
 import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
+import { useEditFeedback } from "../shared/edit-feedback"
 
 type TaskAnnotationsEditorProps = {
   annotations?: TaskAnnotation[]
@@ -22,8 +31,12 @@ export function TaskAnnotationsEditor({
   taskRef,
   workspaceSlug,
 }: TaskAnnotationsEditorProps) {
+  const feedback = useEditFeedback()
   const [draft, setDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [editID, setEditID] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState("")
+  const [editError, setEditError] = useState<string | null>(null)
   const [deleteID, setDeleteID] = useState<string | null>(null)
   const mutations = useTaskAnnotationMutations(workspaceSlug, projectSlug, taskRef)
 
@@ -38,7 +51,33 @@ export function TaskAnnotationsEditor({
       await mutations.add.mutateAsync({ description })
       setDraft("")
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      feedback.failure("添加注解", message)
+    }
+  }
+
+  const update = async () => {
+    const description = editDraft.trim()
+    if (!description) {
+      setEditError("注解不能为空")
+      return
+    }
+    if (!editID) {
+      return
+    }
+    setEditError(null)
+    try {
+      await mutations.update.mutateAsync({
+        annotationID: editID,
+        input: { description },
+      })
+      setEditID(null)
+      setEditDraft("")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setEditError(message)
+      feedback.failure("编辑注解", message)
     }
   }
 
@@ -92,20 +131,83 @@ export function TaskAnnotationsEditor({
                 ) : null}
               </div>
               {canWrite && annotation.id ? (
-                <Button
-                  aria-label="删除注解"
-                  onClick={() => setDeleteID(annotation.id ?? null)}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2Icon />
-                </Button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    aria-label="编辑注解"
+                    onClick={() => {
+                      setEditID(annotation.id ?? null)
+                      setEditDraft(annotation.description)
+                      setEditError(null)
+                    }}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <PencilIcon />
+                  </Button>
+                  <Button
+                    aria-label="删除注解"
+                    onClick={() => setDeleteID(annotation.id ?? null)}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
               ) : null}
             </div>
           ))}
         </div>
       )}
+      <Dialog
+        open={editID !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditID(null)
+            setEditError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑注解</DialogTitle>
+            <DialogDescription>
+              修正或补充这条任务注解。
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            aria-label="编辑注解内容"
+            disabled={mutations.update.isPending}
+            onChange={(event) => {
+              setEditDraft(event.target.value)
+              setEditError(null)
+            }}
+            value={editDraft}
+          />
+          {editError ? (
+            <p className="text-xs text-destructive">{editError}</p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              onClick={() => setEditID(null)}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={mutations.update.isPending}
+              onClick={() => {
+                void update()
+              }}
+              type="button"
+            >
+              保存注解
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DestructiveConfirmDialog
         confirmLabel="删除"
         description="删除后这条注解将不再显示。"

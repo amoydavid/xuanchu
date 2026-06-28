@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Input } from "@/components/ui/input"
+import { useEditFeedback } from "./edit-feedback"
 
 type InlineDateEditorProps = {
   ariaLabel: string
@@ -17,17 +18,31 @@ export function InlineDateEditor({
   onSave,
   value,
 }: InlineDateEditorProps) {
-  const [draft, setDraft] = useState(formatUnixDate(value))
+  const feedback = useEditFeedback()
+  const normalizedValue = formatUnixDate(value)
+  const [draftState, setDraftState] = useState(() => ({
+    source: normalizedValue,
+    value: normalizedValue,
+  }))
+  const draft =
+    draftState.source === normalizedValue ? draftState.value : normalizedValue
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const setDraft = (next: string) =>
+    setDraftState({ source: normalizedValue, value: next })
 
   const save = async () => {
+    if (draft === normalizedValue) {
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       await onSave(draft ? dateToUnix(draft) : null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      feedback.failure(ariaLabel, message)
     } finally {
       setSaving(false)
     }

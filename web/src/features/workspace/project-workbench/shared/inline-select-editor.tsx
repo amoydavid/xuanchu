@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useEditFeedback } from "./edit-feedback"
 
 export type InlineSelectOption = {
   label: string
@@ -32,6 +33,7 @@ export function InlineSelectEditor({
   placeholder,
   value,
 }: InlineSelectEditorProps) {
+  const feedback = useEditFeedback()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -41,7 +43,9 @@ export function InlineSelectEditor({
     try {
       await onSave(next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      feedback.failure(ariaLabel, message)
     } finally {
       setSaving(false)
     }

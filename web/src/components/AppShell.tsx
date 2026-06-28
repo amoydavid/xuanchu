@@ -27,6 +27,7 @@ import {
   getAdminActingContext,
   type ActingContext,
 } from "@/features/workspace/session/workspace-token"
+import { navigateToDocument } from "@/lib/browser-navigation"
 import { cn } from "@/lib/utils"
 
 export type PageKey =
@@ -188,7 +189,7 @@ function ReturnToAdminButton({ context }: { context: ActingContext }) {
       className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 hover:text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-100 dark:hover:bg-amber-800"
       onClick={() => {
         clearAdminActingSession()
-        window.location.assign(
+        navigateToDocument(
           `/admin/workspaces/${encodeURIComponent(context.workspaceSlug)}`
         )
       }}

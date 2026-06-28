@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ApiError } from "@/lib/api"
+import { navigateToDocument } from "@/lib/browser-navigation"
 
 import { workspaceApiGet } from "./workspace-api"
 import {
@@ -12,9 +13,14 @@ import {
   setWorkspaceToken,
 } from "./workspace-token"
 
+vi.mock("@/lib/browser-navigation", () => ({
+  navigateToDocument: vi.fn(),
+}))
+
 describe("workspace api client", () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.mocked(navigateToDocument).mockClear()
     sessionStorage.clear()
   })
 
@@ -82,6 +88,7 @@ describe("workspace api client", () => {
 
     await expect(workspaceApiGet("/api/v1/me")).rejects.toThrow()
     expect(getAdminActingToken()).toBeNull()
+    expect(navigateToDocument).toHaveBeenCalledWith("/admin/workspaces")
     // 普通 workspace token 必须保留。
     expect(getWorkspaceToken()).toBe("xuanchu_pat_normal")
   })

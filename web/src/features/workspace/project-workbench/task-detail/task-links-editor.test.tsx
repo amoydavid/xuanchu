@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { addTaskLink, deleteTaskLink } from "../api/task-api"
+import { addTaskLink, deleteTaskLink, updateTaskLink } from "../api/task-api"
 import { TaskLinksEditor } from "./task-links-editor"
 
 vi.mock("../api/task-api", async () => {
@@ -15,6 +15,7 @@ vi.mock("../api/task-api", async () => {
     ...actual,
     addTaskLink: vi.fn(),
     deleteTaskLink: vi.fn(),
+    updateTaskLink: vi.fn(),
   }
 })
 
@@ -47,6 +48,12 @@ describe("TaskLinksEditor", () => {
       uuid: "task-1",
       title: "任务",
       status: "pending",
+    })
+    vi.mocked(updateTaskLink).mockResolvedValue({
+      id: "link-1",
+      type: "spec",
+      url: "https://example.com/spec",
+      title: "规格文档",
     })
   })
 
@@ -113,5 +120,40 @@ describe("TaskLinksEditor", () => {
     await userEvent.click(screen.getByRole("button", { name: "删除" }))
 
     expect(deleteTaskLink).toHaveBeenCalledWith("acme", "ads-1", "link-1")
+  })
+
+  it("edits a link from dialog", async () => {
+    render(
+      <TaskLinksEditor
+        canWrite={true}
+        links={[
+          {
+            id: "link-1",
+            type: "document",
+            url: "https://example.com/old",
+            title: "旧文档",
+          },
+        ]}
+        projectSlug="adsops"
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑链接" }))
+    await userEvent.clear(screen.getByLabelText("类型"))
+    await userEvent.type(screen.getByLabelText("类型"), "spec")
+    await userEvent.clear(screen.getByLabelText("URL"))
+    await userEvent.type(screen.getByLabelText("URL"), "https://example.com/spec")
+    await userEvent.clear(screen.getByLabelText("标题"))
+    await userEvent.type(screen.getByLabelText("标题"), "规格文档")
+    await userEvent.click(screen.getByRole("button", { name: "保存链接" }))
+
+    expect(updateTaskLink).toHaveBeenCalledWith("acme", "ads-1", "link-1", {
+      title: "规格文档",
+      type: "spec",
+      url: "https://example.com/spec",
+    })
   })
 })

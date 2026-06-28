@@ -1,12 +1,17 @@
+import { useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import type { ProjectTask } from "../api/task-api"
 import { useModifyTaskMutation } from "../hooks/use-task-mutations"
 import { useTaskDetailQuery } from "../hooks/use-task-detail-data"
 import { canTaskWrite } from "../permissions/permissions"
+import { EditFeedbackProvider } from "../shared/edit-feedback"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskActionBar } from "./task-action-bar"
 import { TaskAnnotationsEditor } from "./task-annotations-editor"
@@ -19,7 +24,25 @@ type TaskDetailPageProps = {
   workspaceSlug: string
 }
 
+type MobileDetailTab = "annotations" | "links" | "properties"
+
 export function TaskDetailPage({
+  projectSlug,
+  taskRef,
+  workspaceSlug,
+}: TaskDetailPageProps) {
+  return (
+    <EditFeedbackProvider>
+      <TaskDetailPageContent
+        projectSlug={projectSlug}
+        taskRef={taskRef}
+        workspaceSlug={workspaceSlug}
+      />
+    </EditFeedbackProvider>
+  )
+}
+
+function TaskDetailPageContent({
   projectSlug,
   taskRef,
   workspaceSlug,
@@ -32,6 +55,8 @@ export function TaskDetailPage({
   const task = useTaskDetailQuery(workspaceSlug, taskRef)
   const modifyTask = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const projectHref = `/workspaces/${workspaceSlug}/projects/${projectSlug}`
+  const [activeMobileTab, setActiveMobileTab] =
+    useState<MobileDetailTab>("properties")
 
   if (task.isPending) {
     return <TaskDetailSkeleton />
@@ -56,6 +81,7 @@ export function TaskDetailPage({
   }
 
   const taskData = task.data
+  const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
   if (!taskBelongsToProject(taskData, projectSlug)) {
     return (
       <section className="max-w-2xl border bg-card p-6">
@@ -80,7 +106,7 @@ export function TaskDetailPage({
           <div className="min-w-0 flex-1">
             <InlineTextEditor
               ariaLabel="任务标题"
-              disabled={!canWrite || taskData.status === "completed"}
+              disabled={!taskWritable}
               displayClassName="text-2xl font-semibold tracking-normal"
               onSave={async (title) => {
                 await modifyTask.mutateAsync({ title })
@@ -90,7 +116,7 @@ export function TaskDetailPage({
             />
             <InlineTextEditor
               ariaLabel="任务描述"
-              disabled={!canWrite || taskData.status === "completed"}
+              disabled={!taskWritable}
               displayClassName="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground"
               emptyLabel="添加任务描述"
               multiline
@@ -118,7 +144,7 @@ export function TaskDetailPage({
               <a href={projectHref}>返回项目</a>
             </Button>
             <TaskActionBar
-              canWrite={canWrite}
+              canWrite={taskWritable}
               projectSlug={projectSlug}
               task={taskData}
               taskRef={taskRef}
@@ -128,33 +154,80 @@ export function TaskDetailPage({
         </div>
       </section>
 
+      <MobileDetailTabs
+        active={activeMobileTab}
+        onChange={setActiveMobileTab}
+      />
+
       <div className="grid gap-5 md:grid-cols-[1fr_240px]">
-        <div className="space-y-5">
-          <TaskAnnotationsEditor
-            annotations={taskData.annotations}
-            canWrite={canWrite}
+        <div className="contents md:block md:space-y-5">
+          <div className={mobilePanelClass(activeMobileTab, "annotations")}>
+            <TaskAnnotationsEditor
+              annotations={taskData.annotations}
+              canWrite={taskWritable}
+              projectSlug={projectSlug}
+              taskRef={taskRef}
+              workspaceSlug={workspaceSlug}
+            />
+          </div>
+          <div className={mobilePanelClass(activeMobileTab, "links")}>
+            <TaskLinksEditor
+              canWrite={taskWritable}
+              links={taskData.links}
+              projectSlug={projectSlug}
+              taskRef={taskRef}
+              workspaceSlug={workspaceSlug}
+            />
+          </div>
+        </div>
+        <div className={mobilePanelClass(activeMobileTab, "properties")}>
+          <TaskPropertyPanel
+            canWrite={taskWritable}
             projectSlug={projectSlug}
-            taskRef={taskRef}
-            workspaceSlug={workspaceSlug}
-          />
-          <TaskLinksEditor
-            canWrite={canWrite}
-            links={taskData.links}
-            projectSlug={projectSlug}
+            task={taskData}
             taskRef={taskRef}
             workspaceSlug={workspaceSlug}
           />
         </div>
-        <TaskPropertyPanel
-          canWrite={canWrite}
-          projectSlug={projectSlug}
-          task={taskData}
-          taskRef={taskRef}
-          workspaceSlug={workspaceSlug}
-        />
       </div>
     </div>
   )
+}
+
+function MobileDetailTabs({
+  active,
+  onChange,
+}: {
+  active: MobileDetailTab
+  onChange: (tab: MobileDetailTab) => void
+}) {
+  const tabs: Array<{ label: string; value: MobileDetailTab }> = [
+    { label: "属性", value: "properties" },
+    { label: "注解", value: "annotations" },
+    { label: "链接", value: "links" },
+  ]
+  return (
+    <Tabs
+      className="md:hidden"
+      onValueChange={(value) => onChange(value as MobileDetailTab)}
+      value={active}
+    >
+      <TabsList
+        aria-label="任务详情视图"
+        className="grid h-auto w-full grid-cols-3 gap-1 border bg-card p-1"
+      >
+        {tabs.map((tab) => (
+          <TabsTrigger className="h-8" key={tab.value} value={tab.value}>
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  )
+}
+
+function mobilePanelClass(active: MobileDetailTab, tab: MobileDetailTab): string {
+  return cn(active === tab ? "block" : "hidden", "md:block")
 }
 
 function TaskDetailSkeleton() {
@@ -172,4 +245,8 @@ function TaskDetailSkeleton() {
 
 function taskBelongsToProject(task: ProjectTask, projectSlug: string): boolean {
   return !task.project || task.project === projectSlug
+}
+
+function isWritableTaskStatus(status: string): boolean {
+  return status !== "completed" && status !== "deleted"
 }

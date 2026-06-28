@@ -170,4 +170,36 @@ describe("TaskTable", () => {
 
     expect(deleteTask).toHaveBeenCalledWith("acme", "ads-1")
   })
+
+  it("supports high frequency edits from the mobile task card", async () => {
+    renderTaskTable()
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "编辑移动任务标题 ads-1" })
+    )
+    await userEvent.clear(
+      screen.getByRole("textbox", { name: "编辑移动任务标题 ads-1" })
+    )
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "编辑移动任务标题 ads-1" }),
+      "手机改标题{Enter}"
+    )
+    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
+      title: "手机改标题",
+    })
+
+    await userEvent.click(
+      screen.getByRole("combobox", { name: "移动任务优先级 ads-1" })
+    )
+    await userEvent.click(screen.getByRole("option", { name: "H" }))
+    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { priority: "H" })
+
+    await userEvent.clear(screen.getByLabelText("移动任务截止日期 ads-1"))
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
+        clear_due: true,
+      })
+    })
+  })
 })

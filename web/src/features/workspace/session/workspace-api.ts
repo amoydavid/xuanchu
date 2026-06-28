@@ -1,4 +1,5 @@
 import { ApiError, requestJson } from "@/lib/api"
+import { navigateToDocument } from "@/lib/browser-navigation"
 
 import {
   clearAdminActingSession,
@@ -42,10 +43,7 @@ async function workspaceRequest<T>(
 // 必须让用户回到 /admin/workspaces 并（通过 admin token 仍在 sessionStorage）保持超管登录。
 function clearAdminActingSessionAndReturn() {
   clearAdminActingSession()
-  // 避免在非浏览器环境（单测）抛错；jsdom 会忽略不支持的导航。
-  if (typeof window !== "undefined" && window.location) {
-    window.location.assign("/admin/workspaces")
-  }
+  navigateToDocument("/admin/workspaces")
 }
 
 export function workspaceApiGet<T>(path: string): Promise<T> {

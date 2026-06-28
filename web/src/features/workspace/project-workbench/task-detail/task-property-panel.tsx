@@ -1,15 +1,22 @@
-import { useMemo, useState, type KeyboardEvent } from "react"
+import { useMemo, useState } from "react"
 
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { extractUDAs, formatUDAValue } from "@/features/workspace/project-readonly/uda"
+import { Switch } from "@/components/ui/switch"
+import {
+  extractUDAs,
+  formatUDAValue,
+} from "@/features/workspace/project-readonly/uda"
 import type { ProjectWorkbenchTaskRef } from "../api/project-api"
 import type { ProjectTask } from "../api/task-api"
 import { useModifyTaskMutation } from "../hooks/use-task-mutations"
 import { InlineDateEditor } from "../shared/inline-date-editor"
 import { InlineSelectEditor } from "../shared/inline-select-editor"
 import { InlineTextEditor } from "../shared/inline-text-editor"
-import { TaskDependencyPicker, splitList } from "./task-dependency-picker"
+import { useEditFeedback } from "../shared/edit-feedback"
+import { AssigneePicker } from "./assignee-picker"
+import { TagPicker } from "./tag-picker"
+import { TaskDependencyPicker } from "./task-dependency-picker"
 
 type TaskPropertyPanelProps = {
   canWrite: boolean
@@ -38,7 +45,7 @@ export function TaskPropertyPanel({
 
   return (
     <aside className="space-y-3 border bg-card p-4 text-sm">
-      <h2 className="text-xs font-medium uppercase text-muted-foreground">
+      <h2 className="text-xs font-medium text-muted-foreground uppercase">
         属性
       </h2>
       <PropertyRow label="状态">
@@ -65,40 +72,45 @@ export function TaskPropertyPanel({
           className="h-7"
           disabled={!canWrite}
           onSave={async (due) => {
-            await modify.mutateAsync(due === null ? { clear_due: true } : { due })
+            await modify.mutateAsync(
+              due === null ? { clear_due: true } : { due }
+            )
           }}
           value={unixLikeToNumber(task.due)}
         />
       </PropertyRow>
       <PropertyRow label="负责人">
-        <CommaField
-          ariaLabel="负责人"
+        <AssigneePicker
           disabled={!canWrite}
           onSave={async (items) => {
             await modify.mutateAsync(
-              items.length === 0 ? { clear_assignees: true } : { assignees: items }
+              items.length === 0
+                ? { clear_assignees: true }
+                : { assignees: items }
             )
           }}
-          value={assigneeValues(task)}
+          value={task.assignees ?? []}
+          workspaceSlug={workspaceSlug}
         />
       </PropertyRow>
       <PropertyRow label="标签">
-        <CommaField
-          ariaLabel="标签"
+        <TagPicker
           disabled={!canWrite}
           onSave={async (items) => {
-            await modify.mutateAsync(
-              items.length === 0 ? { tags: [] } : { tags: items }
-            )
+            await modify.mutateAsync({ tags: items })
           }}
+          projectSlug={projectSlug}
           value={task.tags ?? []}
+          workspaceSlug={workspaceSlug}
         />
       </PropertyRow>
       <DateProperty
         disabled={!canWrite}
         label="等待到"
         onSave={async (wait) => {
-          await modify.mutateAsync(wait === null ? { clear_wait: true } : { wait })
+          await modify.mutateAsync(
+            wait === null ? { clear_wait: true } : { wait }
+          )
         }}
         value={task.wait}
       />
@@ -141,7 +153,11 @@ export function TaskPropertyPanel({
               depends.length === 0 ? { clear_depends: true } : { depends }
             )
           }}
+          projectSlug={projectSlug}
+          refs={task.depends_info}
+          taskUUID={task.uuid}
           value={task.depends ?? []}
+          workspaceSlug={workspaceSlug}
         />
       </PropertyRow>
       {task.parent ? (
@@ -173,19 +189,18 @@ export function TaskPropertyPanel({
       {udas.length > 0 ? (
         <>
           <Separator />
-          <h2 className="text-xs font-medium uppercase text-muted-foreground">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase">
             自定义字段
           </h2>
           {udas.map(([key, value]) => (
             <PropertyRow key={key} label={key}>
-              <InlineTextEditor
-                ariaLabel={`UDA ${key}`}
+              <UDAFieldEditor
+                name={key}
                 disabled={!canWrite}
-                emptyLabel="-"
                 onSave={async (nextValue) => {
                   await modify.mutateAsync({ udas: { [key]: nextValue } })
                 }}
-                value={formatUDAValue(value)}
+                value={value}
               />
             </PropertyRow>
           ))}
@@ -193,6 +208,193 @@ export function TaskPropertyPanel({
       ) : null}
     </aside>
   )
+}
+
+function UDAFieldEditor({
+  disabled,
+  name,
+  onSave,
+  value,
+}: {
+  disabled: boolean
+  name: string
+  onSave: (value: string) => Promise<void> | void
+  value: unknown
+}) {
+  const kind = inferUDAKind(name, value)
+  const normalizedValue = formatUDAValue(value)
+  if (kind === "boolean") {
+    return (
+      <UDABooleanEditor
+        checked={toBoolean(value)}
+        disabled={disabled}
+        name={name}
+        onSave={onSave}
+      />
+    )
+  }
+  if (kind === "number" || kind === "date") {
+    return (
+      <UDAInputEditor
+        disabled={disabled}
+        name={name}
+        onSave={onSave}
+        type={kind === "number" ? "number" : "date"}
+        value={normalizedValue}
+      />
+    )
+  }
+  return (
+    <InlineTextEditor
+      ariaLabel={`UDA ${name}`}
+      disabled={disabled}
+      emptyLabel="-"
+      onSave={onSave}
+      value={normalizedValue}
+    />
+  )
+}
+
+function UDABooleanEditor({
+  checked,
+  disabled,
+  name,
+  onSave,
+}: {
+  checked: boolean
+  disabled: boolean
+  name: string
+  onSave: (value: string) => Promise<void> | void
+}) {
+  const feedback = useEditFeedback()
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <Switch
+        aria-label={`UDA ${name}`}
+        checked={checked}
+        disabled={disabled || saving}
+        onCheckedChange={async (next) => {
+          setSaving(true)
+          setError(null)
+          try {
+            await onSave(String(Boolean(next)))
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            setError(message)
+            feedback.failure(`UDA ${name}`, message)
+          } finally {
+            setSaving(false)
+          }
+        }}
+      />
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  )
+}
+
+function UDAInputEditor({
+  disabled,
+  name,
+  onSave,
+  type,
+  value,
+}: {
+  disabled: boolean
+  name: string
+  onSave: (value: string) => Promise<void> | void
+  type: "date" | "number"
+  value: string
+}) {
+  const feedback = useEditFeedback()
+  const [draftState, setDraftState] = useState(() => ({
+    source: value,
+    value,
+  }))
+  const draft = draftState.source === value ? draftState.value : value
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const setDraft = (next: string) =>
+    setDraftState({ source: value, value: next })
+
+  const save = async () => {
+    if (draft === value) {
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(draft)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      feedback.failure(`UDA ${name}`, message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <Input
+        aria-label={`UDA ${name}`}
+        className="h-7"
+        disabled={disabled || saving}
+        onBlur={() => {
+          void save()
+        }}
+        onChange={(event) => {
+          setDraft(event.target.value)
+          setError(null)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault()
+            void save()
+          }
+          if (event.key === "Escape") {
+            event.preventDefault()
+            setDraft(value)
+            setError(null)
+          }
+        }}
+        type={type}
+        value={draft}
+      />
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  )
+}
+
+function inferUDAKind(
+  name: string,
+  value: unknown
+): "boolean" | "date" | "number" | "text" {
+  if (typeof value === "boolean") {
+    return "boolean"
+  }
+  if (typeof value === "number") {
+    return "number"
+  }
+  const raw = formatUDAValue(value)
+  if (/^(true|false)$/i.test(raw)) {
+    return "boolean"
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw) || /(^|_)(date|day)$/.test(name)) {
+    return "date"
+  }
+  if (/^-?\d+(\.\d+)?$/.test(raw)) {
+    return "number"
+  }
+  return "text"
+}
+
+function toBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value
+  }
+  return /^true$/i.test(formatUDAValue(value))
 }
 
 function PropertyRow({
@@ -234,62 +436,6 @@ function DateProperty({
   )
 }
 
-function CommaField({
-  ariaLabel,
-  disabled,
-  onSave,
-  value,
-}: {
-  ariaLabel: string
-  disabled: boolean
-  onSave: (items: string[]) => Promise<void> | void
-  value: string[]
-}) {
-  const [draft, setDraft] = useState(value.join(", "))
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const save = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      await onSave(splitList(draft))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault()
-      void save()
-    }
-  }
-
-  return (
-    <div className="space-y-1">
-      <Input
-        aria-label={ariaLabel}
-        disabled={disabled || saving}
-        onBlur={() => {
-          if (!disabled && !saving && draft !== value.join(", ")) {
-            void save()
-          }
-        }}
-        onChange={(event) => {
-          setDraft(event.target.value)
-          setError(null)
-        }}
-        onKeyDown={onKeyDown}
-        value={draft}
-      />
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-    </div>
-  )
-}
-
 function TaskRefLinks({
   projectSlug,
   refs,
@@ -326,12 +472,6 @@ function TaskRefLinks({
       })}
     </div>
   )
-}
-
-function assigneeValues(task: ProjectTask): string[] {
-  return (task.assignees ?? [])
-    .map((assignee) => assignee.user_id || assignee.id || assignee.email || assignee.name)
-    .filter((value): value is string => Boolean(value))
 }
 
 function unixLikeToNumber(value: string | number | null | undefined) {

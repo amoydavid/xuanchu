@@ -1,4 +1,7 @@
+import { CopyIcon } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import type { ProjectReadonlyProject } from "./project-readonly-api"
 import type { AssigneeSummary, ProjectStats } from "./project-stats"
 
@@ -51,13 +54,16 @@ export function ProjectSummary({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Badge variant="outline">{readonlyLabel}</Badge>
-          <button
-            className="h-8 border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          <Button
+            className="text-muted-foreground hover:text-foreground"
             onClick={onCopy}
+            size="sm"
             type="button"
+            variant="outline"
           >
+            <CopyIcon className="size-3.5" />
             {copyLabel || copiedLabel}
-          </button>
+          </Button>
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -77,7 +83,10 @@ export function ProjectSummary({
               [t("projectReadonly.active"), stats.active],
               [t("projectReadonly.completed"), stats.completed],
             ].map(([label, value]) => (
-              <div className="grid grid-cols-[5rem_1fr_2rem] items-center gap-2 text-xs" key={label}>
+              <div
+                className="grid grid-cols-[5rem_1fr_2rem] items-center gap-2 text-xs"
+                key={label}
+              >
                 <span className="text-muted-foreground">{label}</span>
                 <div className="h-1.5 bg-muted">
                   <div

@@ -147,4 +147,55 @@ describe("TaskDetailPage", () => {
       expect(screen.queryByRole("button", { name: "完成" })).toBeNull()
     })
   })
+
+  it("disables all write controls for completed tasks", async () => {
+    vi.mocked(getTask).mockResolvedValue(task({ status: "completed" }))
+
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    expect(
+      (screen.getByRole("button", { name: "任务标题" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "任务描述" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(
+      (screen.getByRole("combobox", { name: "优先级" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect((screen.getByLabelText("截止日期") as HTMLInputElement).disabled).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "编辑负责人" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "编辑标签" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "编辑依赖任务" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(screen.queryByRole("button", { name: "添加注解" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "添加链接" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "删除" })).toBeNull()
+  })
+
+  it("renders mobile detail tabs and switches active tab", async () => {
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    const propertyTab = screen.getByRole("tab", { name: "属性" })
+    const linkTab = screen.getByRole("tab", { name: "链接" })
+    const tabList = screen.getByRole("tablist", { name: "任务详情视图" })
+
+    expect(tabList.getAttribute("data-slot")).toBe("tabs-list")
+    expect(propertyTab.getAttribute("aria-selected")).toBe("true")
+    await userEvent.click(linkTab)
+    expect(linkTab.getAttribute("aria-selected")).toBe("true")
+    expect(propertyTab.getAttribute("aria-selected")).toBe("false")
+  })
 })
