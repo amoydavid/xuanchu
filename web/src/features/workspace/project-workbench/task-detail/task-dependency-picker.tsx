@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { PlusIcon, XIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import {
   getProjectTasks,
   type ProjectWorkbenchTask,
@@ -40,6 +42,7 @@ export function TaskDependencyPicker({
   value = [],
   workspaceSlug,
 }: TaskDependencyPickerProps) {
+  const { t } = useTranslation()
   const feedback = useEditFeedback()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
@@ -82,7 +85,7 @@ export function TaskDependencyPicker({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setError(message)
-      feedback.failure("依赖", message)
+      feedback.failure(t("projectReadonly.depends"), message)
     } finally {
       setSaving(false)
     }
@@ -92,7 +95,9 @@ export function TaskDependencyPicker({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {value.length === 0 ? (
-          <span className="text-xs text-muted-foreground">无依赖</span>
+          <span className="text-xs text-muted-foreground">
+            {t("projectReadonly.noDependencies")}
+          </span>
         ) : (
           value.map((uuid) => {
             const ref = refByUUID.get(uuid)
@@ -105,7 +110,7 @@ export function TaskDependencyPicker({
           })
         )}
         <Button
-          aria-label="编辑依赖任务"
+          aria-label={t("projectReadonly.editDependencies")}
           disabled={disabled}
           onClick={() => {
             setSelected(value)
@@ -123,25 +128,25 @@ export function TaskDependencyPicker({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>搜索依赖任务</DialogTitle>
+            <DialogTitle>{t("projectReadonly.searchDependencyTasks")}</DialogTitle>
             <DialogDescription>
-              从当前项目任务中选择该任务依赖的前置任务。
+              {t("projectReadonly.dependencyDescription")}
             </DialogDescription>
           </DialogHeader>
           <Input
-            aria-label="搜索依赖任务"
+            aria-label={t("projectReadonly.searchDependencyTasks")}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="输入任务标题、slug 或状态"
+            placeholder={t("projectReadonly.dependencySearchPlaceholder")}
             value={query}
           />
           <div className="max-h-72 space-y-1 overflow-auto border bg-background p-1">
             {tasks.isPending ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
-                正在加载任务...
+                {t("projectReadonly.loadingTasks")}
               </div>
             ) : visibleTasks.length === 0 ? (
               <div className="px-2 py-3 text-sm text-muted-foreground">
-                没有匹配任务
+                {t("projectReadonly.noMatchingTasks")}
               </div>
             ) : (
               visibleTasks.map((task) => (
@@ -169,13 +174,15 @@ export function TaskDependencyPicker({
                   task?.task_slug ||
                   ref?.task_slug ||
                   task?.title ||
-                  ref?.title ||
-                  uuid
+                      ref?.title ||
+                      uuid
                 return (
                   <Badge key={uuid} variant="secondary">
                     {label}
                     <Button
-                      aria-label={`移除依赖 ${label}`}
+                      aria-label={t("projectReadonly.removeDependency", {
+                        label,
+                      })}
                       className="-mr-1 size-4 rounded-full text-muted-foreground hover:text-foreground"
                       onClick={() =>
                         setSelected((current) =>
@@ -201,14 +208,14 @@ export function TaskDependencyPicker({
               type="button"
               variant="outline"
             >
-              清空依赖
+              {t("projectReadonly.clearDependencies")}
             </Button>
             <Button
               disabled={saving}
               onClick={() => void submit()}
               type="button"
             >
-              完成
+              {t("common.done")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -226,6 +233,7 @@ function DependencyOption({
   onChange: (checked: boolean) => void
   task: ProjectWorkbenchTask
 }) {
+  const { t } = useTranslation()
   const slug = task.task_slug || task.uuid.slice(0, 8)
   return (
     <label className="grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-3 rounded-sm px-2 py-2 text-sm hover:bg-muted">
@@ -239,7 +247,7 @@ function DependencyOption({
         <span className="block truncate font-medium">{task.title}</span>
       </span>
       <Badge className="shrink-0" variant="outline">
-        {task.status}
+        {taskStatusLabel(task.status, t)}
       </Badge>
     </label>
   )

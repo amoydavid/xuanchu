@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useTranslation } from "react-i18next"
 
 type DestructiveConfirmDialogProps = {
   confirmLabel: string
@@ -21,7 +22,7 @@ type DestructiveConfirmDialogProps = {
 }
 
 export function DestructiveConfirmDialog({
-  cancelLabel = "取消",
+  cancelLabel,
   confirmLabel,
   description,
   onConfirm,
@@ -30,6 +31,8 @@ export function DestructiveConfirmDialog({
   pending = false,
   title,
 }: DestructiveConfirmDialogProps) {
+  const { t } = useTranslation()
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -38,7 +41,9 @@ export function DestructiveConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>
+            {cancelLabel ?? t("common.cancel")}
+          </AlertDialogCancel>
           <AlertDialogAction
             disabled={pending}
             variant="destructive"

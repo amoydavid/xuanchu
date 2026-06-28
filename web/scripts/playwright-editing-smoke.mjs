@@ -56,7 +56,7 @@ async function runDesktopSmoke(browser) {
   try {
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops`)
     await expectText(page, "投放日报")
-    await expectText(page, "负责人概览")
+    await expectText(page, "负责人摘要")
     await assertNoHorizontalOverflow(page, "desktop project page")
     await screenshot(page, "desktop-project")
 
@@ -112,7 +112,7 @@ async function runMobileSmoke(browser) {
     await screenshot(page, "mobile-project")
 
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks/ads-1`)
-    await expectText(page, "整理素材表现")
+    await expectText(page, "投放日报草稿")
     await page.getByRole("tab", { name: "链接" }).click()
     await expectText(page, "新版规格")
     await page.getByRole("button", { name: "编辑链接" }).click()
@@ -140,6 +140,7 @@ async function runMobileSmoke(browser) {
 async function newMockedPage(browser, viewport) {
   const page = await browser.newPage({ viewport })
   await page.addInitScript(() => {
+    localStorage.setItem("xuanchu.console.language", "zh-CN")
     sessionStorage.setItem("xuanchu.console.token", "smoke-token")
   })
   await page.route("**/api/v1/**", async (route) => {

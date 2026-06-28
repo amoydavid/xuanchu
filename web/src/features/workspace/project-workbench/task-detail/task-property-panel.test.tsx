@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import { getProjectTasks } from "../api/project-api"
 import { modifyTask } from "../api/task-api"
 import { getWorkspaceMembers } from "../api/users-api"
@@ -75,8 +76,9 @@ function task(overrides: Record<string, unknown> = {}) {
 }
 
 describe("TaskPropertyPanel", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(modifyTask).mockResolvedValue(task())
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
@@ -126,11 +128,44 @@ describe("TaskPropertyPanel", () => {
     await userEvent.click(screen.getByRole("option", { name: "H" }))
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { priority: "H" })
 
-    await userEvent.clear(screen.getByLabelText("截止日期"))
-    await userEvent.tab()
-    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
-      clear_due: true,
-    })
+    const dueButton = screen.getByRole("button", { name: "截止日期" })
+    expect(dueButton.getAttribute("data-slot")).toBe("popover-trigger")
+    await userEvent.click(dueButton)
+    expect(await screen.findByRole("grid")).toBeTruthy()
+    expect(document.querySelector('[data-slot="calendar"]')).toBeTruthy()
+  })
+
+  it("uses product vocabulary, localized status, and visual recurrence", () => {
+    render(
+      <TaskPropertyPanel
+        canWrite={true}
+        projectSlug="adsops"
+        task={task({
+          blocked_by_info: [
+            { uuid: "blocker-1", task_slug: "ads-9", title: "等待日报" },
+          ],
+          scheduled: 1_783_123_200,
+          until: 1_783_209_600,
+          wait: 1_783_036_800,
+        })}
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(screen.getByText("待处理")).toBeTruthy()
+    expect(screen.getByText("暂缓到")).toBeTruthy()
+    expect(screen.getByText("计划开始")).toBeTruthy()
+    expect(screen.getByText("隐藏到")).toBeTruthy()
+    expect(screen.queryByText("等待到")).toBeNull()
+    expect(screen.queryByText("计划")).toBeNull()
+    expect(screen.queryByText("截止隐藏")).toBeNull()
+    expect(screen.getByText("重复规则")).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: "重复规则" })).toBeTruthy()
+    expect(screen.getAllByText("每周").length).toBeGreaterThan(0)
+    expect(screen.getByText("被这些任务阻塞")).toBeTruthy()
+    expect(screen.getByText("正在阻塞这些任务")).toBeTruthy()
   })
 
   it("selects, creates, and clears tags from the tag picker", async () => {

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { CheckIcon, ChevronDownIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -9,6 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type {
   ProjectStatus,
   ProjectWorkbenchProject,
@@ -34,9 +36,11 @@ export function ProjectStatusMenu({
   project,
   workspaceSlug,
 }: ProjectStatusMenuProps) {
+  const { t } = useTranslation()
   const [confirmStatus, setConfirmStatus] = useState<ProjectStatus | null>(null)
   const transition = useTransitionProjectMutation(workspaceSlug, project.slug)
   const closed = isClosedProjectStatus(project.status)
+  const currentStatusLabel = taskStatusLabel(project.status, t)
 
   const submit = async (status: ProjectStatus) => {
     await transition.mutateAsync(status)
@@ -44,8 +48,13 @@ export function ProjectStatusMenu({
 
   if (!canManage) {
     return (
-      <Button aria-label="项目状态" disabled size="sm" variant="outline">
-        {project.status}
+      <Button
+        aria-label={t("projectWorkbench.project.statusLabel")}
+        disabled
+        size="sm"
+        variant="outline"
+      >
+        {currentStatusLabel}
       </Button>
     )
   }
@@ -54,15 +63,21 @@ export function ProjectStatusMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button aria-label={`项目状态 ${project.status}`} size="sm" variant="outline">
-            {project.status}
+          <Button
+            aria-label={t("projectWorkbench.project.statusAria", {
+              status: currentStatusLabel,
+            })}
+            size="sm"
+            variant="outline"
+          >
+            {currentStatusLabel}
             <ChevronDownIcon />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           {closed ? (
             <DropdownMenuLabel>
-              恢复后项目内任务将重新可写
+              {t("projectWorkbench.project.reopenWritableHint")}
             </DropdownMenuLabel>
           ) : null}
           {STATUSES.map((status) => (
@@ -78,15 +93,15 @@ export function ProjectStatusMenu({
                 void submit(status)
               }}
             >
-              {status}
+              {taskStatusLabel(status, t)}
               {status === project.status ? <CheckIcon className="ml-auto" /> : null}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
       <DestructiveConfirmDialog
-        confirmLabel="关闭项目"
-        description="进入 archived 或 cancelled 后，项目内任务会进入禁写状态；需要恢复到 planning 或 active 后才能继续编辑。"
+        confirmLabel={t("projectWorkbench.project.closeProject")}
+        description={t("projectWorkbench.project.closeProjectDescription")}
         onConfirm={async () => {
           if (!confirmStatus) {
             return
@@ -101,7 +116,7 @@ export function ProjectStatusMenu({
         }}
         open={confirmStatus !== null}
         pending={transition.isPending}
-        title="确认关闭项目"
+        title={t("projectWorkbench.project.closeProjectTitle")}
       />
     </>
   )

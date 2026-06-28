@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 import { DataTable, type Column } from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 
 import { getProjects, type ProjectSummary } from "./projects-api"
 
@@ -41,7 +42,9 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
     {
       key: "status",
       header: t("common.status"),
-      render: (p) => <Badge variant="outline">{p.status}</Badge>,
+      render: (p) => (
+        <Badge variant="outline">{taskStatusLabel(p.status, t)}</Badge>
+      ),
     },
     {
       key: "progress",

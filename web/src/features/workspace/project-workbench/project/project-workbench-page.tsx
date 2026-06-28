@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useSearch } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -54,6 +55,7 @@ function ProjectWorkbenchPageContent({
   projectSlug,
   workspaceSlug,
 }: ProjectWorkbenchPageProps) {
+  const { t } = useTranslation()
   const feedback = useEditFeedback()
   const [now] = useState(() => Math.floor(Date.now() / 1000))
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
@@ -102,28 +104,30 @@ function ProjectWorkbenchPageContent({
       summarizeAssignees(
         taskRows.map(normalizeReadonlyTask),
         now,
-        "未分配"
+        t("projectReadonly.unassigned")
       ),
-    [now, taskRows]
+    [now, t, taskRows]
   )
 
   const accessError = project.error ?? tasks.error
   if (isPermissionError(accessError)) {
     return (
       <ProjectState
-        actionLabel="返回概览"
-        description={`${workspaceSlug} / ${projectSlug} 需要 project:read 和 task:read 权限。`}
+        actionLabel={t("projectReadonly.backToOverview")}
+        description={t("projectWorkbench.project.permissionDescription", {
+          project: `${workspaceSlug} / ${projectSlug}`,
+        })}
         detail="project:read, task:read"
-        title="没有项目访问权限"
+        title={t("projectWorkbench.project.permissionTitle")}
       />
     )
   }
   if (isNotFoundError(project.error)) {
     return (
       <ProjectState
-        actionLabel="返回概览"
-        description="项目不存在，或当前 token 不在项目允许范围内。"
-        title="项目不存在"
+        actionLabel={t("projectReadonly.backToOverview")}
+        description={t("projectWorkbench.project.notFoundDescription")}
+        title={t("projectWorkbench.project.notFoundTitle")}
       />
     )
   }
@@ -134,10 +138,10 @@ function ProjectWorkbenchPageContent({
     const code = accessError instanceof ApiError ? accessError.code : "unknown"
     return (
       <ProjectState
-        actionLabel="刷新"
+        actionLabel={t("common.refresh")}
         description={code}
         onAction={() => window.location.reload()}
-        title="加载失败"
+        title={t("projectWorkbench.project.loadFailed")}
       />
     )
   }
@@ -151,7 +155,7 @@ function ProjectWorkbenchPageContent({
         canManage={canManage}
         onCopyLink={() => {
           void navigator.clipboard?.writeText(window.location.href)
-          feedback.success("链接已复制")
+          feedback.success(t("projectReadonly.copied"))
         }}
         project={project.data}
         workspaceSlug={workspaceSlug}
@@ -178,7 +182,7 @@ function ProjectWorkbenchPageContent({
       <ProjectAssigneeSummary assignees={assignees} />
       <ProjectActivity
         entries={timeline.isError ? [] : timeline.data}
-        title="最近动态"
+        title={t("projectReadonly.recentActivity")}
       />
     </div>
   )
@@ -189,12 +193,13 @@ function ProjectStatsGrid({
 }: {
   stats: ReturnType<typeof buildProjectStats>
 }) {
+  const { t } = useTranslation()
   const items = [
-    ["待处理", stats.pending],
-    ["进行中", stats.active],
-    ["已完成", stats.completed],
-    ["已逾期", stats.overdue],
-    ["高优先级", stats.highPriority],
+    [t("projectReadonly.pending"), stats.pending],
+    [t("projectWorkbench.project.inProgress"), stats.active],
+    [t("projectReadonly.completed"), stats.completed],
+    [t("projectReadonly.overdue"), stats.overdue],
+    [t("projectReadonly.highPriority"), stats.highPriority],
   ] as const
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -213,19 +218,24 @@ function ProjectAssigneeSummary({
 }: {
   assignees: ReturnType<typeof summarizeAssignees>
 }) {
+  const { t } = useTranslation()
   if (assignees.length === 0) {
     return null
   }
   return (
     <section className="border bg-card p-3">
-      <h2 className="text-sm font-medium">负责人概览</h2>
+      <h2 className="text-sm font-medium">{t("projectReadonly.assigneeSummary")}</h2>
       <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-3">
         {assignees.slice(0, 6).map((assignee) => (
           <div className="grid grid-cols-[1fr_auto_auto] gap-3 text-xs" key={assignee.key}>
             <span className="truncate">{assignee.label}</span>
-            <span className="text-muted-foreground">{assignee.open} open</span>
             <span className="text-muted-foreground">
-              {assignee.overdue} overdue
+              {t("projectWorkbench.project.openTasks", { count: assignee.open })}
+            </span>
+            <span className="text-muted-foreground">
+              {t("projectWorkbench.project.overdueTasks", {
+                count: assignee.overdue,
+              })}
             </span>
           </div>
         ))}

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import { transitionProject } from "../api/project-api"
 import { ProjectStatusMenu } from "./project-status-menu"
 
@@ -50,8 +51,9 @@ function project(status = "planning") {
 }
 
 describe("ProjectStatusMenu", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(transitionProject).mockResolvedValue(project("active"))
   })
 
@@ -65,8 +67,11 @@ describe("ProjectStatusMenu", () => {
       { wrapper: makeWrapper(makeQueryClient()) }
     )
 
+    expect(screen.getByRole("button", { name: "项目状态 规划中" })).toBeTruthy()
+    expect(screen.queryByText("planning")).toBeNull()
+
     await userEvent.click(screen.getByRole("button", { name: /项目状态/ }))
-    await userEvent.click(screen.getByRole("menuitem", { name: "active" }))
+    await userEvent.click(screen.getByRole("menuitem", { name: "进行中" }))
 
     expect(transitionProject).toHaveBeenCalledWith("acme", "adsops", "active")
   })
@@ -82,7 +87,7 @@ describe("ProjectStatusMenu", () => {
     )
 
     await userEvent.click(screen.getByRole("button", { name: /项目状态/ }))
-    await userEvent.click(screen.getByRole("menuitem", { name: "archived" }))
+    await userEvent.click(screen.getByRole("menuitem", { name: "已归档" }))
 
     expect(screen.getByText("确认关闭项目")).toBeTruthy()
     expect(transitionProject).not.toHaveBeenCalled()
@@ -102,11 +107,13 @@ describe("ProjectStatusMenu", () => {
       { wrapper: makeWrapper(makeQueryClient()) }
     )
 
+    expect(screen.getByRole("button", { name: "项目状态 已归档" })).toBeTruthy()
+
     await userEvent.click(screen.getByRole("button", { name: /项目状态/ }))
 
     expect(screen.getByText("恢复后项目内任务将重新可写")).toBeTruthy()
 
-    await userEvent.click(screen.getByRole("menuitem", { name: "active" }))
+    await userEvent.click(screen.getByRole("menuitem", { name: "进行中" }))
 
     expect(transitionProject).toHaveBeenCalledWith("acme", "adsops", "active")
   })

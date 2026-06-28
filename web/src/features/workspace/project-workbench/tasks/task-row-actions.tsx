@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "@tanstack/react-router"
 import { Check, Copy, MoreHorizontal, Play, Square, Trash2 } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -33,6 +34,7 @@ export function TaskRowActions({
   taskRef,
   workspaceSlug,
 }: TaskRowActionsProps) {
+  const { t } = useTranslation()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const startMutation = useTaskActionMutation(workspaceSlug, projectSlug, "start")
   const stopMutation = useTaskActionMutation(workspaceSlug, projectSlug, "stop")
@@ -61,7 +63,7 @@ export function TaskRowActions({
         <>
           {isStarted ? (
             <Button
-              aria-label={`停止 ${taskRef}`}
+              aria-label={t("projectWorkbench.project.stopTask", { taskRef })}
               disabled={stopMutation.isPending}
               onClick={() => runAction("stop")}
               size="icon-xs"
@@ -72,7 +74,7 @@ export function TaskRowActions({
             </Button>
           ) : (
             <Button
-              aria-label={`开始 ${taskRef}`}
+              aria-label={t("projectWorkbench.project.startTask", { taskRef })}
               disabled={startMutation.isPending}
               onClick={() => runAction("start")}
               size="icon-xs"
@@ -83,7 +85,7 @@ export function TaskRowActions({
             </Button>
           )}
           <Button
-            aria-label={`完成 ${taskRef}`}
+            aria-label={t("projectWorkbench.project.completeTask", { taskRef })}
             disabled={doneMutation.isPending}
             onClick={() => runAction("done")}
             size="icon-xs"
@@ -97,7 +99,9 @@ export function TaskRowActions({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            aria-label={`更多操作 ${taskRef}`}
+            aria-label={t("projectWorkbench.project.moreTaskActions", {
+              taskRef,
+            })}
             size="icon-xs"
             type="button"
             variant="ghost"
@@ -111,7 +115,7 @@ export function TaskRowActions({
               params={{ workspaceSlug, projectSlug, taskRef }}
               to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
             >
-              打开详情
+              {t("projectWorkbench.project.openTaskDetails")}
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -121,7 +125,7 @@ export function TaskRowActions({
             }}
           >
             <Copy />
-            复制任务链接
+            {t("projectWorkbench.project.copyTaskLink")}
           </DropdownMenuItem>
           {canWrite ? (
             <>
@@ -134,15 +138,17 @@ export function TaskRowActions({
                 }}
               >
                 <Trash2 />
-                删除任务
+                {t("projectWorkbench.project.deleteTask")}
               </DropdownMenuItem>
             </>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       <DestructiveConfirmDialog
-        confirmLabel="删除"
-        description={`删除任务 ${taskRef} 后不可恢复。`}
+        confirmLabel={t("projectWorkbench.project.delete")}
+        description={t("projectWorkbench.project.deleteTaskDescription", {
+          taskRef,
+        })}
         onConfirm={async () => {
           await remove.mutateAsync(taskRef)
           setConfirmDelete(false)
@@ -150,7 +156,7 @@ export function TaskRowActions({
         onOpenChange={setConfirmDelete}
         open={confirmDelete}
         pending={remove.isPending}
-        title="确认删除任务"
+        title={t("projectWorkbench.project.deleteTaskTitle")}
       />
     </div>
   )

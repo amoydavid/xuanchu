@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from "react"
 import { PlusIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +14,7 @@ import {
 import type { ProjectTaskFilterParams } from "../api/project-api"
 import { useCreateTaskMutation } from "../hooks/use-task-mutations"
 import { isClosedProjectStatus } from "../project/project-status-menu"
+import { InlineDatePicker } from "../shared/inline-date-picker"
 
 type TaskQuickCreateProps = {
   canCreate: boolean
@@ -31,9 +33,10 @@ export function TaskQuickCreate({
   projectStatus,
   workspaceSlug,
 }: TaskQuickCreateProps) {
+  const { t } = useTranslation()
   const [title, setTitle] = useState("")
   const [priority, setPriority] = useState("")
-  const [due, setDue] = useState("")
+  const [due, setDue] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const createTask = useCreateTaskMutation(workspaceSlug, projectSlug, filters)
 
@@ -44,20 +47,20 @@ export function TaskQuickCreate({
   const submit = async () => {
     const normalizedTitle = title.trim()
     if (!normalizedTitle) {
-      setError("任务标题不能为空")
+      setError(t("projectReadonly.taskTitleRequired"))
       return
     }
     setError(null)
     try {
       await createTask.mutateAsync({
-        ...(due ? { due: dateToUnix(due) } : {}),
+        ...(due !== null ? { due } : {}),
         ...(priority ? { priority } : {}),
         project: projectSlug,
         title: normalizedTitle,
       })
       setTitle("")
       setPriority("")
-      setDue("")
+      setDue(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -76,7 +79,7 @@ export function TaskQuickCreate({
         <div className="relative">
           <PlusIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            aria-label="新任务标题"
+            aria-label={t("projectReadonly.newTaskTitle")}
             className="pl-8"
             disabled={createTask.isPending}
             onChange={(event) => {
@@ -84,7 +87,7 @@ export function TaskQuickCreate({
               setError(null)
             }}
             onKeyDown={onTitleKeyDown}
-            placeholder="输入任务标题..."
+            placeholder={t("projectReadonly.newTaskTitlePlaceholder")}
             value={title}
           />
         </div>
@@ -96,8 +99,11 @@ export function TaskQuickCreate({
           }}
           value={priority}
         >
-          <SelectTrigger aria-label="任务优先级" className="w-full">
-            <SelectValue placeholder="优先级" />
+          <SelectTrigger
+            aria-label={t("projectReadonly.taskPriorityPlain")}
+            className="w-full"
+          >
+            <SelectValue placeholder={t("projectReadonly.priority")} />
           </SelectTrigger>
           <SelectContent>
             {PRIORITIES.map((item) => (
@@ -107,14 +113,15 @@ export function TaskQuickCreate({
             ))}
           </SelectContent>
         </Select>
-        <Input
-          aria-label="截止日期"
+        <InlineDatePicker
+          ariaLabel={t("projectReadonly.dueDate")}
+          className="h-9"
           disabled={createTask.isPending}
-          onChange={(event) => {
-            setDue(event.target.value)
+          emptyLabel={t("projectReadonly.dueDate")}
+          onSave={(next) => {
+            setDue(next)
             setError(null)
           }}
-          type="date"
           value={due}
         />
         <Button
@@ -124,14 +131,10 @@ export function TaskQuickCreate({
           }}
           type="button"
         >
-          创建任务
+          {t("projectReadonly.createTask")}
         </Button>
       </div>
       {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
     </section>
   )
-}
-
-function dateToUnix(value: string): number {
-  return Math.floor(new Date(`${value}T00:00:00Z`).getTime() / 1000)
 }

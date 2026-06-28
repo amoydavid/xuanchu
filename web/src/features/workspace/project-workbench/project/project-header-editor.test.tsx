@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import { modifyProject } from "../api/project-api"
 import { ProjectHeaderEditor } from "./project-header-editor"
 
@@ -51,8 +52,9 @@ function project() {
 }
 
 describe("ProjectHeaderEditor", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(modifyProject).mockResolvedValue(project())
   })
 
@@ -110,5 +112,23 @@ describe("ProjectHeaderEditor", () => {
     expect(screen.queryByRole("button", { name: "项目名称" })).toBeNull()
     expect(screen.getByText("广告投放自动化")).toBeTruthy()
     expect(screen.getByText("每日巡检投放任务")).toBeTruthy()
+  })
+
+  it("uses localized labels for project header controls", async () => {
+    await i18n.changeLanguage("en-US")
+    render(
+      <ProjectHeaderEditor
+        canManage={true}
+        onCopyLink={() => undefined}
+        project={project()}
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(screen.getByRole("button", { name: "Project name" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Project description" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Project settings" })).toBeTruthy()
   })
 })

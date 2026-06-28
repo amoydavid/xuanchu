@@ -2,11 +2,16 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
+import type { TFunction } from "i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  recurrenceLabel,
+  taskStatusLabel,
+} from "@/features/workspace/shared/task-labels"
 import { ApiError } from "@/lib/api"
 import {
   getProjectReadonlyAnnotations,
@@ -89,13 +94,10 @@ export function ProjectTaskDetailPage({
             <h1 className="text-2xl font-semibold tracking-normal">
               {taskData.title}
             </h1>
-            {taskData.description ? (
-              <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                {taskData.description}
-              </p>
-            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="outline">{taskData.status}</Badge>
+              <Badge variant="outline">
+                {taskStatusLabel(taskData.status, t)}
+              </Badge>
               {taskData.priority ? (
                 <Badge variant="outline">{taskData.priority}</Badge>
               ) : null}
@@ -112,6 +114,16 @@ export function ProjectTaskDetailPage({
 
       <div className="grid gap-5 md:grid-cols-[1fr_220px]">
         <div className="space-y-5">
+          {taskData.description ? (
+            <section className="space-y-2 border bg-card p-4">
+              <h2 className="text-sm font-medium">
+                {t("projectReadonly.description")}
+              </h2>
+              <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                {taskData.description}
+              </p>
+            </section>
+          ) : null}
           <TaskAnnotationsLazy
             task={taskData}
             workspaceSlug={workspaceSlug}
@@ -263,21 +275,23 @@ function TaskSidePanel({
   projectSlug,
 }: {
   task: ProjectReadonlyTask
-  t: (key: string) => string
+  t: TFunction
   workspaceSlug: string
   projectSlug: string
 }) {
   const udas = extractUDAs(task)
   // 纯文本字段：不涉及任务引用，直接字符串渲染。
   const fields: Array<[string, string]> = [
-    [t("common.status"), task.status],
+    [t("common.status"), taskStatusLabel(task.status, t)],
     [t("projectReadonly.priority"), task.priority || "-"],
     [t("projectReadonly.assignee"), assigneeNames(task)],
     [t("projectReadonly.due"), formatUnixDate(task.due)],
     [t("projectReadonly.tags"), task.tags?.join(", ") || "-"],
     [t("projectReadonly.entry"), formatRFCDate(task.entry)],
     [t("projectReadonly.modified"), formatRFCDate(task.modified)],
-    ...(task.recur ? [[t("projectReadonly.recur"), task.recur] as [string, string]] : []),
+    ...(task.recur
+      ? [[t("projectReadonly.recur"), recurrenceLabel(task.recur, t)] as [string, string]]
+      : []),
   ]
 
   return (

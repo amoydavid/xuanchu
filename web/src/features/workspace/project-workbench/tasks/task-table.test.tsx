@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import type { ProjectWorkbenchTask } from "../api/project-api"
 import {
   deleteTask,
@@ -98,8 +99,9 @@ function renderTaskTable(tasks: ProjectWorkbenchTask[] = [task()]) {
 }
 
 describe("TaskTable", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(deleteTask).mockResolvedValue(task())
     vi.mocked(doneTask).mockResolvedValue(task({ status: "completed" }))
     vi.mocked(modifyTask).mockResolvedValue(task())
@@ -132,8 +134,12 @@ describe("TaskTable", () => {
   it("clears due date with clear_due payload", async () => {
     renderTaskTable()
 
-    await userEvent.clear(screen.getByLabelText("任务截止日期 ads-1"))
-    await userEvent.tab()
+    await userEvent.click(
+      within(screen.getByRole("table")).getByRole("button", {
+        name: "任务截止日期 ads-1",
+      })
+    )
+    await userEvent.click(await screen.findByRole("button", { name: "清除日期" }))
 
     await waitFor(() => {
       expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
@@ -194,12 +200,28 @@ describe("TaskTable", () => {
     await userEvent.click(screen.getByRole("option", { name: "H" }))
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { priority: "H" })
 
-    await userEvent.clear(screen.getByLabelText("移动任务截止日期 ads-1"))
-    await userEvent.tab()
+    await userEvent.click(
+      screen.getByRole("button", { name: "移动任务截止日期 ads-1" })
+    )
+    await userEvent.click(await screen.findByRole("button", { name: "清除日期" }))
     await waitFor(() => {
       expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
         clear_due: true,
       })
     })
+  })
+
+  it("uses localized task action labels", async () => {
+    await i18n.changeLanguage("en-US")
+    renderTaskTable()
+
+    await userEvent.click(
+      within(screen.getByRole("table")).getByRole("button", {
+        name: "More actions ads-1",
+      })
+    )
+    expect(screen.getByRole("menuitem", { name: "Open details" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "Copy task link" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "Delete task" })).toBeTruthy()
   })
 })

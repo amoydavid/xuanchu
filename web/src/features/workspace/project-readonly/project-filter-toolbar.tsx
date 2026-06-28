@@ -1,10 +1,12 @@
 import { useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
+import type { TFunction } from "i18next"
 import { useTranslation } from "react-i18next"
 import { XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import {
   Select,
   SelectContent,
@@ -28,15 +30,15 @@ type ProjectFilterToolbarProps = {
 const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 
-// FILTER_LABELS 把过滤 key 映射为展示用的简短标签（活跃 chips 用）。
-const FILTER_LABELS: Record<keyof TaskFilter, string> = {
-  status: "status",
-  priority: "priority",
-  assignee: "assignee",
-  due_after: "due after",
-  due_before: "due before",
-  tags: "tags",
-  q: "q",
+// FILTER_LABEL_KEYS 把过滤 key 映射为展示用的简短标签（活跃 chips 用）。
+const FILTER_LABEL_KEYS: Record<keyof TaskFilter, string> = {
+  status: "common.status",
+  priority: "projectReadonly.priority",
+  assignee: "projectReadonly.assignee",
+  due_after: "projectReadonly.dueAfter",
+  due_before: "projectReadonly.dueBefore",
+  tags: "projectReadonly.tags",
+  q: "common.search",
 }
 
 export function ProjectFilterToolbar({
@@ -86,7 +88,7 @@ export function ProjectFilterToolbar({
             <SelectItem value="__all">{t("common.status")}</SelectItem>
             {STATUS_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
-                {s}
+                {taskStatusLabel(s, t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -140,7 +142,7 @@ export function ProjectFilterToolbar({
               variant="ghost"
             >
               <span>
-                {FILTER_LABELS[key]}={value}
+                {t(FILTER_LABEL_KEYS[key])}={filterValueLabel(key, value, t)}
               </span>
               <XIcon className="size-3" />
             </Button>
@@ -158,6 +160,17 @@ export function ProjectFilterToolbar({
       ) : null}
     </section>
   )
+}
+
+function filterValueLabel(
+  key: keyof TaskFilter,
+  value: string,
+  t: TFunction
+) {
+  if (key === "status") {
+    return taskStatusLabel(value, t)
+  }
+  return value
 }
 
 // DebouncedInput 是文本输入框，本地维护输入态，在失焦或回车时才把值提交到 URL，

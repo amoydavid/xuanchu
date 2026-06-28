@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import type { TFunction } from "i18next"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -9,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { ProjectReadonlyTask } from "./project-readonly-api"
 
 type ProjectTaskListProps = {
@@ -16,7 +18,7 @@ type ProjectTaskListProps = {
   emptyTitle: string
   projectSlug: string
   tasks: ProjectReadonlyTask[]
-  t: (key: string) => string
+  t: TFunction
   workspaceSlug: string
 }
 
@@ -75,7 +77,9 @@ export function ProjectTaskList({
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{task.status}</Badge>
+                    <Badge variant="outline">
+                      {taskStatusLabel(task.status, t)}
+                    </Badge>
                   </TableCell>
                   <TableCell>{assigneeNames(task)}</TableCell>
                   <TableCell>{formatUnixDate(task.due)}</TableCell>
@@ -95,7 +99,7 @@ export function ProjectTaskList({
             <div className="flex items-center justify-between gap-2 text-xs">
               <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
               <span className="text-muted-foreground">
-                {task.status}
+                {taskStatusLabel(task.status, t)}
                 {task.priority ? ` ${task.priority}` : ""}
               </span>
             </div>

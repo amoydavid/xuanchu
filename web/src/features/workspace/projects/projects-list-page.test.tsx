@@ -74,6 +74,10 @@ describe("ProjectsListPage", () => {
 
     await waitFor(() => expect(screen.getByText("API Platform")).toBeTruthy())
     expect(screen.getByText("Web Console")).toBeTruthy()
+    expect(screen.getByText("进行中")).toBeTruthy()
+    expect(screen.getByText("待处理")).toBeTruthy()
+    expect(screen.queryByText("active")).toBeNull()
+    expect(screen.queryByText("pending")).toBeNull()
     // 待处理/总数：API Platform → 2 / 4
     expect(screen.getByText("2 / 4")).toBeTruthy()
     // 完成进度 50%

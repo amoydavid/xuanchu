@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -7,10 +8,15 @@ import {
   extractUDAs,
   formatUDAValue,
 } from "@/features/workspace/project-readonly/uda"
+import {
+  recurrenceLabel,
+  recurrenceOptions,
+  taskStatusLabel,
+} from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTaskRef } from "../api/project-api"
 import type { ProjectTask } from "../api/task-api"
 import { useModifyTaskMutation } from "../hooks/use-task-mutations"
-import { InlineDateEditor } from "../shared/inline-date-editor"
+import { InlineDatePicker } from "../shared/inline-date-picker"
 import { InlineSelectEditor } from "../shared/inline-select-editor"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { useEditFeedback } from "../shared/edit-feedback"
@@ -40,20 +46,25 @@ export function TaskPropertyPanel({
   taskRef,
   workspaceSlug,
 }: TaskPropertyPanelProps) {
+  const { t } = useTranslation()
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const udas = useMemo(() => extractUDAs(task), [task])
+  const recurrenceSelectOptions = recurrenceOptions.map((option) => ({
+    label: t(option.labelKey),
+    value: option.value,
+  }))
 
   return (
     <aside className="space-y-3 border bg-card p-4 text-sm">
       <h2 className="text-xs font-medium text-muted-foreground uppercase">
-        属性
+        {t("projectReadonly.attributes")}
       </h2>
-      <PropertyRow label="状态">
-        <div className="font-medium">{task.status}</div>
+      <PropertyRow label={t("common.status")}>
+        <div className="font-medium">{taskStatusLabel(task.status, t)}</div>
       </PropertyRow>
-      <PropertyRow label="优先级">
+      <PropertyRow label={t("projectReadonly.priority")}>
         <InlineSelectEditor
-          ariaLabel="优先级"
+          ariaLabel={t("projectReadonly.priority")}
           className="h-7 w-full"
           disabled={!canWrite}
           onSave={async (priority) => {
@@ -66,9 +77,9 @@ export function TaskPropertyPanel({
           value={task.priority ?? "none"}
         />
       </PropertyRow>
-      <PropertyRow label="截止">
-        <InlineDateEditor
-          ariaLabel="截止日期"
+      <PropertyRow label={t("projectReadonly.dueDate")}>
+        <InlineDatePicker
+          ariaLabel={t("projectReadonly.dueDate")}
           className="h-7"
           disabled={!canWrite}
           onSave={async (due) => {
@@ -79,7 +90,7 @@ export function TaskPropertyPanel({
           value={unixLikeToNumber(task.due)}
         />
       </PropertyRow>
-      <PropertyRow label="负责人">
+      <PropertyRow label={t("projectReadonly.assignee")}>
         <AssigneePicker
           disabled={!canWrite}
           onSave={async (items) => {
@@ -93,7 +104,7 @@ export function TaskPropertyPanel({
           workspaceSlug={workspaceSlug}
         />
       </PropertyRow>
-      <PropertyRow label="标签">
+      <PropertyRow label={t("projectReadonly.tags")}>
         <TagPicker
           disabled={!canWrite}
           onSave={async (items) => {
@@ -106,7 +117,7 @@ export function TaskPropertyPanel({
       </PropertyRow>
       <DateProperty
         disabled={!canWrite}
-        label="等待到"
+        label={t("projectReadonly.waitUntil")}
         onSave={async (wait) => {
           await modify.mutateAsync(
             wait === null ? { clear_wait: true } : { wait }
@@ -116,7 +127,7 @@ export function TaskPropertyPanel({
       />
       <DateProperty
         disabled={!canWrite}
-        label="计划"
+        label={t("projectReadonly.scheduledStart")}
         onSave={async (scheduled) => {
           await modify.mutateAsync(
             scheduled === null ? { clear_scheduled: true } : { scheduled }
@@ -126,7 +137,7 @@ export function TaskPropertyPanel({
       />
       <DateProperty
         disabled={!canWrite}
-        label="截止隐藏"
+        label={t("projectReadonly.hideUntil")}
         onSave={async (until) => {
           await modify.mutateAsync(
             until === null ? { clear_until: true } : { until }
@@ -134,18 +145,25 @@ export function TaskPropertyPanel({
         }}
         value={task.until}
       />
-      <PropertyRow label="重复">
-        <InlineTextEditor
-          ariaLabel="重复"
+      <PropertyRow label={t("projectReadonly.recur")}>
+        <InlineSelectEditor
+          ariaLabel={t("projectReadonly.recur")}
+          className="h-7 w-full"
           disabled={!canWrite}
-          emptyLabel="-"
           onSave={async (recur) => {
-            await modify.mutateAsync(recur ? { recur } : { clear_recur: true })
+            await modify.mutateAsync(
+              recur === "none" ? { clear_recur: true } : { recur }
+            )
           }}
-          value={task.recur ?? ""}
+          options={recurrenceSelectOptions}
+          placeholder="-"
+          value={task.recur ?? "none"}
         />
+        <div className="mt-1 text-xs text-muted-foreground">
+          {recurrenceLabel(task.recur, t)}
+        </div>
       </PropertyRow>
-      <PropertyRow label="依赖">
+      <PropertyRow label={t("projectReadonly.dependsOn")}>
         <TaskDependencyPicker
           disabled={!canWrite}
           onSave={async (depends) => {
@@ -161,7 +179,7 @@ export function TaskPropertyPanel({
         />
       </PropertyRow>
       {task.parent ? (
-        <PropertyRow label="父任务">
+        <PropertyRow label={t("projectReadonly.parent")}>
           <TaskRefLinks
             projectSlug={projectSlug}
             refs={task.parent_info ? [task.parent_info] : undefined}
@@ -171,7 +189,7 @@ export function TaskPropertyPanel({
         </PropertyRow>
       ) : null}
       {task.blocked_by_info && task.blocked_by_info.length > 0 ? (
-        <PropertyRow label="阻塞了">
+        <PropertyRow label={t("projectReadonly.blocking")}>
           <TaskRefLinks
             projectSlug={projectSlug}
             refs={task.blocked_by_info}
@@ -180,17 +198,17 @@ export function TaskPropertyPanel({
           />
         </PropertyRow>
       ) : null}
-      <PropertyRow label="创建">
+      <PropertyRow label={t("projectReadonly.entry")}>
         <div className="font-medium">{formatRFCDate(task.entry)}</div>
       </PropertyRow>
-      <PropertyRow label="修改">
+      <PropertyRow label={t("projectReadonly.modified")}>
         <div className="font-medium">{formatRFCDate(task.modified)}</div>
       </PropertyRow>
       {udas.length > 0 ? (
         <>
           <Separator />
           <h2 className="text-xs font-medium text-muted-foreground uppercase">
-            自定义字段
+            {t("projectReadonly.customFields")}
           </h2>
           {udas.map(([key, value]) => (
             <PropertyRow key={key} label={key}>
@@ -425,7 +443,7 @@ function DateProperty({
 }) {
   return (
     <PropertyRow label={label}>
-      <InlineDateEditor
+      <InlineDatePicker
         ariaLabel={label}
         className="h-7"
         disabled={disabled}

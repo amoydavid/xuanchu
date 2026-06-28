@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import { createTask } from "../api/task-api"
 import { TaskQuickCreate } from "./task-quick-create"
 
@@ -29,8 +30,9 @@ function makeQueryClient() {
 }
 
 describe("TaskQuickCreate", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(createTask).mockResolvedValue({
       uuid: "task-1",
       task_slug: "ads-1",
@@ -78,7 +80,12 @@ describe("TaskQuickCreate", () => {
     await userEvent.type(screen.getByLabelText("新任务标题"), "复盘素材")
     await userEvent.click(screen.getByRole("combobox", { name: "任务优先级" }))
     await userEvent.click(screen.getByRole("option", { name: "H" }))
-    await userEvent.type(screen.getByLabelText("截止日期"), "2026-07-03")
+    await userEvent.click(screen.getByRole("button", { name: "截止日期" }))
+    const calendar = await screen.findByRole("grid")
+    await userEvent.click(
+      screen.getByRole("button", { name: /go to the next month/i })
+    )
+    await userEvent.click(within(calendar).getByText("3"))
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
 
     expect(createTask).toHaveBeenCalledWith("acme", {

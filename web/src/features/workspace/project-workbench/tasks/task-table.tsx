@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import type { ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -10,9 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTask } from "../api/project-api"
 import { useModifyTaskMutation } from "../hooks/use-task-mutations"
-import { InlineDateEditor } from "../shared/inline-date-editor"
+import { InlineDatePicker } from "../shared/inline-date-picker"
 import { InlineSelectEditor } from "../shared/inline-select-editor"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskRowActions } from "./task-row-actions"
@@ -37,10 +39,13 @@ export function TaskTable({
   tasks,
   workspaceSlug,
 }: TaskTableProps) {
+  const { t } = useTranslation()
   if (tasks.length === 0) {
     return (
       <section className="border bg-card p-6">
-        <h2 className="text-base font-medium">这个项目还没有任务</h2>
+        <h2 className="text-base font-medium">
+          {t("projectReadonly.emptyTitle")}
+        </h2>
         <code className="mt-4 block break-all border bg-background p-3 text-xs">
           xuanchu --workspace {workspaceSlug} add "Design API" project:{projectSlug}
         </code>
@@ -50,18 +55,18 @@ export function TaskTable({
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium">任务</h2>
+      <h2 className="text-sm font-medium">{t("projectReadonly.tasks")}</h2>
       <div className="hidden border bg-card md:block">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>标题</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>优先级</TableHead>
-              <TableHead>负责人</TableHead>
-              <TableHead>截止</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead>{t("projectReadonly.identifier")}</TableHead>
+              <TableHead>{t("projectReadonly.title")}</TableHead>
+              <TableHead>{t("common.status")}</TableHead>
+              <TableHead>{t("projectReadonly.priority")}</TableHead>
+              <TableHead>{t("projectReadonly.assignee")}</TableHead>
+              <TableHead>{t("projectReadonly.due")}</TableHead>
+              <TableHead className="text-right">{t("common.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -103,6 +108,7 @@ function TaskTableRow({
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
+  const { t } = useTranslation()
   const taskRef = taskReference(task)
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
 
@@ -115,22 +121,24 @@ function TaskTableRow({
       </TableCell>
       <TableCell className="min-w-64 max-w-lg">
         <InlineTextEditor
-          ariaLabel={`编辑任务标题 ${taskRef}`}
+          ariaLabel={t("projectReadonly.editTaskTitle", { taskRef })}
           disabled={!canWrite}
           displayClassName="max-w-lg"
           onSave={async (title) => {
             await modify.mutateAsync({ title })
           }}
           value={task.title}
-          validate={(title) => (title.trim() ? null : "标题不能为空")}
+          validate={(title) =>
+            title.trim() ? null : t("projectReadonly.taskTitleRequired")
+          }
         />
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{task.status}</Badge>
+        <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
       </TableCell>
       <TableCell>
         <InlineSelectEditor
-          ariaLabel={`任务优先级 ${taskRef}`}
+          ariaLabel={t("projectReadonly.taskPriority", { taskRef })}
           className="h-7 w-20"
           disabled={!canWrite}
           onSave={async (priority) => {
@@ -145,8 +153,8 @@ function TaskTableRow({
       </TableCell>
       <TableCell className="max-w-48 truncate">{assigneeNames(task)}</TableCell>
       <TableCell>
-        <InlineDateEditor
-          ariaLabel={`任务截止日期 ${taskRef}`}
+        <InlineDatePicker
+          ariaLabel={t("projectReadonly.taskDueDate", { taskRef })}
           className="h-7 w-36"
           disabled={!canWrite}
           onSave={async (due) => {
@@ -180,6 +188,7 @@ function TaskCard({
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
+  const { t } = useTranslation()
   const taskRef = taskReference(task)
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   return (
@@ -188,23 +197,25 @@ function TaskCard({
         <TaskLink projectSlug={projectSlug} task={task} workspaceSlug={workspaceSlug}>
           <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
         </TaskLink>
-        <Badge variant="outline">{task.status}</Badge>
+        <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
       </div>
       <div className="mt-2">
         <InlineTextEditor
-          ariaLabel={`编辑移动任务标题 ${taskRef}`}
+          ariaLabel={t("projectReadonly.editMobileTaskTitle", { taskRef })}
           disabled={!canWrite}
           displayClassName="max-w-full text-sm font-medium"
           onSave={async (title) => {
             await modify.mutateAsync({ title })
           }}
           value={task.title}
-          validate={(title) => (title.trim() ? null : "标题不能为空")}
+          validate={(title) =>
+            title.trim() ? null : t("projectReadonly.taskTitleRequired")
+          }
         />
       </div>
       <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
         <InlineSelectEditor
-          ariaLabel={`移动任务优先级 ${taskRef}`}
+          ariaLabel={t("projectReadonly.mobileTaskPriority", { taskRef })}
           className="h-7 w-full"
           disabled={!canWrite}
           onSave={async (priority) => {
@@ -216,8 +227,8 @@ function TaskCard({
           placeholder="-"
           value={task.priority ?? "none"}
         />
-        <InlineDateEditor
-          ariaLabel={`移动任务截止日期 ${taskRef}`}
+        <InlineDatePicker
+          ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef })}
           className="h-7 w-full"
           disabled={!canWrite}
           onSave={async (due) => {

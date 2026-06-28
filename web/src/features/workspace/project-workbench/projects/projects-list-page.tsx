@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { useProjectsQuery } from "../hooks/use-project-data"
@@ -63,7 +64,9 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
     {
       key: "status",
       header: t("common.status"),
-      render: (project) => <Badge variant="outline">{project.status}</Badge>,
+      render: (project) => (
+        <Badge variant="outline">{taskStatusLabel(project.status, t)}</Badge>
+      ),
     },
     {
       key: "progress",

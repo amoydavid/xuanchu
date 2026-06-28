@@ -1,4 +1,5 @@
 import { CopyIcon } from "lucide-react"
+import type { TFunction } from "i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,7 +14,7 @@ type ProjectSummaryProps = {
   project: ProjectReadonlyProject
   readonlyLabel: string
   stats: ProjectStats
-  t: (key: string) => string
+  t: TFunction
   workspaceSlug: string
 }
 
@@ -118,10 +119,14 @@ export function ProjectSummary({
                 >
                   <span className="truncate">{assignee.label}</span>
                   <span className="text-muted-foreground">
-                    {assignee.open} open
+                    {t("projectWorkbench.project.openTasks", {
+                      count: assignee.open,
+                    })}
                   </span>
                   <span className="text-muted-foreground">
-                    {assignee.overdue} overdue
+                    {t("projectWorkbench.project.overdueTasks", {
+                      count: assignee.overdue,
+                    })}
                   </span>
                 </div>
               ))

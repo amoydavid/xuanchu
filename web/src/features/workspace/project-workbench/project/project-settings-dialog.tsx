@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { useNavigate } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -26,6 +27,7 @@ export function ProjectSettingsDialog({
   trigger,
   workspaceSlug,
 }: ProjectSettingsDialogProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [slug, setSlug] = useState(project.slug)
   const [error, setError] = useState<string | null>(null)
@@ -35,7 +37,7 @@ export function ProjectSettingsDialog({
   const save = async () => {
     const normalizedSlug = slug.trim()
     if (!/^[a-z][a-z0-9]{2,31}$/.test(normalizedSlug)) {
-      setError("Slug 必须以小写字母开头，并且只包含小写字母和数字")
+      setError(t("projectWorkbench.project.settingsSlugInvalid"))
       return
     }
     setError(null)
@@ -58,9 +60,9 @@ export function ProjectSettingsDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>项目设置</DialogTitle>
+          <DialogTitle>{t("projectWorkbench.project.settings")}</DialogTitle>
           <DialogDescription>
-            Slug 会影响项目 URL 和 API 引用，保存后会跳转到新地址。
+            {t("projectWorkbench.project.settingsDescription")}
           </DialogDescription>
         </DialogHeader>
         <label className="grid gap-2 text-sm">
@@ -82,10 +84,10 @@ export function ProjectSettingsDialog({
             type="button"
             variant="outline"
           >
-            取消
+            {t("common.cancel")}
           </Button>
           <Button disabled={modifyProject.isPending} onClick={save} type="button">
-            保存设置
+            {t("projectWorkbench.project.saveSettings")}
           </Button>
         </DialogFooter>
       </DialogContent>

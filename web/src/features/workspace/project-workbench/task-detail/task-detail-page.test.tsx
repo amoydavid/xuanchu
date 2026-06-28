@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import {
   deleteTask,
   doneTask,
@@ -83,8 +84,9 @@ function renderPage() {
 }
 
 describe("TaskDetailPage", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(getTask).mockResolvedValue(task())
     vi.mocked(modifyTask).mockResolvedValue(task())
     vi.mocked(startTask).mockResolvedValue(task({ start: 1_900_000_000 }))
@@ -117,6 +119,22 @@ describe("TaskDetailPage", () => {
     expect(modifyTask).toHaveBeenCalledWith("acme", "ag-23", {
       clear_description: true,
     })
+  })
+
+  it("renders localized status and places description above annotations", async () => {
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    expect(screen.getAllByText("待处理").length).toBeGreaterThan(0)
+    expect(screen.queryByText("pending")).toBeNull()
+
+    const descriptionHeading = screen.getByRole("heading", { name: "描述" })
+    const annotationsHeading = screen.getByRole("heading", { name: /注解/ })
+    expect(
+      descriptionHeading.compareDocumentPosition(annotationsHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "任务描述" })).toBeTruthy()
   })
 
   it("runs start, done, and delete actions", async () => {
@@ -166,7 +184,10 @@ describe("TaskDetailPage", () => {
       (screen.getByRole("combobox", { name: "优先级" }) as HTMLButtonElement)
         .disabled
     ).toBe(true)
-    expect((screen.getByLabelText("截止日期") as HTMLInputElement).disabled).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "截止日期" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
     expect(
       (screen.getByRole("button", { name: "编辑负责人" }) as HTMLButtonElement)
         .disabled

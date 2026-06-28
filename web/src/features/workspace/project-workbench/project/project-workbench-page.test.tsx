@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import { renderWithRouter } from "@/test/router-wrapper"
 
 import {
@@ -84,8 +85,9 @@ function task(overrides: Partial<ProjectWorkbenchTask> = {}): ProjectWorkbenchTa
 }
 
 describe("ProjectWorkbenchPage", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
     vi.mocked(getProject).mockResolvedValue(project())
     vi.mocked(getProjectTasks).mockResolvedValue([task()])
     vi.mocked(getProjectTimeline).mockResolvedValue([])
@@ -113,7 +115,9 @@ describe("ProjectWorkbenchPage", () => {
         .disabled
     ).toBe(true)
     expect(
-      (screen.getByLabelText("任务截止日期 ads-1") as HTMLInputElement).disabled
+      (screen.getByRole("button", {
+        name: "任务截止日期 ads-1",
+      }) as HTMLButtonElement).disabled
     ).toBe(true)
     expect(within(screen.getByRole("table")).queryByRole("button", {
       name: "开始 ads-1",
@@ -121,5 +125,33 @@ describe("ProjectWorkbenchPage", () => {
     expect(within(screen.getByRole("table")).queryByRole("button", {
       name: "完成 ads-1",
     })).toBeNull()
+  })
+
+  it("localizes project workbench summary labels", async () => {
+    await i18n.changeLanguage("en-US")
+    vi.mocked(getProjectTimeline).mockResolvedValue([
+      {
+        id: "evt-1",
+        action: "task.updated",
+        created_at: 1782600000,
+        actor: { id: "u1", name: "Alice", external_ids: [] },
+      },
+    ])
+
+    render(
+      <ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("广告投放自动化")
+    expect(screen.getAllByText("Pending").length).toBeGreaterThan(0)
+    expect(screen.getByText("In progress")).toBeTruthy()
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0)
+    expect(screen.getByText("Overdue")).toBeTruthy()
+    expect(screen.getByText("High priority")).toBeTruthy()
+    expect(screen.getByText("Assignee summary")).toBeTruthy()
+    expect(screen.getByText(/open/)).toBeTruthy()
+    expect(screen.getByText(/overdue/)).toBeTruthy()
+    expect(screen.getByText("Recent activity")).toBeTruthy()
   })
 })

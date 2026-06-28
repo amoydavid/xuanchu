@@ -96,11 +96,14 @@ describe("ProjectWorkbench ProjectsListPage", () => {
     renderPage()
 
     const apiRow = await screen.findByRole("row", { name: /API Platform/ })
-    expect(within(apiRow).getByText("active")).toBeTruthy()
+    expect(within(apiRow).getByText("进行中")).toBeTruthy()
+    expect(within(apiRow).queryByText("active")).toBeNull()
     expect(within(apiRow).getByText("50%")).toBeTruthy()
     expect(within(apiRow).getByText("2 / 4")).toBeTruthy()
     expect(within(apiRow).getByRole("button", { name: "项目操作" })).toBeTruthy()
     expect(screen.getByText("Web Console")).toBeTruthy()
+    expect(screen.getByText("规划中")).toBeTruthy()
+    expect(screen.queryByText("planning")).toBeNull()
 
     await userEvent.click(apiRow)
 

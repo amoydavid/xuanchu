@@ -1,4 +1,5 @@
 import { CopyIcon, SettingsIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import type { ProjectWorkbenchProject } from "../api/project-api"
@@ -20,6 +21,7 @@ export function ProjectHeaderEditor({
   project,
   workspaceSlug,
 }: ProjectHeaderEditorProps) {
+  const { t } = useTranslation()
   const modifyProject = useModifyProjectMutation(workspaceSlug, project.slug)
 
   return (
@@ -31,12 +33,14 @@ export function ProjectHeaderEditor({
           </div>
           {canManage ? (
             <InlineTextEditor
-              ariaLabel="项目名称"
+              ariaLabel={t("projectWorkbench.project.name")}
               displayClassName="mt-1 text-2xl font-semibold tracking-normal"
               onSave={async (name) => {
                 await modifyProject.mutateAsync({ name })
               }}
-              validate={(value) => (value.trim() ? null : "项目名称不能为空")}
+              validate={(value) =>
+                value.trim() ? null : t("projectWorkbench.project.nameRequired")
+              }
               value={project.name}
             />
           ) : (
@@ -46,9 +50,9 @@ export function ProjectHeaderEditor({
           )}
           {canManage ? (
             <InlineTextEditor
-              ariaLabel="项目描述"
+              ariaLabel={t("projectWorkbench.project.description")}
               displayClassName="mt-2 max-w-3xl text-sm text-muted-foreground"
-              emptyLabel="添加项目描述"
+              emptyLabel={t("projectWorkbench.project.addDescription")}
               multiline
               onSave={async (description) => {
                 await modifyProject.mutateAsync({ description })
@@ -69,13 +73,17 @@ export function ProjectHeaderEditor({
           />
           <Button onClick={onCopyLink} size="sm" variant="outline">
             <CopyIcon />
-            复制链接
+            {t("projectReadonly.copyLink")}
           </Button>
           {canManage ? (
             <ProjectSettingsDialog
               project={project}
               trigger={
-                <Button aria-label="项目设置" size="icon-sm" variant="outline">
+                <Button
+                  aria-label={t("projectWorkbench.project.settings")}
+                  size="icon-sm"
+                  variant="outline"
+                >
                   <SettingsIcon />
                 </Button>
               }

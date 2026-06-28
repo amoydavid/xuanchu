@@ -70,7 +70,7 @@ describe("ProjectFilterToolbar", () => {
 
     expect(
       screen
-        .getByRole("button", { name: "status=pending" })
+        .getByRole("button", { name: "Status=Pending" })
         .getAttribute("data-slot")
     ).toBe("button")
     expect(
