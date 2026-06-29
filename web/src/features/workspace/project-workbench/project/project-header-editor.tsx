@@ -1,4 +1,5 @@
 import { CopyIcon, SettingsIcon } from "lucide-react"
+import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -11,12 +12,14 @@ import { ProjectStatusMenu } from "./project-status-menu"
 type ProjectHeaderEditorProps = {
   canManage: boolean
   onCopyLink: () => void
+  importAction?: ReactNode
   project: ProjectWorkbenchProject
   workspaceSlug: string
 }
 
 export function ProjectHeaderEditor({
   canManage,
+  importAction,
   onCopyLink,
   project,
   workspaceSlug,
@@ -66,6 +69,7 @@ export function ProjectHeaderEditor({
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {importAction}
           <ProjectStatusMenu
             canManage={canManage}
             project={project}

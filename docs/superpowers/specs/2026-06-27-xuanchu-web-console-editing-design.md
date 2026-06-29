@@ -35,6 +35,7 @@
 4. 所有写操作继续走现有 Workspace API，不绕过 membership、token scope、workspace allowlist、project allowlist、project closed 状态或 acting session 审计。
 5. 写操作成功后保持用户的当前位置、过滤条件和项目上下文，不把用户带回全局页。
 6. UI 文案、空态、错误态以中文为主，保留 i18n key 结构。
+7. 项目页支持在当前项目上下文内批量导入任务，提供 JSON 上传和 XLSX 模板路径，并在提交前预检标题、指派人和依赖。
 
 ## 3. 非目标
 
@@ -57,6 +58,7 @@
 | 风险操作 | dialog / confirm：删除任务、删除链接、删除注解、修改 project slug、项目进入 closed 状态 |
 | 任务状态 | 不做通用 status 下拉；使用后端现有 `start` / `stop` / `done` / `delete` 动作 |
 | 项目状态 | 使用状态下拉 + closed 状态二次确认；任意状态可转任意状态 |
+| 任务导入 | 项目页 dialog：JSON / XLSX 上传，浏览器端预检；导入文件用 `id` / `import_id` 做临时引用，只要求是批次内不重复的字符串，不要求 UUID 格式；用 `blocked_by` 表达阻塞关系；弹窗内可查看带字段 `description` 的完整 JSON Schema；上传解析后用分页表格预览归一化成果；缺失普通指派人可在预检区创建/加入 workspace；最终复用 `/api/v1/import` 原子写入 |
 | 成功反馈 | 就地更新 + 小型 saving/saved/error 状态，不弹全局 toast 作为唯一反馈 |
 | 失败恢复 | inline 编辑失败保持编辑态，显示字段级错误，可重试或 Esc 放弃 |
 | 数据同步 | mutation 成功后 invalidate/refetch 相关 query，响应体不作为唯一真实源 |
@@ -83,6 +85,7 @@ Inline edit 适合满足三个条件的字段：
 - Task links：包含 type/url/title 三字段，使用 dialog 更清晰。
 - Task dependencies / parent：需要搜索和校验任务引用，使用 picker dialog。
 - 新建 project：至少需要 slug/name，使用 dialog。
+- Task import：涉及批量数据、文件解析、人员/依赖预检和整批提交，必须使用 dialog。
 
 ## 5. 用户与权限
 
@@ -129,6 +132,7 @@ canProjectManage =
 /workspaces/:workspaceSlug/projects/:projectSlug
   项目工作台
   - 项目 header：name/description inline，status 下拉，设置菜单
+  - 任务导入：下载 XLSX 模板、上传 JSON/XLSX、预检并导入到当前项目
   - 任务过滤工具栏
   - 快速新建任务 composer
   - 任务表格：常用字段 inline edit
@@ -723,13 +727,14 @@ web/src/features/workspace/project-workbench/
 - inline editor：保存、取消、失败保留输入、空标题校验。
 - project header：name/description inline 保存；closed status 确认。
 - task quick create：创建成功清空、过滤隐藏提示。
+- task import：JSON/XLSX 解析、项目绑定、`id` / `blocked_by` 引用映射、人员/依赖预检、缺失普通指派人创建/加入、阻断提交。
 - task table：priority/due/assignee/tag mutation payload 正确。
 - task detail：description 清空、注解添加/删除、链接添加/删除。
 
 ### 14.2 前端集成测试
 
 - `/projects` 新建项目后跳转项目页。
-- 项目页创建任务后列表刷新。
+- 项目页创建任务或批量导入任务后列表刷新。
 - 修改任务 title 后详情页和列表页都显示新值。
 - viewer 或缺 scope 时不显示写入口。
 - API 403 时显示字段级错误。
@@ -776,13 +781,15 @@ git diff --check
 3. owner/admin 可以转移 project 状态；转入 `archived` / `cancelled` 有确认。
 4. closed project 禁止 task 创建和编辑，但允许 project transition 恢复。
 5. 项目详情页可快速创建任务。
-6. 任务表格可 inline 修改 title、priority、due、assignees、tags。
-7. 任务详情页可 inline 修改 title、description 和右侧属性。
-8. 任务详情页可添加/删除注解，添加/删除链接。
-9. 任务详情页支持 start/stop/done/delete；delete 有确认。
-10. viewer 或缺写 scope 的身份仍可浏览，但不能看到或触发写控件。
-11. 所有写操作失败时保留用户输入，并显示可理解错误。
-12. 页面刷新、URL 过滤、任务详情深链在编辑后仍保持稳定。
+6. 项目详情页可批量导入任务：支持 JSON 数组 / `{tasks: [...]}`、XLSX 模板下载与上传；导入弹窗必须提供完整 JSON Schema 弹窗，并用 JSON Schema `description` 说明每个字段；模板包含 `id`、`title`、`description`、`blocked_by`、日期、循环、注解、链接和 `uda.*` 等字段；模板的「字段说明」sheet 必须逐列列出 required、type、allowed values、format 和 example，Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明；提交前展示任务数、阻断项、预警，并用可滚动、分页表格预览解析和本地引用映射后的导入成果；最终导入内容应与预览一致，服务端生成的 `id` / `seq` 除外。
+7. 导入预检必须阻断空标题、未知指派人、非字符串或重复的 `id` / `import_id`、无法解析的 `blocked_by` 引用；`id` / `import_id` 只要求是批次内不重复的字符串，不要求 UUID 格式；`blocked_by` 可引用导入文件内临时 `id` / `import_id` 或当前项目已有任务 UUID，导入后临时 ID 不入库；未知普通指派人可在预检区选择直接创建用户并以 `member` 角色加入当前 workspace；外部身份引用可提示由服务端最终验证。
+8. 任务表格可 inline 修改 title、priority、due、assignees、tags。
+9. 任务详情页可 inline 修改 title、description 和右侧属性。
+10. 任务详情页可添加/删除注解，添加/删除链接。
+11. 任务详情页支持 start/stop/done/delete；delete 有确认。
+12. viewer 或缺写 scope 的身份仍可浏览，但不能看到或触发写控件。
+13. 所有写操作失败时保留用户输入，并显示可理解错误。
+14. 页面刷新、URL 过滤、任务详情深链在编辑后仍保持稳定。
 
 ## 16. 待确认问题
 

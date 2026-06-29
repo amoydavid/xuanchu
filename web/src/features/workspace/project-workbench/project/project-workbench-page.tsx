@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useSearch } from "@tanstack/react-router"
+import { UploadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ import {
   summarizeAssignees,
 } from "@/features/workspace/project-readonly/project-stats"
 import type { ProjectWorkbenchTask } from "../api/project-api"
+import { TaskImportDialog } from "../import/task-import-dialog"
 import { canProjectManage, canTaskWrite } from "../permissions/permissions"
 import {
   useProjectQuery,
@@ -58,6 +60,7 @@ function ProjectWorkbenchPageContent({
   const { t } = useTranslation()
   const feedback = useEditFeedback()
   const [now] = useState(() => Math.floor(Date.now() / 1000))
+  const [importOpen, setImportOpen] = useState(false)
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
   const filter: TaskFilter = useMemo(
     () => ({
@@ -153,11 +156,31 @@ function ProjectWorkbenchPageContent({
     <div className="space-y-5">
       <ProjectHeaderEditor
         canManage={canManage}
+        importAction={
+          canEditTasks ? (
+            <Button
+              onClick={() => setImportOpen(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <UploadIcon />
+              {t("projectWorkbench.import.button")}
+            </Button>
+          ) : null
+        }
         onCopyLink={() => {
           void navigator.clipboard?.writeText(window.location.href)
           feedback.success(t("projectReadonly.copied"))
         }}
         project={project.data}
+        workspaceSlug={workspaceSlug}
+      />
+      <TaskImportDialog
+        existingTasks={taskRows}
+        onOpenChange={setImportOpen}
+        open={importOpen}
+        projectSlug={projectSlug}
         workspaceSlug={workspaceSlug}
       />
       <ProjectClosedBanner canManage={canManage} status={project.data.status} />

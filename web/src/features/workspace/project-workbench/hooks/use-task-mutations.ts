@@ -9,6 +9,7 @@ import {
   deleteTaskAnnotation,
   deleteTaskLink,
   doneTask,
+  importTasks,
   modifyTask,
   startTask,
   stopTask,
@@ -16,6 +17,7 @@ import {
   updateTaskLink,
   type TaskAnnotationInput,
   type TaskCreateInput,
+  type TaskImportTask,
   type TaskLinkInput,
   type TaskModifyInput,
 } from "../api/task-api"
@@ -154,6 +156,25 @@ export function useTaskActionMutation(
         queryKey: projectQueryKeys.projectTimeline(workspaceSlug, projectSlug),
       })
       feedback.success(taskActionSuccessLabel(action))
+    },
+  })
+}
+
+export function useImportTasksMutation(
+  workspaceSlug: string,
+  projectSlug: string
+) {
+  const queryClient = useQueryClient()
+  const feedback = useEditFeedback()
+  return useMutation({
+    mutationFn: (tasks: TaskImportTask[]) =>
+      importTasks(workspaceSlug, projectSlug, tasks),
+    onSuccess: (result) => {
+      invalidateProjectTaskSurface(queryClient, workspaceSlug, projectSlug)
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.projectTimeline(workspaceSlug, projectSlug),
+      })
+      feedback.success(`已导入：${result.imported} 个任务`)
     },
   })
 }

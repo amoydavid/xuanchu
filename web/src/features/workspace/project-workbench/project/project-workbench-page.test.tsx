@@ -102,6 +102,7 @@ describe("ProjectWorkbenchPage", () => {
     )
 
     await screen.findByText("项目已关闭")
+    expect(screen.queryByRole("button", { name: "导入任务" })).toBeNull()
     expect(
       (screen.getByRole("button", { name: "项目名称" }) as HTMLButtonElement)
         .disabled
@@ -125,6 +126,16 @@ describe("ProjectWorkbenchPage", () => {
     expect(within(screen.getByRole("table")).queryByRole("button", {
       name: "完成 ads-1",
     })).toBeNull()
+  })
+
+  it("shows task import entry when the project is writable", async () => {
+    render(
+      <ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("广告投放自动化")
+    expect(screen.getByRole("button", { name: "导入任务" })).toBeTruthy()
   })
 
   it("localizes project workbench summary labels", async () => {

@@ -11,6 +11,7 @@ import {
   deleteTaskAnnotation,
   deleteTaskLink,
   doneTask,
+  importTasks,
   modifyTask,
   startTask,
   stopTask,
@@ -18,6 +19,7 @@ import {
 
 import {
   useCreateTaskMutation,
+  useImportTasksMutation,
   useModifyTaskMutation,
   useTaskActionMutation,
   useTaskAnnotationMutations,
@@ -32,6 +34,7 @@ vi.mock("../api/task-api", () => ({
   deleteTaskAnnotation: vi.fn(),
   deleteTaskLink: vi.fn(),
   doneTask: vi.fn(),
+  importTasks: vi.fn(),
   modifyTask: vi.fn(),
   startTask: vi.fn(),
   stopTask: vi.fn(),
@@ -78,6 +81,7 @@ describe("task mutation hooks", () => {
     vi.mocked(deleteTaskAnnotation).mockResolvedValue(taskResponse())
     vi.mocked(deleteTaskLink).mockResolvedValue(taskResponse())
     vi.mocked(doneTask).mockResolvedValue(taskResponse())
+    vi.mocked(importTasks).mockResolvedValue({ imported: 2 })
     vi.mocked(modifyTask).mockResolvedValue(taskResponse())
     vi.mocked(startTask).mockResolvedValue(taskResponse())
     vi.mocked(stopTask).mockResolvedValue(taskResponse())
@@ -151,6 +155,43 @@ describe("task mutation hooks", () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "tasks"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["project", "acme", "adsops", "timeline"],
+      })
+    })
+  })
+
+  it("invalidates project task surface after importing tasks", async () => {
+    const queryClient = makeQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+    const { result } = renderHook(
+      () => useImportTasksMutation("acme", "adsops"),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await act(async () => {
+      await result.current.mutateAsync([
+        {
+          uuid: "task-1",
+          title: "导入任务",
+          status: "pending",
+          entry: "2026-06-28T00:00:00Z",
+          modified: "2026-06-28T00:00:00Z",
+          project: "adsops",
+        },
+      ])
+    })
+
+    expect(importTasks).toHaveBeenCalledWith("acme", "adsops", [
+      expect.objectContaining({ title: "导入任务" }),
+    ])
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["project", "acme", "adsops", "tasks"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["project", "acme", "adsops"],
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "timeline"],

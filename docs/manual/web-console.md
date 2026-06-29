@@ -61,9 +61,9 @@ Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` �
 
 通用 workspace Agent token 可以使用 `--scope '*'`，再通过 workspace/project allowlist 和成员角色收窄实际权限。只做单一自动化的 token 仍应使用最小 scope。
 
-## 项目只读链接
+## 项目工作台链接
 
-普通 Console 支持面向企业协作工具的项目只读页：
+普通 Console 支持面向企业协作工具的项目工作台深链：
 
 ```text
 http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}
@@ -77,13 +77,26 @@ GET /api/v1/tasks?workspace={workspaceSlug}&project={projectSlug}&limit=200
 GET /api/v1/tasks/{taskRef}?workspace={workspaceSlug}
 ```
 
-项目只读页展示项目元数据、任务状态摘要、负责人摘要和任务列表。用户可以点击任务标识或任务描述进入只读任务详情页：
+项目工作台展示项目元数据、任务状态摘要、负责人摘要、过滤工具栏和任务列表。具备 `task:write` 的 owner/admin/member 可以在项目内快速创建任务，也可以点击“导入任务”上传 JSON / XLSX 批量导入。导入弹窗会先做浏览器端预检：
+
+- JSON 支持标准任务数组，或包含 `tasks` 数组的对象。
+- 导入弹窗提供“查看 JSON Schema”，展示带 `description` 注释的完整 JSON 字段约束，方便上传前核对。
+- XLSX 可以先下载模板，填写 `id`、`title`、`description`、`assignees`、`blocked_by` 和 `uda.*` 字段后上传；模板还包含 `status`、日期、循环、父任务、注解、链接等可选字段。
+- XLSX 模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example；Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明。
+- `description` 默认按 Markdown 编写，技术上仍是普通字符串。
+- `id` / `import_id` 是导入文件内的临时引用，只要求是批次内不重复的字符串，不要求 UUID 格式；导入后会生成新的任务 UUID，临时 ID 不入库。
+- 指派人必须能解析为当前 workspace 成员；如果普通邮箱或姓名对应的用户尚未创建或尚未加入 workspace，预检区可选择直接创建/加入为 `member`。
+- `blocked_by` 表示当前任务被哪些任务阻塞，可填写导入文件内的临时 `id` 或当前项目已有任务 UUID，多个值用逗号分隔。
+- 上传解析后，预检区会以分页表格预览解析和本地引用映射后的导入成果；最终导入内容应与该预览一致，服务端生成的 `id` / `seq` 除外。
+- 最终写入仍由 `/api/v1/import` 整批原子提交，服务端权限和项目禁写状态是最终裁决。
+
+用户可以点击任务标识或任务描述进入任务详情页：
 
 ```text
 http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{taskRef}
 ```
 
-任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。项目页和任务详情页都不提供任务编辑、完成、删除或拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
+任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。具备写权限时，项目页和任务详情页提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
 
 未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT / Agent token 登录成功后回到原项目页。当前版本仅预留 redirect 语义，不接入企业 SSO、飞书 OAuth、cookie session 或匿名分享链接。
 

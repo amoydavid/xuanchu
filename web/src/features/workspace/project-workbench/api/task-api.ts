@@ -82,6 +82,38 @@ export type TaskLinkInput = {
   title?: string
 }
 
+export type TaskImportTask = {
+  uuid: string
+  title: string
+  description?: string | null
+  status: string
+  entry: string
+  modified: string
+  end?: string | null
+  due?: string | null
+  project?: string | null
+  task_slug?: string | null
+  priority?: string | null
+  tags?: string[] | null
+  start?: string | null
+  wait?: string | null
+  scheduled?: string | null
+  until?: string | null
+  annotations?: Array<{ id?: string; entry: string; description: string }> | null
+  depends?: string[] | null
+  recur?: string | null
+  parent?: string | null
+  mask?: string | null
+  imask?: number | null
+  assignees?: Array<string | { user_id?: string; name?: string; email?: string | null }> | null
+  links?: unknown[] | null
+  [key: string]: unknown
+}
+
+export type TaskImportResult = {
+  imported: number
+}
+
 function encodeSegment(value: string): string {
   return encodeURIComponent(value)
 }
@@ -127,6 +159,13 @@ export function taskAnnotationItemPath(
 
 export function taskLinkPath(workspaceSlug: string, taskRef: string): string {
   return `/api/v1/tasks/${encodeSegment(taskRef)}/links?${workspaceQuery(workspaceSlug)}`
+}
+
+export function importTasksPath(
+  workspaceSlug: string,
+  projectSlug: string
+): string {
+  return `/api/v1/import?${workspaceQuery(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}`
 }
 
 export function taskLinkItemPath(
@@ -268,5 +307,16 @@ export function updateTaskLink(
   return workspaceApiPatch<ProjectWorkbenchTaskLink>(
     taskLinkItemPath(workspaceSlug, taskRef, linkID),
     input
+  )
+}
+
+export function importTasks(
+  workspaceSlug: string,
+  projectSlug: string,
+  tasks: TaskImportTask[]
+): Promise<TaskImportResult> {
+  return workspaceApiPost<TaskImportResult>(
+    importTasksPath(workspaceSlug, projectSlug),
+    tasks
   )
 }

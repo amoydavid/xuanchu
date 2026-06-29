@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  importTasksPath,
   taskAnnotationItemPath,
   taskAnnotationPath,
   taskDonePath,
@@ -27,6 +28,9 @@ describe("project workbench task api paths", () => {
     expect(taskLinkPath("local", "ads-1")).toBe(
       "/api/v1/tasks/ads-1/links?workspace=local"
     )
+    expect(importTasksPath("local", "adsops")).toBe(
+      "/api/v1/import?workspace=local&project=adsops"
+    )
   })
 
   it("encodes task refs and nested item ids safely", () => {
@@ -38,6 +42,9 @@ describe("project workbench task api paths", () => {
     )
     expect(taskLinkItemPath("workspace 1", "ads/1", "link/7")).toBe(
       "/api/v1/tasks/ads%2F1/links/link%2F7?workspace=workspace%201"
+    )
+    expect(importTasksPath("workspace 1", "ops/team")).toBe(
+      "/api/v1/import?workspace=workspace%201&project=ops%2Fteam"
     )
   })
 })

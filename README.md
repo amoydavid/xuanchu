@@ -104,7 +104,7 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>
 ```
 
-该页面展示项目元数据、任务摘要、过滤工具栏、任务快速创建入口和可编辑任务表格。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在项目上下文内创建任务，并 inline 修改任务 title、priority、due 等常用字段。
+该页面展示项目元数据、任务摘要、过滤工具栏、任务快速创建入口、任务导入入口和可编辑任务表格。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在项目上下文内创建任务、上传 JSON / XLSX 批量导入任务，并 inline 修改任务 title、priority、due 等常用字段。导入弹窗会先在浏览器端预检标题、指派人和依赖，并可打开完整 JSON Schema 弹窗核对字段说明：导入文件可用可选的 `id` / `import_id` 标记临时任务引用，只要求是批次内不重复的字符串，不要求 UUID 格式；`blocked_by` 表示当前任务被哪些任务阻塞；导入后会生成新的任务 UUID，临时 ID 不入库；指派人必须能解析为当前 workspace 成员；若检测到普通邮箱或姓名尚未加入 workspace，可在预检区一键创建/加入为 `member` 后继续导入；预检区会用分页表格展示解析和本地引用映射后的导入成果，最终写入仍由 `/api/v1/import` 整批原子提交，除服务端生成的 id/seq 外应与预览一致。
 
 ```text
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
@@ -112,7 +112,7 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 
 任务详情页提供“返回项目”入口，并支持 title / description inline 编辑、start / stop / done / delete 操作、注解添加/删除、链接添加/删除，以及右侧属性栏编辑。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页，登录成功后回到原项目页或任务详情页。当前版本只保留 redirect 语义，尚未接入企业 SSO 或飞书 OAuth。
 
-侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目工作台，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，查看并编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。
+侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目工作台，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，查看并编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。项目工作台的“导入任务”支持下载完整字段 XLSX 模板、上传填写后的 XLSX 或标准 JSON，也可以在弹窗内查看带 `description` 注释的完整 JSON Schema；模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example，Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明；description 默认按 Markdown 编写，技术上仍作为字符串保存；`blocked_by` 支持引用导入文件内的临时 `id` 或已有任务 UUID；预检发现缺失普通指派人时可直接创建用户并加入当前 workspace；上传解析后会分页预览归一化后的导入成果。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。
 
 
 普通 Console 的 `/tokens` 页面支持 PAT / Agent token 的完整生命周期管理：创建（选择类型、scope、工作空间范围、过期时间）、编辑（名称、scope、过期时间、工作空间与项目范围）、吊销。创建后的明文 token 仅展示一次，列表中只能看到 prefix。scope 编辑按资源分组勾选，提交展开后的具体 scope；agent token 必须绑定至少一个工作空间。
