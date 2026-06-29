@@ -224,6 +224,14 @@ export const enUS = {
     type: "Type",
     value: "Value",
   },
+  members: {
+    displayName: "Display name",
+    editDisplayName: "Edit display name",
+    editDisplayNameAria: "Edit display name {{name}}",
+    editDisplayNameDescription:
+      "Only the display name changes. The stable user reference {{name}} is unchanged.",
+    joinedAt: "Joined",
+  },
   page: {
     overview: "Service overview",
     tasks: "Task query",

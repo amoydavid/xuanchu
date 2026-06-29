@@ -34,6 +34,11 @@ const ProjectsListRoute = lazy(() =>
     default: module.ProjectsListRoute,
   }))
 )
+const MembersRoute = lazy(() =>
+  import("@/routes/workspace/MembersRoute").then((module) => ({
+    default: module.MembersRoute,
+  }))
+)
 const ProjectTaskDetailRoute = lazy(() =>
   import("@/routes/workspace/ProjectTaskDetailRoute").then((module) => ({
     default: module.ProjectTaskDetailRoute,
@@ -166,6 +171,12 @@ const projectsListRoute = createRoute({
   component: lazyRoute(ProjectsListRoute),
 })
 
+const membersRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/members",
+  component: lazyRoute(MembersRoute),
+})
+
 // /tasks 已下线：任务统一从项目入口浏览，旧链接重定向到 /projects。
 const tasksRedirectRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
@@ -199,7 +210,7 @@ const routeTree = rootRoute.addChildren([
     tasksRedirectRoute,
     projectsListRoute,
     createResourceRoute("workspaces", "/workspaces"),
-    createResourceRoute("members", "/members"),
+    membersRoute,
     tokensRoute,
     createResourceRoute("hooks", "/hooks"),
     createResourceRoute("notifications", "/notifications"),

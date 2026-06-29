@@ -222,6 +222,14 @@ export const zhCN = {
     type: "类型",
     value: "值",
   },
+  members: {
+    displayName: "显示姓名",
+    editDisplayName: "编辑显示姓名",
+    editDisplayNameAria: "编辑显示姓名 {{name}}",
+    editDisplayNameDescription:
+      "只修改展示姓名，不改变稳定用户引用名 {{name}}。",
+    joinedAt: "加入时间",
+  },
   page: {
     overview: "服务概览",
     tasks: "任务查询",
