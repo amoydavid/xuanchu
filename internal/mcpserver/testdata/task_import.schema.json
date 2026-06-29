@@ -42,6 +42,9 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "display_name": {
+                    "type": "string"
+                  },
                   "email": {
                     "type": [
                       "null",
@@ -186,6 +189,9 @@
                   "created_by": {
                     "additionalProperties": false,
                     "properties": {
+                      "display_name": {
+                        "type": "string"
+                      },
                       "email": {
                         "type": [
                           "null",

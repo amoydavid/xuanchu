@@ -1,11 +1,13 @@
 import {
   workspaceApiGet,
+  workspaceApiPatch,
   workspaceApiPost,
 } from "@/features/workspace/session/workspace-api"
 
 export type WorkspaceMemberCandidate = {
   user_id: string
   name: string
+  display_name?: string
   email?: string | null
   role: string
   joined_at: number
@@ -15,6 +17,7 @@ export type WorkspaceMemberCandidate = {
 export type WorkspaceUserCandidate = {
   id: string
   name: string
+  display_name?: string
   email?: string | null
   external_ids?: Array<{ provider: string; external_id: string }>
   active: boolean
@@ -24,7 +27,12 @@ export type WorkspaceUserCandidate = {
 
 export type WorkspaceUserCreateInput = {
   name: string
+  display_name?: string
   email?: string | null
+}
+
+export type WorkspaceUserModifyInput = {
+  display_name?: string
 }
 
 export type WorkspaceMemberAddResult = {
@@ -33,6 +41,10 @@ export type WorkspaceMemberAddResult = {
 
 export function userListPath(): string {
   return "/api/v1/users"
+}
+
+export function userModifyPath(userRef: string): string {
+  return `/api/v1/users/${encodeURIComponent(userRef)}`
 }
 
 export function workspaceMembersPath(workspaceSlug: string): string {
@@ -51,6 +63,13 @@ export function createWorkspaceUser(
   input: WorkspaceUserCreateInput
 ): Promise<WorkspaceUserCandidate> {
   return workspaceApiPost<WorkspaceUserCandidate>(userListPath(), input)
+}
+
+export function modifyWorkspaceUser(
+  userRef: string,
+  input: WorkspaceUserModifyInput
+): Promise<WorkspaceUserCandidate> {
+  return workspaceApiPatch<WorkspaceUserCandidate>(userModifyPath(userRef), input)
 }
 
 export function getWorkspaceMembers(

@@ -534,6 +534,7 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 		info := domain.AssigneeInfo{UserID: assignee.UserID}
 		if user, ok := usersByID[assignee.UserID]; ok {
 			info.Name = user.Name
+			info.DisplayName = user.DisplayName
 			info.Email = user.Email
 			info.ExternalIDs = user.ExternalIDs
 		}
@@ -559,6 +560,7 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 
 type assigneeUserData struct {
 	Name        string
+	DisplayName string
 	Email       *string
 	ExternalIDs []domain.ExternalIDInfo
 }
@@ -597,6 +599,7 @@ func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]assigneeUs
 	for _, user := range users {
 		usersByID[user.ID] = assigneeUserData{
 			Name:        user.Name,
+			DisplayName: user.DisplayName,
 			Email:       user.Email,
 			ExternalIDs: extByUser[user.ID],
 		}

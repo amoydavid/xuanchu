@@ -28,9 +28,14 @@ type adminCreateWorkspaceAdminRequest struct {
 	Role  string `json:"role,omitempty"`
 }
 
+type adminModifyWorkspaceUserRequest struct {
+	DisplayName *string `json:"display_name,omitempty"`
+}
+
 type adminUserResponse struct {
 	ID                 string               `json:"id"`
 	Name               string               `json:"name"`
+	DisplayName        string               `json:"display_name"`
 	Email              *string              `json:"email,omitempty"`
 	DefaultWorkspaceID *string              `json:"default_workspace_id,omitempty"`
 	ExternalIDs        []externalIDResponse `json:"external_ids"`
@@ -208,17 +213,17 @@ func parseAdminTokenTTL(w http.ResponseWriter, req adminCreateAgentTokenRequest)
 
 // adminWorkspaceSummaryResponse 是 admin workspace 列表的一行。
 type adminWorkspaceSummaryResponse struct {
-	ID           string               `json:"id"`
-	Slug         string               `json:"slug"`
-	Name         string               `json:"name"`
-	Description  string               `json:"description"`
-	Visibility   string               `json:"visibility"`
-	CreatedBy    *task.JSONUserInfo   `json:"created_by,omitempty"`
-	MemberCounts adminMemberCounts    `json:"member_counts"`
-	TokenCounts  adminTokenCounts     `json:"token_counts"`
-	ArchivedAt   *int64               `json:"archived_at,omitempty"`
-	CreatedAt    int64                `json:"created_at"`
-	ModifiedAt   int64                `json:"modified_at"`
+	ID           string             `json:"id"`
+	Slug         string             `json:"slug"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	Visibility   string             `json:"visibility"`
+	CreatedBy    *task.JSONUserInfo `json:"created_by,omitempty"`
+	MemberCounts adminMemberCounts  `json:"member_counts"`
+	TokenCounts  adminTokenCounts   `json:"token_counts"`
+	ArchivedAt   *int64             `json:"archived_at,omitempty"`
+	CreatedAt    int64              `json:"created_at"`
+	ModifiedAt   int64              `json:"modified_at"`
 }
 
 type adminMemberCounts struct {
@@ -247,25 +252,25 @@ type adminActingCandidateResponse struct {
 }
 
 type adminWorkspaceDetailResponse struct {
-	Workspace        workspaceResponse               `json:"workspace"`
-	Members          []adminWorkspaceMemberResponse  `json:"members"`
-	TokenCounts      adminTokenCounts                `json:"token_counts"`
-	ActingCandidates []adminActingCandidateResponse  `json:"acting_candidates"`
+	Workspace        workspaceResponse              `json:"workspace"`
+	Members          []adminWorkspaceMemberResponse `json:"members"`
+	TokenCounts      adminTokenCounts               `json:"token_counts"`
+	ActingCandidates []adminActingCandidateResponse `json:"acting_candidates"`
 }
 
 type adminCreateActingSessionRequest struct {
-	User       string `json:"user,omitempty"`
-	ExpiresIn  string `json:"expires_in,omitempty"`
+	User             string `json:"user,omitempty"`
+	ExpiresIn        string `json:"expires_in,omitempty"`
 	ExpiresInSeconds *int64 `json:"expires_in_seconds,omitempty"`
 }
 
 type adminActingSessionResponse struct {
-	Token          string             `json:"token"`
-	ExpiresAt      int64              `json:"expires_at"`
-	Workspace      workspaceResponse  `json:"workspace"`
-	Actor          task.JSONUserInfo  `json:"actor"`
-	Role           string             `json:"role"`
-	AdminTokenName string             `json:"admin_token_name"`
+	Token          string            `json:"token"`
+	ExpiresAt      int64             `json:"expires_at"`
+	Workspace      workspaceResponse `json:"workspace"`
+	Actor          task.JSONUserInfo `json:"actor"`
+	Role           string            `json:"role"`
+	AdminTokenName string            `json:"admin_token_name"`
 }
 
 func newAdminWorkspaceService(s *Server, r *http.Request) (*app.Service, error) {
@@ -328,6 +333,31 @@ func (s *Server) handleAdminWorkspaceInfo(w http.ResponseWriter, r *http.Request
 		TokenCounts:      adminTokenCounts(detail.TokenCounts),
 		ActingCandidates: candidates,
 	}, nil)
+}
+
+func (s *Server) handleAdminWorkspaceUserModify(w http.ResponseWriter, r *http.Request) {
+	var req adminModifyWorkspaceUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := newAdminWorkspaceService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	user, err := svc.AdminModifyWorkspaceUser(app.AdminModifyWorkspaceUserInput{
+		AdminTokenName: admin.TokenName,
+		WorkspaceRef:   chi.URLParam(r, "workspace"),
+		UserRef:        chi.URLParam(r, "user"),
+		DisplayName:    req.DisplayName,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, adminUserResponseFromView(user), nil)
 }
 
 func (s *Server) handleAdminActingSessionCreate(w http.ResponseWriter, r *http.Request) {
@@ -439,6 +469,7 @@ func adminUserResponseFromView(user app.UserView) adminUserResponse {
 	return adminUserResponse{
 		ID:                 user.ID,
 		Name:               user.Name,
+		DisplayName:        user.DisplayName,
 		Email:              user.Email,
 		DefaultWorkspaceID: user.DefaultWorkspaceID,
 		ExternalIDs:        extIDs,

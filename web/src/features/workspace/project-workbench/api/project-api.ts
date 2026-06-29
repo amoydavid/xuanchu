@@ -9,6 +9,7 @@ export type ProjectStatus = "planning" | "active" | "archived" | "cancelled"
 export type UserInfo = {
   id: string
   name: string
+  display_name?: string
   email?: string | null
   external_ids?: Array<{
     provider: string
@@ -51,6 +52,7 @@ export type ProjectWorkbenchAssignee = {
   user_id?: string
   id?: string
   name?: string
+  display_name?: string
   email?: string | null
 }
 

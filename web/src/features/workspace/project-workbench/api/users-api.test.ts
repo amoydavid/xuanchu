@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  userModifyPath,
   userListPath,
   workspaceMemberAddPath,
   workspaceMembersPath,
@@ -19,6 +20,7 @@ describe("project workbench users api paths", () => {
 
   it("builds user and workspace member write paths", () => {
     expect(userListPath()).toBe("/api/v1/users")
+    expect(userModifyPath("user 1")).toBe("/api/v1/users/user%201")
     expect(workspaceMemberAddPath("workspace 1")).toBe(
       "/api/v1/workspaces/workspace%201/members"
     )

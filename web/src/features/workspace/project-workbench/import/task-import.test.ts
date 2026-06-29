@@ -113,6 +113,99 @@ describe("task import preprocessing", () => {
     ])
   })
 
+  it("pairs spreadsheet assignee references with display names and emails", () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "33333333-3333-4333-8333-333333333333"
+    )
+    const payload = rowsToTaskImportPayload(
+      [
+        {
+          title: "分配任务",
+          assignees: "alice, bob",
+          assignee_display_names: "张三, 李四",
+          assignee_emails: "alice@example.com, bob@example.com",
+        },
+      ],
+      { nowISO: NOW, projectSlug: "adsops" }
+    )
+
+    expect(payload.tasks[0].assignees).toEqual([
+      {
+        name: "alice",
+        display_name: "张三",
+        email: "alice@example.com",
+      },
+      {
+        name: "bob",
+        display_name: "李四",
+        email: "bob@example.com",
+      },
+    ])
+  })
+
+  it("uses assignee email for matching while preserving display_name", () => {
+    const payload = parseTaskImportJSON(
+      JSON.stringify({
+        tasks: [
+          {
+            title: "中文姓名负责人",
+            assignees: [{ display_name: "张三", email: "zhangsan@example.com" }],
+          },
+        ],
+      }),
+      { nowISO: NOW, projectSlug: "adsops" }
+    )
+
+    const result = preflightTaskImport(payload.tasks, {
+      currentProjectSlug: "adsops",
+      existingTasks: [],
+      members: [
+        member({
+          user_id: "u-zhangsan",
+          name: "zhangsan",
+          display_name: "张三",
+          email: "zhangsan@example.com",
+        }),
+      ],
+    })
+
+    expect(result.blockers).toEqual([])
+  })
+
+  it("rejects assignee objects that only provide display_name", () => {
+    const payload = parseTaskImportJSON(
+      JSON.stringify({
+        tasks: [
+          {
+            title: "缺少稳定负责人引用",
+            assignees: [{ display_name: "张三" }],
+          },
+        ],
+      }),
+      { nowISO: NOW, projectSlug: "adsops" }
+    )
+
+    const result = preflightTaskImport(payload.tasks, {
+      currentProjectSlug: "adsops",
+      existingTasks: [],
+      members: [
+        member({
+          user_id: "u-zhangsan",
+          name: "zhangsan",
+          display_name: "张三",
+          email: "zhangsan@example.com",
+        }),
+      ],
+    })
+
+    expect(result.blockers).toContainEqual(
+      expect.objectContaining({
+        code: "invalid_assignee_reference",
+        ref: "张三",
+      })
+    )
+  })
+
   it("maps import-local ids in blocked_by to generated task uuids", () => {
     vi.spyOn(crypto, "randomUUID")
       .mockReturnValueOnce("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -286,6 +379,8 @@ describe("task import preprocessing", () => {
         title: "示例任务",
         description: "可使用 Markdown 记录详细说明",
         assignees: "alice, bob@example.com",
+        assignee_display_names: "张三, 李四",
+        assignee_emails: "alice@example.com, bob@example.com",
         blocked_by: "",
         "uda.estimate": "3",
       }),

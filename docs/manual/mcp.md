@@ -530,7 +530,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `tasks` | array | 是 | JSON 任务数组（`uuid`/`title`/`status`/`entry`/`modified` 必填，`description` 可选） |
+| `tasks` | array | 是 | JSON 任务数组（`uuid`/`title`/`status`/`entry`/`modified` 必填，`description` 可选）。任务 assignee 对象可包含 `user_id`、`name`、`display_name`、`email`；`display_name` 用于展示或导入预检创建用户时保留昵称，不替代稳定用户引用。 |
 
 ### 报表与 Urgency（2 tools）
 
@@ -782,7 +782,8 @@ xuanchu --workspace dajee token create mcp-agent \
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `name` | string | 是 | 用户名 |
+| `name` | string | 是 | 用户名，保持稳定引用语义 |
+| `display_name` | string | 否 | 展示姓名，可与 `name` 不同 |
 | `email` | string | 否 | 邮箱 |
 
 #### `user_use`

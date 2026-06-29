@@ -81,11 +81,11 @@ GET /api/v1/tasks/{taskRef}?workspace={workspaceSlug}
 
 - JSON 支持标准任务数组，或包含 `tasks` 数组的对象。
 - 导入弹窗提供“查看 JSON Schema”，展示带 `description` 注释的完整 JSON 字段约束，方便上传前核对。
-- XLSX 可以先下载模板，填写 `id`、`title`、`description`、`assignees`、`blocked_by` 和 `uda.*` 字段后上传；模板还包含 `status`、日期、循环、父任务、注解、链接等可选字段。
+- XLSX 可以先下载模板，填写 `id`、`title`、`description`、`assignees`、`assignee_display_names`、`assignee_emails`、`blocked_by` 和 `uda.*` 字段后上传；模板还包含 `status`、日期、循环、父任务、注解、链接等可选字段。`assignees` 是稳定用户引用，`assignee_display_names` / `assignee_emails` 会按顺序补充展示姓名和邮箱，预检创建缺失用户时会写入 `display_name`。
 - XLSX 模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example；Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明。
 - `description` 默认按 Markdown 编写，技术上仍是普通字符串。
 - `id` / `import_id` 是导入文件内的临时引用，只要求是批次内不重复的字符串，不要求 UUID 格式；导入后会生成新的任务 UUID，临时 ID 不入库。
-- 指派人必须能解析为当前 workspace 成员；如果普通邮箱或姓名对应的用户尚未创建或尚未加入 workspace，预检区可选择直接创建/加入为 `member`。
+- 指派人必须能解析为当前 workspace 成员；如果普通邮箱或姓名对应的用户尚未创建或尚未加入 workspace，预检区可选择直接创建/加入为 `member`。JSON 中的 assignee 对象可以包含 `name`、`display_name`、`email`、`user_id`；`display_name` 只用于展示和创建用户时保留昵称，不替代稳定引用名。
 - `blocked_by` 表示当前任务被哪些任务阻塞，可填写导入文件内的临时 `id` 或当前项目已有任务 UUID，多个值用逗号分隔。
 - 上传解析后，预检区会以分页表格预览解析和本地引用映射后的导入成果；最终导入内容应与该预览一致，服务端生成的 `id` / `seq` 除外。
 - 最终写入仍由 `/api/v1/import` 整批原子提交，服务端权限和项目禁写状态是最终裁决。
@@ -96,7 +96,7 @@ GET /api/v1/tasks/{taskRef}?workspace={workspaceSlug}
 http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{taskRef}
 ```
 
-任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。具备写权限时，项目页和任务详情页提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
+任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。description 在详情页完整展示，具备写权限时点击“编辑描述”打开弹窗编辑完整内容。具备写权限时，项目页和任务详情页还提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
 
 未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT / Agent token 登录成功后回到原项目页。当前版本仅预留 redirect 语义，不接入企业 SSO、飞书 OAuth、cookie session 或匿名分享链接。
 
@@ -129,7 +129,7 @@ Admin 页面创建的 Agent token 明文只在创建结果里显示一次。页�
 server admin 登录后，`/admin/workspaces` 提供 workspace 控制面：
 
 - 列出全部 workspace（默认只显示未归档，可勾选「显示已归档」）。
-- workspace 详情展示 owner/admin/member 摘要和 token 计数（有效 / 已吊销 / 已过期）。
+- workspace 详情展示 owner/admin/member 摘要和 token 计数（有效 / 已吊销 / 已过期），并允许编辑成员 `display_name`。`users.name` 仍是稳定用户引用名，`display_name` 只用于展示姓名，可与 `name` 不同。
 - 从任意未归档 workspace 创建短期 acting session，以该 workspace 的 owner/admin 身份进入普通 Workspace Console。
 
 acting session 是**短期浏览器委托凭证**，不是长期 token：

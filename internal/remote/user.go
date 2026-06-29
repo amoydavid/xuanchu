@@ -11,6 +11,7 @@ import (
 type userDTO struct {
 	ID                 string          `json:"id"`
 	Name               string          `json:"name"`
+	DisplayName        string          `json:"display_name"`
 	Email              *string         `json:"email,omitempty"`
 	DefaultWorkspaceID *string         `json:"default_workspace_id,omitempty"`
 	ExternalIDs        []externalIDDTO `json:"external_ids,omitempty"`
@@ -25,8 +26,9 @@ type externalIDDTO struct {
 }
 
 type AddUserInput struct {
-	Name  string  `json:"name"`
-	Email *string `json:"email,omitempty"`
+	Name        string  `json:"name"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Email       *string `json:"email,omitempty"`
 }
 
 func (c *Client) ListUsers(ctx context.Context) ([]app.UserView, error) {
@@ -79,6 +81,7 @@ func userDTOToView(row userDTO) app.UserView {
 	return app.UserView{
 		ID:                 row.ID,
 		Name:               row.Name,
+		DisplayName:        row.DisplayName,
 		Email:              row.Email,
 		DefaultWorkspaceID: row.DefaultWorkspaceID,
 		ExternalIDs:        extIDs,

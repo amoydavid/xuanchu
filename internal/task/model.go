@@ -37,6 +37,7 @@ type ExternalIDInfo struct {
 type UserInfo struct {
 	ID          string
 	Name        string
+	DisplayName string
 	Email       *string
 	ExternalIDs []ExternalIDInfo
 }
@@ -44,6 +45,7 @@ type UserInfo struct {
 type AssigneeInfo struct {
 	UserID      string
 	Name        string
+	DisplayName string
 	Email       *string
 	ExternalIDs []ExternalIDInfo
 }

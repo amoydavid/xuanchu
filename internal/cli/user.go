@@ -270,6 +270,7 @@ func userViewForJSON(user app.UserView) map[string]any {
 	return map[string]any{
 		"id":                   user.ID,
 		"name":                 user.Name,
+		"display_name":         user.DisplayName,
 		"email":                user.Email,
 		"default_workspace_id": user.DefaultWorkspaceID,
 		"external_ids":         extIDs,

@@ -87,6 +87,7 @@ describe("TaskImportDialog", () => {
       {
         id: "user-alice",
         name: "alice",
+        display_name: "Alice Chen",
         email: "alice@example.com",
         external_ids: [],
         active: true,
@@ -96,6 +97,7 @@ describe("TaskImportDialog", () => {
       {
         id: "user-bob",
         name: "bob",
+        display_name: "Bob Li",
         email: "bob@example.com",
         external_ids: [],
         active: false,
@@ -106,6 +108,7 @@ describe("TaskImportDialog", () => {
     vi.mocked(createWorkspaceUser).mockResolvedValue({
       id: "user-created",
       name: "new-person",
+      display_name: "新同事",
       external_ids: [],
       active: false,
       created_at: 1,
@@ -189,6 +192,40 @@ describe("TaskImportDialog", () => {
         "user-created",
         "member"
       )
+    })
+  })
+
+  it("creates a missing assignee with display name from imported JSON", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    const file = new File(
+      [
+        JSON.stringify([
+          {
+            title: "导入任务",
+            assignees: [
+              {
+                email: "new-person@example.com",
+                display_name: "新同事",
+              },
+            ],
+          },
+        ]),
+      ],
+      "tasks.json",
+      { type: "application/json" }
+    )
+
+    await user.upload(screen.getByLabelText("上传文件"), file)
+    await screen.findByText("1 个阻断")
+    await user.click(screen.getByRole("button", { name: "创建或加入 1 个指派人" }))
+
+    await waitFor(() => {
+      expect(createWorkspaceUser).toHaveBeenCalledWith({
+        email: "new-person@example.com",
+        name: "new-person",
+        display_name: "新同事",
+      })
     })
   })
 

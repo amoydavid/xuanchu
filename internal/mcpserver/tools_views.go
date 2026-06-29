@@ -52,6 +52,7 @@ type memberView struct {
 type userView struct {
 	ID                 string           `json:"id"`
 	Name               string           `json:"name"`
+	DisplayName        string           `json:"display_name"`
 	Email              *string          `json:"email,omitempty"`
 	DefaultWorkspaceID *string          `json:"default_workspace_id,omitempty"`
 	ExternalIDs        []externalIDView `json:"external_ids,omitempty"`
@@ -166,6 +167,7 @@ func userViewFromApp(row app.UserView) userView {
 	return userView{
 		ID:                 row.ID,
 		Name:               row.Name,
+		DisplayName:        row.DisplayName,
 		Email:              row.Email,
 		DefaultWorkspaceID: row.DefaultWorkspaceID,
 		ExternalIDs:        extIDs,

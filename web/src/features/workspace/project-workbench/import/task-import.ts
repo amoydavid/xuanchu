@@ -9,6 +9,7 @@ export type TaskImportIssueCode =
   | "dependency_not_found"
   | "external_assignee_unverified"
   | "invalid_import_id"
+  | "invalid_assignee_reference"
   | "invalid_title"
   | "invalid_priority"
   | "invalid_status"
@@ -70,6 +71,9 @@ const CORE_FIELDS = new Set([
   "mask",
   "imask",
   "assignees",
+  "assignee_display_names",
+  "assignee_names",
+  "assignee_emails",
   "links",
 ])
 
@@ -210,21 +214,38 @@ export function preflightTaskImport(
         )
       }
     }
-    for (const assignee of assigneeRefs(task.assignees ?? [])) {
-      if (assignee.includes(":")) {
+    for (const assignee of assigneePreflightRefs(task.assignees ?? [])) {
+      if (!assignee.ref) {
+        blockers.push(
+          issue(
+            "invalid_assignee_reference",
+            assignee.display_name
+              ? `指派人 ${assignee.display_name} 只有 display_name，缺少 name、email 或 user_id`
+              : "指派人缺少 name、email 或 user_id",
+            {
+              ref: assignee.display_name,
+              row,
+              taskTitle: task.title,
+            }
+          )
+        )
+        continue
+      }
+      const ref = assignee.ref
+      if (ref.includes(":")) {
         warnings.push(
-          issue("external_assignee_unverified", `外部身份 ${assignee} 将由服务端验证`, {
-            ref: assignee,
+          issue("external_assignee_unverified", `外部身份 ${ref} 将由服务端验证`, {
+            ref,
             row,
             taskTitle: task.title,
           })
         )
         continue
       }
-      if (!memberRefs.has(assignee.toLowerCase())) {
+      if (!memberRefs.has(ref.toLowerCase())) {
         blockers.push(
-          issue("assignee_not_member", `指派人 ${assignee} 不是当前 workspace 成员`, {
-            ref: assignee,
+          issue("assignee_not_member", `指派人 ${ref} 不是当前 workspace 成员`, {
+            ref,
             row,
             taskTitle: task.title,
           })
@@ -254,6 +275,8 @@ export function buildTaskImportTemplateRows(): TaskImportRow[] {
       priority: "M",
       tags: "docs,import",
       assignees: "alice, bob@example.com",
+      assignee_display_names: "张三, 李四",
+      assignee_emails: "alice@example.com, bob@example.com",
       blocked_by: "",
       due: "2026-07-01",
       wait: "",
@@ -340,7 +363,7 @@ function baseTask(
   if (depends) {
     task.depends = depends
   }
-  const assignees = assigneeList(row.assignees)
+  const assignees = assigneeListFromRow(row)
   if (assignees) {
     task.assignees = assignees
   }
@@ -451,19 +474,89 @@ function memberReferenceSet(members: WorkspaceMemberCandidate[]): Set<string> {
   return refs
 }
 
-function assigneeRefs(
+type AssigneePreflightRef = {
+  ref?: string
+  display_name?: string
+}
+
+function assigneePreflightRefs(
   assignees: NonNullable<TaskImportTask["assignees"]>
-): string[] {
-  const refs: string[] = []
+): AssigneePreflightRef[] {
+  const refs: AssigneePreflightRef[] = []
   for (const assignee of assignees) {
     if (typeof assignee === "string") {
-      refs.push(assignee.trim())
+      refs.push({ ref: assignee.trim() })
       continue
     }
-    const ref = assignee.user_id ?? assignee.email ?? assignee.name ?? ""
-    refs.push(ref.trim())
+    const ref =
+      assignee.user_id ??
+      assignee.email ??
+      assignee.name ??
+      ""
+    refs.push({
+      ref: ref.trim() || undefined,
+      display_name: assignee.display_name?.trim() || undefined,
+    })
   }
-  return refs.filter(Boolean)
+  return refs.filter((item) => item.ref || item.display_name)
+}
+
+function assigneeListFromRow(
+  row: Record<string, unknown>
+): TaskImportTask["assignees"] | undefined {
+  const assignees = assigneeList(row.assignees)
+  const displayNames =
+    splitList(row.assignee_display_names) ?? splitList(row.assignee_names)
+  const emails = splitList(row.assignee_emails)
+  if (!displayNames && !emails) {
+    return assignees
+  }
+  const maxLength = Math.max(
+    assignees?.length ?? 0,
+    displayNames?.length ?? 0,
+    emails?.length ?? 0
+  )
+  if (maxLength === 0) {
+    return undefined
+  }
+  const out: NonNullable<TaskImportTask["assignees"]> = []
+  for (let index = 0; index < maxLength; index += 1) {
+    const base = assignees?.[index]
+    const displayName = displayNames?.[index]
+    const email = emails?.[index]
+    if (typeof base === "object" && base !== null) {
+      out.push({
+        ...base,
+        ...(displayName ? { display_name: displayName } : {}),
+        ...(email ? { email } : {}),
+      })
+      continue
+    }
+    const baseRef = typeof base === "string" ? base.trim() : ""
+    if (!baseRef && !displayName && !email) {
+      continue
+    }
+    const item: {
+      name?: string
+      display_name?: string
+      email?: string
+    } = {}
+    if (baseRef) {
+      if (baseRef.includes("@") && !email) {
+        item.email = baseRef
+      } else {
+        item.name = baseRef
+      }
+    }
+    if (displayName) {
+      item.display_name = displayName
+    }
+    if (email) {
+      item.email = email
+    }
+    out.push(item)
+  }
+  return out.length > 0 ? out : undefined
 }
 
 function assigneeList(value: unknown): TaskImportTask["assignees"] | undefined {

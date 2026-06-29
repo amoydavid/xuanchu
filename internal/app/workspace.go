@@ -18,6 +18,7 @@ var workspaceSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 type UserView struct {
 	ID                 string
 	Name               string
+	DisplayName        string
 	Email              *string
 	DefaultWorkspaceID *string
 	ExternalIDs        []task.ExternalIDInfo
@@ -27,8 +28,13 @@ type UserView struct {
 }
 
 type AddUserInput struct {
-	Name  string
-	Email string
+	Name        string
+	DisplayName string
+	Email       string
+}
+
+type ModifyUserInput struct {
+	DisplayName *string
 }
 
 type WorkspaceView struct {
@@ -59,12 +65,13 @@ type ModifyWorkspaceInput struct {
 }
 
 type MemberView struct {
-	UserID     string
-	Name       string
-	Email      *string
-	Role       Role
-	JoinedAt   int64
-	ModifiedAt int64
+	UserID      string
+	Name        string
+	DisplayName string
+	Email       *string
+	Role        Role
+	JoinedAt    int64
+	ModifiedAt  int64
 }
 
 type AddMemberInput struct {
@@ -104,6 +111,7 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 	if name == "" {
 		return UserView{}, fmt.Errorf("user name is required")
 	}
+	displayName := strings.TrimSpace(input.DisplayName)
 	email := strings.TrimSpace(input.Email)
 	slug, err := normalizeWorkspaceSlug(name)
 	if err != nil {
@@ -111,7 +119,7 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 	}
 	var created UserView
 	err = s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
-		user, workspace, err := tx.addUserLocked(name, email, slug)
+		user, workspace, err := tx.addUserLocked(name, displayName, email, slug)
 		if err != nil {
 			return nil, err
 		}
@@ -133,13 +141,14 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 	return created, err
 }
 
-func (s *Service) addUserLocked(name, email, slug string) (storage.User, storage.Workspace, error) {
+func (s *Service) addUserLocked(name, displayName, email, slug string) (storage.User, storage.Workspace, error) {
 	now := s.clock.Unix()
 	user := storage.User{
-		ID:         uuid.NewString(),
-		Name:       name,
-		CreatedAt:  now,
-		ModifiedAt: now,
+		ID:          uuid.NewString(),
+		Name:        name,
+		DisplayName: displayName,
+		CreatedAt:   now,
+		ModifiedAt:  now,
 	}
 	if email != "" {
 		user.Email = &email
@@ -222,6 +231,33 @@ func (s *Service) UserInfo(ref string) (UserView, error) {
 		return UserView{}, err
 	}
 	return userViewFromRow(user, user.ID == s.runtime.ActorUserID, extIDs), nil
+}
+
+func (s *Service) ModifyUser(ref string, input ModifyUserInput) (UserView, error) {
+	user, err := s.resolveUser(ref)
+	if err != nil {
+		return UserView{}, err
+	}
+	if input.DisplayName == nil {
+		return s.UserInfo(user.ID)
+	}
+	displayName := strings.TrimSpace(*input.DisplayName)
+	err = s.withAudit("user.modify", func(tx *Service) (AuditEntry, error) {
+		if err := tx.userRepo.UpdateDisplayName(user.ID, displayName, tx.clock.Unix()); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType: "user",
+			TargetID:   user.ID,
+			Payload: map[string]any{
+				"display_name": displayName,
+			},
+		}, nil
+	})
+	if err != nil {
+		return UserView{}, err
+	}
+	return s.UserInfo(user.ID)
 }
 
 func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error) {
@@ -501,12 +537,13 @@ func (s *Service) ListMembers(workspaceRef string) ([]MemberView, error) {
 	out := make([]MemberView, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, MemberView{
-			UserID:     row.User.ID,
-			Name:       row.User.Name,
-			Email:      row.User.Email,
-			Role:       Role(row.Membership.Role),
-			JoinedAt:   row.Membership.JoinedAt,
-			ModifiedAt: row.Membership.ModifiedAt,
+			UserID:      row.User.ID,
+			Name:        row.User.Name,
+			DisplayName: row.User.DisplayName,
+			Email:       row.User.Email,
+			Role:        Role(row.Membership.Role),
+			JoinedAt:    row.Membership.JoinedAt,
+			ModifiedAt:  row.Membership.ModifiedAt,
 		})
 	}
 	return out, nil
@@ -726,6 +763,7 @@ func userViewFromRow(user storage.User, active bool, externalIDs []task.External
 	return UserView{
 		ID:                 user.ID,
 		Name:               user.Name,
+		DisplayName:        user.DisplayName,
 		Email:              user.Email,
 		DefaultWorkspaceID: user.DefaultWorkspaceID,
 		ExternalIDs:        externalIDs,

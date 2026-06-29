@@ -1610,9 +1610,10 @@ func (s *Service) resolveAssigneeRef(ref string) (task.AssigneeInfo, error) {
 		return task.AssigneeInfo{}, err
 	}
 	return task.AssigneeInfo{
-		UserID: user.ID,
-		Name:   user.Name,
-		Email:  cloneStringPtr(user.Email),
+		UserID:      user.ID,
+		Name:        user.Name,
+		DisplayName: user.DisplayName,
+		Email:       cloneStringPtr(user.Email),
 	}, nil
 }
 
@@ -1624,9 +1625,10 @@ func (s *Service) applyAssigneeModifications(existing []task.AssigneeInfo, addRe
 				continue
 			}
 			assigneeByUserID[assignee.UserID] = task.AssigneeInfo{
-				UserID: assignee.UserID,
-				Name:   assignee.Name,
-				Email:  cloneStringPtr(assignee.Email),
+				UserID:      assignee.UserID,
+				Name:        assignee.Name,
+				DisplayName: assignee.DisplayName,
+				Email:       cloneStringPtr(assignee.Email),
 			}
 		}
 	}
@@ -1663,9 +1665,10 @@ func cloneAssigneeInfos(assignees []task.AssigneeInfo) []task.AssigneeInfo {
 	out := make([]task.AssigneeInfo, len(assignees))
 	for i, assignee := range assignees {
 		out[i] = task.AssigneeInfo{
-			UserID: assignee.UserID,
-			Name:   assignee.Name,
-			Email:  cloneStringPtr(assignee.Email),
+			UserID:      assignee.UserID,
+			Name:        assignee.Name,
+			DisplayName: assignee.DisplayName,
+			Email:       cloneStringPtr(assignee.Email),
 		}
 	}
 	return out

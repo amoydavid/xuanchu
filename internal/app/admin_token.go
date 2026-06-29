@@ -188,7 +188,7 @@ func (s *Service) fillTokenViews(rows []storage.ApiTokenEntry) []TokenView {
 	for _, row := range rows {
 		view := tokenEntryToView(row)
 		if u, ok := userMap[row.UserID]; ok {
-			view.User = task.UserInfo{ID: u.ID, Name: u.Name, Email: u.Email}
+			view.User = task.UserInfo{ID: u.ID, Name: u.Name, DisplayName: u.DisplayName, Email: u.Email}
 		} else {
 			// 未找到的用户 fallback（与 AGENTS.md §用户信息规范一致）
 			view.User = task.UserInfo{ID: row.UserID, Name: row.UserID}

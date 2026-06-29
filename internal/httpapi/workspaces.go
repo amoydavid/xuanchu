@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
@@ -38,12 +38,13 @@ type workspaceResponse struct {
 }
 
 type memberResponse struct {
-	UserID     string  `json:"user_id"`
-	Name       string  `json:"name"`
-	Email      *string `json:"email,omitempty"`
-	Role       string  `json:"role"`
-	JoinedAt   int64   `json:"joined_at"`
-	ModifiedAt int64   `json:"modified_at"`
+	UserID      string  `json:"user_id"`
+	Name        string  `json:"name"`
+	DisplayName string  `json:"display_name"`
+	Email       *string `json:"email,omitempty"`
+	Role        string  `json:"role"`
+	JoinedAt    int64   `json:"joined_at"`
+	ModifiedAt  int64   `json:"modified_at"`
 }
 
 func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
@@ -243,11 +244,12 @@ func memberResponsesFromViews(rows []app.MemberView) []memberResponse {
 
 func memberResponseFromView(row app.MemberView) memberResponse {
 	return memberResponse{
-		UserID:     row.UserID,
-		Name:       row.Name,
-		Email:      row.Email,
-		Role:       string(row.Role),
-		JoinedAt:   row.JoinedAt,
-		ModifiedAt: row.ModifiedAt,
+		UserID:      row.UserID,
+		Name:        row.Name,
+		DisplayName: row.DisplayName,
+		Email:       row.Email,
+		Role:        string(row.Role),
+		JoinedAt:    row.JoinedAt,
+		ModifiedAt:  row.ModifiedAt,
 	}
 }

@@ -44,15 +44,16 @@ func TestUserCreateCreatesUser(t *testing.T) {
 		"Authorization": "Bearer " + fixture.token,
 		"Content-Type":  "application/json",
 	}
-	body := `{"name":"bob","email":"bob@example.com"}`
+	body := `{"name":"bob","display_name":"Bob Zhang","email":"bob@example.com"}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/users", body, authHeader)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
 	var payload struct {
 		Data struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
@@ -61,7 +62,45 @@ func TestUserCreateCreatesUser(t *testing.T) {
 	if payload.Data.Name != "bob" {
 		t.Fatalf("expected name=bob, got %s: %s", payload.Data.Name, rr.Body.String())
 	}
+	if payload.Data.DisplayName != "Bob Zhang" {
+		t.Fatalf("expected display_name=Bob Zhang, got %q: %s", payload.Data.DisplayName, rr.Body.String())
+	}
 	assertSnakeCaseResponse(t, rr.Body.String())
+}
+
+func TestUserModifyUpdatesDisplayNameOnly(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := svc.AddUser(app.AddUserInput{Name: "erin", DisplayName: "Erin Old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authHeader := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+	rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/users/"+user.ID, `{"display_name":"Erin New"}`, authHeader)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.Name != "erin" {
+		t.Fatalf("name changed to %q", payload.Data.Name)
+	}
+	if payload.Data.DisplayName != "Erin New" {
+		t.Fatalf("display_name = %q, want Erin New", payload.Data.DisplayName)
+	}
 }
 
 func TestUserInfoReturnsUser(t *testing.T) {

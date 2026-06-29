@@ -1,7 +1,11 @@
 // Admin workspace 管理 API 类型，对齐后端 admin_workspace handler 响应。
 // UserInfo 使用统一 JSON 形态（id/name/email/external_ids），不输出裸 UUID。
 
-import { adminApiGet, adminApiPost } from "@/features/admin/session/admin-api"
+import {
+  adminApiGet,
+  adminApiPatch,
+  adminApiPost,
+} from "@/features/admin/session/admin-api"
 
 export type AdminWorkspaceSummary = {
   id: string
@@ -29,6 +33,7 @@ export type AdminWorkspaceSummary = {
 export type AdminUserInfo = {
   id: string
   name: string
+  display_name?: string
   email?: string | null
   external_ids?: { provider: string; external_id: string }[]
 }
@@ -85,6 +90,21 @@ export function listAdminWorkspaces(all: boolean) {
 export function fetchAdminWorkspaceDetail(workspace: string) {
   return adminApiGet<AdminWorkspaceDetail>(
     `/api/v1/admin/workspaces/${encodeURIComponent(workspace)}`
+  )
+}
+
+export type AdminWorkspaceUserModifyInput = {
+  display_name?: string
+}
+
+export function modifyAdminWorkspaceUser(
+  workspace: string,
+  user: string,
+  input: AdminWorkspaceUserModifyInput
+) {
+  return adminApiPatch<AdminUserInfo>(
+    `/api/v1/admin/workspaces/${encodeURIComponent(workspace)}/users/${encodeURIComponent(user)}`,
+    input
   )
 }
 

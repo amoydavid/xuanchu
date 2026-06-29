@@ -97,7 +97,12 @@ export const TASK_IMPORT_JSON_SCHEMA = {
                       },
                       name: {
                         type: "string",
-                        description: "用户名或展示名。",
+                        description: "稳定用户引用名；用于服务端解析用户。",
+                      },
+                      display_name: {
+                        type: "string",
+                        description:
+                          "展示姓名或昵称；用于预检创建缺失用户和 UI 展示，不作为唯一身份凭证。",
                       },
                       email: {
                         type: ["string", "null"],

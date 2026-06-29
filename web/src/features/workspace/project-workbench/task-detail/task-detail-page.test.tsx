@@ -108,11 +108,14 @@ describe("TaskDetailPage", () => {
     })
   })
 
-  it("clears description with clear_description", async () => {
+  it("shows the complete description and edits it from a dialog", async () => {
     renderPage()
 
     await screen.findByText("整理素材表现")
-    await userEvent.click(screen.getByRole("button", { name: "任务描述" }))
+    expect(screen.getByText("整理素材表现")).toBeTruthy()
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑描述" }))
+    expect(screen.getByRole("dialog", { name: "编辑任务描述" })).toBeTruthy()
     await userEvent.clear(screen.getByLabelText("任务描述"))
     await userEvent.keyboard("{Control>}{Enter}{/Control}")
 
@@ -134,7 +137,7 @@ describe("TaskDetailPage", () => {
       descriptionHeading.compareDocumentPosition(annotationsHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
-    expect(screen.getByRole("button", { name: "任务描述" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "编辑描述" })).toBeTruthy()
   })
 
   it("runs start, done, and delete actions", async () => {
@@ -177,7 +180,7 @@ describe("TaskDetailPage", () => {
         .disabled
     ).toBe(true)
     expect(
-      (screen.getByRole("button", { name: "任务描述" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "编辑描述" }) as HTMLButtonElement)
         .disabled
     ).toBe(true)
     expect(

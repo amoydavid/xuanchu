@@ -3,8 +3,18 @@ import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { useMe } from "@/features/workspace/session/useMe"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import { ApiError } from "@/lib/api"
@@ -236,19 +246,107 @@ function TaskDescriptionBlock({
   value: string
 }) {
   const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function openEditor() {
+    setDraft(value)
+    setError(null)
+    setEditing(true)
+  }
+
+  async function save() {
+    if (saving) {
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(draft)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <section className="space-y-2 border bg-card p-4">
-      <h2 className="text-sm font-medium">{t("projectReadonly.description")}</h2>
-      <InlineTextEditor
-        ariaLabel={t("projectReadonly.taskDescription")}
-        disabled={!canWrite}
-        displayClassName="min-h-16 w-full max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground"
-        emptyLabel={t("projectReadonly.addDescription")}
-        multiline
-        onSave={onSave}
-        value={value}
-      />
-    </section>
+    <>
+      <section className="space-y-3 border bg-card p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium">
+            {t("projectReadonly.description")}
+          </h2>
+          <Button
+            disabled={!canWrite}
+            onClick={openEditor}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {t("projectReadonly.editDescription")}
+          </Button>
+        </div>
+        {value ? (
+          <div className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+            {value}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">
+            {t("projectReadonly.addDescription")}
+          </div>
+        )}
+      </section>
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t("projectReadonly.editDescriptionTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("projectReadonly.editDescriptionDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="task-description-editor">
+              {t("projectReadonly.taskDescription")}
+            </Label>
+            <Textarea
+              className="min-h-64 resize-y"
+              id="task-description-editor"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault()
+                  void save()
+                }
+              }}
+              value={draft}
+            />
+          </div>
+          {error ? <div className="text-sm text-destructive">{error}</div> : null}
+          <DialogFooter>
+            <Button
+              onClick={() => setEditing(false)}
+              type="button"
+              variant="outline"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={saving}
+              onClick={() => {
+                void save()
+              }}
+              type="button"
+            >
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

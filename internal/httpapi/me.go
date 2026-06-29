@@ -45,9 +45,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := task.UserInfo{
-		ID:    authn.Authn.User.ID,
-		Name:  authn.Authn.User.Name,
-		Email: authn.Authn.User.Email,
+		ID:          authn.Authn.User.ID,
+		Name:        authn.Authn.User.Name,
+		DisplayName: authn.Authn.User.DisplayName,
+		Email:       authn.Authn.User.Email,
 	}
 	svc, err := app.NewService(app.ServiceOptions{
 		Store:                 s.store,
@@ -66,6 +67,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	actor = task.UserInfo{
 		ID:          userView.ID,
 		Name:        userView.Name,
+		DisplayName: userView.DisplayName,
 		Email:       userView.Email,
 		ExternalIDs: userView.ExternalIDs,
 	}

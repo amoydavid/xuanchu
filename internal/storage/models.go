@@ -21,6 +21,7 @@ type Workspace struct {
 type User struct {
 	ID                 string  `gorm:"primaryKey"`
 	Name               string  `gorm:"not null;uniqueIndex"`
+	DisplayName        string  `gorm:"not null;default:''"`
 	Email              *string `gorm:"uniqueIndex"`
 	DefaultWorkspaceID *string
 	CreatedAt          int64 `gorm:"not null"`

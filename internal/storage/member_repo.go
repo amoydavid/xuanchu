@@ -53,6 +53,7 @@ func (r *MemberRepository) List(workspaceID string) ([]MemberWithUser, error) {
 		JoinedAt               int64   `gorm:"column:joined_at"`
 		ModifiedAt             int64   `gorm:"column:modified_at"`
 		UserName               string  `gorm:"column:user_name"`
+		UserDisplayName        string  `gorm:"column:user_display_name"`
 		UserEmail              *string `gorm:"column:user_email"`
 		UserDefaultWorkspaceID *string `gorm:"column:user_default_workspace_id"`
 		UserCreatedAt          int64   `gorm:"column:user_created_at"`
@@ -60,7 +61,7 @@ func (r *MemberRepository) List(workspaceID string) ([]MemberWithUser, error) {
 	}
 	var rows []row
 	if err := r.db.Table("memberships").
-		Select("memberships.user_id, memberships.workspace_id, memberships.role, memberships.joined_at, memberships.modified_at, users.name AS user_name, users.email AS user_email, users.default_workspace_id AS user_default_workspace_id, users.created_at AS user_created_at, users.modified_at AS user_modified_at").
+		Select("memberships.user_id, memberships.workspace_id, memberships.role, memberships.joined_at, memberships.modified_at, users.name AS user_name, users.display_name AS user_display_name, users.email AS user_email, users.default_workspace_id AS user_default_workspace_id, users.created_at AS user_created_at, users.modified_at AS user_modified_at").
 		Joins("JOIN users ON users.id = memberships.user_id").
 		Where("memberships.workspace_id = ?", workspaceID).
 		Order("users.name ASC").
@@ -80,6 +81,7 @@ func (r *MemberRepository) List(workspaceID string) ([]MemberWithUser, error) {
 			User: User{
 				ID:                 item.UserID,
 				Name:               item.UserName,
+				DisplayName:        item.UserDisplayName,
 				Email:              item.UserEmail,
 				DefaultWorkspaceID: item.UserDefaultWorkspaceID,
 				CreatedAt:          item.UserCreatedAt,

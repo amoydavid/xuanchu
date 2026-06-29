@@ -209,7 +209,7 @@ func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken,
 	}
 	userInfo := task.UserInfo{ID: input.UserID}
 	if user, err := s.userRepo.GetByID(input.UserID); err == nil {
-		userInfo = task.UserInfo{ID: user.ID, Name: user.Name, Email: user.Email}
+		userInfo = task.UserInfo{ID: user.ID, Name: user.Name, DisplayName: user.DisplayName, Email: user.Email}
 	}
 	view := tokenViewFromEntry(stored, scopes.Values(), input.WorkspaceIDs, input.ProjectIDs)
 	view.User = userInfo

@@ -68,6 +68,20 @@ func (r *UserRepository) UpdateDefaultWorkspace(userID, workspaceID string, modi
 	return nil
 }
 
+func (r *UserRepository) UpdateDisplayName(userID, displayName string, modifiedAt int64) error {
+	result := r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
+		"display_name": displayName,
+		"modified_at":  modifiedAt,
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *UserRepository) GetByExternalID(provider, externalID string) (User, error) {
 	var extID UserExternalID
 	if err := r.db.Where("provider = ? AND external_id = ?", provider, externalID).First(&extID).Error; err != nil {

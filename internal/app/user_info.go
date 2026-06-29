@@ -42,6 +42,7 @@ func (s *Service) resolveUserInfos(ids []string) (map[string]task.UserInfo, erro
 			result[id] = task.UserInfo{
 				ID:          user.ID,
 				Name:        user.Name,
+				DisplayName: user.DisplayName,
 				Email:       user.Email,
 				ExternalIDs: extByUser[user.ID],
 			}

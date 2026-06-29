@@ -281,7 +281,7 @@ func schedulerUserInfos(userRepo *storage.UserRepository, extRepo *storage.Exter
 		if err != nil {
 			return nil, err
 		}
-		result[id] = task.UserInfo{ID: user.ID, Name: user.Name, Email: user.Email, ExternalIDs: extByUser[user.ID]}
+		result[id] = task.UserInfo{ID: user.ID, Name: user.Name, DisplayName: user.DisplayName, Email: user.Email, ExternalIDs: extByUser[user.ID]}
 	}
 	return result, nil
 }

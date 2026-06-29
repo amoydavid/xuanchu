@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -48,13 +49,13 @@ function makeDetail(overrides: Partial<AdminWorkspaceDetail> = {}): AdminWorkspa
     workspace: { id: "ws-1", slug: "dajee", name: "Dajee", visibility: "team" },
     members: [
       {
-        user: { id: "u1", name: "alice", email: "alice@example.com" },
+        user: { id: "u1", name: "alice", display_name: "Alice Chen", email: "alice@example.com" },
         role: "owner",
         joined_at: 100,
         modified_at: 100,
       },
       {
-        user: { id: "u2", name: "bob", email: "bob@example.com" },
+        user: { id: "u2", name: "bob", display_name: "Bob Li", email: "bob@example.com" },
         role: "admin",
         joined_at: 110,
         modified_at: 110,
@@ -62,7 +63,7 @@ function makeDetail(overrides: Partial<AdminWorkspaceDetail> = {}): AdminWorkspa
     ],
     token_counts: { active: 3, expired: 0, revoked: 1 },
     acting_candidates: [
-      { user: { id: "u1", name: "alice", email: "alice@example.com" }, role: "owner" },
+      { user: { id: "u1", name: "alice", display_name: "Alice Chen", email: "alice@example.com" }, role: "owner" },
     ],
     ...overrides,
   }
@@ -91,9 +92,56 @@ describe("AdminWorkspaceDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Dajee")).toBeTruthy()
     })
+    expect(screen.getByText("Alice Chen")).toBeTruthy()
     expect(screen.getByText("alice")).toBeTruthy()
     expect(screen.getByText("bob@example.com")).toBeTruthy()
     expect(screen.getByText(/有效 3/)).toBeTruthy()
+
+    fetchMock.mockRestore()
+  })
+
+  it("updates a member display name from the admin workspace detail page", async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = String(input)
+        const method = (init?.method ?? "GET").toUpperCase()
+        if (
+          url.includes("/api/v1/admin/workspaces/dajee/users/u2") &&
+          method === "PATCH"
+        ) {
+          return okResponse({
+            id: "u2",
+            name: "bob",
+            display_name: "李四",
+            email: "bob@example.com",
+            external_ids: [],
+            active: true,
+            created_at: 1,
+            modified_at: 2,
+          })
+        }
+        return okResponse(makeDetail())
+      })
+
+    renderPage("dajee")
+
+    await screen.findByText("Bob Li")
+    await user.click(screen.getByRole("button", { name: "编辑显示姓名 Bob Li" }))
+    await user.clear(screen.getByLabelText("显示姓名"))
+    await user.type(screen.getByLabelText("显示姓名"), "李四")
+    await user.click(screen.getByRole("button", { name: "保存" }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/admin/workspaces/dajee/users/u2"),
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ display_name: "李四" }),
+        })
+      )
+    })
 
     fetchMock.mockRestore()
   })

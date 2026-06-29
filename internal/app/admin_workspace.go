@@ -58,10 +58,17 @@ type AdminActingCandidateView struct {
 
 // AdminWorkspaceDetailView 是 admin workspace 详情页数据。
 type AdminWorkspaceDetailView struct {
-	Workspace          WorkspaceView
-	Members            []AdminWorkspaceMemberView
-	TokenCounts        AdminWorkspaceTokenCounts
-	ActingCandidates   []AdminActingCandidateView
+	Workspace        WorkspaceView
+	Members          []AdminWorkspaceMemberView
+	TokenCounts      AdminWorkspaceTokenCounts
+	ActingCandidates []AdminActingCandidateView
+}
+
+type AdminModifyWorkspaceUserInput struct {
+	AdminTokenName string
+	WorkspaceRef   string
+	UserRef        string
+	DisplayName    *string
 }
 
 // AdminListWorkspaces 列出全部 workspace（server admin 视角，不按 actor membership 过滤）。
@@ -173,6 +180,53 @@ func (s *Service) AdminWorkspaceInfo(workspaceRef string) (AdminWorkspaceDetailV
 		TokenCounts:      tokenCountsByWorkspace[workspace.ID],
 		ActingCandidates: candidates,
 	}, nil
+}
+
+func (s *Service) AdminModifyWorkspaceUser(input AdminModifyWorkspaceUserInput) (UserView, error) {
+	adminTokenName := strings.TrimSpace(input.AdminTokenName)
+	if adminTokenName == "" {
+		return UserView{}, RuntimeError{Code: "admin_auth_required", Message: "admin token name is required"}
+	}
+	workspace, err := lookupWorkspace(s.workspaceRepo, strings.TrimSpace(input.WorkspaceRef))
+	if err != nil {
+		return UserView{}, err
+	}
+	user, err := s.resolveUser(input.UserRef)
+	if err != nil {
+		return UserView{}, err
+	}
+	if _, err := s.memberRepo.Get(user.ID, workspace.ID); err != nil {
+		if err == storage.ErrNotFound {
+			return UserView{}, RuntimeError{Code: authz.CodeMembershipNotFound, Message: "user is not a member of workspace"}
+		}
+		return UserView{}, err
+	}
+	if input.DisplayName == nil {
+		return s.UserInfo(user.ID)
+	}
+	displayName := strings.TrimSpace(*input.DisplayName)
+	err = s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
+		}
+		if err := txSvc.userRepo.UpdateDisplayName(user.ID, displayName, txSvc.clock.Unix()); err != nil {
+			return err
+		}
+		return txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
+			Action:      "admin.user.modify",
+			WorkspaceID: &workspace.ID,
+			TargetType:  "user",
+			TargetID:    user.ID,
+			Payload: map[string]any{
+				"display_name": displayName,
+			},
+		}, adminTokenName)
+	})
+	if err != nil {
+		return UserView{}, err
+	}
+	return s.UserInfo(user.ID)
 }
 
 // classifyTokensByWorkspace 把全部 token 按 workspace 统计 active/expired/revoked。
@@ -307,6 +361,7 @@ func (s *Service) AdminCreateActingSession(input AdminCreateActingSessionInput) 
 		actorInfo := task.UserInfo{
 			ID:          actor.ID,
 			Name:        actor.Name,
+			DisplayName: actor.DisplayName,
 			Email:       actor.Email,
 			ExternalIDs: extByUser[actor.ID],
 		}

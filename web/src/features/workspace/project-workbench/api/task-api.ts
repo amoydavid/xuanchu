@@ -105,7 +105,15 @@ export type TaskImportTask = {
   parent?: string | null
   mask?: string | null
   imask?: number | null
-  assignees?: Array<string | { user_id?: string; name?: string; email?: string | null }> | null
+  assignees?: Array<
+    | string
+    | {
+        user_id?: string
+        name?: string
+        display_name?: string
+        email?: string | null
+      }
+  > | null
   links?: unknown[] | null
   [key: string]: unknown
 }

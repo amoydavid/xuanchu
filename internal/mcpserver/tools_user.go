@@ -27,8 +27,9 @@ type UserUnbindInput struct {
 }
 
 type UserAddInput struct {
-	Name  string `json:"name"`
-	Email string `json:"email,omitempty"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+	Email       string `json:"email,omitempty"`
 }
 
 type UserUseInput struct {
@@ -104,7 +105,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		view, err := svc.AddUser(app.AddUserInput{Name: in.Name, Email: in.Email})
+		view, err := svc.AddUser(app.AddUserInput{Name: in.Name, DisplayName: in.DisplayName, Email: in.Email})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}

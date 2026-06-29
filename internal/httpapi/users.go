@@ -6,18 +6,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 )
 
 type userRequest struct {
-	Name  string  `json:"name"`
-	Email *string `json:"email,omitempty"`
+	Name        string  `json:"name"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Email       *string `json:"email,omitempty"`
 }
 
 type userResponse struct {
 	ID                 string               `json:"id"`
 	Name               string               `json:"name"`
+	DisplayName        string               `json:"display_name"`
 	Email              *string              `json:"email,omitempty"`
 	DefaultWorkspaceID *string              `json:"default_workspace_id,omitempty"`
 	ExternalIDs        []externalIDResponse `json:"external_ids,omitempty"`
@@ -62,6 +64,9 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := app.AddUserInput{Name: req.Name}
+	if req.DisplayName != nil {
+		input.DisplayName = *req.DisplayName
+	}
 	if req.Email != nil {
 		input.Email = *req.Email
 	}
@@ -71,6 +76,28 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusCreated, userResponseFromView(user), nil)
+}
+
+func (s *Server) handleUserModify(w http.ResponseWriter, r *http.Request) {
+	var req userRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	ref := chi.URLParam(r, "user")
+	scoped, _, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	user, err := scoped.ModifyUser(ref, app.ModifyUserInput{
+		DisplayName: req.DisplayName,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, userResponseFromView(user), nil)
 }
 
 func (s *Server) handleUserInfo(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +131,7 @@ func userResponseFromView(user app.UserView) userResponse {
 	return userResponse{
 		ID:                 user.ID,
 		Name:               user.Name,
+		DisplayName:        user.DisplayName,
 		Email:              user.Email,
 		DefaultWorkspaceID: user.DefaultWorkspaceID,
 		ExternalIDs:        extIDs,

@@ -22,6 +22,7 @@ type JSONExternalID struct {
 type JSONUserInfo struct {
 	ID          string           `json:"id"`
 	Name        string           `json:"name"`
+	DisplayName string           `json:"display_name,omitempty"`
 	Email       *string          `json:"email,omitempty"`
 	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
 }
@@ -29,6 +30,7 @@ type JSONUserInfo struct {
 type JSONAssignee struct {
 	UserID      string           `json:"user_id,omitempty"`
 	Name        string           `json:"name,omitempty"`
+	DisplayName string           `json:"display_name,omitempty"`
 	Email       *string          `json:"email,omitempty"`
 	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
 }
@@ -291,9 +293,10 @@ func ToJSON(tsk Task) JSONTask {
 			out := make([]JSONAssignee, len(tsk.Assignees))
 			for i, assignee := range tsk.Assignees {
 				a := JSONAssignee{
-					UserID: assignee.UserID,
-					Name:   assignee.Name,
-					Email:  assignee.Email,
+					UserID:      assignee.UserID,
+					Name:        assignee.Name,
+					DisplayName: assignee.DisplayName,
+					Email:       assignee.Email,
 				}
 				if len(assignee.ExternalIDs) > 0 {
 					a.ExternalIDs = make([]JSONExternalID, len(assignee.ExternalIDs))
@@ -315,7 +318,7 @@ func ToJSON(tsk Task) JSONTask {
 					ID: link.ID, Type: link.Type, URL: link.URL,
 					Title: link.Title, CreatedAt: formatUnix(link.CreatedAt),
 					CreatedBy: JSONUserInfo{
-						ID: link.CreatedBy.ID, Name: link.CreatedBy.Name,
+						ID: link.CreatedBy.ID, Name: link.CreatedBy.Name, DisplayName: link.CreatedBy.DisplayName,
 						Email: link.CreatedBy.Email, ExternalIDs: externalIDsToJSON(link.CreatedBy.ExternalIDs),
 					},
 				}
@@ -409,9 +412,10 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 			out := make([]AssigneeInfo, len(dto.Assignees))
 			for i, assignee := range dto.Assignees {
 				info := AssigneeInfo{
-					UserID: assignee.UserID,
-					Name:   assignee.Name,
-					Email:  assignee.Email,
+					UserID:      assignee.UserID,
+					Name:        assignee.Name,
+					DisplayName: assignee.DisplayName,
+					Email:       assignee.Email,
 				}
 				if len(assignee.ExternalIDs) > 0 {
 					info.ExternalIDs = make([]ExternalIDInfo, len(assignee.ExternalIDs))
@@ -589,14 +593,14 @@ func externalIDsFromJSON(ids []JSONExternalID) []ExternalIDInfo {
 
 func UserInfoToJSON(u UserInfo) JSONUserInfo {
 	return JSONUserInfo{
-		ID: u.ID, Name: u.Name, Email: u.Email,
+		ID: u.ID, Name: u.Name, DisplayName: u.DisplayName, Email: u.Email,
 		ExternalIDs: externalIDsToJSON(u.ExternalIDs),
 	}
 }
 
 func UserInfoFromJSON(j JSONUserInfo) UserInfo {
 	return UserInfo{
-		ID: j.ID, Name: j.Name, Email: j.Email,
+		ID: j.ID, Name: j.Name, DisplayName: j.DisplayName, Email: j.Email,
 		ExternalIDs: externalIDsFromJSON(j.ExternalIDs),
 	}
 }

@@ -65,6 +65,13 @@ type TaskImportDialogProps = {
   workspaceSlug: string
 }
 
+type AssigneeRepairCandidate = {
+  ref: string
+  name?: string
+  display_name?: string
+  email?: string | null
+}
+
 export function TaskImportDialog({
   existingTasks,
   onOpenChange,
@@ -107,22 +114,23 @@ export function TaskImportDialog({
     () => [...(payload?.warnings ?? []), ...preflight.warnings],
     [payload?.warnings, preflight.warnings]
   )
-  const repairableAssigneeRefs = useMemo(
-    () => assigneeBlockerRefs(preflight.blockers),
-    [preflight.blockers]
+  const repairableAssigneeCandidates = useMemo(
+    () => assigneeRepairCandidates(preflight.blockers, payload?.tasks ?? []),
+    [payload?.tasks, preflight.blockers]
   )
   const assigneeRepair = useMutation({
-    mutationFn: async (refs: string[]) => {
+    mutationFn: async (candidates: AssigneeRepairCandidate[]) => {
       const resolved: WorkspaceMemberCandidate[] = []
-      for (const ref of refs) {
-        const existing = findUserByRef(users.data ?? [], ref)
+      for (const candidate of candidates) {
+        const existing = findUserByRef(users.data ?? [], candidate.ref)
         const user =
           existing ??
-          (await createWorkspaceUser(userCreateInputFromAssigneeRef(ref)))
+          (await createWorkspaceUser(userCreateInputFromAssignee(candidate)))
         await addWorkspaceMember(workspaceSlug, user.id, "member")
         resolved.push({
           user_id: user.id,
           name: user.name,
+          display_name: user.display_name,
           email: user.email,
           role: "member",
           joined_at: currentUnix(),
@@ -143,7 +151,7 @@ export function TaskImportDialog({
     },
   })
   const canRepairAssignees =
-    repairableAssigneeRefs.length > 0 &&
+    repairableAssigneeCandidates.length > 0 &&
     !users.isPending &&
     !users.isError &&
     !assigneeRepair.isPending
@@ -216,7 +224,7 @@ export function TaskImportDialog({
     }
     setAssigneeRepairError(null)
     try {
-      await assigneeRepair.mutateAsync(repairableAssigneeRefs)
+      await assigneeRepair.mutateAsync(repairableAssigneeCandidates)
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "unknown"
       setAssigneeRepairError(
@@ -330,7 +338,7 @@ export function TaskImportDialog({
               onRepairAssignees={() => {
                 void handleRepairAssignees()
               }}
-              repairAssigneeCount={repairableAssigneeRefs.length}
+              repairAssigneeCount={repairableAssigneeCandidates.length}
               repairAssigneesDisabled={!canRepairAssignees}
               repairAssigneesPending={assigneeRepair.isPending}
               tasks={payload.tasks}
@@ -635,14 +643,53 @@ function isSpreadsheetFile(file: File): boolean {
   return file.name.toLowerCase().endsWith(".xlsx")
 }
 
-function assigneeBlockerRefs(blockers: TaskImportIssue[]): string[] {
-  const refs = new Set<string>()
+function assigneeRepairCandidates(
+  blockers: TaskImportIssue[],
+  tasks: TaskImportPayload["tasks"]
+): AssigneeRepairCandidate[] {
+  const candidates = new Map<string, AssigneeRepairCandidate>()
   for (const blocker of blockers) {
     if (blocker.code === "assignee_not_member" && blocker.ref) {
-      refs.add(blocker.ref)
+      candidates.set(blocker.ref, {
+        ref: blocker.ref,
+        ...assigneeMetadataForRef(tasks, blocker.ref),
+      })
     }
   }
-  return Array.from(refs)
+  return Array.from(candidates.values())
+}
+
+function assigneeMetadataForRef(
+  tasks: TaskImportPayload["tasks"],
+  ref: string
+): Omit<AssigneeRepairCandidate, "ref"> {
+  const normalized = ref.trim().toLowerCase()
+  for (const task of tasks) {
+    for (const assignee of task.assignees ?? []) {
+      if (typeof assignee === "string") {
+        if (assignee.trim().toLowerCase() === normalized) {
+          return {}
+        }
+        continue
+      }
+      const refs = [
+        assignee.user_id,
+        assignee.email ?? undefined,
+        assignee.name,
+        assignee.display_name,
+      ]
+        .filter(Boolean)
+        .map((item) => item!.trim().toLowerCase())
+      if (refs.includes(normalized)) {
+        return {
+          name: assignee.name,
+          display_name: assignee.display_name,
+          email: assignee.email,
+        }
+      }
+    }
+  }
+  return {}
 }
 
 function findUserByRef(
@@ -654,17 +701,26 @@ function findUserByRef(
     (user) =>
       user.id.toLowerCase() === normalized ||
       user.name.toLowerCase() === normalized ||
+      (user.display_name?.toLowerCase() ?? "") === normalized ||
       (user.email?.toLowerCase() ?? "") === normalized
   )
 }
 
-function userCreateInputFromAssigneeRef(ref: string) {
-  const trimmed = ref.trim()
-  if (trimmed.includes("@")) {
-    const localPart = trimmed.split("@")[0]?.trim() || trimmed
-    return { email: trimmed, name: localPart }
+function userCreateInputFromAssignee(candidate: AssigneeRepairCandidate) {
+  const ref = candidate.ref.trim()
+  const email = candidate.email?.trim() || (ref.includes("@") ? ref : "")
+  const explicitName = candidate.name?.trim()
+  const displayName = candidate.display_name?.trim()
+  const name =
+    explicitName ||
+    (email ? email.split("@")[0]?.trim() : "") ||
+    displayName ||
+    ref
+  return {
+    ...(email ? { email } : {}),
+    ...(displayName ? { display_name: displayName } : {}),
+    name,
   }
-  return { name: trimmed }
 }
 
 function mergeMembers(
@@ -697,7 +753,13 @@ function formatAssignees(
       if (typeof assignee === "string") {
         return assignee
       }
-      return assignee.user_id ?? assignee.email ?? assignee.name ?? "-"
+      return (
+        assignee.display_name ??
+        assignee.user_id ??
+        assignee.email ??
+        assignee.name ??
+        "-"
+      )
     })
     .join(", ")
 }

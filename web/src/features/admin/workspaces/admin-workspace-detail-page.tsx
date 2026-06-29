@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
+import { PencilIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -33,7 +35,9 @@ import {
 import {
   createAdminActingSession,
   fetchAdminWorkspaceDetail,
+  modifyAdminWorkspaceUser,
   type AdminActingCandidate,
+  type AdminWorkspaceMember,
 } from "./admin-workspace-api"
 
 type AdminWorkspaceDetailPageProps = {
@@ -45,6 +49,9 @@ export function AdminWorkspaceDetailPage({
 }: AdminWorkspaceDetailPageProps) {
   const { t } = useTranslation()
   const [actingOpen, setActingOpen] = useState(false)
+  const [editingMember, setEditingMember] = useState<AdminWorkspaceMember | null>(
+    null
+  )
 
   const query = useQuery({
     queryKey: ["admin", "workspaces", "detail", workspaceSlug],
@@ -133,12 +140,32 @@ export function AdminWorkspaceDetailPage({
               {detail.members.map((member) => (
                 <TableRow key={member.user.id}>
                   <TableCell>
-                    <div className="text-sm">{member.user.name}</div>
-                    {member.user.email ? (
-                      <div className="text-xs text-muted-foreground">
-                        {member.user.email}
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm">
+                          {displayUserName(member.user)}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {member.user.name}
+                        </div>
+                        {member.user.email ? (
+                          <div className="truncate text-xs text-muted-foreground">
+                            {member.user.email}
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
+                      <Button
+                        aria-label={t("admin.workspace.editDisplayNameAria", {
+                          name: displayUserName(member.user),
+                        })}
+                        onClick={() => setEditingMember(member)}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <PencilIcon />
+                      </Button>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{member.role}</Badge>
@@ -167,7 +194,117 @@ export function AdminWorkspaceDetailPage({
         workspaceName={detail.workspace.name}
         workspaceSlug={detail.workspace.slug}
       />
+      <DisplayNameDialog
+        member={editingMember}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingMember(null)
+          }
+        }}
+        workspaceSlug={detail.workspace.slug}
+      />
     </div>
+  )
+}
+
+function DisplayNameDialog({
+  member,
+  onOpenChange,
+  workspaceSlug,
+}: {
+  member: AdminWorkspaceMember | null
+  onOpenChange: (open: boolean) => void
+  workspaceSlug: string
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const open = member !== null
+  const draftSource = member
+    ? `${member.user.id}\u0000${member.user.display_name ?? ""}`
+    : ""
+  const [draftState, setDraftState] = useState({ source: "", value: "" })
+  const value =
+    draftState.source === draftSource
+      ? draftState.value
+      : member?.user.display_name ?? ""
+  const mutation = useMutation({
+    mutationFn: async (displayName: string) => {
+      if (!member) {
+        return null
+      }
+      return modifyAdminWorkspaceUser(workspaceSlug, member.user.id, {
+        display_name: displayName,
+      })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["admin", "workspaces", "detail", workspaceSlug],
+      })
+      handleOpenChange(false)
+    },
+  })
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      setDraftState({ source: "", value: "" })
+      mutation.reset()
+    }
+    onOpenChange(nextOpen)
+  }
+
+  return (
+    <Dialog onOpenChange={handleOpenChange} open={open}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("admin.workspace.editDisplayName")}</DialogTitle>
+          <DialogDescription>
+            {member
+              ? t("admin.workspace.editDisplayNameDescription", {
+                  name: member.user.name,
+                })
+              : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="admin-member-display-name">
+            {t("admin.workspace.field.displayName")}
+          </Label>
+          <Input
+            id="admin-member-display-name"
+            onChange={(event) =>
+              setDraftState({ source: draftSource, value: event.target.value })
+            }
+            value={value}
+          />
+        </div>
+        {mutation.isError ? (
+          <div className="text-sm text-destructive">
+            {errorMessage(
+              mutation.error instanceof Error ? mutation.error : null,
+              t("common.error")
+            )}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button
+            onClick={() => handleOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            {t("common.cancel")}
+          </Button>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              void mutation.mutateAsync(value.trim())
+            }}
+            type="button"
+          >
+            {t("common.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -286,6 +423,10 @@ function ActingSessionDialog({
 
 function formatTime(unix: number): string {
   return new Date(unix * 1000).toLocaleString()
+}
+
+function displayUserName(user: { name: string; display_name?: string }): string {
+  return user.display_name?.trim() || user.name
 }
 
 function errorMessage(error: Error | null, fallback: string): string {
