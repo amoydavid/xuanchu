@@ -41,7 +41,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 ## 登录与 token
 
-普通 Console 入口是 `/`。登录页要求输入 Xuanchu PAT 或 Agent token，前端会把 token 放入当前 tab 的 `sessionStorage["xuanchu.console.token"]`，不会写入 `localStorage`。
+普通 Console 入口是 `/`。登录页要求输入 Xuanchu PAT 或 Agent token，前端会把 token 放入当前 tab 的 `sessionStorage["xuanchu.console.token"]`，不会写入 `localStorage`。`tenant_access_token` 是机器访问用 API key，不作为浏览器登录凭证。
 
 后续 API 请求使用：
 
@@ -60,6 +60,13 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` 控制面中间件，不进入普通业务 Authorization Decision：它不能访问任务、项目、通知、Hook 或 MCP 接口，只用于部署期创建 workspace 和 workspace-scoped Agent token。普通 PAT / Agent token 同样不能访问 admin 控制面。
 
 通用 workspace Agent token 可以使用 `--scope '*'`，再通过 workspace/project allowlist 和成员角色收窄实际权限。只做单一自动化的 token 仍应使用最小 scope。
+
+`/tokens` 页面包含两个 tab：
+
+- 普通 API Tokens：管理 PAT / Agent token，适合用户或需要绑定成员身份的 Agent。
+- 租户访问令牌：管理 `tenant_access_token`。它绑定当前 workspace，不绑定用户，raw token 前缀为 `xuanchu_tenant_`，用于 HTTP API / HTTP MCP 的机器访问；明文只在创建成功后显示一次。
+
+tenant token 的 scope 选择器只展示后端允许的租户白名单。它不能获得 `token:*`、`user:*`、`member:*`、`workspace:write` 或 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入、创建带用户 `created_by` / `actor` 的资源等依赖用户 actor 的接口。
 
 ## 项目工作台链接
 
@@ -143,6 +150,15 @@ acting session 是**短期浏览器委托凭证**，不是长期 token：
 - Workspace Console 顶部持续显示 acting banner，提醒当前以哪个 workspace 的哪个管理员身份操作，并提供「返回超管界面」按钮。
 - 「返回超管界面」清理 acting token + acting context，**保留** server admin token，并跳回 `/admin/workspaces/{workspace}`。
 - acting token 过期或被吊销后，普通 API 返回 `admin_acting_session_expired` 或 `auth_invalid_token`，前端清理 acting session。
+
+## Admin Token 管控
+
+server admin 登录后，`/admin/tokens` 提供跨 workspace 的 token 管控：
+
+- 普通 API Tokens tab 列出 PAT / Agent token（含 user、workspace、scope、状态），可吊销失控 token、修改 name / scope / 过期时间。
+- 租户访问令牌 tab 列出 `tenant_access_token`（含 workspace、prefix、scope、状态），可修改 name / scope / project allowlist / 过期时间并吊销。
+- admin 不创建普通 token 或 tenant token；普通 token 创建走 bootstrap 或 Workspace Console，tenant token 创建走 Workspace Console。
+- admin 操作绕过 workspace role 校验，但所有变更记录到审计日志（`admin.token.modify` / `admin.token.revoke` / `admin.tenant_token.modify` / `admin.tenant_token.revoke`）。
 
 ## 前端开发
 

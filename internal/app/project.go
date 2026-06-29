@@ -328,7 +328,7 @@ func projectViewFromRow(project storage.Project, counts storage.ProjectTaskCount
 		CompletedCount: counts.Completed,
 		CreatedAt:      project.CreatedAt,
 		ModifiedAt:     project.ModifiedAt,
-		ArchivedAt:  project.ArchivedAt,
+		ArchivedAt:     project.ArchivedAt,
 	}
 }
 
@@ -401,6 +401,9 @@ func truncateString(s string, maxLen int) string {
 func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotationInfo, error) {
 	if err := s.Require(PermissionProjectManage); err != nil {
 		return ProjectAnnotationInfo{}, err
+	}
+	if s.runtime.IsTenantActor() {
+		return ProjectAnnotationInfo{}, tenantActorNotUserError()
 	}
 	var result ProjectAnnotationInfo
 	err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
@@ -648,9 +651,11 @@ func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, e
 		if err := tx.projectRepo.UpdateStatus(project.WorkspaceID, project.ID, toStatus, now); err != nil {
 			return nil, nil, err
 		}
-		annotationContent := fmt.Sprintf("状态变更：%s → %s", projectStatusLabel(fromStatus), projectStatusLabel(toStatus))
-		if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
-			return nil, nil, err
+		if !tx.runtime.IsTenantActor() {
+			annotationContent := fmt.Sprintf("状态变更：%s → %s", projectStatusLabel(fromStatus), projectStatusLabel(toStatus))
+			if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
+				return nil, nil, err
+			}
 		}
 		updated, err := tx.projectRepo.GetByID(project.ID)
 		if err != nil {

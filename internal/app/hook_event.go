@@ -186,6 +186,9 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		return nil
 	}
 	for _, event := range events {
+		if event.ActorUserID == "" {
+			continue
+		}
 		hooks, err := s.matchingHooks(event)
 		if err != nil {
 			return err

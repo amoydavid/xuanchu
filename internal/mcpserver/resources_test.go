@@ -406,6 +406,46 @@ func TestReadContextCurrentNone(t *testing.T) {
 	}
 }
 
+func TestTenantTokenCannotReadCurrentContextResource(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"context:read", "workspace:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	session := setupResourceTestServer(t, Options{
+		Store:   store,
+		Clock:   testClock{now: 100},
+		Version: "test",
+		Mode:    ModeHTTP,
+		Request: req,
+	})
+
+	if _, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "xuanchu://context/current"}); err == nil || !strings.Contains(err.Error(), "tenant token has no user actor") {
+		t.Fatalf("ReadResource context/current error = %v, want tenant actor user error", err)
+	}
+
+	result, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "xuanchu://workspace/current"})
+	if err != nil {
+		t.Fatalf("ReadResource workspace/current: %v", err)
+	}
+	var data workspaceResourceData
+	if err := json.Unmarshal([]byte(result.Contents[0].Text), &data); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if data.Context != nil {
+		t.Fatalf("workspace/current context = %#v, want nil for tenant token", data.Context)
+	}
+	if data.Role != "" {
+		t.Fatalf("workspace/current role = %q, want empty for tenant token", data.Role)
+	}
+}
+
 func TestReadWorkspaceCurrentIncludesProjects(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)

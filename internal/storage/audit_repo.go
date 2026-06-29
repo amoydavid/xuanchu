@@ -11,7 +11,11 @@ var ErrInvalidAuditScope = errors.New("invalid audit scope")
 
 type AuditLogEntry struct {
 	ID                      int64
+	ActorType               string
 	ActorUserID             *string
+	ActorTokenID            *string
+	ActorTokenName          *string
+	ActorTokenPrefix        *string
 	WorkspaceID             *string
 	ProjectID               *string
 	Action                  string
@@ -44,7 +48,11 @@ func NewAuditRepository(db *gorm.DB) *AuditRepository {
 func (r *AuditRepository) Append(entry AuditLogEntry) error {
 	return r.db.Create(&AuditLog{
 		ID:                      entry.ID,
+		ActorType:               entry.ActorType,
 		ActorUserID:             entry.ActorUserID,
+		ActorTokenID:            entry.ActorTokenID,
+		ActorTokenName:          entry.ActorTokenName,
+		ActorTokenPrefix:        entry.ActorTokenPrefix,
 		WorkspaceID:             entry.WorkspaceID,
 		ProjectID:               entry.ProjectID,
 		Action:                  entry.Action,
@@ -83,7 +91,11 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 	for _, row := range rows {
 		out = append(out, AuditLogEntry{
 			ID:                      row.ID,
+			ActorType:               row.ActorType,
 			ActorUserID:             row.ActorUserID,
+			ActorTokenID:            row.ActorTokenID,
+			ActorTokenName:          row.ActorTokenName,
+			ActorTokenPrefix:        row.ActorTokenPrefix,
 			WorkspaceID:             row.WorkspaceID,
 			ProjectID:               row.ProjectID,
 			Action:                  row.Action,

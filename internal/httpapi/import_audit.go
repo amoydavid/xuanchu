@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"strconv"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type auditResponse struct {
 	ID                      int64              `json:"id"`
+	ActorType               string             `json:"actor_type,omitempty"`
 	Actor                   *task.JSONUserInfo `json:"actor,omitempty"`
+	ActorToken              *tokenActorJSON    `json:"actor_token,omitempty"`
 	WorkspaceID             *string            `json:"workspace_id"`
 	ProjectID               *string            `json:"project_id"`
 	Action                  string             `json:"action"`
@@ -26,6 +28,12 @@ type auditResponse struct {
 	DelegatorAdminTokenID   *string            `json:"delegator_admin_token_id,omitempty"`
 	DelegatorAdminTokenName string             `json:"delegator_admin_token_name,omitempty"`
 	CreatedAt               int64              `json:"created_at"`
+}
+
+type tokenActorJSON struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Prefix string `json:"prefix"`
 }
 
 const auditMaxLimit = 1000
@@ -105,6 +113,7 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		item := auditResponse{
 			ID:                      row.ID,
+			ActorType:               row.ActorType,
 			WorkspaceID:             row.WorkspaceID,
 			ProjectID:               row.ProjectID,
 			Action:                  row.Action,
@@ -119,6 +128,9 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 		if row.Actor != nil {
 			jui := task.UserInfoToJSON(*row.Actor)
 			item.Actor = &jui
+		}
+		if row.ActorToken != nil {
+			item.ActorToken = &tokenActorJSON{ID: row.ActorToken.ID, Name: row.ActorToken.Name, Prefix: row.ActorToken.Prefix}
 		}
 		if row.DelegatorUser != nil {
 			jui := task.UserInfoToJSON(*row.DelegatorUser)

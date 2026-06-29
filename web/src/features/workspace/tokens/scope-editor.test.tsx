@@ -9,6 +9,7 @@ function renderEditor(props: {
   value: string[]
   onChange: (scopes: string[]) => void
   canImpersonate?: boolean
+  tenantAccessToken?: boolean
 }) {
   return render(<ScopeEditor {...props} />)
 }
@@ -68,6 +69,26 @@ describe("ScopeEditor", () => {
     expect(removeBtn.getAttribute("data-slot")).toBe("button")
     fireEvent.click(removeBtn)
     // 应移除 user:read，保留 task:read
+    expect(onChange).toHaveBeenCalledWith(["task:read"])
+  })
+
+  it("tenant mode only selects allowed scopes from a group", () => {
+    const onChange = vi.fn()
+    renderEditor({ value: [], onChange, tenantAccessToken: true })
+    // workspace 组只允许 read，不允许 write。
+    fireEvent.click(screen.getAllByText("全选")[4])
+    expect(onChange).toHaveBeenCalledWith(["workspace:read"])
+  })
+
+  it("tenant mode can remove existing known but disallowed scopes", () => {
+    const onChange = vi.fn()
+    renderEditor({
+      value: ["task:read", "token:write"],
+      onChange,
+      tenantAccessToken: true,
+    })
+    expect(screen.getByText("token:write")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "移除" }))
     expect(onChange).toHaveBeenCalledWith(["task:read"])
   })
 })

@@ -109,6 +109,9 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 	if err := s.Require(PermissionHookWrite); err != nil {
 		return HookView{}, err
 	}
+	if s.runtime.IsTenantActor() {
+		return HookView{}, tenantActorNotUserError()
+	}
 	if err := validateHookName(input.Name); err != nil {
 		return HookView{}, err
 	}

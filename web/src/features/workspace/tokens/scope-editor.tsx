@@ -9,6 +9,7 @@ import {
   KNOWN_SCOPES,
   SCOPE_GROUPS,
   SCOPE_IMPERSONATE,
+  TENANT_ACCESS_TOKEN_SCOPES,
   type ScopeGroup,
 } from "./scopes"
 
@@ -16,18 +17,31 @@ type ScopeEditorProps = {
   value: string[]
   onChange: (scopes: string[]) => void
   canImpersonate?: boolean
+  tenantAccessToken?: boolean
 }
 
 export function ScopeEditor({
   value,
   onChange,
   canImpersonate = false,
+  tenantAccessToken = false,
 }: ScopeEditorProps) {
   const { t } = useTranslation()
   const valueSet = new Set(value)
-  const unknownScopes = value.filter((s) => !KNOWN_SCOPES.has(s))
+  const removableScopes = value.filter(
+    (s) =>
+      !KNOWN_SCOPES.has(s) ||
+      (tenantAccessToken && !TENANT_ACCESS_TOKEN_SCOPES.has(s))
+  )
+  const canSelectScope = (scope: string) =>
+    !tenantAccessToken || TENANT_ACCESS_TOKEN_SCOPES.has(scope)
+  const scopeDisabled = (scope: string) =>
+    !canSelectScope(scope) && !valueSet.has(scope)
 
   const toggle = (scope: string, checked: boolean) => {
+    if (checked && !canSelectScope(scope)) {
+      return
+    }
     const next = new Set(valueSet)
     if (checked) {
       next.add(scope)
@@ -40,6 +54,9 @@ export function ScopeEditor({
   const toggleGroup = (group: ScopeGroup, checked: boolean) => {
     const next = new Set(valueSet)
     for (const scope of group.scopes) {
+      if (!canSelectScope(scope)) {
+        continue
+      }
       if (checked) {
         next.add(scope)
       } else {
@@ -52,7 +69,10 @@ export function ScopeEditor({
   return (
     <div className="space-y-3 rounded-none border p-3">
       {SCOPE_GROUPS.map((group) => {
-        const allChecked = group.scopes.every((s) => valueSet.has(s))
+        const selectableScopes = group.scopes.filter(canSelectScope)
+        const allChecked =
+          selectableScopes.length > 0 &&
+          selectableScopes.every((s) => valueSet.has(s))
         return (
           <div key={group.i18nKey} className="space-y-2">
             <div className="flex items-center justify-between">
@@ -61,6 +81,7 @@ export function ScopeEditor({
               </Label>
               <Button
                 className="text-muted-foreground"
+                disabled={selectableScopes.length === 0}
                 onClick={() => toggleGroup(group, !allChecked)}
                 size="xs"
                 type="button"
@@ -74,6 +95,7 @@ export function ScopeEditor({
                 <label key={scope} className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={valueSet.has(scope)}
+                    disabled={scopeDisabled(scope)}
                     onCheckedChange={(checked) =>
                       toggle(scope, checked === true)
                     }
@@ -101,13 +123,13 @@ export function ScopeEditor({
           </label>
         </div>
       ) : null}
-      {unknownScopes.length > 0 ? (
+      {removableScopes.length > 0 ? (
         <div className="space-y-2 border-t pt-3">
           <Label className="text-xs text-muted-foreground">
             {t("token.unknownScopes")}
           </Label>
           <div className="flex flex-wrap gap-2">
-            {unknownScopes.map((scope) => (
+            {removableScopes.map((scope) => (
               <span
                 className="inline-flex items-center gap-1 rounded-none border bg-muted/50 px-2 py-0.5 text-xs"
                 key={scope}

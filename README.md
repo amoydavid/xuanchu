@@ -722,7 +722,7 @@ HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上�
 http://127.0.0.1:8080/
 ```
 
-Console 使用现有 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求仍走 `/api/v1/*`。如果需要关闭 Console：
+Console 使用现有 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求仍走 `/api/v1/*`。workspace owner/admin 还可以在 `/tokens` 管理租户访问令牌（`tenant_access_token`），供外部自动化通过 HTTP API / HTTP MCP 使用。如果需要关闭 Console：
 
 ```bash
 ./xuanchu server --listen :8080 --console=false
@@ -800,12 +800,23 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/workspaces/team/agent-tokens \
   --expires-in 720h
 ```
 
-PAT raw token 以 `xuanchu_pat_` 开头，Agent token raw token 以 `xuanchu_agent_` 开头。raw token 只在创建时输出一次；数据库只保存 hash 和短 prefix。后续可以通过 HTTP/远程 CLI 管理 token：
+PAT raw token 以 `xuanchu_pat_` 开头，Agent token raw token 以 `xuanchu_agent_` 开头，tenant access token raw token 以 `xuanchu_tenant_` 开头。raw token 只在创建时输出一次；数据库只保存 hash 和短 prefix。后续可以通过 HTTP/远程 CLI 管理普通 PAT / Agent token：
 
 ```bash
 ./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" token list
 ./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" token revoke <token-id-or-prefix>
 ```
+
+`tenant_access_token` 是 workspace 级 API key，不绑定用户、不支持 impersonation，也不支持 `/me`、`assignee:me`、active context 等依赖用户 actor 的能力。它也不能创建仍带用户形态 `created_by` / `actor` 的对象，例如 task link、project annotation、hook、notification sink、reminder rule、event notification rule；这些路径返回 `tenant_actor_not_user`。tenant token 可以转移 project 状态，但不会写入自动状态变更 annotation。它复用 `api_tokens` 表，`type=tenant_access_token` 且 `user_id=NULL`，可绑定一个 workspace、可选 project allowlist、scope、过期时间和吊销状态。HTTP API 路径：
+
+```text
+GET    /api/v1/tenant-access-tokens
+POST   /api/v1/tenant-access-tokens
+PATCH  /api/v1/tenant-access-tokens/{tokenRef}
+DELETE /api/v1/tenant-access-tokens/{tokenRef}
+```
+
+Server admin 可在 `/api/v1/admin/tenant-access-tokens` 跨 workspace 列表、修改、吊销 tenant token，但不创建 tenant token。创建应从 workspace 视角完成。tenant token 可用于 HTTP API 和 HTTP MCP；审计中会记录 `actor_type=tenant_access_token` 与 token id/name/prefix，不记录 raw token。
 
 远程 CLI：
 
@@ -828,18 +839,25 @@ token = "xuanchu_pat_xxx"
 
 如果 `xuanchu.toml` 包含 `remote.token` 且权限比 `0600` 更宽，CLI 会向 stderr 输出 warning，但不会阻止执行。推荐优先用环境变量或系统 secret manager 注入 token，不要把含 token 的 TOML 提交到公共仓库。
 
-Token scope 是收窄，不是放大。最终权限是：
+PAT / Agent token 的 scope 是收窄，不是放大。最终权限是：
 
 ```text
 membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
+```
+
+tenant token 没有 user principal，也不读取 membership role。它的最终权限是：
+
+```text
+tenant token capability scope ∩ token workspace scope ∩ token project scope ∩ tenant 工具/接口禁止清单
 ```
 
 服务端把这条交集规则统一表达为授权决策（Authorization Decision），HTTP API、HTTP MCP、远程 CLI 共用同一个决策入口：
 
 | 概念 | 说明 |
 |---|---|
-| Principal | 本次业务 actor。普通 token 为 token 绑定用户；impersonation 为 `X-Xuanchu-As` 目标用户。 |
-| Credential | 请求凭证。PAT / Agent token 只提供 capability 和 allowlist，不能放大 membership role。 |
+| Principal | 本次业务 user actor。普通 token 为 token 绑定用户；impersonation 为 `X-Xuanchu-As` 目标用户；tenant token 没有 Principal。 |
+| Actor | 审计 actor。普通路径是 user；tenant token 路径是 `tenant_access_token` 和 token id/name/prefix。 |
+| Credential | 请求凭证。PAT / Agent token 只提供 capability 和 allowlist，不能放大 membership role；tenant token 是 workspace API key。 |
 | TenantScope | effective workspace 和可选 project。workspace 是隔离边界，project 是收窄边界。 |
 | Decision | `principal + credential + tenant + role + request scope` 的最终授权结果。 |
 
@@ -857,12 +875,15 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 | `membership_not_found` | 403 | principal 不是 workspace 成员，或 impersonation subject 不可用 |
 | `permission_denied` | 403 | membership role 不允许本操作 |
 | `workspace_required` | 400 | 多 workspace 可见场景下无法安全推断 workspace |
+| `tenant_actor_not_user` | 400 | tenant token 调用了依赖用户 actor 的接口或 MCP tool |
 
 常用 capability 可通过 `xuanchu scope list` 查看。通用 workspace Agent token 推荐使用 `*`，专用集成 token 再按场景收窄：
 
 ```text
 task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write notification:read notification:write reminder:read reminder:write impersonate
 ```
+
+tenant token 的 `*` 只展开 tenant 白名单：任务、项目、上下文、配置、workspace read、audit read、hook、notification、reminder。它不会包含 `token:*`、`user:*`、`member:*`、`workspace:write` 或 `impersonate`。
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
 
@@ -909,7 +930,7 @@ stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输�
 # Authorization: Bearer xuanchu_pat_xxx
 ```
 
-HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致：`membership role 权限 ∩ token capability ∩ token workspace scope ∩ token project scope`。给 Agent 的默认建议是带 `*` scope 的 workspace-scoped Agent token，让它服务同一 workspace 内多个 project，并覆盖用户、成员、项目、任务、配置、通知、token 等完整 tool 集；只服务单项目时再用 project allowlist 收窄。`/mcp` 不在 OpenAPI 文档中。
+HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致。需要代表某个成员、管理用户/成员/token，或使用 impersonation 时，使用 workspace-scoped Agent token；需要类似 OpenAI API key 的机器凭证时，使用 `tenant_access_token`。tenant token 可调用任务、项目、配置、审计，以及不需要用户 `created_by` / `actor` 的 Hook、通知、提醒管理能力；创建 hook、notification sink、reminder rule、event notification rule、task link、project annotation 等用户形态 actor 路径会返回 `tenant_actor_not_user`。`/mcp` 不在 OpenAPI 文档中。
 
 如果 HTTP MCP 通过 nginx 等反向代理暴露公网域名，推荐保留真实 Host：
 

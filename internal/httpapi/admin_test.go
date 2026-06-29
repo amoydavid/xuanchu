@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/config"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
@@ -527,7 +529,7 @@ func TestAdminTokenRevokeHTTP(t *testing.T) {
 	})
 	var payload struct {
 		Data []struct {
-			ID        string  `json:"id"`
+			ID        string `json:"id"`
 			RevokedAt *int64 `json:"revoked_at"`
 		} `json:"data"`
 	}
@@ -536,6 +538,90 @@ func TestAdminTokenRevokeHTTP(t *testing.T) {
 		if tk.ID == tokenID && tk.RevokedAt == nil {
 			t.Fatalf("token %s should have revoked_at set", tokenID)
 		}
+	}
+}
+
+func TestAdminCanListAndRevokeTenantAccessTokens(t *testing.T) {
+	srv, adminRaw, _ := newAdminTokenFixture(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: srv.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{Name: "runtime", Scopes: []string{"task:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + adminRaw}
+	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/admin/tenant-access-tokens?all=true", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), tenant.View.ID) || strings.Contains(rr.Body.String(), tenant.RawToken) {
+		t.Fatalf("list body = %s", rr.Body.String())
+	}
+	rr = requestHTTP(t, srv, http.MethodDelete, "/api/v1/admin/tenant-access-tokens/"+tenant.View.ID, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = requestHTTP(t, srv, http.MethodGet, "/api/v1/admin/tenant-access-tokens?all=true", headers)
+	if !strings.Contains(rr.Body.String(), `"revoked_at":`) {
+		t.Fatalf("revoked token missing revoked_at: %s", rr.Body.String())
+	}
+}
+
+func TestAdminCanModifyTenantAccessTokenProjects(t *testing.T) {
+	srv, adminRaw, _ := newAdminTokenFixture(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: srv.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{Name: "runtime", Scopes: []string{"task:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"projects":["api"]}`
+	rr := requestHTTPBody(t, srv, http.MethodPatch, "/api/v1/admin/tenant-access-tokens/"+tenant.View.ID, body, map[string]string{
+		"Authorization": "Bearer " + adminRaw,
+		"Content-Type":  "application/json",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("modify status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"project_ids":["`+project.ID+`"]`) {
+		t.Fatalf("project_ids not updated: %s", rr.Body.String())
+	}
+}
+
+func TestAdminCanClearTenantAccessTokenExpiry(t *testing.T) {
+	srv, adminRaw, _ := newAdminTokenFixture(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: srv.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiresIn := time.Hour
+	tenant, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{Name: "runtime", Scopes: []string{"task:read"}, ExpiresIn: &expiresIn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + adminRaw, "Content-Type": "application/json"}
+	rr := requestHTTPBody(t, srv, http.MethodPatch, "/api/v1/admin/tenant-access-tokens/"+tenant.View.ID, `{"expires_in_seconds":null}`, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("modify status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			ExpiresAt *int64 `json:"expires_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.ExpiresAt != nil {
+		t.Fatalf("expires_at = %v, want nil", *payload.Data.ExpiresAt)
 	}
 }
 

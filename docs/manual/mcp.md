@@ -41,9 +41,9 @@ HTTP MCP endpoint：
 /mcp
 ```
 
-HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token scope。
+HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token scope。Bearer token 可以是绑定用户的 PAT / Agent token，也可以是 workspace 级 `tenant_access_token`。
 
-HTTP MCP 与 HTTP API 共享同一授权决策：Bearer token、workspace/project 参数、`X-Xuanchu-As` impersonation、token scope 和 membership role 的结果一致。同一个 token 和 workspace/project 组合下，`task_query`（MCP）与 `GET /api/v1/tasks`（HTTP API）返回相同的可见任务集；权限不足时返回相同的错误码与 HTTP status。
+HTTP MCP 与 HTTP API 共享同一授权决策：Bearer token、workspace/project 参数、`X-Xuanchu-As` impersonation、token scope 和 membership role 的结果一致。同一个 token 和 workspace/project 组合下，`task_query`（MCP）与 `GET /api/v1/tasks`（HTTP API）返回相同的可见任务集；权限不足时返回相同的错误码与 HTTP status。`tenant_access_token` 没有用户 principal，不支持 `X-Xuanchu-As`，也不能调用 `me_get`、用户/成员/token/workspace 管理、active context 写入，或创建需要用户 `created_by` / `actor` 的对象。
 
 stdio MCP 继续沿用本地 active user/workspace，不支持 impersonation。
 
@@ -81,7 +81,12 @@ xuanchu --workspace dajee token create mcp-agent \
   --expires-in 720h
 ```
 
-HTTP MCP 默认建议使用带 `*` scope 的 workspace-scoped Agent token。Agent 通常要服务一个 workspace 里的多个 project，并可能调用用户、成员、项目、任务、配置、通知、token 等多类写操作；scope 给窄后很容易在 tool 调用时遇到 `token_scope_denied`。如果只允许服务单个 project，再加 `--project <slug>` 或 `--project-id <uuid>` 收窄 allowlist。
+HTTP MCP 有两种常见凭证：
+
+- workspace-scoped Agent token：适合需要用户身份、成员管理、token 管理或 impersonation 的 Agent。通用 Agent 可用 `*` scope，再用 workspace/project allowlist 和 membership role 收窄。
+- `tenant_access_token`：适合类似 OpenAI API key 的机器访问，不绑定用户，只能在绑定 workspace 内调用租户白名单能力。它可执行任务、项目、配置、审计，以及不需要用户 `created_by` / `actor` 的 Hook、通知、提醒工作流；创建 hook、notification sink、reminder rule、event notification rule、task link、project annotation 等路径返回 `tenant_actor_not_user`。tenant token 转移 project 状态时不会写入自动状态变更 annotation。
+
+如果只允许服务单个 project，再加 `--project <slug>` 或 `--project-id <uuid>` 收窄 allowlist。
 
 ## 在 Claude Code 中使用
 
@@ -291,7 +296,7 @@ stdio MCP 启动前，建议先确认本机 active user/workspace：
 xuanchu _show active.user active.workspace
 ```
 
-HTTP MCP 接入前，建议为 Agent 创建 workspace-scoped token：
+HTTP MCP 接入前，如需用户身份能力，建议为 Agent 创建 workspace-scoped token：
 
 ```bash
 xuanchu --workspace dajee token create mcp-agent \
@@ -301,6 +306,8 @@ xuanchu --workspace dajee token create mcp-agent \
 ```
 
 这个 `*` 是 token capability 上限，实际权限仍会被 workspace/project allowlist 和绑定用户的 membership role 收窄。如果这个 Agent 只允许服务单个 project，可以额外加 `--project agentapi` 或 `--project-id <project-uuid>`。
+
+如果只是给外部自动化一个租户 API key，可在 Web Console `/tokens` 的「租户访问令牌」tab 创建 `tenant_access_token`，然后在 MCP 客户端中作为 Bearer token 使用。
 
 ## 建议给 Agent 的提示词
 

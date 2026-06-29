@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -37,7 +38,7 @@ func TestTokenRepositoryDoesNotStoreRawToken(t *testing.T) {
 	repo := NewTokenRepository(store.DB())
 	row := ApiTokenEntry{
 		ID:               "tok1",
-		UserID:           "u1",
+		UserID:           ptrString("u1"),
 		Name:             "cli",
 		Type:             "pat",
 		TokenPrefix:      "xuanchu_pat_abcd",
@@ -68,7 +69,7 @@ func TestTokenRepositoryRevokeAndListByUser(t *testing.T) {
 	for _, row := range []ApiTokenEntry{
 		{
 			ID:               "tok1",
-			UserID:           "u1",
+			UserID:           ptrString("u1"),
 			Name:             "cli",
 			Type:             "pat",
 			TokenPrefix:      "xuanchu_pat_a1",
@@ -80,7 +81,7 @@ func TestTokenRepositoryRevokeAndListByUser(t *testing.T) {
 		},
 		{
 			ID:               "tok2",
-			UserID:           "u1",
+			UserID:           ptrString("u1"),
 			Name:             "agent",
 			Type:             "agent",
 			TokenPrefix:      "xuanchu_agent_b2",
@@ -123,9 +124,9 @@ func TestTokenRepositoryListAll(t *testing.T) {
 	revokedAt := int64(999)
 	// 建 3 个 token：2 个有效（不同 user）、1 个已吊销
 	rows := []ApiTokenEntry{
-		{ID: "tok1", UserID: "u1", Name: "a", Type: "pat", TokenPrefix: "xuanchu_pat_a1", TokenHash: strings.Repeat("a", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 100},
-		{ID: "tok2", UserID: "u2", Name: "b", Type: "agent", TokenPrefix: "xuanchu_agent_b2", TokenHash: strings.Repeat("b", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `["w1"]`, ProjectIDsJSON: `[]`, CreatedAt: 200},
-		{ID: "tok3", UserID: "u1", Name: "c", Type: "pat", TokenPrefix: "xuanchu_pat_c3", TokenHash: strings.Repeat("c", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 50, RevokedAt: &revokedAt},
+		{ID: "tok1", UserID: ptrString("u1"), Name: "a", Type: "pat", TokenPrefix: "xuanchu_pat_a1", TokenHash: strings.Repeat("a", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 100},
+		{ID: "tok2", UserID: ptrString("u2"), Name: "b", Type: "agent", TokenPrefix: "xuanchu_agent_b2", TokenHash: strings.Repeat("b", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `["w1"]`, ProjectIDsJSON: `[]`, CreatedAt: 200},
+		{ID: "tok3", UserID: ptrString("u1"), Name: "c", Type: "pat", TokenPrefix: "xuanchu_pat_c3", TokenHash: strings.Repeat("c", 64), ScopesJSON: `["task:read"]`, WorkspaceIDsJSON: `[]`, ProjectIDsJSON: `[]`, CreatedAt: 50, RevokedAt: &revokedAt},
 	}
 	for _, row := range rows {
 		if err := repo.Create(row); err != nil {
@@ -160,12 +161,63 @@ func TestTokenRepositoryListAll(t *testing.T) {
 	}
 }
 
+func TestTokenRepositoryTenantTokenUsesNullableUserID(t *testing.T) {
+	store := newTokenRepoTestStore(t)
+	repo := NewTokenRepository(store.DB())
+	wsID := "ws-1"
+	userID := "user-1"
+	userToken := ApiTokenEntry{
+		ID:               "pat-1",
+		UserID:           ptrString(userID),
+		Name:             "cli",
+		Type:             auth.TokenTypePAT,
+		TokenPrefix:      "xuanchu_pat_a",
+		TokenHash:        strings.Repeat("a", 64),
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `[]`,
+		ProjectIDsJSON:   `[]`,
+		CreatedAt:        100,
+	}
+	tenantToken := ApiTokenEntry{
+		ID:               "tenant-1",
+		UserID:           nil,
+		Name:             "runtime",
+		Type:             auth.TokenTypeTenantAccess,
+		TokenPrefix:      "xuanchu_tenant_a",
+		TokenHash:        strings.Repeat("b", 64),
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `["` + wsID + `"]`,
+		ProjectIDsJSON:   `[]`,
+		CreatedAt:        101,
+	}
+	if err := repo.Create(userToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(tenantToken); err != nil {
+		t.Fatal(err)
+	}
+	byUser, err := repo.ListByUser(userID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byUser) != 1 || byUser[0].ID != "pat-1" {
+		t.Fatalf("ListByUser() = %#v", byUser)
+	}
+	tenants, err := repo.ListTenantByWorkspace(wsID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tenants) != 1 || tenants[0].UserID != nil {
+		t.Fatalf("ListTenantByWorkspace() = %#v", tenants)
+	}
+}
+
 func TestTokenRepository_Update(t *testing.T) {
 	store := newTokenRepoTestStore(t)
 	repo := NewTokenRepository(store.DB())
 	entry := ApiTokenEntry{
 		ID:               uuid.NewString(),
-		UserID:           "user1",
+		UserID:           ptrString("user1"),
 		Name:             "test-token",
 		Type:             "pat",
 		TokenPrefix:      "xuanchu_pat_abc",
@@ -205,7 +257,7 @@ func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
 	expiresAt := time.Now().Add(24 * time.Hour).Unix()
 	entry := ApiTokenEntry{
 		ID:               uuid.NewString(),
-		UserID:           "user1",
+		UserID:           ptrString("user1"),
 		Name:             "test-token",
 		Type:             "pat",
 		TokenPrefix:      "xuanchu_pat_abc",

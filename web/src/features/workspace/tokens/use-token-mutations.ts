@@ -8,6 +8,10 @@ import {
 
 import type {
   CreatedTokenRow,
+  CreatedTenantAccessTokenRow,
+  TenantAccessTokenCreateInput,
+  TenantAccessTokenModifyInput,
+  TenantAccessTokenRow,
   TokenCreateInput,
   TokenModifyInput,
   TokenRow,
@@ -15,6 +19,10 @@ import type {
 
 // 列表查询的 queryKey，与 ResourcePage / TokensPage 保持一致以复用缓存。
 const TOKEN_LIST_KEY = ["resource", "/api/v1/tokens"] as const
+const TENANT_ACCESS_TOKEN_LIST_KEY = [
+  "resource",
+  "/api/v1/tenant-access-tokens",
+] as const
 
 export function useCreateTokenMutation() {
   const queryClient = useQueryClient()
@@ -45,6 +53,59 @@ export function useRevokeTokenMutation() {
       workspaceApiDelete<{ ok: boolean }>(`/api/v1/tokens/${ref}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: TOKEN_LIST_KEY })
+    },
+  })
+}
+
+export function useCreateTenantAccessTokenMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: TenantAccessTokenCreateInput) =>
+      workspaceApiPost<CreatedTenantAccessTokenRow>(
+        "/api/v1/tenant-access-tokens",
+        input
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: TENANT_ACCESS_TOKEN_LIST_KEY,
+      })
+    },
+  })
+}
+
+export function useModifyTenantAccessTokenMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      ref,
+      input,
+    }: {
+      ref: string
+      input: TenantAccessTokenModifyInput
+    }) =>
+      workspaceApiPatch<TenantAccessTokenRow>(
+        `/api/v1/tenant-access-tokens/${ref}`,
+        input
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: TENANT_ACCESS_TOKEN_LIST_KEY,
+      })
+    },
+  })
+}
+
+export function useRevokeTenantAccessTokenMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) =>
+      workspaceApiDelete<{ ok: boolean }>(
+        `/api/v1/tenant-access-tokens/${ref}`
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: TENANT_ACCESS_TOKEN_LIST_KEY,
+      })
     },
   })
 }

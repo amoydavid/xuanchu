@@ -38,7 +38,11 @@ type Membership struct {
 
 type AuditLog struct {
 	ID                      int64   `gorm:"primaryKey;autoIncrement"`
+	ActorType               string  `gorm:"not null;default:'';index"`
 	ActorUserID             *string `gorm:"index"`
+	ActorTokenID            *string `gorm:"index"`
+	ActorTokenName          *string
+	ActorTokenPrefix        *string
 	WorkspaceID             *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1"`
 	ProjectID               *string `gorm:"index:idx_audit_project_time,priority:2"`
 	Action                  string  `gorm:"not null;index"`
@@ -102,16 +106,16 @@ type ConfigDefinition struct {
 }
 
 type ApiToken struct {
-	ID               string `gorm:"primaryKey"`
-	UserID           string `gorm:"not null;index:idx_api_tokens_user"`
-	Name             string `gorm:"not null"`
-	Type             string `gorm:"not null"`
-	TokenPrefix      string `gorm:"not null;uniqueIndex:idx_api_tokens_prefix"`
-	TokenHash        string `gorm:"not null"`
-	ScopesJSON       string `gorm:"not null;default:'[]'"`
-	WorkspaceIDsJSON string `gorm:"not null;default:'[]'"`
-	ProjectIDsJSON   string `gorm:"not null;default:'[]'"`
-	CreatedAt        int64  `gorm:"not null"`
+	ID               string  `gorm:"primaryKey"`
+	UserID           *string `gorm:"index:idx_api_tokens_user"`
+	Name             string  `gorm:"not null"`
+	Type             string  `gorm:"not null"`
+	TokenPrefix      string  `gorm:"not null;uniqueIndex:idx_api_tokens_prefix"`
+	TokenHash        string  `gorm:"not null"`
+	ScopesJSON       string  `gorm:"not null;default:'[]'"`
+	WorkspaceIDsJSON string  `gorm:"not null;default:'[]'"`
+	ProjectIDsJSON   string  `gorm:"not null;default:'[]'"`
+	CreatedAt        int64   `gorm:"not null"`
 	ExpiresAt        *int64
 	RevokedAt        *int64
 	LastUsedAt       *int64

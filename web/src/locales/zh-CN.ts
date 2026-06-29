@@ -486,6 +486,15 @@ export const zhCN = {
     copied: "已复制",
     selectAll: "全选",
     clearAll: "清空",
+    tabs: {
+      label: "Token 类型",
+      api: "普通 API Tokens",
+      tenant: "租户访问令牌",
+    },
+    tenant: {
+      label: "租户访问令牌",
+      create: "创建租户访问令牌",
+    },
     unknownScopes: "未识别的权限（历史遗留，可移除）",
     removeScope: "移除",
     field: {
@@ -537,6 +546,12 @@ export const zhCN = {
       token_expired: "Token 已过期，无法修改",
       token_update_failed: "Token 更新失败",
       token_project_scope_invalid: "项目不在所选工作空间范围内",
+      tenant_token_name_required: "租户访问令牌名称不能为空",
+      tenant_token_scope_invalid: "租户访问令牌权限范围无效",
+      tenant_token_not_found: "租户访问令牌不存在",
+      tenant_token_revoked: "租户访问令牌已吊销，无法修改",
+      tenant_token_expired: "租户访问令牌已过期，无法修改",
+      tenant_token_project_scope_invalid: "项目不在当前工作空间范围内",
       unknown: "操作失败",
     },
   },

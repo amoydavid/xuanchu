@@ -46,6 +46,25 @@ export const SCOPE_GROUPS: ScopeGroup[] = [
   { scopes: [SCOPE_REMINDER_READ, SCOPE_REMINDER_WRITE], i18nKey: "token.scopeGroup.reminder" },
 ]
 
+export const TENANT_ACCESS_TOKEN_SCOPES: ReadonlySet<string> = new Set([
+  SCOPE_TASK_READ,
+  SCOPE_TASK_WRITE,
+  SCOPE_PROJECT_READ,
+  SCOPE_PROJECT_WRITE,
+  SCOPE_CONTEXT_READ,
+  SCOPE_CONTEXT_WRITE,
+  SCOPE_CONFIG_READ,
+  SCOPE_CONFIG_WRITE,
+  SCOPE_WORKSPACE_READ,
+  SCOPE_AUDIT_READ,
+  SCOPE_HOOK_READ,
+  SCOPE_HOOK_WRITE,
+  SCOPE_NOTIFICATION_READ,
+  SCOPE_NOTIFICATION_WRITE,
+  SCOPE_REMINDER_READ,
+  SCOPE_REMINDER_WRITE,
+])
+
 /** 所有已知 scope（分组定义的 + impersonate），用于识别未知/历史遗留 scope。 */
 export const KNOWN_SCOPES: ReadonlySet<string> = new Set([
   ...SCOPE_GROUPS.flatMap((g) => g.scopes),

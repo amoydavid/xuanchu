@@ -44,6 +44,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
 		return
 	}
+	if authn.Authn.TenantActor {
+		writeAppError(w, app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"})
+		return
+	}
 	actor := task.UserInfo{
 		ID:          authn.Authn.User.ID,
 		Name:        authn.Authn.User.Name,

@@ -1,14 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
@@ -28,13 +29,13 @@ type tokenResponse struct {
 }
 
 type modifyTokenRequest struct {
-	Name             *string   `json:"name,omitempty"`
-	Scopes           *[]string `json:"scopes,omitempty"`
-	Workspaces       *[]string `json:"workspaces,omitempty"`
-	WorkspaceIDs     *[]string `json:"workspace_ids,omitempty"`
-	Projects         *[]string `json:"projects,omitempty"`
-	ProjectIDs       *[]string `json:"project_ids,omitempty"`
-	ExpiresInSeconds *int64    `json:"expires_in_seconds,omitempty"`
+	Name             *string       `json:"name,omitempty"`
+	Scopes           *[]string     `json:"scopes,omitempty"`
+	Workspaces       *[]string     `json:"workspaces,omitempty"`
+	WorkspaceIDs     *[]string     `json:"workspace_ids,omitempty"`
+	Projects         *[]string     `json:"projects,omitempty"`
+	ProjectIDs       *[]string     `json:"project_ids,omitempty"`
+	ExpiresInSeconds optionalInt64 `json:"expires_in_seconds,omitempty"`
 }
 
 type createTokenRequest struct {
@@ -52,6 +53,40 @@ type createTokenRequest struct {
 type createdTokenResponse struct {
 	Token string `json:"token"`
 	tokenResponse
+}
+
+type optionalInt64 struct {
+	Set   bool
+	Valid bool
+	Value int64
+}
+
+func (v *optionalInt64) UnmarshalJSON(data []byte) error {
+	v.Set = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		v.Valid = false
+		v.Value = 0
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	v.Valid = true
+	v.Value = value
+	return nil
+}
+
+func durationFromOptionalSeconds(value optionalInt64) *time.Duration {
+	if !value.Set {
+		return nil
+	}
+	if !value.Valid {
+		zero := time.Duration(0)
+		return &zero
+	}
+	duration := time.Duration(value.Value) * time.Second
+	return &duration
 }
 
 func (s *Server) handleTokenList(w http.ResponseWriter, r *http.Request) {
@@ -138,11 +173,7 @@ func (s *Server) handleTokenModify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	var ttl *time.Duration
-	if req.ExpiresInSeconds != nil {
-		value := time.Duration(*req.ExpiresInSeconds) * time.Second
-		ttl = &value
-	}
+	ttl := durationFromOptionalSeconds(req.ExpiresInSeconds)
 	view, err := scoped.ModifyToken(app.ModifyTokenInput{
 		TokenID:       chi.URLParam(r, "tokenRef"),
 		Name:          req.Name,

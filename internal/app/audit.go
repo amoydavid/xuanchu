@@ -26,7 +26,12 @@ type AuditEntry struct {
 
 type AuditLogView struct {
 	ID                      int64
+	ActorType               string
 	Actor                   *task.UserInfo
+	ActorToken              *TokenActorInfo
+	ActorTokenID            *string
+	ActorTokenName          *string
+	ActorTokenPrefix        *string
 	WorkspaceID             *string
 	ProjectID               *string
 	Action                  string
@@ -39,6 +44,12 @@ type AuditLogView struct {
 	DelegatorAdminTokenID   *string
 	DelegatorAdminTokenName string
 	CreatedAt               int64
+}
+
+type TokenActorInfo struct {
+	ID     string
+	Name   string
+	Prefix string
 }
 
 func (s *Service) withAudit(action string, fn func(*Service) (AuditEntry, error)) error {
@@ -91,8 +102,27 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 			if entry.WorkspaceID != nil {
 				workspaceID = entry.WorkspaceID
 			}
+			actorType := txSvc.runtime.ActorType
+			if actorType == "" {
+				actorType = "user"
+			}
+			var actorUserID *string
+			var actorTokenID *string
+			var actorTokenName *string
+			var actorTokenPrefix *string
+			if actorType == "tenant_access_token" {
+				actorTokenID = stringPtr(txSvc.runtime.ActorTokenID)
+				actorTokenName = stringPtr(txSvc.runtime.ActorTokenName)
+				actorTokenPrefix = stringPtr(txSvc.runtime.ActorTokenPrefix)
+			} else {
+				actorUserID = stringPtr(txSvc.runtime.ActorUserID)
+			}
 			row := storage.AuditLogEntry{
-				ActorUserID:             &txSvc.runtime.ActorUserID,
+				ActorType:               actorType,
+				ActorUserID:             actorUserID,
+				ActorTokenID:            actorTokenID,
+				ActorTokenName:          actorTokenName,
+				ActorTokenPrefix:        actorTokenPrefix,
 				WorkspaceID:             workspaceID,
 				ProjectID:               entry.ProjectID,
 				Action:                  entry.Action,
@@ -199,6 +229,10 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 	for _, row := range rows {
 		view := AuditLogView{
 			ID:                      row.ID,
+			ActorType:               auditActorType(row),
+			ActorTokenID:            row.ActorTokenID,
+			ActorTokenName:          row.ActorTokenName,
+			ActorTokenPrefix:        row.ActorTokenPrefix,
 			WorkspaceID:             row.WorkspaceID,
 			ProjectID:               row.ProjectID,
 			Action:                  row.Action,
@@ -215,6 +249,13 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 			ui := userInfos[*row.ActorUserID]
 			view.Actor = &ui
 		}
+		if view.ActorType == "tenant_access_token" && row.ActorTokenID != nil {
+			view.ActorToken = &TokenActorInfo{
+				ID:     *row.ActorTokenID,
+				Name:   derefString(row.ActorTokenName),
+				Prefix: derefString(row.ActorTokenPrefix),
+			}
+		}
 		if row.DelegatorUserID != nil {
 			ui := userInfos[*row.DelegatorUserID]
 			view.DelegatorUser = &ui
@@ -229,4 +270,14 @@ func stringPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func auditActorType(row storage.AuditLogEntry) string {
+	if row.ActorType != "" {
+		return row.ActorType
+	}
+	if row.ActorUserID != nil {
+		return "user"
+	}
+	return ""
 }

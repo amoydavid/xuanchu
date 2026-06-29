@@ -49,8 +49,25 @@ const (
 type CredentialKind string
 
 const (
+	ActorUser              ActorType = "user"
+	ActorTenantAccessToken ActorType = "tenant_access_token"
+)
+
+type ActorType string
+
+type Actor struct {
+	Type        ActorType
+	UserID      string
+	UserName    string
+	TokenID     string
+	TokenName   string
+	TokenPrefix string
+}
+
+const (
 	CredentialPAT            CredentialKind = "pat"
 	CredentialAgent          CredentialKind = "agent"
+	CredentialTenantAccess   CredentialKind = "tenant_access_token"
 	CredentialServerAdmin    CredentialKind = "server_admin"
 	CredentialBrowserSession CredentialKind = "browser_session" // 预留，本次不实现
 )
@@ -104,6 +121,7 @@ type Requirement struct {
 
 // Decision 是授权决策层输出的统一结果。
 type Decision struct {
+	Actor        Actor
 	Principal    Principal
 	Delegator    *Delegator
 	Credential   Credential

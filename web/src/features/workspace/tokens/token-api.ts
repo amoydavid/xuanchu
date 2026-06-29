@@ -24,6 +24,24 @@ export type CreatedTokenRow = {
   token: string
 } & TokenRow
 
+export type TenantAccessTokenRow = {
+  id: string
+  prefix: string
+  name: string
+  type: "tenant_access_token"
+  workspace_id: string
+  project_ids: string[] | null
+  scopes: string[] | null
+  created_at: number
+  expires_at?: number | null
+  revoked_at?: number | null
+  last_used_at?: number | null
+}
+
+export type CreatedTenantAccessTokenRow = {
+  token: string
+} & TenantAccessTokenRow
+
 /** 表单值，创建/编辑共用。 */
 export type TokenFormValues = {
   name: string
@@ -60,10 +78,35 @@ export type TokenModifyInput = {
   expires_in_seconds?: number | null
 }
 
+export type TenantAccessTokenFormValues = {
+  name: string
+  scopes: string[]
+  projects: string[]
+  expiresPreset: ExpiresPreset
+  expiresAt: string
+}
+
+export type TenantAccessTokenCreateInput = {
+  name: string
+  scopes?: string[]
+  projects?: string[]
+  expires_in_seconds?: number | null
+}
+
+export type TenantAccessTokenModifyInput = {
+  name?: string
+  scopes?: string[]
+  projects?: string[]
+  expires_in_seconds?: number | null
+}
+
 /** token 状态派生。 */
 export type TokenStatus = "active" | "expired" | "revoked"
 
-export function deriveTokenStatus(row: TokenRow, nowUnix?: number): TokenStatus {
+export function deriveTokenStatus(
+  row: Pick<TokenRow, "expires_at" | "revoked_at">,
+  nowUnix?: number
+): TokenStatus {
   if (row.revoked_at) {
     return "revoked"
   }
@@ -117,6 +160,18 @@ export function expiresSecondsToPreset(
     preset: "custom",
     customIso: new Date(expiresAt * 1000).toISOString().slice(0, 16),
   }
+}
+
+export function sameExpiresSelection(
+  expiresAt: number | null | undefined,
+  preset: ExpiresPreset,
+  customIso: string
+): boolean {
+  const current = expiresSecondsToPreset(expiresAt)
+  if (current.preset !== preset) {
+    return false
+  }
+  return preset !== "custom" || current.customIso === customIso
 }
 
 /** 比较两个字符串数组是否含相同元素集合（顺序无关）。供普通/admin token 表单复用。 */

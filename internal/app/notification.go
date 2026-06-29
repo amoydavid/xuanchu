@@ -184,6 +184,9 @@ func (s *Service) AddNotificationSink(input NotificationSinkAddInput) (Notificat
 	if err := s.Require(PermissionNotificationWrite); err != nil {
 		return NotificationSinkView{}, err
 	}
+	if s.runtime.IsTenantActor() {
+		return NotificationSinkView{}, tenantActorNotUserError()
+	}
 	normalized, err := normalizeNotificationSinkInput(s, input)
 	if err != nil {
 		return NotificationSinkView{}, err
@@ -414,6 +417,9 @@ func (s *Service) DeleteNotificationSink(sinkID string) error {
 func (s *Service) AddReminderRule(input ReminderRuleAddInput) (ReminderRuleView, error) {
 	if err := s.Require(PermissionReminderWrite); err != nil {
 		return ReminderRuleView{}, err
+	}
+	if s.runtime.IsTenantActor() {
+		return ReminderRuleView{}, tenantActorNotUserError()
 	}
 	var projectID *string
 	if input.ProjectRef != "" {

@@ -7,6 +7,9 @@ import (
 )
 
 func (s *Store) migratePostgres() error {
+	if err := s.prepareAPITokenUserIDNullablePostgres(); err != nil {
+		return err
+	}
 	if err := s.db.AutoMigrate(
 		&Meta{}, &User{}, &Workspace{}, &Membership{},
 		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{},
@@ -23,6 +26,17 @@ func (s *Store) migratePostgres() error {
 		&TaskTag{}, &TaskAnnotation{}, &TaskDependency{},
 		&TaskAssignee{}, &TaskUDAValue{}, &TaskLink{},
 	)
+}
+
+func (s *Store) prepareAPITokenUserIDNullablePostgres() error {
+	var tableName sql.NullString
+	if err := s.db.Raw("SELECT to_regclass('api_tokens')::text").Scan(&tableName).Error; err != nil {
+		return err
+	}
+	if !postgresRegclassFound(tableName) {
+		return nil
+	}
+	return s.db.Exec("ALTER TABLE api_tokens ALTER COLUMN user_id DROP NOT NULL").Error
 }
 
 func (s *Store) prepareTaskAnnotationIDsPostgres() error {

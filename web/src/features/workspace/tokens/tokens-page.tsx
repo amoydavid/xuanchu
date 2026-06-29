@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
   TableBody,
@@ -27,44 +28,75 @@ import { PageHeader } from "@/pages/OverviewPage"
 import { TokenCreateDialog } from "./token-create-dialog"
 import { TokenEditDialog } from "./token-edit-dialog"
 import { TokenRevokeDialog } from "./token-revoke-dialog"
-import { deriveTokenStatus, type TokenRow } from "./token-api"
+import { TenantAccessTokenCreateDialog } from "./tenant-access-token-create-dialog"
+import { TenantAccessTokenEditDialog } from "./tenant-access-token-edit-dialog"
+import { TenantAccessTokenRevokeDialog } from "./tenant-access-token-revoke-dialog"
+import {
+  deriveTokenStatus,
+  type TenantAccessTokenRow,
+  type TokenRow,
+} from "./token-api"
+
+type TokenTab = "api" | "tenant"
 
 export function TokensPage() {
   const { t } = useTranslation()
   const me = useMe()
+  const [activeTab, setActiveTab] = useState<TokenTab>("api")
   // queryKey 与原 ResourcePage 一致，复用缓存
-  const query = useQuery({
+  const tokenQuery = useQuery({
     queryKey: ["resource", "/api/v1/tokens"],
     queryFn: () => workspaceApiGet<TokenRow[]>("/api/v1/tokens"),
+  })
+  const tenantQuery = useQuery({
+    queryKey: ["resource", "/api/v1/tenant-access-tokens"],
+    queryFn: () =>
+      workspaceApiGet<TenantAccessTokenRow[]>("/api/v1/tenant-access-tokens"),
+    enabled: activeTab === "tenant",
   })
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<TokenRow | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<TokenRow | null>(null)
+  const [tenantEditTarget, setTenantEditTarget] =
+    useState<TenantAccessTokenRow | null>(null)
+  const [tenantRevokeTarget, setTenantRevokeTarget] =
+    useState<TenantAccessTokenRow | null>(null)
 
   // 是否可分配 impersonate scope：对齐后端 tokenManageAllowed（仅 admin/owner）。
   // 用 effective role 判断，而非当前 token 的 scope。
   const role = me.data?.effective_role ?? ""
   const canImpersonate = role === "admin" || role === "owner"
+  const activeQuery = activeTab === "tenant" ? tenantQuery : tokenQuery
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <PageHeader title={t("token.title")} />
         <Button onClick={() => setCreateOpen(true)} variant="outline">
-          {t("token.create")}
+          {activeTab === "tenant" ? t("token.tenant.create") : t("token.create")}
         </Button>
       </div>
 
-      {query.isLoading ? (
+      <Tabs
+        onValueChange={(value) => setActiveTab(value as TokenTab)}
+        value={activeTab}
+      >
+        <TabsList aria-label={t("token.tabs.label")} variant="line">
+          <TabsTrigger value="api">{t("token.tabs.api")}</TabsTrigger>
+          <TabsTrigger value="tenant">{t("token.tabs.tenant")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeQuery.isLoading ? (
         <div className="space-y-2 rounded-none border bg-card p-3">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="h-8 w-1/2" />
         </div>
-      ) : query.isError ? (
+      ) : activeQuery.isError ? (
         <div className="border bg-card p-4 text-sm text-destructive">
-          {errorMessage(query.error, t("common.error"))}
+          {errorMessage(activeQuery.error, t("common.error"))}
         </div>
       ) : (
         <div className="rounded-none border bg-card">
@@ -95,7 +127,7 @@ export function TokensPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(query.data ?? []).length === 0 ? (
+              {(activeQuery.data ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell
                     className="h-24 text-center text-muted-foreground"
@@ -105,7 +137,7 @@ export function TokensPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                (query.data ?? []).map((row) => {
+                (activeQuery.data ?? []).map((row) => {
                   const status = deriveTokenStatus(row)
                   const revoked = status === "revoked"
                   return (
@@ -149,14 +181,26 @@ export function TokensPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               disabled={revoked}
-                              onClick={() => setEditTarget(row)}
+                              onClick={() => {
+                                if (activeTab === "tenant") {
+                                  setTenantEditTarget(row as TenantAccessTokenRow)
+                                  return
+                                }
+                                setEditTarget(row as TokenRow)
+                              }}
                             >
                               {t("token.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive"
                               disabled={revoked}
-                              onClick={() => setRevokeTarget(row)}
+                              onClick={() => {
+                                if (activeTab === "tenant") {
+                                  setTenantRevokeTarget(row as TenantAccessTokenRow)
+                                  return
+                                }
+                                setRevokeTarget(row as TokenRow)
+                              }}
                             >
                               {t("token.revoke")}
                             </DropdownMenuItem>
@@ -175,7 +219,11 @@ export function TokensPage() {
       <TokenCreateDialog
         canImpersonate={canImpersonate}
         onOpenChange={setCreateOpen}
-        open={createOpen}
+        open={createOpen && activeTab === "api"}
+      />
+      <TenantAccessTokenCreateDialog
+        onOpenChange={setCreateOpen}
+        open={createOpen && activeTab === "tenant"}
       />
       {editTarget ? (
         <TokenEditDialog
@@ -194,6 +242,24 @@ export function TokensPage() {
           }}
           open={revokeTarget !== null}
           token={revokeTarget}
+        />
+      ) : null}
+      {tenantEditTarget ? (
+        <TenantAccessTokenEditDialog
+          onOpenChange={(open) => {
+            setTenantEditTarget(open ? tenantEditTarget : null)
+          }}
+          open={tenantEditTarget !== null}
+          token={tenantEditTarget}
+        />
+      ) : null}
+      {tenantRevokeTarget ? (
+        <TenantAccessTokenRevokeDialog
+          onOpenChange={(open) => {
+            setTenantRevokeTarget(open ? tenantRevokeTarget : null)
+          }}
+          open={tenantRevokeTarget !== null}
+          token={tenantRevokeTarget}
         />
       ) : null}
     </div>

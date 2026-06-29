@@ -19,6 +19,7 @@ import { ScopeEditor } from "./scope-editor"
 import {
   expiresSecondsToPreset,
   presetToExpiresSeconds,
+  sameExpiresSelection,
   sameSet,
   type ExpiresPreset,
   type TokenFormValues,
@@ -342,9 +343,10 @@ export function valuesToModifyInput(
     values.expiresPreset,
     values.expiresAt
   )
-  const oldExpires = initial?.expires_at ?? null
-  // null = 永不过期；比较是否一致
-  if ((newExpires ?? null) !== (oldExpires ?? null)) {
+  if (
+    !initial ||
+    !sameExpiresSelection(initial.expires_at, values.expiresPreset, values.expiresAt)
+  ) {
     input.expires_in_seconds = newExpires
   }
   return input

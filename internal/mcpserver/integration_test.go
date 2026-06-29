@@ -1350,6 +1350,42 @@ func TestMCPConfigGetLocalRejectedInHTTPMode(t *testing.T) {
 	}
 }
 
+func TestMCPTenantAccessTokenHTTPMode(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"task:write", "workspace:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	add := callTool(t, session, "task_add", TaskAddInput{Title: "tenant mcp task"})
+	if add.IsError {
+		t.Fatalf("task_add error: %v", parseError(t, add))
+	}
+	me := callTool(t, session, "me_get", MeGetInput{})
+	if !me.IsError {
+		t.Fatal("me_get with tenant token should fail")
+	}
+	if code := parseError(t, me).Code; code != "tenant_actor_not_user" {
+		t.Fatalf("me_get code = %q, want tenant_actor_not_user", code)
+	}
+
+	assigned := callTool(t, session, "task_add", TaskAddInput{Title: "bad assignee", Assignees: []string{"me"}})
+	if !assigned.IsError {
+		t.Fatal("task_add assignees=me with tenant token should fail")
+	}
+	if code := parseError(t, assigned).Code; code != "tenant_actor_not_user" {
+		t.Fatalf("task_add assignees=me code = %q, want tenant_actor_not_user", code)
+	}
+}
+
 func TestMCPProjectConfigUsesConfigCapability(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)

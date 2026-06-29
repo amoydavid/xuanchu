@@ -45,6 +45,7 @@
 | v0.4.4 | 已完成 | Web Console Token 完整管理 + Admin 工作台 Token 管控 |
 | v0.4.5 | 已完成 | Web Console 项目-任务浏览体验重构（项目表格主入口 + 任务详情增强 + 过滤工具栏） |
 | v0.4.6 | 已完成 | OpenAPI 运行时生成与文档口径收敛 |
+| v0.4.7 | 已完成 | 租户访问令牌 tenant_access_token |
 | docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -398,6 +399,37 @@ docs/superpowers/plans/2026-06-17-web-console-project-task-browsing.md
 本版本把 HTTP API 路由注册与 OpenAPI 文档生成收敛到同一份 `internal/httpapi` route 表，不再维护静态 `docs/openapi/xuanchu-v1.yaml`。`xuanchu server` 启动后直接提供 `/docs`、`/openapi.json`、`/openapi.yaml`、`/openapi-3.0.json`、`/openapi-3.0.yaml`。
 
 同时补齐 Hook / notification / MCP / Agent Skill 文档里的事件白名单，使其与当前代码允许的 `project.transitioned` 事件保持一致。
+
+## v0.4.7：租户访问令牌 tenant_access_token
+
+**状态：已完成。**
+
+本版本把 `tenant_access_token` 落为 workspace 级 API key，用于外部 Agent、自动化、HTTP API 和 HTTP MCP。它不是 OIDC user token，也不会伪装成某个用户。
+
+当前范围：
+
+- 复用 `api_tokens` 表，不新增独立 token 表；`type=tenant_access_token`，`user_id=NULL`，raw token 前缀为 `xuanchu_tenant_`。
+- 每个 tenant token 绑定且只绑定一个 workspace，可选 project allowlist，可设置过期时间，可吊销。
+- tenant token 使用独立 scope 白名单，支持安全展开 `*` / `resource:*` / `*:action`；不允许 `token:*`、`user:*`、`member:*`、`impersonate`、`workspace:write`。
+- HTTP API 新增 `/api/v1/tenant-access-tokens` 创建、列表、修改、吊销；明文 token 只在创建响应中返回一次。
+- Server admin 控制面新增 `/api/v1/admin/tenant-access-tokens` 列表、修改、吊销。
+- HTTP API / HTTP MCP 可使用 tenant token 执行机器身份工作流，但不能调用 `/me`、`me_get`、用户/成员/token/workspace 管理、active context 写入，或创建 task link、project annotation、hook、notification sink、reminder rule、event notification rule 等仍依赖用户 actor 的资源；tenant project 状态转移不会写自动 annotation。
+- audit 记录 `actor_type=tenant_access_token` 和 token id/name/prefix，不记录 raw token。
+- Web Console `/tokens` 和 `/admin/tokens` 增加「租户访问令牌」tab。
+
+不进入 v0.4.7：
+
+- 不实现 OAuth / OIDC token server。
+- 不实现 `user_access_token`。
+- 不让 tenant token 代用户执行 `assignee:me`、active context 或 impersonation。
+- 不把 server admin token 合并进 `api_tokens`。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-06-29-xuanchu-tenant-access-token-design.md
+docs/superpowers/plans/2026-06-29-xuanchu-tenant-access-token-implementation.md
+```
 
 ## v0.1.1：稳定短任务标识 task_slug
 
@@ -1365,9 +1397,9 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.4.6 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，普通 Console、Server Admin Console、Admin workspace acting、Token 管控、项目表格、任务过滤、任务详情和项目上下文内编辑都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理；写操作继续由 membership、token scope、workspace/project allowlist 和 closed project 状态共同约束。随后完成的授权决策层重构已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界不变：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
+v0.4.7 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，并补齐 workspace 级 `tenant_access_token`。普通 Console、Server Admin Console、Admin workspace acting、PAT/Agent Token 管控、租户访问令牌、项目表格、任务过滤、任务详情和项目上下文内编辑都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理；写操作继续由 membership、token scope、workspace/project allowlist 和 closed project 状态共同约束。授权决策层已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界不变：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
 
-v0.4.6 之后的方向待定，建议优先在以下几类中选择：
+v0.4.7 之后的方向待定，建议优先在以下几类中选择：
 
 - 企业 SSO / 飞书 OAuth 接入（v0.4.2 已为 `/sso/{provider}?redirect=...` 预留 redirect 语义；认证只负责外部身份映射，授权继续由 Xuanchu membership、role、scope 和 allowlist 决定）。
 - Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。

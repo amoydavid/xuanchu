@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -8,7 +9,7 @@ import { setAdminToken } from "@/features/admin/session/admin-token"
 import { i18n } from "@/i18n"
 
 import { AdminTokensPage } from "./admin-tokens-page"
-import type { AdminTokenRow } from "./admin-token-api"
+import type { AdminTenantAccessTokenRow, AdminTokenRow } from "./admin-token-api"
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -49,6 +50,25 @@ function makeRow(overrides: Partial<AdminTokenRow> = {}): AdminTokenRow {
   }
 }
 
+function makeTenantRow(
+  overrides: Partial<AdminTenantAccessTokenRow> = {}
+): AdminTenantAccessTokenRow {
+  return {
+    id: "tenant-1",
+    prefix: "xuanchu_tenant_abc",
+    name: "tenant-admin-ci",
+    type: "tenant_access_token",
+    workspace_id: "w1",
+    project_ids: [],
+    scopes: ["task:read"],
+    created_at: 100,
+    expires_at: null,
+    revoked_at: null,
+    last_used_at: null,
+    ...overrides,
+  }
+}
+
 describe("AdminTokensPage", () => {
   beforeEach(async () => {
     sessionStorage.clear()
@@ -81,6 +101,49 @@ describe("AdminTokensPage", () => {
     expect(screen.getByText("有效")).toBeTruthy()
     // 无创建按钮
     expect(screen.queryByText("创建 Token")).toBeNull()
+
+    fetchMock.mockRestore()
+  })
+
+  it("renders tenant access token rows from tenant tab", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/admin/tenant-access-tokens")) {
+          return okResponse([
+            makeTenantRow({
+              id: "tenant-1",
+              name: "tenant-admin-ci",
+              prefix: "xuanchu_tenant_abc",
+              type: "tenant_access_token",
+              workspace_id: "ws-local",
+            }),
+          ])
+        }
+        if (url.includes("/api/v1/admin/tokens")) {
+          return okResponse([makeRow()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole("tab", { name: "租户访问令牌" })
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("tenant-admin-ci")).toBeTruthy()
+    })
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).includes(
+          "/api/v1/admin/tenant-access-tokens?all=true"
+        )
+      )
+    ).toBe(true)
+    expect(screen.queryByText("xuanchu_tenant_raw_secret")).toBeNull()
 
     fetchMock.mockRestore()
   })

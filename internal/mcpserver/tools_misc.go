@@ -26,7 +26,9 @@ type MeGetInput struct{}
 
 type auditLogView struct {
 	ID               int64              `json:"id"`
+	ActorType        string             `json:"actor_type,omitempty"`
 	Actor            *task.JSONUserInfo `json:"actor,omitempty"`
+	ActorToken       *tokenActorView    `json:"actor_token,omitempty"`
 	WorkspaceID      *string            `json:"workspace_id,omitempty"`
 	ProjectID        *string            `json:"project_id,omitempty"`
 	Action           string             `json:"action"`
@@ -36,6 +38,12 @@ type auditLogView struct {
 	DelegatorTokenID *string            `json:"delegator_token_id,omitempty"`
 	DelegatorUser    *task.JSONUserInfo `json:"delegator_user,omitempty"`
 	CreatedAt        int64              `json:"created_at"`
+}
+
+type tokenActorView struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Prefix string `json:"prefix"`
 }
 
 func auditLogViewFromApp(row app.AuditLogView) auditLogView {
@@ -55,7 +63,9 @@ func auditLogViewFromApp(row app.AuditLogView) auditLogView {
 	}
 	return auditLogView{
 		ID:               row.ID,
+		ActorType:        row.ActorType,
 		Actor:            actor,
+		ActorToken:       tokenActorViewFromApp(row.ActorToken),
 		WorkspaceID:      row.WorkspaceID,
 		ProjectID:        row.ProjectID,
 		Action:           row.Action,
@@ -66,6 +76,13 @@ func auditLogViewFromApp(row app.AuditLogView) auditLogView {
 		DelegatorUser:    delegatorUser,
 		CreatedAt:        row.CreatedAt,
 	}
+}
+
+func tokenActorViewFromApp(actor *app.TokenActorInfo) *tokenActorView {
+	if actor == nil {
+		return nil
+	}
+	return &tokenActorView{ID: actor.ID, Name: actor.Name, Prefix: actor.Prefix}
 }
 
 type meView struct {

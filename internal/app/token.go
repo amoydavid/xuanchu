@@ -51,9 +51,51 @@ type CreatedToken struct {
 	Stored   storage.ApiTokenEntry
 }
 
+type CreateTenantAccessTokenInput struct {
+	Name         string
+	Scopes       []string
+	WorkspaceRef string
+	ProjectRefs  []string
+	ExpiresIn    *time.Duration
+}
+
+type ModifyTenantAccessTokenInput struct {
+	TokenRef    string
+	Name        *string
+	Scopes      *[]string
+	ProjectRefs *[]string
+	ExpiresIn   *time.Duration
+}
+
+type ListTenantAccessTokensInput struct {
+	WorkspaceRef   string
+	IncludeRevoked bool
+}
+
+type TenantAccessTokenView struct {
+	ID          string
+	Prefix      string
+	Name        string
+	Type        string
+	WorkspaceID string
+	ProjectIDs  []string
+	Scopes      []string
+	CreatedAt   int64
+	ExpiresAt   *int64
+	RevokedAt   *int64
+	LastUsedAt  *int64
+}
+
+type CreatedTenantAccessToken struct {
+	RawToken string
+	View     TenantAccessTokenView
+	Stored   storage.ApiTokenEntry
+}
+
 type AuthenticatedToken struct {
-	Token TokenView
-	User  storage.User
+	Token       TokenView
+	User        storage.User
+	TenantActor bool
 	// AdminActingTrace 在 acting token 鉴权时填充，用于把 server admin 来源
 	// 透传到后续授权和审计。普通 PAT/Agent token 为 nil。
 	AdminActingTrace *AdminActingTrace
@@ -152,6 +194,256 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 	return created, err
 }
 
+func (s *Service) CreateTenantAccessToken(input CreateTenantAccessTokenInput) (CreatedTenantAccessToken, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return CreatedTenantAccessToken{}, RuntimeError{Code: "tenant_token_name_required", Message: "tenant token name is required"}
+	}
+	workspace, err := s.resolveTenantTokenWorkspace(input.WorkspaceRef)
+	if err != nil {
+		return CreatedTenantAccessToken{}, err
+	}
+	projects, err := s.resolveTokenProjects([]storage.Workspace{workspace}, input.ProjectRefs)
+	if err != nil {
+		return CreatedTenantAccessToken{}, err
+	}
+	projectIDs := make([]string, 0, len(projects))
+	for _, project := range projects {
+		projectIDs = append(projectIDs, project.ID)
+	}
+	scopes, err := auth.ValidateTenantTokenScopes(input.Scopes)
+	if err != nil {
+		return CreatedTenantAccessToken{}, RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
+	}
+
+	var created CreatedTenantAccessToken
+	err = s.withAudit("tenant_token.create", func(tx *Service) (AuditEntry, error) {
+		raw, prefix, hash, err := auth.GenerateToken(auth.TokenTypeTenantAccess)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		createdAt := tx.clock.Unix()
+		var expiresAt *int64
+		if input.ExpiresIn != nil {
+			value := createdAt + int64(input.ExpiresIn.Seconds())
+			expiresAt = &value
+		}
+		scopesJSON, err := marshalStringSlice(scopes.Values())
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		workspaceJSON, err := marshalStringSlice([]string{workspace.ID})
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		projectJSON, err := marshalStringSlice(projectIDs)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		stored := storage.ApiTokenEntry{
+			ID:               uuid.NewString(),
+			UserID:           nil,
+			Name:             name,
+			Type:             auth.TokenTypeTenantAccess,
+			TokenPrefix:      prefix,
+			TokenHash:        hash,
+			ScopesJSON:       scopesJSON,
+			WorkspaceIDsJSON: workspaceJSON,
+			ProjectIDsJSON:   projectJSON,
+			CreatedAt:        createdAt,
+			ExpiresAt:        expiresAt,
+		}
+		if err := tx.tokenRepo.Create(stored); err != nil {
+			return AuditEntry{}, err
+		}
+		created = CreatedTenantAccessToken{
+			RawToken: raw,
+			View:     tenantTokenViewFromEntry(stored, scopes.Values(), workspace.ID, projectIDs),
+			Stored:   stored,
+		}
+		return AuditEntry{
+			TargetType:  "tenant_token",
+			TargetID:    stored.ID,
+			WorkspaceID: &workspace.ID,
+			Payload: map[string]any{
+				"name":         stored.Name,
+				"type":         stored.Type,
+				"workspace_id": workspace.ID,
+				"project_ids":  projectIDs,
+				"scopes":       scopes.Values(),
+				"expires_at":   stored.ExpiresAt,
+			},
+		}, nil
+	})
+	return created, err
+}
+
+func (s *Service) ListTenantAccessTokens(input ListTenantAccessTokensInput) ([]TenantAccessTokenView, error) {
+	workspace, err := s.resolveTenantTokenWorkspace(input.WorkspaceRef)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.tokenRepo.ListTenantByWorkspace(workspace.ID, input.IncludeRevoked)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TenantAccessTokenView, 0, len(rows))
+	for _, row := range rows {
+		view, err := tenantTokenEntryToView(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, view)
+	}
+	return out, nil
+}
+
+func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*TenantAccessTokenView, error) {
+	existing, workspaceID, err := s.lookupTenantTokenForRuntime(input.TokenRef)
+	if err != nil {
+		return nil, err
+	}
+	if existing.RevokedAt != nil {
+		return nil, RuntimeError{Code: "tenant_token_revoked", Message: "cannot modify a revoked tenant token"}
+	}
+	if existing.ExpiresAt != nil && *existing.ExpiresAt < s.clock.Unix() {
+		return nil, RuntimeError{Code: "tenant_token_expired", Message: "cannot modify an expired tenant token"}
+	}
+
+	updates := storage.TokenUpdates{}
+	dirty := false
+	if input.Name != nil {
+		updates.Name = input.Name
+		dirty = true
+	}
+	if input.Scopes != nil {
+		scopes, err := auth.ValidateTenantTokenScopes(*input.Scopes)
+		if err != nil {
+			return nil, RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
+		}
+		sj, _ := marshalStringSlice(scopes.Values())
+		updates.ScopesJSON = &sj
+		dirty = true
+	}
+	if input.ProjectRefs != nil {
+		workspace, err := s.workspaceRepo.GetByID(workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		projects, err := s.resolveTokenProjects([]storage.Workspace{workspace}, *input.ProjectRefs)
+		if err != nil {
+			return nil, err
+		}
+		projectIDs := make([]string, 0, len(projects))
+		for _, project := range projects {
+			projectIDs = append(projectIDs, project.ID)
+		}
+		pj, _ := marshalStringSlice(projectIDs)
+		updates.ProjectIDsJSON = &pj
+		dirty = true
+	}
+	if input.ExpiresIn != nil {
+		if *input.ExpiresIn == 0 {
+			updates.ClearExpiresAt = true
+		} else if *input.ExpiresIn < 0 {
+			return nil, RuntimeError{Code: "tenant_token_scope_invalid", Message: "expires-in must be a positive duration"}
+		} else {
+			ts := s.clock.Unix() + int64(input.ExpiresIn.Seconds())
+			updates.ExpiresAt = &ts
+		}
+		dirty = true
+	}
+	if dirty {
+		if err := s.withAudit("tenant_token.modify", func(tx *Service) (AuditEntry, error) {
+			if err := tx.tokenRepo.Update(existing.ID, updates); err != nil {
+				return AuditEntry{}, err
+			}
+			return AuditEntry{
+				TargetType:  "tenant_token",
+				TargetID:    existing.ID,
+				WorkspaceID: &workspaceID,
+				Payload: map[string]any{
+					"name":    existing.Name,
+					"changes": updates.ChangedFields(),
+				},
+			}, nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	updated, err := s.tokenRepo.GetByID(existing.ID)
+	if err != nil {
+		return nil, err
+	}
+	view, err := tenantTokenEntryToView(updated)
+	if err != nil {
+		return nil, err
+	}
+	return &view, nil
+}
+
+func (s *Service) RevokeTenantAccessToken(ref string) error {
+	entry, workspaceID, err := s.lookupTenantTokenForRuntime(ref)
+	if err != nil {
+		return err
+	}
+	return s.withAudit("tenant_token.revoke", func(tx *Service) (AuditEntry, error) {
+		if err := tx.tokenRepo.Revoke(entry.ID, tx.clock.Unix()); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			TargetType:  "tenant_token",
+			TargetID:    entry.ID,
+			WorkspaceID: &workspaceID,
+			Payload: map[string]any{
+				"name": entry.Name,
+			},
+		}, nil
+	})
+}
+
+func (s *Service) resolveTenantTokenWorkspace(ref string) (storage.Workspace, error) {
+	if s.runtime.AdminActingSessionID != "" {
+		return storage.Workspace{}, RuntimeError{Code: "admin_acting_not_allowed", Message: "admin acting session cannot manage tenant tokens"}
+	}
+	if !tokenManageAllowed(s.runtime.Role) {
+		return storage.Workspace{}, PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
+	}
+	trimmed := strings.TrimSpace(ref)
+	if trimmed == "" {
+		trimmed = s.runtime.WorkspaceID
+	}
+	workspace, err := lookupWorkspace(s.workspaceRepo, trimmed)
+	if err != nil {
+		return storage.Workspace{}, err
+	}
+	if workspace.ID != s.runtime.WorkspaceID {
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "tenant token workspace must match current workspace"}
+	}
+	return workspace, nil
+}
+
+func (s *Service) lookupTenantTokenForRuntime(ref string) (storage.ApiTokenEntry, string, error) {
+	if _, err := s.resolveTenantTokenWorkspace(""); err != nil {
+		return storage.ApiTokenEntry{}, "", err
+	}
+	entry, err := s.tokenRepo.GetByIDOrPrefix(strings.TrimSpace(ref))
+	if err != nil {
+		return storage.ApiTokenEntry{}, "", RuntimeError{Code: "tenant_token_not_found", Message: "tenant token not found"}
+	}
+	if entry.Type != auth.TokenTypeTenantAccess {
+		return storage.ApiTokenEntry{}, "", RuntimeError{Code: "tenant_token_not_found", Message: "tenant token not found"}
+	}
+	workspaceID, err := tenantTokenWorkspaceID(entry)
+	if err != nil {
+		return storage.ApiTokenEntry{}, "", err
+	}
+	if workspaceID != s.runtime.WorkspaceID {
+		return storage.ApiTokenEntry{}, "", RuntimeError{Code: "tenant_token_not_found", Message: "tenant token not found"}
+	}
+	return entry, workspaceID, nil
+}
+
 func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -193,7 +485,7 @@ func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken,
 	}
 	stored := storage.ApiTokenEntry{
 		ID:               uuid.NewString(),
-		UserID:           input.UserID,
+		UserID:           stringPtr(input.UserID),
 		Name:             name,
 		Type:             tokenType,
 		TokenPrefix:      prefix,
@@ -261,7 +553,10 @@ func (s *Service) revokeToken(ref string, limit *TokenView) error {
 	if err != nil {
 		return err
 	}
-	if entry.UserID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
+	if entry.Type == auth.TokenTypeTenantAccess {
+		return RuntimeError{Code: "token_not_found", Message: "token not found"}
+	}
+	if derefString(entry.UserID) != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
 		return PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 	if err := enforceTokenRevokeLimit(limit, entry); err != nil {
@@ -359,10 +654,6 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	if row.ExpiresAt != nil && now > *row.ExpiresAt {
 		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthTokenExpired, Message: "token expired"}
 	}
-	user, err := s.userRepo.GetByID(row.UserID)
-	if err != nil {
-		return AuthenticatedToken{}, err
-	}
 	scopes, err := unmarshalStringSlice(row.ScopesJSON)
 	if err != nil {
 		return AuthenticatedToken{}, err
@@ -377,6 +668,28 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	}
 	if err := s.tokenRepo.TouchLastUsed(row.ID, now); err == nil {
 		row.LastUsedAt = &now
+	}
+	if row.Type == auth.TokenTypeTenantAccess {
+		if _, err := tenantTokenWorkspaceID(row); err != nil {
+			return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
+		}
+		validatedScopes, err := auth.ValidateTenantTokenScopes(scopes)
+		if err != nil {
+			return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
+		}
+		scopes = validatedScopes.Values()
+		return AuthenticatedToken{
+			Token:       tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs),
+			TenantActor: true,
+		}, nil
+	}
+	userID := derefString(row.UserID)
+	if userID == "" {
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
+	}
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return AuthenticatedToken{}, err
 	}
 	return AuthenticatedToken{
 		Token: tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs),
@@ -575,7 +888,7 @@ func tokenViewFromEntry(row storage.ApiTokenEntry, scopes, workspaceIDs, project
 		Prefix:       row.TokenPrefix,
 		Name:         row.Name,
 		Type:         row.Type,
-		User:         task.UserInfo{ID: row.UserID},
+		User:         task.UserInfo{ID: derefString(row.UserID)},
 		WorkspaceIDs: append([]string(nil), workspaceIDs...),
 		ProjectIDs:   append([]string(nil), projectIDs...),
 		Scopes:       append([]string(nil), scopes...),
@@ -584,6 +897,49 @@ func tokenViewFromEntry(row storage.ApiTokenEntry, scopes, workspaceIDs, project
 		RevokedAt:    row.RevokedAt,
 		LastUsedAt:   row.LastUsedAt,
 	}
+}
+
+func tenantTokenEntryToView(row storage.ApiTokenEntry) (TenantAccessTokenView, error) {
+	scopes, err := unmarshalStringSlice(row.ScopesJSON)
+	if err != nil {
+		return TenantAccessTokenView{}, err
+	}
+	projectIDs, err := unmarshalStringSlice(row.ProjectIDsJSON)
+	if err != nil {
+		return TenantAccessTokenView{}, err
+	}
+	workspaceID, err := tenantTokenWorkspaceID(row)
+	if err != nil {
+		return TenantAccessTokenView{}, err
+	}
+	return tenantTokenViewFromEntry(row, scopes, workspaceID, projectIDs), nil
+}
+
+func tenantTokenViewFromEntry(row storage.ApiTokenEntry, scopes []string, workspaceID string, projectIDs []string) TenantAccessTokenView {
+	return TenantAccessTokenView{
+		ID:          row.ID,
+		Prefix:      row.TokenPrefix,
+		Name:        row.Name,
+		Type:        row.Type,
+		WorkspaceID: workspaceID,
+		ProjectIDs:  append([]string(nil), projectIDs...),
+		Scopes:      append([]string(nil), scopes...),
+		CreatedAt:   row.CreatedAt,
+		ExpiresAt:   row.ExpiresAt,
+		RevokedAt:   row.RevokedAt,
+		LastUsedAt:  row.LastUsedAt,
+	}
+}
+
+func tenantTokenWorkspaceID(row storage.ApiTokenEntry) (string, error) {
+	workspaceIDs, err := unmarshalStringSlice(row.WorkspaceIDsJSON)
+	if err != nil {
+		return "", err
+	}
+	if len(workspaceIDs) != 1 || strings.TrimSpace(workspaceIDs[0]) == "" {
+		return "", RuntimeError{Code: "tenant_token_workspace_invalid", Message: "tenant token must bind exactly one workspace"}
+	}
+	return workspaceIDs[0], nil
 }
 
 func marshalStringSlice(values []string) (string, error) {
@@ -641,9 +997,12 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 	if err != nil {
 		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
 	}
+	if existing.Type == auth.TokenTypeTenantAccess {
+		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
+	}
 
 	// 只有 token 的 owner 或 admin/owner 角色可以修改，与 RevokeToken 保持一致。
-	if existing.UserID != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
+	if derefString(existing.UserID) != s.runtime.ActorUserID && !tokenManageAllowed(s.runtime.Role) {
 		return nil, PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 

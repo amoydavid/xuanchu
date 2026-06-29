@@ -145,6 +145,53 @@ func TestDBMigratesAuditDelegatorColumns(t *testing.T) {
 	if !store.DB().Migrator().HasColumn(&AuditLog{}, "delegator_user_id") {
 		t.Fatal("audit_logs.delegator_user_id column missing after migration")
 	}
+	for _, column := range []string{"actor_type", "actor_token_id", "actor_token_name", "actor_token_prefix"} {
+		if !store.DB().Migrator().HasColumn(&AuditLog{}, column) {
+			t.Fatalf("audit_logs.%s column missing after migration", column)
+		}
+	}
+}
+
+func TestOpenMigratesAPITokenUserIDNullable(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "xuanchu.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("gorm.Open() error = %v", err)
+	}
+	if err := db.Exec(`
+CREATE TABLE api_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  token_prefix TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  scopes_json TEXT NOT NULL DEFAULT '[]',
+  workspace_ids_json TEXT NOT NULL DEFAULT '[]',
+  project_ids_json TEXT NOT NULL DEFAULT '[]',
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  revoked_at INTEGER,
+  last_used_at INTEGER
+)`).Error; err != nil {
+		t.Fatalf("create old api_tokens: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	assertColumnNullable(t, store, "api_tokens", "user_id", true)
+	assertIndexColumns(t, store, "idx_api_tokens_user", []string{"user_id"})
+	assertIndexColumns(t, store, "idx_api_tokens_prefix", []string{"token_prefix"})
 }
 
 func TestTaskAssigneeTableMigrated(t *testing.T) {
@@ -1304,6 +1351,36 @@ func assertIndexColumns(t *testing.T, store *Store, indexName string, want []str
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%s columns = %#v, want %#v", indexName, got, want)
 	}
+}
+
+func assertColumnNullable(t *testing.T, store *Store, table, column string, want bool) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA table_info(" + table + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatal(err)
+		}
+		if name == column {
+			got := notNull == 0
+			if got != want {
+				t.Fatalf("%s.%s nullable = %v, want %v", table, column, got, want)
+			}
+			return
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%s.%s column not found", table, column)
 }
 
 func assertRelationForeignKeysPointToTasks(t *testing.T, store *Store, table string) {

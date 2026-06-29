@@ -60,6 +60,9 @@ func (s *Service) AddEventNotificationRule(input EventNotificationRuleAddInput) 
 	if err := s.Require(PermissionNotificationWrite); err != nil {
 		return EventNotificationRuleView{}, err
 	}
+	if s.runtime.IsTenantActor() {
+		return EventNotificationRuleView{}, tenantActorNotUserError()
+	}
 	var projectID *string
 	if input.ProjectRef != "" {
 		project, err := s.ResolveProject(input.ProjectRef)
@@ -421,6 +424,9 @@ func (s *Service) enqueueEventNotificationDeliveries(events []HookEvent) error {
 		return nil
 	}
 	for _, event := range events {
+		if event.ActorUserID == "" {
+			continue
+		}
 		rules, err := s.eventNotificationRuleRepo.ListMatching(event.WorkspaceID, event.ProjectID, event.EventType)
 		if err != nil {
 			return err

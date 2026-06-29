@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -8,7 +9,7 @@ import { setWorkspaceToken } from "@/features/workspace/session/workspace-token"
 import { i18n } from "@/i18n"
 
 import { TokensPage } from "./tokens-page"
-import type { TokenRow } from "./token-api"
+import type { TenantAccessTokenRow, TokenRow } from "./token-api"
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -45,6 +46,25 @@ function makeToken(overrides: Partial<TokenRow> = {}): TokenRow {
     expires_at: null,
     revoked_at: null,
     last_used_at: 200,
+    ...overrides,
+  }
+}
+
+function makeTenantToken(
+  overrides: Partial<TenantAccessTokenRow> = {}
+): TenantAccessTokenRow {
+  return {
+    id: "tenant-1",
+    prefix: "xuanchu_tenant_abc",
+    name: "tenant-ci",
+    type: "tenant_access_token",
+    workspace_id: "w1",
+    project_ids: [],
+    scopes: ["task:read"],
+    created_at: 100,
+    expires_at: null,
+    revoked_at: null,
+    last_used_at: null,
     ...overrides,
   }
 }
@@ -93,6 +113,55 @@ describe("TokensPage", () => {
     expect(screen.getByText("有效")).toBeTruthy()
     // 创建按钮
     expect(screen.getByText("创建 Token")).toBeTruthy()
+
+    fetchMock.mockRestore()
+  })
+
+  it("renders tenant access token rows from tenant tab", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/me")) {
+          return okResponse({
+            actor: { name: "local" },
+            token: { type: "pat", scopes: ["token:read", "token:write"] },
+            effective_workspace: { slug: "local" },
+            effective_role: "owner",
+          })
+        }
+        if (url.includes("/api/v1/tenant-access-tokens")) {
+          return okResponse([
+            makeTenantToken({
+              id: "tenant-1",
+              name: "tenant-ci",
+              prefix: "xuanchu_tenant_abc",
+              type: "tenant_access_token",
+              workspace_id: "ws-local",
+            }),
+          ])
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole("tab", { name: "租户访问令牌" })
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("tenant-ci")).toBeTruthy()
+    })
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).includes("/api/v1/tenant-access-tokens")
+      )
+    ).toBe(true)
+    expect(screen.queryByText("xuanchu_tenant_raw_secret")).toBeNull()
 
     fetchMock.mockRestore()
   })

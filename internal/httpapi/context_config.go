@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 )
 
 type contextRequest struct {
@@ -36,7 +36,7 @@ type configSchemaRequest struct {
 }
 
 func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
+	scoped, authn, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -46,10 +46,14 @@ func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	activeName, _, err := scoped.ActiveContextName()
-	if err != nil {
-		writeAppError(w, err)
-		return
+	activeName := ""
+	if !authn.Authn.TenantActor {
+		var err error
+		activeName, _, err = scoped.ActiveContextName()
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
 	}
 	out := make([]contextResponse, 0, len(rows))
 	for _, row := range rows {
@@ -84,7 +88,7 @@ func (s *Server) handleContextDefine(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	scoped, _, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
+	scoped, authn, err := s.scopedService(r, auth.ScopeContextRead, app.PermissionContextUse, "")
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -96,10 +100,14 @@ func (s *Server) handleContextInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, row := range rows {
 		if row.Name == name {
-			activeName, _, err := scoped.ActiveContextName()
-			if err != nil {
-				writeAppError(w, err)
-				return
+			activeName := ""
+			if !authn.Authn.TenantActor {
+				var err error
+				activeName, _, err = scoped.ActiveContextName()
+				if err != nil {
+					writeAppError(w, err)
+					return
+				}
 			}
 			writeSuccess(w, http.StatusOK, contextResponse{
 				Name:       row.Name,
@@ -128,8 +136,12 @@ func (s *Server) handleContextDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
+	scoped, authn, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
 	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -141,8 +153,12 @@ func (s *Server) handleContextUse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleContextNone(w http.ResponseWriter, r *http.Request) {
-	scoped, _, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
+	scoped, authn, err := s.scopedService(r, auth.ScopeContextWrite, app.PermissionContextUse, "")
 	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}

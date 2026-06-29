@@ -493,6 +493,15 @@ export const enUS = {
     copied: "Copied",
     selectAll: "Select all",
     clearAll: "Clear",
+    tabs: {
+      label: "Token type",
+      api: "API Tokens",
+      tenant: "Tenant Access Tokens",
+    },
+    tenant: {
+      label: "Tenant Access Token",
+      create: "Create Tenant Access Token",
+    },
     unknownScopes: "Unrecognized scopes (legacy, removable)",
     removeScope: "Remove",
     field: {
@@ -544,6 +553,12 @@ export const enUS = {
       token_expired: "Token is expired and cannot be modified",
       token_update_failed: "Failed to update token",
       token_project_scope_invalid: "Project is not in the selected workspaces",
+      tenant_token_name_required: "Tenant access token name is required",
+      tenant_token_scope_invalid: "Invalid tenant access token scope",
+      tenant_token_not_found: "Tenant access token not found",
+      tenant_token_revoked: "Tenant access token is revoked and cannot be modified",
+      tenant_token_expired: "Tenant access token is expired and cannot be modified",
+      tenant_token_project_scope_invalid: "Project is not in the current workspace",
       unknown: "Operation failed",
     },
   },

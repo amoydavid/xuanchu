@@ -482,9 +482,17 @@ func adminUserResponseFromView(user app.UserView) adminUserResponse {
 // adminModifyTokenRequest admin 修改 token 请求体。
 // 与普通 modifyTokenRequest 区别：无 workspaces/projects（admin 不改绑定）。
 type adminModifyTokenRequest struct {
-	Name             *string   `json:"name,omitempty"`
-	Scopes           *[]string `json:"scopes,omitempty"`
-	ExpiresInSeconds *int64    `json:"expires_in_seconds,omitempty"`
+	Name             *string       `json:"name,omitempty"`
+	Scopes           *[]string     `json:"scopes,omitempty"`
+	ExpiresInSeconds optionalInt64 `json:"expires_in_seconds,omitempty"`
+}
+
+type adminModifyTenantTokenRequest struct {
+	Name             *string       `json:"name,omitempty"`
+	Scopes           *[]string     `json:"scopes,omitempty"`
+	Projects         *[]string     `json:"projects,omitempty"`
+	ProjectIDs       *[]string     `json:"project_ids,omitempty"`
+	ExpiresInSeconds optionalInt64 `json:"expires_in_seconds,omitempty"`
 }
 
 func newAdminTokenService(s *Server, r *http.Request) (*app.Service, error) {
@@ -526,11 +534,7 @@ func (s *Server) handleAdminTokenModify(w http.ResponseWriter, r *http.Request) 
 		writeAppError(w, err)
 		return
 	}
-	var ttl *time.Duration
-	if req.ExpiresInSeconds != nil {
-		value := time.Duration(*req.ExpiresInSeconds) * time.Second
-		ttl = &value
-	}
+	ttl := durationFromOptionalSeconds(req.ExpiresInSeconds)
 	view, err := svc.AdminModifyToken(app.AdminModifyTokenInput{
 		TokenRef:       chi.URLParam(r, "tokenRef"),
 		Name:           req.Name,
@@ -553,6 +557,66 @@ func (s *Server) handleAdminTokenRevoke(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := svc.AdminRevokeToken(chi.URLParam(r, "tokenRef"), admin.TokenName); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
+}
+
+func (s *Server) handleAdminTenantTokenList(w http.ResponseWriter, r *http.Request) {
+	svc, err := newAdminTokenService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := svc.AdminListTenantAccessTokens(r.URL.Query().Get("all") == "true")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]tenantTokenResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, tenantTokenResponseFromView(row))
+	}
+	writeSuccess(w, http.StatusOK, out, nil)
+}
+
+func (s *Server) handleAdminTenantTokenModify(w http.ResponseWriter, r *http.Request) {
+	var req adminModifyTenantTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := newAdminTokenService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	ttl := durationFromOptionalSeconds(req.ExpiresInSeconds)
+	view, err := svc.AdminModifyTenantAccessToken(app.AdminModifyTenantAccessTokenInput{
+		TokenRef:       chi.URLParam(r, "tokenRef"),
+		Name:           req.Name,
+		Scopes:         req.Scopes,
+		ProjectRefs:    mergeRefs(req.Projects, req.ProjectIDs),
+		ExpiresIn:      ttl,
+		AdminTokenName: admin.TokenName,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, tenantTokenResponseFromView(*view), nil)
+}
+
+func (s *Server) handleAdminTenantTokenRevoke(w http.ResponseWriter, r *http.Request) {
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := newAdminTokenService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := svc.AdminRevokeTenantAccessToken(chi.URLParam(r, "tokenRef"), admin.TokenName); err != nil {
 		writeAppError(w, err)
 		return
 	}

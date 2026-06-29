@@ -30,6 +30,9 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
+		if svc.Runtime().ActorType == "tenant_access_token" && strings.TrimSpace(in.Name) == "" {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"})
+		}
 		view, err := contextViewFor(svc, in.Name)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -60,7 +63,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "context_none", Description: "Clear the active context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionContextManage)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:write", app.PermissionContextManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -71,7 +74,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "context_list", Description: "List all contexts in the workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextShowInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:read", app.PermissionContextUse)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:read", app.PermissionContextUse)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -79,7 +82,10 @@ func registerContextTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		activeName, _, _ := svc.ActiveContextName()
+		activeName := ""
+		if svc.Runtime().ActorType != "tenant_access_token" {
+			activeName, _, _ = svc.ActiveContextName()
+		}
 		views := make([]contextView, len(rows))
 		for i, row := range rows {
 			views[i] = contextView{Name: row.Name, Filter: row.FilterSource, Active: row.Name == activeName, CreatedAt: row.CreatedAt, ModifiedAt: row.ModifiedAt}
@@ -89,7 +95,7 @@ func registerContextTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "context_delete", Description: "Delete a named context."}, func(ctx context.Context, req *mcp.CallToolRequest, in ContextDeleteInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "config:write", app.PermissionContextManage)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "context:write", app.PermissionContextManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -101,9 +107,13 @@ func registerContextTools(s *mcp.Server, opts Options) {
 }
 
 func contextViewFor(svc *app.Service, name string) (contextView, error) {
-	activeName, _, err := svc.ActiveContextName()
-	if err != nil {
-		return contextView{}, err
+	activeName := ""
+	if svc.Runtime().ActorType != "tenant_access_token" {
+		var err error
+		activeName, _, err = svc.ActiveContextName()
+		if err != nil {
+			return contextView{}, err
+		}
 	}
 	if strings.TrimSpace(name) == "" {
 		name = activeName

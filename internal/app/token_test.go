@@ -82,6 +82,44 @@ func TestCreateTokenStoresHashAndAudits(t *testing.T) {
 	}
 }
 
+func TestCreateTenantAccessTokenStoresAPIKeyWithoutUser(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:         "runtime-prod",
+		Scopes:       []string{"task:read", "task:write"},
+		WorkspaceRef: svc.Runtime().WorkspaceSlug,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(created.RawToken, "xuanchu_tenant_") {
+		t.Fatalf("raw token = %q", created.RawToken)
+	}
+	if created.Stored.UserID != nil {
+		t.Fatalf("tenant token user_id = %#v, want nil", created.Stored.UserID)
+	}
+	if created.View.WorkspaceID != svc.Runtime().WorkspaceID {
+		t.Fatalf("workspace id = %q, want %q", created.View.WorkspaceID, svc.Runtime().WorkspaceID)
+	}
+	if created.View.Type != "tenant_access_token" {
+		t.Fatalf("type = %q", created.View.Type)
+	}
+}
+
+func TestTenantTokenModifyRejectsPATRef(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	pat, err := svc.CreateToken(CreateTokenInput{Name: "cli", Scopes: []string{"task:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.ModifyTenantAccessToken(ModifyTenantAccessTokenInput{TokenRef: pat.View.ID, Name: strptr("bad")})
+	assertRuntimeCode(t, err, "tenant_token_not_found")
+}
+
 func TestCreateAgentTokenRequiresExplicitWorkspaceAndScope(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

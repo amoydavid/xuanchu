@@ -156,6 +156,16 @@ func ensureProjectRefsMatch(svc *app.Service, projectSlug, projectID string) err
 }
 
 func visibleWorkspacesForToken(store *storage.Store, authn app.AuthenticatedToken) ([]storage.WorkspaceWithRole, error) {
+	if authn.TenantActor || authn.Token.Type == "tenant_access_token" {
+		if len(authn.Token.WorkspaceIDs) != 1 {
+			return nil, app.RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "workspace scope denied"}
+		}
+		workspace, err := storage.NewWorkspaceRepository(store.DB()).GetByID(authn.Token.WorkspaceIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		return []storage.WorkspaceWithRole{{Workspace: workspace}}, nil
+	}
 	rows, err := storage.NewWorkspaceRepository(store.DB()).ListVisibleForUser(authn.User.ID, false)
 	if err != nil {
 		return nil, err

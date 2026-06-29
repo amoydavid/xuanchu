@@ -54,6 +54,10 @@ func NewRequestScope(token TokenView) RequestScope {
 	}
 }
 
+func (s *Service) HasRequestCapability(capability string) bool {
+	return s.requestScope != nil && s.requestScope.HasCapability(capability)
+}
+
 // requestScopeProjectFilterExpr 把 RequestScope 的 project allowlist
 // 转换为 query.Expr。因为 RequestScope 现在是导入的类型别名，
 // 不能直接给它加方法，所以使用自由函数。
@@ -117,6 +121,10 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		workspaceRef = project.WorkspaceID
 	}
 
+	if input.Token.TenantActor || input.Token.Token.Type == auth.TokenTypeTenantAccess {
+		return s.authorizeTenantTokenRequest(input, scope, workspaceRef, projectRef)
+	}
+
 	tokenUser := input.Token.User
 	workspace, err := s.resolveRequestWorkspace(tokenUser, scope, workspaceRef)
 	if err != nil {
@@ -164,6 +172,11 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 
 	decision := authz.Decision{
+		Actor: authz.Actor{
+			Type:     authz.ActorUser,
+			UserID:   subjectUser.ID,
+			UserName: subjectUser.Name,
+		},
 		Principal: authz.Principal{
 			UserID:   subjectUser.ID,
 			UserName: subjectUser.Name,
@@ -210,6 +223,61 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}, nil
 }
 
+func (s *Service) authorizeTenantTokenRequest(input RequestAuthorizationInput, scope RequestScope, workspaceRef, projectRef string) (AuthorizedRequest, error) {
+	workspace, err := s.resolveTenantRequestWorkspace(scope, workspaceRef)
+	if err != nil {
+		return AuthorizedRequest{}, err
+	}
+	project, err := s.resolveRequestProject(workspace.ID, scope, projectRef)
+	if err != nil {
+		return AuthorizedRequest{}, err
+	}
+	effectiveScope := scope
+	if project != nil {
+		effectiveScope.ProjectIDs = []string{project.ID}
+	}
+	decision := authz.Decision{
+		Actor: authz.Actor{
+			Type:        authz.ActorTenantAccessToken,
+			TokenID:     input.Token.Token.ID,
+			TokenName:   input.Token.Token.Name,
+			TokenPrefix: input.Token.Token.Prefix,
+		},
+		Credential: authz.Credential{
+			Kind:         authz.CredentialTenantAccess,
+			TokenID:      input.Token.Token.ID,
+			Capabilities: append([]string(nil), scope.Capabilities...),
+			WorkspaceIDs: append([]string(nil), scope.WorkspaceIDs...),
+			ProjectIDs:   append([]string(nil), scope.ProjectIDs...),
+		},
+		Tenant: authz.TenantScope{
+			WorkspaceID:   workspace.ID,
+			WorkspaceSlug: workspace.Slug,
+		},
+		RequestScope: effectiveScope,
+	}
+	if project != nil {
+		projectID := project.ID
+		decision.Tenant.ProjectID = &projectID
+	}
+	runtime := RuntimeContext{
+		ActorType:        auth.TokenTypeTenantAccess,
+		ActorName:        input.Token.Token.Name,
+		ActorTokenID:     input.Token.Token.ID,
+		ActorTokenName:   input.Token.Token.Name,
+		ActorTokenPrefix: input.Token.Token.Prefix,
+		WorkspaceID:      workspace.ID,
+		WorkspaceSlug:    workspace.Slug,
+	}
+	return AuthorizedRequest{
+		Runtime:   runtime,
+		Scope:     effectiveScope,
+		Workspace: workspace,
+		Project:   project,
+		Decision:  decision,
+	}, nil
+}
+
 // credentialKindFromTokenType 把存储层 token type 映射为 authz.CredentialKind。
 func credentialKindFromTokenType(tokenType string) authz.CredentialKind {
 	switch tokenType {
@@ -217,6 +285,8 @@ func credentialKindFromTokenType(tokenType string) authz.CredentialKind {
 		return authz.CredentialAgent
 	case auth.TokenTypePAT:
 		return authz.CredentialPAT
+	case auth.TokenTypeTenantAccess:
+		return authz.CredentialTenantAccess
 	default:
 		return authz.CredentialKind(tokenType)
 	}
@@ -226,6 +296,7 @@ func credentialKindFromTokenType(tokenType string) authz.CredentialKind {
 // Decision 是授权边界的统一输出，RuntimeContext 是 app service 内部执行所需的派生形态。
 func runtimeContextFromDecision(decision authz.Decision) RuntimeContext {
 	rt := RuntimeContext{
+		ActorType:     string(authz.ActorUser),
 		ActorUserID:   decision.Principal.UserID,
 		ActorName:     decision.Principal.UserName,
 		WorkspaceID:   decision.Tenant.WorkspaceID,
@@ -237,6 +308,34 @@ func runtimeContextFromDecision(decision authz.Decision) RuntimeContext {
 		rt.DelegatorTokenID = decision.Delegator.TokenID
 	}
 	return rt
+}
+
+func (s *Service) resolveTenantRequestWorkspace(scope RequestScope, ref string) (storage.Workspace, error) {
+	ref = strings.TrimSpace(ref)
+	if ref != "" {
+		workspace, err := lookupWorkspace(s.workspaceRepo, ref)
+		if err != nil {
+			return storage.Workspace{}, err
+		}
+		if workspace.ArchivedAt != nil {
+			return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
+		}
+		if !scope.AllowsWorkspace(workspace.ID) {
+			return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "token cannot access workspace"}
+		}
+		return workspace, nil
+	}
+	if len(scope.WorkspaceIDs) != 1 {
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceRequired, Message: "workspace must be specified"}
+	}
+	workspace, err := s.workspaceRepo.GetByID(scope.WorkspaceIDs[0])
+	if err != nil {
+		return storage.Workspace{}, err
+	}
+	if workspace.ArchivedAt != nil {
+		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
+	}
+	return workspace, nil
 }
 
 func (s *Service) resolveRequestWorkspace(user storage.User, scope RequestScope, ref string) (storage.Workspace, error) {

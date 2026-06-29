@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 type ApiTokenEntry struct {
 	ID               string
-	UserID           string
+	UserID           *string
 	Name             string
 	Type             string
 	TokenPrefix      string
@@ -62,7 +63,7 @@ func (r *TokenRepository) Create(entry ApiTokenEntry) error {
 
 func (r *TokenRepository) ListByUser(userID string, includeRevoked bool) ([]ApiTokenEntry, error) {
 	var rows []ApiToken
-	query := r.db.Where("user_id = ?", userID)
+	query := r.db.Where("user_id = ? AND type IN ?", userID, []string{"pat", "agent"})
 	if !includeRevoked {
 		query = query.Where("revoked_at IS NULL")
 	}
@@ -80,7 +81,7 @@ func (r *TokenRepository) ListByUser(userID string, includeRevoked bool) ([]ApiT
 // includeRevoked=false 时过滤已吊销。
 func (r *TokenRepository) ListAll(includeRevoked bool) ([]ApiTokenEntry, error) {
 	var rows []ApiToken
-	query := r.db.Model(&ApiToken{})
+	query := r.db.Where("type IN ?", []string{"pat", "agent"})
 	if !includeRevoked {
 		query = query.Where("revoked_at IS NULL")
 	}
@@ -90,6 +91,36 @@ func (r *TokenRepository) ListAll(includeRevoked bool) ([]ApiTokenEntry, error) 
 	out := make([]ApiTokenEntry, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, apiTokenEntry(row))
+	}
+	return out, nil
+}
+
+func (r *TokenRepository) ListAllByType(tokenType string, includeRevoked bool) ([]ApiTokenEntry, error) {
+	var rows []ApiToken
+	query := r.db.Where("type = ?", tokenType)
+	if !includeRevoked {
+		query = query.Where("revoked_at IS NULL")
+	}
+	if err := query.Order("created_at DESC").Order("id DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]ApiTokenEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, apiTokenEntry(row))
+	}
+	return out, nil
+}
+
+func (r *TokenRepository) ListTenantByWorkspace(workspaceID string, includeRevoked bool) ([]ApiTokenEntry, error) {
+	rows, err := r.ListAllByType("tenant_access_token", includeRevoked)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ApiTokenEntry, 0, len(rows))
+	for _, row := range rows {
+		if jsonStringArrayContains(row.WorkspaceIDsJSON, workspaceID) {
+			out = append(out, row)
+		}
 	}
 	return out, nil
 }
@@ -243,4 +274,17 @@ func apiTokenEntry(row ApiToken) ApiTokenEntry {
 func escapeLike(value string) string {
 	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
 	return replacer.Replace(value)
+}
+
+func jsonStringArrayContains(raw, value string) bool {
+	var values []string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return false
+	}
+	for _, item := range values {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }

@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
   TableBody,
@@ -24,23 +25,41 @@ import { adminApiGet } from "@/features/admin/session/admin-api"
 import { deriveTokenStatus } from "@/features/workspace/tokens/token-api"
 import { ApiError } from "@/lib/api"
 
-import type { AdminTokenRow } from "./admin-token-api"
+import type { AdminTenantAccessTokenRow, AdminTokenRow } from "./admin-token-api"
+import { AdminTenantAccessTokenEditDialog } from "./admin-tenant-access-token-edit-dialog"
+import { AdminTenantAccessTokenRevokeDialog } from "./admin-tenant-access-token-revoke-dialog"
 import { AdminTokenEditDialog } from "./admin-token-edit-dialog"
 import { AdminTokenRevokeDialog } from "./admin-token-revoke-dialog"
+
+type AdminTokenTab = "api" | "tenant"
 
 export function AdminTokensPage() {
   const { t } = useTranslation()
   const [includeRevoked, setIncludeRevoked] = useState(true)
+  const [activeTab, setActiveTab] = useState<AdminTokenTab>("api")
   const [editTarget, setEditTarget] = useState<AdminTokenRow | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<AdminTokenRow | null>(null)
+  const [tenantEditTarget, setTenantEditTarget] =
+    useState<AdminTenantAccessTokenRow | null>(null)
+  const [tenantRevokeTarget, setTenantRevokeTarget] =
+    useState<AdminTenantAccessTokenRow | null>(null)
 
-  const query = useQuery({
+  const tokenQuery = useQuery({
     queryKey: ["admin", "tokens", includeRevoked],
     queryFn: () =>
       adminApiGet<AdminTokenRow[]>(
         `/api/v1/admin/tokens?all=${includeRevoked ? "true" : "false"}`
       ),
   })
+  const tenantQuery = useQuery({
+    queryKey: ["admin", "tenant-access-tokens", includeRevoked],
+    queryFn: () =>
+      adminApiGet<AdminTenantAccessTokenRow[]>(
+        `/api/v1/admin/tenant-access-tokens?all=${includeRevoked ? "true" : "false"}`
+      ),
+    enabled: activeTab === "tenant",
+  })
+  const activeQuery = activeTab === "tenant" ? tenantQuery : tokenQuery
 
   return (
     <div className="space-y-4">
@@ -55,15 +74,25 @@ export function AdminTokensPage() {
         </label>
       </div>
 
-      {query.isLoading ? (
+      <Tabs
+        onValueChange={(value) => setActiveTab(value as AdminTokenTab)}
+        value={activeTab}
+      >
+        <TabsList aria-label={t("token.tabs.label")} variant="line">
+          <TabsTrigger value="api">{t("token.tabs.api")}</TabsTrigger>
+          <TabsTrigger value="tenant">{t("token.tabs.tenant")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeQuery.isLoading ? (
         <div className="space-y-2 rounded-none border bg-card p-3">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="h-8 w-1/2" />
         </div>
-      ) : query.isError ? (
+      ) : activeQuery.isError ? (
         <div className="border bg-card p-4 text-sm text-destructive">
-          {errorMessage(query.error, t("common.error"))}
+          {errorMessage(activeQuery.error, t("common.error"))}
         </div>
       ) : (
         <div className="rounded-none border bg-card">
@@ -77,7 +106,9 @@ export function AdminTokensPage() {
                   {t("token.field.type")}
                 </TableHead>
                 <TableHead className="text-muted-foreground">
-                  {t("common.actor")}
+                  {activeTab === "tenant"
+                    ? t("token.field.prefix")
+                    : t("common.actor")}
                 </TableHead>
                 <TableHead className="text-muted-foreground">
                   {t("token.field.workspaces")}
@@ -97,7 +128,7 @@ export function AdminTokensPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(query.data ?? []).length === 0 ? (
+              {(activeQuery.data ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell
                     className="h-24 text-center text-muted-foreground"
@@ -107,9 +138,11 @@ export function AdminTokensPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                (query.data ?? []).map((row) => {
+                (activeQuery.data ?? []).map((row) => {
                   const status = deriveTokenStatus(row)
                   const revoked = status === "revoked"
+                  const tenantRow = row as AdminTenantAccessTokenRow
+                  const tokenRow = row as AdminTokenRow
                   return (
                     <TableRow
                       className={revoked ? "opacity-50" : undefined}
@@ -120,17 +153,27 @@ export function AdminTokensPage() {
                         <Badge variant="outline">{row.type}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">{row.user.name}</div>
-                        {row.user.email ? (
-                          <div className="text-xs text-muted-foreground">
-                            {row.user.email}
+                        {activeTab === "tenant" ? (
+                          <div className="font-mono text-xs text-muted-foreground">
+                            {tenantRow.prefix}
                           </div>
-                        ) : null}
+                        ) : (
+                          <>
+                            <div className="text-sm">{tokenRow.user.name}</div>
+                            {tokenRow.user.email ? (
+                              <div className="text-xs text-muted-foreground">
+                                {tokenRow.user.email}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {(row.workspace_ids ?? []).length > 0
-                          ? (row.workspace_ids ?? []).join(", ")
-                          : t("admin.token.global")}
+                        {activeTab === "tenant"
+                          ? tenantRow.workspace_id
+                          : (tokenRow.workspace_ids ?? []).length > 0
+                            ? (tokenRow.workspace_ids ?? []).join(", ")
+                            : t("admin.token.global")}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
@@ -158,13 +201,25 @@ export function AdminTokensPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => setEditTarget(row)}
+                              onClick={() => {
+                                if (activeTab === "tenant") {
+                                  setTenantEditTarget(tenantRow)
+                                  return
+                                }
+                                setEditTarget(tokenRow)
+                              }}
                             >
                               {t("token.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive"
-                              onClick={() => setRevokeTarget(row)}
+                              onClick={() => {
+                                if (activeTab === "tenant") {
+                                  setTenantRevokeTarget(tenantRow)
+                                  return
+                                }
+                                setRevokeTarget(tokenRow)
+                              }}
                             >
                               {t("token.revoke")}
                             </DropdownMenuItem>
@@ -196,6 +251,24 @@ export function AdminTokensPage() {
           }}
           open={revokeTarget !== null}
           token={revokeTarget}
+        />
+      ) : null}
+      {tenantEditTarget ? (
+        <AdminTenantAccessTokenEditDialog
+          onOpenChange={(open) => {
+            setTenantEditTarget(open ? tenantEditTarget : null)
+          }}
+          open={tenantEditTarget !== null}
+          token={tenantEditTarget}
+        />
+      ) : null}
+      {tenantRevokeTarget ? (
+        <AdminTenantAccessTokenRevokeDialog
+          onOpenChange={(open) => {
+            setTenantRevokeTarget(open ? tenantRevokeTarget : null)
+          }}
+          open={tenantRevokeTarget !== null}
+          token={tenantRevokeTarget}
         />
       ) : null}
     </div>

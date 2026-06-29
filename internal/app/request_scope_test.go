@@ -56,6 +56,45 @@ func TestAuthorizeTokenRequestRejectsMissingCapability(t *testing.T) {
 	assertRuntimeCode(t, err, "token_scope_denied")
 }
 
+func TestAuthorizeTenantTokenDoesNotRequireMembership(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:         "runtime",
+		Scopes:       []string{"task:read"},
+		WorkspaceRef: svc.Runtime().WorkspaceSlug,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.store.DB().Where("workspace_id = ?", svc.Runtime().WorkspaceID).Delete(&storage.Membership{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	authn, err := svc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := svc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token:              authn,
+		RequiredCapability: "task:read",
+		RequiredPermission: PermissionTaskRead,
+		WorkspaceRef:       "local",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
+	}
+	if authorized.Runtime.ActorType != "tenant_access_token" {
+		t.Fatalf("actor type = %q", authorized.Runtime.ActorType)
+	}
+	if authorized.Runtime.ActorUserID != "" {
+		t.Fatalf("tenant actor user id = %q, want empty", authorized.Runtime.ActorUserID)
+	}
+	if authorized.Decision.Credential.Kind != authz.CredentialTenantAccess {
+		t.Fatalf("credential kind = %q, want tenant access", authorized.Decision.Credential.Kind)
+	}
+}
+
 func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")

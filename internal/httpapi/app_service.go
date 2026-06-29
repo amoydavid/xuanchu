@@ -78,7 +78,16 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 	// 业务身份」（impersonation 时为 subject），比 authMiddleware 写入的 token 默认值
 	// 更准确。未走 scopedServiceFor 的 handler 仍保留 authMiddleware 写入的默认值。
 	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
-		state.actorID = authorized.Decision.Principal.UserID
+		if authorized.Decision.Actor.Type != "" {
+			state.actorType = string(authorized.Decision.Actor.Type)
+		}
+		if authorized.Decision.Actor.Type == "tenant_access_token" {
+			state.actorID = "-"
+			state.tokenName = authorized.Decision.Actor.TokenName
+			state.tokenPrefix = authorized.Decision.Actor.TokenPrefix
+		} else {
+			state.actorID = authorized.Decision.Principal.UserID
+		}
 		state.workspaceID = authorized.Decision.Tenant.WorkspaceID
 		state.workspaceRef = authorized.Decision.Tenant.WorkspaceSlug
 		if authorized.Decision.Delegator != nil {

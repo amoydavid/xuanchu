@@ -28,6 +28,9 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareProjectNextTaskSeqColumnForV011(); err != nil {
 		return err
 	}
+	if err := s.prepareAPITokenUserIDNullable(); err != nil {
+		return err
+	}
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &UserExternalID{}); err != nil {
 		return err
 	}
@@ -44,6 +47,100 @@ func (s *Store) migrateSQLite() error {
 		return err
 	}
 	return nil
+}
+
+func (s *Store) prepareAPITokenUserIDNullable() error {
+	sqlDB, err := s.sqlDB()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	began := false
+	committed := false
+	defer func() {
+		if began && !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+		_, _ = conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	}()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	began = true
+
+	tx := m5MigrationTx{ctx: ctx, conn: conn}
+	hasTable, err := tableExists(tx, "api_tokens")
+	if err != nil {
+		return err
+	}
+	if hasTable {
+		userIDNotNull, err := columnNotNull(tx, "api_tokens", "user_id")
+		if err != nil {
+			return err
+		}
+		if userIDNotNull {
+			if err := rebuildAPITokensWithNullableUserID(tx); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func rebuildAPITokensWithNullableUserID(tx m5MigrationTx) error {
+	if err := tx.exec("ALTER TABLE api_tokens RENAME TO api_tokens_old_nullable_user_id"); err != nil {
+		return err
+	}
+	if err := createAPITokensWithNullableUserID(tx); err != nil {
+		return err
+	}
+	if err := tx.exec(`INSERT INTO api_tokens (
+id, user_id, name, type, token_prefix, token_hash, scopes_json, workspace_ids_json,
+project_ids_json, created_at, expires_at, revoked_at, last_used_at
+)
+SELECT
+id, user_id, name, type, token_prefix, token_hash, scopes_json, workspace_ids_json,
+project_ids_json, created_at, expires_at, revoked_at, last_used_at
+FROM api_tokens_old_nullable_user_id`); err != nil {
+		return err
+	}
+	return tx.exec("DROP TABLE api_tokens_old_nullable_user_id")
+}
+
+func createAPITokensWithNullableUserID(tx m5MigrationTx) error {
+	if err := tx.exec(`CREATE TABLE api_tokens (
+id TEXT PRIMARY KEY,
+user_id TEXT,
+name TEXT NOT NULL,
+type TEXT NOT NULL,
+token_prefix TEXT NOT NULL,
+token_hash TEXT NOT NULL,
+scopes_json TEXT NOT NULL DEFAULT '[]',
+workspace_ids_json TEXT NOT NULL DEFAULT '[]',
+project_ids_json TEXT NOT NULL DEFAULT '[]',
+created_at INTEGER NOT NULL,
+expires_at INTEGER,
+revoked_at INTEGER,
+last_used_at INTEGER
+)`); err != nil {
+		return err
+	}
+	if err := tx.exec("CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id)"); err != nil {
+		return err
+	}
+	return tx.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_prefix ON api_tokens(token_prefix)")
 }
 
 func (s *Store) prepareTaskAnnotationIDsForV020() error {
@@ -840,6 +937,31 @@ func columnExists(tx m5MigrationTx, table, column string) (bool, error) {
 		}
 	}
 	return false, rows.Err()
+}
+
+func columnNotNull(tx m5MigrationTx, table, column string) (bool, error) {
+	rows, err := tx.query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return notNull == 1, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return false, fmt.Errorf("%s.%s column not found", table, column)
 }
 
 func validateV011ProjectSlugs(tx m5MigrationTx) error {

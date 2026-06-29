@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -121,6 +122,159 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 	}
 	if payload.Data.EffectiveRole != "owner" {
 		t.Fatalf("effective_role = %q, want owner", payload.Data.EffectiveRole)
+	}
+}
+
+func TestTenantTokenCanCallHTTPTaskAPI(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"task:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	rr := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tasks", `{"title":"from tenant http"}`, map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+	})
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestTenantTokenCannotUseHTTPAssigneeMe(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"task:read", "task:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{"Authorization": "Bearer " + created.RawToken}
+
+	rr := requestHTTP(t, server, http.MethodGet, "/api/v1/tasks?query=assignee:me", headers)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "tenant_actor_not_user")
+
+	rr = requestHTTPBody(t, server, http.MethodPost, "/api/v1/tasks", `{"title":"bad assignee","assignees":["me"]}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "tenant_actor_not_user")
+}
+
+func TestTenantTokenCannotCallHTTPMe(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"workspace:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	rr := requestHTTP(t, server, http.MethodGet, "/api/v1/me", map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+	})
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "tenant_actor_not_user")
+}
+
+func TestTenantTokenCannotCallHTTPUserMemberOrActiveContext(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"workspace:read", "context:read", "context:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{"Authorization": "Bearer " + created.RawToken}
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/users"},
+		{method: http.MethodGet, path: "/api/v1/users/local"},
+		{method: http.MethodGet, path: "/api/v1/users/local/external-ids"},
+		{method: http.MethodGet, path: "/api/v1/workspaces/local/members"},
+		{method: http.MethodPost, path: "/api/v1/contexts/none"},
+		{method: http.MethodPost, path: "/api/v1/contexts/focus/use"},
+	} {
+		rr := requestHTTPBody(t, server, tc.method, tc.path, tc.body, headers)
+		assertHTTPErrorCode(t, rr, http.StatusBadRequest, "tenant_actor_not_user")
+	}
+}
+
+func TestTenantTokenContextListDoesNotReadActiveUserState(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DefineContext("focus", "status:pending"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UseContext("focus"); err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"context:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	rr := requestHTTP(t, server, http.MethodGet, "/api/v1/contexts", map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), `"active":true`) {
+		t.Fatalf("tenant context list should not expose active user state: %s", rr.Body.String())
+	}
+}
+
+func TestTenantTokenRejectsStoredDisallowedScopesAtAuthentication(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Model(&storage.ApiToken{}).
+		Where("id = ?", created.View.ID).
+		Update("scopes_json", `["`+auth.ScopeTokenWrite+`"]`).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.AuthenticateBearerToken(created.RawToken)
+	if runtimeErr, ok := err.(app.RuntimeError); !ok || runtimeErr.Code != "auth_invalid_token" {
+		t.Fatalf("AuthenticateBearerToken() error = %#v, want auth_invalid_token", err)
 	}
 }
 

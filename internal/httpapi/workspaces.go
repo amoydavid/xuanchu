@@ -149,8 +149,12 @@ func (s *Server) handleWorkspaceArchive(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleMemberList(w http.ResponseWriter, r *http.Request) {
 	workspace := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, workspace, "")
+	scoped, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, workspace, "")
 	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -169,8 +173,12 @@ func (s *Server) handleMemberAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workspace := chi.URLParam(r, "workspace")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionMemberManage, workspace, "")
+	scoped, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -189,8 +197,12 @@ func (s *Server) handleMemberRole(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace := chi.URLParam(r, "workspace")
 	user := chi.URLParam(r, "user")
-	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionMemberManage, workspace, "")
+	scoped, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionMemberManage, workspace, "")
 	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}

@@ -75,6 +75,7 @@ xuanchu member role bob member
 本地 CLI 的 actor 来自 active user；远程 HTTP/MCP 的 actor 来自 token，或在 Agent token impersonation 下来自 `X-Xuanchu-As`。最终权限仍然是 membership role、token capability、workspace allowlist、project allowlist 的交集，服务端把这四项统一表达为 Authorization Decision，HTTP API、HTTP MCP 和远程 CLI 共用同一个决策入口。
 
 - PAT / Agent token 只提供 capability 和 allowlist，不能放大 membership role。
+- `tenant_access_token` 是 workspace 级机器 actor，不绑定用户、不读取 membership role；最终权限来自 tenant scope、workspace/project allowlist 和 tenant 工具/接口禁止清单。它不能创建仍需要用户 `created_by` / `actor` 的资源。
 - Agent token impersonation 不会提权：以目标用户的 membership role 为准。
 - impersonation 必须显式 workspace：token 可见多个 workspace 且请求未指定 workspace 时返回 `workspace_required`。
 - 目标用户不存在或非成员时统一返回 `membership_not_found`，避免身份枚举。

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -210,14 +211,22 @@ func buildWorkspaceCurrentData(svc *app.Service) (*workspaceResourceData, error)
 		return nil, err
 	}
 
-	ctxSummary, err := contextSummaryFromService(svc)
-	if err != nil {
-		return nil, err
+	var ctxSummary *contextSummary
+	if rt.ActorType != auth.TokenTypeTenantAccess {
+		var err error
+		ctxSummary, err = contextSummaryFromService(svc)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	projects, err := svc.ListProjects(false)
-	if err != nil {
-		return nil, err
+	var projects []app.ProjectView
+	if rt.ActorType != auth.TokenTypeTenantAccess || svc.HasRequestCapability(auth.ScopeProjectRead) {
+		var err error
+		projects, err = svc.ListProjects(false)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	summaries := make([]projectSummary, 0, len(projects))
@@ -273,6 +282,9 @@ func buildProjectData(info app.ProjectView, agentConfig map[string]string) *proj
 }
 
 func buildContextCurrentData(svc *app.Service) (*contextResourceData, error) {
+	if svc.Runtime().ActorType == auth.TokenTypeTenantAccess {
+		return nil, app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"}
+	}
 	name, ok, err := svc.ActiveContextName()
 	if err != nil {
 		return nil, err
@@ -329,6 +341,9 @@ func requestForResource(ctx context.Context, req *mcp.ReadResourceRequest, opts 
 
 // contextSummaryFromService 从 service 获取 active context 摘要。
 func contextSummaryFromService(svc *app.Service) (*contextSummary, error) {
+	if svc.Runtime().ActorType == auth.TokenTypeTenantAccess {
+		return nil, nil
+	}
 	name, ok, err := svc.ActiveContextName()
 	if err != nil {
 		return nil, err

@@ -34,6 +34,9 @@ func (s *Service) AdminRevokeToken(tokenRef, adminTokenName string) error {
 		if err != nil {
 			return classifyAdminTokenLookupError(err)
 		}
+		if entry.Type == auth.TokenTypeTenantAccess {
+			return RuntimeError{Code: "token_not_found", Message: "token not found"}
+		}
 		if entry.RevokedAt != nil {
 			return RuntimeError{Code: "token_revoked", Message: "token is already revoked"}
 		}
@@ -63,6 +66,165 @@ type AdminModifyTokenInput struct {
 	AdminTokenName string
 }
 
+type AdminModifyTenantAccessTokenInput struct {
+	TokenRef       string
+	Name           *string
+	Scopes         *[]string
+	ProjectRefs    *[]string
+	ExpiresIn      *time.Duration
+	AdminTokenName string
+}
+
+func (s *Service) AdminListTenantAccessTokens(includeRevoked bool) ([]TenantAccessTokenView, error) {
+	rows, err := s.tokenRepo.ListAllByType(auth.TokenTypeTenantAccess, includeRevoked)
+	if err != nil {
+		return nil, RuntimeError{Code: "token_list_failed", Message: "failed to list tenant tokens"}
+	}
+	out := make([]TenantAccessTokenView, 0, len(rows))
+	for _, row := range rows {
+		view, err := tenantTokenEntryToView(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, view)
+	}
+	return out, nil
+}
+
+func (s *Service) AdminRevokeTenantAccessToken(tokenRef, adminTokenName string) error {
+	ref := strings.TrimSpace(tokenRef)
+	return s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
+		}
+		entry, workspaceID, err := txSvc.lookupTenantTokenForAdmin(ref)
+		if err != nil {
+			return err
+		}
+		if entry.RevokedAt != nil {
+			return RuntimeError{Code: "tenant_token_revoked", Message: "tenant token is already revoked"}
+		}
+		if err := txSvc.tokenRepo.Revoke(entry.ID, txSvc.clock.Unix()); err != nil {
+			return err
+		}
+		return txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
+			Action:      "admin.tenant_token.revoke",
+			WorkspaceID: &workspaceID,
+			TargetType:  "tenant_token",
+			TargetID:    entry.ID,
+			Payload: map[string]any{
+				"token_name": entry.Name,
+				"type":       entry.Type,
+			},
+		}, adminTokenName)
+	})
+}
+
+func (s *Service) AdminModifyTenantAccessToken(input AdminModifyTenantAccessTokenInput) (*TenantAccessTokenView, error) {
+	ref := strings.TrimSpace(input.TokenRef)
+	var updated storage.ApiTokenEntry
+	if err := s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
+		}
+		existing, workspaceID, err := txSvc.lookupTenantTokenForAdmin(ref)
+		if err != nil {
+			return err
+		}
+		if existing.RevokedAt != nil {
+			return RuntimeError{Code: "tenant_token_revoked", Message: "tenant token is already revoked"}
+		}
+		if existing.ExpiresAt != nil && *existing.ExpiresAt < txSvc.clock.Unix() {
+			return RuntimeError{Code: "tenant_token_expired", Message: "tenant token is expired"}
+		}
+		updates := storage.TokenUpdates{}
+		dirty := false
+		if input.Name != nil {
+			updates.Name = input.Name
+			dirty = true
+		}
+		if input.Scopes != nil {
+			scopes, err := auth.ValidateTenantTokenScopes(*input.Scopes)
+			if err != nil {
+				return RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
+			}
+			sj, _ := marshalStringSlice(scopes.Values())
+			updates.ScopesJSON = &sj
+			dirty = true
+		}
+		if input.ProjectRefs != nil {
+			projects, err := txSvc.resolveTokenProjects([]storage.Workspace{{ID: workspaceID}}, *input.ProjectRefs)
+			if err != nil {
+				return err
+			}
+			projectIDs := make([]string, 0, len(projects))
+			for _, project := range projects {
+				projectIDs = append(projectIDs, project.ID)
+			}
+			pj, _ := marshalStringSlice(projectIDs)
+			updates.ProjectIDsJSON = &pj
+			dirty = true
+		}
+		if input.ExpiresIn != nil {
+			if *input.ExpiresIn == 0 {
+				updates.ClearExpiresAt = true
+			} else if *input.ExpiresIn < 0 {
+				return RuntimeError{Code: "tenant_token_scope_invalid", Message: "expires-in must be a positive duration"}
+			} else {
+				ts := txSvc.clock.Unix() + int64(input.ExpiresIn.Seconds())
+				updates.ExpiresAt = &ts
+			}
+			dirty = true
+		}
+		if dirty {
+			if err := txSvc.tokenRepo.Update(existing.ID, updates); err != nil {
+				return err
+			}
+			if err := txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
+				Action:      "admin.tenant_token.modify",
+				WorkspaceID: &workspaceID,
+				TargetType:  "tenant_token",
+				TargetID:    existing.ID,
+				Payload: map[string]any{
+					"name":    existing.Name,
+					"changes": updates.ChangedFields(),
+				},
+			}, input.AdminTokenName); err != nil {
+				return err
+			}
+		}
+		updated, err = txSvc.tokenRepo.GetByID(existing.ID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	view, err := tenantTokenEntryToView(updated)
+	if err != nil {
+		return nil, err
+	}
+	return &view, nil
+}
+
+func (s *Service) lookupTenantTokenForAdmin(ref string) (storage.ApiTokenEntry, string, error) {
+	entry, err := s.tokenRepo.GetByIDOrPrefix(ref)
+	if err != nil {
+		if errors.Is(err, storage.ErrAmbiguousTokenRef) {
+			return storage.ApiTokenEntry{}, "", RuntimeError{Code: "token_ambiguous_ref", Message: "token reference matches multiple tokens, use a longer prefix or full ID"}
+		}
+		return storage.ApiTokenEntry{}, "", RuntimeError{Code: "tenant_token_not_found", Message: "tenant token not found"}
+	}
+	if entry.Type != auth.TokenTypeTenantAccess {
+		return storage.ApiTokenEntry{}, "", RuntimeError{Code: "tenant_token_not_found", Message: "tenant token not found"}
+	}
+	workspaceID, err := tenantTokenWorkspaceID(entry)
+	if err != nil {
+		return storage.ApiTokenEntry{}, "", err
+	}
+	return entry, workspaceID, nil
+}
+
 // AdminModifyToken 以 admin 身份修改 token 的 name/scope/过期，绕过 owner 校验。
 // TokenRef 支持 ID 或 prefix，与 AdminRevokeToken 的解析行为一致。
 // 解析、校验、更新在同一事务内，避免 TOCTOU（查改间隙 token 被吊销）。
@@ -79,6 +241,9 @@ func (s *Service) AdminModifyToken(input AdminModifyTokenInput) (*TokenView, err
 		existing, err := txSvc.tokenRepo.GetByIDOrPrefix(ref)
 		if err != nil {
 			return classifyAdminTokenLookupError(err)
+		}
+		if existing.Type == auth.TokenTypeTenantAccess {
+			return RuntimeError{Code: "token_not_found", Message: "token not found"}
 		}
 		// admin 不校验 owner（admin 即最高权限），但仍拦截已吊销/已过期
 		if existing.RevokedAt != nil {
@@ -169,9 +334,13 @@ func (s *Service) fillTokenViews(rows []storage.ApiTokenEntry) []TokenView {
 	seen := make(map[string]struct{}, len(rows))
 	userIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if _, ok := seen[row.UserID]; !ok {
-			seen[row.UserID] = struct{}{}
-			userIDs = append(userIDs, row.UserID)
+		userID := derefString(row.UserID)
+		if userID == "" {
+			continue
+		}
+		if _, ok := seen[userID]; !ok {
+			seen[userID] = struct{}{}
+			userIDs = append(userIDs, userID)
 		}
 	}
 	// 单次批量查询。失败时降级为 fallback user（token 仍可列出），
@@ -187,11 +356,12 @@ func (s *Service) fillTokenViews(rows []storage.ApiTokenEntry) []TokenView {
 	out := make([]TokenView, 0, len(rows))
 	for _, row := range rows {
 		view := tokenEntryToView(row)
-		if u, ok := userMap[row.UserID]; ok {
+		userID := derefString(row.UserID)
+		if u, ok := userMap[userID]; ok {
 			view.User = task.UserInfo{ID: u.ID, Name: u.Name, DisplayName: u.DisplayName, Email: u.Email}
 		} else {
 			// 未找到的用户 fallback（与 AGENTS.md §用户信息规范一致）
-			view.User = task.UserInfo{ID: row.UserID, Name: row.UserID}
+			view.User = task.UserInfo{ID: userID, Name: userID}
 		}
 		out = append(out, view)
 	}

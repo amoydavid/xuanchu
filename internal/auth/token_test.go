@@ -27,6 +27,22 @@ func TestGenerateRawTokenAndHash(t *testing.T) {
 	}
 }
 
+func TestGenerateTenantAccessToken(t *testing.T) {
+	raw, prefix, hash, err := GenerateToken(TokenTypeTenantAccess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(raw, "xuanchu_tenant_") {
+		t.Fatalf("raw prefix = %q", raw)
+	}
+	if !strings.HasPrefix(prefix, "xuanchu_tenant_") || len(prefix) > 24 {
+		t.Fatalf("prefix = %q", prefix)
+	}
+	if hash == "" || strings.Contains(hash, raw) {
+		t.Fatalf("hash leaks raw token")
+	}
+}
+
 func TestParseScopesFailClosed(t *testing.T) {
 	scopes, err := ParseScopes(nil)
 	if err != nil {
@@ -42,6 +58,29 @@ func TestParseScopesFailClosed(t *testing.T) {
 	for _, want := range []string{"task:read", "task:write", "project:read"} {
 		if !scopes.Has(want) {
 			t.Fatalf("missing scope %s", want)
+		}
+	}
+}
+
+func TestValidateTenantScopesFiltersWildcards(t *testing.T) {
+	scopes, err := ValidateTenantTokenScopes([]string{"*", "*:read", "workspace:*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{ScopeTokenRead, ScopeTokenWrite, ScopeImpersonate, ScopeWorkspaceWrite} {
+		if scopes.Has(forbidden) {
+			t.Fatalf("tenant scopes include forbidden scope %q: %#v", forbidden, scopes.Values())
+		}
+	}
+	if !scopes.Has(ScopeWorkspaceRead) || !scopes.Has(ScopeTaskRead) {
+		t.Fatalf("tenant scopes missing allowed scopes: %#v", scopes.Values())
+	}
+}
+
+func TestValidateTenantScopesRejectsForbidden(t *testing.T) {
+	for _, value := range []string{"token:read", "token:*", "impersonate", "workspace:write", "user:*", "member:*"} {
+		if _, err := ValidateTenantTokenScopes([]string{value}); err == nil {
+			t.Fatalf("ValidateTenantTokenScopes(%q) expected error", value)
 		}
 	}
 }

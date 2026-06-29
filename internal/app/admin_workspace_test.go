@@ -162,7 +162,7 @@ func TestAdminWorkspaceInfoTokenCountsClassifyActiveRevokedExpired(t *testing.T)
 	expiredJSON := `["` + dajee.Workspace.ID + `"]`
 	if err := tokenRepo.Create(storage.ApiTokenEntry{
 		ID:               "expired-token",
-		UserID:           dajee.Owner.ID,
+		UserID:           stringPtr(dajee.Owner.ID),
 		Name:             "expired",
 		Type:             auth.TokenTypeAgent,
 		TokenPrefix:      "xuanchu_agent_exp",

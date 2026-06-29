@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
@@ -17,6 +18,7 @@ type tokenModifyResponse struct {
 		WorkspaceIDs []string `json:"workspace_ids"`
 		ProjectIDs   []string `json:"project_ids"`
 		Scopes       []string `json:"scopes"`
+		ExpiresAt    *int64   `json:"expires_at"`
 	} `json:"data"`
 }
 
@@ -57,6 +59,43 @@ func newHTTPServerWithAgentTokenFixture(t *testing.T, scopes ...string) (httpTok
 		token:  created.RawToken,
 		id:     created.View.ID,
 	}, team.ID
+}
+
+func TestTenantAccessTokenManagementAPI(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "token:read", "token:write")
+	body := `{"name":"runtime","scopes":["task:read"],"expires_in_seconds":3600}`
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tenant-access-tokens", body, authHeader)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"token":"xuanchu_tenant_`) {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+	var created tokenCreateResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tenant-access-tokens", authHeader)
+	if rr.Code != http.StatusOK || strings.Contains(rr.Body.String(), `"token":"xuanchu_tenant_`) {
+		t.Fatalf("list leaked raw token or failed: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"tenant_access_token"`) {
+		t.Fatalf("list body=%s", rr.Body.String())
+	}
+
+	rr = requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+created.Data.ID, `{"expires_in_seconds":null}`, authHeader)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("clear expires status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var modified tokenModifyResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &modified); err != nil {
+		t.Fatal(err)
+	}
+	if modified.Data.ExpiresAt != nil {
+		t.Fatalf("expires_at = %v, want nil", *modified.Data.ExpiresAt)
+	}
 }
 
 func TestModifyTokenWorkspacesHTTP(t *testing.T) {

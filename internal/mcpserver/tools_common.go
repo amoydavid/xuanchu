@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/render"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -145,11 +146,32 @@ func appendMCPRequestLogFields(args []any, opts Options) []any {
 	}
 	if authn, ok := authFromHTTPRequest(opts.Request); ok {
 		args = append(args,
-			"actor_user_id", authn.User.ID,
+			"actor_type", runtimeActorType(authn),
+			"actor_user_id", actorUserIDForLog(authn),
 			"token_id", authn.Token.ID,
 		)
+		if authn.TenantActor {
+			args = append(args,
+				"token_name", authn.Token.Name,
+				"token_prefix", authn.Token.Prefix,
+			)
+		}
 	}
 	return args
+}
+
+func runtimeActorType(authn app.AuthenticatedToken) string {
+	if authn.TenantActor {
+		return "tenant_access_token"
+	}
+	return "user"
+}
+
+func actorUserIDForLog(authn app.AuthenticatedToken) string {
+	if authn.TenantActor {
+		return "-"
+	}
+	return authn.User.ID
 }
 
 func toolErrorCode(result *mcp.CallToolResult) string {
@@ -179,10 +201,44 @@ func patchInputSchema[In any](schema *jsonschema.Schema) {
 
 func serviceForTool(ctx context.Context, req *mcp.CallToolRequest, opts Options, input RequestScopeInput, capability string, permission app.Permission) (*app.Service, error) {
 	factory := RuntimeFactory{Store: opts.Store, Clock: opts.Clock}
+	var svc *app.Service
+	var err error
 	if opts.Mode == ModeHTTP {
-		return factory.ServiceForHTTP(requestForTool(ctx, req, opts), input, capability, permission)
+		svc, err = factory.ServiceForHTTP(requestForTool(ctx, req, opts), input, capability, permission)
+	} else {
+		svc, err = factory.ServiceForStdio(ctx, input, capability, permission)
 	}
-	return factory.ServiceForStdio(ctx, input, capability, permission)
+	if err != nil {
+		return nil, err
+	}
+	if err := rejectTenantTool(svc, toolNameFromRequest(req)); err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
+func toolNameFromRequest(req *mcp.CallToolRequest) string {
+	if req == nil || req.Params == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.Params.Name)
+}
+
+func rejectTenantTool(svc *app.Service, toolName string) error {
+	if svc.Runtime().ActorType != "tenant_access_token" {
+		return nil
+	}
+	switch toolName {
+	case "me_get", "context_set", "context_none":
+		return app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"}
+	case "user_list", "user_get", "user_bind", "user_unbind", "user_add", "user_use", "user_list_external_ids",
+		"member_list", "member_add", "member_role",
+		"token_list", "token_create", "token_modify", "token_revoke",
+		"workspace_list", "workspace_add", "workspace_modify", "workspace_archive", "workspace_use":
+		return app.RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "tenant token cannot call this tool"}
+	default:
+		return nil
+	}
 }
 
 func requestForTool(ctx context.Context, req *mcp.CallToolRequest, opts Options) *http.Request {

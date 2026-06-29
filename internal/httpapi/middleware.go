@@ -26,8 +26,11 @@ type requestAuth struct {
 }
 
 type requestLogState struct {
+	actorType          string
 	actorID            string
 	tokenID            string
+	tokenName          string
+	tokenPrefix        string
 	workspaceID        string
 	workspaceRef       string
 	delegatorUserID    string
@@ -63,12 +66,15 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		state := &requestLogState{actorID: "-", tokenID: "-"}
+		state := &requestLogState{actorType: "user", actorID: "-", tokenID: "-"}
 		next.ServeHTTP(recorder, r.WithContext(context.WithValue(r.Context(), logStateContextKey, state)))
 
 		extra := ""
+		if state.actorType == "tenant_access_token" {
+			extra = fmt.Sprintf(" actor_type=%s token_name=%s token_prefix=%s", state.actorType, state.tokenName, state.tokenPrefix)
+		}
 		if state.delegatorUserID != "" {
-			extra = fmt.Sprintf(" delegator_user_id=%s delegator_token_id=%s", state.delegatorUserID, state.delegatorTokenID)
+			extra += fmt.Sprintf(" delegator_user_id=%s delegator_token_id=%s", state.delegatorUserID, state.delegatorTokenID)
 		}
 		if state.impersonateAttempt != "" {
 			extra += fmt.Sprintf(" impersonate_attempt=%s", state.impersonateAttempt)
@@ -82,9 +88,16 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", recorder.status,
+				"actor_type", state.actorType,
 				"actor_user_id", state.actorID,
 				"token_id", state.tokenID,
 				"duration_ms", duration.Milliseconds(),
+			}
+			if state.actorType == "tenant_access_token" {
+				args = append(args,
+					"token_name", state.tokenName,
+					"token_prefix", state.tokenPrefix,
+				)
 			}
 			if state.workspaceID != "" {
 				args = append(args,
@@ -104,10 +117,11 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 			s.logger.Info("http request", args...)
 			return
 		}
-		fmt.Fprintf(s.stderr, "%s %s %d actor_user_id=%s token_id=%s%s duration=%s\n",
+		fmt.Fprintf(s.stderr, "%s %s %d actor_type=%s actor_user_id=%s token_id=%s%s duration=%s\n",
 			r.Method,
 			r.URL.Path,
 			recorder.status,
+			state.actorType,
 			state.actorID,
 			state.tokenID,
 			extra,
@@ -165,7 +179,15 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
-			state.actorID = authn.User.ID
+			if authn.TenantActor {
+				state.actorType = "tenant_access_token"
+				state.actorID = "-"
+				state.tokenName = authn.Token.Name
+				state.tokenPrefix = authn.Token.Prefix
+			} else {
+				state.actorType = "user"
+				state.actorID = authn.User.ID
+			}
 			state.tokenID = authn.Token.ID
 			state.workspaceID = effective.ID
 			state.workspaceRef = effective.Slug
@@ -206,6 +228,19 @@ func authFromContext(ctx context.Context) (requestAuth, bool) {
 }
 
 func (s *Server) visibleAndEffectiveWorkspaces(authn app.AuthenticatedToken) ([]storage.WorkspaceWithRole, storage.Workspace, error) {
+	if authn.TenantActor || authn.Token.Type == "tenant_access_token" {
+		if len(authn.Token.WorkspaceIDs) != 1 {
+			return nil, storage.Workspace{}, app.RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "workspace scope denied"}
+		}
+		workspace, err := storage.NewWorkspaceRepository(s.store.DB()).GetByID(authn.Token.WorkspaceIDs[0])
+		if err != nil {
+			return nil, storage.Workspace{}, err
+		}
+		if workspace.ArchivedAt != nil {
+			return nil, storage.Workspace{}, app.RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
+		}
+		return []storage.WorkspaceWithRole{{Workspace: workspace}}, workspace, nil
+	}
 	rows, err := storage.NewWorkspaceRepository(s.store.DB()).ListVisibleForUser(authn.User.ID, false)
 	if err != nil {
 		return nil, storage.Workspace{}, err

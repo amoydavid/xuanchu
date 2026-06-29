@@ -16,6 +16,20 @@ export type AdminTokenRow = {
   last_used_at?: number | null
 }
 
+export type AdminTenantAccessTokenRow = {
+  id: string
+  prefix: string
+  name: string
+  type: "tenant_access_token"
+  workspace_id: string
+  project_ids: string[] | null
+  scopes: string[] | null
+  created_at: number
+  expires_at?: number | null
+  revoked_at?: number | null
+  last_used_at?: number | null
+}
+
 /**
  * 修改请求体。语义与后端对齐：
  * - undefined（缺省）= 不修改
@@ -25,4 +39,8 @@ export type AdminTokenModifyInput = {
   name?: string
   scopes?: string[]
   expires_in_seconds?: number | null
+}
+
+export type AdminTenantAccessTokenModifyInput = AdminTokenModifyInput & {
+  projects?: string[]
 }

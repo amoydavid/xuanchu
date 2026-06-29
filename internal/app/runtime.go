@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
@@ -18,8 +19,12 @@ const (
 )
 
 type RuntimeContext struct {
+	ActorType        string
 	ActorUserID      string
 	ActorName        string
+	ActorTokenID     string
+	ActorTokenName   string
+	ActorTokenPrefix string
 	WorkspaceID      string
 	WorkspaceSlug    string
 	Role             Role
@@ -54,6 +59,14 @@ func (e RuntimeError) Error() string {
 	return e.Message
 }
 
+func (rt RuntimeContext) IsTenantActor() bool {
+	return rt.ActorType == auth.TokenTypeTenantAccess
+}
+
+func tenantActorNotUserError() RuntimeError {
+	return RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"}
+}
+
 func activeWorkspaceMetaKey(userID string) string {
 	return "active_workspace." + userID
 }
@@ -85,6 +98,7 @@ func ResolveRuntimeContext(store *storage.Store, userRepo *storage.UserRepositor
 	}
 
 	return RuntimeContext{
+		ActorType:     string(authz.ActorUser),
 		ActorUserID:   user.ID,
 		ActorName:     user.Name,
 		WorkspaceID:   workspace.ID,

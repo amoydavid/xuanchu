@@ -261,6 +261,16 @@ func (s *Service) ModifyUser(ref string, input ModifyUserInput) (UserView, error
 }
 
 func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error) {
+	if s.runtime.IsTenantActor() {
+		workspace, err := s.workspaceRepo.GetByID(s.runtime.WorkspaceID)
+		if err != nil {
+			return nil, err
+		}
+		if workspace.ArchivedAt != nil && !includeArchived {
+			return []WorkspaceView{}, nil
+		}
+		return []WorkspaceView{workspaceViewFromRow(workspace, "", true)}, nil
+	}
 	rows, err := s.workspaceRepo.ListVisibleForUser(s.runtime.ActorUserID, includeArchived)
 	if err != nil {
 		return nil, err
@@ -385,6 +395,16 @@ func (s *Service) useWorkspaceLocked(ref string) (storage.Workspace, error) {
 }
 
 func (s *Service) WorkspaceInfo(ref string) (WorkspaceView, error) {
+	if s.runtime.IsTenantActor() {
+		workspace, err := lookupWorkspace(s.workspaceRepo, ref)
+		if err != nil {
+			return WorkspaceView{}, err
+		}
+		if workspace.ID != s.runtime.WorkspaceID {
+			return WorkspaceView{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "token cannot access workspace"}
+		}
+		return workspaceViewFromRow(workspace, "", true), nil
+	}
 	workspace, role, err := s.resolveWorkspaceForActor(ref)
 	if err != nil {
 		return WorkspaceView{}, err
@@ -876,6 +896,9 @@ func workspaceViewFromRow(workspace storage.Workspace, role Role, active bool) W
 func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLinkInfo, error) {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return task.TaskLinkInfo{}, err
+	}
+	if s.runtime.IsTenantActor() {
+		return task.TaskLinkInfo{}, tenantActorNotUserError()
 	}
 	var result task.TaskLinkInfo
 	if err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {

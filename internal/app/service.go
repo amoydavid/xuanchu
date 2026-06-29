@@ -1549,6 +1549,9 @@ func (s *Service) resolveAssigneePredicate(p query.Predicate) (query.Expr, error
 			return query.Predicate{Attribute: query.AttrAssignee, Operator: query.OpIsNull, Value: query.StringValue("")}, nil
 		}
 		if strings.EqualFold(value, "me") {
+			if s.runtime.IsTenantActor() {
+				return nil, tenantActorNotUserError()
+			}
 			return query.Predicate{
 				Attribute: query.AttrAssignee,
 				Operator:  query.OpEqual,
@@ -1591,6 +1594,9 @@ func (s *Service) resolveAssigneeRefs(refs []string) ([]task.AssigneeInfo, error
 }
 
 func (s *Service) resolveAssigneeRef(ref string) (task.AssigneeInfo, error) {
+	if strings.EqualFold(strings.TrimSpace(ref), "me") && s.runtime.IsTenantActor() {
+		return task.AssigneeInfo{}, tenantActorNotUserError()
+	}
 	user, err := s.resolveUser(ref)
 	if err != nil {
 		if rtErr, ok := err.(RuntimeError); ok && rtErr.Code == "user_not_found" {
@@ -2135,14 +2141,33 @@ func (s *Service) appendAuditEntry(entry AuditEntry) error {
 	if err != nil {
 		return err
 	}
+	actorType := s.runtime.ActorType
+	if actorType == "" {
+		actorType = "user"
+	}
+	var actorUserID *string
+	var actorTokenID *string
+	var actorTokenName *string
+	var actorTokenPrefix *string
+	if s.runtime.IsTenantActor() {
+		actorTokenID = stringPtr(s.runtime.ActorTokenID)
+		actorTokenName = stringPtr(s.runtime.ActorTokenName)
+		actorTokenPrefix = stringPtr(s.runtime.ActorTokenPrefix)
+	} else {
+		actorUserID = stringPtr(s.runtime.ActorUserID)
+	}
 	return s.auditRepo.Append(storage.AuditLogEntry{
-		ActorUserID: &s.runtime.ActorUserID,
-		WorkspaceID: workspaceID,
-		ProjectID:   entry.ProjectID,
-		Action:      entry.Action,
-		TargetType:  entry.TargetType,
-		TargetID:    entry.TargetID,
-		PayloadJSON: payload,
-		CreatedAt:   s.clock.Unix(),
+		ActorType:        actorType,
+		ActorUserID:      actorUserID,
+		ActorTokenID:     actorTokenID,
+		ActorTokenName:   actorTokenName,
+		ActorTokenPrefix: actorTokenPrefix,
+		WorkspaceID:      workspaceID,
+		ProjectID:        entry.ProjectID,
+		Action:           entry.Action,
+		TargetType:       entry.TargetType,
+		TargetID:         entry.TargetID,
+		PayloadJSON:      payload,
+		CreatedAt:        s.clock.Unix(),
 	})
 }

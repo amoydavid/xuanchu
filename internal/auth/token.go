@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	TokenTypePAT         = "pat"
-	TokenTypeAgent       = "agent"
-	TokenTypeAdminActing = "admin_acting"
+	TokenTypePAT          = "pat"
+	TokenTypeAgent        = "agent"
+	TokenTypeTenantAccess = "tenant_access_token"
+	TokenTypeAdminActing  = "admin_acting"
 )
 
 // ActingTokenPrefix 是 server admin 委托签发的短期 acting token 前缀。
@@ -79,6 +80,9 @@ func ValidateTokenCreate(opts CreateTokenOptions) (ScopeSet, error) {
 	if opts.Type == "" {
 		opts.Type = TokenTypePAT
 	}
+	if opts.Type == TokenTypeTenantAccess {
+		return nil, fmt.Errorf("tenant token must use tenant scope validation")
+	}
 	if _, err := tokenPrefixForType(opts.Type); err != nil {
 		return nil, err
 	}
@@ -106,6 +110,8 @@ func tokenPrefixForType(tokenType string) (string, error) {
 		return "xuanchu_pat_", nil
 	case TokenTypeAgent:
 		return "xuanchu_agent_", nil
+	case TokenTypeTenantAccess:
+		return "xuanchu_tenant_", nil
 	default:
 		return "", fmt.Errorf("invalid token type %q", tokenType)
 	}
