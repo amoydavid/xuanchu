@@ -722,7 +722,7 @@ HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上�
 http://127.0.0.1:8080/
 ```
 
-Console 使用现有 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求仍走 `/api/v1/*`。workspace owner/admin 还可以在 `/tokens` 管理租户访问令牌（`tenant_access_token`），供外部自动化通过 HTTP API / HTTP MCP 使用。如果需要关闭 Console：
+Console 使用现有 PAT / Agent token 或 workspace 级 `tenant_access_token` 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求仍走 `/api/v1/*`。workspace owner/admin 还可以在 `/tokens` 管理租户访问令牌，供外部自动化通过 HTTP API / HTTP MCP 使用。如果需要关闭 Console：
 
 ```bash
 ./xuanchu server --listen :8080 --console=false
@@ -807,7 +807,7 @@ PAT raw token 以 `xuanchu_pat_` 开头，Agent token raw token 以 `xuanchu_age
 ./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" token revoke <token-id-or-prefix>
 ```
 
-`tenant_access_token` 是 workspace 级 API key，不绑定用户、不支持 impersonation，也不支持 `/me`、`assignee:me`、active context 等依赖用户 actor 的能力。它也不能创建仍带用户形态 `created_by` / `actor` 的对象，例如 task link、project annotation、hook、notification sink、reminder rule、event notification rule；这些路径返回 `tenant_actor_not_user`。tenant token 可以转移 project 状态，但不会写入自动状态变更 annotation。它复用 `api_tokens` 表，`type=tenant_access_token` 且 `user_id=NULL`，可绑定一个 workspace、可选 project allowlist、scope、过期时间和吊销状态。HTTP API 路径：
+`tenant_access_token` 是 workspace 级 API key，也可作为 Web Console 的系统 owner 凭证使用。它不绑定用户、不支持 impersonation，也不支持 `/me`、`assignee:me`、active context 等依赖用户 actor 的能力。P1 已允许它按 scope 管理当前 workspace 内的 user、member、tenant token 和 workspace 设置；但它仍不能创建带用户形态 `created_by` / `actor` 的对象，例如 task link、project annotation、hook、notification sink、reminder rule、event notification rule；这些路径返回 `tenant_actor_not_user`。tenant token 可以转移 project 状态，但不会写入自动状态变更 annotation。它复用 `api_tokens` 表，`type=tenant_access_token` 且 `user_id=NULL`，可绑定一个 workspace、可选 project allowlist、scope、过期时间和吊销状态。HTTP API 路径：
 
 ```text
 GET    /api/v1/tenant-access-tokens
@@ -816,7 +816,7 @@ PATCH  /api/v1/tenant-access-tokens/{tokenRef}
 DELETE /api/v1/tenant-access-tokens/{tokenRef}
 ```
 
-Server admin 可在 `/api/v1/admin/tenant-access-tokens` 跨 workspace 列表、修改、吊销 tenant token，但不创建 tenant token。创建应从 workspace 视角完成。tenant token 可用于 HTTP API 和 HTTP MCP；审计中会记录 `actor_type=tenant_access_token` 与 token id/name/prefix，不记录 raw token。
+Server admin 可在 `/api/v1/admin/tenant-access-tokens` 跨 workspace 列表、修改、吊销 tenant token；也可以在 `/api/v1/admin/workspaces/{workspace}/tenant-access-sessions` 为某个 workspace 签发默认 2 小时、最长 24 小时的短期 tenant switch token。普通长期 tenant token 仍从 workspace 视角创建。tenant token 可用于 Web Console、HTTP API 和 HTTP MCP；审计中会记录 `actor_type=tenant_access_token` 与 token id/name/prefix，不记录 raw token。
 
 远程 CLI：
 
@@ -883,7 +883,7 @@ tenant token capability scope ∩ token workspace scope ∩ token project scope 
 task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write notification:read notification:write reminder:read reminder:write impersonate
 ```
 
-tenant token 的 `*` 只展开 tenant 白名单：任务、项目、上下文、配置、workspace read、audit read、hook、notification、reminder。它不会包含 `token:*`、`user:*`、`member:*`、`workspace:write` 或 `impersonate`。
+tenant token 的 `*` 只展开 tenant 白名单：任务、项目、上下文、配置、workspace read/write、audit read、user read/write、member read/write、token read/write，以及 hook/notification/reminder read。它不会包含 `hook:write`、`notification:write`、`reminder:write` 或 `impersonate`。
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
 

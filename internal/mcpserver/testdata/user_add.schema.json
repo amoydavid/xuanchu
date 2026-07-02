@@ -1,5 +1,5 @@
 {
-  "description": "Create a new user with a personal workspace.",
+  "description": "Create a new user. User actors also create a personal workspace; tenant actors only create the user.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {

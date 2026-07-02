@@ -81,6 +81,29 @@ export type CreatedAdminActingSession = {
   admin_token_name: string
 }
 
+export type CreatedAdminTenantAccessSession = {
+  token: string
+  id: string
+  prefix: string
+  name: string
+  type: "tenant_access_token"
+  workspace_id: string
+  project_ids: string[] | null
+  scopes: string[] | null
+  created_at: number
+  expires_at?: number | null
+  revoked_at?: number | null
+  last_used_at?: number | null
+  issued_via?: string
+  issued_by_admin_token?: { id?: string; name?: string } | null
+  purpose?: string
+  workspace: {
+    id: string
+    slug: string
+    name: string
+  }
+}
+
 export function listAdminWorkspaces(all: boolean) {
   return adminApiGet<AdminWorkspaceSummary[]>(
     `/api/v1/admin/workspaces?all=${all ? "true" : "false"}`
@@ -120,5 +143,12 @@ export function createAdminActingSession(
   return adminApiPost<CreatedAdminActingSession>(
     `/api/v1/admin/workspaces/${encodeURIComponent(workspace)}/acting-sessions`,
     input
+  )
+}
+
+export function createAdminTenantAccessSession(workspace: string) {
+  return adminApiPost<CreatedAdminTenantAccessSession>(
+    `/api/v1/admin/workspaces/${encodeURIComponent(workspace)}/tenant-access-sessions`,
+    {}
   )
 }

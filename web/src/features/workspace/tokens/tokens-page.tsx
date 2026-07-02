@@ -42,17 +42,20 @@ type TokenTab = "api" | "tenant"
 export function TokensPage() {
   const { t } = useTranslation()
   const me = useMe()
-  const [activeTab, setActiveTab] = useState<TokenTab>("api")
+  const [selectedTab, setSelectedTab] = useState<TokenTab>("api")
+  const isTenantActor = me.data?.actor_type === "tenant_access_token"
+  const activeTab = isTenantActor ? "tenant" : selectedTab
   // queryKey 与原 ResourcePage 一致，复用缓存
   const tokenQuery = useQuery({
     queryKey: ["resource", "/api/v1/tokens"],
     queryFn: () => workspaceApiGet<TokenRow[]>("/api/v1/tokens"),
+    enabled: me.isSuccess && !isTenantActor && activeTab === "api",
   })
   const tenantQuery = useQuery({
     queryKey: ["resource", "/api/v1/tenant-access-tokens"],
     queryFn: () =>
       workspaceApiGet<TenantAccessTokenRow[]>("/api/v1/tenant-access-tokens"),
-    enabled: activeTab === "tenant",
+    enabled: me.isSuccess && activeTab === "tenant",
   })
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -68,6 +71,7 @@ export function TokensPage() {
   const role = me.data?.effective_role ?? ""
   const canImpersonate = role === "admin" || role === "owner"
   const activeQuery = activeTab === "tenant" ? tenantQuery : tokenQuery
+  const loading = me.isLoading || activeQuery.isLoading
 
   return (
     <div className="space-y-4">
@@ -79,16 +83,18 @@ export function TokensPage() {
       </div>
 
       <Tabs
-        onValueChange={(value) => setActiveTab(value as TokenTab)}
+        onValueChange={(value) => setSelectedTab(value as TokenTab)}
         value={activeTab}
       >
         <TabsList aria-label={t("token.tabs.label")} variant="line">
-          <TabsTrigger value="api">{t("token.tabs.api")}</TabsTrigger>
+          <TabsTrigger disabled={isTenantActor} value="api">
+            {t("token.tabs.api")}
+          </TabsTrigger>
           <TabsTrigger value="tenant">{t("token.tabs.tenant")}</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {activeQuery.isLoading ? (
+      {loading ? (
         <div className="space-y-2 rounded-none border bg-card p-3">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-2/3" />

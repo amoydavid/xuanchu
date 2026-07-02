@@ -32,16 +32,31 @@ function renderRoute() {
   return { result, queryClient }
 }
 
-function meResponse() {
+function credentialsCurrentResponse(
+  overrides: Record<string, unknown> = {}
+) {
   return Promise.resolve(
     new Response(
       JSON.stringify({
         data: {
-          actor: { id: "u1", name: "alice", email: "alice@example.com" },
-          token: { id: "act-1", name: "admin-acting-ops", type: "admin_acting", scopes: ["task:read"] },
-          visible_workspaces: [{ id: "ws-1", slug: "dajee" }],
-          effective_workspace: { id: "ws-1", slug: "dajee" },
+          actor_type: "user",
+          actor: {
+            id: "u1",
+            name: "alice",
+            display_name: "Alice",
+            email: "alice@example.com",
+          },
+          token: {
+            id: "act-1",
+            name: "admin-acting-ops",
+            type: "admin_acting",
+            scopes: ["task:read"],
+          },
+          visible_workspaces: [{ id: "ws-1", slug: "dajee", name: "Dajee" }],
+          effective_workspace: { id: "ws-1", slug: "dajee", name: "Dajee" },
           effective_role: "owner",
+          capabilities: ["task:read"],
+          ...overrides,
         },
       }),
       { status: 200 }
@@ -69,7 +84,9 @@ describe("WorkspaceRootRoute acting mode", () => {
       role: "owner",
       adminTokenName: "ops",
     })
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => meResponse())
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() => credentialsCurrentResponse())
 
     renderRoute()
 
@@ -77,7 +94,11 @@ describe("WorkspaceRootRoute acting mode", () => {
     await waitFor(() => {
       expect(screen.getByText(/alice/)).toBeTruthy()
     })
-    expect(screen.queryByText(/使用璇础 token 登录/)).toBeNull()
+    expect(screen.queryByText(/使用璇础访问凭证登录/)).toBeNull()
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/credentials/current",
+      expect.anything()
+    )
 
     fetchMock.mockRestore()
   })
@@ -86,20 +107,49 @@ describe("WorkspaceRootRoute acting mode", () => {
     renderRoute()
 
     await waitFor(() => {
-      expect(screen.queryByText(/使用璇础 token 登录/)).toBeTruthy()
+      expect(screen.queryByText(/使用璇础访问凭证登录/)).toBeTruthy()
     })
   })
 
   it("treats normal workspace token as signed-in (regression)", async () => {
     setWorkspaceToken("xuanchu_pat_test")
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => meResponse())
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() => credentialsCurrentResponse())
 
     renderRoute()
 
     await waitFor(() => {
-      expect(screen.getByText(/alice/)).toBeTruthy()
+      expect(screen.getByText(/Alice/)).toBeTruthy()
     })
 
     fetchMock.mockRestore()
+  })
+
+  it("shows tenant system identity from credentials current", async () => {
+    setWorkspaceToken("xuanchu_tenant_test")
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      credentialsCurrentResponse({
+        actor_type: "tenant_access_token",
+        actor: {
+          id: "tok-1",
+          name: "runtime-prod",
+          display_name: "系统身份 / runtime-prod",
+        },
+        token: {
+          id: "tok-1",
+          name: "runtime-prod",
+          type: "tenant_access_token",
+          scopes: ["task:read"],
+        },
+        capabilities: ["task:read"],
+      })
+    )
+
+    renderRoute()
+
+    await waitFor(() => {
+      expect(screen.getByText(/系统身份 \/ runtime-prod/)).toBeTruthy()
+    })
   })
 })

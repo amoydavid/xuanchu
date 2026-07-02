@@ -69,6 +69,19 @@ function makeTenantToken(
   }
 }
 
+function credentialCurrentResponse(
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    actor_type: "user",
+    actor: { name: "local" },
+    token: { type: "pat", scopes: ["token:read", "token:write"] },
+    effective_workspace: { slug: "local" },
+    effective_role: "owner",
+    ...overrides,
+  }
+}
+
 describe("TokensPage", () => {
   beforeEach(async () => {
     sessionStorage.clear()
@@ -85,13 +98,8 @@ describe("TokensPage", () => {
       .spyOn(globalThis, "fetch")
       .mockImplementation((input) => {
         const url = String(input)
-        if (url.includes("/api/v1/me")) {
-          return okResponse({
-            actor: { name: "local" },
-            token: { type: "pat", scopes: ["token:read", "token:write"] },
-            effective_workspace: { slug: "local" },
-            effective_role: "owner",
-          })
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
         }
         if (url.includes("/api/v1/tokens")) {
           return okResponse([makeToken()])
@@ -122,13 +130,8 @@ describe("TokensPage", () => {
       .spyOn(globalThis, "fetch")
       .mockImplementation((input) => {
         const url = String(input)
-        if (url.includes("/api/v1/me")) {
-          return okResponse({
-            actor: { name: "local" },
-            token: { type: "pat", scopes: ["token:read", "token:write"] },
-            effective_workspace: { slug: "local" },
-            effective_role: "owner",
-          })
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
         }
         if (url.includes("/api/v1/tenant-access-tokens")) {
           return okResponse([
@@ -166,18 +169,68 @@ describe("TokensPage", () => {
     fetchMock.mockRestore()
   })
 
+  it("opens tenant token tab directly for tenant system identity", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(
+            credentialCurrentResponse({
+              actor_type: "tenant_access_token",
+              actor: {
+                name: "tenant-runtime",
+                display_name: "系统身份 / tenant-runtime",
+              },
+              token: {
+                type: "tenant_access_token",
+                scopes: ["token:read", "token:write"],
+              },
+            })
+          )
+        }
+        if (url.includes("/api/v1/tenant-access-tokens")) {
+          return okResponse([makeTenantToken({ name: "tenant-runtime" })])
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: { code: "tenant_actor_not_user" } }), {
+              status: 400,
+            })
+          )
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("tenant-runtime")).toBeTruthy()
+    })
+    expect(
+      (screen.getByRole("tab", { name: "普通 API Tokens" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).includes("/api/v1/tokens")
+      )
+    ).toBe(false)
+
+    fetchMock.mockRestore()
+  })
+
   it("shows revoked row with reduced opacity (revoked status badge)", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation((input) => {
         const url = String(input)
-        if (url.includes("/api/v1/me")) {
-          return okResponse({
-            actor: { name: "local" },
-            token: { type: "pat", scopes: ["token:read"] },
-            effective_workspace: { slug: "local" },
-            effective_role: "owner",
-          })
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(
+            credentialCurrentResponse({
+              token: { type: "pat", scopes: ["token:read"] },
+            })
+          )
         }
         if (url.includes("/api/v1/tokens")) {
           return okResponse([
@@ -216,13 +269,12 @@ describe("TokensPage", () => {
       .spyOn(globalThis, "fetch")
       .mockImplementation((input) => {
         const url = String(input)
-        if (url.includes("/api/v1/me")) {
-          return okResponse({
-            actor: { name: "local" },
-            token: { type: "pat", scopes: [] },
-            effective_workspace: { slug: "local" },
-            effective_role: "owner",
-          })
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(
+            credentialCurrentResponse({
+              token: { type: "pat", scopes: [] },
+            })
+          )
         }
         return Promise.resolve(
           new Response(

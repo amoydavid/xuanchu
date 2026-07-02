@@ -17,9 +17,9 @@ export const zhCN = {
     settings: "设置",
   },
   auth: {
-    signInTitle: "使用璇础 token 登录",
+    signInTitle: "使用璇础访问凭证登录",
     tokenLabel: "Token",
-    tokenPlaceholder: "xuanchu_pat_...",
+    tokenPlaceholder: "xuanchu_pat_... / xuanchu_tenant_...",
     signIn: "登录",
     logout: "退出",
     sessionOnly: "Token 仅保存在当前浏览器 tab 会话中。",
@@ -124,6 +124,7 @@ export const zhCN = {
       showArchived: "显示已归档",
       open: "打开",
       enterAsAdmin: "以管理员身份进入",
+      enterAsTenant: "以 Tenant 身份进入",
       createAdmin: "创建管理员",
       createAgentToken: "创建 Agent token",
       noActingCandidates: "该 workspace 暂无 owner/admin，请先创建管理员。",
@@ -161,6 +162,15 @@ export const zhCN = {
       ttlPlaceholder: "如 2h",
       headerSubtitle: "Acting · {{workspace}}",
       headerTitle: "{{actor}}（{{role}}）· 超管委托",
+    },
+    tenantSwitch: {
+      title: "以 Tenant 身份进入",
+      summary:
+        "将为 {{workspace}} 签发一个 2 小时的 Tenant access token，并以系统身份进入该 workspace。",
+      confirm: "签发并进入 Workspace",
+      headerSubtitle: "Tenant system owner · {{workspace}}",
+      headerTitle: "{{workspace}} · {{token}} · 由 {{admin}} 签发",
+      systemIdentity: "系统身份",
     },
   },
   common: {

@@ -8,6 +8,7 @@ const actingTokenKey = "xuanchu.console.admin_acting_token"
 // acting session 元数据（workspace / actor / role / admin token name）。
 // 用于 acting banner 展示和「返回超管界面」的跳转目标。
 const actingContextKey = "xuanchu.console.admin_acting_context"
+const tenantContextKey = "xuanchu.console.tenant_context"
 
 export type ActingContext = {
   workspaceSlug: string
@@ -15,6 +16,16 @@ export type ActingContext = {
   actorName: string
   role: string
   adminTokenName: string
+}
+
+export type TenantSwitchContext = {
+  mode: "tenant"
+  workspaceSlug: string
+  workspaceName: string
+  actorName: string
+  tokenName: string
+  adminTokenName: string
+  returnTo: string
 }
 
 export function getWorkspaceToken(): string | null {
@@ -66,4 +77,30 @@ export function clearAdminActingContext(): void {
 export function clearAdminActingSession(): void {
   clearAdminActingToken()
   clearAdminActingContext()
+}
+
+export function getTenantSwitchContext(): TenantSwitchContext | null {
+  const raw = sessionStorage.getItem(tenantContextKey)
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw) as TenantSwitchContext
+    return parsed.mode === "tenant" ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function setTenantSwitchContext(context: TenantSwitchContext): void {
+  sessionStorage.setItem(tenantContextKey, JSON.stringify(context))
+}
+
+export function clearTenantSwitchContext(): void {
+  sessionStorage.removeItem(tenantContextKey)
+}
+
+export function clearTenantSwitchSession(): void {
+  clearWorkspaceToken()
+  clearTenantSwitchContext()
 }

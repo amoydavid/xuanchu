@@ -10,6 +10,7 @@ import {
   clearWorkspaceToken,
   getAdminActingContext,
   getAdminActingToken,
+  getWorkspaceToken,
   setWorkspaceToken,
 } from "@/features/workspace/session/workspace-token"
 import { setAdminToken } from "@/features/admin/session/admin-token"
@@ -197,6 +198,65 @@ describe("AdminWorkspaceDetailPage", () => {
 
     fetchMock.mockRestore()
     clearAdminActingSession()
+  })
+
+  it("creates tenant switch token and stores tenant context on confirm", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = String(input)
+        const method = (init?.method ?? "GET").toUpperCase()
+        if (
+          url.includes(
+            "/api/v1/admin/workspaces/dajee/tenant-access-sessions"
+          ) &&
+          method === "POST"
+        ) {
+          return okResponse(
+            {
+              token: "xuanchu_tenant_switch",
+              id: "tok-tenant",
+              name: "admin-switch:dajee:ops:20260702120000",
+              type: "tenant_access_token",
+              workspace_id: "ws-1",
+              workspace: { id: "ws-1", slug: "dajee", name: "Dajee" },
+              expires_at: 9999,
+              scopes: ["task:read", "workspace:write"],
+              issued_by_admin_token: { name: "ops" },
+            },
+            201
+          )
+        }
+        return okResponse(makeDetail())
+      })
+
+    renderPage("dajee")
+
+    await screen.findByText("以 Tenant 身份进入")
+    fireEvent.click(screen.getByText("以 Tenant 身份进入"))
+    await screen.findByText("签发并进入 Workspace")
+    fireEvent.click(screen.getByText("签发并进入 Workspace"))
+
+    await waitFor(() => {
+      expect(getWorkspaceToken()).toBe("xuanchu_tenant_switch")
+    })
+    expect(sessionStorage.getItem("xuanchu.console.admin_acting_token")).toBeNull()
+    expect(sessionStorage.getItem("xuanchu.console.admin_token")).toBe(
+      "xuanchu_admin_test"
+    )
+    expect(
+      JSON.parse(sessionStorage.getItem("xuanchu.console.tenant_context") ?? "{}")
+    ).toMatchObject({
+      mode: "tenant",
+      workspaceSlug: "dajee",
+      workspaceName: "Dajee",
+      tokenName: "admin-switch:dajee:ops:20260702120000",
+      adminTokenName: "ops",
+      returnTo: "/admin/workspaces/dajee",
+    })
+    expect(navigateToDocument).toHaveBeenCalledWith("/workspaces/dajee/projects")
+
+    fetchMock.mockRestore()
   })
 
   it("shows create-admin flow when no acting candidates", async () => {

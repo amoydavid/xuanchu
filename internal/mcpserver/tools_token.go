@@ -64,6 +64,14 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
+		if svc.Runtime().IsTenantActor() {
+			rows, err := svc.ListTenantAccessTokens(app.ListTenantAccessTokensInput{WorkspaceRef: in.Workspace})
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			data := map[string]any{"tokens": tenantTokenViewsFromApp(rows), "count": len(rows)}
+			return successWithEnvelope(data, fmt.Sprintf("%d token(s)", len(rows)))
+		}
 		rows, err := svc.ListTokens(app.ListTokensInput{})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -81,6 +89,22 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		if in.ExpiresInSeconds != nil {
 			d := time.Duration(*in.ExpiresInSeconds) * time.Second
 			expiresIn = &d
+		}
+		if svc.Runtime().IsTenantActor() {
+			created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+				Name:         in.Name,
+				Scopes:       in.Scope,
+				WorkspaceRef: in.Workspace,
+				ProjectRefs:  tokenProjectRefs(in.Project, in.ProjectID),
+				ExpiresIn:    expiresIn,
+			})
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			view := tenantTokenViewFromApp(created.View)
+			view["raw_token"] = created.RawToken
+			data := map[string]any{"token": view}
+			return successWithEnvelope(data, "token "+created.View.Name+" created")
 		}
 		created, err := svc.CreateToken(app.CreateTokenInput{
 			Name:      in.Name,
@@ -106,6 +130,20 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 			d := time.Duration(*in.ExpiresInSeconds) * time.Second
 			expiresIn = &d
 		}
+		if svc.Runtime().IsTenantActor() {
+			result, err := svc.ModifyTenantAccessToken(app.ModifyTenantAccessTokenInput{
+				TokenRef:    in.TokenRef,
+				Name:        in.Name,
+				Scopes:      ptrToStringSlice(in.Scope),
+				ProjectRefs: ptrToStringSlice(tokenProjectRefs(in.Project, in.ProjectID)),
+				ExpiresIn:   expiresIn,
+			})
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			data := map[string]any{"token": tenantTokenViewFromApp(*result)}
+			return successWithEnvelope(data, "token "+result.Name+" updated")
+		}
 		result, err := svc.ModifyToken(app.ModifyTokenInput{
 			TokenID:   in.TokenRef,
 			Name:      in.Name,
@@ -123,6 +161,12 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
+		}
+		if svc.Runtime().IsTenantActor() {
+			if err := svc.RevokeTenantAccessToken(in.TokenRef); err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			return successWithEnvelope(nil, "token revoked")
 		}
 		if err := svc.RevokeToken(in.TokenRef); err != nil {
 			return businessErrorWithEnvelope(err)
@@ -153,6 +197,56 @@ func tokenViewFromApp(v app.TokenView) map[string]any {
 		out["last_used_at"] = *v.LastUsedAt
 	}
 	return out
+}
+
+func tenantTokenViewFromApp(v app.TenantAccessTokenView) map[string]any {
+	out := map[string]any{
+		"id":           v.ID,
+		"prefix":       v.Prefix,
+		"name":         v.Name,
+		"type":         v.Type,
+		"workspace_id": v.WorkspaceID,
+		"project_ids":  v.ProjectIDs,
+		"scopes":       v.Scopes,
+		"created_at":   v.CreatedAt,
+		"issued_via":   v.IssuedVia,
+		"purpose":      v.Purpose,
+	}
+	if v.ExpiresAt != nil {
+		out["expires_at"] = *v.ExpiresAt
+	}
+	if v.RevokedAt != nil {
+		out["revoked_at"] = *v.RevokedAt
+	}
+	if v.LastUsedAt != nil {
+		out["last_used_at"] = *v.LastUsedAt
+	}
+	if v.IssuedByAdminTokenID != nil {
+		out["issued_by_admin_token_id"] = *v.IssuedByAdminTokenID
+	}
+	if v.IssuedByAdminTokenName != nil {
+		out["issued_by_admin_token_name"] = *v.IssuedByAdminTokenName
+	}
+	return out
+}
+
+func tenantTokenViewsFromApp(rows []app.TenantAccessTokenView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, tenantTokenViewFromApp(row))
+	}
+	return out
+}
+
+func tokenProjectRefs(project, projectID string) []string {
+	var refs []string
+	if project != "" {
+		refs = append(refs, project)
+	}
+	if projectID != "" {
+		refs = append(refs, projectID)
+	}
+	return refs
 }
 
 func tokenViewsFromApp(rows []app.TokenView) []map[string]any {

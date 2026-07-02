@@ -16,7 +16,7 @@
 - server admin 已有 `/admin/workspaces` 和 `/admin/workspaces/:workspace` 控制面。
 - server admin 已能创建 short-lived acting session，进入 workspace console 时使用 `xuanchu_act_...`，但 acting session 绑定的是某个真实 user。
 
-当前限制也很明确：
+实施前限制也很明确：
 
 - `docs/manual/web-console.md` 写明 tenant token 不作为浏览器登录凭证。
 - `/api/v1/me` 对 tenant token 返回 `tenant_actor_not_user`。
@@ -25,7 +25,7 @@
 - 多个 HTTP / MCP handler 显式 `rejectTenantActor`，阻止 tenant token 进入 user/member/token/workspace 管理路径。
 - 创建带用户语义 `created_by` / `actor` 的资源时，tenant token 仍被拒绝或跳过事件投递。
 
-这说明本次不是“前端允许输入 tenant token”这么小的改动，而是要把 tenant token 从“机器 API key”提升为“workspace 系统 owner credential”。
+这些是本轮实现前的限制，说明本次不是“前端允许输入 tenant token”这么小的改动，而是要把 tenant token 从“机器 API key”提升为“workspace 系统 owner credential”。实现完成后，以当前代码和手册为准：Web Console 改走 `/api/v1/credentials/current` 识别 tenant actor，tenant token 可进入 workspace console，并按 scope 执行 workspace 内的 owner 等价操作。
 
 ## 2. 产品语义
 

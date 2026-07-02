@@ -149,8 +149,9 @@ async function newMockedPage(browser, viewport) {
     const pathName = url.pathname
     const method = request.method()
 
-    if (method === "GET" && pathName === "/api/v1/me") {
+    if (method === "GET" && pathName === "/api/v1/credentials/current") {
       await fulfill(route, {
+        actor_type: "user",
         actor: { name: "Alice" },
         effective_role: "owner",
         effective_workspace: { slug: "acme" },

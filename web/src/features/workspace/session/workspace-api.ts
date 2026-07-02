@@ -3,8 +3,11 @@ import { navigateToDocument } from "@/lib/browser-navigation"
 
 import {
   clearAdminActingSession,
+  clearTenantSwitchContext,
+  clearTenantSwitchSession,
   clearWorkspaceToken,
   getAdminActingToken,
+  getTenantSwitchContext,
   getWorkspaceToken,
 } from "./workspace-token"
 
@@ -29,11 +32,16 @@ async function workspaceRequest<T>(
   // 并跳回 /admin/workspaces，避免无声地降级为普通 workspace 身份继续操作。
   const actingToken = getAdminActingToken()
   const usingActing = actingToken !== null
+  const tenantContext = getTenantSwitchContext()
   return requestJson<T>({
     body,
     getToken: usingActing ? getAdminActingToken : getWorkspaceToken,
     method,
-    onUnauthorized: usingActing ? clearAdminActingSessionAndReturn : clearWorkspaceToken,
+    onUnauthorized: usingActing
+      ? clearAdminActingSessionAndReturn
+      : tenantContext
+        ? clearTenantSwitchSessionAndReturn
+        : clearWorkspaceSession,
     path,
   })
 }
@@ -44,6 +52,17 @@ async function workspaceRequest<T>(
 function clearAdminActingSessionAndReturn() {
   clearAdminActingSession()
   navigateToDocument("/admin/workspaces")
+}
+
+function clearTenantSwitchSessionAndReturn() {
+  const context = getTenantSwitchContext()
+  clearTenantSwitchSession()
+  navigateToDocument(context?.returnTo ?? "/admin/workspaces")
+}
+
+function clearWorkspaceSession() {
+  clearWorkspaceToken()
+  clearTenantSwitchContext()
 }
 
 export function workspaceApiGet<T>(path: string): Promise<T> {

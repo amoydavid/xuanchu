@@ -231,10 +231,8 @@ func rejectTenantTool(svc *app.Service, toolName string) error {
 	switch toolName {
 	case "me_get", "context_set", "context_none":
 		return app.RuntimeError{Code: "tenant_actor_not_user", Message: "tenant token has no user actor"}
-	case "user_list", "user_get", "user_bind", "user_unbind", "user_add", "user_use", "user_list_external_ids",
-		"member_list", "member_add", "member_role",
-		"token_list", "token_create", "token_modify", "token_revoke",
-		"workspace_list", "workspace_add", "workspace_modify", "workspace_archive", "workspace_use":
+	case "user_use",
+		"workspace_list", "workspace_add", "workspace_archive", "workspace_use":
 		return app.RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "tenant token cannot call this tool"}
 	default:
 		return nil

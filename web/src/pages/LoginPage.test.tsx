@@ -8,6 +8,10 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { renderWithRouter } from "@/test/router-wrapper"
 import { LoginPage } from "./LoginPage"
 
+function okResponse(data: unknown) {
+  return Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }))
+}
+
 describe("LoginPage", () => {
   beforeEach(async () => {
     localStorage.clear()
@@ -29,7 +33,9 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByText("璇础")).toBeTruthy()
     })
-    expect(screen.getByRole("heading", { name: "使用璇础 token 登录" })).toBeTruthy()
+    expect(
+      screen.getByRole("heading", { name: "使用璇础访问凭证登录" })
+    ).toBeTruthy()
     expect(document.querySelector(".mb-5 .size-14")).toBeTruthy()
     expect(screen.getByRole("button", { name: "登录" })).toBeTruthy()
     await userEvent.click(screen.getByRole("combobox", { name: "语言" }))
@@ -87,5 +93,61 @@ describe("LoginPage", () => {
     expect(
       screen.queryByText("https://xuanchu.example.com/workspaces/acme")
     ).toBeNull()
+  })
+
+  it("validates tenant token with credentials current", async () => {
+    const onSignedIn = vi.fn()
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        okResponse({
+          actor_type: "tenant_access_token",
+          actor: {
+            id: "tok-1",
+            name: "runtime-prod",
+            display_name: "系统身份 / runtime-prod",
+          },
+          token: {
+            id: "tok-1",
+            name: "runtime-prod",
+            type: "tenant_access_token",
+            scopes: ["task:read"],
+          },
+          effective_workspace: { id: "ws-1", slug: "dajee", name: "Dajee" },
+          effective_role: "owner",
+          capabilities: ["task:read"],
+        })
+      )
+
+    render(
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <LoginPage onSignedIn={onSignedIn} />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
+    )
+
+    await userEvent.type(
+      await screen.findByLabelText("Token"),
+      "xuanchu_tenant_test"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "登录" }))
+
+    await waitFor(() => {
+      expect(onSignedIn).toHaveBeenCalledTimes(1)
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/credentials/current",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer xuanchu_tenant_test",
+        }),
+      })
+    )
+    expect(sessionStorage.getItem("xuanchu.console.token")).toBe(
+      "xuanchu_tenant_test"
+    )
   })
 })

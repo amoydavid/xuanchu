@@ -100,7 +100,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(nil, fmt.Sprintf("Unbound %s:%s from %s", in.Provider, in.ExternalID, user.Name))
 	})
 
-	addTool(s, opts, &mcp.Tool{Name: "user_add", Description: "Create a new user with a personal workspace."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "user_add", Description: "Create a new user. User actors also create a personal workspace; tenant actors only create the user."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)

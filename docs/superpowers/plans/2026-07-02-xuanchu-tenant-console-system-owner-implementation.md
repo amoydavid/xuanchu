@@ -4,7 +4,7 @@
 
 **目标：** 完整实现 `tenant_access_token` 作为 workspace system owner credential 登录 Web Console、管理 workspace 内 user/member/token/workspace，并在 P2 支持 user-shaped actor 资源。
 
-**当前实现状态（2026-07-02）：** 已完成 Chunk 1 的后端基础切片：tenant P1 scope、`/api/v1/credentials/current`、tenant owner-equivalent runtime、user/member HTTP 管理、admin tenant switch 短期 token，以及 admin-switch token 默认隐藏/显式查询。Chunk 2 Web/MCP 与 Chunk 3 P2 actor schema 仍待后续实现。
+**当前实现状态（2026-07-02）：** 已完成 Chunk 1 的后端基础切片，以及 Chunk 2 的 P1 MCP / Web Console 切片：tenant P1 scope、`/api/v1/credentials/current`、tenant owner-equivalent runtime、user/member/token/workspace 管理、admin tenant switch 短期 token、Web Console tenant 登录和 admin workspace detail 一键 tenant switch。Chunk 3 P2 actor schema 仍待后续实现。
 
 **架构：** 继续复用 `api_tokens` 表，不新增 tenant session 表，不创建 system user。P1 让 tenant token 作为 owner-equivalent runtime actor 进入 HTTP/MCP/Web Console；P2 把仍依赖 `created_by_user_id` 的资源升级为 actor model，允许 system actor 创建 hook、notification、reminder、annotation、task link 等资源。
 
@@ -83,22 +83,22 @@ Web P1:
 
 ### Task 5: MCP system owner tools
 
-- [ ] Write integration tests proving tenant token can call `user_*`, `member_*`, `token_*`, `workspace_info`, `workspace_modify`, and still cannot call `me_get`, `user_use`, `workspace_use`, `workspace_list`, `context_set`, `context_none`.
-- [ ] Update tool guards and service construction.
+- [x] Write integration tests proving tenant token can call `user_*`, `member_*`, `token_*`, `workspace_info`, `workspace_modify`, and still cannot call `me_get`, `user_use`, `workspace_use`, `workspace_list`, `context_set`, `context_none`.
+- [x] Update tool guards and service construction.
 
 ### Task 6: Web Console credential current 与 tenant 登录
 
-- [ ] Update LoginPage to validate with `/api/v1/credentials/current` and accept `xuanchu_tenant_`.
-- [ ] Replace `useMe` with credential-current query in WorkspaceRootRoute.
-- [ ] Show tenant actor as “系统身份”; keep `/me` semantics for user-only surfaces.
-- [ ] Add tests for tenant login and unauthorized cleanup.
+- [x] Update LoginPage to validate with `/api/v1/credentials/current` and accept `xuanchu_tenant_`.
+- [x] Replace `useMe` with credential-current query in WorkspaceRootRoute.
+- [x] Show tenant actor as “系统身份”; keep `/me` semantics for user-only surfaces.
+- [x] Add tests for tenant login and unauthorized cleanup.
 
 ### Task 7: Admin switch UI
 
-- [ ] Add “以 Tenant 身份进入” action to admin workspace detail.
-- [ ] Store raw tenant token in `xuanchu.console.token`; store tenant context in `xuanchu.console.tenant_context`; clear acting context.
-- [ ] Show return-to-admin action while preserving admin token.
-- [ ] Add tests.
+- [x] Add “以 Tenant 身份进入” action to admin workspace detail.
+- [x] Store raw tenant token in `xuanchu.console.token`; store tenant context in `xuanchu.console.tenant_context`; clear acting context.
+- [x] Show return-to-admin action while preserving admin token.
+- [x] Add tests.
 
 ## Chunk 3: P2 Actor Schema 升级
 

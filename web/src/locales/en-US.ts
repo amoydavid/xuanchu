@@ -18,9 +18,9 @@ export const enUS = {
     settings: "Settings",
   },
   auth: {
-    signInTitle: "Sign in with Xuanchu token",
+    signInTitle: "Sign in with a Xuanchu credential",
     tokenLabel: "Token",
-    tokenPlaceholder: "xuanchu_pat_...",
+    tokenPlaceholder: "xuanchu_pat_... / xuanchu_tenant_...",
     signIn: "Sign in",
     logout: "Log out",
     sessionOnly: "The token is kept in this browser tab session only.",
@@ -126,6 +126,7 @@ export const enUS = {
       showArchived: "Show archived",
       open: "Open",
       enterAsAdmin: "Enter as admin",
+      enterAsTenant: "Enter as tenant",
       createAdmin: "Create admin",
       createAgentToken: "Create agent token",
       noActingCandidates: "This workspace has no owner/admin yet. Create one first.",
@@ -163,6 +164,15 @@ export const enUS = {
       ttlPlaceholder: "e.g. 2h",
       headerSubtitle: "Acting · {{workspace}}",
       headerTitle: "{{actor}} ({{role}}) · admin-delegated",
+    },
+    tenantSwitch: {
+      title: "Enter as tenant",
+      summary:
+        "Issue a 2-hour tenant access token for {{workspace}} and enter that workspace as a system owner.",
+      confirm: "Issue and enter workspace",
+      headerSubtitle: "Tenant system owner · {{workspace}}",
+      headerTitle: "{{workspace}} · {{token}} · issued by {{admin}}",
+      systemIdentity: "System identity",
     },
   },
   common: {

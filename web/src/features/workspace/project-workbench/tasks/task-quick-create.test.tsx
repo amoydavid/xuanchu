@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -81,11 +81,10 @@ describe("TaskQuickCreate", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "任务优先级" }))
     await userEvent.click(screen.getByRole("option", { name: "H" }))
     await userEvent.click(screen.getByRole("button", { name: "截止日期" }))
-    const calendar = await screen.findByRole("grid")
+    await screen.findByRole("grid")
     await userEvent.click(
-      screen.getByRole("button", { name: /go to the next month/i })
+      screen.getByRole("button", { name: /Friday, July 3rd, 2026/i })
     )
-    await userEvent.click(within(calendar).getByText("3"))
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
 
     expect(createTask).toHaveBeenCalledWith("acme", {

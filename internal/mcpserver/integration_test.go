@@ -1386,6 +1386,105 @@ func TestMCPTenantAccessTokenHTTPMode(t *testing.T) {
 	}
 }
 
+func TestMCPTenantAccessTokenCanManageTenantOwnerTools(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name: "tenant-owner",
+		Scopes: []string{
+			"user:read", "user:write",
+			"member:read", "member:write",
+			"token:read", "token:write",
+			"workspace:read", "workspace:write",
+			"context:read", "context:write",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	addUser := callTool(t, session, "user_add", UserAddInput{Name: "tenant-managed", DisplayName: "Tenant Managed"})
+	if addUser.IsError {
+		t.Fatalf("user_add error: %v", parseError(t, addUser))
+	}
+	allowedCalls := []struct {
+		name  string
+		input any
+	}{
+		{name: "user_list", input: UserListInput{}},
+		{name: "user_get", input: UserInfoInput{User: "tenant-managed"}},
+		{name: "user_bind", input: UserBindInput{User: "tenant-managed", Provider: "feishu_user_id", ExternalID: "tenant_user_1"}},
+		{name: "user_list_external_ids", input: UserRefInput{User: "tenant-managed"}},
+		{name: "user_unbind", input: UserUnbindInput{User: "tenant-managed", Provider: "feishu_user_id", ExternalID: "tenant_user_1"}},
+		{name: "member_list", input: MemberListInput{}},
+		{name: "member_add", input: MemberAddInput{User: "tenant-managed", Role: "member"}},
+		{name: "member_role", input: MemberRoleInput{User: "tenant-managed", Role: "admin"}},
+		{name: "workspace_info", input: WorkspaceRefInput{Workspace: "local"}},
+		{name: "workspace_modify", input: WorkspaceModifyInput{Workspace: "local", Name: ptrStr("Local Tenant")}},
+		{name: "token_list", input: TokenListInput{}},
+	}
+	for _, call := range allowedCalls {
+		result := callTool(t, session, call.name, call.input)
+		if result.IsError {
+			t.Fatalf("%s error: %v", call.name, parseError(t, result))
+		}
+	}
+
+	createToken := callTool(t, session, "token_create", TokenCreateInput{Name: "child-tenant", Scope: []string{"token:read"}})
+	if createToken.IsError {
+		t.Fatalf("token_create error: %v", parseError(t, createToken))
+	}
+	tokenObj := nestedMap(t, envelopeData(t, parseEnvelope(t, createToken)), "token")
+	tokenID, _ := tokenObj["id"].(string)
+	if tokenID == "" {
+		t.Fatalf("created token id = %v, want non-empty string", tokenObj["id"])
+	}
+	if tokenObj["type"] != "tenant_access_token" {
+		t.Fatalf("created token type = %v, want tenant_access_token", tokenObj["type"])
+	}
+	if _, ok := tokenObj["raw_token"].(string); !ok {
+		t.Fatalf("created token raw_token = %T, want string", tokenObj["raw_token"])
+	}
+
+	modifyToken := callTool(t, session, "token_modify", TokenModifyInput{TokenRef: tokenID, Name: ptrStr("renamed-child-tenant")})
+	if modifyToken.IsError {
+		t.Fatalf("token_modify error: %v", parseError(t, modifyToken))
+	}
+	revokeToken := callTool(t, session, "token_revoke", TokenRevokeInput{TokenRef: tokenID})
+	if revokeToken.IsError {
+		t.Fatalf("token_revoke error: %v", parseError(t, revokeToken))
+	}
+
+	forbidden := map[string]any{
+		"me_get":         MeGetInput{},
+		"user_use":       UserUseInput{User: "tenant-managed"},
+		"workspace_use":  WorkspaceRefInput{Workspace: "local"},
+		"workspace_list": WorkspaceListInput{},
+		"context_set":    ContextSetInput{Name: "tenant"},
+		"context_none":   ContextShowInput{},
+	}
+	for name, input := range forbidden {
+		result := callTool(t, session, name, input)
+		if !result.IsError {
+			t.Fatalf("%s with tenant token should fail", name)
+		}
+	}
+
+	for _, scope := range []string{"hook:write", "notification:write", "reminder:write"} {
+		forbiddenScope := callTool(t, session, "token_create", TokenCreateInput{Name: "bad-scope", Scope: []string{scope}})
+		if !forbiddenScope.IsError {
+			t.Fatalf("token_create with %s tenant scope should fail", scope)
+		}
+		if code := parseError(t, forbiddenScope).Code; code != "tenant_token_scope_invalid" {
+			t.Fatalf("token_create forbidden scope code = %q, want tenant_token_scope_invalid", code)
+		}
+	}
+}
+
 func TestMCPProjectConfigUsesConfigCapability(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)

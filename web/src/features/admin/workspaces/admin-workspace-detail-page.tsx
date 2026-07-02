@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
-import { PencilIcon } from "lucide-react"
+import { KeyRound, PencilIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,12 +28,18 @@ import {
 import { ApiError } from "@/lib/api"
 import { navigateToDocument } from "@/lib/browser-navigation"
 import {
+  clearAdminActingSession,
   setAdminActingContext,
   setAdminActingToken,
+  clearTenantSwitchSession,
+  getTenantSwitchContext,
+  setTenantSwitchContext,
+  setWorkspaceToken,
 } from "@/features/workspace/session/workspace-token"
 
 import {
   createAdminActingSession,
+  createAdminTenantAccessSession,
   fetchAdminWorkspaceDetail,
   modifyAdminWorkspaceUser,
   type AdminActingCandidate,
@@ -49,6 +55,7 @@ export function AdminWorkspaceDetailPage({
 }: AdminWorkspaceDetailPageProps) {
   const { t } = useTranslation()
   const [actingOpen, setActingOpen] = useState(false)
+  const [tenantSwitchOpen, setTenantSwitchOpen] = useState(false)
   const [editingMember, setEditingMember] = useState<AdminWorkspaceMember | null>(
     null
   )
@@ -110,6 +117,15 @@ export function AdminWorkspaceDetailPage({
           size="sm"
         >
           {t("admin.workspace.enterAsAdmin")}
+        </Button>
+        <Button
+          disabled={archived}
+          onClick={() => setTenantSwitchOpen(true)}
+          size="sm"
+          variant="outline"
+        >
+          <KeyRound />
+          {t("admin.workspace.enterAsTenant")}
         </Button>
       </div>
 
@@ -194,6 +210,12 @@ export function AdminWorkspaceDetailPage({
         workspaceName={detail.workspace.name}
         workspaceSlug={detail.workspace.slug}
       />
+      <TenantSwitchDialog
+        onOpenChange={setTenantSwitchOpen}
+        open={tenantSwitchOpen}
+        workspaceName={detail.workspace.name}
+        workspaceSlug={detail.workspace.slug}
+      />
       <DisplayNameDialog
         member={editingMember}
         onOpenChange={(open) => {
@@ -204,6 +226,69 @@ export function AdminWorkspaceDetailPage({
         workspaceSlug={detail.workspace.slug}
       />
     </div>
+  )
+}
+
+function TenantSwitchDialog({
+  open,
+  onOpenChange,
+  workspaceName,
+  workspaceSlug,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceName: string
+  workspaceSlug: string
+}) {
+  const { t } = useTranslation()
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleConfirm() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const created = await createAdminTenantAccessSession(workspaceSlug)
+      setWorkspaceToken(created.token)
+      clearAdminActingSession()
+      setTenantSwitchContext({
+        mode: "tenant",
+        workspaceSlug: created.workspace.slug,
+        workspaceName: created.workspace.name,
+        actorName: created.name,
+        tokenName: created.name,
+        adminTokenName: created.issued_by_admin_token?.name ?? "",
+        returnTo: `/admin/workspaces/${encodeURIComponent(workspaceSlug)}`,
+      })
+      navigateToDocument(
+        `/workspaces/${encodeURIComponent(created.workspace.slug)}/projects`
+      )
+    } catch (err) {
+      setError(err instanceof ApiError ? err.code : "unknown")
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("admin.tenantSwitch.title")}</DialogTitle>
+          <DialogDescription>
+            {t("admin.tenantSwitch.summary", { workspace: workspaceName })}
+          </DialogDescription>
+        </DialogHeader>
+        {error ? (
+          <div className="text-sm text-destructive">{error}</div>
+        ) : null}
+        <DialogFooter>
+          <Button disabled={submitting} onClick={handleConfirm}>
+            <KeyRound />
+            {t("admin.tenantSwitch.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -351,6 +436,9 @@ function ActingSessionDialog({
       const created = await createAdminActingSession(workspaceSlug, {
         user: candidate.user.email ?? candidate.user.id,
       })
+      if (getTenantSwitchContext() !== null) {
+        clearTenantSwitchSession()
+      }
       // 只写入 acting token + context，不覆盖普通 workspace token 或 admin token。
       setAdminActingToken(created.token)
       setAdminActingContext({

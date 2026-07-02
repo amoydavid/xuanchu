@@ -30,7 +30,7 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
     setError(null)
     try {
       setWorkspaceToken(token.trim())
-      await workspaceApiGet("/api/v1/me")
+      await workspaceApiGet("/api/v1/credentials/current")
       onSignedIn()
     } catch {
       setError(t("auth.failed"))

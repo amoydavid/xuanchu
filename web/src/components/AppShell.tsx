@@ -24,8 +24,11 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   clearAdminActingSession,
+  clearTenantSwitchSession,
   getAdminActingContext,
+  getTenantSwitchContext,
   type ActingContext,
+  type TenantSwitchContext,
 } from "@/features/workspace/session/workspace-token"
 import { navigateToDocument } from "@/lib/browser-navigation"
 import { cn } from "@/lib/utils"
@@ -74,7 +77,10 @@ export function AppShell({
 }) {
   const { t } = useTranslation()
   const actingContext = getAdminActingContext()
+  const tenantContext = getTenantSwitchContext()
   const acting = actingContext !== null
+  const tenantSwitch = !acting && tenantContext !== null
+  const systemActor = tokenType === "tenant_access_token"
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -116,16 +122,20 @@ export function AppShell({
         <header
           className={cn(
             "sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur",
-            acting && "bg-amber-50/95 dark:bg-amber-950/40"
+            (acting || tenantSwitch) && "bg-amber-50/95 dark:bg-amber-950/40"
           )}
         >
           <div className="flex min-w-0 items-center gap-2">
-            {acting ? (
+            {acting || systemActor ? (
               <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             ) : null}
             <div className="min-w-0">
               <div className="truncate text-xs text-muted-foreground">
-                {acting
+                {tenantSwitch && tenantContext
+                  ? t("admin.tenantSwitch.headerSubtitle", {
+                      workspace: tenantContext.workspaceSlug,
+                    })
+                  : acting
                   ? t("admin.acting.headerSubtitle", {
                       workspace: workspaceSlug ?? "",
                     })
@@ -136,15 +146,23 @@ export function AppShell({
               <div
                 className={cn(
                   "truncate text-sm font-medium",
-                  acting && "text-amber-900 dark:text-amber-100"
+                  (acting || systemActor) && "text-amber-900 dark:text-amber-100"
                 )}
               >
-                {acting && actingContext
+                {tenantSwitch && tenantContext
+                  ? t("admin.tenantSwitch.headerTitle", {
+                      workspace: tenantContext.workspaceName,
+                      token: tenantContext.tokenName,
+                      admin: tenantContext.adminTokenName,
+                    })
+                  : acting && actingContext
                   ? t("admin.acting.headerTitle", {
                       workspace: actingContext.workspaceName,
                       actor: actingContext.actorName,
                       role: actingContext.role,
                     })
+                  : systemActor && actorName
+                    ? `${t("admin.tenantSwitch.systemIdentity")} · ${actorName}`
                   : actorName
                     ? `${actorName} · ${tokenType ?? ""}`
                     : t("app.title")}
@@ -163,7 +181,9 @@ export function AppShell({
             <Separator className="h-5" orientation="vertical" />
             <LanguageSwitcher />
             <ThemeToggle />
-            {acting && actingContext ? (
+            {tenantSwitch && tenantContext ? (
+              <ReturnToTenantAdminButton context={tenantContext} />
+            ) : acting && actingContext ? (
               <ReturnToAdminButton context={actingContext} />
             ) : (
               <Button onClick={onLogout} size="sm" variant="outline">
@@ -176,6 +196,24 @@ export function AppShell({
         <main className="px-4 py-5">{children}</main>
       </div>
     </div>
+  )
+}
+
+function ReturnToTenantAdminButton({ context }: { context: TenantSwitchContext }) {
+  const { t } = useTranslation()
+  return (
+    <Button
+      className="border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 hover:text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-100 dark:hover:bg-amber-800"
+      onClick={() => {
+        clearTenantSwitchSession()
+        navigateToDocument(context.returnTo)
+      }}
+      size="sm"
+      variant="outline"
+    >
+      <ArrowLeft className="size-4" />
+      {t("admin.acting.returnToAdmin")}
+    </Button>
   )
 }
 

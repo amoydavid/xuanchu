@@ -8,6 +8,9 @@ import {
   clearWorkspaceToken,
   getAdminActingToken,
   clearAdminActingSession,
+  clearTenantSwitchContext,
+  clearTenantSwitchSession,
+  getTenantSwitchContext,
 } from "@/features/workspace/session/workspace-token"
 import { useMe } from "@/features/workspace/session/useMe"
 import { LoginPage } from "@/pages/LoginPage"
@@ -33,8 +36,11 @@ export function WorkspaceRootRoute() {
       // 区分清理对象：acting mode 下只清 acting session，普通模式清 workspace token。
       if (getAdminActingToken() !== null) {
         clearAdminActingSession()
+      } else if (getTenantSwitchContext() !== null) {
+        clearTenantSwitchSession()
       } else {
         clearWorkspaceToken()
+        clearTenantSwitchContext()
       }
     }
   }, [authFailed])
@@ -44,7 +50,9 @@ export function WorkspaceRootRoute() {
       <LoginPage
         onSignedIn={() => {
           setSignedIn(true)
-          void queryClient.invalidateQueries({ queryKey: ["me"] })
+          void queryClient.invalidateQueries({
+            queryKey: ["credentials", "current"],
+          })
           if (redirectPath) {
             void navigate({ to: redirectPath })
           }
@@ -56,14 +64,17 @@ export function WorkspaceRootRoute() {
 
   return (
     <AppShell
-      actorName={me.data?.actor.name}
+      actorName={me.data?.actor.display_name ?? me.data?.actor.name}
       onLogout={() => {
         // acting mode 退出只清 acting session（admin token 留给超管控制面）；
         // 普通模式清 workspace token。
         if (getAdminActingToken() !== null) {
           clearAdminActingSession()
+        } else if (getTenantSwitchContext() !== null) {
+          clearTenantSwitchSession()
         } else {
           clearWorkspaceToken()
+          clearTenantSwitchContext()
         }
         queryClient.clear()
         setSignedIn(false)

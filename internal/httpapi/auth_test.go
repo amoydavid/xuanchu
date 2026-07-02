@@ -287,6 +287,13 @@ func TestTenantTokenCanManageHTTPUsersAndMembers(t *testing.T) {
 	if createUser.Code != http.StatusCreated {
 		t.Fatalf("create user status = %d body=%s", createUser.Code, createUser.Body.String())
 	}
+	workspaces, err := storage.NewWorkspaceRepository(store.DB()).ListAll(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workspaces) != 1 || workspaces[0].Slug != "local" {
+		t.Fatalf("tenant user_add created unexpected workspace(s): %#v", workspaces)
+	}
 
 	listUsers := requestHTTP(t, server, http.MethodGet, "/api/v1/users", headers)
 	if listUsers.Code != http.StatusOK || !strings.Contains(listUsers.Body.String(), "tenant-added") {
@@ -302,6 +309,44 @@ func TestTenantTokenCanManageHTTPUsersAndMembers(t *testing.T) {
 	if listMembers.Code != http.StatusOK || !strings.Contains(listMembers.Body.String(), "tenant-added") {
 		t.Fatalf("list members status = %d body=%s", listMembers.Code, listMembers.Body.String())
 	}
+}
+
+func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "limited-token-manager",
+		Scopes: []string{"token:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+		"Content-Type":  "application/json",
+	}
+
+	rr := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"escaped","scopes":["task:read"]}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
+
+	createChild := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"child","scopes":["token:write"]}`, headers)
+	if createChild.Code != http.StatusCreated {
+		t.Fatalf("create child status = %d body=%s", createChild.Code, createChild.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(createChild.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	rr = requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+payload.Data.ID, `{"scopes":["token:write","task:read"]}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
 }
 
 func TestTenantTokenCannotCallHTTPActiveContext(t *testing.T) {

@@ -227,6 +227,9 @@ func (s *Service) CreateTenantAccessToken(input CreateTenantAccessTokenInput) (C
 	if err != nil {
 		return CreatedTenantAccessToken{}, RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
 	}
+	if err := s.enforceTenantTokenWriteLimit(scopes.Values(), projectIDs); err != nil {
+		return CreatedTenantAccessToken{}, err
+	}
 
 	var created CreatedTenantAccessToken
 	err = s.withAudit("tenant_token.create", func(tx *Service) (AuditEntry, error) {
@@ -331,6 +334,14 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 
 	updates := storage.TokenUpdates{}
 	dirty := false
+	finalScopes, err := unmarshalStringSlice(existing.ScopesJSON)
+	if err != nil {
+		return nil, err
+	}
+	finalProjectIDs, err := unmarshalStringSlice(existing.ProjectIDsJSON)
+	if err != nil {
+		return nil, err
+	}
 	if input.Name != nil {
 		updates.Name = input.Name
 		dirty = true
@@ -340,6 +351,7 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 		if err != nil {
 			return nil, RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
 		}
+		finalScopes = scopes.Values()
 		sj, _ := marshalStringSlice(scopes.Values())
 		updates.ScopesJSON = &sj
 		dirty = true
@@ -357,6 +369,7 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 		for _, project := range projects {
 			projectIDs = append(projectIDs, project.ID)
 		}
+		finalProjectIDs = projectIDs
 		pj, _ := marshalStringSlice(projectIDs)
 		updates.ProjectIDsJSON = &pj
 		dirty = true
@@ -373,6 +386,9 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 		dirty = true
 	}
 	if dirty {
+		if err := s.enforceTenantTokenWriteLimit(finalScopes, finalProjectIDs); err != nil {
+			return nil, err
+		}
 		if err := s.withAudit("tenant_token.modify", func(tx *Service) (AuditEntry, error) {
 			if err := tx.tokenRepo.Update(existing.ID, updates); err != nil {
 				return AuditEntry{}, err
@@ -450,6 +466,18 @@ func (s *Service) rejectAdminSwitchTenantTokenManagement() error {
 		return RuntimeError{Code: "tenant_token_management_denied", Message: "admin switch tenant token cannot manage tenant access tokens"}
 	}
 	return nil
+}
+
+func (s *Service) enforceTenantTokenWriteLimit(scopes, projectIDs []string) error {
+	if !s.runtime.IsTenantActor() || s.requestScope == nil {
+		return nil
+	}
+	for _, scope := range scopes {
+		if !s.requestScope.HasCapability(scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "new tenant token scope exceeds current token"}
+		}
+	}
+	return requireSubsetWhenRestricted(s.requestScope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "new tenant token project scope exceeds current token")
 }
 
 func (s *Service) lookupTenantTokenForRuntime(ref string) (storage.ApiTokenEntry, string, error) {

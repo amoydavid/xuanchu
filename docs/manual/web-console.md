@@ -41,7 +41,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 
 ## 登录与 token
 
-普通 Console 入口是 `/`。登录页要求输入 Xuanchu PAT 或 Agent token，前端会把 token 放入当前 tab 的 `sessionStorage["xuanchu.console.token"]`，不会写入 `localStorage`。`tenant_access_token` 是机器访问用 API key，不作为浏览器登录凭证。
+普通 Console 入口是 `/`。登录页要求输入 Xuanchu PAT、Agent token 或 `tenant_access_token`，前端会把 token 放入当前 tab 的 `sessionStorage["xuanchu.console.token"]`，不会写入 `localStorage`。tenant token 登录后作为当前 workspace 的系统 owner 身份展示，不绑定某个自然人用户。
 
 后续 API 请求使用：
 
@@ -49,13 +49,15 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 Authorization: Bearer <token>
 ```
 
-Console 没有特殊超级权限。实际权限仍然是：
+PAT / Agent token 登录没有特殊超级权限。实际权限仍然是：
 
 ```text
 membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
 ```
 
-普通 Console 的 token 登录不是浏览器 SSO。它只是把 PAT / Agent token 放入当前 tab 的 `sessionStorage`；服务端仍按 Bearer token 走同一套 Authorization Decision，没有独立的浏览器会话或 cookie。未来的 OIDC / 飞书 OAuth 登录会引入独立的 browser session 凭证类型，权限仍由本地 membership role 决定。
+tenant token 登录不读取 membership role，实际权限是 tenant scope、workspace/project allowlist 和 tenant 禁止清单的交集。当前 P1 可管理 user、member、tenant token 和 workspace 设置；仍不能调用 `/me`、`assignee:me`、impersonation、active context 写入，或创建带用户 `created_by` / `actor` 的资源。
+
+普通 Console 的 token 登录不是浏览器 SSO。它只是把 PAT / Agent / tenant token 放入当前 tab 的 `sessionStorage`；服务端仍按 Bearer token 走同一套 Authorization Decision，没有独立的浏览器会话或 cookie。未来的 OIDC / 飞书 OAuth 登录会引入独立的 browser session 凭证类型，权限仍由本地 membership role 或 tenant token 规则决定。
 
 Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` 控制面中间件，不进入普通业务 Authorization Decision：它不能访问任务、项目、通知、Hook 或 MCP 接口，只用于部署期创建 workspace 和 workspace-scoped Agent token。普通 PAT / Agent token 同样不能访问 admin 控制面。
 
@@ -66,7 +68,7 @@ Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` �
 - 普通 API Tokens：管理 PAT / Agent token，适合用户或需要绑定成员身份的 Agent。
 - 租户访问令牌：管理 `tenant_access_token`。它绑定当前 workspace，不绑定用户，raw token 前缀为 `xuanchu_tenant_`，用于 HTTP API / HTTP MCP 的机器访问；明文只在创建成功后显示一次。
 
-tenant token 的 scope 选择器只展示后端允许的租户白名单。它不能获得 `token:*`、`user:*`、`member:*`、`workspace:write` 或 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入、创建带用户 `created_by` / `actor` 的资源等依赖用户 actor 的接口。
+tenant token 的 scope 选择器只展示后端允许的租户白名单。它可以获得 `user:*`、`member:*`、`token:*`、`workspace:write` 等系统 owner 能力，但不能获得 `hook:write`、`notification:write`、`reminder:write` 或 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入、创建带用户 `created_by` / `actor` 的资源等依赖用户 actor 的接口。
 
 ## 项目工作台链接
 
@@ -138,6 +140,7 @@ server admin 登录后，`/admin/workspaces` 提供 workspace 控制面：
 - 列出全部 workspace（默认只显示未归档，可勾选「显示已归档」）。
 - workspace 详情展示 owner/admin/member 摘要和 token 计数（有效 / 已吊销 / 已过期），并允许编辑成员 `display_name`。`users.name` 仍是稳定用户引用名，`display_name` 只用于展示姓名，可与 `name` 不同。
 - 从任意未归档 workspace 创建短期 acting session，以该 workspace 的 owner/admin 身份进入普通 Workspace Console。
+- 从任意未归档 workspace 签发短期 tenant switch token，以系统 owner 身份进入普通 Workspace Console。该 token 默认 2 小时、最长 24 小时，不显示在常规 tenant token 列表中；返回超管时前端只清理短期 tenant token 和 tenant context，并保留 admin token。
 
 acting session 是**短期浏览器委托凭证**，不是长期 token：
 

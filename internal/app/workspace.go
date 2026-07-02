@@ -119,6 +119,18 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 	}
 	var created UserView
 	err = s.withAuditEntries(func(tx *Service) ([]AuditEntry, error) {
+		if tx.runtime.IsTenantActor() {
+			user, err := tx.addUserOnlyLocked(name, displayName, email)
+			if err != nil {
+				return nil, err
+			}
+			created = userViewFromRow(user, false, nil)
+			return []AuditEntry{{
+				Action:     "user.add",
+				TargetType: "user",
+				TargetID:   user.ID,
+			}}, nil
+		}
 		user, workspace, err := tx.addUserLocked(name, displayName, email, slug)
 		if err != nil {
 			return nil, err
@@ -139,6 +151,21 @@ func (s *Service) AddUser(input AddUserInput) (UserView, error) {
 		}, nil
 	})
 	return created, err
+}
+
+func (s *Service) addUserOnlyLocked(name, displayName, email string) (storage.User, error) {
+	now := s.clock.Unix()
+	user := storage.User{
+		ID:          uuid.NewString(),
+		Name:        name,
+		DisplayName: displayName,
+		CreatedAt:   now,
+		ModifiedAt:  now,
+	}
+	if email != "" {
+		user.Email = &email
+	}
+	return s.userRepo.Create(user)
 }
 
 func (s *Service) addUserLocked(name, displayName, email, slug string) (storage.User, storage.Workspace, error) {

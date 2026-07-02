@@ -28,6 +28,7 @@ describe("OverviewPage", () => {
       <QueryClientProvider client={queryClient}>
         <OverviewPage
           me={{
+            actor_type: "user",
             actor: { name: "local" },
             effective_workspace: { slug: "local" },
             effective_role: "owner",
