@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
       ? { "process.env.NODE_ENV": JSON.stringify("development") }
       : undefined,
     server: {
-      port: 5173,
+      port: 9095,
       strictPort: true,
       open: normalizedConsoleBase,
       proxy: {
