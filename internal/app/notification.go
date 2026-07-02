@@ -91,7 +91,7 @@ type NotificationSinkView struct {
 	TimeoutSeconds  int                          `json:"timeout_seconds"`
 	MaxAttempts     int                          `json:"max_attempts"`
 	MaxConcurrency  int                          `json:"max_concurrency"`
-	CreatedBy       task.UserInfo                `json:"created_by"`
+	CreatedBy       task.ActorInfo               `json:"created_by"`
 	CreatedAt       int64                        `json:"created_at"`
 	ModifiedAt      int64                        `json:"modified_at"`
 }
@@ -143,7 +143,7 @@ type ReminderRuleView struct {
 	RecipientUserIDs []string        `json:"-"`
 	RecipientUsers   []task.UserInfo `json:"recipient_users"`
 	SinkID           string          `json:"sink_id"`
-	CreatedBy        task.UserInfo   `json:"created_by"`
+	CreatedBy        task.ActorInfo  `json:"created_by"`
 	CreatedAt        int64           `json:"created_at"`
 	ModifiedAt       int64           `json:"modified_at"`
 }
@@ -161,6 +161,7 @@ type NotificationDeliveryView struct {
 	Recipient                   task.UserInfo       `json:"recipient"`
 	EventID                     string              `json:"event_id"`
 	EventType                   string              `json:"event_type"`
+	Actor                       task.ActorInfo      `json:"actor"`
 	ResolvedURL                 string              `json:"resolved_url"`
 	ResolvedEndpointSource      string              `json:"resolved_endpoint_source"`
 	ResolvedEndpointFingerprint string              `json:"resolved_endpoint_fingerprint"`
@@ -183,9 +184,6 @@ type NotificationDeliveryView struct {
 func (s *Service) AddNotificationSink(input NotificationSinkAddInput) (NotificationSinkView, error) {
 	if err := s.Require(PermissionNotificationWrite); err != nil {
 		return NotificationSinkView{}, err
-	}
-	if s.runtime.IsTenantActor() {
-		return NotificationSinkView{}, tenantActorNotUserError()
 	}
 	normalized, err := normalizeNotificationSinkInput(s, input)
 	if err != nil {
@@ -217,6 +215,12 @@ func (s *Service) AddNotificationSink(input NotificationSinkAddInput) (Notificat
 		CreatedAt:           now,
 		ModifiedAt:          now,
 	}
+	actor := s.runtime.actorColumns()
+	row.CreatedByActorType = actor.Type
+	row.CreatedByUserID = actor.UserID
+	row.CreatedByTokenID = actor.TokenID
+	row.CreatedByTokenName = actor.TokenName
+	row.CreatedByTokenPrefix = actor.TokenPrefix
 	var view NotificationSinkView
 	err = s.withAudit("notification.sink.create", func(tx *Service) (AuditEntry, error) {
 		if err := tx.notificationSinkRepo.Create(row); err != nil {
@@ -259,7 +263,7 @@ func (s *Service) ListNotificationSinks(includeDisabled bool) ([]NotificationSin
 	}
 	out := make([]NotificationSinkView, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, notificationSinkViewFromRow(row, userInfos[row.CreatedBy]))
+		out = append(out, notificationSinkViewFromRow(row, actorInfoFromColumns(notificationSinkActorColumns(row), row.CreatedBy, userInfos)))
 	}
 	return out, nil
 }
@@ -418,9 +422,6 @@ func (s *Service) AddReminderRule(input ReminderRuleAddInput) (ReminderRuleView,
 	if err := s.Require(PermissionReminderWrite); err != nil {
 		return ReminderRuleView{}, err
 	}
-	if s.runtime.IsTenantActor() {
-		return ReminderRuleView{}, tenantActorNotUserError()
-	}
 	var projectID *string
 	if input.ProjectRef != "" {
 		project, err := s.ResolveProject(input.ProjectRef)
@@ -461,6 +462,12 @@ func (s *Service) AddReminderRule(input ReminderRuleAddInput) (ReminderRuleView,
 		CreatedAt:            now,
 		ModifiedAt:           now,
 	}
+	actor := s.runtime.actorColumns()
+	row.CreatedByActorType = actor.Type
+	row.CreatedByUserID = actor.UserID
+	row.CreatedByTokenID = actor.TokenID
+	row.CreatedByTokenName = actor.TokenName
+	row.CreatedByTokenPrefix = actor.TokenPrefix
 	var view ReminderRuleView
 	err = s.withAudit("reminder.rule.create", func(tx *Service) (AuditEntry, error) {
 		if err := tx.reminderRuleRepo.Create(row); err != nil {
@@ -706,7 +713,7 @@ func (s *Service) ListNotificationDeliveries(sinkID string, status string, limit
 		return nil, err
 	}
 	out := make([]NotificationDeliveryView, 0, len(rows))
-	userInfos, err := s.resolveUserInfos(notificationDeliveryRecipientIDs(rows))
+	userInfos, err := s.resolveUserInfos(notificationDeliveryUserIDs(rows))
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +721,7 @@ func (s *Service) ListNotificationDeliveries(sinkID string, status string, limit
 		if !s.allowsProjectID(row.ProjectID) {
 			continue
 		}
-		view, err := notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID])
+		view, err := notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID], actorInfoFromColumns(notificationDeliveryActorColumns(row), "", userInfos))
 		if err != nil {
 			return nil, err
 		}
@@ -1131,14 +1138,14 @@ func (s *Service) resolveReminderRecipientIDs(refs []string) ([]string, error) {
 }
 
 func (s *Service) notificationSinkViewFromRow(row storage.NotificationSink) (NotificationSinkView, error) {
-	userInfos, err := s.resolveUserInfos([]string{row.CreatedBy})
+	userInfos, err := s.resolveUserInfos(notificationSinkCreatedByIDs([]storage.NotificationSink{row}))
 	if err != nil {
 		return NotificationSinkView{}, err
 	}
-	return notificationSinkViewFromRow(row, userInfos[row.CreatedBy]), nil
+	return notificationSinkViewFromRow(row, actorInfoFromColumns(notificationSinkActorColumns(row), row.CreatedBy, userInfos)), nil
 }
 
-func notificationSinkViewFromRow(row storage.NotificationSink, createdBy task.UserInfo) NotificationSinkView {
+func notificationSinkViewFromRow(row storage.NotificationSink, createdBy task.ActorInfo) NotificationSinkView {
 	enabled := row.Enabled != nil && *row.Enabled
 	return NotificationSinkView{
 		ID:              row.ID,
@@ -1166,7 +1173,7 @@ func notificationSinkViewFromRow(row storage.NotificationSink, createdBy task.Us
 }
 
 func (s *Service) reminderRuleViewFromRow(row storage.ReminderRule) (ReminderRuleView, error) {
-	userIDs := []string{row.CreatedBy}
+	userIDs := reminderRuleCreatedByIDs([]storage.ReminderRule{row})
 	userIDs = append(userIDs, decodeStringListNoError(row.RecipientUserIDsJSON)...)
 	userInfos, err := s.resolveUserInfos(userIDs)
 	if err != nil {
@@ -1199,7 +1206,7 @@ func reminderRuleViewFromRow(row storage.ReminderRule, userInfos map[string]task
 		RecipientUserIDs: recipientIDs,
 		RecipientUsers:   recipients,
 		SinkID:           row.SinkID,
-		CreatedBy:        userInfos[row.CreatedBy],
+		CreatedBy:        actorInfoFromColumns(reminderRuleActorColumns(row), row.CreatedBy, userInfos),
 		CreatedAt:        row.CreatedAt,
 		ModifiedAt:       row.ModifiedAt,
 	}
@@ -1208,7 +1215,18 @@ func reminderRuleViewFromRow(row storage.ReminderRule, userInfos map[string]task
 func notificationSinkCreatedByIDs(rows []storage.NotificationSink) []string {
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
-		ids = append(ids, row.CreatedBy)
+		actorType := row.CreatedByActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		if actorType != actorTypeUser {
+			continue
+		}
+		id := row.CreatedBy
+		if row.CreatedByUserID != nil && *row.CreatedByUserID != "" {
+			id = *row.CreatedByUserID
+		}
+		ids = append(ids, id)
 	}
 	return ids
 }
@@ -1224,21 +1242,21 @@ func reminderRuleCreatedByIDs(rows []storage.ReminderRule) []string {
 func reminderRuleUserIDs(rows []storage.ReminderRule) []string {
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
-		ids = append(ids, row.CreatedBy)
+		ids = append(ids, reminderRuleCreatedByIDs([]storage.ReminderRule{row})...)
 		ids = append(ids, decodeStringListNoError(row.RecipientUserIDsJSON)...)
 	}
 	return ids
 }
 
 func (s *Service) notificationDeliveryViewFromRow(row storage.NotificationDelivery) (NotificationDeliveryView, error) {
-	userInfos, err := s.resolveUserInfos([]string{row.RecipientUserID})
+	userInfos, err := s.resolveUserInfos(notificationDeliveryUserIDs([]storage.NotificationDelivery{row}))
 	if err != nil {
 		return NotificationDeliveryView{}, err
 	}
-	return notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID])
+	return notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID], actorInfoFromColumns(notificationDeliveryActorColumns(row), "", userInfos))
 }
 
-func notificationDeliveryViewFromRow(row storage.NotificationDelivery, recipient task.UserInfo) (NotificationDeliveryView, error) {
+func notificationDeliveryViewFromRow(row storage.NotificationDelivery, recipient task.UserInfo, actor task.ActorInfo) (NotificationDeliveryView, error) {
 	var payload map[string]any
 	if row.PayloadJSON != "" {
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
@@ -1264,6 +1282,7 @@ func notificationDeliveryViewFromRow(row storage.NotificationDelivery, recipient
 		Recipient:                   recipient,
 		EventID:                     row.EventID,
 		EventType:                   row.EventType,
+		Actor:                       actor,
 		ResolvedURL:                 row.ResolvedURL,
 		ResolvedEndpointSource:      row.ResolvedEndpointSource,
 		ResolvedEndpointFingerprint: row.ResolvedEndpointFingerprint,
@@ -1284,10 +1303,23 @@ func notificationDeliveryViewFromRow(row storage.NotificationDelivery, recipient
 	}, nil
 }
 
-func notificationDeliveryRecipientIDs(rows []storage.NotificationDelivery) []string {
+func notificationDeliveryUserIDs(rows []storage.NotificationDelivery) []string {
+	seen := map[string]bool{}
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
-		ids = append(ids, row.RecipientUserID)
+		if row.RecipientUserID != "" && !seen[row.RecipientUserID] {
+			seen[row.RecipientUserID] = true
+			ids = append(ids, row.RecipientUserID)
+		}
+		actorType := row.ActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		if actorType != actorTypeUser || row.ActorUserID == nil || *row.ActorUserID == "" || seen[*row.ActorUserID] {
+			continue
+		}
+		seen[*row.ActorUserID] = true
+		ids = append(ids, *row.ActorUserID)
 	}
 	return ids
 }

@@ -250,41 +250,42 @@ func registerHookTools(s *mcp.Server, opts Options) {
 }
 
 type hookView struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	ScopeType      string   `json:"scope_type"`
-	WorkspaceID    string   `json:"workspace_id"`
-	ProjectID      *string  `json:"project_id,omitempty"`
-	EventTypes     []string `json:"event_types"`
-	SinkID         string   `json:"sink_id"`
-	SinkName       string   `json:"sink_name"`
-	SinkType       string   `json:"sink_type"`
-	Enabled        bool     `json:"enabled"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
-	MaxAttempts    int      `json:"max_attempts"`
-	CreatedAt      int64    `json:"created_at"`
-	ModifiedAt     int64    `json:"modified_at"`
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	ScopeType      string             `json:"scope_type"`
+	WorkspaceID    string             `json:"workspace_id"`
+	ProjectID      *string            `json:"project_id,omitempty"`
+	EventTypes     []string           `json:"event_types"`
+	SinkID         string             `json:"sink_id"`
+	SinkName       string             `json:"sink_name"`
+	SinkType       string             `json:"sink_type"`
+	Enabled        bool               `json:"enabled"`
+	TimeoutSeconds int                `json:"timeout_seconds"`
+	MaxAttempts    int                `json:"max_attempts"`
+	CreatedBy      task.JSONActorInfo `json:"created_by"`
+	CreatedAt      int64              `json:"created_at"`
+	ModifiedAt     int64              `json:"modified_at"`
 }
 
 type hookDeliveryView struct {
-	ID             string            `json:"id"`
-	HookID         string            `json:"hook_id"`
-	EventID        string            `json:"event_id"`
-	EventType      string            `json:"event_type"`
-	WorkspaceID    string            `json:"workspace_id"`
-	ProjectID      *string           `json:"project_id,omitempty"`
-	Actor          task.JSONUserInfo `json:"actor"`
-	Payload        map[string]any    `json:"payload,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
-	Status         string            `json:"status"`
-	AttemptCount   int               `json:"attempt_count"`
-	NextAttemptAt  *int64            `json:"next_attempt_at,omitempty"`
-	ClaimExpiresAt *int64            `json:"claim_expires_at,omitempty"`
-	LastAttemptAt  *int64            `json:"last_attempt_at,omitempty"`
-	LastStatusCode *int              `json:"last_status_code,omitempty"`
-	LastError      string            `json:"last_error,omitempty"`
-	CreatedAt      int64             `json:"created_at"`
-	ModifiedAt     int64             `json:"modified_at"`
+	ID             string             `json:"id"`
+	HookID         string             `json:"hook_id"`
+	EventID        string             `json:"event_id"`
+	EventType      string             `json:"event_type"`
+	WorkspaceID    string             `json:"workspace_id"`
+	ProjectID      *string            `json:"project_id,omitempty"`
+	Actor          task.JSONActorInfo `json:"actor"`
+	Payload        map[string]any     `json:"payload,omitempty"`
+	Headers        map[string]string  `json:"headers,omitempty"`
+	Status         string             `json:"status"`
+	AttemptCount   int                `json:"attempt_count"`
+	NextAttemptAt  *int64             `json:"next_attempt_at,omitempty"`
+	ClaimExpiresAt *int64             `json:"claim_expires_at,omitempty"`
+	LastAttemptAt  *int64             `json:"last_attempt_at,omitempty"`
+	LastStatusCode *int               `json:"last_status_code,omitempty"`
+	LastError      string             `json:"last_error,omitempty"`
+	CreatedAt      int64              `json:"created_at"`
+	ModifiedAt     int64              `json:"modified_at"`
 }
 
 func hookViewFromApp(v app.HookView) hookView {
@@ -301,6 +302,7 @@ func hookViewFromApp(v app.HookView) hookView {
 		Enabled:        v.Enabled,
 		TimeoutSeconds: v.TimeoutSeconds,
 		MaxAttempts:    v.MaxAttempts,
+		CreatedBy:      task.ActorInfoToJSON(v.Actor),
 		CreatedAt:      v.CreatedAt,
 		ModifiedAt:     v.ModifiedAt,
 	}
@@ -322,7 +324,7 @@ func hookDeliveryViewFromApp(v app.HookDeliveryView) hookDeliveryView {
 		EventType:      v.EventType,
 		WorkspaceID:    v.WorkspaceID,
 		ProjectID:      v.ProjectID,
-		Actor:          task.UserInfoToJSON(v.Actor),
+		Actor:          task.ActorInfoToJSON(v.Actor),
 		Payload:        v.Payload,
 		Headers:        v.Headers,
 		Status:         v.Status,

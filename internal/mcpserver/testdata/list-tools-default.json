@@ -3632,47 +3632,84 @@
                       "created_by": {
                         "additionalProperties": false,
                         "properties": {
-                          "display_name": {
-                            "type": "string"
-                          },
-                          "email": {
-                            "type": [
-                              "null",
-                              "string"
-                            ]
-                          },
-                          "external_ids": {
-                            "items": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "external_id": {
-                                  "type": "string"
-                                },
-                                "provider": {
-                                  "type": "string"
-                                }
+                          "token": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
                               },
-                              "required": [
-                                "provider",
-                                "external_id"
-                              ],
-                              "type": "object"
+                              "name": {
+                                "type": "string"
+                              },
+                              "prefix": {
+                                "type": "string"
+                              }
                             },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
                             "type": [
                               "null",
-                              "array"
+                              "object"
                             ]
                           },
-                          "id": {
+                          "type": {
                             "type": "string"
                           },
-                          "name": {
-                            "type": "string"
+                          "user": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "email": {
+                                "type": [
+                                  "null",
+                                  "string"
+                                ]
+                              },
+                              "external_ids": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "external_id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "provider",
+                                    "external_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": [
+                                  "null",
+                                  "array"
+                                ]
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": [
+                              "null",
+                              "object"
+                            ]
                           }
                         },
                         "required": [
-                          "id",
-                          "name"
+                          "type"
                         ],
                         "type": "object"
                       },

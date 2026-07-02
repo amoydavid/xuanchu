@@ -191,6 +191,24 @@ func nestedMap(t *testing.T, parent map[string]any, key string) map[string]any {
 	return value
 }
 
+func assertMCPSystemActor(t *testing.T, value any, tokenID string) {
+	t.Helper()
+	actor, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("actor type = %T, want map", value)
+	}
+	if actor["type"] != "tenant_access_token" {
+		t.Fatalf("actor.type = %v, want tenant_access_token", actor["type"])
+	}
+	token, ok := actor["token"].(map[string]any)
+	if !ok {
+		t.Fatalf("actor.token type = %T, want map", actor["token"])
+	}
+	if token["id"] != tokenID || token["name"] != "tenant-p2" {
+		t.Fatalf("actor.token = %#v, want id=%q name=tenant-p2", token, tokenID)
+	}
+}
+
 func nestedSlice(t *testing.T, parent map[string]any, key string) []any {
 	t.Helper()
 	value, ok := parent[key].([]any)
@@ -1474,7 +1492,7 @@ func TestMCPTenantAccessTokenCanManageTenantOwnerTools(t *testing.T) {
 		}
 	}
 
-	for _, scope := range []string{"hook:write", "notification:write", "reminder:write"} {
+	for _, scope := range []string{"impersonate"} {
 		forbiddenScope := callTool(t, session, "token_create", TokenCreateInput{Name: "bad-scope", Scope: []string{scope}})
 		if !forbiddenScope.IsError {
 			t.Fatalf("token_create with %s tenant scope should fail", scope)
@@ -1483,6 +1501,111 @@ func TestMCPTenantAccessTokenCanManageTenantOwnerTools(t *testing.T) {
 			t.Fatalf("token_create forbidden scope code = %q, want tenant_token_scope_invalid", code)
 		}
 	}
+}
+
+func TestMCPTenantAccessTokenCanCreateP2SystemActorResources(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "tenantp2", Name: "Tenant P2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskRow, err := svc.Add(app.AddInput{Title: "tenant p2 link target", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name: "tenant-p2",
+		Scopes: []string{
+			"task:write",
+			"project:write",
+			"hook:write",
+			"notification:write",
+			"reminder:write",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	addSink := callTool(t, session, "notification_sink_add", NotificationSinkAddInput{
+		Name:         "tenant-p2-sink",
+		Type:         app.NotificationSinkTypeWebhook,
+		EndpointMode: app.NotificationEndpointStaticURL,
+		URL:          "https://example.com/webhook",
+		AllowedHosts: []string{"example.com"},
+		Secret:       "tenant-secret",
+	})
+	if addSink.IsError {
+		t.Fatalf("notification_sink_add error: %v", parseError(t, addSink))
+	}
+	sink := nestedMap(t, envelopeData(t, parseEnvelope(t, addSink)), "sink")
+	assertMCPSystemActor(t, sink["created_by"], created.View.ID)
+
+	addHook := callTool(t, session, "hook_add", HookAddInput{
+		Name:   "tenant-p2-hook",
+		Sink:   "tenant-p2-sink",
+		Events: []string{"task.created"},
+	})
+	if addHook.IsError {
+		t.Fatalf("hook_add error: %v", parseError(t, addHook))
+	}
+	hook := nestedMap(t, envelopeData(t, parseEnvelope(t, addHook)), "hook")
+	assertMCPSystemActor(t, hook["created_by"], created.View.ID)
+
+	addReminder := callTool(t, session, "reminder_rule_add", ReminderRuleAddInput{
+		Name:         "tenant-p2-reminder",
+		TriggerType:  "overdue",
+		RepeatPolicy: "once",
+		AudienceType: "explicit_users",
+		Recipients:   []string{"local"},
+		Sink:         "tenant-p2-sink",
+	})
+	if addReminder.IsError {
+		t.Fatalf("reminder_rule_add error: %v", parseError(t, addReminder))
+	}
+	reminder := nestedMap(t, envelopeData(t, parseEnvelope(t, addReminder)), "rule")
+	assertMCPSystemActor(t, reminder["created_by"], created.View.ID)
+
+	addNotificationRule := callTool(t, session, "notification_rule_add", NotificationRuleAddInput{
+		Name:            "tenant-p2-notification",
+		Event:           "task.created",
+		Audience:        "actor",
+		Sink:            "tenant-p2-sink",
+		TemplateSubject: "Task created",
+		TemplateBody:    "{{event.type}}",
+	})
+	if addNotificationRule.IsError {
+		t.Fatalf("notification_rule_add error: %v", parseError(t, addNotificationRule))
+	}
+	notificationRule := nestedMap(t, envelopeData(t, parseEnvelope(t, addNotificationRule)), "rule")
+	assertMCPSystemActor(t, notificationRule["created_by"], created.View.ID)
+
+	addLink := callTool(t, session, "task_link_add", TaskLinkAddInput{
+		Task:  taskRow.UUID,
+		Type:  "document",
+		URL:   "https://example.com/spec",
+		Title: "Spec",
+	})
+	if addLink.IsError {
+		t.Fatalf("task_link_add error: %v", parseError(t, addLink))
+	}
+	link := nestedMap(t, envelopeData(t, parseEnvelope(t, addLink)), "link")
+	assertMCPSystemActor(t, link["created_by"], created.View.ID)
+
+	addAnnotation := callTool(t, session, "project_annotate", ProjectAnnotateInput{
+		Project: project.Slug,
+		Content: "tenant p2 annotation",
+	})
+	if addAnnotation.IsError {
+		t.Fatalf("project_annotate error: %v", parseError(t, addAnnotation))
+	}
+	annotation := nestedMap(t, envelopeData(t, parseEnvelope(t, addAnnotation)), "annotation")
+	assertMCPSystemActor(t, annotation["created_by"], created.View.ID)
 }
 
 func TestMCPProjectConfigUsesConfigCapability(t *testing.T) {
@@ -2304,6 +2427,8 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 		RecipientUserID:     svc.Runtime().ActorUserID,
 		EventID:             "event-1",
 		EventType:           "task.overdue",
+		ActorType:           "user",
+		ActorUserID:         ptrStr(svc.Runtime().ActorUserID),
 		DedupeKey:           "delivery-1",
 		ResolvedURL:         "https://example.com/xuanchu/notifications",
 		RenderedMethod:      "POST",
@@ -2322,9 +2447,26 @@ func TestNotificationReminderFullLifecycle(t *testing.T) {
 	if deliveryList.IsError {
 		t.Fatalf("notification_delivery_list error: %v", parseError(t, deliveryList))
 	}
+	deliveryRows := nestedSlice(t, envelopeData(t, parseEnvelope(t, deliveryList)), "deliveries")
+	if len(deliveryRows) != 1 {
+		t.Fatalf("delivery rows = %d, want 1", len(deliveryRows))
+	}
+	deliveryObj, ok := deliveryRows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("delivery row type = %T, want map", deliveryRows[0])
+	}
+	actor := nestedMap(t, deliveryObj, "actor")
+	if actor["type"] != "user" {
+		t.Fatalf("delivery actor = %#v, want user actor", actor)
+	}
 	deliveryInfo := callTool(t, session, "notification_delivery_info", NotificationDeliveryRefInput{DeliveryID: delivery.ID})
 	if deliveryInfo.IsError {
 		t.Fatalf("notification_delivery_info error: %v", parseError(t, deliveryInfo))
+	}
+	infoObj := nestedMap(t, envelopeData(t, parseEnvelope(t, deliveryInfo)), "delivery")
+	infoActor := nestedMap(t, infoObj, "actor")
+	if infoActor["type"] != "user" {
+		t.Fatalf("delivery info actor = %#v, want user actor", infoActor)
 	}
 	replay := callTool(t, session, "notification_delivery_replay", NotificationDeliveryRefInput{DeliveryID: delivery.ID})
 	if replay.IsError {

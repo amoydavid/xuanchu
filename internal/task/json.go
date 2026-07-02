@@ -27,6 +27,18 @@ type JSONUserInfo struct {
 	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
 }
 
+type JSONTokenActorInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Prefix string `json:"prefix,omitempty"`
+}
+
+type JSONActorInfo struct {
+	Type  string              `json:"type"`
+	User  *JSONUserInfo       `json:"user,omitempty"`
+	Token *JSONTokenActorInfo `json:"token,omitempty"`
+}
+
 type JSONAssignee struct {
 	UserID      string           `json:"user_id,omitempty"`
 	Name        string           `json:"name,omitempty"`
@@ -36,12 +48,12 @@ type JSONAssignee struct {
 }
 
 type JSONTaskLink struct {
-	ID        string       `json:"id"`
-	Type      string       `json:"type"`
-	URL       string       `json:"url"`
-	Title     string       `json:"title,omitempty"`
-	CreatedAt string       `json:"created_at"`
-	CreatedBy JSONUserInfo `json:"created_by"`
+	ID        string        `json:"id"`
+	Type      string        `json:"type"`
+	URL       string        `json:"url"`
+	Title     string        `json:"title,omitempty"`
+	CreatedAt string        `json:"created_at"`
+	CreatedBy JSONActorInfo `json:"created_by"`
 }
 
 type JSONTask struct {
@@ -317,10 +329,7 @@ func ToJSON(tsk Task) JSONTask {
 				out[i] = JSONTaskLink{
 					ID: link.ID, Type: link.Type, URL: link.URL,
 					Title: link.Title, CreatedAt: formatUnix(link.CreatedAt),
-					CreatedBy: JSONUserInfo{
-						ID: link.CreatedBy.ID, Name: link.CreatedBy.Name, DisplayName: link.CreatedBy.DisplayName,
-						Email: link.CreatedBy.Email, ExternalIDs: externalIDsToJSON(link.CreatedBy.ExternalIDs),
-					},
+					CreatedBy: ActorInfoToJSON(link.CreatedBy),
 				}
 			}
 			return out
@@ -440,10 +449,7 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 				out[i] = TaskLinkInfo{
 					ID: link.ID, Type: link.Type, URL: link.URL,
 					Title: link.Title, CreatedAt: createdAt,
-					CreatedBy: UserInfo{
-						ID: link.CreatedBy.ID, Name: link.CreatedBy.Name,
-						Email: link.CreatedBy.Email, ExternalIDs: externalIDsFromJSON(link.CreatedBy.ExternalIDs),
-					},
+					CreatedBy: ActorInfoFromJSON(link.CreatedBy),
 				}
 			}
 			return out
@@ -603,4 +609,38 @@ func UserInfoFromJSON(j JSONUserInfo) UserInfo {
 		ID: j.ID, Name: j.Name, DisplayName: j.DisplayName, Email: j.Email,
 		ExternalIDs: externalIDsFromJSON(j.ExternalIDs),
 	}
+}
+
+func ActorInfoToJSON(a ActorInfo) JSONActorInfo {
+	if a.Type == "" && a.User != nil {
+		a.Type = "user"
+	}
+	out := JSONActorInfo{Type: a.Type}
+	if a.User != nil {
+		jui := UserInfoToJSON(*a.User)
+		out.User = &jui
+	}
+	if a.Token != nil {
+		out.Token = &JSONTokenActorInfo{ID: a.Token.ID, Name: a.Token.Name, Prefix: a.Token.Prefix}
+	}
+	return out
+}
+
+func ActorInfoFromJSON(j JSONActorInfo) ActorInfo {
+	out := ActorInfo{Type: j.Type}
+	if out.Type == "" && j.User != nil {
+		out.Type = "user"
+	}
+	if j.User != nil {
+		u := UserInfoFromJSON(*j.User)
+		out.User = &u
+		out.ID = u.ID
+		out.Name = u.Name
+	}
+	if j.Token != nil {
+		out.Token = &TokenActorInfo{ID: j.Token.ID, Name: j.Token.Name, Prefix: j.Token.Prefix}
+		out.ID = j.Token.ID
+		out.Name = j.Token.Name
+	}
+	return out
 }

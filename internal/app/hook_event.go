@@ -13,18 +13,22 @@ import (
 
 // HookEvent 表示一个待投递的 hook 事件。
 type HookEvent struct {
-	EventID       string
-	EventType     string
-	EventVersion  int
-	OccurredAt    int64
-	ActorUserID   string
-	WorkspaceID   string
-	WorkspaceSlug string
-	ProjectID     *string
-	ProjectSlug   *string
-	ObjectKind    string
-	ObjectID      string
-	Data          map[string]any
+	EventID          string
+	EventType        string
+	EventVersion     int
+	OccurredAt       int64
+	ActorType        string
+	ActorUserID      string
+	ActorTokenID     string
+	ActorTokenName   string
+	ActorTokenPrefix string
+	WorkspaceID      string
+	WorkspaceSlug    string
+	ProjectID        *string
+	ProjectSlug      *string
+	ObjectKind       string
+	ObjectID         string
+	Data             map[string]any
 }
 
 // buildTaskHookEvent 构建任务相关的 hook 事件。
@@ -33,12 +37,11 @@ func buildTaskHookEvent(eventType string, tsk task.Task, runtime RuntimeContext,
 	if tsk.Project != nil {
 		projectSlug = tsk.Project
 	}
-	return HookEvent{
+	event := HookEvent{
 		EventID:       uuid.NewString(),
 		EventType:     eventType,
 		EventVersion:  1,
 		OccurredAt:    now,
-		ActorUserID:   runtime.ActorUserID,
 		WorkspaceID:   runtime.WorkspaceID,
 		WorkspaceSlug: runtime.WorkspaceSlug,
 		ProjectID:     tsk.ProjectID,
@@ -47,16 +50,17 @@ func buildTaskHookEvent(eventType string, tsk task.Task, runtime RuntimeContext,
 		ObjectID:      tsk.UUID,
 		Data:          buildTaskPayload(tsk),
 	}
+	applyRuntimeActorToHookEvent(&event, runtime)
+	return event
 }
 
 // buildProjectArchivedHookEvent 构建项目归档的 hook 事件。
 func buildProjectArchivedHookEvent(pv ProjectView, runtime RuntimeContext, now int64) HookEvent {
-	return HookEvent{
+	event := HookEvent{
 		EventID:       uuid.NewString(),
 		EventType:     "project.archived",
 		EventVersion:  1,
 		OccurredAt:    now,
-		ActorUserID:   runtime.ActorUserID,
 		WorkspaceID:   pv.WorkspaceID,
 		WorkspaceSlug: runtime.WorkspaceSlug,
 		ProjectID:     &pv.ID,
@@ -65,16 +69,17 @@ func buildProjectArchivedHookEvent(pv ProjectView, runtime RuntimeContext, now i
 		ObjectID:      pv.ID,
 		Data:          buildProjectArchivedPayload(pv),
 	}
+	applyRuntimeActorToHookEvent(&event, runtime)
+	return event
 }
 
 // buildProjectTransitionedHookEvent 构建项目状态转移的 hook 事件。
 func buildProjectTransitionedHookEvent(pv ProjectView, fromStatus, toStatus string, runtime RuntimeContext, now int64) HookEvent {
-	return HookEvent{
+	event := HookEvent{
 		EventID:       uuid.NewString(),
 		EventType:     "project.transitioned",
 		EventVersion:  1,
 		OccurredAt:    now,
-		ActorUserID:   runtime.ActorUserID,
 		WorkspaceID:   pv.WorkspaceID,
 		WorkspaceSlug: runtime.WorkspaceSlug,
 		ProjectID:     &pv.ID,
@@ -86,6 +91,25 @@ func buildProjectTransitionedHookEvent(pv ProjectView, fromStatus, toStatus stri
 			"from_status": fromStatus,
 			"to_status":   toStatus,
 		},
+	}
+	applyRuntimeActorToHookEvent(&event, runtime)
+	return event
+}
+
+func applyRuntimeActorToHookEvent(event *HookEvent, runtime RuntimeContext) {
+	actor := runtime.actorColumns()
+	event.ActorType = actor.Type
+	if actor.UserID != nil {
+		event.ActorUserID = *actor.UserID
+	}
+	if actor.TokenID != nil {
+		event.ActorTokenID = *actor.TokenID
+	}
+	if actor.TokenName != nil {
+		event.ActorTokenName = *actor.TokenName
+	}
+	if actor.TokenPrefix != nil {
+		event.ActorTokenPrefix = *actor.TokenPrefix
 	}
 }
 
@@ -105,12 +129,11 @@ func buildProjectArchivedPayload(pv ProjectView) map[string]any {
 }
 
 func buildProjectAnnotatedHookEvent(pv ProjectView, annotation ProjectAnnotationInfo, runtime RuntimeContext, now int64) HookEvent {
-	return HookEvent{
+	event := HookEvent{
 		EventID:       uuid.NewString(),
 		EventType:     "project.annotated",
 		EventVersion:  1,
 		OccurredAt:    now,
-		ActorUserID:   runtime.ActorUserID,
 		WorkspaceID:   pv.WorkspaceID,
 		WorkspaceSlug: runtime.WorkspaceSlug,
 		ProjectID:     &pv.ID,
@@ -124,20 +147,21 @@ func buildProjectAnnotatedHookEvent(pv ProjectView, annotation ProjectAnnotation
 				"entry":           annotation.Entry,
 				"content":         annotation.Content,
 				"content_preview": truncateString(annotation.Content, 200),
-				"created_by":      task.UserInfoToJSON(annotation.CreatedBy),
+				"created_by":      task.ActorInfoToJSON(annotation.CreatedBy),
 				"created_at":      annotation.CreatedAt,
 			},
 		},
 	}
+	applyRuntimeActorToHookEvent(&event, runtime)
+	return event
 }
 
 func buildProjectDenotatedHookEvent(pv ProjectView, annotationID string, runtime RuntimeContext, now int64) HookEvent {
-	return HookEvent{
+	event := HookEvent{
 		EventID:       uuid.NewString(),
 		EventType:     "project.denotated",
 		EventVersion:  1,
 		OccurredAt:    now,
-		ActorUserID:   runtime.ActorUserID,
 		WorkspaceID:   pv.WorkspaceID,
 		WorkspaceSlug: runtime.WorkspaceSlug,
 		ProjectID:     &pv.ID,
@@ -149,6 +173,8 @@ func buildProjectDenotatedHookEvent(pv ProjectView, annotationID string, runtime
 			"annotation": map[string]any{"id": annotationID},
 		},
 	}
+	applyRuntimeActorToHookEvent(&event, runtime)
+	return event
 }
 
 func buildTaskUnblockedHookEvent(tsk task.Task, completedTask task.Task, runtime RuntimeContext, now int64) HookEvent {
@@ -186,7 +212,7 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 		return nil
 	}
 	for _, event := range events {
-		if event.ActorUserID == "" {
+		if event.ActorType == "" {
 			continue
 		}
 		hooks, err := s.matchingHooks(event)
@@ -214,26 +240,30 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 			deliveryCtx := NotificationDeliveryContext{ID: deliveryID, Attempt: 1, WorkspaceID: event.WorkspaceID, SinkID: hook.SinkID}
 			objectCtx := NotificationObjectContext{Kind: event.ObjectKind, ID: event.ObjectID}
 			envelope := map[string]any{
-				"delivery_id":    deliveryID,
-				"attempt":        1,
-				"workspace_id":   event.WorkspaceID,
-				"sink_id":        hook.SinkID,
-				"hook_id":        hook.ID,
-				"rule_id":        hook.ID,
-				"created_at":     now,
-				"delivery":       map[string]any{"id": deliveryCtx.ID, "attempt": deliveryCtx.Attempt, "workspace_id": deliveryCtx.WorkspaceID, "sink_id": deliveryCtx.SinkID},
-				"object":         map[string]any{"kind": objectCtx.Kind, "id": objectCtx.ID},
-				"event_id":       event.EventID,
-				"event_type":     event.EventType,
-				"event_version":  event.EventVersion,
-				"occurred_at":    event.OccurredAt,
-				"actor_user_id":  event.ActorUserID,
-				"workspace_slug": event.WorkspaceSlug,
-				"project_id":     event.ProjectID,
-				"project_slug":   event.ProjectSlug,
-				"object_kind":    event.ObjectKind,
-				"object_id":      event.ObjectID,
-				"data":           event.Data,
+				"delivery_id":        deliveryID,
+				"attempt":            1,
+				"workspace_id":       event.WorkspaceID,
+				"sink_id":            hook.SinkID,
+				"hook_id":            hook.ID,
+				"rule_id":            hook.ID,
+				"created_at":         now,
+				"delivery":           map[string]any{"id": deliveryCtx.ID, "attempt": deliveryCtx.Attempt, "workspace_id": deliveryCtx.WorkspaceID, "sink_id": deliveryCtx.SinkID},
+				"object":             map[string]any{"kind": objectCtx.Kind, "id": objectCtx.ID},
+				"event_id":           event.EventID,
+				"event_type":         event.EventType,
+				"event_version":      event.EventVersion,
+				"occurred_at":        event.OccurredAt,
+				"actor_type":         event.ActorType,
+				"actor_user_id":      event.ActorUserID,
+				"actor_token_id":     event.ActorTokenID,
+				"actor_token_name":   event.ActorTokenName,
+				"actor_token_prefix": event.ActorTokenPrefix,
+				"workspace_slug":     event.WorkspaceSlug,
+				"project_id":         event.ProjectID,
+				"project_slug":       event.ProjectSlug,
+				"object_kind":        event.ObjectKind,
+				"object_id":          event.ObjectID,
+				"data":               event.Data,
 			}
 			payloadBytes, err := json.Marshal(envelope)
 			if err != nil {
@@ -251,6 +281,10 @@ func (s *Service) enqueueHookEvents(events []HookEvent) error {
 				WorkspaceID:                 event.WorkspaceID,
 				ProjectID:                   event.ProjectID,
 				ActorUserID:                 event.ActorUserID,
+				ActorType:                   event.ActorType,
+				ActorTokenID:                stringPtrOrNil(event.ActorTokenID),
+				ActorTokenName:              stringPtrOrNil(event.ActorTokenName),
+				ActorTokenPrefix:            stringPtrOrNil(event.ActorTokenPrefix),
 				SinkID:                      hook.SinkID,
 				ResolvedURL:                 req.ResolvedURL,
 				ResolvedEndpointSource:      req.ResolvedEndpointSource,
@@ -284,7 +318,7 @@ func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event 
 	if sink.WorkspaceID != event.WorkspaceID || sink.WorkspaceID != s.workspaceID {
 		return NotificationResolvedRequest{}, RuntimeError{Code: "notification_sink_not_found", Message: "notification sink not found"}
 	}
-	sinkView := notificationSinkViewFromRow(sink, task.UserInfo{ID: sink.CreatedBy, Name: sink.CreatedBy})
+	sinkView := notificationSinkViewFromRow(sink, actorInfoFromColumns(notificationSinkActorColumns(sink), sink.CreatedBy, nil))
 
 	workspace, err := s.workspaceRepo.GetByID(event.WorkspaceID)
 	if err != nil {
@@ -298,11 +332,11 @@ func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event 
 		}
 		projectCtx = &NotificationProjectContext{ID: project.ID, Slug: project.Slug, Name: project.Name}
 	}
-	userInfos, err := s.resolveUserInfos([]string{event.ActorUserID})
+	userInfos, err := s.resolveUserInfos(hookEventActorUserIDs(event))
 	if err != nil {
 		return NotificationResolvedRequest{}, err
 	}
-	actor := userInfos[event.ActorUserID]
+	actor := hookEventActorAsUserInfo(event, userInfos)
 	configValues, secretValues, err := schedulerNotificationConfigValues(s.configRepo, s.configDefRepo, event.WorkspaceID, event.ProjectID, sink)
 	if err != nil {
 		return NotificationResolvedRequest{}, err
@@ -351,6 +385,27 @@ func (s *Service) resolveHookDeliveryRequest(hook storage.HookDefinition, event 
 		return NotificationResolvedRequest{}, RuntimeError{Code: "endpoint_unresolved", Message: fmt.Sprintf("hook sink %q endpoint is empty", sink.Name)}
 	}
 	return req, nil
+}
+
+func hookEventActorUserIDs(event HookEvent) []string {
+	if event.ActorType == actorTypeUser && event.ActorUserID != "" {
+		return []string{event.ActorUserID}
+	}
+	return nil
+}
+
+func hookEventActorAsUserInfo(event HookEvent, users map[string]task.UserInfo) task.UserInfo {
+	if event.ActorType == actorTypeUser {
+		if ui, ok := users[event.ActorUserID]; ok {
+			return ui
+		}
+		return task.UserInfo{ID: event.ActorUserID, Name: event.ActorUserID}
+	}
+	name := event.ActorTokenName
+	if name == "" {
+		name = event.ActorTokenID
+	}
+	return task.UserInfo{ID: event.ActorTokenID, Name: name}
 }
 
 // matchingHooks 返回应该接收该事件的所有 hook。

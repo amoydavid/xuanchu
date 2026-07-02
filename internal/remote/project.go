@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type projectDTO struct {
@@ -150,21 +151,21 @@ func projectDTOToView(row projectDTO) app.ProjectView {
 }
 
 type ProjectAnnotationDTO struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Entry     int64  `json:"entry"`
-	Content   string `json:"content"`
-	CreatedBy string `json:"created_by"`
-	CreatedAt int64  `json:"created_at"`
+	ID        string             `json:"id"`
+	ProjectID string             `json:"project_id"`
+	Entry     int64              `json:"entry"`
+	Content   string             `json:"content"`
+	CreatedBy task.JSONActorInfo `json:"created_by"`
+	CreatedAt int64              `json:"created_at"`
 }
 
 type TimelineEntryDTO struct {
-	SourceType  string `json:"source_type"`
-	SourceID    string `json:"source_id"`
-	SourceLabel string `json:"source_label"`
-	Entry       int64  `json:"entry"`
-	Content     string `json:"content"`
-	CreatedBy   string `json:"created_by"`
+	SourceType  string             `json:"source_type"`
+	SourceID    string             `json:"source_id"`
+	SourceLabel string             `json:"source_label"`
+	Entry       int64              `json:"entry"`
+	Content     string             `json:"content"`
+	CreatedBy   task.JSONActorInfo `json:"created_by"`
 }
 
 func (c *Client) AnnotateProject(ctx context.Context, workspace, projectRef, content string) (ProjectAnnotationDTO, error) {

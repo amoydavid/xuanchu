@@ -11,12 +11,17 @@ type ProjectAnnotationRepository struct {
 }
 
 type TimelineRow struct {
-	SourceType  string
-	SourceID    string
-	SourceLabel string
-	Entry       int64
-	Content     string
-	CreatedBy   string
+	SourceType           string
+	SourceID             string
+	SourceLabel          string
+	Entry                int64
+	Content              string
+	CreatedBy            string
+	CreatedByActorType   string
+	CreatedByUserID      *string
+	CreatedByTokenID     *string
+	CreatedByTokenName   *string
+	CreatedByTokenPrefix *string
 }
 
 func NewProjectAnnotationRepository(db *gorm.DB) *ProjectAnnotationRepository {
@@ -91,13 +96,20 @@ func (r *ProjectAnnotationRepository) TimelineByProjectID(projectID string, limi
 
 	var rows []TimelineRow
 	err := r.db.Raw(`
-SELECT source_type, source_id, source_label, entry, content, created_by FROM (
+SELECT source_type, source_id, source_label, entry, content, created_by,
+       created_by_actor_type, created_by_user_id, created_by_token_id,
+       created_by_token_name, created_by_token_prefix
+FROM (
     SELECT 'project' AS source_type, ? AS source_id, ? AS source_label,
-           entry, content, created_by
+           entry, content, created_by, created_by_actor_type, created_by_user_id,
+           created_by_token_id, created_by_token_name, created_by_token_prefix
     FROM project_annotations WHERE project_id = ?
     UNION ALL
     SELECT 'task' AS source_type, t.uuid AS source_id, t.title AS source_label,
-           ta.entry, ta.description AS content, '' AS created_by
+           ta.entry, ta.description AS content, '' AS created_by,
+           'user' AS created_by_actor_type, NULL AS created_by_user_id,
+           NULL AS created_by_token_id, NULL AS created_by_token_name,
+           NULL AS created_by_token_prefix
     FROM task_annotations ta
     JOIN tasks t ON t.uuid = ta.task_uuid
     WHERE t.project_id = ?

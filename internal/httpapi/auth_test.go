@@ -59,6 +59,37 @@ func requestHTTPBody(t *testing.T, srv *Server, method, path, body string, heade
 	return rr
 }
 
+func httpResponseDataMap(t *testing.T, rr *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rr.Body.String())
+	}
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data type = %T body=%s", payload["data"], rr.Body.String())
+	}
+	return data
+}
+
+func assertHTTPSystemActor(t *testing.T, value any, tokenID string) {
+	t.Helper()
+	actor, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("actor type = %T, want object", value)
+	}
+	if actor["type"] != "tenant_access_token" {
+		t.Fatalf("actor.type = %v, want tenant_access_token", actor["type"])
+	}
+	token, ok := actor["token"].(map[string]any)
+	if !ok {
+		t.Fatalf("actor.token type = %T, want object", actor["token"])
+	}
+	if token["id"] != tokenID || token["name"] != "runtime-p2" {
+		t.Fatalf("actor.token = %#v, want id=%q name=runtime-p2", token, tokenID)
+	}
+}
+
 func TestAuthRequiresBearerHeader(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t)
 	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/me", nil)
@@ -192,7 +223,12 @@ func TestCredentialsCurrentReturnsTenantSystemOwner(t *testing.T) {
 			t.Fatalf("capabilities missing %q: %#v", want, payload.Data.Capabilities)
 		}
 	}
-	for _, forbidden := range []string{"hook:write", "notification:write", "reminder:write", "impersonate"} {
+	for _, want := range []string{"hook:write", "notification:write", "reminder:write"} {
+		if !slices.Contains(payload.Data.Capabilities, want) {
+			t.Fatalf("capabilities missing P2 scope %q: %#v", want, payload.Data.Capabilities)
+		}
+	}
+	for _, forbidden := range []string{"impersonate"} {
 		if slices.Contains(payload.Data.Capabilities, forbidden) {
 			t.Fatalf("capabilities include forbidden %q: %#v", forbidden, payload.Data.Capabilities)
 		}
@@ -378,6 +414,88 @@ func TestTenantTokenCannotCallHTTPActiveContext(t *testing.T) {
 	}
 }
 
+func TestTenantTokenCanCreateHTTPSystemActorResources(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "tenantp2", Name: "Tenant P2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdTask, err := svc.Add(app.AddInput{Title: "tenant p2 link target", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name: "runtime-p2",
+		Scopes: []string{
+			"task:write",
+			"project:write",
+			"hook:write",
+			"notification:write",
+			"reminder:write",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+		"Content-Type":  "application/json",
+	}
+
+	sinkBody := `{"name":"tenant-p2-sink","type":"webhook","endpoint_mode":"static_url","url":"https://example.com/webhook","allowed_hosts":["example.com"],"secret":"tenant-secret"}`
+	rr := requestHTTPBody(t, server, http.MethodPost, "/api/v1/notification-sinks", sinkBody, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create sink status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	sink := httpResponseDataMap(t, rr)
+	assertHTTPSystemActor(t, sink["created_by"], created.View.ID)
+
+	hookBody := `{"name":"tenant-p2-hook","scope_type":"workspace","event_types":["task.created"],"sink":"tenant-p2-sink"}`
+	rr = requestHTTPBody(t, server, http.MethodPost, "/api/v1/hooks", hookBody, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create hook status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	hook := httpResponseDataMap(t, rr)
+	assertHTTPSystemActor(t, hook["created_by"], created.View.ID)
+
+	reminderBody := `{"name":"tenant-p2-reminder","trigger_type":"overdue","repeat_policy":"once","audience_type":"explicit_users","recipients":["local"],"sink_ref":"tenant-p2-sink"}`
+	rr = requestHTTPBody(t, server, http.MethodPost, "/api/v1/reminder-rules", reminderBody, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create reminder status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	reminder := httpResponseDataMap(t, rr)
+	assertHTTPSystemActor(t, reminder["created_by"], created.View.ID)
+
+	notificationRuleBody := `{"name":"tenant-p2-notification","event_type":"task.created","audience_type":"actor","sink":"tenant-p2-sink","template_subject":"Task created","template_body":"{{event.type}}"}`
+	rr = requestHTTPBody(t, server, http.MethodPost, "/api/v1/notification-rules", notificationRuleBody, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create notification rule status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	notificationRule := httpResponseDataMap(t, rr)
+	assertHTTPSystemActor(t, notificationRule["created_by"], created.View.ID)
+
+	linkBody := `{"type":"document","url":"https://example.com/spec","title":"Spec"}`
+	rr = requestHTTPBody(t, server, http.MethodPost, "/api/v1/tasks/"+createdTask.UUID+"/links", linkBody, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create task link status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	link := httpResponseDataMap(t, rr)
+	assertHTTPSystemActor(t, link["created_by"], created.View.ID)
+
+	annotationBody := `{"content":"tenant p2 annotation"}`
+	rr = requestHTTPBody(t, server, http.MethodPost, "/api/v1/projects/"+project.Slug+"/annotations", annotationBody, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create project annotation status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	annotation := httpResponseDataMap(t, rr)
+	assertHTTPSystemActor(t, annotation["created_by"], created.View.ID)
+}
+
 func TestTenantTokenContextListDoesNotReadActiveUserState(t *testing.T) {
 	store := openHTTPTestStore(t)
 	svc, err := app.NewService(app.ServiceOptions{Store: store})
@@ -424,7 +542,7 @@ func TestTenantTokenRejectsStoredDisallowedScopesAtAuthentication(t *testing.T) 
 	}
 	if err := store.DB().Model(&storage.ApiToken{}).
 		Where("id = ?", created.View.ID).
-		Update("scopes_json", `["`+auth.ScopeHookWrite+`"]`).Error; err != nil {
+		Update("scopes_json", `["`+auth.ScopeImpersonate+`"]`).Error; err != nil {
 		t.Fatal(err)
 	}
 	_, err = svc.AuthenticateBearerToken(created.RawToken)

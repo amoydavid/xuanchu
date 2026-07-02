@@ -51,7 +51,7 @@ type EventNotificationRuleView struct {
 	SinkID           string          `json:"sink_id"`
 	TemplateSubject  string          `json:"template_subject"`
 	TemplateBody     string          `json:"template_body"`
-	CreatedBy        task.UserInfo   `json:"created_by"`
+	CreatedBy        task.ActorInfo  `json:"created_by"`
 	CreatedAt        int64           `json:"created_at"`
 	ModifiedAt       int64           `json:"modified_at"`
 }
@@ -59,9 +59,6 @@ type EventNotificationRuleView struct {
 func (s *Service) AddEventNotificationRule(input EventNotificationRuleAddInput) (EventNotificationRuleView, error) {
 	if err := s.Require(PermissionNotificationWrite); err != nil {
 		return EventNotificationRuleView{}, err
-	}
-	if s.runtime.IsTenantActor() {
-		return EventNotificationRuleView{}, tenantActorNotUserError()
 	}
 	var projectID *string
 	if input.ProjectRef != "" {
@@ -96,6 +93,12 @@ func (s *Service) AddEventNotificationRule(input EventNotificationRuleAddInput) 
 		CreatedAt:            now,
 		ModifiedAt:           now,
 	}
+	actor := s.runtime.actorColumns()
+	row.CreatedByActorType = actor.Type
+	row.CreatedByUserID = actor.UserID
+	row.CreatedByTokenID = actor.TokenID
+	row.CreatedByTokenName = actor.TokenName
+	row.CreatedByTokenPrefix = actor.TokenPrefix
 	var view EventNotificationRuleView
 	err = s.withAudit("notification.rule.create", func(tx *Service) (AuditEntry, error) {
 		if err := tx.eventNotificationRuleRepo.Create(row); err != nil {
@@ -424,7 +427,7 @@ func (s *Service) enqueueEventNotificationDeliveries(events []HookEvent) error {
 		return nil
 	}
 	for _, event := range events {
-		if event.ActorUserID == "" {
+		if event.ActorType == "" {
 			continue
 		}
 		rules, err := s.eventNotificationRuleRepo.ListMatching(event.WorkspaceID, event.ProjectID, event.EventType)
@@ -521,17 +524,17 @@ func (s *Service) eventNotificationDeliveriesForRule(rule storage.EventNotificat
 	if len(recipientIDs) == 0 {
 		return nil, nil
 	}
-	userIDs := append([]string{event.ActorUserID}, recipientIDs...)
+	userIDs := append(hookEventActorUserIDs(event), recipientIDs...)
 	userInfos, err := s.resolveUserInfos(userIDs)
 	if err != nil {
 		return nil, err
 	}
-	actor := userInfos[event.ActorUserID]
+	actor := hookEventActorAsUserInfo(event, userInfos)
 	configValues, secretValues, err := schedulerNotificationConfigValues(s.configRepo, s.configDefRepo, event.WorkspaceID, event.ProjectID, sink)
 	if err != nil {
 		return nil, err
 	}
-	sinkView := notificationSinkViewFromRow(sink, task.UserInfo{ID: sink.CreatedBy, Name: sink.CreatedBy})
+	sinkView := notificationSinkViewFromRow(sink, actorInfoFromColumns(notificationSinkActorColumns(sink), sink.CreatedBy, nil))
 	now := s.clock.Unix()
 	out := make([]storage.NotificationDelivery, 0, len(recipientIDs))
 	for _, recipientID := range recipientIDs {
@@ -584,6 +587,11 @@ func (s *Service) eventNotificationDeliveriesForRule(rule storage.EventNotificat
 			RecipientUserID:             recipient.ID,
 			EventID:                     event.EventID,
 			EventType:                   event.EventType,
+			ActorType:                   event.ActorType,
+			ActorUserID:                 stringPtrOrNil(event.ActorUserID),
+			ActorTokenID:                stringPtrOrNil(event.ActorTokenID),
+			ActorTokenName:              stringPtrOrNil(event.ActorTokenName),
+			ActorTokenPrefix:            stringPtrOrNil(event.ActorTokenPrefix),
 			DedupeKey:                   fmt.Sprintf("%s:%s:%s:%s", event.WorkspaceID, rule.ID, event.EventID, recipient.ID),
 			ResolvedURL:                 req.ResolvedURL,
 			ResolvedEndpointSource:      req.ResolvedEndpointSource,
@@ -712,7 +720,7 @@ func eventPrimaryTask(event HookEvent) (task.Task, bool) {
 }
 
 func (s *Service) eventNotificationRuleViewFromRow(row storage.EventNotificationRule) (EventNotificationRuleView, error) {
-	userIDs := []string{row.CreatedBy}
+	userIDs := eventNotificationRuleCreatedByIDs([]storage.EventNotificationRule{row})
 	userIDs = append(userIDs, decodeStringListNoError(row.RecipientUserIDsJSON)...)
 	userInfos, err := s.resolveUserInfos(userIDs)
 	if err != nil {
@@ -742,7 +750,7 @@ func eventNotificationRuleViewFromRow(row storage.EventNotificationRule, userInf
 		SinkID:           row.SinkID,
 		TemplateSubject:  row.TemplateSubject,
 		TemplateBody:     row.TemplateBody,
-		CreatedBy:        userInfos[row.CreatedBy],
+		CreatedBy:        actorInfoFromColumns(eventNotificationRuleActorColumns(row), row.CreatedBy, userInfos),
 		CreatedAt:        row.CreatedAt,
 		ModifiedAt:       row.ModifiedAt,
 	}
@@ -751,8 +759,27 @@ func eventNotificationRuleViewFromRow(row storage.EventNotificationRule, userInf
 func eventNotificationRuleUserIDs(rows []storage.EventNotificationRule) []string {
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
-		ids = append(ids, row.CreatedBy)
+		ids = append(ids, eventNotificationRuleCreatedByIDs([]storage.EventNotificationRule{row})...)
 		ids = append(ids, decodeStringListNoError(row.RecipientUserIDsJSON)...)
+	}
+	return ids
+}
+
+func eventNotificationRuleCreatedByIDs(rows []storage.EventNotificationRule) []string {
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		actorType := row.CreatedByActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		if actorType != actorTypeUser {
+			continue
+		}
+		id := row.CreatedBy
+		if row.CreatedByUserID != nil && *row.CreatedByUserID != "" {
+			id = *row.CreatedByUserID
+		}
+		ids = append(ids, id)
 	}
 	return ids
 }

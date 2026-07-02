@@ -593,7 +593,7 @@ func hookDeliveryViewForJSON(delivery app.HookDeliveryView) map[string]any {
 		"event_type":       delivery.EventType,
 		"workspace_id":     delivery.WorkspaceID,
 		"project_id":       delivery.ProjectID,
-		"actor":            userInfoToJSONMap(&delivery.Actor),
+		"actor":            actorInfoToJSONMap(delivery.Actor),
 		"payload":          delivery.Payload,
 		"headers":          delivery.Headers,
 		"status":           delivery.Status,

@@ -1495,7 +1495,7 @@ func notificationSinkViewForJSON(row app.NotificationSinkView) map[string]any {
 		"timeout_seconds":   row.TimeoutSeconds,
 		"max_attempts":      row.MaxAttempts,
 		"max_concurrency":   row.MaxConcurrency,
-		"created_by":        task.UserInfoToJSON(row.CreatedBy),
+		"created_by":        task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":        row.CreatedAt,
 		"modified_at":       row.ModifiedAt,
 	}
@@ -1628,7 +1628,7 @@ func reminderRuleViewForJSON(row app.ReminderRuleView) map[string]any {
 		"audience_type":   row.AudienceType,
 		"recipient_users": notificationUserInfosForJSON(row.RecipientUsers),
 		"sink_id":         row.SinkID,
-		"created_by":      task.UserInfoToJSON(row.CreatedBy),
+		"created_by":      task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":      row.CreatedAt,
 		"modified_at":     row.ModifiedAt,
 	}
@@ -1656,7 +1656,7 @@ func notificationRuleViewForJSON(row app.EventNotificationRuleView) map[string]a
 		"sink_id":          row.SinkID,
 		"template_subject": row.TemplateSubject,
 		"template_body":    row.TemplateBody,
-		"created_by":       task.UserInfoToJSON(row.CreatedBy),
+		"created_by":       task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":       row.CreatedAt,
 		"modified_at":      row.ModifiedAt,
 	}

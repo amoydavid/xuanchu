@@ -76,12 +76,12 @@ type TextInput struct {
 }
 
 type TaskLinkDTO struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	URL       string `json:"url"`
-	Title     string `json:"title,omitempty"`
-	CreatedAt string `json:"created_at"`
-	CreatedBy string `json:"created_by"`
+	ID        string             `json:"id"`
+	Type      string             `json:"type"`
+	URL       string             `json:"url"`
+	Title     string             `json:"title,omitempty"`
+	CreatedAt string             `json:"created_at"`
+	CreatedBy task.JSONActorInfo `json:"created_by"`
 }
 
 type taskResponseJSON struct {

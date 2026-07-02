@@ -339,7 +339,7 @@ func schedulerScopedConfigValue(configRepo *storage.ConfigRepository, configDefR
 }
 
 func buildNotificationDeliveryForReminder(db *gorm.DB, rule storage.ReminderRule, sink storage.NotificationSink, workspace storage.Workspace, project *NotificationProjectContext, tsk task.Task, recipient task.UserInfo, configValues map[string]string, secretValues map[string]string, now int64) (storage.NotificationDelivery, error) {
-	sinkView := notificationSinkViewFromRow(sink, task.UserInfo{ID: sink.CreatedBy, Name: sink.CreatedBy})
+	sinkView := notificationSinkViewFromRow(sink, actorInfoFromColumns(notificationSinkActorColumns(sink), sink.CreatedBy, nil))
 	eventType := reminderEventType(rule, tsk, now)
 	deliveryID := uuid.NewString()
 	eventID := uuid.NewString()

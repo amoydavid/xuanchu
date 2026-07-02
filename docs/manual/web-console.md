@@ -55,7 +55,7 @@ PAT / Agent token 登录没有特殊超级权限。实际权限仍然是：
 membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ token project scope
 ```
 
-tenant token 登录不读取 membership role，实际权限是 tenant scope、workspace/project allowlist 和 tenant 禁止清单的交集。当前 P1 可管理 user、member、tenant token 和 workspace 设置；仍不能调用 `/me`、`assignee:me`、impersonation、active context 写入，或创建带用户 `created_by` / `actor` 的资源。
+tenant token 登录不读取 membership role，实际权限是 tenant scope、workspace/project allowlist 和 tenant 禁止清单的交集。当前已可管理 user、member、tenant token、workspace 设置，以及 hook、notification、reminder、task link、project annotation 等带 `created_by` / `actor` 的 workspace 资源；这些资源会记录为系统 actor。仍不能调用 `/me`、`assignee:me`、impersonation 或 active context 写入。
 
 普通 Console 的 token 登录不是浏览器 SSO。它只是把 PAT / Agent / tenant token 放入当前 tab 的 `sessionStorage`；服务端仍按 Bearer token 走同一套 Authorization Decision，没有独立的浏览器会话或 cookie。未来的 OIDC / 飞书 OAuth 登录会引入独立的 browser session 凭证类型，权限仍由本地 membership role 或 tenant token 规则决定。
 
@@ -68,7 +68,7 @@ Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` �
 - 普通 API Tokens：管理 PAT / Agent token，适合用户或需要绑定成员身份的 Agent。
 - 租户访问令牌：管理 `tenant_access_token`。它绑定当前 workspace，不绑定用户，raw token 前缀为 `xuanchu_tenant_`，用于 HTTP API / HTTP MCP 的机器访问；明文只在创建成功后显示一次。
 
-tenant token 的 scope 选择器只展示后端允许的租户白名单。它可以获得 `user:*`、`member:*`、`token:*`、`workspace:write` 等系统 owner 能力，但不能获得 `hook:write`、`notification:write`、`reminder:write` 或 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入、创建带用户 `created_by` / `actor` 的资源等依赖用户 actor 的接口。
+tenant token 的 scope 选择器只展示后端允许的租户白名单。它可以获得 `user:*`、`member:*`、`token:*`、`workspace:write`、`hook:write`、`notification:write`、`reminder:write` 等系统 owner 能力，但不能获得 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入等依赖自然人 actor 的接口。
 
 ## 项目工作台链接
 

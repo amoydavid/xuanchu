@@ -37,6 +37,9 @@ func (s *Store) migrateSQLite() error {
 	if err := s.db.AutoMigrate(&TaskTag{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {
 		return err
 	}
+	if err := s.prepareActorColumnsForP2(); err != nil {
+		return err
+	}
 	if err := s.prepareProjectSchemaForM5(); err != nil {
 		return err
 	}
@@ -45,6 +48,85 @@ func (s *Store) migrateSQLite() error {
 	}
 	if err := s.prepareTaskAnnotationIDsForV020(); err != nil {
 		return err
+	}
+	if err := s.prepareActorColumnsForP2(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) prepareActorColumnsForP2() error {
+	columns := map[string][]struct {
+		name string
+		sql  string
+	}{
+		"project_annotations": {
+			{"created_by_actor_type", "ALTER TABLE project_annotations ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE project_annotations ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE project_annotations ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE project_annotations ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE project_annotations ADD COLUMN created_by_token_prefix TEXT"},
+		},
+		"hook_definitions": {
+			{"actor_type", "ALTER TABLE hook_definitions ADD COLUMN actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"actor_token_id", "ALTER TABLE hook_definitions ADD COLUMN actor_token_id TEXT"},
+			{"actor_token_name", "ALTER TABLE hook_definitions ADD COLUMN actor_token_name TEXT"},
+			{"actor_token_prefix", "ALTER TABLE hook_definitions ADD COLUMN actor_token_prefix TEXT"},
+		},
+		"hook_deliveries": {
+			{"actor_type", "ALTER TABLE hook_deliveries ADD COLUMN actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"actor_token_id", "ALTER TABLE hook_deliveries ADD COLUMN actor_token_id TEXT"},
+			{"actor_token_name", "ALTER TABLE hook_deliveries ADD COLUMN actor_token_name TEXT"},
+			{"actor_token_prefix", "ALTER TABLE hook_deliveries ADD COLUMN actor_token_prefix TEXT"},
+		},
+		"notification_sinks": {
+			{"created_by_actor_type", "ALTER TABLE notification_sinks ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE notification_sinks ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE notification_sinks ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE notification_sinks ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE notification_sinks ADD COLUMN created_by_token_prefix TEXT"},
+		},
+		"reminder_rules": {
+			{"created_by_actor_type", "ALTER TABLE reminder_rules ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE reminder_rules ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE reminder_rules ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE reminder_rules ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE reminder_rules ADD COLUMN created_by_token_prefix TEXT"},
+		},
+		"event_notification_rules": {
+			{"created_by_actor_type", "ALTER TABLE event_notification_rules ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE event_notification_rules ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE event_notification_rules ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE event_notification_rules ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE event_notification_rules ADD COLUMN created_by_token_prefix TEXT"},
+		},
+		"notification_deliveries": {
+			{"actor_type", "ALTER TABLE notification_deliveries ADD COLUMN actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"actor_user_id", "ALTER TABLE notification_deliveries ADD COLUMN actor_user_id TEXT"},
+			{"actor_token_id", "ALTER TABLE notification_deliveries ADD COLUMN actor_token_id TEXT"},
+			{"actor_token_name", "ALTER TABLE notification_deliveries ADD COLUMN actor_token_name TEXT"},
+			{"actor_token_prefix", "ALTER TABLE notification_deliveries ADD COLUMN actor_token_prefix TEXT"},
+		},
+		"task_links": {
+			{"created_by_actor_type", "ALTER TABLE task_links ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE task_links ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE task_links ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE task_links ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE task_links ADD COLUMN created_by_token_prefix TEXT"},
+		},
+	}
+	for table, tableColumns := range columns {
+		if !s.db.Migrator().HasTable(table) {
+			continue
+		}
+		for _, column := range tableColumns {
+			if s.db.Migrator().HasColumn(table, column.name) {
+				continue
+			}
+			if err := s.db.Exec(column.sql).Error; err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

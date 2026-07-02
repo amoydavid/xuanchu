@@ -43,7 +43,7 @@ HTTP MCP endpoint：
 
 HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token scope。Bearer token 可以是绑定用户的 PAT / Agent token，也可以是 workspace 级 `tenant_access_token`。
 
-HTTP MCP 与 HTTP API 共享同一授权决策：Bearer token、workspace/project 参数、`X-Xuanchu-As` impersonation、token scope 和 membership role 的结果一致。同一个 token 和 workspace/project 组合下，`task_query`（MCP）与 `GET /api/v1/tasks`（HTTP API）返回相同的可见任务集；权限不足时返回相同的错误码与 HTTP status。`tenant_access_token` 没有用户 principal，不支持 `X-Xuanchu-As`，可按 scope 调用 user/member/token 管理 tools，以及当前绑定 workspace 的读取和修改类 tools（例如 `workspace_info`、`workspace_modify`）；但不能调用 `me_get`、`user_use`、`workspace_use`、`workspace_list`、`workspace_add`、`workspace_archive`、active context 写入，或创建需要用户 `created_by` / `actor` 的对象。
+HTTP MCP 与 HTTP API 共享同一授权决策：Bearer token、workspace/project 参数、`X-Xuanchu-As` impersonation、token scope 和 membership role 的结果一致。同一个 token 和 workspace/project 组合下，`task_query`（MCP）与 `GET /api/v1/tasks`（HTTP API）返回相同的可见任务集；权限不足时返回相同的错误码与 HTTP status。`tenant_access_token` 没有用户 principal，不支持 `X-Xuanchu-As`，可按 scope 调用 user/member/token 管理 tools、hook/notification/reminder 写 tools，以及当前绑定 workspace 的读取和修改类 tools（例如 `workspace_info`、`workspace_modify`）；但不能调用 `me_get`、`user_use`、`workspace_use`、`workspace_list`、`workspace_add`、`workspace_archive` 或 active context 写入。
 
 stdio MCP 继续沿用本地 active user/workspace，不支持 impersonation。
 
@@ -84,7 +84,7 @@ xuanchu --workspace dajee token create mcp-agent \
 HTTP MCP 有两种常见凭证：
 
 - workspace-scoped Agent token：适合需要用户身份、成员管理、token 管理或 impersonation 的 Agent。通用 Agent 可用 `*` scope，再用 workspace/project allowlist 和 membership role 收窄。
-- `tenant_access_token`：适合类似 OpenAI API key 的机器访问，不绑定用户，只能在绑定 workspace 内调用租户白名单能力。它可执行任务、项目、配置、审计，并可按 scope 管理 user、member、tenant token 和 workspace 设置；创建 hook、notification sink、reminder rule、event notification rule、task link、project annotation 等仍需要用户 actor 的路径返回 `tenant_actor_not_user`。tenant token 转移 project 状态时不会写入自动状态变更 annotation。
+- `tenant_access_token`：适合类似 OpenAI API key 的机器访问，不绑定用户，只能在绑定 workspace 内调用租户白名单能力。它可执行任务、项目、配置、审计，并可按 scope 管理 user、member、tenant token、workspace 设置、hook、notification sink、reminder rule、event notification rule、task link 和 project annotation；这些 `created_by` / `actor` 字段会输出为 `{"type":"tenant_access_token","token":{...}}`。
 
 如果只允许服务单个 project，再加 `--project <slug>` 或 `--project-id <uuid>` 收窄 allowlist。
 

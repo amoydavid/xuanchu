@@ -67,21 +67,21 @@ type externalIDView struct {
 }
 
 type annotationView struct {
-	ID        string            `json:"id"`
-	ProjectID string            `json:"project_id"`
-	Entry     int64             `json:"entry"`
-	Content   string            `json:"content"`
-	CreatedBy task.JSONUserInfo `json:"created_by"`
-	CreatedAt int64             `json:"created_at"`
+	ID        string             `json:"id"`
+	ProjectID string             `json:"project_id"`
+	Entry     int64              `json:"entry"`
+	Content   string             `json:"content"`
+	CreatedBy task.JSONActorInfo `json:"created_by"`
+	CreatedAt int64              `json:"created_at"`
 }
 
 type taskLinkView struct {
-	ID        string            `json:"id"`
-	Type      string            `json:"type"`
-	URL       string            `json:"url"`
-	Title     string            `json:"title,omitempty"`
-	CreatedAt int64             `json:"created_at"`
-	CreatedBy task.JSONUserInfo `json:"created_by"`
+	ID        string             `json:"id"`
+	Type      string             `json:"type"`
+	URL       string             `json:"url"`
+	Title     string             `json:"title,omitempty"`
+	CreatedAt int64              `json:"created_at"`
+	CreatedBy task.JSONActorInfo `json:"created_by"`
 }
 
 func workspaceViewFromApp(row app.WorkspaceView) workspaceView {
@@ -191,7 +191,7 @@ func annotationViewFromApp(row app.ProjectAnnotationInfo) annotationView {
 		ProjectID: row.ProjectID,
 		Entry:     row.Entry,
 		Content:   row.Content,
-		CreatedBy: task.UserInfoToJSON(row.CreatedBy),
+		CreatedBy: task.ActorInfoToJSON(row.CreatedBy),
 		CreatedAt: row.CreatedAt,
 	}
 }
@@ -211,6 +211,6 @@ func taskLinkViewFromApp(row task.TaskLinkInfo) taskLinkView {
 		URL:       row.URL,
 		Title:     row.Title,
 		CreatedAt: row.CreatedAt,
-		CreatedBy: task.UserInfoToJSON(row.CreatedBy),
+		CreatedBy: task.ActorInfoToJSON(row.CreatedBy),
 	}
 }

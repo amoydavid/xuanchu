@@ -4,7 +4,7 @@
 
 **目标：** 完整实现 `tenant_access_token` 作为 workspace system owner credential 登录 Web Console、管理 workspace 内 user/member/token/workspace，并在 P2 支持 user-shaped actor 资源。
 
-**当前实现状态（2026-07-02）：** 已完成 Chunk 1 的后端基础切片，以及 Chunk 2 的 P1 MCP / Web Console 切片：tenant P1 scope、`/api/v1/credentials/current`、tenant owner-equivalent runtime、user/member/token/workspace 管理、admin tenant switch 短期 token、Web Console tenant 登录和 admin workspace detail 一键 tenant switch。Chunk 3 P2 actor schema 仍待后续实现。
+**当前实现状态（2026-07-02）：** P1/P2 均已实现。tenant token 作为 owner-equivalent runtime actor 进入 HTTP/MCP/Web Console，可管理 user/member/token/workspace；admin workspace detail 可签发短期 tenant switch token；P2 actor schema 已覆盖 task link、project annotation、hook、notification sink、reminder rule、event notification rule、hook delivery 和 notification delivery。
 
 **架构：** 继续复用 `api_tokens` 表，不新增 tenant session 表，不创建 system user。P1 让 tenant token 作为 owner-equivalent runtime actor 进入 HTTP/MCP/Web Console；P2 把仍依赖 `created_by_user_id` 的资源升级为 actor model，允许 system actor 创建 hook、notification、reminder、annotation、task link 等资源。
 
@@ -47,16 +47,16 @@ Web P1:
 
 ## Chunk 1: P1 后端 Scope、Current Credential 与 Tenant 管理权限
 
-### Task 1: Tenant scope 白名单匹配 P1
+### Task 1: Tenant scope 白名单匹配 P1/P2
 
-- [x] Write failing tests in `internal/auth/token_test.go` proving tenant wildcard includes `user:read/write`, `member:read/write`, `token:read/write`, `workspace:read/write`, excludes `hook:write`, `notification:write`, `reminder:write`, and rejects explicit P1-forbidden write scopes.
+- [x] Write failing tests in `internal/auth/token_test.go` proving tenant wildcard includes `user:read/write`, `member:read/write`, `token:read/write`, `workspace:read/write`, and P2 `hook:write`, `notification:write`, `reminder:write`; reject forbidden `impersonate`.
 - [x] Run `go test ./internal/auth -run Tenant -count=1` and confirm failure.
 - [x] Update `internal/auth/scope.go`.
 - [x] Re-run focused test.
 
 ### Task 2: 新增 `/api/v1/credentials/current`
 
-- [x] Write failing HTTP tests proving tenant token returns `actor_type=tenant_access_token`, owner effective role, bound workspace, and P1 capabilities without hook/notification/reminder write scopes.
+- [x] Write failing HTTP tests proving tenant token returns `actor_type=tenant_access_token`, owner effective role, bound workspace, and P2 capabilities including hook/notification/reminder write scopes.
 - [x] Implement app/http response helpers without changing `/api/v1/me`; tenant token must still get `tenant_actor_not_user` from `/me`.
 - [x] Register Huma route.
 - [x] Re-run focused HTTP tests.
@@ -104,33 +104,33 @@ Web P1:
 
 ### Task 8: Storage actor model
 
-- [ ] Add actor columns for user-shaped resources.
-- [ ] Migrate existing rows to `actor_type=user`.
-- [ ] Update repos to read/write actor fields while preserving legacy compatibility.
+- [x] Add actor columns for user-shaped resources.
+- [x] Migrate existing rows to `actor_type=user`.
+- [x] Update repos to read/write actor fields while preserving legacy compatibility.
 
 ### Task 9: App/HTTP/MCP 支持 tenant actor 创建资源
 
-- [ ] Update task links, project annotations, hook definitions, notification sinks, reminder rules, event notification rules, and delivery actor rows to accept tenant actor.
-- [ ] Update JSON/MCP response shape to include system actor instead of `task.UserInfo` where applicable.
-- [ ] Add tests for tenant-created resources and event delivery actor output.
+- [x] Update task links, project annotations, hook definitions, notification sinks, reminder rules, event notification rules, and delivery actor rows to accept tenant actor.
+- [x] Update JSON/MCP response shape to include system actor instead of `task.UserInfo` where applicable.
+- [x] Add tests for tenant-created resources and event delivery actor output.
 
 ## Chunk 4: 文档与验证
 
 ### Task 10: 文档对齐
 
-- [ ] Update `README.md`, `ROADMAP.md`, `docs/manual/web-console.md`, `docs/manual/mcp.md`, `docs/manual/team-workspaces-projects.md`.
-- [ ] Mark source spec and this plan with implementation status.
+- [x] Update `README.md`, `ROADMAP.md`, `docs/manual/web-console.md`, `docs/manual/mcp.md`, `docs/manual/team-workspaces-projects.md`.
+- [x] Mark source spec and this plan with implementation status.
 
 ### Task 11: 最终验证
 
-- [ ] Run `git diff --check`.
-- [ ] Run `go test ./internal/auth ./internal/app ./internal/httpapi ./internal/mcpserver ./internal/storage -count=1`.
-- [ ] Run `go test ./...`.
-- [ ] Run `CGO_ENABLED=0 go test ./...`.
-- [ ] Run `CGO_ENABLED=0 go build ./cmd/xuanchu`.
-- [ ] Run `go vet ./...`.
-- [ ] Run `pnpm --dir web typecheck`.
-- [ ] Run `pnpm --dir web lint`.
-- [ ] Run `pnpm --dir web test`.
-- [ ] Run `pnpm --dir web build`.
-- [ ] Run `pnpm --dir web run smoke:editing`.
+- [x] Run `git diff --check`.
+- [x] Run `go test ./internal/auth ./internal/app ./internal/httpapi ./internal/mcpserver ./internal/storage -count=1`.
+- [x] Run `go test ./...`.
+- [x] Run `CGO_ENABLED=0 go test ./...`.
+- [x] Run `CGO_ENABLED=0 go build ./cmd/xuanchu`.
+- [x] Run `go vet ./...`.
+- [x] Run `pnpm --dir web typecheck`.
+- [x] Run `pnpm --dir web lint`.
+- [x] Run `pnpm --dir web test`.
+- [x] Run `pnpm --dir web build`.
+- [x] Run `pnpm --dir web run smoke:editing`.

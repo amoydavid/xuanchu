@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
@@ -35,41 +35,42 @@ type hookModifyRequest struct {
 }
 
 type hookResponse struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	ScopeType      string   `json:"scope_type"`
-	WorkspaceID    string   `json:"workspace_id"`
-	ProjectID      *string  `json:"project_id,omitempty"`
-	EventTypes     []string `json:"event_types"`
-	SinkID         string   `json:"sink_id"`
-	SinkName       string   `json:"sink_name"`
-	SinkType       string   `json:"sink_type"`
-	Enabled        bool     `json:"enabled"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
-	MaxAttempts    int      `json:"max_attempts"`
-	CreatedAt      int64    `json:"created_at"`
-	ModifiedAt     int64    `json:"modified_at"`
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	ScopeType      string             `json:"scope_type"`
+	WorkspaceID    string             `json:"workspace_id"`
+	ProjectID      *string            `json:"project_id,omitempty"`
+	EventTypes     []string           `json:"event_types"`
+	SinkID         string             `json:"sink_id"`
+	SinkName       string             `json:"sink_name"`
+	SinkType       string             `json:"sink_type"`
+	Enabled        bool               `json:"enabled"`
+	TimeoutSeconds int                `json:"timeout_seconds"`
+	MaxAttempts    int                `json:"max_attempts"`
+	CreatedBy      task.JSONActorInfo `json:"created_by"`
+	CreatedAt      int64              `json:"created_at"`
+	ModifiedAt     int64              `json:"modified_at"`
 }
 
 type hookDeliveryResponse struct {
-	ID             string            `json:"id"`
-	HookID         string            `json:"hook_id"`
-	EventID        string            `json:"event_id"`
-	EventType      string            `json:"event_type"`
-	WorkspaceID    string            `json:"workspace_id"`
-	ProjectID      *string           `json:"project_id,omitempty"`
-	Actor          task.JSONUserInfo `json:"actor"`
-	Payload        map[string]any    `json:"payload"`
-	Headers        map[string]string `json:"headers"`
-	Status         string            `json:"status"`
-	AttemptCount   int               `json:"attempt_count"`
-	NextAttemptAt  *int64            `json:"next_attempt_at,omitempty"`
-	ClaimExpiresAt *int64            `json:"claim_expires_at,omitempty"`
-	LastAttemptAt  *int64            `json:"last_attempt_at,omitempty"`
-	LastStatusCode *int              `json:"last_status_code,omitempty"`
-	LastError      string            `json:"last_error,omitempty"`
-	CreatedAt      int64             `json:"created_at"`
-	ModifiedAt     int64             `json:"modified_at"`
+	ID             string             `json:"id"`
+	HookID         string             `json:"hook_id"`
+	EventID        string             `json:"event_id"`
+	EventType      string             `json:"event_type"`
+	WorkspaceID    string             `json:"workspace_id"`
+	ProjectID      *string            `json:"project_id,omitempty"`
+	Actor          task.JSONActorInfo `json:"actor"`
+	Payload        map[string]any     `json:"payload"`
+	Headers        map[string]string  `json:"headers"`
+	Status         string             `json:"status"`
+	AttemptCount   int                `json:"attempt_count"`
+	NextAttemptAt  *int64             `json:"next_attempt_at,omitempty"`
+	ClaimExpiresAt *int64             `json:"claim_expires_at,omitempty"`
+	LastAttemptAt  *int64             `json:"last_attempt_at,omitempty"`
+	LastStatusCode *int               `json:"last_status_code,omitempty"`
+	LastError      string             `json:"last_error,omitempty"`
+	CreatedAt      int64              `json:"created_at"`
+	ModifiedAt     int64              `json:"modified_at"`
 }
 
 func (s *Server) handleHookList(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +286,7 @@ func hookResponseFromView(view app.HookView) hookResponse {
 		Enabled:        view.Enabled,
 		TimeoutSeconds: view.TimeoutSeconds,
 		MaxAttempts:    view.MaxAttempts,
+		CreatedBy:      task.ActorInfoToJSON(view.Actor),
 		CreatedAt:      view.CreatedAt,
 		ModifiedAt:     view.ModifiedAt,
 	}
@@ -298,7 +300,7 @@ func hookDeliveryResponseFromView(view app.HookDeliveryView) hookDeliveryRespons
 		EventType:      view.EventType,
 		WorkspaceID:    view.WorkspaceID,
 		ProjectID:      view.ProjectID,
-		Actor:          task.UserInfoToJSON(view.Actor),
+		Actor:          task.ActorInfoToJSON(view.Actor),
 		Payload:        view.Payload,
 		Headers:        view.Headers,
 		Status:         view.Status,

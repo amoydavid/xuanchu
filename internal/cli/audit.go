@@ -127,6 +127,28 @@ func userInfoToJSONMap(ui *task.UserInfo) map[string]any {
 	return m
 }
 
+func actorInfoToJSONMap(actor task.ActorInfo) map[string]any {
+	raw := task.ActorInfoToJSON(actor)
+	out := map[string]any{"type": raw.Type}
+	if raw.User != nil {
+		out["user"] = userInfoToJSONMap(&task.UserInfo{
+			ID:          raw.User.ID,
+			Name:        raw.User.Name,
+			DisplayName: raw.User.DisplayName,
+			Email:       raw.User.Email,
+			ExternalIDs: nil,
+		})
+	}
+	if raw.Token != nil {
+		out["token"] = map[string]any{
+			"id":     raw.Token.ID,
+			"name":   raw.Token.Name,
+			"prefix": raw.Token.Prefix,
+		}
+	}
+	return out
+}
+
 func actorDisplayName(actor *task.UserInfo) string {
 	if actor == nil {
 		return ""

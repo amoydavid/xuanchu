@@ -67,7 +67,7 @@ func TestValidateTenantScopesFiltersWildcards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{ScopeImpersonate, ScopeHookWrite, ScopeNotificationWrite, ScopeReminderWrite} {
+	for _, forbidden := range []string{ScopeImpersonate} {
 		if scopes.Has(forbidden) {
 			t.Fatalf("tenant scopes include forbidden scope %q: %#v", forbidden, scopes.Values())
 		}
@@ -78,19 +78,18 @@ func TestValidateTenantScopesFiltersWildcards(t *testing.T) {
 		ScopeTokenRead, ScopeTokenWrite,
 		"user:read", "user:write",
 		"member:read", "member:write",
-		ScopeHookRead, ScopeNotificationRead, ScopeReminderRead,
+		ScopeHookRead, ScopeHookWrite,
+		ScopeNotificationRead, ScopeNotificationWrite,
+		ScopeReminderRead, ScopeReminderWrite,
 	} {
 		if !scopes.Has(want) {
 			t.Fatalf("tenant scopes missing allowed scope %q: %#v", want, scopes.Values())
 		}
 	}
-	if scopes.Has(ScopeHookWrite) || scopes.Has(ScopeNotificationWrite) || scopes.Has(ScopeReminderWrite) {
-		t.Fatalf("tenant scopes missing allowed scopes: %#v", scopes.Values())
-	}
 }
 
 func TestValidateTenantScopesRejectsForbidden(t *testing.T) {
-	for _, value := range []string{"impersonate", "hook:write", "hook:*", "notification:write", "notification:*", "reminder:write", "reminder:*"} {
+	for _, value := range []string{"impersonate"} {
 		if _, err := ValidateTenantTokenScopes([]string{value}); err == nil {
 			t.Fatalf("ValidateTenantTokenScopes(%q) expected error", value)
 		}

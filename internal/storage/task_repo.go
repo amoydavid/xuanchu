@@ -627,12 +627,44 @@ func (r *TaskRepository) loadLinksByTask(models []Task) (map[string][]domain.Tas
 			infos = append(infos, domain.TaskLinkInfo{
 				ID: l.ID, Type: l.Type, URL: l.URL,
 				Title: l.Title, CreatedAt: l.CreatedAt,
-				CreatedBy: domain.UserInfo{ID: l.CreatedBy},
+				CreatedBy: taskLinkActorInfo(l),
 			})
 		}
 		result[uuid] = infos
 	}
 	return result, nil
+}
+
+func taskLinkActorInfo(row TaskLink) domain.ActorInfo {
+	actorType := row.CreatedByActorType
+	if actorType == "" {
+		actorType = "user"
+	}
+	if actorType == "tenant_access_token" {
+		token := domain.TokenActorInfo{
+			ID:     derefString(row.CreatedByTokenID),
+			Name:   derefString(row.CreatedByTokenName),
+			Prefix: derefString(row.CreatedByTokenPrefix),
+		}
+		return domain.ActorInfo{
+			Type:  actorType,
+			ID:    token.ID,
+			Name:  token.Name,
+			Token: &token,
+		}
+	}
+	userID := row.CreatedBy
+	if row.CreatedByUserID != nil && *row.CreatedByUserID != "" {
+		userID = *row.CreatedByUserID
+	}
+	return domain.ActorInfo{Type: "user", ID: userID, Name: userID, User: &domain.UserInfo{ID: userID, Name: userID}}
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 func sortedUnique(values []string) []string {

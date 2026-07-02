@@ -619,7 +619,7 @@ func notificationSinkViewForMCP(row app.NotificationSinkView) map[string]any {
 		"timeout_seconds":   row.TimeoutSeconds,
 		"max_attempts":      row.MaxAttempts,
 		"max_concurrency":   row.MaxConcurrency,
-		"created_by":        task.UserInfoToJSON(row.CreatedBy),
+		"created_by":        task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":        row.CreatedAt,
 		"modified_at":       row.ModifiedAt,
 	}
@@ -650,7 +650,7 @@ func reminderRuleViewForMCP(row app.ReminderRuleView) map[string]any {
 		"audience_type":   row.AudienceType,
 		"recipient_users": notificationUserInfosForMCP(row.RecipientUsers),
 		"sink_id":         row.SinkID,
-		"created_by":      task.UserInfoToJSON(row.CreatedBy),
+		"created_by":      task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":      row.CreatedAt,
 		"modified_at":     row.ModifiedAt,
 	}
@@ -678,7 +678,7 @@ func notificationRuleViewForMCP(row app.EventNotificationRuleView) map[string]an
 		"sink_id":          row.SinkID,
 		"template_subject": row.TemplateSubject,
 		"template_body":    row.TemplateBody,
-		"created_by":       task.UserInfoToJSON(row.CreatedBy),
+		"created_by":       task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":       row.CreatedAt,
 		"modified_at":      row.ModifiedAt,
 	}
@@ -705,6 +705,7 @@ func notificationDeliveryViewForMCP(row app.NotificationDeliveryView) map[string
 		"recipient":                     task.UserInfoToJSON(row.Recipient),
 		"event_id":                      row.EventID,
 		"event_type":                    row.EventType,
+		"actor":                         task.ActorInfoToJSON(row.Actor),
 		"resolved_url":                  row.ResolvedURL,
 		"resolved_endpoint_source":      row.ResolvedEndpointSource,
 		"resolved_endpoint_fingerprint": row.ResolvedEndpointFingerprint,

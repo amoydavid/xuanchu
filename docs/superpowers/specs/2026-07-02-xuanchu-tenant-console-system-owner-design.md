@@ -1,7 +1,7 @@
 # Xuanchu Tenant Console System Owner 设计
 
 **日期：** 2026-07-02
-**状态：** 草案
+**状态：** 已实现
 **背景需求：** 现有 `tenant_access_token` 已支持 HTTP API / HTTP MCP，但不能登录 Web Console，也不能管理 user / member / token / workspace。新的产品目标是：`tenant_access_token` 可以作为 workspace 级“系统超管”进入 Web Console；server admin 在超管平台可以直接切换到某个 workspace 的 tenant 身份，像 owner 一样完成该 workspace 内的管理和业务操作。
 
 ## 1. 当前代码现状
@@ -127,7 +127,7 @@ tenant token role(owner-equivalent)
 
 ### 6.2 Tenant owner scope 白名单
 
-tenant token 的 P1 scope 白名单扩大为：
+tenant token 的 scope 白名单扩大为：
 
 ```text
 task:read task:write
@@ -139,31 +139,18 @@ audit:read
 user:read user:write
 member:read member:write
 token:read token:write
-hook:read
-notification:read
-reminder:read
+hook:read hook:write
+notification:read notification:write
+reminder:read reminder:write
 ```
 
 继续禁止：
 
 ```text
 impersonate
-hook:write
-notification:write
-reminder:write
 ```
 
-`*` 对 tenant token 展开为上述 P1 白名单，不包含 `impersonate`、`hook:write`、`notification:write`、`reminder:write`。
-
-P2 完成 actor schema 升级后，tenant token scope 白名单再加入：
-
-```text
-hook:write
-notification:write
-reminder:write
-```
-
-这样 `credentials/current.capabilities` 在 P1 不会声明 hook / notification / reminder 的写能力，前端也不会因为 capability 误判而展示创建入口。
+`*` 对 tenant token 展开为上述白名单，不包含 `impersonate`。P1 阶段曾临时不包含 `hook:write`、`notification:write`、`reminder:write`；本轮 P2 已完成 actor schema 升级，这三个写 scope 已进入 tenant 白名单，并会出现在 `credentials/current.capabilities` 中。
 
 兼容要求：
 
@@ -493,7 +480,7 @@ server admin 侧保留独立接口边界：
 
 ## 11. User-shaped Actor 资源
 
-当前部分业务资源仍只有 `created_by_user_id` 或 user-shaped `actor`：
+P2 之前，部分业务资源仍只有 `created_by_user_id` 或 user-shaped `actor`：
 
 - task link
 - project annotation
@@ -503,7 +490,7 @@ server admin 侧保留独立接口边界：
 - event notification rule
 - hook delivery / event notification delivery actor
 
-完整 workspace 操作覆盖必须支持这些资源的系统 actor，相关 schema 升级纳入 P2。
+完整 workspace 操作覆盖必须支持这些资源的系统 actor，相关 schema 升级纳入 P2。本轮实现后，这些资源应统一输出 actor model。
 
 ### 11.1 P1 规则
 
@@ -542,7 +529,7 @@ created_by_token_prefix TEXT NULL
 }
 ```
 
-P2 完成后，tenant system owner 才算覆盖所有 workspace 操作，包括 hook / notification / reminder 的创建和事件投递。
+P2 完成后，tenant system owner 覆盖 workspace owner 视角下的资源操作，包括 hook / notification / reminder 的创建和事件投递。仍保留 `/me`、`assignee:me`、impersonation、active context use/none 等自然人语义限制。
 
 ## 12. MCP 语义
 
@@ -731,13 +718,15 @@ workspace_scope_denied              403  token 不绑定该 workspace
 - tenant token 带 `token:write` 可调用 `/api/v1/tenant-access-tokens` 创建、修改、吊销普通 tenant token。
 - tenant token 带 `workspace:write` 可修改 workspace。
 - tenant token 不带对应 scope 时返回 `token_scope_denied`。
-- P1 `credentials/current.capabilities` 不返回 `hook:write`、`notification:write`、`reminder:write`。
+- P2 `credentials/current.capabilities` 返回 `hook:write`、`notification:write`、`reminder:write`。
 - server admin 可创建短期 tenant switch token。
 - 短期 tenant switch token 过期后不能使用。
 - admin-switch tenant token 不出现在 `/tokens` 和 `/admin/tokens` 的常规 tenant token 列表。
 - `/api/v1/admin/tenant-access-tokens` 默认不返回 admin-switch token，显式 `include_admin_switch=true` 时可返回并可吊销。
 - 普通 tenant token 可以创建为永不过期。
 - 审计记录 `actor_type=tenant_access_token`，并包含 token id/name/prefix。
+- tenant token 可创建 hook、notification sink、reminder rule、event notification rule、task link、project annotation，并在 `created_by` / `actor` 中输出 `type=tenant_access_token`。
+- tenant token 触发 hook / event notification delivery 时，delivery actor 输出 `type=tenant_access_token`。
 
 前端：
 
@@ -787,6 +776,8 @@ pnpm --dir web run smoke:editing
 - delivery actor schema 支持 tenant token。
 - MCP 禁止清单按新能力同步放开。
 - Web Console 对所有 workspace 操作完成 capability-driven UI。
+
+截至 2026-07-02，本需求文档的 P1/P2 均要求落地；P1 是历史中间态，不作为最终交付态。
 
 ## 20. 与旧规格的关系
 

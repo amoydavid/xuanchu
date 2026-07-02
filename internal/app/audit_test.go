@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
@@ -179,20 +180,25 @@ func TestTenantTokenRuntimeUsesScopeAndListsBoundWorkspace(t *testing.T) {
 	}
 }
 
-func TestTenantTokenCannotRequestP2WriteScopes(t *testing.T) {
+func TestTenantTokenCanRequestP2WriteScopes(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
 	for _, scope := range []string{"notification:write", "hook:write", "reminder:write"} {
-		_, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
 			Name:   "runtime",
 			Scopes: []string{"task:write", scope},
 		})
-		assertRuntimeCode(t, err, "tenant_token_scope_invalid")
+		if err != nil {
+			t.Fatalf("CreateTenantAccessToken(%s) error = %v", scope, err)
+		}
+		if !slices.Contains(created.View.Scopes, scope) {
+			t.Fatalf("tenant token scopes = %#v, missing %s", created.View.Scopes, scope)
+		}
 	}
 }
 
-func TestTenantTokenTaskEventsDoNotCreateUserShapedDeliveries(t *testing.T) {
+func TestTenantTokenTaskEventsCreateSystemActorDeliveries(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
@@ -224,12 +230,15 @@ func TestTenantTokenTaskEventsDoNotCreateUserShapedDeliveries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListHookDeliveries() error = %v", err)
 	}
-	if len(deliveries) != 0 {
-		t.Fatalf("deliveries = %#v, want none for tenant actor", deliveries)
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %#v, want one tenant actor delivery", deliveries)
+	}
+	if deliveries[0].Actor.Type != "tenant_access_token" || deliveries[0].Actor.Token == nil || deliveries[0].Actor.Token.ID != created.View.ID {
+		t.Fatalf("delivery actor = %#v, want tenant token %s", deliveries[0].Actor, created.View.ID)
 	}
 }
 
-func TestTenantTokenProjectTransitionDoesNotCreateUserShapedAnnotation(t *testing.T) {
+func TestTenantTokenProjectTransitionCreatesSystemActorAnnotation(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 	project, err := svc.AddProject(AddProjectInput{Slug: "tenstat", Name: "Tenant Status"})
@@ -251,8 +260,87 @@ func TestTenantTokenProjectTransitionDoesNotCreateUserShapedAnnotation(t *testin
 	if err != nil {
 		t.Fatalf("ProjectAnnotations() error = %v", err)
 	}
-	if len(annotations) != 0 {
-		t.Fatalf("annotations = %#v, want none for tenant actor transition", annotations)
+	if len(annotations) != 1 {
+		t.Fatalf("annotations = %#v, want one tenant actor annotation", annotations)
+	}
+	if annotations[0].CreatedBy.Type != "tenant_access_token" || annotations[0].CreatedBy.Token == nil || annotations[0].CreatedBy.Token.ID != created.View.ID {
+		t.Fatalf("annotation actor = %#v, want tenant token %s", annotations[0].CreatedBy, created.View.ID)
+	}
+	timeline, err := svc.ProjectTimeline(project.ID, TimelineOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ProjectTimeline() error = %v", err)
+	}
+	if len(timeline) != 1 {
+		t.Fatalf("timeline = %#v, want one tenant actor entry", timeline)
+	}
+	if timeline[0].CreatedBy.Type != "tenant_access_token" || timeline[0].CreatedBy.Token == nil || timeline[0].CreatedBy.Token.ID != created.View.ID {
+		t.Fatalf("timeline actor = %#v, want tenant token %s", timeline[0].CreatedBy, created.View.ID)
+	}
+}
+
+func TestTenantTokenCreatesNotificationReminderAndEventRulesAsSystemActor(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"notification:write", "reminder:write", "task:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenantSvc := mustTenantServiceForTest(t, svc, created.RawToken, "notification:write", PermissionNotificationWrite, 100)
+	sink, err := tenantSvc.AddNotificationSink(NotificationSinkAddInput{
+		Name:         "tenant-sink",
+		Type:         "webhook",
+		EndpointMode: "static_url",
+		URL:          "https://example.com/xuanchu",
+	})
+	if err != nil {
+		t.Fatalf("AddNotificationSink() error = %v", err)
+	}
+	if sink.CreatedBy.Type != "tenant_access_token" || sink.CreatedBy.Token == nil || sink.CreatedBy.Token.ID != created.View.ID {
+		t.Fatalf("sink actor = %#v, want tenant token %s", sink.CreatedBy, created.View.ID)
+	}
+	reminder, err := tenantSvc.AddReminderRule(ReminderRuleAddInput{
+		Name:          "tenant-reminder",
+		TriggerType:   "due_before",
+		OffsetSeconds: 60,
+		AudienceType:  "assignees",
+		SinkRef:       sink.ID,
+	})
+	if err != nil {
+		t.Fatalf("AddReminderRule() error = %v", err)
+	}
+	if reminder.CreatedBy.Type != "tenant_access_token" || reminder.CreatedBy.Token == nil || reminder.CreatedBy.Token.ID != created.View.ID {
+		t.Fatalf("reminder actor = %#v, want tenant token %s", reminder.CreatedBy, created.View.ID)
+	}
+	rule, err := tenantSvc.AddEventNotificationRule(EventNotificationRuleAddInput{
+		Name:         "tenant-event",
+		EventType:    "task.created",
+		AudienceType: "explicit_users",
+		Recipients:   []string{"local"},
+		SinkRef:      sink.ID,
+	})
+	if err != nil {
+		t.Fatalf("AddEventNotificationRule() error = %v", err)
+	}
+	if rule.CreatedBy.Type != "tenant_access_token" || rule.CreatedBy.Token == nil || rule.CreatedBy.Token.ID != created.View.ID {
+		t.Fatalf("notification rule actor = %#v, want tenant token %s", rule.CreatedBy, created.View.ID)
+	}
+
+	taskSvc := mustTenantServiceForTest(t, svc, created.RawToken, "task:write", PermissionTaskWrite, 100)
+	if _, err := taskSvc.Add(AddInput{Title: "tenant event task"}); err != nil {
+		t.Fatalf("Add(task) error = %v", err)
+	}
+	deliveries, err := svc.ListNotificationDeliveries(sink.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListNotificationDeliveries() error = %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("notification deliveries = %#v, want one tenant actor delivery", deliveries)
+	}
+	if deliveries[0].Actor.Type != "tenant_access_token" || deliveries[0].Actor.Token == nil || deliveries[0].Actor.Token.ID != created.View.ID {
+		t.Fatalf("notification delivery actor = %#v, want tenant token %s", deliveries[0].Actor, created.View.ID)
 	}
 }
 

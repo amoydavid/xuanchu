@@ -76,12 +76,12 @@ type addLinkRequest struct {
 }
 
 type linkJSON struct {
-	ID        string            `json:"id"`
-	Type      string            `json:"type"`
-	URL       string            `json:"url"`
-	Title     string            `json:"title,omitempty"`
-	CreatedAt string            `json:"created_at"`
-	CreatedBy task.JSONUserInfo `json:"created_by"`
+	ID        string             `json:"id"`
+	Type      string             `json:"type"`
+	URL       string             `json:"url"`
+	Title     string             `json:"title,omitempty"`
+	CreatedAt string             `json:"created_at"`
+	CreatedBy task.JSONActorInfo `json:"created_by"`
 }
 
 const (
@@ -768,7 +768,7 @@ func taskLinkToJSON(link task.TaskLinkInfo) linkJSON {
 		URL:       link.URL,
 		Title:     link.Title,
 		CreatedAt: time.Unix(link.CreatedAt, 0).UTC().Format(time.RFC3339),
-		CreatedBy: task.UserInfoToJSON(link.CreatedBy),
+		CreatedBy: task.ActorInfoToJSON(link.CreatedBy),
 	}
 }
 

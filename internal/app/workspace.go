@@ -930,9 +930,6 @@ func (s *Service) TaskAddLink(taskRef, linkType, url, title string) (task.TaskLi
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return task.TaskLinkInfo{}, err
 	}
-	if s.runtime.IsTenantActor() {
-		return task.TaskLinkInfo{}, tenantActorNotUserError()
-	}
 	var result task.TaskLinkInfo
 	if err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
 		created, updated, err := tx.addLinkLocked(taskRef, linkType, url, title)
@@ -980,6 +977,12 @@ func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.Task
 		CreatedAt: now,
 		CreatedBy: s.runtime.ActorUserID,
 	}
+	actor := s.runtime.actorColumns()
+	link.CreatedByActorType = actor.Type
+	link.CreatedByUserID = actor.UserID
+	link.CreatedByTokenID = actor.TokenID
+	link.CreatedByTokenName = actor.TokenName
+	link.CreatedByTokenPrefix = actor.TokenPrefix
 	created, err := storage.NewTaskLinkRepository(s.store.DB()).Create(link)
 	if err != nil {
 		if storage.IsUniqueConstraintError(err) {
@@ -998,7 +1001,7 @@ func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.Task
 	return task.TaskLinkInfo{
 		ID: created.ID, Type: created.Type, URL: created.URL,
 		Title: created.Title, CreatedAt: created.CreatedAt,
-		CreatedBy: task.UserInfo{ID: created.CreatedBy},
+		CreatedBy: actorInfoFromColumns(taskLinkActorColumns(created), created.CreatedBy, nil),
 	}, updated, nil
 }
 
@@ -1096,7 +1099,7 @@ func (s *Service) updateLinkLocked(taskRef, linkID, linkType, url, title string)
 	return task.TaskLinkInfo{
 		ID: updatedLink.ID, Type: updatedLink.Type, URL: updatedLink.URL,
 		Title: updatedLink.Title, CreatedAt: updatedLink.CreatedAt,
-		CreatedBy: task.UserInfo{ID: updatedLink.CreatedBy},
+		CreatedBy: actorInfoFromColumns(taskLinkActorColumns(updatedLink), updatedLink.CreatedBy, nil),
 	}, updatedTask, nil
 }
 

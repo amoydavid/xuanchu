@@ -17,7 +17,7 @@ type ProjectAnnotationInfo struct {
 	ProjectID string
 	Entry     int64
 	Content   string
-	CreatedBy task.UserInfo
+	CreatedBy task.ActorInfo
 	CreatedAt int64
 }
 
@@ -27,12 +27,12 @@ type TimelineOptions struct {
 }
 
 type TimelineEntry struct {
-	SourceType  string        `json:"source_type"`
-	SourceID    string        `json:"source_id"`
-	SourceLabel string        `json:"source_label"`
-	Entry       int64         `json:"entry"`
-	Content     string        `json:"content"`
-	CreatedBy   task.UserInfo `json:"created_by"`
+	SourceType  string         `json:"source_type"`
+	SourceID    string         `json:"source_id"`
+	SourceLabel string         `json:"source_label"`
+	Entry       int64          `json:"entry"`
+	Content     string         `json:"content"`
+	CreatedBy   task.ActorInfo `json:"created_by"`
 }
 
 type ProjectView struct {
@@ -309,8 +309,12 @@ func (s *Service) projectViewForRow(project storage.Project) (ProjectView, error
 	if err != nil {
 		return ProjectView{}, err
 	}
+	userInfos, err := s.resolveUserInfos(projectAnnotationUserIDs(recent))
+	if err != nil {
+		return ProjectView{}, err
+	}
 	for _, a := range recent {
-		view.RecentAnnotations = append(view.RecentAnnotations, projectAnnotationInfoFromModel(a))
+		view.RecentAnnotations = append(view.RecentAnnotations, projectAnnotationInfoFromModel(a, userInfos))
 	}
 	return view, nil
 }
@@ -379,13 +383,13 @@ func normalizeProjectSlug(slug string) (string, error) {
 	return slug, nil
 }
 
-func projectAnnotationInfoFromModel(m storage.ProjectAnnotation) ProjectAnnotationInfo {
+func projectAnnotationInfoFromModel(m storage.ProjectAnnotation, users map[string]task.UserInfo) ProjectAnnotationInfo {
 	return ProjectAnnotationInfo{
 		ID:        m.ID,
 		ProjectID: m.ProjectID,
 		Entry:     m.Entry,
 		Content:   m.Content,
-		CreatedBy: task.UserInfo{ID: m.CreatedBy},
+		CreatedBy: actorInfoFromColumns(projectAnnotationActorColumns(m), m.CreatedBy, users),
 		CreatedAt: m.CreatedAt,
 	}
 }
@@ -402,26 +406,19 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 	if err := s.Require(PermissionProjectManage); err != nil {
 		return ProjectAnnotationInfo{}, err
 	}
-	if s.runtime.IsTenantActor() {
-		return ProjectAnnotationInfo{}, tenantActorNotUserError()
-	}
 	var result ProjectAnnotationInfo
 	err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
-		annotation, project, err := tx.projectAnnotateLocked(projectRef, content)
+		created, project, err := tx.projectAnnotateLocked(projectRef, content)
 		if err != nil {
 			return nil, nil, err
 		}
-		userInfos, err := tx.resolveUserInfos([]string{annotation.CreatedBy.ID})
+		userInfos, err := tx.resolveUserInfos(projectAnnotationUserIDs([]storage.ProjectAnnotation{created}))
 		if err != nil {
 			return nil, nil, err
 		}
-		result = annotation
-		if userInfo, ok := userInfos[annotation.CreatedBy.ID]; ok {
-			annotation.CreatedBy = userInfo
-			result = annotation
-		}
+		result = projectAnnotationInfoFromModel(created, userInfos)
 		view := projectViewFromRow(project, storage.ProjectTaskCounts{})
-		event := buildProjectAnnotatedHookEvent(view, annotation, tx.runtime, tx.clock.Unix())
+		event := buildProjectAnnotatedHookEvent(view, result, tx.runtime, tx.clock.Unix())
 		entry := AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
 			ProjectID:   &project.ID,
@@ -429,8 +426,8 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 			TargetID:    project.ID,
 			Action:      "project.annotate",
 			Payload: map[string]any{
-				"annotation_id":   annotation.ID,
-				"content_preview": truncateString(annotation.Content, 200),
+				"annotation_id":   created.ID,
+				"content_preview": truncateString(created.Content, 200),
 			},
 		}
 		return []AuditEntry{entry}, []HookEvent{event}, nil
@@ -438,27 +435,27 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 	return result, err
 }
 
-func (s *Service) projectAnnotateLocked(projectRef, content string) (ProjectAnnotationInfo, storage.Project, error) {
+func (s *Service) projectAnnotateLocked(projectRef, content string) (storage.ProjectAnnotation, storage.Project, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "annotation_content_required", Message: "annotation content is required"}
+		return storage.ProjectAnnotation{}, storage.Project{}, RuntimeError{Code: "annotation_content_required", Message: "annotation content is required"}
 	}
 	project, err := s.ResolveProject(projectRef)
 	if err != nil {
-		return ProjectAnnotationInfo{}, storage.Project{}, err
+		return storage.ProjectAnnotation{}, storage.Project{}, err
 	}
 	if isProjectClosed(project) {
-		return ProjectAnnotationInfo{}, storage.Project{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
+		return storage.ProjectAnnotation{}, storage.Project{}, RuntimeError{Code: "project_archived", Message: fmt.Sprintf("project %q is archived", project.Slug)}
 	}
 	created, err := s.writeProjectAnnotation(project, content)
 	if err != nil {
-		return ProjectAnnotationInfo{}, storage.Project{}, err
+		return storage.ProjectAnnotation{}, storage.Project{}, err
 	}
 	project.ModifiedAt = s.clock.Unix()
 	if err := s.projectRepo.Update(project); err != nil {
-		return ProjectAnnotationInfo{}, storage.Project{}, err
+		return storage.ProjectAnnotation{}, storage.Project{}, err
 	}
-	return projectAnnotationInfoFromModel(created), project, nil
+	return created, project, nil
 }
 
 // writeProjectAnnotation 写入一条项目注解，不做 closed 校验，也不更新 project.ModifiedAt。
@@ -487,6 +484,12 @@ func (s *Service) writeProjectAnnotation(project storage.Project, content string
 			CreatedBy: s.runtime.ActorUserID,
 			CreatedAt: now,
 		}
+		actor := s.runtime.actorColumns()
+		annotation.CreatedByActorType = actor.Type
+		annotation.CreatedByUserID = actor.UserID
+		annotation.CreatedByTokenID = actor.TokenID
+		annotation.CreatedByTokenName = actor.TokenName
+		annotation.CreatedByTokenPrefix = actor.TokenPrefix
 		created, err := repo.Create(annotation)
 		if err != nil {
 			if storage.IsUniqueConstraintError(err) {
@@ -564,8 +567,12 @@ func (s *Service) ProjectAnnotations(projectRef string) ([]ProjectAnnotationInfo
 		return nil, err
 	}
 	out := make([]ProjectAnnotationInfo, 0, len(annotations))
+	userInfos, err := s.resolveUserInfos(projectAnnotationUserIDs(annotations))
+	if err != nil {
+		return nil, err
+	}
 	for _, a := range annotations {
-		out = append(out, projectAnnotationInfoFromModel(a))
+		out = append(out, projectAnnotationInfoFromModel(a, userInfos))
 	}
 	return out, nil
 }
@@ -583,6 +590,10 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 	if err != nil {
 		return nil, err
 	}
+	userInfos, err := s.resolveUserInfos(projectTimelineUserIDs(rows))
+	if err != nil {
+		return nil, err
+	}
 	out := make([]TimelineEntry, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, TimelineEntry{
@@ -591,10 +602,64 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 			SourceLabel: r.SourceLabel,
 			Entry:       r.Entry,
 			Content:     r.Content,
-			CreatedBy:   task.UserInfo{ID: r.CreatedBy},
+			CreatedBy: actorInfoFromColumns(actorColumns{
+				Type:        r.CreatedByActorType,
+				UserID:      r.CreatedByUserID,
+				TokenID:     r.CreatedByTokenID,
+				TokenName:   r.CreatedByTokenName,
+				TokenPrefix: r.CreatedByTokenPrefix,
+			}, r.CreatedBy, userInfos),
 		})
 	}
 	return out, nil
+}
+
+func projectAnnotationUserIDs(rows []storage.ProjectAnnotation) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, row := range rows {
+		actorType := row.CreatedByActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		if actorType != actorTypeUser {
+			continue
+		}
+		id := row.CreatedBy
+		if row.CreatedByUserID != nil && *row.CreatedByUserID != "" {
+			id = *row.CreatedByUserID
+		}
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func projectTimelineUserIDs(rows []storage.TimelineRow) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, row := range rows {
+		actorType := row.CreatedByActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		if actorType != actorTypeUser {
+			continue
+		}
+		id := row.CreatedBy
+		if row.CreatedByUserID != nil && *row.CreatedByUserID != "" {
+			id = *row.CreatedByUserID
+		}
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func isProjectClosed(project storage.Project) bool {
@@ -651,11 +716,9 @@ func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, e
 		if err := tx.projectRepo.UpdateStatus(project.WorkspaceID, project.ID, toStatus, now); err != nil {
 			return nil, nil, err
 		}
-		if !tx.runtime.IsTenantActor() {
-			annotationContent := fmt.Sprintf("状态变更：%s → %s", projectStatusLabel(fromStatus), projectStatusLabel(toStatus))
-			if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
-				return nil, nil, err
-			}
+		annotationContent := fmt.Sprintf("状态变更：%s → %s", projectStatusLabel(fromStatus), projectStatusLabel(toStatus))
+		if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
+			return nil, nil, err
 		}
 		updated, err := tx.projectRepo.GetByID(project.ID)
 		if err != nil {

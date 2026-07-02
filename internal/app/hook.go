@@ -71,6 +71,7 @@ type HookView struct {
 	WorkspaceID    string
 	ProjectID      *string
 	ActorUserID    string
+	Actor          task.ActorInfo
 	EventTypes     []string
 	SinkID         string
 	SinkName       string
@@ -90,7 +91,7 @@ type HookDeliveryView struct {
 	EventType      string
 	WorkspaceID    string
 	ProjectID      *string
-	Actor          task.UserInfo
+	Actor          task.ActorInfo
 	Payload        map[string]any
 	Headers        map[string]string
 	Status         string
@@ -108,9 +109,6 @@ type HookDeliveryView struct {
 func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 	if err := s.Require(PermissionHookWrite); err != nil {
 		return HookView{}, err
-	}
-	if s.runtime.IsTenantActor() {
-		return HookView{}, tenantActorNotUserError()
 	}
 	if err := validateHookName(input.Name); err != nil {
 		return HookView{}, err
@@ -182,6 +180,11 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		CreatedAt:      now,
 		ModifiedAt:     now,
 	}
+	actor := s.runtime.actorColumns()
+	row.ActorType = actor.Type
+	row.ActorTokenID = actor.TokenID
+	row.ActorTokenName = actor.TokenName
+	row.ActorTokenPrefix = actor.TokenPrefix
 
 	var view HookView
 	err = s.withAudit("hook.create", func(tx *Service) (AuditEntry, error) {
@@ -455,7 +458,7 @@ func (s *Service) ListHookDeliveries(hookID string, status string, limit int, of
 		return nil, err
 	}
 	for _, row := range rows {
-		view, err := hookDeliveryViewFromRowWithActor(row, actorInfos[row.ActorUserID])
+		view, err := hookDeliveryViewFromRowWithActor(row, actorInfoFromColumns(hookDeliveryActorColumns(row), row.ActorUserID, actorInfos))
 		if err != nil {
 			return nil, err
 		}
@@ -556,18 +559,18 @@ func hookDeliveryViewFromRow(row storage.HookDelivery) HookDeliveryView {
 }
 
 func hookDeliveryViewFromRowChecked(row storage.HookDelivery) (HookDeliveryView, error) {
-	return hookDeliveryViewFromRowWithActor(row, task.UserInfo{ID: row.ActorUserID, Name: row.ActorUserID})
+	return hookDeliveryViewFromRowWithActor(row, actorInfoFromColumns(hookDeliveryActorColumns(row), row.ActorUserID, nil))
 }
 
 func (s *Service) hookDeliveryViewFromRow(row storage.HookDelivery) (HookDeliveryView, error) {
-	infos, err := s.resolveUserInfos([]string{row.ActorUserID})
+	infos, err := s.resolveUserInfos(hookDeliveryActorIDs([]storage.HookDelivery{row}))
 	if err != nil {
 		return HookDeliveryView{}, err
 	}
-	return hookDeliveryViewFromRowWithActor(row, infos[row.ActorUserID])
+	return hookDeliveryViewFromRowWithActor(row, actorInfoFromColumns(hookDeliveryActorColumns(row), row.ActorUserID, infos))
 }
 
-func hookDeliveryViewFromRowWithActor(row storage.HookDelivery, actor task.UserInfo) (HookDeliveryView, error) {
+func hookDeliveryViewFromRowWithActor(row storage.HookDelivery, actor task.ActorInfo) (HookDeliveryView, error) {
 	var payload map[string]any
 	if row.PayloadJSON != "" {
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
@@ -606,7 +609,11 @@ func hookDeliveryActorIDs(rows []storage.HookDelivery) []string {
 	seen := map[string]bool{}
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if row.ActorUserID == "" || seen[row.ActorUserID] {
+		actorType := row.ActorType
+		if actorType == "" {
+			actorType = actorTypeUser
+		}
+		if actorType != actorTypeUser || row.ActorUserID == "" || seen[row.ActorUserID] {
 			continue
 		}
 		seen[row.ActorUserID] = true
@@ -637,6 +644,7 @@ func hookViewFromRowWithSink(row storage.HookDefinition, sink storage.Notificati
 		WorkspaceID:    row.WorkspaceID,
 		ProjectID:      row.ProjectID,
 		ActorUserID:    row.ActorUserID,
+		Actor:          actorInfoFromColumns(actorColumns{Type: row.ActorType, UserID: stringPtrOrNil(row.ActorUserID), TokenID: row.ActorTokenID, TokenName: row.ActorTokenName, TokenPrefix: row.ActorTokenPrefix}, row.ActorUserID, nil),
 		EventTypes:     eventTypes,
 		SinkID:         row.SinkID,
 		SinkName:       sink.Name,

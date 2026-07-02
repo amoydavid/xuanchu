@@ -413,7 +413,7 @@ docs/superpowers/plans/2026-06-17-web-console-project-task-browsing.md
 - tenant token 使用独立 scope 白名单，支持安全展开 `*` / `resource:*` / `*:action`；不允许 `token:*`、`user:*`、`member:*`、`impersonate`、`workspace:write`。
 - HTTP API 新增 `/api/v1/tenant-access-tokens` 创建、列表、修改、吊销；明文 token 只在创建响应中返回一次。
 - Server admin 控制面新增 `/api/v1/admin/tenant-access-tokens` 列表、修改、吊销。
-- HTTP API / HTTP MCP 可使用 tenant token 执行机器身份工作流，但不能调用 `/me`、`me_get`、用户/成员/token/workspace 管理、active context 写入，或创建 task link、project annotation、hook、notification sink、reminder rule、event notification rule 等仍依赖用户 actor 的资源；tenant project 状态转移不会写自动 annotation。
+- HTTP API / HTTP MCP 可使用 tenant token 执行机器身份工作流；tenant token 不能调用 `/me`、`me_get`、impersonation 或 active context 写入，但可按 scope 管理 user、member、tenant token、workspace 设置，并可创建 task link、project annotation、hook、notification sink、reminder rule、event notification rule 等资源。相关 `created_by` / `actor` 输出为系统 actor。
 - audit 记录 `actor_type=tenant_access_token` 和 token id/name/prefix，不记录 raw token。
 - Web Console `/tokens` 和 `/admin/tokens` 增加「租户访问令牌」tab。
 

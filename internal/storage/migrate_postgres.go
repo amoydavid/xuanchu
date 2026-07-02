@@ -22,10 +22,62 @@ func (s *Store) migratePostgres() error {
 	if err := s.prepareTaskAnnotationIDsPostgres(); err != nil {
 		return err
 	}
-	return s.db.AutoMigrate(
+	if err := s.db.AutoMigrate(
 		&TaskTag{}, &TaskAnnotation{}, &TaskDependency{},
 		&TaskAssignee{}, &TaskUDAValue{}, &TaskLink{},
-	)
+	); err != nil {
+		return err
+	}
+	return s.prepareActorColumnsForP2Postgres()
+}
+
+func (s *Store) prepareActorColumnsForP2Postgres() error {
+	statements := []string{
+		"ALTER TABLE project_annotations ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE project_annotations ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE project_annotations ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE project_annotations ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE project_annotations ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE hook_definitions ADD COLUMN IF NOT EXISTS actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE hook_definitions ADD COLUMN IF NOT EXISTS actor_token_id text",
+		"ALTER TABLE hook_definitions ADD COLUMN IF NOT EXISTS actor_token_name text",
+		"ALTER TABLE hook_definitions ADD COLUMN IF NOT EXISTS actor_token_prefix text",
+		"ALTER TABLE hook_deliveries ADD COLUMN IF NOT EXISTS actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE hook_deliveries ADD COLUMN IF NOT EXISTS actor_token_id text",
+		"ALTER TABLE hook_deliveries ADD COLUMN IF NOT EXISTS actor_token_name text",
+		"ALTER TABLE hook_deliveries ADD COLUMN IF NOT EXISTS actor_token_prefix text",
+		"ALTER TABLE notification_sinks ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE notification_sinks ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE notification_sinks ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE notification_sinks ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE notification_sinks ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE reminder_rules ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE reminder_rules ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE reminder_rules ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE reminder_rules ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE reminder_rules ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE event_notification_rules ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE event_notification_rules ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE event_notification_rules ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE event_notification_rules ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE event_notification_rules ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS actor_user_id text",
+		"ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS actor_token_id text",
+		"ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS actor_token_name text",
+		"ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS actor_token_prefix text",
+		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+	}
+	for _, stmt := range statements {
+		if err := s.db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) prepareAPITokenUserIDNullablePostgres() error {

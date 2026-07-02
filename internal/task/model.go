@@ -42,6 +42,20 @@ type UserInfo struct {
 	ExternalIDs []ExternalIDInfo
 }
 
+type TokenActorInfo struct {
+	ID     string
+	Name   string
+	Prefix string
+}
+
+type ActorInfo struct {
+	Type  string
+	ID    string
+	Name  string
+	User  *UserInfo
+	Token *TokenActorInfo
+}
+
 type AssigneeInfo struct {
 	UserID      string
 	Name        string
@@ -56,7 +70,7 @@ type TaskLinkInfo struct {
 	URL       string
 	Title     string
 	CreatedAt int64
-	CreatedBy UserInfo
+	CreatedBy ActorInfo
 }
 
 type Task struct {

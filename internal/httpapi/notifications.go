@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
@@ -621,7 +621,7 @@ func notificationSinkResponse(row app.NotificationSinkView) map[string]any {
 		"timeout_seconds":   row.TimeoutSeconds,
 		"max_attempts":      row.MaxAttempts,
 		"max_concurrency":   row.MaxConcurrency,
-		"created_by":        task.UserInfoToJSON(row.CreatedBy),
+		"created_by":        task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":        row.CreatedAt,
 		"modified_at":       row.ModifiedAt,
 	}
@@ -644,7 +644,7 @@ func reminderRuleResponse(row app.ReminderRuleView) map[string]any {
 		"audience_type":   row.AudienceType,
 		"recipient_users": userInfosToJSON(row.RecipientUsers),
 		"sink_id":         row.SinkID,
-		"created_by":      task.UserInfoToJSON(row.CreatedBy),
+		"created_by":      task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":      row.CreatedAt,
 		"modified_at":     row.ModifiedAt,
 	}
@@ -664,7 +664,7 @@ func eventNotificationRuleResponse(row app.EventNotificationRuleView) map[string
 		"sink_id":          row.SinkID,
 		"template_subject": row.TemplateSubject,
 		"template_body":    row.TemplateBody,
-		"created_by":       task.UserInfoToJSON(row.CreatedBy),
+		"created_by":       task.ActorInfoToJSON(row.CreatedBy),
 		"created_at":       row.CreatedAt,
 		"modified_at":      row.ModifiedAt,
 	}
@@ -683,6 +683,7 @@ func notificationDeliveryResponse(row app.NotificationDeliveryView) map[string]a
 		"recipient":                     task.UserInfoToJSON(row.Recipient),
 		"event_id":                      row.EventID,
 		"event_type":                    row.EventType,
+		"actor":                         task.ActorInfoToJSON(row.Actor),
 		"resolved_url":                  row.ResolvedURL,
 		"resolved_endpoint_source":      row.ResolvedEndpointSource,
 		"resolved_endpoint_fingerprint": row.ResolvedEndpointFingerprint,

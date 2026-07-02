@@ -94,7 +94,7 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 ## Web Console
 
-`xuanchu server` 默认在 `/` 提供嵌入式 Web Console。普通入口使用 PAT / Agent token 登录，token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求继续走 `/api/v1/*`，不绕过 workspace membership、token scope、workspace allowlist 或 project allowlist。
+`xuanchu server` 默认在 `/` 提供嵌入式 Web Console。Console 登录支持 PAT、Agent token 和 `tenant_access_token`；其中 `tenant_access_token` 作为 workspace 系统身份进入。token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求继续走 `/api/v1/*`，不绕过 token scope、workspace allowlist 或 project allowlist；自然人 PAT / Agent token 仍会校验 workspace membership。
 
 仓库只跟踪 `internal/webconsole/dist/.gitkeep`，不跟踪前端构建产物。日常前端开发使用 `pnpm --dir web dev` 并代理到 Go HTTP API；发布二进制必须使用 `make build-release`，或先运行 `make web-console-build` 再执行 Go 构建，确保真实 Web Console 静态资源被 embed 进二进制。
 
@@ -807,7 +807,7 @@ PAT raw token 以 `xuanchu_pat_` 开头，Agent token raw token 以 `xuanchu_age
 ./xuanchu --server http://127.0.0.1:8080 --token "$XUANCHU_TOKEN" token revoke <token-id-or-prefix>
 ```
 
-`tenant_access_token` 是 workspace 级 API key，也可作为 Web Console 的系统 owner 凭证使用。它不绑定用户、不支持 impersonation，也不支持 `/me`、`assignee:me`、active context 等依赖用户 actor 的能力。P1 已允许它按 scope 管理当前 workspace 内的 user、member、tenant token 和 workspace 设置；但它仍不能创建带用户形态 `created_by` / `actor` 的对象，例如 task link、project annotation、hook、notification sink、reminder rule、event notification rule；这些路径返回 `tenant_actor_not_user`。tenant token 可以转移 project 状态，但不会写入自动状态变更 annotation。它复用 `api_tokens` 表，`type=tenant_access_token` 且 `user_id=NULL`，可绑定一个 workspace、可选 project allowlist、scope、过期时间和吊销状态。HTTP API 路径：
+`tenant_access_token` 是 workspace 级 API key，也可作为 Web Console 的系统 owner 凭证使用。它不绑定用户、不支持 impersonation，也不支持 `/me`、`assignee:me`、active context 等依赖自然人 actor 的能力。它可按 scope 管理当前 workspace 内的 user、member、tenant token、workspace 设置、task link、project annotation、hook、notification sink、reminder rule 和 event notification rule；这些资源的 `created_by` / `actor` 字段会输出为系统 actor，例如 `{"type":"tenant_access_token","token":{"id":"...","name":"runtime","prefix":"xuanchu_tenant_..."}}`。它复用 `api_tokens` 表，`type=tenant_access_token` 且 `user_id=NULL`，可绑定一个 workspace、可选 project allowlist、scope、过期时间和吊销状态。HTTP API 路径：
 
 ```text
 GET    /api/v1/tenant-access-tokens
@@ -883,7 +883,7 @@ tenant token capability scope ∩ token workspace scope ∩ token project scope 
 task:read task:write project:read project:write context:read context:write config:read config:write audit:read token:read token:write workspace:read workspace:write hook:read hook:write notification:read notification:write reminder:read reminder:write impersonate
 ```
 
-tenant token 的 `*` 只展开 tenant 白名单：任务、项目、上下文、配置、workspace read/write、audit read、user read/write、member read/write、token read/write，以及 hook/notification/reminder read。它不会包含 `hook:write`、`notification:write`、`reminder:write` 或 `impersonate`。
+tenant token 的 `*` 只展开 tenant 白名单：任务、项目、上下文、配置、workspace read/write、audit read、user read/write、member read/write、token read/write，以及 hook/notification/reminder read/write。它不会包含 `impersonate`。
 
 project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
 
@@ -930,7 +930,7 @@ stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输�
 # Authorization: Bearer xuanchu_pat_xxx
 ```
 
-HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致。需要代表某个成员、管理用户/成员/token，或使用 impersonation 时，使用 workspace-scoped Agent token；需要类似 OpenAI API key 的机器凭证时，使用 `tenant_access_token`。tenant token 可调用任务、项目、配置、审计，以及不需要用户 `created_by` / `actor` 的 Hook、通知、提醒管理能力；创建 hook、notification sink、reminder rule、event notification rule、task link、project annotation 等用户形态 actor 路径会返回 `tenant_actor_not_user`。`/mcp` 不在 OpenAPI 文档中。
+HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致。需要代表某个成员或使用 impersonation 时，使用 workspace-scoped Agent token；需要类似 OpenAI API key 的机器凭证时，使用 `tenant_access_token`。tenant token 可按 scope 调用任务、项目、配置、审计、user/member/token/workspace，以及 Hook、通知、提醒、task link、project annotation 等 workspace 能力；系统 actor 会进入 `created_by` / `actor` 输出。`/mcp` 不在 OpenAPI 文档中。
 
 如果 HTTP MCP 通过 nginx 等反向代理暴露公网域名，推荐保留真实 Host：
 
