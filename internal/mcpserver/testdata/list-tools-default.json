@@ -4414,6 +4414,24 @@
           "project_id": {
             "type": "string"
           },
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "projects": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "scope": {
             "items": {
               "type": "string"
@@ -4429,6 +4447,15 @@
           },
           "workspace": {
             "type": "string"
+          },
+          "workspaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           }
         },
         "required": [

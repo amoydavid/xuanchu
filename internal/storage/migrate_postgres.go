@@ -77,7 +77,7 @@ func (s *Store) prepareActorColumnsForP2Postgres() error {
 			return err
 		}
 	}
-	return nil
+	return s.db.Exec(`UPDATE notification_deliveries SET actor_user_id = recipient_user_id WHERE (actor_type = 'user' OR actor_type = '') AND (actor_user_id IS NULL OR actor_user_id = '') AND recipient_user_id <> ''`).Error
 }
 
 func (s *Store) prepareAPITokenUserIDNullablePostgres() error {

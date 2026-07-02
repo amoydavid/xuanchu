@@ -25,7 +25,7 @@ Server admin bootstrap 入口是：
 https://xuanchu.example.com/admin/login
 ```
 
-该入口只接受 `xuanchu_admin_...` token，并且只访问 `/api/v1/admin/*`。普通 workspace Console 继续使用 PAT / Agent token。
+该入口只接受 `xuanchu_admin_...` token，并且只访问 `/api/v1/admin/*`。普通 workspace Console 使用 PAT、Agent token 或绑定单 workspace 的 `tenant_access_token`。
 
 如需关闭：
 
@@ -89,7 +89,7 @@ rotate = "daily"
 
 ## Token 配置
 
-Web Admin Console 使用同一套 PAT / Agent token。浏览器端 token 只保存在当前 tab 的 `sessionStorage`，但网络传输仍然必须依赖 TLS 或可信内网。
+Workspace Console 使用同一套 Bearer token 鉴权，可使用 PAT、Agent token 或绑定单 workspace 的 `tenant_access_token`。浏览器端 token 只保存在当前 tab 的 `sessionStorage`，但网络传输仍然必须依赖 TLS 或可信内网。
 
 Server admin token 不写入普通 `api_tokens`。首选做法是只在配置中启用控制面：
 

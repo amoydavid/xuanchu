@@ -62,7 +62,7 @@ func newHTTPServerWithAgentTokenFixture(t *testing.T, scopes ...string) (httpTok
 }
 
 func TestTenantAccessTokenManagementAPI(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "token:read", "token:write")
+	fixture := newHTTPServerWithTokenFixture(t, "token:read", "token:write", "task:read")
 	body := `{"name":"runtime","scopes":["task:read"],"expires_in_seconds":3600}`
 	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token, "Content-Type": "application/json"}
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tenant-access-tokens", body, authHeader)
@@ -98,22 +98,52 @@ func TestTenantAccessTokenManagementAPI(t *testing.T) {
 	}
 }
 
-func TestModifyTokenWorkspacesHTTP(t *testing.T) {
-	fixture, teamID := newHTTPServerWithAgentTokenFixture(t, "task:read", "token:write")
+func TestPATCannotManageTenantTokenBeyondOwnScope(t *testing.T) {
+	limited := newHTTPServerWithTokenFixture(t, "token:read", "token:write")
+	body := `{"name":"runtime","scopes":["task:read"],"expires_in_seconds":3600}`
+	limitedHeaders := map[string]string{"Authorization": "Bearer " + limited.token, "Content-Type": "application/json"}
+	rr := requestHTTPBody(t, limited.server, http.MethodPost, "/api/v1/tenant-access-tokens", body, limitedHeaders)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
+
+	full := newHTTPServerWithTokenFixture(t, "token:read", "token:write", "task:read")
+	fullHeaders := map[string]string{"Authorization": "Bearer " + full.token, "Content-Type": "application/json"}
+	rr = requestHTTPBody(t, full.server, http.MethodPost, "/api/v1/tenant-access-tokens", body, fullHeaders)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create full status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var created tokenCreateResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+
+	limitedSameStore, err := app.NewService(app.ServiceOptions{Store: full.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limitedToken, err := limitedSameStore.CreateToken(app.CreateTokenInput{
+		Name:          "limited-manager",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"token:read", "token:write"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limitedSameStoreHeaders := map[string]string{"Authorization": "Bearer " + limitedToken.RawToken, "Content-Type": "application/json"}
+	rr = requestHTTPBody(t, full.server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+created.Data.ID, `{"name":"escaped"}`, limitedSameStoreHeaders)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
+	rr = requestHTTP(t, full.server, http.MethodDelete, "/api/v1/tenant-access-tokens/"+created.Data.ID, limitedSameStoreHeaders)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
+}
+
+func TestModifyTokenWorkspacesHTTPRejectsBeyondBearerScope(t *testing.T) {
+	fixture, _ := newHTTPServerWithAgentTokenFixture(t, "task:read", "token:write")
 	body := `{"workspaces":["team"]}`
 	rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tokens/"+fixture.id, body, map[string]string{
 		"Authorization": "Bearer " + fixture.token,
 	})
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
-	}
-	var resp tokenModifyResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Data.WorkspaceIDs) != 1 || resp.Data.WorkspaceIDs[0] != teamID {
-		t.Fatalf("workspace_ids = %v, want [%s]", resp.Data.WorkspaceIDs, teamID)
-	}
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "workspace_scope_denied")
 }
 
 func TestModifyTokenClearWorkspacesHTTP(t *testing.T) {

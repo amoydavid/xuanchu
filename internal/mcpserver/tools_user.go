@@ -42,7 +42,7 @@ type UserRefInput struct {
 
 func registerUserTools(s *mcp.Server, opts Options) {
 	addTool(s, opts, &mcp.Tool{Name: "user_list", Description: "List all users; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:read", app.PermissionWorkspaceRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -55,7 +55,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "user_get", Description: "Read a single user by name, email, or UUID; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserInfoInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:read", app.PermissionWorkspaceRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -68,7 +68,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. feishu_user_id:d8c6g9xx) to a xuanchu user. For Feishu users, prefer provider feishu_user_id with the user's user_id so identities stay consistent across apps. Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -86,7 +86,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "user_unbind", Description: "Unbind an external ID from a xuanchu user."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserUnbindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -101,7 +101,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "user_add", Description: "Create a new user. User actors also create a personal workspace; tenant actors only create the user."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -114,7 +114,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "user_use", Description: "Switch the active user for subsequent operations."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserUseInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:write", app.PermissionWorkspaceModify)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -125,7 +125,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "user_list_external_ids", Description: "List external IDs bound to a user; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "workspace:read", app.PermissionWorkspaceRead)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:read", app.PermissionWorkspaceRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}

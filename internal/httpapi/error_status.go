@@ -21,7 +21,7 @@ func statusForAppErrorCode(code string) int {
 		return http.StatusUnauthorized
 	case "admin_acting_not_allowed":
 		return http.StatusUnauthorized
-	case "tenant_token_management_denied":
+	case "tenant_token_management_denied", "token_management_denied":
 		return http.StatusForbidden
 	case authz.CodeTokenScopeDenied, authz.CodeWorkspaceScopeDenied, authz.CodeProjectScopeDenied, authz.CodeMembershipNotFound, authz.CodePermissionDenied:
 		return http.StatusForbidden

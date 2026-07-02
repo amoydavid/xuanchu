@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -128,6 +129,9 @@ type createTokenStoredInput struct {
 }
 
 func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
+	if err := s.rejectAdminSwitchTokenManagement(); err != nil {
+		return CreatedToken{}, err
+	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return CreatedToken{}, RuntimeError{Code: "token_name_required", Message: "token name is required"}
@@ -312,6 +316,11 @@ func (s *Service) ListTenantAccessTokens(input ListTenantAccessTokensInput) ([]T
 		if err != nil {
 			return nil, err
 		}
+		if s.requestScope != nil {
+			if err := requireSubsetWhenRestricted(s.requestScope.ProjectIDs, view.ProjectIDs, authz.CodeProjectScopeDenied, "target tenant token project scope is outside current token"); err != nil {
+				continue
+			}
+		}
 		out = append(out, view)
 	}
 	return out, nil
@@ -338,10 +347,12 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 	if err != nil {
 		return nil, err
 	}
+	existingScopes := append([]string(nil), finalScopes...)
 	finalProjectIDs, err := unmarshalStringSlice(existing.ProjectIDsJSON)
 	if err != nil {
 		return nil, err
 	}
+	existingProjectIDs := append([]string(nil), finalProjectIDs...)
 	if input.Name != nil {
 		updates.Name = input.Name
 		dirty = true
@@ -385,10 +396,10 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 		}
 		dirty = true
 	}
+	if err := s.enforceTenantTokenModifyLimit(existingScopes, existingProjectIDs, finalScopes, finalProjectIDs); err != nil {
+		return nil, err
+	}
 	if dirty {
-		if err := s.enforceTenantTokenWriteLimit(finalScopes, finalProjectIDs); err != nil {
-			return nil, err
-		}
 		if err := s.withAudit("tenant_token.modify", func(tx *Service) (AuditEntry, error) {
 			if err := tx.tokenRepo.Update(existing.ID, updates); err != nil {
 				return AuditEntry{}, err
@@ -417,12 +428,38 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 	return &view, nil
 }
 
+func (s *Service) enforceTenantTokenModifyLimit(existingScopes, existingProjectIDs, finalScopes, finalProjectIDs []string) error {
+	if s.requestScope == nil {
+		return nil
+	}
+	for _, scope := range existingScopes {
+		if !s.requestScope.HasCapability(scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target tenant token scope is outside current token"}
+		}
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.ProjectIDs, existingProjectIDs, authz.CodeProjectScopeDenied, "target tenant token project scope is outside current token"); err != nil {
+		return err
+	}
+	return s.enforceTenantTokenWriteLimit(finalScopes, finalProjectIDs)
+}
+
 func (s *Service) RevokeTenantAccessToken(ref string) error {
 	if err := s.rejectAdminSwitchTenantTokenManagement(); err != nil {
 		return err
 	}
 	entry, workspaceID, err := s.lookupTenantTokenForRuntime(ref)
 	if err != nil {
+		return err
+	}
+	scopes, err := unmarshalStringSlice(entry.ScopesJSON)
+	if err != nil {
+		return err
+	}
+	projectIDs, err := unmarshalStringSlice(entry.ProjectIDsJSON)
+	if err != nil {
+		return err
+	}
+	if err := s.enforceTenantTokenWriteLimit(scopes, projectIDs); err != nil {
 		return err
 	}
 	return s.withAudit("tenant_token.revoke", func(tx *Service) (AuditEntry, error) {
@@ -468,8 +505,15 @@ func (s *Service) rejectAdminSwitchTenantTokenManagement() error {
 	return nil
 }
 
+func (s *Service) rejectAdminSwitchTokenManagement() error {
+	if s.runtime.IsTenantActor() && s.runtime.ActorTokenPurpose == "admin_tenant_switch" {
+		return RuntimeError{Code: "token_management_denied", Message: "admin switch tenant token cannot manage tokens"}
+	}
+	return nil
+}
+
 func (s *Service) enforceTenantTokenWriteLimit(scopes, projectIDs []string) error {
-	if !s.runtime.IsTenantActor() || s.requestScope == nil {
+	if s.requestScope == nil {
 		return nil
 	}
 	for _, scope := range scopes {
@@ -570,11 +614,18 @@ func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken,
 }
 
 func (s *Service) ListTokens(input ListTokensInput) ([]TokenView, error) {
+	if s.runtime.IsTenantActor() {
+		return s.listTokensForTenantActor(input)
+	}
 	targetUser, err := s.resolveTokenListUser(input.UserRef)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := s.tokenRepo.ListByUser(targetUser.ID, input.IncludeRevoked)
+	if err != nil {
+		return nil, err
+	}
+	userInfos, err := s.resolveUserInfos([]string{targetUser.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +643,88 @@ func (s *Service) ListTokens(input ListTokensInput) ([]TokenView, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs))
+		if !s.tokenEntryAllowedByRequestScope(workspaceIDs, projectIDs) {
+			continue
+		}
+		view := tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs)
+		if ui := userInfos[derefString(row.UserID)]; ui.ID != "" {
+			view.User = ui
+		}
+		out = append(out, view)
+	}
+	return out, nil
+}
+
+func (s *Service) tokenEntryAllowedByRequestScope(workspaceIDs, projectIDs []string) bool {
+	if s.requestScope == nil {
+		return true
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current token"); err != nil {
+		return false
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current token"); err != nil {
+		return false
+	}
+	return true
+}
+
+func (s *Service) listTokensForTenantActor(input ListTokensInput) ([]TokenView, error) {
+	if strings.TrimSpace(input.UserRef) != "" {
+		return nil, tenantActorNotUserError()
+	}
+	rows, err := s.tokenRepo.ListAll(input.IncludeRevoked)
+	if err != nil {
+		return nil, err
+	}
+	scope := RequestScope{}
+	if s.requestScope != nil {
+		scope = *s.requestScope
+	} else if s.runtime.WorkspaceID != "" {
+		scope.WorkspaceIDs = []string{s.runtime.WorkspaceID}
+	}
+	userIDs := make([]string, 0, len(rows))
+	entries := make([]storage.ApiTokenEntry, 0, len(rows))
+	entryScopes := make(map[string][]string, len(rows))
+	entryWorkspaces := make(map[string][]string, len(rows))
+	entryProjects := make(map[string][]string, len(rows))
+	for _, row := range rows {
+		workspaceIDs, err := unmarshalStringSlice(row.WorkspaceIDsJSON)
+		if err != nil {
+			return nil, err
+		}
+		projectIDs, err := unmarshalStringSlice(row.ProjectIDsJSON)
+		if err != nil {
+			return nil, err
+		}
+		if err := requireSubsetWhenRestricted(scope.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current token"); err != nil {
+			continue
+		}
+		if err := requireSubsetWhenRestricted(scope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current token"); err != nil {
+			continue
+		}
+		scopes, err := unmarshalStringSlice(row.ScopesJSON)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, row)
+		entryScopes[row.ID] = scopes
+		entryWorkspaces[row.ID] = workspaceIDs
+		entryProjects[row.ID] = projectIDs
+		if userID := derefString(row.UserID); userID != "" {
+			userIDs = append(userIDs, userID)
+		}
+	}
+	userInfos, err := s.resolveUserInfos(userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TokenView, 0, len(entries))
+	for _, row := range entries {
+		view := tokenViewFromEntry(row, entryScopes[row.ID], entryWorkspaces[row.ID], entryProjects[row.ID])
+		if ui := userInfos[derefString(row.UserID)]; ui.ID != "" {
+			view.User = ui
+		}
+		out = append(out, view)
 	}
 	return out, nil
 }
@@ -606,6 +738,9 @@ func (s *Service) RevokeTokenWithLimit(ref string, limit *TokenView) error {
 }
 
 func (s *Service) revokeToken(ref string, limit *TokenView) error {
+	if err := s.rejectAdminSwitchTokenManagement(); err != nil {
+		return err
+	}
 	entry, err := s.tokenRepo.GetByIDOrPrefix(strings.TrimSpace(ref))
 	if err != nil {
 		return err
@@ -617,6 +752,9 @@ func (s *Service) revokeToken(ref string, limit *TokenView) error {
 		return PermissionError{Code: authz.CodePermissionDenied, Message: "permission denied"}
 	}
 	if err := enforceTokenRevokeLimit(limit, entry); err != nil {
+		return err
+	}
+	if err := s.enforceTokenRevokeRequestScope(entry); err != nil {
 		return err
 	}
 	return s.withAudit("token.revoke", func(tx *Service) (AuditEntry, error) {
@@ -653,6 +791,15 @@ func enforceTokenRevokeLimit(parent *TokenView, entry storage.ApiTokenEntry) err
 	if parent == nil {
 		return nil
 	}
+	scopes, err := unmarshalStringSlice(entry.ScopesJSON)
+	if err != nil {
+		return err
+	}
+	for _, scope := range scopes {
+		if !slices.Contains(parent.Scopes, scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target token scope is outside current token"}
+		}
+	}
 	workspaceIDs, err := unmarshalStringSlice(entry.WorkspaceIDsJSON)
 	if err != nil {
 		return err
@@ -665,6 +812,33 @@ func enforceTokenRevokeLimit(parent *TokenView, entry storage.ApiTokenEntry) err
 		return err
 	}
 	return requireSubsetWhenRestricted(parent.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current token")
+}
+
+func (s *Service) enforceTokenRevokeRequestScope(entry storage.ApiTokenEntry) error {
+	if s.requestScope == nil {
+		return nil
+	}
+	scopes, err := unmarshalStringSlice(entry.ScopesJSON)
+	if err != nil {
+		return err
+	}
+	for _, scope := range scopes {
+		if !s.requestScope.HasCapability(scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target token scope is outside current request scope"}
+		}
+	}
+	workspaceIDs, err := unmarshalStringSlice(entry.WorkspaceIDsJSON)
+	if err != nil {
+		return err
+	}
+	projectIDs, err := unmarshalStringSlice(entry.ProjectIDsJSON)
+	if err != nil {
+		return err
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current request scope"); err != nil {
+		return err
+	}
+	return requireSubsetWhenRestricted(s.requestScope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current request scope")
 }
 
 func requireSubsetWhenRestricted(parent, child []string, code, message string) error {
@@ -690,11 +864,20 @@ func (s *Service) AuthenticateBearerToken(raw string) (AuthenticatedToken, error
 	if strings.HasPrefix(raw, auth.ActingTokenPrefix) {
 		return s.authenticateActingToken(raw)
 	}
-	prefix := raw
-	if len(prefix) > 16 {
-		prefix = prefix[:16]
+	prefix, err := auth.TokenLookupPrefix(raw)
+	if err != nil {
+		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
 	}
 	row, err := s.tokenRepo.GetByPrefix(prefix)
+	if err == storage.ErrNotFound {
+		legacyPrefix := raw
+		if len(legacyPrefix) > 16 {
+			legacyPrefix = legacyPrefix[:16]
+		}
+		if legacyPrefix != prefix {
+			row, err = s.tokenRepo.GetByPrefix(legacyPrefix)
+		}
+	}
 	if err == storage.ErrNotFound {
 		return AuthenticatedToken{}, RuntimeError{Code: authz.CodeAuthInvalidToken, Message: "invalid token"}
 	}
@@ -1055,9 +1238,12 @@ type ModifyTokenInput struct {
 }
 
 func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
-	existing, err := s.tokenRepo.GetByID(input.TokenID)
+	if err := s.rejectAdminSwitchTokenManagement(); err != nil {
+		return nil, err
+	}
+	existing, err := s.tokenRepo.GetByIDOrPrefix(input.TokenID)
 	if err != nil {
-		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
+		return nil, classifyTokenLookupError(err)
 	}
 	if existing.Type == auth.TokenTypeTenantAccess {
 		return nil, RuntimeError{Code: "token_not_found", Message: "token not found"}
@@ -1086,7 +1272,21 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 	// 解析 workspace：nil = 不改；非 nil = 替换（含空切片 = 清空）。
 	// 最终 workspace 集合用于校验 scope 和 project 的一致性。
 	// resolvedWorkspaces 复用：project 解析时若本次改了 workspace 就用新的，否则用 existing。
-	finalWorkspaceIDs := parseIDsFromJSON(existing.WorkspaceIDsJSON)
+	existingScopes, err := unmarshalStringSlice(existing.ScopesJSON)
+	if err != nil {
+		return nil, err
+	}
+	finalScopes := append([]string(nil), existingScopes...)
+	existingWorkspaceIDs, err := unmarshalStringSlice(existing.WorkspaceIDsJSON)
+	if err != nil {
+		return nil, err
+	}
+	finalWorkspaceIDs := append([]string(nil), existingWorkspaceIDs...)
+	existingProjectIDs, err := unmarshalStringSlice(existing.ProjectIDsJSON)
+	if err != nil {
+		return nil, err
+	}
+	finalProjectIDs := append([]string(nil), existingProjectIDs...)
 	var resolvedWorkspaces []storage.Workspace
 	if input.WorkspaceRefs != nil {
 		resolvedWorkspaces, err = s.resolveTokenWorkspaces(*input.WorkspaceRefs)
@@ -1106,7 +1306,6 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 	}
 
 	// 解析 project：nil = 不改；非 nil = 替换。project 必须属于最终 workspace 集合。
-	var finalProjectIDs []string
 	if input.ProjectRefs != nil {
 		// 复用已解析的 workspace；若本次未改 workspace，则按 existing workspace ID 重新解析，
 		// 保证 project 归属校验基于 token 当前的 workspace 绑定。
@@ -1142,10 +1341,14 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 		if scopes.Has(auth.ScopeImpersonate) && !tokenManageAllowed(s.runtime.Role) {
 			return nil, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "only admin or owner can assign impersonate scope"}
 		}
-		// 越权防护由 resolveTokenWorkspaces 的角色校验承担；modify 无父 token 概念，不调 enforceTokenCreateLimit。
+		finalScopes = scopes.Values()
 		sj, _ := marshalStringSlice(scopes.Values())
 		updates.ScopesJSON = &sj
 		dirty = true
+	}
+
+	if err := s.enforceTokenModifyLimit(existingScopes, existingWorkspaceIDs, existingProjectIDs, finalScopes, finalWorkspaceIDs, finalProjectIDs); err != nil {
+		return nil, err
 	}
 
 	if input.ExpiresIn != nil {
@@ -1162,7 +1365,7 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 
 	if dirty {
 		err = s.withAudit("token.modified", func(tx *Service) (AuditEntry, error) {
-			if err := tx.tokenRepo.Update(input.TokenID, updates); err != nil {
+			if err := tx.tokenRepo.Update(existing.ID, updates); err != nil {
 				return AuditEntry{}, err
 			}
 			return AuditEntry{
@@ -1180,7 +1383,7 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 		}
 	}
 
-	updated, err := s.tokenRepo.GetByID(input.TokenID)
+	updated, err := s.tokenRepo.GetByID(existing.ID)
 	if err != nil {
 		return nil, RuntimeError{Code: "token_not_found", Message: "failed to reload token"}
 	}
@@ -1189,11 +1392,44 @@ func (s *Service) ModifyToken(input ModifyTokenInput) (*TokenView, error) {
 	return &view, nil
 }
 
+func (s *Service) enforceTokenModifyLimit(existingScopes, existingWorkspaceIDs, existingProjectIDs, finalScopes, finalWorkspaceIDs, finalProjectIDs []string) error {
+	if s.requestScope == nil {
+		return nil
+	}
+	for _, scope := range existingScopes {
+		if !s.requestScope.HasCapability(scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target token scope is outside current token"}
+		}
+	}
+	for _, scope := range finalScopes {
+		if !s.requestScope.HasCapability(scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "modified token scope exceeds current token"}
+		}
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.WorkspaceIDs, existingWorkspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current token"); err != nil {
+		return err
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.WorkspaceIDs, finalWorkspaceIDs, authz.CodeWorkspaceScopeDenied, "modified token workspace scope exceeds current token"); err != nil {
+		return err
+	}
+	if err := requireSubsetWhenRestricted(s.requestScope.ProjectIDs, existingProjectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current token"); err != nil {
+		return err
+	}
+	return requireSubsetWhenRestricted(s.requestScope.ProjectIDs, finalProjectIDs, authz.CodeProjectScopeDenied, "modified token project scope exceeds current token")
+}
+
 func tokenEntryToView(row storage.ApiTokenEntry) TokenView {
 	scopes, _ := unmarshalStringSlice(row.ScopesJSON)
 	workspaceIDs, _ := unmarshalStringSlice(row.WorkspaceIDsJSON)
 	projectIDs, _ := unmarshalStringSlice(row.ProjectIDsJSON)
 	return tokenViewFromEntry(row, scopes, workspaceIDs, projectIDs)
+}
+
+func classifyTokenLookupError(err error) error {
+	if errors.Is(err, storage.ErrAmbiguousTokenRef) {
+		return RuntimeError{Code: "token_ambiguous_ref", Message: "token reference matches multiple tokens, use a longer prefix or full ID"}
+	}
+	return RuntimeError{Code: "token_not_found", Message: "token not found"}
 }
 
 func parseIDsFromJSON(jsonStr string) []string {

@@ -171,8 +171,10 @@ func TestAdminTenantSwitchSessionCreateHTTP(t *testing.T) {
 	if envelope.Data.Type != "tenant_access_token" || envelope.Data.ExpiresAt == nil {
 		t.Fatalf("data = %#v", envelope.Data)
 	}
-	if !slices.Contains(envelope.Data.Scopes, "token:read") || slices.Contains(envelope.Data.Scopes, "token:write") {
-		t.Fatalf("scopes = %#v, want token:read without token:write", envelope.Data.Scopes)
+	for _, want := range []string{"token:read", "token:write", "hook:write", "notification:write", "reminder:write"} {
+		if !slices.Contains(envelope.Data.Scopes, want) {
+			t.Fatalf("scopes = %#v, missing %q", envelope.Data.Scopes, want)
+		}
 	}
 	if envelope.Data.Workspace.Slug != "dajee" || envelope.Data.IssuedByAdminToken.Name != "ops-primary" {
 		t.Fatalf("workspace/admin token = %#v", envelope.Data)
@@ -200,22 +202,27 @@ func TestAdminTenantSwitchSessionCreateHTTP(t *testing.T) {
 		"Content-Type":  "application/json",
 	}
 	createLongLived := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"escaped","scopes":["*"]}`, tenantHeaders)
-	assertHTTPErrorCode(t, createLongLived, http.StatusForbidden, "token_scope_denied")
-
-	if err := fixture.server.store.DB().Exec(`UPDATE api_tokens SET scopes_json = ? WHERE id = ?`, `["token:read","token:write"]`, envelope.Data.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	createLongLived = requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"escaped","scopes":["*"]}`, tenantHeaders)
 	assertHTTPErrorCode(t, createLongLived, http.StatusForbidden, "tenant_token_management_denied")
 
 	clearExpiry := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+envelope.Data.ID, `{"expires_in_seconds":null}`, tenantHeaders)
 	assertHTTPErrorCode(t, clearExpiry, http.StatusForbidden, "tenant_token_management_denied")
 
+	createPAT := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tokens", `{"name":"escaped-pat","type":"pat","user":"local","scopes":["task:read"],"workspaces":["dajee"]}`, tenantHeaders)
+	assertHTTPErrorCode(t, createPAT, http.StatusForbidden, "token_management_denied")
+
+	modifyPAT := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tokens/not-found", `{"name":"escaped"}`, tenantHeaders)
+	assertHTTPErrorCode(t, modifyPAT, http.StatusForbidden, "token_management_denied")
+
+	revokePAT := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/tokens/not-found", tenantHeaders)
+	assertHTTPErrorCode(t, revokePAT, http.StatusForbidden, "token_management_denied")
+
 	explicitTokenWrite := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/admin/workspaces/dajee/tenant-access-sessions", `{"scopes":["token:write"]}`, map[string]string{
 		"Authorization": "Bearer " + adminRaw,
 		"Content-Type":  "application/json",
 	})
-	assertHTTPErrorCode(t, explicitTokenWrite, http.StatusBadRequest, "tenant_token_scope_invalid")
+	if explicitTokenWrite.Code != http.StatusCreated {
+		t.Fatalf("explicit token:write status=%d body=%s", explicitTokenWrite.Code, explicitTokenWrite.Body.String())
+	}
 
 	revoke := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/admin/tenant-access-tokens/"+envelope.Data.ID, headers)
 	if revoke.Code != http.StatusOK {

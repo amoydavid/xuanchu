@@ -107,7 +107,7 @@ http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{t
 
 任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。description 在详情页完整展示，具备写权限时点击“编辑描述”打开弹窗编辑完整内容。具备写权限时，项目页和任务详情页还提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
 
-未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT / Agent token 登录成功后回到原项目页。当前版本仅预留 redirect 语义，不接入企业 SSO、飞书 OAuth、cookie session 或匿名分享链接。
+未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT、Agent token 或 `tenant_access_token` 登录成功后回到原项目页。当前版本仅预留 redirect 语义，不接入企业 SSO、飞书 OAuth、cookie session 或匿名分享链接。
 
 ## Server Admin Bootstrap
 

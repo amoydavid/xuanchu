@@ -1503,6 +1503,160 @@ func TestMCPTenantAccessTokenCanManageTenantOwnerTools(t *testing.T) {
 	}
 }
 
+func TestMCPTenantAccessTokenScopeGatesUserMemberTools(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	userScoped, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "tenant-user-writer",
+		Scopes: []string{"user:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+userScoped.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	addUser := callTool(t, session, "user_add", UserAddInput{Name: "tenant-scope-user"})
+	if addUser.IsError {
+		t.Fatalf("user_add with user:write error: %v", parseError(t, addUser))
+	}
+	listUsers := callTool(t, session, "user_list", UserListInput{})
+	if !listUsers.IsError || parseError(t, listUsers).Code != "token_scope_denied" {
+		t.Fatalf("user_list with only user:write = %#v, want token_scope_denied", parseError(t, listUsers))
+	}
+
+	workspaceScoped, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "tenant-workspace-writer",
+		Scopes: []string{"workspace:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req2.Header.Set("Authorization", "Bearer "+workspaceScoped.RawToken)
+	srv2, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req2})
+	session2 := connectClient(t, srv2)
+	if result := callTool(t, session2, "user_add", UserAddInput{Name: "wrong-scope-user"}); !result.IsError {
+		t.Fatal("user_add with workspace:write should fail")
+	} else if code := parseError(t, result).Code; code != "token_scope_denied" {
+		t.Fatalf("user_add with workspace:write code=%q, want token_scope_denied", code)
+	}
+	if result := callTool(t, session2, "member_add", MemberAddInput{User: "tenant-scope-user", Role: "member"}); !result.IsError {
+		t.Fatal("member_add with workspace:write should fail")
+	} else if code := parseError(t, result).Code; code != "token_scope_denied" {
+		t.Fatalf("member_add with workspace:write code=%q, want token_scope_denied", code)
+	}
+
+	memberScoped, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "tenant-member-writer",
+		Scopes: []string{"member:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req3, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req3.Header.Set("Authorization", "Bearer "+memberScoped.RawToken)
+	srv3, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req3})
+	session3 := connectClient(t, srv3)
+	addMember := callTool(t, session3, "member_add", MemberAddInput{User: "tenant-scope-user", Role: "member"})
+	if addMember.IsError {
+		t.Fatalf("member_add with member:write error: %v", parseError(t, addMember))
+	}
+}
+
+func TestMCPBearerTokenCreateRevokeRespectsParentScope(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	limited, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "limited-manager",
+		Type:          "agent",
+		Scopes:        []string{"token:write"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddWorkspace(app.AddWorkspaceInput{Slug: "team", Name: "Team"}); err != nil {
+		t.Fatal(err)
+	}
+	target, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "team-token",
+		Type:          "agent",
+		Scopes:        []string{"token:write"},
+		WorkspaceRefs: []string{"team"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+limited.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	createEscalated := callTool(t, session, "token_create", TokenCreateInput{Name: "bad-child", Scope: []string{"token:write", "task:read"}})
+	if !createEscalated.IsError {
+		t.Fatal("token_create exceeding bearer scope should fail")
+	}
+	if code := parseError(t, createEscalated).Code; code != "token_scope_denied" {
+		t.Fatalf("token_create code = %q, want token_scope_denied", code)
+	}
+
+	revokeOutsideWorkspace := callTool(t, session, "token_revoke", TokenRevokeInput{TokenRef: target.View.ID})
+	if !revokeOutsideWorkspace.IsError {
+		t.Fatal("token_revoke outside bearer workspace scope should fail")
+	}
+	if code := parseError(t, revokeOutsideWorkspace).Code; code != "workspace_scope_denied" {
+		t.Fatalf("token_revoke code = %q, want workspace_scope_denied", code)
+	}
+}
+
+func TestMCPTokenRevokeRespectsToolProjectScope(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	projectOne, err := svc.AddProject(app.AddProjectInput{Slug: "one", Name: "One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectTwo, err := svc.AddProject(app.AddProjectInput{Slug: "two", Name: "Two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "project-manager",
+		Type:          "agent",
+		Scopes:        []string{"token:write"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"one", "two"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "two-token",
+		Type:          "agent",
+		Scopes:        []string{"token:write"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"two"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+parent.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	revokeOutsideToolProject := callTool(t, session, "token_revoke", TokenRevokeInput{Project: "one", TokenRef: target.View.ID})
+	if !revokeOutsideToolProject.IsError {
+		t.Fatalf("token_revoke with tool project %s should not revoke project %s token", projectOne.ID, projectTwo.ID)
+	}
+	if code := parseError(t, revokeOutsideToolProject).Code; code != "project_scope_denied" {
+		t.Fatalf("token_revoke code = %q, want project_scope_denied", code)
+	}
+}
+
 func TestMCPTenantAccessTokenCanCreateP2SystemActorResources(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)
@@ -2528,6 +2682,101 @@ func TestTokenFullLifecycle(t *testing.T) {
 	revoke := callTool(t, session, "token_revoke", TokenRevokeInput{TokenRef: tokenID})
 	if revoke.IsError {
 		t.Fatalf("token_revoke error: %v", parseError(t, revoke))
+	}
+}
+
+func TestMCPTokenModifyUpdatesProjectBinding(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	projectAdd := callTool(t, session, "project_add", ProjectAddInput{Slug: "demo", Name: "Demo"})
+	if projectAdd.IsError {
+		t.Fatalf("project_add error: %v", parseError(t, projectAdd))
+	}
+	projectID, _ := nestedMap(t, envelopeData(t, parseEnvelope(t, projectAdd)), "project")["id"].(string)
+	if projectID == "" {
+		t.Fatalf("project id is empty")
+	}
+
+	create := callTool(t, session, "token_create", TokenCreateInput{
+		Name:  "project-bound-token",
+		Scope: []string{"task:read"},
+	})
+	if create.IsError {
+		t.Fatalf("token_create error: %v", parseError(t, create))
+	}
+	tokenID, _ := nestedMap(t, envelopeData(t, parseEnvelope(t, create)), "token")["id"].(string)
+	if tokenID == "" {
+		t.Fatalf("created token id is empty")
+	}
+
+	mod := callTool(t, session, "token_modify", TokenModifyInput{
+		TokenRef: tokenID,
+		Projects: []string{"demo"},
+	})
+	if mod.IsError {
+		t.Fatalf("token_modify error: %v", parseError(t, mod))
+	}
+	tokenObj := nestedMap(t, envelopeData(t, parseEnvelope(t, mod)), "token")
+	projectIDs, ok := tokenObj["project_ids"].([]any)
+	if !ok {
+		t.Fatalf("project_ids type = %T, want []any", tokenObj["project_ids"])
+	}
+	if len(projectIDs) != 1 || projectIDs[0] != projectID {
+		t.Fatalf("project_ids = %v, want [%s]", projectIDs, projectID)
+	}
+}
+
+func TestMCPHTTPTokenModifyProjectBindingUsesPatchRefs(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	projectOne, err := svc.AddProject(app.AddProjectInput{Slug: "one", Name: "One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectTwo, err := svc.AddProject(app.AddProjectInput{Slug: "two", Name: "Two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "project-manager",
+		Type:          "agent",
+		Scopes:        []string{"token:write"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"one", "two"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "two-token",
+		Type:          "agent",
+		Scopes:        []string{"token:write"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"two"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+parent.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	mod := callTool(t, session, "token_modify", TokenModifyInput{
+		TokenRef: target.View.ID,
+		Projects: []string{"one"},
+	})
+	if mod.IsError {
+		t.Fatalf("token_modify error: %v", parseError(t, mod))
+	}
+	tokenObj := nestedMap(t, envelopeData(t, parseEnvelope(t, mod)), "token")
+	projectIDs := nestedSlice(t, tokenObj, "project_ids")
+	if len(projectIDs) != 1 || projectIDs[0] != projectOne.ID {
+		t.Fatalf("project_ids = %v, want [%s]", projectIDs, projectOne.ID)
+	}
+	if projectIDs[0] == projectTwo.ID {
+		t.Fatalf("project_ids still contains old project %s", projectTwo.ID)
 	}
 }
 

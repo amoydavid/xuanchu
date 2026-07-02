@@ -11,20 +11,21 @@ import (
 
 // hookDTO 对应 HTTP API 返回的 hook JSON 结构。
 type hookDTO struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	ScopeType      string   `json:"scope_type"`
-	WorkspaceID    string   `json:"workspace_id"`
-	ProjectID      *string  `json:"project_id,omitempty"`
-	EventTypes     []string `json:"event_types"`
-	SinkID         string   `json:"sink_id"`
-	SinkName       string   `json:"sink_name"`
-	SinkType       string   `json:"sink_type"`
-	Enabled        bool     `json:"enabled"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
-	MaxAttempts    int      `json:"max_attempts"`
-	CreatedAt      int64    `json:"created_at"`
-	ModifiedAt     int64    `json:"modified_at"`
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	ScopeType      string             `json:"scope_type"`
+	WorkspaceID    string             `json:"workspace_id"`
+	ProjectID      *string            `json:"project_id,omitempty"`
+	EventTypes     []string           `json:"event_types"`
+	SinkID         string             `json:"sink_id"`
+	SinkName       string             `json:"sink_name"`
+	SinkType       string             `json:"sink_type"`
+	CreatedBy      task.JSONActorInfo `json:"created_by"`
+	Enabled        bool               `json:"enabled"`
+	TimeoutSeconds int                `json:"timeout_seconds"`
+	MaxAttempts    int                `json:"max_attempts"`
+	CreatedAt      int64              `json:"created_at"`
+	ModifiedAt     int64              `json:"modified_at"`
 }
 
 // HookCreateRequest 对应创建 hook 的请求体。
@@ -195,6 +196,7 @@ func hookDTOToView(row hookDTO) app.HookView {
 		SinkID:         row.SinkID,
 		SinkName:       row.SinkName,
 		SinkType:       row.SinkType,
+		Actor:          task.ActorInfoFromJSON(row.CreatedBy),
 		Enabled:        row.Enabled,
 		TimeoutSeconds: row.TimeoutSeconds,
 		MaxAttempts:    row.MaxAttempts,

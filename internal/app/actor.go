@@ -81,6 +81,25 @@ func actorInfoFromColumns(cols actorColumns, fallbackUserID string, users map[st
 	return task.ActorInfo{Type: actorTypeUser, ID: ui.ID, Name: ui.Name, User: &ui}
 }
 
+func (s *Service) actorInfoFromColumns(cols actorColumns, fallbackUserID string) (task.ActorInfo, error) {
+	actorType := cols.Type
+	if actorType == "" {
+		actorType = actorTypeUser
+	}
+	if actorType == auth.TokenTypeTenantAccess {
+		return actorInfoFromColumns(cols, fallbackUserID, nil), nil
+	}
+	userID := fallbackUserID
+	if cols.UserID != nil && *cols.UserID != "" {
+		userID = *cols.UserID
+	}
+	users, err := s.resolveUserInfos([]string{userID})
+	if err != nil {
+		return task.ActorInfo{}, err
+	}
+	return actorInfoFromColumns(cols, fallbackUserID, users), nil
+}
+
 func projectAnnotationActorColumns(row storage.ProjectAnnotation) actorColumns {
 	return actorColumns{
 		Type:        row.CreatedByActorType,

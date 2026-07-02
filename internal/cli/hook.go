@@ -567,6 +567,7 @@ func hookViewForJSON(hook app.HookView) map[string]any {
 		"sink_id":         hook.SinkID,
 		"sink_name":       hook.SinkName,
 		"sink_type":       hook.SinkType,
+		"created_by":      actorInfoToJSONMap(hook.Actor),
 		"enabled":         hook.Enabled,
 		"timeout_seconds": hook.TimeoutSeconds,
 		"max_attempts":    hook.MaxAttempts,

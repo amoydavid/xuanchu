@@ -13,7 +13,7 @@ func TestGenerateRawTokenAndHash(t *testing.T) {
 	if !strings.HasPrefix(raw, "xuanchu_pat_") {
 		t.Fatalf("raw = %q", raw)
 	}
-	if len(prefix) < 12 || !strings.HasPrefix(raw, prefix) {
+	if len(prefix) != len("xuanchu_pat_")+tokenPrefixRandomChars || !strings.HasPrefix(raw, prefix) {
 		t.Fatalf("prefix = %q raw = %q", prefix, raw)
 	}
 	if strings.Contains(hash, raw) {
@@ -21,6 +21,13 @@ func TestGenerateRawTokenAndHash(t *testing.T) {
 	}
 	if !VerifyTokenHash(raw, hash) {
 		t.Fatalf("hash did not verify")
+	}
+	lookupPrefix, err := TokenLookupPrefix(raw)
+	if err != nil {
+		t.Fatalf("TokenLookupPrefix() error = %v", err)
+	}
+	if lookupPrefix != prefix {
+		t.Fatalf("lookup prefix = %q, want %q", lookupPrefix, prefix)
 	}
 	if VerifyTokenHash(raw+"x", hash) {
 		t.Fatalf("wrong token verified")
@@ -35,8 +42,15 @@ func TestGenerateTenantAccessToken(t *testing.T) {
 	if !strings.HasPrefix(raw, "xuanchu_tenant_") {
 		t.Fatalf("raw prefix = %q", raw)
 	}
-	if !strings.HasPrefix(prefix, "xuanchu_tenant_") || len(prefix) > 24 {
+	if !strings.HasPrefix(prefix, "xuanchu_tenant_") || len(prefix) != len("xuanchu_tenant_")+tokenPrefixRandomChars {
 		t.Fatalf("prefix = %q", prefix)
+	}
+	lookupPrefix, err := TokenLookupPrefix(raw)
+	if err != nil {
+		t.Fatalf("TokenLookupPrefix() error = %v", err)
+	}
+	if lookupPrefix != prefix {
+		t.Fatalf("lookup prefix = %q, want %q", lookupPrefix, prefix)
 	}
 	if hash == "" || strings.Contains(hash, raw) {
 		t.Fatalf("hash leaks raw token")

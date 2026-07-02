@@ -26,7 +26,7 @@ type MemberRoleInput struct {
 
 func registerMemberTools(s *mcp.Server, opts Options) {
 	addTool(s, opts, &mcp.Tool{Name: "member_list", Description: "List members in the effective workspace; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in MemberListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "workspace:read", app.PermissionWorkspaceRead)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "member:read", app.PermissionWorkspaceRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -43,7 +43,7 @@ func registerMemberTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "member_add", Description: "Add a user to the effective workspace as a member."}, func(ctx context.Context, req *mcp.CallToolRequest, in MemberAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "workspace:write", app.PermissionMemberManage)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "member:write", app.PermissionMemberManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -70,7 +70,7 @@ func registerMemberTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "member_role", Description: "Change a member's role in the workspace."}, func(ctx context.Context, req *mcp.CallToolRequest, in MemberRoleInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "workspace:write", app.PermissionMemberManage)
+		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{Workspace: in.Workspace}, "member:write", app.PermissionMemberManage)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}

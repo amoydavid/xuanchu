@@ -152,6 +152,31 @@ func TestHookPermission(t *testing.T) {
 	})
 }
 
+func TestHookViewCreatedByUsesFullUserInfo(t *testing.T) {
+	svc, _, cleanup := hookTestEnv(t)
+	defer cleanup()
+	if err := svc.BindExternalID(svc.Runtime().ActorUserID, "feishu_user_id", "ou_hook_actor"); err != nil {
+		t.Fatalf("BindExternalID() error = %v", err)
+	}
+	created, err := svc.AddHook(defaultHookInput())
+	if err != nil {
+		t.Fatalf("AddHook() error = %v", err)
+	}
+	if created.Actor.User == nil || created.Actor.User.ID != svc.Runtime().ActorUserID || created.Actor.User.Name != "local" {
+		t.Fatalf("created actor = %#v, want full local user", created.Actor)
+	}
+	if len(created.Actor.User.ExternalIDs) != 1 || created.Actor.User.ExternalIDs[0].ExternalID != "ou_hook_actor" {
+		t.Fatalf("created actor external IDs = %#v", created.Actor.User.ExternalIDs)
+	}
+	info, err := svc.HookInfo(created.ID)
+	if err != nil {
+		t.Fatalf("HookInfo() error = %v", err)
+	}
+	if info.Actor.User == nil || info.Actor.User.Name != "local" {
+		t.Fatalf("info actor = %#v, want full local user", info.Actor)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestHookAddDefaults: 默认 enabled=true, timeout=10, maxAttempts=5
 // ---------------------------------------------------------------------------

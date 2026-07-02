@@ -128,6 +128,13 @@ func (s *Store) prepareActorColumnsForP2() error {
 			}
 		}
 	}
+	if s.db.Migrator().HasTable("notification_deliveries") &&
+		s.db.Migrator().HasColumn("notification_deliveries", "actor_user_id") &&
+		s.db.Migrator().HasColumn("notification_deliveries", "recipient_user_id") {
+		if err := s.db.Exec(`UPDATE notification_deliveries SET actor_user_id = recipient_user_id WHERE (actor_type = 'user' OR actor_type = '') AND (actor_user_id IS NULL OR actor_user_id = '') AND recipient_user_id <> ''`).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

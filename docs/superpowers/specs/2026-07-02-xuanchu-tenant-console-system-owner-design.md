@@ -2,11 +2,11 @@
 
 **日期：** 2026-07-02
 **状态：** 已实现
-**背景需求：** 现有 `tenant_access_token` 已支持 HTTP API / HTTP MCP，但不能登录 Web Console，也不能管理 user / member / token / workspace。新的产品目标是：`tenant_access_token` 可以作为 workspace 级“系统超管”进入 Web Console；server admin 在超管平台可以直接切换到某个 workspace 的 tenant 身份，像 owner 一样完成该 workspace 内的管理和业务操作。
+**背景需求：** 本规格立项时，`tenant_access_token` 已支持 HTTP API / HTTP MCP，但不能登录 Web Console，也不能管理 user / member / token / workspace。新的产品目标是：`tenant_access_token` 可以作为 workspace 级“系统超管”进入 Web Console；server admin 在超管平台可以直接切换到某个 workspace 的 tenant 身份，像 owner 一样完成该 workspace 内的管理和业务操作。
 
-## 1. 当前代码现状
+## 1. 立项时代码现状
 
-当前实现已经具备这些基础：
+立项时实现已经具备这些基础：
 
 - `api_tokens` 表支持 `type=tenant_access_token`，`user_id=NULL`，单 workspace 绑定。
 - raw token 前缀为 `xuanchu_tenant_`。

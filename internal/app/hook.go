@@ -195,7 +195,10 @@ func (s *Service) AddHook(input HookAddInput) (HookView, error) {
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view = hookViewFromRowWithSink(created, sink)
+		view, err = tx.hookViewFromRowWithSink(created, sink)
+		if err != nil {
+			return AuditEntry{}, err
+		}
 		return AuditEntry{
 			TargetType: "hook",
 			TargetID:   created.ID,
@@ -233,7 +236,11 @@ func (s *Service) ListHooks(projectRef string) ([]HookView, error) {
 		if !s.allowsProjectID(row.ProjectID) {
 			continue
 		}
-		views = append(views, s.hookViewFromRow(row))
+		view, err := s.hookViewFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		views = append(views, view)
 	}
 	return views, nil
 }
@@ -256,7 +263,7 @@ func (s *Service) HookInfo(hookID string) (HookView, error) {
 	if err := s.ensureReadableHookScope(row); err != nil {
 		return HookView{}, err
 	}
-	return s.hookViewFromRow(row), nil
+	return s.hookViewFromRow(row)
 }
 
 // ModifyHook 修改 hook 的属性。
@@ -336,7 +343,10 @@ func (s *Service) ModifyHook(hookID string, input HookModifyInput) (HookView, er
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view = tx.hookViewFromRow(updated)
+		view, err = tx.hookViewFromRow(updated)
+		if err != nil {
+			return AuditEntry{}, err
+		}
 		return AuditEntry{
 			TargetType: "hook",
 			TargetID:   hookID,
@@ -388,7 +398,10 @@ func (s *Service) toggleHook(hookID string, enabled bool, action string) (HookVi
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		view = tx.hookViewFromRow(updated)
+		view, err = tx.hookViewFromRow(updated)
+		if err != nil {
+			return AuditEntry{}, err
+		}
 		return AuditEntry{
 			TargetType: "hook",
 			TargetID:   hookID,
@@ -622,21 +635,25 @@ func hookDeliveryActorIDs(rows []storage.HookDelivery) []string {
 	return ids
 }
 
-func (s *Service) hookViewFromRow(row storage.HookDefinition) HookView {
+func (s *Service) hookViewFromRow(row storage.HookDefinition) (HookView, error) {
 	sink, err := s.notificationSinkRepo.GetByID(row.SinkID)
 	if err != nil || sink.WorkspaceID != row.WorkspaceID {
-		return hookViewFromRowWithSink(row, storage.NotificationSink{ID: row.SinkID})
+		return s.hookViewFromRowWithSink(row, storage.NotificationSink{ID: row.SinkID})
 	}
-	return hookViewFromRowWithSink(row, sink)
+	return s.hookViewFromRowWithSink(row, sink)
 }
 
 // hookViewFromRowWithSink 将 GORM 模型转换为只读视图（不含 secret）。
-func hookViewFromRowWithSink(row storage.HookDefinition, sink storage.NotificationSink) HookView {
+func (s *Service) hookViewFromRowWithSink(row storage.HookDefinition, sink storage.NotificationSink) (HookView, error) {
 	var eventTypes []string
 	if row.EventTypesJSON != "" {
 		_ = json.Unmarshal([]byte(row.EventTypesJSON), &eventTypes)
 	}
 	enabled := row.Enabled != nil && *row.Enabled
+	actor, err := s.actorInfoFromColumns(actorColumns{Type: row.ActorType, UserID: stringPtrOrNil(row.ActorUserID), TokenID: row.ActorTokenID, TokenName: row.ActorTokenName, TokenPrefix: row.ActorTokenPrefix}, row.ActorUserID)
+	if err != nil {
+		return HookView{}, err
+	}
 	return HookView{
 		ID:             row.ID,
 		Name:           row.Name,
@@ -644,7 +661,7 @@ func hookViewFromRowWithSink(row storage.HookDefinition, sink storage.Notificati
 		WorkspaceID:    row.WorkspaceID,
 		ProjectID:      row.ProjectID,
 		ActorUserID:    row.ActorUserID,
-		Actor:          actorInfoFromColumns(actorColumns{Type: row.ActorType, UserID: stringPtrOrNil(row.ActorUserID), TokenID: row.ActorTokenID, TokenName: row.ActorTokenName, TokenPrefix: row.ActorTokenPrefix}, row.ActorUserID, nil),
+		Actor:          actor,
 		EventTypes:     eventTypes,
 		SinkID:         row.SinkID,
 		SinkName:       sink.Name,
@@ -654,7 +671,7 @@ func hookViewFromRowWithSink(row storage.HookDefinition, sink storage.Notificati
 		MaxAttempts:    row.MaxAttempts,
 		CreatedAt:      row.CreatedAt,
 		ModifiedAt:     row.ModifiedAt,
-	}
+	}, nil
 }
 
 // secretFingerprint 计算 secret 的指纹：SHA256 的前 8 个十六进制字符。

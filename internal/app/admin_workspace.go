@@ -362,9 +362,6 @@ func (s *Service) AdminCreateTenantAccessSession(input AdminCreateTenantAccessSe
 		if err != nil {
 			return RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
 		}
-		if scopes.Has(auth.ScopeTokenWrite) {
-			return RuntimeError{Code: "tenant_token_scope_invalid", Message: "admin switch tenant token cannot have token:write scope"}
-		}
 		raw, prefix, hash, err := auth.GenerateToken(auth.TokenTypeTenantAccess)
 		if err != nil {
 			return err
@@ -435,20 +432,7 @@ func (s *Service) AdminCreateTenantAccessSession(input AdminCreateTenantAccessSe
 }
 
 func adminTenantSwitchDefaultScopes() []string {
-	return []string{
-		auth.ScopeTaskRead, auth.ScopeTaskWrite,
-		auth.ScopeProjectRead, auth.ScopeProjectWrite,
-		auth.ScopeContextRead, auth.ScopeContextWrite,
-		auth.ScopeConfigRead, auth.ScopeConfigWrite,
-		auth.ScopeWorkspaceRead, auth.ScopeWorkspaceWrite,
-		auth.ScopeAuditRead,
-		auth.ScopeUserRead, auth.ScopeUserWrite,
-		auth.ScopeMemberRead, auth.ScopeMemberWrite,
-		auth.ScopeTokenRead,
-		auth.ScopeHookRead,
-		auth.ScopeNotificationRead,
-		auth.ScopeReminderRead,
-	}
+	return []string{"*"}
 }
 
 // AdminCreateActingSession 为 owner/admin 用户创建短期 acting session。

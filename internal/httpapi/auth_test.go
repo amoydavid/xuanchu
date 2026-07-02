@@ -381,6 +381,17 @@ func TestTenantTokenCanManageHTTPWorkspaceAndTokens(t *testing.T) {
 	if !strings.Contains(createToken.Body.String(), `"type":"pat"`) || !strings.Contains(createToken.Body.String(), `"token":"xuanchu_pat_`) {
 		t.Fatalf("created token body=%s", createToken.Body.String())
 	}
+
+	listTokens := requestHTTP(t, server, http.MethodGet, "/api/v1/tokens", headers)
+	if listTokens.Code != http.StatusOK {
+		t.Fatalf("list tokens status = %d body=%s", listTokens.Code, listTokens.Body.String())
+	}
+	if !strings.Contains(listTokens.Body.String(), `"name":"tenant-created-pat"`) || strings.Contains(listTokens.Body.String(), `"type":"tenant_access_token"`) {
+		t.Fatalf("list tokens body=%s", listTokens.Body.String())
+	}
+
+	createWorkspace := requestHTTPBody(t, server, http.MethodPost, "/api/v1/workspaces", `{"slug":"tenant-created-workspace"}`, headers)
+	assertHTTPErrorCode(t, createWorkspace, http.StatusBadRequest, "tenant_actor_not_user")
 }
 
 func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
@@ -389,8 +400,20 @@ func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "limited", Name: "Limited"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
-		Name:   "limited-token-manager",
+		Name:        "limited-token-manager",
+		Scopes:      []string{"token:write"},
+		ProjectRefs: []string{"limited"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wider, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "wider-token",
 		Scopes: []string{"token:write"},
 	})
 	if err != nil {
@@ -405,7 +428,7 @@ func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
 	rr := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"escaped","scopes":["task:read"]}`, headers)
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
 
-	createChild := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"child","scopes":["token:write"]}`, headers)
+	createChild := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tenant-access-tokens", `{"name":"child","scopes":["token:write"],"projects":["limited"]}`, headers)
 	if createChild.Code != http.StatusCreated {
 		t.Fatalf("create child status = %d body=%s", createChild.Code, createChild.Body.String())
 	}
@@ -419,6 +442,241 @@ func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
 	}
 	rr = requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+payload.Data.ID, `{"scopes":["token:write","task:read"]}`, headers)
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
+
+	rr = requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+wider.View.ID, `{"projects":["limited"]}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "project_scope_denied")
+
+	rr = requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+wider.View.ID, `{}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "project_scope_denied")
+
+	rr = requestHTTP(t, server, http.MethodDelete, "/api/v1/tenant-access-tokens/"+wider.View.ID, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "project_scope_denied")
+	if len(created.View.ProjectIDs) != 1 || created.View.ProjectIDs[0] != project.ID {
+		t.Fatalf("limited manager project_ids = %#v, want [%s]", created.View.ProjectIDs, project.ID)
+	}
+}
+
+func TestTenantTokenListFiltersTenantTokensByProjectScope(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := svc.AddProject(app.AddProjectInput{Slug: "one", Name: "One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddProject(app.AddProjectInput{Slug: "two", Name: "Two"}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:        "limited-reader",
+		Scopes:      []string{"token:read"},
+		ProjectRefs: []string{"one"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:        "one-visible",
+		Scopes:      []string{"token:read"},
+		ProjectRefs: []string{"one"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:        "two-hidden",
+		Scopes:      []string{"token:read"},
+		ProjectRefs: []string{"two"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "wide-hidden",
+		Scopes: []string{"token:read"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	rr := requestHTTP(t, server, http.MethodGet, "/api/v1/tenant-access-tokens", map[string]string{
+		"Authorization": "Bearer " + reader.RawToken,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data []struct {
+			Name       string   `json:"name"`
+			ProjectIDs []string `json:"project_ids"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, token := range payload.Data {
+		names[token.Name] = true
+		for _, projectID := range token.ProjectIDs {
+			if projectID != one.ID {
+				t.Fatalf("listed token %q project_ids = %v, want only %s", token.Name, token.ProjectIDs, one.ID)
+			}
+		}
+		if len(token.ProjectIDs) == 0 {
+			t.Fatalf("listed token %q is workspace-wide under project-scoped reader", token.Name)
+		}
+	}
+	if !names["limited-reader"] || !names["one-visible"] {
+		t.Fatalf("listed names = %v, want limited-reader and one-visible", names)
+	}
+	if names["two-hidden"] || names["wide-hidden"] {
+		t.Fatalf("listed names = %v, should hide two-hidden and wide-hidden", names)
+	}
+}
+
+func TestTokenListFiltersRegularTokensByRequestScope(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := svc.AddProject(app.AddProjectInput{Slug: "one", Name: "One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddProject(app.AddProjectInput{Slug: "two", Name: "Two"}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "limited-reader",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"token:read"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"one"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "one-visible",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"one"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "two-hidden",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+		ProjectRefs:   []string{"two"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "wide-hidden",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	rr := requestHTTP(t, server, http.MethodGet, "/api/v1/tokens", map[string]string{
+		"Authorization": "Bearer " + reader.RawToken,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data []struct {
+			Name       string   `json:"name"`
+			ProjectIDs []string `json:"project_ids"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, token := range payload.Data {
+		names[token.Name] = true
+		for _, projectID := range token.ProjectIDs {
+			if projectID != one.ID {
+				t.Fatalf("listed token %q project_ids = %v, want only %s", token.Name, token.ProjectIDs, one.ID)
+			}
+		}
+		if len(token.ProjectIDs) == 0 {
+			t.Fatalf("listed token %q is workspace-wide under project-scoped reader", token.Name)
+		}
+	}
+	if !names["limited-reader"] || !names["one-visible"] {
+		t.Fatalf("listed names = %v, want limited-reader and one-visible", names)
+	}
+	if names["two-hidden"] || names["wide-hidden"] {
+		t.Fatalf("listed names = %v, should hide two-hidden and wide-hidden", names)
+	}
+}
+
+func TestTenantTokenCannotModifyHTTPTokenBeyondOwnScope(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "limited-token-manager",
+		Scopes: []string{"token:read", "token:write", "task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "managed-pat",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	widerChild, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "wider-pat",
+		Type:          "pat",
+		UserRef:       "local",
+		Scopes:        []string{"task:read", "project:write"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{
+		"Authorization": "Bearer " + tenant.RawToken,
+		"Content-Type":  "application/json",
+	}
+
+	escalateScope := requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tokens/"+child.View.ID, `{"scopes":["task:read","project:write"]}`, headers)
+	assertHTTPErrorCode(t, escalateScope, http.StatusForbidden, "token_scope_denied")
+
+	clearWorkspace := requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tokens/"+child.View.ID, `{"workspaces":[]}`, headers)
+	assertHTTPErrorCode(t, clearWorkspace, http.StatusForbidden, "workspace_scope_denied")
+
+	revokeWiderScope := requestHTTP(t, server, http.MethodDelete, "/api/v1/tokens/"+widerChild.View.ID, headers)
+	assertHTTPErrorCode(t, revokeWiderScope, http.StatusForbidden, "token_scope_denied")
+
+	downgradeWiderScope := requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tokens/"+widerChild.View.ID, `{"scopes":["task:read"]}`, headers)
+	assertHTTPErrorCode(t, downgradeWiderScope, http.StatusForbidden, "token_scope_denied")
+
+	allowedRename := requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tokens/"+child.View.ID, `{"name":"managed-renamed"}`, headers)
+	if allowedRename.Code != http.StatusOK {
+		t.Fatalf("allowed rename status=%d body=%s", allowedRename.Code, allowedRename.Body.String())
+	}
 }
 
 func TestTenantTokenCannotUseHTTPImpersonationHeader(t *testing.T) {

@@ -200,21 +200,35 @@ func patchInputSchema[In any](schema *jsonschema.Schema) {
 }
 
 func serviceForTool(ctx context.Context, req *mcp.CallToolRequest, opts Options, input RequestScopeInput, capability string, permission app.Permission) (*app.Service, error) {
+	svc, _, err := serviceForToolWithAuth(ctx, req, opts, input, capability, permission)
+	return svc, err
+}
+
+func serviceForToolWithAuth(ctx context.Context, req *mcp.CallToolRequest, opts Options, input RequestScopeInput, capability string, permission app.Permission) (*app.Service, *app.AuthenticatedToken, error) {
 	factory := RuntimeFactory{Store: opts.Store, Clock: opts.Clock}
 	var svc *app.Service
+	var authn *app.AuthenticatedToken
 	var err error
 	if opts.Mode == ModeHTTP {
-		svc, err = factory.ServiceForHTTP(requestForTool(ctx, req, opts), input, capability, permission)
+		r := requestForTool(ctx, req, opts)
+		r, err = factory.AuthenticateHTTPRequest(r)
+		if err != nil {
+			return nil, nil, err
+		}
+		if value, ok := authFromHTTPRequest(r); ok {
+			authn = &value
+		}
+		svc, err = factory.ServiceForHTTP(r, input, capability, permission)
 	} else {
 		svc, err = factory.ServiceForStdio(ctx, input, capability, permission)
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := rejectTenantTool(svc, toolNameFromRequest(req)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return svc, nil
+	return svc, authn, nil
 }
 
 func toolNameFromRequest(req *mcp.CallToolRequest) string {

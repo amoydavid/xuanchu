@@ -37,6 +37,9 @@ type TokenModifyInput struct {
 	Workspace        string   `json:"workspace,omitempty"`
 	Project          string   `json:"project,omitempty"`
 	ProjectID        string   `json:"project_id,omitempty"`
+	Workspaces       []string `json:"workspaces,omitempty"`
+	Projects         []string `json:"projects,omitempty"`
+	ProjectIDs       []string `json:"project_ids,omitempty"`
 	TokenRef         string   `json:"token_ref" jsonschema:"token ID or prefix"`
 	Name             *string  `json:"name,omitempty"`
 	Scope            []string `json:"scope,omitempty"`
@@ -81,7 +84,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "token_create", Description: "Create an API token. The raw secret is returned only at creation time."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenCreateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
+		svc, authn, err := serviceForToolWithAuth(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -107,9 +110,12 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 			return successWithEnvelope(data, "token "+created.View.Name+" created")
 		}
 		created, err := svc.CreateToken(app.CreateTokenInput{
-			Name:      in.Name,
-			Scopes:    in.Scope,
-			ExpiresIn: expiresIn,
+			Name:          in.Name,
+			Scopes:        in.Scope,
+			WorkspaceRefs: tokenWorkspaceRefs(in.Workspace),
+			ProjectRefs:   tokenProjectRefs(in.Project, in.ProjectID),
+			ExpiresIn:     expiresIn,
+			ParentToken:   tokenParentView(authn),
 		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -135,7 +141,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 				TokenRef:    in.TokenRef,
 				Name:        in.Name,
 				Scopes:      ptrToStringSlice(in.Scope),
-				ProjectRefs: ptrToStringSlice(tokenProjectRefs(in.Project, in.ProjectID)),
+				ProjectRefs: ptrToStringSlice(tokenProjectRefsFromSlices(in.Projects, in.ProjectIDs)),
 				ExpiresIn:   expiresIn,
 			})
 			if err != nil {
@@ -145,10 +151,12 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 			return successWithEnvelope(data, "token "+result.Name+" updated")
 		}
 		result, err := svc.ModifyToken(app.ModifyTokenInput{
-			TokenID:   in.TokenRef,
-			Name:      in.Name,
-			Scopes:    ptrToStringSlice(in.Scope),
-			ExpiresIn: expiresIn,
+			TokenID:       in.TokenRef,
+			Name:          in.Name,
+			Scopes:        ptrToStringSlice(in.Scope),
+			WorkspaceRefs: ptrToStringSlice(in.Workspaces),
+			ProjectRefs:   ptrToStringSlice(tokenProjectRefsFromSlices(in.Projects, in.ProjectIDs)),
+			ExpiresIn:     expiresIn,
 		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -158,7 +166,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "token_revoke", Description: "Revoke an API token."}, func(ctx context.Context, req *mcp.CallToolRequest, in TokenRevokeInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
+		svc, authn, err := serviceForToolWithAuth(ctx, req, opts, in.scopeInput(), "token:write", app.PermissionTokenWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -168,7 +176,7 @@ func registerTokenTools(s *mcp.Server, opts Options) {
 			}
 			return successWithEnvelope(nil, "token revoked")
 		}
-		if err := svc.RevokeToken(in.TokenRef); err != nil {
+		if err := svc.RevokeTokenWithLimit(in.TokenRef, tokenParentView(authn)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(nil, "token revoked")
@@ -249,10 +257,33 @@ func tokenProjectRefs(project, projectID string) []string {
 	return refs
 }
 
+func tokenProjectRefsFromSlices(projects, projectIDs []string) []string {
+	if projects == nil && projectIDs == nil {
+		return nil
+	}
+	refs := append([]string(nil), projects...)
+	refs = append(refs, projectIDs...)
+	return refs
+}
+
+func tokenWorkspaceRefs(workspace string) []string {
+	if workspace == "" {
+		return nil
+	}
+	return []string{workspace}
+}
+
 func tokenViewsFromApp(rows []app.TokenView) []map[string]any {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, tokenViewFromApp(row))
 	}
 	return out
+}
+
+func tokenParentView(authn *app.AuthenticatedToken) *app.TokenView {
+	if authn == nil {
+		return nil
+	}
+	return &authn.Token
 }

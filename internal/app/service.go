@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/recurrence"
 	"git.dajee.net/dajee/xuanchu/internal/report"
@@ -506,6 +507,9 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	if !input.ReportMode {
 		tasks = filterExpiredUntil(tasks, s.clock.Unix())
 	}
+	if err := s.enrichTaskLinkActors(tasks); err != nil {
+		return nil, err
+	}
 	for _, tsk := range tasks {
 		if err := s.validateTaskProjectInvariant(tsk); err != nil {
 			return nil, err
@@ -529,11 +533,63 @@ func (s *Service) Info(target string) (task.Task, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return task.Task{}, err
 	}
-	return s.resolveTargetForRead(target)
+	tsk, err := s.resolveTargetForRead(target)
+	if err != nil {
+		return task.Task{}, err
+	}
+	if err := s.enrichTaskLinkActors([]task.Task{tsk}); err != nil {
+		return task.Task{}, err
+	}
+	return tsk, nil
 }
 
 func (s *Service) ResolveTarget(target string) (task.Task, error) {
-	return s.resolveTargetForRead(target)
+	tsk, err := s.resolveTargetForRead(target)
+	if err != nil {
+		return task.Task{}, err
+	}
+	if err := s.enrichTaskLinkActors([]task.Task{tsk}); err != nil {
+		return task.Task{}, err
+	}
+	return tsk, nil
+}
+
+func (s *Service) enrichTaskLinkActors(tasks []task.Task) error {
+	userIDs := make([]string, 0)
+	for _, tsk := range tasks {
+		for _, link := range tsk.Links {
+			if link.CreatedBy.Type == auth.TokenTypeTenantAccess {
+				continue
+			}
+			if link.CreatedBy.User != nil && link.CreatedBy.User.ID != "" {
+				userIDs = append(userIDs, link.CreatedBy.User.ID)
+				continue
+			}
+			if link.CreatedBy.ID != "" {
+				userIDs = append(userIDs, link.CreatedBy.ID)
+			}
+		}
+	}
+	userInfos, err := s.resolveUserInfos(userIDs)
+	if err != nil {
+		return err
+	}
+	for taskIndex := range tasks {
+		for linkIndex := range tasks[taskIndex].Links {
+			link := &tasks[taskIndex].Links[linkIndex]
+			if link.CreatedBy.Type == auth.TokenTypeTenantAccess {
+				continue
+			}
+			userID := link.CreatedBy.ID
+			if link.CreatedBy.User != nil && link.CreatedBy.User.ID != "" {
+				userID = link.CreatedBy.User.ID
+			}
+			if ui := userInfos[userID]; ui.ID != "" {
+				link.CreatedBy = task.ActorInfo{Type: actorTypeUser, ID: ui.ID, Name: ui.Name, User: &ui}
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) Modify(target string, input ModifyInput) error {

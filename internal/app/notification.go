@@ -721,7 +721,7 @@ func (s *Service) ListNotificationDeliveries(sinkID string, status string, limit
 		if !s.allowsProjectID(row.ProjectID) {
 			continue
 		}
-		view, err := notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID], actorInfoFromColumns(notificationDeliveryActorColumns(row), "", userInfos))
+		view, err := notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID], actorInfoFromColumns(notificationDeliveryActorColumns(row), row.RecipientUserID, userInfos))
 		if err != nil {
 			return nil, err
 		}
@@ -1253,7 +1253,7 @@ func (s *Service) notificationDeliveryViewFromRow(row storage.NotificationDelive
 	if err != nil {
 		return NotificationDeliveryView{}, err
 	}
-	return notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID], actorInfoFromColumns(notificationDeliveryActorColumns(row), "", userInfos))
+	return notificationDeliveryViewFromRow(row, userInfos[row.RecipientUserID], actorInfoFromColumns(notificationDeliveryActorColumns(row), row.RecipientUserID, userInfos))
 }
 
 func notificationDeliveryViewFromRow(row storage.NotificationDelivery, recipient task.UserInfo, actor task.ActorInfo) (NotificationDeliveryView, error) {

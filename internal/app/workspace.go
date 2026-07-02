@@ -313,6 +313,9 @@ func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error) 
 }
 
 func (s *Service) AddWorkspace(input AddWorkspaceInput) (WorkspaceView, error) {
+	if s.runtime.IsTenantActor() {
+		return WorkspaceView{}, tenantActorNotUserError()
+	}
 	var created WorkspaceView
 	slug, err := normalizeWorkspaceSlug(input.Slug)
 	if err != nil {
@@ -998,10 +1001,14 @@ func (s *Service) addLinkLocked(taskRef, linkType, url, title string) (task.Task
 	if err != nil {
 		return task.TaskLinkInfo{}, task.Task{}, err
 	}
+	createdBy, err := s.actorInfoFromColumns(taskLinkActorColumns(created), created.CreatedBy)
+	if err != nil {
+		return task.TaskLinkInfo{}, task.Task{}, err
+	}
 	return task.TaskLinkInfo{
 		ID: created.ID, Type: created.Type, URL: created.URL,
 		Title: created.Title, CreatedAt: created.CreatedAt,
-		CreatedBy: actorInfoFromColumns(taskLinkActorColumns(created), created.CreatedBy, nil),
+		CreatedBy: createdBy,
 	}, updated, nil
 }
 
@@ -1096,10 +1103,14 @@ func (s *Service) updateLinkLocked(taskRef, linkID, linkType, url, title string)
 	if err != nil {
 		return task.TaskLinkInfo{}, task.Task{}, err
 	}
+	createdBy, err := s.actorInfoFromColumns(taskLinkActorColumns(updatedLink), updatedLink.CreatedBy)
+	if err != nil {
+		return task.TaskLinkInfo{}, task.Task{}, err
+	}
 	return task.TaskLinkInfo{
 		ID: updatedLink.ID, Type: updatedLink.Type, URL: updatedLink.URL,
 		Title: updatedLink.Title, CreatedAt: updatedLink.CreatedAt,
-		CreatedBy: actorInfoFromColumns(taskLinkActorColumns(updatedLink), updatedLink.CreatedBy, nil),
+		CreatedBy: createdBy,
 	}, updatedTask, nil
 }
 

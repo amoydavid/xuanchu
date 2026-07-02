@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -20,6 +21,8 @@ const (
 // acting token 只面向浏览器 Workspace Console 的普通 HTTP API，
 // 不进入普通 api_tokens 表，也不被 MCP 或 remote CLI 接受。
 const ActingTokenPrefix = "xuanchu_act_"
+
+const tokenPrefixRandomChars = 8
 
 type CreateTokenOptions struct {
 	Type         string
@@ -37,13 +40,30 @@ func GenerateToken(tokenType string) (raw string, prefix string, hash string, er
 		return "", "", "", fmt.Errorf("generate token entropy: %w", err)
 	}
 	raw = prefixBase + base64.RawURLEncoding.EncodeToString(buf)
-	prefix = raw
-	if len(prefix) > 16 {
-		prefix = raw[:16]
+	prefix, err = TokenLookupPrefix(raw)
+	if err != nil {
+		return "", "", "", err
 	}
 	sum := sha256.Sum256([]byte(raw))
 	hash = hex.EncodeToString(sum[:])
 	return raw, prefix, hash, nil
+}
+
+func TokenLookupPrefix(raw string) (string, error) {
+	for _, tokenType := range []string{TokenTypePAT, TokenTypeAgent, TokenTypeTenantAccess} {
+		prefixBase, err := tokenPrefixForType(tokenType)
+		if err != nil {
+			return "", err
+		}
+		if strings.HasPrefix(raw, prefixBase) {
+			maxLen := len(prefixBase) + tokenPrefixRandomChars
+			if len(raw) < maxLen {
+				return "", fmt.Errorf("invalid token")
+			}
+			return raw[:maxLen], nil
+		}
+	}
+	return "", fmt.Errorf("invalid token")
 }
 
 // GenerateActingToken 生成 server admin 委托的短期 acting token。

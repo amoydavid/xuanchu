@@ -381,9 +381,9 @@ xuanchu --workspace dajee token create mcp-agent \
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workspace` | string | 否 | |
-| `project` | string | 否 | |
-| `project_id` | string | 否 | |
+| `workspace` | string | 否 | 限定本次调用的 workspace |
+| `project` | string | 否 | 限定本次调用的 project slug |
+| `project_id` | string | 否 | 限定本次调用的 project ID |
 | `id` | string | 是 | 任务 UUID 或 `task_slug` |
 | `title` | string | 否 | 新标题 |
 | `description` | string | 否 | 新详细描述 |
@@ -1325,7 +1325,9 @@ Notification sink 支持 `max_concurrency` 控制同一 sink 的单进程出站�
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workspace` | string | 否 | |
+| `workspace` | string | 否 | 限定本次调用的 workspace |
+| `project` | string | 否 | 限定本次调用的 project slug |
+| `project_id` | string | 否 | 限定本次调用的 project ID |
 
 #### `token_create`
 
@@ -1333,7 +1335,9 @@ Notification sink 支持 `max_concurrency` 控制同一 sink 的单进程出站�
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workspace` | string | 否 | |
+| `workspace` | string | 否 | 创建目标 workspace；HTTP 模式下也会限定本次调用的 workspace |
+| `project` | string | 否 | 创建目标 project slug；HTTP 模式下也会限定本次调用的 project |
+| `project_id` | string | 否 | 创建目标 project ID；HTTP 模式下也会限定本次调用的 project |
 | `name` | string | 是 | Token 名称 |
 | `scope` | string[] | 否 | 权限 scope 列表 |
 | `expires_in_seconds` | int | 否 | 过期时间（秒） |
@@ -1344,8 +1348,13 @@ Notification sink 支持 `max_concurrency` 控制同一 sink 的单进程出站�
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workspace` | string | 否 | |
-| `token_ref` | string | 是 | Token ID |
+| `workspace` | string | 否 | 限定本次调用的 workspace |
+| `project` | string | 否 | 限定本次调用的 project slug，不用于修改目标 Token 绑定 |
+| `project_id` | string | 否 | 限定本次调用的 project ID，不用于修改目标 Token 绑定 |
+| `workspaces` | string[] | 否 | 修改目标 Token 的 workspace 绑定；缺省表示不修改 |
+| `projects` | string[] | 否 | 修改目标 Token 的 project slug 绑定；缺省表示不修改 |
+| `project_ids` | string[] | 否 | 修改目标 Token 的 project ID 绑定；缺省表示不修改 |
+| `token_ref` | string | 是 | Token ID 或 prefix |
 | `name` | string | 否 | |
 | `scope` | string[] | 否 | |
 | `expires_in_seconds` | int | 否 | |
@@ -1356,8 +1365,10 @@ Notification sink 支持 `max_concurrency` 控制同一 sink 的单进程出站�
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workspace` | string | 否 | |
-| `token_ref` | string | 是 | Token ID |
+| `workspace` | string | 否 | 限定本次调用的 workspace |
+| `project` | string | 否 | 限定本次调用的 project slug |
+| `project_id` | string | 否 | 限定本次调用的 project ID |
+| `token_ref` | string | 是 | Token ID 或 prefix |
 
 ### 系统（3 tools）
 

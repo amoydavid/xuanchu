@@ -82,6 +82,110 @@ func TestCreateTokenStoresHashAndAudits(t *testing.T) {
 	}
 }
 
+func TestAuthenticateBearerTokenAcceptsLegacyShortPrefix(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "legacy",
+		Type:          "pat",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPrefix := created.RawToken[:16]
+	if legacyPrefix == created.View.Prefix {
+		t.Fatalf("legacy prefix %q unexpectedly equals current prefix", legacyPrefix)
+	}
+	if err := svc.store.DB().Exec("UPDATE api_tokens SET token_prefix = ? WHERE id = ?", legacyPrefix, created.View.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	authn, err := svc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatalf("AuthenticateBearerToken() error = %v", err)
+	}
+	if authn.Token.ID != created.View.ID || authn.Token.Prefix != legacyPrefix {
+		t.Fatalf("auth token = %#v, want id=%s prefix=%s", authn.Token, created.View.ID, legacyPrefix)
+	}
+}
+
+func TestModifyTokenAcceptsPrefix(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "cli",
+		Type:          "pat",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := "renamed-by-prefix"
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: created.View.Prefix,
+		Name:    &renamed,
+	})
+	if err != nil {
+		t.Fatalf("ModifyToken(prefix) error = %v", err)
+	}
+	if view.ID != created.View.ID || view.Name != renamed {
+		t.Fatalf("view = %#v, want id=%s name=%s", view, created.View.ID, renamed)
+	}
+}
+
+func TestModifyTokenAcceptsLegacyShortPrefix(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "legacy",
+		Type:          "pat",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPrefix := created.RawToken[:16]
+	if err := svc.store.DB().Exec("UPDATE api_tokens SET token_prefix = ? WHERE id = ?", legacyPrefix, created.View.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	renamed := "legacy-renamed"
+	view, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: legacyPrefix,
+		Name:    &renamed,
+	})
+	if err != nil {
+		t.Fatalf("ModifyToken(legacy prefix) error = %v", err)
+	}
+	if view.ID != created.View.ID || view.Name != renamed {
+		t.Fatalf("view = %#v, want id=%s name=%s", view, created.View.ID, renamed)
+	}
+}
+
+func TestModifyTokenRejectsAmbiguousPrefix(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if _, err := svc.CreateToken(CreateTokenInput{Name: "a", Type: "pat", Scopes: []string{"task:read"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateToken(CreateTokenInput{Name: "b", Type: "pat", Scopes: []string{"task:read"}}); err != nil {
+		t.Fatal(err)
+	}
+	renamed := "ambiguous"
+	_, err := svc.ModifyToken(ModifyTokenInput{
+		TokenID: "xuanchu",
+		Name:    &renamed,
+	})
+	assertRuntimeCode(t, err, "token_ambiguous_ref")
+}
+
 func TestCreateTenantAccessTokenStoresAPIKeyWithoutUser(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

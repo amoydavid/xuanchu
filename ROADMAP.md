@@ -410,7 +410,7 @@ docs/superpowers/plans/2026-06-17-web-console-project-task-browsing.md
 
 - 复用 `api_tokens` 表，不新增独立 token 表；`type=tenant_access_token`，`user_id=NULL`，raw token 前缀为 `xuanchu_tenant_`。
 - 每个 tenant token 绑定且只绑定一个 workspace，可选 project allowlist，可设置过期时间，可吊销。
-- tenant token 使用独立 scope 白名单，支持安全展开 `*` / `resource:*` / `*:action`；不允许 `token:*`、`user:*`、`member:*`、`impersonate`、`workspace:write`。
+- tenant token 使用独立 scope 白名单，支持安全展开 `*` / `resource:*` / `*:action`；允许 `user:*`、`member:*`、`token:*`、`workspace:write`、`hook:*`、`notification:*`、`reminder:*` 等 workspace owner 等价能力，但不允许 `impersonate`。
 - HTTP API 新增 `/api/v1/tenant-access-tokens` 创建、列表、修改、吊销；明文 token 只在创建响应中返回一次。
 - Server admin 控制面新增 `/api/v1/admin/tenant-access-tokens` 列表、修改、吊销。
 - HTTP API / HTTP MCP 可使用 tenant token 执行机器身份工作流；tenant token 不能调用 `/me`、`me_get`、impersonation 或 active context 写入，但可按 scope 管理 user、member、tenant token、workspace 设置，并可创建 task link、project annotation、hook、notification sink、reminder rule、event notification rule 等资源。相关 `created_by` / `actor` 输出为系统 actor。
@@ -1397,7 +1397,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.4.7 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，并补齐 workspace 级 `tenant_access_token`。普通 Console、Server Admin Console、Admin workspace acting、PAT/Agent Token 管控、租户访问令牌、项目表格、任务过滤、任务详情和项目上下文内编辑都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理；写操作继续由 membership、token scope、workspace/project allowlist 和 closed project 状态共同约束。授权决策层已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界不变：普通 Console 仍使用 PAT / Agent token，未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
+v0.4.7 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，并补齐 workspace 级 `tenant_access_token`。普通 Console、Server Admin Console、Admin workspace acting、PAT/Agent Token 管控、租户访问令牌、项目表格、任务过滤、任务详情和项目上下文内编辑都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理；写操作继续由 membership、token scope、workspace/project allowlist 和 closed project 状态共同约束。授权决策层已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。浏览器登录边界已扩展：Workspace Console 可使用 PAT / Agent token，也可使用绑定单 workspace 的 `tenant_access_token` 作为系统 owner 身份；未来浏览器 SSO 仍应作为独立 browser session 凭证接入。
 
 v0.4.7 之后的方向待定，建议优先在以下几类中选择：
 

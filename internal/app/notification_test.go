@@ -461,6 +461,38 @@ func TestNotificationDeliveryListInfoReplay(t *testing.T) {
 	}
 }
 
+func TestNotificationDeliveryOldRowsFallbackActorToRecipient(t *testing.T) {
+	svc, cleanup := notificationTestEnv(t)
+	defer cleanup()
+
+	sink, err := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery := makeAppNotificationDelivery(svc.Runtime().WorkspaceID, sink.ID, storage.DeliveryStatusQueued)
+	delivery.RecipientUserID = svc.Runtime().ActorUserID
+	delivery.ActorType = ""
+	delivery.ActorUserID = nil
+	if err := storage.NewNotificationDeliveryRepository(svc.store.DB()).Enqueue([]storage.NotificationDelivery{delivery}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := svc.ListNotificationDeliveries("", storage.DeliveryStatusQueued, 20, 0)
+	if err != nil {
+		t.Fatalf("ListNotificationDeliveries() error = %v", err)
+	}
+	if len(rows) != 1 || rows[0].Actor.User == nil || rows[0].Actor.User.ID != svc.Runtime().ActorUserID || rows[0].Actor.User.Name != "local" {
+		t.Fatalf("delivery actor = %#v, want recipient local user", rows)
+	}
+	info, err := svc.NotificationDeliveryInfo(delivery.ID)
+	if err != nil {
+		t.Fatalf("NotificationDeliveryInfo() error = %v", err)
+	}
+	if info.Actor.User == nil || info.Actor.User.ID != svc.Runtime().ActorUserID || info.Actor.User.Name != "local" {
+		t.Fatalf("delivery info actor = %#v, want recipient local user", info.Actor)
+	}
+}
+
 func TestNotificationDeliveryRespectsProjectScope(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 1000, "local", "local")

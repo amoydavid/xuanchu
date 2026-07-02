@@ -4502,6 +4502,9 @@ func mustUnix(t *testing.T, value string) int64 {
 func TestServiceTaskAddLink(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	if err := svc.BindExternalID(svc.Runtime().ActorUserID, "feishu_user_id", "ou_link_actor"); err != nil {
+		t.Fatalf("BindExternalID() error = %v", err)
+	}
 
 	created, err := svc.Add(AddInput{Title: "test task"})
 	if err != nil {
@@ -4521,6 +4524,12 @@ func TestServiceTaskAddLink(t *testing.T) {
 	if info.Title != "Test Doc" {
 		t.Fatalf("Title = %q, want %q", info.Title, "Test Doc")
 	}
+	if info.CreatedBy.User == nil || info.CreatedBy.User.ID != svc.Runtime().ActorUserID || info.CreatedBy.User.Name != "local" {
+		t.Fatalf("CreatedBy = %#v, want full local user", info.CreatedBy)
+	}
+	if len(info.CreatedBy.User.ExternalIDs) != 1 || info.CreatedBy.User.ExternalIDs[0].ExternalID != "ou_link_actor" {
+		t.Fatalf("CreatedBy external IDs = %#v", info.CreatedBy.User.ExternalIDs)
+	}
 
 	tsk, err := svc.Info(created.UUID)
 	if err != nil {
@@ -4531,6 +4540,9 @@ func TestServiceTaskAddLink(t *testing.T) {
 	}
 	if tsk.Links[0].ID != info.ID {
 		t.Fatalf("Link ID = %q, want %q", tsk.Links[0].ID, info.ID)
+	}
+	if tsk.Links[0].CreatedBy.User == nil || tsk.Links[0].CreatedBy.User.Name != "local" {
+		t.Fatalf("stored link CreatedBy = %#v, want full local user", tsk.Links[0].CreatedBy)
 	}
 }
 
