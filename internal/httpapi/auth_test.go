@@ -347,6 +347,42 @@ func TestTenantTokenCanManageHTTPUsersAndMembers(t *testing.T) {
 	}
 }
 
+func TestTenantTokenCanManageHTTPWorkspaceAndTokens(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime-manager",
+		Scopes: []string{"workspace:read", "workspace:write", "token:read", "token:write", "task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+		"Content-Type":  "application/json",
+	}
+
+	modifyWorkspace := requestHTTPBody(t, server, http.MethodPatch, "/api/v1/workspaces/local", `{"name":"Tenant Local"}`, headers)
+	if modifyWorkspace.Code != http.StatusOK {
+		t.Fatalf("modify workspace status = %d body=%s", modifyWorkspace.Code, modifyWorkspace.Body.String())
+	}
+	if !strings.Contains(modifyWorkspace.Body.String(), `"name":"Tenant Local"`) {
+		t.Fatalf("modified workspace body=%s", modifyWorkspace.Body.String())
+	}
+
+	createToken := requestHTTPBody(t, server, http.MethodPost, "/api/v1/tokens", `{"name":"tenant-created-pat","type":"pat","user":"local","scopes":["task:read"],"workspaces":["local"]}`, headers)
+	if createToken.Code != http.StatusCreated {
+		t.Fatalf("create token status = %d body=%s", createToken.Code, createToken.Body.String())
+	}
+	if !strings.Contains(createToken.Body.String(), `"type":"pat"`) || !strings.Contains(createToken.Body.String(), `"token":"xuanchu_pat_`) {
+		t.Fatalf("created token body=%s", createToken.Body.String())
+	}
+}
+
 func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
 	store := openHTTPTestStore(t)
 	svc, err := app.NewService(app.ServiceOptions{Store: store})
@@ -382,6 +418,27 @@ func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	rr = requestHTTPBody(t, server, http.MethodPatch, "/api/v1/tenant-access-tokens/"+payload.Data.ID, `{"scopes":["token:write","task:read"]}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
+}
+
+func TestTenantTokenCannotUseHTTPImpersonationHeader(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"workspace:write"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := requestHTTPBody(t, NewServer(Options{Store: store}), http.MethodPatch, "/api/v1/workspaces/local", `{"name":"bad impersonation"}`, map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+		"Content-Type":  "application/json",
+		"X-Xuanchu-As":  "local",
+	})
 	assertHTTPErrorCode(t, rr, http.StatusForbidden, "token_scope_denied")
 }
 

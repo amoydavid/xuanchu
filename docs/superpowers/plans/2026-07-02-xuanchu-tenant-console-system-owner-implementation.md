@@ -60,7 +60,7 @@ Web P1:
 - [x] Implement app/http response helpers without changing `/api/v1/me`; tenant token must still get `tenant_actor_not_user` from `/me`.
 - [x] Register Huma route.
 - [x] Re-run focused HTTP tests.
-- [ ] Add explicit PAT/Agent/acting response tests if the Web Console migration needs stronger regression coverage.
+- [x] Keep existing PAT/Agent/acting response coverage; this migration only requires new tenant credential-current assertions.
 
 ### Task 3: Tenant token 可管理 user/member/workspace/token 资源
 
@@ -68,8 +68,8 @@ Web P1:
 - [x] Remove fixed `rejectTenantActor` guards from P1 user/member paths and rely on `scopedService` + owner-equivalent runtime.
 - [x] Keep `/me` and active context use/none forbidden.
 - [x] Ensure normal tenant token lists exclude `purpose=admin_tenant_switch`.
-- [ ] Add explicit HTTP tests for tenant `workspace:write` and `token:write`.
-- [ ] Keep `workspace_list`, `assignee:me`, and `X-Xuanchu-As` forbidden where applicable.
+- [x] Add explicit HTTP tests for tenant `workspace:write` and `token:write`.
+- [x] Keep `workspace_list`, `assignee:me`, and `X-Xuanchu-As` forbidden where applicable.
 
 ### Task 4: Admin tenant switch token
 
@@ -77,7 +77,7 @@ Web P1:
 - [x] Add `api_tokens` metadata fields: `issued_via`, `issued_by_admin_token_id`, `issued_by_admin_token_name`, `purpose`.
 - [x] Implement short-lived tenant token creation with default `2h`, max `24h`, `purpose=admin_tenant_switch`, raw token returned once.
 - [x] Add `include_admin_switch=true` support to admin tenant token list.
-- [ ] Add explicit admin-switch revocation-path regression test.
+- [x] Add explicit admin-switch revocation-path regression test.
 
 ## Chunk 2: P1 MCP 与 Web Console
 

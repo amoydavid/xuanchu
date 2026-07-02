@@ -216,6 +216,15 @@ func TestAdminTenantSwitchSessionCreateHTTP(t *testing.T) {
 		"Content-Type":  "application/json",
 	})
 	assertHTTPErrorCode(t, explicitTokenWrite, http.StatusBadRequest, "tenant_token_scope_invalid")
+
+	revoke := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/admin/tenant-access-tokens/"+envelope.Data.ID, headers)
+	if revoke.Code != http.StatusOK {
+		t.Fatalf("revoke admin-switch token status=%d body=%s", revoke.Code, revoke.Body.String())
+	}
+	currentAfterRevoke := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/credentials/current", map[string]string{
+		"Authorization": "Bearer " + envelope.Data.Token,
+	})
+	assertHTTPErrorCode(t, currentAfterRevoke, http.StatusUnauthorized, "auth_token_revoked")
 }
 
 func TestAdminActingSessionCreateRejectsArchivedWorkspace(t *testing.T) {
