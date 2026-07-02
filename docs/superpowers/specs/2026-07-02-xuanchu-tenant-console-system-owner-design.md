@@ -82,11 +82,9 @@ role = owner-equivalent
 - 不支持 `assignee:me`。
 - 不让 server admin token 直接访问普通 workspace API；server admin 仍通过短期 tenant token 切换。
 
-## 5. 设计选择
+## 5. 已选方案
 
-### 5.1 备选方案
-
-#### 方案 A：tenant token 直接登录 + admin 即时签发短期 tenant token（推荐）
+本规格采用唯一方案：tenant token 直接登录，server admin 即时签发短期 tenant token。
 
 - 普通登录页接受现有长期 `tenant_access_token`。
 - server admin 点击“以 Tenant 身份进入”时，服务端创建一个短期 `tenant_access_token`：
@@ -94,32 +92,18 @@ role = owner-equivalent
   - `user_id=NULL`
   - `workspace_ids_json=[workspace_id]`
   - `scopes_json` 为 owner 能力全集
-  - `expires_at=now+2h`，可配置
+  - `expires_at=now+ttl`，默认 `2h`，上限 `24h`
   - `name=admin-switch:<workspace>:<admin-token-name>:<timestamp>`
+  - `purpose=admin_tenant_switch`
+  - `issued_via=server_admin`
 - raw token 只在响应里返回一次，前端写入当前 tab 的 `sessionStorage`。
 - 这个 token 与普通 tenant token 走同一套认证、授权、审计。
 
-优点：复用现有 `api_tokens` 表和 tenant token 鉴权链；完全符合“以 tenant_access_token 登录”。
-缺点：会产生短期 token 记录，需要列表和清理策略处理。
+采用依据：
 
-#### 方案 B：新增 tenant console session 表
-
-- server admin 切换时创建 `tenant_console_sessions`。
-- raw token 使用 `xuanchu_tenant_act_...` 或类似前缀。
-- 后端把它映射为 tenant actor。
-
-优点：短期浏览器凭证和长期 API key 分离。
-缺点：新表、新生命周期、新前缀；用户心智上不再是 `tenant_access_token`。
-
-#### 方案 C：创建真实 system user
-
-- 为 workspace 创建 `system:<workspace>` user 和 owner membership。
-- tenant token 绑定该 user。
-
-优点：大量现有 `/me` 和 role 逻辑可复用。
-缺点：污染成员模型；系统身份会被当作自然人，任务负责人、`assignee:me`、审计和成员列表都会变含糊。
-
-**结论：采用方案 A。**
+- 复用现有 `api_tokens` 表和 tenant token 鉴权链，不新增 `tenant_console_sessions` 表。
+- 不创建真实 system user，不污染 `users`、`memberships`、任务负责人和成员列表。
+- 审计 actor 始终保持 `tenant_access_token`，不会伪装成自然人 user。
 
 ## 6. 权限模型
 
@@ -187,6 +171,7 @@ server admin 从 `/admin/workspaces/:workspace` 切换时签发的短期 token �
 ```
 
 这表示 workspace 内 owner 能力全集，不限制项目。
+请求可以传入 `expires_in`，默认 `2h`，最大 `24h`；超过上限时返回 `tenant_console_session_invalid`。
 
 ## 7. Credential Current API
 
@@ -367,6 +352,20 @@ tenant switch mode 下顶部显示：
 
 如果用户是直接用长期 tenant token 登录，而不是从 admin 切换进入，则不显示「返回超管」。
 
+### 8.5 Token 列表展示
+
+admin 切换生成的短期 tenant token 是普通 `api_tokens` 记录，必须出现在：
+
+- Workspace Console `/tokens` 的 tenant token tab。
+- Server Admin Console `/admin/tokens` 的 tenant token tab。
+
+展示规则：
+
+- 使用 `purpose=admin_tenant_switch` 标记为「Admin 切换 token」。
+- 展示过期时间、签发来源、签发 admin token 名称。
+- 已过期、已吊销状态沿用现有 token 状态展示。
+- UI 后续可以增加筛选，但默认列表不能隐藏这类 token。
+
 ## 9. Admin API
 
 新增：
@@ -410,7 +409,8 @@ Content-Type: application/json
 说明：
 
 - 该 API 创建的是普通 `api_tokens` 表中的 `tenant_access_token` row。
-- 只是默认 TTL 短、默认 scope 为 owner 全集、name 标记为 admin switch。
+- 默认 TTL 为 `2h`，请求可传 `expires_in`，最大 `24h`。
+- 默认 scope 为 owner 全集，name 和 purpose 标记为 admin switch。
 - raw token 只返回一次。
 - 审计 action：`admin.tenant_token.session_create`。
 
@@ -456,7 +456,7 @@ Content-Type: application/json
 - `assignee:me`
 - MCP `me_get`
 - HTTP `/api/v1/me`
-- active context use/none，如果该语义仍绑定自然人 user
+- active context use/none，该语义绑定自然人 user
 
 ## 11. User-shaped Actor 资源
 
@@ -470,17 +470,17 @@ Content-Type: application/json
 - event notification rule
 - hook delivery / event notification delivery actor
 
-如果目标是“所有 workspace 操作”，这些资源必须支持系统 actor。
+完整 workspace 操作覆盖必须支持这些资源的系统 actor，相关 schema 升级纳入 P2。
 
 ### 11.1 P1 规则
 
-P1 应至少完成 Web Console 常用管理闭环：
+P1 完成 Web Console 常用管理闭环：
 
 - user / member / token / workspace 管理
 - task / project / config / audit
 - tenant token 登录与 admin 切换
 
-对于仍依赖 `created_by_user_id` 的资源，P1 可先保留 `tenant_actor_not_user`，但 UI 必须隐藏或禁用对应创建按钮，并显示明确错误。也就是说，P1 的“owner 等价”先覆盖当前 Workspace Console 的核心管理闭环；若用户要求 hook / notification / reminder / annotation 等也完整可创建，则必须把 11.2 的 actor schema 升级纳入同一个实施计划。
+对于仍依赖 `created_by_user_id` 的资源，P1 保留 `tenant_actor_not_user`。Web Console 触达这些资源时，创建按钮必须隐藏或禁用，并显示明确错误。P1 的“owner 等价”覆盖当前 Workspace Console 的核心管理闭环；user-shaped actor 资源由 P2 统一完成。
 
 ### 11.2 P2 规则
 
@@ -538,7 +538,7 @@ HTTP MCP 使用 tenant token 时也应获得相同系统 owner 语义。
 - `me_get`
 - `user_use`
 - `workspace_use`
-- `workspace_list` 是否允许需按产品语义决定。P1 建议仍禁止，因为 tenant token 只绑定单 workspace。
+- `workspace_list`，P1 禁止，因为 tenant token 只绑定单 workspace。
 - `context_set`
 - `context_none`
 
@@ -600,7 +600,7 @@ sequenceDiagram
 
 P1 继续复用 `api_tokens` 表。
 
-建议新增字段：
+新增字段：
 
 ```text
 issued_via TEXT NOT NULL DEFAULT 'user'
@@ -616,7 +616,7 @@ issued_via = user | server_admin | system
 purpose = api | admin_tenant_switch
 ```
 
-如果不想立刻加字段，P1 可先只靠 audit payload 记录来源，并用 name 前缀区分短期切换 token。但这会让后续列表过滤和清理不够稳。推荐加字段。
+P1 必须增加这些字段，不能只靠 audit payload 或 name 前缀区分短期切换 token。列表展示、审计回溯、过期清理和后续筛选都依赖结构化字段。
 
 短期 tenant switch token：
 
@@ -725,7 +725,8 @@ pnpm --dir web run smoke:editing
 - `/admin/workspaces/:workspace` 支持签发短期 tenant switch token。
 - tenant token 可管理 user/member/token/workspace。
 - 审计和 access log 保持 tenant actor。
-- 保留 `assignee:me`、impersonation、user-shaped created_by 资源限制；若本轮必须交付“所有 workspace 操作”，则需要把 P2 的 actor schema 迁移提前合并进 P1。
+- 保留 `assignee:me`、impersonation、user-shaped created_by 资源限制。
+- Web Console 触达 user-shaped actor 资源时，创建入口隐藏或禁用，并返回明确权限错误。
 
 ### P2：完整 workspace 操作覆盖
 
@@ -740,12 +741,3 @@ pnpm --dir web run smoke:editing
 本文是 `2026-06-29-xuanchu-tenant-access-token-design.md` 的后续修订方向。
 
 旧规格把 tenant token 定义为“不登录 Web Console、不管理 user/member/token/workspace”的机器 API key。本文将其升级为 workspace 系统 owner credential。旧实现不应被视为错误；它是 P1 API key 阶段的正确边界。新目标扩大了产品语义，因此必须同步修改 spec、manual、implementation plan 和测试矩阵。
-
-## 21. 待确认问题
-
-1. admin 切换生成的短期 tenant token 是否默认显示在 `/tokens` 的 tenant token 列表中？
-   - 推荐：默认显示，但标记 `purpose=admin_tenant_switch` 和过期时间；后续可加过滤。
-2. 短期 tenant switch token 默认 TTL 是否固定 2 小时？
-   - 推荐：默认 2 小时，允许请求中传 `expires_in`，上限 24 小时。
-3. P1 是否必须覆盖 hook / notification / reminder 创建？
-   - 推荐：不强塞进 P1，先完成 Console 系统 owner 登录和 user/member/token/workspace 管理闭环；P2 再统一 actor schema。
