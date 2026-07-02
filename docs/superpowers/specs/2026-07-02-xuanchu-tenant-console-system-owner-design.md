@@ -171,7 +171,7 @@ server admin 从 `/admin/workspaces/:workspace` 切换时签发的短期 token �
 ```
 
 这表示 workspace 内 owner 能力全集，不限制项目。
-请求可以传入 `expires_in`，默认 `2h`，最大 `24h`；超过上限时返回 `tenant_console_session_invalid`。
+admin-switch tenant token 请求可以传入 `expires_in`，默认 `2h`，最大 `24h`；超过上限时返回 `tenant_console_session_invalid`。普通 tenant token 不受这个 TTL 上限约束，可以设置 `expires_at=NULL` 表示永不过期。
 
 ## 7. Credential Current API
 
@@ -354,17 +354,16 @@ tenant switch mode 下顶部显示：
 
 ### 8.5 Token 列表展示
 
-admin 切换生成的短期 tenant token 是普通 `api_tokens` 记录，必须出现在：
+admin 切换生成的短期 tenant token 是普通 `api_tokens` 记录，但不进入常规 token 管理列表：
 
-- Workspace Console `/tokens` 的 tenant token tab。
-- Server Admin Console `/admin/tokens` 的 tenant token tab。
+- Workspace Console `/tokens` 的 tenant token tab 不展示 `purpose=admin_tenant_switch` 的记录。
+- Server Admin Console `/admin/tokens` 的 tenant token tab 不展示 `purpose=admin_tenant_switch` 的记录。
 
-展示规则：
+处理规则：
 
-- 使用 `purpose=admin_tenant_switch` 标记为「Admin 切换 token」。
-- 展示过期时间、签发来源、签发 admin token 名称。
-- 已过期、已吊销状态沿用现有 token 状态展示。
-- UI 后续可以增加筛选，但默认列表不能隐藏这类 token。
+- 审计、access log 和 token 表数据仍保留 `purpose=admin_tenant_switch`、过期时间、签发来源、签发 admin token 名称。
+- 这类 token 由过期时间和清理任务管理生命周期，不作为用户日常可管理的 tenant token 展示。
+- 已过期或已吊销状态沿用现有 token 状态，但只在审计或后端运维查询中可见。
 
 ## 9. Admin API
 
@@ -409,7 +408,8 @@ Content-Type: application/json
 说明：
 
 - 该 API 创建的是普通 `api_tokens` 表中的 `tenant_access_token` row。
-- 默认 TTL 为 `2h`，请求可传 `expires_in`，最大 `24h`。
+- admin-switch token 默认 TTL 为 `2h`，请求可传 `expires_in`，最大 `24h`，必须有过期时间。
+- 普通 tenant token 可以设置 `expires_at=NULL`，表示永不过期。
 - 默认 scope 为 owner 全集，name 和 purpose 标记为 admin switch。
 - raw token 只返回一次。
 - 审计 action：`admin.tenant_token.session_create`。
@@ -616,7 +616,7 @@ issued_via = user | server_admin | system
 purpose = api | admin_tenant_switch
 ```
 
-P1 必须增加这些字段，不能只靠 audit payload 或 name 前缀区分短期切换 token。列表展示、审计回溯、过期清理和后续筛选都依赖结构化字段。
+P1 必须增加这些字段，不能只靠 audit payload 或 name 前缀区分短期切换 token。常规列表排除、审计回溯和过期清理都依赖结构化字段。
 
 短期 tenant switch token：
 
@@ -628,6 +628,18 @@ issued_via = server_admin
 issued_by_admin_token_id = <admin token id>
 expires_at = now + ttl
 ```
+
+普通 tenant token：
+
+```text
+type = tenant_access_token
+user_id = NULL
+purpose = api
+issued_via = user | system
+expires_at = NULL | timestamp
+```
+
+其中 `expires_at=NULL` 表示永不过期，仅适用于非 `admin_tenant_switch` 的 tenant token。
 
 ## 16. Web Console 存储
 
@@ -686,6 +698,8 @@ workspace_scope_denied              403  token 不绑定该 workspace
 - tenant token 不带对应 scope 时返回 `token_scope_denied`。
 - server admin 可创建短期 tenant switch token。
 - 短期 tenant switch token 过期后不能使用。
+- admin-switch tenant token 不出现在 `/tokens` 和 `/admin/tokens` 的常规 tenant token 列表。
+- 普通 tenant token 可以创建为永不过期。
 - 审计记录 `actor_type=tenant_access_token`，并包含 token id/name/prefix。
 
 前端：
@@ -725,7 +739,7 @@ pnpm --dir web run smoke:editing
 - `/admin/workspaces/:workspace` 支持签发短期 tenant switch token。
 - tenant token 可管理 user/member/token/workspace。
 - 审计和 access log 保持 tenant actor。
-- 保留 `assignee:me`、impersonation、user-shaped created_by 资源限制。
+- 保留 `assignee:me`、impersonation、user-shaped created_by 资源限制；hook / notification / reminder 创建不并入 P1。
 - Web Console 触达 user-shaped actor 资源时，创建入口隐藏或禁用，并返回明确权限错误。
 
 ### P2：完整 workspace 操作覆盖
