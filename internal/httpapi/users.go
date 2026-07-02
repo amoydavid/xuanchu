@@ -39,12 +39,8 @@ type bindExternalIDRequest struct {
 }
 
 func (s *Server) handleUserList(w http.ResponseWriter, r *http.Request) {
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -62,12 +58,8 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -93,12 +85,8 @@ func (s *Server) handleUserModify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ref := chi.URLParam(r, "user")
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -114,12 +102,8 @@ func (s *Server) handleUserModify(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "user")
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -168,12 +152,8 @@ func (s *Server) handleExternalIDBind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_input", "provider and external_id are required", nil)
 		return
 	}
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -193,12 +173,8 @@ func (s *Server) handleExternalIDUnbind(w http.ResponseWriter, r *http.Request) 
 	userRef := chi.URLParam(r, "user")
 	provider := chi.URLParam(r, "provider")
 	externalID := chi.URLParam(r, "externalID")
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceWrite, app.PermissionWorkspaceModify, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserWrite, app.PermissionWorkspaceModify, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -216,12 +192,8 @@ func (s *Server) handleExternalIDUnbind(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleExternalIDList(w http.ResponseWriter, r *http.Request) {
 	userRef := chi.URLParam(r, "user")
-	scoped, authn, err := s.scopedService(r, auth.ScopeWorkspaceRead, app.PermissionWorkspaceRead, "")
+	scoped, _, err := s.scopedService(r, auth.ScopeUserRead, app.PermissionWorkspaceRead, "")
 	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if err := rejectTenantActor(authn); err != nil {
 		writeAppError(w, err)
 		return
 	}

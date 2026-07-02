@@ -269,7 +269,7 @@ func (s *Service) ListWorkspaces(includeArchived bool) ([]WorkspaceView, error) 
 		if workspace.ArchivedAt != nil && !includeArchived {
 			return []WorkspaceView{}, nil
 		}
-		return []WorkspaceView{workspaceViewFromRow(workspace, "", true)}, nil
+		return []WorkspaceView{workspaceViewFromRow(workspace, RoleOwner, true)}, nil
 	}
 	rows, err := s.workspaceRepo.ListVisibleForUser(s.runtime.ActorUserID, includeArchived)
 	if err != nil {
@@ -699,6 +699,12 @@ func (s *Service) resolveWorkspaceForActor(ref string) (storage.Workspace, Role,
 	workspace, err := lookupWorkspace(s.workspaceRepo, strings.TrimSpace(ref))
 	if err != nil {
 		return storage.Workspace{}, "", err
+	}
+	if s.runtime.IsTenantActor() {
+		if workspace.ID != s.runtime.WorkspaceID {
+			return storage.Workspace{}, "", RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "token cannot access workspace"}
+		}
+		return workspace, RoleOwner, nil
 	}
 	member, err := s.memberRepo.Get(s.runtime.ActorUserID, workspace.ID)
 	if err == storage.ErrNotFound {

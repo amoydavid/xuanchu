@@ -19,17 +19,18 @@ const (
 )
 
 type RuntimeContext struct {
-	ActorType        string
-	ActorUserID      string
-	ActorName        string
-	ActorTokenID     string
-	ActorTokenName   string
-	ActorTokenPrefix string
-	WorkspaceID      string
-	WorkspaceSlug    string
-	Role             Role
-	DelegatorTokenID string
-	DelegatorUserID  string
+	ActorType         string
+	ActorUserID       string
+	ActorName         string
+	ActorTokenID      string
+	ActorTokenName    string
+	ActorTokenPrefix  string
+	ActorTokenPurpose string
+	WorkspaceID       string
+	WorkspaceSlug     string
+	Role              Role
+	DelegatorTokenID  string
+	DelegatorUserID   string
 	// 以下三个字段由 server admin acting session 委托链路填充，
 	// 与普通 user-agent impersonation 的 DelegatorTokenID/DelegatorUserID 独立。
 	AdminActingSessionID    string

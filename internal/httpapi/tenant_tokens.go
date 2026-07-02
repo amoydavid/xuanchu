@@ -12,17 +12,20 @@ import (
 )
 
 type tenantTokenResponse struct {
-	ID          string   `json:"id"`
-	Prefix      string   `json:"prefix"`
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	WorkspaceID string   `json:"workspace_id"`
-	ProjectIDs  []string `json:"project_ids"`
-	Scopes      []string `json:"scopes"`
-	CreatedAt   int64    `json:"created_at"`
-	ExpiresAt   *int64   `json:"expires_at,omitempty"`
-	RevokedAt   *int64   `json:"revoked_at,omitempty"`
-	LastUsedAt  *int64   `json:"last_used_at,omitempty"`
+	ID                 string                    `json:"id"`
+	Prefix             string                    `json:"prefix"`
+	Name               string                    `json:"name"`
+	Type               string                    `json:"type"`
+	WorkspaceID        string                    `json:"workspace_id"`
+	ProjectIDs         []string                  `json:"project_ids"`
+	Scopes             []string                  `json:"scopes"`
+	CreatedAt          int64                     `json:"created_at"`
+	ExpiresAt          *int64                    `json:"expires_at,omitempty"`
+	RevokedAt          *int64                    `json:"revoked_at,omitempty"`
+	LastUsedAt         *int64                    `json:"last_used_at,omitempty"`
+	IssuedVia          string                    `json:"issued_via,omitempty"`
+	IssuedByAdminToken *adminTokenIssuerResponse `json:"issued_by_admin_token,omitempty"`
+	Purpose            string                    `json:"purpose,omitempty"`
 }
 
 type createTenantTokenRequest struct {
@@ -140,17 +143,39 @@ func (s *Server) handleTenantTokenRevoke(w http.ResponseWriter, r *http.Request)
 }
 
 func tenantTokenResponseFromView(view app.TenantAccessTokenView) tenantTokenResponse {
-	return tenantTokenResponse{
-		ID:          view.ID,
-		Prefix:      view.Prefix,
-		Name:        view.Name,
-		Type:        view.Type,
-		WorkspaceID: view.WorkspaceID,
-		ProjectIDs:  append([]string(nil), view.ProjectIDs...),
-		Scopes:      append([]string(nil), view.Scopes...),
-		CreatedAt:   view.CreatedAt,
-		ExpiresAt:   view.ExpiresAt,
-		RevokedAt:   view.RevokedAt,
-		LastUsedAt:  view.LastUsedAt,
+	var issuedBy *adminTokenIssuerResponse
+	if view.IssuedByAdminTokenID != nil || view.IssuedByAdminTokenName != nil {
+		issuedBy = &adminTokenIssuerResponse{
+			ID:   derefString(view.IssuedByAdminTokenID),
+			Name: derefString(view.IssuedByAdminTokenName),
+		}
 	}
+	return tenantTokenResponse{
+		ID:                 view.ID,
+		Prefix:             view.Prefix,
+		Name:               view.Name,
+		Type:               view.Type,
+		WorkspaceID:        view.WorkspaceID,
+		ProjectIDs:         append([]string(nil), view.ProjectIDs...),
+		Scopes:             append([]string(nil), view.Scopes...),
+		CreatedAt:          view.CreatedAt,
+		ExpiresAt:          view.ExpiresAt,
+		RevokedAt:          view.RevokedAt,
+		LastUsedAt:         view.LastUsedAt,
+		IssuedVia:          view.IssuedVia,
+		IssuedByAdminToken: issuedBy,
+		Purpose:            view.Purpose,
+	}
+}
+
+type adminTokenIssuerResponse struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

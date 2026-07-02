@@ -75,8 +75,8 @@ type AdminModifyTenantAccessTokenInput struct {
 	AdminTokenName string
 }
 
-func (s *Service) AdminListTenantAccessTokens(includeRevoked bool) ([]TenantAccessTokenView, error) {
-	rows, err := s.tokenRepo.ListAllByType(auth.TokenTypeTenantAccess, includeRevoked)
+func (s *Service) AdminListTenantAccessTokens(includeRevoked bool, includeAdminSwitch bool) ([]TenantAccessTokenView, error) {
+	rows, err := s.tokenRepo.ListAllByTypeWithPurpose(auth.TokenTypeTenantAccess, includeRevoked, includeAdminSwitch)
 	if err != nil {
 		return nil, RuntimeError{Code: "token_list_failed", Message: "failed to list tenant tokens"}
 	}

@@ -276,6 +276,7 @@ func classifyTokenState(token storage.ApiTokenEntry, now int64) tokenState {
 // defaultActingSessionTTL 是 acting token 的默认有效期。
 // 故意保持短：acting 是浏览器短期委托，不是长期 token。
 const defaultActingSessionTTL = 2 * time.Hour
+const maxTenantSwitchSessionTTL = 24 * time.Hour
 
 // AdminCreateActingSessionInput 创建 acting session 的入参。
 type AdminCreateActingSessionInput struct {
@@ -298,6 +299,156 @@ type AdminCreateActingSessionResult struct {
 	Actor          task.UserInfo
 	Role           Role
 	AdminTokenName string
+}
+
+type AdminCreateTenantAccessSessionInput struct {
+	AdminTokenID   *string
+	AdminTokenName string
+	WorkspaceRef   string
+	Name           string
+	Scopes         []string
+	ProjectRefs    []string
+	ExpiresIn      *time.Duration
+}
+
+type AdminCreateTenantAccessSessionResult struct {
+	Token          string
+	View           TenantAccessTokenView
+	Workspace      WorkspaceView
+	AdminTokenID   *string
+	AdminTokenName string
+}
+
+func (s *Service) AdminCreateTenantAccessSession(input AdminCreateTenantAccessSessionInput) (AdminCreateTenantAccessSessionResult, error) {
+	workspaceRef := strings.TrimSpace(input.WorkspaceRef)
+	adminTokenName := strings.TrimSpace(input.AdminTokenName)
+	if adminTokenName == "" {
+		return AdminCreateTenantAccessSessionResult{}, RuntimeError{Code: "admin_auth_required", Message: "admin token name is required"}
+	}
+	ttl := defaultActingSessionTTL
+	if input.ExpiresIn != nil {
+		if *input.ExpiresIn <= 0 || *input.ExpiresIn > maxTenantSwitchSessionTTL {
+			return AdminCreateTenantAccessSessionResult{}, RuntimeError{Code: "tenant_console_session_invalid", Message: "expires_in must be between 1 second and 24 hours"}
+		}
+		ttl = *input.ExpiresIn
+	}
+	var result AdminCreateTenantAccessSessionResult
+	err := s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
+		}
+		workspace, err := lookupWorkspace(txSvc.workspaceRepo, workspaceRef)
+		if err != nil {
+			return err
+		}
+		if workspace.ArchivedAt != nil {
+			return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: "workspace is archived"}
+		}
+		projectRefs := append([]string(nil), input.ProjectRefs...)
+		projects, err := txSvc.resolveTokenProjects([]storage.Workspace{workspace}, projectRefs)
+		if err != nil {
+			return err
+		}
+		projectIDs := make([]string, 0, len(projects))
+		for _, project := range projects {
+			projectIDs = append(projectIDs, project.ID)
+		}
+		scopesInput := input.Scopes
+		if len(scopesInput) == 0 {
+			scopesInput = adminTenantSwitchDefaultScopes()
+		}
+		scopes, err := auth.ValidateTenantTokenScopes(scopesInput)
+		if err != nil {
+			return RuntimeError{Code: "tenant_token_scope_invalid", Message: err.Error()}
+		}
+		if scopes.Has(auth.ScopeTokenWrite) {
+			return RuntimeError{Code: "tenant_token_scope_invalid", Message: "admin switch tenant token cannot have token:write scope"}
+		}
+		raw, prefix, hash, err := auth.GenerateToken(auth.TokenTypeTenantAccess)
+		if err != nil {
+			return err
+		}
+		name := strings.TrimSpace(input.Name)
+		if name == "" {
+			name = "admin-switch:" + workspace.Slug + ":" + adminTokenName
+		}
+		now := txSvc.clock.Unix()
+		expiresAt := now + int64(ttl.Seconds())
+		scopesJSON, err := marshalStringSlice(scopes.Values())
+		if err != nil {
+			return err
+		}
+		workspaceJSON, err := marshalStringSlice([]string{workspace.ID})
+		if err != nil {
+			return err
+		}
+		projectJSON, err := marshalStringSlice(projectIDs)
+		if err != nil {
+			return err
+		}
+		stored := storage.ApiTokenEntry{
+			ID:                     uuid.NewString(),
+			UserID:                 nil,
+			Name:                   name,
+			Type:                   auth.TokenTypeTenantAccess,
+			TokenPrefix:            prefix,
+			TokenHash:              hash,
+			ScopesJSON:             scopesJSON,
+			WorkspaceIDsJSON:       workspaceJSON,
+			ProjectIDsJSON:         projectJSON,
+			IssuedVia:              "server_admin",
+			IssuedByAdminTokenID:   input.AdminTokenID,
+			IssuedByAdminTokenName: &adminTokenName,
+			Purpose:                "admin_tenant_switch",
+			CreatedAt:              now,
+			ExpiresAt:              &expiresAt,
+		}
+		if err := txSvc.tokenRepo.Create(stored); err != nil {
+			return err
+		}
+		if err := txSvc.appendAdminAuditInTx(txSvc, AuditEntry{
+			Action:      "admin.tenant_token.session_create",
+			WorkspaceID: &workspace.ID,
+			TargetType:  "tenant_token",
+			TargetID:    stored.ID,
+			Payload: map[string]any{
+				"workspace_id":   workspace.ID,
+				"workspace_slug": workspace.Slug,
+				"token_name":     stored.Name,
+				"purpose":        stored.Purpose,
+				"expires_at":     expiresAt,
+			},
+		}, adminTokenName); err != nil {
+			return err
+		}
+		result = AdminCreateTenantAccessSessionResult{
+			Token:          raw,
+			View:           tenantTokenViewFromEntry(stored, scopes.Values(), workspace.ID, projectIDs),
+			Workspace:      workspaceViewFromRow(workspace, "", false),
+			AdminTokenID:   input.AdminTokenID,
+			AdminTokenName: adminTokenName,
+		}
+		return nil
+	})
+	return result, err
+}
+
+func adminTenantSwitchDefaultScopes() []string {
+	return []string{
+		auth.ScopeTaskRead, auth.ScopeTaskWrite,
+		auth.ScopeProjectRead, auth.ScopeProjectWrite,
+		auth.ScopeContextRead, auth.ScopeContextWrite,
+		auth.ScopeConfigRead, auth.ScopeConfigWrite,
+		auth.ScopeWorkspaceRead, auth.ScopeWorkspaceWrite,
+		auth.ScopeAuditRead,
+		auth.ScopeUserRead, auth.ScopeUserWrite,
+		auth.ScopeMemberRead, auth.ScopeMemberWrite,
+		auth.ScopeTokenRead,
+		auth.ScopeHookRead,
+		auth.ScopeNotificationRead,
+		auth.ScopeReminderRead,
+	}
 }
 
 // AdminCreateActingSession 为 owner/admin 用户创建短期 acting session。

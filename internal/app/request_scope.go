@@ -261,13 +261,15 @@ func (s *Service) authorizeTenantTokenRequest(input RequestAuthorizationInput, s
 		decision.Tenant.ProjectID = &projectID
 	}
 	runtime := RuntimeContext{
-		ActorType:        auth.TokenTypeTenantAccess,
-		ActorName:        input.Token.Token.Name,
-		ActorTokenID:     input.Token.Token.ID,
-		ActorTokenName:   input.Token.Token.Name,
-		ActorTokenPrefix: input.Token.Token.Prefix,
-		WorkspaceID:      workspace.ID,
-		WorkspaceSlug:    workspace.Slug,
+		ActorType:         auth.TokenTypeTenantAccess,
+		ActorName:         input.Token.Token.Name,
+		ActorTokenID:      input.Token.Token.ID,
+		ActorTokenName:    input.Token.Token.Name,
+		ActorTokenPrefix:  input.Token.Token.Prefix,
+		ActorTokenPurpose: input.Token.Token.Purpose,
+		WorkspaceID:       workspace.ID,
+		WorkspaceSlug:     workspace.Slug,
+		Role:              RoleOwner,
 	}
 	return AuthorizedRequest{
 		Runtime:   runtime,

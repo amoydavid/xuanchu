@@ -10,7 +10,7 @@ import (
 )
 
 func TestUserListReturnsUsers(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:read")
+	fixture := newHTTPServerWithTokenFixture(t, "user:read")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestUserListReturnsUsers(t *testing.T) {
 }
 
 func TestUserCreateCreatesUser(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:write")
+	fixture := newHTTPServerWithTokenFixture(t, "user:write")
 	authHeader := map[string]string{
 		"Authorization": "Bearer " + fixture.token,
 		"Content-Type":  "application/json",
@@ -69,7 +69,7 @@ func TestUserCreateCreatesUser(t *testing.T) {
 }
 
 func TestUserModifyUpdatesDisplayNameOnly(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:write")
+	fixture := newHTTPServerWithTokenFixture(t, "user:write")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestUserModifyUpdatesDisplayNameOnly(t *testing.T) {
 }
 
 func TestUserInfoReturnsUser(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:read")
+	fixture := newHTTPServerWithTokenFixture(t, "user:read")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestUserInfoReturnsUser(t *testing.T) {
 }
 
 func TestUserInfoByNameReturnsUser(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:read")
+	fixture := newHTTPServerWithTokenFixture(t, "user:read")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestUserInfoByNameReturnsUser(t *testing.T) {
 }
 
 func TestExternalIDBindUnbindAndList(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:read,workspace:write,task:read")
+	fixture := newHTTPServerWithTokenFixture(t, "user:read,user:write,task:read")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
 	if err != nil {
 		t.Fatal(err)

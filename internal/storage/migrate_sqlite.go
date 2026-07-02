@@ -108,11 +108,12 @@ func rebuildAPITokensWithNullableUserID(tx m5MigrationTx) error {
 	}
 	if err := tx.exec(`INSERT INTO api_tokens (
 id, user_id, name, type, token_prefix, token_hash, scopes_json, workspace_ids_json,
-project_ids_json, created_at, expires_at, revoked_at, last_used_at
+project_ids_json, issued_via, issued_by_admin_token_id, issued_by_admin_token_name, purpose,
+created_at, expires_at, revoked_at, last_used_at
 )
 SELECT
 id, user_id, name, type, token_prefix, token_hash, scopes_json, workspace_ids_json,
-project_ids_json, created_at, expires_at, revoked_at, last_used_at
+project_ids_json, 'user', NULL, NULL, 'api', created_at, expires_at, revoked_at, last_used_at
 FROM api_tokens_old_nullable_user_id`); err != nil {
 		return err
 	}
@@ -130,6 +131,10 @@ token_hash TEXT NOT NULL,
 scopes_json TEXT NOT NULL DEFAULT '[]',
 workspace_ids_json TEXT NOT NULL DEFAULT '[]',
 project_ids_json TEXT NOT NULL DEFAULT '[]',
+issued_via TEXT NOT NULL DEFAULT 'user',
+issued_by_admin_token_id TEXT,
+issued_by_admin_token_name TEXT,
+purpose TEXT NOT NULL DEFAULT 'api',
 created_at INTEGER NOT NULL,
 expires_at INTEGER,
 revoked_at INTEGER,

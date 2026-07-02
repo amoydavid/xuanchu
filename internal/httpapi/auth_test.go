@@ -125,6 +125,80 @@ func TestMeReturnsActorTokenAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestCredentialsCurrentReturnsTenantSystemOwner(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	rr := requestHTTP(t, server, http.MethodGet, "/api/v1/credentials/current", map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			ActorType string `json:"actor_type"`
+			Actor     struct {
+				ID          string `json:"id"`
+				Name        string `json:"name"`
+				DisplayName string `json:"display_name"`
+			} `json:"actor"`
+			Token struct {
+				ID     string   `json:"id"`
+				Name   string   `json:"name"`
+				Type   string   `json:"type"`
+				Prefix string   `json:"prefix"`
+				Scopes []string `json:"scopes"`
+			} `json:"token"`
+			EffectiveWorkspace struct {
+				ID   string `json:"id"`
+				Slug string `json:"slug"`
+				Name string `json:"name"`
+			} `json:"effective_workspace"`
+			EffectiveRole string   `json:"effective_role"`
+			Capabilities  []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.ActorType != "tenant_access_token" {
+		t.Fatalf("actor_type = %q body=%s", payload.Data.ActorType, rr.Body.String())
+	}
+	if payload.Data.Actor.ID != created.View.ID || payload.Data.Actor.Name != "runtime" {
+		t.Fatalf("actor = %#v, token id = %q", payload.Data.Actor, created.View.ID)
+	}
+	if payload.Data.Actor.DisplayName != "系统身份 / runtime" {
+		t.Fatalf("actor.display_name = %q", payload.Data.Actor.DisplayName)
+	}
+	if payload.Data.Token.Type != "tenant_access_token" || payload.Data.Token.Prefix == "" {
+		t.Fatalf("token = %#v", payload.Data.Token)
+	}
+	if payload.Data.EffectiveWorkspace.Slug != "local" || payload.Data.EffectiveRole != "owner" {
+		t.Fatalf("workspace=%#v role=%q", payload.Data.EffectiveWorkspace, payload.Data.EffectiveRole)
+	}
+	for _, want := range []string{"user:write", "member:write", "token:write", "workspace:write"} {
+		if !slices.Contains(payload.Data.Capabilities, want) {
+			t.Fatalf("capabilities missing %q: %#v", want, payload.Data.Capabilities)
+		}
+	}
+	for _, forbidden := range []string{"hook:write", "notification:write", "reminder:write", "impersonate"} {
+		if slices.Contains(payload.Data.Capabilities, forbidden) {
+			t.Fatalf("capabilities include forbidden %q: %#v", forbidden, payload.Data.Capabilities)
+		}
+	}
+}
+
 func TestTenantTokenCanCallHTTPTaskAPI(t *testing.T) {
 	store := openHTTPTestStore(t)
 	svc, err := app.NewService(app.ServiceOptions{Store: store})
@@ -190,7 +264,47 @@ func TestTenantTokenCannotCallHTTPMe(t *testing.T) {
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "tenant_actor_not_user")
 }
 
-func TestTenantTokenCannotCallHTTPUserMemberOrActiveContext(t *testing.T) {
+func TestTenantTokenCanManageHTTPUsersAndMembers(t *testing.T) {
+	store := openHTTPTestStore(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"user:read", "user:write", "member:read", "member:write", "workspace:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Options{Store: store})
+	headers := map[string]string{
+		"Authorization": "Bearer " + created.RawToken,
+		"Content-Type":  "application/json",
+	}
+
+	createUser := requestHTTPBody(t, server, http.MethodPost, "/api/v1/users", `{"name":"tenant-added","display_name":"Tenant Added"}`, headers)
+	if createUser.Code != http.StatusCreated {
+		t.Fatalf("create user status = %d body=%s", createUser.Code, createUser.Body.String())
+	}
+
+	listUsers := requestHTTP(t, server, http.MethodGet, "/api/v1/users", headers)
+	if listUsers.Code != http.StatusOK || !strings.Contains(listUsers.Body.String(), "tenant-added") {
+		t.Fatalf("list users status = %d body=%s", listUsers.Code, listUsers.Body.String())
+	}
+
+	addMember := requestHTTPBody(t, server, http.MethodPost, "/api/v1/workspaces/local/members", `{"user":"tenant-added","role":"member"}`, headers)
+	if addMember.Code != http.StatusCreated {
+		t.Fatalf("add member status = %d body=%s", addMember.Code, addMember.Body.String())
+	}
+
+	listMembers := requestHTTP(t, server, http.MethodGet, "/api/v1/workspaces/local/members", headers)
+	if listMembers.Code != http.StatusOK || !strings.Contains(listMembers.Body.String(), "tenant-added") {
+		t.Fatalf("list members status = %d body=%s", listMembers.Code, listMembers.Body.String())
+	}
+}
+
+func TestTenantTokenCannotCallHTTPActiveContext(t *testing.T) {
 	store := openHTTPTestStore(t)
 	svc, err := app.NewService(app.ServiceOptions{Store: store})
 	if err != nil {
@@ -211,10 +325,6 @@ func TestTenantTokenCannotCallHTTPUserMemberOrActiveContext(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{method: http.MethodGet, path: "/api/v1/users"},
-		{method: http.MethodGet, path: "/api/v1/users/local"},
-		{method: http.MethodGet, path: "/api/v1/users/local/external-ids"},
-		{method: http.MethodGet, path: "/api/v1/workspaces/local/members"},
 		{method: http.MethodPost, path: "/api/v1/contexts/none"},
 		{method: http.MethodPost, path: "/api/v1/contexts/focus/use"},
 	} {
@@ -269,7 +379,7 @@ func TestTenantTokenRejectsStoredDisallowedScopesAtAuthentication(t *testing.T) 
 	}
 	if err := store.DB().Model(&storage.ApiToken{}).
 		Where("id = ?", created.View.ID).
-		Update("scopes_json", `["`+auth.ScopeTokenWrite+`"]`).Error; err != nil {
+		Update("scopes_json", `["`+auth.ScopeHookWrite+`"]`).Error; err != nil {
 		t.Fatal(err)
 	}
 	_, err = svc.AuthenticateBearerToken(created.RawToken)
@@ -313,7 +423,7 @@ func TestWorkspaceScopeDeniedIsForbidden(t *testing.T) {
 }
 
 func TestWorkspaceListRespectsTokenWorkspaceScope(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:read")
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:read", "member:read")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +469,7 @@ func TestWorkspaceListRespectsTokenWorkspaceScope(t *testing.T) {
 }
 
 func TestWorkspaceAndMemberResponsesUseSnakeCase(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t, "workspace:read")
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:read", "member:read")
 	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
 
 	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/workspaces", authHeader)

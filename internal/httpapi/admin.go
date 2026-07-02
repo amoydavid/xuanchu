@@ -264,6 +264,15 @@ type adminCreateActingSessionRequest struct {
 	ExpiresInSeconds *int64 `json:"expires_in_seconds,omitempty"`
 }
 
+type adminCreateTenantAccessSessionRequest struct {
+	Name             string   `json:"name,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
+	Projects         []string `json:"projects,omitempty"`
+	ProjectIDs       []string `json:"project_ids,omitempty"`
+	ExpiresIn        string   `json:"expires_in,omitempty"`
+	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty"`
+}
+
 type adminActingSessionResponse struct {
 	Token          string            `json:"token"`
 	ExpiresAt      int64             `json:"expires_at"`
@@ -271,6 +280,12 @@ type adminActingSessionResponse struct {
 	Actor          task.JSONUserInfo `json:"actor"`
 	Role           string            `json:"role"`
 	AdminTokenName string            `json:"admin_token_name"`
+}
+
+type adminTenantAccessSessionResponse struct {
+	Token string `json:"token"`
+	tenantTokenResponse
+	Workspace workspaceResponse `json:"workspace"`
 }
 
 func newAdminWorkspaceService(s *Server, r *http.Request) (*app.Service, error) {
@@ -397,6 +412,44 @@ func (s *Server) handleAdminActingSessionCreate(w http.ResponseWriter, r *http.R
 	}, nil)
 }
 
+func (s *Server) handleAdminTenantAccessSessionCreate(w http.ResponseWriter, r *http.Request) {
+	var req adminCreateTenantAccessSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	ttl, ok := parseAdminTenantAccessSessionTTL(w, req)
+	if !ok {
+		return
+	}
+	admin, _ := adminAuthFromContext(r.Context())
+	svc, err := newAdminWorkspaceService(s, r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	projectRefs := append([]string(nil), req.Projects...)
+	projectRefs = append(projectRefs, req.ProjectIDs...)
+	created, err := svc.AdminCreateTenantAccessSession(app.AdminCreateTenantAccessSessionInput{
+		AdminTokenID:   admin.TokenID,
+		AdminTokenName: admin.TokenName,
+		WorkspaceRef:   chi.URLParam(r, "workspace"),
+		Name:           req.Name,
+		Scopes:         req.Scopes,
+		ProjectRefs:    projectRefs,
+		ExpiresIn:      ttl,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, adminTenantAccessSessionResponse{
+		Token:               created.Token,
+		tenantTokenResponse: tenantTokenResponseFromView(created.View),
+		Workspace:           workspaceResponseFromView(created.Workspace),
+	}, nil)
+}
+
 func (s *Server) handleAdminActingSessionRevoke(w http.ResponseWriter, r *http.Request) {
 	admin, _ := adminAuthFromContext(r.Context())
 	svc, err := newAdminWorkspaceService(s, r)
@@ -423,6 +476,26 @@ func parseAdminActingTTL(w http.ResponseWriter, req adminCreateActingSessionRequ
 	if req.ExpiresInSeconds != nil {
 		if *req.ExpiresInSeconds <= 0 {
 			writeError(w, http.StatusBadRequest, "admin_token_ttl_invalid", "expires_in_seconds is invalid", nil)
+			return nil, false
+		}
+		value := time.Duration(*req.ExpiresInSeconds) * time.Second
+		return &value, true
+	}
+	return nil, true
+}
+
+func parseAdminTenantAccessSessionTTL(w http.ResponseWriter, req adminCreateTenantAccessSessionRequest) (*time.Duration, bool) {
+	if req.ExpiresIn != "" {
+		value, err := time.ParseDuration(req.ExpiresIn)
+		if err != nil || value <= 0 {
+			writeError(w, http.StatusBadRequest, "tenant_console_session_invalid", "expires_in is invalid", nil)
+			return nil, false
+		}
+		return &value, true
+	}
+	if req.ExpiresInSeconds != nil {
+		if *req.ExpiresInSeconds <= 0 {
+			writeError(w, http.StatusBadRequest, "tenant_console_session_invalid", "expires_in_seconds is invalid", nil)
 			return nil, false
 		}
 		value := time.Duration(*req.ExpiresInSeconds) * time.Second
@@ -569,7 +642,10 @@ func (s *Server) handleAdminTenantTokenList(w http.ResponseWriter, r *http.Reque
 		writeAppError(w, err)
 		return
 	}
-	rows, err := svc.AdminListTenantAccessTokens(r.URL.Query().Get("all") == "true")
+	rows, err := svc.AdminListTenantAccessTokens(
+		r.URL.Query().Get("all") == "true",
+		r.URL.Query().Get("include_admin_switch") == "true",
+	)
 	if err != nil {
 		writeAppError(w, err)
 		return

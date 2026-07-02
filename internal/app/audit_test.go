@@ -159,15 +159,15 @@ func TestTenantTokenRuntimeUsesScopeAndListsBoundWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	tenantSvc := mustTenantServiceForTest(t, svc, created.RawToken, "workspace:read", PermissionWorkspaceRead, 100)
-	if tenantSvc.Runtime().Role != "" {
-		t.Fatalf("tenant runtime role = %q, want empty", tenantSvc.Runtime().Role)
+	if tenantSvc.Runtime().Role != RoleOwner {
+		t.Fatalf("tenant runtime role = %q, want owner", tenantSvc.Runtime().Role)
 	}
 	workspaces, err := tenantSvc.ListWorkspaces(false)
 	if err != nil {
 		t.Fatalf("ListWorkspaces() error = %v", err)
 	}
-	if len(workspaces) != 1 || workspaces[0].ID != svc.Runtime().WorkspaceID || workspaces[0].Role != "" {
-		t.Fatalf("tenant workspaces = %#v, want bound workspace with empty role", workspaces)
+	if len(workspaces) != 1 || workspaces[0].ID != svc.Runtime().WorkspaceID || workspaces[0].Role != RoleOwner {
+		t.Fatalf("tenant workspaces = %#v, want bound workspace with owner role", workspaces)
 	}
 	if err := tenantSvc.Require(PermissionTaskWrite); err != nil {
 		t.Fatalf("Require(task.write) error = %v", err)
@@ -179,64 +179,16 @@ func TestTenantTokenRuntimeUsesScopeAndListsBoundWorkspace(t *testing.T) {
 	}
 }
 
-func TestTenantTokenCannotCreateUserShapedActorResources(t *testing.T) {
+func TestTenantTokenCannotRequestP2WriteScopes(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
 
-	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
-		Name:   "runtime",
-		Scopes: []string{"task:write", "project:write", "notification:read", "notification:write", "hook:read", "hook:write", "reminder:write"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tenantSvc := mustTenantServiceForTest(t, svc, created.RawToken, "notification:write", PermissionNotificationWrite, 100)
-	if _, err := tenantSvc.AddNotificationSink(NotificationSinkAddInput{
-		Name:         "tenant-sink",
-		Type:         "webhook",
-		EndpointMode: "static_url",
-		URL:          "https://example.com/xuanchu",
-	}); err == nil {
-		t.Fatal("AddNotificationSink() error = nil, want tenant_actor_not_user")
-	} else {
-		assertRuntimeCode(t, err, "tenant_actor_not_user")
-	}
-	if _, err := tenantSvc.AddHook(HookAddInput{
-		Name:       "tenant-hook",
-		EventTypes: []string{"task.created"},
-		SinkRef:    "missing",
-	}); err == nil {
-		t.Fatal("AddHook() error = nil, want tenant_actor_not_user")
-	} else {
-		assertRuntimeCode(t, err, "tenant_actor_not_user")
-	}
-	if _, err := tenantSvc.AddReminderRule(ReminderRuleAddInput{Name: "tenant-reminder", TriggerType: "overdue", AudienceType: "assignees", SinkRef: "missing"}); err == nil {
-		t.Fatal("AddReminderRule() error = nil, want tenant_actor_not_user")
-	} else {
-		assertRuntimeCode(t, err, "tenant_actor_not_user")
-	}
-	if _, err := tenantSvc.AddEventNotificationRule(EventNotificationRuleAddInput{Name: "tenant-rule", EventType: "task.created", AudienceType: "assignees", SinkRef: "missing"}); err == nil {
-		t.Fatal("AddEventNotificationRule() error = nil, want tenant_actor_not_user")
-	} else {
-		assertRuntimeCode(t, err, "tenant_actor_not_user")
-	}
-	taskRow, err := tenantSvc.Add(AddInput{Title: "tenant task"})
-	if err != nil {
-		t.Fatalf("Add(task) error = %v", err)
-	}
-	if _, err := tenantSvc.TaskAddLink(taskRow.UUID, "document", "https://example.com/doc", "Doc"); err == nil {
-		t.Fatal("TaskAddLink() error = nil, want tenant_actor_not_user")
-	} else {
-		assertRuntimeCode(t, err, "tenant_actor_not_user")
-	}
-	project, err := tenantSvc.AddProject(AddProjectInput{Slug: "tenproj", Name: "Tenant Project"})
-	if err != nil {
-		t.Fatalf("AddProject() error = %v", err)
-	}
-	if _, err := tenantSvc.ProjectAnnotate(project.ID, "tenant note"); err == nil {
-		t.Fatal("ProjectAnnotate() error = nil, want tenant_actor_not_user")
-	} else {
-		assertRuntimeCode(t, err, "tenant_actor_not_user")
+	for _, scope := range []string{"notification:write", "hook:write", "reminder:write"} {
+		_, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+			Name:   "runtime",
+			Scopes: []string{"task:write", scope},
+		})
+		assertRuntimeCode(t, err, "tenant_token_scope_invalid")
 	}
 }
 

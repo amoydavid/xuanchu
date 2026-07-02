@@ -20,6 +20,10 @@ const (
 	ScopeWorkspaceRead     = "workspace:read"
 	ScopeWorkspaceWrite    = "workspace:write"
 	ScopeAuditRead         = "audit:read"
+	ScopeUserRead          = "user:read"
+	ScopeUserWrite         = "user:write"
+	ScopeMemberRead        = "member:read"
+	ScopeMemberWrite       = "member:write"
 	ScopeTokenRead         = "token:read"
 	ScopeTokenWrite        = "token:write"
 	ScopeHookRead          = "hook:read"
@@ -38,6 +42,8 @@ var scopeRegistry = []string{
 	ScopeConfigRead, ScopeConfigWrite,
 	ScopeWorkspaceRead, ScopeWorkspaceWrite,
 	ScopeAuditRead,
+	ScopeUserRead, ScopeUserWrite,
+	ScopeMemberRead, ScopeMemberWrite,
 	ScopeTokenRead, ScopeTokenWrite,
 	ScopeHookRead, ScopeHookWrite,
 	ScopeNotificationRead, ScopeNotificationWrite,
@@ -48,22 +54,26 @@ var scopeRegistry = []string{
 var scopeLookup map[string]struct{}
 
 var tenantAllowedScopes = map[string]struct{}{
-	ScopeTaskRead:          {},
-	ScopeTaskWrite:         {},
-	ScopeProjectRead:       {},
-	ScopeProjectWrite:      {},
-	ScopeContextRead:       {},
-	ScopeContextWrite:      {},
-	ScopeConfigRead:        {},
-	ScopeConfigWrite:       {},
-	ScopeWorkspaceRead:     {},
-	ScopeAuditRead:         {},
-	ScopeHookRead:          {},
-	ScopeHookWrite:         {},
-	ScopeNotificationRead:  {},
-	ScopeNotificationWrite: {},
-	ScopeReminderRead:      {},
-	ScopeReminderWrite:     {},
+	ScopeTaskRead:         {},
+	ScopeTaskWrite:        {},
+	ScopeProjectRead:      {},
+	ScopeProjectWrite:     {},
+	ScopeContextRead:      {},
+	ScopeContextWrite:     {},
+	ScopeConfigRead:       {},
+	ScopeConfigWrite:      {},
+	ScopeWorkspaceRead:    {},
+	ScopeWorkspaceWrite:   {},
+	ScopeAuditRead:        {},
+	ScopeUserRead:         {},
+	ScopeUserWrite:        {},
+	ScopeMemberRead:       {},
+	ScopeMemberWrite:      {},
+	ScopeTokenRead:        {},
+	ScopeTokenWrite:       {},
+	ScopeHookRead:         {},
+	ScopeNotificationRead: {},
+	ScopeReminderRead:     {},
 }
 
 func init() {
@@ -209,10 +219,14 @@ func expandActionWildcard(action string) []string {
 func expandTenantResourceWildcard(resource string, registry []string) []string {
 	prefix := resource + ":"
 	var out []string
-	for _, s := range registry {
-		if strings.HasPrefix(s, prefix) {
-			out = append(out, s)
+	for _, scope := range scopeRegistry {
+		if !strings.HasPrefix(scope, prefix) {
+			continue
 		}
+		if _, ok := tenantAllowedScopes[scope]; !ok {
+			return nil
+		}
+		out = append(out, scope)
 	}
 	return out
 }

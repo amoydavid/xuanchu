@@ -43,6 +43,7 @@ type TokenView struct {
 	ExpiresAt    *int64
 	RevokedAt    *int64
 	LastUsedAt   *int64
+	Purpose      string
 }
 
 type CreatedToken struct {
@@ -52,11 +53,15 @@ type CreatedToken struct {
 }
 
 type CreateTenantAccessTokenInput struct {
-	Name         string
-	Scopes       []string
-	WorkspaceRef string
-	ProjectRefs  []string
-	ExpiresIn    *time.Duration
+	Name                   string
+	Scopes                 []string
+	WorkspaceRef           string
+	ProjectRefs            []string
+	ExpiresIn              *time.Duration
+	IssuedVia              string
+	IssuedByAdminTokenID   *string
+	IssuedByAdminTokenName *string
+	Purpose                string
 }
 
 type ModifyTenantAccessTokenInput struct {
@@ -73,17 +78,21 @@ type ListTenantAccessTokensInput struct {
 }
 
 type TenantAccessTokenView struct {
-	ID          string
-	Prefix      string
-	Name        string
-	Type        string
-	WorkspaceID string
-	ProjectIDs  []string
-	Scopes      []string
-	CreatedAt   int64
-	ExpiresAt   *int64
-	RevokedAt   *int64
-	LastUsedAt  *int64
+	ID                     string
+	Prefix                 string
+	Name                   string
+	Type                   string
+	WorkspaceID            string
+	ProjectIDs             []string
+	Scopes                 []string
+	CreatedAt              int64
+	ExpiresAt              *int64
+	RevokedAt              *int64
+	LastUsedAt             *int64
+	IssuedVia              string
+	IssuedByAdminTokenID   *string
+	IssuedByAdminTokenName *string
+	Purpose                string
 }
 
 type CreatedTenantAccessToken struct {
@@ -195,6 +204,9 @@ func (s *Service) CreateToken(input CreateTokenInput) (CreatedToken, error) {
 }
 
 func (s *Service) CreateTenantAccessToken(input CreateTenantAccessTokenInput) (CreatedTenantAccessToken, error) {
+	if err := s.rejectAdminSwitchTenantTokenManagement(); err != nil {
+		return CreatedTenantAccessToken{}, err
+	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return CreatedTenantAccessToken{}, RuntimeError{Code: "tenant_token_name_required", Message: "tenant token name is required"}
@@ -241,17 +253,21 @@ func (s *Service) CreateTenantAccessToken(input CreateTenantAccessTokenInput) (C
 			return AuditEntry{}, err
 		}
 		stored := storage.ApiTokenEntry{
-			ID:               uuid.NewString(),
-			UserID:           nil,
-			Name:             name,
-			Type:             auth.TokenTypeTenantAccess,
-			TokenPrefix:      prefix,
-			TokenHash:        hash,
-			ScopesJSON:       scopesJSON,
-			WorkspaceIDsJSON: workspaceJSON,
-			ProjectIDsJSON:   projectJSON,
-			CreatedAt:        createdAt,
-			ExpiresAt:        expiresAt,
+			ID:                     uuid.NewString(),
+			UserID:                 nil,
+			Name:                   name,
+			Type:                   auth.TokenTypeTenantAccess,
+			TokenPrefix:            prefix,
+			TokenHash:              hash,
+			ScopesJSON:             scopesJSON,
+			WorkspaceIDsJSON:       workspaceJSON,
+			ProjectIDsJSON:         projectJSON,
+			IssuedVia:              defaultString(input.IssuedVia, "user"),
+			IssuedByAdminTokenID:   input.IssuedByAdminTokenID,
+			IssuedByAdminTokenName: input.IssuedByAdminTokenName,
+			Purpose:                defaultString(input.Purpose, "api"),
+			CreatedAt:              createdAt,
+			ExpiresAt:              expiresAt,
 		}
 		if err := tx.tokenRepo.Create(stored); err != nil {
 			return AuditEntry{}, err
@@ -299,6 +315,9 @@ func (s *Service) ListTenantAccessTokens(input ListTenantAccessTokensInput) ([]T
 }
 
 func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*TenantAccessTokenView, error) {
+	if err := s.rejectAdminSwitchTenantTokenManagement(); err != nil {
+		return nil, err
+	}
 	existing, workspaceID, err := s.lookupTenantTokenForRuntime(input.TokenRef)
 	if err != nil {
 		return nil, err
@@ -383,6 +402,9 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 }
 
 func (s *Service) RevokeTenantAccessToken(ref string) error {
+	if err := s.rejectAdminSwitchTenantTokenManagement(); err != nil {
+		return err
+	}
 	entry, workspaceID, err := s.lookupTenantTokenForRuntime(ref)
 	if err != nil {
 		return err
@@ -421,6 +443,13 @@ func (s *Service) resolveTenantTokenWorkspace(ref string) (storage.Workspace, er
 		return storage.Workspace{}, RuntimeError{Code: authz.CodeWorkspaceScopeDenied, Message: "tenant token workspace must match current workspace"}
 	}
 	return workspace, nil
+}
+
+func (s *Service) rejectAdminSwitchTenantTokenManagement() error {
+	if s.runtime.IsTenantActor() && s.runtime.ActorTokenPurpose == "admin_tenant_switch" {
+		return RuntimeError{Code: "tenant_token_management_denied", Message: "admin switch tenant token cannot manage tenant access tokens"}
+	}
+	return nil
 }
 
 func (s *Service) lookupTenantTokenForRuntime(ref string) (storage.ApiTokenEntry, string, error) {
@@ -896,6 +925,7 @@ func tokenViewFromEntry(row storage.ApiTokenEntry, scopes, workspaceIDs, project
 		ExpiresAt:    row.ExpiresAt,
 		RevokedAt:    row.RevokedAt,
 		LastUsedAt:   row.LastUsedAt,
+		Purpose:      row.Purpose,
 	}
 }
 
@@ -917,17 +947,21 @@ func tenantTokenEntryToView(row storage.ApiTokenEntry) (TenantAccessTokenView, e
 
 func tenantTokenViewFromEntry(row storage.ApiTokenEntry, scopes []string, workspaceID string, projectIDs []string) TenantAccessTokenView {
 	return TenantAccessTokenView{
-		ID:          row.ID,
-		Prefix:      row.TokenPrefix,
-		Name:        row.Name,
-		Type:        row.Type,
-		WorkspaceID: workspaceID,
-		ProjectIDs:  append([]string(nil), projectIDs...),
-		Scopes:      append([]string(nil), scopes...),
-		CreatedAt:   row.CreatedAt,
-		ExpiresAt:   row.ExpiresAt,
-		RevokedAt:   row.RevokedAt,
-		LastUsedAt:  row.LastUsedAt,
+		ID:                     row.ID,
+		Prefix:                 row.TokenPrefix,
+		Name:                   row.Name,
+		Type:                   row.Type,
+		WorkspaceID:            workspaceID,
+		ProjectIDs:             append([]string(nil), projectIDs...),
+		Scopes:                 append([]string(nil), scopes...),
+		CreatedAt:              row.CreatedAt,
+		ExpiresAt:              row.ExpiresAt,
+		RevokedAt:              row.RevokedAt,
+		LastUsedAt:             row.LastUsedAt,
+		IssuedVia:              row.IssuedVia,
+		IssuedByAdminTokenID:   row.IssuedByAdminTokenID,
+		IssuedByAdminTokenName: row.IssuedByAdminTokenName,
+		Purpose:                row.Purpose,
 	}
 }
 
@@ -1141,4 +1175,11 @@ func parseIDsFromJSON(jsonStr string) []string {
 	var ids []string
 	json.Unmarshal([]byte(jsonStr), &ids)
 	return ids
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

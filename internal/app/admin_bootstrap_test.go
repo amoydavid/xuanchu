@@ -128,13 +128,13 @@ func TestAdminCreateWorkspaceAgentTokenRejectsInvalidScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// user:read 不在 scopeRegistry，应被 createTokenStored 的 ValidateTokenCreate 拒绝
+	// bogus:read 不在 scopeRegistry，应被 createTokenStored 的 ValidateTokenCreate 拒绝。
 	_, err = svc.AdminCreateWorkspaceAgentToken(AdminCreateAgentTokenInput{
 		AdminTokenName: "ops",
 		WorkspaceRef:   "dajee",
 		Name:           "bad-scope",
 		UserRef:        "alice",
-		Scopes:         []string{"task:read", "user:read"},
+		Scopes:         []string{"task:read", "bogus:read"},
 	})
 	assertRuntimeCode(t, err, "token_scope_invalid")
 }
