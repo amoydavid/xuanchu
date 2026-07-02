@@ -127,7 +127,7 @@ tenant token role(owner-equivalent)
 
 ### 6.2 Tenant owner scope 白名单
 
-tenant token scope 白名单扩大为：
+tenant token 的 P1 scope 白名单扩大为：
 
 ```text
 task:read task:write
@@ -139,18 +139,31 @@ audit:read
 user:read user:write
 member:read member:write
 token:read token:write
-hook:read hook:write
-notification:read notification:write
-reminder:read reminder:write
+hook:read
+notification:read
+reminder:read
 ```
 
 继续禁止：
 
 ```text
 impersonate
+hook:write
+notification:write
+reminder:write
 ```
 
-`*` 对 tenant token 展开为上述白名单，不包含 `impersonate`。
+`*` 对 tenant token 展开为上述 P1 白名单，不包含 `impersonate`、`hook:write`、`notification:write`、`reminder:write`。
+
+P2 完成 actor schema 升级后，tenant token scope 白名单再加入：
+
+```text
+hook:write
+notification:write
+reminder:write
+```
+
+这样 `credentials/current.capabilities` 在 P1 不会声明 hook / notification / reminder 的写能力，前端也不会因为 capability 误判而展示创建入口。
 
 兼容要求：
 
@@ -326,7 +339,8 @@ tooltip：
 {
   "workspaceSlug": "dajee",
   "workspaceName": "Dajee",
-  "actorName": "runtime-prod",
+  "actorName": "admin switch · ops-primary",
+  "tokenName": "admin-switch:dajee:ops-primary:20260702120000",
   "role": "owner",
   "adminTokenName": "ops-primary",
   "mode": "tenant"
@@ -340,7 +354,7 @@ tooltip：
 tenant switch mode 下顶部显示：
 
 ```text
-系统身份 · dajee · runtime-prod · 由 server admin ops-primary 签发  [返回超管]
+系统身份 · dajee · admin switch · ops-primary · 由 server admin ops-primary 签发  [返回超管]
 ```
 
 点击「返回超管」：
@@ -364,6 +378,8 @@ admin 切换生成的短期 tenant token 是普通 `api_tokens` 记录，但不�
 - 审计、access log 和 token 表数据仍保留 `purpose=admin_tenant_switch`、过期时间、签发来源、签发 admin token 名称。
 - 这类 token 由过期时间和清理任务管理生命周期，不作为用户日常可管理的 tenant token 展示。
 - 已过期或已吊销状态沿用现有 token 状态，但只在审计或后端运维查询中可见。
+- 后端运维查询使用 server admin 侧 tenant token 接口显式传入 `include_admin_switch=true`；常规 UI 不传该参数。
+- 提前吊销使用 server admin 侧 tenant token revoke 接口，必须写入审计。
 
 ## 9. Admin API
 
@@ -432,9 +448,25 @@ Content-Type: application/json
 - `POST /api/v1/tokens`
 - `PATCH /api/v1/tokens/{tokenRef}`
 - `DELETE /api/v1/tokens/{tokenRef}`
+- `GET /api/v1/tenant-access-tokens`
+- `POST /api/v1/tenant-access-tokens`
+- `PATCH /api/v1/tenant-access-tokens/{tokenRef}`
+- `DELETE /api/v1/tenant-access-tokens/{tokenRef}`
 - `GET/PATCH/POST /api/v1/workspaces...` 中 owner 可执行的 workspace 管理路径
 
 注意：tenant token 管理普通 PAT / Agent token 时，创建出来的 PAT / Agent token 仍然需要绑定真实 user。tenant token 可以发起这个管理操作，但不能把自己当成 token user。
+tenant token 管理 `tenant_access_token` 时走 `/api/v1/tenant-access-tokens`，仍然只能作用于当前绑定 workspace；默认列表排除 `purpose=admin_tenant_switch`。
+
+server admin 侧保留独立接口边界：
+
+- `GET /api/v1/admin/tokens`
+- `PATCH /api/v1/admin/tokens/{tokenRef}`
+- `DELETE /api/v1/admin/tokens/{tokenRef}`
+- `GET /api/v1/admin/tenant-access-tokens`
+- `PATCH /api/v1/admin/tenant-access-tokens/{tokenRef}`
+- `DELETE /api/v1/admin/tenant-access-tokens/{tokenRef}`
+
+其中 `/api/v1/admin/tenant-access-tokens` 默认排除 `purpose=admin_tenant_switch`；只有显式 `include_admin_switch=true` 时返回 admin-switch token，用于后端运维查询和提前吊销。
 
 ### 10.2 tenant token 自管理
 
@@ -442,10 +474,11 @@ Content-Type: application/json
 
 规则：
 
-- 可以 list token。
+- 可以 list 普通 PAT / Agent token 和普通 tenant token。
 - 可以创建 PAT / Agent / tenant token，前提是 scope 允许。
-- 可以修改其他 token。
-- 可以吊销其他 token。
+- 可以修改其他 PAT / Agent token 和普通 tenant token。
+- 可以吊销其他 PAT / Agent token 和普通 tenant token。
+- 默认不能 list / 修改 / 吊销 `purpose=admin_tenant_switch` 的短期 token；这类 token 只走 server admin 运维查询和吊销。
 - 吊销当前正在使用的 tenant token 时允许，但响应后前端必须立刻退出登录。
 
 ### 10.3 保留禁止项
@@ -664,7 +697,8 @@ tenant_context 只保存展示和返回路径，不作为授权依据：
   "mode": "tenant",
   "workspaceSlug": "dajee",
   "workspaceName": "Dajee",
-  "actorName": "runtime-prod",
+  "actorName": "admin switch · ops-primary",
+  "tokenName": "admin-switch:dajee:ops-primary:20260702120000",
   "adminTokenName": "ops-primary",
   "returnTo": "/admin/workspaces/dajee"
 }
@@ -694,11 +728,14 @@ workspace_scope_denied              403  token 不绑定该 workspace
 - tenant token 带 `member:write` 可添加成员和改角色。
 - tenant token 带 `user:write` 可创建 user / 修改 display_name / 绑定 external id。
 - tenant token 带 `token:write` 可创建 PAT / Agent / tenant token。
+- tenant token 带 `token:write` 可调用 `/api/v1/tenant-access-tokens` 创建、修改、吊销普通 tenant token。
 - tenant token 带 `workspace:write` 可修改 workspace。
 - tenant token 不带对应 scope 时返回 `token_scope_denied`。
+- P1 `credentials/current.capabilities` 不返回 `hook:write`、`notification:write`、`reminder:write`。
 - server admin 可创建短期 tenant switch token。
 - 短期 tenant switch token 过期后不能使用。
 - admin-switch tenant token 不出现在 `/tokens` 和 `/admin/tokens` 的常规 tenant token 列表。
+- `/api/v1/admin/tenant-access-tokens` 默认不返回 admin-switch token，显式 `include_admin_switch=true` 时可返回并可吊销。
 - 普通 tenant token 可以创建为永不过期。
 - 审计记录 `actor_type=tenant_access_token`，并包含 token id/name/prefix。
 
@@ -709,6 +746,7 @@ workspace_scope_denied              403  token 不绑定该 workspace
 - tenant 身份顶部显示“系统身份”。
 - admin workspace detail 有“以 Tenant 身份进入”按钮。
 - 点击后写入 `xuanchu.console.token` 和 `tenant_context`，跳转 workspace console。
+- admin-switch 模式顶部展示短期 token 的显示名，不展示某个既有长期 tenant token 名称。
 - 返回超管时清理 tenant token/context，保留 admin token。
 - tenant token 登录后可进入 members/users/tokens/workspace settings 页面。
 - 无 scope 的页面或按钮隐藏/禁用，或显示明确权限错误。
