@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
@@ -11,6 +13,27 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
+
+// validateExternalBaseURL 校验 redirect_uri 基地址的 scheme 与 host，
+// 防 OIDC redirect_uri 被指向恶意 origin 窃取授权码。
+// 允许 https（生产）与 http+localhost/127.0.0.1（本地 dev）。
+func validateExternalBaseURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "外部可达地址格式无效"
+	}
+	if u.Scheme == "https" {
+		return ""
+	}
+	if u.Scheme == "http" {
+		host := u.Hostname()
+		if host == "localhost" || host == "127.0.0.1" || strings.HasPrefix(host, "127.") {
+			return ""
+		}
+		return "http 外部地址仅允许 localhost"
+	}
+	return "外部可达地址必须是 http(s) 绝对 URL"
+}
 
 // handleWorkspaceSsoConfigGet 返回脱敏的 SSO 配置。
 func (s *Server) handleWorkspaceSsoConfigGet(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +81,13 @@ func (s *Server) handleWorkspaceSsoConfigSet(w http.ResponseWriter, r *http.Requ
 	if in.IssuerBaseURL == "" || in.OrgID == "" || in.ClientID == "" {
 		writeError(w, http.StatusBadRequest, "missing_required", "issuer_base_url, org_id, client_id 必填", nil)
 		return
+	}
+	// external_base_url 非空时校验 scheme，防 redirect_uri 被指向恶意 origin 窃取授权码
+	if in.ExternalBaseURL != "" {
+		if msg := validateExternalBaseURL(in.ExternalBaseURL); msg != "" {
+			writeError(w, http.StatusBadRequest, "invalid_external_base_url", msg, nil)
+			return
+		}
 	}
 	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()))
 	if err := cfgSvc.Set(authn.EffectiveWorkspace.ID, app.OIDCConfigInput{

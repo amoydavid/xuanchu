@@ -90,7 +90,8 @@ export function AppShell({
   const tenantSwitch = !acting && tenantContext !== null
   const systemActor = tokenType === "tenant_access_token"
   // SSO 配置菜单仅对 owner 或 tenant actor（含 tenant switch）可见
-  const showSso = isOwner || systemActor || tenantSwitch || acting
+  // spec §4.4.3：admin acting 不单独开 SSO 特权，需通过 tenant-switch/acting 获得对应身份
+  const showSso = isOwner || systemActor || tenantSwitch
 
   return (
     <div className="min-h-svh bg-background text-foreground">

@@ -37,6 +37,11 @@ func NewConfigRepository(db *gorm.DB) *ConfigRepository {
 	return &ConfigRepository{db: db}
 }
 
+// DB 暴露底层 *gorm.DB，供 app 层在同一事务内写多个 config key。
+func (r *ConfigRepository) DB() *gorm.DB {
+	return r.db
+}
+
 func (r *ConfigRepository) Get(key ConfigKey) (string, bool, error) {
 	normalized, err := normalizeConfigKey(key)
 	if err != nil {

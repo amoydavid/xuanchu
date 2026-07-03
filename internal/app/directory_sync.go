@@ -13,7 +13,7 @@ import (
 
 // DirectoryClient 是 DirectorySyncService 依赖的通讯录客户端接口（便于测试 mock）。
 type DirectoryClient interface {
-	ListMembers(baseURL, orgID, token string) ([]directory.Member, error)
+	ListMembersWithContext(ctx context.Context, baseURL, orgID, token string) ([]directory.Member, error)
 }
 
 type SyncStats struct {
@@ -34,7 +34,7 @@ func NewDirectorySyncService(store *storage.Store, client DirectoryClient) *Dire
 // SyncOnce 拉取远端通讯录并 upsert 本地 user/external id/membership，移除 disabled 成员的 membership。
 func (s *DirectorySyncService) SyncOnce(ctx context.Context, workspaceID, baseURL, orgID, token string) (SyncStats, error) {
 	var stats SyncStats
-	members, err := s.client.ListMembers(baseURL, orgID, token)
+	members, err := s.client.ListMembersWithContext(ctx, baseURL, orgID, token)
 	if err != nil {
 		return stats, fmt.Errorf("list directory members: %w", err)
 	}
@@ -91,9 +91,14 @@ func (s *DirectorySyncService) SyncOnce(ctx context.Context, workspaceID, baseUR
 		}
 	}
 
-	// 移除 disabled / 远端已不存在的成员的 membership
+	// 移除 disabled / 远端已不存在的成员的 membership。
+	// 关键：只检测「当前 workspace 的 membership 对应 user」的 yaoguang sub，
+	// 不能查全库所有 workspace 的 external id，否则会跨 workspace 误删。
 	var localExt []storage.UserExternalID
-	if err := db.Where("provider = ?", "yaoguang").Find(&localExt).Error; err != nil {
+	if err := db.
+		Joins("JOIN memberships ON memberships.user_id = user_external_ids.user_id").
+		Where("memberships.workspace_id = ? AND user_external_ids.provider = ?", workspaceID, "yaoguang").
+		Find(&localExt).Error; err != nil {
 		return stats, err
 	}
 	for _, eid := range localExt {

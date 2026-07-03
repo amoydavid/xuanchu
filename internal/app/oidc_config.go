@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"gorm.io/gorm"
 )
 
 const (
@@ -62,10 +63,11 @@ type OIDCConfigSecrets struct {
 
 type OIDCConfigService struct {
 	cfg *storage.ConfigRepository
+	db  *gorm.DB
 }
 
 func NewOIDCConfigService(cfg *storage.ConfigRepository) *OIDCConfigService {
-	return &OIDCConfigService{cfg: cfg}
+	return &OIDCConfigService{cfg: cfg, db: cfg.DB()}
 }
 
 func (s *OIDCConfigService) wk(workspaceID, key string) storage.ConfigKey {
@@ -133,60 +135,72 @@ func (s *OIDCConfigService) ResolveSecrets(workspaceID string) (OIDCConfigSecret
 }
 
 func (s *OIDCConfigService) Set(workspaceID string, in OIDCConfigInput) error {
-	set := func(key, value string) error {
-		return s.cfg.Set(s.wk(workspaceID, key), value)
-	}
-
-	if err := set(ssoKeyProvider, defaultIfEmpty(in.Provider, "yaoguang")); err != nil {
-		return err
-	}
-	if err := set(ssoKeyIssuerBaseURL, in.IssuerBaseURL); err != nil {
-		return err
-	}
-	if err := set(ssoKeyOrgID, in.OrgID); err != nil {
-		return err
-	}
-	if err := set(ssoKeyClientID, in.ClientID); err != nil {
-		return err
-	}
-	// secret 留空 → 不覆盖（保留原值）；非空时必须 EncryptConfigSecret 后写入
+	// secret 加密在事务前完成（避免事务内做重计算 + 可能报错导致半提交）
+	var encClientSecret, encDirectoryToken string
 	if in.ClientSecret != "" {
-		encrypted, err := EncryptConfigSecret(in.ClientSecret)
+		enc, err := EncryptConfigSecret(in.ClientSecret)
 		if err != nil {
 			return err
 		}
-		if err := set(ssoKeyClientSecret, encrypted); err != nil {
-			return err
-		}
+		encClientSecret = enc
 	}
 	if in.DirectoryAccessToken != "" {
-		encrypted, err := EncryptConfigSecret(in.DirectoryAccessToken)
+		enc, err := EncryptConfigSecret(in.DirectoryAccessToken)
 		if err != nil {
 			return err
 		}
-		if err := set(ssoKeyDirectoryToken, encrypted); err != nil {
+		encDirectoryToken = enc
+	}
+
+	// 所有 key 在同一事务内写入，保证配置一致性（全成功或全回滚）
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		txRepo := storage.NewConfigRepository(tx)
+		set := func(key, value string) error {
+			return txRepo.Set(storage.ConfigKey{WorkspaceID: workspaceID, Scope: storage.ConfigScopeWorkspace, Key: key}, value)
+		}
+		if err := set(ssoKeyProvider, defaultIfEmpty(in.Provider, "yaoguang")); err != nil {
 			return err
 		}
-	}
-	if err := set(ssoKeyScopes, in.Scopes); err != nil {
-		return err
-	}
-	if err := set(ssoKeyRedirectPath, defaultIfEmpty(in.RedirectPath, "/sso/oidc/callback")); err != nil {
-		return err
-	}
-	if err := set(ssoKeyExternalBaseURL, in.ExternalBaseURL); err != nil {
-		return err
-	}
-	if err := set(ssoKeySessionTTL, defaultIfEmpty(in.SessionTTL, "168h")); err != nil {
-		return err
-	}
-	if err := set(ssoKeySyncInterval, defaultIfEmpty(in.SyncInterval, "1h")); err != nil {
-		return err
-	}
-	if err := set(ssoKeyInsecureCookie, boolStr(in.InsecureCookie)); err != nil {
-		return err
-	}
-	return nil
+		if err := set(ssoKeyIssuerBaseURL, in.IssuerBaseURL); err != nil {
+			return err
+		}
+		if err := set(ssoKeyOrgID, in.OrgID); err != nil {
+			return err
+		}
+		if err := set(ssoKeyClientID, in.ClientID); err != nil {
+			return err
+		}
+		// secret 留空 → 不覆盖（保留原值）
+		if encClientSecret != "" {
+			if err := set(ssoKeyClientSecret, encClientSecret); err != nil {
+				return err
+			}
+		}
+		if encDirectoryToken != "" {
+			if err := set(ssoKeyDirectoryToken, encDirectoryToken); err != nil {
+				return err
+			}
+		}
+		if err := set(ssoKeyScopes, in.Scopes); err != nil {
+			return err
+		}
+		if err := set(ssoKeyRedirectPath, defaultIfEmpty(in.RedirectPath, "/sso/oidc/callback")); err != nil {
+			return err
+		}
+		if err := set(ssoKeyExternalBaseURL, in.ExternalBaseURL); err != nil {
+			return err
+		}
+		if err := set(ssoKeySessionTTL, defaultIfEmpty(in.SessionTTL, "168h")); err != nil {
+			return err
+		}
+		if err := set(ssoKeySyncInterval, defaultIfEmpty(in.SyncInterval, "1h")); err != nil {
+			return err
+		}
+		if err := set(ssoKeyInsecureCookie, boolStr(in.InsecureCookie)); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // mask 取前后 2 位，中间用 • 替换；短于 6 位则全 •。

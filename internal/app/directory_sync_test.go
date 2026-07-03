@@ -15,7 +15,7 @@ type fakeDirectoryClient struct {
 	err     error
 }
 
-func (f *fakeDirectoryClient) ListMembers(baseURL, orgID, token string) ([]directory.Member, error) {
+func (f *fakeDirectoryClient) ListMembersWithContext(ctx context.Context, baseURL, orgID, token string) ([]directory.Member, error) {
 	return f.members, f.err
 }
 

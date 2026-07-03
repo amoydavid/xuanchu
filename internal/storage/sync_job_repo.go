@@ -18,23 +18,27 @@ func NewDirectorySyncJobRepository(db *gorm.DB) *DirectorySyncJobRepository {
 }
 
 // Create 插入 pending job；若该 workspace 已有 pending/running job 则返回 ErrSyncInProgress。
+// Count + Insert 在同一事务内完成，避免并发 TOCTOU 导致重复创建。
 func (r *DirectorySyncJobRepository) Create(workspaceID string, now int64) (DirectorySyncJob, error) {
-	var count int64
-	if err := r.db.Model(&DirectorySyncJob{}).
-		Where("workspace_id = ? AND status IN ?", workspaceID, []string{"pending", "running"}).
-		Count(&count).Error; err != nil {
-		return DirectorySyncJob{}, err
-	}
-	if count > 0 {
-		return DirectorySyncJob{}, ErrSyncInProgress
-	}
 	job := DirectorySyncJob{
 		ID:          "syncjob_" + uuid.NewString(),
 		WorkspaceID: workspaceID,
 		Status:      "pending",
 		CreatedAt:   now,
 	}
-	if err := r.db.Create(&job).Error; err != nil {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&DirectorySyncJob{}).
+			Where("workspace_id = ? AND status IN ?", workspaceID, []string{"pending", "running"}).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return ErrSyncInProgress
+		}
+		return tx.Create(&job).Error
+	})
+	if err != nil {
 		return DirectorySyncJob{}, err
 	}
 	return job, nil

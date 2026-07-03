@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,22 +49,22 @@ export function SsoConfigPage() {
     external_base_url: "",
     session_ttl: "168h",
   })
-  const [loaded, setLoaded] = useState(false)
 
-  // 首次加载配置后预填表单（secret 留空，保存时空值=不修改）
-  if (configQuery.isSuccess && cfg && !loaded) {
-    setForm({
-      issuer_base_url: cfg.issuer_base_url,
-      org_id: cfg.org_id,
-      client_id: cfg.client_id,
-      client_secret: "",
-      directory_access_token: "",
-      sync_interval: cfg.sync_interval || "1h",
-      external_base_url: cfg.external_base_url,
-      session_ttl: cfg.session_ttl || "168h",
-    })
-    setLoaded(true)
-  }
+  // 配置加载成功后预填表单（secret 留空，保存时空值=不修改）
+  useEffect(() => {
+    if (configQuery.isSuccess && cfg) {
+      setForm({
+        issuer_base_url: cfg.issuer_base_url,
+        org_id: cfg.org_id,
+        client_id: cfg.client_id,
+        client_secret: "",
+        directory_access_token: "",
+        sync_interval: cfg.sync_interval || "1h",
+        external_base_url: cfg.external_base_url,
+        session_ttl: cfg.session_ttl || "168h",
+      })
+    }
+  }, [configQuery.data])
 
   if (me.isLoading || configQuery.isLoading) {
     return <Skeleton className="h-96 w-full" />
@@ -161,7 +161,7 @@ export function SsoConfigPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="0">{t("sso.errors.syncInProgress")}</SelectItem>
+              <SelectItem value="0">{t("sso.syncIntervalDisabled")}</SelectItem>
               <SelectItem value="30m">30m</SelectItem>
               <SelectItem value="1h">1h</SelectItem>
               <SelectItem value="6h">6h</SelectItem>

@@ -245,12 +245,10 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		return
 	}
 	memberRepo := storage.NewMemberRepository(s.store.DB())
-	member, err := memberRepo.Get(user.ID, workspace.ID)
-	if err != nil {
+	if _, err := memberRepo.Get(user.ID, workspace.ID); err != nil {
 		writeError(w, http.StatusForbidden, "membership_inactive", "您不是该工作区的成员", nil)
 		return
 	}
-	_ = member
 	// 构造 AuthenticatedToken：browser session 凭证，scopes 全开放（授权由 role 决定），
 	// workspace 锁定 session 的 workspace。
 	authn := app.AuthenticatedToken{
@@ -281,15 +279,7 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 
 // validCSRF 校验 double-submit CSRF：cookie 值 == X-Xuanchu-CSRF 头，且 hash 后等于 session 存储的 CSRFHash。
 func (s *Server) validCSRF(r *http.Request, wantHash string) bool {
-	cookie, err := r.Cookie(csrfCookieName)
-	if err != nil || cookie.Value == "" {
-		return false
-	}
-	header := r.Header.Get("X-Xuanchu-CSRF")
-	if header == "" || header != cookie.Value {
-		return false
-	}
-	return hashHexLocal(header) == wantHash
+	return validCSRFRequest(r, wantHash)
 }
 
 func isApiWriteMethod(method string) bool {
@@ -300,18 +290,24 @@ func isApiWriteMethod(method string) bool {
 	return false
 }
 
-// browserSessionScopes 返回 browser session 的 capability 全集（不含 impersonate，防滥用）。
+// browserSessionScopes 返回 browser session 允许的 capability 集合。
+// browser session 用于 Web Console 浏览器交互，授权最终由 membership role 决定。
+// 这里只放行浏览器交互必需的 scope，刻意排除：
+//   - impersonate：防止 SSO 用户冒充他人
+//   - token:write：防止 SSO 用户创建长期机器凭证（PAT），绕过 SSO
+//   - sso.config.*（workspace:write）：SSO 配置仅 owner/tenant actor 可改
+//   - member:write / user:write：成员管理走更严格的 owner 流程
 func browserSessionScopes() []string {
 	return []string{
 		auth.ScopeTaskRead, auth.ScopeTaskWrite,
 		auth.ScopeProjectRead, auth.ScopeProjectWrite,
 		auth.ScopeContextRead, auth.ScopeContextWrite,
 		auth.ScopeConfigRead, auth.ScopeConfigWrite,
-		auth.ScopeWorkspaceRead, auth.ScopeWorkspaceWrite,
+		auth.ScopeWorkspaceRead,
 		auth.ScopeAuditRead,
-		auth.ScopeUserRead, auth.ScopeUserWrite,
-		auth.ScopeMemberRead, auth.ScopeMemberWrite,
-		auth.ScopeTokenRead, auth.ScopeTokenWrite,
+		auth.ScopeUserRead,
+		auth.ScopeMemberRead,
+		auth.ScopeTokenRead,
 		auth.ScopeHookRead, auth.ScopeHookWrite,
 		auth.ScopeNotificationRead, auth.ScopeNotificationWrite,
 		auth.ScopeReminderRead, auth.ScopeReminderWrite,

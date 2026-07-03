@@ -3,13 +3,12 @@ package httpapi
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -49,7 +48,7 @@ func (s *Server) handleSsoOidcStart(w http.ResponseWriter, r *http.Request) {
 	}
 	wsID, ok := s.resolveWorkspaceIDByRef(workspaceRef)
 	if !ok {
-		writeError(w, http.StatusNotFound, "workspace_not_found", "workspace 不存在", nil)
+		redirectToSsoError(w, r, "workspace_not_found")
 		return
 	}
 	authURL, err := s.oidcAuthService().Start(r.Context(), wsID)
@@ -73,31 +72,61 @@ func (s *Server) handleSsoOidcCallback(w http.ResponseWriter, r *http.Request) {
 		redirectToSsoError(w, r, appErrorToSsoCode(err))
 		return
 	}
-	setBrowserSessionCookies(w, login.RawSession, login.CSRFToken)
+	setBrowserSessionCookies(w, login.RawSession, login.CSRFToken, login.InsecureCookie, login.SessionMaxAge)
 	http.Redirect(w, r, s.console.BasePath+"/", http.StatusFound)
 }
 
 // handleAuthLogout 清除 browser session 与 cookie。
+// logout 需要有效的 session cookie + CSRF（防 CSRF 强制登出）。
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
-		_ = s.oidcAuthService().Logout(hashHexLocal(cookie.Value))
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil || cookie.Value == "" {
+		clearBrowserSessionCookies(w)
+		http.Redirect(w, r, s.console.BasePath+"/", http.StatusFound)
+		return
 	}
+	session, err := s.oidcAuthService().ResolveSession(cookie.Value)
+	if err != nil {
+		clearBrowserSessionCookies(w)
+		http.Redirect(w, r, s.console.BasePath+"/", http.StatusFound)
+		return
+	}
+	if !validCSRFRequest(r, session.CSRFHash) {
+		writeError(w, http.StatusForbidden, "csrf_invalid", "页面会话已过期，请刷新后重试", nil)
+		return
+	}
+	_ = s.oidcAuthService().Logout(hashHexLocal(cookie.Value))
 	clearBrowserSessionCookies(w)
 	http.Redirect(w, r, s.console.BasePath+"/", http.StatusFound)
 }
 
-func setBrowserSessionCookies(w http.ResponseWriter, rawSession, csrfToken string) {
-	// TODO: insecure_cookie 应从 workspace sso 配置读取；暂时默认 secure。
-	secure := true
+// validCSRFRequest 校验 double-submit CSRF（logout 等无 authMiddleware 的写端点用）。
+func validCSRFRequest(r *http.Request, wantHash string) bool {
+	cookie, err := r.Cookie(csrfCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	header := r.Header.Get("X-Xuanchu-CSRF")
+	if header == "" || header != cookie.Value {
+		return false
+	}
+	return hashHexLocal(header) == wantHash
+}
+
+func setBrowserSessionCookies(w http.ResponseWriter, rawSession, csrfToken string, insecureCookie bool, maxAge int) {
+	secure := !insecureCookie
+	if maxAge <= 0 {
+		maxAge = 7 * 24 * 3600
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: rawSession,
 		Path: "/", HttpOnly: true, Secure: secure,
-		SameSite: http.SameSiteLaxMode, MaxAge: 7 * 24 * 3600,
+		SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name: csrfCookieName, Value: csrfToken,
 		Path: "/", HttpOnly: false, Secure: secure,
-		SameSite: http.SameSiteLaxMode, MaxAge: 7 * 24 * 3600,
+		SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
 	})
 }
 
@@ -112,16 +141,17 @@ func redirectToSsoError(w http.ResponseWriter, r *http.Request, code string) {
 }
 
 func appErrorToSsoCode(err error) string {
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "identity_not_found"):
+	case errors.Is(err, app.ErrIdentityNotFound):
 		return "identity_not_found"
-	case strings.Contains(msg, "membership_inactive"):
+	case errors.Is(err, app.ErrMembershipInactive):
 		return "membership_inactive"
-	case strings.Contains(msg, "invalid_state"):
+	case errors.Is(err, app.ErrInvalidState):
 		return "invalid_state"
-	case strings.Contains(msg, "id_token_invalid"):
+	case errors.Is(err, app.ErrIDTokenInvalid):
 		return "id_token_invalid"
+	case errors.Is(err, app.ErrSsoNotEnabled):
+		return "sso_not_enabled"
 	default:
 		return "sso_failed"
 	}
@@ -132,6 +162,3 @@ func hashHexLocal(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
-
-// ensure chi import used（chi.URLParam 在 sso.go 使用）
-var _ = chi.URLParam

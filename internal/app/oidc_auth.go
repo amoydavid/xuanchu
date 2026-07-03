@@ -6,10 +6,20 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+)
+
+// OIDC 登录流程的 typed errors，供 HTTP 层用 errors.Is 精确映射错误码（spec §7.5）。
+var (
+	ErrSsoNotEnabled    = errors.New("sso_not_enabled")
+	ErrInvalidState     = errors.New("invalid_state")
+	ErrIDTokenInvalid   = errors.New("id_token_invalid")
+	ErrIdentityNotFound = errors.New("identity_not_found")
+	ErrMembershipInactive = errors.New("membership_inactive")
 )
 
 // OIDCProvider 抽象 OIDC RP 的两个动作，便于测试 mock 与生产实现分离。
@@ -28,8 +38,10 @@ type OIDCAuthService struct {
 
 // BrowserLoginResult 是 OIDC 登录成功后返回的凭证：session 写 HttpOnly cookie，CSRF 写可读 cookie。
 type BrowserLoginResult struct {
-	RawSession string
-	CSRFToken  string
+	RawSession     string
+	CSRFToken      string
+	InsecureCookie bool   // 来自 workspace sso.insecure_cookie，控制 session/csrf cookie 的 Secure 属性
+	SessionMaxAge  int    // 秒，来自 sso.session_ttl，控制 cookie MaxAge
 }
 
 // NewOIDCAuthService 构造 OIDCAuthService。fallback 非 nil 时用于测试注入固定 provider。
@@ -50,7 +62,7 @@ const authFlowTTLSeconds int64 = 600 // 10 分钟
 func (s *OIDCAuthService) Start(ctx context.Context, workspaceID string) (string, error) {
 	cfg, enabled := s.cfg.Get(workspaceID)
 	if !enabled {
-		return "", fmt.Errorf("sso_not_enabled")
+		return "", ErrSsoNotEnabled
 	}
 	secrets, err := s.cfg.ResolveSecrets(workspaceID)
 	if err != nil {
@@ -77,17 +89,17 @@ func (s *OIDCAuthService) Start(ctx context.Context, workspaceID string) (string
 func (s *OIDCAuthService) Callback(ctx context.Context, state, code string) (BrowserLoginResult, error) {
 	flow, err := s.sessionRepo.GetAuthFlow(state)
 	if err != nil {
-		return BrowserLoginResult{}, fmt.Errorf("invalid_state")
+		return BrowserLoginResult{}, ErrInvalidState
 	}
 	now := time.Now().Unix()
 	if flow.ExpiresAt < now {
 		_ = s.sessionRepo.DeleteAuthFlow(state)
-		return BrowserLoginResult{}, fmt.Errorf("invalid_state")
+		return BrowserLoginResult{}, ErrInvalidState
 	}
 
 	cfg, enabled := s.cfg.Get(flow.WorkspaceID)
 	if !enabled {
-		return BrowserLoginResult{}, fmt.Errorf("sso_not_enabled")
+		return BrowserLoginResult{}, ErrSsoNotEnabled
 	}
 	secrets, err := s.cfg.ResolveSecrets(flow.WorkspaceID)
 	if err != nil {
@@ -101,21 +113,21 @@ func (s *OIDCAuthService) Callback(ctx context.Context, state, code string) (Bro
 	}
 	sub, err := provider.Exchange(ctx, code, flow.PKCEVerifier, redirectURI)
 	if err != nil {
-		return BrowserLoginResult{}, fmt.Errorf("id_token_invalid: %w", err)
+		return BrowserLoginResult{}, fmt.Errorf("%w: %v", ErrIDTokenInvalid, err)
 	}
 
 	// sub 映射
 	extRepo := storage.NewExternalIDRepository(s.store.DB())
 	ext, err := extRepo.GetByProviderAndExternalID("yaoguang", sub)
 	if err != nil {
-		return BrowserLoginResult{}, fmt.Errorf("identity_not_found")
+		return BrowserLoginResult{}, ErrIdentityNotFound
 	}
 
 	// 校验 membership 存在
 	memberRepo := storage.NewMemberRepository(s.store.DB())
 	_, err = memberRepo.Get(ext.UserID, flow.WorkspaceID)
 	if err != nil {
-		return BrowserLoginResult{}, fmt.Errorf("membership_inactive")
+		return BrowserLoginResult{}, ErrMembershipInactive
 	}
 
 	// 建 session
@@ -128,7 +140,12 @@ func (s *OIDCAuthService) Callback(ctx context.Context, state, code string) (Bro
 		return BrowserLoginResult{}, err
 	}
 	_ = s.sessionRepo.DeleteAuthFlow(state)
-	return BrowserLoginResult{RawSession: rawSession, CSRFToken: csrfToken}, nil
+	return BrowserLoginResult{
+		RawSession:     rawSession,
+		CSRFToken:      csrfToken,
+		InsecureCookie: cfg.InsecureCookie,
+		SessionMaxAge:  int(ttl.Seconds()),
+	}, nil
 }
 
 // Logout 删除 session。

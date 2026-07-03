@@ -614,6 +614,7 @@ export const zhCN = {
     save: "保存配置",
     syncNow: "立即同步成员",
     syncRunning: "同步中…",
+    syncIntervalDisabled: "禁用定时",
     notEnabled: "尚未配置 SSO，填写以下信息后保存即可启用。",
     noPermission: "您没有权限查看此页面。",
     oidcLogin: "OIDC 单点登录",

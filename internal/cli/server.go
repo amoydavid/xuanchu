@@ -217,7 +217,7 @@ func newServerCommand(opts Options) *cobra.Command {
 			runtimeWG.Add(5)
 			// 通讯录同步后台 dispatcher + scheduler
 			directorySyncCfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(store.DB()))
-			directorySyncSvc := app.NewDirectorySyncService(store, directory.NewClient(http.DefaultClient))
+			directorySyncSvc := app.NewDirectorySyncService(store, directory.NewClient(&http.Client{Timeout: 30 * time.Second}))
 			directorySyncRuntime := app.NewDirectorySyncRuntime(store, directorySyncCfgSvc, directorySyncSvc)
 			go func() {
 				defer runtimeWG.Done()

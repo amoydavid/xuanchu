@@ -621,6 +621,7 @@ export const enUS = {
     save: "Save configuration",
     syncNow: "Sync members now",
     syncRunning: "Syncing…",
+    syncIntervalDisabled: "Disabled",
     notEnabled: "SSO not configured yet. Fill in the fields below and save to enable.",
     noPermission: "You do not have permission to view this page.",
     oidcLogin: "OIDC Sign-in",
