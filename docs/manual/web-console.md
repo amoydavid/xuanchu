@@ -57,7 +57,14 @@ membership role 权限 ∩ token capability scope ∩ token workspace scope ∩ 
 
 tenant token 登录不读取 membership role，实际权限是 tenant scope、workspace/project allowlist 和 tenant 禁止清单的交集。当前已可管理 user、member、tenant token、workspace 设置，以及 hook、notification、reminder、task link、project annotation 等带 `created_by` / `actor` 的 workspace 资源；这些资源会记录为系统 actor。仍不能调用 `/me`、`assignee:me`、impersonation 或 active context 写入。
 
-普通 Console 的 token 登录不是浏览器 SSO。它只是把 PAT / Agent / tenant token 放入当前 tab 的 `sessionStorage`；服务端仍按 Bearer token 走同一套 Authorization Decision，没有独立的浏览器会话或 cookie。未来的 OIDC / 飞书 OAuth 登录会引入独立的 browser session 凭证类型，权限仍由本地 membership role 或 tenant token 规则决定。
+普通 Console 的 token 登录不是浏览器 SSO。它只是把 PAT / Agent / tenant token 放入当前 tab 的 `sessionStorage`；服务端仍按 Bearer token 走同一套 Authorization Decision，没有独立的浏览器会话或 cookie。
+
+v0.5.0 起新增 workspace 级 OIDC 单点登录（SSO）入口：
+
+- **配置**：workspace owner 或具备 `workspace:write` 的 tenant actor 在侧边栏「单点登录」页填入 yaoguang IdP 的 issuer 根地址、组织 ID、client id/secret、通讯录访问令牌等信息。`client_secret` 与 `directory_access_token` 在落库前经 AES-256-GCM envelope 加密，密钥从服务端环境变量 `XUANCHU_CONFIG_SECRET_KEY`（base64 编码的 32 字节）读取；缺少密钥时拒绝保存 secret。
+- **通讯录同步**：保存配置后点「立即同步成员」，后台 dispatcher 从 yaoguang `GET /api/orgs/{org_id}/directory/members` 拉取全量成员，建立本地 user、`UserExternalID`（yaoguang sub + feishu/wecom/dingtalk user_id）与 membership。`status=disabled` 的成员其 membership 会被移除（user 保留）。同步任务持久化在 `directory_sync_jobs` 表，重启不丢。
+- **OIDC 登录**：成员在登录页输入 workspace slug 后点「OIDC 单点登录」，跳转 yaoguang 完成 Auth Code Flow + PKCE；回调后 id_token 的 sub 命中本地 `UserExternalID` 即建立 browser session，下发 `xuanchu_session`（HttpOnly）与 `xuanchu_csrf` 两个 cookie，回到 Console。未命中映射则拒绝（不自动开通账号）。
+- **browser session 与 CSRF**：OIDC 登录后的请求用 cookie 鉴权，授权仍由本地 membership role 决定。写操作（POST/PUT/PATCH/DELETE `/api/v1/*`）必须同时携带 `X-Xuanchu-CSRF` 头，与 `xuanchu_csrf` cookie 匹配并通过服务端校验；缺 CSRF 返回 403 `csrf_invalid`。`/mcp`、`/api/v1/admin/*` 不接受 cookie，只接受 Bearer。CLI、Remote Client 和外部自动化继续使用 PAT/Agent/tenant token。
 
 Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` 控制面中间件，不进入普通业务 Authorization Decision：它不能访问任务、项目、通知、Hook 或 MCP 接口，只用于部署期创建 workspace 和 workspace-scoped Agent token。普通 PAT / Agent token 同样不能访问 admin 控制面。
 
@@ -107,7 +114,7 @@ http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{t
 
 任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。description 在详情页完整展示，具备写权限时点击“编辑描述”打开弹窗编辑完整内容。具备写权限时，项目页和任务详情页还提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
 
-未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT、Agent token 或 `tenant_access_token` 登录成功后回到原项目页。当前版本仅预留 redirect 语义，不接入企业 SSO、飞书 OAuth、cookie session 或匿名分享链接。
+未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT、Agent token 或 `tenant_access_token` 登录成功后回到原项目页。登录页同时提供「OIDC 单点登录」入口（需填写 workspace slug）。
 
 ## Server Admin Bootstrap
 

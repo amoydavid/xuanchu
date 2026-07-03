@@ -96,6 +96,8 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 `xuanchu server` 默认在 `/` 提供嵌入式 Web Console。Console 登录支持 PAT、Agent token 和 `tenant_access_token`；其中 `tenant_access_token` 作为 workspace 系统身份进入。token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求继续走 `/api/v1/*`，不绕过 token scope、workspace allowlist 或 project allowlist；自然人 PAT / Agent token 仍会校验 workspace membership。
 
+v0.5.0 起，Web Console 还支持 workspace 级 OIDC 单点登录（SSO）。workspace owner 或具备 `workspace:write` 的 tenant actor 在「单点登录」配置页填入 yaoguang IdP 的 issuer / client 信息并触发通讯录同步后，成员可通过登录页的「OIDC 单点登录」入口完成浏览器登录。OIDC 登录使用服务端可撤销的 opaque session cookie（`xuanchu_session`，HttpOnly），写操作必须同时携带 CSRF token（`xuanchu_csrf` cookie + `X-Xuanchu-CSRF` 头）。CLI、Remote Client、MCP 和外部自动化仍只接受 Bearer token，不接受 browser session。SSO secret（`client_secret` / `directory_access_token`）在落库前经 AES-256-GCM envelope 加密，密钥从 `XUANCHU_CONFIG_SECRET_KEY`（base64 编码的 32 字节）读取。
+
 仓库只跟踪 `internal/webconsole/dist/.gitkeep`，不跟踪前端构建产物。日常前端开发使用 `pnpm --dir web dev` 并代理到 Go HTTP API；发布二进制必须使用 `make build-release`，或先运行 `make web-console-build` 再执行 Go 构建，确保真实 Web Console 静态资源被 embed 进二进制。
 
 普通 Console 支持项目工作台深链，适合放进飞书卡片、企业门户或内部系统消息中：
@@ -110,7 +112,7 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
 ```
 
-任务详情页提供“返回项目”入口，并支持 title inline 编辑、description 完整展示和弹窗编辑、start / stop / done / delete 操作、注解添加/删除、链接添加/删除，以及右侧属性栏编辑。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页，登录成功后回到原项目页或任务详情页。当前版本只保留 redirect 语义，尚未接入企业 SSO 或飞书 OAuth。
+任务详情页提供“返回项目”入口，并支持 title inline 编辑、description 完整展示和弹窗编辑、start / stop / done / delete 操作、注解添加/删除、链接添加/删除，以及右侧属性栏编辑。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页（或 OIDC 单点登录入口），登录成功后回到原项目页或任务详情页。
 
 侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目工作台，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，完整查看 description，并在弹窗中编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。项目工作台的“导入任务”支持下载完整字段 XLSX 模板、上传填写后的 XLSX 或标准 JSON，也可以在弹窗内查看带 `description` 注释的完整 JSON Schema；模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example，Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明；description 默认按 Markdown 编写，技术上仍作为字符串保存；`blocked_by` 支持引用导入文件内的临时 `id` 或已有任务 UUID；预检发现缺失普通指派人时可直接创建用户并加入当前 workspace，导入文件中的 `display_name` 会作为用户展示姓名保留；上传解析后会分页预览归一化后的导入成果。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。
 

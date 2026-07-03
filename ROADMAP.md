@@ -46,6 +46,7 @@
 | v0.4.5 | 已完成 | Web Console 项目-任务浏览体验重构（项目表格主入口 + 任务详情增强 + 过滤工具栏） |
 | v0.4.6 | 已完成 | OpenAPI 运行时生成与文档口径收敛 |
 | v0.4.7 | 已完成 | 租户访问令牌 tenant_access_token |
+| v0.5.0 | 已完成 | Workspace OIDC 接入（yaoguang IdP）：浏览器 SSO + 通讯录同步 + browser session/CSRF |
 | docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
