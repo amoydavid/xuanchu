@@ -7,6 +7,7 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/auth/directory"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"github.com/google/uuid"
 )
 
 type fakeDirectoryClient struct {
@@ -31,7 +32,7 @@ func createTestWorkspace(t *testing.T, store *storage.Store, slug string) storag
 	t.Helper()
 	now := int64(1000)
 	wsRepo := storage.NewWorkspaceRepository(store.DB())
-	ws, err := wsRepo.Create(storage.Workspace{Slug: slug, Name: slug, CreatedAt: now, ModifiedAt: now})
+	ws, err := wsRepo.Create(storage.Workspace{ID: uuid.NewString(), Slug: slug, Name: slug, CreatedAt: now, ModifiedAt: now})
 	if err != nil {
 		t.Fatalf("create ws: %v", err)
 	}
