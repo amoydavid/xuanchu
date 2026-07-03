@@ -112,9 +112,135 @@
 
 ### 4.3 配置入口（仅 Web Console）
 
+OIDC 配置是 **workspace 级管理功能**，出现在用户登录 workspace 后的 Web Console 内。配置管理与读取仅走 HTTP API（`PUT/GET /api/v1/workspaces/{id}/sso/config`），不做 CLI / MCP 入口。
+
 - 写入：`PUT /api/v1/workspaces/{id}/sso/config`（接收完整值），仅 workspace owner/admin 可写。
 - 读取（脱敏）：`GET /api/v1/workspaces/{id}/sso/config`。
 - 启用判断：`OIDCConfigService.Get(workspaceID)` 返回 `(Config, enabled bool)`，`enabled=false` 时 SSO 路由对内返回 404、directory sync 拒绝执行。
+
+### 4.4 Web Console 配置页设计
+
+#### 4.4.1 导航落点
+
+在现有侧边栏新增独立 nav 项 **「单点登录」**（`/sso`，`KeyRound` 图标），放在 `tokens` 之后、与 tokens/members 平级，都是 workspace 级管理功能。
+
+需改动的前端骨架点（基于现有代码模式）：
+
+- `web/src/components/AppShell.tsx`：`PageKey` 联合类型加 `sso`；`navItems`（47-61 行）加一项 `{ key: "sso", icon: KeyRound, to: "/sso" }`。
+- `web/src/routes/router.tsx`：`workspaceRootRoute.addChildren`（207-221 行）加 `ssoRoute`，路径 `/sso`，仿 `tokensRoute`（201-205 行）薄包装。
+- 新增 `web/src/routes/workspace/SsoRoute.tsx`（路由包装）+ `web/src/features/workspace/sso/sso-config-page.tsx`（页面实现）+ `web/src/features/workspace/sso/use-sso-mutations.ts`（数据层）。
+- `web/src/locales/zh-CN.ts` / `en-US.ts`：新增 `nav.sso` + `sso.*` 文案组。
+
+#### 4.4.2 页面 ASCII 原型
+
+侧边栏整体布局（OIDC 项高亮位置）：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ◆璇础            my-workspace                                   │
+├──────────────┬──────────────────────────────────────────────────┤
+│              │                                                  │
+│  ◉ 概览       │                                                  │
+│    项目       │                                                  │
+│    成员       │                                                  │
+│    Token     │                                                  │
+│  ◉ 单点登录   │   ← 新增 nav 项                                   │
+│    Hook      │                                                  │
+│    通知       │                                                  │
+│    审计       │                                                  │
+│    设置       │                                                  │
+│              │                                                  │
+└──────────────┴──────────────────────────────────────────────────┘
+```
+
+「单点登录」配置页内容区（仿 `token-form.tsx` 受控表单模式）：
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ 单点登录（OIDC）                                                  │
+│ 通过 yaoguang IdP 让 workspace 成员使用浏览器 SSO 登录。            │
+│                                                                  │
+│ ── IdP 连接 ─────────────────────────────────────────────────── │
+│                                                                  │
+│  Issuer 根地址 *                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ https://yaoguang.example.com                             │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  yaoguang 服务根 URL；OIDC discovery 与通讯录接口都基于此地址。     │
+│                                                                  │
+│  组织 ID *                                          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ org_a1b2c3...                                            │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  yaoguang 的 organization id，用于通讯录接口路径。                  │
+│                                                                  │
+│  Client ID *                                                     │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ xuanchu_rp_client_01                                     │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  xuanchu 在 yaoguang 注册的 internal app client_id。              │
+│                                                                  │
+│  Client Secret *                              [已设置 ••••78ab] │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ •••••••••••••••••••••••••••••••••••                       │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  OIDC client_secret，加密存储。留空保存表示不修改。                  │
+│                                                                  │
+│ ── 通讯录同步 ───────────────────────────────────────────────── │
+│                                                                  │
+│  通讯录访问令牌 *                          [已设置 ••••34ef]     │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ •••••••••••••••••••••••••••••••••••                       │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  调用 yaoguang 通讯录接口的 tenant_access_token，需覆盖             │
+│  org.members.read scope 且 directory_access=org_read。            │
+│                                                                  │
+│  同步周期                                  [ 1 小时 ▾]            │
+│  定时拉取通讯录的间隔；选「禁用」则仅手动触发。                       │
+│                                                                  │
+│ ── 高级（可选）────────────────────────────────────────────── │
+│                                                                  │
+│  外部可达地址                                                     │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ https://xuanchu.example.com                              │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  用于拼接 OIDC redirect_uri，留空则用请求 Host。                   │
+│                                                                  │
+│  Session 有效期                              [ 7 天 ▾]           │
+│  Browser session 有效期。                                         │
+│                                                                  │
+│                          [取消]  [保存配置]                       │
+│                                                                  │
+│ ── 成员同步 ─────────────────────────────────────────────────── │
+│                                                                  │
+│  上次同步：2026-07-03 14:20  +12  -1  ~3                         │
+│                                                                  │
+│                                  [立即同步成员]                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### 4.4.3 页面交互细节
+
+- **首次进入**：所有字段为空，显示「未配置」状态，提示管理员填写 IdP 信息。secret 类字段显示占位 `[未设置]`。
+- **编辑已有配置**：`GET` 返回脱敏值（secret 露前后 2 位，如 `••••78ab`）。secret 字段渲染为 password 输入框，**留空保存表示不修改原值**；填了新值则覆盖。
+- **保存**：本地校验必填项（issuer_base_url / org_id / client_id / client_secret / directory_access_token）→ `PUT` 提交 → 成功后 toast 提示 + invalidate query。
+- **立即同步成员**：`POST /api/v1/workspaces/{id}/sso/sync` → 成功后轮询最近 job 状态，展示 `+N -M ~K` 结果。
+- **权限**：仅 workspace owner/admin 可见此页与可写；member/viewer 进入时显示「无权限」（前端隐藏 nav + 后端 403 兜底）。
+
+#### 4.4.4 字段与配置 key 对照
+
+| 页面字段 | 配置 key | 必填 | 输入类型 |
+|---|---|---|---|
+| Issuer 根地址 | `sso.issuer_base_url` | 是 | text |
+| 组织 ID | `sso.org_id` | 是 | text |
+| Client ID | `sso.client_id` | 是 | text |
+| Client Secret | `sso.client_secret` | 是 | password（脱敏读，留空不改） |
+| 通讯录访问令牌 | `sso.directory_access_token` | 是 | password（脱敏读，留空不改） |
+| 同步周期 | `sso.sync_interval` | 否 | select（禁用 / 30m / 1h / 6h / 24h） |
+| 外部可达地址 | `sso.external_base_url` | 否 | text |
+| Session 有效期 | `sso.session_ttl` | 否 | select（1d / 7d / 30d） |
+
+> `sso.provider`（固定 `yaoguang`）、`sso.redirect_path`（默认 `/sso/oidc/callback`）、`sso.scopes`、`sso.insecure_cookie` 不在表单暴露，由后端默认值处理。
 
 ## 5. 链路 A：通讯录同步
 
