@@ -78,3 +78,40 @@ func TestListMembersUnauthorized(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// TestListMembersWithIssuerURL 验证传入 OIDC issuer_base_url（含 /oidc/orgs/{org_id}）时，
+// 能正确提取根地址拼接 directory API。
+func TestListMembersWithIssuerURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/orgs/org1/directory/members" {
+			t.Fatalf("path = %s, want /api/orgs/org1/directory/members", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{"members": []any{}}})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.Client())
+	// issuer_base_url 形式：{root}/oidc/orgs/{org_id}
+	issuerURL := srv.URL + "/oidc/orgs/org1"
+	_, err := c.ListMembers(issuerURL, "org1", "tok1")
+	if err != nil {
+		t.Fatalf("ListMembers with issuer URL: %v", err)
+	}
+}
+
+func TestYaoguangRootURL(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"https://yaoguang.example.com/oidc/orgs/abc-123", "https://yaoguang.example.com"},
+		{"http://localhost:5174/oidc/orgs/019ee2ce", "http://localhost:5174"},
+		{"https://yaoguang.example.com", "https://yaoguang.example.com"},
+	}
+	for _, tc := range cases {
+		got := yaoguangRootURL(tc.input)
+		if got != tc.want {
+			t.Errorf("yaoguangRootURL(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}

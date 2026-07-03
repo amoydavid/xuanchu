@@ -46,8 +46,11 @@ func (c *Client) ListMembers(baseURL, orgID, accessToken string) ([]Member, erro
 }
 
 // ListMembersWithContext 带 context 拉取，便于后台 worker 传递超时/取消。
+// baseURL 是 OIDC issuer_base_url（如 https://yaoguang.example.com/oidc/orgs/{org_id}），
+// 这里从中提取 yaoguang 根地址（截掉 /oidc/orgs/{org_id}），再拼 /api/orgs/{org_id}/directory/members。
 func (c *Client) ListMembersWithContext(ctx context.Context, baseURL, orgID, accessToken string) ([]Member, error) {
-	u := fmt.Sprintf("%s/api/orgs/%s/directory/members", strings.TrimRight(baseURL, "/"), url.PathEscape(orgID))
+	root := yaoguangRootURL(baseURL)
+	u := fmt.Sprintf("%s/api/orgs/%s/directory/members", strings.TrimRight(root, "/"), url.PathEscape(orgID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
@@ -128,4 +131,18 @@ func sanitizeStatusError(status int) error {
 	default:
 		return fmt.Errorf("directory api status %d", status)
 	}
+}
+
+// yaoguangRootURL 从 OIDC issuer_base_url 中提取 yaoguang 根地址。
+// issuer_base_url 形如 https://yaoguang.example.com/oidc/orgs/{org_id}，
+// 根地址是 https://yaoguang.example.com（截掉 /oidc/orgs/... 后缀）。
+// 若 URL 不含 /oidc/orgs/ 前缀（向后兼容），原样返回。
+var oidcOrgsPathPrefix = "/oidc/orgs/"
+
+func yaoguangRootURL(issuerBaseURL string) string {
+	idx := strings.Index(issuerBaseURL, oidcOrgsPathPrefix)
+	if idx < 0 {
+		return issuerBaseURL
+	}
+	return issuerBaseURL[:idx]
 }
