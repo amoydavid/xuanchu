@@ -43,6 +43,8 @@ const (
 	PermissionNotificationWrite  Permission = "notification.write"
 	PermissionReminderRead       Permission = "reminder.read"
 	PermissionReminderWrite      Permission = "reminder.write"
+	PermissionSsoConfigRead      Permission = "sso.config.read"
+	PermissionSsoConfigWrite     Permission = "sso.config.write"
 )
 
 // CredentialKind 表示请求带来的凭证类型。

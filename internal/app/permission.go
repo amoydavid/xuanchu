@@ -34,6 +34,8 @@ const (
 	PermissionNotificationWrite  = authz.PermissionNotificationWrite
 	PermissionReminderRead       = authz.PermissionReminderRead
 	PermissionReminderWrite      = authz.PermissionReminderWrite
+	PermissionSsoConfigRead      = authz.PermissionSsoConfigRead
+	PermissionSsoConfigWrite     = authz.PermissionSsoConfigWrite
 )
 
 // PermissionError 复用 authz.PermissionError，保持 app 层现有 API 稳定。
@@ -70,6 +72,10 @@ func tenantCapabilityForPermission(p Permission) (string, bool) {
 		return auth.ScopeContextWrite, true
 	case PermissionWorkspaceRead:
 		return auth.ScopeWorkspaceRead, true
+	case PermissionSsoConfigRead:
+		return auth.ScopeWorkspaceRead, true
+	case PermissionSsoConfigWrite:
+		return auth.ScopeWorkspaceWrite, true
 	case PermissionAuditRead:
 		return auth.ScopeAuditRead, true
 	case PermissionHookRead:
