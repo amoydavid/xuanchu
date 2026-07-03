@@ -433,3 +433,36 @@ type TaskLink struct {
 	CreatedByTokenName   *string
 	CreatedByTokenPrefix *string
 }
+
+// BrowserSession 是 OIDC 登录后建立的浏览器会话，独立于 ApiToken。
+type BrowserSession struct {
+	ID          string `gorm:"primaryKey"` // 存哈希后的 session id
+	UserID      string `gorm:"not null;index"`
+	WorkspaceID string `gorm:"not null;index"`
+	CSRFHash    string `gorm:"not null"` // CSRF token hash，明文只存在浏览器 csrf cookie 中
+	ExpiresAt   int64  `gorm:"not null;index"`
+	CreatedAt   int64  `gorm:"not null"`
+	LastSeenAt  int64  `gorm:"not null"`
+}
+
+// BrowserAuthFlow 记录一次进行中的 OIDC Auth Code Flow（state + PKCE），短 TTL。
+type BrowserAuthFlow struct {
+	State        string `gorm:"primaryKey"` // OIDC state
+	WorkspaceID  string `gorm:"not null;index"`
+	PKCEVerifier string `gorm:"not null"`
+	CreatedAt    int64  `gorm:"not null"`
+	ExpiresAt    int64  `gorm:"not null;index"`
+}
+
+// DirectorySyncJob 记录一次通讯录同步任务，复用 dispatcher claim/lease 模式。
+type DirectorySyncJob struct {
+	ID             string `gorm:"primaryKey"`
+	WorkspaceID    string `gorm:"not null;index"`
+	Status         string `gorm:"not null;default:'pending';index"` // pending/running/succeeded/failed
+	ClaimedAt      *int64
+	ClaimExpiresAt *int64
+	ErrorMessage   string `gorm:"not null;default:''"`
+	StatsJSON      string `gorm:"not null;default:'{}'"` // {"added":N,"removed":M,"updated":K}
+	CreatedAt      int64  `gorm:"not null"`
+	FinishedAt     *int64
+}

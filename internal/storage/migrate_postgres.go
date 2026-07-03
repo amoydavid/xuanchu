@@ -15,7 +15,7 @@ func (s *Store) migratePostgres() error {
 		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{},
 		&Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{},
 		&NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{},
-		&UserExternalID{}, &Task{},
+		&UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}, &Task{},
 	); err != nil {
 		return err
 	}
