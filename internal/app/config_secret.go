@@ -18,25 +18,25 @@ const configSecretKeyEnv = "XUANCHU_CONFIG_SECRET_KEY"
 
 const configSecretEnvelopePrefix = "enc:v1:"
 
-// configSecretKeyMissing 与 configSecretKeyInvalid 是密钥错误码，
+// ErrConfigSecretKeyMissing 与 ErrConfigSecretKeyInvalid 是密钥错误码，
 // 由调用方映射为 HTTP 错误返回。
 var (
-	errConfigSecretKeyMissing = errors.New("config_secret_key_missing")
-	errConfigSecretKeyInvalid = errors.New("config_secret_key_invalid")
+	ErrConfigSecretKeyMissing = errors.New("config_secret_key_missing")
+	ErrConfigSecretKeyInvalid = errors.New("config_secret_key_invalid")
 )
 
 // loadConfigSecretKey 从 XUANCHU_CONFIG_SECRET_KEY 读取并解码 32 字节 AES 密钥。
 func loadConfigSecretKey() ([]byte, error) {
 	raw := os.Getenv(configSecretKeyEnv)
 	if raw == "" {
-		return nil, errConfigSecretKeyMissing
+		return nil, ErrConfigSecretKeyMissing
 	}
 	key, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return nil, fmt.Errorf("%w: base64 decode: %v", errConfigSecretKeyInvalid, err)
+		return nil, fmt.Errorf("%w: base64 decode: %v", ErrConfigSecretKeyInvalid, err)
 	}
 	if len(key) != 32 {
-		return nil, fmt.Errorf("%w: expected 32 bytes, got %d", errConfigSecretKeyInvalid, len(key))
+		return nil, fmt.Errorf("%w: expected 32 bytes, got %d", ErrConfigSecretKeyInvalid, len(key))
 	}
 	return key, nil
 }
