@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Settings,
   ShieldAlert,
+  ShieldCheck,
   Users,
   Webhook,
 } from "lucide-react"
@@ -30,6 +31,7 @@ import {
   type ActingContext,
   type TenantSwitchContext,
 } from "@/features/workspace/session/workspace-token"
+import { useMe } from "@/features/workspace/session/useMe"
 import { navigateToDocument } from "@/lib/browser-navigation"
 import { cn } from "@/lib/utils"
 
@@ -39,6 +41,7 @@ export type PageKey =
   | "workspaces"
   | "members"
   | "tokens"
+  | "sso"
   | "hooks"
   | "notifications"
   | "audit"
@@ -48,12 +51,14 @@ const navItems: Array<{
   key: PageKey
   icon: React.ComponentType<{ className?: string }>
   to: string
+  ssoOnly?: boolean
 }> = [
   { key: "overview", icon: Activity, to: "/" },
   { key: "projects", icon: Boxes, to: "/projects" },
   { key: "workspaces", icon: Boxes, to: "/workspaces" },
   { key: "members", icon: Users, to: "/members" },
   { key: "tokens", icon: KeyRound, to: "/tokens" },
+  { key: "sso", icon: ShieldCheck, to: "/sso", ssoOnly: true },
   { key: "hooks", icon: Webhook, to: "/hooks" },
   { key: "notifications", icon: Bell, to: "/notifications" },
   { key: "audit", icon: FileClock, to: "/audit" },
@@ -76,11 +81,16 @@ export function AppShell({
   workspaceSlug?: string
 }) {
   const { t } = useTranslation()
+  const me = useMe()
+  const role = me.data?.effective_role ?? ""
+  const isOwner = role === "owner"
   const actingContext = getAdminActingContext()
   const tenantContext = getTenantSwitchContext()
   const acting = actingContext !== null
   const tenantSwitch = !acting && tenantContext !== null
   const systemActor = tokenType === "tenant_access_token"
+  // SSO 配置菜单仅对 owner 或 tenant actor（含 tenant switch）可见
+  const showSso = isOwner || systemActor || tenantSwitch || acting
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -89,7 +99,9 @@ export function AppShell({
           <ProductLogo />
         </div>
         <nav className="p-2">
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) => !item.ssoOnly || showSso)
+            .map((item) => {
             const Icon = item.icon
             return (
               <Link

@@ -23,6 +23,13 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
   const [token, setTokenValue] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [ssoWorkspace, setSsoWorkspace] = useState("")
+
+  // SSO 回调错误（?sso_error=）展示
+  const ssoError =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("sso_error")
+      : null
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -100,6 +107,35 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
             </Link>
           </div>
         </form>
+
+        {/* OIDC 单点登录 */}
+        <div className="border-t pt-4">
+          {ssoError ? (
+            <Alert variant="destructive" className="mb-3">
+              <AlertDescription>{ssoError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="space-y-2">
+            <Label htmlFor="sso-workspace">{t("sso.title")}</Label>
+            <Input
+              id="sso-workspace"
+              placeholder="workspace-slug"
+              value={ssoWorkspace}
+              onChange={(e) => setSsoWorkspace(e.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={ssoWorkspace.trim() === ""}
+              onClick={() => {
+                window.location.href = `/sso/oidc/start?workspace=${encodeURIComponent(ssoWorkspace.trim())}`
+              }}
+            >
+              {t("sso.oidcLogin")}
+            </Button>
+          </div>
+        </div>
       </div>
     </main>
   )

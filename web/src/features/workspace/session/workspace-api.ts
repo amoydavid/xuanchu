@@ -77,6 +77,10 @@ export function workspaceApiPatch<T>(path: string, body: unknown): Promise<T> {
   return workspaceRequest<T>("PATCH", path, body)
 }
 
+export function workspaceApiPut<T>(path: string, body: unknown): Promise<T> {
+  return workspaceRequest<T>("PUT", path, body)
+}
+
 export function workspaceApiDelete<T>(path: string): Promise<T> {
   return workspaceRequest<T>("DELETE", path)
 }

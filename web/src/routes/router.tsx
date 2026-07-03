@@ -204,6 +204,17 @@ const tokensRoute = createRoute({
   component: lazyRoute(TokensRoute),
 })
 
+const SsoRoute = lazy(() =>
+  import("@/routes/workspace/SsoRoute").then((module) => ({
+    default: module.SsoRoute,
+  }))
+)
+const ssoRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/sso",
+  component: lazyRoute(SsoRoute),
+})
+
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
@@ -212,6 +223,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("workspaces", "/workspaces"),
     membersRoute,
     tokensRoute,
+    ssoRoute,
     createResourceRoute("hooks", "/hooks"),
     createResourceRoute("notifications", "/notifications"),
     createResourceRoute("audit", "/audit"),
