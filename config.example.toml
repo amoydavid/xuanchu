@@ -2,6 +2,13 @@
 # 复制到 ~/.config/xuanchu/xuanchu.toml，或通过 XUANCHU_CONFIG 指定
 # 这里的 key 只描述本机启动与展示配置，不是 workspace 业务配置
 
+[security]
+# OIDC SSO 配置中 client_secret 的 envelope 加密密钥（AES-256-GCM）。
+# 格式：32 字节随机值的 base64 编码。
+# 生成方式：openssl rand -base64 32
+# 注意：密钥一旦设置后不要更换，否则已加密的 client_secret 将无法解密。
+config_secret_key = "replace-with-openssl-rand-base64-32-output"
+
 [database]
 # SQLite 本地数据库路径
 path = "/absolute/path/to/xuanchu.db"
