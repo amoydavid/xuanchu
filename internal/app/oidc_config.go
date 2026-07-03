@@ -1,0 +1,215 @@
+package app
+
+import (
+	"fmt"
+	"strings"
+
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+)
+
+const (
+	ssoKeyProvider         = "sso.provider"
+	ssoKeyIssuerBaseURL    = "sso.issuer_base_url"
+	ssoKeyOrgID            = "sso.org_id"
+	ssoKeyClientID         = "sso.client_id"
+	ssoKeyClientSecret     = "sso.client_secret"
+	ssoKeyDirectoryToken   = "sso.directory_access_token"
+	ssoKeyScopes           = "sso.scopes"
+	ssoKeyRedirectPath     = "sso.redirect_path"
+	ssoKeyExternalBaseURL  = "sso.external_base_url"
+	ssoKeySessionTTL       = "sso.session_ttl"
+	ssoKeySyncInterval     = "sso.sync_interval"
+	ssoKeyInsecureCookie   = "sso.insecure_cookie"
+)
+
+// OIDCConfig 是脱敏后的配置读视图（给 HTTP/前端展示用）。
+type OIDCConfig struct {
+	Provider                   string
+	IssuerBaseURL              string
+	OrgID                      string
+	ClientID                   string
+	ClientSecretMasked         string
+	DirectoryAccessTokenMasked string
+	Scopes                     string
+	RedirectPath               string
+	ExternalBaseURL            string
+	SessionTTL                 string
+	SyncInterval               string
+	InsecureCookie             bool
+}
+
+// OIDCConfigInput 是写入请求（secret 留空表示不改）。
+type OIDCConfigInput struct {
+	Provider             string
+	IssuerBaseURL        string
+	OrgID                string
+	ClientID             string
+	ClientSecret         string
+	DirectoryAccessToken string
+	Scopes               string
+	RedirectPath         string
+	ExternalBaseURL      string
+	SessionTTL           string
+	SyncInterval         string
+	InsecureCookie       bool
+}
+
+// OIDCConfigSecrets 是非脱敏的 secret 明文（仅 app 内部短暂使用）。
+type OIDCConfigSecrets struct {
+	ClientSecret         string
+	DirectoryAccessToken string
+}
+
+type OIDCConfigService struct {
+	cfg *storage.ConfigRepository
+}
+
+func NewOIDCConfigService(cfg *storage.ConfigRepository) *OIDCConfigService {
+	return &OIDCConfigService{cfg: cfg}
+}
+
+func (s *OIDCConfigService) wk(workspaceID, key string) storage.ConfigKey {
+	return storage.ConfigKey{WorkspaceID: workspaceID, Scope: storage.ConfigScopeWorkspace, Key: key}
+}
+
+func (s *OIDCConfigService) Get(workspaceID string) (OIDCConfig, bool) {
+	g := func(key string) string {
+		v, ok, _ := s.cfg.Get(s.wk(workspaceID, key))
+		if !ok {
+			return ""
+		}
+		return v
+	}
+	secretMask := func(key string) string {
+		v := g(key)
+		if v == "" {
+			return ""
+		}
+		plain, err := DecryptConfigSecret(v)
+		if err != nil {
+			return ""
+		}
+		return mask(plain)
+	}
+	enabled := g(ssoKeyProvider) != "" && g(ssoKeyIssuerBaseURL) != ""
+	return OIDCConfig{
+		Provider:                   g(ssoKeyProvider),
+		IssuerBaseURL:              g(ssoKeyIssuerBaseURL),
+		OrgID:                      g(ssoKeyOrgID),
+		ClientID:                   g(ssoKeyClientID),
+		ClientSecretMasked:         secretMask(ssoKeyClientSecret),
+		DirectoryAccessTokenMasked: secretMask(ssoKeyDirectoryToken),
+		Scopes:                     g(ssoKeyScopes),
+		RedirectPath:               g(ssoKeyRedirectPath),
+		ExternalBaseURL:            g(ssoKeyExternalBaseURL),
+		SessionTTL:                 g(ssoKeySessionTTL),
+		SyncInterval:               g(ssoKeySyncInterval),
+		InsecureCookie:             g(ssoKeyInsecureCookie) == "true",
+	}, enabled
+}
+
+// ResolveSecrets 读非脱敏 secret（登录/同步时用）。
+func (s *OIDCConfigService) ResolveSecrets(workspaceID string) (OIDCConfigSecrets, error) {
+	cs, ok, err := s.cfg.Get(s.wk(workspaceID, ssoKeyClientSecret))
+	if err != nil {
+		return OIDCConfigSecrets{}, err
+	}
+	dt, ok2, err := s.cfg.Get(s.wk(workspaceID, ssoKeyDirectoryToken))
+	if err != nil {
+		return OIDCConfigSecrets{}, err
+	}
+	if !ok || !ok2 {
+		return OIDCConfigSecrets{}, fmt.Errorf("sso secrets not configured")
+	}
+	csPlain, err := DecryptConfigSecret(cs)
+	if err != nil {
+		return OIDCConfigSecrets{}, err
+	}
+	dtPlain, err := DecryptConfigSecret(dt)
+	if err != nil {
+		return OIDCConfigSecrets{}, err
+	}
+	return OIDCConfigSecrets{ClientSecret: csPlain, DirectoryAccessToken: dtPlain}, nil
+}
+
+func (s *OIDCConfigService) Set(workspaceID string, in OIDCConfigInput) error {
+	set := func(key, value string) error {
+		return s.cfg.Set(s.wk(workspaceID, key), value)
+	}
+
+	if err := set(ssoKeyProvider, defaultIfEmpty(in.Provider, "yaoguang")); err != nil {
+		return err
+	}
+	if err := set(ssoKeyIssuerBaseURL, in.IssuerBaseURL); err != nil {
+		return err
+	}
+	if err := set(ssoKeyOrgID, in.OrgID); err != nil {
+		return err
+	}
+	if err := set(ssoKeyClientID, in.ClientID); err != nil {
+		return err
+	}
+	// secret 留空 → 不覆盖（保留原值）；非空时必须 EncryptConfigSecret 后写入
+	if in.ClientSecret != "" {
+		encrypted, err := EncryptConfigSecret(in.ClientSecret)
+		if err != nil {
+			return err
+		}
+		if err := set(ssoKeyClientSecret, encrypted); err != nil {
+			return err
+		}
+	}
+	if in.DirectoryAccessToken != "" {
+		encrypted, err := EncryptConfigSecret(in.DirectoryAccessToken)
+		if err != nil {
+			return err
+		}
+		if err := set(ssoKeyDirectoryToken, encrypted); err != nil {
+			return err
+		}
+	}
+	if err := set(ssoKeyScopes, in.Scopes); err != nil {
+		return err
+	}
+	if err := set(ssoKeyRedirectPath, defaultIfEmpty(in.RedirectPath, "/sso/oidc/callback")); err != nil {
+		return err
+	}
+	if err := set(ssoKeyExternalBaseURL, in.ExternalBaseURL); err != nil {
+		return err
+	}
+	if err := set(ssoKeySessionTTL, defaultIfEmpty(in.SessionTTL, "168h")); err != nil {
+		return err
+	}
+	if err := set(ssoKeySyncInterval, defaultIfEmpty(in.SyncInterval, "1h")); err != nil {
+		return err
+	}
+	if err := set(ssoKeyInsecureCookie, boolStr(in.InsecureCookie)); err != nil {
+		return err
+	}
+	return nil
+}
+
+// mask 取前后 2 位，中间用 • 替换；短于 6 位则全 •。
+func mask(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 5 {
+		return strings.Repeat("•", len(s))
+	}
+	return s[:2] + "••" + s[len(s)-2:]
+}
+
+func defaultIfEmpty(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
