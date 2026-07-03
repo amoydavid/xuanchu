@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth/directory"
 	"git.dajee.net/dajee/xuanchu/internal/config"
 	"git.dajee.net/dajee/xuanchu/internal/hookruntime"
 	"git.dajee.net/dajee/xuanchu/internal/httpapi"
@@ -213,7 +214,15 @@ func newServerCommand(opts Options) *cobra.Command {
 			defer stopSignals()
 
 			var runtimeWG sync.WaitGroup
-			runtimeWG.Add(3)
+			runtimeWG.Add(4)
+			// 通讯录同步后台 dispatcher + scheduler
+			directorySyncCfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(store.DB()))
+			directorySyncSvc := app.NewDirectorySyncService(store, directory.NewClient(http.DefaultClient))
+			directorySyncRuntime := app.NewDirectorySyncRuntime(store, directorySyncCfgSvc, directorySyncSvc)
+			go func() {
+				defer runtimeWG.Done()
+				directorySyncRuntime.Run(runCtx)
+			}()
 			go func() {
 				defer runtimeWG.Done()
 				if err := hookDispatcher.Run(runCtx); err != nil {
