@@ -150,6 +150,9 @@ func operationID(method, path string) string {
 func (s *Server) humaRoutes() []humaRoute {
 	return []humaRoute{
 		{Method: http.MethodGet, Path: "/healthz", Tag: "Health", Summary: "Health check.", Handler: s.handleHealthz, Public: true},
+		{Method: http.MethodGet, Path: "/sso/oidc/start", Tag: "SSO", Summary: "Start OIDC login flow.", Handler: s.handleSsoOidcStart, Public: true},
+		{Method: http.MethodGet, Path: "/sso/oidc/callback", Tag: "SSO", Summary: "OIDC login callback.", Handler: s.handleSsoOidcCallback, Public: true},
+		{Method: http.MethodPost, Path: "/auth/logout", Tag: "SSO", Summary: "Logout browser session.", Handler: s.handleAuthLogout, Public: true},
 		{Method: http.MethodGet, Path: "/api/v1/admin/status", Tag: "Admin", Summary: "Get server admin bootstrap status.", Handler: s.handleAdminStatus, Public: true},
 		{Method: http.MethodPost, Path: "/api/v1/admin/setup", Tag: "Admin", Summary: "Complete server admin setup.", Handler: s.handleAdminSetup, Public: true, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/admin/session", Tag: "Admin", Summary: "Get current server admin session.", Handler: s.handleAdminSession, Admin: true},

@@ -52,6 +52,7 @@ type Server struct {
 	shutdown             *runtimeutil.ShutdownCoordinator
 	mcpTrustedProxyHosts []string
 	router               *http.ServeMux
+	oidcAuth             *app.OIDCAuthService // 懒加载，见 oidcAuthService()
 }
 
 func NewServer(opts Options) *Server {
