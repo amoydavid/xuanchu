@@ -611,7 +611,6 @@ export const enUS = {
       orgId: "yaoguang organization id, used in directory API path.",
       clientId: "xuanchu internal app client_id registered in yaoguang.",
       clientSecret: "OIDC client_secret, encrypted at rest. Leave blank to keep current.",
-      directoryAccessToken: "tenant_access_token for yaoguang directory API, requires org.members.read scope and directory_access=org_read.",
       syncInterval: "Interval for scheduled directory pull; choose 'Disabled' for manual only.",
       externalBaseUrl: "Used to build OIDC redirect_uri; falls back to request Host if empty.",
       sessionTtl: "Browser session lifetime.",

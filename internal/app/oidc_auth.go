@@ -15,10 +15,10 @@ import (
 
 // OIDC 登录流程的 typed errors，供 HTTP 层用 errors.Is 精确映射错误码（spec §7.5）。
 var (
-	ErrSsoNotEnabled    = errors.New("sso_not_enabled")
-	ErrInvalidState     = errors.New("invalid_state")
-	ErrIDTokenInvalid   = errors.New("id_token_invalid")
-	ErrIdentityNotFound = errors.New("identity_not_found")
+	ErrSsoNotEnabled      = errors.New("sso_not_enabled")
+	ErrInvalidState       = errors.New("invalid_state")
+	ErrIDTokenInvalid     = errors.New("id_token_invalid")
+	ErrIdentityNotFound   = errors.New("identity_not_found")
 	ErrMembershipInactive = errors.New("membership_inactive")
 )
 
@@ -29,9 +29,9 @@ type OIDCProvider interface {
 }
 
 type OIDCAuthService struct {
-	store      *storage.Store
+	store       *storage.Store
 	sessionRepo *storage.SessionRepository
-	cfg        *OIDCConfigService
+	cfg         *OIDCConfigService
 	// providerFactory 按配置构造 OIDCProvider；生产用 oidc.NewProviderSafe，测试直接注入 stub。
 	providerFactory func(issuerBaseURL, clientID, clientSecret string) (OIDCProvider, error)
 }
@@ -40,8 +40,8 @@ type OIDCAuthService struct {
 type BrowserLoginResult struct {
 	RawSession     string
 	CSRFToken      string
-	InsecureCookie bool   // 来自 workspace sso.insecure_cookie，控制 session/csrf cookie 的 Secure 属性
-	SessionMaxAge  int    // 秒，来自 sso.session_ttl，控制 cookie MaxAge
+	InsecureCookie bool // 来自 workspace sso.insecure_cookie，控制 session/csrf cookie 的 Secure 属性
+	SessionMaxAge  int  // 秒，来自 sso.session_ttl，控制 cookie MaxAge
 }
 
 // NewOIDCAuthService 构造 OIDCAuthService。fallback 非 nil 时用于测试注入固定 provider。

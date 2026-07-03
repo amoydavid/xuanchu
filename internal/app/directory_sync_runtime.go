@@ -38,22 +38,22 @@ func (r *DirectorySyncRuntime) Run(ctx context.Context) {
 	ticker := time.NewTicker(r.pollInterval)
 	defer ticker.Stop()
 	// 启动即跑一次
-	r.tick(time.Now())
+	r.tick(ctx, time.Now())
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			r.tick(time.Now())
+			r.tick(ctx, time.Now())
 		}
 	}
 }
 
-func (r *DirectorySyncRuntime) tick(now time.Time) {
+func (r *DirectorySyncRuntime) tick(ctx context.Context, now time.Time) {
 	// 1. 调度：为到期 workspace 创建 job
 	r.scheduleWorkspaces(now.Unix())
 	// 2. 执行：认领并执行一个 pending job
-	r.runOneJob(now.Unix())
+	r.runOneJob(ctx, now.Unix())
 }
 
 // scheduleWorkspaces 遍历所有 workspace，对启用了 OIDC 且到期的 workspace 插入 pending job。
@@ -97,7 +97,7 @@ func (r *DirectorySyncRuntime) scheduleWorkspaces(now int64) {
 	}
 }
 
-func (r *DirectorySyncRuntime) runOneJob(now int64) {
+func (r *DirectorySyncRuntime) runOneJob(ctx context.Context, now int64) {
 	claimTTL := int64(r.pollInterval.Seconds()) * 3
 	job, err := r.jobRepo.ClaimNextPending(now, claimTTL)
 	if err != nil {
@@ -110,21 +110,23 @@ func (r *DirectorySyncRuntime) runOneJob(now int64) {
 	}
 	secrets, err := r.cfg.ResolveSecrets(job.WorkspaceID)
 	if err != nil {
-		_ = r.jobRepo.MarkFailed(job.ID, now, err.Error())
+		// 详细错误打日志，持久化固定码（防 secret/解密细节泄漏进 ErrorMessage）
+		log.Printf("directory sync: resolve secrets failed for workspace %s: %v", job.WorkspaceID, err)
+		_ = r.jobRepo.MarkFailed(job.ID, now, "resolve_secrets_failed")
 		return
 	}
 	// 用 client_credentials grant 向 IdP 换取 directory 访问 token
 	// （复用 OIDC client_id + client_secret，无需单独配置 directory_access_token）
-	directoryToken, err := r.fetchDirectoryToken(job.WorkspaceID, cfg, secrets.ClientSecret)
+	directoryToken, err := r.fetchDirectoryToken(ctx, cfg, secrets.ClientSecret)
 	if err != nil {
-		_ = r.jobRepo.MarkFailed(job.ID, now, "fetch directory token: "+err.Error())
 		log.Printf("directory token fetch failed for workspace %s: %v", job.WorkspaceID, err)
+		_ = r.jobRepo.MarkFailed(job.ID, now, "directory_token_fetch_failed")
 		return
 	}
-	stats, err := r.sync.SyncOnce(context.Background(), job.WorkspaceID, cfg.IssuerBaseURL, cfg.OrgID, directoryToken)
+	stats, err := r.sync.SyncOnce(ctx, job.WorkspaceID, cfg.IssuerBaseURL, cfg.OrgID, directoryToken)
 	if err != nil {
-		_ = r.jobRepo.MarkFailed(job.ID, time.Now().Unix(), err.Error())
 		log.Printf("directory sync failed for workspace %s: %v", job.WorkspaceID, err)
+		_ = r.jobRepo.MarkFailed(job.ID, time.Now().Unix(), "directory_sync_failed")
 		return
 	}
 	statsJSON, _ := json.Marshal(map[string]int{"added": stats.Added, "removed": stats.Removed, "updated": stats.Updated})
@@ -132,8 +134,8 @@ func (r *DirectorySyncRuntime) runOneJob(now int64) {
 }
 
 // fetchDirectoryToken 用 OIDC client_id + client_secret 走 client_credentials grant 换 access token。
-func (r *DirectorySyncRuntime) fetchDirectoryToken(workspaceID string, cfg OIDCConfig, clientSecret string) (string, error) {
-	ctx := context.Background()
+// 每次同步都重新换取，确保 token 不会过期。
+func (r *DirectorySyncRuntime) fetchDirectoryToken(ctx context.Context, cfg OIDCConfig, clientSecret string) (string, error) {
 	p, err := xuanchuOIDC.NewProviderSafe(ctx, cfg.IssuerBaseURL, cfg.ClientID, clientSecret)
 	if err != nil {
 		return "", err

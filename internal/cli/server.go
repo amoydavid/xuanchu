@@ -217,7 +217,10 @@ func newServerCommand(opts Options) *cobra.Command {
 			var runtimeWG sync.WaitGroup
 			runtimeWG.Add(5)
 			// 解析 config secret key（TOML [security].config_secret_key）
-			secretKey, _ := app.ParseConfigSecretKey(cfg.SecretKey)
+			secretKey, err := app.ParseConfigSecretKey(cfg.SecretKey)
+			if err != nil {
+				return fmt.Errorf("解析 config secret key 失败（[security].config_secret_key）: %w", err)
+			}
 			// 通讯录同步后台 dispatcher + scheduler
 			directorySyncCfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(store.DB()), secretKey)
 			directorySyncSvc := app.NewDirectorySyncService(store, directory.NewClient(&http.Client{Timeout: 30 * time.Second}))
