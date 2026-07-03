@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
 )
 
@@ -152,52 +154,168 @@ func (s *Server) bodyLimitMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, ok := bearerToken(r.Header.Get("Authorization"))
-		if !ok {
-			writeError(w, http.StatusUnauthorized, authz.CodeAuthMissingToken, "missing bearer token", nil)
+		raw, hasBearer := bearerToken(r.Header.Get("Authorization"))
+
+		if hasBearer {
+			s.handleBearerAuth(w, r, raw, next)
 			return
 		}
 
-		svc, err := app.NewService(app.ServiceOptions{
-			Store:                 s.store,
-			Clock:                 s.effectiveClock(),
-			Runtime:               &app.RuntimeContext{},
-			DisableScopeBootstrap: true,
-		})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
+		// 无 Bearer：cookie 只允许普通 /api/v1/* Web Console API，不允许 MCP/admin。
+		if !strings.HasPrefix(r.URL.Path, "/api/v1/") || strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
+			writeError(w, http.StatusUnauthorized, authz.CodeAuthMissingToken, "missing bearer token", nil)
 			return
 		}
-		authn, err := svc.AuthenticateBearerToken(raw)
-		if err != nil {
-			writeAppError(w, err)
+		cookie, err := r.Cookie(sessionCookieName)
+		if err == nil && cookie.Value != "" {
+			s.handleCookieAuth(w, r, cookie.Value, next)
 			return
 		}
-		visible, effective, err := s.visibleAndEffectiveWorkspaces(authn)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
-			if authn.TenantActor {
-				state.actorType = "tenant_access_token"
-				state.actorID = "-"
-				state.tokenName = authn.Token.Name
-				state.tokenPrefix = authn.Token.Prefix
-			} else {
-				state.actorType = "user"
-				state.actorID = authn.User.ID
-			}
-			state.tokenID = authn.Token.ID
-			state.workspaceID = effective.ID
-			state.workspaceRef = effective.Slug
-		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey, requestAuth{
-			Authn:              authn,
-			VisibleWorkspaces:  visible,
-			EffectiveWorkspace: effective,
-		})))
+
+		writeError(w, http.StatusUnauthorized, authz.CodeAuthMissingToken, "missing bearer token or session", nil)
 	})
+}
+
+// handleBearerAuth 是原有 token 认证逻辑（从 authMiddleware 抽出，保持不变）。
+func (s *Server) handleBearerAuth(w http.ResponseWriter, r *http.Request, raw string, next http.Handler) {
+	svc, err := app.NewService(app.ServiceOptions{
+		Store:                 s.store,
+		Clock:                 s.effectiveClock(),
+		Runtime:               &app.RuntimeContext{},
+		DisableScopeBootstrap: true,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "api_internal", "internal server error", nil)
+		return
+	}
+	authn, err := svc.AuthenticateBearerToken(raw)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	visible, effective, err := s.visibleAndEffectiveWorkspaces(authn)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
+		if authn.TenantActor {
+			state.actorType = "tenant_access_token"
+			state.actorID = "-"
+			state.tokenName = authn.Token.Name
+			state.tokenPrefix = authn.Token.Prefix
+		} else {
+			state.actorType = "user"
+			state.actorID = authn.User.ID
+		}
+		state.tokenID = authn.Token.ID
+		state.workspaceID = effective.ID
+		state.workspaceRef = effective.Slug
+	}
+	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey, requestAuth{
+		Authn:              authn,
+		VisibleWorkspaces:  visible,
+		EffectiveWorkspace: effective,
+	})))
+}
+
+// handleCookieAuth 用 browser session 构造认证上下文。
+// browser session 的授权由 membership role 决定（非 token scope），
+// 因此 TokenView.Scopes 设为全集（不含 impersonate）、WorkspaceIDs 锁定 session 的 workspace。
+func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCookie string, next http.Handler) {
+	session, err := s.oidcAuthService().ResolveSession(rawCookie)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid_session", "session 无效或已过期", nil)
+		return
+	}
+	// 写操作必须校验 CSRF（double-submit cookie + 头匹配 + 服务端 hash）
+	if isApiWriteMethod(r.Method) && !s.validCSRF(r, session.CSRFHash) {
+		writeError(w, http.StatusForbidden, "csrf_invalid", "页面会话已过期，请刷新后重试", nil)
+		return
+	}
+	userRepo := storage.NewUserRepository(s.store.DB())
+	user, err := userRepo.GetByID(session.UserID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid_session", "session 用户不存在", nil)
+		return
+	}
+	workspace, err := storage.NewWorkspaceRepository(s.store.DB()).GetByID(session.WorkspaceID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid_session", "session workspace 不存在", nil)
+		return
+	}
+	memberRepo := storage.NewMemberRepository(s.store.DB())
+	member, err := memberRepo.Get(user.ID, workspace.ID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "membership_inactive", "您不是该工作区的成员", nil)
+		return
+	}
+	_ = member
+	// 构造 AuthenticatedToken：browser session 凭证，scopes 全开放（授权由 role 决定），
+	// workspace 锁定 session 的 workspace。
+	authn := app.AuthenticatedToken{
+		Token: app.TokenView{
+			ID:           "browser_session:" + session.ID,
+			Name:         "Browser Session",
+			Type:         "browser_session",
+			User:         task.UserInfo{ID: user.ID, Name: user.Name},
+			WorkspaceIDs: []string{workspace.ID},
+			Scopes:       browserSessionScopes(),
+		},
+		User: user,
+	}
+	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
+		state.actorType = "browser_session"
+		state.actorID = user.ID
+		state.tokenID = authn.Token.ID
+		state.workspaceID = workspace.ID
+		state.workspaceRef = workspace.Slug
+	}
+	visible := []storage.WorkspaceWithRole{{Workspace: workspace}}
+	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey, requestAuth{
+		Authn:              authn,
+		VisibleWorkspaces:  visible,
+		EffectiveWorkspace: workspace,
+	})))
+}
+
+// validCSRF 校验 double-submit CSRF：cookie 值 == X-Xuanchu-CSRF 头，且 hash 后等于 session 存储的 CSRFHash。
+func (s *Server) validCSRF(r *http.Request, wantHash string) bool {
+	cookie, err := r.Cookie(csrfCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	header := r.Header.Get("X-Xuanchu-CSRF")
+	if header == "" || header != cookie.Value {
+		return false
+	}
+	return hashHexLocal(header) == wantHash
+}
+
+func isApiWriteMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// browserSessionScopes 返回 browser session 的 capability 全集（不含 impersonate，防滥用）。
+func browserSessionScopes() []string {
+	return []string{
+		auth.ScopeTaskRead, auth.ScopeTaskWrite,
+		auth.ScopeProjectRead, auth.ScopeProjectWrite,
+		auth.ScopeContextRead, auth.ScopeContextWrite,
+		auth.ScopeConfigRead, auth.ScopeConfigWrite,
+		auth.ScopeWorkspaceRead, auth.ScopeWorkspaceWrite,
+		auth.ScopeAuditRead,
+		auth.ScopeUserRead, auth.ScopeUserWrite,
+		auth.ScopeMemberRead, auth.ScopeMemberWrite,
+		auth.ScopeTokenRead, auth.ScopeTokenWrite,
+		auth.ScopeHookRead, auth.ScopeHookWrite,
+		auth.ScopeNotificationRead, auth.ScopeNotificationWrite,
+		auth.ScopeReminderRead, auth.ScopeReminderWrite,
+	}
 }
 
 func (s *Server) effectiveClock() app.Clock {

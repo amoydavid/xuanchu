@@ -71,7 +71,7 @@ const (
 	CredentialAgent          CredentialKind = "agent"
 	CredentialTenantAccess   CredentialKind = "tenant_access_token"
 	CredentialServerAdmin    CredentialKind = "server_admin"
-	CredentialBrowserSession CredentialKind = "browser_session" // 预留，本次不实现
+	CredentialBrowserSession CredentialKind = "browser_session" // OIDC 登录产生的浏览器会话凭证
 )
 
 // Credential 表示“请求带来的凭证”，而不是业务用户。

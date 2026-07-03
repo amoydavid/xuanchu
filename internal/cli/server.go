@@ -214,7 +214,7 @@ func newServerCommand(opts Options) *cobra.Command {
 			defer stopSignals()
 
 			var runtimeWG sync.WaitGroup
-			runtimeWG.Add(4)
+			runtimeWG.Add(5)
 			// 通讯录同步后台 dispatcher + scheduler
 			directorySyncCfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(store.DB()))
 			directorySyncSvc := app.NewDirectorySyncService(store, directory.NewClient(http.DefaultClient))
@@ -222,6 +222,23 @@ func newServerCommand(opts Options) *cobra.Command {
 			go func() {
 				defer runtimeWG.Done()
 				directorySyncRuntime.Run(runCtx)
+			}()
+			// browser session / OIDC auth flow 过期清理
+			go func() {
+				defer runtimeWG.Done()
+				sessionRepo := storage.NewSessionRepository(store.DB())
+				ticker := time.NewTicker(1 * time.Hour)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-runCtx.Done():
+						return
+					case <-ticker.C:
+						now := time.Now().Unix()
+						_, _ = sessionRepo.PurgeExpiredSessions(now)
+						_, _ = sessionRepo.PurgeExpiredAuthFlows(now)
+					}
+				}
 			}()
 			go func() {
 				defer runtimeWG.Done()
