@@ -35,9 +35,10 @@ export interface SsoConfigInput {
   session_ttl: string
 }
 
-export interface SyncJobResponse {
-  job_id: string
-  status: string
+export interface SyncResult {
+  added: number
+  removed: number
+  updated: number
 }
 
 const SSO_CONFIG_KEY = ["workspace", "sso", "config"] as const
@@ -65,11 +66,17 @@ export function useSaveSsoConfigMutation(workspaceSlug: string) {
 }
 
 export function useTriggerSyncMutation(workspaceSlug: string) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () =>
-      workspaceApiPost<SyncJobResponse>(
+      workspaceApiPost<SyncResult>(
         `/api/v1/workspaces/${workspaceSlug}/sso/sync`,
         {},
       ),
+    onSuccess: () => {
+      // 同步后成员列表可能变化，刷新成员页缓存
+      void queryClient.invalidateQueries({ queryKey: ["resource", "/api/v1/workspaces"] })
+      void queryClient.invalidateQueries({ queryKey: ["resource"] })
+    },
   })
 }

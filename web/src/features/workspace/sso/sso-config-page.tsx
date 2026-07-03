@@ -212,6 +212,11 @@ export function SsoConfigPage() {
           >
             {syncMutation.isPending ? t("sso.syncRunning") : t("sso.syncNow")}
           </Button>
+          {syncMutation.isSuccess && syncMutation.data && (
+            <span className="text-sm text-muted-foreground">
+              {`+${syncMutation.data.added} -${syncMutation.data.removed} ~${syncMutation.data.updated}`}
+            </span>
+          )}
         </div>
       </section>
     </form>

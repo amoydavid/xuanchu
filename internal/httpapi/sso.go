@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/auth/directory"
+	xuanchuOIDC "git.dajee.net/dajee/xuanchu/internal/auth/oidc"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -117,7 +118,7 @@ func (s *Server) handleWorkspaceSsoConfigSet(w http.ResponseWriter, r *http.Requ
 	writeSuccess(w, http.StatusOK, map[string]any{"enabled": true, "config": ssoConfigJSON(cfg)}, nil)
 }
 
-// handleWorkspaceSsoSync 触发通讯录同步（插入 pending job）。
+// handleWorkspaceSsoSync 触发通讯录同步（同步执行，返回结果）。
 func (s *Server) handleWorkspaceSsoSync(w http.ResponseWriter, r *http.Request) {
 	ref := chi.URLParam(r, "workspace")
 	_, authn, err := s.scopedServiceWithWorkspace(r, auth.ScopeWorkspaceWrite, app.PermissionSsoConfigWrite, ref, "")
@@ -125,17 +126,40 @@ func (s *Server) handleWorkspaceSsoSync(w http.ResponseWriter, r *http.Request) 
 		writeAppError(w, err)
 		return
 	}
-	jobRepo := storage.NewDirectorySyncJobRepository(s.store.DB())
-	job, err := jobRepo.Create(authn.EffectiveWorkspace.ID, time.Now().Unix())
-	if err != nil {
-		if errors.Is(err, storage.ErrSyncInProgress) {
-			writeError(w, http.StatusConflict, "sync_in_progress", "已有同步任务进行中", nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "sync_create_failed", err.Error(), nil)
+	workspaceID := authn.EffectiveWorkspace.ID
+	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()), s.secretKey)
+	cfg, enabled := cfgSvc.Get(workspaceID)
+	if !enabled {
+		writeError(w, http.StatusBadRequest, "sso_not_enabled", "该工作区未启用 SSO", nil)
 		return
 	}
-	writeSuccess(w, http.StatusAccepted, map[string]any{"job_id": job.ID, "status": job.Status}, nil)
+	secrets, err := cfgSvc.ResolveSecrets(workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "resolve_secrets_failed", "无法读取 SSO 密钥配置", nil)
+		return
+	}
+	// 用 client_credentials grant 向 IdP 换取 directory token（与后台 dispatcher 同逻辑）
+	p, err := xuanchuOIDC.NewProviderSafe(r.Context(), cfg.IssuerBaseURL, cfg.ClientID, secrets.ClientSecret)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "directory_token_fetch_failed", "无法连接到 IdP，请检查 issuer 根地址", nil)
+		return
+	}
+	directoryToken, err := p.ClientCredentialsToken(r.Context(), "org.members.read")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "directory_token_fetch_failed", "获取通讯录访问凭证失败，请检查 client_id / client_secret", nil)
+		return
+	}
+	directoryClient := directory.NewClient(http.DefaultClient)
+	stats, err := app.NewDirectorySyncService(s.store, directoryClient).SyncOnce(r.Context(), workspaceID, cfg.IssuerBaseURL, cfg.OrgID, directoryToken)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "directory_sync_failed", err.Error(), nil)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]any{
+		"added":   stats.Added,
+		"removed": stats.Removed,
+		"updated": stats.Updated,
+	}, nil)
 }
 
 // handleWorkspaceSsoSyncJob 查询同步任务状态。
