@@ -47,84 +47,81 @@ func listAuthFlows(store *storage.Store) []storage.BrowserAuthFlow {
 }
 
 func TestStartCreatesAuthFlow(t *testing.T) {
-	withSecretKey(t, func() {
-		store := newAuthTestStore(t)
-		sessionRepo := storage.NewSessionRepository(store.DB())
-		cfgRepo := storage.NewConfigRepository(store.DB())
-		cfgSvc := NewOIDCConfigService(cfgRepo)
-		ws := createTestWorkspace(t, store, "ws1")
-		_ = cfgSvc.Set(ws.ID, OIDCConfigInput{Provider: "yaoguang", IssuerBaseURL: "http://fake", OrgID: "o", ClientID: "c", ClientSecret: "s", DirectoryAccessToken: "t", ExternalBaseURL: "http://xuanchu"})
+	key := testSecretKey(t)
+	store := newAuthTestStore(t)
+	sessionRepo := storage.NewSessionRepository(store.DB())
+	cfgRepo := storage.NewConfigRepository(store.DB())
+	cfgSvc := NewOIDCConfigService(cfgRepo, key)
+	ws := createTestWorkspace(t, store, "ws1")
+	_ = cfgSvc.Set(ws.ID, OIDCConfigInput{Provider: "yaoguang", IssuerBaseURL: "http://fake", OrgID: "o", ClientID: "c", ClientSecret: "s", ExternalBaseURL: "http://xuanchu"})
 
-		svc := NewOIDCAuthService(store, sessionRepo, cfgSvc, &stubOIDCProvider{})
-		url, err := svc.Start(context.Background(), ws.ID)
-		if err != nil {
-			t.Fatalf("Start: %v", err)
-		}
-		if url == "" {
-			t.Fatal("empty url")
-		}
-		flows := listAuthFlows(store)
-		if len(flows) != 1 {
-			t.Fatalf("flows = %d", len(flows))
-		}
-	})
+	svc := NewOIDCAuthService(store, sessionRepo, cfgSvc, &stubOIDCProvider{})
+	url, err := svc.Start(context.Background(), ws.ID)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if url == "" {
+		t.Fatal("empty url")
+	}
+	flows := listAuthFlows(store)
+	if len(flows) != 1 {
+		t.Fatalf("flows = %d", len(flows))
+	}
 }
 
 func TestCallbackSubNotMappedRejected(t *testing.T) {
-	withSecretKey(t, func() {
-		store := newAuthTestStore(t)
-		sessionRepo := storage.NewSessionRepository(store.DB())
-		cfgRepo := storage.NewConfigRepository(store.DB())
-		cfgSvc := NewOIDCConfigService(cfgRepo)
-		ws := createTestWorkspace(t, store, "ws1")
-		_ = cfgSvc.Set(ws.ID, OIDCConfigInput{Provider: "yaoguang", IssuerBaseURL: "http://fake", OrgID: "o", ClientID: "c", ClientSecret: "s", DirectoryAccessToken: "t", ExternalBaseURL: "http://xuanchu"})
+	key := testSecretKey(t)
+	store := newAuthTestStore(t)
+	sessionRepo := storage.NewSessionRepository(store.DB())
+	cfgRepo := storage.NewConfigRepository(store.DB())
+	cfgSvc := NewOIDCConfigService(cfgRepo, key)
+	ws := createTestWorkspace(t, store, "ws1")
+	_ = cfgSvc.Set(ws.ID, OIDCConfigInput{Provider: "yaoguang", IssuerBaseURL: "http://fake", OrgID: "o", ClientID: "c", ClientSecret: "s", ExternalBaseURL: "http://xuanchu"})
 
-		svc := NewOIDCAuthService(store, sessionRepo, cfgSvc, &stubOIDCProvider{})
-		_, _ = svc.Start(context.Background(), ws.ID)
-		flow := listAuthFlows(store)[0]
+	svc := NewOIDCAuthService(store, sessionRepo, cfgSvc, &stubOIDCProvider{})
+	_, _ = svc.Start(context.Background(), ws.ID)
+	flow := listAuthFlows(store)[0]
 
-		_, err := svc.Callback(context.Background(), flow.State, "fakecode")
-		if err == nil {
-			t.Fatal("expected identity_not_found error")
-		}
-	})
+	_, err := svc.Callback(context.Background(), flow.State, "fakecode")
+	if err == nil {
+		t.Fatal("expected identity_not_found error")
+	}
 }
 
 func TestCallbackSubMappedCreatesSession(t *testing.T) {
-	withSecretKey(t, func() {
-		store := newAuthTestStore(t)
-		sessionRepo := storage.NewSessionRepository(store.DB())
-		cfgRepo := storage.NewConfigRepository(store.DB())
-		cfgSvc := NewOIDCConfigService(cfgRepo)
-		ws := createTestWorkspace(t, store, "ws1")
-		_ = cfgSvc.Set(ws.ID, OIDCConfigInput{Provider: "yaoguang", IssuerBaseURL: "http://fake", OrgID: "o", ClientID: "c", ClientSecret: "s", DirectoryAccessToken: "t", ExternalBaseURL: "http://xuanchu"})
+	key := testSecretKey(t)
+	store := newAuthTestStore(t)
+	sessionRepo := storage.NewSessionRepository(store.DB())
+	cfgRepo := storage.NewConfigRepository(store.DB())
+	cfgSvc := NewOIDCConfigService(cfgRepo, key)
+	ws := createTestWorkspace(t, store, "ws1")
+	_ = cfgSvc.Set(ws.ID, OIDCConfigInput{Provider: "yaoguang", IssuerBaseURL: "http://fake", OrgID: "o", ClientID: "c", ClientSecret: "s", ExternalBaseURL: "http://xuanchu"})
 
-		// 预置 user + external id + membership（模拟同步结果）
-		userRepo := storage.NewUserRepository(store.DB())
-		u, _ := userRepo.Create(storage.User{ID: "u1", Name: "张三", CreatedAt: 1, ModifiedAt: 1})
-		extRepo := storage.NewExternalIDRepository(store.DB())
-		_, _ = extRepo.Create(storage.UserExternalID{ID: "e1", UserID: u.ID, Provider: "yaoguang", ExternalID: "yaoguang_member:m1", CreatedAt: 1})
-		memberRepo := storage.NewMemberRepository(store.DB())
-		_ = memberRepo.Upsert(storage.Membership{UserID: u.ID, WorkspaceID: ws.ID, Role: "member", JoinedAt: 1, ModifiedAt: 1})
+	// 预置 user + external id + membership（模拟同步结果）
+	userRepo := storage.NewUserRepository(store.DB())
+	u, _ := userRepo.Create(storage.User{ID: "u1", Name: "张三", CreatedAt: 1, ModifiedAt: 1})
+	extRepo := storage.NewExternalIDRepository(store.DB())
+	_, _ = extRepo.Create(storage.UserExternalID{ID: "e1", UserID: u.ID, Provider: "yaoguang", ExternalID: "yaoguang_member:m1", CreatedAt: 1})
+	memberRepo := storage.NewMemberRepository(store.DB())
+	_ = memberRepo.Upsert(storage.Membership{UserID: u.ID, WorkspaceID: ws.ID, Role: "member", JoinedAt: 1, ModifiedAt: 1})
 
-		svc := NewOIDCAuthService(store, sessionRepo, cfgSvc, &stubOIDCProvider{sub: "yaoguang_member:m1"})
-		_, _ = svc.Start(context.Background(), ws.ID)
-		flow := listAuthFlows(store)[0]
+	svc := NewOIDCAuthService(store, sessionRepo, cfgSvc, &stubOIDCProvider{sub: "yaoguang_member:m1"})
+	_, _ = svc.Start(context.Background(), ws.ID)
+	flow := listAuthFlows(store)[0]
 
-		login, err := svc.Callback(context.Background(), flow.State, "fakecode")
-		if err != nil {
-			t.Fatalf("Callback: %v", err)
-		}
-		if login.RawSession == "" || login.CSRFToken == "" {
-			t.Fatal("empty session/csrf token")
-		}
-		_, err = sessionRepo.GetSession(hashStr(login.RawSession))
-		if err != nil {
-			t.Fatalf("session not found: %v", err)
-		}
-		_, err = sessionRepo.GetAuthFlow(flow.State)
-		if err != storage.ErrNotFound {
-			t.Fatalf("flow should be deleted")
-		}
-	})
+	login, err := svc.Callback(context.Background(), flow.State, "fakecode")
+	if err != nil {
+		t.Fatalf("Callback: %v", err)
+	}
+	if login.RawSession == "" || login.CSRFToken == "" {
+		t.Fatal("empty session/csrf token")
+	}
+	_, err = sessionRepo.GetSession(hashStr(login.RawSession))
+	if err != nil {
+		t.Fatalf("session not found: %v", err)
+	}
+	_, err = sessionRepo.GetAuthFlow(flow.State)
+	if err != storage.ErrNotFound {
+		t.Fatalf("flow should be deleted")
+	}
 }

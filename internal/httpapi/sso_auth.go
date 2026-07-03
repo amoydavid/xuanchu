@@ -21,7 +21,7 @@ func (s *Server) oidcAuthService() *app.OIDCAuthService {
 	if s.oidcAuth != nil {
 		return s.oidcAuth
 	}
-	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()))
+	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()), s.secretKey)
 	sessionRepo := storage.NewSessionRepository(s.store.DB())
 	s.oidcAuth = app.NewOIDCAuthService(s.store, sessionRepo, cfgSvc, nil)
 	return s.oidcAuth

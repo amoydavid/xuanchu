@@ -1,16 +1,29 @@
 # Workspace OIDC 接入（yaoguang IdP）实现计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 给实现代理：按阶段执行，优先使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans`。步骤用 checkbox 追踪即可；提交可以按阶段或按清晰的功能切片进行，不要求每个小 task 都单独 commit。
 
-**Goal:** 让每个 workspace 可选择接入 yaoguang OIDC，实现浏览器 SSO 登录 + 通讯录同步开通成员。
+**目标：** 让每个 workspace 可选择接入 yaoguang OIDC，实现浏览器 SSO 登录 + 通讯录同步开通成员。
 
-**Architecture:** 两条共享配置与身份映射的链路——(A) 管理员通讯录同步：从 yaoguang directory API 拉全量成员，upsert 本地 User + UserExternalID(sub + external_identities) + Membership；(B) 用户 OIDC 浏览器登录：Auth Code Flow + PKCE，id_token sub 命中映射后建立独立 browser_session + cookie。复用现有 DB 轮询 dispatcher 做 sync job 持久化，不引入 redis。认证只做身份映射，授权仍由 membership/role 决定。
+**架构：** 两条共享配置与身份映射的链路——(A) owner/tenant actor 通讯录同步：从 yaoguang directory API 拉全量成员，upsert 本地 User + UserExternalID(sub + external_identities) + Membership；(B) 用户 OIDC 浏览器登录：Auth Code Flow + PKCE，id_token sub 命中映射后建立独立 browser_session + cookie。复用现有 DB 轮询 dispatcher 做 sync job 持久化，不引入 redis。认证只做身份映射，授权仍由 membership/role 决定。
 
-**Tech Stack:** Go 1.25、GORM + glebarez/sqlite、`github.com/coreos/go-oidc/v3`、`golang.org/x/oauth2`、React 19 + TanStack Router + shadcn/ui。
+**技术栈：** Go 1.25、GORM + glebarez/sqlite、`github.com/coreos/go-oidc/v3`、`golang.org/x/oauth2`、React 19 + TanStack Router + shadcn/ui。
 
 **对应 spec:** `docs/superpowers/specs/2026-07-03-workspace-oidc-design.md`
 
 ---
+
+## 评审修订：执行前必须遵守
+
+本节修正了初稿中与当前代码或目标架构不一致的点。若后文旧代码片段与本节冲突，以本节为准。
+
+1. **browser session 不是只读凭证。** OIDC 登录后的用户应能正常使用 Web Console，所有 `/api/v1/*` 操作继续按本地 membership role 授权。写请求必须通过 CSRF 校验，而不是禁止 cookie 写操作。
+2. **browser session 只服务浏览器。** `/mcp`、Remote Client、stdio MCP、Agent 集成和外部自动化仍必须使用 Bearer token；cookie 分支不能进入这些入口，也不能进入 `/api/v1/admin/*`。
+3. **SSO 配置权限固定为：自然人 owner，或具备 `workspace:write` 的 tenant actor。** workspace admin/member/viewer 不可见也不可写。tenant actor 读映射 `workspace:read`，写映射 `workspace:write`。
+4. **secret 不允许明文落库。** 当前 `ConfigRepository` 只是明文 KV；本轮仍复用同一张 `configs` 表，但 `sso.client_secret` 与 `sso.directory_access_token` 必须由 app 层 envelope 加密后写入 `configs.value`。缺少 `XUANCHU_CONFIG_SECRET_KEY` 时拒绝保存 secret。
+5. **DirectorySyncJob 的 claim 必须用条件更新实现原子认领。** 不能先 `SELECT` 再无条件 `UPDATE id=?`，否则多 worker 下会重复认领。实现应使用 `WHERE id=? AND status/claim_expires_at 仍匹配` 的 compare-and-swap update，并检查 `RowsAffected == 1`。
+6. **前端 workspace API 要支持无 Bearer 的 SSO 会话。** `sessionStorage` 有 token 时继续发 Bearer；没有 token 但存在 OIDC session cookie 时，`fetch` 使用 `credentials: "same-origin"`，写请求带 `X-Xuanchu-CSRF`。
+7. **不要伪造 TokenView 表示 browser session。** HTTP auth context 可以扩展为 token 或 browser session 两种凭证来源；app 层授权输入应明确使用 `CredentialBrowserSession`，不要把 session 塞成普通 API token。
+8. **`return_to` 只能是相对路径。** SSO start/callback 如支持登录后回跳，必须拒绝绝对 URL、协议相对 URL 和跨域路径，防开放重定向。
 
 ## 测试 helper 约定
 
@@ -21,7 +34,7 @@ storage 层测试统一用 `storage.Open(filepath.Join(t.TempDir(), "x.db"))` �
 
 ## 阶段一：配置层 + 权限 + 通讯录同步（后端）
 
-本阶段产出：管理员可通过 `GET/PUT /api/v1/workspaces/{id}/sso/config` 配置 OIDC，通过 `POST .../sso/sync` 触发通讯录同步，全流程可用 curl 测试。
+本阶段产出：自然人 owner 或 tenant actor 可通过 `GET/PUT /api/v1/workspaces/{id}/sso/config` 配置 OIDC，通过 `POST .../sso/sync` 触发通讯录同步，全流程可用 curl 测试。
 
 ---
 
@@ -51,13 +64,15 @@ storage 层测试统一用 `storage.Open(filepath.Join(t.TempDir(), "x.db"))` �
 	PermissionSsoConfigWrite = authz.PermissionSsoConfigWrite
 ```
 
-- [ ] **Step 4: 在 `tenantCapabilityForPermission` 补读映射**
+- [ ] **Step 4: 在 `tenantCapabilityForPermission` 补 tenant actor 映射**
 
-在 `PermissionWorkspaceRead` case 后追加（写入对 tenant actor 不映射 → 落 default 拒绝，符合仅 owner）：
+在 `PermissionWorkspaceRead` / `PermissionWorkspaceModify` 附近追加。tenant actor 是 workspace 系统身份，具备 `workspace:write` 时允许管理 SSO 配置与同步：
 
 ```go
 	case PermissionSsoConfigRead:
 		return auth.ScopeWorkspaceRead, true
+	case PermissionSsoConfigWrite:
+		return auth.ScopeWorkspaceWrite, true
 ```
 
 - [ ] **Step 5: 验证无回归**
@@ -71,7 +86,7 @@ Expected: PASS。
 
 ```bash
 git add internal/authz/model.go internal/app/permission.go
-git commit -m "feat: 新增 SSO 配置读写权限（仅 owner 放行）"
+git commit -m "feat: 新增 SSO 配置读写权限"
 ```
 
 ---
@@ -91,6 +106,7 @@ type BrowserSession struct {
 	ID          string `gorm:"primaryKey"` // 存哈希后的 session id
 	UserID      string `gorm:"not null;index"`
 	WorkspaceID string `gorm:"not null;index"`
+	CSRFHash    string `gorm:"not null"` // CSRF token hash，明文只存在浏览器 csrf cookie 中
 	ExpiresAt   int64  `gorm:"not null;index"`
 	CreatedAt   int64  `gorm:"not null"`
 	LastSeenAt  int64  `gorm:"not null"`
@@ -174,6 +190,8 @@ git commit -m "feat: 新增 BrowserSession/BrowserAuthFlow/DirectorySyncJob mode
 ---
 
 ### Task 3: DirectorySyncJob repo（CRUD + claim/lease）
+
+> 评审修正：claim 必须是 compare-and-swap 条件更新，不能采用“先查一条，再无条件按 id 更新”的写法。SQLite/PostgreSQL 下都应检查 `RowsAffected == 1`；如果更新失败，说明被其他 worker 抢走，继续尝试下一条或返回暂无任务。
 
 **Files:**
 - Create: `internal/storage/sync_job_repo.go`
@@ -323,12 +341,25 @@ func (r *DirectorySyncJobRepository) ClaimNextPending(now, claimTTL int64) (Dire
 		if err != nil {
 			return err
 		}
-		return tx.Model(&DirectorySyncJob{}).Where("id = ?", job.ID).
+		condition := tx.Model(&DirectorySyncJob{}).Where("id = ?", job.ID)
+		if job.Status == "pending" {
+			condition = condition.Where("status = ?", "pending")
+		} else {
+			condition = condition.Where("status = ? AND claim_expires_at < ?", "running", now)
+		}
+		res := condition.
 			Updates(map[string]any{
 				"status":          "running",
 				"claimed_at":      now,
 				"claim_expires_at": now + claimTTL,
-			}).Error
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return ErrNotFound
+		}
+		return nil
 	})
 	if err != nil {
 		return DirectorySyncJob{}, err
@@ -419,14 +450,14 @@ func TestSessionCreateGetDelete(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	repo := NewSessionRepository(store.db)
 
-	if err := repo.CreateSession("hash1", "u1", "ws1", 100, 200); err != nil {
+	if err := repo.CreateSession("hash1", "u1", "ws1", "csrfhash1", 100, 200); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	s, err := repo.GetSession("hash1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if s.UserID != "u1" || s.WorkspaceID != "ws1" {
+	if s.UserID != "u1" || s.WorkspaceID != "ws1" || s.CSRFHash != "csrfhash1" {
 		t.Fatalf("got %+v", s)
 	}
 	if err := repo.DeleteSession("hash1"); err != nil {
@@ -442,8 +473,8 @@ func TestSessionPurgeExpired(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	repo := NewSessionRepository(store.db)
 
-	_ = repo.CreateSession("h1", "u1", "ws1", 1, 50)   // 已过期
-	_ = repo.CreateSession("h2", "u2", "ws1", 1, 200)  // 未过期
+	_ = repo.CreateSession("h1", "u1", "ws1", "c1", 1, 50)   // 已过期
+	_ = repo.CreateSession("h2", "u2", "ws1", "c2", 1, 200)  // 未过期
 	n, err := repo.PurgeExpiredSessions(100)
 	if err != nil {
 		t.Fatalf("purge: %v", err)
@@ -519,11 +550,12 @@ func NewSessionRepository(db *gorm.DB) *SessionRepository {
 	return &SessionRepository{db: db}
 }
 
-func (r *SessionRepository) CreateSession(idHash, userID, workspaceID string, createdAt, expiresAt int64) error {
+func (r *SessionRepository) CreateSession(idHash, userID, workspaceID, csrfHash string, createdAt, expiresAt int64) error {
 	return r.db.Create(&BrowserSession{
 		ID:          idHash,
 		UserID:      userID,
 		WorkspaceID: workspaceID,
+		CSRFHash:    csrfHash,
 		ExpiresAt:   expiresAt,
 		CreatedAt:   createdAt,
 		LastSeenAt:  createdAt,
@@ -890,13 +922,50 @@ git commit -m "feat: yaoguang directory HTTP 客户端"
 
 ---
 
-### Task 7: OIDCConfigService（配置读写 + 脱敏）
+### Task 7A: Config secret envelope（同表加密）
+
+**Files:**
+- Create: `internal/app/config_secret.go`
+- Create: `internal/app/config_secret_test.go`
+
+当前 `ConfigRepository` 只负责 `configs.value` 的普通 KV 读写，不提供加密。本任务不新增表，所有 secret 仍落在 `configs.value`，但写入前必须加密成 envelope 字符串。
+
+- [ ] **Step 1: 写失败测试**
+
+覆盖：
+
+- `EncryptConfigSecret` 输出以 `enc:v1:` 开头，明文不出现在 ciphertext 中。
+- `DecryptConfigSecret` 能还原明文。
+- 同一明文重复加密结果不同（nonce 随机）。
+- key 缺失或格式错误返回 `config_secret_key_missing` / `config_secret_key_invalid`。
+
+- [ ] **Step 2: 实现 `internal/app/config_secret.go`**
+
+实现约束：
+
+- 密钥从 `XUANCHU_CONFIG_SECRET_KEY` 读取。
+- 固定支持一种解析格式：32 字节随机值的 base64 编码；测试里也用 base64。
+- 算法使用 AES-256-GCM。
+- 格式为 `enc:v1:<base64(nonce+ciphertext)>`。
+- 只在 app 层使用，不把加密逻辑放进 `storage.ConfigRepository`，避免普通 config 被误解为全量加密。
+
+- [ ] **Step 3: 运行**
+
+```bash
+go test ./internal/app/ -run TestConfigSecret -v
+```
+
+Expected: PASS。
+
+---
+
+### Task 7B: OIDCConfigService（配置读写 + 加密 + 脱敏）
 
 **Files:**
 - Create: `internal/app/oidc_config.go`
 - Create: `internal/app/oidc_config_test.go`
 
-职责：在 ConfigRepository 之上封装 `sso.*` key 的读写，提供脱敏视图。本 task **不引入加密**（ConfigRepository 当前是明文 KV），secret 字段脱敏仅用于读视图；加密作为后续改进记录在 spec 备注。先让功能闭环。
+职责：在 ConfigRepository 之上封装 `sso.*` key 的读写，提供脱敏视图。`sso.client_secret` 与 `sso.directory_access_token` 必须通过 Task 7 的 secret envelope 加密后写入 `configs.value`；读取时仅 app 层解密，API 响应只给脱敏值。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -980,7 +1049,7 @@ func TestOIDCConfigSetPartialSecret(t *testing.T) {
 	if got.IssuerBaseURL != "u2" {
 		t.Fatalf("issuer not updated: %s", got.IssuerBaseURL)
 	}
-	// 验证 secret 仍是原值（通过 ResolveSecrets 读原始值）
+	// 验证 secret 仍是原值（通过 ResolveSecrets 解密读原始值）
 	secrets, err := svc.ResolveSecrets("ws1")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -1083,14 +1152,25 @@ func (s *OIDCConfigService) Get(workspaceID string) (OIDCConfig, bool) {
 		}
 		return v
 	}
+	secretMask := func(key string) string {
+		v := g(key)
+		if v == "" {
+			return ""
+		}
+		plain, err := DecryptConfigSecret(v)
+		if err != nil {
+			return ""
+		}
+		return mask(plain)
+	}
 	enabled := g(ssoKeyProvider) != "" && g(ssoKeyIssuerBaseURL) != ""
 	return OIDCConfig{
 		Provider:                   g(ssoKeyProvider),
 		IssuerBaseURL:              g(ssoKeyIssuerBaseURL),
 		OrgID:                      g(ssoKeyOrgID),
 		ClientID:                   g(ssoKeyClientID),
-		ClientSecretMasked:         mask(g(ssoKeyClientSecret)),
-		DirectoryAccessTokenMasked: mask(g(ssoKeyDirectoryToken)),
+		ClientSecretMasked:         secretMask(ssoKeyClientSecret),
+		DirectoryAccessTokenMasked: secretMask(ssoKeyDirectoryToken),
 		Scopes:                     g(ssoKeyScopes),
 		RedirectPath:               g(ssoKeyRedirectPath),
 		ExternalBaseURL:            g(ssoKeyExternalBaseURL),
@@ -1113,7 +1193,15 @@ func (s *OIDCConfigService) ResolveSecrets(workspaceID string) (OIDCConfigSecret
 	if !ok || !ok2 {
 		return OIDCConfigSecrets{}, fmt.Errorf("sso secrets not configured")
 	}
-	return OIDCConfigSecrets{ClientSecret: cs, DirectoryAccessToken: dt}, nil
+	csPlain, err := DecryptConfigSecret(cs)
+	if err != nil {
+		return OIDCConfigSecrets{}, err
+	}
+	dtPlain, err := DecryptConfigSecret(dt)
+	if err != nil {
+		return OIDCConfigSecrets{}, err
+	}
+	return OIDCConfigSecrets{ClientSecret: csPlain, DirectoryAccessToken: dtPlain}, nil
 }
 
 func (s *OIDCConfigService) Set(workspaceID string, in OIDCConfigInput) error {
@@ -1135,14 +1223,22 @@ func (s *OIDCConfigService) Set(workspaceID string, in OIDCConfigInput) error {
 	if err := set(ssoKeyClientID, in.ClientID); err != nil {
 		return err
 	}
-	// secret 留空 → 不覆盖（保留原值）
+	// secret 留空 → 不覆盖（保留原值）；非空时必须 EncryptConfigSecret 后写入
 	if in.ClientSecret != "" {
-		if err := set(ssoKeyClientSecret, in.ClientSecret); err != nil {
+		encrypted, err := EncryptConfigSecret(in.ClientSecret)
+		if err != nil {
+			return err
+		}
+		if err := set(ssoKeyClientSecret, encrypted); err != nil {
 			return err
 		}
 	}
 	if in.DirectoryAccessToken != "" {
-		if err := set(ssoKeyDirectoryToken, in.DirectoryAccessToken); err != nil {
+		encrypted, err := EncryptConfigSecret(in.DirectoryAccessToken)
+		if err != nil {
+			return err
+		}
+		if err := set(ssoKeyDirectoryToken, encrypted); err != nil {
 			return err
 		}
 	}
@@ -1743,7 +1839,7 @@ func (s *Server) handleWorkspaceSsoConfigGet(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid_workspace", err.Error())
 		return
 	}
-	if err := s.requireOwner(r); err != nil {
+	if err := s.requireSsoConfigRead(r); err != nil {
 		writeForbidden(w)
 		return
 	}
@@ -1761,7 +1857,7 @@ func (s *Server) handleWorkspaceSsoConfigSet(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid_workspace", err.Error())
 		return
 	}
-	if err := s.requireOwner(r); err != nil {
+	if err := s.requireSsoConfigWrite(r); err != nil {
 		writeForbidden(w)
 		return
 	}
@@ -1788,7 +1884,7 @@ func (s *Server) handleWorkspaceSsoSync(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid_workspace", err.Error())
 		return
 	}
-	if err := s.requireOwner(r); err != nil {
+	if err := s.requireSsoConfigWrite(r); err != nil {
 		writeForbidden(w)
 		return
 	}
@@ -1812,7 +1908,7 @@ func (s *Server) handleWorkspaceSsoSyncJob(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid_workspace", err.Error())
 		return
 	}
-	if err := s.requireOwner(r); err != nil {
+	if err := s.requireSsoConfigRead(r); err != nil {
 		writeForbidden(w)
 		return
 	}
@@ -1826,22 +1922,22 @@ func (s *Server) handleWorkspaceSsoSyncJob(w http.ResponseWriter, r *http.Reques
 }
 ```
 
-> `resolveWorkspaceIDFromPath`、`requireOwner`、`writeOK`、`writeError`、`writeForbidden`、`s.now()` 需对照现有 Server 已有 helper；若不存在则补最小实现（见 Step 3）。
+> `resolveWorkspaceIDFromPath`、`requireSsoConfigRead/Write`、`writeOK`、`writeError`、`writeForbidden`、`s.now()` 需对照现有 Server 已有 helper；若不存在则补最小实现（见 Step 3）。
 
 - [ ] **Step 3: 补充所需 Server helper（若缺失）**
 
 在 `internal/httpapi/sso.go` 或 server.go 补：
 
 ```go
-// requireOwner 校验当前请求者是该 workspace 的 owner（user 分支实时角色，tenant actor 走 capability）。
-func (s *Server) requireOwner(r *http.Request) error {
-	// 复用 app 层权限：s.authService.Require(PermissionSsoConfigRead)
+// requireSsoConfigWrite 校验当前请求者是自然人 owner，或具备 workspace:write 的 tenant actor。
+func (s *Server) requireSsoConfigWrite(r *http.Request) error {
+	// 复用 app 层权限：scopedServiceWithWorkspace(..., auth.ScopeWorkspaceWrite, app.PermissionSsoConfigWrite, ...)
 	// 具体 Server 如何拿到当前 Service/runtime 见现有 handler 模式（如 workspace archive handler）。
-	return s.authService.Require(app.PermissionSsoConfigRead)
+	return s.authService.Require(app.PermissionSsoConfigWrite)
 }
 ```
 
-> 关键：现有 handler 如何从 request 拿到 `*app.Service`（带 runtime/requestScope）需对照 `handleWorkspaceArchive` 等已有 owner-only handler 的写法对齐。**执行者应先读 `internal/httpapi/workspaces.go` 里 archive handler 的权限校验代码，照搬其模式实现 requireOwner，不要新造轮子。**
+> 关键：现有 handler 如何从 request 拿到 `*app.Service`（带 runtime/requestScope）需对照 `handleWorkspaceArchive` 等已有 owner-only handler 的写法对齐，但权限常量要换成 `PermissionSsoConfigRead/Write`，并保留 tenant actor capability 分支。不要新造轮子。
 
 - [ ] **Step 4: 在 Server 结构体挂依赖字段**
 
@@ -1856,7 +1952,7 @@ func (s *Server) requireOwner(r *http.Request) error {
 
 - [ ] **Step 5: 写端到端测试 `internal/httpapi/sso_test.go`**
 
-至少覆盖：owner 可写 config、非 owner 写 config 返回 403、sync 触发返回 202、重复 sync 返回 409。用现有 httpapi test harness（参考既有 handler 测试的 Server 构造方式）。
+至少覆盖：owner 可写 config、非 owner 写 config 返回 403、tenant actor + `workspace:write` 可写、sync 触发返回 202、重复 sync 返回 409。用现有 httpapi test harness（参考既有 handler 测试的 Server 构造方式）。
 
 ```go
 package httpapi
@@ -1878,9 +1974,13 @@ func TestSsoConfigOwnerCanWrite(t *testing.T) {
 func TestSsoConfigNonOwnerForbidden(t *testing.T) {
 	// 以 member 身份 PUT，期望 403
 }
+
+func TestSsoConfigTenantActorWithWorkspaceWriteCanWrite(t *testing.T) {
+	// 以 tenant_access_token + workspace:write 调 PUT，期望 200
+}
 ```
 
-> 端到端测试的 Server/请求构造方式高度依赖既有 test harness，执行者需先读 `internal/httpapi/*_test.go` 的现有写法照搬。测试用例保持「owner 可写、非 owner 403、sync 202/409」三个核心断言。
+> 端到端测试的 Server/请求构造方式高度依赖既有 test harness，执行者需先读 `internal/httpapi/*_test.go` 的现有写法照搬。测试用例保持「owner 可写、tenant actor 可写、非 owner 403、sync 202/409」这些核心断言。
 
 - [ ] **Step 6: 运行全量验证**
 
@@ -1896,7 +1996,7 @@ Expected: 全 PASS。
 
 ```bash
 git add internal/httpapi/huma_routes.go internal/httpapi/sso.go internal/httpapi/server.go internal/httpapi/sso_test.go
-git commit -m "feat: SSO config/sync HTTP 路由（owner 鉴权）"
+git commit -m "feat: SSO config/sync HTTP 路由"
 ```
 
 ---
@@ -1939,7 +2039,7 @@ git commit --allow-empty -m "chore: 阶段一（配置+同步）验证通过"
 
 ## 阶段一完成标准
 
-- [ ] `GET/PUT /api/v1/workspaces/{id}/sso/config` 可用，仅 owner 读写，secret 脱敏
+- [ ] `GET/PUT /api/v1/workspaces/{id}/sso/config` 可用，自然人 owner 或 tenant actor 按 capability 读写，secret 加密落库并脱敏展示
 - [ ] `POST .../sso/sync` 创建持久化 job，后台 dispatcher 执行
 - [ ] 同步建立 User + UserExternalID(yaoguang sub + IM identities) + Membership，幂等，disabled 移除 membership
 - [ ] 全量 `go test ./...` 与 `CGO_ENABLED=0` 通过
@@ -1973,7 +2073,7 @@ git commit --allow-empty -m "chore: 阶段一（配置+同步）验证通过"
 - [ ] **Step 1: 添加依赖**
 
 ```bash
-go get github.com/coreos/go-oidc/v3/oidc
+go get github.com/coreos/go-oidc/v3
 go get golang.org/x/oauth2
 ```
 
@@ -2321,15 +2421,15 @@ func TestCallbackSubMappedCreatesSession(t *testing.T) {
 	_, _ = svc.Start(context.Background(), ws.ID)
 	flow := listAuthFlows(store)[0]
 
-	rawSession, err := svc.Callback(context.Background(), flow.State, "fakecode")
+	login, err := svc.Callback(context.Background(), flow.State, "fakecode")
 	if err != nil {
 		t.Fatalf("Callback: %v", err)
 	}
-	if rawSession == "" {
+	if login.RawSession == "" || login.CSRFToken == "" {
 		t.Fatal("empty session token")
 	}
 	// session 哈希应已写入
-	_, err = sessionRepo.GetSession(hashStr(rawSession))
+	_, err = sessionRepo.GetSession(hashStr(login.RawSession))
 	if err != nil {
 		t.Fatalf("session not found: %v", err)
 	}
@@ -2403,6 +2503,11 @@ type OIDCAuthService struct {
 	providerFactory func(issuerBaseURL, clientID, clientSecret string) (OIDCProvider, error)
 }
 
+type BrowserLoginResult struct {
+	RawSession string
+	CSRFToken  string
+}
+
 func NewOIDCAuthService(store *storage.Store, sessionRepo *storage.SessionRepository, cfg *OIDCConfigService, fallback OIDCProvider) *OIDCAuthService {
 	svc := &OIDCAuthService{store: store, sessionRepo: sessionRepo, cfg: cfg}
 	if fallback != nil {
@@ -2444,59 +2549,61 @@ func (s *OIDCAuthService) Start(ctx context.Context, workspaceID string) (string
 	return provider.AuthCodeURL(state, verifier, redirectURI), nil
 }
 
-func (s *OIDCAuthService) Callback(ctx context.Context, state, code string) (string, error) {
+func (s *OIDCAuthService) Callback(ctx context.Context, state, code string) (BrowserLoginResult, error) {
 	flow, err := s.sessionRepo.GetAuthFlow(state)
 	if err != nil {
-		return "", fmt.Errorf("invalid_state")
+		return BrowserLoginResult{}, fmt.Errorf("invalid_state")
 	}
 	now := time.Now().Unix()
 	if flow.ExpiresAt < now {
 		_ = s.sessionRepo.DeleteAuthFlow(state)
-		return "", fmt.Errorf("invalid_state")
+		return BrowserLoginResult{}, fmt.Errorf("invalid_state")
 	}
 
 	cfg, enabled := s.cfg.Get(flow.WorkspaceID)
 	if !enabled {
-		return "", fmt.Errorf("sso_not_enabled")
+		return BrowserLoginResult{}, fmt.Errorf("sso_not_enabled")
 	}
 	secrets, err := s.cfg.ResolveSecrets(flow.WorkspaceID)
 	if err != nil {
-		return "", err
+		return BrowserLoginResult{}, err
 	}
 	redirectURI := redirectURIFromConfig(cfg)
 
 	provider, err := s.providerFactory(cfg.IssuerBaseURL, cfg.ClientID, secrets.ClientSecret)
 	if err != nil {
-		return "", err
+		return BrowserLoginResult{}, err
 	}
 	sub, err := provider.Exchange(ctx, code, flow.PKCEVerifier, redirectURI)
 	if err != nil {
-		return "", fmt.Errorf("id_token_invalid: %w", err)
+		return BrowserLoginResult{}, fmt.Errorf("id_token_invalid: %w", err)
 	}
 
 	// sub 映射
 	extRepo := storage.NewExternalIDRepository(s.store.DB())
 	ext, err := extRepo.GetByProviderAndExternalID("yaoguang", sub)
 	if err != nil {
-		return "", fmt.Errorf("identity_not_found")
+		return BrowserLoginResult{}, fmt.Errorf("identity_not_found")
 	}
 
 	// 校验 membership 存在
 	memberRepo := storage.NewMemberRepository(s.store.DB())
 	_, err = memberRepo.Get(ext.UserID, flow.WorkspaceID)
 	if err != nil {
-		return "", fmt.Errorf("membership_inactive")
+		return BrowserLoginResult{}, fmt.Errorf("membership_inactive")
 	}
 
 	// 建 session
 	ttl, _ := time.ParseDuration(defaultIfEmpty(cfg.SessionTTL, "168h"))
 	rawSession := randomToken(32)
+	csrfToken := randomToken(32)
 	sessionHash := hashHex(rawSession)
-	if err := s.sessionRepo.CreateSession(sessionHash, ext.UserID, flow.WorkspaceID, now, now+int64(ttl.Seconds())); err != nil {
-		return "", err
+	csrfHash := hashHex(csrfToken)
+	if err := s.sessionRepo.CreateSession(sessionHash, ext.UserID, flow.WorkspaceID, csrfHash, now, now+int64(ttl.Seconds())); err != nil {
+		return BrowserLoginResult{}, err
 	}
 	_ = s.sessionRepo.DeleteAuthFlow(state)
-	return rawSession, nil
+	return BrowserLoginResult{RawSession: rawSession, CSRFToken: csrfToken}, nil
 }
 
 func (s *OIDCAuthService) Logout(sessionHash string) error {
@@ -2651,6 +2758,7 @@ import (
 )
 
 const sessionCookieName = "xuanchu_session"
+const csrfCookieName = "xuanchu_csrf"
 
 func (s *Server) handleSsoOidcStart(w http.ResponseWriter, r *http.Request) {
 	workspaceRef := r.URL.Query().Get("workspace")
@@ -2678,12 +2786,12 @@ func (s *Server) handleSsoOidcCallback(w http.ResponseWriter, r *http.Request) {
 		redirectWithError(w, r, "invalid_callback")
 		return
 	}
-	rawSession, err := s.oidcAuth.Callback(r.Context(), state, code)
+	login, err := s.oidcAuth.Callback(r.Context(), state, code)
 	if err != nil {
 		redirectWithError(w, r, appErrorToSsoCode(err))
 		return
 	}
-	s.setSessionCookie(w, rawSession, s.console.BasePath)
+	s.setBrowserSessionCookies(w, login.RawSession, login.CSRFToken)
 	// 回到 console 根
 	http.Redirect(w, r, s.console.BasePath+"/", http.StatusFound)
 }
@@ -2693,11 +2801,11 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	if err == nil && cookie.Value != "" {
 		_ = s.oidcAuth.Logout(hashHex(cookie.Value))
 	}
-	clearSessionCookie(w, s.console.BasePath)
+	clearBrowserSessionCookies(w)
 	http.Redirect(w, r, s.console.BasePath+"/", http.StatusFound)
 }
 
-func (s *Server) setSessionCookie(w http.ResponseWriter, rawSession, path string) {
+func (s *Server) setBrowserSessionCookies(w http.ResponseWriter, rawSession, csrfToken string) {
 	secure := !s.oidcInsecureCookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -2708,12 +2816,20 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, rawSession, path string
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   7 * 24 * 3600,
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    csrfToken,
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   7 * 24 * 3600,
+	})
 }
 
-func (s *Server) clearSessionCookie(w http.ResponseWriter, path string) {
-	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1,
-	})
+func clearBrowserSessionCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: csrfCookieName, Value: "", Path: "/", MaxAge: -1})
 }
 
 func redirectWithError(w http.ResponseWriter, r *http.Request, code string) {
@@ -2782,7 +2898,7 @@ func TestSsoStartRedirects(t *testing.T) {
 }
 
 func TestSsoCallbackSetsCookie(t *testing.T) {
-	// mock oidcAuth.Callback 返回 rawSession，验证 Set-Cookie 头
+	// mock oidcAuth.Callback 返回 RawSession + CSRFToken，验证 xuanchu_session 与 xuanchu_csrf 两个 Set-Cookie
 }
 
 func TestAuthLogoutClearsCookie(t *testing.T) {
@@ -2808,7 +2924,7 @@ git commit -m "feat: SSO start/callback/logout HTTP 路由"
 
 ---
 
-### Task 17: authMiddleware 双通道（Bearer 优先、Cookie 兜底 + 写操作禁 cookie）
+### Task 17: authMiddleware 双通道（Bearer 优先、Cookie 兜底 + CSRF）
 
 **Files:**
 - Modify: `internal/httpapi/middleware.go:153-201`
@@ -2816,8 +2932,9 @@ git commit -m "feat: SSO start/callback/logout HTTP 路由"
 这是核心安全改动。逻辑：
 
 1. 提取 Bearer；有 → 走现有 token 认证（不变）。
-2. 无 Bearer 但有 cookie → 尝试 session 认证 → 但若请求是写操作（POST/PUT/PATCH/DELETE 且 path 以 `/api/v1/` 开头）→ 403 `cookie_write_forbidden`。
-3. 都没有 → 401。
+2. 无 Bearer 时，仅普通 `/api/v1/*` 允许尝试 browser session cookie；`/mcp`、`/api/v1/admin/*` 等入口继续 401。
+3. cookie 模式下，`GET/HEAD/OPTIONS` 可直接读；`POST/PUT/PATCH/DELETE` 必须校验 `X-Xuanchu-CSRF`、`xuanchu_csrf` cookie 与 `BrowserSession.CSRFHash`。
+4. 都没有 → 401。
 
 - [ ] **Step 1: 写失败测试 `internal/httpapi/middleware_dual_test.go`**
 
@@ -2835,8 +2952,16 @@ func TestCookieGetAllowed(t *testing.T) {
 	// 验证下游 handler 收到 requestAuth
 }
 
-func TestCookieWriteForbidden(t *testing.T) {
-	// 带 cookie 的 POST /api/v1/tasks 应返回 403 cookie_write_forbidden
+func TestCookieWriteWithCSRFAllowed(t *testing.T) {
+	// 带有效 session cookie + csrf cookie + X-Xuanchu-CSRF 的 POST /api/v1/tasks 应被放行
+}
+
+func TestCookieWriteWithoutCSRFForbidden(t *testing.T) {
+	// 带 session cookie 但缺少/错误 CSRF 的 POST /api/v1/tasks 应返回 403 csrf_invalid
+}
+
+func TestCookieMCPRejected(t *testing.T) {
+	// /mcp 不允许用 cookie；无 Bearer 即 401
 }
 
 func TestBearerStillWorks(t *testing.T) {
@@ -2864,14 +2989,13 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// 无 Bearer，尝试 cookie
+		// 无 Bearer：cookie 只允许普通 /api/v1/* Web Console API，不允许 MCP/admin。
+		if !strings.HasPrefix(r.URL.Path, "/api/v1/") || strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
+			writeError(w, http.StatusUnauthorized, authz.CodeAuthMissingToken, "missing bearer token", nil)
+			return
+		}
 		cookie, err := r.Cookie(sessionCookieName)
 		if err == nil && cookie.Value != "" {
-			// 写操作（POST/PUT/PATCH/DELETE 且 /api/v1/*）禁 cookie，防 CSRF
-			if isApiWriteMethod(r.Method) && strings.HasPrefix(r.URL.Path, "/api/v1/") {
-				writeError(w, http.StatusForbidden, "cookie_write_forbidden", "此操作需要 access token", nil)
-				return
-			}
 			s.handleCookieAuth(w, r, cookie.Value, next)
 			return
 		}
@@ -2912,6 +3036,10 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		writeError(w, http.StatusUnauthorized, "invalid_session", "session 无效或已过期", nil)
 		return
 	}
+	if isApiWriteMethod(r.Method) && !validCSRF(r, session.CSRFHash) {
+		writeError(w, http.StatusForbidden, "csrf_invalid", "页面会话已过期，请刷新后重试", nil)
+		return
+	}
 	// 构造 AuthenticatedToken：用户为 session.UserID，凭证类型 browser_session
 	userRepo := storage.NewUserRepository(s.store.DB())
 	user, err := userRepo.GetByID(session.UserID)
@@ -2930,20 +3058,27 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		writeError(w, http.StatusForbidden, "membership_inactive", "您不是该工作区的成员", nil)
 		return
 	}
-	authn := app.AuthenticatedToken{
-		Token: app.TokenView{
-			ID: "browser_session:" + session.ID,
-			Name: "Browser Session",
-			Type: "browser_session",
-		},
-		User: user,
-	}
-	// cookie 模式：effective workspace 固定为 session 的 workspace，role 用 member.Role
+	// cookie 模式：effective workspace 固定为 session 的 workspace，role 用 member.Role。
+	// 不要把 BrowserSession 伪造成普通 ApiToken；requestAuth 需要扩展出 browser-session 分支，
+	// 后续 scopedServiceFor / AuthorizeTokenRequest 按 CredentialBrowserSession 构造授权输入。
 	visible := []storage.WorkspaceWithRole{{Workspace: workspace, Role: member.Role}}
+	authn := requestBrowserSessionAuth(user, session)
 	s.populateLogState(r, authn, workspace)
 	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey, requestAuth{
 		Authn: authn, VisibleWorkspaces: visible, EffectiveWorkspace: workspace,
 	})))
+}
+
+func validCSRF(r *http.Request, wantHash string) bool {
+	cookie, err := r.Cookie(csrfCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	header := r.Header.Get("X-Xuanchu-CSRF")
+	if header == "" || header != cookie.Value {
+		return false
+	}
+	return hashHex(header) == wantHash
 }
 
 // populateLogState 抽出原有 logState 写入逻辑。
@@ -2972,7 +3107,7 @@ func isApiWriteMethod(method string) bool {
 }
 ```
 
-> 注意：`app.TokenView` 的字段（ID/Name/Type 等）需对照 `internal/app/token.go` 实际定义补全。`storage.WorkspaceWithRole` 已有 Role 字段（见 `visibleAndEffectiveWorkspaces` 用法）。`TokenView.Type` 值用 `"browser_session"` 与 `authz.CredentialBrowserSession` 一致。
+> 注意：这里需要扩展当前 token-centric 的 `requestAuth` / `AuthorizeTokenRequest` 输入，让 browser session 成为一等凭证来源。不要用假的 `TokenView` 混入 PAT/Agent/token 列表，也不要让 browser session 出现在 token 管理页面。
 
 - [ ] **Step 3: 更新 `CredentialBrowserSession` 注释**
 
@@ -2996,7 +3131,7 @@ Expected: PASS（含既有 authMiddleware 测试不受影响）。
 
 ```bash
 git add internal/httpapi/middleware.go internal/authz/model.go internal/httpapi/middleware_dual_test.go
-git commit -m "feat: authMiddleware 双通道（Bearer+Cookie，写操作禁 cookie）"
+git commit -m "feat: authMiddleware 支持 Browser Session 与 CSRF"
 ```
 
 ---
@@ -3064,7 +3199,7 @@ Expected: 全 PASS。
 2. 浏览器访问 `/sso/oidc/start?workspace=<slug>` → 跳转 yaoguang 登录
 3. 回调后回到 console，带 cookie
 4. `GET /api/v1/tasks` 用 cookie 访问成功
-5. `POST /api/v1/tasks` 用 cookie → 403 `cookie_write_forbidden`
+5. `POST /api/v1/tasks` 带 session cookie + CSRF header → 成功；缺 CSRF → 403 `csrf_invalid`
 6. `/auth/logout` 清 cookie
 
 - [ ] **Step 3: Commit**
@@ -3079,7 +3214,7 @@ git commit --allow-empty -m "chore: 阶段二（OIDC 登录+session）验证通�
 
 - [ ] `/sso/oidc/start` + `/sso/oidc/callback` 完成 OIDC Auth Code Flow + PKCE
 - [ ] sub 命中 UserExternalID 映射 → 建 browser_session + 下发 cookie；未命中 → identity_not_found
-- [ ] authMiddleware 双通道：Bearer 优先，cookie 仅 GET，写操作禁 cookie
+- [ ] authMiddleware 双通道：Bearer 优先，cookie 仅普通 `/api/v1/*`，写操作必须 CSRF
 - [ ] `/auth/logout` 清 session + cookie
 - [ ] 过期 session/flow 定时清理
 - [ ] 全量 `go test ./...` 与 `CGO_ENABLED=0` 通过
@@ -3178,7 +3313,7 @@ git commit -m "feat(web): SSO 配置页 i18n 文案"
 
 ---
 
-### Task 21: nav 项 + owner/acting 显隐过滤
+### Task 21: nav 项 + owner/tenant 显隐过滤
 
 **Files:**
 - Modify: `web/src/components/AppShell.tsx`
@@ -3232,7 +3367,7 @@ import {
 
 - [ ] **Step 3: 在 AppShell 组件内加显隐过滤**
 
-AppShell 组件需要 `useMe` 判断 owner/acting。当前 AppShell props 没有 me 数据，需在组件内调用 `useMe()`（参照 tokens-page）。在 `const { t } = useTranslation()` 后加：
+AppShell 组件需要 `useMe` 判断 owner，同时用 `tokenType` / `getTenantSwitchContext()` 判断 tenant actor。当前 AppShell props 已有 `tokenType`，组件内再调用 `useMe()`（参照 tokens-page）。在 `const { t } = useTranslation()` 后加：
 
 ```ts
 import { useMe } from "@/features/workspace/session/useMe"
@@ -3240,7 +3375,7 @@ import { useMe } from "@/features/workspace/session/useMe"
   const me = useMe()
   const role = me.data?.effective_role ?? ""
   const isOwner = role === "owner"
-  const showSso = isOwner || acting
+  const showSso = isOwner || tokenType === "tenant_access_token" || tenantContext !== null
 ```
 
 把 nav 渲染 map（L92）加过滤：
@@ -3251,7 +3386,7 @@ import { useMe } from "@/features/workspace/session/useMe"
             .map((item) => {
 ```
 
-> 注意：`acting` 变量在 L81 已定义（`getAdminActingContext() !== null`）。`useMe` 需确认 AppShell 已在 QueryClientProvider 内（是的，router 层已保证）。
+> 注意：`tenantContext` 变量在 AppShell 内已由 `getTenantSwitchContext()` 得到。`useMe` 需确认 AppShell 已在 QueryClientProvider 内（是的，router 层已保证）。
 
 - [ ] **Step 4: 验证类型检查**
 
@@ -3264,7 +3399,7 @@ Expected: 无错误。
 
 ```bash
 git add web/src/components/AppShell.tsx
-git commit -m "feat(web): nav 加 SSO 项（仅 owner/acting 可见）"
+git commit -m "feat(web): nav 加 SSO 项（仅 owner/tenant 可见）"
 ```
 
 ---
@@ -3418,7 +3553,7 @@ export function useTriggerSyncMutation(workspaceSlug: string) {
 }
 ```
 
-> `workspaceApiPut` 需确认在 `workspace-api.ts` 已导出；若没有则补一个（仿 Post/Patch）。
+> `workspaceApiPut` 需确认在 `workspace-api.ts` 已导出；若没有则补一个（仿 Post/Patch）。同时按评审修订改造 `requestJson`：`fetch` 必须设置 `credentials: "same-origin"`；当没有 workspace token 但存在 `xuanchu_session` cookie 时，GET 直接请求，写请求从 `xuanchu_csrf` cookie 读值并设置 `X-Xuanchu-CSRF`。有 sessionStorage token 时仍走 Bearer，保持现有 PAT/Agent/tenant token 语义。
 
 - [ ] **Step 2: 确认 workspaceApiPut 存在**
 
@@ -3475,7 +3610,7 @@ export function SsoConfigPage({ workspaceSlug }: { workspaceSlug: string }) {
   const me = useMe()
   const role = me.data?.effective_role ?? ""
   const isOwner = role === "owner"
-  const canManage = isOwner // acting 模式由 nav 显隐保证进入此页
+  const canManage = isOwner || me.data?.token.type === "tenant_access_token"
 
   const configQuery = useSsoConfigQuery(workspaceSlug)
   const saveMutation = useSaveSsoConfigMutation(workspaceSlug)
@@ -3773,11 +3908,11 @@ Expected: 全 PASS。
 2. 点「立即同步成员」→ 成员同步
 3. 退出 → 登录页点「OIDC 单点登录」→ 跳转 yaoguang → 回到 console 带 cookie
 4. member/viewer 登录 → 看不到「单点登录」菜单
-5. cookie 只读：GET 成功、POST 返回 403
+5. OIDC session：GET 成功；POST 带 CSRF 成功；缺 CSRF 返回 403
 
 - [ ] **Step 3: 更新文档**
 
-更新 `docs/manual/web-console.md`：新增 OIDC 登录入口、通讯录同步操作说明、cookie 只读约束。
+更新 `docs/manual/web-console.md`：新增 OIDC 登录入口、通讯录同步操作说明、browser session 与 CSRF 约束。
 更新 `README.md`：新增 SSO 登录说明。
 更新 `ROADMAP.md`：标记 v0.5.0 OIDC 完成。
 
@@ -3792,7 +3927,7 @@ git commit -m "docs: OIDC 接入完成，更新文档"
 
 ## 阶段三完成标准
 
-- [ ] 「单点登录」菜单仅 owner + admin acting 可见
+- [ ] 「单点登录」菜单仅自然人 owner + tenant actor 可见
 - [ ] SSO 配置页可读写 yaoguang 配置（secret 脱敏、留空不改）
 - [ ] 可触发通讯录同步
 - [ ] 登录页有 OIDC 登录入口
@@ -3804,9 +3939,9 @@ git commit -m "docs: OIDC 接入完成，更新文档"
 
 ## 全部完成标准
 
-- [ ] 阶段一：配置读写（owner 鉴权）+ 通讯录同步（DB 轮询 dispatcher）
-- [ ] 阶段二：OIDC 登录（PKCE + id_token 校验）+ browser_session + authMiddleware 双通道（cookie 仅 GET）
-- [ ] 阶段三：Web Console SSO 配置页（owner/acting 显隐）+ 登录入口
+- [ ] 阶段一：配置读写（owner/tenant actor 鉴权）+ 通讯录同步（DB 轮询 dispatcher）
+- [ ] 阶段二：OIDC 登录（PKCE + id_token 校验）+ browser_session + authMiddleware 双通道（Web Console cookie + CSRF）
+- [ ] 阶段三：Web Console SSO 配置页（owner/tenant 显隐）+ 登录入口
 - [ ] 全量 `go test ./...` 与 `CGO_ENABLED=0 go test ./...` 与 `CGO_ENABLED=0 go build ./cmd/xuanchu` 通过
 - [ ] README / ROADMAP / web-console.md 已同步
 - [ ] 所有步骤已 commit

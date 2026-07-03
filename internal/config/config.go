@@ -27,6 +27,7 @@ type Config struct {
 	NotificationDispatcher DispatcherConfig
 	HookDispatcher         DispatcherConfig
 	Shutdown               ShutdownConfig
+	SecretKey              string
 }
 
 func (c Config) DatabaseTarget() string {
@@ -204,6 +205,11 @@ func Resolve(opts Options) (Config, error) {
 		return Config{}, err
 	}
 
+	secretKey := ""
+	if tomlValues != nil {
+		secretKey = tomlValues["security.config_secret_key"]
+	}
+
 	return Config{
 		DatabasePath:           dbPath,
 		DatabaseURL:            dbURL,
@@ -218,6 +224,7 @@ func Resolve(opts Options) (Config, error) {
 		NotificationDispatcher: notificationDispatcher,
 		HookDispatcher:         hookDispatcher,
 		Shutdown:               shutdownCfg,
+		SecretKey:              secretKey,
 	}, nil
 }
 

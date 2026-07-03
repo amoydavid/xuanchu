@@ -61,8 +61,8 @@ tenant token 登录不读取 membership role，实际权限是 tenant scope、wo
 
 v0.5.0 起新增 workspace 级 OIDC 单点登录（SSO）入口：
 
-- **配置**：workspace owner 或具备 `workspace:write` 的 tenant actor 在侧边栏「单点登录」页填入 yaoguang IdP 的 issuer 根地址、组织 ID、client id/secret、通讯录访问令牌等信息。`client_secret` 与 `directory_access_token` 在落库前经 AES-256-GCM envelope 加密，密钥从服务端环境变量 `XUANCHU_CONFIG_SECRET_KEY`（base64 编码的 32 字节）读取；缺少密钥时拒绝保存 secret。
-- **通讯录同步**：保存配置后点「立即同步成员」，后台 dispatcher 从 yaoguang `GET /api/orgs/{org_id}/directory/members` 拉取全量成员，建立本地 user、`UserExternalID`（yaoguang sub + feishu/wecom/dingtalk user_id）与 membership。`status=disabled` 的成员其 membership 会被移除（user 保留）。同步任务持久化在 `directory_sync_jobs` 表，重启不丢。
+- **配置**：workspace owner 或具备 `workspace:write` 的 tenant actor 在侧边栏「单点登录」页填入 yaoguang IdP 的 issuer 根地址、组织 ID、client id/secret 等信息。`client_secret` 在落库前经 AES-256-GCM envelope 加密，密钥从 TOML 配置 `[security].config_secret_key`（base64 编码的 32 字节）读取；缺少密钥时拒绝保存 secret。
+- **通讯录同步**：保存配置后点「立即同步成员」，后台 dispatcher 用 OIDC `client_id` + `client_secret` 走 `client_credentials` grant 向 yaoguang token endpoint 自动换取访问 token，再调 `GET /api/orgs/{org_id}/directory/members` 拉取全量成员，建立本地 user、`UserExternalID`（yaoguang sub + feishu/wecom/dingtalk user_id）与 membership。`status=disabled` 的成员其 membership 会被移除（user 保留）。同步任务持久化在 `directory_sync_jobs` 表，重启不丢。
 - **OIDC 登录**：成员在登录页输入 workspace slug 后点「OIDC 单点登录」，跳转 yaoguang 完成 Auth Code Flow + PKCE；回调后 id_token 的 sub 命中本地 `UserExternalID` 即建立 browser session，下发 `xuanchu_session`（HttpOnly）与 `xuanchu_csrf` 两个 cookie，回到 Console。未命中映射则拒绝（不自动开通账号）。
 - **browser session 与 CSRF**：OIDC 登录后的请求用 cookie 鉴权，授权仍由本地 membership role 决定。写操作（POST/PUT/PATCH/DELETE `/api/v1/*`）必须同时携带 `X-Xuanchu-CSRF` 头，与 `xuanchu_csrf` cookie 匹配并通过服务端校验；缺 CSRF 返回 403 `csrf_invalid`。`/mcp`、`/api/v1/admin/*` 不接受 cookie，只接受 Bearer。CLI、Remote Client 和外部自动化继续使用 PAT/Agent/tenant token。
 

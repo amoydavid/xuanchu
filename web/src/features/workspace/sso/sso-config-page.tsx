@@ -44,7 +44,6 @@ export function SsoConfigPage() {
     org_id: "",
     client_id: "",
     client_secret: "",
-    directory_access_token: "",
     sync_interval: "1h",
     external_base_url: "",
     session_ttl: "168h",
@@ -58,7 +57,6 @@ export function SsoConfigPage() {
         org_id: cfg.org_id,
         client_id: cfg.client_id,
         client_secret: "",
-        directory_access_token: "",
         sync_interval: cfg.sync_interval || "1h",
         external_base_url: cfg.external_base_url,
         session_ttl: cfg.session_ttl || "168h",
@@ -136,22 +134,6 @@ export function SsoConfigPage() {
       {/* 通讯录同步 */}
       <section className="space-y-4">
         <h3 className="text-sm font-medium">{t("sso.sectionDirectory")}</h3>
-        <Field
-          label={t("sso.field.directoryAccessToken")}
-          hint={t("sso.hint.directoryAccessToken")}
-          badge={
-            cfg?.directory_access_token_masked
-              ? `${t("sso.secretSet")} ${cfg.directory_access_token_masked}`
-              : t("sso.secretUnset")
-          }
-        >
-          <Input
-            type="password"
-            value={form.directory_access_token}
-            onChange={(e) => update("directory_access_token", e.target.value)}
-            placeholder="••••••••"
-          />
-        </Field>
         <Field label={t("sso.field.syncInterval")} hint={t("sso.hint.syncInterval")}>
           <Select
             value={form.sync_interval}

@@ -96,7 +96,7 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 `xuanchu server` 默认在 `/` 提供嵌入式 Web Console。Console 登录支持 PAT、Agent token 和 `tenant_access_token`；其中 `tenant_access_token` 作为 workspace 系统身份进入。token 只保存在当前浏览器 tab 的 `sessionStorage`，后续请求继续走 `/api/v1/*`，不绕过 token scope、workspace allowlist 或 project allowlist；自然人 PAT / Agent token 仍会校验 workspace membership。
 
-v0.5.0 起，Web Console 还支持 workspace 级 OIDC 单点登录（SSO）。workspace owner 或具备 `workspace:write` 的 tenant actor 在「单点登录」配置页填入 yaoguang IdP 的 issuer / client 信息并触发通讯录同步后，成员可通过登录页的「OIDC 单点登录」入口完成浏览器登录。OIDC 登录使用服务端可撤销的 opaque session cookie（`xuanchu_session`，HttpOnly），写操作必须同时携带 CSRF token（`xuanchu_csrf` cookie + `X-Xuanchu-CSRF` 头）。CLI、Remote Client、MCP 和外部自动化仍只接受 Bearer token，不接受 browser session。SSO secret（`client_secret` / `directory_access_token`）在落库前经 AES-256-GCM envelope 加密，密钥从 `XUANCHU_CONFIG_SECRET_KEY`（base64 编码的 32 字节）读取。
+v0.5.0 起，Web Console 还支持 workspace 级 OIDC 单点登录（SSO）。workspace owner 或具备 `workspace:write` 的 tenant actor 在「单点登录」配置页填入 yaoguang IdP 的 issuer / client 信息并触发通讯录同步后，成员可通过登录页的「OIDC 单点登录」入口完成浏览器登录。OIDC 登录使用服务端可撤销的 opaque session cookie（`xuanchu_session`，HttpOnly），写操作必须同时携带 CSRF token（`xuanchu_csrf` cookie + `X-Xuanchu-CSRF` 头）。CLI、Remote Client、MCP 和外部自动化仍只接受 Bearer token，不接受 browser session。SSO `client_secret` 在落库前经 AES-256-GCM envelope 加密，密钥从 TOML 配置 `[security].config_secret_key`（base64 编码的 32 字节）读取。通讯录同步复用 OIDC `client_id` + `client_secret`，通过 `client_credentials` grant 自动向 IdP 换取访问 token，无需单独配置 directory token。
 
 仓库只跟踪 `internal/webconsole/dist/.gitkeep`，不跟踪前端构建产物。日常前端开发使用 `pnpm --dir web dev` 并代理到 Go HTTP API；发布二进制必须使用 `make build-release`，或先运行 `make web-console-build` 再执行 Go 构建，确保真实 Web Console 静态资源被 embed 进二进制。
 

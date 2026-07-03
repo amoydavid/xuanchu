@@ -126,6 +126,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				Console:              consoleOptions,
 				Shutdown:             shutdown,
 				MCPTrustedProxyHosts: mcpOptions.TrustedProxyHosts,
+				ConfigSecretKey:      cfg.SecretKey,
 			})
 			httpServer := &http.Server{
 				Addr:              listen,
@@ -215,8 +216,10 @@ func newServerCommand(opts Options) *cobra.Command {
 
 			var runtimeWG sync.WaitGroup
 			runtimeWG.Add(5)
+			// 解析 config secret key（TOML [security].config_secret_key）
+			secretKey, _ := app.ParseConfigSecretKey(cfg.SecretKey)
 			// 通讯录同步后台 dispatcher + scheduler
-			directorySyncCfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(store.DB()))
+			directorySyncCfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(store.DB()), secretKey)
 			directorySyncSvc := app.NewDirectorySyncService(store, directory.NewClient(&http.Client{Timeout: 30 * time.Second}))
 			directorySyncRuntime := app.NewDirectorySyncRuntime(store, directorySyncCfgSvc, directorySyncSvc)
 			go func() {

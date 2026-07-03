@@ -43,7 +43,7 @@ func (s *Server) handleWorkspaceSsoConfigGet(w http.ResponseWriter, r *http.Requ
 		writeAppError(w, err)
 		return
 	}
-	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()))
+	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()), s.secretKey)
 	cfg, enabled := cfgSvc.Get(authn.EffectiveWorkspace.ID)
 	if !enabled {
 		writeSuccess(w, http.StatusOK, map[string]any{"enabled": false}, nil)
@@ -61,18 +61,17 @@ func (s *Server) handleWorkspaceSsoConfigSet(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var in struct {
-		Provider             string `json:"provider"`
-		IssuerBaseURL        string `json:"issuer_base_url"`
-		OrgID                string `json:"org_id"`
-		ClientID             string `json:"client_id"`
-		ClientSecret         string `json:"client_secret"`
-		DirectoryAccessToken string `json:"directory_access_token"`
-		Scopes               string `json:"scopes"`
-		RedirectPath         string `json:"redirect_path"`
-		ExternalBaseURL      string `json:"external_base_url"`
-		SessionTTL           string `json:"session_ttl"`
-		SyncInterval         string `json:"sync_interval"`
-		InsecureCookie       bool   `json:"insecure_cookie"`
+		Provider        string `json:"provider"`
+		IssuerBaseURL   string `json:"issuer_base_url"`
+		OrgID           string `json:"org_id"`
+		ClientID        string `json:"client_id"`
+		ClientSecret    string `json:"client_secret"`
+		Scopes          string `json:"scopes"`
+		RedirectPath    string `json:"redirect_path"`
+		ExternalBaseURL string `json:"external_base_url"`
+		SessionTTL      string `json:"session_ttl"`
+		SyncInterval    string `json:"sync_interval"`
+		InsecureCookie  bool   `json:"insecure_cookie"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_body", err.Error(), nil)
@@ -89,23 +88,22 @@ func (s *Server) handleWorkspaceSsoConfigSet(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()))
+	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()), s.secretKey)
 	if err := cfgSvc.Set(authn.EffectiveWorkspace.ID, app.OIDCConfigInput{
-		Provider:             in.Provider,
-		IssuerBaseURL:        in.IssuerBaseURL,
-		OrgID:                in.OrgID,
-		ClientID:             in.ClientID,
-		ClientSecret:         in.ClientSecret,
-		DirectoryAccessToken: in.DirectoryAccessToken,
-		Scopes:               in.Scopes,
-		RedirectPath:         in.RedirectPath,
-		ExternalBaseURL:      in.ExternalBaseURL,
-		SessionTTL:           in.SessionTTL,
-		SyncInterval:         in.SyncInterval,
-		InsecureCookie:       in.InsecureCookie,
+		Provider:        in.Provider,
+		IssuerBaseURL:   in.IssuerBaseURL,
+		OrgID:           in.OrgID,
+		ClientID:        in.ClientID,
+		ClientSecret:    in.ClientSecret,
+		Scopes:          in.Scopes,
+		RedirectPath:    in.RedirectPath,
+		ExternalBaseURL: in.ExternalBaseURL,
+		SessionTTL:      in.SessionTTL,
+		SyncInterval:    in.SyncInterval,
+		InsecureCookie:  in.InsecureCookie,
 	}); err != nil {
 		if errors.Is(err, app.ErrConfigSecretKeyMissing) {
-			writeError(w, http.StatusBadRequest, "config_secret_key_missing", "服务端未配置 XUANCHU_CONFIG_SECRET_KEY，无法保存 secret", nil)
+			writeError(w, http.StatusBadRequest, "config_secret_key_missing", "服务端未配置 [security].config_secret_key，无法保存 secret", nil)
 			return
 		}
 		if errors.Is(err, app.ErrConfigSecretKeyInvalid) {
@@ -161,17 +159,16 @@ func (s *Server) handleWorkspaceSsoSyncJob(w http.ResponseWriter, r *http.Reques
 // ssoConfigJSON 把 OIDCConfig 转成 snake_case JSON 视图（前端消费）。
 func ssoConfigJSON(cfg app.OIDCConfig) map[string]any {
 	return map[string]any{
-		"provider":                      cfg.Provider,
-		"issuer_base_url":               cfg.IssuerBaseURL,
-		"org_id":                        cfg.OrgID,
-		"client_id":                     cfg.ClientID,
-		"client_secret_masked":          cfg.ClientSecretMasked,
-		"directory_access_token_masked": cfg.DirectoryAccessTokenMasked,
-		"scopes":                        cfg.Scopes,
-		"redirect_path":                 cfg.RedirectPath,
-		"external_base_url":             cfg.ExternalBaseURL,
-		"session_ttl":                   cfg.SessionTTL,
-		"sync_interval":                 cfg.SyncInterval,
-		"insecure_cookie":               cfg.InsecureCookie,
+		"provider":             cfg.Provider,
+		"issuer_base_url":      cfg.IssuerBaseURL,
+		"org_id":               cfg.OrgID,
+		"client_id":            cfg.ClientID,
+		"client_secret_masked": cfg.ClientSecretMasked,
+		"scopes":               cfg.Scopes,
+		"redirect_path":        cfg.RedirectPath,
+		"external_base_url":    cfg.ExternalBaseURL,
+		"session_ttl":          cfg.SessionTTL,
+		"sync_interval":        cfg.SyncInterval,
+		"insecure_cookie":      cfg.InsecureCookie,
 	}
 }

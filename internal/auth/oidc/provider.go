@@ -10,7 +10,28 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
+
+// TokenEndpointURL 返回 OIDC discovery 拿到的 token endpoint URL（即 {base}/oidc/orgs/{org}/token）。
+func (p *Provider) TokenEndpointURL() string {
+	return p.oauthConfig.Endpoint.TokenURL
+}
+
+// ClientCredentialsToken 用 client_credentials grant 换取 access token（用于访问 yaoguang 通讯录 API）。
+func (p *Provider) ClientCredentialsToken(ctx context.Context, scopes ...string) (string, error) {
+	cfg := clientcredentials.Config{
+		ClientID:     p.oauthConfig.ClientID,
+		ClientSecret: p.oauthConfig.ClientSecret,
+		TokenURL:     p.oauthConfig.Endpoint.TokenURL,
+		Scopes:       scopes,
+	}
+	token, err := cfg.Token(ctx)
+	if err != nil {
+		return "", fmt.Errorf("client_credentials token: %w", err)
+	}
+	return token.AccessToken, nil
+}
 
 // Token 是校验通过后的 id_token 关键字段。
 type Token struct {

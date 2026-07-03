@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	xuanchuOIDC "git.dajee.net/dajee/xuanchu/internal/auth/oidc"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -112,7 +113,15 @@ func (r *DirectorySyncRuntime) runOneJob(now int64) {
 		_ = r.jobRepo.MarkFailed(job.ID, now, err.Error())
 		return
 	}
-	stats, err := r.sync.SyncOnce(context.Background(), job.WorkspaceID, cfg.IssuerBaseURL, cfg.OrgID, secrets.DirectoryAccessToken)
+	// 用 client_credentials grant 向 IdP 换取 directory 访问 token
+	// （复用 OIDC client_id + client_secret，无需单独配置 directory_access_token）
+	directoryToken, err := r.fetchDirectoryToken(job.WorkspaceID, cfg, secrets.ClientSecret)
+	if err != nil {
+		_ = r.jobRepo.MarkFailed(job.ID, now, "fetch directory token: "+err.Error())
+		log.Printf("directory token fetch failed for workspace %s: %v", job.WorkspaceID, err)
+		return
+	}
+	stats, err := r.sync.SyncOnce(context.Background(), job.WorkspaceID, cfg.IssuerBaseURL, cfg.OrgID, directoryToken)
 	if err != nil {
 		_ = r.jobRepo.MarkFailed(job.ID, time.Now().Unix(), err.Error())
 		log.Printf("directory sync failed for workspace %s: %v", job.WorkspaceID, err)
@@ -120,4 +129,14 @@ func (r *DirectorySyncRuntime) runOneJob(now int64) {
 	}
 	statsJSON, _ := json.Marshal(map[string]int{"added": stats.Added, "removed": stats.Removed, "updated": stats.Updated})
 	_ = r.jobRepo.MarkSucceeded(job.ID, time.Now().Unix(), string(statsJSON))
+}
+
+// fetchDirectoryToken 用 OIDC client_id + client_secret 走 client_credentials grant 换 access token。
+func (r *DirectorySyncRuntime) fetchDirectoryToken(workspaceID string, cfg OIDCConfig, clientSecret string) (string, error) {
+	ctx := context.Background()
+	p, err := xuanchuOIDC.NewProviderSafe(ctx, cfg.IssuerBaseURL, cfg.ClientID, clientSecret)
+	if err != nil {
+		return "", err
+	}
+	return p.ClientCredentialsToken(ctx, "org.members.read")
 }

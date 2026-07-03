@@ -8,13 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"strings"
 )
-
-// configSecretKeyEnv 是读取 config secret envelope 密钥的环境变量。
-// 密钥格式固定为 32 字节随机值的 base64（标准编码）。
-const configSecretKeyEnv = "XUANCHU_CONFIG_SECRET_KEY"
 
 const configSecretEnvelopePrefix = "enc:v1:"
 
@@ -25,9 +19,9 @@ var (
 	ErrConfigSecretKeyInvalid = errors.New("config_secret_key_invalid")
 )
 
-// loadConfigSecretKey 从 XUANCHU_CONFIG_SECRET_KEY 读取并解码 32 字节 AES 密钥。
-func loadConfigSecretKey() ([]byte, error) {
-	raw := os.Getenv(configSecretKeyEnv)
+// ParseConfigSecretKey 把 TOML 里 base64 编码的 secret key 解析成 32 字节 AES 密钥。
+// 空字符串返回 ErrConfigSecretKeyMissing；非 32 字节返回 ErrConfigSecretKeyInvalid。
+func ParseConfigSecretKey(raw string) ([]byte, error) {
 	if raw == "" {
 		return nil, ErrConfigSecretKeyMissing
 	}
@@ -42,10 +36,9 @@ func loadConfigSecretKey() ([]byte, error) {
 }
 
 // EncryptConfigSecret 用 AES-256-GCM 加密明文，返回 enc:v1:<base64(nonce+ciphertext)> 形式的 envelope。
-func EncryptConfigSecret(plain string) (string, error) {
-	key, err := loadConfigSecretKey()
-	if err != nil {
-		return "", err
+func EncryptConfigSecret(key []byte, plain string) (string, error) {
+	if len(key) != 32 {
+		return "", ErrConfigSecretKeyMissing
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -65,18 +58,17 @@ func EncryptConfigSecret(plain string) (string, error) {
 }
 
 // DecryptConfigSecret 还原 EncryptConfigSecret 的 envelope；非 envelope 值返回错误。
-func DecryptConfigSecret(envelope string) (string, error) {
-	if !strings.HasPrefix(envelope, configSecretEnvelopePrefix) {
+func DecryptConfigSecret(key []byte, envelope string) (string, error) {
+	if len(envelope) < len(configSecretEnvelopePrefix) || envelope[:len(configSecretEnvelopePrefix)] != configSecretEnvelopePrefix {
 		return "", errors.New("not an encrypted envelope")
 	}
-	raw := strings.TrimPrefix(envelope, configSecretEnvelopePrefix)
+	raw := envelope[len(configSecretEnvelopePrefix):]
 	combined, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
 		return "", fmt.Errorf("envelope base64 decode: %w", err)
 	}
-	key, err := loadConfigSecretKey()
-	if err != nil {
-		return "", err
+	if len(key) != 32 {
+		return "", ErrConfigSecretKeyMissing
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {

@@ -17,7 +17,6 @@ export interface SsoConfig {
   org_id: string
   client_id: string
   client_secret_masked: string
-  directory_access_token_masked: string
   scopes: string
   redirect_path: string
   external_base_url: string
@@ -31,7 +30,6 @@ export interface SsoConfigInput {
   org_id: string
   client_id: string
   client_secret: string
-  directory_access_token: string
   sync_interval: string
   external_base_url: string
   session_ttl: string

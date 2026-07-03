@@ -31,6 +31,7 @@ type Options struct {
 	TestConsoleHandler   http.Handler
 	Shutdown             *runtimeutil.ShutdownCoordinator
 	MCPTrustedProxyHosts []string
+	ConfigSecretKey      string
 }
 
 type AdminSetupOptions struct {
@@ -53,6 +54,7 @@ type Server struct {
 	mcpTrustedProxyHosts []string
 	router               *http.ServeMux
 	oidcAuth             *app.OIDCAuthService // 懒加载，见 oidcAuthService()
+	secretKey            []byte               // config secret envelope 密钥，从 TOML [security] 注入
 }
 
 func NewServer(opts Options) *Server {
@@ -75,6 +77,7 @@ func NewServer(opts Options) *Server {
 		testConsoleHandler:   opts.TestConsoleHandler,
 		shutdown:             opts.Shutdown,
 		mcpTrustedProxyHosts: normalizeMCPTrustedProxyHosts(opts.MCPTrustedProxyHosts),
+		secretKey:            parseSecretKeyOrEmpty(opts.ConfigSecretKey),
 	}
 	srv.router = srv.newRouter()
 	return srv
@@ -82,6 +85,15 @@ func NewServer(opts Options) *Server {
 
 func (s *Server) Router() http.Handler {
 	return s.router
+}
+
+// parseSecretKeyOrEmpty 把 TOML 里的 base64 secret key 解析成 32 字节；空或无效时返回 nil（加密请求会报错）。
+func parseSecretKeyOrEmpty(raw string) []byte {
+	key, err := app.ParseConfigSecretKey(raw)
+	if err != nil {
+		return nil
+	}
+	return key
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
