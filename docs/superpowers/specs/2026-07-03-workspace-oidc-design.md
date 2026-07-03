@@ -225,7 +225,9 @@ OIDC 配置是 **workspace 级管理功能**，出现在用户登录 workspace �
 - **编辑已有配置**：`GET` 返回脱敏值（secret 露前后 2 位，如 `••••78ab`）。secret 字段渲染为 password 输入框，**留空保存表示不修改原值**；填了新值则覆盖。
 - **保存**：本地校验必填项（issuer_base_url / org_id / client_id / client_secret / directory_access_token）→ `PUT` 提交 → 成功后 toast 提示 + invalidate query。
 - **立即同步成员**：`POST /api/v1/workspaces/{id}/sso/sync` → 成功后轮询最近 job 状态，展示 `+N -M ~K` 结果。
-- **权限**：仅 workspace owner/admin 可见此页与可写；member/viewer 进入时显示「无权限」（前端隐藏 nav + 后端 403 兜底）。
+- **权限**：SSO 配置菜单与页面仅对两类身份可见/可写：**(1) workspace owner**（`effective_role === "owner"`）；**(2) server admin acting 模式**（持 tenant access token 创建 acting session，`getAdminActingContext() !== null`）。member/admin/viewer 及普通 token 不可见。
+  - 前端 nav 显隐（无现成先例，需新增 filter）：`navItems` 改为带 `requireSsoVisible?: boolean` 标记的结构，渲染时按 `showSso = (me.data?.effective_role === "owner") || (getAdminActingContext() !== null)` 过滤。直接访问 `/sso` 路径时若无权限则隐藏内容并提示「无权限」。
+  - 后端权限校验（照 `PermissionWorkspaceArchive` owner-only 范式）：新增 `PermissionSsoConfigRead` / `PermissionSsoConfigWrite`，在 `internal/authz/policy.go` 里仅对 `RoleOwner` 放行（admin/member/viewer 拒绝）；handler 调 `s.Require(...)`。tenant actor 路径在 `tenantCapabilityForPermission`（`internal/app/permission.go:53-90`）补对应 capability 映射。普通 PAT/agent token（非 owner）一律 403。
 
 #### 4.4.4 字段与配置 key 对照
 
