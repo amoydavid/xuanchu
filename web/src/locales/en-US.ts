@@ -445,6 +445,8 @@ export const enUS = {
       schemaTitle: "Import JSON Schema",
       schemaDescription:
         "The full field contract is below. Each field description is the import authoring note.",
+      copySchema: "Copy JSON Schema",
+      schemaCopied: "Copied",
       fileLabel: "Upload file",
       fileHint:
         "Supports JSON arrays, JSON objects with a tasks array, and XLSX template files. id is only an import-local reference and only needs to be a unique string within the batch; description is treated as Markdown by default.",

@@ -439,6 +439,8 @@ export const zhCN = {
       schemaTitle: "导入 JSON Schema",
       schemaDescription:
         "完整字段约束如下；每个字段的 description 即导入填写说明。",
+      copySchema: "复制 JSON Schema",
+      schemaCopied: "已复制",
       fileLabel: "上传文件",
       fileHint:
         "支持 JSON 数组、包含 tasks 数组的 JSON 对象，以及 XLSX 模板文件。id 仅用于导入文件内引用，只需是批次内不重复的字符串；description 默认按 Markdown 编写。",

@@ -44,7 +44,7 @@ export const TASK_IMPORT_JSON_SCHEMA = {
         uuid: {
           type: "string",
           description:
-            "兼容 Taskwarrior JSON 的任务 UUID 字段；普通导入建议使用 id/import_id 做临时引用，由导入流程生成最终任务标识。",
+            "uuid 是最终任务标识的候选值。未填写时由浏览器预检生成新 UUID；若填写，会作为导入后任务的 uuid 并可被本批次其他任务的 blocked_by 引用。普通导入建议使用 id/import_id 做临时引用。",
         },
         title: {
           type: "string",
@@ -164,7 +164,8 @@ export const TASK_IMPORT_JSON_SCHEMA = {
         },
         recur: {
           type: ["string", "null"],
-          description: "循环规则字符串，兼容 Taskwarrior 风格值。",
+          description:
+            "重复规则字符串；当前导入流程仅原样保存，不在浏览器端解析或展开循环任务。普通一次性任务请留空。",
         },
         parent: {
           type: ["string", "null"],

@@ -14,6 +14,7 @@ import {
   listWorkspaceUsers,
 } from "../api/users-api"
 import { TaskImportDialog } from "./task-import-dialog"
+import { TASK_IMPORT_JSON_SCHEMA_TEXT } from "./task-import-schema"
 
 vi.mock("../api/task-api", async () => {
   const actual = await vi.importActual<typeof import("../api/task-api")>(
@@ -72,6 +73,10 @@ function renderDialog(onOpenChange = vi.fn()) {
 describe("TaskImportDialog", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     await i18n.changeLanguage("zh-CN")
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
@@ -277,6 +282,22 @@ describe("TaskImportDialog", () => {
     expect(screen.getByText(/"blocked_by"/)).toBeTruthy()
     expect(screen.getAllByText(/Markdown/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/批次内不重复的字符串/).length).toBeGreaterThan(0)
+  })
+
+  it("copies the complete JSON schema from the secondary dialog", async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    })
+    renderDialog()
+
+    await user.click(screen.getByRole("button", { name: "查看 JSON Schema" }))
+    await user.click(screen.getByRole("button", { name: "复制 JSON Schema" }))
+
+    expect(writeText).toHaveBeenCalledWith(TASK_IMPORT_JSON_SCHEMA_TEXT)
+    await screen.findByRole("button", { name: "已复制" })
   })
 
   it("shows a paginated normalized task preview after upload", async () => {

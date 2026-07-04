@@ -5,6 +5,8 @@ import {
   BracesIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CheckIcon,
+  CopyIcon,
   FileJsonIcon,
   FileSpreadsheetIcon,
   UploadIcon,
@@ -98,6 +100,7 @@ export function TaskImportDialog({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [assigneeRepairError, setAssigneeRepairError] = useState<string | null>(null)
   const [schemaOpen, setSchemaOpen] = useState(false)
+  const [schemaCopied, setSchemaCopied] = useState(false)
 
   const preflight = useMemo(() => {
     if (!payload || !members.data) {
@@ -235,6 +238,22 @@ export function TaskImportDialog({
     }
   }
 
+  async function handleCopySchema() {
+    try {
+      await navigator.clipboard?.writeText(TASK_IMPORT_JSON_SCHEMA_TEXT)
+      setSchemaCopied(true)
+    } catch {
+      // 剪贴板不可用时保持弹窗内容可手动选中复制。
+    }
+  }
+
+  function handleSchemaOpenChange(nextOpen: boolean) {
+    setSchemaOpen(nextOpen)
+    if (!nextOpen) {
+      setSchemaCopied(false)
+    }
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -261,7 +280,10 @@ export function TaskImportDialog({
             </div>
             <div className="flex flex-wrap gap-2 md:justify-end">
               <Button
-                onClick={() => setSchemaOpen(true)}
+                onClick={() => {
+                  setSchemaCopied(false)
+                  setSchemaOpen(true)
+                }}
                 size="sm"
                 type="button"
                 variant="outline"
@@ -395,7 +417,7 @@ export function TaskImportDialog({
       </DialogContent>
       </Dialog>
 
-      <Dialog open={schemaOpen} onOpenChange={setSchemaOpen}>
+      <Dialog open={schemaOpen} onOpenChange={handleSchemaOpenChange}>
         <DialogContent className="grid max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{t("projectWorkbench.import.schemaTitle")}</DialogTitle>
@@ -410,7 +432,20 @@ export function TaskImportDialog({
           </div>
           <DialogFooter>
             <Button
-              onClick={() => setSchemaOpen(false)}
+              className="sm:mr-auto"
+              onClick={() => {
+                void handleCopySchema()
+              }}
+              type="button"
+              variant="outline"
+            >
+              {schemaCopied ? <CheckIcon /> : <CopyIcon />}
+              {schemaCopied
+                ? t("projectWorkbench.import.schemaCopied")
+                : t("projectWorkbench.import.copySchema")}
+            </Button>
+            <Button
+              onClick={() => handleSchemaOpenChange(false)}
               type="button"
               variant="outline"
             >
