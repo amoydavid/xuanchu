@@ -6,9 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -108,23 +111,51 @@ func (p *Provider) AuthCodeURL(state, pkceVerifier, redirectURI string) string {
 }
 
 // Exchange 用 authorization code 换 id_token 并校验签名/iss/aud/exp。
+// 不使用 oauth2.Config.Exchange（它强制要求响应含 access_token），
+// 而是手动 POST token endpoint 拿原始 JSON，直接取 id_token。
+// 这兼容 OIDC authorization_code flow 只返回 id_token（无 access_token）的 IdP。
 func (p *Provider) Exchange(ctx context.Context, code, pkceVerifier, redirectURI string) (*Token, error) {
-	p.oauthConfig.RedirectURL = redirectURI
-	token, err := p.oauthConfig.Exchange(contextWithNoProxyClient(ctx), code,
-		oauth2.SetAuthURLParam("code_verifier", pkceVerifier),
-	)
+	ctx = contextWithNoProxyClient(ctx)
+	form := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
+		"redirect_uri":  {redirectURI},
+		"code_verifier": {pkceVerifier},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		p.oauthConfig.Endpoint.TokenURL,
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("oauth exchange: create request: %w", err)
+	}
+	req.SetBasicAuth(p.oauthConfig.ClientID, p.oauthConfig.ClientSecret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := NoProxyHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("oauth exchange: %w", err)
 	}
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
-		return nil, fmt.Errorf("id_token missing in token response")
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oauth exchange: token endpoint status %d: %s", resp.StatusCode, string(body))
 	}
-	idToken, err := p.verifier.Verify(contextWithNoProxyClient(ctx), rawIDToken)
+
+	var tokenResp struct {
+		IDToken string `json:"id_token"`
+	}
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return nil, fmt.Errorf("oauth exchange: decode response: %w", err)
+	}
+	if tokenResp.IDToken == "" {
+		return nil, fmt.Errorf("id_token missing in token response: %s", string(body))
+	}
+	idToken, err := p.verifier.Verify(ctx, tokenResp.IDToken)
 	if err != nil {
 		return nil, fmt.Errorf("id_token verify: %w", err)
 	}
-	return &Token{Subject: idToken.Subject, Raw: rawIDToken}, nil
+	return &Token{Subject: idToken.Subject, Raw: tokenResp.IDToken}, nil
 }
 
 // pkceChallengeS256 按 RFC 7636 计算 S256 challenge：BASE64URL(SHA256(verifier))。
