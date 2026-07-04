@@ -245,7 +245,8 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		return
 	}
 	memberRepo := storage.NewMemberRepository(s.store.DB())
-	if _, err := memberRepo.Get(user.ID, workspace.ID); err != nil {
+	membership, err := memberRepo.Get(user.ID, workspace.ID)
+	if err != nil {
 		writeError(w, http.StatusForbidden, "membership_inactive", "您不是该工作区的成员", nil)
 		return
 	}
@@ -269,7 +270,7 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		state.workspaceID = workspace.ID
 		state.workspaceRef = workspace.Slug
 	}
-	visible := []storage.WorkspaceWithRole{{Workspace: workspace}}
+	visible := []storage.WorkspaceWithRole{{Workspace: workspace, Role: membership.Role}}
 	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authContextKey, requestAuth{
 		Authn:              authn,
 		VisibleWorkspaces:  visible,
@@ -296,7 +297,7 @@ func isApiWriteMethod(method string) bool {
 //   - impersonate：防止 SSO 用户冒充他人
 //   - token:write：防止 SSO 用户创建长期机器凭证（PAT），绕过 SSO
 //   - sso.config.*（workspace:write）：SSO 配置仅 owner/tenant actor 可改
-//   - member:write / user:write：成员管理走更严格的 owner 流程
+//   - user:write：成员页创建用户走 member:write 下的受限聚合流程，不开放全局 user 写权限
 func browserSessionScopes() []string {
 	return []string{
 		auth.ScopeTaskRead, auth.ScopeTaskWrite,
@@ -306,7 +307,7 @@ func browserSessionScopes() []string {
 		auth.ScopeWorkspaceRead,
 		auth.ScopeAuditRead,
 		auth.ScopeUserRead,
-		auth.ScopeMemberRead,
+		auth.ScopeMemberRead, auth.ScopeMemberWrite,
 		auth.ScopeTokenRead,
 		auth.ScopeHookRead, auth.ScopeHookWrite,
 		auth.ScopeNotificationRead, auth.ScopeNotificationWrite,

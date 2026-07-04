@@ -19,8 +19,14 @@ type workspaceRequest struct {
 }
 
 type memberRequest struct {
-	User string `json:"user"`
-	Role string `json:"role"`
+	User    string `json:"user"`
+	NewUser *struct {
+		Name        string  `json:"name"`
+		DisplayName *string `json:"display_name,omitempty"`
+		Email       *string `json:"email,omitempty"`
+	} `json:"new_user,omitempty"`
+	Role        string  `json:"role"`
+	DisplayName *string `json:"display_name,omitempty"`
 }
 
 type workspaceResponse struct {
@@ -174,7 +180,17 @@ func (s *Server) handleMemberAdd(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	if err := scoped.AddMember(app.AddMemberInput{WorkspaceRef: workspace, UserRef: req.User, Role: app.Role(req.Role)}); err != nil {
+	input := app.AddMemberInput{WorkspaceRef: workspace, UserRef: req.User, Role: app.Role(req.Role)}
+	if req.NewUser != nil {
+		input.NewUser = &app.AddMemberUserInput{Name: req.NewUser.Name}
+		if req.NewUser.DisplayName != nil {
+			input.NewUser.DisplayName = *req.NewUser.DisplayName
+		}
+		if req.NewUser.Email != nil {
+			input.NewUser.Email = *req.NewUser.Email
+		}
+	}
+	if err := scoped.AddMember(input); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -194,7 +210,33 @@ func (s *Server) handleMemberRole(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	if err := scoped.ChangeMemberRole(app.ChangeMemberRoleInput{WorkspaceRef: workspace, UserRef: user, Role: app.Role(req.Role)}); err != nil {
+	var role *app.Role
+	if req.Role != "" {
+		parsed := app.Role(req.Role)
+		role = &parsed
+	}
+	member, err := scoped.ModifyMember(app.ModifyMemberInput{
+		WorkspaceRef: workspace,
+		UserRef:      user,
+		Role:         role,
+		DisplayName:  req.DisplayName,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, memberResponseFromView(member), nil)
+}
+
+func (s *Server) handleMemberDelete(w http.ResponseWriter, r *http.Request) {
+	workspace := chi.URLParam(r, "workspace")
+	user := chi.URLParam(r, "user")
+	scoped, _, err := s.scopedServiceWithWorkspace(r, auth.ScopeMemberWrite, app.PermissionMemberManage, workspace, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := scoped.RemoveMember(workspace, user); err != nil {
 		writeAppError(w, err)
 		return
 	}

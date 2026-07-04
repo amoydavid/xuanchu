@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
@@ -24,7 +26,8 @@ func seedBrowserSession(t *testing.T, store *storage.Store, userID, workspaceID 
 }
 
 func TestCookieGetAllowed(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t); srv := fixture.server
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
 	store := srv.store
 	ws, err := store.LocalWorkspace()
 	if err != nil {
@@ -46,7 +49,8 @@ func TestCookieGetAllowed(t *testing.T) {
 }
 
 func TestCookieWriteWithoutCSRFForbidden(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t); srv := fixture.server
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
 	store := srv.store
 	ws, _ := store.LocalWorkspace()
 	user, _ := storage.NewUserRepository(store.DB()).GetByName("local")
@@ -62,7 +66,8 @@ func TestCookieWriteWithoutCSRFForbidden(t *testing.T) {
 }
 
 func TestCookieWriteWithCSRFAllowed(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t); srv := fixture.server
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
 	store := srv.store
 	ws, _ := store.LocalWorkspace()
 	user, _ := storage.NewUserRepository(store.DB()).GetByName("local")
@@ -81,7 +86,8 @@ func TestCookieWriteWithCSRFAllowed(t *testing.T) {
 }
 
 func TestNoCredentialUnauthorized(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t); srv := fixture.server
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil)
 	srv.Router().ServeHTTP(rr, req)
@@ -90,8 +96,48 @@ func TestNoCredentialUnauthorized(t *testing.T) {
 	}
 }
 
+// TestCookieCredentialsCurrentRole 验证 browser session（cookie 认证）访问
+// /api/v1/credentials/current 时返回的 effective_role 来自 membership 而非空字符串。
+// 回归：handleCookieAuth 构造 VisibleWorkspaces 时漏填 Role，导致前端把整页锁成只读。
+func TestCookieCredentialsCurrentRole(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
+	store := srv.store
+	ws, _ := store.LocalWorkspace()
+	user, _ := storage.NewUserRepository(store.DB()).GetByName("local")
+	rawSession, _ := seedBrowserSession(t, store, user.ID, ws.ID)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/credentials/current", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: rawSession})
+	srv.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			EffectiveRole string   `json:"effective_role"`
+			Capabilities  []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.EffectiveRole != "owner" {
+		t.Fatalf("cookie session effective_role = %q, want owner (前端会因此把 task 编辑全部禁用)", payload.Data.EffectiveRole)
+	}
+	if !slices.Contains(payload.Data.Capabilities, "member:write") {
+		t.Fatalf("cookie session capabilities = %v, want member:write", payload.Data.Capabilities)
+	}
+	if slices.Contains(payload.Data.Capabilities, "token:write") || slices.Contains(payload.Data.Capabilities, "impersonate") {
+		t.Fatalf("cookie session capabilities over-expanded: %v", payload.Data.Capabilities)
+	}
+}
+
 func TestBearerStillWorks(t *testing.T) {
-	fixture := newHTTPServerWithTokenFixture(t); srv := fixture.server; token := fixture.token
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
+	token := fixture.token
 	rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/tasks", map[string]string{"Authorization": "Bearer " + token})
 	if rr.Code == http.StatusUnauthorized {
 		t.Fatalf("bearer should work, got %d", rr.Code)

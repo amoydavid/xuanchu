@@ -208,6 +208,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/workspaces/{workspace}/members", Tag: "Members", Summary: "List workspace members.", Handler: s.handleMemberList},
 		{Method: http.MethodPost, Path: "/api/v1/workspaces/{workspace}/members", Tag: "Members", Summary: "Add a workspace member.", Handler: s.handleMemberAdd, Status: http.StatusCreated},
 		{Method: http.MethodPatch, Path: "/api/v1/workspaces/{workspace}/members/{user}", Tag: "Members", Summary: "Change a workspace member role.", Handler: s.handleMemberRole},
+		{Method: http.MethodDelete, Path: "/api/v1/workspaces/{workspace}/members/{user}", Tag: "Members", Summary: "Remove a workspace member.", Handler: s.handleMemberDelete},
 		{Method: http.MethodGet, Path: "/api/v1/workspaces/{workspace}/sso/config", Tag: "SSO", Summary: "读取 workspace SSO 配置（脱敏）", Handler: s.handleWorkspaceSsoConfigGet},
 		{Method: http.MethodPut, Path: "/api/v1/workspaces/{workspace}/sso/config", Tag: "SSO", Summary: "写入 workspace SSO 配置", Handler: s.handleWorkspaceSsoConfigSet},
 		{Method: http.MethodPost, Path: "/api/v1/workspaces/{workspace}/sso/sync", Tag: "SSO", Summary: "触发通讯录同步", Handler: s.handleWorkspaceSsoSync},

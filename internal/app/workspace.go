@@ -77,13 +77,27 @@ type MemberView struct {
 type AddMemberInput struct {
 	WorkspaceRef string
 	UserRef      string
+	NewUser      *AddMemberUserInput
 	Role         Role
+}
+
+type AddMemberUserInput struct {
+	Name        string
+	DisplayName string
+	Email       string
 }
 
 type ChangeMemberRoleInput struct {
 	WorkspaceRef string
 	UserRef      string
 	Role         Role
+}
+
+type ModifyMemberInput struct {
+	WorkspaceRef string
+	UserRef      string
+	Role         *Role
+	DisplayName  *string
 }
 
 func (s *Service) ListUsers() ([]UserView, error) {
@@ -614,11 +628,31 @@ func (s *Service) AddMember(input AddMemberInput) error {
 	if err := requireMemberManagement(role, targetRole, ""); err != nil {
 		return err
 	}
-	user, err := s.resolveUser(input.UserRef)
-	if err != nil {
-		return err
+	if strings.TrimSpace(input.UserRef) != "" && input.NewUser != nil {
+		return fmt.Errorf("user and new_user are mutually exclusive")
+	}
+	if strings.TrimSpace(input.UserRef) == "" && input.NewUser == nil {
+		return fmt.Errorf("user reference is required")
+	}
+	var targetUser storage.User
+	if input.NewUser == nil {
+		targetUser, err = s.resolveUser(input.UserRef)
+		if err != nil {
+			return err
+		}
 	}
 	return s.withAudit("member.add", func(tx *Service) (AuditEntry, error) {
+		user := targetUser
+		if input.NewUser != nil {
+			name := strings.TrimSpace(input.NewUser.Name)
+			if name == "" {
+				return AuditEntry{}, fmt.Errorf("user name is required")
+			}
+			user, err = tx.addUserOnlyLocked(name, strings.TrimSpace(input.NewUser.DisplayName), strings.TrimSpace(input.NewUser.Email))
+			if err != nil {
+				return AuditEntry{}, err
+			}
+		}
 		if err := tx.addMemberLocked(workspace.ID, user.ID, targetRole); err != nil {
 			return AuditEntry{}, err
 		}
@@ -647,6 +681,10 @@ func (s *Service) addMemberLocked(workspaceID, userID string, role Role) error {
 }
 
 func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error {
+	return s.changeMemberRole(input)
+}
+
+func (s *Service) changeMemberRole(input ChangeMemberRoleInput) error {
 	workspace, role, err := s.resolveWorkspaceForActor(input.WorkspaceRef)
 	if err != nil {
 		return err
@@ -675,7 +713,7 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error {
 			return err
 		}
 		if count <= 1 {
-			return fmt.Errorf("cannot downgrade last owner")
+			return PermissionError{Code: authz.CodePermissionDenied, Message: "cannot downgrade last owner"}
 		}
 	}
 	return s.withAudit("member.role", func(tx *Service) (AuditEntry, error) {
@@ -688,6 +726,175 @@ func (s *Service) ChangeMemberRole(input ChangeMemberRoleInput) error {
 			TargetID:    user.ID,
 		}, nil
 	})
+}
+
+func (s *Service) ModifyMember(input ModifyMemberInput) (MemberView, error) {
+	workspace, actorRole, err := s.resolveWorkspaceForActor(input.WorkspaceRef)
+	if err != nil {
+		return MemberView{}, err
+	}
+	if workspace.ArchivedAt != nil {
+		return MemberView{}, RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+	}
+	user, err := s.resolveUser(input.UserRef)
+	if err != nil {
+		return MemberView{}, err
+	}
+	member, err := s.memberRepo.Get(user.ID, workspace.ID)
+	if err != nil {
+		return MemberView{}, err
+	}
+	currentRole := Role(member.Role)
+	targetRole := currentRole
+	if input.Role != nil {
+		targetRole, err = normalizeRole(*input.Role, Role(""))
+		if err != nil {
+			return MemberView{}, err
+		}
+	}
+	if input.Role == nil && input.DisplayName == nil {
+		return s.memberView(workspace.ID, user.ID)
+	}
+	if err := requireMemberManagement(actorRole, targetRole, currentRole); err != nil {
+		return MemberView{}, err
+	}
+	if currentRole == RoleOwner && targetRole != RoleOwner {
+		count, err := s.memberRepo.CountOwners(workspace.ID)
+		if err != nil {
+			return MemberView{}, err
+		}
+		if count <= 1 {
+			return MemberView{}, PermissionError{Code: authz.CodePermissionDenied, Message: "cannot downgrade last owner"}
+		}
+	}
+	action := "member.profile.modify"
+	if input.Role != nil {
+		action = "member.role"
+	}
+	err = s.withAudit(action, func(tx *Service) (AuditEntry, error) {
+		payload := map[string]any{}
+		if input.Role != nil && targetRole != currentRole {
+			if err := tx.changeMemberRoleLocked(workspace.ID, user.ID, targetRole); err != nil {
+				return AuditEntry{}, err
+			}
+			payload["role"] = string(targetRole)
+		}
+		if input.DisplayName != nil {
+			displayName := strings.TrimSpace(*input.DisplayName)
+			if err := tx.userRepo.UpdateDisplayName(user.ID, displayName, tx.clock.Unix()); err != nil {
+				return AuditEntry{}, err
+			}
+			payload["display_name"] = displayName
+		}
+		return AuditEntry{
+			WorkspaceID: &workspace.ID,
+			TargetType:  "member",
+			TargetID:    user.ID,
+			Payload:     payload,
+		}, nil
+	})
+	if err != nil {
+		return MemberView{}, err
+	}
+	return s.memberView(workspace.ID, user.ID)
+}
+
+func (s *Service) memberView(workspaceID, userID string) (MemberView, error) {
+	member, err := s.memberRepo.Get(userID, workspaceID)
+	if err != nil {
+		return MemberView{}, err
+	}
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return MemberView{}, err
+	}
+	return MemberView{
+		UserID:      user.ID,
+		Name:        user.Name,
+		DisplayName: user.DisplayName,
+		Email:       user.Email,
+		Role:        Role(member.Role),
+		JoinedAt:    member.JoinedAt,
+		ModifiedAt:  member.ModifiedAt,
+	}, nil
+}
+
+func (s *Service) RemoveMember(workspaceRef, userRef string) error {
+	workspace, actorRole, err := s.resolveWorkspaceForActor(workspaceRef)
+	if err != nil {
+		return err
+	}
+	if workspace.ArchivedAt != nil {
+		return RuntimeError{Code: authz.CodeWorkspaceArchived, Message: fmt.Sprintf("workspace %q is archived", workspace.Slug)}
+	}
+	user, err := s.resolveUser(userRef)
+	if err != nil {
+		return err
+	}
+	member, err := s.memberRepo.Get(user.ID, workspace.ID)
+	if err != nil {
+		return err
+	}
+	currentRole := Role(member.Role)
+	if err := requireMemberManagement(actorRole, currentRole, currentRole); err != nil {
+		return err
+	}
+	if currentRole == RoleOwner {
+		count, err := s.memberRepo.CountOwners(workspace.ID)
+		if err != nil {
+			return err
+		}
+		if count <= 1 {
+			return PermissionError{Code: authz.CodePermissionDenied, Message: "cannot remove last owner"}
+		}
+	}
+	return s.withAudit("member.remove", func(tx *Service) (AuditEntry, error) {
+		if err := tx.reassignRemovedMemberWorkspaceLocked(user.ID, workspace.ID); err != nil {
+			return AuditEntry{}, err
+		}
+		if err := tx.memberRepo.Delete(user.ID, workspace.ID); err != nil {
+			return AuditEntry{}, err
+		}
+		return AuditEntry{
+			WorkspaceID: &workspace.ID,
+			TargetType:  "member",
+			TargetID:    user.ID,
+		}, nil
+	})
+}
+
+func (s *Service) reassignRemovedMemberWorkspaceLocked(userID, removedWorkspaceID string) error {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return err
+	}
+	meta, err := s.store.ListMeta()
+	if err != nil {
+		return err
+	}
+	defaultAffected := user.DefaultWorkspaceID != nil && *user.DefaultWorkspaceID == removedWorkspaceID
+	activeAffected := meta[activeWorkspaceMetaKey(userID)] == removedWorkspaceID
+	if !defaultAffected && !activeAffected {
+		return nil
+	}
+	replacement, err := s.memberRepo.OtherUnarchivedWorkspaces(userID, removedWorkspaceID)
+	if err != nil {
+		return err
+	}
+	if len(replacement) == 0 {
+		return nil
+	}
+	if defaultAffected {
+		if err := s.userRepo.UpdateDefaultWorkspace(userID, replacement[0].ID, s.clock.Unix()); err != nil {
+			return err
+		}
+	}
+	if activeAffected {
+		if err := s.store.SetMeta(activeWorkspaceMetaKey(userID), replacement[0].ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) changeMemberRoleLocked(workspaceID, userID string, role Role) error {

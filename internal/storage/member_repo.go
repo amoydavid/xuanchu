@@ -45,6 +45,17 @@ func (r *MemberRepository) UpdateRole(userID, workspaceID, role string, modified
 	return r.db.Save(&member).Error
 }
 
+func (r *MemberRepository) Delete(userID, workspaceID string) error {
+	result := r.db.Where("user_id = ? AND workspace_id = ?", userID, workspaceID).Delete(&Membership{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *MemberRepository) List(workspaceID string) ([]MemberWithUser, error) {
 	type row struct {
 		UserID                 string  `gorm:"column:user_id"`

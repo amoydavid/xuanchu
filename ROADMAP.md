@@ -1427,7 +1427,7 @@ docs/superpowers/plans/2026-06-05-v0.1.0-infra-implementation.md
 
 ## 当前下一步
 
-v0.5.0 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，并补齐 workspace 级 `tenant_access_token` 与 workspace OIDC browser session。普通 Console、Server Admin Console、Admin workspace acting、PAT/Agent Token 管控、租户访问令牌、项目表格、任务过滤、任务详情、项目上下文内编辑和 OIDC 单点登录都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理；写操作继续由 membership、token scope、workspace/project allowlist、closed project 状态和 browser session CSRF 共同约束。授权决策层已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。
+v0.5.0 已完成。Web Console 已从 bootstrap / token 管控推进到项目-任务工作台主体验，并补齐 workspace 级 `tenant_access_token` 与 workspace OIDC browser session。普通 Console、Server Admin Console、Admin workspace acting、PAT/Agent Token 管控、租户访问令牌、项目表格、任务过滤、任务详情、项目上下文内编辑、成员管理和 OIDC 单点登录都已进入主线。当前 Workspace Console 复用 `/api/v1/*` 写接口，支持项目创建、项目 header inline 编辑、状态转移、任务快速创建、任务表 inline 编辑、任务详情编辑、注解和链接管理，以及在 `/members` 中添加成员、创建最小用户、编辑展示姓名、调整角色、移出成员，并在 `/members/:userRef` 查看成员详情、外部身份摘要、关联 token 跳转和成员审计；写操作继续由 membership、token scope、workspace/project allowlist、closed project 状态和 browser session CSRF 共同约束。授权决策层已把 HTTP API、HTTP MCP、远程 CLI 的 Bearer token 授权收敛到 `internal/authz` / `authz.Decision`；OpenAPI 也已改为运行时生成，不再提交静态 YAML。
 
 v0.5.1 已完成 Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进。该版本保持后端字符串契约不变，在任务详情页的 description 和 annotation 入口引入 Tiptap v3 Markdown WYSIWYG 编辑、同 schema 只读渲染、原始 HTML 转义、链接协议白名单，并修正详情页面包屑和主区/属性栏布局。
 
@@ -1436,6 +1436,8 @@ v0.5.1 已完成 Web Console Tiptap Markdown 编辑器与任务详情页 UX 改�
 ```text
 docs/superpowers/specs/2026-07-04-web-console-tiptap-markdown-editor-design.md
 docs/superpowers/plans/2026-07-04-web-console-tiptap-markdown-editor-implementation.md
+docs/superpowers/specs/2026-07-04-web-console-members-management-design.md
+docs/superpowers/plans/2026-07-04-web-console-members-management-implementation.md
 ```
 
 v0.5.1 之后的方向待定，建议优先在以下几类中选择：

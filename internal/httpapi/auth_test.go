@@ -347,6 +347,106 @@ func TestTenantTokenCanManageHTTPUsersAndMembers(t *testing.T) {
 	}
 }
 
+func TestHTTPMemberPatchCanUpdateDisplayNameAndRole(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:read", "member:read", "member:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := svc.AddUser(app.AddUserInput{Name: "http-member-patch", DisplayName: "Old Name"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(app.AddMemberInput{WorkspaceRef: "local", UserRef: user.Name, Role: app.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/workspaces/local/members/"+user.ID, `{"role":"admin","display_name":"HTTP Patched"}`, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch member status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			UserID      string `json:"user_id"`
+			DisplayName string `json:"display_name"`
+			Role        string `json:"role"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.UserID != user.ID || payload.Data.DisplayName != "HTTP Patched" || payload.Data.Role != "admin" {
+		t.Fatalf("patched member = %#v", payload.Data)
+	}
+}
+
+func TestHTTPMemberDeleteRemovesNonOwnerAndProtectsOwner(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:read", "member:read", "member:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := svc.AddUser(app.AddUserInput{Name: "http-member-delete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(app.AddMemberInput{WorkspaceRef: "local", UserRef: member.Name, Role: app.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+
+	rr := requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/workspaces/local/members/"+member.ID, headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("delete member status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	ws, err := fixture.server.store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.NewMemberRepository(fixture.server.store.DB()).Get(member.ID, ws.ID); err != storage.ErrNotFound {
+		t.Fatalf("deleted membership err = %v, want ErrNotFound", err)
+	}
+
+	local, err := storage.NewUserRepository(fixture.server.store.DB()).GetByName("local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr = requestHTTP(t, fixture.server, http.MethodDelete, "/api/v1/workspaces/local/members/"+local.ID, headers)
+	assertHTTPErrorCode(t, rr, http.StatusForbidden, "permission_denied")
+}
+
+func TestHTTPMemberAddCanCreateNewUser(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "workspace:read", "member:read", "member:write")
+	headers := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/workspaces/local/members", `{"new_user":{"name":"http-new-member","display_name":"HTTP New Member","email":"http-new-member@example.com"},"role":"member"}`, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("add new user member status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	user, err := storage.NewUserRepository(fixture.server.store.DB()).GetByName("http-new-member")
+	if err != nil {
+		t.Fatalf("GetByName(http-new-member) error = %v", err)
+	}
+	ws, err := fixture.server.store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := storage.NewMemberRepository(fixture.server.store.DB()).Get(user.ID, ws.ID)
+	if err != nil {
+		t.Fatalf("Get(new member) error = %v", err)
+	}
+	if member.Role != string(app.RoleMember) || user.DisplayName != "HTTP New Member" {
+		t.Fatalf("user=%#v member=%#v", user, member)
+	}
+}
+
 func TestTenantTokenCanManageHTTPWorkspaceAndTokens(t *testing.T) {
 	store := openHTTPTestStore(t)
 	svc, err := app.NewService(app.ServiceOptions{Store: store})

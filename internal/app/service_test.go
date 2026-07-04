@@ -3086,6 +3086,114 @@ func TestChangeMemberRoleProtectsLastOwner(t *testing.T) {
 	}
 }
 
+func TestRemoveMemberRespectsOwnerRules(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "member-remove", Name: "Member Remove"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+	admin := mustCreateUserRecord(t, store, storage.User{ID: "user-remove-admin", Name: "remove-admin", CreatedAt: 100, ModifiedAt: 100})
+	alice := mustCreateUserRecord(t, store, storage.User{ID: "user-remove-alice", Name: "remove-alice", CreatedAt: 100, ModifiedAt: 100})
+	secondOwner := mustCreateUserRecord(t, store, storage.User{ID: "user-remove-owner", Name: "remove-owner", CreatedAt: 100, ModifiedAt: 100})
+	for _, member := range []storage.Membership{
+		{UserID: admin.ID, WorkspaceID: ws.ID, Role: string(RoleAdmin), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: alice.ID, WorkspaceID: ws.ID, Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: secondOwner.ID, WorkspaceID: ws.ID, Role: string(RoleOwner), JoinedAt: 100, ModifiedAt: 100},
+	} {
+		mustUpsertMembershipRecord(t, store, member)
+	}
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, admin.Name, ws.Slug)
+	if err := adminSvc.RemoveMember(ws.Slug, secondOwner.Name); err == nil {
+		t.Fatal("admin RemoveMember(owner) error = nil, want denied")
+	}
+	if err := adminSvc.RemoveMember(ws.Slug, alice.Name); err != nil {
+		t.Fatalf("admin RemoveMember(member) error = %v", err)
+	}
+	if _, err := storage.NewMemberRepository(store.DB()).Get(alice.ID, ws.ID); err != storage.ErrNotFound {
+		t.Fatalf("removed member lookup error = %v, want ErrNotFound", err)
+	}
+	if err := ownerSvc.RemoveMember(ws.Slug, secondOwner.Name); err != nil {
+		t.Fatalf("owner RemoveMember(second owner) error = %v", err)
+	}
+	if err := ownerSvc.RemoveMember(ws.Slug, "local"); err == nil {
+		t.Fatal("owner RemoveMember(last owner) error = nil, want last-owner protection")
+	}
+}
+
+func TestModifyMemberDisplayNameRespectsOwnerRules(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "member-profile", Name: "Member Profile"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+	admin := mustCreateUserRecord(t, store, storage.User{ID: "user-profile-admin", Name: "profile-admin", CreatedAt: 100, ModifiedAt: 100})
+	alice := mustCreateUserRecord(t, store, storage.User{ID: "user-profile-alice", Name: "profile-alice", CreatedAt: 100, ModifiedAt: 100})
+	secondOwner := mustCreateUserRecord(t, store, storage.User{ID: "user-profile-owner", Name: "profile-owner", CreatedAt: 100, ModifiedAt: 100})
+	for _, member := range []storage.Membership{
+		{UserID: admin.ID, WorkspaceID: ws.ID, Role: string(RoleAdmin), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: alice.ID, WorkspaceID: ws.ID, Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100},
+		{UserID: secondOwner.ID, WorkspaceID: ws.ID, Role: string(RoleOwner), JoinedAt: 100, ModifiedAt: 100},
+	} {
+		mustUpsertMembershipRecord(t, store, member)
+	}
+
+	adminSvc := newTestServiceWithRuntime(t, store, 100, admin.Name, ws.Slug)
+	displayName := "Alice Renamed"
+	updated, err := adminSvc.ModifyMember(ModifyMemberInput{WorkspaceRef: ws.Slug, UserRef: alice.Name, DisplayName: &displayName})
+	if err != nil {
+		t.Fatalf("admin ModifyMember(non-owner display name) error = %v", err)
+	}
+	if updated.DisplayName != displayName {
+		t.Fatalf("display_name = %q, want %q", updated.DisplayName, displayName)
+	}
+	ownerName := "Owner Renamed"
+	if _, err := adminSvc.ModifyMember(ModifyMemberInput{WorkspaceRef: ws.Slug, UserRef: secondOwner.Name, DisplayName: &ownerName}); err == nil {
+		t.Fatal("admin ModifyMember(owner display name) error = nil, want denied")
+	}
+	memberSvc := newTestServiceWithRuntime(t, store, 100, alice.Name, ws.Slug)
+	if _, err := memberSvc.ModifyMember(ModifyMemberInput{WorkspaceRef: ws.Slug, UserRef: admin.Name, DisplayName: &displayName}); err == nil {
+		t.Fatal("member ModifyMember(display name) error = nil, want denied")
+	}
+}
+
+func TestAddMemberCanCreateUserAtomically(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	ws, err := ownerSvc.AddWorkspace(AddWorkspaceInput{Slug: "member-create-user", Name: "Member Create User"})
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+
+	if err := ownerSvc.AddMember(AddMemberInput{
+		WorkspaceRef: ws.Slug,
+		NewUser: &AddMemberUserInput{
+			Name:        "new-member-user",
+			DisplayName: "New Member User",
+			Email:       "new-member@example.com",
+		},
+		Role: RoleMember,
+	}); err != nil {
+		t.Fatalf("AddMember(NewUser) error = %v", err)
+	}
+	user, err := storage.NewUserRepository(store.DB()).GetByName("new-member-user")
+	if err != nil {
+		t.Fatalf("GetByName(new-member-user) error = %v", err)
+	}
+	if user.DisplayName != "New Member User" || user.Email == nil || *user.Email != "new-member@example.com" {
+		t.Fatalf("created user = %#v", user)
+	}
+	member, err := storage.NewMemberRepository(store.DB()).Get(user.ID, ws.ID)
+	if err != nil {
+		t.Fatalf("Get(created membership) error = %v", err)
+	}
+	if member.Role != string(RoleMember) {
+		t.Fatalf("created membership role = %q, want member", member.Role)
+	}
+}
+
 func TestUrgencyUsesConfiguredUDACoefficients(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

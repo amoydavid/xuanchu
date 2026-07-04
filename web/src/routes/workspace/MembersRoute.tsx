@@ -5,5 +5,5 @@ export function MembersRoute() {
   const me = useMe()
   const workspaceSlug = me.data?.effective_workspace.slug ?? ""
 
-  return <MembersPage workspaceSlug={workspaceSlug} />
+  return <MembersPage credential={me.data} workspaceSlug={workspaceSlug} />
 }
