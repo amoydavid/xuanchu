@@ -115,6 +115,7 @@ function ChangeLine({
         actor={actor}
         createdAt={createdAt}
         change={change}
+        locale={locale}
       />
     )
   }
@@ -125,8 +126,8 @@ function ChangeLine({
       {t("projectWorkbench.taskHistory.scalarChange", {
         actor,
         field,
-        previous: formatScalar(change.previous, change.field, t),
-        current: formatScalar(change.current, change.field, t),
+        previous: formatScalar(change.previous, change.field, t, locale),
+        current: formatScalar(change.current, change.field, t, locale),
       })}
     </span>
   )
@@ -136,18 +137,20 @@ function DescriptionChangeLine({
   actor,
   createdAt,
   change,
+  locale,
 }: {
   actor: string
   createdAt: string
   change: Extract<TaskFieldChange, { kind: "scalar" }>
+  locale: string
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const previous = truncateDescription(
-    formatScalar(change.previous, "description", t)
+    formatScalar(change.previous, "description", t, locale)
   )
   const current = truncateDescription(
-    formatScalar(change.current, "description", t)
+    formatScalar(change.current, "description", t, locale)
   )
 
   return (
@@ -241,17 +244,18 @@ function actorLabel(
 }
 
 // formatScalar 把标量 raw 渲染成人类可读文本。
-// null -> 未设置；due -> 本地日期；其它直接文本化。
+// null -> 未设置；due -> 按 locale 格式化的本地日期；其它直接文本化。
 function formatScalar(
   value: TaskChangeDisplayValue | undefined,
   field: string,
-  t: ReturnType<typeof useTranslation>["t"]
+  t: ReturnType<typeof useTranslation>["t"],
+  locale: string
 ): string {
   if (!value || value.raw == null) {
     return t("projectWorkbench.taskHistory.unset")
   }
   if (field === "due" && typeof value.raw === "number") {
-    return new Date(value.raw * 1000).toLocaleDateString()
+    return new Date(value.raw * 1000).toLocaleDateString(locale)
   }
   if (typeof value.raw === "string" || typeof value.raw === "number") {
     return String(value.raw)
