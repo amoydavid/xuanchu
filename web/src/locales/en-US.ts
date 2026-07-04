@@ -576,6 +576,9 @@ export const enUS = {
       added: "added",
       removed: "removed",
       unset: "not set",
+      none: "none",
+      currentValue: "Current value",
+      previousValue: "Previous value",
       changedDescription: "{{actor}} updated the description",
       expandValue: "View full content",
       field: {

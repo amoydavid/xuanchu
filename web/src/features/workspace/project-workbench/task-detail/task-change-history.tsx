@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -26,7 +25,7 @@ type TaskChangeHistoryProps = {
 // TaskChangeHistory 渲染任务的字段级变更历史。
 // 数据来自 GET /tasks/{ref}/audit，每条按时间倒序展示。
 // 前端用 field + raw + i18n locale 把变更渲染成自然语言句子，
-// 不直接展示 raw JSON / unix 秒 / null。
+// 不直接展示 raw JSON / unix 秒 / null / UUID。
 export function TaskChangeHistory({
   workspaceSlug,
   taskRef,
@@ -88,9 +87,10 @@ function ChangeLine({
   entry: TaskAuditEntry
   change: TaskFieldChange
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.language
   const actor = actorLabel(entry, t)
-  const createdAt = formatTimestamp(entry.created_at)
+  const createdAt = formatTimestamp(entry.created_at, locale)
   const field = t(`projectWorkbench.taskHistory.field.${change.field}`)
 
   if (change.kind === "set") {
@@ -107,7 +107,8 @@ function ChangeLine({
     )
   }
 
-  // description 体积可能很大，走专门的可展开渲染。
+  // description 体积可能很大，走专门的可展开渲染：列表行展示截断的
+  // previous -> current，点击查看完整 Markdown before/after。
   if (change.field === "description") {
     return (
       <DescriptionChangeLine
@@ -142,27 +143,31 @@ function DescriptionChangeLine({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const previous = formatScalar(change.previous, "description", t)
-  const current = formatScalar(change.current, "description", t)
+  const previous = truncateDescription(
+    formatScalar(change.previous, "description", t)
+  )
+  const current = truncateDescription(
+    formatScalar(change.current, "description", t)
+  )
 
   return (
     <div className="space-y-1">
-      <div>
+      <span>
         <span className="text-foreground">{createdAt}</span> ·{" "}
-        {t("projectWorkbench.taskHistory.changedDescription", { actor })}
-      </div>
-      <div className="flex flex-wrap items-center gap-1 text-xs">
-        <Badge variant="outline">
-          {t("projectWorkbench.taskHistory.changedDescription", {
-            actor: "",
-          }).trim()}
-          : {current}
-        </Badge>
+        {t("projectWorkbench.taskHistory.scalarChange", {
+          actor,
+          field: t("projectWorkbench.taskHistory.field.description"),
+          previous,
+          current,
+        })}
+      </span>
+      <div>
         <Button
           onClick={() => setOpen(true)}
           size="sm"
           type="button"
-          variant="ghost"
+          variant="link"
+          className="h-auto p-0 text-xs"
         >
           {t("projectWorkbench.taskHistory.expandValue")}
         </Button>
@@ -171,32 +176,26 @@ function DescriptionChangeLine({
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {t("projectWorkbench.taskHistory.changedDescription", {
-                actor,
-              })}
+              {t("projectWorkbench.taskHistory.changedDescription", { actor })}
             </DialogTitle>
             <DialogDescription>{createdAt}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 text-sm">
+          <div className="grid gap-4 text-sm">
             <div>
               <div className="mb-1 text-xs uppercase text-muted-foreground">
-                {t("projectWorkbench.taskHistory.changedDescription", {
-                  actor: "",
-                }).trim()}
+                {t("projectWorkbench.taskHistory.currentValue")}
               </div>
               <DescriptionValue value={change.current} />
             </div>
             <div>
               <div className="mb-1 text-xs uppercase text-muted-foreground">
-                {t("projectWorkbench.taskHistory.removed")}
+                {t("projectWorkbench.taskHistory.previousValue")}
               </div>
               <DescriptionValue value={change.previous} />
             </div>
           </div>
         </DialogContent>
       </Dialog>
-      {/* previous 留作可访问性兜底，避免直接丢失 */}
-      <span className="sr-only">{previous}</span>
     </div>
   )
 }
@@ -233,7 +232,10 @@ function actorLabel(
     )
   }
   if (entry.actor_token) {
-    return entry.actor_token.name || entry.actor_token.id
+    return (
+      entry.actor_token.name ||
+      t("projectWorkbench.taskHistory.unknownActor")
+    )
   }
   return t("projectWorkbench.taskHistory.unknownActor")
 }
@@ -260,6 +262,7 @@ function formatScalar(
 
 // formatSet 把集合元素渲染成逗号分隔的文本。
 // assignees 用 display_name -> name -> id；tags 直接字符串。
+// 空集合渲染为「无」（不是「未设置」，后者专指标量被清空）。
 function formatSet(
   values: TaskChangeDisplayValue[] | undefined,
   field: string,
@@ -267,16 +270,14 @@ function formatSet(
   removed: boolean
 ): string {
   const items = values ?? []
+  const verb = removed
+    ? t("projectWorkbench.taskHistory.removed")
+    : t("projectWorkbench.taskHistory.added")
   if (items.length === 0) {
-    return t("projectWorkbench.taskHistory.unset")
+    return t("projectWorkbench.taskHistory.none")
   }
   const parts = items.map((item) => formatSetItem(item, field, t))
-  const join = parts.join(", ")
-  return `${t(
-    removed
-      ? "projectWorkbench.taskHistory.removed"
-      : "projectWorkbench.taskHistory.added"
-  )} ${join}`
+  return `${verb} ${parts.join(", ")}`
 }
 
 function formatSetItem(
@@ -290,9 +291,7 @@ function formatSetItem(
       name?: string
       id?: string
     }
-    return (
-      obj.display_name || obj.name || obj.id || item.text || ""
-    )
+    return obj.display_name || obj.name || obj.id || item.text || ""
   }
   if (item.raw == null) {
     return t("projectWorkbench.taskHistory.unset")
@@ -303,9 +302,24 @@ function formatSetItem(
   return item.text
 }
 
-function formatTimestamp(unixSeconds: number): string {
-  if (!unixSeconds) {
+// truncateDescription 压缩 description 用于 timeline 列表行展示，
+// 避免整段 Markdown 撑高单行；完整 before/after 在展开 Dialog 里查看。
+function truncateDescription(text: string): string {
+  const max = 80
+  // 去掉 markdown 标记符号的粗略处理，列表行只作摘要。
+  const flat = text
+    .replace(/[#*_`>~-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (flat.length <= max) {
+    return flat
+  }
+  return `${flat.slice(0, max)}…`
+}
+
+function formatTimestamp(unixSeconds: number, locale: string): string {
+  if (unixSeconds === 0 || !Number.isFinite(unixSeconds)) {
     return ""
   }
-  return new Date(unixSeconds * 1000).toLocaleString()
+  return new Date(unixSeconds * 1000).toLocaleString(locale)
 }

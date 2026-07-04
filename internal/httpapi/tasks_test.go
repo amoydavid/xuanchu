@@ -969,3 +969,67 @@ func TestTaskAuditClearDuePreservesNullRaw(t *testing.T) {
 		t.Fatalf("response missing raw:null: %s", body)
 	}
 }
+
+// TestTaskAuditSetChangePreservesEmptyArrays 校验集合类 change
+// 即使 added 或 removed 为空，也必须同时输出为 []，不能被 omitempty 丢掉。
+func TestTaskAuditSetChangePreservesEmptyArrays(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Title: "task", Tags: []string{"ads"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 只新增 tag、不移除：tags change 的 removed 应该是空数组。
+	if err := svc.Modify(created.UUID, app.ModifyInput{AddTags: []string{"dashboard"}}); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+created.UUID+"/audit", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var payload struct {
+		Data []struct {
+			Changes []struct {
+				Field   string                   `json:"field"`
+				Kind    string                   `json:"kind"`
+				Added   []map[string]interface{} `json:"added"`
+				Removed []map[string]interface{} `json:"removed"`
+			} `json:"changes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, rr.Body.String())
+	}
+	if len(payload.Data) == 0 || len(payload.Data[0].Changes) == 0 {
+		t.Fatalf("no changes in response: %s", rr.Body.String())
+	}
+	var tagsChange *struct {
+		Field   string                   `json:"field"`
+		Kind    string                   `json:"kind"`
+		Added   []map[string]interface{} `json:"added"`
+		Removed []map[string]interface{} `json:"removed"`
+	}
+	for i, c := range payload.Data[0].Changes {
+		if c.Field == "tags" {
+			tagsChange = &payload.Data[0].Changes[i]
+		}
+	}
+	if tagsChange == nil {
+		t.Fatalf("tags change missing: %s", rr.Body.String())
+	}
+	if tagsChange.Kind != "set" {
+		t.Fatalf("tags kind = %s, want set", tagsChange.Kind)
+	}
+	// removed 必须以空数组存在，而不是被 omitempty 省略。
+	if tagsChange.Removed == nil {
+		t.Fatalf("tags removed missing (omitempty dropped it): %s", rr.Body.String())
+	}
+	if len(tagsChange.Removed) != 0 {
+		t.Fatalf("tags removed = %#v, want empty array", tagsChange.Removed)
+	}
+}

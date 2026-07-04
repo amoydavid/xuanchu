@@ -337,4 +337,38 @@ describe("TaskDetailPage", () => {
 
     await screen.findByText("暂无字段级变更记录")
   })
+
+  it("renders description change with truncated values and expand dialog", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([
+      {
+        id: 4,
+        actor: { id: "u1", name: "alice", display_name: "Alice" },
+        action: "task.modify",
+        target_type: "task",
+        target_id: "task-1",
+        created_at: 1_783_036_800,
+        changes: [
+          {
+            field: "description",
+            kind: "scalar",
+            label_key: "projectWorkbench.taskHistory.field.description",
+            previous: { raw: "# 旧描述", text: "# 旧描述" },
+            current: { raw: "# 新描述正文", text: "# 新描述正文" },
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // 列表行展示截断纯文本摘要（去掉 markdown 标记），含旧值和新值。
+    await screen.findByText(/新描述正文/)
+    expect(screen.getByText(/旧描述/)).toBeTruthy()
+    // 不直接展示 markdown 标记 #。
+    expect(screen.queryByText(/# 新描述正文/)).toBeNull()
+
+    // 点击展开 Dialog，查看完整 before/after。
+    await userEvent.click(screen.getByRole("button", { name: "查看完整内容" }))
+    expect(screen.getByText("当前值")).toBeTruthy()
+    expect(screen.getByText("原值")).toBeTruthy()
+  })
 })

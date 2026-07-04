@@ -32,16 +32,17 @@ type auditResponse struct {
 }
 
 // taskFieldChangeJSON 是字段级变更的 HTTP 输出结构。
-// 标量 previous/current 用指针保证 presence（即使 raw 为 null），
-// 集合 added/removed 总是输出数组（可为空）。
+// 注意：根据 spec §4.3，标量 previous/current 和集合 added/removed 都
+// 不能加 omitempty——标量要保留 raw 为 null 的显式语义，集合空数组也要
+// 输出为 []，前端类型把这两组都声明为非可选。
 type taskFieldChangeJSON struct {
-	Field    string                    `json:"field"`
-	Kind     string                    `json:"kind"`
-	LabelKey string                    `json:"label_key"`
-	Previous *taskChangeDisplayJSON    `json:"previous,omitempty"`
-	Current  *taskChangeDisplayJSON    `json:"current,omitempty"`
-	Added    []taskChangeDisplayJSON   `json:"added,omitempty"`
-	Removed  []taskChangeDisplayJSON   `json:"removed,omitempty"`
+	Field    string                  `json:"field"`
+	Kind     string                  `json:"kind"`
+	LabelKey string                  `json:"label_key"`
+	Previous *taskChangeDisplayJSON  `json:"previous,omitempty"`
+	Current  *taskChangeDisplayJSON  `json:"current,omitempty"`
+	Added    []taskChangeDisplayJSON `json:"added"`
+	Removed  []taskChangeDisplayJSON `json:"removed"`
 }
 
 // taskChangeDisplayJSON 用 json.RawMessage 承载 raw，

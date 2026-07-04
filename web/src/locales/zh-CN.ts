@@ -564,6 +564,9 @@ export const zhCN = {
       added: "新增",
       removed: "移除",
       unset: "未设置",
+      none: "无",
+      currentValue: "当前值",
+      previousValue: "原值",
       changedDescription: "{{actor}} 更新了描述",
       expandValue: "查看完整内容",
       field: {
