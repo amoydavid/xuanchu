@@ -36,6 +36,16 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           timeout: 30000,
         },
+        "/sso": {
+          target: apiTarget,
+          changeOrigin: true,
+          timeout: 30000,
+        },
+        "/auth": {
+          target: apiTarget,
+          changeOrigin: true,
+          timeout: 30000,
+        },
       },
     },
     build: {
