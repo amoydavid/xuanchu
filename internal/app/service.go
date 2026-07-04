@@ -613,7 +613,7 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		events := []HookEvent{buildTaskHookEvent("task.modified", modified, tx.runtime, now)}
 		events = append(events, fineGrained...)
 		events = append(events, blocked...)
-		entry := taskAuditEntry("task.modify", modified.UUID, change)
+		entry := taskModifyAuditEntry(modified.UUID, change, diff)
 		return &entry, events, nil
 	})
 }

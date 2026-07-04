@@ -1539,6 +1539,122 @@ func TestModifyCreatesAuditEntry(t *testing.T) {
 	}
 }
 
+// TestModifyAuditPayloadRecordsFieldChanges 校验 task.modify 的 audit payload
+// 包含字段级 changes，覆盖 title / description / priority / due 清空等场景。
+func TestModifyAuditPayloadRecordsFieldChanges(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	desc := "旧描述"
+	created, err := svc.Add(AddInput{Title: "旧标题", Description: &desc})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	newDesc := "新描述"
+	if err := svc.Modify(created.UUID, ModifyInput{
+		Title:       stringPtr("新标题"),
+		Description: &newDesc,
+	}); err != nil {
+		t.Fatalf("Modify() error = %v", err)
+	}
+
+	changes := latestTaskModifyChanges(t, svc, created.UUID)
+	findChange := func(field string) map[string]any {
+		for _, c := range changes {
+			if c["field"] == field {
+				return c
+			}
+		}
+		return nil
+	}
+
+	titleChange := findChange("title")
+	if titleChange == nil {
+		t.Fatalf("title change missing; changes = %#v", changes)
+	}
+	if titleChange["previous"] != "旧标题" || titleChange["current"] != "新标题" {
+		t.Fatalf("title change = %#v", titleChange)
+	}
+
+	descChange := findChange("description")
+	if descChange == nil {
+		t.Fatalf("description change missing; changes = %#v", changes)
+	}
+	if descChange["previous"] != "旧描述" || descChange["current"] != "新描述" {
+		t.Fatalf("description change = %#v", descChange)
+	}
+}
+
+// TestModifyAuditPayloadClearDuePreservesNullKey 校验清空 due 时
+// payload 保留 current: null 显式语义。
+func TestModifyAuditPayloadClearDuePreservesNullKey(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	due := int64(1783036800)
+	created, err := svc.Add(AddInput{Title: "task", Due: &due})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if err := svc.Modify(created.UUID, ModifyInput{ClearDue: true}); err != nil {
+		t.Fatalf("Modify() error = %v", err)
+	}
+
+	changes := latestTaskModifyChanges(t, svc, created.UUID)
+	var dueChange map[string]any
+	for _, c := range changes {
+		if c["field"] == "due" {
+			dueChange = c
+		}
+	}
+	if dueChange == nil {
+		t.Fatalf("due change missing; changes = %#v", changes)
+	}
+	if _, ok := dueChange["current"]; !ok {
+		t.Fatal("due current key missing; explicit null must be preserved")
+	}
+	if dueChange["current"] != nil {
+		t.Fatalf("due current = %#v, want nil", dueChange["current"])
+	}
+	// JSON 解析会把数字变成 float64。
+	prev, _ := dueChange["previous"].(float64)
+	if int64(prev) != due {
+		t.Fatalf("due previous = %#v, want %d", dueChange["previous"], due)
+	}
+}
+
+// latestTaskModifyChanges 取最新一条 task.modify audit 的 payload changes。
+func latestTaskModifyChanges(t *testing.T, svc *Service, taskUUID string) []map[string]any {
+	t.Helper()
+	logs, err := svc.ListAudit(AuditListInput{Limit: 20})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	for _, log := range logs {
+		if log.Action != "task.modify" || log.TargetID != taskUUID {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(log.PayloadJSON), &payload); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		rawChanges, ok := payload["changes"].([]any)
+		if !ok {
+			t.Fatalf("changes not array; payload = %s", log.PayloadJSON)
+		}
+		out := make([]map[string]any, 0, len(rawChanges))
+		for _, c := range rawChanges {
+			if m, ok := c.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	t.Fatalf("no task.modify audit found for %s", taskUUID)
+	return nil
+}
+
 func TestUseContextCreatesAuditEntry(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

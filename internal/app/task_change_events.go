@@ -27,6 +27,14 @@ type TaskChangeDiff struct {
 	TagsChanged bool
 	AddedTags   []string
 	RemovedTags []string
+
+	TitleChanged       bool
+	PreviousTitle      string
+	CurrentTitle       string
+
+	DescriptionChanged  bool
+	PreviousDescription *string
+	CurrentDescription  *string
 }
 
 func diffTaskChanges(before, after task.Task) TaskChangeDiff {
@@ -62,6 +70,18 @@ func diffTaskChanges(before, after task.Task) TaskChangeDiff {
 	afterAssignees := assigneeIDSet(after.Assignees)
 	if !stringSetEqual(beforeAssignees, afterAssignees) {
 		diff.AssigneesChanged = true
+	}
+
+	// title / description 只进 audit payload，不进入 HookEvent。
+	if before.Title != after.Title {
+		diff.TitleChanged = true
+		diff.PreviousTitle = before.Title
+		diff.CurrentTitle = after.Title
+	}
+	if ptrStringDiff(before.Description, after.Description) {
+		diff.DescriptionChanged = true
+		diff.PreviousDescription = before.Description
+		diff.CurrentDescription = after.Description
 	}
 
 	return diff
