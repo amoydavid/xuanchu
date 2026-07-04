@@ -36,7 +36,7 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
 
   // 探测唯一一个启用了 OIDC 的 workspace
   useEffect(() => {
-    fetch("/sso/workspace")
+    fetch("/api/v1/sso/workspace")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.data?.slug) {
