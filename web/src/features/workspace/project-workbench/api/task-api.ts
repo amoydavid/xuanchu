@@ -8,6 +8,7 @@ import {
 import type {
   ProjectWorkbenchTask,
   ProjectWorkbenchTaskLink,
+  UserInfo,
 } from "./project-api"
 
 export type ProjectTask = ProjectWorkbenchTask
@@ -184,6 +185,60 @@ export function taskLinkItemPath(
   return `/api/v1/tasks/${encodeSegment(taskRef)}/links/${encodeSegment(linkID)}?${workspaceQuery(workspaceSlug)}`
 }
 
+// --- 任务变更历史 ---
+
+export type TaskChangeDisplayValue = {
+  raw: unknown
+  text: string
+}
+
+export type TaskChangeField =
+  | "assignees"
+  | "tags"
+  | "due"
+  | "priority"
+  | "project"
+  | "title"
+  | "description"
+
+export type TaskScalarFieldChange = {
+  field: Exclude<TaskChangeField, "assignees" | "tags">
+  kind: "scalar"
+  label_key: string
+  previous: TaskChangeDisplayValue
+  current: TaskChangeDisplayValue
+}
+
+export type TaskSetFieldChange = {
+  field: "assignees" | "tags"
+  kind: "set"
+  label_key: string
+  added: TaskChangeDisplayValue[]
+  removed: TaskChangeDisplayValue[]
+}
+
+export type TaskFieldChange = TaskScalarFieldChange | TaskSetFieldChange
+
+export type TaskAuditEntry = {
+  id: number
+  actor_type?: string
+  actor?: UserInfo | null
+  actor_token?: { id: string; name: string; prefix: string } | null
+  action: string
+  target_type: string
+  target_id: string
+  payload?: unknown
+  changes?: TaskFieldChange[]
+  created_at: number
+}
+
+export function taskAuditPath(
+  workspaceSlug: string,
+  taskRef: string
+): string {
+  return `/api/v1/tasks/${encodeSegment(taskRef)}/audit?${workspaceQuery(workspaceSlug)}`
+}
+
 export function createTask(
   workspaceSlug: string,
   input: TaskCreateInput
@@ -326,5 +381,14 @@ export function importTasks(
   return workspaceApiPost<TaskImportResult>(
     importTasksPath(workspaceSlug, projectSlug),
     tasks
+  )
+}
+
+export function getTaskAudit(
+  workspaceSlug: string,
+  taskRef: string
+): Promise<TaskAuditEntry[]> {
+  return workspaceApiGet<TaskAuditEntry[]>(
+    taskAuditPath(workspaceSlug, taskRef)
   )
 }

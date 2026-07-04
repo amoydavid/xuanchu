@@ -118,6 +118,10 @@ export function useModifyTaskMutation(
         void queryClient.invalidateQueries({
           queryKey: taskQueryKeys.task(workspaceSlug, ref),
         })
+        // 任务字段变更会产生新的 audit 历史，刷新详情页变更历史。
+        void queryClient.invalidateQueries({
+          queryKey: taskQueryKeys.audit(workspaceSlug, ref),
+        })
       }
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug),

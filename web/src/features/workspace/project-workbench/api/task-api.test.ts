@@ -4,6 +4,7 @@ import {
   importTasksPath,
   taskAnnotationItemPath,
   taskAnnotationPath,
+  taskAuditPath,
   taskDonePath,
   taskLinkItemPath,
   taskLinkPath,
@@ -45,6 +46,12 @@ describe("project workbench task api paths", () => {
     )
     expect(importTasksPath("workspace 1", "ops/team")).toBe(
       "/api/v1/import?workspace=workspace%201&project=ops%2Fteam"
+    )
+  })
+
+  it("builds task audit path with encoded workspace and task ref", () => {
+    expect(taskAuditPath("workspace 1", "ads/1")).toBe(
+      "/api/v1/tasks/ads%2F1/audit?workspace=workspace%201"
     )
   })
 })
