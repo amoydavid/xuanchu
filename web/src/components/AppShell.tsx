@@ -13,7 +13,7 @@ import {
   Users,
   Webhook,
 } from "lucide-react"
-import { Link } from "@tanstack/react-router"
+import { Link, useLocation } from "@tanstack/react-router"
 import type React from "react"
 import { useTranslation } from "react-i18next"
 
@@ -81,6 +81,7 @@ export function AppShell({
   workspaceSlug?: string
 }) {
   const { t } = useTranslation()
+  const location = useLocation()
   const me = useMe()
   const role = me.data?.effective_role ?? ""
   const isOwner = role === "owner"
@@ -103,26 +104,28 @@ export function AppShell({
           {navItems
             .filter((item) => !item.ssoOnly || showSso)
             .map((item) => {
-            const Icon = item.icon
-            return (
-              <Link
-                activeOptions={{ exact: item.to === "/" }}
-                activeProps={{
-                  className:
-                    "border-l-foreground bg-muted font-medium text-foreground",
-                }}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                  "border-l-transparent"
-                )}
-                key={item.key}
-                to={item.to}
-              >
-                <Icon className="size-3.5" />
-                {t(`nav.${item.key}`)}
-              </Link>
-            )
-          })}
+              const Icon = item.icon
+              const active = isNavItemActive(
+                item.key,
+                item.to,
+                location.pathname
+              )
+              return (
+                <Link
+                  className={cn(
+                    "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                    active
+                      ? "border-l-foreground bg-muted font-medium text-foreground"
+                      : "border-l-transparent"
+                  )}
+                  key={item.key}
+                  to={item.to}
+                >
+                  <Icon className="size-3.5" />
+                  {t(`nav.${item.key}`)}
+                </Link>
+              )
+            })}
         </nav>
         <div className="absolute inset-x-0 bottom-0 border-t p-3">
           <div className="mb-2 text-[11px] text-muted-foreground uppercase">
@@ -210,6 +213,22 @@ export function AppShell({
       </div>
     </div>
   )
+}
+
+function isNavItemActive(key: PageKey, to: string, pathname: string): boolean {
+  if (key === "projects") {
+    return (
+      pathname === "/projects" ||
+      /^\/workspaces\/[^/]+\/projects(?:\/|$)/.test(pathname)
+    )
+  }
+  if (key === "workspaces") {
+    return pathname === "/workspaces"
+  }
+  if (to === "/") {
+    return pathname === "/"
+  }
+  return pathname === to || pathname.startsWith(`${to}/`)
 }
 
 function ReturnToTenantAdminButton({ context }: { context: TenantSwitchContext }) {

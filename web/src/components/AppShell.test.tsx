@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { setAdminActingContext, setAdminActingToken } from "@/features/workspace/session/workspace-token"
+import {
+  setAdminActingContext,
+  setAdminActingToken,
+} from "@/features/workspace/session/workspace-token"
 import { i18n } from "@/i18n"
 
 import { AppShell } from "./AppShell"
@@ -12,12 +15,21 @@ import { AppShell } from "./AppShell"
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
+    className,
     to,
   }: {
     children: React.ReactNode
+    className?: string
     to: string
-  }) => <a href={to}>{children}</a>,
+  }) => (
+    <a className={className} href={to}>
+      {children}
+    </a>
+  ),
+  useLocation: () => ({ pathname: currentPath }),
 }))
+
+let currentPath = "/"
 
 vi.mock("@/features/workspace/session/useMe", () => ({
   useMe: () => ({
@@ -31,6 +43,7 @@ vi.mock("@/features/workspace/session/useMe", () => ({
 describe("AppShell", () => {
   beforeEach(async () => {
     sessionStorage.clear()
+    currentPath = "/"
     await i18n.changeLanguage("zh-CN")
   })
 
@@ -102,5 +115,26 @@ describe("AppShell", () => {
     // 普通模式有「退出」，没有「返回超管」。
     expect(screen.getByText("退出")).toBeTruthy()
     expect(screen.queryByText("返回超管")).toBeNull()
+  })
+
+  it("highlights projects for project and task detail routes", () => {
+    currentPath = "/workspaces/local/projects/ops/tasks/ops-1"
+
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    expect(screen.getByRole("link", { name: "项目" }).className).toContain(
+      "border-l-foreground"
+    )
+    expect(
+      screen.getByRole("link", { name: "工作区" }).className
+    ).not.toContain("border-l-foreground")
   })
 })
