@@ -32,10 +32,13 @@ var NoProxyHTTPClient = &http.Client{
 	},
 }
 
-// contextWithNoProxyClient 返回注入了 NoProxyHTTPClient 的 context，
-// go-oidc 的 NewProvider 通过 context.Value 读 HTTP client。
+// contextWithNoProxyClient 返回注入了 NoProxyHTTPClient 的 context。
+// go-oidc 用 oidc.ClientContext 读 client，oauth2 用 oauth2.HTTPClient 读 client，
+// 两个 key 都注入以覆盖所有调用路径。
 func contextWithNoProxyClient(ctx context.Context) context.Context {
-	return oidc.ClientContext(ctx, NoProxyHTTPClient)
+	ctx = oidc.ClientContext(ctx, NoProxyHTTPClient)
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, NoProxyHTTPClient)
+	return ctx
 }
 
 // TokenEndpointURL 返回 OIDC discovery 拿到的 token endpoint URL（即 {base}/oidc/orgs/{org}/token）。
