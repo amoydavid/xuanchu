@@ -303,6 +303,9 @@ describe("TaskDetailPage", () => {
     await screen.findByText(/李四/)
     expect(screen.getByText(/张三/)).toBeTruthy()
     expect(screen.queryByText(/u2|u1/)).toBeNull()
+    // setChange 模板已含「新增/移除」动词，formatSet 不应再重复拼动词。
+    expect(screen.queryByText(/新增 新增/)).toBeNull()
+    expect(screen.queryByText(/移除 移除/)).toBeNull()
   })
 
   it("renders unset placeholder when scalar current is null", async () => {

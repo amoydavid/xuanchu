@@ -100,8 +100,8 @@ function ChangeLine({
         {t("projectWorkbench.taskHistory.setChange", {
           actor,
           field,
-          added: formatSet(change.added, change.field, t, false),
-          removed: formatSet(change.removed, change.field, t, true),
+          added: formatSet(change.added, change.field, t),
+          removed: formatSet(change.removed, change.field, t),
         })}
       </span>
     )
@@ -261,23 +261,20 @@ function formatScalar(
 }
 
 // formatSet 把集合元素渲染成逗号分隔的文本。
+// 注意：setChange i18n 模板里已经包含「新增 ...，移除 ...」动词，
+// 所以这里只返回元素列表本身（空集合返回「无」），不要重复拼动词。
 // assignees 用 display_name -> name -> id；tags 直接字符串。
-// 空集合渲染为「无」（不是「未设置」，后者专指标量被清空）。
 function formatSet(
   values: TaskChangeDisplayValue[] | undefined,
   field: string,
-  t: ReturnType<typeof useTranslation>["t"],
-  removed: boolean
+  t: ReturnType<typeof useTranslation>["t"]
 ): string {
   const items = values ?? []
-  const verb = removed
-    ? t("projectWorkbench.taskHistory.removed")
-    : t("projectWorkbench.taskHistory.added")
   if (items.length === 0) {
     return t("projectWorkbench.taskHistory.none")
   }
   const parts = items.map((item) => formatSetItem(item, field, t))
-  return `${verb} ${parts.join(", ")}`
+  return parts.join(", ")
 }
 
 function formatSetItem(

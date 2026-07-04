@@ -1033,3 +1033,31 @@ func TestTaskAuditSetChangePreservesEmptyArrays(t *testing.T) {
 		t.Fatalf("tags removed = %#v, want empty array", tagsChange.Removed)
 	}
 }
+
+// TestTaskAuditScalarChangeExcludesSetFields 校验标量 change 只输出
+// previous/current，不含集合专属的 added/removed key。
+func TestTaskAuditScalarChangeExcludesSetFields(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Title: "before"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := "after"
+	if err := svc.Modify(created.UUID, app.ModifyInput{Title: &after}); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+created.UUID+"/audit", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	// 标量 change（title）不应含集合专属字段。
+	if strings.Contains(body, `"added"`) || strings.Contains(body, `"removed"`) {
+		t.Fatalf("scalar change should not include added/removed: %s", body)
+	}
+}

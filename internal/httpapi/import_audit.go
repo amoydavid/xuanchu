@@ -22,7 +22,7 @@ type auditResponse struct {
 	TargetType              string                  `json:"target_type"`
 	TargetID                string                  `json:"target_id"`
 	Payload                 json.RawMessage         `json:"payload,omitempty"`
-	Changes                 []taskFieldChangeJSON   `json:"changes,omitempty"`
+	Changes                 []any                   `json:"changes,omitempty"`
 	DelegatorTokenID        *string                 `json:"delegator_token_id,omitempty"`
 	DelegatorUser           *task.JSONUserInfo      `json:"delegator_user,omitempty"`
 	AdminActingSessionID    *string                 `json:"admin_acting_session_id,omitempty"`
@@ -32,15 +32,22 @@ type auditResponse struct {
 }
 
 // taskFieldChangeJSON 是字段级变更的 HTTP 输出结构。
-// 注意：根据 spec §4.3，标量 previous/current 和集合 added/removed 都
-// 不能加 omitempty——标量要保留 raw 为 null 的显式语义，集合空数组也要
-// 输出为 []，前端类型把这两组都声明为非可选。
-type taskFieldChangeJSON struct {
+// taskScalarFieldChangeJSON 是标量字段变更的 HTTP 输出。
+// previous/current 不加 omitempty，保证 raw 为 null 时输出 {"raw":null}。
+type taskScalarFieldChangeJSON struct {
+	Field    string                 `json:"field"`
+	Kind     string                 `json:"kind"`
+	LabelKey string                 `json:"label_key"`
+	Previous *taskChangeDisplayJSON `json:"previous"`
+	Current  *taskChangeDisplayJSON `json:"current"`
+}
+
+// taskSetFieldChangeJSON 是集合字段变更的 HTTP 输出。
+// added/removed 不加 omitempty，保证空数组也输出为 []。
+type taskSetFieldChangeJSON struct {
 	Field    string                  `json:"field"`
 	Kind     string                  `json:"kind"`
 	LabelKey string                  `json:"label_key"`
-	Previous *taskChangeDisplayJSON  `json:"previous,omitempty"`
-	Current  *taskChangeDisplayJSON  `json:"current,omitempty"`
 	Added    []taskChangeDisplayJSON `json:"added"`
 	Removed  []taskChangeDisplayJSON `json:"removed"`
 }
@@ -178,29 +185,32 @@ func auditRowToResponse(row app.AuditLogView) auditResponse {
 }
 
 // taskFieldChangesToJSON 把 app 层 change view 转成 HTTP DTO。
-// 标量 previous/current 用 json.RawMessage 承载 raw，
-// 保证 nil 值序列化为 JSON null，而不是被 omitempty 省略。
-func taskFieldChangesToJSON(changes []app.TaskFieldChange) []taskFieldChangeJSON {
+// 标量和集合分别用独立类型，让响应只包含该 kind 应有的字段：
+// 标量只输出 previous/current（保留 raw:null 显式语义），
+// 集合只输出 added/removed（空数组也输出为 []）。
+func taskFieldChangesToJSON(changes []app.TaskFieldChange) []any {
 	if len(changes) == 0 {
 		return nil
 	}
-	out := make([]taskFieldChangeJSON, 0, len(changes))
+	out := make([]any, 0, len(changes))
 	for _, change := range changes {
-		dto := taskFieldChangeJSON{
-			Field:    change.Field,
-			Kind:     change.Kind,
-			LabelKey: change.LabelKey,
-		}
 		if change.Kind == "set" {
-			dto.Added = displayValuesToJSON(change.Added)
-			dto.Removed = displayValuesToJSON(change.Removed)
+			out = append(out, taskSetFieldChangeJSON{
+				Field:    change.Field,
+				Kind:     change.Kind,
+				LabelKey: change.LabelKey,
+				Added:    displayValuesToJSON(change.Added),
+				Removed:  displayValuesToJSON(change.Removed),
+			})
 		} else {
-			// 标量：previous/current 必须保留 presence。
-			// 即使 Raw 为 nil，也要输出 {"raw":null,"text":""}。
-			dto.Previous = displayValueToJSONPtr(change.Previous)
-			dto.Current = displayValueToJSONPtr(change.Current)
+			out = append(out, taskScalarFieldChangeJSON{
+				Field:    change.Field,
+				Kind:     change.Kind,
+				LabelKey: change.LabelKey,
+				Previous: displayValueToJSONPtr(change.Previous),
+				Current:  displayValueToJSONPtr(change.Current),
+			})
 		}
-		out = append(out, dto)
 	}
 	return out
 }
