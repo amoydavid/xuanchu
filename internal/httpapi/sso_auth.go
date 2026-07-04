@@ -112,6 +112,9 @@ func (s *Server) handleSsoOidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	login, err := s.oidcAuthService().Callback(r.Context(), state, code)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("sso callback failed", "err", err)
+		}
 		redirectToSsoError(w, r, appErrorToSsoCode(err))
 		return
 	}
