@@ -19,12 +19,14 @@ func (p *Provider) TokenEndpointURL() string {
 }
 
 // ClientCredentialsToken 用 client_credentials grant 换取 access token（用于访问 yaoguang 通讯录 API）。
+// yaoguang (Fosite) 要求 client_secret_basic 认证（HTTP Basic Auth），需显式设 AuthStyleInHeader。
 func (p *Provider) ClientCredentialsToken(ctx context.Context, scopes ...string) (string, error) {
 	cfg := clientcredentials.Config{
 		ClientID:     p.oauthConfig.ClientID,
 		ClientSecret: p.oauthConfig.ClientSecret,
 		TokenURL:     p.oauthConfig.Endpoint.TokenURL,
 		Scopes:       scopes,
+		AuthStyle:    oauth2.AuthStyleInHeader,
 	}
 	token, err := cfg.Token(ctx)
 	if err != nil {
