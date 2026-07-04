@@ -1,7 +1,16 @@
+import { CircleHelpIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -120,6 +129,7 @@ export function TaskPropertyPanel({
       </PropertyRow>
       <DateProperty
         disabled={!canWrite}
+        helpText={t("projectReadonly.waitUntilHelp")}
         label={t("projectReadonly.waitUntil")}
         onSave={async (wait) => {
           await modify.mutateAsync(
@@ -130,6 +140,7 @@ export function TaskPropertyPanel({
       />
       <DateProperty
         disabled={!canWrite}
+        helpText={t("projectReadonly.scheduledStartHelp")}
         label={t("projectReadonly.scheduledStart")}
         onSave={async (scheduled) => {
           await modify.mutateAsync(
@@ -140,7 +151,8 @@ export function TaskPropertyPanel({
       />
       <DateProperty
         disabled={!canWrite}
-        label={t("projectReadonly.hideUntil")}
+        helpText={t("projectReadonly.untilHelp")}
+        label={t("projectReadonly.until")}
         onSave={async (until) => {
           await modify.mutateAsync(
             until === null ? { clear_until: true } : { until }
@@ -148,7 +160,10 @@ export function TaskPropertyPanel({
         }}
         value={task.until}
       />
-      <PropertyRow label={t("projectReadonly.recur")}>
+      <PropertyRow
+        helpText={t("projectReadonly.recurHelp")}
+        label={t("projectReadonly.recur")}
+      >
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.recur")}
           className="h-7 w-full"
@@ -420,14 +435,19 @@ function toBoolean(value: unknown): boolean {
 
 function PropertyRow({
   children,
+  helpText,
   label,
 }: {
   children: React.ReactNode
+  helpText?: string
   label: string
 }) {
   return (
     <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>{label}</span>
+        {helpText ? <FieldHelp label={label} text={helpText} /> : null}
+      </div>
       <div className="mt-1">{children}</div>
     </div>
   )
@@ -435,17 +455,19 @@ function PropertyRow({
 
 function DateProperty({
   disabled,
+  helpText,
   label,
   onSave,
   value,
 }: {
   disabled: boolean
+  helpText?: string
   label: string
   onSave: (value: number | null) => Promise<void> | void
   value?: string | number | null
 }) {
   return (
-    <PropertyRow label={label}>
+    <PropertyRow helpText={helpText} label={label}>
       <InlineDatePicker
         ariaLabel={label}
         className="h-7"
@@ -454,6 +476,28 @@ function DateProperty({
         value={unixLikeToNumber(value)}
       />
     </PropertyRow>
+  )
+}
+
+function FieldHelp({ label, text }: { label: string; text: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={`说明：${label}`}
+          className="size-5 text-muted-foreground hover:text-foreground"
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          <CircleHelpIcon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64">
+        <PopoverTitle>{label}</PopoverTitle>
+        <PopoverDescription>{text}</PopoverDescription>
+      </PopoverContent>
+    </Popover>
   )
 }
 

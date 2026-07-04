@@ -135,7 +135,7 @@ describe("TaskPropertyPanel", () => {
     expect(document.querySelector('[data-slot="calendar"]')).toBeTruthy()
   })
 
-  it("uses product vocabulary, localized status, and visual recurrence", () => {
+  it("uses product vocabulary, localized status, field help, and visual recurrence", async () => {
     render(
       <TaskPropertyPanel
         canWrite={true}
@@ -157,11 +157,18 @@ describe("TaskPropertyPanel", () => {
     expect(screen.getByText("待处理")).toBeTruthy()
     expect(screen.getByText("暂缓到")).toBeTruthy()
     expect(screen.getByText("计划开始")).toBeTruthy()
-    expect(screen.getByText("隐藏到")).toBeTruthy()
+    expect(screen.getByText("有效至")).toBeTruthy()
     expect(screen.queryByText("等待到")).toBeNull()
     expect(screen.queryByText("计划")).toBeNull()
-    expect(screen.queryByText("截止隐藏")).toBeNull()
+    expect(screen.queryByText("隐藏到")).toBeNull()
+    expect(screen.getByRole("button", { name: "说明：暂缓到" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "说明：计划开始" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "说明：有效至" }))
+    expect(
+      await screen.findByText(/过了这个日期后，待处理或等待中的任务会从常用报表里隐藏/)
+    ).toBeTruthy()
     expect(screen.getByText("重复规则")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "说明：重复规则" })).toBeTruthy()
     expect(screen.getByRole("combobox", { name: "重复规则" })).toBeTruthy()
     expect(screen.getAllByText("每周").length).toBeGreaterThan(0)
     expect(screen.getByText("被这些任务阻塞")).toBeTruthy()
