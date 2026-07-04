@@ -377,10 +377,18 @@ export const zhCN = {
     recurMonthly: "每月",
     recurQuarterly: "每季度",
     recurAnnual: "每年",
+    recurHelp:
+      "完成当前重复任务的子任务后，系统会按这个规则生成下一次；通常和截止日期、有效至一起使用。",
     clearDate: "清除日期",
     waitUntil: "暂缓到",
+    waitUntilHelp:
+      "到这个日期前，任务会保持等待中，不出现在 list、next、ready 等常用报表；适合等待外部回复或未来才需要处理的任务。",
     scheduledStart: "计划开始",
-    hideUntil: "隐藏到",
+    scheduledStartHelp:
+      "表示计划开始处理的时间。ready 报表只显示计划开始已到期的待处理任务；适合排期，但不改变截止日期。",
+    until: "有效至",
+    untilHelp:
+      "过了这个日期后，待处理或等待中的任务会从常用报表里隐藏；适合临时任务、活动截止，或限制重复任务继续生成。",
     taskTitle: "任务标题",
     taskTitleRequired: "任务标题不能为空",
     taskDescription: "任务描述",
@@ -568,6 +576,8 @@ export const zhCN = {
       currentValue: "当前值",
       previousValue: "原值",
       changedDescription: "{{actor}} 更新了描述",
+      udaChanged: "{{actor}} 更新了自定义字段",
+      udaEntryChange: "{{name}}：{{previous}} → {{current}}",
       expandValue: "查看完整内容",
       field: {
         assignees: "负责人",
@@ -577,6 +587,12 @@ export const zhCN = {
         project: "项目",
         title: "标题",
         description: "描述",
+        wait: "暂缓到",
+        scheduled: "计划开始",
+        until: "隐藏到",
+        recur: "重复规则",
+        depends: "依赖任务",
+        udas: "自定义字段",
       },
     },
   },

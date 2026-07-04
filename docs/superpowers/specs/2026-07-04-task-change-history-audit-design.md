@@ -46,7 +46,7 @@
 - 不做历史 audit payload 回填；旧 `task.modify` 行没有 `changes` 时返回空数组。
 - 不引入软删、撤销、版本快照或完整字段快照表。
 - 不接入 CLI、MCP、Remote Client 的 task history 展示；通用 audit CLI 继续保持现状。
-- 不记录 annotation / link / dependency / UDA / wait / scheduled / until / recur 的字段级 diff。这些要么已有独立 action，要么需要另一个设计处理。
+- 不记录 annotation / link 的字段级 diff。这些已有独立 action（`task.annotate` 等），与 `task.modify` 字段级 diff 是不同维度。
 - 不做 description 并排 diff 视图；首版只展示截断文本和展开查看。
 - 不做字段级权限过滤；能读该 task history 的用户能看到本期记录的全部字段旧值和新值。
 
@@ -119,20 +119,46 @@
 |---|---|---|---|
 | `assignees` | `added` / `removed` | `UserInfo[]` | 集合 diff |
 | `tags` | `added` / `removed` | `string[]` | 集合 diff |
+| `depends` | `added` / `removed` | `string[]`（任务 UUID） | 集合 diff |
 | `due` | `previous` / `current` | unix 秒或 `null` | 标量替换 |
+| `wait` | `previous` / `current` | unix 秒或 `null` | 标量替换 |
+| `scheduled` | `previous` / `current` | unix 秒或 `null` | 标量替换 |
+| `until` | `previous` / `current` | unix 秒或 `null` | 标量替换 |
 | `priority` | `previous` / `current` | 字符串或 `null` | 标量替换 |
 | `project` | `previous` / `current` | project slug 或 `null` | 标量替换 |
+| `recur` | `previous` / `current` | 字符串或 `null` | 标量替换 |
 | `title` | `previous` / `current` | 字符串 | 标量替换 |
 | `description` | `previous` / `current` | 字符串或 `null` | 标量替换 |
+| `udas` | `entries` | `{name, previous, current}[]` | UDA 多字段 diff，见 §4.4 |
 
 约束：
 
 - 未变更的字段不出现在 `changes` 中。
 - 集合字段只有 added/removed 至少一边非空时才写入。
-- 顺序固定为 `assignees` -> `due` -> `priority` -> `project` -> `tags` -> `title` -> `description`，方便测试和前端稳定渲染。
+- 标准字段顺序固定为 `assignees` -> `due` -> `priority` -> `project` -> `tags` -> `title` -> `description` -> `wait` -> `scheduled` -> `until` -> `recur` -> `depends` -> `udas`，方便测试和前端稳定渲染。
 - `assignees` 使用完整 `task.UserInfo` JSON 形状：`id` / `name` / `display_name` / `email` / `external_ids`。`name` 是稳定查找名，`display_name` 是展示名；前端展示人名时按 `display_name` -> `name` -> `id` 回退。实现可以改造 app 层现有 `userInfoToEventPayload` 或复用 `task.UserInfoToJSON` 的语义，但不能输出裸 UUID，也不能丢掉 `display_name`。
 - `project` 的 slug diff 与顶层 `before_project_*` / `after_project_*` 必须来自同一个 `projectChange`，避免两个来源漂移。
 - payload 中的 `previous` / `current` key 必须保留显式 `null`。例如清空 due 时必须是 `"current": null`，不能因为 Go `omitempty` 或前端可选字段把 key 省略。
+
+### 4.4 UDA 字段 diff
+
+UDA 是 `map[string]UDAValue`，与标量/集合不同：一次 modify 可能同时新增、删除、改值多个 UDA。用单个 `udas` change 条目承载，`entries` 数组列出每个 UDA 的 `name` + `previous` + `current`：
+
+```json
+{
+  "field": "udas",
+  "entries": [
+    {"name":"effort","previous":null,"current":"2h"},
+    {"name":"budget","previous":"100","current":null}
+  ]
+}
+```
+
+- 新增的 UDA：`previous: null`，`current` 为值。
+- 删除的 UDA：`previous` 为值，`current: null`。
+- 改值的 UDA：两侧都为值。
+- entries 顺序固定为 added（按 name）-> removed（按 name）-> changed（按 name），保证稳定可断言。
+- HTTP view 用 `kind: "uda"` 区分，前端不靠 entries presence 猜类型。
 
 ### 4.3 HTTP 可渲染 change view
 

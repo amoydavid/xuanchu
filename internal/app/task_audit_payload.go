@@ -78,7 +78,71 @@ func taskFieldChanges(change projectChange, diff TaskChangeDiff) []map[string]an
 		})
 	}
 
+	// 低频字段（spec 第二期纳入）。
+	if diff.WaitChanged {
+		out = append(out, map[string]any{
+			"field":    "wait",
+			"previous": int64PtrToAny(diff.PreviousWait),
+			"current":  int64PtrToAny(diff.CurrentWait),
+		})
+	}
+	if diff.ScheduledChanged {
+		out = append(out, map[string]any{
+			"field":    "scheduled",
+			"previous": int64PtrToAny(diff.PreviousScheduled),
+			"current":  int64PtrToAny(diff.CurrentScheduled),
+		})
+	}
+	if diff.UntilChanged {
+		out = append(out, map[string]any{
+			"field":    "until",
+			"previous": int64PtrToAny(diff.PreviousUntil),
+			"current":  int64PtrToAny(diff.CurrentUntil),
+		})
+	}
+	if diff.RecurChanged {
+		out = append(out, map[string]any{
+			"field":    "recur",
+			"previous": stringPtrToAny(diff.PreviousRecur),
+			"current":  stringPtrToAny(diff.CurrentRecur),
+		})
+	}
+	if diff.DependsChanged && (len(diff.AddedDepends) > 0 || len(diff.RemovedDepends) > 0) {
+		out = append(out, map[string]any{
+			"field":   "depends",
+			"added":   append([]string(nil), diff.AddedDepends...),
+			"removed": append([]string(nil), diff.RemovedDepends...),
+		})
+	}
+	if diff.UDAsChanged {
+		out = append(out, udaChangesToPayload(diff))
+	}
+
 	return out
+}
+
+// udaChangesToPayload 把 UDA 变化输出为单个 uda change 条目，
+// 用 entries 数组承载每个 UDA 的 before/after，避免多个 uda field 行。
+func udaChangesToPayload(diff TaskChangeDiff) map[string]any {
+	entries := make([]map[string]any, 0, len(diff.ChangedUDAs))
+	for _, c := range diff.ChangedUDAs {
+		entry := map[string]any{"name": c.Name}
+		if c.Before != nil {
+			entry["previous"] = c.Before.Raw
+		} else {
+			entry["previous"] = nil
+		}
+		if c.After != nil {
+			entry["current"] = c.After.Raw
+		} else {
+			entry["current"] = nil
+		}
+		entries = append(entries, entry)
+	}
+	return map[string]any{
+		"field":   "udas",
+		"entries": entries,
+	}
 }
 
 // stringPtrToAny 把 *string 解为 any；nil 指针返回 nil，避免 JSON 里出现

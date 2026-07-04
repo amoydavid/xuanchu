@@ -34,11 +34,16 @@ func parseTaskFieldChanges(payloadJSON string) []TaskFieldChange {
 			Field:    field,
 			LabelKey: taskFieldLabelKey(field),
 		}
-		if _, isSet := change["added"]; isSet {
+		switch {
+		case field == "udas":
+			// UDA 用 entries 承载每个 UDA 的 name + before/after。
+			view.Kind = "uda"
+			view.Entries = parseUDAEntries(change["entries"])
+		case hasKey(change, "added"):
 			view.Kind = "set"
 			view.Added = parseDisplayValues(change["added"])
 			view.Removed = parseDisplayValues(change["removed"])
-		} else {
+		default:
 			view.Kind = "scalar"
 			// 标量 change 的 previous/current 必须保留 presence，
 			// 即使 raw 为 nil，所以这里总是构造非 nil 指针。
@@ -56,6 +61,60 @@ func parseTaskFieldChanges(payloadJSON string) []TaskFieldChange {
 		out = append(out, view)
 	}
 	return out
+}
+
+// hasKey 报告 map 是否含某个 key（用于区分 set 和 scalar，
+// 因为 change["added"] == nil 可能是 key 存在但值为 nil）。
+func hasKey(change map[string]any, key string) bool {
+	_, ok := change[key]
+	return ok
+}
+
+// parseUDAEntries 把 audit payload 里的 uda entries 转成 view 结构。
+// 每个 entry 含 name + previous（raw 字符串或 null）+ current（同）。
+func parseUDAEntries(raw any) []UDAEntryChange {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]UDAEntryChange, 0, len(items))
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := entry["name"].(string)
+		if name == "" {
+			continue
+		}
+		cec := UDAEntryChange{Name: name}
+		// UDA 的 previous/current 用指针：key 缺失（新增/删除）时该侧为 nil，
+		// key 存在但值为 nil 时构造非 nil 指针 + Raw:nil。
+		if prevRaw, hasPrev := entry["previous"]; hasPrev {
+			cec.Before = &TaskChangeDisplayValue{
+				Raw:  prevRaw,
+				Text: udaValueText(prevRaw),
+			}
+		}
+		if currRaw, hasCurr := entry["current"]; hasCurr {
+			cec.After = &TaskChangeDisplayValue{
+				Raw:  currRaw,
+				Text: udaValueText(currRaw),
+			}
+		}
+		out = append(out, cec)
+	}
+	return out
+}
+
+func udaValueText(raw any) string {
+	if raw == nil {
+		return ""
+	}
+	if s, ok := raw.(string); ok {
+		return truncateForTimeline(s)
+	}
+	return fmt.Sprintf("%v", raw)
 }
 
 // parseDisplayValues 把集合类 change 的 added/removed 元素转成 DisplayValue。
@@ -91,7 +150,7 @@ func taskChangeDisplayText(field string, raw any, previous bool) string {
 		return ""
 	}
 	switch field {
-	case "due":
+	case "due", "wait", "scheduled", "until":
 		// unix 秒按 UTC 给一个可读日期兜底；前端按 locale 重排。
 		if secs, ok := toInt64(raw); ok {
 			return time.Unix(secs, 0).UTC().Format("2006-01-02")

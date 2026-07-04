@@ -107,6 +107,17 @@ function ChangeLine({
     )
   }
 
+  if (change.kind === "uda") {
+    return (
+      <UDAChangeLine
+        actor={actor}
+        createdAt={createdAt}
+        change={change}
+        t={t}
+      />
+    )
+  }
+
   // description 体积可能很大，走专门的可展开渲染：列表行展示截断的
   // previous -> current，点击查看完整 Markdown before/after。
   if (change.field === "description") {
@@ -222,6 +233,57 @@ function DescriptionValue({ value }: { value: TaskChangeDisplayValue }) {
   return <span className="text-muted-foreground">{value.text}</span>
 }
 
+// UDAChangeLine 渲染 UDA 字段变更。UDAs 是一个 UDA 列表的 before/after，
+// 用 udaEntryChange 模板逐条展示，新增/删除/改值三种情况都覆盖。
+function UDAChangeLine({
+  actor,
+  createdAt,
+  change,
+  t,
+}: {
+  actor: string
+  createdAt: string
+  change: Extract<TaskFieldChange, { kind: "uda" }>
+  t: ReturnType<typeof useTranslation>["t"]
+}) {
+  if (change.entries.length === 0) {
+    return null
+  }
+  return (
+    <div className="space-y-1">
+      <span>
+        <span className="text-foreground">{createdAt}</span> ·{" "}
+        {t("projectWorkbench.taskHistory.udaChanged", { actor })}
+      </span>
+      <ul className="ml-2 space-y-0.5 text-xs">
+        {change.entries.map((entry) => {
+          const isAdded = entry.before == null || entry.before.raw == null
+          const isRemoved = entry.after == null || entry.after.raw == null
+          const beforeText =
+            entry.before && entry.before.raw != null
+              ? String(entry.before.raw)
+              : t("projectWorkbench.taskHistory.unset")
+          const afterText =
+            entry.after && entry.after.raw != null
+              ? String(entry.after.raw)
+              : t("projectWorkbench.taskHistory.unset")
+          return (
+            <li key={entry.name}>
+              {t("projectWorkbench.taskHistory.udaEntryChange", {
+                name: entry.name,
+                previous: beforeText,
+                current: afterText,
+                added: isAdded,
+                removed: isRemoved,
+              })}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function actorLabel(
   entry: TaskAuditEntry,
   t: ReturnType<typeof useTranslation>["t"]
@@ -254,7 +316,7 @@ function formatScalar(
   if (!value || value.raw == null) {
     return t("projectWorkbench.taskHistory.unset")
   }
-  if (field === "due" && typeof value.raw === "number") {
+  if ((field === "due" || field === "wait" || field === "scheduled" || field === "until") && typeof value.raw === "number") {
     return new Date(value.raw * 1000).toLocaleDateString(locale)
   }
   if (typeof value.raw === "string" || typeof value.raw === "number") {

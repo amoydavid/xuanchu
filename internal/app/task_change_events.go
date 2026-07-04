@@ -35,6 +35,43 @@ type TaskChangeDiff struct {
 	DescriptionChanged  bool
 	PreviousDescription *string
 	CurrentDescription  *string
+
+	// 低频字段（spec 第二期纳入）：
+	WaitChanged  bool
+	PreviousWait *int64
+	CurrentWait  *int64
+
+	ScheduledChanged  bool
+	PreviousScheduled *int64
+	CurrentScheduled  *int64
+
+	UntilChanged  bool
+	PreviousUntil *int64
+	CurrentUntil  *int64
+
+	RecurChanged  bool
+	PreviousRecur *string
+	CurrentRecur  *string
+
+	DependsChanged bool
+	AddedDepends   []string
+	RemovedDepends []string
+
+	// UDA 用 (name, before, after) 三元组表达变化：
+	// - before 为空表示新增的 UDA；
+	// - after 为空表示删除的 UDA；
+	// - 都非空表示值变化。
+	UDAsChanged    bool
+	AddedUDAKeys   []string
+	RemovedUDAKeys []string
+	ChangedUDAs    []UDAValueChange
+}
+
+// UDAValueChange 描述单个 UDA 的 before/after。
+type UDAValueChange struct {
+	Name   string
+	Before *task.UDAValue
+	After  *task.UDAValue
 }
 
 func diffTaskChanges(before, after task.Task) TaskChangeDiff {
@@ -84,7 +121,116 @@ func diffTaskChanges(before, after task.Task) TaskChangeDiff {
 		diff.CurrentDescription = after.Description
 	}
 
+	// 低频字段 diff（只进 audit payload）。
+	diffWaitScheduledUntilRecur(&diff, before, after)
+	diffDepends(&diff, before, after)
+	diffUDAs(&diff, before, after)
+
 	return diff
+}
+
+// diffWaitScheduledUntilRecur 计算 wait/scheduled/until/recur 的标量 diff。
+func diffWaitScheduledUntilRecur(diff *TaskChangeDiff, before, after task.Task) {
+	if ptrInt64Diff(before.Wait, after.Wait) {
+		diff.WaitChanged = true
+		diff.PreviousWait = before.Wait
+		diff.CurrentWait = after.Wait
+	}
+	if ptrInt64Diff(before.Scheduled, after.Scheduled) {
+		diff.ScheduledChanged = true
+		diff.PreviousScheduled = before.Scheduled
+		diff.CurrentScheduled = after.Scheduled
+	}
+	if ptrInt64Diff(before.Until, after.Until) {
+		diff.UntilChanged = true
+		diff.PreviousUntil = before.Until
+		diff.CurrentUntil = after.Until
+	}
+	if ptrStringDiff(before.Recur, after.Recur) {
+		diff.RecurChanged = true
+		diff.PreviousRecur = before.Recur
+		diff.CurrentRecur = after.Recur
+	}
+}
+
+// diffDepends 计算依赖（任务 UUID 列表）的集合 diff。
+func diffDepends(diff *TaskChangeDiff, before, after task.Task) {
+	beforeSet := stringSet(before.Depends)
+	afterSet := stringSet(after.Depends)
+	if stringSetEqual(beforeSet, afterSet) {
+		return
+	}
+	diff.DependsChanged = true
+	diff.AddedDepends = stringSetDifference(afterSet, beforeSet)
+	diff.RemovedDepends = stringSetDifference(beforeSet, afterSet)
+}
+
+// diffUDAs 计算 UDA 的变化：新增的 key、删除的 key、值变化的 key。
+// 比较基于 UDAValue.Raw（归一化后的字符串值）。
+func diffUDAs(diff *TaskChangeDiff, before, after task.Task) {
+	beforeUDAs := before.UDAs
+	afterUDAs := after.UDAs
+	visited := make(map[string]bool, len(beforeUDAs)+len(afterUDAs))
+	for name := range beforeUDAs {
+		visited[name] = true
+	}
+	for name := range afterUDAs {
+		visited[name] = true
+	}
+	if len(visited) == 0 {
+		return
+	}
+	var added, removed, changed []string
+	var changes []UDAValueChange
+	for name := range visited {
+		beforeVal, hasBefore := beforeUDAs[name]
+		afterVal, hasAfter := afterUDAs[name]
+		switch {
+		case hasBefore && !hasAfter:
+			removed = append(removed, name)
+			bv := beforeVal
+			changes = append(changes, UDAValueChange{Name: name, Before: &bv, After: nil})
+		case !hasBefore && hasAfter:
+			added = append(added, name)
+			av := afterVal
+			changes = append(changes, UDAValueChange{Name: name, Before: nil, After: &av})
+		case beforeVal.Raw != afterVal.Raw:
+			changed = append(changed, name)
+			bv := beforeVal
+			av := afterVal
+			changes = append(changes, UDAValueChange{Name: name, Before: &bv, After: &av})
+		}
+	}
+	if len(added) == 0 && len(removed) == 0 && len(changed) == 0 {
+		return
+	}
+	diff.UDAsChanged = true
+	sort.Strings(added)
+	sort.Strings(removed)
+	sort.Strings(changed)
+	diff.AddedUDAKeys = added
+	diff.RemovedUDAKeys = removed
+	diff.ChangedUDAs = filterUDAChanges(changes, added, removed, changed)
+}
+
+// filterUDAChanges 按 added/removed/changed 顺序整理 changes 输出，
+// 让 payload 顺序稳定可断言。
+func filterUDAChanges(changes []UDAValueChange, added, removed, changed []string) []UDAValueChange {
+	byName := make(map[string]UDAValueChange, len(changes))
+	for _, c := range changes {
+		byName[c.Name] = c
+	}
+	out := make([]UDAValueChange, 0, len(added)+len(removed)+len(changed))
+	for _, n := range added {
+		out = append(out, byName[n])
+	}
+	for _, n := range removed {
+		out = append(out, byName[n])
+	}
+	for _, n := range changed {
+		out = append(out, byName[n])
+	}
+	return out
 }
 
 func buildFineGrainedEvents(diff TaskChangeDiff, after task.Task, runtime RuntimeContext, now int64) []HookEvent {

@@ -52,6 +52,22 @@ type taskSetFieldChangeJSON struct {
 	Removed  []taskChangeDisplayJSON `json:"removed"`
 }
 
+// taskUDAFieldChangeJSON 是 UDA 字段变更的 HTTP 输出。
+// UDA 用 entries 承载每个 UDA 的 name + before/after；
+// before/after 为指针，新增/删除的 UDA 对应侧为 nil（不输出该 key）。
+type taskUDAFieldChangeJSON struct {
+	Field    string             `json:"field"`
+	Kind     string             `json:"kind"`
+	LabelKey string             `json:"label_key"`
+	Entries  []udaEntryChangeJSON `json:"entries"`
+}
+
+type udaEntryChangeJSON struct {
+	Name    string                  `json:"name"`
+	Before  *taskChangeDisplayJSON  `json:"before,omitempty"`
+	After   *taskChangeDisplayJSON  `json:"after,omitempty"`
+}
+
 // taskChangeDisplayJSON 用 json.RawMessage 承载 raw，
 // 这样 nil 会序列化成真正的 JSON null，而不是被 omitempty 丢掉。
 type taskChangeDisplayJSON struct {
@@ -194,7 +210,8 @@ func taskFieldChangesToJSON(changes []app.TaskFieldChange) []any {
 	}
 	out := make([]any, 0, len(changes))
 	for _, change := range changes {
-		if change.Kind == "set" {
+		switch change.Kind {
+		case "set":
 			out = append(out, taskSetFieldChangeJSON{
 				Field:    change.Field,
 				Kind:     change.Kind,
@@ -202,7 +219,14 @@ func taskFieldChangesToJSON(changes []app.TaskFieldChange) []any {
 				Added:    displayValuesToJSON(change.Added),
 				Removed:  displayValuesToJSON(change.Removed),
 			})
-		} else {
+		case "uda":
+			out = append(out, taskUDAFieldChangeJSON{
+				Field:    change.Field,
+				Kind:     change.Kind,
+				LabelKey: change.LabelKey,
+				Entries:  udaEntriesToJSON(change.Entries),
+			})
+		default:
 			out = append(out, taskScalarFieldChangeJSON{
 				Field:    change.Field,
 				Kind:     change.Kind,
@@ -211,6 +235,18 @@ func taskFieldChangesToJSON(changes []app.TaskFieldChange) []any {
 				Current:  displayValueToJSONPtr(change.Current),
 			})
 		}
+	}
+	return out
+}
+
+func udaEntriesToJSON(entries []app.UDAEntryChange) []udaEntryChangeJSON {
+	out := make([]udaEntryChangeJSON, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, udaEntryChangeJSON{
+			Name:   entry.Name,
+			Before: displayValueToJSONPtr(entry.Before),
+			After:  displayValueToJSONPtr(entry.After),
+		})
 	}
 	return out
 }

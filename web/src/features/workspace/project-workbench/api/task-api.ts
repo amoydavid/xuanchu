@@ -200,9 +200,15 @@ export type TaskChangeField =
   | "project"
   | "title"
   | "description"
+  | "wait"
+  | "scheduled"
+  | "until"
+  | "recur"
+  | "depends"
+  | "udas"
 
 export type TaskScalarFieldChange = {
-  field: Exclude<TaskChangeField, "assignees" | "tags">
+  field: Exclude<TaskChangeField, "assignees" | "tags" | "udas">
   kind: "scalar"
   label_key: string
   previous: TaskChangeDisplayValue
@@ -210,14 +216,30 @@ export type TaskScalarFieldChange = {
 }
 
 export type TaskSetFieldChange = {
-  field: "assignees" | "tags"
+  field: "assignees" | "tags" | "depends"
   kind: "set"
   label_key: string
   added: TaskChangeDisplayValue[]
   removed: TaskChangeDisplayValue[]
 }
 
-export type TaskFieldChange = TaskScalarFieldChange | TaskSetFieldChange
+export type TaskUDAEntryChange = {
+  name: string
+  before?: TaskChangeDisplayValue | null
+  after?: TaskChangeDisplayValue | null
+}
+
+export type TaskUDAFieldChange = {
+  field: "udas"
+  kind: "uda"
+  label_key: string
+  entries: TaskUDAEntryChange[]
+}
+
+export type TaskFieldChange =
+  | TaskScalarFieldChange
+  | TaskSetFieldChange
+  | TaskUDAFieldChange
 
 export type TaskAuditEntry = {
   id: number

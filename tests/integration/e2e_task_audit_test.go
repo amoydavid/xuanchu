@@ -54,6 +54,24 @@ func TestE2ETaskModifyAuditedAcrossEntryPoints(t *testing.T) {
 		cliTask["uuid"].(string), "modify", "+audited",
 	)
 
+	// 4. 低频字段：HTTP 改 wait/scheduled/until/recur/udas/depends，MCP 改 scheduled。
+	// 覆盖 spec 第二期纳入的 wait/scheduled/until/recur/depends/udas。
+	// 注意：UDA 必须先 config 定义，否则 modify 会被拒；depends 必须引用存在的 task。
+	run(t, bin, "--server", baseURL, "--token", token, "--workspace", "local",
+		"config", "set", "uda.estimate.type", "string")
+	lowFreqTask := createTaskViaHTTP(t, baseURL, token, "low-freq task")
+	depTask := createTaskViaHTTP(t, baseURL, token, "low-freq dependency")
+	patchTaskViaHTTP(t, baseURL, token, lowFreqTask["uuid"].(string), map[string]any{
+		"wait":      1_783_036_800,
+		"until":     1_783_209_600,
+		"recur":     "weekly",
+		"udas":      map[string]string{"estimate": "2h"},
+		"depends":   []string{depTask["uuid"].(string)},
+	})
+	mcpModifyTaskViaMCP(t, baseURL, token, lowFreqTask["uuid"].(string), map[string]any{
+		"scheduled": 1_783_123_200,
+	})
+
 	// 统一通过 HTTP task audit 端点验证三个入口的修改都被记录。
 	httpUUID := httpTask["uuid"].(string)
 	assertTaskAuditChange(t, baseURL, token, httpUUID, "priority")
@@ -63,6 +81,15 @@ func TestE2ETaskModifyAuditedAcrossEntryPoints(t *testing.T) {
 	assertTaskAuditChangeCurrentNull(t, baseURL, token, httpUUID, "due")
 	assertTaskAuditChange(t, baseURL, token, mcpTask["uuid"].(string), "title")
 	assertTaskAuditChange(t, baseURL, token, cliTask["uuid"].(string), "tags")
+
+	// 低频字段也都被审计记录。
+	lowUUID := lowFreqTask["uuid"].(string)
+	assertTaskAuditChange(t, baseURL, token, lowUUID, "wait")
+	assertTaskAuditChange(t, baseURL, token, lowUUID, "scheduled")
+	assertTaskAuditChange(t, baseURL, token, lowUUID, "until")
+	assertTaskAuditChange(t, baseURL, token, lowUUID, "recur")
+	assertTaskAuditChange(t, baseURL, token, lowUUID, "depends")
+	assertTaskAuditChange(t, baseURL, token, lowUUID, "udas")
 
 	// 同时确认通用 audit 流也记录了 task.modify（HTTP audit:list，需 audit:read）。
 	generalAudit := httpJSON(t, http.MethodGet, baseURL+"/api/v1/audit?limit=50", nil, authHeaders(token))

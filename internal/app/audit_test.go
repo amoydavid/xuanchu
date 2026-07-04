@@ -533,3 +533,48 @@ func TestParseTaskFieldChangesScalarAndSet(t *testing.T) {
 		t.Fatalf("tags removed = %#v", tags.Removed)
 	}
 }
+
+// TestParseTaskFieldChangesUDA 校验 UDA change 解析为 uda kind。
+func TestParseTaskFieldChangesUDA(t *testing.T) {
+	payload := `{
+	  "changes": [
+	    {
+	      "field":"udas",
+	      "entries":[
+	        {"name":"effort","previous":null,"current":"2h"},
+	        {"name":"budget","previous":"100","current":null}
+	      ]
+	    }
+	  ]
+	}`
+	changes := parseTaskFieldChanges(payload)
+	if len(changes) != 1 {
+		t.Fatalf("changes = %d, want 1", len(changes))
+	}
+	uda := changes[0]
+	if uda.Kind != "uda" || uda.Field != "udas" {
+		t.Fatalf("uda change = %#v", uda)
+	}
+	if len(uda.Entries) != 2 {
+		t.Fatalf("entries = %#v", uda.Entries)
+	}
+	// 新增 effort：before 存在但 raw nil，after raw = "2h"。
+	effort := uda.Entries[0]
+	if effort.Name != "effort" {
+		t.Fatalf("entry[0] name = %q", effort.Name)
+	}
+	if effort.Before == nil || effort.Before.Raw != nil {
+		t.Fatalf("effort before = %#v, want non-nil with nil raw", effort.Before)
+	}
+	if effort.After == nil || effort.After.Raw != "2h" {
+		t.Fatalf("effort after = %#v, want raw 2h", effort.After)
+	}
+	// 删除 budget：before raw = "100"，after 存在但 raw nil。
+	budget := uda.Entries[1]
+	if budget.Before == nil || budget.Before.Raw != "100" {
+		t.Fatalf("budget before = %#v", budget.Before)
+	}
+	if budget.After == nil || budget.After.Raw != nil {
+		t.Fatalf("budget after = %#v, want non-nil with nil raw", budget.After)
+	}
+}

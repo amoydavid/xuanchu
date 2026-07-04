@@ -1624,6 +1624,44 @@ func TestModifyAuditPayloadClearDuePreservesNullKey(t *testing.T) {
 	}
 }
 
+// TestModifyAuditPayloadRecordsLowFrequencyFields 校验 wait/recur/depends/udas
+// 等低频字段修改后进入 audit payload changes。
+func TestModifyAuditPayloadRecordsLowFrequencyFields(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.Add(AddInput{Title: "task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	wait := int64(1_783_036_800)
+	recur := "weekly"
+	if err := svc.Modify(created.UUID, ModifyInput{
+		Wait:  &wait,
+		Recur: &recur,
+	}); err != nil {
+		t.Fatalf("Modify() error = %v", err)
+	}
+
+	changes := latestTaskModifyChanges(t, svc, created.UUID)
+	findChange := func(field string) map[string]any {
+		for _, c := range changes {
+			if c["field"] == field {
+				return c
+			}
+		}
+		return nil
+	}
+
+	if waitChange := findChange("wait"); waitChange == nil {
+		t.Fatalf("wait change missing; changes = %#v", changes)
+	}
+	if recurChange := findChange("recur"); recurChange == nil {
+		t.Fatalf("recur change missing; changes = %#v", changes)
+	}
+}
+
 // latestTaskModifyChanges 取最新一条 task.modify audit 的 payload changes。
 func latestTaskModifyChanges(t *testing.T, svc *Service, taskUUID string) []map[string]any {
 	t.Helper()

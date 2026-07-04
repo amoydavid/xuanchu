@@ -387,10 +387,18 @@ export const enUS = {
     recurMonthly: "Monthly",
     recurQuarterly: "Quarterly",
     recurAnnual: "Yearly",
+    recurHelp:
+      "After the current recurring child is completed, the next one is generated from this rule. Usually used with due date and effective-until.",
     clearDate: "Clear date",
     waitUntil: "Defer until",
+    waitUntilHelp:
+      "Until this date, the task stays waiting and is hidden from common reports like list, next, and ready. Use it when you are waiting on someone or the work should not appear yet.",
     scheduledStart: "Scheduled start",
-    hideUntil: "Hidden until",
+    scheduledStartHelp:
+      "Marks when work is planned to start. The ready report only includes pending tasks whose scheduled start has arrived. Use it for planning without changing the due date.",
+    until: "Effective until",
+    untilHelp:
+      "After this date, pending or waiting tasks are hidden from common reports. Use it for temporary work, campaign windows, or stopping future recurring children.",
     taskTitle: "Task title",
     taskTitleRequired: "Task title is required",
     taskDescription: "Task description",
@@ -580,6 +588,8 @@ export const enUS = {
       currentValue: "Current value",
       previousValue: "Previous value",
       changedDescription: "{{actor}} updated the description",
+      udaChanged: "{{actor}} updated custom fields",
+      udaEntryChange: "{{name}}: {{previous}} → {{current}}",
       expandValue: "View full content",
       field: {
         assignees: "Assignees",
@@ -589,6 +599,12 @@ export const enUS = {
         project: "Project",
         title: "Title",
         description: "Description",
+        wait: "Wait until",
+        scheduled: "Scheduled start",
+        until: "Hidden until",
+        recur: "Recurrence",
+        depends: "Dependencies",
+        udas: "Custom fields",
       },
     },
   },

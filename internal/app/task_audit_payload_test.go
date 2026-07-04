@@ -109,3 +109,79 @@ func TestTaskModifyAuditPayloadSkipsEmptySetChanges(t *testing.T) {
 		t.Fatalf("changes = %#v, want empty for empty set", changes)
 	}
 }
+
+func TestTaskModifyAuditPayloadIncludesLowFrequencyFields(t *testing.T) {
+	// 覆盖 wait/scheduled/until/recur/depends/udas 低频字段。
+	wait := int64(1_783_036_800)
+	scheduled := int64(1_783_123_200)
+	until := int64(1_783_209_600)
+	recur := "weekly"
+	payload := taskModifyAuditPayload(projectChange{}, TaskChangeDiff{
+		WaitChanged:      true,
+		PreviousWait:     nil,
+		CurrentWait:      &wait,
+		ScheduledChanged: true,
+		PreviousScheduled: &scheduled,
+		CurrentScheduled: nil,
+		UntilChanged:     true,
+		PreviousUntil:    nil,
+		CurrentUntil:     &until,
+		RecurChanged:     true,
+		PreviousRecur:    nil,
+		CurrentRecur:     &recur,
+		DependsChanged:   true,
+		AddedDepends:     []string{"dep-1"},
+		RemovedDepends:   []string{"dep-0"},
+		UDAsChanged:      true,
+		AddedUDAKeys:     []string{"effort"},
+		ChangedUDAs: []UDAValueChange{{
+			Name:  "effort",
+			After: &task.UDAValue{Name: "effort", Raw: "2h", Type: "string"},
+		}},
+	})
+
+	changes, ok := payload["changes"].([]map[string]any)
+	if !ok {
+		t.Fatalf("changes type = %T", payload["changes"])
+	}
+	// 完整顺序断言：低频字段排在 7 个标准字段之后。
+	gotFields := make([]string, 0, len(changes))
+	for _, change := range changes {
+		gotFields = append(gotFields, change["field"].(string))
+	}
+	wantFields := []string{"wait", "scheduled", "until", "recur", "depends", "udas"}
+	if !reflect.DeepEqual(gotFields, wantFields) {
+		t.Fatalf("fields = %#v, want %#v", gotFields, wantFields)
+	}
+
+	// wait 标量：previous nil 也必须保留 key。
+	waitChange := changes[0]
+	if _, ok := waitChange["previous"]; !ok {
+		t.Fatal("wait previous key missing")
+	}
+
+	// depends 集合：added/removed 都要存在。
+	dependsChange := changes[4]
+	_, hasAdded := dependsChange["added"]
+	_, hasRemoved := dependsChange["removed"]
+	if !hasAdded || !hasRemoved {
+		t.Fatalf("depends change missing added/removed: %#v", dependsChange)
+	}
+
+	// udas：用 entries 承载。
+	udasChange := changes[5]
+	entries, ok := udasChange["entries"].([]map[string]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("udas entries = %#v", udasChange["entries"])
+	}
+	if entries[0]["name"] != "effort" {
+		t.Fatalf("uda entry name = %#v", entries[0]["name"])
+	}
+	// 新增 UDA：previous 必须为 nil，current 为值。
+	if entries[0]["previous"] != nil {
+		t.Fatalf("uda previous = %#v, want nil", entries[0]["previous"])
+	}
+	if entries[0]["current"] != "2h" {
+		t.Fatalf("uda current = %#v, want 2h", entries[0]["current"])
+	}
+}

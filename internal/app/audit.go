@@ -68,9 +68,11 @@ type TaskChangeDisplayValue struct {
 }
 
 // TaskFieldChange 是字段级变更的可渲染视图。
-// Kind 区分 scalar / set，前端不靠字段 presence 猜渲染模板。
-// 对标量 change，Previous / Current 必须非 nil（即使 Raw 为 nil），
-// 以便 JSON 输出保留显式 null。
+// Kind 区分 scalar / set / uda，前端不靠字段 presence 猜渲染模板。
+//   - scalar: Previous / Current 必须非 nil（即使 Raw 为 nil），
+//     以便 JSON 输出保留显式 null。
+//   - set: Added / Removed 总是数组（可为空）。
+//   - uda: Entries 承载每个 UDA 的 name + before/after。
 type TaskFieldChange struct {
 	Field    string
 	Kind     string
@@ -79,6 +81,15 @@ type TaskFieldChange struct {
 	Current  *TaskChangeDisplayValue
 	Added    []TaskChangeDisplayValue
 	Removed  []TaskChangeDisplayValue
+	Entries  []UDAEntryChange
+}
+
+// UDAEntryChange 描述单个 UDA 的 name + before/after。
+// Before / After 用指针，nil 表示该侧不存在（新增/删除的 UDA）。
+type UDAEntryChange struct {
+	Name    string
+	Before  *TaskChangeDisplayValue
+	After   *TaskChangeDisplayValue
 }
 
 type TokenActorInfo struct {

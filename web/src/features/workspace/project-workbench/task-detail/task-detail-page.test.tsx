@@ -341,6 +341,64 @@ describe("TaskDetailPage", () => {
     await screen.findByText("暂无字段级变更记录")
   })
 
+  it("renders wait field change with localized field name", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([
+      {
+        id: 5,
+        actor: { id: "u1", name: "alice", display_name: "Alice" },
+        action: "task.modify",
+        target_type: "task",
+        target_id: "task-1",
+        created_at: 1_783_036_800,
+        changes: [
+          {
+            field: "wait",
+            kind: "scalar",
+            label_key: "projectWorkbench.taskHistory.field.wait",
+            previous: { raw: null, text: "" },
+            current: { raw: 1_783_036_800, text: "2026-07-04" },
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // 低频字段 wait 也能渲染，字段名走 i18n（暂缓到）。
+    await screen.findByText(/暂缓到/)
+  })
+
+  it("renders UDA field change entries", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([
+      {
+        id: 6,
+        actor: { id: "u1", name: "alice", display_name: "Alice" },
+        action: "task.modify",
+        target_type: "task",
+        target_id: "task-1",
+        created_at: 1_783_036_800,
+        changes: [
+          {
+            field: "udas",
+            kind: "uda",
+            label_key: "projectWorkbench.taskHistory.field.udas",
+            entries: [
+              { name: "effort", before: { raw: null, text: "" }, after: { raw: "2h", text: "2h" } },
+              { name: "budget", before: { raw: "100", text: "100" }, after: { raw: null, text: "" } },
+            ],
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // UDA change：展示每个 UDA 的 name + before/after。
+    await screen.findByText(/effort/)
+    expect(screen.getByText(/budget/)).toBeTruthy()
+    expect(screen.getByText(/2h/)).toBeTruthy()
+    // effort before 和 budget after 都是未设置，至少出现一处。
+    expect(screen.getAllByText(/未设置/).length).toBeGreaterThan(0)
+  })
+
   it("renders description change with truncated values and expand dialog", async () => {
     vi.mocked(getTaskAudit).mockResolvedValue([
       {
