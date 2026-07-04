@@ -82,6 +82,9 @@ func (s *Server) handleSsoOidcStart(w http.ResponseWriter, r *http.Request) {
 	}
 	authURL, err := s.oidcAuthService().Start(r.Context(), wsID)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("sso start failed", "err", err, "workspace_id", wsID)
+		}
 		redirectToSsoError(w, r, "sso_start_failed")
 		return
 	}
