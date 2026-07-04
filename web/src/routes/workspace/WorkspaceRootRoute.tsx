@@ -20,9 +20,13 @@ export function WorkspaceRootRoute() {
   // signedIn 涵盖两种登录态：
   // - 普通 workspace token（PAT/Agent）
   // - server admin acting token（acting mode 从 /admin/workspaces 进入）
-  // acting token 失效时由 workspace-api 的 onUnauthorized 清理并跳回 /admin/workspaces。
+  // - OIDC browser session cookie（sso 登录后由服务端设置）
+  const hasSsoCookie = () => {
+    if (typeof document === "undefined") return false
+    return document.cookie.split("; ").some((row) => row.startsWith("xuanchu_csrf="))
+  }
   const [signedIn, setSignedIn] = useState(
-    () => getWorkspaceToken() !== null || getAdminActingToken() !== null
+    () => getWorkspaceToken() !== null || getAdminActingToken() !== null || hasSsoCookie()
   )
   const queryClient = useQueryClient()
   const location = useLocation()
