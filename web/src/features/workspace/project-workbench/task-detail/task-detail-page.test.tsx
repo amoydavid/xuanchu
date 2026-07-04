@@ -9,6 +9,7 @@ import {
   deleteTask,
   doneTask,
   getTask,
+  getTaskAudit,
   modifyTask,
   startTask,
   stopTask,
@@ -33,6 +34,7 @@ vi.mock("../api/task-api", async () => {
     deleteTask: vi.fn(),
     doneTask: vi.fn(),
     getTask: vi.fn(),
+    getTaskAudit: vi.fn(),
     modifyTask: vi.fn(),
     startTask: vi.fn(),
     stopTask: vi.fn(),
@@ -88,6 +90,7 @@ describe("TaskDetailPage", () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("zh-CN")
     vi.mocked(getTask).mockResolvedValue(task())
+    vi.mocked(getTaskAudit).mockResolvedValue([])
     vi.mocked(modifyTask).mockResolvedValue(task())
     vi.mocked(startTask).mockResolvedValue(task({ start: 1_900_000_000 }))
     vi.mocked(stopTask).mockResolvedValue(task({ start: null }))
@@ -244,5 +247,94 @@ describe("TaskDetailPage", () => {
     await userEvent.click(linkTab)
     expect(linkTab.getAttribute("aria-selected")).toBe("true")
     expect(propertyTab.getAttribute("aria-selected")).toBe("false")
+  })
+
+  it("renders scalar task change history as natural language", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([
+      {
+        id: 1,
+        actor: { id: "u1", name: "alice", display_name: "Alice" },
+        action: "task.modify",
+        target_type: "task",
+        target_id: "task-1",
+        created_at: 1_783_036_800,
+        changes: [
+          {
+            field: "title",
+            kind: "scalar",
+            label_key: "projectWorkbench.taskHistory.field.title",
+            previous: { raw: "旧标题", text: "旧标题" },
+            current: { raw: "新标题", text: "新标题" },
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // 等 audit query resolve 后的 change 内容出现。
+    await screen.findByText(/新标题/)
+    expect(screen.getByText(/Alice/)).toBeTruthy()
+    expect(screen.getByText(/旧标题/)).toBeTruthy()
+  })
+
+  it("renders set task change history with added and removed", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([
+      {
+        id: 2,
+        actor: { id: "u1", name: "alice", display_name: "Alice" },
+        action: "task.modify",
+        target_type: "task",
+        target_id: "task-1",
+        created_at: 1_783_036_800,
+        changes: [
+          {
+            field: "assignees",
+            kind: "set",
+            label_key: "projectWorkbench.taskHistory.field.assignees",
+            added: [{ raw: { id: "u2", name: "lisi", display_name: "李四" }, text: "李四" }],
+            removed: [{ raw: { id: "u1", name: "zhangsan", display_name: "张三" }, text: "张三" }],
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // 集合变化展示 display_name，不展示 UUID。
+    await screen.findByText(/李四/)
+    expect(screen.getByText(/张三/)).toBeTruthy()
+    expect(screen.queryByText(/u2|u1/)).toBeNull()
+  })
+
+  it("renders unset placeholder when scalar current is null", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([
+      {
+        id: 3,
+        actor: { id: "u1", name: "alice", display_name: "Alice" },
+        action: "task.modify",
+        target_type: "task",
+        target_id: "task-1",
+        created_at: 1_783_036_800,
+        changes: [
+          {
+            field: "due",
+            kind: "scalar",
+            label_key: "projectWorkbench.taskHistory.field.due",
+            previous: { raw: 1_783_036_800, text: "2026-07-04" },
+            current: { raw: null, text: "" },
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // 清空 due 时显示「未设置」，不直接展示 null。
+    await screen.findByText(/未设置/)
+  })
+
+  it("shows empty placeholder when audit history is empty", async () => {
+    vi.mocked(getTaskAudit).mockResolvedValue([])
+    renderPage()
+
+    await screen.findByText("暂无字段级变更记录")
   })
 })

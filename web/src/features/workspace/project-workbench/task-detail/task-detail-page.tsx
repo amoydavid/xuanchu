@@ -27,6 +27,7 @@ import { EditFeedbackProvider } from "../shared/edit-feedback"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskActionBar } from "./task-action-bar"
 import { TaskAnnotationsEditor } from "./task-annotations-editor"
+import { TaskChangeHistory } from "./task-change-history"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskPropertyPanel } from "./task-property-panel"
 
@@ -182,6 +183,10 @@ function TaskDetailPageContent({
               annotations={taskData.annotations}
               canWrite={taskWritable}
               projectSlug={projectSlug}
+              taskRef={taskRef}
+              workspaceSlug={workspaceSlug}
+            />
+            <TaskChangeHistory
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
             />
