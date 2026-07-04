@@ -231,7 +231,21 @@ describe("TaskPropertyPanel", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /李四/ }))
     await userEvent.click(screen.getByRole("button", { name: "完成" }))
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
+      clear_assignees: true,
       assignees: ["u1", "u2"],
+    })
+
+    // 切换负责人：从「张三」改为「李四」，应整体替换为 u2，
+    // 而不是因后端 add 语义导致结果变成 u1+u2。
+    await userEvent.click(screen.getByRole("button", { name: "编辑负责人" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: "移除负责人 张三" })
+    )
+    await userEvent.click(screen.getByRole("checkbox", { name: /李四/ }))
+    await userEvent.click(screen.getByRole("button", { name: "完成" }))
+    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
+      clear_assignees: true,
+      assignees: ["u2"],
     })
 
     await userEvent.click(screen.getByRole("button", { name: "编辑负责人" }))

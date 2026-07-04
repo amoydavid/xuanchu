@@ -94,10 +94,13 @@ export function TaskPropertyPanel({
         <AssigneePicker
           disabled={!canWrite}
           onSave={async (items) => {
+            // 后端 assignees 字段是「增量追加」语义（add），不是替换。
+            // 这里用 clear + assignees 表达「整体替换为 items」，
+            // 避免 a→b 时因未移除 a 导致结果变成 a+b。
             await modify.mutateAsync(
               items.length === 0
                 ? { clear_assignees: true }
-                : { assignees: items }
+                : { clear_assignees: true, assignees: items }
             )
           }}
           value={task.assignees ?? []}
