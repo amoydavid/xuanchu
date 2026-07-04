@@ -121,3 +121,67 @@ func TestExchangeAudMismatchFails(t *testing.T) {
 		t.Fatal("expected aud mismatch error")
 	}
 }
+
+func TestNoProxyHTTPClientSkipsLocalhost(t *testing.T) {
+	// NoProxyHTTPClient 的 Transport 对 localhost 应返回 nil proxy
+	req, _ := http.NewRequest("GET", "http://localhost:5174/test", nil)
+	transport, ok := NoProxyHTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("transport is not *http.Transport")
+	}
+	proxy, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatalf("Proxy error: %v", err)
+	}
+	if proxy != nil {
+		t.Fatalf("expected nil proxy for localhost, got %v", proxy)
+	}
+	// 非 localhost 应走 ProxyFromEnvironment
+	req2, _ := http.NewRequest("GET", "http://example.com/test", nil)
+	_, _ = transport.Proxy(req2) // 不报错即可
+}
+
+func TestClientCredentialsTokenWithMockIdP(t *testing.T) {
+	// 用一个支持 client_credentials 的 mock IdP 测试 token 获取
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/.well-known/openid-configuration" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"issuer":                 srv.URL,
+				"token_endpoint":         srv.URL + "/token",
+				"grant_types_supported":  []string{"client_credentials"},
+			})
+			return
+		}
+		if r.URL.Path == "/token" && r.Method == "POST" {
+			user, pass, ok := r.BasicAuth()
+			if !ok || user != "test_client" || pass != "test_secret" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid_client"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "mock_access_token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	p, err := NewProviderSafe(context.Background(), srv.URL, "test_client", "test_secret")
+	if err != nil {
+		t.Fatalf("NewProviderSafe: %v", err)
+	}
+
+	token, err := p.ClientCredentialsToken(context.Background(), "org.members.read")
+	if err != nil {
+		t.Fatalf("ClientCredentialsToken: %v", err)
+	}
+	if token != "mock_access_token" {
+		t.Fatalf("token = %s, want mock_access_token", token)
+	}
+}
