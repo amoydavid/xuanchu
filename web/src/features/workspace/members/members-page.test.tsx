@@ -85,6 +85,7 @@ function okResponse(data: unknown, status = 200) {
 
 describe("MembersPage", () => {
   beforeEach(async () => {
+    window.history.pushState({}, "", "/members")
     sessionStorage.clear()
     setWorkspaceToken("xuanchu_pat_test")
     await i18n.changeLanguage("zh-CN")
@@ -180,6 +181,20 @@ describe("MembersPage", () => {
     expect(screen.getByRole("menuitem", { name: "详情" }).getAttribute("href")).toBe(
       "/members/u2"
     )
+  })
+
+  it("opens the member detail page when clicking a member row", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => okResponse(memberRows()))
+
+    renderPage()
+
+    await screen.findByText("Bob Li")
+    const row = screen.getByText("Bob Li").closest("tr")
+    expect(row).not.toBeNull()
+    await user.click(row as HTMLTableRowElement)
+
+    expect(window.location.pathname).toBe("/members/u2")
   })
 
   it("creates a new user and member from the add member dialog", async () => {

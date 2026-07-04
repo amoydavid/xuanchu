@@ -270,6 +270,7 @@ export const enUS = {
     modifiedAt: "Updated",
     nameRequired: "Stable user name is required",
     noMatches: "No matching members",
+    openDetail: "Open member detail for {{name}}",
     openTokens: "Open tokens",
     openActions: "Open member actions for {{name}}",
     ownerOnlyHint: "Only owners can grant or change the owner role.",

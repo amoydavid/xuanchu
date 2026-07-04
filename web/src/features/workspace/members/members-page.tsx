@@ -226,12 +226,25 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
               ) : (
                 visibleMembers.map((member) => {
                   const manageable = canManageMember(member, isOwner, isAdmin)
+                  const memberName = displayMemberName(member)
                   return (
-                    <TableRow key={member.user_id}>
+                    <TableRow
+                      aria-label={t("members.openDetail", { name: memberName })}
+                      className="cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
+                      key={member.user_id}
+                      onClick={() => openMemberDetail(member.user_id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          openMemberDetail(member.user_id)
+                        }
+                      }}
+                      tabIndex={0}
+                    >
                       <TableCell>
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium">
-                            {displayMemberName(member)}
+                            {memberName}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">
                             {member.name}
@@ -251,7 +264,11 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
                       <TableCell className="text-xs text-muted-foreground">
                         {formatTime(member.joined_at)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className="text-right"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         {canManageMembers && manageable ? (
                           <MemberActions
                             member={member}
@@ -336,7 +353,7 @@ function MemberActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuItem asChild>
-          <a href={`/members/${encodeURIComponent(member.user_id)}`}>
+          <a href={memberDetailHref(member.user_id)}>
             {t("common.details")}
           </a>
         </DropdownMenuItem>
@@ -1125,6 +1142,15 @@ function canManageMember(
 
 function roleAllowedForActor(role: string, actorIsOwner: boolean) {
   return actorIsOwner || role !== "owner"
+}
+
+function memberDetailHref(userID: string) {
+  return `/members/${encodeURIComponent(userID)}`
+}
+
+function openMemberDetail(userID: string) {
+  window.history.pushState({}, "", memberDetailHref(userID))
+  window.dispatchEvent(new PopStateEvent("popstate"))
 }
 
 function memberRoleLabel(t: Translate, role: string) {

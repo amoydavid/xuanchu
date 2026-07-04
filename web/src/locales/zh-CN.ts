@@ -265,6 +265,7 @@ export const zhCN = {
     modifiedAt: "更新时间",
     nameRequired: "必须填写稳定用户名",
     noMatches: "没有匹配成员",
+    openDetail: "打开 {{name}} 的成员详情",
     openTokens: "查看令牌",
     openActions: "打开 {{name}} 的成员操作",
     ownerOnlyHint: "owner 角色只能由 owner 授予或调整。",
