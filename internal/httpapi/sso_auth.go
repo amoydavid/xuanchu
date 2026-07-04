@@ -93,8 +93,19 @@ func (s *Server) handleSsoOidcStart(w http.ResponseWriter, r *http.Request) {
 
 // handleSsoOidcCallback 处理 IdP 回调，成功后 set session+csrf cookie 并回到 console。
 func (s *Server) handleSsoOidcCallback(w http.ResponseWriter, r *http.Request) {
+	// IdP 可能返回 error 参数（而非 code+state），先检查
+	if errCode := r.URL.Query().Get("error"); errCode != "" {
+		if s.logger != nil {
+			s.logger.Error("sso callback: IdP returned error", "error", errCode, "description", r.URL.Query().Get("error_description"))
+		}
+		redirectToSsoError(w, r, "idp_error_"+errCode)
+		return
+	}
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
+	if s.logger != nil {
+		s.logger.Info("sso callback received", "has_state", state != "", "has_code", code != "", "query", r.URL.RawQuery)
+	}
 	if state == "" || code == "" {
 		redirectToSsoError(w, r, "invalid_callback")
 		return
