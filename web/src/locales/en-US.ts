@@ -601,7 +601,6 @@ export const enUS = {
       orgId: "Organization ID",
       clientId: "Client ID",
       clientSecret: "Client Secret",
-      directoryAccessToken: "Directory access token",
       syncInterval: "Sync interval",
       externalBaseUrl: "External base URL",
       sessionTtl: "Session TTL",

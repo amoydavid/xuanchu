@@ -2,6 +2,7 @@ import { useState } from "react"
 import { PencilIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { MarkdownEditor, MarkdownView } from "@/components/markdown"
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
 import type { TaskAnnotation } from "../api/task-api"
 import { useTaskAnnotationMutations } from "../hooks/use-task-mutations"
 import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
@@ -39,6 +39,24 @@ export function TaskAnnotationsEditor({
   const [editError, setEditError] = useState<string | null>(null)
   const [deleteID, setDeleteID] = useState<string | null>(null)
   const mutations = useTaskAnnotationMutations(workspaceSlug, projectSlug, taskRef)
+
+  const updateDraft = (nextDraft: string) => {
+    setDraft((previousDraft) => {
+      if (nextDraft !== previousDraft) {
+        setError(null)
+      }
+      return nextDraft
+    })
+  }
+
+  const updateEditDraft = (nextDraft: string) => {
+    setEditDraft((previousDraft) => {
+      if (nextDraft !== previousDraft) {
+        setEditError(null)
+      }
+      return nextDraft
+    })
+  }
 
   const add = async () => {
     const description = draft.trim()
@@ -88,12 +106,13 @@ export function TaskAnnotationsEditor({
       </div>
       {canWrite ? (
         <div className="space-y-2 border bg-card p-3">
-          <Textarea
-            aria-label="新增注解"
+          <MarkdownEditor
+            ariaLabel="新增注解"
             disabled={mutations.add.isPending}
-            onChange={(event) => {
-              setDraft(event.target.value)
-              setError(null)
+            minHeight={120}
+            onChange={updateDraft}
+            onModEnter={() => {
+              void add()
             }}
             placeholder="记录进展、背景或决策..."
             value={draft}
@@ -122,8 +141,10 @@ export function TaskAnnotationsEditor({
               className="flex items-start justify-between gap-3 border bg-card p-3 text-sm"
               key={annotation.id || index}
             >
-              <div>
-                <div>{annotation.description}</div>
+              <div className="min-w-0">
+                <MarkdownView className="text-sm">
+                  {annotation.description}
+                </MarkdownView>
                 {annotation.entry ? (
                   <div className="mt-1 text-xs text-muted-foreground">
                     {annotation.entry}
@@ -176,12 +197,13 @@ export function TaskAnnotationsEditor({
               修正或补充这条任务注解。
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            aria-label="编辑注解内容"
+          <MarkdownEditor
+            ariaLabel="编辑注解内容"
             disabled={mutations.update.isPending}
-            onChange={(event) => {
-              setEditDraft(event.target.value)
-              setEditError(null)
+            minHeight={160}
+            onChange={updateEditDraft}
+            onModEnter={() => {
+              void update()
             }}
             value={editDraft}
           />

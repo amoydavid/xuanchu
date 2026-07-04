@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,7 @@ import {
   useSaveSsoConfigMutation,
   useSsoConfigQuery,
   useTriggerSyncMutation,
+  type SsoConfig,
   type SsoConfigInput,
 } from "./use-sso"
 
@@ -39,37 +40,50 @@ export function SsoConfigPage() {
   const enabled = configQuery.data?.enabled ?? false
   const cfg = configQuery.data?.config
 
-  const [form, setForm] = useState<SsoConfigInput>({
-    issuer_base_url: "",
-    org_id: "",
-    client_id: "",
-    client_secret: "",
-    sync_interval: "1h",
-    external_base_url: "",
-    session_ttl: "168h",
-  })
-
-  // 配置加载成功后预填表单（secret 留空，保存时空值=不修改）
-  useEffect(() => {
-    if (configQuery.isSuccess && cfg) {
-      setForm({
-        issuer_base_url: cfg.issuer_base_url,
-        org_id: cfg.org_id,
-        client_id: cfg.client_id,
-        client_secret: "",
-        sync_interval: cfg.sync_interval || "1h",
-        external_base_url: cfg.external_base_url,
-        session_ttl: cfg.session_ttl || "168h",
-      })
-    }
-  }, [configQuery.data])
-
   if (me.isLoading || configQuery.isLoading) {
     return <Skeleton className="h-96 w-full" />
   }
   if (!canManage) {
     return <p className="text-sm text-muted-foreground">{t("sso.noPermission")}</p>
   }
+
+  const initialForm = configToInput(cfg)
+  const formKey = [
+    initialForm.issuer_base_url,
+    initialForm.org_id,
+    initialForm.client_id,
+    initialForm.sync_interval,
+    initialForm.external_base_url,
+    initialForm.session_ttl,
+  ].join("\u0000")
+
+  return (
+    <SsoConfigForm
+      cfg={cfg}
+      enabled={enabled}
+      initialForm={initialForm}
+      key={formKey}
+      saveMutation={saveMutation}
+      syncMutation={syncMutation}
+    />
+  )
+}
+
+function SsoConfigForm({
+  cfg,
+  enabled,
+  initialForm,
+  saveMutation,
+  syncMutation,
+}: {
+  cfg: SsoConfig | undefined
+  enabled: boolean
+  initialForm: SsoConfigInput
+  saveMutation: ReturnType<typeof useSaveSsoConfigMutation>
+  syncMutation: ReturnType<typeof useTriggerSyncMutation>
+}) {
+  const { t } = useTranslation()
+  const [form, setForm] = useState<SsoConfigInput>(initialForm)
 
   const update = (key: keyof SsoConfigInput, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -221,6 +235,18 @@ export function SsoConfigPage() {
       </section>
     </form>
   )
+}
+
+function configToInput(cfg: SsoConfig | undefined): SsoConfigInput {
+  return {
+    issuer_base_url: cfg?.issuer_base_url ?? "",
+    org_id: cfg?.org_id ?? "",
+    client_id: cfg?.client_id ?? "",
+    client_secret: "",
+    sync_interval: cfg?.sync_interval || "1h",
+    external_base_url: cfg?.external_base_url ?? "",
+    session_ttl: cfg?.session_ttl || "168h",
+  }
 }
 
 function Field({

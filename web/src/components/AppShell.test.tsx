@@ -19,6 +19,15 @@ vi.mock("@tanstack/react-router", () => ({
   }) => <a href={to}>{children}</a>,
 }))
 
+vi.mock("@/features/workspace/session/useMe", () => ({
+  useMe: () => ({
+    data: {
+      effective_role: "member",
+      token: { scopes: [], type: "pat" },
+    },
+  }),
+}))
+
 describe("AppShell", () => {
   beforeEach(async () => {
     sessionStorage.clear()

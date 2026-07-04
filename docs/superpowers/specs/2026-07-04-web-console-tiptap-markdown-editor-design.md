@@ -1,277 +1,402 @@
 # Web Console Tiptap Markdown 编辑器与 Task 详情页 UX 改进
 
 - 日期：2026-07-04
-- 状态：草案
+- 状态：已完成
 - 里程碑：v0.5.1
 - 关联文档：[ROADMAP.md](../../../ROADMAP.md)、[README.md](../../../README.md)、`docs/superpowers/specs/2026-06-22-xuanchu-task-title-description-design.md`、`docs/superpowers/specs/2026-06-27-xuanchu-web-console-editing-design.md`、`docs/superpowers/specs/2026-06-17-web-console-project-task-browsing-design.md`
 
 ## 1. 背景与目标
 
-### 1.1 目标
+Web Console 当前对任务详情页里的长文本只提供纯 `<textarea>` 编辑，展示用 `whitespace-pre-wrap`。这会让导入文档中已经约定的 Markdown 详情只能以源码形式显示，也让非技术成员编辑复杂描述和注解时成本偏高。
 
-Web Console 当前对长文本（任务描述、注解）只提供纯 `<textarea>`，展示用 `whitespace-pre-wrap`，不支持 markdown 渲染，也无法所见即所得地编辑。本期引入 [tiptap.dev](https://tiptap.dev) 作为通用 markdown 编辑器，并顺带修正 task 详情页两处明显的 UX 短板：
+本期引入 Tiptap v3，目标是把任务详情页的任务描述和任务注解升级为 WYSIWYG Markdown 编辑和展示，同时顺手修正详情页的面包屑与主区/属性栏比例。组件应设计成可复用能力，但首期只接入任务详情页两个入口，避免把项目描述、评论等未来入口一起扩大进本里程碑。
 
-1. **通用 `MarkdownEditor` 组件**：基于 tiptap 的 WYSIWYG 编辑器，覆盖 web 端所有长文本编辑入口（任务描述、注解，以及未来 project 说明、评论等）。
-2. **markdown 渲染展示**：只读场景（描述、注解列表）由纯文本切换为 markdown 渲染，与编辑态视觉一致。
-3. **详情页 UX 局部改进**：面包屑加可点击链接、调整主区与属性面板的栅格比例。
+目标：
 
-### 1.2 既有约束
+1. **通用 `MarkdownEditor` 组件**：基于 Tiptap v3 的 WYSIWYG 编辑器，输入和输出都保持 Markdown 字符串。
+2. **通用 `MarkdownView` 组件**：只读场景用同一套 Tiptap schema 渲染 Markdown，不引入第二套 parser。
+3. **任务详情页接入**：任务描述、任务注解新增/编辑/展示改用 Markdown 组件。
+4. **详情页 UX 局部改进**：面包屑增加有效链接，主区和属性面板调整为更适合长文本阅读的比例。
 
-- **存储格式不变**：`description`、`annotation.description` 在后端仍是纯字符串，与 Taskwarrior JSON、CLI、MCP、Remote Client 全部兼容。Web 端只是把这个字符串当作 markdown 来编辑与渲染；CLI 用户看到的仍是 markdown 源码（多行文本），语义不变。
-- **不引入图片/附件**：本期不支持图片上传、附件存储、HTML 内嵌、数学公式。仅中等 markdown 子集。
-- **不改变编辑触发方式**：描述仍由「编辑按钮」打开（Dialog 路径保留），注解仍是 textarea-style 的新增/编辑流。inline 原地编辑、评论区等不在本期范围。
-- **`CGO_ENABLED=0` 不受影响**：本期仅前端改动，后端无改动。
+## 2. 范围与约束
 
-### 1.3 非目标
+### 2.1 进入本期
 
-- 不做 inline 原地编辑（点描述直接进入编辑态），保留 Dialog 路径以控制本 spec 范围。
-- 不引入图片/附件上传服务。
-- 不做实时多人协同编辑。
-- 不做 WYSIWYG ↔ 源码双模式切换（仅 WYSIWYG）。
-- 不改后端 `description`/`annotation` 模型与 API 契约。
-- 不覆盖任务标题（单行 inline 编辑器，不适合富文本）。
-- 不改 CLI / MCP / Remote Client 的文本输出格式。
-
-## 2. 现状与扩展点
-
-| 既有位置 | 现状 | 本期改动 |
+| 位置 | 现状 | 本期改动 |
 |---|---|---|
-| `task-detail-page.tsx` `TaskDescriptionBlock` | `<Textarea>` 编辑（Dialog）+ `whitespace-pre-wrap` 纯文本展示 | 改用 `MarkdownEditor`；展示改用 `MarkdownView` 渲染 |
-| `task-annotations-editor.tsx` | 新增/编辑注解都是 `<Textarea>`，展示纯文本 | 改用 `MarkdownEditor`；列表展示改用 `MarkdownView` |
-| 详情页栅格 `md:grid-cols-[1fr_240px]` | 主区窄、属性面板固定 240px | 调整为 `md:grid-cols-[minmax(0,1fr)_280px]`，属性面板 280px，并允许窄屏塌缩 |
-| 顶部 `workspaceSlug / projectSlug / task_slug` 面包屑 | 纯文本无链接 | workspace、project 段改为 `<a>`，task 段保持纯文本 |
-| `web/package.json` 依赖 | 无 tiptap、无 markdown 渲染器 | 新增 `@tiptap/react`、`@tiptap/starter-kit`、`@tiptap/markdown`、`@tiptap/static-renderer`、`@tiptap/extension-task-list`、`@tiptap/extension-task-item`、`@tiptap/extension-link`、`@tiptap/extension-table`（v3，当前 3.27.x） |
+| `task-detail-page.tsx` `TaskDescriptionBlock` | `<Textarea>` 编辑（Dialog）+ `whitespace-pre-wrap` 纯文本展示 | 编辑改用 `MarkdownEditor`；展示改用 `MarkdownView` |
+| `task-annotations-editor.tsx` | 新增/编辑注解都是 `<Textarea>`，展示纯文本 | 新增/编辑改用 `MarkdownEditor`；列表展示改用 `MarkdownView` |
+| 详情页栅格 `md:grid-cols-[1fr_240px]` | 主区偏窄、属性面板固定 240px | 调整为 `md:grid-cols-[minmax(0,1fr)_280px]` |
+| 顶部 `workspaceSlug / projectSlug / task_slug` 面包屑 | 纯文本无链接 | workspace 段链接到现有 `/projects`，project 段链接到现有 `projectHref`，task 段保持纯文本 |
+| `web/package.json` | 无 Tiptap / Markdown 渲染依赖 | 新增 Tiptap v3.27.1 系列依赖 |
 
-**版本基线**：本期统一采用 **tiptap v3**（2025-06-24 GA，2026 年迭代至 v3.27.x），不再使用 v2。v3 的官方 `@tiptap/markdown` 与 `@tiptap/static-renderer` 是关键依赖，社区包 `tiptap-markdown`（aguingand）已被官方取代并标记弃用，本项目不引入。
+### 2.2 不进入本期
 
-**核心新增组件**：`web/src/components/markdown/` 下新增两个可复用组件：
+- 不改变后端模型和 API 契约：`task.description`、`annotation.description` 仍是普通字符串。
+- 不改 CLI、MCP、Remote Client 的文本输出格式；这些入口继续看到 Markdown 源码。
+- 不接入项目描述。`ProjectHeaderEditor` 的 project description 仍沿用当前 `InlineTextEditor`，后续可复用本期组件另开小任务接入。
+- 不做 inline 原地编辑任务描述，保留现有 Dialog 触发方式。
+- 不做 WYSIWYG / Markdown 源码双模式切换。
+- 不引入图片、附件、HTML 内嵌、数学公式、语法高亮或多人协同。
+- 不覆盖任务标题。标题继续使用单行 `InlineTextEditor`。
 
-- `MarkdownEditor`：受控 WYSIWYG 编辑器，输入/输出均为 markdown 字符串。
-- `MarkdownView`：只读 markdown 渲染器，与编辑器视觉风格一致。
+### 2.3 持久化兼容
 
-## 3. 设计决策
+- 后端零改动；数据库仍保存字符串。
+- 历史纯文本会被 Markdown parser 当作普通段落展示，无迁移。
+- 用户通过 Web Console 编辑保存后，服务端存储的是 Markdown 源码。
+- 空描述继续按现有逻辑提交 `{ clear_description: true }`；空注解继续禁止提交。
 
-### 3.1 选型：为什么是 tiptap v3
+## 3. 选型与版本
 
-- **WYSIWYG 优先**：项目用户多为非技术成员（项目协作场景），源码模式体验差。tiptap 的 ProseMirror 内核是 React 生态里最成熟的 WYSIWYG 框架。
-- **官方 markdown 双向序列化**：v3.7.0+ 起官方提供 `@tiptap/markdown`（当前 3.27.x），编辑器内容可双向序列化为 markdown 字符串，与后端纯字符串存储契约一致。社区包 `tiptap-markdown` 已弃用，不引入。
-- **统一 schema 的只读渲染**：v3 的 `@tiptap/static-renderer` 可在不实例化 editor 的情况下，用与编辑器相同的 extensions 把 ProseMirror JSON 渲染成 React 元素。编辑态与只读态共享同一份 node/mark schema，从根本上消除「编辑时看到的表格/待办列表在展示时被另一种 parser 渲染走样」的双 parser 风险。
-- **React 19 + SSR 官方支持**：v3 明确支持 React 19 与 SSR，无版本阻塞。
-- **StarterKit 已含 Link / ListKeymap / Underline**：v3 的 StarterKit 比扩展列表更简洁。
+本期使用 Tiptap v3.27.1 系列。需要锁定同一小版本，避免 `@tiptap/markdown` 与 `@tiptap/static-renderer` API 在小版本间不一致。
 
-**备选方案与放弃理由**：
+依赖：
 
-- **CodeMirror 6 + markdown 语法高亮**：源码编辑体验好，但不是 WYSIWYG，不符合本期目标。
-- **react-markdown 双 parser 方案**：编辑用 tiptap、只读用 react-markdown。问题：两套独立 markdown parser（ProseMirror vs remark），表格/待办列表/GFM 扩展语法在两边语义不完全一致，编辑保存后展示可能走样；维护两套样式。v3 的 static-renderer 让这套方案失去意义。
-- **Lexical（Meta）**：能力对等，但 markdown 序列化生态弱于 tiptap。
-- **存储 HTML（如 milkdown/Quill 默认）**：破坏 CLI/Taskwarrior 兼容，已排除。
-- **tiptap v2**：v3 已 GA 且能力全面超越 v2（官方 markdown、static-renderer、React 19 一等支持），新项目无理由停留在 v2。
-
-### 3.2 存储格式：存 markdown 源码
-
-- 后端零改动：`description`、`annotation.description` 仍是 `string`。
-- `MarkdownEditor` 内部用 `@tiptap/markdown` 把 ProseMirror doc 序列化为 markdown 字符串，在 `onChange`/`onSave` 时上报。
-- 受控 `value` 写回编辑器时，仅当 `value` 与编辑器当前序列化结果不一致才 `setContent(md, { contentType: 'markdown' })`，避免光标跳动与循环更新。
-- 读取历史纯文本时：旧数据（无 markdown 语法）会被 markdown parser 视为普通段落，正常显示，无迁移成本。
-- **round-trip 校验**：开发环境断言「序列化 → 再解析 → 再序列化」幂等，防止表格/待办列表等边缘语法丢内容；生产环境不阻塞保存。
-
-### 3.3 共享 schema（编辑器与只读渲染统一）
-
-`web/src/components/markdown/extensions.ts` 导出唯一一份 extensions 配置，编辑器与 static-renderer 共享：
-
-```ts
-import StarterKit from "@tiptap/starter-kit"
-import { TaskList, TaskItem } from "@tiptap/extension-task-list"
-// TaskItem 从 @tiptap/extension-task-item 导入（按 v3 实际包结构调整）
-import Link from "@tiptap/extension-link"
-import Table from "@tiptap/extension-table"
-
-export const markdownExtensions = [
-  StarterKit,                       // v3 内含 Heading/Bold/Italic/Strike/Code/CodeBlock/
-                                    //   BulletList/OrderedList/ListItem/Blockquote/
-                                    //   HorizontalRule/HardBreak/Link/ListKeymap/Underline
-  TaskList,
-  TaskItem,
-  Link.configure({
-    openOnClick: false,
-    HTMLAttributes: { rel: "noopener noreferrer" },
-    validate: (url) => /^https?:|^mailto:/.test(url),  // 协议白名单
-  }),
-  Table,
-]
+```text
+@tiptap/react@3.27.1
+@tiptap/starter-kit@3.27.1
+@tiptap/pm@3.27.1
+@tiptap/markdown@3.27.1
+@tiptap/static-renderer@3.27.1
+@tiptap/extension-link@3.27.1
+@tiptap/extension-list@3.27.1
+@tiptap/extension-table@3.27.1
 ```
 
-**显式不支持**（通过不引入对应 extension 实现）：
+说明：
 
-- 图片（不引入 `@tiptap/extension-image`；粘贴图片由编辑器配置降级为链接文本或不处理）。
-- 原生 HTML 内嵌：`@tiptap/markdown` 默认会把 markdown 中的内联 HTML 通过对应 node 的 `parseHTML` 渲染。本期**显式禁用** HTML 解析——通过 `Markdown` 扩展配置关闭 HTML 透传（`html: false`，具体选项名按 v3.27.x 实际 API 确认），保证 `<script>` 等标签以纯文本显示，不会被解析执行。
-- 数学公式（不引入 KaTeX）。
+- v3 的 `StarterKit` 已包含 Link、Underline、ListKeymap。为了配置链接协议白名单，本期禁用 StarterKit 内置 Link，再显式注册 `@tiptap/extension-link`。
+- TaskList / TaskItem 使用 v3 推荐的 `@tiptap/extension-list` 聚合包导入。
+- Table 使用 `@tiptap/extension-table` 中的 `Table`、`TableRow`、`TableHeader`、`TableCell` 四个 extension；只注册 `Table` 不足以完整支持表格 schema。
+- 不引入社区包 `tiptap-markdown`。
+- 不引入 `react-markdown` / `remark-gfm`，避免编辑和展示使用两套 Markdown parser。
 
-### 3.4 工具栏与交互
+备选方案放弃理由：
 
-`MarkdownEditor` 顶部工具栏提供：粗体、斜体、删除线、H1/H2/H3、无序列表、有序列表、待办列表、引用、代码、代码块、链接、表格、撤销/重做。
+- CodeMirror 6：源码编辑好，但不是 WYSIWYG。
+- Lexical：能力接近，但 Markdown 双向序列化和静态渲染闭环不如 Tiptap v3 明确。
+- 存 HTML：破坏 CLI / Taskwarrior 风格字符串契约。
+- `react-markdown` 只读渲染：会形成 Tiptap parser 与 remark parser 的双语义风险。
 
-- 工具栏按钮使用 `lucide-react`（项目已用）。
-- 快捷键沿用 tiptap 默认（`Cmd/Ctrl+B` 加粗等），与主流编辑器一致。
-- `Cmd/Ctrl+Enter` 提交保存（沿用现有 Dialog 行为，由父组件监听）。
-- 受控模式：父组件持有 markdown 字符串状态，`onChange` 实时上报。
+## 4. Markdown 架构
 
-### 3.5 渲染展示（MarkdownView，基于 static-renderer）
+### 4.1 文件边界
 
-- 只读场景使用 `@tiptap/static-renderer` 的 `renderToReactElement`，输入为 markdown 字符串经 `@tiptap/markdown` parse 后的 ProseMirror JSON，extensions 复用 §3.3 的 `markdownExtensions`。
-- 编辑态与只读态视觉一致：共享同一份 `prose` 样式类（手写最小 CSS，覆盖 `h1/h2/ul/ol/li/code/pre/blockquote/table/a`，不引入 `@tailwindcss/typography`）。
-- **不再使用 `react-markdown` / `remark-gfm`**：统一 tiptap schema，避免双 parser 差异。
-- 代码块本期最小自实现 `<pre><code>` 渲染（不引高亮库），如需语法高亮后续 milestone 再加。
-- **链接安全**：static-renderer 输出的 `<a>` 由 Link 扩展的 `HTMLAttributes.rel/validate` 控制，`javascript:` 等非法协议在 parse 阶段即被 `Link.validate` 拒绝，不会进入 JSON。
+新增 `web/src/components/markdown/`：
 
-## 4. 组件接口
+| 文件 | 职责 |
+|---|---|
+| `markdown-safety.ts` | Markdown 输入安全归一化：转义原始 HTML 标签、校验链接协议 |
+| `extensions.ts` | 导出 Tiptap extensions、`MarkdownManager`、Markdown parse/serialize helper |
+| `markdown-view.tsx` | 只读 Markdown 渲染 |
+| `markdown-editor.tsx` | 受控 WYSIWYG Markdown 编辑器 |
+| `markdown.css` | 编辑态与只读态共享的最小排版样式 |
+| `*.test.tsx` / `*.test.ts` | 安全、序列化、渲染和交互测试 |
 
-### 4.1 MarkdownEditor
+### 4.2 共享 schema
+
+`extensions.ts` 使用单一 schema：
+
+```ts
+import Link from "@tiptap/extension-link"
+import { TaskItem, TaskList } from "@tiptap/extension-list"
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table"
+import { Markdown, MarkdownManager } from "@tiptap/markdown"
+import StarterKit from "@tiptap/starter-kit"
+
+import { isAllowedMarkdownHref } from "./markdown-safety"
+
+export const markdownExtension = Markdown.configure({
+  markedOptions: {
+    gfm: true,
+    breaks: false,
+  },
+})
+
+export const markdownExtensions = [
+  StarterKit.configure({
+    link: false,
+  }),
+  markdownExtension,
+  Link.configure({
+    openOnClick: false,
+    autolink: true,
+    linkOnPaste: true,
+    protocols: ["http", "https", "mailto"],
+    validate: isAllowedMarkdownHref,
+    HTMLAttributes: {
+      rel: "noopener noreferrer",
+      target: "_blank",
+    },
+  }),
+  TaskList,
+  TaskItem.configure({
+    nested: true,
+  }),
+  Table.configure({
+    resizable: false,
+  }),
+  TableRow,
+  TableHeader,
+  TableCell,
+]
+
+export const markdownManager = new MarkdownManager({
+  extensions: markdownExtensions,
+  markedOptions: {
+    gfm: true,
+    breaks: false,
+  },
+})
+```
+
+实施时如果 Tiptap 类型要求 extension 数组拆分为 editor-only / renderer-only，应保留同一份配置来源，不允许编辑器与只读渲染维护两套不同 schema。
+
+### 4.3 HTML 禁用策略
+
+Tiptap v3.27.1 的 `@tiptap/markdown` 会把 Markdown 中的原始 HTML token 交给 extension 的 `parseHTML` 规则解析，当前 API 没有可依赖的 `html: false` 选项。因此本期不能把“禁用 HTML”写成待确认配置，而必须在进入 Tiptap parser 前做显式归一化。
+
+新增 `escapeMarkdownHtml(source: string): string`：
+
+- 在非代码块、非行内代码的普通 Markdown 文本中，识别形如 `<tag ...>`、`</tag>`、`<tag />` 的原始 HTML 标签。
+- 将这些标签的尖括号转义为 `&lt;` / `&gt;`，使其作为文本进入 Tiptap。
+- 不把 Markdown 链接、普通 URL、代码块、行内代码改写。
+- 该函数用于：
+  - `MarkdownView` parse 前。
+  - `MarkdownEditor` 初始化 / 外部 `value` 写回前。
+  - `MarkdownEditor` `onChange` 上报前。
+
+这意味着 Web Console 保存用户新输入的 HTML 标签时，会保存转义后的 Markdown 文本。历史数据只读展示时不会写回数据库，除非用户打开编辑器并保存。
+
+最小规则示例：
+
+```ts
+escapeMarkdownHtml("<script>alert(1)</script>")
+// "&lt;script&gt;alert(1)&lt;/script&gt;"
+
+escapeMarkdownHtml("`<script>`")
+// "`<script>`"
+
+escapeMarkdownHtml("```html\n<script>\n```")
+// "```html\n<script>\n```"
+```
+
+### 4.4 链接安全
+
+新增 `isAllowedMarkdownHref(url: string): boolean`：
+
+```ts
+export function isAllowedMarkdownHref(url: string): boolean {
+  return /^(https?:\/\/|mailto:)/i.test(url.trim())
+}
+```
+
+要求：
+
+- `javascript:`、`data:`、空协议、相对路径均不渲染为可点击链接。
+- 编辑态和只读态共用同一 Link extension 配置。
+- 只读渲染后补充测试断言非法链接没有 `href`。
+
+## 5. 组件接口
+
+### 5.1 `MarkdownEditor`
 
 ```tsx
 type MarkdownEditorProps = {
-  value: string                 // markdown 源码
+  value: string
   onChange: (markdown: string) => void
   placeholder?: string
   ariaLabel?: string
-  minHeight?: number            // 默认 240
+  minHeight?: number
   className?: string
+  disabled?: boolean
+  onModEnter?: () => void
 }
 ```
 
-- 受控组件：`value` 变化时，仅当与编辑器当前序列化结果不一致时才 `setContent(md, { contentType: "markdown" })`，避免光标跳动与循环更新。
-- 内部维护 `EditorContent`，所有 tiptap 状态不外泄。
-- 不提供 `editable:false` 退化——只读场景统一用 `MarkdownView`，职责分离。
+行为：
 
-### 4.2 MarkdownView
+- 受控组件。`value` 变化时，先经过 `escapeMarkdownHtml`，再用 `editor.commands.setContent(nextValue, { contentType: "markdown" })` 写回。
+- 为避免光标跳动，只有当外部 `value` 与 `editor.getMarkdown()` 的安全归一化结果不一致时才写回。
+- `onUpdate` 中使用 `editor.getMarkdown()` 取 Markdown 字符串，经过 `escapeMarkdownHtml` 后上报。
+- `Cmd/Ctrl+Enter` 调用可选 `onModEnter`，由父组件决定是否保存。
+- 工具栏提供：粗体、斜体、删除线、H1/H2/H3、无序列表、有序列表、待办列表、引用、代码、代码块、链接、插入 3x3 表格、撤销、重做。
+- 工具栏按钮使用 `lucide-react` 图标；不使用纯文本按钮表达已有通用图标的动作。
+- 不提供源码模式，不提供图片按钮。
+
+### 5.2 `MarkdownView`
 
 ```tsx
 type MarkdownViewProps = {
-  children: string              // markdown 源码
+  children: string
   className?: string
 }
 ```
 
-- 基于 `@tiptap/static-renderer`：把 markdown 字符串经 `@tiptap/markdown` parse 成 ProseMirror JSON，再用 `renderToReactElement` + 共享 `markdownExtensions` 渲染。
-- 纯渲染，无可变状态，不实例化 editor。
-- 空字符串返回 `null`，由调用方负责占位提示。
+行为：
 
-### 4.3 详情页改动点
+- 空字符串返回 `null`，占位文案由调用方负责。
+- 渲染前调用 `escapeMarkdownHtml(children)`。
+- 使用 `markdownManager.parse()` 得到 ProseMirror JSON。
+- 使用 `renderToReactElement`，导入路径为 `@tiptap/static-renderer/pm/react`。
+- 使用与编辑器相同的 `markdownExtensions`。
+- 不实例化 editor，不产生 `contenteditable`。
 
-### 4.3.1 描述块（TaskDescriptionBlock）
+### 5.3 样式
 
-- 展示：`whitespace-pre-wrap` 纯文本 → `<MarkdownView>`。
+新增最小 `.markdown-prose` 样式，覆盖：
+
+- `p`、`h1`、`h2`、`h3`
+- `ul`、`ol`、`li`
+- task list checkbox 对齐
+- `blockquote`
+- `code`、`pre`
+- `table`、`thead`、`tbody`、`th`、`td`
+- `a`
+
+不引入 `@tailwindcss/typography`，避免为了两个入口扩大样式依赖。
+
+## 6. 任务详情页改动
+
+### 6.1 描述块
+
+- 展示：`whitespace-pre-wrap` 纯文本改为 `<MarkdownView>{value}</MarkdownView>`。
 - 空描述占位文案不变。
-- 编辑 Dialog 内的 `<Textarea>` → `<MarkdownEditor>`，保留 Dialog 外壳、保存/取消按钮、`Cmd+Enter` 提交。
-- `draft` 状态从 `string` 改为受 `MarkdownEditor.onChange` 上报的 markdown 字符串。
+- Dialog 内 `<Textarea>` 改为 `<MarkdownEditor>`。
+- 保存逻辑不变：归一化后为空提交 `{ clear_description: true }`，否则提交 `{ description }`。
+- Dialog 的 `Cmd/Ctrl+Enter` 改由 `MarkdownEditor.onModEnter` 触发。
 
-### 4.3.2 注解编辑器（TaskAnnotationsEditor）
+### 6.2 注解编辑器
 
-- 新增注解的 `<Textarea>` → `<MarkdownEditor minHeight={120}>`。
-- 编辑注解 Dialog 内的 `<Textarea>` → `<MarkdownEditor minHeight={120}>`。
-- 注解列表展示：纯文本 `<div>` → `<MarkdownView>`。
-- 注解为空的校验改为 `markdown.trim()` 去空白后非空（去除 markdown 语法符号后仍需有可见字符；最小校验：trim 后非空，不过度严格）。
+- 新增注解 composer 改为 `<MarkdownEditor minHeight={120}>`。
+- 编辑注解 Dialog 改为 `<MarkdownEditor minHeight={120}>`。
+- 注解列表展示改为 `<MarkdownView>`。
+- 空注解校验：`markdown.trim()` 非空即可，不做“去除 Markdown 符号后仍有可见字符”的复杂校验。
+- 新增和编辑失败时继续保留当前草稿。
 
-### 4.3.3 面包屑
+### 6.3 面包屑
 
-`workspaceSlug / projectSlug / task_slug` 改为：
+当前路由没有 `/workspaces/:workspaceSlug` workspace overview，因此 workspace 段不能链接到不存在的页面。
+
+改为：
 
 ```tsx
 <nav className="text-xs text-muted-foreground">
-  <a href={`/workspaces/${workspaceSlug}`}>{workspaceSlug}</a>
+  <a href="/projects">{workspaceSlug}</a>
   {" / "}
   <a href={projectHref}>{projectSlug}</a>
   {" / "}
-  {taskData.task_slug || taskData.uuid.slice(0, 8)}
+  <span>{taskData.task_slug || taskData.uuid.slice(0, 8)}</span>
 </nav>
 ```
 
-- workspace 段链接到 `/workspaces/${workspaceSlug}`（workspace overview）。
+- workspace 段链接到当前 workspace 下的项目列表 `/projects`。
 - project 段链接到现有 `projectHref`。
-- task 段保持纯文本（自身所在页）。
+- task 段保持纯文本。
 
-### 4.3.4 栅格布局
+### 6.4 栅格布局
 
-- 现状：`md:grid-cols-[1fr_240px]`，属性面板固定 240px，主区在宽屏下偏窄。
-- 改为：`md:grid-cols-[minmax(0,1fr)_280px]`，属性面板 280px（容纳日期/标签等两列字段更舒展），主区 `minmax(0,1fr)` 防止内容溢出。
+- `md:grid-cols-[1fr_240px]` 改为 `md:grid-cols-[minmax(0,1fr)_280px]`。
+- 主区长文本容器使用 `min-w-0`，防止表格、代码块撑破布局。
 - 移动端三 Tab 行为不变。
 
-## 5. 安全考虑
+## 7. 测试策略
 
-- **链接协议白名单**：`Link` 扩展配置 `validate: (url) => /^https?:|^mailto:/.test(url)` 与 `HTMLAttributes.rel = "noopener noreferrer"`，`javascript:` 等非法协议在 parse 阶段即被拒绝，不会进入 ProseMirror JSON，编辑态与 static-renderer 只读态都不会输出可点击的危险链接。
-- **禁用内联 HTML**：`@tiptap/markdown` 默认会通过各 node 的 `parseHTML` 把 markdown 中的内联 HTML 当结构解析。本期显式关闭 HTML 透传（在 `Markdown` 扩展配置中设 `html: false`，具体选项名按 v3.27.x 实际 API 在实施时确认），保证 `<script>`、`<iframe>` 等标签以纯文本字符显示，不被解析执行。
-- **不引入 Image 扩展**：粘贴/输入 `![]()` 不渲染为 `<img>`，避免通过图片 URL 触发请求或外链跟踪。
-- **代码块**：仅 `<pre><code>` 渲染，不执行任何高亮脚本。
-- **static-renderer 不挂载 editor**：只读渲染不实例化 ProseMirror editor，无编辑副作用、无 `contenteditable`，进一步缩小攻击面。
+### 7.1 Markdown 安全与序列化测试
 
-## 6. 测试策略
+`markdown-safety.test.ts`：
 
-### 6.1 单元测试（vitest + testing-library）
+- 原始 `<script>`、`<iframe>`、`<img onerror>` 被转义。
+- 行内代码和 fenced code block 中的 HTML 不被转义。
+- `https://`、`http://`、`mailto:` 通过链接校验。
+- `javascript:`、`data:`、相对路径不通过链接校验。
 
-- `markdown-editor.test.tsx`：
-  - 受控 `value` 渲染后内容正确。
-  - 输入触发 `onChange` 上报 markdown 字符串。
-  - 工具栏粗体按钮对选区加粗，输出 `**text**`。
-  - 表格/待办列表 round-trip：`value` 含 GFM 表格/`- [x]` 时，编辑器序列化结果与输入一致。
-- `markdown-view.test.tsx`：
-  - 渲染常见 markdown 元素（标题、列表、代码块、表格、待办列表、链接）。
-  - 内联 HTML（如 `<script>alert(1)</script>`）以纯文本显示，不被解析。
-  - `javascript:` 链接不渲染为可点击 `<a href>`。
-  - 编辑器与只读渲染对同一份 markdown 输出 DOM 结构一致（共享 schema 的回归断言）。
+`markdown-view.test.tsx`：
 
-### 6.2 组件测试（更新现有测试）
+- 渲染标题、段落、粗体、列表、引用、代码块、表格、待办列表。
+- `<script>alert(1)</script>` 以文本出现，不产生 `script` 节点。
+- `[x](javascript:alert(1))` 不产生带危险 `href` 的链接。
 
-- `task-detail-page.test.tsx`：
-  - 描述展示用 `MarkdownView`（断言渲染出 markdown 元素，如 `<h1>`）。
-  - 描述编辑 Dialog 打开后包含 `MarkdownEditor`。
-  - 面包屑包含 workspace、project 的 `<a>` 链接。
-  - 栅格 class 含 `md:grid-cols-[minmax(0,1fr)_280px]`。
-- `task-annotations-editor.test.tsx`：
-  - 新增/编辑注解使用 `MarkdownEditor`。
-  - 注解列表项用 `MarkdownView` 渲染。
+`markdown-editor.test.tsx`：
 
-### 6.3 验证命令
+- 初始 `value` 能渲染。
+- 输入/工具栏操作触发 `onChange`，输出 Markdown 字符串。
+- 粗体按钮对选区输出 `**text**`。
+- 表格和待办列表 round-trip 不丢内容。
+- `Cmd/Ctrl+Enter` 调用 `onModEnter`。
+
+### 7.2 业务组件测试
+
+`task-detail-page.test.tsx`：
+
+- 描述展示渲染 Markdown 元素。
+- 描述 Dialog 中出现 `MarkdownEditor`。
+- 清空描述仍提交 `{ clear_description: true }`。
+- 面包屑 workspace 链接到 `/projects`，project 链接到现有项目页。
+- 主布局 class 包含 `md:grid-cols-[minmax(0,1fr)_280px]`。
+
+`task-annotations-editor.test.tsx`：
+
+- 新增注解使用 `MarkdownEditor`，提交 Markdown 字符串。
+- 编辑注解 Dialog 使用 `MarkdownEditor`。
+- 注解列表用 `MarkdownView` 渲染。
+- 空注解不提交，失败时保留草稿。
+
+### 7.3 Smoke
+
+更新 `web/scripts/playwright-editing-smoke.mjs`：
+
+- 任务描述保存一段含标题、列表、代码块、表格、待办列表的 Markdown，详情页展示结构化结果。
+- 新增注解含粗体和合法链接，列表展示为 Markdown。
+- 粘贴 `<script>alert(1)</script>` 与 `[x](javascript:alert(1))` 后不执行脚本、不产生危险链接。
+- 移动端三 Tab 切换仍正常。
+
+### 7.4 验证命令
+
+从仓库根目录执行：
 
 ```bash
-cd web && pnpm typecheck && pnpm test && pnpm build
-CGO_ENABLED=0 go build ./cmd/xuanchu   # web dist 嵌入构建（如 Makefile 依赖）
+pnpm --dir web typecheck
+pnpm --dir web test
+pnpm --dir web lint
+pnpm --dir web build
+pnpm --dir web run smoke:editing
+go test ./...
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build ./cmd/xuanchu
+git diff --check
 ```
 
-### 6.4 手测清单（写入 spec，验收时执行）
+如果 smoke 需要真实 server，应在计划中明确启动和停止方式，不能只跑单元测试就声称 Web Console 编辑流完成。
 
-- 描述：编辑含标题、列表、代码块、表格、待办列表的 markdown，保存后在详情页正确渲染（编辑态与只读态视觉一致）。
-- 注解：新增一条含粗体+链接的注解，列表展示正确。
-- 老数据兼容：已有纯文本描述（无 markdown 语法）正常显示为段落。
-- 安全：描述中粘贴 `<script>alert(1)</script>` 与 `[x](javascript:alert(1))`，保存后查看源码与渲染均不触发执行。
-- 面包屑：workspace、project 链接可跳转，task 段不可点。
-- 移动端：三 Tab 切换正常，编辑器高度自适应。
+## 8. 实施步骤概览
 
-## 7. 实施步骤（概览，详细 plan 由 writing-plans 拆分）
+1. 锁定 Tiptap v3.27.1 依赖。
+2. 新增 `markdown-safety.ts` 与安全测试。
+3. 新增 `extensions.ts`，打通 Markdown parse/render helper。
+4. 新增 `MarkdownView` 和样式。
+5. 新增 `MarkdownEditor` 和工具栏。
+6. 替换 `TaskDescriptionBlock`。
+7. 替换 `TaskAnnotationsEditor`。
+8. 调整详情页面包屑和栅格布局。
+9. 更新单元测试、组件测试和 smoke。
+10. 运行完整验证。
 
-1. 引入依赖（v3）：`@tiptap/react`、`@tiptap/starter-kit`、`@tiptap/pm`、`@tiptap/markdown`、`@tiptap/static-renderer`、`@tiptap/extension-task-list`、`@tiptap/extension-task-item`、`@tiptap/extension-link`、`@tiptap/extension-table`。固定到 v3.27.x 系列。
-2. 新增 `web/src/components/markdown/extensions.ts`（共享 schema，§3.3）。
-3. 新增 `markdown-view.tsx`：基于 `@tiptap/static-renderer` + `@tiptap/markdown` 的只读渲染（先做，可独立合入）。
-4. 新增 `markdown-editor.tsx`：基于 `@tiptap/react` 的 WYSIWYG 编辑器 + 工具栏，受控 markdown 字符串。
-5. 替换 `TaskDescriptionBlock` 展示与编辑。
-6. 替换 `TaskAnnotationsEditor` 新增/编辑/展示。
-7. 详情页面包屑 + 栅格调整。
-8. 更新现有测试 + 新增组件测试。
-9. 手测清单验收。
-
-## 8. 风险与权衡
+## 9. 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
-| v3 仍在快速迭代（v3.27.x），API 可能在小版本间调整 | 锁定到具体小版本；`@tiptap/markdown` 与 `@tiptap/static-renderer` 视为关键依赖，升级前跑全套测试 |
-| `@tiptap/markdown` 官方扩展文档标注 Beta | round-trip 测试覆盖每种语法；生产路径不依赖未稳定 API |
-| static-renderer 对部分扩展（表格嵌套、待办列表）渲染不完整 | 实施时针对表格/待办列表写专项回归测试；如确有缺陷，该语法降级为只读纯文本展示并记录到风险 |
-| 包体积增长 | tiptap 按需引扩展；编辑器走 Vite code-split 懒加载（只在 Dialog 打开时加载），只读 static-renderer 体积小 |
-| 注解文本纯文本历史被当 markdown 解析出现意外格式 | markdown 对纯文本宽容，多数情况渲染为段落；测试用例覆盖老数据 |
-| 任务标题误用富文本 | 显式不覆盖标题，保留 `InlineTextEditor` |
-| React 19 与 v3 集成边界问题 | 官方已支持；落地前先跑 `pnpm typecheck && pnpm build`，参考官方 React 集成示例 |
+| `@tiptap/markdown` 仍在迭代 | 锁定 3.27.1；升级前跑完整 round-trip、view、editor、smoke 测试 |
+| 原始 HTML 进入 Tiptap parser 被解析 | 不依赖不存在的 `html:false`；进入 parser 前统一 `escapeMarkdownHtml` |
+| 表格 schema 不完整 | 使用 `Table`、`TableRow`、`TableHeader`、`TableCell` 全量注册，并写表格测试 |
+| StarterKit 与 Link 重复注册 | `StarterKit.configure({ link:false })` 后显式注册自定义 Link |
+| 包体积增长 | 首期接受任务详情页加载成本；如 build 体积明显异常，再在实现计划中把 description Dialog 的 `MarkdownEditor` 动态 import，注解 composer 保持常驻 |
+| 历史纯文本被 Markdown 解析出意外样式 | 保持 Markdown 标准行为；测试覆盖纯文本、多行文本、特殊符号 |
+| 编辑器测试在 jsdom 中不稳定 | 工具栏核心命令用组件测试覆盖，复杂交互交给 Playwright smoke |
 
-## 9. 文档同步
+## 10. 文档同步
 
-- `ROADMAP.md`：新增 v0.5.1「Web Console Tiptap Markdown 编辑器与 Task 详情页 UX 改进」。
-- `README.md`：如用户可见行为变化（描述/注解现在支持 markdown 渲染），在 web console 段落补一句说明。
-- 本 spec 通过后，用 `superpowers:writing-plans` 拆实施计划。
+- `ROADMAP.md`：v0.5.1 已标记为已完成，并指向本 spec 和 implementation plan。
+- `README.md`：Web Console 段落已说明任务 description / 注解支持 Markdown WYSIWYG 编辑与同 schema 只读渲染，同时后端仍保存普通字符串。
+- 本 spec 已拆分对应 implementation plan。

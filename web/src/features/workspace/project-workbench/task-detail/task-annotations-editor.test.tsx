@@ -73,13 +73,13 @@ describe("TaskAnnotationsEditor", () => {
       { wrapper: makeWrapper(makeQueryClient()) }
     )
 
-    await userEvent.type(screen.getByLabelText("新增注解"), "已联系素材团队")
+    await userEvent.type(screen.getByLabelText("新增注解"), "Material team ready")
     await userEvent.click(screen.getByRole("button", { name: "添加注解" }))
 
     expect(addTaskAnnotation).toHaveBeenCalledWith("acme", "ads-1", {
-      description: "已联系素材团队",
+      description: "Material team ready",
     })
-    expect((screen.getByLabelText("新增注解") as HTMLTextAreaElement).value).toBe("")
+    expect(screen.getByLabelText("新增注解").textContent).toBe("")
   })
 
   it("does not submit empty annotation and keeps failed input", async () => {
@@ -99,13 +99,27 @@ describe("TaskAnnotationsEditor", () => {
     expect(addTaskAnnotation).not.toHaveBeenCalled()
     expect(screen.getByText("注解不能为空")).toBeTruthy()
 
-    await userEvent.type(screen.getByLabelText("新增注解"), "失败保留")
+    await userEvent.type(screen.getByLabelText("新增注解"), "failed input")
     await userEvent.click(screen.getByRole("button", { name: "添加注解" }))
 
     expect(await screen.findByText("scope denied")).toBeTruthy()
-    expect((screen.getByLabelText("新增注解") as HTMLTextAreaElement).value).toBe(
-      "失败保留"
+    expect(screen.getByLabelText("新增注解").textContent).toContain("failed input")
+  })
+
+  it("renders annotation markdown", () => {
+    render(
+      <TaskAnnotationsEditor
+        annotations={[{ id: "note-1", description: "**更新**\n\n- 截图" }]}
+        canWrite={true}
+        projectSlug="adsops"
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
     )
+
+    expect(screen.getByText("更新").tagName.toLowerCase()).toBe("strong")
+    expect(screen.getByText("截图")).toBeTruthy()
   })
 
   it("deletes an annotation after confirmation", async () => {
@@ -141,7 +155,8 @@ describe("TaskAnnotationsEditor", () => {
     )
 
     await userEvent.click(screen.getByRole("button", { name: "编辑注解" }))
-    await userEvent.clear(screen.getByLabelText("编辑注解内容"))
+    await userEvent.click(screen.getByLabelText("编辑注解内容"))
+    await userEvent.keyboard("{Control>}a{/Control}{Backspace}")
     await userEvent.type(screen.getByLabelText("编辑注解内容"), "更新注解")
     await userEvent.click(screen.getByRole("button", { name: "保存注解" }))
 
@@ -152,8 +167,6 @@ describe("TaskAnnotationsEditor", () => {
       { description: "更新注解" }
     )
     expect(await screen.findByText("denied")).toBeTruthy()
-    expect(
-      (screen.getByLabelText("编辑注解内容") as HTMLTextAreaElement).value
-    ).toBe("更新注解")
+    expect(screen.getByLabelText("编辑注解内容").textContent).toContain("更新注解")
   })
 })

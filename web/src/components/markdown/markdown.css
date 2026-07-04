@@ -1,0 +1,80 @@
+.markdown-prose {
+  overflow-wrap: anywhere;
+}
+
+.markdown-prose :where(p, ul, ol, blockquote, pre, table) {
+  margin-block: 0.625rem;
+}
+
+.markdown-prose :where(h1, h2, h3) {
+  margin-block: 0.75rem 0.375rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-prose h1 {
+  font-size: 1.25rem;
+}
+
+.markdown-prose h2 {
+  font-size: 1.125rem;
+}
+
+.markdown-prose h3 {
+  font-size: 1rem;
+}
+
+.markdown-prose :where(ul, ol) {
+  padding-left: 1.25rem;
+}
+
+.markdown-prose ul {
+  list-style: disc;
+}
+
+.markdown-prose ol {
+  list-style: decimal;
+}
+
+.markdown-prose blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.markdown-prose code {
+  border-radius: 0.25rem;
+  background: var(--muted);
+  padding: 0.125rem 0.25rem;
+  font-size: 0.875em;
+}
+
+.markdown-prose pre {
+  overflow-x: auto;
+  border-radius: 0.375rem;
+  background: var(--muted);
+  padding: 0.75rem;
+}
+
+.markdown-prose pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.markdown-prose :where(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+}
+
+.markdown-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

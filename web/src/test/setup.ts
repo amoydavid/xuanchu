@@ -20,6 +20,31 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined
 }
 
+if (!document.elementFromPoint) {
+  document.elementFromPoint = () => document.body
+}
+
+function emptyDOMRectList(): DOMRectList {
+  const rects: DOMRect[] = []
+  return {
+    item: () => null,
+    length: 0,
+    [Symbol.iterator]: () => rects[Symbol.iterator](),
+  }
+}
+
+if (!Element.prototype.getClientRects) {
+  Element.prototype.getClientRects = () => emptyDOMRectList()
+}
+
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => emptyDOMRectList()
+}
+
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () => new DOMRect()
+}
+
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class ResizeObserver {
     disconnect() {}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { MarkdownEditor, MarkdownView } from "@/components/markdown"
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,6 @@ import {
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { useMe } from "@/features/workspace/session/useMe"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import { ApiError } from "@/lib/api"
@@ -111,10 +111,17 @@ function TaskDetailPageContent({
   return (
     <div className="space-y-5">
       <section className="border-b pb-4">
-        <div className="text-xs text-muted-foreground">
-          {workspaceSlug} / {projectSlug} /{" "}
-          {taskData.task_slug || taskData.uuid.slice(0, 8)}
-        </div>
+        <nav className="text-xs text-muted-foreground">
+          <a className="hover:text-foreground" href="/projects">
+            {workspaceSlug}
+          </a>
+          {" / "}
+          <a className="hover:text-foreground" href={projectHref}>
+            {projectSlug}
+          </a>
+          {" / "}
+          <span>{taskData.task_slug || taskData.uuid.slice(0, 8)}</span>
+        </nav>
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 flex-1">
             <InlineTextEditor
@@ -159,8 +166,8 @@ function TaskDetailPageContent({
         onChange={setActiveMobileTab}
       />
 
-      <div className="grid gap-5 md:grid-cols-[1fr_240px]">
-        <div className="contents md:block md:space-y-5">
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="contents md:block md:min-w-0 md:space-y-5">
           <div className={mobilePanelClass(activeMobileTab, "annotations")}>
             <TaskDescriptionBlock
               canWrite={taskWritable}
@@ -291,9 +298,9 @@ function TaskDescriptionBlock({
           </Button>
         </div>
         {value ? (
-          <div className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+          <MarkdownView className="max-w-3xl text-sm leading-6 text-muted-foreground">
             {value}
-          </div>
+          </MarkdownView>
         ) : (
           <div className="text-sm text-muted-foreground">
             {t("projectReadonly.addDescription")}
@@ -312,15 +319,12 @@ function TaskDescriptionBlock({
             <Label htmlFor="task-description-editor">
               {t("projectReadonly.taskDescription")}
             </Label>
-            <Textarea
-              className="min-h-64 resize-y"
-              id="task-description-editor"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                  event.preventDefault()
-                  void save()
-                }
+            <MarkdownEditor
+              ariaLabel={t("projectReadonly.taskDescription")}
+              minHeight={260}
+              onChange={(markdown) => setDraft(markdown)}
+              onModEnter={() => {
+                void save()
               }}
               value={draft}
             />

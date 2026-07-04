@@ -62,6 +62,7 @@ async function runDesktopSmoke(browser) {
 
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks/ads-1`)
     await expectText(page, "整理素材表现")
+    await expectMarkdownSmoke(page)
     await assertNoHorizontalOverflow(page, "desktop task detail")
 
     await page.getByRole("button", { name: "编辑标签" }).click()
@@ -89,8 +90,17 @@ async function runDesktopSmoke(browser) {
 
     await page.getByRole("button", { name: "编辑注解" }).click()
     await assertDialogVisible(page, "编辑注解")
-    await page.getByLabel("编辑注解内容").fill("补充复盘结论")
+    await page.getByLabel("编辑注解内容").fill("## 补充复盘结论\n\n`CPA` 已确认")
     await page.getByRole("button", { name: "保存注解" }).click()
+    await page.locator(".markdown-prose h2", { hasText: "补充复盘结论" }).waitFor()
+
+    await page.getByRole("button", { name: "编辑描述" }).click()
+    await assertDialogVisible(page, "编辑任务描述")
+    await page
+      .getByRole("textbox", { name: "任务描述" })
+      .fill("# 调整后描述\n\n- 保留预算\n- 检查素材\n\n`channel` 字段已同步")
+    await page.getByRole("button", { name: "保存" }).click()
+    await page.locator(".markdown-prose h1", { hasText: "调整后描述" }).waitFor()
 
     await assertNoHorizontalOverflow(page, "desktop interactions")
     await screenshot(page, "desktop-task-detail")
@@ -294,6 +304,23 @@ async function expectStatus(page, text) {
   }
 }
 
+async function expectMarkdownSmoke(page) {
+  await page.locator(".markdown-prose h1", { hasText: "素材复盘" }).waitFor()
+  await page.locator(".markdown-prose code", { hasText: "channel" }).waitFor()
+  const safeLink = page.locator('.markdown-prose a[href="https://example.com/spec"]')
+  await safeLink.waitFor()
+  const scriptCount = await page.locator(".markdown-prose script").count()
+  if (scriptCount !== 0) {
+    throw new Error(`markdown rendered raw script elements: ${scriptCount}`)
+  }
+  const unsafeLinkCount = await page
+    .locator('.markdown-prose a[href^="javascript:"]')
+    .count()
+  if (unsafeLinkCount !== 0) {
+    throw new Error(`markdown rendered unsafe javascript links: ${unsafeLinkCount}`)
+  }
+}
+
 async function screenshot(page, name) {
   await page.screenshot({
     fullPage: true,
@@ -434,7 +461,8 @@ const task = {
       uuid: "task-ads-2",
     },
   ],
-  description: "整理素材表现，补充预算和渠道字段。",
+  description:
+    "# 素材复盘\n\n整理素材表现，补充预算和渠道字段。\n\n- 预算字段\n- 渠道字段\n\n`channel`\n\n[安全规格](https://example.com/spec)\n\n<script>alert(1)</script>\n\n[危险链接](javascript:alert(1))",
   due: "2026-07-03T00:00:00Z",
   links: [
     {

@@ -219,7 +219,9 @@ func newServerCommand(opts Options) *cobra.Command {
 			runtimeWG.Add(5)
 			// 解析 config secret key（TOML [security].config_secret_key）
 			secretKey, err := app.ParseConfigSecretKey(cfg.SecretKey)
-			if err != nil {
+			if errors.Is(err, app.ErrConfigSecretKeyMissing) {
+				secretKey = nil
+			} else if err != nil {
 				return fmt.Errorf("解析 config secret key 失败（[security].config_secret_key）: %w", err)
 			}
 			// 通讯录同步后台 dispatcher + scheduler

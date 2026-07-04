@@ -124,6 +124,29 @@ describe("TaskDetailPage", () => {
     })
   })
 
+  it("renders markdown description and linked breadcrumbs", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        description: "# 复盘\n\n- 素材\n- 预算",
+      })
+    )
+
+    renderPage()
+
+    expect(await screen.findByRole("heading", { name: "复盘" })).toBeTruthy()
+    expect(screen.getByText("素材")).toBeTruthy()
+    expect(screen.getByText("预算")).toBeTruthy()
+    expect(screen.getByRole("link", { name: "acme" }).getAttribute("href")).toBe(
+      "/projects"
+    )
+    expect(
+      screen.getByRole("link", { name: "agentapi" }).getAttribute("href")
+    ).toBe("/workspaces/acme/projects/agentapi")
+    expect(
+      document.querySelector('[class*="md:grid-cols-[minmax(0,1fr)_280px]"]')
+    ).toBeTruthy()
+  })
+
   it("renders localized status and places description above annotations", async () => {
     renderPage()
 
