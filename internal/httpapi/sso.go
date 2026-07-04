@@ -141,11 +141,17 @@ func (s *Server) handleWorkspaceSsoSync(w http.ResponseWriter, r *http.Request) 
 	// 用 client_credentials grant 向 IdP 换取 directory token（与后台 dispatcher 同逻辑）
 	p, err := xuanchuOIDC.NewProviderSafe(r.Context(), cfg.IssuerBaseURL, cfg.ClientID, secrets.ClientSecret)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("directory sync: discovery failed", "err", err, "issuer", cfg.IssuerBaseURL)
+		}
 		writeError(w, http.StatusBadGateway, "directory_token_fetch_failed", "无法连接到 IdP，请检查 issuer 根地址", nil)
 		return
 	}
 	directoryToken, err := p.ClientCredentialsToken(r.Context(), "org.members.read")
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("directory sync: token fetch failed", "err", err, "issuer", cfg.IssuerBaseURL)
+		}
 		writeError(w, http.StatusBadGateway, "directory_token_fetch_failed", "获取通讯录访问凭证失败，请检查 client_id / client_secret", nil)
 		return
 	}
