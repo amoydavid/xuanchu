@@ -149,7 +149,7 @@ func (s *Server) handleWorkspaceSsoSync(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadGateway, "directory_token_fetch_failed", "获取通讯录访问凭证失败，请检查 client_id / client_secret", nil)
 		return
 	}
-	directoryClient := directory.NewClient(http.DefaultClient)
+	directoryClient := directory.NewClient(xuanchuOIDC.NoProxyHTTPClient)
 	stats, err := app.NewDirectorySyncService(s.store, directoryClient).SyncOnce(r.Context(), workspaceID, cfg.IssuerBaseURL, cfg.OrgID, directoryToken)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "directory_sync_failed", err.Error(), nil)

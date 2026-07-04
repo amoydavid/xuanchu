@@ -7,11 +7,36 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
+
+// NoProxyHTTPClient 是一个对 localhost/127.0.0.1 不走代理的 HTTP client。
+// 开发环境下 http_proxy 会把 localhost 请求发到代理导致 502；
+// OIDC/directory 是 server-to-server 通信，localhost 地址应直连。
+var NoProxyHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			host := req.URL.Hostname()
+			if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+				return nil, nil
+			}
+			return http.ProxyFromEnvironment(req)
+		},
+	},
+}
+
+// contextWithNoProxyClient 返回注入了 NoProxyHTTPClient 的 context，
+// go-oidc 的 NewProvider 通过 context.Value 读 HTTP client。
+func contextWithNoProxyClient(ctx context.Context) context.Context {
+	return oidc.ClientContext(ctx, NoProxyHTTPClient)
+}
 
 // TokenEndpointURL 返回 OIDC discovery 拿到的 token endpoint URL（即 {base}/oidc/orgs/{org}/token）。
 func (p *Provider) TokenEndpointURL() string {
@@ -20,6 +45,7 @@ func (p *Provider) TokenEndpointURL() string {
 
 // ClientCredentialsToken 用 client_credentials grant 换取 access token（用于访问 yaoguang 通讯录 API）。
 // yaoguang (Fosite) 要求 client_secret_basic 认证（HTTP Basic Auth），需显式设 AuthStyleInHeader。
+// 使用 NoProxyHTTPClient 避免 localhost 请求走代理。
 func (p *Provider) ClientCredentialsToken(ctx context.Context, scopes ...string) (string, error) {
 	cfg := clientcredentials.Config{
 		ClientID:     p.oauthConfig.ClientID,
@@ -28,7 +54,7 @@ func (p *Provider) ClientCredentialsToken(ctx context.Context, scopes ...string)
 		Scopes:       scopes,
 		AuthStyle:    oauth2.AuthStyleInHeader,
 	}
-	token, err := cfg.Token(ctx)
+	token, err := cfg.Token(contextWithNoProxyClient(ctx))
 	if err != nil {
 		return "", fmt.Errorf("client_credentials token: %w", err)
 	}
@@ -49,8 +75,9 @@ type Provider struct {
 }
 
 // NewProviderSafe 用 issuerBaseURL 做 discovery，构造 RP。
+// 使用 NoProxyHTTPClient 避免 localhost discovery 请求走代理。
 func NewProviderSafe(ctx context.Context, issuerBaseURL, clientID, clientSecret string) (*Provider, error) {
-	provider, err := oidc.NewProvider(ctx, issuerBaseURL)
+	provider, err := oidc.NewProvider(contextWithNoProxyClient(ctx), issuerBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
 	}
@@ -76,7 +103,7 @@ func (p *Provider) AuthCodeURL(state, pkceVerifier, redirectURI string) string {
 // Exchange 用 authorization code 换 id_token 并校验签名/iss/aud/exp。
 func (p *Provider) Exchange(ctx context.Context, code, pkceVerifier, redirectURI string) (*Token, error) {
 	p.oauthConfig.RedirectURL = redirectURI
-	token, err := p.oauthConfig.Exchange(ctx, code,
+	token, err := p.oauthConfig.Exchange(contextWithNoProxyClient(ctx), code,
 		oauth2.SetAuthURLParam("code_verifier", pkceVerifier),
 	)
 	if err != nil {
@@ -86,7 +113,7 @@ func (p *Provider) Exchange(ctx context.Context, code, pkceVerifier, redirectURI
 	if !ok {
 		return nil, fmt.Errorf("id_token missing in token response")
 	}
-	idToken, err := p.verifier.Verify(ctx, rawIDToken)
+	idToken, err := p.verifier.Verify(contextWithNoProxyClient(ctx), rawIDToken)
 	if err != nil {
 		return nil, fmt.Errorf("id_token verify: %w", err)
 	}
