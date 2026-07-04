@@ -43,6 +43,8 @@ func (s *Server) newRouter() *http.ServeMux {
 		if strings.TrimRight(s.console.BasePath, "/") == "" {
 			root.Handle("/api/", api)
 			root.Handle("/healthz", api)
+			root.Handle("/sso/", api)
+			root.Handle("/auth/", api)
 			root.Handle("/mcp", api)
 			root.Handle("/docs", api)
 			root.Handle("/openapi.json", api)
