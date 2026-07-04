@@ -84,10 +84,14 @@ func NewProviderSafe(ctx context.Context, issuerBaseURL, clientID, clientSecret 
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
 	}
+	endpoint := provider.Endpoint()
+	// yaoguang (Fosite) 要求 client_secret_basic 认证（HTTP Basic Auth header），
+	// 显式设 AuthStyleInHeader 避免 oauth2 AutoDetect 先尝试 POST body 被拒。
+	endpoint.AuthStyle = oauth2.AuthStyleInHeader
 	config := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		Endpoint:     provider.Endpoint(),
+		Endpoint:     endpoint,
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
