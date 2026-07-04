@@ -27,6 +27,35 @@ func (s *Server) oidcAuthService() *app.OIDCAuthService {
 	return s.oidcAuth
 }
 
+// handleSsoWorkspace 查找唯一一个启用了 OIDC 的 workspace。
+// 恰好 1 个时返回 {slug, name}；0 个或多个时返回 404。
+func (s *Server) handleSsoWorkspace(w http.ResponseWriter, r *http.Request) {
+	wsRepo := storage.NewWorkspaceRepository(s.store.DB())
+	workspaces, err := wsRepo.ListAll(false)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "no_sso_workspace", "", nil)
+		return
+	}
+	cfgSvc := app.NewOIDCConfigService(storage.NewConfigRepository(s.store.DB()), s.secretKey)
+	var found *storage.Workspace
+	for i := range workspaces {
+		ws := &workspaces[i]
+		if _, enabled := cfgSvc.Get(ws.ID); enabled {
+			if found != nil {
+				// 多个 OIDC workspace → 404
+				writeError(w, http.StatusNotFound, "multiple_sso_workspaces", "", nil)
+				return
+			}
+			found = ws
+		}
+	}
+	if found == nil {
+		writeError(w, http.StatusNotFound, "no_sso_workspace", "", nil)
+		return
+	}
+	writeSuccess(w, http.StatusOK, map[string]any{"slug": found.Slug, "name": found.Name}, nil)
+}
+
 // resolveWorkspaceIDByRef 把 slug 或 id 解析成 workspace ID。
 func (s *Server) resolveWorkspaceIDByRef(ref string) (string, bool) {
 	wsRepo := storage.NewWorkspaceRepository(s.store.DB())

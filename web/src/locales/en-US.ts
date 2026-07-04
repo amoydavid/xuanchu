@@ -624,6 +624,9 @@ export const enUS = {
     notEnabled: "SSO not configured yet. Fill in the fields below and save to enable.",
     noPermission: "You do not have permission to view this page.",
     oidcLogin: "OIDC Sign-in",
+    quickLogin: "Sign in with {{name}}",
+    directLogin: "OIDC Sign-in",
+    directLoginDesc: "Sign in to workspace: {{slug}} via OIDC",
     errors: {
       save: "Save failed",
       sync: "Sync failed",

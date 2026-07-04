@@ -49,6 +49,11 @@ const AdminLoginRoute = lazy(() =>
     default: module.AdminLoginRoute,
   }))
 )
+const SsoLoginRouteComponent = lazy(() =>
+  import("@/pages/SsoLoginPage").then((module) => ({
+    default: module.SsoLoginPage,
+  }))
+)
 const AdminSetupRoute = lazy(() =>
   import("@/routes/admin/AdminSetupRoute").then((module) => ({
     default: module.AdminSetupRoute,
@@ -103,6 +108,11 @@ const adminLoginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/login",
   component: lazyRoute(AdminLoginRoute),
+})
+const ssoLoginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sso/login/$slug",
+  component: lazyRoute(SsoLoginRouteComponent),
 })
 
 const adminSetupRoute = createRoute({
@@ -232,6 +242,7 @@ const routeTree = rootRoute.addChildren([
     projectTaskDetailRoute,
   ]),
   adminLoginRoute,
+  ssoLoginRoute,
   adminSetupRoute,
   adminGuardRoute.addChildren([
     adminDashboardRoute,

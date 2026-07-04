@@ -616,6 +616,9 @@ export const zhCN = {
     notEnabled: "尚未配置 SSO，填写以下信息后保存即可启用。",
     noPermission: "您没有权限查看此页面。",
     oidcLogin: "OIDC 单点登录",
+    quickLogin: "使用 {{name}} 单点登录",
+    directLogin: "OIDC 单点登录",
+    directLoginDesc: "通过 OIDC 登录到 workspace: {{slug}}",
     errors: {
       save: "保存失败",
       sync: "同步触发失败",
