@@ -33,6 +33,9 @@ type AuditLogEntry struct {
 type AuditListOptions struct {
 	WorkspaceID *string
 	ProjectID   *string
+	TargetType  *string
+	TargetID    *string
+	Action      *string
 	Limit       int
 	Offset      int
 }
@@ -82,6 +85,15 @@ func (r *AuditRepository) List(opts AuditListOptions) ([]AuditLogEntry, error) {
 	}
 	if opts.ProjectID != nil {
 		query = query.Where("project_id = ?", *opts.ProjectID)
+	}
+	if opts.TargetType != nil {
+		query = query.Where("target_type = ?", *opts.TargetType)
+	}
+	if opts.TargetID != nil {
+		query = query.Where("target_id = ?", *opts.TargetID)
+	}
+	if opts.Action != nil {
+		query = query.Where("action = ?", *opts.Action)
 	}
 	var rows []AuditLog
 	if err := query.Order("created_at DESC").Order("id DESC").Offset(opts.Offset).Limit(limit).Find(&rows).Error; err != nil {

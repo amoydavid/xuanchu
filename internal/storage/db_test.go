@@ -239,6 +239,18 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 	}
 }
 
+func TestAuditTargetTimeIndexMigrated(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasIndex(&AuditLog{}, "idx_audit_target_time") {
+		t.Fatal("idx_audit_target_time missing after migration")
+	}
+}
+
 func TestConfigDefinitionTableMigrated(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {

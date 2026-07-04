@@ -11,8 +11,19 @@ import (
 type AuditListInput struct {
 	WorkspaceRef string
 	ProjectRef   string
+	TargetType   *string
+	TargetID     *string
+	Action       *string
 	Limit        int
 	Offset       int
+}
+
+// TaskAuditInput 是任务详情历史专用查询入参。
+// 它只接受 limit/offset；target 由内部按 taskRef 解析，
+// action 固定为 task.modify。
+type TaskAuditInput struct {
+	Limit  int
+	Offset int
 }
 
 type AuditEntry struct {
@@ -38,12 +49,36 @@ type AuditLogView struct {
 	TargetType              string
 	TargetID                string
 	PayloadJSON             string
+	Changes                 []TaskFieldChange
 	DelegatorTokenID        *string
 	DelegatorUser           *task.UserInfo
 	AdminActingSessionID    *string
 	DelegatorAdminTokenID   *string
 	DelegatorAdminTokenName string
 	CreatedAt               int64
+}
+
+// TaskChangeDisplayValue 是变更历史里某个值的可渲染表示。
+// Raw 保留原始机器值（可为 nil），Text 是兜底显示文案。
+// 前端应优先用 field + Raw + 当前 i18n locale 格式化，只在
+// 未知类型时回退到 Text。
+type TaskChangeDisplayValue struct {
+	Raw  any
+	Text string
+}
+
+// TaskFieldChange 是字段级变更的可渲染视图。
+// Kind 区分 scalar / set，前端不靠字段 presence 猜渲染模板。
+// 对标量 change，Previous / Current 必须非 nil（即使 Raw 为 nil），
+// 以便 JSON 输出保留显式 null。
+type TaskFieldChange struct {
+	Field    string
+	Kind     string
+	LabelKey string
+	Previous *TaskChangeDisplayValue
+	Current  *TaskChangeDisplayValue
+	Added    []TaskChangeDisplayValue
+	Removed  []TaskChangeDisplayValue
 }
 
 type TokenActorInfo struct {
@@ -206,12 +241,49 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 	rows, err := s.auditRepo.List(storage.AuditListOptions{
 		WorkspaceID: &s.runtime.WorkspaceID,
 		ProjectID:   projectID,
+		TargetType:  input.TargetType,
+		TargetID:    input.TargetID,
+		Action:      input.Action,
 		Limit:       input.Limit,
 		Offset:      input.Offset,
 	})
 	if err != nil {
 		return nil, err
 	}
+	return s.auditLogViewsFromRows(rows)
+}
+
+// ListTaskAudit 是任务详情历史专用入口，只要求 task:read。
+// 它只返回该 task 的 task.modify 变更，避免普通 member/viewer
+// 能读任务却看不到详情页历史。
+func (s *Service) ListTaskAudit(taskRef string, input TaskAuditInput) ([]AuditLogView, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return nil, err
+	}
+	resolved, err := s.ResolveProtocolTarget(taskRef)
+	if err != nil {
+		return nil, err
+	}
+	targetType := "task"
+	targetID := resolved.UUID
+	action := "task.modify"
+	rows, err := s.auditRepo.List(storage.AuditListOptions{
+		WorkspaceID: &s.runtime.WorkspaceID,
+		TargetType:  &targetType,
+		TargetID:    &targetID,
+		Action:      &action,
+		Limit:       input.Limit,
+		Offset:      input.Offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.auditLogViewsFromRows(rows)
+}
+
+// auditLogViewsFromRows 把 storage 行转换为视图，统一解析 actor / delegator
+// 和 payload 里的字段级 changes，避免 ListAudit / ListTaskAudit 复制逻辑。
+func (s *Service) auditLogViewsFromRows(rows []storage.AuditLogEntry) ([]AuditLogView, error) {
 	out := make([]AuditLogView, 0, len(rows))
 	userIDs := make([]string, 0)
 	for _, row := range rows {
@@ -239,6 +311,7 @@ func (s *Service) ListAudit(input AuditListInput) ([]AuditLogView, error) {
 			TargetType:              row.TargetType,
 			TargetID:                row.TargetID,
 			PayloadJSON:             row.PayloadJSON,
+			Changes:                 parseTaskFieldChanges(row.PayloadJSON),
 			DelegatorTokenID:        row.DelegatorTokenID,
 			AdminActingSessionID:    row.AdminActingSessionID,
 			DelegatorAdminTokenID:   row.DelegatorAdminTokenID,

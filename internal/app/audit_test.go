@@ -370,3 +370,166 @@ func mustTenantServiceForTest(t *testing.T, svc *Service, rawToken, capability s
 	}
 	return tenantSvc
 }
+
+// TestListTaskAuditRequiresTaskReadNotAuditRead 校验任务详情历史只要求
+// task:read，不要求 audit:read。viewer 角色有 task:read 但没有 audit:read。
+func TestListTaskAuditRequiresTaskReadNotAuditRead(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	created, err := ownerSvc.Add(AddInput{Title: "task"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if err := ownerSvc.Modify(created.UUID, ModifyInput{Title: stringPtr("changed")}); err != nil {
+		t.Fatalf("Modify() error = %v", err)
+	}
+
+	userRepo := storage.NewUserRepository(store.DB())
+	memberRepo := storage.NewMemberRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	viewer, err := userRepo.Create(storage.User{ID: "user-viewer", Name: "viewer", CreatedAt: 100, ModifiedAt: 100})
+	if err != nil {
+		t.Fatalf("Create(viewer) error = %v", err)
+	}
+	if err := memberRepo.Upsert(storage.Membership{
+		UserID:      viewer.ID,
+		WorkspaceID: ws.ID,
+		Role:        string(RoleViewer),
+		JoinedAt:    100,
+		ModifiedAt:  100,
+	}); err != nil {
+		t.Fatalf("Upsert(viewer) error = %v", err)
+	}
+
+	viewerSvc := newTestServiceWithRuntime(t, store, 100, viewer.Name, ws.Slug)
+
+	// viewer 能读任务历史。
+	rows, err := viewerSvc.ListTaskAudit(created.UUID, TaskAuditInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListTaskAudit() error = %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("ListTaskAudit() returned no rows")
+	}
+	if rows[0].Action != "task.modify" || rows[0].TargetID != created.UUID {
+		t.Fatalf("rows[0] = %#v", rows[0])
+	}
+
+	// 但 viewer 不能调通用 ListAudit（缺 audit:read）。
+	if _, err := viewerSvc.ListAudit(AuditListInput{Limit: 10}); err == nil {
+		t.Fatal("ListAudit() error = nil, want permission denied")
+	} else {
+		permErr, ok := err.(PermissionError)
+		if !ok || permErr.Code != "permission_denied" {
+			t.Fatalf("ListAudit() err = %#v, want PermissionError(permission_denied)", err)
+		}
+	}
+}
+
+// TestListTaskAuditOnlyReturnsTargetTask 校验只返回该 task 的 task.modify。
+func TestListTaskAuditOnlyReturnsTargetTask(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	taskA, err := svc.Add(AddInput{Title: "A"})
+	if err != nil {
+		t.Fatalf("Add(A) error = %v", err)
+	}
+	taskB, err := svc.Add(AddInput{Title: "B"})
+	if err != nil {
+		t.Fatalf("Add(B) error = %v", err)
+	}
+	if err := svc.Modify(taskA.UUID, ModifyInput{Title: stringPtr("A2")}); err != nil {
+		t.Fatalf("Modify(A) error = %v", err)
+	}
+	if err := svc.Modify(taskB.UUID, ModifyInput{Title: stringPtr("B2")}); err != nil {
+		t.Fatalf("Modify(B) error = %v", err)
+	}
+
+	rows, err := svc.ListTaskAudit(taskA.UUID, TaskAuditInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListTaskAudit() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].TargetID != taskA.UUID {
+		t.Fatalf("rows[0].TargetID = %s, want %s", rows[0].TargetID, taskA.UUID)
+	}
+}
+
+// TestParseTaskFieldChangesHandlesBadPayload 校验坏 payload / 旧 payload
+// 不导致解析失败。
+func TestParseTaskFieldChangesHandlesBadPayload(t *testing.T) {
+	cases := []string{
+		"",
+		"{}",
+		"{not json",
+		`{"changes": "not array"}`,
+		`{"changes": [{"field": ""}]}`,
+	}
+	for _, payload := range cases {
+		changes := parseTaskFieldChanges(payload)
+		// 不报错，且没有有效 change 条目。
+		for _, c := range changes {
+			if c.Field != "" {
+				t.Fatalf("parseTaskFieldChanges(%q) = %#v, want no valid changes", payload, changes)
+			}
+		}
+	}
+}
+
+// TestParseTaskFieldChangesScalarAndSet 校验标量和集合 change 的解析，
+// 以及 current 为 null 时仍保留 presence。
+func TestParseTaskFieldChangesScalarAndSet(t *testing.T) {
+	payload := `{
+	  "changes": [
+	    {"field":"title","previous":"旧","current":"新"},
+	    {"field":"due","previous":1783036800,"current":null},
+	    {"field":"assignees","added":[{"id":"u2","name":"lisi","display_name":"李四"}],"removed":[]},
+	    {"field":"tags","added":["a"],"removed":["b"]}
+	  ]
+	}`
+	changes := parseTaskFieldChanges(payload)
+	if len(changes) != 4 {
+		t.Fatalf("changes = %d, want 4", len(changes))
+	}
+
+	title := changes[0]
+	if title.Kind != "scalar" || title.Field != "title" {
+		t.Fatalf("title change = %#v", title)
+	}
+	if title.Previous == nil || title.Current == nil {
+		t.Fatal("scalar previous/current must be non-nil for presence")
+	}
+	if title.Current.Raw != "新" {
+		t.Fatalf("title current raw = %#v", title.Current.Raw)
+	}
+	if title.LabelKey != "projectWorkbench.taskHistory.field.title" {
+		t.Fatalf("title label key = %q", title.LabelKey)
+	}
+
+	due := changes[1]
+	if due.Current == nil {
+		t.Fatal("due current missing; explicit null must preserve presence")
+	}
+	if due.Current.Raw != nil {
+		t.Fatalf("due current raw = %#v, want nil", due.Current.Raw)
+	}
+
+	assignees := changes[2]
+	if assignees.Kind != "set" || len(assignees.Added) != 1 {
+		t.Fatalf("assignees change = %#v", assignees)
+	}
+	if assignees.Added[0].Text != "李四" {
+		t.Fatalf("assignee text = %q, want 李四（display_name 优先）", assignees.Added[0].Text)
+	}
+
+	tags := changes[3]
+	if len(tags.Removed) != 1 || tags.Removed[0].Text != "b" {
+		t.Fatalf("tags removed = %#v", tags.Removed)
+	}
+}

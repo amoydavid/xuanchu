@@ -43,18 +43,18 @@ type AuditLog struct {
 	ActorTokenID            *string `gorm:"index"`
 	ActorTokenName          *string
 	ActorTokenPrefix        *string
-	WorkspaceID             *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1"`
+	WorkspaceID             *string `gorm:"index;index:idx_audit_ws_time,priority:1;index:idx_audit_project_time,priority:1;index:idx_audit_target_time,priority:1"`
 	ProjectID               *string `gorm:"index:idx_audit_project_time,priority:2"`
 	Action                  string  `gorm:"not null;index"`
-	TargetType              string
-	TargetID                string
+	TargetType              string  `gorm:"index:idx_audit_target_time,priority:2"`
+	TargetID                string  `gorm:"index:idx_audit_target_time,priority:3"`
 	PayloadJSON             string
 	DelegatorTokenID        *string `gorm:"index"`
 	DelegatorUserID         *string `gorm:"index"`
 	AdminActingSessionID    *string `gorm:"index"`
 	DelegatorAdminTokenID   *string `gorm:"index"`
 	DelegatorAdminTokenName string  `gorm:"not null;default:''"`
-	CreatedAt               int64   `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc"`
+	CreatedAt               int64   `gorm:"not null;index;index:idx_audit_ws_time,priority:2,sort:desc;index:idx_audit_project_time,priority:3,sort:desc;index:idx_audit_target_time,priority:4,sort:desc"`
 }
 
 type Project struct {
