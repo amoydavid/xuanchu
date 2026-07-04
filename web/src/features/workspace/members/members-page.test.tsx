@@ -258,6 +258,77 @@ describe("MembersPage", () => {
     expect(screen.getByText("只读")).not.toBeNull()
   })
 
+  it("localizes role labels and detail field labels in English", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input)
+      if (url.includes("/api/v1/users/u2")) {
+        return okResponse({
+          active: true,
+          created_at: 100,
+          display_name: "Bob Li",
+          email: "bob@example.com",
+          external_ids: [],
+          id: "u2",
+          modified_at: 120,
+          name: "bob",
+        })
+      }
+      if (url.includes("/api/v1/audit") || url.includes("/api/v1/tokens")) {
+        return okResponse([])
+      }
+      return okResponse(memberRows())
+    })
+
+    await i18n.changeLanguage("en-US")
+    renderPage()
+
+    await screen.findByText("Alice Chen")
+    expect(screen.getByText("Owner 1")).not.toBeNull()
+    expect(screen.getByText("Admin 1")).not.toBeNull()
+    expect(screen.getAllByText("Owner").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Admin").length).toBeGreaterThan(0)
+    expect(screen.queryByText("owner 1")).toBeNull()
+    expect(screen.queryByText("admin 1")).toBeNull()
+
+    renderDetailPage()
+
+    await screen.findByRole("heading", { name: "Bob Li" })
+    expect(screen.getByText("User ID")).not.toBeNull()
+    expect(screen.getAllByText("Role").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Admin").length).toBeGreaterThan(0)
+    expect(screen.queryByText("admin")).toBeNull()
+  })
+
+  it("localizes member detail identity labels in Chinese", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input)
+      if (url.includes("/api/v1/users/u2")) {
+        return okResponse({
+          active: true,
+          created_at: 100,
+          display_name: "Bob Li",
+          email: "bob@example.com",
+          external_ids: [],
+          id: "u2",
+          modified_at: 120,
+          name: "bob",
+        })
+      }
+      if (url.includes("/api/v1/audit") || url.includes("/api/v1/tokens")) {
+        return okResponse([])
+      }
+      return okResponse(memberRows())
+    })
+
+    renderDetailPage()
+
+    await screen.findByRole("heading", { name: "Bob Li" })
+    expect(screen.getByText("用户 ID")).not.toBeNull()
+    expect(screen.getAllByText("管理员").length).toBeGreaterThan(0)
+    expect(screen.queryByText("User ID")).toBeNull()
+    expect(screen.queryByText("admin")).toBeNull()
+  })
+
   it("removes a member through an AlertDialog confirmation", async () => {
     const user = userEvent.setup()
     const fetchMock = vi
@@ -311,7 +382,7 @@ describe("MembersPage", () => {
     await user.click(screen.getByRole("button", { name: "打开 Bob Li 的成员操作" }))
     await user.click(screen.getByRole("menuitem", { name: "调整角色" }))
     await user.click(screen.getByRole("combobox", { name: "角色" }))
-    await user.click(screen.getByRole("option", { name: "owner" }))
+    await user.click(screen.getByRole("option", { name: "所有者" }))
     await user.click(screen.getByRole("button", { name: "继续" }))
     await user.click(screen.getByRole("button", { name: "继续" }))
 

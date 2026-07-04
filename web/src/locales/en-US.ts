@@ -282,7 +282,14 @@ export const enUS = {
       "{{name}} will no longer be a member of this workspace. Users, tasks, and audit logs are not deleted.",
     removeSubmit: "Remove member",
     removeTitle: "Remove member",
+    roleCount: "{{role}} {{count}}",
     roleFilter: "Role filter",
+    roles: {
+      admin: "Admin",
+      member: "Member",
+      owner: "Owner",
+      viewer: "Viewer",
+    },
     search: "Search members",
     searchPlaceholder: "Search name, email, or stable name",
     source: "Member source",
@@ -296,6 +303,7 @@ export const enUS = {
     tokenSummaryUnavailable:
       "The current credential cannot read token summaries. Open the token page and filter by user.",
     user: "User",
+    userId: "User ID",
     userRequired: "User is required",
   },
   page: {

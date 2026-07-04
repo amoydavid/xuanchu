@@ -70,8 +70,10 @@ import {
 } from "./members-api"
 
 const ROLE_OPTIONS = ["viewer", "member", "admin", "owner"] as const
+const ROLE_COUNT_OPTIONS = ["owner", "admin", "member", "viewer"] as const
 
 type MemberRole = (typeof ROLE_OPTIONS)[number]
+type Translate = ReturnType<typeof useTranslation>["t"]
 
 type MembersPageProps = {
   workspaceSlug: string
@@ -133,10 +135,14 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="secondary">owner {counts.owner}</Badge>
-        <Badge variant="secondary">admin {counts.admin}</Badge>
-        <Badge variant="secondary">member {counts.member}</Badge>
-        <Badge variant="secondary">viewer {counts.viewer}</Badge>
+        {ROLE_COUNT_OPTIONS.map((item) => (
+          <Badge key={item} variant="secondary">
+            {t("members.roleCount", {
+              count: counts[item],
+              role: memberRoleLabel(t, item),
+            })}
+          </Badge>
+        ))}
         {!canManageMembers ? (
           <Badge variant="outline">{t("members.readonly")}</Badge>
         ) : null}
@@ -171,7 +177,7 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
             <SelectItem value="all">{t("members.allRoles")}</SelectItem>
             {ROLE_OPTIONS.map((item) => (
               <SelectItem key={item} value={item}>
-                {item}
+                {memberRoleLabel(t, item)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -238,7 +244,9 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{member.role}</Badge>
+                        <Badge variant="secondary">
+                          {memberRoleLabel(t, member.role)}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {formatTime(member.joined_at)}
@@ -417,7 +425,9 @@ export function MembersDetailPage({
           </Button>
           <PageHeader title={title} />
         </div>
-        {member ? <Badge variant="secondary">{member.role}</Badge> : null}
+        {member ? (
+          <Badge variant="secondary">{memberRoleLabel(t, member.role)}</Badge>
+        ) : null}
       </div>
 
       {membersQuery.isLoading || userQuery.isLoading ? (
@@ -450,8 +460,8 @@ export function MembersDetailPage({
                 <DetailItem label={t("members.displayName")} value={user.display_name || user.name} />
                 <DetailItem label={t("members.stableName")} value={user.name} />
                 <DetailItem label={t("members.email")} value={user.email ?? "-"} />
-                <DetailItem label="User ID" value={user.id} />
-                <DetailItem label={t("resource.role")} value={member.role} />
+                <DetailItem label={t("members.userId")} value={user.id} />
+                <DetailItem label={t("resource.role")} value={memberRoleLabel(t, member.role)} />
                 <DetailItem label={t("members.joinedAt")} value={formatTime(member.joined_at)} />
                 <DetailItem label={t("members.modifiedAt")} value={formatTime(member.modified_at)} />
               </dl>
@@ -1088,7 +1098,7 @@ function RoleSelect({
         <SelectContent>
           {options.map((item) => (
             <SelectItem key={item} value={item}>
-              {item}
+              {memberRoleLabel(t, item)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -1115,6 +1125,21 @@ function canManageMember(
 
 function roleAllowedForActor(role: string, actorIsOwner: boolean) {
   return actorIsOwner || role !== "owner"
+}
+
+function memberRoleLabel(t: Translate, role: string) {
+  switch (role) {
+    case "owner":
+      return t("members.roles.owner")
+    case "admin":
+      return t("members.roles.admin")
+    case "member":
+      return t("members.roles.member")
+    case "viewer":
+      return t("members.roles.viewer")
+    default:
+      return role
+  }
 }
 
 function memberCounts(members: WorkspaceMemberRow[]) {

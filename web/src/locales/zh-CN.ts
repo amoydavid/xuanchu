@@ -276,7 +276,14 @@ export const zhCN = {
       "{{name}} 将不再是当前 workspace 成员。不会删除用户、任务或审计记录。",
     removeSubmit: "移出成员",
     removeTitle: "移出成员",
+    roleCount: "{{role}} {{count}}",
     roleFilter: "角色筛选",
+    roles: {
+      admin: "管理员",
+      member: "成员",
+      owner: "所有者",
+      viewer: "观察者",
+    },
     search: "搜索成员",
     searchPlaceholder: "搜索姓名、邮箱或稳定名",
     source: "成员来源",
@@ -289,6 +296,7 @@ export const zhCN = {
     tokenSummary: "关联令牌摘要",
     tokenSummaryUnavailable: "当前凭证不能读取令牌摘要，可前往令牌页按用户筛选。",
     user: "用户",
+    userId: "用户 ID",
     userRequired: "必须填写用户",
   },
   page: {
