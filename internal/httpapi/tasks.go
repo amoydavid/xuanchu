@@ -733,6 +733,58 @@ func requireTaskRef(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return taskRef, true
 }
 
+// handleTaskAudit 暴露单任务的字段级变更历史。
+// 授权走 task:read（任务详情的一部分），而不是通用 audit:read。
+func (s *Server) handleTaskAudit(w http.ResponseWriter, r *http.Request) {
+	taskRef, ok := requireTaskRef(w, r)
+	if !ok {
+		return
+	}
+	limit, offset, ok := parseAuditLimitOffset(w, r)
+	if !ok {
+		return
+	}
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ListTaskAudit(taskRef, app.TaskAuditInput{Limit: limit, Offset: offset})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, auditRowsToResponse(rows), nil)
+}
+
+// parseAuditLimitOffset 解析 task audit 的 limit/offset query 参数。
+// 复用与通用 audit 一致的默认值（50）和上限（auditMaxLimit）。
+func parseAuditLimitOffset(w http.ResponseWriter, r *http.Request) (int, int, bool) {
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return 0, 0, false
+		}
+		if parsed > auditMaxLimit {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", auditMaxLimit), nil)
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	offset := 0
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_offset", "invalid offset", nil)
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
+}
+
 func tasksToJSON(rows []task.Task) []task.JSONTask {
 	out := make([]task.JSONTask, len(rows))
 	for i, row := range rows {

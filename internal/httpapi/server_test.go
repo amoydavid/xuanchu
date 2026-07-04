@@ -81,6 +81,7 @@ func TestOpenAPIIsGeneratedFromRegisteredHTTPRoutes(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/api/v1/tasks/{taskRef}/links",
+		"/api/v1/tasks/{taskRef}/audit",
 		"/api/v1/config-schema/{key}",
 		"/api/v1/projects/{projectRef}/timeline",
 	} {

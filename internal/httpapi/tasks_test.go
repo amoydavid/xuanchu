@@ -886,3 +886,86 @@ func TestHandleTaskInfoReturnsDependsInfo(t *testing.T) {
 		t.Fatalf("blocked_by_info not enriched: %s", body)
 	}
 }
+
+// TestTaskAuditUsesTaskReadScope 校验 /tasks/{ref}/audit 只要求 task:read。
+func TestTaskAuditUsesTaskReadScope(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Title: "before"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 产生一条 task.modify audit（title change）。
+	afterTitle := "after"
+	if err := svc.Modify(created.UUID, app.ModifyInput{Title: &afterTitle}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 在同一 store 上创建一个只持 task:read 的 token，
+	// 证明该接口不要求 task:write 或 audit:read。
+	readOnly, err := svc.CreateToken(app.CreateTokenInput{
+		Name:          "task-reader",
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatalf("CreateToken(read-only) error = %v", err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + readOnly.RawToken}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+created.UUID+"/audit", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `"changes"`) {
+		t.Fatalf("response missing changes: %s", body)
+	}
+	if !strings.Contains(body, `"payload"`) {
+		t.Fatalf("response missing payload: %s", body)
+	}
+	if !strings.Contains(body, `"title"`) || !strings.Contains(body, "before") || !strings.Contains(body, "after") {
+		t.Fatalf("response missing title change details: %s", body)
+	}
+}
+
+// TestTaskAuditRejectsNumericRef 校验数字 task ref 仍返回 task_ref_invalid。
+func TestTaskAuditRejectsNumericRef(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read")
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/1/audit", headers)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_ref_invalid")
+}
+
+// TestTaskAuditClearDuePreservesNullRaw 校验清空 due 后
+// 响应仍包含 current 的 raw: null。
+func TestTaskAuditClearDuePreservesNullRaw(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	due := int64(1783036800)
+	created, err := svc.Add(app.AddInput{Title: "task", Due: &due})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Modify(created.UUID, app.ModifyInput{ClearDue: true}); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+created.UUID+"/audit", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	// current 必须出现，且 raw 为 null，不能因为清空就把 key 省略。
+	if !strings.Contains(body, `"current"`) {
+		t.Fatalf("response missing current key: %s", body)
+	}
+	if !strings.Contains(body, `"raw":null`) {
+		t.Fatalf("response missing raw:null: %s", body)
+	}
+}

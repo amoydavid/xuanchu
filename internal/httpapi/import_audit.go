@@ -12,22 +12,43 @@ import (
 )
 
 type auditResponse struct {
-	ID                      int64              `json:"id"`
-	ActorType               string             `json:"actor_type,omitempty"`
-	Actor                   *task.JSONUserInfo `json:"actor,omitempty"`
-	ActorToken              *tokenActorJSON    `json:"actor_token,omitempty"`
-	WorkspaceID             *string            `json:"workspace_id"`
-	ProjectID               *string            `json:"project_id"`
-	Action                  string             `json:"action"`
-	TargetType              string             `json:"target_type"`
-	TargetID                string             `json:"target_id"`
-	Payload                 json.RawMessage    `json:"payload,omitempty"`
-	DelegatorTokenID        *string            `json:"delegator_token_id,omitempty"`
-	DelegatorUser           *task.JSONUserInfo `json:"delegator_user,omitempty"`
-	AdminActingSessionID    *string            `json:"admin_acting_session_id,omitempty"`
-	DelegatorAdminTokenID   *string            `json:"delegator_admin_token_id,omitempty"`
-	DelegatorAdminTokenName string             `json:"delegator_admin_token_name,omitempty"`
-	CreatedAt               int64              `json:"created_at"`
+	ID                      int64                   `json:"id"`
+	ActorType               string                  `json:"actor_type,omitempty"`
+	Actor                   *task.JSONUserInfo      `json:"actor,omitempty"`
+	ActorToken              *tokenActorJSON         `json:"actor_token,omitempty"`
+	WorkspaceID             *string                 `json:"workspace_id"`
+	ProjectID               *string                 `json:"project_id"`
+	Action                  string                  `json:"action"`
+	TargetType              string                  `json:"target_type"`
+	TargetID                string                  `json:"target_id"`
+	Payload                 json.RawMessage         `json:"payload,omitempty"`
+	Changes                 []taskFieldChangeJSON   `json:"changes,omitempty"`
+	DelegatorTokenID        *string                 `json:"delegator_token_id,omitempty"`
+	DelegatorUser           *task.JSONUserInfo      `json:"delegator_user,omitempty"`
+	AdminActingSessionID    *string                 `json:"admin_acting_session_id,omitempty"`
+	DelegatorAdminTokenID   *string                 `json:"delegator_admin_token_id,omitempty"`
+	DelegatorAdminTokenName string                  `json:"delegator_admin_token_name,omitempty"`
+	CreatedAt               int64                   `json:"created_at"`
+}
+
+// taskFieldChangeJSON 是字段级变更的 HTTP 输出结构。
+// 标量 previous/current 用指针保证 presence（即使 raw 为 null），
+// 集合 added/removed 总是输出数组（可为空）。
+type taskFieldChangeJSON struct {
+	Field    string                    `json:"field"`
+	Kind     string                    `json:"kind"`
+	LabelKey string                    `json:"label_key"`
+	Previous *taskChangeDisplayJSON    `json:"previous,omitempty"`
+	Current  *taskChangeDisplayJSON    `json:"current,omitempty"`
+	Added    []taskChangeDisplayJSON   `json:"added,omitempty"`
+	Removed  []taskChangeDisplayJSON   `json:"removed,omitempty"`
+}
+
+// taskChangeDisplayJSON 用 json.RawMessage 承载 raw，
+// 这样 nil 会序列化成真正的 JSON null，而不是被 omitempty 丢掉。
+type taskChangeDisplayJSON struct {
+	Raw  json.RawMessage `json:"raw"`
+	Text string          `json:"text"`
 }
 
 type tokenActorJSON struct {
@@ -109,37 +130,114 @@ func (s *Server) handleAuditList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
+	writeSuccess(w, http.StatusOK, auditRowsToResponse(rows), nil)
+}
+
+// auditRowsToResponse 把 app AuditLogView 转成 HTTP response，
+// 供 handleAuditList 和 task audit handler 共用。
+func auditRowsToResponse(rows []app.AuditLogView) []auditResponse {
 	out := make([]auditResponse, 0, len(rows))
 	for _, row := range rows {
-		item := auditResponse{
-			ID:                      row.ID,
-			ActorType:               row.ActorType,
-			WorkspaceID:             row.WorkspaceID,
-			ProjectID:               row.ProjectID,
-			Action:                  row.Action,
-			TargetType:              row.TargetType,
-			TargetID:                row.TargetID,
-			DelegatorTokenID:        row.DelegatorTokenID,
-			AdminActingSessionID:    row.AdminActingSessionID,
-			DelegatorAdminTokenID:   row.DelegatorAdminTokenID,
-			DelegatorAdminTokenName: row.DelegatorAdminTokenName,
-			CreatedAt:               row.CreatedAt,
-		}
-		if row.Actor != nil {
-			jui := task.UserInfoToJSON(*row.Actor)
-			item.Actor = &jui
-		}
-		if row.ActorToken != nil {
-			item.ActorToken = &tokenActorJSON{ID: row.ActorToken.ID, Name: row.ActorToken.Name, Prefix: row.ActorToken.Prefix}
-		}
-		if row.DelegatorUser != nil {
-			jui := task.UserInfoToJSON(*row.DelegatorUser)
-			item.DelegatorUser = &jui
-		}
-		if row.PayloadJSON != "" {
-			item.Payload = json.RawMessage(row.PayloadJSON)
-		}
-		out = append(out, item)
+		out = append(out, auditRowToResponse(row))
 	}
-	writeSuccess(w, http.StatusOK, out, nil)
+	return out
+}
+
+func auditRowToResponse(row app.AuditLogView) auditResponse {
+	item := auditResponse{
+		ID:                      row.ID,
+		ActorType:               row.ActorType,
+		WorkspaceID:             row.WorkspaceID,
+		ProjectID:               row.ProjectID,
+		Action:                  row.Action,
+		TargetType:              row.TargetType,
+		TargetID:                row.TargetID,
+		Changes:                 taskFieldChangesToJSON(row.Changes),
+		DelegatorTokenID:        row.DelegatorTokenID,
+		AdminActingSessionID:    row.AdminActingSessionID,
+		DelegatorAdminTokenID:   row.DelegatorAdminTokenID,
+		DelegatorAdminTokenName: row.DelegatorAdminTokenName,
+		CreatedAt:               row.CreatedAt,
+	}
+	if row.Actor != nil {
+		jui := task.UserInfoToJSON(*row.Actor)
+		item.Actor = &jui
+	}
+	if row.ActorToken != nil {
+		item.ActorToken = &tokenActorJSON{ID: row.ActorToken.ID, Name: row.ActorToken.Name, Prefix: row.ActorToken.Prefix}
+	}
+	if row.DelegatorUser != nil {
+		jui := task.UserInfoToJSON(*row.DelegatorUser)
+		item.DelegatorUser = &jui
+	}
+	if row.PayloadJSON != "" {
+		item.Payload = json.RawMessage(row.PayloadJSON)
+	}
+	return item
+}
+
+// taskFieldChangesToJSON 把 app 层 change view 转成 HTTP DTO。
+// 标量 previous/current 用 json.RawMessage 承载 raw，
+// 保证 nil 值序列化为 JSON null，而不是被 omitempty 省略。
+func taskFieldChangesToJSON(changes []app.TaskFieldChange) []taskFieldChangeJSON {
+	if len(changes) == 0 {
+		return nil
+	}
+	out := make([]taskFieldChangeJSON, 0, len(changes))
+	for _, change := range changes {
+		dto := taskFieldChangeJSON{
+			Field:    change.Field,
+			Kind:     change.Kind,
+			LabelKey: change.LabelKey,
+		}
+		if change.Kind == "set" {
+			dto.Added = displayValuesToJSON(change.Added)
+			dto.Removed = displayValuesToJSON(change.Removed)
+		} else {
+			// 标量：previous/current 必须保留 presence。
+			// 即使 Raw 为 nil，也要输出 {"raw":null,"text":""}。
+			dto.Previous = displayValueToJSONPtr(change.Previous)
+			dto.Current = displayValueToJSONPtr(change.Current)
+		}
+		out = append(out, dto)
+	}
+	return out
+}
+
+func displayValuesToJSON(values []app.TaskChangeDisplayValue) []taskChangeDisplayJSON {
+	out := make([]taskChangeDisplayJSON, 0, len(values))
+	for _, v := range values {
+		out = append(out, displayValueToJSON(v))
+	}
+	return out
+}
+
+func displayValueToJSONPtr(v *app.TaskChangeDisplayValue) *taskChangeDisplayJSON {
+	if v == nil {
+		return nil
+	}
+	j := displayValueToJSON(*v)
+	return &j
+}
+
+func displayValueToJSON(v app.TaskChangeDisplayValue) taskChangeDisplayJSON {
+	raw := rawValueToJSON(v.Raw)
+	return taskChangeDisplayJSON{Raw: raw, Text: v.Text}
+}
+
+// rawValueToJSON 把任意 raw 值序列化成 json.RawMessage。
+// nil 值会得到 "null"，保证显式 null 不被 omitempty 丢掉。
+func rawValueToJSON(raw any) json.RawMessage {
+	if raw == nil {
+		return json.RawMessage("null")
+	}
+	if msg, ok := raw.(json.RawMessage); ok {
+		return msg
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		// 序列化失败时退化为字符串表示，避免整个响应失败。
+		data = []byte(`""`)
+	}
+	return data
 }

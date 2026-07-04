@@ -178,6 +178,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/tasks", Tag: "Tasks", Summary: "List tasks.", Handler: s.handleTaskList},
 		{Method: http.MethodPost, Path: "/api/v1/tasks", Tag: "Tasks", Summary: "Create a task.", Handler: s.handleTaskAdd, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/tasks/{taskRef}", Tag: "Tasks", Summary: "Get task details.", Handler: s.handleTaskInfo},
+		{Method: http.MethodGet, Path: "/api/v1/tasks/{taskRef}/audit", Tag: "Tasks", Summary: "List task audit history.", Handler: s.handleTaskAudit},
 		{Method: http.MethodPatch, Path: "/api/v1/tasks/{taskRef}", Tag: "Tasks", Summary: "Modify a task.", Handler: s.handleTaskModify},
 		{Method: http.MethodDelete, Path: "/api/v1/tasks/{taskRef}", Tag: "Tasks", Summary: "Delete a task.", Handler: s.handleTaskDelete},
 		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/done", Tag: "Tasks", Summary: "Complete a task.", Handler: s.handleTaskDone},
