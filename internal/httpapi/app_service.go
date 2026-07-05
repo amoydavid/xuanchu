@@ -64,10 +64,12 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		return nil, requestAuth{}, err
 	}
 	scoped, err := app.NewService(app.ServiceOptions{
-		Store:        s.store,
-		Clock:        s.effectiveClock(),
-		Runtime:      &authorized.Runtime,
-		RequestScope: &authorized.Decision.RequestScope,
+		Store:            s.store,
+		Clock:            s.effectiveClock(),
+		Runtime:          &authorized.Runtime,
+		RequestScope:     &authorized.Decision.RequestScope,
+		SinkTestClient:   s.sinkTestClient,
+		SinkTestResolver: s.sinkTestResolver,
 	})
 	if err != nil {
 		return nil, requestAuth{}, err

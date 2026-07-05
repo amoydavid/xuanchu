@@ -253,6 +253,54 @@ func (s *Server) handleNotificationSinkDelete(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type notificationSinkTestRequest struct {
+	Kind       string `json:"kind"`
+	EventType  string `json:"event_type"`
+	Sample     string `json:"sample"`
+	ProjectRef string `json:"project_ref"`
+}
+
+func (s *Server) handleNotificationSinkTest(w http.ResponseWriter, r *http.Request) {
+	var req notificationSinkTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, auth.ScopeNotificationWrite, app.PermissionNotificationWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.TestNotificationSink(chi.URLParam(r, "sinkID"), app.NotificationSinkTestInput{
+		Kind:       req.Kind,
+		EventType:  req.EventType,
+		Sample:     req.Sample,
+		ProjectRef: req.ProjectRef,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, notificationSinkTestResponse(view), nil)
+}
+
+func notificationSinkTestResponse(view app.NotificationSinkTestView) map[string]any {
+	out := map[string]any{
+		"status":                        view.Status,
+		"duration_ms":                   view.DurationMS,
+		"resolved_endpoint_source":      view.ResolvedEndpointSource,
+		"resolved_endpoint_fingerprint": view.ResolvedEndpointFingerprint,
+		"rendered_method":               view.RenderedMethod,
+		"rendered_headers":              view.RenderedHeaders,
+		"rendered_body_preview":         view.RenderedBodyPreview,
+		"error":                         view.Error,
+	}
+	if view.StatusCode != nil {
+		out["status_code"] = *view.StatusCode
+	}
+	return out
+}
+
 func (s *Server) handleReminderRuleList(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeReminderRead, app.PermissionReminderRead, projectRef)

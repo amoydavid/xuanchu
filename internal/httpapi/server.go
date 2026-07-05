@@ -32,6 +32,10 @@ type Options struct {
 	Shutdown             *runtimeutil.ShutdownCoordinator
 	MCPTrustedProxyHosts []string
 	ConfigSecretKey      string
+	// SinkTestClient / SinkTestResolver 注入到 notification sink 测试投递；
+	// 生产留空（用 SSRF-safe 默认 client），测试可注入 httptest.Server.Client()。
+	SinkTestClient   *http.Client
+	SinkTestResolver app.HookHostResolver
 }
 
 type AdminSetupOptions struct {
@@ -55,6 +59,8 @@ type Server struct {
 	router               *http.ServeMux
 	oidcAuth             *app.OIDCAuthService // 懒加载，见 oidcAuthService()
 	secretKey            []byte               // config secret envelope 密钥，从 TOML [security] 注入
+	sinkTestClient       *http.Client
+	sinkTestResolver     app.HookHostResolver
 }
 
 func NewServer(opts Options) *Server {
@@ -78,6 +84,8 @@ func NewServer(opts Options) *Server {
 		shutdown:             opts.Shutdown,
 		mcpTrustedProxyHosts: normalizeMCPTrustedProxyHosts(opts.MCPTrustedProxyHosts),
 		secretKey:            parseSecretKeyOrEmpty(opts.ConfigSecretKey),
+		sinkTestClient:       opts.SinkTestClient,
+		sinkTestResolver:     opts.SinkTestResolver,
 	}
 	srv.router = srv.newRouter()
 	return srv
