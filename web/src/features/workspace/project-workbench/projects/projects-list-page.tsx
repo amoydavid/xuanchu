@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
+import { useMe } from "@/features/workspace/session/useMe"
 
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { useProjectsQuery } from "../hooks/use-project-data"
@@ -21,6 +22,9 @@ type ProjectsListPageProps = {
 export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const me = useMe()
+  const role = me.data?.effective_role ?? ""
+  const canManage = role === "owner" || role === "admin"
   const [createOpen, setCreateOpen] = useState(false)
   const { data: projects = [], isPending, isError } = useProjectsQuery(
     workspaceSlug,
@@ -91,7 +95,13 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
       key: "actions",
       header: t("common.actions"),
       render: (project) => (
-        <ProjectRowActions onOpen={openProject} projectSlug={project.slug} />
+        <ProjectRowActions
+          canManage={canManage}
+          onOpen={openProject}
+          projectSlug={project.slug}
+          status={project.status}
+          workspaceSlug={workspaceSlug}
+        />
       ),
     },
   ]

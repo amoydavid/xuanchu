@@ -111,3 +111,35 @@ export function removeWorkspaceMember(workspaceSlug: string, userID: string) {
     `/api/v1/workspaces/${encodeURIComponent(workspaceSlug)}/members/${encodeURIComponent(userID)}`
   )
 }
+
+// External IDs（外部身份映射）。
+// 后端契约：
+//   POST /api/v1/users/{user}/external-ids  body: {provider, external_id}
+//   GET  /api/v1/users/{user}/external-ids
+//   DELETE /api/v1/users/{user}/external-ids/{provider}/{externalID}
+export function listExternalIDs(userRef: string) {
+  return workspaceApiGet<Array<{ provider: string; external_id: string }>>(
+    `/api/v1/users/${encodeURIComponent(userRef)}/external-ids`
+  )
+}
+
+export function bindExternalID(
+  userRef: string,
+  provider: string,
+  externalID: string
+) {
+  return workspaceApiPost<{ ok: boolean }>(
+    `/api/v1/users/${encodeURIComponent(userRef)}/external-ids`,
+    { provider, external_id: externalID }
+  )
+}
+
+export function unbindExternalID(
+  userRef: string,
+  provider: string,
+  externalID: string
+) {
+  return workspaceApiDelete<{ ok: boolean }>(
+    `/api/v1/users/${encodeURIComponent(userRef)}/external-ids/${encodeURIComponent(provider)}/${encodeURIComponent(externalID)}`
+  )
+}

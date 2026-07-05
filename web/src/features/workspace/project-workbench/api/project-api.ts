@@ -1,7 +1,9 @@
 import {
+  workspaceApiDelete,
   workspaceApiGet,
   workspaceApiPatch,
   workspaceApiPost,
+  workspaceApiPut,
 } from "@/features/workspace/session/workspace-api"
 
 export type ProjectStatus = "planning" | "active" | "archived" | "cancelled"
@@ -258,5 +260,111 @@ export function transitionProject(
   return workspaceApiPost<ProjectWorkbenchProject>(
     projectTransitionPath(workspaceSlug, projectRef),
     { status }
+  )
+}
+
+// Project config（项目级配置项）。后端契约：GET/PUT/DELETE /projects/{ref}/config/{key}。
+export function projectConfigPath(
+  workspaceSlug: string,
+  projectRef: string
+): string {
+  return `/api/v1/projects/${encodeSegment(projectRef)}/config?${workspaceQuery(workspaceSlug)}`
+}
+
+export function projectConfigKeyPath(
+  workspaceSlug: string,
+  projectRef: string,
+  key: string
+): string {
+  return `/api/v1/projects/${encodeSegment(projectRef)}/config/${encodeSegment(key)}?${workspaceQuery(workspaceSlug)}`
+}
+
+export type ProjectConfigEntry = {
+  key: string
+  value: string
+}
+
+export type ProjectConfigListResponse = {
+  entries?: ProjectConfigEntry[]
+  // 后端可能直接返回 data: { key: value } 形式
+  [key: string]: unknown
+}
+
+export function listProjectConfig(
+  workspaceSlug: string,
+  projectRef: string
+): Promise<ProjectConfigEntry[]> {
+  return workspaceApiGet<ProjectConfigEntry[]>(
+    projectConfigPath(workspaceSlug, projectRef)
+  )
+}
+
+export function setProjectConfig(
+  workspaceSlug: string,
+  projectRef: string,
+  key: string,
+  value: string
+): Promise<void> {
+  return workspaceApiPut<void>(
+    projectConfigKeyPath(workspaceSlug, projectRef, key),
+    { value }
+  )
+}
+
+export function deleteProjectConfig(
+  workspaceSlug: string,
+  projectRef: string,
+  key: string
+): Promise<void> {
+  return workspaceApiDelete<void>(
+    projectConfigKeyPath(workspaceSlug, projectRef, key)
+  )
+}
+
+// Project annotations（项目备注）。
+// 后端契约：POST/GET /projects/{ref}/annotations，DELETE /projects/{ref}/annotations/{id}。
+// 后端暂无 PATCH，因此只做新增和删除（spec §3.1：不做删除+重建伪编辑）。
+export function projectAnnotationsPath(
+  workspaceSlug: string,
+  projectRef: string
+): string {
+  return `/api/v1/projects/${encodeSegment(projectRef)}/annotations?${workspaceQuery(workspaceSlug)}`
+}
+
+export function projectAnnotationPath(
+  workspaceSlug: string,
+  projectRef: string,
+  annotationId: string
+): string {
+  return `/api/v1/projects/${encodeSegment(projectRef)}/annotations/${encodeSegment(annotationId)}?${workspaceQuery(workspaceSlug)}`
+}
+
+export function listProjectAnnotations(
+  workspaceSlug: string,
+  projectRef: string
+): Promise<ProjectAnnotationInfo[]> {
+  return workspaceApiGet<ProjectAnnotationInfo[]>(
+    projectAnnotationsPath(workspaceSlug, projectRef)
+  )
+}
+
+export function addProjectAnnotation(
+  workspaceSlug: string,
+  projectRef: string,
+  content: string
+): Promise<ProjectAnnotationInfo> {
+  return workspaceApiPost<ProjectAnnotationInfo>(
+    projectAnnotationsPath(workspaceSlug, projectRef),
+    { content }
+  )
+}
+
+export function deleteProjectAnnotation(
+  workspaceSlug: string,
+  projectRef: string,
+  annotationId: string
+): Promise<void> {
+  return workspaceApiDelete<void>(
+    projectAnnotationPath(workspaceSlug, projectRef, annotationId)
   )
 }

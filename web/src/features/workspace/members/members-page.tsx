@@ -62,12 +62,14 @@ import {
   listWorkspaceTokens,
   modifyWorkspaceMember,
   removeWorkspaceMember,
+  unbindExternalID as unbindExternalIDAPI,
   type AddWorkspaceMemberInput,
   type WorkspaceAuditRow,
   type WorkspaceMemberRow,
   type WorkspaceTokenRow,
   type WorkspaceUserRow,
 } from "./members-api"
+import { ExternalIDBindDialog } from "./external-id-bind-dialog"
 
 const ROLE_OPTIONS = ["viewer", "member", "admin", "owner"] as const
 const ROLE_COUNT_OPTIONS = ["owner", "admin", "member", "viewer"] as const
@@ -393,6 +395,7 @@ export function MembersDetailPage({
   const [removingMember, setRemovingMember] = useState<WorkspaceMemberRow | null>(
     null
   )
+  const [bindingExternalId, setBindingExternalId] = useState(false)
   const membersQuery = useQuery({
     enabled: workspaceSlug !== "",
     queryKey: ["workspace", "members", workspaceSlug],
@@ -402,6 +405,17 @@ export function MembersDetailPage({
     enabled: userRef !== "",
     queryKey: ["workspace", "user", userRef],
     queryFn: () => getWorkspaceUser(userRef),
+  })
+  const queryClient = useQueryClient()
+  const unbindExternalID = useMutation({
+    mutationFn: ({ provider, externalID }: { provider: string; externalID: string }) =>
+      unbindExternalIDAPI(userRef, provider, externalID),
+    onSuccess: () => {
+      void userQuery.refetch()
+      void queryClient.invalidateQueries({
+        queryKey: ["workspace", "user", userRef],
+      })
+    },
   })
   const canReadAudit = credential?.capabilities?.includes("audit:read") ?? false
   const auditQuery = useQuery({
@@ -519,18 +533,67 @@ export function MembersDetailPage({
           </div>
 
           <section className="space-y-3 rounded-none border bg-card p-4">
-            <h2 className="text-sm font-medium">{t("members.externalIdentities")}</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-medium">{t("members.externalIdentities")}</h2>
+              {canWriteMembers ? (
+                <Button
+                  onClick={() => setBindingExternalId(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  {t("members.externalIdBind")}
+                </Button>
+              ) : null}
+            </div>
             {(user.external_ids ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("common.empty")}</p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <ul className="space-y-1">
                 {(user.external_ids ?? []).map((item) => (
-                  <Badge key={`${item.provider}:${item.external_id}`} variant="outline">
-                    {item.provider}: {item.external_id}
-                  </Badge>
+                  <li
+                    className="flex items-center justify-between gap-2 text-sm"
+                    key={`${item.provider}:${item.external_id}`}
+                  >
+                    <Badge variant="outline">
+                      {item.provider}: {item.external_id}
+                    </Badge>
+                    {canWriteMembers ? (
+                      <Button
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              t("members.externalIdUnbindConfirm", {
+                                provider: item.provider,
+                                externalId: item.external_id,
+                              })
+                            )
+                          ) {
+                            unbindExternalID.mutate({
+                              provider: item.provider,
+                              externalID: item.external_id,
+                            })
+                          }
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {t("members.externalIdUnbind")}
+                      </Button>
+                    ) : null}
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
+            {canWriteMembers ? (
+              <ExternalIDBindDialog
+                onBound={() => {
+                  void userQuery.refetch()
+                }}
+                onOpenChange={setBindingExternalId}
+                open={bindingExternalId}
+                userRef={userRef}
+              />
+            ) : null}
           </section>
 
           <div className="grid gap-4 lg:grid-cols-2">

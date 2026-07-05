@@ -2,6 +2,7 @@ import type React from "react"
 
 import type { PageKey } from "@/components/AppShell"
 import { AuditConsole } from "@/features/workspace/audit/audit-console"
+import { HookConsole } from "@/features/workspace/hooks/hook-console"
 
 import { resourceConfig } from "./resource-config"
 
@@ -27,6 +28,8 @@ export function ResourceDispatch({
   switch (page) {
     case "audit":
       return <AuditConsole workspaceSlug={workspaceSlug} />
+    case "hooks":
+      return <HookConsole canWrite={true} />
     default:
       return fallback(resourceConfig(page, t, workspaceSlug))
   }

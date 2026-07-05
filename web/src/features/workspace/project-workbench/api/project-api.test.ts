@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  projectAnnotationPath,
+  projectAnnotationsPath,
+  projectConfigKeyPath,
+  projectConfigPath,
   projectPath,
   projectTasksPath,
   projectTimelinePath,
@@ -55,6 +59,24 @@ describe("project workbench project api paths", () => {
     filters.set("sort", "due")
     expect(projectTasksPath("local", "adsops", filters)).toBe(
       "/api/v1/tasks?workspace=local&project=adsops&limit=200&tags=web%2Cconsole&sort=due"
+    )
+  })
+
+  it("builds project config and annotation paths", () => {
+    expect(projectConfigPath("local", "adsops")).toBe(
+      "/api/v1/projects/adsops/config?workspace=local"
+    )
+    expect(projectConfigKeyPath("local", "adsops", "review.required")).toBe(
+      "/api/v1/projects/adsops/config/review.required?workspace=local"
+    )
+    expect(projectConfigKeyPath("local", "ads/ops", "a/b")).toBe(
+      "/api/v1/projects/ads%2Fops/config/a%2Fb?workspace=local"
+    )
+    expect(projectAnnotationsPath("local", "adsops")).toBe(
+      "/api/v1/projects/adsops/annotations?workspace=local"
+    )
+    expect(projectAnnotationPath("local", "adsops", "an-1")).toBe(
+      "/api/v1/projects/adsops/annotations/an-1?workspace=local"
     )
   })
 })
