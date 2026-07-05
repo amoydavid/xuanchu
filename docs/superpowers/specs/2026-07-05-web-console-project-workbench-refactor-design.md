@@ -90,6 +90,7 @@ URL search 保留现有字段并新增：
 
 - 必填：标题。
 - 可选：描述、负责人、优先级、截止日期、计划开始、暂缓到、有效至、标签。
+- 描述使用现有 `@/components/markdown` 中封装的 `MarkdownEditor`，保持与任务详情页一致的 Markdown/Tiptap 编辑体验。
 - 负责人选择复用 workspace members 查询，展示 name / display_name / email。
 - 保存失败不关闭弹窗，保留输入。
 - 创建成功后关闭弹窗，刷新当前筛选下的任务列表和项目摘要。

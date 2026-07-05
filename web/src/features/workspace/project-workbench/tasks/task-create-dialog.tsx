@@ -5,6 +5,7 @@ import { CheckIcon, UserPlusIcon, XIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { MarkdownEditor } from "@/components/markdown"
 import {
   Dialog,
   DialogContent,
@@ -26,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import {
   getWorkspaceMembers,
   type WorkspaceMemberCandidate,
@@ -155,10 +155,13 @@ export function TaskCreateDialog({
             placeholder="任务标题"
             value={title}
           />
-          <Textarea
-            aria-label="任务内容"
-            className="min-h-28"
-            onChange={(event) => setDescription(event.target.value)}
+          <MarkdownEditor
+            ariaLabel="任务内容"
+            minHeight={180}
+            onChange={setDescription}
+            onModEnter={() => {
+              void submit()
+            }}
             placeholder="补充背景、验收标准或处理说明"
             value={description}
           />

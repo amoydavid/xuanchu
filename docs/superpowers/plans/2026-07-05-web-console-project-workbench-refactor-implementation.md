@@ -73,6 +73,7 @@
   - Run: `pnpm --dir web test web/src/features/workspace/project-workbench/tasks/task-create-dialog.test.tsx web/src/features/workspace/project-workbench/project/project-workbench-page.test.tsx`
 - [x] **Step 3: Implement dialog**
   - 复用 `useCreateTaskMutation`、`getWorkspaceMembers`、`InlineDatePicker` 或同等 date picker。
+  - 描述输入复用 `@/components/markdown` 的 `MarkdownEditor`，与任务详情页保持一致。
   - 保存失败保留弹窗。
 - [x] **Step 4: Run green tests**
   - Run: `pnpm --dir web test web/src/features/workspace/project-workbench/tasks/task-create-dialog.test.tsx web/src/features/workspace/project-workbench/project/project-workbench-page.test.tsx`

@@ -58,7 +58,7 @@ describe("TaskCreateDialog", () => {
     ])
   })
 
-  it("creates a task with title, description, assignee, priority, due date, and tags", async () => {
+  it("creates a task with markdown description, assignee, priority, due date, and tags", async () => {
     render(
       <TaskCreateDialog
         filters="status=pending"
@@ -71,7 +71,11 @@ describe("TaskCreateDialog", () => {
     )
 
     await userEvent.type(screen.getByLabelText("任务标题"), "复盘素材")
-    await userEvent.type(screen.getByLabelText("任务内容"), "整理异常原因")
+    expect(screen.getByRole("button", { name: "加粗" })).toBeTruthy()
+    await userEvent.type(
+      screen.getByLabelText("任务内容"),
+      "# 整理异常原因{Enter}{Enter}- 素材"
+    )
     await userEvent.click(screen.getByRole("combobox", { name: "优先级" }))
     await userEvent.click(screen.getByRole("option", { name: "H" }))
     await userEvent.click(screen.getByRole("button", { name: "截止日期" }))
@@ -87,16 +91,19 @@ describe("TaskCreateDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
 
     await waitFor(() => {
-      expect(createTask).toHaveBeenCalledWith("acme", {
-        assignees: ["u1"],
-        description: "整理异常原因",
-        due: 1783036800,
-        priority: "H",
-        project: "adsops",
-        tags: ["ops", "review"],
-        title: "复盘素材",
-      })
+      expect(createTask).toHaveBeenCalled()
     })
+    const payload = vi.mocked(createTask).mock.calls[0]?.[1]
+    expect(payload).toMatchObject({
+      assignees: ["u1"],
+      due: 1783036800,
+      priority: "H",
+      project: "adsops",
+      tags: ["ops", "review"],
+      title: "复盘素材",
+    })
+    expect(payload.description).toContain("# 整理异常原因")
+    expect(payload.description).toContain("- 素材")
   })
 
   it("keeps the dialog open and shows validation when title is empty", async () => {
