@@ -21,12 +21,8 @@ import {
 } from "../outbound-api"
 import { DeliveryDetailDialog } from "./delivery-detail-dialog"
 
-const REPLAYABLE_STATUSES = new Set([
-  "dead_lettered",
-  "retry_wait",
-  "failed",
-  "timeout",
-])
+// 与后端 ReplayNotificationDelivery 允许的状态对齐：只有 dead_lettered / disabled_skipped 可重放。
+const REPLAYABLE_STATUSES = new Set(["dead_lettered", "disabled_skipped"])
 
 export function NotificationDeliveryTable({
   query,

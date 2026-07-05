@@ -20,12 +20,9 @@ import {
 } from "../outbound-api"
 import { DeliveryDetailDialog } from "./delivery-detail-dialog"
 
-const REPLAYABLE_STATUSES = new Set([
-  "dead_lettered",
-  "retry_wait",
-  "failed",
-  "timeout",
-])
+// 与后端 ReplayHookDelivery 允许的状态对齐：只有 dead_lettered / disabled_skipped 可重放。
+// 后端是最终裁决；前端只是避免误点导致的 422。
+const REPLAYABLE_STATUSES = new Set(["dead_lettered", "disabled_skipped"])
 
 export function HookDeliveryTable({
   hookId,

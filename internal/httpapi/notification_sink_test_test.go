@@ -99,17 +99,54 @@ func TestHTTPNotificationSinkTestRequiresNotificationWrite(t *testing.T) {
 	}))
 	defer target.Close()
 
-	// 只有 read scope
-	fixture := newHTTPServerWithSinkTestClient(t, target, "notification:read")
-	auth := map[string]string{
-		"Authorization": "Bearer " + fixture.token,
+	// 先用 write token 创建一个 sink，拿到 sinkID。
+	writeFixture := newHTTPServerWithSinkTestClient(t, target, "notification:write", "notification:read")
+	writeAuth := map[string]string{
+		"Authorization": "Bearer " + writeFixture.token,
 		"Content-Type":  "application/json",
 	}
 	createBody := `{"name":"audit","type":"webhook","endpoint_mode":"static_url","url":"` + target.URL + `"}`
-	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/notification-sinks", createBody, auth)
-	// 无 write scope，创建也应失败
-	if rr.Code != http.StatusForbidden && rr.Code != http.StatusUnauthorized {
-		// 兜底：即使创建被允许，test 也必须被拒绝
+	rr := requestHTTPBody(t, writeFixture.server, http.MethodPost, "/api/v1/notification-sinks", createBody, writeAuth)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	sinkID := ""
+	var create struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &create); err != nil {
+		t.Fatal(err)
+	}
+	sinkID = create.Data.ID
+
+	// 用只有 read scope 的 token 直接打 /test，应被 scope/permission 拒绝。
+	readFixture := newHTTPServerWithSinkTestClient(t, target, "notification:read")
+	// 把 write fixture 创建的 sink 同步到 read store：两个 fixture 用了不同 store，
+	// 这里直接用 read store 创建 sink，验证 read-only 身份打 /test 被拒。
+	readAuth := map[string]string{
+		"Authorization": "Bearer " + readFixture.token,
+		"Content-Type":  "application/json",
+	}
+	readCreateBody := `{"name":"audit2","type":"webhook","endpoint_mode":"static_url","url":"` + target.URL + `"}`
+	rrCreate := requestHTTPBody(t, readFixture.server, http.MethodPost, "/api/v1/notification-sinks", readCreateBody, readAuth)
+	if rrCreate.Code == http.StatusCreated {
+		var c struct {
+			Data struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		_ = json.Unmarshal(rrCreate.Body.Bytes(), &c)
+		sinkID = c.Data.ID
+	} else {
+		// read-only 创建被拒；用任意 sinkID 验证 /test 也被拒（permission check 先于 sink 查找）。
+		sinkID = "any-sink-id"
+	}
+
+	rrTest := requestHTTPBody(t, readFixture.server, http.MethodPost, "/api/v1/notification-sinks/"+sinkID+"/test", `{"kind":"hook","event_type":"task.completed"}`, readAuth)
+	if rrTest.Code != http.StatusForbidden && rrTest.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401/403 for notification:read token hitting /test, got %d body=%s", rrTest.Code, rrTest.Body.String())
 	}
 }
 

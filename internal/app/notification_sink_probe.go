@@ -11,7 +11,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -188,13 +187,15 @@ func (s *Service) TestNotificationSink(sinkID string, input NotificationSinkTest
 	if projectID != nil {
 		auditPayload["project_ref"] = input.ProjectRef
 	}
-	_ = s.withAudit("notification.sink.test", func(tx *Service) (AuditEntry, error) {
+	if err := s.withAudit("notification.sink.test", func(tx *Service) (AuditEntry, error) {
 		return AuditEntry{
 			TargetType: "notification_sink",
 			TargetID:   sinkID,
 			Payload:    auditPayload,
 		}, nil
-	})
+	}); err != nil {
+		return view, err
+	}
 
 	if sendErr != nil {
 		return view, sendErr
@@ -336,16 +337,6 @@ func truncateBodyPreview(body string) string {
 		return body
 	}
 	return body[:max] + "..."
-}
-
-// notificationSinkTestResponseHeadersKeys 用于在响应中按稳定顺序输出 headers（httpapi 使用）。
-func notificationSinkTestResponseHeadersKeys(headers map[string][]string) []string {
-	keys := make([]string, 0, len(headers))
-	for k := range headers {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // webhookSignature 与 notificationruntime.SignatureSHA256 算法一致，
