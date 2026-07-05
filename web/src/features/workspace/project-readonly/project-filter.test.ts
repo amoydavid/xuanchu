@@ -62,6 +62,21 @@ describe("filterToTaskQuery", () => {
       "until.before:2026-07-31",
     ])
   })
+
+  it("compiles multiple assignees into an OR query expression", () => {
+    const params = new URLSearchParams(
+      filterToTaskQuery({
+        assignee: "user-1,user-2",
+        status: "pending",
+      })
+    )
+
+    expect(params.get("status")).toBe("pending")
+    expect(params.get("assignee")).toBeNull()
+    expect(params.getAll("query")).toEqual([
+      "(assignee:\"user-1\" or assignee:\"user-2\")",
+    ])
+  })
 })
 
 describe("activeFilterEntries", () => {

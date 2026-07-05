@@ -46,6 +46,52 @@ describe("ProjectTaskToolbar", () => {
     expect(screen.getByText("搜索=日报")).toBeTruthy()
   })
 
+  it("renders assignee options and active chips with human friendly names", async () => {
+    render(
+      <ProjectTaskToolbar
+        assigneeOptions={[
+          {
+            email: "liuwei@example.com",
+            id: "user-1",
+            label: "刘玮",
+            name: "liuwei",
+          },
+          {
+            email: "caihong@example.com",
+            id: "user-2",
+            label: "蔡鸿",
+            name: "caihong",
+          },
+        ]}
+        canCreateTask={true}
+        filter={{ assignee: "user-1,user-2" }}
+        onCreateTask={vi.fn()}
+        toParams={{ projectSlug: "adsops", workspaceSlug: "acme" }}
+      />
+    )
+
+    expect(screen.getByRole("button", { name: "负责人=刘玮、蔡鸿" })).toBeTruthy()
+
+    await userEvent.click(screen.getByRole("button", { name: "负责人" }))
+
+    expect(screen.getByText("刘玮")).toBeTruthy()
+    expect(screen.getByText("liuwei@example.com")).toBeTruthy()
+    expect(screen.getByText("蔡鸿")).toBeTruthy()
+
+    await userEvent.type(screen.getByLabelText("搜索负责人"), "cai")
+    expect(screen.queryByText("刘玮")).toBeNull()
+    expect(screen.getByText("蔡鸿")).toBeTruthy()
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "蔡鸿 caihong@example.com" })
+    )
+
+    const searchUpdater = navigateMock.mock.calls.at(-1)?.[0].search
+    expect(searchUpdater({ assignee: "user-1,user-2" })).toEqual({
+      assignee: "user-1",
+    })
+  })
+
   it("writes sort changes to route search", async () => {
     render(
       <ProjectTaskToolbar

@@ -14,6 +14,7 @@ import {
   type ProjectWorkbenchProject,
   type ProjectWorkbenchTask,
 } from "../api/project-api"
+import { getWorkspaceMembers } from "../api/users-api"
 import { ProjectWorkbenchPage } from "./project-workbench-page"
 
 vi.mock("@/features/workspace/session/useMe", () => ({
@@ -35,6 +36,15 @@ vi.mock("../api/project-api", async () => {
     getProject: vi.fn(),
     getProjectTasks: vi.fn(),
     getProjectTimeline: vi.fn(),
+  }
+})
+
+vi.mock("../api/users-api", async () => {
+  const actual =
+    await vi.importActual<typeof import("../api/users-api")>("../api/users-api")
+  return {
+    ...actual,
+    getWorkspaceMembers: vi.fn(),
   }
 })
 
@@ -95,6 +105,17 @@ describe("ProjectWorkbenchPage", () => {
     vi.mocked(getProject).mockResolvedValue(project())
     vi.mocked(getProjectTasks).mockResolvedValue([task()])
     vi.mocked(getProjectTimeline).mockResolvedValue([])
+    vi.mocked(getWorkspaceMembers).mockResolvedValue([
+      {
+        display_name: "刘玮",
+        email: "liuwei@example.com",
+        joined_at: 1,
+        modified_at: 1,
+        name: "liuwei",
+        role: "member",
+        user_id: "user-1",
+      },
+    ])
   })
 
   it("keeps project management available but disables task editing when project is closed", async () => {

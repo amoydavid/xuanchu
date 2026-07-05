@@ -67,6 +67,9 @@ export function filterToTaskQuery(filter: TaskFilter): string {
   for (const key of DIRECT_QUERY_KEYS) {
     const value = filter[key]
     if (value) {
+      if (key === "assignee" && assigneeValues(value).length > 1) {
+        continue
+      }
       params.set(key, value)
     }
   }
@@ -80,6 +83,12 @@ function advancedFilterExpressions(filter: TaskFilter): string[] {
   const expressions: string[] = []
   if (filter.query) {
     expressions.push(filter.query)
+  }
+  const assignees = assigneeValues(filter.assignee)
+  if (assignees.length > 1) {
+    expressions.push(
+      `(${assignees.map((assignee) => `assignee:"${escapeQueryValue(assignee)}"`).join(" or ")})`
+    )
   }
   if (isTruthy(filter.assignee_empty)) {
     expressions.push("assignee.isnull")
@@ -101,4 +110,15 @@ function advancedFilterExpressions(filter: TaskFilter): string[] {
 
 function isTruthy(value: string | undefined): boolean {
   return value === "true" || value === "1" || value === "yes"
+}
+
+function assigneeValues(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function escapeQueryValue(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { UploadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -16,6 +17,7 @@ import {
 import type { ProjectReadonlyTask } from "@/features/workspace/project-readonly/project-readonly-api"
 import { buildProjectStats } from "@/features/workspace/project-readonly/project-stats"
 import type { ProjectWorkbenchTask } from "../api/project-api"
+import { getWorkspaceMembers } from "../api/users-api"
 import { TaskImportDialog } from "../import/task-import-dialog"
 import { canProjectManage, canTaskWrite } from "../permissions/permissions"
 import {
@@ -124,7 +126,21 @@ function ProjectWorkbenchPageContent({
   const project = useProjectQuery(workspaceSlug, projectSlug)
   const tasks = useProjectTasksQuery(workspaceSlug, projectSlug, filterQuery)
   const timeline = useProjectTimelineQuery(workspaceSlug, projectSlug)
+  const members = useQuery({
+    queryKey: ["workspace-members", workspaceSlug],
+    queryFn: () => getWorkspaceMembers(workspaceSlug),
+  })
   const taskRows = useMemo(() => tasks.data ?? [], [tasks.data])
+  const assigneeOptions = useMemo(
+    () =>
+      (members.data ?? []).map((member) => ({
+        email: member.email,
+        id: member.user_id,
+        label: member.display_name || member.name || member.email || member.user_id,
+        name: member.name,
+      })),
+    [members.data]
+  )
   const stats = useMemo(
     () => buildProjectStats(taskRows.map(normalizeReadonlyTask), now),
     [now, taskRows]
@@ -229,6 +245,7 @@ function ProjectWorkbenchPageContent({
       <ProjectClosedBanner canManage={canManage} status={project.data.status} />
       <ProjectStatsGrid stats={stats} />
       <ProjectTaskToolbar
+        assigneeOptions={assigneeOptions}
         canCreateTask={canEditTasks}
         filter={filter}
         onCreateTask={() => setCreateOpen(true)}

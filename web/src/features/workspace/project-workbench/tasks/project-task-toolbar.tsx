@@ -24,10 +24,18 @@ import { activeFilterEntries } from "@/features/workspace/project-readonly/proje
 import { i18n } from "@/i18n"
 
 type ProjectTaskToolbarProps = {
+  assigneeOptions?: AssigneeFilterOption[]
   canCreateTask: boolean
   filter: TaskFilter
   onCreateTask: () => void
   toParams: { workspaceSlug: string; projectSlug: string }
+}
+
+export type AssigneeFilterOption = {
+  email?: string | null
+  id: string
+  label: string
+  name?: string
 }
 
 const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring", "deleted"]
@@ -59,6 +67,7 @@ const FILTER_LABELS: Record<keyof TaskFilter, string> = {
 }
 
 export function ProjectTaskToolbar({
+  assigneeOptions = [],
   canCreateTask,
   filter,
   onCreateTask,
@@ -164,13 +173,15 @@ export function ProjectTaskToolbar({
             ))}
           </SelectContent>
         </Select>
-        <DebouncedInput
-          ariaLabel="负责人"
-          className="h-9 w-32"
-          key={`assignee:${filter.assignee ?? ""}`}
-          onCommit={(value) => setFilter("assignee", value)}
-          placeholder="负责人"
-          value={filter.assignee ?? ""}
+        <AssigneeFilterMenu
+          options={assigneeOptions}
+          selected={assigneeValues(filter.assignee)}
+          onChange={(values) =>
+            setFilters({
+              assignee: values.join(","),
+              assignee_empty: "",
+            })
+          }
         />
         <DebouncedInput
           ariaLabel="标签"
@@ -245,7 +256,11 @@ export function ProjectTaskToolbar({
               type="button"
               variant="secondary"
             >
-              {FILTER_LABELS[key]}={filterValueLabel(key, value)}
+              {`${FILTER_LABELS[key]}=${filterValueLabel(
+                key,
+                value,
+                assigneeOptions
+              )}`}
               <XIcon className="size-3" />
             </Button>
           ))}
@@ -340,9 +355,103 @@ function AdvancedFilterPanel({
   )
 }
 
-function filterValueLabel(key: keyof TaskFilter, value: string): string {
+function AssigneeFilterMenu({
+  onChange,
+  options,
+  selected,
+}: {
+  onChange: (values: string[]) => void
+  options: AssigneeFilterOption[]
+  selected: string[]
+}) {
+  const [query, setQuery] = useState("")
+  const selectedSet = new Set(selected)
+  const selectedLabels = assigneeLabelList(selected, options)
+  const buttonLabel =
+    selectedLabels.length > 0 ? selectedLabels.join("、") : "负责人"
+  const filteredOptions = assigneeFilterOptions(options, query)
+
+  const toggle = (id: string) => {
+    const next = selectedSet.has(id)
+      ? selected.filter((item) => item !== id)
+      : [...selected, id]
+    onChange(next)
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label="负责人"
+          className="h-9 min-w-32 justify-between gap-2 px-3"
+          type="button"
+          variant="outline"
+        >
+          <span className="max-w-36 truncate">{buttonLabel}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-2">
+        <div className="space-y-2">
+          <Input
+            aria-label="搜索负责人"
+            className="h-8"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索负责人"
+            value={query}
+          />
+          {options.length === 0 ? (
+            <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+              暂无负责人
+            </div>
+          ) : filteredOptions.length === 0 ? (
+            <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+              暂无匹配负责人
+            </div>
+          ) : (
+            <div className="max-h-72 space-y-1 overflow-y-auto">
+              {filteredOptions.map((option) => {
+                const checked = selectedSet.has(option.id)
+                const description = option.email || option.name || option.id
+                return (
+                  <label
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                    key={option.id}
+                  >
+                    <Checkbox
+                      aria-label={`${option.label} ${description}`}
+                      checked={checked}
+                      onCheckedChange={() => toggle(option.id)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        {option.label}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {description}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function filterValueLabel(
+  key: keyof TaskFilter,
+  value: string,
+  assigneeOptions: AssigneeFilterOption[]
+): string {
   if (key === "assignee_empty" && value) {
     return "未分配"
+  }
+  if (key === "assignee") {
+    const labels = assigneeLabelList(assigneeValues(value), assigneeOptions)
+    return labels.length > 0 ? labels.join("、") : value
   }
   if (key === "due_empty" && value) {
     return "无"
@@ -355,6 +464,38 @@ function filterValueLabel(key: keyof TaskFilter, value: string): string {
     return sort.label
   }
   return value
+}
+
+function assigneeValues(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function assigneeLabelList(
+  values: string[],
+  options: AssigneeFilterOption[]
+): string[] {
+  return values.map((value) => {
+    const option = options.find((item) => item.id === value)
+    return option?.label || value
+  })
+}
+
+function assigneeFilterOptions(
+  options: AssigneeFilterOption[],
+  query: string
+): AssigneeFilterOption[] {
+  const keyword = query.trim().toLowerCase()
+  if (!keyword) {
+    return options
+  }
+  return options.filter((option) =>
+    [option.label, option.name, option.email, option.id]
+      .filter(Boolean)
+      .some((value) => value?.toLowerCase().includes(keyword))
+  )
 }
 
 function DebouncedInput({
