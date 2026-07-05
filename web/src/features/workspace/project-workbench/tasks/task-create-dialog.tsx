@@ -190,6 +190,7 @@ export function TaskCreateDialog({
             />
             <InlineDatePicker
               ariaLabel="截止日期"
+              boundary="end"
               emptyLabel="截止日期"
               onSave={setDue}
               value={due}
@@ -208,6 +209,7 @@ export function TaskCreateDialog({
             />
             <InlineDatePicker
               ariaLabel="有效至"
+              boundary="end"
               emptyLabel="有效至"
               onSave={setUntil}
               value={until}

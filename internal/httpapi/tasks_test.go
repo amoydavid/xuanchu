@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 )
@@ -327,6 +328,49 @@ func TestTaskAddAcceptsDueField(t *testing.T) {
 	}
 }
 
+func TestTaskAddDateFieldsUseFieldBoundaries(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+
+	body := `{"title":"date boundaries","due_date":"2030-06-15","until_date":"2030-06-16","wait_date":"2030-06-17","scheduled_date":"2030-06-18"}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", body, map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	})
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			Due       *string `json:"due"`
+			Until     *string `json:"until"`
+			Wait      *string `json:"wait"`
+			Scheduled *string `json:"scheduled"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	assertRFC3339LocalTime(t, "due", payload.Data.Due, 23, 59, 59)
+	assertRFC3339LocalTime(t, "until", payload.Data.Until, 23, 59, 59)
+	assertRFC3339LocalTime(t, "wait", payload.Data.Wait, 0, 0, 0)
+	assertRFC3339LocalTime(t, "scheduled", payload.Data.Scheduled, 0, 0, 0)
+}
+
+func assertRFC3339LocalTime(t *testing.T, name string, value *string, hour, minute, second int) {
+	t.Helper()
+	if value == nil {
+		t.Fatalf("%s = nil", name)
+	}
+	parsed, err := time.Parse(time.RFC3339, *value)
+	if err != nil {
+		t.Fatalf("%s %q not RFC3339: %v", name, *value, err)
+	}
+	local := parsed.In(time.Local)
+	if local.Hour() != hour || local.Minute() != minute || local.Second() != second {
+		t.Fatalf("%s local time = %v, want %02d:%02d:%02d", name, local, hour, minute, second)
+	}
+}
+
 func TestTaskAddAssignees(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 
@@ -613,8 +657,12 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	past := int64(1)
-	future := int64(1893456000) // 2030-01-01
+	sameDayEnd := time.Date(2030, 1, 1, 23, 59, 59, 0, time.Local).Unix()
+	future := time.Date(2030, 1, 2, 0, 0, 0, 0, time.Local).Unix()
 	if _, err := svc.Add(app.AddInput{Title: "restful past due", Due: &past}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "restful same day due", Due: &sameDayEnd}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Add(app.AddInput{Title: "restful future due", Due: &future}); err != nil {
@@ -623,20 +671,20 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 	hdr := restfulFilterHeader(fixture.token)
 
 	rr := requestHTTP(t, fixture.server, http.MethodGet,
-		"/api/v1/tasks?due_before=2025-01-01&no_context=true", hdr)
+		"/api/v1/tasks?due_before=2030-01-01&no_context=true", hdr)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("due_before status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	if b := rr.Body.String(); !strings.Contains(b, "restful past due") || strings.Contains(b, "restful future due") {
+	if b := rr.Body.String(); !strings.Contains(b, "restful past due") || !strings.Contains(b, "restful same day due") || strings.Contains(b, "restful future due") {
 		t.Fatalf("due_before filter failed: %s", b)
 	}
 
 	rr = requestHTTP(t, fixture.server, http.MethodGet,
-		"/api/v1/tasks?due_after=2025-01-01&no_context=true", hdr)
+		"/api/v1/tasks?due_after=2030-01-01&no_context=true", hdr)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("due_after status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	if b := rr.Body.String(); !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
+	if b := rr.Body.String(); !strings.Contains(b, "restful same day due") || !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
 		t.Fatalf("due_after filter failed: %s", b)
 	}
 }

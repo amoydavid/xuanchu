@@ -18,20 +18,24 @@ import (
 )
 
 type addTaskRequest struct {
-	Title       string            `json:"title"`
-	Description *string           `json:"description,omitempty"`
-	Project     string            `json:"project,omitempty"`
-	ProjectID   string            `json:"project_id,omitempty"`
-	Priority    string            `json:"priority,omitempty"`
-	Due         *int64            `json:"due,omitempty"`
-	Assignees   []string          `json:"assignees,omitempty"`
-	Depends     []string          `json:"depends,omitempty"`
-	Wait        *int64            `json:"wait,omitempty"`
-	Scheduled   *int64            `json:"scheduled,omitempty"`
-	Until       *int64            `json:"until,omitempty"`
-	Recur       *string           `json:"recur,omitempty"`
-	Tags        []string          `json:"tags,omitempty"`
-	UDAs        map[string]string `json:"udas,omitempty"`
+	Title         string            `json:"title"`
+	Description   *string           `json:"description,omitempty"`
+	Project       string            `json:"project,omitempty"`
+	ProjectID     string            `json:"project_id,omitempty"`
+	Priority      string            `json:"priority,omitempty"`
+	Due           *int64            `json:"due,omitempty"`
+	DueDate       string            `json:"due_date,omitempty"`
+	Assignees     []string          `json:"assignees,omitempty"`
+	Depends       []string          `json:"depends,omitempty"`
+	Wait          *int64            `json:"wait,omitempty"`
+	WaitDate      string            `json:"wait_date,omitempty"`
+	Scheduled     *int64            `json:"scheduled,omitempty"`
+	ScheduledDate string            `json:"scheduled_date,omitempty"`
+	Until         *int64            `json:"until,omitempty"`
+	UntilDate     string            `json:"until_date,omitempty"`
+	Recur         *string           `json:"recur,omitempty"`
+	Tags          []string          `json:"tags,omitempty"`
+	UDAs          map[string]string `json:"udas,omitempty"`
 }
 
 type modifyTaskRequest struct {
@@ -44,12 +48,16 @@ type modifyTaskRequest struct {
 	ClearProject     bool              `json:"clear_project,omitempty"`
 	ClearPriority    bool              `json:"clear_priority,omitempty"`
 	Due              *int64            `json:"due,omitempty"`
+	DueDate          string            `json:"due_date,omitempty"`
 	ClearDue         bool              `json:"clear_due,omitempty"`
 	Wait             *int64            `json:"wait,omitempty"`
+	WaitDate         string            `json:"wait_date,omitempty"`
 	ClearWait        bool              `json:"clear_wait,omitempty"`
 	Scheduled        *int64            `json:"scheduled,omitempty"`
+	ScheduledDate    string            `json:"scheduled_date,omitempty"`
 	ClearScheduled   bool              `json:"clear_scheduled,omitempty"`
 	Until            *int64            `json:"until,omitempty"`
+	UntilDate        string            `json:"until_date,omitempty"`
 	ClearUntil       bool              `json:"clear_until,omitempty"`
 	Assignees        []string          `json:"assignees,omitempty"`
 	RemoveAssignees  []string          `json:"remove_assignees,omitempty"`
@@ -115,7 +123,7 @@ func restfulTaskFilters(q url.Values) (query.Expr, error) {
 		add(pred)
 	}
 	if v := strings.TrimSpace(q.Get("due_before")); v != "" {
-		pred, err := datePredicate(query.AttrDue, query.OpBefore, v)
+		pred, err := inclusiveBeforeDatePredicate(query.AttrDue, v)
 		if err != nil {
 			return nil, err
 		}
@@ -141,6 +149,61 @@ func datePredicate(attr query.Attribute, op query.Operator, raw string) (query.E
 		return nil, fmt.Errorf("invalid date %q (expected YYYY-MM-DD)", raw)
 	}
 	return query.Predicate{Attribute: attr, Operator: op, Value: query.DateValue(raw)}, nil
+}
+
+func inclusiveBeforeDatePredicate(attr query.Attribute, raw string) (query.Expr, error) {
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid date %q (expected YYYY-MM-DD)", raw)
+	}
+	nextDay := parsed.AddDate(0, 0, 1).Format("2006-01-02")
+	return query.Predicate{Attribute: attr, Operator: query.OpBefore, Value: query.DateValue(nextDay)}, nil
+}
+
+func resolveRequestDateField(field string, instant *int64, date string, endOfDay bool) (*int64, error) {
+	date = strings.TrimSpace(date)
+	if date == "" {
+		return instant, nil
+	}
+	if instant != nil {
+		return nil, fmt.Errorf("%s and %s_date cannot both be set", field, field)
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return nil, fmt.Errorf("%s_date must be YYYY-MM-DD", field)
+	}
+	var (
+		value int64
+		err   error
+	)
+	if endOfDay {
+		value, err = query.ResolveDeadlineDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+	} else {
+		value, err = query.ResolveStartDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func resolveTaskDateFields(due *int64, dueDate string, wait *int64, waitDate string, scheduled *int64, scheduledDate string, until *int64, untilDate string) (*int64, *int64, *int64, *int64, error) {
+	resolvedDue, err := resolveRequestDateField("due", due, dueDate, true)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	resolvedWait, err := resolveRequestDateField("wait", wait, waitDate, false)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	resolvedScheduled, err := resolveRequestDateField("scheduled", scheduled, scheduledDate, false)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	resolvedUntil, err := resolveRequestDateField("until", until, untilDate, true)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return resolvedDue, resolvedWait, resolvedScheduled, resolvedUntil, nil
 }
 
 func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
@@ -262,17 +325,22 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 	if project != "" {
 		projectPtr = &project
 	}
+	due, wait, scheduled, until, err := resolveTaskDateFields(req.Due, req.DueDate, req.Wait, req.WaitDate, req.Scheduled, req.ScheduledDate, req.Until, req.UntilDate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_date", err.Error(), nil)
+		return
+	}
 	created, err := scoped.Add(app.AddInput{
 		Title:       strings.TrimSpace(req.Title),
 		Description: req.Description,
 		Project:     projectPtr,
 		Priority:    priority,
-		Due:         req.Due,
+		Due:         due,
 		Assignees:   req.Assignees,
 		Depends:     req.Depends,
-		Wait:        req.Wait,
-		Scheduled:   req.Scheduled,
-		Until:       req.Until,
+		Wait:        wait,
+		Scheduled:   scheduled,
+		Until:       until,
 		Recur:       req.Recur,
 		Tags:        req.Tags,
 		UDAs:        req.UDAs,
@@ -395,6 +463,11 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		}
 		project = &view.Slug
 	}
+	due, wait, scheduled, until, err := resolveTaskDateFields(req.Due, req.DueDate, req.Wait, req.WaitDate, req.Scheduled, req.ScheduledDate, req.Until, req.UntilDate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_date", err.Error(), nil)
+		return
+	}
 	if err := scoped.Modify(resolved.UUID, app.ModifyInput{
 		Title:            req.Title,
 		Description:      req.Description,
@@ -403,13 +476,13 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		ClearProject:     req.ClearProject,
 		Priority:         req.Priority,
 		ClearPriority:    req.ClearPriority,
-		Due:              req.Due,
+		Due:              due,
 		ClearDue:         req.ClearDue,
-		Wait:             req.Wait,
+		Wait:             wait,
 		ClearWait:        req.ClearWait,
-		Scheduled:        req.Scheduled,
+		Scheduled:        scheduled,
 		ClearScheduled:   req.ClearScheduled,
-		Until:            req.Until,
+		Until:            until,
 		ClearUntil:       req.ClearUntil,
 		AddAssignees:     req.Assignees,
 		RemoveAssignees:  req.RemoveAssignees,

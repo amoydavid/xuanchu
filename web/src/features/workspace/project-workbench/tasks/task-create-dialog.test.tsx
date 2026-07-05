@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "@/i18n"
 import { createTask } from "../api/task-api"
 import { getWorkspaceMembers } from "../api/users-api"
+import { dateToUnix } from "../shared/date-boundary"
 import { TaskCreateDialog } from "./task-create-dialog"
 
 vi.mock("../api/task-api", () => ({
@@ -96,7 +97,7 @@ describe("TaskCreateDialog", () => {
     const payload = vi.mocked(createTask).mock.calls[0]?.[1]
     expect(payload).toMatchObject({
       assignees: ["u1"],
-      due: 1783036800,
+      due: dateToUnix(new Date(2026, 6, 3), "end"),
       priority: "H",
       project: "adsops",
       tags: ["ops", "review"],

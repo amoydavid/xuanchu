@@ -24,6 +24,7 @@ import {
 } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTaskRef } from "../api/project-api"
 import type { ProjectTask } from "../api/task-api"
+import type { DateBoundary } from "../shared/date-boundary"
 import { useModifyTaskMutation } from "../hooks/use-task-mutations"
 import { InlineDatePicker } from "../shared/inline-date-picker"
 import { InlineSelectEditor } from "../shared/inline-select-editor"
@@ -93,6 +94,7 @@ export function TaskPropertyPanel({
       <PropertyRow label={t("projectReadonly.dueDate")}>
         <InlineDatePicker
           ariaLabel={t("projectReadonly.dueDate")}
+          boundary="end"
           className="h-7"
           disabled={!canWrite}
           onSave={async (due) => {
@@ -155,6 +157,7 @@ export function TaskPropertyPanel({
       />
       <DateProperty
         disabled={!canWrite}
+        boundary="end"
         helpText={t("projectReadonly.untilHelp")}
         label={t("projectReadonly.until")}
         onSave={async (until) => {
@@ -458,6 +461,7 @@ function PropertyRow({
 }
 
 function DateProperty({
+  boundary = "start",
   disabled,
   helpText,
   label,
@@ -465,6 +469,7 @@ function DateProperty({
   value,
 }: {
   disabled: boolean
+  boundary?: DateBoundary
   helpText?: string
   label: string
   onSave: (value: number | null) => Promise<void> | void
@@ -474,6 +479,7 @@ function DateProperty({
     <PropertyRow helpText={helpText} label={label}>
       <InlineDatePicker
         ariaLabel={label}
+        boundary={boundary}
         className="h-7"
         disabled={disabled}
         onSave={onSave}

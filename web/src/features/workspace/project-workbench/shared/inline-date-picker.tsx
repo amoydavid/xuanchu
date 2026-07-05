@@ -10,6 +10,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import {
+  dateToUnix,
+  formatLocalDate,
+  type DateBoundary,
+} from "./date-boundary"
 import { useEditFeedback } from "./edit-feedback"
 
 type InlineDatePickerProps = {
@@ -17,12 +22,14 @@ type InlineDatePickerProps = {
   value?: number | null
   onSave: (value: number | null) => Promise<void> | void
   className?: string
+  boundary?: DateBoundary
   disabled?: boolean
   emptyLabel?: string
 }
 
 export function InlineDatePicker({
   ariaLabel,
+  boundary = "start",
   className,
   disabled = false,
   emptyLabel = "-",
@@ -79,7 +86,7 @@ export function InlineDatePicker({
             defaultMonth={date ?? undefined}
             mode="single"
             onSelect={(next) => {
-              void save(next ? dateToUnix(next) : null)
+              void save(next ? dateToUnix(next, boundary) : null)
             }}
             selected={date ?? undefined}
           />
@@ -113,11 +120,5 @@ function unixToDate(value?: number | null): Date | null {
 }
 
 function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10)
-}
-
-function dateToUnix(date: Date): number {
-  return Math.floor(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 1000
-  )
+  return formatLocalDate(date)
 }

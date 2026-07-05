@@ -78,3 +78,16 @@ func TestParseDateRejectsInvalidNowRelativeDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveStartDateValueUsesStartOfDay(t *testing.T) {
+	loc := time.FixedZone("TEST", 8*60*60)
+	now := time.Date(2026, 7, 5, 14, 30, 0, 0, loc)
+	got, err := ResolveStartDateValue(ParseDateValue("2026-07-05"), now.Unix(), loc)
+	if err != nil {
+		t.Fatalf("ResolveStartDateValue() error = %v", err)
+	}
+	want := time.Date(2026, 7, 5, 0, 0, 0, 0, loc).Unix()
+	if got != want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+}

@@ -20,11 +20,15 @@ export type TaskCreateInput = {
   project_id?: string
   priority?: string
   due?: number | null
+  due_date?: string
   assignees?: string[]
   depends?: string[]
   wait?: number | null
+  wait_date?: string
   scheduled?: number | null
+  scheduled_date?: string
   until?: number | null
+  until_date?: string
   recur?: string | null
   tags?: string[]
   udas?: Record<string, string>
@@ -40,12 +44,16 @@ export type TaskModifyInput = {
   clear_project?: boolean
   clear_priority?: boolean
   due?: number | null
+  due_date?: string
   clear_due?: boolean
   wait?: number | null
+  wait_date?: string
   clear_wait?: boolean
   scheduled?: number | null
+  scheduled_date?: string
   clear_scheduled?: boolean
   until?: number | null
+  until_date?: string
   clear_until?: boolean
   assignees?: string[]
   remove_assignees?: string[]

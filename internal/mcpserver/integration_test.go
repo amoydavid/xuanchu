@@ -710,6 +710,43 @@ func TestTaskModify(t *testing.T) {
 	}
 }
 
+func TestTaskAddDateFieldsUseFieldBoundaries(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	addResult := callTool(t, session, "task_add", TaskAddInput{
+		Title:         "date boundaries",
+		DueDate:       "2030-06-15",
+		UntilDate:     "2030-06-16",
+		WaitDate:      "2030-06-17",
+		ScheduledDate: "2030-06-18",
+	})
+	if addResult.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, addResult))
+	}
+	taskObj := extractTask(t, parseEnvelope(t, addResult))
+	assertMCPRFC3339LocalTime(t, "due", taskObj["due"], 23, 59, 59)
+	assertMCPRFC3339LocalTime(t, "until", taskObj["until"], 23, 59, 59)
+	assertMCPRFC3339LocalTime(t, "wait", taskObj["wait"], 0, 0, 0)
+	assertMCPRFC3339LocalTime(t, "scheduled", taskObj["scheduled"], 0, 0, 0)
+}
+
+func assertMCPRFC3339LocalTime(t *testing.T, name string, value any, hour, minute, second int) {
+	t.Helper()
+	raw, ok := value.(string)
+	if !ok || raw == "" {
+		t.Fatalf("%s = %#v, want RFC3339 string", name, value)
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t.Fatalf("%s %q not RFC3339: %v", name, raw, err)
+	}
+	local := parsed.In(time.Local)
+	if local.Hour() != hour || local.Minute() != minute || local.Second() != second {
+		t.Fatalf("%s local time = %v, want %02d:%02d:%02d", name, local, hour, minute, second)
+	}
+}
+
 func TestTaskModifyClearFields(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)

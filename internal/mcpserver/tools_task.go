@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
@@ -12,19 +13,23 @@ import (
 )
 
 type TaskAddInput struct {
-	Workspace   string   `json:"workspace,omitempty" jsonschema:"workspace slug or UUID"`
-	Project     string   `json:"project,omitempty" jsonschema:"project slug in the effective workspace"`
-	ProjectID   string   `json:"project_id,omitempty" jsonschema:"stable project UUID"`
-	Title       string   `json:"title" jsonschema:"task title"`
-	Description *string  `json:"description,omitempty" jsonschema:"task details"`
-	Tags        []string `json:"tags,omitempty" jsonschema:"task tags to add"`
-	Assignees   []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
-	Priority    string   `json:"priority,omitempty"`
-	Due         *int64   `json:"due,omitempty" jsonschema:"unix seconds"`
-	Wait        *int64   `json:"wait,omitempty" jsonschema:"unix seconds"`
-	Scheduled   *int64   `json:"scheduled,omitempty" jsonschema:"unix seconds"`
-	Until       *int64   `json:"until,omitempty" jsonschema:"unix seconds"`
-	Annotations []string `json:"annotations,omitempty" jsonschema:"initial annotations"`
+	Workspace     string   `json:"workspace,omitempty" jsonschema:"workspace slug or UUID"`
+	Project       string   `json:"project,omitempty" jsonschema:"project slug in the effective workspace"`
+	ProjectID     string   `json:"project_id,omitempty" jsonschema:"stable project UUID"`
+	Title         string   `json:"title" jsonschema:"task title"`
+	Description   *string  `json:"description,omitempty" jsonschema:"task details"`
+	Tags          []string `json:"tags,omitempty" jsonschema:"task tags to add"`
+	Assignees     []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
+	Priority      string   `json:"priority,omitempty"`
+	Due           *int64   `json:"due,omitempty" jsonschema:"unix seconds"`
+	DueDate       string   `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
+	Wait          *int64   `json:"wait,omitempty" jsonschema:"unix seconds"`
+	WaitDate      string   `json:"wait_date,omitempty" jsonschema:"defer-until date as YYYY-MM-DD; stored at local 00:00:00"`
+	Scheduled     *int64   `json:"scheduled,omitempty" jsonschema:"unix seconds"`
+	ScheduledDate string   `json:"scheduled_date,omitempty" jsonschema:"scheduled start date as YYYY-MM-DD; stored at local 00:00:00"`
+	Until         *int64   `json:"until,omitempty" jsonschema:"unix seconds"`
+	UntilDate     string   `json:"until_date,omitempty" jsonschema:"effective-until date as YYYY-MM-DD; stored at local 23:59:59"`
+	Annotations   []string `json:"annotations,omitempty" jsonschema:"initial annotations"`
 }
 
 func (in TaskAddInput) scopeInput() RequestScopeInput {
@@ -67,9 +72,13 @@ type TaskModifyInput struct {
 	Description     *string           `json:"description,omitempty"`
 	Priority        *string           `json:"priority,omitempty"`
 	Due             *int64            `json:"due,omitempty"`
+	DueDate         string            `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
 	Wait            *int64            `json:"wait,omitempty"`
+	WaitDate        string            `json:"wait_date,omitempty" jsonschema:"defer-until date as YYYY-MM-DD; stored at local 00:00:00"`
 	Scheduled       *int64            `json:"scheduled,omitempty"`
+	ScheduledDate   string            `json:"scheduled_date,omitempty" jsonschema:"scheduled start date as YYYY-MM-DD; stored at local 00:00:00"`
 	Until           *int64            `json:"until,omitempty"`
+	UntilDate       string            `json:"until_date,omitempty" jsonschema:"effective-until date as YYYY-MM-DD; stored at local 23:59:59"`
 	Tags            []string          `json:"tags,omitempty"`
 	Assignees       []string          `json:"assignees,omitempty"`
 	RemoveAssignees []string          `json:"remove_assignees,omitempty"`
@@ -191,6 +200,52 @@ func (in TaskImportInput) scopeInput() RequestScopeInput {
 	return RequestScopeInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID}
 }
 
+func resolveToolDateField(field string, instant *int64, date string, endOfDay bool) (*int64, error) {
+	date = strings.TrimSpace(date)
+	if date == "" {
+		return instant, nil
+	}
+	if instant != nil {
+		return nil, fmt.Errorf("%s and %s_date cannot both be set", field, field)
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return nil, fmt.Errorf("%s_date must be YYYY-MM-DD", field)
+	}
+	var (
+		value int64
+		err   error
+	)
+	if endOfDay {
+		value, err = query.ResolveDeadlineDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+	} else {
+		value, err = query.ResolveStartDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func resolveToolDateFields(due *int64, dueDate string, wait *int64, waitDate string, scheduled *int64, scheduledDate string, until *int64, untilDate string) (*int64, *int64, *int64, *int64, error) {
+	resolvedDue, err := resolveToolDateField("due", due, dueDate, true)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	resolvedWait, err := resolveToolDateField("wait", wait, waitDate, false)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	resolvedScheduled, err := resolveToolDateField("scheduled", scheduled, scheduledDate, false)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	resolvedUntil, err := resolveToolDateField("until", until, untilDate, true)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return resolvedDue, resolvedWait, resolvedScheduled, resolvedUntil, nil
+}
+
 func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, opts, &mcp.Tool{Name: "task_add", Description: "Create a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskAddInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
@@ -202,16 +257,20 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		priority := stringPtrFromValue(in.Priority)
+		due, wait, scheduled, until, err := resolveToolDateFields(in.Due, in.DueDate, in.Wait, in.WaitDate, in.Scheduled, in.ScheduledDate, in.Until, in.UntilDate)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		created, err := svc.AddWithAnnotations(app.AddInput{
 			Title:       strings.TrimSpace(in.Title),
 			Description: in.Description,
 			Project:     project,
 			Priority:    priority,
-			Due:         in.Due,
+			Due:         due,
 			Assignees:   in.Assignees,
-			Wait:        in.Wait,
-			Scheduled:   in.Scheduled,
-			Until:       in.Until,
+			Wait:        wait,
+			Scheduled:   scheduled,
+			Until:       until,
 			Tags:        in.Tags,
 		}, in.Annotations)
 		if err != nil {
@@ -402,15 +461,19 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
+	due, wait, scheduled, until, err := resolveToolDateFields(in.Due, in.DueDate, in.Wait, in.WaitDate, in.Scheduled, in.ScheduledDate, in.Until, in.UntilDate)
+	if err != nil {
+		return businessErrorWithEnvelope(err)
+	}
 	mod := app.ModifyInput{
 		Title:           in.Title,
 		Description:     in.Description,
 		Project:         project,
 		Priority:        in.Priority,
-		Due:             in.Due,
-		Wait:            in.Wait,
-		Scheduled:       in.Scheduled,
-		Until:           in.Until,
+		Due:             due,
+		Wait:            wait,
+		Scheduled:       scheduled,
+		Until:           until,
 		AddTags:         in.Tags,
 		AddAssignees:    in.Assignees,
 		RemoveAssignees: in.RemoveAssignees,

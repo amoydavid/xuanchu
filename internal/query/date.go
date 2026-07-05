@@ -89,3 +89,11 @@ func ResolveDeadlineDateValue(value Value, nowUnix int64, loc *time.Location) (i
 	}
 	return end - 1, nil
 }
+
+func ResolveStartDateValue(value Value, nowUnix int64, loc *time.Location) (int64, error) {
+	start, _, err := ResolveDateRange(value, nowUnix, loc)
+	if err != nil {
+		return 0, err
+	}
+	return start, nil
+}

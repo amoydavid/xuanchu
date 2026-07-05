@@ -109,7 +109,7 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 			mod.ClearWait = true
 			return true, nil
 		}
-		wait, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
+		wait, err := ResolveStartDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
 		if err != nil {
 			return false, err
 		}
@@ -121,7 +121,7 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 			mod.ClearScheduled = true
 			return true, nil
 		}
-		sched, err := ResolveDeadlineDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
+		sched, err := ResolveStartDateValue(ParseDateValue(value), time.Now().Unix(), time.Local)
 		if err != nil {
 			return false, err
 		}

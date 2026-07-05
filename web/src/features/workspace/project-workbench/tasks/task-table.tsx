@@ -218,6 +218,7 @@ function TaskTableRow({
       <TableCell>
         <InlineDatePicker
           ariaLabel={t("projectReadonly.taskDueDate", { taskRef })}
+          boundary="end"
           className="h-7 w-36"
           disabled={!rowWritable}
           onSave={async (due) => {
@@ -300,6 +301,7 @@ function TaskCard({
         />
         <InlineDatePicker
           ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef })}
+          boundary="end"
           className="h-7 w-full"
           disabled={!rowWritable}
           onSave={async (due) => {

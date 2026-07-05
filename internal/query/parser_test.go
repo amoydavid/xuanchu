@@ -74,6 +74,41 @@ func TestParseModifyArgsDueStoresEndOfDay(t *testing.T) {
 	}
 }
 
+func TestParseModifyArgsDateFieldBoundaries(t *testing.T) {
+	mod, err := ParseModifyArgs([]string{
+		"due:2030-06-15",
+		"until:2030-06-16",
+		"wait:2030-06-17",
+		"scheduled:2030-06-18",
+	})
+	if err != nil {
+		t.Fatalf("ParseModifyArgs() error = %v", err)
+	}
+	cases := []struct {
+		name       string
+		value      *int64
+		wantHour   int
+		wantMinute int
+		wantSecond int
+	}{
+		{name: "due", value: mod.Due, wantHour: 23, wantMinute: 59, wantSecond: 59},
+		{name: "until", value: mod.Until, wantHour: 23, wantMinute: 59, wantSecond: 59},
+		{name: "wait", value: mod.Wait, wantHour: 0, wantMinute: 0, wantSecond: 0},
+		{name: "scheduled", value: mod.Scheduled, wantHour: 0, wantMinute: 0, wantSecond: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.value == nil {
+				t.Fatal("value is nil")
+			}
+			got := time.Unix(*tc.value, 0).In(time.Local)
+			if got.Hour() != tc.wantHour || got.Minute() != tc.wantMinute || got.Second() != tc.wantSecond {
+				t.Fatalf("%s time = %v, want %02d:%02d:%02d local", tc.name, got, tc.wantHour, tc.wantMinute, tc.wantSecond)
+			}
+		})
+	}
+}
+
 func TestParseModifyArgsM2Fields(t *testing.T) {
 	mod, err := ParseModifyArgs([]string{"wait:tomorrow", "scheduled:eow", "until:2030-01-01", "depends:abc", "depends:", "recur:weekly"})
 	if err != nil {

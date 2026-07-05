@@ -45,6 +45,10 @@
           "integer"
         ]
       },
+      "due_date": {
+        "description": "deadline date as YYYY-MM-DD; stored at local 23:59:59",
+        "type": "string"
+      },
       "id": {
         "description": "task reference: UUID or task_slug",
         "type": "string"
@@ -85,6 +89,10 @@
           "integer"
         ]
       },
+      "scheduled_date": {
+        "description": "scheduled start date as YYYY-MM-DD; stored at local 00:00:00",
+        "type": "string"
+      },
       "tags": {
         "items": {
           "type": "string"
@@ -112,11 +120,19 @@
           "integer"
         ]
       },
+      "until_date": {
+        "description": "effective-until date as YYYY-MM-DD; stored at local 23:59:59",
+        "type": "string"
+      },
       "wait": {
         "type": [
           "null",
           "integer"
         ]
+      },
+      "wait_date": {
+        "description": "defer-until date as YYYY-MM-DD; stored at local 00:00:00",
+        "type": "string"
       },
       "workspace": {
         "type": "string"
