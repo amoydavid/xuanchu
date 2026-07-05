@@ -244,6 +244,8 @@ export const zhCN = {
     identity: "当前身份",
     role: "角色",
     tokenType: "凭证类型",
+    openMenu: "打开菜单",
+    navLabel: "主导航",
     systemIdentity: "系统身份",
     riskNormal: "normal",
     riskHigh: "high",

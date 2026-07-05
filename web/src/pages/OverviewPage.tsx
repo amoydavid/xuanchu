@@ -125,7 +125,9 @@ export function OverviewPage({ me }: OverviewPageProps) {
               {
                 key: "id",
                 header: t("overview.delivery"),
-                render: (row) => <code>{textValue(row.id)}</code>,
+                render: (row) => (
+                  <code className="break-all">{textValue(row.id)}</code>
+                ),
               },
               {
                 key: "event_type",

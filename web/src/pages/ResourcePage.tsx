@@ -35,7 +35,7 @@ export function ResourcePage({
   return (
     <div className="space-y-4">
       <PageHeader title={title} />
-      <div className="flex gap-2 border bg-card p-2">
+      <div className="flex flex-wrap gap-2 border bg-card p-2">
         <Input className="flex-1" placeholder={t("common.search")} />
         <Button variant="outline">{t("common.filter")}</Button>
       </div>

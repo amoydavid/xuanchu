@@ -187,7 +187,7 @@ export function SinkFormDialog({
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t("outbound.sinkTypeLabel")}>
               <select
                 className="h-9 w-full rounded-md border bg-transparent px-2 text-sm"
@@ -298,7 +298,7 @@ export function SinkFormDialog({
             </>
           ) : null}
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t("outbound.sinkTimeoutLabel")}>
               <Input
                 min={1}

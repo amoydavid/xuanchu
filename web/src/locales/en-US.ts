@@ -252,6 +252,8 @@ export const enUS = {
     riskNormal: "normal",
     riskHigh: "high",
     returnToAdmin: "Return to admin",
+    openMenu: "Open menu",
+    navLabel: "Main navigation",
   },
   placeholder: {
     ready: "Ready",

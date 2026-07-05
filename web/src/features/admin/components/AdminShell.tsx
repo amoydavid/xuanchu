@@ -1,5 +1,6 @@
-import type React from "react"
-import { Building2, KeyRound, LogOut, RefreshCw, ShieldAlert } from "lucide-react"
+import * as React from "react"
+import { useState } from "react"
+import { Building2, KeyRound, LogOut, Menu, RefreshCw, ShieldAlert } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 
@@ -8,6 +9,7 @@ import { ProductLogo } from "@/components/ProductLogo"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet"
 
 import { AdminRiskBadge } from "./AdminRiskBadge"
 
@@ -30,55 +32,90 @@ export function AdminShell({
   tokenName,
 }: AdminShellProps) {
   const { t } = useTranslation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  const sidebarInner = (
+    <>
+      <nav aria-label={t("admin.navLabel")} className="space-y-1 p-2">
+        <Link
+          activeOptions={{ exact: true }}
+          activeProps={{ className: navLinkActive }}
+          className={navLinkBase}
+          onClick={() => setMobileNavOpen(false)}
+          to="/admin"
+        >
+          <ShieldAlert className="size-3.5" />
+          {t("admin.nav.bootstrap")}
+        </Link>
+        <Link
+          activeProps={{ className: navLinkActive }}
+          className={navLinkBase}
+          onClick={() => setMobileNavOpen(false)}
+          to="/admin/workspaces"
+        >
+          <Building2 className="size-3.5" />
+          {t("admin.nav.workspaces")}
+        </Link>
+        <Link
+          activeProps={{ className: navLinkActive }}
+          className={navLinkBase}
+          onClick={() => setMobileNavOpen(false)}
+          to="/admin/tokens"
+        >
+          <KeyRound className="size-3.5" />
+          {t("admin.nav.tokens")}
+        </Link>
+      </nav>
+      <div className="mt-auto border-t p-3">
+        <div className="mb-2 text-[11px] text-muted-foreground uppercase">
+          {t("admin.riskLabel")}
+        </div>
+        <AdminRiskBadge />
+      </div>
+    </>
+  )
 
   return (
     <div className="min-h-svh bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 hidden w-56 border-r bg-background md:block">
+      {/* 桌面端固定侧栏（>=md 显示） */}
+      <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r bg-background md:flex">
         <div className="flex h-12 items-center border-b px-4 text-sm font-medium">
           <ProductLogo />
         </div>
-        <nav aria-label={t("admin.navLabel")} className="space-y-1 p-2">
-          <Link
-            activeOptions={{ exact: true }}
-            activeProps={{ className: navLinkActive }}
-            className={navLinkBase}
-            to="/admin"
-          >
-            <ShieldAlert className="size-3.5" />
-            {t("admin.nav.bootstrap")}
-          </Link>
-          <Link
-            activeProps={{ className: navLinkActive }}
-            className={navLinkBase}
-            to="/admin/workspaces"
-          >
-            <Building2 className="size-3.5" />
-            {t("admin.nav.workspaces")}
-          </Link>
-          <Link
-            activeProps={{ className: navLinkActive }}
-            className={navLinkBase}
-            to="/admin/tokens"
-          >
-            <KeyRound className="size-3.5" />
-            {t("admin.nav.tokens")}
-          </Link>
-        </nav>
-        <div className="absolute inset-x-0 bottom-0 border-t p-3">
-          <div className="mb-2 text-[11px] text-muted-foreground uppercase">
-            {t("admin.riskLabel")}
-          </div>
-          <AdminRiskBadge />
-        </div>
+        <div className="flex flex-1 flex-col">{sidebarInner}</div>
       </aside>
       <div className="md:pl-56">
         <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b bg-background/95 px-4 backdrop-blur">
-          <div className="min-w-0">
-            <div className="truncate text-xs text-muted-foreground">
-              {t("admin.shellSubtitle")}
-            </div>
-            <div className="truncate text-sm font-medium">
-              {t("admin.shellTitle", { tokenName: tokenName || "-" })}
+          <div className="flex min-w-0 items-center gap-2">
+            {/* 移动端汉堡按钮（<md 显示） */}
+            <Sheet
+              onOpenChange={setMobileNavOpen}
+              open={mobileNavOpen}
+            >
+              <SheetTrigger asChild>
+                <Button
+                  aria-label={t("shell.openMenu")}
+                  className="-ml-2 md:hidden"
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  <Menu className="size-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent aria-label={t("admin.navLabel")} role="dialog">
+                <SheetHeader>
+                  <ProductLogo />
+                </SheetHeader>
+                <div className="flex flex-1 flex-col">{sidebarInner}</div>
+              </SheetContent>
+            </Sheet>
+            <div className="min-w-0">
+              <div className="truncate text-xs text-muted-foreground">
+                {t("admin.shellSubtitle")}
+              </div>
+              <div className="truncate text-sm font-medium">
+                {t("admin.shellTitle", { tokenName: tokenName || "-" })}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -90,7 +127,7 @@ export function AdminShell({
             >
               <RefreshCw className="size-4" />
             </Button>
-            <Separator className="h-5" orientation="vertical" />
+            <Separator className="hidden h-5 sm:inline-flex" orientation="vertical" />
             <LanguageSwitcher />
             <ThemeToggle />
             <Button onClick={onLogout} size="sm" variant="outline">

@@ -300,7 +300,7 @@ function ReminderRuleCreateDialog({
               value={name}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("outbound.reminderRuleScheduleType")}</Label>
               <select
@@ -325,7 +325,7 @@ function ReminderRuleCreateDialog({
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("outbound.reminderRuleFilter")}</Label>
               <Input

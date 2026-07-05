@@ -103,7 +103,7 @@ export function ProjectSettingsPage({
           </div>
           <div>
             <span className="text-muted-foreground">slug：</span>
-            <code>{p.slug}</code>
+            <code className="break-all">{p.slug}</code>
           </div>
           {p.description ? (
             <div>
@@ -263,7 +263,7 @@ function ProjectConfigEditor({
             setMut.mutate({ key: newKey.trim(), value: newValue })
           }}
         >
-          <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
             <Input
               aria-label={t("projectSettings.configKey")}
               onChange={(e) => setNewKey(e.target.value)}

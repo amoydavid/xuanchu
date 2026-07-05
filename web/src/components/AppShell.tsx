@@ -7,6 +7,7 @@ import {
   FileClock,
   KeyRound,
   LogOut,
+  Menu,
   RefreshCw,
   Settings,
   ShieldAlert,
@@ -15,7 +16,8 @@ import {
   Webhook,
 } from "lucide-react"
 import { Link, useLocation } from "@tanstack/react-router"
-import type React from "react"
+import * as React from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
@@ -24,6 +26,7 @@ import { RiskBadge } from "@/components/RiskBadge"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Sheet, SheetContent, SheetHeader, SheetTrigger } from "@/components/ui/sheet"
 import {
   clearAdminActingSession,
   clearTenantSwitchSession,
@@ -114,60 +117,31 @@ export function AppShell({
   const systemActor = me.data?.actor_type === "tenant_access_token"
   const showSso = isOwner || systemActor || tenantSwitch
   const showRisk = acting || systemActor || tenantSwitch
+  // 移动端导航抽屉开关。路由变化后由 NavItem 的 onClick 关闭。
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  const identityBlock = (
+    <IdentityBlock
+      me={me.data}
+      onLogout={onLogout}
+      showRisk={showRisk}
+      acting={acting}
+      actingContext={actingContext}
+      tenantSwitch={tenantSwitch}
+      tenantContext={tenantContext}
+    />
+  )
 
   return (
     <div className="min-h-svh bg-background text-foreground">
+      {/* 桌面端固定侧栏（>=md 显示） */}
       <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r bg-background md:flex">
-        <div className="flex h-12 items-center border-b px-4 text-sm font-medium">
-          <ProductLogo />
-        </div>
-        <nav className="flex-1 overflow-y-auto p-2">
-          {navGroups.map((group) => {
-            const items = group.items.filter(
-              (item) => !item.ssoOnly || showSso
-            )
-            if (items.length === 0) return null
-            return (
-              <div className="mb-3" key={group.labelKey}>
-                <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {t(group.labelKey)}
-                </div>
-                {items.map((item) => {
-                  const Icon = item.icon
-                  const active = isNavItemActive(
-                    item.key,
-                    item.to,
-                    location.pathname
-                  )
-                  return (
-                    <Link
-                      className={cn(
-                        "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                        active
-                          ? "border-l-foreground bg-muted font-medium text-foreground"
-                          : "border-l-transparent"
-                      )}
-                      key={item.key}
-                      to={item.to}
-                    >
-                      <Icon className="size-3.5" />
-                      {t(`nav.${item.key}`)}
-                    </Link>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </nav>
-        <IdentityBlock
-          me={me.data}
-          onLogout={onLogout}
-          showRisk={showRisk}
-          acting={acting}
-          actingContext={actingContext}
-          tenantSwitch={tenantSwitch}
-          tenantContext={tenantContext}
+        <SidebarNav
+          showSso={showSso}
+          pathname={location.pathname}
+          logoHeader
         />
+        {identityBlock}
       </aside>
       <div className="md:pl-56">
         <header
@@ -177,6 +151,33 @@ export function AppShell({
           )}
         >
           <div className="flex min-w-0 items-center gap-2">
+            {/* 移动端汉堡按钮（<md 显示），打开导航抽屉 */}
+            <Sheet
+              onOpenChange={setMobileNavOpen}
+              open={mobileNavOpen}
+            >
+              <SheetTrigger asChild>
+                <Button
+                  aria-label={t("shell.openMenu")}
+                  className="-ml-2 md:hidden"
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  <Menu className="size-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent aria-label={t("shell.navLabel")} role="dialog">
+                <SheetHeader>
+                  <ProductLogo />
+                </SheetHeader>
+                <SidebarNav
+                  showSso={showSso}
+                  pathname={location.pathname}
+                  onNavigate={() => setMobileNavOpen(false)}
+                />
+                {identityBlock}
+              </SheetContent>
+            </Sheet>
             {(acting || systemActor) && !tenantSwitch ? (
               <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             ) : null}
@@ -194,7 +195,7 @@ export function AppShell({
             >
               <RefreshCw className="size-4" />
             </Button>
-            <Separator className="h-5" orientation="vertical" />
+            <Separator className="hidden h-5 sm:inline-flex" orientation="vertical" />
             <LanguageSwitcher />
             <ThemeToggle />
           </div>
@@ -202,6 +203,69 @@ export function AppShell({
         <main className="px-4 py-5">{children}</main>
       </div>
     </div>
+  )
+}
+
+// SidebarNav：导航主体，桌面 aside 与移动抽屉共用同一份渲染逻辑。
+// logoHeader=true 时渲染顶部 logo 行（桌面端用），移动端在 SheetHeader 单独渲染。
+function SidebarNav({
+  showSso,
+  pathname,
+  logoHeader = false,
+  onNavigate,
+}: {
+  showSso: boolean
+  pathname: string
+  logoHeader?: boolean
+  onNavigate?: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <>
+      {logoHeader ? (
+        <div className="flex h-12 items-center border-b px-4 text-sm font-medium">
+          <ProductLogo />
+        </div>
+      ) : null}
+      <nav
+        aria-label={t("shell.navLabel")}
+        className="flex-1 overflow-y-auto p-2"
+      >
+        {navGroups.map((group) => {
+          const items = group.items.filter(
+            (item) => !item.ssoOnly || showSso
+          )
+          if (items.length === 0) return null
+          return (
+            <div className="mb-3" key={group.labelKey}>
+              <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t(group.labelKey)}
+              </div>
+              {items.map((item) => {
+                const Icon = item.icon
+                const active = isNavItemActive(item.key, item.to, pathname)
+                return (
+                  <Link
+                    className={cn(
+                      "flex h-8 w-full items-center gap-2 border-l-2 px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                      active
+                        ? "border-l-foreground bg-muted font-medium text-foreground"
+                        : "border-l-transparent"
+                    )}
+                    key={item.key}
+                    onClick={onNavigate}
+                    to={item.to}
+                  >
+                    <Icon className="size-3.5" />
+                    {t(`nav.${item.key}`)}
+                  </Link>
+                )
+              })}
+            </div>
+          )
+        })}
+      </nav>
+    </>
   )
 }
 

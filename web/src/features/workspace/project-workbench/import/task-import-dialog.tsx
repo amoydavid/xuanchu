@@ -426,7 +426,7 @@ export function TaskImportDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 overflow-auto rounded-lg border bg-muted/30">
-            <pre className="min-w-[48rem] p-3 font-mono text-xs leading-relaxed whitespace-pre">
+            <pre className="w-full min-w-0 p-3 font-mono text-xs leading-relaxed whitespace-pre sm:min-w-[48rem]">
               {TASK_IMPORT_JSON_SCHEMA_TEXT}
             </pre>
           </div>
@@ -597,7 +597,7 @@ function ImportPreview({
           </div>
         </div>
         <div className="max-h-80 overflow-auto">
-          <Table className="min-w-[58rem]">
+          <Table className="min-w-[40rem]">
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
                 <TableHead>{t("projectWorkbench.import.previewColumns.title")}</TableHead>

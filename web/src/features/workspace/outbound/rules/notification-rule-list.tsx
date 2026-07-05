@@ -300,7 +300,7 @@ function NotificationRuleCreateDialog({
             onChange={setName}
             value={name}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <LabeledField label={t("outbound.notificationRuleEvent")}>
               <select
                 aria-label={t("outbound.notificationRuleEvent")}
