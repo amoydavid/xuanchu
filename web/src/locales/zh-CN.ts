@@ -341,6 +341,15 @@ export const zhCN = {
     audit: "审计日志",
     settings: "设置",
   },
+  audit: {
+    export: "导出 CSV",
+    searchPlaceholder: "搜索当前结果（操作者）",
+    currentResultOnly: "筛选当前结果",
+    currentResultHint:
+      "服务端仅支持按 project/limit 查询；操作者/动作/时间在当前结果上筛选，非全量搜索。",
+    time: "时间",
+    targetId: "目标 ID",
+  },
   projectReadonly: {
     active: "进行中",
     assignee: "负责人",

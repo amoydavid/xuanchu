@@ -350,6 +350,15 @@ export const enUS = {
     audit: "Audit log",
     settings: "Settings",
   },
+  audit: {
+    export: "Export CSV",
+    searchPlaceholder: "Search current results (actor)",
+    currentResultOnly: "Filtering current results",
+    currentResultHint:
+      "Server supports project/limit only; actor/action/time filter the current result set, not a full search.",
+    time: "Time",
+    targetId: "Target ID",
+  },
   projectReadonly: {
     active: "Active",
     assignee: "Assignee",
