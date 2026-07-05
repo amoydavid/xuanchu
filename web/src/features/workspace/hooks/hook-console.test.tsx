@@ -84,8 +84,8 @@ const deliveriesResponse = {
 }
 
 function mockFetch() {
-  return vi.spyOn(globalThis, "fetch").mockImplementation((input: any) => {
-    const url = typeof input === "string" ? input : input.url
+  return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+    const url = typeof input === "string" ? input : (input as Request).url
     if (url.startsWith("/api/v1/hooks/h1/deliveries")) {
       return Promise.resolve(new Response(JSON.stringify(deliveriesResponse), { status: 200 }))
     }

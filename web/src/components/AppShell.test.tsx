@@ -101,7 +101,6 @@ describe("AppShell", () => {
   })
 
   it("provides logout action in sidebar identity block", async () => {
-    const onLogout = vi.fn()
     render(
       <ThemeProvider>
         <TooltipProvider>

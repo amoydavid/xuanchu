@@ -71,11 +71,14 @@ function TaskDetailPageContent({
     useState<MobileDetailTab>("properties")
 
   // projectSlug 优先取路由参数（项目内进入），兜底取 task 自身 project 字段（/my-tasks / /tasks/:ref 进入）。
-  const taskData = task.data
+  // 注意：这里只读 task.data 的 project 字段用于派生 effectiveProjectSlug，
+  // 不在 render 后续直接消费 taskData；render 主体的 taskData 在 isPending/isError 之后重新取，
+  // 让 TS 能正确 narrow 为非 undefined。
+  const taskDataForProject = task.data
   const effectiveProjectSlug =
     projectSlug ??
-    (taskData && typeof taskData.project === "string"
-      ? taskData.project
+    (taskDataForProject && typeof taskDataForProject.project === "string"
+      ? taskDataForProject.project
       : undefined)
 
   // useModifyTaskMutation 必须在顶层调用，保证 hooks 顺序稳定。
@@ -114,6 +117,11 @@ function TaskDetailPageContent({
     )
   }
 
+  const taskData = task.data
+  if (!taskData) {
+    // 已经过 isPending / isError，data 必然存在；防御性兜底。
+    return <TaskDetailSkeleton />
+  }
   const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {

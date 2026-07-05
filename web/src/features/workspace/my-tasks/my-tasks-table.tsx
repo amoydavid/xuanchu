@@ -14,7 +14,6 @@ import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTask } from "@/features/workspace/project-workbench/api/project-api"
 
 type MyTasksTableProps = {
-  canWrite: boolean
   sort?: string
   tasks: ProjectWorkbenchTask[]
   workspaceSlug: string
@@ -28,7 +27,6 @@ const priorityLabel: Record<string, string> = {
 }
 
 export function MyTasksTable({
-  canWrite: _canWrite,
   onSortChange,
   sort,
   tasks,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { filterAuditRows, rowsToCSV, type AuditRow } from "./audit-filter"
+import { type AuditRow } from "./audit-api"
+import { filterAuditRows, rowsToCSV } from "./audit-filter"
 
 const rows: AuditRow[] = [
   {

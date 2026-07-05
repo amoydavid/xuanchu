@@ -414,3 +414,32 @@ export function getTaskAudit(
     taskAuditPath(workspaceSlug, taskRef)
   )
 }
+
+// Task urgency（紧迫度解释）。
+// 后端 GET /api/v1/tasks/{ref}/urgency 返回 { uuid, total, items[] }。
+export type TaskUrgencyItem = {
+  name: string
+  coefficient: number
+  contribution: number
+  reason: string
+}
+
+export type TaskUrgency = {
+  uuid: string
+  total: number
+  items: TaskUrgencyItem[]
+}
+
+export function taskUrgencyPath(
+  workspaceSlug: string,
+  taskRef: string
+): string {
+  return `/api/v1/tasks/${encodeSegment(taskRef)}/urgency?${workspaceQuery(workspaceSlug)}`
+}
+
+export function getTaskUrgency(
+  workspaceSlug: string,
+  taskRef: string
+): Promise<TaskUrgency> {
+  return workspaceApiGet<TaskUrgency>(taskUrgencyPath(workspaceSlug, taskRef))
+}

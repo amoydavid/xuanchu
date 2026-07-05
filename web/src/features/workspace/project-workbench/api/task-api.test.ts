@@ -10,6 +10,7 @@ import {
   taskLinkPath,
   taskPath,
   taskStartPath,
+  taskUrgencyPath,
 } from "./task-api"
 
 describe("project workbench task api paths", () => {
@@ -52,6 +53,15 @@ describe("project workbench task api paths", () => {
   it("builds task audit path with encoded workspace and task ref", () => {
     expect(taskAuditPath("workspace 1", "ads/1")).toBe(
       "/api/v1/tasks/ads%2F1/audit?workspace=workspace%201"
+    )
+  })
+
+  it("builds task urgency path", () => {
+    expect(taskUrgencyPath("local", "ads-1")).toBe(
+      "/api/v1/tasks/ads-1/urgency?workspace=local"
+    )
+    expect(taskUrgencyPath("workspace 1", "ads/1")).toBe(
+      "/api/v1/tasks/ads%2F1/urgency?workspace=workspace%201"
     )
   })
 })

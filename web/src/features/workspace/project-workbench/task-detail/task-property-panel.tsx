@@ -32,6 +32,7 @@ import { useEditFeedback } from "../shared/edit-feedback"
 import { AssigneePicker } from "./assignee-picker"
 import { TagPicker } from "./tag-picker"
 import { TaskDependencyPicker } from "./task-dependency-picker"
+import { TaskUrgencyPanel } from "./task-urgency-panel"
 
 type TaskPropertyPanelProps = {
   canWrite: boolean
@@ -70,6 +71,9 @@ export function TaskPropertyPanel({
       </h2>
       <PropertyRow label={t("common.status")}>
         <div className="font-medium">{taskStatusLabel(task.status, t)}</div>
+      </PropertyRow>
+      <PropertyRow label={t("taskDetail.urgency")}>
+        <TaskUrgencyPanel taskRef={taskRef} workspaceSlug={workspaceSlug} />
       </PropertyRow>
       <PropertyRow label={t("projectReadonly.priority")}>
         <InlineSelectEditor

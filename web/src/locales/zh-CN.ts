@@ -358,6 +358,22 @@ export const zhCN = {
     time: "时间",
     targetId: "目标 ID",
   },
+  taskDetail: {
+    urgency: "紧迫度",
+    urgencyUnavailable: "紧迫度暂不可用",
+  },
+  workspacesConsole: {
+    subtitle: "管理可见 workspace。归档后只读；恢复能力待后端支持。",
+    archive: "归档",
+    archiveConfirm: "确认归档该 workspace？归档后变为只读。",
+    restore: "恢复",
+    restoreUnavailable: "后端暂不支持 workspace unarchive。",
+  },
+  notificationConsole: {
+    managementHint:
+      "通知管控：配置 sink、规则和投递链路，不提供个人消息已读/删除语义。",
+    sinksTitle: "Sinks",
+  },
   projectSettings: {
     title: "项目设置",
     basic: "基本信息",

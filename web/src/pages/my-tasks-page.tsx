@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -153,7 +152,6 @@ export function MyTasksPage({
       ) : (
         <>
           <MyTasksTable
-            canWrite={false}
             onSortChange={setSort}
             sort={sort}
             tasks={query.data ?? []}
@@ -168,8 +166,10 @@ export function MyTasksPage({
 
 function MyTasksSummary({ tasks }: { tasks: ProjectWorkbenchTask[] }) {
   const { t } = useTranslation()
+  // 取当前时间一次，存到 state，避免在 render 中调用 impure 的 Date.now()。
+  const [nowSnapshot] = useState(() => Date.now())
   if (tasks.length === 0) return null
-  const now = Math.floor(Date.now() / 1000)
+  const now = Math.floor(nowSnapshot / 1000)
   const overdue = tasks.filter(
     (task) =>
       task.status === "pending" &&
@@ -181,7 +181,7 @@ function MyTasksSummary({ tasks }: { tasks: ProjectWorkbenchTask[] }) {
     if (task.status !== "pending") return false
     if (typeof task.due !== "number" || task.due <= 0) return false
     const dueDate = new Date(task.due * 1000)
-    const todayDate = new Date()
+    const todayDate = new Date(nowSnapshot)
     return (
       dueDate.getFullYear() === todayDate.getFullYear() &&
       dueDate.getMonth() === todayDate.getMonth() &&

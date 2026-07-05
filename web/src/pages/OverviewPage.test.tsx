@@ -29,7 +29,7 @@ describe("OverviewPage", () => {
         <OverviewPage
           me={{
             actor_type: "user",
-            actor: { name: "local" },
+            actor: { id: "u1", name: "local" },
             effective_workspace: { slug: "local" },
             effective_role: "owner",
             token: { scopes: ["*"], type: "pat" },

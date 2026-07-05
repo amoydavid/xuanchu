@@ -368,6 +368,22 @@ export const enUS = {
     time: "Time",
     targetId: "Target ID",
   },
+  taskDetail: {
+    urgency: "Urgency",
+    urgencyUnavailable: "Urgency unavailable",
+  },
+  workspacesConsole: {
+    subtitle: "Manage visible workspaces. Archiving makes them readonly; restore is pending backend support.",
+    archive: "Archive",
+    archiveConfirm: "Archive this workspace? It becomes readonly.",
+    restore: "Restore",
+    restoreUnavailable: "Workspace unarchive is not yet supported by the backend.",
+  },
+  notificationConsole: {
+    managementHint:
+      "Notification management: configure sinks, rules, and delivery pipelines. Not a personal inbox.",
+    sinksTitle: "Sinks",
+  },
   projectSettings: {
     title: "Project settings",
     basic: "Basic info",

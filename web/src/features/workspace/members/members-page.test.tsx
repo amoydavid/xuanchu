@@ -28,7 +28,7 @@ function renderPage({
         <TooltipProvider>
           <MembersPage
             credential={{
-              actor: { name: "alice", display_name: "Alice Chen" },
+              actor: { id: "u1", name: "alice", display_name: "Alice Chen" },
               actor_type: "user",
               capabilities,
               effective_role: role,
@@ -63,7 +63,7 @@ function renderDetailPage({
         <TooltipProvider>
           <MembersDetailPage
             credential={{
-              actor: { name: "alice", display_name: "Alice Chen" },
+              actor: { id: "u1", name: "alice", display_name: "Alice Chen" },
               actor_type: "user",
               capabilities,
               effective_role: role,

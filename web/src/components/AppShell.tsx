@@ -111,7 +111,6 @@ export function AppShell({
   const acting = actingContext !== null
   const tenantSwitch = !acting && tenantContext !== null
   const systemActor = me.data?.actor_type === "tenant_access_token"
-  const tokenType = me.data?.token.type
   const showSso = isOwner || systemActor || tenantSwitch
   const showRisk = acting || systemActor || tenantSwitch
 
