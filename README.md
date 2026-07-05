@@ -98,6 +98,21 @@ url = "postgres://user:pass@localhost:5432/xuanchu?sslmode=disable"
 
 v0.5.0 起，Web Console 还支持 workspace 级 OIDC 单点登录（SSO）。workspace owner 或具备 `workspace:write` 的 tenant actor 在「单点登录」配置页填入 yaoguang IdP 的 issuer / client 信息并触发通讯录同步后，成员可通过登录页的「OIDC 单点登录」入口完成浏览器登录。OIDC 登录使用服务端可撤销的 opaque session cookie（`xuanchu_session`，HttpOnly），写操作必须同时携带 CSRF token（`xuanchu_csrf` cookie + `X-Xuanchu-CSRF` 头）。CLI、Remote Client、MCP 和外部自动化仍只接受 Bearer token，不接受 browser session。SSO `client_secret` 在落库前经 AES-256-GCM envelope 加密，密钥从 TOML 配置 `[security].config_secret_key`（base64 编码的 32 字节）读取。通讯录同步复用 OIDC `client_id` + `client_secret`，通过 `client_credentials` grant 自动向 IdP 换取访问 token，无需单独配置 directory token。
 
+v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作台扩展为「任务协作入口 + 治理控制台」：
+
+- **侧栏归位**：左侧栏底部固定展示当前登录身份（actor / role / token type / workspace / 风险状态 / 退出 / 返回超管），主内容顶栏改为页面上下文，不再放 actor/token 信息。
+- **「我的任务」入口**（`/my-tasks`）：跨项目聚合分配给当前用户的任务，提供「全部 / 今日到期 / 逾期 / 无截止」预设视图、状态/优先级/排序 toolbar 和负载摘要。系统身份进入时显示空状态。
+- **任务详情解耦**：新增 `/tasks/$taskRef` 入口，从「我的任务」可直接进入任务详情；详情页 `projectSlug` 可选，缺失时从 task.project 兜底并隐藏「返回项目」入口。
+- **已删除任务可见性**：项目工作台 toolbar 的状态筛选支持 `deleted`，deleted 任务行灰显并禁用写控件（恢复能力待后端支持）。
+- **Hook 控制台**（`/hooks`）：从只读 DataTable 升级为带 CRUD、enable/disable、行内投递历史和重放的运维控制台。
+- **审计日志控制台**（`/audit`）：支持按 project/limit 服务端查询，actor/action/target 在当前结果上二次筛选，并支持导出 CSV。普通成员和 viewer 现在也能读取 workspace 全量审计（后端 `audit.read` 角色权限对齐）。
+- **项目设置页**（`/projects/$slug/settings`）：集中管理项目状态流转、配置项（config key/value 读写）和项目备注（annotation 增删，后端暂无 PATCH 因而不做伪编辑）。项目列表行操作菜单支持快速归档/取消/恢复。
+- **成员外部身份**：成员详情页支持绑定/解绑 external-id（`POST/DELETE /users/{ref}/external-ids`），与 SSO 通讯录同步形成闭环。
+- **任务紧迫度**：任务详情属性栏展示 urgency 分数和各分项贡献（`GET /tasks/{ref}/urgency`）。
+- **Workspace / 通知控制台**：workspace 列表支持归档；通知页明确为「管控台」（sink/rule/delivery），不是个人消息收件箱。
+
+所有改动只复用现有 `/api/v1/*`、authz、CSRF、`task.UserInfo` 和 closed-project 规则；未引入新 UI 库或状态管理库。后端能力缺口（task restore、workspace unarchive、project annotation PATCH、audit actor/action/time 全量服务端搜索）在前端以置灰、说明文案或「当前结果筛选」明确标注，不静默失败。
+
 仓库只跟踪 `internal/webconsole/dist/.gitkeep`，不跟踪前端构建产物。日常前端开发使用 `pnpm --dir web dev` 并代理到 Go HTTP API；发布二进制必须使用 `make build-release`，或先运行 `make web-console-build` 再执行 Go 构建，确保真实 Web Console 静态资源被 embed 进二进制。
 
 普通 Console 支持项目工作台深链，适合放进飞书卡片、企业门户或内部系统消息中：

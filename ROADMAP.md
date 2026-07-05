@@ -48,6 +48,7 @@
 | v0.4.7 | 已完成 | 租户访问令牌 tenant_access_token |
 | v0.5.0 | 已完成 | Workspace OIDC 接入（yaoguang IdP）：浏览器 SSO + 通讯录同步 + browser session/CSRF |
 | v0.5.1 | 已完成 | Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进 |
+| v0.5.2 | 已完成 | Web Console 能力桥接：我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计 |
 | docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
