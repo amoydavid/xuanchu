@@ -207,3 +207,14 @@ notification_delivery_replay({"workspace": "dajee", "delivery_id": "delivery-id"
 `notification_delivery_replay` 只适用于 dead-lettered 或 skipped delivery，**不会重新渲染** URL、header、body。
 
 事件通知 delivery 会包含 `object_kind` / `object_id`，用于标识事件对象；reminder delivery 继续以 task 为主。
+
+## Sink 测试投递
+
+`POST /api/v1/notification-sinks/{sinkID}/test` 可以在不触发真实任务事件的前提下，对目标 sink 发一次样例投递：
+
+- 请求 body：`{"kind":"hook|notification","event_type":"task.completed","project_ref":"<可选>"}`
+- 响应包含 status / status_code / duration_ms / endpoint fingerprint / rendered headers/body preview。
+- 失败的目标返回（4xx/5xx）不会让 API 报错——API 返回 HTTP 200，`status` 为 `failed`。
+- 写一条 `notification.sink.test` audit，**不**写入 `notification_deliveries`。
+
+Web Console 的 Sinks tab 提供「发送测试」UI 入口。

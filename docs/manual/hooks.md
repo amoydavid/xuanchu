@@ -206,3 +206,27 @@ Xuanchu 默认禁止投递到：
 - unspecified 地址
 
 HTTP 3xx redirect 不会被自动跟随。
+
+## Web Console 配置
+
+`/hooks`（或等价的 `/integrations`、`/notifications`）现在是**出站集成控制台**，可在浏览器内完成 sink → hook → 投递 → replay 的完整闭环：
+
+- **Sinks tab**：创建/编辑/启停/删除 webhook 与 http_template sink。
+  - `webhook` 适合标准 webhook（URL + secret + 重试）。
+  - `http_template` 适合自定义 HTTP 请求（header/body 模板、secret refs、allowed hosts）。
+  - 编辑 sink 时 secret 不回显，提交新值才会覆盖。
+- **Hooks tab**：创建/编辑 hook，从 workspace 的 sink 列表中下拉选择目标，事件类型用分组 checkbox 勾选，project scope 用项目选择器。
+- **通知规则 / 定时规则**：事件通知规则与定时提醒规则共享同一个控制台。
+- **概览**：并行汇总 sinks / hooks / 规则计数与最近 dead-letter 投递。
+
+> 事件名遵循 `task.completed`、`project.archived` 等白名单，旧的 `task.done` 不再使用。
+
+### Sink 测试投递
+
+每个 sink 行有「发送测试」按钮，会调用 `POST /api/v1/notification-sinks/{sinkID}/test`：
+
+- 后端使用与正式 dispatch 相同的 sink 渲染、SSRF 防护与 HTTP 投递。
+- 测试投递**不会**写入 `hook_deliveries` / `notification_deliveries`，只写一条 `notification.sink.test` audit。
+- 请求带 `X-Xuanchu-Test: true` 与独立的 `X-Xuanchu-Delivery: test-...` ID，便于接收方识别和幂等。
+- 测试结果在 UI 展示 status code、duration、endpoint fingerprint、rendered headers/body 摘要。
+- 目标返回 4xx/5xx 时 API 仍返回 HTTP 200，body 中 `status` 为 `failed`——因为 API 调用本身成功，是测试结果失败。

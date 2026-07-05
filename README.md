@@ -110,6 +110,7 @@ v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作�
 - **成员外部身份**：成员详情页支持绑定/解绑 external-id（`POST/DELETE /users/{ref}/external-ids`），与 SSO 通讯录同步形成闭环。
 - **任务紧迫度**：任务详情属性栏展示 urgency 分数和各分项贡献（`GET /tasks/{ref}/urgency`）。
 - **Workspace / 通知控制台**：workspace 列表支持归档；通知页明确为「管控台」（sink/rule/delivery），不是个人消息收件箱。
+- **出站集成控制台**（v0.5.3，`/hooks` = `/integrations` = `/notifications`）：把 `/hooks` 升级为统一控制台，覆盖 Sinks（webhook / http_template CRUD）、Hooks（sink 下拉 + 分组事件 checkbox + project 选择器）、通知规则、定时规则和概览。新增后端 `POST /api/v1/notification-sinks/{sinkID}/test` 真实测试投递，写 audit 不污染 delivery 表，受 SSRF / allowed hosts / secret 防护。事件名统一为 `task.completed` / `project.archived` 等白名单，旧的 `task.done` 已废弃。
 
 所有改动只复用现有 `/api/v1/*`、authz、CSRF、`task.UserInfo` 和 closed-project 规则；未引入新 UI 库或状态管理库。后端能力缺口（task restore、workspace unarchive、project annotation PATCH、audit actor/action/time 全量服务端搜索）在前端以置灰、说明文案或「当前结果筛选」明确标注，不静默失败。
 
