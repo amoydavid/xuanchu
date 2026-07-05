@@ -46,6 +46,7 @@ export type PageKey =
   | "sso"
   | "hooks"
   | "notifications"
+  | "integrations"
   | "audit"
   | "settings"
 
