@@ -168,8 +168,15 @@ const projectReadonlyRoute = createRoute({
       "assignee",
       "due_after",
       "due_before",
+      "due_empty",
+      "assignee_empty",
+      "wait_before",
+      "scheduled_before",
+      "until_before",
       "tags",
       "q",
+      "query",
+      "sort",
     ]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") {

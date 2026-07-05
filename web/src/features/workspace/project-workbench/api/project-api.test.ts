@@ -52,8 +52,9 @@ describe("project workbench project api paths", () => {
   it("accepts URLSearchParams for task filters", () => {
     const filters = new URLSearchParams()
     filters.set("tags", "web,console")
+    filters.set("sort", "due")
     expect(projectTasksPath("local", "adsops", filters)).toBe(
-      "/api/v1/tasks?workspace=local&project=adsops&limit=200&tags=web%2Cconsole"
+      "/api/v1/tasks?workspace=local&project=adsops&limit=200&tags=web%2Cconsole&sort=due"
     )
   })
 })

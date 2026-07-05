@@ -72,7 +72,9 @@ function makeQueryClient() {
   })
 }
 
-function task(overrides: Partial<ProjectWorkbenchTask> = {}): ProjectWorkbenchTask {
+function task(
+  overrides: Partial<ProjectWorkbenchTask> = {}
+): ProjectWorkbenchTask {
   return {
     uuid: "task-uuid-1",
     task_slug: "ads-1",
@@ -109,23 +111,44 @@ describe("TaskTable", () => {
     vi.mocked(stopTask).mockResolvedValue(task())
   })
 
+  it("prefers display name when rendering assignees", () => {
+    renderTaskTable([
+      task({
+        assignees: [
+          { user_id: "user-1", name: "stable-name", display_name: "李雷" },
+        ],
+      }),
+    ])
+
+    expect(screen.getAllByText("李雷").length).toBeGreaterThan(0)
+    expect(screen.queryByText("stable-name")).toBeNull()
+  })
+
   it("saves an edited title with task slug ref", async () => {
     renderTaskTable()
 
-    await userEvent.click(screen.getByRole("button", { name: "编辑任务标题 ads-1" }))
-    await userEvent.clear(screen.getByRole("textbox", { name: "编辑任务标题 ads-1" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: "编辑任务标题 ads-1" })
+    )
+    await userEvent.clear(
+      screen.getByRole("textbox", { name: "编辑任务标题 ads-1" })
+    )
     await userEvent.type(
       screen.getByRole("textbox", { name: "编辑任务标题 ads-1" }),
       "写周报{Enter}"
     )
 
-    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { title: "写周报" })
+    expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
+      title: "写周报",
+    })
   })
 
   it("saves priority from the inline selector", async () => {
     renderTaskTable()
 
-    await userEvent.click(screen.getByRole("combobox", { name: "任务优先级 ads-1" }))
+    await userEvent.click(
+      screen.getByRole("combobox", { name: "任务优先级 ads-1" })
+    )
     await userEvent.click(screen.getByRole("option", { name: "H" }))
 
     expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", { priority: "H" })
@@ -139,7 +162,9 @@ describe("TaskTable", () => {
         name: "任务截止日期 ads-1",
       })
     )
-    await userEvent.click(await screen.findByRole("button", { name: "清除日期" }))
+    await userEvent.click(
+      await screen.findByRole("button", { name: "清除日期" })
+    )
 
     await waitFor(() => {
       expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
@@ -203,7 +228,9 @@ describe("TaskTable", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "移动任务截止日期 ads-1" })
     )
-    await userEvent.click(await screen.findByRole("button", { name: "清除日期" }))
+    await userEvent.click(
+      await screen.findByRole("button", { name: "清除日期" })
+    )
     await waitFor(() => {
       expect(modifyTask).toHaveBeenCalledWith("acme", "ads-1", {
         clear_due: true,
@@ -221,7 +248,32 @@ describe("TaskTable", () => {
       })
     )
     expect(screen.getByRole("menuitem", { name: "Open details" })).toBeTruthy()
-    expect(screen.getByRole("menuitem", { name: "Copy task link" })).toBeTruthy()
+    expect(
+      screen.getByRole("menuitem", { name: "Copy task link" })
+    ).toBeTruthy()
     expect(screen.getByRole("menuitem", { name: "Delete task" })).toBeTruthy()
+  })
+
+  it("exposes sortable table headers", async () => {
+    const onSortChange = vi.fn()
+    render(
+      <TaskTable
+        canWrite={true}
+        onSortChange={onSortChange}
+        projectSlug="adsops"
+        sort="due"
+        tasks={[task()]}
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(
+      screen
+        .getByRole("button", { name: "按到期排序" })
+        .getAttribute("aria-pressed")
+    ).toBe("true")
+    await userEvent.click(screen.getByRole("button", { name: "按标识排序" }))
+    expect(onSortChange).toHaveBeenCalledWith("entry")
   })
 })

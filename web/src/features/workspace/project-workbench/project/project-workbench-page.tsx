@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useSearch } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import { UploadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -9,16 +9,12 @@ import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
 import { navigateToDocument } from "@/lib/browser-navigation"
 import { ProjectActivity } from "@/features/workspace/project-readonly/project-activity"
-import { ProjectFilterToolbar } from "@/features/workspace/project-readonly/project-filter-toolbar"
 import {
   filterToTaskQuery,
   type TaskFilter,
 } from "@/features/workspace/project-readonly/project-filter"
 import type { ProjectReadonlyTask } from "@/features/workspace/project-readonly/project-readonly-api"
-import {
-  buildProjectStats,
-  summarizeAssignees,
-} from "@/features/workspace/project-readonly/project-stats"
+import { buildProjectStats } from "@/features/workspace/project-readonly/project-stats"
 import type { ProjectWorkbenchTask } from "../api/project-api"
 import { TaskImportDialog } from "../import/task-import-dialog"
 import { canProjectManage, canTaskWrite } from "../permissions/permissions"
@@ -28,8 +24,10 @@ import {
   useProjectTimelineQuery,
 } from "../hooks/use-project-data"
 import { EditFeedbackProvider, useEditFeedback } from "../shared/edit-feedback"
-import { TaskQuickCreate } from "../tasks/task-quick-create"
+import { ProjectTaskToolbar } from "../tasks/project-task-toolbar"
+import { TaskCreateDialog } from "../tasks/task-create-dialog"
 import { TaskTable } from "../tasks/task-table"
+import { AssigneeWorkloadSummary } from "./assignee-workload-summary"
 import { ProjectClosedBanner } from "./project-closed-banner"
 import { ProjectHeaderEditor } from "./project-header-editor"
 import { isClosedProjectStatus } from "./project-status-menu"
@@ -58,30 +56,59 @@ function ProjectWorkbenchPageContent({
   workspaceSlug,
 }: ProjectWorkbenchPageProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const feedback = useEditFeedback()
   const [now] = useState(() => Math.floor(Date.now() / 1000))
   const [importOpen, setImportOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
   const filter: TaskFilter = useMemo(
     () => ({
       status: typeof search.status === "string" ? search.status : undefined,
-      priority: typeof search.priority === "string" ? search.priority : undefined,
-      assignee: typeof search.assignee === "string" ? search.assignee : undefined,
+      priority:
+        typeof search.priority === "string" ? search.priority : undefined,
+      assignee:
+        typeof search.assignee === "string" ? search.assignee : undefined,
       due_after:
         typeof search.due_after === "string" ? search.due_after : undefined,
       due_before:
         typeof search.due_before === "string" ? search.due_before : undefined,
+      due_empty:
+        typeof search.due_empty === "string" ? search.due_empty : undefined,
+      assignee_empty:
+        typeof search.assignee_empty === "string"
+          ? search.assignee_empty
+          : undefined,
+      wait_before:
+        typeof search.wait_before === "string" ? search.wait_before : undefined,
+      scheduled_before:
+        typeof search.scheduled_before === "string"
+          ? search.scheduled_before
+          : undefined,
+      until_before:
+        typeof search.until_before === "string"
+          ? search.until_before
+          : undefined,
       tags: typeof search.tags === "string" ? search.tags : undefined,
       q: typeof search.q === "string" ? search.q : undefined,
+      query: typeof search.query === "string" ? search.query : undefined,
+      sort: typeof search.sort === "string" ? search.sort : undefined,
     }),
     [
       search.assignee,
+      search.assignee_empty,
       search.due_after,
       search.due_before,
+      search.due_empty,
       search.priority,
       search.q,
+      search.query,
+      search.scheduled_before,
+      search.sort,
       search.status,
       search.tags,
+      search.until_before,
+      search.wait_before,
     ]
   )
   const filterQuery = useMemo(() => filterToTaskQuery(filter), [filter])
@@ -102,16 +129,6 @@ function ProjectWorkbenchPageContent({
     () => buildProjectStats(taskRows.map(normalizeReadonlyTask), now),
     [now, taskRows]
   )
-  const assignees = useMemo(
-    () =>
-      summarizeAssignees(
-        taskRows.map(normalizeReadonlyTask),
-        now,
-        t("projectReadonly.unassigned")
-      ),
-    [now, t, taskRows]
-  )
-
   const accessError = project.error ?? tasks.error
   if (isPermissionError(accessError)) {
     return (
@@ -151,6 +168,25 @@ function ProjectWorkbenchPageContent({
 
   const canEditTasks =
     canCreateTask && !isClosedProjectStatus(project.data.status)
+  const setTaskFilters = (
+    values: Partial<Record<keyof TaskFilter, string>>
+  ) => {
+    void navigate({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+      params: { workspaceSlug, projectSlug },
+      search: (prev) => {
+        const next = { ...(prev as Record<string, string>) }
+        for (const [key, value] of Object.entries(values)) {
+          if (value) {
+            next[key] = value
+          } else {
+            delete next[key]
+          }
+        }
+        return next
+      },
+    })
+  }
 
   return (
     <div className="space-y-5">
@@ -183,26 +219,39 @@ function ProjectWorkbenchPageContent({
         projectSlug={projectSlug}
         workspaceSlug={workspaceSlug}
       />
+      <TaskCreateDialog
+        filters={filterQuery}
+        onOpenChange={setCreateOpen}
+        open={createOpen}
+        projectSlug={projectSlug}
+        workspaceSlug={workspaceSlug}
+      />
       <ProjectClosedBanner canManage={canManage} status={project.data.status} />
       <ProjectStatsGrid stats={stats} />
-      <ProjectFilterToolbar
+      <ProjectTaskToolbar
+        canCreateTask={canEditTasks}
         filter={filter}
+        onCreateTask={() => setCreateOpen(true)}
         toParams={{ workspaceSlug, projectSlug }}
-      />
-      <TaskQuickCreate
-        canCreate={canCreateTask}
-        filters={filterQuery}
-        projectSlug={projectSlug}
-        projectStatus={project.data.status}
-        workspaceSlug={workspaceSlug}
       />
       <TaskTable
         canWrite={canEditTasks}
+        onSortChange={(sort) => setTaskFilters({ sort })}
         projectSlug={projectSlug}
+        sort={filter.sort}
         tasks={taskRows}
         workspaceSlug={workspaceSlug}
       />
-      <ProjectAssigneeSummary assignees={assignees} />
+      <AssigneeWorkloadSummary
+        now={now}
+        onFilterAssignee={(assignee) =>
+          setTaskFilters({ assignee, assignee_empty: "" })
+        }
+        onFilterUnassigned={() =>
+          setTaskFilters({ assignee: "", assignee_empty: "true" })
+        }
+        tasks={taskRows}
+      />
       <ProjectActivity
         entries={timeline.isError ? [] : timeline.data}
         title={t("projectReadonly.recentActivity")}
@@ -233,37 +282,6 @@ function ProjectStatsGrid({
         </div>
       ))}
     </div>
-  )
-}
-
-function ProjectAssigneeSummary({
-  assignees,
-}: {
-  assignees: ReturnType<typeof summarizeAssignees>
-}) {
-  const { t } = useTranslation()
-  if (assignees.length === 0) {
-    return null
-  }
-  return (
-    <section className="border bg-card p-3">
-      <h2 className="text-sm font-medium">{t("projectReadonly.assigneeSummary")}</h2>
-      <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-        {assignees.slice(0, 6).map((assignee) => (
-          <div className="grid grid-cols-[1fr_auto_auto] gap-3 text-xs" key={assignee.key}>
-            <span className="truncate">{assignee.label}</span>
-            <span className="text-muted-foreground">
-              {t("projectWorkbench.project.openTasks", { count: assignee.open })}
-            </span>
-            <span className="text-muted-foreground">
-              {t("projectWorkbench.project.overdueTasks", {
-                count: assignee.overdue,
-              })}
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
   )
 }
 
@@ -318,7 +336,9 @@ function isNotFoundError(error: Error | null): boolean {
   return error instanceof ApiError && error.status === 404
 }
 
-function normalizeReadonlyTask(task: ProjectWorkbenchTask): ProjectReadonlyTask {
+function normalizeReadonlyTask(
+  task: ProjectWorkbenchTask
+): ProjectReadonlyTask {
   return {
     ...task,
     description: task.description ?? undefined,

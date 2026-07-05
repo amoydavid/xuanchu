@@ -188,6 +188,7 @@ export const enUS = {
     dark: "Dark",
     system: "System",
     search: "Search",
+    sort: "Sort",
     filter: "Filter",
     clear: "Clear all",
     cancel: "Cancel",
@@ -503,6 +504,15 @@ export const enUS = {
       deleteTaskTitle: "Confirm task deletion",
       deleteTaskDescription: "Deleting task {{taskRef}} cannot be undone.",
       delete: "Delete",
+    },
+    workload: {
+      assigneeCount: "{{count}} assignees",
+      filterAssignee: "Filter {{name}}",
+      totalTasks: "{{count}} tasks",
+      openTasks: "{{count}} open",
+      overdueTasks: "{{count}} overdue",
+      highPriorityTasks: "{{count}} high priority",
+      dueSoonTasks: "{{count}} due soon",
     },
     import: {
       button: "Import tasks",

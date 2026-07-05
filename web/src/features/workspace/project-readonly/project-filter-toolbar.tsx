@@ -35,10 +35,17 @@ const FILTER_LABEL_KEYS: Record<keyof TaskFilter, string> = {
   status: "common.status",
   priority: "projectReadonly.priority",
   assignee: "projectReadonly.assignee",
+  assignee_empty: "projectReadonly.assignee",
   due_after: "projectReadonly.dueAfter",
   due_before: "projectReadonly.dueBefore",
+  due_empty: "projectReadonly.dueDate",
+  wait_before: "projectReadonly.waitUntil",
+  scheduled_before: "projectReadonly.scheduledStart",
+  until_before: "projectReadonly.until",
   tags: "projectReadonly.tags",
   q: "common.search",
+  query: "common.search",
+  sort: "common.sort",
 }
 
 export function ProjectFilterToolbar({
@@ -162,11 +169,7 @@ export function ProjectFilterToolbar({
   )
 }
 
-function filterValueLabel(
-  key: keyof TaskFilter,
-  value: string,
-  t: TFunction
-) {
+function filterValueLabel(key: keyof TaskFilter, value: string, t: TFunction) {
   if (key === "status") {
     return taskStatusLabel(value, t)
   }

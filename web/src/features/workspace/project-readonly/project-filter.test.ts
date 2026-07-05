@@ -20,11 +20,17 @@ describe("emptyFilter", () => {
 
 describe("filterToTaskQuery", () => {
   it("encodes set fields as query string", () => {
-    const filter: TaskFilter = { status: "pending", priority: "H", q: "needle" }
+    const filter: TaskFilter = {
+      status: "pending",
+      priority: "H",
+      q: "needle",
+      sort: "due",
+    }
     const qs = filterToTaskQuery(filter)
     expect(qs).toContain("status=pending")
     expect(qs).toContain("priority=H")
     expect(qs).toContain("q=needle")
+    expect(qs).toContain("sort=due")
   })
 
   it("returns empty string for empty filter", () => {
@@ -35,11 +41,36 @@ describe("filterToTaskQuery", () => {
     const filter: TaskFilter = { status: "pending", priority: "" }
     expect(filterToTaskQuery(filter)).toBe("status=pending")
   })
+
+  it("compiles advanced filters into backend query expressions", () => {
+    const filter: TaskFilter = {
+      assignee_empty: "true",
+      due_empty: "true",
+      query: "annotations:blocked",
+      scheduled_before: "2026-07-15",
+      until_before: "2026-07-31",
+      wait_before: "2026-07-10",
+    }
+    const params = new URLSearchParams(filterToTaskQuery(filter))
+
+    expect(params.getAll("query")).toEqual([
+      "annotations:blocked",
+      "assignee.isnull",
+      "due.isnull",
+      "wait.before:2026-07-10",
+      "scheduled.before:2026-07-15",
+      "until.before:2026-07-31",
+    ])
+  })
 })
 
 describe("activeFilterEntries", () => {
   it("returns only entries with values", () => {
-    const filter: TaskFilter = { status: "pending", priority: undefined, q: "x" }
+    const filter: TaskFilter = {
+      status: "pending",
+      priority: undefined,
+      q: "x",
+    }
     expect(activeFilterEntries(filter)).toEqual([
       ["status", "pending"],
       ["q", "x"],

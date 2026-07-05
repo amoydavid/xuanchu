@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -25,9 +26,10 @@ vi.mock("@/features/workspace/session/useMe", () => ({
 }))
 
 vi.mock("../api/project-api", async () => {
-  const actual = await vi.importActual<typeof import("../api/project-api")>(
-    "../api/project-api"
-  )
+  const actual =
+    await vi.importActual<typeof import("../api/project-api")>(
+      "../api/project-api"
+    )
   return {
     ...actual,
     getProject: vi.fn(),
@@ -71,7 +73,9 @@ function project(
   }
 }
 
-function task(overrides: Partial<ProjectWorkbenchTask> = {}): ProjectWorkbenchTask {
+function task(
+  overrides: Partial<ProjectWorkbenchTask> = {}
+): ProjectWorkbenchTask {
   return {
     uuid: "task-uuid-1",
     task_slug: "ads-1",
@@ -96,46 +100,59 @@ describe("ProjectWorkbenchPage", () => {
   it("keeps project management available but disables task editing when project is closed", async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: "archived" }))
 
-    render(
-      <ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />,
-      { wrapper: Wrapper }
-    )
+    render(<ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />, {
+      wrapper: Wrapper,
+    })
 
     await screen.findByText("项目已关闭")
     expect(screen.queryByRole("button", { name: "导入任务" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "新建任务" })).toBeNull()
     expect(
       (screen.getByRole("button", { name: "项目名称" }) as HTMLButtonElement)
         .disabled
     ).toBe(false)
     expect(
-      (screen.getByRole("button", { name: "编辑任务标题 ads-1" }) as HTMLButtonElement)
-        .disabled
+      (
+        screen.getByRole("button", {
+          name: "编辑任务标题 ads-1",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
     expect(
-      (screen.getByRole("combobox", { name: "任务优先级 ads-1" }) as HTMLButtonElement)
-        .disabled
+      (
+        screen.getByRole("combobox", {
+          name: "任务优先级 ads-1",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
     expect(
-      (screen.getByRole("button", {
-        name: "任务截止日期 ads-1",
-      }) as HTMLButtonElement).disabled
+      (
+        screen.getByRole("button", {
+          name: "任务截止日期 ads-1",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
-    expect(within(screen.getByRole("table")).queryByRole("button", {
-      name: "开始 ads-1",
-    })).toBeNull()
-    expect(within(screen.getByRole("table")).queryByRole("button", {
-      name: "完成 ads-1",
-    })).toBeNull()
+    expect(
+      within(screen.getByRole("table")).queryByRole("button", {
+        name: "开始 ads-1",
+      })
+    ).toBeNull()
+    expect(
+      within(screen.getByRole("table")).queryByRole("button", {
+        name: "完成 ads-1",
+      })
+    ).toBeNull()
   })
 
   it("shows task import entry when the project is writable", async () => {
-    render(
-      <ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />,
-      { wrapper: Wrapper }
-    )
+    render(<ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />, {
+      wrapper: Wrapper,
+    })
 
     await screen.findByText("广告投放自动化")
     expect(screen.getByRole("button", { name: "导入任务" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "新建任务" }))
+    expect(screen.getByRole("heading", { name: "新建任务" })).toBeTruthy()
   })
 
   it("localizes project workbench summary labels", async () => {
@@ -149,10 +166,9 @@ describe("ProjectWorkbenchPage", () => {
       },
     ])
 
-    render(
-      <ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />,
-      { wrapper: Wrapper }
-    )
+    render(<ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />, {
+      wrapper: Wrapper,
+    })
 
     await screen.findByText("广告投放自动化")
     expect(screen.getAllByText("Pending").length).toBeGreaterThan(0)

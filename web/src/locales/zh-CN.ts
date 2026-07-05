@@ -186,6 +186,7 @@ export const zhCN = {
     dark: "深色",
     system: "跟随系统",
     search: "搜索",
+    sort: "排序",
     filter: "筛选",
     clear: "清除全部",
     cancel: "取消",
@@ -492,6 +493,15 @@ export const zhCN = {
       deleteTaskTitle: "确认删除任务",
       deleteTaskDescription: "删除任务 {{taskRef}} 后不可恢复。",
       delete: "删除",
+    },
+    workload: {
+      assigneeCount: "{{count}} 个负责人",
+      filterAssignee: "筛选 {{name}}",
+      totalTasks: "共 {{count}} 个任务",
+      openTasks: "未完成 {{count}}",
+      overdueTasks: "已逾期 {{count}}",
+      highPriorityTasks: "高优先级 {{count}}",
+      dueSoonTasks: "即将到期 {{count}}",
     },
     import: {
       button: "导入任务",

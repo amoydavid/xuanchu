@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router"
+import { ArrowUpDownIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -21,7 +23,9 @@ import { TaskRowActions } from "./task-row-actions"
 
 type TaskTableProps = {
   canWrite: boolean
+  onSortChange?: (sort: string) => void
   projectSlug: string
+  sort?: string
   tasks: ProjectWorkbenchTask[]
   workspaceSlug: string
 }
@@ -35,7 +39,9 @@ const priorityOptions = [
 
 export function TaskTable({
   canWrite,
+  onSortChange,
   projectSlug,
+  sort,
   tasks,
   workspaceSlug,
 }: TaskTableProps) {
@@ -46,8 +52,9 @@ export function TaskTable({
         <h2 className="text-base font-medium">
           {t("projectReadonly.emptyTitle")}
         </h2>
-        <code className="mt-4 block break-all border bg-background p-3 text-xs">
-          xuanchu --workspace {workspaceSlug} add "Design API" project:{projectSlug}
+        <code className="mt-4 block border bg-background p-3 text-xs break-all">
+          xuanchu --workspace {workspaceSlug} add "Design API" project:
+          {projectSlug}
         </code>
       </section>
     )
@@ -60,13 +67,25 @@ export function TaskTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("projectReadonly.identifier")}</TableHead>
+              <SortableHead
+                active={sort === "entry"}
+                label={t("projectReadonly.identifier")}
+                onSortChange={onSortChange}
+                sort="entry"
+              />
               <TableHead>{t("projectReadonly.title")}</TableHead>
               <TableHead>{t("common.status")}</TableHead>
               <TableHead>{t("projectReadonly.priority")}</TableHead>
               <TableHead>{t("projectReadonly.assignee")}</TableHead>
-              <TableHead>{t("projectReadonly.due")}</TableHead>
-              <TableHead className="text-right">{t("common.actions")}</TableHead>
+              <SortableHead
+                active={sort === "due"}
+                label={t("projectReadonly.due")}
+                onSortChange={onSortChange}
+                sort="due"
+              />
+              <TableHead className="text-right">
+                {t("common.actions")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -97,6 +116,38 @@ export function TaskTable({
   )
 }
 
+function SortableHead({
+  active,
+  label,
+  onSortChange,
+  sort,
+}: {
+  active: boolean
+  label: string
+  onSortChange?: (sort: string) => void
+  sort: string
+}) {
+  if (!onSortChange) {
+    return <TableHead>{label}</TableHead>
+  }
+  return (
+    <TableHead>
+      <Button
+        aria-label={`按${label}排序`}
+        aria-pressed={active}
+        className="h-7 gap-1 px-0 font-medium"
+        onClick={() => onSortChange(sort)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        {label}
+        <ArrowUpDownIcon className="size-3" />
+      </Button>
+    </TableHead>
+  )
+}
+
 function TaskTableRow({
   canWrite,
   projectSlug,
@@ -115,11 +166,15 @@ function TaskTableRow({
   return (
     <TableRow>
       <TableCell>
-        <TaskLink projectSlug={projectSlug} task={task} workspaceSlug={workspaceSlug}>
+        <TaskLink
+          projectSlug={projectSlug}
+          task={task}
+          workspaceSlug={workspaceSlug}
+        >
           <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
         </TaskLink>
       </TableCell>
-      <TableCell className="min-w-64 max-w-lg">
+      <TableCell className="max-w-lg min-w-64">
         <InlineTextEditor
           ariaLabel={t("projectReadonly.editTaskTitle", { taskRef })}
           disabled={!canWrite}
@@ -158,7 +213,9 @@ function TaskTableRow({
           className="h-7 w-36"
           disabled={!canWrite}
           onSave={async (due) => {
-            await modify.mutateAsync(due === null ? { clear_due: true } : { due })
+            await modify.mutateAsync(
+              due === null ? { clear_due: true } : { due }
+            )
           }}
           value={unixLikeToNumber(task.due)}
         />
@@ -194,7 +251,11 @@ function TaskCard({
   return (
     <article className="border bg-card p-3">
       <div className="flex items-center justify-between gap-2 text-xs">
-        <TaskLink projectSlug={projectSlug} task={task} workspaceSlug={workspaceSlug}>
+        <TaskLink
+          projectSlug={projectSlug}
+          task={task}
+          workspaceSlug={workspaceSlug}
+        >
           <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
         </TaskLink>
         <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
@@ -232,7 +293,9 @@ function TaskCard({
           className="h-7 w-full"
           disabled={!canWrite}
           onSave={async (due) => {
-            await modify.mutateAsync(due === null ? { clear_due: true } : { due })
+            await modify.mutateAsync(
+              due === null ? { clear_due: true } : { due }
+            )
           }}
           value={unixLikeToNumber(task.due)}
         />
@@ -289,7 +352,14 @@ function assigneeNames(task: ProjectWorkbenchTask): string {
     return "-"
   }
   return task.assignees
-    .map((assignee) => assignee.name || assignee.email || assignee.user_id || assignee.id)
+    .map(
+      (assignee) =>
+        assignee.display_name ||
+        assignee.name ||
+        assignee.email ||
+        assignee.user_id ||
+        assignee.id
+    )
     .filter(Boolean)
     .join(", ")
 }
