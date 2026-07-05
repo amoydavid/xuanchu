@@ -1201,3 +1201,76 @@ func mustUpsertHTTPMembership(t *testing.T, store *storage.Store, member storage
 		t.Fatalf("Upsert(membership %+v) error = %v", member, err)
 	}
 }
+
+// TestMemberAndViewerCanReadWorkspaceAudit 验证普通 member/viewer 在持有 audit:read scope 时
+// 可以查看 workspace 全量审计（spec：所有可登录成员可查看 workspace 全量 audit）。
+func TestMemberAndViewerCanReadWorkspaceAudit(t *testing.T) {
+	store := openHTTPTestStore(t)
+	ownerSvc, err := app.NewService(app.ServiceOptions{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 触发一条审计：owner 修改 workspace 配置。
+	ownerToken, err := ownerSvc.CreateToken(app.CreateTokenInput{
+		Name:          "owner",
+		Scopes:        []string{"config:write", "audit:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(Options{Store: store})
+	rr := requestHTTPBody(t, srv, http.MethodPut, "/api/v1/config/date.format", `{"value":"rfc3339"}`, map[string]string{
+		"Authorization": "Bearer " + ownerToken.RawToken,
+		"Content-Type":  "application/json",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("owner config write status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	cases := []struct {
+		name string
+		role app.Role
+	}{
+		{name: "member", role: app.RoleMember},
+		{name: "viewer", role: app.RoleViewer},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			user, err := ownerSvc.AddUser(app.AddUserInput{Name: "audit-" + tc.name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ownerSvc.AddMember(app.AddMemberInput{WorkspaceRef: "local", UserRef: user.ID, Role: tc.role}); err != nil {
+				t.Fatal(err)
+			}
+			tok, err := ownerSvc.CreateToken(app.CreateTokenInput{
+				Name:          "audit-" + tc.name,
+				UserRef:       user.ID,
+				Scopes:        []string{"audit:read"},
+				WorkspaceRefs: []string{"local"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rr := requestHTTP(t, srv, http.MethodGet, "/api/v1/audit?limit=10", map[string]string{
+				"Authorization": "Bearer " + tok.RawToken,
+			})
+			if rr.Code != http.StatusOK {
+				t.Fatalf("%s audit read status = %d body=%s", tc.name, rr.Code, rr.Body.String())
+			}
+			var payload struct {
+				Data []struct {
+					Action string `json:"action"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if len(payload.Data) == 0 {
+				t.Fatalf("%s audit returned empty rows", tc.name)
+			}
+		})
+	}
+}

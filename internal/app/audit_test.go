@@ -418,14 +418,15 @@ func TestListTaskAuditRequiresTaskReadNotAuditRead(t *testing.T) {
 		t.Fatalf("rows[0] = %#v", rows[0])
 	}
 
-	// 但 viewer 不能调通用 ListAudit（缺 audit:read）。
-	if _, err := viewerSvc.ListAudit(AuditListInput{Limit: 10}); err == nil {
-		t.Fatal("ListAudit() error = nil, want permission denied")
-	} else {
-		permErr, ok := err.(PermissionError)
-		if !ok || permErr.Code != "permission_denied" {
-			t.Fatalf("ListAudit() err = %#v, want PermissionError(permission_denied)", err)
-		}
+	// spec 2026-07-05：所有可登录成员（含 viewer）可读 workspace 全量 audit。
+	// viewer 在 runtime 上持有 audit:read scope（由 token/session 授予），role 层
+	// 不再阻断 ListAudit。
+	rows, err = viewerSvc.ListAudit(AuditListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v, want nil（viewer 现在可读 audit）", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("ListAudit() returned no rows")
 	}
 }
 

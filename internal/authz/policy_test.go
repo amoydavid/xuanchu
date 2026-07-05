@@ -19,6 +19,9 @@ func TestAllowedForRole(t *testing.T) {
 		{name: "member cannot manage members", role: RoleMember, perm: PermissionMemberManage, want: false},
 		{name: "viewer can read task", role: RoleViewer, perm: PermissionTaskRead, want: true},
 		{name: "viewer cannot write task", role: RoleViewer, perm: PermissionTaskWrite, want: false},
+		{name: "member can read audit", role: RoleMember, perm: PermissionAuditRead, want: true},
+		{name: "viewer can read audit", role: RoleViewer, perm: PermissionAuditRead, want: true},
+		{name: "admin can read audit", role: RoleAdmin, perm: PermissionAuditRead, want: true},
 		{name: "unknown role has no permission", role: Role("stranger"), perm: PermissionTaskRead, want: false},
 	}
 	for _, tt := range tests {
