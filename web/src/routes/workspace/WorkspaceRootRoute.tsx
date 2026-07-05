@@ -68,7 +68,6 @@ export function WorkspaceRootRoute() {
 
   return (
     <AppShell
-      actorName={me.data?.actor.display_name ?? me.data?.actor.name}
       onLogout={() => {
         // acting mode 退出只清 acting session（admin token 留给超管控制面）；
         // 普通模式清 workspace token。
@@ -84,8 +83,6 @@ export function WorkspaceRootRoute() {
         setSignedIn(false)
       }}
       onRefresh={() => void queryClient.invalidateQueries()}
-      tokenType={me.data?.token.type}
-      workspaceSlug={me.data?.effective_workspace.slug}
     >
       <Outlet />
     </AppShell>

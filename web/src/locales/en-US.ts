@@ -9,6 +9,7 @@ export const enUS = {
     overview: "Overview",
     tasks: "Tasks",
     projects: "Projects",
+    myTasks: "My Tasks",
     workspaces: "Workspaces",
     members: "Members",
     tokens: "Tokens",
@@ -17,6 +18,17 @@ export const enUS = {
     notifications: "Notifications",
     audit: "Audit",
     settings: "Settings",
+    group: {
+      personal: "Personal",
+      management: "Management",
+      system: "System",
+    },
+  },
+  myTasks: {
+    subtitle: "Tasks assigned to you across all projects",
+    systemActorEmpty:
+      "System identities have no personal task view. Sign in as a regular member.",
+    loading: "Loading…",
   },
   auth: {
     signInTitle: "Sign in with a Xuanchu credential",
@@ -222,6 +234,14 @@ export const enUS = {
   shell: {
     workspace: "Workspace",
     tokenRisk: "Token risk",
+    brand: "Xuanchu",
+    identity: "Current identity",
+    role: "Role",
+    tokenType: "Token type",
+    systemIdentity: "System identity",
+    riskNormal: "normal",
+    riskHigh: "high",
+    returnToAdmin: "Return to admin",
   },
   placeholder: {
     ready: "Ready",

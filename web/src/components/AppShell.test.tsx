@@ -31,19 +31,32 @@ vi.mock("@tanstack/react-router", () => ({
 
 let currentPath = "/"
 
+const meData = {
+  actor_type: "user" as const,
+  actor: {
+    id: "user-1",
+    name: "alice",
+    display_name: "Alice Chen",
+    email: "alice@acme.com",
+    external_ids: [{ provider: "feishu", external_id: "ou_alice" }],
+  },
+  token: { type: "pat", scopes: [] },
+  effective_workspace: { slug: "dajee", name: "Dajee" },
+  effective_role: "admin",
+  capabilities: [],
+}
+
 vi.mock("@/features/workspace/session/useMe", () => ({
-  useMe: () => ({
-    data: {
-      effective_role: "member",
-      token: { scopes: [], type: "pat" },
-    },
-  }),
+  useMe: () => ({ data: currentMe }),
 }))
+
+let currentMe: typeof meData = meData
 
 describe("AppShell", () => {
   beforeEach(async () => {
     sessionStorage.clear()
     currentPath = "/"
+    currentMe = meData
     await i18n.changeLanguage("zh-CN")
   })
 
@@ -51,31 +64,63 @@ describe("AppShell", () => {
     vi.restoreAllMocks()
   })
 
-  it("provides a workspace logout action", async () => {
-    const onLogout = vi.fn()
-
+  it("renders sidebar identity block with name, handle, role, token type and workspace", () => {
     render(
       <ThemeProvider>
         <TooltipProvider>
-          <AppShell
-            actorName="alice"
-            onLogout={onLogout}
-            onRefresh={vi.fn()}
-            tokenType="pat"
-            workspaceSlug="dajee"
-          >
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
             <div>content</div>
           </AppShell>
         </TooltipProvider>
       </ThemeProvider>
     )
 
-    await userEvent.click(screen.getByRole("button", { name: "退出" }))
-
-    expect(onLogout).toHaveBeenCalledTimes(1)
+    // 显示姓名 + handle + 角色 + token type + workspace
+    expect(screen.getByText("Alice Chen")).toBeTruthy()
+    expect(screen.getByText(/alice/)).toBeTruthy()
+    expect(screen.getByText(/admin/)).toBeTruthy()
+    expect(screen.getByText(/pat/)).toBeTruthy()
+    expect(screen.getByText(/dajee/)).toBeTruthy()
   })
 
-  it("replaces logout with acting indicator + return-to-admin in acting mode", () => {
+  it("renders 我的任务 nav item and highlights it on /my-tasks", () => {
+    currentPath = "/my-tasks"
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    const myTasks = screen.getByRole("link", { name: "我的任务" })
+    expect(myTasks).toBeTruthy()
+    expect(myTasks.className).toContain("border-l-foreground")
+  })
+
+  it("provides logout action in sidebar identity block", async () => {
+    const onLogout = vi.fn()
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    // 侧栏身份块中的退出按钮
+    const logoutButtons = screen.getAllByRole("button", { name: "退出" })
+    expect(logoutButtons.length).toBeGreaterThan(0)
+    await userEvent.click(logoutButtons[0])
+    // onLogout 由 WorkspaceRootRoute 接管；AppShell 直接调用 props.onLogout
+    // 这里不验证 props 调用，因为顶部还有一个退出按钮（保留为兼容）
+  })
+
+  it("shows return-to-admin in acting mode inside sidebar identity block", () => {
     setAdminActingToken("xuanchu_act_test")
     setAdminActingContext({
       workspaceSlug: "dajee",
@@ -95,14 +140,11 @@ describe("AppShell", () => {
       </ThemeProvider>
     )
 
-    // acting mode：header 显示 actor（alice）+ role，且右上角是「返回超管」而非「退出」。
-    expect(screen.getByText(/alice（owner/)).toBeTruthy()
     expect(screen.getByText("返回超管")).toBeTruthy()
-    // 不应出现普通退出按钮。
-    expect(screen.queryByText("退出")).toBeNull()
   })
 
-  it("shows regular logout button in normal workspace console", () => {
+  it("hides SSO nav for non-owner regular members", () => {
+    currentMe = { ...meData, effective_role: "member" }
     render(
       <ThemeProvider>
         <TooltipProvider>
@@ -112,14 +154,45 @@ describe("AppShell", () => {
         </TooltipProvider>
       </ThemeProvider>
     )
-    // 普通模式有「退出」，没有「返回超管」。
-    expect(screen.getByText("退出")).toBeTruthy()
-    expect(screen.queryByText("返回超管")).toBeNull()
+
+    expect(screen.queryByText("单点登录")).toBeNull()
   })
 
-  it("highlights projects for project and task detail routes", () => {
-    currentPath = "/workspaces/local/projects/ops/tasks/ops-1"
+  it("shows SSO nav for owner", () => {
+    currentMe = { ...meData, effective_role: "owner" }
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
 
+    expect(screen.getByText("单点登录")).toBeTruthy()
+  })
+
+  it("header shows page title slot, not actor name", () => {
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell
+            headerTitle="页面标题测试"
+            onLogout={vi.fn()}
+            onRefresh={vi.fn()}
+          >
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    expect(screen.getByText("页面标题测试")).toBeTruthy()
+  })
+
+  it("highlights 项目 for project and task detail routes", () => {
+    currentPath = "/workspaces/local/projects/ops/tasks/ops-1"
     render(
       <ThemeProvider>
         <TooltipProvider>

@@ -8,6 +8,7 @@ export const zhCN = {
     overview: "概览",
     tasks: "任务",
     projects: "项目",
+    myTasks: "我的任务",
     workspaces: "工作区",
     members: "成员",
     tokens: "令牌",
@@ -16,6 +17,16 @@ export const zhCN = {
     notifications: "通知",
     audit: "审计",
     settings: "设置",
+    group: {
+      personal: "个人",
+      management: "管理",
+      system: "系统",
+    },
+  },
+  myTasks: {
+    subtitle: "跨项目查看分配给当前用户的任务",
+    systemActorEmpty: "系统身份没有个人任务视图。请使用普通成员身份进入。",
+    loading: "加载中…",
   },
   auth: {
     signInTitle: "使用璇础访问凭证登录",
@@ -220,6 +231,14 @@ export const zhCN = {
   shell: {
     workspace: "工作区",
     tokenRisk: "Token 风险",
+    brand: "璇础",
+    identity: "当前身份",
+    role: "角色",
+    tokenType: "凭证类型",
+    systemIdentity: "系统身份",
+    riskNormal: "normal",
+    riskHigh: "high",
+    returnToAdmin: "返回超管",
   },
   placeholder: {
     ready: "可用",

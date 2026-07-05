@@ -34,6 +34,11 @@ const ProjectsListRoute = lazy(() =>
     default: module.ProjectsListRoute,
   }))
 )
+const MyTasksRoute = lazy(() =>
+  import("@/routes/workspace/MyTasksRoute").then((module) => ({
+    default: module.MyTasksRoute,
+  }))
+)
 const MembersRoute = lazy(() =>
   import("@/routes/workspace/MembersRoute").then((module) => ({
     default: module.MembersRoute,
@@ -193,6 +198,12 @@ const projectsListRoute = createRoute({
   component: lazyRoute(ProjectsListRoute),
 })
 
+const myTasksRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/my-tasks",
+  component: lazyRoute(MyTasksRoute),
+})
+
 const membersRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/members",
@@ -248,6 +259,7 @@ const routeTree = rootRoute.addChildren([
     indexRoute,
     tasksRedirectRoute,
     projectsListRoute,
+    myTasksRoute,
     createResourceRoute("workspaces", "/workspaces"),
     membersRoute,
     memberDetailRoute,

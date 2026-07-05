@@ -2,9 +2,17 @@ import { useQuery } from "@tanstack/react-query"
 
 import { workspaceApiGet } from "./workspace-api"
 
+export type ExternalID = { provider: string; external_id: string }
+
 export type MeResponse = {
   actor_type: "user" | "tenant_access_token"
-  actor: { name: string; display_name?: string }
+  actor: {
+    id: string
+    name: string
+    display_name?: string
+    email?: string | null
+    external_ids?: ExternalID[]
+  }
   token: { type: string; scopes: string[] | null }
   effective_workspace: { slug: string; name?: string }
   effective_role: string
