@@ -32,7 +32,7 @@ import { TaskLinksEditor } from "./task-links-editor"
 import { TaskPropertyPanel } from "./task-property-panel"
 
 type TaskDetailPageProps = {
-  projectSlug: string
+  projectSlug?: string
   taskRef: string
   workspaceSlug: string
 }
@@ -67,10 +67,26 @@ function TaskDetailPageContent({
     scopes: me.data?.token.scopes,
   })
   const task = useTaskDetailQuery(workspaceSlug, taskRef)
-  const modifyTask = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
-  const projectHref = `/workspaces/${workspaceSlug}/projects/${projectSlug}`
   const [activeMobileTab, setActiveMobileTab] =
     useState<MobileDetailTab>("properties")
+
+  // projectSlug 优先取路由参数（项目内进入），兜底取 task 自身 project 字段（/my-tasks / /tasks/:ref 进入）。
+  const taskData = task.data
+  const effectiveProjectSlug =
+    projectSlug ??
+    (taskData && typeof taskData.project === "string"
+      ? taskData.project
+      : undefined)
+
+  // useModifyTaskMutation 必须在顶层调用，保证 hooks 顺序稳定。
+  const modifyTask = useModifyTaskMutation(
+    workspaceSlug,
+    effectiveProjectSlug ?? "",
+    taskRef
+  )
+  const projectHref = effectiveProjectSlug
+    ? `/workspaces/${workspaceSlug}/projects/${effectiveProjectSlug}`
+    : undefined
 
   if (task.isPending) {
     return <TaskDetailSkeleton />
@@ -87,24 +103,30 @@ function TaskDetailPageContent({
         <p className="mt-3 text-sm text-muted-foreground">
           {task.error instanceof ApiError ? task.error.code : "unknown"}
         </p>
-        <Button asChild className="mt-5" variant="outline">
-          <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
-        </Button>
+        {projectSlug ? (
+          <Button asChild className="mt-5" variant="outline">
+            <a href={`/workspaces/${workspaceSlug}/projects/${projectSlug}`}>
+              {t("projectReadonly.backToProject")}
+            </a>
+          </Button>
+        ) : null}
       </section>
     )
   }
 
-  const taskData = task.data
   const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
-  if (!taskBelongsToProject(taskData, projectSlug)) {
+  // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
+  if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
     return (
       <section className="max-w-2xl border bg-card p-6">
         <h1 className="text-xl font-semibold tracking-normal">
           {t("projectReadonly.taskNotFoundTitle")}
         </h1>
-        <Button asChild className="mt-5" variant="outline">
-          <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
-        </Button>
+        {projectHref ? (
+          <Button asChild className="mt-5" variant="outline">
+            <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
+          </Button>
+        ) : null}
       </section>
     )
   }
@@ -116,10 +138,14 @@ function TaskDetailPageContent({
           <a className="hover:text-foreground" href="/projects">
             {workspaceSlug}
           </a>
-          {" / "}
-          <a className="hover:text-foreground" href={projectHref}>
-            {projectSlug}
-          </a>
+          {effectiveProjectSlug ? (
+            <>
+              {" / "}
+              <a className="hover:text-foreground" href={projectHref}>
+                {effectiveProjectSlug}
+              </a>
+            </>
+          ) : null}
           {" / "}
           <span>{taskData.task_slug || taskData.uuid.slice(0, 8)}</span>
         </nav>
@@ -148,12 +174,14 @@ function TaskDetailPageContent({
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-            <Button asChild variant="outline">
-              <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
-            </Button>
+            {projectHref ? (
+              <Button asChild variant="outline">
+                <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
+              </Button>
+            ) : null}
             <TaskActionBar
               canWrite={taskWritable}
-              projectSlug={projectSlug}
+              projectSlug={effectiveProjectSlug ?? ""}
               task={taskData}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
@@ -182,7 +210,7 @@ function TaskDetailPageContent({
             <TaskAnnotationsEditor
               annotations={taskData.annotations}
               canWrite={taskWritable}
-              projectSlug={projectSlug}
+              projectSlug={effectiveProjectSlug ?? ""}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
             />
@@ -195,7 +223,7 @@ function TaskDetailPageContent({
             <TaskLinksEditor
               canWrite={taskWritable}
               links={taskData.links}
-              projectSlug={projectSlug}
+              projectSlug={effectiveProjectSlug ?? ""}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
             />
@@ -204,7 +232,7 @@ function TaskDetailPageContent({
         <div className={mobilePanelClass(activeMobileTab, "properties")}>
           <TaskPropertyPanel
             canWrite={taskWritable}
-            projectSlug={projectSlug}
+            projectSlug={effectiveProjectSlug ?? ""}
             task={taskData}
             taskRef={taskRef}
             workspaceSlug={workspaceSlug}

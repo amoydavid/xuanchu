@@ -54,6 +54,11 @@ const ProjectTaskDetailRoute = lazy(() =>
     default: module.ProjectTaskDetailRoute,
   }))
 )
+const TaskDetailRoute = lazy(() =>
+  import("@/routes/workspace/TaskDetailRoute").then((module) => ({
+    default: module.TaskDetailRoute,
+  }))
+)
 const AdminLoginRoute = lazy(() =>
   import("@/routes/admin/AdminLoginRoute").then((module) => ({
     default: module.AdminLoginRoute,
@@ -232,6 +237,14 @@ const projectTaskDetailRoute = createRoute({
   component: lazyRoute(ProjectTaskDetailRoute),
 })
 
+// /tasks/$taskRef：脱离项目上下文的任务详情入口，从「我的任务」点击进入。
+// workspace 来自当前 effective workspace（见 TaskDetailRoute）。
+const taskDetailRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/tasks/$taskRef",
+  component: lazyRoute(TaskDetailRoute),
+})
+
 const TokensRoute = lazy(() =>
   import("@/routes/workspace/TokensRoute").then((module) => ({
     default: module.TokensRoute,
@@ -258,6 +271,7 @@ const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
     tasksRedirectRoute,
+    taskDetailRoute,
     projectsListRoute,
     myTasksRoute,
     createResourceRoute("workspaces", "/workspaces"),

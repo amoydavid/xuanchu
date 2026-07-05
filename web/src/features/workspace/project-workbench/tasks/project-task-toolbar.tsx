@@ -30,7 +30,7 @@ type ProjectTaskToolbarProps = {
   toParams: { workspaceSlug: string; projectSlug: string }
 }
 
-const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring"]
+const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring", "deleted"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 const SORT_OPTIONS = [
   { label: "创建顺序", value: "entry" },

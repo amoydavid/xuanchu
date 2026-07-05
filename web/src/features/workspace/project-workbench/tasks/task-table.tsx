@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
+import { cn } from "@/lib/utils"
 import type { ProjectWorkbenchTask } from "../api/project-api"
 import { useModifyTaskMutation } from "../hooks/use-task-mutations"
 import { InlineDatePicker } from "../shared/inline-date-picker"
@@ -160,11 +161,13 @@ function TaskTableRow({
   workspaceSlug: string
 }) {
   const { t } = useTranslation()
+  const isDeleted = task.status === "deleted"
+  const rowWritable = canWrite && !isDeleted
   const taskRef = taskReference(task)
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
 
   return (
-    <TableRow>
+    <TableRow className={isDeleted ? "opacity-50" : undefined}>
       <TableCell>
         <TaskLink
           projectSlug={projectSlug}
@@ -177,7 +180,7 @@ function TaskTableRow({
       <TableCell className="max-w-lg min-w-64">
         <InlineTextEditor
           ariaLabel={t("projectReadonly.editTaskTitle", { taskRef })}
-          disabled={!canWrite}
+          disabled={!rowWritable}
           displayClassName="max-w-lg"
           onSave={async (title) => {
             await modify.mutateAsync({ title })
@@ -187,6 +190,11 @@ function TaskTableRow({
             title.trim() ? null : t("projectReadonly.taskTitleRequired")
           }
         />
+        {isDeleted ? (
+          <Badge className="ml-2" variant="outline">
+            {t("myTasks.deleted")}
+          </Badge>
+        ) : null}
       </TableCell>
       <TableCell>
         <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
@@ -195,7 +203,7 @@ function TaskTableRow({
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.taskPriority", { taskRef })}
           className="h-7 w-20"
-          disabled={!canWrite}
+          disabled={!rowWritable}
           onSave={async (priority) => {
             await modify.mutateAsync(
               priority === "none" ? { clear_priority: true } : { priority }
@@ -211,7 +219,7 @@ function TaskTableRow({
         <InlineDatePicker
           ariaLabel={t("projectReadonly.taskDueDate", { taskRef })}
           className="h-7 w-36"
-          disabled={!canWrite}
+          disabled={!rowWritable}
           onSave={async (due) => {
             await modify.mutateAsync(
               due === null ? { clear_due: true } : { due }
@@ -222,7 +230,7 @@ function TaskTableRow({
       </TableCell>
       <TableCell>
         <TaskRowActions
-          canWrite={canWrite}
+          canWrite={rowWritable}
           projectSlug={projectSlug}
           start={task.start}
           status={task.status}
@@ -248,8 +256,10 @@ function TaskCard({
   const { t } = useTranslation()
   const taskRef = taskReference(task)
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
+  const isDeleted = task.status === "deleted"
+  const rowWritable = canWrite && !isDeleted
   return (
-    <article className="border bg-card p-3">
+    <article className={cn("border bg-card p-3", isDeleted && "opacity-50")}>
       <div className="flex items-center justify-between gap-2 text-xs">
         <TaskLink
           projectSlug={projectSlug}
@@ -263,7 +273,7 @@ function TaskCard({
       <div className="mt-2">
         <InlineTextEditor
           ariaLabel={t("projectReadonly.editMobileTaskTitle", { taskRef })}
-          disabled={!canWrite}
+          disabled={!rowWritable}
           displayClassName="max-w-full text-sm font-medium"
           onSave={async (title) => {
             await modify.mutateAsync({ title })
@@ -278,7 +288,7 @@ function TaskCard({
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.mobileTaskPriority", { taskRef })}
           className="h-7 w-full"
-          disabled={!canWrite}
+          disabled={!rowWritable}
           onSave={async (priority) => {
             await modify.mutateAsync(
               priority === "none" ? { clear_priority: true } : { priority }
@@ -291,7 +301,7 @@ function TaskCard({
         <InlineDatePicker
           ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef })}
           className="h-7 w-full"
-          disabled={!canWrite}
+          disabled={!rowWritable}
           onSave={async (due) => {
             await modify.mutateAsync(
               due === null ? { clear_due: true } : { due }
@@ -305,7 +315,7 @@ function TaskCard({
       </div>
       <div className="mt-3">
         <TaskRowActions
-          canWrite={canWrite}
+          canWrite={rowWritable}
           projectSlug={projectSlug}
           start={task.start}
           status={task.status}

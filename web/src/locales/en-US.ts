@@ -29,6 +29,16 @@ export const enUS = {
     systemActorEmpty:
       "System identities have no personal task view. Sign in as a regular member.",
     loading: "Loading…",
+    empty: "No tasks match the current filters",
+    deleted: "deleted",
+    tab: {
+      all: "All",
+      today: "Due today",
+      overdue: "Overdue",
+      noDue: "No due",
+    },
+    summary:
+      "Overdue {{overdue}} · Due today {{today}} · In progress {{active}}",
   },
   auth: {
     signInTitle: "Sign in with a Xuanchu credential",
@@ -363,6 +373,7 @@ export const enUS = {
     overdue: "Overdue",
     pending: "Pending",
     priority: "Priority",
+    project: "Project",
     permissionDescription:
       "You are signed in, but this identity cannot read {{project}}.",
     permissionTitle: "You cannot access this project",

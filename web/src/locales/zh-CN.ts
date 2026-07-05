@@ -27,6 +27,15 @@ export const zhCN = {
     subtitle: "跨项目查看分配给当前用户的任务",
     systemActorEmpty: "系统身份没有个人任务视图。请使用普通成员身份进入。",
     loading: "加载中…",
+    empty: "当前条件下没有任务",
+    deleted: "已删除",
+    tab: {
+      all: "全部",
+      today: "今日到期",
+      overdue: "逾期",
+      noDue: "无截止",
+    },
+    summary: "逾期 {{overdue}} 项 · 今日到期 {{today}} 项 · 进行中 {{active}} 项",
   },
   auth: {
     signInTitle: "使用璇础访问凭证登录",
@@ -355,6 +364,7 @@ export const zhCN = {
     overdue: "已逾期",
     pending: "待处理",
     priority: "优先级",
+    project: "项目",
     permissionDescription: "你已经登录，但当前身份没有读取 {{project}} 的权限。",
     permissionTitle: "不能访问这个项目",
     readonly: "只读",
