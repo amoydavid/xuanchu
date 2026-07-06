@@ -1,5 +1,4 @@
-import { useTranslation } from "react-i18next"
-
+import { useBrandName } from "@/brand/BrandContext"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 
@@ -17,7 +16,7 @@ export function ProductLogo({
   showWordmark = true,
 }: ProductLogoProps) {
   const { theme } = useTheme()
-  const { t } = useTranslation()
+  const brandName = useBrandName()
   const logo =
     theme === "dark" ? "xuanchu-logo-dark.svg" : "xuanchu-logo-light.svg"
 
@@ -40,7 +39,7 @@ export function ProductLogo({
       </span>
       {showWordmark ? (
         <span className="text-sm font-medium tracking-normal">
-          {t("app.brand")}
+          {brandName}
         </span>
       ) : null}
     </div>

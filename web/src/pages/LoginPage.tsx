@@ -3,6 +3,7 @@ import type { FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 
+import { useBrandName } from "@/brand/BrandContext"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
 import { ThemeToggle } from "@/components/ThemeToggle"
@@ -23,6 +24,7 @@ interface SsoWorkspaceInfo {
 
 export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
   const { t } = useTranslation()
+  const brandName = useBrandName()
   const [token, setTokenValue] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -80,7 +82,7 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
             showWordmark={false}
           />
           <h1 className="text-xl font-semibold tracking-normal">
-            {t("auth.signInTitle")}
+            {t("auth.signInTitle", { brand: brandName })}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {t("auth.sessionOnly")}

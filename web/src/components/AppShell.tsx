@@ -20,6 +20,7 @@ import * as React from "react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { useBrandName } from "@/brand/BrandContext"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
 import { RiskBadge } from "@/components/RiskBadge"
@@ -106,6 +107,7 @@ export function AppShell({
   onRefresh: () => void
 }) {
   const { t } = useTranslation()
+  const brandName = useBrandName()
   const location = useLocation()
   const me = useMe()
   const role = me.data?.effective_role ?? ""
@@ -182,7 +184,7 @@ export function AppShell({
               <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             ) : null}
             <div className="min-w-0 truncate text-sm font-medium">
-              {breadcrumbs ?? headerTitle ?? t("app.title")}
+              {breadcrumbs ?? headerTitle ?? t("app.title", { brand: brandName })}
             </div>
           </div>
           <div className="flex items-center gap-2">

@@ -1,8 +1,8 @@
 export const zhCN = {
   app: {
-    brand: "璇础",
-    title: "Xuanchu Web 管理控制台",
-    description: "面向 Xuanchu server、Agent token、投递和审计的运维入口",
+    brand: "{{brand}}",
+    title: "{{brand}} Web 管理控制台",
+    description: "面向 {{brand}} server、Agent token、投递和审计的运维入口",
   },
   nav: {
     overview: "概览",
@@ -38,7 +38,7 @@ export const zhCN = {
     summary: "逾期 {{overdue}} 项 · 今日到期 {{today}} 项 · 进行中 {{active}} 项",
   },
   auth: {
-    signInTitle: "使用璇础访问凭证登录",
+    signInTitle: "使用{{brand}}访问凭证登录",
     tokenLabel: "Token",
     tokenPlaceholder: "xuanchu_pat_... / xuanchu_tenant_...",
     signIn: "登录",
@@ -240,7 +240,7 @@ export const zhCN = {
   shell: {
     workspace: "工作区",
     tokenRisk: "Token 风险",
-    brand: "璇础",
+    brand: "{{brand}}",
     identity: "当前身份",
     role: "角色",
     tokenType: "凭证类型",

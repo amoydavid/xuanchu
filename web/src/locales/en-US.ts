@@ -1,9 +1,9 @@
 export const enUS = {
   app: {
-    brand: "Xuanchu",
-    title: "Xuanchu Web Admin Console",
+    brand: "{{brand}}",
+    title: "{{brand}} Web Admin Console",
     description:
-      "Operations console for Xuanchu server, Agent tokens, deliveries, and audit.",
+      "Operations console for {{brand}} server, Agent tokens, deliveries, and audit.",
   },
   nav: {
     overview: "Overview",
@@ -41,7 +41,7 @@ export const enUS = {
       "Overdue {{overdue}} · Due today {{today}} · In progress {{active}}",
   },
   auth: {
-    signInTitle: "Sign in with a Xuanchu credential",
+    signInTitle: "Sign in with a {{brand}} credential",
     tokenLabel: "Token",
     tokenPlaceholder: "xuanchu_pat_... / xuanchu_tenant_...",
     signIn: "Sign in",
@@ -244,7 +244,7 @@ export const enUS = {
   shell: {
     workspace: "Workspace",
     tokenRisk: "Token risk",
-    brand: "Xuanchu",
+    brand: "{{brand}}",
     identity: "Current identity",
     role: "Role",
     tokenType: "Token type",
