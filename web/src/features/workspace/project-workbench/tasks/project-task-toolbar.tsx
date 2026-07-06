@@ -23,6 +23,7 @@ import {
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { TaskFilter } from "@/features/workspace/project-readonly/project-filter"
 import { activeFilterEntries } from "@/features/workspace/project-readonly/project-filter"
+import { cn } from "@/lib/utils"
 import { formatLocalDate } from "../shared/date-boundary"
 import { i18n } from "@/i18n"
 
@@ -51,6 +52,10 @@ const SORT_OPTIONS = [
   { label: "开始时间", value: "start" },
   { label: "完成时间", value: "completed" },
 ]
+
+const FILTER_CONTROL_CLASS =
+  "!h-9 rounded-md border-input bg-background text-sm shadow-none"
+const FILTER_BUTTON_CLASS = cn(FILTER_CONTROL_CLASS, "font-normal")
 
 const FILTER_LABELS: Record<keyof TaskFilter, string> = {
   assignee: "负责人",
@@ -131,10 +136,10 @@ export function ProjectTaskToolbar({
 
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
         <DebouncedInput
           ariaLabel="搜索任务"
-          className="h-9 w-full sm:w-56"
+          className={cn(FILTER_CONTROL_CLASS, "col-span-2 w-full sm:w-56")}
           key={`q:${filter.q ?? ""}`}
           onCommit={(value) => setFilter("q", value)}
           placeholder="搜索标题、内容"
@@ -146,7 +151,10 @@ export function ProjectTaskToolbar({
           }
           value={filter.status ?? ""}
         >
-          <SelectTrigger aria-label="状态" className="h-9 w-32">
+          <SelectTrigger
+            aria-label="状态"
+            className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-32")}
+          >
             <SelectValue placeholder="状态" />
           </SelectTrigger>
           <SelectContent>
@@ -164,7 +172,10 @@ export function ProjectTaskToolbar({
           }
           value={filter.priority ?? ""}
         >
-          <SelectTrigger aria-label="优先级" className="h-9 w-28">
+          <SelectTrigger
+            aria-label="优先级"
+            className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-28")}
+          >
             <SelectValue placeholder="优先级" />
           </SelectTrigger>
           <SelectContent>
@@ -188,7 +199,7 @@ export function ProjectTaskToolbar({
         />
         <DebouncedInput
           ariaLabel="标签"
-          className="h-9 w-32"
+          className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-32")}
           key={`tags:${filter.tags ?? ""}`}
           onCommit={(value) => setFilter("tags", value)}
           placeholder="标签"
@@ -196,11 +207,13 @@ export function ProjectTaskToolbar({
         />
         <DateInput
           ariaLabel="到期不早于"
+          className="w-full sm:w-40"
           onCommit={(value) => setFilter("due_after", value)}
           value={filter.due_after ?? ""}
         />
         <DateInput
           ariaLabel="到期不晚于"
+          className="w-full sm:w-40"
           onCommit={(value) => setFilter("due_before", value)}
           value={filter.due_before ?? ""}
         />
@@ -210,7 +223,10 @@ export function ProjectTaskToolbar({
           }
           value={filter.sort ?? ""}
         >
-          <SelectTrigger aria-label="排序" className="h-9 w-36">
+          <SelectTrigger
+            aria-label="排序"
+            className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-36")}
+          >
             <SelectValue placeholder="排序" />
           </SelectTrigger>
           <SelectContent>
@@ -224,7 +240,15 @@ export function ProjectTaskToolbar({
         </Select>
         <Popover>
           <PopoverTrigger asChild>
-            <Button size="lg" type="button" variant="outline">
+            <Button
+              className={cn(
+                FILTER_BUTTON_CLASS,
+                "col-span-2 w-full justify-start sm:w-auto"
+              )}
+              size="lg"
+              type="button"
+              variant="outline"
+            >
               <SlidersHorizontalIcon />
               更多筛选
             </Button>
@@ -239,7 +263,7 @@ export function ProjectTaskToolbar({
         </Popover>
         {canCreateTask ? (
           <Button
-            className="ml-auto w-full sm:w-auto"
+            className="col-span-2 w-full rounded-md sm:ml-auto sm:w-auto"
             onClick={onCreateTask}
             size="lg"
             type="button"
@@ -292,7 +316,7 @@ function AdvancedFilterPanel({
     <div className="space-y-3">
       <DebouncedInput
         ariaLabel="原始查询"
-        className="h-9"
+        className={cn(FILTER_CONTROL_CLASS, "w-full")}
         onCommit={(value) =>
           setDraft((current) => ({ ...current, query: value }))
         }
@@ -327,6 +351,7 @@ function AdvancedFilterPanel({
       </label>
       <DateInput
         ariaLabel="暂缓到早于"
+        className="w-full"
         onCommit={(value) =>
           setDraft((current) => ({ ...current, wait_before: value }))
         }
@@ -334,6 +359,7 @@ function AdvancedFilterPanel({
       />
       <DateInput
         ariaLabel="计划开始早于"
+        className="w-full"
         onCommit={(value) =>
           setDraft((current) => ({ ...current, scheduled_before: value }))
         }
@@ -341,6 +367,7 @@ function AdvancedFilterPanel({
       />
       <DateInput
         ariaLabel="有效至早于"
+        className="w-full"
         onCommit={(value) =>
           setDraft((current) => ({ ...current, until_before: value }))
         }
@@ -386,7 +413,10 @@ function AssigneeFilterMenu({
       <PopoverTrigger asChild>
         <Button
           aria-label="负责人"
-          className="h-9 min-w-32 justify-between gap-2 px-3"
+          className={cn(
+            FILTER_BUTTON_CLASS,
+            "w-full min-w-0 justify-between gap-2 px-3 sm:w-36"
+          )}
           type="button"
           variant="outline"
         >
@@ -397,7 +427,7 @@ function AssigneeFilterMenu({
         <div className="space-y-2">
           <Input
             aria-label="搜索负责人"
-            className="h-8"
+            className="h-8 rounded-md bg-background"
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索负责人"
             value={query}
@@ -539,10 +569,12 @@ function DebouncedInput({
 
 function DateInput({
   ariaLabel,
+  className,
   onCommit,
   value,
 }: {
   ariaLabel: string
+  className?: string
   onCommit: (value: string) => void
   value: string
 }) {
@@ -560,7 +592,7 @@ function DateInput({
       <PopoverTrigger asChild>
         <Button
           aria-label={ariaLabel}
-          className="h-9 w-[9.5rem] justify-start font-normal"
+          className={cn(FILTER_BUTTON_CLASS, "justify-start", className)}
           data-empty={!selected}
           size="lg"
           type="button"
@@ -585,7 +617,7 @@ function DateInput({
         {selected ? (
           <div className="border-t p-2">
             <Button
-              className="w-full justify-start"
+              className="w-full justify-start rounded-md"
               onClick={() => commit(undefined)}
               size="xs"
               type="button"

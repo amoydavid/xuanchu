@@ -46,6 +46,37 @@ describe("ProjectTaskToolbar", () => {
     expect(screen.getByText("搜索=日报")).toBeTruthy()
   })
 
+  it("keeps primary filter controls on one visual rhythm", () => {
+    render(
+      <ProjectTaskToolbar
+        canCreateTask={true}
+        filter={{}}
+        onCreateTask={vi.fn()}
+        toParams={{ projectSlug: "adsops", workspaceSlug: "acme" }}
+      />
+    )
+
+    const controls = [
+      screen.getByLabelText("搜索任务"),
+      screen.getByRole("combobox", { name: "状态" }),
+      screen.getByRole("combobox", { name: "优先级" }),
+      screen.getByRole("button", { name: "负责人" }),
+      screen.getByLabelText("标签"),
+      screen.getByRole("button", { name: "到期不早于" }),
+      screen.getByRole("button", { name: "到期不晚于" }),
+      screen.getByRole("combobox", { name: "排序" }),
+      screen.getByRole("button", { name: "更多筛选" }),
+    ]
+
+    for (const control of controls) {
+      expect(control.className).toContain("h-9")
+      expect(control.className).toContain("rounded-md")
+      expect(control.className).toContain("border-input")
+      expect(control.className).toContain("bg-background")
+      expect(control.className).toContain("text-sm")
+    }
+  })
+
   it("renders assignee options and active chips with human friendly names", async () => {
     render(
       <ProjectTaskToolbar
