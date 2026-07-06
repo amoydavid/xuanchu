@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -96,9 +96,26 @@ describe("ProjectReadonlyPage", () => {
         ) {
           return ok([
             {
-              id: "event-1",
-              action: "task.created",
-              created_by: { name: "张三" },
+              source_type: "task",
+              source_id: "task-1",
+              source_label: "Design task.query schema",
+              entry: 1_900_000_100,
+              content: "补充任务备注",
+              created_by: {
+                type: "user",
+                user: { id: "u1", name: "张三", external_ids: [] },
+              },
+            },
+            {
+              source_type: "project",
+              source_id: "project-1",
+              source_label: "agentapi",
+              entry: 1_900_000_200,
+              content: "状态变更：预立项 → 立项在跑",
+              created_by: {
+                type: "user",
+                user: { id: "u2", name: "李四", external_ids: [] },
+              },
             },
           ])
         }
@@ -128,6 +145,12 @@ describe("ProjectReadonlyPage", () => {
     ).toBe("/workspaces/acme/projects/agentapi/tasks/ag-23")
     expect(screen.getByText("负责人摘要")).toBeTruthy()
     expect(screen.getByText("最近动态")).toBeTruthy()
+    expect(screen.getByText(/张三.*补充任务备注/)).toBeTruthy()
+    const activityItems = within(
+      screen.getByRole("list", { name: "最近动态" })
+    ).getAllByRole("listitem")
+    expect(activityItems[0]?.textContent).toContain("状态变更：预立项 → 立项在跑")
+    expect(activityItems[1]?.textContent).toContain("补充任务备注")
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/projects/agentapi?workspace=acme",
       expect.any(Object)

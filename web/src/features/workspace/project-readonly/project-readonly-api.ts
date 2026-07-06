@@ -113,11 +113,20 @@ export type AnnotationPage = {
 
 export type ProjectReadonlyTimelineEntry = {
   id?: string
+  source_type?: string
+  source_id?: string
+  source_label?: string
+  entry?: number
+  content?: string
   action?: string
   event_type?: string
   summary?: string
   created_at?: number
-  created_by?: { name?: string }
+  created_by?: {
+    name?: string
+    user?: { name?: string }
+    token?: { name?: string }
+  }
   actor?: { name?: string }
 }
 

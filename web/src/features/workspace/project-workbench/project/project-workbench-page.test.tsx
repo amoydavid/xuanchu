@@ -180,10 +180,16 @@ describe("ProjectWorkbenchPage", () => {
     await i18n.changeLanguage("en-US")
     vi.mocked(getProjectTimeline).mockResolvedValue([
       {
-        id: "evt-1",
-        action: "task.updated",
-        created_at: 1782600000,
-        actor: { id: "u1", name: "Alice", external_ids: [] },
+        source_type: "task",
+        source_id: "task-uuid-1",
+        source_label: "写投放日报",
+        entry: 1782600000,
+        content: "Updated campaign pacing",
+        created_by: {
+          id: "",
+          name: "",
+          user: { id: "u1", name: "Alice", external_ids: [] },
+        },
       },
     ])
 
@@ -201,5 +207,6 @@ describe("ProjectWorkbenchPage", () => {
     expect(screen.getByText(/open/)).toBeTruthy()
     expect(screen.getByText(/overdue/)).toBeTruthy()
     expect(screen.getByText("Recent activity")).toBeTruthy()
+    expect(screen.getByText(/Alice.*Updated campaign pacing/)).toBeTruthy()
   })
 })

@@ -19,7 +19,7 @@ describe("LoginPage", () => {
     await i18n.changeLanguage("zh-CN")
   })
 
-  it("validates token and supports language switching", async () => {
+  it("renders the sign-in heading and supports language switching", async () => {
     const onSignedIn = vi.fn()
     render(
       renderWithRouter(
@@ -33,18 +33,18 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByText("璇础")).toBeTruthy()
     })
-    expect(
-      screen.getByRole("heading", { name: "使用璇础访问凭证登录" })
-    ).toBeTruthy()
-    expect(document.querySelector(".mb-5 .size-14")).toBeTruthy()
+    // 标题简化为「登录」（signInTitle 不再带品牌名插值）
+    expect(screen.getByRole("heading", { name: "登录" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "登录" })).toBeTruthy()
+    // 无 SSO 时凭证输入直接展开，label 为「登录凭证」
+    expect(screen.getByLabelText("登录凭证")).toBeTruthy()
     await userEvent.click(screen.getByRole("combobox", { name: "语言" }))
     await userEvent.click(screen.getByRole("option", { name: "English" }))
     expect(screen.getByText("Xuanchu")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy()
   })
 
-  it("shows an admin login link without mode switching", async () => {
+  it("no longer exposes the standalone admin login link", async () => {
     render(
       renderWithRouter(
         <ThemeProvider>
@@ -56,18 +56,12 @@ describe("LoginPage", () => {
     )
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: "服务端超管登录 ->" })
-      ).toBeTruthy()
+      expect(screen.getByRole("heading", { name: "登录" })).toBeTruthy()
     })
-    expect(
-      screen
-        .getByRole("link", { name: "服务端超管登录 ->" })
-        .getAttribute("href")
-    ).toBe("/admin/login")
+    // 超管入口已并入凭证输入（按前缀分流），不再有独立链接
+    expect(screen.queryByText("服务端超管登录 ->")).toBeNull()
     expect(screen.queryByRole("tab")).toBeNull()
     expect(screen.queryByRole("radio")).toBeNull()
-    expect(sessionStorage.getItem("xuanchu.console.admin_token")).toBeNull()
   })
 
   it("shows the protected page that will open after sign-in", async () => {
@@ -130,7 +124,7 @@ describe("LoginPage", () => {
     )
 
     await userEvent.type(
-      await screen.findByLabelText("Token"),
+      await screen.findByLabelText("登录凭证"),
       "xuanchu_tenant_test"
     )
     await userEvent.click(screen.getByRole("button", { name: "登录" }))
@@ -149,5 +143,71 @@ describe("LoginPage", () => {
     expect(sessionStorage.getItem("xuanchu.console.token")).toBe(
       "xuanchu_tenant_test"
     )
+  })
+
+  it("routes admin-prefixed credential to admin session and storage", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        okResponse({
+          actor_type: "admin",
+          actor: { id: "admin-1", name: "root" },
+        })
+      )
+
+    // jsdom 29 的 window.location 锁定，整体替换为可写 stub 记录 href 跳转。
+    const originalLocation = window.location
+    const hrefSetter = { href: "https://localhost/" }
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        get href() {
+          return hrefSetter.href
+        },
+        set href(v: string) {
+          hrefSetter.href = v
+        },
+      },
+    })
+
+    render(
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <LoginPage onSignedIn={vi.fn()} />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
+    )
+
+    await userEvent.type(
+      await screen.findByLabelText("登录凭证"),
+      "xuanchu_admin_test"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "登录" }))
+
+    await waitFor(() => {
+      expect(hrefSetter.href).toContain("/admin")
+    })
+    // 超管 token 写入 admin 存储 key，不污染 workspace token key
+    expect(sessionStorage.getItem("xuanchu.console.admin_token")).toBe(
+      "xuanchu_admin_test"
+    )
+    expect(sessionStorage.getItem("xuanchu.console.token")).toBeNull()
+    // 走的是 admin 校验端点，不是 workspace 的 credentials/current
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/session",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer xuanchu_admin_test",
+        }),
+      })
+    )
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    })
   })
 })

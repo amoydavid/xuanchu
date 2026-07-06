@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { useParams } from "@tanstack/react-router"
 
+import { AuthFrame } from "@/components/auth/AuthFrame"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
 import { ThemeToggle } from "@/components/ThemeToggle"
@@ -28,23 +29,14 @@ export function SsoLoginPage() {
           <ThemeToggle />
         </div>
       </div>
-      <div className="mx-auto flex min-h-[calc(100svh-3rem)] max-w-md flex-col justify-center px-6">
-        <div className="mb-6">
-          <ProductLogo
-            className="mb-5"
-            markClassName="size-14"
-            showWordmark={false}
-          />
-          <h1 className="text-xl font-semibold tracking-normal">
-            {t("sso.directLogin")}
-          </h1>
-          {workspaceSlug ? (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("sso.directLoginDesc", { slug: workspaceSlug })}
-            </p>
-          ) : null}
-        </div>
-
+      <AuthFrame
+        title={t("sso.directLogin")}
+        description={
+          workspaceSlug
+            ? t("sso.directLoginDesc", { slug: workspaceSlug })
+            : undefined
+        }
+      >
         {ssoError ? (
           <Alert variant="destructive" className="mb-4">
             <AlertDescription>{ssoError}</AlertDescription>
@@ -61,7 +53,7 @@ export function SsoLoginPage() {
         >
           {t("sso.directLogin")}
         </Button>
-      </div>
+      </AuthFrame>
     </main>
   )
 }

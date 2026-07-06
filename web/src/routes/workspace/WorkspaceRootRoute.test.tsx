@@ -101,7 +101,7 @@ describe("WorkspaceRootRoute acting mode", () => {
     await waitFor(() => {
       expect(screen.getByText(/alice/)).toBeTruthy()
     })
-    expect(screen.queryByText(/使用璇础访问凭证登录/)).toBeNull()
+    expect(screen.queryByText(/登录凭证仅保存在/)).toBeNull()
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/credentials/current",
       expect.anything()
@@ -114,7 +114,7 @@ describe("WorkspaceRootRoute acting mode", () => {
     renderRoute()
 
     await waitFor(() => {
-      expect(screen.queryByText(/使用璇础访问凭证登录/)).toBeTruthy()
+      expect(screen.queryByText(/登录凭证仅保存在/)).toBeTruthy()
     })
   })
 

@@ -99,11 +99,23 @@ export type ProjectWorkbenchTask = {
 
 export type ProjectTimelineEntry = {
   id?: string
+  source_type?: string
+  source_id?: string
+  source_label?: string
+  entry?: number
+  content?: string
   action?: string
   event_type?: string
   summary?: string
   created_at?: number
-  created_by?: UserInfo
+  created_by?: UserInfo & {
+    user?: UserInfo
+    token?: {
+      id?: string
+      name?: string
+      prefix?: string
+    }
+  }
   actor?: UserInfo
 }
 
