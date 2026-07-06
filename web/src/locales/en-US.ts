@@ -891,6 +891,27 @@ export const enUS = {
     typeLocked: "Type cannot be changed after creation",
     createdWarning: "This token is shown only once. It cannot be viewed again after closing. Save it now.",
     revokeWarning: "Revoking immediately invalidates this token and cannot be undone. Clients using it will lose API access.",
+    mcpConfig: "MCP config",
+    mcpConfigFor: "MCP config: {{name}}",
+    mcpConfigTitle: "MCP config · {{name}}",
+    mcpEndpoint: "MCP endpoint",
+    bearerToken: "Bearer token",
+    copyConfig: "Copy config",
+    copyEndpoint: "Copy endpoint",
+    secretUnavailable: "This token has no recoverable secret. Reissue it before copying the full token.",
+    secretKeyMissing: "The server has no config secret key, so the full token cannot be revealed.",
+    mcp: {
+      configJson: "MCP client config",
+      optionalHeaders: "Optional headers",
+      revokedWarning: "This token is revoked. The config is shown only for troubleshooting.",
+      expiredWarning: "This token is expired. The config is shown only for troubleshooting.",
+      agentHint:
+        "Agent tokens can call HTTP MCP. To act as a member, set X-Xuanchu-As and ensure the token has the impersonate scope.",
+      patHint:
+        "PATs can call HTTP MCP, but cannot use X-Xuanchu-As impersonation.",
+      tenantHint:
+        "Tenant tokens call HTTP MCP as a system identity. They do not bind to a user and cannot use impersonation, me_get, assignee:me, or personal active context.",
+    },
     errors: {
       token_scope_invalid: "Invalid scope",
       token_agent_requires_workspace: "Agent token requires at least one workspace",
@@ -905,6 +926,8 @@ export const enUS = {
       tenant_token_revoked: "Tenant access token is revoked and cannot be modified",
       tenant_token_expired: "Tenant access token is expired and cannot be modified",
       tenant_token_project_scope_invalid: "Project is not in the current workspace",
+      token_secret_unavailable: "This token has no recoverable secret. Reissue it before copying the full token.",
+      config_secret_key_missing: "The server has no config secret key, so the full token cannot be revealed.",
       unknown: "Operation failed",
     },
   },

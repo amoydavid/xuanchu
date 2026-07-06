@@ -264,6 +264,140 @@ describe("TokensPage", () => {
     fetchMock.mockRestore()
   })
 
+  it("opens MCP config dialog for API token rows", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/mcp-config")) {
+          return okResponse({
+            token: "xuanchu_agent_revealed",
+            token_id: "tok-1",
+            token_name: "ci-deploy",
+            token_type: "agent",
+            prefix: "xuanchu_pat_abc",
+            endpoint_path: "/mcp",
+            scopes: ["task:read"],
+            workspace_ids: ["w1"],
+            project_ids: [],
+            expires_at: null,
+            revoked_at: null,
+          })
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    const mcpButton = await screen.findByRole("button", {
+      name: "MCP 配置：ci-deploy",
+    })
+    await userEvent.click(mcpButton)
+
+    await waitFor(() => {
+      expect(screen.getByText("xuanchu_agent_revealed")).toBeTruthy()
+    })
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).includes("/api/v1/tokens/tok-1/mcp-config")
+      )
+    ).toBe(true)
+
+    fetchMock.mockRestore()
+  })
+
+  it("opens MCP config dialog for tenant token rows", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/tenant-access-tokens/") && url.includes("/mcp-config")) {
+          return okResponse({
+            token: "xuanchu_tenant_revealed",
+            token_id: "tenant-1",
+            token_name: "tenant-ci",
+            token_type: "tenant_access_token",
+            prefix: "xuanchu_tenant_abc",
+            endpoint_path: "/mcp",
+            scopes: ["task:read"],
+            workspace_ids: ["ws-local"],
+            project_ids: [],
+            expires_at: null,
+            revoked_at: null,
+          })
+        }
+        if (url.includes("/api/v1/tenant-access-tokens")) {
+          return okResponse([makeTenantToken()])
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole("tab", { name: "租户访问令牌" })
+    )
+
+    const mcpButton = await screen.findByRole("button", {
+      name: "MCP 配置：tenant-ci",
+    })
+    await userEvent.click(mcpButton)
+
+    await waitFor(() => {
+      expect(screen.getByText("xuanchu_tenant_revealed")).toBeTruthy()
+    })
+
+    fetchMock.mockRestore()
+  })
+
+  it("shows secret unavailable message from MCP config dialog", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/mcp-config")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ error: { code: "token_secret_unavailable" } }),
+              { status: 409 }
+            )
+          )
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    const mcpButton = await screen.findByRole("button", {
+      name: "MCP 配置：ci-deploy",
+    })
+    await userEvent.click(mcpButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/没有保存可恢复密文/)).toBeTruthy()
+    })
+
+    fetchMock.mockRestore()
+  })
+
   it("shows error message on API failure", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { PlugIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
 
@@ -20,6 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useMe } from "@/features/workspace/session/useMe"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import { ApiError } from "@/lib/api"
@@ -27,6 +33,7 @@ import { PageHeader } from "@/pages/OverviewPage"
 
 import { TokenCreateDialog } from "./token-create-dialog"
 import { TokenEditDialog } from "./token-edit-dialog"
+import { TokenMcpConfigDialog } from "./token-mcp-config-dialog"
 import { TokenRevokeDialog } from "./token-revoke-dialog"
 import { TenantAccessTokenCreateDialog } from "./tenant-access-token-create-dialog"
 import { TenantAccessTokenEditDialog } from "./tenant-access-token-edit-dialog"
@@ -65,6 +72,10 @@ export function TokensPage() {
     useState<TenantAccessTokenRow | null>(null)
   const [tenantRevokeTarget, setTenantRevokeTarget] =
     useState<TenantAccessTokenRow | null>(null)
+  const [mcpTarget, setMcpTarget] = useState<{
+    token: TokenRow | TenantAccessTokenRow
+    mode: TokenTab
+  } | null>(null)
 
   // 是否可分配 impersonate scope：对齐后端 tokenManageAllowed（仅 admin/owner）。
   // 用 effective role 判断，而非当前 token 的 scope。
@@ -156,7 +167,29 @@ export function TokensPage() {
                         <Badge variant="outline">{row.type}</Badge>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
-                        {row.prefix}
+                        <div className="flex items-center gap-2">
+                          <span>{row.prefix}</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                aria-label={t("token.mcpConfigFor", {
+                                  name: row.name,
+                                })}
+                                onClick={() =>
+                                  setMcpTarget({ token: row, mode: activeTab })
+                                }
+                                size="icon"
+                                type="button"
+                                variant="ghost"
+                              >
+                                <PlugIcon className="size-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t("token.mcpConfig")}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
@@ -266,6 +299,14 @@ export function TokensPage() {
           }}
           open={tenantRevokeTarget !== null}
           token={tenantRevokeTarget}
+        />
+      ) : null}
+      {mcpTarget ? (
+        <TokenMcpConfigDialog
+          mode={mcpTarget.mode}
+          onOpenChange={(open) => setMcpTarget(open ? mcpTarget : null)}
+          open={mcpTarget !== null}
+          token={mcpTarget.token}
         />
       ) : null}
     </div>

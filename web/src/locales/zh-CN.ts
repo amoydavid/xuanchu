@@ -872,6 +872,27 @@ export const zhCN = {
     typeLocked: "类型创建后不可修改",
     createdWarning: "此 Token 仅显示一次，关闭后无法再次查看，请立即保存。",
     revokeWarning: "吊销后此 Token 立即失效且不可恢复。使用它的客户端将无法再访问 API。",
+    mcpConfig: "MCP 配置",
+    mcpConfigFor: "MCP 配置：{{name}}",
+    mcpConfigTitle: "MCP 配置 · {{name}}",
+    mcpEndpoint: "MCP Endpoint",
+    bearerToken: "Bearer Token",
+    copyConfig: "复制配置",
+    copyEndpoint: "复制 Endpoint",
+    secretUnavailable: "该令牌没有保存可恢复密文，请重新签发后再复制完整 token。",
+    secretKeyMissing: "服务端未配置 config secret key，无法读取完整 token。",
+    mcp: {
+      configJson: "MCP 客户端配置",
+      optionalHeaders: "可选 Header",
+      revokedWarning: "该令牌已吊销，配置仅供排查，不能继续使用。",
+      expiredWarning: "该令牌已过期，配置仅供排查，不能继续使用。",
+      agentHint:
+        "Agent token 可用于 HTTP MCP。若要代表成员执行，请配置 X-Xuanchu-As，并确保 token 包含 impersonate scope。",
+      patHint:
+        "PAT 可用于 HTTP MCP，但不能使用 X-Xuanchu-As impersonation。",
+      tenantHint:
+        "Tenant token 以系统身份调用 HTTP MCP，不绑定自然人用户，不支持 impersonation、me_get、assignee:me 或个人 active context。",
+    },
     errors: {
       token_scope_invalid: "权限范围无效",
       token_agent_requires_workspace: "Agent token 必须至少绑定一个工作空间",
@@ -886,6 +907,8 @@ export const zhCN = {
       tenant_token_revoked: "租户访问令牌已吊销，无法修改",
       tenant_token_expired: "租户访问令牌已过期，无法修改",
       tenant_token_project_scope_invalid: "项目不在当前工作空间范围内",
+      token_secret_unavailable: "该令牌没有保存可恢复密文，请重新签发后再复制完整 token。",
+      config_secret_key_missing: "服务端未配置 config secret key，无法读取完整 token。",
       unknown: "操作失败",
     },
   },

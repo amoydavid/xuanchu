@@ -1,6 +1,7 @@
 // Token 相关类型与 API 契约，对齐后端 tokenResponse / createdTokenResponse。
 
 import { ApiError } from "@/lib/api"
+import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 
 /** 列表/详情返回的 token 行，对齐后端 tokenResponse。
  * 注意：workspace_ids/project_ids/scopes 后端可能返回 null（无绑定时），故标为可空。 */
@@ -195,4 +196,42 @@ export function tokenErrorMessage(
     return translated === key ? t("token.errors.unknown") : translated
   }
   return t("token.errors.unknown")
+}
+
+/** /mcp-config endpoint 返回的视图，含 raw token 供前端复制。 */
+export type TokenMcpConfig = {
+  token: string
+  token_id: string
+  token_name: string
+  token_type: string
+  prefix: string
+  endpoint_path: string
+  scopes: string[] | null
+  workspace_ids?: string[] | null
+  project_ids?: string[] | null
+  expires_at?: number | null
+  revoked_at?: number | null
+}
+
+/** 普通凭证 reveal MCP 配置。 */
+export function getTokenMcpConfig(
+  ref: string
+): Promise<TokenMcpConfig> {
+  return workspaceApiGet<TokenMcpConfig>(
+    `/api/v1/tokens/${encodeURIComponent(ref)}/mcp-config`
+  )
+}
+
+/** 租户访问令牌 reveal MCP 配置。 */
+export function getTenantTokenMcpConfig(
+  ref: string
+): Promise<TokenMcpConfig> {
+  return workspaceApiGet<TokenMcpConfig>(
+    `/api/v1/tenant-access-tokens/${encodeURIComponent(ref)}/mcp-config`
+  )
+}
+
+/** reveal 查询的 query key，区分 token 类型与 id，便于弹窗按需 invalidate。 */
+export function tokenMcpConfigQueryKey(type: string, id: string) {
+  return ["token", "mcp-config", type, id] as const
 }
