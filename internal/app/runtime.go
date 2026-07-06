@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"net/http"
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/authz"
@@ -49,6 +50,10 @@ type ServiceOptions struct {
 	WorkspaceRef          string
 	Runtime               *RuntimeContext
 	RequestScope          *RequestScope
+	// SinkTestClient 注入到 notification sink 测试投递；nil 时使用 SSRF-safe 默认 client。
+	SinkTestClient *http.Client
+	// SinkTestResolver 覆盖 sink 测试投递的 DNS 解析器，便于测试。
+	SinkTestResolver HookHostResolver
 }
 
 type RuntimeError struct {

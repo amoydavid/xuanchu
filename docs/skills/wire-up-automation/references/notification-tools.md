@@ -207,3 +207,19 @@ notification_delivery_replay({"workspace": "dajee", "delivery_id": "delivery-id"
 `notification_delivery_replay` 只适用于 dead-lettered 或 skipped delivery，**不会重新渲染** URL、header、body。
 
 事件通知 delivery 会包含 `object_kind` / `object_id`，用于标识事件对象；reminder delivery 继续以 task 为主。
+
+## Sink 测试投递
+
+`POST /api/v1/notification-sinks/{sinkID}/test` 可以在不触发真实任务事件的前提下，对目标 sink 发一次样例投递：
+
+- 请求 body：`{"kind":"hook|notification","event_type":"task.completed","project_ref":"<可选>"}`
+  - `kind=hook` 时 `event_type` 必须在 hook 事件白名单内；`kind=notification` 时不强制白名单。
+  - `project_ref` 仅对 `config_value` endpoint 有效（在 project config 下解析 URL）。
+- 需 `notification:write` 权限。
+- 发往目标的请求带 `X-Xuanchu-Test: true` + 独立 `X-Xuanchu-Delivery: test-<uuid>` + `X-Xuanchu-Event: sink.test`；webhook sink 配了 secret 时还带 `X-Xuanchu-Signature-256`（与正式投递同算法，可复用验签逻辑）。
+- 响应包含 status / status_code / duration_ms / endpoint fingerprint / rendered method·headers·body preview。
+- 失败的目标返回（4xx/5xx）不会让 API 报错——API 返回 HTTP 200，`status` 为 `failed`；配置无效 / 权限不足 / sink 不存在 / SSRF 拒绝返回正常 4xx。
+- 写一条 `notification.sink.test` audit（不含 secret / 完整 body），**不**写入 `notification_deliveries`。
+- 安全提示：`http_template` sink 的 `rendered_headers` / `rendered_body_preview` 是模板渲染后的真实请求内容，若模板里引用了 `{{ secret.* }}`，渲染值会出现在响应里（便于排障）；webhook sink 的 HMAC `secret` 不会出现在响应中。
+
+Web Console 的 Sinks tab 提供「发送测试」UI 入口。

@@ -202,7 +202,7 @@ function TaskTableRow({
       <TableCell>
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.taskPriority", { taskRef })}
-          className="h-7 w-20"
+          className="w-20"
           disabled={!rowWritable}
           onSave={async (priority) => {
             await modify.mutateAsync(
@@ -211,6 +211,7 @@ function TaskTableRow({
           }}
           options={priorityOptions}
           placeholder="-"
+          triggerSize="sm"
           value={task.priority ?? "none"}
         />
       </TableCell>
@@ -219,7 +220,7 @@ function TaskTableRow({
         <InlineDatePicker
           ariaLabel={t("projectReadonly.taskDueDate", { taskRef })}
           boundary="end"
-          className="h-7 w-36"
+          className="w-36"
           disabled={!rowWritable}
           onSave={async (due) => {
             await modify.mutateAsync(
@@ -288,7 +289,7 @@ function TaskCard({
       <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.mobileTaskPriority", { taskRef })}
-          className="h-7 w-full"
+          className="w-full"
           disabled={!rowWritable}
           onSave={async (priority) => {
             await modify.mutateAsync(
@@ -297,12 +298,13 @@ function TaskCard({
           }}
           options={priorityOptions}
           placeholder="-"
+          triggerSize="sm"
           value={task.priority ?? "none"}
         />
         <InlineDatePicker
           ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef })}
           boundary="end"
-          className="h-7 w-full"
+          className="w-full"
           disabled={!rowWritable}
           onSave={async (due) => {
             await modify.mutateAsync(

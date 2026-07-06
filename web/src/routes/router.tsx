@@ -293,6 +293,7 @@ const routeTree = rootRoute.addChildren([
     ssoRoute,
     createResourceRoute("hooks", "/hooks"),
     createResourceRoute("notifications", "/notifications"),
+    createResourceRoute("integrations", "/integrations"),
     createResourceRoute("audit", "/audit"),
     createResourceRoute("settings", "/settings"),
     projectReadonlyRoute,

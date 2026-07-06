@@ -134,7 +134,7 @@ export function ScopeEditor({
                 className="inline-flex items-center gap-1 rounded-none border bg-muted/50 px-2 py-0.5 text-xs"
                 key={scope}
               >
-                <code>{scope}</code>
+                <code className="break-all">{scope}</code>
                 <Button
                   aria-label={t("token.removeScope")}
                   className="text-muted-foreground hover:text-destructive"

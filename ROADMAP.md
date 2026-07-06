@@ -49,6 +49,7 @@
 | v0.5.0 | 已完成 | Workspace OIDC 接入（yaoguang IdP）：浏览器 SSO + 通讯录同步 + browser session/CSRF |
 | v0.5.1 | 已完成 | Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进 |
 | v0.5.2 | 已完成 | Web Console 能力桥接：我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计 |
+| v0.5.3 | 已完成 | Web Console 出站集成控制台：sink/hook/通知/定时规则闭环 + sink 测试投递 API |
 | docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -1432,6 +1433,8 @@ v0.5.0 已完成。Web Console 已从 bootstrap / token 管控推进到项目-�
 
 v0.5.1 已完成 Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进。该版本保持后端字符串契约不变，在任务详情页的 description 和 annotation 入口引入 Tiptap v3 Markdown WYSIWYG 编辑、同 schema 只读渲染、原始 HTML 转义、链接协议白名单，并修正详情页面包屑和主区/属性栏布局。
 
+v0.5.2 已完成 Web Console 能力桥接（我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计）。v0.5.3 已完成 Web Console 出站集成控制台：把 `/hooks` 升级为统一控制台（Sinks / Hooks / 通知规则 / 定时规则 / 概览），新增后端 `POST /api/v1/notification-sinks/{sinkID}/test` 真实测试投递（复用 sink 渲染、SSRF 防护与 HTTP 投递，写 audit 不污染 delivery 表）。`/hooks`、`/notifications`、`/integrations` 三条路由共用同一控制台。
+
 规格与实施计划：
 
 ```text
@@ -1439,11 +1442,14 @@ docs/superpowers/specs/2026-07-04-web-console-tiptap-markdown-editor-design.md
 docs/superpowers/plans/2026-07-04-web-console-tiptap-markdown-editor-implementation.md
 docs/superpowers/specs/2026-07-04-web-console-members-management-design.md
 docs/superpowers/plans/2026-07-04-web-console-members-management-implementation.md
+docs/superpowers/specs/2026-07-05-web-console-outbound-integration-console-design.md
+docs/superpowers/plans/2026-07-05-web-console-outbound-integration-console-implementation.md
 ```
 
-v0.5.1 之后的方向待定，建议优先在以下几类中选择：
+v0.5.3 之后的方向待定，建议优先在以下几类中选择：
 
 - 飞书 OAuth / 通讯录之外的企业身份 adapter（认证只负责外部身份映射，授权继续由 Xuanchu membership、role、scope 和 allowlist 决定）。
 - Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。
+- 出站集成控制台 Phase 3-5：预设 sink 模板（飞书机器人 / 企业微信 / Slack / 自建网关）、`POST /notification-sinks/{id}/preview` 模板预览、统一 `GET /outbound-deliveries` 投递排障中心与失败聚合。
 - 性能优化与大 workspace 场景验证。
 - 外部系统 adapter 生态。

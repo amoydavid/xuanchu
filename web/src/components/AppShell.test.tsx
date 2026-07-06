@@ -209,4 +209,23 @@ describe("AppShell", () => {
       screen.getByRole("link", { name: "工作区" }).className
     ).not.toContain("border-l-foreground")
   })
+
+  // 移动端导航抽屉：验证汉堡按钮（移动端导航入口）被正确渲染。
+  // 点击打开行为依赖 Radix 真实 PointerEvent，jsdom 下不稳定，
+  // 这里只断言入口存在（响应式适配的核心：移动端不再丢失导航）。
+  it("renders mobile hamburger menu button as nav entry", () => {
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AppShell onLogout={vi.fn()} onRefresh={vi.fn()}>
+            <div>content</div>
+          </AppShell>
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    expect(screen.getByRole("button", { name: "打开菜单" })).toBeTruthy()
+    // 桌面端导航仍渲染（aside 始终在 DOM，仅 CSS 控制可见性）
+    expect(screen.getByRole("link", { name: "我的任务" })).toBeTruthy()
+  })
 })

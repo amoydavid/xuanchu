@@ -135,3 +135,18 @@ hook_delivery_list({"workspace": "dajee", "hook": "hook-uuid-xxx", "limit": 5})
 // Step 4: 失败时重试
 hook_delivery_redeliver({"workspace": "dajee", "hook": "hook-uuid-xxx", "delivery_id": "..."})
 ```
+
+## 事件名口径
+
+事件名遵循 `task.*` / `project.*` 白名单。常见事件：
+
+- 任务基础：`task.created`、`task.modified`、`task.completed`、`task.deleted`
+- 任务状态：`task.started`、`task.stopped`、`task.blocked`、`task.unblocked`
+- 字段变化：`task.assigned`、`task.unassigned`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`
+- 项目：`project.archived`、`project.transitioned`、`project.annotated`、`project.denotated`
+
+> 旧的 `task.done` 不存在；请使用 `task.completed`。Web Console 的事件 checkbox 与本口径一致。
+
+## Web Console 与 sink 测试
+
+集成配置主入口是 Web Console `/hooks`（出站集成控制台）。sink/hook 的 CRUD、事件 checkbox、project 选择、投递排障与 replay 都在浏览器内完成。每个 sink 行有「发送测试」按钮，调用 `POST /api/v1/notification-sinks/{sinkID}/test` 验证可达性，不会写入正式 delivery 表。

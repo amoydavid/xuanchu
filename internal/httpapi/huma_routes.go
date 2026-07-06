@@ -270,6 +270,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodDelete, Path: "/api/v1/notification-sinks/{sinkID}", Tag: "Notification Sinks", Summary: "Delete a notification sink.", Handler: s.handleNotificationSinkDelete},
 		{Method: http.MethodPost, Path: "/api/v1/notification-sinks/{sinkID}/enable", Tag: "Notification Sinks", Summary: "Enable a notification sink.", Handler: s.handleNotificationSinkEnable},
 		{Method: http.MethodPost, Path: "/api/v1/notification-sinks/{sinkID}/disable", Tag: "Notification Sinks", Summary: "Disable a notification sink.", Handler: s.handleNotificationSinkDisable},
+		{Method: http.MethodPost, Path: "/api/v1/notification-sinks/{sinkID}/test", Tag: "Notification Sinks", Summary: "Test a notification sink by sending a sample delivery.", Handler: s.handleNotificationSinkTest},
 		{Method: http.MethodGet, Path: "/api/v1/reminder-rules", Tag: "Reminder Rules", Summary: "List reminder rules.", Handler: s.handleReminderRuleList},
 		{Method: http.MethodPost, Path: "/api/v1/reminder-rules", Tag: "Reminder Rules", Summary: "Create a reminder rule.", Handler: s.handleReminderRuleCreate, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/reminder-rules/{ruleID}", Tag: "Reminder Rules", Summary: "Get reminder rule details.", Handler: s.handleReminderRuleInfo},

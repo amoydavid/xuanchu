@@ -80,7 +80,7 @@ export function WorkspaceConsole({ canWrite }: { canWrite: boolean }) {
               {(query.data ?? []).map((ws) => (
                 <TableRow key={ws.id}>
                   <TableCell>
-                    <code>{ws.slug}</code>
+                    <code className="break-all">{ws.slug}</code>
                   </TableCell>
                   <TableCell>{ws.name}</TableCell>
                   <TableCell>

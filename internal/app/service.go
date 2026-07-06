@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,6 +50,11 @@ type Service struct {
 	clock                     Clock
 	reports                   report.Registry
 	disableContext            bool
+	// sinkTestClient 用于 notification sink 测试投递；nil 时使用 SSRF-safe 默认 client。
+	// 测试可注入 httptest.Server.Client() 以便命中本地服务。
+	sinkTestClient *http.Client
+	// sinkTestResolver 覆盖默认 DNS 解析器，便于测试绕过 loopback 限制。
+	sinkTestResolver HookHostResolver
 }
 
 // adminActingSessionStore 是 admin acting session 仓储在 app 层的最小接口。
@@ -198,6 +204,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		clock:                     opts.Clock,
 		reports:                   report.DefaultRegistry(),
 		disableContext:            opts.NoContext,
+		sinkTestClient:            opts.SinkTestClient,
+		sinkTestResolver:          opts.SinkTestResolver,
 	}
 	if !opts.DisableScopeBootstrap {
 		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {

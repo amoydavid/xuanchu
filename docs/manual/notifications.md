@@ -275,3 +275,16 @@ xuanchu server \
 delivery 表是唯一可靠队列。dispatcher 每轮先按可用执行容量领取少量 `queued` / 到期 `retry_wait` delivery，再立即投递；不会把大量 delivery 领取到进程内队列里慢慢等待。`batch_size` 是每轮查询上限，不是并发数。`max_concurrency` 默认 `1`，保持顺序投递；sink 的 `max_concurrency=0` 表示继承默认 sink 并发，显式大于 `0` 时限制该 workspace 内同一 sink 的并发。`xuanchu server` 内 notification dispatcher 和 hook dispatcher 共享同一个 sink limiter，同一 sink 的单进程并发不会因为两个 runtime 同时工作而翻倍。
 
 投递 payload / HTTP template context 会带稳定幂等字段：顶层 `delivery_id`、`attempt`、`workspace_id`、`sink_id`、`rule_id`、`object_kind`、`object_id`、`created_at`，以及嵌套 `delivery.id`、`delivery.attempt`、`object.kind`、`object.id`。body 中的 `attempt` 是入队时冻结的初始上下文；本次 HTTP 请求真实尝试次数看 header `X-Xuanchu-Attempt`。
+
+## Web Console：sink 不只服务通知
+
+Web Console 的 `/notifications` 与 `/hooks` 现在渲染同一个**出站集成控制台**，默认打开的 tab 不同：
+
+- `/hooks`、`/integrations` → Hooks tab
+- `/notifications` → 通知规则 tab
+
+虽然底层 API 资源名仍是 `notification-sinks`，但 sink 实际承载 webhook、HTTP 模板、URL/secret/重试/并发等所有出站配置——它同时服务「面向机器的 Hook」和「面向人的通知/提醒规则」。请在控制台的 **Sinks tab** 创建 sink，再在 Hooks / 通知规则 / 定时规则 tab 引用 sink。
+
+### Sink 测试投递
+
+每个 sink 都可以「发送测试」，验证 URL、模板、allowed hosts、网络防护是否工作，无需制造真实任务事件。详见 [hooks.md](./hooks.md#sink-测试投递)。测试投递写 audit，不污染正式 delivery 队列。
