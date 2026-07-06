@@ -586,4 +586,64 @@ describe("TokensPage", () => {
 
     fetchMock.mockRestore()
   })
+
+  it("reverts to self when filter switched back from another member", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/api/v1/workspaces/") && url.includes("/members")) {
+          return okResponse(membersResponse())
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText("查看用户")).toBeTruthy()
+    })
+
+    const filterCombobox = () => screen.getAllByRole("combobox")[0]
+
+    // 切到张三
+    await userEvent.click(filterCombobox())
+    await waitFor(() => expect(screen.getByText("张三")).toBeTruthy())
+    await userEvent.click(screen.getByText("张三"))
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some((call) =>
+          String(call[0]).includes("/api/v1/tokens?user=u-zhang")
+        )
+      ).toBe(true)
+    })
+
+    // 记录切回前的请求数
+    const callsBefore = fetchMock.mock.calls.length
+
+    // 切回「我自己」
+    await userEvent.click(filterCombobox())
+    await waitFor(() => expect(screen.getByText(/我自己/)).toBeTruthy())
+    await userEvent.click(screen.getAllByText(/我自己/)[0])
+
+    // 切回后应重新请求不带 ?user= 的 /api/v1/tokens
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls
+          .slice(callsBefore)
+          .some(
+            (call) =>
+              String(call[0]).includes("/api/v1/tokens") &&
+              !String(call[0]).includes("user=")
+          )
+      ).toBe(true)
+    })
+
+    fetchMock.mockRestore()
+  })
 })

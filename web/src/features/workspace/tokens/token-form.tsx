@@ -127,14 +127,7 @@ export function TokenForm({
       >
         <Select
           disabled={mode === "edit"}
-          onValueChange={(v) =>
-            setValues((prev) => ({
-              ...prev,
-              type: v,
-              // 切换到 agent 时清空归属用户（仅 PAT 支持代为创建）
-              user: v === "pat" ? prev.user : "",
-            }))
-          }
+          onValueChange={(v) => setValues((prev) => ({ ...prev, type: v }))}
           value={values.type}
         >
           <SelectTrigger aria-label={t("token.field.type")}>
@@ -331,8 +324,11 @@ export function valuesToCreateInput(values: TokenFormValues) {
   return {
     name: values.name.trim(),
     type: values.type,
-    // 仅 PAT + admin/owner 代为创建时有值；空字符串不发 user（后端默认归属 actor）
-    ...(values.user ? { user: values.user } : {}),
+    // 仅 PAT 支持代为创建；user 非空时才带（后端默认归属 actor）。
+    // 切换到 agent 时不清空 user（保留用户选择以便切回），只在提交时忽略。
+    ...(values.type === "pat" && values.user
+      ? { user: values.user }
+      : {}),
     scopes: values.scopes,
     workspaces: values.workspaces,
     projects: values.projects,

@@ -91,11 +91,10 @@ export function HookFormDialog({
   const [sinks, setSinks] = useState<NotificationSink[]>([])
   const [projects, setProjects] = useState<ProjectSummary[]>([])
 
+  // 父组件通过 key 在每次打开时 remount 本组件，form/error 由 lazy useState 初始化。
+  // 这里只负责打开时异步加载 sink / project 列表（异步 then 不触发本规则的同步告警）。
   useEffect(() => {
     if (!open) return
-    setForm(initial ? fromHook(initial) : emptyForm())
-    setError(null)
-    // 异步加载 sink 列表（包括 disabled 以便给出风险提示）和 project 列表。
     void listNotificationSinks({ includeDisabled: true })
       .then(setSinks)
       .catch(() => setSinks([]))
@@ -104,7 +103,7 @@ export function HookFormDialog({
         .then(setProjects)
         .catch(() => setProjects([]))
     }
-  }, [open, initial, workspaceSlug])
+  }, [open, workspaceSlug])
 
   function patch(partial: Partial<FormState>) {
     setForm((prev) => ({ ...prev, ...partial }))

@@ -88,12 +88,14 @@ export function HookList({
       </div>
 
       <HookFormDialog
+        key={creating ? "creating-open" : "creating-closed"}
         onOpenChange={(o) => !o && setCreating(false)}
         onSaved={invalidate}
         open={creating}
         workspaceSlug={workspaceSlug}
       />
       <HookFormDialog
+        key={editing?.id ?? "editing-closed"}
         initial={editing ?? undefined}
         onOpenChange={(o) => !o && setEditing(null)}
         onSaved={invalidate}

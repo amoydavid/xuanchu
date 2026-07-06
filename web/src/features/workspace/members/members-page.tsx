@@ -69,13 +69,13 @@ import {
   type WorkspaceTokenRow,
   type WorkspaceUserRow,
 } from "./members-api"
+import { memberRoleLabel } from "./role-label"
 import { ExternalIDBindDialog } from "./external-id-bind-dialog"
 
 const ROLE_OPTIONS = ["viewer", "member", "admin", "owner"] as const
 const ROLE_COUNT_OPTIONS = ["owner", "admin", "member", "viewer"] as const
 
 type MemberRole = (typeof ROLE_OPTIONS)[number]
-type Translate = ReturnType<typeof useTranslation>["t"]
 
 type MembersPageProps = {
   workspaceSlug: string
@@ -1214,21 +1214,6 @@ function memberDetailHref(userID: string) {
 function openMemberDetail(userID: string) {
   window.history.pushState({}, "", memberDetailHref(userID))
   window.dispatchEvent(new PopStateEvent("popstate"))
-}
-
-function memberRoleLabel(t: Translate, role: string) {
-  switch (role) {
-    case "owner":
-      return t("members.roles.owner")
-    case "admin":
-      return t("members.roles.admin")
-    case "member":
-      return t("members.roles.member")
-    case "viewer":
-      return t("members.roles.viewer")
-    default:
-      return role
-  }
 }
 
 function memberCounts(members: WorkspaceMemberRow[]) {

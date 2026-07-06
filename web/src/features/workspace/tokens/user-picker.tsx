@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -11,12 +11,14 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandLoading,
 } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   listWorkspaceMembers,
   type WorkspaceMemberRow,
 } from "@/features/workspace/members/members-api"
+import { memberRoleLabel } from "@/features/workspace/members/role-label"
 import { useMe } from "@/features/workspace/session/useMe"
 import { cn } from "@/lib/utils"
 
@@ -43,8 +45,25 @@ export function UserPicker({
     queryKey: ["workspace", "members", slug],
     queryFn: () => listWorkspaceMembers(slug),
   })
-  const members: WorkspaceMemberRow[] = membersQuery.data ?? []
+  // useMemo 稳定 members 引用，避免下游 useEffect 因 ?? [] 每次产生新数组而频繁触发。
+  const members: WorkspaceMemberRow[] = useMemo(
+    () => membersQuery.data ?? [],
+    [membersQuery.data]
+  )
   const selfId = me.data?.actor.id ?? ""
+  const selfRole = me.data?.effective_role ?? ""
+
+  // 选中的成员已离开 workspace（成员列表加载完成后找不到匹配）时，重置为「我自己」，
+  // 避免 trigger 显示裸 user_id 并持续查询一个不可达的用户。
+  useEffect(() => {
+    if (
+      value !== "" &&
+      !membersQuery.isLoading &&
+      !members.some((m) => m.user_id === value)
+    ) {
+      onChange("")
+    }
+  }, [value, members, membersQuery.isLoading, onChange])
 
   // value === "" → 我自己；否则匹配 members 中的具体成员
   const selectedMember = members.find((m) => m.user_id === value)
@@ -76,58 +95,70 @@ export function UserPicker({
         <Command>
           <CommandInput placeholder={t("token.user.searchPlaceholder")} />
           <CommandList>
-            <CommandEmpty>{t("common.empty")}</CommandEmpty>
-            <CommandGroup>
-              {/* 「我自己」始终置顶，value="" */}
-              <CommandItem
-                onSelect={() => {
-                  onChange("")
-                  setOpen(false)
-                }}
-                value={`self ${me.data?.actor.name ?? ""} ${me.data?.actor.display_name ?? ""} ${me.data?.actor.email ?? ""}`}
-              >
-                <CheckIcon
-                  className={cn(
-                    "mr-2 size-4",
-                    value === "" ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <span>{t("token.user.self")}</span>
-                {me.data?.effective_role ? (
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {me.data.effective_role}
-                  </span>
-                ) : null}
-              </CommandItem>
-              {members
-                .filter((m) => m.user_id !== selfId)
-                .map((m) => (
+            {/* 成员列表加载中：cmdk 的 CommandLoading 不会参与搜索过滤，避免
+                误显示「暂无数据」。 */}
+            {membersQuery.isLoading ? (
+              <CommandLoading>{t("common.loading")}</CommandLoading>
+            ) : (
+              <>
+                <CommandEmpty>{t("common.empty")}</CommandEmpty>
+                <CommandGroup>
+                  {/* 「我自己」始终置顶，value="" */}
                   <CommandItem
-                    key={m.user_id}
                     onSelect={() => {
-                      onChange(m.user_id)
+                      onChange("")
                       setOpen(false)
                     }}
-                    value={`${m.display_name || m.name} ${m.email ?? ""} ${m.name}`}
+                    value={`self ${me.data?.actor.name ?? ""} ${me.data?.actor.display_name ?? ""} ${me.data?.actor.email ?? ""}`}
                   >
                     <CheckIcon
                       className={cn(
                         "mr-2 size-4",
-                        value === m.user_id ? "opacity-100" : "opacity-0"
+                        value === "" ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <span>{m.display_name || m.name}</span>
-                    {m.email ? (
-                      <span className="ml-2 truncate text-xs text-muted-foreground">
-                        {m.email}
+                    <span>{t("token.user.self")}</span>
+                    {selfRole ? (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {memberRoleLabel(t, selfRole)}
                       </span>
                     ) : null}
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {m.role}
-                    </span>
                   </CommandItem>
-                ))}
-            </CommandGroup>
+                  {members
+                    // me 未加载完成时（selfId 为空）排除全部成员，避免与「我自己」
+                    // 同时出现当前用户的两行；me 加载完成后正常按 selfId 过滤。
+                    .filter((m) => selfId !== "" && m.user_id !== selfId)
+                    .map((m) => (
+                      <CommandItem
+                        key={m.user_id}
+                        onSelect={() => {
+                          onChange(m.user_id)
+                          setOpen(false)
+                        }}
+                        // value 只用于 cmdk 搜索评分；onSelect 用闭包里的 user_id，
+                        // 重名成员不会互相覆盖。
+                        value={`${m.display_name || m.name} ${m.email ?? ""} ${m.name}`}
+                      >
+                        <CheckIcon
+                          className={cn(
+                            "mr-2 size-4",
+                            value === m.user_id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span>{m.display_name || m.name}</span>
+                        {m.email ? (
+                          <span className="ml-2 truncate text-xs text-muted-foreground">
+                            {m.email}
+                          </span>
+                        ) : null}
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {memberRoleLabel(t, m.role)}
+                        </span>
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

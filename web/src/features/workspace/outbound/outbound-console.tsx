@@ -87,7 +87,7 @@ export function OutboundConsole({
         </TabsList>
 
         <TabsContent value="overview">
-          <OutboundOverview workspaceSlug={workspaceSlug} />
+          <OutboundOverview />
         </TabsContent>
         <TabsContent value="sinks">
           <SinkList canWrite={canSinks} />
@@ -108,11 +108,7 @@ export function OutboundConsole({
 
 // OutboundOverview 是第一版概览：并行查询各资源 list 计数。
 // 第一阶段不新增后端 summary endpoint。
-function OutboundOverview({
-  workspaceSlug: _workspaceSlug,
-}: {
-  workspaceSlug?: string
-}) {
+function OutboundOverview() {
   const { t } = useTranslation()
 
   const sinks = useQuery({

@@ -82,5 +82,16 @@ describe("TokenForm", () => {
       const input = valuesToCreateInput({ ...base, user: "u-zhang" })
       expect(input.user).toBe("u-zhang")
     })
+
+    it("omits user when type is agent even if user is set", () => {
+      // PAT→Agent 切换不清空 user（保留选择以便切回），但提交时 agent 不带 user
+      const input = valuesToCreateInput({
+        ...base,
+        type: "agent",
+        user: "u-zhang",
+        workspaces: ["w1"],
+      })
+      expect("user" in input).toBe(false)
+    })
   })
 })
