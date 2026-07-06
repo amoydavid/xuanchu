@@ -50,6 +50,10 @@ export const enUS = {
     failed: "Sign in failed",
     or: "OR",
     tokenLoginToggle: "Sign in with credential",
+    errors: {
+      token_web_login_disabled:
+        "This token was created from an SSO session and cannot sign in to the Web Console. Use SSO instead.",
+    },
   },
   admin: {
     title: "Server Admin Control Plane",

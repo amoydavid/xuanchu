@@ -91,7 +91,14 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
         window.location.href = "/admin/login"
         return
       }
-      setError(t("auth.failed"))
+      // 按错误码映射 i18n 文案；未命中回退通用失败文案。
+      if (err instanceof ApiError && err.code) {
+        const codeKey = `auth.errors.${err.code}`
+        const translated = t(codeKey)
+        setError(translated === codeKey ? t("auth.failed") : translated)
+      } else {
+        setError(t("auth.failed"))
+      }
     } finally {
       setSubmitting(false)
     }

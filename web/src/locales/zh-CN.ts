@@ -47,6 +47,10 @@ export const zhCN = {
     failed: "登录失败",
     or: "或",
     tokenLoginToggle: "使用登录凭证登录",
+    errors: {
+      token_web_login_disabled:
+        "该令牌由 SSO 会话创建，不能用于登录 Web Console，请使用 SSO 登录。",
+    },
   },
   admin: {
     title: "服务端超管控制面",

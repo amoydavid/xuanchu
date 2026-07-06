@@ -145,6 +145,39 @@ describe("LoginPage", () => {
     )
   })
 
+  it("shows specific message for token_web_login_disabled error", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: { code: "token_web_login_disabled" } }),
+          { status: 403 }
+        )
+      )
+    )
+
+    render(
+      renderWithRouter(
+        <ThemeProvider>
+          <TooltipProvider>
+            <LoginPage onSignedIn={vi.fn()} />
+          </TooltipProvider>
+        </ThemeProvider>
+      )
+    )
+
+    await userEvent.type(
+      await screen.findByLabelText("登录凭证"),
+      "xuanchu_pat_sso"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "登录" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/不能用于登录 Web Console/)
+      ).toBeTruthy()
+    })
+  })
+
   it("routes admin-prefixed credential to admin session and storage", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
