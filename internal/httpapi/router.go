@@ -30,6 +30,7 @@ func (s *Server) newRouter() *http.ServeMux {
 	})
 
 	api.Get("/healthz", s.handleHealthz)
+	api.Get("/api/branding", s.handleBranding)
 	if s.testPanicRoute {
 		api.Get("/api/v1/__panic", func(w http.ResponseWriter, r *http.Request) {
 			panic("test panic")
