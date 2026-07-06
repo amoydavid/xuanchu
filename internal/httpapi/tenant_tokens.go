@@ -142,6 +142,20 @@ func (s *Server) handleTenantTokenRevoke(w http.ResponseWriter, r *http.Request)
 	writeSuccess(w, http.StatusOK, map[string]bool{"ok": true}, nil)
 }
 
+func (s *Server) handleTenantTokenMCPConfig(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.RevealTenantTokenMCPConfig(chi.URLParam(r, "tokenRef"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, tokenMCPConfigResponseFromView(view), nil)
+}
+
 func tenantTokenResponseFromView(view app.TenantAccessTokenView) tenantTokenResponse {
 	var issuedBy *adminTokenIssuerResponse
 	if view.IssuedByAdminTokenID != nil || view.IssuedByAdminTokenName != nil {

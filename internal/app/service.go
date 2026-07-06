@@ -55,6 +55,10 @@ type Service struct {
 	sinkTestClient *http.Client
 	// sinkTestResolver 覆盖默认 DNS 解析器，便于测试绕过 loopback 限制。
 	sinkTestResolver HookHostResolver
+	// tokenSecretKey 加密可恢复的 API token 明文，供 Web Console 按需 reveal。
+	tokenSecretKey []byte
+	// requireTokenSecret 为 true 时，缺少 secret key 的 token 创建请求会失败。
+	requireTokenSecret bool
 }
 
 // adminActingSessionStore 是 admin acting session 仓储在 app 层的最小接口。
@@ -206,6 +210,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		disableContext:            opts.NoContext,
 		sinkTestClient:            opts.SinkTestClient,
 		sinkTestResolver:          opts.SinkTestResolver,
+		tokenSecretKey:            append([]byte(nil), opts.TokenSecretKey...),
+		requireTokenSecret:        opts.RequireTokenSecret,
 	}
 	if !opts.DisableScopeBootstrap {
 		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
@@ -272,6 +278,9 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.reminderRuleRepo = storage.NewReminderRuleRepository(store.DB())
 	clone.eventNotificationRuleRepo = storage.NewEventNotificationRuleRepository(store.DB())
 	clone.notificationDeliveryRepo = storage.NewNotificationDeliveryRepository(store.DB())
+	// token secret key 在事务克隆中必须保留，否则 withAudit 内创建/解密 token 会失败。
+	clone.tokenSecretKey = append([]byte(nil), s.tokenSecretKey...)
+	clone.requireTokenSecret = s.requireTokenSecret
 	return &clone, nil
 }
 

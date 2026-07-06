@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,12 @@ type httpTokenFixture struct {
 	server *Server
 	token  string
 	id     string
+}
+
+// httpTestSecretKeyBase64 返回一个固定的 32 字节 base64 secret key，供 token reveal 测试复用。
+// Web Console 创建可恢复 token 要求服务端配置 [security].config_secret_key。
+func httpTestSecretKeyBase64() string {
+	return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x07}, 32))
 }
 
 func newHTTPServerWithTokenFixture(t *testing.T, scopes ...string) httpTokenFixture {
@@ -37,7 +44,7 @@ func newHTTPServerWithTokenFixture(t *testing.T, scopes ...string) httpTokenFixt
 		t.Fatal(err)
 	}
 	return httpTokenFixture{
-		server: NewServer(Options{Store: store}),
+		server: NewServer(Options{Store: store, ConfigSecretKey: httpTestSecretKeyBase64()}),
 		token:  created.RawToken,
 		id:     created.View.ID,
 	}
@@ -460,7 +467,7 @@ func TestTenantTokenCanManageHTTPWorkspaceAndTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewServer(Options{Store: store})
+	server := NewServer(Options{Store: store, ConfigSecretKey: httpTestSecretKeyBase64()})
 	headers := map[string]string{
 		"Authorization": "Bearer " + created.RawToken,
 		"Content-Type":  "application/json",
@@ -519,7 +526,7 @@ func TestTenantTokenCannotMintTenantTokenBeyondOwnScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewServer(Options{Store: store})
+	server := NewServer(Options{Store: store, ConfigSecretKey: httpTestSecretKeyBase64()})
 	headers := map[string]string{
 		"Authorization": "Bearer " + created.RawToken,
 		"Content-Type":  "application/json",

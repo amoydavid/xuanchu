@@ -206,6 +206,51 @@ func tokenResponseFromView(view app.TokenView) tokenResponse {
 	}
 }
 
+// tokenMCPConfigResponse 是 /mcp-config endpoint 的响应，含 raw token 供前端复制。
+type tokenMCPConfigResponse struct {
+	Token        string   `json:"token"`
+	TokenID      string   `json:"token_id"`
+	TokenName    string   `json:"token_name"`
+	TokenType    string   `json:"token_type"`
+	Prefix       string   `json:"prefix"`
+	EndpointPath string   `json:"endpoint_path"`
+	Scopes       []string `json:"scopes"`
+	WorkspaceIDs []string `json:"workspace_ids,omitempty"`
+	ProjectIDs   []string `json:"project_ids,omitempty"`
+	ExpiresAt    *int64   `json:"expires_at,omitempty"`
+	RevokedAt    *int64   `json:"revoked_at,omitempty"`
+}
+
+func tokenMCPConfigResponseFromView(view app.TokenMCPConfigView) tokenMCPConfigResponse {
+	return tokenMCPConfigResponse{
+		Token:        view.RawToken,
+		TokenID:      view.TokenID,
+		TokenName:    view.TokenName,
+		TokenType:    view.TokenType,
+		Prefix:       view.Prefix,
+		EndpointPath: view.EndpointPath,
+		Scopes:       append([]string(nil), view.Scopes...),
+		WorkspaceIDs: append([]string(nil), view.WorkspaceIDs...),
+		ProjectIDs:   append([]string(nil), view.ProjectIDs...),
+		ExpiresAt:    view.ExpiresAt,
+		RevokedAt:    view.RevokedAt,
+	}
+}
+
+func (s *Server) handleTokenMCPConfig(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, auth.ScopeTokenRead, app.PermissionTokenRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.RevealTokenMCPConfig(chi.URLParam(r, "tokenRef"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, tokenMCPConfigResponseFromView(view), nil)
+}
+
 // mergeRefs 合并两组 ref（slugs 与 ids）。
 // 两者都为 nil 时返回 nil（表示「不修改」）；
 // 任一非 nil 时合并去重并返回非 nil（含结果为空切片，表示「清空」）。

@@ -117,6 +117,7 @@ type ApiToken struct {
 	Type                   string  `gorm:"not null"`
 	TokenPrefix            string  `gorm:"not null;uniqueIndex:idx_api_tokens_prefix"`
 	TokenHash              string  `gorm:"not null"`
+	TokenSecretCiphertext  string  `gorm:"not null;default:''"`
 	ScopesJSON             string  `gorm:"not null;default:'[]'"`
 	WorkspaceIDsJSON       string  `gorm:"not null;default:'[]'"`
 	ProjectIDsJSON         string  `gorm:"not null;default:'[]'"`

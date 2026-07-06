@@ -54,6 +54,10 @@ type ServiceOptions struct {
 	SinkTestClient *http.Client
 	// SinkTestResolver 覆盖 sink 测试投递的 DNS 解析器，便于测试。
 	SinkTestResolver HookHostResolver
+	// TokenSecretKey 用于加密可恢复的 API token 明文，供 Web Console 按需 reveal。
+	TokenSecretKey []byte
+	// RequireTokenSecret 为 true 时，缺少 TokenSecretKey 的 token 创建请求会失败。
+	RequireTokenSecret bool
 }
 
 type RuntimeError struct {

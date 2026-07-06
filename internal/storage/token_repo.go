@@ -16,6 +16,7 @@ type ApiTokenEntry struct {
 	Type                   string
 	TokenPrefix            string
 	TokenHash              string
+	TokenSecretCiphertext  string
 	ScopesJSON             string
 	WorkspaceIDsJSON       string
 	ProjectIDsJSON         string
@@ -62,7 +63,8 @@ func NewTokenRepository(db *gorm.DB) *TokenRepository {
 }
 
 func (r *TokenRepository) Create(entry ApiTokenEntry) error {
-	return r.db.Create(apiTokenModel(entry)).Error
+	model := apiTokenModel(entry)
+	return r.db.Create(&model).Error
 }
 
 func (r *TokenRepository) ListByUser(userID string, includeRevoked bool) ([]ApiTokenEntry, error) {
@@ -258,6 +260,7 @@ func apiTokenModel(entry ApiTokenEntry) ApiToken {
 		Type:                   entry.Type,
 		TokenPrefix:            entry.TokenPrefix,
 		TokenHash:              entry.TokenHash,
+		TokenSecretCiphertext:  entry.TokenSecretCiphertext,
 		ScopesJSON:             entry.ScopesJSON,
 		WorkspaceIDsJSON:       entry.WorkspaceIDsJSON,
 		ProjectIDsJSON:         entry.ProjectIDsJSON,
@@ -280,6 +283,7 @@ func apiTokenEntry(row ApiToken) ApiTokenEntry {
 		Type:                   row.Type,
 		TokenPrefix:            row.TokenPrefix,
 		TokenHash:              row.TokenHash,
+		TokenSecretCiphertext:  row.TokenSecretCiphertext,
 		ScopesJSON:             row.ScopesJSON,
 		WorkspaceIDsJSON:       row.WorkspaceIDsJSON,
 		ProjectIDsJSON:         row.ProjectIDsJSON,

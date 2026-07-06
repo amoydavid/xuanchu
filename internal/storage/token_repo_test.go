@@ -283,6 +283,34 @@ func TestTokenRepository_Update_ClearExpiresAt(t *testing.T) {
 	}
 }
 
+func TestTokenRepositoryPersistsTokenSecretCiphertext(t *testing.T) {
+	store := newTokenRepoTestStore(t)
+	repo := NewTokenRepository(store.DB())
+	entry := ApiTokenEntry{
+		ID:                    "tok-secret",
+		UserID:                ptrString("user-1"),
+		Name:                  "agent",
+		Type:                  "agent",
+		TokenPrefix:           "xuanchu_agent_secret",
+		TokenHash:             strings.Repeat("a", 64),
+		TokenSecretCiphertext: "enc:v1:ciphertext",
+		ScopesJSON:            `["task:read"]`,
+		WorkspaceIDsJSON:      `["ws-1"]`,
+		ProjectIDsJSON:        `[]`,
+		CreatedAt:             100,
+	}
+	if err := repo.Create(entry); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetByID(entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TokenSecretCiphertext != entry.TokenSecretCiphertext {
+		t.Fatalf("ciphertext = %q, want %q", got.TokenSecretCiphertext, entry.TokenSecretCiphertext)
+	}
+}
+
 func TestTokenUpdatesChangedFieldsIncludesWorkspaceAndProject(t *testing.T) {
 	name := "renamed"
 	scopes := `["task:read"]`

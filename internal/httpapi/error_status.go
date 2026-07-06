@@ -40,6 +40,12 @@ func statusForAppErrorCode(code string) int {
 		return http.StatusBadRequest
 	case "tenant_token_revoked", "tenant_token_expired":
 		return http.StatusConflict
+	case "token_secret_unavailable":
+		// 令牌没有可恢复密文或解密失败：冲突语义，提示重新签发。
+		return http.StatusConflict
+	case "config_secret_key_missing":
+		// 服务端未配置解密密钥：客户端无法通过重试解决，归类为错误请求。
+		return http.StatusBadRequest
 	case "token_list_failed":
 		return http.StatusInternalServerError
 	case "route_not_found":

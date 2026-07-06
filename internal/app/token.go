@@ -241,6 +241,10 @@ func (s *Service) CreateTenantAccessToken(input CreateTenantAccessTokenInput) (C
 		if err != nil {
 			return AuditEntry{}, err
 		}
+		secretCipher, err := tx.encryptRecoverableToken(raw)
+		if err != nil {
+			return AuditEntry{}, err
+		}
 		createdAt := tx.clock.Unix()
 		var expiresAt *int64
 		if input.ExpiresIn != nil {
@@ -266,6 +270,7 @@ func (s *Service) CreateTenantAccessToken(input CreateTenantAccessTokenInput) (C
 			Type:                   auth.TokenTypeTenantAccess,
 			TokenPrefix:            prefix,
 			TokenHash:              hash,
+			TokenSecretCiphertext:  secretCipher,
 			ScopesJSON:             scopesJSON,
 			WorkspaceIDsJSON:       workspaceJSON,
 			ProjectIDsJSON:         projectJSON,
@@ -545,6 +550,196 @@ func (s *Service) lookupTenantTokenForRuntime(ref string) (storage.ApiTokenEntry
 	return entry, workspaceID, nil
 }
 
+// TokenMCPConfigView 是 reveal token MCP 配置时返回的视图，含 raw token 与边界信息。
+type TokenMCPConfigView struct {
+	TokenID      string
+	TokenName    string
+	TokenType    string
+	Prefix       string
+	RawToken     string
+	EndpointPath string
+	Scopes       []string
+	WorkspaceIDs []string
+	ProjectIDs   []string
+	ExpiresAt    *int64
+	RevokedAt    *int64
+}
+
+func (s *Service) rejectAdminSwitchTokenReveal() error {
+	if s.runtime.IsTenantActor() && s.runtime.ActorTokenPurpose == "admin_tenant_switch" {
+		return RuntimeError{Code: "token_management_denied", Message: "admin switch tenant token cannot reveal token mcp config"}
+	}
+	return nil
+}
+
+// RevealTokenMCPConfig 解密目标普通 token（PAT/Agent）并返回 MCP 配置视图。
+// 复用现有 token 管理 scope/workspace/project 校验，不拒绝已吊销/过期 token。
+func (s *Service) RevealTokenMCPConfig(tokenRef string) (TokenMCPConfigView, error) {
+	return s.revealTokenMCPConfigShared(tokenRef, false)
+}
+
+// RevealTenantTokenMCPConfig 解密目标 tenant access token 并返回 MCP 配置视图。
+func (s *Service) RevealTenantTokenMCPConfig(tokenRef string) (TokenMCPConfigView, error) {
+	return s.revealTokenMCPConfigShared(tokenRef, true)
+}
+
+func (s *Service) revealTokenMCPConfigShared(tokenRef string, tenant bool) (TokenMCPConfigView, error) {
+	if err := s.rejectAdminSwitchTokenReveal(); err != nil {
+		return TokenMCPConfigView{}, err
+	}
+
+	var view TokenMCPConfigView
+	if tenant {
+		err := s.withAudit("tenant_token.mcp_config_reveal", func(tx *Service) (AuditEntry, error) {
+			// lookupTenantTokenForRuntime 内部复用 resolveTenantTokenWorkspace，
+			// 校验 tokenManageAllowed(role) 与 workspace 归属。
+			row, workspaceID, lookupErr := tx.lookupTenantTokenForRuntime(tokenRef)
+			if lookupErr != nil {
+				return AuditEntry{}, lookupErr
+			}
+			scopes, err := unmarshalStringSlice(row.ScopesJSON)
+			if err != nil {
+				return AuditEntry{}, err
+			}
+			projectIDs, err := unmarshalStringSlice(row.ProjectIDsJSON)
+			if err != nil {
+				return AuditEntry{}, err
+			}
+			if err := tx.enforceTenantTokenReadLimit(scopes, projectIDs); err != nil {
+				return AuditEntry{}, err
+			}
+			raw, err := tx.decryptRecoverableToken(row)
+			if err != nil {
+				return AuditEntry{}, err
+			}
+			view = tokenMCPConfigViewFromEntry(row, raw, []string{workspaceID}, projectIDs, scopes)
+			return AuditEntry{
+				TargetType:  "tenant_token",
+				TargetID:    row.ID,
+				WorkspaceID: &workspaceID,
+				Payload: map[string]any{
+					"token_id":     row.ID,
+					"token_name":   row.Name,
+					"token_type":   row.Type,
+					"token_prefix": row.TokenPrefix,
+				},
+			}, nil
+		})
+		return view, err
+	}
+	err := s.withAudit("token.mcp_config_reveal", func(tx *Service) (AuditEntry, error) {
+		row, lookupErr := tx.tokenRepo.GetByIDOrPrefix(strings.TrimSpace(tokenRef))
+		if lookupErr != nil {
+			return AuditEntry{}, classifyTokenLookupError(lookupErr)
+		}
+		if row.Type != auth.TokenTypePAT && row.Type != auth.TokenTypeAgent {
+			return AuditEntry{}, RuntimeError{Code: "token_not_found", Message: "token not found"}
+		}
+		// 与 RevokeToken/ModifyToken 一致：owner 可 reveal 自己的 token；
+		// 非 owner 必须 admin/owner 角色。HTTP 层已用 PermissionTokenRead 拒绝 member/viewer。
+		if derefString(row.UserID) != tx.runtime.ActorUserID && !tokenManageAllowed(tx.runtime.Role) {
+			return AuditEntry{}, RuntimeError{Code: "token_not_found", Message: "token not found"}
+		}
+		scopes, err := unmarshalStringSlice(row.ScopesJSON)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		workspaceIDs, err := unmarshalStringSlice(row.WorkspaceIDsJSON)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		projectIDs, err := unmarshalStringSlice(row.ProjectIDsJSON)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		if err := enforceTokenScopeRequestScope(tx.requestScope, scopes, workspaceIDs, projectIDs); err != nil {
+			return AuditEntry{}, err
+		}
+		raw, err := tx.decryptRecoverableToken(row)
+		if err != nil {
+			return AuditEntry{}, err
+		}
+		view = tokenMCPConfigViewFromEntry(row, raw, workspaceIDs, projectIDs, scopes)
+		return AuditEntry{
+			TargetType: "token",
+			TargetID:   row.ID,
+			Payload: map[string]any{
+				"token_id":     row.ID,
+				"token_name":   row.Name,
+				"token_type":   row.Type,
+				"token_prefix": row.TokenPrefix,
+			},
+		}, nil
+	})
+	return view, err
+}
+
+// enforceTenantTokenReadLimit 复用 write limit 的 scope/project 校验，但只读：
+// tenant token reveal 仍只能触及当前凭证可管理的 workspace 内、project allowlist 内的 token。
+func (s *Service) enforceTenantTokenReadLimit(scopes, projectIDs []string) error {
+	if s.requestScope == nil {
+		return nil
+	}
+	for _, scope := range scopes {
+		if !s.requestScope.HasCapability(scope) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target tenant token scope is outside current token"}
+		}
+	}
+	return requireSubsetWhenRestricted(s.requestScope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target tenant token project scope is outside current token")
+}
+
+func tokenMCPConfigViewFromEntry(row storage.ApiTokenEntry, raw string, workspaceIDs, projectIDs, scopes []string) TokenMCPConfigView {
+	return TokenMCPConfigView{
+		TokenID:      row.ID,
+		TokenName:    row.Name,
+		TokenType:    row.Type,
+		Prefix:       row.TokenPrefix,
+		RawToken:     raw,
+		EndpointPath: "/mcp",
+		Scopes:       append([]string(nil), scopes...),
+		WorkspaceIDs: append([]string(nil), workspaceIDs...),
+		ProjectIDs:   append([]string(nil), projectIDs...),
+		ExpiresAt:    row.ExpiresAt,
+		RevokedAt:    row.RevokedAt,
+	}
+}
+
+// encryptRecoverableToken 用 token secret key 加密 raw token，得到可恢复 envelope。
+// requireTokenSecret=true 且缺少 key 时返回 config_secret_key_missing；
+// requireTokenSecret=false 且缺少 key 时返回空字符串（兼容无 reveal 需求的创建路径）。
+func (s *Service) encryptRecoverableToken(raw string) (string, error) {
+	if len(s.tokenSecretKey) != 32 {
+		if s.requireTokenSecret {
+			return "", RuntimeError{Code: "config_secret_key_missing", Message: "config secret key is required to create recoverable tokens"}
+		}
+		return "", nil
+	}
+	encrypted, err := EncryptConfigSecret(s.tokenSecretKey, raw)
+	if err != nil {
+		if errors.Is(err, ErrConfigSecretKeyMissing) || errors.Is(err, ErrConfigSecretKeyInvalid) {
+			return "", RuntimeError{Code: "config_secret_key_missing", Message: "config secret key is required to create recoverable tokens"}
+		}
+		return "", err
+	}
+	return encrypted, nil
+}
+
+// decryptRecoverableToken 解密 envelope 还原 raw token；失败统一映射为安全错误码，
+// 不把底层解密细节暴露给调用方。
+func (s *Service) decryptRecoverableToken(row storage.ApiTokenEntry) (string, error) {
+	if strings.TrimSpace(row.TokenSecretCiphertext) == "" {
+		return "", RuntimeError{Code: "token_secret_unavailable", Message: "token secret is unavailable"}
+	}
+	raw, err := DecryptConfigSecret(s.tokenSecretKey, row.TokenSecretCiphertext)
+	if err != nil {
+		if errors.Is(err, ErrConfigSecretKeyMissing) || errors.Is(err, ErrConfigSecretKeyInvalid) {
+			return "", RuntimeError{Code: "config_secret_key_missing", Message: "config secret key is required to reveal token"}
+		}
+		return "", RuntimeError{Code: "token_secret_unavailable", Message: "token secret is unavailable"}
+	}
+	return raw, nil
+}
+
 func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -563,6 +758,10 @@ func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken,
 		return CreatedToken{}, classifyTokenCreateError(err)
 	}
 	raw, prefix, hash, err := auth.GenerateToken(tokenType)
+	if err != nil {
+		return CreatedToken{}, err
+	}
+	secretCipher, err := s.encryptRecoverableToken(raw)
 	if err != nil {
 		return CreatedToken{}, err
 	}
@@ -585,17 +784,18 @@ func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken,
 		return CreatedToken{}, err
 	}
 	stored := storage.ApiTokenEntry{
-		ID:               uuid.NewString(),
-		UserID:           stringPtr(input.UserID),
-		Name:             name,
-		Type:             tokenType,
-		TokenPrefix:      prefix,
-		TokenHash:        hash,
-		ScopesJSON:       scopesJSON,
-		WorkspaceIDsJSON: workspaceJSON,
-		ProjectIDsJSON:   projectJSON,
-		CreatedAt:        createdAt,
-		ExpiresAt:        expiresAt,
+		ID:                    uuid.NewString(),
+		UserID:                stringPtr(input.UserID),
+		Name:                  name,
+		Type:                  tokenType,
+		TokenPrefix:           prefix,
+		TokenHash:             hash,
+		TokenSecretCiphertext: secretCipher,
+		ScopesJSON:            scopesJSON,
+		WorkspaceIDsJSON:      workspaceJSON,
+		ProjectIDsJSON:        projectJSON,
+		CreatedAt:             createdAt,
+		ExpiresAt:             expiresAt,
 	}
 	if err := s.tokenRepo.Create(stored); err != nil {
 		return CreatedToken{}, err
@@ -822,11 +1022,6 @@ func (s *Service) enforceTokenRevokeRequestScope(entry storage.ApiTokenEntry) er
 	if err != nil {
 		return err
 	}
-	for _, scope := range scopes {
-		if !s.requestScope.HasCapability(scope) {
-			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target token scope is outside current request scope"}
-		}
-	}
 	workspaceIDs, err := unmarshalStringSlice(entry.WorkspaceIDsJSON)
 	if err != nil {
 		return err
@@ -835,10 +1030,24 @@ func (s *Service) enforceTokenRevokeRequestScope(entry storage.ApiTokenEntry) er
 	if err != nil {
 		return err
 	}
-	if err := requireSubsetWhenRestricted(s.requestScope.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current request scope"); err != nil {
+	return enforceTokenScopeRequestScope(s.requestScope, scopes, workspaceIDs, projectIDs)
+}
+
+// enforceTokenScopeRequestScope 校验目标 token 的 scope/workspace/project 是否都在
+// 当前 request scope 内。revoke 与 reveal 共用，避免重复解 JSON 与重复校验逻辑。
+func enforceTokenScopeRequestScope(scope *RequestScope, scopes, workspaceIDs, projectIDs []string) error {
+	if scope == nil {
+		return nil
+	}
+	for _, scopeName := range scopes {
+		if !scope.HasCapability(scopeName) {
+			return RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "target token scope is outside current request scope"}
+		}
+	}
+	if err := requireSubsetWhenRestricted(scope.WorkspaceIDs, workspaceIDs, authz.CodeWorkspaceScopeDenied, "target token workspace scope is outside current request scope"); err != nil {
 		return err
 	}
-	return requireSubsetWhenRestricted(s.requestScope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current request scope")
+	return requireSubsetWhenRestricted(scope.ProjectIDs, projectIDs, authz.CodeProjectScopeDenied, "target token project scope is outside current request scope")
 }
 
 func requireSubsetWhenRestricted(parent, child []string, code, message string) error {
