@@ -463,6 +463,34 @@ docs/superpowers/specs/2026-07-04-web-console-tiptap-markdown-editor-design.md
 docs/superpowers/plans/2026-07-04-web-console-tiptap-markdown-editor-implementation.md
 ```
 
+## v0.5.2：Token MCP 配置弹窗与可恢复密文
+
+**状态：已完成。**
+
+把 `/tokens` 每行的「MCP 配置」按钮做成按需 reveal 完整 token 与 HTTP MCP 客户端配置片段，并在服务端配置 `[security].config_secret_key` 时为 HTTP/Web Console 创建的 token 保存加密的可恢复 raw token envelope。
+
+当前范围：
+
+- `api_tokens` 新增 `token_secret_ciphertext`，存 AES-256-GCM envelope；认证仍只用 `token_hash` 和 prefix。
+- `ServiceOptions` 注入 `TokenSecretKey` / `RequireTokenSecret`；HTTP scoped service 创建可恢复 token 时缺 key 直接 fail fast（`config_secret_key_missing`）。
+- PAT / Agent / tenant token 创建时写 ciphertext；CLI 创建路径不写，历史 token reveal 报 `token_secret_unavailable` 提示重新签发。
+- 新增 `GET /api/v1/tokens/{ref}/mcp-config` 与 `GET /api/v1/tenant-access-tokens/{ref}/mcp-config`，复用 owner-or-admin 与 request scope 边界；已吊销/过期 token 可 reveal 但标注状态。
+- 审计 `token.mcp_config_reveal` / `tenant_token.mcp_config_reveal` 只记录 id/name/type/prefix，绝不记录 raw token、Authorization header 或配置 JSON。
+- 前端新增 `TokenMcpConfigDialog`，仅打开时拉取（`gcTime:0/staleTime:0`），复制只写剪贴板，区分 agent（含可选 `X-Xuanchu-As`）/ pat / tenant 文案与不可用状态；`/tokens` 每行 prefix 后增加 MCP 配置按钮。
+
+不进入 v0.5.2：
+
+- 不做旧 token 迁移或 backfill，不支持从 hash 反推 raw token。
+- 不改 admin token / acting token 边界，二者仍不能用于 `/mcp`。
+- 不把 raw token 放进列表接口，不支持 token 轮换或 OAuth client credentials flow。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-06-token-mcp-config-design.md
+docs/superpowers/plans/2026-07-06-token-mcp-config-implementation.md
+```
+
 ## v0.1.1：稳定短任务标识 task_slug
 
 **状态：已完成。**
