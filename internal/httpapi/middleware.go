@@ -295,9 +295,12 @@ func isApiWriteMethod(method string) bool {
 // browser session 用于 Web Console 浏览器交互，授权最终由 membership role 决定。
 // 这里只放行浏览器交互必需的 scope，刻意排除：
 //   - impersonate：防止 SSO 用户冒充他人
-//   - token:write：防止 SSO 用户创建长期机器凭证（PAT），绕过 SSO
 //   - sso.config.*（workspace:write）：SSO 配置仅 owner/tenant actor 可改
 //   - user:write：成员页创建用户走 member:write 下的受限聚合流程，不开放全局 user 写权限
+//
+// token:write 对 browser session 放行：owner/admin 需要在 Web Console 创建/修改/吊销
+// PAT / Agent / tenant access token。capability 通过后，token 创建/管理的最终授权仍由
+// app 层 tokenManageAllowed(role) 收紧——仅 owner/admin 可执行，member/viewer 仍被拒绝。
 func browserSessionScopes() []string {
 	return []string{
 		auth.ScopeTaskRead, auth.ScopeTaskWrite,
@@ -308,7 +311,7 @@ func browserSessionScopes() []string {
 		auth.ScopeAuditRead,
 		auth.ScopeUserRead,
 		auth.ScopeMemberRead, auth.ScopeMemberWrite,
-		auth.ScopeTokenRead,
+		auth.ScopeTokenRead, auth.ScopeTokenWrite,
 		auth.ScopeHookRead, auth.ScopeHookWrite,
 		auth.ScopeNotificationRead, auth.ScopeNotificationWrite,
 		auth.ScopeReminderRead, auth.ScopeReminderWrite,

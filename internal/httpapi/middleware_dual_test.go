@@ -129,8 +129,79 @@ func TestCookieCredentialsCurrentRole(t *testing.T) {
 	if !slices.Contains(payload.Data.Capabilities, "member:write") {
 		t.Fatalf("cookie session capabilities = %v, want member:write", payload.Data.Capabilities)
 	}
-	if slices.Contains(payload.Data.Capabilities, "token:write") || slices.Contains(payload.Data.Capabilities, "impersonate") {
+	// token:write 对 browser session 放行：owner/admin 需在 Web Console 创建/管理 token，
+	// 最终授权由 app 层 tokenManageAllowed(role) 收紧。impersonate 仍排除。
+	if !slices.Contains(payload.Data.Capabilities, "token:write") {
+		t.Fatalf("cookie session capabilities = %v, want token:write", payload.Data.Capabilities)
+	}
+	if slices.Contains(payload.Data.Capabilities, "impersonate") {
 		t.Fatalf("cookie session capabilities over-expanded: %v", payload.Data.Capabilities)
+	}
+}
+
+// TestCookieSessionOwnerCanCreateTenantToken 回归：browser session（SSO 登录）放行 token:write 后，
+// owner 可通过 cookie 创建 tenant access token。此前 browserSessionScopes 排除 token:write，
+// 导致 owner 在 Web Console 创建 tenant token 报 403 token_scope_denied。
+func TestCookieSessionOwnerCanCreateTenantToken(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
+	store := srv.store
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("local workspace: %v", err)
+	}
+	user, err := storage.NewUserRepository(store.DB()).GetByName("local")
+	if err != nil {
+		t.Fatalf("get local user: %v", err)
+	}
+	rawSession, rawCSRF := seedBrowserSession(t, store, user.ID, ws.ID)
+
+	body := `{"name":"runtime","scopes":["task:read"],"expires_in_seconds":3600}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant-access-tokens", bytes.NewBufferString(body))
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: rawSession})
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: rawCSRF})
+	req.Header.Set("X-Xuanchu-CSRF", rawCSRF)
+	req.Header.Set("Content-Type", "application/json")
+	srv.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("owner cookie create tenant token status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte(`"token":"xuanchu_tenant_`)) {
+		t.Fatalf("expected tenant token in body, got %s", rr.Body.String())
+	}
+}
+
+// TestCookieSessionMemberCannotCreateTenantToken 锁定 capability 放行后，
+// member 仍被 app 层 tokenManageAllowed(role) 拒绝。
+func TestCookieSessionMemberCannotCreateTenantToken(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
+	store := srv.store
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("local workspace: %v", err)
+	}
+	user, err := storage.NewUserRepository(store.DB()).GetByName("local")
+	if err != nil {
+		t.Fatalf("get local user: %v", err)
+	}
+	// 把 local 降级为 member，验证 app 层 role 收紧仍生效。
+	if err := storage.NewMemberRepository(store.DB()).UpdateRole(user.ID, ws.ID, "member", 100); err != nil {
+		t.Fatalf("demote local to member: %v", err)
+	}
+	rawSession, rawCSRF := seedBrowserSession(t, store, user.ID, ws.ID)
+
+	body := `{"name":"runtime","scopes":["task:read"]}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant-access-tokens", bytes.NewBufferString(body))
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: rawSession})
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: rawCSRF})
+	req.Header.Set("X-Xuanchu-CSRF", rawCSRF)
+	req.Header.Set("Content-Type", "application/json")
+	srv.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("member cookie create tenant token status = %d, want 403, body=%s", rr.Code, rr.Body.String())
 	}
 }
 
