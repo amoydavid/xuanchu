@@ -79,7 +79,7 @@ export function TaskPropertyPanel({
       <PropertyRow label={t("projectReadonly.priority")}>
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.priority")}
-          className="h-7 w-full"
+          className="w-full"
           disabled={!canWrite}
           onSave={async (priority) => {
             await modify.mutateAsync(
@@ -88,6 +88,7 @@ export function TaskPropertyPanel({
           }}
           options={priorityOptions}
           placeholder="-"
+          triggerSize="sm"
           value={task.priority ?? "none"}
         />
       </PropertyRow>
@@ -95,7 +96,7 @@ export function TaskPropertyPanel({
         <InlineDatePicker
           ariaLabel={t("projectReadonly.dueDate")}
           boundary="end"
-          className="h-7"
+          className="w-full"
           disabled={!canWrite}
           onSave={async (due) => {
             await modify.mutateAsync(
@@ -173,7 +174,7 @@ export function TaskPropertyPanel({
       >
         <InlineSelectEditor
           ariaLabel={t("projectReadonly.recur")}
-          className="h-7 w-full"
+          className="w-full"
           disabled={!canWrite}
           onSave={async (recur) => {
             await modify.mutateAsync(
@@ -182,6 +183,7 @@ export function TaskPropertyPanel({
           }}
           options={recurrenceSelectOptions}
           placeholder="-"
+          triggerSize="sm"
           value={task.recur ?? "none"}
         />
         <div className="mt-1 text-xs text-muted-foreground">
@@ -480,7 +482,7 @@ function DateProperty({
       <InlineDatePicker
         ariaLabel={label}
         boundary={boundary}
-        className="h-7"
+        className="w-full"
         disabled={disabled}
         onSave={onSave}
         value={unixLikeToNumber(value)}

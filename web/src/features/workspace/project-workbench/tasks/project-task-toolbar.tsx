@@ -131,7 +131,7 @@ export function ProjectTaskToolbar({
       <div className="flex flex-wrap items-center gap-2">
         <DebouncedInput
           ariaLabel="搜索任务"
-          className="h-9 w-56"
+          className="h-9 w-full sm:w-56"
           key={`q:${filter.q ?? ""}`}
           onCommit={(value) => setFilter("q", value)}
           placeholder="搜索标题、内容"
@@ -221,7 +221,7 @@ export function ProjectTaskToolbar({
         </Select>
         <Popover>
           <PopoverTrigger asChild>
-            <Button size="sm" type="button" variant="outline">
+            <Button size="lg" type="button" variant="outline">
               <SlidersHorizontalIcon />
               更多筛选
             </Button>
@@ -236,9 +236,9 @@ export function ProjectTaskToolbar({
         </Popover>
         {canCreateTask ? (
           <Button
-            className="ml-auto"
+            className="ml-auto w-full sm:w-auto"
             onClick={onCreateTask}
-            size="sm"
+            size="lg"
             type="button"
           >
             <PlusIcon />
@@ -543,18 +543,15 @@ function DateInput({
   onCommit: (value: string) => void
   value: string
 }) {
+  // 复用 shadcn Input（type=date），保持与 Select/文本输入一致的边框、圆角、高度。
+  // 原生 date input 的 placeholder 不可定制，用 aria-label 表达语义。
   return (
-    <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-2 text-sm shadow-xs">
-      <span className="text-xs whitespace-nowrap text-muted-foreground">
-        {ariaLabel}
-      </span>
-      <Input
-        aria-label={ariaLabel}
-        className="h-7 w-32 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
-        onChange={(event) => onCommit(event.target.value)}
-        type="date"
-        value={value}
-      />
-    </label>
+    <Input
+      aria-label={ariaLabel}
+      className="h-9 w-[9.5rem]"
+      onChange={(event) => onCommit(event.target.value)}
+      type="date"
+      value={value}
+    />
   )
 }

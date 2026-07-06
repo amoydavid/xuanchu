@@ -22,6 +22,10 @@ type InlineSelectEditorProps = {
   disabled?: boolean
   placeholder?: string
   className?: string
+  // SelectTrigger 尺寸：默认走 data-[size=default]:h-8；
+  // 传 "sm" 用原生 h-7，避免用 className="h-7" 覆盖时
+  // 因属性选择器 specificity 更高而失效（与 InlineDatePicker 的 size="sm" 对齐）。
+  triggerSize?: "sm" | "default"
 }
 
 export function InlineSelectEditor({
@@ -31,6 +35,7 @@ export function InlineSelectEditor({
   onSave,
   options,
   placeholder,
+  triggerSize = "default",
   value,
 }: InlineSelectEditorProps) {
   const feedback = useEditFeedback()
@@ -60,7 +65,11 @@ export function InlineSelectEditor({
           void save(next)
         }}
       >
-        <SelectTrigger aria-label={ariaLabel} className={className}>
+        <SelectTrigger
+          aria-label={ariaLabel}
+          className={className}
+          size={triggerSize}
+        >
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>

@@ -291,7 +291,7 @@ function ProjectStatsGrid({
     [t("projectReadonly.highPriority"), stats.highPriority],
   ] as const
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="hidden gap-2 grid-cols-2 md:grid lg:grid-cols-5">
       {items.map(([label, value]) => (
         <div className="border bg-card p-3" key={label}>
           <div className="text-xs text-muted-foreground">{label}</div>
