@@ -108,7 +108,7 @@ export function TokenMcpConfigDialog({
 
   return (
     <Dialog onOpenChange={(next) => (next ? null : close())} open={open}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col gap-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PlugIcon className="size-4" />
@@ -119,98 +119,101 @@ export function TokenMcpConfigDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {query.isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-2/3" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        ) : query.isError ? (
-          <p className="text-sm text-destructive">
-            {query.error instanceof ApiError
-              ? query.error.code === "token_secret_unavailable"
-                ? t("token.secretUnavailable")
-                : query.error.code === "config_secret_key_missing"
-                  ? t("token.secretKeyMissing")
-                  : t("token.errors.unknown")
-              : t("token.errors.unknown")}
-          </p>
-        ) : query.data ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={status === "active" ? "default" : "destructive"}
-              >
-                {t(`token.status.${status}`)}
-              </Badge>
-              {status === "revoked" ? (
-                <span className="text-xs text-destructive">
-                  {t("token.mcp.revokedWarning")}
-                </span>
-              ) : null}
-              {status === "expired" ? (
-                <span className="text-xs text-destructive">
-                  {t("token.mcp.expiredWarning")}
-                </span>
-              ) : null}
-            </div>
-
-            <McpField
-              copied={copied}
-              copy={copy}
-              label="endpoint"
-              labelText={t("token.mcpEndpoint")}
-              value={endpoint}
-            />
-            <McpField
-              copied={copied}
-              copy={copy}
-              label="token"
-              labelText={t("token.bearerToken")}
-              value={query.data.token}
-            />
-
+        {/* 内容区单独滚动：header / footer 固定，避免小屏下整窗滚动。min-h-0 让 flex 子项可收缩。 */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {query.isLoading ? (
             <div className="space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">
-                {t("token.mcp.configJson")}
-              </div>
-              <pre className="overflow-x-auto rounded-none border bg-muted p-3 text-xs">
-                <code>{configJson}</code>
-              </pre>
-              <Button
-                onClick={() => copy("config", configJson)}
-                type="button"
-                variant="outline"
-              >
-                {copied === "config" ? (
-                  <CheckIcon className="mr-1 size-4" />
-                ) : (
-                  <CopyIcon className="mr-1 size-4" />
-                )}
-                {t("token.copyConfig")}
-              </Button>
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-24 w-full" />
             </div>
+          ) : query.isError ? (
+            <p className="text-sm text-destructive">
+              {query.error instanceof ApiError
+                ? query.error.code === "token_secret_unavailable"
+                  ? t("token.secretUnavailable")
+                  : query.error.code === "config_secret_key_missing"
+                    ? t("token.secretKeyMissing")
+                    : t("token.errors.unknown")
+                : t("token.errors.unknown")}
+            </p>
+          ) : query.data ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant={status === "active" ? "default" : "destructive"}
+                >
+                  {t(`token.status.${status}`)}
+                </Badge>
+                {status === "revoked" ? (
+                  <span className="text-xs text-destructive">
+                    {t("token.mcp.revokedWarning")}
+                  </span>
+                ) : null}
+                {status === "expired" ? (
+                  <span className="text-xs text-destructive">
+                    {t("token.mcp.expiredWarning")}
+                  </span>
+                ) : null}
+              </div>
 
-            {canImpersonate ? (
+              <McpField
+                copied={copied}
+                copy={copy}
+                label="endpoint"
+                labelText={t("token.mcpEndpoint")}
+                value={endpoint}
+              />
+              <McpField
+                copied={copied}
+                copy={copy}
+                label="token"
+                labelText={t("token.bearerToken")}
+                value={query.data.token}
+              />
+
               <div className="space-y-2">
                 <div className="text-xs font-medium text-muted-foreground">
-                  {t("token.mcp.optionalHeaders")}
+                  {t("token.mcp.configJson")}
                 </div>
                 <pre className="overflow-x-auto rounded-none border bg-muted p-3 text-xs">
-                  <code>{`{\n  "X-Xuanchu-As": "<user-name-or-email>"\n}`}</code>
+                  <code>{configJson}</code>
                 </pre>
+                <Button
+                  onClick={() => copy("config", configJson)}
+                  type="button"
+                  variant="outline"
+                >
+                  {copied === "config" ? (
+                    <CheckIcon className="mr-1 size-4" />
+                  ) : (
+                    <CopyIcon className="mr-1 size-4" />
+                  )}
+                  {t("token.copyConfig")}
+                </Button>
               </div>
-            ) : null}
 
-            <p className="text-xs text-muted-foreground">
-              {tokenType === "agent"
-                ? t("token.mcp.agentHint")
-                : tokenType === "pat"
-                  ? t("token.mcp.patHint")
-                  : t("token.mcp.tenantHint")}
-            </p>
-          </div>
-        ) : null}
+              {canImpersonate ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {t("token.mcp.optionalHeaders")}
+                  </div>
+                  <pre className="overflow-x-auto rounded-none border bg-muted p-3 text-xs">
+                    <code>{`{\n  "X-Xuanchu-As": "<user-name-or-email>"\n}`}</code>
+                  </pre>
+                </div>
+              ) : null}
+
+              <p className="text-xs text-muted-foreground">
+                {tokenType === "agent"
+                  ? t("token.mcp.agentHint")
+                  : tokenType === "pat"
+                    ? t("token.mcp.patHint")
+                    : t("token.mcp.tenantHint")}
+              </p>
+            </div>
+          ) : null}
+        </div>
 
         <div className="flex justify-end pt-2">
           <Button onClick={close} type="button" variant="outline">
