@@ -3,6 +3,7 @@ import type React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
+import { useBrandName } from "@/brand/BrandContext"
 import { DataTable } from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ type OverviewPageProps = {
 
 export function OverviewPage({ me }: OverviewPageProps) {
   const { t } = useTranslation()
+  const brandName = useBrandName()
   const queryClient = useQueryClient()
   const tasks = useQuery({
     queryKey: ["overview", "tasks"],
@@ -78,7 +80,7 @@ export function OverviewPage({ me }: OverviewPageProps) {
     <div className="space-y-5">
       <PageHeader
         title={t("page.overview")}
-        description={t("app.description")}
+        description={t("app.description", { brand: brandName })}
       />
       <section className="grid gap-3 md:grid-cols-3">
         {[

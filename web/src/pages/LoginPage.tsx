@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react"
 import type { FormEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "@tanstack/react-router"
 
 import { useBrandName } from "@/brand/BrandContext"
+import { AuthFrame } from "@/components/auth/AuthFrame"
+import { OrSeparator } from "@/components/auth/OrSeparator"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ProductLogo } from "@/components/ProductLogo"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { adminApiGet } from "@/features/admin/session/admin-api"
+import { setAdminToken } from "@/features/admin/session/admin-token"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import { setWorkspaceToken } from "@/features/workspace/session/workspace-token"
+import { ApiError } from "@/lib/api"
 
 type LoginPageProps = {
   onSignedIn: () => void
@@ -20,6 +26,13 @@ type LoginPageProps = {
 interface SsoWorkspaceInfo {
   slug: string
   name: string
+}
+
+// 超管 token 前缀。前端只按前缀做 UX 分流，后端会再次校验 token 类型。
+const ADMIN_TOKEN_PREFIX = "xuanchu_admin_"
+
+function isAdminCredential(value: string): boolean {
+  return value.startsWith(ADMIN_TOKEN_PREFIX)
 }
 
 export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
@@ -50,20 +63,43 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
       })
   }, [])
 
+  // 按凭证前缀分流：超管走 admin 存储 + admin 校验 + 整页跳转 /admin；
+  // 其余（PAT / tenant）走 workspace 存储 + credentials/current 校验。
+  // 整页跳转是因为 admin token 不在 WorkspaceRootRoute 的登录态判定里，
+  // 必须让 AdminGuardRoute 重新初始化才能识别。
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const trimmed = token.trim()
     setSubmitting(true)
     setError(null)
     try {
-      setWorkspaceToken(token.trim())
+      if (isAdminCredential(trimmed)) {
+        setAdminToken(trimmed)
+        await adminApiGet("/api/v1/admin/session")
+        // 整页跳转：admin token 不在 WorkspaceRootRoute 的登录态判定里，
+        // 必须让 AdminGuardRoute 重新初始化才能识别。
+        window.location.href = "/admin"
+        return
+      }
+      setWorkspaceToken(trimmed)
       await workspaceApiGet("/api/v1/credentials/current")
       onSignedIn()
-    } catch {
+    } catch (err) {
+      // admin 分支保留 setup_required 语义：该错误码映射到独立 /admin/login 页，
+      // 由它兜底 setup 视图切换。
+      if (err instanceof ApiError && err.code === "admin_setup_required") {
+        window.location.href = "/admin/login"
+        return
+      }
       setError(t("auth.failed"))
     } finally {
       setSubmitting(false)
     }
   }
+
+  const showSso = !!ssoWorkspace
+  // 有 SSO 时凭证登录折叠为二级入口；无 SSO 时直接展开，避免落地空页。
+  const tokenExpanded = !showSso
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -74,65 +110,18 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
           <ThemeToggle />
         </div>
       </div>
-      <div className="mx-auto flex min-h-[calc(100svh-3rem)] max-w-md flex-col justify-center px-6">
-        <div className="mb-6">
-          <ProductLogo
-            className="mb-5"
-            markClassName="size-14"
-            showWordmark={false}
-          />
-          <h1 className="text-xl font-semibold tracking-normal">
-            {t("auth.signInTitle", { brand: brandName })}
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {t("auth.sessionOnly")}
-          </p>
-          {redirectPath ? (
-            <div className="mt-4 border bg-card p-3 text-xs">
-              <div className="text-muted-foreground">{t("auth.continueTo")}</div>
-              <code className="mt-1 block break-all text-foreground">
-                {redirectPath}
-              </code>
-            </div>
-          ) : null}
-        </div>
-        <form className="space-y-4" onSubmit={submit}>
-          <div className="space-y-2">
-            <label htmlFor="token" className="text-sm font-medium">
-              {t("auth.tokenLabel")}
-            </label>
-            <input
-              autoComplete="off"
-              id="token"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              onChange={(event) => setTokenValue(event.target.value)}
-              placeholder={t("auth.tokenPlaceholder")}
-              type="password"
-              value={token}
-            />
+      <AuthFrame title={t("auth.signInTitle", { brand: brandName })} description={t("auth.sessionOnly")}>
+        {redirectPath ? (
+          <div className="mb-4 border bg-card p-3 text-xs">
+            <div className="text-muted-foreground">{t("auth.continueTo")}</div>
+            <code className="mt-1 block break-all text-foreground">
+              {redirectPath}
+            </code>
           </div>
-          {error ? (
-            <Alert variant="destructive">
-              <AlertTitle>{t("common.error")}</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-          <Button disabled={submitting || token.trim() === ""} type="submit">
-            {t("auth.signIn")}
-          </Button>
-          <div>
-            <Link
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-              to="/admin/login"
-            >
-              {t("auth.adminLoginLink")}
-            </Link>
-          </div>
-        </form>
+        ) : null}
 
-        {/* OIDC 一键登录（仅有唯一 OIDC workspace 时显示） */}
-        {ssoWorkspace ? (
-          <div className="border-t pt-4">
+        {showSso ? (
+          <div className="space-y-1">
             {ssoError ? (
               <Alert variant="destructive" className="mb-3">
                 <AlertDescription>{ssoError}</AlertDescription>
@@ -140,17 +129,78 @@ export function LoginPage({ onSignedIn, redirectPath }: LoginPageProps) {
             ) : null}
             <Button
               type="button"
-              variant="outline"
               className="w-full"
               onClick={() => {
-                window.location.href = `/sso/oidc/start?workspace=${encodeURIComponent(ssoWorkspace.slug)}`
+                if (ssoWorkspace) {
+                  window.location.href = `/sso/oidc/start?workspace=${encodeURIComponent(ssoWorkspace.slug)}`
+                }
               }}
             >
-              {t("sso.quickLogin", { name: ssoWorkspace.name })}
+              {t("sso.quickLogin", { name: ssoWorkspace?.name })}
             </Button>
+            <OrSeparator label={t("auth.or")} />
           </div>
         ) : null}
-      </div>
+
+        {tokenExpanded ? (
+          <form className="space-y-4" onSubmit={submit}>
+            <div className="space-y-2">
+              <Label htmlFor="token">{t("auth.tokenLabel")}</Label>
+              <Input
+                autoComplete="off"
+                id="token"
+                onChange={(event) => setTokenValue(event.target.value)}
+                type="password"
+                value={token}
+              />
+            </div>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>{t("common.error")}</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            <Button
+              className="w-full"
+              disabled={submitting || token.trim() === ""}
+              type="submit"
+            >
+              {t("auth.signIn")}
+            </Button>
+          </form>
+        ) : (
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+              {t("auth.tokenLoginToggle")}
+            </summary>
+            <form className="mt-3 space-y-4" onSubmit={submit}>
+              <div className="space-y-2">
+                <Label htmlFor="token">{t("auth.tokenLabel")}</Label>
+                <Input
+                  autoComplete="off"
+                  id="token"
+                  onChange={(event) => setTokenValue(event.target.value)}
+                  type="password"
+                  value={token}
+                />
+              </div>
+              {error ? (
+                <Alert variant="destructive">
+                  <AlertTitle>{t("common.error")}</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+              <Button
+                className="w-full"
+                disabled={submitting || token.trim() === ""}
+                type="submit"
+              >
+                {t("auth.signIn")}
+              </Button>
+            </form>
+          </details>
+        )}
+      </AuthFrame>
     </main>
   )
 }
