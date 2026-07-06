@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { PlusIcon, SlidersHorizontalIcon, XIcon } from "lucide-react"
+import { CalendarIcon, PlusIcon, SlidersHorizontalIcon, XIcon } from "lucide-react"
+import { parseISO } from "date-fns"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
@@ -21,6 +23,7 @@ import {
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { TaskFilter } from "@/features/workspace/project-readonly/project-filter"
 import { activeFilterEntries } from "@/features/workspace/project-readonly/project-filter"
+import { formatLocalDate } from "../shared/date-boundary"
 import { i18n } from "@/i18n"
 
 type ProjectTaskToolbarProps = {
@@ -543,15 +546,64 @@ function DateInput({
   onCommit: (value: string) => void
   value: string
 }) {
-  // 复用 shadcn Input（type=date），保持与 Select/文本输入一致的边框、圆角、高度。
-  // 原生 date input 的 placeholder 不可定制，用 aria-label 表达语义。
+  // shadcn 风格日期选择器：Popover + Calendar（react-day-picker）。
+  // value 是 URL 里的 YYYY-MM-DD 字符串；与 Date 互转用 date-fns。
+  // 触发器用 outline Button，高度与 Select/Input 等 h-9 控件一致。
+  const [open, setOpen] = useState(false)
+  const selected = parseISOOptional(value)
+  const commit = (next: Date | undefined) => {
+    onCommit(next ? formatLocalDate(next) : "")
+    setOpen(false)
+  }
   return (
-    <Input
-      aria-label={ariaLabel}
-      className="h-9 w-[9.5rem]"
-      onChange={(event) => onCommit(event.target.value)}
-      type="date"
-      value={value}
-    />
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={ariaLabel}
+          className="h-9 w-[9.5rem] justify-start font-normal"
+          data-empty={!selected}
+          size="lg"
+          type="button"
+          variant="outline"
+        >
+          <CalendarIcon />
+          {selected ? (
+            formatLocalDate(selected)
+          ) : (
+            <span className="text-muted-foreground">{ariaLabel}</span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          captionLayout="dropdown"
+          defaultMonth={selected ?? undefined}
+          mode="single"
+          onSelect={commit}
+          selected={selected ?? undefined}
+        />
+        {selected ? (
+          <div className="border-t p-2">
+            <Button
+              className="w-full justify-start"
+              onClick={() => commit(undefined)}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <XIcon data-icon="inline-start" />
+              清除
+            </Button>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   )
+}
+
+// parseISOOptional：把 YYYY-MM-DD 解析为本地 Date；空串或非法返回 undefined。
+function parseISOOptional(value: string): Date | undefined {
+  if (!value) return undefined
+  const parsed = parseISO(value)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
