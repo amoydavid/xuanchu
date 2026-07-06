@@ -664,6 +664,14 @@ shared config 现在分成两层：
 - `project config`
   - 写 project scope 的显式值
 
+**project 扩展信息的承载方式**：project 目前没有类似 task UDA 的自由扩展属性机制（`Project.SettingsJSON` 是未启用的死字段），也没有 project 级别的外部链接表。要给 project 附加自定义信息（例如关联的外部系统、业务属性、Agent 背景等），统一使用 `project config`：
+
+- schema（`config schema`）是 workspace 级契约，决定哪些 key 能在 project 上使用、值类型、是否 secret。
+- 具体值存在 `configs` 表，按 `(workspace, scope=project, scope_id=project.ID, key)` 四元组隔离，**每个 project 独立**，互不影响。
+- 读取链是三级回退：`project 显式值 > workspace 显式值 > schema default`，因此 workspace 级的值会作为所有 project 的默认值。
+- 约束：每个 key 必须先有允许 `project` scope 的 schema 才能写入；单个 value 是字符串，结构化数据需自行编码（如把 JSON 字符串存进去）。
+- 归档/取消的 project 禁止写 config。
+
 典型流程：
 
 ```bash
