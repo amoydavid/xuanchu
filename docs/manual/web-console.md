@@ -65,6 +65,7 @@ v0.5.0 起新增 workspace 级 OIDC 单点登录（SSO）入口：
 - **通讯录同步**：保存配置后点「立即同步成员」，后台 dispatcher 用 OIDC `client_id` + `client_secret` 走 `client_credentials` grant 向 yaoguang token endpoint 自动换取访问 token，再调 `GET /api/orgs/{org_id}/directory/members` 拉取全量成员，建立本地 user、`UserExternalID`（yaoguang sub + feishu/wecom/dingtalk user_id）与 membership。`status=disabled` 的成员其 membership 会被移除（user 保留）。同步任务持久化在 `directory_sync_jobs` 表，重启不丢。
 - **OIDC 登录**：成员在登录页输入 workspace slug 后点「OIDC 单点登录」，跳转 yaoguang 完成 Auth Code Flow + PKCE；回调后 id_token 的 sub 命中本地 `UserExternalID` 即建立 browser session，下发 `xuanchu_session`（HttpOnly）与 `xuanchu_csrf` 两个 cookie，回到 Console。未命中映射则拒绝（不自动开通账号）。
 - **browser session 与 CSRF**：OIDC 登录后的请求用 cookie 鉴权，授权仍由本地 membership role 决定。写操作（POST/PUT/PATCH/DELETE `/api/v1/*`）必须同时携带 `X-Xuanchu-CSRF` 头，与 `xuanchu_csrf` cookie 匹配并通过服务端校验；缺 CSRF 返回 403 `csrf_invalid`。`/mcp`、`/api/v1/admin/*` 不接受 cookie，只接受 Bearer。CLI、Remote Client 和外部自动化继续使用 PAT/Agent/tenant token。
+- **SSO 创建的 token 与 Console 登录**：通过 SSO browser session 在 `/tokens` 创建的 PAT / Agent token 会被标记 `web_login_disabled`，不能再用于 Web Console 登录页登录（后端在 `credentials/current` 校验时返回 403 `token_web_login_disabled`，登录页提示「请使用 SSO 登录」）。这些 token 在 HTTP API、HTTP MCP、远程 CLI、stdio MCP 等场景仍正常可用。tenant token、CLI/Bearer 创建的 PAT 不受影响。该边界是为了防止 SSO 用户用 PAT 绕过 SSO 登录 Console。
 
 Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` 控制面中间件，不进入普通业务 Authorization Decision：它不能访问任务、项目、通知、Hook 或 MCP 接口，只用于部署期创建 workspace 和 workspace-scoped Agent token。普通 PAT / Agent token 同样不能访问 admin 控制面。
 

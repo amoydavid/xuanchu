@@ -491,6 +491,33 @@ docs/superpowers/specs/2026-07-06-token-mcp-config-design.md
 docs/superpowers/plans/2026-07-06-token-mcp-config-implementation.md
 ```
 
+## v0.5.3：browser session token:write 放开与 SSO token Console 登录限制
+
+**状态：已完成。**
+
+放开 `browserSessionScopes` 的 `token:write`（修复 owner 通过 SSO 登录后在 Web Console 创建 tenant token 报 403），并用「按创建来源打标」替代「一刀切禁 token:write」守住「防止 SSO 用户用 PAT 绕过 SSO 登录 Console」边界。
+
+当前范围：
+
+- `browserSessionScopes` 放行 `token:write`；capability 通过后最终授权仍由 app 层 `tokenManageAllowed(role)` 收紧为 owner/admin，member/viewer 仍被拒。
+- `api_tokens` 新增 `web_login_disabled` 标记；SSO browser session 创建的 PAT / Agent token 自动打标（含 admin/owner），tenant token 不打标。
+- `RuntimeContext` 新增 `WebLoginDisabled`；`scopedServiceFor` 根据 token type（`browser_session`）透传到 `authorized.Runtime`，`createTokenStored` 据此打标。
+- `TokenView` 透传标记；`handleCredentialsCurrent` user 分支对打标 token 返回 403 `token_web_login_disabled`（后端兜底拒绝，防止前端绕过）。
+- 打标 token 仅禁 Console 登录入口，HTTP API / HTTP MCP / 远程 CLI / stdio MCP 等场景仍正常可用。
+- `LoginPage` 按 `ApiError.code` 映射 i18n 文案，新增 `auth.errors.token_web_login_disabled`；未命中码回退 `auth.failed`。
+
+不进入 v0.5.3：
+
+- 不提供「标记改写」API（标记只在创建时写入）。
+- 不引入 workspace 级「强制 SSO」开关（独立功能）。
+- 不回退 v0.5.2 的 `token:write` 放开（本方案建立在其之上）。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-07-06-sso-token-web-login-disabled-design.md
+```
+
 ## v0.1.1：稳定短任务标识 task_slug
 
 **状态：已完成。**
