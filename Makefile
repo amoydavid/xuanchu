@@ -2,7 +2,18 @@ CGO_ENABLED ?= 0
 BINARY := xuanchu
 CMD := ./cmd/xuanchu
 VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
-LDFLAGS := $(if $(VERSION),-ldflags "-X main.version=$(VERSION)",)
+
+# OEM 品牌名注入（留空使用代码默认值 璇础/Xuanchu）
+# 打包示例：make build BRAND_NAME_ZH="ACME平台" BRAND_NAME_EN="ACME"
+BRAND_NAME_ZH ?=
+BRAND_NAME_EN ?=
+
+BRAND_LDFLAGS := $(if $(BRAND_NAME_ZH),-X git.dajee.net/dajee/xuanchu/internal/branding.NameZh=$(BRAND_NAME_ZH),) \
+  $(if $(BRAND_NAME_EN),-X git.dajee.net/dajee/xuanchu/internal/branding.NameEn=$(BRAND_NAME_EN),)
+
+# 合并所有非空 ldflags 片段（VERSION 与 BRAND_*）。
+LDFLAGS_PARTS := $(strip $(if $(VERSION),-X main.version=$(VERSION),) $(BRAND_LDFLAGS))
+LDFLAGS := $(if $(LDFLAGS_PARTS),-ldflags "$(LDFLAGS_PARTS)",)
 
 GOOS   ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
