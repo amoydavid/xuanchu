@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  normalizeProjectConfigEntries,
   projectAnnotationPath,
   projectAnnotationsPath,
   projectConfigKeyPath,
@@ -78,5 +79,33 @@ describe("project workbench project api paths", () => {
     expect(projectAnnotationPath("local", "adsops", "an-1")).toBe(
       "/api/v1/projects/adsops/annotations/an-1?workspace=local"
     )
+  })
+})
+
+describe("normalizeProjectConfigEntries", () => {
+  it("归一化后端返回的对象形态为按 key 排序的数组", () => {
+    const entries = normalizeProjectConfigEntries({
+      "agent.background": "Owns MCP",
+      "ads.roi": "1.8",
+    })
+    expect(entries).toEqual([
+      { key: "ads.roi", value: "1.8" },
+      { key: "agent.background", value: "Owns MCP" },
+    ])
+  })
+
+  it("已是数组时原样返回", () => {
+    const input = [{ key: "agent.background", value: "Owns MCP" }]
+    expect(normalizeProjectConfigEntries(input)).toBe(input)
+  })
+
+  it("null/undefined 返回空数组", () => {
+    expect(normalizeProjectConfigEntries(null)).toEqual([])
+    expect(normalizeProjectConfigEntries(undefined)).toEqual([])
+  })
+
+  it("非对象原始值返回空数组", () => {
+    expect(normalizeProjectConfigEntries("hello")).toEqual([])
+    expect(normalizeProjectConfigEntries(42)).toEqual([])
   })
 })
