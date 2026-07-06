@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -13,6 +14,12 @@ import { i18n } from "@/i18n"
 import { renderWithRouter } from "@/test/router-wrapper"
 
 import { WorkspaceRootRoute } from "./WorkspaceRootRoute"
+
+// 整页跳转（SSO 登出分支会用）。mock 模块以 spy 调用。
+const navigateSpy = vi.fn()
+vi.mock("@/lib/browser-navigation", () => ({
+  navigateToDocument: (path: string) => navigateSpy(path),
+}))
 
 function renderRoute() {
   const queryClient = new QueryClient({
@@ -151,5 +158,71 @@ describe("WorkspaceRootRoute acting mode", () => {
     await waitFor(() => {
       expect(screen.getByText(/系统身份 \/ runtime-prod/)).toBeTruthy()
     })
+  })
+})
+
+describe("WorkspaceRootRoute SSO logout", () => {
+  beforeEach(async () => {
+    sessionStorage.clear()
+    // 模拟 SSO cookie 模式：xuanchu_csrf 由后端 SSO 登录写入（非 HttpOnly）。
+    document.cookie = "xuanchu_csrf=abc; path=/"
+    navigateSpy.mockClear()
+    await i18n.changeLanguage("zh-CN")
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    // 清掉 cookie（jsdom 无法精确删除，覆盖为过期）。
+    document.cookie = "xuanchu_csrf=; path=/; max-age=0"
+  })
+
+  it("SSO 模式点退出会调后端 /auth/logout（带 CSRF header）并整页跳转（回归）", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input: URL | RequestInfo) => {
+        const url = typeof input === "string" ? input : String(input)
+        // credentials/current 由 useMe 拉取，返回正常用户
+        if (url.includes("/api/v1/credentials/current")) {
+          return credentialsCurrentResponse()
+        }
+        // logout 端点返回 200（redirect:"manual" 下 fetch 拿到的是 opaque 响应，
+        // 这里给个 200 即可，调用方不读 body）
+        if (url.includes("/auth/logout")) {
+          return Promise.resolve(new Response("", { status: 200 }))
+        }
+        return Promise.resolve(new Response("{}", { status: 200 }))
+      })
+
+    renderRoute()
+
+    // 等 AppShell 渲染出用户信息（说明已判定 signedIn=true）
+    await waitFor(() => {
+      expect(screen.getByText(/Alice/)).toBeTruthy()
+    })
+
+    // 点击左下角退出
+    const logoutButtons = screen.getAllByRole("button", { name: "退出" })
+    expect(logoutButtons.length).toBeGreaterThan(0)
+    await userEvent.click(logoutButtons[0])
+
+    // 等待 async onLogout 完成
+    await waitFor(() => {
+      expect(navigateSpy).toHaveBeenCalledWith("/")
+    })
+
+    // 验证确实发起了 logout，且带正确的 CSRF header（double-submit）
+    const logoutCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/auth/logout")
+    )
+    expect(logoutCall).toBeTruthy()
+    const init = logoutCall?.[1] as RequestInit | undefined
+    expect(init?.method).toBe("POST")
+    expect((init?.headers as Record<string, string>)["X-Xuanchu-CSRF"]).toBe(
+      "abc"
+    )
+    // redirect: manual，避免跟随 302
+    expect(init?.redirect).toBe("manual")
+
+    fetchMock.mockRestore()
   })
 })

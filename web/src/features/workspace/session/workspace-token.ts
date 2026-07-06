@@ -104,3 +104,39 @@ export function clearTenantSwitchSession(): void {
   clearWorkspaceToken()
   clearTenantSwitchContext()
 }
+
+// SSO / OIDC browser session 模式
+// -----
+// 与 sessionStorage token 模式不同，SSO 登录态存在两个 cookie：
+// - xuanchu_session（HttpOnly，JS 不可读、不可清，必须由后端清）
+// - xuanchu_csrf（JS 可读，作为 double-submit 证据）
+// 因此登出时必须调后端 POST /auth/logout，仅清 sessionStorage 无效。
+
+const csrfCookieName = "xuanchu_csrf"
+
+// hasSsoBrowserSession 检测是否存在 xuanchu_csrf cookie。
+// 存在即说明当前是 OIDC browser session 模式（SSO 登录后由后端写入）。
+export function hasSsoBrowserSession(): boolean {
+  if (typeof document === "undefined") return false
+  return document.cookie.split("; ").some((row) => row.startsWith(`${csrfCookieName}=`))
+}
+
+function readCsrfCookie(): string | undefined {
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${csrfCookieName}=`))
+  return match?.split("=")[1]
+}
+
+// endSsoBrowserSession 调用后端 POST /auth/logout 清除 session/csrf cookie。
+// 后端要求 X-Xuanchu-CSRF header 与 cookie 值相等（double-submit CSRF）。
+// 用 redirect:"manual" 避免浏览器跟随 302 去抓 HTML（fetch 会按 JSON 解析报错）。
+export async function endSsoBrowserSession(): Promise<void> {
+  const csrf = readCsrfCookie()
+  await fetch("/auth/logout", {
+    method: "POST",
+    headers: csrf ? { "X-Xuanchu-CSRF": csrf } : {},
+    credentials: "same-origin",
+    redirect: "manual",
+  })
+}

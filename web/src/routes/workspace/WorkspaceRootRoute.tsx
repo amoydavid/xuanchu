@@ -11,9 +11,12 @@ import {
   clearTenantSwitchContext,
   clearTenantSwitchSession,
   getTenantSwitchContext,
+  hasSsoBrowserSession,
+  endSsoBrowserSession,
 } from "@/features/workspace/session/workspace-token"
 import { useMe } from "@/features/workspace/session/useMe"
 import { LoginPage } from "@/pages/LoginPage"
+import { navigateToDocument } from "@/lib/browser-navigation"
 import { ApiError } from "@/lib/api"
 
 export function WorkspaceRootRoute() {
@@ -68,18 +71,37 @@ export function WorkspaceRootRoute() {
 
   return (
     <AppShell
-      onLogout={() => {
-        // acting mode 退出只清 acting session（admin token 留给超管控制面）；
-        // 普通模式清 workspace token。
-        if (getAdminActingToken() !== null) {
+      onLogout={async () => {
+        // 登出分三种模式，先记录再清理：
+        // - acting mode：退出只清 acting session（admin token 留给超管控制面）。
+        // - tenant switch：清 tenant session。
+        // - 普通模式：清 workspace token。
+        // - SSO cookie 模式（无上述 token，但有 OIDC session cookie）：
+        //   必须调后端 POST /auth/logout 清 HttpOnly cookie，否则刷新后仍为登录态。
+        const wasActing = getAdminActingToken() !== null
+        const wasTenant = getTenantSwitchContext() !== null
+        const wasSso = !wasActing && !wasTenant && hasSsoBrowserSession()
+
+        if (wasActing) {
           clearAdminActingSession()
-        } else if (getTenantSwitchContext() !== null) {
+        } else if (wasTenant) {
           clearTenantSwitchSession()
         } else {
           clearWorkspaceToken()
           clearTenantSwitchContext()
         }
         queryClient.clear()
+
+        if (wasSso) {
+          // SSO 模式：清后端 cookie 后整页跳转，避免 signedIn state 残留。
+          try {
+            await endSsoBrowserSession()
+          } catch {
+            // cookie 可能已失效，忽略错误，继续整页跳转到登录页。
+          }
+          navigateToDocument("/")
+          return
+        }
         setSignedIn(false)
       }}
       onRefresh={() => void queryClient.invalidateQueries()}
