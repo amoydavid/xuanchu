@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from "vitest"
 import "@/i18n"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 
-import { TokenForm } from "./token-form"
+import { TokenForm, valuesToCreateInput } from "./token-form"
+import type { TokenFormValues } from "./token-api"
 
 vi.mock("@/features/workspace/session/workspace-api", () => ({
   workspaceApiGet: vi.fn(),
@@ -58,5 +59,28 @@ describe("TokenForm", () => {
     await userEvent.click(checkbox)
 
     expect(checkbox.getAttribute("aria-checked")).toBe("true")
+  })
+
+  describe("valuesToCreateInput user field", () => {
+    const base: TokenFormValues = {
+      name: "ci",
+      type: "pat",
+      user: "",
+      workspaces: [],
+      scopes: ["task:read"],
+      projects: [],
+      expiresPreset: "never",
+      expiresAt: "",
+    }
+
+    it("omits user when empty (token belongs to actor)", () => {
+      const input = valuesToCreateInput(base)
+      expect("user" in input).toBe(false)
+    })
+
+    it("includes user when admin picks a target member", () => {
+      const input = valuesToCreateInput({ ...base, user: "u-zhang" })
+      expect(input.user).toBe("u-zhang")
+    })
   })
 })

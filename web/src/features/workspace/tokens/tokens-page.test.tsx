@@ -74,12 +74,35 @@ function credentialCurrentResponse(
 ) {
   return {
     actor_type: "user",
-    actor: { name: "local" },
+    actor: { id: "u-admin", name: "local" },
     token: { type: "pat", scopes: ["token:read", "token:write"] },
     effective_workspace: { slug: "local" },
     effective_role: "owner",
     ...overrides,
   }
+}
+
+function membersResponse() {
+  return [
+    {
+      user_id: "u-admin",
+      name: "admin",
+      display_name: "管理员",
+      email: "admin@example.com",
+      role: "owner",
+      joined_at: 1,
+      modified_at: 1,
+    },
+    {
+      user_id: "u-zhang",
+      name: "zhangsan",
+      display_name: "张三",
+      email: "zhangsan@example.com",
+      role: "member",
+      joined_at: 1,
+      modified_at: 1,
+    },
+  ]
 }
 
 describe("TokensPage", () => {
@@ -422,6 +445,143 @@ describe("TokensPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/发生错误/)).toBeTruthy()
+    })
+
+    fetchMock.mockRestore()
+  })
+
+  it("shows owner user field in create dialog for admin", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/api/v1/workspaces/") && url.includes("/members")) {
+          return okResponse(membersResponse())
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("ci-deploy")).toBeTruthy()
+    })
+    await userEvent.click(screen.getByText("创建 Token"))
+
+    await waitFor(() => {
+      expect(screen.getByText("归属用户")).toBeTruthy()
+    })
+    // 默认「我自己」：列表筛选器和创建弹窗各有一个 UserPicker，均默认显示「我自己」
+    expect(screen.getAllByText(/我自己/).length).toBeGreaterThanOrEqual(1)
+
+    fetchMock.mockRestore()
+  })
+
+  it("hides owner user field for member role", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(
+            credentialCurrentResponse({
+              effective_role: "member",
+              actor: { id: "u-member", name: "member" },
+            })
+          )
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("ci-deploy")).toBeTruthy()
+    })
+    await userEvent.click(screen.getByText("创建 Token"))
+
+    await waitFor(() => {
+      expect(screen.queryByText("归属用户")).toBeNull()
+    })
+    // member 不显示列表筛选器
+    expect(screen.queryByText("查看用户")).toBeNull()
+
+    fetchMock.mockRestore()
+  })
+
+  it("shows view user filter for admin", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/api/v1/workspaces/") && url.includes("/members")) {
+          return okResponse(membersResponse())
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([makeToken()])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("查看用户")).toBeTruthy()
+    })
+
+    fetchMock.mockRestore()
+  })
+
+  it("requests tokens filtered by user when filter changes", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input)
+        if (url.includes("/api/v1/credentials/current")) {
+          return okResponse(credentialCurrentResponse())
+        }
+        if (url.includes("/api/v1/workspaces/") && url.includes("/members")) {
+          return okResponse(membersResponse())
+        }
+        if (url.includes("/api/v1/tokens")) {
+          return okResponse([
+            makeToken({ name: "zhang-token", id: "tok-zhang" }),
+          ])
+        }
+        return okResponse([])
+      })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText("查看用户")).toBeTruthy()
+    })
+    // 打开筛选器（列表顶部的 combobox）
+    const filterCombobox = screen.getAllByRole("combobox")[0]
+    await userEvent.click(filterCombobox)
+    await waitFor(() => {
+      expect(screen.getByText("张三")).toBeTruthy()
+    })
+    await userEvent.click(screen.getByText("张三"))
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some((call) =>
+          String(call[0]).includes("/api/v1/tokens?user=u-zhang")
+        )
+      ).toBe(true)
     })
 
     fetchMock.mockRestore()

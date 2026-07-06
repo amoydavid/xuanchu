@@ -16,6 +16,7 @@ import {
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 
 import { ScopeEditor } from "./scope-editor"
+import { UserPicker } from "./user-picker"
 import {
   expiresSecondsToPreset,
   presetToExpiresSeconds,
@@ -35,6 +36,7 @@ type TokenFormProps = {
   onSubmit: (values: TokenFormValues) => void
   submitting?: boolean
   canImpersonate?: boolean
+  canManageUsers?: boolean
 }
 
 function defaultValues(
@@ -56,6 +58,7 @@ function defaultValues(
   return {
     name: "",
     type: "pat",
+    user: "",
     workspaces: [],
     scopes: [],
     projects: [],
@@ -70,6 +73,7 @@ export function TokenForm({
   onSubmit,
   submitting = false,
   canImpersonate = false,
+  canManageUsers = false,
 }: TokenFormProps) {
   const { t } = useTranslation()
   const [values, setValues] = useState<TokenFormValues>(() =>
@@ -123,7 +127,14 @@ export function TokenForm({
       >
         <Select
           disabled={mode === "edit"}
-          onValueChange={(v) => update("type", v)}
+          onValueChange={(v) =>
+            setValues((prev) => ({
+              ...prev,
+              type: v,
+              // 切换到 agent 时清空归属用户（仅 PAT 支持代为创建）
+              user: v === "pat" ? prev.user : "",
+            }))
+          }
           value={values.type}
         >
           <SelectTrigger aria-label={t("token.field.type")}>
@@ -135,6 +146,18 @@ export function TokenForm({
           </SelectContent>
         </Select>
       </Field>
+
+      {mode === "create" && canManageUsers && values.type === "pat" ? (
+        <Field
+          hint={t("token.field.userHint")}
+          label={t("token.field.user")}
+        >
+          <UserPicker
+            onChange={(userId) => update("user", userId)}
+            value={values.user ?? ""}
+          />
+        </Field>
+      ) : null}
 
       <Field label={t("token.field.workspaces")}>
         <WorkspacePicker
@@ -308,6 +331,8 @@ export function valuesToCreateInput(values: TokenFormValues) {
   return {
     name: values.name.trim(),
     type: values.type,
+    // 仅 PAT + admin/owner 代为创建时有值；空字符串不发 user（后端默认归属 actor）
+    ...(values.user ? { user: values.user } : {}),
     scopes: values.scopes,
     workspaces: values.workspaces,
     projects: values.projects,

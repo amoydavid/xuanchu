@@ -18,12 +18,14 @@ type TokenCreateDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   canImpersonate?: boolean
+  canManageUsers?: boolean
 }
 
 export function TokenCreateDialog({
   open,
   onOpenChange,
   canImpersonate = false,
+  canManageUsers = false,
 }: TokenCreateDialogProps) {
   const { t } = useTranslation()
   const [rawToken, setRawToken] = useState<string | null>(null)
@@ -48,6 +50,7 @@ export function TokenCreateDialog({
           <>
             <TokenForm
               canImpersonate={canImpersonate}
+              canManageUsers={canManageUsers}
               mode="create"
               onSubmit={(values) => {
                 setError(null)

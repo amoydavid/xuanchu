@@ -77,6 +77,8 @@ Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` �
 
 每个 token 行的 prefix 后都有一个「MCP 配置」按钮。点击后弹窗按需调用 `GET /api/v1/tokens/{ref}/mcp-config`（租户 token 走 `/api/v1/tenant-access-tokens/{ref}/mcp-config`），reveal 当前 token 的完整明文和 HTTP MCP 客户端配置片段。raw token 不会进入列表响应；reveal 是显式动作，受 `token:read` 与当前 token 的 workspace / project allowlist 限制，并记录审计。服务端需要配置 `[security].config_secret_key` 才能保存可恢复密文；缺失时创建会直接报 `config_secret_key_missing`，旧 token reveal 报 `token_secret_unavailable` 并提示重新签发。
 
+owner/admin 在创建 PAT 时可看到「归属用户」选择器（默认「我自己」），用于为当前 workspace 的其它成员代为创建 token；列表顶部的「查看用户」筛选器允许 owner/admin 切换查看不同成员的 token。代为创建仍受调用凭证的 scope/workspace 上限约束；member/viewer 看不到这两个入口，请求体不带 `user` 时 token 归属调用者自己。
+
 tenant token 的 scope 选择器只展示后端允许的租户白名单。它可以获得 `user:*`、`member:*`、`token:*`、`workspace:write`、`hook:write`、`notification:write`、`reminder:write` 等系统 owner 能力，但不能获得 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入等依赖自然人 actor 的接口。
 
 ## 项目工作台链接

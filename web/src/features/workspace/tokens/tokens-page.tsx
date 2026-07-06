@@ -43,6 +43,7 @@ import {
   type TenantAccessTokenRow,
   type TokenRow,
 } from "./token-api"
+import { UserPicker } from "./user-picker"
 
 type TokenTab = "api" | "tenant"
 
@@ -52,10 +53,20 @@ export function TokensPage() {
   const [selectedTab, setSelectedTab] = useState<TokenTab>("api")
   const isTenantActor = me.data?.actor_type === "tenant_access_token"
   const activeTab = isTenantActor ? "tenant" : selectedTab
-  // queryKey 与原 ResourcePage 一致，复用缓存
+  const [viewUser, setViewUser] = useState<string>("") // "" = 我自己
+  // queryKey 与原 ResourcePage 一致，复用缓存；admin/owner 切换 viewUser 时附带筛选
   const tokenQuery = useQuery({
-    queryKey: ["resource", "/api/v1/tokens"],
-    queryFn: () => workspaceApiGet<TokenRow[]>("/api/v1/tokens"),
+    queryKey: [
+      "resource",
+      "/api/v1/tokens",
+      ...(viewUser ? [{ user: viewUser }] : []),
+    ],
+    queryFn: () =>
+      workspaceApiGet<TokenRow[]>(
+        viewUser
+          ? `/api/v1/tokens?user=${encodeURIComponent(viewUser)}`
+          : "/api/v1/tokens"
+      ),
     enabled: me.isSuccess && !isTenantActor && activeTab === "api",
   })
   const tenantQuery = useQuery({
@@ -81,6 +92,7 @@ export function TokensPage() {
   // 用 effective role 判断，而非当前 token 的 scope。
   const role = me.data?.effective_role ?? ""
   const canImpersonate = role === "admin" || role === "owner"
+  const canManageUsers = role === "admin" || role === "owner"
   const activeQuery = activeTab === "tenant" ? tenantQuery : tokenQuery
   const loading = me.isLoading || activeQuery.isLoading
 
@@ -104,6 +116,19 @@ export function TokensPage() {
           <TabsTrigger value="tenant">{t("token.tabs.tenant")}</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {activeTab === "api" && canManageUsers && !isTenantActor ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {t("token.user.viewFilter")}
+          </span>
+          <UserPicker
+            className="max-w-xs"
+            onChange={setViewUser}
+            value={viewUser}
+          />
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="space-y-2 rounded-none border bg-card p-3">
@@ -257,6 +282,7 @@ export function TokensPage() {
 
       <TokenCreateDialog
         canImpersonate={canImpersonate}
+        canManageUsers={canManageUsers}
         onOpenChange={setCreateOpen}
         open={createOpen && activeTab === "api"}
       />

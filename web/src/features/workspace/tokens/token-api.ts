@@ -47,6 +47,7 @@ export type CreatedTenantAccessTokenRow = {
 export type TokenFormValues = {
   name: string
   type: string // 'pat' | 'agent'
+  user?: string // 归属用户 user_id，空/undefined = 我自己（仅 admin/owner 代为创建时使用）
   workspaces: string[] // workspace slug/id refs
   scopes: string[]
   projects: string[] // project slug/id refs
@@ -60,6 +61,7 @@ export type ExpiresPreset = "never" | "7d" | "30d" | "90d" | "custom"
 export type TokenCreateInput = {
   name: string
   type?: string
+  user?: string // 归属用户 user_id，后端 resolveTokenTargetUser 校验 admin/owner
   scopes?: string[]
   workspaces?: string[]
   projects?: string[]

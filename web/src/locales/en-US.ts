@@ -859,6 +859,9 @@ export const enUS = {
       expires: "Expiration",
       prefix: "Prefix",
       lastUsed: "Last used",
+      user: "Owner",
+      userHint:
+        "Create for a workspace member; the token belongs to the selected user",
     },
     scopeGroup: {
       task: "Tasks (task)",
@@ -889,6 +892,11 @@ export const enUS = {
     scopeRequired: "At least one scope is required",
     nameRequired: "Name is required",
     typeLocked: "Type cannot be changed after creation",
+    user: {
+      self: "Myself",
+      searchPlaceholder: "Search by name or email",
+      viewFilter: "View user",
+    },
     createdWarning: "This token is shown only once. It cannot be viewed again after closing. Save it now.",
     revokeWarning: "Revoking immediately invalidates this token and cannot be undone. Clients using it will lose API access.",
     mcpConfig: "MCP config",
@@ -928,6 +936,9 @@ export const enUS = {
       tenant_token_project_scope_invalid: "Project is not in the current workspace",
       token_secret_unavailable: "This token has no recoverable secret. Reissue it before copying the full token.",
       config_secret_key_missing: "The server has no config secret key, so the full token cannot be revealed.",
+      permission_denied:
+        "You do not have permission to create tokens for other users",
+      user_not_found: "Selected user not found, please choose again",
       unknown: "Operation failed",
     },
   },
