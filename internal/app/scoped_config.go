@@ -23,6 +23,9 @@ func (s *Service) ConfigSchemaSet(input ConfigSchemaInput) error {
 		return err
 	}
 	if ok {
+		if err := s.validateConfigDefinitionUpdate(existing, def); err != nil {
+			return err
+		}
 		def.CreatedAt = existing.CreatedAt
 	} else {
 		def.CreatedAt = now
@@ -166,4 +169,86 @@ func configDefinitionAllowsScope(def ConfigDefinitionView, scope storage.ConfigS
 		return false
 	}
 	return slices.Contains(def.AllowedScopes, target)
+}
+
+// validateConfigDefinitionUpdate 在已有定义被更新时收紧破坏性变更。
+// existing 是 storage 原始行，updated 是 normalize 后的新行。
+// 规则：
+//   - 已有 value 时不能改 value_type。
+//   - 不能移除仍有 value 的 scope。
+//   - 新 enum 非空时必须覆盖所有现有 workspace/project value。
+func (s *Service) validateConfigDefinitionUpdate(existing, updated storage.ConfigDefinition) error {
+	workspaceCount, projectCount, err := s.configRepo.CountByKey(s.workspaceID, existing.Key)
+	if err != nil {
+		return err
+	}
+	totalValues := workspaceCount + projectCount
+
+	// type 锁定
+	if updated.ValueType != existing.ValueType && totalValues > 0 {
+		return RuntimeError{
+			Code:    "config_definition_type_locked",
+			Message: fmt.Sprintf("config definition %q has existing values; value_type cannot be changed", existing.Key),
+		}
+	}
+
+	existingScopes, err := decodeStringListJSON(existing.AllowedScopesJSON)
+	if err != nil {
+		return err
+	}
+	updatedScopes, err := decodeStringListJSON(updated.AllowedScopesJSON)
+	if err != nil {
+		return err
+	}
+
+	// scope 收窄锁定
+	existingAllowsWorkspace := slices.Contains(existingScopes, string(ConfigAllowedScopeWorkspace))
+	updatedAllowsWorkspace := slices.Contains(updatedScopes, string(ConfigAllowedScopeWorkspace))
+	if existingAllowsWorkspace && !updatedAllowsWorkspace && workspaceCount > 0 {
+		return RuntimeError{
+			Code:    "config_definition_scope_locked",
+			Message: fmt.Sprintf("config definition %q has %d workspace values; cannot remove workspace scope", existing.Key, workspaceCount),
+		}
+	}
+	existingAllowsProject := slices.Contains(existingScopes, string(ConfigAllowedScopeProject))
+	updatedAllowsProject := slices.Contains(updatedScopes, string(ConfigAllowedScopeProject))
+	if existingAllowsProject && !updatedAllowsProject && projectCount > 0 {
+		return RuntimeError{
+			Code:    "config_definition_scope_locked",
+			Message: fmt.Sprintf("config definition %q has %d project values; cannot remove project scope", existing.Key, projectCount),
+		}
+	}
+
+	// enum 锁定：新 enum 非空时必须覆盖所有现有 value
+	updatedEnum, err := decodeStringListJSON(updated.EnumValuesJSON)
+	if err != nil {
+		return err
+	}
+	if len(updatedEnum) > 0 && totalValues > 0 {
+		existingEnum, err := decodeStringListJSON(existing.EnumValuesJSON)
+		if err != nil {
+			return err
+		}
+		// 只有原定义本身是 enum，或现有值依赖 enum 合法性时才校验。
+		// 如果旧定义无 enum（自由值），但新定义加了 enum，仍需现有值合法。
+		_ = existingEnum
+		values, err := s.configRepo.ValuesByKey(s.workspaceID, existing.Key)
+		if err != nil {
+			return err
+		}
+		enumSet := make(map[string]bool, len(updatedEnum))
+		for _, v := range updatedEnum {
+			enumSet[v] = true
+		}
+		for _, v := range values {
+			if !enumSet[v] {
+				return RuntimeError{
+					Code:    "config_definition_enum_locked",
+					Message: fmt.Sprintf("config definition %q has existing value %q not in new enum", existing.Key, v),
+				}
+			}
+		}
+	}
+
+	return nil
 }

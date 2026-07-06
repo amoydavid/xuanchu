@@ -5539,3 +5539,76 @@ func TestServiceResolveDependents(t *testing.T) {
 		t.Fatalf("dependents = %#v, want beta+gamma", dependents)
 	}
 }
+
+func TestConfigSchemaSetRejectsTypeChangeWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace", "project"},
+	})
+	if err := svc.SetConfig("ads.budget", "100"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+
+	err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "string", AllowedScopes: []string{"workspace", "project"},
+	})
+	assertRuntimeCode(t, err, "config_definition_type_locked")
+}
+
+func TestConfigSchemaSetRejectsScopeRemovalWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace", "project"},
+	})
+	if err := svc.ProjectConfigSet(project.ID, "ads.budget", "200"); err != nil {
+		t.Fatalf("ProjectConfigSet() error = %v", err)
+	}
+
+	err = svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace"},
+	})
+	assertRuntimeCode(t, err, "config_definition_scope_locked")
+}
+
+func TestConfigSchemaSetRejectsEnumRemovalWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.mode", ValueType: "string", AllowedScopes: []string{"workspace"}, EnumValues: []string{"auto", "manual"},
+	})
+	if err := svc.SetConfig("ads.mode", "manual"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+
+	err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.mode", ValueType: "string", AllowedScopes: []string{"workspace"}, EnumValues: []string{"auto"},
+	})
+	assertRuntimeCode(t, err, "config_definition_enum_locked")
+}
+
+func TestConfigSchemaSetPersistsShowOnConsoleHome(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.roi_threshold", ValueType: "number", AllowedScopes: []string{"workspace"}, ShowOnConsoleHome: true,
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet() error = %v", err)
+	}
+	got, ok, err := svc.ConfigSchemaGet("ads.roi_threshold")
+	if err != nil || !ok {
+		t.Fatalf("ConfigSchemaGet() = (_, %v, %v), want found nil", ok, err)
+	}
+	if !got.ShowOnConsoleHome {
+		t.Fatal("ShowOnConsoleHome = false, want true")
+	}
+}

@@ -36,29 +36,31 @@ const (
 )
 
 type ConfigSchemaInput struct {
-	Key           string
-	ValueType     string
-	AllowedScopes []string
-	Label         string
-	Description   string
-	EnumValues    []string
-	DefaultValue  *string
-	Required      bool
-	Secret        bool
+	Key               string
+	ValueType         string
+	AllowedScopes     []string
+	Label             string
+	Description       string
+	EnumValues        []string
+	DefaultValue      *string
+	Required          bool
+	Secret            bool
+	ShowOnConsoleHome bool
 }
 
 type ConfigDefinitionView struct {
-	Key           string
-	ValueType     string
-	AllowedScopes []string
-	Label         string
-	Description   string
-	EnumValues    []string
-	DefaultValue  *string
-	Required      bool
-	Secret        bool
-	CreatedAt     int64
-	ModifiedAt    int64
+	Key               string
+	ValueType         string
+	AllowedScopes     []string
+	Label             string
+	Description       string
+	EnumValues        []string
+	DefaultValue      *string
+	Required          bool
+	Secret            bool
+	ShowOnConsoleHome bool
+	CreatedAt         int64
+	ModifiedAt        int64
 }
 
 func normalizeConfigDefinitionInput(input ConfigSchemaInput) (storage.ConfigDefinition, error) {
@@ -147,6 +149,7 @@ func normalizeConfigDefinitionInput(input ConfigSchemaInput) (storage.ConfigDefi
 		HasDefault:        hasDefault,
 		Required:          input.Required,
 		Secret:            input.Secret,
+		ShowOnConsoleHome: input.ShowOnConsoleHome,
 	}, nil
 }
 
@@ -165,17 +168,18 @@ func configDefinitionViewFromRow(row storage.ConfigDefinition) (ConfigDefinition
 		defaultValue = &value
 	}
 	return ConfigDefinitionView{
-		Key:           row.Key,
-		ValueType:     row.ValueType,
-		AllowedScopes: scopes,
-		Label:         row.Label,
-		Description:   row.Description,
-		EnumValues:    enumValues,
-		DefaultValue:  defaultValue,
-		Required:      row.Required,
-		Secret:        row.Secret,
-		CreatedAt:     row.CreatedAt,
-		ModifiedAt:    row.ModifiedAt,
+		Key:               row.Key,
+		ValueType:         row.ValueType,
+		AllowedScopes:     scopes,
+		Label:             row.Label,
+		Description:       row.Description,
+		EnumValues:        enumValues,
+		DefaultValue:      defaultValue,
+		Required:          row.Required,
+		Secret:            row.Secret,
+		ShowOnConsoleHome: row.ShowOnConsoleHome,
+		CreatedAt:         row.CreatedAt,
+		ModifiedAt:        row.ModifiedAt,
 	}, nil
 }
 
