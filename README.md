@@ -135,7 +135,7 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/
 普通 Console 的 `/members` 页面是 workspace 成员管理入口。owner/admin 可以搜索和筛选成员、添加已有用户或创建最小用户后加入 workspace、编辑成员 `display_name`、调整角色、移出成员；所有弹窗和危险确认都走 shadcn 组件。`/members/:userRef` 承载次级成员详情：身份快照、当前 membership、外部身份摘要、关联 token 跳转和最近成员审计。admin 只能管理非 owner 成员；owner 可以授予/降级 owner 或移出 owner，但服务端会保护最后一个 owner。member/viewer 只能查看成员名册和详情。`users.name` 仍是稳定引用名，`display_name` 只用于展示姓名；成员页修改展示姓名不会改变稳定名。浏览器 OIDC session 允许普通 `/api/v1/*` 的成员管理写入，但仍必须经过 CSRF、membership role 和 scope 检查，且不会因此获得 `token:write` 或 `impersonate`。
 
 
-普通 Console 的 `/tokens` 页面支持 PAT / Agent token 的完整生命周期管理：创建（选择类型、scope、工作空间范围、过期时间）、编辑（名称、scope、过期时间、工作空间与项目范围）、吊销。创建后的明文 token 仅展示一次，列表中只能看到 prefix。scope 编辑按资源分组勾选，提交展开后的具体 scope；agent token 必须绑定至少一个工作空间。
+普通 Console 的 `/tokens` 页面支持 PAT / Agent token 的完整生命周期管理：创建（选择类型、scope、工作空间范围、过期时间）、编辑（名称、scope、过期时间、工作空间与项目范围）、吊销。列表行只展示 prefix，不返回完整明文；但每一行都带「MCP 配置」按钮，点击后弹窗按需 reveal 完整 token 与可复制的 HTTP MCP 配置片段。认证仍只使用 `token_hash` 和短 prefix；当服务端配置了 `[security].config_secret_key` 时，HTTP/Web Console 创建的 token 还会保存加密后的 raw token envelope，供 `/tokens` 行内按需展示。reveal 要求当前凭证具备 `token:read`，并受当前 token 的 workspace / project allowlist 限制；缺少可恢复密文的旧 token 会明确提示重新签发，不会降级展示。scope 编辑按资源分组勾选，提交展开后的具体 scope；agent token 必须绑定至少一个工作空间。
 
 Server admin bootstrap 使用独立入口：
 
@@ -951,6 +951,8 @@ stdio 模式使用本地 actor 和 workspace，不需要 token。stdout 只输�
 ```
 
 HTTP MCP 需要 Bearer token 鉴权，权限规则与 REST API 一致。需要代表某个成员或使用 impersonation 时，使用 workspace-scoped Agent token；需要类似 OpenAI API key 的机器凭证时，使用 `tenant_access_token`。tenant token 可按 scope 调用任务、项目、配置、审计、user/member/token/workspace，以及 Hook、通知、提醒、task link、project annotation 等 workspace 能力；系统 actor 会进入 `created_by` / `actor` 输出。`/mcp` 不在 OpenAPI 文档中。
+
+Web Console 的 `/tokens` 页面可从每行「MCP 配置」按钮复制 endpoint、完整 Bearer token 和客户端配置片段（服务端需配置 `[security].config_secret_key`）；admin token 和 acting token 仍不能用于 `/mcp`。
 
 如果 HTTP MCP 通过 nginx 等反向代理暴露公网域名，推荐保留真实 Host：
 

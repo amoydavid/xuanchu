@@ -75,6 +75,8 @@ Server admin token（`xuanchu_admin_` 前缀）走独立的 `/api/v1/admin/*` �
 - 普通 API Tokens：管理 PAT / Agent token，适合用户或需要绑定成员身份的 Agent。
 - 租户访问令牌：管理 `tenant_access_token`。它绑定当前 workspace，不绑定用户，raw token 前缀为 `xuanchu_tenant_`，用于 HTTP API / HTTP MCP 的机器访问；明文只在创建成功后显示一次。
 
+每个 token 行的 prefix 后都有一个「MCP 配置」按钮。点击后弹窗按需调用 `GET /api/v1/tokens/{ref}/mcp-config`（租户 token 走 `/api/v1/tenant-access-tokens/{ref}/mcp-config`），reveal 当前 token 的完整明文和 HTTP MCP 客户端配置片段。raw token 不会进入列表响应；reveal 是显式动作，受 `token:read` 与当前 token 的 workspace / project allowlist 限制，并记录审计。服务端需要配置 `[security].config_secret_key` 才能保存可恢复密文；缺失时创建会直接报 `config_secret_key_missing`，旧 token reveal 报 `token_secret_unavailable` 并提示重新签发。
+
 tenant token 的 scope 选择器只展示后端允许的租户白名单。它可以获得 `user:*`、`member:*`、`token:*`、`workspace:write`、`hook:write`、`notification:write`、`reminder:write` 等系统 owner 能力，但不能获得 `impersonate`，也不能调用 `/me`、`me_get`、active context 写入等依赖自然人 actor 的接口。
 
 ## 项目工作台链接

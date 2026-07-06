@@ -43,6 +43,8 @@ HTTP MCP endpoint：
 
 HTTP MCP 使用 Bearer token 鉴权，复用远程 CLI 和 HTTP API 的 token scope。Bearer token 可以是绑定用户的 PAT / Agent token，也可以是 workspace 级 `tenant_access_token`。
 
+需要复制 Bearer token 或 MCP 客户端配置片段时，在 Web Console `/tokens` 页面点击对应行的「MCP 配置」按钮即可按需 reveal（服务端需配置 `[security].config_secret_key`）。详见 [Web Console 手册](web-console.md)。
+
 HTTP MCP 与 HTTP API 共享同一授权决策：Bearer token、workspace/project 参数、`X-Xuanchu-As` impersonation、token scope 和 membership role 的结果一致。同一个 token 和 workspace/project 组合下，`task_query`（MCP）与 `GET /api/v1/tasks`（HTTP API）返回相同的可见任务集；权限不足时返回相同的错误码与 HTTP status。`tenant_access_token` 没有用户 principal，不支持 `X-Xuanchu-As`，可按 scope 调用 user/member/token 管理 tools、hook/notification/reminder 写 tools，以及当前绑定 workspace 的读取和修改类 tools（例如 `workspace_info`、`workspace_modify`）；但不能调用 `me_get`、`user_use`、`workspace_use`、`workspace_list`、`workspace_add`、`workspace_archive` 或 active context 写入。
 
 stdio MCP 继续沿用本地 active user/workspace，不支持 impersonation。
