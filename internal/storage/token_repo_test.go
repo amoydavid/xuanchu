@@ -311,6 +311,58 @@ func TestTokenRepositoryPersistsTokenSecretCiphertext(t *testing.T) {
 	}
 }
 
+func TestTokenRepositoryPersistsWebLoginDisabled(t *testing.T) {
+	store := newTokenRepoTestStore(t)
+	repo := NewTokenRepository(store.DB())
+	entry := ApiTokenEntry{
+		ID:               "tok-weblogin",
+		UserID:           ptrString("user-1"),
+		Name:             "sso-pat",
+		Type:             "pat",
+		TokenPrefix:      "xuanchu_pat_weblogin",
+		TokenHash:        strings.Repeat("a", 64),
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `[]`,
+		ProjectIDsJSON:   `[]`,
+		WebLoginDisabled: true,
+		CreatedAt:        100,
+	}
+	if err := repo.Create(entry); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetByID(entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.WebLoginDisabled {
+		t.Fatalf("WebLoginDisabled = false, want true")
+	}
+
+	// 未设置时默认为 false
+	plain := ApiTokenEntry{
+		ID:               "tok-plain",
+		UserID:           ptrString("user-1"),
+		Name:             "cli-pat",
+		Type:             "pat",
+		TokenPrefix:      "xuanchu_pat_plain",
+		TokenHash:        strings.Repeat("b", 64),
+		ScopesJSON:       `["task:read"]`,
+		WorkspaceIDsJSON: `[]`,
+		ProjectIDsJSON:   `[]`,
+		CreatedAt:        100,
+	}
+	if err := repo.Create(plain); err != nil {
+		t.Fatal(err)
+	}
+	gotPlain, err := repo.GetByID(plain.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPlain.WebLoginDisabled {
+		t.Fatalf("WebLoginDisabled = true, want false by default")
+	}
+}
+
 func TestTokenUpdatesChangedFieldsIncludesWorkspaceAndProject(t *testing.T) {
 	name := "renamed"
 	scopes := `["task:read"]`

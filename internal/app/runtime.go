@@ -37,6 +37,10 @@ type RuntimeContext struct {
 	AdminActingSessionID    string
 	DelegatorAdminTokenID   string
 	DelegatorAdminTokenName string
+	// WebLoginDisabled 表示当前请求来自 SSO browser session。
+	// 由此创建的 PAT/Agent token 会带上 WebLoginDisabled 标记，禁止后续用于 Web Console 登录页登录，
+	// 守住「SSO workspace 人工 token 走 SSO 登 Console」边界。token 在 API/MCP/CLI 仍可用。
+	WebLoginDisabled bool
 }
 
 type ServiceOptions struct {

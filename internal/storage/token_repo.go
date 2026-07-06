@@ -24,6 +24,7 @@ type ApiTokenEntry struct {
 	IssuedByAdminTokenID   *string
 	IssuedByAdminTokenName *string
 	Purpose                string
+	WebLoginDisabled       bool
 	CreatedAt              int64
 	ExpiresAt              *int64
 	RevokedAt              *int64
@@ -268,6 +269,7 @@ func apiTokenModel(entry ApiTokenEntry) ApiToken {
 		IssuedByAdminTokenID:   entry.IssuedByAdminTokenID,
 		IssuedByAdminTokenName: entry.IssuedByAdminTokenName,
 		Purpose:                defaultString(entry.Purpose, "api"),
+		WebLoginDisabled:       entry.WebLoginDisabled,
 		CreatedAt:              entry.CreatedAt,
 		ExpiresAt:              entry.ExpiresAt,
 		RevokedAt:              entry.RevokedAt,
@@ -291,6 +293,7 @@ func apiTokenEntry(row ApiToken) ApiTokenEntry {
 		IssuedByAdminTokenID:   row.IssuedByAdminTokenID,
 		IssuedByAdminTokenName: row.IssuedByAdminTokenName,
 		Purpose:                row.Purpose,
+		WebLoginDisabled:       row.WebLoginDisabled,
 		CreatedAt:              row.CreatedAt,
 		ExpiresAt:              row.ExpiresAt,
 		RevokedAt:              row.RevokedAt,

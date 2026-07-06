@@ -14,6 +14,10 @@ import (
 const (
 	sessionCookieName = "xuanchu_session"
 	csrfCookieName    = "xuanchu_csrf"
+	// browserSessionTokenType 是 OIDC 登录后在请求上下文里构造的临时 token 类型，
+	// 仅用于标记请求来自 SSO browser session（非持久化 token）。app 层据此为创建出的
+	// PAT/Agent token 打 WebLoginDisabled 标记。
+	browserSessionTokenType = "browser_session"
 )
 
 // oidcAuthService 懒加载 OIDCAuthService（生产模式，用真实 provider factory）。

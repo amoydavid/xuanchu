@@ -45,6 +45,8 @@ type TokenView struct {
 	RevokedAt    *int64
 	LastUsedAt   *int64
 	Purpose      string
+	// WebLoginDisabled 标记该 token 不能用于 Web Console 登录页登录。
+	WebLoginDisabled bool
 }
 
 type CreatedToken struct {
@@ -794,8 +796,10 @@ func (s *Service) createTokenStored(input createTokenStoredInput) (CreatedToken,
 		ScopesJSON:            scopesJSON,
 		WorkspaceIDsJSON:      workspaceJSON,
 		ProjectIDsJSON:        projectJSON,
-		CreatedAt:             createdAt,
-		ExpiresAt:             expiresAt,
+		// SSO browser session 创建的 PAT/Agent token 禁止用于 Web Console 登录。
+		WebLoginDisabled: s.runtime.WebLoginDisabled,
+		CreatedAt:        createdAt,
+		ExpiresAt:        expiresAt,
 	}
 	if err := s.tokenRepo.Create(stored); err != nil {
 		return CreatedToken{}, err
@@ -1333,19 +1337,20 @@ func (s *Service) resolveTokenProject(ref string, workspaces []storage.Workspace
 
 func tokenViewFromEntry(row storage.ApiTokenEntry, scopes, workspaceIDs, projectIDs []string) TokenView {
 	return TokenView{
-		ID:           row.ID,
-		Prefix:       row.TokenPrefix,
-		Name:         row.Name,
-		Type:         row.Type,
-		User:         task.UserInfo{ID: derefString(row.UserID)},
-		WorkspaceIDs: append([]string(nil), workspaceIDs...),
-		ProjectIDs:   append([]string(nil), projectIDs...),
-		Scopes:       append([]string(nil), scopes...),
-		CreatedAt:    row.CreatedAt,
-		ExpiresAt:    row.ExpiresAt,
-		RevokedAt:    row.RevokedAt,
-		LastUsedAt:   row.LastUsedAt,
-		Purpose:      row.Purpose,
+		ID:               row.ID,
+		Prefix:           row.TokenPrefix,
+		Name:             row.Name,
+		Type:             row.Type,
+		User:             task.UserInfo{ID: derefString(row.UserID)},
+		WorkspaceIDs:     append([]string(nil), workspaceIDs...),
+		ProjectIDs:       append([]string(nil), projectIDs...),
+		Scopes:           append([]string(nil), scopes...),
+		CreatedAt:        row.CreatedAt,
+		ExpiresAt:        row.ExpiresAt,
+		RevokedAt:        row.RevokedAt,
+		LastUsedAt:       row.LastUsedAt,
+		Purpose:          row.Purpose,
+		WebLoginDisabled: row.WebLoginDisabled,
 	}
 }
 

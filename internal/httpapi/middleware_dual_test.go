@@ -205,6 +205,71 @@ func TestCookieSessionMemberCannotCreateTenantToken(t *testing.T) {
 	}
 }
 
+// TestCookieSessionCreatedPatCannotLoginConsole 端到端验证 SSO 边界：
+// owner 通过 SSO browser session 创建的 PAT 被标记 WebLoginDisabled，
+// 之后用它登录 Web Console（调 credentials/current）会被拒绝（403 token_web_login_disabled）。
+// 该 PAT 调用普通 API（如 /api/v1/tasks）仍正常工作。
+func TestCookieSessionCreatedPatCannotLoginConsole(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t)
+	srv := fixture.server
+	store := srv.store
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("local workspace: %v", err)
+	}
+	user, err := storage.NewUserRepository(store.DB()).GetByName("local")
+	if err != nil {
+		t.Fatalf("get local user: %v", err)
+	}
+	rawSession, rawCSRF := seedBrowserSession(t, store, user.ID, ws.ID)
+
+	// 1. owner 通过 browser session 创建 PAT
+	createBody := `{"name":"sso-pat","type":"pat","scopes":["task:read"],"workspaces":["local"]}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tokens", bytes.NewBufferString(createBody))
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: rawSession})
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: rawCSRF})
+	req.Header.Set("X-Xuanchu-CSRF", rawCSRF)
+	req.Header.Set("Content-Type", "application/json")
+	srv.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create PAT via cookie session status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var created struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	patRaw := created.Data.Token
+	if patRaw == "" {
+		t.Fatal("created PAT raw token is empty")
+	}
+
+	// 2. 用该 PAT 登录 Console → 被拒
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/credentials/current", nil)
+	req2.Header.Set("Authorization", "Bearer "+patRaw)
+	srv.Router().ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusForbidden {
+		t.Fatalf("login console with SSO-created PAT status = %d, want 403, body=%s", rr2.Code, rr2.Body.String())
+	}
+	if !bytes.Contains(rr2.Body.Bytes(), []byte("token_web_login_disabled")) {
+		t.Fatalf("expected token_web_login_disabled code, body=%s", rr2.Body.String())
+	}
+
+	// 3. 同一 PAT 调用普通 API → 正常工作
+	rr3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil)
+	req3.Header.Set("Authorization", "Bearer "+patRaw)
+	srv.Router().ServeHTTP(rr3, req3)
+	if rr3.Code != http.StatusOK {
+		t.Fatalf("SSO-created PAT tasks API status = %d, want 200, body=%s", rr3.Code, rr3.Body.String())
+	}
+}
+
 func TestBearerStillWorks(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t)
 	srv := fixture.server

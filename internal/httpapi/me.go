@@ -171,6 +171,13 @@ func (s *Server) handleCredentialsCurrent(w http.ResponseWriter, r *http.Request
 		writeAppError(w, err)
 		return
 	}
+	// Web Console 登录入口：SSO browser session 创建的 PAT/Agent token 标记了 WebLoginDisabled，
+	// 禁止用于 Console 登录（守住「SSO workspace 人工 token 走 SSO」边界）。
+	// token 在 HTTP API / MCP / CLI 仍可用，只是不能进 Console 登录页。
+	if authn.Authn.Token.WebLoginDisabled {
+		writeError(w, http.StatusForbidden, "token_web_login_disabled", "该令牌不能用于 Web Console 登录，请使用 SSO 登录", nil)
+		return
+	}
 	userView, err := svc.UserInfo(authn.Authn.User.ID)
 	if err != nil {
 		writeAppError(w, err)

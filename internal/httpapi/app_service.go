@@ -63,6 +63,11 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		}
 		return nil, requestAuth{}, err
 	}
+	// SSO browser session 创建的 PAT/Agent token 标记 WebLoginDisabled，禁止后续用于 Console 登录。
+	// 此信息在 AuthorizeTokenRequest 里被归一化丢失，需在此从 token type 重新透传到 runtime。
+	if authn.Authn.Token.Type == browserSessionTokenType {
+		authorized.Runtime.WebLoginDisabled = true
+	}
 	scoped, err := app.NewService(app.ServiceOptions{
 		Store:              s.store,
 		Clock:              s.effectiveClock(),

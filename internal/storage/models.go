@@ -125,10 +125,14 @@ type ApiToken struct {
 	IssuedByAdminTokenID   *string
 	IssuedByAdminTokenName *string
 	Purpose                string `gorm:"not null;default:'api';index"`
-	CreatedAt              int64  `gorm:"not null"`
-	ExpiresAt              *int64
-	RevokedAt              *int64
-	LastUsedAt             *int64
+	// WebLoginDisabled 标记该 token 不能用于 Web Console 登录页登录。
+	// SSO browser session 创建的 PAT/Agent token 自动打标，守住「SSO workspace 人工 token 走 SSO 登 Console」边界。
+	// token 在 HTTP API / MCP / CLI 等场景仍照常可用。
+	WebLoginDisabled bool  `gorm:"not null;default:false"`
+	CreatedAt        int64 `gorm:"not null"`
+	ExpiresAt        *int64
+	RevokedAt        *int64
+	LastUsedAt       *int64
 }
 
 type ServerAdminToken struct {

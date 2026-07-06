@@ -24,6 +24,78 @@ func newTokenSecretService(t *testing.T, now int64) *Service {
 	return svc
 }
 
+// withBrowserSessionRuntime 把 service 标记为来自 SSO browser session，
+// 模拟 HTTP 层 scopedServiceFor 对 authorized.Runtime.WebLoginDisabled 的注入。
+func withBrowserSessionRuntime(svc *Service) {
+	svc.runtime.WebLoginDisabled = true
+}
+
+func TestCreateTokenMarksWebLoginDisabledFromBrowserSession(t *testing.T) {
+	svc := newTokenSecretService(t, 100)
+	withBrowserSessionRuntime(svc)
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "sso-pat",
+		Type:          auth.TokenTypePAT,
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Stored.WebLoginDisabled {
+		t.Fatal("PAT created from browser session should have WebLoginDisabled=true")
+	}
+}
+
+func TestCreateTokenDoesNotMarkWebLoginDisabledFromBearer(t *testing.T) {
+	svc := newTokenSecretService(t, 100)
+	// 默认 runtime（Bearer token / CLI），WebLoginDisabled=false
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "cli-pat",
+		Type:          auth.TokenTypePAT,
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Stored.WebLoginDisabled {
+		t.Fatal("PAT created from Bearer should have WebLoginDisabled=false")
+	}
+}
+
+func TestCreateTenantAccessTokenNeverMarksWebLoginDisabled(t *testing.T) {
+	svc := newTokenSecretService(t, 100)
+	withBrowserSessionRuntime(svc)
+	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:   "runtime",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Stored.WebLoginDisabled {
+		t.Fatal("tenant token must never be marked WebLoginDisabled (machine identity)")
+	}
+}
+
+func TestCreateAgentTokenMarksWebLoginDisabledFromBrowserSession(t *testing.T) {
+	svc := newTokenSecretService(t, 100)
+	withBrowserSessionRuntime(svc)
+	created, err := svc.CreateToken(CreateTokenInput{
+		Name:          "sso-agent",
+		Type:          auth.TokenTypeAgent,
+		Scopes:        []string{"task:read"},
+		WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Stored.WebLoginDisabled {
+		t.Fatal("Agent token created from browser session should have WebLoginDisabled=true")
+	}
+}
+
 func TestCreateTokenRequiresSecretKeyWhenStrict(t *testing.T) {
 	store := newTestStore(t)
 	svc, err := NewService(ServiceOptions{

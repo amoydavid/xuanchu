@@ -256,7 +256,7 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		Token: app.TokenView{
 			ID:           "browser_session:" + session.ID,
 			Name:         "Browser Session",
-			Type:         "browser_session",
+			Type:         browserSessionTokenType,
 			User:         task.UserInfo{ID: user.ID, Name: user.Name},
 			WorkspaceIDs: []string{workspace.ID},
 			Scopes:       browserSessionScopes(),
@@ -264,7 +264,7 @@ func (s *Server) handleCookieAuth(w http.ResponseWriter, r *http.Request, rawCoo
 		User: user,
 	}
 	if state, ok := r.Context().Value(logStateContextKey).(*requestLogState); ok {
-		state.actorType = "browser_session"
+		state.actorType = browserSessionTokenType
 		state.actorID = user.ID
 		state.tokenID = authn.Token.ID
 		state.workspaceID = workspace.ID
