@@ -59,9 +59,19 @@ const TaskDetailRoute = lazy(() =>
     default: module.TaskDetailRoute,
   }))
 )
-const ProjectSettingsRoute = lazy(() =>
-  import("@/routes/workspace/ProjectSettingsRoute").then((module) => ({
-    default: module.ProjectSettingsRoute,
+const ProjectSettingsLayoutRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsLayoutRoute").then((module) => ({
+    default: module.ProjectSettingsLayoutRoute,
+  }))
+)
+const ProjectSettingsConfigRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsConfigRoute").then((module) => ({
+    default: module.ProjectSettingsConfigRoute,
+  }))
+)
+const ProjectSettingsNotesRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsNotesRoute").then((module) => ({
+    default: module.ProjectSettingsNotesRoute,
   }))
 )
 const AdminLoginRoute = lazy(() =>
@@ -253,7 +263,31 @@ const taskDetailRoute = createRoute({
 const projectSettingsRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/projects/$projectSlug/settings",
-  component: lazyRoute(ProjectSettingsRoute),
+  component: lazyRoute(ProjectSettingsLayoutRoute),
+})
+
+const projectSettingsIndexRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "/",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/projects/$projectSlug/settings/config",
+      params: { projectSlug: params.projectSlug },
+    })
+  },
+  component: () => null,
+})
+
+const projectSettingsConfigRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "config",
+  component: lazyRoute(ProjectSettingsConfigRoute),
+})
+
+const projectSettingsNotesRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "notes",
+  component: lazyRoute(ProjectSettingsNotesRoute),
 })
 
 const TokensRoute = lazy(() =>
@@ -285,7 +319,11 @@ const routeTree = rootRoute.addChildren([
     taskDetailRoute,
     projectsListRoute,
     myTasksRoute,
-    projectSettingsRoute,
+    projectSettingsRoute.addChildren([
+      projectSettingsIndexRoute,
+      projectSettingsConfigRoute,
+      projectSettingsNotesRoute,
+    ]),
     createResourceRoute("workspaces", "/workspaces"),
     membersRoute,
     memberDetailRoute,
