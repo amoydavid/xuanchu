@@ -106,6 +106,7 @@ type ConfigDefinition struct {
 	HasDefault        bool   `gorm:"not null;default:false"`
 	Required          bool   `gorm:"not null;default:false"`
 	Secret            bool   `gorm:"not null;default:false"`
+	ShowOnConsoleHome bool   `gorm:"not null;default:false"`
 	CreatedAt         int64  `gorm:"not null"`
 	ModifiedAt        int64  `gorm:"not null"`
 }

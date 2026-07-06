@@ -43,6 +43,7 @@ func (r *ConfigDefinitionRepository) Set(def ConfigDefinition) error {
 			"has_default",
 			"required",
 			"secret",
+			"show_on_console_home",
 			"modified_at",
 		}),
 	}).Create(&def).Error

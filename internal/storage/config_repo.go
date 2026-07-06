@@ -134,6 +134,38 @@ func (r *ConfigRepository) DeleteByKey(workspaceID, key string) error {
 	return r.db.Where("workspace_id = ? AND key = ?", workspaceID, key).Delete(&Config{}).Error
 }
 
+// ValuesByKey 返回 workspace 下同 key 的所有 config value，按 scope/scope_id/value 排序。
+// 用于 config definition 更新锁定规则和 effective value 解析。
+func (r *ConfigRepository) ValuesByKey(workspaceID, key string) ([]string, error) {
+	var rows []Config
+	if err := r.db.Where("workspace_id = ? AND key = ?", workspaceID, key).
+		Order("scope ASC, scope_id ASC, value ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	values := make([]string, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, row.Value)
+	}
+	return values, nil
+}
+
+// ValuesByKeyAndScope 返回 workspace 下同 key、指定 scope 的 config value。
+// scope 锁定规则需要区分 workspace/project value 是否存在。
+func (r *ConfigRepository) ValuesByKeyAndScope(workspaceID, key string, scope ConfigScope) ([]string, error) {
+	var rows []Config
+	if err := r.db.Where("workspace_id = ? AND key = ? AND scope = ?", workspaceID, key, string(scope)).
+		Order("scope_id ASC, value ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	values := make([]string, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, row.Value)
+	}
+	return values, nil
+}
+
 func normalizeConfigKey(key ConfigKey) (ConfigKey, error) {
 	if key.Key == "" {
 		return ConfigKey{}, fmt.Errorf("%w: key is required", ErrInvalidConfigKey)
