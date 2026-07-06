@@ -41,7 +41,7 @@ export function ProjectRowActions({
 
   function gotoSettings() {
     void navigate({
-      to: "/projects/$projectSlug/settings",
+      to: "/projects/$projectSlug/settings/config",
       params: { projectSlug },
     })
   }
