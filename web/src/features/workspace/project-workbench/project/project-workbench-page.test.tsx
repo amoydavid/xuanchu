@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { i18n } from "@/i18n"
 import { renderWithRouter } from "@/test/router-wrapper"
+import { listProjectEffectiveConfig } from "@/features/workspace/config/config-definition-api"
 
 import {
   getProject,
@@ -45,6 +46,17 @@ vi.mock("../api/users-api", async () => {
   return {
     ...actual,
     getWorkspaceMembers: vi.fn(),
+  }
+})
+
+vi.mock("@/features/workspace/config/config-definition-api", async () => {
+  const actual =
+    await vi.importActual<
+      typeof import("@/features/workspace/config/config-definition-api")
+    >("@/features/workspace/config/config-definition-api")
+  return {
+    ...actual,
+    listProjectEffectiveConfig: vi.fn(),
   }
 })
 
@@ -114,6 +126,29 @@ describe("ProjectWorkbenchPage", () => {
         name: "liuwei",
         role: "member",
         user_id: "user-1",
+      },
+    ])
+    vi.mocked(listProjectEffectiveConfig).mockResolvedValue([
+      {
+        key: "crawfunding_lauching_date",
+        value: "2026-07-10",
+        source: "project",
+        definition: {
+          key: "crawfunding_lauching_date",
+          value_type: "date",
+          allowed_scopes: ["project", "workspace"],
+          label: "众筹启动日期",
+          description: "",
+          enum_values: [],
+          default_value: null,
+          required: false,
+          secret: false,
+          show_on_console_home: true,
+          created_at: 0,
+          modified_at: 0,
+        },
+        show_on_console_home: true,
+        missing_required: false,
       },
     ])
   })
@@ -208,5 +243,18 @@ describe("ProjectWorkbenchPage", () => {
     expect(screen.getByText(/overdue/)).toBeTruthy()
     expect(screen.getByText("Recent activity")).toBeTruthy()
     expect(screen.getByText(/Alice.*Updated campaign pacing/)).toBeTruthy()
+  })
+
+  it("renders project config overview with home-displayed values", async () => {
+    render(<ProjectWorkbenchPage projectSlug="adsops" workspaceSlug="acme" />, {
+      wrapper: Wrapper,
+    })
+    // 配置概览区块标题
+    await screen.findByText("配置概览")
+    // crawfunding_lauching_date 的 label 和格式化后的 date 值
+    expect(screen.getByText("众筹启动日期")).toBeTruthy()
+    expect(screen.getByText("2026-07-10")).toBeTruthy()
+    // "去配置定义"链接存在
+    expect(screen.getByText("去配置定义")).toBeTruthy()
   })
 })

@@ -5698,7 +5698,7 @@ func TestProjectConfigEffectiveValuesResolveProjectWorkspaceDefaultAndMissing(t 
 		t.Fatalf("SetConfig() error = %v", err)
 	}
 
-	rows, err := svc.ProjectConfigEffectiveValues(project.ID)
+	rows, err := svc.ProjectConfigEffectiveValues(project.ID, ConfigEffectiveFilter{})
 	if err != nil {
 		t.Fatalf("ProjectConfigEffectiveValues() error = %v", err)
 	}
@@ -5815,4 +5815,47 @@ func TestConfigSchemaDateRejectsEnum(t *testing.T) {
 		Key: "campaign.start_date", ValueType: "date", AllowedScopes: []string{"workspace"}, EnumValues: []string{"2026-07-07"},
 	})
 	assertRuntimeCode(t, err, "config_value_invalid")
+}
+
+func TestProjectConfigEffectiveValuesConsoleHomeFilter(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	// 标记首页展示的 key（project 可写 + workspace 继承）
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.roi", ValueType: "string", AllowedScopes: []string{"workspace", "project"}, ShowOnConsoleHome: true,
+	})
+	// 未标记首页展示的 key
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "agent.background", ValueType: "string", AllowedScopes: []string{"project"},
+	})
+	if err := svc.ProjectConfigSet(project.ID, "ads.roi", "1.8"); err != nil {
+		t.Fatalf("ProjectConfigSet() error = %v", err)
+	}
+
+	// 不过滤：返回全部
+	all, err := svc.ProjectConfigEffectiveValues(project.ID, ConfigEffectiveFilter{})
+	if err != nil {
+		t.Fatalf("ProjectConfigEffectiveValues() error = %v", err)
+	}
+	if len(all) < 2 {
+		t.Fatalf("all rows = %d, want >= 2 (ads.roi + agent.background + builtin)", len(all))
+	}
+
+	// console_home 过滤：只返回 show_on_console_home=true 的 key
+	filtered, err := svc.ProjectConfigEffectiveValues(project.ID, ConfigEffectiveFilter{ConsoleHomeOnly: true})
+	if err != nil {
+		t.Fatalf("ProjectConfigEffectiveValues(consoleHome) error = %v", err)
+	}
+	for _, row := range filtered {
+		if !row.ShowOnConsoleHome {
+			t.Fatalf("filtered row %q has ShowOnConsoleHome=false, want only true", row.Key)
+		}
+	}
+	// ads.roi 应在过滤结果里（从 project 显式值解析）
+	assertEffectiveSource(t, filtered, "ads.roi", "project", "1.8")
 }

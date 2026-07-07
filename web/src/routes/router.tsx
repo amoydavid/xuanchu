@@ -24,9 +24,9 @@ const ResourceRoute = lazy(() =>
     default: module.ResourceRoute,
   }))
 )
-const ProjectReadonlyRoute = lazy(() =>
-  import("@/routes/workspace/ProjectReadonlyRoute").then((module) => ({
-    default: module.ProjectReadonlyRoute,
+const ProjectWorkbenchRoute = lazy(() =>
+  import("@/routes/workspace/ProjectWorkbenchRoute").then((module) => ({
+    default: module.ProjectWorkbenchRoute,
   }))
 )
 const ProjectsListRoute = lazy(() =>
@@ -191,10 +191,10 @@ const adminWorkspaceDetailRoute = createRoute({
   component: lazyRoute(AdminWorkspaceDetailRoute),
 })
 
-const projectReadonlyRoute = createRoute({
+const projectWorkbenchRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/workspaces/$workspaceSlug/projects/$projectSlug",
-  component: lazyRoute(ProjectReadonlyRoute),
+  component: lazyRoute(ProjectWorkbenchRoute),
   validateSearch: (search: Record<string, unknown>): Record<string, string> => {
     const out: Record<string, string> = {}
     for (const key of [
@@ -357,7 +357,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("integrations", "/integrations"),
     createResourceRoute("audit", "/audit"),
     settingsRoute,
-    projectReadonlyRoute,
+    projectWorkbenchRoute,
     projectTaskDetailRoute,
   ]),
   adminLoginRoute,

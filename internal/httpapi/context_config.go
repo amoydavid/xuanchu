@@ -365,10 +365,24 @@ func (s *Server) handleProjectConfigEffective(w http.ResponseWriter, r *http.Req
 		writeAppError(w, err)
 		return
 	}
-	rows, err := scoped.ProjectConfigEffectiveValues(chi.URLParam(r, "projectRef"))
+	consoleHome := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("console_home")), "true")
+	rows, err := scoped.ProjectConfigEffectiveValues(chi.URLParam(r, "projectRef"), app.ConfigEffectiveFilter{ConsoleHomeOnly: consoleHome})
 	if err != nil {
 		writeAppError(w, err)
 		return
+	}
+	// 项目工作台首页 effective 视图必须遮掩 secret 值，不提供 reveal。
+	if consoleHome {
+		for i := range rows {
+			if !rows[i].Definition.Secret {
+				continue
+			}
+			masked := consoleHomeSecretMask
+			rows[i].Value = &masked
+			rows[i].ProjectValue = nil
+			rows[i].WorkspaceValue = nil
+			rows[i].DefaultValue = nil
+		}
 	}
 	writeSuccess(w, http.StatusOK, rows, nil)
 }
