@@ -8,10 +8,10 @@ import (
 
 // ConfigSchemaUsageView 描述单个 config key 当前被多少 workspace/project value 引用。
 type ConfigSchemaUsageView struct {
-	Key             string
-	WorkspaceValues int64
-	ProjectValues   int64
-	TotalValues     int64
+	Key             string `json:"key"`
+	WorkspaceValues int64  `json:"workspace_values"`
+	ProjectValues   int64  `json:"project_values"`
+	TotalValues     int64  `json:"total_values"`
 }
 
 // ConfigEffectiveFilter 控制有效值查询范围。
@@ -24,15 +24,15 @@ type ConfigEffectiveFilter struct {
 // ConfigEffectiveValueView 描述一个 config key 的有效值来源。
 // source 顺序：project > workspace > default > missing。
 type ConfigEffectiveValueView struct {
-	Key               string
-	Value             *string
-	Source            string // project | workspace | default | missing
-	ProjectValue      *string
-	WorkspaceValue    *string
-	DefaultValue      *string
-	Definition        ConfigDefinitionView
-	ShowOnConsoleHome bool
-	MissingRequired   bool
+	Key               string               `json:"key"`
+	Value             *string              `json:"value"`
+	Source            string               `json:"source"`
+	ProjectValue      *string              `json:"project_value,omitempty"`
+	WorkspaceValue    *string              `json:"workspace_value,omitempty"`
+	DefaultValue      *string              `json:"default_value,omitempty"`
+	Definition        ConfigDefinitionView `json:"definition"`
+	ShowOnConsoleHome bool                 `json:"show_on_console_home"`
+	MissingRequired   bool                 `json:"missing_required"`
 }
 
 // ConfigSchemaUsage 返回单个 config key 的使用量统计。

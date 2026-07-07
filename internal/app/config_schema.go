@@ -49,18 +49,18 @@ type ConfigSchemaInput struct {
 }
 
 type ConfigDefinitionView struct {
-	Key               string
-	ValueType         string
-	AllowedScopes     []string
-	Label             string
-	Description       string
-	EnumValues        []string
-	DefaultValue      *string
-	Required          bool
-	Secret            bool
-	ShowOnConsoleHome bool
-	CreatedAt         int64
-	ModifiedAt        int64
+	Key               string   `json:"key"`
+	ValueType         string   `json:"value_type"`
+	AllowedScopes     []string `json:"allowed_scopes"`
+	Label             string   `json:"label"`
+	Description       string   `json:"description"`
+	EnumValues        []string `json:"enum_values"`
+	DefaultValue      *string  `json:"default_value"`
+	Required          bool     `json:"required"`
+	Secret            bool     `json:"secret"`
+	ShowOnConsoleHome bool     `json:"show_on_console_home"`
+	CreatedAt         int64    `json:"created_at"`
+	ModifiedAt        int64    `json:"modified_at"`
 }
 
 func normalizeConfigDefinitionInput(input ConfigSchemaInput) (storage.ConfigDefinition, error) {

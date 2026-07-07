@@ -25,14 +25,15 @@ type contextResponse struct {
 }
 
 type configSchemaRequest struct {
-	ValueType     string   `json:"value_type"`
-	AllowedScopes []string `json:"allowed_scopes"`
-	Label         string   `json:"label"`
-	Description   string   `json:"description"`
-	EnumValues    []string `json:"enum_values"`
-	DefaultValue  *string  `json:"default_value"`
-	Required      bool     `json:"required"`
-	Secret        bool     `json:"secret"`
+	ValueType         string   `json:"value_type"`
+	AllowedScopes     []string `json:"allowed_scopes"`
+	Label             string   `json:"label"`
+	Description       string   `json:"description"`
+	EnumValues        []string `json:"enum_values"`
+	DefaultValue      *string  `json:"default_value"`
+	Required          bool     `json:"required"`
+	Secret            bool     `json:"secret"`
+	ShowOnConsoleHome bool     `json:"show_on_console_home"`
 }
 
 func (s *Server) handleContextList(w http.ResponseWriter, r *http.Request) {
@@ -297,15 +298,16 @@ func (s *Server) handleConfigSchemaSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := app.ConfigSchemaInput{
-		Key:           chi.URLParam(r, "key"),
-		ValueType:     req.ValueType,
-		AllowedScopes: req.AllowedScopes,
-		Label:         req.Label,
-		Description:   req.Description,
-		EnumValues:    req.EnumValues,
-		DefaultValue:  req.DefaultValue,
-		Required:      req.Required,
-		Secret:        req.Secret,
+		Key:               chi.URLParam(r, "key"),
+		ValueType:         req.ValueType,
+		AllowedScopes:     req.AllowedScopes,
+		Label:             req.Label,
+		Description:       req.Description,
+		EnumValues:        req.EnumValues,
+		DefaultValue:      req.DefaultValue,
+		Required:          req.Required,
+		Secret:            req.Secret,
+		ShowOnConsoleHome: req.ShowOnConsoleHome,
 	}
 	if err := scoped.ConfigSchemaSet(input); err != nil {
 		writeAppError(w, err)
@@ -339,4 +341,62 @@ func (s *Server) handleConfigSchemaDelete(w http.ResponseWriter, r *http.Request
 
 func isHTTPBusinessConfigKey(key string) bool {
 	return app.IsBusinessConfigKey(key)
+}
+
+const consoleHomeSecretMask = "••••••"
+
+func (s *Server) handleConfigSchemaUsage(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	usage, err := scoped.ConfigSchemaUsage(chi.URLParam(r, "key"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, usage, nil)
+}
+
+func (s *Server) handleProjectConfigEffective(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionProjectConfigRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := scoped.ProjectConfigEffectiveValues(chi.URLParam(r, "projectRef"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, rows, nil)
+}
+
+func (s *Server) handleConfigEffective(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, auth.ScopeConfigRead, app.PermissionConfigSchemaRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	consoleHome := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("console_home")), "true")
+	rows, err := scoped.WorkspaceConfigEffectiveValues(app.ConfigEffectiveFilter{ConsoleHomeOnly: consoleHome})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	// 首页 effective 视图必须遮掩 secret 值，不提供 reveal。
+	if consoleHome {
+		for i := range rows {
+			if !rows[i].Definition.Secret {
+				continue
+			}
+			masked := consoleHomeSecretMask
+			rows[i].Value = &masked
+			rows[i].ProjectValue = nil
+			rows[i].WorkspaceValue = nil
+			rows[i].DefaultValue = nil
+		}
+	}
+	writeSuccess(w, http.StatusOK, rows, nil)
 }

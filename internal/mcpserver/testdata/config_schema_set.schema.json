@@ -42,6 +42,9 @@
       "secret": {
         "type": "boolean"
       },
+      "show_on_console_home": {
+        "type": "boolean"
+      },
       "value_type": {
         "type": "string"
       },
