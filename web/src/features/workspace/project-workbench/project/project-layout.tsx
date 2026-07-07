@@ -166,13 +166,11 @@ function ProjectLayoutContent({
             configRows={homeConfig.data}
             onRailOpenChange={setRailOpen}
             project={project.data}
-            projectSlug={projectSlug}
             railOpen={railOpen}
             summary={summary.data}
             summaryError={summary.isError}
             timeline={timeline.data}
             timelineError={timeline.isError}
-            workspaceSlug={workspaceSlug}
           />
         </div>
       </div>

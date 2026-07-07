@@ -119,9 +119,7 @@ describe("ProjectContextRail", () => {
       <RailHarness
         configRows={[]}
         project={project()}
-        projectSlug="ops"
         summary={summary()}
-        workspaceSlug="local"
       />,
       { wrapper: Wrapper }
     )
@@ -158,9 +156,7 @@ describe("ProjectContextRail", () => {
           }),
         ]}
         project={project()}
-        projectSlug="ops"
         summary={summary()}
-        workspaceSlug="local"
       />,
       { wrapper: Wrapper }
     )
@@ -180,9 +176,7 @@ describe("ProjectContextRail", () => {
       <RailHarness
         configRows={[]}
         project={project()}
-        projectSlug="ops"
         summary={summary()}
-        workspaceSlug="local"
       />,
       { wrapper: Wrapper }
     )
@@ -200,7 +194,6 @@ describe("ProjectContextRail", () => {
       <RailHarness
         configRows={[]}
         project={project()}
-        projectSlug="ops"
         summary={summary({
           workload: [
             {
@@ -217,7 +210,6 @@ describe("ProjectContextRail", () => {
             },
           ],
         })}
-        workspaceSlug="local"
       />,
       { wrapper: Wrapper }
     )
@@ -231,9 +223,7 @@ describe("ProjectContextRail", () => {
       <RailHarness
         configRows={[]}
         project={project()}
-        projectSlug="ops"
         summaryError={true}
-        workspaceSlug="local"
       />,
       { wrapper: Wrapper }
     )

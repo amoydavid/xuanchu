@@ -54,10 +54,15 @@ async function main() {
 async function runDesktopSmoke(browser) {
   const page = await newMockedPage(browser, { height: 900, width: 1280 })
   try {
+    // 项目根路由显示概览；任务内容在 /tasks 子页面。
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops`)
+    await expectText(page, "项目信息")
+    await assertNoHorizontalOverflow(page, "desktop project overview")
+
+    await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks`)
     await expectText(page, "投放日报")
-    await expectText(page, "负责人摘要")
-    await assertNoHorizontalOverflow(page, "desktop project page")
+    await expectText(page, "负责人负载")
+    await assertNoHorizontalOverflow(page, "desktop project tasks")
     await screenshot(page, "desktop-project")
 
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks/ads-1`)
@@ -112,7 +117,7 @@ async function runDesktopSmoke(browser) {
 async function runMobileSmoke(browser) {
   const page = await newMockedPage(browser, { height: 812, width: 375 })
   try {
-    await page.goto(`${baseURL}/workspaces/acme/projects/adsops`)
+    await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks`)
     await expectText(page, "投放日报")
     await page.getByRole("button", { name: "编辑移动任务标题 ads-1" }).click()
     await page.getByLabel("编辑移动任务标题 ads-1").fill("投放日报草稿")
@@ -185,6 +190,31 @@ async function newMockedPage(browser, viewport) {
           summary: "Alice 更新了投放日报",
         },
       ])
+      return
+    }
+
+    if (
+      method === "GET" &&
+      pathName === "/api/v1/projects/adsops/task-summary"
+    ) {
+      await fulfill(route, {
+        overdue_count: 0,
+        overdue_refs: [],
+        high_priority_open_count: 0,
+        high_priority_open_refs: [],
+        wait_ready_count: 0,
+        wait_ready_refs: [],
+        unassigned_open_count: 0,
+        unassigned_open_refs: [],
+        workload: [
+          {
+            label: "Alice",
+            open_count: 1,
+            overdue_count: 0,
+            high_priority_count: 0,
+          },
+        ],
+      })
       return
     }
 

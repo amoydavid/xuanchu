@@ -22,9 +22,6 @@ type ProjectContextRailProps = {
   timelineError?: boolean
   railOpen: boolean
   onRailOpenChange: (open: boolean) => void
-  // projectSlug/workspaceSlug 用于跳转配置定义和全部活动。
-  projectSlug: string
-  workspaceSlug: string
 }
 
 // ProjectContextRail 是项目右侧信息栏，在所有项目子页面保持一致。
@@ -40,8 +37,6 @@ export function ProjectContextRail({
   timelineError,
   railOpen,
   onRailOpenChange,
-  projectSlug,
-  workspaceSlug,
 }: ProjectContextRailProps) {
   const { t } = useTranslation()
 
