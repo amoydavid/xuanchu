@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import {
   getProject,
+  getProjectTaskSummary,
   getProjectTasks,
   getProjects,
   getProjectTimeline,
@@ -34,6 +35,8 @@ export const projectQueryKeys = {
     ] as const,
   projectTimeline: (workspaceSlug: string, projectSlug: string) =>
     ["project", workspaceSlug, projectSlug, "timeline"] as const,
+  projectTaskSummary: (workspaceSlug: string, projectSlug: string) =>
+    ["project", workspaceSlug, projectSlug, "task-summary"] as const,
 }
 
 export function useProjectsQuery(
@@ -63,6 +66,18 @@ export function useProjectTimelineQuery(
     queryKey: projectQueryKeys.projectTimeline(workspaceSlug, projectSlug),
     queryFn: () => getProjectTimeline(workspaceSlug, projectSlug),
     enabled: workspaceSlug.length > 0 && projectSlug.length > 0,
+  })
+}
+
+export function useProjectTaskSummaryQuery(
+  workspaceSlug: string,
+  projectSlug: string,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: projectQueryKeys.projectTaskSummary(workspaceSlug, projectSlug),
+    queryFn: () => getProjectTaskSummary(workspaceSlug, projectSlug),
+    enabled: enabled && workspaceSlug.length > 0 && projectSlug.length > 0,
   })
 }
 

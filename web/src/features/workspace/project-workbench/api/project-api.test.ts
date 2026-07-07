@@ -7,6 +7,7 @@ import {
   projectConfigKeyPath,
   projectConfigPath,
   projectPath,
+  projectTaskSummaryPath,
   projectTasksPath,
   projectTimelinePath,
   projectTransitionPath,
@@ -78,6 +79,15 @@ describe("project workbench project api paths", () => {
     )
     expect(projectAnnotationPath("local", "adsops", "an-1")).toBe(
       "/api/v1/projects/adsops/annotations/an-1?workspace=local"
+    )
+  })
+
+  it("builds project task summary path", () => {
+    expect(projectTaskSummaryPath("local", "ops")).toBe(
+      "/api/v1/projects/ops/task-summary?workspace=local"
+    )
+    expect(projectTaskSummaryPath("local", "ops/demo")).toBe(
+      "/api/v1/projects/ops%2Fdemo/task-summary?workspace=local"
     )
   })
 })

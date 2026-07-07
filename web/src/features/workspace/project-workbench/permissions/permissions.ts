@@ -17,6 +17,23 @@ export function canTaskWrite(input: WorkbenchPermissionInput): boolean {
   )
 }
 
+// canTaskRead 判断是否可读任务，用于 ProjectSummary 是否请求、Tasks 页是否可读。
+// 所有可登录成员（owner/admin/member/viewer）在持有 task:read scope 时均可读任务。
+export function canTaskRead(input: WorkbenchPermissionInput): boolean {
+  return (
+    hasScope(input.scopes, "task:read") &&
+    ["owner", "admin", "member", "viewer"].includes(input.role ?? "")
+  )
+}
+
+// canAuditRead 判断是否可读审计。audit:read 仅 owner/admin 在持有 scope 时获得。
+export function canAuditRead(input: WorkbenchPermissionInput): boolean {
+  return (
+    hasScope(input.scopes, "audit:read") &&
+    ["owner", "admin"].includes(input.role ?? "")
+  )
+}
+
 export function canProjectManage(input: WorkbenchPermissionInput): boolean {
   return (
     hasScope(input.scopes, "project:write") &&

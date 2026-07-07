@@ -119,6 +119,33 @@ export type ProjectTimelineEntry = {
   actor?: UserInfo
 }
 
+export type ProjectSummaryTaskRef = {
+  uuid: string
+  task_slug?: string
+  title: string
+  label: string
+}
+
+export type ProjectSummaryWorkloadRow = {
+  user?: UserInfo | null
+  label: string
+  open_count: number
+  overdue_count: number
+  high_priority_count: number
+}
+
+export type ProjectTaskSummary = {
+  overdue_count: number
+  overdue_refs: ProjectSummaryTaskRef[]
+  high_priority_open_count: number
+  high_priority_open_refs: ProjectSummaryTaskRef[]
+  wait_ready_count: number
+  wait_ready_refs: ProjectSummaryTaskRef[]
+  unassigned_open_count: number
+  unassigned_open_refs: ProjectSummaryTaskRef[]
+  workload: ProjectSummaryWorkloadRow[]
+}
+
 export type ProjectCreateInput = {
   slug: string
   name: string
@@ -199,6 +226,13 @@ export function projectTimelinePath(
   return `/api/v1/projects/${encodeSegment(projectRef)}/timeline?${workspaceQuery(workspaceSlug)}&limit=20`
 }
 
+export function projectTaskSummaryPath(
+  workspaceSlug: string,
+  projectRef: string
+): string {
+  return `/api/v1/projects/${encodeSegment(projectRef)}/task-summary?${workspaceQuery(workspaceSlug)}`
+}
+
 export function projectTransitionPath(
   workspaceSlug: string,
   projectRef: string
@@ -240,6 +274,15 @@ export function getProjectTimeline(
 ): Promise<ProjectTimelineEntry[]> {
   return workspaceApiGet<ProjectTimelineEntry[]>(
     projectTimelinePath(workspaceSlug, projectRef)
+  )
+}
+
+export function getProjectTaskSummary(
+  workspaceSlug: string,
+  projectRef: string
+): Promise<ProjectTaskSummary> {
+  return workspaceApiGet<ProjectTaskSummary>(
+    projectTaskSummaryPath(workspaceSlug, projectRef)
   )
 }
 

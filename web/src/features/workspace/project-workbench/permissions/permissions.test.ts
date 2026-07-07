@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 
-import { canProjectManage, canTaskWrite, hasScope } from "./permissions"
+import {
+  canAuditRead,
+  canProjectManage,
+  canTaskRead,
+  canTaskWrite,
+  hasScope,
+} from "./permissions"
 
 describe("project workbench permissions", () => {
   it("allows wildcard scopes", () => {
@@ -25,5 +31,28 @@ describe("project workbench permissions", () => {
     expect(
       canProjectManage({ role: "member", scopes: ["project:write"] })
     ).toBe(false)
+  })
+
+  it("allows task read for owner/admin/member/viewer with task:read", () => {
+    expect(canTaskRead({ role: "owner", scopes: ["task:read"] })).toBe(true)
+    expect(canTaskRead({ role: "admin", scopes: ["task:read"] })).toBe(true)
+    expect(canTaskRead({ role: "member", scopes: ["task:read"] })).toBe(true)
+    expect(canTaskRead({ role: "viewer", scopes: ["task:read"] })).toBe(true)
+  })
+
+  it("denies task read when missing scope", () => {
+    expect(canTaskRead({ role: "owner", scopes: ["project:read"] })).toBe(false)
+    expect(canTaskRead({ role: "member", scopes: [] })).toBe(false)
+  })
+
+  it("allows audit read only for owner/admin with audit:read", () => {
+    expect(canAuditRead({ role: "owner", scopes: ["audit:read"] })).toBe(true)
+    expect(canAuditRead({ role: "admin", scopes: ["audit:read"] })).toBe(true)
+  })
+
+  it("denies audit read for member or missing scope", () => {
+    expect(canAuditRead({ role: "member", scopes: ["audit:read"] })).toBe(false)
+    expect(canAuditRead({ role: "viewer", scopes: ["audit:read"] })).toBe(false)
+    expect(canAuditRead({ role: "owner", scopes: ["task:read"] })).toBe(false)
   })
 })
