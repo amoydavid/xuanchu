@@ -1,9 +1,16 @@
 import { useMemo, useState } from "react"
-import { EyeIcon, EyeOffIcon } from "lucide-react"
+import { CalendarIcon, EyeIcon, EyeOffIcon, XIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { format, parseISO } from "date-fns"
 
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -13,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 import type { ConfigValueType } from "./config-definition-api"
 
 type ConfigValueControlProps = {
@@ -81,6 +89,33 @@ export function ConfigValueControl({
         id={id}
         invalidHint={t("configDefinitions.jsonInvalid")}
         onChange={onChange}
+        value={value}
+      />
+    )
+  }
+
+  if (definition.value_type === "date") {
+    return (
+      <DateControl
+        disabled={disabled}
+        id={id}
+        onChange={onChange}
+        placeholder={t("configDefinitions.datePlaceholder")}
+        clearLabel={t("configDefinitions.clearDate")}
+        value={value}
+      />
+    )
+  }
+
+  if (definition.value_type === "datetime") {
+    return (
+      <DateTimeControl
+        disabled={disabled}
+        id={id}
+        onChange={onChange}
+        placeholder={t("configDefinitions.datetimePlaceholder")}
+        timeLabel={t("configDefinitions.timeLabel")}
+        clearLabel={t("configDefinitions.clearDate")}
         value={value}
       />
     )
@@ -157,5 +192,181 @@ function isInvalidJson(value: string): boolean {
     return false
   } catch {
     return true
+  }
+}
+
+// DateControl: date 类型编辑控件。value 是 YYYY-MM-DD 字符串。
+function DateControl(props: {
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  id?: string
+  placeholder: string
+  clearLabel: string
+}) {
+  const { value, onChange, disabled, id, placeholder, clearLabel } = props
+  const [open, setOpen] = useState(false)
+  const selected = useMemo(() => safeParseISO(value), [value])
+  const label = selected ? format(selected, "yyyy-MM-dd") : ""
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={placeholder}
+          className="w-full justify-start font-normal"
+          data-empty={!selected}
+          disabled={disabled}
+          id={id}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <CalendarIcon className="size-4" />
+          <span className={cn(!selected && "text-muted-foreground")}>
+            {selected ? label : placeholder}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          captionLayout="dropdown"
+          defaultMonth={selected ?? undefined}
+          mode="single"
+          onSelect={(next) => {
+            if (next) {
+              onChange(format(next, "yyyy-MM-dd"))
+              setOpen(false)
+            }
+          }}
+          selected={selected ?? undefined}
+        />
+        {selected ? (
+          <div className="border-t p-2">
+            <Button
+              className="w-full justify-start"
+              onClick={() => onChange("")}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <XIcon className="size-4" />
+              {clearLabel}
+            </Button>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// DateTimeControl: datetime 类型编辑控件。value 是 RFC3339 UTC 字符串。
+// Calendar 选日期 + <input type="time"> 选时间；输出统一 toISOString()（UTC）。
+function DateTimeControl(props: {
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  id?: string
+  placeholder: string
+  timeLabel: string
+  clearLabel: string
+}) {
+  const { value, onChange, disabled, id, placeholder, timeLabel, clearLabel } = props
+  const [open, setOpen] = useState(false)
+  // 拆出日期段（本地日历用）和时间段（time input 用），都基于本地时区展示。
+  const parsed = useMemo(() => safeParseISO(value), [value])
+  const dateForCalendar = parsed ?? null
+  // time input 用 HH:mm，从本地时区的展示取
+  const timeValue = parsed ? format(parsed, "HH:mm") : ""
+
+  const applyDate = (next: Date | undefined) => {
+    if (!next) return
+    // 保留现有时间段（如果有），否则用 00:00
+    const base = parsed
+    if (base) {
+      const merged = new Date(next)
+      merged.setHours(base.getHours(), base.getMinutes(), 0, 0)
+      onChange(merged.toISOString())
+    } else {
+      next.setHours(0, 0, 0, 0)
+      onChange(next.toISOString())
+    }
+    setOpen(false)
+  }
+
+  const applyTime = (hhmm: string) => {
+    if (!/^\d{2}:\d{2}$/.test(hhmm)) return
+    const [h, m] = hhmm.split(":").map(Number)
+    const base = parsed ? new Date(parsed) : new Date()
+    base.setHours(h, m, 0, 0)
+    onChange(base.toISOString())
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              aria-label={placeholder}
+              className="flex-1 justify-start font-normal"
+              data-empty={!parsed}
+              disabled={disabled}
+              id={id}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <CalendarIcon className="size-4" />
+              <span className={cn(!parsed && "text-muted-foreground")}>
+                {parsed ? format(parsed, "yyyy-MM-dd") : placeholder}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-0">
+            <Calendar
+              captionLayout="dropdown"
+              defaultMonth={dateForCalendar ?? undefined}
+              mode="single"
+              onSelect={applyDate}
+              selected={dateForCalendar ?? undefined}
+            />
+            {parsed ? (
+              <div className="border-t p-2">
+                <Button
+                  className="w-full justify-start"
+                  onClick={() => onChange("")}
+                  size="xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <XIcon className="size-4" />
+                  {clearLabel}
+                </Button>
+              </div>
+            ) : null}
+          </PopoverContent>
+        </Popover>
+        <Input
+          aria-label={timeLabel}
+          className="w-28"
+          disabled={disabled || !parsed}
+          onChange={(e) => applyTime(e.target.value)}
+          type="time"
+          value={timeValue}
+        />
+      </div>
+    </div>
+  )
+}
+
+function safeParseISO(value: string): Date | null {
+  if (!value) return null
+  try {
+    const parsed = parseISO(value)
+    if (Number.isNaN(parsed.getTime())) return null
+    return parsed
+  } catch {
+    return null
   }
 }

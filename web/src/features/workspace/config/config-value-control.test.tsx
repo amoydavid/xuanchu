@@ -116,4 +116,41 @@ describe("ConfigValueControl", () => {
     const input = screen.getByDisplayValue("topsecret") as HTMLInputElement
     expect(input.type).toBe("text")
   })
+
+  it("renders a date trigger showing the current date value", () => {
+    render(
+      <ConfigValueControl
+        definition={def({ value_type: "date" })}
+        value="2026-07-07"
+        onChange={() => {}}
+      />
+    )
+    // date 控件 trigger 显示当前日期
+    expect(screen.getByText("2026-07-07")).toBeTruthy()
+  })
+
+  it("renders a time input for datetime type", () => {
+    render(
+      <ConfigValueControl
+        definition={def({ value_type: "datetime" })}
+        value="2026-07-07T12:00:00Z"
+        onChange={() => {}}
+      />
+    )
+    // datetime 控件含一个 time input
+    const timeInput = document.querySelector('input[type="time"]') as HTMLInputElement | null
+    expect(timeInput).not.toBeNull()
+  })
+
+  it("renders a placeholder for empty date value", () => {
+    render(
+      <ConfigValueControl
+        definition={def({ value_type: "date" })}
+        value=""
+        onChange={() => {}}
+      />
+    )
+    // 空值显示占位按钮（用 aria-label 定位）
+    expect(screen.getByRole("button", { name: /选择日期|pick date/i })).toBeTruthy()
+  })
 })

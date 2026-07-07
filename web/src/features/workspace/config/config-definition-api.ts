@@ -5,7 +5,13 @@ import {
 } from "@/features/workspace/session/workspace-api"
 
 // 配置值类型。对应后端 app.ConfigValueType。
-export type ConfigValueType = "string" | "number" | "boolean" | "json"
+export type ConfigValueType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "json"
+  | "date"
+  | "datetime"
 
 // 配置允许的作用域。对应后端 app.ConfigAllowedScope。
 export type ConfigAllowedScope = "workspace" | "project"

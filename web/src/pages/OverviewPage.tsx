@@ -9,6 +9,7 @@ import { DataTable } from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { formatConfigDisplayValue } from "@/features/workspace/config/config-display"
 import { listWorkspaceEffectiveConfig } from "@/features/workspace/config/config-definition-api"
 import type { ConfigEffectiveValue } from "@/features/workspace/config/config-definition-api"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
@@ -359,7 +360,9 @@ function ConfigOverviewSection({
                     ? t("configDefinitions.sourceDefault")
                     : t("configDefinitions.sourceMissing")
             const displayValue =
-              row.value === null ? t("configDefinitions.sourceMissing") : row.value
+              row.value === null
+                ? t("configDefinitions.sourceMissing")
+                : formatConfigDisplayValue(row.definition.value_type, row.value)
             return (
               <div className="flex items-center gap-3 p-3" key={row.key}>
                 <div className="min-w-0 flex-1">
