@@ -247,7 +247,7 @@ export const zhCN = {
     riskHighPriority: "高优未完成",
     riskWaitReady: "等待已到期",
     riskUnassigned: "未分配任务",
-    workloadTitle: "负责人负载",
+    workloadTitle: "成员待办",
     workloadUnassigned: "未分配任务",
     workloadPending: "{{count}} 待办",
     workloadOverdue: "{{count}} 逾期",

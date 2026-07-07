@@ -251,7 +251,7 @@ export const enUS = {
     riskHighPriority: "High priority open",
     riskWaitReady: "Wait ready",
     riskUnassigned: "Unassigned",
-    workloadTitle: "Assignee workload",
+    workloadTitle: "Member tasks",
     workloadUnassigned: "Unassigned",
     workloadPending: "{{count}} pending",
     workloadOverdue: "{{count}} overdue",

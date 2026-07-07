@@ -139,33 +139,39 @@ export function ProjectOverviewPage({
         </section>
       )}
 
-      {/* 负责人负载 */}
+      {/* 成员待办 */}
       {canReadTasks && summary.data && summary.data.workload.length > 0 ? (
         <section className="rounded-lg border bg-card p-4">
           <h2 className="mb-3 text-sm font-medium">
             {t("projectSubpages.workloadTitle")}
           </h2>
           <div className="space-y-2">
-            {summary.data.workload.slice(0, 5).map((row, index) => (
-              <div className="text-sm" key={row.label || `wl-${index}`}>
-                <div className="font-medium">{row.label}</div>
-                <div className="text-muted-foreground">
-                  {t("projectSubpages.workloadPending", { count: row.open_count })}
-                  {row.overdue_count > 0
-                    ? " · " +
-                      t("projectSubpages.workloadOverdue", {
-                        count: row.overdue_count,
-                      })
-                    : ""}
-                  {row.high_priority_count > 0
-                    ? " · " +
-                      t("projectSubpages.workloadHighPriority", {
-                        count: row.high_priority_count,
-                      })
-                    : ""}
+            {summary.data.workload
+              .filter(
+                // 未分配行（user 为 null）在 open_count 为 0 时不显示，避免噪音。
+                (row) => row.user != null || row.open_count > 0
+              )
+              .slice(0, 5)
+              .map((row, index) => (
+                <div className="text-sm" key={row.label || `wl-${index}`}>
+                  <div className="font-medium">{row.label}</div>
+                  <div className="text-muted-foreground">
+                    {t("projectSubpages.workloadPending", { count: row.open_count })}
+                    {row.overdue_count > 0
+                      ? " · " +
+                        t("projectSubpages.workloadOverdue", {
+                          count: row.overdue_count,
+                        })
+                      : ""}
+                    {row.high_priority_count > 0
+                      ? " · " +
+                        t("projectSubpages.workloadHighPriority", {
+                          count: row.high_priority_count,
+                        })
+                      : ""}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </section>
       ) : null}

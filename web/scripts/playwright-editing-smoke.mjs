@@ -61,7 +61,7 @@ async function runDesktopSmoke(browser) {
 
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks`)
     await expectText(page, "投放日报")
-    await expectText(page, "负责人负载")
+    await expectText(page, "成员待办")
     await assertNoHorizontalOverflow(page, "desktop project tasks")
     await screenshot(page, "desktop-project")
 

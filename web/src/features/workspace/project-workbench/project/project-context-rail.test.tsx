@@ -163,12 +163,14 @@ describe("ProjectContextRail", () => {
         summary={summary({
           workload: [
             {
+              user: { id: "u1", name: "张三" },
               label: "张三",
               open_count: 5,
               overdue_count: 1,
               high_priority_count: 0,
             },
             {
+              user: null,
               label: "未分配任务",
               open_count: 3,
               overdue_count: 0,
@@ -179,9 +181,43 @@ describe("ProjectContextRail", () => {
       />,
       { wrapper: Wrapper }
     )
-    await screen.findByText("负责人负载")
+    await screen.findByText("成员待办")
     expect(screen.getByText("张三")).toBeTruthy()
     expect(screen.getByText(/5 待办/)).toBeTruthy()
+    // 未分配行 open_count>0 时仍展示（风险计数区也有「未分配任务」，所以 >=2）
+    expect(screen.getAllByText("未分配任务").length).toBeGreaterThanOrEqual(2)
+  })
+
+  it("hides unassigned row when its open count is zero", async () => {
+    render(
+      <ProjectContextRail
+        configRows={[]}
+        project={project()}
+        summary={summary({
+          workload: [
+            {
+              user: { id: "u1", name: "张三" },
+              label: "张三",
+              open_count: 1,
+              overdue_count: 0,
+              high_priority_count: 0,
+            },
+            {
+              user: null,
+              label: "未分配任务",
+              open_count: 0,
+              overdue_count: 0,
+              high_priority_count: 0,
+            },
+          ],
+        })}
+      />,
+      { wrapper: Wrapper }
+    )
+    await screen.findByText("成员待办")
+    expect(screen.getByText("张三")).toBeTruthy()
+    // 未分配为 0 时负载区不显示该行；只剩风险计数区的「未分配任务」
+    expect(screen.getAllByText("未分配任务").length).toBe(1)
   })
 
   it("shows lightweight error when summary request fails", async () => {
