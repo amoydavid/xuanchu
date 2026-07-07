@@ -38,6 +38,33 @@ type projectAnnotationInfoResponse struct {
 	CreatedAt int64              `json:"created_at"`
 }
 
+type projectSummaryTaskRefResponse struct {
+	UUID     string `json:"uuid"`
+	TaskSlug string `json:"task_slug,omitempty"`
+	Title    string `json:"title"`
+	Label    string `json:"label"`
+}
+
+type projectSummaryWorkloadResponse struct {
+	User              *task.JSONUserInfo `json:"user,omitempty"`
+	Label             string             `json:"label"`
+	OpenCount         int                `json:"open_count"`
+	OverdueCount      int                `json:"overdue_count"`
+	HighPriorityCount int                `json:"high_priority_count"`
+}
+
+type projectTaskSummaryResponse struct {
+	OverdueCount          int                             `json:"overdue_count"`
+	OverdueRefs           []projectSummaryTaskRefResponse `json:"overdue_refs"`
+	HighPriorityOpenCount int                             `json:"high_priority_open_count"`
+	HighPriorityOpenRefs  []projectSummaryTaskRefResponse `json:"high_priority_open_refs"`
+	WaitReadyCount        int                             `json:"wait_ready_count"`
+	WaitReadyRefs         []projectSummaryTaskRefResponse `json:"wait_ready_refs"`
+	UnassignedOpenCount   int                             `json:"unassigned_open_count"`
+	UnassignedOpenRefs    []projectSummaryTaskRefResponse `json:"unassigned_open_refs"`
+	Workload              []projectSummaryWorkloadResponse `json:"workload"`
+}
+
 type projectResponse struct {
 	ID                string                          `json:"id"`
 	WorkspaceID       string                          `json:"workspace_id"`
@@ -377,6 +404,63 @@ func (s *Server) handleProjectTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, timelineEntriesToJSON(entries), nil)
+}
+
+func (s *Server) handleProjectTaskSummary(w http.ResponseWriter, r *http.Request) {
+	ref := chi.URLParam(r, "projectRef")
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	summary, err := scoped.ProjectTaskSummary(ref)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, projectTaskSummaryToJSON(summary), nil)
+}
+
+func projectTaskSummaryToJSON(summary app.ProjectTaskSummaryView) projectTaskSummaryResponse {
+	resp := projectTaskSummaryResponse{
+		OverdueCount:          summary.OverdueCount,
+		OverdueRefs:           projectTaskRefResponses(summary.OverdueRefs),
+		HighPriorityOpenCount: summary.HighPriorityOpenCount,
+		HighPriorityOpenRefs:  projectTaskRefResponses(summary.HighPriorityOpenRefs),
+		WaitReadyCount:        summary.WaitReadyCount,
+		WaitReadyRefs:         projectTaskRefResponses(summary.WaitReadyRefs),
+		UnassignedOpenCount:   summary.UnassignedOpenCount,
+		UnassignedOpenRefs:    projectTaskRefResponses(summary.UnassignedOpenRefs),
+		Workload:              make([]projectSummaryWorkloadResponse, 0, len(summary.Workload)),
+	}
+	for _, row := range summary.Workload {
+		var user *task.JSONUserInfo
+		if row.User != nil {
+			jui := task.UserInfoToJSON(*row.User)
+			user = &jui
+		}
+		resp.Workload = append(resp.Workload, projectSummaryWorkloadResponse{
+			User:              user,
+			Label:             row.Label,
+			OpenCount:         row.OpenCount,
+			OverdueCount:      row.OverdueCount,
+			HighPriorityCount: row.HighPriorityCount,
+		})
+	}
+	return resp
+}
+
+func projectTaskRefResponses(refs []app.ProjectSummaryTaskRefView) []projectSummaryTaskRefResponse {
+	out := make([]projectSummaryTaskRefResponse, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, projectSummaryTaskRefResponse{
+			UUID:     ref.UUID,
+			TaskSlug: ref.TaskSlug,
+			Title:    ref.Title,
+			Label:    ref.Label,
+		})
+	}
+	return out
 }
 
 func projectAnnotationToJSON(a app.ProjectAnnotationInfo) projectAnnotationResponse {

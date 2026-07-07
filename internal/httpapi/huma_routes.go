@@ -217,6 +217,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/projects", Tag: "Projects", Summary: "List projects.", Handler: s.handleProjectList},
 		{Method: http.MethodPost, Path: "/api/v1/projects", Tag: "Projects", Summary: "Create a project.", Handler: s.handleProjectAdd, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}", Tag: "Projects", Summary: "Get project details.", Handler: s.handleProjectInfo},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/task-summary", Tag: "Projects", Summary: "Get project task summary.", Handler: s.handleProjectTaskSummary},
 		{Method: http.MethodPatch, Path: "/api/v1/projects/{projectRef}", Tag: "Projects", Summary: "Modify a project.", Handler: s.handleProjectModify},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/archive", Tag: "Projects", Summary: "Archive a project.", Handler: s.handleProjectArchive},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/transition", Tag: "Projects", Summary: "Transition a project.", Handler: s.handleProjectTransition},
