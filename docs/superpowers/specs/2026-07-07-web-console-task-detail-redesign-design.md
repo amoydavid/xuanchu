@@ -1,7 +1,7 @@
 # Web Console 任务详情页结构重构设计
 
 **日期：** 2026-07-07
-**状态：** 草案待审
+**状态：** 已实现（阶段一：手动 sub-task 能力闭环；阶段二：结构重排与 Activity 合并）
 **范围：** Workspace Web Console 的任务详情页与手动 sub-task 创建入口
 **承接：**
 
@@ -32,6 +32,20 @@
 - 项目子页面已经将项目 Overview、Tasks、Activity 拆开，任务详情页应沿用项目上下文，而不是再做一个孤立页面。
 
 因此本次设计目标不是“做成 Linear”，而是借 Linear 的信息架构，把璇础已有信息重新排序，并补上手动 sub-task 的最小闭环。
+
+### 1.1 术语与字段对照
+
+为避免实施时中英混用和字段接反，本文统一术语（后续 i18n key、组件命名、错误文案都以此为准）：
+
+| 本文术语 | 对应字段/接口 | 含义 | 注意 |
+|---|---|---|---|
+| 任务 / task | `task` | 产品统一叫“任务”，不叫 issue | 不改名为 issue |
+| 子任务 | 其他任务的 `parent == 当前任务 uuid` | 当前任务的直接下级 | 详情接口**不返回** children，只能反查 |
+| 父任务 | `parent` / `parent_info` | 当前任务的上级 | 详情接口已把 `parent` 展开为 `parent_info`（带 title+slug） |
+| 依赖 | `depends` / `depends_info` | 当前任务依赖谁（我卡在别人上） | |
+| 被阻塞/正在阻塞 | `blocked_by_info` | **反向依赖**：谁依赖当前任务（当前任务卡住了别人） | 命名易接反，UI 文案为“正在阻塞这些任务” |
+| 活动 / Activity | 注解 `annotations` + 任务 audit | 人写的注解与系统字段变更的统一时间线 | 第一版可分组件，但目标是同一时间轴 |
+| 紧迫度 / urgency | 独立接口，**非详情字段** | 计算值 | 有独立加载态，不随详情同步返回 |
 
 ## 2. 现状
 
@@ -88,8 +102,9 @@
 | `tags` | 右侧属性 | tag picker |
 | `due/wait/scheduled/until/recur` | 右侧属性 | 日期边界沿用后端规则 |
 | `depends_info` | 右侧属性 | dependency picker |
-| `blocked_by_info` | 右侧属性 | 只读展示 |
-| `parent_info` | 右侧属性 | 只读展示；没有设置/清除父任务交互 |
+| `blocked_by_info` | 右侧属性 | **反向依赖**：依赖当前任务的任务（当前任务“正在阻塞”它们），只读展示 |
+| `parent_info` | 右侧属性 | 后端已把 `parent` 展开为带 title+slug 的可读引用；只读，无设置/清除父任务交互 |
+| urgency | 右侧属性（`TaskUrgencyPanel`） | **不在详情接口返回**，由独立请求获取，有独立加载态 |
 | `links` | 左侧链接编辑器 | 添加、编辑、删除链接 |
 | `annotations` | 左侧注解编辑器 | 添加、编辑、删除注解 |
 | task audit | 左侧变更历史 | 字段级历史 |
@@ -104,6 +119,7 @@
 5. 顶部 action bar 与右侧属性都有状态信息，但页面没有明确区分“执行动作”和“属性编辑”。
 6. 后端 `addTaskRequest` / `app.AddInput` / `TaskCreateInput` 当前没有 `parent` 字段；常规 Web 创建任务无法写入手动父子关系。
 7. `parent` 字段当前承担 recurring parent/child 关系；手动 sub-task 必须明确和 recurring child 的边界，避免把周期任务规则误当普通任务清单。
+8. 详情接口已填充 `parent_info`（当前任务的父），但**没有任何接口返回 children**（谁以当前任务为 parent）。子任务列表目前只能靠 `parent:<uuid>` 反查，且没有 child count、没有聚合、没有 include_closed 语义。
 
 ## 3. Linear 信息架构与交互思路
 
@@ -197,13 +213,15 @@ Project
 | 活动定义 | 合并展示注解与字段变更历史；链接变更仍通过 audit 体现 |
 | 链接位置 | 作为正文附近的“关联资源”小区块，不再和 Activity 同级抢主线 |
 | 子任务展示 | 当前任务的直接 children，默认显示 open children，提供显示 completed/deleted 的入口 |
-| 子任务创建 | 主区就地 composer；只要求标题，可补描述、负责人、优先级、截止日期、标签 |
+| 子任务创建 | 主区就地 composer；只要求标题，可补描述、负责人、优先级、截止日期、标签；**Enter 直接提交并保持 composer 打开**，支持连续快速拆多条 |
 | 子任务默认值 | project 继承当前任务 project；parent 写当前任务 UUID；不默认继承 depends/recur/wait/scheduled/until |
 | 父子字段来源 | 复用 `parent` 字段，但在 UI 上区分手动 sub-task 与 recurring child |
 | recurring 边界 | recurring parent 详情页可以查看自动 children；第一阶段不提供“添加手动子任务”按钮，避免混淆周期规则 |
 | 右侧属性分组 | Properties、Schedule、Relations、System、Custom fields |
 | 权限 | 前端基于 `/api/v1/me` 和 task/project 状态隐藏或禁用写入口；服务端 403 仍是最终事实 |
-| API 策略 | 扩展现有 task create/modify 能力，不新增一套独立 sub-task 业务逻辑 |
+| 子任务创建 API | 扩展现有 task create 能力补 `parent`，不新增一套独立 sub-task 业务逻辑 |
+| 子任务读取 API | 新增专用 `GET /tasks/{ref}/children` 端点（而非前端拼 `parent:<uuid>` query），因带 query 后默认状态过滤失效且需 child count / include_closed |
+| 阶段顺序 | 先手动 sub-task 能力闭环（给价值），再纯结构重排（降回归风险） |
 
 ## 7. 信息架构设计
 
@@ -249,7 +267,7 @@ Project
 |   [ 补充背景、验收标准或处理说明...                                  ]   |
 |                                                                          |
 |   建议：继承当前项目 project-x                                           |
-|   [优先级 -] [截止日期] [负责人] [标签] [关联资源]                       |
+|   [优先级 -] [截止日期] [负责人] [标签]                                  |
 |                                                                          |
 |                                             [取消] [创建子任务]          |
 +--------------------------------------------------------------------------+
@@ -349,27 +367,32 @@ export type TaskCreateInput = {
 3. 如果子任务指定 project，必须与父任务 project 一致；如果未指定 project，则继承父任务 project。
 4. parent 不能是自身，不能形成环。
 5. parent 是 deleted task 时拒绝创建。
-6. parent 是 completed task 时第一阶段拒绝创建；完成任务下继续拆任务容易造成状态语义混乱。
+6. parent 是 completed task 时第一阶段拒绝创建。从工程看，完成任务下继续拆任务容易造成状态语义混乱；但从使用者看，“完成后发现遗漏想补挂收尾子项”是真实场景，直接拒绝会让人困惑。因此错误文案不能只说“不允许”，必须给出面向使用者的替代动作，例如“请先重新打开父任务再添加子任务”。（若后续用户反馈强烈，可在后续阶段重新评估是否允许，因子任务自身是 pending，不直接改变父状态。）
 7. parent 是 recurring parent 时拒绝手动 sub-task 创建，错误说明应直接说明“周期任务规则下不能添加手动子任务”。
 
 ### 8.3 子任务读取
 
-直接子任务列表可以先复用现有 task query：
+查询引擎已支持按 `parent` 过滤（`AttrParent`，底层 `compareColumn("parent", ...)`），因此理论上可以：
 
 ```text
 GET /api/v1/tasks?workspace=<workspace>&project=<project>&query=parent:<uuid>&limit=50
 ```
 
-如果实现中发现 query 解析和 project scope 组合无法稳定满足需求，再新增专用端点：
+但有一个关键陷阱必须写明：**带了 `query` 后，默认 pending 状态过滤不再生效**（见 `app.Service.List`：仅当 `input.Query == nil` 才默认 pending）。因此 `parent:<uuid>` 会返回该 parent 下 **pending/waiting/completed/deleted 全部**子任务；“默认只显示 open children”必须靠前端拿全量后自行分组/过滤，或在查询里显式带 status。这直接影响 §9.3 的“折叠已完成/隐藏已删除”能否靠一次查询实现。
+
+**决策：直接新增专用 children 端点**，不让前端拼复杂 query：
 
 ```text
 GET /api/v1/tasks/{taskRef}/children?workspace=<workspace>&limit=50&include_closed=false
 ```
 
-优先级判断：
+理由（符合 AGENTS.md“选对未来更稳的边界”）：
 
-1. 如果现有 query 路径能复用，并且测试覆盖 parent 过滤、权限和 project scope，就不新增端点。
-2. 如果需要 child count、分页、include_closed 或 recurring/manual 区分，就新增 children endpoint，避免前端拼复杂 query。
+1. `parent:<uuid>` 的状态语义反直觉（见上），若靠查询字符串表达，会把业务规则（默认只显示 open）散落到前端。
+2. 子任务区需要 child count、include_closed、manual/recurring 区分，前端拼 query 几乎注定返工。
+3. 阶段三要做父子树，专用端点可以一次把 include_closed、count、manual/recurring 区分的出口留好。
+
+若实现时决定先用 query 快速跑通，必须在测试里固定“返回全状态”这个行为，并在前端明确按状态分组，避免默认就漏显已删除子任务。
 
 ## 9. 交互细节
 
@@ -393,7 +416,7 @@ GET /api/v1/tasks/{taskRef}/children?workspace=<workspace>&limit=50&include_clos
 
 | 字段 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
-| title | 是 | 空 | Enter 不直接提交，避免误触；Cmd/Ctrl+Enter 提交 |
+| title | 是 | 空 | **Enter 直接提交并保持 composer 打开**（支持连续快速拆多个子任务，对齐 Linear 心智）；只有多行 description 编辑器里才用 Cmd/Ctrl+Enter |
 | description | 否 | 空 | MarkdownEditor，和任务创建 dialog 保持一致 |
 | priority | 否 | 空 | H/M/L |
 | due | 否 | 空 | date-only 按本地日末 |
@@ -448,6 +471,8 @@ Alice 修改优先级 · 昨天
 
 当前 `TaskAnnotationsEditor` 与 `TaskChangeHistory` 可以先保持两个组件，但视觉上归入同一个 Activity 区块。后续可再合并数据源。
 
+**合并契约（避免假合并）：** 视觉合并的最终目标是「注解条目 + 变更条目按统一时间戳倒序排在同一条时间轴」。第一版即使沿用两个组件，也必须避免做成「上半段全是注解、下半段全是变更」——那对用户等于没合并。若第一版无法按统一时间戳交错排序，需在文档/代码里显式标注为过渡态，并列入待办，明确后续要合并数据源、统一排序。
+
 ### 9.5 右侧属性分组
 
 右侧栏建议分组：
@@ -485,10 +510,28 @@ Custom fields
 分组规则：
 
 - `Properties` 默认展开。
-- `Schedule` 默认展开；如果全空，可折叠但保留入口。
-- `Relations` 默认展开；如果没有 parent/depends/blocking/links，可用轻量空态。
+- `Schedule` 默认展开；**如果全空，整组不渲染标题**（可写状态下仍要有一个轻量入口让用户新增计划字段），不要保留空壳分组制造扫描噪音。
+- `Relations` 默认展开；如果没有 parent/depends/blocking/links，用轻量空态或整组隐身。
 - `System` 默认折叠。
 - `Custom fields` 仅在存在 UDA 或有 UDA 定义时展示。
+
+原则：右侧栏的价值是「一眼看到有值的属性」。空分组应隐身而非折叠占位；仅在用户有写权限、需要引导新增时，才保留一个可添加入口。
+
+### 9.6 空态与边界态
+
+对新用户，空态就是首屏，必须显式定义，不能留白：
+
+| 区域 | 空态 | 加载态 | 失败态 |
+|---|---|---|---|
+| 子任务区 | 一句引导文案 + 一个明显的「添加子任务」按钮（可写时），而非空白；不可写时显示「暂无子任务」 | 骨架行占位 | 行内错误 + 重试入口，不用全局 toast 作为唯一反馈 |
+| 活动区 | 「暂无注解与变更」+ 注解 composer（可写时） | 骨架占位 | 行内错误 + 重试 |
+| 正文 | 「添加描述…」可点击引导（沿用现状） | — | — |
+| urgency | 独立加载态（因是独立请求），加载中显示占位而非闪烁 | 独立 skeleton | 失败静默降级，不阻塞其他属性 |
+
+原则：
+
+- 可写用户的空态要「引导下一步动作」，不可写用户的空态只需「说明当前无内容」。
+- 子任务/活动的加载失败是局部失败，不应让整页详情不可用。
 
 ## 10. 权限与错误
 
@@ -530,6 +573,9 @@ canCreateSubTask =
 - 子任务默认继承父任务 project。
 - 显式 project 与父任务 project 不一致时拒绝。
 - HTTP `POST /api/v1/tasks` 可提交 `parent` 并返回 JSON。
+- `GET /api/v1/tasks/{ref}/children` 返回直接子任务；`include_closed=false` 时默认隐藏 completed/deleted，`true` 时全量返回。
+- children 端点遵守 workspace/project scope 与 task:read 权限。
+- （若改用 `parent:<uuid>` query 方案）固定验证带 query 后默认返回全状态子任务的行为。
 - `CGO_ENABLED=0 go test ./...` 继续通过。
 
 ### 11.2 前端测试
@@ -539,9 +585,11 @@ canCreateSubTask =
 - `TaskDetailPage` 显示子任务区。
 - 点击“添加子任务”展开 composer。
 - 只填标题可创建，payload 包含 `project` 和 `parent`。
-- 创建成功后 composer 清空并关闭，子任务列表刷新。
+- **Enter 提交后 composer 清空但保持打开**（支持连续创建），子任务列表刷新；点取消或失焦才关闭。
 - completed/deleted/recurring/no-write 状态下不显示可用创建入口。
-- 右侧属性分组渲染关键字段。
+- 子任务区零子任务时展示引导空态（可写）或“暂无子任务”（不可写）。
+- 子任务列表默认隐藏 deleted、折叠 completed，提供“显示已完成”入口。
+- 右侧属性分组渲染关键字段，空分组隐身。
 - 移动端 tab 能在正文、子任务、属性、活动之间切换。
 
 ### 11.3 验证命令
@@ -562,22 +610,25 @@ git diff --check
 
 ## 12. 分阶段建议
 
-### 阶段一：结构重排，不改数据模型
+> 划分原则（CIO/CPO 视角）：**先给用户能立刻感知价值的能力，再做低价值高回归风险的纯视觉重排**。纯结构重排对用户几乎无感，却是回归风险最高的动作，因此不前置。
 
-- 重排 TaskDetailPage 主区和右侧栏。
-- 将描述、链接、注解、变更历史组织为正文/关联资源/活动。
-- 右侧属性按组展示。
-- 保持现有 API，不加入子任务创建。
+### 阶段一：手动 sub-task 最小闭环（先给能力）
 
-阶段一可以降低 UI 风险，但用户无法立即添加子任务。
+- 扩展后端 create task parent 能力（`AddInput` / `addTaskRequest` / `TaskCreateInput` 补 parent）。
+- 新增 children 读取端点（见 §8.3）。
+- 前端在现有布局中新增子任务列表与就地 composer（Enter 连续创建）。
+- 补后端约束测试（自引用/环/跨 workspace/deleted/completed/recurring parent）、前端交互测试与 smoke。
 
-### 阶段二：补手动 sub-task 闭环
+阶段一交付后，用户立刻能拆任务，获得可感知价值；且不动大 UI，回归面小。
 
-- 扩展后端 create task parent 能力。
-- 前端新增子任务查询和 composer。
-- 补测试和 smoke。
+### 阶段二：结构重排与 Activity 合并（再优化排布）
 
-这是推荐实施路径：先把布局变清楚，再补交互闭环；两个阶段可以在同一个 plan 中连续执行，但提交最好拆开。
+- 重排 TaskDetailPage 主区和右侧栏为「正文/关联资源/子任务/活动」。
+- 右侧属性按 Properties/Schedule/Relations/System/Custom fields 分组，空组隐身。
+- Activity 视觉合并注解与变更（按 §9.4 合并契约）。
+- 纯视觉改动，风险集中、可灰度、可回退。
+
+说明：阶段一、二可在同一个 plan 中连续执行，但提交必须拆开——能力闭环与视觉重排分别可独立回退。
 
 ### 阶段三：任务列表父子树
 
@@ -585,7 +636,7 @@ git diff --check
 - 保留 recurring parent 隐藏、recurring child 可见的现有语义。
 - 需要 child count 或 lazy loading 时再新增后端聚合。
 
-阶段三不属于本 spec 的第一交付，但本 spec 的 sub-task 数据形态必须为它留出口。
+阶段三不属于本 spec 的第一交付，但阶段一的 children 端点与 sub-task 数据形态必须为它留出口。
 
 ## 13. ASCII 终态原型
 
@@ -636,6 +687,10 @@ git diff --check
 - 本规格不引入 Linear 独有模型。
 - 子任务创建走现有 app/service/API 分层，不在前端伪造关系。
 - 手动 sub-task 和 recurring child 的边界已写明。
-- 当前已有信息与目标结构有明确映射。
+- 当前已有信息与目标结构有明确映射，且 urgency/blocked_by/parent_info 等字段的真实语义已校对代码。
+- 术语对照表统一中英文与字段含义，避免实施时接反。
+- children 读取已明确为专用端点，并写明 `parent:<uuid>` query 的状态陷阱。
+- 空态/加载态/失败态已定义（§9.6）。
+- 分阶段以“先能力后重排”为序，降低回归风险。
 - ASCII 原型覆盖默认态、添加态、移动端。
 - 验证命令包含 Go、CGO=0、Web 和 smoke。

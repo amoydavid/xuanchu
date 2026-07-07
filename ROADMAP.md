@@ -51,6 +51,7 @@
 | v0.5.2 | 已完成 | Web Console 能力桥接：我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计 |
 | v0.5.3 | 已完成 | Web Console 出站集成控制台：sink/hook/通知/定时规则闭环 + sink 测试投递 API |
 | v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
+| v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -548,6 +549,27 @@ docs/superpowers/specs/2026-07-06-sso-token-web-login-disabled-design.md
 ```text
 docs/superpowers/specs/2026-07-07-web-console-project-subpages-design.md
 docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
+```
+
+## v0.5.5：Web Console 任务详情页重构
+
+**状态：已完成。**
+
+借鉴 Linear 的信息架构，把任务详情页从「功能块堆叠」重构为「主叙事区 + 右侧分组属性栏」，并补齐手动 sub-task 创建与列表读取的最小闭环。分两阶段交付，分别可独立回退。
+
+核心能力：
+
+- **手动 sub-task 创建闭环**：`app.AddInput` / HTTP `addTaskRequest` / 前端 `TaskCreateInput` 增加 `parent` 字段；创建时校验 parent 存在/跨 workspace/自引用/环/deleted/completed/recurring/project 不一致，并默认继承父任务 project。新增专用 `GET /api/v1/tasks/{taskRef}/children?include_closed=` 端点（避免 `parent:<uuid>` query 的默认状态过滤陷阱）。
+- **就地 composer**：任务详情页正文与活动之间新增子任务列表与就地 composer；标题 Enter 直接提交并保持 composer 打开（支持连续拆多条），失败保留草稿。子任务默认隐藏 deleted、折叠 completed。
+- **结构重排**：桌面主区按「正文/关联资源 → 子任务 → 活动」组织；右侧属性栏按 Properties / Schedule / Relations / System / Custom 分组、可折叠、空组隐身；注解与变更历史归入统一 Activity 区块（过渡态，已标注后续按统一时间戳交错排序的 TODO）。
+- **移动端**：分段 tab 扩展为「正文 / 子任务 / 属性 / 活动」，默认打开正文。
+- **权限与错误**：前端按 `canTaskWrite && !projectClosed && 任务可写 && 非 recurring parent` 门控创建入口；服务端 workspace/project scope 与 task:write 仍是最终事实。
+
+对应 spec / plan：
+
+```text
+docs/superpowers/specs/2026-07-07-web-console-task-detail-redesign-design.md
+docs/superpowers/plans/2026-07-07-web-console-task-detail-redesign-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
