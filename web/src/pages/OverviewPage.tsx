@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import type React from "react"
+import { Link } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
@@ -8,6 +9,8 @@ import { DataTable } from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { listWorkspaceEffectiveConfig } from "@/features/workspace/config/config-definition-api"
+import type { ConfigEffectiveValue } from "@/features/workspace/config/config-definition-api"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import type { MeResponse } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
@@ -47,6 +50,10 @@ export function OverviewPage({ me }: OverviewPageProps) {
   const audit = useQuery({
     queryKey: ["overview", "audit"],
     queryFn: () => workspaceApiGet<Row[]>("/api/v1/audit?limit=5"),
+  })
+  const homeConfig = useQuery({
+    queryKey: ["overview", "config-effective", "console-home"],
+    queryFn: () => listWorkspaceEffectiveConfig({ consoleHome: true }),
   })
 
   const deliveries = useMemo(
@@ -102,6 +109,7 @@ export function OverviewPage({ me }: OverviewPageProps) {
           </div>
         ))}
       </section>
+      <ConfigOverviewSection rows={homeConfig.data ?? []} isPending={homeConfig.isPending} isError={homeConfig.isError} />
       <QueryError error={tasks.error ?? projects.error} />
       <section className="space-y-2">
         <SectionTitle
@@ -303,4 +311,72 @@ function formatUnix(value: unknown): string {
     return ""
   }
   return new Date(timestamp * 1000).toLocaleString()
+}
+
+function ConfigOverviewSection({
+  rows,
+  isPending,
+  isError,
+}: {
+  rows: ConfigEffectiveValue[]
+  isPending: boolean
+  isError: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <section className="space-y-2">
+      <SectionTitle
+        action={
+          <Link
+            className="text-sm text-primary hover:underline"
+            to="/settings"
+          >
+            {t("configDefinitions.overviewGoToDefinitions")}
+          </Link>
+        }
+        title={t("configDefinitions.overviewTitle")}
+      />
+      {isPending ? (
+        <TableSkeleton />
+      ) : isError ? (
+        <div className="border bg-card p-3 text-sm text-destructive">
+          {t("common.error")}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="border bg-card p-3 text-sm text-muted-foreground">
+          {t("configDefinitions.overviewEmpty")}
+        </div>
+      ) : (
+        <div className="divide-y rounded-lg border bg-card">
+          {rows.map((row) => {
+            const primary = row.definition.label || row.key
+            const sourceText =
+              row.source === "project"
+                ? t("configDefinitions.sourceProject")
+                : row.source === "workspace"
+                  ? t("configDefinitions.sourceWorkspace")
+                  : row.source === "default"
+                    ? t("configDefinitions.sourceDefault")
+                    : t("configDefinitions.sourceMissing")
+            const displayValue =
+              row.value === null ? t("configDefinitions.sourceMissing") : row.value
+            return (
+              <div className="flex items-center gap-3 p-3" key={row.key}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{primary}</div>
+                  <code className="text-xs text-muted-foreground">
+                    {row.key}
+                  </code>
+                </div>
+                <div className="max-w-[40%] truncate text-sm text-muted-foreground">
+                  {displayValue}
+                </div>
+                <Badge variant="outline">{sourceText}</Badge>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
 }
