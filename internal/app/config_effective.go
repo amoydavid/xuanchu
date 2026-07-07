@@ -61,7 +61,9 @@ func (s *Service) ConfigSchemaUsage(key string) (ConfigSchemaUsageView, error) {
 
 // ProjectConfigEffectiveValues 返回 project 视角的有效值列表。
 // 覆盖全部 workspace 定义；source 顺序 project > workspace > default > missing。
-func (s *Service) ProjectConfigEffectiveValues(projectRef string) ([]ConfigEffectiveValueView, error) {
+// filter.ConsoleHomeOnly=true 时只返回 ShowOnConsoleHome=true 的 key（供项目工作台首页展示）。
+// 不按 allowed_scopes 过滤：项目页要看 project 可解析值，含从 workspace 继承的情况。
+func (s *Service) ProjectConfigEffectiveValues(projectRef string, filter ConfigEffectiveFilter) ([]ConfigEffectiveValueView, error) {
 	if err := s.Require(PermissionProjectConfigRead); err != nil {
 		return nil, err
 	}
@@ -89,8 +91,10 @@ func (s *Service) ProjectConfigEffectiveValues(projectRef string) ([]ConfigEffec
 		if err != nil {
 			return nil, err
 		}
-		row := buildEffectiveValueView(view, projectValues, workspaceValues)
-		out = append(out, row)
+		if filter.ConsoleHomeOnly && !view.ShowOnConsoleHome {
+			continue
+		}
+		out = append(out, buildEffectiveValueView(view, projectValues, workspaceValues))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil

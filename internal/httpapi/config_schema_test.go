@@ -120,6 +120,76 @@ func TestHTTP_ProjectConfigEffectiveResolvesSources(t *testing.T) {
 	}
 }
 
+func TestHTTP_ProjectConfigEffectiveConsoleHomeFiltersAndMasksSecret(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "config:write", "config:read", "project:write", "project:read")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 标记首页展示的普通 key（project 显式值）
+	secretDefault := "topsecret"
+	if err := svc.ConfigSchemaSet(app.ConfigSchemaInput{
+		Key: "ads.secret", ValueType: "string", AllowedScopes: []string{"project"}, Secret: true, ShowOnConsoleHome: true, DefaultValue: &secretDefault,
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet(ads.secret): %v", err)
+	}
+	// 标记首页展示的普通 key（project 显式值）
+	if err := svc.ConfigSchemaSet(app.ConfigSchemaInput{
+		Key: "ads.roi", ValueType: "string", AllowedScopes: []string{"workspace", "project"}, ShowOnConsoleHome: true,
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet(ads.roi): %v", err)
+	}
+	// 未标记首页展示
+	if err := svc.ConfigSchemaSet(app.ConfigSchemaInput{
+		Key: "agent.background", ValueType: "string", AllowedScopes: []string{"project"},
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet(agent.background): %v", err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	if err := svc.ProjectConfigSet(project.ID, "ads.roi", "1.8"); err != nil {
+		t.Fatalf("ProjectConfigSet: %v", err)
+	}
+
+	h := authHeaderJSON(fixture.token)
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/projects/api/config/effective?workspace=local&console_home=true", h)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, rr.Body.String())
+	}
+	byKey := map[string]map[string]any{}
+	for _, row := range payload.Data {
+		byKey[row["key"].(string)] = row
+	}
+	// 只返回 show_on_console_home=true 的 key
+	if _, ok := byKey["agent.background"]; ok {
+		t.Fatal("agent.background should be filtered out by console_home=true")
+	}
+	// ads.roi 保留，且 project 显式值可见
+	if row, ok := byKey["ads.roi"]; !ok || row["source"] != "project" {
+		t.Fatalf("ads.roi = %#v, want source project", byKey["ads.roi"])
+	}
+	// ads.secret 的值必须被遮掩（不能露出 topsecret）
+	if row, ok := byKey["ads.secret"]; ok {
+		value, _ := row["value"].(string)
+		if value == "topsecret" {
+			t.Fatalf("secret value leaked in project console home: %s", rr.Body.String())
+		}
+		if !strings.Contains(value, "•") {
+			t.Fatalf("secret value not masked: %s body=%s", value, rr.Body.String())
+		}
+	} else {
+		t.Fatal("ads.secret missing from console_home result")
+	}
+}
+
 func TestHTTP_WorkspaceConfigEffectiveConsoleHomeMasksSecret(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "config:write", "config:read")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store, ActorRef: "local", WorkspaceRef: "local"})
