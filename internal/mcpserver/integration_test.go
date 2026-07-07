@@ -1441,6 +1441,87 @@ func TestMCPTenantAccessTokenHTTPMode(t *testing.T) {
 	}
 }
 
+func TestMCPTenantAccessTokenCanQueryTasksByExplicitAssignee(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	if _, err := svc.AddUser(app.AddUserInput{Name: "tenant-assignee"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(app.AddMemberInput{UserRef: "tenant-assignee", Role: app.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "assigned tenant-visible task", Assignees: []string{"tenant-assignee"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "unassigned tenant-visible task"}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime-reader",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task_query", TaskQueryInput{Query: "assignee:tenant-assignee"})
+	if result.IsError {
+		t.Fatalf("task_query assignee error: %v", parseError(t, result))
+	}
+	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "tasks")
+	if len(tasks) != 1 {
+		t.Fatalf("tasks len = %d, want 1", len(tasks))
+	}
+	taskObj, ok := tasks[0].(map[string]any)
+	if !ok {
+		t.Fatalf("task type = %T, want map", tasks[0])
+	}
+	if taskObj["title"] != "assigned tenant-visible task" {
+		t.Fatalf("task title = %v, want assigned tenant-visible task", taskObj["title"])
+	}
+}
+
+func TestMCPTenantAccessTokenTaskQueryIgnoresActorlessActiveContextState(t *testing.T) {
+	store := newMCPTestStore(t)
+	svc := newMCPTestService(t, store)
+	if err := svc.DefineContext("tenant-filter", "+ctx"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMeta("active_context.."+svc.Runtime().WorkspaceID, "tenant-filter"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "context-tagged task", Tags: []string{"ctx"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "plain tenant task"}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateTenantAccessToken(app.CreateTenantAccessTokenInput{
+		Name:   "runtime-reader",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+created.RawToken)
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeHTTP, Request: req})
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task_query", TaskQueryInput{})
+	if result.IsError {
+		t.Fatalf("task_query error: %v", parseError(t, result))
+	}
+	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "tasks")
+	if len(tasks) != 2 {
+		t.Fatalf("tasks len = %d, want 2; tasks=%#v", len(tasks), tasks)
+	}
+}
+
 func TestMCPTenantAccessTokenCanManageTenantOwnerTools(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)

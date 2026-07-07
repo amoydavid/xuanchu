@@ -155,6 +155,9 @@ func (s *Service) activeContextFilter(skip bool) (query.Expr, error) {
 	if skip || s.disableContext {
 		return nil, nil
 	}
+	if s.runtime.IsTenantActor() {
+		return nil, nil
+	}
 	active, err := s.activeContext()
 	if err != nil {
 		return nil, err
