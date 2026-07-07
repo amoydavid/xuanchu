@@ -23,3 +23,12 @@ export function canProjectManage(input: WorkbenchPermissionInput): boolean {
     ["owner", "admin"].includes(input.role ?? "")
   )
 }
+
+// canConfigManage 控制 workspace 级 ConfigDefinition 写入。
+// config 定义是 workspace 控制面，权限收紧到 owner/admin + config:write scope。
+export function canConfigManage(input: WorkbenchPermissionInput): boolean {
+  return (
+    hasScope(input.scopes, "config:write") &&
+    ["owner", "admin"].includes(input.role ?? "")
+  )
+}

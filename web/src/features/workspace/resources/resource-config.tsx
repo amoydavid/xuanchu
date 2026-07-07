@@ -129,18 +129,10 @@ export function resourceConfig(
         ],
       }
     case "settings":
-      return {
-        title: t("page.settings"),
-        path: "/api/v1/config",
-        columns: [
-          { key: "key", header: t("resource.key"), render: textCell("key") },
-          {
-            key: "value",
-            header: t("resource.value"),
-            render: textCell("value"),
-          },
-        ],
-      }
+      // /settings 已迁移到独立的 SettingsRoute（ConfigDefinitionsPage），
+      // 不再走通用 ResourcePage。这里保留 case 以满足 PageKey 联合类型穷尽检查，
+      // 但运行时不应被调用到。
+      throw new Error(`resourceConfig: page "${String(page)}" has a dedicated route`)
     case "overview":
       return {
         title: t("page.overview"),
