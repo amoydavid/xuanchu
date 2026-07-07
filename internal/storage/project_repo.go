@@ -284,3 +284,227 @@ func (r *ProjectRepository) find(query string, args ...any) (Project, error) {
 	}
 	return project, nil
 }
+
+// ProjectTaskRefSummary 是项目任务摘要中的任务短引用。
+// TaskSlug 由 Project + ProjectSeq 在 Go 端拼出（数据库无 task_slug 列）。
+type ProjectTaskRefSummary struct {
+	UUID     string
+	TaskSlug string
+	Title    string
+}
+
+// ProjectAssigneeWorkloadRow 是按 assignee 聚合的项目负责人负载行。
+// UserID == "" 表示未分配任务。显示名相关字段保留原始列，label 由 app 层生成。
+type ProjectAssigneeWorkloadRow struct {
+	UserID            string
+	Name              string
+	DisplayName       string
+	Email             *string
+	OpenCount         int
+	OverdueCount      int
+	HighPriorityCount int
+}
+
+// ProjectTaskSummary 是项目全量任务摘要。所有计数都基于项目全量任务，
+// 排除 completed/deleted 状态。Refs 查询只取最多 3 条短引用。
+type ProjectTaskSummary struct {
+	OverdueCount          int
+	OverdueRefs           []ProjectTaskRefSummary
+	HighPriorityOpenCount int
+	HighPriorityOpenRefs  []ProjectTaskRefSummary
+	WaitReadyCount        int
+	WaitReadyRefs         []ProjectTaskRefSummary
+	UnassignedOpenCount   int
+	UnassignedOpenRefs    []ProjectTaskRefSummary
+	Workload              []ProjectAssigneeWorkloadRow
+}
+
+// TaskSummary 按项目全量任务聚合项目任务摘要。
+// now 使用服务端注入时钟，date-only due/until/wait/scheduled 已在写入时按本地日边界落库，
+// 这里只用落库后的 Unix 时间比较，不再重新解释浏览器时区。
+func (r *ProjectRepository) TaskSummary(workspaceID, projectID string, now int64) (ProjectTaskSummary, error) {
+	summary := ProjectTaskSummary{
+		OverdueRefs:           []ProjectTaskRefSummary{},
+		HighPriorityOpenRefs:  []ProjectTaskRefSummary{},
+		WaitReadyRefs:         []ProjectTaskRefSummary{},
+		UnassignedOpenRefs:    []ProjectTaskRefSummary{},
+		Workload:              []ProjectAssigneeWorkloadRow{},
+	}
+
+	// 四类计数 + refs。count 查询返回项目全量；refs 查询只取最多 3 条。
+	openStatusFilter := []string{domain.StatusCompleted, domain.StatusDeleted}
+
+	var overdueCount, highPriorityOpenCount, waitReadyCount, unassignedOpenCount int64
+
+	// overdue count
+	if err := r.db.Model(&Task{}).
+		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
+		Where("status NOT IN ?", openStatusFilter).
+		Where("due IS NOT NULL AND due < ?", now).
+		Count(&overdueCount).Error; err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	// high priority open count
+	if err := r.db.Model(&Task{}).
+		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
+		Where("status NOT IN ?", openStatusFilter).
+		Where("priority = ?", "H").
+		Count(&highPriorityOpenCount).Error; err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	// wait ready count
+	if err := r.db.Model(&Task{}).
+		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
+		Where("status NOT IN ?", openStatusFilter).
+		Where("wait IS NOT NULL AND wait <= ?", now).
+		Count(&waitReadyCount).Error; err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	// unassigned open count
+	if err := r.db.Model(&Task{}).
+		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
+		Where("status NOT IN ?", openStatusFilter).
+		Where("NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)").
+		Count(&unassignedOpenCount).Error; err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	summary.OverdueCount = int(overdueCount)
+	summary.HighPriorityOpenCount = int(highPriorityOpenCount)
+	summary.WaitReadyCount = int(waitReadyCount)
+	summary.UnassignedOpenCount = int(unassignedOpenCount)
+
+	// refs（最多 3 条）。顺序以 due/entry 为主，便于前端稳定展示。
+	var err error
+	summary.OverdueRefs, err = r.taskSummaryRefs(workspaceID, projectID, now, "overdue")
+	if err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	summary.HighPriorityOpenRefs, err = r.taskSummaryRefs(workspaceID, projectID, now, "high_priority_open")
+	if err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	summary.WaitReadyRefs, err = r.taskSummaryRefs(workspaceID, projectID, now, "wait_ready")
+	if err != nil {
+		return ProjectTaskSummary{}, err
+	}
+	summary.UnassignedOpenRefs, err = r.taskSummaryRefs(workspaceID, projectID, now, "unassigned_open")
+	if err != nil {
+		return ProjectTaskSummary{}, err
+	}
+
+	// 负责人负载：assignee 行 + 未分配行
+	summary.Workload, err = r.taskSummaryWorkload(workspaceID, projectID, now)
+	if err != nil {
+		return ProjectTaskSummary{}, err
+	}
+
+	return summary, nil
+}
+
+// taskSummaryRefs 按类别返回最多 3 条任务短引用。
+func (r *ProjectRepository) taskSummaryRefs(workspaceID, projectID string, now int64, kind string) ([]ProjectTaskRefSummary, error) {
+	base := r.db.Model(&Task{}).
+		Select("uuid, project, project_seq, title").
+		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
+		Where("status NOT IN ?", []string{domain.StatusCompleted, domain.StatusDeleted})
+	switch kind {
+	case "overdue":
+		base = base.Where("due IS NOT NULL AND due < ?", now)
+	case "high_priority_open":
+		base = base.Where("priority = ?", "H")
+	case "wait_ready":
+		base = base.Where("wait IS NOT NULL AND wait <= ?", now)
+	case "unassigned_open":
+		base = base.Where("NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)")
+	default:
+		return nil, fmt.Errorf("unsupported task summary kind: %s", kind)
+	}
+	var rows []Task
+	if err := base.Order("entry ASC").Limit(3).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]ProjectTaskRefSummary, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ProjectTaskRefSummary{
+			UUID:     row.UUID,
+			TaskSlug: taskSlugFromModel(row.Project, row.ProjectSeq),
+			Title:    row.Title,
+		})
+	}
+	return out, nil
+}
+
+// taskSummaryWorkload 按负责人聚合未关闭任务的 open/overdue/high 计数，
+// 并追加一行未分配任务汇总。
+func (r *ProjectRepository) taskSummaryWorkload(workspaceID, projectID string, now int64) ([]ProjectAssigneeWorkloadRow, error) {
+	// assignee 负载：tasks join task_assignees left join users
+	type workloadRow struct {
+		UserID      string
+		Name        string
+		DisplayName string
+		Email       *string
+		OpenCount   int
+		Overdue     int
+		HighPriority int
+	}
+	var rows []workloadRow
+	openFilter := []string{domain.StatusCompleted, domain.StatusDeleted}
+	if err := r.db.Table("tasks").
+		Select("users.id AS user_id, users.name AS name, users.display_name AS display_name, users.email AS email, "+
+			"COUNT(*) AS open_count, "+
+			"SUM(CASE WHEN tasks.due IS NOT NULL AND tasks.due < ? THEN 1 ELSE 0 END) AS overdue, "+
+			"SUM(CASE WHEN tasks.priority = ? THEN 1 ELSE 0 END) AS high_priority", now, "H").
+		Joins("JOIN task_assignees ON task_assignees.task_uuid = tasks.uuid").
+		Joins("LEFT JOIN users ON users.id = task_assignees.user_id").
+		Where("tasks.workspace_id = ? AND tasks.project_id = ?", workspaceID, projectID).
+		Where("tasks.status NOT IN ?", openFilter).
+		Group("users.id, users.name, users.display_name, users.email").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]ProjectAssigneeWorkloadRow, 0, len(rows)+1)
+	for _, row := range rows {
+		out = append(out, ProjectAssigneeWorkloadRow{
+			UserID:            row.UserID,
+			Name:              row.Name,
+			DisplayName:       row.DisplayName,
+			Email:             row.Email,
+			OpenCount:         row.OpenCount,
+			OverdueCount:      row.Overdue,
+			HighPriorityCount: row.HighPriority,
+		})
+	}
+
+	// 未分配任务：NOT EXISTS assignee
+	var unassigned struct {
+		OpenCount    int
+		Overdue      int
+		HighPriority int
+	}
+	if err := r.db.Table("tasks").
+		Select("COUNT(*) AS open_count, "+
+			"SUM(CASE WHEN tasks.due IS NOT NULL AND tasks.due < ? THEN 1 ELSE 0 END) AS overdue, "+
+			"SUM(CASE WHEN tasks.priority = ? THEN 1 ELSE 0 END) AS high_priority", now, "H").
+		Where("tasks.workspace_id = ? AND tasks.project_id = ?", workspaceID, projectID).
+		Where("tasks.status NOT IN ?", openFilter).
+		Where("NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)").
+		Scan(&unassigned).Error; err != nil {
+		return nil, err
+	}
+	out = append(out, ProjectAssigneeWorkloadRow{
+		UserID:            "",
+		OpenCount:         unassigned.OpenCount,
+		OverdueCount:      unassigned.Overdue,
+		HighPriorityCount: unassigned.HighPriority,
+	})
+	return out, nil
+}
+
+// taskSlugFromModel 在 storage 层复刻 task.ToJSON 的 slug 拼接规则：project-projectSeq。
+func taskSlugFromModel(project *string, seq *int64) string {
+	if project == nil || *project == "" || seq == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s-%d", *project, *seq)
+}

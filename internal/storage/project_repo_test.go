@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"gorm.io/gorm"
 )
 
@@ -435,3 +436,157 @@ func TestProjectRepositoryUpdateStatus(t *testing.T) {
 		t.Fatalf("UpdateStatus(nonexistent) error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestProjectRepositoryTaskSummary(t *testing.T) {
+	store, repo, ws := newProjectRepoTest(t)
+	project, err := repo.Create(testProject("p-summary", ws.ID, "ops", 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	other, err := repo.Create(testProject("p-other", ws.ID, "other", 101))
+	if err != nil {
+		t.Fatalf("Create(other) error = %v", err)
+	}
+
+	now := int64(1_800_000_000)
+	duePast := now - 3600
+	dueFuture := now + 3600
+	dueEqualNow := now
+	waitReady := now
+	waitFuture := now + 3600
+	priorityH := "H"
+	priorityM := "M"
+
+	// users
+	zhang := "user-zhang"
+	lisi := "user-lisi"
+	for _, u := range []struct {
+		id, name, displayName string
+	}{
+		{zhang, "zhangsan", "张三"},
+		{lisi, "lisi", "李四"},
+	} {
+		if err := store.DB().Create(&User{ID: u.id, Name: u.name, DisplayName: u.displayName}).Error; err != nil {
+			t.Fatalf("create user %q: %v", u.id, err)
+		}
+	}
+
+	// 项目内任务：
+	// overdue-h: 逾期 + 高优 + 未分配
+	insertTaskWithOpts(t, store, "overdue-h", ws.ID, project.ID, "ops", 1, "pending", taskOpts{Due: &duePast, Priority: &priorityH})
+	// high-only: 高优但未逾期
+	insertTaskWithOpts(t, store, "high-only", ws.ID, project.ID, "ops", 2, "pending", taskOpts{Priority: &priorityH})
+	// wait-ready: 等待已到期，分配给张三
+	insertTaskWithOpts(t, store, "wait-ready", ws.ID, project.ID, "ops", 3, "waiting", taskOpts{Wait: &waitReady, Priority: &priorityM, Assignees: []string{zhang}})
+	// future: 未到期、未等待、分配给张三
+	insertTaskWithOpts(t, store, "future", ws.ID, project.ID, "ops", 4, "pending", taskOpts{Due: &dueFuture, Assignees: []string{zhang}})
+	// unassigned-open: 未分配、未到期、未等待
+	insertTaskWithOpts(t, store, "unassigned-open", ws.ID, project.ID, "ops", 5, "pending", taskOpts{})
+	// wait-future: 等待未到期
+	insertTaskWithOpts(t, store, "wait-future", ws.ID, project.ID, "ops", 6, "waiting", taskOpts{Wait: &waitFuture, Assignees: []string{lisi}})
+	// due-equal-now: due == now，按规则不计入 overdue
+	insertTaskWithOpts(t, store, "due-equal-now", ws.ID, project.ID, "ops", 7, "pending", taskOpts{Due: &dueEqualNow})
+	// done-overdue: 已完成且高优且逾期，不计入任何开放计数
+	insertTaskWithOpts(t, store, "done-overdue", ws.ID, project.ID, "ops", 8, "completed", taskOpts{Due: &duePast, Priority: &priorityH})
+	// deleted-overdue: 已删除，不计入
+	insertTaskWithOpts(t, store, "deleted-overdue", ws.ID, project.ID, "ops", 9, "deleted", taskOpts{Due: &duePast})
+
+	// 其他项目任务，不应被聚合进来
+	insertTaskWithOpts(t, store, "other-overdue", ws.ID, other.ID, "other", 1, "pending", taskOpts{Due: &duePast, Priority: &priorityH})
+
+	summary, err := repo.TaskSummary(ws.ID, project.ID, now)
+	if err != nil {
+		t.Fatalf("TaskSummary() error = %v", err)
+	}
+
+	// overdue: overdue-h、duePast+pending；due-equal-now 不算；done/deleted 不算
+	if summary.OverdueCount != 1 {
+		t.Fatalf("OverdueCount = %d, want 1", summary.OverdueCount)
+	}
+	if len(summary.OverdueRefs) != 1 || summary.OverdueRefs[0].TaskSlug != "ops-1" {
+		t.Fatalf("OverdueRefs = %#v, want [ops-1]", summary.OverdueRefs)
+	}
+
+	// high priority open: overdue-h + high-only
+	if summary.HighPriorityOpenCount != 2 {
+		t.Fatalf("HighPriorityOpenCount = %d, want 2", summary.HighPriorityOpenCount)
+	}
+	if len(summary.HighPriorityOpenRefs) != 2 {
+		t.Fatalf("HighPriorityOpenRefs = %#v, want 2 refs", summary.HighPriorityOpenRefs)
+	}
+
+	// wait ready: 仅 wait-ready（wait == now 计入；wait-future 不算）
+	if summary.WaitReadyCount != 1 {
+		t.Fatalf("WaitReadyCount = %d, want 1", summary.WaitReadyCount)
+	}
+	if len(summary.WaitReadyRefs) != 1 || summary.WaitReadyRefs[0].TaskSlug != "ops-3" {
+		t.Fatalf("WaitReadyRefs = %#v, want [ops-3]", summary.WaitReadyRefs)
+	}
+
+	// unassigned open: overdue-h、high-only、unassigned-open、due-equal-now
+	if summary.UnassignedOpenCount != 4 {
+		t.Fatalf("UnassignedOpenCount = %d, want 4", summary.UnassignedOpenCount)
+	}
+
+	// 负责人负载：未分配任务、张三、李四
+	if got := workloadByUserID(summary.Workload, ""); got == nil || got.OpenCount != 4 {
+		t.Fatalf("unassigned OpenCount = %v, want 4", got)
+	}
+	if got := workloadByUserID(summary.Workload, zhang); got == nil || got.OpenCount != 2 {
+		t.Fatalf("zhang OpenCount = %v, want 2", got)
+	}
+	if got := workloadByUserID(summary.Workload, zhang); got != nil && got.OverdueCount != 0 {
+		t.Fatalf("zhang OverdueCount = %d, want 0", got.OverdueCount)
+	}
+	if got := workloadByUserID(summary.Workload, lisi); got == nil || got.OpenCount != 1 {
+		t.Fatalf("lisi OpenCount = %v, want 1", got)
+	}
+}
+
+type taskOpts struct {
+	Due       *int64
+	Wait      *int64
+	Priority  *string
+	Assignees []string
+}
+
+func insertTaskWithOpts(t *testing.T, store *Store, uuid, workspaceID, projectID, projectSlug string, seq int, status string, opts taskOpts) {
+	t.Helper()
+	task := Task{
+		UUID:        uuid,
+		WorkspaceID: workspaceID,
+		Title:       "task " + uuid,
+		Status:      status,
+		Entry:       int64(100),
+		Modified:    int64(100),
+		Project:     &projectSlug,
+		ProjectID:   &projectID,
+		ProjectSeq:  ptrInt64(int64(seq)),
+		Due:         opts.Due,
+		Wait:        opts.Wait,
+		Priority:    opts.Priority,
+	}
+	if err := store.DB().Create(&task).Error; err != nil {
+		t.Fatalf("insert task %q: %v", uuid, err)
+	}
+	for _, userID := range opts.Assignees {
+		if err := store.DB().Create(&TaskAssignee{TaskUUID: uuid, UserID: userID}).Error; err != nil {
+			t.Fatalf("insert assignee for %q: %v", uuid, err)
+		}
+	}
+}
+
+func ptrInt64(v int64) *int64 {
+	return &v
+}
+
+func workloadByUserID(rows []ProjectAssigneeWorkloadRow, userID string) *ProjectAssigneeWorkloadRow {
+	for i := range rows {
+		if rows[i].UserID == userID {
+			return &rows[i]
+		}
+	}
+	return nil
+}
+
+var _ = domain.StatusPending
