@@ -33,6 +33,10 @@ type ProjectTaskToolbarProps = {
   filter: TaskFilter
   onCreateTask: () => void
   toParams: { workspaceSlug: string; projectSlug: string }
+  // navigateTo 决定筛选 search 写入到哪个项目子页面路由。
+  // Tasks 子页面传 /workspaces/$workspaceSlug/projects/$projectSlug/tasks；
+  // 默认项目根路由以兼容历史用法。
+  navigateTo?: string
 }
 
 export type AssigneeFilterOption = {
@@ -80,6 +84,7 @@ export function ProjectTaskToolbar({
   filter,
   onCreateTask,
   toParams,
+  navigateTo = "/workspaces/$workspaceSlug/projects/$projectSlug",
 }: ProjectTaskToolbarProps) {
   const navigate = useNavigate()
   const advanced = {
@@ -94,7 +99,7 @@ export function ProjectTaskToolbar({
 
   const setFilter = (key: keyof TaskFilter, value: string) => {
     void navigate({
-      to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+      to: navigateTo,
       params: toParams,
       search: (prev) => {
         const next = { ...(prev as Record<string, string>) }
@@ -110,7 +115,7 @@ export function ProjectTaskToolbar({
 
   const setFilters = (values: Partial<Record<keyof TaskFilter, string>>) => {
     void navigate({
-      to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+      to: navigateTo,
       params: toParams,
       search: (prev) => {
         const next = { ...(prev as Record<string, string>) }
@@ -128,7 +133,7 @@ export function ProjectTaskToolbar({
 
   const clearAll = () => {
     void navigate({
-      to: "/workspaces/$workspaceSlug/projects/$projectSlug",
+      to: navigateTo,
       params: toParams,
       search: {},
     })

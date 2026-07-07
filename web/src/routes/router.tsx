@@ -29,6 +29,11 @@ const ProjectWorkbenchRoute = lazy(() =>
     default: module.ProjectWorkbenchRoute,
   }))
 )
+const ProjectTasksRoute = lazy(() =>
+  import("@/routes/workspace/ProjectTasksRoute").then((module) => ({
+    default: module.ProjectTasksRoute,
+  }))
+)
 const ProjectsListRoute = lazy(() =>
   import("@/routes/workspace/ProjectsListRoute").then((module) => ({
     default: module.ProjectsListRoute,
@@ -262,6 +267,37 @@ const projectTaskDetailRoute = createRoute({
   component: lazyRoute(ProjectTaskDetailRoute),
 })
 
+const projectTasksRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks",
+  component: lazyRoute(ProjectTasksRoute),
+  validateSearch: (search: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const key of [
+      "status",
+      "priority",
+      "assignee",
+      "due_after",
+      "due_before",
+      "due_empty",
+      "assignee_empty",
+      "wait_before",
+      "scheduled_before",
+      "until_before",
+      "tags",
+      "q",
+      "query",
+      "sort",
+    ]) {
+      const value = search[key]
+      if (typeof value === "string" && value !== "") {
+        out[key] = value
+      }
+    }
+    return out
+  },
+})
+
 // /tasks/$taskRef：脱离项目上下文的任务详情入口，从「我的任务」点击进入。
 // workspace 来自当前 effective workspace（见 TaskDetailRoute）。
 const taskDetailRoute = createRoute({
@@ -358,6 +394,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("audit", "/audit"),
     settingsRoute,
     projectWorkbenchRoute,
+    projectTasksRoute,
     projectTaskDetailRoute,
   ]),
   adminLoginRoute,
