@@ -69,6 +69,9 @@ weight: 210
 | `config_definition_not_found` | 当前 workspace 下没有该 shared config key 的 schema 定义 |
 | `config_scope_not_allowed` | schema 存在，但当前 workspace/project 作用域不允许使用该 key |
 | `config_definition_in_use` | 删除 schema 时发现当前 workspace 下仍有对应 workspace/project 值 |
+| `config_definition_type_locked` | 已有配置值时修改 schema 的 value_type 被拒绝 |
+| `config_definition_scope_locked` | 移除仍存在配置值的 workspace/project scope 被拒绝 |
+| `config_definition_enum_locked` | 新枚举不包含已有配置值被拒绝 |
 | `config_scope_invalid` | config scope 不合法 |
 | `config_value_invalid` | config value 与 schema 类型或枚举约束不匹配 |
 | `config_value_too_large` | config value 太大 |

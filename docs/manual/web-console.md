@@ -121,6 +121,22 @@ http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{t
 
 未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT、Agent token 或 `tenant_access_token` 登录成功后回到原项目页。登录页同时提供「OIDC 单点登录」入口（需填写 workspace slug）。
 
+## 配置定义与有效值
+
+`/settings` 是 workspace 级 `ConfigDefinition` 控制面，定义哪些 config key 可被写入、值的类型（`string` / `number` / `boolean` / `json`）、允许的作用域（`workspace` / `project`）、默认值、枚举和机密标记。定义归属 workspace，project 侧 `/projects/$slug/settings/definitions` 是 project-scope 过滤视图，编辑同一条定义。
+
+为防止 schema 漂移，已有配置值时收紧破坏性变更：
+
+- 修改 `value_type` 返回 `config_definition_type_locked`；
+- 移除仍存在值的 workspace/project scope 返回 `config_definition_scope_locked`；
+- 新枚举不包含已有值返回 `config_definition_enum_locked`。
+
+删除定义时弹窗要求输入 key 确认，并调用 `DELETE /api/v1/config-schema/{key}?purge=true` 同时删除 workspace/project 下所有同 key 配置值。
+
+`show_on_console_home` 开关仅影响 Web Console 首页展示，不是必填约束。Web Console 首页「配置概览」区按 `GET /api/v1/config/effective?console_home=true` 渲染，只展示该开关为 true 且 workspace 可解析的 key（project-only key 不在首页展示）；secret 值统一遮掩为 `••••••`，不提供首页 reveal。
+
+项目设置页的配置值 tab（`/projects/$slug/settings/config`）展示 project effective 配置，读取顺序为 project 显式值 > workspace 值 > schema 默认值 > 缺失。来源、状态（已覆盖 / 继承 / 默认 / 必填缺失 / 只读）和 secret 遮掩在 UI 上区分；「恢复继承」删除 project 显式值，行保留并回落到继承来源。
+
 ## Server Admin Bootstrap
 
 Server admin 入口是独立页面：
