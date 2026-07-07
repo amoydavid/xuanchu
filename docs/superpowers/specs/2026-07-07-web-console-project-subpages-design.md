@@ -25,6 +25,7 @@ Linear 的启发不是照搬 `Overview / Activity / Issues` 这几个词，而�
 4. 让 `Tasks` 成为任务执行和筛选主页面，承接当前任务工具栏、任务表格、导入、新建能力。
 5. 让 `Activity` 成为项目更新、任务注解、项目相关审计的时间线页面。
 6. 第一阶段优先复用现有 API 和数据结构，不新增 project lead、project members、milestones 等模型。
+7. 页面上每个数字、姓名、状态、列表项都必须能追溯到明确接口字段或前端派生规则；没有数据来源的内容不展示。
 
 ## 3. 非目标
 
@@ -44,9 +45,11 @@ Linear 的启发不是照搬 `Overview / Activity / Issues` 这几个词，而�
 | 活动页 | 新增 `/workspaces/:workspaceSlug/projects/:projectSlug/activity` |
 | 设置页 | 继续使用现有 `/projects/:projectSlug/settings/*`，不放入主 tab |
 | 右侧栏 | 新增共享 `ProjectContextRail`，所有项目子页面复用 |
+| 右侧栏开合 | 右侧栏默认打开，用户可收起；收起后只保留一个展开按钮 |
 | Notes 归属 | 项目 notes/annotations 从 settings 迁到 Activity |
 | 第一阶段数据策略 | 前端组合现有端点，不新增后端聚合端点 |
-| 任务层级 | Tasks 页保留 Linear 式父子任务树方向，第一阶段可先在当前结果内聚合，后续补 `child_count` |
+| 任务列表形态 | 第一阶段 Tasks 页使用简单列表，不做状态分组、父子树、看板或泳道 |
+| 后续分组策略 | 任务分组有多种路径，需另起设计：按状态、负责人、优先级、标签、父子层级或自定义查询 |
 
 ## 5. 信息架构
 
@@ -83,11 +86,25 @@ Linear 的启发不是照搬 `Overview / Activity / Issues` 这几个词，而�
 | 左侧：当前子页面主体                          | 右侧：项目信息栏             |
 |                                               |                              |
 | 概览页：项目态势、重点风险、运行配置、摘要     | 属性                         |
-| 任务页：筛选、任务树、任务操作                | 进度                         |
+| 任务页：筛选、简单任务列表、任务操作           | 进度                         |
 | 活动页：更新输入框、时间线、审计              | 运行配置                     |
 |                                               | 负责人负载                   |
 |                                               | 最近活动                     |
 +-----------------------------------------------+------------------------------+
+```
+
+右侧栏收起后：
+
+```text
++------------------------------------------------------------------------------+
+| 工作区 / 项目代号                                      [复制] [状态] [设置] |
++------------------------------------------------------------------------------+
+| [概览] [任务] [活动]                                                   [展开] |
++------------------------------------------------------------------------------+
+| 左侧：当前子页面主体，占满主要宽度                                           |
+|                                                                              |
+| 概览 / 任务 / 活动内容                                                       |
++------------------------------------------------------------------------------+
 ```
 
 ## 6. 共享区域
@@ -104,12 +121,13 @@ Linear 的启发不是照搬 `Overview / Activity / Issues` 这几个词，而�
 
 | 区块 | 数据来源 | 展示原因 |
 |---|---|---|
-| 工作区、项目代号 | route params + `GET /api/v1/projects/{ref}` | 明确当前上下文，避免跨 workspace/project 操作误判 |
-| 项目名称、描述 | `ProjectView.name`、`ProjectView.description` | 项目主身份，支持 inline 编辑 |
-| 状态菜单 | `ProjectView.status` + transition API | 状态是项目级决策，应在所有子页可见 |
-| 导入任务 | 当前任务导入能力 | 属于任务执行动作，只在有写权限且项目未关闭时显示，可在 Tasks 页更突出 |
+| 工作区 | route params 的 `workspaceSlug` | 明确当前 workspace 上下文，避免跨 workspace 操作误判 |
+| 项目代号 | route params 的 `projectSlug`，并由 `GET /api/v1/projects/{ref}` 校验存在性 | 明确当前 project 上下文 |
+| 项目名称、描述 | `GET /api/v1/projects/{ref}` 返回的 `name`、`description` | 项目主身份，支持 inline 编辑 |
+| 状态菜单 | `GET /api/v1/projects/{ref}` 返回的 `status`；写入走 project transition API | 状态是项目级决策，应在所有子页可见 |
+| 导入任务 | 当前登录态/令牌的 `task:write` 能力 + 项目 `status` 非 archived/cancelled | 属于任务执行动作，只在有写权限且项目未关闭时显示 |
 | 复制链接 | 当前浏览器 URL | 项目页是协作入口，需要稳定分享 |
-| 设置入口 | 现有 project settings route | 配置编辑属于管理面，保持齿轮入口 |
+| 设置入口 | 当前登录态/令牌的 `project:manage` 能力 + 现有 project settings route | 配置编辑属于管理面，保持齿轮入口 |
 
 ### 6.2 Project Tabs
 
@@ -127,43 +145,56 @@ Linear 的启发不是照搬 `Overview / Activity / Issues` 这几个词，而�
 
 ### 6.3 Project Context Rail
 
-右侧栏在所有项目子页面保持一致。它不是第二个详情页，而是“当前项目的固定上下文”。
+右侧栏在所有项目子页面保持一致。它不是第二个详情页，而是“当前项目的固定上下文”。右侧栏默认打开，用户可以收起。收起后，页面右侧只保留一个窄按钮用于展开，左侧主体自动占满剩余宽度。第一阶段不要求跨浏览器持久化开合状态；如已有本地 UI 偏好存储，可记入 localStorage。
 
 ```text
 +-- 项目信息 --------------------+
 | 状态          active           |
-| 任务          38 总数 / 22 未完 |
+| 任务          38 总数 / 22 待办 |
 | 创建          2026-07-01       |
 | 更新          2026-07-07       |
 +-- 进度 ------------------------+
 | 已完成        #####----- 42%    |
-| 逾期          2                |
-| 高优未完成    3                |
+| 当前加载逾期  2                |
+| 当前加载高优  3                |
 +-- 运行配置 --------------------+
 | 缺必填        1                |
 | 项目覆盖      2                |
 | 继承工作区    4                |
 +-- 负责人负载 ------------------+
-| 未分配        5 未完 / 2 逾期  |
-| 张三          8 未完 / 1 高优  |
-| 李四          4 未完           |
+| 未分配        5 待办 / 2 逾期  |
+| 张三          8 待办 / 1 高优  |
+| 李四          4 待办           |
 +-- 最近活动 --------------------+
 | 王五发布项目更新               |
-| DEM-12 修改截止日期            |
-| DEM-8 已完成                   |
+| DEM-12 线上回调地址已确认      |
+| 项目记录：下周补验收报告       |
 +--------------------------------+
 ```
 
 数据来源与展示原因：
 
-| 区块 | 数据来源 | 为什么在右栏展示 |
-|---|---|---|
-| 状态、任务总数、创建、更新 | `GET /api/v1/projects/{ref}` | 项目元信息跨子页都需要可见 |
-| 完成进度 | `completed_count / task_count` | 快速判断项目推进状态 |
-| 逾期、高优未完成 | `GET /api/v1/tasks?project=...` 前端派生 | 比完整任务表更适合作为固定风险提示 |
-| 运行配置 | `GET /api/v1/projects/{ref}/config/effective?console_home=true` | Agent/runtime 项目的关键上下文，不应藏在设置里 |
-| 负责人负载 | 项目任务 assignees 聚合 | 当前没有项目成员模型，展示任务负载比展示“成员”更真实 |
-| 最近活动 | `GET /api/v1/projects/{ref}/timeline?limit=5`，有权限时合并 audit 预览 | 给用户持续的项目活态信号 |
+| 数据点 | 数据来源 | 派生规则 | 为什么在右栏展示 |
+|---|---|---|---|
+| 状态 | `GET /api/v1/projects/{ref}` 的 `status` | 直接展示 | 项目状态跨子页都需要可见 |
+| 任务总数 | `GET /api/v1/projects/{ref}` 的 `task_count` | 直接展示 | 给出项目规模 |
+| 待办任务数 | `GET /api/v1/projects/{ref}` 的 `pending_count` | 第一阶段按后端字段直接展示为 pending 计数；不把 waiting/recurring 编进待办，除非后端新增明确聚合 | 避免用不完整前端列表编造全量未完成 |
+| 创建时间 | `GET /api/v1/projects/{ref}` 的 `created_at` | 前端按 locale 格式化 | 判断项目历史长度 |
+| 更新时间 | `GET /api/v1/projects/{ref}` 的 `modified_at` | 前端按 locale 格式化 | 判断项目最近是否活跃 |
+| 完成进度 | `task_count`、`completed_count` | `task_count == 0` 时显示 `0%`；否则 `completed_count / task_count` | 快速判断项目推进状态 |
+| 逾期任务数 | `GET /api/v1/tasks?project=...&limit=200` 返回的当前加载任务 | 仅统计当前加载任务中 `due < now` 且状态非 completed/deleted；文案标注“当前加载范围” | 第一阶段没有全量风险聚合端点，不能伪装为全量统计 |
+| 高优未完成 | 当前加载任务 | 仅统计当前加载任务中 `priority == H` 且状态非 completed/deleted；文案标注“当前加载范围” | 提供风险提示，但不编造全量数据 |
+| 缺必填配置 | `GET /api/v1/projects/{ref}/config/effective?console_home=true` 的 `missing_required` | 统计 `missing_required == true` 的行数 | Agent/runtime 项目的关键上下文 |
+| 项目覆盖配置数 | 同上，`source == project` | 统计 source | 说明项目是否覆盖了工作区默认值 |
+| 继承工作区配置数 | 同上，`source == workspace` | 统计 source | 说明当前值从何而来 |
+| 负责人负载 | 当前加载任务的 `assignees` | 按 `assignees[].user_id/id/name/email` 聚合；空 assignees 归入“未分配”；文案标注“当前加载范围” | 当前没有项目成员模型，任务负载比成员列表更真实 |
+| 最近活动 | `GET /api/v1/projects/{ref}/timeline?limit=5` | 按 `entry` 倒序显示最近 5 条；审计不并入右栏第一版 | 给用户持续的项目活态信号 |
+
+禁止展示的数据点：
+
+- 不展示项目负责人、项目成员、里程碑、Slack/IM 频道、客户请求等字段，除非后续 schema 明确提供。
+- 不展示“进展正常 / 有风险”等项目健康状态，除非它来自项目 annotation 内容或后续新增的结构化项目更新字段。
+- 不把当前加载任务派生出的数字表述为全量项目统计。
 
 ## 7. Overview 子页面
 
@@ -182,15 +213,15 @@ Overview 是项目判断页，不是完整任务表。它应该让用户在 30 �
 ```text
 +-- 概览 ------------------------------------------------------------+
 | 最新项目更新                                                       |
-| 进展正常 · 王五 · 2 小时前                                         |
+| 王五 · 2 小时前                                                    |
 | 本周目标：完成远程 token 配置和 MCP 示例验证。                     |
 |                                                        [写项目更新] |
 +--------------------------------------------------------------------+
 | 当前重点                                                           |
-| 逾期任务        2      DEM-7、DEM-9                         [查看] |
-| 高优未完成      3      DEM-2、DEM-4、DEM-8                  [查看] |
-| 等待解除        5      wait 小于等于今天                    [查看] |
-| 缺负责人        4                                       [查看]    |
+| 当前加载范围内逾期任务      2      DEM-7、DEM-9             [查看] |
+| 当前加载范围内高优未完成    3      DEM-2、DEM-4、DEM-8      [查看] |
+| 当前加载范围内等待解除      5      wait 小于等于今天        [查看] |
+| 当前加载范围内缺负责人      4                              [查看] |
 +--------------------------------------------------------------------+
 | 运行配置                                                           |
 | llm.provider        项目覆盖          openai                       |
@@ -199,14 +230,14 @@ Overview 是项目判断页，不是完整任务表。它应该让用户在 30 �
 |                                                        [管理配置]   |
 +--------------------------------------------------------------------+
 | 负责人负载                                                         |
-| 未分配      ####----  5 未完 / 2 逾期                              |
-| 张三        ########  8 未完 / 1 高优                              |
-| 李四        ###-----  3 未完                                       |
+| 未分配      ####----  当前加载范围 5 待办 / 2 逾期                 |
+| 张三        ########  当前加载范围 8 待办 / 1 高优                 |
+| 李四        ###-----  当前加载范围 3 待办                          |
 +--------------------------------------------------------------------+
 | 最近活动                                                           |
 | 王五发布项目更新 · 2 小时前                                        |
-| DEM-12 修改截止日期 · 今天                                         |
-| DEM-8 已完成 · 昨天                                                |
+| DEM-12 线上回调地址已确认 · 今天                                   |
+| 项目记录：下周补验收报告 · 昨天                                    |
 |                                                        [查看全部]   |
 +--------------------------------------------------------------------+
 ```
@@ -215,17 +246,17 @@ Overview 是项目判断页，不是完整任务表。它应该让用户在 30 �
 
 | 区块 | 展示内容 | 数据来源 | 为什么放在这里 |
 |---|---|---|---|
-| 最新项目更新 | 最近一条 project annotation 的内容、作者、时间 | `ProjectView.recent_annotations` 或 `GET /api/v1/projects/{ref}/annotations` | 项目首页需要人类可读判断，单纯统计不足以表达项目状态 |
-| 当前重点 | 逾期、高优未完成、等待解除、缺负责人 | `GET /api/v1/tasks?project=...` 派生 | 把任务表转成行动入口，帮助用户先处理风险 |
-| 运行配置 | console-home effective config、缺必填、来源 | `listProjectEffectiveConfig(projectRef, { consoleHome: true })` | 璇础项目经常驱动 Agent/runtime，配置缺失会直接影响执行 |
-| 负责人负载 | 未分配、每个负责人未完成/逾期/高优 | 项目任务 assignees 聚合 | 当前没有项目成员模型，任务负载是更真实的协作信号 |
-| 最近活动 | timeline 最近 3 到 5 条 | `GET /api/v1/projects/{ref}/timeline?limit=5` | 给 Overview 提供项目活态，但不替代 Activity 页 |
+| 最新项目更新 | 最近一条 project annotation 的 `content`、`created_by`、`created_at/entry` | 优先使用 `ProjectView.recent_annotations`；为空时不展示该块，或显示“暂无项目更新” | 项目首页需要人类可读判断；不展示结构化健康状态，避免编造 |
+| 当前重点 | 当前加载任务范围内的逾期、高优未完成、等待解除、缺负责人 | `GET /api/v1/tasks?project=...&limit=200` 当前返回集 | 把任务表转成行动入口；第一阶段明确标注“当前加载范围内” |
+| 运行配置 | console-home effective config 的 key、value、source、missing_required | `listProjectEffectiveConfig(projectRef, { consoleHome: true })` | 璇础项目经常驱动 Agent/runtime，配置缺失会直接影响执行 |
+| 负责人负载 | 当前加载任务范围内未分配、每个负责人未完成/逾期/高优 | 当前任务返回集的 `assignees` | 当前没有项目成员模型，任务负载是更真实的协作信号 |
+| 最近活动 | timeline 最近 3 到 5 条的 `source_type`、`source_label`、`content`、`entry` | `GET /api/v1/projects/{ref}/timeline?limit=5` | 给 Overview 提供项目活态，但不替代 Activity 页 |
 
 ## 8. Tasks 子页面
 
 ### 8.1 目标
 
-Tasks 是项目执行页，承接当前项目工作台的大部分操作能力。它应该专注于任务列表、筛选、排序、创建、导入和轻量编辑。
+Tasks 是项目执行页，承接当前项目工作台的大部分操作能力。第一阶段只做简单任务列表，不做分组、父子树、看板或泳道。分组有多种合理路径，应该在后续单独设计，而不是在本 spec 中提前定死。
 
 ### 8.2 ASCII 原型
 
@@ -234,17 +265,13 @@ Tasks 是项目执行页，承接当前项目工作台的大部分操作能力�
 | [搜索标题或内容        ] [状态] [优先级] [负责人] [标签] [日期] [+] |
 | 当前筛选：状态=未完成  负责人=我                         [清除全部] |
 +--------------------------------------------------------------------+
-| v 未完成  12                                                       |
-|   > DEM-1   父任务标题                         高优   张三   周五 |
-|     `- DEM-3 子任务标题                         中优   李四   周五 |
-|     `- DEM-4 子任务标题                         -      未分配 下周 |
-|     DEM-5   独立任务标题                       -      王五   -    |
-+--------------------------------------------------------------------+
-| v 等待中  4                                                        |
-|     DEM-8   等外部回调确认                    低优   张三   -    |
-+--------------------------------------------------------------------+
-| v 已完成  22                                                       |
-|     DEM-2   已完成任务                         -      李四   昨天 |
+| 标识      标题                         状态      优先级  负责人  截止 |
+| DEM-1     父任务标题                   未完成    高优    张三    周五 |
+| DEM-3     子任务标题                   未完成    中优    李四    周五 |
+| DEM-4     子任务标题                   未完成    -       未分配  下周 |
+| DEM-5     独立任务标题                 未完成    -       王五    -    |
+| DEM-8     等外部回调确认               等待中    低优    张三    -    |
+| DEM-2     已完成任务                   已完成    -       李四    昨天 |
 +--------------------------------------------------------------------+
 ```
 
@@ -255,23 +282,27 @@ Tasks 是项目执行页，承接当前项目工作台的大部分操作能力�
 | 筛选工具栏 | 搜索、状态、优先级、负责人、标签、日期、更多筛选 | URL search + `ProjectTaskToolbar` | 任务页的首要工作是缩小任务集合 |
 | 新建任务 | 打开 `TaskCreateDialog` | 现有 task create API | 用户在查看任务时最可能创建同项目任务 |
 | 导入任务 | 打开 `TaskImportDialog` | 现有导入能力 | 批量导入属于任务页主动作 |
-| 任务树 | 父任务、子任务、独立任务、状态分组 | `GET /api/v1/tasks?project=...`，使用 `parent` / `parent_info` | 任务有父子关系时，默认平铺会失去结构 |
+| 任务列表 | 简单表格列表：标识、标题、状态、优先级、负责人、截止日期、操作 | `GET /api/v1/tasks?project=...` 返回的任务字段 | 第一阶段先保持清晰、可落地；不提前绑定某一种分组策略 |
 | 行内编辑 | 标题、优先级、截止日期、状态动作 | 现有 task mutation hooks | 当前项目工作台已证明编辑面应在 workbench 内 |
 | 负责人负载 | 可留在右栏或页面下方补充 | 当前任务集合派生 | 任务页需要快速判断任务是否堆在人或未分配上 |
 
-### 8.4 父子任务规则
+### 8.4 后续分组与层级规则
 
-第一阶段不新增后端字段时：
+第一阶段不做分组。后续如果要做分组或层级，必须先单独更新 spec，因为分组至少有以下路径：
 
-- 前端在当前加载的任务集合内按 `parent` 聚合子任务。
-- 默认显示父任务和独立任务，子任务跟随父任务展开。
-- 如果筛选命中子任务但父任务不在当前结果内，应显示该子任务，并用 `parent_info` 标记父任务。
+- 按状态分组：适合执行状态扫描。
+- 按负责人分组：适合负载均衡。
+- 按优先级分组：适合风险处理。
+- 按标签分组：适合业务域或模块视角。
+- 按父子层级展示：适合拆解结构，但需要处理 child count、筛选命中子任务、recurring parent 隐藏语义。
+- 按自定义查询或保存视图分组：适合高级用户，但需要明确配置模型。
+
+如果后续选择父子层级方向，必须遵守：
+
+- 不在当前简单列表实现里偷偷加入分组。
+- 后端任务列表应返回 `child_count`，或者提供按父 UUID 懒加载子任务的端点。
 - recurring 父任务继续保持现有隐藏语义，不为了树结构强制显示 recurring parent。
-
-后续增强时：
-
-- 后端任务列表可返回 `child_count`。
-- 展开父任务时可按父 UUID 懒加载子任务，避免首屏拉取过多。
+- 筛选命中子任务但父任务不在当前结果内时，应明确展示父任务引用来源，而不是伪造父行。
 
 ## 9. Activity 子页面
 
@@ -300,7 +331,7 @@ Activity 是项目事实流。它应该合并项目更新、任务注解和有�
 |   截止日期：2026-07-07 -> 2026-07-08                               |
 +--------------------------------------------------------------------+
 | 2026-07-06                                                         |
-| * 项目状态变更 · 系统 · 18:30                                      |
+| * 审计 · project.transition · 系统 · 18:30                          |
 |   planning -> active                                               |
 |                                                        [加载更多]   |
 +--------------------------------------------------------------------+
@@ -315,6 +346,12 @@ Activity 是项目事实流。它应该合并项目更新、任务注解和有�
 | 任务注解 | task annotation | `GET /api/v1/projects/{ref}/timeline` 中 `source_type=task` | 任务执行过程中的重要事实也属于项目上下文 |
 | 审计记录 | project-scoped audit | `GET /api/v1/audit?project=<ref>&limit=...`，仅有 `audit:read` 时请求 | 字段变更是事实流的一部分，但权限高于普通项目读取 |
 | 时间分组 | 按本地日期分组 | 前端格式化 `entry` / `created_at` | 时间线需要按天扫描，减少长列表噪音 |
+
+Activity 每条记录的数据点约束：
+
+- project annotation 只展示 `content`、`created_by`、`created_at`、`entry`、`id` 中存在的字段。
+- task annotation 只展示 timeline 返回的 `source_label`、`content`、`entry`、`source_id`，不展示不存在的任务状态或负责人。
+- audit 只展示 audit row 的 `action`、`actor`、`created_at`、`changes` 或 `payload` 中已有信息；不能把 payload 解释成没有来源的自然语言结论。
 
 ### 9.4 权限规则
 
@@ -356,10 +393,28 @@ Activity 是项目事实流。它应该合并项目更新、任务注解和有�
 | 项目时间线 | `GET /api/v1/projects/{projectRef}/timeline?limit=&offset=` | 合并 project annotation 与 task annotation |
 | 项目 annotations | `GET/POST/DELETE /api/v1/projects/{projectRef}/annotations` | Activity 发布与列表 |
 | 项目配置 | `GET /api/v1/projects/{projectRef}/config/effective` | Overview 和右栏显示运行配置 |
-| 工作区成员 | `GET /api/v1/members` 或现有 members helper | 任务负责人筛选选项 |
+| 工作区成员 | `GET /api/v1/workspaces/{workspaceSlug}/members` | 任务负责人筛选选项 |
 | 项目审计 | `GET /api/v1/audit?project={projectRef}` | 仅在有 `audit:read` 权限时使用 |
 
-### 11.2 后续可选增强
+### 11.2 页面数据点契约
+
+| 页面/区域 | 数据点 | 权威来源 | 空值或缺权限处理 |
+|---|---|---|---|
+| Header | 项目名、描述、状态 | `GET /api/v1/projects/{projectRef}` 的 `name`、`description`、`status` | 项目读取失败则整页显示错误 |
+| Header | 导入按钮可见性 | 当前用户 `task:write` 权限 + 项目状态非 archived/cancelled | 不满足时隐藏 |
+| Header | 设置按钮可见性 | 当前用户 `project:manage` 权限 | 不满足时隐藏 |
+| Tabs | 当前激活 tab | 当前 URL pathname | 不从后端读取 |
+| 右栏 | 项目任务总数、完成数、待办计数 | `ProjectView.task_count`、`completed_count`、`pending_count` | 缺字段时隐藏对应行，不用任务列表回填全量数字 |
+| 右栏/Overview | 逾期、高优、等待、缺负责人 | 当前加载任务结果集 | 必须标注“当前加载范围”；不能称为全量 |
+| 右栏/Overview | 配置摘要 | `ConfigEffectiveValue[]` | 请求失败时显示轻量错误或隐藏，不阻塞页面 |
+| 右栏/Overview | 负责人负载 | 当前加载任务结果集的 `assignees` | 只代表当前加载范围；无 assignees 归为未分配 |
+| Overview | 最新项目更新 | `ProjectView.recent_annotations[0]` | 没有记录时显示“暂无项目更新”或隐藏 |
+| Tasks | 任务行 | `GET /api/v1/tasks?project=...` 返回的任务对象 | 字段为空显示 `-`，不推断不存在字段 |
+| Activity | 项目更新 | project annotation | 没有记录时显示空状态 |
+| Activity | 任务注解 | project timeline 中 `source_type=task` | 只展示 timeline 返回的信息 |
+| Activity | 审计 | audit endpoint | 无 `audit:read` 时不请求、不展示 |
+
+### 11.3 后续可选增强
 
 | 增强 | 目的 | 触发条件 |
 |---|---|---|
@@ -367,6 +422,7 @@ Activity 是项目事实流。它应该合并项目更新、任务注解和有�
 | 任务列表返回 `child_count` | 父子任务树首屏更准确 | 项目任务量大，前端当前页聚合不够 |
 | 项目 activity 聚合端点 | 后端统一裁剪 timeline + audit | 前端组合端点导致重复分页或权限分支复杂 |
 | 任务统计聚合端点 | Overview 不再依赖拉取完整任务列表 | 项目任务量超过当前 `limit=200` 假设 |
+| 侧栏开合偏好持久化 | 跨页面保持用户偏好 | 已有 UI preference/localStorage 约定或用户明确需要 |
 
 第一阶段不做这些增强，避免为了页面拆分扩大后端范围。
 
@@ -379,15 +435,15 @@ Activity 是项目事实流。它应该合并项目更新、任务注解和有�
 | `ProjectLayout` | 加载项目基础信息，渲染 header、tabs、左右两栏 |
 | `ProjectHeaderEditor` | 继续负责项目名、描述、状态、复制、设置入口 |
 | `ProjectTabs` | 根据当前路径显示概览、任务、活动 |
-| `ProjectContextRail` | 右侧项目信息栏，聚合项目、任务、配置、timeline 预览 |
+| `ProjectContextRail` | 右侧项目信息栏，聚合项目、任务、配置、timeline 预览，并支持打开/收起 |
 | `ProjectOverviewPage` | 渲染最新更新、当前重点、运行配置、负载摘要、最近活动 |
-| `ProjectTasksPage` | 渲染任务工具栏、任务树、任务创建、导入、行内编辑 |
+| `ProjectTasksPage` | 渲染任务工具栏、简单任务列表、任务创建、导入、行内编辑 |
 | `ProjectActivityPage` | 渲染项目更新输入框、时间线、审计合并、筛选 |
 | `ProjectActivityTimeline` | 负责统一渲染 project annotation、task annotation、audit rows |
 
 页面编排原则：
 
-- `ProjectLayout` 只处理项目级数据和布局，不承载任务表内部逻辑。
+- `ProjectLayout` 只处理项目级数据、tabs、右栏开合和整体布局，不承载任务表内部逻辑。
 - `ProjectTasksPage` 继续复用现有 `ProjectTaskToolbar`、`TaskTable`、`TaskCreateDialog`、`TaskImportDialog`。
 - `ProjectOverviewPage` 和 `ProjectContextRail` 可以共享统计派生函数，避免重复计算。
 - `ProjectActivityPage` 只在权限允许时请求 audit，避免把 403 当页面错误。
@@ -406,14 +462,16 @@ Activity 是项目事实流。它应该合并项目更新、任务注解和有�
 ## 14. 验收标准
 
 1. `/workspaces/:workspaceSlug/projects/:projectSlug` 显示概览页，不再直接铺完整任务表。
-2. `/workspaces/:workspaceSlug/projects/:projectSlug/tasks` 显示任务筛选、任务列表、新建、导入和行内编辑能力。
+2. `/workspaces/:workspaceSlug/projects/:projectSlug/tasks` 显示任务筛选、简单任务列表、新建、导入和行内编辑能力；第一阶段不显示任务分组或父子树。
 3. `/workspaces/:workspaceSlug/projects/:projectSlug/activity` 显示项目更新输入框和项目时间线。
 4. 项目 header 与右侧项目信息栏在三个子页面保持一致。
-5. `settings/notes` 不再作为主要 notes 入口；项目更新归入 Activity。
-6. 没有 `audit:read` 权限的用户不会看到审计筛选项，也不会因 audit 403 影响 Activity。
-7. archived/cancelled 项目仍可浏览，但不显示写入动作。
-8. 当前任务详情页路径保持可用。
-9. 中文界面文案清楚表达真实行为，不使用“issue”“milestone”“lead”等当前模型不存在的概念。
+5. 右侧项目信息栏可以打开和收起；收起时左侧主体获得更多宽度，并保留展开入口。
+6. 所有展示数字、状态、人员、活动记录都能追溯到本 spec 的数据点契约。
+7. `settings/notes` 不再作为主要 notes 入口；项目更新归入 Activity。
+8. 没有 `audit:read` 权限的用户不会看到审计筛选项，也不会因 audit 403 影响 Activity。
+9. archived/cancelled 项目仍可浏览，但不显示写入动作。
+10. 当前任务详情页路径保持可用。
+11. 中文界面文案清楚表达真实行为，不使用“issue”“milestone”“lead”等当前模型不存在的概念。
 
 ## 15. 测试与验证
 
@@ -431,9 +489,9 @@ git diff --check
 需要覆盖：
 
 - 项目根路由显示 Overview，Tasks 和 Activity tab 导航正确。
-- `ProjectContextRail` 在三个子页面都展示。
+- `ProjectContextRail` 在三个子页面都展示，并可打开/收起。
 - Overview 能显示最新项目更新、风险摘要、配置摘要和最近活动。
-- Tasks 页保留当前筛选 URL 同步、任务创建、任务导入、行内编辑能力。
+- Tasks 页保留当前筛选 URL 同步、任务创建、任务导入、行内编辑能力，并保持简单列表形态。
 - Activity 页在有/无 `audit:read` 权限时分别展示正确内容。
 - archived/cancelled 项目隐藏写入动作。
 
@@ -450,7 +508,7 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 实现计划应拆成小步：
 
 1. 抽项目级 layout、tabs、右栏，不改变业务行为。
-2. 将当前 `ProjectWorkbenchPage` 的任务工具栏和表格迁入 Tasks 子页面。
+2. 将当前 `ProjectWorkbenchPage` 的任务工具栏和表格迁入 Tasks 子页面，保持简单列表。
 3. 新建 Overview 子页面，组合项目更新、风险摘要、配置摘要、负载摘要、最近活动。
 4. 新建 Activity 子页面，迁移项目 notes 能力，合并 timeline 与可选 audit。
 5. 调整 settings notes 路由为跳转或兼容入口。
