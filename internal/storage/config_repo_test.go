@@ -221,6 +221,7 @@ func TestConfigDefinitionRepositoryCRUD(t *testing.T) {
 		HasDefault:        true,
 		Required:          false,
 		Secret:            false,
+		ShowOnConsoleHome: true,
 		CreatedAt:         100,
 		ModifiedAt:        100,
 	}
@@ -238,6 +239,9 @@ func TestConfigDefinitionRepositoryCRUD(t *testing.T) {
 	}
 	if got.ValueType != "number" || got.DefaultValue != "1.8" || !got.HasDefault {
 		t.Fatalf("Get() = %#v", got)
+	}
+	if !got.ShowOnConsoleHome {
+		t.Fatal("ShowOnConsoleHome = false, want true")
 	}
 
 	listed, err := repo.List("ws-a")
@@ -266,6 +270,71 @@ func TestConfigDefinitionRepositoryCRUD(t *testing.T) {
 	}
 	if _, ok, err := repo.Get("ws-a", "ads.roi_threshold"); err != nil || ok {
 		t.Fatalf("Get(after delete) = (_, %v, %v), want missing nil error", ok, err)
+	}
+}
+
+func TestConfigRepositoryUsageAndValuesByKey(t *testing.T) {
+	store := openIdentityTestStore(t)
+	repo := NewConfigRepository(store.DB())
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace() error = %v", err)
+	}
+	projectID := "project-api"
+	if err := store.DB().Create(&Project{
+		ID:           projectID,
+		WorkspaceID:  ws.ID,
+		Slug:         "api",
+		Name:         "API",
+		Status:       "active",
+		SettingsJSON: "{}",
+		CreatedAt:    100,
+		ModifiedAt:   100,
+	}).Error; err != nil {
+		t.Fatalf("Create(project) error = %v", err)
+	}
+
+	if err := repo.Set(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeWorkspace, Key: "ads.budget"}, "100"); err != nil {
+		t.Fatalf("Set(workspace) error = %v", err)
+	}
+	if err := repo.Set(ConfigKey{WorkspaceID: ws.ID, Scope: ConfigScopeProject, ScopeID: projectID, Key: "ads.budget"}, "200"); err != nil {
+		t.Fatalf("Set(project) error = %v", err)
+	}
+
+	workspaceCount, projectCount, err := repo.CountByKey(ws.ID, "ads.budget")
+	if err != nil {
+		t.Fatalf("CountByKey() error = %v", err)
+	}
+	if workspaceCount != 1 || projectCount != 1 {
+		t.Fatalf("CountByKey() = (%d, %d), want (1, 1)", workspaceCount, projectCount)
+	}
+
+	values, err := repo.ValuesByKey(ws.ID, "ads.budget")
+	if err != nil {
+		t.Fatalf("ValuesByKey() error = %v", err)
+	}
+	if len(values) != 2 {
+		t.Fatalf("ValuesByKey() = %#v, want 2 values", values)
+	}
+	gotValues := map[string]bool{values[0]: true, values[1]: true}
+	if !gotValues["100"] || !gotValues["200"] {
+		t.Fatalf("ValuesByKey() = %#v, want contain 100 and 200", values)
+	}
+
+	// 按 scope 拆分查询
+	wsValues, err := repo.ValuesByKeyAndScope(ws.ID, "ads.budget", ConfigScopeWorkspace)
+	if err != nil {
+		t.Fatalf("ValuesByKeyAndScope(workspace) error = %v", err)
+	}
+	if len(wsValues) != 1 || wsValues[0] != "100" {
+		t.Fatalf("ValuesByKeyAndScope(workspace) = %#v, want [100]", wsValues)
+	}
+	projectValues, err := repo.ValuesByKeyAndScope(ws.ID, "ads.budget", ConfigScopeProject)
+	if err != nil {
+		t.Fatalf("ValuesByKeyAndScope(project) error = %v", err)
+	}
+	if len(projectValues) != 1 || projectValues[0] != "200" {
+		t.Fatalf("ValuesByKeyAndScope(project) = %#v, want [200]", projectValues)
 	}
 }
 

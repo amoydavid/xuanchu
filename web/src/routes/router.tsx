@@ -59,9 +59,29 @@ const TaskDetailRoute = lazy(() =>
     default: module.TaskDetailRoute,
   }))
 )
-const ProjectSettingsRoute = lazy(() =>
-  import("@/routes/workspace/ProjectSettingsRoute").then((module) => ({
-    default: module.ProjectSettingsRoute,
+const ProjectSettingsLayoutRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsLayoutRoute").then((module) => ({
+    default: module.ProjectSettingsLayoutRoute,
+  }))
+)
+const ProjectSettingsConfigRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsConfigRoute").then((module) => ({
+    default: module.ProjectSettingsConfigRoute,
+  }))
+)
+const ProjectSettingsNotesRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsNotesRoute").then((module) => ({
+    default: module.ProjectSettingsNotesRoute,
+  }))
+)
+const ProjectSettingsDefinitionsRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsDefinitionsRoute").then((module) => ({
+    default: module.ProjectSettingsDefinitionsRoute,
+  }))
+)
+const SettingsRoute = lazy(() =>
+  import("@/routes/workspace/SettingsRoute").then((module) => ({
+    default: module.SettingsRoute,
   }))
 )
 const AdminLoginRoute = lazy(() =>
@@ -253,7 +273,37 @@ const taskDetailRoute = createRoute({
 const projectSettingsRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/projects/$projectSlug/settings",
-  component: lazyRoute(ProjectSettingsRoute),
+  component: lazyRoute(ProjectSettingsLayoutRoute),
+})
+
+const projectSettingsIndexRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "/",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/projects/$projectSlug/settings/config",
+      params: { projectSlug: params.projectSlug },
+    })
+  },
+  component: () => null,
+})
+
+const projectSettingsConfigRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "config",
+  component: lazyRoute(ProjectSettingsConfigRoute),
+})
+
+const projectSettingsNotesRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "notes",
+  component: lazyRoute(ProjectSettingsNotesRoute),
+})
+
+const projectSettingsDefinitionsRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "definitions",
+  component: lazyRoute(ProjectSettingsDefinitionsRoute),
 })
 
 const TokensRoute = lazy(() =>
@@ -278,6 +328,12 @@ const ssoRoute = createRoute({
   component: lazyRoute(SsoRoute),
 })
 
+const settingsRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/settings",
+  component: lazyRoute(SettingsRoute),
+})
+
 const routeTree = rootRoute.addChildren([
   workspaceRootRoute.addChildren([
     indexRoute,
@@ -285,7 +341,12 @@ const routeTree = rootRoute.addChildren([
     taskDetailRoute,
     projectsListRoute,
     myTasksRoute,
-    projectSettingsRoute,
+    projectSettingsRoute.addChildren([
+      projectSettingsIndexRoute,
+      projectSettingsConfigRoute,
+      projectSettingsDefinitionsRoute,
+      projectSettingsNotesRoute,
+    ]),
     createResourceRoute("workspaces", "/workspaces"),
     membersRoute,
     memberDetailRoute,
@@ -295,7 +356,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("notifications", "/notifications"),
     createResourceRoute("integrations", "/integrations"),
     createResourceRoute("audit", "/audit"),
-    createResourceRoute("settings", "/settings"),
+    settingsRoute,
     projectReadonlyRoute,
     projectTaskDetailRoute,
   ]),

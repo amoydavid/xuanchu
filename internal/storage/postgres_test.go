@@ -132,4 +132,17 @@ func TestPostgres_ConfigDefinitionCRUD(t *testing.T) {
 	if got.ValueType != "string" {
 		t.Fatalf("ValueType = %q, want string", got.ValueType)
 	}
+
+	def.ShowOnConsoleHome = true
+	def.ModifiedAt = time.Now().Unix()
+	if err := repo.Set(def); err != nil {
+		t.Fatalf("Set(show_on_console_home) error = %v", err)
+	}
+	got, _, err = repo.Get("ws-postgres", "ads.account_id")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !got.ShowOnConsoleHome {
+		t.Fatal("ShowOnConsoleHome = false, want true")
+	}
 }

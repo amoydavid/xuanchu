@@ -106,7 +106,8 @@ v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作�
 - **已删除任务可见性**：项目工作台 toolbar 的状态筛选支持 `deleted`，deleted 任务行灰显并禁用写控件（恢复能力待后端支持）。
 - **Hook 控制台**（`/hooks`）：从只读 DataTable 升级为带 CRUD、enable/disable、行内投递历史和重放的运维控制台。
 - **审计日志控制台**（`/audit`）：支持按 project/limit 服务端查询，actor/action/target 在当前结果上二次筛选，并支持导出 CSV。普通成员和 viewer 现在也能读取 workspace 全量审计（后端 `audit.read` 角色权限对齐）。
-- **项目设置页**（`/projects/$slug/settings`）：集中管理项目状态流转、配置项（config key/value 读写）和项目备注（annotation 增删，后端暂无 PATCH 因而不做伪编辑）。项目列表行操作菜单支持快速归档/取消/恢复。
+- **项目设置页**（`/projects/$slug/settings`）：集中管理项目状态流转、配置值、配置定义和项目备注。配置值 tab（`/config`）展示 project effective 配置，读取顺序为 project 显式值 > workspace 值 > schema 默认值，secret 值遮掩、workspace-only key 只读、可「恢复继承」；配置定义 tab（`/definitions`）在 project 上下文里管理 workspace 中允许 project scope 的 `ConfigDefinition`。项目列表行操作菜单支持快速归档/取消/恢复。
+- **配置定义控制台**（`/settings`）：workspace 级 `ConfigDefinition` 控制面，管理哪些 config key 可被写入、值的类型/作用域/默认值/枚举，以及 `show_on_console_home` 开关。已有配置值时收紧 type/scope/enum 变更（返回 `config_definition_type_locked` / `config_definition_scope_locked` / `config_definition_enum_locked`）；删除定义走 `purge=true` 两段确认。Web Console 首页据此开关展示「配置概览」区。
 - **成员外部身份**：成员详情页支持绑定/解绑 external-id（`POST/DELETE /users/{ref}/external-ids`），与 SSO 通讯录同步形成闭环。
 - **任务紧迫度**：任务详情属性栏展示 urgency 分数和各分项贡献（`GET /tasks/{ref}/urgency`）。
 - **Workspace / 通知控制台**：workspace 列表支持归档；通知页明确为「管控台」（sink/rule/delivery），不是个人消息收件箱。
@@ -663,6 +664,14 @@ shared config 现在分成两层：
   - 写 workspace scope 的显式值
 - `project config`
   - 写 project scope 的显式值
+
+**project 扩展信息的承载方式**：project 目前没有类似 task UDA 的自由扩展属性机制（`Project.SettingsJSON` 是未启用的死字段），也没有 project 级别的外部链接表。要给 project 附加自定义信息（例如关联的外部系统、业务属性、Agent 背景等），统一使用 `project config`：
+
+- schema（`config schema`）是 workspace 级契约，决定哪些 key 能在 project 上使用、值类型、是否 secret。
+- 具体值存在 `configs` 表，按 `(workspace, scope=project, scope_id=project.ID, key)` 四元组隔离，**每个 project 独立**，互不影响。
+- 读取链是三级回退：`project 显式值 > workspace 显式值 > schema default`，因此 workspace 级的值会作为所有 project 的默认值。
+- 约束：每个 key 必须先有允许 `project` scope 的 schema 才能写入；单个 value 是字符串，结构化数据需自行编码（如把 JSON 字符串存进去）。
+- 归档/取消的 project 禁止写 config。
 
 典型流程：
 

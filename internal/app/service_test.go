@@ -5539,3 +5539,191 @@ func TestServiceResolveDependents(t *testing.T) {
 		t.Fatalf("dependents = %#v, want beta+gamma", dependents)
 	}
 }
+
+func TestConfigSchemaSetRejectsTypeChangeWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace", "project"},
+	})
+	if err := svc.SetConfig("ads.budget", "100"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+
+	err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "string", AllowedScopes: []string{"workspace", "project"},
+	})
+	assertRuntimeCode(t, err, "config_definition_type_locked")
+}
+
+func TestConfigSchemaSetRejectsScopeRemovalWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace", "project"},
+	})
+	if err := svc.ProjectConfigSet(project.ID, "ads.budget", "200"); err != nil {
+		t.Fatalf("ProjectConfigSet() error = %v", err)
+	}
+
+	err = svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace"},
+	})
+	assertRuntimeCode(t, err, "config_definition_scope_locked")
+}
+
+func TestConfigSchemaSetRejectsEnumRemovalWhenValuesExist(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.mode", ValueType: "string", AllowedScopes: []string{"workspace"}, EnumValues: []string{"auto", "manual"},
+	})
+	if err := svc.SetConfig("ads.mode", "manual"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+
+	err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.mode", ValueType: "string", AllowedScopes: []string{"workspace"}, EnumValues: []string{"auto"},
+	})
+	assertRuntimeCode(t, err, "config_definition_enum_locked")
+}
+
+func TestConfigSchemaSetPersistsShowOnConsoleHome(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	if err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "ads.roi_threshold", ValueType: "number", AllowedScopes: []string{"workspace"}, ShowOnConsoleHome: true,
+	}); err != nil {
+		t.Fatalf("ConfigSchemaSet() error = %v", err)
+	}
+	got, ok, err := svc.ConfigSchemaGet("ads.roi_threshold")
+	if err != nil || !ok {
+		t.Fatalf("ConfigSchemaGet() = (_, %v, %v), want found nil", ok, err)
+	}
+	if !got.ShowOnConsoleHome {
+		t.Fatal("ShowOnConsoleHome = false, want true")
+	}
+}
+
+func TestConfigSchemaUsageCountsWorkspaceAndProjectValues(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.budget", ValueType: "number", AllowedScopes: []string{"workspace", "project"},
+	})
+	if err := svc.SetConfig("ads.budget", "100"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+	if err := svc.ProjectConfigSet(project.ID, "ads.budget", "200"); err != nil {
+		t.Fatalf("ProjectConfigSet() error = %v", err)
+	}
+
+	got, err := svc.ConfigSchemaUsage("ads.budget")
+	if err != nil {
+		t.Fatalf("ConfigSchemaUsage() error = %v", err)
+	}
+	if got.WorkspaceValues != 1 || got.ProjectValues != 1 || got.TotalValues != 2 {
+		t.Fatalf("usage = %#v, want 1/1/2", got)
+	}
+}
+
+func assertEffectiveSource(t *testing.T, rows []ConfigEffectiveValueView, key, source, value string) {
+	t.Helper()
+	for _, row := range rows {
+		if row.Key != key {
+			continue
+		}
+		if row.Source != source {
+			t.Fatalf("effective[%s].source = %q, want %q", key, row.Source, source)
+		}
+		if row.Value == nil {
+			if value != "" {
+				t.Fatalf("effective[%s].value = nil, want %q", key, value)
+			}
+		} else if *row.Value != value {
+			t.Fatalf("effective[%s].value = %q, want %q", key, *row.Value, value)
+		}
+		return
+	}
+	t.Fatalf("effective rows missing key %q: %#v", key, rows)
+}
+
+func assertEffectiveMissing(t *testing.T, rows []ConfigEffectiveValueView, key string) {
+	t.Helper()
+	for _, row := range rows {
+		if row.Key == key {
+			if row.Source != "missing" {
+				t.Fatalf("effective[%s].source = %q, want missing", key, row.Source)
+			}
+			if row.Value != nil {
+				t.Fatalf("effective[%s].value = %#v, want nil", key, row.Value)
+			}
+			return
+		}
+	}
+	t.Fatalf("effective rows missing key %q: %#v", key, rows)
+}
+
+func TestProjectConfigEffectiveValuesResolveProjectWorkspaceDefaultAndMissing(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
+	if err != nil {
+		t.Fatalf("AddProject() error = %v", err)
+	}
+
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{Key: "k.project", ValueType: "string", AllowedScopes: []string{"project"}})
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{Key: "k.workspace", ValueType: "string", AllowedScopes: []string{"workspace", "project"}})
+	def := "fallback"
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{Key: "k.default", ValueType: "string", AllowedScopes: []string{"project"}, DefaultValue: &def})
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{Key: "k.required", ValueType: "string", AllowedScopes: []string{"project"}, Required: true})
+
+	if err := svc.ProjectConfigSet(project.ID, "k.project", "project-value"); err != nil {
+		t.Fatalf("ProjectConfigSet() error = %v", err)
+	}
+	if err := svc.SetConfig("k.workspace", "workspace-value"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+
+	rows, err := svc.ProjectConfigEffectiveValues(project.ID)
+	if err != nil {
+		t.Fatalf("ProjectConfigEffectiveValues() error = %v", err)
+	}
+	assertEffectiveSource(t, rows, "k.project", "project", "project-value")
+	assertEffectiveSource(t, rows, "k.workspace", "workspace", "workspace-value")
+	assertEffectiveSource(t, rows, "k.default", "default", "fallback")
+	assertEffectiveMissing(t, rows, "k.required")
+}
+
+func TestWorkspaceConfigEffectiveValuesFiltersConsoleHome(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	def := "1.8"
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "ads.roi", ValueType: "number", AllowedScopes: []string{"workspace"}, DefaultValue: &def, ShowOnConsoleHome: true,
+	})
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "project.only", ValueType: "string", AllowedScopes: []string{"project"}, ShowOnConsoleHome: true,
+	})
+	rows, err := svc.WorkspaceConfigEffectiveValues(ConfigEffectiveFilter{ConsoleHomeOnly: true})
+	if err != nil {
+		t.Fatalf("WorkspaceConfigEffectiveValues() error = %v", err)
+	}
+	if len(rows) != 1 || rows[0].Key != "ads.roi" || rows[0].Source != "default" {
+		t.Fatalf("rows = %#v, want only ads.roi default", rows)
+	}
+}

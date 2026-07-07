@@ -183,14 +183,15 @@ func newConfigSchemaSetCommand(opts Options) *cobra.Command {
 					return err
 				}
 				return client.SetConfigSchema(context.Background(), currentOpts.Workspace, input.Key, remote.ConfigSchemaSetInput{
-					ValueType:     input.ValueType,
-					AllowedScopes: input.AllowedScopes,
-					Label:         input.Label,
-					Description:   input.Description,
-					EnumValues:    input.EnumValues,
-					DefaultValue:  input.DefaultValue,
-					Required:      input.Required,
-					Secret:        input.Secret,
+					ValueType:         input.ValueType,
+					AllowedScopes:     input.AllowedScopes,
+					Label:             input.Label,
+					Description:       input.Description,
+					EnumValues:        input.EnumValues,
+					DefaultValue:      input.DefaultValue,
+					Required:          input.Required,
+					Secret:            input.Secret,
+					ShowOnConsoleHome: input.ShowOnConsoleHome,
 				})
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -291,17 +292,18 @@ func configSchemaDefsFromApp(rows []app.ConfigDefinitionView) []remote.ConfigSch
 
 func configSchemaDefFromApp(row app.ConfigDefinitionView) remote.ConfigSchemaDefinition {
 	return remote.ConfigSchemaDefinition{
-		Key:           row.Key,
-		ValueType:     row.ValueType,
-		AllowedScopes: row.AllowedScopes,
-		Label:         row.Label,
-		Description:   row.Description,
-		EnumValues:    row.EnumValues,
-		DefaultValue:  row.DefaultValue,
-		Required:      row.Required,
-		Secret:        row.Secret,
-		CreatedAt:     row.CreatedAt,
-		ModifiedAt:    row.ModifiedAt,
+		Key:               row.Key,
+		ValueType:         row.ValueType,
+		AllowedScopes:     row.AllowedScopes,
+		Label:             row.Label,
+		Description:       row.Description,
+		EnumValues:        row.EnumValues,
+		DefaultValue:      row.DefaultValue,
+		Required:          row.Required,
+		Secret:            row.Secret,
+		ShowOnConsoleHome: row.ShowOnConsoleHome,
+		CreatedAt:         row.CreatedAt,
+		ModifiedAt:        row.ModifiedAt,
 	}
 }
 

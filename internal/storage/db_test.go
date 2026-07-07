@@ -261,6 +261,9 @@ func TestConfigDefinitionTableMigrated(t *testing.T) {
 	if !store.DB().Migrator().HasTable(&ConfigDefinition{}) {
 		t.Fatal("config_definitions table missing after migration")
 	}
+	if !store.DB().Migrator().HasColumn(&ConfigDefinition{}, "show_on_console_home") {
+		t.Fatal("config_definitions.show_on_console_home column missing after migration")
+	}
 }
 
 func TestNotificationSinkMaxConcurrencyColumnMigrated(t *testing.T) {

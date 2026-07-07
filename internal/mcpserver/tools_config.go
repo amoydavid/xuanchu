@@ -41,16 +41,17 @@ type ConfigSchemaGetInput struct {
 }
 
 type ConfigSchemaSetInput struct {
-	Workspace     string   `json:"workspace,omitempty"`
-	Key           string   `json:"key"`
-	ValueType     string   `json:"value_type"`
-	AllowedScopes []string `json:"allowed_scopes"`
-	Label         string   `json:"label,omitempty"`
-	Description   string   `json:"description,omitempty"`
-	EnumValues    []string `json:"enum_values,omitempty"`
-	DefaultValue  *string  `json:"default_value,omitempty"`
-	Required      bool     `json:"required,omitempty"`
-	Secret        bool     `json:"secret,omitempty"`
+	Workspace         string   `json:"workspace,omitempty"`
+	Key               string   `json:"key"`
+	ValueType         string   `json:"value_type"`
+	AllowedScopes     []string `json:"allowed_scopes"`
+	Label             string   `json:"label,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	EnumValues        []string `json:"enum_values,omitempty"`
+	DefaultValue      *string  `json:"default_value,omitempty"`
+	Required          bool     `json:"required,omitempty"`
+	Secret            bool     `json:"secret,omitempty"`
+	ShowOnConsoleHome bool     `json:"show_on_console_home,omitempty"`
 }
 
 type ConfigSchemaListInput struct {
@@ -198,15 +199,16 @@ func registerConfigTools(s *mcp.Server, opts Options) {
 			return businessErrorWithEnvelope(err)
 		}
 		input := app.ConfigSchemaInput{
-			Key:           in.Key,
-			ValueType:     in.ValueType,
-			AllowedScopes: in.AllowedScopes,
-			Label:         in.Label,
-			Description:   in.Description,
-			EnumValues:    in.EnumValues,
-			DefaultValue:  in.DefaultValue,
-			Required:      in.Required,
-			Secret:        in.Secret,
+			Key:               in.Key,
+			ValueType:         in.ValueType,
+			AllowedScopes:     in.AllowedScopes,
+			Label:             in.Label,
+			Description:       in.Description,
+			EnumValues:        in.EnumValues,
+			DefaultValue:      in.DefaultValue,
+			Required:          in.Required,
+			Secret:            in.Secret,
+			ShowOnConsoleHome: in.ShowOnConsoleHome,
 		}
 		if err := svc.ConfigSchemaSet(input); err != nil {
 			return businessErrorWithEnvelope(err)

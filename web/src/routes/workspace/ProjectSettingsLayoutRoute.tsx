@@ -2,9 +2,9 @@ import { useParams } from "@tanstack/react-router"
 
 import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
-import { ProjectSettingsPage } from "@/pages/project-settings-page"
+import { ProjectSettingsLayout } from "@/pages/project-settings-layout"
 
-export function ProjectSettingsRoute() {
+export function ProjectSettingsLayoutRoute() {
   const params = useParams({ strict: false }) as { projectSlug: string }
   const me = useMe()
   const workspaceSlug = me.data?.effective_workspace.slug
@@ -25,10 +25,7 @@ export function ProjectSettingsRoute() {
   }
 
   return (
-    <ProjectSettingsPage
-      canManage={
-        me.data.effective_role === "owner" || me.data.effective_role === "admin"
-      }
+    <ProjectSettingsLayout
       projectSlug={params.projectSlug}
       workspaceSlug={workspaceSlug}
     />

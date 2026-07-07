@@ -296,19 +296,30 @@ export type ProjectConfigEntry = {
   value: string
 }
 
-export type ProjectConfigListResponse = {
-  entries?: ProjectConfigEntry[]
-  // 后端可能直接返回 data: { key: value } 形式
-  [key: string]: unknown
-}
-
+// 后端 ProjectConfigList 返回 map[string]string，HTTP 形如 {data: {key: value}}。
+// 这里把对象形态归一化成 ProjectConfigEntry[]，按 key 排序保持稳定。
 export function listProjectConfig(
   workspaceSlug: string,
   projectRef: string
 ): Promise<ProjectConfigEntry[]> {
-  return workspaceApiGet<ProjectConfigEntry[]>(
+  return workspaceApiGet<Record<string, string>>(
     projectConfigPath(workspaceSlug, projectRef)
-  )
+  ).then(normalizeProjectConfigEntries)
+}
+
+export function normalizeProjectConfigEntries(
+  raw: Record<string, string> | ProjectConfigEntry[] | unknown
+): ProjectConfigEntry[] {
+  if (Array.isArray(raw)) {
+    return raw as ProjectConfigEntry[]
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, string>
+    return Object.keys(obj)
+      .sort()
+      .map((key) => ({ key, value: String(obj[key] ?? "") }))
+  }
+  return []
 }
 
 export function setProjectConfig(
@@ -380,3 +391,9 @@ export function deleteProjectAnnotation(
     projectAnnotationPath(workspaceSlug, projectRef, annotationId)
   )
 }
+
+// project effective config 已迁移到 config-definition-api，这里保留 re-export 方便现有引用。
+export {
+  listProjectEffectiveConfig,
+  projectConfigEffectivePath,
+} from "@/features/workspace/config/config-definition-api"

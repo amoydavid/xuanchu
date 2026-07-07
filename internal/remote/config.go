@@ -26,28 +26,30 @@ type configValueInput struct {
 }
 
 type ConfigSchemaDefinition struct {
-	Key           string   `json:"key"`
-	ValueType     string   `json:"value_type"`
-	AllowedScopes []string `json:"allowed_scopes"`
-	Label         string   `json:"label"`
-	Description   string   `json:"description"`
-	EnumValues    []string `json:"enum_values"`
-	DefaultValue  *string  `json:"default_value,omitempty"`
-	Required      bool     `json:"required"`
-	Secret        bool     `json:"secret"`
-	CreatedAt     int64    `json:"created_at"`
-	ModifiedAt    int64    `json:"modified_at"`
+	Key               string   `json:"key"`
+	ValueType         string   `json:"value_type"`
+	AllowedScopes     []string `json:"allowed_scopes"`
+	Label             string   `json:"label"`
+	Description       string   `json:"description"`
+	EnumValues        []string `json:"enum_values"`
+	DefaultValue      *string  `json:"default_value,omitempty"`
+	Required          bool     `json:"required"`
+	Secret            bool     `json:"secret"`
+	ShowOnConsoleHome bool     `json:"show_on_console_home"`
+	CreatedAt         int64    `json:"created_at"`
+	ModifiedAt        int64    `json:"modified_at"`
 }
 
 type ConfigSchemaSetInput struct {
-	ValueType     string   `json:"value_type"`
-	AllowedScopes []string `json:"allowed_scopes"`
-	Label         string   `json:"label,omitempty"`
-	Description   string   `json:"description,omitempty"`
-	EnumValues    []string `json:"enum_values,omitempty"`
-	DefaultValue  *string  `json:"default_value,omitempty"`
-	Required      bool     `json:"required,omitempty"`
-	Secret        bool     `json:"secret,omitempty"`
+	ValueType         string   `json:"value_type"`
+	AllowedScopes     []string `json:"allowed_scopes"`
+	Label             string   `json:"label,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	EnumValues        []string `json:"enum_values,omitempty"`
+	DefaultValue      *string  `json:"default_value,omitempty"`
+	Required          bool     `json:"required,omitempty"`
+	Secret            bool     `json:"secret,omitempty"`
+	ShowOnConsoleHome bool     `json:"show_on_console_home,omitempty"`
 }
 
 func (c *Client) ListContexts(ctx context.Context, workspace string) ([]taskcontext.Context, string, error) {
