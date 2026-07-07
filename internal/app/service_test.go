@@ -5186,6 +5186,93 @@ func TestServiceProjectTimeline(t *testing.T) {
 	}
 }
 
+func TestServiceProjectTaskSummaryRequiresProjectAndTaskReadAndUsesWholeProject(t *testing.T) {
+	store := newTestStore(t)
+	now := int64(1_800_000_000)
+	svc := newTestServiceWithRuntime(t, store, now, "local", "local")
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	duePast := now - 3600
+	priorityH := "H"
+	waitReady := now
+	assignee := "local"
+
+	if _, err := svc.Add(AddInput{Title: "overdue high", Project: &project.Slug, Due: &duePast, Priority: &priorityH}); err != nil {
+		t.Fatalf("Add(overdue) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Title: "high only", Project: &project.Slug, Priority: &priorityH}); err != nil {
+		t.Fatalf("Add(high only) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Title: "wait ready", Project: &project.Slug, Wait: &waitReady, Assignees: []string{assignee}}); err != nil {
+		t.Fatalf("Add(wait ready) error = %v", err)
+	}
+	if _, err := svc.Add(AddInput{Title: "unassigned open", Project: &project.Slug}); err != nil {
+		t.Fatalf("Add(unassigned) error = %v", err)
+	}
+
+	view, err := svc.ProjectTaskSummary("ops")
+	if err != nil {
+		t.Fatalf("ProjectTaskSummary() error = %v", err)
+	}
+	if view.OverdueCount != 1 {
+		t.Fatalf("OverdueCount = %d, want 1", view.OverdueCount)
+	}
+	if view.HighPriorityOpenCount != 2 {
+		t.Fatalf("HighPriorityOpenCount = %d, want 2", view.HighPriorityOpenCount)
+	}
+	if view.WaitReadyCount != 1 {
+		t.Fatalf("WaitReadyCount = %d, want 1", view.WaitReadyCount)
+	}
+	if view.UnassignedOpenCount != 3 {
+		t.Fatalf("UnassignedOpenCount = %d, want 3", view.UnassignedOpenCount)
+	}
+	if len(view.OverdueRefs) != 1 || view.OverdueRefs[0].Label != "ops-1" {
+		t.Fatalf("OverdueRefs = %#v, want label ops-1", view.OverdueRefs)
+	}
+	// 负载：未分配 3、assignee local 1
+	foundUnassigned := false
+	for _, row := range view.Workload {
+		if row.User == nil {
+			foundUnassigned = true
+			if row.OpenCount != 3 {
+				t.Fatalf("unassigned OpenCount = %d, want 3", row.OpenCount)
+			}
+		}
+	}
+	if !foundUnassigned {
+		t.Fatalf("workload missing unassigned row: %#v", view.Workload)
+	}
+
+	// 缺少 task:read 的 token 不能获取摘要。
+	tokenProjectRead, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:   "project-only",
+		Scopes: []string{"project:read"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTenantAccessToken(project-only) error = %v", err)
+	}
+	projectOnly := mustTenantServiceForTest(t, svc, tokenProjectRead.RawToken, "project:read", PermissionProjectRead, now)
+	if _, err := projectOnly.ProjectTaskSummary("ops"); err == nil {
+		t.Fatal("ProjectTaskSummary without task:read succeeded")
+	}
+
+	// 缺少 project:read 的 token 不能获取摘要。
+	tokenTaskRead, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:   "task-only",
+		Scopes: []string{"task:read"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTenantAccessToken(task-only) error = %v", err)
+	}
+	taskOnly := mustTenantServiceForTest(t, svc, tokenTaskRead.RawToken, "task:read", PermissionTaskRead, now)
+	if _, err := taskOnly.ProjectTaskSummary("ops"); err == nil {
+		t.Fatal("ProjectTaskSummary without project:read succeeded")
+	}
+}
+
 func TestServiceProjectAnnotateTimestampConflict(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")

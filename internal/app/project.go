@@ -51,6 +51,39 @@ type ProjectView struct {
 	RecentAnnotations []ProjectAnnotationInfo
 }
 
+// ProjectSummaryTaskRefView 是项目任务摘要中的任务短引用。
+// Label 由 app 层生成：优先 TaskSlug，否则 UUID 前 8 位。
+type ProjectSummaryTaskRefView struct {
+	UUID     string
+	TaskSlug string
+	Title    string
+	Label    string
+}
+
+// ProjectSummaryWorkloadView 是按负责人聚合的项目负责人负载行。
+// User == nil 表示未分配任务。
+type ProjectSummaryWorkloadView struct {
+	User              *task.UserInfo
+	Label             string
+	OpenCount         int
+	OverdueCount      int
+	HighPriorityCount int
+}
+
+// ProjectTaskSummaryView 是项目全量任务摘要。Overview 与右栏都使用它，
+// 不允许用当前任务列表派生。
+type ProjectTaskSummaryView struct {
+	OverdueCount          int
+	OverdueRefs           []ProjectSummaryTaskRefView
+	HighPriorityOpenCount int
+	HighPriorityOpenRefs  []ProjectSummaryTaskRefView
+	WaitReadyCount        int
+	WaitReadyRefs         []ProjectSummaryTaskRefView
+	UnassignedOpenCount   int
+	UnassignedOpenRefs    []ProjectSummaryTaskRefView
+	Workload              []ProjectSummaryWorkloadView
+}
+
 type AddProjectInput struct {
 	Slug        string
 	Name        string
@@ -612,6 +645,122 @@ func (s *Service) ProjectTimeline(projectRef string, opts TimelineOptions) ([]Ti
 		})
 	}
 	return out, nil
+}
+
+// ProjectTaskSummary 返回项目全量任务摘要，同时要求 project:read 与 task:read。
+// 所有计数与 refs 都来自后端 storage 聚合，前端不能用当前任务列表派生。
+func (s *Service) ProjectTaskSummary(ref string) (ProjectTaskSummaryView, error) {
+	if err := s.Require(PermissionProjectRead); err != nil {
+		return ProjectTaskSummaryView{}, err
+	}
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return ProjectTaskSummaryView{}, err
+	}
+	project, err := s.ResolveProject(ref)
+	if err != nil {
+		return ProjectTaskSummaryView{}, err
+	}
+	summary, err := s.projectRepo.TaskSummary(s.workspaceID, project.ID, s.clock.Unix())
+	if err != nil {
+		return ProjectTaskSummaryView{}, err
+	}
+	userIDs := workloadUserIDs(summary.Workload)
+	userInfos, err := s.resolveUserInfos(userIDs)
+	if err != nil {
+		return ProjectTaskSummaryView{}, err
+	}
+	return projectTaskSummaryViewFromStorage(summary, userInfos), nil
+}
+
+func projectTaskSummaryViewFromStorage(summary storage.ProjectTaskSummary, users map[string]task.UserInfo) ProjectTaskSummaryView {
+	view := ProjectTaskSummaryView{
+		OverdueCount:          summary.OverdueCount,
+		OverdueRefs:           projectTaskRefViews(summary.OverdueRefs),
+		HighPriorityOpenCount: summary.HighPriorityOpenCount,
+		HighPriorityOpenRefs:  projectTaskRefViews(summary.HighPriorityOpenRefs),
+		WaitReadyCount:        summary.WaitReadyCount,
+		WaitReadyRefs:         projectTaskRefViews(summary.WaitReadyRefs),
+		UnassignedOpenCount:   summary.UnassignedOpenCount,
+		UnassignedOpenRefs:    projectTaskRefViews(summary.UnassignedOpenRefs),
+		Workload:              make([]ProjectSummaryWorkloadView, 0, len(summary.Workload)),
+	}
+	for _, row := range summary.Workload {
+		var userInfo *task.UserInfo
+		if row.UserID != "" {
+			if info, ok := users[row.UserID]; ok {
+				info := info
+				userInfo = &info
+			} else {
+				info := task.UserInfo{ID: row.UserID, Name: row.UserID}
+				userInfo = &info
+			}
+		}
+		view.Workload = append(view.Workload, ProjectSummaryWorkloadView{
+			User:              userInfo,
+			Label:             projectWorkloadLabel(row, userInfo),
+			OpenCount:         row.OpenCount,
+			OverdueCount:      row.OverdueCount,
+			HighPriorityCount: row.HighPriorityCount,
+		})
+	}
+	return view
+}
+
+func projectTaskRefViews(refs []storage.ProjectTaskRefSummary) []ProjectSummaryTaskRefView {
+	out := make([]ProjectSummaryTaskRefView, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ProjectSummaryTaskRefView{
+			UUID:     ref.UUID,
+			TaskSlug: ref.TaskSlug,
+			Title:    ref.Title,
+			Label:    projectTaskRefLabel(ref),
+		})
+	}
+	return out
+}
+
+func projectTaskRefLabel(ref storage.ProjectTaskRefSummary) string {
+	if strings.TrimSpace(ref.TaskSlug) != "" {
+		return ref.TaskSlug
+	}
+	if len(ref.UUID) >= 8 {
+		return ref.UUID[:8]
+	}
+	return ref.UUID
+}
+
+// projectWorkloadLabel 生成负责人显示名，顺序：UserInfo -> display_name -> name -> email -> user_id。
+// 未分配返回「未分配任务」。UserInfo 存在时优先使用其 Name 字段（resolveUserInfos 已做 fallback）。
+func projectWorkloadLabel(row storage.ProjectAssigneeWorkloadRow, info *task.UserInfo) string {
+	if info != nil && strings.TrimSpace(info.Name) != "" {
+		return info.Name
+	}
+	for _, candidate := range []string{row.DisplayName, row.Name, stringValue(row.Email), row.UserID} {
+		if strings.TrimSpace(candidate) != "" {
+			return candidate
+		}
+	}
+	return "未分配任务"
+}
+
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func workloadUserIDs(rows []storage.ProjectAssigneeWorkloadRow) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, row := range rows {
+		if row.UserID == "" || seen[row.UserID] {
+			continue
+		}
+		seen[row.UserID] = true
+		ids = append(ids, row.UserID)
+	}
+	return ids
 }
 
 func projectAnnotationUserIDs(rows []storage.ProjectAnnotation) []string {
