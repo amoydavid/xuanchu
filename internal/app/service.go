@@ -566,6 +566,34 @@ func (s *Service) Info(target string) (task.Task, error) {
 	return tsk, nil
 }
 
+// ListChildren 列出指定任务的直接子任务。
+// includeClosed=false 时过滤 completed/deleted（spec §8.3）。
+// 不复用 List + parent:<uuid> query，因为带 query 后默认 pending 状态过滤失效（service.go List 默认 pending 仅在 Query==nil 时生效）。
+func (s *Service) ListChildren(target string, includeClosed bool) ([]task.Task, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return nil, err
+	}
+	parent, err := s.ResolveProtocolTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	children, err := s.repo.Children(s.workspaceID, parent.UUID)
+	if err != nil {
+		return nil, err
+	}
+	if includeClosed {
+		return children, nil
+	}
+	out := children[:0]
+	for _, c := range children {
+		if c.Status == task.StatusCompleted || c.Status == task.StatusDeleted {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
 func (s *Service) ResolveTarget(target string) (task.Task, error) {
 	tsk, err := s.resolveTargetForRead(target)
 	if err != nil {

@@ -36,6 +36,7 @@ type addTaskRequest struct {
 	Recur         *string           `json:"recur,omitempty"`
 	Tags          []string          `json:"tags,omitempty"`
 	UDAs          map[string]string `json:"udas,omitempty"`
+	Parent        string            `json:"parent,omitempty"`
 }
 
 type modifyTaskRequest struct {
@@ -344,6 +345,7 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		Recur:       req.Recur,
 		Tags:        req.Tags,
 		UDAs:        req.UDAs,
+		Parent:      stringPtrIfPresent(req.Parent),
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -670,6 +672,27 @@ func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, taskLinksToJSON(tsk.Links), nil)
 }
 
+// handleTaskChildren 列出任务的直接子任务（手动 sub-task 与 recurring child）。
+// include_closed=true 时返回 completed/deleted，默认只返回 open（spec §8.3）。
+func (s *Server) handleTaskChildren(w http.ResponseWriter, r *http.Request) {
+	taskRef, ok := requireTaskRef(w, r)
+	if !ok {
+		return
+	}
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	includeClosed := isTruthyQueryValue(r.URL.Query().Get("include_closed"))
+	children, err := scoped.ListChildren(taskRef, includeClosed)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, tasksToJSON(children), nil)
+}
+
 func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 	taskRef, ok := requireTaskRef(w, r)
 	if !ok {
@@ -903,4 +926,13 @@ func taskLinksToJSON(links []task.TaskLinkInfo) []linkJSON {
 		out[i] = taskLinkToJSON(link)
 	}
 	return out
+}
+
+// stringPtrIfPresent 去空白后，非空则返回指针，否则 nil。
+func stringPtrIfPresent(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
 }

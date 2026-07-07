@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -55,6 +56,7 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 			return tsk.Annotations[0].ID
 		}},
 		{name: "urgency", method: http.MethodGet, path: "/api/v1/tasks/api-1/urgency", wantStatus: http.StatusOK},
+		{name: "children", method: http.MethodGet, path: "/api/v1/tasks/api-1/children", wantStatus: http.StatusOK},
 		{name: "link add", method: http.MethodPost, path: "/api/v1/tasks/api-1/links", body: `{"type":"document","url":"https://example.com","title":"Example"}`, wantStatus: http.StatusCreated},
 		{name: "link list", method: http.MethodGet, path: "/api/v1/tasks/api-1/links", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
 			t.Helper()
@@ -102,7 +104,7 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 			if rr.Code != tc.wantStatus {
 				t.Fatalf("%s %s status = %d body=%s", tc.method, path, rr.Code, rr.Body.String())
 			}
-			if !strings.Contains(rr.Body.String(), "slug task") && !strings.Contains(rr.Body.String(), "updated") && !strings.Contains(rr.Body.String(), "document") && tc.name != "urgency" {
+			if !strings.Contains(rr.Body.String(), "slug task") && !strings.Contains(rr.Body.String(), "updated") && !strings.Contains(rr.Body.String(), "document") && tc.name != "urgency" && tc.name != "children" {
 				t.Fatalf("%s %s body missing expected task/link data: %s", tc.method, path, rr.Body.String())
 			}
 		})
@@ -1107,5 +1109,99 @@ func TestTaskAuditScalarChangeExcludesSetFields(t *testing.T) {
 	// 标量 change（title）不应含集合专属字段。
 	if strings.Contains(body, `"added"`) || strings.Contains(body, `"removed"`) {
 		t.Fatalf("scalar change should not include added/removed: %s", body)
+	}
+}
+
+func TestTaskHTTPAddWithParent(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write", "project:write")
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
+
+	// 先建一个父任务（带 body 必须用 requestHTTPBody，不是 requestHTTP）。
+	parentRR := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", `{"title":"parent task"}`, authHeader)
+	if parentRR.Code != http.StatusCreated {
+		t.Fatalf("create parent status = %d, body = %s", parentRR.Code, parentRR.Body.String())
+	}
+	// 成功响应是 {data, meta} envelope，task 字段在 .data 下。
+	var parentEnv struct {
+		Data struct {
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(parentRR.Body.Bytes(), &parentEnv); err != nil {
+		t.Fatalf("decode parent: %v", err)
+	}
+
+	// 建子任务，带 parent。
+	childBody := fmt.Sprintf(`{"title":"child task","parent":%q}`, parentEnv.Data.UUID)
+	childRR := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", childBody, authHeader)
+	if childRR.Code != http.StatusCreated {
+		t.Fatalf("create child status = %d, body = %s", childRR.Code, childRR.Body.String())
+	}
+	var childEnv struct {
+		Data struct {
+			UUID   string  `json:"uuid"`
+			Parent *string `json:"parent"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(childRR.Body.Bytes(), &childEnv); err != nil {
+		t.Fatalf("decode child: %v", err)
+	}
+	if childEnv.Data.Parent == nil || *childEnv.Data.Parent != parentEnv.Data.UUID {
+		t.Fatalf("child.parent = %v, want %s", childEnv.Data.Parent, parentEnv.Data.UUID)
+	}
+}
+
+func TestTaskHTTPChildren(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write", "project:write")
+	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
+
+	// 建父任务。
+	parentRR := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", `{"title":"parent"}`, authHeader)
+	var parentEnv struct {
+		Data struct {
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	json.Unmarshal(parentRR.Body.Bytes(), &parentEnv)
+
+	// 建两个子任务（一个 pending，一个 done）。
+	requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", fmt.Sprintf(`{"title":"open child","parent":%q}`, parentEnv.Data.UUID), authHeader)
+	doneChildRR := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", fmt.Sprintf(`{"title":"done child","parent":%q}`, parentEnv.Data.UUID), authHeader)
+	var doneEnv struct {
+		Data struct {
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	json.Unmarshal(doneChildRR.Body.Bytes(), &doneEnv)
+	// done 路径用 POST 无 body，可用 requestHTTP。
+	requestHTTP(t, fixture.server, http.MethodPost, "/api/v1/tasks/"+doneEnv.Data.UUID+"/done", authHeader)
+
+	// 默认 include_closed=false：只返回 open。
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+parentEnv.Data.UUID+"/children", authHeader)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var defaultResp struct {
+		Data []struct {
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &defaultResp)
+	if len(defaultResp.Data) != 1 || defaultResp.Data[0].Title != "open child" {
+		t.Fatalf("default children = %#v, want only open child", defaultResp.Data)
+	}
+
+	// include_closed=true：返回全部。
+	rrAll := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+parentEnv.Data.UUID+"/children?include_closed=true", authHeader)
+	var allResp struct {
+		Data []struct {
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	json.Unmarshal(rrAll.Body.Bytes(), &allResp)
+	if len(allResp.Data) != 2 {
+		t.Fatalf("include_closed children count = %d, want 2", len(allResp.Data))
 	}
 }
