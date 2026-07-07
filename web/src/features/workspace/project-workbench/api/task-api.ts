@@ -32,6 +32,7 @@ export type TaskCreateInput = {
   recur?: string | null
   tags?: string[]
   udas?: Record<string, string>
+  parent?: string
 }
 
 export type TaskModifyInput = {
@@ -281,6 +282,19 @@ export function getTask(
   taskRef: string
 ): Promise<ProjectTask> {
   return workspaceApiGet<ProjectTask>(taskPath(workspaceSlug, taskRef))
+}
+
+export function listTaskChildren(
+  workspaceSlug: string,
+  taskRef: string,
+  includeClosed = false
+): Promise<ProjectTask[]> {
+  const query = includeClosed
+    ? `${workspaceQuery(workspaceSlug)}&include_closed=true`
+    : workspaceQuery(workspaceSlug)
+  return workspaceApiGet<ProjectTask[]>(
+    `/api/v1/tasks/${encodeSegment(taskRef)}/children?${query}`
+  )
 }
 
 export function modifyTask(

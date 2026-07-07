@@ -95,6 +95,35 @@ export function useCreateTaskMutation(
   })
 }
 
+// 子任务创建：复用 createTask，但 parent 指向父任务 UUID。
+// 成功后刷新父任务详情、子任务列表（open/all 两个 key）与项目任务列表前缀。
+export function useCreateSubTaskMutation(
+  workspaceSlug: string,
+  projectSlug: string,
+  parentRef: string
+) {
+  const queryClient = useQueryClient()
+  const feedback = useEditFeedback()
+  return useMutation({
+    mutationFn: (input: TaskCreateInput) => createTask(workspaceSlug, input),
+    onSuccess: () => {
+      // 父任务详情（children 计数等可能体现在详情或摘要里）。
+      void queryClient.invalidateQueries({
+        queryKey: taskQueryKeys.task(workspaceSlug, parentRef),
+      })
+      // 子任务列表 open/all 两个 key 都失效。
+      void queryClient.invalidateQueries({
+        queryKey: taskQueryKeys.childrenPrefix(workspaceSlug, parentRef),
+      })
+      // 项目任务列表（子任务也会出现在项目列表里）。
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug),
+      })
+      feedback.success("已创建：子任务")
+    },
+  })
+}
+
 export function useModifyTaskMutation(
   workspaceSlug: string,
   projectSlug: string,

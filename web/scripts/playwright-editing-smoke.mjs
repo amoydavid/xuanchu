@@ -70,7 +70,11 @@ async function runDesktopSmoke(browser) {
     await expectMarkdownSmoke(page)
     await assertNoHorizontalOverflow(page, "desktop task detail")
 
-    await page.getByRole("button", { name: "编辑标签" }).click()
+    // 桌面端：子任务 composer 与右侧属性栏都包含「编辑标签」按钮，限定到属性栏 aside。
+    await page
+      .getByRole("complementary")
+      .getByRole("button", { name: "编辑标签" })
+      .click()
     await assertDialogVisible(page, "搜索标签")
     await page.getByRole("textbox", { name: "搜索标签" }).fill("daily")
     await page.getByRole("checkbox", { name: "daily" }).focus()
@@ -78,7 +82,10 @@ async function runDesktopSmoke(browser) {
     await page.getByRole("button", { name: "完成" }).click()
     await expectStatus(page, "已保存")
 
-    await page.getByRole("button", { name: "编辑负责人" }).click()
+    await page
+      .getByRole("complementary")
+      .getByRole("button", { name: "编辑负责人" })
+      .click()
     await assertDialogVisible(page, "搜索负责人")
     await page.getByRole("textbox", { name: "搜索负责人" }).fill("alice")
     await page
@@ -225,6 +232,15 @@ async function newMockedPage(browser, viewport) {
 
     if (method === "GET" && pathName === "/api/v1/tasks/ads-1") {
       await fulfill(route, task)
+      return
+    }
+
+    // 子任务列表端点（任务详情页子任务区会请求）：mock 为空数组。
+    if (
+      method === "GET" &&
+      pathName === "/api/v1/tasks/ads-1/children"
+    ) {
+      await fulfill(route, [])
       return
     }
 

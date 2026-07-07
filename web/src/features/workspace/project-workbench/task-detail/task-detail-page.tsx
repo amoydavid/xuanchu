@@ -30,6 +30,7 @@ import { TaskAnnotationsEditor } from "./task-annotations-editor"
 import { TaskChangeHistory } from "./task-change-history"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskPropertyPanel } from "./task-property-panel"
+import { SubTaskList } from "./sub-task-list"
 
 type TaskDetailPageProps = {
   projectSlug?: string
@@ -123,6 +124,10 @@ function TaskDetailPageContent({
     return <TaskDetailSkeleton />
   }
   const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
+  // 子任务创建门控（spec §9.1）：可写 + 任务状态可写 + 非 recurring parent。
+  // completed/deleted 任务不可写由 taskWritable 覆盖；recurring parent 不允许手动子任务。
+  const canCreateSubTask =
+    taskWritable && taskData.status !== "recurring"
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
     return (
@@ -214,6 +219,13 @@ function TaskDetailPageContent({
                 )
               }}
               value={taskData.description ?? ""}
+            />
+            <SubTaskList
+              canCreate={canCreateSubTask}
+              parentRef={taskRef}
+              parentUUID={taskData.uuid}
+              projectSlug={effectiveProjectSlug ?? ""}
+              workspaceSlug={workspaceSlug}
             />
             <TaskAnnotationsEditor
               annotations={taskData.annotations}
