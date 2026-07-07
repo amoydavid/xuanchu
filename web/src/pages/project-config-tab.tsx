@@ -3,27 +3,34 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { ApiError } from "@/lib/api"
-import { ProjectConfigRow } from "@/features/workspace/project-workbench/project/project-config-row"
+import { ConfigValueControl } from "@/features/workspace/config/config-value-control"
+import {
+  type ConfigEffectiveValue,
+  listProjectEffectiveConfig,
+} from "@/features/workspace/config/config-definition-api"
 import {
   deleteProjectConfig,
-  listProjectConfig,
   setProjectConfig,
-  type ProjectConfigEntry,
 } from "@/features/workspace/project-workbench/api/project-api"
-import {
-  listConfigSchema,
-  type ConfigSchemaDefinition,
-} from "@/features/workspace/project-workbench/api/config-schema-api"
 
 type ProjectConfigTabProps = {
   canManage: boolean
@@ -40,27 +47,18 @@ export function ProjectConfigTab({
 }: ProjectConfigTabProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const configQuery = useQuery<ProjectConfigEntry[]>({
-    queryKey: ["project", workspaceSlug, projectSlug, "config"],
-    queryFn: () => listProjectConfig(workspaceSlug, projectSlug),
-  })
-  const schemaQuery = useQuery({
-    queryKey: ["config-schema", workspaceSlug],
-    queryFn: () => listConfigSchema(),
-  })
+  const queryKey = useMemo(
+    () => ["project", workspaceSlug, projectSlug, "config", "effective"] as const,
+    [workspaceSlug, projectSlug]
+  )
 
-  const schemaMap = useMemo(() => {
-    const m = new Map<string, ConfigSchemaDefinition>()
-    for (const def of schemaQuery.data ?? []) {
-      m.set(def.key, def)
-    }
-    return m
-  }, [schemaQuery.data])
+  const effectiveQuery = useQuery({
+    queryKey,
+    queryFn: () => listProjectEffectiveConfig(projectSlug),
+  })
 
   const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: ["project", workspaceSlug, projectSlug, "config"],
-    })
+    queryClient.invalidateQueries({ queryKey })
 
   const saveMut = useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
@@ -68,43 +66,14 @@ export function ProjectConfigTab({
     onSuccess: invalidate,
   })
 
-  const delMut = useMutation({
+  const deleteMut = useMutation({
     mutationFn: (key: string) =>
       deleteProjectConfig(workspaceSlug, projectSlug, key),
     onSuccess: invalidate,
   })
 
-  const [newKey, setNewKey] = useState("")
-  const [newValue, setNewValue] = useState("")
-  const [addError, setAddError] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
-
-  const existingKeys = useMemo(
-    () => new Set((configQuery.data ?? []).map((e) => e.key)),
-    [configQuery.data]
-  )
-  const trimmedKey = newKey.trim()
-  const newSchema = trimmedKey ? schemaMap.get(trimmedKey) : undefined
-  const newEnumValues = newSchema?.enum_values ?? []
-  const newIsSecret = newSchema?.secret === true
-  const keyDuplicate = existingKeys.has(trimmedKey)
-
-  const submitAdd = async () => {
-    const key = trimmedKey
-    if (!key) return
-    setAdding(true)
-    setAddError(null)
-    try {
-      await setProjectConfig(workspaceSlug, projectSlug, key, newValue)
-      setNewKey("")
-      setNewValue("")
-      await invalidate()
-    } catch (err) {
-      setAddError(err instanceof ApiError ? err.message : t("common.error"))
-    } finally {
-      setAdding(false)
-    }
-  }
+  const rows = effectiveQuery.data ?? []
+  const writable = canManage && !closed
 
   return (
     <section className="space-y-3 border bg-card p-4">
@@ -113,7 +82,7 @@ export function ProjectConfigTab({
           {t("projectSettings.configTitle")}
         </h2>
         <p className="text-xs text-muted-foreground">
-          {t("projectSettings.configDescription")}
+          {t("configDefinitions.effectiveDescription")}
         </p>
       </div>
 
@@ -125,96 +94,335 @@ export function ProjectConfigTab({
         </Alert>
       ) : null}
 
-      {configQuery.isLoading ? (
+      {effectiveQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-      ) : (configQuery.data ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {t("projectSettings.configEmpty")}
-        </p>
-      ) : (
-        <div>
-          {(configQuery.data ?? []).map((entry) => (
-            <ProjectConfigRow
-              canManage={canManage && !closed}
-              entry={entry}
-              key={entry.key}
-              onDelete={() => delMut.mutate(entry.key)}
-              onSave={async (value) => {
-                await saveMut.mutateAsync({ key: entry.key, value })
-              }}
-              schema={schemaMap.get(entry.key)}
-            />
-          ))}
-        </div>
-      )}
+      ) : null}
 
-      {canManage && !closed ? (
-        <form
-          className="grid gap-2 border-t pt-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (keyDuplicate || !trimmedKey) return
-            void submitAdd()
-          }}
-        >
-          <h3 className="text-sm font-medium">{t("projectSettings.configAdd")}</h3>
-          <Input
-            aria-label={t("projectSettings.configKey")}
-            onChange={(e) => setNewKey(e.target.value)}
-            placeholder={t("projectSettings.configKey")}
-            value={newKey}
+      {effectiveQuery.isError ? (
+        <p className="text-sm text-destructive">{t("common.error")}</p>
+      ) : null}
+
+      {!effectiveQuery.isLoading && rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("configDefinitions.noValues")}
+        </p>
+      ) : null}
+
+      <div className="divide-y">
+        {rows.map((row) => (
+          <EffectiveRow
+            canEdit={writable && canEditProjectScope(row)}
+            key={row.key}
+            row={row}
+            onSave={(value) => saveMut.mutateAsync({ key: row.key, value })}
+            onRestore={() => deleteMut.mutateAsync(row.key)}
           />
-          {newSchema?.description ? (
-            <p className="text-xs text-muted-foreground">
-              {newSchema.description}
-            </p>
-          ) : null}
-          {newEnumValues.length > 0 ? (
-            <Select onValueChange={setNewValue} value={newValue}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t("projectSettings.configValue")} />
-              </SelectTrigger>
-              <SelectContent>
-                {newEnumValues.map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              aria-label={t("projectSettings.configValue")}
-              onChange={(e) => setNewValue(e.target.value)}
-              placeholder={t("projectSettings.configValue")}
-              type={newIsSecret ? "password" : "text"}
-              value={newValue}
-            />
-          )}
-          {keyDuplicate ? (
-            <p className="text-xs text-destructive">
-              {t("projectSettings.configKeyExists")}
-            </p>
-          ) : null}
-          {!newSchema && trimmedKey ? (
-            <p className="text-xs text-muted-foreground">
-              {t("projectSettings.configNoSchema")}
-            </p>
-          ) : null}
-          {addError ? (
-            <Alert variant="destructive">
-              <AlertDescription>{addError}</AlertDescription>
-            </Alert>
-          ) : null}
-          <Button
-            disabled={keyDuplicate || !trimmedKey || adding}
-            size="sm"
-            type="submit"
-          >
-            {t("common.save")}
-          </Button>
-        </form>
+        ))}
+      </div>
+
+      {writable ? (
+        <AddValueDialog
+          rows={rows}
+          onSave={async (key, value) => {
+            await saveMut.mutateAsync({ key, value })
+          }}
+        />
       ) : null}
     </section>
+  )
+}
+
+// project 显式值可写条件：定义允许 project scope（workspace-only 的 key 不能被 project 覆盖）。
+function canEditProjectScope(row: ConfigEffectiveValue): boolean {
+  return (row.definition.allowed_scopes as string[]).includes("project")
+}
+
+function sourceLabel(source: string, t: (k: string) => string): string {
+  switch (source) {
+    case "project":
+      return t("configDefinitions.sourceProject")
+    case "workspace":
+      return t("configDefinitions.sourceWorkspace")
+    case "default":
+      return t("configDefinitions.sourceDefault")
+    default:
+      return t("configDefinitions.sourceMissing")
+  }
+}
+
+function EffectiveRow({
+  row,
+  canEdit,
+  onSave,
+  onRestore,
+}: {
+  row: ConfigEffectiveValue
+  canEdit: boolean
+  onSave: (value: string) => Promise<void>
+  onRestore: () => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(row.value ?? "")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const isSecret = row.definition.secret
+  const [revealed, setRevealed] = useState(false)
+  const isProjectSource = row.source === "project"
+  const allowsProject = canEdit
+
+  const startEdit = () => {
+    setDraft(row.value ?? "")
+    setError(null)
+    setEditing(true)
+  }
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await onSave(draft)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("common.error"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const restore = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await onRestore()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("common.error"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const displayValue =
+    row.value === null
+      ? "—"
+      : isSecret && !revealed
+        ? "••••••"
+        : row.value
+
+  return (
+    <div className="py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <code className="text-xs">{row.key}</code>
+        {row.definition.label ? (
+          <span className="text-xs text-muted-foreground">
+            {row.definition.label}
+          </span>
+        ) : null}
+        <Badge variant="outline">{sourceLabel(row.source, t)}</Badge>
+        {row.missing_required ? (
+          <Badge variant="destructive">
+            {t("configDefinitions.statusMissingRequired")}
+          </Badge>
+        ) : null}
+        {!allowsProject ? (
+          <Badge variant="secondary">
+            {t("configDefinitions.statusReadonly")}
+          </Badge>
+        ) : null}
+        {isProjectSource ? (
+          <Badge variant="secondary">
+            {t("configDefinitions.statusOverridden")}
+          </Badge>
+        ) : row.source === "workspace" || row.source === "default" ? (
+          <Badge variant="secondary">
+            {t("configDefinitions.statusInherited")}
+          </Badge>
+        ) : null}
+      </div>
+
+      {editing ? (
+        <div className="mt-2 space-y-2">
+          <ConfigValueControl
+            definition={row.definition}
+            onChange={setDraft}
+            value={draft}
+          />
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          <div className="flex gap-2">
+            <Button disabled={busy} onClick={save} size="sm" type="button">
+              {t("configDefinitions.save")}
+            </Button>
+            <Button
+              onClick={() => setEditing(false)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {t("configDefinitions.cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm text-muted-foreground">
+            {displayValue}
+          </span>
+          {isSecret && row.value !== null ? (
+            <Button
+              aria-label={
+                revealed
+                  ? t("configDefinitions.hideSecret")
+                  : t("configDefinitions.revealSecret")
+              }
+              onClick={() => setRevealed((v) => !v)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              {revealed ? "隐藏" : "显示"}
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <div className="flex gap-1">
+              <Button
+                onClick={startEdit}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {t("configDefinitions.edit")}
+              </Button>
+              {isProjectSource ? (
+                <Button
+                  disabled={busy}
+                  onClick={restore}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {t("configDefinitions.restoreInherited")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AddValueDialog({
+  rows,
+  onSave,
+}: {
+  rows: ConfigEffectiveValue[]
+  onSave: (key: string, value: string) => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [value, setValue] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  // 可写：定义允许 project scope 且当前无 project_value（尚未覆盖）。
+  const writable = rows.filter(
+    (r) =>
+      (r.definition.allowed_scopes as string[]).includes("project") &&
+      r.project_value == null
+  )
+  const workspaceOnly = rows.filter(
+    (r) => !(r.definition.allowed_scopes as string[]).includes("project")
+  )
+  const selectedDef = selectedKey
+    ? rows.find((r) => r.key === selectedKey)?.definition
+    : undefined
+
+  const submit = async () => {
+    if (!selectedKey) return
+    setBusy(true)
+    setError(null)
+    try {
+      await onSave(selectedKey, value)
+      setOpen(false)
+      setSelectedKey(null)
+      setValue("")
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("common.error"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button onClick={() => setOpen(true)} size="sm" type="button">
+        {t("configDefinitions.addValue")}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("configDefinitions.addValueTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select onValueChange={(k) => setSelectedKey(k)} value={selectedKey ?? ""}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t("configDefinitions.addValueKey")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>
+                    {t("configDefinitions.addValueProjectWritable")}
+                  </SelectLabel>
+                  {writable.map((r) => (
+                    <SelectItem key={r.key} value={r.key}>
+                      {r.key} ({r.definition.value_type})
+                    </SelectItem>
+                  ))}
+                  {workspaceOnly.length > 0 ? (
+                    <>
+                      <SelectLabel>
+                        {t("configDefinitions.addValueWorkspaceOnly")}
+                      </SelectLabel>
+                      {workspaceOnly.map((r) => (
+                        <SelectItem disabled key={r.key} value={r.key}>
+                          {r.key} ({r.definition.value_type})
+                        </SelectItem>
+                      ))}
+                    </>
+                  ) : null}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {selectedDef ? (
+              <ConfigValueControl
+                definition={selectedDef}
+                onChange={setValue}
+                value={value}
+              />
+            ) : null}
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={busy || !selectedKey}
+              onClick={submit}
+              size="sm"
+              type="button"
+            >
+              {t("configDefinitions.save")}
+            </Button>
+            <Button
+              onClick={() => setOpen(false)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {t("configDefinitions.cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
