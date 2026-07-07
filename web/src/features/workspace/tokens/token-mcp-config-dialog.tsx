@@ -63,11 +63,7 @@ export function TokenMcpConfigDialog({
 
   const endpoint = useMemo(() => {
     const path = query.data?.endpoint_path ?? "/mcp"
-    try {
-      return new URL(path, window.location.origin).toString()
-    } catch {
-      return `${window.location.origin}${path}`
-    }
+    return buildMcpEndpoint(path)
   }, [query.data?.endpoint_path])
 
   const tokenType = query.data?.token_type ?? token.type
@@ -223,6 +219,28 @@ export function TokenMcpConfigDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function buildMcpEndpoint(path: string): string {
+  const base = mcpEndpointBase()
+  try {
+    return new URL(path, normalizeURLBase(base)).toString()
+  } catch {
+    const normalizedBase = base.replace(/\/+$/, "")
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`
+    return `${normalizedBase}${normalizedPath}`
+  }
+}
+
+function mcpEndpointBase(): string {
+  const apiTarget = import.meta.env.VITE_XUANCHU_API_TARGET?.trim()
+  if (apiTarget) return apiTarget
+  if (import.meta.env.DEV) return "http://127.0.0.1:9090"
+  return window.location.origin
+}
+
+function normalizeURLBase(base: string): string {
+  return base.endsWith("/") ? base : `${base}/`
 }
 
 type McpFieldProps = {

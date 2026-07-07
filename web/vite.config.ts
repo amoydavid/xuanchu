@@ -46,6 +46,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           timeout: 30000,
         },
+        "/mcp": {
+          target: apiTarget,
+          changeOrigin: true,
+          timeout: 30000,
+        },
       },
     },
     build: {

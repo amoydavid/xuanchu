@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -16,8 +17,15 @@ func TestSuccessResultReturnsEnvelope(t *testing.T) {
 	if result == nil {
 		t.Fatal("result = nil")
 	}
-	if got := renderedText(result); got != "created task" {
-		t.Fatalf("rendered text = %q, want %q", got, "created task")
+	var textEnvelope ToolEnvelope
+	if err := json.Unmarshal([]byte(renderedText(result)), &textEnvelope); err != nil {
+		t.Fatalf("rendered text is not JSON envelope: %v", err)
+	}
+	if textEnvelope.Rendered != "created task" {
+		t.Fatalf("rendered text envelope rendered = %q, want %q", textEnvelope.Rendered, "created task")
+	}
+	if data, ok := textEnvelope.Data.(map[string]any); !ok || data["ok"] != true {
+		t.Fatalf("rendered text envelope data = %#v, want ok=true", textEnvelope.Data)
 	}
 	if envelope.Rendered != "created task" {
 		t.Fatalf("rendered = %q, want %q", envelope.Rendered, "created task")

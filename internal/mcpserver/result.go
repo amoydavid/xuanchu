@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -27,9 +28,13 @@ func successResult(data any, rendered string) (*mcp.CallToolResult, ToolEnvelope
 		Data:     data,
 		Rendered: rendered,
 	}
+	text, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, ToolEnvelope{}, err
+	}
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: rendered},
+			&mcp.TextContent{Text: string(text)},
 		},
 		StructuredContent: envelope,
 	}, envelope, nil

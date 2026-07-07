@@ -1005,7 +1005,7 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 | `reminder_rule_add` | 创建定时提醒规则 |
 | `notification_delivery_replay` | 重放失败通知投递 |
 
-每个 tool 返回 `{data, rendered}` 双格式：`data` 是结构化 JSON，`rendered` 是人类可读文本。
+每个 tool 成功返回 `{data, rendered}` 双格式：`data` 是结构化 JSON，`rendered` 是人类可读文本。MCP `structuredContent` 保存同一信封；`content[0].text` 也输出完整 JSON 字符串，方便只读取文本内容的 Agent 继续解析 `data`。
 
 ### MCP resources
 

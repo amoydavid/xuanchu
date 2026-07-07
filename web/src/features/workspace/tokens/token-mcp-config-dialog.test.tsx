@@ -100,9 +100,16 @@ describe("TokenMcpConfigDialog", () => {
     )
 
     expect(await screen.findByText("MCP Endpoint")).toBeTruthy()
+    expect(screen.getByText("http://127.0.0.1:9090/mcp")).toBeTruthy()
     expect(screen.getByText(raw)).toBeTruthy()
     // Bearer 出现在 label 与 config JSON 中，断言至少一处即可。
     expect(screen.getAllByText(/Bearer/).length).toBeGreaterThan(0)
+    expect(
+      screen.getByText((content) =>
+        content.includes('"url": "http://127.0.0.1:9090/mcp"') &&
+        content.includes(`"Authorization": "Bearer ${raw}"`)
+      )
+    ).toBeTruthy()
   })
 
   it("shows optional X-Xuanchu-As header when agent token has impersonate scope", async () => {
