@@ -85,7 +85,7 @@ project_config_unset({"workspace": "dajee", "project": "apiplat", "key": "agent.
 
 ## Context（过滤上下文）
 
-Context 是预定义的查询过滤器，供 CLI 交互使用。CIO 可以**读取** context 了解用户偏好过滤，但**不应修改** active context。
+Context 是预定义的查询过滤器，供 CLI 交互使用。可以**读取** context 了解用户偏好过滤，但默认**不应修改** active context。
 
 ### context_get — 查看上下文（只读）
 
@@ -112,7 +112,7 @@ Context 是预定义的查询过滤器，供 CLI 交互使用。CIO 可以**读�
 
 ### context_set / context_none — 修改 active context
 
-> 只影响 stdio MCP 的隐式状态。CIO 默认不要使用；只有用户明确要求"设置当前 context"或"清除当前 context"时才调用。
+> 只影响 stdio MCP 的隐式状态。默认不要使用；只有用户明确要求"设置当前 context"或"清除当前 context"时才调用。
 
 ```json
 context_set({"workspace": "dajee", "name": "sprint"})

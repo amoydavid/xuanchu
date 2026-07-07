@@ -5,7 +5,7 @@ description: 管理 API token（创建/轮换/撤销）、查可用权限、调�
 
 # 权限与配置运维
 
-CIO agent 的后台运维：给别的系统/agent 发 token、调排序权重、给项目配 agent 指令、定义配置键。
+处理项目协作所需的后台运维：给别的系统/agent 发 token、调排序权重、给项目配 agent 指令、定义配置键。
 
 ## 何时使用
 
@@ -13,12 +13,13 @@ CIO agent 的后台运维：给别的系统/agent 发 token、调排序权重、
 
 ## 核心原则
 
-- **CIO 自身用后台手动建的 `["*"]` agent_token**，本 skill 不教它给自己建 token。这里讲的 token 操作是给别的系统/agent 发凭证。
+- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `token_create` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
+- **当前高权限接入方通常由后台预先发放 `["*"]` agent_token**，本 skill 不教你给自己建 token。这里讲的 token 操作是给别的系统/agent 发凭证。
 - **每次调用都显式传 `workspace`**，不依赖隐式状态。
 - 给别的系统发 token：通用 `["*"]` 或最小化专用 scope；**raw_token 只出现一次，必须保存**。
 - config 三级 scope：`workspace`（业务键 `urgency.*` / `date.*`，**不支持 `agent.*`**）/ `project` / `local`（仅 stdio 只读）。
 - agent 指令走 project 级 `agent.*`；写自定义键前先 `config_schema_set` 定义。
-- context 是只读偏好，CIO 不应改 active context（`context_set`/`context_none` 仅用户明确要求时用）。
+- context 是只读偏好，默认不改 active context（`context_set`/`context_none` 仅用户明确要求时用）。
 
 ## 标准工作流
 
@@ -29,10 +30,10 @@ CIO agent 的后台运维：给别的系统/agent 发 token、调排序权重、
 2. // raw_token 只返回一次，保存后告诉使用方
 ```
 
-### 场景 B：给项目配 CIO 指令 + 调 urgency 权重
+### 场景 B：给项目配 agent 指令 + 调 urgency 权重
 
 ```
-1. project_config_set({"workspace":"dajee","project":"apiplat","key":"agent.background","value":"你是 API 平台 CIO..."})
+1. project_config_set({"workspace":"dajee","project":"apiplat","key":"agent.background","value":"你负责 API 平台的项目协作..."})
 2. config_set({"workspace":"dajee","scope":"workspace","key":"urgency.priority.coeff","value":"6.0"})
 ```
 

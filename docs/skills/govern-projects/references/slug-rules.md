@@ -1,6 +1,6 @@
 # Slug 规则
 
-Xuanchu 中有两类 slug，规则不同，CIO 高频踩坑。
+Xuanchu 中有两类 slug，规则不同，容易混用。
 
 ## 对比表
 

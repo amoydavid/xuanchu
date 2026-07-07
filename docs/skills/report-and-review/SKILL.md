@@ -5,7 +5,7 @@ description: 在 IM 群里发待办和逾期汇总、解释任务 urgency 排序
 
 # 汇报与审计
 
-CIO agent 在项目群里广播状态、解释排序、排查问题。这是 agent 对外"说话"的出口——把系统状态变成群里可读的汇报。
+在项目群里广播状态、解释排序、排查问题。这是把系统状态变成群里可读汇报的出口。
 
 ## 何时使用
 
@@ -13,6 +13,7 @@ CIO agent 在项目群里广播状态、解释排序、排查问题。这是 age
 
 ## 核心原则
 
+- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `report_run` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - 所有操作只读，不修改任何数据。
 - `report_run` 的 `name` 必填，内置报表名固定（见 references/report-tools.md）；可用 `query` 在报表上叠加过滤。
 - `urgency_explain` 回答"为什么这个任务排前面"，返回各因素的贡献值。
@@ -26,7 +27,7 @@ CIO agent 在项目群里广播状态、解释排序、排查问题。这是 age
 ```
 1. report_run({"workspace":"dajee","name":"next","limit":10})   // 今日该做的
 2. report_run({"workspace":"dajee","name":"overdue"})            // 逾期
-3. // CIO 汇总成消息发群
+3. // 汇总成消息发群
 // 发周报可用 report_run name:"completed" + query 叠加时间过滤
 ```
 

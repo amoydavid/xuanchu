@@ -5,7 +5,7 @@ description: 建立和归档项目、给项目分配成员、绑定飞书身份�
 
 # 项目与团队治理
 
-CIO agent 作为所有项目的总管，负责建立项目结构、拉人分派、巡查健康。项目是 workspace 下的工作单元，workspace 是最高隔离边界。
+围绕 workspace 建立项目结构、维护成员关系、绑定外部身份，并巡查项目健康。项目是 workspace 下的工作单元，workspace 是最高隔离边界。
 
 ## 何时使用
 
@@ -13,7 +13,8 @@ CIO agent 作为所有项目的总管，负责建立项目结构、拉人分派�
 
 ## 核心原则
 
-- **每次调用都显式传 `workspace`。** 不要依赖隐式状态；CIO 通过参数定位，不用 `workspace_use`/`user_use` 切换隐式上下文（那两个只影响 stdio MCP）。
+- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `project_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
+- **每次调用都显式传 `workspace`。** 不要依赖隐式状态；用参数定位，不用 `workspace_use`/`user_use` 切换隐式上下文（那两个只影响 stdio MCP）。
 - project 用 `project`(slug) 或 `project_id`(UUID) 定位。不知道 project_id 时先 `project_list`。
 - 成员操作必须指定 `workspace`；用户操作在全局范围，但创建用户后会自动生成 personal workspace。
 - `project_get` 的 `config_summary` 暴露该 project 全部非 secret 配置（含 agent 指令、群绑定等集成键）；secret 键（schema 标 `secret:true`）不回显。
@@ -51,9 +52,9 @@ CIO agent 作为所有项目的总管，负责建立项目结构、拉人分派�
 ## 易错点
 
 - **slug 规则不同**：workspace slug 宽松（`^[a-z0-9][a-z0-9_-]*$`，允许 `-` `_`）；project slug 严格（3-10 位小写字母/数字，必须字母开头，不能含 `-` `_` 中文）。详见 references/slug-rules.md。
-- `workspace_use` / `user_use` 只影响 stdio MCP 的隐式状态，HTTP MCP 不受影响。CIO 应显式传参，不依赖隐式切换。
+- `workspace_use` / `user_use` 只影响 stdio MCP 的隐式状态，HTTP MCP 不受影响。默认显式传参，不依赖隐式切换。
 - 创建项目时 slug 会自动转小写；`api-platform`、`ai_agent`、`p1`、`1api` 都不是合法 project slug。
-- 角色层级：`viewer` < `member` < `admin` < `owner`。CIO 通常拥有 owner/admin。
+- 角色层级：`viewer` < `member` < `admin` < `owner`。成员治理通常需要 `admin` 或 `owner`。
 
 ## 参考文档
 

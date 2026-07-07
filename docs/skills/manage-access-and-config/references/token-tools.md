@@ -2,7 +2,7 @@
 
 Token 是 Xuanchu 的身份凭证，用于 HTTP MCP 连接（Bearer Token）、远程 CLI 认证、API 调用。Token 创建时返回原始 secret，**仅此一次**，后续只能看到 prefix。
 
-> 以下 token 操作均指**发给外部系统/agent 的凭证**；CIO 自身用后台手动建的 `["*"]` agent_token，不在本 skill 教的范围内。
+> 以下 token 操作均指**发给外部系统/agent 的凭证**；当前高权限接入方通常由后台预先发放 `["*"]` agent_token，不在本 skill 教的范围内。
 
 ## token_list — 列出 Token（只读）
 

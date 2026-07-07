@@ -5,7 +5,7 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 
 # 捕获与跟踪任务
 
-CIO agent 把 IM 群里冒出来的工作变成结构化任务，跟踪到完成。这是把"对话"转成"可追踪任务"的核心动作。
+把 IM 群里冒出来的工作变成结构化任务，并跟踪到完成。这是把"对话"转成"可追踪任务"的核心动作。
 
 ## 何时使用
 
@@ -13,14 +13,15 @@ CIO agent 把 IM 群里冒出来的工作变成结构化任务，跟踪到完成
 
 ## 核心原则
 
+- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `task_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - **每次调用都显式传 `workspace`**，任务归 project 时带 `project_id` / `project`。
 - **任务引用只用 UUID 或 `task_slug`**（如 `api-1`），不用本地 working-set 数字 ID——MCP 接口不接受数字 ID。
 - 不确定 workspace/project 时先 `project_list` 发现，不要依赖隐式状态。
-- CIO 自己领的活，建完任务后用 `task_start` 开始、`task_done` 完成。
+- 自己接手的任务，建完后用 `task_start` 开始、`task_done` 完成。
 
 ## 标准工作流
 
-### 场景 A：群聊转任务（CIO 高频）
+### 场景 A：群聊转任务
 
 群里说的事变成可追踪任务，记上下文，关联外部材料。
 
@@ -28,7 +29,7 @@ CIO agent 把 IM 群里冒出来的工作变成结构化任务，跟踪到完成
 1. task_add({"workspace":"dajee","project_id":"...","title":"修复白屏","priority":"H"})
 2. task_annotate({"workspace":"dajee","project_id":"...","id":"新任务uuid","annotation":"客户反馈 Chrome 121 必现"})
 3. task_link_add({"workspace":"dajee","project_id":"...","task":"...","type":"pr","url":"https://github.com/.../pull/42"})
-4. // CIO 自己认领就 task_start，做完 task_done
+4. // 自己认领就 task_start，做完 task_done
 ```
 
 ### 场景 B：查询并修改

@@ -5,7 +5,7 @@ description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾�
 
 # 通知/提醒/Hook 接线
 
-CIO agent 把每个项目对应的 IM 群（外部飞书群）接上通知，让任务事件、到期提醒能自动投递到群里。
+把每个项目对应的 IM 群（外部飞书群）接上通知，让任务事件、到期提醒能自动投递到群里。
 
 ## 何时使用
 
@@ -13,6 +13,7 @@ CIO agent 把每个项目对应的 IM 群（外部飞书群）接上通知，让
 
 ## 核心原则
 
+- **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `notification_sink_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - **每次调用都显式传 `workspace`**，不依赖隐式状态。
 - **三层模型**：sink = 投递目标（`webhook` / `http_template`）；rule = 规则（`reminder` 定时扫描 vs `notification` 事件触发）；hook = 出站集成。三者都通过 sink 实际投递。
 - sink 是 workspace 级资源引用（可用名称或 ID），**不能跨 workspace 引用**。
@@ -22,7 +23,7 @@ CIO agent 把每个项目对应的 IM 群（外部飞书群）接上通知，让
 
 ## 标准工作流
 
-### 场景 A：给项目群接飞书机器人通知（CIO 核心）
+### 场景 A：给项目群接飞书机器人通知
 
 把一个项目对应的飞书群接上通知：任务被认领/完成/due 变更时机器人发消息，每天扫描到期/逾期任务。完整 JSON 见 references/feishu-bot-setup.md。
 

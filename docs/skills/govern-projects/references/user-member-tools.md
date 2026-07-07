@@ -70,7 +70,7 @@
 
 ### user_use — 切换用户
 
-> 仅影响 stdio MCP 的隐式状态。CIO 应优先通过参数传 workspace/user，而非依赖此操作。
+> 仅影响 stdio MCP 的隐式状态。默认优先通过参数传 workspace/user，而非依赖此操作。
 
 ```json
 {"user": "alice"}

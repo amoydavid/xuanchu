@@ -87,7 +87,7 @@
 
 ### workspace_use — 切换 active workspace
 
-> 仅影响 stdio MCP 的隐式状态，HTTP MCP 不受影响。CIO 应优先通过参数显式传 `workspace`。
+> 仅影响 stdio MCP 的隐式状态，HTTP MCP 不受影响。默认优先通过参数显式传 `workspace`。
 
 ```json
 {"workspace": "engineering"}

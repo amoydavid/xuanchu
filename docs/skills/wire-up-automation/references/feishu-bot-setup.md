@@ -1,6 +1,6 @@
 # 飞书群机器人端到端配置
 
-CIO 的核心场景：把一个项目对应的飞书群接上通知，任务被认领/完成/due 变更时机器人群里发消息，每天扫描到期/逾期任务。
+核心场景：把一个项目对应的飞书群接上通知，任务被认领/完成/due 变更时机器人群里发消息，每天扫描到期/逾期任务。
 
 ## 前置：群绑定机制
 
@@ -10,7 +10,7 @@ xuanchu 没有"群/chat"实体。用 **project config 键**记录群信息：
 |---|---|---|
 | `integrations.feishu.webhook_url` | project | 本群飞书机器人地址（sink 用 `config_value` 读） |
 | `integrations.feishu.bot_token` | workspace/project（secret） | 飞书机器人 token，模板用 `secret_refs` 引用 |
-| `im.group_id` | project | 群 ID（CIO agent 自身逻辑用，可经 `project_get` 的 config_summary 读） |
+| `im.group_id` | project | 群 ID（可经 `project_get` 的 config_summary 读） |
 
 **关键**：一个 sink 被多个 project 共享，投递时按当前 project 解析各自的 webhook URL。这样建一次 sink、给每个 project 各配一个群地址即可。
 

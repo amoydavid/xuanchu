@@ -1,10 +1,10 @@
 # Task 端到端工作流
 
-CIO 在群里处理工作的典型链路。
+在群里处理工作的典型链路。
 
 ## 场景 A：群聊转任务
 
-用户在群里说"登录页 Chrome 121 白屏了，要修"。CIO 把它变成可追踪任务：
+用户在群里说"登录页 Chrome 121 白屏了，要修"。把它变成可追踪任务：
 
 ```json
 // Step 1: 创建任务，归到对应 project
@@ -34,7 +34,7 @@ task_link_add({
   "url": "https://github.com/org/repo/pull/42"
 })
 
-// Step 4: CIO 自己认领并开始
+// Step 4: 自己认领并开始
 task_start({
   "workspace": "dajee",
   "project_id": "proj-uuid-xxx",
