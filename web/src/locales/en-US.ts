@@ -561,6 +561,7 @@ export const enUS = {
     title: "Project Settings",
     settingsLink: "Settings",
     tabConfig: "Config",
+    tabDefinitions: "Definitions",
     tabNotes: "Notes",
     configTitle: "Config",
     configDescription: "Manage project-scoped config. Keys are validated against workspace schema.",

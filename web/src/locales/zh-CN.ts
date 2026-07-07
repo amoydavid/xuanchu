@@ -540,6 +540,7 @@ export const zhCN = {
     title: "项目设置",
     settingsLink: "设置",
     tabConfig: "配置项",
+    tabDefinitions: "配置定义",
     tabNotes: "项目备注",
     configTitle: "配置项",
     configDescription: "管理项目级配置。key 合法性由 workspace schema 决定。",

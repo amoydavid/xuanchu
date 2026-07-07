@@ -74,6 +74,11 @@ const ProjectSettingsNotesRoute = lazy(() =>
     default: module.ProjectSettingsNotesRoute,
   }))
 )
+const ProjectSettingsDefinitionsRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSettingsDefinitionsRoute").then((module) => ({
+    default: module.ProjectSettingsDefinitionsRoute,
+  }))
+)
 const SettingsRoute = lazy(() =>
   import("@/routes/workspace/SettingsRoute").then((module) => ({
     default: module.SettingsRoute,
@@ -295,6 +300,12 @@ const projectSettingsNotesRoute = createRoute({
   component: lazyRoute(ProjectSettingsNotesRoute),
 })
 
+const projectSettingsDefinitionsRoute = createRoute({
+  getParentRoute: () => projectSettingsRoute,
+  path: "definitions",
+  component: lazyRoute(ProjectSettingsDefinitionsRoute),
+})
+
 const TokensRoute = lazy(() =>
   import("@/routes/workspace/TokensRoute").then((module) => ({
     default: module.TokensRoute,
@@ -333,6 +344,7 @@ const routeTree = rootRoute.addChildren([
     projectSettingsRoute.addChildren([
       projectSettingsIndexRoute,
       projectSettingsConfigRoute,
+      projectSettingsDefinitionsRoute,
       projectSettingsNotesRoute,
     ]),
     createResourceRoute("workspaces", "/workspaces"),

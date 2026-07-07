@@ -15,20 +15,14 @@ export function ProjectSettingsLayout({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const activeTab = location.pathname.endsWith("/notes") ? "notes" : "config"
+  const activeTab = activeSettingsTab(location.pathname)
 
   const onValueChange = (value: string) => {
-    if (value === "notes") {
-      void navigate({
-        to: "/projects/$projectSlug/settings/notes",
-        params: { projectSlug },
-      })
-    } else {
-      void navigate({
-        to: "/projects/$projectSlug/settings/config",
-        params: { projectSlug },
-      })
-    }
+    const tab = value as SettingsTab
+    void navigate({
+      to: settingsTabPath(tab),
+      params: { projectSlug },
+    })
   }
 
   return (
@@ -54,6 +48,9 @@ export function ProjectSettingsLayout({
           <TabsTrigger value="config">
             {t("projectSettings.tabConfig")}
           </TabsTrigger>
+          <TabsTrigger value="definitions">
+            {t("projectSettings.tabDefinitions")}
+          </TabsTrigger>
           <TabsTrigger value="notes">
             {t("projectSettings.tabNotes")}
           </TabsTrigger>
@@ -63,4 +60,25 @@ export function ProjectSettingsLayout({
       <Outlet />
     </div>
   )
+}
+
+type SettingsTab = "config" | "definitions" | "notes"
+
+// activeSettingsTab 根据 pathname 后缀推导当前激活的 settings tab。
+// 导出供测试覆盖，避免依赖完整 router 渲染。
+export function activeSettingsTab(pathname: string): SettingsTab {
+  if (pathname.endsWith("/notes")) return "notes"
+  if (pathname.endsWith("/definitions")) return "definitions"
+  return "config"
+}
+
+function settingsTabPath(tab: SettingsTab): string {
+  switch (tab) {
+    case "notes":
+      return "/projects/$projectSlug/settings/notes"
+    case "definitions":
+      return "/projects/$projectSlug/settings/definitions"
+    default:
+      return "/projects/$projectSlug/settings/config"
+  }
 }
