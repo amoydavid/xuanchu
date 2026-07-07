@@ -1,8 +1,7 @@
-import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import type { ConfigEffectiveValue } from "@/features/workspace/config/config-definition-api"
+import { formatConfigDisplayValue } from "@/features/workspace/config/config-display"
 import { cn } from "@/lib/utils"
 
 import type {
@@ -10,7 +9,6 @@ import type {
   ProjectTimelineEntry,
   ProjectWorkbenchProject,
 } from "../api/project-api"
-import { formatConfigDisplayValue } from "@/features/workspace/config/config-display"
 
 type ProjectContextRailProps = {
   project: ProjectWorkbenchProject
@@ -20,12 +18,11 @@ type ProjectContextRailProps = {
   configError?: boolean
   timeline?: ProjectTimelineEntry[]
   timelineError?: boolean
-  railOpen: boolean
-  onRailOpenChange: (open: boolean) => void
 }
 
-// ProjectContextRail 是项目右侧信息栏，在所有项目子页面保持一致。
-// 默认打开，可由图标按钮收起；收起后只保留展开按钮，左侧主体自动占满剩余宽度。
+// ProjectContextRail 是项目右侧信息栏，只负责渲染内容本身。
+// 开合按钮和宽度由 ProjectLayout 在 tabs 行右侧统一管理：
+// railOpen 时 Layout 渲染本组件，收起时整块不渲染，左侧主体自动占满。
 // 所有数字都来自 ProjectTaskSummary 后端聚合，禁止用当前任务列表派生全量统计。
 export function ProjectContextRail({
   project,
@@ -35,19 +32,8 @@ export function ProjectContextRail({
   configError,
   timeline,
   timelineError,
-  railOpen,
-  onRailOpenChange,
 }: ProjectContextRailProps) {
   const { t } = useTranslation()
-
-  if (!railOpen) {
-    return (
-      <RailExpandButton
-        ariaLabel={t("projectSubpages.railExpand")}
-        onOpen={() => onRailOpenChange(true)}
-      />
-    )
-  }
 
   const completedRatio =
     project.task_count > 0
@@ -60,20 +46,6 @@ export function ProjectContextRail({
       className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0"
       data-testid="project-context-rail"
     >
-      <div className="flex items-center justify-end">
-        <Button
-          aria-label={t("projectSubpages.railCollapse")}
-          className="ml-auto"
-          onClick={() => onRailOpenChange(false)}
-          size="icon"
-          title={t("projectSubpages.railCollapse")}
-          type="button"
-          variant="ghost"
-        >
-          <PanelRightCloseIcon className="h-4 w-4" />
-        </Button>
-      </div>
-
       <RailSection title={t("projectSubpages.railTitle")}>
         <RailRow
           label={t("projectSubpages.attributeStatus")}
@@ -184,29 +156,6 @@ export function ProjectContextRail({
         </RailSection>
       ) : null}
     </aside>
-  )
-}
-
-function RailExpandButton({
-  ariaLabel,
-  onOpen,
-}: {
-  ariaLabel: string
-  onOpen: () => void
-}) {
-  return (
-    <div className="flex w-full justify-end lg:w-12 lg:shrink-0">
-      <Button
-        aria-label={ariaLabel}
-        onClick={onOpen}
-        size="icon"
-        title={ariaLabel}
-        type="button"
-        variant="ghost"
-      >
-        <PanelRightOpenIcon className="h-4 w-4" />
-      </Button>
-    </div>
   )
 }
 

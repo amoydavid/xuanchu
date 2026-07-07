@@ -1,7 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { useState } from "react"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
 
@@ -29,20 +27,6 @@ function Wrapper({ children }: { children: ReactNode }) {
     <QueryClientProvider client={makeQueryClient()}>
       {renderWithRouter(<>{children}</>)}
     </QueryClientProvider>
-  )
-}
-
-// RailHarness 让 ProjectContextRail 以受控方式使用，便于 collapse/expand 测试。
-function RailHarness(
-  props: Omit<
-    React.ComponentProps<typeof ProjectContextRail>,
-    "railOpen" | "onRailOpenChange"
-  > & { initialOpen?: boolean }
-) {
-  const { initialOpen = true, ...rest } = props
-  const [open, setOpen] = useState(initialOpen)
-  return (
-    <ProjectContextRail {...rest} onRailOpenChange={setOpen} railOpen={open} />
   )
 }
 
@@ -113,27 +97,9 @@ describe("ProjectContextRail", () => {
     await i18n.changeLanguage("zh-CN")
   })
 
-  it("collapses and expands with icon buttons", async () => {
-    const user = userEvent.setup()
-    render(
-      <RailHarness
-        configRows={[]}
-        project={project()}
-        summary={summary()}
-      />,
-      { wrapper: Wrapper }
-    )
-    // RouterProvider 异步加载，先 await 初始内容
-    await screen.findByText("项目信息")
-    await user.click(screen.getByRole("button", { name: "收起右栏" }))
-    // 收起后只保留展开按钮，右栏区块内容隐藏
-    expect(screen.queryByText("项目信息")).toBeNull()
-    expect(screen.getByRole("button", { name: "展开右栏" })).toBeTruthy()
-  })
-
   it("shows project facts as label/value and hides raw secret values", async () => {
     render(
-      <RailHarness
+      <ProjectContextRail
         configRows={[
           configRow({ key: "model.provider", value: "openai" }),
           configRow({
@@ -173,7 +139,7 @@ describe("ProjectContextRail", () => {
 
   it("renders summary risk counts from project task summary", async () => {
     render(
-      <RailHarness
+      <ProjectContextRail
         configRows={[]}
         project={project()}
         summary={summary()}
@@ -191,7 +157,7 @@ describe("ProjectContextRail", () => {
 
   it("shows workload from summary with unassigned bucket", async () => {
     render(
-      <RailHarness
+      <ProjectContextRail
         configRows={[]}
         project={project()}
         summary={summary({
@@ -220,7 +186,7 @@ describe("ProjectContextRail", () => {
 
   it("shows lightweight error when summary request fails", async () => {
     render(
-      <RailHarness
+      <ProjectContextRail
         configRows={[]}
         project={project()}
         summaryError={true}

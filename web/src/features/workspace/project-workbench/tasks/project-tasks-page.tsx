@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { PlusIcon, UploadIcon } from "lucide-react"
+import { UploadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -91,7 +91,7 @@ export function ProjectTasksPage({
     role: me.data?.effective_role,
     scopes: me.data?.token.scopes,
   })
-  const { closed } = useProjectLayout()
+  const { closed, setTabActions } = useProjectLayout()
   const tasks = useProjectTasksQuery(workspaceSlug, projectSlug, filterQuery)
   const members = useQuery({
     queryKey: ["workspace-members", workspaceSlug],
@@ -111,6 +111,28 @@ export function ProjectTasksPage({
   )
 
   const canEditTasks = canCreateTask && !closed
+
+  // 可写时把「导入任务」图标按钮注册到 tabs 行右侧（收起/展开按钮左边）。
+  // 新建任务仍由工具栏的「新建任务」按钮触发，不在这里重复放图标按钮。
+  useEffect(() => {
+    if (!canEditTasks) {
+      setTabActions(null)
+      return
+    }
+    setTabActions(
+      <Button
+        aria-label={t("projectSubpages.taskImportLabel")}
+        onClick={() => setImportOpen(true)}
+        size="icon"
+        title={t("projectSubpages.taskImportLabel")}
+        type="button"
+        variant="ghost"
+      >
+        <UploadIcon className="h-4 w-4" />
+      </Button>
+    )
+    return () => setTabActions(null)
+  }, [canEditTasks, setTabActions, t])
 
   const setTaskFilters = (
     values: Partial<Record<keyof TaskFilter, string>>
@@ -134,32 +156,6 @@ export function ProjectTasksPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end gap-2">
-        {canEditTasks ? (
-          <>
-            <Button
-              aria-label={t("projectSubpages.taskImportLabel")}
-              onClick={() => setImportOpen(true)}
-              size="icon"
-              title={t("projectSubpages.taskImportLabel")}
-              type="button"
-              variant="ghost"
-            >
-              <UploadIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              aria-label={t("projectSubpages.taskCreateLabel")}
-              onClick={() => setCreateOpen(true)}
-              size="icon"
-              title={t("projectSubpages.taskCreateLabel")}
-              type="button"
-              variant="ghost"
-            >
-              <PlusIcon className="h-4 w-4" />
-            </Button>
-          </>
-        ) : null}
-      </div>
       <ProjectTaskToolbar
         assigneeOptions={assigneeOptions}
         canCreateTask={canEditTasks}

@@ -152,7 +152,7 @@ describe("ProjectTasksPage", () => {
     expect(screen.queryByText("按负责人")).toBeNull()
   })
 
-  it("shows create and import icon actions when project is writable", async () => {
+  it("registers import action in tabs row and keeps toolbar create action when writable", async () => {
     render(
       <ProjectLayout
         activeTab="tasks"
@@ -164,12 +164,13 @@ describe("ProjectTasksPage", () => {
       { wrapper: Wrapper }
     )
     await screen.findByRole("table")
-    // 图标按钮（aria-label）+ 工具栏文字按钮都应存在
-    expect(screen.getAllByRole("button", { name: "新建任务" }).length).toBeGreaterThan(0)
+    // 导入任务图标按钮上提到 tabs 行
     expect(screen.getAllByRole("button", { name: "导入任务" }).length).toBeGreaterThan(0)
+    // 新建任务由工具栏文字按钮触发，仍存在
+    expect(screen.getAllByRole("button", { name: "新建任务" }).length).toBeGreaterThan(0)
   })
 
-  it("hides create/import actions when project is closed", async () => {
+  it("hides import and create actions when project is closed", async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: "archived" }))
     render(
       <ProjectLayout
@@ -182,8 +183,8 @@ describe("ProjectTasksPage", () => {
       { wrapper: Wrapper }
     )
     await screen.findByRole("table")
-    // 关闭项目：工具栏和图标按钮的新建/导入都隐藏
-    expect(screen.queryAllByRole("button", { name: "新建任务" }).length).toBe(0)
+    // 关闭项目：tabs 行的导入按钮和工具栏的新建按钮都隐藏
     expect(screen.queryAllByRole("button", { name: "导入任务" }).length).toBe(0)
+    expect(screen.queryAllByRole("button", { name: "新建任务" }).length).toBe(0)
   })
 })
