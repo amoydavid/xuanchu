@@ -42,6 +42,8 @@ export function SubTaskList({
 }: SubTaskListProps) {
   const { t } = useTranslation()
   const [showCompleted, setShowCompleted] = useState(false)
+  // composer 默认不显示，点击「添加子任务」后展开（spec §7.2）。
+  const [composerOpen, setComposerOpen] = useState(false)
 
   // 分别请求 open 与 all：默认只展示 open，展开已完成时用 all。
   // 这样切换 showCompleted 不会因为缓存切换而闪烁空态。
@@ -60,11 +62,23 @@ export function SubTaskList({
   const completedCount = Math.max(totalCount - openCount, 0)
 
   return (
-    <section className="space-y-3 border bg-card p-4">
-      <h2 className="text-sm font-medium">{t("taskDetail.subTasks")}</h2>
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium">{t("taskDetail.subTasks")}</h2>
+        {canCreate && !composerOpen ? (
+          <Button
+            onClick={() => setComposerOpen(true)}
+            size="sm"
+            variant="ghost"
+          >
+            {t("taskDetail.addSubTask")}
+          </Button>
+        ) : null}
+      </div>
 
-      {canCreate ? (
+      {canCreate && composerOpen ? (
         <SubTaskComposer
+          onCancel={() => setComposerOpen(false)}
           parentRef={parentRef}
           parentUUID={parentUUID}
           projectSlug={projectSlug}
@@ -168,11 +182,13 @@ function formatDue(due: string | number): string {
 }
 
 function SubTaskComposer({
+  onCancel,
   parentRef,
   parentUUID,
   projectSlug,
   workspaceSlug,
 }: {
+  onCancel: () => void
   parentRef: string
   parentUUID: string
   projectSlug: string
@@ -308,6 +324,15 @@ function SubTaskComposer({
           value={tags}
           workspaceSlug={workspaceSlug}
         />
+        <Button
+          disabled={createSubTask.isPending}
+          onClick={onCancel}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {t("common.cancel")}
+        </Button>
         <Button
           disabled={createSubTask.isPending}
           onClick={() => void submit()}

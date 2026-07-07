@@ -435,6 +435,7 @@ export const zhCN = {
     subTaskPriority: "优先级",
     subTaskDue: "截止日期",
     createSubTask: "创建子任务",
+    addSubTask: "添加子任务",
     showCompleted: "显示 {{count}} 个已完成",
     hideCompleted: "隐藏已完成",
     description: "正文",

@@ -445,6 +445,7 @@ export const enUS = {
     subTaskPriority: "Priority",
     subTaskDue: "Due date",
     createSubTask: "Create sub-task",
+    addSubTask: "Add sub-task",
     showCompleted: "Show {{count}} completed",
     hideCompleted: "Hide completed",
     description: "Description",

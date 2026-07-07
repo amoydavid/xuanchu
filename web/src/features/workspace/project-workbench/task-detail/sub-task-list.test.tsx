@@ -76,7 +76,7 @@ describe("SubTaskList", () => {
     listTaskChildrenMock.mockReset()
   })
 
-  it("Enter 提交后清空标题并保持 composer 打开，payload 含 parent 与 project", async () => {
+  it("点击「添加子任务」后才展开 composer，Enter 提交清空标题并保持打开，payload 含 parent 与 project", async () => {
     listTaskChildrenMock.mockResolvedValue([])
     createTaskMock.mockResolvedValue({ uuid: "new-child" })
 
@@ -90,6 +90,10 @@ describe("SubTaskList", () => {
       />,
       { wrapper: Wrapper }
     )
+
+    // composer 初始不渲染，需点击「添加子任务」展开。
+    expect(screen.queryByPlaceholderText("子任务标题")).toBeNull()
+    await userEvent.click(await screen.findByRole("button", { name: "添加子任务" }))
 
     const input = await screen.findByPlaceholderText("子任务标题")
     await userEvent.type(input, "新子任务")
@@ -112,7 +116,7 @@ describe("SubTaskList", () => {
     expect(titleInput.value).toBe("")
   })
 
-  it("空标题提交时不出请求，显示校验错误", async () => {
+  it("展开 composer 后空标题提交不出请求，显示校验错误", async () => {
     listTaskChildrenMock.mockResolvedValue([])
     render(
       <SubTaskList
@@ -125,12 +129,32 @@ describe("SubTaskList", () => {
       { wrapper: Wrapper }
     )
 
+    await userEvent.click(await screen.findByRole("button", { name: "添加子任务" }))
     await screen.findByPlaceholderText("子任务标题")
     await userEvent.keyboard("{Enter}")
     expect(createTaskMock).not.toHaveBeenCalled()
     expect(
       (await screen.findAllByText("子任务标题不能为空")).length
     ).toBeGreaterThan(0)
+  })
+
+  it("点击取消按钮关闭 composer", async () => {
+    listTaskChildrenMock.mockResolvedValue([])
+    render(
+      <SubTaskList
+        canCreate
+        parentRef="parent-ref"
+        parentUUID="parent-uuid"
+        projectSlug="ads"
+        workspaceSlug="acme"
+      />,
+      { wrapper: Wrapper }
+    )
+
+    await userEvent.click(await screen.findByRole("button", { name: "添加子任务" }))
+    expect(await screen.findByPlaceholderText("子任务标题")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "取消" }))
+    expect(screen.queryByPlaceholderText("子任务标题")).toBeNull()
   })
 
   it("不可创建时显示引导空态文案且不渲染 composer", async () => {
