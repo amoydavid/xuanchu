@@ -505,6 +505,7 @@ export const zhCN = {
     type: "类型",
     scopes: "作用域",
     enumValues: "枚举值（一行一个）",
+    enumNotSupported: "该类型不支持枚举值",
     defaultValue: "默认值",
     required: "必填",
     secret: "机密",

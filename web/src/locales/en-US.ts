@@ -520,6 +520,7 @@ export const enUS = {
     type: "Type",
     scopes: "Scopes",
     enumValues: "Enum values (one per line)",
+    enumNotSupported: "This type does not support enum values",
     defaultValue: "Default value",
     required: "Required",
     secret: "Secret",

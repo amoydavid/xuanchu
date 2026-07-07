@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ApiError } from "@/lib/api"
+import { formatConfigDisplayValue } from "@/features/workspace/config/config-display"
 import { ConfigValueControl } from "@/features/workspace/config/config-value-control"
 import {
   type ConfigEffectiveValue,
@@ -207,7 +208,7 @@ function EffectiveRow({
       ? "—"
       : isSecret && !revealed
         ? "••••••"
-        : row.value
+        : formatConfigDisplayValue(row.definition.value_type, row.value)
 
   return (
     <div className="py-2">

@@ -43,7 +43,14 @@ type ConfigDefinitionFormProps = {
   onDelete?: (key: string) => Promise<void>
 }
 
-const VALUE_TYPES: ConfigValueType[] = ["string", "number", "boolean", "json"]
+const VALUE_TYPES: ConfigValueType[] = [
+  "string",
+  "number",
+  "boolean",
+  "json",
+  "date",
+  "datetime",
+]
 
 function emptyInput(defaultScopes: ConfigAllowedScope[]): ConfigSchemaInput {
   return {
@@ -105,6 +112,8 @@ export function ConfigDefinitionForm({
     mode === "edit" && (usage?.workspace_values ?? 0) > 0
   const projectScopeLocked =
     mode === "edit" && (usage?.project_values ?? 0) > 0
+  // json / date / datetime 类型不支持 enum，与后端约束一致。
+  const enumDisabled = ["json", "date", "datetime"].includes(draft.value_type)
 
   const hasScope = draft.allowed_scopes.length > 0
   const canSubmit =
@@ -239,11 +248,16 @@ export function ConfigDefinitionForm({
       <Field label={t("configDefinitions.enumValues")}>
         <Textarea
           aria-label={t("configDefinitions.enumValues")}
-          disabled={!canManage}
+          disabled={!canManage || enumDisabled}
           onChange={(e) => setEnumText(e.target.value)}
           rows={3}
           value={enumText}
         />
+        {enumDisabled ? (
+          <p className="text-xs text-muted-foreground">
+            {t("configDefinitions.enumNotSupported")}
+          </p>
+        ) : null}
       </Field>
 
       <Field label={t("configDefinitions.defaultValue")}>

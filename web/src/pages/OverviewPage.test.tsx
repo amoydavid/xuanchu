@@ -115,6 +115,40 @@ describe("OverviewPage", () => {
     )
   })
 
+  it("formats datetime value locally instead of raw RFC3339", async () => {
+    mockFetchByUrl({
+      "/api/v1/config/effective": [
+        {
+          key: "campaign.kickoff",
+          value: "2026-07-07T12:00:00Z",
+          source: "workspace",
+          definition: {
+            key: "campaign.kickoff",
+            value_type: "datetime",
+            allowed_scopes: ["workspace"],
+            label: "启动时间",
+            description: "",
+            enum_values: [],
+            default_value: null,
+            required: false,
+            secret: false,
+            show_on_console_home: true,
+            created_at: 0,
+            modified_at: 0,
+          },
+          show_on_console_home: true,
+          missing_required: false,
+        },
+      ],
+    })
+    renderOverview()
+    await waitFor(() => expect(screen.getByText("campaign.kickoff")).toBeTruthy())
+    // 展示值不应出现 RFC3339 原文（含 T 和 Z）
+    expect(screen.queryByText("2026-07-07T12:00:00Z")).toBeNull()
+    // 日期段按本地时区展示（包含年月）
+    expect(screen.getByText(/2026-07/)).toBeTruthy()
+  })
+
   it("masks secret value as bullets", async () => {
     mockFetchByUrl({
       "/api/v1/config/effective": [
