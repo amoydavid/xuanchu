@@ -50,6 +50,7 @@
 | v0.5.1 | 已完成 | Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进 |
 | v0.5.2 | 已完成 | Web Console 能力桥接：我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计 |
 | v0.5.3 | 已完成 | Web Console 出站集成控制台：sink/hook/通知/定时规则闭环 + sink 测试投递 API |
+| v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -516,6 +517,37 @@ docs/superpowers/plans/2026-07-06-token-mcp-config-implementation.md
 
 ```text
 docs/superpowers/specs/2026-07-06-sso-token-web-login-disabled-design.md
+```
+
+## v0.5.4：Web Console 项目子页面
+
+**状态：已完成。**
+
+把项目详情从单一工作台拆成「概览 / 任务 / 活动」三个项目子页面，保留一致的项目 Header、Tabs 和可开合的右侧项目信息栏（`ProjectContextRail`）。
+
+当前范围：
+
+- 项目根路由 `/workspaces/:ws/projects/:slug` 显示概览页（最新项目更新、当前重点、项目附属信息、负责人负载、最近活动），不再直接铺完整任务表。
+- 新增 `/workspaces/:ws/projects/:slug/tasks` 子页面，承接任务筛选工具栏、简单任务列表、新建、导入和行内编辑（第一阶段不做分组、父子树、看板或泳道）。
+- 新增 `/workspaces/:ws/projects/:slug/activity` 子页面，合并项目更新、任务注解和有 `audit:read` 权限时可见的项目审计；项目记录（annotation）从设置页迁到活动页，旧 `/projects/:slug/settings/notes` 兼容重定向到活动页。
+- 右侧项目信息栏在三个子页面保持一致，可由 `PanelRightClose/Open` 图标按钮收起/展开，按钮带 `aria-label` 和 `title`。
+- 新增后端 `GET /api/v1/projects/{projectRef}/task-summary`（ProjectSummary）作为概览与右栏全量任务摘要的权威来源，同时要求 `project:read` 与 `task:read`；逾期/高优未完成/等待已到期/未分配任务计数与负责人负载都由后端按项目全量任务聚合，前端不用当前任务列表冒充全量统计。
+- 时间判断复用璇础任务日期边界（date-only `due/until` 按本地日末、`wait/scheduled` 按本地日初），前端不用浏览器时区重算。
+- 项目附属信息（console-home effective config）显示 label/value，不使用「运行配置」标题；secret 配置只展示后端脱敏值或「已设置」。
+- `ProjectTimeline` 中 `source_type=project` 的 `source_id` 校准为 annotation id（便于活动页去重和删除）。
+- archived/cancelled 项目仍可浏览概览/任务/活动，但隐藏任务创建、导入和项目更新写入入口。
+
+不进入 v0.5.4：
+
+- 不新增项目负责人、项目成员、里程碑数据表。
+- 不做任务分组、父子树、看板或泳道（后续单独设计）。
+- 不改变 CLI、MCP、HTTP API 的身份输出规范。
+
+规格与计划：
+
+```text
+docs/superpowers/specs/2026-07-07-web-console-project-subpages-design.md
+docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1488,7 +1520,7 @@ v0.5.0 已完成。Web Console 已从 bootstrap / token 管控推进到项目-�
 
 v0.5.1 已完成 Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进。该版本保持后端字符串契约不变，在任务详情页的 description 和 annotation 入口引入 Tiptap v3 Markdown WYSIWYG 编辑、同 schema 只读渲染、原始 HTML 转义、链接协议白名单，并修正详情页面包屑和主区/属性栏布局。
 
-v0.5.2 已完成 Web Console 能力桥接（我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计）。v0.5.3 已完成 Web Console 出站集成控制台：把 `/hooks` 升级为统一控制台（Sinks / Hooks / 通知规则 / 定时规则 / 概览），新增后端 `POST /api/v1/notification-sinks/{sinkID}/test` 真实测试投递（复用 sink 渲染、SSRF 防护与 HTTP 投递，写 audit 不污染 delivery 表）。`/hooks`、`/notifications`、`/integrations` 三条路由共用同一控制台。
+v0.5.2 已完成 Web Console 能力桥接（我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计）。v0.5.3 已完成 Web Console 出站集成控制台：把 `/hooks` 升级为统一控制台（Sinks / Hooks / 通知规则 / 定时规则 / 概览），新增后端 `POST /api/v1/notification-sinks/{sinkID}/test` 真实测试投递（复用 sink 渲染、SSRF 防护与 HTTP 投递，写 audit 不污染 delivery 表）。`/hooks`、`/notifications`、`/integrations` 三条路由共用同一控制台。v0.5.4 已完成 Web Console 项目子页面：把项目详情从单一工作台拆成「概览 / 任务 / 活动」三个子页面，新增可开合的右侧项目信息栏，并新增 `GET /api/v1/projects/{projectRef}/task-summary` 作为全量任务摘要权威来源。
 
 规格与实施计划：
 
@@ -1499,9 +1531,11 @@ docs/superpowers/specs/2026-07-04-web-console-members-management-design.md
 docs/superpowers/plans/2026-07-04-web-console-members-management-implementation.md
 docs/superpowers/specs/2026-07-05-web-console-outbound-integration-console-design.md
 docs/superpowers/plans/2026-07-05-web-console-outbound-integration-console-implementation.md
+docs/superpowers/specs/2026-07-07-web-console-project-subpages-design.md
+docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 ```
 
-v0.5.3 之后的方向待定，建议优先在以下几类中选择：
+v0.5.4 之后的方向待定，建议优先在以下几类中选择：
 
 - 飞书 OAuth / 通讯录之外的企业身份 adapter（认证只负责外部身份映射，授权继续由 Xuanchu membership、role、scope 和 allowlist 决定）。
 - Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。

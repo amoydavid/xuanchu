@@ -1,7 +1,7 @@
 # Web Console 项目子页面信息架构设计
 
 **日期：** 2026-07-07
-**状态：** 待评审
+**状态：** 已完成
 **范围：** `/workspaces/:workspaceSlug/projects/:projectSlug` 项目详情与项目级子页面
 
 ## 1. 背景
