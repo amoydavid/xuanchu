@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -5945,4 +5946,139 @@ func TestProjectConfigEffectiveValuesConsoleHomeFilter(t *testing.T) {
 	}
 	// ads.roi 应在过滤结果里（从 project 显式值解析）
 	assertEffectiveSource(t, filtered, "ads.roi", "project", "1.8")
+}
+
+func TestServiceAddWithParent(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	// 建项目，父任务放入项目内，验证子任务继承 project。
+	project, err := svc.AddProject(AddProjectInput{Slug: "demo", Name: "Demo"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+
+	parent, err := svc.Add(AddInput{Title: "parent task", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+
+	child, err := svc.Add(AddInput{Title: "child task", Parent: &parent.UUID})
+	if err != nil {
+		t.Fatalf("Add with parent: %v", err)
+	}
+	if child.Parent == nil || *child.Parent != parent.UUID {
+		t.Fatalf("child.Parent = %v, want %s", child.Parent, parent.UUID)
+	}
+	if child.Project == nil || *child.Project != project.Slug {
+		t.Fatalf("child.Project = %v, want inherited %q", child.Project, project.Slug)
+	}
+
+	got, err := svc.Info(child.UUID)
+	if err != nil {
+		t.Fatalf("Info(child): %v", err)
+	}
+	if got.Parent == nil || *got.Parent != parent.UUID {
+		t.Fatalf("Info child.Parent = %v, want %s", got.Parent, parent.UUID)
+	}
+}
+
+// parent 无 project 时，子任务 project 也为 nil（不 panic）。
+func TestServiceAddWithParentNoProject(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	parent, err := svc.Add(AddInput{Title: "parent no project"})
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+	child, err := svc.Add(AddInput{Title: "child", Parent: &parent.UUID})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if child.Parent == nil || *child.Parent != parent.UUID {
+		t.Fatalf("child.Parent = %v, want %s", child.Parent, parent.UUID)
+	}
+	if child.Project != nil {
+		t.Fatalf("child.Project = %v, want nil", child.Project)
+	}
+}
+
+func TestServiceAddWithParentRejections(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "demo", Name: "Demo"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+
+	// 正常父任务（在项目内）。
+	normal, err := svc.Add(AddInput{Title: "normal", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("create normal: %v", err)
+	}
+
+	// deleted 父任务。
+	deletedTask, err := svc.Add(AddInput{Title: "to-delete", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("create to-delete: %v", err)
+	}
+	if err := svc.Delete(deletedTask.UUID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	// completed 父任务。
+	completedTask, err := svc.Add(AddInput{Title: "to-complete", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("create to-complete: %v", err)
+	}
+	if err := svc.Done(completedTask.UUID); err != nil {
+		t.Fatalf("done: %v", err)
+	}
+
+	// recurring 父任务（需要 Due + Recur + project）。
+	due := int64(200)
+	recur := "weekly"
+	recurringParent, err := svc.Add(AddInput{
+		Title: "recurring", Project: &project.Slug, Due: &due, Recur: &recur,
+	})
+	if err != nil {
+		t.Fatalf("create recurring parent: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		input   AddInput
+		wantErr string // 空表示期望成功
+	}{
+		{name: "parent not found", input: AddInput{Title: "x", Parent: strptr("nonexistent-uuid")}, wantErr: "task_invalid_parent"},
+		{name: "deleted parent", input: AddInput{Title: "x", Parent: &deletedTask.UUID}, wantErr: "task_parent_deleted"},
+		{name: "completed parent", input: AddInput{Title: "x", Parent: &completedTask.UUID}, wantErr: "task_parent_completed"},
+		{name: "recurring parent", input: AddInput{Title: "x", Parent: &recurringParent.UUID}, wantErr: "task_parent_recurring"},
+		{name: "project mismatch", input: AddInput{Title: "x", Parent: &normal.UUID, Project: strptr("other-project")}, wantErr: "task_invalid_parent"},
+		{name: "valid child inherits project", input: AddInput{Title: "ok child", Parent: &normal.UUID}, wantErr: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			created, err := svc.Add(tc.input)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if created.Parent == nil || *created.Parent != *tc.input.Parent {
+					t.Fatalf("created.Parent = %v, want %s", created.Parent, *tc.input.Parent)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error code %s, got nil", tc.wantErr)
+			}
+			var re RuntimeError
+			if !errors.As(err, &re) || re.Code != tc.wantErr {
+				t.Fatalf("error = %v, want code %q", err, tc.wantErr)
+			}
+		})
+	}
 }

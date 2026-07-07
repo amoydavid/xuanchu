@@ -85,6 +85,7 @@ type AddInput struct {
 	Recur       *string
 	Tags        []string
 	UDAs        map[string]string
+	Parent      *string
 }
 
 type ListInput struct {
@@ -454,14 +455,19 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	parentUUID, parentProject, err := s.resolveParentForAdd(input.Parent, input.Project)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
 	tsk := task.Task{
 		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Assignees: assignees, Depends: depends,
 		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
+		Parent: parentUUID,
 	}
-	projChange, err := s.applyProjectBinding(&tsk, input.Project)
+	projChange, err := s.applyProjectBinding(&tsk, parentProject)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
@@ -1828,6 +1834,43 @@ func (s *Service) resolveDependencyTargets(targets []string) ([]string, error) {
 		}
 	}
 	return depends, nil
+}
+
+// resolveParentForAdd 解析创建子任务时的 parent 引用。
+// 返回 (parentUUID 指针, 子任务应使用的 project ref)。
+// 当 parent 为空时返回 (nil, inputProject)，行为与无 parent 一致。
+// 拒绝：parent 不存在/跨 workspace、deleted/completed/recurring parent、显式 project 与父 project 不一致。
+func (s *Service) resolveParentForAdd(parentRef *string, inputProject *string) (*string, *string, error) {
+	if parentRef == nil || strings.TrimSpace(*parentRef) == "" {
+		return nil, inputProject, nil
+	}
+	parent, err := s.resolveTargetForWrite(*parentRef)
+	if err != nil {
+		// resolveTargetForWrite 对跨 workspace/project scope 已返回 task_not_found/project_scope_denied，
+		// 统一转成面向使用者的 task_invalid_parent。
+		return nil, nil, RuntimeError{Code: "task_invalid_parent", Message: "parent task not found"}
+	}
+	switch parent.Status {
+	case task.StatusDeleted:
+		return nil, nil, RuntimeError{Code: "task_parent_deleted", Message: "parent task is deleted"}
+	case task.StatusCompleted:
+		// 完成任务下继续拆任务容易造成状态语义混乱；文案给出替代动作（spec §8.2 规则 6）。
+		return nil, nil, RuntimeError{Code: "task_parent_completed", Message: "parent task is completed; please reopen the parent before adding sub-tasks"}
+	case task.StatusRecurring:
+		// recurring parent 不允许手动子任务（spec §8.1 / §9.1）。
+		return nil, nil, RuntimeError{Code: "task_parent_recurring", Message: "manual sub-tasks cannot be added to a recurring parent"}
+	}
+	// 显式 project 必须与父任务 project 一致（spec §8.2 规则 3）。
+	if inputProject != nil && strings.TrimSpace(*inputProject) != "" &&
+		parent.Project != nil && strings.TrimSpace(*parent.Project) != "" &&
+		*inputProject != *parent.Project {
+		return nil, nil, RuntimeError{Code: "task_invalid_parent", Message: "sub-task project must match parent project"}
+	}
+	// 子任务默认继承父任务 project；父任务无 project 时沿用调用方传入的 project（可为 nil）。
+	if parent.Project == nil || strings.TrimSpace(*parent.Project) == "" {
+		return &parent.UUID, inputProject, nil
+	}
+	return &parent.UUID, parent.Project, nil
 }
 
 func (s *Service) validateDependencyCycles(taskUUID string, depends []string) error {
