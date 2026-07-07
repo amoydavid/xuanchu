@@ -1,10 +1,12 @@
 import { useParams } from "@tanstack/react-router"
 
-import { ProjectWorkbenchPage } from "@/features/workspace/project-workbench/project/project-workbench-page"
+import { ProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
+import { ProjectOverviewPage } from "@/features/workspace/project-workbench/project/project-overview-page"
 
 // /workspaces/$workspaceSlug/projects/$projectSlug
-// 项目工作台页（可编辑）。历史命名 ProjectReadonlyRoute 是旧产品边界遗留，
-// 现在项目详情已从只读浏览迁到可编辑 workbench，路由名随之对齐。
+// 项目概览页（Overview）：回答「项目现在怎么样，是否需要介入」。
+// 历史命名 ProjectReadonlyRoute 是旧产品边界遗留；现在默认显示概览，
+// 任务执行移到 /tasks，活动记录移到 /activity。
 export function ProjectWorkbenchRoute() {
   const params = useParams({ strict: false }) as {
     projectSlug: string
@@ -12,9 +14,15 @@ export function ProjectWorkbenchRoute() {
   }
 
   return (
-    <ProjectWorkbenchPage
+    <ProjectLayout
+      activeTab="overview"
       projectSlug={params.projectSlug}
       workspaceSlug={params.workspaceSlug}
-    />
+    >
+      <ProjectOverviewPage
+        projectSlug={params.projectSlug}
+        workspaceSlug={params.workspaceSlug}
+      />
+    </ProjectLayout>
   )
 }
