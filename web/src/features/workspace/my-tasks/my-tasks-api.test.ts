@@ -26,12 +26,12 @@ describe("myTasksPath", () => {
   it("encodes due range and due_empty", () => {
     const filter: MyTasksFilter = {
       assignee: "user-1",
-      due_before: "1756752000",
-      due_after: "1756665600",
+      due_before: "2026-07-06",
+      due_after: "2026-07-05",
       due_empty: "true",
     }
     expect(myTasksPath("dajee", filter)).toBe(
-      "/api/v1/tasks?workspace=dajee&assignee=user-1&due_after=1756665600&due_before=1756752000&query=due.isnull&limit=200"
+      "/api/v1/tasks?workspace=dajee&assignee=user-1&due_after=2026-07-05&due_before=2026-07-06&query=due.isnull&limit=200"
     )
   })
 
