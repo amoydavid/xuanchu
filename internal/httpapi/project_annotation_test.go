@@ -102,7 +102,7 @@ func TestProjectTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = svc.ProjectAnnotate(project.Slug, "project note")
+	annotation, err := svc.ProjectAnnotate(project.Slug, "project note")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,5 +126,35 @@ func TestProjectTimeline(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "task annotation") {
 		t.Fatalf("timeline missing task annotation: %s", rr.Body.String())
+	}
+	// project timeline 的 source_id 必须是 annotation id（便于 Activity 去重和删除）。
+	var payload struct {
+		Data []struct {
+			SourceType string `json:"source_type"`
+			SourceID   string `json:"source_id"`
+			Content    string `json:"content"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	var projectRow, taskRow *struct {
+		SourceType string `json:"source_type"`
+		SourceID   string `json:"source_id"`
+		Content    string `json:"content"`
+	}
+	for i := range payload.Data {
+		if payload.Data[i].SourceType == "project" && projectRow == nil {
+			projectRow = &payload.Data[i]
+		}
+		if payload.Data[i].SourceType == "task" && taskRow == nil {
+			taskRow = &payload.Data[i]
+		}
+	}
+	if projectRow == nil || projectRow.SourceID != annotation.ID {
+		t.Fatalf("timeline project source_id = %#v, want annotation id %q", projectRow, annotation.ID)
+	}
+	if taskRow == nil || taskRow.SourceID != tsk.UUID {
+		t.Fatalf("timeline task source_id = %#v, want task uuid %q", taskRow, tsk.UUID)
 	}
 }

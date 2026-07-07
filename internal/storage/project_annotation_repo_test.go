@@ -215,8 +215,9 @@ func TestProjectAnnotationRepoTimeline(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
+	annotationID := uuid.NewString()
 	_, err = annoRepo.Create(ProjectAnnotation{
-		ID: uuid.NewString(), ProjectID: project.ID, Entry: 150,
+		ID: annotationID, ProjectID: project.ID, Entry: 150,
 		Content: "project anno", CreatedBy: "user-1", CreatedAt: 150,
 	})
 	if err != nil {
@@ -244,7 +245,18 @@ func TestProjectAnnotationRepoTimeline(t *testing.T) {
 	if rows[0].SourceType != "project" || rows[0].Content != "project anno" {
 		t.Fatalf("row[0] = %+v", rows[0])
 	}
+	// project timeline 的 source_id 必须是 annotation id，便于 Activity 去重和删除。
+	if rows[0].SourceID != annotationID {
+		t.Fatalf("project timeline source_id = %q, want annotation id %q", rows[0].SourceID, annotationID)
+	}
+	if rows[0].SourceLabel != "timeline" {
+		t.Fatalf("project timeline source_label = %q, want timeline", rows[0].SourceLabel)
+	}
 	if rows[1].SourceType != "task" || rows[1].Content != "task anno" {
 		t.Fatalf("row[1] = %+v", rows[1])
+	}
+	// task timeline 的 source_id 仍是 task uuid。
+	if rows[1].SourceID != taskUUID {
+		t.Fatalf("task timeline source_id = %q, want task uuid %q", rows[1].SourceID, taskUUID)
 	}
 }

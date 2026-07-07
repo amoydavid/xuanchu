@@ -100,7 +100,7 @@ SELECT source_type, source_id, source_label, entry, content, created_by,
        created_by_actor_type, created_by_user_id, created_by_token_id,
        created_by_token_name, created_by_token_prefix
 FROM (
-    SELECT 'project' AS source_type, ? AS source_id, ? AS source_label,
+    SELECT 'project' AS source_type, id AS source_id, ? AS source_label,
            entry, content, created_by, created_by_actor_type, created_by_user_id,
            created_by_token_id, created_by_token_name, created_by_token_prefix
     FROM project_annotations WHERE project_id = ?
@@ -116,7 +116,7 @@ FROM (
 )
 ORDER BY entry ASC
 LIMIT ? OFFSET ?`,
-		projectID, project.Slug,
+		project.Slug,
 		projectID,
 		projectID,
 		limit, offset,
