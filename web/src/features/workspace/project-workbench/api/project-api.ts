@@ -391,3 +391,9 @@ export function deleteProjectAnnotation(
     projectAnnotationPath(workspaceSlug, projectRef, annotationId)
   )
 }
+
+// project effective config 已迁移到 config-definition-api，这里保留 re-export 方便现有引用。
+export {
+  listProjectEffectiveConfig,
+  projectConfigEffectivePath,
+} from "@/features/workspace/config/config-definition-api"

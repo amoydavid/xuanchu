@@ -1,24 +1,7 @@
-import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
-
-// 对应后端 app.ConfigDefinitionView。
-export type ConfigSchemaDefinition = {
-  key: string
-  value_type: string
-  allowed_scopes: string[]
-  label: string
-  description: string
-  enum_values: string[]
-  default_value: string | null
-  required: boolean
-  secret: boolean
-  created_at: number
-  modified_at: number
-}
-
-export function configSchemaPath(): string {
-  return "/api/v1/config-schema"
-}
-
-export function listConfigSchema(): Promise<ConfigSchemaDefinition[]> {
-  return workspaceApiGet<ConfigSchemaDefinition[]>(configSchemaPath())
-}
+// 配置定义 API 已迁移到 @/features/workspace/config/config-definition-api。
+// 这里保留 re-export，避免 project-config-tab / project-config-row 等现有引用一次性改完。
+export {
+  configSchemaPath,
+  listConfigSchema,
+  type ConfigSchemaDefinition,
+} from "@/features/workspace/config/config-definition-api"
