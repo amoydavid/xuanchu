@@ -5727,3 +5727,92 @@ func TestWorkspaceConfigEffectiveValuesFiltersConsoleHome(t *testing.T) {
 		t.Fatalf("rows = %#v, want only ads.roi default", rows)
 	}
 }
+
+func TestConfigSchemaAcceptsDateType(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	def := "2026-07-07"
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "campaign.start_date", ValueType: "date", AllowedScopes: []string{"workspace", "project"}, DefaultValue: &def,
+	})
+	// date default value 可读取
+	got, ok, err := svc.ConfigSchemaGet("campaign.start_date")
+	if err != nil || !ok {
+		t.Fatalf("ConfigSchemaGet() = (_, %v, %v), want found nil", ok, err)
+	}
+	if got.DefaultValue == nil || *got.DefaultValue != "2026-07-07" {
+		t.Fatalf("DefaultValue = %#v, want 2026-07-07", got.DefaultValue)
+	}
+
+	// date config value 可写入并归一化
+	if err := svc.SetConfig("campaign.start_date", "2026-07-07"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+	value, ok, err := svc.GetConfig("campaign.start_date")
+	if err != nil || !ok {
+		t.Fatalf("GetConfig() = (%q, %v, %v), want found nil", value, ok, err)
+	}
+	if value != "2026-07-07" {
+		t.Fatalf("GetConfig() = %q, want 2026-07-07", value)
+	}
+}
+
+func TestConfigSchemaAcceptsDatetimeType(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	def := "2026-07-07T12:00:00+08:00"
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "campaign.kickoff", ValueType: "datetime", AllowedScopes: []string{"workspace"}, DefaultValue: &def,
+	})
+	got, ok, err := svc.ConfigSchemaGet("campaign.kickoff")
+	if err != nil || !ok {
+		t.Fatalf("ConfigSchemaGet() = (_, %v, %v), want found nil", ok, err)
+	}
+	// datetime default value 归一化为 UTC RFC3339
+	if got.DefaultValue == nil || *got.DefaultValue != "2026-07-07T04:00:00Z" {
+		t.Fatalf("DefaultValue = %#v, want 2026-07-07T04:00:00Z", got.DefaultValue)
+	}
+
+	if err := svc.SetConfig("campaign.kickoff", "2026-07-07T09:30:00Z"); err != nil {
+		t.Fatalf("SetConfig() error = %v", err)
+	}
+	value, ok, err := svc.GetConfig("campaign.kickoff")
+	if err != nil || !ok {
+		t.Fatalf("GetConfig() = (%q, %v, %v), want found nil", value, ok, err)
+	}
+	if value != "2026-07-07T09:30:00Z" {
+		t.Fatalf("GetConfig() = %q, want 2026-07-07T09:30:00Z", value)
+	}
+}
+
+func TestConfigScopedValueRejectsInvalidDate(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "campaign.start_date", ValueType: "date", AllowedScopes: []string{"workspace"},
+	})
+	err := svc.SetConfig("campaign.start_date", "2026/07/07")
+	assertRuntimeCode(t, err, "config_value_invalid")
+}
+
+func TestConfigScopedValueRejectsNaiveDatetime(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	mustSetConfigSchema(t, svc, ConfigSchemaInput{
+		Key: "campaign.kickoff", ValueType: "datetime", AllowedScopes: []string{"workspace"},
+	})
+	// 不带时区 offset 的 datetime 应被拒绝
+	err := svc.SetConfig("campaign.kickoff", "2026-07-07 12:00:00")
+	assertRuntimeCode(t, err, "config_value_invalid")
+}
+
+func TestConfigSchemaDateRejectsEnum(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	err := svc.ConfigSchemaSet(ConfigSchemaInput{
+		Key: "campaign.start_date", ValueType: "date", AllowedScopes: []string{"workspace"}, EnumValues: []string{"2026-07-07"},
+	})
+	assertRuntimeCode(t, err, "config_value_invalid")
+}

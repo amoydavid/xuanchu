@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
@@ -22,10 +23,12 @@ var builtinScopedConfigSchemas = []ConfigSchemaInput{
 type ConfigValueType string
 
 const (
-	ConfigValueTypeString  ConfigValueType = "string"
-	ConfigValueTypeNumber  ConfigValueType = "number"
-	ConfigValueTypeBoolean ConfigValueType = "boolean"
-	ConfigValueTypeJSON    ConfigValueType = "json"
+	ConfigValueTypeString   ConfigValueType = "string"
+	ConfigValueTypeNumber   ConfigValueType = "number"
+	ConfigValueTypeBoolean  ConfigValueType = "boolean"
+	ConfigValueTypeJSON     ConfigValueType = "json"
+	ConfigValueTypeDate     ConfigValueType = "date"
+	ConfigValueTypeDateTime ConfigValueType = "datetime"
 )
 
 type ConfigAllowedScope string
@@ -70,7 +73,7 @@ func normalizeConfigDefinitionInput(input ConfigSchemaInput) (storage.ConfigDefi
 	}
 	valueType := ConfigValueType(strings.TrimSpace(input.ValueType))
 	switch valueType {
-	case ConfigValueTypeString, ConfigValueTypeNumber, ConfigValueTypeBoolean, ConfigValueTypeJSON:
+	case ConfigValueTypeString, ConfigValueTypeNumber, ConfigValueTypeBoolean, ConfigValueTypeJSON, ConfigValueTypeDate, ConfigValueTypeDateTime:
 	default:
 		return storage.ConfigDefinition{}, RuntimeError{Code: "config_value_type_invalid", Message: fmt.Sprintf("unsupported config type %q", input.ValueType)}
 	}
@@ -95,6 +98,24 @@ func normalizeConfigDefinitionInput(input ConfigSchemaInput) (storage.ConfigDefi
 	}
 	sort.Strings(scopes)
 
+	// json / date / datetime 类型不支持 enum：枚举预定义值对这些类型语义不清，
+	// 且 date/datetime 的 enum 校验会让归一化逻辑变复杂无收益。
+	hasNonEmptyEnum := false
+	for _, raw := range input.EnumValues {
+		if strings.TrimSpace(raw) != "" {
+			hasNonEmptyEnum = true
+			break
+		}
+	}
+	if hasNonEmptyEnum {
+		switch valueType {
+		case ConfigValueTypeJSON:
+			return storage.ConfigDefinition{}, RuntimeError{Code: "config_value_invalid", Message: "json config does not support enum values"}
+		case ConfigValueTypeDate, ConfigValueTypeDateTime:
+			return storage.ConfigDefinition{}, RuntimeError{Code: "config_value_invalid", Message: fmt.Sprintf("%s config does not support enum values", valueType)}
+		}
+	}
+
 	enumValues := make([]string, 0, len(input.EnumValues))
 	enumSet := map[string]bool{}
 	for _, raw := range input.EnumValues {
@@ -105,9 +126,6 @@ func normalizeConfigDefinitionInput(input ConfigSchemaInput) (storage.ConfigDefi
 		normalized, err := normalizeScopedConfigValue(string(valueType), trimmed)
 		if err != nil {
 			return storage.ConfigDefinition{}, err
-		}
-		if valueType == ConfigValueTypeJSON {
-			return storage.ConfigDefinition{}, RuntimeError{Code: "config_value_invalid", Message: "json config does not support enum values"}
 		}
 		if !enumSet[normalized] {
 			enumSet[normalized] = true
@@ -224,6 +242,20 @@ func normalizeScopedConfigValue(valueType, value string) (string, error) {
 			return "", err
 		}
 		return string(normalized), nil
+	case ConfigValueTypeDate:
+		// date 统一存 YYYY-MM-DD，按 UTC 解析避免本地时区把日期偏移一天。
+		parsed, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(value), time.UTC)
+		if err != nil {
+			return "", RuntimeError{Code: "config_value_invalid", Message: fmt.Sprintf("invalid date value %q", value)}
+		}
+		return parsed.UTC().Format("2006-01-02"), nil
+	case ConfigValueTypeDateTime:
+		// datetime 必须是带时区 offset 的 RFC3339，统一归一化为 UTC 存储。
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+		if err != nil {
+			return "", RuntimeError{Code: "config_value_invalid", Message: fmt.Sprintf("invalid datetime value %q (requires RFC3339 with timezone)", value)}
+		}
+		return parsed.UTC().Format(time.RFC3339), nil
 	default:
 		return "", RuntimeError{Code: "config_value_type_invalid", Message: fmt.Sprintf("unsupported config type %q", valueType)}
 	}
