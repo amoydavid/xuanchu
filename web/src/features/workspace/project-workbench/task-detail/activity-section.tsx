@@ -25,7 +25,7 @@ export function ActivitySection({
 }: ActivitySectionProps) {
   const { t } = useTranslation()
   return (
-    <section className="space-y-4 border bg-card p-4">
+    <section className="space-y-4">
       <h2 className="text-sm font-medium">{t("taskDetail.activity")}</h2>
       <TaskAnnotationsEditor
         annotations={annotations}
