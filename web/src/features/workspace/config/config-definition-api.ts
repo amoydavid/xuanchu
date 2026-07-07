@@ -92,8 +92,15 @@ export function workspaceConfigEffectivePath(options: {
   return base
 }
 
-export function projectConfigEffectivePath(projectRef: string): string {
-  return `/api/v1/projects/${encodeSchemaKey(projectRef)}/config/effective`
+export function projectConfigEffectivePath(
+  projectRef: string,
+  options?: { consoleHome?: boolean }
+): string {
+  const base = `/api/v1/projects/${encodeSchemaKey(projectRef)}/config/effective`
+  if (options?.consoleHome) {
+    return `${base}?console_home=true`
+  }
+  return base
 }
 
 // schema key 含点号，按段编码（与 project-api.encodeSegment 一致），点号不转义。
@@ -139,9 +146,10 @@ export function listWorkspaceEffectiveConfig(options: {
 }
 
 export function listProjectEffectiveConfig(
-  projectRef: string
+  projectRef: string,
+  options?: { consoleHome?: boolean }
 ): Promise<ConfigEffectiveValue[]> {
   return workspaceApiGet<ConfigEffectiveValue[]>(
-    projectConfigEffectivePath(projectRef)
+    projectConfigEffectivePath(projectRef, options)
   )
 }

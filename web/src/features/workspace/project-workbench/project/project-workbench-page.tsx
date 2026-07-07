@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ConfigOverviewSection } from "@/features/workspace/config/config-overview-section"
+import { listProjectEffectiveConfig } from "@/features/workspace/config/config-definition-api"
 import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
 import { navigateToDocument } from "@/lib/browser-navigation"
@@ -126,6 +128,17 @@ function ProjectWorkbenchPageContent({
   const project = useProjectQuery(workspaceSlug, projectSlug)
   const tasks = useProjectTasksQuery(workspaceSlug, projectSlug, filterQuery)
   const timeline = useProjectTimelineQuery(workspaceSlug, projectSlug)
+  // 项目工作台首页配置概览：只读，失败静默隐藏（不阻塞任务列表）。
+  const homeConfig = useQuery({
+    queryKey: [
+      "project-workbench",
+      workspaceSlug,
+      projectSlug,
+      "config-effective",
+      "console-home",
+    ],
+    queryFn: () => listProjectEffectiveConfig(projectSlug, { consoleHome: true }),
+  })
   const members = useQuery({
     queryKey: ["workspace-members", workspaceSlug],
     queryFn: () => getWorkspaceMembers(workspaceSlug),
@@ -244,6 +257,15 @@ function ProjectWorkbenchPageContent({
       />
       <ProjectClosedBanner canManage={canManage} status={project.data.status} />
       <ProjectStatsGrid stats={stats} />
+      {homeConfig.isError ? null : (
+        <ConfigOverviewSection
+          rows={homeConfig.data ?? []}
+          isPending={homeConfig.isPending}
+          isError={homeConfig.isError}
+          goToDefinitionsTo="/projects/$projectSlug/settings/definitions"
+          goToDefinitionsParams={{ projectSlug }}
+        />
+      )}
       <ProjectTaskToolbar
         assigneeOptions={assigneeOptions}
         canCreateTask={canEditTasks}
