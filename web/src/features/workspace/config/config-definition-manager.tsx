@@ -192,9 +192,9 @@ export function ConfigDefinitionManager({
               mode="create"
               defaultScopes={defaultScopes}
               canManage={canManage}
-              onSubmit={(key, input) =>
-                saveMutation.mutateAsync({ key, input })
-              }
+              onSubmit={async (key, input) => {
+                await saveMutation.mutateAsync({ key, input })
+              }}
             />
           </div>
         ) : null}
@@ -218,10 +218,12 @@ export function ConfigDefinitionManager({
                     usage={usageCache[def.key]}
                     defaultScopes={defaultScopes}
                     canManage={canManage}
-                    onSubmit={(key, input) =>
-                      saveMutation.mutateAsync({ key, input })
-                    }
-                    onDelete={(key) => deleteMutation.mutateAsync(key)}
+                    onSubmit={async (key, input) => {
+                      await saveMutation.mutateAsync({ key, input })
+                    }}
+                    onDelete={async (key) => {
+                      await deleteMutation.mutateAsync(key)
+                    }}
                   />
                 </div>
               ) : null}
