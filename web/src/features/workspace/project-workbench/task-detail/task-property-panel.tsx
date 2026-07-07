@@ -1,4 +1,4 @@
-import { CircleHelpIcon } from "lucide-react"
+import { ChevronDownIcon, ChevronRightIcon, CircleHelpIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -11,7 +11,6 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import {
   extractUDAs,
@@ -65,178 +64,218 @@ export function TaskPropertyPanel({
     value: option.value,
   }))
 
+  // 分组是否「有内容」：用于空组隐身（spec §9.5）。
+  // Schedule 全空时仍保留（可写用户需要入口新增计划字段），但不可写时全空则隐身。
+  const hasSchedule =
+    unixLikeToNumber(task.due) !== null ||
+    unixLikeToNumber(task.wait) !== null ||
+    unixLikeToNumber(task.scheduled) !== null ||
+    unixLikeToNumber(task.until) !== null ||
+    (task.recur ?? "") !== ""
+  const hasRelations =
+    !!task.parent ||
+    (task.depends && task.depends.length > 0) ||
+    (task.blocked_by_info && task.blocked_by_info.length > 0) ||
+    (task.links && task.links.length > 0)
+  const hasUDA = udas.length > 0
+  // 不可写且计划字段全空时，Schedule 整组隐身（避免空壳噪音）。
+  const showSchedule = canWrite || hasSchedule
+
   return (
-    <aside className="space-y-3 border bg-card p-4 text-sm">
-      <h2 className="text-xs font-medium text-muted-foreground uppercase">
-        {t("projectReadonly.attributes")}
-      </h2>
-      <PropertyRow label={t("common.status")}>
-        <div className="font-medium">{taskStatusLabel(task.status, t)}</div>
-      </PropertyRow>
-      <PropertyRow label={t("taskDetail.urgency")}>
-        <TaskUrgencyPanel taskRef={taskRef} workspaceSlug={workspaceSlug} />
-      </PropertyRow>
-      <PropertyRow label={t("projectReadonly.priority")}>
-        <InlineSelectEditor
-          ariaLabel={t("projectReadonly.priority")}
-          className="w-full"
-          disabled={!canWrite}
-          onSave={async (priority) => {
-            await modify.mutateAsync(
-              priority === "none" ? { clear_priority: true } : { priority }
-            )
-          }}
-          options={priorityOptions}
-          placeholder="-"
-          triggerSize="sm"
-          value={task.priority ?? "none"}
-        />
-      </PropertyRow>
-      <PropertyRow label={t("projectReadonly.dueDate")}>
-        <InlineDatePicker
-          ariaLabel={t("projectReadonly.dueDate")}
-          boundary="end"
-          className="w-full"
-          disabled={!canWrite}
-          onSave={async (due) => {
-            await modify.mutateAsync(
-              due === null ? { clear_due: true } : { due }
-            )
-          }}
-          value={unixLikeToNumber(task.due)}
-        />
-      </PropertyRow>
-      <PropertyRow label={t("projectReadonly.assignee")}>
-        <AssigneePicker
-          disabled={!canWrite}
-          onSave={async (items) => {
-            // 后端 assignees 字段是「增量追加」语义（add），不是替换。
-            // 这里用 clear + assignees 表达「整体替换为 items」，
-            // 避免 a→b 时因未移除 a 导致结果变成 a+b。
-            await modify.mutateAsync(
-              items.length === 0
-                ? { clear_assignees: true }
-                : { clear_assignees: true, assignees: items }
-            )
-          }}
-          value={task.assignees ?? []}
-          workspaceSlug={workspaceSlug}
-        />
-      </PropertyRow>
-      <PropertyRow label={t("projectReadonly.tags")}>
-        <TagPicker
-          disabled={!canWrite}
-          onSave={async (items) => {
-            await modify.mutateAsync({ tags: items })
-          }}
-          projectSlug={projectSlug}
-          value={task.tags ?? []}
-          workspaceSlug={workspaceSlug}
-        />
-      </PropertyRow>
-      <DateProperty
-        disabled={!canWrite}
-        helpText={t("projectReadonly.waitUntilHelp")}
-        label={t("projectReadonly.waitUntil")}
-        onSave={async (wait) => {
-          await modify.mutateAsync(
-            wait === null ? { clear_wait: true } : { wait }
-          )
-        }}
-        value={task.wait}
-      />
-      <DateProperty
-        disabled={!canWrite}
-        helpText={t("projectReadonly.scheduledStartHelp")}
-        label={t("projectReadonly.scheduledStart")}
-        onSave={async (scheduled) => {
-          await modify.mutateAsync(
-            scheduled === null ? { clear_scheduled: true } : { scheduled }
-          )
-        }}
-        value={task.scheduled}
-      />
-      <DateProperty
-        disabled={!canWrite}
-        boundary="end"
-        helpText={t("projectReadonly.untilHelp")}
-        label={t("projectReadonly.until")}
-        onSave={async (until) => {
-          await modify.mutateAsync(
-            until === null ? { clear_until: true } : { until }
-          )
-        }}
-        value={task.until}
-      />
-      <PropertyRow
-        helpText={t("projectReadonly.recurHelp")}
-        label={t("projectReadonly.recur")}
+    <aside className="space-y-4 border bg-card p-4 text-sm">
+      {/* Properties：高频字段，始终展示 */}
+      <PropertyGroup
+        title={t("taskDetail.groupProperties")}
       >
-        <InlineSelectEditor
-          ariaLabel={t("projectReadonly.recur")}
-          className="w-full"
-          disabled={!canWrite}
-          onSave={async (recur) => {
-            await modify.mutateAsync(
-              recur === "none" ? { clear_recur: true } : { recur }
-            )
-          }}
-          options={recurrenceSelectOptions}
-          placeholder="-"
-          triggerSize="sm"
-          value={task.recur ?? "none"}
-        />
-        <div className="mt-1 text-xs text-muted-foreground">
-          {recurrenceLabel(task.recur, t)}
-        </div>
-      </PropertyRow>
-      <PropertyRow label={t("projectReadonly.dependsOn")}>
-        <TaskDependencyPicker
-          disabled={!canWrite}
-          onSave={async (depends) => {
-            await modify.mutateAsync(
-              depends.length === 0 ? { clear_depends: true } : { depends }
-            )
-          }}
-          projectSlug={projectSlug}
-          refs={task.depends_info}
-          taskUUID={task.uuid}
-          value={task.depends ?? []}
-          workspaceSlug={workspaceSlug}
-        />
-      </PropertyRow>
-      {task.parent ? (
-        <PropertyRow label={t("projectReadonly.parent")}>
-          <TaskRefLinks
-            projectSlug={projectSlug}
-            refs={task.parent_info ? [task.parent_info] : undefined}
-            uuids={[task.parent]}
+        <PropertyRow label={t("common.status")}>
+          <div className="font-medium">{taskStatusLabel(task.status, t)}</div>
+        </PropertyRow>
+        <PropertyRow label={t("taskDetail.urgency")}>
+          <TaskUrgencyPanel taskRef={taskRef} workspaceSlug={workspaceSlug} />
+        </PropertyRow>
+        <PropertyRow label={t("projectReadonly.priority")}>
+          <InlineSelectEditor
+            ariaLabel={t("projectReadonly.priority")}
+            className="w-full"
+            disabled={!canWrite}
+            onSave={async (priority) => {
+              await modify.mutateAsync(
+                priority === "none" ? { clear_priority: true } : { priority }
+              )
+            }}
+            options={priorityOptions}
+            placeholder="-"
+            triggerSize="sm"
+            value={task.priority ?? "none"}
+          />
+        </PropertyRow>
+        <PropertyRow label={t("projectReadonly.assignee")}>
+          <AssigneePicker
+            disabled={!canWrite}
+            onSave={async (items) => {
+              // 后端 assignees 字段是「增量追加」语义（add），不是替换。
+              // 这里用 clear + assignees 表达「整体替换为 items」，
+              // 避免 a→b 时因未移除 a 导致结果变成 a+b。
+              await modify.mutateAsync(
+                items.length === 0
+                  ? { clear_assignees: true }
+                  : { clear_assignees: true, assignees: items }
+              )
+            }}
+            value={task.assignees ?? []}
             workspaceSlug={workspaceSlug}
           />
         </PropertyRow>
-      ) : null}
-      {task.blocked_by_info && task.blocked_by_info.length > 0 ? (
-        <PropertyRow label={t("projectReadonly.blocking")}>
-          <TaskRefLinks
+        <PropertyRow label={t("projectReadonly.tags")}>
+          <TagPicker
+            disabled={!canWrite}
+            onSave={async (items) => {
+              await modify.mutateAsync({ tags: items })
+            }}
             projectSlug={projectSlug}
-            refs={task.blocked_by_info}
-            uuids={task.blocked_by_info.map((ref) => ref.uuid)}
+            value={task.tags ?? []}
             workspaceSlug={workspaceSlug}
           />
         </PropertyRow>
+      </PropertyGroup>
+
+      {/* Schedule：日期/周期字段；空组在不可写时隐身 */}
+      {showSchedule ? (
+        <PropertyGroup
+          title={t("taskDetail.groupSchedule")}
+        >
+          <PropertyRow label={t("projectReadonly.dueDate")}>
+            <InlineDatePicker
+              ariaLabel={t("projectReadonly.dueDate")}
+              boundary="end"
+              className="w-full"
+              disabled={!canWrite}
+              onSave={async (due) => {
+                await modify.mutateAsync(
+                  due === null ? { clear_due: true } : { due }
+                )
+              }}
+              value={unixLikeToNumber(task.due)}
+            />
+          </PropertyRow>
+          <DateProperty
+            disabled={!canWrite}
+            helpText={t("projectReadonly.waitUntilHelp")}
+            label={t("projectReadonly.waitUntil")}
+            onSave={async (wait) => {
+              await modify.mutateAsync(
+                wait === null ? { clear_wait: true } : { wait }
+              )
+            }}
+            value={task.wait}
+          />
+          <DateProperty
+            disabled={!canWrite}
+            helpText={t("projectReadonly.scheduledStartHelp")}
+            label={t("projectReadonly.scheduledStart")}
+            onSave={async (scheduled) => {
+              await modify.mutateAsync(
+                scheduled === null ? { clear_scheduled: true } : { scheduled }
+              )
+            }}
+            value={task.scheduled}
+          />
+          <DateProperty
+            disabled={!canWrite}
+            boundary="end"
+            helpText={t("projectReadonly.untilHelp")}
+            label={t("projectReadonly.until")}
+            onSave={async (until) => {
+              await modify.mutateAsync(
+                until === null ? { clear_until: true } : { until }
+              )
+            }}
+            value={task.until}
+          />
+          <PropertyRow
+            helpText={t("projectReadonly.recurHelp")}
+            label={t("projectReadonly.recur")}
+          >
+            <InlineSelectEditor
+              ariaLabel={t("projectReadonly.recur")}
+              className="w-full"
+              disabled={!canWrite}
+              onSave={async (recur) => {
+                await modify.mutateAsync(
+                  recur === "none" ? { clear_recur: true } : { recur }
+                )
+              }}
+              options={recurrenceSelectOptions}
+              placeholder="-"
+              triggerSize="sm"
+              value={task.recur ?? "none"}
+            />
+            <div className="mt-1 text-xs text-muted-foreground">
+              {recurrenceLabel(task.recur, t)}
+            </div>
+          </PropertyRow>
+        </PropertyGroup>
       ) : null}
-      <PropertyRow label={t("projectReadonly.entry")}>
-        <div className="font-medium">{formatRFCDate(task.entry)}</div>
-      </PropertyRow>
-      <PropertyRow label={t("projectReadonly.modified")}>
-        <div className="font-medium">{formatRFCDate(task.modified)}</div>
-      </PropertyRow>
-      {udas.length > 0 ? (
-        <>
-          <Separator />
-          <h2 className="text-xs font-medium text-muted-foreground uppercase">
-            {t("projectReadonly.customFields")}
-          </h2>
+
+      {/* Relations：parent/depends/blocking；空组隐身 */}
+      {hasRelations ? (
+        <PropertyGroup
+          title={t("taskDetail.groupRelations")}
+        >
+          {task.parent ? (
+            <PropertyRow label={t("projectReadonly.parent")}>
+              <TaskRefLinks
+                projectSlug={projectSlug}
+                refs={task.parent_info ? [task.parent_info] : undefined}
+                uuids={[task.parent]}
+                workspaceSlug={workspaceSlug}
+              />
+            </PropertyRow>
+          ) : null}
+          <PropertyRow label={t("projectReadonly.dependsOn")}>
+            <TaskDependencyPicker
+              disabled={!canWrite}
+              onSave={async (depends) => {
+                await modify.mutateAsync(
+                  depends.length === 0 ? { clear_depends: true } : { depends }
+                )
+              }}
+              projectSlug={projectSlug}
+              refs={task.depends_info}
+              taskUUID={task.uuid}
+              value={task.depends ?? []}
+              workspaceSlug={workspaceSlug}
+            />
+          </PropertyRow>
+          {task.blocked_by_info && task.blocked_by_info.length > 0 ? (
+            <PropertyRow label={t("projectReadonly.blocking")}>
+              <TaskRefLinks
+                projectSlug={projectSlug}
+                refs={task.blocked_by_info}
+                uuids={task.blocked_by_info.map((ref) => ref.uuid)}
+                workspaceSlug={workspaceSlug}
+              />
+            </PropertyRow>
+          ) : null}
+        </PropertyGroup>
+      ) : null}
+
+      {/* System：默认折叠 */}
+      <PropertyGroup
+        defaultOpen={false}
+        title={t("taskDetail.groupSystem")}
+      >
+        <PropertyRow label={t("projectReadonly.entry")}>
+          <div className="font-medium">{formatRFCDate(task.entry)}</div>
+        </PropertyRow>
+        <PropertyRow label={t("projectReadonly.modified")}>
+          <div className="font-medium">{formatRFCDate(task.modified)}</div>
+        </PropertyRow>
+      </PropertyGroup>
+
+      {/* Custom fields：仅有 UDA 时展示 */}
+      {hasUDA ? (
+        <PropertyGroup title={t("taskDetail.groupCustom")}>
           {udas.map(([key, value]) => (
             <PropertyRow key={key} label={key}>
               <UDAFieldEditor
@@ -249,9 +288,39 @@ export function TaskPropertyPanel({
               />
             </PropertyRow>
           ))}
-        </>
+        </PropertyGroup>
       ) : null}
     </aside>
+  )
+}
+
+// PropertyGroup 可折叠分组容器；hasContent=false 时整组不渲染（spec §9.5）。
+function PropertyGroup({
+  children,
+  defaultOpen = true,
+  title,
+}: {
+  children: React.ReactNode
+  defaultOpen?: boolean
+  title: string
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="space-y-2">
+      <button
+        className="flex w-full items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        onClick={() => setOpen((v) => !v)}
+        type="button"
+      >
+        {open ? (
+          <ChevronDownIcon className="size-3" />
+        ) : (
+          <ChevronRightIcon className="size-3" />
+        )}
+        {title}
+      </button>
+      {open ? <div className="space-y-3">{children}</div> : null}
+    </div>
   )
 }
 

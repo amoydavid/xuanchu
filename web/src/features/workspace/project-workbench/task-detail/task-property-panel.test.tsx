@@ -159,7 +159,7 @@ describe("TaskPropertyPanel", () => {
     expect(screen.getByText("计划开始")).toBeTruthy()
     expect(screen.getByText("有效至")).toBeTruthy()
     expect(screen.queryByText("等待到")).toBeNull()
-    expect(screen.queryByText("计划")).toBeNull()
+    // "计划" 现在是 Schedule 分组标题（合法），不再用于 wait 字段别名。
     expect(screen.queryByText("隐藏到")).toBeNull()
     expect(screen.getByRole("button", { name: "说明：暂缓到" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "说明：计划开始" })).toBeTruthy()

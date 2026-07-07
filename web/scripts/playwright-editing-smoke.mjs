@@ -135,13 +135,15 @@ async function runMobileSmoke(browser) {
 
     await page.goto(`${baseURL}/workspaces/acme/projects/adsops/tasks/ads-1`)
     await expectText(page, "投放日报草稿")
-    await page.getByRole("tab", { name: "链接" }).click()
+    // 正文 tab：含描述与关联资源（链接）。
+    await page.getByRole("tab", { name: "正文" }).click()
     await expectText(page, "新版规格")
     await page.getByRole("button", { name: "编辑链接" }).click()
     await assertDialogVisible(page, "编辑链接")
     await page.keyboard.press("Escape")
 
-    await page.getByRole("tab", { name: "注解" }).click()
+    // 活动 tab：含注解与变更历史。
+    await page.getByRole("tab", { name: "活动" }).click()
     await expectText(page, "补充复盘结论")
     await page.getByRole("button", { name: "编辑注解" }).click()
     await assertDialogVisible(page, "编辑注解")

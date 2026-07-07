@@ -26,8 +26,7 @@ import { canTaskWrite } from "../permissions/permissions"
 import { EditFeedbackProvider } from "../shared/edit-feedback"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskActionBar } from "./task-action-bar"
-import { TaskAnnotationsEditor } from "./task-annotations-editor"
-import { TaskChangeHistory } from "./task-change-history"
+import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskPropertyPanel } from "./task-property-panel"
 import { SubTaskList } from "./sub-task-list"
@@ -38,7 +37,7 @@ type TaskDetailPageProps = {
   workspaceSlug: string
 }
 
-type MobileDetailTab = "annotations" | "links" | "properties"
+type MobileDetailTab = "description" | "subtasks" | "properties" | "activity"
 
 export function TaskDetailPage({
   projectSlug,
@@ -69,7 +68,7 @@ function TaskDetailPageContent({
   })
   const task = useTaskDetailQuery(workspaceSlug, taskRef)
   const [activeMobileTab, setActiveMobileTab] =
-    useState<MobileDetailTab>("properties")
+    useState<MobileDetailTab>("description")
 
   // projectSlug 优先取路由参数（项目内进入），兜底取 task 自身 project 字段（/my-tasks / /tasks/:ref 进入）。
   // 注意：这里只读 task.data 的 project 字段用于派生 effectiveProjectSlug，
@@ -210,7 +209,8 @@ function TaskDetailPageContent({
 
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
         <div className="contents md:block md:min-w-0 md:space-y-5">
-          <div className={mobilePanelClass(activeMobileTab, "annotations")}>
+          {/* 正文 + 关联资源：spec §7.1 主叙事区顶部，links 作为正文附近的关联资源 */}
+          <div className={mobilePanelClass(activeMobileTab, "description")}>
             <TaskDescriptionBlock
               canWrite={taskWritable}
               onSave={async (description) => {
@@ -220,6 +220,16 @@ function TaskDetailPageContent({
               }}
               value={taskData.description ?? ""}
             />
+            <TaskLinksEditor
+              canWrite={taskWritable}
+              links={taskData.links}
+              projectSlug={effectiveProjectSlug ?? ""}
+              taskRef={taskRef}
+              workspaceSlug={workspaceSlug}
+            />
+          </div>
+          {/* 子任务 */}
+          <div className={mobilePanelClass(activeMobileTab, "subtasks")}>
             <SubTaskList
               canCreate={canCreateSubTask}
               parentRef={taskRef}
@@ -227,22 +237,12 @@ function TaskDetailPageContent({
               projectSlug={effectiveProjectSlug ?? ""}
               workspaceSlug={workspaceSlug}
             />
-            <TaskAnnotationsEditor
+          </div>
+          {/* 活动：注解 + 变更历史统一时间轴（过渡态，spec §9.4） */}
+          <div className={mobilePanelClass(activeMobileTab, "activity")}>
+            <ActivitySection
               annotations={taskData.annotations}
               canWrite={taskWritable}
-              projectSlug={effectiveProjectSlug ?? ""}
-              taskRef={taskRef}
-              workspaceSlug={workspaceSlug}
-            />
-            <TaskChangeHistory
-              taskRef={taskRef}
-              workspaceSlug={workspaceSlug}
-            />
-          </div>
-          <div className={mobilePanelClass(activeMobileTab, "links")}>
-            <TaskLinksEditor
-              canWrite={taskWritable}
-              links={taskData.links}
               projectSlug={effectiveProjectSlug ?? ""}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
@@ -272,9 +272,10 @@ function MobileDetailTabs({
 }) {
   const { t } = useTranslation()
   const tabs: Array<{ label: string; value: MobileDetailTab }> = [
+    { label: t("taskDetail.description"), value: "description" },
+    { label: t("taskDetail.subTasks"), value: "subtasks" },
     { label: t("projectReadonly.attributes"), value: "properties" },
-    { label: t("projectReadonly.annotations"), value: "annotations" },
-    { label: t("projectReadonly.links"), value: "links" },
+    { label: t("taskDetail.activity"), value: "activity" },
   ]
   return (
     <Tabs
@@ -284,7 +285,7 @@ function MobileDetailTabs({
     >
       <TabsList
         aria-label={t("projectReadonly.detailTabs")}
-        className="grid h-auto w-full grid-cols-3 gap-1 border bg-card p-1"
+        className="grid h-auto w-full grid-cols-4 gap-1 border bg-card p-1"
       >
         {tabs.map((tab) => (
           <TabsTrigger className="h-8" key={tab.value} value={tab.value}>

@@ -213,10 +213,8 @@ describe("TaskDetailPage", () => {
       (screen.getByRole("combobox", { name: "优先级" }) as HTMLButtonElement)
         .disabled
     ).toBe(true)
-    expect(
-      (screen.getByRole("button", { name: "截止日期" }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true)
+    // 已完成 + 无计划字段：Schedule 整组隐身（spec §9.5），截止日期入口不再渲染。
+    expect(screen.queryByRole("button", { name: "截止日期" })).toBeNull()
     expect(
       (screen.getByRole("button", { name: "编辑负责人" }) as HTMLButtonElement)
         .disabled
@@ -238,15 +236,16 @@ describe("TaskDetailPage", () => {
     renderPage()
 
     await screen.findByText("写投放日报")
-    const propertyTab = screen.getByRole("tab", { name: "属性" })
-    const linkTab = screen.getByRole("tab", { name: "链接" })
+    const descriptionTab = screen.getByRole("tab", { name: "正文" })
+    const subtasksTab = screen.getByRole("tab", { name: "子任务" })
     const tabList = screen.getByRole("tablist", { name: "任务详情视图" })
 
     expect(tabList.getAttribute("data-slot")).toBe("tabs-list")
-    expect(propertyTab.getAttribute("aria-selected")).toBe("true")
-    await userEvent.click(linkTab)
-    expect(linkTab.getAttribute("aria-selected")).toBe("true")
-    expect(propertyTab.getAttribute("aria-selected")).toBe("false")
+    // 默认打开正文 tab。
+    expect(descriptionTab.getAttribute("aria-selected")).toBe("true")
+    await userEvent.click(subtasksTab)
+    expect(subtasksTab.getAttribute("aria-selected")).toBe("true")
+    expect(descriptionTab.getAttribute("aria-selected")).toBe("false")
   })
 
   it("renders scalar task change history as natural language", async () => {
