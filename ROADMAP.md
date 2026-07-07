@@ -50,7 +50,7 @@
 | v0.5.1 | 已完成 | Web Console Tiptap Markdown 编辑器与任务详情页 UX 改进 |
 | v0.5.2 | 已完成 | Web Console 能力桥接：我的任务、Hook/审计/项目设置/成员外部身份控制台、紧迫度展示、普通成员可读全量审计 |
 | v0.5.3 | 已完成 | Web Console 出站集成控制台：sink/hook/通知/定时规则闭环 + sink 测试投递 API |
-| docs | 已完成 | Agent Skill 文档按 CIO agent 视角重构（5 个合规 skill） |
+| docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
 
@@ -72,7 +72,7 @@ v0.2.0 在 v0.1.1 已具备的稳定短任务引用、CLI / HTTP / MCP / Remote 
 - M16：定时通知、动态 endpoint 与 HTTP request template sink。
 - Agent Skill 文档整理：`docs/skills/*/SKILL.md` 已覆盖 v0.2.0 时的 95 个 MCP tool。
 
-> **后续重构（docs）**：原 v0.2.0 整理的 10 个资源维度 skill 文档（按 task/project/workspace/token 等 DB 实体切分）不符合 agentskills.io 规范（缺 frontmatter、写成 API 手册）。已按「CIO agent」（OpenClaw/Hermes 类自主 agent，担任所有项目总管）的使用视角重构成 5 个合规 skill：`govern-projects`、`wire-up-automation`、`capture-and-track-work`、`report-and-review`、`manage-access-and-config`。每个含 YAML frontmatter、主文件 ≤150 行、完整 JSON 下沉到 `references/`。设计见 `docs/superpowers/specs/2026-06-16-agent-skills-rewrite-design.md`。
+> **后续重构（docs）**：原 v0.2.0 整理的 10 个资源维度 skill 文档（按 task/project/workspace/token 等 DB 实体切分）不符合 agentskills.io 规范（缺 frontmatter、写成 API 手册）。已按项目协作与治理的使用视角重构成 5 个业务 skill：`xuanchu-govern-projects`、`xuanchu-wire-up-automation`、`xuanchu-capture-and-track-work`、`xuanchu-report-and-review`、`xuanchu-manage-access-and-config`，并新增 `xuanchu-mcp-base` 承载 MCP 工具名解析约定。每个含 YAML frontmatter、主文件 ≤150 行、完整 JSON 下沉到 `references/`。设计见 `docs/superpowers/specs/2026-06-16-agent-skills-rewrite-design.md`。
 
 ## v0.3.0：事件通知、Hook sink 化与语义事件补齐
 

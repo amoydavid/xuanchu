@@ -45,27 +45,27 @@
 
 5 个 skill，按 CIO 的高频→低频排列：
 
-### 3.1 `govern-projects` — 项目与团队治理 🟢重
+### 3.1 `xuanchu-govern-projects` — 项目与团队治理 🟢重
 
 ```yaml
-name: govern-projects
+name: xuanchu-govern-projects
 description: 建立和归档项目、给项目分配成员、绑定飞书身份、查看项目时间线和成员结构、巡查项目健康。用户提到新建项目、开群、加人、分派角色、绑定外部身份、归档项目、看项目动态时使用。
 ```
 
 覆盖：workspace 增改归档、project 增改归档 + 注释/时间线、user 创建/外部ID绑定、member 角色、project ↔ IM 群绑定（config）。
 
 主体内容：
-- 新项目标准开群流程：`project_add` → `member_add` 相关人 → `user_bind` 绑飞书 → 配 IM 群 webhook（config_value，详见 wire-up-automation）
+- 新项目标准开群流程：`project_add` → `member_add` 相关人 → `user_bind` 绑飞书 → 配 IM 群 webhook（config_value，详见 xuanchu-wire-up-automation）
 - slug 规则差异：workspace 宽松 `^[a-z0-9][a-z0-9_-]*$`；project 严格 3-10 位小写字母/数字、字母开头
 - 角色层级 viewer < member < admin < owner
 - 每次调用显式传 workspace
 
 references：`workspace-project-tools.md`、`user-member-tools.md`、`slug-rules.md`
 
-### 3.2 `wire-up-automation` — 通知/提醒/Hook 接线 🟢重
+### 3.2 `xuanchu-wire-up-automation` — 通知/提醒/Hook 接线 🟢重
 
 ```yaml
-name: wire-up-automation
+name: xuanchu-wire-up-automation
 description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾期提醒、配置事件 webhook、排查和重试投递失败。用户提到通知、提醒、飞书机器人、webhook、hook、群消息、投递失败、重试时使用。
 ```
 
@@ -84,10 +84,10 @@ description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾�
 
 references：`notification-tools.md`、`hook-tools.md`、`event-types.md`、`http-template-vars.md`、`feishu-bot-setup.md`
 
-### 3.3 `capture-and-track-work` — 捕获与跟踪任务 🟡中
+### 3.3 `xuanchu-capture-and-track-work` — 捕获与跟踪任务 🟡中
 
 ```yaml
-name: capture-and-track-work
+name: xuanchu-capture-and-track-work
 description: 把群里冒出来的工作变成结构化任务、设依赖、关联 PR/ticket、记录进度、认领并完成任务、导出导入。用户提到记一下这件事、建任务、加备注、设依赖、关联 PR、开始/完成、导出导入任务时使用。
 ```
 
@@ -101,10 +101,10 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 
 references：`task-tools.md`、`query-syntax.md`、`task-workflows.md`
 
-### 3.4 `report-and-review` — 汇报与审计 🟡中
+### 3.4 `xuanchu-report-and-review` — 汇报与审计 🟡中
 
 ```yaml
-name: report-and-review
+name: xuanchu-report-and-review
 description: 在 IM 群里发日报/周报、解释任务 urgency 排序理由、查审计日志排查谁改了或删了什么。用户提到周报、今天该做什么、为什么先做这个、谁删了任务、审计、排查操作记录时使用。
 ```
 
@@ -118,10 +118,10 @@ description: 在 IM 群里发日报/周报、解释任务 urgency 排序理由�
 
 references：`report-tools.md`、`urgency-factors.md`、`audit-actions.md`
 
-### 3.5 `manage-access-and-config` — 权限与配置运维 🔵轻
+### 3.5 `xuanchu-manage-access-and-config` — 权限与配置运维 🔵轻
 
 ```yaml
-name: manage-access-and-config
+name: xuanchu-manage-access-and-config
 description: 管理 API token（创建/轮换/撤销）、查可用权限、调整 urgency 排序权重、给项目配 agent 指令、定义自定义配置项与 schema、查看过滤上下文。用户提到 token、权限、调权重、配 agent 指令、定义配置键、看 context、轮换密钥时使用。
 ```
 
@@ -138,9 +138,9 @@ references：`token-tools.md`、`scopes.md`、`config-tools.md`、`config-schema
 
 ## 4. 关键设计决策
 
-### 4.1 为什么 CIO 视角下 `capture-and-track-work` 比"执行循环"更合适
+### 4.1 为什么 CIO 视角下 `xuanchu-capture-and-track-work` 比"执行循环"更合适
 
-OpenClaw/Hermes 这类 agent 高频是被 CIO 委派去干活的 worker，但**本项目里 agent 本身就是 CIO**，治理和广播才是高频。亲自领活是低频动作，融进 capture-and-track-work（建完任务顺手 start/done），不单列"领活干活回报"skill，避免与 capture 重叠。
+OpenClaw/Hermes 这类 agent 高频是被 CIO 委派去干活的 worker，但**本项目里 agent 本身就是 CIO**，治理和广播才是高频。亲自领活是低频动作，融进 xuanchu-capture-and-track-work（建完任务顺手 start/done），不单列"领活干活回报"skill，避免与 capture 重叠。
 
 ### 4.2 为什么 report 独立成 skill
 
@@ -162,19 +162,19 @@ CIO 在 IM 群里**广播**是核心职责。report_run + urgency_explain + audi
 
 ### 4.4 skill 间交叉处理
 
-`wire-up-automation` 配飞书 token 需先 `config_schema_set` 定义密钥——"schema 规则详见 manage-access-and-config"。wire-up 在工作流里**直接演示**完整例子（建 schema→建 sink→建 rule）并标注交叉引用，避免激活"配通知"时同时依赖两个 skill，又不重复维护规则。
+`xuanchu-wire-up-automation` 配飞书 token 需先 `config_schema_set` 定义密钥——"schema 规则详见 xuanchu-manage-access-and-config"。wire-up 在工作流里**直接演示**完整例子（建 schema→建 sink→建 rule）并标注交叉引用，避免激活"配通知"时同时依赖两个 skill，又不重复维护规则。
 
 ## 5. 文件结构
 
 ```
 docs/skills/
-├── govern-projects/
+├── xuanchu-govern-projects/
 │   ├── SKILL.md
 │   └── references/
 │       ├── workspace-project-tools.md
 │       ├── user-member-tools.md
 │       └── slug-rules.md
-├── wire-up-automation/
+├── xuanchu-wire-up-automation/
 │   ├── SKILL.md
 │   └── references/
 │       ├── notification-tools.md
@@ -182,19 +182,19 @@ docs/skills/
 │       ├── event-types.md
 │       ├── http-template-vars.md
 │       └── feishu-bot-setup.md
-├── capture-and-track-work/
+├── xuanchu-capture-and-track-work/
 │   ├── SKILL.md
 │   └── references/
 │       ├── task-tools.md
 │       ├── query-syntax.md
 │       └── task-workflows.md
-├── report-and-review/
+├── xuanchu-report-and-review/
 │   ├── SKILL.md
 │   └── references/
 │       ├── report-tools.md
 │       ├── urgency-factors.md
 │       └── audit-actions.md
-└── manage-access-and-config/
+└── xuanchu-manage-access-and-config/
     ├── SKILL.md
     └── references/
         ├── token-tools.md
@@ -224,7 +224,7 @@ docs/skills/
 - [ ] 5 个目录，每个含合规 frontmatter（name 小写连字符 ≤64 字符；description 1-500 字符）
 - [ ] 每个 SKILL.md ≤ 150 行
 - [ ] 所有逐工具 JSON 在 references/ 下
-- [ ] 群绑定工作流在 govern-projects 和 wire-up-automation 中可执行
+- [ ] 群绑定工作流在 xuanchu-govern-projects 和 xuanchu-wire-up-automation 中可执行
 - [ ] CIO 全权 token、广播、飞书群机器人场景全覆盖
 - [ ] 旧 10 个目录已删除
 - [ ] 不改任何 Go 代码（git diff 仅 docs/skills）

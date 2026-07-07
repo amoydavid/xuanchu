@@ -13,6 +13,6 @@
 
 ## 调整系数
 
-各因素权重可在 workspace 级 config 用 `urgency.*` 键调整（如 `urgency.priority.coeff`）。配置操作详见 manage-access-and-config skill。
+各因素权重可在 workspace 级 config 用 `urgency.*` 键调整（如 `urgency.priority.coeff`）。配置操作详见 xuanchu-manage-access-and-config skill。
 
-> urgency 系数是 workspace 级业务配置；`agent.*` 配置不在此列。本 skill 只读，改配置请用 manage-access-and-config。
+> urgency 系数是 workspace 级业务配置；`agent.*` 配置不在此列。本 skill 只读，改配置请用 xuanchu-manage-access-and-config。

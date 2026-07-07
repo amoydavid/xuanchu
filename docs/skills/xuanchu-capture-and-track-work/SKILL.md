@@ -1,5 +1,5 @@
 ---
-name: capture-and-track-work
+name: xuanchu-capture-and-track-work
 description: 把群里冒出来的工作变成结构化任务、设依赖、关联 PR/ticket、记录进度、认领并完成任务、导出导入。用户提到记一下这件事、建任务、加备注、设依赖、关联 PR、开始/完成、导出导入任务时使用。
 ---
 
@@ -9,7 +9,7 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 
 ## 何时使用
 
-当你要建任务、加备注、设依赖、关联 PR/ticket、开始或完成任务、导出导入任务时，用本 skill。它覆盖 task 的完整生命周期。报表级汇总（今天做什么、逾期）用 report-and-review skill。
+当你要建任务、加备注、设依赖、关联 PR/ticket、开始或完成任务、导出导入任务时，用本 skill。它覆盖 task 的完整生命周期。报表级汇总（今天做什么、逾期）用 xuanchu-report-and-review skill。
 
 ## 核心原则
 

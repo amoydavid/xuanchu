@@ -1,5 +1,5 @@
 ---
-name: govern-projects
+name: xuanchu-govern-projects
 description: 建立和归档项目、给项目分配成员、绑定飞书身份、查看项目时间线和成员结构、巡查项目健康。用户提到新建项目、开群、加人、分派角色、绑定外部身份、归档项目、看项目动态时使用。
 ---
 
@@ -23,13 +23,13 @@ description: 建立和归档项目、给项目分配成员、绑定飞书身份�
 
 ### 场景 A：新项目开工并开群
 
-新项目开工后通常要在对应 IM 群里跟进通知，分三步：建项目 → 拉人 → 接群通知（接群见 wire-up-automation skill）。
+新项目开工后通常要在对应 IM 群里跟进通知，分三步：建项目 → 拉人 → 接群通知（接群见 xuanchu-wire-up-automation skill）。
 
 ```
 1. project_add({"workspace":"dajee","slug":"apiplat","name":"API 平台"})
 2. member_add({"workspace":"dajee","user":"alice","role":"member"})   // 相关人逐个加
 3. user_bind({"user":"alice","provider":"feishu_user_id","external_id":"ou_xxx"})  // 绑飞书
-4. // 群通知接线见 wire-up-automation：给 project 配 feishu webhook config + 建 sink/rule
+4. // 群通知接线见 xuanchu-wire-up-automation：给 project 配 feishu webhook config + 建 sink/rule
 ```
 
 ### 场景 B：巡查项目健康

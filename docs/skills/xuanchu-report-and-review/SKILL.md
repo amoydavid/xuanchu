@@ -1,5 +1,5 @@
 ---
-name: report-and-review
+name: xuanchu-report-and-review
 description: 在 IM 群里发待办和逾期汇总、解释任务 urgency 排序理由、查审计日志排查谁改了或删了什么。用户提到日报、周报、今天该做什么、为什么先做这个、谁删了任务、审计、排查操作记录时使用。
 ---
 
@@ -53,7 +53,7 @@ description: 在 IM 群里发待办和逾期汇总、解释任务 urgency 排序
 - 内置报表名固定：`list`、`next`、`all`、`completed`、`deleted`、`waiting`、`active`、`ready`、`overdue`、`blocked`、`blocking`。写错名字会失败。
 - `urgency_explain` 的 `id` 用 UUID 或 `task_slug`，不用数字 ID。
 - `audit_list` 的 `action` 值用点号分隔（如 `task.delete`），完整清单见 references/audit-actions.md。
-- report 是只读快照，不发通知；要广播到群需配合 wire-up-automation 的 notification/reminder。
+- report 是只读快照，不发通知；要广播到群需配合 xuanchu-wire-up-automation 的 notification/reminder。
 
 ## 参考文档
 

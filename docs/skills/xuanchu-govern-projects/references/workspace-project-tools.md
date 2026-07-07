@@ -237,7 +237,7 @@ project_get_current({"workspace": "dajee"})
 
 ## 项目配置快捷方式
 
-项目配置也可通过专门 tool 操作（效果等同 `config_get/set` + `scope="project"`）。配置键语义详见 manage-access-and-config skill。
+项目配置也可通过专门 tool 操作（效果等同 `config_get/set` + `scope="project"`）。配置键语义详见 xuanchu-manage-access-and-config skill。
 
 ```json
 // 设置

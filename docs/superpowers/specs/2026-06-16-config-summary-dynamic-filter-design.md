@@ -97,7 +97,7 @@ func (s *Service) configKeyIsSecret(key string) bool {
 
 ### 3.4 文档回退
 
-manage-access-and-config 和 govern-projects 里"config_summary 固定 4 键白名单"的表述，改回："config_summary 暴露该 project 全部非 secret 配置；secret 键（schema 标 `secret:true`）不回显。" wire-up-automation 的 feishu-bot-setup.md 相应更新（im.group_id / webhook_url 现在可经 config_summary 读）。
+xuanchu-manage-access-and-config 和 xuanchu-govern-projects 里"config_summary 固定 4 键白名单"的表述，改回："config_summary 暴露该 project 全部非 secret 配置；secret 键（schema 标 `secret:true`）不回显。" xuanchu-wire-up-automation 的 feishu-bot-setup.md 相应更新（im.group_id / webhook_url 现在可经 config_summary 读）。
 
 ## 4. 不改的
 

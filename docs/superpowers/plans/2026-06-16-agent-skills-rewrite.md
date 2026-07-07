@@ -83,20 +83,20 @@ description: <1-500 字符，以"何时使用"为导向，覆盖该 skill 的触
 
 ---
 
-## Task 2: 写 `govern-projects` skill
+## Task 2: 写 `xuanchu-govern-projects` skill
 
 **Files:**
-- Create: `docs/skills/govern-projects/SKILL.md`
-- Create: `docs/skills/govern-projects/references/workspace-project-tools.md`
-- Create: `docs/skills/govern-projects/references/user-member-tools.md`
-- Create: `docs/skills/govern-projects/references/slug-rules.md`
+- Create: `docs/skills/xuanchu-govern-projects/SKILL.md`
+- Create: `docs/skills/xuanchu-govern-projects/references/workspace-project-tools.md`
+- Create: `docs/skills/xuanchu-govern-projects/references/user-member-tools.md`
+- Create: `docs/skills/xuanchu-govern-projects/references/slug-rules.md`
 
 ### Step 1: 写 `SKILL.md`
 
 frontmatter：
 ```markdown
 ---
-name: govern-projects
+name: xuanchu-govern-projects
 description: 建立和归档项目、给项目分配成员、绑定飞书身份、查看项目时间线和成员结构、巡查项目健康。用户提到新建项目、开群、加人、分派角色、绑定外部身份、归档项目、看项目动态时使用。
 ---
 ```
@@ -113,7 +113,7 @@ description: 建立和归档项目、给项目分配成员、绑定飞书身份�
 1. project_add({"workspace":"dajee","slug":"apiplat","name":"API 平台"})
 2. member_add({"workspace":"dajee","user":"alice","role":"member"})  // 相关人逐个加
 3. user_bind({"user":"alice","provider":"feishu_user_id","external_id":"..."})  // 绑飞书
-4. // 群通知接线见 wire-up-automation：给 project 配 feishu webhook config + 建 sink/rule
+4. // 群通知接线见 xuanchu-wire-up-automation：给 project 配 feishu webhook config + 建 sink/rule
 ```
 
 **场景 B：巡查项目健康**
@@ -179,28 +179,28 @@ description: 建立和归档项目、给项目分配成员、绑定飞书身份�
 ### Step 5: 提交
 
 ```bash
-git add docs/skills/govern-projects
-git commit -m "docs(skills): 新增 govern-projects skill（项目与团队治理）"
+git add docs/skills/xuanchu-govern-projects
+git commit -m "docs(skills): 新增 xuanchu-govern-projects skill（项目与团队治理）"
 ```
 
 ---
 
-## Task 3: 写 `wire-up-automation` skill
+## Task 3: 写 `xuanchu-wire-up-automation` skill
 
 **Files:**
-- Create: `docs/skills/wire-up-automation/SKILL.md`
-- Create: `docs/skills/wire-up-automation/references/notification-tools.md`
-- Create: `docs/skills/wire-up-automation/references/hook-tools.md`
-- Create: `docs/skills/wire-up-automation/references/event-types.md`
-- Create: `docs/skills/wire-up-automation/references/http-template-vars.md`
-- Create: `docs/skills/wire-up-automation/references/feishu-bot-setup.md`
+- Create: `docs/skills/xuanchu-wire-up-automation/SKILL.md`
+- Create: `docs/skills/xuanchu-wire-up-automation/references/notification-tools.md`
+- Create: `docs/skills/xuanchu-wire-up-automation/references/hook-tools.md`
+- Create: `docs/skills/xuanchu-wire-up-automation/references/event-types.md`
+- Create: `docs/skills/xuanchu-wire-up-automation/references/http-template-vars.md`
+- Create: `docs/skills/xuanchu-wire-up-automation/references/feishu-bot-setup.md`
 
 ### Step 1: 写 `SKILL.md`
 
 frontmatter：
 ```markdown
 ---
-name: wire-up-automation
+name: xuanchu-wire-up-automation
 description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾期提醒、配置事件 webhook、排查和重试投递失败。用户提到通知、提醒、飞书机器人、webhook、hook、群消息、投递失败、重试时使用。
 ---
 ```
@@ -210,7 +210,7 @@ description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾�
 - sink 是 workspace 级引用，不能跨 workspace
 - secret 走 `secret_refs`，不直接写 URL/body
 - 投递失败用 `notification_delivery_list(status:"dead_lettered")` + `notification_delivery_replay`
-- config schema 规则详见 manage-access-and-config
+- config schema 规则详见 xuanchu-manage-access-and-config
 
 标准工作流写 2 个场景（**完整 JSON 放 feishu-bot-setup.md，主文件只写流程要点**）：
 
@@ -333,7 +333,7 @@ xuanchu 无"群"实体。用 project config 键记录群信息：
 
 ## Step 1: 定义 config schema
 config_schema_set integrations.feishu.webhook_url（project scope，string）和 im.group_id（project scope，string）
-[完整 JSON：从 manage-access-and-config/config-schema-tools.md 的格式，key 分别为这两个]
+[完整 JSON：从 xuanchu-manage-access-and-config/config-schema-tools.md 的格式，key 分别为这两个]
 
 ## Step 2: 给 project 配群信息
 project_config_set integrations.feishu.webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
@@ -358,26 +358,26 @@ reminder_rule_add schedule_type:daily_at, schedule_value:"09:00", filter_source:
 ### Step 7: 提交
 
 ```bash
-git add docs/skills/wire-up-automation
-git commit -m "docs(skills): 新增 wire-up-automation skill（通知/提醒/Hook 接线）"
+git add docs/skills/xuanchu-wire-up-automation
+git commit -m "docs(skills): 新增 xuanchu-wire-up-automation skill（通知/提醒/Hook 接线）"
 ```
 
 ---
 
-## Task 4: 写 `capture-and-track-work` skill
+## Task 4: 写 `xuanchu-capture-and-track-work` skill
 
 **Files:**
-- Create: `docs/skills/capture-and-track-work/SKILL.md`
-- Create: `docs/skills/capture-and-track-work/references/task-tools.md`
-- Create: `docs/skills/capture-and-track-work/references/query-syntax.md`
-- Create: `docs/skills/capture-and-track-work/references/task-workflows.md`
+- Create: `docs/skills/xuanchu-capture-and-track-work/SKILL.md`
+- Create: `docs/skills/xuanchu-capture-and-track-work/references/task-tools.md`
+- Create: `docs/skills/xuanchu-capture-and-track-work/references/query-syntax.md`
+- Create: `docs/skills/xuanchu-capture-and-track-work/references/task-workflows.md`
 
 ### Step 1: 写 `SKILL.md`
 
 frontmatter：
 ```markdown
 ---
-name: capture-and-track-work
+name: xuanchu-capture-and-track-work
 description: 把群里冒出来的工作变成结构化任务、设依赖、关联 PR/ticket、记录进度、认领并完成任务、导出导入。用户提到记一下这件事、建任务、加备注、设依赖、关联 PR、开始/完成、导出导入任务时使用。
 ---
 ```
@@ -400,7 +400,7 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 **场景 B：查询自己的活**
 ```
 1. task_query({"workspace":"dajee","query":"assignee:me status:pending"})
-2. // 详见 report-and-review skill 做报表级汇总
+2. // 详见 xuanchu-report-and-review skill 做报表级汇总
 ```
 
 易错点：
@@ -472,26 +472,26 @@ now+24h / now-2h，用 Go time.ParseDuration（24h/90m/2h30m），不支持 1d�
 ### Step 5: 提交
 
 ```bash
-git add docs/skills/capture-and-track-work
-git commit -m "docs(skills): 新增 capture-and-track-work skill（捕获与跟踪任务）"
+git add docs/skills/xuanchu-capture-and-track-work
+git commit -m "docs(skills): 新增 xuanchu-capture-and-track-work skill（捕获与跟踪任务）"
 ```
 
 ---
 
-## Task 5: 写 `report-and-review` skill
+## Task 5: 写 `xuanchu-report-and-review` skill
 
 **Files:**
-- Create: `docs/skills/report-and-review/SKILL.md`
-- Create: `docs/skills/report-and-review/references/report-tools.md`
-- Create: `docs/skills/report-and-review/references/urgency-factors.md`
-- Create: `docs/skills/report-and-review/references/audit-actions.md`
+- Create: `docs/skills/xuanchu-report-and-review/SKILL.md`
+- Create: `docs/skills/xuanchu-report-and-review/references/report-tools.md`
+- Create: `docs/skills/xuanchu-report-and-review/references/urgency-factors.md`
+- Create: `docs/skills/xuanchu-report-and-review/references/audit-actions.md`
 
 ### Step 1: 写 `SKILL.md`
 
 frontmatter：
 ```markdown
 ---
-name: report-and-review
+name: xuanchu-report-and-review
 description: 在 IM 群里发日报/周报、解释任务 urgency 排序理由、查审计日志排查谁改了或删了什么。用户提到周报、今天该做什么、为什么先做这个、谁删了任务、审计、排查操作记录时使用。
 ---
 ```
@@ -548,7 +548,7 @@ urgency_explain 返回 data.factors，每个因素 {name, value}。
 - priority — 任务优先级贡献
 - due — 临近 due 的贡献
 
-调整系数：在 workspace 级 config 设 urgency.* 键（如 urgency.priority.coeff）。详见 manage-access-and-config/config-keys.md。
+调整系数：在 workspace 级 config 设 urgency.* 键（如 urgency.priority.coeff）。详见 xuanchu-manage-access-and-config/config-keys.md。
 ```
 
 ### Step 4: 写 `references/audit-actions.md`
@@ -558,28 +558,28 @@ urgency_explain 返回 data.factors，每个因素 {name, value}。
 ### Step 5: 提交
 
 ```bash
-git add docs/skills/report-and-review
-git commit -m "docs(skills): 新增 report-and-review skill（汇报与审计）"
+git add docs/skills/xuanchu-report-and-review
+git commit -m "docs(skills): 新增 xuanchu-report-and-review skill（汇报与审计）"
 ```
 
 ---
 
-## Task 6: 写 `manage-access-and-config` skill
+## Task 6: 写 `xuanchu-manage-access-and-config` skill
 
 **Files:**
-- Create: `docs/skills/manage-access-and-config/SKILL.md`
-- Create: `docs/skills/manage-access-and-config/references/token-tools.md`
-- Create: `docs/skills/manage-access-and-config/references/scopes.md`
-- Create: `docs/skills/manage-access-and-config/references/config-tools.md`
-- Create: `docs/skills/manage-access-and-config/references/config-schema-tools.md`
-- Create: `docs/skills/manage-access-and-config/references/config-keys.md`
+- Create: `docs/skills/xuanchu-manage-access-and-config/SKILL.md`
+- Create: `docs/skills/xuanchu-manage-access-and-config/references/token-tools.md`
+- Create: `docs/skills/xuanchu-manage-access-and-config/references/scopes.md`
+- Create: `docs/skills/xuanchu-manage-access-and-config/references/config-tools.md`
+- Create: `docs/skills/xuanchu-manage-access-and-config/references/config-schema-tools.md`
+- Create: `docs/skills/xuanchu-manage-access-and-config/references/config-keys.md`
 
 ### Step 1: 写 `SKILL.md`
 
 frontmatter：
 ```markdown
 ---
-name: manage-access-and-config
+name: xuanchu-manage-access-and-config
 description: 管理 API token（创建/轮换/撤销）、查可用权限、调整 urgency 排序权重、给项目配 agent 指令、定义自定义配置项与 schema、查看过滤上下文。用户提到 token、权限、调权重、配 agent 指令、定义配置键、看 context、轮换密钥时使用。
 ---
 ```
@@ -673,8 +673,8 @@ description: 管理 API token（创建/轮换/撤销）、查可用权限、调�
 ### Step 7: 提交
 
 ```bash
-git add docs/skills/manage-access-and-config
-git commit -m "docs(skills): 新增 manage-access-and-config skill（权限与配置运维）"
+git add docs/skills/xuanchu-manage-access-and-config
+git commit -m "docs(skills): 新增 xuanchu-manage-access-and-config skill（权限与配置运维）"
 ```
 
 ---
@@ -716,7 +716,7 @@ git commit -m "docs(skills): 删除旧的非规范 skill 文档"
 ```bash
 ls -la docs/skills/
 ```
-预期：只有 govern-projects、wire-up-automation、capture-and-track-work、report-and-review、manage-access-and-config 五个目录。
+预期：只有 xuanchu-govern-projects、xuanchu-wire-up-automation、xuanchu-capture-and-track-work、xuanchu-report-and-review、xuanchu-manage-access-and-config 五个目录。
 
 ```bash
 find docs/skills -name SKILL.md | sort
@@ -773,11 +773,11 @@ grep -rn "docs/skills" README.md ROADMAP.md AGENTS.md 2>/dev/null
 ## Self-Review 记录
 
 **Spec coverage（逐条核对）：**
-- spec §3.1 govern-projects → Task 2 ✅
-- spec §3.2 wire-up-automation（含群绑定 §4.3）→ Task 3 ✅
-- spec §3.3 capture-and-track-work → Task 4 ✅
-- spec §3.4 report-and-review → Task 5 ✅
-- spec §3.5 manage-access-and-config → Task 6 ✅
+- spec §3.1 xuanchu-govern-projects → Task 2 ✅
+- spec §3.2 xuanchu-wire-up-automation（含群绑定 §4.3）→ Task 3 ✅
+- spec §3.3 xuanchu-capture-and-track-work → Task 4 ✅
+- spec §3.4 xuanchu-report-and-review → Task 5 ✅
+- spec §3.5 xuanchu-manage-access-and-config → Task 6 ✅
 - spec §5 文件结构 → Task 2-6 文件清单完全对应 ✅
 - spec §6 写作规范（7 节、≤150 行、references 下沉）→ 写作规范节 + Task 8 校验 ✅
 - spec §7 验收标准 → Task 8 ✅

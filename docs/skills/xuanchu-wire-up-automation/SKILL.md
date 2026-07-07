@@ -1,5 +1,5 @@
 ---
-name: wire-up-automation
+name: xuanchu-wire-up-automation
 description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾期提醒、配置事件 webhook、排查和重试投递失败。用户提到通知、提醒、飞书机器人、webhook、hook、群消息、投递失败、重试时使用。
 ---
 
@@ -19,7 +19,7 @@ description: 把项目 IM 群接上飞书机器人通知、设定时到期/逾�
 - sink 是 workspace 级资源引用（可用名称或 ID），**不能跨 workspace 引用**。
 - **secret 走 `secret_refs`**，不直接写 URL/body。HTTP template 中通过别名引用 secret config。
 - 投递失败用 `notification_delivery_list(status:"dead_lettered")` 查看，`notification_delivery_replay` 重试（仅 dead-lettered/skipped 可重试，且不重新渲染 URL/header/body）。
-- config schema 的定义规则详见 manage-access-and-config skill；本 skill 直接演示飞书集成的完整流程。
+- config schema 的定义规则详见 xuanchu-manage-access-and-config skill；本 skill 直接演示飞书集成的完整流程。
 
 ## 标准工作流
 

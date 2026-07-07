@@ -810,8 +810,8 @@ git diff --check
 - `ROADMAP.md` 对 Web Console 出站集成控制台的状态。
 - `docs/manual/hooks.md`：补 Web Console 配置路径和测试投递。
 - `docs/manual/notifications.md`：解释 sink 不只是通知，也服务 Hook。
-- `docs/skills/wire-up-automation/references/hook-tools.md`：事件名与 UI 口径同步。
-- `docs/skills/wire-up-automation/references/notification-tools.md`：sink test / preview 若新增需同步。
+- `docs/skills/xuanchu-wire-up-automation/references/hook-tools.md`：事件名与 UI 口径同步。
+- `docs/skills/xuanchu-wire-up-automation/references/notification-tools.md`：sink test / preview 若新增需同步。
 
 ## 15. 风险与取舍
 

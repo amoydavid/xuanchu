@@ -16,7 +16,7 @@ xuanchu 没有"群/chat"实体。用 **project config 键**记录群信息：
 
 ## Step 1: 定义 config schema
 
-给 `integrations.feishu.webhook_url`、`integrations.feishu.bot_token`、`im.group_id` 定义 schema（schema 规则详见 manage-access-and-config skill）。每个 workspace 只需定义一次。
+给 `integrations.feishu.webhook_url`、`integrations.feishu.bot_token`、`im.group_id` 定义 schema（schema 规则详见 xuanchu-manage-access-and-config skill）。每个 workspace 只需定义一次。
 
 ```json
 config_schema_set({

@@ -5,7 +5,7 @@ description: 使用璇础 MCP skill 或把文档里的 canonical tool name 映�
 
 # 璇础 MCP 基础约定
 
-本 skill 只定义通用调用规则。业务流程分别见 capture-and-track-work、govern-projects、manage-access-and-config、report-and-review、wire-up-automation。
+本 skill 只定义通用调用规则。业务流程分别见 xuanchu-capture-and-track-work、xuanchu-govern-projects、xuanchu-manage-access-and-config、xuanchu-report-and-review、xuanchu-wire-up-automation。
 
 ## 工具名解析
 

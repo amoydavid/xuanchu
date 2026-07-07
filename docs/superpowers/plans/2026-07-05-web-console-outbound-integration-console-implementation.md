@@ -84,8 +84,8 @@
 - Modify: `ROADMAP.md`
 - Modify: `docs/manual/hooks.md`
 - Modify: `docs/manual/notifications.md`
-- Modify: `docs/skills/wire-up-automation/references/hook-tools.md`
-- Modify: `docs/skills/wire-up-automation/references/notification-tools.md`
+- Modify: `docs/skills/xuanchu-wire-up-automation/references/hook-tools.md`
+- Modify: `docs/skills/xuanchu-wire-up-automation/references/notification-tools.md`
 
 ---
 
@@ -838,8 +838,8 @@ Expected: PASS.
 - Modify: `ROADMAP.md`
 - Modify: `docs/manual/hooks.md`
 - Modify: `docs/manual/notifications.md`
-- Modify: `docs/skills/wire-up-automation/references/hook-tools.md`
-- Modify: `docs/skills/wire-up-automation/references/notification-tools.md`
+- Modify: `docs/skills/xuanchu-wire-up-automation/references/hook-tools.md`
+- Modify: `docs/skills/xuanchu-wire-up-automation/references/notification-tools.md`
 - Modify: `docs/superpowers/specs/2026-07-05-web-console-outbound-integration-console-design.md` if implementation decisions changed.
 
 - [ ] **Step 1: Update docs**
@@ -922,7 +922,7 @@ git commit -m "feat: 新增出站集成控制台"
 git add internal/app/notification.go internal/app/notification_test.go internal/httpapi/notifications.go internal/httpapi/notifications_test.go internal/httpapi/huma_routes.go
 git commit -m "feat: 支持 sink 测试投递"
 
-git add README.md ROADMAP.md docs/manual/hooks.md docs/manual/notifications.md docs/skills/wire-up-automation/references/hook-tools.md docs/skills/wire-up-automation/references/notification-tools.md docs/superpowers/specs/2026-07-05-web-console-outbound-integration-console-design.md
+git add README.md ROADMAP.md docs/manual/hooks.md docs/manual/notifications.md docs/skills/xuanchu-wire-up-automation/references/hook-tools.md docs/skills/xuanchu-wire-up-automation/references/notification-tools.md docs/superpowers/specs/2026-07-05-web-console-outbound-integration-console-design.md
 git commit -m "docs: 同步出站集成控制台说明"
 ```
 

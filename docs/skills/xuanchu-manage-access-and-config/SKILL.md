@@ -1,5 +1,5 @@
 ---
-name: manage-access-and-config
+name: xuanchu-manage-access-and-config
 description: 管理 API token（创建/轮换/撤销）、查可用权限、调整 urgency 排序权重、给项目配 agent 指令、定义自定义配置项与 schema、查看过滤上下文。用户提到 token、权限、调权重、配 agent 指令、定义配置键、看 context、轮换密钥时使用。
 ---
 
@@ -41,7 +41,7 @@ description: 管理 API token（创建/轮换/撤销）、查可用权限、调�
 
 ```
 1. config_schema_set({"workspace":"dajee","key":"integrations.feishu.webhook_url","value_type":"string","allowed_scopes":["project"]})
-2. // 之后用 project_config_set 写值（详见 wire-up-automation skill 的 references/feishu-bot-setup.md）
+2. // 之后用 project_config_set 写值（详见 xuanchu-wire-up-automation skill 的 references/feishu-bot-setup.md）
 ```
 
 ## 易错点
