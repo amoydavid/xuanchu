@@ -336,7 +336,7 @@ function TaskDescriptionBlock({
 
   return (
     <>
-      <section className="space-y-3 border bg-card p-4">
+      <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium">
             {t("projectReadonly.description")}
