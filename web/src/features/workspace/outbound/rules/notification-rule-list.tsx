@@ -47,6 +47,7 @@ import {
   type NotificationRule,
   type NotificationRuleCreateInput,
 } from "../outbound-api"
+import { TemplateVarHints } from "../template-vars/template-var-hints"
 
 const QUERY_KEY = ["outbound", "notification-rules"] as const
 
@@ -360,6 +361,12 @@ function NotificationRuleCreateDialog({
               ))}
             </select>
           </LabeledField>
+          {sink ? (
+            <TemplateVarHints
+              trigger="event"
+              sink={sinks.find((s) => s.id === sink) ?? null}
+            />
+          ) : null}
           <LabeledInput
             label={t("outbound.notificationRuleSubject")}
             onChange={setTemplateSubject}
