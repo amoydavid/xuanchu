@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -34,6 +35,9 @@ export function AutomationPreviewDialog({ open, onOpenChange, preview }: Props) 
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>预览投递 JSON</DialogTitle>
+          <DialogDescription className="sr-only">
+            查看脱敏后的投递请求方法和 URL、headers 与 body JSON，并可复制。
+          </DialogDescription>
         </DialogHeader>
         {preview ? (
           <div className="space-y-3">

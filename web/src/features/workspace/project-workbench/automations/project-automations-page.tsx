@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
+import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
 
 import {
   createProjectAutomation,
@@ -26,9 +27,14 @@ type Props = {
   workspaceSlug: string
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 // ProjectAutomationsPage 是项目自动化 tab 主页面：规则列表、编辑表单、预览弹窗和运行记录。
 export function ProjectAutomationsPage({ projectSlug }: Props) {
   const layout = useProjectLayout()
+  const feedback = useEditFeedback()
   const queryClient = useQueryClient()
   const writeDisabled = layout.closed
   const [draft, setDraft] = useState<ProjectAutomationRuleInput>(defaultScheduleAutomationInput)
@@ -49,13 +55,29 @@ export function ProjectAutomationsPage({ projectSlug }: Props) {
       setPreview(data)
       setPreviewOpen(true)
     },
+    onError: (err) => {
+      feedback.failure("预览失败", errorMessage(err))
+    },
   })
   const createMutation = useMutation({
     mutationFn: (input: ProjectAutomationRuleInput) => createProjectAutomation(projectSlug, input),
-    onSuccess: () => invalidateRules(),
+    onSuccess: () => {
+      feedback.success("规则已保存")
+      setDraft(defaultScheduleAutomationInput)
+      invalidateRules()
+    },
+    onError: (err) => {
+      feedback.failure("保存失败", errorMessage(err))
+    },
   })
   const testMutation = useMutation({
     mutationFn: (ruleID: string) => testProjectAutomationRule(projectSlug, ruleID),
+    onSuccess: () => {
+      feedback.success("已创建测试投递")
+    },
+    onError: (err) => {
+      feedback.failure("测试失败", errorMessage(err))
+    },
   })
 
   if (rules.isPending) {
@@ -112,6 +134,7 @@ export function ProjectAutomationsPage({ projectSlug }: Props) {
           }
         }}
         disabled={writeDisabled}
+        previewPending={previewMutation.isPending}
       />
       <AutomationDeliveryList projectSlug={projectSlug} />
       <AutomationPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} preview={preview} />
