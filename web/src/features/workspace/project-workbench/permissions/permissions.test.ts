@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import {
   canAuditRead,
+  canProjectAutomationRead,
+  canProjectAutomationWrite,
   canProjectManage,
   canTaskRead,
   canTaskWrite,
@@ -54,5 +56,26 @@ describe("project workbench permissions", () => {
     expect(canAuditRead({ role: "member", scopes: ["audit:read"] })).toBe(false)
     expect(canAuditRead({ role: "viewer", scopes: ["audit:read"] })).toBe(false)
     expect(canAuditRead({ role: "owner", scopes: ["task:read"] })).toBe(false)
+  })
+
+  it("allows project automation write only with project and hook write", () => {
+    expect(
+      canProjectAutomationWrite({ role: "admin", scopes: ["project:write", "hook:write"] })
+    ).toBe(true)
+    expect(
+      canProjectAutomationWrite({ role: "admin", scopes: ["project:write"] })
+    ).toBe(false)
+    expect(
+      canProjectAutomationWrite({ role: "viewer", scopes: ["project:write", "hook:write"] })
+    ).toBe(false)
+  })
+
+  it("allows project automation read for members with project and hook read", () => {
+    expect(
+      canProjectAutomationRead({ role: "member", scopes: ["project:read", "hook:read"] })
+    ).toBe(true)
+    expect(
+      canProjectAutomationRead({ role: "member", scopes: ["project:read"] })
+    ).toBe(false)
   })
 })

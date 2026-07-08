@@ -31,7 +31,7 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareAPITokenUserIDNullable(); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}); err != nil {
+	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &ProjectAutomationRule{}, &ProjectAutomationDelivery{}, &UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}); err != nil {
 		return err
 	}
 	if err := s.db.AutoMigrate(&TaskTag{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {
@@ -113,6 +113,13 @@ func (s *Store) prepareActorColumnsForP2() error {
 			{"created_by_token_id", "ALTER TABLE task_links ADD COLUMN created_by_token_id TEXT"},
 			{"created_by_token_name", "ALTER TABLE task_links ADD COLUMN created_by_token_name TEXT"},
 			{"created_by_token_prefix", "ALTER TABLE task_links ADD COLUMN created_by_token_prefix TEXT"},
+		},
+		"project_automation_rules": {
+			{"created_by_actor_type", "ALTER TABLE project_automation_rules ADD COLUMN created_by_actor_type TEXT NOT NULL DEFAULT 'user'"},
+			{"created_by_user_id", "ALTER TABLE project_automation_rules ADD COLUMN created_by_user_id TEXT"},
+			{"created_by_token_id", "ALTER TABLE project_automation_rules ADD COLUMN created_by_token_id TEXT"},
+			{"created_by_token_name", "ALTER TABLE project_automation_rules ADD COLUMN created_by_token_name TEXT"},
+			{"created_by_token_prefix", "ALTER TABLE project_automation_rules ADD COLUMN created_by_token_prefix TEXT"},
 		},
 	}
 	for table, tableColumns := range columns {

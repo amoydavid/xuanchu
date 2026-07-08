@@ -52,6 +52,7 @@
 | v0.5.3 | 已完成 | Web Console 出站集成控制台：sink/hook/通知/定时规则闭环 + sink 测试投递 API |
 | v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
 | v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
+| v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -570,6 +571,27 @@ docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 ```text
 docs/superpowers/specs/2026-07-07-web-console-task-detail-redesign-design.md
 docs/superpowers/plans/2026-07-07-web-console-task-detail-redesign-implementation.md
+```
+
+## v0.5.6：Web Console 项目自动化
+
+**状态：已完成。**
+
+项目详情页新增第 4 个 tab「自动化」，把项目事件和项目上下文按 OpenAI 兼容接口投递给外部 Agent Provider。璇础承担触发、上下文构造、投递和记录，不直接调用飞书，也不判断 Agent 是否完成外部动作。
+
+核心能力：
+
+- **项目自动化规则**：project-scoped 规则，支持 `schedule.daily_at` 定时触发和 `event` 事件触发（`task.assigned` / `task.completed` / `project.annotated` 等白名单）。动作首版固定为 `openai_compatible`，默认投递到 `{agent.provider.base_url}/v1/chat/completions`。
+- **上下文构造**：按规则 include 列表组装 `_xuanchu` / `workspace` / `project` / `task_summary` / `matched_tasks` / `event` / `task` / `added_assignees` / `project_config`；secret config 值不进入上下文，只作为 Authorization header。
+- **投递 JSON 预览**：编辑页「预览投递 JSON」按钮弹窗展示脱敏后的最终请求体（Authorization 显示 `Bearer ****`），支持复制 JSON 和复制 curl（token 用 `${AGENT_PROVIDER_API_KEY}` 占位）。
+- **投递 dispatcher**：daily_at 按 `workspace:project:rule:local_date:schedule_value` 去重；`task.assigned` 上下文包含 `added_assignees`，可按「只处理新增负责人」过滤。429/5xx 重试默认 `max_attempts=5`，超过进入 `dead_lettered`，只允许手动 replay。
+- **安全边界**：读操作要求 `project:read` + `hook:read`，写/预览/测试/replay 要求 `project:write` + `hook:write`；URL 必须命中 `agent.provider.allowed_hosts`；closed project 禁止新增、编辑、启用、测试和 replay，允许查看历史。所有用户身份继续使用 `task.UserInfo`。
+
+对应 spec / plan：
+
+```text
+docs/superpowers/specs/2026-07-08-web-console-project-automation-openai-compatible-design.md
+docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatible-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug

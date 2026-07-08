@@ -296,5 +296,18 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/notification-deliveries", Tag: "Notification Deliveries", Summary: "List notification deliveries.", Handler: s.handleNotificationDeliveryList},
 		{Method: http.MethodGet, Path: "/api/v1/notification-deliveries/{deliveryID}", Tag: "Notification Deliveries", Summary: "Get notification delivery details.", Handler: s.handleNotificationDeliveryInfo},
 		{Method: http.MethodPost, Path: "/api/v1/notification-deliveries/{deliveryID}/replay", Tag: "Notification Deliveries", Summary: "Replay a notification delivery.", Handler: s.handleNotificationDeliveryReplay},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automations", Tag: "Project Automations", Summary: "List project automations.", Handler: s.handleProjectAutomationList},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations", Tag: "Project Automations", Summary: "Create a project automation.", Handler: s.handleProjectAutomationCreate, Status: http.StatusCreated},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/preview", Tag: "Project Automations", Summary: "Preview a project automation delivery.", Handler: s.handleProjectAutomationPreview},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/preview", Tag: "Project Automations", Summary: "Preview a saved project automation delivery.", Handler: s.handleProjectAutomationSavedPreview},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}", Tag: "Project Automations", Summary: "Get project automation details.", Handler: s.handleProjectAutomationInfo},
+		{Method: http.MethodPatch, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}", Tag: "Project Automations", Summary: "Modify a project automation.", Handler: s.handleProjectAutomationModify},
+		{Method: http.MethodDelete, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}", Tag: "Project Automations", Summary: "Delete a project automation.", Handler: s.handleProjectAutomationDelete},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/enable", Tag: "Project Automations", Summary: "Enable a project automation.", Handler: s.handleProjectAutomationEnable},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/disable", Tag: "Project Automations", Summary: "Disable a project automation.", Handler: s.handleProjectAutomationDisable},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/test", Tag: "Project Automations", Summary: "Test a project automation.", Handler: s.handleProjectAutomationTest},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-deliveries", Tag: "Project Automations", Summary: "List project automation deliveries.", Handler: s.handleProjectAutomationDeliveryList},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-deliveries/{deliveryID}", Tag: "Project Automations", Summary: "Get project automation delivery details.", Handler: s.handleProjectAutomationDeliveryInfo},
+		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automation-deliveries/{deliveryID}/replay", Tag: "Project Automations", Summary: "Replay project automation delivery.", Handler: s.handleProjectAutomationDeliveryReplay},
 	}
 }

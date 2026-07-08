@@ -18,6 +18,12 @@ var builtinScopedConfigSchemas = []ConfigSchemaInput{
 	{Key: "agent.default_context", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeProject)}},
 	{Key: "agent.handoff", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeProject)}},
 	{Key: "context.default", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeProject)}},
+	{Key: "agent.provider.base_url", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeWorkspace), string(ConfigAllowedScopeProject)}},
+	{Key: "agent.provider.api_key", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeWorkspace), string(ConfigAllowedScopeProject)}, Secret: true},
+	{Key: "agent.provider.model", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeWorkspace), string(ConfigAllowedScopeProject)}},
+	{Key: "agent.provider.protocol", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeWorkspace), string(ConfigAllowedScopeProject)}, DefaultValue: stringPtr("chat_completions")},
+	{Key: "agent.provider.allowed_hosts", ValueType: string(ConfigValueTypeJSON), AllowedScopes: []string{string(ConfigAllowedScopeWorkspace), string(ConfigAllowedScopeProject)}, DefaultValue: stringPtr("[]")},
+	{Key: "feishu.chat_id", ValueType: string(ConfigValueTypeString), AllowedScopes: []string{string(ConfigAllowedScopeProject)}},
 }
 
 type ConfigValueType string

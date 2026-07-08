@@ -417,6 +417,58 @@ type NotificationDelivery struct {
 	ModifiedAt                  int64 `gorm:"not null"`
 }
 
+type ProjectAutomationRule struct {
+	ID                  string  `gorm:"primaryKey"`
+	WorkspaceID         string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:1;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:1"`
+	ProjectID           string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:2;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:2"`
+	Name                string  `gorm:"not null;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:3"`
+	Description         string  `gorm:"not null;default:''"`
+	Enabled             *bool   `gorm:"not null;default:true;index"`
+	TriggerType         string  `gorm:"not null;index"`
+	TriggerConfigJSON   string  `gorm:"not null;default:'{}'"`
+	ConditionJSON       string  `gorm:"not null;default:'{}'"`
+	ActionType          string  `gorm:"not null;default:'openai_compatible';index"`
+	ActionConfigJSON    string  `gorm:"not null;default:'{}'"`
+	ContextConfigJSON   string  `gorm:"not null;default:'{}'"`
+	InstructionTemplate string  `gorm:"not null;default:''"`
+	CreatedByActorType  string  `gorm:"not null;default:'user';index"`
+	CreatedByUserID     *string `gorm:"index"`
+	CreatedByTokenID    *string `gorm:"index"`
+	CreatedByTokenName  *string
+	CreatedByTokenPrefix *string
+	CreatedAt           int64 `gorm:"not null"`
+	ModifiedAt          int64 `gorm:"not null"`
+}
+
+type ProjectAutomationDelivery struct {
+	ID                   string  `gorm:"primaryKey"`
+	WorkspaceID          string  `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:1"`
+	ProjectID            string  `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:2"`
+	RuleID               string  `gorm:"not null;index"`
+	TriggerType          string  `gorm:"not null;index"`
+	EventID              string  `gorm:"not null;default:'';index"`
+	EventType            string  `gorm:"not null;default:'';index"`
+	DedupeKey            string  `gorm:"not null;uniqueIndex"`
+	Status               string  `gorm:"not null;index:idx_project_automation_deliveries_due,priority:1"`
+	ResolvedURL          string  `gorm:"not null;default:''"`
+	RenderedMethod       string  `gorm:"not null;default:'POST'"`
+	RenderedHeadersJSON  string  `gorm:"not null;default:'{}'"`
+	RequestBodyJSON      string  `gorm:"not null;default:''"`
+	RequestBodyPreview   string  `gorm:"not null;default:''"`
+	RequestBodyHash      string  `gorm:"not null;default:''"`
+	ResponseStatusCode   *int
+	ResponseBodyPreview  string  `gorm:"not null;default:''"`
+	ProviderRequestID    string  `gorm:"not null;default:''"`
+	UsageJSON            string  `gorm:"not null;default:'{}'"`
+	AttemptCount         int     `gorm:"not null;default:0"`
+	NextAttemptAt        *int64  `gorm:"index:idx_project_automation_deliveries_due,priority:2"`
+	ClaimExpiresAt       *int64  `gorm:"index"`
+	LastAttemptAt        *int64
+	LastError            string  `gorm:"not null;default:''"`
+	CreatedAt            int64   `gorm:"not null;index"`
+	ModifiedAt           int64   `gorm:"not null"`
+}
+
 type UserExternalID struct {
 	ID         string `gorm:"primaryKey"`
 	UserID     string `gorm:"not null;index:idx_user_ext_id_user"`

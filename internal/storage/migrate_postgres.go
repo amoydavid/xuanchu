@@ -15,6 +15,7 @@ func (s *Store) migratePostgres() error {
 		&AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{},
 		&Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{},
 		&NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{},
+		&ProjectAutomationRule{}, &ProjectAutomationDelivery{},
 		&UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}, &Task{},
 	); err != nil {
 		return err
@@ -71,6 +72,11 @@ func (s *Store) prepareActorColumnsForP2Postgres() error {
 		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_id text",
 		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_name text",
 		"ALTER TABLE task_links ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
+		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_actor_type text NOT NULL DEFAULT 'user'",
+		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_user_id text",
+		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_token_id text",
+		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_token_name text",
+		"ALTER TABLE project_automation_rules ADD COLUMN IF NOT EXISTS created_by_token_prefix text",
 	}
 	for _, stmt := range statements {
 		if err := s.db.Exec(stmt).Error; err != nil {

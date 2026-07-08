@@ -112,6 +112,7 @@ v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作�
 - **任务紧迫度**：任务详情属性栏展示 urgency 分数和各分项贡献（`GET /tasks/{ref}/urgency`）。
 - **Workspace / 通知控制台**：workspace 列表支持归档；通知页明确为「管控台」（sink/rule/delivery），不是个人消息收件箱。
 - **出站集成控制台**（v0.5.3，`/hooks` = `/integrations` = `/notifications`）：把 `/hooks` 升级为统一控制台，覆盖 Sinks（webhook / http_template CRUD）、Hooks（sink 下拉 + 分组事件 checkbox + project 选择器）、通知规则、定时规则和概览。新增后端 `POST /api/v1/notification-sinks/{sinkID}/test` 真实测试投递，写 audit 不污染 delivery 表，受 SSRF / allowed hosts / secret 防护。事件名统一为 `task.completed` / `project.archived` 等白名单，旧的 `task.done` 已废弃。
+- **项目自动化页**（`/workspaces/<workspace-slug>/projects/<project-slug>/automations`）：项目详情新增「自动化」tab，可配置 project-scoped 定时规则和事件规则。首版动作统一为调用 OpenAI 兼容 Agent Provider，默认投递到 `{agent.provider.base_url}/v1/chat/completions`，凭据和默认 model 从 project effective config 读取；规则编辑页可点击「预览投递 JSON」查看脱敏后的最终请求体。璇础只负责触发、上下文构造、投递和记录，不直接调用飞书，也不判断 Agent 是否完成外部动作。
 
 所有改动只复用现有 `/api/v1/*`、authz、CSRF、`task.UserInfo` 和 closed-project 规则；未引入新 UI 库或状态管理库。后端能力缺口（task restore、workspace unarchive、project annotation PATCH、audit actor/action/time 全量服务端搜索）在前端以置灰、说明文案或「当前结果筛选」明确标注，不静默失败。
 
@@ -123,9 +124,10 @@ v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作�
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/activity
+http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/automations
 ```
 
-项目页由「概览 / 任务 / 活动」三个子页面组成，共享同一套项目 Header、子页面 Tabs 和可开合的右侧项目信息栏（`ProjectContextRail`）。概览页回答「项目现在怎么样、下一步该看哪里」：展示最新项目更新、当前重点（逾期 / 高优未完成 / 等待已到期 / 未分配任务）、项目附属信息、负责人负载和最近活动；任务页承接任务筛选工具栏、简单任务列表、新建、导入和行内编辑；活动页是项目事实流，合并项目更新、任务注解和有 `audit:read` 权限时可见的项目审计。右侧项目信息栏在三个子页面保持一致，可由图标按钮收起/展开；状态、任务数、进度、风险计数、负责人负载和最近活动都来自后端聚合，前端不用当前任务列表冒充全量统计。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在任务子页面内创建任务、上传 JSON / XLSX 批量导入任务，并 inline 修改任务 title、priority、due 等常用字段。导入弹窗会先在浏览器端预检标题、指派人和依赖，并可打开完整 JSON Schema 弹窗核对字段说明：导入文件可用可选的 `id` / `import_id` 标记临时任务引用，只要求是批次内不重复的字符串，不要求 UUID 格式；`blocked_by` 表示当前任务被哪些任务阻塞；导入后会生成新的任务 UUID，临时 ID 不入库；指派人必须能解析为当前 workspace 成员；JSON assignee 对象可包含 `name`、`display_name`、`email`、`user_id`，XLSX 可用 `assignee_display_names` / `assignee_emails` 为 `assignees` 按顺序补充展示姓名和邮箱；若检测到普通邮箱或姓名尚未加入 workspace，可在预检区一键创建/加入为 `member`，并保留 `display_name`；预检区会用分页表格展示解析和本地引用映射后的导入成果，最终写入仍由 `/api/v1/import` 整批原子提交，除服务端生成的 id/seq 外应与预览一致。概览页和右栏的全量任务摘要来自新增的 `GET /api/v1/projects/{projectRef}/task-summary`，同时要求 `project:read` 与 `task:read`；逾期与等待已到期判断复用璇础任务日期边界（date-only `due/until` 按本地日末、`wait/scheduled` 按本地日初），前端不用浏览器时区重算。
+项目页由「概览 / 任务 / 活动 / 自动化」四个子页面组成，共享同一套项目 Header、子页面 Tabs 和可开合的右侧项目信息栏（`ProjectContextRail`）。概览页回答「项目现在怎么样、下一步该看哪里」：展示最新项目更新、当前重点（逾期 / 高优未完成 / 等待已到期 / 未分配任务）、项目附属信息、负责人负载和最近活动；任务页承接任务筛选工具栏、简单任务列表、新建、导入和行内编辑；活动页是项目事实流，合并项目更新、任务注解和有 `audit:read` 权限时可见的项目审计。右侧项目信息栏在三个子页面保持一致，可由图标按钮收起/展开；状态、任务数、进度、风险计数、负责人负载和最近活动都来自后端聚合，前端不用当前任务列表冒充全量统计。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在任务子页面内创建任务、上传 JSON / XLSX 批量导入任务，并 inline 修改任务 title、priority、due 等常用字段。导入弹窗会先在浏览器端预检标题、指派人和依赖，并可打开完整 JSON Schema 弹窗核对字段说明：导入文件可用可选的 `id` / `import_id` 标记临时任务引用，只要求是批次内不重复的字符串，不要求 UUID 格式；`blocked_by` 表示当前任务被哪些任务阻塞；导入后会生成新的任务 UUID，临时 ID 不入库；指派人必须能解析为当前 workspace 成员；JSON assignee 对象可包含 `name`、`display_name`、`email`、`user_id`，XLSX 可用 `assignee_display_names` / `assignee_emails` 为 `assignees` 按顺序补充展示姓名和邮箱；若检测到普通邮箱或姓名尚未加入 workspace，可在预检区一键创建/加入为 `member`，并保留 `display_name`；预检区会用分页表格展示解析和本地引用映射后的导入成果，最终写入仍由 `/api/v1/import` 整批原子提交，除服务端生成的 id/seq 外应与预览一致。概览页和右栏的全量任务摘要来自新增的 `GET /api/v1/projects/{projectRef}/task-summary`，同时要求 `project:read` 与 `task:read`；逾期与等待已到期判断复用璇础任务日期边界（date-only `due/until` 按本地日末、`wait/scheduled` 按本地日初），前端不用浏览器时区重算。
 
 ```text
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
@@ -711,6 +713,21 @@ shared config 现在分成两层：
 - `agent.default_context`
 - `agent.handoff`
 - `context.default`
+- `agent.provider.base_url`（workspace/project，OpenAI 兼容 Agent Provider base URL）
+- `agent.provider.api_key`（workspace/project，secret，HTTP Authorization Bearer token）
+- `agent.provider.model`（workspace/project，默认 model / agent id）
+- `agent.provider.protocol`（workspace/project，默认 `chat_completions`）
+- `agent.provider.allowed_hosts`（workspace/project，json，允许投递的 hostname 列表）
+- `feishu.chat_id`（project，业务上下文，由 Agent 自行解释）
+
+项目自动化 tab 会读取这些 config key 构造 OpenAI 兼容投递请求；`allowed_hosts` 是 SSRF 防护白名单，preview、立即测试、正式投递和 replay 都必须命中。示例：
+
+```bash
+./xuanchu --workspace dajee project config set agentapi agent.provider.base_url "https://agent.example.com"
+./xuanchu --workspace dajee project config set agentapi agent.provider.api_key "sk-..."
+./xuanchu --workspace dajee project config set agentapi agent.provider.model "project-operator"
+./xuanchu --workspace dajee project config set agentapi agent.provider.allowed_hosts '["agent.example.com"]'
+```
 
 如果你误用无 scope 的 `config`：
 
