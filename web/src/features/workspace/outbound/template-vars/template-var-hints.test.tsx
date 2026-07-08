@@ -102,4 +102,17 @@ describe("TemplateVarHints", () => {
     })
     expect(screen.queryByText("{{task.title}}")).toBeNull()
   })
+
+  it("event trigger 显示 event.type，不显示 task.title", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TemplateVarHints trigger="event" sink={null} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      expect(screen.getByText("event.type")).toBeTruthy()
+    })
+    expect(screen.queryByText("task.title")).toBeNull()
+  })
 })
