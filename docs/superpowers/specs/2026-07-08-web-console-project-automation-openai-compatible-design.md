@@ -121,9 +121,9 @@
 
 状态   名称                 触发器                         动作              最近运行
 ────────────────────────────────────────────────────────────────────
-●启用  每日项目巡检         schedule / 每天 09:30           OpenAI Agent       成功 08:31
-●启用  分配任务后拉群       event / task.assigned           OpenAI Agent       成功 10:12
-○停用  高优任务完成后总结   event / task.completed + filter OpenAI Agent       -
+●启用  每日项目巡检         schedule / 每天 09:30           Agent Provider     成功 08:31
+●启用  分配任务后拉群       event / task.assigned           Agent Provider     成功 10:12
+○停用  高优任务完成后总结   event / task.completed + filter Agent Provider     -
 
 选中一条规则后，在下方或抽屉中编辑详情。
 ```
@@ -135,7 +135,7 @@
 | 状态 | 启用 / 停用 |
 | 名称 | 用户自定义规则名 |
 | 触发器 | `schedule / 每天 HH:mm` 或 `event / event_type` |
-| 动作 | 首版固定为 OpenAI Agent |
+| 动作 | 首版固定为 OpenAI 兼容 Agent Provider |
 | 最近运行 | 最近一条 delivery 的状态和时间 |
 
 ### 6.2 定时规则编辑
@@ -467,6 +467,7 @@ Content-Type: application/json
 | `agent.provider.api_key` | string | yes | workspace/project | HTTP Authorization Bearer token |
 | `agent.provider.model` | string | no | workspace/project | 默认 model / agent id |
 | `agent.provider.protocol` | enum | no | workspace/project | `chat_completions`，未来可加 `responses` |
+| `agent.provider.allowed_hosts` | json | no | workspace/project | 允许投递的 hostname 列表，例如 `["agent.example.com"]` |
 | `feishu.chat_id` | string | no | project | 业务上下文，由 Agent 自行解释 |
 
 规则保存时不复制 secret 明文，只保存 config key 引用。预览和 delivery 详情中，secret 值必须显示为 `****` 或“已设置”。
@@ -507,8 +508,9 @@ Content-Type: application/json
 | `event_id` | 事件触发时记录 |
 | `event_type` | 事件触发时记录 |
 | `dedupe_key` | 防重复投递 |
-| `status` | `queued` / `running` / `succeeded` / `retryable` / `failed` |
-| `resolved_url` | 脱敏后的目标 URL |
+| `status` | `queued` / `delivering` / `retry_wait` / `succeeded` / `dead_lettered` |
+| `resolved_url` | 目标 URL。首版 URL 本身不含 secret；若未来支持 URL secret template，必须先脱敏再展示 |
+| `request_body_json` | 冻结后的完整请求体；不包含 API key 或 secret config 明文，仅供 dispatcher/replay 使用 |
 | `request_body_preview` | 截断后的请求体预览，secret 已遮掩 |
 | `request_body_hash` | 请求体 hash |
 | `response_status_code` | HTTP status |
@@ -520,7 +522,7 @@ Content-Type: application/json
 | `last_error` | 错误摘要 |
 | `created_at` / `modified_at` | 时间 |
 
-投递记录不保存 API key 明文，不保存未遮掩 secret header。是否保存完整请求体由实施计划决定；首版至少保存可排障的脱敏 preview 和 hash。
+投递记录不保存 API key 明文，不保存未遮掩 secret header。首版保存完整 `request_body_json`，因为正式投递和 replay 必须使用与入队时一致的事件/项目上下文；该 body 不允许包含 secret config 明文。dispatcher 使用冻结的 `resolved_url` 和 `request_body_json`，只在发送前重新读取当前 secret config 生成 Authorization。
 
 ## 11. 后端 API
 
@@ -611,7 +613,9 @@ dedupe_key = workspace_id + project_id + rule_id + event_id
 - `project_config` 默认不包含 secret config value。
 - `include_secret_config` 首版不提供。
 - URL 必须通过 SSRF 防护，与现有 sink allowed host / resolver 策略保持一致。
+- Agent Provider 的 hostname 必须命中 `agent.provider.allowed_hosts` 或等价 allowlist；preview、立即测试、正式投递和 replay 走同一校验。
 - preview 不能绕过 project allowlist。
+- 429/5xx 可以重试，但必须有最大尝试次数；超过后进入 `dead_lettered`，只允许手动 replay。
 - closed project 禁止新增、编辑、启用、测试和 replay；允许查看历史。
 - 所有对外 JSON 中的用户身份继续使用 `task.UserInfo` 统一结构。
 
@@ -655,7 +659,7 @@ dedupe_key = workspace_id + project_id + rule_id + event_id
 | model 缺失 | `缺少 model` |
 | URL 被 SSRF 策略拒绝 | `目标地址不允许访问` |
 | HTTP 401/403 | `凭据被拒绝`，保留 status code |
-| HTTP 429/5xx | 标记 retryable，按规则重试 |
+| HTTP 429/5xx | 未超过最大尝试次数时标记 `retry_wait` 并按规则重试；超过后标记 `dead_lettered` |
 | body 超限 | `投递 JSON 超过大小限制，请减少任务数量或上下文字段` |
 | provider 响应非 JSON | 仍记录 HTTP 状态和响应预览，不强制失败解析 |
 
@@ -671,7 +675,7 @@ dedupe_key = workspace_id + project_id + rule_id + event_id
 - schedule daily_at dedupe。
 - event `task.assigned` 只包含新增负责人。
 - OpenAI-compatible request body 渲染。
-- delivery 成功、retryable、failed、replay。
+- delivery 成功、`retry_wait`、`dead_lettered`、replay。
 - SQLite/PostgreSQL schema 和 repository 契约。
 - `CGO_ENABLED=0 go test ./...` 和 `CGO_ENABLED=0 go build ./cmd/xuanchu`。
 
