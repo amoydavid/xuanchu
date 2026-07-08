@@ -157,3 +157,40 @@ func hasVarPrefix(name, group string) bool {
 func isPrefixVarName(name string) bool {
 	return len(name) > 2 && name[len(name)-2:] == ".*"
 }
+
+// NotificationTemplateVarsView 构造给 HTTP API 返回的视图，按 trigger 分组、再按 field 分组。
+func NotificationTemplateVarsView() map[string]any {
+	fieldOrder := []templateField{templateFieldEndpoint, templateFieldBody}
+	triggerOrder := []templateTrigger{templateTriggerReminder, templateTriggerEvent}
+
+	triggersOut := make([]map[string]any, 0, len(triggerOrder))
+	for _, trigger := range triggerOrder {
+		fieldsOut := make([]map[string]any, 0, len(fieldOrder))
+		for _, field := range fieldOrder {
+			vars := make([]map[string]any, 0)
+			for _, spec := range notificationTemplateVarSpecs {
+				if !slices.Contains(spec.Triggers, trigger) {
+					continue
+				}
+				if !slices.Contains(spec.Fields, field) {
+					continue
+				}
+				vars = append(vars, map[string]any{
+					"name":         spec.Name,
+					"description":  spec.Description,
+					"dynamic":      spec.IsPrefix,
+					"prefix_group": spec.PrefixGroup,
+				})
+			}
+			fieldsOut = append(fieldsOut, map[string]any{
+				"field": string(field),
+				"vars":  vars,
+			})
+		}
+		triggersOut = append(triggersOut, map[string]any{
+			"trigger": string(trigger),
+			"fields":  fieldsOut,
+		})
+	}
+	return map[string]any{"triggers": triggersOut}
+}
