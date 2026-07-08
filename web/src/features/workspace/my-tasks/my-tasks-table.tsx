@@ -125,7 +125,9 @@ function MyTasksTableRow({
   return (
     <TableRow className={isDeleted ? "opacity-50" : undefined}>
       <TableCell>
-        <TaskDetailLink task={task}>{taskRef(task)}</TaskDetailLink>
+        <TaskDetailLink task={task} workspaceSlug={workspaceSlug}>
+          {taskRef(task)}
+        </TaskDetailLink>
       </TableCell>
       <TableCell className="max-w-lg min-w-48 truncate">
         {task.title}
@@ -173,7 +175,9 @@ function MyTasksTaskCard({
   return (
     <article className="border bg-card p-3">
       <div className="flex items-center justify-between gap-2 text-xs">
-        <TaskDetailLink task={task}>{taskRef(task)}</TaskDetailLink>
+        <TaskDetailLink task={task} workspaceSlug={workspaceSlug}>
+          {taskRef(task)}
+        </TaskDetailLink>
         <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
       </div>
       <div className="mt-2 text-sm font-medium">{task.title}</div>
@@ -200,15 +204,25 @@ function MyTasksTaskCard({
 function TaskDetailLink({
   children,
   task,
+  workspaceSlug,
 }: {
   children: React.ReactNode
   task: ProjectWorkbenchTask
+  workspaceSlug: string
 }) {
+  if (!task.project) {
+    return <span className="text-foreground">{children}</span>
+  }
+
   return (
     <Link
       className="text-foreground underline-offset-4 hover:underline"
-      params={{ taskRef: taskRef(task) }}
-      to="/tasks/$taskRef"
+      params={{
+        projectSlug: task.project,
+        taskRef: taskRef(task),
+        workspaceSlug,
+      }}
+      to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
     >
       {children}
     </Link>
