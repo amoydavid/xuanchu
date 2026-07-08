@@ -39,6 +39,8 @@ type Service struct {
 	reminderRuleRepo          *storage.ReminderRuleRepository
 	eventNotificationRuleRepo *storage.EventNotificationRuleRepository
 	notificationDeliveryRepo  *storage.NotificationDeliveryRepository
+	projectAutomationRuleRepo     *storage.ProjectAutomationRuleRepository
+	projectAutomationDeliveryRepo *storage.ProjectAutomationDeliveryRepository
 	extIDRepo                 *storage.ExternalIDRepository
 	runtimeConfig             map[string]string
 	runtimeOverrides          map[string]string
@@ -199,6 +201,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		reminderRuleRepo:          storage.NewReminderRuleRepository(opts.Store.DB()),
 		eventNotificationRuleRepo: storage.NewEventNotificationRuleRepository(opts.Store.DB()),
 		notificationDeliveryRepo:  storage.NewNotificationDeliveryRepository(opts.Store.DB()),
+		projectAutomationRuleRepo:     storage.NewProjectAutomationRuleRepository(opts.Store.DB()),
+		projectAutomationDeliveryRepo: storage.NewProjectAutomationDeliveryRepository(opts.Store.DB()),
 		extIDRepo:                 storage.NewExternalIDRepository(opts.Store.DB()),
 		runtimeConfig:             runtimeConfig,
 		runtimeOverrides:          cloneStringMap(opts.RuntimeOverrides),
@@ -279,6 +283,8 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.reminderRuleRepo = storage.NewReminderRuleRepository(store.DB())
 	clone.eventNotificationRuleRepo = storage.NewEventNotificationRuleRepository(store.DB())
 	clone.notificationDeliveryRepo = storage.NewNotificationDeliveryRepository(store.DB())
+	clone.projectAutomationRuleRepo = storage.NewProjectAutomationRuleRepository(store.DB())
+	clone.projectAutomationDeliveryRepo = storage.NewProjectAutomationDeliveryRepository(store.DB())
 	// token secret key 在事务克隆中必须保留，否则 withAudit 内创建/解密 token 会失败。
 	clone.tokenSecretKey = append([]byte(nil), s.tokenSecretKey...)
 	clone.requireTokenSecret = s.requireTokenSecret
