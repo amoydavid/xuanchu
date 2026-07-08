@@ -42,6 +42,38 @@ func TestEndpointFieldExcludesTaskAndSecret(t *testing.T) {
 	}
 }
 
+// TestEndpointAllowedVarsMatchLegacyWhitelist 锁住 endpoint 字段集与现有
+// allowedEndpointVariable 白名单逐项一致，保证 Task 2 切换派生后行为等价。
+func TestEndpointAllowedVarsMatchLegacyWhitelist(t *testing.T) {
+	allowed := []string{
+		"workspace.id", "workspace.slug", "project.id", "project.slug",
+		"rule.id", "rule.name", "recipient.id",
+		"event.id", "event.type", "event.object_kind", "event.object_id", "actor.id",
+		"delivery.id", "delivery.attempt", "delivery.workspace_id", "delivery.sink_id",
+		"object.kind", "object.id",
+	}
+	for _, name := range allowed {
+		if !templateVarFieldAllowed(name, templateFieldEndpoint) {
+			t.Errorf("%q must be allowed in endpoint (legacy whitelist allowed it)", name)
+		}
+	}
+	// 这些变量在旧 endpoint 白名单里不被允许，schema 必须保持一致。
+	disallowed := []string{
+		"event.version", "event.occurred_at", "event.json",
+		"actor.name",
+		"task.uuid", "task.title",
+	}
+	for _, name := range disallowed {
+		if templateVarFieldAllowed(name, templateFieldEndpoint) {
+			t.Errorf("%q must NOT be allowed in endpoint (legacy whitelist did not allow it)", name)
+		}
+	}
+	// prefix 变量在 endpoint 的可用性：recipient.external_ids.* 允许，secret.* 不允许。
+	if !templateVarFieldAllowed("recipient.external_ids.feishu", templateFieldEndpoint) {
+		t.Error("recipient.external_ids.* must be allowed in endpoint")
+	}
+}
+
 func TestTriggerGrouping(t *testing.T) {
 	// reminder 组不含 event.* / actor.*。
 	reminderVars := templateVarNamesForTrigger(templateTriggerReminder)

@@ -72,18 +72,18 @@ var notificationTemplateVarSpecs = []templateVarSpec{
 	{Name: "reminder.window_start", Description: "提醒窗口起始（unix）", Fields: []templateField{templateFieldBody}, Triggers: []templateTrigger{templateTriggerReminder}},
 	{Name: "reminder.window_end", Description: "提醒窗口结束（unix）", Fields: []templateField{templateFieldBody}, Triggers: []templateTrigger{templateTriggerReminder}},
 
-	// --- 仅 event：event（event.json 仅 body） ---
+	// --- 仅 event：event（id/type/object_kind/object_id 可在 endpoint；version/occurred_at/json 仅 body，与现有 endpoint 白名单一致） ---
 	{Name: "event.id", Description: "事件 ID", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
 	{Name: "event.type", Description: "事件类型", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
-	{Name: "event.version", Description: "事件版本", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
-	{Name: "event.occurred_at", Description: "事件发生时间（unix）", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
+	{Name: "event.version", Description: "事件版本", Fields: []templateField{templateFieldBody}, Triggers: []templateTrigger{templateTriggerEvent}},
+	{Name: "event.occurred_at", Description: "事件发生时间（unix）", Fields: []templateField{templateFieldBody}, Triggers: []templateTrigger{templateTriggerEvent}},
 	{Name: "event.object_kind", Description: "事件对象类型", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
 	{Name: "event.object_id", Description: "事件对象 ID", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
 	{Name: "event.json", Description: "原始事件 JSON", Fields: []templateField{templateFieldBody}, Triggers: []templateTrigger{templateTriggerEvent}},
 
-	// --- 仅 event：actor ---
+	// --- 仅 event：actor（id 可在 endpoint；name 仅 body） ---
 	{Name: "actor.id", Description: "操作者 ID", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
-	{Name: "actor.name", Description: "操作者名称", Fields: bothFields(), Triggers: []templateTrigger{templateTriggerEvent}},
+	{Name: "actor.name", Description: "操作者名称", Fields: []templateField{templateFieldBody}, Triggers: []templateTrigger{templateTriggerEvent}},
 
 	// --- 通用：secret（仅 body，需在 sink secret_refs 声明） ---
 	{Name: "secret.*", Description: "在 sink secret_refs 声明的密钥", Fields: []templateField{templateFieldBody}, Triggers: bothTriggers(), IsPrefix: true, PrefixGroup: "secret"},
