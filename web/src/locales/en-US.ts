@@ -518,6 +518,11 @@ export const enUS = {
     sinkMaxConcurrencyLabel: "Max concurrency",
     sinkHeaderTemplatesLabel: "Header templates",
     sinkBodyTemplateLabel: "Body template",
+    templateVars: {
+      titleReminder: "Available variables (reminder)",
+      titleEvent: "Available variables (event)",
+      bodyPreview: "Body template preview of this sink",
+    },
     sinkBodyContentTypeLabel: "Body content type",
     sinkSecretRefsLabel: "Secret refs",
     secretRefAlias: "alias",

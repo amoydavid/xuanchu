@@ -505,6 +505,11 @@ export const zhCN = {
     sinkMaxConcurrencyLabel: "最大并发",
     sinkHeaderTemplatesLabel: "header 模板",
     sinkBodyTemplateLabel: "body 模板",
+    templateVars: {
+      titleReminder: "可用变量（定时提醒）",
+      titleEvent: "可用变量（事件通知）",
+      bodyPreview: "该 Sink 的 body 模板预览",
+    },
     sinkBodyContentTypeLabel: "body content type",
     sinkSecretRefsLabel: "secret refs",
     secretRefAlias: "alias",
