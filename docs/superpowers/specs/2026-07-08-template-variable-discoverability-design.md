@@ -73,16 +73,16 @@
 | `reminder.window_end` | ✗ | ✓ | ✓ | ✗ | 提醒窗口结束（unix） |
 | `event.id` | ✓ | ✓ | ✗ | ✓ | 事件 ID |
 | `event.type` | ✓ | ✓ | ✗ | ✓ | 事件类型 |
-| `event.version` | ✓ | ✓ | ✗ | ✓ | 事件版本 |
-| `event.occurred_at` | ✓ | ✓ | ✗ | ✓ | 事件发生时间（unix） |
+| `event.version` | ✗ | ✓ | ✗ | ✓ | 事件版本（仅 body） |
+| `event.occurred_at` | ✗ | ✓ | ✗ | ✓ | 事件发生时间（unix，仅 body） |
 | `event.object_kind` | ✓ | ✓ | ✗ | ✓ | 事件对象类型 |
 | `event.object_id` | ✓ | ✓ | ✗ | ✓ | 事件对象 ID |
 | `event.json` | ✗ | ✓ | ✗ | ✓ | 原始事件 JSON（仅 body） |
 | `actor.id` | ✓ | ✓ | ✗ | ✓ | 操作者 ID |
-| `actor.name` | ✓ | ✓ | ✗ | ✓ | 操作者名称 |
+| `actor.name` | ✗ | ✓ | ✗ | ✓ | 操作者名称（仅 body） |
 | `secret.*` | ✗ | ✓ | ✓ | ✓ | 在 sink secret_refs 声明的密钥（prefix，需声明） |
 
-注：`event.json` 当前在 `allowedEndpointVariable` 里**未列入** endpoint 白名单（只列了 `event.id/type/object_kind/object_id`），本次重构保持这一现状，不扩大 endpoint 可用范围。
+注：现有 `allowedEndpointVariable` 只允许 `event.id/type/object_kind/object_id` 和 `actor.id` 出现在 URL 模板，`event.version`/`event.occurred_at`/`event.json`/`actor.name` 均不在 endpoint 白名单。本次重构保持这一现状，不扩大 endpoint 可用范围。
 
 ## 5. 设计
 
