@@ -104,6 +104,30 @@ export async function listProjectAutomations(projectSlug: string, includeDisable
   return workspaceApiGet<ProjectAutomationRule[]>(`/api/v1/projects/${projectSlug}/automations${q}`)
 }
 
+// AutomationProviderConfigKey 是项目自动化需要的 Agent Provider 配置 key。
+export const AUTOMATION_PROVIDER_KEYS = [
+  "agent.provider.base_url",
+  "agent.provider.api_key",
+  "agent.provider.model",
+  "agent.provider.allowed_hosts",
+] as const
+
+// AutomationProviderConfig 是 Agent Provider 配置卡片读取/保存的最小结构。
+// api_key 展示时遮掩为布尔「已设置」，不回显明文。
+export type AutomationProviderConfig = {
+  base_url: string
+  api_key_set: boolean
+  model: string
+  allowed_hosts: string
+}
+
+export const EMPTY_AUTOMATION_PROVIDER_CONFIG: AutomationProviderConfig = {
+  base_url: "",
+  api_key_set: false,
+  model: "",
+  allowed_hosts: "",
+}
+
 export async function previewProjectAutomation(projectSlug: string, input: ProjectAutomationRuleInput) {
   return workspaceApiPost<ProjectAutomationPreview>(`/api/v1/projects/${projectSlug}/automations/preview`, input)
 }

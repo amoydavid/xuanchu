@@ -44,6 +44,19 @@ vi.mock("./project-automations-api", () => ({
   disableProjectAutomationRule: vi.fn(),
   deleteProjectAutomation: vi.fn(),
   listProjectAutomationDeliveries: vi.fn(),
+  EMPTY_AUTOMATION_PROVIDER_CONFIG: { base_url: "", api_key_set: false, model: "", allowed_hosts: "" },
+  AUTOMATION_PROVIDER_KEYS: ["agent.provider.base_url"],
+}))
+
+// 页面集成 AutomationProviderConfigSection，需要 mock project-api 的 config 读写。
+vi.mock("@/features/workspace/project-workbench/api/project-api", () => ({
+  listProjectConfig: vi.fn(async () => [
+    { key: "agent.provider.base_url", value: "https://agent.example.com" },
+    { key: "agent.provider.api_key", value: "sk-test" },
+    { key: "agent.provider.model", value: "project-operator" },
+    { key: "agent.provider.allowed_hosts", value: '["agent.example.com"]' },
+  ]),
+  setProjectConfig: vi.fn(async () => undefined),
 }))
 
 const samplePreview = {
