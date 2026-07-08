@@ -197,3 +197,40 @@ func TestNotificationRequestTemplateMissingSecretDeadLettersRecipient(t *testing
 	})
 	assertRuntimeCode(t, err, "template_unresolved")
 }
+
+func TestEndpointTemplateValidationUnchanged(t *testing.T) {
+	// secret.* 和 task.* 在 endpoint 模板里被禁止（行为不变）。
+	if err := validateEndpointTemplateVariables("{{secret.token}}"); err == nil {
+		t.Error("secret.* in endpoint must be rejected")
+	}
+	if err := validateEndpointTemplateVariables("{{task.title}}"); err == nil {
+		t.Error("task.* in endpoint must be rejected")
+	}
+	// 通用变量允许。
+	cases := []string{
+		"{{workspace.id}}", "{{workspace.slug}}",
+		"{{project.id}}", "{{project.slug}}",
+		"{{rule.id}}", "{{rule.name}}",
+		"{{recipient.id}}", "{{recipient.external_ids.feishu}}",
+		"{{event.id}}", "{{event.type}}", "{{event.object_kind}}", "{{event.object_id}}",
+		"{{actor.id}}",
+		"{{delivery.id}}", "{{delivery.attempt}}", "{{delivery.workspace_id}}", "{{delivery.sink_id}}",
+		"{{object.kind}}", "{{object.id}}",
+	}
+	for _, tpl := range cases {
+		if err := validateEndpointTemplateVariables(tpl); err != nil {
+			t.Errorf("endpoint template %q should be allowed, got err: %v", tpl, err)
+		}
+	}
+	// 这些变量在 endpoint 不允许（保持现状）。
+	disallowed := []string{"{{event.version}}", "{{event.occurred_at}}", "{{event.json}}", "{{actor.name}}"}
+	for _, tpl := range disallowed {
+		if err := validateEndpointTemplateVariables(tpl); err == nil {
+			t.Errorf("endpoint template %q must be rejected (保持现状)", tpl)
+		}
+	}
+	// 未知变量禁止。
+	if err := validateEndpointTemplateVariables("{{unknown.var}}"); err == nil {
+		t.Error("unknown var in endpoint must be rejected")
+	}
+}

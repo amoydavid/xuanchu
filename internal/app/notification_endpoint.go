@@ -206,9 +206,6 @@ func validateResolvedNotificationURL(raw string, allowedHosts []string) error {
 func validateEndpointTemplateVariables(tpl string) error {
 	for _, match := range templateVarPattern.FindAllStringSubmatch(tpl, -1) {
 		name := match[1]
-		if strings.HasPrefix(name, "secret.") || strings.HasPrefix(name, "task.") {
-			return RuntimeError{Code: "endpoint_template_invalid", Message: "endpoint template contains forbidden variable"}
-		}
 		if !allowedEndpointVariable(name) {
 			return RuntimeError{Code: "endpoint_template_invalid", Message: "endpoint template contains unsupported variable"}
 		}
@@ -217,20 +214,7 @@ func validateEndpointTemplateVariables(tpl string) error {
 }
 
 func allowedEndpointVariable(name string) bool {
-	switch {
-	case name == "workspace.id", name == "workspace.slug", name == "project.id", name == "project.slug", name == "rule.id", name == "rule.name", name == "recipient.id":
-		return true
-	case name == "event.id", name == "event.type", name == "event.object_kind", name == "event.object_id", name == "actor.id":
-		return true
-	case name == "delivery.id", name == "delivery.attempt", name == "delivery.workspace_id", name == "delivery.sink_id":
-		return true
-	case name == "object.kind", name == "object.id":
-		return true
-	case strings.HasPrefix(name, "recipient.external_ids."):
-		return true
-	default:
-		return false
-	}
+	return templateVarFieldAllowed(name, templateFieldEndpoint)
 }
 
 func renderNotificationTemplate(tpl string, input NotificationRequestResolveInput, allowSecrets bool) (string, error) {
