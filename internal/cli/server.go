@@ -33,6 +33,8 @@ func newServerCommand(opts Options) *cobra.Command {
 	var reminderSchedulerInterval time.Duration
 	var notificationDispatcherInterval time.Duration
 	var hookDispatcherInterval time.Duration
+	var automationSchedulerInterval time.Duration
+	var automationDispatcherInterval time.Duration
 	var notificationMaxConcurrency int
 	var hookMaxConcurrency int
 	var notificationBatchSize int
@@ -210,13 +212,21 @@ func newServerCommand(opts Options) *cobra.Command {
 				Clock:  app.RealClock{},
 				Logger: logger,
 			})
+			automationScheduler := app.NewProjectAutomationScheduler(app.ProjectAutomationSchedulerOptions{
+				Store: store,
+				Clock: app.RealClock{},
+			})
+			automationDispatcher := app.NewProjectAutomationDispatcher(app.ProjectAutomationDispatcherOptions{
+				Store: store,
+				Clock: app.RealClock{},
+			})
 			runCtx, cancelRun := context.WithCancel(context.Background())
 			defer cancelRun()
 			signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stopSignals()
 
 			var runtimeWG sync.WaitGroup
-			runtimeWG.Add(5)
+			runtimeWG.Add(7)
 			// 解析 config secret key（TOML [security].config_secret_key）
 			secretKey, err := app.ParseConfigSecretKey(cfg.SecretKey)
 			if errors.Is(err, app.ErrConfigSecretKeyMissing) {
@@ -265,6 +275,20 @@ func newServerCommand(opts Options) *cobra.Command {
 				defer runtimeWG.Done()
 				if err := runReminderSchedulerLoop(runCtx, reminderScheduler, reminderSchedulerInterval); err != nil {
 					errCh <- fmt.Errorf("reminder scheduler: %w", err)
+				}
+			}()
+			// 项目自动化调度器：扫描 daily_at 规则并入队
+			go func() {
+				defer runtimeWG.Done()
+				if err := automationScheduler.Run(runCtx, automationSchedulerInterval); err != nil {
+					errCh <- fmt.Errorf("automation scheduler: %w", err)
+				}
+			}()
+			// 项目自动化投递 dispatcher：认领到期投递并发送 OpenAI 兼容请求
+			go func() {
+				defer runtimeWG.Done()
+				if err := automationDispatcher.Run(runCtx, automationDispatcherInterval); err != nil {
+					errCh <- fmt.Errorf("automation dispatcher: %w", err)
 				}
 			}()
 
@@ -363,6 +387,8 @@ func newServerCommand(opts Options) *cobra.Command {
 	cmd.Flags().DurationVar(&reminderSchedulerInterval, "reminder-scheduler-interval", 60*time.Second, "reminder scheduler interval")
 	cmd.Flags().DurationVar(&notificationDispatcherInterval, "notification-dispatcher-interval", 5*time.Second, "notification dispatcher interval")
 	cmd.Flags().DurationVar(&hookDispatcherInterval, "hook-dispatcher-interval", 5*time.Second, "hook dispatcher interval")
+	cmd.Flags().DurationVar(&automationSchedulerInterval, "automation-scheduler-interval", 60*time.Second, "project automation scheduler interval")
+	cmd.Flags().DurationVar(&automationDispatcherInterval, "automation-dispatcher-interval", 5*time.Second, "project automation delivery dispatcher interval")
 	cmd.Flags().StringArrayVar(&mcpTrustedProxyHosts, "mcp-trusted-proxy-host", nil, "trusted external Host for HTTP MCP reverse proxy; repeatable")
 	cmd.Flags().IntVar(&notificationMaxConcurrency, "notification-dispatcher-max-concurrency", 0, "notification dispatcher max concurrency")
 	cmd.Flags().IntVar(&hookMaxConcurrency, "hook-dispatcher-max-concurrency", 0, "hook dispatcher max concurrency")

@@ -41,7 +41,37 @@ func NewProjectAutomationScheduler(opts ProjectAutomationSchedulerOptions) *Proj
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 100
 	}
+	if opts.ServiceFactory == nil {
+		opts.ServiceFactory = NewAutomationBackgroundServiceFactory(opts.Store, opts.Clock)
+	}
 	return &ProjectAutomationScheduler{store: opts.Store, clock: opts.Clock, serviceFactory: opts.ServiceFactory, batchSize: opts.BatchSize}
+}
+
+// NewAutomationBackgroundServiceFactory 返回一个后台 service 工厂，按 workspaceID 构建
+// 系统 service，用于调度器和投递 dispatcher 解析 config secret 和渲染上下文。
+// 不走 actor 鉴权链路，只用于后台投递。
+func NewAutomationBackgroundServiceFactory(store *storage.Store, clock Clock) func(workspaceID string) *Service {
+	return func(workspaceID string) *Service {
+		slug := workspaceID
+		if ws, err := storage.NewWorkspaceRepository(store.DB()).GetByID(workspaceID); err == nil && ws.Slug != "" {
+			slug = ws.Slug
+		}
+		svc, err := NewService(ServiceOptions{
+			Store:                 store,
+			Clock:                 clock,
+			DisableScopeBootstrap: true,
+			Runtime: &RuntimeContext{
+				ActorType:     "system",
+				WorkspaceID:   workspaceID,
+				WorkspaceSlug: slug,
+				Role:          RoleAdmin,
+			},
+		})
+		if err != nil {
+			return nil
+		}
+		return svc
+	}
 }
 
 // RunOnce 扫描所有启用规则，对到期的 daily_at 规则入队，按 dedupe_key 去重。
@@ -87,6 +117,31 @@ func (s *ProjectAutomationScheduler) RunOnce(ctx context.Context) (ProjectAutoma
 		result.DeliveriesEnqueued++
 	}
 	return result, nil
+}
+
+// Run 以 interval 间隔循环执行 RunOnce，直到 ctx 取消。供 server 后台调度使用。
+func (s *ProjectAutomationScheduler) Run(ctx context.Context, interval time.Duration) error {
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+	if _, err := s.RunOnce(ctx); err != nil && ctx.Err() == nil {
+		return err
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if _, err := s.RunOnce(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+		}
+	}
 }
 
 // automationScheduleDue 判断当前时间是否已经过了规则今天的计划时间。
