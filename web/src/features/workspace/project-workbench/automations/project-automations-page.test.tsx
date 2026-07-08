@@ -7,6 +7,9 @@ import { i18n } from "@/i18n"
 import { ProjectAutomationsPage } from "./project-automations-page"
 import {
   createProjectAutomation,
+  listProjectAutomationDeliveries,
+  listProjectAutomations,
+  previewProjectAutomation,
   testProjectAutomationRule,
 } from "./project-automations-api"
 
@@ -25,9 +28,48 @@ vi.mock("@/features/workspace/project-workbench/project/project-layout", () => (
   }),
 }))
 
-vi.mock("./project-automations-api", async () => {
-  return {
-    listProjectAutomations: vi.fn(async () => [
+// 页面依赖 EditFeedback（ProjectLayout 提供），单测未挂 provider，mock 为 vi.fn。
+const feedback = { failure: vi.fn(), success: vi.fn() }
+vi.mock("@/features/workspace/project-workbench/shared/edit-feedback", () => ({
+  useEditFeedback: () => feedback,
+}))
+
+vi.mock("./project-automations-api", () => ({
+  listProjectAutomations: vi.fn(),
+  previewProjectAutomation: vi.fn(),
+  createProjectAutomation: vi.fn(),
+  updateProjectAutomation: vi.fn(),
+  testProjectAutomationRule: vi.fn(),
+  enableProjectAutomationRule: vi.fn(),
+  disableProjectAutomationRule: vi.fn(),
+  deleteProjectAutomation: vi.fn(),
+  listProjectAutomationDeliveries: vi.fn(),
+}))
+
+const samplePreview = {
+  method: "POST",
+  url: "https://agent.example.com/v1/chat/completions",
+  headers: { Authorization: "Bearer ****", "Content-Type": "application/json" },
+  body: { model: "project-operator", messages: [] },
+  warnings: [],
+}
+
+function renderPage() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={qc}>
+      <ProjectAutomationsPage projectSlug="adsops" workspaceSlug="local" />
+    </QueryClientProvider>
+  )
+}
+
+describe("ProjectAutomationsPage", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    layoutState.closed = false
+    vi.mocked(listProjectAutomations).mockResolvedValue([
       {
         id: "rule-1",
         workspace_id: "ws",
@@ -51,39 +93,11 @@ vi.mock("./project-automations-api", async () => {
         created_at: 1,
         modified_at: 1,
       },
-    ]),
-    previewProjectAutomation: vi.fn(async () => ({
-      method: "POST",
-      url: "https://agent.example.com/v1/chat/completions",
-      headers: { Authorization: "Bearer ****", "Content-Type": "application/json" },
-      body: { model: "project-operator", messages: [] },
-      warnings: [],
-    })),
-    createProjectAutomation: vi.fn(async () => ({ id: "rule-2" })),
-    updateProjectAutomation: vi.fn(async () => ({ id: "rule-1" })),
-    testProjectAutomationRule: vi.fn(async () => ({ id: "delivery-1" })),
-    enableProjectAutomationRule: vi.fn(async () => ({ id: "rule-1", enabled: true })),
-    disableProjectAutomationRule: vi.fn(async () => ({ id: "rule-1", enabled: false })),
-    deleteProjectAutomation: vi.fn(async () => ({ deleted: true })),
-    listProjectAutomationDeliveries: vi.fn(async () => []),
-  }
-})
-
-function renderPage() {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return render(
-    <QueryClientProvider client={qc}>
-      <ProjectAutomationsPage projectSlug="adsops" workspaceSlug="local" />
-    </QueryClientProvider>
-  )
-}
-
-describe("ProjectAutomationsPage", () => {
-  beforeEach(async () => {
-    vi.clearAllMocks()
-    layoutState.closed = false
+    ])
+    vi.mocked(previewProjectAutomation).mockResolvedValue(samplePreview)
+    vi.mocked(createProjectAutomation).mockResolvedValue({ id: "rule-2" } as never)
+    vi.mocked(testProjectAutomationRule).mockResolvedValue({ id: "delivery-1" } as never)
+    vi.mocked(listProjectAutomationDeliveries).mockResolvedValue([])
     await i18n.changeLanguage("zh-CN")
   })
 
@@ -98,6 +112,15 @@ describe("ProjectAutomationsPage", () => {
     )
   })
 
+  it("reports feedback and keeps dialog closed when preview fails", async () => {
+    vi.mocked(previewProjectAutomation).mockRejectedValue(new Error("缺少 config:agent.provider.base_url"))
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "预览投递 JSON" }))
+    await waitFor(() => expect(feedback.failure).toHaveBeenCalledWith("预览失败", expect.stringContaining("base_url")))
+    expect(screen.queryByRole("dialog", { name: "预览投递 JSON" })).toBeNull()
+  })
+
   it("disables write buttons for closed projects", async () => {
     layoutState.closed = true
     renderPage()
@@ -106,14 +129,26 @@ describe("ProjectAutomationsPage", () => {
     expect((screen.getByRole("button", { name: "立即测试" }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it("creates from template and tests a rule", async () => {
+  it("loads event template with event select set to task.assigned", async () => {
     renderPage()
     await userEvent.click(await screen.findByRole("button", { name: "从模板创建" }))
     expect(screen.getByDisplayValue("分配任务后拉群")).toBeTruthy()
-    expect(screen.getByDisplayValue("task.assigned")).toBeTruthy()
+    // 事件类型用 shadcn Select，trigger 是 combobox，展示选中值文本。
+    const eventTrigger = screen.getByRole("combobox", { name: "事件" })
+    expect(eventTrigger).toBeTruthy()
+    expect(eventTrigger.textContent).toContain("task.assigned")
+  })
+
+  it("creates from template, saves, and tests a rule", async () => {
+    renderPage()
+    await userEvent.click(await screen.findByRole("button", { name: "从模板创建" }))
     await userEvent.click(screen.getByRole("button", { name: "保存" }))
-    expect(createProjectAutomation).toHaveBeenCalled()
+    await waitFor(() => expect(createProjectAutomation).toHaveBeenCalled())
+    expect(feedback.success).toHaveBeenCalledWith("规则已保存")
+    // 保存成功后 draft 重置为默认 schedule 模板。
+    expect(screen.getByDisplayValue("每日项目巡检")).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
-    expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1")
+    await waitFor(() => expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1"))
+    expect(feedback.success).toHaveBeenCalledWith("已创建测试投递")
   })
 })

@@ -1,8 +1,25 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
 import type { ProjectAutomationRuleInput } from "./project-automations-api"
+
+// AUTOMATION_EVENT_OPTIONS 是事件触发可选的事件类型，对齐后端 allowedHookEventTypes 白名单。
+export const AUTOMATION_EVENT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "task.assigned", label: "task.assigned（任务分配）" },
+  { value: "task.completed", label: "task.completed（任务完成）" },
+  { value: "task.modified", label: "task.modified（任务修改）" },
+  { value: "task.unblocked", label: "task.unblocked（任务解除阻塞）" },
+  { value: "project.annotated", label: "project.annotated（项目备注变更）" },
+  { value: "project.transitioned", label: "project.transitioned（项目状态转移）" },
+]
 
 // defaultScheduleAutomationInput 是「每日项目巡检」模板的默认表单值。
 export const defaultScheduleAutomationInput: ProjectAutomationRuleInput = {
@@ -43,23 +60,35 @@ type Props = {
   onSave: () => void
   onTest: () => void
   disabled?: boolean
+  previewPending?: boolean
 }
 
 // AutomationRuleForm 是定时/事件规则的编辑表单，受控组件。
-export function AutomationRuleForm({ value, onChange, onPreview, onSave, onTest, disabled }: Props) {
+export function AutomationRuleForm({
+  value,
+  onChange,
+  onPreview,
+  onSave,
+  onTest,
+  disabled,
+  previewPending,
+}: Props) {
   return (
     <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
       <div className="grid gap-2">
-        <label className="text-sm font-medium">名称</label>
+        <label className="text-sm font-medium" htmlFor="automation-name">名称</label>
         <Input
+          id="automation-name"
           value={value.name}
           onChange={(event) => onChange({ ...value, name: event.target.value })}
           disabled={disabled}
         />
       </div>
       <div className="grid gap-2">
-        <label className="text-sm font-medium">触发类型</label>
+        <label className="text-sm font-medium" htmlFor="automation-trigger-type">触发类型</label>
         <select
+          id="automation-trigger-type"
+          aria-label="触发类型"
           value={value.trigger_type}
           onChange={(event) =>
             onChange({
@@ -76,8 +105,10 @@ export function AutomationRuleForm({ value, onChange, onPreview, onSave, onTest,
       </div>
       {value.trigger_type === "schedule" ? (
         <div className="grid gap-2">
-          <label className="text-sm font-medium">时间</label>
+          <label className="text-sm font-medium" htmlFor="automation-time">时间</label>
           <Input
+            id="automation-time"
+            aria-label="时间"
             value={value.trigger_config.schedule_value ?? ""}
             onChange={(event) =>
               onChange({
@@ -92,22 +123,33 @@ export function AutomationRuleForm({ value, onChange, onPreview, onSave, onTest,
       ) : (
         <div className="grid gap-2">
           <label className="text-sm font-medium">事件</label>
-          <Input
+          <Select
             value={value.trigger_config.event_type ?? ""}
-            onChange={(event) =>
+            onValueChange={(event_type) =>
               onChange({
                 ...value,
-                trigger_config: { ...value.trigger_config, event_type: event.target.value },
+                trigger_config: { ...value.trigger_config, event_type },
               })
             }
             disabled={disabled}
-            placeholder="task.assigned"
-          />
+          >
+            <SelectTrigger aria-label="事件" className="w-full">
+              <SelectValue placeholder="选择事件" />
+            </SelectTrigger>
+            <SelectContent>
+              {AUTOMATION_EVENT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
       <div className="grid gap-2">
-        <label className="text-sm font-medium">指令模板</label>
+        <label className="text-sm font-medium" htmlFor="automation-instruction">指令模板</label>
         <Textarea
+          id="automation-instruction"
           value={value.instruction_template}
           onChange={(event) => onChange({ ...value, instruction_template: event.target.value })}
           disabled={disabled}
@@ -115,7 +157,9 @@ export function AutomationRuleForm({ value, onChange, onPreview, onSave, onTest,
         />
       </div>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" onClick={onPreview} disabled={disabled}>预览投递 JSON</Button>
+        <Button type="button" variant="outline" onClick={onPreview} disabled={disabled || previewPending}>
+          {previewPending ? "生成中..." : "预览投递 JSON"}
+        </Button>
         <Button type="button" onClick={onSave} disabled={disabled}>保存</Button>
         <Button type="button" variant="outline" onClick={onTest} disabled={disabled}>立即测试</Button>
       </div>

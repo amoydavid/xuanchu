@@ -48,6 +48,9 @@ func NewProjectAutomationDispatcher(opts ProjectAutomationDispatcherOptions) *Pr
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 50
 	}
+	if opts.ServiceFactory == nil {
+		opts.ServiceFactory = NewAutomationBackgroundServiceFactory(opts.Store, opts.Clock)
+	}
 	return &ProjectAutomationDispatcher{store: opts.Store, clock: opts.Clock, client: opts.Client, batchSize: opts.BatchSize, serviceFactory: opts.ServiceFactory}
 }
 
@@ -94,6 +97,31 @@ func (d *ProjectAutomationDispatcher) RunOnce(ctx context.Context) (ProjectAutom
 		result.Failed++
 	}
 	return result, nil
+}
+
+// Run 以 interval 间隔循环执行 RunOnce，直到 ctx 取消。供 server 后台调度使用。
+func (d *ProjectAutomationDispatcher) Run(ctx context.Context, interval time.Duration) error {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	if _, err := d.RunOnce(ctx); err != nil && ctx.Err() == nil {
+		return err
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if _, err := d.RunOnce(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+		}
+	}
 }
 
 func (d *ProjectAutomationDispatcher) maxAttemptsFor(row storage.ProjectAutomationDelivery) int {
