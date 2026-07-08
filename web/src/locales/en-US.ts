@@ -233,6 +233,7 @@ export const enUS = {
     overview: "Overview",
     tasks: "Tasks",
     activity: "Activity",
+    automations: "Automations",
     railExpand: "Expand rail",
     railCollapse: "Collapse rail",
     railTitle: "Project info",

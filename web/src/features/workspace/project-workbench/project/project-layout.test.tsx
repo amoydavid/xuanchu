@@ -181,4 +181,20 @@ describe("ProjectLayout", () => {
     await user.click(screen.getByRole("button", { name: "展开右栏" }))
     expect(screen.getByText("项目信息")).toBeTruthy()
   })
+
+  it("renders project automation tab link", async () => {
+    render(
+      <ProjectLayout
+        activeTab="automations"
+        projectSlug="ops"
+        workspaceSlug="local"
+      >
+        <div />
+      </ProjectLayout>,
+      { wrapper: Wrapper }
+    )
+    const automationLink = await screen.findByRole("link", { name: "自动化" }) as HTMLAnchorElement
+    expect(automationLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/automations")
+    expect(automationLink.getAttribute("aria-current")).toBe("page")
+  })
 })

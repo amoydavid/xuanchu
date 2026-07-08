@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
 
-export type ProjectTabKey = "overview" | "tasks" | "activity"
+export type ProjectTabKey = "overview" | "tasks" | "activity" | "automations"
 
 type ProjectTabsProps = {
   activeTab: ProjectTabKey
@@ -38,6 +38,11 @@ export function ProjectTabs({
       key: "activity",
       label: t("projectSubpages.activity"),
       to: "/workspaces/$workspaceSlug/projects/$projectSlug/activity",
+    },
+    {
+      key: "automations",
+      label: t("projectSubpages.automations"),
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/automations",
     },
   ]
   return (

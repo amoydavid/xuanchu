@@ -41,6 +41,30 @@ export function canProjectManage(input: WorkbenchPermissionInput): boolean {
   )
 }
 
+// canProjectAutomationRead 校验项目自动化读权限：project:read + hook:read。
+// 与后端 requireProjectAutomationRead 对齐，所有可登录成员在持有双 scope 时可读。
+export function canProjectAutomationRead(input: WorkbenchPermissionInput): boolean {
+  return (
+    canProjectRead(input) &&
+    hasScope(input.scopes, "hook:read") &&
+    ["owner", "admin", "member", "viewer"].includes(input.role ?? "")
+  )
+}
+
+// canProjectAutomationWrite 校验项目自动化写权限：project:write + hook:write。
+// 与后端 requireProjectAutomationWrite 对齐，收紧到 owner/admin。
+export function canProjectAutomationWrite(input: WorkbenchPermissionInput): boolean {
+  return canProjectManage(input) && hasScope(input.scopes, "hook:write")
+}
+
+// canProjectRead 判断是否可读项目，用于自动化读权限组合。
+export function canProjectRead(input: WorkbenchPermissionInput): boolean {
+  return (
+    hasScope(input.scopes, "project:read") &&
+    ["owner", "admin", "member", "viewer"].includes(input.role ?? "")
+  )
+}
+
 // canConfigManage 控制 workspace 级 ConfigDefinition 写入。
 // config 定义是 workspace 控制面，权限收紧到 owner/admin + config:write scope。
 export function canConfigManage(input: WorkbenchPermissionInput): boolean {
