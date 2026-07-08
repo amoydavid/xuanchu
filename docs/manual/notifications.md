@@ -285,6 +285,15 @@ Web Console 的 `/notifications` 与 `/hooks` 现在渲染同一个**出站集�
 
 虽然底层 API 资源名仍是 `notification-sinks`，但 sink 实际承载 webhook、HTTP 模板、URL/secret/重试/并发等所有出站配置——它同时服务「面向机器的 Hook」和「面向人的通知/提醒规则」。请在控制台的 **Sinks tab** 创建 sink，再在 Hooks / 通知规则 / 定时规则 tab 引用 sink。
 
+### 模板变量可发现性
+
+在 Web Console 的提醒规则、事件通知规则创建表单中，选中 Sink 后会显示当前规则类型可用的模板变量清单。不同规则类型显示的变量不同：
+
+- **定时提醒规则**：显示 `task.*`、`reminder.*` 等（不显示 `event.*`）。
+- **事件通知规则**：显示 `event.*`、`actor.*` 等（不显示 `task.*`）。
+
+若选中的 Sink 是 `http_template` 类型，还会只读预览该 Sink 的 body 模板，并把其中的 `{{var}}` 高亮，方便对照。该变量清单也可通过 `GET /api/v1/notification-template-vars` 获取。
+
 ### Sink 测试投递
 
 每个 sink 都可以「发送测试」，验证 URL、模板、allowed hosts、网络防护是否工作，无需制造真实任务事件。详见 [hooks.md](./hooks.md#sink-测试投递)。测试投递写 audit，不污染正式 delivery 队列。
