@@ -1,8 +1,12 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -61,9 +65,11 @@ func defineProviderConfigForTestWithBaseURL(t *testing.T, svc *Service, baseURL 
 	defineConfigForTest(t, svc, "agent.provider.base_url", false, baseURL)
 	defineConfigForTest(t, svc, "agent.provider.api_key", true, "sk-test")
 	defineConfigForTest(t, svc, "agent.provider.model", false, "project-operator")
-	host := strings.TrimPrefix(strings.TrimPrefix(baseURL, "https://"), "http://")
-	host = strings.Split(host, "/")[0]
-	defineConfigForTest(t, svc, "agent.provider.allowed_hosts", false, `["`+host+`"]`)
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		t.Fatalf("parse base url %q: %v", baseURL, err)
+	}
+	defineConfigForTest(t, svc, "agent.provider.allowed_hosts", false, `["`+parsed.Hostname()+`"]`)
 }
 
 func defaultAutomationActionForTest() ProjectAutomationActionConfig {
@@ -180,5 +186,130 @@ func TestProjectAutomationPreviewMasksSecretAndBuildsContext(t *testing.T) {
 	}
 	if !contains(body, "feishu.chat_id") || !contains(body, "oc_xxx") {
 		t.Fatalf("preview body missing project_config: %s", body)
+	}
+}
+
+func TestProjectAutomationSchedulerEnqueuesDailyRuleOnce(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	rule, err := f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name:          "每日项目巡检",
+		Enabled:       true,
+		TriggerType:   "schedule",
+		TriggerConfig: ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+		Action:        defaultAutomationActionForTest(),
+		Context:       ProjectAutomationContextConfig{Include: []string{"workspace", "project"}},
+		InstructionTemplate: "生成巡检",
+	})
+	if err != nil {
+		t.Fatalf("AddProjectAutomationRule: %v", err)
+	}
+	defineProviderConfigForTest(t, f.svc)
+	f.clock.NowUnix = mustUnix(t, "2026-07-08T09:31:00+08:00")
+	scheduler := NewProjectAutomationScheduler(ProjectAutomationSchedulerOptions{Store: f.store, Clock: f.clock, ServiceFactory: f.serviceFactory})
+	result, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.DeliveriesEnqueued != 1 {
+		t.Fatalf("DeliveriesEnqueued = %d", result.DeliveriesEnqueued)
+	}
+	result, err = scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce duplicate: %v", err)
+	}
+	if result.DeliveriesEnqueued != 0 {
+		t.Fatalf("duplicate run enqueued %d deliveries for rule %s", result.DeliveriesEnqueued, rule.ID)
+	}
+}
+
+func TestProjectAutomationEventEnqueueUsesAddedAssignees(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, _ := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	alice := createWorkspaceMemberForTest(t, f.svc, "alice")
+	rule, err := f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name:          "分配任务后拉群",
+		Enabled:       true,
+		TriggerType:   "event",
+		TriggerConfig: ProjectAutomationTriggerConfig{EventType: "task.assigned"},
+		Condition:     ProjectAutomationCondition{OnlyAddedAssignees: true},
+		Action:        defaultAutomationActionForTest(),
+		Context:       ProjectAutomationContextConfig{Include: []string{"event", "task", "added_assignees", "project"}},
+		InstructionTemplate: "处理新增负责人",
+	})
+	if err != nil {
+		t.Fatalf("AddProjectAutomationRule: %v", err)
+	}
+	_ = rule
+	defineProviderConfigForTest(t, f.svc)
+	tsk, err := f.svc.Add(AddInput{Title: "调整预算策略", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add task: %v", err)
+	}
+	err = f.svc.Modify(tsk.UUID, ModifyInput{AddAssignees: []string{alice.Name}})
+	if err != nil {
+		t.Fatalf("Modify assignee: %v", err)
+	}
+	deliveries, err := f.svc.ListProjectAutomationDeliveries(project.Slug, ProjectAutomationDeliveryListInput{RuleID: rule.ID})
+	if err != nil {
+		t.Fatalf("ListProjectAutomationDeliveries: %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %#v", deliveries)
+	}
+	if !contains(deliveries[0].RequestBodyPreview, "added_assignees") || !contains(deliveries[0].RequestBodyPreview, alice.ID) {
+		t.Fatalf("delivery preview missing added assignee: %s", deliveries[0].RequestBodyPreview)
+	}
+}
+
+func TestProjectAutomationDispatcherSendsOpenAIRequest(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer sk-test" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["model"] != "project-operator" {
+			t.Fatalf("model = %#v", body["model"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_123","usage":{"prompt_tokens":10,"completion_tokens":4}}`))
+	}))
+	defer target.Close()
+	project, _ := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	defineProviderConfigForTestWithBaseURL(t, f.svc, target.URL)
+	rule, _ := f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name: "每日项目巡检", Enabled: true, TriggerType: "schedule",
+		TriggerConfig: ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+		Action: defaultAutomationActionForTest(), Context: ProjectAutomationContextConfig{Include: []string{"project"}},
+		InstructionTemplate: "巡检",
+	})
+	delivery, err := f.svc.TestProjectAutomationRule(project.Slug, rule.ID)
+	if err != nil {
+		t.Fatalf("TestProjectAutomationRule: %v", err)
+	}
+	dispatcher := NewProjectAutomationDispatcher(ProjectAutomationDispatcherOptions{Store: f.store, Clock: f.clock, Client: target.Client(), ServiceFactory: f.serviceFactory})
+	result, err := dispatcher.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.Succeeded != 1 {
+		t.Fatalf("dispatch result = %#v", result)
+	}
+	got, err := f.svc.ProjectAutomationDeliveryInfo(project.Slug, delivery.ID)
+	if err != nil {
+		t.Fatalf("ProjectAutomationDeliveryInfo: %v", err)
+	}
+	if got.Status != "succeeded" || got.ProviderRequestID != "chatcmpl_123" {
+		t.Fatalf("delivery = %#v", got)
 	}
 }

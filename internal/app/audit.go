@@ -200,6 +200,7 @@ func (s *Service) withAuditEntriesAndEvents(fn func(*Service) ([]AuditEntry, []H
 	}
 	_ = s.enqueueHookEvents(events)
 	_ = s.enqueueEventNotificationDeliveries(events)
+	_ = s.EnqueueProjectAutomationForEvents(events)
 	return nil
 }
 
