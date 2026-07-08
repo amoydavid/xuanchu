@@ -43,6 +43,7 @@ import {
   type ReminderRule,
   type ReminderRuleCreateInput,
 } from "../outbound-api"
+import { TemplateVarHints } from "../template-vars/template-var-hints"
 
 const QUERY_KEY = ["outbound", "reminder-rules"] as const
 
@@ -382,6 +383,12 @@ function ReminderRuleCreateDialog({
               ))}
             </select>
           </div>
+          {sink ? (
+            <TemplateVarHints
+              trigger="reminder"
+              sink={sinks.find((s) => s.id === sink) ?? null}
+            />
+          ) : null}
           {error ? (
             <AlertDialogDescription>
               <span className="text-xs text-destructive">{error}</span>
