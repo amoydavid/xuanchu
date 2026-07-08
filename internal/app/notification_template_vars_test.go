@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -22,6 +23,26 @@ func TestNotificationTemplateVarSpecsCoversAllKnownVars(t *testing.T) {
 		if lookupTemplateVarSpec(name) == nil {
 			t.Errorf("variable %q not declared in schema", name)
 		}
+	}
+}
+
+// TestSchemaEveryVarHandledByValueFunction 是 schema↔取值函数的双向守卫：
+// schema 里声明的每个非 prefix 变量，notificationTemplateValue 都必须有对应取值逻辑，
+// 否则会静默返回 template_unresolved。用 zero input 调用，只断言不报 "unsupported"。
+// 这样未来加 schema 条目但忘了加 case 会立即被测试抓到。
+func TestSchemaEveryVarHandledByValueFunction(t *testing.T) {
+	for _, s := range notificationTemplateVarSpecs {
+		if s.IsPrefix {
+			continue
+		}
+		_, err := notificationTemplateValue(s.Name, NotificationRequestResolveInput{}, false)
+		if err == nil {
+			continue
+		}
+		if runtimeErr, ok := err.(RuntimeError); ok && runtimeErr.Code == "template_unresolved" && strings.Contains(runtimeErr.Message, "unsupported") {
+			t.Errorf("schema variable %q not handled by notificationTemplateValue: %v", s.Name, err)
+		}
+		// 其它错误（如 project missing、secret 未声明）是正常的，zero input 下预期会报。
 	}
 }
 
@@ -81,7 +102,7 @@ func TestTriggerGrouping(t *testing.T) {
 		if isPrefixVarName(name) {
 			continue
 		}
-		if startsWith(name, "event.") || startsWith(name, "actor.") {
+		if strings.HasPrefix(name, "event.") || strings.HasPrefix(name, "actor.") {
 			t.Errorf("reminder trigger must not include %q", name)
 		}
 	}
@@ -91,7 +112,7 @@ func TestTriggerGrouping(t *testing.T) {
 		if isPrefixVarName(name) {
 			continue
 		}
-		if startsWith(name, "task.") || startsWith(name, "reminder.") {
+		if strings.HasPrefix(name, "task.") || strings.HasPrefix(name, "reminder.") {
 			t.Errorf("event trigger must not include %q", name)
 		}
 	}
@@ -116,5 +137,3 @@ func TestPrefixVarsDeclared(t *testing.T) {
 	}
 }
 
-// 辅助：仅用于测试的可读性。
-func startsWith(s, prefix string) bool { return len(s) >= len(prefix) && s[:len(prefix)] == prefix }
