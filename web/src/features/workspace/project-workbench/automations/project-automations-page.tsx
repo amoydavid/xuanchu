@@ -16,6 +16,7 @@ import {
 } from "./project-automations-api"
 import { AutomationDeliveryList } from "./automation-delivery-list"
 import { AutomationPreviewDialog } from "./automation-preview-dialog"
+import { AutomationProviderConfigSection } from "./automation-provider-config"
 import {
   AutomationRuleForm,
   assigneeFeishuTemplateInput,
@@ -32,7 +33,7 @@ function errorMessage(err: unknown): string {
 }
 
 // ProjectAutomationsPage 是项目自动化 tab 主页面：规则列表、编辑表单、预览弹窗和运行记录。
-export function ProjectAutomationsPage({ projectSlug }: Props) {
+export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
   const layout = useProjectLayout()
   const feedback = useEditFeedback()
   const queryClient = useQueryClient()
@@ -122,6 +123,11 @@ export function ProjectAutomationsPage({ projectSlug }: Props) {
           </tbody>
         </table>
       </div>
+      <AutomationProviderConfigSection
+        projectSlug={projectSlug}
+        workspaceSlug={workspaceSlug}
+        disabled={writeDisabled}
+      />
       <AutomationRuleForm
         value={draft}
         onChange={setDraft}
