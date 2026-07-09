@@ -43,7 +43,7 @@ func NewProjectAutomationDispatcher(opts ProjectAutomationDispatcherOptions) *Pr
 		opts.Clock = RealClock{}
 	}
 	if opts.Client == nil {
-		opts.Client = &http.Client{Timeout: 20 * time.Second}
+		opts.Client = &http.Client{Timeout: 120 * time.Second}
 	}
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 50
