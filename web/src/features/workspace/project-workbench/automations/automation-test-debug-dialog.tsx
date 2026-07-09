@@ -93,7 +93,7 @@ function DeliveryDetail({ delivery }: { delivery: ProjectAutomationDelivery }) {
 
       {/* 请求 tab */}
       <TabsContent value="request" className="space-y-2">
-        <div className="text-sm">
+        <div className="text-sm break-all">
           <span className="font-medium">{delivery.rendered_method || "POST"}</span>{" "}
           <span className="text-muted-foreground">{delivery.resolved_url}</span>
         </div>
@@ -193,7 +193,7 @@ export function AutomationTestDebugDialog({ open, onOpenChange, projectSlug, del
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             测试投递结果
@@ -216,7 +216,9 @@ export function AutomationTestDebugDialog({ open, onOpenChange, projectSlug, del
           </DialogDescription>
         </DialogHeader>
         {delivery ? (
-          <DeliveryDetail delivery={delivery} />
+          <div className="max-h-[calc(90vh-8rem)] overflow-y-auto">
+            <DeliveryDetail delivery={delivery} />
+          </div>
         ) : (
           <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
             <LoaderIcon className="mr-2 h-4 w-4 animate-spin" />
