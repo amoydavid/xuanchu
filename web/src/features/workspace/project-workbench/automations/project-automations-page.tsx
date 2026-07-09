@@ -11,7 +11,9 @@ import {
   listProjectAutomations,
   previewProjectAutomation,
   testProjectAutomationRule,
+  updateProjectAutomation,
   type ProjectAutomationPreview,
+  type ProjectAutomationRule,
   type ProjectAutomationRuleInput,
 } from "./project-automations-api"
 import { AutomationDeliveryList } from "./automation-delivery-list"
@@ -32,6 +34,21 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// ruleToInput 把已保存规则转换为表单输入结构（去掉服务端字段）。
+function ruleToInput(rule: ProjectAutomationRule): ProjectAutomationRuleInput {
+  return {
+    name: rule.name,
+    description: rule.description,
+    enabled: rule.enabled,
+    trigger_type: rule.trigger_type,
+    trigger_config: rule.trigger_config,
+    condition: rule.condition,
+    action: rule.action,
+    context: rule.context,
+    instruction_template: rule.instruction_template,
+  }
+}
+
 // ProjectAutomationsPage 是项目自动化 tab 主页面：规则列表、编辑表单、预览弹窗和运行记录。
 export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
   const layout = useProjectLayout()
@@ -39,6 +56,8 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
   const queryClient = useQueryClient()
   const writeDisabled = layout.closed
   const [draft, setDraft] = useState<ProjectAutomationRuleInput>(defaultScheduleAutomationInput)
+  // editingRuleId 非 null 时表示表单处于编辑已存在规则模式。
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
   const [preview, setPreview] = useState<ProjectAutomationPreview | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
@@ -63,12 +82,25 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
   const createMutation = useMutation({
     mutationFn: (input: ProjectAutomationRuleInput) => createProjectAutomation(projectSlug, input),
     onSuccess: () => {
-      feedback.success("规则已保存")
+      feedback.success("规则已创建")
       setDraft(defaultScheduleAutomationInput)
       invalidateRules()
     },
     onError: (err) => {
       feedback.failure("保存失败", errorMessage(err))
+    },
+  })
+  const updateMutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ProjectAutomationRuleInput }) =>
+      updateProjectAutomation(projectSlug, id, input),
+    onSuccess: () => {
+      feedback.success("规则已更新")
+      setEditingRuleId(null)
+      setDraft(defaultScheduleAutomationInput)
+      invalidateRules()
+    },
+    onError: (err) => {
+      feedback.failure("更新失败", errorMessage(err))
     },
   })
   const testMutation = useMutation({
@@ -81,9 +113,23 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
     },
   })
 
+  // startEdit 把规则加载到表单并切换到编辑模式。
+  const startEdit = (rule: ProjectAutomationRule) => {
+    setEditingRuleId(rule.id)
+    setDraft(ruleToInput(rule))
+  }
+
+  // cancelEdit 退出编辑模式，恢复默认 draft。
+  const cancelEdit = () => {
+    setEditingRuleId(null)
+    setDraft(defaultScheduleAutomationInput)
+  }
+
   if (rules.isPending) {
     return <Skeleton className="h-48 w-full" />
   }
+
+  const savePending = createMutation.isPending || updateMutation.isPending
 
   return (
     <section className="space-y-4">
@@ -94,11 +140,23 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
             type="button"
             variant="outline"
             disabled={writeDisabled}
-            onClick={() => setDraft(assigneeFeishuTemplateInput)}
+            onClick={() => {
+              setEditingRuleId(null)
+              setDraft(assigneeFeishuTemplateInput)
+            }}
           >
             从模板创建
           </Button>
-          <Button type="button" disabled={writeDisabled}>新建规则</Button>
+          <Button
+            type="button"
+            disabled={writeDisabled}
+            onClick={() => {
+              setEditingRuleId(null)
+              setDraft(defaultScheduleAutomationInput)
+            }}
+          >
+            新建规则
+          </Button>
         </div>
       </div>
       <div className="overflow-hidden rounded-md border">
@@ -109,6 +167,7 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
               <th className="p-2">名称</th>
               <th className="p-2">触发器</th>
               <th className="p-2">动作</th>
+              <th className="p-2">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -118,6 +177,28 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
                 <td className="p-2 font-medium">{rule.name}</td>
                 <td className="p-2">{triggerSummary(rule)}</td>
                 <td className="p-2">Agent Provider</td>
+                <td className="p-2">
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={writeDisabled}
+                      onClick={() => startEdit(rule)}
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={writeDisabled || testMutation.isPending}
+                      onClick={() => testMutation.mutate(rule.id)}
+                    >
+                      立即测试
+                    </Button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -132,15 +213,18 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
         value={draft}
         onChange={setDraft}
         onPreview={() => previewMutation.mutate(draft)}
-        onSave={() => createMutation.mutate(draft)}
-        onTest={() => {
-          const firstRule = rules.data?.[0]
-          if (firstRule) {
-            testMutation.mutate(firstRule.id)
+        onSave={() => {
+          if (editingRuleId) {
+            updateMutation.mutate({ id: editingRuleId, input: draft })
+          } else {
+            createMutation.mutate(draft)
           }
         }}
+        onCancel={editingRuleId ? cancelEdit : undefined}
+        saveLabel={editingRuleId ? "更新" : "保存"}
         disabled={writeDisabled}
         previewPending={previewMutation.isPending}
+        savePending={savePending}
       />
       <AutomationDeliveryList projectSlug={projectSlug} />
       <AutomationPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} preview={preview} />

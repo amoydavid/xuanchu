@@ -58,9 +58,11 @@ type Props = {
   onChange: (value: ProjectAutomationRuleInput) => void
   onPreview: () => void
   onSave: () => void
-  onTest: () => void
+  onCancel?: () => void
   disabled?: boolean
   previewPending?: boolean
+  savePending?: boolean
+  saveLabel?: string
 }
 
 // AutomationRuleForm 是定时/事件规则的编辑表单，受控组件。
@@ -69,9 +71,11 @@ export function AutomationRuleForm({
   onChange,
   onPreview,
   onSave,
-  onTest,
+  onCancel,
   disabled,
   previewPending,
+  savePending,
+  saveLabel,
 }: Props) {
   return (
     <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
@@ -160,8 +164,12 @@ export function AutomationRuleForm({
         <Button type="button" variant="outline" onClick={onPreview} disabled={disabled || previewPending}>
           {previewPending ? "生成中..." : "预览投递 JSON"}
         </Button>
-        <Button type="button" onClick={onSave} disabled={disabled}>保存</Button>
-        <Button type="button" variant="outline" onClick={onTest} disabled={disabled}>立即测试</Button>
+        <Button type="button" onClick={onSave} disabled={disabled || savePending}>
+          {savePending ? "保存中..." : (saveLabel ?? "保存")}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="outline" onClick={onCancel} disabled={disabled}>取消</Button>
+        ) : null}
       </div>
     </form>
   )

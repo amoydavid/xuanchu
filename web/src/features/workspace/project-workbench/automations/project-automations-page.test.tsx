@@ -11,6 +11,7 @@ import {
   listProjectAutomations,
   previewProjectAutomation,
   testProjectAutomationRule,
+  updateProjectAutomation,
 } from "./project-automations-api"
 
 // 可变的 layout mock，允许单个测试切换 closed 状态。
@@ -109,6 +110,7 @@ describe("ProjectAutomationsPage", () => {
     ])
     vi.mocked(previewProjectAutomation).mockResolvedValue(samplePreview)
     vi.mocked(createProjectAutomation).mockResolvedValue({ id: "rule-2" } as never)
+    vi.mocked(updateProjectAutomation).mockResolvedValue({ id: "rule-1" } as never)
     vi.mocked(testProjectAutomationRule).mockResolvedValue({ id: "delivery-1" } as never)
     vi.mocked(listProjectAutomationDeliveries).mockResolvedValue([])
     await i18n.changeLanguage("zh-CN")
@@ -152,16 +154,39 @@ describe("ProjectAutomationsPage", () => {
     expect(eventTrigger.textContent).toContain("task.assigned")
   })
 
-  it("creates from template, saves, and tests a rule", async () => {
+  it("creates a new rule from template and tests it", async () => {
     renderPage()
     await userEvent.click(await screen.findByRole("button", { name: "从模板创建" }))
     await userEvent.click(screen.getByRole("button", { name: "保存" }))
     await waitFor(() => expect(createProjectAutomation).toHaveBeenCalled())
-    expect(feedback.success).toHaveBeenCalledWith("规则已保存")
+    expect(feedback.success).toHaveBeenCalledWith("规则已创建")
     // 保存成功后 draft 重置为默认 schedule 模板。
     expect(screen.getByDisplayValue("每日项目巡检")).toBeTruthy()
+    // 立即测试按钮在规则行内。
     await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
     await waitFor(() => expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1"))
     expect(feedback.success).toHaveBeenCalledWith("已创建测试投递")
+  })
+
+  it("edits an existing rule and updates it", async () => {
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    // 点击规则行的编辑按钮，加载规则到表单。
+    await userEvent.click(screen.getByRole("button", { name: "编辑" }))
+    // 编辑模式下保存按钮文案为「更新」。
+    expect(screen.getByRole("button", { name: "更新" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "取消" })).toBeTruthy()
+    // 表单加载了规则名称。
+    expect(screen.getByDisplayValue("每日项目巡检")).toBeTruthy()
+    // 修改名称后点更新。
+    const nameInput = screen.getByDisplayValue("每日项目巡检")
+    await userEvent.clear(nameInput)
+    await userEvent.type(nameInput, "每日巡检改")
+    await userEvent.click(screen.getByRole("button", { name: "更新" }))
+    await waitFor(() => expect(updateProjectAutomation).toHaveBeenCalled())
+    const call = vi.mocked(updateProjectAutomation).mock.calls[0]
+    expect(call[0]).toBe("adsops")
+    expect(call[1]).toBe("rule-1")
+    expect(feedback.success).toHaveBeenCalledWith("规则已更新")
   })
 })
