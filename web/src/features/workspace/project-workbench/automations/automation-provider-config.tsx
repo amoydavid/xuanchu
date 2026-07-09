@@ -33,13 +33,12 @@ export function providerConfigFromEntries(entries: { key: string; value: string 
 }
 
 // isProviderConfigComplete 判断 provider 配置是否齐全，用于决定是否阻塞预览/测试。
+// allowed_hosts 是可选项（SSRF 白名单），未配置时跳过 host 校验。
 export function isProviderConfigComplete(cfg: AutomationProviderConfig): boolean {
   return (
     cfg.base_url.trim() !== "" &&
     cfg.api_key_set &&
-    cfg.model.trim() !== "" &&
-    cfg.allowed_hosts.trim() !== "" &&
-    cfg.allowed_hosts.trim() !== "[]"
+    cfg.model.trim() !== ""
   )
 }
 
@@ -98,7 +97,6 @@ export function AutomationProviderConfigSection({ projectSlug, workspaceSlug, di
   if (current.base_url.trim() === "") missing.push("base_url")
   if (!current.api_key_set) missing.push("api_key")
   if (current.model.trim() === "") missing.push("model")
-  if (current.allowed_hosts.trim() === "" || current.allowed_hosts.trim() === "[]") missing.push("allowed_hosts")
 
   return (
     <section className="space-y-3 rounded-md border p-4">
@@ -112,7 +110,7 @@ export function AutomationProviderConfigSection({ projectSlug, workspaceSlug, di
         <Alert variant="default">
           <AlertTitle>预览和测试需要先配置 Agent Provider</AlertTitle>
           <AlertDescription>
-            填写下方 base_url、API Key、model 和 allowed_hosts 后保存。预览/测试/投递都会校验 allowed_hosts。
+            填写下方 base_url、API Key 和 model 后保存。allowed_hosts 是可选的 SSRF 白名单，未配置时不限制目标 host。
           </AlertDescription>
         </Alert>
       ) : null}
@@ -149,7 +147,7 @@ export function AutomationProviderConfigSection({ projectSlug, workspaceSlug, di
           />
         </div>
         <div className="grid gap-1">
-          <label className="text-xs font-medium" htmlFor="provider-allowed-hosts">Allowed Hosts（JSON 数组）</label>
+          <label className="text-xs font-medium" htmlFor="provider-allowed-hosts">Allowed Hosts（可选，JSON 数组）</label>
           <Input
             id="provider-allowed-hosts"
             value={fieldValue("allowed_hosts")}

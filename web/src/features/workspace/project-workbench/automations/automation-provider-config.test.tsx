@@ -55,6 +55,18 @@ describe("AutomationProviderConfigSection", () => {
     expect(await screen.findByText("已配置")).toBeTruthy()
   })
 
+  it("treats provider config as complete without allowed_hosts", async () => {
+    // allowed_hosts 是可选项，未配置时不应阻塞（不显示「缺少」）。
+    vi.mocked(projectApi.listProjectConfig).mockResolvedValue([
+      { key: "agent.provider.base_url", value: "https://agent.example.com" },
+      { key: "agent.provider.api_key", value: "sk-test" },
+      { key: "agent.provider.model", value: "project-operator" },
+    ])
+    renderSection()
+    expect(await screen.findByText("已配置")).toBeTruthy()
+    expect(screen.queryByText(/缺少/)).toBeNull()
+  })
+
   it("saves config via setProjectConfig", async () => {
     // 预填一部分，保证 draft 基线有值；测试只覆盖 api_key 输入和保存。
     vi.mocked(projectApi.listProjectConfig).mockResolvedValue([

@@ -189,6 +189,35 @@ func TestProjectAutomationPreviewMasksSecretAndBuildsContext(t *testing.T) {
 	}
 }
 
+// TestProjectAutomationPreviewWorksWithoutAllowedHosts 验证 allowed_hosts 未配置时
+// 预览仍可工作（allowed_hosts 是可选项，未配置时跳过 host 校验）。
+func TestProjectAutomationPreviewWorksWithoutAllowedHosts(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	// 只配置 base_url / api_key / model，不配置 allowed_hosts。
+	defineConfigForTest(t, f.svc, "agent.provider.base_url", false, "https://agent.example.com")
+	defineConfigForTest(t, f.svc, "agent.provider.api_key", true, "sk-real-secret")
+	defineConfigForTest(t, f.svc, "agent.provider.model", false, "project-operator")
+
+	view, err := f.svc.PreviewProjectAutomation(project.Slug, ProjectAutomationPreviewInput{
+		Name:                "每日项目巡检",
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"project"}},
+		InstructionTemplate: "生成巡检",
+	})
+	if err != nil {
+		t.Fatalf("PreviewProjectAutomation without allowed_hosts: %v", err)
+	}
+	if view.URL != "https://agent.example.com/v1/chat/completions" {
+		t.Fatalf("url = %q", view.URL)
+	}
+}
+
 func TestProjectAutomationSchedulerEnqueuesDailyRuleOnce(t *testing.T) {
 	f := newProjectAutomationServiceFixture(t)
 	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
