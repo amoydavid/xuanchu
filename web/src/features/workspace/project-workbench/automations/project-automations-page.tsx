@@ -3,6 +3,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { listProjectConfig } from "@/features/workspace/project-workbench/api/project-api"
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
 
@@ -18,7 +19,11 @@ import {
 } from "./project-automations-api"
 import { AutomationDeliveryList } from "./automation-delivery-list"
 import { AutomationPreviewDialog } from "./automation-preview-dialog"
-import { AutomationProviderConfigSection } from "./automation-provider-config"
+import {
+  AutomationProviderConfigSection,
+  isProviderConfigComplete,
+  providerConfigFromEntries,
+} from "./automation-provider-config"
 import {
   AutomationRuleForm,
   assigneeFeishuTemplateInput,
@@ -66,6 +71,16 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
     queryKey: rulesQueryKey,
     queryFn: () => listProjectAutomations(projectSlug, true),
   })
+
+  // 读取 project config 判断 provider 是否已配齐；与 AutomationProviderConfigSection 共享同一 query key，React Query 自动去重。
+  const configQueryKey = ["project", projectSlug, "config"]
+  const projectConfig = useQuery({
+    queryKey: configQueryKey,
+    queryFn: () => listProjectConfig(workspaceSlug, projectSlug),
+  })
+  const providerComplete = projectConfig.data
+    ? isProviderConfigComplete(providerConfigFromEntries(projectConfig.data))
+    : false
 
   const invalidateRules = () => queryClient.invalidateQueries({ queryKey: rulesQueryKey })
 
@@ -204,11 +219,13 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
           </tbody>
         </table>
       </div>
-      <AutomationProviderConfigSection
-        projectSlug={projectSlug}
-        workspaceSlug={workspaceSlug}
-        disabled={writeDisabled}
-      />
+      {providerComplete ? null : (
+        <AutomationProviderConfigSection
+          projectSlug={projectSlug}
+          workspaceSlug={workspaceSlug}
+          disabled={writeDisabled}
+        />
+      )}
       <AutomationRuleForm
         value={draft}
         onChange={setDraft}
