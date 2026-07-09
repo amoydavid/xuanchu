@@ -7,6 +7,7 @@ import { i18n } from "@/i18n"
 import { ProjectAutomationsPage } from "./project-automations-page"
 import {
   createProjectAutomation,
+  deleteProjectAutomation,
   listProjectAutomationDeliveries,
   listProjectAutomations,
   previewProjectAutomation,
@@ -83,6 +84,7 @@ describe("ProjectAutomationsPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     layoutState.closed = false
+    vi.mocked(listProjectAutomationDeliveries).mockResolvedValue([])
     vi.mocked(listProjectAutomations).mockResolvedValue([
       {
         id: "rule-1",
@@ -112,70 +114,44 @@ describe("ProjectAutomationsPage", () => {
     vi.mocked(createProjectAutomation).mockResolvedValue({ id: "rule-2" } as never)
     vi.mocked(updateProjectAutomation).mockResolvedValue({ id: "rule-1" } as never)
     vi.mocked(testProjectAutomationRule).mockResolvedValue({ id: "delivery-1" } as never)
-    vi.mocked(listProjectAutomationDeliveries).mockResolvedValue([])
+    vi.mocked(deleteProjectAutomation).mockResolvedValue({ deleted: true } as never)
     await i18n.changeLanguage("zh-CN")
   })
 
-  it("shows rules and opens delivery JSON preview", async () => {
+  it("renders rules in the table", async () => {
     renderPage()
     expect(await screen.findByText("每日项目巡检")).toBeTruthy()
     expect(screen.getByText("schedule / 每天 09:30")).toBeTruthy()
-    await userEvent.click(screen.getByRole("button", { name: "预览投递 JSON" }))
-    expect(await screen.findByRole("dialog", { name: "预览投递 JSON" })).toBeTruthy()
-    await waitFor(() =>
-      expect(screen.getByText(/https:\/\/agent.example.com\/v1\/chat\/completions/)).toBeTruthy()
-    )
   })
 
-  it("reports feedback and keeps dialog closed when preview fails", async () => {
-    vi.mocked(previewProjectAutomation).mockRejectedValue(new Error("缺少 config:agent.provider.base_url"))
+  it("opens create dialog and creates a rule", async () => {
     renderPage()
     await screen.findByText("每日项目巡检")
-    await userEvent.click(screen.getByRole("button", { name: "预览投递 JSON" }))
-    await waitFor(() => expect(feedback.failure).toHaveBeenCalledWith("预览失败", expect.stringContaining("base_url")))
-    expect(screen.queryByRole("dialog", { name: "预览投递 JSON" })).toBeNull()
-  })
-
-  it("disables write buttons for closed projects", async () => {
-    layoutState.closed = true
-    renderPage()
-    expect(await screen.findByText("每日项目巡检")).toBeTruthy()
-    expect((screen.getByRole("button", { name: "新建规则" }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole("button", { name: "立即测试" }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it("loads event template with event select set to task.assigned", async () => {
-    renderPage()
-    await userEvent.click(await screen.findByRole("button", { name: "从模板创建" }))
-    expect(screen.getByDisplayValue("分配任务后拉群")).toBeTruthy()
-    // 事件类型用 shadcn Select，trigger 是 combobox，展示选中值文本。
-    const eventTrigger = screen.getByRole("combobox", { name: "事件" })
-    expect(eventTrigger).toBeTruthy()
-    expect(eventTrigger.textContent).toContain("task.assigned")
-  })
-
-  it("creates a new rule from template and tests it", async () => {
-    renderPage()
-    await userEvent.click(await screen.findByRole("button", { name: "从模板创建" }))
+    await userEvent.click(screen.getByRole("button", { name: "新建规则" }))
+    // 弹窗打开，标题为「新建自动化规则」。
+    expect(await screen.findByRole("dialog", { name: "新建自动化规则" })).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "保存" }))
     await waitFor(() => expect(createProjectAutomation).toHaveBeenCalled())
     expect(feedback.success).toHaveBeenCalledWith("规则已创建")
-    // 保存成功后 draft 重置为默认 schedule 模板。
-    expect(screen.getByDisplayValue("每日项目巡检")).toBeTruthy()
-    // 立即测试按钮在规则行内。
-    await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
-    await waitFor(() => expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1"))
-    expect(feedback.success).toHaveBeenCalledWith("已创建测试投递")
   })
 
-  it("edits an existing rule and updates it", async () => {
+  it("opens create dialog from template with event prefilled", async () => {
     renderPage()
     await screen.findByText("每日项目巡检")
-    // 点击规则行的编辑按钮，加载规则到表单。
+    await userEvent.click(screen.getByRole("button", { name: "从模板创建" }))
+    const dialog = await screen.findByRole("dialog", { name: "新建自动化规则" })
+    expect(dialog).toBeTruthy()
+    expect(screen.getByDisplayValue("分配任务后拉群")).toBeTruthy()
+    const eventTrigger = screen.getByRole("combobox", { name: "事件" })
+    expect(eventTrigger.textContent).toContain("task.assigned")
+  })
+
+  it("opens edit dialog and updates a rule", async () => {
+    renderPage()
+    await screen.findByText("每日项目巡检")
     await userEvent.click(screen.getByRole("button", { name: "编辑" }))
-    // 编辑模式下保存按钮文案为「更新」。
-    expect(screen.getByRole("button", { name: "更新" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "取消" })).toBeTruthy()
+    // 编辑弹窗标题为「编辑自动化规则」。
+    expect(await screen.findByRole("dialog", { name: "编辑自动化规则" })).toBeTruthy()
     // 表单加载了规则名称。
     expect(screen.getByDisplayValue("每日项目巡检")).toBeTruthy()
     // 修改名称后点更新。
@@ -188,5 +164,57 @@ describe("ProjectAutomationsPage", () => {
     expect(call[0]).toBe("adsops")
     expect(call[1]).toBe("rule-1")
     expect(feedback.success).toHaveBeenCalledWith("规则已更新")
+  })
+
+  it("tests a rule from the row action", async () => {
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
+    await waitFor(() => expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1"))
+    expect(feedback.success).toHaveBeenCalledWith("已创建测试投递")
+  })
+
+  it("deletes a rule with confirmation", async () => {
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "删除" }))
+    // AlertDialog 出现。
+    expect(await screen.findByText("删除自动化规则")).toBeTruthy()
+    // 确认按钮在 AlertDialog 中，是页面上第二个「删除」按钮。
+    const deleteButtons = screen.getAllByRole("button", { name: "删除" })
+    await userEvent.click(deleteButtons[deleteButtons.length - 1])
+    await waitFor(() => expect(deleteProjectAutomation).toHaveBeenCalledWith("adsops", "rule-1"))
+  })
+
+  it("disables write buttons for closed projects", async () => {
+    layoutState.closed = true
+    renderPage()
+    expect(await screen.findByText("每日项目巡检")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "新建规则" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "编辑" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "删除" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "立即测试" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("opens preview dialog from within the create dialog", async () => {
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "新建规则" }))
+    await screen.findByRole("dialog", { name: "新建自动化规则" })
+    await userEvent.click(screen.getByRole("button", { name: "预览投递 JSON" }))
+    expect(await screen.findByRole("dialog", { name: "预览投递 JSON" })).toBeTruthy()
+    await waitFor(() =>
+      expect(screen.getByText(/https:\/\/agent.example.com\/v1\/chat\/completions/)).toBeTruthy()
+    )
+  })
+
+  it("reports feedback when preview fails", async () => {
+    vi.mocked(previewProjectAutomation).mockRejectedValue(new Error("缺少 config:agent.provider.base_url"))
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "新建规则" }))
+    await screen.findByRole("dialog", { name: "新建自动化规则" })
+    await userEvent.click(screen.getByRole("button", { name: "预览投递 JSON" }))
+    await waitFor(() => expect(feedback.failure).toHaveBeenCalledWith("预览失败", expect.stringContaining("base_url")))
   })
 })

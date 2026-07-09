@@ -5,30 +5,20 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { listProjectConfig } from "@/features/workspace/project-workbench/api/project-api"
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
+import { DestructiveConfirmDialog } from "@/features/workspace/project-workbench/shared/destructive-confirm-dialog"
 import { useEditFeedback } from "@/features/workspace/project-workbench/shared/edit-feedback"
 
 import {
-  createProjectAutomation,
+  deleteProjectAutomation,
   listProjectAutomations,
-  previewProjectAutomation,
   testProjectAutomationRule,
-  updateProjectAutomation,
-  type ProjectAutomationPreview,
   type ProjectAutomationRule,
   type ProjectAutomationRuleInput,
 } from "./project-automations-api"
 import { AutomationDeliveryList } from "./automation-delivery-list"
-import { AutomationPreviewDialog } from "./automation-preview-dialog"
-import {
-  AutomationProviderConfigSection,
-  isProviderConfigComplete,
-  providerConfigFromEntries,
-} from "./automation-provider-config"
-import {
-  AutomationRuleForm,
-  assigneeFeishuTemplateInput,
-  defaultScheduleAutomationInput,
-} from "./automation-rule-form"
+import { AutomationProviderConfigSection, isProviderConfigComplete, providerConfigFromEntries } from "./automation-provider-config"
+import { AutomationRuleDialog } from "./automation-rule-dialog"
+import { assigneeFeishuTemplateInput } from "./automation-rule-form"
 
 type Props = {
   projectSlug: string
@@ -39,32 +29,17 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-// ruleToInput 把已保存规则转换为表单输入结构（去掉服务端字段）。
-function ruleToInput(rule: ProjectAutomationRule): ProjectAutomationRuleInput {
-  return {
-    name: rule.name,
-    description: rule.description,
-    enabled: rule.enabled,
-    trigger_type: rule.trigger_type,
-    trigger_config: rule.trigger_config,
-    condition: rule.condition,
-    action: rule.action,
-    context: rule.context,
-    instruction_template: rule.instruction_template,
-  }
-}
-
-// ProjectAutomationsPage 是项目自动化 tab 主页面：规则列表、编辑表单、预览弹窗和运行记录。
+// ProjectAutomationsPage 是项目自动化 tab 主页面：规则列表、新建/编辑弹窗和运行记录。
 export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
   const layout = useProjectLayout()
   const feedback = useEditFeedback()
   const queryClient = useQueryClient()
   const writeDisabled = layout.closed
-  const [draft, setDraft] = useState<ProjectAutomationRuleInput>(defaultScheduleAutomationInput)
-  // editingRuleId 非 null 时表示表单处于编辑已存在规则模式。
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
-  const [preview, setPreview] = useState<ProjectAutomationPreview | null>(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
+
+  const [creating, setCreating] = useState(false)
+  const [createTemplate, setCreateTemplate] = useState<ProjectAutomationRuleInput | null>(null)
+  const [editing, setEditing] = useState<ProjectAutomationRule | null>(null)
+  const [deleting, setDeleting] = useState<ProjectAutomationRule | null>(null)
 
   const rulesQueryKey = ["project", projectSlug, "automations"]
   const rules = useQuery({
@@ -84,40 +59,6 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
 
   const invalidateRules = () => queryClient.invalidateQueries({ queryKey: rulesQueryKey })
 
-  const previewMutation = useMutation({
-    mutationFn: (input: ProjectAutomationRuleInput) => previewProjectAutomation(projectSlug, input),
-    onSuccess: (data) => {
-      setPreview(data)
-      setPreviewOpen(true)
-    },
-    onError: (err) => {
-      feedback.failure("预览失败", errorMessage(err))
-    },
-  })
-  const createMutation = useMutation({
-    mutationFn: (input: ProjectAutomationRuleInput) => createProjectAutomation(projectSlug, input),
-    onSuccess: () => {
-      feedback.success("规则已创建")
-      setDraft(defaultScheduleAutomationInput)
-      invalidateRules()
-    },
-    onError: (err) => {
-      feedback.failure("保存失败", errorMessage(err))
-    },
-  })
-  const updateMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: ProjectAutomationRuleInput }) =>
-      updateProjectAutomation(projectSlug, id, input),
-    onSuccess: () => {
-      feedback.success("规则已更新")
-      setEditingRuleId(null)
-      setDraft(defaultScheduleAutomationInput)
-      invalidateRules()
-    },
-    onError: (err) => {
-      feedback.failure("更新失败", errorMessage(err))
-    },
-  })
   const testMutation = useMutation({
     mutationFn: (ruleID: string) => testProjectAutomationRule(projectSlug, ruleID),
     onSuccess: () => {
@@ -128,23 +69,20 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
     },
   })
 
-  // startEdit 把规则加载到表单并切换到编辑模式。
-  const startEdit = (rule: ProjectAutomationRule) => {
-    setEditingRuleId(rule.id)
-    setDraft(ruleToInput(rule))
-  }
-
-  // cancelEdit 退出编辑模式，恢复默认 draft。
-  const cancelEdit = () => {
-    setEditingRuleId(null)
-    setDraft(defaultScheduleAutomationInput)
-  }
+  const deleteMutation = useMutation({
+    mutationFn: (ruleID: string) => deleteProjectAutomation(projectSlug, ruleID),
+    onSuccess: () => {
+      setDeleting(null)
+      invalidateRules()
+    },
+    onError: (err) => {
+      feedback.failure("删除失败", errorMessage(err))
+    },
+  })
 
   if (rules.isPending) {
     return <Skeleton className="h-48 w-full" />
   }
-
-  const savePending = createMutation.isPending || updateMutation.isPending
 
   return (
     <section className="space-y-4">
@@ -156,8 +94,8 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
             variant="outline"
             disabled={writeDisabled}
             onClick={() => {
-              setEditingRuleId(null)
-              setDraft(assigneeFeishuTemplateInput)
+              setCreateTemplate(assigneeFeishuTemplateInput)
+              setCreating(true)
             }}
           >
             从模板创建
@@ -166,8 +104,8 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
             type="button"
             disabled={writeDisabled}
             onClick={() => {
-              setEditingRuleId(null)
-              setDraft(defaultScheduleAutomationInput)
+              setCreateTemplate(null)
+              setCreating(true)
             }}
           >
             新建规则
@@ -199,7 +137,7 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
                       variant="ghost"
                       size="sm"
                       disabled={writeDisabled}
-                      onClick={() => startEdit(rule)}
+                      onClick={() => setEditing(rule)}
                     >
                       编辑
                     </Button>
@@ -211,6 +149,15 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
                       onClick={() => testMutation.mutate(rule.id)}
                     >
                       立即测试
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={writeDisabled}
+                      onClick={() => setDeleting(rule)}
+                    >
+                      删除
                     </Button>
                   </div>
                 </td>
@@ -226,25 +173,41 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
           disabled={writeDisabled}
         />
       )}
-      <AutomationRuleForm
-        value={draft}
-        onChange={setDraft}
-        onPreview={() => previewMutation.mutate(draft)}
-        onSave={() => {
-          if (editingRuleId) {
-            updateMutation.mutate({ id: editingRuleId, input: draft })
-          } else {
-            createMutation.mutate(draft)
+      <AutomationDeliveryList projectSlug={projectSlug} />
+      {/* 新建弹窗 */}
+      <AutomationRuleDialog
+        key={creating ? "creating-open" : "creating-closed"}
+        open={creating}
+        onOpenChange={(o) => !o && setCreating(false)}
+        onSaved={invalidateRules}
+        projectSlug={projectSlug}
+        template={createTemplate}
+        disabled={writeDisabled}
+      />
+      {/* 编辑弹窗 */}
+      <AutomationRuleDialog
+        key={editing?.id ?? "editing-closed"}
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        onSaved={invalidateRules}
+        projectSlug={projectSlug}
+        initial={editing ?? undefined}
+        disabled={writeDisabled}
+      />
+      {/* 删除确认 */}
+      <DestructiveConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title="删除自动化规则"
+        description={`确认删除规则「${deleting?.name ?? ""}」？此操作不可撤销。`}
+        confirmLabel="删除"
+        pending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleting) {
+            deleteMutation.mutate(deleting.id)
           }
         }}
-        onCancel={editingRuleId ? cancelEdit : undefined}
-        saveLabel={editingRuleId ? "更新" : "保存"}
-        disabled={writeDisabled}
-        previewPending={previewMutation.isPending}
-        savePending={savePending}
       />
-      <AutomationDeliveryList projectSlug={projectSlug} />
-      <AutomationPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} preview={preview} />
     </section>
   )
 }
