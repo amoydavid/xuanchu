@@ -208,6 +208,9 @@ func (s *Service) projectAutomationEffectiveConfigValue(projectID string, key st
 	return "", nil
 }
 
+// projectAutomationAllowedHosts 读取 allowed_hosts 配置。
+// 未配置或为空数组时返回 nil（跳过 host 校验，allowed_hosts 是可选项）。
+// 配置了但格式非法时仍报错，避免静默放行。
 func (s *Service) projectAutomationAllowedHosts(projectID string, key string) ([]string, error) {
 	if strings.TrimSpace(key) == "" {
 		key = "agent.provider.allowed_hosts"
@@ -217,14 +220,11 @@ func (s *Service) projectAutomationAllowedHosts(projectID string, key string) ([
 		return nil, err
 	}
 	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "[]" {
-		return nil, RuntimeError{Code: "automation_provider_allowed_hosts_missing", Message: "agent.provider.allowed_hosts is required"}
+		return nil, nil
 	}
 	var hosts []string
 	if err := json.Unmarshal([]byte(raw), &hosts); err != nil {
 		return nil, RuntimeError{Code: "automation_provider_allowed_hosts_invalid", Message: "agent.provider.allowed_hosts must be a JSON string array"}
-	}
-	if len(hosts) == 0 {
-		return nil, RuntimeError{Code: "automation_provider_allowed_hosts_missing", Message: "agent.provider.allowed_hosts is required"}
 	}
 	return hosts, nil
 }

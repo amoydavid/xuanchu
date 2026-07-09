@@ -613,8 +613,8 @@ dedupe_key = workspace_id + project_id + rule_id + event_id
 - `project_config` 默认不包含 secret config value。
 - `include_secret_config` 首版不提供。
 - URL 必须通过 SSRF 防护，与现有 sink allowed host / resolver 策略保持一致。
-- Agent Provider 的 hostname 必须命中 `agent.provider.allowed_hosts` 或等价 allowlist；preview、立即测试、正式投递和 replay 走同一校验。
-- preview 不能绕过 project allowlist。
+- `agent.provider.allowed_hosts` 是可选的 SSRF 白名单。配置后 Agent Provider 的 hostname 必须命中该 allowlist（preview、立即测试、正式投递和 replay 走同一校验）；未配置时不限制目标 host，方便本地和内部部署快速启用。
+- preview 不能绕过已配置的 project allowlist。
 - 429/5xx 可以重试，但必须有最大尝试次数；超过后进入 `dead_lettered`，只允许手动 replay。
 - closed project 禁止新增、编辑、启用、测试和 replay；允许查看历史。
 - 所有对外 JSON 中的用户身份继续使用 `task.UserInfo` 统一结构。
