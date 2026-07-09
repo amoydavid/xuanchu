@@ -19,6 +19,7 @@ import { AutomationDeliveryList } from "./automation-delivery-list"
 import { AutomationProviderConfigSection, isProviderConfigComplete, providerConfigFromEntries } from "./automation-provider-config"
 import { AutomationRuleDialog } from "./automation-rule-dialog"
 import { assigneeFeishuTemplateInput } from "./automation-rule-form"
+import { AutomationTestDebugDialog } from "./automation-test-debug-dialog"
 
 type Props = {
   projectSlug: string
@@ -40,6 +41,8 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
   const [createTemplate, setCreateTemplate] = useState<ProjectAutomationRuleInput | null>(null)
   const [editing, setEditing] = useState<ProjectAutomationRule | null>(null)
   const [deleting, setDeleting] = useState<ProjectAutomationRule | null>(null)
+  // debugDeliveryId 非 null 时打开测试投递 Debug 弹窗。
+  const [debugDeliveryId, setDebugDeliveryId] = useState<string | null>(null)
 
   const rulesQueryKey = ["project", projectSlug, "automations"]
   const rules = useQuery({
@@ -61,8 +64,12 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
 
   const testMutation = useMutation({
     mutationFn: (ruleID: string) => testProjectAutomationRule(projectSlug, ruleID),
-    onSuccess: () => {
+    onSuccess: (delivery) => {
       feedback.success("已创建测试投递")
+      queryClient.invalidateQueries({ queryKey: ["project", projectSlug, "automation-deliveries"] })
+      if (delivery?.id) {
+        setDebugDeliveryId(delivery.id)
+      }
     },
     onError: (err) => {
       feedback.failure("测试失败", errorMessage(err))
@@ -173,7 +180,7 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
           disabled={writeDisabled}
         />
       )}
-      <AutomationDeliveryList projectSlug={projectSlug} />
+      <AutomationDeliveryList projectSlug={projectSlug} onSelectDelivery={(id) => setDebugDeliveryId(id)} />
       {/* 新建弹窗 */}
       <AutomationRuleDialog
         key={creating ? "creating-open" : "creating-closed"}
@@ -207,6 +214,13 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
             deleteMutation.mutate(deleting.id)
           }
         }}
+      />
+      {/* 测试投递 Debug 弹窗 */}
+      <AutomationTestDebugDialog
+        open={debugDeliveryId !== null}
+        onOpenChange={(o) => !o && setDebugDeliveryId(null)}
+        projectSlug={projectSlug}
+        deliveryID={debugDeliveryId}
       />
     </section>
   )

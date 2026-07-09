@@ -160,3 +160,7 @@ export async function listProjectAutomationDeliveries(projectSlug: string, ruleI
   const q = ruleID ? `?rule=${encodeURIComponent(ruleID)}` : ""
   return workspaceApiGet<ProjectAutomationDelivery[]>(`/api/v1/projects/${projectSlug}/automation-deliveries${q}`)
 }
+
+export async function getProjectAutomationDelivery(projectSlug: string, deliveryID: string) {
+  return workspaceApiGet<ProjectAutomationDelivery>(`/api/v1/projects/${projectSlug}/automation-deliveries/${deliveryID}`)
+}

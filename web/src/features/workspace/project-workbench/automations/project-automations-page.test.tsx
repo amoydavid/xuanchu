@@ -8,6 +8,7 @@ import { ProjectAutomationsPage } from "./project-automations-page"
 import {
   createProjectAutomation,
   deleteProjectAutomation,
+  getProjectAutomationDelivery,
   listProjectAutomationDeliveries,
   listProjectAutomations,
   previewProjectAutomation,
@@ -46,6 +47,7 @@ vi.mock("./project-automations-api", () => ({
   disableProjectAutomationRule: vi.fn(),
   deleteProjectAutomation: vi.fn(),
   listProjectAutomationDeliveries: vi.fn(),
+  getProjectAutomationDelivery: vi.fn(),
   EMPTY_AUTOMATION_PROVIDER_CONFIG: { base_url: "", api_key_set: false, model: "", allowed_hosts: "" },
   AUTOMATION_PROVIDER_KEYS: ["agent.provider.base_url"],
 }))
@@ -166,12 +168,60 @@ describe("ProjectAutomationsPage", () => {
     expect(feedback.success).toHaveBeenCalledWith("规则已更新")
   })
 
-  it("tests a rule from the row action", async () => {
+  it("tests a rule and opens debug dialog", async () => {
+    // 轮询返回 queued 状态（投递中）。
+    vi.mocked(getProjectAutomationDelivery).mockResolvedValue({
+      id: "delivery-1",
+      workspace_id: "ws",
+      project_id: "proj",
+      rule_id: "rule-1",
+      trigger_type: "manual_test",
+      event_id: "",
+      event_type: "",
+      status: "queued",
+      resolved_url: "https://agent.example.com/v1/chat/completions",
+      rendered_method: "POST",
+      rendered_headers: { Authorization: ["Bearer ****"], "Content-Type": ["application/json"] },
+      request_body_preview: `{"model":"project-operator"}`,
+      request_body_hash: "sha256:abc",
+      response_body_preview: "",
+      provider_request_id: "",
+      usage: {},
+      attempt_count: 0,
+      last_error: "",
+      created_at: 1,
+      modified_at: 1,
+    })
     renderPage()
     await screen.findByText("每日项目巡检")
     await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
     await waitFor(() => expect(testProjectAutomationRule).toHaveBeenCalledWith("adsops", "rule-1"))
-    expect(feedback.success).toHaveBeenCalledWith("已创建测试投递")
+    // Debug 弹窗打开，标题含「测试投递结果」。
+    expect(await screen.findByRole("dialog", { name: /测试投递结果/ })).toBeTruthy()
+    // 请求 tab 展示 URL。
+    expect(screen.getByText(/agent\.example\.com\/v1\/chat\/completions/)).toBeTruthy()
+  })
+
+  it("debug dialog shows response when delivery already succeeded", async () => {
+    // 直接返回 succeeded 状态，验证 debug 弹窗展示响应数据。
+    vi.mocked(getProjectAutomationDelivery).mockResolvedValue({
+      id: "delivery-1", workspace_id: "ws", project_id: "proj", rule_id: "rule-1",
+      trigger_type: "manual_test", event_id: "", event_type: "", status: "succeeded",
+      resolved_url: "https://agent.example.com/v1/chat/completions", rendered_method: "POST",
+      rendered_headers: {}, request_body_preview: `{"model":"x"}`, request_body_hash: "",
+      response_body_preview: `{"id":"chatcmpl_123","usage":{"prompt_tokens":10}}`,
+      response_status_code: 200, provider_request_id: "chatcmpl_123",
+      usage: { prompt_tokens: 10, completion_tokens: 4 }, attempt_count: 1,
+      last_error: "", created_at: 1, modified_at: 2,
+    } as never)
+    renderPage()
+    await screen.findByText("每日项目巡检")
+    await userEvent.click(screen.getByRole("button", { name: "立即测试" }))
+    // Debug 弹窗打开并展示成功状态。
+    await waitFor(() => expect(screen.getByText("成功")).toBeTruthy())
+    // usage tab 展示 prompt_tokens。
+    await userEvent.click(screen.getByRole("tab", { name: "Usage" }))
+    await waitFor(() => expect(screen.getByText("prompt_tokens")).toBeTruthy())
   })
 
   it("deletes a rule with confirmation", async () => {
