@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query"
+
 import {
   workspaceApiDelete,
   workspaceApiGet,
@@ -57,6 +59,7 @@ export type ProjectAutomationRule = {
   action: AutomationActionConfig
   context: AutomationContextConfig
   instruction_template: string
+  system_prompt: string
   created_at: number
   modified_at: number
 }
@@ -163,4 +166,28 @@ export async function listProjectAutomationDeliveries(projectSlug: string, ruleI
 
 export async function getProjectAutomationDelivery(projectSlug: string, deliveryID: string) {
   return workspaceApiGet<ProjectAutomationDelivery>(`/api/v1/projects/${projectSlug}/automation-deliveries/${deliveryID}`)
+}
+
+export type AutomationTemplateVar = {
+  name: string
+  description: string
+}
+
+export type AutomationTemplateVarsView = {
+  triggers: Array<{
+    trigger: string
+    vars: AutomationTemplateVar[]
+  }>
+}
+
+export async function getAutomationTemplateVars(projectSlug: string) {
+  return workspaceApiGet<AutomationTemplateVarsView>(`/api/v1/projects/${projectSlug}/automation-template-vars`)
+}
+
+export function useAutomationTemplateVars(projectSlug: string) {
+  return useQuery({
+    queryKey: ["automation-template-vars", projectSlug],
+    queryFn: () => getAutomationTemplateVars(projectSlug),
+    staleTime: Infinity,
+  })
 }
