@@ -30,7 +30,11 @@ var automationTemplateVarSpecs = []automationTemplateVarSpec{
 	{Name: "trigger_type", Description: "触发类型 schedule/event/manual_test", Triggers: []string{"schedule", "event"}},
 	{Name: "event.type", Description: "事件类型（如 task.assigned）", Triggers: []string{"event"}},
 	{Name: "event.id", Description: "事件 ID", Triggers: []string{"event"}},
-	{Name: "task", Description: "触发事件的任务 JSON", Triggers: []string{"event"}},
+	{Name: "task", Description: "触发事件的任务完整 JSON", Triggers: []string{"event"}},
+	{Name: "task.id", Description: "任务 UUID", Triggers: []string{"event"}},
+	{Name: "task.slug", Description: "任务 slug（如 adsops-42）", Triggers: []string{"event"}},
+	{Name: "task.title", Description: "任务标题", Triggers: []string{"event"}},
+	{Name: "task.status", Description: "任务状态", Triggers: []string{"event"}},
 	{Name: "added_assignees", Description: "新增负责人 JSON 数组（task.assigned）", Triggers: []string{"event"}},
 }
 

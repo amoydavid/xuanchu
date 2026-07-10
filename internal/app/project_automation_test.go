@@ -383,6 +383,55 @@ func TestProjectAutomationEventEnqueueUsesAddedAssignees(t *testing.T) {
 	}
 }
 
+// TestProjectAutomationEventTaskVarsWorkWithoutInclude 验证事件触发时 {{task.title}} 等
+// 标量变量始终可用，不需要在 Context.Include 里加 "task"。
+func TestProjectAutomationEventTaskVarsWorkWithoutInclude(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, _ := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	// 注意：Include 里没有 "task"，但模板变量 {{task.title}} 仍应可用。
+	rule, err := f.svc.AddProjectAutomationRule(project.Slug, ProjectAutomationRuleAddInput{
+		Name:          "任务完成通知",
+		Enabled:       true,
+		TriggerType:   "event",
+		TriggerConfig: ProjectAutomationTriggerConfig{EventType: "task.completed"},
+		Action:        defaultAutomationActionForTest(),
+		Context:       ProjectAutomationContextConfig{Include: []string{"project"}},
+		InstructionTemplate: "任务 {{task.title}}（{{task.slug}}）已完成。完整任务：{{task}}",
+	})
+	if err != nil {
+		t.Fatalf("AddProjectAutomationRule: %v", err)
+	}
+	defineProviderConfigForTest(t, f.svc)
+	tsk, err := f.svc.Add(AddInput{Title: "调整预算策略", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("Add task: %v", err)
+	}
+	// 完成任务触发 task.completed 事件。
+	if err := f.svc.Done(tsk.UUID); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	deliveries, err := f.svc.ListProjectAutomationDeliveries(project.Slug, ProjectAutomationDeliveryListInput{RuleID: rule.ID})
+	if err != nil {
+		t.Fatalf("ListProjectAutomationDeliveries: %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %#v", deliveries)
+	}
+	preview := deliveries[0].RequestBodyPreview
+	// task.title 应被替换为实际标题。
+	if !contains(preview, "调整预算策略") {
+		t.Fatalf("delivery preview missing task.title: %s", preview)
+	}
+	// task.slug 应被替换（不含 {{}}）。
+	if contains(preview, "{{task.slug}}") || contains(preview, "{{task.title}}") {
+		t.Fatalf("delivery preview contains unreplaced vars: %s", preview)
+	}
+	// {{task}} 整体 JSON 也应可用（task_slug 字段在 JSON 中）。
+	if !contains(preview, "task_slug") {
+		t.Fatalf("delivery preview missing task JSON: %s", preview)
+	}
+}
+
 func TestProjectAutomationDispatcherSendsOpenAIRequest(t *testing.T) {
 	f := newProjectAutomationServiceFixture(t)
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
