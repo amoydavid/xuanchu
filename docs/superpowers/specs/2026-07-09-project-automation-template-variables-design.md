@@ -10,7 +10,7 @@
 
 当前自动化投递的请求体有一半是系统拼装的黑盒：system prompt 写死、user message 被强制追加一大段 context JSON。用户在表单里写的「指令模板」只是最终 user message 的一个前缀，无法控制上下文怎么用、放在哪里。
 
-本次改造把 system prompt 和 user message 的构造权完全交给用户。上下文数据通过 `{{变量}}` 占位符暴露，用户在 Markdown 编辑器里自由编排消息结构。编辑器在输入 `{{` 后自动弹出变量选择器，点一下即可插入，不需要手记变量名。
+本次改造把 system prompt 和 user message 的构造权完全交给用户。上下文数据通过 `{{变量}}` 占位符暴露，用户在 Textarea 里自由编排消息结构。编辑器在输入 `{{` 后自动弹出变量选择器，点一下即可插入，不需要手记变量名。
 
 ## 1. 背景
 
@@ -34,7 +34,7 @@
 
 ### 1.2 已有基础设施
 
-- **Tiptap Markdown 编辑器**（`web/src/components/markdown/markdown-editor.tsx`）：成熟的 WYSIWYG 编辑器，序列化为 Markdown 字符串。目前用于任务描述和注解，未用于自动化。未安装 `@tiptap/extension-mention`。
+- **Textarea**：`web/src/components/ui/textarea.tsx`，项目已有的 shadcn Textarea 组件，用于多行文本输入。
 - **模板变量声明模式**（`internal/app/notification_template_vars.go`）：notification/hook 已有声明式变量定义 schema，通过 `templateVarSpec` 统一注册，自动派生 API view 和字段校验。
 - **Popover + Command 组合**（`web/src/components/ui/popover.tsx` + `command.tsx`）：shadcn 组件，`UserPicker` 是已有 combobox 参考。
 - **SinkBodyPreview**（`template-var-hints.tsx`）：已有 `{{var}}` token 高亮渲染（只读展示，无插入能力）。
@@ -43,7 +43,7 @@
 
 1. system prompt 可由用户在表单中编辑，有合理默认值，可为空。
 2. instruction template 支持插入 `{{变量}}` 占位符，渲染时替换为真实数据。
-3. 编辑器用现有 Tiptap Markdown WYSIWYG 组件。
+3. 编辑器用 Textarea（不引入 Markdown 编辑器），保持轻量。
 4. 编辑器在用户输入 `{{` 后自动弹出变量选择器，可搜索、可点击插入。
 5. 变量列表区分触发器类型（schedule / event），只展示当前触发器下有值的变量。
 6. 预览弹窗展示渲染后的最终 system / user message 明文，让用户确认变量替换结果。
@@ -51,7 +51,7 @@
 
 ## 3. 非目标
 
-- 不引入 `@tiptap/extension-mention` 或 Tiptap 原生 suggestion 插件（复杂度高、与 Markdown 序列化冲突）。用轻量的「源码模式 textarea + `{{` 触发 Popover」方案。
+- 不引入 Markdown 编辑器或 `@tiptap/extension-mention` 插件。system prompt 和 instruction template 都用 Textarea 编辑，保持轻量。变量选择器在 Textarea 上直接工作。
 - 不做变量嵌套（`{{project.config.feishu.chat_id}}`）。项目配置统一用 `{{project_config}}` 输出 JSON 对象。
 - 不做条件逻辑、循环、管道等模板引擎特性（不是 Jinja2 / Go template 的完整实现）。
 - 不改 notification/hook 的模板变量体系（它们是独立域）。
@@ -194,18 +194,19 @@ GET /api/v1/projects/{projectRef}/automation-template-vars
 
 规则编辑 Dialog（`automation-rule-dialog.tsx`）中：
 
-- **System Prompt**：新增字段，用 `MarkdownEditor` 编辑（`minHeight: 120`），有 label「系统提示词」。
-- **Instruction Template**：从 `Textarea` 改为 `MarkdownEditor`（`minHeight: 200`）。
+- **System Prompt**：新增字段，用 `Textarea` 编辑（rows=4），有 label「系统提示词」。
+- **Instruction Template**：保持用 `Textarea`（rows=6），改造为支持 `{{` 触发变量选择器。
 
 ### 6.2 变量选择器
 
-不安装 `@tiptap/extension-mention`。采用**源码模式 + `{{` 触发 Popover**方案：
+新增 `TemplateVariablePicker` 组件，在 Textarea 上直接工作：
 
-1. `MarkdownEditor` 已有 WYSIWYG / 源码切换。变量插入在**源码模式**（纯 textarea）下工作。
-2. 新增 `TemplateVariablePicker` 组件：监听 textarea 的 `input` 事件，当光标前最近两个字符是 `{{` 时，弹出 Popover（用 shadcn `Popover` + `Command`）展示当前触发器下可用变量列表。
-3. 用户点击变量或按 Enter，在光标位置插入变量名 + `}}`，Popover 关闭。
+1. 监听 Textarea 的 `input`/`keyup` 事件，当光标前最近两个字符是 `{{` 时，弹出 Popover（用 shadcn `Popover` + `Command`）展示当前触发器下可用变量列表。
+2. Popover 定位到光标位置（用 textarea 的 `selectionStart` + 一个隐藏的镜像 div 计算坐标，或简单定位在 textarea 下方）。
+3. 用户点击变量或按 Enter，在光标位置插入变量名 + `}}`（如 `{{project.slug}}`），Popover 关闭，光标移到 `}}` 之后。
 4. 变量列表按触发器过滤，支持搜索（Command 的 built-in filter）。
-5. 在编辑器下方常驻一个折叠的「可用变量」提示区（用 `TemplateVarHints` 风格），展示所有变量名和说明，点击可复制变量名到剪贴板。这是 fallback：如果用户在 WYSIWYG 模式下编辑，无法触发 Popover，但仍可手动粘贴。
+5. 按 Esc 或输入空格/换行时关闭 Popover。
+6. 在 Textarea 下方常驻一个折叠的「可用变量」提示区，展示所有变量名和说明，点击可复制变量名到剪贴板（fallback，方便手动粘贴）。
 
 ### 6.3 数据流
 
@@ -249,7 +250,7 @@ GET /api/v1/projects/{projectRef}/automation-template-vars
 - API：`GET /automation-template-vars` 返回正确结构。
 
 前端：
-- Markdown 编辑器渲染 system prompt 和 instruction template。
+- Textarea 编辑 system prompt 和 instruction template。
 - 变量选择器在输入 `{{` 后弹出，点击插入变量。
 - 切换触发器类型时变量列表更新。
 - 预览弹窗展示渲染后的明文 messages。
