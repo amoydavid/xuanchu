@@ -62,6 +62,7 @@ type ProjectAutomationRuleAddInput struct {
 	Action              ProjectAutomationActionConfig
 	Context             ProjectAutomationContextConfig
 	InstructionTemplate string
+	SystemPrompt        string
 }
 
 // ProjectAutomationRuleModifyInput 修改规则的输入，nil 字段表示不更新。
@@ -75,6 +76,7 @@ type ProjectAutomationRuleModifyInput struct {
 	Action              *ProjectAutomationActionConfig
 	Context             *ProjectAutomationContextConfig
 	InstructionTemplate *string
+	SystemPrompt        *string
 }
 
 // ProjectAutomationRuleView 是对外暴露的规则视图，用户身份使用 task.UserInfo。
@@ -92,6 +94,7 @@ type ProjectAutomationRuleView struct {
 	Action              ProjectAutomationActionConfig  `json:"action"`
 	Context             ProjectAutomationContextConfig `json:"context"`
 	InstructionTemplate string                         `json:"instruction_template"`
+	SystemPrompt        string                         `json:"system_prompt"`
 	CreatedBy           task.UserInfo                  `json:"created_by"`
 	CreatedAt           int64                          `json:"created_at"`
 	ModifiedAt          int64                          `json:"modified_at"`
@@ -128,6 +131,7 @@ func (s *Service) AddProjectAutomationRule(projectRef string, input ProjectAutom
 		ActionConfigJSON:    mustJSON(normalized.Action),
 		ContextConfigJSON:   mustJSON(normalized.Context),
 		InstructionTemplate: normalized.InstructionTemplate,
+		SystemPrompt:        normalized.SystemPrompt,
 		CreatedAt:           now,
 		ModifiedAt:          now,
 	}
@@ -237,6 +241,9 @@ func (s *Service) ModifyProjectAutomationRule(projectRef string, ruleID string, 
 	if input.InstructionTemplate != nil {
 		next.InstructionTemplate = *input.InstructionTemplate
 	}
+	if input.SystemPrompt != nil {
+		next.SystemPrompt = *input.SystemPrompt
+	}
 	normalized, err := normalizeProjectAutomationAddInput(next)
 	if err != nil {
 		return ProjectAutomationRuleView{}, err
@@ -250,6 +257,7 @@ func (s *Service) ModifyProjectAutomationRule(projectRef string, ruleID string, 
 	row.ActionConfigJSON = mustJSON(normalized.Action)
 	row.ContextConfigJSON = mustJSON(normalized.Context)
 	row.InstructionTemplate = normalized.InstructionTemplate
+	row.SystemPrompt = normalized.SystemPrompt
 	row.ModifiedAt = s.clock.Unix()
 	if err := s.projectAutomationRuleRepo.Update(row); err != nil {
 		return ProjectAutomationRuleView{}, err
@@ -310,6 +318,7 @@ func normalizeProjectAutomationAddInput(input ProjectAutomationRuleAddInput) (Pr
 	input.Description = strings.TrimSpace(input.Description)
 	input.TriggerType = strings.TrimSpace(input.TriggerType)
 	input.InstructionTemplate = strings.TrimSpace(input.InstructionTemplate)
+	input.SystemPrompt = strings.TrimSpace(input.SystemPrompt)
 	if input.Name == "" {
 		return input, RuntimeError{Code: "automation_rule_invalid", Message: "rule name is required"}
 	}
@@ -375,6 +384,7 @@ func projectAutomationRuleAddInputFromRow(row storage.ProjectAutomationRule) Pro
 		Action:              decodeProjectAutomationActionConfig(row.ActionConfigJSON),
 		Context:             decodeProjectAutomationContextConfig(row.ContextConfigJSON),
 		InstructionTemplate: row.InstructionTemplate,
+		SystemPrompt:        row.SystemPrompt,
 	}
 }
 
@@ -438,6 +448,7 @@ func (s *Service) projectAutomationRuleViewFromRow(row storage.ProjectAutomation
 		Action:              input.Action,
 		Context:             input.Context,
 		InstructionTemplate: row.InstructionTemplate,
+		SystemPrompt:        row.SystemPrompt,
 		CreatedBy:           createdBy,
 		CreatedAt:           row.CreatedAt,
 		ModifiedAt:          row.ModifiedAt,

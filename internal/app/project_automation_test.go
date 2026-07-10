@@ -165,7 +165,7 @@ func TestProjectAutomationPreviewMasksSecretAndBuildsContext(t *testing.T) {
 		TriggerConfig: ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
 		Action:        ProjectAutomationActionConfig{Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelConfigKey: "agent.provider.model", Temperature: 0.2},
 		Context:       ProjectAutomationContextConfig{Include: []string{"workspace", "project", "project_config"}},
-		InstructionTemplate: "请生成项目巡检报告",
+		InstructionTemplate: "请生成项目巡检报告\n配置：{{project_config}}",
 	})
 	if err != nil {
 		t.Fatalf("PreviewProjectAutomation: %v", err)
@@ -218,6 +218,69 @@ func TestProjectAutomationPreviewWorksWithoutAllowedHosts(t *testing.T) {
 	}
 }
 
+func TestProjectAutomationPreviewRendersTemplateVars(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	defineConfigForTest(t, f.svc, "agent.provider.base_url", false, "https://agent.example.com")
+	defineConfigForTest(t, f.svc, "agent.provider.api_key", true, "sk-real-secret")
+	defineConfigForTest(t, f.svc, "agent.provider.model", false, "project-operator")
+	defineConfigForTest(t, f.svc, "feishu.chat_id", false, "oc_xxx")
+
+	view, err := f.svc.PreviewProjectAutomation(project.Slug, ProjectAutomationPreviewInput{
+		Name:                "每日项目巡检",
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"project", "project_config"}},
+		InstructionTemplate: "请检查项目 {{project.name}}（{{project.slug}}）\n配置：{{project_config}}",
+		SystemPrompt:        "你是 {{project.slug}} 项目的巡检 Agent。",
+	})
+	if err != nil {
+		t.Fatalf("PreviewProjectAutomation: %v", err)
+	}
+	body := string(mustJSONBytes(t, view.Body))
+	// user message 应包含变量替换后的值，不含 {{}} 占位符。
+	if !contains(body, "广告投放优化") || !contains(body, "adsops") {
+		t.Fatalf("body missing rendered vars: %s", body)
+	}
+	if contains(body, "{{project.name}}") || contains(body, "{{project.slug}}") {
+		t.Fatalf("body contains unreplaced vars: %s", body)
+	}
+	// system prompt 应包含替换后的项目 slug。
+	if !contains(body, "你是 adsops 项目的巡检 Agent") {
+		t.Fatalf("body missing rendered system prompt: %s", body)
+	}
+	// 不再追加 <context> JSON。
+	if contains(body, "<context>") {
+		t.Fatalf("body should not contain <context> tag: %s", body)
+	}
+}
+
+func TestProjectAutomationPreviewUsesDefaultSystemPromptWhenEmpty(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, _ := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	defineProviderConfigForTest(t, f.svc)
+	view, err := f.svc.PreviewProjectAutomation(project.Slug, ProjectAutomationPreviewInput{
+		Name:                "测试",
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"project"}},
+		InstructionTemplate: "hello",
+		SystemPrompt:        "", // 空 → 用默认值
+	})
+	if err != nil {
+		t.Fatalf("PreviewProjectAutomation: %v", err)
+	}
+	body := string(mustJSONBytes(t, view.Body))
+	if !contains(body, "你是项目自动化执行 Agent") {
+		t.Fatalf("body missing default system prompt: %s", body)
+	}
+}
+
 func TestProjectAutomationSchedulerEnqueuesDailyRuleOnce(t *testing.T) {
 	f := newProjectAutomationServiceFixture(t)
 	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
@@ -267,7 +330,7 @@ func TestProjectAutomationEventEnqueueUsesAddedAssignees(t *testing.T) {
 		Condition:     ProjectAutomationCondition{OnlyAddedAssignees: true},
 		Action:        defaultAutomationActionForTest(),
 		Context:       ProjectAutomationContextConfig{Include: []string{"event", "task", "added_assignees", "project"}},
-		InstructionTemplate: "处理新增负责人",
+		InstructionTemplate: "处理新增负责人：{{added_assignees}}",
 	})
 	if err != nil {
 		t.Fatalf("AddProjectAutomationRule: %v", err)
@@ -289,7 +352,8 @@ func TestProjectAutomationEventEnqueueUsesAddedAssignees(t *testing.T) {
 	if len(deliveries) != 1 {
 		t.Fatalf("deliveries = %#v", deliveries)
 	}
-	if !contains(deliveries[0].RequestBodyPreview, "added_assignees") || !contains(deliveries[0].RequestBodyPreview, alice.ID) {
+	// 指令模板使用 {{added_assignees}}，渲染后应包含 alice 的 ID。
+	if !contains(deliveries[0].RequestBodyPreview, alice.ID) {
 		t.Fatalf("delivery preview missing added assignee: %s", deliveries[0].RequestBodyPreview)
 	}
 }
