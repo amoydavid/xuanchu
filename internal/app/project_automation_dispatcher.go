@@ -83,7 +83,9 @@ func (d *ProjectAutomationDispatcher) RunOnce(ctx context.Context) (ProjectAutom
 			message = http.StatusText(statusCode)
 		}
 		maxAttempts := d.maxAttemptsFor(row)
-		if (statusCode == 429 || statusCode >= 500) && row.AttemptCount < maxAttempts {
+		// 网络错误（sendErr != nil，statusCode == 0）或 429/5xx 时重试。
+		isRetryable := sendErr != nil || statusCode == 429 || statusCode >= 500
+		if isRetryable && row.AttemptCount < maxAttempts {
 			next := now + int64(min(row.AttemptCount, 5))*60
 			if err := repo.MarkRetry(row.ID, now, next, intPtr(statusCode), message, responsePreview); err != nil {
 				return result, err
