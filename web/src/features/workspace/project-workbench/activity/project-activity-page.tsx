@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { MarkdownEditor } from "@/components/markdown"
 import { auditPath, type AuditRow } from "@/features/workspace/audit/audit-api"
 import { useMe } from "@/features/workspace/session/useMe"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
@@ -98,14 +98,21 @@ export function ProjectActivityPage({
   return (
     <div className="space-y-4">
       {canPublish ? (
-        <section className="rounded-lg border bg-card p-4">
-          <Textarea
-            className="min-h-20"
-            onChange={(event) => setContent(event.target.value)}
+        <section className="space-y-2">
+          <MarkdownEditor
+            ariaLabel={t("projectSubpages.activityPublish")}
+            disabled={addMutation.isPending}
+            minHeight={120}
+            onChange={setContent}
+            onModEnter={() => {
+              if (content.trim()) {
+                addMutation.mutate(content)
+              }
+            }}
             placeholder={t("projectSubpages.activityPublishPlaceholder")}
             value={content}
           />
-          <div className="mt-2 flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
             <Button
               disabled={!content.trim() || addMutation.isPending}
               onClick={() => addMutation.mutate(content)}

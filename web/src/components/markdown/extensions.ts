@@ -34,7 +34,8 @@ export const markdownExtensions = [
     nested: true,
   }),
   Table.configure({
-    resizable: false,
+    resizable: true,
+    cellMinWidth: 80,
   }),
   TableRow,
   TableHeader,
