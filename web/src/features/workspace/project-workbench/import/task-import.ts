@@ -220,8 +220,8 @@ export function preflightTaskImport(
           issue(
             "invalid_assignee_reference",
             assignee.display_name
-              ? `指派人 ${assignee.display_name} 只有 display_name，缺少 name、email 或 user_id`
-              : "指派人缺少 name、email 或 user_id",
+              ? `指派人 ${assignee.display_name} 只有 display_name，缺少 name、email 或 id`
+              : "指派人缺少 name、email 或 id",
             {
               ref: assignee.display_name,
               row,
@@ -465,7 +465,7 @@ function taskMetaString(task: TaskImportTask, key: string): string | undefined {
 function memberReferenceSet(members: WorkspaceMemberCandidate[]): Set<string> {
   const refs = new Set<string>()
   for (const member of members) {
-    refs.add(member.user_id.toLowerCase())
+    refs.add(member.id.toLowerCase())
     refs.add(member.name.toLowerCase())
     if (member.email) {
       refs.add(member.email.toLowerCase())
@@ -489,7 +489,7 @@ function assigneePreflightRefs(
       continue
     }
     const ref =
-      assignee.user_id ??
+      assignee.id ??
       assignee.email ??
       assignee.name ??
       ""

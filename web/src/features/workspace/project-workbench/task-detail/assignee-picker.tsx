@@ -45,7 +45,7 @@ export function AssigneePicker({
   const selectedSet = useMemo(() => new Set(selected), [selected])
   const memberByID = useMemo(
     () =>
-      new Map((members.data ?? []).map((member) => [member.user_id, member])),
+      new Map((members.data ?? []).map((member) => [member.id, member])),
     [members.data]
   )
   const visibleMembers = useMemo(() => {
@@ -55,7 +55,7 @@ export function AssigneePicker({
       return allMembers
     }
     return allMembers.filter((member) =>
-      `${member.name} ${member.email ?? ""} ${member.user_id}`
+      `${member.name} ${member.email ?? ""} ${member.id}`
         .toLowerCase()
         .includes(keyword)
     )
@@ -129,11 +129,11 @@ export function AssigneePicker({
               </div>
             ) : (
               visibleMembers.map((member) => {
-                const checked = selectedSet.has(member.user_id)
+                const checked = selectedSet.has(member.id)
                 return (
                   <label
                     className="flex cursor-pointer items-center gap-3 rounded-sm px-2 py-2 text-sm hover:bg-muted"
-                    key={member.user_id}
+                    key={member.id}
                   >
                     <Checkbox
                       aria-label={`${member.name} ${member.email ?? ""}`.trim()}
@@ -141,8 +141,8 @@ export function AssigneePicker({
                       onCheckedChange={(next) => {
                         setSelected((current) =>
                           next
-                            ? Array.from(new Set([...current, member.user_id]))
-                            : current.filter((item) => item !== member.user_id)
+                            ? Array.from(new Set([...current, member.id]))
+                            : current.filter((item) => item !== member.id)
                         )
                       }}
                     />
@@ -217,6 +217,6 @@ function assigneeRefs(assignees: ProjectWorkbenchAssignee[]): string[] {
 
 function assigneeRef(assignee: ProjectWorkbenchAssignee): string {
   return (
-    assignee.user_id || assignee.id || assignee.email || assignee.name || ""
+    assignee.id || assignee.email || assignee.name || ""
   )
 }

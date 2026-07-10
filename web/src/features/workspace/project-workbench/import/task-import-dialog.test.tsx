@@ -80,7 +80,7 @@ describe("TaskImportDialog", () => {
     await i18n.changeLanguage("zh-CN")
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
-        user_id: "user-alice",
+        id: "user-alice",
         name: "alice",
         email: "alice@example.com",
         role: "member",

@@ -6,10 +6,11 @@ import {
 } from "@/features/workspace/session/workspace-api"
 
 export type WorkspaceMemberRow = {
-  user_id: string
+  id: string
   name: string
   display_name: string
   email?: string | null
+  external_ids?: { provider: string; user_type?: string; external_id: string }[]
   role: string
   joined_at: number
   modified_at: number
@@ -20,7 +21,7 @@ export type WorkspaceUserRow = {
   name: string
   display_name: string
   email?: string | null
-  external_ids?: { provider: string; external_id: string }[]
+  external_ids?: { provider: string; user_type?: string; external_id: string }[]
   active: boolean
   created_at: number
   modified_at: number
@@ -114,23 +115,24 @@ export function removeWorkspaceMember(workspaceSlug: string, userID: string) {
 
 // External IDs（外部身份映射）。
 // 后端契约：
-//   POST /api/v1/users/{user}/external-ids  body: {provider, external_id}
+//   POST /api/v1/users/{user}/external-ids  body: {provider, user_type?, external_id}
 //   GET  /api/v1/users/{user}/external-ids
 //   DELETE /api/v1/users/{user}/external-ids/{provider}/{externalID}
 export function listExternalIDs(userRef: string) {
-  return workspaceApiGet<Array<{ provider: string; external_id: string }>>(
-    `/api/v1/users/${encodeURIComponent(userRef)}/external-ids`
-  )
+  return workspaceApiGet<
+    Array<{ provider: string; user_type?: string; external_id: string }>
+  >(`/api/v1/users/${encodeURIComponent(userRef)}/external-ids`)
 }
 
 export function bindExternalID(
   userRef: string,
   provider: string,
-  externalID: string
+  externalID: string,
+  userType?: string
 ) {
   return workspaceApiPost<{ ok: boolean }>(
     `/api/v1/users/${encodeURIComponent(userRef)}/external-ids`,
-    { provider, external_id: externalID }
+    { provider, user_type: userType, external_id: externalID }
   )
 }
 

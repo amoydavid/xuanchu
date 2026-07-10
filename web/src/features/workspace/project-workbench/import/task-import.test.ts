@@ -15,7 +15,7 @@ function member(
   overrides: Partial<WorkspaceMemberCandidate> = {}
 ): WorkspaceMemberCandidate {
   return {
-    user_id: "user-alice",
+    id: "user-alice",
     name: "alice",
     email: "alice@example.com",
     role: "member",
@@ -161,7 +161,7 @@ describe("task import preprocessing", () => {
       existingTasks: [],
       members: [
         member({
-          user_id: "u-zhangsan",
+          id: "u-zhangsan",
           name: "zhangsan",
           display_name: "张三",
           email: "zhangsan@example.com",
@@ -190,7 +190,7 @@ describe("task import preprocessing", () => {
       existingTasks: [],
       members: [
         member({
-          user_id: "u-zhangsan",
+          id: "u-zhangsan",
           name: "zhangsan",
           display_name: "张三",
           email: "zhangsan@example.com",

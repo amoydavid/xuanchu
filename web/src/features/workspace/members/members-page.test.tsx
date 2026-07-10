@@ -108,7 +108,7 @@ describe("MembersPage", () => {
           method === "PATCH"
         ) {
           return okResponse({
-            user_id: "u2",
+            id: "u2",
             name: "bob",
             display_name: "李四",
             email: "bob@example.com",
@@ -379,7 +379,7 @@ describe("MembersPage", () => {
         const method = (init?.method ?? "GET").toUpperCase()
         if (method === "PATCH") {
           return okResponse({
-            user_id: "u2",
+            id: "u2",
             name: "bob",
             display_name: "Bob Li",
             email: "bob@example.com",
@@ -469,7 +469,7 @@ describe("MembersPage", () => {
 function memberRows() {
   return [
           {
-            user_id: "u1",
+            id: "u1",
             name: "alice",
             display_name: "Alice Chen",
             email: "alice@example.com",
@@ -478,7 +478,7 @@ function memberRows() {
             modified_at: 100,
           },
           {
-            user_id: "u2",
+            id: "u2",
             name: "bob",
             display_name: "Bob Li",
             email: "bob@example.com",

@@ -126,7 +126,7 @@ function buildWorkloadRows(
   for (const item of tasks) {
     const assignees = item.assignees?.length
       ? item.assignees
-      : [{ user_id: "__unassigned__", name: "未分配" }]
+      : [{ id: "__unassigned__", name: "未分配" }]
     for (const assignee of assignees) {
       const key = assigneeRef(assignee)
       const row =
@@ -135,7 +135,7 @@ function buildWorkloadRows(
           key,
           label: assigneeLabel(assignee),
           filterRef:
-            assignee.user_id || assignee.id || assignee.email || assignee.name,
+            assignee.id || assignee.email || assignee.name,
           total: 0,
           open: 0,
           overdue: 0,
@@ -175,7 +175,6 @@ function buildWorkloadRows(
 
 function assigneeRef(assignee: ProjectWorkbenchAssignee): string {
   return (
-    assignee.user_id ||
     assignee.id ||
     assignee.email ||
     assignee.name ||

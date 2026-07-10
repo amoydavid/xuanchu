@@ -131,7 +131,7 @@ export function TaskImportDialog({
           (await createWorkspaceUser(userCreateInputFromAssignee(candidate)))
         await addWorkspaceMember(workspaceSlug, user.id, "member")
         resolved.push({
-          user_id: user.id,
+          id: user.id,
           name: user.name,
           display_name: user.display_name,
           email: user.email,
@@ -708,7 +708,7 @@ function assigneeMetadataForRef(
         continue
       }
       const refs = [
-        assignee.user_id,
+        assignee.id,
         assignee.email ?? undefined,
         assignee.name,
         assignee.display_name,
@@ -762,9 +762,9 @@ function mergeMembers(
   current: WorkspaceMemberCandidate[],
   additions: WorkspaceMemberCandidate[]
 ): WorkspaceMemberCandidate[] {
-  const byID = new Map(current.map((member) => [member.user_id, member]))
+  const byID = new Map(current.map((member) => [member.id, member]))
   for (const member of additions) {
-    byID.set(member.user_id, member)
+    byID.set(member.id, member)
   }
   return Array.from(byID.values())
 }
@@ -790,7 +790,7 @@ function formatAssignees(
       }
       return (
         assignee.display_name ??
-        assignee.user_id ??
+        assignee.id ??
         assignee.email ??
         assignee.name ??
         "-"

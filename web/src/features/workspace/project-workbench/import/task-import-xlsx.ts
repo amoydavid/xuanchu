@@ -112,7 +112,7 @@ function buildTaskImportTemplateHelpRows(): TaskImportRow[] {
       field: "assignees",
       required: "否",
       type: "string list",
-      allowed_values: "workspace 用户名、邮箱或 user_id",
+      allowed_values: "workspace 用户名、邮箱或用户 ID",
       format: "多个值用逗号或换行分隔",
       description: "指派人稳定引用；可配合 assignee_display_names 和 assignee_emails 按顺序补充展示姓名和邮箱。",
       example: "alice, bob@example.com",

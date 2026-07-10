@@ -118,7 +118,7 @@ export type TaskImportTask = {
   assignees?: Array<
     | string
     | {
-        user_id?: string
+        id?: string
         name?: string
         display_name?: string
         email?: string | null

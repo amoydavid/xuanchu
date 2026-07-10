@@ -59,14 +59,14 @@ export function UserPicker({
     if (
       value !== "" &&
       !membersQuery.isLoading &&
-      !members.some((m) => m.user_id === value)
+      !members.some((m) => m.id === value)
     ) {
       onChange("")
     }
   }, [value, members, membersQuery.isLoading, onChange])
 
   // value === "" → 我自己；否则匹配 members 中的具体成员
-  const selectedMember = members.find((m) => m.user_id === value)
+  const selectedMember = members.find((m) => m.id === value)
   const selectedName =
     value === ""
       ? t("token.user.self")
@@ -127,12 +127,12 @@ export function UserPicker({
                   {members
                     // me 未加载完成时（selfId 为空）排除全部成员，避免与「我自己」
                     // 同时出现当前用户的两行；me 加载完成后正常按 selfId 过滤。
-                    .filter((m) => selfId !== "" && m.user_id !== selfId)
+                    .filter((m) => selfId !== "" && m.id !== selfId)
                     .map((m) => (
                       <CommandItem
-                        key={m.user_id}
+                        key={m.id}
                         onSelect={() => {
-                          onChange(m.user_id)
+                          onChange(m.id)
                           setOpen(false)
                         }}
                         // value 只用于 cmdk 搜索评分；onSelect 用闭包里的 user_id，
@@ -142,7 +142,7 @@ export function UserPicker({
                         <CheckIcon
                           className={cn(
                             "mr-2 size-4",
-                            value === m.user_id ? "opacity-100" : "opacity-0"
+                            value === m.id ? "opacity-100" : "opacity-0"
                           )}
                         />
                         <span>{m.display_name || m.name}</span>

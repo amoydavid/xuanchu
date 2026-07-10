@@ -233,12 +233,12 @@ export function MembersPage({ credential, workspaceSlug }: MembersPageProps) {
                     <TableRow
                       aria-label={t("members.openDetail", { name: memberName })}
                       className="cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
-                      key={member.user_id}
-                      onClick={() => openMemberDetail(member.user_id)}
+                      key={member.id}
+                      onClick={() => openMemberDetail(member.id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault()
-                          openMemberDetail(member.user_id)
+                          openMemberDetail(member.id)
                         }
                       }}
                       tabIndex={0}
@@ -355,7 +355,7 @@ function MemberActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuItem asChild>
-          <a href={memberDetailHref(member.user_id)}>
+          <a href={memberDetailHref(member.id)}>
             {t("common.details")}
           </a>
         </DropdownMenuItem>
@@ -433,7 +433,7 @@ export function MembersDetailPage({
   })
   const members = membersQuery.data ?? []
   const member = members.find(
-    (row) => row.user_id === userRef || row.name === userRef
+    (row) => row.id === userRef || row.name === userRef
   )
   const user = userQuery.data ?? userFromMember(member)
   const role = credential?.effective_role ?? ""
@@ -881,7 +881,7 @@ function MemberDisplayNameDialog({
   const queryClient = useQueryClient()
   const open = member !== null
   const draftSource = member
-    ? `${member.user_id}\u0000${member.display_name ?? ""}`
+    ? `${member.id}\u0000${member.display_name ?? ""}`
     : ""
   const [draftState, setDraftState] = useState({ source: "", value: "" })
   const value =
@@ -891,7 +891,7 @@ function MemberDisplayNameDialog({
       if (!member) {
         return null
       }
-      return modifyWorkspaceMember(workspaceSlug, member.user_id, {
+      return modifyWorkspaceMember(workspaceSlug, member.id, {
         display_name: displayName,
       })
     },
@@ -984,7 +984,7 @@ function MemberRoleDialog({
       if (!member) {
         return null
       }
-      return modifyWorkspaceMember(workspaceSlug, member.user_id, {
+      return modifyWorkspaceMember(workspaceSlug, member.id, {
         role: nextRole,
       })
     },
@@ -1101,7 +1101,7 @@ function RemoveMemberDialog({
       if (!member) {
         return null
       }
-      return removeWorkspaceMember(workspaceSlug, member.user_id)
+      return removeWorkspaceMember(workspaceSlug, member.id)
     },
     onSuccess: async () => {
       await invalidateMembers(queryClient, workspaceSlug)
@@ -1257,7 +1257,7 @@ function userFromMember(
     display_name: member.display_name,
     email: member.email,
     external_ids: [],
-    id: member.user_id,
+    id: member.id,
     modified_at: member.modified_at,
     name: member.name,
   }
@@ -1269,7 +1269,7 @@ function filterMemberAudit(
   user: WorkspaceUserRow | undefined
 ) {
   const ids = new Set(
-    [member?.user_id, member?.name, user?.id, user?.name].filter(Boolean)
+    [member?.id, member?.name, user?.id, user?.name].filter(Boolean)
   )
   return rows.filter((row) => row.target_type === "member" && ids.has(row.target_id))
 }
@@ -1280,7 +1280,7 @@ function filterMemberTokens(
   user: WorkspaceUserRow | undefined
 ) {
   const ids = new Set(
-    [member?.user_id, member?.name, user?.id, user?.name].filter(Boolean)
+    [member?.id, member?.name, user?.id, user?.name].filter(Boolean)
   )
   let active = 0
   let revoked = 0

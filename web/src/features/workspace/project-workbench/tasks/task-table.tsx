@@ -371,7 +371,6 @@ function assigneeNames(task: ProjectWorkbenchTask): string {
         assignee.display_name ||
         assignee.name ||
         assignee.email ||
-        assignee.user_id ||
         assignee.id
     )
     .filter(Boolean)

@@ -61,7 +61,7 @@ function task(overrides: Record<string, unknown> = {}) {
     priority: "M",
     due: 1_783_036_800,
     tags: ["ads", "daily"],
-    assignees: [{ user_id: "u1", name: "张三" }],
+    assignees: [{ id: "u1", name: "张三" }],
     wait: null,
     scheduled: null,
     until: null,
@@ -82,7 +82,7 @@ describe("TaskPropertyPanel", () => {
     vi.mocked(modifyTask).mockResolvedValue(task())
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
-        user_id: "u1",
+        id: "u1",
         name: "张三",
         email: "zhang@example.com",
         role: "member",
@@ -90,7 +90,7 @@ describe("TaskPropertyPanel", () => {
         modified_at: 1,
       },
       {
-        user_id: "u2",
+        id: "u2",
         name: "李四",
         email: "li@example.com",
         role: "member",

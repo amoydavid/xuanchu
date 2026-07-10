@@ -161,7 +161,7 @@ function SubTaskRow({
       {task.assignees && task.assignees.length > 0 ? (
         <span className="truncate text-xs text-muted-foreground">
           {task.assignees
-            .map((a: ProjectWorkbenchAssignee) => a.display_name || a.name || a.user_id)
+            .map((a: ProjectWorkbenchAssignee) => a.display_name || a.name || a.id)
             .join(", ")}
         </span>
       ) : null}
@@ -226,7 +226,7 @@ function SubTaskComposer({
     }
     setError(null)
     const assigneeIDs = assignees
-      .map((a) => a.user_id ?? a.id)
+      .map((a) => a.id)
       .filter((v): v is string => Boolean(v))
     try {
       await createSubTask.mutateAsync({
@@ -313,7 +313,7 @@ function SubTaskComposer({
         <AssigneePicker
           onSave={async (nextIDs) => {
             // picker 回传选中的 id 列表；用最小对象保留，避免重新拉取成员详情。
-            setAssignees(nextIDs.map((id) => ({ user_id: id })))
+            setAssignees(nextIDs.map((id) => ({ id })))
           }}
           value={assignees}
           workspaceSlug={workspaceSlug}

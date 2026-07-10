@@ -72,7 +72,7 @@ export function TaskCreateDialog({
   })
   const memberByID = useMemo(
     () =>
-      new Map((members.data ?? []).map((member) => [member.user_id, member])),
+      new Map((members.data ?? []).map((member) => [member.id, member])),
     [members.data]
   )
   const selectedSet = useMemo(
@@ -318,12 +318,12 @@ function AssigneeSelector({
             </div>
           ) : (
             members.map((member) => {
-              const checked = selectedSet.has(member.user_id)
+              const checked = selectedSet.has(member.id)
               const label = memberLabel(member)
               return (
                 <label
                   className="flex cursor-pointer items-center gap-3 px-2 py-2 text-sm hover:bg-muted"
-                  key={member.user_id}
+                  key={member.id}
                 >
                   <Checkbox
                     aria-label={`${label} ${member.email ?? ""}`.trim()}
@@ -331,8 +331,8 @@ function AssigneeSelector({
                     onCheckedChange={(next) =>
                       setSelected((current) =>
                         next
-                          ? Array.from(new Set([...current, member.user_id]))
-                          : current.filter((item) => item !== member.user_id)
+                          ? Array.from(new Set([...current, member.id]))
+                          : current.filter((item) => item !== member.id)
                       )
                     }
                   />
