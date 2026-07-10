@@ -43,7 +43,7 @@ export function AutomationPreviewDialog({ open, onOpenChange, preview }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl overflow-hidden">
         <DialogHeader>
           <DialogTitle>预览投递 JSON</DialogTitle>
           <DialogDescription className="sr-only">
@@ -51,8 +51,8 @@ export function AutomationPreviewDialog({ open, onOpenChange, preview }: Props) 
           </DialogDescription>
         </DialogHeader>
         {preview ? (
-          <div className="space-y-3">
-            <div className="space-y-1 text-sm">
+          <div className="min-w-0 space-y-3 overflow-hidden">
+            <div className="space-y-1 break-all text-sm">
               <div>
                 {preview.method} {preview.url}
               </div>
@@ -66,7 +66,7 @@ export function AutomationPreviewDialog({ open, onOpenChange, preview }: Props) 
               {extractMessages(preview.body).map((msg, i) => (
                 <div key={i} className="space-y-1">
                   <span className="text-xs font-medium uppercase text-muted-foreground">[{msg.role}]</span>
-                  <pre className="max-h-[200px] overflow-auto rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap">
+                  <pre className="max-h-[200px] overflow-auto rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap break-all">
                     {msg.content}
                   </pre>
                 </div>

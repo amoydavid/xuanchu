@@ -216,7 +216,7 @@ export function AutomationTestDebugDialog({ open, onOpenChange, projectSlug, del
           </DialogDescription>
         </DialogHeader>
         {delivery ? (
-          <div className="max-h-[calc(90vh-8rem)] overflow-y-auto">
+          <div className="min-w-0 max-h-[calc(90vh-8rem)] overflow-y-auto">
             <DeliveryDetail delivery={delivery} />
           </div>
         ) : (
