@@ -4,13 +4,13 @@
 
 **日期：** 2026-07-09
 **状态：** 设计中
-**范围：** 项目自动化规则的 system prompt 和 instruction template 改为用户完全可控的模板，支持 `{{变量}}` 占位符引用项目上下文；前端用 Markdown 编辑器编辑提示词，并在 `{{` 后弹出变量选择器。
+**范围：** 项目自动化规则的 system prompt 和 instruction template 改为用户完全可控的模板，支持 `{{变量}}` 占位符引用项目上下文；前端用 Textarea 编辑提示词，并通过「插入变量」按钮选择变量。
 
 ## 0. 产品结论
 
 当前自动化投递的请求体有一半是系统拼装的黑盒：system prompt 写死、user message 被强制追加一大段 context JSON。用户在表单里写的「指令模板」只是最终 user message 的一个前缀，无法控制上下文怎么用、放在哪里。
 
-本次改造把 system prompt 和 user message 的构造权完全交给用户。上下文数据通过 `{{变量}}` 占位符暴露，用户在 Textarea 里自由编排消息结构。编辑器在输入 `{{` 后自动弹出变量选择器，点一下即可插入，不需要手记变量名。
+本次改造把 system prompt 和 user message 的构造权完全交给用户。上下文数据通过 `{{变量}}` 占位符暴露，用户在 Textarea 里自由编排消息结构。Textarea 下方提供「插入变量」按钮，点击后弹出变量选择器，选择即可插入，不需要手记变量名。
 
 ## 1. 背景
 
@@ -43,15 +43,15 @@
 
 1. system prompt 可由用户在表单中编辑，有合理默认值，可为空。
 2. instruction template 支持插入 `{{变量}}` 占位符，渲染时替换为真实数据。
-3. 编辑器用 Textarea（不引入 Markdown 编辑器），保持轻量。
-4. 编辑器在用户输入 `{{` 后自动弹出变量选择器，可搜索、可点击插入。
+3. 提示词用 Textarea 编辑，保持轻量。
+4. Textarea 下方提供「插入变量」按钮，点击弹出变量选择器，可搜索、可点击插入到文本末尾。
 5. 变量列表区分触发器类型（schedule / event），只展示当前触发器下有值的变量。
 6. 预览弹窗展示渲染后的最终 system / user message 明文，让用户确认变量替换结果。
 7. 向后兼容：旧规则没有 system_prompt 字段时使用默认值；旧 instruction_template 仍按纯文本渲染（不含变量时行为不变）。
 
 ## 3. 非目标
 
-- 不引入 Markdown 编辑器或 `@tiptap/extension-mention` 插件。system prompt 和 instruction template 都用 Textarea 编辑，保持轻量。变量选择器在 Textarea 上直接工作。
+- 不引入富文本编辑器。system prompt 和 instruction template 都用 Textarea 编辑，保持轻量。
 - 不做变量嵌套（`{{project.config.feishu.chat_id}}`）。项目配置统一用 `{{project_config}}` 输出 JSON 对象。
 - 不做条件逻辑、循环、管道等模板引擎特性（不是 Jinja2 / Go template 的完整实现）。
 - 不改 notification/hook 的模板变量体系（它们是独立域）。
@@ -190,23 +190,23 @@ GET /api/v1/projects/{projectRef}/automation-template-vars
 
 ## 6. 前端改动
 
-### 6.1 编辑器替换
+### 6.1 提示词编辑
 
 规则编辑 Dialog（`automation-rule-dialog.tsx`）中：
 
 - **System Prompt**：新增字段，用 `Textarea` 编辑（rows=4），有 label「系统提示词」。
-- **Instruction Template**：保持用 `Textarea`（rows=6），改造为支持 `{{` 触发变量选择器。
+- **Instruction Template**：保持用 `Textarea`（rows=6）。
+- 两个 Textarea 下方各放一个「插入变量」按钮。
 
 ### 6.2 变量选择器
 
-新增 `TemplateVariablePicker` 组件，在 Textarea 上直接工作：
+新增 `TemplateVariablePicker` 组件，不监听输入事件，只通过按钮触发：
 
-1. 监听 Textarea 的 `input`/`keyup` 事件，当光标前最近两个字符是 `{{` 时，弹出 Popover（用 shadcn `Popover` + `Command`）展示当前触发器下可用变量列表。
-2. Popover 定位到光标位置（用 textarea 的 `selectionStart` + 一个隐藏的镜像 div 计算坐标，或简单定位在 textarea 下方）。
-3. 用户点击变量或按 Enter，在光标位置插入变量名 + `}}`（如 `{{project.slug}}`），Popover 关闭，光标移到 `}}` 之后。
-4. 变量列表按触发器过滤，支持搜索（Command 的 built-in filter）。
-5. 按 Esc 或输入空格/换行时关闭 Popover。
-6. 在 Textarea 下方常驻一个折叠的「可用变量」提示区，展示所有变量名和说明，点击可复制变量名到剪贴板（fallback，方便手动粘贴）。
+1. Textarea 下方放一个「插入变量」按钮（用 shadcn `Popover` 包裹）。
+2. 点击按钮打开 Popover（用 shadcn `Popover` + `Command`），展示当前触发器下可用变量列表。
+3. 变量列表按触发器过滤，支持搜索（Command 的 built-in filter）。
+4. 用户点击变量，将 `{{变量名}}`（如 `{{project.slug}}`）追加到对应 Textarea 的文本末尾，Popover 关闭。
+5. 在 Textarea 下方常驻一个折叠的「可用变量」提示区，展示所有变量名和说明，方便用户查看可用变量。
 
 ### 6.3 数据流
 
@@ -251,7 +251,7 @@ GET /api/v1/projects/{projectRef}/automation-template-vars
 
 前端：
 - Textarea 编辑 system prompt 和 instruction template。
-- 变量选择器在输入 `{{` 后弹出，点击插入变量。
+- 点「插入变量」按钮后弹出变量选择器，点击插入变量到 Textarea 末尾。
 - 切换触发器类型时变量列表更新。
 - 预览弹窗展示渲染后的明文 messages。
 - `pnpm --dir web test`、`typecheck`、`lint`、`build`。
