@@ -31,6 +31,19 @@ func TestRenderAutomationTemplateNoVars(t *testing.T) {
 	}
 }
 
+func TestRenderAutomationTemplateProjectConfigKey(t *testing.T) {
+	vars := map[string]string{
+		"project_config":                 `{"feishu.chat_id":"oc_xxx","agent.provider.model":"op"}`,
+		"project_config:feishu.chat_id":  "oc_xxx",
+		"project_config:agent.provider.model": "op",
+	}
+	got := renderAutomationTemplate("飞书群：{{project_config:feishu.chat_id}}，模型：{{project_config:agent.provider.model}}", vars)
+	want := "飞书群：oc_xxx，模型：op"
+	if got != want {
+		t.Fatalf("renderAutomationTemplate project_config:key = %q, want %q", got, want)
+	}
+}
+
 func TestAutomationTemplateVars(t *testing.T) {
 	view := AutomationTemplateVars()
 	if len(view.Triggers) != 2 {

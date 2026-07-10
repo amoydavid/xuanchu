@@ -261,9 +261,15 @@ func (s *Service) buildAutomationTemplateVars(project ProjectView, ruleID string
 	vars["project.slug"] = project.Slug
 	vars["project.name"] = project.Name
 	vars["project.status"] = project.Status
-	// project_config
+	// project_config：整体 JSON + 按 key 平铺为 project_config:<key>
 	if cfg, ok := ctx["project_config"]; ok {
 		vars["project_config"] = automationJSONIndented(cfg)
+		// 平铺每个非 secret config key 为 project_config:<key>
+		if cfgMap, ok := cfg.(map[string]string); ok {
+			for k, v := range cfgMap {
+				vars["project_config:"+k] = v
+			}
+		}
 	} else {
 		vars["project_config"] = "{}"
 	}

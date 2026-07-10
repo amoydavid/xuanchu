@@ -171,6 +171,7 @@ export async function getProjectAutomationDelivery(projectSlug: string, delivery
 export type AutomationTemplateVar = {
   name: string
   description: string
+  is_prefix?: boolean
 }
 
 export type AutomationTemplateVarsView = {

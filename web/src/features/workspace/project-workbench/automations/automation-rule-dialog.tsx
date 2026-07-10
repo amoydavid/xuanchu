@@ -42,6 +42,7 @@ type Props = {
   onOpenChange: (open: boolean) => void
   onSaved: () => void
   projectSlug: string
+  workspaceSlug: string
   // initial 存在 → 编辑模式；否则新建模式。
   initial?: ProjectAutomationRule
   // template 新建时可预填模板（从模板创建）。
@@ -76,6 +77,7 @@ export function AutomationRuleDialog({
   onOpenChange,
   onSaved,
   projectSlug,
+  workspaceSlug,
   initial,
   template,
   disabled,
@@ -216,6 +218,7 @@ export function AutomationRuleDialog({
               />
               <TemplateVariablePicker
                 projectSlug={projectSlug}
+                workspaceSlug={workspaceSlug}
                 trigger={form.trigger_type}
                 disabled={disabled}
                 onInsert={(token) => setForm({ ...form, system_prompt: form.system_prompt + token })}
@@ -232,6 +235,7 @@ export function AutomationRuleDialog({
               />
               <TemplateVariablePicker
                 projectSlug={projectSlug}
+                workspaceSlug={workspaceSlug}
                 trigger={form.trigger_type}
                 disabled={disabled}
                 onInsert={(token) => setForm({ ...form, instruction_template: form.instruction_template + token })}
