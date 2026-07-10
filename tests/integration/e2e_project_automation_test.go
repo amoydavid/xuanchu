@@ -147,3 +147,65 @@ func httpJSONRaw(t *testing.T, method, urlStr, body string, headers map[string]s
 	}
 	return out
 }
+
+// TestE2EProjectAutomationTemplateVars 验证模板变量 API 和预览中的变量替换。
+func TestE2EProjectAutomationTemplateVars(t *testing.T) {
+	bin := buildXuanchu(t)
+	dir := t.TempDir()
+	serverDB := filepath.Join(dir, "server.db")
+	configPath, _ := writeE2ELogConfig(t, dir)
+
+	// 预置项目和 provider config。
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "add", "tmplvars", "name:模板变量测试")
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "config", "set", "tmplvars", "agent.provider.base_url", "https://agent.example.com")
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "config", "set", "tmplvars", "agent.provider.api_key", "sk-tmpl")
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "config", "set", "tmplvars", "agent.provider.model", "op")
+	run(t, bin, "--db", serverDB, "--workspace", "local", "project", "config", "set", "tmplvars", "feishu.chat_id", "oc_tmpl")
+
+	token := parseRawToken(t, createTokenJSON(t, bin, "--db", serverDB, "tmplvars-e2e", "*"))
+	cmd, baseURL := startXuanchuServer(t, bin, "--config", configPath, "--db", serverDB)
+	defer stopXuanchuServer(t, cmd)
+
+	headers := authHeaders(token)
+	headers["Content-Type"] = "application/json"
+
+	// 1. template-vars API 返回按触发器分组的变量列表。
+	varsResp := httpJSON(t, http.MethodGet, baseURL+"/api/v1/projects/tmplvars/automation-template-vars", nil, headers)
+	varsData := varsResp["data"].(map[string]any)
+	triggers := varsData["triggers"].([]any)
+	if len(triggers) != 2 {
+		t.Fatalf("expected 2 triggers, got %d", len(triggers))
+	}
+
+	// 2. 预览中使用模板变量，验证变量被正确替换。
+	previewBody := `{
+		"name":"模板变量测试",
+		"enabled":true,
+		"trigger_type":"schedule",
+		"trigger_config":{"schedule_type":"daily_at","schedule_value":"09:30","timezone":"Asia/Shanghai"},
+		"action":{"protocol":"chat_completions","base_url_config_key":"agent.provider.base_url","api_key_config_key":"agent.provider.api_key","model_config_key":"agent.provider.model","temperature":0.2},
+		"context":{"include":["project","project_config"]},
+		"instruction_template":"检查项目 {{project.name}}（{{project.slug}}），配置：{{project_config}}",
+		"system_prompt":"你是 {{project.slug}} 的 Agent"
+	}`
+	preview := httpJSONRaw(t, http.MethodPost, baseURL+"/api/v1/projects/tmplvars/automations/preview", previewBody, headers)
+	previewStr := toJSONString(t, preview)
+	// 变量应被替换为实际值。
+	if !strings.Contains(previewStr, "模板变量测试") {
+		t.Fatalf("preview missing rendered project.name: %s", previewStr)
+	}
+	if !strings.Contains(previewStr, "tmplvars") {
+		t.Fatalf("preview missing rendered project.slug: %s", previewStr)
+	}
+	if !strings.Contains(previewStr, "oc_tmpl") {
+		t.Fatalf("preview missing rendered project_config: %s", previewStr)
+	}
+	// 不应包含未替换的占位符。
+	if strings.Contains(previewStr, "{{project.name}}") {
+		t.Fatalf("preview contains unreplaced var: %s", previewStr)
+	}
+	// system prompt 应包含替换后的 slug。
+	if !strings.Contains(previewStr, "你是 tmplvars 的 Agent") {
+		t.Fatalf("preview missing rendered system prompt: %s", previewStr)
+	}
+}
