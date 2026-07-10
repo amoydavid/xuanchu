@@ -883,6 +883,7 @@ export const enUS = {
       startTask: "Start {{taskRef}}",
       stopTask: "Stop {{taskRef}}",
       completeTask: "Complete {{taskRef}}",
+      reopenTask: "Reopen {{taskRef}}",
       moreTaskActions: "More actions {{taskRef}}",
       openTaskDetails: "Open details",
       copyTaskLink: "Copy task link",

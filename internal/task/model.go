@@ -188,6 +188,16 @@ func (t *Task) StopTask(now int64) {
 	t.Modified = now
 }
 
+// Reopen 把已完成任务恢复为 pending。
+// 作为 Complete 的逆操作：清掉 End（完成时间）与 Start（计时锚点），
+// 回到普通待处理状态，用户可重新 start。
+func (t *Task) Reopen(now int64) {
+	t.Status = StatusPending
+	t.End = nil
+	t.Start = nil
+	t.Modified = now
+}
+
 func SortAssigneeInfos(assignees []AssigneeInfo) {
 	sort.Slice(assignees, func(i, j int) bool {
 		if assignees[i].Name != assignees[j].Name {

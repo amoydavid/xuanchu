@@ -248,6 +248,10 @@ func (c *Client) StopTask(ctx context.Context, workspace, taskID string) (task.T
 	return c.postTaskAction(ctx, workspace, taskID, "stop", nil)
 }
 
+func (c *Client) ReopenTask(ctx context.Context, workspace, taskID string) (task.Task, error) {
+	return c.postTaskAction(ctx, workspace, taskID, "reopen", nil)
+}
+
 func (c *Client) AnnotateTask(ctx context.Context, workspace, taskID, description string) (task.Task, error) {
 	return c.postTaskAction(ctx, workspace, taskID, "annotations", TextInput{Description: description})
 }

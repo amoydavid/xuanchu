@@ -108,6 +108,7 @@ type TaskDoneInput = TaskIDInput
 type TaskDeleteInput = TaskIDInput
 type TaskStartInput = TaskIDInput
 type TaskStopInput = TaskIDInput
+type TaskReopenInput = TaskIDInput
 
 type TaskAnnotateInput struct {
 	Workspace  string `json:"workspace,omitempty"`
@@ -344,6 +345,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 	addTool(s, opts, &mcp.Tool{Name: "task_delete", Description: "Delete a task; writes audit."}, taskActionHandler(opts, "task deleted", func(svc *app.Service, id string) error { return svc.Delete(id) }))
 	addTool(s, opts, &mcp.Tool{Name: "task_start", Description: "Start a task; writes audit."}, taskActionHandler(opts, "task started", func(svc *app.Service, id string) error { return svc.Start(id) }))
 	addTool(s, opts, &mcp.Tool{Name: "task_stop", Description: "Stop a task; writes audit."}, taskActionHandler(opts, "task stopped", func(svc *app.Service, id string) error { return svc.Stop(id) }))
+	addTool(s, opts, &mcp.Tool{Name: "task_reopen", Description: "Reopen a completed task; writes audit."}, taskActionHandler(opts, "task reopened", func(svc *app.Service, id string) error { return svc.Reopen(id) }))
 	addTool(s, opts, &mcp.Tool{Name: "task_annotate", Description: "Annotate a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskAnnotateInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {

@@ -42,9 +42,10 @@ go build -o xuanchu ./cmd/xuanchu
 ./xuanchu info 1
 ./xuanchu info agentapi-1
 
-# 修改、完成、删除都可以用 <target> <action> 写法
+# 修改、完成、删除、重新打开都可以用 <target> <action> 写法
 ./xuanchu agentapi-1 modify priority:H +next
 ./xuanchu agentapi-1 done
+./xuanchu agentapi-1 reopen
 ./xuanchu agentapi-1 delete
 ```
 
@@ -133,7 +134,7 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/automa
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
 ```
 
-任务详情页提供“返回项目”入口，并支持 title inline 编辑、description 完整展示和弹窗编辑、start / stop / done / delete 操作、注解添加/编辑/删除、链接添加/删除，以及右侧属性栏编辑。description 和注解在 Web Console 中使用 Tiptap Markdown WYSIWYG 编辑与同 schema 只读渲染，支持标题、列表、引用、代码、表格、待办列表和安全链接；后端契约不变，仍把这些内容作为普通字符串保存，CLI、Remote Client、MCP 和 HTTP JSON 输出继续看到 Markdown 源码。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页（或 OIDC 单点登录入口），登录成功后回到原项目页或任务详情页。任务详情页还展示字段级变更历史：每次字段修改（title / description / assignees / due / priority / project / tags / wait / scheduled / until / recur / depends / udas）都会在 `audit_logs` 的 `task.modify` payload 里记录 before/after，前端通过 `GET /api/v1/tasks/{taskRef}/audit`（只要求 `task:read`，不要求 `audit:read`）读取并以自然语言渲染，例如「Alice 将标题从 A 改为 B」。变更历史只持久化机器语义，人类文案由前端 i18n 模板生成；历史无字段级明细的旧行显示为空。
+任务详情页提供“返回项目”入口，并支持 title inline 编辑、description 完整展示和弹窗编辑、start / stop / done / reopen / delete 操作、注解添加/编辑/删除、链接添加/删除，以及右侧属性栏编辑。description 和注解在 Web Console 中使用 Tiptap Markdown WYSIWYG 编辑与同 schema 只读渲染，支持标题、列表、引用、代码、表格、待办列表和安全链接；后端契约不变，仍把这些内容作为普通字符串保存，CLI、Remote Client、MCP 和 HTTP JSON 输出继续看到 Markdown 源码。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页（或 OIDC 单点登录入口），登录成功后回到原项目页或任务详情页。任务详情页还展示字段级变更历史：每次字段修改（title / description / assignees / due / priority / project / tags / wait / scheduled / until / recur / depends / udas）都会在 `audit_logs` 的 `task.modify` payload 里记录 before/after，前端通过 `GET /api/v1/tasks/{taskRef}/audit`（只要求 `task:read`，不要求 `audit:read`）读取并以自然语言渲染，例如「Alice 将标题从 A 改为 B」。变更历史只持久化机器语义，人类文案由前端 i18n 模板生成；历史无字段级明细的旧行显示为空。
 
 侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目概览页，再通过 Tabs 切到「任务」子页面，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，完整查看 Markdown description，并在弹窗中编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。任务子页面的“导入任务”支持下载完整字段 XLSX 模板、上传填写后的 XLSX 或标准 JSON，也可以在弹窗内查看带 `description` 注释的完整 JSON Schema；模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example，Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明；description 默认按 Markdown 编写，技术上仍作为字符串保存；`blocked_by` 支持引用导入文件内的临时 `id` 或已有任务 UUID；预检发现缺失普通指派人时可直接创建用户并加入当前 workspace，导入文件中的 `display_name` 会作为用户展示姓名保留；上传解析后会分页预览归一化后的导入成果。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口与项目更新写入入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。项目记录（project annotation）已从设置页迁到活动子页面，旧 `/projects/<slug>/settings/notes` 入口兼容重定向到活动页。
 
@@ -250,6 +251,9 @@ go build -o xuanchu ./cmd/xuanchu
 # 完成任务
 ./xuanchu 1 done
 
+# 重新打开已完成任务
+./xuanchu 1 reopen
+
 # 删除任务
 ./xuanchu 1 delete
 
@@ -351,7 +355,7 @@ go build -o xuanchu ./cmd/xuanchu
 
 - 任务字段：`start`、`wait`、`scheduled`、`until`、`annotations`、`depends`、`recur`、`parent`、`mask`、`imask`
 - 报表命令：`waiting`、`active`、`ready`、`blocked`、`blocking`
-- 动作命令：`start`、`stop`、`annotate`、`denotate`、`append`、`prepend`、`edit`
+- 动作命令：`start`、`stop`、`done`、`reopen`、`delete`、`annotate`、`denotate`、`append`、`prepend`、`edit`
 - 查询 / DOM / urgency / JSON import-export 对上述字段的贯通支持
 - 基础 recurring：`daily`、`weekly`、`monthly`、`<N>days`、`<N>weeks`、`<N>months`
 
@@ -1002,6 +1006,7 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 | `task_add` | 添加任务 |
 | `task_modify` | 修改任务 |
 | `task_done` | 完成任务 |
+| `task_reopen` | 重新打开已完成任务 |
 | `task_delete` | 删除任务 |
 | `task_query` | 通用查询，支持 filter、status、limit |
 | `task_get` | 按 UUID 或 `task_slug` 读取任务 |
@@ -1071,7 +1076,7 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 ./xuanchu hook replay <delivery-id>
 ```
 
-Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`、`project.transitioned`。投递失败不会回滚已提交的 task/project 事务。生成 delivery 时会冻结 sink 渲染后的请求快照，后续 retry/replay 不重新渲染当前 sink。所有 hook 配置变更和人工 replay 都会写入 audit log。
+Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.reopened`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`、`project.transitioned`。投递失败不会回滚已提交的 task/project 事务。生成 delivery 时会冻结 sink 渲染后的请求快照，后续 retry/replay 不重新渲染当前 sink。所有 hook 配置变更和人工 replay 都会写入 audit log。
 
 迁移提示：Hook 不再直接保存 URL 或 secret，旧的直接 URL hook 需要先创建 notification sink，再用 `--sink <sink-ref>` 绑定。`start` 只触发 `task.started`，`stop` 只触发 `task.stopped`；如果旧集成只监听 `task.modified` 来捕获开始或停止任务，需要补充订阅这两个事件。字段级变化可以订阅对应细粒度事件，例如 `task.due_changed`、`task.priority_changed`、`task.tags_changed`、`task.blocked`、`task.unblocked`。
 
@@ -1113,7 +1118,7 @@ Hook 支持的 event type：`task.created`、`task.modified`、`task.completed`�
 ./xuanchu notification delivery replay <delivery-id>
 ```
 
-Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`、`project.transitioned`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。
+Notification rule 支持的事件类型和 Hook 当前白名单一致：`task.created`、`task.modified`、`task.completed`、`task.deleted`、`task.started`、`task.stopped`、`task.reopened`、`task.assigned`、`task.unassigned`、`task.blocked`、`task.due_changed`、`task.priority_changed`、`task.project_changed`、`task.tags_changed`、`task.unblocked`、`project.archived`、`project.annotated`、`project.denotated`、`project.transitioned`。第三方固定 Web API 使用 `http_template` sink。header/body 模板保存在数据库中，secret 通过 secret config 引用；生成 delivery 时会冻结 `resolved_url`、header、body 和 content type，retry/replay 不重新渲染当前模板。
 
 notification / hook delivery 表是出站投递的可靠队列；进程内 worker 只做短暂执行协调。dispatcher 默认 `max_concurrency=1`，`batch_size` 只是每轮查询上限。sink 的 `max_concurrency=0` 表示继承默认 sink 并发；`xuanchu server` 内 notification dispatcher 和 hook dispatcher 共享同一个 sink limiter。同一个 delivery payload 会带稳定 `delivery_id`，接收方可据此幂等去重；本次 HTTP 请求真实尝试次数看 `X-Xuanchu-Attempt` header。详见 [定时通知与第三方通知](docs/manual/notifications.md)。
 

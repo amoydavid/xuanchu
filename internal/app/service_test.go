@@ -4206,6 +4206,65 @@ func TestServiceDeleteAndStopRejectTerminalStates(t *testing.T) {
 	}
 }
 
+func TestServiceReopen(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	tsk, err := svc.Add(AddInput{Title: "reopenable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(tsk.UUID); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	completed, _ := svc.ResolveTarget(tsk.UUID)
+	if completed.Status != task.StatusCompleted || completed.End == nil {
+		t.Fatalf("before reopen = %#v, want completed with End set", completed)
+	}
+	if err := svc.Reopen(tsk.UUID); err != nil {
+		t.Fatalf("Reopen() error = %v", err)
+	}
+	got, err := svc.ResolveTarget(tsk.UUID)
+	if err != nil {
+		t.Fatalf("ResolveTarget() error = %v", err)
+	}
+	if got.Status != task.StatusPending {
+		t.Fatalf("Status = %q, want %q", got.Status, task.StatusPending)
+	}
+	if got.End != nil {
+		t.Fatalf("End = %#v, want nil after reopen", got.End)
+	}
+	if got.Start != nil {
+		t.Fatalf("Start = %#v, want nil after reopen", got.Start)
+	}
+	// reopen 后任务回到工作区，List 默认可见。
+	tasks, _ := svc.List(ListInput{})
+	if len(tasks) != 1 {
+		t.Fatalf("pending tasks = %#v, want one reopened", tasks)
+	}
+}
+
+func TestServiceReopenRejectsNonCompleted(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	pending, err := svc.Add(AddInput{Title: "pending"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Reopen(pending.UUID); err == nil {
+		t.Fatal("Reopen(pending) error = nil, want non-completed guard")
+	}
+	deleted, err := svc.Add(AddInput{Title: "deleted"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(deleted.UUID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if err := svc.Reopen(deleted.UUID); err == nil {
+		t.Fatal("Reopen(deleted) error = nil, want non-completed guard")
+	}
+}
+
 func TestServiceImportClearsTagsWithExplicitEmptyArray(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

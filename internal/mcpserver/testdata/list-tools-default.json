@@ -533,7 +533,7 @@
             ]
           },
           "events": {
-            "description": "event types (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)",
+            "description": "event types (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.reopened, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)",
             "items": {
               "type": "string"
             },
@@ -1220,7 +1220,7 @@
             "type": "string"
           },
           "event": {
-            "description": "event type (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)",
+            "description": "event type (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.reopened, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)",
             "type": "string"
           },
           "filter": {
@@ -4251,6 +4251,46 @@
         "type": "object"
       },
       "name": "task_query",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Reopen a completed task; writes audit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "task reference: UUID or task_slug",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_reopen",
       "outputSchema": {
         "additionalProperties": false,
         "properties": {

@@ -192,7 +192,7 @@ function TaskDetailPageContent({
               </Button>
             ) : null}
             <TaskActionBar
-              canWrite={taskWritable}
+              permissionCanWrite={canWrite}
               projectSlug={effectiveProjectSlug ?? ""}
               task={taskData}
               taskRef={taskRef}

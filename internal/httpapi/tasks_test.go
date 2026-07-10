@@ -40,6 +40,13 @@ func TestTaskHTTPAcceptsTaskSlugRefs(t *testing.T) {
 			}
 			return ""
 		}},
+		{name: "reopen", method: http.MethodPost, path: "/api/v1/tasks/api-1/reopen", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
+			t.Helper()
+			if err := svc.Done(taskUUID); err != nil {
+				t.Fatal(err)
+			}
+			return ""
+		}},
 		{name: "annotate", method: http.MethodPost, path: "/api/v1/tasks/api-1/annotations", body: `{"description":"note"}`, wantStatus: http.StatusOK},
 		{name: "denotate", method: http.MethodDelete, path: "/api/v1/tasks/api-1/annotations/{annotationID}", wantStatus: http.StatusOK, before: func(t *testing.T, svc *app.Service, taskUUID string) string {
 			t.Helper()
@@ -132,6 +139,7 @@ func TestTaskHTTPRejectsNumericTaskRefs(t *testing.T) {
 		{name: "done", method: http.MethodPost, path: "/api/v1/tasks/1/done"},
 		{name: "start", method: http.MethodPost, path: "/api/v1/tasks/1/start"},
 		{name: "stop", method: http.MethodPost, path: "/api/v1/tasks/1/stop"},
+		{name: "reopen", method: http.MethodPost, path: "/api/v1/tasks/1/reopen"},
 		{name: "annotate", method: http.MethodPost, path: "/api/v1/tasks/1/annotations", body: `{"description":"note"}`},
 		{name: "denotate", method: http.MethodDelete, path: "/api/v1/tasks/1/annotations/1"},
 		{name: "urgency", method: http.MethodGet, path: "/api/v1/tasks/1/urgency"},

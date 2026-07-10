@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { Check, Copy, MoreHorizontal, Play, Square, Trash2 } from "lucide-react"
+import { Check, Copy, MoreHorizontal, Play, RotateCcw, Square, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -39,6 +39,7 @@ export function TaskRowActions({
   const startMutation = useTaskActionMutation(workspaceSlug, projectSlug, "start")
   const stopMutation = useTaskActionMutation(workspaceSlug, projectSlug, "stop")
   const doneMutation = useTaskActionMutation(workspaceSlug, projectSlug, "done")
+  const reopenMutation = useTaskActionMutation(workspaceSlug, projectSlug, "reopen")
   const remove = useTaskActionMutation(workspaceSlug, projectSlug, "delete")
   const isCompleted = status === "completed" || status === "deleted"
   const isStarted = status === "pending" && start !== undefined && start !== null
@@ -54,6 +55,10 @@ export function TaskRowActions({
     }
     if (action === "done") {
       void doneMutation.mutateAsync(taskRef)
+      return
+    }
+    if (action === "reopen") {
+      void reopenMutation.mutateAsync(taskRef)
     }
   }
 
@@ -96,6 +101,18 @@ export function TaskRowActions({
           </Button>
         </>
       ) : null}
+      {canWrite && status === "completed" ? (
+        <Button
+          aria-label={t("projectWorkbench.project.reopenTask", { taskRef })}
+          disabled={reopenMutation.isPending}
+          onClick={() => runAction("reopen")}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          <RotateCcw />
+        </Button>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -127,7 +144,7 @@ export function TaskRowActions({
             <Copy />
             {t("projectWorkbench.project.copyTaskLink")}
           </DropdownMenuItem>
-          {canWrite ? (
+          {canWrite && !isCompleted ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem

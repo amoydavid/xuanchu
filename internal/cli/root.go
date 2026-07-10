@@ -201,6 +201,7 @@ func knownTargetActions() map[string]bool {
 		"delete":      true,
 		"start":       true,
 		"stop":        true,
+		"reopen":      true,
 		"annotate":    true,
 		"denotate":    true,
 		"append":      true,
@@ -417,6 +418,11 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Stopped task", target)
+	case "reopen":
+		if err := svc.Reopen(target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Reopened task", target)
 	case "annotate":
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("annotate requires a description")
@@ -558,6 +564,11 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Stopped task", positional[0])
+	case "reopen":
+		if _, err := client.ReopenTask(ctx, opts.Workspace, target); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Reopened task", positional[0])
 	case "annotate":
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("annotate requires a description")

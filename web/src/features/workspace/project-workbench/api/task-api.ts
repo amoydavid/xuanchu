@@ -160,6 +160,10 @@ export function taskDonePath(workspaceSlug: string, taskRef: string): string {
   return `/api/v1/tasks/${encodeSegment(taskRef)}/done?${workspaceQuery(workspaceSlug)}`
 }
 
+export function taskReopenPath(workspaceSlug: string, taskRef: string): string {
+  return `/api/v1/tasks/${encodeSegment(taskRef)}/reopen?${workspaceQuery(workspaceSlug)}`
+}
+
 export function taskAnnotationPath(
   workspaceSlug: string,
   taskRef: string
@@ -324,6 +328,13 @@ export function doneTask(
   taskRef: string
 ): Promise<ProjectTask> {
   return workspaceApiPost<ProjectTask>(taskDonePath(workspaceSlug, taskRef))
+}
+
+export function reopenTask(
+  workspaceSlug: string,
+  taskRef: string
+): Promise<ProjectTask> {
+  return workspaceApiPost<ProjectTask>(taskReopenPath(workspaceSlug, taskRef))
 }
 
 export function deleteTask(

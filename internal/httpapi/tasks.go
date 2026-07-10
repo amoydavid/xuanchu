@@ -520,6 +520,10 @@ func (s *Server) handleTaskStop(w http.ResponseWriter, r *http.Request) {
 	s.handleTaskAction(w, r, func(svc *app.Service, id string) error { return svc.Stop(id) })
 }
 
+func (s *Server) handleTaskReopen(w http.ResponseWriter, r *http.Request) {
+	s.handleTaskAction(w, r, func(svc *app.Service, id string) error { return svc.Reopen(id) })
+}
+
 func (s *Server) handleTaskAnnotate(w http.ResponseWriter, r *http.Request) {
 	var req textRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

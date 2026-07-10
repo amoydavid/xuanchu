@@ -271,7 +271,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"task_add", "task_query", "task_get",
 		"task_modify", "task_done", "task_delete",
 		"task_annotate", "task_denotate", "task_depends",
-		"task_start", "task_stop",
+		"task_start", "task_stop", "task_reopen",
 		"task_link_add", "task_link_list", "task_link_remove",
 		"task_export", "task_import",
 		"report_run", "urgency_explain",
@@ -662,6 +662,30 @@ func TestTaskDone(t *testing.T) {
 	}
 }
 
+func TestTaskReopen(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "reopen me"})
+	uuid := extractUUID(t, parseEnvelope(t, addResult))
+
+	if result := callTool(t, session, "task_done", TaskIDInput{ID: uuid}); result.IsError {
+		t.Fatalf("task_done error: %v", parseError(t, result))
+	}
+
+	reopenResult := callTool(t, session, "task_reopen", TaskIDInput{ID: uuid})
+	if reopenResult.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, reopenResult))
+	}
+	taskObj := extractTask(t, parseEnvelope(t, reopenResult))
+	if taskObj["status"] != "pending" {
+		t.Fatalf("status = %v, want pending", taskObj["status"])
+	}
+	if taskObj["end"] != nil {
+		t.Fatalf("end = %v, want nil after reopen", taskObj["end"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // task.delete 集成测试
 // ---------------------------------------------------------------------------
@@ -950,6 +974,15 @@ func TestTaskToolsAcceptTaskSlugRefs(t *testing.T) {
 				t.Fatalf("task_stop error: %v", parseError(t, result))
 			}
 		}},
+		{name: "task_reopen", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
+			if result := callTool(t, session, "task_done", TaskIDInput{ID: slug}); result.IsError {
+				t.Fatalf("task_done setup error: %v", parseError(t, result))
+			}
+			result := callTool(t, session, "task_reopen", TaskIDInput{ID: slug})
+			if result.IsError {
+				t.Fatalf("task_reopen error: %v", parseError(t, result))
+			}
+		}},
 		{name: "task_annotate", run: func(t *testing.T, session *mcp.ClientSession, slug, depUUID string) {
 			result := callTool(t, session, "task_annotate", TaskAnnotateInput{ID: slug, Annotation: "note"})
 			if result.IsError {
@@ -1053,6 +1086,7 @@ func TestTaskToolsRejectNumericTaskRefs(t *testing.T) {
 		{name: "task_delete", tool: "task_delete", input: TaskIDInput{ID: "1"}},
 		{name: "task_start", tool: "task_start", input: TaskIDInput{ID: "1"}},
 		{name: "task_stop", tool: "task_stop", input: TaskIDInput{ID: "1"}},
+		{name: "task_reopen", tool: "task_reopen", input: TaskIDInput{ID: "1"}},
 		{name: "task_annotate", tool: "task_annotate", input: TaskAnnotateInput{ID: "1", Annotation: "note"}},
 		{name: "task_denotate", tool: "task_denotate", input: TaskDenotateInput{ID: "1", AnnotationID: "annotation-id"}},
 		{name: "task_depends", tool: "task_depends", input: TaskDependsInput{ID: "1", Depends: []string{"00000000-0000-0000-0000-000000000001"}}},

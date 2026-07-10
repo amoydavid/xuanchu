@@ -26,7 +26,7 @@ type HookAddInput struct {
 	ProjectID string   `json:"project_id,omitempty"`
 	Name      string   `json:"name" jsonschema:"hook name"`
 	Sink      string   `json:"sink" jsonschema:"workspace notification sink name or ID"`
-	Events    []string `json:"events" jsonschema:"event types (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)"`
+	Events    []string `json:"events" jsonschema:"event types (task.created, task.modified, task.completed, task.deleted, task.started, task.stopped, task.reopened, task.assigned, task.unassigned, task.blocked, task.due_changed, task.priority_changed, task.project_changed, task.tags_changed, task.unblocked, project.archived, project.annotated, project.denotated)"`
 	Active    *bool    `json:"active,omitempty" jsonschema:"whether the hook is enabled (default true)"`
 }
 

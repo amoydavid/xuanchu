@@ -996,6 +996,39 @@ func (s *Service) stopLocked(target string) (task.Task, projectChange, error) {
 	return tsk, change, nil
 }
 
+// Reopen 把已完成（completed）任务恢复为 pending。
+// 仅允许 completed 状态，其余状态报错。deleted 不在本轮支持范围。
+func (s *Service) Reopen(target string) error {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return err
+	}
+	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+		reopenedTask, change, err := tx.reopenLocked(target)
+		if err != nil {
+			return nil, nil, err
+		}
+		event := buildTaskHookEvent("task.reopened", reopenedTask, tx.runtime, tx.clock.Unix())
+		entry := taskAuditEntry("task.reopen", reopenedTask.UUID, change)
+		return &entry, []HookEvent{event}, nil
+	})
+}
+
+func (s *Service) reopenLocked(target string) (task.Task, projectChange, error) {
+	tsk, err := s.resolveTargetForWrite(target)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	change := projectChangeForTask(tsk)
+	if tsk.Status != task.StatusCompleted {
+		return task.Task{}, projectChange{}, fmt.Errorf("cannot reopen %s task", tsk.Status)
+	}
+	tsk.Reopen(s.clock.Unix())
+	if err := s.repo.Update(tsk); err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	return tsk, change, nil
+}
+
 // ListAnnotations 按 entry 倒序分页返回某任务的注解，total 为该任务注解总数。
 // 读操作：只需 task:read 权限。
 func (s *Service) ListAnnotations(target string, offset, limit int) ([]task.Annotation, int, error) {

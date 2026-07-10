@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { PlayIcon, SquareIcon, Trash2Icon, CheckIcon } from "lucide-react"
+import { PlayIcon, SquareIcon, Trash2Icon, CheckIcon, RotateCcwIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { ProjectTask } from "../api/task-api"
@@ -7,7 +7,8 @@ import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
 import { useTaskActionMutation } from "../hooks/use-task-mutations"
 
 type TaskActionBarProps = {
-  canWrite: boolean
+  // 权限层面的可写（不含任务状态判断）。
+  permissionCanWrite: boolean
   projectSlug: string
   task: ProjectTask
   taskRef: string
@@ -15,7 +16,7 @@ type TaskActionBarProps = {
 }
 
 export function TaskActionBar({
-  canWrite,
+  permissionCanWrite,
   projectSlug,
   task,
   taskRef,
@@ -25,11 +26,19 @@ export function TaskActionBar({
   const start = useTaskActionMutation(workspaceSlug, projectSlug, "start")
   const stop = useTaskActionMutation(workspaceSlug, projectSlug, "stop")
   const done = useTaskActionMutation(workspaceSlug, projectSlug, "done")
+  const reopen = useTaskActionMutation(workspaceSlug, projectSlug, "reopen")
   const remove = useTaskActionMutation(workspaceSlug, projectSlug, "delete")
   const completed = task.status === "completed"
-  const pending = start.isPending || stop.isPending || done.isPending || remove.isPending
+  const deleted = task.status === "deleted"
+  const pending =
+    start.isPending ||
+    stop.isPending ||
+    done.isPending ||
+    reopen.isPending ||
+    remove.isPending
 
-  if (!canWrite) {
+  // deleted 是真正的终态，无可执行动作；无权限也直接隐藏。
+  if (deleted || !permissionCanWrite) {
     return null
   }
 
@@ -78,16 +87,31 @@ export function TaskActionBar({
             完成
           </Button>
         ) : null}
-        <Button
-          disabled={pending}
-          onClick={() => setConfirmDelete(true)}
-          size="sm"
-          type="button"
-          variant="destructive"
-        >
-          <Trash2Icon />
-          删除
-        </Button>
+        {completed ? (
+          <Button
+            disabled={pending}
+            onClick={() => {
+              void reopen.mutateAsync(taskRef)
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RotateCcwIcon />
+            重新打开
+          </Button>
+        ) : (
+          <Button
+            disabled={pending}
+            onClick={() => setConfirmDelete(true)}
+            size="sm"
+            type="button"
+            variant="destructive"
+          >
+            <Trash2Icon />
+            删除
+          </Button>
+        )}
       </div>
       <DestructiveConfirmDialog
         confirmLabel="删除任务"

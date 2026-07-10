@@ -11,6 +11,7 @@ import {
   doneTask,
   importTasks,
   modifyTask,
+  reopenTask,
   startTask,
   stopTask,
   updateTaskAnnotation,
@@ -25,7 +26,7 @@ import { projectQueryKeys } from "./use-project-data"
 import { taskQueryKeys } from "./use-task-detail-data"
 import { useEditFeedback } from "../shared/edit-feedback"
 
-export type TaskAction = "start" | "stop" | "done" | "delete"
+export type TaskAction = "start" | "stop" | "done" | "reopen" | "delete"
 
 function filterKey(filters?: ProjectTaskFilterParams | string): string | undefined {
   if (!filters) {
@@ -178,6 +179,9 @@ export function useTaskActionMutation(
       if (action === "done") {
         return doneTask(workspaceSlug, taskRef)
       }
+      if (action === "reopen") {
+        return reopenTask(workspaceSlug, taskRef)
+      }
       return deleteTask(workspaceSlug, taskRef)
     },
     onSuccess: (_task, taskRef) => {
@@ -314,6 +318,9 @@ function taskActionSuccessLabel(action: TaskAction): string {
   }
   if (action === "done") {
     return "已完成：任务"
+  }
+  if (action === "reopen") {
+    return "已重新打开：任务"
   }
   return "已删除：任务"
 }

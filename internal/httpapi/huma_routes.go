@@ -184,6 +184,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/done", Tag: "Tasks", Summary: "Complete a task.", Handler: s.handleTaskDone},
 		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/start", Tag: "Tasks", Summary: "Start a task.", Handler: s.handleTaskStart},
 		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/stop", Tag: "Tasks", Summary: "Stop a task.", Handler: s.handleTaskStop},
+		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/reopen", Tag: "Tasks", Summary: "Reopen a completed task.", Handler: s.handleTaskReopen},
 		{Method: http.MethodPost, Path: "/api/v1/tasks/{taskRef}/annotations", Tag: "Task Annotations", Summary: "Add a task annotation.", Handler: s.handleTaskAnnotate},
 		{Method: http.MethodPatch, Path: "/api/v1/tasks/{taskRef}/annotations/{annotationID}", Tag: "Task Annotations", Summary: "Update a task annotation.", Handler: s.handleTaskAnnotationUpdate},
 		{Method: http.MethodDelete, Path: "/api/v1/tasks/{taskRef}/annotations/{annotationID}", Tag: "Task Annotations", Summary: "Delete a task annotation.", Handler: s.handleTaskDenotate},

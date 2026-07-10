@@ -29,6 +29,7 @@ var allowedHookEventTypes = map[string]bool{
 	"task.deleted":          true,
 	"task.started":          true,
 	"task.stopped":          true,
+	"task.reopened":         true,
 	"task.assigned":         true,
 	"task.unassigned":       true,
 	"task.blocked":          true,

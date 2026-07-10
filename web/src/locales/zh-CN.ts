@@ -858,6 +858,7 @@ export const zhCN = {
       startTask: "开始 {{taskRef}}",
       stopTask: "停止 {{taskRef}}",
       completeTask: "完成 {{taskRef}}",
+      reopenTask: "重新打开 {{taskRef}}",
       moreTaskActions: "更多操作 {{taskRef}}",
       openTaskDetails: "打开详情",
       copyTaskLink: "复制任务链接",
