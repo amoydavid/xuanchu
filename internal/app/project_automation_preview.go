@@ -234,27 +234,18 @@ func (s *Service) projectAutomationAllowedHosts(projectID string, key string) ([
 }
 
 // buildAutomationTemplateVars 构建模板变量 map，键为变量名（不含 {{}}），值为渲染后的字符串。
-// 复用 buildProjectAutomationContext 构造的上下文结构，同时补充标量字段。
+// 不依赖 Context.Include（那是旧 <context> JSON 的遗留），模板变量始终全量填充，
+// 用户写了 {{task}} 就能拿到值，不需要在 include 列表里加 "task"。
 func (s *Service) buildAutomationTemplateVars(project ProjectView, ruleID string, input ProjectAutomationRuleAddInput, triggerType string, deliveryID string, event *HookEvent) (map[string]string, error) {
-	ctx, err := s.buildProjectAutomationContext(project, ruleID, input, triggerType, deliveryID, event)
-	if err != nil {
-		return nil, err
-	}
 	vars := map[string]string{
 		"delivery_id":  deliveryID,
 		"trigger_type": triggerType,
 	}
 	// workspace
-	if wsNode, ok := ctx["workspace"].(map[string]any); ok {
-		vars["workspace.id"] = automationAnyToString(wsNode["id"])
-		vars["workspace.slug"] = automationAnyToString(wsNode["slug"])
-		vars["workspace.name"] = automationAnyToString(wsNode["name"])
-	} else {
-		if ws, err := s.workspaceRepo.GetByID(s.workspaceID); err == nil {
-			vars["workspace.id"] = ws.ID
-			vars["workspace.slug"] = ws.Slug
-			vars["workspace.name"] = ws.Name
-		}
+	if ws, err := s.workspaceRepo.GetByID(s.workspaceID); err == nil {
+		vars["workspace.id"] = ws.ID
+		vars["workspace.slug"] = ws.Slug
+		vars["workspace.name"] = ws.Name
 	}
 	// project
 	vars["project.id"] = project.ID
@@ -262,34 +253,57 @@ func (s *Service) buildAutomationTemplateVars(project ProjectView, ruleID string
 	vars["project.name"] = project.Name
 	vars["project.status"] = project.Status
 	// project_config：整体 JSON + 按 key 平铺为 project_config:<key>
-	if cfg, ok := ctx["project_config"]; ok {
-		vars["project_config"] = automationJSONIndented(cfg)
-		// 平铺每个非 secret config key 为 project_config:<key>
-		if cfgMap, ok := cfg.(map[string]string); ok {
-			for k, v := range cfgMap {
-				vars["project_config:"+k] = v
-			}
+	values, err := s.configRepo.ListScope(s.workspaceID, storage.ConfigScopeProject, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	cfgMap := make(map[string]string, len(values))
+	for k, v := range values {
+		if s.configKeyIsSecret(k) {
+			continue
 		}
-	} else {
-		vars["project_config"] = "{}"
+		cfgMap[k] = v
+	}
+	vars["project_config"] = automationJSONIndented(cfgMap)
+	for k, v := range cfgMap {
+		vars["project_config:"+k] = v
 	}
 	// tasks / task_summary（schedule）
-	if tasks, ok := ctx["matched_tasks"]; ok {
-		vars["tasks"] = automationJSONIndented(tasks)
+	if triggerType == ProjectAutomationTriggerSchedule || triggerType == "preview" {
+		tasks, err := s.listProjectAutomationTasks(project.ID, input.Condition)
+		if err == nil {
+			vars["tasks"] = automationJSONIndented(buildProjectAutomationTaskList(tasks))
+			vars["task_summary"] = automationJSONIndented(buildProjectAutomationTaskSummary(tasks))
+		}
 	}
-	if summary, ok := ctx["task_summary"]; ok {
-		vars["task_summary"] = automationJSONIndented(summary)
-	}
-	// event 相关
+	// event 相关：始终填充，不依赖 include
 	if event != nil {
 		vars["event.type"] = event.EventType
 		vars["event.id"] = event.EventID
-	}
-	if taskNode, ok := ctx["task"]; ok {
-		vars["task"] = automationJSONIndented(taskNode)
-	}
-	if added, ok := ctx["added_assignees"]; ok {
-		vars["added_assignees"] = automationJSONIndented(added)
+		// task：从事件 ObjectID 加载，平铺标量字段 + 整体 JSON
+		if event.ObjectID != "" {
+			if tsk, err := s.repo.GetByUUID(s.workspaceID, event.ObjectID); err == nil {
+				taskInfo := buildProjectAutomationTaskInfo(tsk)
+				vars["task"] = automationJSONIndented(taskInfo)
+				// 平铺常用标量字段
+				if id, ok := taskInfo["uuid"].(string); ok {
+					vars["task.id"] = id
+				}
+				if slug, ok := taskInfo["task_slug"].(string); ok {
+					vars["task.slug"] = slug
+				}
+				if title, ok := taskInfo["title"].(string); ok {
+					vars["task.title"] = title
+				}
+				if status, ok := taskInfo["status"].(string); ok {
+					vars["task.status"] = status
+				}
+			}
+		}
+		// added_assignees
+		if added, ok := event.Data["added_assignees"]; ok {
+			vars["added_assignees"] = automationJSONIndented(added)
+		}
 	}
 	return vars, nil
 }
