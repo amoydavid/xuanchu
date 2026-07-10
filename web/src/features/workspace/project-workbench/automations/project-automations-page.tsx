@@ -188,6 +188,7 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
         onOpenChange={(o) => !o && setCreating(false)}
         onSaved={invalidateRules}
         projectSlug={projectSlug}
+        workspaceSlug={workspaceSlug}
         template={createTemplate}
         disabled={writeDisabled}
       />
@@ -198,6 +199,7 @@ export function ProjectAutomationsPage({ projectSlug, workspaceSlug }: Props) {
         onOpenChange={(o) => !o && setEditing(null)}
         onSaved={invalidateRules}
         projectSlug={projectSlug}
+        workspaceSlug={workspaceSlug}
         initial={editing ?? undefined}
         disabled={writeDisabled}
       />
