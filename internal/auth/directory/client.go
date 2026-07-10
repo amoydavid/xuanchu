@@ -23,7 +23,8 @@ type Member struct {
 
 type Identity struct {
 	Provider string // feishu|wecom|dingtalk
-	Value    string // IM user_id
+	UserType string // user_id|open_id|union_id（IM 内部 id 种类）
+	Value    string // IM 用户标识值
 }
 
 // NewClient 用给定 *http.Client 构造客户端；传 nil 则用带 30s 超时的默认 client。
@@ -104,10 +105,7 @@ func (c *Client) ListMembersWithContext(ctx context.Context, baseURL, orgID, acc
 	for _, m := range payload.Data.Members {
 		ext := make([]Identity, 0, len(m.ExtIdentities))
 		for _, e := range m.ExtIdentities {
-			if e.UserType != "user_id" {
-				continue
-			}
-			ext = append(ext, Identity{Provider: e.Provider, Value: e.Value})
+			ext = append(ext, Identity{Provider: e.Provider, UserType: e.UserType, Value: e.Value})
 		}
 		members = append(members, Member{
 			ID:                 m.ID,

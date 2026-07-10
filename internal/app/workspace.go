@@ -69,6 +69,7 @@ type MemberView struct {
 	Name        string
 	DisplayName string
 	Email       *string
+	ExternalIDs []task.ExternalIDInfo
 	Role        Role
 	JoinedAt    int64
 	ModifiedAt  int64
@@ -598,6 +599,14 @@ func (s *Service) ListMembers(workspaceRef string) ([]MemberView, error) {
 	if err != nil {
 		return nil, err
 	}
+	userIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		userIDs = append(userIDs, row.User.ID)
+	}
+	extByUser, err := s.loadExternalIDsByUsers(userIDs)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]MemberView, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, MemberView{
@@ -605,6 +614,7 @@ func (s *Service) ListMembers(workspaceRef string) ([]MemberView, error) {
 			Name:        row.User.Name,
 			DisplayName: row.User.DisplayName,
 			Email:       row.User.Email,
+			ExternalIDs: extByUser[row.User.ID],
 			Role:        Role(row.Membership.Role),
 			JoinedAt:    row.Membership.JoinedAt,
 			ModifiedAt:  row.Membership.ModifiedAt,
@@ -808,11 +818,16 @@ func (s *Service) memberView(workspaceID, userID string) (MemberView, error) {
 	if err != nil {
 		return MemberView{}, err
 	}
+	extIDs, err := s.ListExternalIDs(userID)
+	if err != nil {
+		return MemberView{}, err
+	}
 	return MemberView{
 		UserID:      user.ID,
 		Name:        user.Name,
 		DisplayName: user.DisplayName,
 		Email:       user.Email,
+		ExternalIDs: extIDs,
 		Role:        Role(member.Role),
 		JoinedAt:    member.JoinedAt,
 		ModifiedAt:  member.ModifiedAt,
@@ -1036,9 +1051,12 @@ func userViewFromRow(user storage.User, active bool, externalIDs []task.External
 	}
 }
 
-func (s *Service) BindExternalID(userID, provider, externalID string) error {
+func (s *Service) BindExternalID(userID, provider, userType, externalID string) error {
 	provider = strings.TrimSpace(provider)
 	externalID = strings.TrimSpace(externalID)
+	if userType == "" {
+		userType = "user_id"
+	}
 	if provider == "" || externalID == "" {
 		return RuntimeError{Code: "invalid_input", Message: "provider and external_id are required"}
 	}
@@ -1052,6 +1070,7 @@ func (s *Service) BindExternalID(userID, provider, externalID string) error {
 			ID:         uuid.NewString(),
 			UserID:     userID,
 			Provider:   provider,
+			UserType:   userType,
 			ExternalID: externalID,
 			CreatedAt:  s.clock.Unix(),
 		})
@@ -1061,7 +1080,7 @@ func (s *Service) BindExternalID(userID, provider, externalID string) error {
 		return AuditEntry{
 			TargetType: "user",
 			TargetID:   userID,
-			Payload:    map[string]any{"provider": provider, "external_id": externalID},
+			Payload:    map[string]any{"provider": provider, "user_type": userType, "external_id": externalID},
 		}, nil
 	})
 }
@@ -1096,7 +1115,7 @@ func (s *Service) ListExternalIDs(userID string) ([]task.ExternalIDInfo, error) 
 	}
 	out := make([]task.ExternalIDInfo, len(rows))
 	for i, row := range rows {
-		out[i] = task.ExternalIDInfo{Provider: row.Provider, ExternalID: row.ExternalID}
+		out[i] = task.ExternalIDInfo{Provider: row.Provider, UserType: row.UserType, ExternalID: row.ExternalID}
 	}
 	return out, nil
 }
@@ -1110,6 +1129,7 @@ func (s *Service) loadExternalIDsByUsers(userIDs []string) (map[string][]task.Ex
 	for _, row := range rows {
 		result[row.UserID] = append(result[row.UserID], task.ExternalIDInfo{
 			Provider:   row.Provider,
+			UserType:   row.UserType,
 			ExternalID: row.ExternalID,
 		})
 	}

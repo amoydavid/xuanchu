@@ -16,6 +16,7 @@ type JSONAnnotation struct {
 
 type JSONExternalID struct {
 	Provider   string `json:"provider"`
+	UserType   string `json:"user_type,omitempty"`
 	ExternalID string `json:"external_id"`
 }
 
@@ -37,14 +38,6 @@ type JSONActorInfo struct {
 	Type  string              `json:"type"`
 	User  *JSONUserInfo       `json:"user,omitempty"`
 	Token *JSONTokenActorInfo `json:"token,omitempty"`
-}
-
-type JSONAssignee struct {
-	UserID      string           `json:"user_id,omitempty"`
-	Name        string           `json:"name,omitempty"`
-	DisplayName string           `json:"display_name,omitempty"`
-	Email       *string          `json:"email,omitempty"`
-	ExternalIDs []JSONExternalID `json:"external_ids,omitempty"`
 }
 
 type JSONTaskLink struct {
@@ -83,7 +76,7 @@ type JSONTask struct {
 	BlockedByInfo []JSONTaskRef       `json:"blocked_by_info,omitempty"`
 	Mask          *string             `json:"mask,omitempty"`
 	IMask         *int                `json:"imask,omitempty"`
-	Assignees     []JSONAssignee      `json:"assignees,omitempty"`
+	Assignees     []JSONUserInfo      `json:"assignees,omitempty"`
 	Links         []JSONTaskLink      `json:"links,omitempty"`
 	UDAs          map[string]UDAValue `json:"-"`
 }
@@ -298,25 +291,19 @@ func ToJSON(tsk Task) JSONTask {
 		Parent:      tsk.Parent,
 		Mask:        tsk.Mask,
 		IMask:       tsk.IMask,
-		Assignees: func() []JSONAssignee {
+		Assignees: func() []JSONUserInfo {
 			if tsk.Assignees == nil {
 				return nil
 			}
-			out := make([]JSONAssignee, len(tsk.Assignees))
+			out := make([]JSONUserInfo, len(tsk.Assignees))
 			for i, assignee := range tsk.Assignees {
-				a := JSONAssignee{
-					UserID:      assignee.UserID,
+				out[i] = JSONUserInfo{
+					ID:          assignee.UserID,
 					Name:        assignee.Name,
 					DisplayName: assignee.DisplayName,
 					Email:       assignee.Email,
+					ExternalIDs: externalIDsToJSON(assignee.ExternalIDs),
 				}
-				if len(assignee.ExternalIDs) > 0 {
-					a.ExternalIDs = make([]JSONExternalID, len(assignee.ExternalIDs))
-					for j, eid := range assignee.ExternalIDs {
-						a.ExternalIDs[j] = JSONExternalID{Provider: eid.Provider, ExternalID: eid.ExternalID}
-					}
-				}
-				out[i] = a
 			}
 			return out
 		}(),
@@ -420,19 +407,13 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 			}
 			out := make([]AssigneeInfo, len(dto.Assignees))
 			for i, assignee := range dto.Assignees {
-				info := AssigneeInfo{
-					UserID:      assignee.UserID,
+				out[i] = AssigneeInfo{
+					UserID:      assignee.ID,
 					Name:        assignee.Name,
 					DisplayName: assignee.DisplayName,
 					Email:       assignee.Email,
+					ExternalIDs: externalIDsFromJSON(assignee.ExternalIDs),
 				}
-				if len(assignee.ExternalIDs) > 0 {
-					info.ExternalIDs = make([]ExternalIDInfo, len(assignee.ExternalIDs))
-					for j, eid := range assignee.ExternalIDs {
-						info.ExternalIDs[j] = ExternalIDInfo{Provider: eid.Provider, ExternalID: eid.ExternalID}
-					}
-				}
-				out[i] = info
 			}
 			return out
 		}(),
@@ -495,19 +476,19 @@ func rawToUDAString(raw json.RawMessage) (string, error) {
 	return string(compact), nil
 }
 
-func unmarshalJSONAssignees(raw json.RawMessage) ([]JSONAssignee, error) {
+func unmarshalJSONAssignees(raw json.RawMessage) ([]JSONUserInfo, error) {
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, err
 	}
-	assignees := make([]JSONAssignee, len(items))
+	assignees := make([]JSONUserInfo, len(items))
 	for i, item := range items {
 		var stringValue string
 		if err := json.Unmarshal(item, &stringValue); err == nil {
 			assignees[i] = jsonAssigneeFromStringRef(stringValue)
 			continue
 		}
-		var assignee JSONAssignee
+		var assignee JSONUserInfo
 		if err := json.Unmarshal(item, &assignee); err != nil {
 			return nil, fmt.Errorf("invalid assignees[%d]: %w", i, err)
 		}
@@ -516,11 +497,11 @@ func unmarshalJSONAssignees(raw json.RawMessage) ([]JSONAssignee, error) {
 	return assignees, nil
 }
 
-func jsonAssigneeFromStringRef(ref string) JSONAssignee {
+func jsonAssigneeFromStringRef(ref string) JSONUserInfo {
 	if strings.Contains(ref, "@") {
-		return JSONAssignee{Email: &ref}
+		return JSONUserInfo{Email: &ref}
 	}
-	return JSONAssignee{UserID: ref}
+	return JSONUserInfo{ID: ref}
 }
 
 // AnnotationsToJSON 把注解列表序列化为 JSONAnnotation，供 GET /tasks/{ref}/annotations 等独立端点复用。
@@ -581,7 +562,7 @@ func externalIDsToJSON(ids []ExternalIDInfo) []JSONExternalID {
 	}
 	out := make([]JSONExternalID, len(ids))
 	for i, eid := range ids {
-		out[i] = JSONExternalID{Provider: eid.Provider, ExternalID: eid.ExternalID}
+		out[i] = JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID}
 	}
 	return out
 }
@@ -592,7 +573,7 @@ func externalIDsFromJSON(ids []JSONExternalID) []ExternalIDInfo {
 	}
 	out := make([]ExternalIDInfo, len(ids))
 	for i, eid := range ids {
-		out[i] = ExternalIDInfo{Provider: eid.Provider, ExternalID: eid.ExternalID}
+		out[i] = ExternalIDInfo{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID}
 	}
 	return out
 }

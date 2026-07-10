@@ -378,7 +378,7 @@ func TestHTTPMemberPatchCanUpdateDisplayNameAndRole(t *testing.T) {
 	}
 	var payload struct {
 		Data struct {
-			UserID      string `json:"user_id"`
+			UserID      string `json:"id"`
 			DisplayName string `json:"display_name"`
 			Role        string `json:"role"`
 		} `json:"data"`
@@ -1081,7 +1081,7 @@ func TestWorkspaceAndMemberResponsesUseSnakeCase(t *testing.T) {
 	}
 	var members struct {
 		Data []struct {
-			UserID   string `json:"user_id"`
+			UserID   string `json:"id"`
 			JoinedAt int64  `json:"joined_at"`
 		} `json:"data"`
 	}

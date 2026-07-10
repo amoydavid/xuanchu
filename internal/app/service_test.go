@@ -416,7 +416,7 @@ func TestServiceBindAndUnbindExternalID(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_test_bind")
+	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "user_id", "ou_test_bind")
 	if err != nil {
 		t.Fatalf("BindExternalID() error = %v", err)
 	}
@@ -447,11 +447,11 @@ func TestServiceBindExternalIDRejectsDuplicate(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_dup")
+	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "user_id", "ou_dup")
 	if err != nil {
 		t.Fatalf("first bind: %v", err)
 	}
-	err = svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_dup")
+	err = svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "user_id", "ou_dup")
 	if err == nil {
 		t.Fatal("expected duplicate bind to fail")
 	}
@@ -484,7 +484,7 @@ func TestServiceBindExternalIDRejectsOtherUserForNonAdmin(t *testing.T) {
 
 	memberSvc := newTestServiceWithRuntime(t, store, 200, otherUser.Name, ws.Slug)
 
-	err = memberSvc.BindExternalID(adminSvc.runtime.ActorUserID, "feishu", "ou_other")
+	err = memberSvc.BindExternalID(adminSvc.runtime.ActorUserID, "feishu", "user_id", "ou_other")
 	if err == nil {
 		t.Fatal("expected non-admin binding other user to fail")
 	}
@@ -494,7 +494,7 @@ func TestServiceAddResolvesAssigneeByExternalID(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
 
-	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "ou_ext_assign")
+	err := svc.BindExternalID(svc.runtime.ActorUserID, "feishu", "user_id", "ou_ext_assign")
 	if err != nil {
 		t.Fatalf("BindExternalID() error = %v", err)
 	}
@@ -1821,7 +1821,7 @@ func TestServiceImportAssigneesFromObjectArray(t *testing.T) {
 		Status:    task.StatusPending,
 		Entry:     "1970-01-01T00:01:40Z",
 		Modified:  "1970-01-01T00:01:40Z",
-		Assignees: []task.JSONAssignee{{Name: "local"}},
+		Assignees: []task.JSONUserInfo{{Name: "local"}},
 	}})
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1849,7 +1849,7 @@ func TestServiceImportAssigneesFromStringArray(t *testing.T) {
 		Status:    task.StatusPending,
 		Entry:     "1970-01-01T00:01:40Z",
 		Modified:  "1970-01-01T00:01:40Z",
-		Assignees: []task.JSONAssignee{{UserID: "local"}},
+		Assignees: []task.JSONUserInfo{{ID: "local"}},
 	}})
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
@@ -1881,7 +1881,7 @@ func TestServiceImportClearsAssigneesWithExplicitEmptyArray(t *testing.T) {
 		Title:     created.Title,
 		Entry:     "1970-01-01T00:01:40Z",
 		Modified:  "1970-01-01T00:01:40Z",
-		Assignees: []task.JSONAssignee{},
+		Assignees: []task.JSONUserInfo{},
 	}})
 	if err != nil {
 		t.Fatalf("Import(clear assignees) error = %v", err)
@@ -4765,7 +4765,7 @@ func mustUnix(t *testing.T, value string) int64 {
 func TestServiceTaskAddLink(t *testing.T) {
 	store := newTestStore(t)
 	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
-	if err := svc.BindExternalID(svc.Runtime().ActorUserID, "feishu_user_id", "ou_link_actor"); err != nil {
+	if err := svc.BindExternalID(svc.Runtime().ActorUserID, "feishu", "user_id", "ou_link_actor"); err != nil {
 		t.Fatalf("BindExternalID() error = %v", err)
 	}
 

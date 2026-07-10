@@ -33,15 +33,15 @@ type adminModifyWorkspaceUserRequest struct {
 }
 
 type adminUserResponse struct {
-	ID                 string               `json:"id"`
-	Name               string               `json:"name"`
-	DisplayName        string               `json:"display_name"`
-	Email              *string              `json:"email,omitempty"`
-	DefaultWorkspaceID *string              `json:"default_workspace_id,omitempty"`
-	ExternalIDs        []externalIDResponse `json:"external_ids"`
-	Active             bool                 `json:"active"`
-	CreatedAt          int64                `json:"created_at"`
-	ModifiedAt         int64                `json:"modified_at"`
+	ID                 string                `json:"id"`
+	Name               string                `json:"name"`
+	DisplayName        string                `json:"display_name"`
+	Email              *string               `json:"email,omitempty"`
+	DefaultWorkspaceID *string               `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []task.JSONExternalID `json:"external_ids"`
+	Active             bool                  `json:"active"`
+	CreatedAt          int64                 `json:"created_at"`
+	ModifiedAt         int64                 `json:"modified_at"`
 }
 
 type adminCreateAgentTokenRequest struct {
@@ -535,9 +535,9 @@ func adminWorkspaceSummaryResponseFromView(row app.AdminWorkspaceSummaryView) ad
 }
 
 func adminUserResponseFromView(user app.UserView) adminUserResponse {
-	extIDs := make([]externalIDResponse, 0, len(user.ExternalIDs))
+	extIDs := make([]task.JSONExternalID, 0, len(user.ExternalIDs))
 	for _, eid := range user.ExternalIDs {
-		extIDs = append(extIDs, externalIDResponse{Provider: eid.Provider, ExternalID: eid.ExternalID})
+		extIDs = append(extIDs, task.JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID})
 	}
 	return adminUserResponse{
 		ID:                 user.ID,

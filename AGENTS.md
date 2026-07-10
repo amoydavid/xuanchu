@@ -192,24 +192,44 @@ CGO_ENABLED=0 go build ./cmd/xuanchu
 type UserInfo struct {
     ID          string
     Name        string
+    DisplayName string
     Email       *string
     ExternalIDs []ExternalIDInfo
+}
+
+type ExternalIDInfo struct {
+    Provider   string // feishu|wecom|dingtalk
+    UserType   string // user_id|open_id|union_id（IM 内部 id 种类）
+    ExternalID string
 }
 ```
 
 **规则：**
 
-- 凡是 JSON 输出中出现用户引用的地方（`created_by`、`actor`、`user` 等），必须是 `UserInfo` 对象（`{"id":"...", "name":"...", "email":"...", "external_ids":[...]}`），不允许只输出裸 UUID。
+- 凡是 JSON 输出中出现用户引用的地方（`created_by`、`actor`、`user`、`assignees[]`、`member` 等），必须是 `UserInfo` 对象（`{"id":"...", "name":"...", "display_name":"...", "email":"...", "external_ids":[...]}`），**统一用 `id` 字段**（不是 `user_id`），不允许只输出裸 UUID。
+- `external_ids` 元素统一为 `{"provider":"...", "user_type":"...", "external_id":"..."}`。`user_type` 用于区分同一 provider 下的 id 种类（飞书有 user_id/open_id/union_id），省略时默认 `user_id`。
+- provider 只写 IM 平台名（`feishu`/`wecom`/`dingtalk`），不要再把 id 种类编进 provider（不要用 `feishu_user_id` 这种）。
 - App 层 view struct 中引用用户时使用 `task.UserInfo`（或 `*task.UserInfo` 表示可选）。
 - Storage 层返回原始 UUID 字符串，App 层通过 `resolveUserInfos(ids []string) (map[string]UserInfo, error)` 批量解析为完整 `UserInfo`。未找到的用户 fallback 为 `{ID: id, Name: id}`。
 - HTTP/CLI/MCP/Remote 输出层使用 `task.UserInfoToJSON()` 或 `userInfoToJSONMap()` 进行序列化，统一 JSON 格式。
-- 新增任何涉及用户身份的输出字段时，必须遵循此规范，不要退化为裸 UUID 字符串。
+- 新增任何涉及用户身份的输出字段时，必须遵循此规范，不要退化为裸 UUID 字符串，不要新建重复的 user 输出结构。
+
+**用户对象形态：**
+
+所有 user 输出统一为 `task.JSONUserInfo` 形状（`id/name/display_name/email/external_ids`）：
+
+| 位置 | 结构 | 说明 |
+|---|---|---|
+| task assignees[] | `task.JSONUserInfo` | 曾用 `JSONAssignee`（`user_id`），已统一为 `id` |
+| user_get / user_list | `userView`（MCP）/ `userResponse`（HTTP） | 在 `JSONUserInfo` 基础上扩展 `default_workspace_id`/`active`/`created_at`/`modified_at` |
+| member（MCP/HTTP） | `memberView` / `memberResponse` | `id`（不是 `user_id`）+ `display_name` + `external_ids` + `role`/`joined_at`/`modified_at` |
+| created_by / actor / recipient | `task.JSONActorInfo`（带 `type`/`user`/`token` 包装） | 内层 `user` 为 `task.JSONUserInfo` |
 
 **当前已覆盖的字段：**
 
 | View Struct | 字段 | 旧格式 | 新格式 |
 |---|---|---|---|
-| `TaskLinkInfo.CreatedBy` | `UserInfo` | `string` | `{"id","name","email","external_ids"}` |
+| `TaskLinkInfo.CreatedBy` | `UserInfo` | `string` | `{"id","name","display_name","email","external_ids"}` |
 | `ProjectAnnotationInfo.CreatedBy` | `UserInfo` | `string` | 同上 |
 | `TimelineEntry.CreatedBy` | `UserInfo` | `string` | 同上 |
 | `WorkspaceView.CreatedBy` | `*UserInfo` | `*string` | 同上 |

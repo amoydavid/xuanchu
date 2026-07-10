@@ -155,7 +155,7 @@ func TestHookPermission(t *testing.T) {
 func TestHookViewCreatedByUsesFullUserInfo(t *testing.T) {
 	svc, _, cleanup := hookTestEnv(t)
 	defer cleanup()
-	if err := svc.BindExternalID(svc.Runtime().ActorUserID, "feishu_user_id", "ou_hook_actor"); err != nil {
+	if err := svc.BindExternalID(svc.Runtime().ActorUserID, "feishu", "user_id", "ou_hook_actor"); err != nil {
 		t.Fatalf("BindExternalID() error = %v", err)
 	}
 	created, err := svc.AddHook(defaultHookInput())
@@ -1281,7 +1281,7 @@ func TestHookPayloadIncludesAssignees(t *testing.T) {
 		t.Fatalf("task.assignees = %#v, want one assignee", taskData["assignees"])
 	}
 	first, ok := assignees[0].(map[string]any)
-	if !ok || first["user_id"] != assignee.ID || first["name"] != "hook-assignee" || first["email"] != "hook-assignee@example.com" {
+	if !ok || first["id"] != assignee.ID || first["name"] != "hook-assignee" || first["email"] != "hook-assignee@example.com" {
 		t.Fatalf("first assignee = %#v, want complete hook-assignee info", assignees[0])
 	}
 }
@@ -1943,7 +1943,7 @@ func TestHookModifyFineGrainedEventPayloads(t *testing.T) {
 		ModifiedAt:  1000,
 	})
 
-	if err := svc.BindExternalID(user.ID, "feishu", "ou_modifier"); err != nil {
+	if err := svc.BindExternalID(user.ID, "feishu", "user_id", "ou_modifier"); err != nil {
 		t.Fatal(err)
 	}
 

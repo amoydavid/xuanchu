@@ -288,9 +288,9 @@ func newUserBindCommand(opts Options) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			provider, externalID, ok := parseProviderExternalID(args[0])
+			provider, userType, externalID, ok := parseProviderExternalID(args[0])
 			if !ok {
-				return fmt.Errorf("invalid external ID format %q; expected provider:external_id", args[0])
+				return fmt.Errorf("invalid external ID format %q; expected provider:external_id or provider:user_type:external_id", args[0])
 			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
@@ -303,7 +303,7 @@ func newUserBindCommand(opts Options) *cobra.Command {
 				if ref == "" {
 					ref = "local"
 				}
-				return client.BindExternalID(context.Background(), ref, provider, externalID)
+				return client.BindExternalID(context.Background(), ref, provider, userType, externalID)
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -318,7 +318,7 @@ func newUserBindCommand(opts Options) *cobra.Command {
 				}
 				targetUserID = user.ID
 			}
-			if err := svc.BindExternalID(targetUserID, provider, externalID); err != nil {
+			if err := svc.BindExternalID(targetUserID, provider, userType, externalID); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Bound %s:%s\n", provider, externalID)
@@ -337,9 +337,9 @@ func newUserUnbindCommand(opts Options) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			provider, externalID, ok := parseProviderExternalID(args[0])
+			provider, _, externalID, ok := parseProviderExternalID(args[0])
 			if !ok {
-				return fmt.Errorf("invalid external ID format %q; expected provider:external_id", args[0])
+				return fmt.Errorf("invalid external ID format %q; expected provider:external_id or provider:user_type:external_id", args[0])
 			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
@@ -378,12 +378,24 @@ func newUserUnbindCommand(opts Options) *cobra.Command {
 	return cmd
 }
 
-func parseProviderExternalID(s string) (string, string, bool) {
-	idx := strings.Index(s, ":")
-	if idx <= 0 || idx == len(s)-1 {
-		return "", "", false
+// parseProviderExternalID 解析 "provider:external_id" 或 "provider:user_type:external_id"。
+// 两段格式时 user_type 默认为 "user_id"。
+func parseProviderExternalID(s string) (provider, userType, externalID string, ok bool) {
+	parts := strings.SplitN(s, ":", 3)
+	switch len(parts) {
+	case 2:
+		if parts[0] == "" || parts[1] == "" {
+			return "", "", "", false
+		}
+		return parts[0], "user_id", parts[1], true
+	case 3:
+		if parts[0] == "" || parts[1] == "" || parts[2] == "" {
+			return "", "", "", false
+		}
+		return parts[0], parts[1], parts[2], true
+	default:
+		return "", "", "", false
 	}
-	return s[:idx], s[idx+1:], true
 }
 
 func parseKeyValueArgs(args []string, allowed map[string]bool) (map[string]string, error) {

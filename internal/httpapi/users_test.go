@@ -145,7 +145,7 @@ func TestExternalIDBindUnbindAndList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.BindExternalID(svc.Runtime().ActorUserID, "feishu", "ou_http_test")
+	svc.BindExternalID(svc.Runtime().ActorUserID, "feishu", "user_id", "ou_http_test")
 	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
 
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/users/local/external-ids", `{"provider":"feishu","external_id":"ou_bind_http"}`, authHeader)

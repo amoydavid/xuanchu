@@ -44,13 +44,14 @@ type workspaceResponse struct {
 }
 
 type memberResponse struct {
-	UserID      string  `json:"user_id"`
-	Name        string  `json:"name"`
-	DisplayName string  `json:"display_name"`
-	Email       *string `json:"email,omitempty"`
-	Role        string  `json:"role"`
-	JoinedAt    int64   `json:"joined_at"`
-	ModifiedAt  int64   `json:"modified_at"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name"`
+	Email       *string               `json:"email,omitempty"`
+	ExternalIDs []task.JSONExternalID `json:"external_ids,omitempty"`
+	Role        string                `json:"role"`
+	JoinedAt    int64                 `json:"joined_at"`
+	ModifiedAt  int64                 `json:"modified_at"`
 }
 
 func (s *Server) handleWorkspaceList(w http.ResponseWriter, r *http.Request) {
@@ -285,11 +286,16 @@ func memberResponsesFromViews(rows []app.MemberView) []memberResponse {
 }
 
 func memberResponseFromView(row app.MemberView) memberResponse {
+	extIDs := make([]task.JSONExternalID, 0, len(row.ExternalIDs))
+	for _, eid := range row.ExternalIDs {
+		extIDs = append(extIDs, task.JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID})
+	}
 	return memberResponse{
-		UserID:      row.UserID,
+		ID:          row.UserID,
 		Name:        row.Name,
 		DisplayName: row.DisplayName,
 		Email:       row.Email,
+		ExternalIDs: extIDs,
 		Role:        string(row.Role),
 		JoinedAt:    row.JoinedAt,
 		ModifiedAt:  row.ModifiedAt,

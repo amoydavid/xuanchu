@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -16,8 +17,9 @@ type UserInfoInput struct {
 
 type UserBindInput struct {
 	User       string `json:"user" jsonschema:"user name, email, or UUID"`
-	Provider   string `json:"provider" jsonschema:"external ID provider. For Feishu users, prefer feishu_user_id"`
-	ExternalID string `json:"external_id" jsonschema:"external ID value. For Feishu users, pass the user's Feishu user_id (not open_id/union_id) for cross-app identity consistency"`
+	Provider   string `json:"provider" jsonschema:"external ID provider, e.g. feishu, wecom, dingtalk"`
+	UserType   string `json:"user_type,omitempty" jsonschema:"ID type within the provider, e.g. user_id, open_id, union_id. Defaults to user_id"`
+	ExternalID string `json:"external_id" jsonschema:"external ID value"`
 }
 
 type UserUnbindInput struct {
@@ -67,7 +69,7 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "user "+view.Name)
 	})
 
-	addTool(s, opts, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID (e.g. feishu_user_id:d8c6g9xx) to a xuanchu user. For Feishu users, prefer provider feishu_user_id with the user's user_id so identities stay consistent across apps. Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "user_bind", Description: "Bind an external ID to a xuanchu user. Use provider + user_type to describe the ID (e.g. provider=feishu, user_type=user_id). Admin/owner can bind for others; regular users can only bind to themselves."}, func(ctx context.Context, req *mcp.CallToolRequest, in UserBindInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, RequestScopeInput{}, "user:write", app.PermissionWorkspaceModify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -76,11 +78,11 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.BindExternalID(user.ID, in.Provider, in.ExternalID); err != nil {
+		if err := svc.BindExternalID(user.ID, in.Provider, in.UserType, in.ExternalID); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(
-			map[string]any{"provider": in.Provider, "external_id": in.ExternalID},
+			map[string]any{"provider": in.Provider, "user_type": in.UserType, "external_id": in.ExternalID},
 			fmt.Sprintf("Bound %s:%s to %s", in.Provider, in.ExternalID, user.Name),
 		)
 	})
@@ -137,9 +139,9 @@ func registerUserTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		views := make([]externalIDView, len(extIDs))
+		views := make([]task.JSONExternalID, len(extIDs))
 		for i, eid := range extIDs {
-			views[i] = externalIDView{Provider: eid.Provider, ExternalID: eid.ExternalID}
+			views[i] = task.JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID}
 		}
 		data := map[string]any{"external_ids": views, "count": len(views)}
 		return successWithEnvelope(data, fmt.Sprintf("%d external ID(s)", len(views)))

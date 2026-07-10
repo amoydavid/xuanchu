@@ -592,6 +592,7 @@ func (r *TaskRepository) loadAssigneeUsers(models []Task) (map[string]assigneeUs
 	for _, eid := range extIDs {
 		extByUser[eid.UserID] = append(extByUser[eid.UserID], domain.ExternalIDInfo{
 			Provider:   eid.Provider,
+			UserType:   eid.UserType,
 			ExternalID: eid.ExternalID,
 		})
 	}
