@@ -15,6 +15,7 @@ export type UserInfo = {
   email?: string | null
   external_ids?: Array<{
     provider: string
+    user_type?: string
     external_id: string
   }>
 }
@@ -51,7 +52,6 @@ export type ProjectWorkbenchTaskRef = {
 }
 
 export type ProjectWorkbenchAssignee = {
-  user_id?: string
   id?: string
   name?: string
   display_name?: string

@@ -27,6 +27,7 @@ func TestListMembers(t *testing.T) {
 						"status":       "active",
 						"external_identities": []map[string]any{
 							{"provider": "feishu", "user_type": "user_id", "value": "fs1"},
+							{"provider": "feishu", "user_type": "open_id", "value": "ou_fs1"},
 						},
 					},
 					{
@@ -57,8 +58,14 @@ func TestListMembers(t *testing.T) {
 	if m1.Sub != "yaoguang_member:m1" || m1.DisplayName != "张三" || m1.Role != "owner" || m1.Status != "active" {
 		t.Fatalf("m1 = %+v", m1)
 	}
-	if len(m1.ExternalIdentities) != 1 || m1.ExternalIdentities[0].Provider != "feishu" || m1.ExternalIdentities[0].Value != "fs1" {
+	if len(m1.ExternalIdentities) != 2 {
 		t.Fatalf("m1 ext = %+v", m1.ExternalIdentities)
+	}
+	if m1.ExternalIdentities[0] != (Identity{Provider: "feishu", UserType: "user_id", Value: "fs1"}) {
+		t.Fatalf("m1 ext[0] = %+v", m1.ExternalIdentities[0])
+	}
+	if m1.ExternalIdentities[1] != (Identity{Provider: "feishu", UserType: "open_id", Value: "ou_fs1"}) {
+		t.Fatalf("m1 ext[1] = %+v", m1.ExternalIdentities[1])
 	}
 	if members[1].Status != "disabled" {
 		t.Fatalf("m2 status = %s", members[1].Status)

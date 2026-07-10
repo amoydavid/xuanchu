@@ -41,29 +41,26 @@ type contextView struct {
 }
 
 type memberView struct {
-	UserID     string  `json:"user_id"`
-	Name       string  `json:"name"`
-	Email      *string `json:"email,omitempty"`
-	Role       string  `json:"role"`
-	JoinedAt   int64   `json:"joined_at"`
-	ModifiedAt int64   `json:"modified_at"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name,omitempty"`
+	Email       *string               `json:"email,omitempty"`
+	ExternalIDs []task.JSONExternalID `json:"external_ids,omitempty"`
+	Role        string                `json:"role"`
+	JoinedAt    int64                 `json:"joined_at"`
+	ModifiedAt  int64                 `json:"modified_at"`
 }
 
 type userView struct {
-	ID                 string           `json:"id"`
-	Name               string           `json:"name"`
-	DisplayName        string           `json:"display_name"`
-	Email              *string          `json:"email,omitempty"`
-	DefaultWorkspaceID *string          `json:"default_workspace_id,omitempty"`
-	ExternalIDs        []externalIDView `json:"external_ids,omitempty"`
-	Active             bool             `json:"active"`
-	CreatedAt          int64            `json:"created_at"`
-	ModifiedAt         int64            `json:"modified_at"`
-}
-
-type externalIDView struct {
-	Provider   string `json:"provider"`
-	ExternalID string `json:"external_id"`
+	ID                 string                `json:"id"`
+	Name               string                `json:"name"`
+	DisplayName        string                `json:"display_name"`
+	Email              *string               `json:"email,omitempty"`
+	DefaultWorkspaceID *string               `json:"default_workspace_id,omitempty"`
+	ExternalIDs        []task.JSONExternalID `json:"external_ids,omitempty"`
+	Active             bool                  `json:"active"`
+	CreatedAt          int64                 `json:"created_at"`
+	ModifiedAt         int64                 `json:"modified_at"`
 }
 
 type annotationView struct {
@@ -141,13 +138,19 @@ func projectViewsFromApp(rows []app.ProjectView) []projectView {
 }
 
 func memberViewFromApp(row app.MemberView) memberView {
+	extIDs := make([]task.JSONExternalID, 0, len(row.ExternalIDs))
+	for _, eid := range row.ExternalIDs {
+		extIDs = append(extIDs, task.JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID})
+	}
 	return memberView{
-		UserID:     row.UserID,
-		Name:       row.Name,
-		Email:      row.Email,
-		Role:       string(row.Role),
-		JoinedAt:   row.JoinedAt,
-		ModifiedAt: row.ModifiedAt,
+		ID:          row.UserID,
+		Name:        row.Name,
+		DisplayName: row.DisplayName,
+		Email:       row.Email,
+		ExternalIDs: extIDs,
+		Role:        string(row.Role),
+		JoinedAt:    row.JoinedAt,
+		ModifiedAt:  row.ModifiedAt,
 	}
 }
 
@@ -160,9 +163,9 @@ func memberViewsFromApp(rows []app.MemberView) []memberView {
 }
 
 func userViewFromApp(row app.UserView) userView {
-	extIDs := make([]externalIDView, 0, len(row.ExternalIDs))
+	extIDs := make([]task.JSONExternalID, 0, len(row.ExternalIDs))
 	for _, eid := range row.ExternalIDs {
-		extIDs = append(extIDs, externalIDView{Provider: eid.Provider, ExternalID: eid.ExternalID})
+		extIDs = append(extIDs, task.JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID})
 	}
 	return userView{
 		ID:                 row.ID,

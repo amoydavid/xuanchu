@@ -48,7 +48,7 @@ describe("TaskCreateDialog", () => {
     })
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
-        user_id: "u1",
+        id: "u1",
         name: "liuwei",
         display_name: "刘玮",
         email: "liuwei@example.com",

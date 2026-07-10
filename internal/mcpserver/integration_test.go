@@ -1553,9 +1553,9 @@ func TestMCPTenantAccessTokenCanManageTenantOwnerTools(t *testing.T) {
 	}{
 		{name: "user_list", input: UserListInput{}},
 		{name: "user_get", input: UserInfoInput{User: "tenant-managed"}},
-		{name: "user_bind", input: UserBindInput{User: "tenant-managed", Provider: "feishu_user_id", ExternalID: "tenant_user_1"}},
+		{name: "user_bind", input: UserBindInput{User: "tenant-managed", Provider: "feishu", UserType: "user_id", ExternalID: "tenant_user_1"}},
 		{name: "user_list_external_ids", input: UserRefInput{User: "tenant-managed"}},
-		{name: "user_unbind", input: UserUnbindInput{User: "tenant-managed", Provider: "feishu_user_id", ExternalID: "tenant_user_1"}},
+		{name: "user_unbind", input: UserUnbindInput{User: "tenant-managed", Provider: "feishu", ExternalID: "tenant_user_1"}},
 		{name: "member_list", input: MemberListInput{}},
 		{name: "member_add", input: MemberAddInput{User: "tenant-managed", Role: "member"}},
 		{name: "member_role", input: MemberRoleInput{User: "tenant-managed", Role: "admin"}},

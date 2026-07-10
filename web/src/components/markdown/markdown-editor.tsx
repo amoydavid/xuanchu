@@ -1,8 +1,11 @@
+import Placeholder from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import {
   BoldIcon,
   BracesIcon,
+  Code2,
   CodeIcon,
+  Eye,
   Heading1Icon,
   Heading2Icon,
   Heading3Icon,
@@ -17,16 +20,23 @@ import {
   TableIcon,
   Undo2Icon,
 } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 import {
   markdownExtensions,
   normalizeMarkdownSource,
 } from "./extensions"
-import { isAllowedMarkdownHref } from "./markdown-safety"
+import { LinkDialog } from "./link-dialog"
+import { TableBubbleMenu } from "./table-bubble-menu"
 import "./markdown.css"
 
 type MarkdownEditorProps = {
@@ -51,6 +61,10 @@ export function MarkdownEditor({
   value,
 }: MarkdownEditorProps) {
   const emittedMarkdownValuesRef = useRef(new Set<string>())
+  const [linkState, setLinkState] = useState<{ open: boolean; initialHref?: string }>(
+    { open: false }
+  )
+  const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg")
   const editor = useEditor({
     content: normalizeMarkdownSource(value),
     contentType: "markdown",
@@ -70,7 +84,12 @@ export function MarkdownEditor({
         return false
       },
     },
-    extensions: markdownExtensions,
+    extensions: [
+      ...markdownExtensions,
+      Placeholder.configure({
+        placeholder,
+      }),
+    ],
     immediatelyRender: false,
     onUpdate: ({ editor: updatedEditor }) => {
       const nextMarkdown = normalizeMarkdownSource(updatedEditor.getMarkdown())
@@ -111,6 +130,7 @@ export function MarkdownEditor({
   const toolbarDisabled = disabled || !editor.isEditable
 
   return (
+    <TooltipProvider>
     <div
       className={cn(
         "overflow-hidden border bg-card",
@@ -229,14 +249,7 @@ export function MarkdownEditor({
           label="链接"
           onClick={() => {
             const previous = editor.getAttributes("link").href as string | undefined
-            const next = window.prompt("链接地址", previous ?? "https://")
-            if (!next) {
-              return
-            }
-            if (!isAllowedMarkdownHref(next)) {
-              return
-            }
-            editor.chain().focus().extendMarkRange("link").setLink({ href: next }).run()
+            setLinkState({ open: true, initialHref: previous })
           }}
         >
           <LinkIcon />
@@ -269,12 +282,50 @@ export function MarkdownEditor({
         >
           <Redo2Icon />
         </ToolbarButton>
+        <ToolbarSeparator />
+        <ToolbarButton
+          active={mode === "source"}
+          disabled={toolbarDisabled}
+          label={mode === "source" ? "切换到富文本" : "切换到源码"}
+          onClick={() => {
+            if (mode === "wysiwyg") {
+              setMode("source")
+              return
+            }
+            // 从源码切回富文本：强制重载最新 markdown，保持与现有防抖逻辑兼容
+            const next = normalizeMarkdownSource(value)
+            editor.commands.setContent(next, { contentType: "markdown" })
+            setMode("wysiwyg")
+          }}
+        >
+          {mode === "source" ? <Eye /> : <Code2 />}
+        </ToolbarButton>
       </div>
-      <EditorContent
-        data-placeholder={placeholder}
-        editor={editor}
+      {mode === "source" ? (
+        <textarea
+          aria-label="源码编辑器"
+          className="markdown-prose min-h-[var(--markdown-editor-min-height)] w-full resize-y bg-transparent px-3 py-2 font-mono text-sm leading-6 outline-none"
+          disabled={disabled}
+          onChange={(e) => onChange(normalizeMarkdownSource(e.target.value))}
+          placeholder={placeholder}
+          value={value}
+        />
+      ) : (
+        <>
+          <EditorContent editor={editor} />
+          <TableBubbleMenu editor={editor} />
+        </>
+      )}
+      <LinkDialog
+        initialHref={linkState.initialHref}
+        onOpenChange={(open) => setLinkState((prev) => ({ ...prev, open }))}
+        open={linkState.open}
+        onSubmit={(href) => {
+          editor.chain().focus().extendMarkRange("link").setLink({ href }).run()
+        }}
       />
     </div>
+    </TooltipProvider>
   )
 }
 
@@ -292,18 +343,23 @@ function ToolbarButton({
   onClick: () => void
 }) {
   return (
-    <Button
-      aria-label={label}
-      aria-pressed={active}
-      className={cn(active ? "bg-accent text-accent-foreground" : null)}
-      disabled={disabled}
-      onClick={onClick}
-      size="icon-sm"
-      type="button"
-      variant="ghost"
-    >
-      {children}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          aria-pressed={active}
+          className={cn(active ? "bg-accent text-accent-foreground" : null)}
+          disabled={disabled}
+          onClick={onClick}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 

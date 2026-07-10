@@ -33,3 +33,4 @@ deploy.yaml
 .data/
 config.toml
 .superpowers/
+.zcode/

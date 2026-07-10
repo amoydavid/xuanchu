@@ -127,7 +127,7 @@ describe("ProjectTasksPage", () => {
         modified_at: 1,
         name: "liuwei",
         role: "member",
-        user_id: "user-1",
+        id: "user-1",
       },
     ])
   })

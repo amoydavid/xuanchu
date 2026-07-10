@@ -145,10 +145,10 @@ func TestJSONTaskExportsAssignees(t *testing.T) {
 	}
 	for _, field := range []string{
 		`"assignees":[`,
-		`"user_id":"user-alice"`,
+		`"id":"user-alice"`,
 		`"name":"alice"`,
 		`"email":"alice@example.com"`,
-		`"user_id":"user-bob"`,
+		`"id":"user-bob"`,
 		`"name":"bob"`,
 	} {
 		if !strings.Contains(string(data), field) {
@@ -166,8 +166,8 @@ func TestJSONTaskImportSupportsObjectAssignees(t *testing.T) {
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
 		"assignees":[
-			{"user_id":"user-alice","name":"alice","email":"alice@example.com"},
-			{"user_id":"user-bob","name":"bob"}
+			{"id":"user-alice","name":"alice","email":"alice@example.com"},
+			{"id":"user-bob","name":"bob"}
 		]
 	}`), &dto)
 	if err != nil {
@@ -261,7 +261,7 @@ func TestJSONTaskImportPreservesAssigneeExternalIDs(t *testing.T) {
 		"status":"pending",
 		"entry":"1970-01-01T00:00:01Z",
 		"modified":"1970-01-01T00:00:02Z",
-		"assignees":[{"user_id":"user-1","name":"bob","external_ids":[{"provider":"feishu","external_id":"ou_bob"}]}]
+		"assignees":[{"id":"user-1","name":"bob","external_ids":[{"provider":"feishu","external_id":"ou_bob"}]}]
 	}`), &dto)
 	if err != nil {
 		t.Fatalf("Unmarshal error = %v", err)

@@ -67,9 +67,9 @@ export function summarizeAssignees(
     const assignees =
       task.assignees && task.assignees.length > 0
         ? task.assignees
-        : [{ user_id: "unassigned", name: unassignedLabel }]
+        : [{ id: "unassigned", name: unassignedLabel }]
     for (const assignee of assignees) {
-      const key = assignee.user_id || assignee.id || assignee.name || "unknown"
+      const key = assignee.id || assignee.name || "unknown"
       const label = assignee.name || assignee.email || key
       const current =
         summaries.get(key) ??

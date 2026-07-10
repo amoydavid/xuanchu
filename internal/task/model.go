@@ -31,6 +31,7 @@ type UDAValue struct {
 
 type ExternalIDInfo struct {
 	Provider   string
+	UserType   string
 	ExternalID string
 }
 

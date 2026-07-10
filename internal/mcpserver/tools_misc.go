@@ -88,6 +88,7 @@ func tokenActorViewFromApp(actor *app.TokenActorInfo) *tokenActorView {
 type meView struct {
 	ID          string                `json:"id"`
 	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name,omitempty"`
 	Email       *string               `json:"email,omitempty"`
 	ExternalIDs []task.JSONExternalID `json:"external_ids,omitempty"`
 }
@@ -154,11 +155,12 @@ func registerMiscTools(s *mcp.Server, opts Options) {
 		}
 		extIDs := make([]task.JSONExternalID, 0, len(userInfo.ExternalIDs))
 		for _, eid := range userInfo.ExternalIDs {
-			extIDs = append(extIDs, task.JSONExternalID{Provider: eid.Provider, ExternalID: eid.ExternalID})
+			extIDs = append(extIDs, task.JSONExternalID{Provider: eid.Provider, UserType: eid.UserType, ExternalID: eid.ExternalID})
 		}
 		view := meView{
 			ID:          userInfo.ID,
 			Name:        userInfo.Name,
+			DisplayName: userInfo.DisplayName,
 			Email:       userInfo.Email,
 			ExternalIDs: extIDs,
 		}

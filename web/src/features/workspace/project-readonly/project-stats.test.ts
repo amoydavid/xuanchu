@@ -40,19 +40,19 @@ describe("project readonly stats", () => {
         title: "alice overdue",
         status: "pending",
         due: now - 10,
-        assignees: [{ user_id: "u1", name: "Alice" }],
+        assignees: [{ id: "u1", name: "Alice" }],
       },
       {
         uuid: "2",
         title: "alice active",
         status: "active",
-        assignees: [{ user_id: "u1", name: "Alice" }],
+        assignees: [{ id: "u1", name: "Alice" }],
       },
       {
         uuid: "3",
         title: "bob completed",
         status: "completed",
-        assignees: [{ user_id: "u2", name: "Bob" }],
+        assignees: [{ id: "u2", name: "Bob" }],
       },
       { uuid: "4", title: "unassigned", status: "pending" },
     ]

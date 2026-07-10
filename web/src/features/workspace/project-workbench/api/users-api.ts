@@ -5,10 +5,15 @@ import {
 } from "@/features/workspace/session/workspace-api"
 
 export type WorkspaceMemberCandidate = {
-  user_id: string
+  id: string
   name: string
   display_name?: string
   email?: string | null
+  external_ids?: Array<{
+    provider: string
+    user_type?: string
+    external_id: string
+  }>
   role: string
   joined_at: number
   modified_at: number
@@ -19,7 +24,11 @@ export type WorkspaceUserCandidate = {
   name: string
   display_name?: string
   email?: string | null
-  external_ids?: Array<{ provider: string; external_id: string }>
+  external_ids?: Array<{
+    provider: string
+    user_type?: string
+    external_id: string
+  }>
   active: boolean
   created_at: number
   modified_at: number

@@ -83,7 +83,7 @@ function task(
     project: "adsops",
     priority: "M",
     due: 1783036800,
-    assignees: [{ user_id: "user-1", name: "李雷" }],
+    assignees: [{ id: "user-1", name: "李雷" }],
     ...overrides,
   }
 }
@@ -115,7 +115,7 @@ describe("TaskTable", () => {
     renderTaskTable([
       task({
         assignees: [
-          { user_id: "user-1", name: "stable-name", display_name: "李雷" },
+          { id: "user-1", name: "stable-name", display_name: "李雷" },
         ],
       }),
     ])

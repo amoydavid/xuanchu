@@ -2,6 +2,15 @@
   overflow-wrap: anywhere;
 }
 
+/* TipTap Placeholder 扩展：编辑器为空时显示占位提示 */
+.markdown-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  height: 0;
+}
+
 .markdown-prose :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.625rem;
 }
@@ -71,6 +80,37 @@
   border: 1px solid var(--border);
   padding: 0.375rem 0.5rem;
   text-align: left;
+}
+
+/* 表格选中单元格高亮（配合 TipTap Table 扩展） */
+.markdown-prose .selectedCell {
+  background: var(--muted);
+}
+
+/* 列宽拖拽手柄（resizable 表格） */
+.markdown-prose .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 4px;
+  background: var(--border);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.markdown-prose .tableWrapper:hover .column-resize-handle,
+.markdown-prose .column-resize-handle:hover {
+  opacity: 1;
+}
+
+.markdown-prose .tableWrapper {
+  position: relative;
+  overflow-x: auto;
+}
+
+.markdown-prose.resize-cursor {
+  cursor: col-resize;
 }
 
 .markdown-prose a {

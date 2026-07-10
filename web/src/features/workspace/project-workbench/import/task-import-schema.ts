@@ -84,14 +84,14 @@ export const TASK_IMPORT_JSON_SCHEMA = {
             {
               type: "array",
               description:
-                "指派人引用数组；元素可以是用户 ID、姓名、邮箱，或包含 user_id/name/email 的对象。",
+                "指派人引用数组；元素可以是用户 ID、姓名、邮箱，或包含 id/name/email 的对象。",
               items: {
                 oneOf: [
                   { type: "string" },
                   {
                     type: "object",
                     properties: {
-                      user_id: {
+                      id: {
                         type: "string",
                         description: "用户 ID。",
                       },
@@ -107,6 +107,18 @@ export const TASK_IMPORT_JSON_SCHEMA = {
                       email: {
                         type: ["string", "null"],
                         description: "用户邮箱。",
+                      },
+                      external_ids: {
+                        type: "array",
+                        description: "外部身份标识列表。",
+                        items: {
+                          type: "object",
+                          properties: {
+                            provider: { type: "string", description: "外部 ID 提供方，如 feishu、wecom。" },
+                            user_type: { type: "string", description: "ID 种类，如 user_id、open_id、union_id。" },
+                            external_id: { type: "string", description: "外部 ID 值。" },
+                          },
+                        },
                       },
                     },
                     additionalProperties: true,

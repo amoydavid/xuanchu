@@ -60,6 +60,9 @@
                         },
                         "provider": {
                           "type": "string"
+                        },
+                        "user_type": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -73,13 +76,17 @@
                       "array"
                     ]
                   },
-                  "name": {
+                  "id": {
                     "type": "string"
                   },
-                  "user_id": {
+                  "name": {
                     "type": "string"
                   }
                 },
+                "required": [
+                  "id",
+                  "name"
+                ],
                 "type": "object"
               },
               "type": [
@@ -234,6 +241,9 @@
                                   "type": "string"
                                 },
                                 "provider": {
+                                  "type": "string"
+                                },
+                                "user_type": {
                                   "type": "string"
                                 }
                               },

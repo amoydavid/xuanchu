@@ -270,7 +270,7 @@ func schedulerUserInfos(userRepo *storage.UserRepository, extRepo *storage.Exter
 	}
 	extByUser := map[string][]task.ExternalIDInfo{}
 	for _, ext := range exts {
-		extByUser[ext.UserID] = append(extByUser[ext.UserID], task.ExternalIDInfo{Provider: ext.Provider, ExternalID: ext.ExternalID})
+		extByUser[ext.UserID] = append(extByUser[ext.UserID], task.ExternalIDInfo{Provider: ext.Provider, UserType: ext.UserType, ExternalID: ext.ExternalID})
 	}
 	for _, id := range ids {
 		user, err := userRepo.GetByID(id)

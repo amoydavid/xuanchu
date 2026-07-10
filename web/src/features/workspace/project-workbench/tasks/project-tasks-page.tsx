@@ -103,8 +103,8 @@ export function ProjectTasksPage({
     () =>
       (members.data ?? []).map((member) => ({
         email: member.email,
-        id: member.user_id,
-        label: member.display_name || member.name || member.email || member.user_id,
+        id: member.id,
+        label: member.display_name || member.name || member.email || member.id,
         name: member.name,
       })),
     [members.data]

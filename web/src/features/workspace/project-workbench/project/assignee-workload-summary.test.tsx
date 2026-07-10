@@ -15,7 +15,7 @@ function task(
     status: "pending",
     priority: "M",
     due: 1_783_036_800,
-    assignees: [{ user_id: "u1", name: "liuwei", display_name: "刘玮" }],
+    assignees: [{ id: "u1", name: "liuwei", display_name: "刘玮" }],
     ...overrides,
   }
 }

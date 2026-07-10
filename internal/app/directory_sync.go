@@ -73,10 +73,10 @@ func (s *DirectorySyncService) SyncOnce(ctx context.Context, workspaceID, baseUR
 		}
 
 		// 同步主映射 (yaoguang, sub)
-		syncExtID(extRepo, userID, "yaoguang", m.Sub, now)
+		syncExtID(extRepo, userID, "yaoguang", "sub", m.Sub, now)
 		// 同步 external_identities
 		for _, e := range m.ExternalIdentities {
-			syncExtID(extRepo, userID, e.Provider, e.Value, now)
+			syncExtID(extRepo, userID, e.Provider, e.UserType, e.Value, now)
 		}
 
 		// upsert membership
@@ -116,7 +116,7 @@ func (s *DirectorySyncService) SyncOnce(ctx context.Context, workspaceID, baseUR
 	return stats, nil
 }
 
-func syncExtID(repo *storage.ExternalIDRepository, userID, provider, externalID string, now int64) {
+func syncExtID(repo *storage.ExternalIDRepository, userID, provider, userType, externalID string, now int64) {
 	_, err := repo.GetByProviderAndExternalID(provider, externalID)
 	if err == nil {
 		return // 已存在
@@ -125,7 +125,7 @@ func syncExtID(repo *storage.ExternalIDRepository, userID, provider, externalID 
 		return
 	}
 	_, _ = repo.Create(storage.UserExternalID{
-		ID: uuid.NewString(), UserID: userID, Provider: provider, ExternalID: externalID, CreatedAt: now,
+		ID: uuid.NewString(), UserID: userID, Provider: provider, UserType: userType, ExternalID: externalID, CreatedAt: now,
 	})
 }
 

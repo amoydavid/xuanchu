@@ -85,7 +85,7 @@ function credentialCurrentResponse(
 function membersResponse() {
   return [
     {
-      user_id: "u-admin",
+      id: "u-admin",
       name: "admin",
       display_name: "管理员",
       email: "admin@example.com",
@@ -94,7 +94,7 @@ function membersResponse() {
       modified_at: 1,
     },
     {
-      user_id: "u-zhang",
+      id: "u-zhang",
       name: "zhangsan",
       display_name: "张三",
       email: "zhangsan@example.com",

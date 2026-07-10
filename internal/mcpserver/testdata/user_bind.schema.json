@@ -1,18 +1,22 @@
 {
-  "description": "Bind an external ID (e.g. feishu_user_id:d8c6g9xx) to a xuanchu user. For Feishu users, prefer provider feishu_user_id with the user's user_id so identities stay consistent across apps. Admin/owner can bind for others; regular users can only bind to themselves.",
+  "description": "Bind an external ID to a xuanchu user. Use provider + user_type to describe the ID (e.g. provider=feishu, user_type=user_id). Admin/owner can bind for others; regular users can only bind to themselves.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
       "external_id": {
-        "description": "external ID value. For Feishu users, pass the user's Feishu user_id (not open_id/union_id) for cross-app identity consistency",
+        "description": "external ID value",
         "type": "string"
       },
       "provider": {
-        "description": "external ID provider. For Feishu users, prefer feishu_user_id",
+        "description": "external ID provider, e.g. feishu, wecom, dingtalk",
         "type": "string"
       },
       "user": {
         "description": "user name, email, or UUID",
+        "type": "string"
+      },
+      "user_type": {
+        "description": "ID type within the provider, e.g. user_id, open_id, union_id. Defaults to user_id",
         "type": "string"
       }
     },
