@@ -207,6 +207,70 @@ func TestDoneUnblockedEnqueuesEventNotificationForAssignee(t *testing.T) {
 	}
 }
 
+// TestReopenBlockedEnqueuesEventNotification 是 TestDoneUnblockedEnqueuesEventNotificationForAssignee
+// 的对称测试：reopen 一个已完成的 blocker 后，其 dependent 重新进入 blocked，
+// 订阅 task.blocked 的通知规则应向 dependent 的 assignee 投递。
+func TestReopenBlockedEnqueuesEventNotification(t *testing.T) {
+	svc, store := eventNotificationTestEnv(t)
+	assignee := createEventNotificationAssignee(t, svc, store, "alice-event-reopen-blocked")
+	sink, _ := svc.AddNotificationSink(defaultNotificationSinkInput())
+	if _, err := svc.AddEventNotificationRule(EventNotificationRuleAddInput{
+		Name:         "reopen-blocked",
+		EventType:    "task.blocked",
+		AudienceType: "assignees",
+		SinkRef:      sink.ID,
+	}); err != nil {
+		t.Fatalf("AddEventNotificationRule() error = %v", err)
+	}
+	blocker, _ := svc.Add(AddInput{Title: "prepare api"})
+	dependent, _ := svc.Add(AddInput{Title: "integrate client", Assignees: []string{assignee.Name}})
+	if err := svc.Modify(dependent.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
+		t.Fatalf("Modify(depends) error = %v", err)
+	}
+	// 完成 blocker 解除阻塞，再 reopen 重新阻塞。
+	if err := svc.Done(blocker.UUID); err != nil {
+		t.Fatalf("Done(blocker) error = %v", err)
+	}
+	rowsBeforeReopen, err := storage.NewNotificationDeliveryRepository(store.DB()).List(svc.Runtime().WorkspaceID, "", 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedBefore := countDeliveries(rowsBeforeReopen, "task.blocked")
+	if err := svc.Reopen(blocker.UUID); err != nil {
+		t.Fatalf("Reopen(blocker) error = %v", err)
+	}
+
+	rows, err := storage.NewNotificationDeliveryRepository(store.DB()).List(svc.Runtime().WorkspaceID, "", 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// reopen 应新增至少 1 条 task.blocked（dependent 重新阻塞）。
+	blockedAfter := countDeliveries(rows, "task.blocked")
+	if blockedAfter <= blockedBefore {
+		t.Fatalf("task.blocked delivery count before reopen = %d, after = %d, want increase", blockedBefore, blockedAfter)
+	}
+	// 最后一条 task.blocked 应来自 reopen（dependent 重新阻塞）。
+	var lastBlocked storage.NotificationDelivery
+	for _, r := range rows {
+		if r.EventType == "task.blocked" {
+			lastBlocked = r
+		}
+	}
+	if lastBlocked.ObjectKind != "task" || lastBlocked.ObjectID != dependent.UUID || lastBlocked.RecipientUserID != assignee.ID {
+		t.Fatalf("last task.blocked delivery = %#v", lastBlocked)
+	}
+}
+
+func countDeliveries(rows []storage.NotificationDelivery, eventType string) int {
+	n := 0
+	for _, r := range rows {
+		if r.EventType == eventType {
+			n++
+		}
+	}
+	return n
+}
+
 func TestEventNotificationSkipsStaleRecipientWithoutRollback(t *testing.T) {
 	svc, store := eventNotificationTestEnv(t)
 	assignee := createEventNotificationAssignee(t, svc, store, "alice-event-stale")

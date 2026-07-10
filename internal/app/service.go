@@ -998,19 +998,76 @@ func (s *Service) stopLocked(target string) (task.Task, projectChange, error) {
 
 // Reopen 把已完成（completed）任务恢复为 pending。
 // 仅允许 completed 状态，其余状态报错。deleted 不在本轮支持范围。
+// 作为 Done 的逆操作：若被 reopen 的任务阻塞了其它任务，
+// 这些 dependent 会从 unblocked 变回 blocked，产生 task.blocked 事件。
 func (s *Service) Reopen(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		beforeTasks, err := tx.repo.List(tx.workspaceID, storage.ListOptions{
+			NowUnix: tx.clock.Unix(),
+			Query:   tx.projectScopeExpr(),
+			Dialect: tx.store.Dialect(),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		beforeBlocked, _ := buildDependencyState(beforeTasks, tx.clock.Unix())
 		reopenedTask, change, err := tx.reopenLocked(target)
 		if err != nil {
 			return nil, nil, err
 		}
-		event := buildTaskHookEvent("task.reopened", reopenedTask, tx.runtime, tx.clock.Unix())
-		entry := taskAuditEntry("task.reopen", reopenedTask.UUID, change)
-		return &entry, []HookEvent{event}, nil
+		now := tx.clock.Unix()
+		events := []HookEvent{buildTaskHookEvent("task.reopened", reopenedTask, tx.runtime, now)}
+		blocked, err := tx.taskBlockedEventsAfterReopen(beforeBlocked, reopenedTask, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		events = append(events, blocked...)
+		entries := []AuditEntry{taskAuditEntry("task.reopen", reopenedTask.UUID, change)}
+		return entries, events, nil
 	})
+}
+
+// taskBlockedEventsAfterReopen 是 taskUnblockedEventsAfterDone 的逆操作：
+// reopen 一个 blocker 后，找所有依赖它、且从 unblocked 变回 blocked 的任务，发 task.blocked。
+func (s *Service) taskBlockedEventsAfterReopen(beforeBlocked map[string]bool, reopenedTask task.Task, now int64) ([]HookEvent, error) {
+	afterTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
+		NowUnix: now,
+		Query:   s.projectScopeExpr(),
+		Dialect: s.store.Dialect(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	afterBlocked, _ := buildDependencyState(afterTasks, now)
+	events := []HookEvent{}
+	for _, candidate := range afterTasks {
+		if !taskDependsOn(candidate, reopenedTask.UUID) {
+			continue
+		}
+		// 之前未 blocked（因 blocker completed）、之后变 blocked（blocker 回到 pending）。
+		if beforeBlocked[candidate.UUID] || !afterBlocked[candidate.UUID] {
+			continue
+		}
+		if !isDependencyEligible(candidate, now) {
+			continue
+		}
+		var blockingDeps []string
+		for _, depUUID := range candidate.Depends {
+			dep, err := s.repo.GetByUUID(s.workspaceID, depUUID)
+			if err != nil {
+				continue
+			}
+			if isDependencyEligible(dep, now) {
+				blockingDeps = append(blockingDeps, depUUID)
+			}
+		}
+		sort.Strings(blockingDeps)
+		events = append(events, buildTaskBlockedHookEvent(candidate, blockingDeps, s.runtime, now))
+	}
+	return events, nil
 }
 
 func (s *Service) reopenLocked(target string) (task.Task, projectChange, error) {

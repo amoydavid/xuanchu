@@ -4265,6 +4265,90 @@ func TestServiceReopenRejectsNonCompleted(t *testing.T) {
 	}
 }
 
+func TestServiceReopenRoundTrip(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	tsk, err := svc.Add(AddInput{Title: "round trip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(tsk.UUID); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	if err := svc.Reopen(tsk.UUID); err != nil {
+		t.Fatalf("Reopen() error = %v", err)
+	}
+	got, _ := svc.ResolveTarget(tsk.UUID)
+	if got.Status != task.StatusPending {
+		t.Fatalf("after reopen status = %s, want pending", got.Status)
+	}
+	// reopen 后任务可被再次完成，闭环成立。
+	if err := svc.Done(tsk.UUID); err != nil {
+		t.Fatalf("Done() after reopen error = %v", err)
+	}
+	got, _ = svc.ResolveTarget(tsk.UUID)
+	if got.Status != task.StatusCompleted || got.End == nil {
+		t.Fatalf("after second done = %#v, want completed with End set", got)
+	}
+}
+
+func TestServiceReopenRejectsRecurring(t *testing.T) {
+	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
+	defer closeFn()
+	due := mustUnix(t, "2030-01-01T23:59:59Z")
+	until := mustUnix(t, "2030-02-01T23:59:59Z")
+	recur := "daily"
+	parent, err := svc.Add(AddInput{Title: "daily task", Due: &due, Until: &until, Recur: &recur})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if parent.Status != task.StatusRecurring {
+		t.Fatalf("parent status = %s, want recurring", parent.Status)
+	}
+	if err := svc.Reopen(parent.UUID); err == nil {
+		t.Fatal("Reopen(recurring) error = nil, want non-completed guard")
+	}
+}
+
+// TestServiceReopenReblockDependents 验证 reopen 的依赖反向联动：
+// blocker 完成后 dependent 解除阻塞；reopen blocker 后 dependent 重新 blocked。
+func TestServiceReopenReblockDependents(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+	blocker, err := svc.Add(AddInput{Title: "blocker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dependent, err := svc.Add(AddInput{Title: "dependent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Modify(dependent.UUID, ModifyInput{AddDepends: []string{blocker.UUID}}); err != nil {
+		t.Fatalf("Modify(depends) error = %v", err)
+	}
+	// 初始：dependent 被 blocker 阻塞。
+	blocked, _ := svc.ListReport("blocked", ListInput{})
+	if !containsTask(blocked, dependent.UUID) {
+		t.Fatalf("before done: dependent not in blocked report: %#v", blocked)
+	}
+	// 完成 blocker：dependent 解除阻塞。
+	if err := svc.Done(blocker.UUID); err != nil {
+		t.Fatalf("Done(blocker) error = %v", err)
+	}
+	blocked, _ = svc.ListReport("blocked", ListInput{})
+	if containsTask(blocked, dependent.UUID) {
+		t.Fatalf("after done: dependent still blocked: %#v", blocked)
+	}
+	// reopen blocker：dependent 重新被阻塞。
+	if err := svc.Reopen(blocker.UUID); err != nil {
+		t.Fatalf("Reopen(blocker) error = %v", err)
+	}
+	blocked, _ = svc.ListReport("blocked", ListInput{})
+	if !containsTask(blocked, dependent.UUID) {
+		t.Fatalf("after reopen: dependent not re-blocked: %#v", blocked)
+	}
+}
+
 func TestServiceImportClearsTagsWithExplicitEmptyArray(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()

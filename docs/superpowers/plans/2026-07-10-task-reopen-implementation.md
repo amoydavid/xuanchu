@@ -27,22 +27,76 @@ func (t *Task) Reopen(now int64) {
 ### Step 2：app 层加 `Reopen` service 方法
 **文件**：`internal/app/service.go`
 
-照 `Stop`（line 968）+ `stopLocked`（line 983）模板：
+照 `Done`（line 808）+ `doneLocked` 的依赖联动模板：`Reopen` 用 `withAuditEntriesAndEvents`（复数），在 reopen 前抓 `beforeBlocked`，reopen 后用 `taskBlockedEventsAfterReopen` 对从 unblocked→blocked 的 dependents 发 `task.blocked` 事件（与 `Done` 的 `taskUnblockedEventsAfterDone` 对称）。`reopenLocked` 守卫 `Status != StatusCompleted` 报错。
 
 ```go
 func (s *Service) Reopen(target string) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
-	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
+	return s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		beforeTasks, err := tx.repo.List(tx.workspaceID, storage.ListOptions{
+			NowUnix: tx.clock.Unix(),
+			Query:   tx.projectScopeExpr(),
+			Dialect: tx.store.Dialect(),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		beforeBlocked, _ := buildDependencyState(beforeTasks, tx.clock.Unix())
 		reopenedTask, change, err := tx.reopenLocked(target)
 		if err != nil {
 			return nil, nil, err
 		}
-		event := buildTaskHookEvent("task.reopened", reopenedTask, tx.runtime, tx.clock.Unix())
-		entry := taskAuditEntry("task.reopen", reopenedTask.UUID, change)
-		return &entry, []HookEvent{event}, nil
+		now := tx.clock.Unix()
+		events := []HookEvent{buildTaskHookEvent("task.reopened", reopenedTask, tx.runtime, now)}
+		blocked, err := tx.taskBlockedEventsAfterReopen(beforeBlocked, reopenedTask, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		events = append(events, blocked...)
+		entries := []AuditEntry{taskAuditEntry("task.reopen", reopenedTask.UUID, change)}
+		return entries, events, nil
 	})
+}
+
+// taskBlockedEventsAfterReopen 是 taskUnblockedEventsAfterDone 的逆操作：
+// reopen 一个 blocker 后，找所有依赖它、且从 unblocked 变回 blocked 的任务，发 task.blocked。
+func (s *Service) taskBlockedEventsAfterReopen(beforeBlocked map[string]bool, reopenedTask task.Task, now int64) ([]HookEvent, error) {
+	afterTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
+		NowUnix: now,
+		Query:   s.projectScopeExpr(),
+		Dialect: s.store.Dialect(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	afterBlocked, _ := buildDependencyState(afterTasks, now)
+	events := []HookEvent{}
+	for _, candidate := range afterTasks {
+		if !taskDependsOn(candidate, reopenedTask.UUID) {
+			continue
+		}
+		if beforeBlocked[candidate.UUID] || !afterBlocked[candidate.UUID] {
+			continue
+		}
+		if !isDependencyEligible(candidate, now) {
+			continue
+		}
+		var blockingDeps []string
+		for _, depUUID := range candidate.Depends {
+			dep, err := s.repo.GetByUUID(s.workspaceID, depUUID)
+			if err != nil {
+				continue
+			}
+			if isDependencyEligible(dep, now) {
+				blockingDeps = append(blockingDeps, depUUID)
+			}
+		}
+		sort.Strings(blockingDeps)
+		events = append(events, buildTaskBlockedHookEvent(candidate, blockingDeps, s.runtime, now))
+	}
+	return events, nil
 }
 
 func (s *Service) reopenLocked(target string) (task.Task, projectChange, error) {
@@ -70,9 +124,15 @@ func (s *Service) reopenLocked(target string) (task.Task, projectChange, error) 
 **文件**：`internal/app/service_test.go`（照 `TestServiceDeleteAndStopRejectTerminalStates` line 4177 风格）
 
 - `TestServiceReopen`：建任务 → Done → Reopen → 验证 `Status==StatusPending`、`End==nil`、`Start==nil`。
-- `TestServiceReopenRejectsNonCompleted`：对 pending / deleted（先 Done 再 Delete 不可达，用新建 pending）任务调 Reopen 应报错。recurring 不在本轮范围但守卫会拦。
+- `TestServiceReopenRejectsNonCompleted`：对 pending / deleted 任务调 Reopen 应报错。
+- `TestServiceReopenRejectsRecurring`：构造真实 recurring parent，验证 reopen 被守卫拒绝。
+- `TestServiceReopenRoundTrip`：Done → Reopen → Done 往返，验证 reopen 后可再次完成并正确置 completed。
+- `TestServiceReopenReblockDependents`：blocker done 后 dependent 解除阻塞，reopen blocker 后 dependent 重新出现在 blocked 报表（验证依赖反向联动）。
 
-**验收**：`go test ./internal/app/ -run TestServiceReopen`
+**event_notification_test.go**：
+- `TestReopenBlockedEnqueuesEventNotification`：订阅 `task.blocked`，验证 reopen blocker 后 dependent 的 assignee 收到 task.blocked 投递（与 `TestDoneUnblockedEnqueuesEventNotificationForAssignee` 对称）。
+
+**验收**：`go test ./internal/app/ -run TestServiceReopen` + `go test ./internal/app/ -run TestReopenBlocked`
 
 ---
 
