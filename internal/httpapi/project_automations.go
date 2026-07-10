@@ -22,6 +22,7 @@ type projectAutomationRuleRequest struct {
 	Action              app.ProjectAutomationActionConfig  `json:"action"`
 	Context             app.ProjectAutomationContextConfig `json:"context"`
 	InstructionTemplate string                            `json:"instruction_template"`
+	SystemPrompt        string                            `json:"system_prompt"`
 }
 
 func projectAutomationAddInput(req projectAutomationRuleRequest) app.ProjectAutomationRuleAddInput {
@@ -35,6 +36,7 @@ func projectAutomationAddInput(req projectAutomationRuleRequest) app.ProjectAuto
 		Action:              req.Action,
 		Context:             req.Context,
 		InstructionTemplate: req.InstructionTemplate,
+		SystemPrompt:        req.SystemPrompt,
 	}
 }
 
@@ -132,6 +134,7 @@ func (s *Server) handleProjectAutomationModify(w http.ResponseWriter, r *http.Re
 		Action:              &req.Action,
 		Context:             &req.Context,
 		InstructionTemplate: &req.InstructionTemplate,
+		SystemPrompt:        &req.SystemPrompt,
 	}
 	view, err := scoped.ModifyProjectAutomationRule(projectRef, chi.URLParam(r, "ruleID"), input)
 	if err != nil {

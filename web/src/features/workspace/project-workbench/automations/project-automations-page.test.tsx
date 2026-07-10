@@ -48,6 +48,14 @@ vi.mock("./project-automations-api", () => ({
   deleteProjectAutomation: vi.fn(),
   listProjectAutomationDeliveries: vi.fn(),
   getProjectAutomationDelivery: vi.fn(),
+  useAutomationTemplateVars: vi.fn(() => ({
+    data: {
+      triggers: [
+        { trigger: "schedule", vars: [{ name: "project.slug", description: "项目 slug" }] },
+        { trigger: "event", vars: [{ name: "event.type", description: "事件类型" }] },
+      ],
+    },
+  })),
   EMPTY_AUTOMATION_PROVIDER_CONFIG: { base_url: "", api_key_set: false, model: "", allowed_hosts: "" },
   AUTOMATION_PROVIDER_KEYS: ["agent.provider.base_url"],
 }))
@@ -108,6 +116,7 @@ describe("ProjectAutomationsPage", () => {
         },
         context: { include: ["workspace", "project", "task_summary", "matched_tasks", "project_config"] },
         instruction_template: "生成巡检",
+        system_prompt: "",
         created_at: 1,
         modified_at: 1,
       },

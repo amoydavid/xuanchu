@@ -10,6 +10,9 @@ export const AUTOMATION_EVENT_OPTIONS: ReadonlyArray<{ value: string; label: str
   { value: "project.transitioned", label: "project.transitioned（项目状态转移）" },
 ]
 
+// defaultAutomationSystemPrompt 是 system prompt 的默认值，与后端 defaultAutomationSystemPrompt 一致。
+export const defaultAutomationSystemPrompt = "你是项目自动化执行 Agent。你会收到来自璇础的项目上下文，请按用户指令执行。需要调用外部系统时，使用你所在 Agent 平台已配置的工具、skill、MCP 或 CLI。"
+
 // defaultScheduleAutomationInput 是「每日项目巡检」模板的默认表单值。
 export const defaultScheduleAutomationInput: ProjectAutomationRuleInput = {
   name: "每日项目巡检",
@@ -27,6 +30,7 @@ export const defaultScheduleAutomationInput: ProjectAutomationRuleInput = {
   },
   context: { include: ["workspace", "project", "task_summary", "matched_tasks", "project_config"] },
   instruction_template: "请读取这个项目的任务执行情况，生成项目巡检报告。如果项目配置中包含飞书群信息，请自行处理发送。",
+  system_prompt: defaultAutomationSystemPrompt,
 }
 
 // assigneeFeishuTemplateInput 是「分配任务后拉群」模板的默认表单值。
@@ -40,4 +44,5 @@ export const assigneeFeishuTemplateInput: ProjectAutomationRuleInput = {
   action: defaultScheduleAutomationInput.action,
   context: { include: ["event", "task", "added_assignees", "project", "project_config"] },
   instruction_template: "有任务分配给了新负责人。请根据 added_assignees 和项目配置，完成后续协作动作。",
+  system_prompt: defaultAutomationSystemPrompt,
 }

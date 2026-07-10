@@ -12,6 +12,8 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
+const defaultAutomationSystemPrompt = "你是项目自动化执行 Agent。你会收到来自璇础的项目上下文，请按用户指令执行。需要调用外部系统时，使用你所在 Agent 平台已配置的工具、skill、MCP 或 CLI。"
+
 // ProjectAutomationPreviewInput 等价于 ProjectAutomationRuleAddInput，用于未保存规则的预览。
 type ProjectAutomationPreviewInput = ProjectAutomationRuleAddInput
 
@@ -93,30 +95,32 @@ func (s *Service) PreviewSavedProjectAutomation(projectRef string, ruleID string
 	return s.PreviewProjectAutomation(projectRef, ProjectAutomationPreviewInput(input))
 }
 
-// renderProjectAutomationRequest 渲染最终投递请求：解析 provider config、构造上下文、组装最小 OpenAI 兼容 body。
+// renderProjectAutomationRequest 渲染最终投递请求：解析 provider config、用模板变量渲染 system/user message、组装 OpenAI 兼容 body。
 func (s *Service) renderProjectAutomationRequest(project ProjectView, ruleID string, input ProjectAutomationRuleAddInput, triggerType string, deliveryID string, event *HookEvent) (ProjectAutomationRenderedRequest, error) {
 	baseURL, apiKey, model, err := s.resolveProjectAutomationProviderConfig(project.ID, input.Action)
 	if err != nil {
 		return ProjectAutomationRenderedRequest{}, err
 	}
-	ctx, err := s.buildProjectAutomationContext(project, ruleID, input, triggerType, deliveryID, event)
+	vars, err := s.buildAutomationTemplateVars(project, ruleID, input, triggerType, deliveryID, event)
 	if err != nil {
 		return ProjectAutomationRenderedRequest{}, err
 	}
-	ctxJSON, err := json.Marshal(ctx)
-	if err != nil {
-		return ProjectAutomationRenderedRequest{}, err
+	systemPrompt := input.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = defaultAutomationSystemPrompt
 	}
+	renderedSystem := renderAutomationTemplate(systemPrompt, vars)
+	renderedUser := renderAutomationTemplate(input.InstructionTemplate, vars)
 	body := map[string]any{
 		"model": model,
 		"messages": []map[string]string{
 			{
 				"role":    "system",
-				"content": "你是项目自动化执行 Agent。你会收到来自璇础的项目上下文，请按用户指令执行。需要调用外部系统时，使用你所在 Agent 平台已配置的工具、skill、MCP 或 CLI。",
+				"content": renderedSystem,
 			},
 			{
 				"role":    "user",
-				"content": input.InstructionTemplate + "\n\n<context>" + string(ctxJSON) + "</context>",
+				"content": renderedUser,
 			},
 		},
 		"temperature": input.Action.Temperature,
@@ -227,6 +231,79 @@ func (s *Service) projectAutomationAllowedHosts(projectID string, key string) ([
 		return nil, RuntimeError{Code: "automation_provider_allowed_hosts_invalid", Message: "agent.provider.allowed_hosts must be a JSON string array"}
 	}
 	return hosts, nil
+}
+
+// buildAutomationTemplateVars 构建模板变量 map，键为变量名（不含 {{}}），值为渲染后的字符串。
+// 复用 buildProjectAutomationContext 构造的上下文结构，同时补充标量字段。
+func (s *Service) buildAutomationTemplateVars(project ProjectView, ruleID string, input ProjectAutomationRuleAddInput, triggerType string, deliveryID string, event *HookEvent) (map[string]string, error) {
+	ctx, err := s.buildProjectAutomationContext(project, ruleID, input, triggerType, deliveryID, event)
+	if err != nil {
+		return nil, err
+	}
+	vars := map[string]string{
+		"delivery_id":  deliveryID,
+		"trigger_type": triggerType,
+	}
+	// workspace
+	if wsNode, ok := ctx["workspace"].(map[string]any); ok {
+		vars["workspace.id"] = automationAnyToString(wsNode["id"])
+		vars["workspace.slug"] = automationAnyToString(wsNode["slug"])
+		vars["workspace.name"] = automationAnyToString(wsNode["name"])
+	} else {
+		if ws, err := s.workspaceRepo.GetByID(s.workspaceID); err == nil {
+			vars["workspace.id"] = ws.ID
+			vars["workspace.slug"] = ws.Slug
+			vars["workspace.name"] = ws.Name
+		}
+	}
+	// project
+	vars["project.id"] = project.ID
+	vars["project.slug"] = project.Slug
+	vars["project.name"] = project.Name
+	vars["project.status"] = project.Status
+	// project_config
+	if cfg, ok := ctx["project_config"]; ok {
+		vars["project_config"] = automationJSONIndented(cfg)
+	} else {
+		vars["project_config"] = "{}"
+	}
+	// tasks / task_summary（schedule）
+	if tasks, ok := ctx["matched_tasks"]; ok {
+		vars["tasks"] = automationJSONIndented(tasks)
+	}
+	if summary, ok := ctx["task_summary"]; ok {
+		vars["task_summary"] = automationJSONIndented(summary)
+	}
+	// event 相关
+	if event != nil {
+		vars["event.type"] = event.EventType
+		vars["event.id"] = event.EventID
+	}
+	if taskNode, ok := ctx["task"]; ok {
+		vars["task"] = automationJSONIndented(taskNode)
+	}
+	if added, ok := ctx["added_assignees"]; ok {
+		vars["added_assignees"] = automationJSONIndented(added)
+	}
+	return vars, nil
+}
+
+func automationAnyToString(v any) string {
+	if v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func automationJSONIndented(v any) string {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // buildProjectAutomationContext 按规则 include 列表构造投递上下文，secret config 值不进入上下文。

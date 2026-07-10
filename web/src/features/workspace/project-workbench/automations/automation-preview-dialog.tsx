@@ -11,6 +11,17 @@ import {
 
 import type { ProjectAutomationPreview } from "./project-automations-api"
 
+// extractMessages 从 preview body 中提取 system/user messages 明文。
+function extractMessages(body: unknown): Array<{ role: string; content: string }> {
+  if (body && typeof body === "object") {
+    const b = body as Record<string, unknown>
+    if (Array.isArray(b.messages)) {
+      return b.messages as Array<{ role: string; content: string }>
+    }
+  }
+  return []
+}
+
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -48,6 +59,16 @@ export function AutomationPreviewDialog({ open, onOpenChange, preview }: Props) 
               {Object.entries(preview.headers).map(([key, value]) => (
                 <div key={key}>
                   {key}: {value}
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              {extractMessages(preview.body).map((msg, i) => (
+                <div key={i} className="space-y-1">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">[{msg.role}]</span>
+                  <pre className="max-h-[200px] overflow-auto rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap">
+                    {msg.content}
+                  </pre>
                 </div>
               ))}
             </div>

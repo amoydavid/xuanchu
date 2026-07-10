@@ -431,6 +431,7 @@ type ProjectAutomationRule struct {
 	ActionConfigJSON    string  `gorm:"not null;default:'{}'"`
 	ContextConfigJSON   string  `gorm:"not null;default:'{}'"`
 	InstructionTemplate string  `gorm:"not null;default:''"`
+	SystemPrompt        string  `gorm:"not null;default:''"`
 	CreatedByActorType  string  `gorm:"not null;default:'user';index"`
 	CreatedByUserID     *string `gorm:"index"`
 	CreatedByTokenID    *string `gorm:"index"`

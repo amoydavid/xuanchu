@@ -30,8 +30,10 @@ import {
   type ProjectAutomationRuleInput,
 } from "./project-automations-api"
 import { AutomationPreviewDialog } from "./automation-preview-dialog"
+import { TemplateVariablePicker } from "./template-variable-picker"
 import {
   AUTOMATION_EVENT_OPTIONS,
+  defaultAutomationSystemPrompt,
   defaultScheduleAutomationInput,
 } from "./automation-rule-form"
 
@@ -63,6 +65,7 @@ function ruleToInput(rule: ProjectAutomationRule): ProjectAutomationRuleInput {
     action: rule.action,
     context: rule.context,
     instruction_template: rule.instruction_template,
+    system_prompt: rule.system_prompt,
   }
 }
 
@@ -202,13 +205,36 @@ export function AutomationRuleDialog({
               </div>
             )}
             <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="automation-system-prompt">系统提示词</label>
+              <Textarea
+                id="automation-system-prompt"
+                value={form.system_prompt}
+                onChange={(event) => setForm({ ...form, system_prompt: event.target.value })}
+                disabled={disabled}
+                rows={3}
+                placeholder={defaultAutomationSystemPrompt}
+              />
+              <TemplateVariablePicker
+                projectSlug={projectSlug}
+                trigger={form.trigger_type}
+                disabled={disabled}
+                onInsert={(token) => setForm({ ...form, system_prompt: form.system_prompt + token })}
+              />
+            </div>
+            <div className="grid gap-2">
               <label className="text-sm font-medium" htmlFor="automation-instruction">指令模板</label>
               <Textarea
                 id="automation-instruction"
                 value={form.instruction_template}
                 onChange={(event) => setForm({ ...form, instruction_template: event.target.value })}
                 disabled={disabled}
-                rows={5}
+                rows={6}
+              />
+              <TemplateVariablePicker
+                projectSlug={projectSlug}
+                trigger={form.trigger_type}
+                disabled={disabled}
+                onInsert={(token) => setForm({ ...form, instruction_template: form.instruction_template + token })}
               />
             </div>
             <DialogFooter>

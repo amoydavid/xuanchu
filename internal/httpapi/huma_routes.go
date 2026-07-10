@@ -306,6 +306,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/enable", Tag: "Project Automations", Summary: "Enable a project automation.", Handler: s.handleProjectAutomationEnable},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/disable", Tag: "Project Automations", Summary: "Disable a project automation.", Handler: s.handleProjectAutomationDisable},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automations/{ruleID}/test", Tag: "Project Automations", Summary: "Test a project automation.", Handler: s.handleProjectAutomationTest},
+		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-template-vars", Tag: "Project Automations", Summary: "List available automation template variables.", Handler: s.handleProjectAutomationTemplateVars},
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-deliveries", Tag: "Project Automations", Summary: "List project automation deliveries.", Handler: s.handleProjectAutomationDeliveryList},
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-deliveries/{deliveryID}", Tag: "Project Automations", Summary: "Get project automation delivery details.", Handler: s.handleProjectAutomationDeliveryInfo},
 		{Method: http.MethodPost, Path: "/api/v1/projects/{projectRef}/automation-deliveries/{deliveryID}/replay", Tag: "Project Automations", Summary: "Replay project automation delivery.", Handler: s.handleProjectAutomationDeliveryReplay},
