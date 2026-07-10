@@ -281,6 +281,31 @@ func TestProjectAutomationPreviewUsesDefaultSystemPromptWhenEmpty(t *testing.T) 
 	}
 }
 
+func TestProjectAutomationPreviewRendersProjectConfigKey(t *testing.T) {
+	f := newProjectAutomationServiceFixture(t)
+	project, _ := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})
+	defineConfigForTest(t, f.svc, "agent.provider.base_url", false, "https://agent.example.com")
+	defineConfigForTest(t, f.svc, "agent.provider.api_key", true, "sk-real-secret")
+	defineConfigForTest(t, f.svc, "agent.provider.model", false, "project-operator")
+	defineConfigForTest(t, f.svc, "feishu.chat_id", false, "oc_xxx")
+
+	view, err := f.svc.PreviewProjectAutomation(project.Slug, ProjectAutomationPreviewInput{
+		Name:                "配置项测试",
+		TriggerType:         "schedule",
+		TriggerConfig:       ProjectAutomationTriggerConfig{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+		Action:              defaultAutomationActionForTest(),
+		Context:             ProjectAutomationContextConfig{Include: []string{"project", "project_config"}},
+		InstructionTemplate: "飞书群：{{project_config:feishu.chat_id}}",
+	})
+	if err != nil {
+		t.Fatalf("PreviewProjectAutomation: %v", err)
+	}
+	body := string(mustJSONBytes(t, view.Body))
+	if !contains(body, "飞书群：oc_xxx") {
+		t.Fatalf("body missing rendered project_config:key: %s", body)
+	}
+}
+
 func TestProjectAutomationSchedulerEnqueuesDailyRuleOnce(t *testing.T) {
 	f := newProjectAutomationServiceFixture(t)
 	project, err := f.svc.AddProject(AddProjectInput{Slug: "adsops", Name: "广告投放优化"})

@@ -10,6 +10,7 @@ type automationTemplateVarSpec struct {
 	Name        string
 	Description string
 	Triggers    []string // "schedule", "event"
+	IsPrefix    bool     // true 表示这是前缀变量（如 project_config.*），展示为提示而非可插入项
 }
 
 // automationTemplateVarSpecs 是全部可用变量的声明式定义，单一真相源。
@@ -22,6 +23,7 @@ var automationTemplateVarSpecs = []automationTemplateVarSpec{
 	{Name: "workspace.slug", Description: "workspace slug", Triggers: []string{"schedule", "event"}},
 	{Name: "workspace.name", Description: "workspace 名称", Triggers: []string{"schedule", "event"}},
 	{Name: "project_config", Description: "项目非 secret 配置 JSON 对象", Triggers: []string{"schedule", "event"}},
+	{Name: "project_config.*", Description: "项目配置项（按 key 插入单个值，如 project_config:feishu.chat_id）", Triggers: []string{"schedule", "event"}, IsPrefix: true},
 	{Name: "tasks", Description: "匹配任务列表 JSON 数组", Triggers: []string{"schedule"}},
 	{Name: "task_summary", Description: "任务统计摘要 JSON", Triggers: []string{"schedule"}},
 	{Name: "delivery_id", Description: "本次投递 ID", Triggers: []string{"schedule", "event"}},
@@ -36,6 +38,7 @@ var automationTemplateVarSpecs = []automationTemplateVarSpec{
 type AutomationTemplateVarView struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	IsPrefix    bool   `json:"is_prefix"`
 }
 
 // AutomationTemplateTriggerView 是按触发器分组的变量列表。
@@ -61,6 +64,7 @@ func AutomationTemplateVars() AutomationTemplateVarsView {
 					entry.Vars = append(entry.Vars, AutomationTemplateVarView{
 						Name:        spec.Name,
 						Description: spec.Description,
+						IsPrefix:    spec.IsPrefix,
 					})
 					break
 				}
