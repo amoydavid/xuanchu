@@ -57,7 +57,7 @@
 - Create: `internal/app/project_automation_template_vars.go`
 - Create: `internal/app/project_automation_template_vars_test.go`
 
-- [ ] **Step 1: 写失败测试 — 模板渲染**
+- [x] **Step 1: 写失败测试 — 模板渲染**
 
 Create `internal/app/project_automation_template_vars_test.go`:
 
@@ -96,13 +96,13 @@ func TestRenderAutomationTemplateNoVars(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/app -run 'TestRenderAutomationTemplate' -v`
 
 Expected: FAIL，`renderAutomationTemplate` 未定义。
 
-- [ ] **Step 3: 实现渲染函数和变量定义**
+- [x] **Step 3: 实现渲染函数和变量定义**
 
 Create `internal/app/project_automation_template_vars.go`:
 
@@ -197,7 +197,7 @@ func renderAutomationTemplate(tpl string, vars map[string]string) string {
 }
 ```
 
-- [ ] **Step 4: 写失败测试 — AutomationTemplateVars 完整性**
+- [x] **Step 4: 写失败测试 — AutomationTemplateVars 完整性**
 
 Append to `internal/app/project_automation_template_vars_test.go`:
 
@@ -243,13 +243,13 @@ func containsStr(list []string, target string) bool {
 }
 ```
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 Run: `go test ./internal/app -run 'TestRenderAutomationTemplate|TestAutomationTemplateVars' -v`
 
 Expected: PASS。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/app/project_automation_template_vars.go internal/app/project_automation_template_vars_test.go
@@ -268,7 +268,7 @@ git commit -m "feat: 增加项目自动化模板变量定义和渲染引擎"
 - Modify: `internal/app/project_automation_preview.go`
 - Modify: `internal/app/project_automation_test.go`
 
-- [ ] **Step 1: storage model 新增 SystemPrompt 列**
+- [x] **Step 1: storage model 新增 SystemPrompt 列**
 
 Modify `internal/storage/models.go`，在 `ProjectAutomationRule` 的 `InstructionTemplate` 之后添加：
 
@@ -277,7 +277,7 @@ Modify `internal/storage/models.go`，在 `ProjectAutomationRule` 的 `Instructi
 	SystemPrompt        string  `gorm:"not null;default:''"`
 ```
 
-- [ ] **Step 2: app input/view 类型新增 SystemPrompt**
+- [x] **Step 2: app input/view 类型新增 SystemPrompt**
 
 Modify `internal/app/project_automation.go`:
 
@@ -299,7 +299,7 @@ Modify `internal/app/project_automation.go`:
 	SystemPrompt        string                         `json:"system_prompt"`
 ```
 
-- [ ] **Step 3: CRUD 传递 SystemPrompt**
+- [x] **Step 3: CRUD 传递 SystemPrompt**
 
 Modify `internal/app/project_automation.go`:
 
@@ -338,7 +338,7 @@ Modify `internal/app/project_automation.go`:
 		SystemPrompt:        row.SystemPrompt,
 ```
 
-- [ ] **Step 4: 写失败测试 — 渲染使用模板变量**
+- [x] **Step 4: 写失败测试 — 渲染使用模板变量**
 
 Append to `internal/app/project_automation_test.go`:
 
@@ -410,13 +410,13 @@ func TestProjectAutomationPreviewUsesDefaultSystemPromptWhenEmpty(t *testing.T) 
 }
 ```
 
-- [ ] **Step 5: 运行测试确认失败**
+- [x] **Step 5: 运行测试确认失败**
 
 Run: `go test ./internal/app -run 'TestProjectAutomationPreviewRendersTemplateVars|TestProjectAutomationPreviewUsesDefaultSystemPrompt' -v`
 
 Expected: FAIL，`SystemPrompt` 字段不存在或渲染未改造。
 
-- [ ] **Step 6: 改造 renderProjectAutomationRequest**
+- [x] **Step 6: 改造 renderProjectAutomationRequest**
 
 Modify `internal/app/project_automation_preview.go`，在文件顶部新增常量：
 
@@ -455,7 +455,7 @@ const defaultAutomationSystemPrompt = "你是项目自动化执行 Agent。你�
 
 保留 `if input.Action.AttachMetadata { ... }` 块不变。
 
-- [ ] **Step 7: 实现 buildAutomationTemplateVars**
+- [x] **Step 7: 实现 buildAutomationTemplateVars**
 
 在 `internal/app/project_automation_preview.go` 中新增（放在 `buildProjectAutomationContext` 之前）：
 
@@ -534,13 +534,13 @@ func toJSONStringIndented(v any) string {
 }
 ```
 
-- [ ] **Step 8: 运行测试**
+- [x] **Step 8: 运行测试**
 
 Run: `go test ./internal/app -run 'TestProjectAutomation' -v`
 
 Expected: PASS。包括新的模板渲染测试和已有的 CRUD/preview/dispatcher 测试。
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add internal/storage/models.go internal/app/project_automation.go internal/app/project_automation_preview.go internal/app/project_automation_test.go
@@ -559,7 +559,7 @@ git commit -m "feat: 项目自动化 system prompt 和模板变量渲染"
 - Create: `internal/httpapi/project_automation_template_vars_test.go`
 - Modify: `internal/httpapi/huma_routes.go`
 
-- [ ] **Step 1: request DTO 新增 SystemPrompt**
+- [x] **Step 1: request DTO 新增 SystemPrompt**
 
 Modify `internal/httpapi/project_automations.go`，在 `projectAutomationRuleRequest` 的 `InstructionTemplate` 字段后加：
 
@@ -581,7 +581,7 @@ Modify `internal/httpapi/project_automations.go`，在 `projectAutomationRuleReq
 		SystemPrompt:        &req.SystemPrompt,
 ```
 
-- [ ] **Step 2: 写失败测试 — template-vars API**
+- [x] **Step 2: 写失败测试 — template-vars API**
 
 Create `internal/httpapi/project_automation_template_vars_test.go`:
 
@@ -622,13 +622,13 @@ func TestHTTPAutomationTemplateVars(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: 运行测试确认失败**
+- [x] **Step 3: 运行测试确认失败**
 
 Run: `go test ./internal/httpapi -run 'TestHTTPAutomationTemplateVars' -v`
 
 Expected: FAIL，route not found。
 
-- [ ] **Step 4: 实现 handler**
+- [x] **Step 4: 实现 handler**
 
 Create `internal/httpapi/project_automation_template_vars.go`:
 
@@ -656,7 +656,7 @@ func (s *Server) handleProjectAutomationTemplateVars(w http.ResponseWriter, r *h
 }
 ```
 
-- [ ] **Step 5: 注册路由**
+- [x] **Step 5: 注册路由**
 
 Modify `internal/httpapi/huma_routes.go`，在 automation-deliveries 路由之前加：
 
@@ -664,13 +664,13 @@ Modify `internal/httpapi/huma_routes.go`，在 automation-deliveries 路由之�
 		{Method: http.MethodGet, Path: "/api/v1/projects/{projectRef}/automation-template-vars", Tag: "Project Automations", Summary: "List available automation template variables.", Handler: s.handleProjectAutomationTemplateVars},
 ```
 
-- [ ] **Step 6: 运行 HTTP 测试**
+- [x] **Step 6: 运行 HTTP 测试**
 
 Run: `go test ./internal/httpapi -run 'TestHTTPAutomation' -v`
 
 Expected: PASS。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/httpapi/project_automations.go internal/httpapi/project_automation_template_vars.go internal/httpapi/project_automation_template_vars_test.go internal/httpapi/huma_routes.go
@@ -687,7 +687,7 @@ git commit -m "feat: 暴露自动化模板变量 API 和 system_prompt 字段"
 - Modify: `web/src/features/workspace/project-workbench/automations/project-automations-api.ts`
 - Modify: `web/src/features/workspace/project-workbench/automations/automation-rule-form.tsx`
 
-- [ ] **Step 1: 类型新增 system_prompt**
+- [x] **Step 1: 类型新增 system_prompt**
 
 Modify `project-automations-api.ts`，在 `ProjectAutomationRule` 的 `instruction_template` 字段后加：
 
@@ -716,7 +716,7 @@ export async function getAutomationTemplateVars(projectSlug: string) {
 }
 ```
 
-- [ ] **Step 2: 默认模板新增 system_prompt**
+- [x] **Step 2: 默认模板新增 system_prompt**
 
 Modify `automation-rule-form.tsx`，在 `defaultScheduleAutomationInput` 和 `assigneeFeishuTemplateInput` 中新增 `system_prompt` 字段：
 
@@ -745,13 +745,13 @@ export const defaultScheduleAutomationInput: ProjectAutomationRuleInput = {
 
 同样在 `assigneeFeishuTemplateInput` 中加 `system_prompt: defaultAutomationSystemPrompt`。
 
-- [ ] **Step 3: 运行 typecheck**
+- [x] **Step 3: 运行 typecheck**
 
 Run: `pnpm --dir web typecheck`
 
 Expected: PASS。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add web/src/features/workspace/project-workbench/automations/project-automations-api.ts web/src/features/workspace/project-workbench/automations/automation-rule-form.tsx
@@ -768,7 +768,7 @@ git commit -m "feat(web): 新增 system_prompt 类型和模板变量 API"
 - Create: `web/src/features/workspace/project-workbench/automations/template-variable-picker.tsx`
 - Create: `web/src/features/workspace/project-workbench/automations/template-variable-picker.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `template-variable-picker.test.tsx`:
 
@@ -819,13 +819,13 @@ describe("TemplateVariablePicker", () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pnpm --dir web test -- template-variable-picker.test.tsx --run`
 
 Expected: FAIL，组件未定义。
 
-- [ ] **Step 3: 实现组件**
+- [x] **Step 3: 实现组件**
 
 Create `template-variable-picker.tsx`:
 
@@ -893,7 +893,7 @@ export function TemplateVariablePicker({ trigger, onInsert, disabled }: Props) {
 }
 ```
 
-- [ ] **Step 4: API 层新增 useAutomationTemplateVars hook**
+- [x] **Step 4: API 层新增 useAutomationTemplateVars hook**
 
 Modify `project-automations-api.ts`，在 `getAutomationTemplateVars` 后新增：
 
@@ -945,7 +945,7 @@ export function TemplateVariablePicker({ projectSlug, trigger, onInsert, disable
 
 测试中也需要传 `projectSlug="adsops"` 并 mock `useAutomationTemplateVars`。
 
-- [ ] **Step 5: 更新测试 mock**
+- [x] **Step 5: 更新测试 mock**
 
 Modify `template-variable-picker.test.tsx` 的 mock 和 render：
 
@@ -984,13 +984,13 @@ render(
 )
 ```
 
-- [ ] **Step 6: 运行测试**
+- [x] **Step 6: 运行测试**
 
 Run: `pnpm --dir web test -- template-variable-picker.test.tsx --run`
 
 Expected: PASS。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add web/src/features/workspace/project-workbench/automations/template-variable-picker.tsx web/src/features/workspace/project-workbench/automations/template-variable-picker.test.tsx web/src/features/workspace/project-workbench/automations/project-automations-api.ts
@@ -1007,7 +1007,7 @@ git commit -m "feat(web): 新增模板变量选择器组件"
 - Modify: `web/src/features/workspace/project-workbench/automations/automation-rule-dialog.tsx`
 - Modify: `web/src/features/workspace/project-workbench/automations/automation-rule-form.tsx`（导出 `defaultAutomationSystemPrompt`）
 
-- [ ] **Step 1: 在 Dialog 中新增 system prompt Textarea 和变量选择器**
+- [x] **Step 1: 在 Dialog 中新增 system prompt Textarea 和变量选择器**
 
 Modify `automation-rule-dialog.tsx`:
 
@@ -1062,13 +1062,13 @@ import { defaultAutomationSystemPrompt } from "./automation-rule-form"
             </div>
 ```
 
-- [ ] **Step 2: 运行 typecheck**
+- [x] **Step 2: 运行 typecheck**
 
 Run: `pnpm --dir web typecheck`
 
 Expected: PASS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add web/src/features/workspace/project-workbench/automations/automation-rule-dialog.tsx web/src/features/workspace/project-workbench/automations/automation-rule-form.tsx
@@ -1084,7 +1084,7 @@ git commit -m "feat(web): 规则编辑弹窗新增系统提示词和变量选择
 **Files:**
 - Modify: `web/src/features/workspace/project-workbench/automations/automation-preview-dialog.tsx`
 
-- [ ] **Step 1: 改造预览弹窗**
+- [x] **Step 1: 改造预览弹窗**
 
 Modify `automation-preview-dialog.tsx`，在 body JSON 展示区域之前新增明文 messages 展示：
 
@@ -1116,13 +1116,13 @@ function extractMessages(body: unknown): Array<{ role: string; content: string }
             </div>
 ```
 
-- [ ] **Step 2: 运行 typecheck 和 lint**
+- [x] **Step 2: 运行 typecheck 和 lint**
 
 Run: `pnpm --dir web typecheck && pnpm --dir web lint`
 
 Expected: PASS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add web/src/features/workspace/project-workbench/automations/automation-preview-dialog.tsx
@@ -1139,7 +1139,7 @@ git commit -m "feat(web): 预览弹窗展示渲染后的明文 messages"
 - Modify: `docs/superpowers/specs/2026-07-08-web-console-project-automation-openai-compatible-design.md` §8
 - Modify: `README.md`
 
-- [ ] **Step 1: 后端完整验证**
+- [x] **Step 1: 后端完整验证**
 
 Run:
 
@@ -1152,7 +1152,7 @@ go vet ./...
 
 Expected: 全部 PASS。
 
-- [ ] **Step 2: 前端完整验证**
+- [x] **Step 2: 前端完整验证**
 
 Run:
 
@@ -1165,7 +1165,7 @@ pnpm --dir web build
 
 Expected: 全部 PASS。
 
-- [ ] **Step 3: 更新 spec §8**
+- [x] **Step 3: 更新 spec §8**
 
 Modify `docs/superpowers/specs/2026-07-08-web-console-project-automation-openai-compatible-design.md`，在 §8.1 的 system message 说明处加注：
 
@@ -1173,7 +1173,7 @@ Modify `docs/superpowers/specs/2026-07-08-web-console-project-automation-openai-
 > system prompt 和 instruction template 现在由用户通过表单编辑，支持 `{{变量}}` 占位符引用项目上下文。详见 [模板变量化设计](./2026-07-09-project-automation-template-variables-design.md)。
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/superpowers/specs/2026-07-08-web-console-project-automation-openai-compatible-design.md

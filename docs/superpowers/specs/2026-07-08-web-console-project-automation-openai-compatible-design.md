@@ -299,6 +299,8 @@ Content-Type: application/json
 
 首版默认生成严格兼容的最小请求体，避免部分 provider 拒绝未知字段。追踪信息放入 `<context>` 的 `_xuanchu` 节点，不默认写入顶层 `metadata`。
 
+> **更新（2026-07-09）：** system prompt 和 instruction template 现在由用户通过表单编辑，支持 `{{变量}}` 占位符引用项目上下文（如 `{{project.slug}}`、`{{project_config}}`、`{{tasks}}`）。不再硬编码追加 `<context>` JSON。详见 [模板变量化设计](./2026-07-09-project-automation-template-variables-design.md)。
+
 ```json
 {
   "model": "project-operator",
