@@ -53,6 +53,7 @@
 | v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
 | v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
 | v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
+| v0.5.7 | 待实施 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -592,6 +593,28 @@ docs/superpowers/plans/2026-07-07-web-console-task-detail-redesign-implementatio
 ```text
 docs/superpowers/specs/2026-07-08-web-console-project-automation-openai-compatible-design.md
 docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatible-implementation.md
+```
+
+## v0.5.7：循环任务系列与日历驱动实例
+
+**状态：待实施。**
+
+把 M2 的基础 recurring 从“完成当前实例后生成下一条”升级为项目协作可用的日历驱动系列：上一实例未完成时，下一日期仍生成独立实例；服务停机恢复后补齐所有遗漏日期。
+
+核心范围：
+
+- 保留隐藏 `status=recurring` 模板和 Taskwarrior 基础字段，新增不可变 `recurrence_at` 日历槽位与并发唯一约束。
+- 普通任务与循环系列不互转；创建时明确选择，系列通过专用 app/HTTP/Remote/MCP CRUD 管理。
+- Server 复用现有 scheduler 运行时每分钟 reconcile；本地 CLI 在任务/项目命令前对当前 workspace 补齐。
+- Web Console 提供普通/循环创建切换、实例 badge 与系列入口、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
+- MCP 新增 `task_series_add/list/get/modify/stop/skip`，task query/get 对 occurrence 返回派生 `recurrence_info`。
+- 默认任务列表隐藏 series template；项目普通进度排除模板和循环实例，另给循环系列、未完成实例和逾期实例指标。
+- 项目 archive/cancel 时停止 active series，不在关闭项目中继续生成任务。
+
+规格：
+
+```text
+docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1579,10 +1602,16 @@ docs/superpowers/specs/2026-07-07-web-console-project-subpages-design.md
 docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 ```
 
-v0.5.4 之后的方向待定，建议优先在以下几类中选择：
+v0.5.5 已完成任务详情页重构，v0.5.6 已完成项目自动化。当前下一步锁定为 v0.5.7「循环任务系列与日历驱动实例」：
 
-- 飞书 OAuth / 通讯录之外的企业身份 adapter（认证只负责外部身份映射，授权继续由 Xuanchu membership、role、scope 和 allowlist 决定）。
-- Priority 2 语义事件补齐（`task.annotated`、`task.link_added/removed`、`project.created/updated`、`workspace.member_*` 等 9 个，已有白名单草案）。
-- 出站集成控制台 Phase 3-5：预设 sink 模板（飞书机器人 / 企业微信 / Slack / 自建网关）、`POST /notification-sinks/{id}/preview` 模板预览、统一 `GET /outbound-deliveries` 投递排障中心与失败聚合。
-- 性能优化与大 workspace 场景验证。
-- 外部系统 adapter 生态。
+- `daily` 等规则改为日历驱动，上一实例未完成时下一日期仍生成独立实例。
+- 服务停机恢复后补齐全部遗漏日期，并以不可变 `recurrence_at` 和数据库唯一约束保证并发幂等。
+- 普通任务与循环系列不互转；Series CRUD 通过专用 app/HTTP/Remote/MCP 能力提供。
+- Web Console 补齐循环创建、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
+- 默认任务列表隐藏 series template，项目进度与循环运行指标分开统计。
+
+对应规格：
+
+```text
+docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md
+```
