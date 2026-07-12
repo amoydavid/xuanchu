@@ -99,6 +99,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newUserCommand(opts))
 	cmd.AddCommand(newWorkspaceCommand(opts))
 	cmd.AddCommand(newProjectCommand(opts))
+	cmd.AddCommand(newSeriesCommand(opts))
 	cmd.AddCommand(newMemberCommand(opts))
 	cmd.AddCommand(newHookCommand(opts))
 	cmd.AddCommand(newNotificationCommand(opts))

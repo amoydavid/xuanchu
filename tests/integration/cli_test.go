@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -2683,5 +2684,96 @@ func TestCLIServerMCPRejectsBodyOverLimit(t *testing.T) {
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("POST /mcp oversized body status = %d, want 413 body=%s", resp.StatusCode, string(body))
+	}
+}
+
+// TestCLISeriesAddListInfoOccurrencesSkipStop 覆盖 series CLI 全流程。
+func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+
+	// 创建项目。
+	run(t, bin, "--db", db, "project", "add", "ops", "name:Ops")
+
+	// series add。
+	out := run(t, bin, "--db", db, "series", "add", "每日巡检", "--project", "ops", "--recur", "daily", "--first-due", "2030-01-01")
+	if !strings.Contains(out, "已创建循环任务") {
+		t.Fatalf("add 输出: %q", out)
+	}
+
+	// series list。
+	out = run(t, bin, "--db", db, "series", "list", "--project", "ops")
+	if !strings.Contains(out, "每日巡检") {
+		t.Fatalf("list 输出: %q", out)
+	}
+
+	// series list --json：验证 JSON 输出只含结果（stdout 干净）。
+	out = run(t, bin, "--db", db, "--json", "series", "list", "--project", "ops")
+	var listResp struct {
+		Items []struct {
+			Title string `json:"title"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal([]byte(out), &listResp); err != nil {
+		t.Fatalf("list --json 解析失败: %v body=%q", err, out)
+	}
+	if listResp.Total != 1 || listResp.Items[0].Title != "每日巡检" {
+		t.Fatalf("list --json = %#v", listResp)
+	}
+
+	// 提取 series ID（从 list --json）。
+	seriesID := ""
+	{
+		var full struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		}
+		json.Unmarshal([]byte(out), &full)
+		if len(full.Items) > 0 {
+			seriesID = full.Items[0].ID
+		}
+	}
+	if seriesID == "" {
+		t.Fatal("无法获取 series ID")
+	}
+
+	// series info。
+	out = run(t, bin, "--db", db, "series", "info", seriesID)
+	if !strings.Contains(out, "每日巡检") {
+		t.Fatalf("info 输出: %q", out)
+	}
+
+	// series occurrences（first_due 在未来，无物化 occurrence）。
+	out = run(t, bin, "--db", db, "series", "occurrences", seriesID, "--status", "all")
+	// 未来 series 无物化 occurrence 是正常的。
+	_ = out
+
+	// series skip：用 occurrence_ref（occ:<seriesID>:<first_due_unix>）。
+	// first_due 2030-01-01 23:59:59 本地。用 series info --json 取 first_due。
+	out = run(t, bin, "--db", db, "--json", "series", "info", seriesID)
+	var infoResp struct {
+		Series struct {
+			ID       string `json:"id"`
+			FirstDue int64  `json:"FirstDue"`
+		} `json:"Series"`
+	}
+	if err := json.Unmarshal([]byte(out), &infoResp); err != nil {
+		t.Fatalf("info --json 解析失败: %v body=%s", err, out)
+	}
+	if infoResp.Series.FirstDue == 0 {
+		t.Fatalf("first_due 为 0, info body=%s", out)
+	}
+	occRef := "occ:" + infoResp.Series.ID + ":" + strconv.FormatInt(infoResp.Series.FirstDue, 10)
+	out = run(t, bin, "--db", db, "series", "skip", seriesID, occRef)
+	if !strings.Contains(out, "已跳过实例") {
+		t.Fatalf("skip 输出: %q", out)
+	}
+
+	// series stop。
+	out = run(t, bin, "--db", db, "series", "stop", seriesID)
+	if !strings.Contains(out, "已停止循环任务") {
+		t.Fatalf("stop 输出: %q", out)
 	}
 }
