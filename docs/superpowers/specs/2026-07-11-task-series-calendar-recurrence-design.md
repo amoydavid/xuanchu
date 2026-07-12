@@ -877,6 +877,8 @@ POST   /api/v1/task-series/{seriesRef}/occurrences/{occurrenceRef}/skip
 
 公开 JSON 字段统一使用 `recurrence_rule`、`first_due`、`effective_from`、`until`。`PATCH /task-series/{seriesRef}` 修改 `recurrence_rule` 时必须同时提交 `effective_from`；Series get 返回 `suggested_rule_effective_from` 和当前规则段摘要，供 Web、CLI、Remote 与 MCP 复用。传输层不得把 `recur` 别名写入 App DTO。
 
+`GET /task-series/{seriesRef}/occurrences` 的 `status` 在 HTTP、Remote、MCP、CLI 中统一为 `pending|waiting|completed|deleted|all`，直接复用移除 recurring 后的 canonical Task status enum；`all` 表示不追加状态 predicate，不是持久状态。Series get 的 open occurrence 包含 pending 和 waiting。
+
 ### 13.3 Task 查询与范围展开
 
 `GET /api/v1/tasks` 新增并统一以下参数：
@@ -917,7 +919,7 @@ occurrence_mode=auto|materialized|expand
 }
 ```
 
-HTTP、Remote `TaskPage`、MCP `structuredContent.data` 使用同一 page shape；只有外层 transport envelope 不同。Web 不得再直接依赖裸 `task.JSONTask[]` 判断 recurrence。该响应变化需要同步 OpenAPI、Remote client 和全部调用方，不做前后端双重猜测。
+HTTP、Remote `TaskViewPageDTO`、MCP `structuredContent.data` 使用同一 page shape；只有外层 transport envelope 不同。`GET /api/v1/reports/{name}` 与 `GET /api/v1/tasks?report={name}` 也返回该 page shape，并接受同一 due range、occurrence_mode、task_type、query、sort、limit、offset 参数。Web 不得再直接依赖裸 `task.JSONTask[]` 判断 recurrence。该响应变化需要同步 OpenAPI、Remote client 和全部调用方，不做前后端双重猜测。
 
 ### 13.4 现有 task API
 
@@ -927,8 +929,12 @@ HTTP、Remote `TaskPage`、MCP `structuredContent.data` 使用同一 page shape�
 - `PATCH /api/v1/tasks/{id}` 对 projected occurrence 先物化再修改；Task patch schema 不包含 recurrence rule。
 - `POST /tasks/{id}/start|done` 对 projected occurrence 原子物化并执行本次动作；`stop/reopen` 对 projected 返回状态错误，不物化。
 - `DELETE /api/v1/tasks/{id}` 对 occurrence 执行“跳过本次”；series 不属于该路由。
-- annotations、links、dependencies、children 等所有 task 子资源写入口共享同一个 write resolver，projected occurrence 必须先物化。
+- annotations、links、dependencies、children 等 task 子资源写入口共享同一个 resolver，但必须先校验请求是否可能成功：新增 annotation/link/dependency/child 时 projected occurrence 先物化；update/delete/remove 已有子资源时，若 projected occurrence 尚未物化，则该子资源必然不存在，直接返回 404 且不物化。
+- projected occurrence 的 annotations、links、children、audit 读接口返回与普通空任务相同的空 list/page，不物化；urgency 使用投影合并后的字段即时计算并返回说明，不物化。projected 的 `entry=null`，因此 urgency 不计算 age 项；due、priority、tags、project、UDA 等按继承值计算，blocked/blocking 固定为 false。materialized occurrence 按实体数据读取。
+- 空 patch、清空本就为空的集合等无有效变化写入在物化前完成 diff，直接返回当前 projected view，不创建 Task、不写 audit/event。任何参数错误、权限错误、状态错误或子资源不存在错误都不得留下物化实体。
 - 所有 occurrence 写响应返回 materialized view，`id` 仍为原 occurrence_ref，同时补充 `uuid/task_slug`。
+
+Urgency 公开响应改为 `UrgencyView={id, uuid:null|string, total, items}`。计算层只接收无 identity invariant 的 urgency value，不接收或伪造 `task.Task`；App 用 TaskOccurrenceView 的稳定 id 和 nullable uuid 包装计算结果。普通任务/materialized occurrence 的公式与现有结果完全一致。
 
 ### 13.5 创建响应
 
@@ -966,7 +972,11 @@ HTTP、Remote `TaskPage`、MCP `structuredContent.data` 使用同一 page shape�
 
 若 first_due 已进入执行期，示例中的 materialization 为 `materialized` 且 uuid/task_slug 非空。
 
-Remote client 新增对应 `AddTaskSeries` / `ListTaskSeries` / `GetTaskSeries` / `ModifyTaskSeries` / `StopTaskSeries` / `ListTaskSeriesOccurrences` / `SkipTaskSeriesOccurrence` 方法。`AddTask`/`ModifyTask` DTO 移除 recurrence 字段，不保留路由 wrapper。
+Remote client 新增对应 `AddTaskSeries` / `ListTaskSeries` / `GetTaskSeries` / `ModifyTaskSeries` / `StopTaskSeries` / `ListTaskSeriesOccurrences` / `SkipTaskSeriesOccurrence` 方法。旧 `ListTasks` 直接替换为 `QueryTasks(ctx, TaskQueryInput) (TaskViewPageDTO, error)`，旧 `GetTask` 替换为 `GetTaskView(ctx, workspace, taskRef) (TaskOccurrenceDTO, error)`；`AddTask`、`ModifyTask`、`DoneTask`、`DeleteTask`、`StartTask`、`StopTask`、`ReopenTask`、`AnnotateTask`、`DenotateTask`、dependency/link/child 写方法全部接受未预解析的 `taskRef`（AddTask 除外）并返回对应 TaskOccurrenceDTO 或子资源 DTO。`AddTaskInput`/`ModifyTaskInput` 移除 recurrence 字段，不保留旧签名或兼容 wrapper。
+
+Remote DTO 与 HTTP `data` 内层 JSON 同构：`TaskOccurrenceDTO` 使用稳定公开 `id`、nullable `uuid/task_slug/project_seq` 和 `recurrence_info`；`TaskViewPageDTO` 使用 `items/total/limit/offset/occurrence_mode/range`。Remote 不把 projected occurrence 降级成 `task.Task`，也不从 occurrence_ref 猜测 UUID。
+
+现有 Remote `ExplainUrgency` 改为接受原始 taskRef/occurrence_ref 并调用 projected-aware App 用例，不先解析 UUID；projected 返回即时计算结果且不物化。现有 link list/add/remove 同样保留原始 taskRef，遵守 HTTP 的空读、合法新增物化和不存在子资源删除不物化语义。
 
 ### 13.6 CLI 契约
 
@@ -976,12 +986,23 @@ Remote client 新增对应 `AddTaskSeries` / `ListTaskSeries` / `GetTaskSeries` 
 xuanchu series add "每日检查投放消耗" --project ops --recur daily --first-due 2026-07-11 --until 2026-07-31
 xuanchu series list --project ops
 xuanchu series info <series-ref>
-xuanchu series modify <series-ref> --recur weekly --until 2026-12-31
+xuanchu series modify <series-ref> --recur weekly --effective-from 2026-08-01 --until 2026-12-31
+xuanchu series occurrences <series-ref> [--status pending|waiting|completed|deleted|all] [--due-after YYYY-MM-DD] [--due-before YYYY-MM-DD] [--limit N] [--offset N]
 xuanchu series stop <series-ref> [--delete-open]
 xuanchu series skip <series-ref> <occurrence-ref>
 ```
 
 `xuanchu add ... recur:*`、`xuanchu <task-ref> modify recur:*` 和 `recur:` 不再是受支持命令。CLI human 输出使用“循环系列/实例/槽位”术语；`--json` 使用与 HTTP/MCP 相同的 SeriesView 和 recurrence_info 形状。
+
+现有任务命令统一扩展：
+
+- `list`、report aliases 和默认 report 接受 `--due-after`、`--due-before`、`--occurrence-mode=auto|materialized|expand`；`expand` 缺完整范围时与 HTTP 一样失败。completed/deleted/overdue/ready 等 report 仍应用各自过滤条件，但是否展开只由这三个参数决定。
+- `info/modify/delete/start/stop/reopen/annotate/denotate/append/prepend/edit/link/annotations/urgency/_urgency` 接受 occurrence_ref。写命令必须把原始 ref 交给 App resolver；不得先转换为 UUID。`edit` 先从 TaskOccurrenceView 生成包含稳定 `id`、nullable `uuid` 的临时文档，不物化；只有编辑器成功退出且 diff 非空时才调用 modify，在同一事务中物化并记录 override。取消、编辑器失败或内容未变均不写库。append/prepend 按 modify 语义物化并记录 description override。
+- projected occurrence 不进入持久化 working set，不分配数字 ID；含 projected 行的 human 列表在 `ID` 列显示 `-`。用户对 projected 行操作必须使用 occurrence_ref，物化后的 occurrence 才能进入后续 working set。
+- `_get <occurrence-ref>.uuid|task_slug|project_seq` 对 projected 返回 JSON `null`，human 输出为空；读取其它字段使用合并后的 TaskOccurrenceView。`_ids` 和 `_uuids` 只输出具有持久化 working-set ID/UUID 的普通任务或 materialized occurrence，不为 projected 合成标识。
+- `_projects`、`_tags`、`_unique` 是无界元数据 helper，固定使用 materialized 模式，不枚举未来投影；`_udas`、`_show`、`_version` 不读取任务集合，行为不变。
+- human renderer 直接渲染 `TaskOccurrenceView`，projected 的 UUID/SLUG 显示 `-` 并显示“计划实例”标识；CLI JSON 不再经过 `task.Task` 或 Taskwarrior DTO。
+- `series info` 只保留摘要、open occurrences 与最近历史；完整历史必须使用可分页的 `series occurrences`，其 page shape 与 HTTP/MCP/Remote 一致。
 
 ### 13.7 跨入口行为对照
 
@@ -996,7 +1017,7 @@ xuanchu series skip <series-ref> <occurrence-ref>
 | 跳过 occurrence | `DELETE /tasks/{id}` 或 series skip 子资源 | `task_delete` 或 `task_series_occurrence_skip` | `SkipTaskSeriesOccurrence` / series skip | materialize tombstone；不影响系列 |
 | 修改系列 | `PATCH /task-series/{id}` | `task_series_modify` | `ModifyTaskSeries` / series modify | 只改未来和未 override 的 open 字段 |
 | 停止系列 | `DELETE /task-series/{id}` | `task_series_stop` | `StopTaskSeries` / series stop | 写 stopped + effective_end_at；不再产生边界后的槽位 |
-| 列系列实例 | `GET /task-series/{id}/occurrences` | `task_series_list_occurrences` | 同名 Remote / series info | page shape 与 TaskOccurrenceView 一致 |
+| 列系列实例 | `GET /task-series/{id}/occurrences` | `task_series_list_occurrences` | `ListTaskSeriesOccurrences` / `series occurrences` | page shape 与 TaskOccurrenceView 一致 |
 
 同一对象、同一 actor、同一 scope 在各入口必须得到同一业务结果、错误码、审计和事件。允许不同的只有 HTTP/MCP/CLI 外层 envelope 与 human rendered 文案。
 
@@ -1044,7 +1065,7 @@ task_series_stop:
 
 task_series_list_occurrences:
   id
-  status
+  status  // pending|waiting|completed|deleted|all，与 Task status canonical enum 同源
   due_after/due_before
   limit/offset
 
@@ -1059,6 +1080,7 @@ task_series_occurrence_skip:
 due_after: YYYY-MM-DD
 due_before: YYYY-MM-DD
 occurrence_mode: auto|materialized|expand
+task_type: all|normal|occurrence
 ```
 
 约束、366 天上限、过滤顺序、稳定排序、分页和错误码与 HTTP 完全一致。Agent 不需要知道如何展开 recurrence。
@@ -1071,7 +1093,9 @@ occurrence_mode: auto|materialized|expand
 - `task_series_get` 返回 series、open occurrences、recent history 和 counts。
 - `task_get` 不读取 series；输入 series ID 按 task not found 处理，Agent 应使用 `task_series_get`。
 - MCP `Content[0].text` 继续是 ToolEnvelope JSON，与 `structuredContent` 语义一致；不得出现一个返回投影、另一个只返回实体的分叉。
-- `task_modify/task_done/task_delete/task_start/task_stop/task_reopen/task_annotate/task_depends/task_link_add` 等所有写 tool 均共享 occurrence write resolver。
+- `task_modify/task_done/task_delete/task_start/task_stop/task_reopen/task_annotate/task_denotate/task_depends/task_link_add/task_link_remove` 均接收原始 occurrence_ref；合法首次写共享 occurrence write resolver。`task_denotate/task_link_remove` 针对 projected occurrence 时因目标子资源不存在直接返回 not found，不物化。
+- `task_link_list` 对 projected 返回空集合；`task_get` 中内嵌的 annotations/depends 使用投影视图值；`urgency_explain` 接受 occurrence_ref 并从投影视图计算。MCP 当前没有独立 children/audit tool，不为循环能力新增重复工具；所有现有读 tool 均不物化。
+- `task_export/task_import` 只接受 `xuanchu.task-bundle/v1`，与 HTTP、Remote、CLI 使用同一 bundle DTO 和 App 用例，不保留 Taskwarrior array payload。
 
 ### 14.4 MCP 行为矩阵
 
@@ -1079,7 +1103,7 @@ occurrence_mode: auto|materialized|expand
 |---|---|---|
 | 普通任务 | 返回普通 TaskOccurrenceView | 现有行为 |
 | materialized occurrence | 返回 materialized + overrides | 只改本次 |
-| projected occurrence_ref | 返回 projected，不写库 | modify/start/done/skip/子资源写先物化；stop/reopen 返回状态错误 |
+| projected occurrence_ref | 返回 projected，不写库 | modify/start/done/skip/合法子资源新增先物化；denotate/link-remove 等既有子资源修改返回 not found；stop/reopen 返回状态错误 |
 | series ID | 不属于 task tool；使用 task_series_get | 不属于 task tool；使用对应 task_series_* tool |
 | 无效 occurrence_ref | task_occurrence_not_found | 同左，不得创建任意槽位 |
 
@@ -1739,7 +1763,37 @@ Web 日期窗口
 
 这修复当前“有 query 时默认 pending 过滤失效，模板混入 Web 列表”的问题。
 
-### 17.2 项目统计
+### 17.2 查询 DSL 与所有消费者迁移
+
+查询 AST 是 CLI filter/report、HTTP `query=`、MCP `task_query.filters`、Remote `TaskQueryInput.Filters` 以及复用任务查询的通知/自动化规则的共同契约，不能只修改 HTTP 参数：
+
+- 从 AST、parser、SQL compiler、帮助和 schema 中删除 `recur`；`mask/imask` 同样没有查询属性。parser 保留一份仅用于拒绝的 retired-name guard，输入这些旧名称统一返回现有 `unknown attribute` 查询错误，不解释、不迁移为 UDA。
+- 新增原生属性 `series_id`、`recurrence_at`、`task_type`。DSL 写法为 `task_type:normal|occurrence`；HTTP/MCP/Remote 结构化参数写作 `task_type=all|normal|occurrence`，其中 `all` 不生成 predicate。`series_id` 只匹配 occurrence；`recurrence_at` 使用现有日期比较操作符和本地日期边界规则。
+- `recurrence_rule` 不进入通用 Task DSL。治理和按规则筛选属于 Series list/API，避免 Task 查询重新暴露模板字段。
+- `parent` 只匹配手工父子任务；series ID 不能作为 parent 值使用。
+- materialized 模式可在 SQL 层执行过滤；expand 模式必须先生成并合并 TaskOccurrenceView，再对普通任务与 projected/materialized occurrence 使用同一 AST evaluator，最后排序、分页。evaluator 必须覆盖全部保留 AST 属性和操作符，包括 uuid（与公开 id 分离）、title/description/status、全部日期字段、project/project_id、priority、depends、annotations、parent、assignee、tag、bare text 和 UDA；不能只实现 recurrence 新字段。projected 的 uuid/entry/modified/start/end 为 null，必须正确命中 `isnull/notnull`，不得用 occurrence_ref、available_at 或 series modified_at 冒充字段值；`available_at` 只可作为内部默认排序键。
+- `task_type:normal` 排除所有 occurrence；`task_type:occurrence` 排除普通任务。HTTP/Web 的同名结构化参数编译到同一 AST predicate，禁止维护第二套判断。
+- 通知/自动化保存的过滤表达式在写入时使用同一 parser 校验。由于没有历史数据负担，不迁移含旧 recurrence 属性的规则；启动或读取到此类开发数据时明确报错，不能静默忽略条件。
+
+日期范围参数 `due_after/due_before` 与 DSL 的 `due` predicate 可以同时存在，按 AND 组合。`occurrence_mode` 是查询执行选项，不是 DSL 属性。
+
+### 17.3 Report 查询迁移
+
+保留 `GET /api/v1/reports/{name}`、`GET /api/v1/tasks?report={name}`、MCP `report_run` 和 CLI report aliases，但全部收敛到 App `RunTaskViewReport(ReportViewInput) (TaskViewPage, error)`；删除返回 `[]task.Task` 的 `RunReport/ListReport/ReportResult` 旧签名。Remote 在 `TaskQueryInput.Report` 传 report name；`task_query` 仍是无 report definition 的通用查询，避免与 `report_run` 重复。
+
+执行顺序固定为：
+
+1. 组合 project scope、active context、report definition filter 与用户 query AST。
+2. 按 occurrence_mode/range 读取 materialized 或生成并 merge TaskOccurrenceView。
+3. 用完整 AST evaluator 过滤 merge 结果。
+4. 从当前 workspace 的 materialized task 图构建 dependency state；projected occurrence 首版没有 depends，也不能成为未物化的 dependency target，因此 `blocked=false`、`blocking=false`。materialized occurrence 与普通任务按真实依赖图计算。
+5. 应用 ready/blocked/blocking 等 report scope；waiting 与 until 使用合并后的 view 字段。
+6. 确定 effective sort：请求显式 `sort` 优先，否则使用 report definition sort；effective sort 为 urgency 时从 view 计算。任何排序都使用公开 `id` 作为最终 tie-breaker。
+7. 最后执行 offset/limit，返回 TaskViewPage。实现必须先通过一个不接受/不执行 offset、limit 的内部 candidate/merge 用例收集全集；`QueryTaskViews` 和 `RunTaskViewReport` 分别在各自排序/作用域完成后分页，report 不得直接调用已经分页的 `QueryTaskViews`。
+
+`/reports/{name}` 和 `/tasks?report=` 接受与普通 Task 查询相同的 `due_after/due_before/occurrence_mode/task_type/query/sort/limit/offset`，返回同一 page shape、错误码和 OpenAPI schema。无完整范围时默认 materialized，避免 report 展开无限 future occurrence。
+
+### 17.4 项目统计
 
 普通项目进度不得被每日实例数量扭曲：
 
@@ -1817,6 +1871,7 @@ Taskwarrior JSON 不再是 import、export、CLI `--json`、HTTP 或 MCP 的兼�
 - 导入 occurrence 时，同 bundle 或目标 workspace 中必须存在同 ID series，且 workspace/project 一致；槽位唯一约束必须成立。
 - import 与 export 必须校验 schema 版本。未知 major version 拒绝，不做猜测性宽松读取。
 - Web JSON/XLSX import 首版只支持普通任务；series bundle 通过专用原生 JSON import/export 完成，避免表格格式丢失聚合和引用关系。
+- CLI `export/import`、HTTP `/export|/import`、MCP `task_export/task_import` 与 Remote `ExportTaskBundle/ImportTaskBundle` 使用完全相同的 bundle object。Remote 不再提供返回 `[]task.Task` 或接收 `[]task.JSONTask` 的旧方法。
 
 CLI 单条命令的 `--json` 直接输出当前原生 view：task 使用 TaskOccurrenceView，series 使用 TaskSeriesView；不再补 `recur/mask/imask` 等 Taskwarrior 字段。
 
@@ -1898,6 +1953,9 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - series 不发普通 task.created；occurrence 会发。
 - projected 纯读不写库；modify/done/skip/annotate/link/dependency 首次写均原子物化。
 - series shared modify 不覆盖 recurrence_overrides。
+- projected 的 annotation/link/children/audit 读取为空、urgency 可计算且不物化；对不存在子资源的 update/delete/remove 失败且不物化。
+- no-op modify 和所有失败写入均不物化、不写 audit/event。
+- external edit 的取消、失败和无 diff 不物化；有 diff 时物化与 modify 原子提交。
 
 ### 23.3 storage
 
@@ -1914,9 +1972,12 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - task-series 全部 CRUD 路由、权限、scope、日期解析。
 - task list 只返回 Task/occurrence；auto/materialized/expand 三种模式。
 - expand 缺范围、超 366 天、日期边界、过滤后分页。
+- `/reports/{name}` 与 `/tasks?report=` 使用同一 TaskViewPage；ready/blocked/blocking/waiting/urgency 在 merge 后执行且最后分页。
 - task get 通过 occurrence_ref 返回 projected 且不物化。
-- 所有 task 子资源写入口共享写前物化。
-- Remote Task DTO 无 recurrence；TaskSeries DTO 与 HTTP schema 对齐。
+- 合法首次 task 子资源写入口共享写前物化；projected 上针对既有子资源的 update/delete/remove 返回 404 且不物化。
+- projected 子资源读返回空集合/计算型 urgency，且不物化。
+- Remote `QueryTasks/GetTaskView` 和所有 action 使用 TaskOccurrenceDTO/TaskViewPageDTO，不返回 `task.Task`；TaskSeries DTO 与 HTTP schema 对齐。
+- Remote native bundle 方法与 CLI/HTTP/MCP 同构，删除旧 task array 方法。
 - generic task add 收到未知 `recur` 返回帮助性错误，PATCH schema 无 recur/clear_recur。
 
 ### 23.5 MCP
@@ -1930,8 +1991,19 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - structuredContent 与 text content 语义一致。
 - MCP tool name 全部使用下划线。
 - project/workspace/token allowlist 与 HTTP 权限等价。
+- `task_denotate/task_link_remove` 在 projected 上不物化并返回 not found；`task_link_list` 返回空集合且不物化，`task_get` 返回投影视图，`urgency_explain` 从投影视图计算。
+- `report_run` 接受 due range、occurrence_mode、task_type 并返回与 HTTP TaskViewPage 等价的 structuredContent/text envelope。
+- `task_export/task_import` 只接受 native bundle。
 
-### 23.6 Web Console
+### 23.6 CLI 与查询 DSL
+
+- `series occurrences` 可按状态、due 范围分页读取完整历史；`series info` 不冒充完整历史接口。
+- occurrences status 在四端统一为 pending/waiting/completed/deleted/all。
+- list/report 的 due range 与 occurrence_mode 和 HTTP/MCP/Remote 等价。
+- 所有现有 task 写命令接受 occurrence_ref；projected working-set ID、`_get/_ids/_uuids` 和 human renderer 遵守 13.6。
+- query AST 删除 recur/mask/imask，新增 series_id/recurrence_at/task_type，SQL 与 merge evaluator 结果一致。
+
+### 23.7 Web Console
 
 - 全局侧栏不新增 series；项目级 `/task-series` list/detail 高亮“项目”和“循环规则”Tab。
 - ProjectTabs 增加循环规则及 active count；任务页 import action 和右栏 toggle 位置不回归。
@@ -1954,7 +2026,7 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - 移动端横向 ProjectTabs、card、bottom sheet、全屏表单与 sticky 主动作。
 - loading/error/empty/readonly/backlog 状态，i18n、aria-label 与键盘焦点。
 
-### 23.7 必跑验证
+### 23.8 必跑验证
 
 ```bash
 go test ./...
@@ -1986,6 +2058,13 @@ git diff --check
 13. 项目普通进度不被循环实例污染，循环运行情况有独立指标。
 14. SQLite/PostgreSQL 与 `CGO_ENABLED=0` 全部验证通过。
 15. README、ROADMAP、manual commands、HTTP/OpenAPI、MCP schema 与 Web 帮助文案同步更新。
+16. CLI `series occurrences` 可分页读取完整实例历史；list/report、working set、helper commands 与 human/JSON renderer 对 projected occurrence 的行为符合 §13.6。
+17. 查询 DSL 在所有消费者中删除 recur/mask/imask，新增 series_id/recurrence_at/task_type，SQL 与 expand merge evaluator 返回相同集合。
+18. projected 子资源读取无副作用；针对不存在子资源的修改/删除、no-op 和所有失败写入均不物化。
+19. Remote task 方法返回 TaskOccurrenceDTO/TaskViewPageDTO，native bundle 在 CLI/HTTP/MCP/Remote 间可无损 round-trip，不存在旧 task array wrapper。
+20. `/reports/{name}`、`/tasks?report=`、CLI report 与 MCP/Remote 在同一范围和过滤条件下返回相同 TaskViewPage，ready/blocked/blocking/urgency 语义及分页顺序一致。
+21. external edit 取消、失败或无变化不物化 projected occurrence；有效 diff 才原子物化并修改。
+22. series occurrences 的 pending/waiting/completed/deleted/all 枚举在 HTTP/MCP/Remote/CLI schema 与测试中一致。
 
 ## 25. 实施边界与建议拆分
 
