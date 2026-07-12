@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
@@ -665,4 +666,206 @@ func paginateTaskViews(items []TaskOccurrenceView, limit, offset int) []TaskOccu
 		rest = rest[:limit]
 	}
 	return rest
+}
+
+// --- Task 6: 写前物化与 occurrence 生命周期 ---
+
+// ResolveTaskForRead 解析任意 ref（UUID/slug/occurrence_ref）为 TaskOccurrenceView（spec §6、§13.4）。
+// projected occurrence_ref 返回 projected view，不物化、不写库。
+// 这是所有读路径的统一入口。
+func (s *Service) ResolveTaskForRead(ref string) (TaskOccurrenceView, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return s.GetTaskView(ref)
+}
+
+// MaterializeOccurrenceForWrite 物化一个 projected occurrence 为真实 task（spec §6、§8.1）。
+// 若该槽位已存在 materialized row（任意状态），返回 (existing, true, nil)。
+// 调用方负责在事务中调用此方法 + 随后动作。
+//
+// 不处理普通任务 ref；调用方应先判断 IsOccurrenceRef。
+func (s *Service) MaterializeOccurrenceForWrite(ref string) (domain.Task, bool, error) {
+	seriesID, slot, err := ParseOccurrenceRef(ref)
+	if err != nil {
+		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: err.Error()}
+	}
+	// 1. 先查 materialized row。
+	existing, err := s.taskOccurrenceRepo.GetOccurrence(s.workspaceID, seriesID, slot)
+	if err == nil {
+		return existing, true, nil
+	}
+	if err != storage.ErrOccurrenceNotFound {
+		return domain.Task{}, false, err
+	}
+	// 2. projected：校验 series 和槽位合法性。
+	series, gerr := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if gerr != nil {
+		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: "series not found"}
+	}
+	// 校验槽位属于规则段。
+	versions := ruleVersionsForExpand(series)
+	slots, err := taskseries.ExpandRange(versions, series.Until, slot, slot+1, s.clock.Location())
+	if err != nil || len(slots) == 0 {
+		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: "槽位不属于任何规则段"}
+	}
+	if !slotInRangeForSeriesStatus(series, slot) {
+		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: "槽位超出 series 有效区间"}
+	}
+	// 3. 物化：创建 task row。
+	now := s.clock.Unix()
+	rule := series.RecurrenceRule
+	ruleVersionRule := slots[0].Rule
+	if ruleVersionRule != "" {
+		rule = ruleVersionRule
+	}
+	occ := domain.Task{
+		UUID: uuid.NewString(), WorkspaceID: series.WorkspaceID, Title: series.Title,
+		Description: series.Description, Status: domain.StatusPending,
+		Entry: now, Modified: now, Priority: series.Priority, Tags: series.Tags,
+		ProjectID: &series.ProjectID, Due: &slot,
+		SeriesID: &seriesID, RecurrenceAt: &slot,
+		RecurrenceRuleSnapshot: &rule, RecurrenceOverrides: []string{},
+	}
+	// assignees 从 series 继承。
+	for _, id := range series.AssigneeIDs {
+		occ.Assignees = append(occ.Assignees, domain.AssigneeInfo{UserID: id})
+	}
+	// project_seq。
+	seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(series.WorkspaceID, series.ProjectID)
+	if err != nil {
+		return domain.Task{}, false, err
+	}
+	occ.ProjectSeq = &seq
+	created, existed, err := s.taskOccurrenceRepo.CreateOccurrence(occ)
+	if err != nil {
+		return domain.Task{}, false, err
+	}
+	if !existed {
+		// 新物化：写 audit。
+		if err := s.appendAuditEntry(AuditEntry{
+			Action: "task.recurrence.generated", WorkspaceID: &series.WorkspaceID,
+			ProjectID: &series.ProjectID, TargetType: "task", TargetID: created.UUID,
+			Payload: map[string]any{"series_id": seriesID, "recurrence_at": slot},
+		}); err != nil {
+			return domain.Task{}, false, err
+		}
+	}
+	return created, existed, nil
+}
+
+// WithTaskForWrite 在一个事务内：解析 ref，对 projected occurrence 先物化，然后执行 action，
+// 最后返回物化/更新后的 TaskOccurrenceView（spec §6、§9.3）。
+//
+// action 失败时整个事务回滚，物化不留痕迹。
+// 公开 id（occurrence_ref）在物化前后不变。
+//
+// occurrence_ref：先物化再执行 action。
+// 普通 UUID/slug：直接读取 task 执行 action（不物化）。
+func (s *Service) WithTaskForWrite(ref string, action func(*Service, domain.Task) error) (TaskOccurrenceView, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	var resultView TaskOccurrenceView
+	err := s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, terr := s.withStore(txStore)
+		if terr != nil {
+			return terr
+		}
+		var tsk domain.Task
+		if IsOccurrenceRef(ref) {
+			materialized, _, merr := txSvc.MaterializeOccurrenceForWrite(ref)
+			if merr != nil {
+				return merr
+			}
+			tsk = materialized
+		} else {
+			resolved, rerr := txSvc.resolveTargetForWrite(ref)
+			if rerr != nil {
+				return rerr
+			}
+			tsk = resolved
+		}
+		if err := action(txSvc, tsk); err != nil {
+			return err
+		}
+		// 重新读取最终状态构建 view。
+		finalTask, ferr := txSvc.repo.GetByUUID(txSvc.workspaceID, tsk.UUID)
+		if ferr != nil {
+			return ferr
+		}
+		userInfos, uerr := txSvc.resolveUserInfos(collectAssigneeUserIDs([]domain.Task{finalTask}))
+		if uerr != nil {
+			return uerr
+		}
+		resultView = taskToView(finalTask, userInfoList(finalTask.Assignees, userInfos))
+		return nil
+	})
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return resultView, nil
+}
+
+// WithExistingTaskForSubresourceWrite 处理对已有子资源（annotation/link/dependency）的
+// update/delete/remove（spec §6、§13.4）。
+//
+// materialized occurrence / 普通任务：正常执行 action。
+// projected occurrence：直接返回 not found，不物化（projected 的子资源必然不存在）。
+func (s *Service) WithExistingTaskForSubresourceWrite(ref string, action func(*Service, domain.Task) error) (TaskOccurrenceView, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	// 对 occurrence_ref：检查是否物化。projected 返回 not found 不物化。
+	var occurrenceUUID string // materialized occurrence 的真实 UUID
+	if IsOccurrenceRef(ref) {
+		seriesID, slot, err := ParseOccurrenceRef(ref)
+		if err != nil {
+			return TaskOccurrenceView{}, RuntimeError{Code: "task_occurrence_not_found", Message: err.Error()}
+		}
+		occ, gerr := s.taskOccurrenceRepo.GetOccurrence(s.workspaceID, seriesID, slot)
+		if gerr == storage.ErrOccurrenceNotFound {
+			return TaskOccurrenceView{}, RuntimeError{Code: "task_occurrence_not_found", Message: "projected occurrence 无子资源"}
+		}
+		if gerr != nil {
+			return TaskOccurrenceView{}, gerr
+		}
+		occurrenceUUID = occ.UUID
+	}
+	var resultView TaskOccurrenceView
+	err := s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, terr := s.withStore(txStore)
+		if terr != nil {
+			return terr
+		}
+		// 对 materialized occurrence，直接用真实 UUID 读取 task（避免 resolveTargetForWrite
+		// 的 project invariant 校验对 occurrence 产生副作用）。
+		var tsk domain.Task
+		var rerr error
+		if occurrenceUUID != "" {
+			tsk, rerr = txSvc.repo.GetByUUID(txSvc.workspaceID, occurrenceUUID)
+		} else {
+			tsk, rerr = txSvc.resolveTargetForWrite(ref)
+		}
+		if rerr != nil {
+			return rerr
+		}
+		if err := action(txSvc, tsk); err != nil {
+			return err
+		}
+		finalTask, ferr := txSvc.repo.GetByUUID(txSvc.workspaceID, tsk.UUID)
+		if ferr != nil {
+			return ferr
+		}
+		userInfos, uerr := txSvc.resolveUserInfos(collectAssigneeUserIDs([]domain.Task{finalTask}))
+		if uerr != nil {
+			return uerr
+		}
+		resultView = taskToView(finalTask, userInfoList(finalTask.Assignees, userInfos))
+		return nil
+	})
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return resultView, nil
 }

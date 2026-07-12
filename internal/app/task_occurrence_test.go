@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -460,5 +461,207 @@ func TestGetTaskSeriesReturnsDetail(t *testing.T) {
 	}
 	if detail.Series.ID != created.Series.ID {
 		t.Fatalf("series ID 不匹配")
+	}
+}
+
+// --- Task 6: 写前物化测试 ---
+
+func TestMaterializeOccurrenceForWriteCreatesTaskForProjectedRef(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+	ref := OccurrenceRef(series.ID, day2)
+
+	tsk, existed, err := svc.MaterializeOccurrenceForWrite(ref)
+	if err != nil {
+		t.Fatalf("MaterializeOccurrenceForWrite: %v", err)
+	}
+	if existed {
+		t.Fatal("projected 不应 existed=true")
+	}
+	if tsk.UUID == "" {
+		t.Fatal("物化后应有 UUID")
+	}
+	if tsk.SeriesID == nil || *tsk.SeriesID != series.ID {
+		t.Fatalf("series_id 不匹配: %#v", tsk.SeriesID)
+	}
+	if tsk.RecurrenceAt == nil || *tsk.RecurrenceAt != day2 {
+		t.Fatalf("recurrence_at 不匹配: %#v", tsk.RecurrenceAt)
+	}
+	if tsk.ProjectSeq == nil {
+		t.Fatal("物化应分配 project_seq")
+	}
+	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount+1 {
+		t.Fatalf("应新增 1 行: before=%d after=%d", beforeCount, after)
+	}
+}
+
+func TestMaterializeOccurrenceForWriteIdempotentForExistingSlot(t *testing.T) {
+	svc, series, day1, _, _ := newOccurrenceMergeFixture(t)
+	// day1 已物化（fixture 中物化了 day1）。
+	ref := OccurrenceRef(series.ID, day1)
+	tsk, existed, err := svc.MaterializeOccurrenceForWrite(ref)
+	if err != nil {
+		t.Fatalf("MaterializeOccurrenceForWrite: %v", err)
+	}
+	if !existed {
+		t.Fatal("已物化槽位应 existed=true")
+	}
+	if tsk.UUID != "occ-day1" {
+		t.Fatalf("应返回已存在的 UUID occ-day1, got %q", tsk.UUID)
+	}
+}
+
+func TestMaterializeOccurrenceForWriteRejectsNonOccurrenceRef(t *testing.T) {
+	svc, _, _, _, _ := newOccurrenceMergeFixture(t)
+	_, _, err := svc.MaterializeOccurrenceForWrite("not-an-occ-ref")
+	if err == nil {
+		t.Fatal("非 occurrence_ref 应失败")
+	}
+}
+
+func TestMaterializeOccurrenceForWriteRejectsInvalidSlot(t *testing.T) {
+	svc, series, _, _, _ := newOccurrenceMergeFixture(t)
+	// 槽位 9999 不在 daily 序列的合法位置（first_due 之后但需属于规则段）。
+	// 实际 daily 每天一个槽位，9999 作为任意时间戳可能不在合法序列；用明显非法的负数。
+	_, _, err := svc.MaterializeOccurrenceForWrite(OccurrenceRef(series.ID, -1))
+	if err == nil {
+		t.Fatal("非法槽位应失败")
+	}
+}
+
+func TestWithTaskForWriteExecutesActionAndMaterializes(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day2)
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+
+	actionCalled := false
+	view, err := svc.WithTaskForWrite(ref, func(s *Service, tsk domain.Task) error {
+		actionCalled = true
+		if tsk.UUID == "" {
+			t.Fatal("action 收到的 task 应已物化")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WithTaskForWrite: %v", err)
+	}
+	if !actionCalled {
+		t.Fatal("action 未被调用")
+	}
+	if view.UUID == nil {
+		t.Fatal("返回 view 应有 UUID")
+	}
+	if view.RecurrenceInfo == nil || view.RecurrenceInfo.Materialization != "materialized" {
+		t.Fatalf("应为 materialized: %#v", view.RecurrenceInfo)
+	}
+	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount+1 {
+		t.Fatalf("应新增 1 行: before=%d after=%d", beforeCount, after)
+	}
+}
+
+func TestWithTaskForWriteRollsBackOnActionError(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day2)
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+
+	_, err := svc.WithTaskForWrite(ref, func(s *Service, tsk domain.Task) error {
+		return fmt.Errorf("simulated failure")
+	})
+	if err == nil {
+		t.Fatal("action 错误应传播")
+	}
+	// 物化应回滚（无新行）。
+	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount {
+		t.Fatalf("action 失败应回滚物化: before=%d after=%d", beforeCount, after)
+	}
+}
+
+func TestWithTaskForWriteWorksWithOrdinaryTaskUUID(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	created, err := svc.Add(AddInput{Title: "普通任务"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actionCalled := false
+	view, err := svc.WithTaskForWrite(created.UUID, func(s *Service, tsk domain.Task) error {
+		actionCalled = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WithTaskForWrite(ordinary): %v", err)
+	}
+	if !actionCalled {
+		t.Fatal("action 未被调用")
+	}
+	if view.ID != created.UUID {
+		t.Fatalf("view ID = %q want %q", view.ID, created.UUID)
+	}
+	if view.RecurrenceInfo != nil {
+		t.Fatal("普通任务不应有 RecurrenceInfo")
+	}
+}
+
+func TestWithExistingTaskForSubresourceWriteProjectedReturnsNotFound(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day2)
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+
+	_, err := svc.WithExistingTaskForSubresourceWrite(ref, func(s *Service, tsk domain.Task) error {
+		t.Fatal("projected 子资源写不应调用 action")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("projected 子资源写应返回 not found")
+	}
+	// 不物化。
+	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount {
+		t.Fatalf("projected 子资源写不应物化: before=%d after=%d", beforeCount, after)
+	}
+}
+
+func TestWithExistingTaskForSubresourceWorksWithMaterialized(t *testing.T) {
+	svc, series, day1, _, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day1)
+	actionCalled := false
+	_, err := svc.WithExistingTaskForSubresourceWrite(ref, func(s *Service, tsk domain.Task) error {
+		actionCalled = true
+		if tsk.UUID != "occ-day1" {
+			t.Fatalf("UUID = %q want occ-day1", tsk.UUID)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WithExistingTaskForSubresourceWrite: %v", err)
+	}
+	if !actionCalled {
+		t.Fatal("materialized 子资源写 action 未被调用")
+	}
+}
+
+func TestResolveTaskForReadReturnsProjectedWithoutWrites(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+	ref := OccurrenceRef(series.ID, day2)
+
+	view, err := svc.ResolveTaskForRead(ref)
+	if err != nil {
+		t.Fatalf("ResolveTaskForRead: %v", err)
+	}
+	if view.RecurrenceInfo == nil || view.RecurrenceInfo.Materialization != "projected" {
+		t.Fatalf("应为 projected: %#v", view.RecurrenceInfo)
+	}
+	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount {
+		t.Fatalf("读取不应物化: before=%d after=%d", beforeCount, after)
 	}
 }

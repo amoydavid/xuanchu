@@ -1,10 +1,10 @@
 package app
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
@@ -348,8 +348,7 @@ func startOfDayUnix(ts int64, loc *time.Location) int64 {
 }
 
 func newUUID() string {
-	// 用 storage 的 uuid 生成，避免直接 import uuid 包。
-	return fmt.Sprintf("occ-%d", time.Now().UnixNano())
+	return uuid.NewString()
 }
 
 func sortSeriesViews(items []TaskSeriesView, sortMode string) {
