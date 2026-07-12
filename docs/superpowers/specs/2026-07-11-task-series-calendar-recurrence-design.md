@@ -1,8 +1,10 @@
-# 璇础循环任务系列与日历驱动实例设计规格
+# 璇础循环任务系列、范围投影与按需物化设计规格
 
 **日期：** 2026-07-11
 
 **状态：** 待实现
+
+**修订：** 2026-07-12。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，从“到期后全部依赖实体实例”修订为“系列主记录 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的混合模型。
 
 **范围：** 任务循环系列的领域语义、日历调度、CLI/HTTP/Remote/MCP 契约与 Web Console 完整 CRUD 体验
 
@@ -29,6 +31,9 @@
 7. `parent` 同时表达“手工父子任务”和“循环模板—实例”，现有 Web 详情会把循环模板误展示为普通父任务。
 8. 完成生成的下一实例没有独立 `task.created` 事实，自动化和 Hook 无法稳定观察真实的新任务。
 9. 服务端已经有 reminder、project automation 等后台 scheduler 基础设施，但循环任务没有复用这条运行时能力。
+10. 旧设计只能查询已经落库的实例，无法像日历一样查看任意未来日期，也把 scheduler 变成了任务是否可见的单点依赖。
+11. Web、HTTP 与 MCP 尚无统一的“虚拟 occurrence 稳定引用、读取不落库、写前物化”契约。
+12. 当前“我的任务”的 `all/today/overdue/noDue` 预设都会覆盖状态为 pending，状态下拉中的 completed 实际无法形成稳定的“我的已完成”视图；`today` 只设置 due 上界，也会混入逾期任务。
 
 本规格不是给现有 UI 增加一个下拉框，而是把循环任务收敛成一个完整、可解释、跨入口一致的“循环系列”能力。
 
@@ -49,6 +54,35 @@
 | Web list | `web/src/features/workspace/project-workbench/api/project-api.ts`、`internal/app/service.go` | project query 会使默认 pending fallback 失效，series template 可能进入任务表 |
 | Scheduler | `internal/app/project_automation_scheduler.go`、`internal/cli/server.go` | 已有可复用的 RunOnce/Run、后台 ServiceFactory、60 秒 tick 和 server 生命周期 |
 
+### 1.2 主流日历模型调研
+
+本规格不是凭产品类比引入“虚拟任务”，而是参考了公开标准和主流日历 API 的共同逻辑模型：
+
+| 来源 | 已确认的公开语义 | 对璇础的启示 |
+|---|---|---|
+| [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html) | recurrence set 由 `DTSTART + RRULE + RDATE - EXDATE` 得出；`RECURRENCE-ID` 以原始槽位稳定标识某一次，即使该次已改期 | 系列规则生成槽位；单次改期不能改变槽位身份 |
+| [CalDAV RFC 4791 §3.2](https://www.rfc-editor.org/rfc/rfc4791.html#section-3.2) | 循环组件和例外建模为一个资源，避免预存无限实例；客户端可按时间范围取展开结果 | 不预生成无限未来；有界查询时展开 |
+| [CalDAV `expand`](https://www.rfc-editor.org/rfc/rfc4791.html#section-9.6.5) | 服务端把循环集合展开为指定时间窗内的单次实例 | 展开必须由 App 层统一完成，不能由 Web/MCP 各算一遍 |
+| [Google Calendar recurring events](https://developers.google.com/workspace/calendar/api/guides/recurringevents) | 默认 list 返回单次事件、系列主记录和 exception；`singleEvents=true` 才展开普通实例；实例用 `recurringEventId + originalStartTime` 标识 | 普通列表和展开列表是两种查询模式；已修改实例覆盖计算结果 |
+| [Microsoft Graph event/calendarView](https://learn.microsoft.com/en-us/graph/api/calendar-list-calendarview?view=graph-rest-1.0) | 区分 `singleInstance/seriesMaster/occurrence/exception`；`calendarView(start,end)` 返回范围内的 occurrence、exception 和单次事件 | HTTP/MCP 应提供同一有界 range view |
+| [Apple EventKit](https://developer.apple.com/documentation/eventkit/ekrecurrencerule) | recurrence rule 附着在日历项上，按 start/end predicate 查询时间范围 | UI 选择日期范围时才展开，不能对无界列表生成无限结果 |
+
+公开 API 只能证明逻辑模型，不能证明闭源产品内部绝不缓存任何 occurrence。璇础采用相同的逻辑边界，但根据任务系统需要物化进入执行期或已发生操作的 occurrence。
+
+### 1.3 日历事件与任务的关键差异
+
+日历 occurrence 主要承担展示和时间占用；任务 occurrence 还可能拥有完成、reopen、负责人、评论、附件、依赖、项目编号、审计、提醒、Hook 和 MCP 稳定引用。因此纯虚拟模型不足以承载璇础的执行语义。
+
+最终采用：
+
+```text
+系列主记录
+  -> 在有界时间窗内计算 projected occurrence
+  -> 已物化 occurrence / exception 覆盖同槽位投影
+  -> skipped/deleted tombstone 排除同槽位投影
+  = Web / HTTP / MCP 看到的一致 TaskOccurrenceView
+```
+
 ## 2. 产品结论
 
 本规格锁定以下决策：
@@ -58,6 +92,11 @@
 | 核心语义 | `daily` 是日历驱动。今天未完成，明天仍生成新的独立实例 |
 | 停机补偿 | 服务恢复后补齐停机期间所有应生成实例，不吞掉历史日期 |
 | 多实例 | 同一系列允许同时存在多条 pending/waiting 实例，旧实例继续逾期 |
+| 查询模型 | 有界日期查询合并普通任务、范围内 projected occurrence、已物化 exception，并按槽位去重；无界查询只返回普通任务和已物化 occurrence |
+| 物化模型 | 槽位进入执行期、首次写操作、提醒/Hook/自动化需要稳定实体时物化；读取未来投影不写数据库 |
+| 可见性兜底 | scheduler 延迟时，范围查询仍返回 projected occurrence；scheduler 不是可见性的唯一来源 |
+| 稳定引用 | 所有 occurrence 使用可解析的 `occurrence_ref=(series_id, recurrence_at)`；投影与物化前后引用不变 |
+| 单次例外 | occurrence 的字段修改只影响本次，并记录 override；系列共享字段更新不得覆盖已显式修改的字段 |
 | 普通任务转循环 | 不支持。创建时必须明确选择普通任务或循环任务 |
 | 循环任务转普通 | 不支持。停止循环后，已有未完成实例可继续作为该系列的最后实例处理 |
 | 存储路线 | 延续现有隐藏 `status=recurring` 模板，不新建平行 `task_series` 主表 |
@@ -68,7 +107,7 @@
 | 循环结束 | `until` 是包含式上界；日期值按本地当天 `23:59:59` 处理 |
 | 项目关闭 | archive/cancel 项目时自动停止活跃系列，不在关闭项目中继续生成任务 |
 | 系列恢复 | 首版不支持恢复 stopped/ended 系列；需要继续时新建系列 |
-| 项目进度 | 循环模板和循环实例不进入普通任务进度分母，另给循环系列指标 |
+| 项目进度 | series template 和 occurrence 不进入一次性任务进度分母；列表结果数仍按每条 occurrence 计数，循环执行另给完成率与积压指标 |
 
 ## 3. 目标
 
@@ -100,24 +139,48 @@
 
 优点是改动最小；缺点是上一实例未完成时第二天仍没有任务，直接违背本次确认的 daily 语义。该方案淘汰。
 
-### 5.2 方案 B：保留隐藏模板，增加日历驱动 Series 层
+### 5.2 方案 B：所有已到槽位预先物化
 
-继续复用当前 `status=recurring` 模板和实例任务，只补充不可变日历槽位、后台 scheduler、series app service、专用 API/MCP/Web 体验。
+继续复用隐藏模板，scheduler 把所有已到槽位预先写成 task row，查询只读数据库实体。
 
 优点：
 
-- 复用现有 `internal/recurrence`、Task DTO、项目绑定、权限、审计和多数据库实现。
-- 保持 Taskwarrior JSON 字段兼容。
-- 可以分阶段迁移现有数据，不需要整体重建任务表。
+- 执行期每个 occurrence 都有 UUID、项目编号、审计和 Hook，自动化实现直接。
+- 停机补齐后历史执行记录完整。
 
 缺点：
 
-- `parent` 在存储层仍有双重语义，所有对外 view 必须通过 `recurrence_info` 消除歧义。
-- 需要新增日历槽位字段和专用查询，不能只改 handler。
+- 无法查看未到期的任意未来日期，除非继续预生成未来数据。
+- scheduler 延迟时任务暂时不可见。
+- 不具备主流日历的范围展开和 exception 覆盖语义。
 
-**本规格采用方案 B。**
+该方案保留为混合模型中的“执行期物化器”，但不再是完整查询模型。
 
-### 5.3 方案 C：新建 `task_series` 主表
+### 5.3 方案 C：纯虚拟 occurrence
+
+只持久化系列和例外，所有普通 occurrence 永远由查询计算。
+
+优点是存储最轻、最接近日历；缺点是任务创建 Hook、提醒、自动化、评论、依赖、项目编号、完成历史都需要为虚拟对象重做协议，无法复用现有任务能力。该方案淘汰。
+
+### 5.4 方案 D：范围投影 + 选择性物化
+
+保留隐藏模板；未来 occurrence 在有界查询时投影；进入执行期或第一次被操作时物化成普通 task row；已物化 exception 和 tombstone 覆盖投影。
+
+优点：
+
+- 可以浏览任意有限日期范围，不预生成无限未来。
+- scheduler 延迟不影响可见性。
+- 物化后复用现有任务、审计、Hook、自动化和子资源能力。
+- 与 Google/Microsoft/CalDAV 的 master/occurrence/exception 逻辑一致。
+
+缺点：
+
+- 需要稳定 occurrence_ref、投影 resolver、写前物化和 merge/dedupe。
+- 分页、筛选、统计必须在合并视图上定义，不能只依赖一条 SQL。
+
+**本规格采用方案 D。**
+
+### 5.5 方案 E：新建 `task_series` 主表
 
 把系列模板彻底移出 tasks 表，实例以 `series_id` 外键关联。
 
@@ -129,9 +192,12 @@
 |---|---|---:|---:|
 | 普通任务 | `parent` 不指向循环模板，且不是 series template | 是 | 是 |
 | 循环系列 / series | 隐藏模板；active 时 `status=recurring` | 否，进入专用系列列表 | 否 |
-| 循环实例 / occurrence | 普通 task row，关联 series，拥有不可变 `recurrence_at` | 是 | 是 |
+| 投影实例 / projected occurrence | 由系列在有界时间窗内计算，尚无 task row | 仅在范围视图中 | 是；首次写操作先物化 |
+| 已物化实例 / materialized occurrence | 普通 task row，关联 series，拥有不可变 `recurrence_at` | 是 | 是 |
+| 例外 / exception | 已物化且至少一个字段显式偏离系列模板的 occurrence | 是 | 是 |
+| tombstone | status=deleted 的已物化 occurrence，用于阻止被规则重新投影 | 按 deleted 筛选 | 否 |
 | 日历槽位 / slot | 一次应执行日期，由 `recurrence_at` 唯一标识 | 不单独展示 | 否 |
-| 当前实例 | 已生成且未 completed/deleted 的 occurrence；可以有多条 | 是 | 是 |
+| 当前实例 | 已进入执行期且未 completed/deleted 的 occurrence；可以有多条 | 是 | 是 |
 | 历史实例 | completed/deleted occurrence | 按筛选展示 | 只允许查看；completed 可 reopen |
 
 “父任务”在产品 UI 中只指手工任务层级。循环实例不得把 series template 展示为普通父任务；应展示为“所属循环系列”。
@@ -158,7 +224,11 @@ parent      = series template UUID（兼容字段）
 recur       = series rule 的创建时快照
 until       = series until 的创建时快照
 due         = 实例当前截止时间，可做单次调整
+recurrence_at = 不可变原始槽位
+recurrence_overrides = 本次显式覆盖的字段集合
 ```
+
+尚未物化的 projected occurrence 不写 `tasks` 表，由 App 层 `TaskOccurrenceView` 表示；它从 series template 继承 title、description、project、priority、tags、assignees、UDAs，并以槽位作为初始 due。
 
 ### 7.2 新增 `recurrence_at`
 
@@ -188,7 +258,39 @@ WHERE parent IS NOT NULL AND recurrence_at IS NOT NULL
 
 该约束保证同一系列同一日历槽位最多一个实例，且不会限制普通手工父任务下多个同截止日期的子任务。
 
-### 7.4 系列状态
+### 7.4 稳定 occurrence_ref 与公开 id
+
+虚拟 occurrence 不能依赖尚不存在的 task UUID，也不能只返回一个不可反解的 UUIDv5，否则 HTTP/MCP 收到 ID 后无法定位 series 和槽位。定义可解析、URL-safe 的公开引用：
+
+```text
+occurrence_ref = occ:<series_uuid>:<recurrence_at_unix>
+```
+
+规则：
+
+- `occurrence_ref` 是 occurrence 在投影、物化、完成、改期、跳过前后的稳定公开 `id`。
+- materialized occurrence 另有真实 `uuid` 和可选 `task_slug`；projected occurrence 的 `uuid/task_slug` 为 null。
+- 普通任务的公开 `id` 继续等于 UUID，保留 `uuid/task_slug` 兼容字段。
+- HTTP 路径、MCP `id`、Web permalink 优先使用公开 `id`；旧 UUID/task_slug 仍可解析已物化任务。
+- `ResolveProtocolTarget` 负责解析普通 ref 或 occurrence_ref；先按 `(series_id,recurrence_at)` 查 materialized row，再对不存在的 projected ref 校验 workspace/project scope、series 有效区间、槽位确实属于规则且不超过 until/stopped_at。规则修改后不再命中新规则的历史 materialized occurrence 仍可通过 occurrence_ref 读取。
+- 物化后 URL 和 MCP 引用不变化；不要把刚分配的 task_slug 替换成 canonical permalink。
+
+### 7.5 单次字段覆盖
+
+`tasks` 表新增 `recurrence_overrides_json TEXT NOT NULL DEFAULT '[]'`，Domain 映射为去重排序后的 `[]string`。使用文本 JSON 保持 SQLite/PostgreSQL 一致，不依赖数据库专属 JSON 运算。首版允许：
+
+```text
+title description priority due assignees tags udas wait scheduled depends
+```
+
+- projected occurrence 的集合为空。
+- 通过普通 task modify 修改 occurrence 时，对应字段加入集合；clear 也算显式覆盖。
+- series shared-field modify 只同步未完成且该字段未被 override 的已物化 occurrence。
+- completed/deleted occurrence 永不随 series 修改。
+- `due` 的 override 永远不改变 `recurrence_at`。
+- series rule/until 只影响尚未物化的未来槽位，不写入 override。
+
+### 7.6 系列状态
 
 不新增平行 status 枚举，复用模板任务状态并映射为产品状态：
 
@@ -197,6 +299,16 @@ WHERE parent IS NOT NULL AND recurrence_at IS NOT NULL
 | `recurring` | `active` | 继续生成 |
 | `completed` | `ended` | 已达到 `until`，自然结束 |
 | `deleted` | `stopped` | 用户停止或项目关闭导致停止 |
+
+template 的 `EndTS` 记录 ended/stopped 的实际时间。范围展开读取 active、ended、stopped 系列，但按有效区间裁剪：
+
+```text
+first_due <= slot
+AND slot <= until（如有）
+AND available_at(slot) < stopped_at（stopped 时）
+```
+
+这样停止系列不会生成未来 occurrence，但停止前的历史范围仍可重建；不得因为 template 已 deleted 就让历史投影消失。
 
 Series template 必须始终满足：
 
@@ -207,7 +319,7 @@ Series template 必须始终满足：
 
 新建 series template 不再分配 `project_seq`，因为模板不是项目可执行任务。已有模板的 `project_seq` 保留，不重写历史标识。
 
-### 7.5 SeriesView
+### 7.7 SeriesView
 
 App 层新增专用 view，不让 HTTP/MCP 自己拼模板和实例：
 
@@ -231,9 +343,11 @@ type TaskSeriesView struct {
     CompletedCount         int
     SkippedCount           int
     OverdueCount           int
-    LatestOccurrence       *task.Task
+    LatestOccurrence       *TaskOccurrenceView
     NextRecurrenceAt       *int64
     BacklogRemaining       int
+    EffectiveEndAt         *int64 // ended/stopped 的有效边界
+    StopReason             *string
     CreatedAt              int64
     ModifiedAt             int64
 }
@@ -241,7 +355,37 @@ type TaskSeriesView struct {
 
 用户信息继续遵守 `task.UserInfo` / `task.JSONUserInfo` 统一规范。
 
-### 7.6 Task recurrence_info
+SeriesView 的 occurrence counts 只统计 materialized rows；未来 projected occurrence 不计入 open count。`NextRecurrenceAt` 指向下一个尚未物化的合法槽位，`BacklogRemaining` 表示已经进入执行期但尚待物化的槽位数。
+
+### 7.8 TaskOccurrenceView 与 recurrence_info
+
+HTTP、MCP、CLI JSON 和 Web adapter 只能消费 App 层统一的 `TaskOccurrenceView`，不得各自展开规则或拼 exception：
+
+```go
+type TaskOccurrenceView struct {
+    ID             string              // 普通任务 UUID 或稳定 occurrence_ref
+    UUID           *string             // projected 时为空
+    TaskSlug       *string             // projected 时为空
+    ProjectSeq     *int64              // projected 时为空
+    WorkspaceID    string
+    ProjectID      *string
+    Project        *string
+    Title          string
+    Description    *string
+    Status         string              // projected 固定为 pending
+    Entry          *int64              // projected 时为空
+    Modified       *int64              // projected 时为空
+    Due            *int64
+    Priority       *string
+    Tags           []string
+    Assignees      []task.UserInfo
+    Depends        []string
+    UDAs           map[string]task.UDAValue
+    RecurrenceInfo *RecurrenceInfo
+}
+```
+
+不得为 projected occurrence 构造一个不满足 UUID invariant 的 `task.Task` 伪实体。App view 显式承载公共字段；materialized row 和普通 task 再映射进 view。按 `entry` 排序时，projected 使用 `available_at` 作为内部 sort key，但输出 `entry=null`。
 
 HTTP/MCP 的 occurrence view 增加派生字段，旧 `recur` / `parent` 保留：
 
@@ -253,20 +397,40 @@ HTTP/MCP 的 occurrence view 增加派生字段，旧 `recur` / `parent` 保留�
     "series_status": "active",
     "rule": "daily",
     "recurrence_at": "2026-07-12T23:59:59+08:00",
+    "materialization": "projected",
+    "overrides": [],
     "until": "2026-07-31T23:59:59+08:00"
   }
 }
 ```
 
-手工子任务没有 `recurrence_info`。前端只能依据该对象区分“手工 parent”和“循环系列”，不能只猜 `parent`。
+`materialization` 只允许 `projected|materialized`。手工子任务没有 `recurrence_info`。前端只能依据该对象区分“手工 parent”和“循环系列”，不能只猜 `parent`。
+
+### 7.9 Merge 与覆盖算法
+
+对范围 `[start,end)`：
+
+```text
+ordinary       = 查询实际 due 落入范围的普通任务
+projected      = 对 active/ended/stopped series 在各自有效区间内展开 recurrence_at 落入范围的槽位
+overrides      = recurrence_at 落入范围 OR 实际 due 落入范围的 materialized occurrence
+tombstones     = overrides 中 status=deleted 的槽位
+
+result = ordinary
+       + (projected 按 occurrence_ref 去重)
+       + overrides 覆盖同 occurrence_ref 的 projected
+       - tombstones（除非显式查询 deleted）
+```
+
+例外同时按原槽位和当前 due 读取是必要的：把 07-12 改期到 07-15 后，07-12 视图必须用 exception 抑制原投影，07-15 视图必须显示改期后的 occurrence。
 
 ## 8. 日历生成语义
 
-### 8.1 何时生成
+### 8.1 何时投影、何时物化
 
-创建系列时立即创建第一个实例，即使 `first_due` 在未来；它代表用户已经安排好的第一次执行。
+创建系列时总是可以立即计算第一个 projected occurrence；仅当 `first_due` 已进入执行期时，创建事务才同时物化它。未来 first_due 不提前写 task row，创建响应仍返回带 occurrence_ref 的 projected first occurrence。
 
-后续实例在其 `recurrence_at` 所在本地日期到达时生成。由于 date-only `due` 存储为 `23:59:59`，生成门槛取槽位所在日期的本地 `00:00:00`：
+后续实例在其 `recurrence_at` 所在本地日期到达时进入执行期并由 scheduler 物化。由于 date-only `due` 存储为 `23:59:59`，生成门槛取槽位所在日期的本地 `00:00:00`：
 
 ```text
 recurrence_at = 2026-07-12 23:59:59 +08:00
@@ -275,16 +439,28 @@ available_at  = 2026-07-12 00:00:00 +08:00
 
 当前实例是否完成不参与生成判断。
 
+以下情况也必须物化：
+
+1. 对 projected occurrence 执行 modify/start/done/skip。
+2. 增加评论、附件、链接、依赖或子任务。
+3. reminder、Hook、project automation 需要以 task 实体触发。
+4. 服务恢复后补齐已经进入执行期但尚未物化的槽位。
+
+`stop` 要求 occurrence 已 materialized 且 start 非空；`reopen` 要求已 materialized 且 completed。对 projected ref 调用这两个动作直接返回现有状态错误，不为失败动作制造实体。
+
+纯读取 `task_query/task_get/GET /tasks` 不物化；读路径不得产生 project_seq、audit 或 Hook。
+
 ### 8.2 daily 示例
 
 ```text
 系列：daily，first_due=07-11，until=07-14
 
-07-11 00:00  已有实例 A，due=07-11 23:59:59
-07-12 00:00  无论 A 是否完成，都生成实例 B
-07-13 00:00  无论 A/B 是否完成，都生成实例 C
-07-14 00:00  生成实例 D
-07-15 00:00  不生成，系列进入 ended
+查询任意范围  可投影 A/B/C/D
+07-11 00:00  物化实例 A，due=07-11 23:59:59
+07-12 00:00  无论 A 是否完成，都物化实例 B
+07-13 00:00  无论 A/B 是否完成，都物化实例 C
+07-14 00:00  物化实例 D
+07-15 00:00  不再物化，系列进入 ended
 ```
 
 ### 8.3 停机补偿
@@ -294,10 +470,12 @@ available_at  = 2026-07-12 00:00:00 +08:00
 ```text
 最后已有槽位：07-11
 当前日期：    07-16
-reconcile：   创建 07-12、07-13、07-14、07-15、07-16 五条实例
+reconcile：   物化 07-12、07-13、07-14、07-15、07-16 五条实例
 ```
 
 不允许只创建最新一条，因为缺失日期会破坏每日执行记录、审计和统计。
+
+在补偿完成前，范围查询仍应返回缺失槽位的 projected occurrence，因此用户可见性不受补偿批次影响；`backlog_remaining` 只表示尚未完成实体化和事件分发。
 
 ### 8.4 批量上限
 
@@ -314,6 +492,7 @@ reconcile：   创建 07-12、07-13、07-14、07-15、07-16 五条实例
 - date-only `due` / `until`：本地 `23:59:59`
 - `recurrence_at` 的日期判断：同一 Location 的本地 `00:00:00`
 - monthly 继续使用 Go `time.AddDate(0, n, 0)` 月末滚动语义
+- range 使用左闭右开 `[start,end)`；HTTP 日期上界 `due_before=YYYY-MM-DD` 转换为下一日 00:00 的排他上界
 
 后续若引入 workspace timezone，必须整体迁移日期解析、scheduler 和 recurrence，不允许只在 Web 端补时区。
 
@@ -327,7 +506,7 @@ reconcile：   创建 07-12、07-13、07-14、07-15、07-16 五条实例
 |---|---|
 | `xuanchu server` | 启动时先 `RunOnce`，之后每 60 秒扫描一次 |
 | 本地 CLI | 每次 task/project 读写命令前，对当前 workspace 执行一次 reconcile |
-| HTTP/MCP | 依赖 server scheduler；series create/modify/skip/stop 自身仍在事务中立即收敛 |
+| HTTP/MCP | server scheduler 负责执行期物化；范围读取可独立投影；对 projected occurrence 的合法写操作在事务中先物化 |
 | import | 导入事务完成后对受影响 workspace 执行 reconcile |
 | 项目关闭 | transition 事务中停止该项目全部 active series |
 
@@ -371,20 +550,21 @@ reconcile：   创建 07-12、07-13、07-14、07-15、07-16 五条实例
                                                        | 否          | 是
                                                        v             v
                                                 +-------------+ +------------------+
-                                                | 本轮结束    | | 创建 occurrence  |
+                                                | 本轮结束    | | 物化 occurrence  |
                                                 +-------------+ | 写 audit/event    |
                                                                 +--------+---------+
                                                                          |
                                                                          +--> 继续下个槽位
 ```
 
-### 9.3 创建实例事务
+### 9.3 物化实例事务
 
 每个槽位的写入必须在 app 层事务中完成：
 
 ```text
-计算 slot
-  -> INSERT occurrence（唯一索引幂等）
+解析/计算 slot 与 occurrence_ref
+  -> 再次校验 series 状态、规则、until 与项目状态
+  -> INSERT occurrence（唯一索引幂等；UUID 在此生成）
   -> 分配 occurrence 的 project_seq
   -> 写 task.recurrence.generated audit
   -> 生成 task.created HookEvent
@@ -392,7 +572,24 @@ reconcile：   创建 07-12、07-13、07-14、07-15、07-16 五条实例
   -> 提交后进入现有 Hook / project automation 分发链路
 ```
 
-模板本身不再发 `task.created`，因为它不是可执行任务；创建 series 时发 `task.series.created`，第一个 occurrence 单独发 `task.created`。
+模板本身不再发 `task.created`，因为它不是可执行任务；创建 series 时发 `task.series.created`；first occurrence 仅在同时物化时单独发 `task.created`。
+
+写前物化与随后动作必须在同一 app 事务中。例如 `task_done(projected)` 不能先提交 pending occurrence 再完成，否则中间状态会被其它 worker 观察。
+
+### 9.4 范围查询流程
+
+```text
+TaskQuery(range, occurrence_mode=expand)
+  -> 读取普通任务
+  -> 读取可能命中窗口的 series
+  -> recurrence.ExpandRange(series, start, end)
+  -> 读取 recurrence_at 或实际 due 命中窗口的 materialized occurrence
+  -> materialized/exception 覆盖 projected
+  -> tombstone 排除 projected
+  -> 对合并结果应用 status/assignee/project/priority/tag/q 筛选
+  -> 稳定排序和分页
+  -> 返回 TaskOccurrenceView；不写数据库
+```
 
 ## 10. 生命周期与状态图
 
@@ -420,6 +617,13 @@ ended / stopped 首版均为终态，不支持恢复。
 ### 10.2 Occurrence 状态图
 
 ```text
+                                  首次写操作
++-----------+  到达执行期/调度   +---------+
+| projected | -----------------> | pending |
++-----+-----+                     +----+----+
+      | 跳过/提前完成                 |
+      +----> 原子物化为 deleted/completed
+
                      wait 在未来
                    +------------+
                    |            v
@@ -501,7 +705,7 @@ message: 普通任务与循环任务不能直接切换；请新建循环任务�
 - project 必须可写且未关闭
 - assignees 必须是当前 workspace 成员
 
-创建 template、第一个 occurrence、两类 audit/event 必须原子完成。
+创建 template 和 `task.series.created` 必须原子完成。若 first_due 已进入执行期，同时物化 first occurrence 并产生 `task.created`；若 first_due 在未来，只返回 projected first occurrence，不分配 UUID/project_seq、不发 `task.created`。
 
 ### 11.3 读取系列
 
@@ -520,12 +724,12 @@ Series modify 支持两组字段：
 
 | 字段 | 影响范围 |
 |---|---|
-| title/description/priority/assignees/tags/UDAs | 更新 template，并同步到所有未完成 occurrences；历史 completed/deleted 不改 |
+| title/description/priority/assignees/tags/UDAs | 更新 template；同步到未完成且对应字段未被单次 override 的 materialized occurrence；projected occurrence 自动继承新值 |
 | recur/until | 只改变尚未生成的未来槽位；已生成 occurrence 不改 |
 
 `first_due` 创建后不可修改。实例 `due` 可单独修改，但不会改变 `recurrence_at` 或未来节奏。
 
-修改 rule 时，新规则从当前最大 `recurrence_at` 向后计算；不回写或合并已经生成的槽位。
+修改 rule 时，新规则从“修改生效边界”向后计算；已物化槽位和已有 tombstone 不回写、不重排。生效边界取当前日期与最大已物化 `recurrence_at` 的较晚者，响应必须返回 `effective_from` 和未来三次预览。
 
 将 `until` 改到早于已生成实例不删除实例；series 立即 ended，已有实例继续保留。UI 必须显示影响摘要。
 
@@ -533,7 +737,7 @@ Series modify 支持两组字段：
 
 对循环 occurrence 的“删除”在产品中显示为“跳过本次”：
 
-- occurrence status -> deleted
+- projected occurrence 直接物化为 deleted tombstone；materialized occurrence status -> deleted
 - audit action：`task.recurrence.skipped`
 - 不影响 series 和其它实例
 - 不立即创建额外实例；scheduler 只按日历槽位生成
@@ -552,6 +756,21 @@ Series modify 支持两组字段：
 - audit action：`task.series.stopped`
 
 停止操作不可撤销，Web 必须二次确认。
+
+### 11.7 普通任务操作作用域
+
+在普通任务列表和详情中，所有 occurrence 操作默认只作用于本次，不弹“仅本次/整个系列”：
+
+| 操作 | 作用域 |
+|---|---|
+| start/done | 仅本次；projected 先物化 |
+| stop/reopen | 仅本次；必须分别已开始/已完成，projected 不物化并返回状态错误 |
+| 修改 title/description/priority/due/assignees/tags/UDAs | 仅本次并记录 override |
+| annotate/link/dependency/sub-task | 仅本次；projected 先物化 |
+| delete | 产品文案“跳过本次”，写 tombstone |
+| 修改 rule/未来共享字段/停止 | 只能进入 series API/tool/页面 |
+
+series template 通过普通 task modify/start/done/delete 一律返回 `task_series_operation_required`，不得把 task delete 暗中解释为停止整个系列。
 
 ## 12. recurrence 表达式
 
@@ -582,7 +801,22 @@ Web 选项与传值：
 
 ## 13. HTTP 与 Remote 契约
 
-### 13.1 专用 HTTP API
+### 13.1 统一原则
+
+HTTP、Remote、MCP、CLI JSON 和 Web adapter 必须调用同一组 App 用例并返回同一语义视图：
+
+```text
+QueryTaskViews
+GetTaskView
+MaterializeOccurrenceForWrite
+Add/Modify/StopTaskSeries
+ListTaskSeriesOccurrences
+SkipTaskSeriesOccurrence
+```
+
+传输层只负责鉴权、scope、日期输入解析和 envelope，不得自己调用 recurrence parser、merge 投影或猜测 parent 类型。
+
+### 13.2 专用 HTTP API
 
 ```text
 POST   /api/v1/task-series
@@ -591,22 +825,67 @@ GET    /api/v1/task-series/{seriesRef}
 PATCH  /api/v1/task-series/{seriesRef}
 DELETE /api/v1/task-series/{seriesRef}?delete_open_occurrences=false
 GET    /api/v1/task-series/{seriesRef}/occurrences
-POST   /api/v1/task-series/{seriesRef}/occurrences/{taskRef}/skip
+POST   /api/v1/task-series/{seriesRef}/occurrences/{occurrenceRef}/skip
 ```
 
 所有接口继续接受现有 `workspace`、`project` / `project_id` scope 参数，权限复用 `task:read` / `task:write`。
 
-### 13.2 现有 task API
+### 13.3 Task 查询与范围展开
 
-- `GET /api/v1/tasks` 默认排除 series templates；只有显式 `status=recurring` 的兼容查询可读取 active template。
-- `GET /api/v1/tasks/{ref}` 对 occurrence 增加 `recurrence_info`。
-- `PATCH /api/v1/tasks/{ref}` 不再接受 recurrence 转换；instance 普通字段仍可修改。
-- `DELETE /api/v1/tasks/{ref}` 对 recurrence occurrence 执行 skip 语义，对 series template 执行 stop 语义；新客户端应使用专用 API 获取完整返回。
-- `POST /api/v1/tasks` 的 `recur` 为 CLI/Remote 向后兼容入口，内部转调 `AddTaskSeries`；Web 和 MCP 不使用该兼容入口。
+`GET /api/v1/tasks` 新增并统一以下参数：
 
-### 13.3 创建响应
+```text
+due_after=YYYY-MM-DD
+due_before=YYYY-MM-DD
+occurrence_mode=auto|materialized|expand
+```
 
-专用创建接口返回：
+语义：
+
+| mode | 行为 |
+|---|---|
+| `auto`（默认） | 同时存在 due_after/due_before 时 expand，否则 materialized |
+| `materialized` | 只返回普通任务和已物化 occurrence |
+| `expand` | 必须同时提供范围；合并 ordinary/projected/materialized/tombstone |
+
+- 日期范围最大 366 天，超出返回 `task_occurrence_range_too_large`。
+- `due_after` 为当天 00:00 inclusive；`due_before` 为当天结束 inclusive，内部转成次日 00:00 exclusive。
+- merge 后再应用 status、assignee、project、priority、tag、q、sort、offset、limit。
+- `status=pending` 可命中 projected occurrence；completed/deleted 只可能来自 materialized 数据。
+- 稳定排序必须包含 `id` 作为最后 tie-breaker，分页不得因投影与实体合并产生重复或漏项。
+- 无界 `q` 搜索不展开无限系列，只搜索普通任务和已物化 occurrence。
+
+列表成功响应统一为：
+
+```json
+{
+  "data": {
+    "items": [],
+    "total": 0,
+    "limit": 200,
+    "offset": 0,
+    "occurrence_mode": "expand",
+    "range": {"start": "2026-07-01", "end": "2026-08-01"}
+  }
+}
+```
+
+HTTP、Remote `TaskPage`、MCP `structuredContent.data` 使用同一 page shape；只有外层 transport envelope 不同。Web 不得再直接依赖裸 `task.JSONTask[]` 判断 recurrence。该响应变化需要同步 OpenAPI、Remote client 和全部调用方，不做前后端双重猜测。
+
+### 13.4 现有 task API
+
+- `POST /api/v1/tasks` 只创建普通任务；出现 `recur` 返回 `task_series_endpoint_required`。Remote CLI 的旧 `add recur:*` 由 client 路由到专用 series API，不再依赖 generic task POST。
+- `GET /api/v1/tasks` 永远排除 series template；兼容读取模板必须使用 `/task-series`，不再把 `status=recurring` 暴露给普通列表。
+- `GET /api/v1/tasks/{id}` 接受 UUID、task_slug 或 occurrence_ref；projected 只返回投影，不物化。
+- `PATCH /api/v1/tasks/{id}` 对 projected occurrence 先物化再修改；普通任务设置 recur、occurrence/template clear recur 均拒绝。
+- `POST /tasks/{id}/start|done` 对 projected occurrence 原子物化并执行本次动作；`stop/reopen` 对 projected 返回状态错误，不物化。
+- `DELETE /api/v1/tasks/{id}` 对 occurrence 执行“跳过本次”；对 series template 拒绝并要求专用 stop API。
+- annotations、links、dependencies、children 等所有 task 子资源写入口共享同一个 write resolver，projected occurrence 必须先物化。
+- 所有 occurrence 写响应返回 materialized view，`id` 仍为原 occurrence_ref，同时补充 `uuid/task_slug`。
+
+### 13.5 创建响应
+
+专用创建接口返回。以下示例假定创建发生在 first_due 之前，因此 first occurrence 仍是 projected：
 
 ```json
 {
@@ -616,12 +895,13 @@ POST   /api/v1/task-series/{seriesRef}/occurrences/{taskRef}/skip
     "recur": "daily",
     "first_due": 1783785599,
     "until": 1785513599,
-    "open_occurrence_count": 1,
+    "open_occurrence_count": 0,
     "next_recurrence_at": 1783871999
   },
   "first_occurrence": {
-    "uuid": "task-uuid",
-    "task_slug": "ops-17",
+    "id": "occ:series-uuid:1783785599",
+    "uuid": null,
+    "task_slug": null,
     "status": "pending",
     "due": "2026-07-11T23:59:59+08:00",
     "recurrence_info": {
@@ -629,15 +909,19 @@ POST   /api/v1/task-series/{seriesRef}/occurrences/{taskRef}/skip
       "series_id": "series-uuid",
       "series_status": "active",
       "rule": "daily",
-      "recurrence_at": "2026-07-11T23:59:59+08:00"
+      "recurrence_at": "2026-07-11T23:59:59+08:00",
+      "materialization": "projected",
+      "overrides": []
     }
   }
 }
 ```
 
-Remote client 新增对应 `AddTaskSeries` / `ListTaskSeries` / `GetTaskSeries` / `ModifyTaskSeries` / `StopTaskSeries` / `SkipTaskSeriesOccurrence` 方法；旧 `AddTask(Recur)` 继续可用但标记 compatibility。
+若 first_due 已进入执行期，示例中的 materialization 为 `materialized` 且 uuid/task_slug 非空。
 
-### 13.4 CLI 契约
+Remote client 新增对应 `AddTaskSeries` / `ListTaskSeries` / `GetTaskSeries` / `ModifyTaskSeries` / `StopTaskSeries` / `ListTaskSeriesOccurrences` / `SkipTaskSeriesOccurrence` 方法。旧 `AddTask(Recur)` 保留为 Go client compatibility wrapper，但内部调用 `AddTaskSeries`；其返回类型必须升级为能表达 series，不得伪装成普通 task。
+
+### 13.6 CLI 契约
 
 保留现有兼容创建：
 
@@ -658,9 +942,26 @@ xuanchu series skip <series-ref> <task-ref>
 
 普通 `xuanchu <task-ref> modify recur:*` 和 `recur:` 清空统一拒绝。CLI human 输出使用“循环系列/实例/槽位”术语；`--json` 使用与 HTTP/MCP 相同的 SeriesView 和 recurrence_info 形状。
 
+### 13.7 跨入口行为对照
+
+| 用户意图 | HTTP | MCP | Remote/CLI | 统一 App 行为 |
+|---|---|---|---|---|
+| 创建普通任务 | `POST /tasks` | `task_add` | `AddTask` / `add` | 不接受 recur |
+| 创建循环系列 | `POST /task-series` | `task_series_add` | `AddTaskSeries` / `series add`；旧 `add recur:*` 路由到此 | 返回 series + first occurrence view |
+| 查询任务/日期范围 | `GET /tasks` | `task_query` | `QueryTasks` / list | 同一 occurrence_mode、range、page 和 merge |
+| 读取普通任务/occurrence | `GET /tasks/{id}` | `task_get` | `GetTaskView` / info | projected 只读不物化 |
+| 修改 occurrence | `PATCH /tasks/{id}` | `task_modify` | `ModifyTask` / modify | projected 先物化；仅本次并记录 override |
+| 完成 occurrence | `POST /tasks/{id}/done` | `task_done` | `DoneTask` / done | projected 原子物化为 completed |
+| 跳过 occurrence | `DELETE /tasks/{id}` 或 series skip 子资源 | `task_delete` 或 `task_series_occurrence_skip` | `SkipTaskSeriesOccurrence` / series skip | materialize tombstone；不影响系列 |
+| 修改系列 | `PATCH /task-series/{id}` | `task_series_modify` | `ModifyTaskSeries` / series modify | 只改未来和未 override 的 open 字段 |
+| 停止系列 | `DELETE /task-series/{id}` | `task_series_stop` | `StopTaskSeries` / series stop | 写 stopped_at；不再产生未来槽位 |
+| 列系列实例 | `GET /task-series/{id}/occurrences` | `task_series_list_occurrences` | 同名 Remote / series info | page shape 与 TaskOccurrenceView 一致 |
+
+同一对象、同一 actor、同一 scope 在各入口必须得到同一业务结果、错误码、审计和事件。允许不同的只有 HTTP/MCP/CLI 外层 envelope 与 human rendered 文案。
+
 ## 14. MCP 设计
 
-### 14.1 Tools
+### 14.1 与 HTTP 等价的工具边界
 
 新增：
 
@@ -670,12 +971,13 @@ task_series_list
 task_series_get
 task_series_modify
 task_series_stop
-task_series_skip
+task_series_list_occurrences
+task_series_occurrence_skip
 ```
 
 命名遵守 `{资源}_{动作}` 与下划线规范。
 
-`task_add` 继续只创建普通任务，不增加模糊的 `recur` 字段。Agent 要创建循环任务必须调用 `task_series_add`。
+`task_add` 继续只创建普通任务，不增加模糊的 `recur` 字段。Agent 要创建循环任务必须调用 `task_series_add`。`task_delete` 对 occurrence 等价于 HTTP skip；对 template 返回 `task_series_operation_required`。
 
 ### 14.2 输入摘要
 
@@ -698,20 +1000,48 @@ task_series_stop:
   id
   delete_open_occurrences: boolean
 
-task_series_skip:
+task_series_list_occurrences:
+  id
+  status
+  due_after/due_before
+  limit/offset
+
+task_series_occurrence_skip:
   series_id
-  task_id
+  occurrence_id
 ```
+
+`task_query` 新增与 HTTP 同名字段：
+
+```text
+due_after: YYYY-MM-DD
+due_before: YYYY-MM-DD
+occurrence_mode: auto|materialized|expand
+```
+
+约束、366 天上限、过滤顺序、稳定排序、分页和错误码与 HTTP 完全一致。Agent 不需要知道如何展开 recurrence。
 
 ### 14.3 输出
 
-- `structuredContent` 返回 SeriesView / occurrence view，不返回裸模板 Task 作为主要对象。
-- text content 必须明确写“循环系列”“已生成实例”“下一槽位”，不能写成“task created <template uuid>”。
-- `task_query` / `task_get` 中 occurrence 保留 `recur`、`parent`，并新增 `recurrence_info`。
+- `structuredContent.data` 返回与 HTTP `data` 等价的 SeriesView / TaskOccurrenceView，不返回裸模板 Task 作为主要对象。
+- text content 必须明确写“循环系列”“已物化实例/计划 occurrence”“下一槽位”，不能把 projected 写成已创建任务，也不能写成“task created <template uuid>”。
+- `task_query` / `task_get` 中 occurrence 保留兼容 `recur`、`parent`，并新增公开 `id` 与 `recurrence_info`；projected 的 uuid/task_slug 为空。
 - `task_series_get` 返回 series、open occurrences、recent history 和 counts。
-- `task_get` 若读取 template，文本提示使用 `task_series_get`；结构化数据仍保持兼容可读。
+- `task_get` 不读取 template；输入 template UUID 返回 `task_series_operation_required` 并提示使用 `task_series_get`。
+- MCP `Content[0].text` 继续是 ToolEnvelope JSON，与 `structuredContent` 语义一致；不得出现一个返回投影、另一个只返回实体的分叉。
+- `task_modify/task_done/task_delete/task_start/task_stop/task_reopen/task_annotate/task_depends/task_link_add` 等所有写 tool 均共享 occurrence write resolver。
 
-### 14.4 MCP 展示示例
+### 14.4 MCP 行为矩阵
+
+| 输入对象 | 读 tool | 写 tool |
+|---|---|---|
+| 普通任务 | 返回普通 TaskOccurrenceView | 现有行为 |
+| materialized occurrence | 返回 materialized + overrides | 只改本次 |
+| projected occurrence_ref | 返回 projected，不写库 | modify/start/done/skip/子资源写先物化；stop/reopen 返回状态错误 |
+| series template UUID | 提示使用 task_series_get | 返回 task_series_operation_required |
+| 无效 occurrence_ref | task_occurrence_not_found | 同左，不得创建任意槽位 |
+
+### 14.5 MCP 展示示例
 
 ```text
 循环系列：每日巡检
@@ -737,11 +1067,11 @@ task_series_skip:
 ```text
 +--------------------------------------------------------------------------------+
 | 项目 / 任务                                                                    |
-| [当前任务] [循环系列 3]                         [筛选] [导入] [+ 新建任务]      |
+| [任务] [循环规则 3]                            [筛选] [导入] [+ 新建任务]      |
 +--------------------------------------------------------------------------------+
 ```
 
-“当前任务”显示普通任务和 occurrences；series template 永远不作为行出现。“循环系列”显示一行一个 series，承载管理入口。
+“任务”显示普通任务和 occurrences；series template 永远不作为行出现。“循环规则”显示一行一个 series，承载治理入口。执行每一次和管理整个系列是 Web 信息架构的核心边界。
 
 ### 15.2 当前任务列表原型
 
@@ -751,7 +1081,7 @@ task_series_skip:
 +--------------------------------------------------------------------------------+
 | OPS-17   | 每日检查投放消耗  [↻ 每天]   | 待处理    | 07-11 逾期 | 张三   | ...  |
 | OPS-18   | 每日检查投放消耗  [↻ 每天]   | 待处理    | 07-12 逾期 | 张三   | ...  |
-| OPS-19   | 每日检查投放消耗  [↻ 每天]   | 进行中    | 07-13      | 张三   | ...  |
+| ↻07-19   | 每日检查投放消耗  [↻ 每天]   | 待处理    | 07-19      | 张三   | ...  |
 | OPS-20   | 完成季度复盘                  | 待处理    | 07-31      | 李四   | ...  |
 +--------------------------------------------------------------------------------+
 
@@ -760,7 +1090,11 @@ task_series_skip:
 - 循环实例：[开始] [完成] [... 跳过本次] [... 管理循环]
 ```
 
-筛选仍以实例为单位：status、assignee、due、priority、tag 均过滤 occurrence 自身。增加 `recurring=only|exclude|include`，默认 include。
+已物化 occurrence 显示 task_slug；尚未物化的未来投影没有 project_seq/task_slug，标识列显示简短的 `↻MM-DD`，链接使用稳定 occurrence_ref。首次写操作后可补充 task_slug，但 canonical URL 不变化。产品界面不显示“virtual/projected”等技术术语。
+
+筛选仍以实例为单位：status、assignee、due、priority、tag 均过滤 occurrence 自身。增加“任务类型：全部/普通/循环”筛选，默认全部。普通状态筛选中移除 `recurring`；series 状态只存在于“循环规则”视图。
+
+无界项目任务页只显示普通任务和已进入执行期/已物化 occurrence；只有 due_after + due_before 构成有限窗口时才请求 `occurrence_mode=expand`。一个系列积压多次时每次各占一行，首版不隐藏工作量；后续允许纯展示层按系列折叠，但折叠汇总行不得拥有完成动作。
 
 ### 15.3 循环系列列表原型
 
@@ -848,7 +1182,7 @@ task_series_skip:
 +--------------------------------------------------------------------------------+
 ```
 
-编辑系列对共享字段显示明确提示：“将更新所有未完成实例和未来实例；已完成/已跳过历史不会改变。”
+编辑系列对共享字段显示明确提示：“将更新未来实例；未完成实例中未被单独修改的字段也会更新；已完成、已跳过和已单独覆盖的字段不会改变。”
 
 ### 15.7 停止确认
 
@@ -863,6 +1197,65 @@ task_series_skip:
 +--------------------------------------------------------------+
 ```
 
+### 15.8 我的任务信息架构
+
+当前页面的“全部”实际固定为 pending，且 tab filter 会覆盖状态下拉。修订为互斥、可解释的一级预设：
+
+```text
+我的任务
+[未完成] [今天] [逾期] [无截止日期] [已完成]
+```
+
+| 视图 | 精确定义 | occurrence 行为 |
+|---|---|---|
+| 未完成 | assignee=me 且 pending/active/waiting | 普通任务 + 已进入执行期或已物化 occurrence；不展开无限未来 |
+| 今天 | due 在本地今天 `[00:00,次日00:00)` | 自动 expand 今天窗口；不混入逾期 |
+| 逾期 | open 且 due < 今天 00:00 | 多个历史 occurrence 各占一行 |
+| 无截止日期 | open 且 due is null | recurrence 不会出现，因为 occurrence 必有槽位日期 |
+| 已完成 | assignee=me 且 status=completed | 每次 completed occurrence 独立显示；series ended/stopped 不算任务完成 |
+
+```text
+我的任务 / 今天
+
+□ 每日巡检             ↻ 每天   OPS-23   今天 23:59
+□ 修复表单回调                   OPS-19   今天 18:00
+
+我的任务 / 逾期
+
+□ 每日巡检             ↻ 每天   OPS-22   昨天
+□ 每日巡检             ↻ 每天   OPS-21   7月10日
+```
+
+同标题 occurrence 不去重；它们代表不同日期的独立执行责任。列表行增加直接 start/stop/done/reopen，避免用户必须进入详情。completed occurrence 的 reopen 只作用于本次，不恢复 stopped/ended series。
+
+### 15.9 任务详情与编辑作用域
+
+Occurrence 详情顶部固定显示：
+
+```text
+↻ 循环任务 · 每天
+本次日期：2026-07-12
+所属系列：每日检查投放消耗                    [查看循环规则]
+```
+
+- 所有普通属性编辑默认“仅本次”并记录 override，不反复弹范围选择。
+- `recurrence_at` 和 rule 只读；due 可改并显示“原循环日期”。
+- parent UI 不把 series template 当手工父任务。
+- 删除按钮文案为“跳过本次”；确认文案明确不影响后续。
+- 修改系列、停止循环只能通过“查看循环规则”。
+- projected occurrence 的 GET 在存储层保持只读；界面仍可提供编辑。第一次编辑、评论、依赖、链接、子任务或合法生命周期动作后，响应切换为 materialized。
+
+### 15.10 批量操作
+
+批量完成、重新分配、优先级、due 都逐条作用于选中 occurrence；projected 项逐条原子物化。混合删除确认必须写明：“将删除 N 个普通任务，并跳过 M 次循环任务”。普通任务页不提供批量停止所属系列。
+
+### 15.11 项目统计与列表计数
+
+- 当前筛选结果中每条 occurrence 计一行、计一个结果数。
+- 一次性项目完成进度排除 series template 和 occurrence，避免永久 daily 系列使项目永不完成。
+- 另显“循环执行”：活跃系列数、今日完成、最近 7 天完成率、未完成 occurrence、逾期 occurrence。
+- 系列自然 ended 或 stopped 不进入“已完成任务”数量。
+
 ## 16. Web 数据流
 
 ### 16.1 创建流程
@@ -871,7 +1264,10 @@ task_series_skip:
 TaskCreateDialog 选择“循环任务”
   -> POST /api/v1/task-series
   -> app.AddTaskSeries
-  -> transaction(template + first occurrence + audit/events)
+  -> transaction(template + series audit/event)
+  -> first_due 已进入执行期？
+       是：同事务物化 first occurrence + task.created
+       否：只计算 projected first occurrence
   -> 返回 SeriesView + first_occurrence
   -> invalidate:
        project tasks
@@ -890,13 +1286,27 @@ TaskCreateDialog 选择“循环任务”
 PATCH /tasks/{occurrence}       PATCH /task-series/{series}
           |                                   |
           v                                   v
-只改本次实例                    改 template + 所有未完成实例
+projected 则先物化              改 template
+只改本次并记录 override         同步未 override 的 open 实例
                                               |
                                               v
                                 未来 scheduler 使用新 rule
 ```
 
-### 16.3 停止流程
+### 16.3 范围读取与写前物化
+
+```text
+Web 日期窗口
+  -> GET /tasks?due_after=...&due_before=...&occurrence_mode=expand
+  -> 展示 ordinary + projected + materialized merge
+  -> 用户点击完成 occurrence_ref
+  -> POST /tasks/{occurrence_ref}/done
+  -> app 同事务 materialize + done + audit/events
+  -> 返回同 id、补充 uuid/task_slug、materialization=materialized
+  -> Web 替换当前行并刷新相关统计
+```
+
+### 16.4 停止流程
 
 ```text
 停止循环确认
@@ -913,10 +1323,13 @@ PATCH /tasks/{occurrence}       PATCH /task-series/{series}
 
 `app.List` 新增明确的 template visibility 规则：
 
-- 默认排除 series templates，无论是否附带 project/query filter。
-- 显式 `status=recurring` 或内部 `IncludeSeriesTemplates=true` 才返回 active templates。
-- occurrences 按普通任务参与 task query/report。
+- 普通 task query 永远排除 series templates，无论是否附带 project/query filter；series 只走专用 service。
+- `OccurrenceMode=materialized` 返回普通任务和已物化 occurrence。
+- `OccurrenceMode=expand` 要求有限 Range，返回 App 层 merge view。
+- `OccurrenceMode=auto` 按是否存在完整 Range 选择上述模式。
+- occurrences 按本次字段参与 task query/report；projected 从 series 继承字段后再过滤。
 - `parent:<uuid>` 兼容查询仍可找到 occurrence，但 Web 不靠它识别 series。
+- report 默认 materialized；只有显式提供有限日期窗口和 expand 才包含 future projected occurrence。
 
 这修复当前“有 query 时默认 pending 过滤失效，模板混入 Web 列表”的问题。
 
@@ -924,7 +1337,8 @@ PATCH /tasks/{occurrence}       PATCH /task-series/{series}
 
 普通项目进度不得被每日实例数量扭曲：
 
-- `task_count` / `pending_count` / `completed_count` 排除 series template 和所有 occurrences。
+- 一次性进度的 `task_count` / `pending_count` / `completed_count` 排除 series template 和所有 occurrences。
+- task query 的 `total` 和列表计数仍包含返回的 occurrence，不能把可见行从分页总数中删除。
 - 新增：
   - `recurring_series_count`
   - `active_recurring_series_count`
@@ -956,6 +1370,8 @@ task.recurrence.skipped
 
 - Series template 的创建/修改/结束/停止使用 `task.series.*` 事件。
 - 每个 occurrence 创建都发正常 `task.created`，payload 增加 `recurrence_info`。
+- projected occurrence 的纯读取不发 audit/event；只有物化时发一次 `task.created`。
+- 写前物化和随后的 done/skip/modify 等在同一事务中可产生 `task.created` 与对应动作事件，顺序固定为 created 在前、动作在后。
 - occurrence 完成继续发 `task.completed`；重新打开发 `task.reopened`；跳过发 `task.deleted`，同时有 series audit。
 - catch-up 创建五条实例就产生五个独立 `task.created` 事实，自动化按现有去重键逐条处理。
 - system scheduler actor 使用现有 system actor 机制；对外用户字段继续是完整 `task.UserInfo` 对象。
@@ -977,6 +1393,7 @@ task.recurrence.skipped
 
 - CLI `--json` 与 export 继续保留 `recur`、`parent`、`mask`、`imask`。
 - occurrence 可新增 `recurrence_at` 输出；旧消费者忽略未知字段。
+- range query 的 projected occurrence 是视图，不进入 export；export 只包含 series template 与 materialized occurrence，避免导出窗口决定数据集合。
 - Web JSON/XLSX import 的 recurrence 文案改为 canonical 表达式，不再声称任意字符串原样保存即可形成循环。
 - 导入 series template 必须满足完整 series invariant；导入 occurrence 必须能解析到同 workspace 的 series template。
 - 普通任务带 `recur` 且没有合法 series parent：拒绝导入。
@@ -990,7 +1407,8 @@ task.recurrence.skipped
 3. 建立 partial unique index。
 4. 将历史 `biweekly` / `quarterly` / `annual` / `yearly` canonicalize 为 `2weeks` / `3months` / `12months`，写 system audit。
 5. 对 `parent IS NULL AND status NOT IN (recurring) AND recur IS NOT NULL` 的孤立无效数据：保留普通任务行为，清除无效 `recur`，写 `task.recurrence.legacy_normalized` system audit；不得自动转换为 series。
-6. 首次 scheduler 启动后按日历补齐缺失槽位，受批量上限保护。
+6. 回填后计算稳定 occurrence_ref；无需额外 registry 表。
+7. 首次 scheduler 启动后按日历补齐缺失槽位，受批量上限保护；补齐期间 range query 仍投影缺失槽位。
 
 迁移不得删除已有任务、修改 occurrence UUID、重排已有 `project_seq`。
 
@@ -1008,6 +1426,11 @@ task.recurrence.skipped
 | `task_series_occurrence_not_found` | task 不属于指定 series |
 | `task_recurrence_transition_not_supported` | 普通任务与循环系列互转 |
 | `task_recurrence_backlog` | 补偿超过单轮上限；返回可重试元数据，不作为 5xx |
+| `task_series_endpoint_required` | generic task add 收到 recur，要求使用 series API/tool |
+| `task_series_operation_required` | 对 series template 调用普通 task 操作 |
+| `task_occurrence_not_found` | occurrence_ref 非法、槽位不属于规则或超出 until |
+| `task_occurrence_range_required` | occurrence_mode=expand 但缺少完整范围 |
+| `task_occurrence_range_too_large` | 展开范围超过 366 天 |
 
 HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、scope 隐藏 404、并发冲突 409、内部错误 500。
 
@@ -1018,6 +1441,9 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - series modify、stop 与 scheduler 生成竞争时，以数据库事务和模板当前 status 为准。
 - stop 提交后不得再创建新 occurrence。
 - series shared-field update 与 open occurrences 同步必须同事务，避免模板已更新但实例只更新一半。
+- projected occurrence 的并发首次写由 `(workspace_id,parent,recurrence_at)` 唯一索引收敛；冲突方读取同一 materialized row 后继续动作。
+- 物化与本次动作必须同事务；不得暴露只有 task.created、没有请求动作结果的中间状态。
+- query merge 本身只读；不得为了稳定分页写 projection cache。
 - Hook/audit 写入继续使用现有事务后分发机制，stdout/stderr 契约不变。
 
 ## 23. 测试策略
@@ -1026,14 +1452,17 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 
 - canonical parser 与 Web option 映射一致。
 - daily/weekly/monthly/N-unit 计算。
+- `ExpandRange` 左闭右开、最大范围、月末与时区行为。
 - `recurrence_at` 不随 occurrence due 修改。
+- occurrence_ref 可解析且投影/物化前后稳定。
+- RRULE-like merge：exception 覆盖、tombstone 排除、改期同时抑制原槽位并命中新 due。
 - until 包含最后槽位。
 - series/occurrence invariant。
 - 普通任务设置/清除 recur 被拒绝。
 
 ### 23.2 app/service
 
-- 创建 series 原子生成 template 与 first occurrence。
+- 创建未来 series 只生成 template + projected first occurrence；first_due 已到时原子物化 first occurrence。
 - 上一实例未完成，次日仍生成新实例。
 - 停机五日恢复补齐五条。
 - batch 100 / global 1000 与 backlog continuation。
@@ -1043,28 +1472,37 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - skip、stop、ended、project close 状态转换。
 - completed recurrence occurrence 可 reopen，且不产生重复 slot。
 - series template 不发普通 task.created；occurrence 会发。
+- projected 纯读不写库；modify/done/skip/annotate/link/dependency 首次写均原子物化。
+- series shared modify 不覆盖 recurrence_overrides。
 
 ### 23.3 storage
 
 - SQLite/PostgreSQL partial unique index 等价。
 - recurrence_at backfill。
+- recurrence_overrides round-trip 与唯一 occurrence slot。
 - series list/count/occurrence pagination 无 N+1。
+- range 查询读取原槽位或新 due 命中的 exception。
 - 项目统计排除 template/occurrence，新增循环指标正确。
 - workspace/project 行级隔离。
 
 ### 23.4 HTTP/Remote
 
 - task-series 全部 CRUD 路由、权限、scope、日期解析。
-- task list 默认不返回 template。
-- task get 返回 recurrence_info。
-- 旧 Remote `AddTask(Recur)` 继续工作。
+- task list 默认不返回 template；auto/materialized/expand 三种模式。
+- expand 缺范围、超 366 天、日期边界、过滤后分页。
+- task get 通过 occurrence_ref 返回 projected 且不物化。
+- 所有 task 子资源写入口共享写前物化。
+- Remote `AddTask(Recur)` wrapper 路由到 AddTaskSeries，不调用 generic POST。
 - 普通 PATCH recur/clear_recur 返回稳定错误码。
 
 ### 23.5 MCP
 
-- 六个 `task_series_*` tools schema golden files。
+- 七个 `task_series_*` tools schema golden files。
 - `task_series_add` 返回 series + first occurrence。
-- `task_query` / `task_get` recurrence_info。
+- `task_query` 的 due_after/due_before/occurrence_mode 与 HTTP 语义等价。
+- `task_query` / `task_get` 返回 projected/materialized recurrence_info 与稳定 id。
+- modify/start/done/skip、annotate、depends、link 对 projected occurrence 原子物化；stop/reopen 不满足前置状态时不物化。
+- template 通过普通 task tools 返回 task_series_operation_required。
 - structuredContent 与 text content 语义一致。
 - MCP tool name 全部使用下划线。
 - project/workspace/token allowlist 与 HTTP 权限等价。
@@ -1074,6 +1512,10 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - 创建弹窗普通/循环切换与必填校验。
 - Web option 只提交 canonical recurrence。
 - 当前任务列表隐藏 template、显示 recurrence badge。
+- 项目普通状态筛选移除 recurring，增加任务/循环规则二级入口。
+- 我的任务具有未完成/今天/逾期/无截止日期/已完成互斥预设；今天不包含逾期。
+- 同系列多条积压不去重；completed occurrence 独立显示和 reopen。
+- projected 行使用 occurrence_ref permalink，物化后 URL 不变。
 - series list/status/filter/detail/history。
 - occurrence 详情显示 series banner，不显示普通 parent。
 - instance edit、skip、reopen。
@@ -1099,29 +1541,32 @@ git diff --check
 
 ## 24. 验收标准
 
-1. daily 系列的昨日实例未完成时，今天仍有一条新的独立实例。
-2. 停机五天恢复后，五个日期的实例全部补齐，且重复 reconcile 不产生重复任务。
-3. 普通任务和循环系列不能直接互转，所有入口返回一致错误。
-4. Web Console 可以创建、查看、修改、停止 series，可以完成、重新打开和跳过 occurrence。
-5. 默认项目任务列表只显示普通任务与 occurrence，不显示 template。
-6. MCP 可以通过专用 tools 完成 series CRUD，且输出不会诱导 Agent 对 template 执行 done/start。
-7. `due` 单次修改不改变日历节奏；`recurrence_at` 保持不可变。
-8. 项目 archive/cancel 后不再生成新 occurrence。
-9. 项目普通进度不被循环模板或每日历史实例污染，循环运行情况有独立指标。
-10. SQLite/PostgreSQL 与 `CGO_ENABLED=0` 全部验证通过。
-11. README、ROADMAP、manual commands、HTTP/OpenAPI、MCP schema 与 Web 帮助文案同步更新。
+1. daily 系列的昨日实例未完成时，今天仍有一条新的独立 occurrence。
+2. 查询未来有限日期范围可看到计算出的 occurrence，不预生成无限未来，也不产生 audit/Hook。
+3. 停机五天恢复期间，即使实体补齐尚未完成，日期查询也能看到五个槽位；补齐后重复 reconcile 不产生重复任务。
+4. 普通任务和循环系列不能直接互转，HTTP/MCP/Remote/CLI 返回一致错误。
+5. Web Console 可以创建、查看、修改、停止 series，可以完成、重新打开和跳过 occurrence。
+6. 项目任务、我的未完成、今天、逾期、我的已完成都只展示可执行 occurrence，不展示 template，且各视图日期/状态边界准确。
+7. HTTP 与 MCP 对同一 query 返回相同集合和 recurrence_info；projected occurrence 首次写原子物化，公开 id 不变。
+8. MCP 可以通过专用 tools 完成 series CRUD，且不会诱导 Agent 对 template 执行 done/start。
+9. `due` 单次修改不改变日历节奏；`recurrence_at` 保持不可变；series 更新不覆盖本次 override。
+10. 项目 archive/cancel 后不再投影或物化新的 occurrence。
+11. 项目普通进度不被循环模板或每日历史实例污染，循环运行情况有独立指标。
+12. SQLite/PostgreSQL 与 `CGO_ENABLED=0` 全部验证通过。
+13. README、ROADMAP、manual commands、HTTP/OpenAPI、MCP schema 与 Web 帮助文案同步更新。
 
 ## 25. 实施边界与建议拆分
 
 Implementation plan 应至少拆为以下可独立验证的阶段：
 
-1. 数据 invariant、`recurrence_at` 迁移、唯一索引与 legacy normalization。
-2. app TaskSeries service、日历 reconcile、审计与事件。
-3. scheduler/server/CLI 生命周期接入。
-4. HTTP/Remote/OpenAPI task-series 契约。
-5. MCP series tools 与 structured output。
-6. Web 创建、当前任务列表与 occurrence 详情。
-7. Web series 列表、详情、编辑、停止与历史。
-8. 项目统计、关闭项目联动、import/export/docs 收口。
+1. 数据 invariant、`recurrence_at`、`recurrence_overrides`、occurrence_ref、唯一索引与 legacy normalization。
+2. recurrence ExpandRange、App TaskOccurrenceView、merge/dedupe 与 write resolver。
+3. app TaskSeries service、日历 reconcile、审计与事件。
+4. scheduler/server/CLI 生命周期接入。
+5. HTTP/Remote/OpenAPI task-series、range query 与 projected write 契约。
+6. MCP series tools、range query 与 structured output。
+7. Web 创建、项目任务、我的任务各预设与 occurrence 详情。
+8. Web series 列表、详情、编辑、停止与历史。
+9. 项目统计、关闭项目联动、import/export/docs 收口。
 
 不得把前端 recurrence 下拉框作为第一阶段单独上线；在 app invariant、日历 scheduler 和专用 API 未完成前继续隐藏该入口，避免再次制造无效 `recur` 数据。
