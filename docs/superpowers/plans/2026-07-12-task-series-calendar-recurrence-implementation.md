@@ -2,12 +2,13 @@
 
 > **实施进度（2026-07-13，feat/task-series-recurrence 分支）：**
 >
-> Task 1-8 已完成，全量 `CGO_ENABLED=0 go test ./...`、`go build`、`go vet` 通过：
+> Task 1-9 已完成，全量 `CGO_ENABLED=0 go test ./...`、`go build`、`go vet` 通过：
 > - **Task 1-7 ✅**：后端核心闭环（领域/schema/repo/App view/merge/Series CRUD/写前物化/scheduler/项目关闭）
 > - **Task 8 ✅**：HTTP Series CRUD 7 条路由 + Task 范围查询（occurrence_mode）+ Remote client（TaskOccurrenceDTO/TaskViewPageDTO + Series 方法 + QueryTasks）
-> - **Task 9-14 ⏳**：专用 CLI（series 命令）、MCP tools、Web Console、原生 bundle、全量验收未开始
+> - **Task 9 ✅**：专用 CLI `xuanchu series add/list/info/modify/occurrences/stop/skip`，local + remote 双路径，--json 输出，集成测试覆盖全流程
+> - **Task 10-14 ⏳**：MCP tools、Web Console、原生 bundle、全量验收未开始
 >
-> 续作者请从 Task 9（专用 CLI `xuanchu series ...`）开始。" 2>&1 | tail -2
+> 续作者请从 Task 10（MCP `task_series_*` tools + golden files）开始。" 2>&1 | tail -2
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
