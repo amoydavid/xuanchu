@@ -1,18 +1,13 @@
 # 璇础循环任务系列、范围投影与按需物化 Implementation Plan
 
-> **实施进度（2026-07-12，feat/task-series-recurrence 分支）：**
+> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：**
 >
-> 后端核心 Task 1-7 已完成，全量 `CGO_ENABLED=0 go test ./...`、`go build`、`go vet` 通过：
-> - **Task 1 ✅**：taskseries 领域（canonical 规则、rule-version 展开、ValidateSeries）
-> - **Task 2 ✅**：Task occurrence invariant（series_id/recurrence_at/snapshot/overrides 三元一致）
-> - **Task 3 ✅**：破坏性 schema 变更（task_series 表 + partial unique index + 旧 recurring 全层清理 + 两个 repository）
-> - **Task 4 ✅**：TaskOccurrenceView/occurrence_ref/范围 merge/GetTaskView；query evaluator、urgency 重构、RunTaskViewReport 待协议层（Task 8）补齐
-> - **Task 5 ✅**：Series 创建/列表/详情/修改占位；停止/跳过/occurrence 分页已在 Task 7 完成
-> - **Task 6 ✅**：写前物化（MaterializeOccurrenceForWrite/WithTaskForWrite/WithExistingTaskForSubresourceWrite/ResolveTaskForRead）
-> - **Task 7 ✅**：ReconcileTaskSeries 日历补齐、TaskSeriesScheduler 后台循环、TransitionProject 停止 active series、Stop/Skip/ListTaskSeriesOccurrences
-> - **Task 8-14 ⏳**：HTTP/CLI/MCP/Web/原生 bundle 未开始
+> Task 1-8 已完成，全量 `CGO_ENABLED=0 go test ./...`、`go build`、`go vet` 通过：
+> - **Task 1-7 ✅**：后端核心闭环（领域/schema/repo/App view/merge/Series CRUD/写前物化/scheduler/项目关闭）
+> - **Task 8 ✅**：HTTP Series CRUD 7 条路由 + Task 范围查询（occurrence_mode）+ Remote client（TaskOccurrenceDTO/TaskViewPageDTO + Series 方法 + QueryTasks）
+> - **Task 9-14 ⏳**：专用 CLI（series 命令）、MCP tools、Web Console、原生 bundle、全量验收未开始
 >
-> 续作者请从 Task 8（HTTP/Remote/OpenAPI）开始，复用 App 层已完成的用例。
+> 续作者请从 Task 9（专用 CLI `xuanchu series ...`）开始。" 2>&1 | tail -2
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
