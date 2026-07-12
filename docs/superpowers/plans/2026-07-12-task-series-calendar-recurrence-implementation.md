@@ -2,14 +2,15 @@
 
 > **实施进度（2026-07-13，feat/task-series-recurrence 分支）：**
 >
-> Task 1-10 已完成，全量 `CGO_ENABLED=0 go test ./...`、`go build`、`go vet` 通过：
+> Task 1-11 已完成：
 > - **Task 1-7 ✅**：后端核心闭环
 > - **Task 8 ✅**：HTTP Series CRUD + Task 范围查询 + Remote client
 > - **Task 9 ✅**：专用 CLI `xuanchu series ...` 命令树
 > - **Task 10 ✅**：七个 task_series_* MCP tools + golden files
-> - **Task 11-14 ⏳**：Web Console（路由/面板/创建弹窗/occurrence 详情/My Tasks/项目统计）、原生 bundle、全量验收未开始
+> - **Task 11 ✅**：Web 原生类型（TaskOccurrenceView/TaskSeriesView）+ task-series-api client + 任务页面板路由（持久父路由 + series 静态子路由 + setContextPanel）
+> - **Task 12-14 ⏳**：面板 UI/创建弹窗/occurrence 详情/My Tasks/项目统计、原生 bundle、全量验收未开始
 >
-> 续作者请从 Task 11（Web 原生类型 + 任务页面板路由）开始。" 2>&1 | tail -2
+> 续作者请从 Task 12（面板 list/detail/dialog UI + 创建弹窗）开始。" 2>&1 | tail -2
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
