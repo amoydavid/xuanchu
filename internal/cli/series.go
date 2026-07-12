@@ -196,33 +196,55 @@ func newSeriesModifyCommand(opts Options) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			currentOpts := optionsFromCmd(cmd, opts)
-			_ = args[0]
-			// Series 修改（rule-version 追加 + 共享字段同步）App 层尚未完整实现。
-			// 这里先支持读取后展示；完整修改在后续提交补齐。
-			if recur != "" {
-				return fmt.Errorf("rule 修改需要 --effective-from；完整 rule-version 修改在后续实现")
+			seriesRef := args[0]
+			// 构造 ModifyTaskSeriesInput。
+			input := app.ModifyTaskSeriesInput{}
+			if title != "" {
+				t := title
+				input.Title = &t
 			}
-			_ = effectiveFrom
-			_ = title
-			_ = priority
-			_ = assignees
-			_ = tags
-			_ = until
+			if priority != "" {
+				input.Priority = &priority
+			}
+			if len(assignees) > 0 {
+				input.Assignees = assignees
+			}
+			if len(tags) > 0 {
+				input.Tags = tags
+			}
+			if until != "" {
+				ts, err := parseSeriesDateFlag(until)
+				if err != nil {
+					return fmt.Errorf("--until: %w", err)
+				}
+				input.Until = &ts
+			}
+			if recur != "" {
+				input.RecurrenceRule = &recur
+				if effectiveFrom == "" {
+					return fmt.Errorf("修改 --recur 必须同时提供 --effective-from")
+				}
+				ts, err := parseSeriesDateFlag(effectiveFrom)
+				if err != nil {
+					return fmt.Errorf("--effective-from: %w", err)
+				}
+				input.EffectiveFrom = &ts
+			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
-				return nil
+				return runSeriesModifyRemote(cmd, currentOpts, seriesRef, input)
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			detail, err := svc.GetTaskSeries(args[0])
+			view, err := svc.ModifyTaskSeries(seriesRef, input)
 			if err != nil {
 				return err
 			}
-			renderSeriesDetail(cmd.OutOrStdout(), currentOpts.JSON, detail)
+			renderSeriesDetail(cmd.OutOrStdout(), currentOpts.JSON, app.TaskSeriesDetailView{Series: view})
 			return nil
 		},
 	}
@@ -486,6 +508,23 @@ func runSeriesListRemote(cmd *cobra.Command, currentOpts Options, status, q, ass
 		views = append(views, remoteSeriesDTOToView(it))
 	}
 	renderSeriesList(cmd.OutOrStdout(), currentOpts.JSON, app.TaskSeriesPage{Items: views, Total: page.Total, Limit: page.Limit, Offset: page.Offset})
+	return nil
+}
+
+func runSeriesModifyRemote(cmd *cobra.Command, currentOpts Options, seriesRef string, input app.ModifyTaskSeriesInput) error {
+	client, err := buildRemoteClient(currentOpts)
+	if err != nil {
+		return err
+	}
+	dto, err := client.ModifyTaskSeries(context.Background(), currentOpts.Workspace, seriesRef, input)
+	if err != nil {
+		return err
+	}
+	if currentOpts.JSON {
+		_ = renderJSON(cmd.OutOrStdout(), dto)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "已修改循环任务 %s\n", dto.Title)
+	}
 	return nil
 }
 

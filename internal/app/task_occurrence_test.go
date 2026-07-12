@@ -1003,3 +1003,161 @@ func TestTaskSeriesSchedulerRunOnce(t *testing.T) {
 	}
 	_ = created
 }
+
+// --- Task 5: ModifyTaskSeries 测试 ---
+
+func TestModifyTaskSeriesUpdatesSharedFields(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newTitle := "每周巡检"
+	view, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{Title: &newTitle})
+	if err != nil {
+		t.Fatalf("ModifyTaskSeries: %v", err)
+	}
+	if view.Title != "每周巡检" {
+		t.Fatalf("title = %q want 每周巡检", view.Title)
+	}
+}
+
+func TestModifyTaskSeriesRejectsInactive(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.StopTaskSeries(created.Series.ID, StopTaskSeriesInput{}); err != nil {
+		t.Fatal(err)
+	}
+	newTitle := "x"
+	_, err = svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{Title: &newTitle})
+	if err == nil {
+		t.Fatal("stopped series 应拒绝修改")
+	}
+}
+
+func TestModifyTaskSeriesRuleRequiresEffectiveFrom(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRule := "weekly"
+	_, err = svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{RecurrenceRule: &newRule})
+	if err == nil {
+		t.Fatal("修改 rule 缺 effective_from 应失败")
+	}
+}
+
+func TestModifyTaskSeriesRuleAppendsVersion(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRule := "weekly"
+	eff := int64(10000)
+	view, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{
+		RecurrenceRule: &newRule, EffectiveFrom: &eff,
+	})
+	if err != nil {
+		t.Fatalf("ModifyTaskSeries rule: %v", err)
+	}
+	if view.RecurrenceRule != "weekly" {
+		t.Fatalf("rule = %q want weekly", view.RecurrenceRule)
+	}
+	// rule version 应有 2 段。
+	if len(view.RuleVersions) != 2 {
+		t.Fatalf("rule versions = %d want 2", len(view.RuleVersions))
+	}
+}
+
+func TestModifyTaskSeriesRuleRejectsPastEffectiveFrom(t *testing.T) {
+	svc, closeFn := newTestService(t, 5000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 6000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRule := "weekly"
+	pastEff := int64(4000) // 早于 now=5000
+	_, err = svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{
+		RecurrenceRule: &newRule, EffectiveFrom: &pastEff,
+	})
+	if err == nil {
+		t.Fatal("effective_from 早于 now 应失败")
+	}
+}
+
+func TestModifyTaskSeriesSyncsSharedFieldsToOpenOccurrences(t *testing.T) {
+	// first_due 在过去，物化 first occurrence；修改 title 应同步到该 occurrence。
+	firstDue := int64(1000)
+	now := int64(5000)
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AddTaskSeries 已物化 first occurrence。修改 title。
+	newTitle := "每周巡检"
+	if _, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{Title: &newTitle}); err != nil {
+		t.Fatalf("ModifyTaskSeries: %v", err)
+	}
+	// 验证 occurrence title 同步。
+	occ, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, created.Series.ID, firstDue)
+	if err != nil {
+		t.Fatalf("GetOccurrence: %v", err)
+	}
+	if occ.Title != "每周巡检" {
+		t.Fatalf("occurrence title = %q want 每周巡检", occ.Title)
+	}
+}

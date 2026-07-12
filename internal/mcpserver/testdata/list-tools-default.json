@@ -4561,14 +4561,62 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "assignees": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "effective_from": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
           "id": {
             "type": "string"
           },
-          "project": {
-            "type": "string"
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
-          "project_id": {
-            "type": "string"
+          "recurrence_rule": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "until": {
+            "type": [
+              "null",
+              "integer"
+            ]
           },
           "workspace": {
             "type": "string"

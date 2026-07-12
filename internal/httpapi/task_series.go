@@ -274,18 +274,35 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "api_bad_request", "invalid JSON body", nil)
 		return
 	}
-	// Series 修改（rule-version 追加 + 共享字段同步）尚未在 App 层完整实现；
-	// 这里先支持共享字段更新（title/description/priority/tags/assignees）。
-	// 完整 rule-version 修改在后续提交补齐。
-	_ = req
-	_ = seriesRef
-	// 读取当前 series 用于返回。
-	detail, err := scoped.GetTaskSeries(seriesRef)
+	input := app.ModifyTaskSeriesInput{
+		Title:       req.Title,
+		Description: req.Description,
+		Priority:    req.Priority,
+		Assignees:   req.Assignees,
+		Tags:        req.Tags,
+		UDAs:        req.UDAs,
+		Until:       req.Until,
+	}
+	if req.RecurrenceRule != nil {
+		input.RecurrenceRule = req.RecurrenceRule
+	}
+	if req.EffectiveFrom != nil {
+		input.EffectiveFrom = req.EffectiveFrom
+	}
+	if req.EffectiveFromDate != nil {
+		ts, err := parseDeadlineDate(*req.EffectiveFromDate)
+		if err != nil {
+			writeAppError(w, app.RuntimeError{Code: "task_series_invalid_effective_from", Message: err.Error()})
+			return
+		}
+		input.EffectiveFrom = &ts
+	}
+	view, err := scoped.ModifyTaskSeries(seriesRef, input)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, seriesViewToJSON(detail.Series), nil)
+	writeSuccess(w, http.StatusOK, seriesViewToJSON(view), nil)
 }
 
 func (s *Server) handleTaskSeriesDelete(w http.ResponseWriter, r *http.Request) {

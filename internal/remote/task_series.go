@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strconv"
 
@@ -314,4 +315,34 @@ func buildSeriesListValues(input TaskSeriesListInput) url.Values {
 		values.Set("offset", strconv.Itoa(input.Offset))
 	}
 	return values
+}
+
+// modifyTaskSeriesInput 是修改 series 的远程输入。
+type modifyTaskSeriesInput struct {
+	Title          *string          `json:"title,omitempty"`
+	Description    *string          `json:"description,omitempty"`
+	Priority       *string          `json:"priority,omitempty"`
+	Assignees      []string         `json:"assignees,omitempty"`
+	Tags           []string         `json:"tags,omitempty"`
+	RecurrenceRule *string          `json:"recurrence_rule,omitempty"`
+	EffectiveFrom  *int64           `json:"effective_from,omitempty"`
+	Until          *int64           `json:"until,omitempty"`
+}
+
+// ModifyTaskSeries 修改 series（spec §11.4）。
+func (c *Client) ModifyTaskSeries(ctx context.Context, workspace, seriesRef string, input interface{}) (TaskSeriesDTO, error) {
+	// input 是 app.ModifyTaskSeriesInput，这里用反射转 DTO。
+	// 简化：直接 marshal/unmarshal 转换。
+	body := modifyTaskSeriesInput{}
+	if raw, err := json.Marshal(input); err == nil {
+		_ = json.Unmarshal(raw, &body)
+	}
+	path := "/api/v1/task-series/" + url.PathEscape(seriesRef) + "?workspace=" + url.QueryEscape(workspace)
+	var resp struct {
+		Data TaskSeriesDTO `json:"data"`
+	}
+	if err := c.patch(ctx, path, body, &resp); err != nil {
+		return TaskSeriesDTO{}, err
+	}
+	return resp.Data, nil
 }

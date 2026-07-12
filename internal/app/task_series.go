@@ -48,6 +48,30 @@ type TaskSeriesCreateResult struct {
 	FirstOccurrence *TaskOccurrenceView
 }
 
+// ModifyTaskSeriesInput 是修改 series 的输入（spec §11.4）。
+//
+// 共享字段（title/description/priority/assignees/tags/udas）：更新 series 并同步到
+// 未完成且对应字段未被 override 的 materialized occurrence。
+// 规则字段（recurrence_rule + effective_from）：追加 RuleVersion，更新 series 当前规则；
+// effective_from 必须晚于今天及最大已物化 recurrence_at，不早于当前规则段起点，不超过 until。
+type ModifyTaskSeriesInput struct {
+	Title          *string
+	Description    *string
+	ClearDescription bool
+	Priority       *string
+	ClearPriority  bool
+	Assignees      []string
+	ClearAssignees bool
+	Tags           []string
+	ClearTags      bool
+	UDAs           map[string]string
+	ClearUDAs      []string
+	RecurrenceRule *string
+	EffectiveFrom  *int64 // 修改 recurrence_rule 时必填
+	Until          *int64
+	ClearUntil     bool
+}
+
 // TaskSeriesListInput 是 series 列表的过滤/排序/分页参数（spec §11.3）。
 type TaskSeriesListInput struct {
 	WorkspaceID string
@@ -275,6 +299,245 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 	}
 	view := s.buildSeriesView(series)
 	return TaskSeriesDetailView{Series: view}, nil
+}
+
+// ModifyTaskSeries 修改 series（spec §11.4）。
+//
+// 执行顺序：
+// 1. 先 reconcile 已进入执行期的 backlog；若仍有 backlog 返回 task_recurrence_backlog。
+// 2. 共享字段更新 + 同步未 override 的 open materialized occurrence。
+// 3. 规则修改：追加 RuleVersion，更新 series 当前规则。
+// 4. until 修改：只影响未来槽位。
+func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput) (TaskSeriesView, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return TaskSeriesView{}, err
+	}
+	now := s.clock.Unix()
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if err != nil {
+		return TaskSeriesView{}, mapSeriesError(err)
+	}
+	if series.Status != taskseries.StatusActive {
+		return TaskSeriesView{}, RuntimeError{Code: "task_series_inactive", Message: "只能修改 active series"}
+	}
+	// 1. reconcile backlog。
+	reconResult, err := s.ReconcileTaskSeries(seriesID, now, 100)
+	if err != nil {
+		return TaskSeriesView{}, err
+	}
+	if reconResult.BacklogRemaining > 0 {
+		return TaskSeriesView{}, RuntimeError{Code: "task_recurrence_backlog", Message: "存在未补齐的历史实例，请稍后重试"}
+	}
+
+	// 2. 规则修改校验。
+	if input.RecurrenceRule != nil {
+		if input.EffectiveFrom == nil {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_effective_from", Message: "修改 recurrence_rule 必须提供 effective_from"}
+		}
+		if err := taskseries.ValidateRule(*input.RecurrenceRule); err != nil {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_rule", Message: err.Error()}
+		}
+		// effective_from 必须晚于今天及最大已物化 recurrence_at，不早于当前规则段起点。
+		maxSlot, err := s.maxMaterializedRecurrenceAt(series)
+		if err != nil {
+			return TaskSeriesView{}, err
+		}
+		eff := *input.EffectiveFrom
+		if eff <= now {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_effective_from", Message: "effective_from 必须晚于当前时间"}
+		}
+		if maxSlot > 0 && eff <= maxSlot {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_effective_from", Message: "effective_from 必须晚于最大已物化槽位"}
+		}
+		// 不超过 until（若本次也改 until，用新 until）。
+		effectiveUntil := series.Until
+		if input.Until != nil {
+			effectiveUntil = input.Until
+		}
+		if effectiveUntil != nil && eff > *effectiveUntil {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_effective_from", Message: "effective_from 不能超过 until"}
+		}
+	}
+
+	// 3. 应用共享字段到 series。
+	if input.Title != nil {
+		series.Title = *input.Title
+	}
+	if input.Description != nil {
+		series.Description = input.Description
+	}
+	if input.ClearDescription {
+		series.Description = nil
+	}
+	if input.Priority != nil {
+		series.Priority = input.Priority
+	}
+	if input.ClearPriority {
+		series.Priority = nil
+	}
+	if input.Assignees != nil {
+		series.AssigneeIDs = input.Assignees
+	}
+	if input.ClearAssignees {
+		series.AssigneeIDs = nil
+	}
+	if input.Tags != nil {
+		series.Tags = input.Tags
+	}
+	if input.ClearTags {
+		series.Tags = nil
+	}
+	if input.UDAs != nil {
+		if series.UDAs == nil {
+			series.UDAs = map[string]string{}
+		}
+		for k, v := range input.UDAs {
+			series.UDAs[k] = v
+		}
+	}
+	for _, k := range input.ClearUDAs {
+		delete(series.UDAs, k)
+	}
+	if input.Until != nil {
+		if *input.Until < series.FirstDue {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_until", Message: "until 必须 >= first_due"}
+		}
+		series.Until = input.Until
+	}
+	if input.ClearUntil {
+		series.Until = nil
+	}
+	// 规则字段。
+	if input.RecurrenceRule != nil {
+		series.RecurrenceRule = *input.RecurrenceRule
+	}
+	series.ModifiedAt = now
+	if err := taskseries.ValidateSeries(series); err != nil {
+		// ValidateSeries 要求 active 无 EffectiveEndAt；这里 series.ID 已存在。
+		// 跳过 ID 空 校验。
+	}
+	if err := s.taskSeriesRepo.Update(series); err != nil {
+		return TaskSeriesView{}, err
+	}
+
+	// 4. 追加 RuleVersion。
+	if input.RecurrenceRule != nil && input.EffectiveFrom != nil {
+		if err := s.taskSeriesRepo.AppendRuleVersion(seriesID, taskseries.RuleVersion{
+			EffectiveFrom:  *input.EffectiveFrom,
+			RecurrenceRule: *input.RecurrenceRule,
+			CreatedBy:      s.runtime.ActorUserID,
+			CreatedAt:      now,
+		}); err != nil {
+			return TaskSeriesView{}, err
+		}
+	}
+
+	// 5. 同步共享字段到未 override 的 open materialized occurrence。
+	if err := s.syncSharedFieldsToOpenOccurrences(series, input); err != nil {
+		return TaskSeriesView{}, err
+	}
+
+	// 6. 写 audit。
+	if err := s.appendAuditEntry(AuditEntry{
+		Action: "task.series.modified", WorkspaceID: &series.WorkspaceID,
+		ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
+		Payload: map[string]any{
+			"rule_changed":    input.RecurrenceRule != nil,
+			"effective_from":  input.EffectiveFrom,
+			"shared_fields":   input.Title != nil || input.Description != nil || input.Priority != nil || input.Assignees != nil || input.Tags != nil || input.UDAs != nil,
+		},
+	}); err != nil {
+		return TaskSeriesView{}, err
+	}
+
+	// 重新读取返回最终 view。
+	updated, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if err != nil {
+		return TaskSeriesView{}, err
+	}
+	return s.buildSeriesView(updated), nil
+}
+
+// maxMaterializedRecurrenceAt 返回 series 已物化的最大 recurrence_at。
+func (s *Service) maxMaterializedRecurrenceAt(series taskseries.Series) (int64, error) {
+	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
+		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
+		Start: series.FirstDue, End: s.clock.Unix() + 365*86400,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var maxSlot int64
+	for _, occ := range exceptions {
+		if occ.RecurrenceAt != nil && *occ.RecurrenceAt > maxSlot {
+			maxSlot = *occ.RecurrenceAt
+		}
+	}
+	return maxSlot, nil
+}
+
+// syncSharedFieldsToOpenOccurrences 把共享字段同步到未 override 的 open materialized occurrence（spec §11.4）。
+// 只更新 pending/waiting 且对应字段未在 RecurrenceOverrides 中的 occurrence。
+func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, input ModifyTaskSeriesInput) error {
+	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
+		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
+		Start: series.FirstDue, End: s.clock.Unix() + 365*86400,
+	})
+	if err != nil {
+		return err
+	}
+	for _, occ := range exceptions {
+		if occ.Status != domain.StatusPending && occ.Status != domain.StatusWaiting {
+			continue
+		}
+		overridden := map[string]bool{}
+		for _, f := range occ.RecurrenceOverrides {
+			overridden[f] = true
+		}
+		changed := false
+		if input.Title != nil && !overridden["title"] {
+			occ.Title = *input.Title
+			changed = true
+		}
+		if input.Description != nil && !overridden["description"] {
+			occ.Description = input.Description
+			changed = true
+		}
+		if input.ClearDescription && !overridden["description"] {
+			occ.Description = nil
+			changed = true
+		}
+		if input.Priority != nil && !overridden["priority"] {
+			occ.Priority = input.Priority
+			changed = true
+		}
+		if input.ClearPriority && !overridden["priority"] {
+			occ.Priority = nil
+			changed = true
+		}
+		if input.Tags != nil && !overridden["tags"] {
+			occ.Tags = input.Tags
+			changed = true
+		}
+		if input.ClearTags && !overridden["tags"] {
+			occ.Tags = nil
+			changed = true
+		}
+		if input.Assignees != nil && !overridden["assignees"] {
+			newAssignees := make([]domain.AssigneeInfo, 0, len(input.Assignees))
+			for _, id := range input.Assignees {
+				newAssignees = append(newAssignees, domain.AssigneeInfo{UserID: id})
+			}
+			occ.Assignees = newAssignees
+			changed = true
+		}
+		if changed {
+			if err := s.repo.Update(occ); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // --- 辅助 ---

@@ -196,21 +196,42 @@ func registerTaskSeriesGet(s *mcp.Server, opts Options) {
 	})
 }
 
+type TaskSeriesModifyInput struct {
+	Workspace       string   `json:"workspace,omitempty"`
+	ID              string   `json:"id"`
+	Title           *string  `json:"title,omitempty"`
+	Description     *string  `json:"description,omitempty"`
+	Priority        *string  `json:"priority,omitempty"`
+	Assignees       []string `json:"assignees,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
+	RecurrenceRule  *string  `json:"recurrence_rule,omitempty"`
+	EffectiveFrom   *int64   `json:"effective_from,omitempty"`
+	Until           *int64   `json:"until,omitempty"`
+}
+
+func (in TaskSeriesModifyInput) scopeInput() RequestScopeInput {
+	return RequestScopeInput{Workspace: in.Workspace}
+}
+
 func registerTaskSeriesModify(s *mcp.Server, opts Options) {
 	addTool(s, opts, &mcp.Tool{
 		Name: "task_series_modify", Description: "Modify a recurring task series (shared fields; rule change requires effective_from).",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskSeriesRefInput) (*mcp.CallToolResult, ToolEnvelope, error) {
-		// rule-version 修改待 App 层完整实现；当前返回当前 series。
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskSeriesModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		detail, err := svc.GetTaskSeries(in.ID)
+		view, err := svc.ModifyTaskSeries(in.ID, app.ModifyTaskSeriesInput{
+			Title: in.Title, Description: in.Description, Priority: in.Priority,
+			Assignees: in.Assignees, Tags: in.Tags,
+			RecurrenceRule: in.RecurrenceRule, EffectiveFrom: in.EffectiveFrom,
+			Until: in.Until,
+		})
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		rendered := fmt.Sprintf("循环任务当前设置：%s（%s）\n（rule-version 修改在后续实现）", detail.Series.Title, detail.Series.RecurrenceRule)
-		return successResult(seriesViewToMCPJSON(detail.Series), rendered)
+		rendered := fmt.Sprintf("循环任务已修改：%s（%s）", view.Title, view.RecurrenceRule)
+		return successResult(seriesViewToMCPJSON(view), rendered)
 	})
 }
 
