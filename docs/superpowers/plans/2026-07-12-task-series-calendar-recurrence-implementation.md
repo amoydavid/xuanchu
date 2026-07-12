@@ -24,6 +24,7 @@
 - 所有用户引用使用 `task.UserInfo` / `task.JSONUserInfo`，不输出裸用户 UUID。
 - MCP tool name 使用下划线，`Content[0].text` 的 ToolEnvelope 与 `structuredContent` 语义一致。
 - Web 全局侧栏和 ProjectTabs 都不新增循环任务；普通任务与 occurrence 融合在“任务”，series 只进入任务页内可深链的管理面板。
+- Web 用户可见的 Series 一级名称统一为“循环任务”；“循环规则”只作为每天/每周等频率字段名。路由、API、MCP、Go/TS 类型和 query key 继续使用 series/recurrence，不做协议重命名。
 - 不提交 `internal/webconsole/dist`、本地二进制、数据库、token、缓存或临时文件。
 - 每个后端任务至少运行其定向测试；最终必须运行 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu`、`go vet ./...`。
 - Web 任务最终必须运行 `pnpm --dir web typecheck`、`pnpm --dir web test`、`pnpm --dir web lint`、`pnpm --dir web build`、`pnpm --dir web run smoke:editing`。
@@ -1087,11 +1088,11 @@ Add stable keys rooted at `['project', workspaceSlug, projectSlug, 'task-series'
 
 - [ ] **Step 5: 扩展 ProjectLayout 的上下文面板槽位**
 
-Add `setContextPanel` to the layout context and a data-agnostic `TaskSeriesPanelShell`. A registered shell replaces `ProjectContextRail`; the existing rail collapse action changes aria-label/title to “关闭循环规则” and calls the custom `onClose`, while closing/unregistering restores the prior context-rail open/collapsed state. Tests assert `ProjectTabKey` remains exactly `overview|tasks|activity|automations`, Series children highlight tasks, the project breadcrumb remains “项目 > 任务” while only the panel owns “循环规则 > 标题”, static `series` is never parsed as taskRef, list/detail child navigation preserves the same ProjectTasksPage instance, and direct deep links load parent tasks plus the optional panel target. Shell tests lock desktop/mobile rendering, close focus and aria labels without depending on Series API data.
+Add `setContextPanel` to the layout context and a data-agnostic `TaskSeriesPanelShell`. A registered shell replaces `ProjectContextRail`; the existing rail collapse action changes aria-label/title to “关闭循环任务” and calls the custom `onClose`, while closing/unregistering restores the prior context-rail open/collapsed state. Tests assert `ProjectTabKey` remains exactly `overview|tasks|activity|automations`, Series children highlight tasks, the project breadcrumb remains “项目 > 任务” while only the panel owns “循环任务 > 标题”, static `series` is never parsed as taskRef, list/detail child navigation preserves the same ProjectTasksPage instance, and direct deep links load parent tasks plus the optional panel target. Shell tests lock desktop/mobile rendering, close focus and aria labels without depending on Series API data.
 
 - [ ] **Step 6: 补 i18n 与运行测试**
 
-Add panel/status/empty/error/action keys in zh-CN and en-US; do not add a project-tab translation key. Tests assert locale key parity.
+Add panel/status/empty/error/action keys in zh-CN and en-US; do not add a project-tab translation key. User-facing panel、breadcrumb、toolbar、close、empty and view actions use “循环任务/Recurring tasks”; only the frequency field uses “循环规则/Recurrence rule”. Tests assert locale key parity and reject the old panel/action copy.
 
 Run: `pnpm --dir web test -- task-series-api.test.ts task-series-panel-shell.test.tsx project-layout.test.tsx ProjectTasksRoute.test.tsx ProjectTaskSeriesPanelRoute.test.tsx i18n.test.ts`
 
@@ -1103,7 +1104,7 @@ Expected: PASS。
 
 ```bash
 git add web/src/features/workspace/project-workbench/api web/src/features/workspace/project-workbench/hooks web/src/features/workspace/project-workbench/project web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.tsx web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.test.tsx web/src/routes web/src/locales web/src/i18n.test.ts
-git commit -m "feat: 建立任务页循环规则面板路由"
+git commit -m "feat: 建立任务页循环任务面板路由"
 ```
 
 ### Task 12: 实现统一创建弹窗与任务页 Series 管理面板
@@ -1143,7 +1144,7 @@ git commit -m "feat: 建立任务页循环规则面板路由"
 
 - [ ] **Step 1: 写统一创建弹窗失败测试**
 
-Add tests that open in each initial mode, switch without losing state, hide wait/scheduled/depends/parent in recurring mode, validate title/rule/first_due/until, submit canonical values (`2weeks|3months|12months`), show three-date preview, and use Cmd/Ctrl+Enter. Assert normal mode calls `/tasks` and recurring mode calls `/task-series`. Project task tests assert the primary button/shortcut defaults to normal, dropdown and panel “新建” open recurring, and no `ProjectTabs` Series entry exists.
+Add tests that open in each initial mode, switch without losing state, hide wait/scheduled/depends/parent in recurring mode, validate title/rule/first_due/until, submit canonical values (`2weeks|3months|12months`), show three-date preview, and use Cmd/Ctrl+Enter. Assert normal mode calls `/tasks` and recurring mode calls `/task-series`. Project task tests assert the primary button/shortcut defaults to normal, dropdown and panel “新建” open recurring, the toolbar/panel title is “循环任务 N”, the frequency field remains “循环规则”, and no `ProjectTabs` Series entry exists.
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -1157,7 +1158,7 @@ Keep shared title/description/priority/assignees/tags components but separate no
 
 - [ ] **Step 4: 写管理面板与任务上下文失败测试**
 
-List tests cover active default, status/assignee/search/sort, toolbar active-count badge from `total`, zero/loading/error count fallbacks, ended/stopped read-only rows, loading/error/empty/backlog and row menus. Detail tests cover summary, open occurrences, paginated history and management actions. Integration tests assert: task rows remain mounted while panel opens; panel replaces and later restores `ProjectContextRail`; toolbar list→detail history returns detail→list→closed, while direct Series detail from a task returns to that source; both close controls use correct label and behavior; close preserves project-task filters/selection/scroll and restores trigger focus; direct deep links fall back to project tasks; copied links omit return state; Series API failure is isolated to panel; direct detail deep link opens tasks + panel; desktop uses side panel and mobile uses full-screen Sheet. My Tasks return-state wiring lands in Task 13 after its local state is migrated to route search.
+List tests cover active default, status/assignee/search/sort, toolbar active-count badge from `total`, zero/loading/error count fallbacks, ended/stopped read-only rows, loading/error/empty/backlog and row menus. Detail tests cover summary, open occurrences, paginated history and management actions. Copy tests require “循环任务”“查看循环任务”“编辑循环设置”“关闭循环任务”“还没有循环任务”, while “循环规则” appears only beside the recurrence selector. Integration tests assert: task rows remain mounted while panel opens; panel replaces and later restores `ProjectContextRail`; toolbar list→detail history returns detail→list→closed, while direct Series detail from a task returns to that source; both close controls use correct label and behavior; close preserves project-task filters/selection/scroll and restores trigger focus; direct deep links fall back to project tasks; copied links omit return state; Series API failure is isolated to panel; direct detail deep link opens tasks + panel; desktop uses side panel and mobile uses full-screen Sheet. My Tasks return-state wiring lands in Task 13 after its local state is migrated to route search.
 
 - [ ] **Step 5: 实现面板壳层、列表与详情**
 
@@ -1179,7 +1180,7 @@ Expected: PASS。
 
 ```bash
 git add web/src/features/workspace/project-workbench/task-series web/src/features/workspace/project-workbench/tasks web/src/features/workspace/project-workbench/hooks web/src/routes/workspace
-git commit -m "feat: 完成任务页循环规则管理面板"
+git commit -m "feat: 完成任务页循环任务管理面板"
 ```
 
 ### Task 13: 完成 occurrence 列表、详情、我的任务与项目统计体验
@@ -1224,7 +1225,7 @@ git commit -m "feat: 完成任务页循环规则管理面板"
 
 - [ ] **Step 1: 写列表与详情失败测试**
 
-Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/view recurrence rule; the latter navigates to `/tasks/series/$seriesRef` with current task search params and no ProjectTab change. Detail shows series banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent. Assert ordinary detail labels are “完成任务/重新打开任务”, occurrence detail labels are “完成本次/重新打开本次”, compact occurrence completion has an aria-label containing the slot date, and no “本次/整个系列” scope dialog appears. Clicking “完成本次” must submit the stable occurrence_ref, keep the canonical URL after projected materialization, render completed state plus “重新打开本次”, and announce a date-specific success Toast. Assert Series-derived count/history queries are invalidated and refetched, but the Series rule and sibling occurrence states do not change. My Tasks tests open a Series detail with `panelReturnTo` and verify close/back restores route search、selected IDs、scroll and focus after data reload.
+Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/“查看循环任务”; the latter navigates to `/tasks/series/$seriesRef` with current task search params and no ProjectTab change. Detail shows the “所属循环任务” banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent. Assert ordinary detail labels are “完成任务/重新打开任务”, occurrence detail labels are “完成本次/重新打开本次”, compact occurrence completion has an aria-label containing the slot date, and no “本次/整个系列” scope dialog appears. Clicking “完成本次” must submit the stable occurrence_ref, keep the canonical URL after projected materialization, render completed state plus “重新打开本次”, and announce a date-specific success Toast. Assert Series-derived count/history queries are invalidated and refetched, but the Series rule and sibling occurrence states do not change. My Tasks tests open a Series detail with `panelReturnTo` and verify close/back restores route search、selected IDs、scroll and focus after data reload.
 
 - [ ] **Step 2: 写 My Tasks 预设失败测试**
 
@@ -1255,11 +1256,11 @@ Expected: FAIL。
 
 - [ ] **Step 4: 实现项目任务体验**
 
-Remove recurring status from filters; add task type. Unbounded project page uses materialized mode; a complete due range uses expand. Keep each occurrence as a separate row; no title-based dedupe and never insert Series definition rows into the task table. Batch delete copy reports normal delete count and occurrence skip count separately. The task Header keeps “循环规则 N” as a secondary management action and the create dropdown as primary; filtering never hides or changes the rule-management entry.
+Remove recurring status from filters; add task type. Unbounded project page uses materialized mode; a complete due range uses expand. Keep each occurrence as a separate row; no title-based dedupe and never insert Series definition rows into the task table. Batch delete copy reports normal delete count and occurrence skip count separately. The task Header keeps “循环任务 N” as a secondary management action and the create dropdown as primary; filtering never hides or changes the Series-management entry.
 
 - [ ] **Step 5: 实现 occurrence 详情与写操作**
 
-Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. In `task-action-bar.tsx`, ordinary tasks use “完成任务/重新打开任务” while occurrences use “完成本次/重新打开本次”; compact controls retain the full date-specific aria-label/title. Completion calls task done with the current occurrence_ref, never Series APIs and never a scope picker. Keep the detail route mounted, replace the projected cache entry with the returned materialized view under the same public ID, show the completed state/date-specific Toast, and invalidate occurrence、task list、project statistics plus Series-derived count/history queries; do not optimistically mutate the Series rule or sibling occurrence states. “查看循环规则” opens the task-page panel rather than navigating to a sibling page. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
+Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. In `task-action-bar.tsx`, ordinary tasks use “完成任务/重新打开任务” while occurrences use “完成本次/重新打开本次”; compact controls retain the full date-specific aria-label/title. Completion calls task done with the current occurrence_ref, never Series APIs and never a scope picker. Keep the detail route mounted, replace the projected cache entry with the returned materialized view under the same public ID, show the completed state/date-specific Toast, and invalidate occurrence、task list、project statistics plus Series-derived count/history queries; do not optimistically mutate the Series rule or sibling occurrence states. “查看循环任务” opens the task-page panel rather than navigating to a sibling page. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
 
 - [ ] **Step 6: 实现 My Tasks 与统计**
 
@@ -1414,7 +1415,7 @@ git commit -m "feat: 完成原生循环系列交付"
 - 查询 DSL 删除 recur/mask/imask 并新增 series_id/recurrence_at/task_type；SQL 和 expand evaluator 等价。
 - `/reports/{name}`、`/tasks?report=`、CLI aliases、Remote 与 MCP `report_run` 在 merge 后应用 scope/urgency 并返回同一 TaskViewPage。
 - 项目任务、我的未完成/今天/逾期/无截止日期/已完成显示正确，不混入 Series。
-- Web 全局侧栏和 ProjectTabs 不增加循环规则；任务表融合普通任务与 occurrence，Series 定义不作为任务行。
+- Web 全局侧栏和 ProjectTabs 不增加独立循环任务入口；任务表融合普通任务与 occurrence，Series 定义不作为任务行。
 - `/tasks/series[/seriesRef]` 面板深链、右栏替换、任务筛选/滚动/焦点恢复及移动端全屏 Sheet 与 Spec ASCII 原型一致。
 - My Tasks open presets 覆盖 pending/waiting，不产生 active status；面板往返恢复 route search、选择、滚动和焦点。
 - Web 列表、详情、创建/编辑/停止/跳过弹窗与 Spec ASCII 原型一致。
