@@ -21,6 +21,8 @@ import (
 type Service struct {
 	store                     *storage.Store
 	repo                      *storage.TaskRepository
+	taskSeriesRepo            *storage.TaskSeriesRepository
+	taskOccurrenceRepo        *storage.TaskOccurrenceRepository
 	projectRepo               *storage.ProjectRepository
 	configRepo                *storage.ConfigRepository
 	configDefRepo             *storage.ConfigDefinitionRepository
@@ -180,6 +182,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 	svc := &Service{
 		store:                     opts.Store,
 		repo:                      storage.NewTaskRepository(opts.Store.DB()),
+		taskSeriesRepo:            storage.NewTaskSeriesRepository(opts.Store.DB()),
+		taskOccurrenceRepo:        storage.NewTaskOccurrenceRepository(opts.Store.DB()),
 		projectRepo:               storage.NewProjectRepository(opts.Store.DB()),
 		configRepo:                storage.NewConfigRepository(opts.Store.DB()),
 		configDefRepo:             storage.NewConfigDefinitionRepository(opts.Store.DB()),
@@ -248,6 +252,8 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone := *s
 	clone.store = store
 	clone.repo = storage.NewTaskRepository(store.DB())
+	clone.taskSeriesRepo = storage.NewTaskSeriesRepository(store.DB())
+	clone.taskOccurrenceRepo = storage.NewTaskOccurrenceRepository(store.DB())
 	clone.projectRepo = storage.NewProjectRepository(store.DB())
 	clone.configRepo = storage.NewConfigRepository(store.DB())
 	clone.configDefRepo = storage.NewConfigDefinitionRepository(store.DB())
