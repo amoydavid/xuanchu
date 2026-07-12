@@ -1,0 +1,1293 @@
+# 璇础循环任务系列、范围投影与按需物化 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 用独立 `task_series` 聚合、有界 occurrence 投影、执行期/首次写物化和 exception/tombstone，替换现有 hidden recurring Task，并让 CLI、HTTP、Remote、MCP 与 Web Console 使用同一行为契约。
+
+**Architecture:** `internal/task` 只保留普通任务与已物化 occurrence；新的 `internal/taskseries` 负责 series、rule version 和槽位计算。`internal/app` 提供唯一的 Series CRUD、TaskOccurrenceView、范围 merge、稳定 occurrence resolver 与原子写前物化；所有传输层只做输入解析和 envelope。Scheduler 负责执行期补齐，Web/HTTP/MCP 的有限日期读取即使 scheduler 延迟也能计算 projected occurrence。
+
+**Tech Stack:** Go 1.25 / GORM / SQLite `github.com/glebarez/sqlite` / PostgreSQL `gorm.io/driver/postgres` / Cobra / chi + Huma / MCP Go SDK / React + TypeScript + TanStack Router + React Query + shadcn/ui / Vitest + Testing Library / pnpm
+
+**Spec:** `docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md`
+
+## Global Constraints
+
+- 文档、代码注释、用户可见文案和提交信息以中文为主。
+- SQLite 继续使用 `github.com/glebarez/sqlite`，禁止引入 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`。
+- PostgreSQL 继续使用 `gorm.io/driver/postgres`；所有 schema、索引和 repository 行为必须同时覆盖 SQLite/PostgreSQL。
+- `Task.status` 移除 `recurring`；`Task.parent` 只表示手工父子任务；occurrence 只通过 `series_id` 关联 series。
+- 不兼容 Taskwarrior JSON、hidden recurring parent、`mask/imask` 或 `add ... recur:*` 循环命令；只保留帮助性 `task_series_endpoint_required` 错误。
+- 普通任务和循环系列不提供互转入口。
+- date-only `due` / `until` 按本地 `23:59:59`；`wait` / `scheduled` 按本地 `00:00:00`；range 一律左闭右开。
+- projected occurrence 的读取禁止写库、分配 UUID/project_seq、写 audit 或发 Hook。
+- occurrence 的公开 `id` 在投影/物化前后固定为 `occ:<series_uuid>:<recurrence_at_unix>`。
+- 所有用户引用使用 `task.UserInfo` / `task.JSONUserInfo`，不输出裸用户 UUID。
+- MCP tool name 使用下划线，`Content[0].text` 的 ToolEnvelope 与 `structuredContent` 语义一致。
+- Web 全局侧栏不新增循环任务；series 只进入项目级“循环规则”Tab。
+- 不提交 `internal/webconsole/dist`、本地二进制、数据库、token、缓存或临时文件。
+- 每个后端任务至少运行其定向测试；最终必须运行 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu`、`go vet ./...`。
+- Web 任务最终必须运行 `pnpm --dir web typecheck`、`pnpm --dir web test`、`pnpm --dir web lint`、`pnpm --dir web build`、`pnpm --dir web run smoke:editing`。
+
+---
+
+## 范围与依赖顺序
+
+本 Spec 横跨多个层，但不是可独立发布的多个产品：协议和 Web 都依赖同一 App 投影/物化语义，拆成多份计划会产生不可运行的中间契约。因此保留一个实施计划，并以任务 1–14 的依赖顺序推进。任务 1–7 完成后后端领域闭环成立；任务 8–10 接入协议；任务 11–13 完成 Web；任务 14 做原生 bundle、文档和全量验收。
+
+## Spec 覆盖映射
+
+| Spec 范围 | 实施任务 |
+|---|---|
+| §1–5 背景、兼容边界、方案选型 | Global Constraints；Task 2–3、9、14 删除旧契约 |
+| §6–7 术语、Series/Task 数据模型、rule versions、UserInfo | Task 1–5 |
+| §8–10 日历语义、scheduler、生命周期 | Task 4、6、7 |
+| §11–12 CRUD、canonical recurrence | Task 1、5、6 |
+| §13 HTTP/Remote/CLI | Task 8–9 |
+| §14 MCP | Task 10 |
+| §15–16 Web IA、ASCII 原型、数据流 | Task 11–13 |
+| §17 查询、列表、项目统计 | Task 4、7、8、13 |
+| §18 审计、事件与自动化 | Task 5–7 |
+| §19 项目关闭 | Task 7 |
+| §20 原生 bundle 与 schema 切换 | Task 2–3、14 |
+| §21–22 错误码、并发、事务 | Task 3–8 |
+| §23–25 测试、验收、交付拆分 | 每个任务的 TDD 步骤；Task 14 全量验收 |
+
+## 文件结构
+
+**新建领域与 App 文件：**
+
+- `internal/taskseries/model.go` — Series、RuleVersion、状态、输入 invariant。
+- `internal/taskseries/recurrence.go` — canonical parser、Next、ExpandRange、rule-version 分段。
+- `internal/taskseries/recurrence_test.go` — 日期、月末、时区、分段和范围测试。
+- `internal/app/task_occurrence.go` — occurrence_ref、TaskOccurrenceView、range merge、读 resolver。
+- `internal/app/task_series.go` — Series CRUD、view、共享字段同步、stop/skip。
+- `internal/app/task_series_scheduler.go` — 执行期 reconcile 与后台循环。
+- `internal/app/task_series_test.go` — Series 用例与事务测试。
+- `internal/app/task_occurrence_test.go` — projection/materialization/merge/write resolver 测试。
+- `internal/app/task_series_scheduler_test.go` — daily、停机补齐、并发和上限测试。
+
+**新建存储文件：**
+
+- `internal/storage/task_series_repo.go` — series/rule versions/关联字段 CRUD 与扫描。
+- `internal/storage/task_series_repo_test.go` — SQLite repository 契约。
+- `internal/storage/task_occurrence_repo.go` — 槽位唯一写入、range exception 与 counts。
+- `internal/storage/task_occurrence_repo_test.go` — occurrence 幂等、range、overrides 测试。
+- `internal/storage/migration_task_series.go` — 旧 recurring 检测、普通 Task schema 切换、partial index。
+
+**新建协议文件：**
+
+- `internal/httpapi/task_series.go`、`internal/httpapi/task_series_test.go` — Series HTTP CRUD。
+- `internal/remote/task_series.go`、`internal/remote/task_series_test.go` — Remote client。
+- `internal/cli/series.go`、`internal/cli/series_test.go` — 专用 CLI 命令。
+- `internal/mcpserver/tools_task_series.go`、`internal/mcpserver/tools_task_series_test.go` — 七个 series tools。
+- `internal/mcpserver/testdata/task_series_*.schema.json` — MCP schema golden files。
+
+**新建 Web 文件：**
+
+- `web/src/features/workspace/project-workbench/api/task-series-api.ts` — TS 契约和 API client。
+- `web/src/features/workspace/project-workbench/api/task-series-api.test.ts` — URL/body 契约。
+- `web/src/features/workspace/project-workbench/task-series/task-series-page.tsx` — Series 列表页。
+- `web/src/features/workspace/project-workbench/task-series/task-series-detail-page.tsx` — Series 详情与历史。
+- `web/src/features/workspace/project-workbench/task-series/task-series-dialog.tsx` — 编辑规则和 effective_from。
+- `web/src/features/workspace/project-workbench/task-series/task-series-stop-dialog.tsx` — 停止确认。
+- `web/src/features/workspace/project-workbench/task-series/*.test.tsx` — 页面/弹窗测试。
+- `web/src/routes/workspace/ProjectTaskSeriesRoute.tsx`、`ProjectTaskSeriesDetailRoute.tsx` — lazy route 包装。
+
+**重点修改文件：**
+
+- `internal/task/model.go`、`internal/task/json.go`、`internal/task/modification.go` — 移除旧 recurrence 字段，增加 occurrence 持久字段。
+- `internal/storage/models.go`、`migrate_sqlite.go`、`migrate_postgres.go`、`task_repo.go`、`project_repo.go` — schema、repo、统计。
+- `internal/app/service.go`、`project.go`、`hook_event.go`、`task_audit_payload.go` — repository 注入、旧逻辑删除、项目关闭和事件。
+- `internal/httpapi/tasks.go`、`huma_routes.go`、`error_status.go` — TaskOccurrenceView、range query、Series routes。
+- `internal/remote/task.go`、`internal/cli/add.go`、`list.go`、`root.go`、`server.go` — 原生 Task/Series 边界和 scheduler wiring。
+- `internal/mcpserver/tools_task.go`、`tools_views.go`、`schema_test.go` — occurrence view 与 schema。
+- `web/src/features/workspace/project-workbench/api/task-api.ts`、`project-api.ts`、任务列表/详情/创建、My Tasks、project tabs/layout、router、locales — Web 完整闭环。
+
+---
+
+### Task 1: 建立 TaskSeries 领域与规则版本展开
+
+**目标：** 建立不依赖 GORM/CLI 的 Series 领域，定义 canonical rule、状态、rule-version 段和有界槽位展开。
+
+**Files:**
+
+- Create: `internal/taskseries/model.go`
+- Create: `internal/taskseries/recurrence.go`
+- Create: `internal/taskseries/recurrence_test.go`
+- Modify: `internal/recurrence/recurrence.go`（完成调用方迁移后删除该包；本任务先保留转发，避免中间提交无法编译）
+
+**Interfaces:**
+
+- Produces:
+  - `type Series struct`
+  - `type RuleVersion struct`
+  - `type Slot struct { RecurrenceAt int64; Rule string }`
+  - `func ValidateSeries(Series) error`
+  - `func ValidateRule(string) error`
+  - `func Next(int64, string, *time.Location) (int64, error)`
+  - `func ExpandRange([]RuleVersion, until *int64, start, end int64, loc *time.Location) ([]Slot, error)`
+- Consumes: only Go stdlib.
+
+- [ ] **Step 1: 写失败测试覆盖 canonical rule 与 rule-version 切换**
+
+Create `internal/taskseries/recurrence_test.go`:
+
+```go
+package taskseries
+
+import (
+	"testing"
+	"time"
+)
+
+func TestExpandRangeUsesRuleVersionAnchors(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil { t.Fatal(err) }
+	day := func(value string) int64 {
+		ts, err := time.ParseInLocation("2006-01-02 15:04:05", value+" 23:59:59", loc)
+		if err != nil { t.Fatal(err) }
+		return ts.Unix()
+	}
+	versions := []RuleVersion{
+		{EffectiveFrom: day("2026-07-01"), RecurrenceRule: "weekly"},
+		{EffectiveFrom: day("2026-07-15"), RecurrenceRule: "daily"},
+	}
+	slots, err := ExpandRange(versions, nil, day("2026-07-01"), day("2026-07-18")+1, loc)
+	if err != nil { t.Fatal(err) }
+	want := []int64{day("2026-07-01"), day("2026-07-08"), day("2026-07-15"), day("2026-07-16"), day("2026-07-17"), day("2026-07-18")}
+	if len(slots) != len(want) { t.Fatalf("len=%d want=%d: %#v", len(slots), len(want), slots) }
+	for i := range want {
+		if slots[i].RecurrenceAt != want[i] { t.Fatalf("slot[%d]=%d want=%d", i, slots[i].RecurrenceAt, want[i]) }
+	}
+}
+
+func TestValidateRuleRejectsAliases(t *testing.T) {
+	for _, value := range []string{"biweekly", "quarterly", "annual", "yearly", "0days"} {
+		if err := ValidateRule(value); err == nil { t.Fatalf("ValidateRule(%q) succeeded", value) }
+	}
+}
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/taskseries -run 'TestExpandRangeUsesRuleVersionAnchors|TestValidateRuleRejectsAliases' -count=1`
+
+Expected: FAIL，提示 `internal/taskseries` 或 `RuleVersion`/`ExpandRange` 尚不存在。
+
+- [ ] **Step 3: 实现领域类型与展开算法**
+
+Create `internal/taskseries/model.go` with the exact persistent-domain fields:
+
+```go
+package taskseries
+
+type Series struct {
+	ID, WorkspaceID, ProjectID, Title string
+	Description *string
+	Status string
+	RecurrenceRule string
+	FirstDue int64
+	Until, EffectiveEndAt *int64
+	StopReason *string
+	Priority *string
+	AssigneeIDs, Tags []string
+	UDAs map[string]string
+	CreatedBy string
+	CreatedAt, ModifiedAt int64
+	RuleVersions []RuleVersion
+}
+
+type RuleVersion struct {
+	ID, SeriesID string
+	EffectiveFrom int64
+	RecurrenceRule, CreatedBy string
+	CreatedAt int64
+}
+
+const (
+	StatusActive = "active"
+	StatusEnded = "ended"
+	StatusStopped = "stopped"
+)
+```
+
+Create `internal/taskseries/recurrence.go`; implement `daily|weekly|monthly|<N>days|<N>weeks|<N>months`, sort and validate versions, expand each `[effective_from[i], effective_from[i+1])` segment, clip to `[start,end)` and inclusive `until`, and return sorted unique `Slot` values. Keep `time.AddDate` month-end behavior. `ExpandRange` rejects `end <= start`, nil location and duplicate/non-increasing `effective_from`; the 366-day product limit belongs to App `TaskViewQuery` validation.
+
+- [ ] **Step 4: 补齐日期与 invariant 测试**
+
+Append tests for daily/weekly/monthly/N-unit, inclusive until, left-closed/right-open range, Asia/Shanghai date boundary, duplicate rule versions, empty title/project, invalid series status, and `ended/stopped` missing `effective_end_at`.
+
+- [ ] **Step 5: 运行领域测试**
+
+Run: `go test ./internal/taskseries -count=1`
+
+Expected: PASS。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add internal/taskseries internal/recurrence
+git commit -m "feat: 建立循环系列领域与规则展开"
+```
+
+### Task 2: 在 Task 领域引入 occurrence invariant
+
+**目标：** 先增加已物化 occurrence 的持久字段与 invariant，让后续 schema 切换有可编译的目标类型；旧 hidden recurring 字段在 Task 3 与存储引用一起原子删除。
+
+**Files:**
+
+- Modify: `internal/task/model.go`
+- Modify: `internal/task/model_test.go`
+- Modify: `internal/task/json.go`
+- Modify: `internal/task/json_test.go`
+- Modify: `internal/task/modification.go`
+- Modify: `internal/task/modification_test.go`
+
+**Interfaces:**
+
+- Produces on `task.Task`:
+  - `SeriesID *string`
+  - `RecurrenceAt *int64`
+  - `RecurrenceRuleSnapshot *string`
+  - `RecurrenceOverrides []string`
+- Defers to Task 3: `StatusRecurring`, `Recur`, `Mask`, `IMask` removal. `Until` remains an ordinary Task field but is no longer a series snapshot.
+
+- [ ] **Step 1: 写失败测试定义新的 Task invariant**
+
+Add to `internal/task/model_test.go`:
+
+```go
+func TestTaskValidateOccurrenceInvariant(t *testing.T) {
+	seriesID := "series-1"
+	slot := int64(100)
+	rule := "daily"
+	base := Task{UUID: "task-1", WorkspaceID: "ws-1", Title: "巡检", Status: StatusPending}
+	for name, mutate := range map[string]func(*Task){
+		"series without slot": func(v *Task) { v.SeriesID = &seriesID },
+		"slot without series": func(v *Task) { v.RecurrenceAt = &slot },
+		"series without snapshot": func(v *Task) { v.SeriesID = &seriesID; v.RecurrenceAt = &slot },
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := base
+			mutate(&value)
+			if err := value.Validate(); err == nil { t.Fatal("Validate succeeded") }
+		})
+	}
+	base.SeriesID, base.RecurrenceAt, base.RecurrenceRuleSnapshot = &seriesID, &slot, &rule
+	if err := base.Validate(); err != nil { t.Fatalf("Validate: %v", err) }
+}
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/task -run TestTaskValidateOccurrenceInvariant -count=1`
+
+Expected: FAIL，提示新字段不存在。
+
+- [ ] **Step 3: 增加 Task occurrence 字段和 JSON**
+
+Add the four occurrence fields. `Validate` must enforce all three pointer fields are either all nil or all non-nil; `RecurrenceOverrides` must be sorted/unique and restricted to `title description priority due assignees tags udas wait scheduled depends`。普通 `Parent` 保留；Task JSON adds `series_id`、`recurrence_at`、`recurrence_rule_snapshot`、`recurrence_overrides`。为保证本提交全仓可编译，旧字段和 `StatusRecurring` 暂时保留且不得被新 occurrence 路径使用；Task 3 在迁移 storage model/repository 的同一提交中删除它们。
+
+- [ ] **Step 4: 修改 modification diff 与审计字段集合**
+
+Add occurrence fields to JSON/model round-trip but do not expose setters in ordinary `Modification`. Ensure occurrence rule/snapshot/series ID cannot be changed through ordinary `ModifyInput`; `due` remains modifiable and is the only date field that can diverge from `recurrence_at`.
+
+- [ ] **Step 5: 更新单元测试并运行**
+
+Run: `go test ./internal/task -count=1`
+
+Expected: PASS；JSON round-trip includes occurrence fields；旧字段删除断言由 Task 3 完成。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add internal/task
+git commit -m "refactor: 为任务引入循环实例关联"
+```
+
+### Task 3: 新增 Series/Occurrence schema、迁移与 repositories
+
+**目标：** 建立 SQLite/PostgreSQL 等价的独立表、关联表、规则版本和 occurrence 唯一槽位，并明确拒绝旧 recurring 数据。
+
+**Files:**
+
+- Modify: `internal/task/model.go`
+- Modify: `internal/task/json.go`
+- Modify: `internal/task/modification.go`
+- Modify: `internal/task/model_test.go`
+- Modify: `internal/task/json_test.go`
+- Modify: `internal/task/modification_test.go`
+- Modify: `internal/storage/models.go`
+- Modify: `internal/storage/migrate_sqlite.go`
+- Modify: `internal/storage/migrate_postgres.go`
+- Create: `internal/storage/migration_task_series.go`
+- Create: `internal/storage/task_series_repo.go`
+- Create: `internal/storage/task_series_repo_test.go`
+- Create: `internal/storage/task_occurrence_repo.go`
+- Create: `internal/storage/task_occurrence_repo_test.go`
+- Modify: `internal/storage/task_repo.go`
+- Modify: `internal/storage/task_repo_test.go`
+- Modify: `internal/storage/db_test.go`
+- Modify: `internal/storage/postgres_test.go`
+
+**Interfaces:**
+
+- Produces:
+  - `NewTaskSeriesRepository(*gorm.DB) *TaskSeriesRepository`
+  - `Create(series taskseries.Series) (taskseries.Series, error)`
+  - `Get(workspaceID, seriesID string) (taskseries.Series, error)`
+  - `List(TaskSeriesListOptions) ([]taskseries.Series, int, error)`
+  - `Update(series taskseries.Series) error`
+  - `ListActive(limit, offset int) ([]taskseries.Series, error)`
+  - `StopProjectSeries(workspaceID, projectID string, at int64, reason string) ([]taskseries.Series, error)`
+  - `NewTaskOccurrenceRepository(*gorm.DB) *TaskOccurrenceRepository`
+  - `CreateOccurrence(task.Task) (task.Task, bool, error)`
+  - `GetOccurrence(workspaceID, seriesID string, recurrenceAt int64) (task.Task, error)`
+  - `ListOccurrenceExceptions(OccurrenceRangeOptions) ([]task.Task, error)`
+  - `CountSeriesOccurrences(workspaceID, seriesID string, now int64) (OccurrenceCounts, error)`
+
+- [ ] **Step 1: 写 repository 失败测试**
+
+Create `internal/storage/task_series_repo_test.go` with a lifecycle test that creates workspace/project/user, creates an active daily series with one rule version and assignee/tag/UDA, reloads it, appends a rule version, lists by project/status, and stops it. Assert all associations and timestamps round-trip.
+
+Create `internal/storage/task_occurrence_repo_test.go` with:
+
+```go
+func TestCreateOccurrenceIsUniqueBySeriesSlotForever(t *testing.T) {
+	store, ws, project, series := newTaskSeriesRepoFixture(t)
+	repo := NewTaskOccurrenceRepository(store.DB())
+	slot, rule := int64(100), "daily"
+	seriesID := series.ID
+	row := domain.Task{UUID: "occ-1", WorkspaceID: ws.ID, Title: "巡检", Status: domain.StatusPending, ProjectID: &project.ID, SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule}
+	first, existed, err := repo.CreateOccurrence(row)
+	if err != nil || existed { t.Fatalf("first=%#v existed=%v err=%v", first, existed, err) }
+	row.UUID = "occ-2"
+	second, existed, err := repo.CreateOccurrence(row)
+	if err != nil || !existed || second.UUID != first.UUID { t.Fatalf("second=%#v existed=%v err=%v", second, existed, err) }
+	first.Status = domain.StatusCompleted
+	if err := NewTaskRepository(store.DB()).Update(first); err != nil { t.Fatal(err) }
+	row.UUID = "occ-3"
+	third, existed, err := repo.CreateOccurrence(row)
+	if err != nil || !existed || third.UUID != first.UUID { t.Fatalf("third=%#v existed=%v err=%v", third, existed, err) }
+}
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/storage -run 'TestTaskSeries|TestCreateOccurrence' -count=1`
+
+Expected: FAIL，提示 repositories/models 不存在。
+
+- [ ] **Step 3: 新增 GORM models 与索引**
+
+Add `TaskSeries`、`TaskSeriesRuleVersion`、`TaskSeriesAssignee`、`TaskSeriesTag`、`TaskSeriesUDAValue`, explicitly mapping to `task_series`、`task_series_rule_versions`、`task_series_assignees`、`task_series_tags`、`task_series_uda_values`; add occurrence columns to storage `Task`. Create partial unique index with dialect-specific SQL:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_ws_series_slot
+ON tasks(workspace_id, series_id, recurrence_at)
+WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL;
+```
+
+PostgreSQL and SQLite must both install the same logical constraint. Foreign keys from occurrence and association rows use RESTRICT for series history, while association rows may cascade when a development database row is explicitly removed.
+
+Also create `UNIQUE(series_id,effective_from)` on `task_series_rule_versions`, `(workspace_id,project_id,status)` on `task_series`, and lookup indexes for series assignees, recurrence_at and due. Repository tests must assert duplicate rule cutover fails and cross-workspace/project associations are rejected.
+
+- [ ] **Step 4: 实现破坏性 recurring schema 检测**
+
+Before dropping/rebuilding old columns, use `Migrator().HasTable/HasColumn` so a fresh database never queries nonexistent legacy columns. If old columns exist, query `tasks WHERE status='recurring' OR recur IS NOT NULL OR mask IS NOT NULL OR i_mask IS NOT NULL LIMIT 1`; if found, return an error containing `旧循环任务数据不支持自动迁移，请备份后重建开发数据库`. Preserve normal task rows, UUID, project_seq and associations during SQLite table rebuild. PostgreSQL drops old recurrence columns only after the same guard passes.
+
+- [ ] **Step 5: 实现 repositories 和 model mapping**
+
+Use one transaction for series row + rule versions + assignees/tags/UDAs. `CreateOccurrence` catches unique constraint, reads by `(workspace_id,series_id,recurrence_at)`, and returns `(existing,true,nil)` regardless of existing task status. `ListOccurrenceExceptions` must query `(recurrence_at >= start AND recurrence_at < end) OR (due >= start AND due < end)` so rescheduled occurrences suppress the original slot and appear on the new date.
+
+- [ ] **Step 6: 更新 TaskRepository**
+
+Remove `CreateRecurringChild` and `RecurringParents`; map new occurrence columns and override JSON in `Create/Update/fromModel/toModel`. In the same code change delete `StatusRecurring`、`Task.Recur/Mask/IMask`、JSON fields、modification setters and old audit labels from `internal/task`; keep ordinary Task `Until`. `recur/mask/imask` remain explicitly reserved-and-rejected during JSON decode so they cannot silently become UDA fields. `List` no longer needs hidden-template filtering because series is not in `tasks`.
+
+- [ ] **Step 7: 运行 SQLite/PostgreSQL 存储测试**
+
+Run: `go test ./internal/storage -count=1`
+
+Run when PostgreSQL test DSN is configured: `go test ./internal/storage -run Postgres -count=1`
+
+Expected: PASS；未配置 PostgreSQL 时现有测试按项目约定 SKIP，不得伪报通过。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add internal/task internal/storage
+git commit -m "feat: 持久化循环系列与唯一实例槽位"
+```
+
+### Task 4: 建立 App 统一 View、稳定引用与范围 merge
+
+**目标：** 让普通 Task、projected occurrence 和 materialized occurrence 映射到同一 App view，并实现无副作用的有限范围合并。
+
+**Files:**
+
+- Create: `internal/app/task_occurrence.go`
+- Create: `internal/app/task_occurrence_test.go`
+- Modify: `internal/app/service.go`
+- Modify: `internal/app/service_test.go`
+- Modify: `internal/app/user_info.go`
+
+**Interfaces:**
+
+- Produces:
+  - `type OccurrenceMode string` with `auto|materialized|expand`
+  - `type TaskOccurrenceView struct`
+  - `type RecurrenceInfo struct`
+  - `type TaskViewPage struct { Items []TaskOccurrenceView; Total, Limit, Offset int; OccurrenceMode OccurrenceMode; Range *TaskViewRange }`
+  - `func OccurrenceRef(seriesID string, recurrenceAt int64) string`
+  - `func ParseOccurrenceRef(string) (seriesID string, recurrenceAt int64, err error)`
+  - `func (s *Service) QueryTaskViews(TaskViewQuery) (TaskViewPage, error)`
+  - `func (s *Service) GetTaskView(ref string) (TaskOccurrenceView, error)`
+- Consumes: Task 1 domain expansion and Task 3 repositories.
+
+- [ ] **Step 1: 写 occurrence_ref 与 merge 失败测试**
+
+Create `internal/app/task_occurrence_test.go`:
+
+```go
+func TestOccurrenceRefRoundTrip(t *testing.T) {
+	ref := OccurrenceRef("11111111-1111-1111-1111-111111111111", 1783785599)
+	seriesID, slot, err := ParseOccurrenceRef(ref)
+	if err != nil { t.Fatal(err) }
+	if seriesID != "11111111-1111-1111-1111-111111111111" || slot != 1783785599 { t.Fatalf("%s %d", seriesID, slot) }
+}
+
+func TestQueryTaskViewsMergesProjectedExceptionAndTombstoneWithoutWrites(t *testing.T) {
+	svc, fixture := newOccurrenceFixture(t)
+	before := fixture.taskRowCount(t)
+	page, err := svc.QueryTaskViews(TaskViewQuery{OccurrenceMode: OccurrenceModeExpand, Range: &TaskViewRange{Start: fixture.day("2026-07-11"), End: fixture.day("2026-07-15")}})
+	if err != nil { t.Fatal(err) }
+	if got := fixture.ids(page.Items); !reflect.DeepEqual(got, fixture.expectedMergedIDs()) { t.Fatalf("ids=%#v", got) }
+	if after := fixture.taskRowCount(t); after != before { t.Fatalf("read materialized rows: before=%d after=%d", before, after) }
+	if fixture.auditCount(t) != 0 { t.Fatal("read wrote audit") }
+}
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/app -run 'TestOccurrenceRef|TestQueryTaskViewsMerges' -count=1`
+
+Expected: FAIL，提示 view/query 不存在。
+
+- [ ] **Step 3: 实现 View 类型与稳定引用**
+
+Add `taskSeriesRepo` and `taskOccurrenceRepo` to `Service`, initialize them in `NewService`, and rebind both in `withStore` so transactions never retain a non-transactional DB handle. `TaskOccurrenceView` must contain all fields required by current Task reads, plus `ID`、nullable `UUID/TaskSlug/ProjectSeq` and `RecurrenceInfo`. `RecurrenceInfo` fields are `Role`、`SeriesID`、`SeriesStatus`、`Rule`、`RecurrenceAt`、`Materialization`、`Overrides`、`Until`。普通任务 `ID=UUID`、`RecurrenceInfo=nil`; occurrence `ID=occurrence_ref` even after materialization.
+
+- [ ] **Step 4: 实现 merge 算法**
+
+`OccurrenceModeExpand` requires a complete range no longer than 366 days. Load ordinary tasks, candidate series+rule versions, projected slots, and materialized exceptions. Deduplicate by public ID; materialized rows override projected rows; deleted rows suppress projection unless deleted is explicitly requested. Include an exception when either original `recurrence_at` or current `due` intersects the range. Apply status/project/assignee/priority/tag/q filters after merge, then stable sort with `ID` final tie-breaker, then offset/limit.
+
+- [ ] **Step 5: 实现 GetTaskView**
+
+For an occurrence ref, first read materialized row; otherwise load scoped series and validate the slot against its rule-version segment, until and effective end. Return `task_occurrence_not_found` for arbitrary/non-member slots. The method must not write. UUID/task_slug lookup continues to return materialized tasks.
+
+- [ ] **Step 6: 补测试并运行**
+
+Add tests for rescheduled exception appearing only at new due while suppressing old projection, deleted tombstone, stopped historical range, rule-version history, 366-day limit, pagination tie-breaker, UserInfo assignees, and `auto` choosing materialized without a full range.
+
+Run: `go test ./internal/app -run 'Occurrence|TaskView' -count=1`
+
+Expected: PASS。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add internal/app/task_occurrence.go internal/app/task_occurrence_test.go internal/app/service.go internal/app/service_test.go internal/app/user_info.go
+git commit -m "feat: 合并任务与循环实例视图"
+```
+
+### Task 5: 实现 Series CRUD、共享字段和 rule-version 修改
+
+**目标：** 在 App 层提供唯一 Series CRUD，原子创建、读取、修改、停止和跳过，并用完整 UserInfo 输出。
+
+**Files:**
+
+- Create: `internal/app/task_series.go`
+- Create: `internal/app/task_series_test.go`
+- Modify: `internal/app/service.go`
+- Modify: `internal/app/permission.go`
+- Modify: `internal/app/task_audit_payload.go`
+- Modify: `internal/app/task_audit_payload_test.go`
+- Modify: `internal/app/hook_event.go`
+- Modify: `internal/app/hook_test.go`
+
+**Interfaces:**
+
+- Produces:
+  - `type AddTaskSeriesInput struct`
+  - `type ModifyTaskSeriesInput struct`
+  - `type StopTaskSeriesInput struct`
+  - `type TaskSeriesView struct`
+  - `func (s *Service) AddTaskSeries(AddTaskSeriesInput) (TaskSeriesCreateResult, error)`
+  - `func (s *Service) ListTaskSeries(TaskSeriesListInput) (TaskSeriesPage, error)`
+  - `func (s *Service) GetTaskSeries(id string) (TaskSeriesDetailView, error)`
+  - `func (s *Service) ModifyTaskSeries(id string, ModifyTaskSeriesInput) (TaskSeriesView, error)`
+  - `func (s *Service) StopTaskSeries(id string, StopTaskSeriesInput) (TaskSeriesView, error)`
+  - `func (s *Service) SkipTaskSeriesOccurrence(seriesID, occurrenceRef string) (TaskOccurrenceView, error)`
+  - `func (s *Service) materializeOccurrenceLocked(series taskseries.Series, slot taskseries.Slot, status string) (task.Task, bool, error)`
+  - `func (s *Service) ReconcileTaskSeries(seriesID string, now int64, limit int) (TaskSeriesReconcileResult, error)`
+- Consumes: Tasks 1–4.
+
+- [ ] **Step 1: 写创建与修改失败测试**
+
+Create `internal/app/task_series_test.go` with tests that:
+
+1. create a future daily series and assert one series row, one initial rule version, no task row, projected first occurrence and `task.series.created` audit;
+2. create a due-today series and assert first occurrence is materialized with project_seq and `task.created` follows `task.series.created`;
+3. modify weekly→daily with explicit future `effective_from`, assert old rule row remains and future preview uses the new anchor;
+4. reject rule modify without `effective_from`, with effective date today/past, beyond until, or while backlog remains;
+5. reject wait/scheduled/depends/parent and closed project.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/app -run 'Test(Add|Modify)TaskSeries' -count=1`
+
+Expected: FAIL，提示 use cases/types 不存在。
+
+- [ ] **Step 3: 实现输入、View 和创建事务**
+
+Use the Task 4 repositories already wired into `Service`. `AddTaskSeriesInput` fields: Title, Description, Project/ProjectID, RecurrenceRule, FirstDue, Until, Priority, Assignees, Tags, UDAs. Resolve project and members using existing App helpers. In one `Store.Transaction`: create series+associations+initial RuleVersion, append `task.series.created`, and call `materializeOccurrenceLocked` only when first slot's local `available_at <= now`. Implement the workspace-scoped `ReconcileTaskSeries` core here; Task 7's scheduler only finds active series, applies global limits and invokes this method.
+
+`TaskSeriesView.CreatedBy` and all assignees must use `task.UserInfo`; unresolved IDs use the repository-wide fallback `{ID:id,Name:id}`. Register `task.series.created|modified|ended|stopped` and `task.recurrence.generated|skipped` in the event allowlist. Pure projection emits nothing; materialization emits one `task.created` with recurrence_info.
+
+- [ ] **Step 4: 实现修改事务**
+
+Before any modify, run reconcile for entered backlog; if remaining is nonzero, return `task_recurrence_backlog` without changes. Shared field updates sync only open materialized occurrences whose `RecurrenceOverrides` lacks that field. Rule updates require `EffectiveFrom`, append one RuleVersion, update current `RecurrenceRule`, and return three future slots. `FirstDue` and project are immutable. Shortening until never deletes existing occurrences; when the new inclusive until is already behind the execution boundary, atomically mark the series ended and retain history.
+
+- [ ] **Step 5: 实现 stop 与 skip**
+
+Stop writes `status=stopped`、`effective_end_at=now`、reason and audit. Default preserves open occurrences. With `DeleteOpenOccurrences`, delete materialized open rows and create tombstones for entered projected slots in the same transaction; reject more than 1000 slots atomically. Skip validates series membership and creates/updates one deleted occurrence with `task.recurrence.skipped` audit.
+
+- [ ] **Step 6: 运行 CRUD 测试**
+
+Run: `go test ./internal/app -run 'TaskSeries|SeriesOccurrence' -count=1`
+
+Expected: PASS；事务失败测试证明 series/audit/occurrence 不会部分提交。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add internal/app/task_series.go internal/app/task_series_test.go internal/app/service.go internal/app/permission.go internal/app/task_audit_payload.go internal/app/task_audit_payload_test.go internal/app/hook_event.go internal/app/hook_test.go
+git commit -m "feat: 实现循环系列完整用例"
+```
+
+### Task 6: 实现写前物化与 occurrence 生命周期
+
+**目标：** 所有 Task 写入口都能解析 occurrence_ref，在一个事务中物化并执行本次动作；失败动作不制造实体。
+
+**Files:**
+
+- Modify: `internal/app/task_occurrence.go`
+- Modify: `internal/app/task_occurrence_test.go`
+- Modify: `internal/app/service.go`
+- Modify: `internal/app/service_test.go`
+- Modify: `internal/app/workspace.go`
+- Modify: `internal/app/task_change_events.go`
+- Modify: `internal/app/task_change_events_test.go`
+
+**Interfaces:**
+
+- Produces:
+  - `func (s *Service) ResolveTaskForRead(ref string) (TaskOccurrenceView, error)`
+  - `func (s *Service) MaterializeOccurrenceForWrite(ref string) (task.Task, bool, error)`
+  - `func (s *Service) WithTaskForWrite(ref string, action func(*Service, task.Task) error) (TaskOccurrenceView, error)`
+- Consumed by HTTP, MCP, CLI and task subresource handlers.
+
+- [ ] **Step 1: 写动作矩阵失败测试**
+
+Add table tests for projected `modify/start/done/delete/annotate/link/dependency/child` and projected invalid `stop/reopen`. Assert valid writes create exactly one task and preserve public ID; stop/reopen return existing status errors and leave row count unchanged. Run each valid action twice concurrently and assert one physical row.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/app -run 'ProjectedOccurrence|MaterializeOccurrence' -count=1`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 resolver 与原子事务包装**
+
+Parse occurrence_ref, validate scope/series/rule version, create Task with snapshot/current shared fields, allocate project_seq and append `task.created`; then execute action before the same transaction commits. If unique insert loses a race, reload the winner and continue the action. Return `TaskOccurrenceView` whose ID remains occurrence_ref.
+
+- [ ] **Step 4: 记录字段 override**
+
+Ordinary task modifications on occurrence add sorted unique override names for title/description/priority/due/assignees/tags/udas/wait/scheduled/depends, including clear operations. Completed/deleted occurrences never receive shared series updates. Due modification leaves recurrence_at unchanged.
+
+- [ ] **Step 5: 接入全部 task 子资源**
+
+Replace direct `Info→UUID→write` sequences in annotations, links, dependencies and child creation with `WithTaskForWrite`. A projected occurrence may become parent of a manual child after materialization; attempts to set an occurrence's own parent remain rejected.
+
+- [ ] **Step 6: 验证事件顺序和并发**
+
+Run: `go test ./internal/app -run 'ProjectedOccurrence|OccurrenceOverride|TaskChangeEvent' -count=1`
+
+Expected: PASS；audit/Hook order is `task.created` then requested action, and duplicate concurrent calls do not duplicate `task.created`.
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add internal/app
+git commit -m "feat: 原子物化并操作循环实例"
+```
+
+### Task 7: 日历 reconcile、Scheduler、项目关闭与统计
+
+**目标：** 每个已到日历槽位都能独立物化，停机后分批补齐；项目关闭停止 series；普通进度与循环运行指标分离。
+
+**Files:**
+
+- Create: `internal/app/task_series_scheduler.go`
+- Create: `internal/app/task_series_scheduler_test.go`
+- Modify: `internal/cli/server.go`
+- Modify: `internal/cli/server_test.go`
+- Modify: `internal/app/project.go`
+- Create: `internal/app/project_test.go`
+- Modify: `internal/storage/project_repo.go`
+- Modify: `internal/storage/project_repo_test.go`
+- Modify: `internal/httpapi/projects.go`
+- Modify: `internal/httpapi/projects_test.go`
+
+**Interfaces:**
+
+- Produces:
+  - `type TaskSeriesReconcileResult struct { Created int; BacklogRemaining int; Ended bool }`
+  - `type TaskSeriesSchedulerOptions struct { Store *storage.Store; Clock Clock; ServiceFactory func(string) *Service; PerSeriesLimit, GlobalLimit int }`
+  - `func NewTaskSeriesScheduler(TaskSeriesSchedulerOptions) *TaskSeriesScheduler`
+  - `func (s *TaskSeriesScheduler) RunOnce(context.Context) (TaskSeriesReconcileResult, error)`
+  - `func (s *TaskSeriesScheduler) Run(context.Context, time.Duration) error`
+  - project summary fields `RecurringSeriesCount`、`ActiveRecurringSeriesCount`、`OpenRecurringOccurrenceCount`、`OverdueRecurringOccurrenceCount`
+
+- [ ] **Step 1: 写 scheduler 失败测试**
+
+Create tests for: daily yesterday still open but today materializes; five-day downtime creates five rows; repeated/concurrent RunOnce is idempotent; 100-per-series and 1000-global limits return backlog; until transitions active→ended; closed project stops series and creates nothing after close.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/app -run 'TaskSeriesScheduler|DailySeries|SeriesBacklog' -count=1`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 scheduler**
+
+Follow `ProjectAutomationScheduler` wiring: default ServiceFactory, workspace-aware services, `RunOnce`, context cancellation and 60-second `Run`. Scan only active series. For each rule-version slot with local `available_at <= now`, call the same occurrence materializer used by writes. Continue from stored max slot/rule-version anchors, never from editable due. When inclusive until has passed and every legal slot is reconciled, transition to ended once and emit `task.series.ended`.
+
+- [ ] **Step 4: 接入 server 生命周期**
+
+Start one TaskSeriesScheduler in `xuanchu server`: call RunOnce before accepting steady-state ticks, then run every 60 seconds under the existing shutdown coordinator. Local CLI pre-command reconcile is implemented in Task 9 after command exclusions are known.
+
+- [ ] **Step 5: 接入项目 transition**
+
+In the same `TransitionProject` transaction, when target status is archived/cancelled, stop all active project series with reason `project_archived|project_cancelled` and enqueue one `task.series.stopped` event per changed series. Restoring project state does not restore series.
+
+- [ ] **Step 6: 修改项目统计**
+
+Ordinary task_count/pending_count/completed_count must add `series_id IS NULL`. Add the four recurring metrics from series and materialized occurrence repositories. HTTP response and App view use explicit fields; no field is inferred in Web.
+
+- [ ] **Step 7: 运行 scheduler/project 测试**
+
+Run: `go test ./internal/app ./internal/storage ./internal/httpapi ./internal/cli -run 'TaskSeries|ProjectTaskSummary|TransitionProject|Server' -count=1`
+
+Expected: PASS。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add internal/app internal/storage/project_repo.go internal/storage/project_repo_test.go internal/httpapi/projects.go internal/httpapi/projects_test.go internal/cli/server.go internal/cli/server_test.go
+git commit -m "feat: 按日历补齐循环实例"
+```
+
+### Task 8: 统一 HTTP、OpenAPI 与 Remote 契约
+
+**目标：** 暴露 Series CRUD、范围 TaskView 查询和 occurrence 写操作，并让 Remote client 完全复用 HTTP 形状。
+
+**Files:**
+
+- Create: `internal/httpapi/task_series.go`
+- Create: `internal/httpapi/task_series_test.go`
+- Modify: `internal/httpapi/tasks.go`
+- Modify: `internal/httpapi/tasks_test.go`
+- Modify: `internal/httpapi/huma_routes.go`
+- Modify: `internal/httpapi/error_status.go`
+- Modify: `internal/httpapi/error_status_test.go`
+- Create: `internal/remote/task_series.go`
+- Create: `internal/remote/task_series_test.go`
+- Modify: `internal/remote/task.go`
+- Modify: `internal/remote/task_test.go`
+- Modify: `internal/remote/client.go`
+- Modify: `web/src/features/workspace/project-workbench/api/task-api.ts`
+- Modify: `web/src/features/workspace/project-workbench/api/task-api.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/api/project-api.ts`
+- Modify: `web/src/features/workspace/project-workbench/api/project-api.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/hooks/use-project-data.ts`
+
+**Interfaces:**
+
+- HTTP routes:
+  - `POST /api/v1/task-series`
+  - `GET /api/v1/task-series`
+  - `GET/PATCH/DELETE /api/v1/task-series/{seriesRef}`
+  - `GET /api/v1/task-series/{seriesRef}/occurrences`
+  - `POST /api/v1/task-series/{seriesRef}/occurrences/{occurrenceRef}/skip`
+  - `GET /api/v1/tasks?due_after=&due_before=&occurrence_mode=`
+- Task list query also accepts `task_type=all|normal|occurrence`; it filters merged App views and is not a task status.
+- Remote produces `AddTaskSeries`、`ListTaskSeries`、`GetTaskSeries`、`ModifyTaskSeries`、`StopTaskSeries`、`ListTaskSeriesOccurrences`、`SkipTaskSeriesOccurrence`.
+
+HTTP error mapping must cover `task_series_not_found`(404)、`task_series_inactive`(409)、`task_series_due_required`(400)、`task_series_invalid_until`(400)、`task_series_invalid_rule`(400)、`task_series_invalid_effective_from`(400)、`task_series_unsupported_field`(400)、`task_series_project_closed`(409)、`task_series_occurrence_not_found`(404)、`task_recurrence_backlog`(409)、`task_series_endpoint_required`(400)、`task_occurrence_not_found`(404)、`task_occurrence_range_required`(400)、`task_occurrence_range_too_large`(400). Permission remains 403 and hidden scope remains 404.
+
+- [ ] **Step 1: 写 HTTP 合约失败测试**
+
+Add tests for full Series lifecycle, required project/write permission, scope hiding, closed project, recurrence_rule/effective_from validation, UserInfo output, stop/delete_open, and all documented errors/status mappings. Add task list tests for auto/materialized/expand, missing range, >366 days, inclusive date input, projected GET without writes and stable occurrence ID after done.
+
+Use this response assertion shape:
+
+```go
+var page struct {
+	Data struct {
+		Items []struct {
+			ID string `json:"id"`
+			UUID *string `json:"uuid"`
+			RecurrenceInfo *struct {
+				SeriesID string `json:"series_id"`
+				Materialization string `json:"materialization"`
+			} `json:"recurrence_info"`
+		} `json:"items"`
+		Total int `json:"total"`
+		OccurrenceMode string `json:"occurrence_mode"`
+	} `json:"data"`
+}
+```
+
+- [ ] **Step 2: 运行 HTTP 测试确认失败**
+
+Run: `go test ./internal/httpapi -run 'TaskSeries|TaskOccurrence|TaskRange' -count=1`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 DTO/handlers/routes**
+
+Use public JSON field `recurrence_rule`, never `recur`. Task list returns `TaskViewPage` data instead of a bare array. Generic POST `/tasks` uses strict decoding; if raw JSON contains `recur`, return `task_series_endpoint_required`, otherwise unknown fields follow current strict-input policy. PATCH task schema has no recurrence field. Every task and subresource path passes the original taskRef/occurrence_ref to the App write resolver instead of pre-resolving only UUID.
+
+- [ ] **Step 4: 注册 Huma 并验证 OpenAPI**
+
+Register all seven routes in `huma_routes.go`, use request/response structs so `/openapi.json` includes enums, required fields and nullable projected UUID. Add a server test that fetches `/openapi.json` and asserts `task-series`, `occurrence_mode`, `recurrence_rule`, and no task `recur` property.
+
+- [ ] **Step 5: 实现 Remote client**
+
+Mirror HTTP DTOs in `remote/task_series.go`; update task query result to `TaskViewPage`. Remove `Recur/ClearRecur` from `remote/task.go`, and do not add an `AddTask(Recur)` compatibility wrapper. Verify occurrence_ref is URL-encoded exactly once.
+
+- [ ] **Step 6: 运行协议测试**
+
+Run: `go test ./internal/httpapi ./internal/remote -count=1`
+
+Update the existing Web task adapter in the same task to read `data.items`/page metadata and keep current project task screens functional before the Series routes land. Run: `pnpm --dir web test -- task-api.test.ts project-api.test.ts`
+
+Run: `pnpm --dir web typecheck`
+
+Expected: PASS。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add internal/httpapi internal/remote web/src/features/workspace/project-workbench/api web/src/features/workspace/project-workbench/hooks/use-project-data.ts
+git commit -m "feat: 提供循环系列 HTTP 与远程契约"
+```
+
+### Task 9: 新增专用 CLI 并移除旧循环命令
+
+**目标：** CLI 用 `xuanchu series ...` 管理系列；普通 add/modify 不再解释循环字段；本地任务命令按约定触发 reconcile。
+
+**Files:**
+
+- Create: `internal/cli/series.go`
+- Create: `internal/cli/series_test.go`
+- Modify: `internal/cli/root.go`
+- Modify: `internal/cli/add.go`
+- Modify: `internal/cli/edit.go`
+- Modify: `internal/cli/list.go`
+- Modify: `internal/cli/info.go`
+- Modify: `internal/cli/import_export.go`
+- Modify: `internal/cli/root_test.go`
+- Modify: `tests/integration/cli_test.go`
+
+**Interfaces:**
+
+- Commands:
+  - `xuanchu series add <title> --project --recur --first-due [--until]`
+  - `xuanchu series list --project [--status]`
+  - `xuanchu series info <series-ref>`
+  - `xuanchu series modify <series-ref> [--recur --effective-from --until ...]`
+  - `xuanchu series stop <series-ref> [--delete-open]`
+  - `xuanchu series skip <series-ref> <occurrence-ref>`
+
+- [ ] **Step 1: 写 CLI 失败测试**
+
+Add integration tests that create daily series, list/info/modify/skip/stop in human and JSON modes, assert stdout contains only result JSON under `--json`, errors go to stderr, and series ID/occurrence_ref are accepted. Add tests proving `xuanchu add x recur:daily` and `xuanchu 1 modify recur:weekly` fail with nonzero exit and do not create/modify data.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/cli ./tests/integration -run 'Series|RecurringCommand' -count=1`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 Cobra command tree**
+
+Create a `newSeriesCommand` with add/list/info/modify/stop/skip children. Use existing workspace/project scope resolution and Renderer patterns. `--effective-from` is required when `--recur` changes an existing series. Human output uses “循环系列/实例/槽位”; JSON serializes App view directly.
+
+- [ ] **Step 4: 删除旧字段解析**
+
+Remove `recur`, `mask`, `imask` from add/modify/edit/import field handling and help. Do not reinterpret old syntax. Keep `parent` only for manual sub-task creation. Remove old recurring status from reports and completion candidates.
+
+- [ ] **Step 5: 接入本地 reconcile**
+
+Before local task/project read/write commands, call workspace-scoped `ReconcileTaskSeries` once. Exclude `server`, `mcp`, `completion`, `help`, `version`, config-only commands and remote client mode. Reconcile warnings go to stderr and never contaminate `--json` stdout; hard storage errors fail the command.
+
+- [ ] **Step 6: 运行 CLI 测试**
+
+Run: `go test ./internal/cli ./tests/integration -count=1`
+
+Expected: PASS。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add internal/cli tests/integration/cli_test.go
+git commit -m "feat: 增加循环系列命令"
+```
+
+### Task 10: 统一 MCP tools、schema 与结构化输出
+
+**目标：** Agent 通过七个专用 tools 管理 Series，task tools 同 HTTP 一样读写 occurrence_ref，输出不再暴露 hidden Task 语义。
+
+**Files:**
+
+- Create: `internal/mcpserver/tools_task_series.go`
+- Create: `internal/mcpserver/tools_task_series_test.go`
+- Modify: `internal/mcpserver/tools_task.go`
+- Modify: `internal/mcpserver/tools_views.go`
+- Modify: `internal/mcpserver/schema_test.go`
+- Modify: `internal/mcpserver/integration_test.go`
+- Create: `internal/mcpserver/testdata/task_series_add.schema.json`
+- Create: `internal/mcpserver/testdata/task_series_list.schema.json`
+- Create: `internal/mcpserver/testdata/task_series_get.schema.json`
+- Create: `internal/mcpserver/testdata/task_series_modify.schema.json`
+- Create: `internal/mcpserver/testdata/task_series_stop.schema.json`
+- Create: `internal/mcpserver/testdata/task_series_list_occurrences.schema.json`
+- Create: `internal/mcpserver/testdata/task_series_occurrence_skip.schema.json`
+- Modify: `internal/mcpserver/testdata/task_add.schema.json`
+- Modify: `internal/mcpserver/testdata/task_modify.schema.json`
+- Modify: `internal/mcpserver/testdata/task_query.schema.json`
+- Modify: `internal/mcpserver/testdata/list-tools-default.json`
+
+**Interfaces:**
+
+- Tools: `task_series_add`、`task_series_list`、`task_series_get`、`task_series_modify`、`task_series_stop`、`task_series_list_occurrences`、`task_series_occurrence_skip`.
+- Task query adds `due_after`、`due_before`、`occurrence_mode`.
+
+- [ ] **Step 1: 写 schema 与行为失败测试**
+
+Add tests that list all seven tool names, compare generated schemas to golden files, and execute add→query expand→get projected→done→series get→skip→stop. Assert project/workspace/token allowlist, `task:read/write` permissions, complete UserInfo, stable occurrence ID and `materialization` transition.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/mcpserver -run 'TaskSeries|Occurrence|Schema' -count=1`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 series tool inputs/handlers**
+
+Use `recurrence_rule`, `first_due|first_due_date`, `until|until_date`, and `effective_from|effective_from_date`. `task_series_modify` requires effective_from only when rule changes. Every handler calls the App methods from Task 5 and returns `successWithEnvelope`.
+
+- [ ] **Step 4: 迁移 task tools**
+
+`task_add/task_modify` schemas contain no recur. `task_query` builds `TaskViewQuery` and returns the same page shape as HTTP. All write tools pass occurrence_ref into App `WithTaskForWrite`; projected stop/reopen return status errors without materialization. `task_export/import` moves to Task 14's native bundle; until then keep tools compiling but mark their old payload tests for replacement in the same branch, never ship an intermediate release.
+
+- [ ] **Step 5: 统一 text 与 structuredContent**
+
+`structuredContent.data` contains the HTTP-equivalent view. `Content[0].text` remains serialized ToolEnvelope, while human `rendered` says “计划 occurrence” for projected and “已物化实例” for materialized; never claim a projected task was created.
+
+- [ ] **Step 6: 更新 golden files 并运行测试**
+
+Run: `go test ./internal/mcpserver -run 'Schema|ListTools' -count=1 -update`
+
+Inspect every golden diff, then run: `go test ./internal/mcpserver -count=1`
+
+Expected: PASS and no dot-separated tool names.
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add internal/mcpserver
+git commit -m "feat: 为 MCP 提供循环系列工具"
+```
+
+### Task 11: 建立 Web 原生类型、查询缓存、路由与项目导航
+
+**目标：** 前端只消费 TaskView/SeriesView，新增项目级 Series list/detail 路由和“循环规则”Tab，不先实现写表单。
+
+**Files:**
+
+- Create: `web/src/features/workspace/project-workbench/api/task-series-api.ts`
+- Create: `web/src/features/workspace/project-workbench/api/task-series-api.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/api/task-api.ts`
+- Modify: `web/src/features/workspace/project-workbench/api/task-api.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/api/project-api.ts`
+- Modify: `web/src/features/workspace/project-workbench/hooks/use-project-data.ts`
+- Modify: `web/src/features/workspace/project-workbench/hooks/use-task-detail-data.ts`
+- Modify: `web/src/features/workspace/project-workbench/project/project-tabs.tsx`
+- Modify: `web/src/features/workspace/project-workbench/project/project-layout.tsx`
+- Modify: `web/src/features/workspace/project-workbench/project/project-layout.test.tsx`
+- Create: `web/src/routes/workspace/ProjectTaskSeriesRoute.tsx`
+- Create: `web/src/routes/workspace/ProjectTaskSeriesDetailRoute.tsx`
+- Modify: `web/src/routes/router.tsx`
+- Modify: `web/src/locales/zh-CN.ts`
+- Modify: `web/src/locales/en-US.ts`
+- Modify: `web/src/i18n.test.ts`
+
+**Interfaces:**
+
+- Produces TS types `TaskOccurrenceView`、`RecurrenceInfo`、`TaskViewPage`、`TaskSeriesView`、`TaskSeriesDetailView` and API/query key helpers.
+- Routes:
+  - `/workspaces/$workspaceSlug/projects/$projectSlug/task-series`
+  - `/workspaces/$workspaceSlug/projects/$projectSlug/task-series/$seriesRef`
+
+- [ ] **Step 1: 写 API URL/body 失败测试**
+
+Create tests asserting:
+
+```ts
+expect(taskSeriesPath("acme", { project: "ops", status: "active" })).toBe(
+  "/api/v1/task-series?workspace=acme&project=ops&status=active"
+)
+expect(taskSeriesItemPath("acme", "series:1")).toBe(
+  "/api/v1/task-series/series%3A1?workspace=acme"
+)
+expect(tasksPath("acme", { due_after: "2026-07-12", due_before: "2026-07-12", occurrence_mode: "expand" })).toContain(
+  "occurrence_mode=expand"
+)
+```
+
+Update TaskCreateInput/TaskModifyInput compile-time tests so `recur/clear_recur/mask/imask` are absent and occurrence fields are read-only.
+
+- [ ] **Step 2: 运行 API 测试确认失败**
+
+Run: `pnpm --dir web test -- task-series-api.test.ts task-api.test.ts`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现 TS contracts 和 API client**
+
+`TaskOccurrenceView.id` is always present; `uuid/task_slug/project_seq` are nullable. `recurrence_info` is nullable and uses `projected|materialized`. API functions cover add/list/get/modify/stop/list occurrences/skip and task range query. All paths use `encodeURIComponent` once.
+
+- [ ] **Step 4: 增加 query keys 与路由**
+
+Add stable keys rooted at `['project', workspaceSlug, projectSlug, 'task-series']`. Add lazy route wrappers and router nodes. Both list/detail pass `activeTab="task-series"`; global AppShell still highlights projects through the existing project pathname rule.
+
+- [ ] **Step 5: 修改 ProjectTabs**
+
+Extend `ProjectTabKey` with `task-series` between tasks and activity. Label includes active count when nonzero and no `0` badge. On mobile keep `flex overflow-x-auto`; do not move the tab into a menu.
+
+- [ ] **Step 6: 补 i18n 与运行测试**
+
+Add all navigation/status/empty/error/action keys in zh-CN and en-US; tests assert locale key parity.
+
+Run: `pnpm --dir web test -- task-series-api.test.ts project-layout.test.tsx i18n.test.ts`
+
+Run: `pnpm --dir web typecheck`
+
+Expected: PASS。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add web/src/features/workspace/project-workbench/api web/src/features/workspace/project-workbench/hooks web/src/features/workspace/project-workbench/project web/src/routes web/src/locales web/src/i18n.test.ts
+git commit -m "feat: 建立循环系列前端路由与契约"
+```
+
+### Task 12: 实现统一创建弹窗与 Series CRUD 页面
+
+**目标：** 落地项目“循环规则”列表/详情，以及创建、编辑、停止的完整 Web CRUD，严格对应 Spec ASCII 原型。
+
+**Files:**
+
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-page.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-page.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-detail-page.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-detail-page.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-dialog.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-dialog.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-stop-dialog.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-stop-dialog.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/recurrence-preview.ts`
+- Create: `web/src/features/workspace/project-workbench/task-series/recurrence-preview.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/tasks/task-create-dialog.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/task-create-dialog.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-tasks-page.tsx`
+- Modify: `web/src/features/workspace/project-workbench/hooks/use-task-mutations.ts`
+- Modify: `web/src/features/workspace/project-workbench/hooks/use-task-mutations.test.tsx`
+- Modify: `web/src/routes/workspace/ProjectTaskSeriesRoute.tsx`
+- Modify: `web/src/routes/workspace/ProjectTaskSeriesDetailRoute.tsx`
+
+**Interfaces:**
+
+- `TaskCreateDialog` adds `initialMode?: 'normal'|'recurring'` and keeps independent form state per mode.
+- Series mutations invalidate series list/detail, project tasks, project summary and timeline.
+
+- [ ] **Step 1: 写统一创建弹窗失败测试**
+
+Add tests that open in each initial mode, switch without losing state, hide wait/scheduled/depends/parent in recurring mode, validate title/rule/first_due/until, submit canonical values (`2weeks|3months|12months`), show three-date preview, and use Cmd/Ctrl+Enter. Assert normal mode calls `/tasks` and recurring mode calls `/task-series`.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `pnpm --dir web test -- task-create-dialog.test.tsx`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 重构统一创建弹窗**
+
+Keep shared title/description/priority/assignees/tags components but separate normal date state from recurring rule/firstDue/until state. Implement `nextRecurrenceDate(from: Date, rule: CanonicalRecurrenceRule): Date` in `recurrence-preview.ts` with local calendar `setDate/setMonth`, never fixed day milliseconds; cross-language fixture tests must match Task 1 for daily/weekly/monthly/N-unit and month-end behavior. After create, navigate to series detail and announce “循环规则已创建”.
+
+- [ ] **Step 4: 写 Series 页面失败测试**
+
+List tests cover active default, status/assignee/search/sort, count badge, ended/stopped read-only rows, loading/error/empty/backlog and row menus. Detail tests cover summary, open occurrences, paginated history, “管理规则” actions and project-closed banner.
+
+- [ ] **Step 5: 实现列表与详情**
+
+Use the Spec columns and information hierarchy. Series rows never expose done/start. Occurrence links use project task detail route and occurrence_ref. Desktop uses table and context rail; mobile uses cards, bottom sheet and full-screen forms.
+
+- [ ] **Step 6: 实现编辑/停止弹窗**
+
+Edit shows immutable first_due, effective_from selector only when rule changes, three future previews and impact counts. Stop uses distinct copy from task delete/occurrence skip; delete-open count equals open materialized count + backlog and disables when >1000. Ended/stopped series show no edit/stop actions.
+
+- [ ] **Step 7: 运行 Web 定向测试**
+
+Run: `pnpm --dir web test -- task-create-dialog.test.tsx recurrence-preview.test.ts task-series-page.test.tsx task-series-detail-page.test.tsx task-series-dialog.test.tsx task-series-stop-dialog.test.tsx use-task-mutations.test.tsx`
+
+Run: `pnpm --dir web typecheck`
+
+Expected: PASS。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add web/src/features/workspace/project-workbench/task-series web/src/features/workspace/project-workbench/tasks web/src/features/workspace/project-workbench/hooks web/src/routes/workspace
+git commit -m "feat: 完成循环系列控制台 CRUD"
+```
+
+### Task 13: 完成 occurrence 列表、详情、我的任务与项目统计体验
+
+**目标：** 普通任务和 occurrence 在所有常用任务场景中一致显示/操作，Series 只通过治理入口出现。
+
+**Files:**
+
+- Modify: `web/src/features/workspace/project-workbench/tasks/task-table.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/task-table.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/task-row-actions.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-task-toolbar.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-task-toolbar.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-tasks-page.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-tasks-page.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/task-detail/task-detail-page.tsx`
+- Modify: `web/src/features/workspace/project-workbench/task-detail/task-detail-page.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/task-detail/task-property-panel.tsx`
+- Modify: `web/src/features/workspace/project-workbench/task-detail/task-property-panel.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/task-detail/task-action-bar.tsx`
+- Modify: `web/src/features/workspace/my-tasks/my-task-tabs.ts`
+- Modify: `web/src/features/workspace/my-tasks/my-task-tabs.test.ts`
+- Modify: `web/src/features/workspace/my-tasks/my-tasks-api.ts`
+- Modify: `web/src/features/workspace/my-tasks/my-tasks-api.test.ts`
+- Modify: `web/src/features/workspace/my-tasks/my-tasks-table.tsx`
+- Modify: `web/src/features/workspace/my-tasks/my-tasks-table.test.tsx`
+- Modify: `web/src/pages/my-tasks-page.tsx`
+- Modify: `web/src/features/workspace/project-workbench/project/project-overview-page.tsx`
+
+**Interfaces:**
+
+- Project/My Tasks filters add `task_type=all|normal|occurrence` and finite range sends `occurrence_mode=expand`.
+- My Task tabs become `incomplete|today|overdue|noDue|completed`.
+
+- [ ] **Step 1: 写列表与详情失败测试**
+
+Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/manage series. Detail shows series banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent.
+
+- [ ] **Step 2: 写 My Tasks 预设失败测试**
+
+Replace tab tests with exact filters:
+
+```ts
+expect(tabFilter("today", now)).toEqual({
+  due_after: "2026-07-12",
+  due_before: "2026-07-12",
+  occurrence_mode: "expand",
+})
+expect(tabFilter("completed", now)).toEqual({ status: "completed", occurrence_mode: "materialized" })
+expect(tabFilter("overdue", now)).toEqual({
+  status: "pending",
+  due_before: "2026-07-11",
+  occurrence_mode: "materialized",
+})
+```
+
+Use the backend's inclusive date inputs: overdue must use yesterday as `due_before` and materialized mode because unbounded historical expansion is forbidden; today must include both bounds and expand so it cannot include overdue tasks.
+
+- [ ] **Step 3: 运行测试确认失败**
+
+Run: `pnpm --dir web test -- task-table.test.tsx task-detail-page.test.tsx task-property-panel.test.tsx my-task-tabs.test.ts my-tasks-api.test.ts my-tasks-table.test.tsx`
+
+Expected: FAIL。
+
+- [ ] **Step 4: 实现项目任务体验**
+
+Remove recurring status from filters; add task type. Unbounded project page uses materialized mode; a complete due range uses expand. Keep each occurrence as a separate row; no title-based dedupe. Batch delete copy reports normal delete count and occurrence skip count separately.
+
+- [ ] **Step 5: 实现 occurrence 详情与写操作**
+
+Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
+
+- [ ] **Step 6: 实现 My Tasks 与统计**
+
+Remove duplicate status selector because tabs own status. Add incomplete/today/overdue/no-due/completed; today uses exact finite range, completed includes occurrences and supports reopen. Render ordinary progress and recurring metrics in separate project overview blocks.
+
+- [ ] **Step 7: 验证桌面、移动端与编辑烟测**
+
+Run: `pnpm --dir web test -- task-table.test.tsx project-task-toolbar.test.tsx project-tasks-page.test.tsx task-detail-page.test.tsx task-property-panel.test.tsx my-task-tabs.test.ts my-tasks-api.test.ts my-tasks-table.test.tsx`
+
+Run: `pnpm --dir web run smoke:editing`
+
+Run: `pnpm --dir web typecheck`
+
+Expected: PASS。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add web/src/features/workspace/project-workbench web/src/features/workspace/my-tasks web/src/pages/my-tasks-page.tsx
+git commit -m "feat: 统一循环实例任务体验"
+```
+
+### Task 14: 原生 bundle、旧模型清理、文档与全量验收
+
+**目标：** 完成 `xuanchu.task-bundle/v1` import/export，删除全部旧 recurrence 路径，更新用户文档并执行全量验证。
+
+**Files:**
+
+- Delete: `internal/recurrence/recurrence.go`
+- Delete: `internal/recurrence/recurrence_test.go`
+- Create: `internal/app/task_bundle.go`
+- Create: `internal/app/task_bundle_test.go`
+- Modify: `internal/cli/import_export.go`
+- Create: `internal/cli/import_export_test.go`
+- Modify: `internal/httpapi/import_audit.go`
+- Modify: `internal/httpapi/tasks_test.go`
+- Modify: `internal/mcpserver/tools_task.go`
+- Modify: `internal/mcpserver/integration_test.go`
+- Modify: `web/src/features/workspace/project-workbench/import/task-import.ts`
+- Modify: `web/src/features/workspace/project-workbench/import/task-import.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/import/task-import-schema.ts`
+- Modify: `web/src/features/workspace/project-workbench/import/task-import-schema.test.ts`
+- Modify: `web/src/features/workspace/project-workbench/import/task-import-xlsx.ts`
+- Modify: `web/src/features/workspace/project-workbench/import/task-import-xlsx.test.ts`
+- Modify: `README.md`
+- Modify: `ROADMAP.md`
+- Modify: `docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md` only if implementation reveals a factual correction
+
+**Interfaces:**
+
+- `type TaskBundleV1 struct { Schema string; ExportedAt string; TaskSeries []TaskSeriesBundle; Tasks []TaskBundle }`
+- `func (s *Service) ExportTaskBundle() (TaskBundleV1, error)`
+- `func (s *Service) ImportTaskBundle(TaskBundleV1) (TaskBundleImportResult, error)`
+
+- [ ] **Step 1: 写 bundle 失败测试**
+
+Create round-trip tests with one series, two rule versions, one ordinary task, one materialized occurrence, one tombstone, overrides and UserInfo-linked assignees. Assert projected occurrences are absent, IDs and recurrence_at survive, unknown major schema is rejected, and missing/cross-workspace series references roll back the whole import.
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `go test ./internal/app -run TaskBundle -count=1`
+
+Expected: FAIL。
+
+- [ ] **Step 3: 实现版本化原生 bundle**
+
+Export `schema="xuanchu.task-bundle/v1"`, current series including complete rule-version history, and ordinary/materialized task rows. Import in one transaction in dependency order: series→rule versions/associations→tasks/occurrences. Never export projected views. Reject Taskwarrior arrays and old recurrence fields rather than guessing.
+
+- [ ] **Step 4: 接入 CLI/HTTP/MCP 并限制 Web 表格导入**
+
+CLI and MCP import/export use the bundle object. HTTP import route accepts the same schema. Web JSON/XLSX task import supports ordinary tasks only and removes recurrence help/columns; series migration uses native JSON bundle, not flattened spreadsheets.
+
+- [ ] **Step 5: 扫描并删除旧实现**
+
+Run:
+
+```bash
+rg -n 'StatusRecurring|CreateRecurringChild|RecurringParents|createRecurringParent|createNextRecurringChild|ensureRecurringChildren|clear_recur|\bRecur\b|\bMask\b|\bIMask\b|status.?recurring' internal tests web/src --glob '!internal/webconsole/dist/**'
+```
+
+Expected: only migration guard text, historical release documentation, deliberate unknown-field error tests, and human “recurring” UI mode names remain. Delete or rewrite every executable old-path hit.
+
+- [ ] **Step 6: 更新 README/ROADMAP/帮助文案**
+
+README stops documenting old `add ... recur:*` and describes `series` commands, native bundle, Web routes and MCP tools. ROADMAP marks v0.5.7 complete only after all validation passes. Verify help/OpenAPI/MCP schema use the same field names.
+
+- [ ] **Step 7: 运行后端全量验证**
+
+Run:
+
+```bash
+go test ./...
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build ./cmd/xuanchu
+go vet ./...
+```
+
+Expected: all commands exit 0; tests report no failures.
+
+- [ ] **Step 8: 运行 Web 全量验证**
+
+Run:
+
+```bash
+pnpm --dir web typecheck
+pnpm --dir web test
+pnpm --dir web lint
+pnpm --dir web build
+pnpm --dir web run smoke:editing
+```
+
+Expected: all commands exit 0. Confirm `internal/webconsole/dist` did not change or remain staged.
+
+- [ ] **Step 9: 运行最终静态检查**
+
+Run:
+
+```bash
+git diff --check
+git status --short
+```
+
+Expected: no whitespace errors; status contains only the Task 14 source/docs changes intended for the final commit.
+
+- [ ] **Step 10: 提交**
+
+```bash
+git add internal/recurrence internal/app/task_bundle.go internal/app/task_bundle_test.go internal/cli/import_export.go internal/cli/import_export_test.go internal/httpapi/import_audit.go internal/httpapi/tasks_test.go internal/mcpserver/tools_task.go internal/mcpserver/integration_test.go web/src/features/workspace/project-workbench/import README.md ROADMAP.md docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md
+git commit -m "feat: 完成原生循环系列交付"
+```
+
+## 最终验收清单
+
+- daily 昨日实例未完成，今天仍独立生成。
+- 停机五日后投影立即可见、scheduler 分批补齐且重复运行不重复。
+- future range query 是 ordinary + projected + materialized exception - tombstone。
+- projected 纯读取不写库；所有合法首次写原子物化；失败 stop/reopen 不物化。
+- 公开 occurrence ID 在物化、完成、改期、跳过后不变。
+- rule 修改有持久化版本段和 effective_from，历史 projected occurrence 不被新规则重算。
+- Task.status 无 recurring，Task.parent 不承载 series，普通 Task schema 无 recurrence。
+- HTTP、Remote、CLI、MCP 对同一输入返回相同集合、错误码、UserInfo 与 recurrence_info。
+- 项目任务、我的未完成/今天/逾期/无截止日期/已完成显示正确，不混入 Series。
+- Web 导航、列表、详情、创建/编辑/停止/跳过弹窗与 Spec ASCII 原型一致。
+- 项目关闭停止 active series，恢复项目不恢复 series。
+- 普通任务进度与循环运行指标分离。
+- Native bundle 能完整 round-trip series/rule versions/materialized occurrence，且不导出 projected occurrence。
+- SQLite/PostgreSQL、零 CGO、OpenAPI、MCP schemas、Web 全套验证通过。
