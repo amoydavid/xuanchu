@@ -34,6 +34,7 @@ import {
 import type { ProjectTaskFilterParams } from "../api/project-api"
 import { useCreateTaskMutation } from "../hooks/use-task-mutations"
 import { InlineDatePicker } from "../shared/inline-date-picker"
+import { TaskSeriesDialog } from "../task-series/task-series-dialog"
 
 type TaskCreateDialogProps = {
   filters?: ProjectTaskFilterParams | string
@@ -41,6 +42,15 @@ type TaskCreateDialogProps = {
   open: boolean
   projectSlug: string
   workspaceSlug: string
+  /**
+   * 初始模式（spec §15.15）：
+   * - normal（默认）：创建普通任务，提交 POST /tasks
+   * - recurring：创建循环任务，提交 POST /task-series 并关闭弹窗
+   *
+   * 循环模式的完整表单（rule/first_due/until）由 TaskSeriesDialog 承载；
+   * 这里仅提供模式选择器，recurring 模式渲染 TaskSeriesDialog。
+   */
+  initialMode?: "normal" | "recurring"
 }
 
 const PRIORITIES = ["H", "M", "L"] as const
@@ -51,7 +61,10 @@ export function TaskCreateDialog({
   open,
   projectSlug,
   workspaceSlug,
+  initialMode = "normal",
 }: TaskCreateDialogProps) {
+  // mode selector：支持在弹窗内切换普通/循环（spec §15.15）。
+  const [mode, setMode] = useState<"normal" | "recurring">(initialMode)
   const createTask = useCreateTaskMutation(workspaceSlug, projectSlug, filters)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -139,6 +152,44 @@ export function TaskCreateDialog({
             在当前项目内创建任务，并一次性补齐负责人、日期和优先级。
           </DialogDescription>
         </DialogHeader>
+        {mode === "recurring" ? (
+          <TaskSeriesDialog
+            open={open}
+            workspaceSlug={workspaceSlug}
+            projectSlug={projectSlug}
+            mode="create"
+            onClose={() => {
+              reset()
+              onOpenChange(false)
+            }}
+            onCreated={() => {
+              reset()
+              onOpenChange(false)
+            }}
+          />
+        ) : null}
+        <div role="tablist" aria-label="任务类型" className="flex gap-2">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "normal"}
+            onClick={() => setMode("normal")}
+            className={mode === "normal" ? "font-bold" : ""}
+          >
+            普通任务
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "recurring"}
+            onClick={() => setMode("recurring")}
+            className={mode === "recurring" ? "font-bold" : ""}
+          >
+            循环任务
+          </button>
+        </div>
+          {mode === "recurring" ? null : (
+          <>
         <div className="grid gap-4">
           <Input
             aria-label="任务标题"
@@ -266,6 +317,8 @@ export function TaskCreateDialog({
             创建任务
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   )
