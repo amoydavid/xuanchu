@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { render, waitFor } from "@testing-library/react"
+import { render } from "@testing-library/react"
 import { useParams } from "@tanstack/react-router"
 
 // Mock useParams 返回 seriesRef。
@@ -27,20 +27,33 @@ vi.mock("@/features/workspace/project-workbench/api/task-series-api", () => ({
   }),
 }))
 
+// Mock useProjectLayout 提供 setContextPanel。
+const mockSetContextPanel = vi.fn()
+vi.mock("@/features/workspace/project-workbench/project/project-layout", () => ({
+  useProjectLayout: () => ({
+    setContextPanel: mockSetContextPanel,
+    workspaceSlug: "ws",
+    projectSlug: "ops",
+  }),
+}))
+
 import { ProjectTaskSeriesPanelRoute } from "./ProjectTaskSeriesPanelRoute"
 
 describe("ProjectTaskSeriesPanelRoute", () => {
-  it("renders panel shell with seriesRef from params", async () => {
-    const { container } = render(<ProjectTaskSeriesPanelRoute />)
-    await waitFor(() => {
-      expect(container.querySelector('[data-testid="task-series-panel"]')).toBeTruthy()
-    })
-    // seriesRef 存在时应进入 detail 模式。
-    expect(container.querySelector('[data-testid="task-series-detail"]')).toBeTruthy()
+  it("registers panel via setContextPanel", () => {
+    render(<ProjectTaskSeriesPanelRoute />)
+    // 应调用 setContextPanel 注册面板（非 null）。
+    expect(mockSetContextPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node: expect.anything(),
+        onClose: expect.any(Function),
+      }),
+    )
   })
 
-  it("uses mocked useParams", () => {
-    render(<ProjectTaskSeriesPanelRoute />)
-    expect(vi.mocked(useParams)).toHaveBeenCalled()
+  it("component renders null (panel goes to context slot)", () => {
+    const { container } = render(<ProjectTaskSeriesPanelRoute />)
+    // 组件本身返回 null，面板通过 setContextPanel 渲染到右栏。
+    expect(container.firstChild).toBeNull()
   })
 })

@@ -272,12 +272,20 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 	}
 	reportName := strings.TrimSpace(r.URL.Query().Get("report"))
-	var tasks []task.Task
 	if reportName != "" {
-		tasks, err = scoped.ListReport(reportName, input)
-	} else {
-		tasks, err = scoped.List(input)
+		// /tasks?report= 走 RunTaskViewReport，返回 TaskViewPage（spec §17.3）。
+		page, perr := scoped.RunTaskViewReport(app.ReportViewInput{
+			Name: reportName, Query: input.Query, Sort: input.Sort,
+			Limit: input.Limit, Offset: input.Offset,
+		})
+		if perr != nil {
+			writeAppError(w, perr)
+			return
+		}
+		writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
+		return
 	}
+	tasks, err := scoped.List(input)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -396,6 +404,17 @@ func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, "")
 	if err != nil {
 		writeAppError(w, err)
+		return
+	}
+	// occurrence_ref 走 GetTaskView 返回 TaskOccurrenceView（spec §13.4）。
+	// projected 返回投影视图不物化；materialized 返回实体视图。
+	if app.IsOccurrenceRef(taskRef) {
+		view, verr := scoped.GetTaskView(taskRef)
+		if verr != nil {
+			writeAppError(w, verr)
+			return
+		}
+		writeSuccess(w, http.StatusOK, occurrenceViewToJSON(view), nil)
 		return
 	}
 	tsk, err := scoped.ResolveProtocolTarget(taskRef)
@@ -767,7 +786,8 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	input := app.ListInput{}
+	// report 路径切换到 RunTaskViewReport，返回 TaskViewPage（spec §17.3）。
+	reportInput := app.ReportViewInput{Name: chi.URLParam(r, "name")}
 	filters := r.URL.Query()["query"]
 	if len(filters) == 0 {
 		filters = r.URL.Query()["filter"]
@@ -778,7 +798,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
-		input.Query = expr
+		reportInput.Query = expr
 	}
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
@@ -786,14 +806,42 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
-		input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
+		reportInput.Query = query.And(reportInput.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 	}
-	tasks, err := scoped.ListReport(chi.URLParam(r, "name"), input)
+	// occurrence_mode / due range 参数。
+	q := r.URL.Query()
+	if raw := q.Get("occurrence_mode"); raw != "" {
+		reportInput.OccurrenceMode = app.OccurrenceMode(raw)
+	}
+	if da := q.Get("due_after"); da != "" {
+		if start, serr := parseDueAfter(da); serr == nil {
+			if end, eerr := parseDueBefore(q.Get("due_before")); eerr == nil && end > 0 {
+				reportInput.Range = &app.TaskViewRange{Start: start, End: end}
+			}
+		}
+	}
+	reportInput.Sort = q.Get("sort")
+	if raw := q.Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			reportInput.Limit = n
+		}
+	}
+	if raw := q.Get("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			reportInput.Offset = n
+		}
+	}
+	page, err := scoped.RunTaskViewReport(reportInput)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, tasksToJSON(tasks), nil)
+	writeSuccess(w, http.StatusOK, taskViewPageToReportJSON(page), nil)
+}
+
+// taskViewPageToReportJSON 把 TaskViewPage 转为 HTTP JSON（复用 taskViewPageToJSON 的 shape）。
+func taskViewPageToReportJSON(page app.TaskViewPage) taskViewPageJSON {
+	return taskViewPageToJSON(page)
 }
 
 func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn func(*app.Service, string) error) {

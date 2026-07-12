@@ -1,31 +1,45 @@
 import { useEffect } from "react"
 import { useParams } from "@tanstack/react-router"
 
+import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { TaskSeriesPanelShell } from "@/features/workspace/project-workbench/task-series/task-series-panel-shell"
 
 // /workspaces/$workspaceSlug/projects/$projectSlug/tasks/series
 // /workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef
 //
 // 循环任务管理面板子路由（spec §15.12）：
-// - 只注册/注销面板，不重挂载 ProjectTasksPage
-// - list/detail 切换通过 seriesRef search param
+// - 通过 setContextPanel 注册到 ProjectLayout 右栏槽位（替换 ProjectContextRail）
+// - list/detail 切换通过 seriesRef path param
 // - ProjectTabs 始终高亮"任务"
+// - 关闭面板时恢复原右栏状态
 export function ProjectTaskSeriesPanelRoute() {
   const params = useParams({ strict: false }) as {
     workspaceSlug: string
     projectSlug: string
+    seriesRef?: string
   }
-  // 从 path 提取 seriesRef（若在 detail 路由）。
-  const seriesRef = (useParams({ strict: false }) as { seriesRef?: string }).seriesRef
+  const layout = useProjectLayout()
 
-  return (
-    <TaskSeriesPanelShell
-      workspaceSlug={params.workspaceSlug}
-      projectSlug={params.projectSlug}
-      seriesRef={seriesRef}
-    />
-  )
+  // 注册/注销面板到右栏。
+  useEffect(() => {
+    layout.setContextPanel({
+      node: (
+        <TaskSeriesPanelShell
+          workspaceSlug={params.workspaceSlug}
+          projectSlug={params.projectSlug}
+          seriesRef={params.seriesRef}
+        />
+      ),
+      onClose: () => {
+        // 关闭由路由导航处理（navigate 回 /tasks）。
+      },
+    })
+    return () => {
+      layout.setContextPanel(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- layout.setContextPanel 是稳定回调
+  }, [params.workspaceSlug, params.projectSlug, params.seriesRef])
+
+  // 面板内容通过 setContextPanel 渲染到右栏，此组件本身不输出 DOM。
+  return null
 }
-
-// useEffect 占位避免未使用警告（实际面板内部用 effect 注册）。
-void useEffect
