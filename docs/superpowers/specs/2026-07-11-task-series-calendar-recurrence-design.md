@@ -825,8 +825,8 @@ Series modify 支持两组字段：
 
 | 操作 | 作用域 |
 |---|---|
-| start/done | 仅本次；projected 先物化 |
-| stop/reopen | 仅本次；必须分别已开始/已完成，projected 不物化并返回状态错误 |
+| start/done | 仅本次；projected 先物化。详情页 occurrence 的完成动作写“完成本次”，不能写成“完成循环任务” |
+| stop/reopen | 仅本次；必须分别已开始/已完成，projected 不物化并返回状态错误。completed occurrence 的动作写“重新打开本次” |
 | 修改 title/description/priority/due/assignees/tags/UDAs | 仅本次并记录 override |
 | annotate/link/dependency/sub-task | 仅本次；projected 先物化 |
 | delete | 产品文案“跳过本次”，写 tombstone |
@@ -1283,7 +1283,7 @@ task_type: all|normal|occurrence
 
 ```text
 +--------------------------------------------------------------------------------+
-| OPS-18 每日检查投放消耗                                  [开始] [完成] [...]    |
+| OPS-18 每日检查投放消耗                              [开始] [完成本次] [...]    |
 | [待处理] [↻ 每天 · 2026-07-12]                                               |
 +--------------------------------------------------------------------------------+
 | 此任务属于循环系列“每日检查投放消耗”。                                       |
@@ -1302,7 +1302,9 @@ task_type: all|normal|occurrence
 - 查看循环规则
 ```
 
-实例详情不把 series 显示为“父任务”。`recurrence_info.rule` / `until` 只读；“查看循环规则”打开任务页管理面板中的 Series 详情，不离开任务执行上下文。
+��例详情不把 series 显示为“父任务”。`recurrence_info.rule` / `until` 只读；“查看循环规则”打开任务页管理面板中的 Series 详情，不离开任务执行上下文。
+
+详情页动作必须直接表达操作对象：普通任务使用“完成任务 / 重新打开任务”，occurrence 使用“完成本次 / 重新打开本次”。点击“完成本次”调用当前 `occurrence_ref` 的 task done 用例，不弹“本次/整个系列”范围选择；该日期的 occurrence 进入 completed，Series、其它已存在 occurrence 和后续槽位均不改变。成功后停留在当前详情，状态切为“已完成”，主动作切为“重新打开本次”，Toast 写“已完成 2026年7月12日这一次”。紧凑列表可以只显示完成图标或“完成”，但 aria-label/title 必须包含“完成本次：{日期}”。
 
 ### 15.6 面板内系列详情原型
 
@@ -1389,6 +1391,9 @@ Occurrence 详情顶部固定显示：
 ```
 
 - 所有普通属性编辑默认“仅本次”并记录 override，不反复弹范围选择。
+- 生命周期动作也按资源类型区分文案：普通任务为“完成任务 / 重新打开任务”，occurrence 为“完成本次 / 重新打开本次”；不得用“完成循环任务”暗示 Series 被完成。
+- “完成本次”只提交当前页面的稳定 `occurrence_ref`。projected occurrence 在同一事务中物化并完成；materialized occurrence 直接完成。响应保持同一公开 `id`，详情页不跳转到新 task UUID/slug。
+- 完成后保留详情上下文并显示带本次日期的成功反馈；即使 Series 已 ended/stopped，这个既有 occurrence 仍可完成或重新打开，不恢复 Series。
 - `recurrence_at` 和 rule 只读；due 可改并显示“原循环日期”。
 - parent UI 只显示真实手工父任务；所属 series 使用独立属性。
 - 删除按钮文案为“跳过本次”；确认文案明确不影响后续。
@@ -1774,11 +1779,12 @@ projected 则先物化              改 task_series
 Web 日期窗口
   -> GET /tasks?due_after=...&due_before=...&occurrence_mode=expand
   -> 展示 ordinary + projected + materialized merge
-  -> 用户点击完成 occurrence_ref
+  -> 用户点击“完成本次”（目标是当前 occurrence_ref）
   -> POST /tasks/{occurrence_ref}/done
   -> app 同事务 materialize + done + audit/events
   -> 返回同 id、补充 uuid/task_slug、materialization=materialized
-  -> Web 替换当前行并刷新相关统计
+  -> Web 替换当前行/详情，保留 canonical URL，显示“已完成 {本次日期} 这一次”
+  -> 刷新 occurrence、任务列表、项目统计及 Series 的派生计数/历史；Series 规则及其它轮次状态不变
 ```
 
 ### 16.4 停止流程
@@ -2132,6 +2138,7 @@ git diff --check
 22. series occurrences 的 pending/waiting/completed/deleted/all 枚举在 HTTP/MCP/Remote/CLI schema 与测试中一致。
 23. Series list 的 status/q/assignee/sort/pagination 在 HTTP/MCP/Remote/CLI/Web 返回相同 items 和 filtered total；Web 不过滤当前页伪造结果。
 24. My Tasks open presets 同时包含 pending/waiting，不存在 active status；从 My Tasks 打开/关闭规则面板后恢复 preset、筛选、排序、选择、滚动和焦点。
+25. 普通任务详情使用“完成任务/重新打开任务”，occurrence 详情使用“完成本次/重新打开本次”；完成 projected 或 materialized occurrence 都只改变该 `occurrence_ref`，保留详情 URL，刷新 Series 派生计数但不改变规则和其它轮次。
 
 ## 25. 实施边界与建议拆分
 

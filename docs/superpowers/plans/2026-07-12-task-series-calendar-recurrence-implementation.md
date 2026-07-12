@@ -1224,7 +1224,7 @@ git commit -m "feat: 完成任务页循环规则管理面板"
 
 - [ ] **Step 1: 写列表与详情失败测试**
 
-Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/view recurrence rule; the latter navigates to `/tasks/series/$seriesRef` with current task search params and no ProjectTab change. Detail shows series banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent. My Tasks tests open a Series detail with `panelReturnTo` and verify close/back restores route search、selected IDs、scroll and focus after data reload.
+Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/view recurrence rule; the latter navigates to `/tasks/series/$seriesRef` with current task search params and no ProjectTab change. Detail shows series banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent. Assert ordinary detail labels are “完成任务/重新打开任务”, occurrence detail labels are “完成本次/重新打开本次”, compact occurrence completion has an aria-label containing the slot date, and no “本次/整个系列” scope dialog appears. Clicking “完成本次” must submit the stable occurrence_ref, keep the canonical URL after projected materialization, render completed state plus “重新打开本次”, and announce a date-specific success Toast. Assert Series-derived count/history queries are invalidated and refetched, but the Series rule and sibling occurrence states do not change. My Tasks tests open a Series detail with `panelReturnTo` and verify close/back restores route search、selected IDs、scroll and focus after data reload.
 
 - [ ] **Step 2: 写 My Tasks 预设失败测试**
 
@@ -1259,7 +1259,7 @@ Remove recurring status from filters; add task type. Unbounded project page uses
 
 - [ ] **Step 5: 实现 occurrence 详情与写操作**
 
-Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. “查看循环规则” opens the task-page panel rather than navigating to a sibling page. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
+Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. In `task-action-bar.tsx`, ordinary tasks use “完成任务/重新打开任务” while occurrences use “完成本次/重新打开本次”; compact controls retain the full date-specific aria-label/title. Completion calls task done with the current occurrence_ref, never Series APIs and never a scope picker. Keep the detail route mounted, replace the projected cache entry with the returned materialized view under the same public ID, show the completed state/date-specific Toast, and invalidate occurrence、task list、project statistics plus Series-derived count/history queries; do not optimistically mutate the Series rule or sibling occurrence states. “查看循环规则” opens the task-page panel rather than navigating to a sibling page. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
 
 - [ ] **Step 6: 实现 My Tasks 与统计**
 
@@ -1418,6 +1418,7 @@ git commit -m "feat: 完成原生循环系列交付"
 - `/tasks/series[/seriesRef]` 面板深链、右栏替换、任务筛选/滚动/焦点恢复及移动端全屏 Sheet 与 Spec ASCII 原型一致。
 - My Tasks open presets 覆盖 pending/waiting，不产生 active status；面板往返恢复 route search、选择、滚动和焦点。
 - Web 列表、详情、创建/编辑/停止/跳过弹窗与 Spec ASCII 原型一致。
+- 普通任务详情与 occurrence 详情分别使用“完成任务/重新打开任务”和“完成本次/重新打开本次”；完成只提交当前 occurrence_ref，保留 URL，并仅通过查询刷新反映 Series 派生计数。
 - 项目关闭停止 active series，恢复项目不恢复 series。
 - 普通任务进度与循环运行指标分离。
 - Native bundle 能完整 round-trip series/rule versions/materialized occurrence，且不导出 projected occurrence。
