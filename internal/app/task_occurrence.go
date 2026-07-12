@@ -245,6 +245,7 @@ type TaskViewQuery struct {
 	Sort           string
 	Limit          int
 	Offset         int
+	Query          query.Expr // expand 模式下对 merge 结果用 evaluator 过滤（spec §17.1）
 }
 
 // QueryTaskViews 合并普通任务、projected occurrence、materialized occurrence（spec §7.9、§13.3）。
@@ -273,6 +274,19 @@ func (s *Service) QueryTaskViews(q TaskViewQuery) (TaskViewPage, error) {
 	items, err := s.collectTaskViewCandidates(q, mode)
 	if err != nil {
 		return TaskViewPage{}, err
+	}
+
+	// expand 模式：对 merge 结果应用 query AST 过滤（spec §17.1）。
+	if mode == OccurrenceModeExpand && q.Query != nil {
+		filtered := make([]TaskOccurrenceView, 0, len(items))
+		for _, v := range items {
+			tv := taskViewToQueryValue(v)
+			ok, merr := query.MatchTaskValue(q.Query, tv, s.clock.Location())
+			if merr == nil && ok {
+				filtered = append(filtered, v)
+			}
+		}
+		items = filtered
 	}
 
 	// 稳定排序：ID 作为最终 tie-breaker。

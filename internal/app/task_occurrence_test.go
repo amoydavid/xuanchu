@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
+	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
@@ -1218,5 +1220,32 @@ func TestRunTaskViewReportAppliesQueryFilter(t *testing.T) {
 	}
 	if page.Total != 2 {
 		t.Fatalf("total=%d want 2", page.Total)
+	}
+}
+
+func TestQueryTaskViewsExpandAppliesQueryFilter(t *testing.T) {
+	svc, _, day1, _, _ := newOccurrenceMergeFixture(t)
+	// day1 物化的 occurrence 标题为"每日巡检"。
+	// 用 bare text query 过滤只匹配"每日巡检"。
+	expr, err := query.ParseQuery("每日巡检")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.QueryTaskViews(TaskViewQuery{
+		OccurrenceMode: OccurrenceModeExpand,
+		Range:          &TaskViewRange{Start: day1, End: day1 + 3*86400},
+		Query:          expr,
+	})
+	if err != nil {
+		t.Fatalf("QueryTaskViews: %v", err)
+	}
+	// 所有结果都应含"每日巡检"。
+	for _, it := range page.Items {
+		if !strings.Contains(it.Title, "每日巡检") {
+			t.Fatalf("query 过滤失败，出现不匹配项: %q", it.Title)
+		}
+	}
+	if page.Total == 0 {
+		t.Fatal("应至少匹配 1 项")
 	}
 }
