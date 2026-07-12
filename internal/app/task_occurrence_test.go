@@ -306,3 +306,159 @@ func occurrenceRowCount(t *testing.T, svc *Service, workspaceID string) int {
 	}
 	return count
 }
+
+// --- Task 5: Series CRUD 测试 ---
+
+func TestAddTaskSeriesCreatesFutureProjectedFirstOccurrence(t *testing.T) {
+	svc, closeFn := newTestService(t, 1783785599-86400) // now 在 first_due 之前
+	defer closeFn()
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDue := int64(1783785599)
+	result, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatalf("AddTaskSeries: %v", err)
+	}
+	// series 存在。
+	if result.Series.ID == "" {
+		t.Fatal("series ID 为空")
+	}
+	if result.Series.Status != taskseries.StatusActive {
+		t.Fatalf("status = %q want active", result.Series.Status)
+	}
+	// 初始 rule version。
+	if len(result.Series.RuleVersions) != 1 {
+		t.Fatalf("rule versions len = %d want 1", len(result.Series.RuleVersions))
+	}
+	// 无 task 行（first_due 在未来）。
+	if count := occurrenceRowCount(t, svc, ws.ID); count != 0 {
+		t.Fatalf("future first_due 不应物化, count = %d", count)
+	}
+	// first occurrence 是 projected。
+	if result.FirstOccurrence == nil {
+		t.Fatal("first occurrence 为空")
+	}
+	if result.FirstOccurrence.RecurrenceInfo == nil || result.FirstOccurrence.RecurrenceInfo.Materialization != "projected" {
+		t.Fatalf("first occurrence 应为 projected: %#v", result.FirstOccurrence.RecurrenceInfo)
+	}
+	if result.FirstOccurrence.UUID != nil {
+		t.Fatal("projected first occurrence UUID 应为 nil")
+	}
+}
+
+func TestAddTaskSeriesMaterializesFirstOccurrenceWhenDueEntered(t *testing.T) {
+	svc, closeFn := newTestService(t, 1783785599+86400) // now 在 first_due 之后
+	defer closeFn()
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDue := int64(1783785599)
+	result, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatalf("AddTaskSeries: %v", err)
+	}
+	// first_due 已进入执行期：物化。
+	if result.FirstOccurrence == nil || result.FirstOccurrence.RecurrenceInfo == nil {
+		t.Fatal("first occurrence / info 为空")
+	}
+	if result.FirstOccurrence.RecurrenceInfo.Materialization != "materialized" {
+		t.Fatalf("应物化: %#v", result.FirstOccurrence.RecurrenceInfo)
+	}
+	if result.FirstOccurrence.UUID == nil {
+		t.Fatal("materialized 应有 UUID")
+	}
+	if count := occurrenceRowCount(t, svc, ws.ID); count != 1 {
+		t.Fatalf("应物化 1 条, count = %d", count)
+	}
+}
+
+func TestAddTaskSeriesRejectsInvalidRule(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "x", ProjectID: proj.ID, RecurrenceRule: "biweekly", FirstDue: 2000,
+	})
+	if err == nil {
+		t.Fatal("biweekly 应被拒绝")
+	}
+}
+
+func TestAddTaskSeriesRejectsUnsupportedFields(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait := int64(500)
+	_, err = svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "x", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000, Wait: &wait,
+	})
+	if err == nil {
+		t.Fatal("wait 不被支持")
+	}
+}
+
+func TestListTaskSeriesReturnsCreated(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.ListTaskSeries(TaskSeriesListInput{ProjectID: proj.ID})
+	if err != nil {
+		t.Fatalf("ListTaskSeries: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("items len = %d want 1", len(page.Items))
+	}
+	if page.Total != 1 {
+		t.Fatalf("total = %d want 1", page.Total)
+	}
+}
+
+func TestGetTaskSeriesReturnsDetail(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := svc.GetTaskSeries(created.Series.ID)
+	if err != nil {
+		t.Fatalf("GetTaskSeries: %v", err)
+	}
+	if detail.Series.ID != created.Series.ID {
+		t.Fatalf("series ID 不匹配")
+	}
+}
