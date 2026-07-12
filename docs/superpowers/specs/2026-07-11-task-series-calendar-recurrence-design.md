@@ -4,7 +4,7 @@
 
 **状态：** 待实现
 
-**修订：** 2026-07-12。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型；同时补齐基于现有 AppShell、ProjectTabs、任务页和 Dialog 的导航、路由、页面、弹窗及移动端信息架构。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。
+**修订：** 2026-07-12。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。
 
 **范围：** 任务循环系列的领域语义、日历调度、CLI/HTTP/Remote/MCP 契约与 Web Console 完整 CRUD 体验
 
@@ -55,7 +55,7 @@
 | Web list | `web/src/features/workspace/project-workbench/api/project-api.ts`、`internal/app/service.go` | project query 会使默认 pending fallback 失效，series template 可能进入任务表 |
 | Web global nav | `web/src/components/AppShell.tsx` | 个人组已有概览/我的任务/项目；项目子路由统一高亮“项目”，无需新增全局 series 入口 |
 | Web project nav | `project/project-tabs.tsx`、`project/project-layout.tsx` | 现有概览/任务/活动/自动化 Tabs，Tabs 行右侧已有 `setTabActions` 与 context rail toggle |
-| Web routes | `web/src/routes/router.tsx` | 已有 project tasks/detail 与 my-tasks；需要新增 project-scoped task-series list/detail |
+| Web routes | `web/src/routes/router.tsx` | 已有 project tasks/detail 与 my-tasks；Series 管理使用 tasks 下的可深链面板路由，不新增 ProjectTabs 项 |
 | Scheduler | `internal/app/project_automation_scheduler.go`、`internal/cli/server.go` | 已有可复用的 RunOnce/Run、后台 ServiceFactory、60 秒 tick 和 server 生命周期 |
 
 ### 1.2 产品兼容边界调整
@@ -116,7 +116,7 @@
 | 存储路线 | 新建独立 `task_series` 聚合；Task 表只保存普通任务和已物化 occurrence |
 | 领域边界 | `Task.status` 不再有 recurring；`Task.parent` 只表示手工父子任务；occurrence 使用 `series_id` |
 | 产品资源 | series 是一等领域资源，不是 Task 的隐藏变体，也不可执行 |
-| 默认任务列表 | 显示普通任务和循环实例；series 只在“循环规则”资源视图出现 |
+| 默认任务列表 | 显示普通任务和循环实例；series 定义通过任务页工具栏中的“循环规则”管理面板治理 |
 | 系列管理 | 提供专用 Series CRUD，不再通过普通 `task_modify recur:*` 管理 |
 | 截止日期 | `due` 是实例截止时间；系列创建时的 `first_due` 是第一个日历槽位 |
 | 循环结束 | `until` 是包含式上界；日期值按本地当天 `23:59:59` 处理 |
@@ -190,7 +190,7 @@ exception override / tombstone
 | 术语 | 存储形态 | 是否出现在默认任务列表 | 是否可执行 |
 |---|---|---:|---:|
 | 普通任务 | `tasks` row，`series_id` 为空；`parent` 仅表达手工父子任务 | 是 | 是 |
-| 循环系列 / series | 独立 `task_series` row，保存规则和共享字段 | 否，进入专用“循环规则”列表 | 否 |
+| 循环系列 / series | 独立 `task_series` row，保存规则和共享字段 | 否，通过任务页内“循环规则”管理面板治理 | 否 |
 | 投影实例 / projected occurrence | 由系列在有界时间窗内计算，尚无 task row | 仅在范围视图中 | 是；首次写操作先物化 |
 | 已物化实例 / materialized occurrence | 普通 task row，关联 series，拥有不可变 `recurrence_at` | 是 | 是 |
 | 例外 / exception | 已物化且至少一个字段显式偏离系列共享字段的 occurrence | 是 | 是 |
@@ -403,7 +403,7 @@ type TaskSeriesView struct {
 
 用户信息继续遵守 `task.UserInfo` / `task.JSONUserInfo` 统一规范；若 Series get 暴露 rule-version 摘要，其中的 `created_by` 也必须是完整 UserInfo，而不是裸 UUID。
 
-SeriesView 的 occurrence counts 只统计 materialized rows；未来 projected occurrence 不计入 open count。`NextRecurrenceAt` 指向下一个尚未物化的合法槽位，`SuggestedRuleEffectiveFrom` 是修改规则的默认切换槽位，`BacklogRemaining` 表示已经进入执行期但尚待物化的槽位数。
+SeriesView 的 occurrence counts 只统计 materialized rows；未来 projected occurrence 不计入 open count。`NextRecurrenceAt` 是纯日历概念，指严格晚于注入 now 的下一合法槽位，不因该未来 occurrence 是否被提前物化而跳过；它用于展示和 `sort=next`，不能解释为“下一待生成任务”。`SuggestedRuleEffectiveFrom` 才是满足规则修改约束的默认切换槽位，会避开已进入执行期或已物化槽位；`BacklogRemaining` 表示已经进入执行期但尚待物化的槽位数。
 
 ### 7.8 TaskOccurrenceView 与 recurrence_info
 
@@ -761,6 +761,23 @@ Series list 默认返回 active，可显式筛选 `active|ended|stopped|all`。S
 
 Occurrence 历史另用分页端点读取，避免 series get 无限增长。
 
+Series list 在 HTTP、Remote、MCP、CLI 和 Web 管理面板统一支持：
+
+```text
+status=active|ended|stopped|all
+q=<title/description substring>
+assignee=<user reference>
+sort=next|title|modified
+limit/offset
+```
+
+- `q` trim 后按 title/description 做大小写不敏感包含匹配；空值等于不筛选。
+- `assignee` 在 App 层按现有稳定用户引用解析为 workspace user ID，再查询 series association；未知或越权引用按现有 assignee 错误处理。
+- `next_recurrence_at` 是 App 派生值，不新增数据库列：使用注入时钟和 workspace 时区，按完整 rule-version/effective_end/until 计算严格晚于 now 的最早合法槽位；active 但没有未来合法槽位以及 ended/stopped 返回 null。它不因 occurrence 的 due override 改变。
+- 默认 `sort=next`：Storage 先完成 status/q/assignee 候选过滤但不分页，App 为全部候选批量加载规则版本、计算 next_recurrence_at，再将非空值升序、null 置后，最后用 series ID 稳定排序并执行 offset/limit。
+- `sort=title` 使用标准化 title 升序 + ID；`sort=modified` 使用 modified_at 降序 + ID。
+- `total` 是 Storage 过滤后的候选总数；三种 sort 和分页都在 App 的完整候选集合上执行。Web 禁止只过滤当前页，Storage 也不得在 App 计算 next 之前提前 limit/offset。
+
 ### 11.4 修改系列
 
 Series modify 支持两组字段：
@@ -877,6 +894,8 @@ POST   /api/v1/task-series/{seriesRef}/occurrences/{occurrenceRef}/skip
 
 公开 JSON 字段统一使用 `recurrence_rule`、`first_due`、`effective_from`、`until`。`PATCH /task-series/{seriesRef}` 修改 `recurrence_rule` 时必须同时提交 `effective_from`；Series get 返回 `suggested_rule_effective_from` 和当前规则段摘要，供 Web、CLI、Remote 与 MCP 复用。传输层不得把 `recur` 别名写入 App DTO。
 
+`GET /task-series` 的公开查询参数为 `status/q/assignee/sort/limit/offset`，语义使用 §11.3；OpenAPI、Remote `TaskSeriesListInput` 与 MCP `task_series_list` 使用相同枚举和字段名。
+
 `GET /task-series/{seriesRef}/occurrences` 的 `status` 在 HTTP、Remote、MCP、CLI 中统一为 `pending|waiting|completed|deleted|all`，直接复用移除 recurring 后的 canonical Task status enum；`all` 表示不追加状态 predicate，不是持久状态。Series get 的 open occurrence 包含 pending 和 waiting。
 
 ### 13.3 Task 查询与范围展开
@@ -992,6 +1011,8 @@ xuanchu series stop <series-ref> [--delete-open]
 xuanchu series skip <series-ref> <occurrence-ref>
 ```
 
+`series list` 另接受 `--status`、`--query`、`--assignee`、`--sort=next|title|modified`、`--limit`、`--offset`，与 HTTP/MCP/Remote 的 Series list 完全等价。
+
 `xuanchu add ... recur:*`、`xuanchu <task-ref> modify recur:*` 和 `recur:` 不再是受支持命令。CLI human 输出使用“循环系列/实例/槽位”术语；`--json` 使用与 HTTP/MCP 相同的 SeriesView 和 recurrence_info 形状。
 
 现有任务命令统一扩展：
@@ -1051,6 +1072,13 @@ task_series_add:
   first_due | first_due_date
   until | until_date
   priority/assignees/tags/udas
+
+task_series_list:
+  workspace/project/project_id
+  status: active|ended|stopped|all
+  q/assignee
+  sort: next|title|modified
+  limit/offset
 
 task_series_modify:
   id
@@ -1145,42 +1173,36 @@ task_type: all|normal|occurrence
 
 理由：occurrence 属于“我的任务”和项目执行；series 是项目级治理资源。增加全局入口会重复“项目”维度，也会让用户误以为 series 是跨项目任务列表。
 
-项目现有 Tabs 从：
+项目 Tabs 保持现状，不新增“循环规则”：
 
 ```text
 [概览] [任务] [活动] [自动化]
 ```
 
-调整为：
-
-```text
-[概览] [任务] [循环规则 3] [活动] [自动化]
-```
-
-“循环规则”是项目一级子页面，不再嵌套在“任务”页面内部。它与任务有不同的默认筛选、列、CRUD 和详情结构，使用同级 Tab 比嵌套二级 Tab 更清晰，也符合现有 `ProjectTabs` 和独立 route 的结构。
+后端的 `task_series` 是独立聚合，但用户心智中的“循环任务”仍是任务的一种生成方式。项目导航必须围绕用户工作，而不是围绕数据库资源建模。所有要执行的工作只在“任务”中查看；Series 定义的 CRUD 是任务页内的治理能力，不与“任务”并列。
 
 ```text
 +--------------------------------------------------------------------------------+
 | 项目标题 / 状态 / 项目级操作                                                   |
 +--------------------------------------------------------------------------------+
-| [概览] [任务] [循环规则 3] [活动] [自动化]             [导入] [收起右栏]      |
+| [概览] [任务] [活动] [自动化]                          [导入] [收起右栏]      |
 +--------------------------------------------------------------------------------+
-| 当前 Tab 内容                                                 | 项目上下文栏    |
-|                                                              | 进度 / 风险     |
-|                                                              | 近期活动        |
+| 任务                                                      [循环规则 3] [新建⌄]|
+| [搜索] [状态] [优先级] [负责人] [日期] [任务类型] [更多筛选]                  |
 +--------------------------------------------------------------------------------+
-```
-
-项目“任务”Tab 保持普通执行入口：
-
-```text
-+--------------------------------------------------------------------------------+
-| 项目 / 任务                                                                    |
-| [搜索] [状态] [优先级] [负责人] [日期] [更多筛选]          [+ 新建任务]      |
+| 普通任务 + projected occurrence + materialized occurrence | 项目上下文栏       |
 +--------------------------------------------------------------------------------+
 ```
 
-“任务”显示普通任务和 occurrences；series 不是 Task，不在任务表出现。“循环规则”Tab 显示一行一个 series，承载治理入口。执行每一次和管理整个系列是 Web 信息架构的核心边界。
+信息架构原则：
+
+- “任务”是唯一执行入口，默认合并普通任务与 occurrence；用户不需要先判断任务来源。
+- Series 定义不是可完成的任务行，不能与 occurrence 同时混入任务表，否则会形成“规则一行 + 今天实例一行”的重复表达。
+- 工具栏“循环规则 3”显示 active series 数量，点击后在任务页右侧打开管理面板；0 时显示“循环规则”，不显示 0。
+- active count 使用 Series list 的分页 `total`（`status=active&limit=1`），不为一个 badge 拉取全部规则。count 加载中仍显示“循环规则”；请求失败不显示错误 badge、不阻断任务列表，打开面板后再呈现可重试错误。
+- “新建”使用菜单承载“新建普通任务 / 新建循环任务”；普通创建仍是默认动作，键盘快捷键保持创建普通任务。
+- 面板使用 URL 驱动并支持浏览器前进/后退、复制深链和刷新恢复，但打开面板时 ProjectTabs 始终高亮“任务”，任务列表的查询、选择、滚动位置不丢失。
+- 桌面端面板与任务表并存；移动端升级为全屏 Sheet。面板关闭后回到原任务上下文，而不是跳去另一个页面。
 
 ### 15.2 当前任务列表原型
 
@@ -1201,25 +1223,37 @@ task_type: all|normal|occurrence
 
 已物化 occurrence 显示 task_slug；尚未物化的未来投影没有 project_seq/task_slug，标识列显示简短的 `↻MM-DD`，链接使用稳定 occurrence_ref。首次写操作后可补充 task_slug，但 canonical URL 不变化。产品界面不显示“virtual/projected”等技术术语。
 
-筛选仍以实例为单位：status、assignee、due、priority、tag 均过滤 occurrence 自身。增加“任务类型：全部/普通/循环”筛选，默认全部。普通状态筛选中移除 `recurring`；series 状态只存在于“循环规则”视图。
+筛选仍以实例为单位：status、assignee、due、priority、tag 均过滤 occurrence 自身。增加“任务类型：全部/普通/循环”筛选，默认全部。普通状态筛选中移除 `recurring`；series 的 active/ended/stopped 状态只出现在任务页的循环规则管理面板，不能进入任务状态筛选。
 
 无界项目任务页只显示普通任务和已进入执行期/已物化 occurrence；只有 due_after + due_before 构成有限窗口时才请求 `occurrence_mode=expand`。一个系列积压多次时每次各占一行，首版不隐藏工作量；后续允许纯展示层按系列折叠，但折叠汇总行不得拥有完成动作。
 
-### 15.3 循环系列列表原型
+### 15.3 循环规则管理面板原型
 
 ```text
-+--------------------------------------------------------------------------------+
-| 循环系列                 | 规则    | 状态   | 未完成/逾期 | 下次槽位 | 有效至  |
-+--------------------------------------------------------------------------------+
-| 每日检查投放消耗         | 每天    | 运行中 | 3 / 2       | 07-14    | 07-31   |
-| 每周提交项目周报         | 每周    | 运行中 | 1 / 0       | 07-18    | -       |
-| 月度账单归档             | 每月    | 已结束 | 0 / 0       | -        | 06-30   |
-+--------------------------------------------------------------------------------+
-| 点击进入系列详情                                      [... 编辑] [... 停止]     |
-+--------------------------------------------------------------------------------+
+┌──────────────────────────────────────────────────────────┐
+│ 循环规则 3                                   [新建] [×] │
+│ 重复执行的任务规则；每一次仍在左侧任务列表完成。          │
+├──────────────────────────────────────────────────────────┤
+│ [搜索规则____________] [状态：运行中⌄] [负责人⌄]        │
+├──────────────────────────────────────────────────────────┤
+│ 每日检查投放消耗                              ● 运行中   │
+│ 每天 · 下次今天 · 未完成 3 · 逾期 2                 [›] │
+│                                                          │
+│ 每周提交项目周报                              ● 运行中   │
+│ 每周 · 下次周五 · 未完成 1                         [›] │
+│                                                          │
+│ 月度账单归档                                  已结束      │
+│ 每月 · 有效至 06-30                                  [›] │
+└──────────────────────────────────────────────────────────┘
 ```
 
-默认只列 active，状态筛选可查看 ended/stopped。
+面板规则：
+
+- 默认只列 active，状态筛选可查看 ended/stopped/all；列表、错误、空状态只占面板，不替换左侧任务执行视图。
+- 行点击在同一面板内进入 Series 详情；浏览器 URL 从 `/tasks/series` 变为 `/tasks/series/:seriesRef`。
+- 面板 Header 提供“新建”，直接打开统一创建弹窗的 recurring 模式；项目关闭或只读时隐藏。
+- 面板不是二级 Tab，不提供“任务 / 循环规则”切换器，也不把规则列表塞进任务表。
+- 桌面宽度建议 440–520px；窗口过窄时使用覆盖式 Sheet，保证主列表最小可用宽度。
 
 ### 15.4 创建弹窗原型
 
@@ -1253,7 +1287,7 @@ task_type: all|normal|occurrence
 | [待处理] [↻ 每天 · 2026-07-12]                                               |
 +--------------------------------------------------------------------------------+
 | 此任务属于循环系列“每日检查投放消耗”。                                       |
-| 系列每天独立生成；修改本次不会改动其它日期。             [管理循环系列 →]      |
+| 系列每天独立生成；修改本次不会改动其它日期。             [查看循环规则 →]      |
 +----------------------------------------------------------+---------------------+
 | 正文 / 子任务 / 活动                                     | 属性                |
 |                                                          | 截止：07-12 [可改] |
@@ -1265,16 +1299,16 @@ task_type: all|normal|occurrence
 更多操作：
 - 跳过本次
 - 复制链接
-- 管理循环系列
+- 查看循环规则
 ```
 
-实例详情不把 series 显示为“父任务”。`recurrence_info.rule` / `until` 只读，series 级修改必须进入 series 详情。
+实例详情不把 series 显示为“父任务”。`recurrence_info.rule` / `until` 只读；“查看循环规则”打开任务页管理面板中的 Series 详情，不离开任务执行上下文。
 
-### 15.6 系列详情原型
+### 15.6 面板内系列详情原型
 
 ```text
 +--------------------------------------------------------------------------------+
-| 循环系列 / 每日检查投放消耗                       [编辑系列] [停止循环]         |
+| 循环规则 / 每日检查投放消耗                    [编辑规则] [停止循环] [×]      |
 | [运行中] [每天] [首次 07-11] [有效至 07-31]                                  |
 +--------------------------------------------------------------------------------+
 | 摘要：未完成 3 · 逾期 2 · 已完成 8 · 已跳过 1                               |
@@ -1292,6 +1326,8 @@ task_type: all|normal|occurrence
 ```
 
 编辑系列对共享字段显示明确提示：“将更新未来实例；未完成实例中未被单独修改的字段也会更新；已完成、已跳过和已单独覆盖的字段不会改变。”
+
+详情仍位于任务页管理面板中。点击 occurrence 打开任务详情时关闭或暂时隐藏规则面板；浏览器返回恢复 Series 详情。历史“查看全部”在面板内分页，不跳转到新的项目 Tab。
 
 ### 15.7 停止确认
 
@@ -1320,10 +1356,10 @@ task_type: all|normal|occurrence
 
 | 视图 | 精确定义 | occurrence 行为 |
 |---|---|---|
-| 未完成 | assignee=me 且 pending/active/waiting | 普通任务 + 已进入执行期或已物化 occurrence；不展开无限未来 |
-| 今天 | due 在本地今天 `[00:00,次日00:00)` | 自动 expand 今天窗口；不混入逾期 |
-| 逾期 | open 且 due < 今天 00:00 | 多个历史 occurrence 各占一行 |
-| 无截止日期 | open 且 due is null | recurrence 不会出现，因为 occurrence 必有槽位日期 |
+| 未完成 | assignee=me 且 status 为 pending 或 waiting | 普通任务 + 已进入执行期或已物化 occurrence；不展开无限未来 |
+| 今天 | open（pending 或 waiting）且 due 在本地今天 `[00:00,次日00:00)` | 自动 expand 今天窗口；不混入逾期/已完成 |
+| 逾期 | open（pending 或 waiting）且 due < 今天 00:00 | 多个历史 occurrence 各占一行，waiting 也不能遗漏 |
+| 无截止日期 | open（pending 或 waiting）且 due is null | projected occurrence 不会出现；允许清除 due 的 materialized occurrence 会出现，仍保留只读 recurrence_at 作为原槽位 |
 | 已完成 | assignee=me 且 status=completed | 每次 completed occurrence 独立显示；series ended/stopped 不算任务完成 |
 
 ```text
@@ -1338,7 +1374,9 @@ task_type: all|normal|occurrence
 □ 每日巡检             ↻ 每天   OPS-21   7月10日
 ```
 
-同标题 occurrence 不去重；它们代表不同日期的独立执行责任。列表行增加直接 start/stop/done/reopen，避免用户必须进入详情。completed occurrence 的 reopen 只作用于本次，不恢复 stopped/ended series。
+同标题 occurrence 不去重；它们代表不同日期的独立执行责任。`active` 不是 Task status：界面“进行中”由 `status=pending && start!=null` 派生；start/stop 只设置/清除 start。列表行增加直接 start/stop/done/reopen，避免用户必须进入详情。completed occurrence 的 reopen 只作用于本次，不恢复 stopped/ended series。
+
+My Tasks 的 preset、搜索、项目、优先级、任务类型和排序全部迁入 route search params，不再只保存在组件 `useState`。从 My Tasks 打开 Series 面板时，`panelReturnTo` 另外保存 `{scrollTop, focusId, selectedIds}`；返回后先恢复查询，再在数据加载完成后恢复选择、滚动锚点和焦点。无效/已消失的行 ID 静默忽略并聚焦列表容器。
 
 ### 15.9 任务详情与编辑作用域
 
@@ -1354,7 +1392,7 @@ Occurrence 详情顶部固定显示：
 - `recurrence_at` 和 rule 只读；due 可改并显示“原循环日期”。
 - parent UI 只显示真实手工父任务；所属 series 使用独立属性。
 - 删除按钮文案为“跳过本次”；确认文案明确不影响后续。
-- 修改系列、停止循环只能通过“查看循环规则”。
+- 修改系列、停止循环只能通过“查看循环规则”打开任务页管理面板完成。
 - projected occurrence 的 GET 在存储层保持只读；界面仍可提供编辑。第一次编辑、评论、依赖、链接、子任务或合法生命周期动作后，响应切换为 materialized。
 
 ### 15.10 批量操作
@@ -1370,11 +1408,11 @@ Occurrence 详情顶部固定显示：
 
 ### 15.12 路由、面包屑与导航高亮
 
-新增项目级路由：
+Series 管理作为任务页的 URL 驱动面板，新增静态子路由：
 
 ```text
-/workspaces/:workspaceSlug/projects/:projectSlug/task-series
-/workspaces/:workspaceSlug/projects/:projectSlug/task-series/:seriesRef
+/workspaces/:workspaceSlug/projects/:projectSlug/tasks/series
+/workspaces/:workspaceSlug/projects/:projectSlug/tasks/series/:seriesRef
 ```
 
 保留：
@@ -1387,11 +1425,14 @@ Occurrence 详情顶部固定显示：
 
 导航规则：
 
-- task-series list/detail 都高亮全局侧栏“项目”和项目 Tab“循环规则”。
+- series list/detail panel route 都渲染同一个项目任务页，高亮全局侧栏“项目”和项目 Tab“任务”。不得新增 `ProjectTabKey=task-series`。
+- Router 将 `/tasks` 建成持久父路由，`/series` 与 `/series/:seriesRef` 是只渲染管理面板的子路由 Outlet；list/detail 切换不能重挂载 ProjectTasksPage。静态 Series 子路由必须优先于动态 `/tasks/:taskRef`，防止把 `series` 解释为 taskRef。
+- 任务筛选、排序、分页继续保存在 search params；打开/关闭/切换 Series 面板时原样保留。直接访问深链时使用任务页默认查询并打开面板。
+- 从任务行、任务详情或“我的任务”打开面板时，通过 Router location state 记录结构化 `panelReturnTo`：只允许 `{kind:tasks, search, restore}`、`{kind:task, taskRef}`、`{kind:my-tasks, search, restore}`，其中 restore 仅含 scrollTop/focusId/selectedIds；目标 URL 从当前 workspace/project 参数重新生成，不接受任意 href。关闭优先返回来源，直接深链没有来源时回到项目 `/tasks`。复制链接只复制 canonical panel URL，不携带 return state。
+- 桌面面板内部 breadcrumb 为“循环规则 > {系列标题}”；项目级 breadcrumb 仍为“项目 > 任务”，避免让治理面板伪装成项目一级页面。
 - occurrence detail 使用项目级 canonical route，因此高亮“项目”。从“我的任务”进入时附加非 canonical 的 `from=my-tasks`，页面首个面包屑显示“返回我的任务”；复制链接时去掉该参数。
-- series detail 面包屑为“项目 > 循环规则 > {系列标题}”。
 - 不新增 `/task-series` 全局路由，不新增跨项目 series 总表。
-- project Tab 数量 badge 只显示 active series 数；0 时显示“循环规则”，不显示 0。
+- “循环规则 N”数量只在任务页工具栏按钮显示 active series 数；ProjectTabs 不显示该数量。
 
 信息架构树：
 
@@ -1409,10 +1450,10 @@ Web Console
       ├─ 任务
       │  ├─ 普通任务
       │  ├─ 循环 occurrence
-      │  └─ 任务详情
-      ├─ 循环规则
-      │  ├─ Series 列表
-      │  └─ Series 详情 / occurrence 历史
+      │  ├─ 任务详情
+      │  └─ 循环规则管理面板
+      │     ├─ Series 列表
+      │     └─ Series 详情 / occurrence 历史
       ├─ 活动
       └─ 自动化
 ```
@@ -1423,10 +1464,10 @@ Web Console
 ┌──────────────┬──────────────────────────────────────────────────────────────────────────────┐
 │ 璇础         │ Ops 投放项目                                             [进行中] [···]    │
 │              ├──────────────────────────────────────────────────────────────────────────────┤
-│ 个人         │ [概览] [任务] [循环规则 3] [活动] [自动化]           [导入] [收起右栏]    │
+│ 个人         │ [概览] [任务] [活动] [自动化]                       [导入] [收起右栏]    │
 │  概览        ├──────────────────────────────────────────────────────────────┬───────────────┤
-│  我的任务    │ [搜索任务____________] [状态⌄] [优先级⌄] [负责人⌄]         │ 项目上下文    │
-│  项目 ●      │ [到期不早于] [到期不晚于] [任务类型⌄] [更多筛选]  [+ 新建任务]│               │
+│  我的任务    │ 任务                                 [循环规则 3] [新建任务⌄]│ 项目上下文    │
+│  项目 ●      │ [搜索任务______] [状态⌄] [优先级⌄] [负责人⌄] [任务类型⌄]   │               │
 │              │                                                              │ 一次性进度    │
 │ 管理         │ 筛选：负责人=张三 ×  类型=全部 ×                            │ 18 / 24       │
 │  成员        ├───────┬────────────────────────┬────────┬──────────┬──────────┤               │
@@ -1443,47 +1484,48 @@ Web Console
 
 现有位置调整：
 
-- `ProjectTabs` 增加“循环规则”，不改变项目 Header。
+- `ProjectTabs` 保持 `[概览][任务][活动][自动化]`，不增加 Series 资源项。
 - “导入任务”继续使用现有 `setTabActions` 放在 Tabs 行右侧，只在“任务”Tab 出现。
 - “收起右栏”保持 Tabs 行最右。
-- “新建任务”保持任务筛选工具栏最右，是页面主动作。
+- 任务页内容 Header 右侧依次放“循环规则 N”和“新建任务⌄”；前者是次动作，后者是主动作菜单。
+- “新建任务⌄”菜单项为“新建普通任务”和“新建循环任务”；按钮主区域/快捷键默认普通任务，菜单可直接进入循环模式。
 - 新增“任务类型：全部/普通/循环”筛选；状态选项删除 `recurring`。
-- 不在每行增加永久“管理系列”按钮，避免表格变宽；放入 `···` 菜单。
+- 不在每行增加永久“管理系列”按钮，避免表格变宽；occurrence 的 `···` 中提供“查看循环规则”。
+- 打开循环规则时复用右侧 workspace panel slot，临时替换项目上下文栏；关闭后恢复用户原来的右栏展开状态。宽度不足时使用覆盖式 Sheet，不把主表压到不可读。
+- 自定义面板打开时，Tabs 行原“收起右栏”按钮的 aria-label/title 改为“关闭循环规则”，点击行为与面板 `[×]` 一致；不能显示错误的“收起项目上下文”文案。
 
-### 15.14 循环规则页完整桌面原型
+### 15.14 任务页打开循环规则面板的完整桌面原型
 
 ```text
 ┌──────────────┬──────────────────────────────────────────────────────────────────────────────┐
 │ 全局侧栏     │ Ops 投放项目                                             [进行中] [···]    │
 │ 项目 ●       ├──────────────────────────────────────────────────────────────────────────────┤
-│              │ [概览] [任务] [循环规则 3] [活动] [自动化]                  [收起右栏]    │
+│              │ [概览] [任务] [活动] [自动化]                    [导入] [关闭规则] │
 │              ├──────────────────────────────────────────────────────────────┬───────────────┤
-│              │ 循环规则                                      [+ 新建循环任务]│ 项目上下文    │
-│              │ 管理重复执行规则；具体每次任务仍在“任务”中完成。             │               │
-│              │                                                              │ 循环执行      │
-│              │ [搜索规则____________] [状态：运行中⌄] [负责人⌄] [排序⌄]    │ 运行中 3      │
-│              ├────────────────────┬────────┬───────────┬──────────┬──────────┤ 未完成 5      │
-│              │ 标题               │ 规则   │ 状态      │ 未完成   │ 下次     │ 逾期 2        │
-│              ├────────────────────┼────────┼───────────┼──────────┼──────────┤               │
-│              │ 每日检查投放消耗   │ 每天   │ ●运行中   │ 3 / 2逾期│ 今天  ···│               │
-│              │ 每周提交项目周报   │ 每周   │ ●运行中   │ 1 / 0    │ 周五  ···│               │
-│              │ 月度账单归档       │ 每月   │ 已结束    │ 0 / 0    │ —     ···│               │
-│              └────────────────────┴────────┴───────────┴──────────┴──────────┤               │
+│              │ 任务                                [循环规则 3] [新建任务⌄]│ 循环规则 3    │
+│              │ [搜索] [状态⌄] [负责人⌄] [任务类型：全部⌄]                  │ [搜索规则___] │
+│              ├───────┬────────────────────────┬────────┬──────────┤          │ [运行中⌄]     │
+│              │OPS-17 │每日检查投放消耗 ↻每天  │待处理  │今天      │          │ 每日检查投放  │
+│              │OPS-20 │完成季度复盘            │进行中  │07-31     │          │ 每天·下次今天›│
+│              │↻07-19 │每日检查投放消耗 ↻每天  │待处理  │07-19     │          │                │
+│              │       │                        │        │          │          │ 每周提交周报  │
+│              │       │                        │        │          │          │ 每周·下次周五›│
+│              └───────┴────────────────────────┴────────┴──────────┤          │ [新建]    [×] │
 └──────────────┴──────────────────────────────────────────────────────────────┴───────────────┘
 ```
 
-页面规则：
+面板规则：
 
-- 页面标题和说明固定出现，避免用户把规则列表当成任务列表。
+- 左侧任务列表保持可见，明确“执行工作融合、规则管理内聚”的关系。
 - 默认 `status=active`；可切换运行中/已结束/已停止/全部。
 - 主动作是“新建循环任务”，打开统一创建弹窗并默认循环模式。
-- 行点击进入 series detail；`···` 只有“查看详情、编辑系列、停止循环”。
+- 行点击在面板内进入 series detail；返回只切回面板列表。
 - ended/stopped 行不显示编辑/停止，只显示详情和历史。
-- 项目关闭时隐藏主动作和写菜单，显示现有 `ProjectClosedBanner`。
+- 项目关闭时隐藏主动作和写菜单；任务页已有 `ProjectClosedBanner`，面板不重复显示第二个 Banner。
 
 ### 15.15 统一创建弹窗
 
-复用当前 `TaskCreateDialog`，不新建第二套完全独立表单。调用方传 `initialMode=normal|recurring`：任务页默认 normal，循环规则页默认 recurring。
+复用当前 `TaskCreateDialog`，不新建第二套完全独立表单。任务页主按钮/快捷键传 `initialMode=normal`；“新建任务⌄ > 新建循环任务”和循环规则面板 Header 的“新建”传 `initialMode=recurring`。
 
 普通模式：
 
@@ -1540,7 +1582,7 @@ Web Console
 - rule 选择支持每天、每周、每两周、每月、每季度、每年、自定义 N 天/周/月，只提交 canonical 值。
 - first_due 或 rule 变化后即时显示未来三次预览；until 早于 first_due 时在字段下报错。
 - `Cmd/Ctrl+Enter` 提交当前模式；pending 时禁用关闭和重复提交。
-- 创建普通任务后关闭弹窗并聚焦新任务行；创建 series 后跳转 series detail，并 Toast“循环规则已创建”。
+- 创建普通任务后关闭弹窗并聚焦新任务行；创建 series 后关闭弹窗、刷新融合任务列表与规则缓存，并在任务页右侧打开新 Series 的详情面板，Toast“循环任务已创建”。若 first occurrence 不在当前过滤/日期窗口中，不强行改变筛选，只在 Toast 提供“查看循环规则”。
 
 ### 15.16 编辑系列弹窗
 
@@ -1594,7 +1636,7 @@ Web Console
 └─ 跳过本次
 ```
 
-运行中 series 行：
+管理面板内运行中 series 行：
 
 ```text
 ···
@@ -1638,20 +1680,21 @@ Web Console
 
 - 一级预设已经定义状态范围，因此移除当前重复的“状态”下拉，避免 tab 与 status 相互覆盖。
 - 保留搜索、项目、优先级、任务类型和排序；“今天/逾期”不再让用户手工拼日期。
-- pending 行直接显示完成；active 行显示停止和完成；completed 行显示 reopen。
+- pending 且 start 为空的行直接显示开始/完成；pending 且 start 非空（界面“进行中”）显示停止和完成；waiting 行显示完成及等待提示；completed 行显示 reopen。
 - occurrence 的 `···` 与项目任务页一致，并提供“查看循环规则”。
 - 从我的任务打开 occurrence 使用项目级 canonical URL；项目不存在或不可见时显示只读引用而非错误链接。
 
 ### 15.19 移动端原型
 
-全局导航继续使用现有 Sheet；项目 Tabs 横向滚动，不把“循环规则”塞进 `···`：
+全局导航继续使用现有 Sheet；项目 Tabs 不增加“循环规则”。任务页 Header 保留明确的规则管理按钮，点击后打开全屏 Sheet：
 
 ```text
 ┌──────────────────────────────┐
 │ ☰  Ops 投放项目          ··· │
 ├──────────────────────────────┤
-│ 概览  任务  循环规则  活动 → │
+│ 概览  任务  活动  自动化 →   │
 ├──────────────────────────────┤
+│ 任务       [循环规则 3] [＋⌄]│
 │ [搜索____________________]   │
 │ [状态⌄] [负责人⌄] [筛选⌄]  │
 │                              │
@@ -1662,7 +1705,7 @@ Web Console
 │ │             [完成] [···]│ │
 │ └──────────────────────────┘ │
 │                              │
-│              [+ 新建任务]   │
+│                     [+ 新建] │
 └──────────────────────────────┘
 ```
 
@@ -1670,21 +1713,22 @@ Web Console
 - 主动作使用底部右侧 sticky button；页面滚动时不遮挡最后一张卡。
 - `···` 打开 bottom sheet，菜单内容与桌面一致。
 - 创建/编辑 series 使用全屏 Dialog/Sheet，mode selector 和 Footer 固定，正文区域滚动。
-- series detail 的摘要卡、未完成、历史纵向排列，不保留桌面右栏。
+- “循环规则 3”打开全屏 Sheet；Sheet 内列表、详情、历史纵向排列，Header 返回键在详情与列表间切换，关闭键回到原任务滚动位置。
+- 移动端深链仍使用 `/tasks/series/:seriesRef`；系统返回先关闭/后退面板层级，不退出整个项目。
 
 ### 15.20 空状态、权限与关闭项目
 
 | 场景 | 页面表现 | 主动作 |
 |---|---|---|
 | 项目没有任务 | “还没有任务” + 说明普通任务/循环 occurrence 都会出现在这里 | 新建任务 |
-| 项目没有 series | “还没有循环规则；适合每日巡检、周报等重复执行工作” | 新建循环任务 |
+| 项目没有 series | 任务页保持正常；打开管理面板后显示“还没有循环规则；适合每日巡检、周报等重复执行工作” | 面板内新建循环任务 |
 | 我的今天为空 | “今天没有分配给你的任务” | 无，不诱导创建项目任务 |
 | series 无历史 | 显示下一槽位和“尚无执行记录” | 编辑/停止 |
 | 只读权限 | 隐藏创建、编辑、完成、跳过、停止；保留查看和复制链接 | 无 |
 | 项目 archived/cancelled | 显示现有关闭 Banner；任务和 series 全部只读 | 有权限者仅能从项目状态菜单恢复项目，不自动恢复 series |
-| scheduler backlog | series 页和详情显示“正在补齐 N 条历史任务”；任务日期视图仍显示投影结果 | 无需用户重试 |
+| scheduler backlog | 管理面板列表/详情显示“正在补齐 N 条历史任务”；任务日期视图仍显示投影结果 | 无需用户重试 |
 
-加载、错误、空状态必须分别呈现；不能在 API 失败时显示“没有循环规则”。所有按钮、Tabs、菜单和 Dialog 均提供 i18n key、键盘焦点和明确 aria-label。
+面板的加载、错误、空状态必须分别呈现；规则 API 失败只影响面板，不得清空或阻断已加载的任务列表，也不能显示成“没有循环规则”。所有按钮、菜单、Sheet 和 Dialog 均提供 i18n key、键盘焦点和明确 aria-label；打开面板后焦点进入 Header，关闭后回到触发按钮。
 
 ## 16. Web 数据流
 
@@ -1701,16 +1745,17 @@ TaskCreateDialog 选择“循环任务”
   -> 返回 SeriesView + first_occurrence
   -> invalidate:
        project tasks
-       task series list
+       task series panel list/detail
        project summary
        project timeline
-  -> 关闭弹窗并聚焦 first_occurrence 行
+  -> 关闭弹窗，保持任务筛选并打开 /tasks/series/{newSeriesRef} 面板
+  -> first_occurrence 当前可见时高亮对应行；不可见时不改变筛选
 ```
 
 ### 16.2 实例与系列修改流程
 
 ```text
-实例详情修改 title/due/...       系列详情修改 rule/shared fields
+实例详情修改 title/due/...       任务页规则面板修改 rule/shared fields
           |                                   |
           v                                   v
 PATCH /tasks/{occurrence}       PATCH /task-series/{series}
@@ -1744,7 +1789,27 @@ Web 日期窗口
   -> task_series -> stopped + effective_end_at
   -> 可选 open occurrences -> deleted
   -> 写 audit/events
-  -> 刷新系列、任务列表、项目统计和详情
+  -> 刷新规则面板、任务列表、项目统计和详情
+```
+
+### 16.5 Series 管理面板导航流
+
+```text
+任务页点击“循环规则 3”
+  -> navigate /tasks/series + 保留全部 task search params
+  -> 任务列表保持 mounted；右侧项目上下文暂存并切换为规则面板
+  -> 点击 Series
+       -> navigate /tasks/series/{seriesRef}
+       -> 面板内 list -> detail，不替换任务页
+  -> 关闭面板
+       -> 有 panelReturnTo：返回任务列表/任务详情/我的任务来源
+       -> 无 return state：navigate /tasks
+       -> 原样保留 search params、选择和滚动位置
+       -> 恢复打开前的项目上下文栏状态与触发按钮焦点
+
+直接访问 /tasks/series/{seriesRef}
+  -> 加载任务页默认查询 + 指定 Series 详情
+  -> 无权限或 Series 不存在：面板显示 404/无权限，任务列表仍可使用
 ```
 
 ## 17. 查询、列表与项目统计
@@ -2005,17 +2070,17 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 
 ### 23.7 Web Console
 
-- 全局侧栏不新增 series；项目级 `/task-series` list/detail 高亮“项目”和“循环规则”Tab。
-- ProjectTabs 增加循环规则及 active count；任务页 import action 和右栏 toggle 位置不回归。
+- 全局侧栏和 ProjectTabs 都不新增 series；`/tasks/series[/seriesRef]` 渲染任务页管理面板并始终高亮“任务”。
+- 任务页 Header 提供“循环规则 N”和“新建任务⌄”；active count 不进入 ProjectTabs，import action 和右栏 toggle 位置不回归。
 - 创建弹窗普通/循环切换与必填校验。
-- 创建弹窗从任务页/循环规则页使用正确 initialMode，切换模式保留各自 state，预览未来三次。
+- 创建弹窗从任务主动作/循环规则面板使用正确 initialMode，切换模式保留各自 state，预览未来三次；创建 series 后打开详情面板且不破坏任务筛选。
 - Web option 只提交 canonical recurrence。
 - 当前任务列表显示 Task/occurrence 和 recurrence badge，不查询 series。
-- 项目普通状态筛选移除 recurring，增加任务/循环规则二级入口。
+- 项目普通状态筛选移除 recurring，增加任务类型筛选；Series status 只存在于规则管理面板。
 - 我的任务具有未完成/今天/逾期/无截止日期/已完成互斥预设；今天不包含逾期。
 - 同系列多条积压不去重；completed occurrence 独立显示和 reopen。
 - projected 行使用 occurrence_ref permalink，物化后 URL 不变。
-- series list/status/filter/detail/history。
+- 管理面板内完成 series list/status/filter/detail/history，并支持 URL 深链、前进后退、焦点与任务列表状态恢复。
 - occurrence 详情显示 series banner，不显示普通 parent。
 - instance edit、skip、reopen。
 - series edit/stop/delete-open 二次确认。
@@ -2023,7 +2088,7 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - My Tasks 移除冲突 status selector，直接动作和 from=my-tasks 返回入口正确。
 - 项目关闭隐藏写入口。
 - project statistics 的普通/循环口径。
-- 移动端横向 ProjectTabs、card、bottom sheet、全屏表单与 sticky 主动作。
+- 移动端 ProjectTabs 不含循环规则；任务 card、规则全屏 Sheet、全屏表单与 sticky 主动作符合原型。
 - loading/error/empty/readonly/backlog 状态，i18n、aria-label 与键盘焦点。
 
 ### 23.8 必跑验证
@@ -2049,7 +2114,7 @@ git diff --check
 4. 普通任务和循环系列不能直接互转；Web、HTTP、MCP、Remote、CLI 都不提供转换入口，generic Task schema 不接受 recurrence。
 5. Web Console 可以创建、查看、修改、停止 series，可以完成、重新打开和跳过 occurrence。
 6. 项目任务、我的未完成、今天、逾期、我的已完成都展示普通任务和符合条件的 occurrence，不混入 series，且各视图日期/状态边界准确。
-7. 全局侧栏不增加重复入口；项目“循环规则”有独立 list/detail 路由，桌面和移动端导航高亮、面包屑和主动作位置符合 §15。
+7. 全局侧栏和 ProjectTabs 不增加循环规则入口；项目任务页融合普通任务与 occurrence，Series list/detail 通过 `/tasks/series[/seriesRef]` 管理面板深链，桌面/移动端的高亮、返回、焦点、筛选和滚动恢复符合 §15。
 8. 创建、编辑、跳过、停止弹窗的字段、影响摘要、默认模式和危险操作文案与 ASCII 原型一致。
 9. HTTP 与 MCP 对同一 query 返回相同集合和 recurrence_info；projected occurrence 首次写原子物化，公开 id 不变。
 10. MCP 可以通过专用 tools 完成 series CRUD，且 series 不会被建模成可 done/start 的 Task。
@@ -2065,6 +2130,8 @@ git diff --check
 20. `/reports/{name}`、`/tasks?report=`、CLI report 与 MCP/Remote 在同一范围和过滤条件下返回相同 TaskViewPage，ready/blocked/blocking/urgency 语义及分页顺序一致。
 21. external edit 取消、失败或无变化不物化 projected occurrence；有效 diff 才原子物化并修改。
 22. series occurrences 的 pending/waiting/completed/deleted/all 枚举在 HTTP/MCP/Remote/CLI schema 与测试中一致。
+23. Series list 的 status/q/assignee/sort/pagination 在 HTTP/MCP/Remote/CLI/Web 返回相同 items 和 filtered total；Web 不过滤当前页伪造结果。
+24. My Tasks open presets 同时包含 pending/waiting，不存在 active status；从 My Tasks 打开/关闭规则面板后恢复 preset、筛选、排序、选择、滚动和焦点。
 
 ## 25. 实施边界与建议拆分
 

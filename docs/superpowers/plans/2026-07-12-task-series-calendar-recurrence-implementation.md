@@ -23,7 +23,7 @@
 - occurrence 的公开 `id` 在投影/物化前后固定为 `occ:<series_uuid>:<recurrence_at_unix>`。
 - 所有用户引用使用 `task.UserInfo` / `task.JSONUserInfo`，不输出裸用户 UUID。
 - MCP tool name 使用下划线，`Content[0].text` 的 ToolEnvelope 与 `structuredContent` 语义一致。
-- Web 全局侧栏不新增循环任务；series 只进入项目级“循环规则”Tab。
+- Web 全局侧栏和 ProjectTabs 都不新增循环任务；普通任务与 occurrence 融合在“任务”，series 只进入任务页内可深链的管理面板。
 - 不提交 `internal/webconsole/dist`、本地二进制、数据库、token、缓存或临时文件。
 - 每个后端任务至少运行其定向测试；最终必须运行 `go test ./...`、`CGO_ENABLED=0 go test ./...`、`CGO_ENABLED=0 go build ./cmd/xuanchu`、`go vet ./...`。
 - Web 任务最终必须运行 `pnpm --dir web typecheck`、`pnpm --dir web test`、`pnpm --dir web lint`、`pnpm --dir web build`、`pnpm --dir web run smoke:editing`。
@@ -87,12 +87,15 @@
 
 - `web/src/features/workspace/project-workbench/api/task-series-api.ts` — TS 契约和 API client。
 - `web/src/features/workspace/project-workbench/api/task-series-api.test.ts` — URL/body 契约。
-- `web/src/features/workspace/project-workbench/task-series/task-series-page.tsx` — Series 列表页。
-- `web/src/features/workspace/project-workbench/task-series/task-series-detail-page.tsx` — Series 详情与历史。
+- `web/src/features/workspace/project-workbench/task-series/task-series-panel.tsx` — 任务页内 URL 驱动的 Series 管理面板壳层。
+- `web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.tsx` — 桌面右栏/移动全屏 Sheet、焦点和关闭行为。
+- `web/src/features/workspace/project-workbench/task-series/task-series-list.tsx` — 面板内 Series 列表。
+- `web/src/features/workspace/project-workbench/task-series/task-series-detail.tsx` — 面板内 Series 详情与历史。
 - `web/src/features/workspace/project-workbench/task-series/task-series-dialog.tsx` — 编辑规则和 effective_from。
 - `web/src/features/workspace/project-workbench/task-series/task-series-stop-dialog.tsx` — 停止确认。
 - `web/src/features/workspace/project-workbench/task-series/*.test.tsx` — 页面/弹窗测试。
-- `web/src/routes/workspace/ProjectTaskSeriesRoute.tsx`、`ProjectTaskSeriesDetailRoute.tsx` — lazy route 包装。
+- `web/src/routes/workspace/ProjectTasksRoute.tsx` — 持久任务父路由，任务页和 Series 子路由 Outlet 共存。
+- `web/src/routes/workspace/ProjectTaskSeriesPanelRoute.tsx` — list/detail 子路由只注册面板，不重挂载任务页。
 
 **重点修改文件：**
 
@@ -337,9 +340,10 @@ git commit -m "refactor: 为任务引入循环实例关联"
 
 - Produces:
   - `NewTaskSeriesRepository(*gorm.DB) *TaskSeriesRepository`
+  - `type TaskSeriesListOptions struct { WorkspaceID, ProjectID, Status, Q, AssigneeUserID string }`
   - `Create(series taskseries.Series) (taskseries.Series, error)`
   - `Get(workspaceID, seriesID string) (taskseries.Series, error)`
-  - `List(TaskSeriesListOptions) ([]taskseries.Series, int, error)`
+  - `ListCandidates(TaskSeriesListOptions) ([]taskseries.Series, error)`; filters but never sorts/pages
   - `Update(series taskseries.Series) error`
   - `ListActive(limit, offset int) ([]taskseries.Series, error)`
   - `StopProjectSeries(workspaceID, projectID string, at int64, reason string) ([]taskseries.Series, error)`
@@ -352,6 +356,8 @@ git commit -m "refactor: 为任务引入循环实例关联"
 - [ ] **Step 1: 写 repository 失败测试**
 
 Create `internal/storage/task_series_repo_test.go` with a lifecycle test that creates workspace/project/user, creates an active daily series with one rule version and assignee/tag/UDA, reloads it, appends a rule version, lists by project/status, and stops it. Assert all associations and timestamps round-trip.
+
+Add table tests for `TaskSeriesListOptions{Status,Q,AssigneeUserID}`: q matches title/description case-insensitively; assignee filters through the association table; all matching candidates and rule-version associations are returned in stable ID order without limit/offset on SQLite and PostgreSQL. App owns public sorting/pagination.
 
 Create `internal/storage/task_occurrence_repo_test.go` with:
 
@@ -401,7 +407,7 @@ Before dropping/rebuilding old columns, use `Migrator().HasTable/HasColumn` so a
 
 - [ ] **Step 5: 实现 repositories 和 model mapping**
 
-Use one transaction for series row + rule versions + assignees/tags/UDAs. `CreateOccurrence` catches unique constraint, reads by `(workspace_id,series_id,recurrence_at)`, and returns `(existing,true,nil)` regardless of existing task status. `ListOccurrenceExceptions` must query `(recurrence_at >= start AND recurrence_at < end) OR (due >= start AND due < end)` so rescheduled occurrences suppress the original slot and appear on the new date.
+Use one transaction for series row + rule versions + assignees/tags/UDAs. `CreateOccurrence` catches unique constraint, reads by `(workspace_id,series_id,recurrence_at)`, and returns `(existing,true,nil)` regardless of existing task status. `ListOccurrenceExceptions` must query `(recurrence_at >= start AND recurrence_at < end) OR (due >= start AND due < end)` so rescheduled occurrences suppress the original slot and appear on the new date. Series `ListCandidates` applies status/q/assignee, preloads rule versions and never paginates; scheduler-only `ListActive(limit,offset)` remains separate and cannot back the public Series list.
 
 - [ ] **Step 6: 更新 TaskRepository**
 
@@ -556,6 +562,7 @@ git commit -m "feat: 合并任务与循环实例视图"
   - `type AddTaskSeriesInput struct`
   - `type ModifyTaskSeriesInput struct`
   - `type StopTaskSeriesInput struct`
+  - `type TaskSeriesListInput struct { Project, ProjectID, Status, Q, Assignee, Sort string; Limit, Offset int }`
   - `type TaskSeriesOccurrenceListInput struct { Status string; DueAfter, DueBefore *int64; Limit, Offset int }`; status is `pending|waiting|completed|deleted|all`
   - `type TaskSeriesView struct`
   - `func (s *Service) AddTaskSeries(AddTaskSeriesInput) (TaskSeriesCreateResult, error)`
@@ -579,6 +586,7 @@ Create `internal/app/task_series_test.go` with tests that:
 4. reject rule modify without `effective_from`, with effective date today/past, beyond until, or while backlog remains;
 5. reject wait/scheduled/depends/parent and closed project.
 6. list occurrences with each canonical status plus all, due range and pagination; pending/waiting are both open and invalid status fails before repository access.
+7. list Series with status/q/assignee/sort and pagination, resolving assignee in App; freeze clock/location and assert next across rule-version cutover/until/stopped/null, prove an early-materialized future occurrence does not change the next calendar slot, then assert filtered total, pagination after sort and stable ID tie-breaker.
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -593,6 +601,8 @@ Use the Task 4 repositories already wired into `Service`. `AddTaskSeriesInput` f
 `TaskSeriesView.CreatedBy` and all assignees must use `task.UserInfo`; unresolved IDs use the repository-wide fallback `{ID:id,Name:id}`. Register `task.series.created|modified|ended|stopped` and `task.recurrence.generated|skipped` in the event allowlist. Pure projection emits nothing; materialization emits one `task.created` with recurrence_info.
 
 `ListTaskSeriesOccurrences` validates status against one shared enum derived from `task.Status` after recurring is removed; `all` adds no predicate. Use the same input/view in HTTP、Remote、MCP、CLI so waiting cannot disappear at one transport. Series detail open occurrences include pending and waiting but remain capped as specified; complete history always uses this paged method.
+
+`ListTaskSeries` trims Q, validates `status=active|ended|stopped|all` and `sort=next|title|modified`, resolves Assignee through the existing workspace user-reference resolver, and passes only user ID to storage. It receives the complete filtered candidate set, computes each active Series' earliest legal recurrence_at strictly after injected now using workspace location and full rule-version/effective_end/until semantics, without querying/skipping early-materialized future occurrences, then applies next/title/modified stable sort and offset/limit. `TaskSeriesPage.Total=len(candidates)` before pagination. Invalid assignee/sort fails before repository access; all transports consume the same page total。
 
 - [ ] **Step 4: 实现修改事务**
 
@@ -783,6 +793,7 @@ git commit -m "feat: 按日历补齐循环实例"
 - Task list query also accepts `task_type=all|normal|occurrence`; it filters merged App views and is not a task status.
 - `remote.TaskQueryInput` exposes `TaskType string` with the same enum and sends it as the structured `task_type` parameter.
 - Series occurrence list status is exactly `pending|waiting|completed|deleted|all` in HTTP/Remote/MCP/CLI; `all` adds no predicate.
+- Series list accepts `status/q/assignee/sort=next|title|modified/limit/offset`; Remote `TaskSeriesListInput` mirrors those fields.
 - Remote produces `AddTaskSeries`、`ListTaskSeries`、`GetTaskSeries`、`ModifyTaskSeries`、`StopTaskSeries`、`ListTaskSeriesOccurrences`、`SkipTaskSeriesOccurrence`.
 - Remote replaces `ListTasks/GetTask` with `QueryTasks/GetTaskView`; all task reads/actions use `TaskOccurrenceDTO` or `TaskViewPageDTO`, never `task.Task`.
 
@@ -790,7 +801,7 @@ HTTP error mapping must cover `task_series_not_found`(404)、`task_series_inacti
 
 - [ ] **Step 1: 写 HTTP 合约失败测试**
 
-Add tests for full Series lifecycle, required project/write permission, scope hiding, closed project, recurrence_rule/effective_from validation, UserInfo output, stop/delete_open, and all documented errors/status mappings. Add task list tests for auto/materialized/expand, missing range, >366 days, inclusive date input, projected GET without writes and stable occurrence ID after done. Test `/reports/{name}` and `/tasks?report=` with identical range/mode/task_type/query, asserting identical TaskViewPage for ready/blocked/blocking/waiting/urgency and pagination after scope/sort. Exercise every existing task/subresource route with an occurrence_ref: projected annotation/link add materializes; annotation/link update/delete returns 404 without materialization; annotations/links/children/audit reads are empty; urgency is computed; no-op/failed writes leave task/audit/event counts unchanged.
+Add tests for full Series lifecycle, required project/write permission, scope hiding, closed project, recurrence_rule/effective_from validation, UserInfo output, stop/delete_open, and all documented errors/status mappings. Series list contract tests cover status/q/assignee/all sort modes, invalid values, filtered total, pagination and HTTP/Remote parity. Add task list tests for auto/materialized/expand, missing range, >366 days, inclusive date input, projected GET without writes and stable occurrence ID after done. Test `/reports/{name}` and `/tasks?report=` with identical range/mode/task_type/query, asserting identical TaskViewPage for ready/blocked/blocking/waiting/urgency and pagination after scope/sort. Exercise every existing task/subresource route with an occurrence_ref: projected annotation/link add materializes; annotation/link update/delete returns 404 without materialization; annotations/links/children/audit reads are empty; urgency is computed; no-op/failed writes leave task/audit/event counts unchanged.
 
 Use this response assertion shape:
 
@@ -823,7 +834,7 @@ Use public JSON field `recurrence_rule`, never `recur`. Task list and both repor
 
 - [ ] **Step 4: 注册 Huma 并验证 OpenAPI**
 
-Register all seven routes in `huma_routes.go`, use request/response structs so `/openapi.json` includes enums, required fields and nullable projected UUID. Add a server test that fetches `/openapi.json` and asserts `task-series`, `occurrence_mode`, `recurrence_rule`, occurrence status `pending|waiting|completed|deleted|all`, report TaskViewPage, and no task `recur` property.
+Register all seven routes in `huma_routes.go`, use request/response structs so `/openapi.json` includes enums, required fields and nullable projected UUID. Add a server test that fetches `/openapi.json` and asserts `task-series`, Series list q/assignee/next|title|modified, `occurrence_mode`, `recurrence_rule`, occurrence status `pending|waiting|completed|deleted|all`, report TaskViewPage, and no task `recur` property.
 
 - [ ] **Step 5: 实现 Remote client**
 
@@ -877,7 +888,7 @@ git commit -m "feat: 提供循环系列 HTTP 与远程契约"
 
 - Commands:
   - `xuanchu series add <title> --project --recur --first-due [--until]`
-  - `xuanchu series list --project [--status]`
+  - `xuanchu series list --project [--status --query --assignee --sort=next|title|modified --limit --offset]`
   - `xuanchu series info <series-ref>`
   - `xuanchu series modify <series-ref> [--recur --effective-from --until ...]`
   - `xuanchu series occurrences <series-ref> [--status pending|waiting|completed|deleted|all] [--due-after --due-before --limit --offset]`
@@ -887,7 +898,7 @@ git commit -m "feat: 提供循环系列 HTTP 与远程契约"
 
 - [ ] **Step 1: 写 CLI 失败测试**
 
-Add integration tests that create daily series, list/info/modify/occurrences/skip/stop in human and JSON modes, assert stdout contains only result JSON under `--json`, errors go to stderr, and series ID/occurrence_ref are accepted. Modify-rule tests must pass `--effective-from`; missing it fails without writes. `series occurrences` tests page complete history independently of the `series info` recent-history limit.
+Add integration tests that create daily series, list/info/modify/occurrences/skip/stop in human and JSON modes, assert stdout contains only result JSON under `--json`, errors go to stderr, and series ID/occurrence_ref are accepted. Series list tests cover query/assignee/sort/pagination parity with HTTP and filtered total in JSON. Modify-rule tests must pass `--effective-from`; missing it fails without writes. `series occurrences` tests page complete history independently of the `series info` recent-history limit.
 
 Add a table covering occurrence_ref through `info/modify/delete/start/stop/reopen/annotate/denotate/append/prepend/edit/link add/list/remove/annotations/urgency/_urgency`; assert legal projected writes materialize and stop/reopen/nonexistent denotate/link-remove do not. External edit must open from a projected view without writes; cancellation, editor failure and unchanged content leave task/audit/event counts unchanged, while a non-empty diff atomically materializes and modifies once. Add list/report tests for all occurrence modes, ready/blocked/blocking/waiting/urgency semantics and date-range errors. Assert projected rows render ID/UUID/SLUG as `-`, are absent from `_ids/_uuids`, `_get ...uuid` is null, and become working-set-addressable only after materialization. Assert `_projects/_tags/_unique` stay materialized-only and `_udas/_show/_version` are unchanged. Add tests proving `xuanchu add x recur:daily`、`xuanchu 1 modify recur:weekly` and query attributes `recur/mask/imask` fail with nonzero exit and do not create/modify data.
 
@@ -956,12 +967,13 @@ git commit -m "feat: 增加循环系列命令"
 **Interfaces:**
 
 - Tools: `task_series_add`、`task_series_list`、`task_series_get`、`task_series_modify`、`task_series_stop`、`task_series_list_occurrences`、`task_series_occurrence_skip`.
+- `task_series_list` adds `status/q/assignee/sort=next|title|modified/limit/offset` with HTTP-equivalent filtered total.
 - Task query adds `due_after`、`due_before`、`occurrence_mode`、`task_type=all|normal|occurrence`.
 - `report_run` adds `due_after`、`due_before`、`occurrence_mode`、`task_type` and returns TaskViewPage; `urgency_explain` accepts occurrence_ref.
 
 - [ ] **Step 1: 写 schema 与行为失败测试**
 
-Add tests that list all seven tool names, compare generated schemas to golden files, and execute add→query expand→get projected→done→series get→list occurrences→skip→stop. Assert project/workspace/token allowlist, `task:read/write` permissions, complete UserInfo, stable occurrence ID and `materialization` transition.
+Add tests that list all seven tool names, compare generated schemas to golden files, and execute add→series list filters/sorts→query expand→get projected→done→series get→list occurrences→skip→stop. Assert project/workspace/token allowlist, `task:read/write` permissions, complete UserInfo, filtered Series total, stable occurrence ID and `materialization` transition.
 
 Add a table over every existing task tool affected by occurrence_ref: modify/start/done/delete/annotate/depends/link-add materialize projected occurrences; stop/reopen return state errors; denotate/link-remove return not found; link-list returns an empty list and task-get returns the projected view; `urgency_explain` calculates projected urgency. All failure/read cases leave task/audit/event counts unchanged. MCP has no independent children/audit tool, so do not invent recurrence-only duplicates. Add `report_run` parity tests against HTTP for ready/blocked/blocking/waiting/urgency, range/mode/task_type and pagination. Add `task_export/task_import` native-bundle schema/round-trip tests in Task 14 and remove old array fixtures there.
 
@@ -1000,9 +1012,9 @@ git add internal/mcpserver
 git commit -m "feat: 为 MCP 提供循环系列工具"
 ```
 
-### Task 11: 建立 Web 原生类型、查询缓存、路由与项目导航
+### Task 11: 建立 Web 原生类型、查询缓存与任务页面板路由
 
-**目标：** 前端只消费 TaskView/SeriesView，新增项目级 Series list/detail 路由和“循环规则”Tab，不先实现写表单。
+**目标：** 前端只消费 TaskView/SeriesView；Series list/detail 使用任务页内可深链面板，不增加全局导航或 ProjectTabs 项。
 
 **Files:**
 
@@ -1013,11 +1025,14 @@ git commit -m "feat: 为 MCP 提供循环系列工具"
 - Modify: `web/src/features/workspace/project-workbench/api/project-api.ts`
 - Modify: `web/src/features/workspace/project-workbench/hooks/use-project-data.ts`
 - Modify: `web/src/features/workspace/project-workbench/hooks/use-task-detail-data.ts`
-- Modify: `web/src/features/workspace/project-workbench/project/project-tabs.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.test.tsx`
 - Modify: `web/src/features/workspace/project-workbench/project/project-layout.tsx`
 - Modify: `web/src/features/workspace/project-workbench/project/project-layout.test.tsx`
-- Create: `web/src/routes/workspace/ProjectTaskSeriesRoute.tsx`
-- Create: `web/src/routes/workspace/ProjectTaskSeriesDetailRoute.tsx`
+- Modify: `web/src/routes/workspace/ProjectTasksRoute.tsx`
+- Create: `web/src/routes/workspace/ProjectTasksRoute.test.tsx`
+- Create: `web/src/routes/workspace/ProjectTaskSeriesPanelRoute.tsx`
+- Create: `web/src/routes/workspace/ProjectTaskSeriesPanelRoute.test.tsx`
 - Modify: `web/src/routes/router.tsx`
 - Modify: `web/src/locales/zh-CN.ts`
 - Modify: `web/src/locales/en-US.ts`
@@ -1027,8 +1042,11 @@ git commit -m "feat: 为 MCP 提供循环系列工具"
 
 - Produces TS types `TaskOccurrenceView`、`RecurrenceInfo`、`TaskViewPage`、`TaskSeriesView`、`TaskSeriesDetailView` and API/query key helpers.
 - Routes:
-  - `/workspaces/$workspaceSlug/projects/$projectSlug/task-series`
-  - `/workspaces/$workspaceSlug/projects/$projectSlug/task-series/$seriesRef`
+  - `/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series`
+  - `/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef`
+- `ProjectLayoutContextValue.setContextPanel(panel: { node: ReactNode; onClose: () => void } | null)` replaces the project context rail without mutating the user's saved `railOpen` state.
+- `type ListRestoreState = { scrollTop: number; focusId?: string; selectedIds: string[] }`
+- `type PanelReturnTo = { kind: 'tasks'; search: Record<string,string>; restore?: ListRestoreState } | { kind: 'task'; taskRef: string } | { kind: 'my-tasks'; search: Record<string,string>; restore?: ListRestoreState }`; search snapshots pass their route validators before use, targets are rebuilt from current scoped params, and arbitrary href is impossible.
 
 - [ ] **Step 1: 写 API URL/body 失败测试**
 
@@ -1037,6 +1055,9 @@ Create tests asserting:
 ```ts
 expect(taskSeriesPath("acme", { project: "ops", status: "active" })).toBe(
   "/api/v1/task-series?workspace=acme&project=ops&status=active"
+)
+expect(taskSeriesPath("acme", { project: "ops", status: "active", q: "巡检", assignee: "zhangsan", sort: "next", limit: 20, offset: 20 })).toContain(
+  "q=%E5%B7%A1%E6%A3%80"
 )
 expect(taskSeriesItemPath("acme", "series:1")).toBe(
   "/api/v1/task-series/series%3A1?workspace=acme"
@@ -1048,6 +1069,8 @@ expect(tasksPath("acme", { due_after: "2026-07-12", due_before: "2026-07-12", oc
 
 Update TaskCreateInput/TaskModifyInput compile-time tests so `recur/clear_recur/mask/imask` are absent and occurrence fields are read-only.
 
+Add an active-count contract test using `GET /task-series?status=active&limit=1`; the toolbar reads `page.total` and never fetches the full collection for its badge.
+
 - [ ] **Step 2: 运行 API 测试确认失败**
 
 Run: `pnpm --dir web test -- task-series-api.test.ts task-api.test.ts`
@@ -1056,21 +1079,21 @@ Expected: FAIL。
 
 - [ ] **Step 3: 实现 TS contracts 和 API client**
 
-`TaskOccurrenceView.id` is always present; `uuid/task_slug/project_seq` are nullable. `recurrence_info` is nullable and uses `projected|materialized`. API functions cover add/list/get/modify/stop/list occurrences/skip and task range query. All paths use `encodeURIComponent` once.
+`TaskOccurrenceView.id` is always present; `uuid/task_slug/project_seq` are nullable. `recurrence_info` is nullable and uses `projected|materialized`. API functions cover add/list/get/modify/stop/list occurrences/skip and task range query. Series list types expose status/q/assignee/sort/limit/offset and the response total; no component filters a returned page locally. All paths use `encodeURIComponent` once.
 
-- [ ] **Step 4: 增加 query keys 与路由**
+- [ ] **Step 4: 增加 query keys、静态子路由与面板槽位**
 
-Add stable keys rooted at `['project', workspaceSlug, projectSlug, 'task-series']`. Add lazy route wrappers and router nodes. Both list/detail pass `activeTab="task-series"`; global AppShell still highlights projects through the existing project pathname rule.
+Add stable keys rooted at `['project', workspaceSlug, projectSlug, 'task-series']`. Make `/tasks` a persistent parent route whose `ProjectTasksRoute` renders ProjectLayout、ProjectTasksPage and an Outlet. Register `series` and `series/$seriesRef` as static children using `ProjectTaskSeriesPanelRoute`; the child only registers/unregisters the panel, so list→detail→closed never remounts ProjectTasksPage. Keep `/tasks/$taskRef` as the task-detail route and ensure static Series matching wins. The parent owns one search validator including `task_type`; children inherit/preserve every search param. Same-session navigation may carry the structured `PanelReturnTo` union for task list/detail/My Tasks; close validates the kind/ref/search and reconstructs a scoped route, while copied canonical links never serialize it.
 
-- [ ] **Step 5: 修改 ProjectTabs**
+- [ ] **Step 5: 扩展 ProjectLayout 的上下文面板槽位**
 
-Extend `ProjectTabKey` with `task-series` between tasks and activity. Label includes active count when nonzero and no `0` badge. On mobile keep `flex overflow-x-auto`; do not move the tab into a menu.
+Add `setContextPanel` to the layout context and a data-agnostic `TaskSeriesPanelShell`. A registered shell replaces `ProjectContextRail`; the existing rail collapse action changes aria-label/title to “关闭循环规则” and calls the custom `onClose`, while closing/unregistering restores the prior context-rail open/collapsed state. Tests assert `ProjectTabKey` remains exactly `overview|tasks|activity|automations`, Series children highlight tasks, the project breadcrumb remains “项目 > 任务” while only the panel owns “循环规则 > 标题”, static `series` is never parsed as taskRef, list/detail child navigation preserves the same ProjectTasksPage instance, and direct deep links load parent tasks plus the optional panel target. Shell tests lock desktop/mobile rendering, close focus and aria labels without depending on Series API data.
 
 - [ ] **Step 6: 补 i18n 与运行测试**
 
-Add all navigation/status/empty/error/action keys in zh-CN and en-US; tests assert locale key parity.
+Add panel/status/empty/error/action keys in zh-CN and en-US; do not add a project-tab translation key. Tests assert locale key parity.
 
-Run: `pnpm --dir web test -- task-series-api.test.ts project-layout.test.tsx i18n.test.ts`
+Run: `pnpm --dir web test -- task-series-api.test.ts task-series-panel-shell.test.tsx project-layout.test.tsx ProjectTasksRoute.test.tsx ProjectTaskSeriesPanelRoute.test.tsx i18n.test.ts`
 
 Run: `pnpm --dir web typecheck`
 
@@ -1079,20 +1102,22 @@ Expected: PASS。
 - [ ] **Step 7: 提交**
 
 ```bash
-git add web/src/features/workspace/project-workbench/api web/src/features/workspace/project-workbench/hooks web/src/features/workspace/project-workbench/project web/src/routes web/src/locales web/src/i18n.test.ts
-git commit -m "feat: 建立循环系列前端路由与契约"
+git add web/src/features/workspace/project-workbench/api web/src/features/workspace/project-workbench/hooks web/src/features/workspace/project-workbench/project web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.tsx web/src/features/workspace/project-workbench/task-series/task-series-panel-shell.test.tsx web/src/routes web/src/locales web/src/i18n.test.ts
+git commit -m "feat: 建立任务页循环规则面板路由"
 ```
 
-### Task 12: 实现统一创建弹窗与 Series CRUD 页面
+### Task 12: 实现统一创建弹窗与任务页 Series 管理面板
 
-**目标：** 落地项目“循环规则”列表/详情，以及创建、编辑、停止的完整 Web CRUD，严格对应 Spec ASCII 原型。
+**目标：** 在融合任务页内完成 Series 列表、详情、创建、编辑和停止；任务列表始终是唯一执行视图，严格对应 Spec ASCII 原型。
 
 **Files:**
 
-- Create: `web/src/features/workspace/project-workbench/task-series/task-series-page.tsx`
-- Create: `web/src/features/workspace/project-workbench/task-series/task-series-page.test.tsx`
-- Create: `web/src/features/workspace/project-workbench/task-series/task-series-detail-page.tsx`
-- Create: `web/src/features/workspace/project-workbench/task-series/task-series-detail-page.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-panel.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-panel.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-list.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-list.test.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-detail.tsx`
+- Create: `web/src/features/workspace/project-workbench/task-series/task-series-detail.test.tsx`
 - Create: `web/src/features/workspace/project-workbench/task-series/task-series-dialog.tsx`
 - Create: `web/src/features/workspace/project-workbench/task-series/task-series-dialog.test.tsx`
 - Create: `web/src/features/workspace/project-workbench/task-series/task-series-stop-dialog.tsx`
@@ -1102,19 +1127,23 @@ git commit -m "feat: 建立循环系列前端路由与契约"
 - Modify: `web/src/features/workspace/project-workbench/tasks/task-create-dialog.tsx`
 - Modify: `web/src/features/workspace/project-workbench/tasks/task-create-dialog.test.tsx`
 - Modify: `web/src/features/workspace/project-workbench/tasks/project-tasks-page.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-tasks-page.test.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-task-toolbar.tsx`
+- Modify: `web/src/features/workspace/project-workbench/tasks/project-task-toolbar.test.tsx`
 - Modify: `web/src/features/workspace/project-workbench/hooks/use-task-mutations.ts`
 - Modify: `web/src/features/workspace/project-workbench/hooks/use-task-mutations.test.tsx`
-- Modify: `web/src/routes/workspace/ProjectTaskSeriesRoute.tsx`
-- Modify: `web/src/routes/workspace/ProjectTaskSeriesDetailRoute.tsx`
+- Modify: `web/src/routes/workspace/ProjectTaskSeriesPanelRoute.tsx`
+- Modify: `web/src/routes/workspace/ProjectTaskSeriesPanelRoute.test.tsx`
 
 **Interfaces:**
 
-- `TaskCreateDialog` adds `initialMode?: 'normal'|'recurring'` and keeps independent form state per mode.
+- `TaskCreateDialog` adds `initialMode?: 'normal'|'recurring'`, keeps independent form state per mode, and reports a discriminated task/series create result.
+- `TaskSeriesPanel` consumes `{ workspaceSlug, projectSlug, seriesRef?: string, onClose }`; list/detail navigation preserves task search params.
 - Series mutations invalidate series list/detail, project tasks, project summary and timeline.
 
 - [ ] **Step 1: 写统一创建弹窗失败测试**
 
-Add tests that open in each initial mode, switch without losing state, hide wait/scheduled/depends/parent in recurring mode, validate title/rule/first_due/until, submit canonical values (`2weeks|3months|12months`), show three-date preview, and use Cmd/Ctrl+Enter. Assert normal mode calls `/tasks` and recurring mode calls `/task-series`.
+Add tests that open in each initial mode, switch without losing state, hide wait/scheduled/depends/parent in recurring mode, validate title/rule/first_due/until, submit canonical values (`2weeks|3months|12months`), show three-date preview, and use Cmd/Ctrl+Enter. Assert normal mode calls `/tasks` and recurring mode calls `/task-series`. Project task tests assert the primary button/shortcut defaults to normal, dropdown and panel “新建” open recurring, and no `ProjectTabs` Series entry exists.
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -1124,15 +1153,15 @@ Expected: FAIL。
 
 - [ ] **Step 3: 重构统一创建弹窗**
 
-Keep shared title/description/priority/assignees/tags components but separate normal date state from recurring rule/firstDue/until state. Implement `nextRecurrenceDate(from: Date, rule: CanonicalRecurrenceRule): Date` in `recurrence-preview.ts` with local calendar `setDate/setMonth`, never fixed day milliseconds; cross-language fixture tests must match Task 1 for daily/weekly/monthly/N-unit and month-end behavior. After create, navigate to series detail and announce “循环规则已创建”.
+Keep shared title/description/priority/assignees/tags components but separate normal date state from recurring rule/firstDue/until state. Implement `nextRecurrenceDate(from: Date, rule: CanonicalRecurrenceRule): Date` in `recurrence-preview.ts` with local calendar `setDate/setMonth`, never fixed day milliseconds; cross-language fixture tests must match Task 1 for daily/weekly/monthly/N-unit and month-end behavior. After Series create, preserve all task search params, navigate to `/tasks/series/$seriesRef`, open the detail panel and announce “循环任务已创建”. Highlight first occurrence only when it belongs to the current result page; never clear filters to force visibility.
 
-- [ ] **Step 4: 写 Series 页面失败测试**
+- [ ] **Step 4: 写管理面板与任务上下文失败测试**
 
-List tests cover active default, status/assignee/search/sort, count badge, ended/stopped read-only rows, loading/error/empty/backlog and row menus. Detail tests cover summary, open occurrences, paginated history, “管理规则” actions and project-closed banner.
+List tests cover active default, status/assignee/search/sort, toolbar active-count badge from `total`, zero/loading/error count fallbacks, ended/stopped read-only rows, loading/error/empty/backlog and row menus. Detail tests cover summary, open occurrences, paginated history and management actions. Integration tests assert: task rows remain mounted while panel opens; panel replaces and later restores `ProjectContextRail`; toolbar list→detail history returns detail→list→closed, while direct Series detail from a task returns to that source; both close controls use correct label and behavior; close preserves project-task filters/selection/scroll and restores trigger focus; direct deep links fall back to project tasks; copied links omit return state; Series API failure is isolated to panel; direct detail deep link opens tasks + panel; desktop uses side panel and mobile uses full-screen Sheet. My Tasks return-state wiring lands in Task 13 after its local state is migrated to route search.
 
-- [ ] **Step 5: 实现列表与详情**
+- [ ] **Step 5: 实现面板壳层、列表与详情**
 
-Use the Spec columns and information hierarchy. Series rows never expose done/start. Occurrence links use project task detail route and occurrence_ref. Desktop uses table and context rail; mobile uses cards, bottom sheet and full-screen forms.
+Register `TaskSeriesPanel` through `ProjectLayout.setContextPanel`. Desktop renders a 440–520px list/detail panel in place of project context; narrow desktop/mobile uses an overlay/full-screen Sheet. Use the Spec information hierarchy; Series rows never expose done/start. Occurrence links use project task detail route and occurrence_ref. Panel list/detail errors and loading never replace the task query result. Closing unregisters the panel, uses validated `panelReturnTo` when present, otherwise navigates to `/tasks`, and preserves existing search params.
 
 - [ ] **Step 6: 实现编辑/停止弹窗**
 
@@ -1140,7 +1169,7 @@ Edit shows immutable first_due, effective_from selector only when rule changes, 
 
 - [ ] **Step 7: 运行 Web 定向测试**
 
-Run: `pnpm --dir web test -- task-create-dialog.test.tsx recurrence-preview.test.ts task-series-page.test.tsx task-series-detail-page.test.tsx task-series-dialog.test.tsx task-series-stop-dialog.test.tsx use-task-mutations.test.tsx`
+Run: `pnpm --dir web test -- task-create-dialog.test.tsx recurrence-preview.test.ts task-series-panel.test.tsx task-series-list.test.tsx task-series-detail.test.tsx task-series-dialog.test.tsx task-series-stop-dialog.test.tsx project-task-toolbar.test.tsx project-tasks-page.test.tsx use-task-mutations.test.tsx`
 
 Run: `pnpm --dir web typecheck`
 
@@ -1150,7 +1179,7 @@ Expected: PASS。
 
 ```bash
 git add web/src/features/workspace/project-workbench/task-series web/src/features/workspace/project-workbench/tasks web/src/features/workspace/project-workbench/hooks web/src/routes/workspace
-git commit -m "feat: 完成循环系列控制台 CRUD"
+git commit -m "feat: 完成任务页循环规则管理面板"
 ```
 
 ### Task 13: 完成 occurrence 列表、详情、我的任务与项目统计体验
@@ -1178,16 +1207,24 @@ git commit -m "feat: 完成循环系列控制台 CRUD"
 - Modify: `web/src/features/workspace/my-tasks/my-tasks-table.tsx`
 - Modify: `web/src/features/workspace/my-tasks/my-tasks-table.test.tsx`
 - Modify: `web/src/pages/my-tasks-page.tsx`
+- Create: `web/src/pages/my-tasks-page.test.tsx`
+- Modify: `web/src/routes/workspace/MyTasksRoute.tsx`
+- Modify: `web/src/routes/router.tsx`
 - Modify: `web/src/features/workspace/project-workbench/project/project-overview-page.tsx`
+- Modify: `web/src/features/workspace/project-workbench/project/project-overview-page.test.tsx`
+- Modify: `web/src/locales/zh-CN.ts`
+- Modify: `web/src/locales/en-US.ts`
+- Modify: `web/src/i18n.test.ts`
 
 **Interfaces:**
 
 - Project/My Tasks filters add `task_type=all|normal|occurrence` and finite range sends `occurrence_mode=expand`.
 - My Task tabs become `incomplete|today|overdue|noDue|completed`.
+- My Tasks preset/filter/sort state moves from component `useState` into validated route search; `PanelReturnTo.restore` restores selected IDs、scroll anchor and focus after data reload.
 
 - [ ] **Step 1: 写列表与详情失败测试**
 
-Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/manage series. Detail shows series banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent.
+Test materialized occurrence shows task_slug, projected shows `↻MM-DD`, both show recurrence badge and link by occurrence_ref. Row actions are normal delete vs occurrence skip/view recurrence rule; the latter navigates to `/tasks/series/$seriesRef` with current task search params and no ProjectTab change. Detail shows series banner, read-only rule/slot, editable due, original slot after reschedule, and never displays series as parent. My Tasks tests open a Series detail with `panelReturnTo` and verify close/back restores route search、selected IDs、scroll and focus after data reload.
 
 - [ ] **Step 2: 写 My Tasks 预设失败测试**
 
@@ -1195,41 +1232,42 @@ Replace tab tests with exact filters:
 
 ```ts
 expect(tabFilter("today", now)).toEqual({
+  query: "(status:pending or status:waiting)",
   due_after: "2026-07-12",
   due_before: "2026-07-12",
   occurrence_mode: "expand",
 })
 expect(tabFilter("completed", now)).toEqual({ status: "completed", occurrence_mode: "materialized" })
 expect(tabFilter("overdue", now)).toEqual({
-  status: "pending",
+  query: "(status:pending or status:waiting)",
   due_before: "2026-07-11",
   occurrence_mode: "materialized",
 })
 ```
 
-Use the backend's inclusive date inputs: overdue must use yesterday as `due_before` and materialized mode because unbounded historical expansion is forbidden; today must include both bounds and expand so it cannot include overdue tasks.
+Use the backend's inclusive date inputs: overdue must use yesterday as `due_before` and materialized mode because unbounded historical expansion is forbidden; today must include both bounds and expand so it cannot include overdue tasks. Incomplete/noDue use the same pending-or-waiting query. noDue tests include a materialized occurrence whose due was explicitly cleared, retain its recurrence_at badge, and exclude projected occurrences. Tests assert `active` is never sent as status; “进行中” is derived from pending + non-null start.
 
 - [ ] **Step 3: 运行测试确认失败**
 
-Run: `pnpm --dir web test -- task-table.test.tsx task-detail-page.test.tsx task-property-panel.test.tsx my-task-tabs.test.ts my-tasks-api.test.ts my-tasks-table.test.tsx`
+Run: `pnpm --dir web test -- task-table.test.tsx project-task-toolbar.test.tsx project-tasks-page.test.tsx task-detail-page.test.tsx task-property-panel.test.tsx my-task-tabs.test.ts my-tasks-api.test.ts my-tasks-table.test.tsx my-tasks-page.test.tsx project-overview-page.test.tsx i18n.test.ts`
 
 Expected: FAIL。
 
 - [ ] **Step 4: 实现项目任务体验**
 
-Remove recurring status from filters; add task type. Unbounded project page uses materialized mode; a complete due range uses expand. Keep each occurrence as a separate row; no title-based dedupe. Batch delete copy reports normal delete count and occurrence skip count separately.
+Remove recurring status from filters; add task type. Unbounded project page uses materialized mode; a complete due range uses expand. Keep each occurrence as a separate row; no title-based dedupe and never insert Series definition rows into the task table. Batch delete copy reports normal delete count and occurrence skip count separately. The task Header keeps “循环规则 N” as a secondary management action and the create dropdown as primary; filtering never hides or changes the rule-management entry.
 
 - [ ] **Step 5: 实现 occurrence 详情与写操作**
 
-Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
+Use `recurrence_info`, never parent inference. All normal field edits say “仅本次”; remove editable recurrence select. “查看循环规则” opens the task-page panel rather than navigating to a sibling page. Projected comments/links/dependencies/subtask/action responses replace cached projected view with materialized view but preserve route. `from=my-tasks` changes back navigation only and is removed from copied canonical URL.
 
 - [ ] **Step 6: 实现 My Tasks 与统计**
 
-Remove duplicate status selector because tabs own status. Add incomplete/today/overdue/no-due/completed; today uses exact finite range, completed includes occurrences and supports reopen. Render ordinary progress and recurring metrics in separate project overview blocks.
+Remove duplicate status selector because tabs own status. Add incomplete/today/overdue/no-due/completed; all open presets use pending OR waiting, today uses exact finite range, completed includes occurrences and supports reopen. Move tab、search、project、priority、task_type、sort into `/my-tasks` search validation instead of local-only state. Before opening a Series panel capture selected IDs/scrollTop/focusId; on return restore after query success, ignore missing IDs and focus the table container as fallback. Render ordinary progress and recurring metrics in separate project overview blocks.
 
 - [ ] **Step 7: 验证桌面、移动端与编辑烟测**
 
-Run: `pnpm --dir web test -- task-table.test.tsx project-task-toolbar.test.tsx project-tasks-page.test.tsx task-detail-page.test.tsx task-property-panel.test.tsx my-task-tabs.test.ts my-tasks-api.test.ts my-tasks-table.test.tsx`
+Run: `pnpm --dir web test -- task-table.test.tsx project-task-toolbar.test.tsx project-tasks-page.test.tsx task-detail-page.test.tsx task-property-panel.test.tsx my-task-tabs.test.ts my-tasks-api.test.ts my-tasks-table.test.tsx my-tasks-page.test.tsx project-overview-page.test.tsx i18n.test.ts`
 
 Run: `pnpm --dir web run smoke:editing`
 
@@ -1240,7 +1278,7 @@ Expected: PASS。
 - [ ] **Step 8: 提交**
 
 ```bash
-git add web/src/features/workspace/project-workbench web/src/features/workspace/my-tasks web/src/pages/my-tasks-page.tsx
+git add web/src/features/workspace/project-workbench web/src/features/workspace/my-tasks web/src/pages/my-tasks-page.tsx web/src/pages/my-tasks-page.test.tsx web/src/routes/workspace/MyTasksRoute.tsx web/src/routes/router.tsx web/src/locales web/src/i18n.test.ts
 git commit -m "feat: 统一循环实例任务体验"
 ```
 
@@ -1372,10 +1410,14 @@ git commit -m "feat: 完成原生循环系列交付"
 - CLI `series occurrences` 提供完整历史分页；list/report、working set、helper 与 renderer 对 projected 的语义稳定。
 - external edit 取消、失败或无 diff 不物化；有效 diff 才原子物化并修改。
 - series occurrences 的 pending/waiting/completed/deleted/all 在四端 schema 一致。
+- Series list 的 status/q/assignee/sort/pagination 在 HTTP/MCP/Remote/CLI/Web items 与 filtered total 一致。
 - 查询 DSL 删除 recur/mask/imask 并新增 series_id/recurrence_at/task_type；SQL 和 expand evaluator 等价。
 - `/reports/{name}`、`/tasks?report=`、CLI aliases、Remote 与 MCP `report_run` 在 merge 后应用 scope/urgency 并返回同一 TaskViewPage。
 - 项目任务、我的未完成/今天/逾期/无截止日期/已完成显示正确，不混入 Series。
-- Web 导航、列表、详情、创建/编辑/停止/跳过弹窗与 Spec ASCII 原型一致。
+- Web 全局侧栏和 ProjectTabs 不增加循环规则；任务表融合普通任务与 occurrence，Series 定义不作为任务行。
+- `/tasks/series[/seriesRef]` 面板深链、右栏替换、任务筛选/滚动/焦点恢复及移动端全屏 Sheet 与 Spec ASCII 原型一致。
+- My Tasks open presets 覆盖 pending/waiting，不产生 active status；面板往返恢复 route search、选择、滚动和焦点。
+- Web 列表、详情、创建/编辑/停止/跳过弹窗与 Spec ASCII 原型一致。
 - 项目关闭停止 active series，恢复项目不恢复 series。
 - 普通任务进度与循环运行指标分离。
 - Native bundle 能完整 round-trip series/rule versions/materialized occurrence，且不导出 projected occurrence。
