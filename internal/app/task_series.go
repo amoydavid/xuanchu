@@ -400,3 +400,317 @@ func paginateSeriesViews(items []TaskSeriesView, limit, offset int) []TaskSeries
 	}
 	return rest
 }
+
+// --- Task 7: reconcile / stop / skip / occurrence 列表 ---
+
+// TaskSeriesReconcileResult 是单次 reconcile 的结果（spec §8.3、§8.4）。
+type TaskSeriesReconcileResult struct {
+	Created          int
+	BacklogRemaining int
+	Ended            bool
+}
+
+// ReconcileTaskSeries 按日历补齐 series 已进入执行期但尚未物化的槽位（spec §8.1、§8.3）。
+//
+// 每个 series 每次调用最多创建 limit 条。超出返回 backlog_remaining。
+// 当包含式 until 已过且所有合法槽位已物化，series 转 ended。
+// stopped series 不生成。
+func (s *Service) ReconcileTaskSeries(seriesID string, now int64, limit int) (TaskSeriesReconcileResult, error) {
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if err != nil {
+		return TaskSeriesReconcileResult{}, mapSeriesError(err)
+	}
+	if series.Status != taskseries.StatusActive {
+		return TaskSeriesReconcileResult{}, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	versions := ruleVersionsForExpand(series)
+	// 从 first_due 展开到 now+1day（覆盖今天），取所有已到执行期的槽位。
+	endScan := now + 86400
+	slots, err := taskseries.ExpandRange(versions, series.Until, series.FirstDue, endScan, s.clock.Location())
+	if err != nil {
+		return TaskSeriesReconcileResult{}, err
+	}
+	// 找出已进入执行期（available_at <= now）且未物化的槽位。
+	created := 0
+	backlogRemaining := 0
+	ended := false
+	for _, slot := range slots {
+		if !slotInRangeForSeriesStatus(series, slot.RecurrenceAt) {
+			continue
+		}
+		availableAt := startOfDayUnix(slot.RecurrenceAt, s.clock.Location())
+		if availableAt > now {
+			break // 后续槽位未到执行期
+		}
+		// 检查是否已物化（任意状态）。
+		_, gerr := s.taskOccurrenceRepo.GetOccurrence(s.workspaceID, seriesID, slot.RecurrenceAt)
+		if gerr == nil {
+			continue // 已存在
+		}
+		if gerr != storage.ErrOccurrenceNotFound {
+			return TaskSeriesReconcileResult{}, gerr
+		}
+		// 未物化：检查限额。
+		if created >= limit {
+			backlogRemaining++
+			continue
+		}
+		// 物化。
+		ref := OccurrenceRef(seriesID, slot.RecurrenceAt)
+		if _, _, merr := s.MaterializeOccurrenceForWrite(ref); merr != nil {
+			return TaskSeriesReconcileResult{}, merr
+		}
+		created++
+	}
+	// 判断是否 ended：until 已过且无 backlog。
+	if series.Until != nil && *series.Until < now && backlogRemaining == 0 {
+		// 检查 until 之前的所有合法槽位都已物化。
+		allMaterialized := true
+		finalSlots, _ := taskseries.ExpandRange(versions, series.Until, series.FirstDue, *series.Until+1, s.clock.Location())
+		for _, fs := range finalSlots {
+			_, gerr := s.taskOccurrenceRepo.GetOccurrence(s.workspaceID, seriesID, fs.RecurrenceAt)
+			if gerr == storage.ErrOccurrenceNotFound {
+				allMaterialized = false
+				break
+			}
+		}
+		if allMaterialized {
+			series.Status = taskseries.StatusEnded
+			endAt := *series.Until
+			series.EffectiveEndAt = &endAt
+			series.ModifiedAt = now
+			if err := s.taskSeriesRepo.Update(series); err != nil {
+				return TaskSeriesReconcileResult{}, err
+			}
+			ended = true
+			_ = s.appendAuditEntry(AuditEntry{
+				Action: "task.series.ended", WorkspaceID: &series.WorkspaceID,
+				ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
+				Payload: map[string]any{"until": *series.Until},
+			})
+		}
+	}
+	return TaskSeriesReconcileResult{Created: created, BacklogRemaining: backlogRemaining, Ended: ended}, nil
+}
+
+// StopTaskSeriesInput 是停止 series 的输入。
+type StopTaskSeriesInput struct {
+	DeleteOpenOccurrences *bool
+}
+
+// StopTaskSeries 停止循环系列（spec §11.6）。不硬删除。
+func (s *Service) StopTaskSeries(seriesID string, input StopTaskSeriesInput) (TaskSeriesView, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return TaskSeriesView{}, err
+	}
+	now := s.clock.Unix()
+	reason := taskseries.StopReasonUserStopped
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if err != nil {
+		return TaskSeriesView{}, mapSeriesError(err)
+	}
+	series.Status = taskseries.StatusStopped
+	series.EffectiveEndAt = &now
+	series.StopReason = &reason
+	series.ModifiedAt = now
+	if err := s.taskSeriesRepo.Update(series); err != nil {
+		return TaskSeriesView{}, err
+	}
+	if err := s.appendAuditEntry(AuditEntry{
+		Action: "task.series.stopped", WorkspaceID: &series.WorkspaceID,
+		ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
+		Payload: map[string]any{"reason": reason, "delete_open": input.DeleteOpenOccurrences != nil && *input.DeleteOpenOccurrences},
+	}); err != nil {
+		return TaskSeriesView{}, err
+	}
+	// 可选：删除 open occurrences（含已进入执行期但未物化的 projected 槽位）。
+	if input.DeleteOpenOccurrences != nil && *input.DeleteOpenOccurrences {
+		if err := s.deleteOpenOccurrencesForStop(series, now); err != nil {
+			return TaskSeriesView{}, err
+		}
+	}
+	return s.buildSeriesView(series), nil
+}
+
+// deleteOpenOccurrencesForStop 在停止时把 open materialized occurrence 标 deleted，
+// 并为已进入执行期但未物化的 projected 槽位创建 tombstone（spec §11.6）。
+func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int64) error {
+	// 1. materialized open occurrence → deleted。
+	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
+		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
+		Start: series.FirstDue, End: now + 86400,
+	})
+	if err != nil {
+		return err
+	}
+	for _, occ := range exceptions {
+		if occ.Status == domain.StatusPending || occ.Status == domain.StatusWaiting {
+			occ.Delete(now)
+			if err := s.repo.Update(occ); err != nil {
+				return err
+			}
+		}
+	}
+	// 2. 已进入执行期但未物化的 projected 槽位 → tombstone。
+	versions := ruleVersionsForExpand(series)
+	slots, err := taskseries.ExpandRange(versions, series.Until, series.FirstDue, now+86400, s.clock.Location())
+	if err != nil {
+		return err
+	}
+	for _, slot := range slots {
+		availableAt := startOfDayUnix(slot.RecurrenceAt, s.clock.Location())
+		if availableAt > now {
+			break
+		}
+		_, gerr := s.taskOccurrenceRepo.GetOccurrence(series.WorkspaceID, series.ID, slot.RecurrenceAt)
+		if gerr != storage.ErrOccurrenceNotFound {
+			continue
+		}
+		// 创建 tombstone。
+		rule := slot.Rule
+		tombstone := domain.Task{
+			UUID: uuid.NewString(), WorkspaceID: series.WorkspaceID, Title: series.Title,
+			Status: domain.StatusDeleted, Entry: now, Modified: now,
+			ProjectID: &series.ProjectID, End: &now,
+			SeriesID: &series.ID, RecurrenceAt: &slot.RecurrenceAt,
+			RecurrenceRuleSnapshot: &rule, RecurrenceOverrides: []string{},
+		}
+		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(series.WorkspaceID, series.ProjectID)
+		if err != nil {
+			return err
+		}
+		tombstone.ProjectSeq = &seq
+		if _, _, err := s.taskOccurrenceRepo.CreateOccurrence(tombstone); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TaskSeriesOccurrenceListInput 是 series occurrence 分页查询参数（spec §11.3）。
+type TaskSeriesOccurrenceListInput struct {
+	Status     string // pending|waiting|completed|deleted|all
+	DueAfter   *int64
+	DueBefore  *int64
+	Limit      int
+	Offset     int
+}
+
+// ListTaskSeriesOccurrences 分页列出 series 的 materialized occurrence（spec §11.3）。
+func (s *Service) ListTaskSeriesOccurrences(seriesID string, input TaskSeriesOccurrenceListInput) (TaskViewPage, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return TaskViewPage{}, err
+	}
+	// 校验 status 枚举。
+	status := input.Status
+	if status == "" {
+		status = "all"
+	}
+	switch status {
+	case "pending", "waiting", "completed", "deleted", "all":
+	default:
+		return TaskViewPage{}, RuntimeError{Code: "task_series_invalid_rule", Message: "status 只能是 pending|waiting|completed|deleted|all"}
+	}
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if err != nil {
+		return TaskViewPage{}, mapSeriesError(err)
+	}
+	// 大范围查询（series occurrence 数量有限）。
+	start := int64(0)
+	end := s.clock.Unix() + 10*365*86400
+	if input.DueAfter != nil {
+		start = *input.DueAfter
+	}
+	if input.DueBefore != nil {
+		end = *input.DueBefore + 86400
+	}
+	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
+		WorkspaceID: series.WorkspaceID, SeriesID: series.ID, Start: start, End: end,
+		Status: statusPredicate(status),
+	})
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	userInfos, err := s.resolveUserInfos(collectAssigneeUserIDs(exceptions))
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	views := make([]TaskOccurrenceView, 0, len(exceptions))
+	for _, occ := range exceptions {
+		v := taskToView(occ, userInfoList(occ.Assignees, userInfos))
+		if v.RecurrenceInfo != nil {
+			v.RecurrenceInfo.SeriesStatus = series.Status
+			v.RecurrenceInfo.Until = series.Until
+		}
+		views = append(views, v)
+	}
+	sortTaskViews(views, "due")
+	total := len(views)
+	paged := paginateTaskViews(views, input.Limit, input.Offset)
+	return TaskViewPage{Items: paged, Total: total, Limit: input.Limit, Offset: input.Offset, OccurrenceMode: OccurrenceModeMaterialized}, nil
+}
+
+// statusPredicate 把列表 status 参数转为 storage 查询的 status predicate。
+// all 返回空（不筛选）。
+func statusPredicate(status string) string {
+	if status == "all" {
+		return ""
+	}
+	return status
+}
+
+// SkipTaskSeriesOccurrence 跳过一次 occurrence（spec §11.5）。
+// projected 直接物化为 deleted tombstone；materialized 改为 deleted。
+func (s *Service) SkipTaskSeriesOccurrence(seriesID, occurrenceRef string) (TaskOccurrenceView, error) {
+	if err := s.Require(PermissionTaskWrite); err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	refSeriesID, slot, err := ParseOccurrenceRef(occurrenceRef)
+	if err != nil {
+		return TaskOccurrenceView{}, RuntimeError{Code: "task_occurrence_not_found", Message: err.Error()}
+	}
+	if refSeriesID != seriesID {
+		return TaskOccurrenceView{}, RuntimeError{Code: "task_series_occurrence_not_found", Message: "occurrence 不属于该 series"}
+	}
+	now := s.clock.Unix()
+	// 写前物化（若 projected），然后标记 deleted。
+	var resultView TaskOccurrenceView
+	err = s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, terr := s.withStore(txStore)
+		if terr != nil {
+			return terr
+		}
+		tsk, _, merr := txSvc.MaterializeOccurrenceForWrite(occurrenceRef)
+		if merr != nil {
+			return merr
+		}
+		tsk.Delete(now)
+		if err := txSvc.repo.Update(tsk); err != nil {
+			return err
+		}
+		if err := txSvc.appendAuditEntry(AuditEntry{
+			Action: "task.recurrence.skipped", WorkspaceID: &tsk.WorkspaceID,
+			TargetType: "task", TargetID: tsk.UUID,
+			Payload: map[string]any{"series_id": seriesID, "recurrence_at": slot},
+		}); err != nil {
+			return err
+		}
+		finalTask, ferr := txSvc.repo.GetByUUID(txSvc.workspaceID, tsk.UUID)
+		if ferr != nil {
+			return ferr
+		}
+		userInfos, uerr := txSvc.resolveUserInfos(collectAssigneeUserIDs([]domain.Task{finalTask}))
+		if uerr != nil {
+			return uerr
+		}
+		resultView = taskToView(finalTask, userInfoList(finalTask.Assignees, userInfos))
+		return nil
+	})
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return resultView, nil
+}

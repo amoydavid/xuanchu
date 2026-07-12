@@ -10,6 +10,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 )
 
 type ProjectAnnotationInfo struct {
@@ -869,6 +870,25 @@ func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, e
 		if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
 			return nil, nil, err
 		}
+		// spec §19：项目 transition 到 archived/cancelled 时停止该项目所有 active series。
+		var seriesEntries []AuditEntry
+		if IsProjectStatusClosed(toStatus) {
+			reason := taskseries.StopReasonProjectArchived
+			if toStatus == string(storage.ProjectStatusCancelled) {
+				reason = taskseries.StopReasonProjectCancelled
+			}
+			affected, stopErr := tx.taskSeriesRepo.StopProjectSeries(project.WorkspaceID, project.ID, now, reason)
+			if stopErr != nil {
+				return nil, nil, stopErr
+			}
+			for _, se := range affected {
+				seriesEntries = append(seriesEntries, AuditEntry{
+					Action: "task.series.stopped", WorkspaceID: &project.WorkspaceID,
+					ProjectID: &project.ID, TargetType: "task_series", TargetID: se.ID,
+					Payload: map[string]any{"reason": reason},
+				})
+			}
+		}
 		updated, err := tx.projectRepo.GetByID(project.ID)
 		if err != nil {
 			return nil, nil, err
@@ -893,7 +913,8 @@ func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, e
 				"to_status":   toStatus,
 			},
 		}
-		return []AuditEntry{entry}, events, nil
+		entries := append([]AuditEntry{entry}, seriesEntries...)
+		return entries, events, nil
 	})
 	return result, err
 }

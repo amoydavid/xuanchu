@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -664,4 +665,341 @@ func TestResolveTaskForReadReturnsProjectedWithoutWrites(t *testing.T) {
 	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount {
 		t.Fatalf("读取不应物化: before=%d after=%d", beforeCount, after)
 	}
+}
+
+// --- Task 7: reconcile + scheduler 测试 ---
+
+func TestReconcileTaskSeriesMaterializesDueSlots(t *testing.T) {
+	// daily series，first_due 在 3 天前，now 在今天。reconcile 应补齐 3 天。
+	svc, closeFn := newTestService(t, 1783785599+2*86400) // now = first_due + 2天
+	defer closeFn()
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDue := int64(1783785599)
+	series, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatalf("AddTaskSeries: %v", err)
+	}
+	// first_due 已进入执行期，AddTaskSeries 已物化 1 条。再 reconcile 应补齐后 2 天。
+	result, err := svc.ReconcileTaskSeries(series.Series.ID, svc.clock.Unix(), 100)
+	if err != nil {
+		t.Fatalf("ReconcileTaskSeries: %v", err)
+	}
+	// 至少创建 2 条（day2、day3）。
+	if result.Created < 2 {
+		t.Fatalf("Created = %d want >= 2: %#v", result.Created, result)
+	}
+	if count := occurrenceRowCount(t, svc, ws.ID); count < 3 {
+		t.Fatalf("总物化数 = %d want >= 3", count)
+	}
+}
+
+func TestReconcileTaskSeriesIdempotent(t *testing.T) {
+	svc, closeFn := newTestService(t, 1783785599+2*86400)
+	defer closeFn()
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	series, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 1783785599,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.ReconcileTaskSeries(series.Series.ID, svc.clock.Unix(), 100)
+	after1 := occurrenceRowCount(t, svc, ws.ID)
+	// 二次 reconcile 不应新增。
+	_, err = svc.ReconcileTaskSeries(series.Series.ID, svc.clock.Unix(), 100)
+	if err != nil {
+		t.Fatalf("二次 reconcile: %v", err)
+	}
+	after2 := occurrenceRowCount(t, svc, ws.ID)
+	if after2 != after1 {
+		t.Fatalf("二次 reconcile 应幂等: after1=%d after2=%d", after1, after2)
+	}
+}
+
+func TestReconcileTaskSeriesRespectsUntilAndEndsSeries(t *testing.T) {
+	// until 在今天之前，所有槽位应已过，series ended。
+	firstDue := int64(1783785599)
+	until := firstDue + 86400 // first_due + 1 天
+	now := firstDue + 3 * 86400 // 3 天后
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	series, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue, Until: &until,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.ReconcileTaskSeries(series.Series.ID, now, 100)
+	if err != nil {
+		t.Fatalf("ReconcileTaskSeries: %v", err)
+	}
+	// until 是包含式：first_due + 1 天，共 2 个槽位。
+	if result.Created < 1 {
+		t.Fatalf("应补齐至少 1 条: %#v", result)
+	}
+	if !result.Ended {
+		t.Fatalf("until 已过应 ended: %#v", result)
+	}
+}
+
+func TestReconcileTaskSeriesRespectsPerSeriesLimit(t *testing.T) {
+	// first_due 在 200 天前，daily，限制每轮 50 条 → backlog。
+	firstDue := int64(1783785599)
+	now := firstDue + 200 * 86400
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	series, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.ReconcileTaskSeries(series.Series.ID, now, 50)
+	if err != nil {
+		t.Fatalf("ReconcileTaskSeries: %v", err)
+	}
+	if result.BacklogRemaining == 0 {
+		t.Fatalf("应有余留 backlog: %#v", result)
+	}
+}
+
+func TestStopTaskSeriesMarksStoppedAndStopsGeneration(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.StopTaskSeries(created.Series.ID, StopTaskSeriesInput{})
+	if err != nil {
+		t.Fatalf("StopTaskSeries: %v", err)
+	}
+	if view.Status != taskseries.StatusStopped {
+		t.Fatalf("status = %q want stopped", view.Status)
+	}
+	if view.EffectiveEndAt == nil {
+		t.Fatal("stopped 应有 effective_end_at")
+	}
+	// reconcile stopped series 不应生成。
+	result, err := svc.ReconcileTaskSeries(created.Series.ID, 10000, 100)
+	if err != nil {
+		t.Fatalf("reconcile stopped: %v", err)
+	}
+	if result.Created != 0 {
+		t.Fatalf("stopped series 不应生成: %#v", result)
+	}
+}
+
+func TestStopTaskSeriesDeleteOpenOccurrences(t *testing.T) {
+	// 用真实时间戳避免 1970 年边界问题。first_due 在 now 之前 3 天。
+	firstDue := int64(1783785599) // 2026-07-11 23:59:59 +08:00
+	now := firstDue + 3*86400     // 3 天后
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.ReconcileTaskSeries(created.Series.ID, now, 100)
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+	if beforeCount < 2 {
+		t.Fatalf("前置物化不足: %d", beforeCount)
+	}
+	deleteOpen := true
+	_, err = svc.StopTaskSeries(created.Series.ID, StopTaskSeriesInput{DeleteOpenOccurrences: &deleteOpen})
+	if err != nil {
+		t.Fatalf("StopTaskSeries delete_open: %v", err)
+	}
+	for slot := firstDue; slot <= now; slot += 86400 {
+		occ, err := svc.taskOccurrenceRepo.GetOccurrence(ws.ID, created.Series.ID, slot)
+		if err != nil {
+			continue
+		}
+		if occ.Status == domain.StatusPending || occ.Status == domain.StatusWaiting {
+			t.Fatalf("slot %d 仍为 open: %s", slot, occ.Status)
+		}
+	}
+}
+
+func TestSkipTaskSeriesOccurrenceCreatesTombstone(t *testing.T) {
+	// first_due 在未来，AddTaskSeries 不物化；skip 物化为 tombstone。
+	firstDue := int64(1783785599 + 30*86400) // 30 天后
+	now := int64(1783785599)
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	store := svc.store
+	ws, _ := store.LocalWorkspace()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := OccurrenceRef(created.Series.ID, firstDue)
+	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+	if beforeCount != 0 {
+		t.Fatalf("未来 first_due 不应预物化: before=%d", beforeCount)
+	}
+	view, err := svc.SkipTaskSeriesOccurrence(created.Series.ID, ref)
+	if err != nil {
+		t.Fatalf("SkipTaskSeriesOccurrence: %v", err)
+	}
+	if view.Status != domain.StatusDeleted {
+		t.Fatalf("status = %q want deleted", view.Status)
+	}
+	if after := occurrenceRowCount(t, svc, ws.ID); after != 1 {
+		t.Fatalf("应新增 1 条 tombstone: after=%d", after)
+	}
+}
+
+func TestListTaskSeriesOccurrencesPaged(t *testing.T) {
+	firstDue := int64(1000)
+	now := int64(5000)
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.ReconcileTaskSeries(created.Series.ID, now, 100)
+	// 查 pending。
+	page, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{Status: "pending"})
+	if err != nil {
+		t.Fatalf("ListTaskSeriesOccurrences: %v", err)
+	}
+	if len(page.Items) == 0 {
+		t.Fatal("应有 pending occurrence")
+	}
+	for _, it := range page.Items {
+		if it.Status != domain.StatusPending {
+			t.Fatalf("status = %q want pending", it.Status)
+		}
+		if it.RecurrenceInfo == nil {
+			t.Fatal("occurrence 应有 recurrence_info")
+		}
+	}
+}
+
+func TestProjectTransitionStopsActiveSeries(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// archive 项目应停止 series。
+	if _, err := svc.TransitionProject(proj.Slug, "archived"); err != nil {
+		t.Fatalf("TransitionProject archived: %v", err)
+	}
+	series, err := svc.taskSeriesRepo.Get(svc.workspaceID, created.Series.ID)
+	if err != nil {
+		t.Fatalf("Get series: %v", err)
+	}
+	if series.Status != taskseries.StatusStopped {
+		t.Fatalf("series status = %q want stopped", series.Status)
+	}
+	if series.StopReason == nil || *series.StopReason != taskseries.StopReasonProjectArchived {
+		t.Fatalf("stop_reason = %#v want project_archived", series.StopReason)
+	}
+	// stopped series 不再生成。
+	result, err := svc.ReconcileTaskSeries(created.Series.ID, 10000, 100)
+	if err != nil {
+		t.Fatalf("reconcile after stop: %v", err)
+	}
+	if result.Created != 0 {
+		t.Fatalf("stopped series 不应生成: %#v", result)
+	}
+}
+
+func TestTaskSeriesSchedulerRunOnce(t *testing.T) {
+	// daily series，first_due 在 3 天前。scheduler RunOnce 应补齐。
+	firstDue := int64(1783785599)
+	now := firstDue + 3*86400
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, now, "local", "local")
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduler := NewTaskSeriesScheduler(TaskSeriesSchedulerOptions{
+		Store: store,
+		Clock: FixedClock{NowUnix: now},
+		ServiceFactory: func(workspaceID string) *Service {
+			return svc
+		},
+	})
+	result, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.Created == 0 {
+		t.Fatalf("应补齐至少 1 条: %#v", result)
+	}
+	_ = created
 }
