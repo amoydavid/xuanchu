@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- 弹窗/面板打开时需在 effect 内重置状态 */
 import { useEffect, useMemo, useState } from "react"
 
 import {

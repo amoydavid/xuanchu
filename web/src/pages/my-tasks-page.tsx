@@ -32,7 +32,7 @@ export function MyTasksPage({
   const isSystemActor = actorType === "tenant_access_token"
   const actorId = actor?.id
 
-  const [tab, setTab] = useState<MyTaskTabKey>("all")
+  const [tab, setTab] = useState<MyTaskTabKey>("incomplete")
   const [status, setStatus] = useState<string>("pending")
   const [priority, setPriority] = useState<string>("")
   const [q, setQ] = useState<string>("")

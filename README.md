@@ -344,32 +344,36 @@ go build -o xuanchu ./cmd/xuanchu
 ./xuanchu blocked
 ./xuanchu blocking
 
-# 当前基础循环任务（将在 v0.5.7 被原生 task_series 替换）
-./xuanchu add "Submit weekly report" recur:weekly due:2030-01-05 until:2030-02-01
-./xuanchu list
-./xuanchu 1 done
-./xuanchu list
+# 循环任务系列（v0.5.7）：日历驱动实例生成
+./xuanchu series add "每日检查投放消耗" --project ops --recur daily --first-due 2026-07-11 --until 2026-07-31
+./xuanchu series list --project ops
+./xuanchu series info <series-ref>
+./xuanchu series occurrences <series-ref> --status pending
+./xuanchu series stop <series-ref>
 ```
 
 当前支持这些任务能力：
 
-- 任务字段：`start`、`wait`、`scheduled`、`until`、`annotations`、`depends`、`recur`、`parent`、`mask`、`imask`
+- 任务字段：`start`、`wait`、`scheduled`、`until`、`annotations`、`depends`、`parent`（仅手工父子任务）
 - 报表命令：`waiting`、`active`、`ready`、`blocked`、`blocking`
 - 动作命令：`start`、`stop`、`done`、`reopen`、`delete`、`annotate`、`denotate`、`append`、`prepend`、`edit`
 - 查询 / DOM / urgency / JSON import-export 对上述字段的贯通支持
-- 基础 recurring：`daily`、`weekly`、`monthly`、`<N>days`、`<N>weeks`、`<N>months`
+- 循环任务系列：`xuanchu series add/list/info/modify/occurrences/stop/skip`，canonical 规则 `daily`、`weekly`、`monthly`、`<N>days`、`<N>weeks`、`<N>months`
 
-CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` / `blocked` 等报表稳定，与排序无关；隐藏的 waiting 任务仍可用该 ID 操作，所以如果前面有 waiting 任务，`list` 中第一条可见 pending 任务可能显示为 `2`。`completed` / `deleted` 等不在 working set 中的报表，ID 列显示为 `-`。
+CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` / `blocked` 等报表稳定，与排序无关；隐藏的 waiting 任务仍可用该 ID 操作，所以如果前面有 waiting 任务，`list` 中第一条可见 pending 任务可能显示为 `2`。`completed` / `deleted` 等不在 working set 中的报表，ID 列显示为 `-`。projected occurrence（尚未物化的循环实例）不进入 working set，ID 列显示 `-`，需用 `occurrence_ref` 操作。
 
 `edit` 会打开缩进 JSON，保存后执行校验；非法日期、非法 status、换行 annotation 等错误不会写回。
 
-当前 recurring 的基础约束如下；这是现有代码行为，不是长期数据或 API 兼容契约。v0.5.7 将按 [循环任务系列规格](./docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md) 改为独立 `task_series`、范围投影与按需物化，并移除循环用途的 `status=recurring`、`parent` 和 Taskwarrior JSON 形态：
+v0.5.7 按 [循环任务系列规格](./docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md) 实现独立 `task_series` 聚合、范围投影与按需物化：
 
-- recurring parent 使用 `status:recurring` 持久化，默认 human 报表隐藏
-- child 在创建 parent 时立即生成，完成 child 后自动生成下一个 child
-- `until` 会阻止生成超过截止时间的新 child
-- recurring parent 不接受 `wait`、`scheduled`、`depends`，避免模板字段被静默丢弃
-- `monthly` 目前直接沿用 Go `time.AddDate(0, n, 0)` 的月末滚动语义
+- 循环任务使用独立 `task_series` 表，不再用 `status=recurring` 隐藏任务或循环用途的 `parent`
+- 每个日历槽位是独立任务，按日历驱动生成（即使上一条未完成，下一天仍生成新实例）
+- 有界日期范围查询合并普通任务、projected occurrence 和 materialized exception
+- occurrence 的公开 `id` 为 `occ:<series_uuid>:<recurrence_at_unix>`，物化前后不变
+- HTTP `/api/v1/task-series`、MCP `task_series_*` tools、Remote client 提供完整 CRUD
+- Web Console 任务页内可深链的循环任务管理面板（不新增全局导航或 ProjectTab）
+- 旧 `recur`/`mask`/`imask` 字段和 `add ... recur:*` 命令不再支持；跨环境迁移使用 `xuanchu.task-bundle/v1` 原生 bundle
+- **破坏性 schema 变更**：开发数据库需重建——检测到旧 `status=recurring` 数据会拒绝启动
 
 ## 配置、Context、UDA 与 `.taskrc`
 

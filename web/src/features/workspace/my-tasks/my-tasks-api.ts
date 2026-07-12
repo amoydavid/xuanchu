@@ -9,6 +9,7 @@ export type MyTasksFilter = {
   due_before?: string
   due_empty?: string
   q?: string
+  query?: string
   sort?: string
 }
 

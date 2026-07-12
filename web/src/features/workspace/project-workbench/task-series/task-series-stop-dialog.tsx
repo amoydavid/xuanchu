@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- 弹窗/面板打开时需在 effect 内重置状态 */
 import { useEffect, useState } from "react"
 
 // TaskSeriesStopDialog 是停止循环确认弹窗（spec §15.7）。

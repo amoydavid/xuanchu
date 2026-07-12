@@ -17,8 +17,6 @@ import {
   formatUDAValue,
 } from "@/features/workspace/project-readonly/uda"
 import {
-  recurrenceLabel,
-  recurrenceOptions,
   taskStatusLabel,
 } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTaskRef } from "../api/project-api"
@@ -59,10 +57,6 @@ export function TaskPropertyPanel({
   const { t } = useTranslation()
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const udas = useMemo(() => extractUDAs(task), [task])
-  const recurrenceSelectOptions = recurrenceOptions.map((option) => ({
-    label: t(option.labelKey),
-    value: option.value,
-  }))
 
   // 分组是否「有内容」：用于空组隐身（spec §9.5）。
   // Schedule 全空时仍保留（可写用户需要入口新增计划字段），但不可写时全空则隐身。
@@ -70,8 +64,7 @@ export function TaskPropertyPanel({
     unixLikeToNumber(task.due) !== null ||
     unixLikeToNumber(task.wait) !== null ||
     unixLikeToNumber(task.scheduled) !== null ||
-    unixLikeToNumber(task.until) !== null ||
-    (task.recur ?? "") !== ""
+    unixLikeToNumber(task.until) !== null
   const hasRelations =
     !!task.parent ||
     (task.depends && task.depends.length > 0) ||
@@ -192,28 +185,6 @@ export function TaskPropertyPanel({
             }}
             value={task.until}
           />
-          <PropertyRow
-            helpText={t("projectReadonly.recurHelp")}
-            label={t("projectReadonly.recur")}
-          >
-            <InlineSelectEditor
-              ariaLabel={t("projectReadonly.recur")}
-              className="w-full"
-              disabled={!canWrite}
-              onSave={async (recur) => {
-                await modify.mutateAsync(
-                  recur === "none" ? { clear_recur: true } : { recur }
-                )
-              }}
-              options={recurrenceSelectOptions}
-              placeholder="-"
-              triggerSize="sm"
-              value={task.recur ?? "none"}
-            />
-            <div className="mt-1 text-xs text-muted-foreground">
-              {recurrenceLabel(task.recur, t)}
-            </div>
-          </PropertyRow>
         </PropertyGroup>
       ) : null}
 
