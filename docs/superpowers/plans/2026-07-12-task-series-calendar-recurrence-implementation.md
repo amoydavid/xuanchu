@@ -9,7 +9,8 @@
 > - **Task 10 ✅**：七个 task_series_* MCP tools + golden files
 > - **Task 11 ✅**：Web 原生类型 + task-series-api client + 任务页面板路由
 > - **Task 12 ✅**：面板 list/detail/stop-dialog 组件 + recurrence-preview + 统一创建弹窗 initialMode normal/recurring
-> - **Task 13-14 ⏳**：occurrence 列表/详情/My Tasks/项目统计、原生 bundle、全量验收未开始
+> - **Task 13 ✅**：task-table recurrence badge + task-detail '所属循环任务' banner + My Tasks 5 预设（incomplete/today/overdue/noDue/completed）+ ProjectWorkbenchTask 类型扩展
+> - **Task 14 ⏳**：原生 bundle + 删除 internal/recurrence + README/ROADMAP + 全量验收未开始
 >
 > 续作者请从 Task 12（面板 list/detail/dialog UI + 创建弹窗）开始。" 2>&1 | tail -2
 
