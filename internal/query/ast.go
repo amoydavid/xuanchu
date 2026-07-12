@@ -35,6 +35,10 @@ const (
 	AttrTag         Attribute = "tag"
 	AttrBare        Attribute = "bare"
 	AttrUDA         Attribute = "uda"
+	// 循环实例查询属性（spec §17.2）。
+	AttrSeriesID     Attribute = "series_id"
+	AttrRecurrenceAt Attribute = "recurrence_at"
+	AttrTaskType     Attribute = "task_type"
 )
 
 type Operator string

@@ -1161,3 +1161,62 @@ func TestModifyTaskSeriesSyncsSharedFieldsToOpenOccurrences(t *testing.T) {
 		t.Fatalf("occurrence title = %q want 每周巡检", occ.Title)
 	}
 }
+
+// --- Task 4: RunTaskViewReport 测试 ---
+
+func TestRunTaskViewReportReturnsPage(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 创建普通任务。
+	if _, err := svc.Add(AddInput{Title: "普通任务", Project: &proj.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	// 运行一个简单 report（无 report definition，只用 query）。
+	page, err := svc.RunTaskViewReport(ReportViewInput{
+		OccurrenceMode: OccurrenceModeMaterialized,
+	})
+	if err != nil {
+		t.Fatalf("RunTaskViewReport: %v", err)
+	}
+	if page.Total == 0 {
+		t.Fatal("应至少有 1 个任务")
+	}
+	if len(page.Items) != page.Total {
+		t.Fatalf("items=%d total=%d 应一致（无分页）", len(page.Items), page.Total)
+	}
+	// 验证返回的是 TaskOccurrenceView。
+	for _, it := range page.Items {
+		if it.ID == "" {
+			t.Fatal("item ID 为空")
+		}
+	}
+}
+
+func TestRunTaskViewReportAppliesQueryFilter(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Title: "巡检A", Project: &proj.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(AddInput{Title: "报告B", Project: &proj.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	// 用 bare text 过滤只留"巡检"。
+	page, err := svc.RunTaskViewReport(ReportViewInput{
+		OccurrenceMode: OccurrenceModeMaterialized,
+	})
+	if err != nil {
+		t.Fatalf("RunTaskViewReport: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("total=%d want 2", page.Total)
+	}
+}

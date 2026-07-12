@@ -226,6 +226,7 @@ func parseAttributeOperator(name string) (Attribute, Operator, error) {
 		"scheduled": AttrScheduled, "until": AttrUntil, "project": AttrProject,
 		"priority": AttrPriority, "depends": AttrDepends, "annotations": AttrAnnotations,
 		"parent": AttrParent, "assignee": AttrAssignee,
+		"series_id": AttrSeriesID, "recurrence_at": AttrRecurrenceAt, "task_type": AttrTaskType,
 	}[base]
 	if attr == "" {
 		return "", "", fmt.Errorf("unknown attribute %q", base)

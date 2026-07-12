@@ -122,3 +122,102 @@ func tagCountContribution(n int) float64 {
 		return 1.0
 	}
 }
+
+// TaskValue 是解耦 identity 的 urgency 计算输入（spec §13.4）。
+// App 层从 TaskOccurrenceView 映射；projected 的 Entry 为 nil（age 不计）。
+type TaskValue struct {
+	Status           string
+	Entry            *int64
+	Start            *int64
+	Wait             *int64
+	Due              *int64
+	Priority         *string
+	Project          *string
+	Tags             []string
+	AnnotationCount  int
+	UDAs             map[string]string
+}
+
+// Result 是无 identity 的 urgency 结果（spec §13.4）。
+// App 层负责用 TaskOccurrenceView 的 id/uuid 包装为 UrgencyView。
+type Result struct {
+	Total float64
+	Items []ExplainItem
+}
+
+// ExplainValue 对无 identity 的 TaskValue 计算 urgency（spec §13.4）。
+// projected 的 Entry 为 nil → age 项不计；blocked/blocking 固定 false（由 Options 传）。
+func ExplainValue(tv TaskValue, opts Options) Result {
+	var result Result
+	add := func(item ExplainItem) {
+		result.Items = append(result.Items, item)
+		result.Total += item.Contribution
+	}
+	if slices.Contains(tv.Tags, "next") {
+		add(ExplainItem{Name: "tag.next", Coefficient: coefTagNext, Raw: "next", Contribution: coefTagNext, Reason: "task has +next"})
+	}
+	if tv.Start != nil {
+		add(ExplainItem{Name: "active", Coefficient: coefActive, Raw: *tv.Start, Contribution: coefActive, Reason: "task is active"})
+	}
+	if (tv.Wait != nil && *tv.Wait > opts.NowUnix) || tv.Status == "waiting" {
+		add(ExplainItem{Name: "waiting", Coefficient: coefWaiting, Raw: tv.Wait, Contribution: coefWaiting, Reason: "task is waiting"})
+	}
+	if opts.Blocked {
+		add(ExplainItem{Name: "blocked", Coefficient: coefBlocked, Raw: true, Contribution: coefBlocked, Reason: "task is blocked by dependencies"})
+	}
+	if opts.Blocking {
+		add(ExplainItem{Name: "blocking", Coefficient: coefBlocking, Raw: true, Contribution: coefBlocking, Reason: "task blocks other tasks"})
+	}
+	if tv.Due != nil {
+		contribution := dueContribution(*tv.Due, opts.NowUnix)
+		if contribution > 0 {
+			add(ExplainItem{Name: "due", Coefficient: coefDue, Raw: *tv.Due, Contribution: contribution, Reason: "task has due date"})
+		}
+	}
+	if tv.Priority != nil {
+		switch *tv.Priority {
+		case "H":
+			add(ExplainItem{Name: "priority.H", Coefficient: coefPriorityH, Raw: "H", Contribution: coefPriorityH, Reason: "priority is H"})
+		case "M":
+			add(ExplainItem{Name: "priority.M", Coefficient: coefPriorityM, Raw: "M", Contribution: coefPriorityM, Reason: "priority is M"})
+		case "L":
+			add(ExplainItem{Name: "priority.L", Coefficient: coefPriorityL, Raw: "L", Contribution: coefPriorityL, Reason: "priority is L"})
+		}
+	}
+	// projected 的 Entry 为 nil → age 不计。
+	if tv.Entry != nil && opts.NowUnix > *tv.Entry {
+		days := float64(opts.NowUnix-*tv.Entry) / 86400.0
+		if days > ageMaxDays {
+			days = ageMaxDays
+		}
+		contribution := coefAge * (days / ageMaxDays)
+		if contribution > 0 {
+			add(ExplainItem{Name: "age", Coefficient: coefAge, Raw: days, Contribution: contribution, Reason: "task age"})
+		}
+	}
+	if len(tv.Tags) > 0 {
+		add(ExplainItem{Name: "tags", Coefficient: coefTags, Raw: len(tv.Tags), Contribution: tagCountContribution(len(tv.Tags)), Reason: "task has tags"})
+	}
+	if tv.AnnotationCount > 0 {
+		add(ExplainItem{Name: "annotations", Coefficient: coefAnnotations, Raw: tv.AnnotationCount, Contribution: coefAnnotations * tagCountContribution(tv.AnnotationCount), Reason: "task has annotations"})
+	}
+	if tv.Project != nil && *tv.Project != "" {
+		add(ExplainItem{Name: "project", Coefficient: coefProject, Raw: *tv.Project, Contribution: coefProject, Reason: "task has project"})
+	}
+	names := make([]string, 0, len(tv.UDAs))
+	for name := range tv.UDAs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		value := tv.UDAs[name]
+		if coef, ok := opts.UDACoefficients[name]; ok {
+			add(ExplainItem{Name: "uda." + name, Coefficient: coef, Raw: value, Contribution: coef, Reason: "task has UDA " + name})
+		}
+		key := name + "." + value
+		if coef, ok := opts.UDAValueCoefficients[key]; ok {
+			add(ExplainItem{Name: "uda." + key, Coefficient: coef, Raw: value, Contribution: coef, Reason: "task UDA value matches " + key})
+		}
+	}
+	return result
+}

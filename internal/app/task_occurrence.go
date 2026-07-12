@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
@@ -868,4 +869,104 @@ func (s *Service) WithExistingTaskForSubresourceWrite(ref string, action func(*S
 		return TaskOccurrenceView{}, err
 	}
 	return resultView, nil
+}
+
+// ReportViewInput 是 RunTaskViewReport 的输入（spec §17.3）。
+type ReportViewInput struct {
+	Name      string
+	Query     query.Expr
+	Range     *TaskViewRange
+	OccurrenceMode OccurrenceMode
+	NoContext bool
+	Sort      string
+	Limit     int
+	Offset    int
+}
+
+// RunTaskViewReport 执行 report 并返回 TaskViewPage（spec §17.3）。
+//
+// 复用 collectTaskViewCandidates 收集全集（不含分页），
+// 应用 report scope/urgency 后再排序和分页。
+// 旧 RunReport 返回 []task.Task，此方法返回统一 TaskViewPage。
+func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error) {
+	if err := s.Require(PermissionTaskRead); err != nil {
+		return TaskViewPage{}, err
+	}
+	// 解析 effective mode。
+	mode := input.OccurrenceMode
+	if mode == "" || mode == OccurrenceModeAuto {
+		if input.Range != nil && input.Range.End > input.Range.Start {
+			mode = OccurrenceModeExpand
+		} else {
+			mode = OccurrenceModeMaterialized
+		}
+	}
+	if err := validateTaskViewRange(mode, input.Range); err != nil {
+		return TaskViewPage{}, err
+	}
+	// 收集候选（全集，不分页）。
+	candidates, err := s.collectTaskViewCandidates(TaskViewQuery{
+		Range: input.Range, OccurrenceMode: mode, Sort: input.Sort,
+	}, mode)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	// 应用 report query AST 过滤（expand 模式）。
+	if input.Query != nil {
+		filtered := make([]TaskOccurrenceView, 0, len(candidates))
+		for _, v := range candidates {
+			tv := taskViewToQueryValue(v)
+			ok, merr := query.MatchTaskValue(input.Query, tv, s.clock.Location())
+			if merr == nil && ok {
+				filtered = append(filtered, v)
+			}
+		}
+		candidates = filtered
+	}
+	// 排序 + 分页。
+	sortTaskViews(candidates, input.Sort)
+	total := len(candidates)
+	paged := paginateTaskViews(candidates, input.Limit, input.Offset)
+	return TaskViewPage{
+		Items: paged, Total: total, Limit: input.Limit, Offset: input.Offset,
+		OccurrenceMode: mode, Range: input.Range,
+	}, nil
+}
+
+// taskViewToQueryValue 把 TaskOccurrenceView 映射为 query.TaskValue（spec §17.2）。
+func taskViewToQueryValue(v TaskOccurrenceView) query.TaskValue {
+	tv := query.TaskValue{
+		ID: v.ID, UUID: v.UUID, Title: v.Title, Description: v.Description,
+		Status: v.Status, Entry: v.Entry, Modified: v.Modified, End: v.End,
+		Due: v.Due, Start: v.Start, Wait: v.Wait, Scheduled: v.Scheduled,
+		Project: v.Project, ProjectID: v.ProjectID,
+		Priority: v.Priority, Parent: v.Parent, Tags: v.Tags,
+		Depends: v.Depends, AssigneeIDs: assigneeIDsFromViews(v.Assignees),
+	}
+	// task_type。
+	if v.RecurrenceInfo != nil {
+		tt := "occurrence"
+		tv.TaskType = &tt
+		tv.SeriesID = &v.RecurrenceInfo.SeriesID
+		tv.RecurrenceAt = &v.RecurrenceInfo.RecurrenceAt
+	} else {
+		tt := "normal"
+		tv.TaskType = &tt
+	}
+	// UDAs 转 string map。
+	if v.UDAs != nil {
+		tv.UDAs = make(map[string]string, len(v.UDAs))
+		for k, val := range v.UDAs {
+			tv.UDAs[k] = val.Raw
+		}
+	}
+	return tv
+}
+
+func assigneeIDsFromViews(infos []domain.UserInfo) []string {
+	out := make([]string, 0, len(infos))
+	for _, u := range infos {
+		out = append(out, u.ID)
+	}
+	return out
 }
