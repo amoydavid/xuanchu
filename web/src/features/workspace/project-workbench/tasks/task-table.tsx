@@ -195,6 +195,11 @@ function TaskTableRow({
             {t("myTasks.deleted")}
           </Badge>
         ) : null}
+        {task.recurrence_info ? (
+          <Badge className="ml-1" variant="outline" data-testid="recurrence-badge" title={task.recurrence_info.materialization === "projected" ? "计划实例" : "已物化实例"}>
+            ↻ {recurrenceRuleLabel(task.recurrence_info.rule)}
+          </Badge>
+        ) : null}
       </TableCell>
       <TableCell>
         <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
@@ -388,4 +393,18 @@ function unixLikeToNumber(value: string | number | null | undefined) {
     }
   }
   return null
+}
+
+// recurrenceRuleLabel 把 canonical 规则映射为简短中文标签（spec §12）。
+function recurrenceRuleLabel(rule: string): string {
+  switch (rule) {
+    case "daily": return "每天"
+    case "weekly": return "每周"
+    case "monthly": return "每月"
+    default:
+      if (/^\d+weeks$/.test(rule)) return `每${rule.replace("weeks", "周")}`
+      if (/^\d+months$/.test(rule)) return `每${rule.replace("months", "月")}`
+      if (/^\d+days$/.test(rule)) return `每${rule.replace("days", "天")}`
+      return rule
+  }
 }

@@ -183,7 +183,21 @@ function TaskDetailPageContent({
               {taskData.task_slug ? (
                 <Badge variant="outline">{taskData.task_slug}</Badge>
               ) : null}
+              {taskData.recurrence_info ? (
+                <Badge variant="outline" data-testid="recurrence-info-badge">
+                  ↻ {recurrenceRuleLabel(taskData.recurrence_info.rule)}
+                </Badge>
+              ) : null}
             </div>
+            {taskData.recurrence_info ? (
+              <div className="mt-2 rounded border border-border p-3 text-sm" data-testid="occurrence-banner">
+                <p>↻ 循环任务 · {recurrenceRuleLabel(taskData.recurrence_info.rule)}</p>
+                <p>本次日期：{formatRecurrenceAt(taskData.recurrence_info.recurrence_at)}</p>
+                <p className="text-muted-foreground">
+                  此任务属于循环任务。该循环任务每次产生一次；修改本次不会改动其它日期。
+                </p>
+              </div>
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
             {projectHref ? (
@@ -431,4 +445,25 @@ function taskBelongsToProject(task: ProjectTask, projectSlug: string): boolean {
 
 function isWritableTaskStatus(status: string): boolean {
   return status !== "completed" && status !== "deleted"
+}
+
+function recurrenceRuleLabel(rule: string): string {
+  switch (rule) {
+    case "daily": return "每天"
+    case "weekly": return "每周"
+    case "monthly": return "每月"
+    default:
+      if (/^\d+weeks$/.test(rule)) return `每${rule.replace("weeks", "周")}`
+      if (/^\d+months$/.test(rule)) return `每${rule.replace("months", "月")}`
+      if (/^\d+days$/.test(rule)) return `每${rule.replace("days", "天")}`
+      return rule
+  }
+}
+
+function formatRecurrenceAt(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1000)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
 }

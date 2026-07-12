@@ -80,7 +80,6 @@ export type ProjectWorkbenchTask = {
   entry?: string
   modified?: string
   end?: string | null
-  recur?: string | null
   start?: string | number | null
   wait?: string | number | null
   scheduled?: string | number | null
@@ -94,6 +93,17 @@ export type ProjectWorkbenchTask = {
   assignees?: ProjectWorkbenchAssignee[]
   tags?: string[]
   links?: ProjectWorkbenchTaskLink[]
+  // occurrence 字段（spec §7.8）。普通任务为空；后端切换到 TaskOccurrenceView 后填充。
+  series_id?: string | null
+  recurrence_at?: number | null
+  recurrence_info?: {
+    role: string
+    series_id: string
+    series_status?: string
+    rule: string
+    recurrence_at: number
+    materialization: "projected" | "materialized"
+  } | null
   [key: string]: unknown
 }
 
