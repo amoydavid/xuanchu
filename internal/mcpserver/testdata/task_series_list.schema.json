@@ -1,0 +1,51 @@
+{
+  "description": "List recurring task series.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "assignee": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      },
+      "project": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "q": {
+        "type": "string"
+      },
+      "sort": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "task_series_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

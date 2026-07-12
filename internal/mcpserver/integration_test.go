@@ -304,6 +304,8 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"notification_delivery_list", "notification_delivery_info", "notification_delivery_replay",
 		"token_list", "token_create", "token_modify", "token_revoke",
 		"audit_list", "scope_list", "me_get",
+		"task_series_add", "task_series_list", "task_series_get", "task_series_modify",
+		"task_series_stop", "task_series_list_occurrences", "task_series_occurrence_skip",
 	}
 	if len(result.Tools) != len(expectedTools) {
 		t.Fatalf("expected %d tools, got %d", len(expectedTools), len(result.Tools))

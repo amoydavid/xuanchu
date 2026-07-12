@@ -1,0 +1,54 @@
+{
+  "description": "List materialized occurrences of a series.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "due_after": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "due_before": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "type": "object"
+  },
+  "name": "task_series_list_occurrences",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

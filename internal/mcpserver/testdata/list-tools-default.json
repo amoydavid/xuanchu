@@ -4316,6 +4316,359 @@
       }
     },
     {
+      "description": "Create a recurring task series; each calendar slot is an independent task.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignees": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "first_due": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "first_due_date": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "recurrence_rule": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "until": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "until_date": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "recurrence_rule"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get recurring task series details.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_get",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List recurring task series.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "q": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "task_series_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List materialized occurrences of a series.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "due_after": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "due_before": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_list_occurrences",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify a recurring task series (shared fields; rule change requires effective_from).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Skip one occurrence of a series (creates a deleted tombstone).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "occurrence_id": {
+            "type": "string"
+          },
+          "series_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "series_id",
+          "occurrence_id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_occurrence_skip",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Stop a recurring task series; no new occurrences are generated.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delete_open_occurrences": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_stop",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Start a task; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
