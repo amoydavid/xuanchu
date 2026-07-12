@@ -31,13 +31,21 @@ func statusForAppErrorCode(code string) int {
 	case authz.CodeWorkspaceRequired:
 		return http.StatusBadRequest
 	// 资源不存在
-	case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "tenant_token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found", "admin_acting_not_found":
+	case "workspace_not_found", "project_not_found", "task_not_found", "token_not_found", "tenant_token_not_found", "context_not_found", "hook_not_found", "hook_delivery_not_found", "annotation_not_found", "notification_sink_not_found", "reminder_rule_not_found", "notification_rule_not_found", "notification_delivery_not_found", "admin_acting_not_found", "task_series_not_found", "task_series_occurrence_not_found", "task_occurrence_not_found":
 		return http.StatusNotFound
 	case "workspace_archived":
 		return http.StatusBadRequest
 	// 冲突
 	case "admin_workspace_exists":
 		return http.StatusConflict
+	// 循环系列冲突/状态错误（spec §21）
+	case "task_series_inactive", "task_recurrence_backlog":
+		return http.StatusConflict
+	case "task_series_project_closed":
+		return http.StatusConflict
+	// 循环系列输入校验
+	case "task_series_due_required", "task_series_invalid_until", "task_series_invalid_rule", "task_series_invalid_effective_from", "task_series_unsupported_field", "task_series_endpoint_required", "task_occurrence_range_required", "task_occurrence_range_too_large":
+		return http.StatusBadRequest
 	// 输入校验类
 	case "hook_delivery_not_replayable", "hook_endpoint_invalid", "hook_event_types_invalid", "hook_name_invalid", "hook_timeout_invalid", "hook_max_attempts_invalid", "hook_project_required", "hook_scope_invalid", "hook_secret_invalid", "notification_sink_invalid", "reminder_rule_invalid", "notification_rule_invalid", "endpoint_unresolved", "endpoint_host_denied", "endpoint_mode_invalid", "endpoint_template_invalid", "audience_unsupported", "audience_unsupported_for_event", "template_unresolved", "token_ambiguous_ref", "tenant_token_name_required", "tenant_token_scope_invalid", "tenant_token_project_scope_invalid", "tenant_actor_not_user":
 		return http.StatusBadRequest

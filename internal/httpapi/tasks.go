@@ -214,6 +214,12 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
+	// occurrence_mode 显式提供时走 TaskViewPage 路径（spec §13.3）。
+	// due_after/due_before 单独存在时仍走旧 restful filter 路径，避免破坏现有调用方。
+	if r.URL.Query().Get("occurrence_mode") != "" {
+		s.handleTaskListViewPage(w, r, scoped, projectRef)
+		return
+	}
 	limit := taskListDefaultLimit
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
