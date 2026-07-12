@@ -11,7 +11,7 @@
 - `workspace` 作为企业 / 租户级隔离边界；`project` 表示企业内的真实项目
 - 支持多用户、权限、审计、行级隔离，并为 Agent token 和 MCP scope 预留边界
 - 支持服务端 Hook、定时通知、事件通知规则、动态 endpoint 和 HTTP request template sink
-- 借鉴 Taskwarrior 的核心命令名、JSON 迁移格式与 urgency 公式；企业能力优先于完全兼容
+- 借鉴 Taskwarrior 的命令、查询、recurrence 与 urgency 思路；公开 JSON、数据库和跨入口契约采用璇础原生模型，不承诺 Taskwarrior 兼容
 
 ## 详细需求
 
@@ -344,7 +344,7 @@ go build -o xuanchu ./cmd/xuanchu
 ./xuanchu blocked
 ./xuanchu blocking
 
-# 基础循环任务
+# 当前基础循环任务（将在 v0.5.7 被原生 task_series 替换）
 ./xuanchu add "Submit weekly report" recur:weekly due:2030-01-05 until:2030-02-01
 ./xuanchu list
 ./xuanchu 1 done
@@ -363,7 +363,7 @@ CLI 表格里的 `ID` 是默认 working set ID，跨 `list` / `next` / `ready` /
 
 `edit` 会打开缩进 JSON，保存后执行校验；非法日期、非法 status、换行 annotation 等错误不会写回。
 
-当前 recurring 的基础约束：
+当前 recurring 的基础约束如下；这是现有代码行为，不是长期数据或 API 兼容契约。v0.5.7 将按 [循环任务系列规格](./docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md) 改为独立 `task_series`、范围投影与按需物化，并移除循环用途的 `status=recurring`、`parent` 和 Taskwarrior JSON 形态：
 
 - recurring parent 使用 `status:recurring` 持久化，默认 human 报表隐藏
 - child 在创建 parent 时立即生成，完成 child 后自动生成下一个 child

@@ -6,7 +6,7 @@
 - 使用纯 Go SQLite 方案，保持零 CGO、可跨平台交叉编译。
 - `workspace` 作为企业 / 租户级隔离边界，`project` 表示 workspace 内的真实企业项目。
 - 支持多用户、权限、审计、Agent token、行级隔离。
-- 借鉴 Taskwarrior 的核心命令名、JSON 迁移格式与 urgency 公式；企业 workspace/project/Agent 边界优先于完整兼容。
+- 借鉴 Taskwarrior 的命令、查询、recurrence 与 urgency 思路；公开 JSON、数据库和跨入口契约采用璇础原生模型，不承诺 Taskwarrior 兼容。
 
 路线图按可独立交付、可测试、可回滚的 milestone 拆分。每个 milestone 开始前都应先写中文 spec，再用 `superpowers:writing-plans` 拆成实施计划。
 
@@ -603,12 +603,14 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 
 核心范围：
 
-- 保留隐藏 `status=recurring` 模板和 Taskwarrior 基础字段，新增不可变 `recurrence_at` 日历槽位与并发唯一约束。
+- 新建独立 `task_series` 聚合与规则版本段；Task 移除 `status=recurring` 和循环用途的 `recur/parent/mask/imask`，occurrence 通过 `series_id + recurrence_at` 关联并发唯一槽位。
+- 有界日期查询合并普通任务、projected occurrence、materialized exception 与 tombstone；执行期或首次合法写操作才物化。
 - 普通任务与循环系列不互转；创建时明确选择，系列通过专用 app/HTTP/Remote/MCP CRUD 管理。
 - Server 复用现有 scheduler 运行时每分钟 reconcile；本地 CLI 在任务/项目命令前对当前 workspace 补齐。
 - Web Console 提供普通/循环创建切换、实例 badge 与系列入口、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
-- MCP 新增 `task_series_add/list/get/modify/stop/skip`，task query/get 对 occurrence 返回派生 `recurrence_info`。
-- 默认任务列表隐藏 series template；项目普通进度排除模板和循环实例，另给循环系列、未完成实例和逾期实例指标。
+- MCP 新增 `task_series_add/list/get/modify/stop/list_occurrences/occurrence_skip`，task query/get 对 occurrence 返回派生 `recurrence_info`。
+- 默认任务列表只显示普通任务和 occurrence；series 在项目“循环规则”中治理。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
+- import/export 使用版本化璇础原生 bundle，不迁移或兼容 Taskwarrior recurring JSON；当前无生产历史数据，允许一次性重建旧 recurring 开发数据。
 - 项目 archive/cancel 时停止 active series，不在关闭项目中继续生成任务。
 
 规格：
@@ -1608,7 +1610,8 @@ v0.5.5 已完成任务详情页重构，v0.5.6 已完成项目自动化。当前
 - 服务停机恢复后补齐全部遗漏日期，并以不可变 `recurrence_at` 和数据库唯一约束保证并发幂等。
 - 普通任务与循环系列不互转；Series CRUD 通过专用 app/HTTP/Remote/MCP 能力提供。
 - Web Console 补齐循环创建、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
-- 默认任务列表隐藏 series template，项目进度与循环运行指标分开统计。
+- 默认任务列表只显示普通任务和 occurrence；series 使用独立 `task_series` 资源，项目进度与循环运行指标分开统计。
+- 不再兼容 Taskwarrior recurring JSON、hidden recurring parent 或循环命令；采用版本化璇础原生 bundle。
 
 对应规格：
 
