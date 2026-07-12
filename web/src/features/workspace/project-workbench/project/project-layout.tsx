@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useRef, useState, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -39,6 +39,9 @@ export type ProjectLayoutContextValue = {
   // setTabActions 允许子页面在 tabs 行右侧（收起/展开按钮左边）注册额外动作节点。
   // 例如任务页用它注册「导入任务」图标按钮。传 null 清空。
   setTabActions: (node: ReactNode | null) => void
+  // setContextPanel 允许子页面（如循环任务管理面板）临时替换右栏项目上下文。
+  // 传 null 恢复默认 ProjectContextRail。不修改用户保存的 railOpen 状态（spec §15.14）。
+  setContextPanel: (panel: { node: ReactNode; onClose: () => void } | null) => void
 }
 
 const LayoutContext = createContext<ProjectLayoutContextValue | null>(null)
@@ -70,6 +73,10 @@ function ProjectLayoutContent({
   const { t } = useTranslation()
   const feedback = useEditFeedback()
   const [railOpen, setRailOpen] = useState(true)
+  // 循环任务管理面板等子页面可临时替换右栏（spec §15.14）。
+  // 不修改用户保存的 railOpen 状态；关闭后恢复。
+  const [contextPanel, setContextPanelState] = useState<{ node: ReactNode; onClose: () => void } | null>(null)
+  const savedRailOpen = useRef(true)
   const [tabActions, setTabActions] = useState<ReactNode | null>(null)
   const me = useMe()
   const project = useProjectQuery(workspaceSlug, projectSlug)
@@ -135,6 +142,18 @@ function ProjectLayoutContent({
   }
 
   const closed = isClosedProjectStatus(project.data.status)
+  // setContextPanel：保存当前 railOpen，强制展开右栏；关闭时恢复。
+  const setContextPanel = (panel: { node: ReactNode; onClose: () => void } | null) => {
+    if (panel) {
+      savedRailOpen.current = railOpen
+      setRailOpen(true)
+      setContextPanelState(panel)
+    } else {
+      setContextPanelState(null)
+      // 恢复用户打开前的右栏状态（spec §15.14）。
+      setRailOpen(savedRailOpen.current)
+    }
+  }
   const layoutValue: ProjectLayoutContextValue = {
     workspaceSlug,
     projectSlug,
@@ -143,6 +162,7 @@ function ProjectLayoutContent({
     canReadTasks,
     closed,
     setTabActions,
+    setContextPanel,
   }
 
   return (
@@ -193,15 +213,21 @@ function ProjectLayoutContent({
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="min-w-0 flex-1">{children}</div>
           {railOpen ? (
-            <ProjectContextRail
-              configError={homeConfig.isError}
-              configRows={homeConfig.data}
-              project={project.data}
-              summary={summary.data}
-              summaryError={summary.isError}
-              timeline={timeline.data}
-              timelineError={timeline.isError}
-            />
+            contextPanel ? (
+              <div className="task-series-panel-slot" data-testid="context-panel-slot">
+                {contextPanel.node}
+              </div>
+            ) : (
+              <ProjectContextRail
+                configError={homeConfig.isError}
+                configRows={homeConfig.data}
+                project={project.data}
+                summary={summary.data}
+                summaryError={summary.isError}
+                timeline={timeline.data}
+                timelineError={timeline.isError}
+              />
+            )
           ) : null}
         </div>
       </div>

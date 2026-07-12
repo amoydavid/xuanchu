@@ -34,6 +34,11 @@ const ProjectTasksRoute = lazy(() =>
     default: module.ProjectTasksRoute,
   }))
 )
+const ProjectTaskSeriesPanelRoute = lazy(() =>
+  import("@/routes/workspace/ProjectTaskSeriesPanelRoute").then((module) => ({
+    default: module.ProjectTaskSeriesPanelRoute,
+  }))
+)
 const ProjectActivityRoute = lazy(() =>
   import("@/routes/workspace/ProjectActivityRoute").then((module) => ({
     default: module.ProjectActivityRoute,
@@ -298,6 +303,7 @@ const projectTasksRoute = createRoute({
       "q",
       "query",
       "sort",
+      "task_type",
     ]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") {
@@ -306,6 +312,21 @@ const projectTasksRoute = createRoute({
     }
     return out
   },
+})
+
+// 循环任务管理面板子路由（spec §15.12）：
+// series 和 series/$seriesRef 是 tasks 的静态子路由，只渲染面板，不重挂载 ProjectTasksPage。
+// 静态 series 必须优先于动态 $taskRef 匹配。
+const projectTaskSeriesListRoute = createRoute({
+  getParentRoute: () => projectTasksRoute,
+  path: "series",
+  component: lazyRoute(ProjectTaskSeriesPanelRoute),
+})
+
+const projectTaskSeriesDetailRoute = createRoute({
+  getParentRoute: () => projectTasksRoute,
+  path: "series/$seriesRef",
+  component: lazyRoute(ProjectTaskSeriesPanelRoute),
 })
 
 const projectActivityRoute = createRoute({
@@ -416,7 +437,7 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("audit", "/audit"),
     settingsRoute,
     projectWorkbenchRoute,
-    projectTasksRoute,
+    projectTasksRoute.addChildren([projectTaskSeriesListRoute, projectTaskSeriesDetailRoute]),
     projectActivityRoute,
     projectAutomationsRoute,
     projectTaskDetailRoute,
