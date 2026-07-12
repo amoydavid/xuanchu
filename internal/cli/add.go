@@ -42,7 +42,6 @@ func newAddCommand(opts Options) *cobra.Command {
 					Wait:        parsed.Mod.Wait,
 					Scheduled:   parsed.Mod.Scheduled,
 					Until:       parsed.Mod.Until,
-					Recur:       parsed.Mod.Recur,
 					Tags:        parsed.Mod.AddTags,
 					UDAs:        parsed.Mod.UDAs,
 				})
@@ -71,7 +70,6 @@ func newAddCommand(opts Options) *cobra.Command {
 				Wait:        parsed.Mod.Wait,
 				Scheduled:   parsed.Mod.Scheduled,
 				Until:       parsed.Mod.Until,
-				Recur:       parsed.Mod.Recur,
 				Tags:        parsed.Mod.AddTags,
 				UDAs:        parsed.Mod.UDAs,
 			})

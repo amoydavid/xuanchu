@@ -30,7 +30,6 @@ const (
 	AttrPriority    Attribute = "priority"
 	AttrDepends     Attribute = "depends"
 	AttrAnnotations Attribute = "annotations"
-	AttrRecur       Attribute = "recur"
 	AttrParent      Attribute = "parent"
 	AttrAssignee    Attribute = "assignee"
 	AttrTag         Attribute = "tag"

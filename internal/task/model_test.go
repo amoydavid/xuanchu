@@ -36,30 +36,11 @@ func TestValidateAllowsM2StatusesAndFields(t *testing.T) {
 	}
 }
 
-func TestValidateRecurringRequiresRecurAndDue(t *testing.T) {
-	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "parent", Status: StatusRecurring, Entry: 1, Modified: 1}
+func TestValidateRejectsLegacyRecurringStatus(t *testing.T) {
+	// spec 2026-07-11：Task.status 不再含 recurring。
+	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "parent", Status: "recurring", Entry: 1, Modified: 1}
 	if err := tsk.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want recurring validation error")
-	}
-
-	recur := "weekly"
-	tsk.Recur = &recur
-	if err := tsk.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want due validation error")
-	}
-
-	due := int64(100)
-	tsk.Due = &due
-	if err := tsk.Validate(); err != nil {
-		t.Fatalf("Validate(recurring with recur/due) error = %v", err)
-	}
-}
-
-func TestValidateRejectsUnsupportedRecurrence(t *testing.T) {
-	recur := "fortnightly"
-	tsk := Task{UUID: "u1", WorkspaceID: "w1", Title: "task", Status: StatusPending, Entry: 1, Modified: 1, Recur: &recur}
-	if err := tsk.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want recurrence validation error")
+		t.Fatal("Validate() error = nil, want invalid status error")
 	}
 }
 

@@ -708,7 +708,15 @@ func TestM5MigrationColumnsMatchM4Snapshot(t *testing.T) {
 	defer store.Close()
 
 	got := taskColumnNames(t, store)
-	want := append(append([]string{}, m5TaskColumns...), "project_id")
+	// spec 2026-07-11 后 tasks 表移除 recur/mask/i_mask，新增 occurrence 列。
+	want := []string{
+		"uuid", "workspace_id", "title", "description", "status", "entry", "modified",
+		"end_ts", "due", "project", "priority",
+		"start", "wait", "scheduled", "until",
+		"parent",
+		"project_seq", "project_id",
+		"series_id", "recurrence_at", "recurrence_rule_snapshot", "recurrence_overrides_json",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tasks columns = %#v, want %#v", got, want)
 	}
@@ -723,15 +731,16 @@ func TestM5MigrationIndexesMatchM5Snapshot(t *testing.T) {
 
 	got := taskIndexNames(t, store)
 	want := []string{
-		"idx_task_parent_due_open",
+		"idx_tasks_due",
 		"idx_tasks_parent",
-		"idx_tasks_recur",
+		"idx_tasks_recurrence_at",
 		"idx_tasks_scheduled",
 		"idx_tasks_status",
 		"idx_tasks_until",
 		"idx_tasks_wait",
 		"idx_tasks_ws_project_id",
 		"idx_tasks_ws_project_seq",
+		"idx_tasks_ws_series_slot",
 		"sqlite_autoindex_tasks_1",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -827,15 +836,16 @@ func TestM5MigrationPreservesTaskIndexesFromM4Database(t *testing.T) {
 
 	got := taskIndexNames(t, store)
 	want := []string{
-		"idx_task_parent_due_open",
+		"idx_tasks_due",
 		"idx_tasks_parent",
-		"idx_tasks_recur",
+		"idx_tasks_recurrence_at",
 		"idx_tasks_scheduled",
 		"idx_tasks_status",
 		"idx_tasks_until",
 		"idx_tasks_wait",
 		"idx_tasks_ws_project_id",
 		"idx_tasks_ws_project_seq",
+		"idx_tasks_ws_series_slot",
 		"sqlite_autoindex_tasks_1",
 	}
 	if !reflect.DeepEqual(got, want) {

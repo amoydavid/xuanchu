@@ -111,11 +111,10 @@ func TestTaskModifyAuditPayloadSkipsEmptySetChanges(t *testing.T) {
 }
 
 func TestTaskModifyAuditPayloadIncludesLowFrequencyFields(t *testing.T) {
-	// 覆盖 wait/scheduled/until/recur/depends/udas 低频字段。
+	// 覆盖 wait/scheduled/until/depends/udas 低频字段。
 	wait := int64(1_783_036_800)
 	scheduled := int64(1_783_123_200)
 	until := int64(1_783_209_600)
-	recur := "weekly"
 	payload := taskModifyAuditPayload(projectChange{}, TaskChangeDiff{
 		WaitChanged:      true,
 		PreviousWait:     nil,
@@ -126,9 +125,6 @@ func TestTaskModifyAuditPayloadIncludesLowFrequencyFields(t *testing.T) {
 		UntilChanged:     true,
 		PreviousUntil:    nil,
 		CurrentUntil:     &until,
-		RecurChanged:     true,
-		PreviousRecur:    nil,
-		CurrentRecur:     &recur,
 		DependsChanged:   true,
 		AddedDepends:     []string{"dep-1"},
 		RemovedDepends:   []string{"dep-0"},
@@ -149,7 +145,7 @@ func TestTaskModifyAuditPayloadIncludesLowFrequencyFields(t *testing.T) {
 	for _, change := range changes {
 		gotFields = append(gotFields, change["field"].(string))
 	}
-	wantFields := []string{"wait", "scheduled", "until", "recur", "depends", "udas"}
+	wantFields := []string{"wait", "scheduled", "until", "depends", "udas"}
 	if !reflect.DeepEqual(gotFields, wantFields) {
 		t.Fatalf("fields = %#v, want %#v", gotFields, wantFields)
 	}
@@ -161,7 +157,7 @@ func TestTaskModifyAuditPayloadIncludesLowFrequencyFields(t *testing.T) {
 	}
 
 	// depends 集合：added/removed 都要存在。
-	dependsChange := changes[4]
+	dependsChange := changes[3]
 	_, hasAdded := dependsChange["added"]
 	_, hasRemoved := dependsChange["removed"]
 	if !hasAdded || !hasRemoved {
@@ -169,7 +165,7 @@ func TestTaskModifyAuditPayloadIncludesLowFrequencyFields(t *testing.T) {
 	}
 
 	// udas：用 entries 承载。
-	udasChange := changes[5]
+	udasChange := changes[4]
 	entries, ok := udasChange["entries"].([]map[string]any)
 	if !ok || len(entries) != 1 {
 		t.Fatalf("udas entries = %#v", udasChange["entries"])

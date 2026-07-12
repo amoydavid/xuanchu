@@ -52,6 +52,9 @@ func (s *Store) migrateSQLite() error {
 	if err := s.prepareActorColumnsForP2(); err != nil {
 		return err
 	}
+	if err := s.prepareTaskSeriesSchema(); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -23,10 +23,7 @@ type EditableTask struct {
 	Tags        []string              `json:"tags,omitempty"`
 	Annotations []task.JSONAnnotation `json:"annotations,omitempty"`
 	Depends     []string              `json:"depends,omitempty"`
-	Recur       *string               `json:"recur,omitempty"`
 	Parent      *string               `json:"parent,omitempty"`
-	Mask        *string               `json:"mask,omitempty"`
-	IMask       *int                  `json:"imask,omitempty"`
 }
 
 func FromTask(tsk task.Task) EditableTask {
@@ -46,10 +43,7 @@ func FromTask(tsk task.Task) EditableTask {
 		Tags:        dto.Tags,
 		Annotations: dto.Annotations,
 		Depends:     dto.Depends,
-		Recur:       dto.Recur,
 		Parent:      dto.Parent,
-		Mask:        dto.Mask,
-		IMask:       dto.IMask,
 	}
 }
 
@@ -96,10 +90,7 @@ func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 	out.Until = until
 	out.Tags = edited.Tags
 	out.Depends = edited.Depends
-	out.Recur = edited.Recur
 	out.Parent = edited.Parent
-	out.Mask = edited.Mask
-	out.IMask = edited.IMask
 	if edited.Annotations == nil {
 		out.Annotations = nil
 	} else {

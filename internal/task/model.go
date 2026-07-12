@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"git.dajee.net/dajee/xuanchu/internal/recurrence"
 )
 
 const (
@@ -14,7 +12,6 @@ const (
 	StatusCompleted = "completed"
 	StatusDeleted   = "deleted"
 	StatusWaiting   = "waiting"
-	StatusRecurring = "recurring"
 )
 
 type Annotation struct {
@@ -96,16 +93,12 @@ type Task struct {
 	Until       *int64
 	Annotations []Annotation
 	Depends     []string
-	Recur       *string
 	Parent      *string
-	Mask        *string
-	IMask       *int
 	Assignees   []AssigneeInfo
 	Links       []TaskLinkInfo
 	UDAs        map[string]UDAValue
 	// 以下为循环实例（occurrence）持久字段（spec §7.2）。
 	// 普通任务三者全 nil；已物化 occurrence 三者全非 nil。
-	// 旧 Recur/Mask/IMask/StatusRecurring 在 Task 3 与存储迁移一同删除。
 	SeriesID                *string
 	RecurrenceAt            *int64
 	RecurrenceRuleSnapshot  *string
@@ -117,7 +110,7 @@ func (t Task) Validate() error {
 		return errors.New("title is required")
 	}
 	switch t.Status {
-	case StatusPending, StatusCompleted, StatusDeleted, StatusWaiting, StatusRecurring:
+	case StatusPending, StatusCompleted, StatusDeleted, StatusWaiting:
 	default:
 		return errors.New("invalid status")
 	}
@@ -152,19 +145,6 @@ func (t Task) Validate() error {
 		}
 		if value.Raw != "" && strings.ContainsAny(value.Raw, "\n\r") {
 			return errors.New("UDA value must not contain newlines")
-		}
-	}
-	if t.Recur != nil {
-		if err := recurrence.Validate(*t.Recur); err != nil {
-			return err
-		}
-	}
-	if t.Status == StatusRecurring {
-		if t.Recur == nil {
-			return errors.New("recurring task requires recur")
-		}
-		if t.Due == nil {
-			return errors.New("recurring task requires due")
 		}
 	}
 	if err := validateOccurrenceInvariant(&t); err != nil {

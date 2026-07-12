@@ -180,12 +180,6 @@
             "entry": {
               "type": "string"
             },
-            "imask": {
-              "type": [
-                "null",
-                "integer"
-              ]
-            },
             "links": {
               "items": {
                 "additionalProperties": false,
@@ -307,12 +301,6 @@
                 "array"
               ]
             },
-            "mask": {
-              "type": [
-                "null",
-                "string"
-              ]
-            },
             "modified": {
               "type": "string"
             },
@@ -359,13 +347,34 @@
                 "string"
               ]
             },
-            "recur": {
+            "recurrence_at": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "recurrence_overrides": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "recurrence_rule_snapshot": {
               "type": [
                 "null",
                 "string"
               ]
             },
             "scheduled": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "series_id": {
               "type": [
                 "null",
                 "string"

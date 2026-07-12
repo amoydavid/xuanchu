@@ -145,8 +145,6 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 		return compareDateColumn("scheduled", p, opts)
 	case query.AttrUntil:
 		return compareDateColumn("until", p, opts)
-	case query.AttrRecur:
-		return compareColumn("recur", p.Operator, value, nil, opts.Dialect)
 	case query.AttrParent:
 		return compareColumn("parent", p.Operator, value, nil, opts.Dialect)
 	case query.AttrAssignee:

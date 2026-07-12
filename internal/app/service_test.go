@@ -1625,7 +1625,7 @@ func TestModifyAuditPayloadClearDuePreservesNullKey(t *testing.T) {
 	}
 }
 
-// TestModifyAuditPayloadRecordsLowFrequencyFields 校验 wait/recur/depends/udas
+// TestModifyAuditPayloadRecordsLowFrequencyFields 校验 wait/depends/udas
 // 等低频字段修改后进入 audit payload changes。
 func TestModifyAuditPayloadRecordsLowFrequencyFields(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
@@ -1637,10 +1637,8 @@ func TestModifyAuditPayloadRecordsLowFrequencyFields(t *testing.T) {
 	}
 
 	wait := int64(1_783_036_800)
-	recur := "weekly"
 	if err := svc.Modify(created.UUID, ModifyInput{
-		Wait:  &wait,
-		Recur: &recur,
+		Wait: &wait,
 	}); err != nil {
 		t.Fatalf("Modify() error = %v", err)
 	}
@@ -1657,9 +1655,6 @@ func TestModifyAuditPayloadRecordsLowFrequencyFields(t *testing.T) {
 
 	if waitChange := findChange("wait"); waitChange == nil {
 		t.Fatalf("wait change missing; changes = %#v", changes)
-	}
-	if recurChange := findChange("recur"); recurChange == nil {
-		t.Fatalf("recur change missing; changes = %#v", changes)
 	}
 }
 
@@ -2123,80 +2118,6 @@ func TestProjectSeqInvariantViolationOnInfoAndExport(t *testing.T) {
 		t.Fatal("Export() error = nil, want project_invariant_violation")
 	} else {
 		assertRuntimeCode(t, err, "project_invariant_violation")
-	}
-}
-
-func TestRecurringChildOnArchivedProjectWritesAuditWarning(t *testing.T) {
-	store := newTestStore(t)
-	svc := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", "local")
-	project, err := svc.AddProject(AddProjectInput{Slug: "legacy", Name: "Legacy"})
-	if err != nil {
-		t.Fatalf("AddProject(legacy) error = %v", err)
-	}
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-01-03T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{
-		Title:   "legacy recurring task",
-		Project: &project.Slug,
-		Due:     &due,
-		Until:   &until,
-		Recur:   &recur,
-	})
-	if err != nil {
-		t.Fatalf("Add(recurring) error = %v", err)
-	}
-	if _, err := svc.ArchiveProject(project.ID); err != nil {
-		t.Fatalf("ArchiveProject(legacy) error = %v", err)
-	}
-	children, err := svc.List(ListInput{})
-	if err != nil || len(children) != 1 {
-		t.Fatalf("List(children before done) = (%#v, %v), want one child", children, err)
-	}
-	firstChild := children[0]
-	svc.clock = FixedClock{NowUnix: mustUnix(t, "2030-01-02T10:00:00Z")}
-	if err := svc.Done(firstChild.UUID); err != nil {
-		t.Fatalf("Done(first child) error = %v", err)
-	}
-
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after recurrence error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("List() after recurrence = %#v, want exactly next child", tasks)
-	}
-	nextChild := tasks[0]
-	if nextChild.Project == nil || *nextChild.Project != project.Slug || nextChild.ProjectID == nil || *nextChild.ProjectID != project.ID {
-		t.Fatalf("next child project binding = (%#v, %#v), want (%q, %q)", nextChild.Project, nextChild.ProjectID, project.Slug, project.ID)
-	}
-
-	logs, err := svc.ListAudit(AuditListInput{Limit: 20})
-	if err != nil {
-		t.Fatalf("ListAudit() error = %v", err)
-	}
-	found := false
-	for _, log := range logs {
-		if log.Action != "task.recurrence.archived_project" {
-			continue
-		}
-		found = true
-		var payload map[string]any
-		if err := json.Unmarshal([]byte(log.PayloadJSON), &payload); err != nil {
-			t.Fatalf("recurrence warning payload json = %q, err = %v", log.PayloadJSON, err)
-		}
-		if log.TargetID != nextChild.UUID {
-			t.Fatalf("warning TargetID = %q, want child %q", log.TargetID, nextChild.UUID)
-		}
-		if log.ProjectID == nil || *log.ProjectID != project.ID {
-			t.Fatalf("warning ProjectID = %#v, want %q", log.ProjectID, project.ID)
-		}
-		if payload["parent_uuid"] != parent.UUID || payload["child_uuid"] != nextChild.UUID || payload["project_id"] != project.ID || payload["project_slug"] != project.Slug {
-			t.Fatalf("warning payload = %#v", payload)
-		}
-	}
-	if !found {
-		t.Fatal("missing task.recurrence.archived_project audit warning")
 	}
 }
 
@@ -4041,28 +3962,6 @@ func TestServiceAddResolvesDependencyTargets(t *testing.T) {
 	}
 }
 
-func TestServiceRejectsRecurringUnsupportedFields(t *testing.T) {
-	svc, closeFn := newTestService(t, 100)
-	defer closeFn()
-	dep, _ := svc.Add(AddInput{Title: "dep"})
-	due := int64(200)
-	wait := int64(150)
-	scheduled := int64(160)
-	recur := "daily"
-	for _, tc := range []struct {
-		name  string
-		input AddInput
-	}{
-		{name: "wait", input: AddInput{Title: "task", Due: &due, Recur: &recur, Wait: &wait}},
-		{name: "scheduled", input: AddInput{Title: "task", Due: &due, Recur: &recur, Scheduled: &scheduled}},
-		{name: "depends", input: AddInput{Title: "task", Due: &due, Recur: &recur, Depends: []string{dep.UUID}}},
-	} {
-		if _, err := svc.Add(tc.input); err == nil {
-			t.Fatalf("Add(%s) error = nil, want error", tc.name)
-		}
-	}
-}
-
 func TestServiceRejectsDeepDependencyCycle(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -4292,26 +4191,6 @@ func TestServiceReopenRoundTrip(t *testing.T) {
 	}
 }
 
-func TestServiceReopenRejectsRecurring(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-02-01T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{Title: "daily task", Due: &due, Until: &until, Recur: &recur})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if parent.Status != task.StatusRecurring {
-		t.Fatalf("parent status = %s, want recurring", parent.Status)
-	}
-	if err := svc.Reopen(parent.UUID); err == nil {
-		t.Fatal("Reopen(recurring) error = nil, want non-completed guard")
-	}
-}
-
-// TestServiceReopenReblockDependents 验证 reopen 的依赖反向联动：
-// blocker 完成后 dependent 解除阻塞；reopen blocker 后 dependent 重新 blocked。
 func TestServiceReopenReblockDependents(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)
 	defer closeFn()
@@ -4567,186 +4446,6 @@ func TestUrgencyUsesDependencyState(t *testing.T) {
 	}
 }
 
-func TestDoneChildDoesNotRecurWhenParentDeleted(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-02-01T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{Title: "daily task", Due: &due, Until: &until, Recur: &recur})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("children = %#v", tasks)
-	}
-	child := tasks[0]
-	if err := svc.Delete(parent.UUID); err != nil {
-		t.Fatalf("Delete(parent) error = %v", err)
-	}
-	if err := svc.Done(child.UUID); err != nil {
-		t.Fatalf("Done(child) error = %v", err)
-	}
-	tasks, err = svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after Done(child) error = %v", err)
-	}
-	if len(tasks) != 0 {
-		t.Fatalf("child generated after deleted parent: %#v", tasks)
-	}
-}
-
-func TestServiceRecurringAddAndDoneCreatesNextChild(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-02-01T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{Title: "daily task", Due: &due, Until: &until, Recur: &recur})
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
-	}
-	if parent.Status != task.StatusRecurring {
-		t.Fatalf("parent status = %s", parent.Status)
-	}
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 || tasks[0].Parent == nil || *tasks[0].Parent != parent.UUID {
-		t.Fatalf("visible child not created: %#v", tasks)
-	}
-	firstChild := tasks[0]
-	if err := svc.Done(firstChild.UUID); err != nil {
-		t.Fatalf("Done(child) error = %v", err)
-	}
-	tasks, err = svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after done error = %v", err)
-	}
-	if len(tasks) != 1 || tasks[0].UUID == firstChild.UUID {
-		t.Fatalf("next child not generated: %#v", tasks)
-	}
-}
-
-func TestRecurringChildAssignsNewProjectSeq(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	project, err := svc.AddProject(AddProjectInput{Slug: "api", Name: "API"})
-	if err != nil {
-		t.Fatalf("AddProject(api) error = %v", err)
-	}
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-02-01T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{Title: "daily project task", Due: &due, Until: &until, Recur: &recur, Project: &project.Slug})
-	if err != nil {
-		t.Fatalf("Add(recurring project task) error = %v", err)
-	}
-	assertProjectSeq(t, parent, 1)
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("visible children = %#v, want 1", tasks)
-	}
-	firstChild := tasks[0]
-	assertProjectSeq(t, firstChild, 2)
-
-	if err := svc.Done(firstChild.UUID); err != nil {
-		t.Fatalf("Done(first child) error = %v", err)
-	}
-	tasks, err = svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after Done error = %v", err)
-	}
-	if len(tasks) != 1 || tasks[0].UUID == firstChild.UUID {
-		t.Fatalf("next child not created: %#v", tasks)
-	}
-	assertProjectSeq(t, tasks[0], 3)
-}
-
-func TestServiceRecurringTaskPreservesAssignees(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-02-01T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{Title: "daily assigned task", Due: &due, Until: &until, Recur: &recur, Assignees: []string{"local"}})
-	if err != nil {
-		t.Fatalf("Add(recurring assigned) error = %v", err)
-	}
-	if len(parent.Assignees) != 1 || parent.Assignees[0].Name != "local" {
-		t.Fatalf("parent assignees = %#v, want local", parent.Assignees)
-	}
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 || len(tasks[0].Assignees) != 1 || tasks[0].Assignees[0].Name != "local" {
-		t.Fatalf("first child assignees = %#v, want local", tasks)
-	}
-	firstChild := tasks[0]
-	if err := svc.Done(firstChild.UUID); err != nil {
-		t.Fatalf("Done(first child) error = %v", err)
-	}
-	tasks, err = svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after done error = %v", err)
-	}
-	if len(tasks) != 1 || tasks[0].UUID == firstChild.UUID || len(tasks[0].Assignees) != 1 || tasks[0].Assignees[0].Name != "local" {
-		t.Fatalf("next child assignees = %#v, want local", tasks)
-	}
-}
-
-func TestServiceRecurringTaskRejectsMissingAssignee(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	recur := "daily"
-	_, err := svc.Add(AddInput{Title: "daily bad assignee", Due: &due, Recur: &recur, Assignees: []string{"missing-assignee"}})
-	if err == nil {
-		t.Fatal("Add(recurring missing assignee) error = nil, want assignee_not_found")
-	}
-	runtimeErr, ok := err.(RuntimeError)
-	if !ok || runtimeErr.Code != "assignee_not_found" {
-		t.Fatalf("Add(recurring missing assignee) err = %#v, want RuntimeError(assignee_not_found)", err)
-	}
-}
-
-func TestRecurringStopsAtUntil(t *testing.T) {
-	svc, closeFn := newTestService(t, mustUnix(t, "2030-01-01T10:00:00Z"))
-	defer closeFn()
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := due
-	recur := "daily"
-	if _, err := svc.Add(AddInput{Title: "daily", Due: &due, Until: &until, Recur: &recur}); err != nil {
-		t.Fatal(err)
-	}
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("children = %#v", tasks)
-	}
-	if err := svc.Done(tasks[0].UUID); err != nil {
-		t.Fatal(err)
-	}
-	tasks, err = svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after done error = %v", err)
-	}
-	if len(tasks) != 0 {
-		t.Fatalf("child generated after until: %#v", tasks)
-	}
-}
-
 func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
 	store := newTestStore(t)
 	ownerLocalCreate := newTestServiceWithRuntime(t, store, 100, "local", "local")
@@ -4791,57 +4490,6 @@ func TestViewerListOnlyRefreshesCurrentWorkspaceWaitingTasks(t *testing.T) {
 	}
 	if localTask.Status != task.StatusWaiting {
 		t.Fatalf("local task status = %s, want waiting", localTask.Status)
-	}
-}
-
-func TestDoneRecurringTaskKeepsAuditAndNextChildInSameWorkspace(t *testing.T) {
-	store := newTestStore(t)
-	ownerLocal := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", "local")
-	work, err := ownerLocal.AddWorkspace(AddWorkspaceInput{Slug: "work", Name: "Work"})
-	if err != nil {
-		t.Fatalf("AddWorkspace(work) error = %v", err)
-	}
-	svc := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", work.Slug)
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-02-01T23:59:59Z")
-	recur := "daily"
-	parent, err := svc.Add(AddInput{Title: "daily work task", Due: &due, Until: &until, Recur: &recur})
-	if err != nil {
-		t.Fatalf("Add(recurring) error = %v", err)
-	}
-	tasks, err := svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("tasks = %#v", tasks)
-	}
-	firstChild := tasks[0]
-	if err := svc.Done(firstChild.UUID); err != nil {
-		t.Fatalf("Done(child) error = %v", err)
-	}
-
-	logs, err := svc.ListAudit(AuditListInput{Limit: 10})
-	if err != nil {
-		t.Fatalf("ListAudit() error = %v", err)
-	}
-	if len(logs) == 0 || logs[0].Action != "task.done" || logs[0].TargetID != firstChild.UUID {
-		t.Fatalf("logs = %#v", logs)
-	}
-
-	tasks, err = svc.List(ListInput{})
-	if err != nil {
-		t.Fatalf("List() after Done error = %v", err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("tasks after Done = %#v", tasks)
-	}
-	nextChild := tasks[0]
-	if nextChild.UUID == firstChild.UUID {
-		t.Fatalf("next child not created: %#v", tasks)
-	}
-	if nextChild.WorkspaceID != work.ID || nextChild.Parent == nil || *nextChild.Parent != parent.UUID {
-		t.Fatalf("next child = %#v", nextChild)
 	}
 }
 
@@ -6180,16 +5828,6 @@ func TestServiceAddWithParentRejections(t *testing.T) {
 		t.Fatalf("done: %v", err)
 	}
 
-	// recurring 父任务（需要 Due + Recur + project）。
-	due := int64(200)
-	recur := "weekly"
-	recurringParent, err := svc.Add(AddInput{
-		Title: "recurring", Project: &project.Slug, Due: &due, Recur: &recur,
-	})
-	if err != nil {
-		t.Fatalf("create recurring parent: %v", err)
-	}
-
 	cases := []struct {
 		name    string
 		input   AddInput
@@ -6198,7 +5836,6 @@ func TestServiceAddWithParentRejections(t *testing.T) {
 		{name: "parent not found", input: AddInput{Title: "x", Parent: strptr("nonexistent-uuid")}, wantErr: "task_invalid_parent"},
 		{name: "deleted parent", input: AddInput{Title: "x", Parent: &deletedTask.UUID}, wantErr: "task_parent_deleted"},
 		{name: "completed parent", input: AddInput{Title: "x", Parent: &completedTask.UUID}, wantErr: "task_parent_completed"},
-		{name: "recurring parent", input: AddInput{Title: "x", Parent: &recurringParent.UUID}, wantErr: "task_parent_recurring"},
 		{name: "project mismatch", input: AddInput{Title: "x", Parent: &normal.UUID, Project: strptr("other-project")}, wantErr: "task_invalid_parent"},
 		{name: "valid child inherits project", input: AddInput{Title: "ok child", Parent: &normal.UUID}, wantErr: ""},
 	}

@@ -617,8 +617,6 @@ func applyClearFields(fields []string, mod *app.ModifyInput) error {
 			mod.ClearScheduled = true
 		case "until":
 			mod.ClearUntil = true
-		case "recur":
-			mod.ClearRecur = true
 		case "assignees":
 			mod.ClearAssignees = true
 		default:

@@ -11,7 +11,6 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/query"
-	"git.dajee.net/dajee/xuanchu/internal/recurrence"
 	"git.dajee.net/dajee/xuanchu/internal/report"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -84,7 +83,6 @@ type AddInput struct {
 	Wait        *int64
 	Scheduled   *int64
 	Until       *int64
-	Recur       *string
 	Tags        []string
 	UDAs        map[string]string
 	Parent      *string
@@ -123,8 +121,6 @@ type ModifyInput struct {
 	ClearUntil       bool
 	AddDepends       []string
 	ClearDepends     bool
-	Recur            *string
-	ClearRecur       bool
 	AddAssignees     []string
 	RemoveAssignees  []string
 	ClearAssignees   bool
@@ -450,9 +446,6 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 
 func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	now := s.clock.Unix()
-	if input.Recur != nil {
-		return s.createRecurringParent(input, now)
-	}
 	assignees, err := s.resolveAssigneeRefs(input.Assignees)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
@@ -470,7 +463,7 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Assignees: assignees, Depends: depends,
-		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
+		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until,
 		Parent: parentUUID,
 	}
 	projChange, err := s.applyProjectBinding(&tsk, parentProject)
@@ -740,12 +733,6 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 	if input.ClearUntil {
 		tsk.Until = nil
 	}
-	if input.Recur != nil {
-		tsk.Recur = input.Recur
-	}
-	if input.ClearRecur {
-		tsk.Recur = nil
-	}
 	if input.ClearDepends {
 		tsk.Depends = nil
 	}
@@ -881,22 +868,8 @@ func (s *Service) doneLocked(target string) (task.Task, projectChange, []AuditEn
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, nil, err
 	}
-	if tsk.Parent != nil {
-		parent, err := s.repo.GetByUUID(s.workspaceID, *tsk.Parent)
-		if err != nil {
-			return task.Task{}, projectChange{}, nil, err
-		}
-		if parent.Status != task.StatusRecurring {
-			return tsk, change, nil, nil
-		}
-		_, warningEntry, err := s.createNextRecurringChild(parent, &tsk, s.clock.Unix())
-		if err != nil {
-			return task.Task{}, projectChange{}, nil, err
-		}
-		if warningEntry != nil {
-			return tsk, change, []AuditEntry{*warningEntry}, nil
-		}
-	}
+	// 旧"完成驱动生成下一循环实例"的路径已在 spec 2026-07-11 中移除。
+	// 循环实例的生成完全由 TaskSeriesScheduler 按日历槽位决定（Task 7）。
 	return tsk, change, nil, nil
 }
 
@@ -952,7 +925,7 @@ func (s *Service) startLocked(target string) (task.Task, projectChange, error) {
 		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
-	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted || tsk.Status == task.StatusRecurring {
+	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
 		return task.Task{}, projectChange{}, fmt.Errorf("cannot start %s task", tsk.Status)
 	}
 	if tsk.Start != nil {
@@ -1545,17 +1518,8 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	if tsk.Until != nil {
 		existing.Until = tsk.Until
 	}
-	if tsk.Recur != nil {
-		existing.Recur = tsk.Recur
-	}
 	if tsk.Parent != nil {
 		existing.Parent = tsk.Parent
-	}
-	if tsk.Mask != nil {
-		existing.Mask = tsk.Mask
-	}
-	if tsk.IMask != nil {
-		existing.IMask = tsk.IMask
 	}
 	if tsk.Tags != nil {
 		existing.Tags = tsk.Tags
@@ -1980,9 +1944,6 @@ func (s *Service) resolveParentForAdd(parentRef *string, inputProject *string) (
 	case task.StatusCompleted:
 		// 完成任务下继续拆任务容易造成状态语义混乱；文案给出替代动作（spec §8.2 规则 6）。
 		return nil, nil, RuntimeError{Code: "task_parent_completed", Message: "parent task is completed; please reopen the parent before adding sub-tasks"}
-	case task.StatusRecurring:
-		// recurring parent 不允许手动子任务（spec §8.1 / §9.1）。
-		return nil, nil, RuntimeError{Code: "task_parent_recurring", Message: "manual sub-tasks cannot be added to a recurring parent"}
 	}
 	// 显式 project 必须与父任务 project 一致（spec §8.2 规则 3）。
 	if inputProject != nil && strings.TrimSpace(*inputProject) != "" &&
@@ -2031,9 +1992,8 @@ func (s *Service) refreshAutomaticState() error {
 			}
 		}
 	}
-	if err := s.ensureRecurringChildren(); err != nil {
-		return err
-	}
+	// 旧 ensureRecurringChildren（完成驱动补齐循环子任务）在 spec 2026-07-11 中移除。
+	// 循环实例由 TaskSeriesScheduler 按日历补齐（Task 7）。
 	return nil
 }
 
@@ -2150,139 +2110,6 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 	return filtered, nil
 }
 
-func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, projectChange, error) {
-	if input.Wait != nil || input.Scheduled != nil || len(input.Depends) > 0 {
-		return task.Task{}, projectChange{}, fmt.Errorf("recurring task does not accept wait, scheduled, or depends")
-	}
-	assignees, err := s.resolveAssigneeRefs(input.Assignees)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	parent := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
-		Status: task.StatusRecurring, Entry: now, Modified: now,
-		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
-		Assignees: assignees, Until: input.Until, Recur: input.Recur,
-	}
-	change, err := s.applyProjectBinding(&parent, input.Project)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	udas, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	parent.UDAs = udas
-	createdParent, err := s.repo.Create(parent)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	if _, warningEntry, err := s.createNextRecurringChild(createdParent, nil, now); err != nil {
-		return task.Task{}, projectChange{}, err
-	} else if warningEntry != nil {
-		if err := s.appendAuditEntry(*warningEntry); err != nil {
-			return task.Task{}, projectChange{}, err
-		}
-	}
-	return createdParent, change, nil
-}
-
-func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task, now int64) (task.Task, *AuditEntry, error) {
-	if parent.Status != task.StatusRecurring {
-		return task.Task{}, nil, nil
-	}
-	children, err := s.repo.Children(s.workspaceID, parent.UUID)
-	if err != nil {
-		return task.Task{}, nil, err
-	}
-	for _, child := range children {
-		if child.Status == task.StatusPending || child.Status == task.StatusWaiting {
-			return child, nil, nil
-		}
-	}
-
-	var due *int64
-	if previous == nil {
-		if parent.Due != nil {
-			value := *parent.Due
-			due = &value
-		}
-	} else if previous.Due != nil && parent.Recur != nil {
-		nextDue, err := recurrence.Next(*previous.Due, *parent.Recur, s.clock.Location())
-		if err != nil {
-			return task.Task{}, nil, err
-		}
-		due = &nextDue
-	}
-	if due == nil {
-		return task.Task{}, nil, fmt.Errorf("recurring parent requires due")
-	}
-	if parent.Until != nil && *due > *parent.Until {
-		return task.Task{}, nil, nil
-	}
-	child := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: parent.Title, Description: cloneStringPtr(parent.Description),
-		Status: task.StatusPending, Entry: now, Modified: now,
-		Due: due, Project: parent.Project, ProjectID: parent.ProjectID, Priority: parent.Priority, Tags: parent.Tags,
-		Assignees: cloneAssigneeInfos(parent.Assignees), Until: parent.Until, Recur: parent.Recur,
-		Parent: &parent.UUID,
-		UDAs:   cloneUDAs(parent.UDAs),
-	}
-	if child.ProjectID != nil {
-		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(child.WorkspaceID, *child.ProjectID)
-		if err != nil {
-			return task.Task{}, nil, err
-		}
-		child.ProjectSeq = &seq
-	}
-	created, _, err := s.repo.CreateRecurringChild(child)
-	if err != nil {
-		return task.Task{}, nil, err
-	}
-	warningEntry, err := s.recurringArchivedProjectWarning(parent, created)
-	if err != nil {
-		return task.Task{}, nil, err
-	}
-	return created, warningEntry, nil
-}
-
-func (s *Service) ensureRecurringChildren() error {
-	parents, err := s.repo.RecurringParents(s.workspaceID)
-	if err != nil {
-		return err
-	}
-	for _, parent := range parents {
-		children, err := s.repo.Children(s.workspaceID, parent.UUID)
-		if err != nil {
-			return err
-		}
-		var latest *task.Task
-		hasOpen := false
-		for i := range children {
-			child := children[i]
-			if latest == nil || child.Entry > latest.Entry {
-				latest = &child
-			}
-			if child.Status == task.StatusPending || child.Status == task.StatusWaiting {
-				hasOpen = true
-			}
-		}
-		if hasOpen {
-			continue
-		}
-		created, warningEntry, err := s.createNextRecurringChild(parent, latest, s.clock.Unix())
-		if err != nil {
-			return err
-		}
-		if warningEntry != nil && created.UUID != "" {
-			if err := s.appendAuditEntry(*warningEntry); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (s *Service) normalizeTaskProjectFields(tsk *task.Task) error {
 	change, err := s.applyProjectBinding(tsk, tsk.Project)
 	if err != nil {
@@ -2343,33 +2170,6 @@ func (s *Service) resolveImportedProjectBinding(existing task.Task, slug string)
 		Code:    "project_archived",
 		Message: fmt.Sprintf("project %q is archived", project.Slug),
 	}
-}
-
-func (s *Service) recurringArchivedProjectWarning(parent task.Task, child task.Task) (*AuditEntry, error) {
-	if parent.ProjectID == nil || parent.Project == nil {
-		return nil, nil
-	}
-	project, err := s.projectRepo.GetByID(*parent.ProjectID)
-	if err != nil {
-		return nil, RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
-	}
-	if !isProjectClosed(project) {
-		return nil, nil
-	}
-	projectID := project.ID
-	return &AuditEntry{
-		Action:      "task.recurrence.archived_project",
-		WorkspaceID: &parent.WorkspaceID,
-		ProjectID:   &projectID,
-		TargetType:  "task",
-		TargetID:    child.UUID,
-		Payload: map[string]any{
-			"parent_uuid":  parent.UUID,
-			"child_uuid":   child.UUID,
-			"project_id":   project.ID,
-			"project_slug": project.Slug,
-		},
-	}, nil
 }
 
 func (s *Service) appendAuditEntry(entry AuditEntry) error {

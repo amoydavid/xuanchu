@@ -283,14 +283,13 @@ func TestJSONTaskImportPreservesAssigneeExternalIDs(t *testing.T) {
 
 func TestJSONTaskM2RoundTrip(t *testing.T) {
 	start, wait, scheduled, until := int64(10), int64(20), int64(30), int64(40)
-	recur, parent, mask := "weekly", "parent", "mask"
-	imask := 2
+	parent := "parent"
 	tsk := Task{
 		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
 		Annotations: []Annotation{{ID: "ann-1", Entry: 3, Description: "note"}},
 		Depends:     []string{"dep"},
-		Recur:       &recur, Parent: &parent, Mask: &mask, IMask: &imask,
+		Parent:      &parent,
 	}
 	got := FromJSON(ToJSON(tsk))
 	if got.Start == nil || got.Wait == nil || got.Scheduled == nil || got.Until == nil {
@@ -299,8 +298,19 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	if len(got.Annotations) != 1 || got.Annotations[0].ID != "ann-1" || got.Annotations[0].Description != "note" || !slices.Equal(got.Depends, []string{"dep"}) {
 		t.Fatalf("compound fields lost: %#v", got)
 	}
-	if got.Recur == nil || got.Parent == nil || got.Mask == nil || got.IMask == nil {
-		t.Fatalf("recurrence fields lost: %#v", got)
+	if got.Parent == nil || *got.Parent != parent {
+		t.Fatalf("parent field lost: %#v", got.Parent)
+	}
+}
+
+// TestJSONTaskRejectsLegacyRecurField 锁定旧 recur/mask/imask 字段在 decode 时被拒绝（spec §11.1、§20.2）。
+func TestJSONTaskRejectsLegacyRecurField(t *testing.T) {
+	for _, legacy := range []string{`"recur":"daily"`, `"mask":"abc"`, `"imask":1`} {
+		payload := `{"uuid":"u1","title":"t","status":"pending","entry":"1","modified":"2",` + legacy + `}`
+		var dto JSONTask
+		if err := json.Unmarshal([]byte(payload), &dto); err == nil {
+			t.Fatalf("包含 %s 的 payload 应被拒绝", legacy)
+		}
 	}
 }
 

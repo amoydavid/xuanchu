@@ -228,14 +228,13 @@ func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 	_, repo, ws := newTestRepo(t)
 
 	start, wait, scheduled, until := int64(10), int64(20), int64(30), int64(40)
-	recur, parent, mask := "weekly", "parent-uuid", "mask"
-	imask := 1
+	parent := "parent-uuid"
 	tsk := domain.Task{
 		UUID: "u1", WorkspaceID: ws.ID, Title: "m2 task", Status: domain.StatusPending,
 		Entry: 1, Modified: 2, Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
 		Annotations: []domain.Annotation{{Entry: 3, Description: "note"}},
 		Depends:     []string{"dep-1", "dep-2"},
-		Recur:       &recur, Parent: &parent, Mask: &mask, IMask: &imask,
+		Parent:      &parent,
 	}
 	if _, err := repo.Create(tsk); err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -253,8 +252,8 @@ func TestTaskRepositoryPersistsM2Fields(t *testing.T) {
 	if !slices.Equal(got.Depends, []string{"dep-1", "dep-2"}) {
 		t.Fatalf("Depends = %#v", got.Depends)
 	}
-	if got.Recur == nil || *got.Recur != recur || got.Parent == nil || *got.Parent != parent || got.Mask == nil || *got.Mask != mask || got.IMask == nil || *got.IMask != imask {
-		t.Fatalf("recurrence fields not roundtripped: %#v", got)
+	if got.Parent == nil || *got.Parent != parent {
+		t.Fatalf("parent field not roundtripped: %#v", got.Parent)
 	}
 }
 
@@ -472,36 +471,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 	).Error
 	if err == nil {
 		t.Fatal("raw insert with cross-workspace project_id succeeded, want foreign key rejection")
-	}
-}
-
-func TestTaskRepositoryRecurringChildUniqueByParentAndDue(t *testing.T) {
-	_, repo, ws := newTestRepo(t)
-	parent := "parent"
-	recur := "daily"
-	due := int64(100)
-	first, existing, err := repo.CreateRecurringChild(domain.Task{
-		UUID: "child-1", WorkspaceID: ws.ID, Title: "child", Status: domain.StatusPending,
-		Entry: 1, Modified: 1, Due: &due, Parent: &parent, Recur: &recur,
-	})
-	if err != nil {
-		t.Fatalf("CreateRecurringChild(first) error = %v", err)
-	}
-	if existing {
-		t.Fatal("CreateRecurringChild(first) existing = true, want false")
-	}
-	second, existing, err := repo.CreateRecurringChild(domain.Task{
-		UUID: "child-2", WorkspaceID: ws.ID, Title: "child", Status: domain.StatusPending,
-		Entry: 2, Modified: 2, Due: &due, Parent: &parent, Recur: &recur,
-	})
-	if err != nil {
-		t.Fatalf("CreateRecurringChild(second) error = %v", err)
-	}
-	if !existing {
-		t.Fatal("CreateRecurringChild(second) existing = false, want true")
-	}
-	if second.UUID != first.UUID {
-		t.Fatalf("second UUID = %q, want existing %q", second.UUID, first.UUID)
 	}
 }
 

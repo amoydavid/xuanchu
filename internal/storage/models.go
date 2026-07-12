@@ -194,7 +194,7 @@ type Task struct {
 	Entry       int64  `gorm:"not null"`
 	Modified    int64  `gorm:"not null"`
 	EndTS       *int64
-	Due         *int64
+	Due         *int64 `gorm:"index"`
 	Project     *string
 	ProjectID   *string `gorm:"uniqueIndex:idx_tasks_ws_project_seq,priority:2"`
 	ProjectSeq  *int64  `gorm:"uniqueIndex:idx_tasks_ws_project_seq,priority:3"`
@@ -204,15 +204,18 @@ type Task struct {
 	Wait        *int64  `gorm:"index"`
 	Scheduled   *int64  `gorm:"index"`
 	Until       *int64  `gorm:"index"`
-	Recur       *string `gorm:"index"`
 	Parent      *string `gorm:"index"`
-	Mask        *string
-	IMask       *int
 	Assignees   []TaskAssignee   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Annotations []TaskAnnotation `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Depends     []TaskDependency `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	UDAs        []TaskUDAValue   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Links       []TaskLink       `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	// occurrence 持久字段（spec §7.2）。partial unique index 由迁移脚本建立
+	// idx_tasks_ws_series_slot（WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL）。
+	SeriesID                *string `gorm:"column:series_id"`
+	RecurrenceAt            *int64  `gorm:"column:recurrence_at;index"`
+	RecurrenceRuleSnapshot  *string `gorm:"column:recurrence_rule_snapshot"`
+	RecurrenceOverridesJSON *string `gorm:"column:recurrence_overrides_json;not null;default:'[]'"`
 }
 
 type TaskTag struct {
@@ -525,4 +528,59 @@ type DirectorySyncJob struct {
 	StatsJSON      string `gorm:"not null;default:'{}'"` // {"added":N,"removed":M,"updated":K}
 	CreatedAt      int64  `gorm:"not null"`
 	FinishedAt     *int64
+}
+
+// TaskSeries 是循环任务系列聚合（spec §7.1）。独立于 tasks 表。
+type TaskSeries struct {
+	ID              string `gorm:"primaryKey"`
+	WorkspaceID     string `gorm:"not null;uniqueIndex:idx_task_series_ws_project_status,priority:1"`
+	ProjectID       string `gorm:"not null;uniqueIndex:idx_task_series_ws_project_status,priority:2"`
+	Title           string `gorm:"not null"`
+	Description     *string
+	Status          string `gorm:"not null;uniqueIndex:idx_task_series_ws_project_status,priority:3;index"`
+	RecurrenceRule  string `gorm:"not null"`
+	FirstDue        int64  `gorm:"not null"`
+	Until           *int64 `gorm:"index"`
+	EffectiveEndAt  *int64
+	StopReason      *string
+	Priority        *string
+	CreatedBy       string `gorm:"not null"`
+	CreatedAt       int64  `gorm:"not null"`
+	ModifiedAt      int64  `gorm:"not null"`
+	RuleVersions    []TaskSeriesRuleVersion `gorm:"foreignKey:SeriesID;constraint:OnDelete:RESTRICT"`
+	Assignees       []TaskSeriesAssignee    `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+	Tags            []TaskSeriesTag         `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+	UDAValues       []TaskSeriesUDAValue    `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+}
+
+// TaskSeriesRuleVersion 保存规则切换历史（spec §7.1）。
+// 同一 series 内 effective_from 唯一。
+type TaskSeriesRuleVersion struct {
+	ID             string `gorm:"primaryKey"`
+	SeriesID       string `gorm:"not null;uniqueIndex:idx_task_series_rule_versions_series_eff,priority:1"`
+	EffectiveFrom  int64  `gorm:"not null;uniqueIndex:idx_task_series_rule_versions_series_eff,priority:2"`
+	RecurrenceRule string `gorm:"not null"`
+	CreatedBy      string `gorm:"not null"`
+	CreatedAt      int64  `gorm:"not null"`
+}
+
+// TaskSeriesAssignee 是 series 的多值负责人关联（spec §7.1）。
+type TaskSeriesAssignee struct {
+	SeriesID string `gorm:"primaryKey;not null"`
+	UserID   string `gorm:"primaryKey;not null"`
+}
+
+// TaskSeriesTag 是 series 的多值标签关联。
+type TaskSeriesTag struct {
+	SeriesID string `gorm:"primaryKey;not null"`
+	Tag      string `gorm:"primaryKey;not null"`
+}
+
+// TaskSeriesUDAValue 是 series 的 UDA 关联。
+type TaskSeriesUDAValue struct {
+	SeriesID        string `gorm:"primaryKey;not null"`
+	Name            string `gorm:"primaryKey;not null"`
+	Value           string
+	ValueType       string
+	Orphan          bool
 }

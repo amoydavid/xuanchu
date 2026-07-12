@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"slices"
 	"testing"
 
@@ -63,90 +62,6 @@ func TestTenantTokenAuditStoresMachineActor(t *testing.T) {
 	}
 }
 
-func TestTenantTokenAppendAuditEntryStoresMachineActor(t *testing.T) {
-	store := newTestStore(t)
-	svc := newTestServiceWithRuntime(t, store, mustUnix(t, "2030-01-01T10:00:00Z"), "local", "local")
-	project, err := svc.AddProject(AddProjectInput{Slug: "legacy", Name: "Legacy"})
-	if err != nil {
-		t.Fatalf("AddProject(legacy) error = %v", err)
-	}
-	due := mustUnix(t, "2030-01-01T23:59:59Z")
-	until := mustUnix(t, "2030-01-03T23:59:59Z")
-	recur := "daily"
-	if _, err := svc.Add(AddInput{
-		Title:   "legacy recurring task",
-		Project: &project.Slug,
-		Due:     &due,
-		Until:   &until,
-		Recur:   &recur,
-	}); err != nil {
-		t.Fatalf("Add(recurring) error = %v", err)
-	}
-	if _, err := svc.ArchiveProject(project.ID); err != nil {
-		t.Fatalf("ArchiveProject(legacy) error = %v", err)
-	}
-	children, err := svc.List(ListInput{})
-	if err != nil || len(children) != 1 {
-		t.Fatalf("List(children before done) = (%#v, %v), want one child", children, err)
-	}
-	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
-		Name:   "runtime",
-		Scopes: []string{"task:write", "audit:read"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	authn, err := svc.AuthenticateBearerToken(created.RawToken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	authorized, err := svc.AuthorizeTokenRequest(RequestAuthorizationInput{
-		Token:              authn,
-		RequiredCapability: "task:write",
-		RequiredPermission: PermissionTaskWrite,
-		WorkspaceRef:       svc.Runtime().WorkspaceSlug,
-	})
-	if err != nil {
-		t.Fatalf("AuthorizeTokenRequest() error = %v", err)
-	}
-	tenantSvc, err := NewService(ServiceOptions{
-		Store:        svc.store,
-		Clock:        FixedClock{NowUnix: mustUnix(t, "2030-01-02T10:00:00Z")},
-		Runtime:      &authorized.Runtime,
-		RequestScope: &authorized.Scope,
-	})
-	if err != nil {
-		t.Fatalf("NewService(tenant) error = %v", err)
-	}
-	if err := tenantSvc.Done(children[0].UUID); err != nil {
-		t.Fatalf("Done(first child) error = %v", err)
-	}
-
-	rows, err := svc.ListAudit(AuditListInput{Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, row := range rows {
-		if row.Action != "task.recurrence.archived_project" {
-			continue
-		}
-		var payload map[string]any
-		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
-			t.Fatalf("warning payload json = %q, err = %v", row.PayloadJSON, err)
-		}
-		if payload["project_id"] != project.ID || payload["project_slug"] != project.Slug {
-			t.Fatalf("warning payload = %#v", payload)
-		}
-		if row.ActorType != "tenant_access_token" || row.Actor != nil || row.ActorToken == nil {
-			t.Fatalf("warning actor = type %q user %#v token %#v", row.ActorType, row.Actor, row.ActorToken)
-		}
-		if row.ActorToken.ID != created.View.ID || row.ActorToken.Prefix != created.View.Prefix {
-			t.Fatalf("warning actor token = %#v, want id %q prefix %q", row.ActorToken, created.View.ID, created.View.Prefix)
-		}
-		return
-	}
-	t.Fatal("missing task.recurrence.archived_project audit warning")
-}
 
 func TestTenantTokenRuntimeUsesScopeAndListsBoundWorkspace(t *testing.T) {
 	svc, closeFn := newTestService(t, 100)

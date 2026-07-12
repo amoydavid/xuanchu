@@ -49,10 +49,6 @@ type TaskChangeDiff struct {
 	PreviousUntil *int64
 	CurrentUntil  *int64
 
-	RecurChanged  bool
-	PreviousRecur *string
-	CurrentRecur  *string
-
 	DependsChanged bool
 	AddedDepends   []string
 	RemovedDepends []string
@@ -122,15 +118,15 @@ func diffTaskChanges(before, after task.Task) TaskChangeDiff {
 	}
 
 	// 低频字段 diff（只进 audit payload）。
-	diffWaitScheduledUntilRecur(&diff, before, after)
+	diffWaitScheduledUntil(&diff, before, after)
 	diffDepends(&diff, before, after)
 	diffUDAs(&diff, before, after)
 
 	return diff
 }
 
-// diffWaitScheduledUntilRecur 计算 wait/scheduled/until/recur 的标量 diff。
-func diffWaitScheduledUntilRecur(diff *TaskChangeDiff, before, after task.Task) {
+// diffWaitScheduledUntil 计算 wait/scheduled/until 的标量 diff。
+func diffWaitScheduledUntil(diff *TaskChangeDiff, before, after task.Task) {
 	if ptrInt64Diff(before.Wait, after.Wait) {
 		diff.WaitChanged = true
 		diff.PreviousWait = before.Wait
@@ -145,11 +141,6 @@ func diffWaitScheduledUntilRecur(diff *TaskChangeDiff, before, after task.Task) 
 		diff.UntilChanged = true
 		diff.PreviousUntil = before.Until
 		diff.CurrentUntil = after.Until
-	}
-	if ptrStringDiff(before.Recur, after.Recur) {
-		diff.RecurChanged = true
-		diff.PreviousRecur = before.Recur
-		diff.CurrentRecur = after.Recur
 	}
 }
 

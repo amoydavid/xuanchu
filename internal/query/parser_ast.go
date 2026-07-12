@@ -188,6 +188,11 @@ func parseUDAAttributeOperator(name string) (string, Operator, bool) {
 	} else if isBuiltInAttribute(strings.Split(field, ".")[0]) {
 		return "", "", false
 	}
+	// spec 2026-07-11：旧循环属性 recur/mask/imask 不再支持，也不得退化为 UDA。
+	// parseAttributeOperator 已对它们返回 unknown attribute；这里同样拒绝，保持一致。
+	if !isPotentialUDAName(strings.Split(field, ".")[0]) {
+		return "", "", false
+	}
 	if base, suffix, ok := strings.Cut(field, "."); ok {
 		field = base
 		switch suffix {
@@ -220,7 +225,7 @@ func parseAttributeOperator(name string) (Attribute, Operator, error) {
 		"end": AttrEnd, "due": AttrDue, "start": AttrStart, "wait": AttrWait,
 		"scheduled": AttrScheduled, "until": AttrUntil, "project": AttrProject,
 		"priority": AttrPriority, "depends": AttrDepends, "annotations": AttrAnnotations,
-		"recur": AttrRecur, "parent": AttrParent, "assignee": AttrAssignee,
+		"parent": AttrParent, "assignee": AttrAssignee,
 	}[base]
 	if attr == "" {
 		return "", "", fmt.Errorf("unknown attribute %q", base)

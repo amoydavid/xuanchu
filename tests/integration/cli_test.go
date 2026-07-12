@@ -1870,41 +1870,6 @@ func main() {
 	}
 }
 
-func TestCLIRecurringDaily(t *testing.T) {
-	bin := buildXuanchu(t)
-	db := filepath.Join(t.TempDir(), "xuanchu.db")
-	run(t, bin, "--db", db, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
-	list := run(t, bin, "--db", db, "list")
-	if !strings.Contains(list, "daily task") {
-		t.Fatalf("list output = %q", list)
-	}
-	run(t, bin, "--db", db, "1", "done")
-	list = run(t, bin, "--db", db, "list")
-	if !strings.Contains(list, "daily task") {
-		t.Fatalf("next recurring child missing: %q", list)
-	}
-}
-
-func TestCLIRecurringExportImport(t *testing.T) {
-	bin := buildXuanchu(t)
-	db1 := filepath.Join(t.TempDir(), "one.db")
-	db2 := filepath.Join(t.TempDir(), "two.db")
-	run(t, bin, "--db", db1, "add", "daily task", "recur:daily", "due:2030-01-01", "until:2030-01-05")
-	exported := run(t, bin, "--db", db1, "export")
-	path := filepath.Join(t.TempDir(), "recurring.json")
-	if err := os.WriteFile(path, []byte(exported), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run(t, bin, "--db", db2, "import", path)
-	out := run(t, bin, "--db", db2, "export")
-	if !strings.Contains(out, `"recur": "daily"`) {
-		t.Fatalf("export output missing recur: %q", out)
-	}
-	if !strings.Contains(out, `"parent":`) {
-		t.Fatalf("export output missing parent linkage: %q", out)
-	}
-}
-
 func TestCLIProjectLifecycle(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
