@@ -78,7 +78,13 @@ type JSONTask struct {
 	IMask         *int                `json:"imask,omitempty"`
 	Assignees     []JSONUserInfo      `json:"assignees,omitempty"`
 	Links         []JSONTaskLink      `json:"links,omitempty"`
-	UDAs          map[string]UDAValue `json:"-"`
+	// occurrence 持久字段（spec §7.2）。普通任务为空；已物化 occurrence 非空。
+	// 这些字段在 JSON 中只读——普通 task modify 不得修改 occurrence 归属。
+	SeriesID               *string  `json:"series_id,omitempty"`
+	RecurrenceAt           *string  `json:"recurrence_at,omitempty"`
+	RecurrenceRuleSnapshot *string  `json:"recurrence_rule_snapshot,omitempty"`
+	RecurrenceOverrides    []string `json:"recurrence_overrides,omitempty"`
+	UDAs                   map[string]UDAValue `json:"-"`
 }
 
 // JSONTaskRef 是任务的轻量引用，用于 depends_info/parent_info，
@@ -164,6 +170,18 @@ func (t JSONTask) MarshalJSON() ([]byte, error) {
 	if t.Links != nil {
 		wire["links"] = t.Links
 	}
+	if t.SeriesID != nil {
+		wire["series_id"] = t.SeriesID
+	}
+	if t.RecurrenceAt != nil {
+		wire["recurrence_at"] = t.RecurrenceAt
+	}
+	if t.RecurrenceRuleSnapshot != nil {
+		wire["recurrence_rule_snapshot"] = t.RecurrenceRuleSnapshot
+	}
+	if t.RecurrenceOverrides != nil {
+		wire["recurrence_overrides"] = t.RecurrenceOverrides
+	}
 	reserved := reservedJSONFields()
 	for name, value := range t.UDAs {
 		if _, ok := reserved[name]; ok {
@@ -196,8 +214,12 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 		Depends     []string         `json:"depends,omitempty"`
 		Recur       *string          `json:"recur,omitempty"`
 		Parent      *string          `json:"parent,omitempty"`
-		Mask        *string          `json:"mask,omitempty"`
-		IMask       *int             `json:"imask,omitempty"`
+		Mask        *string             `json:"mask,omitempty"`
+		IMask       *int                `json:"imask,omitempty"`
+		SeriesID               *string  `json:"series_id,omitempty"`
+		RecurrenceAt           *string  `json:"recurrence_at,omitempty"`
+		RecurrenceRuleSnapshot *string  `json:"recurrence_rule_snapshot,omitempty"`
+		RecurrenceOverrides    []string `json:"recurrence_overrides,omitempty"`
 	}
 	if err := json.Unmarshal(data, &core); err != nil {
 		return err
@@ -267,6 +289,12 @@ func (t *JSONTask) UnmarshalJSON(data []byte) error {
 	t.Parent = core.Parent
 	t.Mask = core.Mask
 	t.IMask = core.IMask
+	t.SeriesID = core.SeriesID
+	t.RecurrenceAt = core.RecurrenceAt
+	t.RecurrenceRuleSnapshot = core.RecurrenceRuleSnapshot
+	if core.RecurrenceOverrides != nil {
+		t.RecurrenceOverrides = NormalizeRecurrenceOverrides(core.RecurrenceOverrides)
+	}
 	return nil
 }
 
@@ -322,6 +350,15 @@ func ToJSON(tsk Task) JSONTask {
 			return out
 		}(),
 		UDAs: tsk.UDAs,
+		SeriesID:               tsk.SeriesID,
+		RecurrenceAt:           formatUnixPtr(tsk.RecurrenceAt),
+		RecurrenceRuleSnapshot: tsk.RecurrenceRuleSnapshot,
+		RecurrenceOverrides: func() []string {
+			if tsk.RecurrenceOverrides == nil {
+				return nil
+			}
+			return NormalizeRecurrenceOverrides(tsk.RecurrenceOverrides)
+		}(),
 	}
 }
 
@@ -366,6 +403,10 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
+	recurrenceAt, err := parseUnixStringPtr("recurrence_at", dto.RecurrenceAt)
+	if err != nil {
+		return Task{}, err
+	}
 	annotations := func() []Annotation {
 		if dto.Annotations == nil {
 			return nil
@@ -401,6 +442,15 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 		Parent:      dto.Parent,
 		Mask:        dto.Mask,
 		IMask:       dto.IMask,
+		SeriesID:               dto.SeriesID,
+		RecurrenceAt:           recurrenceAt,
+		RecurrenceRuleSnapshot: dto.RecurrenceRuleSnapshot,
+		RecurrenceOverrides: func() []string {
+			if dto.RecurrenceOverrides == nil {
+				return nil
+			}
+			return NormalizeRecurrenceOverrides(dto.RecurrenceOverrides)
+		}(),
 		Assignees: func() []AssigneeInfo {
 			if dto.Assignees == nil {
 				return nil
@@ -440,7 +490,7 @@ func FromJSONStrict(dto JSONTask) (Task, error) {
 }
 
 func coreJSONFields() []string {
-	return []string{"uuid", "title", "description", "status", "entry", "modified", "end", "due", "project", "task_slug", "project_seq", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links"}
+	return []string{"uuid", "title", "description", "status", "entry", "modified", "end", "due", "project", "task_slug", "project_seq", "priority", "tags", "start", "wait", "scheduled", "until", "annotations", "depends", "recur", "parent", "mask", "imask", "assignees", "links", "series_id", "recurrence_at", "recurrence_rule_snapshot", "recurrence_overrides"}
 }
 
 func reservedJSONFields() map[string]struct{} {

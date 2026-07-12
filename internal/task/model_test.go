@@ -99,3 +99,73 @@ func TestCompleteSetsStatusAndEnd(t *testing.T) {
 		t.Fatalf("Modified = %d, want %d", tsk.Modified, now)
 	}
 }
+
+// TestTaskValidateOccurrenceInvariant 锁定 occurrence 持久字段的 invariant（spec §7.2）：
+// series_id / recurrence_at / recurrence_rule_snapshot 三者要么全 nil（普通任务），
+// 要么全非 nil（已物化 occurrence）。recurrence_overrides 必须去重排序且字段名受限。
+func TestTaskValidateOccurrenceInvariant(t *testing.T) {
+	seriesID := "series-1"
+	slot := int64(100)
+	rule := "daily"
+	base := Task{UUID: "task-1", WorkspaceID: "ws-1", Title: "巡检", Status: StatusPending}
+	for name, mutate := range map[string]func(*Task){
+		"series without slot":         func(v *Task) { v.SeriesID = &seriesID },
+		"slot without series":         func(v *Task) { v.RecurrenceAt = &slot },
+		"series without snapshot":     func(v *Task) { v.SeriesID = &seriesID; v.RecurrenceAt = &slot },
+		"snapshot without series":     func(v *Task) { v.RecurrenceRuleSnapshot = &rule },
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := base
+			mutate(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("Validate 成功，但应因 occurrence invariant 失败")
+			}
+		})
+	}
+	// 全 nil：合法普通任务。
+	if err := base.Validate(); err != nil {
+		t.Fatalf("普通任务 Validate 失败: %v", err)
+	}
+	// 全非 nil：合法 occurrence。
+	occ := base
+	occ.SeriesID = &seriesID
+	occ.RecurrenceAt = &slot
+	occ.RecurrenceRuleSnapshot = &rule
+	if err := occ.Validate(); err != nil {
+		t.Fatalf("occurrence Validate 失败: %v", err)
+	}
+}
+
+func TestNormalizeRecurrenceOverrides(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"nil", nil, []string{}},
+		{"dedupe and sort", []string{"due", "title", "due", "assignees"}, []string{"assignees", "due", "title"}},
+		{"empty", []string{}, []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NormalizeRecurrenceOverrides(tc.in)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len=%d want=%d: %#v", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("[%d]=%q want=%q: %#v", i, got[i], tc.want[i], got)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateRecurrenceOverridesRejectsUnknownField(t *testing.T) {
+	if err := ValidateRecurrenceOverrides([]string{"title", "status"}); err == nil {
+		t.Fatal("status 不在允许字段内，应被拒绝")
+	}
+	if err := ValidateRecurrenceOverrides([]string{"title", "due"}); err != nil {
+		t.Fatalf("合法字段被拒绝: %v", err)
+	}
+}

@@ -304,6 +304,51 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	}
 }
 
+// TestJSONTaskOccurrenceRoundTrip 锁定 occurrence 持久字段的 JSON round-trip（spec §7.2）。
+func TestJSONTaskOccurrenceRoundTrip(t *testing.T) {
+	seriesID := "series-1"
+	slot := int64(1783785599)
+	rule := "daily"
+	tsk := Task{
+		UUID: "occ-1", Title: "巡检", Status: StatusPending, Entry: 1, Modified: 2,
+		SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
+		RecurrenceOverrides: []string{"due", "title", "due"},
+	}
+	dto := ToJSON(tsk)
+	if dto.SeriesID == nil || *dto.SeriesID != seriesID {
+		t.Fatalf("series_id 丢失: %#v", dto.SeriesID)
+	}
+	if dto.RecurrenceAt == nil {
+		t.Fatalf("recurrence_at 丢失")
+	}
+	if dto.RecurrenceRuleSnapshot == nil || *dto.RecurrenceRuleSnapshot != rule {
+		t.Fatalf("recurrence_rule_snapshot 丢失: %#v", dto.RecurrenceRuleSnapshot)
+	}
+	// override 应被规范化为去重升序。
+	if !slices.Equal(dto.RecurrenceOverrides, []string{"due", "title"}) {
+		t.Fatalf("overrides 未规范化: %#v", dto.RecurrenceOverrides)
+	}
+	got := FromJSON(dto)
+	if got.SeriesID == nil || *got.SeriesID != seriesID {
+		t.Fatalf("round-trip series_id 丢失: %#v", got.SeriesID)
+	}
+	if got.RecurrenceAt == nil || *got.RecurrenceAt != slot {
+		t.Fatalf("round-trip recurrence_at 丢失: %#v", got.RecurrenceAt)
+	}
+	if got.RecurrenceRuleSnapshot == nil || *got.RecurrenceRuleSnapshot != rule {
+		t.Fatalf("round-trip snapshot 丢失: %#v", got.RecurrenceRuleSnapshot)
+	}
+	// 普通任务（全 nil）不应输出 occurrence 字段。
+	plain := ToJSON(Task{UUID: "p1", Title: "普通任务", Status: StatusPending, Entry: 1, Modified: 2})
+	data, err := json.Marshal(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "series_id") || strings.Contains(string(data), "recurrence_at") {
+		t.Fatalf("普通任务不应输出 occurrence 字段: %s", data)
+	}
+}
+
 func TestTaskJSONCarriesUDAFields(t *testing.T) {
 	tsk := Task{
 		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
