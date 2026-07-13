@@ -15,7 +15,6 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/runtimeutil"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
-	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -2137,21 +2136,25 @@ func TestTaskExportImport(t *testing.T) {
 		t.Fatalf("task_export error: %v", parseError(t, exportResult))
 	}
 	exportData := envelopeData(t, parseEnvelope(t, exportResult))
-	exportCount, _ := exportData["count"].(float64)
-	if int(exportCount) < 1 {
-		t.Fatalf("export count = %v, want at least 1", exportCount)
+	taskCount, _ := exportData["task_count"].(float64)
+	if int(taskCount) < 1 {
+		t.Fatalf("export task_count = %v, want at least 1", taskCount)
 	}
 
+	// native bundle import（spec §20）。
 	importResult := callTool(t, session, "task_import", TaskImportInput{
-		Tasks: []task.JSONTask{
-			{UUID: "imported-uuid-1", Title: "imported task", Status: "pending", Entry: "2025-06-01T00:00:00Z", Modified: "2025-06-01T00:00:00Z"},
+		Bundle: app.TaskBundleV1{
+			Schema: "xuanchu.task-bundle/v1",
+			Tasks: []app.TaskBundleTask{
+				{UUID: "imported-uuid-1", Title: "imported task", Status: "pending", Entry: 1748736000, Modified: 1748736000},
+			},
 		},
 	})
 	if importResult.IsError {
 		t.Fatalf("task_import error: %v", parseError(t, importResult))
 	}
 	importData := envelopeData(t, parseEnvelope(t, importResult))
-	imported, _ := importData["imported"].(float64)
+	imported, _ := importData["imported_tasks"].(float64)
 	if int(imported) != 1 {
 		t.Fatalf("imported = %v, want 1", imported)
 	}

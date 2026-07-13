@@ -46,6 +46,10 @@ type TaskQueryInput struct {
 	Offset           int    `json:"offset,omitempty"`
 	IncludeCompleted bool   `json:"include_completed,omitempty"`
 	IncludeDeleted   bool   `json:"include_deleted,omitempty"`
+	// occurrence 查询参数（spec §13.3）。
+	OccurrenceMode string `json:"occurrence_mode,omitempty" jsonschema:"auto|materialized|expand"`
+	DueAfter       string `json:"due_after,omitempty" jsonschema:"YYYY-MM-DD"`
+	DueBefore      string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD"`
 }
 
 func (in TaskQueryInput) scopeInput() RequestScopeInput {
@@ -191,10 +195,11 @@ func (in TaskExportInput) scopeInput() RequestScopeInput {
 }
 
 type TaskImportInput struct {
-	Workspace string          `json:"workspace,omitempty"`
-	Project   string          `json:"project,omitempty"`
-	ProjectID string          `json:"project_id,omitempty"`
-	Tasks     []task.JSONTask `json:"tasks"`
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	// native bundle 格式（spec §20）：{schema, exported_at, task_series, tasks}。
+	Bundle app.TaskBundleV1 `json:"bundle"`
 }
 
 func (in TaskImportInput) scopeInput() RequestScopeInput {
@@ -327,6 +332,15 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
+		// occurrence_ref 走 GetTaskView（projected 不物化，spec §13.4）。
+		if app.IsOccurrenceRef(strings.TrimSpace(in.ID)) {
+			view, verr := svc.GetTaskView(strings.TrimSpace(in.ID))
+			if verr != nil {
+				return businessErrorWithEnvelope(verr)
+			}
+			data := occurrenceViewToMCPJSON(view)
+			return successWithEnvelope(data, formatOccurrenceViewText(view))
+		}
 		tsk, err := resolveToolTaskRef(svc, in.ID, "id", false)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -422,31 +436,33 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		}
 		return successWithEnvelope(map[string]any{"links": linkViews, "count": len(linkViews)}, fmt.Sprintf("%d link(s)", len(linkViews)))
 	})
-	addTool(s, opts, &mcp.Tool{Name: "task_export", Description: "Export tasks as JSON; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "task_export", Description: "Export tasks as xuanchu.task-bundle/v1 JSON; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tasks, err := svc.Export()
+		bundle, err := svc.ExportTaskBundle()
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		dto := make([]task.JSONTask, len(tasks))
-		for i, t := range tasks {
-			dto[i] = task.ToJSON(t)
-		}
-		return successWithEnvelope(map[string]any{"tasks": dto, "count": len(dto)}, fmt.Sprintf("exported %d task(s)", len(dto)))
+		return successWithEnvelope(
+			map[string]any{"bundle": bundle, "task_count": len(bundle.Tasks), "series_count": len(bundle.TaskSeries)},
+			fmt.Sprintf("exported %d task(s), %d series", len(bundle.Tasks), len(bundle.TaskSeries)),
+		)
 	})
-	addTool(s, opts, &mcp.Tool{Name: "task_import", Description: "Import tasks from JSON; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskImportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "task_import", Description: "Import tasks from xuanchu.task-bundle/v1 JSON; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskImportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		count, err := svc.Import(in.Tasks)
+		result, err := svc.ImportTaskBundle(in.Bundle)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(map[string]any{"imported": count}, fmt.Sprintf("imported %d task(s)", count))
+		return successWithEnvelope(
+			map[string]any{"imported_tasks": result.TasksImported, "imported_series": result.SeriesImported},
+			fmt.Sprintf("imported %d task(s), %d series", result.TasksImported, result.SeriesImported),
+		)
 	})
 }
 

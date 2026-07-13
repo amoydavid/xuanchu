@@ -360,6 +360,15 @@ func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 	return out
 }
 
+// formatOccurrenceViewText 把 occurrence view 渲染为人类可读文本。
+func formatOccurrenceViewText(v app.TaskOccurrenceView) string {
+	mat := "materialized"
+	if v.RecurrenceInfo != nil {
+		mat = v.RecurrenceInfo.Materialization
+	}
+	return fmt.Sprintf("任务 %s（%s）\n标题：%s\n状态：%s", v.ID, mat, v.Title, v.Status)
+}
+
 // seriesCreateResultToMCPJSON 把创建结果转为 MCP 输出 map。
 func seriesCreateResultToMCPJSON(r app.TaskSeriesCreateResult) map[string]any {
 	out := map[string]any{

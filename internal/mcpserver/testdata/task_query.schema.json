@@ -3,6 +3,14 @@
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
+      "due_after": {
+        "description": "YYYY-MM-DD",
+        "type": "string"
+      },
+      "due_before": {
+        "description": "YYYY-MM-DD",
+        "type": "string"
+      },
       "include_completed": {
         "type": "boolean"
       },
@@ -11,6 +19,10 @@
       },
       "limit": {
         "type": "integer"
+      },
+      "occurrence_mode": {
+        "description": "auto|materialized|expand",
+        "type": "string"
       },
       "offset": {
         "type": "integer"

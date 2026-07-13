@@ -1,5 +1,5 @@
 {
-  "description": "Export tasks as JSON; read-only.",
+  "description": "Export tasks as xuanchu.task-bundle/v1 JSON; read-only.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
