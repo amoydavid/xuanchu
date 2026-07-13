@@ -1249,3 +1249,58 @@ func TestQueryTaskViewsExpandAppliesQueryFilter(t *testing.T) {
 		t.Fatal("应至少匹配 1 项")
 	}
 }
+
+// TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics 验证 §17.4：
+// 一次性进度计数排除 materialized occurrence，series 运行情况单独报告。
+func TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics(t *testing.T) {
+	now := int64(1783785599)
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	duePast := now - 3600
+	// 普通逾期任务。
+	if _, err := svc.Add(AddInput{Title: "普通逾期", Project: &proj.Slug, Due: &duePast}); err != nil {
+		t.Fatalf("Add(普通逾期): %v", err)
+	}
+	// 创建 series，first_due 在过去 → 物化 occurrence（pending）。
+	firstDue := now - 86400
+	if _, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	}); err != nil {
+		t.Fatalf("AddTaskSeries: %v", err)
+	}
+
+	view, err := svc.ProjectTaskSummary("ops")
+	if err != nil {
+		t.Fatalf("ProjectTaskSummary: %v", err)
+	}
+	// 普通任务计数：只有 1 条普通逾期任务。
+	if view.OverdueCount != 1 {
+		t.Fatalf("OverdueCount = %d, want 1（不应含 occurrence）", view.OverdueCount)
+	}
+	if view.HighPriorityOpenCount != 0 {
+		t.Fatalf("HighPriorityOpenCount = %d, want 0", view.HighPriorityOpenCount)
+	}
+	if view.UnassignedOpenCount != 1 {
+		t.Fatalf("UnassignedOpenCount = %d, want 1（只统计普通任务）", view.UnassignedOpenCount)
+	}
+	// series metrics。
+	if view.SeriesMetrics.RecurringSeriesCount != 1 {
+		t.Fatalf("RecurringSeriesCount = %d, want 1", view.SeriesMetrics.RecurringSeriesCount)
+	}
+	if view.SeriesMetrics.ActiveRecurringSeriesCount != 1 {
+		t.Fatalf("ActiveRecurringSeriesCount = %d, want 1", view.SeriesMetrics.ActiveRecurringSeriesCount)
+	}
+	// 物化的 occurrence pending（due 在过去）→ open=1, overdue=1。
+	if view.SeriesMetrics.OpenRecurringOccurrenceCount != 1 {
+		t.Fatalf("OpenRecurringOccurrenceCount = %d, want 1", view.SeriesMetrics.OpenRecurringOccurrenceCount)
+	}
+	if view.SeriesMetrics.OverdueRecurringOccurrenceCount != 1 {
+		t.Fatalf("OverdueRecurringOccurrenceCount = %d, want 1", view.SeriesMetrics.OverdueRecurringOccurrenceCount)
+	}
+}

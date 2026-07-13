@@ -73,6 +73,9 @@ type ProjectSummaryWorkloadView struct {
 
 // ProjectTaskSummaryView 是项目全量任务摘要。Overview 与右栏都使用它，
 // 不允许用当前任务列表派生。
+//
+// 一次性进度计数（Overdue/HighPriority/Wait/Unassigned/Workload）只统计
+// 普通任务（series_id IS NULL）；循环系列运行情况通过 SeriesMetrics 返回（spec §17.4）。
 type ProjectTaskSummaryView struct {
 	OverdueCount          int
 	OverdueRefs           []ProjectSummaryTaskRefView
@@ -83,6 +86,15 @@ type ProjectTaskSummaryView struct {
 	UnassignedOpenCount   int
 	UnassignedOpenRefs    []ProjectSummaryTaskRefView
 	Workload              []ProjectSummaryWorkloadView
+	SeriesMetrics         ProjectSeriesMetricsView
+}
+
+// ProjectSeriesMetricsView 是项目下循环系列运行情况（spec §17.4）。
+type ProjectSeriesMetricsView struct {
+	RecurringSeriesCount            int
+	ActiveRecurringSeriesCount      int
+	OpenRecurringOccurrenceCount    int
+	OverdueRecurringOccurrenceCount int
 }
 
 type AddProjectInput struct {
@@ -684,6 +696,12 @@ func projectTaskSummaryViewFromStorage(summary storage.ProjectTaskSummary, users
 		UnassignedOpenCount:   summary.UnassignedOpenCount,
 		UnassignedOpenRefs:    projectTaskRefViews(summary.UnassignedOpenRefs),
 		Workload:              make([]ProjectSummaryWorkloadView, 0, len(summary.Workload)),
+		SeriesMetrics: ProjectSeriesMetricsView{
+			RecurringSeriesCount:            summary.SeriesMetrics.RecurringSeriesCount,
+			ActiveRecurringSeriesCount:      summary.SeriesMetrics.ActiveRecurringSeriesCount,
+			OpenRecurringOccurrenceCount:    summary.SeriesMetrics.OpenRecurringOccurrenceCount,
+			OverdueRecurringOccurrenceCount: summary.SeriesMetrics.OverdueRecurringOccurrenceCount,
+		},
 	}
 	for _, row := range summary.Workload {
 		var userInfo *task.UserInfo

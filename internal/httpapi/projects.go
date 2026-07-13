@@ -63,6 +63,14 @@ type projectTaskSummaryResponse struct {
 	UnassignedOpenCount   int                             `json:"unassigned_open_count"`
 	UnassignedOpenRefs    []projectSummaryTaskRefResponse `json:"unassigned_open_refs"`
 	Workload              []projectSummaryWorkloadResponse `json:"workload"`
+	SeriesMetrics         projectSeriesMetricsResponse    `json:"series_metrics"`
+}
+
+type projectSeriesMetricsResponse struct {
+	RecurringSeriesCount            int `json:"recurring_series_count"`
+	ActiveRecurringSeriesCount      int `json:"active_recurring_series_count"`
+	OpenRecurringOccurrenceCount    int `json:"open_recurring_occurrence_count"`
+	OverdueRecurringOccurrenceCount int `json:"overdue_recurring_occurrence_count"`
 }
 
 type projectResponse struct {
@@ -432,6 +440,12 @@ func projectTaskSummaryToJSON(summary app.ProjectTaskSummaryView) projectTaskSum
 		UnassignedOpenCount:   summary.UnassignedOpenCount,
 		UnassignedOpenRefs:    projectTaskRefResponses(summary.UnassignedOpenRefs),
 		Workload:              make([]projectSummaryWorkloadResponse, 0, len(summary.Workload)),
+		SeriesMetrics: projectSeriesMetricsResponse{
+			RecurringSeriesCount:            summary.SeriesMetrics.RecurringSeriesCount,
+			ActiveRecurringSeriesCount:      summary.SeriesMetrics.ActiveRecurringSeriesCount,
+			OpenRecurringOccurrenceCount:    summary.SeriesMetrics.OpenRecurringOccurrenceCount,
+			OverdueRecurringOccurrenceCount: summary.SeriesMetrics.OverdueRecurringOccurrenceCount,
+		},
 	}
 	for _, row := range summary.Workload {
 		var user *task.JSONUserInfo
