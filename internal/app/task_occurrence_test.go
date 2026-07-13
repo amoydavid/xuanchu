@@ -302,6 +302,9 @@ func TestGetTaskViewProjectedDoesNotWrite(t *testing.T) {
 	if view.RecurrenceInfo == nil || view.RecurrenceInfo.Materialization != "projected" {
 		t.Fatalf("应为 projected: %#v", view.RecurrenceInfo)
 	}
+	if view.RecurrenceInfo.SeriesTitle != "每日巡检" {
+		t.Fatalf("projected series title = %q", view.RecurrenceInfo.SeriesTitle)
+	}
 	if view.UUID != nil {
 		t.Fatalf("projected UUID 应为 nil")
 	}
@@ -319,6 +322,9 @@ func TestGetTaskViewMaterialized(t *testing.T) {
 	}
 	if view.RecurrenceInfo == nil || view.RecurrenceInfo.Materialization != "materialized" {
 		t.Fatalf("应为 materialized: %#v", view.RecurrenceInfo)
+	}
+	if view.RecurrenceInfo.SeriesTitle != "每日巡检" {
+		t.Fatalf("materialized series title = %q", view.RecurrenceInfo.SeriesTitle)
 	}
 }
 
@@ -489,7 +495,7 @@ func TestGetTaskSeriesReturnsDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
-		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000,
+		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 100000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -500,6 +506,139 @@ func TestGetTaskSeriesReturnsDetail(t *testing.T) {
 	}
 	if detail.Series.ID != created.Series.ID {
 		t.Fatalf("series ID 不匹配")
+	}
+	want, err := taskseries.Next(100000, "daily", svc.clock.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Series.SuggestedRuleEffectiveFrom == nil || *detail.Series.SuggestedRuleEffectiveFrom != want {
+		t.Fatalf("suggested_rule_effective_from = %#v want %d", detail.Series.SuggestedRuleEffectiveFrom, want)
+	}
+}
+
+func TestGetTaskSeriesSuggestsSlotAfterMaterializedOccurrence(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSlot, err := taskseries.Next(2000, "daily", svc.clock.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seriesID := created.Series.ID
+	rule := "daily"
+	if _, _, err := svc.taskOccurrenceRepo.CreateOccurrence(domain.Task{
+		UUID: "future-occurrence", WorkspaceID: svc.workspaceID, ProjectID: &proj.ID,
+		Title: "每日巡检", Status: domain.StatusPending, Entry: 1000, Modified: 1000,
+		SeriesID: &seriesID, RecurrenceAt: &secondSlot, RecurrenceRuleSnapshot: &rule,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want, err := taskseries.Next(secondSlot, "daily", svc.clock.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := svc.GetTaskSeries(seriesID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Series.SuggestedRuleEffectiveFrom == nil || *detail.Series.SuggestedRuleEffectiveFrom != want {
+		t.Fatalf("suggested_rule_effective_from = %#v want %d", detail.Series.SuggestedRuleEffectiveFrom, want)
+	}
+}
+
+func TestGetTaskSeriesSuggestionUsesCurrentRuleVersion(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	weekly := "weekly"
+	effectiveFrom, err := taskseries.Next(2000, "daily", svc.clock.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{
+		RecurrenceRule: &weekly, EffectiveFrom: &effectiveFrom,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := taskseries.Next(effectiveFrom, weekly, svc.clock.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.SuggestedRuleEffectiveFrom == nil || *updated.SuggestedRuleEffectiveFrom != want {
+		t.Fatalf("suggested_rule_effective_from = %#v want %d", updated.SuggestedRuleEffectiveFrom, want)
+	}
+}
+
+func TestGetTaskSeriesSuggestionIsNilWithoutFutureLegalSlot(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	until := int64(2000)
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "一次巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000, Until: &until,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seriesID := created.Series.ID
+	rule := "daily"
+	if _, _, err := svc.taskOccurrenceRepo.CreateOccurrence(domain.Task{
+		UUID: "only-occurrence", WorkspaceID: svc.workspaceID, ProjectID: &proj.ID,
+		Title: "一次巡检", Status: domain.StatusPending, Entry: 1000, Modified: 1000,
+		SeriesID: &seriesID, RecurrenceAt: &until, RecurrenceRuleSnapshot: &rule,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := svc.GetTaskSeries(seriesID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Series.SuggestedRuleEffectiveFrom != nil {
+		t.Fatalf("suggested_rule_effective_from = %#v want nil", detail.Series.SuggestedRuleEffectiveFrom)
+	}
+}
+
+func TestStoppedTaskSeriesHasNoSuggestedRuleEffectiveFrom(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := svc.StopTaskSeries(created.Series.ID, StopTaskSeriesInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stopped.SuggestedRuleEffectiveFrom != nil {
+		t.Fatalf("suggested_rule_effective_from = %#v want nil", stopped.SuggestedRuleEffectiveFrom)
 	}
 }
 
@@ -530,6 +669,19 @@ func TestMaterializeOccurrenceForWriteCreatesTaskForProjectedRef(t *testing.T) {
 	}
 	if tsk.ProjectSeq == nil {
 		t.Fatal("物化应分配 project_seq")
+	}
+	if tsk.Project == nil || *tsk.Project != "ops" {
+		t.Fatalf("物化后的 Project = %#v，期望 ops", tsk.Project)
+	}
+	if tsk.ProjectID == nil || *tsk.ProjectID != series.ProjectID {
+		t.Fatalf("物化后的 ProjectID = %#v，期望 %q", tsk.ProjectID, series.ProjectID)
+	}
+	view, err := svc.GetTaskView(ref)
+	if err != nil {
+		t.Fatalf("GetTaskView(materialized): %v", err)
+	}
+	if view.TaskSlug == nil || *view.TaskSlug != "ops-1" {
+		t.Fatalf("物化后的 task_slug = %#v，期望 ops-1", view.TaskSlug)
 	}
 	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount+1 {
 		t.Fatalf("应新增 1 行: before=%d after=%d", beforeCount, after)
@@ -1189,6 +1341,30 @@ func TestModifyTaskSeriesRuleRequiresEffectiveFrom(t *testing.T) {
 	_, err = svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{RecurrenceRule: &newRule})
 	if err == nil {
 		t.Fatal("修改 rule 缺 effective_from 应失败")
+	}
+}
+
+func TestModifyTaskSeriesRuleRejectsExistingRuleVersionStart(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: 100000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRule := "weekly"
+	_, err = svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{
+		RecurrenceRule: &newRule, EffectiveFrom: &created.Series.FirstDue,
+	})
+	runtimeErr, ok := err.(RuntimeError)
+	if !ok || runtimeErr.Code != "task_series_invalid_effective_from" {
+		t.Fatalf("error = %#v want task_series_invalid_effective_from", err)
 	}
 }
 

@@ -16,9 +16,7 @@ import {
   extractUDAs,
   formatUDAValue,
 } from "@/features/workspace/project-readonly/uda"
-import {
-  taskStatusLabel,
-} from "@/features/workspace/shared/task-labels"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTaskRef } from "../api/project-api"
 import type { ProjectTask } from "../api/task-api"
 import type { DateBoundary } from "../shared/date-boundary"
@@ -73,15 +71,18 @@ export function TaskPropertyPanel({
   const hasUDA = udas.length > 0
   // 不可写且计划字段全空时，Schedule 整组隐身（避免空壳噪音）。
   const showSchedule = canWrite || hasSchedule
+  const projected = task.recurrence_info?.materialization === "projected"
 
   return (
     <aside className="space-y-4 border bg-card p-4 text-sm">
       {/* Properties：高频字段，始终展示 */}
-      <PropertyGroup
-        title={t("taskDetail.groupProperties")}
-      >
+      <PropertyGroup title={t("taskDetail.groupProperties")}>
         <PropertyRow label={t("common.status")}>
-          <div className="font-medium">{taskStatusLabel(task.status, t)}</div>
+          <div className="font-medium">
+            {projected
+              ? t("taskSeries.occurrence.projected")
+              : taskStatusLabel(task.status, t)}
+          </div>
         </PropertyRow>
         <PropertyRow label={t("taskDetail.urgency")}>
           <TaskUrgencyPanel taskRef={taskRef} workspaceSlug={workspaceSlug} />
@@ -133,10 +134,8 @@ export function TaskPropertyPanel({
       </PropertyGroup>
 
       {/* Schedule：日期/周期字段；空组在不可写时隐身 */}
-      {showSchedule ? (
-        <PropertyGroup
-          title={t("taskDetail.groupSchedule")}
-        >
+      {showSchedule || task.recurrence_info ? (
+        <PropertyGroup title={t("taskDetail.groupSchedule")}>
           <PropertyRow label={t("projectReadonly.dueDate")}>
             <InlineDatePicker
               ariaLabel={t("projectReadonly.dueDate")}
@@ -151,6 +150,17 @@ export function TaskPropertyPanel({
               value={unixLikeToNumber(task.due)}
             />
           </PropertyRow>
+          {task.recurrence_info ? (
+            <PropertyRow label={t("taskSeries.occurrence.originalDate")}>
+              <div className="font-medium">
+                {new Intl.DateTimeFormat(undefined, {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                }).format(new Date(task.recurrence_info.recurrence_at * 1000))}
+              </div>
+            </PropertyRow>
+          ) : null}
           <DateProperty
             disabled={!canWrite}
             helpText={t("projectReadonly.waitUntilHelp")}
@@ -190,9 +200,7 @@ export function TaskPropertyPanel({
 
       {/* Relations：parent/depends/blocking；空组隐身 */}
       {hasRelations ? (
-        <PropertyGroup
-          title={t("taskDetail.groupRelations")}
-        >
+        <PropertyGroup title={t("taskDetail.groupRelations")}>
           {task.parent ? (
             <PropertyRow label={t("projectReadonly.parent")}>
               <TaskRefLinks
@@ -213,7 +221,7 @@ export function TaskPropertyPanel({
               }}
               projectSlug={projectSlug}
               refs={task.depends_info}
-              taskUUID={task.uuid}
+              taskUUID={task.uuid ?? ""}
               value={task.depends ?? []}
               workspaceSlug={workspaceSlug}
             />
@@ -232,10 +240,7 @@ export function TaskPropertyPanel({
       ) : null}
 
       {/* System：默认折叠 */}
-      <PropertyGroup
-        defaultOpen={false}
-        title={t("taskDetail.groupSystem")}
-      >
+      <PropertyGroup defaultOpen={false} title={t("taskDetail.groupSystem")}>
         <PropertyRow label={t("projectReadonly.entry")}>
           <div className="font-medium">{formatRFCDate(task.entry)}</div>
         </PropertyRow>
@@ -279,7 +284,7 @@ function PropertyGroup({
   return (
     <div className="space-y-2">
       <button
-        className="flex w-full items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        className="flex w-full items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
         onClick={() => setOpen((v) => !v)}
         type="button"
       >
@@ -604,6 +609,12 @@ function unixLikeToNumber(value: string | number | null | undefined) {
   return null
 }
 
-function formatRFCDate(value?: string): string {
-  return value ? value.slice(0, 10) : "-"
+function formatRFCDate(value?: string | number | null): string {
+  const unix = unixLikeToNumber(value)
+  if (unix === null) return "-"
+  const date = new Date(unix * 1000)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }

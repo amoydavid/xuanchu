@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { i18n } from "@/i18n"
@@ -15,20 +15,25 @@ import {
   getProjectTimeline,
   type ProjectWorkbenchProject,
 } from "../api/project-api"
-import { ProjectLayout } from "./project-layout"
+import { ProjectLayout, useProjectLayout } from "./project-layout"
 
 vi.mock("@/features/workspace/session/useMe", () => ({
   useMe: () => ({
     data: {
       effective_role: "owner",
-      token: { scopes: ["project:write", "task:read", "task:write"], type: "pat" },
+      token: {
+        scopes: ["project:write", "task:read", "task:write"],
+        type: "pat",
+      },
     },
   }),
 }))
 
 vi.mock("../api/project-api", async () => {
   const actual =
-    await vi.importActual<typeof import("../api/project-api")>("../api/project-api")
+    await vi.importActual<typeof import("../api/project-api")>(
+      "../api/project-api"
+    )
   return {
     ...actual,
     getProject: vi.fn(),
@@ -39,10 +44,9 @@ vi.mock("../api/project-api", async () => {
 })
 
 vi.mock("@/features/workspace/config/config-definition-api", async () => {
-  const actual =
-    await vi.importActual<
-      typeof import("@/features/workspace/config/config-definition-api")
-    >("@/features/workspace/config/config-definition-api")
+  const actual = await vi.importActual<
+    typeof import("@/features/workspace/config/config-definition-api")
+  >("@/features/workspace/config/config-definition-api")
   return {
     ...actual,
     listProjectEffectiveConfig: vi.fn(),
@@ -88,6 +92,14 @@ describe("ProjectLayout", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("zh-CN")
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: () => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
     vi.mocked(getProject).mockResolvedValue(project())
     vi.mocked(getProjectTasks).mockResolvedValue([])
     vi.mocked(getProjectTimeline).mockResolvedValue([])
@@ -118,21 +130,29 @@ describe("ProjectLayout", () => {
     )
 
     expect(await screen.findByText("概览主体")).toBeTruthy()
-    const overviewLink = screen.getByRole("link", { name: "概览" }) as HTMLAnchorElement
-    expect(overviewLink.getAttribute("href")).toBe("/workspaces/local/projects/ops")
-    const tasksLink = screen.getByRole("link", { name: "任务" }) as HTMLAnchorElement
-    expect(tasksLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/tasks")
-    const activityLink = screen.getByRole("link", { name: "活动" }) as HTMLAnchorElement
-    expect(activityLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/activity")
+    const overviewLink = screen.getByRole("link", {
+      name: "概览",
+    }) as HTMLAnchorElement
+    expect(overviewLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops"
+    )
+    const tasksLink = screen.getByRole("link", {
+      name: "任务",
+    }) as HTMLAnchorElement
+    expect(tasksLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops/tasks"
+    )
+    const activityLink = screen.getByRole("link", {
+      name: "活动",
+    }) as HTMLAnchorElement
+    expect(activityLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops/activity"
+    )
   })
 
   it("shows the shared project header with status and copy action", async () => {
     render(
-      <ProjectLayout
-        activeTab="tasks"
-        projectSlug="ops"
-        workspaceSlug="local"
-      >
+      <ProjectLayout activeTab="tasks" projectSlug="ops" workspaceSlug="local">
         <div />
       </ProjectLayout>,
       { wrapper: Wrapper }
@@ -193,8 +213,97 @@ describe("ProjectLayout", () => {
       </ProjectLayout>,
       { wrapper: Wrapper }
     )
-    const automationLink = await screen.findByRole("link", { name: "自动化" }) as HTMLAnchorElement
-    expect(automationLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/automations")
+    const automationLink = (await screen.findByRole("link", {
+      name: "自动化",
+    })) as HTMLAnchorElement
+    expect(automationLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops/automations"
+    )
     expect(automationLink.getAttribute("aria-current")).toBe("page")
   })
+
+  it("renders a custom context panel as a Sheet on narrow screens", async () => {
+    const onClose = vi.fn()
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: () => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
+
+    render(
+      <ProjectLayout activeTab="tasks" projectSlug="ops" workspaceSlug="local">
+        <ContextPanelRegistrar onClose={onClose} />
+      </ProjectLayout>,
+      { wrapper: Wrapper }
+    )
+
+    const dialog = await screen.findByRole("dialog", { name: "循环任务" })
+    expect(dialog.getAttribute("aria-describedby")).toBeTruthy()
+    expect(
+      dialog.querySelector('[data-slot="sheet-description"]')?.textContent
+    ).toBe(i18n.t("taskSeries.description"))
+    await userEvent.click(screen.getByRole("button", { name: "关闭循环任务" }))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("restores a collapsed rail after the custom panel content changes", async () => {
+    const user = userEvent.setup()
+    render(
+      <ProjectLayout activeTab="tasks" projectSlug="ops" workspaceSlug="local">
+        <ContextPanelLifecycle />
+      </ProjectLayout>,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("项目信息")
+    await user.click(screen.getByRole("button", { name: "收起右栏" }))
+    await user.click(screen.getByRole("button", { name: "打开循环面板" }))
+    expect(screen.getByText("循环面板 1")).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "更新循环面板" }))
+    expect(screen.getByText("循环面板 2")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "关闭测试面板" }))
+
+    expect(screen.queryByText("项目信息")).toBeNull()
+    expect(screen.getByRole("button", { name: "展开右栏" })).toBeTruthy()
+  })
 })
+
+function ContextPanelRegistrar({ onClose }: { onClose: () => void }) {
+  const { setContextPanel } = useProjectLayout()
+  useEffect(() => {
+    setContextPanel({ node: <div>循环面板内容</div>, onClose })
+    return () => setContextPanel(null)
+    // setContextPanel 由 layout 提供；只在测试组件挂载/卸载时注册。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose])
+  return <div>任务主体</div>
+}
+
+function ContextPanelLifecycle() {
+  const { setContextPanel } = useProjectLayout()
+
+  const openPanel = (revision: number) => {
+    setContextPanel({
+      node: <div>循环面板 {revision}</div>,
+      onClose: () => setContextPanel(null),
+    })
+  }
+
+  return (
+    <div>
+      <button onClick={() => openPanel(1)} type="button">
+        打开循环面板
+      </button>
+      <button onClick={() => openPanel(2)} type="button">
+        更新循环面板
+      </button>
+      <button onClick={() => setContextPanel(null)} type="button">
+        关闭测试面板
+      </button>
+    </div>
+  )
+}

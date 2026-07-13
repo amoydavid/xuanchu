@@ -35,6 +35,16 @@ describe("myTasksPath", () => {
     )
   })
 
+  it("preserves the preset status expression", () => {
+    const filter: MyTasksFilter = {
+      assignee: "user-1",
+      query: "(status:pending or status:waiting)",
+    }
+    expect(myTasksPath("dajee", filter)).toBe(
+      "/api/v1/tasks?workspace=dajee&assignee=user-1&query=%28status%3Apending+or+status%3Awaiting%29&limit=200"
+    )
+  })
+
   it("omits empty values", () => {
     const filter: MyTasksFilter = {
       assignee: "user-1",

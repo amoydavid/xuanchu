@@ -28,8 +28,8 @@ export type ProjectReadonlyTask = {
   project_id?: string
   priority?: string | null
   due?: number | null
-  entry?: string
-  modified?: string
+  entry?: string | number
+  modified?: string | number
   start?: number | null
   wait?: number | null
   scheduled?: number | null
@@ -69,7 +69,9 @@ export type ProjectReadonlyTaskLink = {
 // 它与上面的类型定义同处维护——新增标准字段时，类型和这份清单必须一起更新，
 // 否则 extractUDAs 会把新字段误判为 UDA（这正是 depends_info 曾被误显示的根因）。
 export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
+  "id",
   "uuid",
+  "workspace_id",
   "task_slug",
   "title",
   "description",
@@ -95,6 +97,12 @@ export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
   "assignees",
   "tags",
   "links",
+  "udas",
+  "series_id",
+  "recurrence_at",
+  "recurrence_rule_snapshot",
+  "recurrence_overrides",
+  "recurrence_info",
 ])
 
 // AnnotationPage 是 GET /tasks/{ref}/annotations 的分页响应。

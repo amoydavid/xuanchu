@@ -37,13 +37,14 @@ type AddTaskSeriesInput struct {
 // TaskSeriesView 是 series 的对外视图（spec §7.7）。
 type TaskSeriesView struct {
 	taskseries.Series
-	OpenOccurrenceCount int
-	CompletedCount      int
-	SkippedCount        int
-	OverdueCount        int
-	NextRecurrenceAt    *int64
-	CreatedBy           domain.UserInfo
-	Assignees           []domain.UserInfo
+	OpenOccurrenceCount        int
+	CompletedCount             int
+	SkippedCount               int
+	OverdueCount               int
+	NextRecurrenceAt           *int64
+	SuggestedRuleEffectiveFrom *int64
+	CreatedBy                  domain.UserInfo
+	Assignees                  []domain.UserInfo
 }
 
 // TaskSeriesCreateResult 是创建 series 的返回。
@@ -257,7 +258,11 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 			view := projectedOccurrenceView(created, slot, seriesUserInfoList(created, userInfos))
 			firstOcc = &view
 		}
-		result = TaskSeriesCreateResult{Series: txSvc.buildSeriesView(created), FirstOccurrence: firstOcc}
+		seriesView, verr := txSvc.buildSeriesView(created)
+		if verr != nil {
+			return verr
+		}
+		result = TaskSeriesCreateResult{Series: seriesView, FirstOccurrence: firstOcc}
 		return nil
 	})
 	if err != nil {
@@ -277,17 +282,13 @@ func (s *Service) materializeFirstOccurrence(series taskseries.Series) (TaskOccu
 		UUID: newUUID(), WorkspaceID: series.WorkspaceID, Title: series.Title,
 		Description: series.Description, Status: domain.StatusPending,
 		Entry: now, Modified: now, Priority: series.Priority, Tags: series.Tags,
-		ProjectID: &series.ProjectID,
-		UDAs:      udas,
-		SeriesID:  &series.ID, RecurrenceAt: &series.FirstDue,
+		UDAs:     udas,
+		SeriesID: &series.ID, RecurrenceAt: &series.FirstDue,
 		RecurrenceRuleSnapshot: &series.RecurrenceRule, RecurrenceOverrides: []string{},
 	}
-	// 分配 project_seq。
-	seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(series.WorkspaceID, series.ProjectID)
-	if err != nil {
+	if err := s.bindOccurrenceProject(&occ, series.WorkspaceID, series.ProjectID); err != nil {
 		return TaskOccurrenceView{}, err
 	}
-	occ.ProjectSeq = &seq
 	due := series.FirstDue
 	occ.Due = &due
 	created, _, err := s.taskOccurrenceRepo.CreateOccurrence(occ)
@@ -355,7 +356,11 @@ func (s *Service) ListTaskSeries(input TaskSeriesListInput) (TaskSeriesPage, err
 	}
 	views := make([]TaskSeriesView, 0, len(scoped))
 	for _, c := range scoped {
-		views = append(views, s.buildSeriesView(c))
+		view, err := s.buildSeriesView(c)
+		if err != nil {
+			return TaskSeriesPage{}, err
+		}
+		views = append(views, view)
 	}
 	// 排序。
 	sortSeriesViews(views, input.Sort)
@@ -376,7 +381,10 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 	if err := s.ensureSeriesProjectScope(series, false); err != nil {
 		return TaskSeriesDetailView{}, err
 	}
-	view := s.buildSeriesView(series)
+	view, err := s.buildSeriesView(series)
+	if err != nil {
+		return TaskSeriesDetailView{}, err
+	}
 	pending, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "pending", Limit: 20})
 	if err != nil {
 		return TaskSeriesDetailView{}, err
@@ -470,6 +478,9 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 		}
 		if maxSlot > 0 && eff <= maxSlot {
 			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_effective_from", Message: "effective_from 必须晚于最大已物化槽位"}
+		}
+		if latestRuleStart := latestRuleVersionEffectiveFrom(series); eff <= latestRuleStart {
+			return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid_effective_from", Message: "effective_from 必须晚于当前规则段起点"}
 		}
 		// 不超过 until（若本次也改 until，用新 until）。
 		effectiveUntil := series.Until
@@ -574,8 +585,8 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 		if err != nil {
 			return err
 		}
-		result = txSvc.buildSeriesView(updated)
-		return nil
+		result, err = txSvc.buildSeriesView(updated)
+		return err
 	})
 	if err != nil {
 		return TaskSeriesView{}, err
@@ -675,42 +686,88 @@ func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, in
 
 // --- 辅助 ---
 
-func (s *Service) buildSeriesView(series taskseries.Series) TaskSeriesView {
-	counts, _ := s.taskOccurrenceRepo.CountSeriesOccurrences(series.WorkspaceID, series.ID, s.clock.Unix())
+func (s *Service) buildSeriesView(series taskseries.Series) (TaskSeriesView, error) {
+	counts, err := s.taskOccurrenceRepo.CountSeriesOccurrences(series.WorkspaceID, series.ID, s.clock.Unix())
+	if err != nil {
+		return TaskSeriesView{}, err
+	}
 	createdBy := domain.UserInfo{ID: series.CreatedBy, Name: series.CreatedBy}
-	if info, err := s.resolveUserInfos([]string{series.CreatedBy}); err == nil {
-		if u, ok := info[series.CreatedBy]; ok {
-			createdBy = u
-		}
+	info, err := s.resolveUserInfos([]string{series.CreatedBy})
+	if err != nil {
+		return TaskSeriesView{}, err
+	}
+	if u, ok := info[series.CreatedBy]; ok {
+		createdBy = u
 	}
 	// 解析 assignees 为完整 UserInfo（含 display_name/email/external_ids）。
 	assigneeInfos := make([]domain.UserInfo, 0, len(series.AssigneeIDs))
 	if len(series.AssigneeIDs) > 0 {
-		if resolved, err := s.resolveUserInfos(series.AssigneeIDs); err == nil {
-			for _, id := range series.AssigneeIDs {
-				if u, ok := resolved[id]; ok {
-					assigneeInfos = append(assigneeInfos, u)
-				} else {
-					assigneeInfos = append(assigneeInfos, domain.UserInfo{ID: id, Name: id})
-				}
-			}
-		} else {
-			for _, id := range series.AssigneeIDs {
+		resolved, err := s.resolveUserInfos(series.AssigneeIDs)
+		if err != nil {
+			return TaskSeriesView{}, err
+		}
+		for _, id := range series.AssigneeIDs {
+			if u, ok := resolved[id]; ok {
+				assigneeInfos = append(assigneeInfos, u)
+			} else {
 				assigneeInfos = append(assigneeInfos, domain.UserInfo{ID: id, Name: id})
 			}
 		}
 	}
 	next := computeNextRecurrenceAt(series, s.clock)
-	return TaskSeriesView{
-		Series:              series,
-		OpenOccurrenceCount: counts.Open,
-		CompletedCount:      counts.Completed,
-		SkippedCount:        counts.Deleted,
-		OverdueCount:        counts.Overdue,
-		NextRecurrenceAt:    next,
-		CreatedBy:           createdBy,
-		Assignees:           assigneeInfos,
+	suggested, err := s.computeSuggestedRuleEffectiveFrom(series)
+	if err != nil {
+		return TaskSeriesView{}, err
 	}
+	return TaskSeriesView{
+		Series:                     series,
+		OpenOccurrenceCount:        counts.Open,
+		CompletedCount:             counts.Completed,
+		SkippedCount:               counts.Deleted,
+		OverdueCount:               counts.Overdue,
+		NextRecurrenceAt:           next,
+		SuggestedRuleEffectiveFrom: suggested,
+		CreatedBy:                  createdBy,
+		Assignees:                  assigneeInfos,
+	}, nil
+}
+
+// computeSuggestedRuleEffectiveFrom 返回满足规则修改约束的默认切换槽位。
+// 它严格晚于当前时间和所有已物化槽位，并且只从现有规则版本产生的合法槽位中选择。
+func (s *Service) computeSuggestedRuleEffectiveFrom(series taskseries.Series) (*int64, error) {
+	if series.Status != taskseries.StatusActive {
+		return nil, nil
+	}
+	maxMaterialized, err := s.maxMaterializedRecurrenceAt(series)
+	if err != nil {
+		return nil, err
+	}
+	threshold := s.clock.Unix()
+	if maxMaterialized > threshold {
+		threshold = maxMaterialized
+	}
+	if latestRuleStart := latestRuleVersionEffectiveFrom(series); latestRuleStart > threshold {
+		threshold = latestRuleStart
+	}
+	slot, err := taskseries.FirstSlotAfter(ruleVersionsForExpand(series), series.Until, threshold, s.clock.Location())
+	if err != nil {
+		return nil, err
+	}
+	if slot == nil || !slotInRangeForSeriesStatus(series, slot.RecurrenceAt) {
+		return nil, nil
+	}
+	value := slot.RecurrenceAt
+	return &value, nil
+}
+
+func latestRuleVersionEffectiveFrom(series taskseries.Series) int64 {
+	latest := series.FirstDue
+	for _, version := range series.RuleVersions {
+		if version.EffectiveFrom > latest {
+			latest = version.EffectiveFrom
+		}
+	}
+	return latest
 }
 
 // computeNextRecurrenceAt 计算严格晚于 now 的下一合法槽位（spec §7.7）。
@@ -990,8 +1047,8 @@ func (s *Service) StopTaskSeries(seriesID string, input StopTaskSeriesInput) (Ta
 				return derr
 			}
 		}
-		resultView = txSvc.buildSeriesView(series)
-		return nil
+		resultView, terr = txSvc.buildSeriesView(series)
+		return terr
 	})
 	if err != nil {
 		return TaskSeriesView{}, err
@@ -1048,15 +1105,13 @@ func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int
 		tombstone := domain.Task{
 			UUID: uuid.NewString(), WorkspaceID: series.WorkspaceID, Title: series.Title,
 			Status: domain.StatusDeleted, Entry: now, Modified: now,
-			ProjectID: &series.ProjectID, End: &now,
+			End:      &now,
 			SeriesID: &series.ID, RecurrenceAt: &slot.RecurrenceAt,
 			RecurrenceRuleSnapshot: &rule, RecurrenceOverrides: []string{},
 		}
-		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(series.WorkspaceID, series.ProjectID)
-		if err != nil {
+		if err := s.bindOccurrenceProject(&tombstone, series.WorkspaceID, series.ProjectID); err != nil {
 			return err
 		}
-		tombstone.ProjectSeq = &seq
 		if _, _, err := s.taskOccurrenceRepo.CreateOccurrence(tombstone); err != nil {
 			return err
 		}
@@ -1119,6 +1174,7 @@ func (s *Service) ListTaskSeriesOccurrences(seriesID string, input TaskSeriesOcc
 	for _, occ := range exceptions {
 		v := taskToView(occ, userInfoList(occ.Assignees, userInfos))
 		if v.RecurrenceInfo != nil {
+			v.RecurrenceInfo.SeriesTitle = series.Title
 			v.RecurrenceInfo.SeriesStatus = series.Status
 			v.RecurrenceInfo.Until = series.Until
 		}

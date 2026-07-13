@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+
+import { i18n } from "@/i18n"
 
 // Mock task-series-api。
 vi.mock("@/features/workspace/project-workbench/api/task-series-api", () => ({
@@ -17,8 +20,9 @@ const mockedListTaskSeries = vi.mocked(listTaskSeries)
 const mockedGetTaskSeries = vi.mocked(getTaskSeries)
 
 describe("TaskSeriesPanelShell", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    await i18n.changeLanguage("zh-CN")
   })
 
   it("renders active series list with total count", async () => {
@@ -54,6 +58,9 @@ describe("TaskSeriesPanelShell", () => {
     })
     expect(screen.getByTestId("task-series-row")).toBeTruthy()
     expect(screen.queryByTestId("task-series-detail")).toBeNull()
+    expect(screen.getByTestId("task-series-panel").className).toContain(
+      "lg:w-80"
+    )
   })
 
   it("支持按负责人和排序筛选并翻页", async () => {
@@ -65,13 +72,16 @@ describe("TaskSeriesPanelShell", () => {
     })
     render(<TaskSeriesPanelShell workspaceSlug="ws" projectSlug="ops" />)
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "下一页" })).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "下一页" })).toBeTruthy()
+    )
     fireEvent.change(screen.getByLabelText("循环任务负责人筛选"), {
       target: { value: "alice" },
     })
-    fireEvent.change(screen.getByLabelText("循环任务排序"), {
-      target: { value: "title" },
-    })
+    await userEvent.click(
+      screen.getByRole("combobox", { name: "循环任务排序" })
+    )
+    await userEvent.click(screen.getByRole("option", { name: "标题" }))
     fireEvent.click(screen.getByRole("button", { name: "下一页" }))
 
     await waitFor(() => {
@@ -88,7 +98,12 @@ describe("TaskSeriesPanelShell", () => {
   })
 
   it("renders empty state when no series", async () => {
-    mockedListTaskSeries.mockResolvedValue({ items: [], total: 0, limit: 0, offset: 0 })
+    mockedListTaskSeries.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 0,
+      offset: 0,
+    })
 
     render(<TaskSeriesPanelShell workspaceSlug="ws" projectSlug="ops" />)
 
@@ -98,7 +113,12 @@ describe("TaskSeriesPanelShell", () => {
   })
 
   it("renders detail when seriesRef provided", async () => {
-    mockedListTaskSeries.mockResolvedValue({ items: [], total: 0, limit: 0, offset: 0 })
+    mockedListTaskSeries.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 0,
+      offset: 0,
+    })
     mockedGetTaskSeries.mockResolvedValue({
       id: "s1",
       workspace_id: "ws",
@@ -116,11 +136,64 @@ describe("TaskSeriesPanelShell", () => {
       modified_at: 1,
     })
 
-    render(<TaskSeriesPanelShell workspaceSlug="ws" projectSlug="ops" seriesRef="s1" />)
+    render(
+      <TaskSeriesPanelShell
+        workspaceSlug="ws"
+        projectSlug="ops"
+        seriesRef="s1"
+      />
+    )
 
     await waitFor(() => {
       expect(screen.getByTestId("task-series-detail")).toBeTruthy()
     })
+  })
+
+  it("hides the previous detail while another series is loading", async () => {
+    mockedListTaskSeries.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 0,
+      offset: 0,
+    })
+    mockedGetTaskSeries.mockResolvedValueOnce({
+      id: "s1",
+      workspace_id: "ws",
+      project_id: "p1",
+      title: "旧循环任务",
+      status: "active",
+      recurrence_rule: "daily",
+      first_due: 100,
+      open_occurrence_count: 0,
+      completed_count: 0,
+      skipped_count: 0,
+      overdue_count: 0,
+      created_by: { id: "u1", name: "local", display_name: "local" },
+      created_at: 1,
+      modified_at: 1,
+    })
+    mockedGetTaskSeries.mockImplementationOnce(() => new Promise(() => {}))
+
+    const { rerender } = render(
+      <TaskSeriesPanelShell
+        workspaceSlug="ws"
+        projectSlug="ops"
+        seriesRef="s1"
+      />
+    )
+    expect(await screen.findByText("旧循环任务")).toBeTruthy()
+
+    rerender(
+      <TaskSeriesPanelShell
+        workspaceSlug="ws"
+        projectSlug="ops"
+        seriesRef="s2"
+      />
+    )
+    await waitFor(() => expect(mockedGetTaskSeries).toHaveBeenCalledTimes(2))
+
+    expect(screen.queryByText("旧循环任务")).toBeNull()
+    expect(screen.queryByTestId("task-series-detail")).toBeNull()
   })
 
   it("renders error state on load failure", async () => {
@@ -134,10 +207,19 @@ describe("TaskSeriesPanelShell", () => {
   })
 
   it("panel does not render a tablist (not a new tab)", async () => {
-    mockedListTaskSeries.mockResolvedValue({ items: [], total: 0, limit: 0, offset: 0 })
-    const { container } = render(<TaskSeriesPanelShell workspaceSlug="ws" projectSlug="ops" />)
+    mockedListTaskSeries.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 0,
+      offset: 0,
+    })
+    const { container } = render(
+      <TaskSeriesPanelShell workspaceSlug="ws" projectSlug="ops" />
+    )
     await waitFor(() => {
-      expect(container.querySelector('[data-testid="task-series-panel"]')).toBeTruthy()
+      expect(
+        container.querySelector('[data-testid="task-series-panel"]')
+      ).toBeTruthy()
     })
     expect(container.querySelector('[role="tablist"]')).toBeNull()
   })

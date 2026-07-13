@@ -357,7 +357,7 @@ async function expectStatus(page, text) {
 }
 
 async function expectMarkdownSmoke(page) {
-  await page.locator(".markdown-prose h1", { hasText: "素材复盘" }).waitFor()
+  await page.locator(".markdown-prose h2", { hasText: "素材复盘" }).waitFor()
   await page.locator(".markdown-prose code", { hasText: "channel" }).waitFor()
   const safeLink = page.locator('.markdown-prose a[href="https://example.com/spec"]')
   await safeLink.waitFor()

@@ -201,22 +201,27 @@ func matchDatePredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, er
 		return actual == nil, nil
 	case OpNotNull:
 		return actual != nil, nil
-	case OpEqual, OpBefore, OpAfter:
-		threshold, err := ResolveDeadlineDateValue(p.Value, time.Now().Unix(), loc)
+	case OpEqual:
+		start, end, err := ResolveDateRange(p.Value, time.Now().Unix(), loc)
 		if err != nil {
 			return false, err
 		}
 		if actual == nil {
 			return false, nil
 		}
-		switch p.Operator {
-		case OpEqual:
-			return *actual == threshold, nil
-		case OpBefore:
-			return *actual < threshold, nil
-		case OpAfter:
-			return *actual > threshold, nil
+		return *actual >= start && *actual < end, nil
+	case OpBefore, OpAfter:
+		threshold, err := ResolveDateValue(p.Value, time.Now().Unix(), loc)
+		if err != nil {
+			return false, err
 		}
+		if actual == nil {
+			return false, nil
+		}
+		if p.Operator == OpBefore {
+			return *actual < threshold, nil
+		}
+		return *actual > threshold, nil
 	}
 	return false, nil
 }

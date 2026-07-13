@@ -1,17 +1,35 @@
 import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { PlayIcon, SquareIcon, Trash2Icon, CheckIcon, RotateCcwIcon } from "lucide-react"
+import { Link, useNavigate } from "@tanstack/react-router"
+import {
+  PlayIcon,
+  SquareIcon,
+  Trash2Icon,
+  CheckIcon,
+  RotateCcwIcon,
+  CopyIcon,
+  MoreHorizontalIcon,
+} from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import type { ProjectTask } from "../api/task-api"
 import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
 import { useTaskActionMutation } from "../hooks/use-task-mutations"
-import { skipTaskSeriesOccurrence } from "../api/task-series-api"
+import { taskDisplayRef, taskRouteRef } from "../tasks/task-reference"
 
 type TaskActionBarProps = {
   // 权限层面的可写（不含任务状态判断）。
   permissionCanWrite: boolean
   projectSlug: string
+  myTasksReturnSearch?: string
+  returnScope: "global" | "project"
   task: ProjectTask
   taskRef: string
   workspaceSlug: string
@@ -20,26 +38,27 @@ type TaskActionBarProps = {
 export function TaskActionBar({
   permissionCanWrite,
   projectSlug,
+  myTasksReturnSearch,
+  returnScope,
   task,
   taskRef,
   workspaceSlug,
 }: TaskActionBarProps) {
+  const { i18n, t } = useTranslation()
+  const navigate = useNavigate()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const start = useTaskActionMutation(workspaceSlug, projectSlug, "start")
   const stop = useTaskActionMutation(workspaceSlug, projectSlug, "stop")
   const done = useTaskActionMutation(workspaceSlug, projectSlug, "done")
   const reopen = useTaskActionMutation(workspaceSlug, projectSlug, "reopen")
   const remove = useTaskActionMutation(workspaceSlug, projectSlug, "delete")
-	const queryClient = useQueryClient()
-	const occurrence = task.recurrence_info
-	const skip = useMutation({
-		mutationFn: () => skipTaskSeriesOccurrence(workspaceSlug, occurrence!.series_id, taskRef),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["project-task"] })
-			await queryClient.invalidateQueries({ queryKey: ["project-tasks"] })
-			await queryClient.invalidateQueries({ queryKey: ["task-series"] })
-		},
-	})
+  const occurrence = task.recurrence_info
+  const occurrenceDate = occurrence
+    ? new Intl.DateTimeFormat(i18n.language, { dateStyle: "long" }).format(
+        new Date(occurrence.recurrence_at * 1000)
+      )
+    : ""
+  const displayRef = taskDisplayRef(task, i18n.language) || taskRef
   const completed = task.status === "completed"
   const deleted = task.status === "deleted"
   const pending =
@@ -47,7 +66,7 @@ export function TaskActionBar({
     stop.isPending ||
     done.isPending ||
     reopen.isPending ||
-		remove.isPending || skip.isPending
+    remove.isPending
 
   // deleted 是真正的终态，无可执行动作；无权限也直接隐藏。
   if (deleted || !permissionCanWrite) {
@@ -68,7 +87,9 @@ export function TaskActionBar({
             variant="outline"
           >
             <SquareIcon />
-            停止
+            {occurrence
+              ? t("taskSeries.actions.stopOccurrence")
+              : t("common.stop")}
           </Button>
         ) : null}
         {!completed && !task.start ? (
@@ -82,7 +103,9 @@ export function TaskActionBar({
             variant="outline"
           >
             <PlayIcon />
-            开始
+            {occurrence
+              ? t("taskSeries.actions.startOccurrence")
+              : t("common.start")}
           </Button>
         ) : null}
         {!completed ? (
@@ -96,7 +119,9 @@ export function TaskActionBar({
             variant="outline"
           >
             <CheckIcon />
-			{occurrence ? "完成本次" : "完成"}
+            {occurrence
+              ? t("taskSeries.actions.completeOccurrence")
+              : t("common.done")}
           </Button>
         ) : null}
         {completed ? (
@@ -110,33 +135,118 @@ export function TaskActionBar({
             variant="outline"
           >
             <RotateCcwIcon />
-			{occurrence ? "重新打开本次" : "重新打开"}
+            {occurrence
+              ? t("taskSeries.actions.reopenOccurrence")
+              : t("common.reopen")}
           </Button>
-        ) : (
-          <Button
-            disabled={pending}
-            onClick={() => setConfirmDelete(true)}
-            size="sm"
-            type="button"
-            variant="destructive"
-          >
-			<Trash2Icon />
-			{occurrence ? "跳过本次" : "删除"}
-          </Button>
-        )}
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={t("projectWorkbench.project.moreTaskActions", {
+                taskRef: displayRef,
+              })}
+              disabled={pending}
+              size="icon-sm"
+              type="button"
+              variant="outline"
+            >
+              <MoreHorizontalIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {occurrence?.series_id && projectSlug ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  params={{
+                    workspaceSlug,
+                    projectSlug,
+                    seriesRef: occurrence.series_id,
+                  }}
+                  search={{
+                    ...(myTasksReturnSearch === undefined
+                      ? {}
+                      : {
+                          panel_return_search: myTasksReturnSearch,
+                          panel_return_source: "my-tasks",
+                        }),
+                    panel_return_scope: returnScope,
+                    panel_return_task: taskRouteRef(task),
+                  }}
+                  to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
+                >
+                  {t("taskSeries.detail.viewSeries")}
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem
+              onSelect={() => {
+                void navigator.clipboard?.writeText(
+                  `${window.location.origin}${window.location.pathname}`
+                )
+              }}
+            >
+              <CopyIcon />
+              {t("projectWorkbench.project.copyTaskLink")}
+            </DropdownMenuItem>
+            {!completed ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setConfirmDelete(true)
+                  }}
+                >
+                  <Trash2Icon />
+                  {occurrence
+                    ? t("taskSeries.actions.skipOccurrence")
+                    : t("projectWorkbench.project.deleteTask")}
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <DestructiveConfirmDialog
-		confirmLabel={occurrence ? "跳过本次" : "删除任务"}
-		description={occurrence ? "本次实例会标记为已跳过，不影响后续循环。" : "删除后任务会从当前项目视图中移除。这个操作不可撤销。"}
-		onConfirm={async () => {
-			if (occurrence) await skip.mutateAsync()
-			else await remove.mutateAsync(taskRef)
+        confirmLabel={
+          occurrence
+            ? t("taskSeries.actions.skipOccurrence")
+            : t("common.deleteTask")
+        }
+        description={
+          occurrence
+            ? t("taskSeries.actions.confirmSkipDescription")
+            : t("common.confirmDeleteTaskDescription")
+        }
+        onConfirm={async () => {
+          await remove.mutateAsync(taskRef)
           setConfirmDelete(false)
+          if (occurrence && projectSlug) {
+            if (myTasksReturnSearch !== undefined) {
+              void navigate({
+                to: "/my-tasks",
+                search: Object.fromEntries(
+                  new URLSearchParams(myTasksReturnSearch)
+                ),
+              })
+              return
+            }
+            void navigate({
+              to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks",
+              params: { workspaceSlug, projectSlug },
+            })
+          }
         }}
         onOpenChange={setConfirmDelete}
         open={confirmDelete}
-		pending={remove.isPending || skip.isPending}
-		title={occurrence ? "确认跳过本次" : "确认删除任务"}
+        pending={remove.isPending}
+        title={
+          occurrence
+            ? t("taskSeries.actions.confirmSkipTitle", { date: occurrenceDate })
+            : t("common.confirmDeleteTaskTitle")
+        }
       />
     </>
   )

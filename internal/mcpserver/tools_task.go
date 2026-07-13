@@ -59,7 +59,7 @@ type TaskGetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID        string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in TaskGetInput) scopeInput() RequestScopeInput {
@@ -70,7 +70,7 @@ type TaskModifyInput struct {
 	Workspace       string            `json:"workspace,omitempty"`
 	Project         string            `json:"project,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
-	ID              string            `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID              string            `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Title           *string           `json:"title,omitempty"`
 	Description     *string           `json:"description,omitempty"`
 	Priority        *string           `json:"priority,omitempty"`
@@ -100,7 +100,7 @@ type TaskIDInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID        string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in TaskIDInput) scopeInput() RequestScopeInput {
@@ -117,7 +117,7 @@ type TaskAnnotateInput struct {
 	Workspace  string `json:"workspace,omitempty"`
 	Project    string `json:"project,omitempty"`
 	ProjectID  string `json:"project_id,omitempty"`
-	ID         string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID         string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Annotation string `json:"annotation"`
 }
 
@@ -129,7 +129,7 @@ type TaskDependsInput struct {
 	Workspace    string   `json:"workspace,omitempty"`
 	Project      string   `json:"project,omitempty"`
 	ProjectID    string   `json:"project_id,omitempty"`
-	ID           string   `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID           string   `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Depends      []string `json:"depends,omitempty"`
 	ClearDepends bool     `json:"clear_depends,omitempty"`
 }
@@ -138,7 +138,7 @@ type TaskLinkAddInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
+	Task      string `json:"task" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Type      string `json:"type" jsonschema:"link type (e.g. document, pr, ticket, design)"`
 	URL       string `json:"url" jsonschema:"external resource URL"`
 	Title     string `json:"title,omitempty" jsonschema:"optional display title"`
@@ -152,7 +152,7 @@ type TaskLinkRemoveInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
+	Task      string `json:"task" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	LinkID    string `json:"link_id" jsonschema:"link ID to remove"`
 }
 
@@ -164,7 +164,7 @@ type TaskDenotateInput struct {
 	Workspace    string `json:"workspace,omitempty"`
 	Project      string `json:"project,omitempty"`
 	ProjectID    string `json:"project_id,omitempty"`
-	ID           string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID           string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	AnnotationID string `json:"annotation_id" jsonschema:"annotation ID to remove"`
 }
 
@@ -176,7 +176,7 @@ type TaskLinkListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
+	Task      string `json:"task" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in TaskLinkListInput) scopeInput() RequestScopeInput {
@@ -377,24 +377,18 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		// occurrence_ref 走 GetTaskView（projected 不物化，spec §13.4）。
-		if app.IsOccurrenceRef(strings.TrimSpace(in.ID)) {
-			view, verr := svc.GetTaskView(strings.TrimSpace(in.ID))
-			if verr != nil {
-				return businessErrorWithEnvelope(verr)
-			}
-			data := occurrenceViewToMCPJSON(view)
-			return successWithEnvelope(data, formatOccurrenceViewText(view))
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
 		}
-		tsk, err := resolveToolTaskRef(svc, in.ID, "id", false)
+		resolved, err := svc.ResolveTaskReferenceForRead(strings.TrimSpace(in.ID))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		data, err := taskData(tsk)
-		if err != nil {
-			return businessErrorWithEnvelope(err)
+		rendered := formatOccurrenceViewText(resolved.View)
+		if resolved.Kind == app.TaskResourceNormal && resolved.Task != nil {
+			rendered = renderTaskInfo(*resolved.Task)
 		}
-		return successWithEnvelope(data, renderTaskInfo(tsk))
+		return successWithEnvelope(taskResolutionToMCPJSON(resolved), rendered)
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "task_modify", Description: "Modify a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -569,22 +563,11 @@ func taskActionHandler(opts Options, rendered string, fn func(*app.Service, stri
 }
 
 func taskAfterMutation(svc *app.Service, id, rendered string) (*mcp.CallToolResult, ToolEnvelope, error) {
-	if app.IsOccurrenceRef(strings.TrimSpace(id)) {
-		view, err := svc.GetTaskView(strings.TrimSpace(id))
-		if err != nil {
-			return businessErrorWithEnvelope(err)
-		}
-		return successWithEnvelope(occurrenceViewToMCPJSON(view), rendered)
-	}
-	tsk, err := svc.Info(strings.TrimSpace(id))
+	resolved, err := svc.ResolveTaskReferenceForRead(strings.TrimSpace(id))
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	data, err := taskData(tsk)
-	if err != nil {
-		return businessErrorWithEnvelope(err)
-	}
-	return successWithEnvelope(data, rendered)
+	return successWithEnvelope(taskResolutionToMCPJSON(resolved), rendered)
 }
 
 func projectSlugForTask(svc *app.Service, project, projectID string) (*string, error) {

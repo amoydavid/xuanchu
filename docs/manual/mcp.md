@@ -379,7 +379,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `id` | string | 是 | 任务 UUID 或 `task_slug` |
+| `id` | string | 是 | UUID、已物化 `task_slug` 或 `occurrence_ref`；projected 仅 occurrence_ref |
 
 #### `task_modify`
 
@@ -390,7 +390,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | 限定本次调用的 workspace |
 | `project` | string | 否 | 限定本次调用的 project slug |
 | `project_id` | string | 否 | 限定本次调用的 project ID |
-| `id` | string | 是 | 任务 UUID 或 `task_slug` |
+| `id` | string | 是 | UUID、已物化 `task_slug` 或 `occurrence_ref`；projected 仅 occurrence_ref |
 | `title` | string | 否 | 新标题 |
 | `description` | string | 否 | 新详细描述 |
 | `clear_description` | bool | 否 | 清空详细描述 |
@@ -496,7 +496,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `task` | string | 是 | 任务引用（UUID 或 `task_slug`） |
+| `task` | string | 是 | 任务引用（UUID、已物化 `task_slug` 或 `occurrence_ref`） |
 | `type` | string | 是 | 链接类型（document/pr/ticket/design 等） |
 | `url` | string | 是 | 外部资源 URL |
 | `title` | string | 否 | 显示标题 |
@@ -1479,7 +1479,7 @@ Assignee 用法（M9+）：
 
 ## 注意事项
 
-- MCP task tool 只承诺 UUID 或 `task_slug`，不使用本地 working-set ID。
+- MCP task tool 接受 UUID、已物化任务的 `task_slug` 或 occurrence_ref；projected 实例只有 occurrence_ref。不要使用本地 working-set ID。
 - HTTP MCP 不读取调用者本机 TOML。
 - HTTP MCP 不能写 local config。
 - Agent 不应依赖 `context_set`/`workspace_use` 等隐式状态操作，每次调用都应显式传参。

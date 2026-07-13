@@ -12,8 +12,13 @@ import {
 } from "@/components/ui/table"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTask } from "@/features/workspace/project-workbench/api/project-api"
+import {
+  taskDisplayRef,
+  taskRouteRef,
+} from "@/features/workspace/project-workbench/tasks/task-reference"
 
 type MyTasksTableProps = {
+  returnSearch?: string
   sort?: string
   tasks: ProjectWorkbenchTask[]
   workspaceSlug: string
@@ -28,6 +33,7 @@ const priorityLabel: Record<string, string> = {
 
 export function MyTasksTable({
   onSortChange,
+  returnSearch = "",
   sort,
   tasks,
   workspaceSlug,
@@ -64,6 +70,7 @@ export function MyTasksTable({
             {tasks.map((task) => (
               <MyTasksTableRow
                 key={taskKey(task)}
+                returnSearch={returnSearch}
                 task={task}
                 workspaceSlug={workspaceSlug}
               />
@@ -74,7 +81,8 @@ export function MyTasksTable({
       <div className="space-y-2 md:hidden">
         {tasks.map((task) => (
           <MyTasksTaskCard
-			key={taskKey(task)}
+            key={taskKey(task)}
+            returnSearch={returnSearch}
             task={task}
             workspaceSlug={workspaceSlug}
           />
@@ -114,19 +122,25 @@ function SortHead({
 }
 
 function MyTasksTableRow({
+  returnSearch,
   task,
   workspaceSlug,
 }: {
+  returnSearch: string
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const isDeleted = task.status === "deleted"
   return (
     <TableRow className={isDeleted ? "opacity-50" : undefined}>
       <TableCell>
-        <TaskDetailLink task={task} workspaceSlug={workspaceSlug}>
-          {taskRef(task)}
+        <TaskDetailLink
+          returnSearch={returnSearch}
+          task={task}
+          workspaceSlug={workspaceSlug}
+        >
+          {taskDisplayRef(task, i18n.language)}
         </TaskDetailLink>
       </TableCell>
       <TableCell className="max-w-lg min-w-48 truncate">
@@ -138,10 +152,16 @@ function MyTasksTableRow({
         ) : null}
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
+		<Badge variant="outline">
+		  {task.recurrence_info?.materialization === "projected"
+			? t("taskSeries.occurrence.projected")
+			: taskStatusLabel(task.status, t)}
+		</Badge>
       </TableCell>
-      <TableCell>{task.priority ? (priorityLabel[task.priority] ?? task.priority) : "-"}</TableCell>
-      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+      <TableCell>
+        {task.priority ? (priorityLabel[task.priority] ?? task.priority) : "-"}
+      </TableCell>
+      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
         {formatDue(task.due)}
       </TableCell>
       <TableCell className="max-w-32 truncate">
@@ -165,20 +185,30 @@ function MyTasksTableRow({
 }
 
 function MyTasksTaskCard({
+  returnSearch,
   task,
   workspaceSlug,
 }: {
+  returnSearch: string
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   return (
     <article className="border bg-card p-3">
       <div className="flex items-center justify-between gap-2 text-xs">
-        <TaskDetailLink task={task} workspaceSlug={workspaceSlug}>
-          {taskRef(task)}
+        <TaskDetailLink
+          returnSearch={returnSearch}
+          task={task}
+          workspaceSlug={workspaceSlug}
+        >
+          {taskDisplayRef(task, i18n.language)}
         </TaskDetailLink>
-        <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
+		<Badge variant="outline">
+		  {task.recurrence_info?.materialization === "projected"
+			? t("taskSeries.occurrence.projected")
+			: taskStatusLabel(task.status, t)}
+		</Badge>
       </div>
       <div className="mt-2 text-sm font-medium">{task.title}</div>
       <div className="mt-1 truncate text-xs text-muted-foreground">
@@ -203,10 +233,12 @@ function MyTasksTaskCard({
 
 function TaskDetailLink({
   children,
+  returnSearch,
   task,
   workspaceSlug,
 }: {
   children: React.ReactNode
+  returnSearch: string
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
@@ -219,18 +251,15 @@ function TaskDetailLink({
       className="text-foreground underline-offset-4 hover:underline"
       params={{
         projectSlug: task.project,
-        taskRef: taskRef(task),
+        taskRef: taskRouteRef(task),
         workspaceSlug,
       }}
+      search={{ from: "my-tasks", my_tasks_search: returnSearch }}
       to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
     >
       {children}
     </Link>
   )
-}
-
-function taskRef(task: ProjectWorkbenchTask): string {
-  return task.task_slug || task.id || task.uuid || ""
 }
 
 function taskKey(task: ProjectWorkbenchTask): string {

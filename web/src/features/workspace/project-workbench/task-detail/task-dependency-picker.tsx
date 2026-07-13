@@ -33,6 +33,14 @@ type TaskDependencyPickerProps = {
   workspaceSlug: string
 }
 
+type MaterializedTask = ProjectWorkbenchTask & { uuid: string }
+
+function isMaterializedTask(
+  task: ProjectWorkbenchTask
+): task is MaterializedTask {
+  return typeof task.uuid === "string" && task.uuid.length > 0
+}
+
 export function TaskDependencyPicker({
   disabled = false,
   onSave,
@@ -56,7 +64,12 @@ export function TaskDependencyPicker({
   })
   const selectedSet = useMemo(() => new Set(selected), [selected])
   const taskByUUID = useMemo(
-    () => new Map((tasks.data ?? []).map((task) => [task.uuid, task])),
+    () =>
+      new Map(
+        (tasks.data ?? [])
+          .filter(isMaterializedTask)
+          .map((task) => [task.uuid, task])
+      ),
     [tasks.data]
   )
   const refByUUID = useMemo(
@@ -65,7 +78,10 @@ export function TaskDependencyPicker({
   )
   const visibleTasks = useMemo(() => {
     const keyword = query.trim().toLowerCase()
-    const allTasks = (tasks.data ?? []).filter((task) => task.uuid !== taskUUID)
+    // projected occurrence 没有真实 UUID，不能作为 depends 目标。
+    const allTasks = (tasks.data ?? [])
+      .filter(isMaterializedTask)
+      .filter((task) => task.uuid !== taskUUID)
     if (!keyword) {
       return allTasks
     }
@@ -128,7 +144,9 @@ export function TaskDependencyPicker({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("projectReadonly.searchDependencyTasks")}</DialogTitle>
+            <DialogTitle>
+              {t("projectReadonly.searchDependencyTasks")}
+            </DialogTitle>
             <DialogDescription>
               {t("projectReadonly.dependencyDescription")}
             </DialogDescription>
@@ -174,8 +192,8 @@ export function TaskDependencyPicker({
                   task?.task_slug ||
                   ref?.task_slug ||
                   task?.title ||
-                      ref?.title ||
-                      uuid
+                  ref?.title ||
+                  uuid
                 return (
                   <Badge key={uuid} variant="secondary">
                     {label}
@@ -231,7 +249,7 @@ function DependencyOption({
 }: {
   checked: boolean
   onChange: (checked: boolean) => void
-  task: ProjectWorkbenchTask
+  task: MaterializedTask
 }) {
   const { t } = useTranslation()
   const slug = task.task_slug || task.uuid.slice(0, 8)

@@ -356,6 +356,9 @@ func seriesViewToMCPJSON(v app.TaskSeriesView) map[string]any {
 	if v.NextRecurrenceAt != nil {
 		out["next_recurrence_at"] = *v.NextRecurrenceAt
 	}
+	if v.SuggestedRuleEffectiveFrom != nil {
+		out["suggested_rule_effective_from"] = *v.SuggestedRuleEffectiveFrom
+	}
 	return out
 }
 
@@ -422,6 +425,7 @@ func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 		out["recurrence_info"] = map[string]any{
 			"role":            v.RecurrenceInfo.Role,
 			"series_id":       v.RecurrenceInfo.SeriesID,
+			"series_title":    v.RecurrenceInfo.SeriesTitle,
 			"series_status":   v.RecurrenceInfo.SeriesStatus,
 			"rule":            v.RecurrenceInfo.Rule,
 			"recurrence_at":   v.RecurrenceInfo.RecurrenceAt,
@@ -431,6 +435,18 @@ func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 		if v.RecurrenceInfo.Until != nil {
 			out["recurrence_info"].(map[string]any)["until"] = *v.RecurrenceInfo.Until
 		}
+	}
+	return out
+}
+
+// taskResolutionToMCPJSON 保持 task tool 既有的内层 task 兼容字段，同时让
+// UUID、task_slug、occurrence_ref 的顶层结构完全由同一个 view 生成。
+func taskResolutionToMCPJSON(resolved app.TaskRefResolution) map[string]any {
+	out := occurrenceViewToMCPJSON(resolved.View)
+	if resolved.Task != nil {
+		out["task"] = occurrenceViewToMCPJSON(resolved.View)
+		out["completed"] = resolved.View.Status == task.StatusCompleted
+		out["deleted"] = resolved.View.Status == task.StatusDeleted
 	}
 	return out
 }

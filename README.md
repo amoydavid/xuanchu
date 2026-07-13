@@ -51,7 +51,7 @@ go build -o xuanchu ./cmd/xuanchu
 
 `project.slug` 会统一转成小写，只允许 3-10 位 ASCII 英文字母和数字，且必须以字母开头；同一 workspace 内不能重复，跨 workspace 可以重复。带 project 的任务会输出短标识 `task_slug`，格式为 `<projectSlug>-<seq>`，例如 `agentapi-1`。`--json` 输出中也会包含 `"task_slug":"agentapi-1"`。
 
-本地 CLI 的 `target` 可以是列表里的数字 ID、完整 UUID、足够长的 UUID 前缀，或 `task_slug`。HTTP API 和 MCP tool 属于协议入口，只接受 UUID 或 `task_slug`，不会接受本地 working-set 数字 ID。常用命令既支持 `xuanchu <subcommand> ...`，也支持 Taskwarrior 风格的 `xuanchu <target> <action> ...`。
+本地 CLI 的 `target` 可以是列表里的数字 ID、完整 UUID、足够长的 UUID 前缀、`task_slug`，或循环实例的 `occurrence_ref`。HTTP API 和 MCP tool 属于协议入口，接受完整 UUID、已物化任务的 `task_slug` 或 `occurrence_ref`；projected 循环实例只有 `occurrence_ref`。协议入口不会接受本地 working-set 数字 ID。常用命令既支持 `xuanchu <subcommand> ...`，也支持 Taskwarrior 风格的 `xuanchu <target> <action> ...`。
 
 常用全局参数：
 
@@ -946,7 +946,7 @@ task:read task:write project:read project:write context:read context:write confi
 
 tenant token 的 `*` 只展开 tenant 白名单：任务、项目、上下文、配置、workspace read/write、audit read、user read/write、member read/write、token read/write，以及 hook/notification/reminder read/write。它不会包含 `impersonate`。
 
-project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受 UUID 或 `task_slug`，纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
+project-scoped token 只能看 allowlist 内的任务和 audit。单任务读取如果任务存在但不在 token project allowlist 内，HTTP/远程 CLI 返回 404 `task_not_found`，避免泄露资源存在性。HTTP path 中的 `{taskRef}` 接受完整 UUID、已物化任务的 `task_slug` 或 URL 编码后的 `occurrence_ref`；projected 实例只能使用 occurrence_ref。纯数字 working-set ID 会返回 `task_ref_invalid`；远程 `info 1` 和 `1 done` 这类 working-set ID 会先由客户端两跳解析，再调用 HTTP API。
 
 远程 CLI 覆盖核心任务、报表、project、project config、context、config、import/export、audit、token 和 helper 命令。`edit`、`config import-taskrc` 等需要本地编辑器或本机文件语义的命令在 remote mode 下暂不支持。`_unique`、`_tags` 等 helper 通过已有 list/export endpoint 在客户端后处理，大 workspace 上可能较慢。
 
@@ -1018,7 +1018,7 @@ trusted_proxy_hosts = ["xuanchu.example.com"]
 | `task_reopen` | 重新打开已完成任务 |
 | `task_delete` | 删除任务 |
 | `task_query` | 通用查询，支持 filter、status、limit |
-| `task_get` | 按 UUID 或 `task_slug` 读取任务 |
+| `task_get` | 按 UUID、已物化 `task_slug` 或 `occurrence_ref` 读取任务 |
 | `task_annotate` | 添加注释 |
 | `task_depends` | 添加依赖 |
 | `task_start` | 开始任务 |

@@ -2444,12 +2444,15 @@ func startXuanchuServer(t *testing.T, bin string, args ...string) (*exec.Cmd, st
 	serverArgs := append([]string{"server", "--listen", listen}, args...)
 	cmd := exec.Command(bin, serverArgs...)
 	cmd.Env = os.Environ()
-	output, err := cmd.StderrPipe()
+	stderrPath := filepath.Join(t.TempDir(), "server.stderr.log")
+	stderrFile, err := os.Create(stderrPath)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cmd.Stderr = stderrFile
 	cmd.Stdout = io.Discard
 	if err := cmd.Start(); err != nil {
+		_ = stderrFile.Close()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -2457,10 +2460,11 @@ func startXuanchuServer(t *testing.T, bin string, args ...string) (*exec.Cmd, st
 			_ = cmd.Process.Kill()
 			_, _ = cmd.Process.Wait()
 		}
+		_ = stderrFile.Close()
 	})
 
 	baseURL := "http://" + listen
-	waitForHTTPServer(t, baseURL+"/healthz", output, cmd)
+	waitForHTTPServer(t, baseURL+"/healthz", stderrPath, cmd)
 	return cmd, baseURL
 }
 
@@ -2485,7 +2489,7 @@ func pickFreeAddr(t *testing.T) string {
 	return ln.Addr().String()
 }
 
-func waitForHTTPServer(t *testing.T, url string, stderr io.Reader, cmd *exec.Cmd) {
+func waitForHTTPServer(t *testing.T, url, stderrPath string, cmd *exec.Cmd) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -2495,12 +2499,12 @@ func waitForHTTPServer(t *testing.T, url string, stderr io.Reader, cmd *exec.Cmd
 			return
 		}
 		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			data, _ := io.ReadAll(stderr)
+			data, _ := os.ReadFile(stderrPath)
 			t.Fatalf("server exited before ready: %s", string(data))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	data, _ := io.ReadAll(stderr)
+	data, _ := os.ReadFile(stderrPath)
 	t.Fatalf("server did not become ready: %s", string(data))
 }
 

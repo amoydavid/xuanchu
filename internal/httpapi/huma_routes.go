@@ -119,11 +119,18 @@ func pathParameters(path string) []*huma.Param {
 	matches := pathParamPattern.FindAllStringSubmatch(path, -1)
 	params := make([]*huma.Param, 0, len(matches))
 	for _, match := range matches {
+		description := fmt.Sprintf("%s path parameter.", match[1])
+		switch match[1] {
+		case "taskRef":
+			description = "Task UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref. Numeric working-set IDs are not accepted."
+		case "occurrenceRef":
+			description = "Stable occurrence_ref (occ:<series_uuid>:<recurrence_at_unix>), URL-encoded when used in a path."
+		}
 		params = append(params, &huma.Param{
 			Name:        match[1],
 			In:          "path",
 			Required:    true,
-			Description: fmt.Sprintf("%s path parameter.", match[1]),
+			Description: description,
 			Schema:      &huma.Schema{Type: "string"},
 		})
 	}

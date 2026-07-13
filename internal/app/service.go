@@ -19,40 +19,40 @@ import (
 )
 
 type Service struct {
-	store                     *storage.Store
-	repo                      *storage.TaskRepository
-	taskSeriesRepo            *storage.TaskSeriesRepository
-	taskOccurrenceRepo        *storage.TaskOccurrenceRepository
-	projectRepo               *storage.ProjectRepository
-	configRepo                *storage.ConfigRepository
-	configDefRepo             *storage.ConfigDefinitionRepository
-	userRepo                  *storage.UserRepository
-	workspaceRepo             *storage.WorkspaceRepository
-	memberRepo                *storage.MemberRepository
-	auditRepo                 auditAppenderLister
-	tokenRepo                 *storage.TokenRepository
-	adminActingSessionRepo    adminActingSessionStore
-	contextRepo               *storage.ContextRepository
-	udaRepo                   *storage.UDARepository
-	hookRepo                  *storage.HookRepository
-	hookDeliveryRepo          hookDeliveryEnqueuer
-	notificationSinkRepo      *storage.NotificationSinkRepository
-	reminderRuleRepo          *storage.ReminderRuleRepository
-	eventNotificationRuleRepo *storage.EventNotificationRuleRepository
-	notificationDeliveryRepo  *storage.NotificationDeliveryRepository
+	store                         *storage.Store
+	repo                          *storage.TaskRepository
+	taskSeriesRepo                *storage.TaskSeriesRepository
+	taskOccurrenceRepo            *storage.TaskOccurrenceRepository
+	projectRepo                   *storage.ProjectRepository
+	configRepo                    *storage.ConfigRepository
+	configDefRepo                 *storage.ConfigDefinitionRepository
+	userRepo                      *storage.UserRepository
+	workspaceRepo                 *storage.WorkspaceRepository
+	memberRepo                    *storage.MemberRepository
+	auditRepo                     auditAppenderLister
+	tokenRepo                     *storage.TokenRepository
+	adminActingSessionRepo        adminActingSessionStore
+	contextRepo                   *storage.ContextRepository
+	udaRepo                       *storage.UDARepository
+	hookRepo                      *storage.HookRepository
+	hookDeliveryRepo              hookDeliveryEnqueuer
+	notificationSinkRepo          *storage.NotificationSinkRepository
+	reminderRuleRepo              *storage.ReminderRuleRepository
+	eventNotificationRuleRepo     *storage.EventNotificationRuleRepository
+	notificationDeliveryRepo      *storage.NotificationDeliveryRepository
 	projectAutomationRuleRepo     *storage.ProjectAutomationRuleRepository
 	projectAutomationDeliveryRepo *storage.ProjectAutomationDeliveryRepository
-	extIDRepo                 *storage.ExternalIDRepository
-	runtimeConfig             map[string]string
-	runtimeOverrides          map[string]string
-	runtimeUDAs               map[string]uda.Definition
-	activeContextOverride     *string
-	runtime                   RuntimeContext
-	requestScope              *RequestScope
-	workspaceID               string
-	clock                     Clock
-	reports                   report.Registry
-	disableContext            bool
+	extIDRepo                     *storage.ExternalIDRepository
+	runtimeConfig                 map[string]string
+	runtimeOverrides              map[string]string
+	runtimeUDAs                   map[string]uda.Definition
+	activeContextOverride         *string
+	runtime                       RuntimeContext
+	requestScope                  *RequestScope
+	workspaceID                   string
+	clock                         Clock
+	reports                       report.Registry
+	disableContext                bool
 	// sinkTestClient 用于 notification sink 测试投递；nil 时使用 SSRF-safe 默认 client。
 	// 测试可注入 httptest.Server.Client() 以便命中本地服务。
 	sinkTestClient *http.Client
@@ -180,43 +180,43 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		return nil, err
 	}
 	svc := &Service{
-		store:                     opts.Store,
-		repo:                      storage.NewTaskRepository(opts.Store.DB()),
-		taskSeriesRepo:            storage.NewTaskSeriesRepository(opts.Store.DB()),
-		taskOccurrenceRepo:        storage.NewTaskOccurrenceRepository(opts.Store.DB()),
-		projectRepo:               storage.NewProjectRepository(opts.Store.DB()),
-		configRepo:                storage.NewConfigRepository(opts.Store.DB()),
-		configDefRepo:             storage.NewConfigDefinitionRepository(opts.Store.DB()),
-		userRepo:                  userRepo,
-		workspaceRepo:             workspaceRepo,
-		memberRepo:                memberRepo,
-		auditRepo:                 auditRepo,
-		tokenRepo:                 storage.NewTokenRepository(opts.Store.DB()),
-		adminActingSessionRepo:    storage.NewAdminActingSessionRepository(opts.Store.DB()),
-		contextRepo:               storage.NewContextRepository(opts.Store.DB()),
-		udaRepo:                   storage.NewUDARepository(opts.Store.DB()),
-		hookRepo:                  storage.NewHookRepository(opts.Store.DB()),
-		hookDeliveryRepo:          storage.NewHookDeliveryRepository(opts.Store.DB()),
-		notificationSinkRepo:      storage.NewNotificationSinkRepository(opts.Store.DB()),
-		reminderRuleRepo:          storage.NewReminderRuleRepository(opts.Store.DB()),
-		eventNotificationRuleRepo: storage.NewEventNotificationRuleRepository(opts.Store.DB()),
-		notificationDeliveryRepo:  storage.NewNotificationDeliveryRepository(opts.Store.DB()),
+		store:                         opts.Store,
+		repo:                          storage.NewTaskRepository(opts.Store.DB()),
+		taskSeriesRepo:                storage.NewTaskSeriesRepository(opts.Store.DB()),
+		taskOccurrenceRepo:            storage.NewTaskOccurrenceRepository(opts.Store.DB()),
+		projectRepo:                   storage.NewProjectRepository(opts.Store.DB()),
+		configRepo:                    storage.NewConfigRepository(opts.Store.DB()),
+		configDefRepo:                 storage.NewConfigDefinitionRepository(opts.Store.DB()),
+		userRepo:                      userRepo,
+		workspaceRepo:                 workspaceRepo,
+		memberRepo:                    memberRepo,
+		auditRepo:                     auditRepo,
+		tokenRepo:                     storage.NewTokenRepository(opts.Store.DB()),
+		adminActingSessionRepo:        storage.NewAdminActingSessionRepository(opts.Store.DB()),
+		contextRepo:                   storage.NewContextRepository(opts.Store.DB()),
+		udaRepo:                       storage.NewUDARepository(opts.Store.DB()),
+		hookRepo:                      storage.NewHookRepository(opts.Store.DB()),
+		hookDeliveryRepo:              storage.NewHookDeliveryRepository(opts.Store.DB()),
+		notificationSinkRepo:          storage.NewNotificationSinkRepository(opts.Store.DB()),
+		reminderRuleRepo:              storage.NewReminderRuleRepository(opts.Store.DB()),
+		eventNotificationRuleRepo:     storage.NewEventNotificationRuleRepository(opts.Store.DB()),
+		notificationDeliveryRepo:      storage.NewNotificationDeliveryRepository(opts.Store.DB()),
 		projectAutomationRuleRepo:     storage.NewProjectAutomationRuleRepository(opts.Store.DB()),
 		projectAutomationDeliveryRepo: storage.NewProjectAutomationDeliveryRepository(opts.Store.DB()),
-		extIDRepo:                 storage.NewExternalIDRepository(opts.Store.DB()),
-		runtimeConfig:             runtimeConfig,
-		runtimeOverrides:          cloneStringMap(opts.RuntimeOverrides),
-		runtimeUDAs:               runtimeUDAs,
-		runtime:                   rt,
-		requestScope:              cloneRequestScope(opts.RequestScope),
-		workspaceID:               rt.WorkspaceID,
-		clock:                     opts.Clock,
-		reports:                   report.DefaultRegistry(),
-		disableContext:            opts.NoContext,
-		sinkTestClient:            opts.SinkTestClient,
-		sinkTestResolver:          opts.SinkTestResolver,
-		tokenSecretKey:            append([]byte(nil), opts.TokenSecretKey...),
-		requireTokenSecret:        opts.RequireTokenSecret,
+		extIDRepo:                     storage.NewExternalIDRepository(opts.Store.DB()),
+		runtimeConfig:                 runtimeConfig,
+		runtimeOverrides:              cloneStringMap(opts.RuntimeOverrides),
+		runtimeUDAs:                   runtimeUDAs,
+		runtime:                       rt,
+		requestScope:                  cloneRequestScope(opts.RequestScope),
+		workspaceID:                   rt.WorkspaceID,
+		clock:                         opts.Clock,
+		reports:                       report.DefaultRegistry(),
+		disableContext:                opts.NoContext,
+		sinkTestClient:                opts.SinkTestClient,
+		sinkTestResolver:              opts.SinkTestResolver,
+		tokenSecretKey:                append([]byte(nil), opts.TokenSecretKey...),
+		requireTokenSecret:            opts.RequireTokenSecret,
 	}
 	if !opts.DisableScopeBootstrap {
 		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
@@ -578,11 +578,14 @@ func (s *Service) ListChildren(target string, includeClosed bool) ([]task.Task, 
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, err
 	}
-	parent, err := s.ResolveProtocolTarget(target)
+	parent, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
 		return nil, err
 	}
-	children, err := s.repo.Children(s.workspaceID, parent.UUID)
+	if parent.Task == nil {
+		return []task.Task{}, nil
+	}
+	children, err := s.repo.Children(s.workspaceID, parent.Task.UUID)
 	if err != nil {
 		return nil, err
 	}
@@ -679,6 +682,7 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	before := tsk
 	now := s.clock.Unix()
 	change := projectChangeForTask(tsk)
 	if input.Title != nil {
@@ -791,6 +795,12 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 		newTags = append(newTags, tag)
 	}
 	tsk.Tags = newTags
+	if tsk.SeriesID != nil {
+		tsk.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			tsk.RecurrenceOverrides,
+			changedOccurrenceFields(before, tsk)...,
+		))
+	}
 	tsk.Modified = now
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -890,6 +900,14 @@ func (s *Service) Delete(target string) error {
 		}
 		event := buildTaskHookEvent("task.deleted", deletedTask, tx.runtime, tx.clock.Unix())
 		entry := taskAuditEntry("task.delete", deletedTask.UUID, change)
+		if deletedTask.SeriesID != nil && deletedTask.RecurrenceAt != nil {
+			entry.Action = "task.recurrence.skipped"
+			entry.ProjectID = deletedTask.ProjectID
+			entry.Payload = map[string]any{
+				"series_id":     *deletedTask.SeriesID,
+				"recurrence_at": *deletedTask.RecurrenceAt,
+			}
+		}
 		return &entry, []HookEvent{event}, nil
 	})
 }
@@ -1071,11 +1089,14 @@ func (s *Service) ListAnnotations(target string, offset, limit int) ([]task.Anno
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, 0, err
 	}
-	tsk, err := s.resolveTargetForRead(target)
+	resolved, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.repo.ListAnnotations(s.workspaceID, tsk.UUID, offset, limit)
+	if resolved.Task == nil {
+		return []task.Annotation{}, 0, nil
+	}
+	return s.repo.ListAnnotations(s.workspaceID, resolved.Task.UUID, offset, limit)
 }
 
 // ResolveTaskRefs 把一组任务 UUID 解析为带标题和 task_slug 的轻量引用，
@@ -1860,7 +1881,7 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 	if err := s.refreshAutomaticState(); err != nil {
 		return urgency.ExplainResult{}, err
 	}
-	tsk, err := s.resolveTargetForRead(target)
+	resolved, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
 		return urgency.ExplainResult{}, err
 	}
@@ -1874,9 +1895,12 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 		return urgency.ExplainResult{}, err
 	}
 	opts.NowUnix = s.clock.Unix()
-	opts.Blocked = blocked[tsk.UUID]
-	opts.Blocking = blocking[tsk.UUID]
-	return urgency.Explain(tsk, opts), nil
+	if resolved.Task != nil {
+		opts.Blocked = blocked[resolved.Task.UUID]
+		opts.Blocking = blocking[resolved.Task.UUID]
+	}
+	result := urgency.ExplainValue(taskViewToUrgencyValue(resolved.View), opts)
+	return urgency.ExplainResult{UUID: resolved.StableID, Total: result.Total, Items: result.Items}, nil
 }
 
 func (s *Service) urgencyConfig() (urgency.Options, error) {

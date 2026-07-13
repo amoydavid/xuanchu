@@ -97,7 +97,10 @@ describe("task mutation hooks", () => {
     )
 
     await act(async () => {
-      await result.current.mutateAsync({ title: "写投放日报", project: "adsops" })
+      await result.current.mutateAsync({
+        title: "写投放日报",
+        project: "adsops",
+      })
     })
 
     expect(createTask).toHaveBeenCalledWith("acme", {
@@ -132,6 +135,7 @@ describe("task mutation hooks", () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["task", "acme", "ads-1"],
+        refetchType: "none",
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["task", "acme", "ads-1", "audit"],

@@ -134,6 +134,54 @@ describe("TaskPropertyPanel", () => {
     expect(document.querySelector('[data-slot="calendar"]')).toBeTruthy()
   })
 
+  it("keeps due editing available for a projected occurrence", () => {
+    render(
+      <TaskPropertyPanel
+        canWrite={true}
+        projectSlug="adsops"
+        task={task({
+          id: "occ:series-1:1783036800",
+          uuid: undefined,
+          task_slug: undefined,
+          recurrence_info: {
+            role: "occurrence",
+            series_id: "series-1",
+            series_status: "active",
+            rule: "daily",
+            recurrence_at: 1_783_036_800,
+            materialization: "projected",
+          },
+        })}
+        taskRef="occ:series-1:1783036800"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(screen.getByRole("button", { name: "截止日期" })).toHaveProperty(
+      "disabled",
+      false
+    )
+    expect(screen.getByText("原循环日期")).toBeTruthy()
+    expect(screen.getAllByText("计划实例").length).toBeGreaterThan(0)
+  })
+
+  it("renders numeric entry and modified timestamps from occurrence responses", async () => {
+    render(
+      <TaskPropertyPanel
+        canWrite={false}
+        projectSlug="adsops"
+        task={task({ entry: 1_783_945_747, modified: 1_783_945_747 })}
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "系统" }))
+    expect(screen.getAllByText("2026-07-13")).toHaveLength(2)
+  })
+
   it("uses product vocabulary, localized status, field help, and visual recurrence", async () => {
     render(
       <TaskPropertyPanel
@@ -164,7 +212,9 @@ describe("TaskPropertyPanel", () => {
     expect(screen.getByRole("button", { name: "说明：计划开始" })).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "说明：有效至" }))
     expect(
-      await screen.findByText(/过了这个日期后，待处理或等待中的任务会从常用报表里隐藏/)
+      await screen.findByText(
+        /过了这个日期后，待处理或等待中的任务会从常用报表里隐藏/
+      )
     ).toBeTruthy()
     // recurrence 编辑 UI 已移除（spec §11.2），循环归属由 series 面板管理。
     expect(screen.queryByText("重复规则")).toBeNull()

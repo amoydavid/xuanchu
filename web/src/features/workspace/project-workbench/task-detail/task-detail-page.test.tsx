@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -16,6 +16,19 @@ import {
 } from "../api/task-api"
 import { TaskDetailPage } from "./task-detail-page"
 
+const navigateMock = vi.fn()
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, ...props }: { children: ReactNode }) => (
+    <a {...props}>{children}</a>
+  ),
+  useNavigate: () => navigateMock,
+}))
+
+vi.mock("../api/task-series-api", () => ({
+  skipTaskSeriesOccurrence: vi.fn(),
+}))
+
 vi.mock("@/features/workspace/session/useMe", () => ({
   useMe: () => ({
     data: {
@@ -26,9 +39,8 @@ vi.mock("@/features/workspace/session/useMe", () => ({
 }))
 
 vi.mock("../api/task-api", async () => {
-  const actual = await vi.importActual<typeof import("../api/task-api")>(
-    "../api/task-api"
-  )
+  const actual =
+    await vi.importActual<typeof import("../api/task-api")>("../api/task-api")
   return {
     ...actual,
     deleteTask: vi.fn(),
@@ -137,17 +149,22 @@ describe("TaskDetailPage", () => {
     renderPage()
 
     expect(await screen.findByRole("heading", { name: "复盘" })).toBeTruthy()
+    expect(
+      screen.getByRole("heading", { level: 1, name: "写投放日报" })
+    ).toBeTruthy()
     expect(screen.getByText("素材")).toBeTruthy()
     expect(screen.getByText("预算")).toBeTruthy()
-    expect(screen.getByRole("link", { name: "acme" }).getAttribute("href")).toBe(
-      "/projects"
-    )
+    expect(
+      screen.getByRole("link", { name: "acme" }).getAttribute("href")
+    ).toBe("/projects")
     expect(
       screen.getByRole("link", { name: "agentapi" }).getAttribute("href")
     ).toBe("/workspaces/acme/projects/agentapi")
     expect(
-      document.querySelector('[class*="md:grid-cols-[minmax(0,1fr)_280px]"]')
-    ).toBeTruthy()
+      document.querySelectorAll(
+        '[class*="md:grid-cols-[minmax(0,1fr)_280px]"]'
+      )
+    ).toHaveLength(1)
   })
 
   it("renders localized status and places description above annotations", async () => {
@@ -166,7 +183,7 @@ describe("TaskDetailPage", () => {
     expect(screen.getByRole("button", { name: "编辑描述" })).toBeTruthy()
   })
 
-  it("runs start, done, and delete actions", async () => {
+  it("runs start and done actions and renders the returned completed state", async () => {
     renderPage()
 
     await screen.findByText("写投放日报")
@@ -175,11 +192,350 @@ describe("TaskDetailPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "完成" }))
     expect(doneTask).toHaveBeenCalledWith("acme", "ag-23")
+    expect(await screen.findByRole("button", { name: "重新打开" })).toBeTruthy()
+  })
 
-    await userEvent.click(screen.getByRole("button", { name: "删除" }))
+  it("deletes a pending ordinary task after confirmation", async () => {
+    renderPage()
+
+    await screen.findByText("写投放日报")
+
+    expect(screen.queryByRole("button", { name: "删除" })).toBeNull()
+    await userEvent.click(
+      screen.getByRole("button", { name: "更多操作 ag-23" })
+    )
+    await userEvent.click(screen.getByRole("menuitem", { name: "删除任务" }))
     expect(screen.getByText("确认删除任务")).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "删除任务" }))
     expect(deleteTask).toHaveBeenCalledWith("acme", "ag-23")
+  })
+
+  it("localizes the occurrence banner and occurrence actions in English", async () => {
+    await i18n.changeLanguage("en-US")
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_title: "每日投放巡检",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+    vi.mocked(deleteTask).mockResolvedValue(
+      task({
+        status: "deleted",
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      }) as never
+    )
+
+    renderPage()
+
+    expect(await screen.findByText("Recurring task · Daily")).toBeTruthy()
+    expect(screen.getByText("Recurring task: 每日投放巡检")).toBeTruthy()
+    expect(screen.getByText(/This occurrence:/)).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Complete this occurrence" })
+    ).toBeTruthy()
+    expect(
+      screen.queryByRole("button", { name: "Skip this occurrence" })
+    ).toBeNull()
+    await userEvent.click(
+      screen.getByRole("button", { name: "More actions ag-23" })
+    )
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: "Skip this occurrence" })
+    )
+    expect(screen.getByText(/Skip the .* occurrence\?/)).toBeTruthy()
+    expect(
+      screen.getByText(
+        "This occurrence will be marked as skipped without affecting future occurrences."
+      )
+    ).toBeTruthy()
+    await userEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Skip this occurrence",
+      })
+    )
+    expect(deleteTask).toHaveBeenCalledWith("acme", "ag-23")
+    expect(screen.getByRole("status").textContent).toContain(
+      "Skipped the July 3, 2026 occurrence"
+    )
+    expect(screen.queryByText(/循环任务|完成本次|跳过本次/)).toBeNull()
+  })
+
+  it("keeps a completed occurrence on its slug and announces the occurrence date", async () => {
+    const occurrence = {
+      role: "occurrence" as const,
+      series_id: "series-1",
+      series_status: "active" as const,
+      rule: "daily",
+      recurrence_at: 1_783_036_800,
+      materialization: "materialized" as const,
+    }
+    vi.mocked(getTask).mockResolvedValue(task({ recurrence_info: occurrence }))
+    vi.mocked(doneTask).mockResolvedValue(
+      task({ status: "completed", recurrence_info: occurrence }) as never
+    )
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "完成本次" })
+    )
+    expect(
+      await screen.findByRole("button", { name: "重新打开本次" })
+    ).toBeTruthy()
+    expect(screen.getByRole("status").textContent).toContain(
+      "已完成 2026年7月3日这一次"
+    )
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it("renders a deleted occurrence as a read-only skipped occurrence", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        status: "deleted",
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "stopped",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+
+    renderPage()
+
+    expect(await screen.findByText("已跳过")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "开始本次" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "完成本次" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "跳过本次" })).toBeNull()
+  })
+
+  it("allows adding a child to a projected occurrence", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        id: "occ:series-1:1783036800",
+        uuid: undefined,
+        task_slug: undefined,
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "projected",
+        },
+      })
+    )
+
+    render(
+      <TaskDetailPage
+        projectSlug="agentapi"
+        taskRef="occ:series-1:1783036800"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(
+      (await screen.findAllByRole("button", { name: "添加子任务" })).length
+    ).toBeGreaterThan(0)
+  })
+
+  it("presents a projected occurrence as a planned instance without internal ids", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        id: "occ:series-1:1784476799",
+        uuid: undefined,
+        task_slug: undefined,
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "stopped",
+          rule: "daily",
+          recurrence_at: 1_784_476_799,
+          materialization: "projected",
+        },
+      })
+    )
+
+    render(
+      <TaskDetailPage
+        projectSlug="agentapi"
+        taskRef="occ:series-1:1784476799"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(await screen.findByText("↻07-19")).toBeTruthy()
+    expect(screen.getAllByText("计划实例").length).toBeGreaterThan(0)
+    expect(screen.getByText(/计划于.*2026/)).toBeTruthy()
+    expect(screen.getByText(/首次编辑或执行操作后会创建本次任务/)).toBeTruthy()
+    expect(screen.getByText("所属循环任务已停止")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "开始本次" })).toBeTruthy()
+    expect(screen.queryByText("occ:series-1:1784476799")).toBeNull()
+  })
+
+  it("replaces an occurrence alias with its materialized slug permalink", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        id: "occ:series-1:1783036800",
+        uuid: "occurrence-uuid",
+        task_slug: "agentapi-7",
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+
+    render(
+      <TaskDetailPage
+        projectSlug="agentapi"
+        taskRef="occ:series-1:1783036800"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+        params: {
+          workspaceSlug: "acme",
+          projectSlug: "agentapi",
+          taskRef: "agentapi-7",
+        },
+        replace: true,
+      })
+    })
+  })
+
+  it("preserves the My Tasks return state when canonicalizing an occurrence permalink", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        id: "occ:series-1:1783036800",
+        uuid: "occurrence-uuid",
+        task_slug: "agentapi-7",
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+
+    render(
+      <TaskDetailPage
+        myTasksReturnSearch="tab=completed&priority=H&q=review&sort=due"
+        projectSlug="agentapi"
+        taskRef="occ:series-1:1783036800"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+        params: {
+          workspaceSlug: "acme",
+          projectSlug: "agentapi",
+          taskRef: "agentapi-7",
+        },
+        search: {
+          from: "my-tasks",
+          my_tasks_search: "tab=completed&priority=H&q=review&sort=due",
+        },
+        replace: true,
+      })
+    })
+  })
+
+  it("returns a My Tasks occurrence to the original preset and filters", async () => {
+    render(
+      <TaskDetailPage
+        myTasksReturnSearch="tab=overdue&priority=H&q=review&sort=priority"
+        projectSlug="agentapi"
+        taskRef="ag-23"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    const backLink = await screen.findByRole("link", { name: "返回我的任务" })
+    expect(backLink.getAttribute("href")).toBe(
+      "/my-tasks?priority=H&q=review&sort=priority&tab=overdue"
+    )
+  })
+
+  it("returns to the original My Tasks filters after skipping an occurrence", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+
+    render(
+      <TaskDetailPage
+        myTasksReturnSearch="tab=overdue&priority=H&q=review&sort=priority"
+        projectSlug="agentapi"
+        taskRef="ag-23"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "更多操作 ag-23" })
+    )
+    await userEvent.click(screen.getByRole("menuitem", { name: "跳过本次" }))
+    await userEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "跳过本次",
+      })
+    )
+
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/my-tasks",
+      search: {
+        tab: "overdue",
+        priority: "H",
+        q: "review",
+        sort: "priority",
+      },
+    })
   })
 
   it("does not show lifecycle actions for completed tasks", async () => {
@@ -224,8 +580,11 @@ describe("TaskDetailPage", () => {
         .disabled
     ).toBe(true)
     expect(
-      (screen.getByRole("button", { name: "编辑依赖任务" }) as HTMLButtonElement)
-        .disabled
+      (
+        screen.getByRole("button", {
+          name: "编辑依赖任务",
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true)
     expect(screen.queryByRole("button", { name: "添加注解" })).toBeNull()
     expect(screen.queryByRole("button", { name: "添加链接" })).toBeNull()
@@ -290,8 +649,18 @@ describe("TaskDetailPage", () => {
             field: "assignees",
             kind: "set",
             label_key: "projectWorkbench.taskHistory.field.assignees",
-            added: [{ raw: { id: "u2", name: "lisi", display_name: "李四" }, text: "李四" }],
-            removed: [{ raw: { id: "u1", name: "zhangsan", display_name: "张三" }, text: "张三" }],
+            added: [
+              {
+                raw: { id: "u2", name: "lisi", display_name: "李四" },
+                text: "李四",
+              },
+            ],
+            removed: [
+              {
+                raw: { id: "u1", name: "zhangsan", display_name: "张三" },
+                text: "张三",
+              },
+            ],
           },
         ],
       },
@@ -381,8 +750,16 @@ describe("TaskDetailPage", () => {
             kind: "uda",
             label_key: "projectWorkbench.taskHistory.field.udas",
             entries: [
-              { name: "effort", before: { raw: null, text: "" }, after: { raw: "2h", text: "2h" } },
-              { name: "budget", before: { raw: "100", text: "100" }, after: { raw: null, text: "" } },
+              {
+                name: "effort",
+                before: { raw: null, text: "" },
+                after: { raw: "2h", text: "2h" },
+              },
+              {
+                name: "budget",
+                before: { raw: "100", text: "100" },
+                after: { raw: null, text: "" },
+              },
             ],
           },
         ],

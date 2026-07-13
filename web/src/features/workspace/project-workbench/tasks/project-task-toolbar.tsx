@@ -1,12 +1,24 @@
 import { useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { CalendarIcon, PlusIcon, SlidersHorizontalIcon, XIcon } from "lucide-react"
+import {
+  CalendarIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  SlidersHorizontalIcon,
+  XIcon,
+} from "lucide-react"
 import { parseISO } from "date-fns"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Popover,
@@ -279,30 +291,46 @@ export function ProjectTaskToolbar({
             type="button"
             variant="outline"
           >
-            循环任务 {recurringTaskCount}
+            {recurringTaskCount > 0
+              ? i18n.t("taskSeries.count", { count: recurringTaskCount })
+              : i18n.t("taskSeries.title")}
           </Button>
         ) : null}
         {canCreateTask ? (
-          <div className="col-span-2 flex min-w-0 gap-1 sm:ml-auto">
+          <div className="col-span-2 flex min-w-0 sm:ml-auto">
             <Button
-              className="min-w-0 flex-1 rounded-md sm:flex-none"
+              className={cn(
+                "min-w-0 flex-1 rounded-md sm:flex-none",
+                onCreateRecurringTask && "rounded-r-none"
+              )}
               onClick={onCreateTask}
               size="lg"
               type="button"
             >
               <PlusIcon />
-              新建任务
+              {i18n.t("taskSeries.create.title")}
             </Button>
             {onCreateRecurringTask ? (
-              <Button
-                className="min-w-0 flex-1 sm:flex-none"
-                onClick={onCreateRecurringTask}
-                size="lg"
-                type="button"
-                variant="outline"
-              >
-                循环任务
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label={i18n.t("taskSeries.create.menuAria")}
+                    className="rounded-l-none border-l border-l-primary-foreground/25 px-2"
+                    size="lg"
+                    type="button"
+                  >
+                    <ChevronDownIcon />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={onCreateTask}>
+                    {i18n.t("taskSeries.create.normalAction")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onCreateRecurringTask}>
+                    {i18n.t("taskSeries.create.recurringAction")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </div>
         ) : null}

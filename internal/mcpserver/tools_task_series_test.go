@@ -60,6 +60,9 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	if data2["title"] != "每日巡检" {
 		t.Fatalf("get title = %v", data2["title"])
 	}
+	if data2["suggested_rule_effective_from"] == nil {
+		t.Fatalf("series_get 缺少 suggested_rule_effective_from: %#v", data2)
+	}
 	for _, field := range []string{"open_occurrences", "recent_completed", "recent_skipped"} {
 		if _, ok := data2[field]; !ok {
 			t.Fatalf("series_get 缺少实例分组 %s: %#v", field, data2)
@@ -160,6 +163,48 @@ func TestMCPTaskSeriesOccurrenceSkip(t *testing.T) {
 	data, _ := env.Data.(map[string]any)
 	if data["status"] != "deleted" {
 		t.Fatalf("status = %v want deleted", data["status"])
+	}
+}
+
+func TestMCPTaskOccurrenceAliasesReturnOneResourceShape(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+	callTool(t, session, "project_add", map[string]any{"slug": "ops", "name": "Ops"})
+	firstDue := int64(1893456000)
+	addResult := callTool(t, session, "task_series_add", TaskSeriesAddInput{
+		Project: "ops", Title: "每日巡检", RecurrenceRule: "daily", FirstDue: &firstDue,
+	})
+	occurrenceRef := parseEnvelope(t, addResult).Data.(map[string]any)["first_occurrence"].(map[string]any)["id"].(string)
+
+	done := callTool(t, session, "task_done", TaskIDInput{ID: occurrenceRef})
+	if done.IsError {
+		t.Fatalf("task_done occurrence error: %v", parseError(t, done))
+	}
+	doneData := parseEnvelope(t, done).Data.(map[string]any)
+	slug, _ := doneData["task_slug"].(string)
+	uuid, _ := doneData["uuid"].(string)
+	if doneData["id"] != occurrenceRef || slug == "" || uuid == "" || doneData["recurrence_info"] == nil {
+		t.Fatalf("done data = %#v", doneData)
+	}
+
+	for _, ref := range []string{occurrenceRef, uuid, slug} {
+		got := callTool(t, session, "task_get", TaskGetInput{ID: ref})
+		if got.IsError {
+			t.Fatalf("task_get(%q): %v", ref, parseError(t, got))
+		}
+		data := parseEnvelope(t, got).Data.(map[string]any)
+		if data["id"] != occurrenceRef || data["task_slug"] != slug || data["recurrence_info"] == nil {
+			t.Fatalf("task_get(%q) = %#v", ref, data)
+		}
+	}
+
+	reopened := callTool(t, session, "task_reopen", TaskIDInput{ID: slug})
+	if reopened.IsError {
+		t.Fatalf("task_reopen slug error: %v", parseError(t, reopened))
+	}
+	reopenedData := parseEnvelope(t, reopened).Data.(map[string]any)
+	if reopenedData["id"] != occurrenceRef || reopenedData["recurrence_info"] == nil {
+		t.Fatalf("reopen data = %#v", reopenedData)
 	}
 }
 

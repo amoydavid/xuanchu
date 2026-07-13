@@ -1,9 +1,26 @@
-import { useState } from "react"
+import { ChevronRightIcon, Repeat2Icon, SearchIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { TaskSeriesView } from "@/features/workspace/project-workbench/api/task-series-api"
+import {
+  formatTaskSeriesTimestamp,
+  recurrenceRuleLabel,
+  taskSeriesStatusLabel,
+} from "./recurrence-preview"
 
-// TaskSeriesList 是面板内的 series 列表（spec §15.3）。
-// 行点击进入 detail；ended/stopped 行只读。
 export function TaskSeriesList({
   items,
   total,
@@ -14,7 +31,6 @@ export function TaskSeriesList({
   onStatusFilterChange,
   query,
   onQueryChange,
-  canManage,
   assignee = "",
   onAssigneeChange = () => {},
   sort = "next",
@@ -41,130 +57,187 @@ export function TaskSeriesList({
   limit?: number
   onPageChange?: (offset: number) => void
 }) {
+  const { i18n, t } = useTranslation()
+  const hasFilters = Boolean(query || assignee || statusFilter !== "active")
+
   return (
-    <div data-testid="task-series-list">
-      <div className="flex gap-2">
-        <input
+    <div className="space-y-3" data-testid="task-series-list">
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          aria-label={t("taskSeries.aria.search")}
+          className="pl-8"
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder={t("taskSeries.list.searchPlaceholder")}
           type="search"
-          placeholder="搜索规则…"
           value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          aria-label="搜索循环任务规则"
-          className="flex-1"
         />
-        <select
-          value={statusFilter}
-          onChange={(e) => onStatusFilterChange(e.target.value)}
-          aria-label="循环任务状态筛选"
-        >
-          <option value="active">运行中</option>
-          <option value="ended">已结束</option>
-          <option value="stopped">已停止</option>
-          <option value="all">全部</option>
-        </select>
       </div>
-      <div className="flex gap-2">
-        <input
-          aria-label="循环任务负责人筛选"
-          onChange={(event) => onAssigneeChange(event.target.value)}
-          placeholder="负责人"
-          type="search"
-          value={assignee}
-        />
-        <select
-          aria-label="循环任务排序"
-          onChange={(event) => onSortChange(event.target.value)}
-          value={sort}
-        >
-          <option value="next">下一次执行</option>
-          <option value="title">标题</option>
-          <option value="modified">最近修改</option>
-        </select>
+      <div className="grid grid-cols-2 gap-2">
+        <Select onValueChange={onStatusFilterChange} value={statusFilter}>
+          <SelectTrigger
+            aria-label={t("taskSeries.aria.statusFilter")}
+            className="w-full"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">
+              {taskSeriesStatusLabel("active", t)}
+            </SelectItem>
+            <SelectItem value="ended">
+              {taskSeriesStatusLabel("ended", t)}
+            </SelectItem>
+            <SelectItem value="stopped">
+              {taskSeriesStatusLabel("stopped", t)}
+            </SelectItem>
+            <SelectItem value="all">
+              {t("taskSeries.list.allStatuses")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Select onValueChange={onSortChange} value={sort}>
+          <SelectTrigger
+            aria-label={t("taskSeries.aria.sort")}
+            className="w-full"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="next">
+              {t("taskSeries.list.sortNext")}
+            </SelectItem>
+            <SelectItem value="title">
+              {t("taskSeries.list.sortTitle")}
+            </SelectItem>
+            <SelectItem value="modified">
+              {t("taskSeries.list.sortModified")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      {error && <div role="alert">{error}</div>}
-      {loading && <div>加载中…</div>}
-      {!loading && !error && items.length === 0 && (
-        <div>还没有循环任务；适合每日巡检、周报等重复执行工作。</div>
+      <Input
+        aria-label={t("taskSeries.aria.assigneeFilter")}
+        onChange={(event) => onAssigneeChange(event.target.value)}
+        placeholder={t("taskSeries.list.assigneeFilter")}
+        type="search"
+        value={assignee}
+      />
+
+      <Separator />
+
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : loading ? (
+        <div className="space-y-2" aria-label={t("taskSeries.list.loading")}>
+          {[0, 1, 2].map((item) => (
+            <Skeleton className="h-20 w-full" key={item} />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center px-4 py-8 text-center">
+          <div className="mb-3 flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <Repeat2Icon className="size-4" />
+          </div>
+          <p className="text-sm font-medium">
+            {hasFilters
+              ? t("taskSeries.list.noResultsTitle")
+              : t("taskSeries.list.emptyTitle")}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {hasFilters
+              ? t("taskSeries.list.noResultsDescription")
+              : t("taskSeries.list.emptyDescription")}
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y overflow-hidden rounded-lg border bg-card">
+          {items.map((series) => (
+            <Button
+              aria-label={t("taskSeries.aria.viewSeries", {
+                title: series.title,
+              })}
+              className="group h-auto w-full items-start justify-start gap-3 rounded-none p-3 text-left whitespace-normal hover:bg-muted/60 focus-visible:ring-inset"
+              data-series-id={series.id}
+              data-status={series.status}
+              data-testid="task-series-row"
+              key={series.id}
+              onClick={() => onSelect(series)}
+              type="button"
+              variant="ghost"
+            >
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium">
+                    {series.title}
+                  </span>
+                  <Badge
+                    data-testid="series-status"
+                    variant={
+                      series.status === "active" ? "secondary" : "outline"
+                    }
+                  >
+                    {taskSeriesStatusLabel(series.status, t)}
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {recurrenceRuleLabel(series.recurrence_rule, t)}
+                  {series.next_recurrence_at != null
+                    ? ` · ${t("taskSeries.list.nextAt", { date: formatTaskSeriesTimestamp(series.next_recurrence_at, i18n.language) })}`
+                    : ""}
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span>
+                    {t("taskSeries.list.openCount", {
+                      count: series.open_occurrence_count,
+                    })}
+                  </span>
+                  {series.overdue_count > 0 ? (
+                    <span className="text-destructive">
+                      {t("taskSeries.list.overdueCount", {
+                        count: series.overdue_count,
+                      })}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <ChevronRightIcon className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </Button>
+          ))}
+        </div>
       )}
-      {items.map((series) => (
-        <TaskSeriesListItem
-          key={series.id}
-          series={series}
-          onSelect={onSelect}
-          canManage={canManage}
-        />
-      ))}
+
       {total > 0 ? (
-        <div>
-          <span>
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span className="tabular-nums">
             {offset + 1}–{Math.min(offset + items.length, total)} / {total}
           </span>
-          <button
-            aria-label="上一页"
-            disabled={offset === 0}
-            onClick={() => onPageChange(Math.max(0, offset - limit))}
-            type="button"
-          >
-            上一页
-          </button>
-          <button
-            aria-label="下一页"
-            disabled={offset + limit >= total}
-            onClick={() => onPageChange(offset + limit)}
-            type="button"
-          >
-            下一页
-          </button>
+          <div className="flex gap-1">
+            <Button
+              aria-label={t("taskSeries.list.previousPage")}
+              disabled={offset === 0}
+              onClick={() => onPageChange(Math.max(0, offset - limit))}
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              {t("taskSeries.list.previousPage")}
+            </Button>
+            <Button
+              aria-label={t("taskSeries.list.nextPage")}
+              disabled={offset + limit >= total}
+              onClick={() => onPageChange(offset + limit)}
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              {t("taskSeries.list.nextPage")}
+            </Button>
+          </div>
         </div>
       ) : null}
     </div>
-  )
-}
-
-function TaskSeriesListItem({
-  series,
-  onSelect,
-  canManage,
-}: {
-  series: TaskSeriesView
-  onSelect: (series: TaskSeriesView) => void
-  canManage: boolean
-}) {
-  const readonly = series.status !== "active" || !canManage
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <article
-      data-testid="task-series-row"
-      data-series-id={series.id}
-      data-status={series.status}
-    >
-      <button
-        type="button"
-        onClick={() => onSelect(series)}
-        aria-label={`查看循环任务 ${series.title}`}
-      >
-        <span>{series.title}</span>
-      </button>
-      <span data-testid="series-status">
-        {series.status === "active" ? "● 运行中" : series.status === "ended" ? "已结束" : "已停止"}
-      </span>
-      <span>
-        {series.recurrence_rule}
-        {series.next_recurrence_at ? ` · 下次 ${series.next_recurrence_at}` : ""}
-        {" · 未完成 "}{series.open_occurrence_count}
-        {series.overdue_count > 0 ? `（逾期 ${series.overdue_count}）` : ""}
-      </span>
-      {readonly && <span title="只读">只读</span>}
-      {canManage && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-label={expanded ? "收起" : "展开"}
-          aria-expanded={expanded}
-        >
-          {expanded ? "›" : "›"}
-        </button>
-      )}
-    </article>
   )
 }

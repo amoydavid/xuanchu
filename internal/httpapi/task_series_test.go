@@ -3,11 +3,22 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
+
+func countMaterializedOccurrences(t *testing.T, fixture httpTokenFixture) int64 {
+	t.Helper()
+	var count int64
+	if err := fixture.server.store.DB().Model(&storage.Task{}).Where("series_id IS NOT NULL").Count(&count).Error; err != nil {
+		t.Fatalf("count occurrences: %v", err)
+	}
+	return count
+}
 
 // createHTTPTestProjectViaService 直接通过 service 创建测试项目（token 无 project:write scope）。
 func createHTTPTestProjectViaService(t *testing.T, fixture httpTokenFixture) string {
@@ -69,6 +80,17 @@ func TestTaskSeriesHTTPCreateAndGet(t *testing.T) {
 		map[string]string{"Authorization": "Bearer " + fixture.token})
 	if rr2.Code != http.StatusOK {
 		t.Fatalf("get series: status=%d body=%s", rr2.Code, rr2.Body.String())
+	}
+	var getResp struct {
+		Data struct {
+			SuggestedRuleEffectiveFrom *int64 `json:"suggested_rule_effective_from"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr2.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("unmarshal get series: %v body=%s", err, rr2.Body.String())
+	}
+	if getResp.Data.SuggestedRuleEffectiveFrom == nil {
+		t.Fatalf("get series 缺少 suggested_rule_effective_from: %s", rr2.Body.String())
 	}
 }
 
@@ -186,6 +208,20 @@ func TestTaskSeriesHTTPCreateRejectsInvalidRule(t *testing.T) {
 	}
 }
 
+func TestTaskSeriesHTTPCreateRejectsUndefinedUDAAsBadRequest(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	createHTTPTestProjectViaService(t, fixture)
+	body := `{"title":"每日巡检","project":"ops","recurrence_rule":"daily","first_due_date":"2030-01-01","udas":{"channel":"search"}}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/task-series?workspace=local",
+		body, map[string]string{"Authorization": "Bearer " + fixture.token})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("undefined UDA should return 400, got status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"code":"uda_not_defined"`) {
+		t.Fatalf("response should expose stable UDA error: %s", rr.Body.String())
+	}
+}
+
 func TestTaskSeriesHTTPOccurrencesList(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	createHTTPTestProjectViaService(t, fixture)
@@ -282,6 +318,101 @@ func TestTaskSeriesHTTPOccurrenceSkip(t *testing.T) {
 	}
 }
 
+func TestTaskHTTPGetsProjectedOccurrenceByEncodedReferenceWithoutMaterializing(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	createHTTPTestProjectViaService(t, fixture)
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	created := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/task-series?workspace=local",
+		`{"title":"每日巡检","project":"ops","recurrence_rule":"daily","first_due_date":"2030-01-01"}`, headers)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create series: status=%d body=%s", created.Code, created.Body.String())
+	}
+	var payload struct {
+		Data struct {
+			FirstOccurrence struct {
+				ID string `json:"id"`
+			} `json:"first_occurrence"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	encoded := url.PathEscape(payload.Data.FirstOccurrence.ID)
+	if encoded == payload.Data.FirstOccurrence.ID {
+		encoded = strings.ReplaceAll(payload.Data.FirstOccurrence.ID, ":", "%3A")
+	}
+
+	before := countMaterializedOccurrences(t, fixture)
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+encoded+"?workspace=local", headers)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET encoded occurrence: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	data := httpResponseDataMap(t, rr)
+	if data["id"] != payload.Data.FirstOccurrence.ID || data["task_slug"] != nil {
+		t.Fatalf("occurrence response = %#v", data)
+	}
+	if after := countMaterializedOccurrences(t, fixture); after != before {
+		t.Fatalf("projected GET wrote rows: before=%d after=%d", before, after)
+	}
+}
+
+func TestTaskHTTPRejectsUnsafeOrDoubleEncodedReferences(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read")
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	for _, encoded := range []string{"occ%253Aseries%253A1", "bad%2Fref", "bad%25ref"} {
+		t.Run(encoded, func(t *testing.T) {
+			rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+encoded, headers)
+			assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_ref_invalid")
+		})
+	}
+}
+
+func TestTaskHTTPMaterializedOccurrenceAliasesReturnOneResourceShape(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	createHTTPTestProjectViaService(t, fixture)
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	created := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/task-series?workspace=local",
+		`{"title":"每日巡检","project":"ops","recurrence_rule":"daily","first_due_date":"2030-01-01"}`, headers)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create series: status=%d body=%s", created.Code, created.Body.String())
+	}
+	createData := httpResponseDataMap(t, created)
+	first := createData["first_occurrence"].(map[string]any)
+	occurrenceRef := first["id"].(string)
+	encoded := strings.ReplaceAll(occurrenceRef, ":", "%3A")
+
+	done := requestHTTP(t, fixture.server, http.MethodPost, "/api/v1/tasks/"+encoded+"/done?workspace=local", headers)
+	if done.Code != http.StatusOK {
+		t.Fatalf("done projected: status=%d body=%s", done.Code, done.Body.String())
+	}
+	doneData := httpResponseDataMap(t, done)
+	slug, _ := doneData["task_slug"].(string)
+	uuid, _ := doneData["uuid"].(string)
+	if slug == "" || uuid == "" || doneData["id"] != occurrenceRef {
+		t.Fatalf("done response = %#v", doneData)
+	}
+
+	for _, ref := range []string{slug, uuid, encoded} {
+		rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks/"+ref+"?workspace=local", headers)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("GET %q: status=%d body=%s", ref, rr.Code, rr.Body.String())
+		}
+		data := httpResponseDataMap(t, rr)
+		if data["id"] != occurrenceRef || data["task_slug"] != slug || data["recurrence_info"] == nil {
+			t.Fatalf("GET %q response = %#v", ref, data)
+		}
+	}
+
+	reopened := requestHTTP(t, fixture.server, http.MethodPost, "/api/v1/tasks/"+slug+"/reopen?workspace=local", headers)
+	if reopened.Code != http.StatusOK {
+		t.Fatalf("reopen by slug: status=%d body=%s", reopened.Code, reopened.Body.String())
+	}
+	reopenedData := httpResponseDataMap(t, reopened)
+	if reopenedData["id"] != occurrenceRef || reopenedData["task_slug"] != slug || reopenedData["recurrence_info"] == nil {
+		t.Fatalf("reopen response = %#v", reopenedData)
+	}
+}
+
 func TestTaskHTTPQueryAutoExpandsOccurrencesAndAppliesTaskType(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	createHTTPTestProjectViaService(t, fixture)
@@ -292,7 +423,7 @@ func TestTaskHTTPQueryAutoExpandsOccurrencesAndAppliesTaskType(t *testing.T) {
 		t.Fatalf("create series: status=%d body=%s", created.Code, created.Body.String())
 	}
 
-	queryPath := "/api/v1/tasks?workspace=local&project=ops&due_after=2030-01-01&due_before=2030-01-02&task_type=occurrence"
+	queryPath := "/api/v1/tasks?workspace=local&project=ops&due_after=2030-01-01&due_before=2030-01-01&task_type=occurrence"
 	rr := requestHTTP(t, fixture.server, http.MethodGet, queryPath, headers)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("query occurrences: status=%d body=%s", rr.Code, rr.Body.String())
@@ -307,8 +438,8 @@ func TestTaskHTTPQueryAutoExpandsOccurrencesAndAppliesTaskType(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Data.OccurrenceMode != "expand" || response.Data.Total == 0 {
-		t.Fatalf("query response = %#v want expanded occurrence", response.Data)
+	if response.Data.OccurrenceMode != "expand" || response.Data.Total != 1 {
+		t.Fatalf("single-day query response = %#v want one expanded occurrence", response.Data)
 	}
 	for _, item := range response.Data.Items {
 		if item.RecurrenceInfo == nil {

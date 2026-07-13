@@ -21,6 +21,36 @@ describe("i18n", () => {
   it("keeps Chinese and English locale keys aligned", () => {
     expect(flattenKeys(zhCN)).toEqual(flattenKeys(enUS))
   })
+
+  it.each(["zh-CN", "en-US"])(
+    "contains the complete recurring-task vocabulary in %s",
+    (language) => {
+      i18n.changeLanguage(language)
+      const requiredKeys = [
+        "taskSeries.title",
+        "taskSeries.create.title",
+        "taskSeries.edit.title",
+        "taskSeries.list.emptyTitle",
+        "taskSeries.detail.openOccurrences",
+        "taskSeries.stop.title",
+        "taskSeries.status.active",
+        "taskSeries.status.ended",
+        "taskSeries.status.stopped",
+        "taskSeries.rule.daily",
+        "taskSeries.rule.weekly",
+        "taskSeries.rule.monthly",
+        "taskSeries.actions.completeOccurrence",
+        "taskSeries.actions.reopenOccurrence",
+        "taskSeries.actions.skipOccurrence",
+        "taskSeries.aria.panel",
+        "taskSeries.errors.loadList",
+      ]
+
+      for (const key of requiredKeys) {
+        expect(i18n.t(key), key).not.toBe(key)
+      }
+    }
+  )
 })
 
 function flattenKeys(value: unknown, prefix = ""): string[] {

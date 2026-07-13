@@ -1,23 +1,17 @@
-/* eslint-disable react-hooks/set-state-in-effect -- 弹窗/面板打开时需在 effect 内重置状态 */
-import { useEffect, useMemo, useState } from "react"
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import {
-  createTaskSeries,
-  modifyTaskSeries,
-  type TaskSeriesView,
-} from "@/features/workspace/project-workbench/api/task-series-api"
-import {
-  RECURRENCE_OPTIONS,
-  formatDateShort,
-  isCanonicalRecurrenceRule,
-  parseDateToEndOfDay,
-  previewRecurrenceDates,
-  type CanonicalRecurrenceRule,
-} from "./recurrence-preview"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import type { TaskSeriesView } from "@/features/workspace/project-workbench/api/task-series-api"
+import { TaskSeriesForm } from "./task-series-form"
 
-// TaskSeriesDialog 是创建/编辑循环任务的统一弹窗（spec §15.4、§15.16）。
-// 创建模式：提交 POST /task-series。
-// 编辑模式：first_due 只读；rule 修改需 effective_from（App 层完整实现后接入）。
+/** 独立创建/编辑入口的兼容容器；嵌入其它弹窗时直接使用 TaskSeriesForm。 */
 export function TaskSeriesDialog({
   open,
   workspaceSlug,
@@ -26,6 +20,7 @@ export function TaskSeriesDialog({
   series,
   onClose,
   onCreated,
+  onSaved,
 }: {
   open: boolean
   workspaceSlug: string
@@ -34,246 +29,52 @@ export function TaskSeriesDialog({
   series?: TaskSeriesView | null
   onClose: () => void
   onCreated?: (series: TaskSeriesView) => void
+  onSaved?: () => void
 }) {
-  const [title, setTitle] = useState("")
-  const [rule, setRule] = useState<CanonicalRecurrenceRule>("daily")
-  const [firstDue, setFirstDue] = useState("")
-  const [until, setUntil] = useState("")
-  const [effectiveFrom, setEffectiveFrom] = useState("")
-  const [priority, setPriority] = useState("")
-  const [tags, setTags] = useState("")
-  const [error, setError] = useState<string | null>(null)
+  const { t } = useTranslation()
+  const isCreate = mode === "create"
   const [submitting, setSubmitting] = useState(false)
 
-  // 打开时填充表单。
-  useEffect(() => {
-    if (!open) return
-    if (mode === "edit" && series) {
-      setTitle(series.title)
-      if (isCanonicalRecurrenceRule(series.recurrence_rule)) {
-        setRule(series.recurrence_rule)
-      }
-      setFirstDue(formatDateShort(new Date(series.first_due * 1000)))
-      setUntil(series.until ? formatDateShort(new Date(series.until * 1000)) : "")
-      setPriority(series.priority ?? "")
-      setTags((series.tags ?? []).join(", "))
-      setEffectiveFrom("")
-    } else {
-      setTitle("")
-      setRule("daily")
-      setFirstDue("")
-      setUntil("")
-      setPriority("")
-      setTags("")
-      setEffectiveFrom("")
-    }
-    setError(null)
-    setSubmitting(false)
-  }, [open, mode, series])
-
-  // 未来三次预览。
-  const previewDates = useMemo(() => {
-    if (!firstDue) return []
-    const from = parseDateToEndOfDay(firstDue)
-    if (!from || !isCanonicalRecurrenceRule(rule)) return []
-    const untilDate = until ? parseDateToEndOfDay(until) : null
-    return previewRecurrenceDates(from, rule, 3, untilDate)
-  }, [firstDue, rule, until])
-
-  // until 早于 first_due 校验。
-  const untilError = useMemo(() => {
-    if (!firstDue || !until) return null
-    const fd = parseDateToEndOfDay(firstDue)
-    const ut = parseDateToEndOfDay(until)
-    if (!fd || !ut) return null
-    if (ut.getTime() < fd.getTime()) return "循环结束必须不早于首次截止"
-    return null
-  }, [firstDue, until])
-
-  if (!open) return null
-
-  const submit = async () => {
-    const trimmedTitle = title.trim()
-    if (!trimmedTitle) {
-      setError("任务标题不能为空")
-      return
-    }
-    if (!firstDue) {
-      setError("首次截止必填")
-      return
-    }
-    const firstDueDate = parseDateToEndOfDay(firstDue)
-    if (!firstDueDate) {
-      setError("首次截止格式必须为 YYYY-MM-DD")
-      return
-    }
-    if (untilError) {
-      setError(untilError)
-      return
-    }
-    setError(null)
-    setSubmitting(true)
-    try {
-      if (mode === "create") {
-        const result = await createTaskSeries(workspaceSlug, {
-          title: trimmedTitle,
-          project: projectSlug,
-          recurrence_rule: rule,
-          first_due: Math.floor(firstDueDate.getTime() / 1000),
-          ...(until ? { until: Math.floor((parseDateToEndOfDay(until)?.getTime() ?? 0) / 1000) } : {}),
-          ...(priority ? { priority } : {}),
-          ...(tags.trim() ? { tags: tags.split(",").map((t) => t.trim()).filter(Boolean) } : {}),
-        })
-        onCreated?.(result.series)
-      } else if (series) {
-        const ruleChanged = rule !== series.recurrence_rule
-        if (ruleChanged && !effectiveFrom) {
-          setError("修改循环规则时必须选择新规则生效日期")
-          setSubmitting(false)
-          return
-        }
-        const effectiveDate = effectiveFrom
-          ? parseDateToEndOfDay(effectiveFrom)
-          : null
-        if (ruleChanged && !effectiveDate) {
-          setError("新规则生效日期格式必须为 YYYY-MM-DD")
-          setSubmitting(false)
-          return
-        }
-        const clear: string[] = []
-        if (!until && series.until != null) clear.push("until")
-        if (!priority && series.priority) clear.push("priority")
-        if (!tags.trim() && (series.tags?.length ?? 0) > 0) clear.push("tags")
-        await modifyTaskSeries(workspaceSlug, series.id, {
-          title: trimmedTitle,
-          ...(priority ? { priority } : {}),
-          ...(until
-            ? {
-                until: Math.floor(
-                  (parseDateToEndOfDay(until)?.getTime() ?? 0) / 1000
-                ),
-              }
-            : {}),
-          ...(tags.trim()
-            ? {
-                tags: tags
-                  .split(",")
-                  .map((tag) => tag.trim())
-                  .filter(Boolean),
-              }
-            : {}),
-          ...(ruleChanged
-            ? {
-                recurrence_rule: rule,
-                effective_from: Math.floor(
-                  (effectiveDate?.getTime() ?? 0) / 1000
-                ),
-              }
-            : {}),
-          ...(clear.length > 0 ? { clear } : {}),
-        })
-      }
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失败")
-      setSubmitting(false)
-    }
-  }
-
-  const dialogTitle = mode === "create" ? "新建循环任务" : "编辑循环设置"
-
   return (
-    <div role="dialog" aria-modal="true" aria-label={dialogTitle} data-testid="task-series-dialog">
-      <h3>{dialogTitle}</h3>
-      {mode === "create" && (
-        <p>创建规则后，每个日期都是可以独立完成的一次任务。</p>
-      )}
-      <label>
-        标题 *
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          aria-label="任务标题"
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && !submitting && onClose()}
+    >
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+        data-testid="task-series-dialog"
+        showCloseButton={!submitting}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {isCreate
+              ? t("taskSeries.create.recurringTitle")
+              : t("taskSeries.edit.title")}
+          </DialogTitle>
+          <DialogDescription>
+            {isCreate
+              ? t("taskSeries.create.description")
+              : t("taskSeries.edit.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <TaskSeriesForm
+          key={`${mode}:${series?.id ?? "new"}`}
+          mode={mode}
+          onCancel={onClose}
+          onSubmittingChange={setSubmitting}
+          onCreated={(created) => {
+            onCreated?.(created)
+            onClose()
+          }}
+          onSaved={() => {
+            onSaved?.()
+            onClose()
+          }}
+          projectSlug={projectSlug}
+          series={series}
+          workspaceSlug={workspaceSlug}
         />
-      </label>
-      <label>
-        循环规则 *
-        <select
-          value={rule}
-          onChange={(e) => setRule(e.target.value as CanonicalRecurrenceRule)}
-          aria-label="循环规则"
-        >
-          {RECURRENCE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </label>
-      {mode === "edit" && series && rule !== series.recurrence_rule ? (
-        <label>
-          新规则生效日期 *
-          <input
-            aria-label="新规则生效日期"
-            onChange={(event) => setEffectiveFrom(event.target.value)}
-            type="date"
-            value={effectiveFrom}
-          />
-        </label>
-      ) : null}
-      <label>
-        首次截止 *
-        <input
-          type="date"
-          value={firstDue}
-          onChange={(e) => setFirstDue(e.target.value)}
-          disabled={mode === "edit"}
-          aria-label="首次截止日期"
-        />
-      </label>
-      <label>
-        循环结束
-        <input
-          type="date"
-          value={until}
-          onChange={(e) => setUntil(e.target.value)}
-          aria-label="循环结束日期"
-        />
-      </label>
-      {untilError && <div role="alert">{untilError}</div>}
-      <label>
-        优先级
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} aria-label="优先级">
-          <option value="">无</option>
-          <option value="H">H</option>
-          <option value="M">M</option>
-          <option value="L">L</option>
-        </select>
-      </label>
-      <label>
-        标签
-        <input
-          type="text"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="逗号分隔"
-          aria-label="标签"
-        />
-      </label>
-      {previewDates.length > 0 && (
-        <p>未来三次：{previewDates.map((d) => formatDateShort(d)).join(" · ")}</p>
-      )}
-      {error && <div role="alert">{error}</div>}
-      <div>
-        <button type="button" onClick={onClose} disabled={submitting}>取消</button>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={submitting}
-          data-testid="series-submit-btn"
-        >
-          {mode === "create" ? "创建循环任务" : "保存循环设置"}
-        </button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

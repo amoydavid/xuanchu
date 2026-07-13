@@ -27,7 +27,7 @@ type UrgencyExplainInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID        string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in UrgencyExplainInput) scopeInput() RequestScopeInput {
@@ -73,11 +73,10 @@ func registerReportTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", false)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		explain, err := svc.ExplainUrgency(resolved.UUID)
+		explain, err := svc.ExplainUrgency(strings.TrimSpace(in.ID))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}

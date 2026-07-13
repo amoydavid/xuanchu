@@ -37,8 +37,9 @@ xuanchu add "Ship docs" @alice @bob
 | `<uuid>` | 任务永久 UUID |
 | `<uuid-prefix>` | 足够长且不歧义的 UUID 前缀 |
 | `agentapi-1` | `task_slug`，由 `<projectSlug>-<seq>` 派生 |
+| `occ:<series-id>:<slot>` | 循环实例的稳定 `occurrence_ref`；projected 实例只能用它 |
 
-HTTP API、HTTP MCP 和 stdio MCP 属于协议入口，只接受 UUID 或 `task_slug`。纯数字 working-set ID 不进入协议契约；远程 CLI 如果收到 `info 1` 这类输入，会先在客户端按当前 working set 两跳解析。
+HTTP API、HTTP MCP 和 stdio MCP 属于协议入口，接受完整 UUID、已物化任务的 `task_slug` 或 `occurrence_ref`。纯数字 working-set ID 不进入协议契约；远程 CLI 如果收到 `info 1` 这类输入，会先在客户端按当前 working set 两跳解析。循环实例物化后优先向用户显示 `task_slug`，但 occurrence_ref 永久可解析。
 
 ## 查看任务
 
@@ -154,7 +155,12 @@ xuanchu series add "Submit weekly report" \
   --project agentapi \
   --recur weekly \
   --first-due 2030-01-05 \
-  --until 2030-02-01
+  --until 2030-02-01 \
+  --description "整理本周进展与风险" \
+  --priority M \
+  --assignee alice \
+  --tag report \
+  --uda channel=weekly
 xuanchu series list --project agentapi
 xuanchu series info <series-ref>
 xuanchu series occurrences <series-ref> --status all
@@ -182,6 +188,7 @@ xuanchu series occurrences <series-ref> --status all
 - `series skip <series-ref> <occurrence-ref>` 跳过某一次。
 - `series stop <series-ref>` 停止后续实例；可选择同时删除尚未完成的实例。
 - 某一次实例仍使用普通任务命令完成、重开或修改；只影响本次并记录 override。
+- 已物化实例优先使用 `agentapi-7` 这类 task_slug 查看和操作；指定日期范围计算出的计划实例使用 occurrence_ref。首次写入计划实例后会获得 task_slug。
 - `monthly` 使用本地日历月推进，保留确定的月末规则，不使用固定天数毫秒。
 
 旧的 `xuanchu add ... recur:*`、`modify recur:*` 和 Taskwarrior recurring JSON

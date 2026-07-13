@@ -44,6 +44,7 @@ type TaskViewMetadata struct {
 type RecurrenceInfo struct {
 	Role            string // 固定 "occurrence"
 	SeriesID        string
+	SeriesTitle     string
 	SeriesStatus    string // active|ended|stopped
 	Rule            string
 	RecurrenceAt    int64
@@ -209,6 +210,7 @@ func projectedOccurrenceView(series taskseries.Series, slot taskseries.Slot, ass
 		RecurrenceInfo: &RecurrenceInfo{
 			Role:            "occurrence",
 			SeriesID:        series.ID,
+			SeriesTitle:     series.Title,
 			SeriesStatus:    series.Status,
 			Rule:            slot.Rule,
 			RecurrenceAt:    slot.RecurrenceAt,
@@ -218,6 +220,26 @@ func projectedOccurrenceView(series taskseries.Series, slot taskseries.Slot, ass
 		},
 	}
 	return view
+}
+
+// bindOccurrenceProject 为已物化 occurrence 写入完整项目绑定并分配短引用序号。
+// project、project_id、project_seq 必须在同一事务内同时成立，避免生成缺少
+// task_slug 的半绑定任务。
+func (s *Service) bindOccurrenceProject(tsk *domain.Task, workspaceID, projectID string) error {
+	project, err := s.projectRepo.GetByID(projectID)
+	if err != nil || project.WorkspaceID != workspaceID {
+		return RuntimeError{Code: "project_invariant_violation", Message: "occurrence project not found"}
+	}
+	tsk.Project = cloneStringPtr(&project.Slug)
+	tsk.ProjectID = cloneStringPtr(&project.ID)
+	if tsk.ProjectSeq == nil {
+		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(workspaceID, projectID)
+		if err != nil {
+			return err
+		}
+		tsk.ProjectSeq = &seq
+	}
+	return s.validateTaskProjectInvariant(*tsk)
 }
 
 func rawSeriesUDAValues(values map[string]string) map[string]domain.UDAValue {
@@ -468,6 +490,7 @@ func (s *Service) collectTaskViewCandidates(q TaskViewQuery, mode OccurrenceMode
 		view := taskToView(t, userInfoList(t.Assignees, userInfos))
 		// 补充 series_status（materialized 行不含 series 当前状态）。
 		if se := findSeries(seriesList, seriesID); se != nil && view.RecurrenceInfo != nil {
+			view.RecurrenceInfo.SeriesTitle = se.Title
 			view.RecurrenceInfo.SeriesStatus = se.Status
 			view.RecurrenceInfo.Until = se.Until
 		}
@@ -506,22 +529,11 @@ func (s *Service) collectTaskViewCandidates(q TaskViewQuery, mode OccurrenceMode
 // occurrence_ref：先查 materialized row；未命中则校验 series 有效区间和槽位合法性，返回 projected。
 // 不写库。
 func (s *Service) GetTaskView(ref string) (TaskOccurrenceView, error) {
-	if err := s.Require(PermissionTaskRead); err != nil {
-		return TaskOccurrenceView{}, err
-	}
-	if IsOccurrenceRef(ref) {
-		return s.getOccurrenceView(ref)
-	}
-	// 普通 UUID/slug：读取 materialized task。
-	tsk, err := s.resolveTargetForRead(ref)
+	resolution, err := s.ResolveTaskReferenceForRead(ref)
 	if err != nil {
 		return TaskOccurrenceView{}, err
 	}
-	userInfos, err := s.resolveUserInfos(collectAssigneeUserIDs([]domain.Task{tsk}))
-	if err != nil {
-		return TaskOccurrenceView{}, err
-	}
-	return taskToView(tsk, userInfoList(tsk.Assignees, userInfos)), nil
+	return resolution.View, nil
 }
 
 // getOccurrenceView 处理 occurrence_ref，不写库（spec §7.4、§13.4）。
@@ -544,6 +556,7 @@ func (s *Service) getOccurrenceView(ref string) (TaskOccurrenceView, error) {
 		// 补充 series status。
 		se, _ := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 		if se.ID != "" && view.RecurrenceInfo != nil {
+			view.RecurrenceInfo.SeriesTitle = se.Title
 			view.RecurrenceInfo.SeriesStatus = se.Status
 			view.RecurrenceInfo.Until = se.Until
 		}
@@ -830,7 +843,7 @@ func (s *Service) MaterializeOccurrenceForWrite(ref string) (domain.Task, bool, 
 		UUID: uuid.NewString(), WorkspaceID: series.WorkspaceID, Title: series.Title,
 		Description: series.Description, Status: domain.StatusPending,
 		Entry: now, Modified: now, Priority: series.Priority, Tags: series.Tags,
-		ProjectID: &series.ProjectID, Due: &slot,
+		Due:      &slot,
 		SeriesID: &seriesID, RecurrenceAt: &slot,
 		RecurrenceRuleSnapshot: &rule, RecurrenceOverrides: []string{},
 	}
@@ -842,12 +855,9 @@ func (s *Service) MaterializeOccurrenceForWrite(ref string) (domain.Task, bool, 
 	for _, id := range series.AssigneeIDs {
 		occ.Assignees = append(occ.Assignees, domain.AssigneeInfo{UserID: id})
 	}
-	// project_seq。
-	seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(series.WorkspaceID, series.ProjectID)
-	if err != nil {
+	if err := s.bindOccurrenceProject(&occ, series.WorkspaceID, series.ProjectID); err != nil {
 		return domain.Task{}, false, err
 	}
-	occ.ProjectSeq = &seq
 	created, existed, err := s.taskOccurrenceRepo.CreateOccurrence(occ)
 	if err != nil {
 		return domain.Task{}, false, err

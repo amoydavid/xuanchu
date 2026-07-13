@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render } from "@testing-library/react"
+
+const navigateMock = vi.fn()
+let routeSearch: Record<string, string> = {
+  panel_return_scope: "project",
+  panel_return_task: "ops-7",
+}
 
 // Mock useParams 返回 seriesRef。
 vi.mock("@tanstack/react-router", async () => {
@@ -12,6 +18,8 @@ vi.mock("@tanstack/react-router", async () => {
       }
       return {}
     }),
+    useNavigate: () => navigateMock,
+    useSearch: () => routeSearch,
   }
 })
 
@@ -39,6 +47,14 @@ vi.mock("@/features/workspace/project-workbench/project/project-layout", () => (
 import { ProjectTaskSeriesPanelRoute } from "./ProjectTaskSeriesPanelRoute"
 
 describe("ProjectTaskSeriesPanelRoute", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeSearch = {
+      panel_return_scope: "project",
+      panel_return_task: "ops-7",
+    }
+  })
+
   it("registers panel via setContextPanel", () => {
     render(<ProjectTaskSeriesPanelRoute />)
     // 应调用 setContextPanel 注册面板（非 null）。
@@ -54,5 +70,51 @@ describe("ProjectTaskSeriesPanelRoute", () => {
     const { container } = render(<ProjectTaskSeriesPanelRoute />)
     // 组件本身返回 null，面板通过 setContextPanel 渲染到右栏。
     expect(container.firstChild).toBeNull()
+  })
+
+  it("closes back to the source task detail when opened from an occurrence", () => {
+    render(<ProjectTaskSeriesPanelRoute />)
+
+    const registration = mockSetContextPanel.mock.calls
+      .map(([value]) => value)
+      .find((value) => value?.onClose)
+    registration.onClose()
+
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+      params: {
+        workspaceSlug: "ws",
+        projectSlug: "ops",
+        taskRef: "ops-7",
+      },
+    })
+  })
+
+  it("preserves the My Tasks source when closing back to an occurrence", () => {
+    routeSearch = {
+      panel_return_scope: "project",
+      panel_return_search: "tab=completed&priority=H&q=review&sort=due",
+      panel_return_source: "my-tasks",
+      panel_return_task: "ops-7",
+    }
+    render(<ProjectTaskSeriesPanelRoute />)
+
+    const registration = mockSetContextPanel.mock.calls
+      .map(([value]) => value)
+      .find((value) => value?.onClose)
+    registration.onClose()
+
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+      params: {
+        workspaceSlug: "ws",
+        projectSlug: "ops",
+        taskRef: "ops-7",
+      },
+      search: {
+        from: "my-tasks",
+        my_tasks_search: "tab=completed&priority=H&q=review&sort=due",
+      },
+    })
   })
 })

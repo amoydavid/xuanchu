@@ -691,7 +691,7 @@ func renderSeriesOccurrenceGroup(w io.Writer, title string, rows []app.TaskOccur
 		if row.Due != nil {
 			due = formatUnixShort(*row.Due)
 		}
-		fmt.Fprintf(w, "  %s  %s  %s  %s\n", row.ID, row.Status, due, row.Title)
+		fmt.Fprintf(w, "  %s  %s  %s  %s\n", occurrenceHumanRef(row), row.Status, due, row.Title)
 	}
 }
 
@@ -712,10 +712,6 @@ func renderOccurrencePage(w io.Writer, asJSON bool, page app.TaskViewPage) {
 		return
 	}
 	for _, it := range page.Items {
-		id := it.ID
-		if it.UUID != nil {
-			id = *it.UUID
-		}
 		due := "—"
 		if it.Due != nil {
 			due = formatUnixShort(*it.Due)
@@ -724,11 +720,25 @@ func renderOccurrencePage(w io.Writer, asJSON bool, page app.TaskViewPage) {
 		if it.RecurrenceInfo != nil {
 			mat = "（" + it.RecurrenceInfo.Materialization + "）"
 		}
-		fmt.Fprintf(w, "%s  %s  %s  %s%s\n", id, it.Status, due, it.Title, mat)
+		fmt.Fprintf(w, "%s  %s  %s  %s%s\n", occurrenceHumanRef(it), it.Status, due, it.Title, mat)
 	}
 	if page.Total > len(page.Items) {
 		fmt.Fprintf(w, "... 共 %d 条\n", page.Total)
 	}
+}
+
+func occurrenceHumanRef(v app.TaskOccurrenceView) string {
+	if v.TaskSlug != nil && strings.TrimSpace(*v.TaskSlug) != "" {
+		return *v.TaskSlug
+	}
+	if v.RecurrenceInfo != nil {
+		date := time.Unix(v.RecurrenceInfo.RecurrenceAt, 0).In(time.Local).Format("01-02")
+		return "↻" + date + " (" + v.ID + ")"
+	}
+	if v.UUID != nil {
+		return *v.UUID
+	}
+	return v.ID
 }
 
 func renderSeriesViewJSON(w io.Writer, v app.TaskSeriesView) {
@@ -772,6 +782,9 @@ func seriesViewJSON(v app.TaskSeriesView) map[string]any {
 	}
 	if v.NextRecurrenceAt != nil {
 		out["next_recurrence_at"] = *v.NextRecurrenceAt
+	}
+	if v.SuggestedRuleEffectiveFrom != nil {
+		out["suggested_rule_effective_from"] = *v.SuggestedRuleEffectiveFrom
 	}
 	return out
 }
@@ -840,6 +853,7 @@ func occurrenceViewJSON(v app.TaskOccurrenceView) map[string]any {
 	if v.RecurrenceInfo != nil {
 		recurrence := map[string]any{
 			"role": v.RecurrenceInfo.Role, "series_id": v.RecurrenceInfo.SeriesID,
+			"series_title":  v.RecurrenceInfo.SeriesTitle,
 			"series_status": v.RecurrenceInfo.SeriesStatus, "rule": v.RecurrenceInfo.Rule,
 			"recurrence_at":   v.RecurrenceInfo.RecurrenceAt,
 			"materialization": v.RecurrenceInfo.Materialization, "overrides": v.RecurrenceInfo.Overrides,
@@ -880,13 +894,14 @@ func remoteSeriesDTOToView(dto remote.TaskSeriesDTO) app.TaskSeriesView {
 			Priority: dto.Priority, AssigneeIDs: assigneeIDs, Tags: dto.Tags, UDAs: dto.UDAs,
 			CreatedBy: dto.CreatedBy.ID, CreatedAt: dto.CreatedAt, ModifiedAt: dto.ModifiedAt,
 		},
-		OpenOccurrenceCount: dto.OpenOccurrenceCount,
-		CompletedCount:      dto.CompletedCount,
-		SkippedCount:        dto.SkippedCount,
-		OverdueCount:        dto.OverdueCount,
-		NextRecurrenceAt:    dto.NextRecurrenceAt,
-		CreatedBy:           task.UserInfoFromJSON(dto.CreatedBy),
-		Assignees:           assignees,
+		OpenOccurrenceCount:        dto.OpenOccurrenceCount,
+		CompletedCount:             dto.CompletedCount,
+		SkippedCount:               dto.SkippedCount,
+		OverdueCount:               dto.OverdueCount,
+		NextRecurrenceAt:           dto.NextRecurrenceAt,
+		SuggestedRuleEffectiveFrom: dto.SuggestedRuleEffectiveFrom,
+		CreatedBy:                  task.UserInfoFromJSON(dto.CreatedBy),
+		Assignees:                  assignees,
 	}
 }
 
@@ -941,6 +956,7 @@ func remoteOccurrenceDTOToView(dto remote.TaskOccurrenceDTO) app.TaskOccurrenceV
 	if dto.RecurrenceInfo != nil {
 		v.RecurrenceInfo = &app.RecurrenceInfo{
 			Role: dto.RecurrenceInfo.Role, SeriesID: dto.RecurrenceInfo.SeriesID,
+			SeriesTitle:  dto.RecurrenceInfo.SeriesTitle,
 			SeriesStatus: dto.RecurrenceInfo.SeriesStatus, Rule: dto.RecurrenceInfo.Rule,
 			RecurrenceAt:    dto.RecurrenceInfo.RecurrenceAt,
 			Materialization: dto.RecurrenceInfo.Materialization,

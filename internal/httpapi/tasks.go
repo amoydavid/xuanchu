@@ -120,7 +120,7 @@ func restfulTaskFilters(q url.Values) (query.Expr, error) {
 		add(query.Predicate{Attribute: query.AttrAssignee, Operator: query.OpEqual, Value: query.StringValue(v)})
 	}
 	if v := strings.TrimSpace(q.Get("due_after")); v != "" {
-		pred, err := datePredicate(query.AttrDue, query.OpAfter, v)
+		pred, err := inclusiveAfterDatePredicate(query.AttrDue, v)
 		if err != nil {
 			return nil, err
 		}
@@ -168,6 +168,20 @@ func inclusiveBeforeDatePredicate(attr query.Attribute, raw string) (query.Expr,
 	}
 	nextDay := parsed.AddDate(0, 0, 1).Format("2006-01-02")
 	return query.Predicate{Attribute: attr, Operator: query.OpBefore, Value: query.DateValue(nextDay)}, nil
+}
+
+// inclusiveAfterDatePredicate 把 REST 的 due_after 日期解释为“从当天
+// 00:00 起（含）”。查询语言的 after 仍保持严格比较，因此用“当天相等
+// 或晚于当天起点”组合，确保与 due_before 的含当天边界对称。
+func inclusiveAfterDatePredicate(attr query.Attribute, raw string) (query.Expr, error) {
+	if _, err := time.Parse("2006-01-02", raw); err != nil {
+		return nil, fmt.Errorf("invalid date %q (expected YYYY-MM-DD)", raw)
+	}
+	value := query.DateValue(raw)
+	return query.Or(
+		query.Predicate{Attribute: attr, Operator: query.OpEqual, Value: value},
+		query.Predicate{Attribute: attr, Operator: query.OpAfter, Value: value},
+	), nil
 }
 
 func resolveRequestDateField(field string, instant *int64, date string, endOfDay bool) (*int64, error) {
@@ -411,23 +425,12 @@ func (s *Server) handleTaskInfo(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	// occurrence_ref 走 GetTaskView 返回 TaskOccurrenceView（spec §13.4）。
-	// projected 返回投影视图不物化；materialized 返回实体视图。
-	if app.IsOccurrenceRef(taskRef) {
-		view, verr := scoped.GetTaskView(taskRef)
-		if verr != nil {
-			writeAppError(w, verr)
-			return
-		}
-		writeSuccess(w, http.StatusOK, occurrenceViewToJSON(view), nil)
-		return
-	}
-	tsk, err := scoped.ResolveProtocolTarget(taskRef)
+	resolved, err := scoped.ResolveTaskReferenceForRead(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, taskToJSONWithRefs(scoped, tsk), nil)
+	writeSuccess(w, http.StatusOK, taskResolutionToJSON(scoped, resolved), nil)
 }
 
 // taskToJSONWithRefs 序列化任务并填充 depends_info/parent_info/blocked_by_info，
@@ -644,12 +647,7 @@ func (s *Server) handleTaskUrgency(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	resolved, err := scoped.ResolveProtocolTarget(taskRef)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	result, err := scoped.ExplainUrgency(resolved.UUID)
+	result, err := scoped.ExplainUrgency(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -798,30 +796,41 @@ func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn fun
 }
 
 func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskRef string) {
-	if app.IsOccurrenceRef(taskRef) {
-		view, err := svc.GetTaskView(taskRef)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		writeSuccess(w, http.StatusOK, occurrenceViewToJSON(view), nil)
-		return
-	}
-	tsk, err := svc.Info(taskRef)
+	resolved, err := svc.ResolveTaskReferenceForRead(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, task.ToJSON(tsk), nil)
+	writeSuccess(w, http.StatusOK, taskResolutionToJSON(svc, resolved), nil)
 }
 
 func requireTaskRef(w http.ResponseWriter, r *http.Request) (string, bool) {
-	taskRef := strings.TrimSpace(chi.URLParam(r, "taskRef"))
+	taskRef, err := decodedPathParam(r, "taskRef")
+	if err != nil {
+		writeAppError(w, err)
+		return "", false
+	}
 	if err := app.ValidateProtocolTaskRef(taskRef); err != nil {
 		writeAppError(w, err)
 		return "", false
 	}
 	return taskRef, true
+}
+
+// decodedPathParam 对结构化 path 参数只解码一次。
+// 残留百分号代表双重编码或非法 escape；斜杠和控制字符不能进入资源引用。
+func decodedPathParam(r *http.Request, name string) (string, error) {
+	// %25 会在 net/url 或路由层先还原成字面量 %，随后再次 unescape 就会
+	// 形成双重解码。先检查原始 escaped path，明确拒绝这种输入。
+	if strings.Contains(strings.ToLower(r.URL.EscapedPath()), "%25") {
+		return "", app.RuntimeError{Code: "task_ref_invalid", Message: "invalid path parameter"}
+	}
+	raw := strings.TrimSpace(chi.URLParam(r, name))
+	value, err := url.PathUnescape(raw)
+	if err != nil || strings.Contains(value, "%") || strings.ContainsAny(value, "/\x00\r\n") {
+		return "", app.RuntimeError{Code: "task_ref_invalid", Message: "invalid path parameter"}
+	}
+	return strings.TrimSpace(value), nil
 }
 
 // handleTaskAudit 暴露单任务的字段级变更历史。

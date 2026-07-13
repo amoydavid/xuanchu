@@ -6,8 +6,8 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 // Sheet：基于 Radix Dialog 实现的侧边抽屉。
-// 当前项目仅需移动端左侧导航抽屉，故只提供 left side 变体，
-// 不引入额外依赖，动画与 dialog.tsx 保持一致（data-open/data-closed）。
+// 同时支持移动端左侧导航和右侧上下文面板，不引入额外依赖，
+// 动画与 dialog.tsx 保持一致（data-open/data-closed）。
 
 function Sheet({
   ...props
@@ -66,7 +66,7 @@ function SheetContent({
           "fixed inset-y-0 z-50 flex h-svh w-72 max-w-[85vw] flex-col border-r bg-background shadow-lg duration-100 outline-none data-open:animate-in data-closed:animate-out",
           side === "left"
             ? "left-0 data-open:slide-in-from-left data-closed:slide-out-to-left"
-            : "right-0 border-l border-r-0 data-open:slide-in-from-right data-closed:slide-out-to-right",
+            : "right-0 border-r-0 border-l data-open:slide-in-from-right data-closed:slide-out-to-right",
           className
         )}
         {...props}
@@ -87,4 +87,38 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-export { Sheet, SheetClose, SheetContent, SheetHeader, SheetTrigger }
+function SheetTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  return (
+    <DialogPrimitive.Title
+      className={cn("text-sm font-semibold", className)}
+      data-slot="sheet-title"
+      {...props}
+    />
+  )
+}
+
+function SheetDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      className={cn("text-sm text-muted-foreground", className)}
+      data-slot="sheet-description"
+      {...props}
+    />
+  )
+}
+
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+}

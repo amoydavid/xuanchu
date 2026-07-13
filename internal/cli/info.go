@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/remote"
 	"git.dajee.net/dajee/xuanchu/internal/render"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -84,6 +85,9 @@ func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Op
 			}
 			return "", fmt.Errorf("task %q not found", target)
 		}
+		return target, nil
+	}
+	if app.IsOccurrenceRef(target) {
 		return target, nil
 	}
 	if isTaskSlugRef(target) {
@@ -174,41 +178,32 @@ func remoteDTOToTask(dto remote.TaskOccurrenceDTO) task.Task {
 			return enrichTaskFromDTO(tsk, dto)
 		}
 	}
-	// 窄字段构造（列表场景）。
-	id := dto.ID
-	if dto.UUID != nil {
-		id = *dto.UUID
+	// 统一 task view 使用 Unix 时间和 recurrence_info；先复用完整 DTO→View
+	// 映射，再转为 CLI 既有的 domain Task 渲染输入，避免遗漏 wait 等字段。
+	view := remoteOccurrenceDTOToView(dto)
+	id := view.ID
+	if view.UUID != nil {
+		id = *view.UUID
 	}
 	tsk := task.Task{
-		UUID:     id,
-		Title:    dto.Title,
-		Status:   dto.Status,
-		Tags:     dto.Tags,
-		Priority: dto.Priority,
-		Project:  dto.Project,
+		UUID: id, WorkspaceID: view.WorkspaceID, Title: view.Title, Description: view.Description,
+		Status: view.Status, End: view.End, Due: view.Due, Project: view.Project,
+		ProjectID: view.ProjectID, ProjectSeq: view.ProjectSeq, Priority: view.Priority,
+		Tags: view.Tags, Start: view.Start, Wait: view.Wait, Scheduled: view.Scheduled,
+		Until: view.Until, Annotations: view.Annotations, Depends: view.Depends,
+		Parent: view.Parent, Links: view.Links, UDAs: view.UDAs,
 	}
-	if dto.TaskSlug != nil {
-		project, seq, err := parseRemoteTaskSlug(*dto.TaskSlug)
-		if err == nil {
-			tsk.Project = &project
-			tsk.ProjectSeq = &seq
-		}
+	if view.Entry != nil {
+		tsk.Entry = *view.Entry
 	}
-	if dto.Due != nil {
-		d := *dto.Due
-		tsk.Due = &d
+	if view.Modified != nil {
+		tsk.Modified = *view.Modified
 	}
-	if dto.Entry != nil {
-		tsk.Entry = *dto.Entry
-	}
-	if dto.Modified != nil {
-		tsk.Modified = *dto.Modified
-	}
-	if len(dto.UDAs) > 0 {
-		tsk.UDAs = make(map[string]task.UDAValue, len(dto.UDAs))
-		for name, raw := range dto.UDAs {
-			tsk.UDAs[name] = task.UDAValue{Name: name, Raw: raw}
-		}
+	for _, assignee := range view.Assignees {
+		tsk.Assignees = append(tsk.Assignees, task.AssigneeInfo{
+			UserID: assignee.ID, Name: assignee.Name, DisplayName: assignee.DisplayName,
+			Email: assignee.Email, ExternalIDs: assignee.ExternalIDs,
+		})
 	}
 	return enrichTaskFromDTO(tsk, dto)
 }
@@ -225,16 +220,4 @@ func enrichTaskFromDTO(tsk task.Task, dto remote.TaskOccurrenceDTO) task.Task {
 		}
 	}
 	return tsk
-}
-
-func parseRemoteTaskSlug(slug string) (string, int64, error) {
-	dash := strings.LastIndex(slug, "-")
-	if dash <= 0 {
-		return "", 0, fmt.Errorf("invalid task_slug %q", slug)
-	}
-	seq, err := strconv.ParseInt(slug[dash+1:], 10, 64)
-	if err != nil || seq < 1 {
-		return "", 0, fmt.Errorf("invalid task_slug %q", slug)
-	}
-	return slug[:dash], seq, nil
 }

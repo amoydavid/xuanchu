@@ -116,7 +116,7 @@ xuanchu _version
 
 脚本里建议优先使用：
 
-- UUID 或 `task_slug`，而不是 working-set ID。
+- UUID、已物化 `task_slug` 或 occurrence_ref，而不是 working-set ID。
 - `--json`，而不是解析 human 输出。
 - helper 命令，而不是解析表格。
 

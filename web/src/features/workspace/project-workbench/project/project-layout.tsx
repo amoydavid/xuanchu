@@ -1,10 +1,25 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from "react"
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 import { useQuery } from "@tanstack/react-query"
-import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
+import { PanelRightCloseIcon, PanelRightOpenIcon, XIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { listProjectEffectiveConfig } from "@/features/workspace/config/config-definition-api"
 import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
@@ -46,10 +61,28 @@ export type ProjectLayoutContextValue = {
   setTabActions: (node: ReactNode | null) => void
   // setContextPanel 允许子页面（如循环任务管理面板）临时替换右栏项目上下文。
   // 传 null 恢复默认 ProjectContextRail。不修改用户保存的 railOpen 状态（spec §15.14）。
-  setContextPanel: (panel: { node: ReactNode; onClose: () => void } | null) => void
+  setContextPanel: (
+    panel: { node: ReactNode; onClose: () => void } | null
+  ) => void
 }
 
 const LayoutContext = createContext<ProjectLayoutContextValue | null>(null)
+
+const NARROW_PROJECT_LAYOUT = "(max-width: 1023px)"
+
+function subscribeNarrowProjectLayout(onStoreChange: () => void) {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {}
+  const media = window.matchMedia(NARROW_PROJECT_LAYOUT)
+  media.addEventListener("change", onStoreChange)
+  return () => media.removeEventListener("change", onStoreChange)
+}
+
+function getNarrowProjectLayoutSnapshot() {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.matchMedia?.(NARROW_PROJECT_LAYOUT).matches)
+  )
+}
 
 export function useProjectLayout(): ProjectLayoutContextValue {
   const ctx = useContext(LayoutContext)
@@ -76,11 +109,19 @@ function ProjectLayoutContent({
   children,
 }: ProjectLayoutProps) {
   const { t } = useTranslation()
+  const narrowLayout = useSyncExternalStore(
+    subscribeNarrowProjectLayout,
+    getNarrowProjectLayoutSnapshot,
+    () => false
+  )
   const feedback = useEditFeedback()
   const [railOpen, setRailOpen] = useState(true)
   // 循环任务管理面板等子页面可临时替换右栏（spec §15.14）。
   // 不修改用户保存的 railOpen 状态；关闭后恢复。
-  const [contextPanel, setContextPanelState] = useState<{ node: ReactNode; onClose: () => void } | null>(null)
+  const [contextPanel, setContextPanelState] = useState<{
+    node: ReactNode
+    onClose: () => void
+  } | null>(null)
   const savedRailOpen = useRef(true)
   const [tabActions, setTabActions] = useState<ReactNode | null>(null)
   const me = useMe()
@@ -111,7 +152,8 @@ function ProjectLayoutContent({
       "config-effective",
       "console-home",
     ],
-    queryFn: () => listProjectEffectiveConfig(projectSlug, { consoleHome: true }),
+    queryFn: () =>
+      listProjectEffectiveConfig(projectSlug, { consoleHome: true }),
   })
 
   if (isPermissionError(project.error)) {
@@ -139,7 +181,8 @@ function ProjectLayoutContent({
     return <ProjectSkeleton />
   }
   if (project.isError) {
-    const code = project.error instanceof ApiError ? project.error.code : "unknown"
+    const code =
+      project.error instanceof ApiError ? project.error.code : "unknown"
     return (
       <ProjectState
         actionLabel={t("common.refresh")}
@@ -152,9 +195,14 @@ function ProjectLayoutContent({
 
   const closed = isClosedProjectStatus(project.data.status)
   // setContextPanel：保存当前 railOpen，强制展开右栏；关闭时恢复。
-  const setContextPanel = (panel: { node: ReactNode; onClose: () => void } | null) => {
+  const setContextPanel = (
+    panel: { node: ReactNode; onClose: () => void } | null
+  ) => {
     if (panel) {
-      savedRailOpen.current = railOpen
+      // list/detail 等路由切换只是在更新同一个面板，不能覆盖打开前的右栏状态。
+      if (!contextPanel) {
+        savedRailOpen.current = railOpen
+      }
       setRailOpen(true)
       setContextPanelState(panel)
     } else {
@@ -187,7 +235,10 @@ function ProjectLayoutContent({
           project={project.data}
           workspaceSlug={workspaceSlug}
         />
-        <ProjectClosedBanner canManage={canManage} status={project.data.status} />
+        <ProjectClosedBanner
+          canManage={canManage}
+          status={project.data.status}
+        />
         <div className="flex items-center justify-between gap-2 border-b pb-2">
           <ProjectTabs
             activeTab={activeTab}
@@ -198,21 +249,33 @@ function ProjectLayoutContent({
             {tabActions}
             <Button
               aria-label={
-                railOpen
-                  ? t("projectSubpages.railCollapse")
-                  : t("projectSubpages.railExpand")
+                contextPanel
+                  ? t("taskSeries.actions.close")
+                  : railOpen
+                    ? t("projectSubpages.railCollapse")
+                    : t("projectSubpages.railExpand")
               }
-              onClick={() => setRailOpen((value) => !value)}
+              onClick={() => {
+                if (contextPanel) {
+                  contextPanel.onClose()
+                  return
+                }
+                setRailOpen((value) => !value)
+              }}
               size="icon"
               title={
-                railOpen
-                  ? t("projectSubpages.railCollapse")
-                  : t("projectSubpages.railExpand")
+                contextPanel
+                  ? t("taskSeries.actions.close")
+                  : railOpen
+                    ? t("projectSubpages.railCollapse")
+                    : t("projectSubpages.railExpand")
               }
               type="button"
               variant="ghost"
             >
-              {railOpen ? (
+              {contextPanel ? (
+                <XIcon className="h-4 w-4" />
+              ) : railOpen ? (
                 <PanelRightCloseIcon className="h-4 w-4" />
               ) : (
                 <PanelRightOpenIcon className="h-4 w-4" />
@@ -224,9 +287,46 @@ function ProjectLayoutContent({
           <div className="min-w-0 flex-1">{children}</div>
           {railOpen ? (
             contextPanel ? (
-              <div className="task-series-panel-slot" data-testid="context-panel-slot">
-                {contextPanel.node}
-              </div>
+              narrowLayout ? (
+                <Sheet
+                  open
+                  onOpenChange={(next) => !next && contextPanel.onClose()}
+                >
+                  <SheetContent
+                    className="w-[min(92vw,24rem)] max-w-none"
+                    side="right"
+                  >
+                    <SheetHeader className="justify-between">
+                      <div>
+                        <SheetTitle>{t("taskSeries.title")}</SheetTitle>
+                        <SheetDescription className="sr-only">
+                          {t("taskSeries.description")}
+                        </SheetDescription>
+                      </div>
+                      <SheetClose asChild>
+                        <Button
+                          aria-label={t("taskSeries.actions.close")}
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <XIcon />
+                        </Button>
+                      </SheetClose>
+                    </SheetHeader>
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                      {contextPanel.node}
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              ) : (
+                <div
+                  className="task-series-panel-slot w-full lg:w-80 lg:shrink-0"
+                  data-testid="context-panel-slot"
+                >
+                  {contextPanel.node}
+                </div>
+              )
             ) : (
               <ProjectContextRail
                 configError={homeConfig.isError}

@@ -634,7 +634,7 @@ v0.1.1 在 v0.1.0 已具备的 CLI / HTTP / MCP / Remote 基础上，补齐面�
 - task JSON 输出新增只读字段 `task_slug`；无 project 的任务省略该字段。
 - 本地 CLI 可用数字 working-set ID、UUID、UUID 前缀和 `task_slug` 定位任务。
 - 远程 CLI 的纯数字 target 仍由客户端两跳解析；UUID 和 `task_slug` 直接传给服务端。
-- HTTP API 与 MCP tool 只接受 UUID 或 `task_slug`，纯数字 working-set ID 返回 `task_ref_invalid`。
+- HTTP API 与 MCP tool 接受完整 UUID、已物化任务的 `task_slug` 或循环实例 `occurrence_ref`；projected 实例只有 occurrence_ref，纯数字 working-set ID 返回 `task_ref_invalid`。
 
 ## M0：本地单用户 CLI
 

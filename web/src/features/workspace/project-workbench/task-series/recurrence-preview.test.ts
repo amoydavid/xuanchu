@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest"
 
+import { i18n } from "@/i18n"
+
 import {
   isCanonicalRecurrenceRule,
   nextRecurrenceDate,
   previewRecurrenceDates,
   parseDateToEndOfDay,
   formatDateShort,
+  formatTaskSeriesTimestamp,
+  recurrenceRuleLabel,
+  taskSeriesStatusLabel,
 } from "./recurrence-preview"
 
 describe("isCanonicalRecurrenceRule", () => {
@@ -71,19 +76,20 @@ describe("previewRecurrenceDates", () => {
     const from = parseDateToEndOfDay("2030-01-15")!
     const dates = previewRecurrenceDates(from, "daily", 3)
     expect(dates).toHaveLength(3)
-    expect(formatDateShort(dates[0])).toBe("2030-01-16")
-    expect(formatDateShort(dates[1])).toBe("2030-01-17")
-    expect(formatDateShort(dates[2])).toBe("2030-01-18")
+    expect(formatDateShort(dates[0])).toBe("2030-01-15")
+    expect(formatDateShort(dates[1])).toBe("2030-01-16")
+    expect(formatDateShort(dates[2])).toBe("2030-01-17")
   })
 
   it("stops at until boundary", () => {
     const from = parseDateToEndOfDay("2030-01-15")!
     const until = parseDateToEndOfDay("2030-01-17")!
     const dates = previewRecurrenceDates(from, "daily", 5, until)
-    expect(formatDateShort(dates[0])).toBe("2030-01-16")
-    expect(formatDateShort(dates[1])).toBe("2030-01-17")
+    expect(formatDateShort(dates[0])).toBe("2030-01-15")
+    expect(formatDateShort(dates[1])).toBe("2030-01-16")
+    expect(formatDateShort(dates[2])).toBe("2030-01-17")
     // 01-18 超过 until 01-17，停止
-    expect(dates).toHaveLength(2)
+    expect(dates).toHaveLength(3)
   })
 })
 
@@ -98,5 +104,36 @@ describe("parseDateToEndOfDay", () => {
   it("returns null for invalid", () => {
     expect(parseDateToEndOfDay("not-a-date")).toBeNull()
     expect(parseDateToEndOfDay("2030-13-45")).toBeNull()
+  })
+})
+
+describe("localized recurring-task labels", () => {
+  it("maps canonical rules in Chinese and English", async () => {
+    await i18n.changeLanguage("zh-CN")
+    expect(recurrenceRuleLabel("daily", i18n.t)).toBe("每天")
+    expect(recurrenceRuleLabel("2weeks", i18n.t)).toBe("每 2 周")
+
+    await i18n.changeLanguage("en-US")
+    expect(recurrenceRuleLabel("daily", i18n.t)).toBe("Daily")
+    expect(recurrenceRuleLabel("2weeks", i18n.t)).toBe("Every 2 weeks")
+    expect(recurrenceRuleLabel("unknown", i18n.t)).toBe("unknown")
+  })
+
+  it("maps series statuses and safely falls back", async () => {
+    await i18n.changeLanguage("zh-CN")
+    expect(taskSeriesStatusLabel("active", i18n.t)).toBe("运行中")
+    await i18n.changeLanguage("en-US")
+    expect(taskSeriesStatusLabel("stopped", i18n.t)).toBe("Stopped")
+    expect(taskSeriesStatusLabel("unknown", i18n.t)).toBe("unknown")
+  })
+
+  it("formats Unix seconds as a localized date instead of raw seconds", () => {
+    const timestamp = Math.floor(new Date(2030, 0, 15, 12).getTime() / 1000)
+    expect(formatTaskSeriesTimestamp(timestamp, "zh-CN")).toContain("2030")
+    expect(formatTaskSeriesTimestamp(timestamp, "en-US")).toContain("2030")
+    expect(formatTaskSeriesTimestamp(null, "en-US")).toBe("—")
+    expect(formatTaskSeriesTimestamp(timestamp, "en-US")).not.toBe(
+      String(timestamp)
+    )
   })
 })

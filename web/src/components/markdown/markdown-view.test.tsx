@@ -23,6 +23,20 @@ const a = 1
     expect(screen.getByText("const a = 1")).toBeTruthy()
   })
 
+  it("offsets heading levels when embedded below a page title", () => {
+    render(
+      <MarkdownView headingOffset={1}>{`# 一级
+
+## 二级
+
+###### 六级`}</MarkdownView>
+    )
+
+    expect(screen.getByRole("heading", { level: 2, name: "一级" })).toBeTruthy()
+    expect(screen.getByRole("heading", { level: 3, name: "二级" })).toBeTruthy()
+    expect(screen.getByRole("heading", { level: 6, name: "六级" })).toBeTruthy()
+  })
+
   it("renders raw html as text", () => {
     const { container } = render(
       <MarkdownView>{"<script>alert(1)</script>"}</MarkdownView>

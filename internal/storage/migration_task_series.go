@@ -31,19 +31,83 @@ func (s *Store) prepareTaskSeriesSchema() error {
 	if err := addOccurrenceColumns(s.db); err != nil {
 		return fmt.Errorf("task series: add occurrence columns: %w", err)
 	}
-	// 5. 删除旧 recur/mask/i_mask 列（SQLite/PostgreSQL 都支持 DROP COLUMN）。
+	// 5. 修复早期 occurrence 物化路径只写 project_id/project_seq、遗漏
+	// project slug 的半绑定数据；回填后严格校验项目三元组。
+	if err := backfillOccurrenceProjectBindings(s.db); err != nil {
+		return fmt.Errorf("task series: backfill occurrence project bindings: %w", err)
+	}
+	// 6. 删除旧 recur/mask/i_mask 列（SQLite/PostgreSQL 都支持 DROP COLUMN）。
 	if err := dropLegacyRecurringColumns(s.db); err != nil {
 		return fmt.Errorf("task series: drop legacy columns: %w", err)
 	}
-	// 6. 建立 occurrence partial unique index（spec §7.3）。
+	// 7. 建立 occurrence partial unique index（spec §7.3）。
 	if err := createOccurrenceUniqueIndex(s.db); err != nil {
 		return fmt.Errorf("task series: create occurrence unique index: %w", err)
 	}
-	// 7. 建立 due/recurrence_at 查询索引（model 的 GORM index tag 在显式 ADD COLUMN 场景不会自动生效）。
+	// 8. 建立 due/recurrence_at 查询索引（model 的 GORM index tag 在显式 ADD COLUMN 场景不会自动生效）。
 	if err := ensureOccurrenceLookupIndexes(s.db); err != nil {
 		return fmt.Errorf("task series: ensure lookup indexes: %w", err)
 	}
 	return nil
+}
+
+// backfillOccurrenceProjectBindings 把早期物化 occurrence 缺失的 project
+// slug 从同 workspace 的 projects 表回填。函数幂等执行；任何孤儿、跨
+// workspace 或部分绑定都会使整个事务失败，避免继续传播无 task_slug 的任务。
+func backfillOccurrenceProjectBindings(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var stmt string
+		if tx.Dialector.Name() == "postgres" {
+			stmt = `
+UPDATE tasks AS t
+SET project = p.slug
+FROM projects AS p
+WHERE t.series_id IS NOT NULL
+  AND t.project IS NULL
+  AND t.project_id IS NOT NULL
+  AND t.project_seq IS NOT NULL
+  AND p.id = t.project_id
+  AND p.workspace_id = t.workspace_id`
+		} else {
+			stmt = `
+UPDATE tasks
+SET project = (
+  SELECT p.slug
+  FROM projects AS p
+  WHERE p.id = tasks.project_id
+    AND p.workspace_id = tasks.workspace_id
+)
+WHERE series_id IS NOT NULL
+  AND project IS NULL
+  AND project_id IS NOT NULL
+  AND project_seq IS NOT NULL`
+		}
+		if err := tx.Exec(stmt).Error; err != nil {
+			return err
+		}
+
+		var invalid int64
+		if err := tx.Raw(`
+SELECT count(*)
+FROM tasks AS t
+LEFT JOIN projects AS p
+  ON p.id = t.project_id
+ AND p.workspace_id = t.workspace_id
+WHERE t.series_id IS NOT NULL
+  AND (
+    t.project IS NULL
+    OR t.project_id IS NULL
+    OR t.project_seq IS NULL
+    OR p.id IS NULL
+    OR t.project <> p.slug
+  )`).Scan(&invalid).Error; err != nil {
+			return err
+		}
+		if invalid > 0 {
+			return fmt.Errorf("project_invariant_violation: %d occurrence task(s) have incomplete project bindings", invalid)
+		}
+		return nil
+	})
 }
 
 // ensureOccurrenceLookupIndexes 建立 due 和 recurrence_at 的查询索引。
@@ -66,7 +130,7 @@ func addOccurrenceColumns(db *gorm.DB) error {
 	columns := []struct {
 		name string
 		// sqlite 和 postgres 的 DDL 片段
-		sqlite  string
+		sqlite   string
 		postgres string
 	}{
 		{"series_id", "TEXT", "text"},

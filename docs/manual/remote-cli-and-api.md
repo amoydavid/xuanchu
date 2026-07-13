@@ -172,7 +172,7 @@ curl -X PATCH \
 
 用户对象会同时返回稳定引用名 `name` 和展示姓名 `display_name`。`name` 继续用于 CLI/API/MCP 中的用户引用和唯一性判断；`display_name` 可为空，可与 `name` 不同，适合 Web Console 或集成端展示真实姓名/昵称。
 
-单任务 path 使用 `{taskRef}`，接受完整 UUID 或 `task_slug`。HTTP API 不接受纯数字 working-set ID；传入 `1` 会返回 `task_ref_invalid`。远程 CLI 仍支持 `info 1`、`1 done` 这类交互写法，但会先在客户端按当前 working set 解析，再调用 HTTP API。
+单任务 path 使用 `{taskRef}`，接受完整 UUID、已物化任务的 `task_slug` 或 URL 编码后的 `occurrence_ref`。projected 实例只能使用 occurrence_ref；已物化实例三种引用等价，响应都包含 `recurrence_info`。HTTP API 不接受纯数字 working-set ID；传入 `1` 会返回 `task_ref_invalid`。远程 CLI 仍支持 `info 1`、`1 done` 这类交互写法，但会先在客户端按当前 working set 解析，再调用 HTTP API。
 
 远程 CLI 走同一套字段语义：
 

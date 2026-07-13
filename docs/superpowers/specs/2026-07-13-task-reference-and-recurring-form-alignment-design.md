@@ -2,7 +2,7 @@
 
 **日期：** 2026-07-13
 
-**状态：** 已确认方向，待 implementation plan
+**状态：** 已实现并完成跨协议、双数据库与 Web E2E 验证
 
 **适用范围：** Web Console、HTTP API、MCP、Remote/CLI、App resolver、循环实例物化与现有数据回填
 
@@ -119,6 +119,7 @@ Series 的 App、HTTP、MCP、Remote/CLI 已经支持 `description`、`priority`
   "recurrence_info": {
     "role": "occurrence",
     "series_id": "290d56bd-8b9d-44e9-8b76-babbf55c62b1",
+    "series_title": "每日检查投放消耗",
     "recurrence_at": 1783958399,
     "materialization": "materialized"
   }
@@ -590,6 +591,33 @@ TaskDetailPage
 - projected 首次成功物化后使用响应中的 task_slug replace；
 - 失败、取消或 no-op 不物化，也不改变 URL；
 - Series banner、操作文案、Toast 和确认框不因引用别名变化。
+
+#### 9.2.9 从“我的任务”进入时的详情与返回
+
+从“我的任务”点击 materialized 或 projected occurrence 后，仍进入 §9.2 定义的同一项目级任务详情页，不创建全局循环详情路由。详情页右上返回入口显示“返回我的任务”，并保留进入前的预设、搜索、优先级和排序；打开 Series 面板、关闭面板以及首次物化后的短链接 replace 都不能丢失该来源。
+
+```text
+/my-tasks?tab=overdue&priority=H&q=review&sort=priority
+  -> 点击 OPS-7 / ↻07-19
+  -> /workspaces/local/projects/ops/tasks/{task_slug|occurrence_ref}
+       ?from=my-tasks
+       &my_tasks_search=tab%3Doverdue%26priority%3DH%26q%3Dreview%26sort%3Dpriority
+  -> 渲染同一循环实例详情
+       [返回我的任务]
+       [查看循环任务]
+       [完成本次] [···]
+  -> 关闭 Series 面板：回到当前实例详情，来源参数仍在
+  -> projected 首次写入：replace 到 /tasks/ops-N，来源参数仍在
+  -> 返回或跳过本次：恢复 /my-tasks?tab=overdue&priority=H&q=review&sort=priority
+```
+
+来源参数属于浏览会话状态，不属于 permalink：
+
+- 复制任务链接只复制 `/workspaces/{workspace}/projects/{project}/tasks/{task_slug|occurrence_ref}`，剥离 `from`、`my_tasks_search` 和 `panel_return_*`；
+- task_slug 规范化使用 `replace` 时原样携带 `from=my-tasks` 与经过白名单校验的 `my_tasks_search`；
+- “返回我的任务”和“跳过本次”只恢复 `tab/priority/q/sort` 白名单字段，未知字段不得重新注入 URL；
+- Series 面板的 return state 只保存当前任务引用和 My Tasks 白名单 search，不接受任意回跳 URL；
+- 直接打开复制链接时没有“返回我的任务”入口，按普通项目详情显示“返回项目”。
 
 ## 10. 统一创建与编辑表单
 

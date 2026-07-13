@@ -1,6 +1,8 @@
 // recurrence-preview 提供前端循环规则预览（spec §15.15、§15.16）。
 // 使用本地日历 setFullYear/setMonth/setDate，不用固定毫秒运算，避免时区漂移。
 
+import type { TFunction } from "i18next"
+
 export type CanonicalRecurrenceRule =
   | "daily"
   | "weekly"
@@ -10,17 +12,55 @@ export type CanonicalRecurrenceRule =
   | `${number}months`
 
 /** Web UI 选项到 canonical 规则的映射（spec §12）。 */
-export const RECURRENCE_OPTIONS: Array<{ value: CanonicalRecurrenceRule; label: string }> = [
-  { value: "daily", label: "每天" },
-  { value: "weekly", label: "每周" },
-  { value: "2weeks", label: "每两周" },
-  { value: "monthly", label: "每月" },
-  { value: "3months", label: "每季度" },
-  { value: "12months", label: "每年" },
+export const RECURRENCE_OPTIONS: Array<{ value: CanonicalRecurrenceRule }> = [
+  { value: "daily" },
+  { value: "weekly" },
+  { value: "2weeks" },
+  { value: "monthly" },
+  { value: "3months" },
+  { value: "12months" },
 ]
 
+/** 把 canonical 规则映射为本地化用户文案；未知规则原样回退，便于诊断数据。 */
+export function recurrenceRuleLabel(rule: string, t: TFunction): string {
+  if (rule === "daily" || rule === "weekly" || rule === "monthly") {
+    return t(`taskSeries.rule.${rule}`)
+  }
+  const match = rule.match(/^(\d+)(days|weeks|months)$/)
+  if (!match) return rule
+  const key = {
+    days: "everyDays",
+    weeks: "everyWeeks",
+    months: "everyMonths",
+  }[match[2]]
+  return t(`taskSeries.rule.${key}`, { count: Number.parseInt(match[1], 10) })
+}
+
+/** 把系列状态映射为本地化用户文案；未知状态原样回退。 */
+export function taskSeriesStatusLabel(status: string, t: TFunction): string {
+  if (status === "active" || status === "ended" || status === "stopped") {
+    return t(`taskSeries.status.${status}`)
+  }
+  return status
+}
+
+/** 把 API Unix 秒转换为本地化日期，空值统一显示占位符。 */
+export function formatTaskSeriesTimestamp(
+  timestamp: number | null | undefined,
+  language: string
+): string {
+  if (timestamp == null || !Number.isFinite(timestamp)) return "—"
+  return new Intl.DateTimeFormat(language, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(timestamp * 1000))
+}
+
 /** 校验规则字符串是否为 canonical 形式。 */
-export function isCanonicalRecurrenceRule(value: string): value is CanonicalRecurrenceRule {
+export function isCanonicalRecurrenceRule(
+  value: string
+): value is CanonicalRecurrenceRule {
   if (value === "daily" || value === "weekly" || value === "monthly") {
     return true
   }
@@ -39,8 +79,19 @@ export function isCanonicalRecurrenceRule(value: string): value is CanonicalRecu
  * 注意：JS 的 setMonth 对月底会溢出到下月（如 1/31 + 1 月 = 3/3），
  * 与 Go AddDate 行为一致，符合 spec §8.5 月末滚动语义。
  */
-export function nextRecurrenceDate(from: Date, rule: CanonicalRecurrenceRule): Date {
-  const next = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 23, 59, 59, 0)
+export function nextRecurrenceDate(
+  from: Date,
+  rule: CanonicalRecurrenceRule
+): Date {
+  const next = new Date(
+    from.getFullYear(),
+    from.getMonth(),
+    from.getDate(),
+    23,
+    59,
+    59,
+    0
+  )
   if (rule === "daily") {
     next.setDate(next.getDate() + 1)
     return next
@@ -72,15 +123,14 @@ export function previewRecurrenceDates(
   from: Date,
   rule: CanonicalRecurrenceRule,
   count = 3,
-  until?: Date | null,
+  until?: Date | null
 ): Date[] {
   const out: Date[] = []
   let current = new Date(from)
   for (let i = 0; i < count; i++) {
-    const next = nextRecurrenceDate(current, rule)
-    if (until && next.getTime() > until.getTime()) break
-    out.push(next)
-    current = next
+    if (until && current.getTime() > until.getTime()) break
+    out.push(new Date(current))
+    current = nextRecurrenceDate(current, rule)
   }
   return out
 }
@@ -103,6 +153,7 @@ export function parseDateToEndOfDay(value: string): Date | null {
   const date = new Date(y, m, d, 23, 59, 59, 0)
   if (Number.isNaN(date.getTime())) return null
   // JS 会溢出滚动非法日期（如 2030-13-45），校验解析后的字段一致。
-  if (date.getFullYear() !== y || date.getMonth() !== m || date.getDate() !== d) return null
+  if (date.getFullYear() !== y || date.getMonth() !== m || date.getDate() !== d)
+    return null
   return date
 }

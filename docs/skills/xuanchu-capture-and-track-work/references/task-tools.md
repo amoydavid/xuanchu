@@ -110,7 +110,7 @@
 
 ### task_get — 读取单任务（只读）
 
-任务引用只能用 UUID 或 `task_slug`，不能用本地 working-set 数字 ID。
+任务引用使用 UUID、已物化 `task_slug` 或 occurrence_ref；projected 实例只有 occurrence_ref。不能用本地 working-set 数字 ID。
 
 ```json
 // 输入

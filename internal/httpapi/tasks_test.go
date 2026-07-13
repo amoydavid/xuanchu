@@ -703,12 +703,16 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	past := int64(1)
+	sameDayStart := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
 	sameDayEnd := time.Date(2030, 1, 1, 23, 59, 59, 0, time.Local).Unix()
 	future := time.Date(2030, 1, 2, 0, 0, 0, 0, time.Local).Unix()
 	if _, err := svc.Add(app.AddInput{Title: "restful past due", Due: &past}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Add(app.AddInput{Title: "restful same day due", Due: &sameDayEnd}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "restful same day start", Due: &sameDayStart}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Add(app.AddInput{Title: "restful future due", Due: &future}); err != nil {
@@ -730,7 +734,7 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("due_after status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	if b := rr.Body.String(); !strings.Contains(b, "restful same day due") || !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
+	if b := rr.Body.String(); !strings.Contains(b, "restful same day start") || !strings.Contains(b, "restful same day due") || !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
 		t.Fatalf("due_after filter failed: %s", b)
 	}
 }

@@ -26,19 +26,226 @@ export const enUS = {
   },
   myTasks: {
     subtitle: "Tasks assigned to you across all projects",
+    tabsLabel: "My task views",
     systemActorEmpty:
       "System identities have no personal task view. Sign in as a regular member.",
     loading: "Loading…",
     empty: "No tasks match the current filters",
     deleted: "deleted",
     tab: {
-      all: "All",
+      incomplete: "Incomplete",
       today: "Due today",
       overdue: "Overdue",
       noDue: "No due",
+      completed: "Completed",
     },
+    sortNext: "Next",
     summary:
       "Overdue {{overdue}} · Due today {{today}} · In progress {{active}}",
+  },
+  taskCreate: {
+    typeLabel: "Task type",
+    description:
+      "Create a task in this project and set its assignees, dates, and priority.",
+    title: "Task title",
+    details: "Task details",
+    detailsPlaceholder: "Add context, acceptance criteria, or handling notes",
+    priority: "Priority",
+    selectAssignees: "Select assignees",
+    loadingAssignees: "Loading members...",
+    noAssignees: "No members",
+    clearAssignees: "Clear assignees",
+    assigneeDone: "Done",
+    removeAssignee: "Remove assignee {{name}}",
+    due: "Due date",
+    scheduled: "Scheduled start",
+    wait: "Defer until",
+    until: "Effective until",
+    tags: "Tags",
+    tagsPlaceholder: "Tags separated by commas",
+    customFields: "Custom fields",
+    customFieldUnset: "Not set",
+    customFieldName: "Field name",
+    customFieldValue: "Value for {{name}}",
+    addCustomField: "Add field",
+    removeCustomField: "Remove field {{name}}",
+    titleRequired: "Task title is required",
+    submit: "Create task",
+  },
+  taskSeries: {
+    title: "Recurring tasks",
+    description:
+      "Manage repeating schedules here. Complete each generated task independently in the task list.",
+    count: "Recurring tasks {{count}}",
+    mode: {
+      normal: "One-time task",
+      recurring: "Recurring task",
+    },
+    create: {
+      title: "Create task",
+      recurringTitle: "Create recurring task",
+      menuAria: "Task creation options",
+      normalAction: "Create one-time task",
+      recurringAction: "Create recurring task",
+      description:
+        "After you set a schedule, each date creates a task that can be completed independently.",
+      submit: "Create recurring task",
+    },
+    edit: {
+      title: "Edit recurring task",
+      description:
+        "Changes apply to this recurring task only. Existing tasks stay unchanged.",
+      submit: "Save recurring settings",
+      effectiveFromHint:
+        "The new schedule starts on the selected date. Earlier instances stay unchanged.",
+    },
+    form: {
+      title: "Title",
+      titlePlaceholder: "For example: Daily inspection",
+      recurrenceRule: "Schedule",
+      firstDue: "First due date",
+      until: "End date",
+      noUntil: "No end date",
+      effectiveFrom: "New schedule starts",
+      priority: "Priority",
+      noPriority: "No priority",
+      tags: "Recurring task labels",
+      tagsPlaceholder: "Enter labels separated by commas",
+      preview: "Next three dates",
+    },
+    list: {
+      searchPlaceholder: "Search recurring tasks",
+      loading: "Loading recurring tasks",
+      emptyTitle: "No recurring tasks yet",
+      emptyDescription:
+        "Create one for repeated work such as inspections or weekly reports, with each run tracked independently.",
+      noResultsTitle: "No recurring tasks match",
+      noResultsDescription: "Try another status or search term.",
+      statusFilter: "Status",
+      allStatuses: "All statuses",
+      assigneeFilter: "Assignee",
+      allAssignees: "All assignees",
+      sort: "Sort",
+      sortNext: "Next occurrence",
+      sortTitle: "Title",
+      sortModified: "Recently updated",
+      openCount: "{{count}} open",
+      completedCount: "{{count}} completed",
+      skippedCount: "{{count}} skipped",
+      overdueCount: "{{count}} overdue",
+      nextAt: "Next {{date}}",
+      previousPage: "Previous",
+      nextPage: "Next",
+    },
+    detail: {
+      summary: "Overview",
+      rule: "Schedule",
+      status: "Status",
+      firstDue: "First due date",
+      until: "End date",
+      neverEnds: "No end date",
+      nextAt: "Next occurrence",
+      openOccurrences: "Open instances",
+      recentCompleted: "Recently completed",
+      recentSkipped: "Recently skipped",
+      noOpenOccurrences: "No open instances",
+      noRecentCompleted: "No completed instances yet",
+      noRecentSkipped: "No skipped instances yet",
+      viewOccurrence: "View this task: {{title}}",
+      viewSeries: "View recurring task",
+      backToList: "Back to recurring tasks",
+    },
+    stop: {
+      title: "Stop recurring task",
+      description:
+        "No new tasks will be created. Existing tasks and history will remain.",
+      series: "Recurring task: {{title}}",
+      deleteOpen: "Also skip the {{count}} open instances",
+      overLimit:
+        "There are more than 1,000 open instances, so they cannot be skipped in bulk. You can still stop the recurring task.",
+      confirm: "Stop recurring task",
+      confirming: "Stopping…",
+    },
+    status: {
+      active: "Active",
+      ended: "Ended",
+      stopped: "Stopped",
+    },
+    rule: {
+      daily: "Daily",
+      weekly: "Weekly",
+      monthly: "Monthly",
+      everyDays: "Every {{count}} days",
+      everyWeeks: "Every {{count}} weeks",
+      everyMonths: "Every {{count}} months",
+      biweekly: "Every two weeks",
+      quarterly: "Quarterly",
+      yearly: "Yearly",
+    },
+    occurrence: {
+      badge: "Recurring · {{rule}}",
+      projected: "Planned instance",
+      materialized: "Created instance",
+      banner: "Recurring task · {{rule}}",
+      date: "This occurrence: {{date}}",
+      seriesName: "Recurring task: {{title}}",
+      description:
+        "This task belongs to a recurring task. Changes to this occurrence do not affect other dates.",
+      plannedTitle: "Planned for {{date}}",
+      plannedDescription:
+        "This is one planned occurrence. Editing or acting on it will create this occurrence.",
+      seriesStopped: "The recurring task has stopped",
+      seriesEnded: "The recurring task has ended",
+      originalDate: "Original recurring date",
+      skipped: "Skipped",
+    },
+    actions: {
+      create: "Create recurring task",
+      edit: "Edit recurring settings",
+      stop: "Stop recurrence",
+      close: "Close recurring tasks",
+      completeOccurrence: "Complete this occurrence",
+      reopenOccurrence: "Reopen this occurrence",
+      startOccurrence: "Start this occurrence",
+      stopOccurrence: "Stop this occurrence",
+      skipOccurrence: "Skip this occurrence",
+      confirmSkipTitle: "Skip the {{date}} occurrence?",
+      confirmSkipDescription:
+        "This occurrence will be marked as skipped without affecting future occurrences.",
+      startedOccurrenceSuccess: "Started the {{date}} occurrence",
+      stoppedOccurrenceSuccess: "Stopped the {{date}} occurrence",
+      completedOccurrenceSuccess: "Completed the {{date}} occurrence",
+      reopenedOccurrenceSuccess: "Reopened the {{date}} occurrence",
+      skippedOccurrenceSuccess: "Skipped the {{date}} occurrence",
+    },
+    aria: {
+      panel: "Recurring task management panel",
+      search: "Search recurring tasks",
+      statusFilter: "Filter recurring tasks by status",
+      assigneeFilter: "Filter recurring tasks by assignee",
+      sort: "Sort recurring tasks",
+      viewSeries: "View recurring task {{title}}",
+      startOccurrence: "Start this occurrence: {{date}}",
+      stopOccurrence: "Stop this occurrence: {{date}}",
+      completeOccurrence: "Complete this occurrence: {{date}}",
+      reopenOccurrence: "Reopen this occurrence: {{date}}",
+      rule: "Schedule",
+      firstDue: "First due date",
+      until: "Recurring task end date",
+      effectiveFrom: "New schedule start date",
+      tags: "Recurring task labels",
+    },
+    errors: {
+      loadList: "Failed to load recurring tasks",
+      loadDetail: "Failed to load recurring task details",
+      stop: "Failed to stop recurring task",
+      operation: "Operation failed",
+      titleRequired: "Task title is required",
+      firstDueRequired: "Select the first due date",
+      invalidDate: "Invalid date",
+      untilBeforeFirstDue: "The end date cannot be before the first due date",
+      effectiveFromRequired: "Select when the new schedule starts",
+    },
   },
   auth: {
     signInTitle: "Sign in",
@@ -145,8 +352,10 @@ export const enUS = {
       title: "Token management",
       global: "Global",
       showRevoked: "Show revoked",
-      modifyAuditHint: "Admin changes are recorded to the audit log (admin.token.modify).",
-      revokeAuditHint: "This action is performed as admin and recorded to the audit log.",
+      modifyAuditHint:
+        "Admin changes are recorded to the audit log (admin.token.modify).",
+      revokeAuditHint:
+        "This action is performed as admin and recorded to the audit log.",
     },
     workspace: {
       title: "Workspace management",
@@ -156,7 +365,8 @@ export const enUS = {
       enterAsTenant: "Enter as tenant",
       createAdmin: "Create admin",
       createAgentToken: "Create agent token",
-      noActingCandidates: "This workspace has no owner/admin yet. Create one first.",
+      noActingCandidates:
+        "This workspace has no owner/admin yet. Create one first.",
       members: "Members",
       actingCandidates: "Acting candidates",
       field: {
@@ -177,15 +387,18 @@ export const enUS = {
         "Only the display name changes. The stable user reference {{name}} is unchanged.",
       statusActive: "active",
       statusArchived: "archived",
-      tokenSummary: "active {{active}} · revoked {{revoked}} · expired {{expired}}",
+      tokenSummary:
+        "active {{active}} · revoked {{revoked}} · expired {{expired}}",
     },
     acting: {
       title: "Enter as admin",
-      summary: "You will act as {{actor}} ({{role}}) of {{workspace}} for up to 2 hours.",
+      summary:
+        "You will act as {{actor}} ({{role}}) of {{workspace}} for up to 2 hours.",
       user: "Select identity",
       confirm: "Enter workspace",
       delegator: "Delegated by server admin {{adminTokenName}}",
-      banner: "Acting as {{actor}} ({{role}}) of {{workspace}} · delegated by server admin {{adminTokenName}}",
+      banner:
+        "Acting as {{actor}} ({{role}}) of {{workspace}} · delegated by server admin {{adminTokenName}}",
       returnToAdmin: "Return to admin",
       ttlLabel: "Expires in (optional)",
       ttlPlaceholder: "e.g. 2h",
@@ -223,6 +436,18 @@ export const enUS = {
     close: "Close",
     done: "Done",
     delete: "Delete",
+    deleteTask: "Delete task",
+    confirmDeleteTaskTitle: "Delete this task?",
+    confirmDeleteTaskDescription:
+      "This task will be removed from the current project view. This action cannot be undone.",
+    taskStarted: "Task started",
+    taskStopped: "Task stopped",
+    taskCompleted: "Task completed",
+    taskReopened: "Task reopened",
+    taskDeleted: "Task deleted",
+    start: "Start",
+    stop: "Stop",
+    reopen: "Reopen",
     actions: "Actions",
     details: "Details",
     name: "Name",
@@ -270,7 +495,8 @@ export const enUS = {
     recentActivityViewAll: "View all",
     activityTitle: "Project activity",
     activityPublish: "Publish update",
-    activityPublishPlaceholder: "Write a project update — risks, decisions, progress…",
+    activityPublishPlaceholder:
+      "Write a project update — risks, decisions, progress…",
     activityPublishError: "Publish failed",
     activityEmpty: "No project activity yet",
     activityFilterAll: "All",
@@ -278,7 +504,8 @@ export const enUS = {
     activityFilterTask: "Task notes",
     activityFilterAudit: "Audit",
     activityClosedReadonly: "Project is closed; updates are read-only.",
-    activityNoTaskRead: "Task read access is restricted; task notes are hidden.",
+    activityNoTaskRead:
+      "Task read access is restricted; task notes are hidden.",
     activityLoadMore: "Load more",
     taskCreateLabel: "New task",
     taskImportLabel: "Import tasks",
@@ -361,7 +588,8 @@ export const enUS = {
     externalIdRequired: "Provider and External ID are both required.",
     detailNotFound:
       "This user is not a member of the current workspace, or the member information is not visible.",
-    detailReadonlyHint: "Your current role or credential can only view this member.",
+    detailReadonlyHint:
+      "Your current role or credential can only view this member.",
     detailTitle: "Member detail",
     identityHint:
       "The stable user name is used for references. The display name only changes UI presentation.",
@@ -431,6 +659,7 @@ export const enUS = {
     targetId: "Target ID",
   },
   taskDetail: {
+    backToMyTasks: "Back to my tasks",
     urgency: "Urgency",
     urgencyUnavailable: "Urgency unavailable",
     subTasks: "Sub-tasks",
@@ -459,11 +688,13 @@ export const enUS = {
     groupCustom: "Custom fields",
   },
   workspacesConsole: {
-    subtitle: "Manage visible workspaces. Archiving makes them readonly; restore is pending backend support.",
+    subtitle:
+      "Manage visible workspaces. Archiving makes them readonly; restore is pending backend support.",
     archive: "Archive",
     archiveConfirm: "Archive this workspace? It becomes readonly.",
     restore: "Restore",
-    restoreUnavailable: "Workspace unarchive is not yet supported by the backend.",
+    restoreUnavailable:
+      "Workspace unarchive is not yet supported by the backend.",
   },
   notificationConsole: {
     managementHint:
@@ -494,7 +725,8 @@ export const enUS = {
     createSink: "New sink",
     editSink: "Edit sink",
     deleteSink: "Delete sink",
-    sinkHint: "Hooks reference sinks; URL, secret and HTTP templates live on the sink.",
+    sinkHint:
+      "Hooks reference sinks; URL, secret and HTTP templates live on the sink.",
     sinkEmpty:
       "No sinks yet. Hooks need a sink to deliver — create a sink first.",
     sinkDetail: "Details",
@@ -654,7 +886,8 @@ export const enUS = {
     tabDefinitions: "Definitions",
     tabNotes: "Notes",
     configTitle: "Config",
-    configDescription: "Manage project-scoped config. Keys are validated against workspace schema.",
+    configDescription:
+      "Manage project-scoped config. Keys are validated against workspace schema.",
     configEmpty: "No config entries",
     configKey: "key",
     configValue: "value",
@@ -800,13 +1033,15 @@ export const enUS = {
     colName: "Project",
     colProgress: "Progress",
     colTaskCount: "Tasks (pending / total)",
-    colTaskCountHint: "The tasks column shows “pending / total”; progress is the completed ratio.",
+    colTaskCountHint:
+      "The tasks column shows “pending / total”; progress is the completed ratio.",
     empty: "No projects",
   },
   projectWorkbench: {
     projects: {
       title: "Projects",
-      subtitle: "Review workspace projects and open a project to manage tasks, notes, and links.",
+      subtitle:
+        "Review workspace projects and open a project to manage tasks, notes, and links.",
       empty: "No projects",
       actionsLabel: "Project actions",
       open: "Open",
@@ -822,7 +1057,8 @@ export const enUS = {
         description: "After creation you will enter the project workbench.",
         slug: "Slug",
         slugHint: "3-10 lowercase letters or digits, starting with a letter.",
-        slugInvalid: "Slug must be 3-10 lowercase letters or digits and start with a letter",
+        slugInvalid:
+          "Slug must be 3-10 lowercase letters or digits and start with a letter",
         name: "Name",
         nameRequired: "Name is required",
         projectDescription: "Description",
@@ -850,7 +1086,8 @@ export const enUS = {
       saveSettings: "Save settings",
       statusLabel: "Project status",
       statusAria: "Project status {{status}}",
-      reopenWritableHint: "Restoring the project will make tasks writable again",
+      reopenWritableHint:
+        "Restoring the project will make tasks writable again",
       closeProject: "Close project",
       closeProjectTitle: "Confirm project close",
       closeProjectDescription:
@@ -954,8 +1191,10 @@ export const enUS = {
         assignee_not_found:
           "Assignee does not exist. Create the user and add them to the workspace first.",
         assignee_not_member: "Assignee is not a member of this workspace",
-        project_scope_denied: "The current token cannot import into this project",
-        project_archived: "The project is closed and cannot accept task imports",
+        project_scope_denied:
+          "The current token cannot import into this project",
+        project_archived:
+          "The project is closed and cannot accept task imports",
         unknown: "Import failed",
       },
     },
@@ -964,7 +1203,8 @@ export const enUS = {
       empty: "No field-level changes recorded",
       unavailable: "Change history is temporarily unavailable",
       unknownActor: "Unknown actor",
-      scalarChange: "{{actor}} changed {{field}} from {{previous}} to {{current}}",
+      scalarChange:
+        "{{actor}} changed {{field}} from {{previous}} to {{current}}",
       setChange:
         "{{actor}} updated {{field}}: added {{added}}, removed {{removed}}",
       added: "added",
@@ -1063,8 +1303,10 @@ export const enUS = {
       searchPlaceholder: "Search by name or email",
       viewFilter: "View user",
     },
-    createdWarning: "This token is shown only once. It cannot be viewed again after closing. Save it now.",
-    revokeWarning: "Revoking immediately invalidates this token and cannot be undone. Clients using it will lose API access.",
+    createdWarning:
+      "This token is shown only once. It cannot be viewed again after closing. Save it now.",
+    revokeWarning:
+      "Revoking immediately invalidates this token and cannot be undone. Clients using it will lose API access.",
     mcpConfig: "MCP config",
     mcpConfigFor: "MCP config: {{name}}",
     mcpConfigTitle: "MCP config · {{name}}",
@@ -1072,13 +1314,17 @@ export const enUS = {
     bearerToken: "Bearer token",
     copyConfig: "Copy config",
     copyEndpoint: "Copy endpoint",
-    secretUnavailable: "This token has no recoverable secret. Reissue it before copying the full token.",
-    secretKeyMissing: "The server has no config secret key, so the full token cannot be revealed.",
+    secretUnavailable:
+      "This token has no recoverable secret. Reissue it before copying the full token.",
+    secretKeyMissing:
+      "The server has no config secret key, so the full token cannot be revealed.",
     mcp: {
       configJson: "MCP client config",
       optionalHeaders: "Optional headers",
-      revokedWarning: "This token is revoked. The config is shown only for troubleshooting.",
-      expiredWarning: "This token is expired. The config is shown only for troubleshooting.",
+      revokedWarning:
+        "This token is revoked. The config is shown only for troubleshooting.",
+      expiredWarning:
+        "This token is expired. The config is shown only for troubleshooting.",
       agentHint:
         "Agent tokens can call HTTP MCP. To act as a member, set X-Xuanchu-As and ensure the token has the impersonate scope.",
       patHint:
@@ -1088,7 +1334,8 @@ export const enUS = {
     },
     errors: {
       token_scope_invalid: "Invalid scope",
-      token_agent_requires_workspace: "Agent token requires at least one workspace",
+      token_agent_requires_workspace:
+        "Agent token requires at least one workspace",
       token_not_found: "Token not found",
       token_revoked: "Token is revoked and cannot be modified",
       token_expired: "Token is expired and cannot be modified",
@@ -1097,11 +1344,16 @@ export const enUS = {
       tenant_token_name_required: "Tenant access token name is required",
       tenant_token_scope_invalid: "Invalid tenant access token scope",
       tenant_token_not_found: "Tenant access token not found",
-      tenant_token_revoked: "Tenant access token is revoked and cannot be modified",
-      tenant_token_expired: "Tenant access token is expired and cannot be modified",
-      tenant_token_project_scope_invalid: "Project is not in the current workspace",
-      token_secret_unavailable: "This token has no recoverable secret. Reissue it before copying the full token.",
-      config_secret_key_missing: "The server has no config secret key, so the full token cannot be revealed.",
+      tenant_token_revoked:
+        "Tenant access token is revoked and cannot be modified",
+      tenant_token_expired:
+        "Tenant access token is expired and cannot be modified",
+      tenant_token_project_scope_invalid:
+        "Project is not in the current workspace",
+      token_secret_unavailable:
+        "This token has no recoverable secret. Reissue it before copying the full token.",
+      config_secret_key_missing:
+        "The server has no config secret key, so the full token cannot be revealed.",
       permission_denied:
         "You do not have permission to create tokens for other users",
       user_not_found: "Selected user not found, please choose again",
@@ -1133,12 +1385,16 @@ export const enUS = {
       sessionTtl: "Session TTL",
     },
     hint: {
-      issuerBaseUrl: "yaoguang root URL; OIDC discovery and directory API are based on this.",
+      issuerBaseUrl:
+        "yaoguang root URL; OIDC discovery and directory API are based on this.",
       orgId: "yaoguang organization id, used in directory API path.",
       clientId: "xuanchu internal app client_id registered in yaoguang.",
-      clientSecret: "OIDC client_secret, encrypted at rest. Leave blank to keep current.",
-      syncInterval: "Interval for scheduled directory pull; choose 'Disabled' for manual only.",
-      externalBaseUrl: "Used to build OIDC redirect_uri; falls back to request Host if empty.",
+      clientSecret:
+        "OIDC client_secret, encrypted at rest. Leave blank to keep current.",
+      syncInterval:
+        "Interval for scheduled directory pull; choose 'Disabled' for manual only.",
+      externalBaseUrl:
+        "Used to build OIDC redirect_uri; falls back to request Host if empty.",
       sessionTtl: "Browser session lifetime.",
     },
     secretSet: "Set",
@@ -1147,7 +1403,8 @@ export const enUS = {
     syncNow: "Sync members now",
     syncRunning: "Syncing…",
     syncIntervalDisabled: "Disabled",
-    notEnabled: "SSO not configured yet. Fill in the fields below and save to enable.",
+    notEnabled:
+      "SSO not configured yet. Fill in the fields below and save to enable.",
     noPermission: "You do not have permission to view this page.",
     oidcLogin: "OIDC Sign-in",
     quickLogin: "Sign in with {{name}}",

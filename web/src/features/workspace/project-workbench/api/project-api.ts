@@ -80,9 +80,9 @@ export type ProjectWorkbenchTask = {
   project_id?: string
   priority?: string | null
   due?: string | number | null
-  entry?: string
-  modified?: string
-  end?: string | null
+  entry?: string | number
+  modified?: string | number
+  end?: string | number | null
   start?: string | number | null
   wait?: string | number | null
   scheduled?: string | number | null
@@ -102,6 +102,7 @@ export type ProjectWorkbenchTask = {
   recurrence_info?: {
     role: string
     series_id: string
+    series_title?: string
     series_status?: string
     rule: string
     recurrence_at: number

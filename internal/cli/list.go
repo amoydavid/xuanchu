@@ -41,6 +41,11 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 					ProjectID: currentOpts.ProjectID,
 					NoContext: currentOpts.NoContext,
 				}
+				// HTTP/MCP 的默认查询只排除 deleted；Remote CLI 仍需显式保持
+				// 与本地 list/next 一致的“未完成（pending 或 waiting）”语义。
+				if len(args) == 0 {
+					input.Filters = []string{"(status:pending or status:waiting)"}
+				}
 				if sort != "" {
 					input.Sort = sort
 				}
@@ -144,6 +149,9 @@ func isPlainTargetArg(args []string) bool {
 		return false
 	}
 	s := args[0]
+	if app.IsOccurrenceRef(s) {
+		return true
+	}
 	if isDecimalDigitsArg(s) {
 		return true
 	}

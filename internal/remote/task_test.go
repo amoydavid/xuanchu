@@ -42,3 +42,20 @@ func TestRemoteTaskResponseRejectsMismatchedTaskSlugProject(t *testing.T) {
 		t.Fatalf("parseTaskOccurrenceDTO() error = %v, want task_slug mismatch", err)
 	}
 }
+
+func TestRemoteUnifiedOccurrenceResponseValidatesSlugProject(t *testing.T) {
+	raw := `{
+		"id":"occ:series:1",
+		"uuid":"u1",
+		"title":"remote occurrence",
+		"status":"pending",
+		"entry":1,
+		"modified":2,
+		"project":"api",
+		"task_slug":"web-12",
+		"recurrence_info":{"role":"occurrence","series_id":"series","rule":"daily","recurrence_at":1,"materialization":"materialized"}
+	}`
+	if _, err := parseTaskOccurrenceDTO(json.RawMessage(raw)); err == nil || !strings.Contains(err.Error(), "task_slug") {
+		t.Fatalf("parseTaskOccurrenceDTO() error = %v, want task_slug mismatch", err)
+	}
+}

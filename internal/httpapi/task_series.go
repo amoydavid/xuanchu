@@ -60,6 +60,9 @@ type taskOccurrenceJSON struct {
 	Tags           []string              `json:"tags,omitempty"`
 	Assignees      []task.JSONUserInfo   `json:"assignees,omitempty"`
 	Depends        []string              `json:"depends,omitempty"`
+	DependsInfo    []task.JSONTaskRef    `json:"depends_info,omitempty"`
+	ParentInfo     *task.JSONTaskRef     `json:"parent_info,omitempty"`
+	BlockedByInfo  []task.JSONTaskRef    `json:"blocked_by_info,omitempty"`
 	Annotations    []task.JSONAnnotation `json:"annotations,omitempty"`
 	Links          []linkJSON            `json:"links,omitempty"`
 	RecurrenceInfo *recurrenceInfoJSON   `json:"recurrence_info,omitempty"`
@@ -69,6 +72,7 @@ type taskOccurrenceJSON struct {
 type recurrenceInfoJSON struct {
 	Role            string   `json:"role"`
 	SeriesID        string   `json:"series_id"`
+	SeriesTitle     string   `json:"series_title"`
 	SeriesStatus    string   `json:"series_status"`
 	Rule            string   `json:"rule"`
 	RecurrenceAt    int64    `json:"recurrence_at"`
@@ -92,30 +96,31 @@ type taskViewRangeJSON struct {
 }
 
 type taskSeriesJSON struct {
-	ID                  string               `json:"id"`
-	WorkspaceID         string               `json:"workspace_id"`
-	ProjectID           string               `json:"project_id"`
-	Title               string               `json:"title"`
-	Description         *string              `json:"description,omitempty"`
-	Status              string               `json:"status"`
-	RecurrenceRule      string               `json:"recurrence_rule"`
-	FirstDue            int64                `json:"first_due"`
-	Until               *int64               `json:"until,omitempty"`
-	Priority            *string              `json:"priority,omitempty"`
-	Tags                []string             `json:"tags,omitempty"`
-	UDAs                map[string]string    `json:"udas,omitempty"`
-	Assignees           []task.JSONUserInfo  `json:"assignees,omitempty"`
-	OpenOccurrenceCount int                  `json:"open_occurrence_count"`
-	CompletedCount      int                  `json:"completed_count"`
-	SkippedCount        int                  `json:"skipped_count"`
-	OverdueCount        int                  `json:"overdue_count"`
-	NextRecurrenceAt    *int64               `json:"next_recurrence_at,omitempty"`
-	CreatedBy           task.JSONUserInfo    `json:"created_by"`
-	CreatedAt           int64                `json:"created_at"`
-	ModifiedAt          int64                `json:"modified_at"`
-	OpenOccurrences     []taskOccurrenceJSON `json:"open_occurrences,omitempty"`
-	RecentCompleted     []taskOccurrenceJSON `json:"recent_completed,omitempty"`
-	RecentSkipped       []taskOccurrenceJSON `json:"recent_skipped,omitempty"`
+	ID                         string               `json:"id"`
+	WorkspaceID                string               `json:"workspace_id"`
+	ProjectID                  string               `json:"project_id"`
+	Title                      string               `json:"title"`
+	Description                *string              `json:"description,omitempty"`
+	Status                     string               `json:"status"`
+	RecurrenceRule             string               `json:"recurrence_rule"`
+	FirstDue                   int64                `json:"first_due"`
+	Until                      *int64               `json:"until,omitempty"`
+	Priority                   *string              `json:"priority,omitempty"`
+	Tags                       []string             `json:"tags,omitempty"`
+	UDAs                       map[string]string    `json:"udas,omitempty"`
+	Assignees                  []task.JSONUserInfo  `json:"assignees,omitempty"`
+	OpenOccurrenceCount        int                  `json:"open_occurrence_count"`
+	CompletedCount             int                  `json:"completed_count"`
+	SkippedCount               int                  `json:"skipped_count"`
+	OverdueCount               int                  `json:"overdue_count"`
+	NextRecurrenceAt           *int64               `json:"next_recurrence_at,omitempty"`
+	SuggestedRuleEffectiveFrom *int64               `json:"suggested_rule_effective_from,omitempty"`
+	CreatedBy                  task.JSONUserInfo    `json:"created_by"`
+	CreatedAt                  int64                `json:"created_at"`
+	ModifiedAt                 int64                `json:"modified_at"`
+	OpenOccurrences            []taskOccurrenceJSON `json:"open_occurrences,omitempty"`
+	RecentCompleted            []taskOccurrenceJSON `json:"recent_completed,omitempty"`
+	RecentSkipped              []taskOccurrenceJSON `json:"recent_skipped,omitempty"`
 }
 
 type taskSeriesListPageJSON struct {
@@ -159,10 +164,32 @@ func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
 	if v.RecurrenceInfo != nil {
 		out.RecurrenceInfo = &recurrenceInfoJSON{
 			Role: v.RecurrenceInfo.Role, SeriesID: v.RecurrenceInfo.SeriesID,
+			SeriesTitle:  v.RecurrenceInfo.SeriesTitle,
 			SeriesStatus: v.RecurrenceInfo.SeriesStatus, Rule: v.RecurrenceInfo.Rule,
 			RecurrenceAt: v.RecurrenceInfo.RecurrenceAt, Materialization: v.RecurrenceInfo.Materialization,
 			Overrides: v.RecurrenceInfo.Overrides, Until: v.RecurrenceInfo.Until,
 		}
+	}
+	return out
+}
+
+// taskResolutionToJSON 在统一 occurrence view 上补齐任务详情需要的可读关系引用。
+// projected occurrence 没有真实 task row，因此这些关系自然为空且不触发写入。
+func taskResolutionToJSON(svc *app.Service, resolved app.TaskRefResolution) taskOccurrenceJSON {
+	out := occurrenceViewToJSON(resolved.View)
+	if resolved.Task == nil {
+		return out
+	}
+	if refs, err := svc.ResolveTaskRefs(resolved.Task.Depends); err == nil && len(refs) > 0 {
+		out.DependsInfo = refs
+	}
+	if resolved.Task.Parent != nil {
+		if refs, err := svc.ResolveTaskRefs([]string{*resolved.Task.Parent}); err == nil && len(refs) > 0 {
+			out.ParentInfo = &refs[0]
+		}
+	}
+	if refs, err := svc.ResolveDependents(resolved.Task.UUID); err == nil && len(refs) > 0 {
+		out.BlockedByInfo = refs
 	}
 	return out
 }
@@ -200,8 +227,9 @@ func seriesViewToJSON(v app.TaskSeriesView) taskSeriesJSON {
 		Assignees: assignees, OpenOccurrenceCount: v.OpenOccurrenceCount,
 		CompletedCount: v.CompletedCount, SkippedCount: v.SkippedCount,
 		OverdueCount: v.OverdueCount, NextRecurrenceAt: v.NextRecurrenceAt,
-		CreatedBy: taskUserInfoToJSON(v.CreatedBy),
-		CreatedAt: v.CreatedAt, ModifiedAt: v.ModifiedAt,
+		SuggestedRuleEffectiveFrom: v.SuggestedRuleEffectiveFrom,
+		CreatedBy:                  taskUserInfoToJSON(v.CreatedBy),
+		CreatedAt:                  v.CreatedAt, ModifiedAt: v.ModifiedAt,
 	}
 }
 
@@ -433,7 +461,11 @@ func (s *Server) handleTaskSeriesOccurrenceSkip(w http.ResponseWriter, r *http.R
 		return
 	}
 	seriesRef := pathParam(r, "seriesRef")
-	occurrenceRef := pathParam(r, "occurrenceRef")
+	occurrenceRef, decodeErr := decodedPathParam(r, "occurrenceRef")
+	if decodeErr != nil {
+		writeAppError(w, decodeErr)
+		return
+	}
 	view, err := scoped.SkipTaskSeriesOccurrence(seriesRef, occurrenceRef)
 	if err != nil {
 		writeAppError(w, err)

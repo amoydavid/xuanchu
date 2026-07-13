@@ -76,16 +76,23 @@ func TestIsLikelyUUID(t *testing.T) {
 	}
 }
 
+func TestOccurrenceRefIsPlainTaskTarget(t *testing.T) {
+	if !isPlainTargetArg([]string{"occ:11111111-1111-1111-1111-111111111111:1893456000"}) {
+		t.Fatal("occurrence_ref 应作为单一任务引用交给 App/HTTP")
+	}
+}
+
 func TestRemoteSeriesDTOToViewKeepsProtocolFields(t *testing.T) {
-	description, priority, until := "说明", "H", int64(9000)
+	description, priority, until, suggested := "说明", "H", int64(9000), int64(6000)
 	dto := remote.TaskSeriesDTO{
 		ID: "series-1", WorkspaceID: "workspace-1", ProjectID: "project-1",
 		Title: "每日巡检", Description: &description, Status: "active",
 		RecurrenceRule: "daily", FirstDue: 5000, Until: &until, Priority: &priority,
 		Tags: []string{"ops"}, UDAs: map[string]string{"estimate": "3"},
-		CreatedBy: task.JSONUserInfo{ID: "user-1", Name: "alice"},
-		Assignees: []task.JSONUserInfo{{ID: "user-2", Name: "bob"}},
-		CreatedAt: 100, ModifiedAt: 200,
+		CreatedBy:                  task.JSONUserInfo{ID: "user-1", Name: "alice"},
+		Assignees:                  []task.JSONUserInfo{{ID: "user-2", Name: "bob"}},
+		SuggestedRuleEffectiveFrom: &suggested,
+		CreatedAt:                  100, ModifiedAt: 200,
 	}
 	view := remoteSeriesDTOToView(dto)
 	if view.ID != dto.ID || view.Title != dto.Title || view.RecurrenceRule != dto.RecurrenceRule || view.FirstDue != dto.FirstDue {
@@ -93,6 +100,9 @@ func TestRemoteSeriesDTOToViewKeepsProtocolFields(t *testing.T) {
 	}
 	if !reflect.DeepEqual(view.Tags, dto.Tags) || view.UDAs["estimate"] != "3" || view.CreatedBy.ID != "user-1" || len(view.Assignees) != 1 {
 		t.Fatalf("series retained fields lost: %#v", view)
+	}
+	if view.SuggestedRuleEffectiveFrom == nil || *view.SuggestedRuleEffectiveFrom != suggested {
+		t.Fatalf("suggested_rule_effective_from lost: %#v", view.SuggestedRuleEffectiveFrom)
 	}
 }
 
@@ -113,10 +123,57 @@ func TestRemoteOccurrenceDTOToViewKeepsProtocolFields(t *testing.T) {
 	}
 }
 
+func TestRemoteDTOToTaskKeepsUnifiedTaskViewFields(t *testing.T) {
+	due, wait, scheduled, until := int64(100), int64(200), int64(300), int64(400)
+	start, end := int64(500), int64(600)
+	dto := remote.TaskOccurrenceDTO{
+		ID: "task-1", Title: "远程任务", Status: task.StatusWaiting,
+		Due: &due, Wait: &wait, Scheduled: &scheduled, Until: &until,
+		Start: &start, End: &end, Depends: []string{"dep-1"},
+		Assignees: []task.JSONUserInfo{{ID: "user-1", Name: "alice"}},
+	}
+
+	got := remoteDTOToTask(dto)
+	if got.Due == nil || *got.Due != due || got.Wait == nil || *got.Wait != wait ||
+		got.Scheduled == nil || *got.Scheduled != scheduled || got.Until == nil || *got.Until != until ||
+		got.Start == nil || *got.Start != start || got.End == nil || *got.End != end {
+		t.Fatalf("remote task dates lost: %#v", got)
+	}
+	if !reflect.DeepEqual(got.Depends, dto.Depends) || len(got.Assignees) != 1 || got.Assignees[0].UserID != "user-1" {
+		t.Fatalf("remote task relations lost: %#v", got)
+	}
+}
+
+func TestRenderOccurrencePageUsesSlugOrPlannedDateInsteadOfUUID(t *testing.T) {
+	var out bytes.Buffer
+	uuid, slug := "random-occurrence-uuid", "ops-7"
+	slot := int64(1893456000)
+	rule := "daily"
+	renderOccurrencePage(&out, false, app.TaskViewPage{Items: []app.TaskOccurrenceView{
+		{
+			ID: "occ:series:1", UUID: &uuid, TaskSlug: &slug, Title: "已物化", Status: task.StatusPending,
+			RecurrenceInfo: &app.RecurrenceInfo{Role: "occurrence", SeriesID: "series", Rule: rule, RecurrenceAt: slot, Materialization: "materialized"},
+		},
+		{
+			ID: "occ:series:2", Title: "计划实例", Status: task.StatusPending,
+			RecurrenceInfo: &app.RecurrenceInfo{Role: "occurrence", SeriesID: "series", Rule: rule, RecurrenceAt: slot, Materialization: "projected"},
+		},
+	}})
+	text := out.String()
+	if !strings.Contains(text, "ops-7") || strings.Contains(text, uuid) {
+		t.Fatalf("materialized reference output = %q", text)
+	}
+	if !strings.Contains(text, "↻01-01") || !strings.Contains(text, "occ:series:2") {
+		t.Fatalf("projected reference output = %q", text)
+	}
+}
+
 func TestRenderSeriesJSONUsesProtocolFieldNames(t *testing.T) {
 	var out bytes.Buffer
+	suggested := int64(6000)
 	renderSeriesDetail(&out, true, app.TaskSeriesDetailView{Series: app.TaskSeriesView{
-		Series: taskseries.Series{ID: "series-1", Title: "每日巡检", Status: "active", RecurrenceRule: "daily", FirstDue: 5000},
+		Series:                     taskseries.Series{ID: "series-1", Title: "每日巡检", Status: "active", RecurrenceRule: "daily", FirstDue: 5000},
+		SuggestedRuleEffectiveFrom: &suggested,
 	}})
 	var payload map[string]any
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
@@ -124,6 +181,9 @@ func TestRenderSeriesJSONUsesProtocolFieldNames(t *testing.T) {
 	}
 	if payload["id"] != "series-1" || payload["recurrence_rule"] != "daily" || payload["first_due"] == nil {
 		t.Fatalf("protocol JSON = %#v", payload)
+	}
+	if payload["suggested_rule_effective_from"] != float64(suggested) {
+		t.Fatalf("suggested_rule_effective_from = %#v want %d", payload["suggested_rule_effective_from"], suggested)
 	}
 	for _, retiredShape := range []string{"Series", "RecurrenceRule", "FirstDue"} {
 		if _, ok := payload[retiredShape]; ok {

@@ -2,9 +2,9 @@
 
 **日期：** 2026-07-11
 
-**状态：** 待实现
+**状态：** 已实现并完成跨协议、双数据库与 Web E2E 验证
 
-**修订：** 2026-07-13。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。2026-07-13 追加 Web Console 组件契约：循环任务 UI 必须复用现有 shadcn 设计系统、统一创建弹窗只能有一个 Dialog 语义、右侧栏与项目上下文栏保持同一宽度和响应式边界、所有用户文案进入 i18n。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。
+**修订：** 2026-07-13。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。2026-07-13 追加 Web Console 组件契约：循环任务 UI 必须复用现有 shadcn 设计系统、统一创建弹窗只能有一个 Dialog 语义、右侧栏与项目上下文栏保持同一宽度和响应式边界、所有用户文案进入 i18n。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。2026-07-13 最终实现复核补齐 task_slug/UUID/occurrence_ref 三别名、详情页所属 Series 名称、Series 面板短链接与来源返回语义，并通过 SQLite、PostgreSQL、零 CGO、HTTP/MCP/CLI/Remote、桌面与移动 Web Console 验收。
 
 **范围：** 任务循环系列的领域语义、日历调度、CLI/HTTP/Remote/MCP 契约与 Web Console 完整 CRUD 体验
 
@@ -326,9 +326,9 @@ occurrence_ref = occ:<series_uuid>:<recurrence_at_unix>
 - `occurrence_ref` 是 occurrence 在投影、物化、完成、改期、跳过前后的稳定公开 `id`。
 - materialized occurrence 另有真实 `uuid` 和可选 `task_slug`；projected occurrence 的 `uuid/task_slug` 为 null。
 - 普通任务的公开 `id` 继续等于 UUID，同时保留当前 `uuid/task_slug` 字段。
-- HTTP 路径、MCP `id`、Web permalink 优先使用公开 `id`；UUID/task_slug 仍可解析已物化任务。
+- HTTP 路径和 MCP `id` 接受公开 occurrence_ref、UUID 或已物化 task_slug。Web 对 projected occurrence 使用 occurrence_ref permalink，对 materialized occurrence 优先使用 task_slug permalink。
 - `ResolveProtocolTarget` 负责解析普通 ref 或 occurrence_ref；先按 `(series_id,recurrence_at)` 查 materialized row。未命中时再校验 workspace/project scope、series 有效区间、槽位属于对应 rule version 且未被 tombstone 排除。规则修改后，旧规则段中的 projected/materialized occurrence 仍可通过 occurrence_ref 读取。
-- 物化后 URL 和 MCP 引用不变化；不要把刚分配的 task_slug 替换成 canonical permalink。
+- 物化后稳定公开 `id=occurrence_ref` 不变化，所有旧 MCP/HTTP 引用继续可解析；Web 在首次写成功后使用 history replace 把 occurrence_ref 地址规范化为刚分配的 task_slug permalink。
 
 ### 7.5 单次字段覆盖
 
@@ -403,7 +403,7 @@ type TaskSeriesView struct {
 
 用户信息继续遵守 `task.UserInfo` / `task.JSONUserInfo` 统一规范；若 Series get 暴露 rule-version 摘要，其中的 `created_by` 也必须是完整 UserInfo，而不是裸 UUID。
 
-SeriesView 的 occurrence counts 只统计 materialized rows；未来 projected occurrence 不计入 open count。`NextRecurrenceAt` 是纯日历概念，指严格晚于注入 now 的下一合法槽位，不因该未来 occurrence 是否被提前物化而跳过；它用于展示和 `sort=next`，不能解释为“下一待生成任务”。`SuggestedRuleEffectiveFrom` 才是满足规则修改约束的默认切换槽位，会避开已进入执行期或已物化槽位；`BacklogRemaining` 表示已经进入执行期但尚待物化的槽位数。
+SeriesView 的 occurrence counts 只统计 materialized rows；未来 projected occurrence 不计入 open count。`NextRecurrenceAt` 是纯日历概念，指严格晚于注入 now 的下一合法槽位，不因该未来 occurrence 是否被提前物化而跳过；它用于展示和 `sort=next`，不能解释为“下一待生成任务”。`SuggestedRuleEffectiveFrom` 才是满足规则修改约束的默认切换槽位，会避开已进入执行期、已物化槽位和已经占用的 rule-version 起点；`BacklogRemaining` 表示已经进入执行期但尚待物化的槽位数。
 
 ### 7.8 TaskOccurrenceView 与 recurrence_info
 
@@ -436,6 +436,18 @@ type TaskOccurrenceView struct {
     UDAs           map[string]task.UDAValue
     RecurrenceInfo *RecurrenceInfo
 }
+
+type RecurrenceInfo struct {
+    Role            string
+    SeriesID        string
+    SeriesTitle     string // 用于详情页展示所属循环任务，不得用可能已 override 的实例标题代替
+    SeriesStatus    string
+    Rule            string
+    RecurrenceAt    int64
+    Materialization string
+    Overrides       []string
+    Until           *int64
+}
 ```
 
 示例省略 annotations、links 等现有扩展字段；最终 view 必须覆盖当前 task 读取场景所需的完整字段，不能因为引入投影而缩减普通任务响应。不得为 projected occurrence 构造一个不满足 UUID invariant 的 `task.Task` 伪实体。App view 显式承载公共字段；materialized row 和普通 task 再映射进 view。按 `entry` 排序时，projected 使用 `available_at` 作为内部 sort key，但输出 `entry=null`。
@@ -447,6 +459,7 @@ HTTP/MCP 的 occurrence view增加派生字段，不再输出循环用途的 `re
   "recurrence_info": {
     "role": "occurrence",
     "series_id": "series-uuid",
+    "series_title": "每日检查投放消耗",
     "series_status": "active",
     "rule": "daily",
     "recurrence_at": "2026-07-12T23:59:59+08:00",
@@ -789,7 +802,7 @@ Series modify 支持两组字段：
 
 `first_due` 创建后不可修改。实例 `due` 可单独修改，但不会改变 `recurrence_at` 或未来节奏。
 
-修改 rule 必须带 `effective_from`（date-only 截止槽位），默认是当前规则的下一个尚未进入执行期的槽位。它必须晚于今天及最大已物化 `recurrence_at`，不早于当前规则段的起点，且不超过同请求提交的 `until`。服务端追加 rule version 并更新 series 当前规则；已进入执行期的槽位、已物化槽位和 tombstone 不回写、不重排。响应返回最终 `effective_from` 和未来三次预览。
+修改 rule 必须带 `effective_from`（date-only 截止槽位），默认是当前规则的下一个尚未进入执行期的槽位。它必须晚于今天及最大已物化 `recurrence_at`，严格晚于现有最后一个 rule version 的 `effective_from`，且不超过同请求提交的 `until`。严格晚于规则段起点是同一 series 内 `(series_id, effective_from)` 唯一约束的直接结果；服务端必须在写库前返回 `task_series_invalid_effective_from`，不能把唯一约束错误泄漏为 500。服务端追加 rule version 并更新 series 当前规则；已进入执行期的槽位、已物化槽位和 tombstone 不回写、不重排。响应返回最终 `effective_from` 和未来三次预览。
 
 在修改任何 series 字段前，App 必须先 reconcile 已进入执行期的 backlog。若受单轮上限影响仍有 backlog，返回 `task_recurrence_backlog`，本次修改不提交；这样共享字段与规则修改不会改变本应按旧值生成的历史任务。
 
@@ -1224,7 +1237,7 @@ task_type: all|normal|occurrence
 - 循环实例：[开始] [完成] [... 跳过本次] [... 管理循环]
 ```
 
-已物化 occurrence 显示 task_slug；尚未物化的未来投影没有 project_seq/task_slug，标识列显示简短的 `↻MM-DD`，链接使用稳定 occurrence_ref。首次写操作后可补充 task_slug，但 canonical URL 不变化。产品界面不显示“virtual/projected”等技术术语。
+已物化 occurrence 显示 task_slug，并使用 `/tasks/{task_slug}` 作为首选用户 permalink；尚未物化的未来投影没有 project_seq/task_slug，标识列显示简短的 `↻MM-DD`，链接使用稳定 occurrence_ref。projected 首次写操作成功后获得 task_slug，Web 使用 history replace 将当前地址规范化为短链接，不新增浏览器历史项。occurrence_ref 始终是投影和物化前后不变的稳定 ID，但物化后不再作为首选展示地址。产品界面不显示“virtual/projected”等技术术语。
 
 筛选仍以实例为单位：status、assignee、due、priority、tag 均过滤 occurrence 自身。增加“任务类型：全部/普通/循环”筛选，默认全部。普通状态筛选中移除 `recurring`；series 的 active/ended/stopped 状态只出现在任务页的循环任务管理面板，不能进入任务状态筛选。
 
@@ -1284,6 +1297,16 @@ task_type: all|normal|occurrence
 
 ### 15.5 循环实例详情原型
 
+本节定义详情页的核心信息架构；完整的桌面端、projected、已完成、已跳过、URL 别名加载、移动端和组件契约原型见《[任务短引用与循环任务字段对齐设计](./2026-07-13-task-reference-and-recurring-form-alignment-design.md#92-详情页)》§9.2。两份文档冲突时，以该定向修订为准。
+
+已物化实例的首选地址为：
+
+```text
+/workspaces/local/projects/ops/tasks/ops-18
+```
+
+从 UUID 或 occurrence_ref 旧链接进入时，读取成功后使用 history replace 规范化到 `ops-18`。尚未物化的计划实例没有 task_slug，继续使用 URL 编码后的 occurrence_ref；首次成功写入后再 replace 到新获得的短链接。三种入口解析为 occurrence 后均渲染同一个“普通任务详情 + 循环上下文”页面，不另建循环详情路由。
+
 ```text
 +--------------------------------------------------------------------------------+
 | OPS-18 每日检查投放消耗                              [开始] [完成本次] [...]    |
@@ -1307,7 +1330,7 @@ task_type: all|normal|occurrence
 
 实例详情不把 series 显示为“父任务”。`recurrence_info.rule` / `until` 只读；“查看循环任务”打开任务页管理面板中的 Series 详情，不离开任务执行上下文。
 
-详情页动作必须直接表达操作对象：普通任务使用“完成任务 / 重新打开任务”，occurrence 使用“完成本次 / 重新打开本次”。点击“完成本次”调用当前 `occurrence_ref` 的 task done 用例，不弹“本次/整个系列”范围选择；该日期的 occurrence 进入 completed，Series、其它已存在 occurrence 和后续槽位均不改变。成功后停留在当前详情，状态切为“已完成”，主动作切为“重新打开本次”，Toast 写“已完成 2026年7月12日这一次”。紧凑列表可以只显示完成图标或“完成”，但 aria-label/title 必须包含“完成本次：{日期}”。
+详情页动作必须直接表达操作对象：普通任务使用“完成任务 / 重新打开任务”，occurrence 使用“完成本次 / 重新打开本次”。点击“完成本次”调用统一 task done 用例，不弹“本次/整个系列”范围选择；当前路由是 task_slug、UUID 或 occurrence_ref 都必须解析到同一实例。该日期的 occurrence 进入 completed，Series、其它已存在 occurrence 和后续槽位均不改变。成功后停留在当前详情，状态切为“已完成”，主动作切为“重新打开本次”，Toast 写“已完成 2026年7月12日这一次”。紧凑列表可以只显示完成图标或“完成”，但 aria-label/title 必须包含“完成本次：{日期}”。
 
 ### 15.6 面板内系列详情原型
 
@@ -1395,7 +1418,7 @@ Occurrence 详情顶部固定显示：
 
 - 所有普通属性编辑默认“仅本次”并记录 override，不反复弹范围选择。
 - 生命周期动作也按资源类型区分文案：普通任务为“完成任务 / 重新打开任务”，occurrence 为“完成本次 / 重新打开本次”；不得用“完成循环任务”暗示 Series 被完成。
-- “完成本次”只提交当前页面的稳定 `occurrence_ref`。projected occurrence 在同一事务中物化并完成；materialized occurrence 直接完成。响应保持同一公开 `id`，详情页不跳转到新 task UUID/slug。
+- “完成本次”提交当前页面的路由引用。projected occurrence 在同一事务中物化并完成；materialized occurrence 直接完成。响应保持同一稳定 `id=occurrence_ref`；projected 首次物化后详情页 history replace 到新 task_slug，materialized 页面不跳转到 UUID。
 - 完成后保留详情上下文并显示带本次日期的成功反馈；即使 Series 已 ended/stopped，这个既有 occurrence 仍可完成或重新打开，不恢复 Series。
 - `recurrence_at` 和 rule 只读；due 可改并显示“原循环日期”。
 - parent UI 只显示真实手工父任务；所属 series 使用独立属性。
@@ -1438,7 +1461,8 @@ Series 管理作为任务页的 URL 驱动面板，新增静态子路由：
 - 任务筛选、排序、分页继续保存在 search params；打开/关闭/切换 Series 面板时原样保留。直接访问深链时使用任务页默认查询并打开面板。
 - 从任务行、任务详情或“我的任务”打开面板时，通过 Router location state 记录结构化 `panelReturnTo`：只允许 `{kind:tasks, search, restore}`、`{kind:task, taskRef}`、`{kind:my-tasks, search, restore}`，其中 restore 仅含 scrollTop/focusId/selectedIds；目标 URL 从当前 workspace/project 参数重新生成，不接受任意 href。关闭优先返回来源，直接深链没有来源时回到项目 `/tasks`。复制链接只复制 canonical panel URL，不携带 return state。
 - 桌面面板内部 breadcrumb 为“循环任务 > {系列标题}”；项目级 breadcrumb 仍为“项目 > 任务”，避免让治理面板伪装成项目一级页面。
-- occurrence detail 使用项目级 canonical route，因此高亮“项目”。从“我的任务”进入时附加非 canonical 的 `from=my-tasks`，页面首个面包屑显示“返回我的任务”；复制链接时去掉该参数。
+- occurrence detail 使用项目级首选用户 route，因此高亮“项目”：materialized 使用 `/tasks/{task_slug}`，projected 使用 `/tasks/{encoded occurrence_ref}`。从“我的任务”进入时附加非 permalink 的 `from=my-tasks`，标题操作区显示明确的“返回我的任务”；项目、任务和短引用面包屑仍用于表达当前资源归属。复制链接时去掉来源参数。
+- 从“我的任务”进入时同时携带白名单化的 preset/搜索/优先级/排序状态；occurrence_ref/UUID 规范化为 task_slug、打开并关闭 Series 面板、完成或重新打开本次都必须保留该来源。点击“返回我的任务”或跳过本次后恢复原查询。完整页面与导航原型见定向修订 §9.2.9。
 - 不新增 `/task-series` 全局路由，不新增跨项目 series 总表。
 - “循环任务 N”数量只在任务页工具栏按钮显示 active series 数；ProjectTabs 不显示该数量。
 
@@ -1585,7 +1609,7 @@ Web Console
 交互要求：
 
 - mode selector 放在标题说明之后、所有字段之前，不能埋在“更多字段”。
-- 两种模式维护各自日期 state；切换模式时隐藏字段不提交，但切回后恢复，避免静默丢值。
+- 标题、description、优先级、负责人、标签和 UDA 使用同一份共享 state，切换模式不丢失；普通 due 与循环 first_due 在目标字段首次为空时单次复制，之后分别维护。scheduled、wait、普通 until 与循环 until 等模式专属日期各自维护，隐藏字段不提交。
 - recurring 隐藏 scheduled、wait、depends、manual parent；`due` 改名“首次截止”，`until` 改名“循环结束”。
 - rule 选择支持每天、每周、每两周、每月、每季度、每年、自定义 N 天/周/月，只提交 canonical 值。
 - first_due 或 rule 变化后即时显示未来三次预览；until 早于 first_due 时在字段下报错。
@@ -1690,7 +1714,7 @@ Web Console
 - 保留搜索、项目、优先级、任务类型和排序；“今天/逾期”不再让用户手工拼日期。
 - pending 且 start 为空的行直接显示开始/完成；pending 且 start 非空（界面“进行中”）显示停止和完成；waiting 行显示完成及等待提示；completed 行显示 reopen。
 - occurrence 的 `···` 与项目任务页一致，并提供“查看循环任务”。
-- 从我的任务打开 occurrence 使用项目级 canonical URL；项目不存在或不可见时显示只读引用而非错误链接。
+- 从我的任务打开 occurrence 使用项目级首选用户 URL；materialized 优先 task_slug，projected 使用 occurrence_ref。项目不存在或不可见时显示只读引用而非错误链接。
 
 ### 15.19 移动端原型
 
@@ -1748,7 +1772,7 @@ Web Console 采用现有 shadcn/Radix 组件和主题 token，不为循环任务
 |---|---|---|
 | 我的任务一级预设 | `Tabs`、`TabsList`、`TabsTrigger` | 手写 `button[role=tab]`、缺失 key 时显示原始 key |
 | 统一新建任务 | 一个 `Dialog`、`DialogHeader`、`DialogContent`、`DialogFooter` | 在 `DialogContent` 内嵌第二个 `role=dialog` |
-| 普通/循环模式切换 | `Tabs`，切换时保留两种模式各自 state | 两个裸 button 模拟 tab；隐藏字段被提交 |
+| 普通/循环模式切换 | `Tabs`，共享任务字段使用同一 state，模式专属日期分别保留 | 两个裸 button 模拟 tab；隐藏字段被提交 |
 | 循环任务表单 | `Label`、`Input`、`Select`、共享 `InlineDatePicker`、`Alert`、`Button` | 裸 `input/select/button`；依赖浏览器默认日期输入样式 |
 | 循环任务管理栏 | `Input`、`Select`、`Button`、`Badge`、`Separator`、`Skeleton`、`Alert` | 无样式原生过滤控件；加载/错误/空状态共用一个文本块 |
 | 停止循环 | `AlertDialog`、`Checkbox`、`Button` | 自制 `div[role=dialog]` 或普通删除确认文案 |
@@ -1848,7 +1872,7 @@ Web 日期窗口
   -> POST /tasks/{occurrence_ref}/done
   -> app 同事务 materialize + done + audit/events
   -> 返回同 id、补充 uuid/task_slug、materialization=materialized
-  -> Web 替换当前行/详情，保留 canonical URL，显示“已完成 {本次日期} 这一次”
+  -> Web 替换当前行/详情；首次物化时 history replace 到 task_slug permalink，显示“已完成 {本次日期} 这一次”
   -> 刷新 occurrence、任务列表、项目统计及 Series 的派生计数/历史；Series 规则及其它轮次状态不变
 ```
 
@@ -2150,7 +2174,7 @@ HTTP status 与现有错误映射保持一致：输入错误 400、权限 403、
 - 项目普通状态筛选移除 recurring，增加任务类型筛选；Series status 只存在于循环任务管理面板。
 - 我的任务具有未完成/今天/逾期/无截止日期/已完成互斥预设；今天不包含逾期。
 - 同系列多条积压不去重；completed occurrence 独立显示和 reopen。
-- projected 行使用 occurrence_ref permalink，物化后 URL 不变。
+- projected 行使用 occurrence_ref permalink；首次物化后 history replace 到 task_slug permalink，稳定 `id=occurrence_ref` 不变。
 - 管理面板内完成 series list/status/filter/detail/history，并支持 URL 深链、前进后退、焦点与任务列表状态恢复。
 - occurrence 详情显示 series banner，不显示普通 parent。
 - instance edit、skip、reopen。
@@ -2203,7 +2227,7 @@ git diff --check
 22. series occurrences 的 pending/waiting/completed/deleted/all 枚举在 HTTP/MCP/Remote/CLI schema 与测试中一致。
 23. Series list 的 status/q/assignee/sort/pagination 在 HTTP/MCP/Remote/CLI/Web 返回相同 items 和 filtered total；Web 不过滤当前页伪造结果。
 24. My Tasks open presets 同时包含 pending/waiting，不存在 active status；从 My Tasks 打开/关闭循环任务面板后恢复 preset、筛选、排序、选择、滚动和焦点。
-25. 普通任务详情使用“完成任务/重新打开任务”，occurrence 详情使用“完成本次/重新打开本次”；完成 projected 或 materialized occurrence 都只改变该 `occurrence_ref`，保留详情 URL，刷新 Series 派生计数但不改变规则和其它轮次。
+25. 普通任务详情使用“完成任务/重新打开任务”，occurrence 详情使用“完成本次/重新打开本次”；完成 projected 或 materialized occurrence 都只改变该 `occurrence_ref`。materialized 保持 task_slug permalink；projected 首次完成后 history replace 到新 task_slug，刷新 Series 派生计数但不改变规则和其它轮次。
 
 ## 25. 实施边界与建议拆分
 

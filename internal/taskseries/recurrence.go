@@ -152,6 +152,95 @@ func ExpandRange(versions []RuleVersion, until *int64, start, end int64, loc *ti
 	return out, nil
 }
 
+// FirstSlotAfter 返回严格晚于 threshold 的第一个合法槽位。
+//
+// 与 ExpandRange 不同，这个查询不要求调用方猜一个扫描上界，也不会因为 anchor
+// 距离 threshold 超过 10000 个日/周槽位而失败。它用于 SeriesView 给出规则修改的
+// 服务端建议值，而不是用于批量展开任务列表。
+func FirstSlotAfter(versions []RuleVersion, until *int64, threshold int64, loc *time.Location) (*Slot, error) {
+	if loc == nil {
+		return nil, fmt.Errorf("taskseries: location 不能为空")
+	}
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("taskseries: 至少需要一个 rule version")
+	}
+	if threshold == int64(^uint64(0)>>1) {
+		return nil, nil
+	}
+
+	sorted := make([]RuleVersion, len(versions))
+	copy(sorted, versions)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].EffectiveFrom < sorted[j].EffectiveFrom
+	})
+	for i, version := range sorted {
+		if err := ValidateRule(version.RecurrenceRule); err != nil {
+			return nil, fmt.Errorf("taskseries: rule version %d 规则非法: %w", i, err)
+		}
+		if i > 0 && version.EffectiveFrom <= sorted[i-1].EffectiveFrom {
+			return nil, fmt.Errorf("taskseries: rule version effective_from 必须严格递增")
+		}
+	}
+
+	start := threshold + 1
+	for i, version := range sorted {
+		candidate, err := firstRecurrenceAtOrAfter(version.EffectiveFrom, version.RecurrenceRule, start, loc)
+		if err != nil {
+			return nil, err
+		}
+		if i+1 < len(sorted) && candidate >= sorted[i+1].EffectiveFrom {
+			continue
+		}
+		if until != nil && candidate > *until {
+			return nil, nil
+		}
+		return &Slot{RecurrenceAt: candidate, Rule: version.RecurrenceRule}, nil
+	}
+	return nil, nil
+}
+
+// firstRecurrenceAtOrAfter 从单一规则段的 anchor 快进到第一个 >= start 的槽位。
+// 日/周规则按本地日历天数直接跳转；月规则保留 Next 的逐次 AddDate 月末语义。
+func firstRecurrenceAtOrAfter(anchor int64, rule string, start int64, loc *time.Location) (int64, error) {
+	if anchor >= start {
+		return anchor, nil
+	}
+	n, unit, err := parseRule(rule)
+	if err != nil {
+		return 0, err
+	}
+	candidate := anchor
+	if unit == "days" || unit == "weeks" {
+		stepDays := n
+		if unit == "weeks" {
+			if n > int(^uint(0)>>1)/7 {
+				return 0, fmt.Errorf("taskseries: 规则 %q 的周期间隔过大", rule)
+			}
+			stepDays = 7 * n
+		}
+		anchorTime := time.Unix(anchor, 0).In(loc)
+		startTime := time.Unix(start, 0).In(loc)
+		anchorDate := time.Date(anchorTime.Year(), anchorTime.Month(), anchorTime.Day(), 0, 0, 0, 0, time.UTC)
+		startDate := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, time.UTC)
+		daysApart := (startDate.Unix() - anchorDate.Unix()) / 86400
+		jumps := daysApart / int64(stepDays)
+		if jumps > 0 {
+			candidate = anchorTime.AddDate(0, 0, int(jumps)*stepDays).Unix()
+		}
+	}
+	for candidate < start {
+		next, err := Next(candidate, rule, loc)
+		if err != nil {
+			return 0, err
+		}
+		if next <= candidate {
+			return 0, fmt.Errorf("taskseries: 规则 %q 在 %d 产生非递增槽位 %d", rule, candidate, next)
+		}
+		candidate = next
+	}
+	return candidate, nil
+}
+
 // ValidateSeries 校验 series 领域对象的基本 invariant（spec §7.1）。
 //
 // 不校验 created_by 是否真实存在（那是 App 层职责）、也不校验 rule version 段

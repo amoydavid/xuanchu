@@ -1,6 +1,13 @@
 /* eslint-disable react-hooks/set-state-in-effect -- 弹窗/面板打开时需在 effect 内重置状态 */
 import { useEffect, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
+import { PlusIcon, Repeat2Icon } from "lucide-react"
+import { useTranslation } from "react-i18next"
+
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 
 import {
   listTaskSeries,
@@ -11,8 +18,9 @@ import {
 } from "@/features/workspace/project-workbench/api/task-series-api"
 import { TaskSeriesList } from "./task-series-list"
 import { TaskSeriesDetail } from "./task-series-detail"
-import { TaskSeriesDialog } from "./task-series-dialog"
+import { TaskSeriesEditorDialog } from "./task-series-editor-dialog"
 import { TaskSeriesStopDialog } from "./task-series-stop-dialog"
+import { TaskCreateDialog } from "../tasks/task-create-dialog"
 
 // TaskSeriesPanelShell 是循环任务管理面板的壳层（spec §15.3、§15.12）。
 //
@@ -29,6 +37,7 @@ export function TaskSeriesPanelShell({
   seriesRef?: string
   canManage?: boolean
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<string>("active")
   const [query, setQuery] = useState<string>("")
@@ -60,7 +69,7 @@ export function TaskSeriesPanelShell({
     setError(null)
     const input: TaskSeriesListInput = {
       project: projectSlug,
-      status: statusFilter,
+      status: statusFilter === "all" ? undefined : statusFilter,
       q: query || undefined,
       assignee: assignee || undefined,
       sort,
@@ -76,13 +85,25 @@ export function TaskSeriesPanelShell({
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : "加载循环任务失败")
+        setError(
+          err instanceof Error ? err.message : t("taskSeries.errors.loadList")
+        )
         setLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [workspaceSlug, projectSlug, statusFilter, query, assignee, sort, offset, listRevision])
+  }, [
+    workspaceSlug,
+    projectSlug,
+    statusFilter,
+    query,
+    assignee,
+    sort,
+    offset,
+    listRevision,
+    t,
+  ])
 
   // 加载详情（seriesRef 存在时）。
   useEffect(() => {
@@ -91,6 +112,7 @@ export function TaskSeriesPanelShell({
       return
     }
     let cancelled = false
+    setDetail(null)
     setDetailLoading(true)
     setDetailError(null)
     void getTaskSeries(workspaceSlug, seriesRef)
@@ -101,18 +123,21 @@ export function TaskSeriesPanelShell({
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setDetailError(err instanceof Error ? err.message : "加载循环任务详情失败")
+        setDetailError(
+          err instanceof Error ? err.message : t("taskSeries.errors.loadDetail")
+        )
         setDetailLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [workspaceSlug, seriesRef])
+  }, [workspaceSlug, seriesRef, t])
 
   const selectSeries = (s: TaskSeriesView) => {
     void navigate({
       to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef",
       params: { workspaceSlug, projectSlug, seriesRef: s.id },
+      search: true,
     })
   }
 
@@ -120,6 +145,7 @@ export function TaskSeriesPanelShell({
     void navigate({
       to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series",
       params: { workspaceSlug, projectSlug },
+      search: true,
     })
   }
 
@@ -131,7 +157,9 @@ export function TaskSeriesPanelShell({
       setListRevision((current) => current + 1)
       backToList()
     } catch (err: unknown) {
-      setDetailError(err instanceof Error ? err.message : "停止循环任务失败")
+      setDetailError(
+        err instanceof Error ? err.message : t("taskSeries.errors.stop")
+      )
       setStopOpen(false)
     }
   }
@@ -142,30 +170,50 @@ export function TaskSeriesPanelShell({
       data-panel-mode={seriesRef ? "detail" : "list"}
       data-loading={loading || detailLoading}
       data-error={error ?? detailError ?? undefined}
-      aria-label="循环任务管理面板"
-      className="space-y-3"
+      aria-label={t("taskSeries.aria.panel")}
+      className="w-full space-y-4 lg:w-80 lg:shrink-0"
     >
-      <header>
+      <header className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">
-            循环任务{total > 0 ? ` ${total}` : ""}
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Repeat2Icon className="size-4 text-muted-foreground" />
+            {total > 0
+              ? t("taskSeries.count", { count: total })
+              : t("taskSeries.title")}
           </h2>
           {canManage ? (
-            <button type="button" onClick={() => setCreateOpen(true)}>
-              新建循环任务
-            </button>
+            <Button
+              aria-label={t("taskSeries.actions.create")}
+              onClick={() => setCreateOpen(true)}
+              size="icon-sm"
+              type="button"
+            >
+              <PlusIcon />
+            </Button>
           ) : null}
         </div>
-        <p className="text-sm text-muted-foreground">
-          管理会按计划重复产生实例的任务；每一次仍在左侧完成。
+        <p className="text-xs leading-5 text-muted-foreground">
+          {t("taskSeries.description")}
         </p>
       </header>
+
+      <Separator />
 
       {seriesRef ? (
         // 详情模式。
         <>
-          {detailError && <div role="alert">{detailError}</div>}
-          {detailLoading && <div>加载详情中…</div>}
+          {detailError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{detailError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {detailLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : null}
           {detail && (
             <TaskSeriesDetail
               series={detail}
@@ -213,22 +261,21 @@ export function TaskSeriesPanelShell({
         />
       )}
 
-      {/* 编辑弹窗 */}
-      {detail && (
-        <TaskSeriesDialog
+      {detail && editOpen ? (
+        <TaskSeriesEditorDialog
           open={editOpen}
-          mode="edit"
           workspaceSlug={workspaceSlug}
           projectSlug={projectSlug}
           series={detail}
-          onClose={() => {
-            setEditOpen(false)
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
             setListRevision((current) => current + 1)
-            // 重新加载详情。
-            void getTaskSeries(workspaceSlug, detail.id).then((v) => setDetail(v))
+            void getTaskSeries(workspaceSlug, detail.id).then((v) =>
+              setDetail(v)
+            )
           }}
         />
-      )}
+      ) : null}
 
       {/* 停止确认弹窗 */}
       <TaskSeriesStopDialog
@@ -238,18 +285,19 @@ export function TaskSeriesPanelShell({
         onConfirm={confirmStop}
         onCancel={() => setStopOpen(false)}
       />
-      <TaskSeriesDialog
-        open={createOpen}
-        mode="create"
-        workspaceSlug={workspaceSlug}
-        projectSlug={projectSlug}
-        onClose={() => setCreateOpen(false)}
-        onCreated={(created) => {
-          setCreateOpen(false)
-          setListRevision((current) => current + 1)
-          selectSeries(created)
-        }}
-      />
+      {createOpen ? (
+        <TaskCreateDialog
+          initialMode="recurring"
+          onOpenChange={(next) => {
+            setCreateOpen(next)
+            if (!next) setListRevision((current) => current + 1)
+          }}
+          onRecurringCreated={selectSeries}
+          open={createOpen}
+          projectSlug={projectSlug}
+          workspaceSlug={workspaceSlug}
+        />
+      ) : null}
     </section>
   )
 }

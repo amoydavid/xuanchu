@@ -252,6 +252,14 @@ const myTasksRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/my-tasks",
   component: lazyRoute(MyTasksRoute),
+  validateSearch: (search: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const key of ["tab", "priority", "q", "sort"]) {
+      const value = search[key]
+      if (typeof value === "string" && value !== "") out[key] = value
+    }
+    return out
+  },
 })
 
 const membersRoute = createRoute({
@@ -280,6 +288,14 @@ const projectTaskDetailRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
   component: lazyRoute(ProjectTaskDetailRoute),
+  validateSearch: (search: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const key of ["from", "my_tasks_search"]) {
+      const value = search[key]
+      if (typeof value === "string" && value !== "") out[key] = value
+    }
+    return out
+  },
 })
 
 const projectTasksRoute = createRoute({
@@ -304,6 +320,10 @@ const projectTasksRoute = createRoute({
       "query",
       "sort",
       "task_type",
+      "panel_return_scope",
+      "panel_return_search",
+      "panel_return_source",
+      "panel_return_task",
     ]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") {

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import {
   getTask,
@@ -7,6 +7,10 @@ import {
   type ProjectTask,
   type TaskAuditEntry,
 } from "../api/task-api"
+import {
+  canonicalTaskRouteRef,
+  taskStableCacheRef,
+} from "../tasks/task-reference"
 
 export const taskQueryKeys = {
   task: (workspaceSlug: string, taskRef: string) =>
@@ -30,18 +34,32 @@ export function useTaskDetailQuery(
   taskRef: string,
   initialData?: ProjectTask
 ) {
+  const queryClient = useQueryClient()
   return useQuery({
     queryKey: taskQueryKeys.task(workspaceSlug, taskRef),
-    queryFn: () => getTask(workspaceSlug, taskRef),
+    queryFn: async () => {
+      const loaded = await getTask(workspaceSlug, taskRef)
+      const aliases = new Set([
+        taskRef,
+        taskStableCacheRef(loaded),
+        canonicalTaskRouteRef(loaded) ?? "",
+      ])
+      for (const alias of aliases) {
+        if (alias) {
+          queryClient.setQueryData(
+            taskQueryKeys.task(workspaceSlug, alias),
+            loaded
+          )
+        }
+      }
+      return loaded
+    },
     enabled: workspaceSlug.length > 0 && taskRef.length > 0,
     initialData,
   })
 }
 
-export function useTaskAuditQuery(
-  workspaceSlug: string,
-  taskRef: string
-) {
+export function useTaskAuditQuery(workspaceSlug: string, taskRef: string) {
   return useQuery<TaskAuditEntry[]>({
     queryKey: taskQueryKeys.audit(workspaceSlug, taskRef),
     queryFn: () => getTaskAudit(workspaceSlug, taskRef),

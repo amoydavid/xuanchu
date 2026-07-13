@@ -58,6 +58,7 @@ type TaskOccurrenceDTO struct {
 type RecurrenceInfoDTO struct {
 	Role            string   `json:"role"`
 	SeriesID        string   `json:"series_id"`
+	SeriesTitle     string   `json:"series_title"`
 	SeriesStatus    string   `json:"series_status"`
 	Rule            string   `json:"rule"`
 	RecurrenceAt    int64    `json:"recurrence_at"`
@@ -83,30 +84,31 @@ type TaskViewRangeDTO struct {
 
 // TaskSeriesDTO 是 series 的远程 DTO。
 type TaskSeriesDTO struct {
-	ID                  string              `json:"id"`
-	WorkspaceID         string              `json:"workspace_id"`
-	ProjectID           string              `json:"project_id"`
-	Title               string              `json:"title"`
-	Description         *string             `json:"description,omitempty"`
-	Status              string              `json:"status"`
-	RecurrenceRule      string              `json:"recurrence_rule"`
-	FirstDue            int64               `json:"first_due"`
-	Until               *int64              `json:"until,omitempty"`
-	Priority            *string             `json:"priority,omitempty"`
-	Tags                []string            `json:"tags,omitempty"`
-	UDAs                map[string]string   `json:"udas,omitempty"`
-	OpenOccurrenceCount int                 `json:"open_occurrence_count"`
-	CompletedCount      int                 `json:"completed_count"`
-	SkippedCount        int                 `json:"skipped_count"`
-	OverdueCount        int                 `json:"overdue_count"`
-	NextRecurrenceAt    *int64              `json:"next_recurrence_at,omitempty"`
-	CreatedBy           task.JSONUserInfo   `json:"created_by"`
-	Assignees           []task.JSONUserInfo `json:"assignees,omitempty"`
-	CreatedAt           int64               `json:"created_at"`
-	ModifiedAt          int64               `json:"modified_at"`
-	OpenOccurrences     []TaskOccurrenceDTO `json:"open_occurrences,omitempty"`
-	RecentCompleted     []TaskOccurrenceDTO `json:"recent_completed,omitempty"`
-	RecentSkipped       []TaskOccurrenceDTO `json:"recent_skipped,omitempty"`
+	ID                         string              `json:"id"`
+	WorkspaceID                string              `json:"workspace_id"`
+	ProjectID                  string              `json:"project_id"`
+	Title                      string              `json:"title"`
+	Description                *string             `json:"description,omitempty"`
+	Status                     string              `json:"status"`
+	RecurrenceRule             string              `json:"recurrence_rule"`
+	FirstDue                   int64               `json:"first_due"`
+	Until                      *int64              `json:"until,omitempty"`
+	Priority                   *string             `json:"priority,omitempty"`
+	Tags                       []string            `json:"tags,omitempty"`
+	UDAs                       map[string]string   `json:"udas,omitempty"`
+	OpenOccurrenceCount        int                 `json:"open_occurrence_count"`
+	CompletedCount             int                 `json:"completed_count"`
+	SkippedCount               int                 `json:"skipped_count"`
+	OverdueCount               int                 `json:"overdue_count"`
+	NextRecurrenceAt           *int64              `json:"next_recurrence_at,omitempty"`
+	SuggestedRuleEffectiveFrom *int64              `json:"suggested_rule_effective_from,omitempty"`
+	CreatedBy                  task.JSONUserInfo   `json:"created_by"`
+	Assignees                  []task.JSONUserInfo `json:"assignees,omitempty"`
+	CreatedAt                  int64               `json:"created_at"`
+	ModifiedAt                 int64               `json:"modified_at"`
+	OpenOccurrences            []TaskOccurrenceDTO `json:"open_occurrences,omitempty"`
+	RecentCompleted            []TaskOccurrenceDTO `json:"recent_completed,omitempty"`
+	RecentSkipped              []TaskOccurrenceDTO `json:"recent_skipped,omitempty"`
 }
 
 // TaskSeriesListPageDTO 是 series 列表分页。
@@ -409,6 +411,19 @@ func parseTaskOccurrenceDTO(raw json.RawMessage) (TaskOccurrenceDTO, error) {
 	// occurrence shape（int64 时间）。
 	if err := json.Unmarshal(raw, &dto); err != nil {
 		return TaskOccurrenceDTO{}, err
+	}
+	if dto.TaskSlug != nil {
+		project, seq, err := parseTaskSlug(*dto.TaskSlug)
+		if err != nil {
+			return TaskOccurrenceDTO{}, err
+		}
+		if dto.Project == nil || *dto.Project != project {
+			return TaskOccurrenceDTO{}, fmt.Errorf("task_slug %q does not match project", *dto.TaskSlug)
+		}
+		if dto.ProjectSeq != nil && *dto.ProjectSeq != seq {
+			return TaskOccurrenceDTO{}, fmt.Errorf("task_slug %q does not match project_seq", *dto.TaskSlug)
+		}
+		dto.ProjectSeq = &seq
 	}
 	return dto, nil
 }

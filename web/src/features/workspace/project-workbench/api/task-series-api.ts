@@ -11,6 +11,7 @@ import {
 export type RecurrenceInfo = {
   role: string
   series_id: string
+  series_title?: string
   series_status: string
   rule: string
   recurrence_at: number
@@ -106,6 +107,7 @@ export type TaskSeriesView = {
   skipped_count: number
   overdue_count: number
   next_recurrence_at?: number | null
+  suggested_rule_effective_from?: number | null
   created_by: {
     id: string
     name: string

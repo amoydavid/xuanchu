@@ -199,6 +199,52 @@ func TestExpandRangeRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestFirstSlotAfterSkipsMoreThanExpandRangeLimit(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*60*60)
+	anchor := dayAt(t, loc, "1990-01-01")
+	threshold := dayAt(t, loc, "2026-07-13")
+	got, err := FirstSlotAfter([]RuleVersion{{
+		EffectiveFrom: anchor, RecurrenceRule: "daily",
+	}}, nil, threshold, loc)
+	if err != nil {
+		t.Fatalf("FirstSlotAfter: %v", err)
+	}
+	want, err := Next(threshold, "daily", loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.RecurrenceAt != want {
+		t.Fatalf("FirstSlotAfter = %#v want recurrence_at=%d", got, want)
+	}
+}
+
+func TestFirstSlotAfterRespectsRuleVersionAndUntil(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*60*60)
+	first := dayAt(t, loc, "2026-07-01")
+	weeklyFrom := dayAt(t, loc, "2026-07-15")
+	until := dayAt(t, loc, "2026-07-22")
+	versions := []RuleVersion{
+		{EffectiveFrom: first, RecurrenceRule: "daily"},
+		{EffectiveFrom: weeklyFrom, RecurrenceRule: "weekly"},
+	}
+
+	got, err := FirstSlotAfter(versions, &until, weeklyFrom, loc)
+	if err != nil {
+		t.Fatalf("FirstSlotAfter: %v", err)
+	}
+	if got == nil || got.RecurrenceAt != until || got.Rule != "weekly" {
+		t.Fatalf("FirstSlotAfter = %#v want weekly slot %d", got, until)
+	}
+
+	got, err = FirstSlotAfter(versions, &until, until, loc)
+	if err != nil {
+		t.Fatalf("FirstSlotAfter beyond until: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("FirstSlotAfter beyond until = %#v want nil", got)
+	}
+}
+
 func TestValidateSeriesRejectsInvalid(t *testing.T) {
 	base := Series{
 		ID: "s1", WorkspaceID: "ws", ProjectID: "proj", Title: "巡检",

@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -16,8 +18,15 @@ import { useMe } from "@/features/workspace/session/useMe"
 import type { MeResponse } from "@/features/workspace/session/useMe"
 import type { ProjectWorkbenchTask } from "@/features/workspace/project-workbench/api/project-api"
 import { MyTasksTable } from "@/features/workspace/my-tasks/my-tasks-table"
-import { MY_TASK_TABS, tabFilter, type MyTaskTabKey } from "@/features/workspace/my-tasks/my-task-tabs"
-import { myTasksPath, type MyTasksFilter } from "@/features/workspace/my-tasks/my-tasks-api"
+import {
+  MY_TASK_TABS,
+  tabFilter,
+  type MyTaskTabKey,
+} from "@/features/workspace/my-tasks/my-task-tabs"
+import {
+  myTasksPath,
+  type MyTasksFilter,
+} from "@/features/workspace/my-tasks/my-tasks-api"
 
 export function MyTasksPage({
   actor,
@@ -29,34 +38,60 @@ export function MyTasksPage({
   workspaceSlug: string | undefined
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const routeSearch = useSearch({ strict: false }) as {
+    priority?: string
+    q?: string
+    sort?: string
+    tab?: string
+  }
   const isSystemActor = actorType === "tenant_access_token"
   const actorId = actor?.id
 
-  const [tab, setTab] = useState<MyTaskTabKey>("incomplete")
-  const [status, setStatus] = useState<string>("pending")
-  const [priority, setPriority] = useState<string>("")
-  const [q, setQ] = useState<string>("")
-  const [sort, setSort] = useState<string>("due")
+  const tab = isMyTaskTabKey(routeSearch.tab)
+    ? routeSearch.tab
+    : "incomplete"
+  const priority = ["H", "M", "L"].includes(routeSearch.priority ?? "")
+    ? routeSearch.priority!
+    : ""
+  const q = routeSearch.q ?? ""
+  const sort = ["due", "priority", "entry", "next"].includes(
+    routeSearch.sort ?? ""
+  )
+    ? routeSearch.sort!
+    : "due"
 
-  // tab 切换会覆盖 status/due 等字段；用户在 toolbar 中的二次选择仍可继续修改。
+  const updateRouteSearch = (
+    patch: Partial<Record<"priority" | "q" | "sort" | "tab", string>>
+  ) => {
+    const next = { priority, q, sort, tab, ...patch }
+    void navigate({
+      to: "/my-tasks",
+      search: Object.fromEntries(
+        Object.entries(next).filter(([, value]) => value !== "")
+      ),
+    })
+  }
+
+  // 预设视图统一决定状态与到期范围，避免 toolbar 与 tab 产生冲突条件。
   const filter: MyTasksFilter = useMemo(() => {
     const base: MyTasksFilter = {
       assignee: actorId ?? "",
-      status,
       priority,
       q,
       sort,
     }
     return { ...base, ...tabFilter(tab, new Date()) }
-    // 注意：tabFilter 会覆盖 status 为 pending（与各 tab 语义一致）
-  }, [actorId, status, priority, q, sort, tab])
+  }, [actorId, priority, q, sort, tab])
 
   const enabled = !isSystemActor && !!actorId && !!workspaceSlug
   const query = useQuery<ProjectWorkbenchTask[]>({
     enabled,
     queryKey: ["my-tasks", workspaceSlug, filter],
     queryFn: async () => {
-      const page = await workspaceApiGet<{ items: ProjectWorkbenchTask[] }>(myTasksPath(workspaceSlug!, filter))
+      const page = await workspaceApiGet<{ items: ProjectWorkbenchTask[] }>(
+        myTasksPath(workspaceSlug!, filter)
+      )
       return page.items ?? []
     },
   })
@@ -74,48 +109,47 @@ export function MyTasksPage({
         </div>
       </div>
 
-      {/* tab 条 */}
-      <div className="flex flex-wrap gap-1 border-b">
-        {MY_TASK_TABS.map((item) => (
-          <button
-            aria-pressed={tab === item.key}
-            className={
-              "border-b-2 px-3 py-2 text-sm transition-colors " +
-              (tab === item.key
-                ? "border-foreground font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground")
-            }
-            key={item.key}
-            onClick={() => setTab(item.key)}
-            type="button"
-          >
-            {t(`myTasks.tab.${item.key}`)}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        onValueChange={(value) => updateRouteSearch({ tab: value })}
+        value={tab}
+      >
+        <TabsList
+          aria-label={t("myTasks.tabsLabel")}
+          className="w-full justify-start overflow-x-auto border-b px-0 pb-1"
+          variant="line"
+        >
+          {MY_TASK_TABS.map((item) => (
+            <TabsTrigger
+              className="flex-none px-3"
+              key={item.key}
+              value={item.key}
+            >
+              {t(`myTasks.tab.${item.key}`)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <Input
           aria-label={t("common.search")}
           className="h-8 max-w-xs"
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => updateRouteSearch({ q: e.target.value })}
           placeholder={t("common.search")}
           value={q}
         />
-        <Select onValueChange={setStatus} value={status}>
-          <SelectTrigger aria-label={t("common.status")} className="h-8 w-28" size="sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pending">{t("projectReadonly.pending")}</SelectItem>
-            <SelectItem value="waiting">等待中</SelectItem>
-            <SelectItem value="completed">{t("projectReadonly.completed")}</SelectItem>
-            <SelectItem value="deleted">{t("projectReadonly.statusDeleted")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select onValueChange={(v) => setPriority(v === "any" ? "" : v)} value={priority || "any"}>
-          <SelectTrigger aria-label={t("projectReadonly.priority")} className="h-8 w-28" size="sm">
+        <Select
+          onValueChange={(v) =>
+            updateRouteSearch({ priority: v === "any" ? "" : v })
+          }
+          value={priority || "any"}
+        >
+          <SelectTrigger
+            aria-label={t("projectReadonly.priority")}
+            className="h-8 w-28"
+            size="sm"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -125,15 +159,26 @@ export function MyTasksPage({
             <SelectItem value="L">L</SelectItem>
           </SelectContent>
         </Select>
-        <Select onValueChange={setSort} value={sort}>
-          <SelectTrigger aria-label={t("common.sort")} className="h-8 w-28" size="sm">
+        <Select
+          onValueChange={(value) => updateRouteSearch({ sort: value })}
+          value={sort}
+        >
+          <SelectTrigger
+            aria-label={t("common.sort")}
+            className="h-8 w-28"
+            size="sm"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="due">{t("projectReadonly.due")}</SelectItem>
-            <SelectItem value="priority">{t("projectReadonly.priority")}</SelectItem>
-            <SelectItem value="entry">{t("projectReadonly.identifier")}</SelectItem>
-            <SelectItem value="next">next</SelectItem>
+            <SelectItem value="priority">
+              {t("projectReadonly.priority")}
+            </SelectItem>
+            <SelectItem value="entry">
+              {t("projectReadonly.identifier")}
+            </SelectItem>
+            <SelectItem value="next">{t("myTasks.sortNext")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -155,7 +200,13 @@ export function MyTasksPage({
       ) : (
         <>
           <MyTasksTable
-            onSortChange={setSort}
+            onSortChange={(value) => updateRouteSearch({ sort: value })}
+            returnSearch={new URLSearchParams({
+              priority,
+              q,
+              sort,
+              tab,
+            }).toString()}
             sort={sort}
             tasks={query.data ?? []}
             workspaceSlug={workspaceSlug!}
@@ -165,6 +216,10 @@ export function MyTasksPage({
       )}
     </div>
   )
+}
+
+function isMyTaskTabKey(value: string | undefined): value is MyTaskTabKey {
+  return MY_TASK_TABS.some((tab) => tab.key === value)
 }
 
 function MyTasksSummary({ tasks }: { tasks: ProjectWorkbenchTask[] }) {
@@ -193,7 +248,10 @@ function MyTasksSummary({ tasks }: { tasks: ProjectWorkbenchTask[] }) {
   }).length
   // "进行中"= 已开始（start 非空）且未完成/未删除（模型无 active status，spec §7.2）。
   const active = tasks.filter(
-    (task) => task.start != null && task.status !== "completed" && task.status !== "deleted"
+    (task) =>
+      task.start != null &&
+      task.status !== "completed" &&
+      task.status !== "deleted"
   ).length
   return (
     <div className="px-1 text-xs text-muted-foreground">

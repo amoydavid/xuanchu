@@ -38,6 +38,23 @@ describe("extractUDAs", () => {
     }
     expect(extractUDAs(task)).toEqual([["estimate", "4h"]])
   })
+
+  it("uses explicit nested UDAs without inferring protocol metadata as custom fields", () => {
+    expect(
+      extractUDAs({
+        id: "occ:series-1:1784044799",
+        workspace_id: "workspace-1",
+        project_id: "project-1",
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          recurrence_at: 1_784_044_799,
+          materialization: "projected",
+        },
+        udas: { channel: "browser-e2e" },
+      })
+    ).toEqual([["channel", "browser-e2e"]])
+  })
 })
 
 describe("formatUDAValue", () => {

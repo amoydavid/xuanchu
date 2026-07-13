@@ -3175,7 +3175,7 @@
             "type": "string"
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3216,7 +3216,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3260,7 +3260,7 @@
             "type": "string"
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3313,7 +3313,7 @@
             ]
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3353,7 +3353,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3426,7 +3426,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3937,7 +3937,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "title": {
@@ -3991,7 +3991,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "workspace": {
@@ -4035,7 +4035,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "workspace": {
@@ -4116,7 +4116,7 @@
             "type": "string"
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "priority": {
@@ -4298,7 +4298,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -4772,7 +4772,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -4812,7 +4812,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -5070,7 +5070,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {

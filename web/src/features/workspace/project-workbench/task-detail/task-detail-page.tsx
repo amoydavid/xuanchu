@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Link } from "@tanstack/react-router"
+import { useEffect, useState } from "react"
+import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -31,8 +31,16 @@ import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskPropertyPanel } from "./task-property-panel"
 import { SubTaskList } from "./sub-task-list"
+import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
+import {
+  canonicalTaskRouteRef,
+  isCanonicalTaskSlug,
+  taskDisplayRef,
+} from "../tasks/task-reference"
+import { RecurrenceContextAlert } from "./recurrence-context-alert"
 
 type TaskDetailPageProps = {
+  myTasksReturnSearch?: string
   projectSlug?: string
   taskRef: string
   workspaceSlug: string
@@ -41,6 +49,7 @@ type TaskDetailPageProps = {
 type MobileDetailTab = "description" | "subtasks" | "properties" | "activity"
 
 export function TaskDetailPage({
+  myTasksReturnSearch,
   projectSlug,
   taskRef,
   workspaceSlug,
@@ -48,6 +57,7 @@ export function TaskDetailPage({
   return (
     <EditFeedbackProvider>
       <TaskDetailPageContent
+        myTasksReturnSearch={myTasksReturnSearch}
         projectSlug={projectSlug}
         taskRef={taskRef}
         workspaceSlug={workspaceSlug}
@@ -57,12 +67,14 @@ export function TaskDetailPage({
 }
 
 function TaskDetailPageContent({
+  myTasksReturnSearch,
   projectSlug,
   taskRef,
   workspaceSlug,
 }: TaskDetailPageProps) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const me = useMe()
+  const navigate = useNavigate()
   const canWrite = canTaskWrite({
     role: me.data?.effective_role,
     scopes: me.data?.token.scopes,
@@ -91,6 +103,50 @@ function TaskDetailPageContent({
   const projectHref = effectiveProjectSlug
     ? `/workspaces/${workspaceSlug}/projects/${effectiveProjectSlug}`
     : undefined
+  const myTasksHref =
+    myTasksReturnSearch === undefined
+      ? undefined
+      : normalizedMyTasksHref(myTasksReturnSearch)
+  const returnHref = myTasksHref ?? projectHref
+
+  useEffect(() => {
+    const loaded = task.data
+    if (!loaded?.recurrence_info || !loaded.task_slug) return
+    const canonicalRef = canonicalTaskRouteRef(loaded)
+    if (
+      !canonicalRef ||
+      canonicalRef === taskRef ||
+      !isCanonicalTaskSlug(canonicalRef) ||
+      !effectiveProjectSlug ||
+      loaded.project !== effectiveProjectSlug
+    ) {
+      return
+    }
+    void navigate({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+      params: {
+        workspaceSlug,
+        projectSlug: effectiveProjectSlug,
+        taskRef: canonicalRef,
+      },
+      ...(myTasksReturnSearch === undefined
+        ? {}
+        : {
+            search: {
+              from: "my-tasks",
+              my_tasks_search: myTasksReturnSearch,
+            },
+          }),
+      replace: true,
+    })
+  }, [
+    effectiveProjectSlug,
+    myTasksReturnSearch,
+    navigate,
+    task.data,
+    taskRef,
+    workspaceSlug,
+  ])
 
   if (task.isPending) {
     return <TaskDetailSkeleton />
@@ -107,10 +163,12 @@ function TaskDetailPageContent({
         <p className="mt-3 text-sm text-muted-foreground">
           {task.error instanceof ApiError ? task.error.code : "unknown"}
         </p>
-        {projectSlug ? (
+        {returnHref ? (
           <Button asChild className="mt-5" variant="outline">
-            <a href={`/workspaces/${workspaceSlug}/projects/${projectSlug}`}>
-              {t("projectReadonly.backToProject")}
+            <a href={returnHref}>
+              {myTasksHref
+                ? t("taskDetail.backToMyTasks")
+                : t("projectReadonly.backToProject")}
             </a>
           </Button>
         ) : null}
@@ -125,6 +183,7 @@ function TaskDetailPageContent({
   }
   const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
   // Series 不再存成隐藏的 recurring parent；这里只需要普通任务写权限门控。
+  // projected occurrence 创建第一个 child 时由后端按 occurrence_ref 原子物化。
   const canCreateSubTask = taskWritable
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
@@ -158,24 +217,32 @@ function TaskDetailPageContent({
             </>
           ) : null}
           {" / "}
-          <span>{taskData.task_slug || taskData.uuid.slice(0, 8)}</span>
+          <span>{taskDisplayRef(taskData, i18n.language) || taskRef}</span>
         </nav>
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 flex-1">
-            <InlineTextEditor
-              ariaLabel={t("projectReadonly.taskTitle")}
-              disabled={!taskWritable}
-              displayClassName="text-2xl font-semibold tracking-normal"
-              onSave={async (title) => {
-                await modifyTask.mutateAsync({ title })
-              }}
-              validate={(value) =>
-                value.trim() ? null : t("projectReadonly.taskTitleRequired")
-              }
-              value={taskData.title}
-            />
+            <h1 aria-label={taskData.title}>
+              <InlineTextEditor
+                ariaLabel={t("projectReadonly.taskTitle")}
+                disabled={!taskWritable}
+                displayClassName="text-2xl font-semibold tracking-normal"
+                onSave={async (title) => {
+                  await modifyTask.mutateAsync({ title })
+                }}
+                validate={(value) =>
+                  value.trim() ? null : t("projectReadonly.taskTitleRequired")
+                }
+                value={taskData.title}
+              />
+            </h1>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="outline">{taskStatusLabel(taskData.status, t)}</Badge>
+              <Badge variant="outline">
+                {taskData.recurrence_info?.materialization === "projected"
+                  ? t("taskSeries.occurrence.projected")
+                  : taskData.recurrence_info && taskData.status === "deleted"
+                    ? t("taskSeries.occurrence.skipped")
+                    : taskStatusLabel(taskData.status, t)}
+              </Badge>
               {taskData.priority ? (
                 <Badge variant="outline">{taskData.priority}</Badge>
               ) : null}
@@ -184,42 +251,35 @@ function TaskDetailPageContent({
               ) : null}
               {taskData.recurrence_info ? (
                 <Badge variant="outline" data-testid="recurrence-info-badge">
-                  ↻ {recurrenceRuleLabel(taskData.recurrence_info.rule)}
+                  {t("taskSeries.occurrence.badge", {
+                    rule: recurrenceRuleLabel(taskData.recurrence_info.rule, t),
+                  })}
                 </Badge>
               ) : null}
             </div>
-            {taskData.recurrence_info ? (
-              <div className="mt-2 rounded border border-border p-3 text-sm" data-testid="occurrence-banner">
-                <p>↻ 循环任务 · {recurrenceRuleLabel(taskData.recurrence_info.rule)}</p>
-                <p>本次日期：{formatRecurrenceAt(taskData.recurrence_info.recurrence_at)}</p>
-                <p className="text-muted-foreground">
-                  此任务属于循环任务。该循环任务每次产生一次；修改本次不会改动其它日期。
-                </p>
-                {projectSlug && taskData.recurrence_info.series_id ? (
-                  <Link
-                    className="text-primary underline"
-                    to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
-                    params={{
-                      workspaceSlug: workspaceSlug ?? "",
-                      projectSlug,
-                      seriesRef: taskData.recurrence_info.series_id,
-                    }}
-                  >
-                    查看循环任务 →
-                  </Link>
-                ) : null}
-              </div>
-            ) : null}
+            <RecurrenceContextAlert
+              projectSlug={effectiveProjectSlug}
+              myTasksReturnSearch={myTasksReturnSearch}
+              returnScope={projectSlug ? "project" : "global"}
+              task={taskData}
+              workspaceSlug={workspaceSlug}
+            />
           </div>
           <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-            {projectHref ? (
+            {returnHref ? (
               <Button asChild variant="outline">
-                <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
+                <a href={returnHref}>
+                  {myTasksHref
+                    ? t("taskDetail.backToMyTasks")
+                    : t("projectReadonly.backToProject")}
+                </a>
               </Button>
             ) : null}
             <TaskActionBar
               permissionCanWrite={canWrite}
               projectSlug={effectiveProjectSlug ?? ""}
+              myTasksReturnSearch={myTasksReturnSearch}
+              returnScope={projectSlug ? "project" : "global"}
               task={taskData}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
@@ -259,7 +319,7 @@ function TaskDetailPageContent({
             <SubTaskList
               canCreate={canCreateSubTask}
               parentRef={taskRef}
-              parentUUID={taskData.uuid}
+              parentUUID={taskData.uuid ?? taskRef}
               projectSlug={effectiveProjectSlug ?? ""}
               workspaceSlug={workspaceSlug}
             />
@@ -378,7 +438,10 @@ function TaskDescriptionBlock({
           </Button>
         </div>
         {value ? (
-          <MarkdownView className="max-w-3xl text-sm leading-6 text-muted-foreground">
+          <MarkdownView
+            className="max-w-3xl text-sm leading-6 text-muted-foreground"
+            headingOffset={1}
+          >
             {value}
           </MarkdownView>
         ) : (
@@ -390,7 +453,9 @@ function TaskDescriptionBlock({
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t("projectReadonly.editDescriptionTitle")}</DialogTitle>
+            <DialogTitle>
+              {t("projectReadonly.editDescriptionTitle")}
+            </DialogTitle>
             <DialogDescription>
               {t("projectReadonly.editDescriptionDescription")}
             </DialogDescription>
@@ -409,7 +474,9 @@ function TaskDescriptionBlock({
               value={draft}
             />
           </div>
-          {error ? <div className="text-sm text-destructive">{error}</div> : null}
+          {error ? (
+            <div className="text-sm text-destructive">{error}</div>
+          ) : null}
           <DialogFooter>
             <Button
               onClick={() => setEditing(false)}
@@ -434,7 +501,10 @@ function TaskDescriptionBlock({
   )
 }
 
-function mobilePanelClass(active: MobileDetailTab, tab: MobileDetailTab): string {
+function mobilePanelClass(
+  active: MobileDetailTab,
+  tab: MobileDetailTab
+): string {
   return cn(active === tab ? "block" : "hidden", "md:block")
 }
 
@@ -459,23 +529,13 @@ function isWritableTaskStatus(status: string): boolean {
   return status !== "completed" && status !== "deleted"
 }
 
-function recurrenceRuleLabel(rule: string): string {
-  switch (rule) {
-    case "daily": return "每天"
-    case "weekly": return "每周"
-    case "monthly": return "每月"
-    default:
-      if (/^\d+weeks$/.test(rule)) return `每${rule.replace("weeks", "周")}`
-      if (/^\d+months$/.test(rule)) return `每${rule.replace("months", "月")}`
-      if (/^\d+days$/.test(rule)) return `每${rule.replace("days", "天")}`
-      return rule
+function normalizedMyTasksHref(raw: string): string {
+  const input = new URLSearchParams(raw)
+  const output = new URLSearchParams()
+  for (const key of ["priority", "q", "sort", "tab"]) {
+    const value = input.get(key)
+    if (value) output.set(key, value)
   }
-}
-
-function formatRecurrenceAt(unixSeconds: number): string {
-  const date = new Date(unixSeconds * 1000)
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, "0")
-  const d = String(date.getDate()).padStart(2, "0")
-  return `${y}-${m}-${d}`
+  const query = output.toString()
+  return query ? `/my-tasks?${query}` : "/my-tasks"
 }

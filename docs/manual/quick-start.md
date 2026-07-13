@@ -71,7 +71,7 @@ xuanchu 要求先注册 project，再把任务放进 project。
 ./xuanchu info agentapi-1
 ```
 
-`list` 和 `next` 输出里的 `ID` 是 working-set ID。带 project 的任务还会有 `task_slug`，例如 `agentapi-1`。本地 CLI 可以用 working-set ID、UUID、UUID 前缀或 `task_slug` 操作任务；HTTP API 和 MCP tool 只接受 UUID 或 `task_slug`。
+`list` 和 `next` 输出里的 `ID` 是 working-set ID。带 project 的任务还会有 `task_slug`，例如 `agentapi-1`。本地 CLI 可以用 working-set ID、UUID、UUID 前缀、`task_slug` 或循环实例 occurrence_ref 操作任务；HTTP API 和 MCP tool 接受完整 UUID、已物化 `task_slug` 或 occurrence_ref，不接受 working-set ID。
 
 ```bash
 ./xuanchu 1 modify priority:M +next
