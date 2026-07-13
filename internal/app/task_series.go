@@ -40,6 +40,7 @@ type TaskSeriesView struct {
 	OverdueCount        int
 	NextRecurrenceAt    *int64
 	CreatedBy           domain.UserInfo
+	Assignees           []domain.UserInfo
 }
 
 // TaskSeriesCreateResult 是创建 series 的返回。
@@ -593,6 +594,23 @@ func (s *Service) buildSeriesView(series taskseries.Series) TaskSeriesView {
 			createdBy = u
 		}
 	}
+	// 解析 assignees 为完整 UserInfo（含 display_name/email/external_ids）。
+	assigneeInfos := make([]domain.UserInfo, 0, len(series.AssigneeIDs))
+	if len(series.AssigneeIDs) > 0 {
+		if resolved, err := s.resolveUserInfos(series.AssigneeIDs); err == nil {
+			for _, id := range series.AssigneeIDs {
+				if u, ok := resolved[id]; ok {
+					assigneeInfos = append(assigneeInfos, u)
+				} else {
+					assigneeInfos = append(assigneeInfos, domain.UserInfo{ID: id, Name: id})
+				}
+			}
+		} else {
+			for _, id := range series.AssigneeIDs {
+				assigneeInfos = append(assigneeInfos, domain.UserInfo{ID: id, Name: id})
+			}
+		}
+	}
 	next := computeNextRecurrenceAt(series, s.clock)
 	return TaskSeriesView{
 		Series:              series,
@@ -602,6 +620,7 @@ func (s *Service) buildSeriesView(series taskseries.Series) TaskSeriesView {
 		OverdueCount:        counts.Overdue,
 		NextRecurrenceAt:    next,
 		CreatedBy:           createdBy,
+		Assignees:           assigneeInfos,
 	}
 }
 

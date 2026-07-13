@@ -179,9 +179,12 @@ func seriesViewToJSON(v app.TaskSeriesView) taskSeriesJSON {
 }
 
 func seriesAssigneesToUserInfo(v app.TaskSeriesView) []task.UserInfo {
+	// 使用 buildSeriesView 中已解析的完整 UserInfo（含 display_name/email/external_ids）。
+	if len(v.Assignees) > 0 {
+		return v.Assignees
+	}
+	// fallback：无解析结果时用 ID。
 	out := make([]task.UserInfo, 0, len(v.AssigneeIDs))
-	// series 没有独立 assignee 解析；这里用 view 已有的信息。
-	// TaskSeriesView.AssigneeIDs 是 user id 列表，无 name；保持 id fallback。
 	for _, id := range v.AssigneeIDs {
 		out = append(out, task.UserInfo{ID: id, Name: id})
 	}
