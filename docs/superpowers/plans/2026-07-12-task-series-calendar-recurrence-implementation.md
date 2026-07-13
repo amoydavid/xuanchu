@@ -1,6 +1,6 @@
 # 璇础循环任务系列、范围投影与按需物化 Implementation Plan
 
-> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：全部 14 个 Task + spec 收敛补充完成。**
+> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：全部 14 个 Task + spec 收敛 + 评审修复完成。**
 >
 > - **Task 1-7 ✅**：后端核心闭环
 > - **Task 8 ✅**：HTTP Series CRUD + Task 范围查询 + Remote client
@@ -15,6 +15,15 @@
 >   - §17.3 HTTP `GET /tasks` 统一返回 TaskViewPage（不再返回裸任务数组），`/reports/{name}` 共用 handleTaskListReport
 >   - §13.5 Remote 删除旧 `ListTasks`/`GetTask` 签名，CLI remote 14 处全量迁移到 `QueryTasks`/`GetTaskView`
 >   - 前端 3 处列表调用点（OverviewPage/my-tasks/getProjectTasks）适配 TaskViewPage 分页结构
+> - **评审修复 ✅**（2026-07-13 追加）：
+>   - **P0-1**：TaskSeriesScheduler 接入 server 启动 + 本地 CLI reconcile（ReconcileWorkspaceTaskSeries）
+>   - **P0-2**：occurrence_ref 写前物化接入 HTTP/MCP/CLI（resolveTaskRef write 路径调 MaterializeOccurrenceForWrite）
+>   - **P0-3**：Series App 用例加项目 scope 校验（AddTaskSeries/Get/Modify/Stop/List 全覆盖）
+>   - **P0-4**：RunTaskViewReport 执行 report 定义（def.Filter/Sort/Scope + projectScopeExpr + context）
+>   - **P1**：前端 projected uuid 崩溃修复（uuid 改可选 + taskKey/taskShortLabel）；Series CRUD 事务边界 + ValidateSeries 错误；HTTP recur/clear_recur 显式拒绝；detectLegacyRecurringData 补 recur/mask/i_mask 检查；MCP task_get 支持 occurrence_ref + import/export 迁移 native bundle；Web Series 面板接入真实组件（List/Detail/Dialog/StopDialog）+ limit=1 修复；My Tasks active status bug 修复；任务详情 occurrence "查看循环任务"入口
+>   - **P2**：Series assignees UserInfo 退化修复（完整 display_name/email/external_ids）
+>
+> **已知遗留**：smoke:editing 移动端（375px）tab 交互超时——main 分支既有 CSS/Playwright 视口问题，非本轮回归。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
