@@ -228,7 +228,8 @@ async function newMockedPage(browser, viewport) {
     }
 
     if (method === "GET" && pathName === "/api/v1/tasks") {
-      await fulfill(route, tasks)
+      // TaskViewPage 格式（spec §17.3）：{items, total, limit, offset, occurrence_mode}
+      await fulfill(route, { items: tasks, total: tasks.length, limit: 200, offset: 0, occurrence_mode: "materialized" })
       return
     }
 

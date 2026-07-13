@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -196,6 +197,19 @@ function TaskDetailPageContent({
                 <p className="text-muted-foreground">
                   此任务属于循环任务。该循环任务每次产生一次；修改本次不会改动其它日期。
                 </p>
+                {projectSlug && taskData.recurrence_info.series_id ? (
+                  <Link
+                    className="text-primary underline"
+                    to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
+                    params={{
+                      workspaceSlug: workspaceSlug ?? "",
+                      projectSlug,
+                      seriesRef: taskData.recurrence_info.series_id,
+                    }}
+                  >
+                    查看循环任务 →
+                  </Link>
+                ) : null}
               </div>
             ) : null}
           </div>
