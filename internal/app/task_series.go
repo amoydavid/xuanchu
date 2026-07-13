@@ -184,46 +184,53 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 		Priority: input.Priority, AssigneeIDs: extractAssigneeIDs(assigneeIDs), Tags: input.Tags,
 		UDAs: input.UDAs, CreatedBy: s.runtime.ActorUserID, CreatedAt: now, ModifiedAt: now,
 	}
-	created, err := s.taskSeriesRepo.Create(series)
+
+	var result TaskSeriesCreateResult
+	err = s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, terr := s.withStore(txStore)
+		if terr != nil {
+			return terr
+		}
+		created, cerr := txSvc.taskSeriesRepo.Create(series)
+		if cerr != nil {
+			return cerr
+		}
+		// 写 audit。
+		if aerr := txSvc.appendAuditEntry(AuditEntry{
+			Action: "task.series.created", WorkspaceID: &txSvc.workspaceID, ProjectID: &projectID,
+			TargetType: "task_series", TargetID: created.ID,
+			Payload: map[string]any{
+				"title": created.Title, "recurrence_rule": created.RecurrenceRule,
+				"first_due": created.FirstDue,
+			},
+		}); aerr != nil {
+			return aerr
+		}
+		// 判断 first_due 是否进入执行期。
+		var firstOcc *TaskOccurrenceView
+		availableAt := startOfDayUnix(input.FirstDue, txSvc.clock.Location())
+		if availableAt <= now {
+			view, merr := txSvc.materializeFirstOccurrence(created)
+			if merr != nil {
+				return merr
+			}
+			firstOcc = &view
+		} else {
+			slot := taskseries.Slot{RecurrenceAt: input.FirstDue, Rule: created.RecurrenceRule}
+			userInfos, uerr := txSvc.resolveUserInfos(created.AssigneeIDs)
+			if uerr != nil {
+				return uerr
+			}
+			view := projectedOccurrenceView(created, slot, seriesUserInfoList(created, userInfos))
+			firstOcc = &view
+		}
+		result = TaskSeriesCreateResult{Series: txSvc.buildSeriesView(created), FirstOccurrence: firstOcc}
+		return nil
+	})
 	if err != nil {
 		return TaskSeriesCreateResult{}, err
 	}
-
-	// 写 audit。
-	if err := s.appendAuditEntry(AuditEntry{
-		Action: "task.series.created", WorkspaceID: &s.workspaceID, ProjectID: &projectID,
-		TargetType: "task_series", TargetID: created.ID,
-		Payload: map[string]any{
-			"title": created.Title, "recurrence_rule": created.RecurrenceRule,
-			"first_due": created.FirstDue,
-		},
-	}); err != nil {
-		return TaskSeriesCreateResult{}, err
-	}
-
-	// 判断 first_due 是否进入执行期。
-	var firstOcc *TaskOccurrenceView
-	availableAt := startOfDayUnix(input.FirstDue, s.clock.Location())
-	if availableAt <= now {
-		// 物化 first occurrence。
-		view, err := s.materializeFirstOccurrence(created)
-		if err != nil {
-			return TaskSeriesCreateResult{}, err
-		}
-		firstOcc = &view
-	} else {
-		// projected。
-		slot := taskseries.Slot{RecurrenceAt: input.FirstDue, Rule: created.RecurrenceRule}
-		userInfos, err := s.resolveUserInfos(created.AssigneeIDs)
-		if err != nil {
-			return TaskSeriesCreateResult{}, err
-		}
-		view := projectedOccurrenceView(created, slot, seriesUserInfoList(created, userInfos))
-		firstOcc = &view
-	}
-
-	seriesView := s.buildSeriesView(created)
-	return TaskSeriesCreateResult{Series: seriesView, FirstOccurrence: firstOcc}, nil
+	return result, nil
 }
 
 // materializeFirstOccurrence 物化 series 的 first 槽位。
@@ -450,8 +457,7 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 	}
 	series.ModifiedAt = now
 	if err := taskseries.ValidateSeries(series); err != nil {
-		// ValidateSeries 要求 active 无 EffectiveEndAt；这里 series.ID 已存在。
-		// 跳过 ID 空 校验。
+		return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid", Message: err.Error()}
 	}
 	if err := s.taskSeriesRepo.Update(series); err != nil {
 		return TaskSeriesView{}, err
@@ -851,23 +857,35 @@ func (s *Service) StopTaskSeries(seriesID string, input StopTaskSeriesInput) (Ta
 	series.EffectiveEndAt = &now
 	series.StopReason = &reason
 	series.ModifiedAt = now
-	if err := s.taskSeriesRepo.Update(series); err != nil {
-		return TaskSeriesView{}, err
-	}
-	if err := s.appendAuditEntry(AuditEntry{
-		Action: "task.series.stopped", WorkspaceID: &series.WorkspaceID,
-		ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
-		Payload: map[string]any{"reason": reason, "delete_open": input.DeleteOpenOccurrences != nil && *input.DeleteOpenOccurrences},
-	}); err != nil {
-		return TaskSeriesView{}, err
-	}
-	// 可选：删除 open occurrences（含已进入执行期但未物化的 projected 槽位）。
-	if input.DeleteOpenOccurrences != nil && *input.DeleteOpenOccurrences {
-		if err := s.deleteOpenOccurrencesForStop(series, now); err != nil {
-			return TaskSeriesView{}, err
+	deleteOpen := input.DeleteOpenOccurrences != nil && *input.DeleteOpenOccurrences
+	var resultView TaskSeriesView
+	err = s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, terr := s.withStore(txStore)
+		if terr != nil {
+			return terr
 		}
+		if uerr := txSvc.taskSeriesRepo.Update(series); uerr != nil {
+			return uerr
+		}
+		if aerr := txSvc.appendAuditEntry(AuditEntry{
+			Action: "task.series.stopped", WorkspaceID: &series.WorkspaceID,
+			ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
+			Payload: map[string]any{"reason": reason, "delete_open": deleteOpen},
+		}); aerr != nil {
+			return aerr
+		}
+		if deleteOpen {
+			if derr := txSvc.deleteOpenOccurrencesForStop(series, now); derr != nil {
+				return derr
+			}
+		}
+		resultView = txSvc.buildSeriesView(series)
+		return nil
+	})
+	if err != nil {
+		return TaskSeriesView{}, err
 	}
-	return s.buildSeriesView(series), nil
+	return resultView, nil
 }
 
 // deleteOpenOccurrencesForStop 在停止时把 open materialized occurrence 标 deleted，
