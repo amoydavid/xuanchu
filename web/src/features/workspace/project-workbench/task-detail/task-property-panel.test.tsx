@@ -167,10 +167,8 @@ describe("TaskPropertyPanel", () => {
     expect(
       await screen.findByText(/过了这个日期后，待处理或等待中的任务会从常用报表里隐藏/)
     ).toBeTruthy()
-    expect(screen.getByText("重复规则")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "说明：重复规则" })).toBeTruthy()
-    expect(screen.getByRole("combobox", { name: "重复规则" })).toBeTruthy()
-    expect(screen.getAllByText("每周").length).toBeGreaterThan(0)
+    // recurrence 编辑 UI 已移除（spec §11.2），循环归属由 series 面板管理。
+    expect(screen.queryByText("重复规则")).toBeNull()
     expect(screen.getByText("被这些任务阻塞")).toBeTruthy()
     expect(screen.getByText("正在阻塞这些任务")).toBeTruthy()
   })

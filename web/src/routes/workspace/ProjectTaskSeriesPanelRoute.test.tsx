@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
 import { render } from "@testing-library/react"
-import { useParams } from "@tanstack/react-router"
 
 // Mock useParams 返回 seriesRef。
 vi.mock("@tanstack/react-router", async () => {

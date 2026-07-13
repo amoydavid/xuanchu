@@ -55,7 +55,10 @@ export function MyTasksPage({
   const query = useQuery<ProjectWorkbenchTask[]>({
     enabled,
     queryKey: ["my-tasks", workspaceSlug, filter],
-    queryFn: () => workspaceApiGet<ProjectWorkbenchTask[]>(myTasksPath(workspaceSlug!, filter)),
+    queryFn: async () => {
+      const page = await workspaceApiGet<{ items: ProjectWorkbenchTask[] }>(myTasksPath(workspaceSlug!, filter))
+      return page.items ?? []
+    },
   })
 
   return (

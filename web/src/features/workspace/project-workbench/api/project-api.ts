@@ -273,9 +273,9 @@ export function getProjectTasks(
   projectRef: string,
   filters?: ProjectTaskFilterParams
 ): Promise<ProjectWorkbenchTask[]> {
-  return workspaceApiGet<ProjectWorkbenchTask[]>(
+  return workspaceApiGet<{ items: ProjectWorkbenchTask[] }>(
     projectTasksPath(workspaceSlug, projectRef, filters)
-  )
+  ).then((page) => page.items ?? [])
 }
 
 export function getProjectTimeline(
