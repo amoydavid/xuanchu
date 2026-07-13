@@ -594,10 +594,11 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("%s requires text", action)
 		}
-		tsk, err := client.GetTask(ctx, opts.Workspace, target)
+		dto, err := client.GetTaskView(ctx, opts.Workspace, target)
 		if err != nil {
 			return err
 		}
+		tsk := remoteDTOToTask(dto)
 		text := strings.Join(actionArgs, " ")
 		title := strings.TrimSpace(tsk.Title + " " + text)
 		if action == "prepend" {
@@ -614,9 +615,9 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 	case "edit":
 		return app.RuntimeError{Code: "remote_unsupported_command", Message: `command "edit" is not supported in remote mode`}
 	case "annotations":
-		tsk, tskErr := client.GetTask(ctx, opts.Workspace, target)
+		dto, tskErr := client.GetTaskView(ctx, opts.Workspace, target)
 		if tskErr == nil {
-			return renderAnnotations(cmd, opts.JSON, tsk.Annotations)
+			return renderAnnotations(cmd, opts.JSON, remoteDTOToTask(dto).Annotations)
 		}
 		if isPossibleProjectSlug(positional[0]) {
 			annotations, annErr := client.ListProjectAnnotations(ctx, opts.Workspace, target)

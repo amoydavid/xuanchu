@@ -67,10 +67,11 @@ func newGetCommand(opts Options) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					tsk, err := client.GetTask(context.Background(), currentOpts.Workspace, resolved)
+					dto, err := client.GetTaskView(context.Background(), currentOpts.Workspace, resolved)
 					if err != nil {
 						return err
 					}
+					tsk := remoteDTOToTask(dto)
 					var urg float64
 					if field == "urgency" {
 						explain, err := client.ExplainUrgency(context.Background(), currentOpts.Workspace, resolved)
@@ -140,7 +141,7 @@ func newIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				matches, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				matchesPage, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -150,6 +151,7 @@ func newIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				matches := remotePageToTasks(matchesPage)
 				matched := make(map[string]struct{}, len(matches))
 				for _, tsk := range matches {
 					matched[tsk.UUID] = struct{}{}
@@ -205,7 +207,7 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -215,7 +217,7 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				for _, tsk := range tasks {
+				for _, tsk := range remotePageToTasks(page) {
 					fmt.Fprintln(cmd.OutOrStdout(), tsk.UUID)
 				}
 				return nil
@@ -304,7 +306,7 @@ func newTagsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -313,6 +315,7 @@ func newTagsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				tasks := remotePageToTasks(page)
 				tags := map[string]bool{}
 				for _, tsk := range tasks {
 					for _, tag := range tsk.Tags {
@@ -408,7 +411,7 @@ func newUniqueCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -418,6 +421,7 @@ func newUniqueCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				tasks := remotePageToTasks(page)
 				values := map[string]bool{}
 				field := strings.TrimPrefix(args[0], "uda.")
 				for _, tsk := range tasks {

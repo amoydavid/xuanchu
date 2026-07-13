@@ -37,7 +37,7 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -48,6 +48,7 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				tasks := remotePageToTasks(page)
 				if currentOpts.JSON {
 					dtos := make([]task.JSONTask, len(tasks))
 					for i, tsk := range tasks {

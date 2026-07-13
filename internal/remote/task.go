@@ -11,18 +11,6 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
-type ListTasksInput struct {
-	Workspace string
-	Project   string
-	ProjectID string
-	Report    string
-	Target    string
-	Filters   []string
-	Sort      string
-	NoContext bool
-	Limit     int
-}
-
 type AddTaskInput struct {
 	Title         string            `json:"title"`
 	Description   *string           `json:"description,omitempty"`
@@ -155,41 +143,6 @@ func parseResponseTaskSlug(value string) (string, int64, error) {
 	return value[:dash], seq, nil
 }
 
-func (c *Client) ListTasks(ctx context.Context, input ListTasksInput) ([]task.Task, error) {
-	values := url.Values{}
-	if input.Workspace != "" {
-		values.Set("workspace", input.Workspace)
-	}
-	if input.ProjectID != "" {
-		values.Set("project_id", input.ProjectID)
-	} else if input.Project != "" {
-		values.Set("project", input.Project)
-	}
-	if input.Report != "" {
-		values.Set("report", input.Report)
-	}
-	if input.Target != "" {
-		values.Set("target", input.Target)
-	}
-	if input.Sort != "" {
-		values.Set("sort", input.Sort)
-	}
-	if input.NoContext {
-		values.Set("no_context", "true")
-	}
-	if input.Limit > 0 {
-		values.Set("limit", strconv.Itoa(input.Limit))
-	}
-	for _, filter := range input.Filters {
-		values.Add("query", filter)
-	}
-	var envelope apiEnvelope[[]taskResponseJSON]
-	if err := c.get(ctx, "/api/v1/tasks", values, &envelope); err != nil {
-		return nil, err
-	}
-	return jsonTasksToTasks(envelope.Data)
-}
-
 func (c *Client) AddTask(ctx context.Context, workspace string, input AddTaskInput) (task.Task, error) {
 	values := url.Values{}
 	if workspace != "" {
@@ -197,22 +150,6 @@ func (c *Client) AddTask(ctx context.Context, workspace string, input AddTaskInp
 	}
 	var envelope apiEnvelope[taskResponseJSON]
 	if err := c.post(ctx, "/api/v1/tasks?"+values.Encode(), input, &envelope); err != nil {
-		return task.Task{}, err
-	}
-	return envelope.Data.toTask()
-}
-
-func (c *Client) GetTask(ctx context.Context, workspace, taskID string) (task.Task, error) {
-	values := url.Values{}
-	if workspace != "" {
-		values.Set("workspace", workspace)
-	}
-	path := "/api/v1/tasks/" + url.PathEscape(taskID)
-	if encoded := values.Encode(); encoded != "" {
-		path += "?" + encoded
-	}
-	var envelope apiEnvelope[taskResponseJSON]
-	if err := c.get(ctx, path, nil, &envelope); err != nil {
 		return task.Task{}, err
 	}
 	return envelope.Data.toTask()

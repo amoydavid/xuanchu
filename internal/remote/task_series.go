@@ -13,22 +13,32 @@ import (
 
 // TaskOccurrenceDTO 是 occurrence 的远程 DTO（spec §13.5）。
 // id 始终存在；uuid/task_slug/project_seq 在 projected 时为 nil。
+//
+// DTO 同时承载列表端点返回的窄字段（int64 时间戳）和单任务端点返回的
+// 完整 JSONTask 字段（RFC3339 字符串）。CLI 通过 ID/UUID 判断是 projected
+// 还是已物化，再决定渲染路径。
 type TaskOccurrenceDTO struct {
-	ID             string                   `json:"id"`
-	UUID           *string                  `json:"uuid,omitempty"`
-	TaskSlug       *string                  `json:"task_slug,omitempty"`
-	ProjectSeq     *int64                   `json:"project_seq,omitempty"`
-	ProjectID      *string                  `json:"project_id,omitempty"`
-	Project        *string                  `json:"project,omitempty"`
-	Title          string                   `json:"title"`
-	Status         string                   `json:"status"`
-	Entry          *int64                   `json:"entry,omitempty"`
-	Modified       *int64                   `json:"modified,omitempty"`
-	Due            *int64                   `json:"due,omitempty"`
-	Priority       *string                  `json:"priority,omitempty"`
-	Tags           []string                 `json:"tags,omitempty"`
+	ID             string  `json:"id"`
+	UUID           *string `json:"uuid,omitempty"`
+	TaskSlug       *string `json:"task_slug,omitempty"`
+	ProjectSeq     *int64  `json:"project_seq,omitempty"`
+	ProjectID      *string `json:"project_id,omitempty"`
+	Project        *string `json:"project,omitempty"`
+	Title          string  `json:"title"`
+	Status         string  `json:"status"`
+	Entry          *int64  `json:"entry,omitempty"`    // 列表端点返回的 Unix 时间戳
+	Modified       *int64  `json:"modified,omitempty"` // 列表端点返回的 Unix 时间戳
+	Due            *int64  `json:"due,omitempty"`      // 列表端点返回的 Unix 时间戳
+	Priority       *string `json:"priority,omitempty"`
+	Tags           []string                 `json:"-"`
 	Assignees      []task.JSONUserInfo      `json:"assignees,omitempty"`
 	RecurrenceInfo *RecurrenceInfoDTO       `json:"recurrence_info,omitempty"`
+	UDAs           map[string]string        `json:"udas,omitempty"`
+	// JSONTask 承载单任务端点（/tasks/{ref}）返回的完整 JSONTask 字段。
+	// 列表端点不填充。CLI 的 info/_get 等需要完整数据的命令从这里取值。
+	JSONTask *task.JSONTask `json:"-"`
+	// RawJSON 保留单任务端点的原始 JSON，供 CLI 解析为 task.Task。
+	RawJSON json.RawMessage `json:"-"`
 }
 
 // RecurrenceInfoDTO 描述 occurrence 的循环归属。
@@ -130,6 +140,7 @@ type TaskQueryInput struct {
 	NoContext      bool
 	Filters        []string // query/filter 表达式
 	Target         string   // 解析为 UUID 的 target ref
+	Report         string   // report name（/tasks?report=）
 }
 
 // --- Series 方法 ---
@@ -270,6 +281,9 @@ func (c *Client) QueryTasks(ctx context.Context, input TaskQueryInput) (TaskView
 	if input.Target != "" {
 		values.Set("target", input.Target)
 	}
+	if input.Report != "" {
+		values.Set("report", input.Report)
+	}
 	for _, f := range input.Filters {
 		values.Add("query", f)
 	}
@@ -282,22 +296,65 @@ func (c *Client) QueryTasks(ctx context.Context, input TaskQueryInput) (TaskView
 	return resp.Data, nil
 }
 
-// GetTaskView 按 ref（UUID/slug/occurrence_ref）获取单个任务视图。
+// GetTaskView 按 ref（UUID/slug/occurrence_ref）获取单个任务视图（spec §13.5）。
+// 普通任务：HTTP 返回 JSONTask，DTO 解析完整字段，RawJSON 保留原始 JSON。
+// occurrence_ref：HTTP 返回 taskOccurrenceJSON，DTO 解析 occurrence 字段。
 func (c *Client) GetTaskView(ctx context.Context, workspace, taskRef string) (TaskOccurrenceDTO, error) {
 	values := url.Values{}
 	if workspace != "" {
 		values.Set("workspace", workspace)
 	}
-	var resp struct {
-		Data TaskOccurrenceDTO `json:"data"`
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
 	}
-	// 注：当前 GET /tasks/{ref} 仍返回 task.JSONTask（旧 shape）。
-	// 在 HTTP 层 fully 切到 TaskOccurrenceView 后此方法返回新 shape。
-	// 这里先用 info 端点；occurrence_ref 的处理待 HTTP 层完善。
-	if err := c.get(ctx, "/api/v1/tasks/"+url.PathEscape(taskRef), values, &resp); err != nil {
+	if err := c.get(ctx, "/api/v1/tasks/"+url.PathEscape(taskRef), values, &envelope); err != nil {
 		return TaskOccurrenceDTO{}, err
 	}
-	return resp.Data, nil
+	dto, err := parseTaskOccurrenceDTO(envelope.Data)
+	if err != nil {
+		return TaskOccurrenceDTO{}, err
+	}
+	return dto, nil
+}
+
+// parseTaskOccurrenceDTO 从 HTTP 响应 JSON 解析 DTO。
+// HTTP /tasks/{ref} 对普通任务返回 JSONTask（RFC3339 字符串时间），
+// 对 occurrence_ref 返回 taskOccurrenceJSON（int64 时间）。
+// 两种 shape 字段名相同但时间类型不同，这里用 map 探测 entry 类型后分别解析。
+func parseTaskOccurrenceDTO(raw json.RawMessage) (TaskOccurrenceDTO, error) {
+	dto := TaskOccurrenceDTO{RawJSON: raw}
+	// 先探测 entry 字段类型：字符串 → JSONTask shape；数字 → occurrence shape。
+	var probe struct {
+		Entry json.RawMessage `json:"entry"`
+		UUID  json.RawMessage `json:"uuid"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return TaskOccurrenceDTO{}, err
+	}
+	// 有 uuid 且 entry 是字符串 → JSONTask shape（普通任务/物化 occurrence）。
+	if len(probe.UUID) > 0 && probe.UUID[0] == '"' {
+		var jt task.JSONTask
+		if err := json.Unmarshal(raw, &jt); err != nil {
+			return TaskOccurrenceDTO{}, err
+		}
+		dto.JSONTask = &jt
+		// 从 JSONTask 填充 DTO 公共字段（CLI 列表渲染路径）。
+		dto.ID = jt.UUID
+		dto.Title = jt.Title
+		dto.Status = jt.Status
+		dto.Tags = jt.Tags
+		dto.Priority = jt.Priority
+		dto.Project = jt.Project
+		dto.TaskSlug = jt.TaskSlug
+		id := jt.UUID
+		dto.UUID = &id
+		return dto, nil
+	}
+	// occurrence shape（int64 时间）。
+	if err := json.Unmarshal(raw, &dto); err != nil {
+		return TaskOccurrenceDTO{}, err
+	}
+	return dto, nil
 }
 
 func buildSeriesListValues(input TaskSeriesListInput) url.Values {

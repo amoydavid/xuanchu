@@ -71,11 +71,14 @@ type TaskOccurrenceView struct {
 	Due         *int64
 	Wait        *int64
 	Scheduled   *int64
+	Until       *int64
 	Parent      *string // 仅手工父任务；occurrence 首版为空
 	Priority    *string
 	Tags        []string
 	Assignees   []domain.UserInfo
 	Depends     []string
+	Annotations []domain.Annotation
+	Links       []domain.TaskLinkInfo
 	UDAs        map[string]domain.UDAValue
 	RecurrenceInfo *RecurrenceInfo
 }
@@ -148,9 +151,12 @@ func taskToView(tsk domain.Task, assignees []domain.UserInfo) TaskOccurrenceView
 		Due:         tsk.Due,
 		Wait:        tsk.Wait,
 		Scheduled:   tsk.Scheduled,
+		Until:       tsk.Until,
 		Parent:      tsk.Parent,
 		Priority:    tsk.Priority,
 		Depends:     tsk.Depends,
+		Annotations: tsk.Annotations,
+		Links:       tsk.Links,
 		UDAs:        tsk.UDAs,
 		Assignees:   assignees,
 	}
@@ -649,8 +655,33 @@ func sortTaskViews(items []TaskOccurrenceView, sort string) {
 		sortByDueThenID(items)
 	case "modified":
 		sortByModifiedDescThenID(items)
-	default:
+	case "id":
 		sortByID(items)
+	default:
+		// 默认 entry ASC，与 List 行为一致（spec §17.3：ID 作为 tie-breaker）。
+		sortByEntryThenID(items)
+	}
+}
+
+func sortByEntryThenID(items []TaskOccurrenceView) {
+	// 稳定排序：保持 collectTaskViewCandidates 返回的原始顺序（entry ASC from DB），
+	// 仅纠正 entry 不一致的顺序。同 entry 时保持 DB 返回的插入顺序（与旧 List 一致）。
+	for i := 1; i < len(items); i++ {
+		for j := i; j > 0; j-- {
+			a, b := items[j], items[j-1]
+			aEntry, bEntry := int64(0), int64(0)
+			if a.Entry != nil {
+				aEntry = *a.Entry
+			}
+			if b.Entry != nil {
+				bEntry = *b.Entry
+			}
+			if aEntry < bEntry {
+				items[j], items[j-1] = items[j-1], items[j]
+			} else {
+				break
+			}
+		}
 	}
 }
 

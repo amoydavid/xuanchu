@@ -175,11 +175,11 @@ func runLinkListRemote(cmd *cobra.Command, opts Options, target string) error {
 	if err != nil {
 		return err
 	}
-	tsk, err := client.GetTask(context.Background(), opts.Workspace, resolved)
+	dto, err := client.GetTaskView(context.Background(), opts.Workspace, resolved)
 	if err != nil {
 		return err
 	}
-	return renderLinks(cmd, opts.JSON, tsk.Links)
+	return renderLinks(cmd, opts.JSON, remoteDTOToTask(dto).Links)
 }
 
 func runLinkRemoveRemote(cmd *cobra.Command, opts Options, target, linkID string) error {
@@ -281,11 +281,11 @@ func handleRemoteLinkAction(cmd *cobra.Command, opts Options, client *remote.Cli
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Added %s link to task %s\n", dto.Type, displayTarget)
 	case "list":
-		tsk, err := client.GetTask(ctx, opts.Workspace, resolvedTarget)
+		dto, err := client.GetTaskView(ctx, opts.Workspace, resolvedTarget)
 		if err != nil {
 			return err
 		}
-		return renderLinks(cmd, opts.JSON, tsk.Links)
+		return renderLinks(cmd, opts.JSON, remoteDTOToTask(dto).Links)
 	case "remove":
 		if len(positional) != 1 {
 			return fmt.Errorf("link remove requires a link-id")

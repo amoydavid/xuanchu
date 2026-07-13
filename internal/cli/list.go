@@ -35,14 +35,14 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
-				input := remote.ListTasksInput{
+				input := remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
 					NoContext: currentOpts.NoContext,
 				}
 				if sort != "" {
-					input.Report = name
+					input.Sort = sort
 				}
 				client, err := buildRemoteClient(currentOpts)
 				if err != nil {
@@ -59,10 +59,11 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 						input.Filters = append([]string(nil), args...)
 					}
 				}
-				tasks, err := client.ListTasks(context.Background(), input)
+				page, err := client.QueryTasks(context.Background(), input)
 				if err != nil {
 					return err
 				}
+				tasks := remotePageToTasks(page)
 				if currentOpts.JSON {
 					dtos := make([]task.JSONTask, len(tasks))
 					for i, tsk := range tasks {

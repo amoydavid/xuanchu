@@ -52,6 +52,7 @@ type taskOccurrenceJSON struct {
 	Tags       []string         `json:"tags,omitempty"`
 	Assignees  []task.JSONUserInfo `json:"assignees,omitempty"`
 	RecurrenceInfo *recurrenceInfoJSON `json:"recurrence_info,omitempty"`
+	UDAs       map[string]string   `json:"udas,omitempty"`
 }
 
 type recurrenceInfoJSON struct {
@@ -116,6 +117,18 @@ type taskSeriesCreateResultJSON struct {
 
 // --- 视图序列化 ---
 
+// udaValueMapToRaw 把 domain UDA map 转为 name→raw string 的 JSON map。
+func udaValueMapToRaw(udas map[string]task.UDAValue) map[string]string {
+	if len(udas) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(udas))
+	for name, v := range udas {
+		out[name] = v.Raw
+	}
+	return out
+}
+
 func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
 	out := taskOccurrenceJSON{
 		ID: v.ID, UUID: v.UUID, TaskSlug: v.TaskSlug, ProjectSeq: v.ProjectSeq,
@@ -123,6 +136,7 @@ func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
 		Entry: v.Entry, Modified: v.Modified, Due: v.Due, Priority: v.Priority,
 		Tags: v.Tags,
 		Assignees: taskUserInfoListToJSON(v.Assignees),
+		UDAs: udaValueMapToRaw(v.UDAs),
 	}
 	if v.RecurrenceInfo != nil {
 		out.RecurrenceInfo = &recurrenceInfoJSON{
