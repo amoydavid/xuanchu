@@ -4,7 +4,7 @@
 
 **状态：** 待实现
 
-**修订：** 2026-07-12。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。
+**修订：** 2026-07-13。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。2026-07-13 追加 Web Console 组件契约：循环任务 UI 必须复用现有 shadcn 设计系统、统一创建弹窗只能有一个 Dialog 语义、右侧栏与项目上下文栏保持同一宽度和响应式边界、所有用户文案进入 i18n。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。
 
 **范围：** 任务循环系列的领域语义、日历调度、CLI/HTTP/Remote/MCP 契约与 Web Console 完整 CRUD 体验
 
@@ -1256,7 +1256,7 @@ task_type: all|normal|occurrence
 - 行点击在同一面板内进入 Series 详情；浏览器 URL 从 `/tasks/series` 变为 `/tasks/series/:seriesRef`。
 - 面板 Header 提供“新建”，直接打开统一创建弹窗的 recurring 模式；项目关闭或只读时隐藏。
 - 面板不是二级 Tab，不提供“任务 / 循环任务”切换器，也不把 Series 定义塞进任务表。
-- 桌面宽度建议 440–520px；窗口过窄时使用覆盖式 Sheet，保证主列表最小可用宽度。
+- 桌面复用项目上下文栏宽度 `lg:w-80 lg:shrink-0`（320px），避免切换面板时主列表横向跳动；低于桌面断点时使用覆盖式 Sheet，保证主列表最小可用宽度。
 
 ### 15.4 创建弹窗原型
 
@@ -1737,6 +1737,68 @@ Web Console
 | scheduler backlog | 管理面板列表/详情显示“正在补齐 N 条历史任务”；任务日期视图仍显示投影结果 | 无需用户重试 |
 
 面板的加载、错误、空状态必须分别呈现；Series API 失败只影响面板，不得清空或阻断已加载的任务列表，也不能显示成“没有循环任务”。所有按钮、菜单、Sheet 和 Dialog 均提供 i18n key、键盘焦点和明确 aria-label；打开面板后焦点进入 Header，关闭后回到触发按钮。
+
+### 15.21 shadcn、表单组合与 i18n 组件契约
+
+Web Console 采用现有 shadcn/Radix 组件和主题 token，不为循环任务维护第二套原生 HTML 表单或局部视觉语言。目标是克制、清晰、密度适中的管理控制台，不新增独立字体、颜色体系、阴影体系或全局 CSS。
+
+组件映射：
+
+| 场景 | 必须复用的组件 | 禁止实现 |
+|---|---|---|
+| 我的任务一级预设 | `Tabs`、`TabsList`、`TabsTrigger` | 手写 `button[role=tab]`、缺失 key 时显示原始 key |
+| 统一新建任务 | 一个 `Dialog`、`DialogHeader`、`DialogContent`、`DialogFooter` | 在 `DialogContent` 内嵌第二个 `role=dialog` |
+| 普通/循环模式切换 | `Tabs`，切换时保留两种模式各自 state | 两个裸 button 模拟 tab；隐藏字段被提交 |
+| 循环任务表单 | `Label`、`Input`、`Select`、共享 `InlineDatePicker`、`Alert`、`Button` | 裸 `input/select/button`；依赖浏览器默认日期输入样式 |
+| 循环任务管理栏 | `Input`、`Select`、`Button`、`Badge`、`Separator`、`Skeleton`、`Alert` | 无样式原生过滤控件；加载/错误/空状态共用一个文本块 |
+| 停止循环 | `AlertDialog`、`Checkbox`、`Button` | 自制 `div[role=dialog]` 或普通删除确认文案 |
+| 实例/系列状态 | `Badge` 和共享状态、规则格式化函数 | 显示 canonical 英文状态、裸 Unix 秒或 projected/materialized 技术术语 |
+
+`TaskSeriesDialog` 不同时承担“弹窗容器”和“表单内容”。实现拆为：
+
+```text
+TaskSeriesForm
+  ├─ create/edit 共享字段、校验、预览和提交状态
+  └─ 不渲染 Dialog/Sheet，不决定关闭行为
+
+TaskCreateDialog
+  ├─ 唯一的新建 Dialog
+  ├─ Tabs(normal/recurring)
+  └─ normal form 或 TaskSeriesForm(create)
+
+TaskSeriesEditorDialog
+  ├─ 独立编辑 Dialog
+  └─ TaskSeriesForm(edit)
+
+TaskSeriesPanelShell
+  ├─ 桌面 320px rail / 移动端 Sheet
+  ├─ 打开 TaskCreateDialog(initialMode=recurring)
+  └─ 打开 TaskSeriesEditorDialog
+```
+
+交互规则：
+
+- `TaskCreateDialog` 的标题、说明、主按钮文案随当前 mode 变化，但 DOM 中始终只有一个 modal dialog；关闭按钮、Escape 和取消都调用同一 `onOpenChange(false)` 路径。
+- `TaskSeriesForm` 使用纵向分组：标题；规则；首次截止/循环结束；优先级/标签；未来三次与影响说明；字段错误紧邻字段，全局提交错误使用 `Alert variant=destructive`。
+- 创建模式允许在普通/循环之间切换；编辑 Series 不显示模式 Tabs。编辑规则时才显示 `effective_from` 和影响范围。
+- 管理栏列表行整行可聚焦；标题是主点击目标，状态使用 Badge，展开/进入详情使用清晰图标和 aria-label。ended/stopped 不呈现写操作。
+- Series detail 的 first_due、until、next_recurrence_at 和 occurrence due 都按当前 locale 格式化；状态和 recurrence rule 走共享 label，不直接渲染协议值。
+- My Tasks 移除与 preset 冲突的 status 下拉；preset 已定义 pending/waiting/completed 范围。搜索、优先级、任务类型和排序继续作为二级过滤。
+
+i18n 规则：
+
+- `myTasks.tab` 必须包含 `incomplete/today/overdue/noDue/completed`；删除不再使用的 `all`，中英文 key 集合保持一致。
+- 循环任务用户文案统一放在 `taskSeries.*`，包括标题、说明、字段、状态、规则、预览、空状态、错误、分页、详情、停止确认和 aria-label。
+- `waiting`、`next`、canonical recurrence rule、Series status 不允许在 JSX 中硬编码为最终用户文案。
+- 中英文测试不仅比较语言包 key 集合，还必须真实渲染 My Tasks 与循环任务关键组件，断言不出现 `myTasks.*` / `taskSeries.*` 原始 key。
+
+验收测试：
+
+- My Tasks 五个 Tabs 在中英文下都显示翻译，键盘左右键可切换，页面不出现原始 key。
+- 新建循环任务时只有一个 `role=dialog`；规则和优先级是 combobox，日期使用共享日期选择器，取消/关闭/Escape 行为一致。
+- 从右侧栏新建和编辑使用相同表单内容；创建成功关闭弹窗并打开新 Series 详情，编辑成功刷新详情。
+- 停止确认显示 Checkbox、未完成数量、禁用上限和独立危险动作；取消不发请求。
+- 桌面右栏宽度与项目上下文栏一致；窄屏升级为 Sheet；浏览器视觉测试覆盖创建弹窗、列表、详情、停止确认和 My Tasks Tabs。
 
 ## 16. Web 数据流
 
