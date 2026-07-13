@@ -53,7 +53,7 @@
 | v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
 | v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
 | v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
-| v0.5.7 | 待验收 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
+| v0.5.7 | 已完成 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -597,7 +597,7 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 
 ## v0.5.7：循环任务系列与日历驱动实例
 
-**状态：待实施。**
+**状态：已完成。**
 
 把 M2 的基础 recurring 从“完成当前实例后生成下一条”升级为项目协作可用的日历驱动系列：上一实例未完成时，下一日期仍生成独立实例；服务停机恢复后补齐所有遗漏日期。
 
@@ -609,6 +609,7 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 - Server 复用现有 scheduler 运行时每分钟 reconcile；本地 CLI 在任务/项目命令前对当前 workspace 补齐。
 - Web Console 提供普通/循环创建切换、实例 badge 与系列入口、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
 - MCP 新增 `task_series_add/list/get/modify/stop/list_occurrences/occurrence_skip`，task query/get 对 occurrence 返回派生 `recurrence_info`。
+- HTTP `GET /tasks`、`GET /tasks/{ref}`、`GET /reports/{name}` 统一返回 `TaskViewPage`（`{items, total, limit, offset, occurrence_mode, range}`），Remote 删除旧 `ListTasks`/`GetTask` 签名，CLI remote 全量迁移到 `QueryTasks`/`GetTaskView`。
 - 默认任务列表只显示普通任务和 occurrence；series 在项目“循环规则”中治理。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
 - import/export 使用版本化璇础原生 bundle，不迁移或兼容 Taskwarrior recurring JSON；当前无生产历史数据，允许一次性重建旧 recurring 开发数据。
 - 项目 archive/cancel 时停止 active series，不在关闭项目中继续生成任务。

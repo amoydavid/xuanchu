@@ -371,6 +371,8 @@ v0.5.7 按 [循环任务系列规格](./docs/superpowers/specs/2026-07-11-task-s
 - 有界日期范围查询合并普通任务、projected occurrence 和 materialized exception
 - occurrence 的公开 `id` 为 `occ:<series_uuid>:<recurrence_at_unix>`，物化前后不变
 - HTTP `/api/v1/task-series`、MCP `task_series_*` tools、Remote client 提供完整 CRUD
+- HTTP `GET /tasks`、`GET /reports/{name}` 统一返回 `TaskViewPage`（`{items, total, limit, offset, occurrence_mode, range}`），不再返回裸任务数组；Remote client 用 `QueryTasks`/`GetTaskView` 替换旧 `ListTasks`/`GetTask`
+- 项目任务摘要（`GET /projects/{ref}/task-summary`）的普通进度计数排除 occurrence，并新增 `series_metrics`（`recurring_series_count`/`active_recurring_series_count`/`open_recurring_occurrence_count`/`overdue_recurring_occurrence_count`）
 - Web Console 任务页内可深链的循环任务管理面板（不新增全局导航或 ProjectTab）
 - 旧 `recur`/`mask`/`imask` 字段和 `add ... recur:*` 命令不再支持；跨环境迁移使用 `xuanchu.task-bundle/v1` 原生 bundle
 - **破坏性 schema 变更**：开发数据库需重建——检测到旧 `status=recurring` 数据会拒绝启动

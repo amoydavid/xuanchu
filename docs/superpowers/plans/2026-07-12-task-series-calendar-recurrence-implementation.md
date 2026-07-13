@@ -1,6 +1,6 @@
 # 璇础循环任务系列、范围投影与按需物化 Implementation Plan
 
-> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：全部 14 个 Task 完成。**
+> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：全部 14 个 Task + spec 收敛补充完成。**
 >
 > - **Task 1-7 ✅**：后端核心闭环
 > - **Task 8 ✅**：HTTP Series CRUD + Task 范围查询 + Remote client
@@ -10,6 +10,11 @@
 > - **Task 12 ✅**：面板 list/detail/stop-dialog + recurrence-preview + 创建弹窗 initialMode
 > - **Task 13 ✅**：occurrence badge/banner + My Tasks 5 预设 + 类型扩展
 > - **Task 14 ✅**：xuanchu.task-bundle/v1 原生 bundle round-trip + 删除 internal/recurrence + README/ROADMAP 更新 + 全量验证（go test/CGO build/vet/web typecheck/lint/build 通过）
+> - **Spec 收敛补充 ✅**（2026-07-12 追加）：
+>   - §17.4 项目统计分离：ProjectTaskSummary 普通计数排除 occurrence + 新增 series_metrics（recurring/active series count、open/overdue occurrence count）
+>   - §17.3 HTTP `GET /tasks` 统一返回 TaskViewPage（不再返回裸任务数组），`/reports/{name}` 共用 handleTaskListReport
+>   - §13.5 Remote 删除旧 `ListTasks`/`GetTask` 签名，CLI remote 14 处全量迁移到 `QueryTasks`/`GetTaskView`
+>   - 前端 3 处列表调用点（OverviewPage/my-tasks/getProjectTasks）适配 TaskViewPage 分页结构
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
