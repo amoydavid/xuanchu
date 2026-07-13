@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/config"
@@ -773,6 +774,9 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 			svc.OverrideActiveContext(*value)
 		}
 	}
+	// 本地 CLI 命令前补齐当前 workspace 的循环任务 occurrence（spec §9.3）。
+	// 忽略错误：reconcile 失败不阻断用户命令。
+	_, _ = svc.ReconcileWorkspaceTaskSeries(time.Now().Unix())
 	return svc, func() error {
 		loggerClose()
 		return store.Close()

@@ -1177,9 +1177,9 @@ func TestRunTaskViewReportReturnsPage(t *testing.T) {
 	if _, err := svc.Add(AddInput{Title: "普通任务", Project: &proj.Slug}); err != nil {
 		t.Fatal(err)
 	}
-	// 运行一个简单 report（无 report definition，只用 query）。
+	// 运行 list report（status:pending）。
 	page, err := svc.RunTaskViewReport(ReportViewInput{
-		OccurrenceMode: OccurrenceModeMaterialized,
+		Name: "list", OccurrenceMode: OccurrenceModeMaterialized,
 	})
 	if err != nil {
 		t.Fatalf("RunTaskViewReport: %v", err)
@@ -1211,15 +1211,22 @@ func TestRunTaskViewReportAppliesQueryFilter(t *testing.T) {
 	if _, err := svc.Add(AddInput{Title: "报告B", Project: &proj.Slug}); err != nil {
 		t.Fatal(err)
 	}
-	// 用 bare text 过滤只留"巡检"。
+	// 用 list report + bare text 过滤只留"巡检"。
+	queryExpr, err := query.ParseQuery("巡检")
+	if err != nil {
+		t.Fatal(err)
+	}
 	page, err := svc.RunTaskViewReport(ReportViewInput{
-		OccurrenceMode: OccurrenceModeMaterialized,
+		Name: "list", Query: queryExpr, OccurrenceMode: OccurrenceModeMaterialized,
 	})
 	if err != nil {
 		t.Fatalf("RunTaskViewReport: %v", err)
 	}
-	if page.Total != 2 {
-		t.Fatalf("total=%d want 2", page.Total)
+	if page.Total != 1 {
+		t.Fatalf("total=%d want 1（只匹配巡检A）", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].Title != "巡检A" {
+		t.Fatalf("items = %#v", page.Items)
 	}
 }
 

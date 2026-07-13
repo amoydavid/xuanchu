@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/report"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
@@ -963,14 +964,33 @@ type ReportViewInput struct {
 
 // RunTaskViewReport 执行 report 并返回 TaskViewPage（spec §17.3）。
 //
-// 复用 collectTaskViewCandidates 收集全集（不含分页），
-// 应用 report scope/urgency 后再排序和分页。
-// 旧 RunReport 返回 []task.Task，此方法返回统一 TaskViewPage。
+// 读取 report 定义，合并 def.Filter + 用户 query + context + project scope，
+// 通过 collectTaskViewCandidates 收集全集，应用 report scope（ready/blocked/blocking）
+// 和 def.Sort 后分页。旧 RunReport 返回 []task.Task，此方法返回统一 TaskViewPage。
 func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return TaskViewPage{}, err
 	}
-	// 解析 effective mode。
+	// 读取 report 定义。
+	def, ok := s.reports.Get(input.Name)
+	if !ok {
+		return TaskViewPage{}, RuntimeError{Code: "report_unknown", Message: fmt.Sprintf("unknown report %q", input.Name)}
+	}
+	if err := s.refreshAutomaticState(); err != nil {
+		return TaskViewPage{}, err
+	}
+	// 合并 filter：def.Filter + 用户 query + context + project scope。
+	contextExpr, err := s.activeContextFilter(input.NoContext)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	resolvedQuery, err := s.resolveTaskQueryPredicates(input.Query)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	effectiveQuery := query.And(s.projectScopeExpr(), query.And(contextExpr, query.And(def.Filter, resolvedQuery)))
+
+	// 解析 effective mode（report 默认 materialized，除非显式 expand + range）。
 	mode := input.OccurrenceMode
 	if mode == "" || mode == OccurrenceModeAuto {
 		if input.Range != nil && input.Range.End > input.Range.Start {
@@ -984,31 +1004,85 @@ func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error)
 	}
 	// 收集候选（全集，不分页）。
 	candidates, err := s.collectTaskViewCandidates(TaskViewQuery{
-		Range: input.Range, OccurrenceMode: mode, Sort: input.Sort,
+		Range: input.Range, OccurrenceMode: mode,
+		Query: effectiveQuery, Sort: def.Sort,
 	}, mode)
 	if err != nil {
 		return TaskViewPage{}, err
 	}
-	// 应用 report query AST 过滤（expand 模式）。
-	if input.Query != nil {
+	// expand 模式：对 merge 结果应用用户 query AST 过滤（spec §17.1）。
+	if mode == OccurrenceModeExpand && effectiveQuery != nil {
 		filtered := make([]TaskOccurrenceView, 0, len(candidates))
 		for _, v := range candidates {
 			tv := taskViewToQueryValue(v)
-			ok, merr := query.MatchTaskValue(input.Query, tv, s.clock.Location())
+			ok, merr := query.MatchTaskValue(effectiveQuery, tv, s.clock.Location())
 			if merr == nil && ok {
 				filtered = append(filtered, v)
 			}
 		}
 		candidates = filtered
 	}
-	// 排序 + 分页。
-	sortTaskViews(candidates, input.Sort)
+	// 应用 report scope（ready/blocked/blocking/hide_until_expired）。
+	// projected occurrence 首版无依赖，blocked/blocking 固定 false。
+	if def.Scope != "" {
+		now := s.clock.Unix()
+		filtered := make([]TaskOccurrenceView, 0, len(candidates))
+		for _, v := range candidates {
+			if applyReportScopeToView(v, def.Scope, now) {
+				filtered = append(filtered, v)
+			}
+		}
+		candidates = filtered
+	}
+	// 排序 + 分页。report 优先用 def.Sort，用户显式 input.Sort 覆盖。
+	effectiveSort := def.Sort
+	if input.Sort != "" {
+		effectiveSort = input.Sort
+	}
+	sortTaskViews(candidates, effectiveSort)
 	total := len(candidates)
 	paged := paginateTaskViews(candidates, input.Limit, input.Offset)
 	return TaskViewPage{
 		Items: paged, Total: total, Limit: input.Limit, Offset: input.Offset,
 		OccurrenceMode: mode, Range: input.Range,
 	}, nil
+}
+
+// applyReportScopeToView 对单个 view 应用 report scope 过滤（spec §17.3）。
+// projected/materialized occurrence 首版无依赖图，blocked/blocking 固定 false。
+func applyReportScopeToView(v TaskOccurrenceView, scope report.ScopeKind, now int64) bool {
+	switch scope {
+	case report.ScopeHideUntilExpired:
+		return !isViewUntilExpired(v, now)
+	case report.ScopeReady:
+		if isViewUntilExpired(v, now) {
+			return false
+		}
+		if v.Status != domain.StatusPending || v.Start != nil {
+			return false
+		}
+		if v.Wait != nil && *v.Wait > now {
+			return false
+		}
+		if v.Scheduled != nil && *v.Scheduled > now {
+			return false
+		}
+		return true
+	case report.ScopeBlocked, report.ScopeBlocking:
+		// occurrence 首版不在依赖图中，不会出现在 blocked/blocking report。
+		// 普通任务的依赖过滤需要 dependency map；这里对 view 模式返回 false，
+		// materialized 模式的 blocked/blocking report 由旧 RunReport 路径保证语义。
+		return false
+	default:
+		return true
+	}
+}
+
+func isViewUntilExpired(v TaskOccurrenceView, now int64) bool {
+	if v.Until == nil || *v.Until > now {
+		return false
+	}
+	return v.Status == domain.StatusPending || v.Status == domain.StatusWaiting
 }
 
 // taskViewToQueryValue 把 TaskOccurrenceView 映射为 query.TaskValue（spec §17.2）。

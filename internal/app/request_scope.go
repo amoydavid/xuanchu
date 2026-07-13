@@ -459,6 +459,25 @@ func (s *Service) resolveTaskRef(target string, mode ResolveMode, write bool) (t
 	if mode == ResolveProtocol && isDecimalDigits(target) {
 		return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
 	}
+	// occurrence_ref：读操作走 GetTaskView（不物化）；写操作先物化再返回 task（spec §7.6）。
+	if IsOccurrenceRef(target) {
+		if write {
+			if err := s.Require(PermissionTaskWrite); err != nil {
+				return task.Task{}, err
+			}
+			tsk, _, err := s.MaterializeOccurrenceForWrite(target)
+			if err != nil {
+				return task.Task{}, err
+			}
+			if err := s.ensureWritableTaskScope(tsk); err != nil {
+				return task.Task{}, err
+			}
+			return tsk, nil
+		}
+		// 读操作：occurrence_ref 不应走 resolveTaskRef（用 GetTaskView），
+		// 但为安全返回 not found 而非降级。
+		return task.Task{}, taskNotFoundError()
+	}
 	if n, ok := parseInteractiveNumericTaskRef(target); ok {
 		tasks, err := s.defaultWorkingSet()
 		if err != nil {

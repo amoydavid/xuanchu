@@ -103,6 +103,19 @@ type TaskSeriesDetailView struct {
 
 // AddTaskSeries 创建循环系列（spec §11.2）。
 //
+// ensureSeriesProjectScope 校验当前 token 的 project allowlist 是否允许访问 series 所属项目。
+// write=true 时用 project_scope_denied，否则用 task_not_found（不泄露存在性）。
+func (s *Service) ensureSeriesProjectScope(series taskseries.Series, write bool) error {
+	pid := series.ProjectID
+	if write {
+		return s.ensureProjectScope(&pid)
+	}
+	if !s.allowsProjectID(&pid) {
+		return RuntimeError{Code: "task_series_not_found", Message: "series not found"}
+	}
+	return nil
+}
+
 // 事务内：创建 series + 关联 + 初始 rule version + audit。
 // 若 first_due 已进入执行期，同事务物化 first occurrence。
 func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResult, error) {
@@ -144,6 +157,14 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 	project, err := s.projectRepo.GetByID(projectID)
 	if err != nil {
 		return TaskSeriesCreateResult{}, RuntimeError{Code: "project_not_found", Message: err.Error()}
+	}
+	// 校验 project 属于当前 workspace（防止跨 workspace 创建）。
+	if project.WorkspaceID != s.workspaceID {
+		return TaskSeriesCreateResult{}, RuntimeError{Code: "project_not_found", Message: "project not found"}
+	}
+	// 校验项目 scope（token allowlist）。
+	if err := s.ensureProjectScope(&projectID); err != nil {
+		return TaskSeriesCreateResult{}, err
 	}
 	if isProjectClosed(project) {
 		return TaskSeriesCreateResult{}, RuntimeError{Code: "task_series_project_closed", Message: "项目已关闭"}
@@ -277,8 +298,18 @@ func (s *Service) ListTaskSeries(input TaskSeriesListInput) (TaskSeriesPage, err
 	if err != nil {
 		return TaskSeriesPage{}, err
 	}
-	views := make([]TaskSeriesView, 0, len(candidates))
-	for _, c := range candidates {
+	// 过滤 project scope（token allowlist）。
+	scoped := candidates
+	if s.hasProjectScope() {
+		scoped = scoped[:0]
+		for _, c := range candidates {
+			if s.allowsProjectID(&c.ProjectID) {
+				scoped = append(scoped, c)
+			}
+		}
+	}
+	views := make([]TaskSeriesView, 0, len(scoped))
+	for _, c := range scoped {
 		views = append(views, s.buildSeriesView(c))
 	}
 	// 排序。
@@ -296,6 +327,9 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 	if err != nil {
 		return TaskSeriesDetailView{}, mapSeriesError(err)
+	}
+	if err := s.ensureSeriesProjectScope(series, false); err != nil {
+		return TaskSeriesDetailView{}, err
 	}
 	view := s.buildSeriesView(series)
 	return TaskSeriesDetailView{Series: view}, nil
@@ -316,6 +350,9 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 	if err != nil {
 		return TaskSeriesView{}, mapSeriesError(err)
+	}
+	if err := s.ensureSeriesProjectScope(series, true); err != nil {
+		return TaskSeriesView{}, err
 	}
 	if series.Status != taskseries.StatusActive {
 		return TaskSeriesView{}, RuntimeError{Code: "task_series_inactive", Message: "只能修改 active series"}
@@ -759,6 +796,38 @@ func (s *Service) ReconcileTaskSeries(seriesID string, now int64, limit int) (Ta
 	return TaskSeriesReconcileResult{Created: created, BacklogRemaining: backlogRemaining, Ended: ended}, nil
 }
 
+// ReconcileWorkspaceTaskSeries 补齐当前 workspace 所有 active series 的已到期槽位（spec §9.3）。
+// 本地 CLI 在任务/项目命令前调用，确保单机模式下 occurrence 及时生成。
+func (s *Service) ReconcileWorkspaceTaskSeries(now int64) (TaskSeriesReconcileResult, error) {
+	result := TaskSeriesReconcileResult{}
+	offset := 0
+	for {
+		seriesList, err := s.taskSeriesRepo.ListActive(s.workspaceID, 100, offset)
+		if err != nil {
+			return result, err
+		}
+		if len(seriesList) == 0 {
+			break
+		}
+		for _, series := range seriesList {
+			res, err := s.ReconcileTaskSeries(series.ID, now, 100)
+			if err != nil {
+				return result, err
+			}
+			result.Created += res.Created
+			result.BacklogRemaining += res.BacklogRemaining
+			if res.Ended {
+				result.Ended = true
+			}
+		}
+		offset += len(seriesList)
+		if len(seriesList) < 100 {
+			break
+		}
+	}
+	return result, nil
+}
+
 // StopTaskSeriesInput 是停止 series 的输入。
 type StopTaskSeriesInput struct {
 	DeleteOpenOccurrences *bool
@@ -774,6 +843,9 @@ func (s *Service) StopTaskSeries(seriesID string, input StopTaskSeriesInput) (Ta
 	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 	if err != nil {
 		return TaskSeriesView{}, mapSeriesError(err)
+	}
+	if err := s.ensureSeriesProjectScope(series, true); err != nil {
+		return TaskSeriesView{}, err
 	}
 	series.Status = taskseries.StatusStopped
 	series.EffectiveEndAt = &now
