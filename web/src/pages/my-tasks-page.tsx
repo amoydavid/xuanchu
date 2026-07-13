@@ -109,7 +109,7 @@ export function MyTasksPage({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="pending">{t("projectReadonly.pending")}</SelectItem>
-            <SelectItem value="active">{t("projectReadonly.active")}</SelectItem>
+            <SelectItem value="waiting">等待中</SelectItem>
             <SelectItem value="completed">{t("projectReadonly.completed")}</SelectItem>
             <SelectItem value="deleted">{t("projectReadonly.statusDeleted")}</SelectItem>
           </SelectContent>
@@ -191,7 +191,10 @@ function MyTasksSummary({ tasks }: { tasks: ProjectWorkbenchTask[] }) {
       dueDate.getDate() === todayDate.getDate()
     )
   }).length
-  const active = tasks.filter((task) => task.status === "active").length
+  // "进行中"= 已开始（start 非空）且未完成/未删除（模型无 active status，spec §7.2）。
+  const active = tasks.filter(
+    (task) => task.start != null && task.status !== "completed" && task.status !== "deleted"
+  ).length
   return (
     <div className="px-1 text-xs text-muted-foreground">
       {t("myTasks.summary", { overdue, today, active })}

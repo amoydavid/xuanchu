@@ -1,41 +1,50 @@
 /* eslint-disable react-hooks/set-state-in-effect -- 弹窗/面板打开时需在 effect 内重置状态 */
 import { useEffect, useState } from "react"
+import { useNavigate } from "@tanstack/react-router"
 
 import {
   listTaskSeries,
   getTaskSeries,
+  stopTaskSeries,
   type TaskSeriesView,
   type TaskSeriesListInput,
 } from "@/features/workspace/project-workbench/api/task-series-api"
+import { TaskSeriesList } from "./task-series-list"
+import { TaskSeriesDetail } from "./task-series-detail"
+import { TaskSeriesDialog } from "./task-series-dialog"
+import { TaskSeriesStopDialog } from "./task-series-stop-dialog"
 
 // TaskSeriesPanelShell 是循环任务管理面板的壳层（spec §15.3、§15.12）。
 //
-// 它：
-// - 桌面端作为右栏面板渲染；窄屏/移动端由父级升级为全屏 Sheet（后续 Task 12）
-// - 加载 series 列表（默认 active）和可选的 series 详情
-// - 加载/错误/空状态分别呈现
-// - 面板内的 list/detail 切换不重挂载父级任务页
-//
-// 注意：本组件是 Task 11 的最小可编译壳层，实际 list/detail/dialog UI 在 Task 12 补齐。
+// 桌面端作为右栏面板渲染；seriesRef 存在时显示详情，否则显示列表。
+// 接入已实现的 List/Detail/Dialog/StopDialog 组件，导航通过路由 seriesRef 切换。
 export function TaskSeriesPanelShell({
   workspaceSlug,
   projectSlug,
   seriesRef,
+  canManage = true,
 }: {
   workspaceSlug: string
   projectSlug: string
   seriesRef?: string
+  canManage?: boolean
 }) {
+  const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<string>("active")
+  const [query, setQuery] = useState<string>("")
   const [list, setList] = useState<TaskSeriesView[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 详情（若 seriesRef 存在）。
+  // 详情。
   const [detail, setDetail] = useState<TaskSeriesView | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+
+  // 编辑 / 停止弹窗。
+  const [editOpen, setEditOpen] = useState(false)
+  const [stopOpen, setStopOpen] = useState(false)
 
   // 加载 series 列表。
   useEffect(() => {
@@ -45,7 +54,8 @@ export function TaskSeriesPanelShell({
     const input: TaskSeriesListInput = {
       project: projectSlug,
       status: statusFilter,
-      limit: 1,
+      q: query || undefined,
+      limit: 50,
     }
     void listTaskSeries(workspaceSlug, input)
       .then((page) => {
@@ -62,7 +72,7 @@ export function TaskSeriesPanelShell({
     return () => {
       cancelled = true
     }
-  }, [workspaceSlug, projectSlug, statusFilter])
+  }, [workspaceSlug, projectSlug, statusFilter, query])
 
   // 加载详情（seriesRef 存在时）。
   useEffect(() => {
@@ -89,6 +99,32 @@ export function TaskSeriesPanelShell({
     }
   }, [workspaceSlug, seriesRef])
 
+  const selectSeries = (s: TaskSeriesView) => {
+    void navigate({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef",
+      params: { workspaceSlug, projectSlug, seriesRef: s.id },
+    })
+  }
+
+  const backToList = () => {
+    void navigate({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series",
+      params: { workspaceSlug, projectSlug },
+    })
+  }
+
+  const confirmStop = async (deleteOpen: boolean) => {
+    if (!detail) return
+    try {
+      await stopTaskSeries(workspaceSlug, detail.id, deleteOpen)
+      setStopOpen(false)
+      backToList()
+    } catch (err: unknown) {
+      setDetailError(err instanceof Error ? err.message : "停止循环任务失败")
+      setStopOpen(false)
+    }
+  }
+
   return (
     <section
       data-testid="task-series-panel"
@@ -96,69 +132,70 @@ export function TaskSeriesPanelShell({
       data-loading={loading || detailLoading}
       data-error={error ?? detailError ?? undefined}
       aria-label="循环任务管理面板"
+      className="space-y-3"
     >
       <header>
-        <h2>循环任务{total > 0 ? ` ${total}` : ""}</h2>
-        <p>管理会按计划重复产生实例的任务；每一次仍在左侧完成。</p>
+        <h2 className="text-base font-semibold">循环任务{total > 0 ? ` ${total}` : ""}</h2>
+        <p className="text-sm text-muted-foreground">
+          管理会按计划重复产生实例的任务；每一次仍在左侧完成。
+        </p>
       </header>
-      {error && <div role="alert">{error}</div>}
-      {loading && <div>加载中…</div>}
-      {!loading && !error && list.length === 0 && !seriesRef && (
-        <div>还没有循环任务；适合每日巡检、周报等重复执行工作。</div>
+
+      {seriesRef ? (
+        // 详情模式。
+        <>
+          {detailError && <div role="alert">{detailError}</div>}
+          {detailLoading && <div>加载详情中…</div>}
+          {detail && (
+            <TaskSeriesDetail
+              series={detail}
+              canManage={canManage}
+              onBack={backToList}
+              onEdit={() => setEditOpen(true)}
+              onStop={() => setStopOpen(true)}
+            />
+          )}
+        </>
+      ) : (
+        // 列表模式。
+        <TaskSeriesList
+          items={list}
+          total={total}
+          loading={loading}
+          error={error}
+          onSelect={selectSeries}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          query={query}
+          onQueryChange={setQuery}
+          canManage={canManage}
+        />
       )}
-      {list.map((s) => (
-        <SeriesRow key={s.id} series={s} />
-      ))}
-      {seriesRef && detailError && <div role="alert">{detailError}</div>}
-      {seriesRef && detailLoading && <div>加载详情中…</div>}
-      {seriesRef && detail && (
-        <SeriesDetailBlock series={detail} />
+
+      {/* 编辑弹窗 */}
+      {detail && (
+        <TaskSeriesDialog
+          open={editOpen}
+          mode="edit"
+          workspaceSlug={workspaceSlug}
+          projectSlug={projectSlug}
+          series={detail}
+          onClose={() => {
+            setEditOpen(false)
+            // 重新加载详情。
+            void getTaskSeries(workspaceSlug, detail.id).then((v) => setDetail(v))
+          }}
+        />
       )}
-      {/* 状态筛选（占位） */}
-      <div className="sr-only" aria-hidden>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          aria-label="循环任务状态筛选"
-        >
-          <option value="active">运行中</option>
-          <option value="ended">已结束</option>
-          <option value="stopped">已停止</option>
-          <option value="all">全部</option>
-        </select>
-      </div>
+
+      {/* 停止确认弹窗 */}
+      <TaskSeriesStopDialog
+        open={stopOpen}
+        series={detail ? { title: detail.title } : null}
+        openCount={detail?.open_occurrence_count ?? 0}
+        onConfirm={confirmStop}
+        onCancel={() => setStopOpen(false)}
+      />
     </section>
-  )
-}
-
-function SeriesRow({ series }: { series: TaskSeriesView }) {
-  return (
-    <article data-testid="task-series-row" data-series-id={series.id}>
-      <div>{series.title}</div>
-      <div>
-        {series.recurrence_rule} · 状态：{series.status} · 未完成 {series.open_occurrence_count}
-        {series.next_recurrence_at ? ` · 下次 ${series.next_recurrence_at}` : ""}
-      </div>
-    </article>
-  )
-}
-
-function SeriesDetailBlock({ series }: { series: TaskSeriesView }) {
-  return (
-    <article data-testid="task-series-detail" data-series-id={series.id}>
-      <h3>{series.title}</h3>
-      <dl>
-        <dt>状态</dt>
-        <dd>{series.status}</dd>
-        <dt>规则</dt>
-        <dd>{series.recurrence_rule}</dd>
-        <dt>未完成</dt>
-        <dd>{series.open_occurrence_count}</dd>
-        <dt>已完成</dt>
-        <dd>{series.completed_count}</dd>
-        <dt>已跳过</dt>
-        <dd>{series.skipped_count}</dd>
-      </dl>
-    </article>
   )
 }
