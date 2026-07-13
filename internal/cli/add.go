@@ -48,10 +48,11 @@ func newAddCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				createdTask := remoteDTOToTask(created)
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), task.ToJSON(created))
+					return render.JSON(cmd.OutOrStdout(), task.ToJSON(createdTask))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", created.UUID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", createdTask.UUID)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)

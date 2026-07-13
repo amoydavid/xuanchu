@@ -13,6 +13,8 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/remote"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 )
 
 // parseLocalDateEndOfDay 把 YYYY-MM-DD 解析为本地时区当天 23:59:59。
@@ -40,8 +42,9 @@ func newSeriesCommand(opts Options) *cobra.Command {
 // --- series add ---
 
 func newSeriesAddCommand(opts Options) *cobra.Command {
-	var recur, firstDue, until, projectRef, priority string
+	var recur, firstDue, until, projectRef, description, priority string
 	var assignees, tags []string
+	var udas map[string]string
 	cmd := &cobra.Command{
 		Use:   "add <title>",
 		Short: "创建循环任务系列",
@@ -61,7 +64,8 @@ func newSeriesAddCommand(opts Options) *cobra.Command {
 			}
 			input := app.AddTaskSeriesInput{
 				Title: title, RecurrenceRule: recur, FirstDue: firstDueTs,
-				Priority: stringPtrOrNil(priority), Assignees: assignees, Tags: tags,
+				Description: stringPtrOrNil(description), Priority: stringPtrOrNil(priority),
+				Assignees: assignees, Tags: tags, UDAs: udas,
 			}
 			if projRef != "" {
 				// 用 project_id 还是 slug：若像 UUID 则用 ProjectID，否则用 Project。
@@ -101,9 +105,11 @@ func newSeriesAddCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&firstDue, "first-due", "", "首次截止日期（YYYY-MM-DD）")
 	cmd.Flags().StringVar(&until, "until", "", "循环结束日期（YYYY-MM-DD）")
 	cmd.Flags().StringVar(&projectRef, "project", "", "项目 slug 或 ID")
+	cmd.Flags().StringVar(&description, "description", "", "描述")
 	cmd.Flags().StringVar(&priority, "priority", "", "优先级（H|M|L）")
 	cmd.Flags().StringSliceVar(&assignees, "assignee", nil, "负责人（可重复）")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "标签（可重复）")
+	cmd.Flags().StringToStringVar(&udas, "uda", nil, "自定义字段（name=value）")
 	_ = cmd.MarkFlagRequired("recur")
 	_ = cmd.MarkFlagRequired("first-due")
 	return cmd
@@ -188,8 +194,9 @@ func newSeriesInfoCommand(opts Options) *cobra.Command {
 // --- series modify ---
 
 func newSeriesModifyCommand(opts Options) *cobra.Command {
-	var recur, until, effectiveFrom, title, priority string
-	var assignees, tags []string
+	var recur, until, effectiveFrom, title, description, priority string
+	var assignees, tags, clear []string
+	var udas map[string]string
 	cmd := &cobra.Command{
 		Use:   "modify <series-ref>",
 		Short: "修改循环任务系列",
@@ -203,6 +210,9 @@ func newSeriesModifyCommand(opts Options) *cobra.Command {
 				t := title
 				input.Title = &t
 			}
+			if description != "" {
+				input.Description = &description
+			}
 			if priority != "" {
 				input.Priority = &priority
 			}
@@ -211,6 +221,12 @@ func newSeriesModifyCommand(opts Options) *cobra.Command {
 			}
 			if len(tags) > 0 {
 				input.Tags = tags
+			}
+			if len(udas) > 0 {
+				input.UDAs = udas
+			}
+			if err := app.ApplyTaskSeriesClearFields(&input, clear); err != nil {
+				return err
 			}
 			if until != "" {
 				ts, err := parseSeriesDateFlag(until)
@@ -252,9 +268,12 @@ func newSeriesModifyCommand(opts Options) *cobra.Command {
 	cmd.Flags().StringVar(&effectiveFrom, "effective-from", "", "新规则生效日期（YYYY-MM-DD）")
 	cmd.Flags().StringVar(&until, "until", "", "循环结束日期")
 	cmd.Flags().StringVar(&title, "title", "", "标题")
+	cmd.Flags().StringVar(&description, "description", "", "描述")
 	cmd.Flags().StringVar(&priority, "priority", "", "优先级")
 	cmd.Flags().StringSliceVar(&assignees, "assignee", nil, "负责人")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "标签")
+	cmd.Flags().StringToStringVar(&udas, "uda", nil, "自定义字段（name=value）")
+	cmd.Flags().StringSliceVar(&clear, "clear", nil, "清空字段（description|priority|assignees|tags|until|uda.<name>）")
 	return cmd
 }
 
@@ -294,7 +313,7 @@ func newSeriesOccurrencesCommand(opts Options) *cobra.Command {
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
-				return runSeriesOccurrencesRemote(cmd, currentOpts, seriesRef, statusFilter, limit, offset)
+				return runSeriesOccurrencesRemote(cmd, currentOpts, seriesRef, input)
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -456,7 +475,8 @@ func runSeriesAddRemote(cmd *cobra.Command, currentOpts Options, input app.AddTa
 	}
 	remoteInput := remote.AddTaskSeriesInput{
 		Title: input.Title, RecurrenceRule: input.RecurrenceRule,
-		Priority: input.Priority, Assignees: input.Assignees, Tags: input.Tags,
+		Description: input.Description, Priority: input.Priority,
+		Assignees: input.Assignees, Tags: input.Tags, UDAs: input.UDAs,
 	}
 	if input.Project != nil {
 		remoteInput.Project = input.Project
@@ -516,7 +536,31 @@ func runSeriesModifyRemote(cmd *cobra.Command, currentOpts Options, seriesRef st
 	if err != nil {
 		return err
 	}
-	dto, err := client.ModifyTaskSeries(context.Background(), currentOpts.Workspace, seriesRef, input)
+	clear := make([]string, 0, 5+len(input.ClearUDAs))
+	if input.ClearDescription {
+		clear = append(clear, "description")
+	}
+	if input.ClearPriority {
+		clear = append(clear, "priority")
+	}
+	if input.ClearAssignees {
+		clear = append(clear, "assignees")
+	}
+	if input.ClearTags {
+		clear = append(clear, "tags")
+	}
+	if input.ClearUntil {
+		clear = append(clear, "until")
+	}
+	for _, name := range input.ClearUDAs {
+		clear = append(clear, "uda."+name)
+	}
+	dto, err := client.ModifyTaskSeries(context.Background(), currentOpts.Workspace, seriesRef, remote.ModifyTaskSeriesInput{
+		Title: input.Title, Description: input.Description, Priority: input.Priority,
+		Assignees: input.Assignees, Tags: input.Tags, UDAs: input.UDAs,
+		RecurrenceRule: input.RecurrenceRule, EffectiveFrom: input.EffectiveFrom,
+		Until: input.Until, Clear: clear,
+	})
 	if err != nil {
 		return err
 	}
@@ -537,16 +581,19 @@ func runSeriesInfoRemote(cmd *cobra.Command, currentOpts Options, seriesRef stri
 	if err != nil {
 		return err
 	}
-	renderSeriesDetail(cmd.OutOrStdout(), currentOpts.JSON, app.TaskSeriesDetailView{Series: remoteSeriesDTOToView(dto)})
+	renderSeriesDetail(cmd.OutOrStdout(), currentOpts.JSON, remoteSeriesDetailDTOToView(dto))
 	return nil
 }
 
-func runSeriesOccurrencesRemote(cmd *cobra.Command, currentOpts Options, seriesRef, status string, limit, offset int) error {
+func runSeriesOccurrencesRemote(cmd *cobra.Command, currentOpts Options, seriesRef string, input app.TaskSeriesOccurrenceListInput) error {
 	client, err := buildRemoteClient(currentOpts)
 	if err != nil {
 		return err
 	}
-	page, err := client.ListTaskSeriesOccurrences(context.Background(), currentOpts.Workspace, seriesRef, status, limit, offset)
+	page, err := client.ListTaskSeriesOccurrences(context.Background(), remote.TaskSeriesOccurrenceListInput{
+		Workspace: currentOpts.Workspace, SeriesRef: seriesRef, Status: input.Status,
+		DueAfter: input.DueAfter, DueBefore: input.DueBefore, Limit: input.Limit, Offset: input.Offset,
+	})
 	if err != nil {
 		return err
 	}
@@ -565,7 +612,11 @@ func runSeriesOccurrencesRemote(cmd *cobra.Command, currentOpts Options, seriesR
 
 func renderSeriesCreateResult(w io.Writer, asJSON bool, result app.TaskSeriesCreateResult) {
 	if asJSON {
-		_ = renderJSON(w, result)
+		payload := map[string]any{"series": seriesViewJSON(result.Series)}
+		if result.FirstOccurrence != nil {
+			payload["first_occurrence"] = occurrenceViewJSON(*result.FirstOccurrence)
+		}
+		_ = renderJSON(w, payload)
 		return
 	}
 	fmt.Fprintf(w, "已创建循环任务 %s（%s）\n", result.Series.Title, result.Series.RecurrenceRule)
@@ -580,7 +631,11 @@ func renderSeriesCreateResult(w io.Writer, asJSON bool, result app.TaskSeriesCre
 
 func renderSeriesList(w io.Writer, asJSON bool, page app.TaskSeriesPage) {
 	if asJSON {
-		_ = renderJSON(w, page)
+		items := make([]map[string]any, 0, len(page.Items))
+		for _, item := range page.Items {
+			items = append(items, seriesViewJSON(item))
+		}
+		_ = renderJSON(w, map[string]any{"items": items, "total": page.Total, "limit": page.Limit, "offset": page.Offset})
 		return
 	}
 	if len(page.Items) == 0 {
@@ -601,7 +656,11 @@ func renderSeriesList(w io.Writer, asJSON bool, page app.TaskSeriesPage) {
 
 func renderSeriesDetail(w io.Writer, asJSON bool, detail app.TaskSeriesDetailView) {
 	if asJSON {
-		_ = renderJSON(w, detail)
+		payload := seriesViewJSON(detail.Series)
+		payload["open_occurrences"] = occurrenceViewsJSON(detail.OpenOccurrences)
+		payload["recent_completed"] = occurrenceViewsJSON(detail.RecentCompleted)
+		payload["recent_skipped"] = occurrenceViewsJSON(detail.RecentSkipped)
+		_ = renderJSON(w, payload)
 		return
 	}
 	s := detail.Series
@@ -617,11 +676,35 @@ func renderSeriesDetail(w io.Writer, asJSON bool, detail app.TaskSeriesDetailVie
 	if s.NextRecurrenceAt != nil {
 		fmt.Fprintf(w, "下一槽位：%s\n", formatUnixShort(*s.NextRecurrenceAt))
 	}
+	renderSeriesOccurrenceGroup(w, "未完成实例", detail.OpenOccurrences)
+	renderSeriesOccurrenceGroup(w, "最近完成", detail.RecentCompleted)
+	renderSeriesOccurrenceGroup(w, "最近跳过", detail.RecentSkipped)
+}
+
+func renderSeriesOccurrenceGroup(w io.Writer, title string, rows []app.TaskOccurrenceView) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "%s：\n", title)
+	for _, row := range rows {
+		due := "—"
+		if row.Due != nil {
+			due = formatUnixShort(*row.Due)
+		}
+		fmt.Fprintf(w, "  %s  %s  %s  %s\n", row.ID, row.Status, due, row.Title)
+	}
 }
 
 func renderOccurrencePage(w io.Writer, asJSON bool, page app.TaskViewPage) {
 	if asJSON {
-		_ = renderJSON(w, page)
+		payload := map[string]any{
+			"items": occurrenceViewsJSON(page.Items), "total": page.Total,
+			"limit": page.Limit, "offset": page.Offset, "occurrence_mode": string(page.OccurrenceMode),
+		}
+		if page.Range != nil {
+			payload["range"] = map[string]int64{"start": page.Range.Start, "end": page.Range.End}
+		}
+		_ = renderJSON(w, payload)
 		return
 	}
 	if len(page.Items) == 0 {
@@ -649,11 +732,124 @@ func renderOccurrencePage(w io.Writer, asJSON bool, page app.TaskViewPage) {
 }
 
 func renderSeriesViewJSON(w io.Writer, v app.TaskSeriesView) {
-	_ = renderJSON(w, v)
+	_ = renderJSON(w, seriesViewJSON(v))
 }
 
 func renderOccurrenceViewJSON(w io.Writer, v app.TaskOccurrenceView) {
-	_ = renderJSON(w, v)
+	_ = renderJSON(w, occurrenceViewJSON(v))
+}
+
+func seriesViewJSON(v app.TaskSeriesView) map[string]any {
+	out := map[string]any{
+		"id": v.ID, "workspace_id": v.WorkspaceID, "project_id": v.ProjectID,
+		"title": v.Title, "status": v.Status, "recurrence_rule": v.RecurrenceRule,
+		"first_due": v.FirstDue, "open_occurrence_count": v.OpenOccurrenceCount,
+		"completed_count": v.CompletedCount, "skipped_count": v.SkippedCount,
+		"overdue_count": v.OverdueCount, "created_at": v.CreatedAt, "modified_at": v.ModifiedAt,
+		"created_by": task.UserInfoToJSON(v.CreatedBy),
+	}
+	if v.Description != nil {
+		out["description"] = *v.Description
+	}
+	if v.Until != nil {
+		out["until"] = *v.Until
+	}
+	if v.Priority != nil {
+		out["priority"] = *v.Priority
+	}
+	if len(v.Tags) > 0 {
+		out["tags"] = v.Tags
+	}
+	if len(v.UDAs) > 0 {
+		out["udas"] = v.UDAs
+	}
+	if len(v.Assignees) > 0 {
+		rows := make([]task.JSONUserInfo, 0, len(v.Assignees))
+		for _, user := range v.Assignees {
+			rows = append(rows, task.UserInfoToJSON(user))
+		}
+		out["assignees"] = rows
+	}
+	if v.NextRecurrenceAt != nil {
+		out["next_recurrence_at"] = *v.NextRecurrenceAt
+	}
+	return out
+}
+
+func occurrenceViewsJSON(rows []app.TaskOccurrenceView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, occurrenceViewJSON(row))
+	}
+	return out
+}
+
+func occurrenceViewJSON(v app.TaskOccurrenceView) map[string]any {
+	udas := make(map[string]string, len(v.UDAs))
+	for name, value := range v.UDAs {
+		udas[name] = value.Raw
+	}
+	assignees := make([]task.JSONUserInfo, 0, len(v.Assignees))
+	for _, user := range v.Assignees {
+		assignees = append(assignees, task.UserInfoToJSON(user))
+	}
+	links := make([]task.JSONTaskLink, 0, len(v.Links))
+	for _, link := range v.Links {
+		links = append(links, task.JSONTaskLink{
+			ID: link.ID, Type: link.Type, URL: link.URL, Title: link.Title,
+			CreatedAt: time.Unix(link.CreatedAt, 0).Format(time.RFC3339), CreatedBy: task.ActorInfoToJSON(link.CreatedBy),
+		})
+	}
+	out := map[string]any{
+		"id": v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
+		"tags": v.Tags, "assignees": assignees, "depends": v.Depends,
+		"annotations": task.AnnotationsToJSON(v.Annotations), "links": links, "udas": udas,
+	}
+	if v.UUID != nil {
+		out["uuid"] = *v.UUID
+	}
+	if v.TaskSlug != nil {
+		out["task_slug"] = *v.TaskSlug
+	}
+	if v.ProjectSeq != nil {
+		out["project_seq"] = *v.ProjectSeq
+	}
+	if v.ProjectID != nil {
+		out["project_id"] = *v.ProjectID
+	}
+	if v.Project != nil {
+		out["project"] = *v.Project
+	}
+	if v.Description != nil {
+		out["description"] = *v.Description
+	}
+	if v.Priority != nil {
+		out["priority"] = *v.Priority
+	}
+	if v.Parent != nil {
+		out["parent"] = *v.Parent
+	}
+	for name, value := range map[string]*int64{
+		"entry": v.Entry, "modified": v.Modified, "due": v.Due, "start": v.Start,
+		"end": v.End, "wait": v.Wait, "scheduled": v.Scheduled, "until": v.Until,
+	} {
+		if value != nil {
+			out[name] = *value
+		}
+	}
+	if v.RecurrenceInfo != nil {
+		recurrence := map[string]any{
+			"role": v.RecurrenceInfo.Role, "series_id": v.RecurrenceInfo.SeriesID,
+			"series_status": v.RecurrenceInfo.SeriesStatus, "rule": v.RecurrenceInfo.Rule,
+			"recurrence_at":   v.RecurrenceInfo.RecurrenceAt,
+			"materialization": v.RecurrenceInfo.Materialization, "overrides": v.RecurrenceInfo.Overrides,
+		}
+		if v.RecurrenceInfo.Until != nil {
+			recurrence["until"] = *v.RecurrenceInfo.Until
+		}
+		out["recurrence_info"] = recurrence
+	}
+	return out
 }
 
 func renderJSON(w io.Writer, v any) error {
@@ -670,28 +866,85 @@ func formatUnixShort(ts int64) string {
 // remote DTO → app view（用于复用本地渲染）。
 
 func remoteSeriesDTOToView(dto remote.TaskSeriesDTO) app.TaskSeriesView {
+	assigneeIDs := make([]string, 0, len(dto.Assignees))
+	assignees := make([]task.UserInfo, 0, len(dto.Assignees))
+	for _, assignee := range dto.Assignees {
+		assigneeIDs = append(assigneeIDs, assignee.ID)
+		assignees = append(assignees, task.UserInfoFromJSON(assignee))
+	}
 	return app.TaskSeriesView{
+		Series: taskseries.Series{
+			ID: dto.ID, WorkspaceID: dto.WorkspaceID, ProjectID: dto.ProjectID,
+			Title: dto.Title, Description: dto.Description, Status: dto.Status,
+			RecurrenceRule: dto.RecurrenceRule, FirstDue: dto.FirstDue, Until: dto.Until,
+			Priority: dto.Priority, AssigneeIDs: assigneeIDs, Tags: dto.Tags, UDAs: dto.UDAs,
+			CreatedBy: dto.CreatedBy.ID, CreatedAt: dto.CreatedAt, ModifiedAt: dto.ModifiedAt,
+		},
 		OpenOccurrenceCount: dto.OpenOccurrenceCount,
 		CompletedCount:      dto.CompletedCount,
 		SkippedCount:        dto.SkippedCount,
 		OverdueCount:        dto.OverdueCount,
 		NextRecurrenceAt:    dto.NextRecurrenceAt,
+		CreatedBy:           task.UserInfoFromJSON(dto.CreatedBy),
+		Assignees:           assignees,
 	}
+}
+
+func remoteSeriesDetailDTOToView(dto remote.TaskSeriesDTO) app.TaskSeriesDetailView {
+	return app.TaskSeriesDetailView{
+		Series:          remoteSeriesDTOToView(dto),
+		OpenOccurrences: remoteOccurrenceDTOsToViews(dto.OpenOccurrences),
+		RecentCompleted: remoteOccurrenceDTOsToViews(dto.RecentCompleted),
+		RecentSkipped:   remoteOccurrenceDTOsToViews(dto.RecentSkipped),
+	}
+}
+
+func remoteOccurrenceDTOsToViews(rows []remote.TaskOccurrenceDTO) []app.TaskOccurrenceView {
+	out := make([]app.TaskOccurrenceView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, remoteOccurrenceDTOToView(row))
+	}
+	return out
 }
 
 func remoteOccurrenceDTOToView(dto remote.TaskOccurrenceDTO) app.TaskOccurrenceView {
 	v := app.TaskOccurrenceView{
 		ID: dto.ID, UUID: dto.UUID, TaskSlug: dto.TaskSlug, ProjectSeq: dto.ProjectSeq,
-		Title: dto.Title, Status: dto.Status, Entry: dto.Entry, Modified: dto.Modified,
-		Due: dto.Due, Priority: dto.Priority, Tags: dto.Tags,
+		WorkspaceID: dto.WorkspaceID, ProjectID: dto.ProjectID, Project: dto.Project,
+		Title: dto.Title, Description: dto.Description, Status: dto.Status,
+		Entry: dto.Entry, Modified: dto.Modified, Start: dto.Start, End: dto.End,
+		Due: dto.Due, Wait: dto.Wait, Scheduled: dto.Scheduled, Until: dto.Until,
+		Parent: dto.Parent, Priority: dto.Priority, Tags: dto.Tags, Depends: dto.Depends,
+	}
+	for _, assignee := range dto.Assignees {
+		v.Assignees = append(v.Assignees, task.UserInfoFromJSON(assignee))
+	}
+	for name, raw := range dto.UDAs {
+		if v.UDAs == nil {
+			v.UDAs = map[string]task.UDAValue{}
+		}
+		v.UDAs[name] = task.UDAValue{Raw: raw}
+	}
+	for _, annotation := range dto.Annotations {
+		entry, _ := time.Parse(time.RFC3339, annotation.Entry)
+		v.Annotations = append(v.Annotations, task.Annotation{
+			ID: annotation.ID, Entry: entry.Unix(), Description: annotation.Description,
+		})
+	}
+	for _, link := range dto.Links {
+		createdAt, _ := time.Parse(time.RFC3339, link.CreatedAt)
+		v.Links = append(v.Links, task.TaskLinkInfo{
+			ID: link.ID, Type: link.Type, URL: link.URL, Title: link.Title,
+			CreatedAt: createdAt.Unix(), CreatedBy: task.ActorInfoFromJSON(link.CreatedBy),
+		})
 	}
 	if dto.RecurrenceInfo != nil {
 		v.RecurrenceInfo = &app.RecurrenceInfo{
 			Role: dto.RecurrenceInfo.Role, SeriesID: dto.RecurrenceInfo.SeriesID,
 			SeriesStatus: dto.RecurrenceInfo.SeriesStatus, Rule: dto.RecurrenceInfo.Rule,
-			RecurrenceAt: dto.RecurrenceInfo.RecurrenceAt,
+			RecurrenceAt:    dto.RecurrenceInfo.RecurrenceAt,
 			Materialization: dto.RecurrenceInfo.Materialization,
-			Overrides: dto.RecurrenceInfo.Overrides, Until: dto.RecurrenceInfo.Until,
+			Overrides:       dto.RecurrenceInfo.Overrides, Until: dto.RecurrenceInfo.Until,
 		}
 	}
 	return v

@@ -42,7 +42,6 @@ describe("task import xlsx helpers", () => {
         "until",
         "start",
         "end",
-        "recur",
         "parent",
         "task_slug",
         "annotations",
@@ -63,7 +62,7 @@ describe("task import xlsx helpers", () => {
     )
     expect(helpRows).toContainEqual(
       expect.objectContaining({
-        allowed_values: "pending, completed, deleted, waiting, recurring",
+        allowed_values: "pending, completed, deleted, waiting",
         field: "status",
         type: "enum",
       })
@@ -75,7 +74,7 @@ describe("task import xlsx helpers", () => {
         type: "enum",
       })
     )
-    expect(sheet["!autofilter"]).toEqual({ ref: "A1:T2" })
+    expect(sheet["!autofilter"]).toEqual({ ref: "A1:U2" })
     expect(sheet["!cols"]?.[0]).toEqual(expect.objectContaining({ wch: 18 }))
     expect(sheet["I2"]).toEqual(
       expect.objectContaining({

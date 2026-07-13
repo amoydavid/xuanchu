@@ -8,24 +8,26 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 // --- 输入类型 ---
 
 type TaskSeriesAddInput struct {
-	Workspace string   `json:"workspace,omitempty"`
-	Project   string   `json:"project,omitempty"`
-	ProjectID string   `json:"project_id,omitempty"`
-	Title     string   `json:"title"`
-	Description *string `json:"description,omitempty"`
-	RecurrenceRule string `json:"recurrence_rule"`
-	FirstDue       *int64  `json:"first_due,omitempty"`
-	FirstDueDate   *string `json:"first_due_date,omitempty"`
-	Until          *int64  `json:"until,omitempty"`
-	UntilDate      *string `json:"until_date,omitempty"`
-	Priority       *string `json:"priority,omitempty"`
-	Assignees      []string `json:"assignees,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
+	Workspace      string            `json:"workspace,omitempty"`
+	Project        string            `json:"project,omitempty"`
+	ProjectID      string            `json:"project_id,omitempty"`
+	Title          string            `json:"title"`
+	Description    *string           `json:"description,omitempty"`
+	RecurrenceRule string            `json:"recurrence_rule"`
+	FirstDue       *int64            `json:"first_due,omitempty"`
+	FirstDueDate   *string           `json:"first_due_date,omitempty"`
+	Until          *int64            `json:"until,omitempty"`
+	UntilDate      *string           `json:"until_date,omitempty"`
+	Priority       *string           `json:"priority,omitempty"`
+	Assignees      []string          `json:"assignees,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
+	UDAs           map[string]string `json:"udas,omitempty"`
 }
 
 func (in TaskSeriesAddInput) scopeInput() RequestScopeInput {
@@ -70,13 +72,13 @@ func (in TaskSeriesStopInput) scopeInput() RequestScopeInput {
 }
 
 type TaskSeriesOccurrenceListInput struct {
-	Workspace string  `json:"workspace,omitempty"`
-	ID        string  `json:"id"`
-	Status    string  `json:"status,omitempty"`
-	DueAfter  *int64  `json:"due_after,omitempty"`
-	DueBefore *int64  `json:"due_before,omitempty"`
-	Limit     int     `json:"limit,omitempty"`
-	Offset    int     `json:"offset,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	ID        string `json:"id"`
+	Status    string `json:"status,omitempty"`
+	DueAfter  *int64 `json:"due_after,omitempty"`
+	DueBefore *int64 `json:"due_before,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
 }
 
 func (in TaskSeriesOccurrenceListInput) scopeInput() RequestScopeInput {
@@ -84,9 +86,9 @@ func (in TaskSeriesOccurrenceListInput) scopeInput() RequestScopeInput {
 }
 
 type TaskSeriesOccurrenceSkipInput struct {
-	Workspace     string `json:"workspace,omitempty"`
-	SeriesID      string `json:"series_id"`
-	OccurrenceID  string `json:"occurrence_id"`
+	Workspace    string `json:"workspace,omitempty"`
+	SeriesID     string `json:"series_id"`
+	OccurrenceID string `json:"occurrence_id"`
 }
 
 func (in TaskSeriesOccurrenceSkipInput) scopeInput() RequestScopeInput {
@@ -124,7 +126,7 @@ func registerTaskSeriesAdd(s *mcp.Server, opts Options) {
 		input := app.AddTaskSeriesInput{
 			Title: in.Title, Description: in.Description,
 			RecurrenceRule: in.RecurrenceRule, Priority: in.Priority,
-			Assignees: in.Assignees, Tags: in.Tags,
+			Assignees: in.Assignees, Tags: in.Tags, UDAs: in.UDAs,
 		}
 		if firstDue != nil {
 			input.FirstDue = *firstDue
@@ -192,21 +194,25 @@ func registerTaskSeriesGet(s *mcp.Server, opts Options) {
 		rendered := fmt.Sprintf("循环任务：%s（%s）\n状态：%s\n未完成：%d 已完成：%d 已跳过：%d",
 			detail.Series.Title, detail.Series.RecurrenceRule, detail.Series.Status,
 			detail.Series.OpenOccurrenceCount, detail.Series.CompletedCount, detail.Series.SkippedCount)
-		return successResult(seriesViewToMCPJSON(detail.Series), rendered)
+		return successResult(seriesDetailToMCPJSON(detail), rendered)
 	})
 }
 
 type TaskSeriesModifyInput struct {
-	Workspace       string   `json:"workspace,omitempty"`
-	ID              string   `json:"id"`
-	Title           *string  `json:"title,omitempty"`
-	Description     *string  `json:"description,omitempty"`
-	Priority        *string  `json:"priority,omitempty"`
-	Assignees       []string `json:"assignees,omitempty"`
-	Tags            []string `json:"tags,omitempty"`
-	RecurrenceRule  *string  `json:"recurrence_rule,omitempty"`
-	EffectiveFrom   *int64   `json:"effective_from,omitempty"`
-	Until           *int64   `json:"until,omitempty"`
+	Workspace         string            `json:"workspace,omitempty"`
+	ID                string            `json:"id"`
+	Title             *string           `json:"title,omitempty"`
+	Description       *string           `json:"description,omitempty"`
+	Priority          *string           `json:"priority,omitempty"`
+	Assignees         []string          `json:"assignees,omitempty"`
+	Tags              []string          `json:"tags,omitempty"`
+	UDAs              map[string]string `json:"udas,omitempty"`
+	RecurrenceRule    *string           `json:"recurrence_rule,omitempty"`
+	EffectiveFrom     *int64            `json:"effective_from,omitempty"`
+	EffectiveFromDate *string           `json:"effective_from_date,omitempty"`
+	Until             *int64            `json:"until,omitempty"`
+	UntilDate         *string           `json:"until_date,omitempty"`
+	Clear             []string          `json:"clear,omitempty"`
 }
 
 func (in TaskSeriesModifyInput) scopeInput() RequestScopeInput {
@@ -221,12 +227,24 @@ func registerTaskSeriesModify(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		view, err := svc.ModifyTaskSeries(in.ID, app.ModifyTaskSeriesInput{
+		effectiveFrom, err := resolveSeriesDueField(in.EffectiveFrom, in.EffectiveFromDate)
+		if err != nil {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "task_series_invalid_effective_from", Message: err.Error()})
+		}
+		until, err := resolveSeriesDueField(in.Until, in.UntilDate)
+		if err != nil {
+			return businessErrorWithEnvelope(app.RuntimeError{Code: "task_series_invalid_until", Message: err.Error()})
+		}
+		modify := app.ModifyTaskSeriesInput{
 			Title: in.Title, Description: in.Description, Priority: in.Priority,
-			Assignees: in.Assignees, Tags: in.Tags,
-			RecurrenceRule: in.RecurrenceRule, EffectiveFrom: in.EffectiveFrom,
-			Until: in.Until,
-		})
+			Assignees: in.Assignees, Tags: in.Tags, UDAs: in.UDAs,
+			RecurrenceRule: in.RecurrenceRule, EffectiveFrom: effectiveFrom,
+			Until: until,
+		}
+		if err := app.ApplyTaskSeriesClearFields(&modify, in.Clear); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.ModifyTaskSeries(in.ID, modify)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -309,9 +327,9 @@ func seriesViewToMCPJSON(v app.TaskSeriesView) map[string]any {
 	out := map[string]any{
 		"id": v.ID, "workspace_id": v.WorkspaceID, "project_id": v.ProjectID,
 		"title": v.Title, "status": v.Status, "recurrence_rule": v.RecurrenceRule,
-		"first_due": v.FirstDue,
+		"first_due":             v.FirstDue,
 		"open_occurrence_count": v.OpenOccurrenceCount,
-		"completed_count": v.CompletedCount, "skipped_count": v.SkippedCount,
+		"completed_count":       v.CompletedCount, "skipped_count": v.SkippedCount,
 		"overdue_count": v.OverdueCount, "created_at": v.CreatedAt, "modified_at": v.ModifiedAt,
 	}
 	if v.Description != nil {
@@ -326,8 +344,33 @@ func seriesViewToMCPJSON(v app.TaskSeriesView) map[string]any {
 	if len(v.Tags) > 0 {
 		out["tags"] = v.Tags
 	}
+	if len(v.UDAs) > 0 {
+		out["udas"] = v.UDAs
+	}
+	if len(v.Assignees) > 0 {
+		out["assignees"] = userInfosForMCP(v.Assignees)
+	}
+	if v.CreatedBy.ID != "" {
+		out["created_by"] = task.UserInfoToJSON(v.CreatedBy)
+	}
 	if v.NextRecurrenceAt != nil {
 		out["next_recurrence_at"] = *v.NextRecurrenceAt
+	}
+	return out
+}
+
+func seriesDetailToMCPJSON(detail app.TaskSeriesDetailView) map[string]any {
+	out := seriesViewToMCPJSON(detail.Series)
+	out["open_occurrences"] = occurrenceViewsForMCP(detail.OpenOccurrences)
+	out["recent_completed"] = occurrenceViewsForMCP(detail.RecentCompleted)
+	out["recent_skipped"] = occurrenceViewsForMCP(detail.RecentSkipped)
+	return out
+}
+
+func occurrenceViewsForMCP(rows []app.TaskOccurrenceView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, occurrenceViewToMCPJSON(row))
 	}
 	return out
 }
@@ -335,13 +378,45 @@ func seriesViewToMCPJSON(v app.TaskSeriesView) map[string]any {
 // occurrenceViewToMCPJSON 把 TaskOccurrenceView 转为 MCP 输出 map。
 func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 	out := map[string]any{
-		"id": v.ID, "title": v.Title, "status": v.Status,
+		"id": v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
+		"tags": v.Tags, "depends": v.Depends, "udas": udaValuesForMCP(v.UDAs),
+		"assignees": userInfosForMCP(v.Assignees), "annotations": task.AnnotationsToJSON(v.Annotations),
+		"links": taskLinksForMCP(v.Links),
+	}
+	if v.Description != nil {
+		out["description"] = *v.Description
 	}
 	if v.UUID != nil {
 		out["uuid"] = *v.UUID
 	}
 	if v.Due != nil {
 		out["due"] = *v.Due
+	}
+	for key, value := range map[string]*int64{
+		"entry": v.Entry, "modified": v.Modified, "start": v.Start, "end": v.End,
+		"wait": v.Wait, "scheduled": v.Scheduled, "until": v.Until,
+	} {
+		if value != nil {
+			out[key] = *value
+		}
+	}
+	if v.ProjectID != nil {
+		out["project_id"] = *v.ProjectID
+	}
+	if v.Project != nil {
+		out["project"] = *v.Project
+	}
+	if v.TaskSlug != nil {
+		out["task_slug"] = *v.TaskSlug
+	}
+	if v.ProjectSeq != nil {
+		out["project_seq"] = *v.ProjectSeq
+	}
+	if v.Priority != nil {
+		out["priority"] = *v.Priority
+	}
+	if v.Parent != nil {
+		out["parent"] = *v.Parent
 	}
 	if v.RecurrenceInfo != nil {
 		out["recurrence_info"] = map[string]any{
@@ -356,6 +431,40 @@ func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 		if v.RecurrenceInfo.Until != nil {
 			out["recurrence_info"].(map[string]any)["until"] = *v.RecurrenceInfo.Until
 		}
+	}
+	return out
+}
+
+func userInfosForMCP(rows []task.UserInfo) []task.JSONUserInfo {
+	out := make([]task.JSONUserInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, task.UserInfoToJSON(row))
+	}
+	return out
+}
+
+func udaValuesForMCP(values map[string]task.UDAValue) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for name, value := range values {
+		out[name] = value.Raw
+	}
+	return out
+}
+
+func taskLinksForMCP(rows []task.TaskLinkInfo) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		link := map[string]any{
+			"id": row.ID, "type": row.Type, "url": row.URL,
+			"created_at": row.CreatedAt, "created_by": task.ActorInfoToJSON(row.CreatedBy),
+		}
+		if row.Title != "" {
+			link["title"] = row.Title
+		}
+		out = append(out, link)
 	}
 	return out
 }

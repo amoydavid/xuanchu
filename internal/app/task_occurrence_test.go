@@ -736,7 +736,7 @@ func TestReconcileTaskSeriesRespectsUntilAndEndsSeries(t *testing.T) {
 	// until 在今天之前，所有槽位应已过，series ended。
 	firstDue := int64(1783785599)
 	until := firstDue + 86400 // first_due + 1 天
-	now := firstDue + 3 * 86400 // 3 天后
+	now := firstDue + 3*86400 // 3 天后
 	svc, closeFn := newTestService(t, now)
 	defer closeFn()
 	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
@@ -766,7 +766,7 @@ func TestReconcileTaskSeriesRespectsUntilAndEndsSeries(t *testing.T) {
 func TestReconcileTaskSeriesRespectsPerSeriesLimit(t *testing.T) {
 	// first_due 在 200 天前，daily，限制每轮 50 条 → backlog。
 	firstDue := int64(1783785599)
-	now := firstDue + 200 * 86400
+	now := firstDue + 200*86400
 	svc, closeFn := newTestService(t, now)
 	defer closeFn()
 	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
@@ -1006,6 +1006,85 @@ func TestTaskSeriesSchedulerRunOnce(t *testing.T) {
 	_ = created
 }
 
+func TestTaskSeriesSchedulerRunOnceUsesDefaultServiceFactory(t *testing.T) {
+	firstDue := int64(1783785599)
+	now := firstDue + 2*86400
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, now, "local", "local")
+	proj, err := svc.AddProject(AddProjectInput{Slug: "scheddef", Name: "Scheduler Default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日默认工厂巡检", ProjectID: proj.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	scheduler := NewTaskSeriesScheduler(TaskSeriesSchedulerOptions{
+		Store: store,
+		Clock: FixedClock{NowUnix: now},
+	})
+	result, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce with default factory: %v", err)
+	}
+	if result.Created == 0 {
+		t.Fatalf("default factory should reconcile occurrences: %#v", result)
+	}
+}
+
+func TestTaskSeriesSchedulerRunOnceRejectsMissingStore(t *testing.T) {
+	scheduler := NewTaskSeriesScheduler(TaskSeriesSchedulerOptions{})
+	if _, err := scheduler.RunOnce(t.Context()); err == nil {
+		t.Fatal("missing store 应返回错误")
+	}
+}
+
+func TestProjectScopedServiceCannotReadOrSkipForeignOccurrence(t *testing.T) {
+	now := int64(1783785599)
+	store := newTestStore(t)
+	base := newTestServiceWithRuntime(t, store, now, "local", "local")
+	allowed, err := base.AddProject(AddProjectInput{Slug: "allowed", Name: "Allowed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := base.AddProject(AddProjectInput{Slug: "foreign", Name: "Foreign"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := base.AddTaskSeries(AddTaskSeriesInput{
+		Title: "外部项目巡检", ProjectID: foreign.ID,
+		RecurrenceRule: "daily", FirstDue: now + 86400,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := created.FirstOccurrence.ID
+	scope := RequestScope{ProjectIDs: []string{allowed.ID}, Capabilities: []string{"task:read", "task:write"}}
+	scoped, err := NewService(ServiceOptions{
+		Store: store, Clock: FixedClock{NowUnix: now}, RequestScope: &scope,
+		Runtime:               &RuntimeContext{ActorType: "user", ActorUserID: "local", WorkspaceID: base.workspaceID, Role: RoleOwner},
+		DisableScopeBootstrap: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scoped.GetTaskView(ref); err == nil {
+		t.Fatal("GetTaskView foreign occurrence error = nil")
+	}
+	if _, err := scoped.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{}); err == nil {
+		t.Fatal("ListTaskSeriesOccurrences foreign series error = nil")
+	}
+	if _, err := scoped.SkipTaskSeriesOccurrence(created.Series.ID, ref); err == nil {
+		t.Fatal("SkipTaskSeriesOccurrence foreign series error = nil")
+	}
+	if _, err := base.taskOccurrenceRepo.GetOccurrence(base.workspaceID, created.Series.ID, *created.FirstOccurrence.Due); err != storage.ErrOccurrenceNotFound {
+		t.Fatalf("denied skip must not materialize occurrence, got %v", err)
+	}
+}
+
 // --- Task 5: ModifyTaskSeries 测试 ---
 
 func TestModifyTaskSeriesUpdatesSharedFields(t *testing.T) {
@@ -1164,6 +1243,127 @@ func TestModifyTaskSeriesSyncsSharedFieldsToOpenOccurrences(t *testing.T) {
 	}
 }
 
+func TestModifyTaskSeriesRollsBackWhenAuditFails(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.auditRepo = &failingAuditRepo{}
+	newTitle := "不应保留的标题"
+	if _, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{Title: &newTitle}); err == nil {
+		t.Fatal("audit 失败时 ModifyTaskSeries 应失败")
+	}
+	persisted, err := svc.taskSeriesRepo.Get(svc.workspaceID, created.Series.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Title != "每日巡检" {
+		t.Fatalf("series title = %q want rollback to 每日巡检", persisted.Title)
+	}
+}
+
+func TestModifyTaskSeriesSyncsOccurrenceBeyondOneYear(t *testing.T) {
+	now := int64(1000)
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "长期巡检", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: 5000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	farSlot := now + 2*365*86400
+	rule := "daily"
+	seriesID := created.Series.ID
+	if _, _, err := svc.taskOccurrenceRepo.CreateOccurrence(domain.Task{
+		UUID: "far-occurrence", WorkspaceID: svc.workspaceID, ProjectID: &project.ID,
+		Title: "长期巡检", Status: domain.StatusPending, Entry: now, Modified: now,
+		Due: &farSlot, SeriesID: &seriesID, RecurrenceAt: &farSlot,
+		RecurrenceRuleSnapshot: &rule,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	newTitle := "长期巡检已更新"
+	if _, err := svc.ModifyTaskSeries(seriesID, ModifyTaskSeriesInput{Title: &newTitle}); err != nil {
+		t.Fatal(err)
+	}
+	occurrence, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, seriesID, farSlot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if occurrence.Title != newTitle {
+		t.Fatalf("far occurrence title = %q want %q", occurrence.Title, newTitle)
+	}
+}
+
+func TestTaskSeriesOccurrencesInheritUDAs(t *testing.T) {
+	svc, closeFn := newTestService(t, 5000)
+	defer closeFn()
+	if err := svc.DefineUDA("estimate", "numeric", "Estimate", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: 5000,
+		UDAs: map[string]string{"estimate": "3"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.FirstOccurrence == nil || created.FirstOccurrence.UDAs["estimate"].Raw != "3" {
+		t.Fatalf("first occurrence UDAs = %#v", created.FirstOccurrence)
+	}
+	persisted, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, created.Series.ID, 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.UDAs["estimate"].Raw != "3" || persisted.UDAs["estimate"].Type != "numeric" {
+		t.Fatalf("persisted occurrence UDAs = %#v", persisted.UDAs)
+	}
+}
+
+func TestModifyTaskSeriesClearsSharedFields(t *testing.T) {
+	svc, closeFn := newTestService(t, 5000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description, priority, until := "旧说明", "H", int64(90000)
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", Description: &description, ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: 6000, Until: &until,
+		Priority: &priority, Tags: []string{"ops"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{
+		ClearDescription: true, ClearPriority: true, ClearTags: true, ClearUntil: true,
+	})
+	if err != nil {
+		t.Fatalf("ModifyTaskSeries clear: %v", err)
+	}
+	if view.Description != nil || view.Priority != nil || view.Until != nil || len(view.Tags) != 0 {
+		t.Fatalf("clear result = %#v", view)
+	}
+}
+
 // --- Task 4: RunTaskViewReport 测试 ---
 
 func TestRunTaskViewReportReturnsPage(t *testing.T) {
@@ -1227,6 +1427,34 @@ func TestRunTaskViewReportAppliesQueryFilter(t *testing.T) {
 	}
 	if len(page.Items) != 1 || page.Items[0].Title != "巡检A" {
 		t.Fatalf("items = %#v", page.Items)
+	}
+}
+
+func TestRunTaskViewReportPreservesDependencyScopes(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	blocker, err := svc.Add(AddInput{Title: "blocker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedTask, err := svc.Add(AddInput{Title: "blocked", Depends: []string{blocker.UUID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocked, err := svc.RunTaskViewReport(ReportViewInput{Name: "blocked"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocked.Items) != 1 || blocked.Items[0].UUID == nil || *blocked.Items[0].UUID != blockedTask.UUID {
+		t.Fatalf("blocked report = %#v, want %s", blocked.Items, blockedTask.UUID)
+	}
+	ready, err := svc.RunTaskViewReport(ReportViewInput{Name: "ready"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ready.Items) != 1 || ready.Items[0].UUID == nil || *ready.Items[0].UUID != blocker.UUID {
+		t.Fatalf("ready report = %#v, want %s", ready.Items, blocker.UUID)
 	}
 }
 

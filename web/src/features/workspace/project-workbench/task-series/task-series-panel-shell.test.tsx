@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 
 // Mock task-series-api。
 vi.mock("@/features/workspace/project-workbench/api/task-series-api", () => ({
@@ -54,6 +54,37 @@ describe("TaskSeriesPanelShell", () => {
     })
     expect(screen.getByTestId("task-series-row")).toBeTruthy()
     expect(screen.queryByTestId("task-series-detail")).toBeNull()
+  })
+
+  it("支持按负责人和排序筛选并翻页", async () => {
+    mockedListTaskSeries.mockResolvedValue({
+      items: [],
+      total: 25,
+      limit: 20,
+      offset: 0,
+    })
+    render(<TaskSeriesPanelShell workspaceSlug="ws" projectSlug="ops" />)
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "下一页" })).toBeTruthy())
+    fireEvent.change(screen.getByLabelText("循环任务负责人筛选"), {
+      target: { value: "alice" },
+    })
+    fireEvent.change(screen.getByLabelText("循环任务排序"), {
+      target: { value: "title" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }))
+
+    await waitFor(() => {
+      expect(mockedListTaskSeries).toHaveBeenLastCalledWith(
+        "ws",
+        expect.objectContaining({
+          assignee: "alice",
+          limit: 20,
+          offset: 20,
+          sort: "title",
+        })
+      )
+    })
   })
 
   it("renders empty state when no series", async () => {

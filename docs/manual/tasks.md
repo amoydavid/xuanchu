@@ -150,13 +150,22 @@ xuanchu link remove <task-ref> --link-id <link-id>
 ## 循环任务
 
 ```bash
-xuanchu add "Submit weekly report" project:agentapi recur:weekly due:2030-01-05 until:2030-02-01
-xuanchu list
-xuanchu 1 done
-xuanchu list
+xuanchu series add "Submit weekly report" \
+  --project agentapi \
+  --recur weekly \
+  --first-due 2030-01-05 \
+  --until 2030-02-01
+xuanchu series list --project agentapi
+xuanchu series info <series-ref>
+xuanchu series occurrences <series-ref> --status all
 ```
 
-当前支持：
+循环任务不再存成 `status=recurring` 的隐藏父任务，也不能通过普通任务的
+`recur` 字段创建。Series 保存规则；任务列表把普通任务、已物化实例和指定日期范围内
+计算出的计划实例合并展示。每日规则到第二天会按日历产生第二个独立实例，不依赖前一
+实例是否完成。
+
+支持的规则：
 
 - `daily`
 - `weekly`
@@ -165,14 +174,18 @@ xuanchu list
 - `<N>weeks`
 - `<N>months`
 
-循环任务约束：
+常用管理命令：
 
-- recurring parent 默认隐藏。
-- 创建 parent 时会立即生成第一个 child。
-- 完成 child 后自动生成下一个 child。
-- `until` 会阻止生成超过截止时间的新 child。
-- recurring parent 不接受 `wait`、`scheduled`、`depends`。
-- `monthly` 使用 Go `time.AddDate(0, n, 0)` 的月末滚动语义。
+- `series modify` 修改标题、描述、负责人、标签、优先级、UDA、结束日期或未来规则；
+  修改规则时必须同时给 `--effective-from`。
+- `series modify --clear priority,tags,until` 清空共享字段。
+- `series skip <series-ref> <occurrence-ref>` 跳过某一次。
+- `series stop <series-ref>` 停止后续实例；可选择同时删除尚未完成的实例。
+- 某一次实例仍使用普通任务命令完成、重开或修改；只影响本次并记录 override。
+- `monthly` 使用本地日历月推进，保留确定的月末规则，不使用固定天数毫秒。
+
+旧的 `xuanchu add ... recur:*`、`modify recur:*` 和 Taskwarrior recurring JSON
+不受支持。跨环境迁移使用 `xuanchu.task-bundle/v1`。
 
 ## 日期语义
 

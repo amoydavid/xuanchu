@@ -22,7 +22,7 @@ export function TaskSeriesPanelShell({
   workspaceSlug,
   projectSlug,
   seriesRef,
-  canManage = true,
+  canManage = false,
 }: {
   workspaceSlug: string
   projectSlug: string
@@ -32,6 +32,10 @@ export function TaskSeriesPanelShell({
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<string>("active")
   const [query, setQuery] = useState<string>("")
+  const [assignee, setAssignee] = useState("")
+  const [sort, setSort] = useState("next")
+  const [offset, setOffset] = useState(0)
+  const [listRevision, setListRevision] = useState(0)
   const [list, setList] = useState<TaskSeriesView[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -45,6 +49,9 @@ export function TaskSeriesPanelShell({
   // 编辑 / 停止弹窗。
   const [editOpen, setEditOpen] = useState(false)
   const [stopOpen, setStopOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+
+  const pageLimit = 20
 
   // 加载 series 列表。
   useEffect(() => {
@@ -55,7 +62,10 @@ export function TaskSeriesPanelShell({
       project: projectSlug,
       status: statusFilter,
       q: query || undefined,
-      limit: 50,
+      assignee: assignee || undefined,
+      sort,
+      limit: pageLimit,
+      offset,
     }
     void listTaskSeries(workspaceSlug, input)
       .then((page) => {
@@ -72,7 +82,7 @@ export function TaskSeriesPanelShell({
     return () => {
       cancelled = true
     }
-  }, [workspaceSlug, projectSlug, statusFilter, query])
+  }, [workspaceSlug, projectSlug, statusFilter, query, assignee, sort, offset, listRevision])
 
   // 加载详情（seriesRef 存在时）。
   useEffect(() => {
@@ -118,6 +128,7 @@ export function TaskSeriesPanelShell({
     try {
       await stopTaskSeries(workspaceSlug, detail.id, deleteOpen)
       setStopOpen(false)
+      setListRevision((current) => current + 1)
       backToList()
     } catch (err: unknown) {
       setDetailError(err instanceof Error ? err.message : "停止循环任务失败")
@@ -135,7 +146,16 @@ export function TaskSeriesPanelShell({
       className="space-y-3"
     >
       <header>
-        <h2 className="text-base font-semibold">循环任务{total > 0 ? ` ${total}` : ""}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">
+            循环任务{total > 0 ? ` ${total}` : ""}
+          </h2>
+          {canManage ? (
+            <button type="button" onClick={() => setCreateOpen(true)}>
+              新建循环任务
+            </button>
+          ) : null}
+        </div>
         <p className="text-sm text-muted-foreground">
           管理会按计划重复产生实例的任务；每一次仍在左侧完成。
         </p>
@@ -150,6 +170,8 @@ export function TaskSeriesPanelShell({
             <TaskSeriesDetail
               series={detail}
               canManage={canManage}
+              projectSlug={projectSlug}
+              workspaceSlug={workspaceSlug}
               onBack={backToList}
               onEdit={() => setEditOpen(true)}
               onStop={() => setStopOpen(true)}
@@ -165,9 +187,28 @@ export function TaskSeriesPanelShell({
           error={error}
           onSelect={selectSeries}
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
+          onStatusFilterChange={(value) => {
+            setStatusFilter(value)
+            setOffset(0)
+          }}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={(value) => {
+            setQuery(value)
+            setOffset(0)
+          }}
+          assignee={assignee}
+          onAssigneeChange={(value) => {
+            setAssignee(value)
+            setOffset(0)
+          }}
+          sort={sort}
+          onSortChange={(value) => {
+            setSort(value)
+            setOffset(0)
+          }}
+          offset={offset}
+          limit={pageLimit}
+          onPageChange={setOffset}
           canManage={canManage}
         />
       )}
@@ -182,6 +223,7 @@ export function TaskSeriesPanelShell({
           series={detail}
           onClose={() => {
             setEditOpen(false)
+            setListRevision((current) => current + 1)
             // 重新加载详情。
             void getTaskSeries(workspaceSlug, detail.id).then((v) => setDetail(v))
           }}
@@ -195,6 +237,18 @@ export function TaskSeriesPanelShell({
         openCount={detail?.open_occurrence_count ?? 0}
         onConfirm={confirmStop}
         onCancel={() => setStopOpen(false)}
+      />
+      <TaskSeriesDialog
+        open={createOpen}
+        mode="create"
+        workspaceSlug={workspaceSlug}
+        projectSlug={projectSlug}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(created) => {
+          setCreateOpen(false)
+          setListRevision((current) => current + 1)
+          selectSeries(created)
+        }}
       />
     </section>
   )

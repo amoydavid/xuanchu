@@ -147,7 +147,10 @@ async function runMobileSmoke(browser) {
     await expectText(page, "补充复盘结论")
     await page.getByRole("button", { name: "编辑注解" }).click()
     await assertDialogVisible(page, "编辑注解")
-    await page.keyboard.press("Escape")
+    await page
+      .getByRole("dialog", { name: "编辑注解" })
+      .getByRole("button", { name: "取消" })
+      .click()
 
     await page.getByRole("tab", { name: "属性" }).click()
     await page.getByRole("button", { name: "编辑标签" }).click()

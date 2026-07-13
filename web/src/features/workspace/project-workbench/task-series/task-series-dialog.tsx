@@ -39,6 +39,7 @@ export function TaskSeriesDialog({
   const [rule, setRule] = useState<CanonicalRecurrenceRule>("daily")
   const [firstDue, setFirstDue] = useState("")
   const [until, setUntil] = useState("")
+  const [effectiveFrom, setEffectiveFrom] = useState("")
   const [priority, setPriority] = useState("")
   const [tags, setTags] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +57,7 @@ export function TaskSeriesDialog({
       setUntil(series.until ? formatDateShort(new Date(series.until * 1000)) : "")
       setPriority(series.priority ?? "")
       setTags((series.tags ?? []).join(", "))
+      setEffectiveFrom("")
     } else {
       setTitle("")
       setRule("daily")
@@ -63,6 +65,7 @@ export function TaskSeriesDialog({
       setUntil("")
       setPriority("")
       setTags("")
+      setEffectiveFrom("")
     }
     setError(null)
     setSubmitting(false)
@@ -123,10 +126,51 @@ export function TaskSeriesDialog({
         })
         onCreated?.(result.series)
       } else if (series) {
-        // 编辑：first_due 只读；rule 修改需 effective_from（App 层占位）。
+        const ruleChanged = rule !== series.recurrence_rule
+        if (ruleChanged && !effectiveFrom) {
+          setError("修改循环规则时必须选择新规则生效日期")
+          setSubmitting(false)
+          return
+        }
+        const effectiveDate = effectiveFrom
+          ? parseDateToEndOfDay(effectiveFrom)
+          : null
+        if (ruleChanged && !effectiveDate) {
+          setError("新规则生效日期格式必须为 YYYY-MM-DD")
+          setSubmitting(false)
+          return
+        }
+        const clear: string[] = []
+        if (!until && series.until != null) clear.push("until")
+        if (!priority && series.priority) clear.push("priority")
+        if (!tags.trim() && (series.tags?.length ?? 0) > 0) clear.push("tags")
         await modifyTaskSeries(workspaceSlug, series.id, {
           title: trimmedTitle,
           ...(priority ? { priority } : {}),
+          ...(until
+            ? {
+                until: Math.floor(
+                  (parseDateToEndOfDay(until)?.getTime() ?? 0) / 1000
+                ),
+              }
+            : {}),
+          ...(tags.trim()
+            ? {
+                tags: tags
+                  .split(",")
+                  .map((tag) => tag.trim())
+                  .filter(Boolean),
+              }
+            : {}),
+          ...(ruleChanged
+            ? {
+                recurrence_rule: rule,
+                effective_from: Math.floor(
+                  (effectiveDate?.getTime() ?? 0) / 1000
+                ),
+              }
+            : {}),
+          ...(clear.length > 0 ? { clear } : {}),
         })
       }
       onClose()
@@ -158,7 +202,6 @@ export function TaskSeriesDialog({
         <select
           value={rule}
           onChange={(e) => setRule(e.target.value as CanonicalRecurrenceRule)}
-          disabled={mode === "edit"}
           aria-label="循环规则"
         >
           {RECURRENCE_OPTIONS.map((opt) => (
@@ -166,6 +209,17 @@ export function TaskSeriesDialog({
           ))}
         </select>
       </label>
+      {mode === "edit" && series && rule !== series.recurrence_rule ? (
+        <label>
+          新规则生效日期 *
+          <input
+            aria-label="新规则生效日期"
+            onChange={(event) => setEffectiveFrom(event.target.value)}
+            type="date"
+            value={effectiveFrom}
+          />
+        </label>
+      ) : null}
       <label>
         首次截止 *
         <input

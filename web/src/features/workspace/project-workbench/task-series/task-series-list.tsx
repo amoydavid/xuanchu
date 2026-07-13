@@ -15,6 +15,13 @@ export function TaskSeriesList({
   query,
   onQueryChange,
   canManage,
+  assignee = "",
+  onAssigneeChange = () => {},
+  sort = "next",
+  onSortChange = () => {},
+  offset = 0,
+  limit = 20,
+  onPageChange = () => {},
 }: {
   items: TaskSeriesView[]
   total: number
@@ -26,6 +33,13 @@ export function TaskSeriesList({
   query: string
   onQueryChange: (q: string) => void
   canManage: boolean
+  assignee?: string
+  onAssigneeChange?: (assignee: string) => void
+  sort?: string
+  onSortChange?: (sort: string) => void
+  offset?: number
+  limit?: number
+  onPageChange?: (offset: number) => void
 }) {
   return (
     <div data-testid="task-series-list">
@@ -49,6 +63,24 @@ export function TaskSeriesList({
           <option value="all">全部</option>
         </select>
       </div>
+      <div className="flex gap-2">
+        <input
+          aria-label="循环任务负责人筛选"
+          onChange={(event) => onAssigneeChange(event.target.value)}
+          placeholder="负责人"
+          type="search"
+          value={assignee}
+        />
+        <select
+          aria-label="循环任务排序"
+          onChange={(event) => onSortChange(event.target.value)}
+          value={sort}
+        >
+          <option value="next">下一次执行</option>
+          <option value="title">标题</option>
+          <option value="modified">最近修改</option>
+        </select>
+      </div>
       {error && <div role="alert">{error}</div>}
       {loading && <div>加载中…</div>}
       {!loading && !error && items.length === 0 && (
@@ -62,7 +94,29 @@ export function TaskSeriesList({
           canManage={canManage}
         />
       ))}
-      {total > items.length && <div>共 {total} 条</div>}
+      {total > 0 ? (
+        <div>
+          <span>
+            {offset + 1}–{Math.min(offset + items.length, total)} / {total}
+          </span>
+          <button
+            aria-label="上一页"
+            disabled={offset === 0}
+            onClick={() => onPageChange(Math.max(0, offset - limit))}
+            type="button"
+          >
+            上一页
+          </button>
+          <button
+            aria-label="下一页"
+            disabled={offset + limit >= total}
+            onClick={() => onPageChange(offset + limit)}
+            type="button"
+          >
+            下一页
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

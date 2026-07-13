@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/render"
-	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -26,30 +26,22 @@ func newExportCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ExportTasks(context.Background(), currentOpts.Workspace, currentOpts.Project, currentOpts.ProjectID)
+				bundle, err := client.ExportTaskBundle(context.Background(), currentOpts.Workspace, currentOpts.Project, currentOpts.ProjectID)
 				if err != nil {
 					return err
 				}
-				dtos := make([]task.JSONTask, len(tasks))
-				for i, tsk := range tasks {
-					dtos[i] = task.ToJSON(tsk)
-				}
-				return render.JSON(cmd.OutOrStdout(), dtos)
+				return render.JSON(cmd.OutOrStdout(), bundle)
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer closeFn()
-			tasks, err := svc.Export()
+			bundle, err := svc.ExportTaskBundle()
 			if err != nil {
 				return err
 			}
-			dtos := make([]task.JSONTask, len(tasks))
-			for i, tsk := range tasks {
-				dtos[i] = task.ToJSON(tsk)
-			}
-			return render.JSON(cmd.OutOrStdout(), dtos)
+			return render.JSON(cmd.OutOrStdout(), bundle)
 		},
 	}
 }
@@ -73,8 +65,8 @@ func newImportCommand(opts Options) *cobra.Command {
 				r = cmd.InOrStdin()
 			}
 
-			var dtos []task.JSONTask
-			if err := json.NewDecoder(r).Decode(&dtos); err != nil {
+			var bundle app.TaskBundleV1
+			if err := json.NewDecoder(r).Decode(&bundle); err != nil {
 				return err
 			}
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
@@ -84,11 +76,11 @@ func newImportCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				count, err := client.ImportTasks(context.Background(), currentOpts.Workspace, dtos)
+				result, err := client.ImportTaskBundle(context.Background(), currentOpts.Workspace, bundle)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Imported %d tasks\n", count)
+				fmt.Fprintf(cmd.OutOrStdout(), "Imported %d tasks, %d series\n", result.TasksImported, result.SeriesImported)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -96,11 +88,11 @@ func newImportCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			count, err := svc.Import(dtos)
+			result, err := svc.ImportTaskBundle(bundle)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Imported %d tasks\n", count)
+			fmt.Fprintf(cmd.OutOrStdout(), "Imported %d tasks, %d series\n", result.TasksImported, result.SeriesImported)
 			return nil
 		},
 	}

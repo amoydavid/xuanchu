@@ -79,4 +79,16 @@ describe("ProjectFilterToolbar", () => {
         .getAttribute("data-slot")
     ).toBe("button")
   })
+
+  it("does not expose the retired recurring task status", async () => {
+    render(
+      <ProjectFilterToolbar
+        filter={{}}
+        toParams={{ projectSlug: "agentapi", workspaceSlug: "acme" }}
+      />
+    )
+
+    await userEvent.click(screen.getAllByRole("combobox")[0])
+    expect(screen.queryByRole("option", { name: "Recurring" })).toBeNull()
+  })
 })

@@ -31,7 +31,7 @@ describe("project workbench task api paths", () => {
       "/api/v1/tasks/ads-1/links?workspace=local"
     )
     expect(importTasksPath("local", "adsops")).toBe(
-      "/api/v1/import?workspace=local&project=adsops"
+      "/api/v1/task-imports?workspace=local&project=adsops"
     )
   })
 
@@ -46,7 +46,7 @@ describe("project workbench task api paths", () => {
       "/api/v1/tasks/ads%2F1/links/link%2F7?workspace=workspace%201"
     )
     expect(importTasksPath("workspace 1", "ops/team")).toBe(
-      "/api/v1/import?workspace=workspace%201&project=ops%2Fteam"
+      "/api/v1/task-imports?workspace=workspace%201&project=ops%2Fteam"
     )
   })
 

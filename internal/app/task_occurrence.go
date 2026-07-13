@@ -2,15 +2,17 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/report"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
+	"git.dajee.net/dajee/xuanchu/internal/urgency"
+	"github.com/google/uuid"
 )
 
 // OccurrenceMode 控制任务查询如何处理循环 occurrence（spec §13.3、§17.1）。
@@ -55,32 +57,32 @@ type RecurrenceInfo struct {
 // HTTP/MCP/CLI/Remote 只消费此 view，不自己展开规则或拼 exception。
 type TaskOccurrenceView struct {
 	// ID 是公开稳定 id：普通任务=UUID；occurrence=occurrence_ref（投影/物化前后不变）。
-	ID         string
-	UUID       *string  // projected 时为 nil
-	TaskSlug   *string  // projected 时为 nil
-	ProjectSeq *int64   // projected 时为 nil
-	WorkspaceID string
-	ProjectID   *string
-	Project     *string
-	Title       string
-	Description *string
-	Status      string // projected 固定为 pending
-	Entry       *int64 // projected 时为 nil
-	Modified    *int64 // projected 时为 nil
-	Start       *int64
-	End         *int64
-	Due         *int64
-	Wait        *int64
-	Scheduled   *int64
-	Until       *int64
-	Parent      *string // 仅手工父任务；occurrence 首版为空
-	Priority    *string
-	Tags        []string
-	Assignees   []domain.UserInfo
-	Depends     []string
-	Annotations []domain.Annotation
-	Links       []domain.TaskLinkInfo
-	UDAs        map[string]domain.UDAValue
+	ID             string
+	UUID           *string // projected 时为 nil
+	TaskSlug       *string // projected 时为 nil
+	ProjectSeq     *int64  // projected 时为 nil
+	WorkspaceID    string
+	ProjectID      *string
+	Project        *string
+	Title          string
+	Description    *string
+	Status         string // projected 固定为 pending
+	Entry          *int64 // projected 时为 nil
+	Modified       *int64 // projected 时为 nil
+	Start          *int64
+	End            *int64
+	Due            *int64
+	Wait           *int64
+	Scheduled      *int64
+	Until          *int64
+	Parent         *string // 仅手工父任务；occurrence 首版为空
+	Priority       *string
+	Tags           []string
+	Assignees      []domain.UserInfo
+	Depends        []string
+	Annotations    []domain.Annotation
+	Links          []domain.TaskLinkInfo
+	UDAs           map[string]domain.UDAValue
 	RecurrenceInfo *RecurrenceInfo
 }
 
@@ -203,6 +205,7 @@ func projectedOccurrenceView(series taskseries.Series, slot taskseries.Slot, ass
 		Priority:    series.Priority,
 		Tags:        series.Tags,
 		Assignees:   assignees,
+		UDAs:        rawSeriesUDAValues(series.UDAs),
 		RecurrenceInfo: &RecurrenceInfo{
 			Role:            "occurrence",
 			SeriesID:        series.ID,
@@ -215,6 +218,14 @@ func projectedOccurrenceView(series taskseries.Series, slot taskseries.Slot, ass
 		},
 	}
 	return view
+}
+
+func rawSeriesUDAValues(values map[string]string) map[string]domain.UDAValue {
+	out := make(map[string]domain.UDAValue, len(values))
+	for name, raw := range values {
+		out[name] = domain.UDAValue{Name: name, Raw: raw}
+	}
+	return out
 }
 
 // occurrenceRangeMaxDays 是 occurrence_mode=expand 的最大范围天数（spec §13.3）。
@@ -252,7 +263,7 @@ type TaskViewQuery struct {
 	Sort           string
 	Limit          int
 	Offset         int
-	NoContext      bool // 跳过 active context filter（与 ListInput.NoContext 一致）
+	NoContext      bool       // 跳过 active context filter（与 ListInput.NoContext 一致）
 	Query          query.Expr // expand 模式下对 merge 结果用 evaluator 过滤（spec §17.1）
 }
 
@@ -518,6 +529,9 @@ func (s *Service) getOccurrenceView(ref string) (TaskOccurrenceView, error) {
 	// 1. 先查 materialized row（任意 status）。
 	occ, err := s.taskOccurrenceRepo.GetOccurrence(s.workspaceID, seriesID, slot)
 	if err == nil {
+		if err := s.ensureReadableTaskScope(occ); err != nil {
+			return TaskOccurrenceView{}, RuntimeError{Code: "task_occurrence_not_found", Message: "occurrence not found"}
+		}
 		userInfos, rerr := s.resolveUserInfos(collectAssigneeUserIDs([]domain.Task{occ}))
 		if rerr != nil {
 			return TaskOccurrenceView{}, rerr
@@ -535,6 +549,9 @@ func (s *Service) getOccurrenceView(ref string) (TaskOccurrenceView, error) {
 	series, gerr := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 	if gerr != nil {
 		return TaskOccurrenceView{}, RuntimeError{Code: "task_occurrence_not_found", Message: "series not found"}
+	}
+	if err := s.ensureSeriesProjectScope(series, false); err != nil {
+		return TaskOccurrenceView{}, RuntimeError{Code: "task_occurrence_not_found", Message: "occurrence not found"}
 	}
 	versions := ruleVersionsForExpand(series)
 	slots, err := taskseries.ExpandRange(versions, series.Until, slot, slot+1, s.clock.Location())
@@ -770,19 +787,25 @@ func (s *Service) MaterializeOccurrenceForWrite(ref string) (domain.Task, bool, 
 	if err != nil {
 		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: err.Error()}
 	}
+	series, gerr := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if gerr != nil {
+		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: "series not found"}
+	}
+	if err := s.ensureSeriesProjectScope(series, true); err != nil {
+		return domain.Task{}, false, err
+	}
 	// 1. 先查 materialized row。
 	existing, err := s.taskOccurrenceRepo.GetOccurrence(s.workspaceID, seriesID, slot)
 	if err == nil {
+		if err := s.ensureWritableTaskScope(existing); err != nil {
+			return domain.Task{}, false, err
+		}
 		return existing, true, nil
 	}
 	if err != storage.ErrOccurrenceNotFound {
 		return domain.Task{}, false, err
 	}
 	// 2. projected：校验 series 和槽位合法性。
-	series, gerr := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
-	if gerr != nil {
-		return domain.Task{}, false, RuntimeError{Code: "task_occurrence_not_found", Message: "series not found"}
-	}
 	// 校验槽位属于规则段。
 	versions := ruleVersionsForExpand(series)
 	slots, err := taskseries.ExpandRange(versions, series.Until, slot, slot+1, s.clock.Location())
@@ -806,6 +829,10 @@ func (s *Service) MaterializeOccurrenceForWrite(ref string) (domain.Task, bool, 
 		ProjectID: &series.ProjectID, Due: &slot,
 		SeriesID: &seriesID, RecurrenceAt: &slot,
 		RecurrenceRuleSnapshot: &rule, RecurrenceOverrides: []string{},
+	}
+	occ.UDAs, err = s.normalizeUDAModifications(nil, series.UDAs, nil, false)
+	if err != nil {
+		return domain.Task{}, false, err
 	}
 	// assignees 从 series 继承。
 	for _, id := range series.AssigneeIDs {
@@ -952,14 +979,14 @@ func (s *Service) WithExistingTaskForSubresourceWrite(ref string, action func(*S
 
 // ReportViewInput 是 RunTaskViewReport 的输入（spec §17.3）。
 type ReportViewInput struct {
-	Name      string
-	Query     query.Expr
-	Range     *TaskViewRange
+	Name           string
+	Query          query.Expr
+	Range          *TaskViewRange
 	OccurrenceMode OccurrenceMode
-	NoContext bool
-	Sort      string
-	Limit     int
-	Offset    int
+	NoContext      bool
+	Sort           string
+	Limit          int
+	Offset         int
 }
 
 // RunTaskViewReport 执行 report 并返回 TaskViewPage（spec §17.3）。
@@ -1022,13 +1049,19 @@ func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error)
 		}
 		candidates = filtered
 	}
-	// 应用 report scope（ready/blocked/blocking/hide_until_expired）。
-	// projected occurrence 首版无依赖，blocked/blocking 固定 false。
+	allMaterialized, err := s.repo.List(s.workspaceID, storage.ListOptions{
+		NowUnix: s.clock.Unix(), Query: s.projectScopeExpr(), Dialect: s.store.Dialect(),
+	})
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	blocked, blocking := buildDependencyState(allMaterialized, s.clock.Unix())
+	// 应用 report scope；projected occurrence 没有 UUID，因此不会进入依赖图。
 	if def.Scope != "" {
 		now := s.clock.Unix()
 		filtered := make([]TaskOccurrenceView, 0, len(candidates))
 		for _, v := range candidates {
-			if applyReportScopeToView(v, def.Scope, now) {
+			if applyReportScopeToView(v, def.Scope, now, blocked, blocking) {
 				filtered = append(filtered, v)
 			}
 		}
@@ -1039,7 +1072,30 @@ func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error)
 	if input.Sort != "" {
 		effectiveSort = input.Sort
 	}
-	sortTaskViews(candidates, effectiveSort)
+	if effectiveSort == "urgency" {
+		urgencyOptions, err := s.urgencyConfig()
+		if err != nil {
+			return TaskViewPage{}, err
+		}
+		totals := make(map[string]float64, len(candidates))
+		for _, v := range candidates {
+			opts := urgencyOptions
+			opts.NowUnix = s.clock.Unix()
+			if v.UUID != nil {
+				opts.Blocked = blocked[*v.UUID]
+				opts.Blocking = blocking[*v.UUID]
+			}
+			totals[v.ID] = urgency.ExplainValue(taskViewToUrgencyValue(v), opts).Total
+		}
+		sort.SliceStable(candidates, func(i, j int) bool {
+			if totals[candidates[i].ID] != totals[candidates[j].ID] {
+				return totals[candidates[i].ID] > totals[candidates[j].ID]
+			}
+			return candidates[i].ID < candidates[j].ID
+		})
+	} else {
+		sortTaskViews(candidates, effectiveSort)
+	}
 	total := len(candidates)
 	paged := paginateTaskViews(candidates, input.Limit, input.Offset)
 	return TaskViewPage{
@@ -1050,7 +1106,12 @@ func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error)
 
 // applyReportScopeToView 对单个 view 应用 report scope 过滤（spec §17.3）。
 // projected/materialized occurrence 首版无依赖图，blocked/blocking 固定 false。
-func applyReportScopeToView(v TaskOccurrenceView, scope report.ScopeKind, now int64) bool {
+func applyReportScopeToView(v TaskOccurrenceView, scope report.ScopeKind, now int64, blocked, blocking map[string]bool) bool {
+	isBlocked, isBlocking := false, false
+	if v.UUID != nil {
+		isBlocked = blocked[*v.UUID]
+		isBlocking = blocking[*v.UUID]
+	}
 	switch scope {
 	case report.ScopeHideUntilExpired:
 		return !isViewUntilExpired(v, now)
@@ -1058,7 +1119,7 @@ func applyReportScopeToView(v TaskOccurrenceView, scope report.ScopeKind, now in
 		if isViewUntilExpired(v, now) {
 			return false
 		}
-		if v.Status != domain.StatusPending || v.Start != nil {
+		if v.Status != domain.StatusPending || v.Start != nil || isBlocked {
 			return false
 		}
 		if v.Wait != nil && *v.Wait > now {
@@ -1068,13 +1129,24 @@ func applyReportScopeToView(v TaskOccurrenceView, scope report.ScopeKind, now in
 			return false
 		}
 		return true
-	case report.ScopeBlocked, report.ScopeBlocking:
-		// occurrence 首版不在依赖图中，不会出现在 blocked/blocking report。
-		// 普通任务的依赖过滤需要 dependency map；这里对 view 模式返回 false，
-		// materialized 模式的 blocked/blocking report 由旧 RunReport 路径保证语义。
-		return false
+	case report.ScopeBlocked:
+		return v.Status == domain.StatusPending && !isViewUntilExpired(v, now) && isBlocked
+	case report.ScopeBlocking:
+		return v.Status == domain.StatusPending && !isViewUntilExpired(v, now) && isBlocking
 	default:
 		return true
+	}
+}
+
+func taskViewToUrgencyValue(v TaskOccurrenceView) urgency.TaskValue {
+	udas := make(map[string]string, len(v.UDAs))
+	for name, value := range v.UDAs {
+		udas[name] = value.Raw
+	}
+	return urgency.TaskValue{
+		Status: v.Status, Entry: v.Entry, Start: v.Start, Wait: v.Wait, Due: v.Due,
+		Priority: v.Priority, Project: v.Project, Tags: v.Tags,
+		AnnotationCount: len(v.Annotations), UDAs: udas,
 	}
 }
 

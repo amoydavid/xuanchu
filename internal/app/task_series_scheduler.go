@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
@@ -26,11 +27,17 @@ type TaskSeriesScheduler struct {
 
 // NewTaskSeriesScheduler 构造 scheduler。
 func NewTaskSeriesScheduler(opts TaskSeriesSchedulerOptions) *TaskSeriesScheduler {
+	if opts.Clock == nil {
+		opts.Clock = RealClock{}
+	}
 	if opts.PerSeriesLimit <= 0 {
 		opts.PerSeriesLimit = 100
 	}
 	if opts.GlobalLimit <= 0 {
 		opts.GlobalLimit = 1000
+	}
+	if opts.ServiceFactory == nil && opts.Store != nil {
+		opts.ServiceFactory = NewAutomationBackgroundServiceFactory(opts.Store, opts.Clock)
 	}
 	return &TaskSeriesScheduler{opts: opts}
 }
@@ -41,6 +48,12 @@ func NewTaskSeriesScheduler(opts TaskSeriesSchedulerOptions) *TaskSeriesSchedule
 // 重复/并发调用幂等（唯一索引保护）。
 func (s *TaskSeriesScheduler) RunOnce(ctx context.Context) (TaskSeriesReconcileResult, error) {
 	result := TaskSeriesReconcileResult{}
+	if s == nil || s.opts.Store == nil {
+		return result, errors.New("task series scheduler store is required")
+	}
+	if s.opts.ServiceFactory == nil {
+		return result, errors.New("task series scheduler service factory is required")
+	}
 	// 列出所有 workspace。
 	workspaces, err := storage.NewWorkspaceRepository(s.opts.Store.DB()).ListAll(false)
 	if err != nil {
@@ -101,6 +114,9 @@ func (s *TaskSeriesScheduler) Run(ctx context.Context, interval time.Duration) e
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	if _, err := s.RunOnce(ctx); err != nil {
+		return err
+	}
 	for {
 		select {
 		case <-ctx.Done():

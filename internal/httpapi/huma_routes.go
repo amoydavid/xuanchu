@@ -257,6 +257,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodDelete, Path: "/api/v1/config-schema/{key}", Tag: "Config Schema", Summary: "Delete a config schema definition.", Handler: s.handleConfigSchemaDelete},
 		{Method: http.MethodGet, Path: "/api/v1/export", Tag: "Import Export", Summary: "Export tasks.", Handler: s.handleExport},
 		{Method: http.MethodPost, Path: "/api/v1/import", Tag: "Import Export", Summary: "Import tasks.", Handler: s.handleImport},
+		{Method: http.MethodPost, Path: "/api/v1/task-imports", Tag: "Import Export", Summary: "Import ordinary tasks for Web Console.", Handler: s.handleOrdinaryTaskImport},
 		{Method: http.MethodGet, Path: "/api/v1/audit", Tag: "Audit", Summary: "List audit logs.", Handler: s.handleAuditList},
 		{Method: http.MethodGet, Path: "/api/v1/tokens", Tag: "Tokens", Summary: "List API tokens.", Handler: s.handleTokenList},
 		{Method: http.MethodPost, Path: "/api/v1/tokens", Tag: "Tokens", Summary: "Create an API token.", Handler: s.handleTokenCreate, Status: http.StatusCreated},

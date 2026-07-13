@@ -1,13 +1,16 @@
 package app
 
 import (
+	"fmt"
+	"math"
 	"sort"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
-	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
+	"github.com/google/uuid"
 )
 
 // AddTaskSeriesInput 是创建循环系列的输入（spec §11.2）。
@@ -56,21 +59,47 @@ type TaskSeriesCreateResult struct {
 // 规则字段（recurrence_rule + effective_from）：追加 RuleVersion，更新 series 当前规则；
 // effective_from 必须晚于今天及最大已物化 recurrence_at，不早于当前规则段起点，不超过 until。
 type ModifyTaskSeriesInput struct {
-	Title          *string
-	Description    *string
+	Title            *string
+	Description      *string
 	ClearDescription bool
-	Priority       *string
-	ClearPriority  bool
-	Assignees      []string
-	ClearAssignees bool
-	Tags           []string
-	ClearTags      bool
-	UDAs           map[string]string
-	ClearUDAs      []string
-	RecurrenceRule *string
-	EffectiveFrom  *int64 // 修改 recurrence_rule 时必填
-	Until          *int64
-	ClearUntil     bool
+	Priority         *string
+	ClearPriority    bool
+	Assignees        []string
+	ClearAssignees   bool
+	Tags             []string
+	ClearTags        bool
+	UDAs             map[string]string
+	ClearUDAs        []string
+	RecurrenceRule   *string
+	EffectiveFrom    *int64 // 修改 recurrence_rule 时必填
+	Until            *int64
+	ClearUntil       bool
+}
+
+// ApplyTaskSeriesClearFields 把各协议共用的 clear 字段名映射为 App 输入，
+// 避免 HTTP、MCP、Remote CLI 对“清空”产生不同语义。
+func ApplyTaskSeriesClearFields(input *ModifyTaskSeriesInput, fields []string) error {
+	for _, field := range fields {
+		switch field {
+		case "description":
+			input.ClearDescription = true
+		case "priority":
+			input.ClearPriority = true
+		case "assignees":
+			input.ClearAssignees = true
+		case "tags":
+			input.ClearTags = true
+		case "until":
+			input.ClearUntil = true
+		default:
+			if strings.HasPrefix(field, "uda.") && strings.TrimPrefix(field, "uda.") != "" {
+				input.ClearUDAs = append(input.ClearUDAs, strings.TrimPrefix(field, "uda."))
+				continue
+			}
+			return RuntimeError{Code: "task_series_invalid_clear", Message: fmt.Sprintf("unsupported clear field %q", field)}
+		}
+	}
+	return nil
 }
 
 // TaskSeriesListInput 是 series 列表的过滤/排序/分页参数（spec §11.3）。
@@ -96,10 +125,10 @@ type TaskSeriesPage struct {
 
 // TaskSeriesDetailView 是 series 详情（spec §11.3）。
 type TaskSeriesDetailView struct {
-	Series             TaskSeriesView
-	OpenOccurrences    []TaskOccurrenceView
-	RecentCompleted    []TaskOccurrenceView
-	RecentSkipped      []TaskOccurrenceView
+	Series          TaskSeriesView
+	OpenOccurrences []TaskOccurrenceView
+	RecentCompleted []TaskOccurrenceView
+	RecentSkipped   []TaskOccurrenceView
 }
 
 // AddTaskSeries 创建循环系列（spec §11.2）。
@@ -176,6 +205,9 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 	if err != nil {
 		return TaskSeriesCreateResult{}, err
 	}
+	if _, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false); err != nil {
+		return TaskSeriesCreateResult{}, err
+	}
 
 	now := s.clock.Unix()
 	series := taskseries.Series{
@@ -237,12 +269,17 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 // materializeFirstOccurrence 物化 series 的 first 槽位。
 func (s *Service) materializeFirstOccurrence(series taskseries.Series) (TaskOccurrenceView, error) {
 	now := s.clock.Unix()
+	udas, err := s.normalizeUDAModifications(nil, series.UDAs, nil, false)
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
 	occ := domain.Task{
 		UUID: newUUID(), WorkspaceID: series.WorkspaceID, Title: series.Title,
 		Description: series.Description, Status: domain.StatusPending,
 		Entry: now, Modified: now, Priority: series.Priority, Tags: series.Tags,
 		ProjectID: &series.ProjectID,
-		SeriesID: &series.ID, RecurrenceAt: &series.FirstDue,
+		UDAs:      udas,
+		SeriesID:  &series.ID, RecurrenceAt: &series.FirstDue,
 		RecurrenceRuleSnapshot: &series.RecurrenceRule, RecurrenceOverrides: []string{},
 	}
 	// 分配 project_seq。
@@ -340,7 +377,28 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 		return TaskSeriesDetailView{}, err
 	}
 	view := s.buildSeriesView(series)
-	return TaskSeriesDetailView{Series: view}, nil
+	pending, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "pending", Limit: 20})
+	if err != nil {
+		return TaskSeriesDetailView{}, err
+	}
+	waiting, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "waiting", Limit: 20})
+	if err != nil {
+		return TaskSeriesDetailView{}, err
+	}
+	completed, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "completed", Limit: 20})
+	if err != nil {
+		return TaskSeriesDetailView{}, err
+	}
+	skipped, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "deleted", Limit: 20})
+	if err != nil {
+		return TaskSeriesDetailView{}, err
+	}
+	open := append(pending.Items, waiting.Items...)
+	sortTaskViews(open, "due")
+	return TaskSeriesDetailView{
+		Series: view, OpenOccurrences: open,
+		RecentCompleted: completed.Items, RecentSkipped: skipped.Items,
+	}, nil
 }
 
 // ModifyTaskSeries 修改 series（spec §11.4）。
@@ -364,6 +422,25 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 	}
 	if series.Status != taskseries.StatusActive {
 		return TaskSeriesView{}, RuntimeError{Code: "task_series_inactive", Message: "只能修改 active series"}
+	}
+	if input.Assignees != nil {
+		resolved, err := s.resolveAssigneeRefs(input.Assignees)
+		if err != nil {
+			return TaskSeriesView{}, err
+		}
+		input.Assignees = extractAssigneeIDs(resolved)
+	}
+	if input.UDAs != nil || len(input.ClearUDAs) > 0 {
+		normalized, err := s.normalizeUDAModifications(nil, input.UDAs, input.ClearUDAs, false)
+		if err != nil {
+			return TaskSeriesView{}, err
+		}
+		if input.UDAs != nil {
+			input.UDAs = make(map[string]string, len(normalized))
+			for name, value := range normalized {
+				input.UDAs[name] = value.Raw
+			}
+		}
 	}
 	// 1. reconcile backlog。
 	reconResult, err := s.ReconcileTaskSeries(seriesID, now, 100)
@@ -460,53 +537,57 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 	if err := taskseries.ValidateSeries(series); err != nil {
 		return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid", Message: err.Error()}
 	}
-	if err := s.taskSeriesRepo.Update(series); err != nil {
-		return TaskSeriesView{}, err
-	}
-
-	// 4. 追加 RuleVersion。
-	if input.RecurrenceRule != nil && input.EffectiveFrom != nil {
-		if err := s.taskSeriesRepo.AppendRuleVersion(seriesID, taskseries.RuleVersion{
-			EffectiveFrom:  *input.EffectiveFrom,
-			RecurrenceRule: *input.RecurrenceRule,
-			CreatedBy:      s.runtime.ActorUserID,
-			CreatedAt:      now,
-		}); err != nil {
-			return TaskSeriesView{}, err
+	var result TaskSeriesView
+	err = s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
 		}
-	}
-
-	// 5. 同步共享字段到未 override 的 open materialized occurrence。
-	if err := s.syncSharedFieldsToOpenOccurrences(series, input); err != nil {
-		return TaskSeriesView{}, err
-	}
-
-	// 6. 写 audit。
-	if err := s.appendAuditEntry(AuditEntry{
-		Action: "task.series.modified", WorkspaceID: &series.WorkspaceID,
-		ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
-		Payload: map[string]any{
-			"rule_changed":    input.RecurrenceRule != nil,
-			"effective_from":  input.EffectiveFrom,
-			"shared_fields":   input.Title != nil || input.Description != nil || input.Priority != nil || input.Assignees != nil || input.Tags != nil || input.UDAs != nil,
-		},
-	}); err != nil {
-		return TaskSeriesView{}, err
-	}
-
-	// 重新读取返回最终 view。
-	updated, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+		if err := txSvc.taskSeriesRepo.Update(series); err != nil {
+			return err
+		}
+		if input.RecurrenceRule != nil && input.EffectiveFrom != nil {
+			if err := txSvc.taskSeriesRepo.AppendRuleVersion(seriesID, taskseries.RuleVersion{
+				EffectiveFrom: *input.EffectiveFrom, RecurrenceRule: *input.RecurrenceRule,
+				CreatedBy: txSvc.runtime.ActorUserID, CreatedAt: now,
+			}); err != nil {
+				return err
+			}
+		}
+		if err := txSvc.syncSharedFieldsToOpenOccurrences(series, input); err != nil {
+			return err
+		}
+		if err := txSvc.appendAuditEntry(AuditEntry{
+			Action: "task.series.modified", WorkspaceID: &series.WorkspaceID,
+			ProjectID: &series.ProjectID, TargetType: "task_series", TargetID: series.ID,
+			Payload: map[string]any{
+				"rule_changed": input.RecurrenceRule != nil, "effective_from": input.EffectiveFrom,
+				"shared_fields": input.Title != nil || input.Description != nil || input.ClearDescription ||
+					input.Priority != nil || input.ClearPriority || input.Assignees != nil || input.ClearAssignees ||
+					input.Tags != nil || input.ClearTags || input.UDAs != nil || len(input.ClearUDAs) > 0 ||
+					input.Until != nil || input.ClearUntil,
+			},
+		}); err != nil {
+			return err
+		}
+		updated, err := txSvc.taskSeriesRepo.Get(txSvc.workspaceID, seriesID)
+		if err != nil {
+			return err
+		}
+		result = txSvc.buildSeriesView(updated)
+		return nil
+	})
 	if err != nil {
 		return TaskSeriesView{}, err
 	}
-	return s.buildSeriesView(updated), nil
+	return result, nil
 }
 
 // maxMaterializedRecurrenceAt 返回 series 已物化的最大 recurrence_at。
 func (s *Service) maxMaterializedRecurrenceAt(series taskseries.Series) (int64, error) {
 	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
 		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
-		Start: series.FirstDue, End: s.clock.Unix() + 365*86400,
+		Start: series.FirstDue, End: math.MaxInt64,
 	})
 	if err != nil {
 		return 0, err
@@ -525,7 +606,7 @@ func (s *Service) maxMaterializedRecurrenceAt(series taskseries.Series) (int64, 
 func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, input ModifyTaskSeriesInput) error {
 	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
 		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
-		Start: series.FirstDue, End: s.clock.Unix() + 365*86400,
+		Start: series.FirstDue, End: math.MaxInt64,
 	})
 	if err != nil {
 		return err
@@ -573,6 +654,14 @@ func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, in
 				newAssignees = append(newAssignees, domain.AssigneeInfo{UserID: id})
 			}
 			occ.Assignees = newAssignees
+			changed = true
+		}
+		if (input.UDAs != nil || len(input.ClearUDAs) > 0) && !overridden["udas"] {
+			udas, err := s.normalizeUDAModifications(occ.UDAs, input.UDAs, input.ClearUDAs, false)
+			if err != nil {
+				return err
+			}
+			occ.UDAs = udas
 			changed = true
 		}
 		if changed {
@@ -754,6 +843,9 @@ func (s *Service) ReconcileTaskSeries(seriesID string, now int64, limit int) (Ta
 	versions := ruleVersionsForExpand(series)
 	// 从 first_due 展开到 now+1day（覆盖今天），取所有已到执行期的槽位。
 	endScan := now + 86400
+	if endScan <= series.FirstDue {
+		return TaskSeriesReconcileResult{}, nil
+	}
 	slots, err := taskseries.ExpandRange(versions, series.Until, series.FirstDue, endScan, s.clock.Location())
 	if err != nil {
 		return TaskSeriesReconcileResult{}, err
@@ -910,6 +1002,8 @@ func (s *Service) StopTaskSeries(seriesID string, input StopTaskSeriesInput) (Ta
 // deleteOpenOccurrencesForStop 在停止时把 open materialized occurrence 标 deleted，
 // 并为已进入执行期但未物化的 projected 槽位创建 tombstone（spec §11.6）。
 func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int64) error {
+	const maxDeleteOpenOccurrences = 1000
+	affected := 0
 	// 1. materialized open occurrence → deleted。
 	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
 		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
@@ -920,6 +1014,10 @@ func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int
 	}
 	for _, occ := range exceptions {
 		if occ.Status == domain.StatusPending || occ.Status == domain.StatusWaiting {
+			affected++
+			if affected > maxDeleteOpenOccurrences {
+				return RuntimeError{Code: "task_series_delete_open_limit", Message: "待删除实例超过 1000 条，请缩短范围后重试"}
+			}
 			occ.Delete(now)
 			if err := s.repo.Update(occ); err != nil {
 				return err
@@ -940,6 +1038,10 @@ func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int
 		_, gerr := s.taskOccurrenceRepo.GetOccurrence(series.WorkspaceID, series.ID, slot.RecurrenceAt)
 		if gerr != storage.ErrOccurrenceNotFound {
 			continue
+		}
+		affected++
+		if affected > maxDeleteOpenOccurrences {
+			return RuntimeError{Code: "task_series_delete_open_limit", Message: "待删除实例超过 1000 条，请缩短范围后重试"}
 		}
 		// 创建 tombstone。
 		rule := slot.Rule
@@ -964,11 +1066,11 @@ func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int
 
 // TaskSeriesOccurrenceListInput 是 series occurrence 分页查询参数（spec §11.3）。
 type TaskSeriesOccurrenceListInput struct {
-	Status     string // pending|waiting|completed|deleted|all
-	DueAfter   *int64
-	DueBefore  *int64
-	Limit      int
-	Offset     int
+	Status    string // pending|waiting|completed|deleted|all
+	DueAfter  *int64
+	DueBefore *int64
+	Limit     int
+	Offset    int
 }
 
 // ListTaskSeriesOccurrences 分页列出 series 的 materialized occurrence（spec §11.3）。
@@ -989,6 +1091,9 @@ func (s *Service) ListTaskSeriesOccurrences(seriesID string, input TaskSeriesOcc
 	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 	if err != nil {
 		return TaskViewPage{}, mapSeriesError(err)
+	}
+	if err := s.ensureSeriesProjectScope(series, false); err != nil {
+		return TaskViewPage{}, err
 	}
 	// 大范围查询（series occurrence 数量有限）。
 	start := int64(0)
@@ -1046,6 +1151,13 @@ func (s *Service) SkipTaskSeriesOccurrence(seriesID, occurrenceRef string) (Task
 	}
 	if refSeriesID != seriesID {
 		return TaskOccurrenceView{}, RuntimeError{Code: "task_series_occurrence_not_found", Message: "occurrence 不属于该 series"}
+	}
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	if err != nil {
+		return TaskOccurrenceView{}, mapSeriesError(err)
+	}
+	if err := s.ensureSeriesProjectScope(series, true); err != nil {
+		return TaskOccurrenceView{}, err
 	}
 	now := s.clock.Unix()
 	// 写前物化（若 projected），然后标记 deleted。

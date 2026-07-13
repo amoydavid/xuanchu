@@ -181,7 +181,7 @@ export function importTasksPath(
   workspaceSlug: string,
   projectSlug: string
 ): string {
-  return `/api/v1/import?${workspaceQuery(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}`
+  return `/api/v1/task-imports?${workspaceQuery(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}`
 }
 
 export function taskLinkItemPath(
@@ -428,7 +428,7 @@ export function importTasks(
 ): Promise<TaskImportResult> {
   return workspaceApiPost<TaskImportResult>(
     importTasksPath(workspaceSlug, projectSlug),
-    tasks
+    { schema: "xuanchu.task-import/v1", tasks }
   )
 }
 

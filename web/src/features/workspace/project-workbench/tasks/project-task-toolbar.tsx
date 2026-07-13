@@ -32,6 +32,9 @@ type ProjectTaskToolbarProps = {
   canCreateTask: boolean
   filter: TaskFilter
   onCreateTask: () => void
+  onCreateRecurringTask?: () => void
+  onOpenRecurringTasks?: () => void
+  recurringTaskCount?: number
   toParams: { workspaceSlug: string; projectSlug: string }
   // navigateTo 决定筛选 search 写入到哪个项目子页面路由。
   // Tasks 子页面传 /workspaces/$workspaceSlug/projects/$projectSlug/tasks；
@@ -46,7 +49,7 @@ export type AssigneeFilterOption = {
   name?: string
 }
 
-const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring", "deleted"]
+const STATUS_OPTIONS = ["pending", "completed", "waiting", "deleted"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 const SORT_OPTIONS = [
   { label: "创建顺序", value: "entry" },
@@ -83,6 +86,9 @@ export function ProjectTaskToolbar({
   canCreateTask,
   filter,
   onCreateTask,
+  onCreateRecurringTask,
+  onOpenRecurringTasks,
+  recurringTaskCount = 0,
   toParams,
   navigateTo = "/workspaces/$workspaceSlug/projects/$projectSlug",
 }: ProjectTaskToolbarProps) {
@@ -266,16 +272,39 @@ export function ProjectTaskToolbar({
             />
           </PopoverContent>
         </Popover>
-        {canCreateTask ? (
+        {onOpenRecurringTasks ? (
           <Button
-            className="col-span-2 w-full rounded-md sm:ml-auto sm:w-auto"
-            onClick={onCreateTask}
+            onClick={onOpenRecurringTasks}
             size="lg"
             type="button"
+            variant="outline"
           >
-            <PlusIcon />
-            新建任务
+            循环任务 {recurringTaskCount}
           </Button>
+        ) : null}
+        {canCreateTask ? (
+          <div className="col-span-2 flex min-w-0 gap-1 sm:ml-auto">
+            <Button
+              className="min-w-0 flex-1 rounded-md sm:flex-none"
+              onClick={onCreateTask}
+              size="lg"
+              type="button"
+            >
+              <PlusIcon />
+              新建任务
+            </Button>
+            {onCreateRecurringTask ? (
+              <Button
+                className="min-w-0 flex-1 sm:flex-none"
+                onClick={onCreateRecurringTask}
+                size="lg"
+                type="button"
+                variant="outline"
+              >
+                循环任务
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {activeFilterEntries(filter).length > 0 ? (

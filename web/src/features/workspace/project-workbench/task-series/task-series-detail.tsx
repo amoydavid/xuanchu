@@ -1,4 +1,8 @@
-import type { TaskSeriesView } from "@/features/workspace/project-workbench/api/task-series-api"
+import type {
+  TaskOccurrenceView,
+  TaskSeriesView,
+} from "@/features/workspace/project-workbench/api/task-series-api"
+import { formatDateShort } from "./recurrence-preview"
 
 // TaskSeriesDetail 是面板内的 series 详情（spec §15.6）。
 // 显示摘要、规则、计数；ended/stopped 不显示编辑/停止。
@@ -8,12 +12,16 @@ export function TaskSeriesDetail({
   onEdit,
   onStop,
   canManage,
+  workspaceSlug,
+  projectSlug,
 }: {
   series: TaskSeriesView
   onBack: () => void
   onEdit?: () => void
   onStop?: () => void
   canManage: boolean
+  workspaceSlug: string
+  projectSlug: string
 }) {
   const active = series.status === "active"
   return (
@@ -54,6 +62,61 @@ export function TaskSeriesDetail({
           <p>下一槽位：{series.next_recurrence_at}</p>
         )}
       </section>
+      <OccurrenceGroup
+        items={series.open_occurrences ?? []}
+        projectSlug={projectSlug}
+        title="未完成实例"
+        workspaceSlug={workspaceSlug}
+      />
+      <OccurrenceGroup
+        items={series.recent_completed ?? []}
+        projectSlug={projectSlug}
+        title="最近完成"
+        workspaceSlug={workspaceSlug}
+      />
+      <OccurrenceGroup
+        items={series.recent_skipped ?? []}
+        projectSlug={projectSlug}
+        title="最近跳过"
+        workspaceSlug={workspaceSlug}
+      />
     </article>
+  )
+}
+
+function OccurrenceGroup({
+  items,
+  projectSlug,
+  title,
+  workspaceSlug,
+}: {
+  items: TaskOccurrenceView[]
+  projectSlug: string
+  title: string
+  workspaceSlug: string
+}) {
+  return (
+    <section>
+      <h4>{title}</h4>
+      {items.length === 0 ? (
+        <p>暂无记录</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={item.id}>
+              <a
+                aria-label={`查看本次任务 ${item.title}`}
+                href={`/workspaces/${encodeURIComponent(workspaceSlug)}/projects/${encodeURIComponent(projectSlug)}/tasks/${encodeURIComponent(item.id)}`}
+              >
+                {item.due
+                  ? formatDateShort(new Date(item.due * 1000))
+                  : item.title}
+              </a>
+              {` · ${item.status}`}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

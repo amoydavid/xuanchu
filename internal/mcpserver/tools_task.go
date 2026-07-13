@@ -50,6 +50,7 @@ type TaskQueryInput struct {
 	OccurrenceMode string `json:"occurrence_mode,omitempty" jsonschema:"auto|materialized|expand"`
 	DueAfter       string `json:"due_after,omitempty" jsonschema:"YYYY-MM-DD"`
 	DueBefore      string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD"`
+	TaskType       string `json:"task_type,omitempty" jsonschema:"all|normal|occurrence"`
 }
 
 func (in TaskQueryInput) scopeInput() RequestScopeInput {
@@ -298,17 +299,26 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.ListInput{Status: taskQueryStatus(in), Limit: limit, Offset: in.Offset}
+		input := app.TaskViewQuery{Status: taskQueryStatus(in), Limit: limit, Offset: in.Offset, OccurrenceMode: app.OccurrenceMode(strings.TrimSpace(in.OccurrenceMode))}
 		statuses := taskQueryStatuses(in)
-		if input.Status == "" && len(statuses) == 0 && (in.IncludeCompleted || in.IncludeDeleted) {
-			input.ReportMode = true
-		}
 		if strings.TrimSpace(in.Query) != "" {
 			expr, err := query.ParseFilterExpr([]string{in.Query})
 			if err != nil {
 				return businessErrorWithEnvelope(err)
 			}
 			input.Query = expr
+		}
+		if len(statuses) > 0 {
+			var statusExpr query.Expr
+			for _, status := range statuses {
+				predicate := query.Predicate{Attribute: query.AttrStatus, Operator: query.OpEqual, Value: query.StringValue(status)}
+				if statusExpr == nil {
+					statusExpr = predicate
+				} else {
+					statusExpr = query.Or(statusExpr, predicate)
+				}
+			}
+			input.Query = query.And(input.Query, statusExpr)
 		}
 		if in.Project != "" || in.ProjectID != "" {
 			project, err := svc.ProjectInfo(projectRefForScope(in.Project, in.ProjectID))
@@ -320,11 +330,59 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if taskQueryExcludeDeleted(in) {
 			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrStatus, Operator: query.OpNotEqual, Value: query.StringValue(task.StatusDeleted)})
 		}
-		rows, err := taskQueryList(svc, input, statuses)
+		if taskType := strings.TrimSpace(in.TaskType); taskType != "" && taskType != "all" {
+			if taskType != "normal" && taskType != "occurrence" {
+				return businessErrorWithEnvelope(app.RuntimeError{Code: "task_type_invalid", Message: "task_type must be all|normal|occurrence"})
+			}
+			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrTaskType, Operator: query.OpEqual, Value: query.StringValue(taskType)})
+		}
+		if strings.TrimSpace(in.DueAfter) != "" || strings.TrimSpace(in.DueBefore) != "" {
+			if dueAfter := strings.TrimSpace(in.DueAfter); dueAfter != "" {
+				if _, err := time.Parse("2006-01-02", dueAfter); err != nil {
+					return businessErrorWithEnvelope(app.RuntimeError{Code: "task_query_date_invalid", Message: "due_after must be YYYY-MM-DD"})
+				}
+				input.Query = query.And(input.Query, query.Predicate{
+					Attribute: query.AttrDue, Operator: query.OpAfter, Value: query.DateValue(dueAfter),
+				})
+			}
+			if dueBefore := strings.TrimSpace(in.DueBefore); dueBefore != "" {
+				parsed, err := time.Parse("2006-01-02", dueBefore)
+				if err != nil {
+					return businessErrorWithEnvelope(app.RuntimeError{Code: "task_query_date_invalid", Message: "due_before must be YYYY-MM-DD"})
+				}
+				input.Query = query.And(input.Query, query.Predicate{
+					Attribute: query.AttrDue, Operator: query.OpBefore,
+					Value: query.DateValue(parsed.AddDate(0, 0, 1).Format("2006-01-02")),
+				})
+			}
+		}
+		if in.DueAfter != "" && in.DueBefore != "" {
+			start, err := resolveToolDateField("due_after", nil, in.DueAfter, false)
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			endOfDay, err := resolveToolDateField("due_before", nil, in.DueBefore, true)
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			input.Range = &app.TaskViewRange{Start: *start, End: *endOfDay + 1}
+		}
+		page, err := svc.QueryTaskViews(input)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(tasksData(rows), renderTaskList(rows))
+		items := make([]map[string]any, 0, len(page.Items))
+		for _, item := range page.Items {
+			items = append(items, occurrenceViewToMCPJSON(item))
+		}
+		data := map[string]any{
+			"items": items, "tasks": items, "total": page.Total, "count": page.Total,
+			"limit": page.Limit, "offset": page.Offset, "occurrence_mode": page.OccurrenceMode,
+		}
+		if page.Range != nil {
+			data["range"] = map[string]any{"start": page.Range.Start, "end": page.Range.End}
+		}
+		return successWithEnvelope(data, fmt.Sprintf("%d task(s)", page.Total))
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "task_get", Description: "Get one task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -365,14 +423,13 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Annotate(resolved.UUID, strings.TrimSpace(in.Annotation)); err != nil {
+		if err := svc.Annotate(strings.TrimSpace(in.ID), strings.TrimSpace(in.Annotation)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, resolved.UUID, "annotated task")
+		return taskAfterMutation(svc, in.ID, "annotated task")
 	})
 	addTool(s, opts, &mcp.Tool{Name: "task_depends", Description: "Adjust task dependencies; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDependsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		mod := TaskModifyInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID, ID: in.ID, Depends: in.Depends, ClearDepends: in.ClearDepends}
@@ -383,11 +440,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.Task, "task", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.Task, "task"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		link, err := svc.TaskAddLink(resolved.UUID, strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
+		link, err := svc.TaskAddLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -398,11 +454,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.Task, "task", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.Task, "task"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.TaskRemoveLink(resolved.UUID, strings.TrimSpace(in.LinkID)); err != nil {
+		if err := svc.TaskRemoveLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.LinkID)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(nil, "Removed link from task")
@@ -412,26 +467,28 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Denotate(resolved.UUID, in.AnnotationID); err != nil {
+		if err := svc.Denotate(strings.TrimSpace(in.ID), in.AnnotationID); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, resolved.UUID, "removed annotation")
+		return taskAfterMutation(svc, in.ID, "removed annotation")
 	})
 	addTool(s, opts, &mcp.Tool{Name: "task_link_list", Description: "List external links on a task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tsk, err := resolveToolTaskRef(svc, in.Task, "task", false)
+		if err := validateToolTaskRef(in.Task, "task"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.GetTaskView(strings.TrimSpace(in.Task))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		linkViews := make([]taskLinkView, len(tsk.Links))
-		for i, l := range tsk.Links {
+		linkViews := make([]taskLinkView, len(view.Links))
+		for i, l := range view.Links {
 			linkViews[i] = taskLinkViewFromApp(l)
 		}
 		return successWithEnvelope(map[string]any{"links": linkViews, "count": len(linkViews)}, fmt.Sprintf("%d link(s)", len(linkViews)))
@@ -471,8 +528,7 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-	if err != nil {
+	if err := validateToolTaskRef(in.ID, "id"); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
 	project, err := projectSlugForTask(svc, in.Project, in.ProjectID)
@@ -503,10 +559,10 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 	if err := applyClearFields(in.Clear, &mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	if err := svc.Modify(resolved.UUID, mod); err != nil {
+	if err := svc.Modify(strings.TrimSpace(in.ID), mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	return taskAfterMutation(svc, resolved.UUID, rendered)
+	return taskAfterMutation(svc, in.ID, rendered)
 }
 
 func taskActionHandler(opts Options, rendered string, fn func(*app.Service, string) error) mcp.ToolHandlerFor[TaskIDInput, ToolEnvelope] {
@@ -515,18 +571,24 @@ func taskActionHandler(opts Options, rendered string, fn func(*app.Service, stri
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := fn(svc, resolved.UUID); err != nil {
+		if err := fn(svc, strings.TrimSpace(in.ID)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, resolved.UUID, rendered)
+		return taskAfterMutation(svc, in.ID, rendered)
 	}
 }
 
 func taskAfterMutation(svc *app.Service, id, rendered string) (*mcp.CallToolResult, ToolEnvelope, error) {
+	if app.IsOccurrenceRef(strings.TrimSpace(id)) {
+		view, err := svc.GetTaskView(strings.TrimSpace(id))
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		return successWithEnvelope(occurrenceViewToMCPJSON(view), rendered)
+	}
 	tsk, err := svc.Info(strings.TrimSpace(id))
 	if err != nil {
 		return businessErrorWithEnvelope(err)

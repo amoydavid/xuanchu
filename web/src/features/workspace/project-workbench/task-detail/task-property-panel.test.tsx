@@ -65,7 +65,6 @@ function task(overrides: Record<string, unknown> = {}) {
     wait: null,
     scheduled: null,
     until: null,
-    recur: "weekly",
     parent: "parent-uuid",
     parent_info: { uuid: "parent-uuid", task_slug: "root-1", title: "父任务" },
     depends: ["dep-1"],

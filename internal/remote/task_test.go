@@ -16,19 +16,15 @@ func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 		"project":"api",
 		"task_slug":"api-12"
 	}`
-	var dto taskResponseJSON
-	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
-		t.Fatalf("Unmarshal response task error = %v", err)
-	}
-	tsk, err := dto.toTask()
+	dto, err := parseTaskOccurrenceDTO(json.RawMessage(raw))
 	if err != nil {
-		t.Fatalf("toTask() error = %v", err)
+		t.Fatalf("parseTaskOccurrenceDTO() error = %v", err)
 	}
-	if tsk.ProjectSeq == nil || *tsk.ProjectSeq != 12 {
-		t.Fatalf("ProjectSeq = %#v, want 12", tsk.ProjectSeq)
+	if dto.ProjectSeq == nil || *dto.ProjectSeq != 12 {
+		t.Fatalf("ProjectSeq = %#v, want 12", dto.ProjectSeq)
 	}
-	if tsk.Project == nil || *tsk.Project != "api" {
-		t.Fatalf("Project = %#v, want api", tsk.Project)
+	if dto.Project == nil || *dto.Project != "api" {
+		t.Fatalf("Project = %#v, want api", dto.Project)
 	}
 }
 
@@ -42,11 +38,7 @@ func TestRemoteTaskResponseRejectsMismatchedTaskSlugProject(t *testing.T) {
 		"project":"api",
 		"task_slug":"web-12"
 	}`
-	var dto taskResponseJSON
-	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
-		t.Fatalf("Unmarshal response task error = %v", err)
-	}
-	if _, err := dto.toTask(); err == nil || !strings.Contains(err.Error(), "task_slug") {
-		t.Fatalf("toTask() error = %v, want task_slug mismatch", err)
+	if _, err := parseTaskOccurrenceDTO(json.RawMessage(raw)); err == nil || !strings.Contains(err.Error(), "task_slug") {
+		t.Fatalf("parseTaskOccurrenceDTO() error = %v, want task_slug mismatch", err)
 	}
 }

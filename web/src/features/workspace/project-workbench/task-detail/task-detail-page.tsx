@@ -124,10 +124,8 @@ function TaskDetailPageContent({
     return <TaskDetailSkeleton />
   }
   const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
-  // 子任务创建门控（spec §9.1）：可写 + 任务状态可写 + 非 recurring parent。
-  // completed/deleted 任务不可写由 taskWritable 覆盖；recurring parent 不允许手动子任务。
-  const canCreateSubTask =
-    taskWritable && taskData.status !== "recurring"
+  // Series 不再存成隐藏的 recurring parent；这里只需要普通任务写权限门控。
+  const canCreateSubTask = taskWritable
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
     return (

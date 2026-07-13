@@ -47,6 +47,14 @@ func resolveToolTaskRef(svc *app.Service, ref, fieldName string, write bool) (ta
 	return svc.ResolveProtocolTarget(ref)
 }
 
+func validateToolTaskRef(ref, fieldName string) error {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return app.RuntimeError{Code: fieldName + "_required", Message: fieldName + " is required"}
+	}
+	return app.ValidateProtocolTaskRef(ref)
+}
+
 func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
 	inputSchema, err := jsonschema.For[In](nil)
 	if err != nil {

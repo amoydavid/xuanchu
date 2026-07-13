@@ -55,13 +55,6 @@ func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
 	return fromModel(model, usersByID, linksByTask), nil
 }
 
-func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, bool, error) {
-	// 旧 hidden recurring 路径已在 spec 2026-07-11 中移除。
-	// occurrence 的幂等创建由 TaskOccurrenceRepository.CreateOccurrence 负责。
-	created, err := r.Create(tsk)
-	return created, false, err
-}
-
 func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Task, error) {
 	var models []Task
 	q := r.preloadAssociations()
@@ -209,21 +202,21 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		model := toModel(tsk)
 		if err := tx.Model(&Task{}).Where("uuid = ? AND workspace_id = ?", tsk.UUID, tsk.WorkspaceID).Updates(map[string]any{
-			"title":       model.Title,
-			"description": model.Description,
-			"status":      model.Status,
-			"modified":    model.Modified,
-			"end_ts":      model.EndTS,
-			"due":         model.Due,
-			"project":     model.Project,
-			"project_id":  model.ProjectID,
-			"project_seq": model.ProjectSeq,
-			"priority":    model.Priority,
-			"start":       model.Start,
-			"wait":        model.Wait,
-			"scheduled":   model.Scheduled,
-			"until":       model.Until,
-			"parent":      model.Parent,
+			"title":                     model.Title,
+			"description":               model.Description,
+			"status":                    model.Status,
+			"modified":                  model.Modified,
+			"end_ts":                    model.EndTS,
+			"due":                       model.Due,
+			"project":                   model.Project,
+			"project_id":                model.ProjectID,
+			"project_seq":               model.ProjectSeq,
+			"priority":                  model.Priority,
+			"start":                     model.Start,
+			"wait":                      model.Wait,
+			"scheduled":                 model.Scheduled,
+			"until":                     model.Until,
+			"parent":                    model.Parent,
 			"series_id":                 model.SeriesID,
 			"recurrence_at":             model.RecurrenceAt,
 			"recurrence_rule_snapshot":  model.RecurrenceRuleSnapshot,
@@ -456,7 +449,7 @@ func toModel(tsk domain.Task) Task {
 		EndTS: tsk.End, Due: tsk.Due, Project: tsk.Project, ProjectID: tsk.ProjectID, ProjectSeq: tsk.ProjectSeq, Priority: tsk.Priority,
 		Tags:  tags,
 		Start: tsk.Start, Wait: tsk.Wait, Scheduled: tsk.Scheduled, Until: tsk.Until,
-		Parent: tsk.Parent,
+		Parent:    tsk.Parent,
 		Assignees: assignees, Annotations: annotations, Depends: depends, UDAs: udas,
 		SeriesID:                tsk.SeriesID,
 		RecurrenceAt:            tsk.RecurrenceAt,
@@ -508,10 +501,10 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 		End: model.EndTS, Due: model.Due, Project: model.Project, ProjectID: model.ProjectID, ProjectSeq: model.ProjectSeq, Priority: model.Priority,
 		Tags:  tags,
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
-		Parent: model.Parent,
+		Parent:    model.Parent,
 		Assignees: assignees, Annotations: annotations, Depends: depends,
-		Links: linksByTask[model.UUID],
-		UDAs:  udas,
+		Links:                  linksByTask[model.UUID],
+		UDAs:                   udas,
 		SeriesID:               model.SeriesID,
 		RecurrenceAt:           model.RecurrenceAt,
 		RecurrenceRuleSnapshot: model.RecurrenceRuleSnapshot,

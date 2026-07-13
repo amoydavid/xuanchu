@@ -51,7 +51,7 @@ func (r *TaskOccurrenceRepository) CreateOccurrence(tsk domain.Task) (domain.Tas
 // GetOccurrence 按 (workspace_id, series_id, recurrence_at) 读取已物化 occurrence。
 func (r *TaskOccurrenceRepository) GetOccurrence(workspaceID, seriesID string, recurrenceAt int64) (domain.Task, error) {
 	var model Task
-	err := r.db.
+	err := r.taskRepo.preloadAssociations().
 		Where("workspace_id = ? AND series_id = ? AND recurrence_at = ?", workspaceID, seriesID, recurrenceAt).
 		First(&model).Error
 	if err != nil {

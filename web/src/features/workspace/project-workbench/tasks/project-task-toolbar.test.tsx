@@ -46,6 +46,20 @@ describe("ProjectTaskToolbar", () => {
     expect(screen.getByText("搜索=日报")).toBeTruthy()
   })
 
+  it("does not expose the retired recurring task status", async () => {
+    render(
+      <ProjectTaskToolbar
+        canCreateTask={true}
+        filter={{}}
+        onCreateTask={vi.fn()}
+        toParams={{ projectSlug: "adsops", workspaceSlug: "acme" }}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("combobox", { name: "状态" }))
+    expect(screen.queryByRole("option", { name: "重复" })).toBeNull()
+  })
+
   it("keeps primary filter controls on one visual rhythm", () => {
     render(
       <ProjectTaskToolbar

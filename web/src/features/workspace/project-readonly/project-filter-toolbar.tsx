@@ -27,7 +27,7 @@ type ProjectFilterToolbarProps = {
   toParams: { workspaceSlug: string; projectSlug: string }
 }
 
-const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring"]
+const STATUS_OPTIONS = ["pending", "completed", "waiting"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 
 // FILTER_LABEL_KEYS 把过滤 key 映射为展示用的简短标签（活跃 chips 用）。

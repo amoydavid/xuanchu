@@ -12,23 +12,23 @@ import (
 )
 
 type auditResponse struct {
-	ID                      int64                   `json:"id"`
-	ActorType               string                  `json:"actor_type,omitempty"`
-	Actor                   *task.JSONUserInfo      `json:"actor,omitempty"`
-	ActorToken              *tokenActorJSON         `json:"actor_token,omitempty"`
-	WorkspaceID             *string                 `json:"workspace_id"`
-	ProjectID               *string                 `json:"project_id"`
-	Action                  string                  `json:"action"`
-	TargetType              string                  `json:"target_type"`
-	TargetID                string                  `json:"target_id"`
-	Payload                 json.RawMessage         `json:"payload,omitempty"`
-	Changes                 []any                   `json:"changes,omitempty"`
-	DelegatorTokenID        *string                 `json:"delegator_token_id,omitempty"`
-	DelegatorUser           *task.JSONUserInfo      `json:"delegator_user,omitempty"`
-	AdminActingSessionID    *string                 `json:"admin_acting_session_id,omitempty"`
-	DelegatorAdminTokenID   *string                 `json:"delegator_admin_token_id,omitempty"`
-	DelegatorAdminTokenName string                  `json:"delegator_admin_token_name,omitempty"`
-	CreatedAt               int64                   `json:"created_at"`
+	ID                      int64              `json:"id"`
+	ActorType               string             `json:"actor_type,omitempty"`
+	Actor                   *task.JSONUserInfo `json:"actor,omitempty"`
+	ActorToken              *tokenActorJSON    `json:"actor_token,omitempty"`
+	WorkspaceID             *string            `json:"workspace_id"`
+	ProjectID               *string            `json:"project_id"`
+	Action                  string             `json:"action"`
+	TargetType              string             `json:"target_type"`
+	TargetID                string             `json:"target_id"`
+	Payload                 json.RawMessage    `json:"payload,omitempty"`
+	Changes                 []any              `json:"changes,omitempty"`
+	DelegatorTokenID        *string            `json:"delegator_token_id,omitempty"`
+	DelegatorUser           *task.JSONUserInfo `json:"delegator_user,omitempty"`
+	AdminActingSessionID    *string            `json:"admin_acting_session_id,omitempty"`
+	DelegatorAdminTokenID   *string            `json:"delegator_admin_token_id,omitempty"`
+	DelegatorAdminTokenName string             `json:"delegator_admin_token_name,omitempty"`
+	CreatedAt               int64              `json:"created_at"`
 }
 
 // taskFieldChangeJSON 是字段级变更的 HTTP 输出结构。
@@ -56,16 +56,16 @@ type taskSetFieldChangeJSON struct {
 // UDA 用 entries 承载每个 UDA 的 name + before/after；
 // before/after 为指针，新增/删除的 UDA 对应侧为 nil（不输出该 key）。
 type taskUDAFieldChangeJSON struct {
-	Field    string             `json:"field"`
-	Kind     string             `json:"kind"`
-	LabelKey string             `json:"label_key"`
+	Field    string               `json:"field"`
+	Kind     string               `json:"kind"`
+	LabelKey string               `json:"label_key"`
 	Entries  []udaEntryChangeJSON `json:"entries"`
 }
 
 type udaEntryChangeJSON struct {
-	Name    string                  `json:"name"`
-	Before  *taskChangeDisplayJSON  `json:"before,omitempty"`
-	After   *taskChangeDisplayJSON  `json:"after,omitempty"`
+	Name   string                 `json:"name"`
+	Before *taskChangeDisplayJSON `json:"before,omitempty"`
+	After  *taskChangeDisplayJSON `json:"after,omitempty"`
 }
 
 // taskChangeDisplayJSON 用 json.RawMessage 承载 raw，
@@ -83,6 +83,13 @@ type tokenActorJSON struct {
 
 const auditMaxLimit = 1000
 
+const ordinaryTaskImportSchemaV1 = "xuanchu.task-import/v1"
+
+type ordinaryTaskImportRequest struct {
+	Schema string          `json:"schema"`
+	Tasks  []task.JSONTask `json:"tasks"`
+}
+
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	projectRef := requestProjectRef(r)
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskRead, app.PermissionTaskRead, projectRef)
@@ -90,21 +97,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	var input app.ExportInput
-	if projectRef != "" {
-		project, err := scoped.ProjectInfo(projectRef)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		input.ProjectID = &project.ID
-	}
-	rows, err := scoped.ExportWithInput(input)
+	bundle, err := scoped.ExportTaskBundle()
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, tasksToJSON(rows), nil)
+	writeSuccess(w, http.StatusOK, bundle, nil)
 }
 
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
@@ -113,12 +111,50 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	var rows []task.JSONTask
-	if err := json.NewDecoder(r.Body).Decode(&rows); err != nil {
+	var bundle app.TaskBundleV1
+	if err := json.NewDecoder(r.Body).Decode(&bundle); err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
-	count, err := scoped.Import(rows)
+	result, err := scoped.ImportTaskBundle(bundle)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, result, nil)
+}
+
+// handleOrdinaryTaskImport 是 Web JSON/XLSX 导入的版本化普通任务入口。
+// 跨环境迁移仍只使用 /api/v1/import 的 xuanchu.task-bundle/v1；这里不接受
+// 裸数组，也不接受 series/occurrence，从协议上避免恢复 Taskwarrior JSON 兼容。
+func (s *Server) handleOrdinaryTaskImport(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, requestProjectRef(r))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var request ordinaryTaskImportRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	if request.Schema != ordinaryTaskImportSchemaV1 {
+		writeError(w, http.StatusBadRequest, "task_import_invalid_schema", "schema must be "+ordinaryTaskImportSchemaV1, nil)
+		return
+	}
+	for _, item := range request.Tasks {
+		if item.SeriesID != nil || item.RecurrenceAt != nil || item.RecurrenceRuleSnapshot != nil || len(item.RecurrenceOverrides) > 0 {
+			writeError(w, http.StatusBadRequest, "task_import_occurrence_not_allowed",
+				"ordinary task import does not accept series or occurrence identity", nil)
+			return
+		}
+		if item.Status == "recurring" {
+			writeError(w, http.StatusBadRequest, "task_import_invalid_status",
+				"status recurring is no longer supported; use task series endpoints", nil)
+			return
+		}
+	}
+	count, err := scoped.Import(request.Tasks)
 	if err != nil {
 		writeAppError(w, err)
 		return

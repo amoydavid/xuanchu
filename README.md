@@ -128,13 +128,13 @@ http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/activi
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/automations
 ```
 
-项目页由「概览 / 任务 / 活动 / 自动化」四个子页面组成，共享同一套项目 Header、子页面 Tabs 和可开合的右侧项目信息栏（`ProjectContextRail`）。概览页回答「项目现在怎么样、下一步该看哪里」：展示最新项目更新、当前重点（逾期 / 高优未完成 / 等待已到期 / 未分配任务）、项目附属信息、负责人负载和最近活动；任务页承接任务筛选工具栏、简单任务列表、新建、导入和行内编辑；活动页是项目事实流，合并项目更新、任务注解和有 `audit:read` 权限时可见的项目审计。右侧项目信息栏在三个子页面保持一致，可由图标按钮收起/展开；状态、任务数、进度、风险计数、负责人负载和最近活动都来自后端聚合，前端不用当前任务列表冒充全量统计。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在任务子页面内创建任务、上传 JSON / XLSX 批量导入任务，并 inline 修改任务 title、priority、due 等常用字段。导入弹窗会先在浏览器端预检标题、指派人和依赖，并可打开完整 JSON Schema 弹窗核对字段说明：导入文件可用可选的 `id` / `import_id` 标记临时任务引用，只要求是批次内不重复的字符串，不要求 UUID 格式；`blocked_by` 表示当前任务被哪些任务阻塞；导入后会生成新的任务 UUID，临时 ID 不入库；指派人必须能解析为当前 workspace 成员；JSON assignee 对象可包含 `name`、`display_name`、`email`、`user_id`，XLSX 可用 `assignee_display_names` / `assignee_emails` 为 `assignees` 按顺序补充展示姓名和邮箱；若检测到普通邮箱或姓名尚未加入 workspace，可在预检区一键创建/加入为 `member`，并保留 `display_name`；预检区会用分页表格展示解析和本地引用映射后的导入成果，最终写入仍由 `/api/v1/import` 整批原子提交，除服务端生成的 id/seq 外应与预览一致。概览页和右栏的全量任务摘要来自新增的 `GET /api/v1/projects/{projectRef}/task-summary`，同时要求 `project:read` 与 `task:read`；逾期与等待已到期判断复用璇础任务日期边界（date-only `due/until` 按本地日末、`wait/scheduled` 按本地日初），前端不用浏览器时区重算。
+项目页由「概览 / 任务 / 活动 / 自动化」四个子页面组成，共享同一套项目 Header、子页面 Tabs 和可开合的右侧项目信息栏（`ProjectContextRail`）。概览页回答「项目现在怎么样、下一步该看哪里」：展示最新项目更新、当前重点（逾期 / 高优未完成 / 等待已到期 / 未分配任务）、项目附属信息、负责人负载和最近活动；任务页承接任务筛选工具栏、普通/循环任务创建、融合任务列表、普通任务导入和行内编辑；循环任务不增加独立 Tab，而是从任务页的“循环任务 N”进入右侧治理面板。活动页是项目事实流，合并项目更新、任务注解和有 `audit:read` 权限时可见的项目审计。右侧项目信息栏在三个子页面保持一致，可由图标按钮收起/展开；状态、任务数、进度、风险计数、负责人负载和最近活动都来自后端聚合，前端不用当前任务列表冒充全量统计。具备 `project:write` 的 owner/admin 可以 inline 修改项目名称和描述、转移项目状态、在设置中修改项目 slug；转入 `archived` / `cancelled` 会要求二次确认。具备 `task:write` 的 owner/admin/member 可以在任务子页面内创建任务、上传 JSON / XLSX 批量导入普通任务，并 inline 修改任务 title、priority、due 等常用字段。导入弹窗会先在浏览器端预检标题、指派人和依赖，并可打开完整 JSON Schema 弹窗核对字段说明：导入文件可用可选的 `id` / `import_id` 标记临时任务引用，只要求是批次内不重复的字符串，不要求 UUID 格式；`blocked_by` 表示当前任务被哪些任务阻塞；导入后会生成新的任务 UUID，临时 ID 不入库；指派人必须能解析为当前 workspace 成员；JSON assignee 对象可包含 `id`、`name`、`display_name`、`email`，XLSX 可用 `assignee_display_names` / `assignee_emails` 为 `assignees` 按顺序补充展示姓名和邮箱；若检测到普通邮箱或姓名尚未加入 workspace，可在预检区一键创建/加入为 `member`，并保留 `display_name`；预检区会用分页表格展示解析和本地引用映射后的导入成果，最终通过版本化 `xuanchu.task-import/v1` 对象提交到 `/api/v1/task-imports` 并整批原子写入。跨环境迁移另使用 `/api/v1/import` 的 `xuanchu.task-bundle/v1`，两者不接收裸 Taskwarrior 数组。概览页和右栏的全量任务摘要来自新增的 `GET /api/v1/projects/{projectRef}/task-summary`，同时要求 `project:read` 与 `task:read`；逾期与等待已到期判断复用璇础任务日期边界（date-only `due/until` 按本地日末、`wait/scheduled` 按本地日初），前端不用浏览器时区重算。
 
 ```text
 http://127.0.0.1:8080/workspaces/<workspace-slug>/projects/<project-slug>/tasks/<task-ref>
 ```
 
-任务详情页提供“返回项目”入口，并支持 title inline 编辑、description 完整展示和弹窗编辑、start / stop / done / reopen / delete 操作、注解添加/编辑/删除、链接添加/删除，以及右侧属性栏编辑。description 和注解在 Web Console 中使用 Tiptap Markdown WYSIWYG 编辑与同 schema 只读渲染，支持标题、列表、引用、代码、表格、待办列表和安全链接；后端契约不变，仍把这些内容作为普通字符串保存，CLI、Remote Client、MCP 和 HTTP JSON 输出继续看到 Markdown 源码。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页（或 OIDC 单点登录入口），登录成功后回到原项目页或任务详情页。任务详情页还展示字段级变更历史：每次字段修改（title / description / assignees / due / priority / project / tags / wait / scheduled / until / recur / depends / udas）都会在 `audit_logs` 的 `task.modify` payload 里记录 before/after，前端通过 `GET /api/v1/tasks/{taskRef}/audit`（只要求 `task:read`，不要求 `audit:read`）读取并以自然语言渲染，例如「Alice 将标题从 A 改为 B」。变更历史只持久化机器语义，人类文案由前端 i18n 模板生成；历史无字段级明细的旧行显示为空。
+任务详情页提供“返回项目”入口，并支持 title inline 编辑、description 完整展示和弹窗编辑、start / stop / done / reopen / delete 操作、注解添加/编辑/删除、链接添加/删除，以及右侧属性栏编辑。description 和注解在 Web Console 中使用 Tiptap Markdown WYSIWYG 编辑与同 schema 只读渲染，支持标题、列表、引用、代码、表格、待办列表和安全链接；后端契约不变，仍把这些内容作为普通字符串保存，CLI、Remote Client、MCP 和 HTTP JSON 输出继续看到 Markdown 源码。写操作仍然全部通过 `/api/v1/*` 执行，继续受 membership role、token scope、workspace allowlist、project allowlist 和 closed project 状态约束；前端只隐藏明显不可用的写控件，服务端 403/404 仍是最终裁决。未登录用户会先看到普通 token 登录页（或 OIDC 单点登录入口），登录成功后回到原项目页或任务详情页。任务详情页还展示字段级变更历史：每次字段修改（title / description / assignees / due / priority / project / tags / wait / scheduled / until / depends / udas）都会在 `audit_logs` 的 `task.modify` payload 里记录 before/after，前端通过 `GET /api/v1/tasks/{taskRef}/audit`（只要求 `task:read`，不要求 `audit:read`）读取并以自然语言渲染，例如「Alice 将标题从 A 改为 B」。变更历史只持久化机器语义，人类文案由前端 i18n 模板生成；历史无字段级明细的旧行显示为空。
 
 侧边栏以「项目」为任务浏览主入口：`/projects` 列出所有项目（含任务进度与计数），并支持新建项目；点击某行进入项目概览页，再通过 Tabs 切到「任务」子页面，可在任务表格上方用 status / 优先级 / 负责人 / 关键字过滤，过滤条件同步到 URL 便于分享；点击任务行进入任务详情页，完整查看 Markdown description，并在弹窗中编辑描述、注解、关联链接、属性与已有自定义字段（UDAs）。任务子页面的“导入任务”支持下载完整字段 XLSX 模板、上传填写后的 XLSX 或标准 JSON，也可以在弹窗内查看带 `description` 注释的完整 JSON Schema；模板包含「字段说明」sheet，逐列列出 required、type、allowed values、format 和 example，Tasks sheet 只保留字段列、示例行、筛选和日期格式提示，不使用表头批注或文本框承载字段说明；description 默认按 Markdown 编写，技术上仍作为字符串保存；`blocked_by` 支持引用导入文件内的临时 `id` 或已有任务 UUID；预检发现缺失普通指派人时可直接创建用户并加入当前 workspace，导入文件中的 `display_name` 会作为用户展示姓名保留；上传解析后会分页预览归一化后的导入成果。`archived` / `cancelled` 项目会显示 closed banner，并隐藏任务写入口与项目更新写入入口；具备项目管理权限的用户仍可通过状态菜单恢复到 `planning` 或 `active`。项目记录（project annotation）已从设置页迁到活动子页面，旧 `/projects/<slug>/settings/notes` 入口兼容重定向到活动页。
 
@@ -257,11 +257,11 @@ go build -o xuanchu ./cmd/xuanchu
 # 删除任务
 ./xuanchu 1 delete
 
-# 导出为 JSON
+# 导出 xuanchu.task-bundle/v1
 ./xuanchu export
 
-# 导入 JSON
-./xuanchu import tasks.json
+# 导入同一原生 bundle（不接受 Taskwarrior 数组）
+./xuanchu import xuanchu-task-bundle.json
 
 # 查看配置
 ./xuanchu show
@@ -372,9 +372,11 @@ v0.5.7 按 [循环任务系列规格](./docs/superpowers/specs/2026-07-11-task-s
 - occurrence 的公开 `id` 为 `occ:<series_uuid>:<recurrence_at_unix>`，物化前后不变
 - HTTP `/api/v1/task-series`、MCP `task_series_*` tools、Remote client 提供完整 CRUD
 - HTTP `GET /tasks`、`GET /reports/{name}` 统一返回 `TaskViewPage`（`{items, total, limit, offset, occurrence_mode, range}`），不再返回裸任务数组；Remote client 用 `QueryTasks`/`GetTaskView` 替换旧 `ListTasks`/`GetTask`
+- `GET /tasks` 与 MCP `task_query` 使用同名的 `due_after`、`due_before`、`occurrence_mode=auto|materialized|expand`、`task_type=all|normal|occurrence`；完整日期范围下 `auto` 展开普通任务与 projected/materialized occurrence，显式 `expand` 缺任一边界会报错
 - 项目任务摘要（`GET /projects/{ref}/task-summary`）的普通进度计数排除 occurrence，并新增 `series_metrics`（`recurring_series_count`/`active_recurring_series_count`/`open_recurring_occurrence_count`/`overdue_recurring_occurrence_count`）
-- Web Console 任务页内可深链的循环任务管理面板（不新增全局导航或 ProjectTab）
+- Web Console 任务页内可深链的循环任务管理面板（不新增全局导航或 ProjectTab），支持创建、状态/负责人筛选、排序、分页、详情实例分组、编辑/清空共享字段与停止；普通 JSON/XLSX 导入会拒绝 `recur/mask/imask` 和 `status=recurring`
 - 旧 `recur`/`mask`/`imask` 字段和 `add ... recur:*` 命令不再支持；跨环境迁移使用 `xuanchu.task-bundle/v1` 原生 bundle
+- CLI `export/import`、HTTP `/export|/import`、MCP `task_export/task_import` 与 Remote `ExportTaskBundle/ImportTaskBundle` 使用同一 `xuanchu.task-bundle/v1` object；Web 普通任务表格导入使用独立的 `xuanchu.task-import/v1`
 - **破坏性 schema 变更**：开发数据库需重建——检测到旧 `status=recurring` 数据会拒绝启动
 
 ## 配置、Context、UDA 与 `.taskrc`

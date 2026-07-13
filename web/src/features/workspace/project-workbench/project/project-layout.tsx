@@ -14,7 +14,11 @@ import {
   useProjectTaskSummaryQuery,
   useProjectTimelineQuery,
 } from "../hooks/use-project-data"
-import { canProjectManage, canTaskRead } from "../permissions/permissions"
+import {
+  canProjectManage,
+  canTaskRead,
+  canTaskWrite,
+} from "../permissions/permissions"
 import { EditFeedbackProvider, useEditFeedback } from "../shared/edit-feedback"
 import { ProjectClosedBanner } from "./project-closed-banner"
 import { ProjectContextRail } from "./project-context-rail"
@@ -35,6 +39,7 @@ export type ProjectLayoutContextValue = {
   project: NonNullable<ReturnType<typeof useProjectQuery>["data"]>
   canManage: boolean
   canReadTasks: boolean
+  canWriteTasks: boolean
   closed: boolean
   // setTabActions 允许子页面在 tabs 行右侧（收起/展开按钮左边）注册额外动作节点。
   // 例如任务页用它注册「导入任务」图标按钮。传 null 清空。
@@ -86,6 +91,10 @@ function ProjectLayoutContent({
     scopes: me.data?.token.scopes,
   })
   const canReadTasks = canTaskRead({
+    role: me.data?.effective_role,
+    scopes: me.data?.token.scopes,
+  })
+  const canWriteTasks = canTaskWrite({
     role: me.data?.effective_role,
     scopes: me.data?.token.scopes,
   })
@@ -160,6 +169,7 @@ function ProjectLayoutContent({
     project: project.data,
     canManage,
     canReadTasks,
+    canWriteTasks,
     closed,
     setTabActions,
     setContextPanel,

@@ -329,7 +329,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 当前提供 102 个 tools。
 
-### 任务（16 tools）
+### 任务与循环任务（23 tools）
 
 #### `task_add`
 
@@ -402,7 +402,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `udas` | map | 否 | UDA 键值对 |
 | `depends` | string[] | 否 | 要添加的依赖 |
 | `clear_depends` | bool | 否 | 清空所有依赖 |
-| `clear` | string[] | 否 | 要清空的字段：`project`/`priority`/`due`/`wait`/`scheduled`/`until`/`recur`/`assignees`/`uda.*` |
+| `clear` | string[] | 否 | 要清空的字段：`project`/`priority`/`due`/`wait`/`scheduled`/`until`/`assignees`/`uda.*` |
 
 #### `task_done`
 
@@ -522,7 +522,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `task_export`
 
-导出任务为 JSON 数组。只读。
+按当前 workspace/project scope 导出 `xuanchu.task-bundle/v1` 原生 bundle。只读。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -532,14 +532,51 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `task_import`
 
-导入 JSON 任务数组。
+原子导入 `xuanchu.task-bundle/v1` 原生 bundle。失败时整批回滚；不接受 Taskwarrior JSON 数组。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `tasks` | array | 是 | JSON 任务数组（`uuid`/`title`/`status`/`entry`/`modified` 必填，`description` 可选）。任务 assignee 对象可包含 `user_id`、`name`、`display_name`、`email`；`display_name` 用于展示或导入预检创建用户时保留昵称，不替代稳定用户引用。 |
+| `bundle` | object | 是 | `schema=xuanchu.task-bundle/v1`，包含 task_series、rule_versions、普通任务、occurrence、tombstone 及关联数据。 |
+
+#### `task_series_add`
+
+创建循环任务。必填 `title`、`recurrence_rule`，以及 `first_due`（unix 秒）或
+`first_due_date`（`YYYY-MM-DD`）；可传 `project/project_id`、`description`、
+`until/until_date`、`priority`、`assignees`、`tags`、`udas`。
+
+#### `task_series_list`
+
+分页列出循环任务。支持 `status=active|ended|stopped|all`、`q`、`assignee`、
+`sort=next|title|modified`、`limit/offset`，并遵守 workspace/project scope。
+
+#### `task_series_get`
+
+读取一个循环任务详情。参数为 `id`，返回共享字段、统计、负责人、下一实例时间和
+最近实例分组。
+
+#### `task_series_modify`
+
+修改共享字段或未来规则。支持 `title/description/priority/assignees/tags/udas`、
+`recurrence_rule`、`effective_from/effective_from_date`、`until/until_date`；修改规则时
+必须提供 `effective_from`。`clear` 可包含 `description`、`priority`、`assignees`、
+`tags`、`until`、`uda.<name>`。
+
+#### `task_series_stop`
+
+停止循环任务，不再生成后续实例。`delete_open_occurrences=true` 同时删除未完成实例。
+
+#### `task_series_list_occurrences`
+
+分页列出实例。支持 `status=pending|waiting|completed|deleted|all`、
+`due_after/due_before`（unix 秒）及 `limit/offset`。
+
+#### `task_series_occurrence_skip`
+
+跳过一次实例。传 `series_id` 与稳定的 `occurrence_id`；结果是 deleted tombstone，
+不会停止整个循环任务。
 
 ### 报表与 Urgency（2 tools）
 

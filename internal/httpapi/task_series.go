@@ -8,51 +8,62 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/task"
+	"github.com/go-chi/chi/v5"
 )
 
 // --- Series DTO ---
 
 type taskSeriesRequest struct {
-	Title          *string          `json:"title"`
-	Description    *string          `json:"description,omitempty"`
-	Project        *string          `json:"project,omitempty"`
-	ProjectID      *string          `json:"project_id,omitempty"`
-	RecurrenceRule *string          `json:"recurrence_rule"`
-	FirstDue       *int64           `json:"first_due,omitempty"`
-	FirstDueDate   *string          `json:"first_due_date,omitempty"`
-	Until          *int64           `json:"until,omitempty"`
-	UntilDate      *string          `json:"until_date,omitempty"`
-	Priority       *string          `json:"priority,omitempty"`
-	Assignees      []string         `json:"assignees,omitempty"`
-	Tags           []string         `json:"tags,omitempty"`
+	Title          *string           `json:"title"`
+	Description    *string           `json:"description,omitempty"`
+	Project        *string           `json:"project,omitempty"`
+	ProjectID      *string           `json:"project_id,omitempty"`
+	RecurrenceRule *string           `json:"recurrence_rule"`
+	FirstDue       *int64            `json:"first_due,omitempty"`
+	FirstDueDate   *string           `json:"first_due_date,omitempty"`
+	Until          *int64            `json:"until,omitempty"`
+	UntilDate      *string           `json:"until_date,omitempty"`
+	Priority       *string           `json:"priority,omitempty"`
+	Assignees      []string          `json:"assignees,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
 	UDAs           map[string]string `json:"udas,omitempty"`
 	// 修改专用
-	EffectiveFrom     *int64  `json:"effective_from,omitempty"`
-	EffectiveFromDate *string `json:"effective_from_date,omitempty"`
+	EffectiveFrom     *int64   `json:"effective_from,omitempty"`
+	EffectiveFromDate *string  `json:"effective_from_date,omitempty"`
 	Clear             []string `json:"clear,omitempty"`
 }
 
 type taskOccurrenceJSON struct {
-	ID         string           `json:"id"`
-	UUID       *string          `json:"uuid,omitempty"`
-	TaskSlug   *string          `json:"task_slug,omitempty"`
-	ProjectSeq *int64           `json:"project_seq,omitempty"`
-	ProjectID  *string          `json:"project_id,omitempty"`
-	Project    *string          `json:"project,omitempty"`
-	Title      string           `json:"title"`
-	Status     string           `json:"status"`
-	Entry      *int64           `json:"entry,omitempty"`
-	Modified   *int64           `json:"modified,omitempty"`
-	Due        *int64           `json:"due,omitempty"`
-	Priority   *string          `json:"priority,omitempty"`
-	Tags       []string         `json:"tags,omitempty"`
-	Assignees  []task.JSONUserInfo `json:"assignees,omitempty"`
-	RecurrenceInfo *recurrenceInfoJSON `json:"recurrence_info,omitempty"`
-	UDAs       map[string]string   `json:"udas,omitempty"`
+	ID             string                `json:"id"`
+	UUID           *string               `json:"uuid,omitempty"`
+	TaskSlug       *string               `json:"task_slug,omitempty"`
+	ProjectSeq     *int64                `json:"project_seq,omitempty"`
+	WorkspaceID    string                `json:"workspace_id"`
+	ProjectID      *string               `json:"project_id,omitempty"`
+	Project        *string               `json:"project,omitempty"`
+	Title          string                `json:"title"`
+	Description    *string               `json:"description,omitempty"`
+	Status         string                `json:"status"`
+	Entry          *int64                `json:"entry,omitempty"`
+	Modified       *int64                `json:"modified,omitempty"`
+	Due            *int64                `json:"due,omitempty"`
+	Start          *int64                `json:"start,omitempty"`
+	End            *int64                `json:"end,omitempty"`
+	Wait           *int64                `json:"wait,omitempty"`
+	Scheduled      *int64                `json:"scheduled,omitempty"`
+	Until          *int64                `json:"until,omitempty"`
+	Parent         *string               `json:"parent,omitempty"`
+	Priority       *string               `json:"priority,omitempty"`
+	Tags           []string              `json:"tags,omitempty"`
+	Assignees      []task.JSONUserInfo   `json:"assignees,omitempty"`
+	Depends        []string              `json:"depends,omitempty"`
+	Annotations    []task.JSONAnnotation `json:"annotations,omitempty"`
+	Links          []linkJSON            `json:"links,omitempty"`
+	RecurrenceInfo *recurrenceInfoJSON   `json:"recurrence_info,omitempty"`
+	UDAs           map[string]string     `json:"udas,omitempty"`
 }
 
 type recurrenceInfoJSON struct {
@@ -81,26 +92,30 @@ type taskViewRangeJSON struct {
 }
 
 type taskSeriesJSON struct {
-	ID                  string         `json:"id"`
-	WorkspaceID         string         `json:"workspace_id"`
-	ProjectID           string         `json:"project_id"`
-	Title               string         `json:"title"`
-	Description         *string        `json:"description,omitempty"`
-	Status              string         `json:"status"`
-	RecurrenceRule      string         `json:"recurrence_rule"`
-	FirstDue            int64          `json:"first_due"`
-	Until               *int64         `json:"until,omitempty"`
-	Priority            *string        `json:"priority,omitempty"`
-	Tags                []string       `json:"tags,omitempty"`
-	Assignees           []task.JSONUserInfo `json:"assignees,omitempty"`
-	OpenOccurrenceCount int            `json:"open_occurrence_count"`
-	CompletedCount      int            `json:"completed_count"`
-	SkippedCount        int            `json:"skipped_count"`
-	OverdueCount        int            `json:"overdue_count"`
-	NextRecurrenceAt    *int64         `json:"next_recurrence_at,omitempty"`
-	CreatedBy           task.JSONUserInfo `json:"created_by"`
-	CreatedAt           int64          `json:"created_at"`
-	ModifiedAt          int64          `json:"modified_at"`
+	ID                  string               `json:"id"`
+	WorkspaceID         string               `json:"workspace_id"`
+	ProjectID           string               `json:"project_id"`
+	Title               string               `json:"title"`
+	Description         *string              `json:"description,omitempty"`
+	Status              string               `json:"status"`
+	RecurrenceRule      string               `json:"recurrence_rule"`
+	FirstDue            int64                `json:"first_due"`
+	Until               *int64               `json:"until,omitempty"`
+	Priority            *string              `json:"priority,omitempty"`
+	Tags                []string             `json:"tags,omitempty"`
+	UDAs                map[string]string    `json:"udas,omitempty"`
+	Assignees           []task.JSONUserInfo  `json:"assignees,omitempty"`
+	OpenOccurrenceCount int                  `json:"open_occurrence_count"`
+	CompletedCount      int                  `json:"completed_count"`
+	SkippedCount        int                  `json:"skipped_count"`
+	OverdueCount        int                  `json:"overdue_count"`
+	NextRecurrenceAt    *int64               `json:"next_recurrence_at,omitempty"`
+	CreatedBy           task.JSONUserInfo    `json:"created_by"`
+	CreatedAt           int64                `json:"created_at"`
+	ModifiedAt          int64                `json:"modified_at"`
+	OpenOccurrences     []taskOccurrenceJSON `json:"open_occurrences,omitempty"`
+	RecentCompleted     []taskOccurrenceJSON `json:"recent_completed,omitempty"`
+	RecentSkipped       []taskOccurrenceJSON `json:"recent_skipped,omitempty"`
 }
 
 type taskSeriesListPageJSON struct {
@@ -111,7 +126,7 @@ type taskSeriesListPageJSON struct {
 }
 
 type taskSeriesCreateResultJSON struct {
-	Series          taskSeriesJSON     `json:"series"`
+	Series          taskSeriesJSON      `json:"series"`
 	FirstOccurrence *taskOccurrenceJSON `json:"first_occurrence,omitempty"`
 }
 
@@ -132,11 +147,14 @@ func udaValueMapToRaw(udas map[string]task.UDAValue) map[string]string {
 func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
 	out := taskOccurrenceJSON{
 		ID: v.ID, UUID: v.UUID, TaskSlug: v.TaskSlug, ProjectSeq: v.ProjectSeq,
-		ProjectID: v.ProjectID, Project: v.Project, Title: v.Title, Status: v.Status,
-		Entry: v.Entry, Modified: v.Modified, Due: v.Due, Priority: v.Priority,
-		Tags: v.Tags,
+		WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID, Project: v.Project,
+		Title: v.Title, Description: v.Description, Status: v.Status,
+		Entry: v.Entry, Modified: v.Modified, Due: v.Due, Start: v.Start, End: v.End,
+		Wait: v.Wait, Scheduled: v.Scheduled, Until: v.Until, Parent: v.Parent,
+		Priority: v.Priority, Tags: v.Tags, Depends: v.Depends,
+		Annotations: task.AnnotationsToJSON(v.Annotations), Links: taskLinksToJSON(v.Links),
 		Assignees: taskUserInfoListToJSON(v.Assignees),
-		UDAs: udaValueMapToRaw(v.UDAs),
+		UDAs:      udaValueMapToRaw(v.UDAs),
 	}
 	if v.RecurrenceInfo != nil {
 		out.RecurrenceInfo = &recurrenceInfoJSON{
@@ -164,12 +182,21 @@ func taskViewPageToJSON(page app.TaskViewPage) taskViewPageJSON {
 	return out
 }
 
+func occurrenceViewsToJSON(items []app.TaskOccurrenceView) []taskOccurrenceJSON {
+	out := make([]taskOccurrenceJSON, 0, len(items))
+	for _, item := range items {
+		out = append(out, occurrenceViewToJSON(item))
+	}
+	return out
+}
+
 func seriesViewToJSON(v app.TaskSeriesView) taskSeriesJSON {
 	assignees := taskUserInfoListToJSON(seriesAssigneesToUserInfo(v))
 	return taskSeriesJSON{
 		ID: v.ID, WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID, Title: v.Title,
 		Description: v.Description, Status: v.Status, RecurrenceRule: v.RecurrenceRule,
 		FirstDue: v.FirstDue, Until: v.Until, Priority: v.Priority, Tags: v.Tags,
+		UDAs:      v.UDAs,
 		Assignees: assignees, OpenOccurrenceCount: v.OpenOccurrenceCount,
 		CompletedCount: v.CompletedCount, SkippedCount: v.SkippedCount,
 		OverdueCount: v.OverdueCount, NextRecurrenceAt: v.NextRecurrenceAt,
@@ -278,7 +305,11 @@ func (s *Server) handleTaskSeriesGet(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, seriesViewToJSON(detail.Series), nil)
+	response := seriesViewToJSON(detail.Series)
+	response.OpenOccurrences = occurrenceViewsToJSON(detail.OpenOccurrences)
+	response.RecentCompleted = occurrenceViewsToJSON(detail.RecentCompleted)
+	response.RecentSkipped = occurrenceViewsToJSON(detail.RecentSkipped)
+	writeSuccess(w, http.StatusOK, response, nil)
 }
 
 func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +333,14 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 		UDAs:        req.UDAs,
 		Until:       req.Until,
 	}
+	if req.UntilDate != nil {
+		ts, err := parseDeadlineDate(*req.UntilDate)
+		if err != nil {
+			writeAppError(w, app.RuntimeError{Code: "task_series_invalid_until", Message: err.Error()})
+			return
+		}
+		input.Until = &ts
+	}
 	if req.RecurrenceRule != nil {
 		input.RecurrenceRule = req.RecurrenceRule
 	}
@@ -315,6 +354,10 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		input.EffectiveFrom = &ts
+	}
+	if err := app.ApplyTaskSeriesClearFields(&input, req.Clear); err != nil {
+		writeAppError(w, err)
+		return
 	}
 	view, err := scoped.ModifyTaskSeries(seriesRef, input)
 	if err != nil {
@@ -350,14 +393,20 @@ func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.
 	q := r.URL.Query()
 	input := app.TaskSeriesOccurrenceListInput{Status: q.Get("status")}
 	if raw := q.Get("due_after"); raw != "" {
-		if ts, perr := parseDueAfter(raw); perr == nil {
-			input.DueAfter = &ts
+		ts, perr := parseDueAfter(raw)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", perr.Error(), nil)
+			return
 		}
+		input.DueAfter = &ts
 	}
 	if raw := q.Get("due_before"); raw != "" {
-		if ts, perr := parseDueBefore(raw); perr == nil {
-			input.DueBefore = &ts
+		ts, perr := parseDueBefore(raw)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", perr.Error(), nil)
+			return
 		}
+		input.DueBefore = &ts
 	}
 	if raw := q.Get("limit"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
@@ -397,10 +446,10 @@ func (s *Server) handleTaskSeriesOccurrenceSkip(w http.ResponseWriter, r *http.R
 
 func seriesRequestToInput(req taskSeriesRequest, projectRef string) (app.AddTaskSeriesInput, error) {
 	input := app.AddTaskSeriesInput{
-		Title: strValueOr(req.Title, ""),
-		Description: req.Description,
+		Title:          strValueOr(req.Title, ""),
+		Description:    req.Description,
 		RecurrenceRule: strValueOr(req.RecurrenceRule, ""),
-		Priority: req.Priority, Assignees: req.Assignees, Tags: req.Tags, UDAs: req.UDAs,
+		Priority:       req.Priority, Assignees: req.Assignees, Tags: req.Tags, UDAs: req.UDAs,
 	}
 	if projectRef != "" {
 		input.Project = &projectRef
@@ -470,31 +519,21 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 	if mode == "" {
 		mode = app.OccurrenceModeAuto
 	}
-	// occurrence range 只在 expand 模式下从 due_after/due_before 构建（spec §13.3）。
-	// materialized/auto 模式下 due_after/due_before 作为普通 restful due filter。
+	// auto + 完整范围升级为 expand；显式 expand 必须同时提供两个边界。
 	var rng *app.TaskViewRange
-	if mode == app.OccurrenceModeExpand {
-		if q.Get("due_after") != "" || q.Get("due_before") != "" {
-			start, serr := parseDueAfterOrDefault(q.Get("due_after"))
-			if serr != nil {
-				writeError(w, http.StatusBadRequest, "api_bad_filter", serr.Error(), nil)
-				return
-			}
-			end, eerr := parseDueBeforeOrDefault(q.Get("due_before"))
-			if eerr != nil {
-				writeError(w, http.StatusBadRequest, "api_bad_filter", eerr.Error(), nil)
-				return
-			}
-			if start > 0 || end > 0 {
-				if end == 0 {
-					end = start + 366*86400
-				}
-				if start == 0 {
-					start = end - 366*86400
-				}
-				rng = &app.TaskViewRange{Start: start, End: end}
-			}
+	dueAfter, dueBefore := q.Get("due_after"), q.Get("due_before")
+	if (mode == app.OccurrenceModeExpand || mode == app.OccurrenceModeAuto) && dueAfter != "" && dueBefore != "" {
+		start, serr := parseDueAfterOrDefault(dueAfter)
+		if serr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", serr.Error(), nil)
+			return
 		}
+		end, eerr := parseDueBeforeOrDefault(dueBefore)
+		if eerr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", eerr.Error(), nil)
+			return
+		}
+		rng = &app.TaskViewRange{Start: start, End: end}
 	}
 	// limit 校验（与旧 /tasks 行为一致）。
 	limit := taskListDefaultLimit

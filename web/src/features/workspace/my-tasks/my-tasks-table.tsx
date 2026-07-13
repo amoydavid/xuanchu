@@ -74,7 +74,7 @@ export function MyTasksTable({
       <div className="space-y-2 md:hidden">
         {tasks.map((task) => (
           <MyTasksTaskCard
-            key={task.uuid}
+			key={taskKey(task)}
             task={task}
             workspaceSlug={workspaceSlug}
           />

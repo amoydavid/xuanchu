@@ -30,7 +30,6 @@ export type ProjectReadonlyTask = {
   due?: number | null
   entry?: string
   modified?: string
-  recur?: string
   start?: number | null
   wait?: number | null
   scheduled?: number | null
@@ -82,7 +81,6 @@ export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
   "due",
   "entry",
   "modified",
-  "recur",
   "start",
   "wait",
   "scheduled",
@@ -97,8 +95,6 @@ export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
   "assignees",
   "tags",
   "links",
-  "mask",
-  "imask",
 ])
 
 // AnnotationPage 是 GET /tasks/{ref}/annotations 的分页响应。

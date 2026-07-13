@@ -12,6 +12,15 @@
           "array"
         ]
       },
+      "clear": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
       "description": {
         "type": [
           "null",
@@ -22,6 +31,12 @@
         "type": [
           "null",
           "integer"
+        ]
+      },
+      "effective_from_date": {
+        "type": [
+          "null",
+          "string"
         ]
       },
       "id": {
@@ -54,10 +69,22 @@
           "string"
         ]
       },
+      "udas": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
       "until": {
         "type": [
           "null",
           "integer"
+        ]
+      },
+      "until_date": {
+        "type": [
+          "null",
+          "string"
         ]
       },
       "workspace": {

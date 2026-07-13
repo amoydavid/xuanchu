@@ -381,7 +381,7 @@ v0.4.4 同时补齐 Admin 工作台 Token 管控：
 - 移除侧边栏 `/tasks` 入口（旧链接重定向到 `/projects`），项目表格成为任务浏览主入口。
 - `/projects` 项目表格：项目名 / 状态 / 进度条 / 任务数，行可点击进入项目详情。
 - 项目详情页任务表格上方新增过滤工具栏（status / priority / assignee / 搜索），过滤条件同步 URL，刷新/分享保留；活跃条件以可移除 chip 呈现。
-- 任务详情页重构为左右布局：主区域放注解（首屏 3 条 + 懒加载更多）和关联链接 links；右侧属性栏放常用字段（status/priority/assignee/due/tags/depends/entry/modified/recur）与动态 UDAs。
+- 任务详情页重构为左右布局：主区域放注解（首屏 3 条 + 懒加载更多）和关联链接 links；右侧属性栏放普通任务字段（status/priority/assignee/due/tags/depends/entry/modified）与动态 UDAs；循环归属通过 occurrence 的 `recurrence_info` 和任务页内循环任务面板展示。
 - 后端 `GET /tasks` 新增 restful 风格过滤参数（status/priority/assignee/due_after/due_before/tags/q），内部翻译成现有 query DSL，与 `query=`/`filter=` 共存。
 - 后端新增 `GET /tasks/{ref}/annotations` 分页端点，支持 offset/limit。
 - 后端 `GET /projects` 响应补 pending_count / completed_count 分项计数（一条 SQL 按 status 分桶）。
@@ -610,7 +610,7 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 - Web Console 提供普通/循环创建切换、实例 badge 与系列入口、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
 - MCP 新增 `task_series_add/list/get/modify/stop/list_occurrences/occurrence_skip`，task query/get 对 occurrence 返回派生 `recurrence_info`。
 - HTTP `GET /tasks`、`GET /tasks/{ref}`、`GET /reports/{name}` 统一返回 `TaskViewPage`（`{items, total, limit, offset, occurrence_mode, range}`），Remote 删除旧 `ListTasks`/`GetTask` 签名，CLI remote 全量迁移到 `QueryTasks`/`GetTaskView`。
-- 默认任务列表只显示普通任务和 occurrence；series 在项目“循环规则”中治理。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
+- 默认任务列表融合普通任务和 occurrence；series 从项目任务页的“循环任务 N”治理面板进入，不增加独立 Tab。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
 - import/export 使用版本化璇础原生 bundle，不迁移或兼容 Taskwarrior recurring JSON；当前无生产历史数据，允许一次性重建旧 recurring 开发数据。
 - 项目 archive/cancel 时停止 active series，不在关闭项目中继续生成任务。
 
@@ -735,6 +735,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 ## M2：Taskwarrior 核心任务模型补齐
 
 **状态：已完成。**
+
+> 历史说明：本节记录当时的 M2 交付形态。v0.5.7 已用独立 `task_series`、日历投影和 occurrence 取代 `status=recurring`、`recur/mask/imask` 与完成驱动 child；当前接口不再兼容该旧模型。
 
 **目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 Xuanchu 不再只是简单 todo CLI。
 

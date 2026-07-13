@@ -774,9 +774,16 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 			svc.OverrideActiveContext(*value)
 		}
 	}
-	// 本地 CLI 命令前补齐当前 workspace 的循环任务 occurrence（spec §9.3）。
-	// 忽略错误：reconcile 失败不阻断用户命令。
-	_, _ = svc.ReconcileWorkspaceTaskSeries(time.Now().Unix())
+	// 本地 CLI 业务命令前补齐当前 workspace 的循环任务 occurrence（spec §9.3）。
+	reconciled, err := svc.ReconcileWorkspaceTaskSeries(time.Now().Unix())
+	if err != nil {
+		_ = store.Close()
+		loggerClose()
+		return nil, nil, fmt.Errorf("循环任务补齐失败: %w", err)
+	}
+	if reconciled.BacklogRemaining > 0 {
+		fmt.Fprintf(opts.Stderr, "xuanchu: 循环任务仍有 %d 个实例待补齐，请再次执行命令\n", reconciled.BacklogRemaining)
+	}
 	return svc, func() error {
 		loggerClose()
 		return store.Close()

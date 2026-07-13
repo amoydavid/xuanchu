@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
 import { TaskSeriesList } from "./task-series-list"
+import { TaskSeriesDetail } from "./task-series-detail"
 import { TaskSeriesStopDialog } from "./task-series-stop-dialog"
 import type { TaskSeriesView } from "@/features/workspace/project-workbench/api/task-series-api"
 
@@ -101,6 +102,29 @@ describe("TaskSeriesList", () => {
     )
     fireEvent.click(screen.getByLabelText("查看循环任务 每日巡检"))
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "s1" }))
+  })
+})
+
+describe("TaskSeriesDetail", () => {
+  it("展示未完成实例和最近完成、跳过记录", () => {
+    render(
+      <TaskSeriesDetail
+        canManage
+        onBack={vi.fn()}
+        projectSlug="ops"
+        series={makeSeries({
+          open_occurrences: [{ id: "occ:s1:100", title: "每日巡检", status: "pending", due: 100 }],
+          recent_completed: [{ id: "occ:s1:90", title: "每日巡检", status: "completed", due: 90 }],
+          recent_skipped: [{ id: "occ:s1:80", title: "每日巡检", status: "deleted", due: 80 }],
+        })}
+        workspaceSlug="ws"
+      />
+    )
+
+    expect(screen.getByRole("heading", { name: "未完成实例" })).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "最近完成" })).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "最近跳过" })).toBeTruthy()
+    expect(screen.getAllByRole("link", { name: /查看本次任务/ })).toHaveLength(3)
   })
 })
 

@@ -57,6 +57,12 @@
       "title": {
         "type": "string"
       },
+      "udas": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
       "until": {
         "type": [
           "null",

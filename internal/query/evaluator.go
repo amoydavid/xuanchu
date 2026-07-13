@@ -153,6 +153,8 @@ func matchStringOp(op Operator, actual, expected string) bool {
 	switch op {
 	case OpEqual:
 		return actual == expected
+	case OpNotEqual:
+		return actual != expected
 	case OpContains:
 		return strings.Contains(strings.ToLower(actual), strings.ToLower(expected))
 	case OpIsNull:

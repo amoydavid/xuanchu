@@ -3,8 +3,10 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -18,22 +20,33 @@ import (
 // 完整 JSONTask 字段（RFC3339 字符串）。CLI 通过 ID/UUID 判断是 projected
 // 还是已物化，再决定渲染路径。
 type TaskOccurrenceDTO struct {
-	ID             string  `json:"id"`
-	UUID           *string `json:"uuid,omitempty"`
-	TaskSlug       *string `json:"task_slug,omitempty"`
-	ProjectSeq     *int64  `json:"project_seq,omitempty"`
-	ProjectID      *string `json:"project_id,omitempty"`
-	Project        *string `json:"project,omitempty"`
-	Title          string  `json:"title"`
-	Status         string  `json:"status"`
-	Entry          *int64  `json:"entry,omitempty"`    // 列表端点返回的 Unix 时间戳
-	Modified       *int64  `json:"modified,omitempty"` // 列表端点返回的 Unix 时间戳
-	Due            *int64  `json:"due,omitempty"`      // 列表端点返回的 Unix 时间戳
-	Priority       *string `json:"priority,omitempty"`
-	Tags           []string                 `json:"-"`
-	Assignees      []task.JSONUserInfo      `json:"assignees,omitempty"`
-	RecurrenceInfo *RecurrenceInfoDTO       `json:"recurrence_info,omitempty"`
-	UDAs           map[string]string        `json:"udas,omitempty"`
+	ID             string                `json:"id"`
+	UUID           *string               `json:"uuid,omitempty"`
+	TaskSlug       *string               `json:"task_slug,omitempty"`
+	ProjectSeq     *int64                `json:"project_seq,omitempty"`
+	WorkspaceID    string                `json:"workspace_id,omitempty"`
+	ProjectID      *string               `json:"project_id,omitempty"`
+	Project        *string               `json:"project,omitempty"`
+	Title          string                `json:"title"`
+	Description    *string               `json:"description,omitempty"`
+	Status         string                `json:"status"`
+	Entry          *int64                `json:"entry,omitempty"`    // 列表端点返回的 Unix 时间戳
+	Modified       *int64                `json:"modified,omitempty"` // 列表端点返回的 Unix 时间戳
+	Start          *int64                `json:"start,omitempty"`
+	End            *int64                `json:"end,omitempty"`
+	Due            *int64                `json:"due,omitempty"` // 列表端点返回的 Unix 时间戳
+	Wait           *int64                `json:"wait,omitempty"`
+	Scheduled      *int64                `json:"scheduled,omitempty"`
+	Until          *int64                `json:"until,omitempty"`
+	Parent         *string               `json:"parent,omitempty"`
+	Priority       *string               `json:"priority,omitempty"`
+	Tags           []string              `json:"tags,omitempty"`
+	Assignees      []task.JSONUserInfo   `json:"assignees,omitempty"`
+	Depends        []string              `json:"depends,omitempty"`
+	Annotations    []task.JSONAnnotation `json:"annotations,omitempty"`
+	Links          []TaskLinkDTO         `json:"links,omitempty"`
+	RecurrenceInfo *RecurrenceInfoDTO    `json:"recurrence_info,omitempty"`
+	UDAs           map[string]string     `json:"udas,omitempty"`
 	// JSONTask 承载单任务端点（/tasks/{ref}）返回的完整 JSONTask 字段。
 	// 列表端点不填充。CLI 的 info/_get 等需要完整数据的命令从这里取值。
 	JSONTask *task.JSONTask `json:"-"`
@@ -60,6 +73,12 @@ type TaskViewPageDTO struct {
 	Limit          int                 `json:"limit"`
 	Offset         int                 `json:"offset"`
 	OccurrenceMode string              `json:"occurrence_mode"`
+	Range          *TaskViewRangeDTO   `json:"range,omitempty"`
+}
+
+type TaskViewRangeDTO struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
 }
 
 // TaskSeriesDTO 是 series 的远程 DTO。
@@ -68,18 +87,26 @@ type TaskSeriesDTO struct {
 	WorkspaceID         string              `json:"workspace_id"`
 	ProjectID           string              `json:"project_id"`
 	Title               string              `json:"title"`
+	Description         *string             `json:"description,omitempty"`
 	Status              string              `json:"status"`
 	RecurrenceRule      string              `json:"recurrence_rule"`
 	FirstDue            int64               `json:"first_due"`
 	Until               *int64              `json:"until,omitempty"`
 	Priority            *string             `json:"priority,omitempty"`
 	Tags                []string            `json:"tags,omitempty"`
+	UDAs                map[string]string   `json:"udas,omitempty"`
 	OpenOccurrenceCount int                 `json:"open_occurrence_count"`
 	CompletedCount      int                 `json:"completed_count"`
 	SkippedCount        int                 `json:"skipped_count"`
 	OverdueCount        int                 `json:"overdue_count"`
 	NextRecurrenceAt    *int64              `json:"next_recurrence_at,omitempty"`
 	CreatedBy           task.JSONUserInfo   `json:"created_by"`
+	Assignees           []task.JSONUserInfo `json:"assignees,omitempty"`
+	CreatedAt           int64               `json:"created_at"`
+	ModifiedAt          int64               `json:"modified_at"`
+	OpenOccurrences     []TaskOccurrenceDTO `json:"open_occurrences,omitempty"`
+	RecentCompleted     []TaskOccurrenceDTO `json:"recent_completed,omitempty"`
+	RecentSkipped       []TaskOccurrenceDTO `json:"recent_skipped,omitempty"`
 }
 
 // TaskSeriesListPageDTO 是 series 列表分页。
@@ -92,24 +119,25 @@ type TaskSeriesListPageDTO struct {
 
 // TaskSeriesCreateResultDTO 是创建 series 的返回。
 type TaskSeriesCreateResultDTO struct {
-	Series          TaskSeriesDTO     `json:"series"`
+	Series          TaskSeriesDTO      `json:"series"`
 	FirstOccurrence *TaskOccurrenceDTO `json:"first_occurrence,omitempty"`
 }
 
 // AddTaskSeriesInput 是创建 series 的输入。
 type AddTaskSeriesInput struct {
-	Title          string             `json:"title"`
-	Description    *string            `json:"description,omitempty"`
-	Project        *string            `json:"project,omitempty"`
-	ProjectID      string             `json:"project_id,omitempty"`
-	RecurrenceRule string             `json:"recurrence_rule"`
-	FirstDue       *int64             `json:"first_due,omitempty"`
-	FirstDueDate   *string            `json:"first_due_date,omitempty"`
-	Until          *int64             `json:"until,omitempty"`
-	UntilDate      *string            `json:"until_date,omitempty"`
-	Priority       *string            `json:"priority,omitempty"`
-	Assignees      []string           `json:"assignees,omitempty"`
-	Tags           []string           `json:"tags,omitempty"`
+	Title          string            `json:"title"`
+	Description    *string           `json:"description,omitempty"`
+	Project        *string           `json:"project,omitempty"`
+	ProjectID      string            `json:"project_id,omitempty"`
+	RecurrenceRule string            `json:"recurrence_rule"`
+	FirstDue       *int64            `json:"first_due,omitempty"`
+	FirstDueDate   *string           `json:"first_due_date,omitempty"`
+	Until          *int64            `json:"until,omitempty"`
+	UntilDate      *string           `json:"until_date,omitempty"`
+	Priority       *string           `json:"priority,omitempty"`
+	Assignees      []string          `json:"assignees,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
+	UDAs           map[string]string `json:"udas,omitempty"`
 }
 
 // TaskSeriesListInput 是 series 列表查询参数。
@@ -121,6 +149,17 @@ type TaskSeriesListInput struct {
 	Q         string
 	Assignee  string
 	Sort      string
+	Limit     int
+	Offset    int
+}
+
+// TaskSeriesOccurrenceListInput 是 series occurrence 分页与范围查询。
+type TaskSeriesOccurrenceListInput struct {
+	Workspace string
+	SeriesRef string
+	Status    string
+	DueAfter  *int64
+	DueBefore *int64
 	Limit     int
 	Offset    int
 }
@@ -204,24 +243,30 @@ func (c *Client) StopTaskSeries(ctx context.Context, workspace, seriesRef string
 }
 
 // ListTaskSeriesOccurrences 列出 series 的 occurrence。
-func (c *Client) ListTaskSeriesOccurrences(ctx context.Context, workspace, seriesRef string, status string, limit, offset int) (TaskViewPageDTO, error) {
+func (c *Client) ListTaskSeriesOccurrences(ctx context.Context, input TaskSeriesOccurrenceListInput) (TaskViewPageDTO, error) {
 	values := url.Values{}
-	if workspace != "" {
-		values.Set("workspace", workspace)
+	if input.Workspace != "" {
+		values.Set("workspace", input.Workspace)
 	}
-	if status != "" {
-		values.Set("status", status)
+	if input.Status != "" {
+		values.Set("status", input.Status)
 	}
-	if limit > 0 {
-		values.Set("limit", strconv.Itoa(limit))
+	if input.DueAfter != nil {
+		values.Set("due_after", strconv.FormatInt(*input.DueAfter, 10))
 	}
-	if offset > 0 {
-		values.Set("offset", strconv.Itoa(offset))
+	if input.DueBefore != nil {
+		values.Set("due_before", strconv.FormatInt(*input.DueBefore, 10))
+	}
+	if input.Limit > 0 {
+		values.Set("limit", strconv.Itoa(input.Limit))
+	}
+	if input.Offset > 0 {
+		values.Set("offset", strconv.Itoa(input.Offset))
 	}
 	var resp struct {
 		Data TaskViewPageDTO `json:"data"`
 	}
-	if err := c.get(ctx, "/api/v1/task-series/"+url.PathEscape(seriesRef)+"/occurrences", values, &resp); err != nil {
+	if err := c.get(ctx, "/api/v1/task-series/"+url.PathEscape(input.SeriesRef)+"/occurrences", values, &resp); err != nil {
 		return TaskViewPageDTO{}, err
 	}
 	return resp.Data, nil
@@ -331,8 +376,9 @@ func parseTaskOccurrenceDTO(raw json.RawMessage) (TaskOccurrenceDTO, error) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return TaskOccurrenceDTO{}, err
 	}
-	// 有 uuid 且 entry 是字符串 → JSONTask shape（普通任务/物化 occurrence）。
-	if len(probe.UUID) > 0 && probe.UUID[0] == '"' {
+	// entry 是 RFC3339 字符串时才是 JSONTask shape。TaskOccurrenceView 的
+	// materialized occurrence 同样有 uuid，但 entry/modified 是 Unix 数字。
+	if len(probe.Entry) > 0 && probe.Entry[0] == '"' {
 		var jt task.JSONTask
 		if err := json.Unmarshal(raw, &jt); err != nil {
 			return TaskOccurrenceDTO{}, err
@@ -346,6 +392,16 @@ func parseTaskOccurrenceDTO(raw json.RawMessage) (TaskOccurrenceDTO, error) {
 		dto.Priority = jt.Priority
 		dto.Project = jt.Project
 		dto.TaskSlug = jt.TaskSlug
+		if dto.TaskSlug != nil {
+			project, seq, err := parseTaskSlug(*dto.TaskSlug)
+			if err != nil {
+				return TaskOccurrenceDTO{}, err
+			}
+			if jt.Project == nil || *jt.Project != project {
+				return TaskOccurrenceDTO{}, fmt.Errorf("task_slug %q does not match project", *dto.TaskSlug)
+			}
+			dto.ProjectSeq = &seq
+		}
 		id := jt.UUID
 		dto.UUID = &id
 		return dto, nil
@@ -355,6 +411,19 @@ func parseTaskOccurrenceDTO(raw json.RawMessage) (TaskOccurrenceDTO, error) {
 		return TaskOccurrenceDTO{}, err
 	}
 	return dto, nil
+}
+
+func parseTaskSlug(value string) (string, int64, error) {
+	value = strings.TrimSpace(value)
+	dash := strings.LastIndex(value, "-")
+	if dash <= 0 || dash == len(value)-1 {
+		return "", 0, fmt.Errorf("invalid task_slug %q", value)
+	}
+	seq, err := strconv.ParseInt(value[dash+1:], 10, 64)
+	if err != nil || seq < 1 {
+		return "", 0, fmt.Errorf("invalid task_slug %q", value)
+	}
+	return value[:dash], seq, nil
 }
 
 func buildSeriesListValues(input TaskSeriesListInput) url.Values {
@@ -389,31 +458,29 @@ func buildSeriesListValues(input TaskSeriesListInput) url.Values {
 	return values
 }
 
-// modifyTaskSeriesInput 是修改 series 的远程输入。
-type modifyTaskSeriesInput struct {
-	Title          *string          `json:"title,omitempty"`
-	Description    *string          `json:"description,omitempty"`
-	Priority       *string          `json:"priority,omitempty"`
-	Assignees      []string         `json:"assignees,omitempty"`
-	Tags           []string         `json:"tags,omitempty"`
-	RecurrenceRule *string          `json:"recurrence_rule,omitempty"`
-	EffectiveFrom  *int64           `json:"effective_from,omitempty"`
-	Until          *int64           `json:"until,omitempty"`
+// ModifyTaskSeriesInput 是与 HTTP PATCH /task-series/{id} 同构的远程输入。
+type ModifyTaskSeriesInput struct {
+	Title             *string           `json:"title,omitempty"`
+	Description       *string           `json:"description,omitempty"`
+	Priority          *string           `json:"priority,omitempty"`
+	Assignees         []string          `json:"assignees,omitempty"`
+	Tags              []string          `json:"tags,omitempty"`
+	UDAs              map[string]string `json:"udas,omitempty"`
+	RecurrenceRule    *string           `json:"recurrence_rule,omitempty"`
+	EffectiveFrom     *int64            `json:"effective_from,omitempty"`
+	EffectiveFromDate *string           `json:"effective_from_date,omitempty"`
+	Until             *int64            `json:"until,omitempty"`
+	UntilDate         *string           `json:"until_date,omitempty"`
+	Clear             []string          `json:"clear,omitempty"`
 }
 
 // ModifyTaskSeries 修改 series（spec §11.4）。
-func (c *Client) ModifyTaskSeries(ctx context.Context, workspace, seriesRef string, input interface{}) (TaskSeriesDTO, error) {
-	// input 是 app.ModifyTaskSeriesInput，这里用反射转 DTO。
-	// 简化：直接 marshal/unmarshal 转换。
-	body := modifyTaskSeriesInput{}
-	if raw, err := json.Marshal(input); err == nil {
-		_ = json.Unmarshal(raw, &body)
-	}
+func (c *Client) ModifyTaskSeries(ctx context.Context, workspace, seriesRef string, input ModifyTaskSeriesInput) (TaskSeriesDTO, error) {
 	path := "/api/v1/task-series/" + url.PathEscape(seriesRef) + "?workspace=" + url.QueryEscape(workspace)
 	var resp struct {
 		Data TaskSeriesDTO `json:"data"`
 	}
-	if err := c.patch(ctx, path, body, &resp); err != nil {
+	if err := c.patch(ctx, path, input, &resp); err != nil {
 		return TaskSeriesDTO{}, err
 	}
 	return resp.Data, nil

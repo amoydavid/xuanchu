@@ -174,26 +174,26 @@ func (c *Client) ProjectConfigUnset(ctx context.Context, workspace, projectRef, 
 	return c.delete(ctx, pathWithWorkspace("/api/v1/projects/"+url.PathEscape(projectRef)+"/config/"+url.PathEscape(key), workspace), nil)
 }
 
-func (c *Client) ExportTasks(ctx context.Context, workspace, project, projectID string) ([]task.Task, error) {
+func (c *Client) ExportTaskBundle(ctx context.Context, workspace, project, projectID string) (app.TaskBundleV1, error) {
 	values := workspaceValues(workspace)
 	if projectID != "" {
 		values.Set("project_id", projectID)
 	} else if project != "" {
 		values.Set("project", project)
 	}
-	var envelope apiEnvelope[[]taskResponseJSON]
+	var envelope apiEnvelope[app.TaskBundleV1]
 	if err := c.get(ctx, "/api/v1/export", values, &envelope); err != nil {
-		return nil, err
+		return app.TaskBundleV1{}, err
 	}
-	return jsonTasksToTasks(envelope.Data)
+	return envelope.Data, nil
 }
 
-func (c *Client) ImportTasks(ctx context.Context, workspace string, rows []task.JSONTask) (int, error) {
-	var envelope apiEnvelope[map[string]int]
-	if err := c.post(ctx, pathWithWorkspace("/api/v1/import", workspace), rows, &envelope); err != nil {
-		return 0, err
+func (c *Client) ImportTaskBundle(ctx context.Context, workspace string, bundle app.TaskBundleV1) (app.TaskBundleImportResult, error) {
+	var envelope apiEnvelope[app.TaskBundleImportResult]
+	if err := c.post(ctx, pathWithWorkspace("/api/v1/import", workspace), bundle, &envelope); err != nil {
+		return app.TaskBundleImportResult{}, err
 	}
-	return envelope.Data["imported"], nil
+	return envelope.Data, nil
 }
 
 func (c *Client) ListAudit(ctx context.Context, workspace, project string, limit int) ([]app.AuditLogView, error) {

@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { useParams } from "@tanstack/react-router"
+import { useNavigate, useParams } from "@tanstack/react-router"
 
 import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { TaskSeriesPanelShell } from "@/features/workspace/project-workbench/task-series/task-series-panel-shell"
@@ -19,6 +19,8 @@ export function ProjectTaskSeriesPanelRoute() {
     seriesRef?: string
   }
   const layout = useProjectLayout()
+  const navigate = useNavigate()
+  const canManageSeries = !layout.closed && layout.canWriteTasks
 
   // 注册/注销面板到右栏。
   useEffect(() => {
@@ -28,17 +30,25 @@ export function ProjectTaskSeriesPanelRoute() {
           workspaceSlug={params.workspaceSlug}
           projectSlug={params.projectSlug}
           seriesRef={params.seriesRef}
+          canManage={canManageSeries}
         />
       ),
       onClose: () => {
-        // 关闭由路由导航处理（navigate 回 /tasks）。
+        void navigate({
+          to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks",
+          params: {
+            workspaceSlug: params.workspaceSlug,
+            projectSlug: params.projectSlug,
+          },
+          search: (previous) => previous,
+        })
       },
     })
     return () => {
       layout.setContextPanel(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- layout.setContextPanel 是稳定回调
-  }, [params.workspaceSlug, params.projectSlug, params.seriesRef])
+  }, [params.workspaceSlug, params.projectSlug, params.seriesRef, canManageSeries])
 
   // 面板内容通过 setContextPanel 渲染到右栏，此组件本身不输出 DOM。
   return null

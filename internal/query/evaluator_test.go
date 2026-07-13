@@ -103,6 +103,24 @@ func TestMatchTaskValueNot(t *testing.T) {
 	}
 }
 
+func TestMatchTaskValueStringNotEqual(t *testing.T) {
+	expr := Predicate{Attribute: AttrStatus, Operator: OpNotEqual, Value: StringValue("deleted")}
+	ok, err := MatchTaskValue(expr, TaskValue{Status: "pending"}, time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("status != deleted 应匹配 pending")
+	}
+	ok, err = MatchTaskValue(expr, TaskValue{Status: "deleted"}, time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("status != deleted 不应匹配 deleted")
+	}
+}
+
 func TestMatchTaskValueTagAndAssignee(t *testing.T) {
 	expr, err := ParseQuery(`+daily assignee:alice`)
 	if err != nil {

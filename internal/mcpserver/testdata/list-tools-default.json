@@ -3520,6 +3520,9 @@
                         "string"
                       ]
                     },
+                    "project": {
+                      "type": "string"
+                    },
                     "project_id": {
                       "type": "string"
                     },
@@ -3601,6 +3604,7 @@
                     "id",
                     "workspace_id",
                     "project_id",
+                    "project",
                     "title",
                     "status",
                     "recurrence_rule",
@@ -3621,6 +3625,50 @@
                 "items": {
                   "additionalProperties": false,
                   "properties": {
+                    "annotations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "entry": {
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "entry",
+                          "description"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "assignees": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "depends": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
                     "description": {
                       "type": [
                         "null",
@@ -3641,6 +3689,59 @@
                     },
                     "entry": {
                       "type": "integer"
+                    },
+                    "links": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "created_by_id": {
+                            "type": "string"
+                          },
+                          "created_by_token_name": {
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "created_by_token_prefix": {
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "created_by_type": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "url",
+                          "created_at",
+                          "created_by_type",
+                          "created_by_id"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
                     },
                     "modified": {
                       "type": "integer"
@@ -3728,6 +3829,27 @@
                     },
                     "title": {
                       "type": "string"
+                    },
+                    "udas": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "orphan": {
+                            "type": "boolean"
+                          },
+                          "raw": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "raw"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "object"
                     },
                     "until": {
                       "type": [
@@ -4144,6 +4266,10 @@
           "status": {
             "type": "string"
           },
+          "task_type": {
+            "description": "all|normal|occurrence",
+            "type": "string"
+          },
           "workspace": {
             "type": "string"
           }
@@ -4264,6 +4390,12 @@
           },
           "title": {
             "type": "string"
+          },
+          "udas": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "until": {
             "type": [
@@ -4461,6 +4593,15 @@
               "array"
             ]
           },
+          "clear": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "description": {
             "type": [
               "null",
@@ -4471,6 +4612,12 @@
             "type": [
               "null",
               "integer"
+            ]
+          },
+          "effective_from_date": {
+            "type": [
+              "null",
+              "string"
             ]
           },
           "id": {
@@ -4503,10 +4650,22 @@
               "string"
             ]
           },
+          "udas": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "until": {
             "type": [
               "null",
               "integer"
+            ]
+          },
+          "until_date": {
+            "type": [
+              "null",
+              "string"
             ]
           },
           "workspace": {

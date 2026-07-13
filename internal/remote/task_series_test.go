@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -75,6 +76,35 @@ func TestRemoteListTaskSeriesBuildsQuery(t *testing.T) {
 	}
 }
 
+func TestRemoteModifyTaskSeriesForwardsClearAndUDAs(t *testing.T) {
+	var receivedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"data":{"id":"s1","title":"每日巡检","status":"active","recurrence_rule":"daily","first_due":123}}`)
+	}))
+	defer srv.Close()
+	client, err := NewClient(Options{BaseURL: srv.URL, Token: "tok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.ModifyTaskSeries(context.Background(), "local", "s1", ModifyTaskSeriesInput{
+		Clear: []string{"priority", "uda.estimate"},
+		UDAs:  map[string]string{"estimate": "3"},
+	})
+	if err != nil {
+		t.Fatalf("ModifyTaskSeries: %v", err)
+	}
+	if _, ok := receivedBody["clear"]; !ok {
+		t.Fatalf("body 缺少 clear: %#v", receivedBody)
+	}
+	if _, ok := receivedBody["udas"]; !ok {
+		t.Fatalf("body 缺少 udas: %#v", receivedBody)
+	}
+}
+
 func TestRemoteStopTaskSeriesSendsDelete(t *testing.T) {
 	var receivedMethod, receivedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +133,33 @@ func TestRemoteStopTaskSeriesSendsDelete(t *testing.T) {
 	}
 }
 
+func TestRemoteListTaskSeriesOccurrencesForwardsRange(t *testing.T) {
+	var receivedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path + "?" + r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"data":{"items":[],"total":0,"limit":10,"offset":0}}`)
+	}))
+	defer srv.Close()
+	client, err := NewClient(Options{BaseURL: srv.URL, Token: "tok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, before := int64(100), int64(200)
+	_, err = client.ListTaskSeriesOccurrences(context.Background(), TaskSeriesOccurrenceListInput{
+		Workspace: "local", SeriesRef: "s1", Status: "pending",
+		DueAfter: &after, DueBefore: &before, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"due_after=100", "due_before=200", "status=pending"} {
+		if !strings.Contains(receivedPath, want) {
+			t.Fatalf("query 缺少 %s: %q", want, receivedPath)
+		}
+	}
+}
+
 func TestRemoteQueryTasksSendsOccurrenceMode(t *testing.T) {
 	var receivedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +184,35 @@ func TestRemoteQueryTasksSendsOccurrenceMode(t *testing.T) {
 	}
 	if page.OccurrenceMode != "expand" {
 		t.Fatalf("mode = %q want expand", page.OccurrenceMode)
+	}
+}
+
+func TestParseTaskOccurrenceDTOMaterializedShape(t *testing.T) {
+	raw := json.RawMessage(`{
+		"id":"occ:series-1:1000",
+		"uuid":"task-1",
+		"workspace_id":"workspace-1",
+		"project_id":"project-1",
+		"title":"每日巡检",
+		"status":"pending",
+		"entry":1000,
+		"modified":1001,
+		"due":2000,
+		"tags":["ops"],
+		"recurrence_info":{"role":"occurrence","series_id":"series-1","series_status":"active","rule":"daily","recurrence_at":2000,"materialization":"materialized"}
+	}`)
+	dto, err := parseTaskOccurrenceDTO(raw)
+	if err != nil {
+		t.Fatalf("parse materialized occurrence: %v", err)
+	}
+	if dto.ID != "occ:series-1:1000" || dto.UUID == nil || *dto.UUID != "task-1" {
+		t.Fatalf("dto identity = %#v", dto)
+	}
+	if dto.Entry == nil || *dto.Entry != 1000 || len(dto.Tags) != 1 || dto.Tags[0] != "ops" {
+		t.Fatalf("dto fields = %#v", dto)
+	}
+	if dto.RecurrenceInfo == nil || dto.RecurrenceInfo.Materialization != "materialized" {
+		t.Fatalf("dto recurrence_info = %#v", dto.RecurrenceInfo)
 	}
 }
 

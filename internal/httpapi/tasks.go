@@ -18,62 +18,62 @@ import (
 )
 
 type addTaskRequest struct {
-	Title         string            `json:"title"`
-	Description   *string           `json:"description,omitempty"`
-	Project       string            `json:"project,omitempty"`
-	ProjectID     string            `json:"project_id,omitempty"`
-	Priority      string            `json:"priority,omitempty"`
-	Due           *int64            `json:"due,omitempty"`
-	DueDate       string            `json:"due_date,omitempty"`
-	Assignees     []string          `json:"assignees,omitempty"`
-	Depends       []string          `json:"depends,omitempty"`
-	Wait          *int64            `json:"wait,omitempty"`
-	WaitDate      string            `json:"wait_date,omitempty"`
-	Scheduled     *int64            `json:"scheduled,omitempty"`
-	ScheduledDate string            `json:"scheduled_date,omitempty"`
-	Until         *int64            `json:"until,omitempty"`
-	UntilDate     string            `json:"until_date,omitempty"`
+	Title         string   `json:"title"`
+	Description   *string  `json:"description,omitempty"`
+	Project       string   `json:"project,omitempty"`
+	ProjectID     string   `json:"project_id,omitempty"`
+	Priority      string   `json:"priority,omitempty"`
+	Due           *int64   `json:"due,omitempty"`
+	DueDate       string   `json:"due_date,omitempty"`
+	Assignees     []string `json:"assignees,omitempty"`
+	Depends       []string `json:"depends,omitempty"`
+	Wait          *int64   `json:"wait,omitempty"`
+	WaitDate      string   `json:"wait_date,omitempty"`
+	Scheduled     *int64   `json:"scheduled,omitempty"`
+	ScheduledDate string   `json:"scheduled_date,omitempty"`
+	Until         *int64   `json:"until,omitempty"`
+	UntilDate     string   `json:"until_date,omitempty"`
 	// recur 已移除（spec §11.1）：循环任务通过 /task-series 管理。
 	// 保留字段用于检测并拒绝旧请求，不传递给 App 层。
-	Recur         *string           `json:"recur,omitempty"`
-	Tags          []string          `json:"tags,omitempty"`
-	UDAs          map[string]string `json:"udas,omitempty"`
-	Parent        string            `json:"parent,omitempty"`
+	Recur  *string           `json:"recur,omitempty"`
+	Tags   []string          `json:"tags,omitempty"`
+	UDAs   map[string]string `json:"udas,omitempty"`
+	Parent string            `json:"parent,omitempty"`
 }
 
 type modifyTaskRequest struct {
-	Title            *string           `json:"title,omitempty"`
-	Description      *string           `json:"description,omitempty"`
-	ClearDescription bool              `json:"clear_description,omitempty"`
-	Project          *string           `json:"project,omitempty"`
-	ProjectID        *string           `json:"project_id,omitempty"`
-	Priority         *string           `json:"priority,omitempty"`
-	ClearProject     bool              `json:"clear_project,omitempty"`
-	ClearPriority    bool              `json:"clear_priority,omitempty"`
-	Due              *int64            `json:"due,omitempty"`
-	DueDate          string            `json:"due_date,omitempty"`
-	ClearDue         bool              `json:"clear_due,omitempty"`
-	Wait             *int64            `json:"wait,omitempty"`
-	WaitDate         string            `json:"wait_date,omitempty"`
-	ClearWait        bool              `json:"clear_wait,omitempty"`
-	Scheduled        *int64            `json:"scheduled,omitempty"`
-	ScheduledDate    string            `json:"scheduled_date,omitempty"`
-	ClearScheduled   bool              `json:"clear_scheduled,omitempty"`
-	Until            *int64            `json:"until,omitempty"`
-	UntilDate        string            `json:"until_date,omitempty"`
-	ClearUntil       bool              `json:"clear_until,omitempty"`
-	Assignees        []string          `json:"assignees,omitempty"`
-	RemoveAssignees  []string          `json:"remove_assignees,omitempty"`
-	ClearAssignees   bool              `json:"clear_assignees,omitempty"`
-	Depends          []string          `json:"depends,omitempty"`
-	ClearDepends     bool              `json:"clear_depends,omitempty"`
+	Title            *string  `json:"title,omitempty"`
+	Description      *string  `json:"description,omitempty"`
+	ClearDescription bool     `json:"clear_description,omitempty"`
+	Project          *string  `json:"project,omitempty"`
+	ProjectID        *string  `json:"project_id,omitempty"`
+	Priority         *string  `json:"priority,omitempty"`
+	ClearProject     bool     `json:"clear_project,omitempty"`
+	ClearPriority    bool     `json:"clear_priority,omitempty"`
+	Due              *int64   `json:"due,omitempty"`
+	DueDate          string   `json:"due_date,omitempty"`
+	ClearDue         bool     `json:"clear_due,omitempty"`
+	Wait             *int64   `json:"wait,omitempty"`
+	WaitDate         string   `json:"wait_date,omitempty"`
+	ClearWait        bool     `json:"clear_wait,omitempty"`
+	Scheduled        *int64   `json:"scheduled,omitempty"`
+	ScheduledDate    string   `json:"scheduled_date,omitempty"`
+	ClearScheduled   bool     `json:"clear_scheduled,omitempty"`
+	Until            *int64   `json:"until,omitempty"`
+	UntilDate        string   `json:"until_date,omitempty"`
+	ClearUntil       bool     `json:"clear_until,omitempty"`
+	Assignees        []string `json:"assignees,omitempty"`
+	RemoveAssignees  []string `json:"remove_assignees,omitempty"`
+	ClearAssignees   bool     `json:"clear_assignees,omitempty"`
+	Depends          []string `json:"depends,omitempty"`
+	ClearDepends     bool     `json:"clear_depends,omitempty"`
 	// recur/clear_recur 已移除（spec §11.1）：保留字段用于检测并拒绝旧请求。
-	Recur            *string           `json:"recur,omitempty"`
-	ClearRecur       bool              `json:"clear_recur,omitempty"`
-	Tags             []string          `json:"tags,omitempty"`
-	RemoveTags       []string          `json:"remove_tags,omitempty"`
-	UDAs             map[string]string `json:"udas,omitempty"`
-	ClearUDAs        []string          `json:"clear_udas,omitempty"`
+	Recur      *string           `json:"recur,omitempty"`
+	ClearRecur bool              `json:"clear_recur,omitempty"`
+	Tags       []string          `json:"tags,omitempty"`
+	RemoveTags []string          `json:"remove_tags,omitempty"`
+	UDAs       map[string]string `json:"udas,omitempty"`
+	ClearUDAs  []string          `json:"clear_udas,omitempty"`
 }
 
 type textRequest struct {
@@ -144,6 +144,12 @@ func restfulTaskFilters(q url.Values) (query.Expr, error) {
 			}
 			add(query.Predicate{Attribute: query.AttrTag, Operator: query.OpHasTag, Value: query.StringValue(tag)})
 		}
+	}
+	if v := strings.TrimSpace(q.Get("task_type")); v != "" && v != "all" {
+		if v != "normal" && v != "occurrence" {
+			return nil, fmt.Errorf("task_type must be all|normal|occurrence")
+		}
+		add(query.Predicate{Attribute: query.AttrTaskType, Operator: query.OpEqual, Value: query.StringValue(v)})
 	}
 	return expr, nil
 }
@@ -473,11 +479,6 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
 	if req.Project != nil && req.ProjectID != nil {
 		if err := ensureProjectRefsMatch(scoped, *req.Project, *req.ProjectID); err != nil {
 			writeAppError(w, err)
@@ -498,7 +499,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_date", err.Error(), nil)
 		return
 	}
-	if err := scoped.Modify(resolved.UUID, app.ModifyInput{
+	if err := scoped.Modify(taskRef, app.ModifyInput{
 		Title:            req.Title,
 		Description:      req.Description,
 		ClearDescription: req.ClearDescription,
@@ -527,7 +528,7 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeTaskAfterMutation(w, scoped, resolved.UUID)
+	writeTaskAfterMutation(w, scoped, taskRef)
 }
 
 func (s *Server) handleTaskDone(w http.ResponseWriter, r *http.Request) {
@@ -671,12 +672,7 @@ func (s *Server) handleTaskLinkAdd(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	link, err := scoped.TaskAddLink(resolved.UUID, req.Type, req.URL, req.Title)
+	link, err := scoped.TaskAddLink(taskRef, req.Type, req.URL, req.Title)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -694,12 +690,12 @@ func (s *Server) handleTaskLinkList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	tsk, err := scoped.ResolveProtocolTarget(taskRef)
+	view, err := scoped.GetTaskView(taskRef)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, taskLinksToJSON(tsk.Links), nil)
+	writeSuccess(w, http.StatusOK, taskLinksToJSON(view.Links), nil)
 }
 
 // handleTaskChildren 列出任务的直接子任务（手动 sub-task 与 recurring child）。
@@ -738,16 +734,11 @@ func (s *Server) handleTaskLinkRemove(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
-	if err != nil {
+	if err := scoped.TaskRemoveLink(taskRef, linkID); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	if err := scoped.TaskRemoveLink(resolved.UUID, linkID); err != nil {
-		writeAppError(w, err)
-		return
-	}
-	writeTaskAfterMutation(w, scoped, resolved.UUID)
+	writeTaskAfterMutation(w, scoped, taskRef)
 }
 
 func (s *Server) handleTaskLinkUpdate(w http.ResponseWriter, r *http.Request) {
@@ -770,12 +761,7 @@ func (s *Server) handleTaskLinkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	link, err := scoped.TaskUpdateLink(resolved.UUID, linkID, req.Type, req.URL, req.Title)
+	link, err := scoped.TaskUpdateLink(taskRef, linkID, req.Type, req.URL, req.Title)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -804,19 +790,23 @@ func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn fun
 		writeAppError(w, err)
 		return
 	}
-	resolved, err := scoped.ResolveProtocolTargetForWrite(taskRef)
-	if err != nil {
+	if err := fn(scoped, taskRef); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	if err := fn(scoped, resolved.UUID); err != nil {
-		writeAppError(w, err)
-		return
-	}
-	writeTaskAfterMutation(w, scoped, resolved.UUID)
+	writeTaskAfterMutation(w, scoped, taskRef)
 }
 
 func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskRef string) {
+	if app.IsOccurrenceRef(taskRef) {
+		view, err := svc.GetTaskView(taskRef)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		writeSuccess(w, http.StatusOK, occurrenceViewToJSON(view), nil)
+		return
+	}
 	tsk, err := svc.Info(taskRef)
 	if err != nil {
 		writeAppError(w, err)
@@ -827,8 +817,8 @@ func writeTaskAfterMutation(w http.ResponseWriter, svc *app.Service, taskRef str
 
 func requireTaskRef(w http.ResponseWriter, r *http.Request) (string, bool) {
 	taskRef := strings.TrimSpace(chi.URLParam(r, "taskRef"))
-	if taskRef == "" {
-		writeError(w, http.StatusBadRequest, "task_ref_invalid", "task reference is required", nil)
+	if err := app.ValidateProtocolTaskRef(taskRef); err != nil {
+		writeAppError(w, err)
 		return "", false
 	}
 	return taskRef, true

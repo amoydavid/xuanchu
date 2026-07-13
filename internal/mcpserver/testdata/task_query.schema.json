@@ -39,6 +39,10 @@
       "status": {
         "type": "string"
       },
+      "task_type": {
+        "description": "all|normal|occurrence",
+        "type": "string"
+      },
       "workspace": {
         "type": "string"
       }

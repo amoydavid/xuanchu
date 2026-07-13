@@ -25,15 +25,24 @@ export type TaskOccurrenceView = {
   uuid?: string | null
   task_slug?: string | null
   project_seq?: number | null
+  workspace_id?: string
   project_id?: string | null
   project?: string | null
   title: string
+  description?: string | null
   status: string
   entry?: number | null
   modified?: number | null
+  start?: number | null
+  end?: number | null
   due?: number | null
+  wait?: number | null
+  scheduled?: number | null
+  until?: number | null
+  parent?: string | null
   priority?: string | null
   tags?: string[]
+  udas?: Record<string, string>
   assignees?: Array<{
     id: string
     name: string
@@ -44,6 +53,15 @@ export type TaskOccurrenceView = {
       user_type?: string
       external_id: string
     }>
+  }>
+  depends?: string[]
+  annotations?: Array<{ id: string; entry: number; description: string }>
+  links?: Array<{
+    id: string
+    type: string
+    url: string
+    title?: string
+    created_at: string
   }>
   recurrence_info?: RecurrenceInfo | null
 }
@@ -71,6 +89,18 @@ export type TaskSeriesView = {
   until?: number | null
   priority?: string | null
   tags?: string[]
+  udas?: Record<string, string>
+  assignees?: Array<{
+    id: string
+    name: string
+    display_name: string
+    email?: string | null
+    external_ids?: Array<{
+      provider: string
+      user_type?: string
+      external_id: string
+    }>
+  }>
   open_occurrence_count: number
   completed_count: number
   skipped_count: number
@@ -89,6 +119,9 @@ export type TaskSeriesView = {
   }
   created_at: number
   modified_at: number
+  open_occurrences?: TaskOccurrenceView[]
+  recent_completed?: TaskOccurrenceView[]
+  recent_skipped?: TaskOccurrenceView[]
 }
 
 export type TaskSeriesListPage = {
@@ -118,6 +151,20 @@ export type TaskSeriesCreateInput = {
   priority?: string
   assignees?: string[]
   tags?: string[]
+  udas?: Record<string, string>
+}
+
+export type TaskSeriesModifyInput = {
+  title?: string
+  description?: string | null
+  recurrence_rule?: string
+  effective_from?: number
+  until?: number
+  priority?: string
+  assignees?: string[]
+  tags?: string[]
+  udas?: Record<string, string>
+  clear?: string[]
 }
 
 export type TaskSeriesListInput = {
@@ -234,7 +281,6 @@ export function queryTaskViews(
   return workspaceApiGet<TaskViewPage>(tasksRangePath(workspace, input))
 }
 
-// 兼容 patch（series 修改占位）。
-export function modifyTaskSeries(workspace: string, seriesRef: string, input: Partial<TaskSeriesCreateInput>): Promise<TaskSeriesView> {
+export function modifyTaskSeries(workspace: string, seriesRef: string, input: TaskSeriesModifyInput): Promise<TaskSeriesView> {
   return workspaceApiPatch<TaskSeriesView>(taskSeriesItemPath(workspace, seriesRef), input)
 }

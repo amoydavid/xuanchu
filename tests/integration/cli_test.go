@@ -822,7 +822,7 @@ func TestCLIUDAConfigAndImport(t *testing.T) {
 	run(t, bin, "--db", db, "add", "estimated", "task", "estimate:3")
 	run(t, bin, "--db", db, "add", "bigger", "task", "estimate:5")
 	exported := run(t, bin, "--db", db, "--json", "export")
-	if !strings.Contains(exported, `"estimate": "3"`) {
+	if !strings.Contains(exported, `"estimate": {`) || !strings.Contains(exported, `"raw": "3"`) {
 		t.Fatalf("export missing estimate UDA: %q", exported)
 	}
 	list := run(t, bin, "--db", db, "estimate:3", "list")
@@ -839,7 +839,7 @@ func TestCLIUDAConfigAndImport(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "orphan.json")
-	if err := os.WriteFile(path, []byte(`[{"uuid":"u1","title":"legacy task","status":"pending","entry":"1970-01-01T00:01:40Z","modified":"1970-01-01T00:01:40Z","legacy_field":"old"}]`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(`{"schema":"xuanchu.task-bundle/v1","exported_at":"1970-01-01T00:01:40Z","task_series":[],"tasks":[{"uuid":"u1","workspace_id":"source","title":"legacy task","status":"pending","entry":100,"modified":100,"udas":{"legacy_field":{"raw":"old","orphan":true}}}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	run(t, bin, "--db", db, "import", path)
@@ -1328,13 +1328,15 @@ func TestCLIPrefixFiltersAndTargetFilters(t *testing.T) {
 	}
 
 	exported := run(t, bin, "--db", db, "export")
-	var tasks []map[string]any
-	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+	var bundle struct {
+		Tasks []map[string]any `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(exported), &bundle); err != nil {
 		t.Fatalf("export output is not JSON: %v\n%s", err, exported)
 	}
-	uuid, _ := tasks[1]["uuid"].(string)
+	uuid, _ := bundle.Tasks[1]["uuid"].(string)
 	if uuid == "" {
-		t.Fatalf("exported tasks missing uuid: %#v", tasks)
+		t.Fatalf("exported tasks missing uuid: %#v", bundle.Tasks)
 	}
 	uuidOut := run(t, bin, "--db", db, uuid, "list")
 	if !strings.Contains(uuidOut, "home task") || strings.Contains(uuidOut, "work task") {
@@ -1557,19 +1559,20 @@ func TestCLIDueStoredAsEndOfDay(t *testing.T) {
 
 	run(t, bin, "--db", db, "add", "deadline", "due:2030-01-01")
 	exported := run(t, bin, "--db", db, "--json", "export")
-	var tasks []map[string]any
-	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+	var bundle struct {
+		Tasks []map[string]any `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(exported), &bundle); err != nil {
 		t.Fatalf("export not JSON: %v\n%s", err, exported)
 	}
-	if len(tasks) != 1 {
-		t.Fatalf("tasks = %#v", tasks)
+	if len(bundle.Tasks) != 1 {
+		t.Fatalf("tasks = %#v", bundle.Tasks)
 	}
-	due, _ := tasks[0]["due"].(string)
-	parsed, err := time.Parse(time.RFC3339, due)
-	if err != nil {
-		t.Fatalf("due %q not RFC3339: %v", due, err)
+	due, ok := bundle.Tasks[0]["due"].(float64)
+	if !ok {
+		t.Fatalf("due is not unix timestamp: %#v", bundle.Tasks[0]["due"])
 	}
-	local := parsed.In(time.Local)
+	local := time.Unix(int64(due), 0).In(time.Local)
 	if local.Year() != 2030 || local.Month() != time.January || local.Day() != 1 {
 		t.Fatalf("due local date = %v, want 2030-01-01", local)
 	}
@@ -1645,19 +1648,21 @@ func TestCLIAnnotateDenotate(t *testing.T) {
 	run(t, bin, "--db", db, "add", "annotated task")
 	run(t, bin, "--db", db, "1", "annotate", "first note")
 	exported := run(t, bin, "--db", db, "--json", "export")
-	var tasks []struct {
-		Annotations []struct {
-			ID          string `json:"id"`
-			Description string `json:"description"`
-		} `json:"annotations"`
+	var bundle struct {
+		Tasks []struct {
+			Annotations []struct {
+				ID          string `json:"id"`
+				Description string `json:"description"`
+			} `json:"annotations"`
+		} `json:"tasks"`
 	}
-	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+	if err := json.Unmarshal([]byte(exported), &bundle); err != nil {
 		t.Fatalf("export JSON = %q: %v", exported, err)
 	}
-	if len(tasks) != 1 || len(tasks[0].Annotations) != 1 || tasks[0].Annotations[0].Description != "first note" {
-		t.Fatalf("exported tasks = %#v, want one annotation", tasks)
+	if len(bundle.Tasks) != 1 || len(bundle.Tasks[0].Annotations) != 1 || bundle.Tasks[0].Annotations[0].Description != "first note" {
+		t.Fatalf("exported tasks = %#v, want one annotation", bundle.Tasks)
 	}
-	annotation := tasks[0].Annotations[0]
+	annotation := bundle.Tasks[0].Annotations[0]
 	if annotation.ID == "" {
 		t.Fatalf("annotation id is empty: %#v", annotation)
 	}
@@ -1667,12 +1672,12 @@ func TestCLIAnnotateDenotate(t *testing.T) {
 	}
 	run(t, bin, "--db", db, "1", "denotate", annotation.ID)
 	exported = run(t, bin, "--db", db, "--json", "export")
-	tasks = nil
-	if err := json.Unmarshal([]byte(exported), &tasks); err != nil {
+	bundle.Tasks = nil
+	if err := json.Unmarshal([]byte(exported), &bundle); err != nil {
 		t.Fatalf("export JSON after denotate = %q: %v", exported, err)
 	}
-	if len(tasks) != 1 || len(tasks[0].Annotations) != 0 {
-		t.Fatalf("exported tasks after denotate = %#v, want no annotations", tasks)
+	if len(bundle.Tasks) != 1 || len(bundle.Tasks[0].Annotations) != 0 {
+		t.Fatalf("exported tasks after denotate = %#v, want no annotations", bundle.Tasks)
 	}
 }
 
@@ -2721,6 +2726,9 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 	if listResp.Total != 1 || listResp.Items[0].Title != "每日巡检" {
 		t.Fatalf("list --json = %#v", listResp)
 	}
+	if strings.Contains(out, `"Items"`) || strings.Contains(out, `"RecurrenceRule"`) {
+		t.Fatalf("list --json 不应泄漏 Go 字段名: %s", out)
+	}
 
 	// 提取 series ID（从 list --json）。
 	seriesID := ""
@@ -2754,18 +2762,16 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 	// first_due 2030-01-01 23:59:59 本地。用 series info --json 取 first_due。
 	out = run(t, bin, "--db", db, "--json", "series", "info", seriesID)
 	var infoResp struct {
-		Series struct {
-			ID       string `json:"id"`
-			FirstDue int64  `json:"FirstDue"`
-		} `json:"Series"`
+		ID       string `json:"id"`
+		FirstDue int64  `json:"first_due"`
 	}
 	if err := json.Unmarshal([]byte(out), &infoResp); err != nil {
 		t.Fatalf("info --json 解析失败: %v body=%s", err, out)
 	}
-	if infoResp.Series.FirstDue == 0 {
+	if infoResp.FirstDue == 0 {
 		t.Fatalf("first_due 为 0, info body=%s", out)
 	}
-	occRef := "occ:" + infoResp.Series.ID + ":" + strconv.FormatInt(infoResp.Series.FirstDue, 10)
+	occRef := "occ:" + infoResp.ID + ":" + strconv.FormatInt(infoResp.FirstDue, 10)
 	out = run(t, bin, "--db", db, "series", "skip", seriesID, occRef)
 	if !strings.Contains(out, "已跳过实例") {
 		t.Fatalf("skip 输出: %q", out)

@@ -66,10 +66,7 @@ const CORE_FIELDS = new Set([
   "annotations",
   "depends",
   "blocked_by",
-  "recur",
   "parent",
-  "mask",
-  "imask",
   "assignees",
   "assignee_display_names",
   "assignee_names",
@@ -90,8 +87,9 @@ const VALID_STATUSES = new Set([
   "completed",
   "deleted",
   "waiting",
-  "recurring",
 ])
+
+const RETIRED_RECURRENCE_FIELDS = ["recur", "mask", "imask"] as const
 
 const VALID_PRIORITIES = new Set(["H", "M", "L"])
 const IMPORT_ID_META = "__xuanchu_import_id"
@@ -284,7 +282,6 @@ export function buildTaskImportTemplateRows(): TaskImportRow[] {
       until: "",
       start: "",
       end: "",
-      recur: "",
       parent: "",
       task_slug: "",
       annotations: "",
@@ -301,6 +298,7 @@ function normalizeRawTasks(
   const nowISO = options.nowISO ?? new Date().toISOString()
   const warnings: TaskImportIssue[] = []
   const normalizedRows = rows.map((row) => (isRecord(row) ? row : {}))
+  normalizedRows.forEach(assertNoRetiredRecurrenceFields)
   const tasks = normalizedRows.map((row, index) => {
     const originalProject = stringOrNull(row.project)
     if (originalProject && originalProject !== options.projectSlug) {
@@ -341,10 +339,7 @@ function baseTask(
   }
   assignOptionalString(row, task, "description")
   assignOptionalString(row, task, "task_slug")
-  assignOptionalString(row, task, "recur")
   assignOptionalString(row, task, "parent")
-  assignOptionalString(row, task, "mask")
-  assignOptionalInt(row, task, "imask")
   assignOptionalDate(row, task, "end")
   assignOptionalDate(row, task, "due")
   assignOptionalDate(row, task, "start")
@@ -393,6 +388,14 @@ function baseTask(
     }
   }
   return task
+}
+
+function assertNoRetiredRecurrenceFields(row: Record<string, unknown>) {
+  for (const field of RETIRED_RECURRENCE_FIELDS) {
+    if (Object.hasOwn(row, field)) {
+      throw new Error(`${field} 字段已不支持；循环任务请使用“新建循环任务”入口`)
+    }
+  }
 }
 
 function normalizeSpreadsheetRow(row: TaskImportRow): Record<string, unknown> {
@@ -618,18 +621,6 @@ function assignOptionalDate(
   }
   const value = normalizeDateTime(row[key as string])
   task[key] = (value ?? null) as never
-}
-
-function assignOptionalInt(
-  row: Record<string, unknown>,
-  task: TaskImportTask,
-  key: keyof TaskImportTask
-) {
-  if (!(key in row)) {
-    return
-  }
-  const value = Number(row[key as string])
-  task[key] = (Number.isFinite(value) ? Math.trunc(value) : null) as never
 }
 
 function normalizeDateTime(value: unknown): string | null {

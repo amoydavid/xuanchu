@@ -18,6 +18,7 @@ import { useProjectLayout } from "../project/project-layout"
 import { TaskCreateDialog } from "./task-create-dialog"
 import { ProjectTaskToolbar } from "./project-task-toolbar"
 import { TaskTable } from "./task-table"
+import { listTaskSeries } from "../api/task-series-api"
 
 type ProjectTasksPageProps = {
   projectSlug: string
@@ -34,7 +35,8 @@ export function ProjectTasksPage({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [importOpen, setImportOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
+	const [createOpen, setCreateOpen] = useState(false)
+	const [createMode, setCreateMode] = useState<"normal" | "recurring">("normal")
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
   const filter: TaskFilter = useMemo(
     () => ({
@@ -93,10 +95,14 @@ export function ProjectTasksPage({
   })
   const { closed, setTabActions } = useProjectLayout()
   const tasks = useProjectTasksQuery(workspaceSlug, projectSlug, filterQuery)
-  const members = useQuery({
+	const members = useQuery({
     queryKey: ["workspace-members", workspaceSlug],
     queryFn: () => getWorkspaceMembers(workspaceSlug),
-  })
+	})
+	const series = useQuery({
+		queryKey: ["task-series-count", workspaceSlug, projectSlug],
+		queryFn: () => listTaskSeries(workspaceSlug, { project: projectSlug, status: "active", limit: 1 }),
+	})
 
   const taskRows = useMemo(() => tasks.data ?? [], [tasks.data])
   const assigneeOptions = useMemo(
@@ -156,12 +162,21 @@ export function ProjectTasksPage({
 
   return (
     <div className="space-y-4">
-      <ProjectTaskToolbar
+		<ProjectTaskToolbar
         assigneeOptions={assigneeOptions}
         canCreateTask={canEditTasks}
         filter={filter}
         navigateTo="/workspaces/$workspaceSlug/projects/$projectSlug/tasks"
-        onCreateTask={() => setCreateOpen(true)}
+			onCreateTask={() => { setCreateMode("normal"); setCreateOpen(true) }}
+			onCreateRecurringTask={() => { setCreateMode("recurring"); setCreateOpen(true) }}
+			onOpenRecurringTasks={() => {
+				void navigate({
+					to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series",
+					params: { workspaceSlug, projectSlug },
+					search: (previous) => previous,
+				})
+			}}
+			recurringTaskCount={series.data?.total ?? 0}
         toParams={{ workspaceSlug, projectSlug }}
       />
       <TaskTable
@@ -179,7 +194,9 @@ export function ProjectTasksPage({
         projectSlug={projectSlug}
         workspaceSlug={workspaceSlug}
       />
-      <TaskCreateDialog
+		<TaskCreateDialog
+			initialMode={createMode}
+			key={`${createMode}-${createOpen ? "open" : "closed"}`}
         filters={filterQuery}
         onOpenChange={setCreateOpen}
         open={createOpen}

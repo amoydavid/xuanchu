@@ -1,6 +1,6 @@
 # 璇础循环任务系列、范围投影与按需物化 Implementation Plan
 
-> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：全部 14 个 Task + spec 收敛 + 评审修复完成。**
+> **实施进度（2026-07-13，feat/task-series-recurrence 分支）：14 个基础 Task 已实现；第二轮评审修复见 `2026-07-13-task-series-review-remediation.md`，最终状态以该计划的验证记录为准。**
 >
 > - **Task 1-7 ✅**：后端核心闭环
 > - **Task 8 ✅**：HTTP Series CRUD + Task 范围查询 + Remote client
@@ -9,7 +9,7 @@
 > - **Task 11 ✅**：Web 原生类型 + task-series-api + 任务页面板路由
 > - **Task 12 ✅**：面板 list/detail/stop-dialog + recurrence-preview + 创建弹窗 initialMode
 > - **Task 13 ✅**：occurrence badge/banner + My Tasks 5 预设 + 类型扩展
-> - **Task 14 ✅**：xuanchu.task-bundle/v1 原生 bundle round-trip + 删除 internal/recurrence + README/ROADMAP 更新 + 全量验证（go test/CGO build/vet/web typecheck/lint/build 通过）
+> - **Task 14 ✅**：xuanchu.task-bundle/v1 原生 bundle round-trip + 删除 internal/recurrence + README/ROADMAP 更新；评审后补齐 project scope、事务回滚、负责人和跨入口契约
 > - **Spec 收敛补充 ✅**（2026-07-12 追加）：
 >   - §17.4 项目统计分离：ProjectTaskSummary 普通计数排除 occurrence + 新增 series_metrics（recurring/active series count、open/overdue occurrence count）
 >   - §17.3 HTTP `GET /tasks` 统一返回 TaskViewPage（不再返回裸任务数组），`/reports/{name}` 共用 handleTaskListReport
@@ -23,7 +23,7 @@
 >   - **P1**：前端 projected uuid 崩溃修复（uuid 改可选 + taskKey/taskShortLabel）；Series CRUD 事务边界 + ValidateSeries 错误；HTTP recur/clear_recur 显式拒绝；detectLegacyRecurringData 补 recur/mask/i_mask 检查；MCP task_get 支持 occurrence_ref + import/export 迁移 native bundle；Web Series 面板接入真实组件（List/Detail/Dialog/StopDialog）+ limit=1 修复；My Tasks active status bug 修复；任务详情 occurrence "查看循环任务"入口
 >   - **P2**：Series assignees UserInfo 退化修复（完整 display_name/email/external_ids）
 >
-> **已知遗留**：smoke:editing 移动端（375px）tab 交互超时——main 分支既有 CSS/Playwright 视口问题，非本轮回归。
+> **已知遗留**：无。移动端按钮横向溢出与 Markdown 编辑器消费 Escape 导致的 smoke 超时已在第二轮评审修复。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -642,6 +642,59 @@ func TestTaskQueryCanIncludeCompletedAndDeleted(t *testing.T) {
 	}
 }
 
+func TestTaskQueryExpandsOccurrencesAndAppliesTaskType(t *testing.T) {
+	srv, store := newTestServerWithOptions(t, Options{})
+	svc, err := app.NewService(app.ServiceOptions{Store: store, Clock: fixedTestClock()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDue := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC).Unix()
+	if _, err := svc.AddTaskSeries(app.AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: firstDue,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session := connectClient(t, srv)
+
+	result := callTool(t, session, "task_query", TaskQueryInput{
+		ProjectID: project.ID, DueAfter: "2030-01-01", DueBefore: "2030-01-02", TaskType: "occurrence",
+	})
+	if result.IsError {
+		t.Fatalf("task_query occurrence error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	if data["occurrence_mode"] != "expand" || data["total"].(float64) == 0 {
+		t.Fatalf("task_query data = %#v want expanded occurrence", data)
+	}
+	for _, raw := range nestedSlice(t, data, "items") {
+		item, ok := raw.(map[string]any)
+		if !ok || item["recurrence_info"] == nil {
+			t.Fatalf("task_type=occurrence item = %#v", raw)
+		}
+	}
+
+	normal := callTool(t, session, "task_query", TaskQueryInput{
+		ProjectID: project.ID, DueAfter: "2030-01-01", DueBefore: "2030-01-02", TaskType: "normal",
+	})
+	if normal.IsError {
+		t.Fatalf("task_query normal error: %v", parseError(t, normal))
+	}
+	if got := envelopeData(t, parseEnvelope(t, normal))["total"]; got != float64(0) {
+		t.Fatalf("task_type=normal total = %v want 0", got)
+	}
+
+	missingRange := callTool(t, session, "task_query", TaskQueryInput{
+		ProjectID: project.ID, OccurrenceMode: "expand", DueAfter: "2030-01-01",
+	})
+	if got := parseError(t, missingRange).Code; got != "task_occurrence_range_required" {
+		t.Fatalf("missing range code = %q want task_occurrence_range_required", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // task.done 集成测试
 // ---------------------------------------------------------------------------

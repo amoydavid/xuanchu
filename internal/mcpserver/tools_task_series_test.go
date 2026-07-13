@@ -15,6 +15,7 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	firstDue := int64(1893456000)
 	result := callTool(t, session, "task_series_add", TaskSeriesAddInput{
 		Project: "ops", Title: "每日巡检", RecurrenceRule: "daily", FirstDue: &firstDue,
+		Assignees: []string{"local"},
 	})
 	if result.IsError {
 		t.Fatalf("series_add error: %v", parseError(t, result))
@@ -30,6 +31,14 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	}
 	if series["title"] != "每日巡检" || series["status"] != "active" {
 		t.Fatalf("series = %#v", series)
+	}
+	assignees, ok := series["assignees"].([]any)
+	if !ok || len(assignees) != 1 || assignees[0].(map[string]any)["id"] == nil {
+		t.Fatalf("assignees 未使用统一 UserInfo JSON: %#v", series["assignees"])
+	}
+	createdBy, ok := series["created_by"].(map[string]any)
+	if !ok || createdBy["id"] == nil {
+		t.Fatalf("created_by 未使用统一 UserInfo JSON: %#v", series["created_by"])
 	}
 	seriesID, _ := series["id"].(string)
 	if seriesID == "" {
@@ -51,6 +60,11 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	if data2["title"] != "每日巡检" {
 		t.Fatalf("get title = %v", data2["title"])
 	}
+	for _, field := range []string{"open_occurrences", "recent_completed", "recent_skipped"} {
+		if _, ok := data2[field]; !ok {
+			t.Fatalf("series_get 缺少实例分组 %s: %#v", field, data2)
+		}
+	}
 }
 
 func TestMCPTaskSeriesList(t *testing.T) {
@@ -71,6 +85,34 @@ func TestMCPTaskSeriesList(t *testing.T) {
 	total, _ := data["total"].(float64)
 	if total != 1 {
 		t.Fatalf("total = %v want 1", total)
+	}
+}
+
+func TestMCPTaskSeriesModifyAppliesClearFields(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+	callTool(t, session, "project_add", map[string]any{"slug": "ops", "name": "Ops"})
+	firstDue := int64(1893456000)
+	until := int64(1896134400)
+	description, priority := "旧说明", "H"
+	addResult := callTool(t, session, "task_series_add", TaskSeriesAddInput{
+		Project: "ops", Title: "每日巡检", Description: &description,
+		RecurrenceRule: "daily", FirstDue: &firstDue, Until: &until,
+		Priority: &priority, Tags: []string{"ops"},
+	})
+	seriesID := parseEnvelope(t, addResult).Data.(map[string]any)["series"].(map[string]any)["id"].(string)
+
+	result := callTool(t, session, "task_series_modify", map[string]any{
+		"id": seriesID, "clear": []string{"description", "priority", "tags", "until"},
+	})
+	if result.IsError {
+		t.Fatalf("series_modify error: %v", parseError(t, result))
+	}
+	data := parseEnvelope(t, result).Data.(map[string]any)
+	for _, field := range []string{"description", "priority", "tags", "until"} {
+		if _, ok := data[field]; ok {
+			t.Fatalf("clear 后仍返回 %s: %#v", field, data)
+		}
 	}
 }
 
