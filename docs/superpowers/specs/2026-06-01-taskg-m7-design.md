@@ -605,13 +605,12 @@ MCP tool 到 token capability / app permission 的映射：
 
 输入：
 
-- `query` 可选，Taskwarrior 风格过滤表达式。
-- `status` 可选。
+- `query` 可选，任务过滤表达式；其中可显式包含 status 条件。
+- `status` 可选，显式状态过滤。
 - `project` / `project_id` 可选。
 - `workspace` 可选。
 - `limit` 可选。
-- `include_completed` 可选。
-- `include_deleted` 可选。
+- `include_deleted` 可选；仅在没有显式状态条件时生效。
 
 输出：
 
@@ -621,7 +620,10 @@ MCP tool 到 token capability / app permission 的映射：
 
 规则：
 
-- 默认不返回 deleted。
+- 默认返回所有非 deleted 任务，包括 pending、waiting、completed。
+- `include_deleted=true` 在默认集合上追加 deleted，不改变 completed 的可见性。
+- 显式 `status` 或 `query` 中的 status 条件优先，不再追加默认状态条件，并忽略 `include_deleted`。
+- 不提供 `include_completed`；completed 已包含在默认结果中。
 - `limit` 默认 200，最大 1000；超过最大值或非正数返回 `api_bad_limit`。
 - M7 Phase 0b 必须给 `/api/v1/tasks` 同步增加相同 limit 语义并更新 OpenAPI，避免 REST/MCP 行为分叉。
 - token project scope 必须叠加到 query。

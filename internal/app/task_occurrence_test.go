@@ -186,6 +186,42 @@ func TestQueryTaskViewsMaterializedModeReturnsOnlyMaterialized(t *testing.T) {
 	}
 }
 
+func TestQueryTaskViewsDefaultsToAllNonDeletedTasks(t *testing.T) {
+	svc, closeFn := newTestService(t, 1783900000)
+	t.Cleanup(closeFn)
+
+	pending, err := svc.Add(AddInput{Title: "pending item"})
+	if err != nil {
+		t.Fatalf("Add pending: %v", err)
+	}
+	completed, err := svc.Add(AddInput{Title: "completed item"})
+	if err != nil {
+		t.Fatalf("Add completed: %v", err)
+	}
+	deleted, err := svc.Add(AddInput{Title: "deleted item"})
+	if err != nil {
+		t.Fatalf("Add deleted: %v", err)
+	}
+	if err := svc.Done(completed.UUID); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	if err := svc.Delete(deleted.UUID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	page, err := svc.QueryTaskViews(TaskViewQuery{})
+	if err != nil {
+		t.Fatalf("QueryTaskViews: %v", err)
+	}
+	ids := make(map[string]bool, len(page.Items))
+	for _, item := range page.Items {
+		ids[item.ID] = true
+	}
+	if !ids[pending.UUID] || !ids[completed.UUID] || ids[deleted.UUID] {
+		t.Fatalf("default ids = %#v, want pending/completed and no deleted", ids)
+	}
+}
+
 func TestQueryTaskViewsExpandMergesProjectedAndMaterializedWithoutWrites(t *testing.T) {
 	svc, _, day1, day2, day3 := newOccurrenceMergeFixture(t)
 	store := svc.store

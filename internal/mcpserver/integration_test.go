@@ -619,10 +619,11 @@ func TestTaskQueryReturnsTasks(t *testing.T) {
 	}
 }
 
-func TestTaskQueryCanIncludeCompletedAndDeleted(t *testing.T) {
+func TestTaskQueryDefaultsToAllNonDeletedTasks(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
+	pendingUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "pending item"})))
 	doneUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "done item"})))
 	deleteUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "deleted item"})))
 	if result := callTool(t, session, "task_done", TaskIDInput{ID: doneUUID}); result.IsError {
@@ -632,13 +633,65 @@ func TestTaskQueryCanIncludeCompletedAndDeleted(t *testing.T) {
 		t.Fatalf("task.delete error: %v", parseError(t, result))
 	}
 
-	result := callTool(t, session, "task_query", TaskQueryInput{IncludeCompleted: true, IncludeDeleted: true})
+	result := callTool(t, session, "task_query", TaskQueryInput{})
 	if result.IsError {
 		t.Fatalf("task.query error: %v", parseError(t, result))
 	}
 	data := envelopeData(t, parseEnvelope(t, result))
 	if count := data["count"]; count != float64(2) {
-		t.Fatalf("count = %v, want 2", count)
+		t.Fatalf("count = %v, want pending + completed", count)
+	}
+	items := nestedSlice(t, data, "items")
+	ids := map[string]bool{}
+	for _, raw := range items {
+		item := raw.(map[string]any)
+		if id, _ := item["uuid"].(string); id != "" {
+			ids[id] = true
+		}
+	}
+	if !ids[pendingUUID] || !ids[doneUUID] || ids[deleteUUID] {
+		t.Fatalf("default ids = %#v, want pending/completed and no deleted", ids)
+	}
+}
+
+func TestTaskQueryIncludeDeletedExtendsDefaultSet(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	callTool(t, session, "task_add", TaskAddInput{Title: "pending item"})
+	doneUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "done item"})))
+	deleteUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "deleted item"})))
+	if result := callTool(t, session, "task_done", TaskIDInput{ID: doneUUID}); result.IsError {
+		t.Fatalf("task.done error: %v", parseError(t, result))
+	}
+	if result := callTool(t, session, "task_delete", TaskIDInput{ID: deleteUUID}); result.IsError {
+		t.Fatalf("task.delete error: %v", parseError(t, result))
+	}
+
+	result := callTool(t, session, "task_query", TaskQueryInput{IncludeDeleted: true})
+	if result.IsError {
+		t.Fatalf("task.query error: %v", parseError(t, result))
+	}
+	if count := envelopeData(t, parseEnvelope(t, result))["count"]; count != float64(3) {
+		t.Fatalf("count = %v, want all three statuses", count)
+	}
+}
+
+func TestTaskQueryExplicitStatusFilterOverridesDefaultVisibility(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	deleteUUID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "deleted item"})))
+	if result := callTool(t, session, "task_delete", TaskIDInput{ID: deleteUUID}); result.IsError {
+		t.Fatalf("task.delete error: %v", parseError(t, result))
+	}
+
+	result := callTool(t, session, "task_query", TaskQueryInput{Query: "status:deleted"})
+	if result.IsError {
+		t.Fatalf("task.query error: %v", parseError(t, result))
+	}
+	if count := envelopeData(t, parseEnvelope(t, result))["count"]; count != float64(1) {
+		t.Fatalf("count = %v, want explicit deleted task", count)
 	}
 }
 

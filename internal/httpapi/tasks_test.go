@@ -635,6 +635,42 @@ func TestHandleTaskList_RestfulStatusFilter(t *testing.T) {
 	}
 }
 
+func TestHandleTaskList_DefaultsToAllNonDeletedTasks(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := svc.Add(app.AddInput{Title: "default pending task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := svc.Add(app.AddInput{Title: "default completed task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := svc.Add(app.AddInput{Title: "default deleted task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(completed.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(deleted.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, pending.Title) || !strings.Contains(body, completed.Title) || strings.Contains(body, deleted.Title) {
+		t.Fatalf("default visibility failed: %s", body)
+	}
+}
+
 func TestHandleTaskList_RestfulPriorityFilter(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})

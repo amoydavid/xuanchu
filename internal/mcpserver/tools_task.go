@@ -8,7 +8,6 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
-	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -37,15 +36,14 @@ func (in TaskAddInput) scopeInput() RequestScopeInput {
 }
 
 type TaskQueryInput struct {
-	Workspace        string `json:"workspace,omitempty"`
-	Project          string `json:"project,omitempty"`
-	ProjectID        string `json:"project_id,omitempty"`
-	Query            string `json:"query,omitempty"`
-	Status           string `json:"status,omitempty"`
-	Limit            int    `json:"limit,omitempty"`
-	Offset           int    `json:"offset,omitempty"`
-	IncludeCompleted bool   `json:"include_completed,omitempty"`
-	IncludeDeleted   bool   `json:"include_deleted,omitempty"`
+	Workspace      string `json:"workspace,omitempty"`
+	Project        string `json:"project,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	Query          string `json:"query,omitempty" jsonschema:"task filter expression; an explicit status predicate overrides default visibility"`
+	Status         string `json:"status,omitempty" jsonschema:"explicit task status filter; overrides default non-deleted visibility"`
+	Limit          int    `json:"limit,omitempty"`
+	Offset         int    `json:"offset,omitempty"`
+	IncludeDeleted bool   `json:"include_deleted,omitempty" jsonschema:"include deleted tasks in addition to the default non-deleted set; ignored when status is explicit"`
 	// occurrence 查询参数（spec §13.3）。
 	OccurrenceMode string `json:"occurrence_mode,omitempty" jsonschema:"auto|materialized|expand"`
 	DueAfter       string `json:"due_after,omitempty" jsonschema:"YYYY-MM-DD"`
@@ -290,7 +288,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		return successWithEnvelope(data, "Created task "+created.UUID)
 	})
 
-	addTool(s, opts, &mcp.Tool{Name: "task_query", Description: "Query tasks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "task_query", Description: "Query tasks; read-only. Defaults to all non-deleted tasks unless status is explicit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		limit, err := limitOrDefault(in.Limit)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -299,8 +297,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.TaskViewQuery{Status: taskQueryStatus(in), Limit: limit, Offset: in.Offset, OccurrenceMode: app.OccurrenceMode(strings.TrimSpace(in.OccurrenceMode))}
-		statuses := taskQueryStatuses(in)
+		input := app.TaskViewQuery{Status: strings.TrimSpace(in.Status), Limit: limit, Offset: in.Offset, OccurrenceMode: app.OccurrenceMode(strings.TrimSpace(in.OccurrenceMode))}
 		if strings.TrimSpace(in.Query) != "" {
 			expr, err := query.ParseFilterExpr([]string{in.Query})
 			if err != nil {
@@ -308,18 +305,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			}
 			input.Query = expr
 		}
-		if len(statuses) > 0 {
-			var statusExpr query.Expr
-			for _, status := range statuses {
-				predicate := query.Predicate{Attribute: query.AttrStatus, Operator: query.OpEqual, Value: query.StringValue(status)}
-				if statusExpr == nil {
-					statusExpr = predicate
-				} else {
-					statusExpr = query.Or(statusExpr, predicate)
-				}
-			}
-			input.Query = query.And(input.Query, statusExpr)
-		}
+		hasExplicitStatus := input.Status != "" || query.ReferencesAttribute(input.Query, query.AttrStatus)
 		if in.Project != "" || in.ProjectID != "" {
 			project, err := svc.ProjectInfo(projectRefForScope(in.Project, in.ProjectID))
 			if err != nil {
@@ -327,8 +313,9 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			}
 			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 		}
-		if taskQueryExcludeDeleted(in) {
-			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrStatus, Operator: query.OpNotEqual, Value: query.StringValue(task.StatusDeleted)})
+		if !hasExplicitStatus && in.IncludeDeleted {
+			// 显式的非空状态谓词用于表达“所有状态”，并阻止 App 注入默认非删除条件。
+			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrStatus, Operator: query.OpNotNull})
 		}
 		if taskType := strings.TrimSpace(in.TaskType); taskType != "" && taskType != "all" {
 			if taskType != "normal" && taskType != "occurrence" {
@@ -623,58 +610,6 @@ func projectRefForScope(project, projectID string) string {
 		return strings.TrimSpace(projectID)
 	}
 	return strings.TrimSpace(project)
-}
-
-func taskQueryStatus(in TaskQueryInput) string {
-	status := strings.TrimSpace(in.Status)
-	if status != "" {
-		return status
-	}
-	switch {
-	case in.IncludeCompleted && !in.IncludeDeleted:
-		return task.StatusCompleted
-	case in.IncludeDeleted && !in.IncludeCompleted:
-		return task.StatusDeleted
-	case in.IncludeCompleted && in.IncludeDeleted:
-		return ""
-	default:
-		return ""
-	}
-}
-
-func taskQueryExcludeDeleted(in TaskQueryInput) bool {
-	status := strings.TrimSpace(in.Status)
-	if status != "" {
-		return false
-	}
-	return !in.IncludeDeleted
-}
-
-func taskQueryStatuses(in TaskQueryInput) []string {
-	if strings.TrimSpace(in.Status) != "" || !in.IncludeCompleted || !in.IncludeDeleted {
-		return nil
-	}
-	return []string{task.StatusCompleted, task.StatusDeleted}
-}
-
-func taskQueryList(svc *app.Service, input app.ListInput, statuses []string) ([]task.Task, error) {
-	if len(statuses) == 0 {
-		return svc.List(input)
-	}
-	rows := make([]task.Task, 0)
-	for _, status := range statuses {
-		statusInput := input
-		statusInput.Status = status
-		statusRows, err := svc.List(statusInput)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, statusRows...)
-		if input.Limit > 0 && len(rows) >= input.Limit {
-			return rows[:input.Limit], nil
-		}
-	}
-	return rows, nil
 }
 
 func applyClearFields(fields []string, mod *app.ModifyInput) error {

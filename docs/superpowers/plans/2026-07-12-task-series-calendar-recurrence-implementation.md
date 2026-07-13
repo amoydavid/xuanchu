@@ -994,7 +994,7 @@ git commit -m "feat: 增加循环系列命令"
 
 - Tools: `task_series_add`、`task_series_list`、`task_series_get`、`task_series_modify`、`task_series_stop`、`task_series_list_occurrences`、`task_series_occurrence_skip`.
 - `task_series_list` adds `status/q/assignee/sort=next|title|modified/limit/offset` with HTTP-equivalent filtered total.
-- Task query adds `due_after`、`due_before`、`occurrence_mode`、`task_type=all|normal|occurrence`.
+- Task query adds `due_after`、`due_before`、`occurrence_mode`、`task_type=all|normal|occurrence`; defaults to all non-deleted statuses, uses `include_deleted` only to extend that set, and has no `include_completed`.
 - `report_run` adds `due_after`、`due_before`、`occurrence_mode`、`task_type` and returns TaskViewPage; `urgency_explain` accepts occurrence_ref.
 
 - [ ] **Step 1: 写 schema 与行为失败测试**
@@ -1015,7 +1015,7 @@ Use `recurrence_rule`, `first_due|first_due_date`, `until|until_date`, and `effe
 
 - [ ] **Step 4: 迁移 task tools**
 
-`task_add/task_modify` schemas contain no recur. `task_query` exposes due range、occurrence_mode、task_type, builds `TaskViewQuery` and returns the same page shape as HTTP; `task_type=all` adds no predicate and normal/occurrence compile to the shared AST. Legal first-write tools pass occurrence_ref into App `WithTaskForWrite`; projected stop/reopen return status errors, while denotate/link-remove use the existing-task resolver and return not found without materialization. `task_link_list` returns the projected empty list and `task_get` returns the projected view without writes. `task_export/import` moves to Task 14's native bundle; until then keep tools compiling but mark their old payload tests for replacement in the same branch, never ship an intermediate release.
+`task_add/task_modify` schemas contain no recur. `task_query` exposes due range、occurrence_mode、task_type, builds `TaskViewQuery` and returns the same page shape as HTTP; `task_type=all` adds no predicate and normal/occurrence compile to the shared AST. Centralize status visibility in `QueryTaskViews`: with no explicit status in `status` or query AST, inject `status != deleted`, so HTTP and MCP share the same default; MCP `include_deleted=true` instead keeps every status, while an explicit status condition takes precedence. Remove `include_completed` because completed is already in the default set. Legal first-write tools pass occurrence_ref into App `WithTaskForWrite`; projected stop/reopen return status errors, while denotate/link-remove use the existing-task resolver and return not found without materialization. `task_link_list` returns the projected empty list and `task_get` returns the projected view without writes. `task_export/import` moves to Task 14's native bundle; until then keep tools compiling but mark their old payload tests for replacement in the same branch, never ship an intermediate release.
 
 Migrate `report_run` from `ListReport`/task arrays to `RunTaskViewReport`/TaskViewPage and add the range/mode/task_type inputs. Change `urgency_explain` to pass the original taskRef to the App projected-aware urgency method instead of resolving UUID first. Both text and structuredContent use the same view/page envelope.
 

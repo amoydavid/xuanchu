@@ -1,5 +1,5 @@
 {
-  "description": "Query tasks; read-only.",
+  "description": "Query tasks; read-only. Defaults to all non-deleted tasks unless status is explicit.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -11,10 +11,8 @@
         "description": "YYYY-MM-DD",
         "type": "string"
       },
-      "include_completed": {
-        "type": "boolean"
-      },
       "include_deleted": {
+        "description": "include deleted tasks in addition to the default non-deleted set; ignored when status is explicit",
         "type": "boolean"
       },
       "limit": {
@@ -34,9 +32,11 @@
         "type": "string"
       },
       "query": {
+        "description": "task filter expression; an explicit status predicate overrides default visibility",
         "type": "string"
       },
       "status": {
+        "description": "explicit task status filter; overrides default non-deleted visibility",
         "type": "string"
       },
       "task_type": {

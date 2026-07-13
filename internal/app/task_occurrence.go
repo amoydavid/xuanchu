@@ -280,10 +280,14 @@ func (s *Service) QueryTaskViews(q TaskViewQuery) (TaskViewPage, error) {
 	if err := s.refreshAutomaticState(); err != nil {
 		return TaskViewPage{}, err
 	}
-	// 默认 status：无 query 且无显式 status 时默认 pending（与 List 行为一致）。
-	status := q.Status
-	if status == "" && q.Query == nil {
-		status = domain.StatusPending
+	// 默认可见所有非删除任务；显式 status 或 query 中的 status 条件优先。
+	status := strings.TrimSpace(q.Status)
+	if status == "" && !query.ReferencesAttribute(q.Query, query.AttrStatus) {
+		q.Query = query.And(q.Query, query.Predicate{
+			Attribute: query.AttrStatus,
+			Operator:  query.OpNotEqual,
+			Value:     query.StringValue(domain.StatusDeleted),
+		})
 	}
 	// active context filter + project scope（与 List 一致）。
 	contextExpr, err := s.activeContextFilter(q.NoContext)

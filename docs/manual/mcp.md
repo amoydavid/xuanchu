@@ -353,18 +353,22 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `task_query`
 
-查询任务。只读。
+查询任务。只读。默认返回所有非删除任务；显式 `status` 或 `query` 中的状态条件优先。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | workspace slug 或 UUID |
 | `project` | string | 否 | project slug |
 | `project_id` | string | 否 | project UUID |
-| `query` | string | 否 | Taskwarrior 风格查询表达式 |
+| `query` | string | 否 | 任务过滤表达式 |
 | `status` | string | 否 | 按状态过滤 |
 | `limit` | int | 否 | 最大返回数，默认 200，最大 1000 |
-| `include_completed` | bool | 否 | 包含已完成 |
-| `include_deleted` | bool | 否 | 包含已删除 |
+| `offset` | int | 否 | 分页偏移 |
+| `include_deleted` | bool | 否 | 在默认非删除集合上追加 deleted；显式状态条件存在时忽略 |
+| `due_after` | string | 否 | 截止范围起始日期，`YYYY-MM-DD` |
+| `due_before` | string | 否 | 截止范围结束日期，`YYYY-MM-DD`，包含当天 |
+| `occurrence_mode` | string | 否 | `auto`/`materialized`/`expand` |
+| `task_type` | string | 否 | `all`/`normal`/`occurrence` |
 
 #### `task_get`
 

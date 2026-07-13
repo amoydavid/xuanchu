@@ -1113,6 +1113,8 @@ task_type: all|normal|occurrence
 
 约束、366 天上限、过滤顺序、稳定排序、分页和错误码与 HTTP 完全一致。Agent 不需要知道如何展开 recurrence。
 
+`GET /tasks` 与 `task_query` 的状态可见性遵循统一查询契约：默认合并所有非 deleted 的普通任务和 occurrence，包括 completed。MCP 的 `include_deleted=true` 在该集合上追加 deleted。显式 `status` 或 `query` 中的 status 条件优先，此时不注入默认条件；MCP 同时忽略 `include_deleted`。不再提供 `include_completed`。
+
 ### 14.3 输出
 
 - `structuredContent.data` 返回与 HTTP `data` 等价的 SeriesView / TaskOccurrenceView，不构造 series 对应的 Task。

@@ -124,6 +124,29 @@ func Not(expr Expr) Expr {
 	return Unary{Op: "not", Expr: expr}
 }
 
+// ReferencesAttribute reports whether an expression contains a predicate for attribute.
+// Protocol adapters use it to avoid adding default filters over an explicit caller choice.
+func ReferencesAttribute(expr Expr, attribute Attribute) bool {
+	switch node := expr.(type) {
+	case nil:
+		return false
+	case Predicate:
+		return node.Attribute == attribute
+	case *Predicate:
+		return node != nil && node.Attribute == attribute
+	case Binary:
+		return ReferencesAttribute(node.Left, attribute) || ReferencesAttribute(node.Right, attribute)
+	case *Binary:
+		return node != nil && (ReferencesAttribute(node.Left, attribute) || ReferencesAttribute(node.Right, attribute))
+	case Unary:
+		return ReferencesAttribute(node.Expr, attribute)
+	case *Unary:
+		return node != nil && ReferencesAttribute(node.Expr, attribute)
+	default:
+		return false
+	}
+}
+
 func (p Predicate) String() string {
 	attr := string(p.Attribute)
 	if p.Attribute == AttrUDA && p.Field != "" {
