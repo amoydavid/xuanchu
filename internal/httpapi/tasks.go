@@ -33,6 +33,8 @@ type addTaskRequest struct {
 	ScheduledDate string            `json:"scheduled_date,omitempty"`
 	Until         *int64            `json:"until,omitempty"`
 	UntilDate     string            `json:"until_date,omitempty"`
+	// recur 已移除（spec §11.1）：循环任务通过 /task-series 管理。
+	// 保留字段用于检测并拒绝旧请求，不传递给 App 层。
 	Recur         *string           `json:"recur,omitempty"`
 	Tags          []string          `json:"tags,omitempty"`
 	UDAs          map[string]string `json:"udas,omitempty"`
@@ -65,6 +67,7 @@ type modifyTaskRequest struct {
 	ClearAssignees   bool              `json:"clear_assignees,omitempty"`
 	Depends          []string          `json:"depends,omitempty"`
 	ClearDepends     bool              `json:"clear_depends,omitempty"`
+	// recur/clear_recur 已移除（spec §11.1）：保留字段用于检测并拒绝旧请求。
 	Recur            *string           `json:"recur,omitempty"`
 	ClearRecur       bool              `json:"clear_recur,omitempty"`
 	Tags             []string          `json:"tags,omitempty"`
@@ -295,6 +298,11 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
+	if req.Recur != nil {
+		writeError(w, http.StatusBadRequest, "task_recur_removed",
+			"recur 字段已移除，循环任务请使用 POST /api/v1/task-series", nil)
+		return
+	}
 	if ok := s.ensureTaskAddProjectRefs(w, r, req); !ok {
 		return
 	}
@@ -442,6 +450,11 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 	var req modifyTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	if req.Recur != nil || req.ClearRecur {
+		writeError(w, http.StatusBadRequest, "task_recur_removed",
+			"recur/clear_recur 字段已移除，循环任务请使用 /api/v1/task-series", nil)
 		return
 	}
 	taskRef, ok := requireTaskRef(w, r)

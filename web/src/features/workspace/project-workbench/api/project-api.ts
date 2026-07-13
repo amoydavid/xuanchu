@@ -68,7 +68,10 @@ export type ProjectWorkbenchTaskLink = {
 }
 
 export type ProjectWorkbenchTask = {
-  uuid: string
+  /** 稳定公开 id：普通任务=UUID，occurrence=occ:series:slot（spec §7.4） */
+  id?: string
+  /** 真实任务 UUID，projected occurrence 时为 null */
+  uuid?: string
   task_slug?: string
   title: string
   description?: string | null

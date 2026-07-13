@@ -93,7 +93,7 @@ export function TaskTable({
             {tasks.map((task) => (
               <TaskTableRow
                 canWrite={canWrite}
-                key={task.uuid}
+                key={taskKey(task)}
                 projectSlug={projectSlug}
                 task={task}
                 workspaceSlug={workspaceSlug}
@@ -106,7 +106,7 @@ export function TaskTable({
         {tasks.map((task) => (
           <TaskCard
             canWrite={canWrite}
-            key={task.uuid}
+            key={taskKey(task)}
             projectSlug={projectSlug}
             task={task}
             workspaceSlug={workspaceSlug}
@@ -174,7 +174,7 @@ function TaskTableRow({
           task={task}
           workspaceSlug={workspaceSlug}
         >
-          <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
+          <code>{taskShortLabel(task)}</code>
         </TaskLink>
       </TableCell>
       <TableCell className="max-w-lg min-w-64">
@@ -273,7 +273,7 @@ function TaskCard({
           task={task}
           workspaceSlug={workspaceSlug}
         >
-          <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
+          <code>{taskShortLabel(task)}</code>
         </TaskLink>
         <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
       </div>
@@ -363,7 +363,21 @@ function TaskLink({
 }
 
 function taskReference(task: ProjectWorkbenchTask): string {
-  return task.task_slug || task.uuid
+  // 优先 task_slug（人类可读），其次稳定公开 id（occurrence_ref），最后 UUID。
+  return task.task_slug || task.id || task.uuid || ""
+}
+
+/** 稳定 key：projected occurrence 用 id，普通任务用 uuid。 */
+function taskKey(task: ProjectWorkbenchTask): string {
+  return task.id || task.uuid || ""
+}
+
+/** 显示用短标识：task_slug > uuid 前 8 位 > id 前 8 位。 */
+function taskShortLabel(task: ProjectWorkbenchTask): string {
+  if (task.task_slug) return task.task_slug
+  if (task.uuid) return task.uuid.slice(0, 8)
+  if (task.id) return task.id.slice(0, 12)
+  return ""
 }
 
 function assigneeNames(task: ProjectWorkbenchTask): string {

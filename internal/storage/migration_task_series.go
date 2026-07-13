@@ -93,20 +93,39 @@ func addOccurrenceColumns(db *gorm.DB) error {
 	return nil
 }
 
-// detectLegacyRecurringData 检查 tasks 表是否存在旧 status=recurring 数据。
-// 列不存在或无数据时跳过；存在则返回明确错误。
+// detectLegacyRecurringData 检查 tasks 表是否存在旧循环任务数据（spec §20.2）。
+// 检查 status=recurring 或 recur/mask/i_mask 列有非空值。
+// 列不存在或无数据时跳过；存在则返回明确错误，防止静默丢弃。
 func detectLegacyRecurringData(db *gorm.DB) error {
 	if !db.Migrator().HasTable("tasks") {
 		return nil
 	}
-	// 用原生 SQL 检查 status=recurring，避免依赖 model 字段（model 已不含旧字段）。
-	// 若查询失败（如 status 列不存在），视为无旧数据。
+	dialect := db.Dialector.Name()
+	// 检查 status=recurring（列一定存在）。
 	var count int64
 	if err := db.Raw("SELECT count(*) FROM tasks WHERE status = 'recurring'").Scan(&count).Error; err != nil {
 		return nil
 	}
 	if count > 0 {
 		return errors.New("检测到旧循环任务数据（status=recurring），不支持自动迁移，请备份后重建开发数据库")
+	}
+	// 检查 recur/mask/i_mask 列是否有非空值（列可能已被删除）。
+	for _, col := range []string{"recur", "mask", "i_mask"} {
+		exists, err := taskSeriesColumnExists(db, dialect, "tasks", col)
+		if err != nil || !exists {
+			continue
+		}
+		var colCount int64
+		quote := col
+		if dialect == "postgres" {
+			quote = `"` + col + `"`
+		}
+		if err := db.Raw(fmt.Sprintf("SELECT count(*) FROM tasks WHERE %s IS NOT NULL AND %s != ''", quote, quote)).Scan(&colCount).Error; err != nil {
+			continue
+		}
+		if colCount > 0 {
+			return fmt.Errorf("检测到旧循环任务数据（%s 列有非空值），不支持自动迁移，请备份后重建开发数据库", col)
+		}
 	}
 	return nil
 }

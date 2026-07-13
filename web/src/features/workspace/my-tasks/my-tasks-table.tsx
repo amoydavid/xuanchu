@@ -63,7 +63,7 @@ export function MyTasksTable({
           <TableBody>
             {tasks.map((task) => (
               <MyTasksTableRow
-                key={task.uuid}
+                key={taskKey(task)}
                 task={task}
                 workspaceSlug={workspaceSlug}
               />
@@ -230,7 +230,11 @@ function TaskDetailLink({
 }
 
 function taskRef(task: ProjectWorkbenchTask): string {
-  return task.task_slug || task.uuid
+  return task.task_slug || task.id || task.uuid || ""
+}
+
+function taskKey(task: ProjectWorkbenchTask): string {
+  return task.id || task.uuid || ""
 }
 
 function formatDue(due: ProjectWorkbenchTask["due"]): string {
