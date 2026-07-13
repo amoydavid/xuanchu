@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -451,44 +453,96 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 	if mode == "" {
 		mode = app.OccurrenceModeAuto
 	}
+	// occurrence range 只在 expand 模式下从 due_after/due_before 构建（spec §13.3）。
+	// materialized/auto 模式下 due_after/due_before 作为普通 restful due filter。
 	var rng *app.TaskViewRange
-	if q.Get("due_after") != "" || q.Get("due_before") != "" {
-		start, serr := parseDueAfterOrDefault(q.Get("due_after"))
-		if serr != nil {
-			writeError(w, http.StatusBadRequest, "api_bad_filter", serr.Error(), nil)
-			return
-		}
-		end, eerr := parseDueBeforeOrDefault(q.Get("due_before"))
-		if eerr != nil {
-			writeError(w, http.StatusBadRequest, "api_bad_filter", eerr.Error(), nil)
-			return
-		}
-		if start > 0 || end > 0 {
-			if end == 0 {
-				end = start + 366*86400
+	if mode == app.OccurrenceModeExpand {
+		if q.Get("due_after") != "" || q.Get("due_before") != "" {
+			start, serr := parseDueAfterOrDefault(q.Get("due_after"))
+			if serr != nil {
+				writeError(w, http.StatusBadRequest, "api_bad_filter", serr.Error(), nil)
+				return
 			}
-			if start == 0 {
-				start = end - 366*86400
+			end, eerr := parseDueBeforeOrDefault(q.Get("due_before"))
+			if eerr != nil {
+				writeError(w, http.StatusBadRequest, "api_bad_filter", eerr.Error(), nil)
+				return
 			}
-			rng = &app.TaskViewRange{Start: start, End: end}
+			if start > 0 || end > 0 {
+				if end == 0 {
+					end = start + 366*86400
+				}
+				if start == 0 {
+					start = end - 366*86400
+				}
+				rng = &app.TaskViewRange{Start: start, End: end}
+			}
 		}
 	}
+	// limit 校验（与旧 /tasks 行为一致）。
+	limit := taskListDefaultLimit
+	if raw := q.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return
+		}
+		if parsed > taskListMaxLimit {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", taskListMaxLimit), nil)
+			return
+		}
+		limit = parsed
+	}
+	// query / filter（spec §17.1）。
+	var queryExpr query.Expr
+	// target：解析为 UUID 后作为 query 过滤（纯数字 target 会被拒绝）。
+	if target := strings.TrimSpace(q.Get("target")); target != "" {
+		tsk, err := scoped.ResolveProtocolTarget(target)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		queryExpr = query.And(queryExpr, query.Predicate{
+			Attribute: query.AttrUUID, Operator: query.OpEqual, Value: query.StringValue(tsk.UUID),
+		})
+	}
+	filters := q["query"]
+	if len(filters) == 0 {
+		filters = q["filter"]
+	}
+	if len(filters) > 0 {
+		expr, err := query.ParseFilterExpr(filters)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		queryExpr = query.And(queryExpr, expr)
+	}
+	// restful 参数（status/priority/project/tag/due/wait 等）。
+	restful, err := restfulTaskFilters(q)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_filter", err.Error(), nil)
+		return
+	}
+	queryExpr = query.And(queryExpr, restful)
 	input := app.TaskViewQuery{
 		OccurrenceMode: mode, Range: rng,
 		Status: q.Get("status"), Sort: q.Get("sort"),
-	}
-	if projectRef != "" {
-		input.ProjectID = projectRef
-	}
-	if raw := q.Get("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			input.Limit = n
-		}
+		Query: queryExpr, Limit: limit,
+		NoContext: isTruthyQueryValue(q.Get("no_context")),
 	}
 	if raw := q.Get("offset"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
 			input.Offset = n
 		}
+	}
+	if projectRef != "" {
+		project, err := scoped.ProjectInfo(projectRef)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		input.ProjectID = project.ID
 	}
 	page, err := scoped.QueryTaskViews(input)
 	if err != nil {

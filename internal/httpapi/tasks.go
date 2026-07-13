@@ -214,40 +214,23 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	// occurrence_mode 显式提供时走 TaskViewPage 路径（spec §13.3）。
-	// due_after/due_before 单独存在时仍走旧 restful filter 路径，避免破坏现有调用方。
-	if r.URL.Query().Get("occurrence_mode") != "" {
-		s.handleTaskListViewPage(w, r, scoped, projectRef)
+	// report 路径仍走 RunTaskViewReport（spec §17.3）。
+	if reportName := strings.TrimSpace(r.URL.Query().Get("report")); reportName != "" {
+		s.handleTaskListReport(w, r, scoped, projectRef, reportName)
 		return
 	}
-	limit := taskListDefaultLimit
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
-			return
-		}
-		if parsed > taskListMaxLimit {
-			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", taskListMaxLimit), nil)
-			return
-		}
-		limit = parsed
-	}
-	input := app.ListInput{Sort: r.URL.Query().Get("sort"), Limit: limit}
-	if isTruthyQueryValue(r.URL.Query().Get("no_context")) {
-		input.NoContext = true
-	}
-	if target := strings.TrimSpace(r.URL.Query().Get("target")); target != "" {
-		tsk, err := scoped.ResolveProtocolTarget(target)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		input.Target = &tsk.UUID
-	}
-	filters := r.URL.Query()["query"]
+	// 所有其他路径统一走 QueryTaskViews，返回 TaskViewPage（spec §13.3、§17.3）。
+	s.handleTaskListViewPage(w, r, scoped, projectRef)
+}
+
+// handleTaskListReport 处理 /tasks?report={name}（spec §17.3）。
+func (s *Server) handleTaskListReport(w http.ResponseWriter, r *http.Request, scoped *app.Service, projectRef, reportName string) {
+	q := r.URL.Query()
+	// query / filter。
+	var queryExpr query.Expr
+	filters := q["query"]
 	if len(filters) == 0 {
-		filters = r.URL.Query()["filter"]
+		filters = q["filter"]
 	}
 	if len(filters) > 0 {
 		expr, err := query.ParseFilterExpr(filters)
@@ -255,42 +238,50 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
-		input.Query = expr
+		queryExpr = query.And(queryExpr, expr)
 	}
-	restful, err := restfulTaskFilters(r.URL.Query())
+	restful, err := restfulTaskFilters(q)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_filter", err.Error(), nil)
 		return
 	}
-	input.Query = query.And(input.Query, restful)
+	queryExpr = query.And(queryExpr, restful)
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
 		if err != nil {
 			writeAppError(w, err)
 			return
 		}
-		input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
+		queryExpr = query.And(queryExpr, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 	}
-	reportName := strings.TrimSpace(r.URL.Query().Get("report"))
-	if reportName != "" {
-		// /tasks?report= 走 RunTaskViewReport，返回 TaskViewPage（spec §17.3）。
-		page, perr := scoped.RunTaskViewReport(app.ReportViewInput{
-			Name: reportName, Query: input.Query, Sort: input.Sort,
-			Limit: input.Limit, Offset: input.Offset,
-		})
-		if perr != nil {
-			writeAppError(w, perr)
-			return
+	reportInput := app.ReportViewInput{Name: reportName, Query: queryExpr, Sort: q.Get("sort")}
+	// occurrence_mode / due range。
+	if raw := q.Get("occurrence_mode"); raw != "" {
+		reportInput.OccurrenceMode = app.OccurrenceMode(raw)
+	}
+	if da := q.Get("due_after"); da != "" {
+		if start, serr := parseDueAfter(da); serr == nil {
+			if end, eerr := parseDueBefore(q.Get("due_before")); eerr == nil && end > 0 {
+				reportInput.Range = &app.TaskViewRange{Start: start, End: end}
+			}
 		}
-		writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
-		return
 	}
-	tasks, err := scoped.List(input)
+	if raw := q.Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			reportInput.Limit = n
+		}
+	}
+	if raw := q.Get("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			reportInput.Offset = n
+		}
+	}
+	page, err := scoped.RunTaskViewReport(reportInput)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, tasksToJSON(tasks), nil)
+	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
 }
 
 func isTruthyQueryValue(value string) bool {
@@ -786,62 +777,8 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	// report 路径切换到 RunTaskViewReport，返回 TaskViewPage（spec §17.3）。
-	reportInput := app.ReportViewInput{Name: chi.URLParam(r, "name")}
-	filters := r.URL.Query()["query"]
-	if len(filters) == 0 {
-		filters = r.URL.Query()["filter"]
-	}
-	if len(filters) > 0 {
-		expr, err := query.ParseFilterExpr(filters)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		reportInput.Query = expr
-	}
-	if projectRef != "" {
-		project, err := scoped.ProjectInfo(projectRef)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		reportInput.Query = query.And(reportInput.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
-	}
-	// occurrence_mode / due range 参数。
-	q := r.URL.Query()
-	if raw := q.Get("occurrence_mode"); raw != "" {
-		reportInput.OccurrenceMode = app.OccurrenceMode(raw)
-	}
-	if da := q.Get("due_after"); da != "" {
-		if start, serr := parseDueAfter(da); serr == nil {
-			if end, eerr := parseDueBefore(q.Get("due_before")); eerr == nil && end > 0 {
-				reportInput.Range = &app.TaskViewRange{Start: start, End: end}
-			}
-		}
-	}
-	reportInput.Sort = q.Get("sort")
-	if raw := q.Get("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			reportInput.Limit = n
-		}
-	}
-	if raw := q.Get("offset"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
-			reportInput.Offset = n
-		}
-	}
-	page, err := scoped.RunTaskViewReport(reportInput)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	writeSuccess(w, http.StatusOK, taskViewPageToReportJSON(page), nil)
-}
-
-// taskViewPageToReportJSON 把 TaskViewPage 转为 HTTP JSON（复用 taskViewPageToJSON 的 shape）。
-func taskViewPageToReportJSON(page app.TaskViewPage) taskViewPageJSON {
-	return taskViewPageToJSON(page)
+	// /reports/{name} 与 /tasks?report={name} 共用同一逻辑（spec §17.3）。
+	s.handleTaskListReport(w, r, scoped, projectRef, chi.URLParam(r, "name"))
 }
 
 func (s *Server) handleTaskAction(w http.ResponseWriter, r *http.Request, fn func(*app.Service, string) error) {

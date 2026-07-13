@@ -119,6 +119,7 @@ type TaskSeriesListInput struct {
 type TaskQueryInput struct {
 	Workspace      string
 	Project        string
+	ProjectID      string
 	DueAfter       string // YYYY-MM-DD
 	DueBefore      string // YYYY-MM-DD
 	OccurrenceMode string // auto|materialized|expand
@@ -126,6 +127,9 @@ type TaskQueryInput struct {
 	Sort           string
 	Limit          int
 	Offset         int
+	NoContext      bool
+	Filters        []string // query/filter 表达式
+	Target         string   // 解析为 UUID 的 target ref
 }
 
 // --- Series 方法 ---
@@ -234,7 +238,9 @@ func (c *Client) QueryTasks(ctx context.Context, input TaskQueryInput) (TaskView
 	if input.Workspace != "" {
 		values.Set("workspace", input.Workspace)
 	}
-	if input.Project != "" {
+	if input.ProjectID != "" {
+		values.Set("project_id", input.ProjectID)
+	} else if input.Project != "" {
 		values.Set("project", input.Project)
 	}
 	if input.DueAfter != "" {
@@ -257,6 +263,15 @@ func (c *Client) QueryTasks(ctx context.Context, input TaskQueryInput) (TaskView
 	}
 	if input.Offset > 0 {
 		values.Set("offset", strconv.Itoa(input.Offset))
+	}
+	if input.NoContext {
+		values.Set("no_context", "true")
+	}
+	if input.Target != "" {
+		values.Set("target", input.Target)
+	}
+	for _, f := range input.Filters {
+		values.Add("query", f)
 	}
 	var resp struct {
 		Data TaskViewPageDTO `json:"data"`

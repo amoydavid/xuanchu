@@ -245,6 +245,7 @@ type TaskViewQuery struct {
 	Sort           string
 	Limit          int
 	Offset         int
+	NoContext      bool // 跳过 active context filter（与 ListInput.NoContext 一致）
 	Query          query.Expr // expand 模式下对 merge 结果用 evaluator 过滤（spec §17.1）
 }
 
@@ -258,6 +259,27 @@ func (s *Service) QueryTaskViews(q TaskViewQuery) (TaskViewPage, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return TaskViewPage{}, err
 	}
+	if err := s.refreshAutomaticState(); err != nil {
+		return TaskViewPage{}, err
+	}
+	// 默认 status：无 query 且无显式 status 时默认 pending（与 List 行为一致）。
+	status := q.Status
+	if status == "" && q.Query == nil {
+		status = domain.StatusPending
+	}
+	// active context filter + project scope（与 List 一致）。
+	contextExpr, err := s.activeContextFilter(q.NoContext)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	resolvedQuery, err := s.resolveTaskQueryPredicates(q.Query)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	effectiveQuery := query.And(s.projectScopeExpr(), query.And(contextExpr, resolvedQuery))
+	q.Status = status
+	q.Query = effectiveQuery
+
 	// 解析 effective mode：auto 在有完整范围时升级为 expand，否则 materialized。
 	mode := q.OccurrenceMode
 	if mode == "" || mode == OccurrenceModeAuto {
@@ -315,16 +337,27 @@ func (s *Service) collectTaskViewCandidates(q TaskViewQuery, mode OccurrenceMode
 	}
 
 	// 1. 读取普通任务 + 已物化 occurrence（materialized 行）。
+	//    query + project scope 在 SQL 层过滤（materialized 模式高效）；
+	//    expand 模式在 merge 后用 evaluator 过滤 projected occurrence（§17.1）。
 	var ordinaryTasks []domain.Task
 	var occurrenceTasks []domain.Task
-	listOpts := storage.ListOptions{Status: q.Status, Sort: q.Sort}
+	dbQuery := q.Query
 	if q.ProjectID != "" {
-		// 用 query scope 限制项目。
+		dbQuery = query.And(dbQuery, query.Predicate{
+			Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(q.ProjectID),
+		})
 	}
-	_ = listOpts
+	udaDefs, err := s.udaDefinitionTypes()
+	if err != nil {
+		return nil, err
+	}
+	listOpts := storage.ListOptions{
+		Status: q.Status, Sort: q.Sort, Query: dbQuery,
+		NowUnix: s.clock.Unix(), UDADefinitions: udaDefs, Dialect: s.store.Dialect(),
+	}
 
 	// 普通任务（series_id IS NULL）+ materialized occurrence（series_id IS NOT NULL）。
-	allTasks, err := s.repo.List(workspaceID, storage.ListOptions{Status: q.Status})
+	allTasks, err := s.repo.List(workspaceID, listOpts)
 	if err != nil {
 		return nil, err
 	}
