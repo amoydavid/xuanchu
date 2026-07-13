@@ -45,7 +45,35 @@
 
 ### task_query — 查询任务（只读）
 
-`query` 支持 Taskwarrior 风格表达式（语法见 query-syntax.md）。裸字符串自动按 title 子串匹配。
+`query` 使用璇础任务过滤表达式（语法见 query-syntax.md）。裸字符串自动按 title 子串匹配。
+
+状态可见性：
+
+- 没有显式状态条件时，默认返回所有非 deleted 任务，包括 pending、waiting、completed。
+- `include_deleted:true` 在默认集合上追加 deleted。
+- `status` 参数或 `query` 中的 status 条件优先；此时不注入默认条件，并忽略 `include_deleted`。
+- 不使用 `include_completed`；completed 已在默认结果中。
+
+分页和循环任务参数：`limit`、`offset`、`due_after`、`due_before`、`occurrence_mode`（`auto`/`materialized`/`expand`）、`task_type`（`all`/`normal`/`occurrence`）。
+
+```json
+// 输入：查看所有非删除任务（包含已完成）
+{
+  "workspace": "dajee"
+}
+
+// 输入：在默认集合上追加已删除任务
+{
+  "workspace": "dajee",
+  "include_deleted": true
+}
+
+// 输入：只看已删除任务；显式状态条件优先
+{
+  "workspace": "dajee",
+  "query": "status:deleted"
+}
+```
 
 ```json
 // 输入：查看高优先级待办
@@ -188,7 +216,7 @@ task_stop({"workspace": "dajee", "project_id": "proj-uuid-xxx", "id": "a1b2c3d4-
 
 `annotation_id` 是任务注释的稳定 ID。先通过 `task_get`（返回的 annotation 含 `id`）读取 `annotations[].id`，不要使用显示顺序删除注释。
 
-> `task_query` 的返回默认不带 annotations；要拿 annotation ID 用 `task_get`。
+`task_query` 和 `task_get` 返回的 `annotations[]` 都包含稳定 `id`。已选定单个任务时优先用 `task_get` 读取最新 annotations，再把目标 `id` 传给 `task_denotate`。
 
 ```json
 {

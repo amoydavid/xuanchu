@@ -49,6 +49,7 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 ## 易错点
 
 - **MCP 接口不能用 working-set 数字 ID**，只能 UUID 或 `task_slug`（形如 `api-1`）。
+- `task_query` 无显式状态条件时返回所有非 deleted 任务，包括 completed。只查可执行待办时显式使用 `status:pending`；还要包含等待中的任务时使用 `(status:pending or status:waiting)`。
 - `task_denotate` 用 `annotation_id`（从 `task_get`/`task_query` 读取的稳定 ID），不要用显示顺序删除注释。
 - `task_modify` 清空字段用 `clear:["priority","assignees"]`，不能传空值清空。
 - `task_depends` 引用依赖任务也用 UUID；`clear_depends:true` 清空所有依赖。
