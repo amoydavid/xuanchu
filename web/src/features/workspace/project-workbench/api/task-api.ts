@@ -29,7 +29,6 @@ export type TaskCreateInput = {
   scheduled_date?: string
   until?: number | null
   until_date?: string
-  recur?: string | null
   tags?: string[]
   udas?: Record<string, string>
   parent?: string
@@ -61,8 +60,6 @@ export type TaskModifyInput = {
   clear_assignees?: boolean
   depends?: string[]
   clear_depends?: boolean
-  recur?: string | null
-  clear_recur?: boolean
   tags?: string[]
   remove_tags?: string[]
   udas?: Record<string, string>
@@ -111,10 +108,7 @@ export type TaskImportTask = {
   until?: string | null
   annotations?: Array<{ id?: string; entry: string; description: string }> | null
   depends?: string[] | null
-  recur?: string | null
   parent?: string | null
-  mask?: string | null
-  imask?: number | null
   assignees?: Array<
     | string
     | {
@@ -187,7 +181,7 @@ export function importTasksPath(
   workspaceSlug: string,
   projectSlug: string
 ): string {
-  return `/api/v1/import?${workspaceQuery(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}`
+  return `/api/v1/task-imports?${workspaceQuery(workspaceSlug)}&project=${encodeURIComponent(projectSlug)}`
 }
 
 export function taskLinkItemPath(
@@ -216,7 +210,6 @@ export type TaskChangeField =
   | "wait"
   | "scheduled"
   | "until"
-  | "recur"
   | "depends"
   | "udas"
 
@@ -435,7 +428,7 @@ export function importTasks(
 ): Promise<TaskImportResult> {
   return workspaceApiPost<TaskImportResult>(
     importTasksPath(workspaceSlug, projectSlug),
-    tasks
+    { schema: "xuanchu.task-import/v1", tasks }
   )
 }
 

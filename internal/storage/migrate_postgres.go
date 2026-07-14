@@ -29,6 +29,9 @@ func (s *Store) migratePostgres() error {
 	); err != nil {
 		return err
 	}
+	if err := s.prepareTaskSeriesSchema(); err != nil {
+		return err
+	}
 	return s.prepareActorColumnsForP2Postgres()
 }
 

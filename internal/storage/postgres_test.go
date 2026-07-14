@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 	"github.com/google/uuid"
 )
 
@@ -101,6 +102,70 @@ func TestPostgres_TaskCRUD(t *testing.T) {
 	}
 	if created.UUID != tsk.UUID {
 		t.Errorf("UUID mismatch: %q vs %q", created.UUID, tsk.UUID)
+	}
+}
+
+func TestPostgres_SummarizeSeriesOccurrences(t *testing.T) {
+	dbURL := postgresTestURL(t)
+	store, err := Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatalf("LocalWorkspace: %v", err)
+	}
+
+	tx := store.DB().Begin()
+	if tx.Error != nil {
+		t.Fatalf("Begin: %v", tx.Error)
+	}
+	defer tx.Rollback() //nolint:errcheck -- 测试事务只用于隔离 fixture。
+
+	suffix := uuid.NewString()
+	project := Project{
+		ID: "project-" + suffix, WorkspaceID: ws.ID, Slug: "pg-" + suffix,
+		Name: "PostgreSQL summary", Status: "active", CreatedAt: 1, ModifiedAt: 1,
+	}
+	if err := tx.Create(&project).Error; err != nil {
+		t.Fatalf("Create project: %v", err)
+	}
+	series, err := NewTaskSeriesRepository(tx).Create(taskseries.Series{
+		WorkspaceID: ws.ID, ProjectID: project.ID, Title: "PostgreSQL summary",
+		Status: taskseries.StatusActive, RecurrenceRule: "daily", FirstDue: 100,
+		CreatedBy: "postgres-test", CreatedAt: 1, ModifiedAt: 1,
+	})
+	if err != nil {
+		t.Fatalf("Create series: %v", err)
+	}
+	rule := "daily"
+	overdue := int64(50)
+	create := func(status string, slot int64, due *int64) {
+		t.Helper()
+		seriesID := series.ID
+		row := task.Task{
+			UUID: uuid.NewString(), WorkspaceID: ws.ID, Title: status, Status: status,
+			Entry: 1, Modified: 1, ProjectID: &project.ID, Project: &project.Slug, Due: due,
+			SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
+		}
+		if _, _, err := NewTaskOccurrenceRepository(tx).CreateOccurrence(row); err != nil {
+			t.Fatalf("CreateOccurrence(%s): %v", status, err)
+		}
+	}
+	create(task.StatusPending, 100, &overdue)
+	create(task.StatusWaiting, 200, &overdue)
+	create(task.StatusCompleted, 300, &overdue)
+	create(task.StatusDeleted, 400, &overdue)
+
+	summaries, err := NewTaskOccurrenceRepository(tx).SummarizeSeriesOccurrences(ws.ID, []string{series.ID}, 100)
+	if err != nil {
+		t.Fatalf("SummarizeSeriesOccurrences: %v", err)
+	}
+	got := summaries[series.ID]
+	want := OccurrenceCounts{Open: 2, Pending: 1, Waiting: 1, Completed: 1, Deleted: 1, Overdue: 2}
+	if got.Counts != want || got.MaxRecurrenceAt != 400 {
+		t.Fatalf("summary = %#v, want counts=%#v max=400", got, want)
 	}
 }
 

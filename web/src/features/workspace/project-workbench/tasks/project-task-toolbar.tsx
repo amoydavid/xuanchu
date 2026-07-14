@@ -1,12 +1,24 @@
 import { useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { CalendarIcon, PlusIcon, SlidersHorizontalIcon, XIcon } from "lucide-react"
+import {
+  CalendarIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  SlidersHorizontalIcon,
+  XIcon,
+} from "lucide-react"
 import { parseISO } from "date-fns"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Popover,
@@ -32,6 +44,7 @@ type ProjectTaskToolbarProps = {
   canCreateTask: boolean
   filter: TaskFilter
   onCreateTask: () => void
+  onCreateRecurringTask?: () => void
   toParams: { workspaceSlug: string; projectSlug: string }
   // navigateTo 决定筛选 search 写入到哪个项目子页面路由。
   // Tasks 子页面传 /workspaces/$workspaceSlug/projects/$projectSlug/tasks；
@@ -46,7 +59,7 @@ export type AssigneeFilterOption = {
   name?: string
 }
 
-const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring", "deleted"]
+const STATUS_OPTIONS = ["pending", "completed", "waiting", "deleted"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 const SORT_OPTIONS = [
   { label: "创建顺序", value: "entry" },
@@ -74,6 +87,7 @@ const FILTER_LABELS: Record<keyof TaskFilter, string> = {
   sort: "排序",
   status: "状态",
   tags: "标签",
+  task_type: "任务类型",
   until_before: "有效至早于",
   wait_before: "暂缓到早于",
 }
@@ -83,6 +97,7 @@ export function ProjectTaskToolbar({
   canCreateTask,
   filter,
   onCreateTask,
+  onCreateRecurringTask,
   toParams,
   navigateTo = "/workspaces/$workspaceSlug/projects/$projectSlug",
 }: ProjectTaskToolbarProps) {
@@ -192,6 +207,28 @@ export function ProjectTaskToolbar({
             ))}
           </SelectContent>
         </Select>
+        <Select
+          onValueChange={(value) =>
+            setFilter("task_type", value === "all" ? "" : value)
+          }
+          value={filter.task_type ?? "all"}
+        >
+          <SelectTrigger
+            aria-label={i18n.t("taskCreate.typeLabel")}
+            className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-32")}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{i18n.t("myTasks.allTaskTypes")}</SelectItem>
+            <SelectItem value="normal">
+              {i18n.t("taskSeries.mode.normal")}
+            </SelectItem>
+            <SelectItem value="occurrence">
+              {i18n.t("taskSeries.mode.recurring")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
         <AssigneeFilterMenu
           options={assigneeOptions}
           selected={assigneeValues(filter.assignee)}
@@ -267,15 +304,42 @@ export function ProjectTaskToolbar({
           </PopoverContent>
         </Popover>
         {canCreateTask ? (
-          <Button
-            className="col-span-2 w-full rounded-md sm:ml-auto sm:w-auto"
-            onClick={onCreateTask}
-            size="lg"
-            type="button"
-          >
-            <PlusIcon />
-            新建任务
-          </Button>
+          <div className="col-span-2 flex min-w-0 sm:ml-auto">
+            <Button
+              className={cn(
+                "min-w-0 flex-1 rounded-md sm:flex-none",
+                onCreateRecurringTask && "rounded-r-none"
+              )}
+              onClick={onCreateTask}
+              size="lg"
+              type="button"
+            >
+              <PlusIcon />
+              {i18n.t("taskSeries.create.title")}
+            </Button>
+            {onCreateRecurringTask ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label={i18n.t("taskSeries.create.menuAria")}
+                    className="rounded-l-none border-l border-l-primary-foreground/25 px-2"
+                    size="lg"
+                    type="button"
+                  >
+                    <ChevronDownIcon />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={onCreateTask}>
+                    {i18n.t("taskSeries.create.normalAction")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onCreateRecurringTask}>
+                    {i18n.t("taskSeries.create.recurringAction")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {activeFilterEntries(filter).length > 0 ? (

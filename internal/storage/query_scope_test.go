@@ -307,7 +307,7 @@ func TestQueryXorTruthTable(t *testing.T) {
 }
 
 func TestCompileQueryM2Fields(t *testing.T) {
-	expr, err := query.ParseQuery(`start.notnull wait: depends:dep annotations:note recur:weekly parent:p1`)
+	expr, err := query.ParseQuery(`start.notnull wait: depends:dep annotations:note parent:p1`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,6 @@ func TestCompileQueryM2Fields(t *testing.T) {
 		"wait IS NULL",
 		"task_dependencies",
 		"task_annotations",
-		"recur = ?",
 		"parent = ?",
 	} {
 		if !strings.Contains(sql, part) {

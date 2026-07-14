@@ -2974,10 +2974,22 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "due_after": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
+          "due_before": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
           "limit": {
             "type": "integer"
           },
           "name": {
+            "type": "string"
+          },
+          "occurrence_mode": {
+            "description": "auto|materialized|expand",
             "type": "string"
           },
           "offset": {
@@ -2990,6 +3002,13 @@
             "type": "string"
           },
           "query": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "task_type": {
+            "description": "all|normal|occurrence",
             "type": "string"
           },
           "workspace": {
@@ -3175,7 +3194,7 @@
             "type": "string"
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3216,7 +3235,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3260,7 +3279,7 @@
             "type": "string"
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3313,7 +3332,7 @@
             ]
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3353,7 +3372,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3388,7 +3407,7 @@
       }
     },
     {
-      "description": "Export tasks as JSON; read-only.",
+      "description": "Export tasks as xuanchu.task-bundle/v1 JSON; read-only.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -3426,7 +3445,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -3461,441 +3480,451 @@
       }
     },
     {
-      "description": "Import tasks from JSON; writes audit.",
+      "description": "Import tasks from xuanchu.task-bundle/v1 JSON; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "bundle": {
+            "additionalProperties": false,
+            "properties": {
+              "exported_at": {
+                "type": "string"
+              },
+              "schema": {
+                "type": "string"
+              },
+              "task_series": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "assignees": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "created_at": {
+                      "type": "integer"
+                    },
+                    "created_by": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "effective_end_at": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "first_due": {
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "modified_at": {
+                      "type": "integer"
+                    },
+                    "priority": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "project": {
+                      "type": "string"
+                    },
+                    "project_id": {
+                      "type": "string"
+                    },
+                    "recurrence_rule": {
+                      "type": "string"
+                    },
+                    "rule_versions": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "created_by": {
+                            "type": "string"
+                          },
+                          "effective_from": {
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "recurrence_rule": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "effective_from",
+                          "recurrence_rule",
+                          "created_by",
+                          "created_at"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "stop_reason": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "tags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "udas": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "until": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "workspace_id",
+                    "project_id",
+                    "project",
+                    "title",
+                    "status",
+                    "recurrence_rule",
+                    "first_due",
+                    "created_by",
+                    "created_at",
+                    "modified_at",
+                    "rule_versions"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "tasks": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "annotations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "entry": {
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "entry",
+                          "description"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "assignees": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "depends": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "description": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "due": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "end": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "entry": {
+                      "type": "integer"
+                    },
+                    "links": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "created_by_id": {
+                            "type": "string"
+                          },
+                          "created_by_token_name": {
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "created_by_token_prefix": {
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "created_by_type": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "url",
+                          "created_at",
+                          "created_by_type",
+                          "created_by_id"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "modified": {
+                      "type": "integer"
+                    },
+                    "parent": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "priority": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "project": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "project_id": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "project_seq": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "recurrence_at": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "recurrence_overrides": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "recurrence_rule_snapshot": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "scheduled": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "series_id": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "start": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "udas": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "orphan": {
+                            "type": "boolean"
+                          },
+                          "raw": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "raw"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "object"
+                    },
+                    "until": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "uuid": {
+                      "type": "string"
+                    },
+                    "wait": {
+                      "type": [
+                        "null",
+                        "integer"
+                      ]
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "uuid",
+                    "workspace_id",
+                    "title",
+                    "status",
+                    "entry",
+                    "modified"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              }
+            },
+            "required": [
+              "schema",
+              "exported_at",
+              "task_series",
+              "tasks"
+            ],
+            "type": "object"
+          },
           "project": {
             "type": "string"
           },
           "project_id": {
             "type": "string"
           },
-          "tasks": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "annotations": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "description": {
-                        "type": "string"
-                      },
-                      "entry": {
-                        "type": "string"
-                      },
-                      "id": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "entry",
-                      "description"
-                    ],
-                    "type": "object"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "assignees": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "display_name": {
-                        "type": "string"
-                      },
-                      "email": {
-                        "type": [
-                          "null",
-                          "string"
-                        ]
-                      },
-                      "external_ids": {
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "external_id": {
-                              "type": "string"
-                            },
-                            "provider": {
-                              "type": "string"
-                            },
-                            "user_type": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "provider",
-                            "external_id"
-                          ],
-                          "type": "object"
-                        },
-                        "type": [
-                          "null",
-                          "array"
-                        ]
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name"
-                    ],
-                    "type": "object"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "blocked_by_info": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "task_slug": {
-                        "type": [
-                          "null",
-                          "string"
-                        ]
-                      },
-                      "title": {
-                        "type": "string"
-                      },
-                      "uuid": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "uuid",
-                      "title"
-                    ],
-                    "type": "object"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "depends": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "depends_info": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "task_slug": {
-                        "type": [
-                          "null",
-                          "string"
-                        ]
-                      },
-                      "title": {
-                        "type": "string"
-                      },
-                      "uuid": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "uuid",
-                      "title"
-                    ],
-                    "type": "object"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "description": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "due": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "end": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "entry": {
-                  "type": "string"
-                },
-                "imask": {
-                  "type": [
-                    "null",
-                    "integer"
-                  ]
-                },
-                "links": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "created_at": {
-                        "type": "string"
-                      },
-                      "created_by": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "token": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "id": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "prefix": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name"
-                            ],
-                            "type": [
-                              "null",
-                              "object"
-                            ]
-                          },
-                          "type": {
-                            "type": "string"
-                          },
-                          "user": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "display_name": {
-                                "type": "string"
-                              },
-                              "email": {
-                                "type": [
-                                  "null",
-                                  "string"
-                                ]
-                              },
-                              "external_ids": {
-                                "items": {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "external_id": {
-                                      "type": "string"
-                                    },
-                                    "provider": {
-                                      "type": "string"
-                                    },
-                                    "user_type": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "provider",
-                                    "external_id"
-                                  ],
-                                  "type": "object"
-                                },
-                                "type": [
-                                  "null",
-                                  "array"
-                                ]
-                              },
-                              "id": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name"
-                            ],
-                            "type": [
-                              "null",
-                              "object"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "type"
-                        ],
-                        "type": "object"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "title": {
-                        "type": "string"
-                      },
-                      "type": {
-                        "type": "string"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "type",
-                      "url",
-                      "created_at",
-                      "created_by"
-                    ],
-                    "type": "object"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "mask": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "modified": {
-                  "type": "string"
-                },
-                "parent": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "parent_info": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "task_slug": {
-                      "type": [
-                        "null",
-                        "string"
-                      ]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "uuid": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "uuid",
-                    "title"
-                  ],
-                  "type": [
-                    "null",
-                    "object"
-                  ]
-                },
-                "priority": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "project": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "recur": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "scheduled": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "start": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "status": {
-                  "type": "string"
-                },
-                "tags": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
-                },
-                "task_slug": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "title": {
-                  "type": "string"
-                },
-                "until": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                },
-                "uuid": {
-                  "type": "string"
-                },
-                "wait": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
-                }
-              },
-              "required": [
-                "uuid",
-                "title",
-                "status",
-                "entry",
-                "modified"
-              ],
-              "type": "object"
-            },
-            "type": [
-              "null",
-              "array"
-            ]
-          },
           "workspace": {
             "type": "string"
           }
         },
         "required": [
-          "tasks"
+          "bundle"
         ],
         "type": "object"
       },
@@ -3927,7 +3956,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "title": {
@@ -3981,7 +4010,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "workspace": {
@@ -4025,7 +4054,7 @@
             "type": "string"
           },
           "task": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "workspace": {
@@ -4106,7 +4135,7 @@
             "type": "string"
           },
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "priority": {
@@ -4216,18 +4245,28 @@
       }
     },
     {
-      "description": "Query tasks; read-only.",
+      "description": "Query tasks; read-only. Defaults to all non-deleted tasks unless status is explicit.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "include_completed": {
-            "type": "boolean"
+          "due_after": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
+          "due_before": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
           },
           "include_deleted": {
+            "description": "include deleted tasks in addition to the default non-deleted set; ignored when status is explicit",
             "type": "boolean"
           },
           "limit": {
             "type": "integer"
+          },
+          "occurrence_mode": {
+            "description": "auto|materialized|expand",
+            "type": "string"
           },
           "offset": {
             "type": "integer"
@@ -4239,9 +4278,19 @@
             "type": "string"
           },
           "query": {
+            "description": "task filter expression; an explicit status predicate overrides default visibility",
+            "type": "string"
+          },
+          "sort": {
+            "description": "task sort expression, for example due, due-, urgency-",
             "type": "string"
           },
           "status": {
+            "description": "explicit task status filter; overrides default non-deleted visibility",
+            "type": "string"
+          },
+          "task_type": {
+            "description": "all|normal|occurrence",
             "type": "string"
           },
           "workspace": {
@@ -4272,7 +4321,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -4307,12 +4356,452 @@
       }
     },
     {
+      "description": "Create a recurring task series; each calendar slot is an independent task.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignees": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "first_due": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "first_due_date": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "recurrence_rule": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "udas": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "until": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "until_date": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "recurrence_rule"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_add",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Get recurring task series details.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_get",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List recurring task series.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee": {
+            "type": "string"
+          },
+          "limit": {
+            "default": 200,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "project": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "q": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "task_series_list",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List materialized occurrences of a series.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "due_after": {
+            "description": "inclusive YYYY-MM-DD",
+            "type": "string"
+          },
+          "due_before": {
+            "description": "inclusive YYYY-MM-DD",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "limit": {
+            "default": 200,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_list_occurrences",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Modify a recurring task series (shared fields; rule change requires effective_from).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignees": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "clear": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "effective_from": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "effective_from_date": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recurrence_rule": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "udas": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "until": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "until_date": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_modify",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Skip one occurrence of a series (creates a deleted tombstone).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "occurrence_id": {
+            "type": "string"
+          },
+          "series_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "series_id",
+          "occurrence_id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_occurrence_skip",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Stop a recurring task series; no new occurrences are generated.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delete_open_occurrences": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "task_series_stop",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": true,
+          "rendered": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "rendered"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Start a task; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -4352,7 +4841,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {
@@ -4610,7 +5099,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "task reference: UUID or task_slug",
+            "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
             "type": "string"
           },
           "project": {

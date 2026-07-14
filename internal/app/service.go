@@ -11,7 +11,6 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/query"
-	"git.dajee.net/dajee/xuanchu/internal/recurrence"
 	"git.dajee.net/dajee/xuanchu/internal/report"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
@@ -20,38 +19,40 @@ import (
 )
 
 type Service struct {
-	store                     *storage.Store
-	repo                      *storage.TaskRepository
-	projectRepo               *storage.ProjectRepository
-	configRepo                *storage.ConfigRepository
-	configDefRepo             *storage.ConfigDefinitionRepository
-	userRepo                  *storage.UserRepository
-	workspaceRepo             *storage.WorkspaceRepository
-	memberRepo                *storage.MemberRepository
-	auditRepo                 auditAppenderLister
-	tokenRepo                 *storage.TokenRepository
-	adminActingSessionRepo    adminActingSessionStore
-	contextRepo               *storage.ContextRepository
-	udaRepo                   *storage.UDARepository
-	hookRepo                  *storage.HookRepository
-	hookDeliveryRepo          hookDeliveryEnqueuer
-	notificationSinkRepo      *storage.NotificationSinkRepository
-	reminderRuleRepo          *storage.ReminderRuleRepository
-	eventNotificationRuleRepo *storage.EventNotificationRuleRepository
-	notificationDeliveryRepo  *storage.NotificationDeliveryRepository
+	store                         *storage.Store
+	repo                          *storage.TaskRepository
+	taskSeriesRepo                *storage.TaskSeriesRepository
+	taskOccurrenceRepo            *storage.TaskOccurrenceRepository
+	projectRepo                   *storage.ProjectRepository
+	configRepo                    *storage.ConfigRepository
+	configDefRepo                 *storage.ConfigDefinitionRepository
+	userRepo                      *storage.UserRepository
+	workspaceRepo                 *storage.WorkspaceRepository
+	memberRepo                    *storage.MemberRepository
+	auditRepo                     auditAppenderLister
+	tokenRepo                     *storage.TokenRepository
+	adminActingSessionRepo        adminActingSessionStore
+	contextRepo                   *storage.ContextRepository
+	udaRepo                       *storage.UDARepository
+	hookRepo                      *storage.HookRepository
+	hookDeliveryRepo              hookDeliveryEnqueuer
+	notificationSinkRepo          *storage.NotificationSinkRepository
+	reminderRuleRepo              *storage.ReminderRuleRepository
+	eventNotificationRuleRepo     *storage.EventNotificationRuleRepository
+	notificationDeliveryRepo      *storage.NotificationDeliveryRepository
 	projectAutomationRuleRepo     *storage.ProjectAutomationRuleRepository
 	projectAutomationDeliveryRepo *storage.ProjectAutomationDeliveryRepository
-	extIDRepo                 *storage.ExternalIDRepository
-	runtimeConfig             map[string]string
-	runtimeOverrides          map[string]string
-	runtimeUDAs               map[string]uda.Definition
-	activeContextOverride     *string
-	runtime                   RuntimeContext
-	requestScope              *RequestScope
-	workspaceID               string
-	clock                     Clock
-	reports                   report.Registry
-	disableContext            bool
+	extIDRepo                     *storage.ExternalIDRepository
+	runtimeConfig                 map[string]string
+	runtimeOverrides              map[string]string
+	runtimeUDAs                   map[string]uda.Definition
+	activeContextOverride         *string
+	runtime                       RuntimeContext
+	requestScope                  *RequestScope
+	workspaceID                   string
+	clock                         Clock
+	reports                       report.Registry
+	disableContext                bool
 	// sinkTestClient 用于 notification sink 测试投递；nil 时使用 SSRF-safe 默认 client。
 	// 测试可注入 httptest.Server.Client() 以便命中本地服务。
 	sinkTestClient *http.Client
@@ -84,7 +85,6 @@ type AddInput struct {
 	Wait        *int64
 	Scheduled   *int64
 	Until       *int64
-	Recur       *string
 	Tags        []string
 	UDAs        map[string]string
 	Parent      *string
@@ -123,8 +123,6 @@ type ModifyInput struct {
 	ClearUntil       bool
 	AddDepends       []string
 	ClearDepends     bool
-	Recur            *string
-	ClearRecur       bool
 	AddAssignees     []string
 	RemoveAssignees  []string
 	ClearAssignees   bool
@@ -132,18 +130,6 @@ type ModifyInput struct {
 	RemoveTags       []string
 	UDAs             map[string]string
 	ClearUDAs        []string
-}
-
-type ReportInput struct {
-	Name      string
-	Query     query.Expr
-	NoContext bool
-	Limit     int
-	Offset    int
-}
-
-type ReportResult struct {
-	Tasks []task.Task
 }
 
 type auditAppenderLister interface {
@@ -182,41 +168,43 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		return nil, err
 	}
 	svc := &Service{
-		store:                     opts.Store,
-		repo:                      storage.NewTaskRepository(opts.Store.DB()),
-		projectRepo:               storage.NewProjectRepository(opts.Store.DB()),
-		configRepo:                storage.NewConfigRepository(opts.Store.DB()),
-		configDefRepo:             storage.NewConfigDefinitionRepository(opts.Store.DB()),
-		userRepo:                  userRepo,
-		workspaceRepo:             workspaceRepo,
-		memberRepo:                memberRepo,
-		auditRepo:                 auditRepo,
-		tokenRepo:                 storage.NewTokenRepository(opts.Store.DB()),
-		adminActingSessionRepo:    storage.NewAdminActingSessionRepository(opts.Store.DB()),
-		contextRepo:               storage.NewContextRepository(opts.Store.DB()),
-		udaRepo:                   storage.NewUDARepository(opts.Store.DB()),
-		hookRepo:                  storage.NewHookRepository(opts.Store.DB()),
-		hookDeliveryRepo:          storage.NewHookDeliveryRepository(opts.Store.DB()),
-		notificationSinkRepo:      storage.NewNotificationSinkRepository(opts.Store.DB()),
-		reminderRuleRepo:          storage.NewReminderRuleRepository(opts.Store.DB()),
-		eventNotificationRuleRepo: storage.NewEventNotificationRuleRepository(opts.Store.DB()),
-		notificationDeliveryRepo:  storage.NewNotificationDeliveryRepository(opts.Store.DB()),
+		store:                         opts.Store,
+		repo:                          storage.NewTaskRepository(opts.Store.DB()),
+		taskSeriesRepo:                storage.NewTaskSeriesRepository(opts.Store.DB()),
+		taskOccurrenceRepo:            storage.NewTaskOccurrenceRepository(opts.Store.DB()),
+		projectRepo:                   storage.NewProjectRepository(opts.Store.DB()),
+		configRepo:                    storage.NewConfigRepository(opts.Store.DB()),
+		configDefRepo:                 storage.NewConfigDefinitionRepository(opts.Store.DB()),
+		userRepo:                      userRepo,
+		workspaceRepo:                 workspaceRepo,
+		memberRepo:                    memberRepo,
+		auditRepo:                     auditRepo,
+		tokenRepo:                     storage.NewTokenRepository(opts.Store.DB()),
+		adminActingSessionRepo:        storage.NewAdminActingSessionRepository(opts.Store.DB()),
+		contextRepo:                   storage.NewContextRepository(opts.Store.DB()),
+		udaRepo:                       storage.NewUDARepository(opts.Store.DB()),
+		hookRepo:                      storage.NewHookRepository(opts.Store.DB()),
+		hookDeliveryRepo:              storage.NewHookDeliveryRepository(opts.Store.DB()),
+		notificationSinkRepo:          storage.NewNotificationSinkRepository(opts.Store.DB()),
+		reminderRuleRepo:              storage.NewReminderRuleRepository(opts.Store.DB()),
+		eventNotificationRuleRepo:     storage.NewEventNotificationRuleRepository(opts.Store.DB()),
+		notificationDeliveryRepo:      storage.NewNotificationDeliveryRepository(opts.Store.DB()),
 		projectAutomationRuleRepo:     storage.NewProjectAutomationRuleRepository(opts.Store.DB()),
 		projectAutomationDeliveryRepo: storage.NewProjectAutomationDeliveryRepository(opts.Store.DB()),
-		extIDRepo:                 storage.NewExternalIDRepository(opts.Store.DB()),
-		runtimeConfig:             runtimeConfig,
-		runtimeOverrides:          cloneStringMap(opts.RuntimeOverrides),
-		runtimeUDAs:               runtimeUDAs,
-		runtime:                   rt,
-		requestScope:              cloneRequestScope(opts.RequestScope),
-		workspaceID:               rt.WorkspaceID,
-		clock:                     opts.Clock,
-		reports:                   report.DefaultRegistry(),
-		disableContext:            opts.NoContext,
-		sinkTestClient:            opts.SinkTestClient,
-		sinkTestResolver:          opts.SinkTestResolver,
-		tokenSecretKey:            append([]byte(nil), opts.TokenSecretKey...),
-		requireTokenSecret:        opts.RequireTokenSecret,
+		extIDRepo:                     storage.NewExternalIDRepository(opts.Store.DB()),
+		runtimeConfig:                 runtimeConfig,
+		runtimeOverrides:              cloneStringMap(opts.RuntimeOverrides),
+		runtimeUDAs:                   runtimeUDAs,
+		runtime:                       rt,
+		requestScope:                  cloneRequestScope(opts.RequestScope),
+		workspaceID:                   rt.WorkspaceID,
+		clock:                         opts.Clock,
+		reports:                       report.DefaultRegistry(),
+		disableContext:                opts.NoContext,
+		sinkTestClient:                opts.SinkTestClient,
+		sinkTestResolver:              opts.SinkTestResolver,
+		tokenSecretKey:                append([]byte(nil), opts.TokenSecretKey...),
+		requireTokenSecret:            opts.RequireTokenSecret,
 	}
 	if !opts.DisableScopeBootstrap {
 		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
@@ -252,6 +240,8 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone := *s
 	clone.store = store
 	clone.repo = storage.NewTaskRepository(store.DB())
+	clone.taskSeriesRepo = storage.NewTaskSeriesRepository(store.DB())
+	clone.taskOccurrenceRepo = storage.NewTaskOccurrenceRepository(store.DB())
 	clone.projectRepo = storage.NewProjectRepository(store.DB())
 	clone.configRepo = storage.NewConfigRepository(store.DB())
 	clone.configDefRepo = storage.NewConfigDefinitionRepository(store.DB())
@@ -385,6 +375,29 @@ func (s *Service) WorkingSetIDs(tasks []task.Task) ([]int, error) {
 	return ids, nil
 }
 
+// WorkingSetIDsForViews 为统一任务视图返回 CLI working-set 编号。
+// projected occurrence 没有 UUID，固定返回 0；物化后才可获得数字编号。
+func (s *Service) WorkingSetIDsForViews(views []TaskOccurrenceView) ([]int, error) {
+	if len(views) == 0 {
+		return nil, nil
+	}
+	workingSet, err := s.defaultWorkingSet()
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(workingSet))
+	for i, tsk := range workingSet {
+		index[tsk.UUID] = i + 1
+	}
+	ids := make([]int, len(views))
+	for i, view := range views {
+		if view.UUID != nil {
+			ids[i] = index[*view.UUID]
+		}
+	}
+	return ids, nil
+}
+
 func (s *Service) Add(input AddInput) (task.Task, error) {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return task.Task{}, err
@@ -450,9 +463,6 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 
 func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	now := s.clock.Unix()
-	if input.Recur != nil {
-		return s.createRecurringParent(input, now)
-	}
 	assignees, err := s.resolveAssigneeRefs(input.Assignees)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
@@ -470,7 +480,7 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Assignees: assignees, Depends: depends,
-		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until, Recur: input.Recur,
+		Wait: input.Wait, Scheduled: input.Scheduled, Until: input.Until,
 		Parent: parentUUID,
 	}
 	projChange, err := s.applyProjectBinding(&tsk, parentProject)
@@ -547,17 +557,6 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	return tasks, nil
 }
 
-func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) {
-	if input.Target != nil {
-		return s.List(input)
-	}
-	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext, Limit: input.Limit, Offset: input.Offset})
-	if err != nil {
-		return nil, err
-	}
-	return result.Tasks, nil
-}
-
 func (s *Service) Info(target string) (task.Task, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return task.Task{}, err
@@ -579,11 +578,14 @@ func (s *Service) ListChildren(target string, includeClosed bool) ([]task.Task, 
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, err
 	}
-	parent, err := s.ResolveProtocolTarget(target)
+	parent, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
 		return nil, err
 	}
-	children, err := s.repo.Children(s.workspaceID, parent.UUID)
+	if parent.Task == nil {
+		return []task.Task{}, nil
+	}
+	children, err := s.repo.Children(s.workspaceID, parent.Task.UUID)
 	if err != nil {
 		return nil, err
 	}
@@ -680,6 +682,7 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	before := tsk
 	now := s.clock.Unix()
 	change := projectChangeForTask(tsk)
 	if input.Title != nil {
@@ -703,6 +706,9 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 		if err != nil {
 			return task.Task{}, projectChange{}, err
 		}
+	}
+	if err := s.validateOccurrenceSeriesProject(tsk); err != nil {
+		return task.Task{}, projectChange{}, err
 	}
 	if input.Priority != nil {
 		tsk.Priority = input.Priority
@@ -739,12 +745,6 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 	}
 	if input.ClearUntil {
 		tsk.Until = nil
-	}
-	if input.Recur != nil {
-		tsk.Recur = input.Recur
-	}
-	if input.ClearRecur {
-		tsk.Recur = nil
 	}
 	if input.ClearDepends {
 		tsk.Depends = nil
@@ -798,6 +798,12 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 		newTags = append(newTags, tag)
 	}
 	tsk.Tags = newTags
+	if tsk.SeriesID != nil {
+		tsk.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			tsk.RecurrenceOverrides,
+			changedOccurrenceFields(before, tsk)...,
+		))
+	}
 	tsk.Modified = now
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -881,22 +887,8 @@ func (s *Service) doneLocked(target string) (task.Task, projectChange, []AuditEn
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, nil, err
 	}
-	if tsk.Parent != nil {
-		parent, err := s.repo.GetByUUID(s.workspaceID, *tsk.Parent)
-		if err != nil {
-			return task.Task{}, projectChange{}, nil, err
-		}
-		if parent.Status != task.StatusRecurring {
-			return tsk, change, nil, nil
-		}
-		_, warningEntry, err := s.createNextRecurringChild(parent, &tsk, s.clock.Unix())
-		if err != nil {
-			return task.Task{}, projectChange{}, nil, err
-		}
-		if warningEntry != nil {
-			return tsk, change, []AuditEntry{*warningEntry}, nil
-		}
-	}
+	// 旧"完成驱动生成下一循环实例"的路径已在 spec 2026-07-11 中移除。
+	// 循环实例的生成完全由 TaskSeriesScheduler 按日历槽位决定（Task 7）。
 	return tsk, change, nil, nil
 }
 
@@ -911,6 +903,14 @@ func (s *Service) Delete(target string) error {
 		}
 		event := buildTaskHookEvent("task.deleted", deletedTask, tx.runtime, tx.clock.Unix())
 		entry := taskAuditEntry("task.delete", deletedTask.UUID, change)
+		if deletedTask.SeriesID != nil && deletedTask.RecurrenceAt != nil {
+			entry.Action = "task.recurrence.skipped"
+			entry.ProjectID = deletedTask.ProjectID
+			entry.Payload = map[string]any{
+				"series_id":     *deletedTask.SeriesID,
+				"recurrence_at": *deletedTask.RecurrenceAt,
+			}
+		}
 		return &entry, []HookEvent{event}, nil
 	})
 }
@@ -952,7 +952,7 @@ func (s *Service) startLocked(target string) (task.Task, projectChange, error) {
 		return task.Task{}, projectChange{}, err
 	}
 	change := projectChangeForTask(tsk)
-	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted || tsk.Status == task.StatusRecurring {
+	if tsk.Status == task.StatusCompleted || tsk.Status == task.StatusDeleted {
 		return task.Task{}, projectChange{}, fmt.Errorf("cannot start %s task", tsk.Status)
 	}
 	if tsk.Start != nil {
@@ -1092,11 +1092,14 @@ func (s *Service) ListAnnotations(target string, offset, limit int) ([]task.Anno
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, 0, err
 	}
-	tsk, err := s.resolveTargetForRead(target)
+	resolved, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.repo.ListAnnotations(s.workspaceID, tsk.UUID, offset, limit)
+	if resolved.Task == nil {
+		return []task.Annotation{}, 0, nil
+	}
+	return s.repo.ListAnnotations(s.workspaceID, resolved.Task.UUID, offset, limit)
 }
 
 // ResolveTaskRefs 把一组任务 UUID 解析为带标题和 task_slug 的轻量引用，
@@ -1304,12 +1307,20 @@ func (s *Service) appendDescriptionLocked(target, suffix string) (task.Task, pro
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	before := tsk
 	change := projectChangeForTask(tsk)
 	suffix = strings.TrimSpace(suffix)
 	if suffix == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("title text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
 	}
-	tsk.Title = strings.TrimSpace(tsk.Title + " " + suffix)
+	description := strings.TrimSpace(optionalTextValue(tsk.Description) + " " + suffix)
+	tsk.Description = &description
+	if tsk.SeriesID != nil {
+		tsk.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			tsk.RecurrenceOverrides,
+			changedOccurrenceFields(before, tsk)...,
+		))
+	}
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -1337,12 +1348,20 @@ func (s *Service) prependDescriptionLocked(target, prefix string) (task.Task, pr
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	before := tsk
 	change := projectChangeForTask(tsk)
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("title text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
 	}
-	tsk.Title = strings.TrimSpace(prefix + " " + tsk.Title)
+	description := strings.TrimSpace(prefix + " " + optionalTextValue(tsk.Description))
+	tsk.Description = &description
+	if tsk.SeriesID != nil {
+		tsk.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			tsk.RecurrenceOverrides,
+			changedOccurrenceFields(before, tsk)...,
+		))
+	}
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -1350,12 +1369,12 @@ func (s *Service) prependDescriptionLocked(target, prefix string) (task.Task, pr
 	return tsk, change, nil
 }
 
-func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
+func (s *Service) ReplaceEditableTask(target string, fields task.EditableFields) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
 	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
-		replacedTask, change, err := tx.replaceEditableTaskLocked(target, edited)
+		replacedTask, change, err := tx.replaceEditableTaskLocked(target, fields)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1365,17 +1384,34 @@ func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
 	})
 }
 
-func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (task.Task, projectChange, error) {
+func (s *Service) replaceEditableTaskLocked(target string, fields task.EditableFields) (task.Task, projectChange, error) {
 	original, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
-	edited.UUID = original.UUID
-	edited.WorkspaceID = original.WorkspaceID
-	edited.Entry = original.Entry
+	if err := fields.Validate(); err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	edited := original
+	edited.Title = fields.Title
+	edited.Description = cloneStringPtr(fields.Description)
+	edited.Status = fields.Status
+	edited.Project = cloneStringPtr(fields.Project)
+	edited.Priority = cloneStringPtr(fields.Priority)
+	edited.Due = cloneInt64Ptr(fields.Due)
+	edited.Wait = cloneInt64Ptr(fields.Wait)
+	edited.Scheduled = cloneInt64Ptr(fields.Scheduled)
+	edited.Until = cloneInt64Ptr(fields.Until)
+	edited.Tags = append([]string(nil), fields.Tags...)
+	edited.Annotations = append([]task.Annotation(nil), fields.Annotations...)
+	edited.Depends = append([]string(nil), fields.Depends...)
+	edited.Parent = cloneStringPtr(fields.Parent)
 	edited.Modified = s.clock.Unix()
 	change, err := s.applyProjectBindingFrom(&edited, edited.Project, projectBindingFromTask(original))
 	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	if err := s.validateOccurrenceSeriesProject(edited); err != nil {
 		return task.Task{}, projectChange{}, err
 	}
 	if edited.Wait != nil && *edited.Wait > s.clock.Unix() && edited.Status == task.StatusPending {
@@ -1384,6 +1420,12 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (ta
 	if edited.Wait == nil && edited.Status == task.StatusWaiting {
 		edited.Status = task.StatusPending
 	}
+	if original.SeriesID != nil {
+		edited.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			edited.RecurrenceOverrides,
+			changedOccurrenceFields(original, edited)...,
+		))
+	}
 	if err := edited.Validate(); err != nil {
 		return task.Task{}, projectChange{}, err
 	}
@@ -1391,6 +1433,23 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (ta
 		return task.Task{}, projectChange{}, err
 	}
 	return edited, change, nil
+}
+
+func (s *Service) validateOccurrenceSeriesProject(tsk task.Task) error {
+	if tsk.SeriesID == nil {
+		return nil
+	}
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, *tsk.SeriesID)
+	if err != nil {
+		return mapSeriesError(err)
+	}
+	if tsk.ProjectID == nil || *tsk.ProjectID != series.ProjectID {
+		return RuntimeError{
+			Code:    "task_occurrence_project_immutable",
+			Message: "循环实例必须保留在所属循环任务的项目中",
+		}
+	}
+	return nil
 }
 
 func (s *Service) Export() ([]task.Task, error) {
@@ -1545,17 +1604,8 @@ func (s *Service) importOneLocked(dto task.JSONTask) error {
 	if tsk.Until != nil {
 		existing.Until = tsk.Until
 	}
-	if tsk.Recur != nil {
-		existing.Recur = tsk.Recur
-	}
 	if tsk.Parent != nil {
 		existing.Parent = tsk.Parent
-	}
-	if tsk.Mask != nil {
-		existing.Mask = tsk.Mask
-	}
-	if tsk.IMask != nil {
-		existing.IMask = tsk.IMask
 	}
 	if tsk.Tags != nil {
 		existing.Tags = tsk.Tags
@@ -1628,80 +1678,6 @@ func (s *Service) dependencyGraph() (map[string][]string, error) {
 		graph[tsk.UUID] = append([]string(nil), tsk.Depends...)
 	}
 	return graph, nil
-}
-
-func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
-	if err := s.Require(PermissionTaskRead); err != nil {
-		return ReportResult{}, err
-	}
-	def, ok := s.reports.Get(input.Name)
-	if !ok {
-		return ReportResult{}, fmt.Errorf("unknown report %q", input.Name)
-	}
-	if err := s.refreshAutomaticState(); err != nil {
-		return ReportResult{}, err
-	}
-	contextExpr, err := s.activeContextFilter(input.NoContext)
-	if err != nil {
-		return ReportResult{}, err
-	}
-	resolvedReportQuery, err := s.resolveTaskQueryPredicates(input.Query)
-	if err != nil {
-		return ReportResult{}, err
-	}
-	merged := query.And(s.projectScopeExpr(), query.And(contextExpr, query.And(def.Filter, resolvedReportQuery)))
-	now := s.clock.Unix()
-	udaDefs, err := s.udaDefinitionTypes()
-	if err != nil {
-		return ReportResult{}, err
-	}
-	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
-		Query:          merged,
-		Sort:           def.Sort,
-		NowUnix:        now,
-		UDADefinitions: udaDefs,
-		Limit:          input.Limit,
-		Offset:         input.Offset,
-		Dialect:        s.store.Dialect(),
-	})
-	if err != nil {
-		return ReportResult{}, mapProjectQueryCompileError(err)
-	}
-	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: now, Query: s.projectScopeExpr(), Dialect: s.store.Dialect()})
-	if err != nil {
-		return ReportResult{}, err
-	}
-	blocked, blocking := buildDependencyState(allTasks, now)
-	tasks = applyReportScope(tasks, def.Scope, now, blocked, blocking)
-	if def.Sort == "urgency" {
-		urgencyOptions, err := s.urgencyConfig()
-		if err != nil {
-			return ReportResult{}, err
-		}
-		type taskWithUrgency struct {
-			Task  task.Task
-			Total float64
-		}
-		withUrgency := make([]taskWithUrgency, len(tasks))
-		for i, tsk := range tasks {
-			opts := urgencyOptions
-			opts.NowUnix = now
-			opts.Blocked = blocked[tsk.UUID]
-			opts.Blocking = blocking[tsk.UUID]
-			explain := urgency.Explain(tsk, opts)
-			withUrgency[i] = taskWithUrgency{Task: tsk, Total: explain.Total}
-		}
-		sort.SliceStable(withUrgency, func(i, j int) bool {
-			return withUrgency[i].Total > withUrgency[j].Total
-		})
-		for i, wu := range withUrgency {
-			tasks[i] = wu.Task
-		}
-	}
-	if input.Limit > 0 && len(tasks) > input.Limit {
-		tasks = tasks[:input.Limit]
-	}
-	return ReportResult{Tasks: tasks}, nil
 }
 
 func (s *Service) resolveTaskQueryPredicates(expr query.Expr) (query.Expr, error) {
@@ -1883,30 +1859,39 @@ func cloneAssigneeInfos(assignees []task.AssigneeInfo) []task.AssigneeInfo {
 	return out
 }
 
-func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
+func (s *Service) ExplainUrgency(target string) (UrgencyView, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	if err := s.refreshAutomaticState(); err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
-	tsk, err := s.resolveTargetForRead(target)
+	resolved, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr(), Dialect: s.store.Dialect()})
 	if err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	blocked, blocking := buildDependencyState(allTasks, s.clock.Unix())
 	opts, err := s.urgencyConfig()
 	if err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	opts.NowUnix = s.clock.Unix()
-	opts.Blocked = blocked[tsk.UUID]
-	opts.Blocking = blocking[tsk.UUID]
-	return urgency.Explain(tsk, opts), nil
+	if resolved.Task != nil {
+		opts.Blocked = blocked[resolved.Task.UUID]
+		opts.Blocking = blocking[resolved.Task.UUID]
+	}
+	result := urgency.ExplainValue(taskViewToUrgencyValue(resolved.View), opts)
+	if result.Items == nil {
+		result.Items = []urgency.ExplainItem{}
+	}
+	return UrgencyView{
+		ID: resolved.StableID, UUID: cloneStringPtr(resolved.View.UUID),
+		Total: result.Total, Items: result.Items,
+	}, nil
 }
 
 func (s *Service) urgencyConfig() (urgency.Options, error) {
@@ -1980,9 +1965,6 @@ func (s *Service) resolveParentForAdd(parentRef *string, inputProject *string) (
 	case task.StatusCompleted:
 		// 完成任务下继续拆任务容易造成状态语义混乱；文案给出替代动作（spec §8.2 规则 6）。
 		return nil, nil, RuntimeError{Code: "task_parent_completed", Message: "parent task is completed; please reopen the parent before adding sub-tasks"}
-	case task.StatusRecurring:
-		// recurring parent 不允许手动子任务（spec §8.1 / §9.1）。
-		return nil, nil, RuntimeError{Code: "task_parent_recurring", Message: "manual sub-tasks cannot be added to a recurring parent"}
 	}
 	// 显式 project 必须与父任务 project 一致（spec §8.2 规则 3）。
 	if inputProject != nil && strings.TrimSpace(*inputProject) != "" &&
@@ -2031,50 +2013,9 @@ func (s *Service) refreshAutomaticState() error {
 			}
 		}
 	}
-	if err := s.ensureRecurringChildren(); err != nil {
-		return err
-	}
+	// 旧 ensureRecurringChildren（完成驱动补齐循环子任务）在 spec 2026-07-11 中移除。
+	// 循环实例由 TaskSeriesScheduler 按日历补齐（Task 7）。
 	return nil
-}
-
-func applyReportScope(tasks []task.Task, scope report.ScopeKind, now int64, blocked map[string]bool, blocking map[string]bool) []task.Task {
-	switch scope {
-	case report.ScopeHideUntilExpired:
-		return filterExpiredUntil(tasks, now)
-	case report.ScopeReady:
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range filterExpiredUntil(tasks, now) {
-			if tsk.Status != task.StatusPending || tsk.Start != nil || blocked[tsk.UUID] {
-				continue
-			}
-			if tsk.Wait != nil && *tsk.Wait > now {
-				continue
-			}
-			if tsk.Scheduled != nil && *tsk.Scheduled > now {
-				continue
-			}
-			filtered = append(filtered, tsk)
-		}
-		return filtered
-	case report.ScopeBlocked:
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range filterExpiredUntil(tasks, now) {
-			if tsk.Status == task.StatusPending && blocked[tsk.UUID] {
-				filtered = append(filtered, tsk)
-			}
-		}
-		return filtered
-	case report.ScopeBlocking:
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range filterExpiredUntil(tasks, now) {
-			if tsk.Status == task.StatusPending && blocking[tsk.UUID] {
-				filtered = append(filtered, tsk)
-			}
-		}
-		return filtered
-	default:
-		return tasks
-	}
 }
 
 func filterExpiredUntil(tasks []task.Task, now int64) []task.Task {
@@ -2150,139 +2091,6 @@ func (s *Service) defaultWorkingSet() ([]task.Task, error) {
 	return filtered, nil
 }
 
-func (s *Service) createRecurringParent(input AddInput, now int64) (task.Task, projectChange, error) {
-	if input.Wait != nil || input.Scheduled != nil || len(input.Depends) > 0 {
-		return task.Task{}, projectChange{}, fmt.Errorf("recurring task does not accept wait, scheduled, or depends")
-	}
-	assignees, err := s.resolveAssigneeRefs(input.Assignees)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	parent := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
-		Status: task.StatusRecurring, Entry: now, Modified: now,
-		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
-		Assignees: assignees, Until: input.Until, Recur: input.Recur,
-	}
-	change, err := s.applyProjectBinding(&parent, input.Project)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	udas, err := s.normalizeUDAModifications(nil, input.UDAs, nil, false)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	parent.UDAs = udas
-	createdParent, err := s.repo.Create(parent)
-	if err != nil {
-		return task.Task{}, projectChange{}, err
-	}
-	if _, warningEntry, err := s.createNextRecurringChild(createdParent, nil, now); err != nil {
-		return task.Task{}, projectChange{}, err
-	} else if warningEntry != nil {
-		if err := s.appendAuditEntry(*warningEntry); err != nil {
-			return task.Task{}, projectChange{}, err
-		}
-	}
-	return createdParent, change, nil
-}
-
-func (s *Service) createNextRecurringChild(parent task.Task, previous *task.Task, now int64) (task.Task, *AuditEntry, error) {
-	if parent.Status != task.StatusRecurring {
-		return task.Task{}, nil, nil
-	}
-	children, err := s.repo.Children(s.workspaceID, parent.UUID)
-	if err != nil {
-		return task.Task{}, nil, err
-	}
-	for _, child := range children {
-		if child.Status == task.StatusPending || child.Status == task.StatusWaiting {
-			return child, nil, nil
-		}
-	}
-
-	var due *int64
-	if previous == nil {
-		if parent.Due != nil {
-			value := *parent.Due
-			due = &value
-		}
-	} else if previous.Due != nil && parent.Recur != nil {
-		nextDue, err := recurrence.Next(*previous.Due, *parent.Recur, s.clock.Location())
-		if err != nil {
-			return task.Task{}, nil, err
-		}
-		due = &nextDue
-	}
-	if due == nil {
-		return task.Task{}, nil, fmt.Errorf("recurring parent requires due")
-	}
-	if parent.Until != nil && *due > *parent.Until {
-		return task.Task{}, nil, nil
-	}
-	child := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: parent.Title, Description: cloneStringPtr(parent.Description),
-		Status: task.StatusPending, Entry: now, Modified: now,
-		Due: due, Project: parent.Project, ProjectID: parent.ProjectID, Priority: parent.Priority, Tags: parent.Tags,
-		Assignees: cloneAssigneeInfos(parent.Assignees), Until: parent.Until, Recur: parent.Recur,
-		Parent: &parent.UUID,
-		UDAs:   cloneUDAs(parent.UDAs),
-	}
-	if child.ProjectID != nil {
-		seq, err := s.projectRepo.AllocateProjectTaskSeqLocked(child.WorkspaceID, *child.ProjectID)
-		if err != nil {
-			return task.Task{}, nil, err
-		}
-		child.ProjectSeq = &seq
-	}
-	created, _, err := s.repo.CreateRecurringChild(child)
-	if err != nil {
-		return task.Task{}, nil, err
-	}
-	warningEntry, err := s.recurringArchivedProjectWarning(parent, created)
-	if err != nil {
-		return task.Task{}, nil, err
-	}
-	return created, warningEntry, nil
-}
-
-func (s *Service) ensureRecurringChildren() error {
-	parents, err := s.repo.RecurringParents(s.workspaceID)
-	if err != nil {
-		return err
-	}
-	for _, parent := range parents {
-		children, err := s.repo.Children(s.workspaceID, parent.UUID)
-		if err != nil {
-			return err
-		}
-		var latest *task.Task
-		hasOpen := false
-		for i := range children {
-			child := children[i]
-			if latest == nil || child.Entry > latest.Entry {
-				latest = &child
-			}
-			if child.Status == task.StatusPending || child.Status == task.StatusWaiting {
-				hasOpen = true
-			}
-		}
-		if hasOpen {
-			continue
-		}
-		created, warningEntry, err := s.createNextRecurringChild(parent, latest, s.clock.Unix())
-		if err != nil {
-			return err
-		}
-		if warningEntry != nil && created.UUID != "" {
-			if err := s.appendAuditEntry(*warningEntry); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (s *Service) normalizeTaskProjectFields(tsk *task.Task) error {
 	change, err := s.applyProjectBinding(tsk, tsk.Project)
 	if err != nil {
@@ -2343,33 +2151,6 @@ func (s *Service) resolveImportedProjectBinding(existing task.Task, slug string)
 		Code:    "project_archived",
 		Message: fmt.Sprintf("project %q is archived", project.Slug),
 	}
-}
-
-func (s *Service) recurringArchivedProjectWarning(parent task.Task, child task.Task) (*AuditEntry, error) {
-	if parent.ProjectID == nil || parent.Project == nil {
-		return nil, nil
-	}
-	project, err := s.projectRepo.GetByID(*parent.ProjectID)
-	if err != nil {
-		return nil, RuntimeError{Code: "project_invariant_violation", Message: "project invariant violation"}
-	}
-	if !isProjectClosed(project) {
-		return nil, nil
-	}
-	projectID := project.ID
-	return &AuditEntry{
-		Action:      "task.recurrence.archived_project",
-		WorkspaceID: &parent.WorkspaceID,
-		ProjectID:   &projectID,
-		TargetType:  "task",
-		TargetID:    child.UUID,
-		Payload: map[string]any{
-			"parent_uuid":  parent.UUID,
-			"child_uuid":   child.UUID,
-			"project_id":   project.ID,
-			"project_slug": project.Slug,
-		},
-	}, nil
 }
 
 func (s *Service) appendAuditEntry(entry AuditEntry) error {

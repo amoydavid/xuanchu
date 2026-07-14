@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -30,8 +31,17 @@ import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskPropertyPanel } from "./task-property-panel"
 import { SubTaskList } from "./sub-task-list"
+import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
+import {
+  canonicalTaskRouteRef,
+  isCanonicalTaskSlug,
+  taskDisplayRef,
+} from "../tasks/task-reference"
+import { RecurrenceContextAlert } from "./recurrence-context-alert"
 
 type TaskDetailPageProps = {
+  myTasksReturnSearch?: string
+  projectClosed?: boolean
   projectSlug?: string
   taskRef: string
   workspaceSlug: string
@@ -40,6 +50,8 @@ type TaskDetailPageProps = {
 type MobileDetailTab = "description" | "subtasks" | "properties" | "activity"
 
 export function TaskDetailPage({
+  myTasksReturnSearch,
+  projectClosed = false,
   projectSlug,
   taskRef,
   workspaceSlug,
@@ -47,6 +59,8 @@ export function TaskDetailPage({
   return (
     <EditFeedbackProvider>
       <TaskDetailPageContent
+        myTasksReturnSearch={myTasksReturnSearch}
+        projectClosed={projectClosed}
         projectSlug={projectSlug}
         taskRef={taskRef}
         workspaceSlug={workspaceSlug}
@@ -56,12 +70,15 @@ export function TaskDetailPage({
 }
 
 function TaskDetailPageContent({
+  myTasksReturnSearch,
+  projectClosed = false,
   projectSlug,
   taskRef,
   workspaceSlug,
 }: TaskDetailPageProps) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const me = useMe()
+  const navigate = useNavigate()
   const canWrite = canTaskWrite({
     role: me.data?.effective_role,
     scopes: me.data?.token.scopes,
@@ -90,6 +107,65 @@ function TaskDetailPageContent({
   const projectHref = effectiveProjectSlug
     ? `/workspaces/${workspaceSlug}/projects/${effectiveProjectSlug}`
     : undefined
+  const projectTasksHref: string | undefined = projectHref
+    ? `${projectHref}/tasks`
+    : undefined
+  const myTasksHref =
+    myTasksReturnSearch === undefined
+      ? undefined
+      : normalizedMyTasksHref(myTasksReturnSearch)
+  const returnHref = myTasksHref ?? projectHref
+
+  useEffect(() => {
+    const loaded = task.data
+    if (!loaded?.recurrence_info || !loaded.task_slug) return
+    const canonicalRef = canonicalTaskRouteRef(loaded)
+    if (
+      !canonicalRef ||
+      canonicalRef === taskRef ||
+      !isCanonicalTaskSlug(canonicalRef) ||
+      !effectiveProjectSlug ||
+      loaded.project !== effectiveProjectSlug
+    ) {
+      return
+    }
+    void navigate({
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+      params: {
+        workspaceSlug,
+        projectSlug: effectiveProjectSlug,
+        taskRef: canonicalRef,
+      },
+      ...(myTasksReturnSearch === undefined
+        ? {}
+        : {
+            search: {
+              from: "my-tasks",
+              my_tasks_search: myTasksReturnSearch,
+            },
+          }),
+      replace: true,
+    })
+  }, [
+    effectiveProjectSlug,
+    myTasksReturnSearch,
+    navigate,
+    task.data,
+    taskRef,
+    workspaceSlug,
+  ])
+
+  useEffect(() => {
+    const loaded = task.data
+    if (!loaded) return
+    const previousTitle = document.title
+    const reference = taskDisplayRef(loaded, i18n.language) || taskRef
+    const nextTitle = `${reference} · ${loaded.title}`
+    document.title = nextTitle
+    return () => {
+      if (document.title === nextTitle) document.title = previousTitle
+    }
+  }, [i18n.language, task.data, taskRef])
 
   if (task.isPending) {
     return <TaskDetailSkeleton />
@@ -106,10 +182,12 @@ function TaskDetailPageContent({
         <p className="mt-3 text-sm text-muted-foreground">
           {task.error instanceof ApiError ? task.error.code : "unknown"}
         </p>
-        {projectSlug ? (
+        {returnHref ? (
           <Button asChild className="mt-5" variant="outline">
-            <a href={`/workspaces/${workspaceSlug}/projects/${projectSlug}`}>
-              {t("projectReadonly.backToProject")}
+            <a href={returnHref}>
+              {myTasksHref
+                ? t("taskDetail.backToMyTasks")
+                : t("projectReadonly.backToProject")}
             </a>
           </Button>
         ) : null}
@@ -122,11 +200,11 @@ function TaskDetailPageContent({
     // 已经过 isPending / isError，data 必然存在；防御性兜底。
     return <TaskDetailSkeleton />
   }
-  const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
-  // 子任务创建门控（spec §9.1）：可写 + 任务状态可写 + 非 recurring parent。
-  // completed/deleted 任务不可写由 taskWritable 覆盖；recurring parent 不允许手动子任务。
-  const canCreateSubTask =
-    taskWritable && taskData.status !== "recurring"
+  const pageCanWrite = canWrite && !projectClosed
+  const taskWritable = pageCanWrite && isWritableTaskStatus(taskData.status)
+  // Series 不再存成隐藏的 recurring parent；这里只需要普通任务写权限门控。
+  // projected occurrence 创建第一个 child 时由后端按 occurrence_ref 原子物化。
+  const canCreateSubTask = taskWritable
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
     return (
@@ -147,53 +225,82 @@ function TaskDetailPageContent({
     <div className="space-y-5">
       <section className="border-b pb-4">
         <nav className="text-xs text-muted-foreground">
-          <a className="hover:text-foreground" href="/projects">
+          <Link className="hover:text-foreground" to="/projects">
             {workspaceSlug}
-          </a>
+          </Link>
           {effectiveProjectSlug ? (
             <>
               {" / "}
-              <a className="hover:text-foreground" href={projectHref}>
+              <Link className="hover:text-foreground" to={projectHref}>
                 {effectiveProjectSlug}
-              </a>
+              </Link>
+              {" / "}
+              <Link className="hover:text-foreground" to={projectTasksHref}>
+                {t("projectSubpages.tasks")}
+              </Link>
             </>
           ) : null}
           {" / "}
-          <span>{taskData.task_slug || taskData.uuid.slice(0, 8)}</span>
+          <span>{taskDisplayRef(taskData, i18n.language) || taskRef}</span>
         </nav>
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 flex-1">
-            <InlineTextEditor
-              ariaLabel={t("projectReadonly.taskTitle")}
-              disabled={!taskWritable}
-              displayClassName="text-2xl font-semibold tracking-normal"
-              onSave={async (title) => {
-                await modifyTask.mutateAsync({ title })
-              }}
-              validate={(value) =>
-                value.trim() ? null : t("projectReadonly.taskTitleRequired")
-              }
-              value={taskData.title}
-            />
+            <h1 aria-label={taskData.title}>
+              <InlineTextEditor
+                ariaLabel={t("projectReadonly.taskTitle")}
+                disabled={!taskWritable}
+                displayClassName="text-2xl font-semibold tracking-normal"
+                onSave={async (title) => {
+                  await modifyTask.mutateAsync({ title })
+                }}
+                validate={(value) =>
+                  value.trim() ? null : t("projectReadonly.taskTitleRequired")
+                }
+                value={taskData.title}
+              />
+            </h1>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="outline">{taskStatusLabel(taskData.status, t)}</Badge>
+              <Badge variant="outline">
+                {taskData.recurrence_info?.materialization === "projected"
+                  ? t("taskSeries.occurrence.projected")
+                  : taskData.recurrence_info && taskData.status === "deleted"
+                    ? t("taskSeries.occurrence.skipped")
+                    : taskStatusLabel(taskData.status, t)}
+              </Badge>
               {taskData.priority ? (
                 <Badge variant="outline">{taskData.priority}</Badge>
               ) : null}
               {taskData.task_slug ? (
                 <Badge variant="outline">{taskData.task_slug}</Badge>
               ) : null}
+              {taskData.recurrence_info ? (
+                <Badge variant="outline" data-testid="recurrence-info-badge">
+                  {t("taskSeries.occurrence.badge", {
+                    rule: recurrenceRuleLabel(taskData.recurrence_info.rule, t),
+                  })}
+                </Badge>
+              ) : null}
             </div>
+            <RecurrenceContextAlert
+              projectSlug={effectiveProjectSlug}
+              task={taskData}
+              workspaceSlug={workspaceSlug}
+            />
           </div>
           <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-            {projectHref ? (
+            {returnHref ? (
               <Button asChild variant="outline">
-                <a href={projectHref}>{t("projectReadonly.backToProject")}</a>
+                <a href={returnHref}>
+                  {myTasksHref
+                    ? t("taskDetail.backToMyTasks")
+                    : t("projectReadonly.backToProject")}
+                </a>
               </Button>
             ) : null}
             <TaskActionBar
-              permissionCanWrite={canWrite}
+              permissionCanWrite={pageCanWrite}
               projectSlug={effectiveProjectSlug ?? ""}
+              myTasksReturnSearch={myTasksReturnSearch}
               task={taskData}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
@@ -213,6 +320,9 @@ function TaskDetailPageContent({
           <div className={mobilePanelClass(activeMobileTab, "description")}>
             <TaskDescriptionBlock
               canWrite={taskWritable}
+              inherited={
+                taskData.recurrence_info?.materialization === "projected"
+              }
               onSave={async (description) => {
                 await modifyTask.mutateAsync(
                   description ? { description } : { clear_description: true }
@@ -233,7 +343,7 @@ function TaskDetailPageContent({
             <SubTaskList
               canCreate={canCreateSubTask}
               parentRef={taskRef}
-              parentUUID={taskData.uuid}
+              parentUUID={taskData.uuid ?? taskRef}
               projectSlug={effectiveProjectSlug ?? ""}
               workspaceSlug={workspaceSlug}
             />
@@ -299,10 +409,12 @@ function MobileDetailTabs({
 
 function TaskDescriptionBlock({
   canWrite,
+  inherited,
   onSave,
   value,
 }: {
   canWrite: boolean
+  inherited: boolean
   onSave: (value: string) => Promise<void> | void
   value: string
 }) {
@@ -338,9 +450,16 @@ function TaskDescriptionBlock({
     <>
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium">
-            {t("projectReadonly.description")}
-          </h2>
+          <div>
+            <h2 className="text-sm font-medium">
+              {t("projectReadonly.description")}
+            </h2>
+            {inherited ? (
+              <div className="text-xs text-muted-foreground">
+                {t("taskSeries.occurrence.inherited")}
+              </div>
+            ) : null}
+          </div>
           <Button
             disabled={!canWrite}
             onClick={openEditor}
@@ -352,7 +471,10 @@ function TaskDescriptionBlock({
           </Button>
         </div>
         {value ? (
-          <MarkdownView className="max-w-3xl text-sm leading-6 text-muted-foreground">
+          <MarkdownView
+            className="max-w-3xl text-sm leading-6 text-muted-foreground"
+            headingOffset={1}
+          >
             {value}
           </MarkdownView>
         ) : (
@@ -364,7 +486,9 @@ function TaskDescriptionBlock({
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t("projectReadonly.editDescriptionTitle")}</DialogTitle>
+            <DialogTitle>
+              {t("projectReadonly.editDescriptionTitle")}
+            </DialogTitle>
             <DialogDescription>
               {t("projectReadonly.editDescriptionDescription")}
             </DialogDescription>
@@ -383,7 +507,9 @@ function TaskDescriptionBlock({
               value={draft}
             />
           </div>
-          {error ? <div className="text-sm text-destructive">{error}</div> : null}
+          {error ? (
+            <div className="text-sm text-destructive">{error}</div>
+          ) : null}
           <DialogFooter>
             <Button
               onClick={() => setEditing(false)}
@@ -408,7 +534,10 @@ function TaskDescriptionBlock({
   )
 }
 
-function mobilePanelClass(active: MobileDetailTab, tab: MobileDetailTab): string {
+function mobilePanelClass(
+  active: MobileDetailTab,
+  tab: MobileDetailTab
+): string {
   return cn(active === tab ? "block" : "hidden", "md:block")
 }
 
@@ -431,4 +560,15 @@ function taskBelongsToProject(task: ProjectTask, projectSlug: string): boolean {
 
 function isWritableTaskStatus(status: string): boolean {
   return status !== "completed" && status !== "deleted"
+}
+
+function normalizedMyTasksHref(raw: string): string {
+  const input = new URLSearchParams(raw)
+  const output = new URLSearchParams()
+  for (const key of ["priority", "project", "q", "sort", "tab", "task_type"]) {
+    const value = input.get(key)
+    if (value) output.set(key, value)
+  }
+  const query = output.toString()
+  return query ? `/my-tasks?${query}` : "/my-tasks"
 }

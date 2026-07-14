@@ -4,7 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "id": {
-        "description": "task reference: UUID or task_slug",
+        "description": "task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref",
         "type": "string"
       },
       "project": {

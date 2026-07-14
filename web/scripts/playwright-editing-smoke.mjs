@@ -147,7 +147,10 @@ async function runMobileSmoke(browser) {
     await expectText(page, "补充复盘结论")
     await page.getByRole("button", { name: "编辑注解" }).click()
     await assertDialogVisible(page, "编辑注解")
-    await page.keyboard.press("Escape")
+    await page
+      .getByRole("dialog", { name: "编辑注解" })
+      .getByRole("button", { name: "取消" })
+      .click()
 
     await page.getByRole("tab", { name: "属性" }).click()
     await page.getByRole("button", { name: "编辑标签" }).click()
@@ -228,7 +231,8 @@ async function newMockedPage(browser, viewport) {
     }
 
     if (method === "GET" && pathName === "/api/v1/tasks") {
-      await fulfill(route, tasks)
+      // TaskViewPage 格式（spec §17.3）：{items, total, limit, offset, occurrence_mode}
+      await fulfill(route, { items: tasks, total: tasks.length, limit: 200, offset: 0, occurrence_mode: "materialized" })
       return
     }
 
@@ -353,7 +357,7 @@ async function expectStatus(page, text) {
 }
 
 async function expectMarkdownSmoke(page) {
-  await page.locator(".markdown-prose h1", { hasText: "素材复盘" }).waitFor()
+  await page.locator(".markdown-prose h2", { hasText: "素材复盘" }).waitFor()
   await page.locator(".markdown-prose code", { hasText: "channel" }).waitFor()
   const safeLink = page.locator('.markdown-prose a[href="https://example.com/spec"]')
   await safeLink.waitFor()

@@ -516,10 +516,10 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 	for _, name := range clear {
 		name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
 		if current, ok := out[name]; ok && current.Orphan && !allowOrphan {
-			return nil, fmt.Errorf("modifying orphan UDA %q is not allowed", name)
+			return nil, RuntimeError{Code: "uda_orphan_readonly", Message: fmt.Sprintf("modifying orphan UDA %q is not allowed", name)}
 		}
 		if _, err := s.udaDefinition(name); err == storage.ErrNotFound && !allowOrphan {
-			return nil, fmt.Errorf("UDA %q is not defined", name)
+			return nil, RuntimeError{Code: "uda_not_defined", Message: fmt.Sprintf("UDA %q is not defined", name)}
 		} else if err != nil {
 			return nil, err
 		}
@@ -534,12 +534,12 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 		raw := set[name]
 		name = strings.TrimPrefix(strings.TrimSpace(name), "uda.")
 		if current, ok := out[name]; ok && current.Orphan && !allowOrphan {
-			return nil, fmt.Errorf("modifying orphan UDA %q is not allowed", name)
+			return nil, RuntimeError{Code: "uda_orphan_readonly", Message: fmt.Sprintf("modifying orphan UDA %q is not allowed", name)}
 		}
 		def, err := s.udaDefinition(name)
 		if err == storage.ErrNotFound {
 			if !allowOrphan {
-				return nil, fmt.Errorf("UDA %q is not defined", name)
+				return nil, RuntimeError{Code: "uda_not_defined", Message: fmt.Sprintf("UDA %q is not defined", name)}
 			}
 			out[name] = task.UDAValue{Name: name, Raw: raw, Orphan: true}
 			continue
@@ -549,7 +549,7 @@ func (s *Service) normalizeUDAModifications(existing map[string]task.UDAValue, s
 		}
 		normalized, err := uda.NormalizeValue(def, raw)
 		if err != nil {
-			return nil, err
+			return nil, RuntimeError{Code: "uda_value_invalid", Message: err.Error()}
 		}
 		if normalized == "" {
 			delete(out, name)

@@ -145,10 +145,23 @@ func compilePredicate(p query.Predicate, opts QueryCompileOptions) (string, []an
 		return compareDateColumn("scheduled", p, opts)
 	case query.AttrUntil:
 		return compareDateColumn("until", p, opts)
-	case query.AttrRecur:
-		return compareColumn("recur", p.Operator, value, nil, opts.Dialect)
 	case query.AttrParent:
 		return compareColumn("parent", p.Operator, value, nil, opts.Dialect)
+	case query.AttrSeriesID:
+		return compareColumn("series_id", p.Operator, value, nil, opts.Dialect)
+	case query.AttrRecurrenceAt:
+		return compareDateColumn("recurrence_at", p, opts)
+	case query.AttrTaskType:
+		// task_type:normal → series_id IS NULL; task_type:occurrence → series_id IS NOT NULL
+		switch p.Operator {
+		case query.OpEqual:
+			if value == "normal" {
+				return "tasks.series_id IS NULL", nil, nil
+			}
+			return "tasks.series_id IS NOT NULL", nil, nil
+		default:
+			return "", nil, fmt.Errorf("task_type only supports equality")
+		}
 	case query.AttrAssignee:
 		switch p.Operator {
 		case query.OpEqual:

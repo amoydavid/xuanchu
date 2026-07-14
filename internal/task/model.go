@@ -2,10 +2,9 @@ package task
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
-
-	"git.dajee.net/dajee/xuanchu/internal/recurrence"
 )
 
 const (
@@ -13,7 +12,6 @@ const (
 	StatusCompleted = "completed"
 	StatusDeleted   = "deleted"
 	StatusWaiting   = "waiting"
-	StatusRecurring = "recurring"
 )
 
 type Annotation struct {
@@ -95,13 +93,16 @@ type Task struct {
 	Until       *int64
 	Annotations []Annotation
 	Depends     []string
-	Recur       *string
 	Parent      *string
-	Mask        *string
-	IMask       *int
 	Assignees   []AssigneeInfo
 	Links       []TaskLinkInfo
 	UDAs        map[string]UDAValue
+	// 以下为循环实例（occurrence）持久字段（spec §7.2）。
+	// 普通任务三者全 nil；已物化 occurrence 三者全非 nil。
+	SeriesID                *string
+	RecurrenceAt            *int64
+	RecurrenceRuleSnapshot  *string
+	RecurrenceOverrides     []string
 }
 
 func (t Task) Validate() error {
@@ -109,7 +110,7 @@ func (t Task) Validate() error {
 		return errors.New("title is required")
 	}
 	switch t.Status {
-	case StatusPending, StatusCompleted, StatusDeleted, StatusWaiting, StatusRecurring:
+	case StatusPending, StatusCompleted, StatusDeleted, StatusWaiting:
 	default:
 		return errors.New("invalid status")
 	}
@@ -146,17 +147,73 @@ func (t Task) Validate() error {
 			return errors.New("UDA value must not contain newlines")
 		}
 	}
-	if t.Recur != nil {
-		if err := recurrence.Validate(*t.Recur); err != nil {
-			return err
-		}
+	if err := validateOccurrenceInvariant(&t); err != nil {
+		return err
 	}
-	if t.Status == StatusRecurring {
-		if t.Recur == nil {
-			return errors.New("recurring task requires recur")
+	return nil
+}
+
+// validateOccurrenceInvariant 校验 occurrence 持久字段的三元一致性（spec §7.2）。
+// series_id / recurrence_at / recurrence_rule_snapshot 要么全 nil，要么全非 nil。
+func validateOccurrenceInvariant(t *Task) error {
+	set := 0
+	if t.SeriesID != nil {
+		set++
+	}
+	if t.RecurrenceAt != nil {
+		set++
+	}
+	if t.RecurrenceRuleSnapshot != nil {
+		set++
+	}
+	if set != 0 && set != 3 {
+		return errors.New("occurrence fields series_id/recurrence_at/recurrence_rule_snapshot must be all nil or all set")
+	}
+	if err := ValidateRecurrenceOverrides(t.RecurrenceOverrides); err != nil {
+		return err
+	}
+	return nil
+}
+
+// allowedRecurrenceOverrideFields 是 occurrence 单次字段覆盖允许的字段集合（spec §7.5）。
+var allowedRecurrenceOverrideFields = map[string]struct{}{
+	"title":       {},
+	"description": {},
+	"priority":    {},
+	"due":         {},
+	"assignees":   {},
+	"tags":        {},
+	"udas":        {},
+	"wait":        {},
+	"scheduled":   {},
+	"depends":     {},
+}
+
+// NormalizeRecurrenceOverrides 返回去重、升序排序后的 override 字段列表。
+// nil/空输入返回空 slice（不返回 nil，便于持久化层稳定序列化）。
+func NormalizeRecurrenceOverrides(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, f := range in {
+		if _, ok := seen[f]; ok {
+			continue
 		}
-		if t.Due == nil {
-			return errors.New("recurring task requires due")
+		seen[f] = struct{}{}
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ValidateRecurrenceOverrides 校验 override 字段列表是否都在允许集合内。
+// 注意：它不要求排序，排序由 NormalizeRecurrenceOverrides 完成。
+func ValidateRecurrenceOverrides(in []string) error {
+	for _, f := range in {
+		if _, ok := allowedRecurrenceOverrideFields[f]; !ok {
+			return fmt.Errorf("recurrence override field %q is not allowed", f)
 		}
 	}
 	return nil

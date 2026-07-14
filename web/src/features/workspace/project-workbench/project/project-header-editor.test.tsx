@@ -65,6 +65,7 @@ describe("ProjectHeaderEditor", () => {
         onCopyLink={() => undefined}
         project={project()}
         workspaceSlug="acme"
+        breadcrumbItems={[{ label: "acme" }, { label: "adsops" }]}
       />,
       { wrapper: makeWrapper(makeQueryClient()) }
     )
@@ -85,6 +86,7 @@ describe("ProjectHeaderEditor", () => {
         onCopyLink={() => undefined}
         project={project()}
         workspaceSlug="acme"
+        breadcrumbItems={[{ label: "acme" }, { label: "adsops" }]}
       />,
       { wrapper: makeWrapper(makeQueryClient()) }
     )
@@ -105,6 +107,7 @@ describe("ProjectHeaderEditor", () => {
         onCopyLink={() => undefined}
         project={project()}
         workspaceSlug="acme"
+        breadcrumbItems={[{ label: "acme" }, { label: "adsops" }]}
       />,
       { wrapper: makeWrapper(makeQueryClient()) }
     )
@@ -122,6 +125,7 @@ describe("ProjectHeaderEditor", () => {
         onCopyLink={() => undefined}
         project={project()}
         workspaceSlug="acme"
+        breadcrumbItems={[{ label: "acme" }, { label: "adsops" }]}
       />,
       { wrapper: makeWrapper(makeQueryClient()) }
     )

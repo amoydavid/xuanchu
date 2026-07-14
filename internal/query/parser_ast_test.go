@@ -82,7 +82,7 @@ func TestParseQueryEmptyInput(t *testing.T) {
 }
 
 func TestParseQueryM2Attributes(t *testing.T) {
-	expr, err := ParseQuery(`wait: scheduled.before:eow start.notnull until: depends:abc annotations:note recur:weekly parent:p1`)
+	expr, err := ParseQuery(`wait: scheduled.before:eow start.notnull until: depends:abc annotations:note parent:p1`)
 	if err != nil {
 		t.Fatalf("ParseQuery() error = %v", err)
 	}
@@ -94,11 +94,19 @@ func TestParseQueryM2Attributes(t *testing.T) {
 		`until is_null`,
 		`depends eq "abc"`,
 		`annotations contains "note"`,
-		`recur eq "weekly"`,
 		`parent eq "p1"`,
 	} {
 		if !strings.Contains(got, part) {
 			t.Fatalf("String() = %q, missing %q", got, part)
+		}
+	}
+}
+
+func TestParseQueryRejectsLegacyRecurAttribute(t *testing.T) {
+	// spec 2026-07-11：recur/mask/imask 查询属性不再支持，返回 unknown attribute。
+	for _, q := range []string{`recur:weekly`, `mask:abc`, `imask:1`} {
+		if _, err := ParseQuery(q); err == nil {
+			t.Fatalf("ParseQuery(%q) 应失败", q)
 		}
 	}
 }

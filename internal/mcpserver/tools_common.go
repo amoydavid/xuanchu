@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -45,6 +47,14 @@ func resolveToolTaskRef(svc *app.Service, ref, fieldName string, write bool) (ta
 		return svc.ResolveProtocolTargetForWrite(ref)
 	}
 	return svc.ResolveProtocolTarget(ref)
+}
+
+func validateToolTaskRef(ref, fieldName string) error {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return app.RuntimeError{Code: fieldName + "_required", Message: fieldName + " is required"}
+	}
+	return app.ValidateProtocolTaskRef(ref)
 }
 
 func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, ToolEnvelope]) {
@@ -89,7 +99,12 @@ func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.To
 			}()
 			var input In
 			if req != nil && req.Params != nil && len(req.Params.Arguments) > 0 {
-				if err := json.Unmarshal(req.Params.Arguments, &input); err != nil {
+				if err := decodeToolInput(req.Params.Arguments, &input); err != nil {
+					var runtimeErr app.RuntimeError
+					if errors.As(err, &runtimeErr) {
+						result = businessErrorResult(runtimeErr)
+						return
+					}
 					var res mcp.CallToolResult
 					res.SetError(err)
 					result = &res
@@ -105,6 +120,72 @@ func addTool[In any](s *mcp.Server, opts Options, tool *mcp.Tool, handler mcp.To
 		}
 		return result, nil
 	})
+}
+
+// decodeToolInput 按工具声明的 closed JSON Schema 严格解码。
+// MCP SDK 会把未知参数静默丢弃，因此服务端必须在 handler 前自行拒绝，
+// 避免拼错字段或已移除字段被当作一次成功调用。
+func decodeToolInput[In any](raw json.RawMessage, input *In) error {
+	if err := rejectRetiredTaskRecurrenceFields[In](raw); err != nil {
+		return err
+	}
+	if err := rejectInvalidTaskSeriesPagination[In](raw); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(input); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("MCP tool arguments must contain exactly one JSON object")
+		}
+		return err
+	}
+	return nil
+}
+
+func rejectInvalidTaskSeriesPagination[In any](raw json.RawMessage) error {
+	switch any(*new(In)).(type) {
+	case TaskSeriesListInput, TaskSeriesOccurrenceListInput:
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return err
+		}
+		if value, exists := fields["limit"]; exists {
+			var limit int
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) || json.Unmarshal(value, &limit) != nil || limit < 1 || limit > mcpMaxLimit {
+				return app.RuntimeError{Code: "api_bad_limit", Message: "limit must be between 1 and 1000"}
+			}
+		}
+		if value, exists := fields["offset"]; exists {
+			var offset int
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) || json.Unmarshal(value, &offset) != nil || offset < 0 {
+				return app.RuntimeError{Code: "api_bad_offset", Message: "offset must be >= 0"}
+			}
+		}
+	}
+	return nil
+}
+
+func rejectRetiredTaskRecurrenceFields[In any](raw json.RawMessage) error {
+	switch any(*new(In)).(type) {
+	case TaskAddInput, TaskModifyInput:
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return err
+		}
+		for _, field := range []string{"recur", "clear_recur", "mask", "imask"} {
+			if _, exists := fields[field]; exists {
+				return app.RuntimeError{
+					Code:    "task_series_endpoint_required",
+					Message: "recur/clear_recur/mask/imask fields were removed; use task_series_* tools",
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func logMCPToolCall(opts Options, toolName string, start time.Time, result *mcp.CallToolResult, err error) {
@@ -196,6 +277,18 @@ func patchInputSchema[In any](schema *jsonschema.Schema) {
 			{Required: []string{"project"}},
 			{Required: []string{"project_id"}},
 		}
+	case TaskSeriesListInput, TaskSeriesOccurrenceListInput:
+		minimum, maximum := float64(1), float64(mcpMaxLimit)
+		if limit := schema.Properties["limit"]; limit != nil {
+			limit.Default = json.RawMessage("200")
+			limit.Minimum = &minimum
+			limit.Maximum = &maximum
+		}
+		zero := float64(0)
+		if offset := schema.Properties["offset"]; offset != nil {
+			offset.Default = json.RawMessage("0")
+			offset.Minimum = &zero
+		}
 	}
 }
 
@@ -275,30 +368,6 @@ func limitOrDefault(limit int) (int, error) {
 		return 0, app.RuntimeError{Code: "api_bad_limit", Message: "limit must be <= 1000"}
 	}
 	return limit, nil
-}
-
-func taskData(tsk task.Task) (map[string]any, error) {
-	dto := task.ToJSON(tsk)
-	var flat map[string]any
-	raw, err := json.Marshal(dto)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(raw, &flat); err != nil {
-		return nil, err
-	}
-	flat["task"] = dto
-	flat["completed"] = tsk.Status == task.StatusCompleted
-	flat["deleted"] = tsk.Status == task.StatusDeleted
-	return flat, nil
-}
-
-func tasksData(rows []task.Task) map[string]any {
-	out := make([]task.JSONTask, len(rows))
-	for i, row := range rows {
-		out[i] = task.ToJSON(row)
-	}
-	return map[string]any{"tasks": out, "count": len(out)}
 }
 
 func renderTaskInfo(tsk task.Task) string {

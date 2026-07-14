@@ -2,6 +2,7 @@ package query
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -147,15 +148,15 @@ func applyModificationToken(arg string, mod *task.Modification) (bool, error) {
 		}
 		mod.AddDepends = append(mod.AddDepends, value)
 		return true, nil
-	case strings.HasPrefix(arg, "recur:"):
-		value := strings.TrimPrefix(arg, "recur:")
-		if value == "" {
-			mod.ClearRecur = true
-			return true, nil
-		}
-		mod.Recur = &value
-		return true, nil
-	default:
+		case strings.HasPrefix(arg, "recur:"), strings.HasPrefix(arg, "mask:"), strings.HasPrefix(arg, "imask:"):
+			// 旧循环任务 token 在 spec 2026-07-11 后不再支持（spec §11.1、§13.6）。
+			// 返回错误而非静默忽略，避免用户以为循环仍然生效。
+			key := arg
+			if i := strings.Index(arg, ":"); i >= 0 {
+				key = arg[:i]
+			}
+			return false, fmt.Errorf("%s is no longer supported; use 'xuanchu series' commands to manage recurring tasks", key)
+		default:
 		if name, value, ok := strings.Cut(arg, ":"); ok && isPotentialUDAName(name) {
 			if mod.UDAs == nil {
 				mod.UDAs = map[string]string{}
@@ -178,7 +179,7 @@ func isPotentialUDAName(name string) bool {
 		return false
 	}
 	switch name {
-	case "uuid", "title", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "project_seq", "task_slug", "priority", "depends", "annotations", "recur", "parent", "assignee", "tag", "mask", "imask":
+	case "uuid", "title", "description", "status", "entry", "modified", "end", "due", "start", "wait", "scheduled", "until", "project", "project_seq", "task_slug", "priority", "depends", "annotations", "recur", "parent", "assignee", "tag", "mask", "imask", "series_id", "recurrence_at", "task_type":
 		return false
 	default:
 		return true

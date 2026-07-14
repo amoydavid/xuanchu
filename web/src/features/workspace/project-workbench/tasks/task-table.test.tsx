@@ -33,7 +33,8 @@ vi.mock("@tanstack/react-router", async (importActual) => {
         href={to
           .replace("$workspaceSlug", params.workspaceSlug)
           .replace("$projectSlug", params.projectSlug)
-          .replace("$taskRef", params.taskRef)}
+          .replace("$taskRef", params.taskRef)
+          .replace("$seriesRef", params.seriesRef)}
         {...props}
       >
         {children}
@@ -252,6 +253,78 @@ describe("TaskTable", () => {
       screen.getByRole("menuitem", { name: "Copy task link" })
     ).toBeTruthy()
     expect(screen.getByRole("menuitem", { name: "Delete task" })).toBeTruthy()
+  })
+
+  it("localizes recurring-task badges in English", async () => {
+    await i18n.changeLanguage("en-US")
+    renderTaskTable([
+      task({
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "projected",
+        },
+      }),
+    ])
+
+    const badges = screen.getAllByTestId("recurrence-badge")
+    expect(badges[0].textContent).toContain("Recurring · Daily")
+    expect(badges[0].getAttribute("title")).toBe("Planned instance")
+    expect(screen.queryByText("每天")).toBeNull()
+  })
+
+  it("uses a planned date in projected occurrence labels while keeping the stable id only in routes", async () => {
+    const occurrenceRef = "occ:series-1:1784476799"
+    renderTaskTable([
+      task({
+        id: occurrenceRef,
+        uuid: undefined,
+        task_slug: undefined,
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_784_476_799,
+          materialization: "projected",
+        },
+      }),
+    ])
+
+    const links = screen.getAllByRole("link", { name: "↻07-19" })
+    expect(links).toHaveLength(2)
+	for (const link of links) {
+	  expect(link.getAttribute("href")).toContain(occurrenceRef)
+	}
+	expect(screen.getAllByText("计划实例").length).toBeGreaterThan(0)
+	expect(screen.queryByText(occurrenceRef)).toBeNull()
+    expect(
+      within(screen.getByRole("table")).getByRole("button", {
+        name: "编辑任务标题 ↻07-19",
+      })
+    ).toBeTruthy()
+    expect(
+      within(screen.getByRole("table")).getByRole("button", {
+        name: "完成本次：2026年7月19日",
+      })
+    ).toBeTruthy()
+
+    await userEvent.click(
+      within(screen.getByRole("table")).getByRole("button", {
+        name: "更多操作 ↻07-19",
+      })
+    )
+    expect(screen.getByRole("menuitem", { name: "跳过本次" })).toBeTruthy()
+    const seriesLink = screen.getByRole("menuitem", { name: "查看循环任务" })
+    expect(seriesLink.getAttribute("href")).toContain("/series/series-1")
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "跳过本次" }))
+    expect(screen.getByText("跳过 2026年7月19日 这一次？")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "跳过本次" }))
+    expect(deleteTask).toHaveBeenCalledWith("acme", occurrenceRef)
   })
 
   it("exposes sortable table headers", async () => {

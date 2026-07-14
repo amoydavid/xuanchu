@@ -19,16 +19,13 @@ func (s *Service) resolveUserInfos(ids []string) (map[string]task.UserInfo, erro
 		return map[string]task.UserInfo{}, nil
 	}
 
-	users := make(map[string]storage.User, len(unique))
-	for _, id := range unique {
-		user, err := s.userRepo.GetByID(id)
-		if err == storage.ErrNotFound {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		users[id] = user
+	rows, err := s.userRepo.ListByIDs(unique)
+	if err != nil {
+		return nil, err
+	}
+	users := make(map[string]storage.User, len(rows))
+	for _, user := range rows {
+		users[user.ID] = user
 	}
 
 	extByUser, err := s.loadExternalIDsByUsers(unique)

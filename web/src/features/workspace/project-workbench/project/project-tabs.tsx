@@ -3,7 +3,12 @@ import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
 
-export type ProjectTabKey = "overview" | "tasks" | "activity" | "automations"
+export type ProjectTabKey =
+  | "overview"
+  | "tasks"
+  | "series"
+  | "activity"
+  | "automations"
 
 type ProjectTabsProps = {
   activeTab: ProjectTabKey
@@ -11,7 +16,7 @@ type ProjectTabsProps = {
   workspaceSlug: string
 }
 
-// ProjectTabs 在项目子页面之间提供「概览 / 任务 / 活动」导航。
+// ProjectTabs 在项目子页面之间提供「概览 / 任务 / 循环任务 / 活动 / 自动化」导航。
 // 当前 tab 由父级根据当前路由 pathname 推断，不读取后端。
 export function ProjectTabs({
   activeTab,
@@ -33,6 +38,11 @@ export function ProjectTabs({
       key: "tasks",
       label: t("projectSubpages.tasks"),
       to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks",
+    },
+    {
+      key: "series",
+      label: t("projectSubpages.recurring"),
+      to: "/workspaces/$workspaceSlug/projects/$projectSlug/series",
     },
     {
       key: "activity",

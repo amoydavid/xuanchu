@@ -1,0 +1,37 @@
+{
+  "description": "Skip one occurrence of a series (creates a deleted tombstone).",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "occurrence_id": {
+        "type": "string"
+      },
+      "series_id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "series_id",
+      "occurrence_id"
+    ],
+    "type": "object"
+  },
+  "name": "task_series_occurrence_skip",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

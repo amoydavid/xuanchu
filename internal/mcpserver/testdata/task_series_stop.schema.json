@@ -1,0 +1,36 @@
+{
+  "description": "Stop a recurring task series; no new occurrences are generated.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "delete_open_occurrences": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "string"
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "type": "object"
+  },
+  "name": "task_series_stop",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

@@ -28,6 +28,6 @@ description: 使用璇础 MCP skill 或把文档里的 canonical tool name 映�
 
 - 示例里的 `tool_name({...})` 表示调用对应 MCP tool，不是 shell 命令。
 - 每次写入或读取 workspace 数据时显式传 `workspace`；需要收窄到项目时传 `project` 或 `project_id`。
-- MCP 接口里的任务引用优先用 UUID 或 `task_slug`，不要使用 CLI working-set 数字 ID。
+- MCP 接口里的任务引用使用 UUID、已物化任务的 `task_slug` 或循环实例 occurrence_ref；projected 实例只有 occurrence_ref。不要使用 CLI working-set 数字 ID。
 - `workspace_use`、`user_use`、`context_set` 只影响 stdio MCP 的隐式状态；HTTP MCP 不受影响。默认显式传参。
 - 以工具返回的 structured content 为准；rendered text 只用于人读摘要。

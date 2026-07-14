@@ -87,9 +87,9 @@ type TaskFieldChange struct {
 // UDAEntryChange 描述单个 UDA 的 name + before/after。
 // Before / After 用指针，nil 表示该侧不存在（新增/删除的 UDA）。
 type UDAEntryChange struct {
-	Name    string
-	Before  *TaskChangeDisplayValue
-	After   *TaskChangeDisplayValue
+	Name   string
+	Before *TaskChangeDisplayValue
+	After  *TaskChangeDisplayValue
 }
 
 type TokenActorInfo struct {
@@ -272,12 +272,15 @@ func (s *Service) ListTaskAudit(taskRef string, input TaskAuditInput) ([]AuditLo
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return nil, err
 	}
-	resolved, err := s.ResolveProtocolTarget(taskRef)
+	resolved, err := s.ResolveTaskReferenceForRead(taskRef)
 	if err != nil {
 		return nil, err
 	}
+	if resolved.Task == nil {
+		return []AuditLogView{}, nil
+	}
 	targetType := "task"
-	targetID := resolved.UUID
+	targetID := resolved.Task.UUID
 	action := "task.modify"
 	rows, err := s.auditRepo.List(storage.AuditListOptions{
 		WorkspaceID: &s.runtime.WorkspaceID,

@@ -35,6 +35,7 @@ func newServerCommand(opts Options) *cobra.Command {
 	var hookDispatcherInterval time.Duration
 	var automationSchedulerInterval time.Duration
 	var automationDispatcherInterval time.Duration
+	var taskSeriesSchedulerInterval time.Duration
 	var notificationMaxConcurrency int
 	var hookMaxConcurrency int
 	var notificationBatchSize int
@@ -220,13 +221,17 @@ func newServerCommand(opts Options) *cobra.Command {
 				Store: store,
 				Clock: app.RealClock{},
 			})
+			seriesScheduler := app.NewTaskSeriesScheduler(app.TaskSeriesSchedulerOptions{
+				Store: store,
+				Clock: app.RealClock{},
+			})
 			runCtx, cancelRun := context.WithCancel(context.Background())
 			defer cancelRun()
 			signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stopSignals()
 
 			var runtimeWG sync.WaitGroup
-			runtimeWG.Add(7)
+			runtimeWG.Add(8)
 			// 解析 config secret key（TOML [security].config_secret_key）
 			secretKey, err := app.ParseConfigSecretKey(cfg.SecretKey)
 			if errors.Is(err, app.ErrConfigSecretKeyMissing) {
@@ -289,6 +294,13 @@ func newServerCommand(opts Options) *cobra.Command {
 				defer runtimeWG.Done()
 				if err := automationDispatcher.Run(runCtx, automationDispatcherInterval); err != nil {
 					errCh <- fmt.Errorf("automation dispatcher: %w", err)
+				}
+			}()
+			// 循环任务系列调度器：每分钟按日历补齐所有 workspace 的 active series（spec §9）
+			go func() {
+				defer runtimeWG.Done()
+				if err := seriesScheduler.Run(runCtx, taskSeriesSchedulerInterval); err != nil {
+					errCh <- fmt.Errorf("task series scheduler: %w", err)
 				}
 			}()
 
@@ -389,6 +401,7 @@ func newServerCommand(opts Options) *cobra.Command {
 	cmd.Flags().DurationVar(&hookDispatcherInterval, "hook-dispatcher-interval", 5*time.Second, "hook dispatcher interval")
 	cmd.Flags().DurationVar(&automationSchedulerInterval, "automation-scheduler-interval", 60*time.Second, "project automation scheduler interval")
 	cmd.Flags().DurationVar(&automationDispatcherInterval, "automation-dispatcher-interval", 5*time.Second, "project automation delivery dispatcher interval")
+	cmd.Flags().DurationVar(&taskSeriesSchedulerInterval, "task-series-scheduler-interval", 60*time.Second, "task series recurrence scheduler interval")
 	cmd.Flags().StringArrayVar(&mcpTrustedProxyHosts, "mcp-trusted-proxy-host", nil, "trusted external Host for HTTP MCP reverse proxy; repeatable")
 	cmd.Flags().IntVar(&notificationMaxConcurrency, "notification-dispatcher-max-concurrency", 0, "notification dispatcher max concurrency")
 	cmd.Flags().IntVar(&hookMaxConcurrency, "hook-dispatcher-max-concurrency", 0, "hook dispatcher max concurrency")

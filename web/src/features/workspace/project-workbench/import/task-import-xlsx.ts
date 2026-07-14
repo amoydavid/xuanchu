@@ -85,7 +85,7 @@ function buildTaskImportTemplateHelpRows(): TaskImportRow[] {
       field: "status",
       required: "否",
       type: "enum",
-      allowed_values: "pending, completed, deleted, waiting, recurring",
+      allowed_values: "pending, completed, deleted, waiting",
       format: "默认 pending",
       description: "任务状态。普通导入建议留空或填写 pending。",
       example: "pending",
@@ -199,15 +199,6 @@ function buildTaskImportTemplateHelpRows(): TaskImportRow[] {
       example: "2026-07-01",
     },
     {
-      field: "recur",
-      required: "否",
-      type: "string",
-      allowed_values: "Taskwarrior recurrence 表达式",
-      format: "如 weekly、monthly",
-      description: "循环任务规则。",
-      example: "weekly",
-    },
-    {
       field: "parent",
       required: "否",
       type: "string",
@@ -283,14 +274,13 @@ function applyTaskTemplateSheetHints(sheet: WorkSheet) {
     { wch: 14 },
     { wch: 14 },
     { wch: 14 },
-    { wch: 14 },
     { wch: 38 },
     { wch: 18 },
     { wch: 42 },
     { wch: 42 },
     { wch: 14 },
   ]
-  sheet["!autofilter"] = { ref: "A1:T2" }
+  sheet["!autofilter"] = { ref: "A1:U2" }
   for (const cell of ["I2", "J2", "K2", "L2", "M2", "N2"]) {
     if (sheet[cell]) {
       sheet[cell].z = DATE_FORMAT

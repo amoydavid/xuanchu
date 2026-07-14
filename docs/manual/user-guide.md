@@ -54,7 +54,7 @@ xuanchu 1 modify +next
 xuanchu agentapi-1 done
 ```
 
-脚本和远程系统应优先使用 UUID 或 `task_slug`。HTTP API 与 MCP tool 不接受纯数字 working-set ID：
+脚本和远程系统应使用 UUID、已物化 `task_slug` 或 occurrence_ref；projected 循环实例只有 occurrence_ref。HTTP API 与 MCP tool 不接受纯数字 working-set ID：
 
 ```bash
 xuanchu _uuids +next

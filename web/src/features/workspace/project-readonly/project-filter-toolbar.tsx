@@ -27,7 +27,7 @@ type ProjectFilterToolbarProps = {
   toParams: { workspaceSlug: string; projectSlug: string }
 }
 
-const STATUS_OPTIONS = ["pending", "completed", "waiting", "recurring"]
+const STATUS_OPTIONS = ["pending", "completed", "waiting"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 
 // FILTER_LABEL_KEYS 把过滤 key 映射为展示用的简短标签（活跃 chips 用）。
@@ -46,6 +46,7 @@ const FILTER_LABEL_KEYS: Record<keyof TaskFilter, string> = {
   q: "common.search",
   query: "common.search",
   sort: "common.sort",
+  task_type: "taskCreate.typeLabel",
 }
 
 export function ProjectFilterToolbar({

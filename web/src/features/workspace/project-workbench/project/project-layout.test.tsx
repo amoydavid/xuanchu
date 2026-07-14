@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { ReactNode } from "react"
+import { type ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { i18n } from "@/i18n"
@@ -21,14 +21,19 @@ vi.mock("@/features/workspace/session/useMe", () => ({
   useMe: () => ({
     data: {
       effective_role: "owner",
-      token: { scopes: ["project:write", "task:read", "task:write"], type: "pat" },
+      token: {
+        scopes: ["project:write", "task:read", "task:write"],
+        type: "pat",
+      },
     },
   }),
 }))
 
 vi.mock("../api/project-api", async () => {
   const actual =
-    await vi.importActual<typeof import("../api/project-api")>("../api/project-api")
+    await vi.importActual<typeof import("../api/project-api")>(
+      "../api/project-api"
+    )
   return {
     ...actual,
     getProject: vi.fn(),
@@ -39,10 +44,9 @@ vi.mock("../api/project-api", async () => {
 })
 
 vi.mock("@/features/workspace/config/config-definition-api", async () => {
-  const actual =
-    await vi.importActual<
-      typeof import("@/features/workspace/config/config-definition-api")
-    >("@/features/workspace/config/config-definition-api")
+  const actual = await vi.importActual<
+    typeof import("@/features/workspace/config/config-definition-api")
+  >("@/features/workspace/config/config-definition-api")
   return {
     ...actual,
     listProjectEffectiveConfig: vi.fn(),
@@ -88,6 +92,14 @@ describe("ProjectLayout", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage("zh-CN")
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: () => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
     vi.mocked(getProject).mockResolvedValue(project())
     vi.mocked(getProjectTasks).mockResolvedValue([])
     vi.mocked(getProjectTimeline).mockResolvedValue([])
@@ -118,21 +130,29 @@ describe("ProjectLayout", () => {
     )
 
     expect(await screen.findByText("概览主体")).toBeTruthy()
-    const overviewLink = screen.getByRole("link", { name: "概览" }) as HTMLAnchorElement
-    expect(overviewLink.getAttribute("href")).toBe("/workspaces/local/projects/ops")
-    const tasksLink = screen.getByRole("link", { name: "任务" }) as HTMLAnchorElement
-    expect(tasksLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/tasks")
-    const activityLink = screen.getByRole("link", { name: "活动" }) as HTMLAnchorElement
-    expect(activityLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/activity")
+    const overviewLink = screen.getByRole("link", {
+      name: "概览",
+    }) as HTMLAnchorElement
+    expect(overviewLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops"
+    )
+    const tasksLink = screen.getByRole("link", {
+      name: "任务",
+    }) as HTMLAnchorElement
+    expect(tasksLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops/tasks"
+    )
+    const activityLink = screen.getByRole("link", {
+      name: "活动",
+    }) as HTMLAnchorElement
+    expect(activityLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops/activity"
+    )
   })
 
   it("shows the shared project header with status and copy action", async () => {
     render(
-      <ProjectLayout
-        activeTab="tasks"
-        projectSlug="ops"
-        workspaceSlug="local"
-      >
+      <ProjectLayout activeTab="tasks" projectSlug="ops" workspaceSlug="local">
         <div />
       </ProjectLayout>,
       { wrapper: Wrapper }
@@ -193,8 +213,12 @@ describe("ProjectLayout", () => {
       </ProjectLayout>,
       { wrapper: Wrapper }
     )
-    const automationLink = await screen.findByRole("link", { name: "自动化" }) as HTMLAnchorElement
-    expect(automationLink.getAttribute("href")).toBe("/workspaces/local/projects/ops/automations")
+    const automationLink = (await screen.findByRole("link", {
+      name: "自动化",
+    })) as HTMLAnchorElement
+    expect(automationLink.getAttribute("href")).toBe(
+      "/workspaces/local/projects/ops/automations"
+    )
     expect(automationLink.getAttribute("aria-current")).toBe("page")
   })
 })

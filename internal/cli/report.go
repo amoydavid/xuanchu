@@ -2,12 +2,11 @@ package cli
 
 import (
 	"context"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/remote"
-	"git.dajee.net/dajee/xuanchu/internal/render"
-	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +23,8 @@ var reportShorts = map[string]string{
 }
 
 func newReportCommand(opts Options, name string) *cobra.Command {
-	return &cobra.Command{
+	var viewFlags taskViewFlags
+	cmd := &cobra.Command{
 		Use:   name + " [filters...]",
 		Short: reportShorts[name],
 		Args:  cobra.ArbitraryArgs,
@@ -37,29 +37,26 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
 					Report:    name,
 					Filters:   append([]string(nil), args...),
 					NoContext: currentOpts.NoContext,
+					DueAfter:  viewFlags.DueAfter, DueBefore: viewFlags.DueBefore,
+					OccurrenceMode: viewFlags.OccurrenceMode, Sort: viewFlags.Sort,
+					Limit: viewFlags.Limit, Offset: viewFlags.Offset,
 				})
 				if err != nil {
 					return err
 				}
-				if currentOpts.JSON {
-					dtos := make([]task.JSONTask, len(tasks))
-					for i, tsk := range tasks {
-						dtos[i] = task.ToJSON(tsk)
-					}
-					return render.JSON(cmd.OutOrStdout(), dtos)
+				viewPage := remotePageToTaskViewPage(page)
+				ids, err := remoteWorkingSetIDsForViews(context.Background(), client, currentOpts, viewPage.Items)
+				if err != nil {
+					return err
 				}
-				ids := make([]int, len(tasks))
-				for i := range tasks {
-					ids[i] = i + 1
-				}
-				render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
+				renderTaskViewPage(cmd, currentOpts.JSON, viewPage, ids)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -75,26 +72,29 @@ func newReportCommand(opts Options, name string) *cobra.Command {
 					return err
 				}
 			}
-
-			result, err := svc.RunReport(app.ReportInput{Name: name, Query: expr})
+			expr, dateRange, err := viewFlags.localQuery(expr, time.Local)
 			if err != nil {
 				return err
 			}
-			if currentOpts.JSON {
-				dtos := make([]task.JSONTask, len(result.Tasks))
-				for i, tsk := range result.Tasks {
-					dtos[i] = task.ToJSON(tsk)
-				}
-				return render.JSON(cmd.OutOrStdout(), dtos)
-			}
-			ids, err := svc.WorkingSetIDs(result.Tasks)
+			page, err := svc.RunTaskViewReport(app.ReportViewInput{
+				Name: name, Query: expr, Range: dateRange,
+				OccurrenceMode: app.OccurrenceMode(viewFlags.OccurrenceMode),
+				NoContext:      currentOpts.NoContext, Sort: viewFlags.Sort,
+				Limit: viewFlags.Limit, Offset: viewFlags.Offset,
+			})
 			if err != nil {
 				return err
 			}
-			render.TaskListWithIDs(cmd.OutOrStdout(), result.Tasks, ids)
+			ids, err := svc.WorkingSetIDsForViews(page.Items)
+			if err != nil {
+				return err
+			}
+			renderTaskViewPage(cmd, currentOpts.JSON, page, ids)
 			return nil
 		},
 	}
+	viewFlags.bind(cmd)
+	return cmd
 }
 
 func newAllCommand(opts Options) *cobra.Command       { return newReportCommand(opts, "all") }

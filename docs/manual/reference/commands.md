@@ -52,7 +52,7 @@ xuanchu link list <task-ref>
 xuanchu link remove <task-ref> --link-id <link-id>
 ```
 
-本地 CLI 的 `<target>` / `<task-ref>` 可以是 working-set ID、UUID、UUID 前缀或 `task_slug`。HTTP API 和 MCP tool 只接受 UUID 或 `task_slug`。
+本地 CLI 的 `<target>` / `<task-ref>` 可以是 working-set ID、UUID、UUID 前缀、`task_slug` 或 occurrence_ref。HTTP API 和 MCP tool 接受完整 UUID、已物化 `task_slug` 或 occurrence_ref，不接受 working-set ID。
 
 ## 查询、报表、helper
 

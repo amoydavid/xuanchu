@@ -454,10 +454,48 @@ func (s *Service) ResolveProtocolTargetForWrite(target string) (task.Task, error
 	return s.resolveTaskRef(target, ResolveProtocol, true)
 }
 
+// ValidateProtocolTaskRef 只校验跨协议公开 task ref 的格式，不读取或写入存储。
+// HTTP/MCP 不接受仅供交互式 CLI working set 使用的纯数字引用；occurrence_ref
+// 必须原样交给 App 动作方法，才能让 occurrence 物化和实际动作处于同一事务。
+func ValidateProtocolTaskRef(target string) error {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return RuntimeError{Code: "task_ref_invalid", Message: "task reference is required"}
+	}
+	if isDecimalDigits(target) {
+		return RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
+	}
+	return nil
+}
+
 func (s *Service) resolveTaskRef(target string, mode ResolveMode, write bool) (task.Task, error) {
 	target = strings.TrimSpace(target)
-	if mode == ResolveProtocol && isDecimalDigits(target) {
-		return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "numeric task refs are not accepted by this endpoint"}
+	if mode == ResolveProtocol {
+		if err := ValidateProtocolTaskRef(target); err != nil {
+			return task.Task{}, err
+		}
+	}
+	// occurrence_ref：读操作走 GetTaskView（不物化）；写操作先物化再返回 task（spec §7.6）。
+	if IsOccurrenceRef(target) {
+		if write {
+			if mode == ResolveProtocol {
+				return task.Task{}, RuntimeError{Code: "task_ref_invalid", Message: "occurrence_ref must be passed to the task action endpoint"}
+			}
+			if err := s.Require(PermissionTaskWrite); err != nil {
+				return task.Task{}, err
+			}
+			tsk, _, err := s.MaterializeOccurrenceForWrite(target)
+			if err != nil {
+				return task.Task{}, err
+			}
+			if err := s.ensureWritableTaskScope(tsk); err != nil {
+				return task.Task{}, err
+			}
+			return tsk, nil
+		}
+		// 读操作：occurrence_ref 不应走 resolveTaskRef（用 GetTaskView），
+		// 但为安全返回 not found 而非降级。
+		return task.Task{}, taskNotFoundError()
 	}
 	if n, ok := parseInteractiveNumericTaskRef(target); ok {
 		tasks, err := s.defaultWorkingSet()

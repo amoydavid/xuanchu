@@ -5,7 +5,7 @@
 > 主存储：**SQLite（纯 Go 驱动，零 CGO）**
 > 形态：**单一二进制**，可同时充当 ① 本地 CLI ② 远程 CLI 客户端 ③ HTTP/JSON API 服务端 ④ MCP Server
 
-本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。xuanchu 借鉴 Taskwarrior 的设计思路，但企业 workspace/project/Agent 边界优先于完整兼容。每一条带 `[n]` 的脚注对应文末同号参考链接。
+本文档基于对上游 [Taskwarrior](https://github.com/GothenburgBitFactory/taskwarrior) 项目的特性梳理（见文末「参考来源」），叠加企业 workspace、真实项目、Agent MCP、多用户权限等扩展需求形成。xuanchu 只借鉴 Taskwarrior 的命令、查询和任务管理思路；公开 JSON、数据库、循环任务和跨入口契约采用璇础原生模型，不再承诺 Taskwarrior 兼容。每一条带 `[n]` 的脚注对应文末同号参考链接。
 
 ---
 
@@ -99,7 +99,7 @@ M6 已实现的 capability：
 
 ## 2. 数据模型（Task 核心 Schema）
 
-> 字段语义严格对齐 Taskwarrior RFC `[15]` 与官方 Task 表示文档 `[4]`。
+> 字段命名和基础任务语义参考 Taskwarrior RFC `[15]` 与官方 Task 表示文档 `[4]`。璇础原生扩展和已经明确分叉的字段以本文、当前 milestone spec 与 OpenAPI 为准。
 
 ### 2.1 内置属性
 
@@ -109,7 +109,7 @@ M6 已实现的 capability：
 | `id` | int (派生) | working set 中的行号，可与 UUID 互换使用 `[7]` |
 | `title` | string | 必填；UTF-8；不允许换行 |
 | `description` | string? | 可选详细描述；允许为空 |
-| `status` | enum | `pending`(P) / `completed`(C) / `deleted`(D) / `recurring`(R) / `waiting`(W) `[4][15]` |
+| `status` | enum | `pending`(P) / `completed`(C) / `deleted`(D) / `waiting`(W)；`active` 是 `pending + start` 的派生状态，不是持久枚举 |
 | `entry` | timestamp | 创建时间 |
 | `modified` | timestamp | 最近修改 |
 | `start` | timestamp | 设置后任务进入 active 状态，urgency 提升 `[7]` |
@@ -119,18 +119,20 @@ M6 已实现的 capability：
 | `scheduled` | timestamp | 过 `scheduled` 后任务为 ready `[15]` |
 | `until` | timestamp | 到期任务自动消失 `[7]` |
 | `project` | string | 任务上的可读 project slug；M5 后内部必须映射到 workspace 内的 project 实体 |
+| `project_seq` | int? | project 内递增序号；与 `project/project_id` 要么同时为空，要么同时存在 |
 | `task_slug` | string (派生) | v0.1.1 起输出的稳定短任务引用，格式为 `<projectSlug>-<seq>`；无 project 的任务省略 |
 | `tags` | []string | 标签数组；`+tag` / `-tag` 修改语法 `[8]` |
 | `priority` | enum | 默认 `H/M/L/<空>`，本质上是内置 UDA `[5][12]` |
 | `depends` | []UUID | 依赖列表 `[11]` |
 | `annotations` | []{entry,description} | 每条注释含时间戳与文本 `[8]` |
-| `recur` | string | 周期：`daily/weekly/3days/monthly/...` |
-| `parent` / `mask` / `imask` | UUID / string / int | 循环任务父子关系 `[15]` |
+| `parent` | UUID? | 只表示手工父子任务，不承载循环归属 |
+| `series_id` / `recurrence_at` / `recurrence_rule_snapshot` | UUID? / timestamp? / string? | 已物化循环实例的三元关联；普通任务三者均为空，occurrence 三者均存在 |
+| `recurrence_overrides` | []string | occurrence 相对 Series 共享字段的单次覆盖集合 |
 | `urgency` | float (派生) | 不持久化，按 §6 公式计算 |
 
 ### 2.2 多租户扩展字段（新增）
 
-`workspace_id`(FK) · `project_id`(FK, M5+) · `creator_user_id`(FK) · `task_assignees`(task↔user 多对多关系) · `followers`([]user_id) · `external_refs`(JSON, e.g. `{"github":"owner/repo#123"}`)。
+`workspace_id`(FK) · `project_id`(FK, M5+) · `creator_user_id`(FK) · `task_assignees`(task↔user 多对多关系) · `followers`([]user_id) · `external_refs`(JSON, e.g. `{"github":"owner/repo#123"}`)。循环定义是独立 `task_series` 聚合，保存 project、共享字段、canonical recurrence、rule versions 和生命周期；它不是 Task，也不能执行 done/start。
 
 ### 2.3 UDA（用户自定义属性）
 
@@ -176,11 +178,12 @@ M6 已实现的 capability：
 | `info` | 详情 |
 | `edit` | 全字段编辑（弹 `$EDITOR`） |
 | `list` / `next` / `all` / `completed` / `waiting` / `active` / `ready` / `overdue` / `blocked` / `blocking` | 报表 `[22]` |
-| `import` / `export` | JSON 互导（支持 Taskwarrior 迁移格式，不承诺完整兼容） |
+| `import` / `export` | 版本化 `xuanchu.task-bundle/v1` 原生 bundle；不接受 Taskwarrior 任务数组 |
 | `config` / `show` | 配置读写 |
 | `context` | 设置默认过滤 `[22]` |
 | `calc` | 表达式求值（见 §3.5） |
 | `project` | M5 起管理 workspace 内的真实项目实体 |
+| `series` | 管理循环任务：`add/list/info/modify/occurrences/skip/stop` |
 | `user` / `workspace` / `member` / `audit` | M4 起的企业运行时命令 |
 | `server` / `token` | M6 起的 HTTP 服务端与访问令牌命令 |
 | `sync` | 后续同步命令，是否进入 M8 由对应 spec 决定 |
@@ -201,7 +204,8 @@ M6 已实现的 capability：
 - 文本与正则：`/pattern/`，受 `rc.search.case.sensitive` 控制
 - 布尔代数：`and` / `or` / `xor` / `not`，括号转义：`\( ... \)` `[8]`
 - 字符串引号：`project:'ERP Rewrite'`
-- 状态：`pending` / `completed` / `deleted` / `waiting` / `recurring` `[19]`
+- 状态：`pending` / `completed` / `deleted` / `waiting`
+- 循环属性：`series_id` / `recurrence_at` / `task_type:normal|occurrence`；`recur/mask/imask` 不再进入查询 DSL
 
 **解析器实现要点**：递归下降；产出 AST → SQL 翻译层（绑定参数，防注入）。AST 同时也被 §7 DOM 与 §6 Urgency 引擎共享。
 
@@ -248,7 +252,7 @@ task 12 done /typo/fix typo/ +reviewed
 
 - **Annotations**：复合结构 `{entry, description}` `[8]`；报表中支持 `description.count` 仅显示注释数 `[3]`。
 - **Dependencies**：`task <id> modify depends:<uuid>` `[11]`；衍生 `blocked` / `blocking` 报表；进入 §6 urgency 计算。
-- **Recurring**：父任务对用户隐藏，子任务通过 `parent` + `mask`/`imask` 关联 `[15]`；字段 `recur`（周期）与 `until`（终止）。
+- **循环任务**：独立 `task_series` 保存规则和共享字段；有界日期查询计算 projected occurrence，进入执行期或首次有效写入时物化为带 `series_id + recurrence_at` 的 Task。每个日期槽位独立完成或跳过，前一次未完成不阻塞下一次。`parent` 只表示手工子任务，旧 `recur/mask/imask` 模型不再兼容。
 
 ---
 
@@ -347,7 +351,7 @@ Taskwarrior 支持事件驱动 hooks `[25]`：
   - 每次写入产出一条不可变 op：`(op_id, replica_id, parent_op_id, uuid, key, old, new, ts)`。
   - 多端通过比较 op-log 收敛，避免读-改-写丢失 `[4]`。
 - 服务端 = 权威 op-log；客户端可离线累计 op，重连后批量推送。
-- 迁移兼容性：尽量保留 `task export` / `task import` 的常用 JSON 字段名 `[4]`，确保从 Taskwarrior 平滑迁移；企业 project、workspace、权限字段以 xuanchu 自身模型为准，不追求完整上游兼容。
+- 跨环境迁移使用 `xuanchu.task-bundle/v1`，完整保存 Series、rule versions、已物化 occurrence、tombstone 和普通任务；projected occurrence 不导出。Taskwarrior JSON 数组和旧 `recur/mask/imask` 字段被明确拒绝，不做猜测性转换。
 
 ### 9.3 备份
 
@@ -568,7 +572,7 @@ CREATE TABLE tasks (
   project_id    TEXT,
   title         TEXT NOT NULL,
   description   TEXT,
-  status        TEXT NOT NULL,            -- pending/completed/deleted/waiting/recurring
+  status        TEXT NOT NULL,            -- pending/completed/deleted/waiting
   entry         INTEGER NOT NULL,
   modified      INTEGER NOT NULL,
   end_ts        INTEGER,
@@ -577,12 +581,14 @@ CREATE TABLE tasks (
   scheduled     INTEGER,
   until         INTEGER,
   project       TEXT,
+  project_seq   INTEGER,
   priority      TEXT,                     -- H/M/L/NULL
   start         INTEGER,
-  recur         TEXT,
   parent        TEXT,
-  mask          TEXT,
-  imask         INTEGER,
+  series_id     TEXT,
+  recurrence_at INTEGER,
+  recurrence_rule_snapshot TEXT,
+  recurrence_overrides_json TEXT NOT NULL DEFAULT '[]',
   creator_user_id  TEXT REFERENCES users(id),
   external_refs_json TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
@@ -590,6 +596,42 @@ CREATE TABLE tasks (
 CREATE INDEX idx_tasks_ws_status ON tasks(workspace_id, status);
 CREATE INDEX idx_tasks_ws_project_id ON tasks(workspace_id, project_id);
 CREATE INDEX idx_tasks_ws_due ON tasks(workspace_id, due);
+CREATE UNIQUE INDEX idx_tasks_ws_project_seq
+  ON tasks(workspace_id, project_id, project_seq);
+CREATE UNIQUE INDEX idx_tasks_ws_series_slot
+  ON tasks(workspace_id, series_id, recurrence_at)
+  WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL;
+
+CREATE TABLE task_series (
+  id              TEXT PRIMARY KEY,
+  workspace_id    TEXT NOT NULL REFERENCES workspaces(id),
+  project_id      TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  description     TEXT,
+  status          TEXT NOT NULL,          -- active/ended/stopped
+  recurrence_rule TEXT NOT NULL,
+  first_due       INTEGER NOT NULL,
+  until           INTEGER,
+  effective_end_at INTEGER,
+  stop_reason     TEXT,
+  priority        TEXT,
+  created_by      TEXT NOT NULL,
+  created_at      INTEGER NOT NULL,
+  modified_at     INTEGER NOT NULL,
+  FOREIGN KEY (project_id, workspace_id) REFERENCES projects(id, workspace_id)
+);
+CREATE INDEX idx_task_series_ws_project_status
+  ON task_series(workspace_id, project_id, status);
+
+CREATE TABLE task_series_rule_versions (
+  id              TEXT PRIMARY KEY,
+  series_id       TEXT NOT NULL REFERENCES task_series(id) ON DELETE RESTRICT,
+  effective_from  INTEGER NOT NULL,
+  recurrence_rule TEXT NOT NULL,
+  created_by      TEXT NOT NULL,
+  created_at      INTEGER NOT NULL,
+  UNIQUE(series_id, effective_from)
+);
 
 CREATE TABLE task_assignees (
   task_uuid TEXT NOT NULL REFERENCES tasks(uuid) ON DELETE CASCADE,
@@ -716,12 +758,13 @@ CREATE INDEX idx_audit_project_time ON audit_logs(workspace_id, project_id, crea
 
 - **M0**：`add` `modify` `done` `delete` `info` `list` `next` `config` `show` `import` `export`
 - **M1**：过滤表达式与报表基础：`all` `completed` `overdue` `calc` `urgency` `_urgency` `_get` `_ids` `_uuids` `_projects` `_tags`
-- **M2**：任务核心模型扩展：`waiting` `active` `ready` `blocked` `blocking` `annotate` `denotate` `append` `prepend` `edit` `start` `stop`；`recur` 作为任务字段和修改语法进入，不是独立命令
+- **M2**：任务核心模型扩展：`waiting` `active` `ready` `blocked` `blocking` `annotate` `denotate` `append` `prepend` `edit` `start` `stop`。M2 曾引入的 `recur` 任务字段已在 v0.5.7 删除。
 - **M3**：配置、context 与 UDA：`context` `_udas` `_unique` `_show` `_version` `completion` `config import-taskrc`
 - **M4**：`user` `workspace` `member` `audit`
 - **M5**：`project`
 - **M6**：`server` `token`，以及 `--server` / `--token` 远程模式
 - **M7**：MCP Server 入口
+- **v0.5.7**：独立 `task_series`、日历范围投影、按需物化、专用 CLI/HTTP/MCP/Remote/Web Console 闭环
 - **M8+**：`sync` `burndown.*` 外部 trigger / adapter 相关命令
 
 ---

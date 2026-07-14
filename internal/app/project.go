@@ -10,6 +10,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 )
 
 type ProjectAnnotationInfo struct {
@@ -72,6 +73,10 @@ type ProjectSummaryWorkloadView struct {
 
 // ProjectTaskSummaryView 是项目全量任务摘要。Overview 与右栏都使用它，
 // 不允许用当前任务列表派生。
+//
+// 一次性进度和风险计数（Overdue/HighPriority/Wait/Unassigned）只统计普通任务
+// （series_id IS NULL）；Workload 统计普通任务和已物化、未关闭的 occurrence，
+// 循环系列运行情况通过 SeriesMetrics 返回（spec §17.4）。
 type ProjectTaskSummaryView struct {
 	OverdueCount          int
 	OverdueRefs           []ProjectSummaryTaskRefView
@@ -82,6 +87,15 @@ type ProjectTaskSummaryView struct {
 	UnassignedOpenCount   int
 	UnassignedOpenRefs    []ProjectSummaryTaskRefView
 	Workload              []ProjectSummaryWorkloadView
+	SeriesMetrics         ProjectSeriesMetricsView
+}
+
+// ProjectSeriesMetricsView 是项目下循环系列运行情况（spec §17.4）。
+type ProjectSeriesMetricsView struct {
+	RecurringSeriesCount            int
+	ActiveRecurringSeriesCount      int
+	OpenRecurringOccurrenceCount    int
+	OverdueRecurringOccurrenceCount int
 }
 
 type AddProjectInput struct {
@@ -683,6 +697,12 @@ func projectTaskSummaryViewFromStorage(summary storage.ProjectTaskSummary, users
 		UnassignedOpenCount:   summary.UnassignedOpenCount,
 		UnassignedOpenRefs:    projectTaskRefViews(summary.UnassignedOpenRefs),
 		Workload:              make([]ProjectSummaryWorkloadView, 0, len(summary.Workload)),
+		SeriesMetrics: ProjectSeriesMetricsView{
+			RecurringSeriesCount:            summary.SeriesMetrics.RecurringSeriesCount,
+			ActiveRecurringSeriesCount:      summary.SeriesMetrics.ActiveRecurringSeriesCount,
+			OpenRecurringOccurrenceCount:    summary.SeriesMetrics.OpenRecurringOccurrenceCount,
+			OverdueRecurringOccurrenceCount: summary.SeriesMetrics.OverdueRecurringOccurrenceCount,
+		},
 	}
 	for _, row := range summary.Workload {
 		var userInfo *task.UserInfo
@@ -869,6 +889,25 @@ func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, e
 		if _, err := tx.writeProjectAnnotation(project, annotationContent); err != nil {
 			return nil, nil, err
 		}
+		// spec §19：项目 transition 到 archived/cancelled 时停止该项目所有 active series。
+		var seriesEntries []AuditEntry
+		if IsProjectStatusClosed(toStatus) {
+			reason := taskseries.StopReasonProjectArchived
+			if toStatus == string(storage.ProjectStatusCancelled) {
+				reason = taskseries.StopReasonProjectCancelled
+			}
+			affected, stopErr := tx.taskSeriesRepo.StopProjectSeries(project.WorkspaceID, project.ID, now, reason)
+			if stopErr != nil {
+				return nil, nil, stopErr
+			}
+			for _, se := range affected {
+				seriesEntries = append(seriesEntries, AuditEntry{
+					Action: "task.series.stopped", WorkspaceID: &project.WorkspaceID,
+					ProjectID: &project.ID, TargetType: "task_series", TargetID: se.ID,
+					Payload: map[string]any{"reason": reason},
+				})
+			}
+		}
 		updated, err := tx.projectRepo.GetByID(project.ID)
 		if err != nil {
 			return nil, nil, err
@@ -893,7 +932,8 @@ func (s *Service) TransitionProject(projectRef, toStatus string) (ProjectView, e
 				"to_status":   toStatus,
 			},
 		}
-		return []AuditEntry{entry}, events, nil
+		entries := append([]AuditEntry{entry}, seriesEntries...)
+		return entries, events, nil
 	})
 	return result, err
 }

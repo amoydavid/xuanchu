@@ -1290,9 +1290,9 @@ Tests:
 
 - `task.add` creates task with explicit `project_id` and returns UUID。
 - project-scoped token with a single project allowlist and missing `project`/`project_id` returns error, not auto-fill。
-- `task.query` default excludes deleted, limit defaults 200 and max 1000。
-- `task.query include_completed=true` includes completed tasks。
-- `task.query include_deleted=true` includes deleted tasks。
+- `task.query` 默认返回 pending、waiting、completed，排除 deleted；limit defaults 200 and max 1000。
+- `task.query include_deleted=true` 在默认集合上追加 deleted。
+- 显式 `status` 或 `query` 中的 status 条件覆盖默认可见性，不受 `include_deleted` 影响。
 - `task.get` by UUID returns task。
 - project allowlist outside task returns `task_not_found` as business error (`IsError=true`)。
 - HTTP MCP `task.get` rejects numeric working-set IDs with existing `task_uuid_invalid` business error；stdio MCP may resolve working-set IDs through the local working set。
@@ -1335,14 +1335,14 @@ Also define concrete input structs for:
 
 ```go
 type TaskQueryInput struct {
-    Workspace        string `json:"workspace,omitempty"`
-    Project          string `json:"project,omitempty"`
-    ProjectID        string `json:"project_id,omitempty"`
-    Query            string `json:"query,omitempty"`
-    Status           string `json:"status,omitempty"`
-    Limit            int    `json:"limit,omitempty"`
-    IncludeCompleted bool   `json:"include_completed,omitempty"`
-    IncludeDeleted   bool   `json:"include_deleted,omitempty"`
+    Workspace      string `json:"workspace,omitempty"`
+    Project        string `json:"project,omitempty"`
+    ProjectID      string `json:"project_id,omitempty"`
+    Query          string `json:"query,omitempty"`
+    Status         string `json:"status,omitempty"`
+    Limit          int    `json:"limit,omitempty"`
+    Offset         int    `json:"offset,omitempty"`
+    IncludeDeleted bool   `json:"include_deleted,omitempty"`
 }
 
 type TaskGetInput struct {

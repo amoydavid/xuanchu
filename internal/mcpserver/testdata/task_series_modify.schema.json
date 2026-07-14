@@ -1,0 +1,114 @@
+{
+  "description": "Modify a recurring task series (shared fields; rule change requires effective_from).",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "assignees": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "clear": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "description": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "effective_from": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "effective_from_date": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "id": {
+        "type": "string"
+      },
+      "priority": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "recurrence_rule": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "tags": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "null",
+          "array"
+        ]
+      },
+      "title": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "udas": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "until": {
+        "type": [
+          "null",
+          "integer"
+        ]
+      },
+      "until_date": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "workspace": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "type": "object"
+  },
+  "name": "task_series_modify",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

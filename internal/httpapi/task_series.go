@@ -1,0 +1,681 @@
+package httpapi
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/query"
+	"git.dajee.net/dajee/xuanchu/internal/task"
+	"github.com/go-chi/chi/v5"
+)
+
+// --- Series DTO ---
+
+type taskSeriesRequest struct {
+	Title          *string           `json:"title"`
+	Description    *string           `json:"description,omitempty"`
+	Project        *string           `json:"project,omitempty"`
+	ProjectID      *string           `json:"project_id,omitempty"`
+	RecurrenceRule *string           `json:"recurrence_rule"`
+	FirstDue       *int64            `json:"first_due,omitempty"`
+	FirstDueDate   *string           `json:"first_due_date,omitempty"`
+	Until          *int64            `json:"until,omitempty"`
+	UntilDate      *string           `json:"until_date,omitempty"`
+	Priority       *string           `json:"priority,omitempty"`
+	Assignees      []string          `json:"assignees,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
+	UDAs           map[string]string `json:"udas,omitempty"`
+	// 修改专用
+	EffectiveFrom     *int64   `json:"effective_from,omitempty"`
+	EffectiveFromDate *string  `json:"effective_from_date,omitempty"`
+	Clear             []string `json:"clear,omitempty"`
+}
+
+type taskOccurrenceJSON struct {
+	ID             string                `json:"id"`
+	UUID           *string               `json:"uuid"`
+	TaskSlug       *string               `json:"task_slug"`
+	ProjectSeq     *int64                `json:"project_seq"`
+	WorkspaceID    string                `json:"workspace_id"`
+	ProjectID      *string               `json:"project_id,omitempty"`
+	Project        *string               `json:"project,omitempty"`
+	Title          string                `json:"title"`
+	Description    *string               `json:"description,omitempty"`
+	Status         string                `json:"status"`
+	Entry          *int64                `json:"entry"`
+	Modified       *int64                `json:"modified"`
+	Due            *int64                `json:"due,omitempty"`
+	Start          *int64                `json:"start"`
+	End            *int64                `json:"end"`
+	Wait           *int64                `json:"wait,omitempty"`
+	Scheduled      *int64                `json:"scheduled,omitempty"`
+	Until          *int64                `json:"until,omitempty"`
+	Parent         *string               `json:"parent,omitempty"`
+	Priority       *string               `json:"priority,omitempty"`
+	Tags           []string              `json:"tags,omitempty"`
+	Assignees      []task.JSONUserInfo   `json:"assignees,omitempty"`
+	Depends        []string              `json:"depends,omitempty"`
+	DependsInfo    []task.JSONTaskRef    `json:"depends_info,omitempty"`
+	ParentInfo     *task.JSONTaskRef     `json:"parent_info,omitempty"`
+	BlockedByInfo  []task.JSONTaskRef    `json:"blocked_by_info,omitempty"`
+	Annotations    []task.JSONAnnotation `json:"annotations,omitempty"`
+	Links          []linkJSON            `json:"links,omitempty"`
+	RecurrenceInfo *recurrenceInfoJSON   `json:"recurrence_info,omitempty"`
+	UDAs           map[string]string     `json:"udas,omitempty"`
+}
+
+type recurrenceInfoJSON struct {
+	Role            string   `json:"role"`
+	SeriesID        string   `json:"series_id"`
+	SeriesTitle     string   `json:"series_title"`
+	SeriesStatus    string   `json:"series_status"`
+	Rule            string   `json:"rule"`
+	RecurrenceAt    int64    `json:"recurrence_at"`
+	Materialization string   `json:"materialization"`
+	Overrides       []string `json:"overrides,omitempty"`
+	Until           *int64   `json:"until,omitempty"`
+}
+
+type taskViewPageJSON struct {
+	Items          []taskOccurrenceJSON `json:"items"`
+	Total          int                  `json:"total"`
+	Limit          int                  `json:"limit"`
+	Offset         int                  `json:"offset"`
+	OccurrenceMode string               `json:"occurrence_mode"`
+	Range          *taskViewRangeJSON   `json:"range,omitempty"`
+}
+
+type taskViewRangeJSON struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
+}
+
+type taskSeriesJSON struct {
+	ID                         string               `json:"id"`
+	WorkspaceID                string               `json:"workspace_id"`
+	ProjectID                  string               `json:"project_id"`
+	ProjectSlug                string               `json:"project_slug,omitempty"`
+	SeriesSlug                 string               `json:"series_slug,omitempty"`
+	Title                      string               `json:"title"`
+	Description                *string              `json:"description,omitempty"`
+	Status                     string               `json:"status"`
+	RecurrenceRule             string               `json:"recurrence_rule"`
+	FirstDue                   int64                `json:"first_due"`
+	Until                      *int64               `json:"until,omitempty"`
+	Priority                   *string              `json:"priority,omitempty"`
+	Tags                       []string             `json:"tags,omitempty"`
+	UDAs                       map[string]string    `json:"udas,omitempty"`
+	Assignees                  []task.JSONUserInfo  `json:"assignees,omitempty"`
+	OpenOccurrenceCount        int                  `json:"open_occurrence_count"`
+	CompletedCount             int                  `json:"completed_count"`
+	SkippedCount               int                  `json:"skipped_count"`
+	OverdueCount               int                  `json:"overdue_count"`
+	NextRecurrenceAt           *int64               `json:"next_recurrence_at,omitempty"`
+	SuggestedRuleEffectiveFrom *int64               `json:"suggested_rule_effective_from,omitempty"`
+	CreatedBy                  task.JSONUserInfo    `json:"created_by"`
+	CreatedAt                  int64                `json:"created_at"`
+	ModifiedAt                 int64                `json:"modified_at"`
+	OpenOccurrences            []taskOccurrenceJSON `json:"open_occurrences,omitempty"`
+	RecentCompleted            []taskOccurrenceJSON `json:"recent_completed,omitempty"`
+	RecentSkipped              []taskOccurrenceJSON `json:"recent_skipped,omitempty"`
+}
+
+type taskSeriesListPageJSON struct {
+	Items  []taskSeriesJSON `json:"items"`
+	Total  int              `json:"total"`
+	Limit  int              `json:"limit"`
+	Offset int              `json:"offset"`
+}
+
+type taskSeriesCreateResultJSON struct {
+	Series          taskSeriesJSON      `json:"series"`
+	FirstOccurrence *taskOccurrenceJSON `json:"first_occurrence,omitempty"`
+}
+
+// --- 视图序列化 ---
+
+// udaValueMapToRaw 把 domain UDA map 转为 name→raw string 的 JSON map。
+func udaValueMapToRaw(udas map[string]task.UDAValue) map[string]string {
+	if len(udas) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(udas))
+	for name, v := range udas {
+		out[name] = v.Raw
+	}
+	return out
+}
+
+func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
+	out := taskOccurrenceJSON{
+		ID: v.ID, UUID: v.UUID, TaskSlug: v.TaskSlug, ProjectSeq: v.ProjectSeq,
+		WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID, Project: v.Project,
+		Title: v.Title, Description: v.Description, Status: v.Status,
+		Entry: v.Entry, Modified: v.Modified, Due: v.Due, Start: v.Start, End: v.End,
+		Wait: v.Wait, Scheduled: v.Scheduled, Until: v.Until, Parent: v.Parent,
+		Priority: v.Priority, Tags: v.Tags, Depends: v.Depends,
+		Annotations: task.AnnotationsToJSON(v.Annotations), Links: taskLinksToJSON(v.Links),
+		Assignees: taskUserInfoListToJSON(v.Assignees),
+		UDAs:      udaValueMapToRaw(v.UDAs),
+	}
+	if v.RecurrenceInfo != nil {
+		out.RecurrenceInfo = &recurrenceInfoJSON{
+			Role: v.RecurrenceInfo.Role, SeriesID: v.RecurrenceInfo.SeriesID,
+			SeriesTitle:  v.RecurrenceInfo.SeriesTitle,
+			SeriesStatus: v.RecurrenceInfo.SeriesStatus, Rule: v.RecurrenceInfo.Rule,
+			RecurrenceAt: v.RecurrenceInfo.RecurrenceAt, Materialization: v.RecurrenceInfo.Materialization,
+			Overrides: v.RecurrenceInfo.Overrides, Until: v.RecurrenceInfo.Until,
+		}
+	}
+	return out
+}
+
+// taskResolutionToJSON 在统一 occurrence view 上补齐任务详情需要的可读关系引用。
+// projected occurrence 没有真实 task row，因此这些关系自然为空且不触发写入。
+func taskResolutionToJSON(svc *app.Service, resolved app.TaskRefResolution) taskOccurrenceJSON {
+	out := occurrenceViewToJSON(resolved.View)
+	if resolved.Task == nil {
+		return out
+	}
+	if refs, err := svc.ResolveTaskRefs(resolved.Task.Depends); err == nil && len(refs) > 0 {
+		out.DependsInfo = refs
+	}
+	if resolved.Task.Parent != nil {
+		if refs, err := svc.ResolveTaskRefs([]string{*resolved.Task.Parent}); err == nil && len(refs) > 0 {
+			out.ParentInfo = &refs[0]
+		}
+	}
+	if refs, err := svc.ResolveDependents(resolved.Task.UUID); err == nil && len(refs) > 0 {
+		out.BlockedByInfo = refs
+	}
+	return out
+}
+
+func taskViewPageToJSON(page app.TaskViewPage) taskViewPageJSON {
+	items := make([]taskOccurrenceJSON, 0, len(page.Items))
+	for _, it := range page.Items {
+		items = append(items, occurrenceViewToJSON(it))
+	}
+	out := taskViewPageJSON{
+		Items: items, Total: page.Total, Limit: page.Limit, Offset: page.Offset,
+		OccurrenceMode: string(page.OccurrenceMode),
+	}
+	if page.Range != nil {
+		out.Range = &taskViewRangeJSON{Start: page.Range.Start, End: page.Range.End}
+	}
+	return out
+}
+
+func occurrenceViewsToJSON(items []app.TaskOccurrenceView) []taskOccurrenceJSON {
+	out := make([]taskOccurrenceJSON, 0, len(items))
+	for _, item := range items {
+		out = append(out, occurrenceViewToJSON(item))
+	}
+	return out
+}
+
+func seriesViewToJSON(v app.TaskSeriesView) taskSeriesJSON {
+	assignees := taskUserInfoListToJSON(seriesAssigneesToUserInfo(v))
+	return taskSeriesJSON{
+		ID: v.ID, WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID,
+		ProjectSlug: v.ProjectSlug, SeriesSlug: app.SeriesSlugOf(v.Series),
+		Title: v.Title, Description: v.Description, Status: v.Status, RecurrenceRule: v.RecurrenceRule,
+		FirstDue: v.FirstDue, Until: v.Until, Priority: v.Priority, Tags: v.Tags,
+		UDAs:      v.UDAs,
+		Assignees: assignees, OpenOccurrenceCount: v.OpenOccurrenceCount,
+		CompletedCount: v.CompletedCount, SkippedCount: v.SkippedCount,
+		OverdueCount: v.OverdueCount, NextRecurrenceAt: v.NextRecurrenceAt,
+		SuggestedRuleEffectiveFrom: v.SuggestedRuleEffectiveFrom,
+		CreatedBy:                  taskUserInfoToJSON(v.CreatedBy),
+		CreatedAt:                  v.CreatedAt, ModifiedAt: v.ModifiedAt,
+	}
+}
+
+func seriesAssigneesToUserInfo(v app.TaskSeriesView) []task.UserInfo {
+	// 使用 buildSeriesView 中已解析的完整 UserInfo（含 display_name/email/external_ids）。
+	if len(v.Assignees) > 0 {
+		return v.Assignees
+	}
+	// fallback：无解析结果时用 ID。
+	out := make([]task.UserInfo, 0, len(v.AssigneeIDs))
+	for _, id := range v.AssigneeIDs {
+		out = append(out, task.UserInfo{ID: id, Name: id})
+	}
+	return out
+}
+
+// --- handlers ---
+
+func (s *Server) handleTaskSeriesList(w http.ResponseWriter, r *http.Request) {
+	projectRef := requestProjectRef(r)
+	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	q := r.URL.Query()
+	limit, offset, ok := parseOptionalPagination(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return
+	}
+	input := app.TaskSeriesListInput{
+		ProjectID: q.Get("project_id"),
+		Project:   q.Get("project"),
+		Status:    q.Get("status"),
+		Q:         q.Get("q"),
+		Assignee:  q.Get("assignee"),
+		Sort:      q.Get("sort"),
+		Limit:     limit,
+		Offset:    offset,
+	}
+	if input.Status == "" {
+		input.Status = "active"
+	}
+	page, err := scoped.ListTaskSeries(input)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	items := make([]taskSeriesJSON, 0, len(page.Items))
+	for _, it := range page.Items {
+		items = append(items, seriesViewToJSON(it))
+	}
+	writeSuccess(w, http.StatusOK, taskSeriesListPageJSON{
+		Items: items, Total: page.Total, Limit: page.Limit, Offset: page.Offset,
+	}, nil)
+}
+
+func (s *Server) handleTaskSeriesAdd(w http.ResponseWriter, r *http.Request) {
+	projectRef := requestProjectRef(r)
+	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req taskSeriesRequest
+	if err := decodeStrictJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_request", "invalid JSON body", nil)
+		return
+	}
+	input, err := seriesRequestToInput(req, projectRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result, err := scoped.AddTaskSeries(input)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	resp := taskSeriesCreateResultJSON{Series: seriesViewToJSON(result.Series)}
+	if result.FirstOccurrence != nil {
+		occ := occurrenceViewToJSON(*result.FirstOccurrence)
+		resp.FirstOccurrence = &occ
+	}
+	writeSuccess(w, http.StatusCreated, resp, nil)
+}
+
+func (s *Server) handleTaskSeriesGet(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	seriesRef := pathParam(r, "seriesRef")
+	detail, err := scoped.GetTaskSeries(seriesRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response := seriesViewToJSON(detail.Series)
+	response.OpenOccurrences = occurrenceViewsToJSON(detail.OpenOccurrences)
+	response.RecentCompleted = occurrenceViewsToJSON(detail.RecentCompleted)
+	response.RecentSkipped = occurrenceViewsToJSON(detail.RecentSkipped)
+	writeSuccess(w, http.StatusOK, response, nil)
+}
+
+func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	seriesRef := pathParam(r, "seriesRef")
+	var req taskSeriesRequest
+	if err := decodeStrictJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_request", "invalid JSON body", nil)
+		return
+	}
+	input := app.ModifyTaskSeriesInput{
+		Title:       req.Title,
+		Description: req.Description,
+		Priority:    req.Priority,
+		Assignees:   req.Assignees,
+		Tags:        req.Tags,
+		UDAs:        req.UDAs,
+		Until:       req.Until,
+	}
+	if req.UntilDate != nil {
+		ts, err := parseDeadlineDate(*req.UntilDate)
+		if err != nil {
+			writeAppError(w, app.RuntimeError{Code: "task_series_invalid_until", Message: err.Error()})
+			return
+		}
+		input.Until = &ts
+	}
+	if req.RecurrenceRule != nil {
+		input.RecurrenceRule = req.RecurrenceRule
+	}
+	if req.EffectiveFrom != nil {
+		input.EffectiveFrom = req.EffectiveFrom
+	}
+	if req.EffectiveFromDate != nil {
+		ts, err := parseDeadlineDate(*req.EffectiveFromDate)
+		if err != nil {
+			writeAppError(w, app.RuntimeError{Code: "task_series_invalid_effective_from", Message: err.Error()})
+			return
+		}
+		input.EffectiveFrom = &ts
+	}
+	if err := app.ApplyTaskSeriesClearFields(&input, req.Clear); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ModifyTaskSeries(seriesRef, input)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, seriesViewToJSON(view), nil)
+}
+
+func (s *Server) handleTaskSeriesDelete(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	seriesRef := pathParam(r, "seriesRef")
+	deleteOpen := isTruthyQueryValue(r.URL.Query().Get("delete_open_occurrences"))
+	view, err := scoped.StopTaskSeries(seriesRef, app.StopTaskSeriesInput{DeleteOpenOccurrences: &deleteOpen})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, seriesViewToJSON(view), nil)
+}
+
+func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	seriesRef := pathParam(r, "seriesRef")
+	q := r.URL.Query()
+	limit, offset, ok := parseOptionalPagination(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return
+	}
+	input := app.TaskSeriesOccurrenceListInput{
+		Status: q.Get("status"), Limit: limit, Offset: offset,
+	}
+	if raw := q.Get("due_after"); raw != "" {
+		ts, perr := parseDueAfter(raw)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", perr.Error(), nil)
+			return
+		}
+		input.DueAfter = &ts
+	}
+	if raw := q.Get("due_before"); raw != "" {
+		ts, perr := parseDueBefore(raw)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", perr.Error(), nil)
+			return
+		}
+		input.DueBefore = &ts
+	}
+	page, err := scoped.ListTaskSeriesOccurrences(seriesRef, input)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
+}
+
+func (s *Server) handleTaskSeriesOccurrenceSkip(w http.ResponseWriter, r *http.Request) {
+	scoped, _, err := s.scopedService(r, "task:write", app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	seriesRef := pathParam(r, "seriesRef")
+	occurrenceRef, decodeErr := decodedPathParam(r, "occurrenceRef")
+	if decodeErr != nil {
+		writeAppError(w, decodeErr)
+		return
+	}
+	view, err := scoped.SkipTaskSeriesOccurrence(seriesRef, occurrenceRef)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, occurrenceViewToJSON(view), nil)
+}
+
+// --- 辅助 ---
+
+func seriesRequestToInput(req taskSeriesRequest, projectRef string) (app.AddTaskSeriesInput, error) {
+	input := app.AddTaskSeriesInput{
+		Title:          strValueOr(req.Title, ""),
+		Description:    req.Description,
+		RecurrenceRule: strValueOr(req.RecurrenceRule, ""),
+		Priority:       req.Priority, Assignees: req.Assignees, Tags: req.Tags, UDAs: req.UDAs,
+	}
+	if projectRef != "" {
+		input.Project = &projectRef
+	}
+	if req.ProjectID != nil {
+		input.ProjectID = *req.ProjectID
+	}
+	if req.Project != nil {
+		p := *req.Project
+		input.Project = &p
+	}
+	// first_due（unix 或 date-only）。
+	if req.FirstDue != nil {
+		input.FirstDue = *req.FirstDue
+	} else if req.FirstDueDate != nil {
+		ts, err := parseDeadlineDate(*req.FirstDueDate)
+		if err != nil {
+			return app.AddTaskSeriesInput{}, app.RuntimeError{Code: "task_series_due_required", Message: err.Error()}
+		}
+		input.FirstDue = ts
+	}
+	if req.Until != nil {
+		input.Until = req.Until
+	} else if req.UntilDate != nil {
+		ts, err := parseDeadlineDate(*req.UntilDate)
+		if err != nil {
+			return app.AddTaskSeriesInput{}, app.RuntimeError{Code: "task_series_invalid_until", Message: err.Error()}
+		}
+		input.Until = &ts
+	}
+	return input, nil
+}
+
+func parseDeadlineDate(date string) (int64, error) {
+	return query.ResolveDeadlineDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+}
+
+func parseDueAfter(date string) (int64, error) {
+	// due_after = 当天 00:00 inclusive。
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return 0, fmt.Errorf("date must be YYYY-MM-DD")
+	}
+	return query.ResolveStartDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+}
+
+func parseDueBefore(date string) (int64, error) {
+	// due_before = 当天结束，转次日 00:00 exclusive。
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return 0, fmt.Errorf("date must be YYYY-MM-DD")
+	}
+	start, err := query.ResolveStartDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
+	if err != nil {
+		return 0, err
+	}
+	return time.Unix(start, 0).In(time.Local).AddDate(0, 0, 1).Unix(), nil
+}
+
+func strValueOr(p *string, def string) string {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+func pathParam(r *http.Request, name string) string {
+	return chi.URLParam(r, name)
+}
+
+// handleTaskListViewPage 处理带 occurrence_mode/due range 的任务查询，返回 TaskViewPage（spec §13.3）。
+func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, scoped *app.Service, projectRef string) {
+	q := r.URL.Query()
+	mode := app.OccurrenceMode(q.Get("occurrence_mode"))
+	if mode == "" {
+		mode = app.OccurrenceModeAuto
+	}
+	// auto + 完整范围升级为 expand；显式 expand 必须同时提供两个边界。
+	var rng *app.TaskViewRange
+	dueAfter, dueBefore := q.Get("due_after"), q.Get("due_before")
+	if (mode == app.OccurrenceModeExpand || mode == app.OccurrenceModeAuto) && dueAfter != "" && dueBefore != "" {
+		start, serr := parseDueAfterOrDefault(dueAfter)
+		if serr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", serr.Error(), nil)
+			return
+		}
+		end, eerr := parseDueBeforeOrDefault(dueBefore)
+		if eerr != nil {
+			writeError(w, http.StatusBadRequest, "api_bad_filter", eerr.Error(), nil)
+			return
+		}
+		rng = &app.TaskViewRange{Start: start, End: end}
+	}
+	// 分页校验与 Series/occurrence 列表使用同一契约。
+	requestedLimit, offset, ok := parseOptionalPagination(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return
+	}
+	limit := taskListDefaultLimit
+	if requestedLimit > 0 {
+		limit = requestedLimit
+	}
+	// query / filter（spec §17.1）。
+	var queryExpr query.Expr
+	// target：解析为 UUID 后作为 query 过滤（纯数字 target 会被拒绝）。
+	if target := strings.TrimSpace(q.Get("target")); target != "" {
+		tsk, err := scoped.ResolveProtocolTarget(target)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		queryExpr = query.And(queryExpr, query.Predicate{
+			Attribute: query.AttrUUID, Operator: query.OpEqual, Value: query.StringValue(tsk.UUID),
+		})
+	}
+	filters := q["query"]
+	if len(filters) == 0 {
+		filters = q["filter"]
+	}
+	if len(filters) > 0 {
+		expr, err := query.ParseFilterExpr(filters)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		queryExpr = query.And(queryExpr, expr)
+	}
+	// restful 参数（status/priority/project/tag/due/wait 等）。
+	restful, err := restfulTaskFilters(q)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_filter", err.Error(), nil)
+		return
+	}
+	queryExpr = query.And(queryExpr, restful)
+	input := app.TaskViewQuery{
+		OccurrenceMode: mode, Range: rng,
+		Status: q.Get("status"), Sort: q.Get("sort"),
+		Query: queryExpr, Limit: limit, Offset: offset,
+		NoContext: isTruthyQueryValue(q.Get("no_context")),
+	}
+	if projectRef != "" {
+		project, err := scoped.ProjectInfo(projectRef)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		input.ProjectID = project.ID
+	}
+	page, err := scoped.QueryTaskViews(input)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
+}
+
+func parseOptionalPagination(w http.ResponseWriter, limitRaw, offsetRaw string) (limit, offset int, ok bool) {
+	if limitRaw != "" {
+		parsed, err := strconv.Atoi(limitRaw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return 0, 0, false
+		}
+		if parsed > taskListMaxLimit {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", taskListMaxLimit), nil)
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if offsetRaw != "" {
+		parsed, err := strconv.Atoi(offsetRaw)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_offset", "invalid offset", nil)
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
+}
+
+func parseDueAfterOrDefault(date string) (int64, error) {
+	if date == "" {
+		return 0, nil
+	}
+	return parseDueAfter(date)
+}
+
+func parseDueBeforeOrDefault(date string) (int64, error) {
+	if date == "" {
+		return 0, nil
+	}
+	return parseDueBefore(date)
+}
+
+func taskUserInfoToJSON(u task.UserInfo) task.JSONUserInfo {
+	return task.UserInfoToJSON(u)
+}
+
+func taskUserInfoListToJSON(in []task.UserInfo) []task.JSONUserInfo {
+	out := make([]task.JSONUserInfo, 0, len(in))
+	for _, u := range in {
+		out = append(out, task.UserInfoToJSON(u))
+	}
+	return out
+}

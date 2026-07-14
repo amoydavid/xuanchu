@@ -75,6 +75,8 @@ export function MarkdownEditor({
         class:
           "markdown-prose min-h-[var(--markdown-editor-min-height)] px-3 py-2 text-sm leading-6 outline-none",
         role: "textbox",
+        // 编辑区是 Tab 进入组件后的首个落点，工具栏按钮已 tabIndex=-1 移出 Tab 序列。
+        tabindex: "0",
       },
       handleKeyDown: (_view, event) => {
         if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -352,6 +354,8 @@ function ToolbarButton({
           disabled={disabled}
           onClick={onClick}
           size="icon-sm"
+          // 工具栏按钮移出 Tab 序列：鼠标点击照常可用，Tab 聚焦时直接落到编辑区。
+          tabIndex={-1}
           type="button"
           variant="ghost"
         >

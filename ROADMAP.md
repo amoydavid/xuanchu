@@ -53,7 +53,7 @@
 | v0.5.4 | 已完成 | Web Console 项目子页面（概览 / 任务 / 活动）+ 可开合右栏 + ProjectSummary API |
 | v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
 | v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
-| v0.5.7 | 待实施 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
+| v0.5.7 | 已完成 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -381,7 +381,7 @@ v0.4.4 同时补齐 Admin 工作台 Token 管控：
 - 移除侧边栏 `/tasks` 入口（旧链接重定向到 `/projects`），项目表格成为任务浏览主入口。
 - `/projects` 项目表格：项目名 / 状态 / 进度条 / 任务数，行可点击进入项目详情。
 - 项目详情页任务表格上方新增过滤工具栏（status / priority / assignee / 搜索），过滤条件同步 URL，刷新/分享保留；活跃条件以可移除 chip 呈现。
-- 任务详情页重构为左右布局：主区域放注解（首屏 3 条 + 懒加载更多）和关联链接 links；右侧属性栏放常用字段（status/priority/assignee/due/tags/depends/entry/modified/recur）与动态 UDAs。
+- 任务详情页重构为左右布局：主区域放注解（首屏 3 条 + 懒加载更多）和关联链接 links；右侧属性栏放普通任务字段（status/priority/assignee/due/tags/depends/entry/modified）与动态 UDAs；循环归属通过 occurrence 的 `recurrence_info` 和任务页内循环任务面板展示。
 - 后端 `GET /tasks` 新增 restful 风格过滤参数（status/priority/assignee/due_after/due_before/tags/q），内部翻译成现有 query DSL，与 `query=`/`filter=` 共存。
 - 后端新增 `GET /tasks/{ref}/annotations` 分页端点，支持 offset/limit。
 - 后端 `GET /projects` 响应补 pending_count / completed_count 分项计数（一条 SQL 按 status 分桶）。
@@ -597,7 +597,7 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 
 ## v0.5.7：循环任务系列与日历驱动实例
 
-**状态：待实施。**
+**状态：已完成。**
 
 把 M2 的基础 recurring 从“完成当前实例后生成下一条”升级为项目协作可用的日历驱动系列：上一实例未完成时，下一日期仍生成独立实例；服务停机恢复后补齐所有遗漏日期。
 
@@ -609,9 +609,11 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 - Server 复用现有 scheduler 运行时每分钟 reconcile；本地 CLI 在任务/项目命令前对当前 workspace 补齐。
 - Web Console 提供普通/循环创建切换、实例 badge 与系列入口、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
 - MCP 新增 `task_series_add/list/get/modify/stop/list_occurrences/occurrence_skip`，task query/get 对 occurrence 返回派生 `recurrence_info`。
-- 默认任务列表只显示普通任务和 occurrence；series 在项目“循环规则”中治理。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
+- HTTP `GET /tasks`、`GET /tasks/{ref}`、`GET /reports/{name}` 统一返回 `TaskViewPage`（`{items, total, limit, offset, occurrence_mode, range}`），Remote 删除旧 `ListTasks`/`GetTask` 签名，CLI remote 全量迁移到 `QueryTasks`/`GetTaskView`。
+- 默认任务列表融合普通任务和 occurrence；series 从项目任务页的“循环任务 N”治理面板进入，不增加独立 Tab。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
 - import/export 使用版本化璇础原生 bundle，不迁移或兼容 Taskwarrior recurring JSON；当前无生产历史数据，允许一次性重建旧 recurring 开发数据。
 - 项目 archive/cancel 时停止 active series，不在关闭项目中继续生成任务。
+- series 拥有独立短引用 `series_slug`（`{projectSlug}-s-{seq}`，如 `ops-s-1`），由 `projects.next_series_seq` 分配，与 task 的 `task_slug` 命名空间隔离；HTTP/CLI/MCP/Web 接受 UUID 或 `series_slug` 引用 series。
 
 规格：
 
@@ -633,7 +635,7 @@ v0.1.1 在 v0.1.0 已具备的 CLI / HTTP / MCP / Remote 基础上，补齐面�
 - task JSON 输出新增只读字段 `task_slug`；无 project 的任务省略该字段。
 - 本地 CLI 可用数字 working-set ID、UUID、UUID 前缀和 `task_slug` 定位任务。
 - 远程 CLI 的纯数字 target 仍由客户端两跳解析；UUID 和 `task_slug` 直接传给服务端。
-- HTTP API 与 MCP tool 只接受 UUID 或 `task_slug`，纯数字 working-set ID 返回 `task_ref_invalid`。
+- HTTP API 与 MCP tool 接受完整 UUID、已物化任务的 `task_slug` 或循环实例 `occurrence_ref`；projected 实例只有 occurrence_ref，纯数字 working-set ID 返回 `task_ref_invalid`。
 
 ## M0：本地单用户 CLI
 
@@ -734,6 +736,8 @@ M0 已经把项目从设计文档推进到可运行的本地 CLI。当前能力�
 ## M2：Taskwarrior 核心任务模型补齐
 
 **状态：已完成。**
+
+> 历史说明：本节记录当时的 M2 交付形态。v0.5.7 已用独立 `task_series`、日历投影和 occurrence 取代 `status=recurring`、`recur/mask/imask` 与完成驱动 child；当前接口不再兼容该旧模型。
 
 **目标：** 补齐 Taskwarrior 日常使用所需的任务字段和命令，让 Xuanchu 不再只是简单 todo CLI。
 

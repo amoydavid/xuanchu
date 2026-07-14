@@ -110,7 +110,7 @@ func TestParseModifyArgsDateFieldBoundaries(t *testing.T) {
 }
 
 func TestParseModifyArgsM2Fields(t *testing.T) {
-	mod, err := ParseModifyArgs([]string{"wait:tomorrow", "scheduled:eow", "until:2030-01-01", "depends:abc", "depends:", "recur:weekly"})
+	mod, err := ParseModifyArgs([]string{"wait:tomorrow", "scheduled:eow", "until:2030-01-01", "depends:abc", "depends:"})
 	if err != nil {
 		t.Fatalf("ParseModifyArgs() error = %v", err)
 	}
@@ -120,8 +120,14 @@ func TestParseModifyArgsM2Fields(t *testing.T) {
 	if !mod.ClearDepends || len(mod.AddDepends) != 1 || mod.AddDepends[0] != "abc" {
 		t.Fatalf("depends not parsed: %#v", mod)
 	}
-	if mod.Recur == nil || *mod.Recur != "weekly" {
-		t.Fatalf("Recur = %#v", mod.Recur)
+}
+
+func TestParseModifyArgsRejectsLegacyRecur(t *testing.T) {
+	// spec 2026-07-11：recur/mask/imask token 不再支持，返回错误而非静默忽略。
+	for _, token := range []string{"recur:weekly", "recur:", "mask:abc", "imask:1"} {
+		if _, err := ParseModifyArgs([]string{token}); err == nil {
+			t.Fatalf("ParseModifyArgs(%q) 应失败", token)
+		}
 	}
 }
 
@@ -139,11 +145,11 @@ func TestParseModifyArgsRecognizesAssigneeMutations(t *testing.T) {
 }
 
 func TestParseModifyArgsClearsM2DateFields(t *testing.T) {
-	mod, err := ParseModifyArgs([]string{"wait:", "scheduled:", "until:", "recur:"})
+	mod, err := ParseModifyArgs([]string{"wait:", "scheduled:", "until:"})
 	if err != nil {
 		t.Fatalf("ParseModifyArgs() error = %v", err)
 	}
-	if !mod.ClearWait || !mod.ClearScheduled || !mod.ClearUntil || !mod.ClearRecur {
+	if !mod.ClearWait || !mod.ClearScheduled || !mod.ClearUntil {
 		t.Fatalf("clear flags not set: %#v", mod)
 	}
 }

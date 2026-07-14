@@ -33,9 +33,10 @@ func TestE2ERemoteCLIAndHTTPAPIGoldenPath(t *testing.T) {
 	}
 
 	tasks := httpJSON(t, http.MethodGet, baseURL+"/api/v1/tasks", nil, authHeaders(token))
-	taskRows, _ := tasks["data"].([]any)
+	taskData, _ := tasks["data"].(map[string]any)
+	taskRows, _ := taskData["items"].([]any)
 	if !jsonArrayContainsString(taskRows, "title", "remote api golden task") {
-		t.Fatalf("HTTP task list data = %#v, want remote task", taskRows)
+		t.Fatalf("HTTP task list items = %#v, want remote task", taskRows)
 	}
 	projects := httpJSON(t, http.MethodGet, baseURL+"/api/v1/projects", nil, authHeaders(token))
 	projectRows, _ := projects["data"].([]any)

@@ -74,7 +74,7 @@ urgency_explain({
 }
 ```
 
-`id` 用 UUID 或 `task_slug`，不用本地 working-set 数字 ID。
+`id` 用 UUID、已物化 `task_slug` 或 occurrence_ref，不用本地 working-set 数字 ID。
 
 ## 典型工作流
 

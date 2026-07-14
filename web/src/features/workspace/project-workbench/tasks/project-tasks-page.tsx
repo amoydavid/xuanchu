@@ -35,6 +35,7 @@ export function ProjectTasksPage({
   const navigate = useNavigate()
   const [importOpen, setImportOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createMode, setCreateMode] = useState<"normal" | "recurring">("normal")
   const search = useSearch({ strict: false }) as Partial<TaskFilter>
   const filter: TaskFilter = useMemo(
     () => ({
@@ -67,6 +68,8 @@ export function ProjectTasksPage({
       q: typeof search.q === "string" ? search.q : undefined,
       query: typeof search.query === "string" ? search.query : undefined,
       sort: typeof search.sort === "string" ? search.sort : undefined,
+      task_type:
+        typeof search.task_type === "string" ? search.task_type : undefined,
     }),
     [
       search.assignee,
@@ -81,6 +84,7 @@ export function ProjectTasksPage({
       search.sort,
       search.status,
       search.tags,
+      search.task_type,
       search.until_before,
       search.wait_before,
     ]
@@ -161,7 +165,14 @@ export function ProjectTasksPage({
         canCreateTask={canEditTasks}
         filter={filter}
         navigateTo="/workspaces/$workspaceSlug/projects/$projectSlug/tasks"
-        onCreateTask={() => setCreateOpen(true)}
+        onCreateTask={() => {
+          setCreateMode("normal")
+          setCreateOpen(true)
+        }}
+        onCreateRecurringTask={() => {
+          setCreateMode("recurring")
+          setCreateOpen(true)
+        }}
         toParams={{ workspaceSlug, projectSlug }}
       />
       <TaskTable
@@ -180,8 +191,16 @@ export function ProjectTasksPage({
         workspaceSlug={workspaceSlug}
       />
       <TaskCreateDialog
+        initialMode={createMode}
+        key={`${createMode}-${createOpen ? "open" : "closed"}`}
         filters={filterQuery}
         onOpenChange={setCreateOpen}
+        onRecurringCreated={(created) => {
+          void navigate({
+            to: "/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef",
+            params: { workspaceSlug, projectSlug, seriesRef: created.series_slug || created.id },
+          })
+        }}
         open={createOpen}
         projectSlug={projectSlug}
         workspaceSlug={workspaceSlug}

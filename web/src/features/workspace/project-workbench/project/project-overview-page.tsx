@@ -42,6 +42,14 @@ export function ProjectOverviewPage({
 
   const latestAnnotation = project.recent_annotations?.[0]
   const timelinePreview = (timeline.data ?? []).slice(0, 5)
+  const seriesMetrics = summary.data?.series_metrics
+  const hasNormalTasks = project.task_count > 0
+  const hasRecurringRuntime =
+    (seriesMetrics?.active_recurring_series_count ?? 0) > 0 ||
+    (seriesMetrics?.open_recurring_occurrence_count ?? 0) > 0
+  const completedRatio = hasNormalTasks
+    ? Math.round((project.completed_count / project.task_count) * 100)
+    : 0
 
   return (
     <div className="space-y-4">
@@ -74,6 +82,34 @@ export function ProjectOverviewPage({
           </p>
         )}
       </section>
+
+      {/* 执行概览只展示已有的普通任务或循环运行数据，避免空项目出现零值摘要。 */}
+      {summary.data && (hasNormalTasks || hasRecurringRuntime) ? (
+        <section className="rounded-lg border bg-card p-4">
+          <h2 className="mb-2 text-sm font-medium">
+            {t("projectSubpages.executionOverviewTitle")}
+          </h2>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            {hasNormalTasks ? (
+              <p>
+                {t("projectSubpages.executionNormalTasks", {
+                  completed: project.completed_count,
+                  total: project.task_count,
+                  percent: completedRatio,
+                })}
+              </p>
+            ) : null}
+            {hasRecurringRuntime ? (
+              <p>
+                {t("projectSubpages.executionRecurringTasks", {
+                  active: seriesMetrics?.active_recurring_series_count ?? 0,
+                  open: seriesMetrics?.open_recurring_occurrence_count ?? 0,
+                })}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {/* 当前重点：全部来自 ProjectTaskSummary。无 task:read 时不展示。 */}
       {canReadTasks ? (

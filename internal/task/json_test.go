@@ -283,14 +283,13 @@ func TestJSONTaskImportPreservesAssigneeExternalIDs(t *testing.T) {
 
 func TestJSONTaskM2RoundTrip(t *testing.T) {
 	start, wait, scheduled, until := int64(10), int64(20), int64(30), int64(40)
-	recur, parent, mask := "weekly", "parent", "mask"
-	imask := 2
+	parent := "parent"
 	tsk := Task{
 		UUID: "u1", Title: "task", Status: StatusPending, Entry: 1, Modified: 2,
 		Start: &start, Wait: &wait, Scheduled: &scheduled, Until: &until,
 		Annotations: []Annotation{{ID: "ann-1", Entry: 3, Description: "note"}},
 		Depends:     []string{"dep"},
-		Recur:       &recur, Parent: &parent, Mask: &mask, IMask: &imask,
+		Parent:      &parent,
 	}
 	got := FromJSON(ToJSON(tsk))
 	if got.Start == nil || got.Wait == nil || got.Scheduled == nil || got.Until == nil {
@@ -299,8 +298,64 @@ func TestJSONTaskM2RoundTrip(t *testing.T) {
 	if len(got.Annotations) != 1 || got.Annotations[0].ID != "ann-1" || got.Annotations[0].Description != "note" || !slices.Equal(got.Depends, []string{"dep"}) {
 		t.Fatalf("compound fields lost: %#v", got)
 	}
-	if got.Recur == nil || got.Parent == nil || got.Mask == nil || got.IMask == nil {
-		t.Fatalf("recurrence fields lost: %#v", got)
+	if got.Parent == nil || *got.Parent != parent {
+		t.Fatalf("parent field lost: %#v", got.Parent)
+	}
+}
+
+// TestJSONTaskRejectsLegacyRecurField 锁定旧 recur/mask/imask 字段在 decode 时被拒绝（spec §11.1、§20.2）。
+func TestJSONTaskRejectsLegacyRecurField(t *testing.T) {
+	for _, legacy := range []string{`"recur":"daily"`, `"mask":"abc"`, `"imask":1`} {
+		payload := `{"uuid":"u1","title":"t","status":"pending","entry":"1","modified":"2",` + legacy + `}`
+		var dto JSONTask
+		if err := json.Unmarshal([]byte(payload), &dto); err == nil {
+			t.Fatalf("包含 %s 的 payload 应被拒绝", legacy)
+		}
+	}
+}
+
+// TestJSONTaskOccurrenceRoundTrip 锁定 occurrence 持久字段的 JSON round-trip（spec §7.2）。
+func TestJSONTaskOccurrenceRoundTrip(t *testing.T) {
+	seriesID := "series-1"
+	slot := int64(1783785599)
+	rule := "daily"
+	tsk := Task{
+		UUID: "occ-1", Title: "巡检", Status: StatusPending, Entry: 1, Modified: 2,
+		SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
+		RecurrenceOverrides: []string{"due", "title", "due"},
+	}
+	dto := ToJSON(tsk)
+	if dto.SeriesID == nil || *dto.SeriesID != seriesID {
+		t.Fatalf("series_id 丢失: %#v", dto.SeriesID)
+	}
+	if dto.RecurrenceAt == nil {
+		t.Fatalf("recurrence_at 丢失")
+	}
+	if dto.RecurrenceRuleSnapshot == nil || *dto.RecurrenceRuleSnapshot != rule {
+		t.Fatalf("recurrence_rule_snapshot 丢失: %#v", dto.RecurrenceRuleSnapshot)
+	}
+	// override 应被规范化为去重升序。
+	if !slices.Equal(dto.RecurrenceOverrides, []string{"due", "title"}) {
+		t.Fatalf("overrides 未规范化: %#v", dto.RecurrenceOverrides)
+	}
+	got := FromJSON(dto)
+	if got.SeriesID == nil || *got.SeriesID != seriesID {
+		t.Fatalf("round-trip series_id 丢失: %#v", got.SeriesID)
+	}
+	if got.RecurrenceAt == nil || *got.RecurrenceAt != slot {
+		t.Fatalf("round-trip recurrence_at 丢失: %#v", got.RecurrenceAt)
+	}
+	if got.RecurrenceRuleSnapshot == nil || *got.RecurrenceRuleSnapshot != rule {
+		t.Fatalf("round-trip snapshot 丢失: %#v", got.RecurrenceRuleSnapshot)
+	}
+	// 普通任务（全 nil）不应输出 occurrence 字段。
+	plain := ToJSON(Task{UUID: "p1", Title: "普通任务", Status: StatusPending, Entry: 1, Modified: 2})
+	data, err := json.Marshal(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "series_id") || strings.Contains(string(data), "recurrence_at") {
+		t.Fatalf("普通任务不应输出 occurrence 字段: %s", data)
 	}
 }
 

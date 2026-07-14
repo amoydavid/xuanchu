@@ -21,6 +21,8 @@ import { InlineDatePicker } from "../shared/inline-date-picker"
 import { InlineSelectEditor } from "../shared/inline-select-editor"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskRowActions } from "./task-row-actions"
+import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
+import { taskDisplayRef, taskRouteRef } from "./task-reference"
 
 type TaskTableProps = {
   canWrite: boolean
@@ -93,7 +95,7 @@ export function TaskTable({
             {tasks.map((task) => (
               <TaskTableRow
                 canWrite={canWrite}
-                key={task.uuid}
+                key={taskKey(task)}
                 projectSlug={projectSlug}
                 task={task}
                 workspaceSlug={workspaceSlug}
@@ -106,7 +108,7 @@ export function TaskTable({
         {tasks.map((task) => (
           <TaskCard
             canWrite={canWrite}
-            key={task.uuid}
+            key={taskKey(task)}
             projectSlug={projectSlug}
             task={task}
             workspaceSlug={workspaceSlug}
@@ -160,10 +162,11 @@ function TaskTableRow({
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const isDeleted = task.status === "deleted"
   const rowWritable = canWrite && !isDeleted
   const taskRef = taskReference(task)
+  const displayRef = taskDisplayRef(task, i18n.language)
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
 
   return (
@@ -174,12 +177,12 @@ function TaskTableRow({
           task={task}
           workspaceSlug={workspaceSlug}
         >
-          <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
+          <code>{displayRef}</code>
         </TaskLink>
       </TableCell>
       <TableCell className="max-w-lg min-w-64">
         <InlineTextEditor
-          ariaLabel={t("projectReadonly.editTaskTitle", { taskRef })}
+          ariaLabel={t("projectReadonly.editTaskTitle", { taskRef: displayRef })}
           disabled={!rowWritable}
           displayClassName="max-w-lg"
           onSave={async (title) => {
@@ -195,13 +198,31 @@ function TaskTableRow({
             {t("myTasks.deleted")}
           </Badge>
         ) : null}
+        {task.recurrence_info ? (
+          <Badge
+            className="ml-1"
+            data-testid="recurrence-badge"
+            title={t(
+              `taskSeries.occurrence.${task.recurrence_info.materialization}`
+            )}
+            variant="outline"
+          >
+            {t("taskSeries.occurrence.badge", {
+              rule: recurrenceRuleLabel(task.recurrence_info.rule, t),
+            })}
+          </Badge>
+        ) : null}
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
+		<Badge variant="outline">
+		  {task.recurrence_info?.materialization === "projected"
+			? t("taskSeries.occurrence.projected")
+			: taskStatusLabel(task.status, t)}
+		</Badge>
       </TableCell>
       <TableCell>
         <InlineSelectEditor
-          ariaLabel={t("projectReadonly.taskPriority", { taskRef })}
+          ariaLabel={t("projectReadonly.taskPriority", { taskRef: displayRef })}
           className="w-20"
           disabled={!rowWritable}
           onSave={async (priority) => {
@@ -218,7 +239,7 @@ function TaskTableRow({
       <TableCell className="max-w-48 truncate">{assigneeNames(task)}</TableCell>
       <TableCell>
         <InlineDatePicker
-          ariaLabel={t("projectReadonly.taskDueDate", { taskRef })}
+          ariaLabel={t("projectReadonly.taskDueDate", { taskRef: displayRef })}
           boundary="end"
           className="w-36"
           disabled={!rowWritable}
@@ -233,7 +254,9 @@ function TaskTableRow({
       <TableCell>
         <TaskRowActions
           canWrite={rowWritable}
+          displayRef={displayRef}
           projectSlug={projectSlug}
+          recurrenceInfo={task.recurrence_info}
           start={task.start}
           status={task.status}
           taskRef={taskRef}
@@ -255,8 +278,9 @@ function TaskCard({
   task: ProjectWorkbenchTask
   workspaceSlug: string
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const taskRef = taskReference(task)
+  const displayRef = taskDisplayRef(task, i18n.language)
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const isDeleted = task.status === "deleted"
   const rowWritable = canWrite && !isDeleted
@@ -268,13 +292,17 @@ function TaskCard({
           task={task}
           workspaceSlug={workspaceSlug}
         >
-          <code>{task.task_slug || task.uuid.slice(0, 8)}</code>
+          <code>{displayRef}</code>
         </TaskLink>
-        <Badge variant="outline">{taskStatusLabel(task.status, t)}</Badge>
+		<Badge variant="outline">
+		  {task.recurrence_info?.materialization === "projected"
+			? t("taskSeries.occurrence.projected")
+			: taskStatusLabel(task.status, t)}
+		</Badge>
       </div>
       <div className="mt-2">
         <InlineTextEditor
-          ariaLabel={t("projectReadonly.editMobileTaskTitle", { taskRef })}
+          ariaLabel={t("projectReadonly.editMobileTaskTitle", { taskRef: displayRef })}
           disabled={!rowWritable}
           displayClassName="max-w-full text-sm font-medium"
           onSave={async (title) => {
@@ -288,7 +316,7 @@ function TaskCard({
       </div>
       <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
         <InlineSelectEditor
-          ariaLabel={t("projectReadonly.mobileTaskPriority", { taskRef })}
+          ariaLabel={t("projectReadonly.mobileTaskPriority", { taskRef: displayRef })}
           className="w-full"
           disabled={!rowWritable}
           onSave={async (priority) => {
@@ -302,7 +330,7 @@ function TaskCard({
           value={task.priority ?? "none"}
         />
         <InlineDatePicker
-          ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef })}
+          ariaLabel={t("projectReadonly.mobileTaskDueDate", { taskRef: displayRef })}
           boundary="end"
           className="w-full"
           disabled={!rowWritable}
@@ -320,7 +348,9 @@ function TaskCard({
       <div className="mt-3">
         <TaskRowActions
           canWrite={rowWritable}
+          displayRef={displayRef}
           projectSlug={projectSlug}
+          recurrenceInfo={task.recurrence_info}
           start={task.start}
           status={task.status}
           taskRef={taskRef}
@@ -348,7 +378,7 @@ function TaskLink({
       params={{
         workspaceSlug,
         projectSlug,
-        taskRef: taskReference(task),
+        taskRef: taskRouteRef(task),
       }}
       to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
     >
@@ -358,7 +388,12 @@ function TaskLink({
 }
 
 function taskReference(task: ProjectWorkbenchTask): string {
-  return task.task_slug || task.uuid
+  return taskRouteRef(task)
+}
+
+/** 稳定 key：projected occurrence 用 id，普通任务用 uuid。 */
+function taskKey(task: ProjectWorkbenchTask): string {
+  return task.id || task.uuid || ""
 }
 
 function assigneeNames(task: ProjectWorkbenchTask): string {
@@ -368,10 +403,7 @@ function assigneeNames(task: ProjectWorkbenchTask): string {
   return task.assignees
     .map(
       (assignee) =>
-        assignee.display_name ||
-        assignee.name ||
-        assignee.email ||
-        assignee.id
+        assignee.display_name || assignee.name || assignee.email || assignee.id
     )
     .filter(Boolean)
     .join(", ")

@@ -61,6 +61,12 @@ function summary(
     unassigned_open_count: 3,
     unassigned_open_refs: [],
     workload: [],
+    series_metrics: {
+      recurring_series_count: 0,
+      active_recurring_series_count: 0,
+      open_recurring_occurrence_count: 0,
+      overdue_recurring_occurrence_count: 0,
+    },
     ...overrides,
   }
 }
@@ -137,7 +143,7 @@ describe("ProjectContextRail", () => {
     expect(screen.queryByText("运行配置")).toBeNull()
   })
 
-  it("renders summary risk counts from project task summary", async () => {
+  it("renders normal-task progress and risk counts from project task summary", async () => {
     render(
       <ProjectContextRail
         configRows={[]}
@@ -146,7 +152,7 @@ describe("ProjectContextRail", () => {
       />,
       { wrapper: Wrapper }
     )
-    await screen.findByText("进度")
+    await screen.findByText("任务进度")
     expect(screen.getByText("逾期")).toBeTruthy()
     expect(screen.getByText("高优未完成")).toBeTruthy()
     expect(screen.getByText("等待已到期")).toBeTruthy()
@@ -186,6 +192,70 @@ describe("ProjectContextRail", () => {
     expect(screen.getByText(/5 待办/)).toBeTruthy()
     // 未分配行 open_count>0 时仍展示（风险计数区也有「未分配任务」，所以 >=2）
     expect(screen.getAllByText("未分配任务").length).toBeGreaterThanOrEqual(2)
+  })
+
+  it("shows recurring runtime separately from normal task progress", async () => {
+    const summaryWithRecurringMetrics = {
+      ...summary(),
+      series_metrics: {
+        recurring_series_count: 2,
+        active_recurring_series_count: 1,
+        open_recurring_occurrence_count: 3,
+        overdue_recurring_occurrence_count: 1,
+      },
+    }
+    render(
+      <ProjectContextRail
+        configRows={[]}
+        project={project()}
+        summary={summaryWithRecurringMetrics}
+      />,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("循环任务运行情况")
+    expect(screen.getByText("任务进度")).toBeTruthy()
+    expect(screen.getByText("1 个运行中系列")).toBeTruthy()
+    expect(screen.getByText("3 条未完成实例，其中 1 条逾期")).toBeTruthy()
+  })
+
+  it("hides empty normal-task progress while retaining recurring runtime", async () => {
+    render(
+      <ProjectContextRail
+        configRows={[]}
+        project={project({ task_count: 0, pending_count: 0, completed_count: 0 })}
+        summary={summary({
+          series_metrics: {
+            recurring_series_count: 1,
+            active_recurring_series_count: 1,
+            open_recurring_occurrence_count: 1,
+            overdue_recurring_occurrence_count: 0,
+          },
+        })}
+      />,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("循环任务运行情况")
+    expect(screen.getByText("任务")).toBeTruthy()
+    expect(screen.getByText("无")).toBeTruthy()
+    expect(screen.queryByText("任务进度")).toBeNull()
+    expect(screen.queryByText("逾期")).toBeNull()
+    expect(screen.queryByText("未分配任务")).toBeNull()
+  })
+
+  it("tolerates a legacy summary response without recurring metrics", async () => {
+    render(
+      <ProjectContextRail
+        configRows={[]}
+        project={project()}
+        summary={summary({ series_metrics: undefined })}
+      />,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("任务进度")
+    expect(screen.queryByText("循环任务运行情况")).toBeNull()
   })
 
   it("hides unassigned row when its open count is zero", async () => {

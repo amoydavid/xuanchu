@@ -68,7 +68,10 @@ export type ProjectWorkbenchTaskLink = {
 }
 
 export type ProjectWorkbenchTask = {
-  uuid: string
+  /** 稳定公开 id：普通任务=UUID，occurrence=occ:series:slot（spec §7.4） */
+  id?: string
+  /** 真实任务 UUID，projected occurrence 时为 null */
+  uuid?: string
   task_slug?: string
   title: string
   description?: string | null
@@ -77,10 +80,9 @@ export type ProjectWorkbenchTask = {
   project_id?: string
   priority?: string | null
   due?: string | number | null
-  entry?: string
-  modified?: string
-  end?: string | null
-  recur?: string | null
+  entry?: string | number
+  modified?: string | number
+  end?: string | number | null
   start?: string | number | null
   wait?: string | number | null
   scheduled?: string | number | null
@@ -94,6 +96,18 @@ export type ProjectWorkbenchTask = {
   assignees?: ProjectWorkbenchAssignee[]
   tags?: string[]
   links?: ProjectWorkbenchTaskLink[]
+  // occurrence 字段（spec §7.8）。普通任务为空；后端切换到 TaskOccurrenceView 后填充。
+  series_id?: string | null
+  recurrence_at?: number | null
+  recurrence_info?: {
+    role: string
+    series_id: string
+    series_title?: string
+    series_status?: string
+    rule: string
+    recurrence_at: number
+    materialization: "projected" | "materialized"
+  } | null
   [key: string]: unknown
 }
 
@@ -134,6 +148,13 @@ export type ProjectSummaryWorkloadRow = {
   high_priority_count: number
 }
 
+export type ProjectSeriesMetrics = {
+  recurring_series_count: number
+  active_recurring_series_count: number
+  open_recurring_occurrence_count: number
+  overdue_recurring_occurrence_count: number
+}
+
 export type ProjectTaskSummary = {
   overdue_count: number
   overdue_refs: ProjectSummaryTaskRef[]
@@ -144,6 +165,8 @@ export type ProjectTaskSummary = {
   unassigned_open_count: number
   unassigned_open_refs: ProjectSummaryTaskRef[]
   workload: ProjectSummaryWorkloadRow[]
+  // 新服务端始终返回；可选是为了兼容滚动发布期间的旧响应。
+  series_metrics?: ProjectSeriesMetrics
 }
 
 export type ProjectCreateInput = {
@@ -263,9 +286,9 @@ export function getProjectTasks(
   projectRef: string,
   filters?: ProjectTaskFilterParams
 ): Promise<ProjectWorkbenchTask[]> {
-  return workspaceApiGet<ProjectWorkbenchTask[]>(
+  return workspaceApiGet<{ items: ProjectWorkbenchTask[] }>(
     projectTasksPath(workspaceSlug, projectRef, filters)
-  )
+  ).then((page) => page.items ?? [])
 }
 
 export function getProjectTimeline(

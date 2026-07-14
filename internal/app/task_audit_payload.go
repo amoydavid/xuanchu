@@ -100,13 +100,6 @@ func taskFieldChanges(change projectChange, diff TaskChangeDiff) []map[string]an
 			"current":  int64PtrToAny(diff.CurrentUntil),
 		})
 	}
-	if diff.RecurChanged {
-		out = append(out, map[string]any{
-			"field":    "recur",
-			"previous": stringPtrToAny(diff.PreviousRecur),
-			"current":  stringPtrToAny(diff.CurrentRecur),
-		})
-	}
 	if diff.DependsChanged && (len(diff.AddedDepends) > 0 || len(diff.RemovedDepends) > 0) {
 		out = append(out, map[string]any{
 			"field":   "depends",

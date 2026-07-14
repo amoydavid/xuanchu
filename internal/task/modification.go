@@ -15,8 +15,6 @@ type Modification struct {
 	ClearUntil      bool
 	AddDepends      []string
 	ClearDepends    bool
-	Recur           *string
-	ClearRecur      bool
 	AddAssignees    []string
 	RemoveAssignees []string
 	ClearAssignees  bool
@@ -36,7 +34,6 @@ func (m Modification) Empty() bool {
 		m.Scheduled == nil && !m.ClearScheduled &&
 		m.Until == nil && !m.ClearUntil &&
 		len(m.AddDepends) == 0 && !m.ClearDepends &&
-		m.Recur == nil && !m.ClearRecur &&
 		len(m.AddAssignees) == 0 &&
 		len(m.RemoveAssignees) == 0 && !m.ClearAssignees &&
 		len(m.AddTags) == 0 &&

@@ -39,6 +39,18 @@ function existingTask(
 }
 
 describe("task import preprocessing", () => {
+  it.each(["recur", "mask", "imask"])(
+    "rejects retired recurrence field %s instead of importing it as an ordinary task field",
+    (field) => {
+      expect(() =>
+        parseTaskImportJSON(
+          JSON.stringify({ tasks: [{ title: "旧循环任务", [field]: "legacy" }] }),
+          { nowISO: NOW, projectSlug: "adsops" }
+        )
+      ).toThrow(`${field} 字段已不支持`)
+    }
+  )
+
   it("parses JSON arrays and wraps tasks with project defaults", () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "11111111-1111-4111-8111-111111111111"
@@ -374,7 +386,8 @@ describe("task import preprocessing", () => {
   })
 
   it("builds template rows with core import columns and UDA examples", () => {
-    expect(buildTaskImportTemplateRows()).toEqual([
+    const rows = buildTaskImportTemplateRows()
+    expect(rows).toEqual([
       expect.objectContaining({
         title: "示例任务",
         description: "可使用 Markdown 记录详细说明",
@@ -385,5 +398,8 @@ describe("task import preprocessing", () => {
         "uda.estimate": "3",
       }),
     ])
+    expect(rows[0]).not.toHaveProperty("recur")
+    expect(rows[0]).not.toHaveProperty("mask")
+    expect(rows[0]).not.toHaveProperty("imask")
   })
 })

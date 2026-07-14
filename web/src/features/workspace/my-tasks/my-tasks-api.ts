@@ -4,18 +4,23 @@ export type MyTasksFilter = {
   assignee: string
   status?: string
   project?: string
+  task_type?: string
   priority?: string
   due_after?: string
   due_before?: string
   due_empty?: string
   q?: string
+  query?: string
   sort?: string
 }
 
 // myTasksPath 把 filter 编码为 GET /api/v1/tasks 的完整路径（含前导 /）。
-// 复用现有 RESTful 参数：assignee/status/project/priority/due_after/due_before/q/sort，
+// 复用现有 RESTful 参数：assignee/status/project/task_type/priority/due_after/due_before/q/sort，
 // 以及 query 表达式：due.isnull、assignee.isnull。
-export function myTasksPath(workspaceSlug: string, filter: MyTasksFilter): string {
+export function myTasksPath(
+  workspaceSlug: string,
+  filter: MyTasksFilter
+): string {
   const params = new URLSearchParams()
   params.set("workspace", workspaceSlug)
 
@@ -26,6 +31,7 @@ export function myTasksPath(workspaceSlug: string, filter: MyTasksFilter): strin
   const directKeys: Array<keyof MyTasksFilter> = [
     "status",
     "project",
+    "task_type",
     "priority",
     "due_after",
     "due_before",
@@ -42,6 +48,9 @@ export function myTasksPath(workspaceSlug: string, filter: MyTasksFilter): strin
   // query 表达式（assignee.isnull / due.isnull）放在 direct 参数之后，
   // 保持稳定的参数顺序，便于测试和缓存。
   const expressions: string[] = []
+  if (filter.query) {
+    expressions.push(filter.query)
+  }
   if (!filter.assignee) {
     expressions.push("assignee.isnull")
   }

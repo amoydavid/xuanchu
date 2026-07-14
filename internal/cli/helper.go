@@ -67,7 +67,7 @@ func newGetCommand(opts Options) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					tsk, err := client.GetTask(context.Background(), currentOpts.Workspace, resolved)
+					dto, err := client.GetTaskView(context.Background(), currentOpts.Workspace, resolved)
 					if err != nil {
 						return err
 					}
@@ -79,11 +79,11 @@ func newGetCommand(opts Options) *cobra.Command {
 						}
 						urg = explain.Total
 					}
-					value, err := dom.Resolve(tsk, field, urg)
+					value, err := resolveTaskViewDOM(remoteOccurrenceDTOToView(dto), field, urg)
 					if err != nil {
 						return err
 					}
-					fmt.Fprintln(cmd.OutOrStdout(), value)
+					writeTaskViewDOMValue(cmd, currentOpts.JSON, remoteOccurrenceDTOToView(dto), field, value)
 				}
 				return nil
 			}
@@ -101,7 +101,7 @@ func newGetCommand(opts Options) *cobra.Command {
 				target := expr[:dot]
 				field := expr[dot+1:]
 
-				tsk, err := svc.ResolveTarget(target)
+				view, err := svc.GetTaskView(target)
 				if err != nil {
 					return err
 				}
@@ -115,15 +115,69 @@ func newGetCommand(opts Options) *cobra.Command {
 					urg = explain.Total
 				}
 
-				value, err := dom.Resolve(tsk, field, urg)
+				value, err := resolveTaskViewDOM(view, field, urg)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), value)
+				writeTaskViewDOMValue(cmd, currentOpts.JSON, view, field, value)
 			}
 			return nil
 		},
 	}
+}
+
+func writeTaskViewDOMValue(cmd *cobra.Command, asJSON bool, view app.TaskOccurrenceView, field, value string) {
+	if asJSON {
+		switch field {
+		case "uuid":
+			if view.UUID == nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "null")
+				return
+			}
+		case "task_slug":
+			if view.TaskSlug == nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "null")
+				return
+			}
+		case "project_seq":
+			if view.ProjectSeq == nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "null")
+				return
+			}
+		}
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), value)
+}
+
+func resolveTaskViewDOM(view app.TaskOccurrenceView, field string, urgencyValue float64) (string, error) {
+	switch field {
+	case "id":
+		return view.ID, nil
+	case "uuid":
+		if view.UUID == nil {
+			return "", nil
+		}
+		return *view.UUID, nil
+	case "task_slug":
+		if view.TaskSlug == nil {
+			return "", nil
+		}
+		return *view.TaskSlug, nil
+	case "project_seq":
+		if view.ProjectSeq == nil {
+			return "", nil
+		}
+		return fmt.Sprintf("%d", *view.ProjectSeq), nil
+	case "entry":
+		if view.Entry == nil {
+			return "", nil
+		}
+	case "modified":
+		if view.Modified == nil {
+			return "", nil
+		}
+	}
+	return dom.Resolve(taskFromOccurrenceView(view), field, urgencyValue)
 }
 
 func newIDsCommand(opts Options) *cobra.Command {
@@ -140,7 +194,7 @@ func newIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				matches, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				matchesPage, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -150,6 +204,7 @@ func newIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				matches := remotePageToTasks(matchesPage)
 				matched := make(map[string]struct{}, len(matches))
 				for _, tsk := range matches {
 					matched[tsk.UUID] = struct{}{}
@@ -205,7 +260,7 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -215,7 +270,7 @@ func newUUIDsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				for _, tsk := range tasks {
+				for _, tsk := range remotePageToTasks(page) {
 					fmt.Fprintln(cmd.OutOrStdout(), tsk.UUID)
 				}
 				return nil
@@ -304,7 +359,7 @@ func newTagsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -313,6 +368,7 @@ func newTagsCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				tasks := remotePageToTasks(page)
 				tags := map[string]bool{}
 				for _, tsk := range tasks {
 					for _, tag := range tsk.Tags {
@@ -408,7 +464,7 @@ func newUniqueCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				tasks, err := client.ListTasks(context.Background(), remote.ListTasksInput{
+				page, err := client.QueryTasks(context.Background(), remote.TaskQueryInput{
 					Workspace: currentOpts.Workspace,
 					Project:   currentOpts.Project,
 					ProjectID: currentOpts.ProjectID,
@@ -418,6 +474,7 @@ func newUniqueCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				tasks := remotePageToTasks(page)
 				values := map[string]bool{}
 				field := strings.TrimPrefix(args[0], "uda.")
 				for _, tsk := range tasks {

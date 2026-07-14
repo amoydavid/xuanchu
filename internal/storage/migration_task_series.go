@@ -1,0 +1,340 @@
+package storage
+
+import (
+	"errors"
+	"fmt"
+
+	"gorm.io/gorm"
+)
+
+// prepareTaskSeriesSchema 把 tasks 表切换到 occurrence 模型，并建立 task_series 聚合（spec §7、§20.2）。
+//
+// 这是破坏性 schema 变更：检测到旧 status=recurring 数据时直接报错，不静默迁移（spec §20.2）。
+// 在开发环境重建数据库即可，不提供生产兼容迁移。
+//
+// 注意：tasks 表由 M5 流程用原始 SQL 建立，这里不使用 GORM AutoMigrate(&Task{})——
+// GORM 在 SQLite 上对差异较大的表会 rebuild，可能丢失 NOT NULL 约束。改为显式 ADD COLUMN。
+func (s *Store) prepareTaskSeriesSchema() error {
+	// 1. AutoMigrate Series 相关表（全新表，无 rebuild 风险）。
+	if err := s.db.AutoMigrate(&TaskSeries{}, &TaskSeriesRuleVersion{}, &TaskSeriesAssignee{}, &TaskSeriesTag{}, &TaskSeriesUDAValue{}); err != nil {
+		return fmt.Errorf("task series: AutoMigrate series: %w", err)
+	}
+	// 早期实现误把 (workspace, project, status) 建成唯一索引，导致同一项目
+	// 只能存在一条 active Series。这里原地改为普通查询索引；SQLite 与
+	// PostgreSQL 均支持同一组 DROP/CREATE INDEX 语法。
+	if err := normalizeTaskSeriesScopeIndex(s.db); err != nil {
+		return fmt.Errorf("task series: normalize scope index: %w", err)
+	}
+	// 2. 检测旧循环任务数据。若存在则拒绝启动，提示重建开发数据库（spec §20.2）。
+	if err := detectLegacyRecurringData(s.db); err != nil {
+		return err
+	}
+	// 3. 删除旧 recur 索引和旧 parent+due 唯一索引（旧循环去重路径已移除）。
+	if err := dropLegacyRecurringIndexes(s.db); err != nil {
+		return fmt.Errorf("task series: drop legacy indexes: %w", err)
+	}
+	// 4. 给 tasks 表显式加 occurrence 列（避免 GORM rebuild）。
+	if err := addOccurrenceColumns(s.db); err != nil {
+		return fmt.Errorf("task series: add occurrence columns: %w", err)
+	}
+	// 5. 修复早期 occurrence 物化路径只写 project_id/project_seq、遗漏
+	// project slug 的半绑定数据；回填后严格校验项目三元组。
+	if err := backfillOccurrenceProjectBindings(s.db); err != nil {
+		return fmt.Errorf("task series: backfill occurrence project bindings: %w", err)
+	}
+	// 6. 删除旧 recur/mask/i_mask 列（SQLite/PostgreSQL 都支持 DROP COLUMN）。
+	if err := dropLegacyRecurringColumns(s.db); err != nil {
+		return fmt.Errorf("task series: drop legacy columns: %w", err)
+	}
+	// 7. 建立 occurrence partial unique index（spec §7.3）。
+	if err := createOccurrenceUniqueIndex(s.db); err != nil {
+		return fmt.Errorf("task series: create occurrence unique index: %w", err)
+	}
+	// 8. 建立 due/recurrence_at 查询索引（model 的 GORM index tag 在显式 ADD COLUMN 场景不会自动生效）。
+	if err := ensureOccurrenceLookupIndexes(s.db); err != nil {
+		return fmt.Errorf("task series: ensure lookup indexes: %w", err)
+	}
+	// 9. 回填存量 series 的 project_seq 并更新 projects.next_series_seq（series_slug 派生用）。
+	if err := backfillSeriesSeq(s.db); err != nil {
+		return fmt.Errorf("task series: backfill series seq: %w", err)
+	}
+	// 10. 建立 series project_seq partial unique index（series_slug 解析用）。
+	if err := createSeriesSeqUniqueIndex(s.db); err != nil {
+		return fmt.Errorf("task series: create series seq unique index: %w", err)
+	}
+	return nil
+}
+
+func normalizeTaskSeriesScopeIndex(db *gorm.DB) error {
+	if err := db.Exec("DROP INDEX IF EXISTS idx_task_series_ws_project_status").Error; err != nil {
+		return err
+	}
+	return db.Exec("CREATE INDEX IF NOT EXISTS idx_task_series_ws_project_status ON task_series(workspace_id, project_id, status)").Error
+}
+
+// backfillOccurrenceProjectBindings 把早期物化 occurrence 缺失的 project
+// slug 从同 workspace 的 projects 表回填。函数幂等执行；任何孤儿、跨
+// workspace 或部分绑定都会使整个事务失败，避免继续传播无 task_slug 的任务。
+func backfillOccurrenceProjectBindings(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var stmt string
+		if tx.Dialector.Name() == "postgres" {
+			stmt = `
+UPDATE tasks AS t
+SET project = p.slug
+FROM projects AS p
+WHERE t.series_id IS NOT NULL
+  AND t.project IS NULL
+  AND t.project_id IS NOT NULL
+  AND t.project_seq IS NOT NULL
+  AND p.id = t.project_id
+  AND p.workspace_id = t.workspace_id`
+		} else {
+			stmt = `
+UPDATE tasks
+SET project = (
+  SELECT p.slug
+  FROM projects AS p
+  WHERE p.id = tasks.project_id
+    AND p.workspace_id = tasks.workspace_id
+)
+WHERE series_id IS NOT NULL
+  AND project IS NULL
+  AND project_id IS NOT NULL
+  AND project_seq IS NOT NULL`
+		}
+		if err := tx.Exec(stmt).Error; err != nil {
+			return err
+		}
+
+		var invalid int64
+		if err := tx.Raw(`
+SELECT count(*)
+FROM tasks AS t
+LEFT JOIN projects AS p
+  ON p.id = t.project_id
+ AND p.workspace_id = t.workspace_id
+WHERE t.series_id IS NOT NULL
+  AND (
+    t.project IS NULL
+    OR t.project_id IS NULL
+    OR t.project_seq IS NULL
+    OR p.id IS NULL
+    OR t.project <> p.slug
+  )`).Scan(&invalid).Error; err != nil {
+			return err
+		}
+		if invalid > 0 {
+			return fmt.Errorf("project_invariant_violation: %d occurrence task(s) have incomplete project bindings", invalid)
+		}
+		return nil
+	})
+}
+
+// ensureOccurrenceLookupIndexes 建立 due 和 recurrence_at 的查询索引。
+func ensureOccurrenceLookupIndexes(db *gorm.DB) error {
+	for _, stmt := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due)",
+		"CREATE INDEX IF NOT EXISTS idx_tasks_recurrence_at ON tasks(recurrence_at)",
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addOccurrenceColumns 给 tasks 表加 series_id/recurrence_at/recurrence_rule_snapshot/
+// recurrence_overrides_json 列。使用显式 SQL，避免 GORM AutoMigrate 的 rebuild 行为。
+func addOccurrenceColumns(db *gorm.DB) error {
+	dialect := db.Dialector.Name()
+	columns := []struct {
+		name string
+		// sqlite 和 postgres 的 DDL 片段
+		sqlite   string
+		postgres string
+	}{
+		{"series_id", "TEXT", "text"},
+		{"recurrence_at", "INTEGER", "bigint"},
+		{"recurrence_rule_snapshot", "TEXT", "text"},
+		{"recurrence_overrides_json", "TEXT NOT NULL DEFAULT '[]'", "text NOT NULL DEFAULT '[]'"},
+	}
+	for _, col := range columns {
+		exists, err := taskSeriesColumnExists(db, dialect, "tasks", col.name)
+		if err != nil {
+			return fmt.Errorf("check column %s: %w", col.name, err)
+		}
+		if exists {
+			continue
+		}
+		ddl := col.sqlite
+		if dialect == "postgres" {
+			ddl = col.postgres
+		}
+		if err := db.Exec(fmt.Sprintf("ALTER TABLE tasks ADD COLUMN %s %s", col.name, ddl)).Error; err != nil {
+			return fmt.Errorf("add column %s: %w", col.name, err)
+		}
+	}
+	return nil
+}
+
+// detectLegacyRecurringData 检查 tasks 表是否存在旧循环任务数据（spec §20.2）。
+// 检查 status=recurring 或 recur/mask/i_mask 列有非空值。
+// 列不存在或无数据时跳过；存在则返回明确错误，防止静默丢弃。
+func detectLegacyRecurringData(db *gorm.DB) error {
+	if !db.Migrator().HasTable("tasks") {
+		return nil
+	}
+	dialect := db.Dialector.Name()
+	// 检查 status=recurring（列一定存在）。
+	var count int64
+	if err := db.Raw("SELECT count(*) FROM tasks WHERE status = 'recurring'").Scan(&count).Error; err != nil {
+		return nil
+	}
+	if count > 0 {
+		return errors.New("检测到旧循环任务数据（status=recurring），不支持自动迁移，请备份后重建开发数据库")
+	}
+	// 检查 recur/mask/i_mask 列是否有非空值（列可能已被删除）。
+	for _, col := range []string{"recur", "mask", "i_mask"} {
+		exists, err := taskSeriesColumnExists(db, dialect, "tasks", col)
+		if err != nil || !exists {
+			continue
+		}
+		var colCount int64
+		quote := col
+		if dialect == "postgres" {
+			quote = `"` + col + `"`
+		}
+		if err := db.Raw(fmt.Sprintf("SELECT count(*) FROM tasks WHERE %s IS NOT NULL AND %s != ''", quote, quote)).Scan(&colCount).Error; err != nil {
+			continue
+		}
+		if colCount > 0 {
+			return fmt.Errorf("检测到旧循环任务数据（%s 列有非空值），不支持自动迁移，请备份后重建开发数据库", col)
+		}
+	}
+	return nil
+}
+
+// dropLegacyRecurringIndexes 删除旧循环路径的索引。
+func dropLegacyRecurringIndexes(db *gorm.DB) error {
+	for _, idx := range []string{"idx_tasks_recur", "idx_task_parent_due_open"} {
+		// 忽略不存在的索引。
+		_ = db.Migrator().DropIndex("tasks", idx)
+	}
+	return nil
+}
+
+// dropLegacyRecurringColumns 删除旧 recur/mask/i_mask 列。
+// 用原生 SQL 检测列是否存在，避免依赖 model 字段（model 已不含旧字段）。
+func dropLegacyRecurringColumns(db *gorm.DB) error {
+	dialect := db.Dialector.Name()
+	for _, col := range []string{"recur", "mask", "i_mask"} {
+		exists, err := taskSeriesColumnExists(db, dialect, "tasks", col)
+		if err != nil {
+			return fmt.Errorf("check column %s: %w", col, err)
+		}
+		if !exists {
+			continue
+		}
+		if err := db.Exec(fmt.Sprintf("ALTER TABLE tasks DROP COLUMN %s", col)).Error; err != nil {
+			return fmt.Errorf("drop column %s: %w", col, err)
+		}
+	}
+	return nil
+}
+
+// taskSeriesColumnExists 用 dialect 无关方式检测列是否存在。
+func taskSeriesColumnExists(db *gorm.DB, dialect, table, column string) (bool, error) {
+	switch dialect {
+	case "postgres":
+		var n int64
+		err := db.Raw(`SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`, table, column).Scan(&n).Error
+		return n > 0, err
+	default: // sqlite
+		rows, err := db.Raw(fmt.Sprintf("PRAGMA table_info(%s)", table)).Rows()
+		if err != nil {
+			return false, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dflt interface{}
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return false, err
+			}
+			if name == column {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+}
+
+// createOccurrenceUniqueIndex 建立 partial unique index（spec §7.3）。
+// SQLite 和 PostgreSQL 都支持 partial index 语法。
+func createOccurrenceUniqueIndex(db *gorm.DB) error {
+	idxSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_ws_series_slot ON tasks(workspace_id, series_id, recurrence_at) WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL"
+	return db.Exec(idxSQL).Error
+}
+
+// backfillSeriesSeq 给 project_seq 为 NULL 的存量 series 按创建时间补序号，
+// 并把 projects.next_series_seq 推进到合理值。幂等：已有 seq 的 series 跳过。
+func backfillSeriesSeq(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 找出所有需要回填的 (workspace_id, project_id) 组合。
+		type wsProj struct {
+			WorkspaceID string
+			ProjectID   string
+		}
+		var groups []wsProj
+		if err := tx.Model(&TaskSeries{}).
+			Select("DISTINCT workspace_id, project_id").
+			Where("project_seq IS NULL").
+			Scan(&groups).Error; err != nil {
+			return err
+		}
+		for _, g := range groups {
+			// 该 project 下已有最大 seq（可能部分已回填）。
+			var maxSeq int64
+			if err := tx.Model(&TaskSeries{}).
+				Where("workspace_id = ? AND project_id = ?", g.WorkspaceID, g.ProjectID).
+				Select("COALESCE(MAX(project_seq), 0)").Scan(&maxSeq).Error; err != nil {
+				return err
+			}
+			next := maxSeq
+			// 按 created_at ASC 给 NULL 的分配序号。
+			var ids []string
+			if err := tx.Model(&TaskSeries{}).
+				Where("workspace_id = ? AND project_id = ? AND project_seq IS NULL", g.WorkspaceID, g.ProjectID).
+				Order("created_at ASC, id ASC").
+				Pluck("id", &ids).Error; err != nil {
+				return err
+			}
+			for _, id := range ids {
+				next++
+				if err := tx.Model(&TaskSeries{}).
+					Where("id = ?", id).
+					Update("project_seq", next).Error; err != nil {
+					return err
+				}
+			}
+			// 更新 projects.next_series_seq（取 max(当前 next_series_seq, next+1)）。
+			if next > 0 {
+				if err := tx.Model(&Project{}).
+					Where("workspace_id = ? AND id = ?", g.WorkspaceID, g.ProjectID).
+					Update("next_series_seq", next+1).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// createSeriesSeqUniqueIndex 建立 series project_seq 的 partial unique index（series_slug 解析用）。
+func createSeriesSeqUniqueIndex(db *gorm.DB) error {
+	idxSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_series_ws_project_seq ON task_series(workspace_id, project_id, project_seq) WHERE project_seq IS NOT NULL"
+	return db.Exec(idxSQL).Error
+}

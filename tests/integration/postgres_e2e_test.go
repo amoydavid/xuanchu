@@ -109,6 +109,86 @@ func TestPostgresE2EServerHTTPMCPAndLogs(t *testing.T) {
 		t.Fatalf("PostgreSQL HTTP MCP structured content = %#v", env)
 	}
 
+	seriesData := callMCPToolData(t, session, "task_series_add", map[string]any{
+		"project":         "pge2e",
+		"title":           "postgres daily inspection",
+		"description":     "verify PostgreSQL recurrence persistence",
+		"recurrence_rule": "daily",
+		"first_due_date":  "2030-01-01",
+		"priority":        "H",
+		"tags":            []string{"postgres", "recurrence"},
+	})
+	series := nestedMap(t, seriesData, "series")
+	seriesID, _ := series["id"].(string)
+	if seriesID == "" || series["status"] != "active" || series["recurrence_rule"] != "daily" {
+		t.Fatalf("PostgreSQL task_series_add data = %#v", seriesData)
+	}
+	firstOccurrence := nestedMap(t, seriesData, "first_occurrence")
+	firstRef, _ := firstOccurrence["id"].(string)
+	if firstRef == "" || nestedMap(t, firstOccurrence, "recurrence_info")["materialization"] != "projected" {
+		t.Fatalf("PostgreSQL projected first occurrence = %#v", firstOccurrence)
+	}
+
+	queryData := callMCPToolData(t, session, "task_query", map[string]any{
+		"project":         "pge2e",
+		"due_after":       "2030-01-01",
+		"due_before":      "2030-01-02",
+		"occurrence_mode": "expand",
+		"task_type":       "occurrence",
+	})
+	items, ok := queryData["items"].([]any)
+	if !ok || queryData["total"] != float64(2) || len(items) != 2 {
+		t.Fatalf("PostgreSQL expanded task_query data = %#v", queryData)
+	}
+	var projected map[string]any
+	for _, raw := range items {
+		item, itemOK := raw.(map[string]any)
+		if itemOK && item["id"] == firstRef {
+			projected = item
+			break
+		}
+	}
+	if projected == nil || projected["uuid"] != nil || projected["task_slug"] != nil {
+		t.Fatalf("PostgreSQL projected first occurrence missing from %#v", items)
+	}
+
+	doneData := callMCPToolData(t, session, "task_done", map[string]any{"id": firstRef})
+	doneTask := nestedMap(t, doneData, "task")
+	taskSlug, _ := doneTask["task_slug"].(string)
+	if doneTask["id"] != firstRef || doneTask["status"] != "completed" || taskSlug == "" {
+		t.Fatalf("PostgreSQL materialized occurrence = %#v", doneTask)
+	}
+	if nestedMap(t, doneTask, "recurrence_info")["materialization"] != "materialized" {
+		t.Fatalf("PostgreSQL materialized recurrence_info = %#v", doneTask["recurrence_info"])
+	}
+
+	aliasTask := nestedMap(t, httpJSON(t, http.MethodGet,
+		baseURL+"/api/v1/tasks/"+url.PathEscape(taskSlug)+"?workspace=local",
+		nil, authHeaders(token)), "data")
+	if aliasTask["id"] != firstRef || aliasTask["task_slug"] != taskSlug || aliasTask["status"] != "completed" {
+		t.Fatalf("PostgreSQL task_slug occurrence lookup = %#v", aliasTask)
+	}
+
+	modifiedSeries := callMCPToolData(t, session, "task_series_modify", map[string]any{
+		"id":          seriesID,
+		"description": "updated on PostgreSQL",
+		"priority":    "M",
+	})
+	if modifiedSeries["description"] != "updated on PostgreSQL" || modifiedSeries["priority"] != "M" {
+		t.Fatalf("PostgreSQL task_series_modify data = %#v", modifiedSeries)
+	}
+	occurrences := callMCPToolData(t, session, "task_series_list_occurrences", map[string]any{
+		"id": seriesID, "status": "completed",
+	})
+	completed, ok := occurrences["items"].([]any)
+	if !ok || occurrences["total"] != float64(1) || len(completed) != 1 {
+		t.Fatalf("PostgreSQL task_series_list_occurrences data = %#v", occurrences)
+	}
+	stoppedSeries := callMCPToolData(t, session, "task_series_stop", map[string]any{"id": seriesID})
+	if stoppedSeries["status"] != "stopped" {
+		t.Fatalf("PostgreSQL task_series_stop data = %#v", stoppedSeries)
+	}
+
 	stopXuanchuServer(t, cmd)
 	assertLogContains(t, logPath,
 		"operation=http_request",

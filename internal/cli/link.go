@@ -84,11 +84,11 @@ func newLinkListCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			tsk, err := svc.ResolveTarget(args[0])
+			view, err := svc.GetTaskView(args[0])
 			if err != nil {
 				return err
 			}
-			return renderLinks(cmd, currentOpts.JSON, tsk.Links)
+			return renderLinks(cmd, currentOpts.JSON, view.Links)
 		},
 	}
 }
@@ -130,6 +130,9 @@ func linkInfoForJSON(info task.TaskLinkInfo) map[string]any {
 
 func renderLinks(cmd *cobra.Command, asJSON bool, links []task.TaskLinkInfo) error {
 	if asJSON {
+		if links == nil {
+			links = []task.TaskLinkInfo{}
+		}
 		return render.JSON(cmd.OutOrStdout(), links)
 	}
 	if len(links) == 0 {
@@ -175,11 +178,11 @@ func runLinkListRemote(cmd *cobra.Command, opts Options, target string) error {
 	if err != nil {
 		return err
 	}
-	tsk, err := client.GetTask(context.Background(), opts.Workspace, resolved)
+	dto, err := client.GetTaskView(context.Background(), opts.Workspace, resolved)
 	if err != nil {
 		return err
 	}
-	return renderLinks(cmd, opts.JSON, tsk.Links)
+	return renderLinks(cmd, opts.JSON, remoteDTOToTask(dto).Links)
 }
 
 func runLinkRemoveRemote(cmd *cobra.Command, opts Options, target, linkID string) error {
@@ -242,11 +245,11 @@ func handleLinkAction(cmd *cobra.Command, opts Options, svc *app.Service, target
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Added %s link to task %s\n", info.Type, target)
 	case "list":
-		tsk, err := svc.ResolveTarget(target)
+		view, err := svc.GetTaskView(target)
 		if err != nil {
 			return err
 		}
-		return renderLinks(cmd, opts.JSON, tsk.Links)
+		return renderLinks(cmd, opts.JSON, view.Links)
 	case "remove":
 		if len(positional) != 1 {
 			return fmt.Errorf("link remove requires a link-id")
@@ -281,11 +284,11 @@ func handleRemoteLinkAction(cmd *cobra.Command, opts Options, client *remote.Cli
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Added %s link to task %s\n", dto.Type, displayTarget)
 	case "list":
-		tsk, err := client.GetTask(ctx, opts.Workspace, resolvedTarget)
+		dto, err := client.GetTaskView(ctx, opts.Workspace, resolvedTarget)
 		if err != nil {
 			return err
 		}
-		return renderLinks(cmd, opts.JSON, tsk.Links)
+		return renderLinks(cmd, opts.JSON, remoteDTOToTask(dto).Links)
 	case "remove":
 		if len(positional) != 1 {
 			return fmt.Errorf("link remove requires a link-id")

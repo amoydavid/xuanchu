@@ -34,6 +34,21 @@ const ProjectTasksRoute = lazy(() =>
     default: module.ProjectTasksRoute,
   }))
 )
+const ProjectSeriesRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSeriesRoute").then((module) => ({
+    default: module.ProjectSeriesRoute,
+  }))
+)
+const ProjectSeriesListRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSeriesListRoute").then((module) => ({
+    default: module.ProjectSeriesListRoute,
+  }))
+)
+const ProjectSeriesDetailRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSeriesDetailRoute").then((module) => ({
+    default: module.ProjectSeriesDetailRoute,
+  }))
+)
 const ProjectActivityRoute = lazy(() =>
   import("@/routes/workspace/ProjectActivityRoute").then((module) => ({
     default: module.ProjectActivityRoute,
@@ -247,6 +262,14 @@ const myTasksRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/my-tasks",
   component: lazyRoute(MyTasksRoute),
+  validateSearch: (search: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const key of ["tab", "project", "task_type", "priority", "q", "sort"]) {
+      const value = search[key]
+      if (typeof value === "string" && value !== "") out[key] = value
+    }
+    return out
+  },
 })
 
 const membersRoute = createRoute({
@@ -275,6 +298,14 @@ const projectTaskDetailRoute = createRoute({
   getParentRoute: () => workspaceRootRoute,
   path: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
   component: lazyRoute(ProjectTaskDetailRoute),
+  validateSearch: (search: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const key of ["from", "my_tasks_search"]) {
+      const value = search[key]
+      if (typeof value === "string" && value !== "") out[key] = value
+    }
+    return out
+  },
 })
 
 const projectTasksRoute = createRoute({
@@ -298,6 +329,7 @@ const projectTasksRoute = createRoute({
       "q",
       "query",
       "sort",
+      "task_type",
     ]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") {
@@ -306,6 +338,27 @@ const projectTasksRoute = createRoute({
     }
     return out
   },
+})
+
+// 循环任务独立一级 tab（spec §15.12）：
+// projectSeriesRoute 是持久父路由（ProjectLayout + Outlet），
+// list/detail 作为子路由通过 seriesRef 切换，不重挂载 layout。
+const projectSeriesRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/workspaces/$workspaceSlug/projects/$projectSlug/series",
+  component: lazyRoute(ProjectSeriesRoute),
+})
+
+const projectSeriesListIndexRoute = createRoute({
+  getParentRoute: () => projectSeriesRoute,
+  path: "/",
+  component: lazyRoute(ProjectSeriesListRoute),
+})
+
+const projectSeriesDetailSubRoute = createRoute({
+  getParentRoute: () => projectSeriesRoute,
+  path: "$seriesRef",
+  component: lazyRoute(ProjectSeriesDetailRoute),
 })
 
 const projectActivityRoute = createRoute({
@@ -417,6 +470,10 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     projectWorkbenchRoute,
     projectTasksRoute,
+    projectSeriesRoute.addChildren([
+      projectSeriesListIndexRoute,
+      projectSeriesDetailSubRoute,
+    ]),
     projectActivityRoute,
     projectAutomationsRoute,
     projectTaskDetailRoute,

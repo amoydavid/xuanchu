@@ -189,6 +189,40 @@ func TestTaskAddRejectsProjectMismatch(t *testing.T) {
 	_ = alpha
 }
 
+func TestGenericTaskWritesRejectRemovedRecurrenceFields(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	auth := map[string]string{
+		"Authorization": "Bearer " + fixture.token,
+		"Content-Type":  "application/json",
+	}
+
+	for _, body := range []string{
+		`{"title":"legacy recurrence","recur":"daily"}`,
+		`{"title":"legacy mask","mask":"-"}`,
+		`{"title":"legacy imask","imask":1}`,
+	} {
+		rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks", body, auth)
+		if strings.Contains(body, `"recur"`) {
+			assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_series_endpoint_required")
+		} else {
+			assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_json")
+		}
+	}
+
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.Add(app.AddInput{Title: "ordinary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{`{"recur":"weekly"}`, `{"clear_recur":true}`} {
+		rr := requestHTTPBody(t, fixture.server, http.MethodPatch, "/api/v1/tasks/"+created.UUID, body, auth)
+		assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_series_endpoint_required")
+	}
+}
+
 func TestTaskListProjectIDSelectsOwningWorkspace(t *testing.T) {
 	store := openHTTPTestStore(t)
 	svc, err := app.NewService(app.ServiceOptions{Store: store})
@@ -293,13 +327,17 @@ func TestTaskListNoContextBypassesActiveContext(t *testing.T) {
 	}
 }
 
-func TestTaskListRejectsInvalidLimit(t *testing.T) {
+func TestTaskListRejectsInvalidPagination(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read")
 	authHeader := map[string]string{"Authorization": "Bearer " + fixture.token}
 	cases := []string{"0", "-1", "1001", "bad"}
 	for _, limit := range cases {
 		rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks?limit="+limit, authHeader)
 		assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_limit")
+	}
+	for _, offset := range []string{"-1", "bad"} {
+		rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/tasks?offset="+offset, authHeader)
+		assertHTTPErrorCode(t, rr, http.StatusBadRequest, "api_bad_offset")
 	}
 }
 
@@ -327,14 +365,25 @@ func TestTaskAddAcceptsDueField(t *testing.T) {
 	}
 	var payload struct {
 		Data struct {
-			Due *string `json:"due"`
+			ID             string         `json:"id"`
+			UUID           *string        `json:"uuid"`
+			Due            *int64         `json:"due"`
+			Entry          *int64         `json:"entry"`
+			Modified       *int64         `json:"modified"`
+			RecurrenceInfo map[string]any `json:"recurrence_info"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Data.Due == nil || *payload.Data.Due == "" {
-		t.Fatalf("due = %#v, want non-empty due; body=%s", payload.Data.Due, rr.Body.String())
+	if payload.Data.UUID == nil || payload.Data.ID != *payload.Data.UUID {
+		t.Fatalf("identity = id:%q uuid:%v; body=%s", payload.Data.ID, payload.Data.UUID, rr.Body.String())
+	}
+	if payload.Data.Due == nil || *payload.Data.Due != 1893456000 || payload.Data.Entry == nil || payload.Data.Modified == nil {
+		t.Fatalf("timestamps = due:%v entry:%v modified:%v; body=%s", payload.Data.Due, payload.Data.Entry, payload.Data.Modified, rr.Body.String())
+	}
+	if payload.Data.RecurrenceInfo != nil {
+		t.Fatalf("recurrence_info = %#v, want nil; body=%s", payload.Data.RecurrenceInfo, rr.Body.String())
 	}
 }
 
@@ -351,19 +400,30 @@ func TestTaskAddDateFieldsUseFieldBoundaries(t *testing.T) {
 	}
 	var payload struct {
 		Data struct {
-			Due       *string `json:"due"`
-			Until     *string `json:"until"`
-			Wait      *string `json:"wait"`
-			Scheduled *string `json:"scheduled"`
+			Due       *int64 `json:"due"`
+			Until     *int64 `json:"until"`
+			Wait      *int64 `json:"wait"`
+			Scheduled *int64 `json:"scheduled"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	assertRFC3339LocalTime(t, "due", payload.Data.Due, 23, 59, 59)
-	assertRFC3339LocalTime(t, "until", payload.Data.Until, 23, 59, 59)
-	assertRFC3339LocalTime(t, "wait", payload.Data.Wait, 0, 0, 0)
-	assertRFC3339LocalTime(t, "scheduled", payload.Data.Scheduled, 0, 0, 0)
+	assertUnixLocalTime(t, "due", payload.Data.Due, 23, 59, 59)
+	assertUnixLocalTime(t, "until", payload.Data.Until, 23, 59, 59)
+	assertUnixLocalTime(t, "wait", payload.Data.Wait, 0, 0, 0)
+	assertUnixLocalTime(t, "scheduled", payload.Data.Scheduled, 0, 0, 0)
+}
+
+func assertUnixLocalTime(t *testing.T, name string, value *int64, hour, minute, second int) {
+	t.Helper()
+	if value == nil {
+		t.Fatalf("%s = nil", name)
+	}
+	local := time.Unix(*value, 0).In(time.Local)
+	if local.Hour() != hour || local.Minute() != minute || local.Second() != second {
+		t.Fatalf("%s local time = %v, want %02d:%02d:%02d", name, local, hour, minute, second)
+	}
 }
 
 func assertRFC3339LocalTime(t *testing.T, name string, value *string, hour, minute, second int) {
@@ -635,6 +695,42 @@ func TestHandleTaskList_RestfulStatusFilter(t *testing.T) {
 	}
 }
 
+func TestHandleTaskList_DefaultsToAllNonDeletedTasks(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := svc.Add(app.AddInput{Title: "default pending task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := svc.Add(app.AddInput{Title: "default completed task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := svc.Add(app.AddInput{Title: "default deleted task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Done(completed.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(deleted.UUID); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := requestHTTP(t, fixture.server, http.MethodGet,
+		"/api/v1/tasks?no_context=true", restfulFilterHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, pending.Title) || !strings.Contains(body, completed.Title) || strings.Contains(body, deleted.Title) {
+		t.Fatalf("default visibility failed: %s", body)
+	}
+}
+
 func TestHandleTaskList_RestfulPriorityFilter(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
@@ -667,12 +763,16 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	past := int64(1)
+	sameDayStart := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
 	sameDayEnd := time.Date(2030, 1, 1, 23, 59, 59, 0, time.Local).Unix()
 	future := time.Date(2030, 1, 2, 0, 0, 0, 0, time.Local).Unix()
 	if _, err := svc.Add(app.AddInput{Title: "restful past due", Due: &past}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Add(app.AddInput{Title: "restful same day due", Due: &sameDayEnd}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Add(app.AddInput{Title: "restful same day start", Due: &sameDayStart}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Add(app.AddInput{Title: "restful future due", Due: &future}); err != nil {
@@ -694,7 +794,7 @@ func TestHandleTaskList_RestfulDueFilters(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("due_after status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	if b := rr.Body.String(); !strings.Contains(b, "restful same day due") || !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
+	if b := rr.Body.String(); !strings.Contains(b, "restful same day start") || !strings.Contains(b, "restful same day due") || !strings.Contains(b, "restful future due") || strings.Contains(b, "restful past due") {
 		t.Fatalf("due_after filter failed: %s", b)
 	}
 }

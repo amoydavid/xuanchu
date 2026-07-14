@@ -65,11 +65,12 @@ type Project struct {
 	Description  string `gorm:"not null;default:''"`
 	Status       string `gorm:"not null;default:'active';index:idx_projects_ws_status,priority:2"`
 	SettingsJSON string `gorm:"not null;default:'{}'"`
-	NextTaskSeq  int64  `gorm:"not null;default:1"`
-	CreatedAt    int64  `gorm:"not null"`
-	ModifiedAt   int64  `gorm:"not null"`
-	ArchivedAt   *int64
-	Annotations  []ProjectAnnotation `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	NextTaskSeq   int64  `gorm:"not null;default:1"`
+	NextSeriesSeq int64  `gorm:"not null;default:1"`
+	CreatedAt     int64  `gorm:"not null"`
+	ModifiedAt    int64  `gorm:"not null"`
+	ArchivedAt    *int64
+	Annotations   []ProjectAnnotation `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 }
 
 type ProjectAnnotation struct {
@@ -194,25 +195,28 @@ type Task struct {
 	Entry       int64  `gorm:"not null"`
 	Modified    int64  `gorm:"not null"`
 	EndTS       *int64
-	Due         *int64
+	Due         *int64 `gorm:"index"`
 	Project     *string
 	ProjectID   *string `gorm:"uniqueIndex:idx_tasks_ws_project_seq,priority:2"`
 	ProjectSeq  *int64  `gorm:"uniqueIndex:idx_tasks_ws_project_seq,priority:3"`
 	Priority    *string
 	Tags        []TaskTag `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Start       *int64
-	Wait        *int64  `gorm:"index"`
-	Scheduled   *int64  `gorm:"index"`
-	Until       *int64  `gorm:"index"`
-	Recur       *string `gorm:"index"`
-	Parent      *string `gorm:"index"`
-	Mask        *string
-	IMask       *int
+	Wait        *int64           `gorm:"index"`
+	Scheduled   *int64           `gorm:"index"`
+	Until       *int64           `gorm:"index"`
+	Parent      *string          `gorm:"index"`
 	Assignees   []TaskAssignee   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Annotations []TaskAnnotation `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Depends     []TaskDependency `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	UDAs        []TaskUDAValue   `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
 	Links       []TaskLink       `gorm:"foreignKey:TaskUUID;constraint:OnDelete:CASCADE"`
+	// occurrence 持久字段（spec §7.2）。partial unique index 由迁移脚本建立
+	// idx_tasks_ws_series_slot（WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL）。
+	SeriesID                *string `gorm:"column:series_id"`
+	RecurrenceAt            *int64  `gorm:"column:recurrence_at;index"`
+	RecurrenceRuleSnapshot  *string `gorm:"column:recurrence_rule_snapshot"`
+	RecurrenceOverridesJSON *string `gorm:"column:recurrence_overrides_json;not null;default:'[]'"`
 }
 
 type TaskTag struct {
@@ -418,56 +422,56 @@ type NotificationDelivery struct {
 }
 
 type ProjectAutomationRule struct {
-	ID                  string  `gorm:"primaryKey"`
-	WorkspaceID         string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:1;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:1"`
-	ProjectID           string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:2;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:2"`
-	Name                string  `gorm:"not null;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:3"`
-	Description         string  `gorm:"not null;default:''"`
-	Enabled             *bool   `gorm:"not null;default:true;index"`
-	TriggerType         string  `gorm:"not null;index"`
-	TriggerConfigJSON   string  `gorm:"not null;default:'{}'"`
-	ConditionJSON       string  `gorm:"not null;default:'{}'"`
-	ActionType          string  `gorm:"not null;default:'openai_compatible';index"`
-	ActionConfigJSON    string  `gorm:"not null;default:'{}'"`
-	ContextConfigJSON   string  `gorm:"not null;default:'{}'"`
-	InstructionTemplate string  `gorm:"not null;default:''"`
-	SystemPrompt        string  `gorm:"not null;default:''"`
-	CreatedByActorType  string  `gorm:"not null;default:'user';index"`
-	CreatedByUserID     *string `gorm:"index"`
-	CreatedByTokenID    *string `gorm:"index"`
-	CreatedByTokenName  *string
+	ID                   string  `gorm:"primaryKey"`
+	WorkspaceID          string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:1;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:1"`
+	ProjectID            string  `gorm:"not null;index:idx_project_automation_rules_scope,priority:2;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:2"`
+	Name                 string  `gorm:"not null;uniqueIndex:idx_project_automation_rules_ws_project_name,priority:3"`
+	Description          string  `gorm:"not null;default:''"`
+	Enabled              *bool   `gorm:"not null;default:true;index"`
+	TriggerType          string  `gorm:"not null;index"`
+	TriggerConfigJSON    string  `gorm:"not null;default:'{}'"`
+	ConditionJSON        string  `gorm:"not null;default:'{}'"`
+	ActionType           string  `gorm:"not null;default:'openai_compatible';index"`
+	ActionConfigJSON     string  `gorm:"not null;default:'{}'"`
+	ContextConfigJSON    string  `gorm:"not null;default:'{}'"`
+	InstructionTemplate  string  `gorm:"not null;default:''"`
+	SystemPrompt         string  `gorm:"not null;default:''"`
+	CreatedByActorType   string  `gorm:"not null;default:'user';index"`
+	CreatedByUserID      *string `gorm:"index"`
+	CreatedByTokenID     *string `gorm:"index"`
+	CreatedByTokenName   *string
 	CreatedByTokenPrefix *string
-	CreatedAt           int64 `gorm:"not null"`
-	ModifiedAt          int64 `gorm:"not null"`
+	CreatedAt            int64 `gorm:"not null"`
+	ModifiedAt           int64 `gorm:"not null"`
 }
 
 type ProjectAutomationDelivery struct {
-	ID                   string  `gorm:"primaryKey"`
-	WorkspaceID          string  `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:1"`
-	ProjectID            string  `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:2"`
-	RuleID               string  `gorm:"not null;index"`
-	TriggerType          string  `gorm:"not null;index"`
-	EventID              string  `gorm:"not null;default:'';index"`
-	EventType            string  `gorm:"not null;default:'';index"`
-	DedupeKey            string  `gorm:"not null;uniqueIndex"`
-	Status               string  `gorm:"not null;index:idx_project_automation_deliveries_due,priority:1"`
-	ResolvedURL          string  `gorm:"not null;default:''"`
-	RenderedMethod       string  `gorm:"not null;default:'POST'"`
-	RenderedHeadersJSON  string  `gorm:"not null;default:'{}'"`
-	RequestBodyJSON      string  `gorm:"not null;default:''"`
-	RequestBodyPreview   string  `gorm:"not null;default:''"`
-	RequestBodyHash      string  `gorm:"not null;default:''"`
-	ResponseStatusCode   *int
-	ResponseBodyPreview  string  `gorm:"not null;default:''"`
-	ProviderRequestID    string  `gorm:"not null;default:''"`
-	UsageJSON            string  `gorm:"not null;default:'{}'"`
-	AttemptCount         int     `gorm:"not null;default:0"`
-	NextAttemptAt        *int64  `gorm:"index:idx_project_automation_deliveries_due,priority:2"`
-	ClaimExpiresAt       *int64  `gorm:"index"`
-	LastAttemptAt        *int64
-	LastError            string  `gorm:"not null;default:''"`
-	CreatedAt            int64   `gorm:"not null;index"`
-	ModifiedAt           int64   `gorm:"not null"`
+	ID                  string `gorm:"primaryKey"`
+	WorkspaceID         string `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:1"`
+	ProjectID           string `gorm:"not null;index:idx_project_automation_deliveries_scope,priority:2"`
+	RuleID              string `gorm:"not null;index"`
+	TriggerType         string `gorm:"not null;index"`
+	EventID             string `gorm:"not null;default:'';index"`
+	EventType           string `gorm:"not null;default:'';index"`
+	DedupeKey           string `gorm:"not null;uniqueIndex"`
+	Status              string `gorm:"not null;index:idx_project_automation_deliveries_due,priority:1"`
+	ResolvedURL         string `gorm:"not null;default:''"`
+	RenderedMethod      string `gorm:"not null;default:'POST'"`
+	RenderedHeadersJSON string `gorm:"not null;default:'{}'"`
+	RequestBodyJSON     string `gorm:"not null;default:''"`
+	RequestBodyPreview  string `gorm:"not null;default:''"`
+	RequestBodyHash     string `gorm:"not null;default:''"`
+	ResponseStatusCode  *int
+	ResponseBodyPreview string `gorm:"not null;default:''"`
+	ProviderRequestID   string `gorm:"not null;default:''"`
+	UsageJSON           string `gorm:"not null;default:'{}'"`
+	AttemptCount        int    `gorm:"not null;default:0"`
+	NextAttemptAt       *int64 `gorm:"index:idx_project_automation_deliveries_due,priority:2"`
+	ClaimExpiresAt      *int64 `gorm:"index"`
+	LastAttemptAt       *int64
+	LastError           string `gorm:"not null;default:''"`
+	CreatedAt           int64  `gorm:"not null;index"`
+	ModifiedAt          int64  `gorm:"not null"`
 }
 
 type UserExternalID struct {
@@ -525,4 +529,62 @@ type DirectorySyncJob struct {
 	StatsJSON      string `gorm:"not null;default:'{}'"` // {"added":N,"removed":M,"updated":K}
 	CreatedAt      int64  `gorm:"not null"`
 	FinishedAt     *int64
+}
+
+// TaskSeries 是循环任务系列聚合（spec §7.1）。独立于 tasks 表。
+type TaskSeries struct {
+	ID             string `gorm:"primaryKey"`
+	WorkspaceID    string `gorm:"not null;index:idx_task_series_ws_project_status,priority:1"`
+	ProjectID      string `gorm:"not null;index:idx_task_series_ws_project_status,priority:2"`
+	Title          string `gorm:"not null"`
+	Description    *string
+	Status         string `gorm:"not null;index:idx_task_series_ws_project_status,priority:3;index"`
+	RecurrenceRule string `gorm:"not null"`
+	FirstDue       int64  `gorm:"not null"`
+	Until          *int64 `gorm:"index"`
+	EffectiveEndAt *int64
+	StopReason     *string
+	Priority       *string
+	ProjectSeq     *int64
+	// ProjectSlugTransient 不落库，由 repo 读取时从 projects 表 join 回填，用于派生 series_slug。
+	ProjectSlugTransient string `gorm:"-"`
+	CreatedBy      string                  `gorm:"not null"`
+	CreatedAt      int64                   `gorm:"not null"`
+	ModifiedAt     int64                   `gorm:"not null"`
+	RuleVersions   []TaskSeriesRuleVersion `gorm:"foreignKey:SeriesID;constraint:OnDelete:RESTRICT"`
+	Assignees      []TaskSeriesAssignee    `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+	Tags           []TaskSeriesTag         `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+	UDAValues      []TaskSeriesUDAValue    `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+}
+
+// TaskSeriesRuleVersion 保存规则切换历史（spec §7.1）。
+// 同一 series 内 effective_from 唯一。
+type TaskSeriesRuleVersion struct {
+	ID             string `gorm:"primaryKey"`
+	SeriesID       string `gorm:"not null;uniqueIndex:idx_task_series_rule_versions_series_eff,priority:1"`
+	EffectiveFrom  int64  `gorm:"not null;uniqueIndex:idx_task_series_rule_versions_series_eff,priority:2"`
+	RecurrenceRule string `gorm:"not null"`
+	CreatedBy      string `gorm:"not null"`
+	CreatedAt      int64  `gorm:"not null"`
+}
+
+// TaskSeriesAssignee 是 series 的多值负责人关联（spec §7.1）。
+type TaskSeriesAssignee struct {
+	SeriesID string `gorm:"primaryKey;not null"`
+	UserID   string `gorm:"primaryKey;not null"`
+}
+
+// TaskSeriesTag 是 series 的多值标签关联。
+type TaskSeriesTag struct {
+	SeriesID string `gorm:"primaryKey;not null"`
+	Tag      string `gorm:"primaryKey;not null"`
+}
+
+// TaskSeriesUDAValue 是 series 的 UDA 关联。
+type TaskSeriesUDAValue struct {
+	SeriesID  string `gorm:"primaryKey;not null"`
+	Name      string `gorm:"primaryKey;not null"`
+	Value     string
+	ValueType string
+	Orphan    bool
 }

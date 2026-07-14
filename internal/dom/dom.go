@@ -75,26 +75,26 @@ func Resolve(tsk task.Task, field string, urgency float64) (string, error) {
 			lines = append(lines, annotation.ID+" "+strconv.FormatInt(annotation.Entry, 10)+":"+annotation.Description)
 		}
 		return strings.Join(lines, "\n"), nil
-	case "recur":
-		if tsk.Recur == nil {
-			return "", nil
-		}
-		return *tsk.Recur, nil
 	case "parent":
 		if tsk.Parent == nil {
 			return "", nil
 		}
 		return *tsk.Parent, nil
-	case "mask":
-		if tsk.Mask == nil {
+	case "series_id":
+		if tsk.SeriesID == nil {
 			return "", nil
 		}
-		return *tsk.Mask, nil
-	case "imask":
-		if tsk.IMask == nil {
+		return *tsk.SeriesID, nil
+	case "recurrence_at":
+		if tsk.RecurrenceAt == nil {
 			return "", nil
 		}
-		return strconv.Itoa(*tsk.IMask), nil
+		return strconv.FormatInt(*tsk.RecurrenceAt, 10), nil
+	case "recurrence_rule_snapshot":
+		if tsk.RecurrenceRuleSnapshot == nil {
+			return "", nil
+		}
+		return *tsk.RecurrenceRuleSnapshot, nil
 	case "urgency":
 		return strconv.FormatFloat(urgency, 'f', 3, 64), nil
 	}

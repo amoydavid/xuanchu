@@ -329,7 +329,11 @@ xuanchu --workspace dajee token create mcp-agent \
 
 当前提供 102 个 tools。
 
-### 任务（16 tools）
+### 任务与循环任务（23 tools）
+
+所有 tool 输入都是 closed schema：未声明的参数会在服务端被拒绝，不会被静默忽略。
+普通任务的 `task_add` / `task_modify` 不接受 `recur`、`clear_recur`、`mask` 或 `imask`；
+传入这些旧字段会返回 `task_series_endpoint_required`，循环任务必须使用 `task_series_*` tools。
 
 #### `task_add`
 
@@ -351,20 +355,30 @@ xuanchu --workspace dajee token create mcp-agent \
 | `until` | int64 | 否 | unix 秒 |
 | `annotations` | string[] | 否 | 初始注释 |
 
+`task_add`、`task_get` 和返回任务的写操作都以 App `TaskOccurrenceView` 为准：
+`data` 顶层包含稳定 `id`、可空 `uuid/task_slug/project_seq`、Unix 秒时间字段和
+可空 `recurrence_info`。现有 task tools 同时保留内层 `data.task` 镜像，两处字段来自同一 view，
+不再返回 RFC3339 时间的旧 `task.JSONTask` 变体。
+
 #### `task_query`
 
-查询任务。只读。
+查询任务。只读。默认返回所有非删除任务；显式 `status` 或 `query` 中的状态条件优先。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | workspace slug 或 UUID |
 | `project` | string | 否 | project slug |
 | `project_id` | string | 否 | project UUID |
-| `query` | string | 否 | Taskwarrior 风格查询表达式 |
+| `query` | string | 否 | 任务过滤表达式 |
 | `status` | string | 否 | 按状态过滤 |
+| `sort` | string | 否 | 排序表达式，例如 `due`、`due-`、`urgency-` |
 | `limit` | int | 否 | 最大返回数，默认 200，最大 1000 |
-| `include_completed` | bool | 否 | 包含已完成 |
-| `include_deleted` | bool | 否 | 包含已删除 |
+| `offset` | int | 否 | 分页偏移 |
+| `include_deleted` | bool | 否 | 在默认非删除集合上追加 deleted；显式状态条件存在时忽略 |
+| `due_after` | string | 否 | 截止范围起始日期，`YYYY-MM-DD` |
+| `due_before` | string | 否 | 截止范围结束日期，`YYYY-MM-DD`，包含当天 |
+| `occurrence_mode` | string | 否 | `auto`/`materialized`/`expand` |
+| `task_type` | string | 否 | `all`/`normal`/`occurrence` |
 
 #### `task_get`
 
@@ -375,7 +389,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `id` | string | 是 | 任务 UUID 或 `task_slug` |
+| `id` | string | 是 | UUID、已物化 `task_slug` 或 `occurrence_ref`；projected 仅 occurrence_ref |
 
 #### `task_modify`
 
@@ -386,10 +400,9 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | 限定本次调用的 workspace |
 | `project` | string | 否 | 限定本次调用的 project slug |
 | `project_id` | string | 否 | 限定本次调用的 project ID |
-| `id` | string | 是 | 任务 UUID 或 `task_slug` |
+| `id` | string | 是 | UUID、已物化 `task_slug` 或 `occurrence_ref`；projected 仅 occurrence_ref |
 | `title` | string | 否 | 新标题 |
 | `description` | string | 否 | 新详细描述 |
-| `clear_description` | bool | 否 | 清空详细描述 |
 | `priority` | string | 否 | `H`/`M`/`L` |
 | `due` | int64 | 否 | unix 秒 |
 | `wait` | int64 | 否 | unix 秒 |
@@ -402,7 +415,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `udas` | map | 否 | UDA 键值对 |
 | `depends` | string[] | 否 | 要添加的依赖 |
 | `clear_depends` | bool | 否 | 清空所有依赖 |
-| `clear` | string[] | 否 | 要清空的字段：`project`/`priority`/`due`/`wait`/`scheduled`/`until`/`recur`/`assignees`/`uda.*` |
+| `clear` | string[] | 否 | 要清空的字段：`project`/`description`/`priority`/`due`/`wait`/`scheduled`/`until`/`assignees`/`uda.*` |
 
 #### `task_done`
 
@@ -492,7 +505,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `task` | string | 是 | 任务引用（UUID 或 `task_slug`） |
+| `task` | string | 是 | 任务引用（UUID、已物化 `task_slug` 或 `occurrence_ref`） |
 | `type` | string | 是 | 链接类型（document/pr/ticket/design 等） |
 | `url` | string | 是 | 外部资源 URL |
 | `title` | string | 否 | 显示标题 |
@@ -522,7 +535,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `task_export`
 
-导出任务为 JSON 数组。只读。
+按当前 workspace/project scope 导出 `xuanchu.task-bundle/v1` 原生 bundle。只读。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -532,14 +545,53 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `task_import`
 
-导入 JSON 任务数组。
+原子导入 `xuanchu.task-bundle/v1` 原生 bundle。失败时整批回滚；不接受 Taskwarrior JSON 数组。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `workspace` | string | 否 | |
 | `project` | string | 否 | |
 | `project_id` | string | 否 | |
-| `tasks` | array | 是 | JSON 任务数组（`uuid`/`title`/`status`/`entry`/`modified` 必填，`description` 可选）。任务 assignee 对象可包含 `user_id`、`name`、`display_name`、`email`；`display_name` 用于展示或导入预检创建用户时保留昵称，不替代稳定用户引用。 |
+| `bundle` | object | 是 | `schema=xuanchu.task-bundle/v1`，包含 task_series、rule_versions、普通任务、occurrence、tombstone 及关联数据。 |
+
+#### `task_series_add`
+
+创建循环任务。必填 `title`、`recurrence_rule`，以及 `first_due`（unix 秒）或
+`first_due_date`（`YYYY-MM-DD`）；可传 `project/project_id`、`description`、
+`until/until_date`、`priority`、`assignees`、`tags`、`udas`。
+
+#### `task_series_list`
+
+分页列出循环任务。支持 `status=active|ended|stopped|all`、`q`、`assignee`、
+`sort=next|title|modified`、`limit/offset`，并遵守 workspace/project scope。分页默认
+`limit=200, offset=0`，limit 最大 1000。
+
+#### `task_series_get`
+
+读取一个循环任务详情。参数为 `id`，返回共享字段、统计、负责人、下一实例时间和
+最近实例分组。
+
+#### `task_series_modify`
+
+修改共享字段或未来规则。支持 `title/description/priority/assignees/tags/udas`、
+`recurrence_rule`、`effective_from/effective_from_date`、`until/until_date`；修改规则时
+必须提供 `effective_from`。`clear` 可包含 `description`、`priority`、`assignees`、
+`tags`、`until`、`uda.<name>`。
+
+#### `task_series_stop`
+
+停止循环任务，不再生成后续实例。`delete_open_occurrences=true` 同时删除未完成实例。
+
+#### `task_series_list_occurrences`
+
+分页列出实例。支持 `status=pending|waiting|completed|deleted|all`、
+`due_after/due_before`（`YYYY-MM-DD`，包含边界当天）及 `limit/offset`。分页默认
+`limit=200, offset=0`，limit 最大 1000。
+
+#### `task_series_occurrence_skip`
+
+跳过一次实例。传 `series_id` 与稳定的 `occurrence_id`；结果是 deleted tombstone，
+不会停止整个循环任务。
 
 ### 报表与 Urgency（2 tools）
 
@@ -582,7 +634,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `project_list`
 
-列出 effective workspace 内的项目。只读。
+列出 effective workspace 内的项目。只读。每个项目的 `task_count` 统计普通任务和已物化循环实例，并带有 `task_count_scope: "all_tasks"`；如需仅查循环实例，用 `task_query` 的 `task_type=occurrence`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -591,7 +643,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `project_get`
 
-读取单个项目及其 agent 配置。只读。返回 `config_summary`（包含 `agent.*` 配置项）。
+读取单个项目及其 agent 配置。只读。返回 `config_summary`（包含 `agent.*` 配置项）。项目对象中的 `task_count` 统计普通任务和已物化循环实例；同时返回 `task_count_scope: "all_tasks"` 明确该范围，如需仅查循环实例用 `task_query` 的 `task_type=occurrence`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -601,7 +653,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `project_get_current`
 
-读取当前生效的 project scope。只读。
+读取当前生效的 project scope。只读。返回项目时，`task_count` 统计普通任务和已物化循环实例，并带有 `task_count_scope: "all_tasks"`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -1438,7 +1490,7 @@ Assignee 用法（M9+）：
 
 ## 注意事项
 
-- MCP task tool 只承诺 UUID 或 `task_slug`，不使用本地 working-set ID。
+- MCP task tool 接受 UUID、已物化任务的 `task_slug` 或 occurrence_ref；projected 实例只有 occurrence_ref。不要使用本地 working-set ID。
 - HTTP MCP 不读取调用者本机 TOML。
 - HTTP MCP 不能写 local config。
 - Agent 不应依赖 `context_set`/`workspace_use` 等隐式状态操作，每次调用都应显式传参。

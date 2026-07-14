@@ -101,3 +101,47 @@ func hasItem(explain ExplainResult, name string) bool {
 	}
 	return false
 }
+
+// TestExplainValueMatchesExplainForOrdinaryTask 验证解耦后的 ExplainValue
+// 与旧 Explain 对普通任务结果完全一致（parity）。
+func TestExplainValueMatchesExplainForOrdinaryTask(t *testing.T) {
+	priority := "H"
+	project := "ops"
+	start := int64(100)
+	due := int64(200)
+	tsk := task.Task{
+		UUID: "t1", Title: "task", Status: task.StatusPending,
+		Entry: 50, Modified: 60, Start: &start, Due: &due,
+		Priority: &priority, Project: &project,
+		Tags: []string{"next", "ops"},
+		Annotations: []task.Annotation{{Entry: 70, Description: "note"}},
+	}
+	opts := Options{NowUnix: 150}
+	old := Explain(tsk, opts)
+	tv := TaskValue{
+		Status: tsk.Status, Entry: &tsk.Entry, Start: tsk.Start, Due: tsk.Due,
+		Priority: tsk.Priority, Project: tsk.Project, Tags: tsk.Tags,
+		AnnotationCount: len(tsk.Annotations),
+	}
+	new := ExplainValue(tv, opts)
+	if old.Total != new.Total {
+		t.Fatalf("total mismatch: old=%f new=%f", old.Total, new.Total)
+	}
+	if len(old.Items) != len(new.Items) {
+		t.Fatalf("items count mismatch: old=%d new=%d", len(old.Items), len(new.Items))
+	}
+}
+
+// TestExplainValueProjectedNilEntryNoAge 验证 projected occurrence 的 nil Entry 不计 age。
+func TestExplainValueProjectedNilEntryNoAge(t *testing.T) {
+	tv := TaskValue{
+		Status: "pending", Entry: nil, // projected
+		Tags: []string{"next"},
+	}
+	result := ExplainValue(tv, Options{NowUnix: 1000000})
+	for _, item := range result.Items {
+		if item.Name == "age" {
+			t.Fatal("projected nil entry 不应计算 age")
+		}
+	}
+}

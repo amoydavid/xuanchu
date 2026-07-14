@@ -117,7 +117,11 @@ GET /api/v1/tasks/{taskRef}?workspace={workspaceSlug}
 http://127.0.0.1:8080/workspaces/{workspaceSlug}/projects/{projectSlug}/tasks/{taskRef}
 ```
 
-任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。description 在详情页完整展示，具备写权限时点击“编辑描述”打开弹窗编辑完整内容。具备写权限时，项目页和任务详情页还提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
+普通任务和已物化循环实例都使用 `{projectSlug}-{taskSeq}` 作为列表标识和首选详情 URL，例如 `/tasks/ops-7`。尚未物化的计划实例显示 `↻MM-DD`，使用 URL 编码后的 occurrence_ref；首次编辑、完成或其它合法写操作成功后，页面用 history replace 切换到新获得的 task_slug，不增加返回历史。
+
+任务详情页展示任务字段、负责人、标签、依赖和注记，并提供“返回项目”链接回到项目页。循环实例复用同一详情结构，在正文上方增加循环上下文提示，在属性栏显示只读“原循环日期”，动作改为“开始本次 / 完成本次 / 重新打开本次 / 跳过本次”；这些动作只影响当前日期，不影响 Series 或其它轮次。已物化实例从 UUID 或 occurrence_ref 地址进入时会规范化到 task_slug permalink。计划实例进入详情时明确提示“首次写入会创建本次任务”，只读 GET 不物化。description 在详情页完整展示，具备写权限时点击“编辑描述”打开弹窗编辑完整内容。具备写权限时，项目页和任务详情页还提供任务编辑、完成、删除、注解和链接操作；不提供拖拽看板。页面数据必须来自真实 API 响应；空项目展示空状态，不使用假数据。
+
+项目任务页的“新建”弹窗使用“普通任务 / 循环任务”Tabs。两种模式共享标题、description、优先级、负责人、标签和 UDA 组件；循环模式另提供循环规则、首次截止、循环结束和未来三次预览，不显示 wait、scheduled、depends 或 manual parent。切换模式保留共享字段，普通 due 与循环 first_due 仅在目标为空时首次复制。
 
 未登录访问项目 deep link 时，登录页会显示“登录后继续访问”的相对路径。用户输入 PAT、Agent token 或 `tenant_access_token` 登录成功后回到原项目页。登录页同时提供「OIDC 单点登录」入口（需填写 workspace slug）。
 

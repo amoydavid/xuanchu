@@ -8,7 +8,6 @@ import (
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
-	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -37,15 +36,20 @@ func (in TaskAddInput) scopeInput() RequestScopeInput {
 }
 
 type TaskQueryInput struct {
-	Workspace        string `json:"workspace,omitempty"`
-	Project          string `json:"project,omitempty"`
-	ProjectID        string `json:"project_id,omitempty"`
-	Query            string `json:"query,omitempty"`
-	Status           string `json:"status,omitempty"`
-	Limit            int    `json:"limit,omitempty"`
-	Offset           int    `json:"offset,omitempty"`
-	IncludeCompleted bool   `json:"include_completed,omitempty"`
-	IncludeDeleted   bool   `json:"include_deleted,omitempty"`
+	Workspace      string `json:"workspace,omitempty"`
+	Project        string `json:"project,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	Query          string `json:"query,omitempty" jsonschema:"task filter expression; an explicit status predicate overrides default visibility"`
+	Status         string `json:"status,omitempty" jsonschema:"explicit task status filter; overrides default non-deleted visibility"`
+	Sort           string `json:"sort,omitempty" jsonschema:"task sort expression, for example due, due-, urgency-"`
+	Limit          int    `json:"limit,omitempty"`
+	Offset         int    `json:"offset,omitempty"`
+	IncludeDeleted bool   `json:"include_deleted,omitempty" jsonschema:"include deleted tasks in addition to the default non-deleted set; ignored when status is explicit"`
+	// occurrence 查询参数（spec §13.3）。
+	OccurrenceMode string `json:"occurrence_mode,omitempty" jsonschema:"auto|materialized|expand"`
+	DueAfter       string `json:"due_after,omitempty" jsonschema:"YYYY-MM-DD"`
+	DueBefore      string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD"`
+	TaskType       string `json:"task_type,omitempty" jsonschema:"all|normal|occurrence"`
 }
 
 func (in TaskQueryInput) scopeInput() RequestScopeInput {
@@ -56,7 +60,7 @@ type TaskGetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID        string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in TaskGetInput) scopeInput() RequestScopeInput {
@@ -67,7 +71,7 @@ type TaskModifyInput struct {
 	Workspace       string            `json:"workspace,omitempty"`
 	Project         string            `json:"project,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
-	ID              string            `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID              string            `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Title           *string           `json:"title,omitempty"`
 	Description     *string           `json:"description,omitempty"`
 	Priority        *string           `json:"priority,omitempty"`
@@ -97,7 +101,7 @@ type TaskIDInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID        string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in TaskIDInput) scopeInput() RequestScopeInput {
@@ -114,7 +118,7 @@ type TaskAnnotateInput struct {
 	Workspace  string `json:"workspace,omitempty"`
 	Project    string `json:"project,omitempty"`
 	ProjectID  string `json:"project_id,omitempty"`
-	ID         string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID         string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Annotation string `json:"annotation"`
 }
 
@@ -126,7 +130,7 @@ type TaskDependsInput struct {
 	Workspace    string   `json:"workspace,omitempty"`
 	Project      string   `json:"project,omitempty"`
 	ProjectID    string   `json:"project_id,omitempty"`
-	ID           string   `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID           string   `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Depends      []string `json:"depends,omitempty"`
 	ClearDepends bool     `json:"clear_depends,omitempty"`
 }
@@ -135,7 +139,7 @@ type TaskLinkAddInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
+	Task      string `json:"task" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Type      string `json:"type" jsonschema:"link type (e.g. document, pr, ticket, design)"`
 	URL       string `json:"url" jsonschema:"external resource URL"`
 	Title     string `json:"title,omitempty" jsonschema:"optional display title"`
@@ -149,7 +153,7 @@ type TaskLinkRemoveInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
+	Task      string `json:"task" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	LinkID    string `json:"link_id" jsonschema:"link ID to remove"`
 }
 
@@ -161,7 +165,7 @@ type TaskDenotateInput struct {
 	Workspace    string `json:"workspace,omitempty"`
 	Project      string `json:"project,omitempty"`
 	ProjectID    string `json:"project_id,omitempty"`
-	ID           string `json:"id" jsonschema:"task reference: UUID or task_slug"`
+	ID           string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	AnnotationID string `json:"annotation_id" jsonschema:"annotation ID to remove"`
 }
 
@@ -173,7 +177,7 @@ type TaskLinkListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Task      string `json:"task" jsonschema:"task reference: UUID or task_slug"`
+	Task      string `json:"task" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 }
 
 func (in TaskLinkListInput) scopeInput() RequestScopeInput {
@@ -191,10 +195,11 @@ func (in TaskExportInput) scopeInput() RequestScopeInput {
 }
 
 type TaskImportInput struct {
-	Workspace string          `json:"workspace,omitempty"`
-	Project   string          `json:"project,omitempty"`
-	ProjectID string          `json:"project_id,omitempty"`
-	Tasks     []task.JSONTask `json:"tasks"`
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	// native bundle 格式（spec §20）：{schema, exported_at, task_series, tasks}。
+	Bundle app.TaskBundleV1 `json:"bundle"`
 }
 
 func (in TaskImportInput) scopeInput() RequestScopeInput {
@@ -262,7 +267,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		created, err := svc.AddWithAnnotations(app.AddInput{
+		created, err := svc.AddTaskViewWithAnnotations(app.AddInput{
 			Title:       strings.TrimSpace(in.Title),
 			Description: in.Description,
 			Project:     project,
@@ -277,14 +282,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		data, err := taskData(created)
-		if err != nil {
-			return businessErrorWithEnvelope(err)
-		}
-		return successWithEnvelope(data, "Created task "+created.UUID)
+		data := taskViewToMCPJSON(created)
+		return successWithEnvelope(data, "Created task "+created.ID)
 	})
 
-	addTool(s, opts, &mcp.Tool{Name: "task_query", Description: "Query tasks; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "task_query", Description: "Query tasks; read-only. Defaults to all non-deleted tasks unless status is explicit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		limit, err := limitOrDefault(in.Limit)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
@@ -293,10 +295,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.ListInput{Status: taskQueryStatus(in), Limit: limit, Offset: in.Offset}
-		statuses := taskQueryStatuses(in)
-		if input.Status == "" && len(statuses) == 0 && (in.IncludeCompleted || in.IncludeDeleted) {
-			input.ReportMode = true
+		input := app.TaskViewQuery{
+			Status: strings.TrimSpace(in.Status), Sort: strings.TrimSpace(in.Sort),
+			Limit: limit, Offset: in.Offset,
+			OccurrenceMode: app.OccurrenceMode(strings.TrimSpace(in.OccurrenceMode)),
 		}
 		if strings.TrimSpace(in.Query) != "" {
 			expr, err := query.ParseFilterExpr([]string{in.Query})
@@ -305,6 +307,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			}
 			input.Query = expr
 		}
+		hasExplicitStatus := input.Status != "" || query.ReferencesAttribute(input.Query, query.AttrStatus)
 		if in.Project != "" || in.ProjectID != "" {
 			project, err := svc.ProjectInfo(projectRefForScope(in.Project, in.ProjectID))
 			if err != nil {
@@ -312,14 +315,64 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 			}
 			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 		}
-		if taskQueryExcludeDeleted(in) {
-			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrStatus, Operator: query.OpNotEqual, Value: query.StringValue(task.StatusDeleted)})
+		if !hasExplicitStatus && in.IncludeDeleted {
+			// 显式的非空状态谓词用于表达“所有状态”，并阻止 App 注入默认非删除条件。
+			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrStatus, Operator: query.OpNotNull})
 		}
-		rows, err := taskQueryList(svc, input, statuses)
+		if taskType := strings.TrimSpace(in.TaskType); taskType != "" && taskType != "all" {
+			if taskType != "normal" && taskType != "occurrence" {
+				return businessErrorWithEnvelope(app.RuntimeError{Code: "task_type_invalid", Message: "task_type must be all|normal|occurrence"})
+			}
+			input.Query = query.And(input.Query, query.Predicate{Attribute: query.AttrTaskType, Operator: query.OpEqual, Value: query.StringValue(taskType)})
+		}
+		if strings.TrimSpace(in.DueAfter) != "" || strings.TrimSpace(in.DueBefore) != "" {
+			if dueAfter := strings.TrimSpace(in.DueAfter); dueAfter != "" {
+				if _, err := time.Parse("2006-01-02", dueAfter); err != nil {
+					return businessErrorWithEnvelope(app.RuntimeError{Code: "task_query_date_invalid", Message: "due_after must be YYYY-MM-DD"})
+				}
+				input.Query = query.And(input.Query, query.Or(
+					query.Predicate{Attribute: query.AttrDue, Operator: query.OpEqual, Value: query.DateValue(dueAfter)},
+					query.Predicate{Attribute: query.AttrDue, Operator: query.OpAfter, Value: query.DateValue(dueAfter)},
+				))
+			}
+			if dueBefore := strings.TrimSpace(in.DueBefore); dueBefore != "" {
+				parsed, err := time.Parse("2006-01-02", dueBefore)
+				if err != nil {
+					return businessErrorWithEnvelope(app.RuntimeError{Code: "task_query_date_invalid", Message: "due_before must be YYYY-MM-DD"})
+				}
+				input.Query = query.And(input.Query, query.Predicate{
+					Attribute: query.AttrDue, Operator: query.OpBefore,
+					Value: query.DateValue(parsed.AddDate(0, 0, 1).Format("2006-01-02")),
+				})
+			}
+		}
+		if in.DueAfter != "" && in.DueBefore != "" {
+			start, err := resolveToolDateField("due_after", nil, in.DueAfter, false)
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			endOfDay, err := resolveToolDateField("due_before", nil, in.DueBefore, true)
+			if err != nil {
+				return businessErrorWithEnvelope(err)
+			}
+			input.Range = &app.TaskViewRange{Start: *start, End: *endOfDay + 1}
+		}
+		page, err := svc.QueryTaskViews(input)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(tasksData(rows), renderTaskList(rows))
+		items := make([]map[string]any, 0, len(page.Items))
+		for _, item := range page.Items {
+			items = append(items, occurrenceViewToMCPJSON(item))
+		}
+		data := map[string]any{
+			"items": items, "tasks": items, "total": page.Total, "count": page.Total,
+			"limit": page.Limit, "offset": page.Offset, "occurrence_mode": page.OccurrenceMode,
+		}
+		if page.Range != nil {
+			data["range"] = map[string]any{"start": page.Range.Start, "end": page.Range.End}
+		}
+		return successWithEnvelope(data, fmt.Sprintf("%d task(s)", page.Total))
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "task_get", Description: "Get one task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskGetInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -327,15 +380,18 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tsk, err := resolveToolTaskRef(svc, in.ID, "id", false)
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		resolved, err := svc.ResolveTaskReferenceForRead(strings.TrimSpace(in.ID))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		data, err := taskData(tsk)
-		if err != nil {
-			return businessErrorWithEnvelope(err)
+		rendered := formatOccurrenceViewText(resolved.View)
+		if resolved.Kind == app.TaskResourceNormal && resolved.Task != nil {
+			rendered = renderTaskInfo(*resolved.Task)
 		}
-		return successWithEnvelope(data, renderTaskInfo(tsk))
+		return successWithEnvelope(taskResolutionToMCPJSON(resolved), rendered)
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "task_modify", Description: "Modify a task; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskModifyInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -351,14 +407,13 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Annotate(resolved.UUID, strings.TrimSpace(in.Annotation)); err != nil {
+		if err := svc.Annotate(strings.TrimSpace(in.ID), strings.TrimSpace(in.Annotation)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, resolved.UUID, "annotated task")
+		return taskAfterMutation(svc, in.ID, "annotated task")
 	})
 	addTool(s, opts, &mcp.Tool{Name: "task_depends", Description: "Adjust task dependencies; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskDependsInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		mod := TaskModifyInput{Workspace: in.Workspace, Project: in.Project, ProjectID: in.ProjectID, ID: in.ID, Depends: in.Depends, ClearDepends: in.ClearDepends}
@@ -369,11 +424,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.Task, "task", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.Task, "task"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		link, err := svc.TaskAddLink(resolved.UUID, strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
+		link, err := svc.TaskAddLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.Type), strings.TrimSpace(in.URL), strings.TrimSpace(in.Title))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
@@ -384,11 +438,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.Task, "task", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.Task, "task"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.TaskRemoveLink(resolved.UUID, strings.TrimSpace(in.LinkID)); err != nil {
+		if err := svc.TaskRemoveLink(strings.TrimSpace(in.Task), strings.TrimSpace(in.LinkID)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
 		return successWithEnvelope(nil, "Removed link from task")
@@ -398,55 +451,59 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := svc.Denotate(resolved.UUID, in.AnnotationID); err != nil {
+		if err := svc.Denotate(strings.TrimSpace(in.ID), in.AnnotationID); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, resolved.UUID, "removed annotation")
+		return taskAfterMutation(svc, in.ID, "removed annotation")
 	})
 	addTool(s, opts, &mcp.Tool{Name: "task_link_list", Description: "List external links on a task; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskLinkListInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tsk, err := resolveToolTaskRef(svc, in.Task, "task", false)
+		if err := validateToolTaskRef(in.Task, "task"); err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		view, err := svc.GetTaskView(strings.TrimSpace(in.Task))
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		linkViews := make([]taskLinkView, len(tsk.Links))
-		for i, l := range tsk.Links {
+		linkViews := make([]taskLinkView, len(view.Links))
+		for i, l := range view.Links {
 			linkViews[i] = taskLinkViewFromApp(l)
 		}
 		return successWithEnvelope(map[string]any{"links": linkViews, "count": len(linkViews)}, fmt.Sprintf("%d link(s)", len(linkViews)))
 	})
-	addTool(s, opts, &mcp.Tool{Name: "task_export", Description: "Export tasks as JSON; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "task_export", Description: "Export tasks as xuanchu.task-bundle/v1 JSON; read-only."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:read", app.PermissionTaskRead)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		tasks, err := svc.Export()
+		bundle, err := svc.ExportTaskBundle()
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		dto := make([]task.JSONTask, len(tasks))
-		for i, t := range tasks {
-			dto[i] = task.ToJSON(t)
-		}
-		return successWithEnvelope(map[string]any{"tasks": dto, "count": len(dto)}, fmt.Sprintf("exported %d task(s)", len(dto)))
+		return successWithEnvelope(
+			map[string]any{"bundle": bundle, "task_count": len(bundle.Tasks), "series_count": len(bundle.TaskSeries)},
+			fmt.Sprintf("exported %d task(s), %d series", len(bundle.Tasks), len(bundle.TaskSeries)),
+		)
 	})
-	addTool(s, opts, &mcp.Tool{Name: "task_import", Description: "Import tasks from JSON; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskImportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
+	addTool(s, opts, &mcp.Tool{Name: "task_import", Description: "Import tasks from xuanchu.task-bundle/v1 JSON; writes audit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskImportInput) (*mcp.CallToolResult, ToolEnvelope, error) {
 		svc, err := serviceForTool(ctx, req, opts, in.scopeInput(), "task:write", app.PermissionTaskWrite)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		count, err := svc.Import(in.Tasks)
+		result, err := svc.ImportTaskBundle(in.Bundle)
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return successWithEnvelope(map[string]any{"imported": count}, fmt.Sprintf("imported %d task(s)", count))
+		return successWithEnvelope(
+			map[string]any{"imported_tasks": result.TasksImported, "imported_series": result.SeriesImported},
+			fmt.Sprintf("imported %d task(s), %d series", result.TasksImported, result.SeriesImported),
+		)
 	})
 }
 
@@ -455,8 +512,7 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-	if err != nil {
+	if err := validateToolTaskRef(in.ID, "id"); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
 	project, err := projectSlugForTask(svc, in.Project, in.ProjectID)
@@ -487,10 +543,10 @@ func modifyTaskTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 	if err := applyClearFields(in.Clear, &mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	if err := svc.Modify(resolved.UUID, mod); err != nil {
+	if err := svc.Modify(strings.TrimSpace(in.ID), mod); err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	return taskAfterMutation(svc, resolved.UUID, rendered)
+	return taskAfterMutation(svc, in.ID, rendered)
 }
 
 func taskActionHandler(opts Options, rendered string, fn func(*app.Service, string) error) mcp.ToolHandlerFor[TaskIDInput, ToolEnvelope] {
@@ -499,27 +555,22 @@ func taskActionHandler(opts Options, rendered string, fn func(*app.Service, stri
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		resolved, err := resolveToolTaskRef(svc, in.ID, "id", true)
-		if err != nil {
+		if err := validateToolTaskRef(in.ID, "id"); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		if err := fn(svc, resolved.UUID); err != nil {
+		if err := fn(svc, strings.TrimSpace(in.ID)); err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		return taskAfterMutation(svc, resolved.UUID, rendered)
+		return taskAfterMutation(svc, in.ID, rendered)
 	}
 }
 
 func taskAfterMutation(svc *app.Service, id, rendered string) (*mcp.CallToolResult, ToolEnvelope, error) {
-	tsk, err := svc.Info(strings.TrimSpace(id))
+	resolved, err := svc.ResolveTaskReferenceForRead(strings.TrimSpace(id))
 	if err != nil {
 		return businessErrorWithEnvelope(err)
 	}
-	data, err := taskData(tsk)
-	if err != nil {
-		return businessErrorWithEnvelope(err)
-	}
-	return successWithEnvelope(data, rendered)
+	return successWithEnvelope(taskResolutionToMCPJSON(resolved), rendered)
 }
 
 func projectSlugForTask(svc *app.Service, project, projectID string) (*string, error) {
@@ -547,58 +598,6 @@ func projectRefForScope(project, projectID string) string {
 	return strings.TrimSpace(project)
 }
 
-func taskQueryStatus(in TaskQueryInput) string {
-	status := strings.TrimSpace(in.Status)
-	if status != "" {
-		return status
-	}
-	switch {
-	case in.IncludeCompleted && !in.IncludeDeleted:
-		return task.StatusCompleted
-	case in.IncludeDeleted && !in.IncludeCompleted:
-		return task.StatusDeleted
-	case in.IncludeCompleted && in.IncludeDeleted:
-		return ""
-	default:
-		return ""
-	}
-}
-
-func taskQueryExcludeDeleted(in TaskQueryInput) bool {
-	status := strings.TrimSpace(in.Status)
-	if status != "" {
-		return false
-	}
-	return !in.IncludeDeleted
-}
-
-func taskQueryStatuses(in TaskQueryInput) []string {
-	if strings.TrimSpace(in.Status) != "" || !in.IncludeCompleted || !in.IncludeDeleted {
-		return nil
-	}
-	return []string{task.StatusCompleted, task.StatusDeleted}
-}
-
-func taskQueryList(svc *app.Service, input app.ListInput, statuses []string) ([]task.Task, error) {
-	if len(statuses) == 0 {
-		return svc.List(input)
-	}
-	rows := make([]task.Task, 0)
-	for _, status := range statuses {
-		statusInput := input
-		statusInput.Status = status
-		statusRows, err := svc.List(statusInput)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, statusRows...)
-		if input.Limit > 0 && len(rows) >= input.Limit {
-			return rows[:input.Limit], nil
-		}
-	}
-	return rows, nil
-}
-
 func applyClearFields(fields []string, mod *app.ModifyInput) error {
 	for _, field := range fields {
 		field = strings.TrimSpace(field)
@@ -617,8 +616,6 @@ func applyClearFields(fields []string, mod *app.ModifyInput) error {
 			mod.ClearScheduled = true
 		case "until":
 			mod.ClearUntil = true
-		case "recur":
-			mod.ClearRecur = true
 		case "assignees":
 			mod.ClearAssignees = true
 		default:

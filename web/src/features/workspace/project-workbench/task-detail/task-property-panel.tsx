@@ -16,11 +16,7 @@ import {
   extractUDAs,
   formatUDAValue,
 } from "@/features/workspace/project-readonly/uda"
-import {
-  recurrenceLabel,
-  recurrenceOptions,
-  taskStatusLabel,
-} from "@/features/workspace/shared/task-labels"
+import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import type { ProjectWorkbenchTaskRef } from "../api/project-api"
 import type { ProjectTask } from "../api/task-api"
 import type { DateBoundary } from "../shared/date-boundary"
@@ -59,10 +55,6 @@ export function TaskPropertyPanel({
   const { t } = useTranslation()
   const modify = useModifyTaskMutation(workspaceSlug, projectSlug, taskRef)
   const udas = useMemo(() => extractUDAs(task), [task])
-  const recurrenceSelectOptions = recurrenceOptions.map((option) => ({
-    label: t(option.labelKey),
-    value: option.value,
-  }))
 
   // 分组是否「有内容」：用于空组隐身（spec §9.5）。
   // Schedule 全空时仍保留（可写用户需要入口新增计划字段），但不可写时全空则隐身。
@@ -70,8 +62,7 @@ export function TaskPropertyPanel({
     unixLikeToNumber(task.due) !== null ||
     unixLikeToNumber(task.wait) !== null ||
     unixLikeToNumber(task.scheduled) !== null ||
-    unixLikeToNumber(task.until) !== null ||
-    (task.recur ?? "") !== ""
+    unixLikeToNumber(task.until) !== null
   const hasRelations =
     !!task.parent ||
     (task.depends && task.depends.length > 0) ||
@@ -80,70 +71,80 @@ export function TaskPropertyPanel({
   const hasUDA = udas.length > 0
   // 不可写且计划字段全空时，Schedule 整组隐身（避免空壳噪音）。
   const showSchedule = canWrite || hasSchedule
+  const projected = task.recurrence_info?.materialization === "projected"
 
   return (
     <aside className="space-y-4 border bg-card p-4 text-sm">
       {/* Properties：高频字段，始终展示 */}
-      <PropertyGroup
-        title={t("taskDetail.groupProperties")}
-      >
+      <PropertyGroup title={t("taskDetail.groupProperties")}>
         <PropertyRow label={t("common.status")}>
-          <div className="font-medium">{taskStatusLabel(task.status, t)}</div>
+          <div className="font-medium">
+            {projected
+              ? t("taskSeries.occurrence.projected")
+              : taskStatusLabel(task.status, t)}
+          </div>
         </PropertyRow>
         <PropertyRow label={t("taskDetail.urgency")}>
           <TaskUrgencyPanel taskRef={taskRef} workspaceSlug={workspaceSlug} />
         </PropertyRow>
         <PropertyRow label={t("projectReadonly.priority")}>
-          <InlineSelectEditor
-            ariaLabel={t("projectReadonly.priority")}
-            className="w-full"
-            disabled={!canWrite}
-            onSave={async (priority) => {
-              await modify.mutateAsync(
-                priority === "none" ? { clear_priority: true } : { priority }
-              )
-            }}
-            options={priorityOptions}
-            placeholder="-"
-            triggerSize="sm"
-            value={task.priority ?? "none"}
-          />
+          <div className="space-y-1">
+            <InlineSelectEditor
+              ariaLabel={t("projectReadonly.priority")}
+              className="w-full"
+              disabled={!canWrite}
+              onSave={async (priority) => {
+                await modify.mutateAsync(
+                  priority === "none" ? { clear_priority: true } : { priority }
+                )
+              }}
+              options={priorityOptions}
+              placeholder="-"
+              triggerSize="sm"
+              value={task.priority ?? "none"}
+            />
+            <InheritanceHint show={projected} />
+          </div>
         </PropertyRow>
         <PropertyRow label={t("projectReadonly.assignee")}>
-          <AssigneePicker
-            disabled={!canWrite}
-            onSave={async (items) => {
-              // 后端 assignees 字段是「增量追加」语义（add），不是替换。
-              // 这里用 clear + assignees 表达「整体替换为 items」，
-              // 避免 a→b 时因未移除 a 导致结果变成 a+b。
-              await modify.mutateAsync(
-                items.length === 0
-                  ? { clear_assignees: true }
-                  : { clear_assignees: true, assignees: items }
-              )
-            }}
-            value={task.assignees ?? []}
-            workspaceSlug={workspaceSlug}
-          />
+          <div className="space-y-1">
+            <AssigneePicker
+              disabled={!canWrite}
+              onSave={async (items) => {
+                // 后端 assignees 字段是「增量追加」语义（add），不是替换。
+                // 这里用 clear + assignees 表达「整体替换为 items」，
+                // 避免 a→b 时因未移除 a 导致结果变成 a+b。
+                await modify.mutateAsync(
+                  items.length === 0
+                    ? { clear_assignees: true }
+                    : { clear_assignees: true, assignees: items }
+                )
+              }}
+              value={task.assignees ?? []}
+              workspaceSlug={workspaceSlug}
+            />
+            <InheritanceHint show={projected} />
+          </div>
         </PropertyRow>
         <PropertyRow label={t("projectReadonly.tags")}>
-          <TagPicker
-            disabled={!canWrite}
-            onSave={async (items) => {
-              await modify.mutateAsync({ tags: items })
-            }}
-            projectSlug={projectSlug}
-            value={task.tags ?? []}
-            workspaceSlug={workspaceSlug}
-          />
+          <div className="space-y-1">
+            <TagPicker
+              disabled={!canWrite}
+              onSave={async (items) => {
+                await modify.mutateAsync({ tags: items })
+              }}
+              projectSlug={projectSlug}
+              value={task.tags ?? []}
+              workspaceSlug={workspaceSlug}
+            />
+            <InheritanceHint show={projected} />
+          </div>
         </PropertyRow>
       </PropertyGroup>
 
       {/* Schedule：日期/周期字段；空组在不可写时隐身 */}
-      {showSchedule ? (
-        <PropertyGroup
-          title={t("taskDetail.groupSchedule")}
-        >
+      {showSchedule || task.recurrence_info ? (
+        <PropertyGroup title={t("taskDetail.groupSchedule")}>
           <PropertyRow label={t("projectReadonly.dueDate")}>
             <InlineDatePicker
               ariaLabel={t("projectReadonly.dueDate")}
@@ -158,6 +159,17 @@ export function TaskPropertyPanel({
               value={unixLikeToNumber(task.due)}
             />
           </PropertyRow>
+          {task.recurrence_info ? (
+            <PropertyRow label={t("taskSeries.occurrence.originalDate")}>
+              <div className="font-medium">
+                {new Intl.DateTimeFormat(undefined, {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                }).format(new Date(task.recurrence_info.recurrence_at * 1000))}
+              </div>
+            </PropertyRow>
+          ) : null}
           <DateProperty
             disabled={!canWrite}
             helpText={t("projectReadonly.waitUntilHelp")}
@@ -192,36 +204,12 @@ export function TaskPropertyPanel({
             }}
             value={task.until}
           />
-          <PropertyRow
-            helpText={t("projectReadonly.recurHelp")}
-            label={t("projectReadonly.recur")}
-          >
-            <InlineSelectEditor
-              ariaLabel={t("projectReadonly.recur")}
-              className="w-full"
-              disabled={!canWrite}
-              onSave={async (recur) => {
-                await modify.mutateAsync(
-                  recur === "none" ? { clear_recur: true } : { recur }
-                )
-              }}
-              options={recurrenceSelectOptions}
-              placeholder="-"
-              triggerSize="sm"
-              value={task.recur ?? "none"}
-            />
-            <div className="mt-1 text-xs text-muted-foreground">
-              {recurrenceLabel(task.recur, t)}
-            </div>
-          </PropertyRow>
         </PropertyGroup>
       ) : null}
 
       {/* Relations：parent/depends/blocking；空组隐身 */}
       {hasRelations ? (
-        <PropertyGroup
-          title={t("taskDetail.groupRelations")}
-        >
+        <PropertyGroup title={t("taskDetail.groupRelations")}>
           {task.parent ? (
             <PropertyRow label={t("projectReadonly.parent")}>
               <TaskRefLinks
@@ -242,7 +230,7 @@ export function TaskPropertyPanel({
               }}
               projectSlug={projectSlug}
               refs={task.depends_info}
-              taskUUID={task.uuid}
+              taskUUID={task.uuid ?? ""}
               value={task.depends ?? []}
               workspaceSlug={workspaceSlug}
             />
@@ -260,18 +248,17 @@ export function TaskPropertyPanel({
         </PropertyGroup>
       ) : null}
 
-      {/* System：默认折叠 */}
-      <PropertyGroup
-        defaultOpen={false}
-        title={t("taskDetail.groupSystem")}
-      >
-        <PropertyRow label={t("projectReadonly.entry")}>
-          <div className="font-medium">{formatRFCDate(task.entry)}</div>
-        </PropertyRow>
-        <PropertyRow label={t("projectReadonly.modified")}>
-          <div className="font-medium">{formatRFCDate(task.modified)}</div>
-        </PropertyRow>
-      </PropertyGroup>
+      {/* 计划实例尚无持久化时间，不展示会误导为实体记录的系统分组。 */}
+      {task.recurrence_info?.materialization !== "projected" ? (
+        <PropertyGroup defaultOpen={false} title={t("taskDetail.groupSystem")}>
+          <PropertyRow label={t("projectReadonly.entry")}>
+            <div className="font-medium">{formatRFCDate(task.entry)}</div>
+          </PropertyRow>
+          <PropertyRow label={t("projectReadonly.modified")}>
+            <div className="font-medium">{formatRFCDate(task.modified)}</div>
+          </PropertyRow>
+        </PropertyGroup>
+      ) : null}
 
       {/* Custom fields：仅有 UDA 时展示 */}
       {hasUDA ? (
@@ -294,6 +281,15 @@ export function TaskPropertyPanel({
   )
 }
 
+function InheritanceHint({ show }: { show: boolean }) {
+  const { t } = useTranslation()
+  return show ? (
+    <div className="text-xs text-muted-foreground">
+      {t("taskSeries.occurrence.inherited")}
+    </div>
+  ) : null
+}
+
 // PropertyGroup 可折叠分组容器；hasContent=false 时整组不渲染（spec §9.5）。
 function PropertyGroup({
   children,
@@ -308,7 +304,7 @@ function PropertyGroup({
   return (
     <div className="space-y-2">
       <button
-        className="flex w-full items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        className="flex w-full items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
         onClick={() => setOpen((v) => !v)}
         type="button"
       >
@@ -633,6 +629,12 @@ function unixLikeToNumber(value: string | number | null | undefined) {
   return null
 }
 
-function formatRFCDate(value?: string): string {
-  return value ? value.slice(0, 10) : "-"
+function formatRFCDate(value?: string | number | null): string {
+  const unix = unixLikeToNumber(value)
+  if (unix === null) return "-"
+  const date = new Date(unix * 1000)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }

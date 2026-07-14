@@ -112,17 +112,19 @@ func TestImpersonationTaskActionUsesSubjectIdentity(t *testing.T) {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
 	var list struct {
-		Data []struct {
-			Title     string `json:"title"`
-			Assignees []struct {
-				Name string `json:"name"`
-			} `json:"assignees"`
+		Data struct {
+			Items []struct {
+				Title     string `json:"title"`
+				Assignees []struct {
+					Name string `json:"name"`
+				} `json:"assignees"`
+			} `json:"items"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Data) != 1 || list.Data[0].Title != "alice task" {
+	if len(list.Data.Items) != 1 || list.Data.Items[0].Title != "alice task" {
 		t.Fatalf("tasks = %s", rr.Body.String())
 	}
 }

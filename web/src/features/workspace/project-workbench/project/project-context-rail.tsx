@@ -10,6 +10,13 @@ import type {
   ProjectWorkbenchProject,
 } from "../api/project-api"
 
+const emptySeriesMetrics = {
+  recurring_series_count: 0,
+  active_recurring_series_count: 0,
+  open_recurring_occurrence_count: 0,
+  overdue_recurring_occurrence_count: 0,
+}
+
 type ProjectContextRailProps = {
   project: ProjectWorkbenchProject
   summary?: ProjectTaskSummary
@@ -34,11 +41,14 @@ export function ProjectContextRail({
   timelineError,
 }: ProjectContextRailProps) {
   const { t } = useTranslation()
+  // 兼容滚动发布或缓存中的旧 task-summary 响应；新服务端始终返回该字段。
+  const seriesMetrics = summary?.series_metrics ?? emptySeriesMetrics
 
   const completedRatio =
     project.task_count > 0
       ? Math.round((project.completed_count / project.task_count) * 100)
       : 0
+  const hasNormalTasks = project.task_count > 0
 
   return (
     <aside
@@ -53,10 +63,14 @@ export function ProjectContextRail({
         />
         <RailRow
           label={t("projectSubpages.attributeTasks")}
-          value={t("projectSubpages.attributeTasksHint", {
-            total: project.task_count,
-            pending: project.pending_count,
-          })}
+          value={
+            hasNormalTasks
+              ? t("projectSubpages.attributeTasksHint", {
+                  total: project.task_count,
+                  pending: project.pending_count,
+                })
+              : t("projectSubpages.attributeTasksEmpty")
+          }
         />
         <RailRow
           label={t("projectSubpages.attributeCreated")}
@@ -72,40 +86,59 @@ export function ProjectContextRail({
         <RailError text={t("projectSubpages.railSummaryError")} />
       ) : summary ? (
         <>
-          <RailSection title={t("projectSubpages.progressTitle")}>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {t("projectSubpages.progressLabel")}
-                </span>
-                <span className="font-medium">
-                  {t("projectSubpages.progressRatio", { percent: completedRatio })}
-                </span>
+          {hasNormalTasks ? (
+            <RailSection title={t("projectSubpages.progressTitle")}>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {t("projectSubpages.progressLabel")}
+                  </span>
+                  <span className="font-medium">
+                    {t("projectSubpages.progressRatio", { percent: completedRatio })}
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-primary"
+                    style={{ width: `${completedRatio}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded bg-muted">
-                <div
-                  className="h-full bg-primary"
-                  style={{ width: `${completedRatio}%` }}
-                />
+              <RailSummaryCount
+                label={t("projectSubpages.riskOverdue")}
+                value={summary.overdue_count}
+              />
+              <RailSummaryCount
+                label={t("projectSubpages.riskHighPriority")}
+                value={summary.high_priority_open_count}
+              />
+              <RailSummaryCount
+                label={t("projectSubpages.riskWaitReady")}
+                value={summary.wait_ready_count}
+              />
+              <RailSummaryCount
+                label={t("projectSubpages.riskUnassigned")}
+                value={summary.unassigned_open_count}
+              />
+            </RailSection>
+          ) : null}
+
+          {seriesMetrics.active_recurring_series_count > 0 ||
+          seriesMetrics.open_recurring_occurrence_count > 0 ? (
+            <RailSection title={t("projectSubpages.recurringRuntimeTitle")}>
+              <div className="text-sm font-medium">
+                {t("projectSubpages.recurringActiveSeries", {
+                  count: seriesMetrics.active_recurring_series_count,
+                })}
               </div>
-            </div>
-            <RailSummaryCount
-              label={t("projectSubpages.riskOverdue")}
-              value={summary.overdue_count}
-            />
-            <RailSummaryCount
-              label={t("projectSubpages.riskHighPriority")}
-              value={summary.high_priority_open_count}
-            />
-            <RailSummaryCount
-              label={t("projectSubpages.riskWaitReady")}
-              value={summary.wait_ready_count}
-            />
-            <RailSummaryCount
-              label={t("projectSubpages.riskUnassigned")}
-              value={summary.unassigned_open_count}
-            />
-          </RailSection>
+              <div className="text-sm text-muted-foreground">
+                {t("projectSubpages.recurringOpenOccurrences", {
+                  count: seriesMetrics.open_recurring_occurrence_count,
+                  overdue: seriesMetrics.overdue_recurring_occurrence_count,
+                })}
+              </div>
+            </RailSection>
+          ) : null}
 
           {summary.workload.length > 0 ? (
             <RailSection title={t("projectSubpages.workloadTitle")}>

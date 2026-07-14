@@ -1,4 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import type { TFunction } from "i18next"
+import { useTranslation } from "react-i18next"
 
 import type { ProjectTaskFilterParams } from "../api/project-api"
 import {
@@ -25,10 +27,16 @@ import {
 import { projectQueryKeys } from "./use-project-data"
 import { taskQueryKeys } from "./use-task-detail-data"
 import { useEditFeedback } from "../shared/edit-feedback"
+import {
+  canonicalTaskRouteRef,
+  taskStableCacheRef,
+} from "../tasks/task-reference"
 
 export type TaskAction = "start" | "stop" | "done" | "reopen" | "delete"
 
-function filterKey(filters?: ProjectTaskFilterParams | string): string | undefined {
+function filterKey(
+  filters?: ProjectTaskFilterParams | string
+): string | undefined {
   if (!filters) {
     return undefined
   }
@@ -56,7 +64,7 @@ function projectTasksQueryKey(
 ) {
   const key = filterKey(filters)
   const prefix = projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug)
-  return key ? [...prefix, key] as const : prefix
+  return key ? ([...prefix, key] as const) : prefix
 }
 
 function invalidateProjectTaskSurface(
@@ -86,7 +94,10 @@ export function useCreateTaskMutation(
         queryKey: projectTasksQueryKey(workspaceSlug, projectSlug, filters),
       })
       void queryClient.invalidateQueries({
-        queryKey: projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug),
+        queryKey: projectQueryKeys.projectTasksPrefix(
+          workspaceSlug,
+          projectSlug
+        ),
       })
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.project(workspaceSlug, projectSlug),
@@ -118,7 +129,10 @@ export function useCreateSubTaskMutation(
       })
       // 项目任务列表（子任务也会出现在项目列表里）。
       void queryClient.invalidateQueries({
-        queryKey: projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug),
+        queryKey: projectQueryKeys.projectTasksPrefix(
+          workspaceSlug,
+          projectSlug
+        ),
       })
       feedback.success("已创建：子任务")
     },
@@ -142,19 +156,35 @@ export function useModifyTaskMutation(
       delete payload.taskRef
       return modifyTask(workspaceSlug, ref, payload)
     },
-    onSuccess: (_task, input) => {
+    onSuccess: (updatedTask, input) => {
       const ref = input.taskRef ?? taskRef
-      if (ref) {
+      const aliases = new Set([
+        ref ?? "",
+        taskStableCacheRef(updatedTask),
+        canonicalTaskRouteRef(updatedTask) ?? "",
+      ])
+      for (const alias of aliases) {
+        if (!alias) continue
+        queryClient.setQueryData(
+          taskQueryKeys.task(workspaceSlug, alias),
+          updatedTask
+        )
         void queryClient.invalidateQueries({
-          queryKey: taskQueryKeys.task(workspaceSlug, ref),
+          queryKey: taskQueryKeys.task(workspaceSlug, alias),
+          refetchType: "none",
         })
+      }
+      if (ref) {
         // 任务字段变更会产生新的 audit 历史，刷新详情页变更历史。
         void queryClient.invalidateQueries({
           queryKey: taskQueryKeys.audit(workspaceSlug, ref),
         })
       }
       void queryClient.invalidateQueries({
-        queryKey: projectQueryKeys.projectTasksPrefix(workspaceSlug, projectSlug),
+        queryKey: projectQueryKeys.projectTasksPrefix(
+          workspaceSlug,
+          projectSlug
+        ),
       })
       feedback.success("已保存：任务")
     },
@@ -168,6 +198,7 @@ export function useTaskActionMutation(
 ) {
   const queryClient = useQueryClient()
   const feedback = useEditFeedback()
+  const { i18n, t } = useTranslation()
   return useMutation({
     mutationFn: (taskRef: string) => {
       if (action === "start") {
@@ -184,15 +215,33 @@ export function useTaskActionMutation(
       }
       return deleteTask(workspaceSlug, taskRef)
     },
-    onSuccess: (_task, taskRef) => {
-      void queryClient.invalidateQueries({
-        queryKey: taskQueryKeys.task(workspaceSlug, taskRef),
-      })
+    onSuccess: (updatedTask, taskRef) => {
+      const aliases = new Set([
+        taskRef,
+        taskStableCacheRef(updatedTask),
+        canonicalTaskRouteRef(updatedTask) ?? "",
+      ])
+      for (const alias of aliases) {
+        if (!alias) continue
+        queryClient.setQueryData(
+          taskQueryKeys.task(workspaceSlug, alias),
+          updatedTask
+        )
+        void queryClient.invalidateQueries({
+          queryKey: taskQueryKeys.task(workspaceSlug, alias),
+          refetchType: "none",
+        })
+      }
       invalidateProjectTaskSurface(queryClient, workspaceSlug, projectSlug)
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectTimeline(workspaceSlug, projectSlug),
       })
-      feedback.success(taskActionSuccessLabel(action))
+      void queryClient.invalidateQueries({
+        queryKey: ["my-tasks", workspaceSlug],
+      })
+      feedback.success(
+        taskActionSuccessLabel(action, updatedTask, i18n.language, t)
+      )
     },
   })
 }
@@ -299,8 +348,13 @@ export function useTaskLinkMutations(
       },
     }),
     update: useMutation({
-      mutationFn: ({ input, linkID }: { input: TaskLinkInput; linkID: string }) =>
-        updateTaskLink(workspaceSlug, taskRef, linkID, input),
+      mutationFn: ({
+        input,
+        linkID,
+      }: {
+        input: TaskLinkInput
+        linkID: string
+      }) => updateTaskLink(workspaceSlug, taskRef, linkID, input),
       onSuccess: () => {
         invalidate()
         feedback.success("已保存：链接")
@@ -309,18 +363,37 @@ export function useTaskLinkMutations(
   }
 }
 
-function taskActionSuccessLabel(action: TaskAction): string {
+function taskActionSuccessLabel(
+  action: TaskAction,
+  task: Awaited<ReturnType<typeof doneTask>>,
+  locale: string,
+  t: TFunction
+): string {
+  if (task.recurrence_info) {
+    const date = new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(
+      new Date(task.recurrence_info.recurrence_at * 1000)
+    )
+    if (action === "start")
+      return t("taskSeries.actions.startedOccurrenceSuccess", { date })
+    if (action === "stop")
+      return t("taskSeries.actions.stoppedOccurrenceSuccess", { date })
+    if (action === "done")
+      return t("taskSeries.actions.completedOccurrenceSuccess", { date })
+    if (action === "reopen")
+      return t("taskSeries.actions.reopenedOccurrenceSuccess", { date })
+    return t("taskSeries.actions.skippedOccurrenceSuccess", { date })
+  }
   if (action === "start") {
-    return "已开始：任务"
+    return t("common.taskStarted")
   }
   if (action === "stop") {
-    return "已停止：任务"
+    return t("common.taskStopped")
   }
   if (action === "done") {
-    return "已完成：任务"
+    return t("common.taskCompleted")
   }
   if (action === "reopen") {
-    return "已重新打开：任务"
+    return t("common.taskReopened")
   }
-  return "已删除：任务"
+  return t("common.taskDeleted")
 }

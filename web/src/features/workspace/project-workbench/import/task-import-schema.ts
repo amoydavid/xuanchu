@@ -58,7 +58,7 @@ export const TASK_IMPORT_JSON_SCHEMA = {
         },
         status: {
           type: "string",
-          enum: ["pending", "completed", "deleted", "waiting", "recurring"],
+          enum: ["pending", "completed", "deleted", "waiting"],
           default: "pending",
           description: "任务状态。未填写时默认为 pending。",
         },
@@ -173,11 +173,6 @@ export const TASK_IMPORT_JSON_SCHEMA = {
         modified: {
           type: ["string", "null"],
           description: "任务修改时间。未填写时由导入解析阶段填入当前时间。",
-        },
-        recur: {
-          type: ["string", "null"],
-          description:
-            "重复规则字符串；当前导入流程仅原样保存，不在浏览器端解析或展开循环任务。普通一次性任务请留空。",
         },
         parent: {
           type: ["string", "null"],

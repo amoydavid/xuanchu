@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -52,39 +53,6 @@ func (r *TaskRepository) Create(tsk domain.Task) (domain.Task, error) {
 		return domain.Task{}, err
 	}
 	return fromModel(model, usersByID, linksByTask), nil
-}
-
-func (r *TaskRepository) CreateRecurringChild(tsk domain.Task) (domain.Task, bool, error) {
-	if tsk.Parent == nil || tsk.Due == nil {
-		created, err := r.Create(tsk)
-		return created, false, err
-	}
-	created, err := r.Create(tsk)
-	if err == nil {
-		return created, false, nil
-	}
-	if !isUniqueConstraintError(err) {
-		return domain.Task{}, false, err
-	}
-	var model Task
-	findErr := r.preloadAssociations().
-		Where("workspace_id = ? AND parent = ? AND due = ? AND status IN ?", tsk.WorkspaceID, *tsk.Parent, *tsk.Due, []string{domain.StatusPending, domain.StatusWaiting}).
-		First(&model).Error
-	if errors.Is(findErr, gorm.ErrRecordNotFound) {
-		return domain.Task{}, false, err
-	}
-	if findErr != nil {
-		return domain.Task{}, false, findErr
-	}
-	usersByID, err := r.loadAssigneeUsers([]Task{model})
-	if err != nil {
-		return domain.Task{}, false, err
-	}
-	linksByTask, err := r.loadLinksByTask([]Task{model})
-	if err != nil {
-		return domain.Task{}, false, err
-	}
-	return fromModel(model, usersByID, linksByTask), true, nil
 }
 
 func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Task, error) {
@@ -234,24 +202,25 @@ func (r *TaskRepository) Update(tsk domain.Task) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		model := toModel(tsk)
 		if err := tx.Model(&Task{}).Where("uuid = ? AND workspace_id = ?", tsk.UUID, tsk.WorkspaceID).Updates(map[string]any{
-			"title":       model.Title,
-			"description": model.Description,
-			"status":      model.Status,
-			"modified":    model.Modified,
-			"end_ts":      model.EndTS,
-			"due":         model.Due,
-			"project":     model.Project,
-			"project_id":  model.ProjectID,
-			"project_seq": model.ProjectSeq,
-			"priority":    model.Priority,
-			"start":       model.Start,
-			"wait":        model.Wait,
-			"scheduled":   model.Scheduled,
-			"until":       model.Until,
-			"recur":       model.Recur,
-			"parent":      model.Parent,
-			"mask":        model.Mask,
-			"i_mask":      model.IMask,
+			"title":                     model.Title,
+			"description":               model.Description,
+			"status":                    model.Status,
+			"modified":                  model.Modified,
+			"end_ts":                    model.EndTS,
+			"due":                       model.Due,
+			"project":                   model.Project,
+			"project_id":                model.ProjectID,
+			"project_seq":               model.ProjectSeq,
+			"priority":                  model.Priority,
+			"start":                     model.Start,
+			"wait":                      model.Wait,
+			"scheduled":                 model.Scheduled,
+			"until":                     model.Until,
+			"parent":                    model.Parent,
+			"series_id":                 model.SeriesID,
+			"recurrence_at":             model.RecurrenceAt,
+			"recurrence_rule_snapshot":  model.RecurrenceRuleSnapshot,
+			"recurrence_overrides_json": model.RecurrenceOverridesJSON,
 		}).Error; err != nil {
 			return err
 		}
@@ -440,29 +409,6 @@ func (r *TaskRepository) Children(workspaceID, parentUUID string) ([]domain.Task
 	return out, nil
 }
 
-func (r *TaskRepository) RecurringParents(workspaceID string) ([]domain.Task, error) {
-	var models []Task
-	if err := r.preloadAssociations().
-		Where("workspace_id = ? AND status = ?", workspaceID, domain.StatusRecurring).
-		Order("entry ASC").
-		Find(&models).Error; err != nil {
-		return nil, err
-	}
-	usersByID, err := r.loadAssigneeUsers(models)
-	if err != nil {
-		return nil, err
-	}
-	linksByTask, err := r.loadLinksByTask(models)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Task, 0, len(models))
-	for _, model := range models {
-		out = append(out, fromModel(model, usersByID, linksByTask))
-	}
-	return out, nil
-}
-
 func toModel(tsk domain.Task) Task {
 	tags := make([]TaskTag, 0, len(tsk.Tags))
 	for _, tag := range sortedUnique(tsk.Tags) {
@@ -503,8 +449,12 @@ func toModel(tsk domain.Task) Task {
 		EndTS: tsk.End, Due: tsk.Due, Project: tsk.Project, ProjectID: tsk.ProjectID, ProjectSeq: tsk.ProjectSeq, Priority: tsk.Priority,
 		Tags:  tags,
 		Start: tsk.Start, Wait: tsk.Wait, Scheduled: tsk.Scheduled, Until: tsk.Until,
-		Recur: tsk.Recur, Parent: tsk.Parent, Mask: tsk.Mask, IMask: tsk.IMask,
+		Parent:    tsk.Parent,
 		Assignees: assignees, Annotations: annotations, Depends: depends, UDAs: udas,
+		SeriesID:                tsk.SeriesID,
+		RecurrenceAt:            tsk.RecurrenceAt,
+		RecurrenceRuleSnapshot:  tsk.RecurrenceRuleSnapshot,
+		RecurrenceOverridesJSON: overridesToJSON(tsk.RecurrenceOverrides),
 	}
 }
 
@@ -551,11 +501,41 @@ func fromModel(model Task, usersByID map[string]assigneeUserData, linksByTask ma
 		End: model.EndTS, Due: model.Due, Project: model.Project, ProjectID: model.ProjectID, ProjectSeq: model.ProjectSeq, Priority: model.Priority,
 		Tags:  tags,
 		Start: model.Start, Wait: model.Wait, Scheduled: model.Scheduled, Until: model.Until,
-		Recur: model.Recur, Parent: model.Parent, Mask: model.Mask, IMask: model.IMask,
+		Parent:    model.Parent,
 		Assignees: assignees, Annotations: annotations, Depends: depends,
-		Links: linksByTask[model.UUID],
-		UDAs:  udas,
+		Links:                  linksByTask[model.UUID],
+		UDAs:                   udas,
+		SeriesID:               model.SeriesID,
+		RecurrenceAt:           model.RecurrenceAt,
+		RecurrenceRuleSnapshot: model.RecurrenceRuleSnapshot,
+		RecurrenceOverrides:    overridesFromJSON(model.RecurrenceOverridesJSON),
 	}
+}
+
+// overridesToJSON 把 override 字段列表序列化为 JSON 文本（spec §7.5）。
+// 使用文本 JSON 保持 SQLite/PostgreSQL 一致，不依赖数据库专属 JSON 运算。
+func overridesToJSON(in []string) *string {
+	normalized := domain.NormalizeRecurrenceOverrides(in)
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		// 理论上不可能：[]string 一定能序列化。回退到空数组保证 NOT NULL。
+		empty := "[]"
+		return &empty
+	}
+	s := string(data)
+	return &s
+}
+
+// overridesFromJSON 反序列化 override JSON 文本。
+func overridesFromJSON(in *string) []string {
+	if in == nil || *in == "" {
+		return []string{}
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(*in), &out); err != nil {
+		return []string{}
+	}
+	return domain.NormalizeRecurrenceOverrides(out)
 }
 
 type assigneeUserData struct {

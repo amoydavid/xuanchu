@@ -1,6 +1,6 @@
 # Task Query 表达式
 
-`task_query` 的 `query` 参数、reminder rule 的 `filter_source`、notification rule 的 `filter` 都用这套 Taskwarrior 风格表达式。
+`task_query` 的 `query` 参数、reminder rule 的 `filter_source`、notification rule 的 `filter` 都使用璇础任务过滤表达式。本语法仅参考 Taskwarrior 的设计思路，不承诺兼容其命令或 JSON 格式。
 
 ## 字段过滤
 
@@ -16,7 +16,7 @@
 | `priority:H` | 某优先级（H/M/L） |
 | `due.before:today` / `due.before:now` | due 早于今天/现在 |
 | `due.before:now+24h` | due 在未来 24 小时内 |
-| `status:pending` / `status:completed` / `status:waiting` | 状态过滤（waiting = 等待中，如设了未来 wait） |
+| `status:pending` / `status:waiting` / `status:completed` / `status:deleted` | 状态过滤（waiting = 等待中，如设了未来 wait；deleted 需显式查询） |
 | `annotations contains "备注文本"` | 注释含某文本 |
 | `+urgent` | 含某标签（标签简写） |
 

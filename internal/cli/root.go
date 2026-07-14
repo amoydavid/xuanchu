@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/config"
@@ -99,6 +100,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newUserCommand(opts))
 	cmd.AddCommand(newWorkspaceCommand(opts))
 	cmd.AddCommand(newProjectCommand(opts))
+	cmd.AddCommand(newSeriesCommand(opts))
 	cmd.AddCommand(newMemberCommand(opts))
 	cmd.AddCommand(newHookCommand(opts))
 	cmd.AddCommand(newNotificationCommand(opts))
@@ -385,8 +387,6 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 			ClearUntil:      mod.ClearUntil,
 			AddDepends:      mod.AddDepends,
 			ClearDepends:    mod.ClearDepends,
-			Recur:           mod.Recur,
-			ClearRecur:      mod.ClearRecur,
 			AddAssignees:    mod.AddAssignees,
 			RemoveAssignees: mod.RemoveAssignees,
 			ClearAssignees:  mod.ClearAssignees,
@@ -469,9 +469,9 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		}
 		return runEdit(cmd, svc, target)
 	case "annotations":
-		tsk, err := svc.Info(target)
+		view, err := svc.GetTaskView(target)
 		if err == nil {
-			return renderAnnotations(cmd, currentOpts.JSON, tsk.Annotations)
+			return renderAnnotations(cmd, currentOpts.JSON, view.Annotations)
 		}
 		if isPossibleProjectSlug(target) {
 			annotations, err := svc.ProjectAnnotations(target)
@@ -490,7 +490,7 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		}
 		return renderTimelineEntriesApp(cmd, currentOpts.JSON, entries)
 	case "link":
-		return handleLinkAction(cmd, opts, svc, target, actionArgs)
+		return handleLinkAction(cmd, currentOpts, svc, target, actionArgs)
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
@@ -530,8 +530,6 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 			ClearUntil:      mod.ClearUntil,
 			Depends:         mod.AddDepends,
 			ClearDepends:    mod.ClearDepends,
-			Recur:           mod.Recur,
-			ClearRecur:      mod.ClearRecur,
 			Assignees:       mod.AddAssignees,
 			RemoveAssignees: mod.RemoveAssignees,
 			ClearAssignees:  mod.ClearAssignees,
@@ -597,16 +595,16 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("%s requires text", action)
 		}
-		tsk, err := client.GetTask(ctx, opts.Workspace, target)
+		text := strings.TrimSpace(strings.Join(actionArgs, " "))
+		if text == "" {
+			return fmt.Errorf("%s requires text", action)
+		}
+		dto, err := client.GetTaskView(ctx, opts.Workspace, target)
 		if err != nil {
 			return err
 		}
-		text := strings.Join(actionArgs, " ")
-		title := strings.TrimSpace(tsk.Title + " " + text)
-		if action == "prepend" {
-			title = strings.TrimSpace(text + " " + tsk.Title)
-		}
-		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Title: &title}); err != nil {
+		description := taskDescriptionWithText(dto.Description, text, action == "prepend")
+		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Description: &description}); err != nil {
 			return err
 		}
 		if action == "append" {
@@ -617,9 +615,9 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 	case "edit":
 		return app.RuntimeError{Code: "remote_unsupported_command", Message: `command "edit" is not supported in remote mode`}
 	case "annotations":
-		tsk, tskErr := client.GetTask(ctx, opts.Workspace, target)
+		dto, tskErr := client.GetTaskView(ctx, opts.Workspace, target)
 		if tskErr == nil {
-			return renderAnnotations(cmd, opts.JSON, tsk.Annotations)
+			return renderAnnotations(cmd, opts.JSON, remoteDTOToTask(dto).Annotations)
 		}
 		if isPossibleProjectSlug(positional[0]) {
 			annotations, annErr := client.ListProjectAnnotations(ctx, opts.Workspace, target)
@@ -643,6 +641,17 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		return fmt.Errorf("unknown action %q", action)
 	}
 	return nil
+}
+
+func taskDescriptionWithText(current *string, text string, prepend bool) string {
+	currentText := ""
+	if current != nil {
+		currentText = *current
+	}
+	if prepend {
+		return strings.TrimSpace(text + " " + currentText)
+	}
+	return strings.TrimSpace(currentText + " " + text)
 }
 
 func buildServiceFromCmd(cmd *cobra.Command, base Options) (*app.Service, func() error, error) {
@@ -774,6 +783,16 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		} else {
 			svc.OverrideActiveContext(*value)
 		}
+	}
+	// 本地 CLI 业务命令前补齐当前 workspace 的循环任务 occurrence（spec §9.3）。
+	reconciled, err := svc.ReconcileWorkspaceTaskSeries(time.Now().Unix())
+	if err != nil {
+		_ = store.Close()
+		loggerClose()
+		return nil, nil, fmt.Errorf("循环任务补齐失败: %w", err)
+	}
+	if reconciled.BacklogRemaining > 0 {
+		fmt.Fprintf(opts.Stderr, "xuanchu: 循环任务仍有 %d 个实例待补齐，请再次执行命令\n", reconciled.BacklogRemaining)
 	}
 	return svc, func() error {
 		loggerClose()

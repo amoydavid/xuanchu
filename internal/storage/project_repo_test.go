@@ -484,6 +484,9 @@ func TestProjectRepositoryTaskSummary(t *testing.T) {
 	insertTaskWithOpts(t, store, "unassigned-open", ws.ID, project.ID, "ops", 5, "pending", taskOpts{})
 	// wait-future: 等待未到期
 	insertTaskWithOpts(t, store, "wait-future", ws.ID, project.ID, "ops", 6, "waiting", taskOpts{Wait: &waitFuture, Assignees: []string{lisi}})
+	// recurring-open: 已物化的循环实例，分配给张三；应进入成员待办，但不改变普通任务风险。
+	seriesID := "series-daily"
+	insertTaskWithOpts(t, store, "recurring-open", ws.ID, project.ID, "ops", 10, "pending", taskOpts{Due: &duePast, Assignees: []string{zhang}, SeriesID: &seriesID})
 	// due-equal-now: due == now，按规则不计入 overdue
 	insertTaskWithOpts(t, store, "due-equal-now", ws.ID, project.ID, "ops", 7, "pending", taskOpts{Due: &dueEqualNow})
 	// done-overdue: 已完成且高优且逾期，不计入任何开放计数
@@ -499,12 +502,23 @@ func TestProjectRepositoryTaskSummary(t *testing.T) {
 		t.Fatalf("TaskSummary() error = %v", err)
 	}
 
-	// overdue: overdue-h、duePast+pending；due-equal-now 不算；done/deleted 不算
-	if summary.OverdueCount != 1 {
-		t.Fatalf("OverdueCount = %d, want 1", summary.OverdueCount)
+	// overdue: overdue-h + recurring-open（物化 occurrence，due 过去、pending）；
+	// due-equal-now 不算；done/deleted 不算。
+	if summary.OverdueCount != 2 {
+		t.Fatalf("OverdueCount = %d, want 2", summary.OverdueCount)
 	}
-	if len(summary.OverdueRefs) != 1 || summary.OverdueRefs[0].TaskSlug != "ops-1" {
-		t.Fatalf("OverdueRefs = %#v, want [ops-1]", summary.OverdueRefs)
+	if len(summary.OverdueRefs) != 2 {
+		t.Fatalf("OverdueRefs = %#v, want 2 refs", summary.OverdueRefs)
+	}
+	// 排序按 entry ASC，相同 entry 时顺序不稳，故只断言 ops-1 在其中。
+	hasOverdueH := false
+	for _, ref := range summary.OverdueRefs {
+		if ref.TaskSlug == "ops-1" {
+			hasOverdueH = true
+		}
+	}
+	if !hasOverdueH {
+		t.Fatalf("OverdueRefs = %#v, want contains ops-1", summary.OverdueRefs)
 	}
 
 	// high priority open: overdue-h + high-only
@@ -532,11 +546,11 @@ func TestProjectRepositoryTaskSummary(t *testing.T) {
 	if got := workloadByUserID(summary.Workload, ""); got == nil || got.OpenCount != 4 {
 		t.Fatalf("unassigned OpenCount = %v, want 4", got)
 	}
-	if got := workloadByUserID(summary.Workload, zhang); got == nil || got.OpenCount != 2 {
-		t.Fatalf("zhang OpenCount = %v, want 2", got)
+	if got := workloadByUserID(summary.Workload, zhang); got == nil || got.OpenCount != 3 {
+		t.Fatalf("zhang OpenCount = %v, want 3（含 1 条循环实例）", got)
 	}
-	if got := workloadByUserID(summary.Workload, zhang); got != nil && got.OverdueCount != 0 {
-		t.Fatalf("zhang OverdueCount = %d, want 0", got.OverdueCount)
+	if got := workloadByUserID(summary.Workload, zhang); got != nil && got.OverdueCount != 1 {
+		t.Fatalf("zhang OverdueCount = %d, want 1（循环实例逾期）", got.OverdueCount)
 	}
 	if got := workloadByUserID(summary.Workload, lisi); got == nil || got.OpenCount != 1 {
 		t.Fatalf("lisi OpenCount = %v, want 1", got)
@@ -548,6 +562,7 @@ type taskOpts struct {
 	Wait      *int64
 	Priority  *string
 	Assignees []string
+	SeriesID  *string
 }
 
 func insertTaskWithOpts(t *testing.T, store *Store, uuid, workspaceID, projectID, projectSlug string, seq int, status string, opts taskOpts) {
@@ -565,6 +580,7 @@ func insertTaskWithOpts(t *testing.T, store *Store, uuid, workspaceID, projectID
 		Due:         opts.Due,
 		Wait:        opts.Wait,
 		Priority:    opts.Priority,
+		SeriesID:    opts.SeriesID,
 	}
 	if err := store.DB().Create(&task).Error; err != nil {
 		t.Fatalf("insert task %q: %v", uuid, err)

@@ -15,7 +15,7 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 
 - **先遵循 `xuanchu-mcp-base` 的工具名解析规则。** 本文中的 `task_add` 等是 canonical tool name，真实运行时可能带 MCP server 前缀。
 - **每次调用都显式传 `workspace`**，任务归 project 时带 `project_id` / `project`。
-- **任务引用只用 UUID 或 `task_slug`**（如 `api-1`），不用本地 working-set 数字 ID——MCP 接口不接受数字 ID。
+- **任务引用使用 UUID、已物化 `task_slug`（如 `api-1`）或循环实例 `occurrence_ref`**；projected 实例只有 occurrence_ref。不要使用本地 working-set 数字 ID。
 - 不确定 workspace/project 时先 `project_list` 发现，不要依赖隐式状态。
 - 自己接手的任务，建完后用 `task_start` 开始、`task_done` 完成。
 
@@ -46,9 +46,18 @@ description: 把群里冒出来的工作变成结构化任务、设依赖、关�
 1. task_depends({"workspace":"dajee","id":"任务B-uuid","depends":["任务A-uuid"]})  // B 依赖 A
 ```
 
+### 场景 D：创建和处理循环任务
+
+```
+1. task_series_add({"workspace":"dajee","project":"ops","title":"每日巡检","description":"检查异常并记录原因","recurrence_rule":"daily","first_due_date":"2026-07-14","priority":"M","assignees":["alice"],"tags":["ops"],"udas":{"channel":"search"}})
+2. // materialized occurrence 优先用返回的 task_slug；projected occurrence 用 occurrence_ref
+3. task_done({"workspace":"dajee","id":"ops-7"})  // 只完成本次，不影响 Series 或下一轮
+```
+
 ## 易错点
 
-- **MCP 接口不能用 working-set 数字 ID**，只能 UUID 或 `task_slug`（形如 `api-1`）。
+- **MCP 接口不能用 working-set 数字 ID**；使用 UUID、已物化 `task_slug` 或 occurrence_ref。projected 实例只能用 occurrence_ref。
+- `task_query` 无显式状态条件时返回所有非 deleted 任务，包括 completed。只查可执行待办时显式使用 `status:pending`；还要包含等待中的任务时使用 `(status:pending or status:waiting)`。
 - `task_denotate` 用 `annotation_id`（从 `task_get`/`task_query` 读取的稳定 ID），不要用显示顺序删除注释。
 - `task_modify` 清空字段用 `clear:["priority","assignees"]`，不能传空值清空。
 - `task_depends` 引用依赖任务也用 UUID；`clear_depends:true` 清空所有依赖。

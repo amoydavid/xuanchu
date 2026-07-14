@@ -8,13 +8,19 @@ import { STANDARD_TASK_FIELDS } from "./project-readonly-api"
 export type UDAEntry = [key: string, value: unknown]
 
 export function extractUDAs(task: Record<string, unknown>): UDAEntry[] {
-  return Object.entries(task).filter(
+  if (task.udas && typeof task.udas === "object" && !Array.isArray(task.udas)) {
+    return Object.entries(task.udas as Record<string, unknown>).filter(
+      ([, value]) => value !== undefined && value !== null && value !== ""
+    )
+  }
+  const flattened = Object.entries(task).filter(
     ([key, value]) =>
       !STANDARD_TASK_FIELDS.has(key) &&
       value !== undefined &&
       value !== null &&
       value !== ""
   )
+  return flattened
 }
 
 // formatUDAValue 把任意 UDA 值渲染为可读字符串。
@@ -22,7 +28,11 @@ export function formatUDAValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "-"
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return String(value)
   }
   try {

@@ -10,16 +10,17 @@ describe("myTasksPath", () => {
     )
   })
 
-  it("encodes project, priority, q and sort", () => {
+  it("encodes project, task type, priority, q and sort", () => {
     const filter: MyTasksFilter = {
       assignee: "user-1",
       project: "proj-a",
+      task_type: "occurrence",
       priority: "H",
       q: "login bug",
       sort: "due",
     }
     expect(myTasksPath("dajee", filter)).toBe(
-      "/api/v1/tasks?workspace=dajee&assignee=user-1&project=proj-a&priority=H&q=login+bug&sort=due&limit=200"
+      "/api/v1/tasks?workspace=dajee&assignee=user-1&project=proj-a&task_type=occurrence&priority=H&q=login+bug&sort=due&limit=200"
     )
   })
 
@@ -32,6 +33,16 @@ describe("myTasksPath", () => {
     }
     expect(myTasksPath("dajee", filter)).toBe(
       "/api/v1/tasks?workspace=dajee&assignee=user-1&due_after=2026-07-05&due_before=2026-07-06&query=due.isnull&limit=200"
+    )
+  })
+
+  it("preserves the preset status expression", () => {
+    const filter: MyTasksFilter = {
+      assignee: "user-1",
+      query: "(status:pending or status:waiting)",
+    }
+    expect(myTasksPath("dajee", filter)).toBe(
+      "/api/v1/tasks?workspace=dajee&assignee=user-1&query=%28status%3Apending+or+status%3Awaiting%29&limit=200"
     )
   })
 

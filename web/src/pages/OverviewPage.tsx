@@ -26,7 +26,10 @@ export function OverviewPage({ me }: OverviewPageProps) {
   const queryClient = useQueryClient()
   const tasks = useQuery({
     queryKey: ["overview", "tasks"],
-    queryFn: () => workspaceApiGet<Row[]>("/api/v1/tasks?limit=200"),
+    queryFn: async () => {
+      const page = await workspaceApiGet<{ items: Row[] }>("/api/v1/tasks?limit=200")
+      return page.items ?? []
+    },
   })
   const projects = useQuery({
     queryKey: ["overview", "projects"],
