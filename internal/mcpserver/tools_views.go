@@ -20,16 +20,17 @@ type workspaceView struct {
 }
 
 type projectView struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Status      string `json:"status"`
-	TaskCount   int    `json:"task_count"`
-	CreatedAt   int64  `json:"created_at"`
-	ModifiedAt  int64  `json:"modified_at"`
-	ArchivedAt  *int64 `json:"archived_at,omitempty"`
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
+	Slug           string `json:"slug"`
+	Name           string `json:"name"`
+	Description    string `json:"description,omitempty"`
+	Status         string `json:"status"`
+	TaskCount      int    `json:"task_count"`
+	TaskCountScope string `json:"task_count_scope"`
+	CreatedAt      int64  `json:"created_at"`
+	ModifiedAt     int64  `json:"modified_at"`
+	ArchivedAt     *int64 `json:"archived_at,omitempty"`
 }
 
 type contextView struct {
@@ -116,16 +117,17 @@ func workspaceViewsFromApp(rows []app.WorkspaceView) []workspaceView {
 
 func projectViewFromApp(row app.ProjectView) projectView {
 	return projectView{
-		ID:          row.ID,
-		WorkspaceID: row.WorkspaceID,
-		Slug:        row.Slug,
-		Name:        row.Name,
-		Description: row.Description,
-		Status:      row.Status,
-		TaskCount:   row.TaskCount,
-		CreatedAt:   row.CreatedAt,
-		ModifiedAt:  row.ModifiedAt,
-		ArchivedAt:  row.ArchivedAt,
+		ID:             row.ID,
+		WorkspaceID:    row.WorkspaceID,
+		Slug:           row.Slug,
+		Name:           row.Name,
+		Description:    row.Description,
+		Status:         row.Status,
+		TaskCount:      row.TaskCount,
+		TaskCountScope: "all_tasks",
+		CreatedAt:      row.CreatedAt,
+		ModifiedAt:     row.ModifiedAt,
+		ArchivedAt:     row.ArchivedAt,
 	}
 }
 

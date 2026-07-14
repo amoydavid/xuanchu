@@ -1564,6 +1564,13 @@ func TestMCPProjectTools(t *testing.T) {
 	if len(projects) != 1 {
 		t.Fatalf("project.list count = %d, want 1", len(projects))
 	}
+	listProject, ok := projects[0].(map[string]any)
+	if !ok {
+		t.Fatalf("project.list item = %#v, want object", projects[0])
+	}
+	if listProject["task_count_scope"] != "all_tasks" {
+		t.Fatalf("project list task_count_scope = %v, want all_tasks", listProject["task_count_scope"])
+	}
 
 	got := callTool(t, session, "project_get", ProjectGetInput{ProjectID: project.ID})
 	if got.IsError {
@@ -1573,6 +1580,9 @@ func TestMCPProjectTools(t *testing.T) {
 	projectData := nestedMap(t, data, "project")
 	if projectData["slug"] != "agent" {
 		t.Fatalf("project slug = %v, want agent", projectData["slug"])
+	}
+	if projectData["task_count_scope"] != "all_tasks" {
+		t.Fatalf("project task_count_scope = %v, want all_tasks", projectData["task_count_scope"])
 	}
 	configSummary := nestedMap(t, data, "config_summary")
 	if configSummary["agent.background"] != "Background" {
@@ -1593,6 +1603,15 @@ func TestMCPProjectTools(t *testing.T) {
 	}
 	if envelopeData(t, parseEnvelope(t, current))["project"] != nil {
 		t.Fatal("project.current without explicit scope should return null project")
+	}
+
+	current = callTool(t, session, "project_get_current", ProjectCurrentInput{ProjectID: project.ID})
+	if current.IsError {
+		t.Fatalf("project.current with scope error: %v", parseError(t, current))
+	}
+	currentProject := nestedMap(t, envelopeData(t, parseEnvelope(t, current)), "project")
+	if currentProject["task_count_scope"] != "all_tasks" {
+		t.Fatalf("current project task_count_scope = %v, want all_tasks", currentProject["task_count_scope"])
 	}
 }
 

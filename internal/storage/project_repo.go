@@ -268,7 +268,7 @@ func (r *ProjectRepository) TaskCounts(workspaceID string, projectIDs []string) 
 	return counts, nil
 }
 
-// ProjectTaskCounts 是单个项目的普通任务状态分项计数（不含 deleted 或 occurrence）。
+// ProjectTaskCounts 是单个项目的任务状态分项计数（不含 deleted）。
 type ProjectTaskCounts struct {
 	Total     int
 	Pending   int
@@ -276,7 +276,7 @@ type ProjectTaskCounts struct {
 }
 
 // TaskStatusCounts 按 project 分组返回任务状态分项计数（一条 SQL，GROUP BY project_id, status）。
-// deleted 状态和循环 occurrence 不计入。projectIDs 中的项目若无普通任务，对应值为零值。
+// 普通任务和已物化循环 occurrence 都计入；deleted 不计入。projectIDs 中的项目若无任务，对应值为零值。
 func (r *ProjectRepository) TaskStatusCounts(workspaceID string, projectIDs []string) (map[string]ProjectTaskCounts, error) {
 	out := make(map[string]ProjectTaskCounts, len(projectIDs))
 	if len(projectIDs) == 0 {
@@ -291,7 +291,6 @@ func (r *ProjectRepository) TaskStatusCounts(workspaceID string, projectIDs []st
 	if err := r.db.Model(&Task{}).
 		Select("project_id, status, COUNT(*) AS count").
 		Where("workspace_id = ? AND project_id IN ? AND status <> ?", workspaceID, projectIDs, domain.StatusDeleted).
-		Where("series_id IS NULL").
 		Group("project_id, status").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -345,9 +344,8 @@ type ProjectAssigneeWorkloadRow struct {
 // ProjectTaskSummary 是项目全量任务摘要。所有计数都基于项目全量任务，
 // 排除 completed/deleted 状态。Refs 查询只取最多 3 条短引用。
 //
-// 一次性进度和风险计数（Overdue/HighPriority/Wait/Unassigned）只统计普通任务
-// （series_id IS NULL），不被每日 occurrence 扭曲（spec §17.4）。成员待办
-// 则统计所有已物化的真实待办；循环运行情况单独通过 SeriesMetrics 返回。
+// 风险计数（Overdue/HighPriority/Wait/Unassigned）统计普通任务和已物化循环 occurrence，
+// 统一作为真实待办（spec §17.4 调整）；循环运行情况单独通过 SeriesMetrics 返回。
 type ProjectTaskSummary struct {
 	OverdueCount          int
 	OverdueRefs           []ProjectTaskRefSummary
@@ -382,18 +380,15 @@ func (r *ProjectRepository) TaskSummary(workspaceID, projectID string, now int64
 		Workload:             []ProjectAssigneeWorkloadRow{},
 	}
 
-	// 四类计数 + refs。count 查询返回项目全量普通任务（series_id IS NULL，
-	// 排除 occurrence），避免每日实例扭曲一次性进度（spec §17.4）。
-	// refs 查询只取最多 3 条。
+	// 四类计数 + refs。普通任务和已物化循环 occurrence 都计入（spec §17.4 调整）；
+	// 循环运行情况另由 SeriesMetrics 单独报告。refs 查询只取最多 3 条。
 	openStatusFilter := []string{domain.StatusCompleted, domain.StatusDeleted}
-	ordinaryOnly := "series_id IS NULL"
 
 	var overdueCount, highPriorityOpenCount, waitReadyCount, unassignedOpenCount int64
 
 	// overdue count
 	if err := r.db.Model(&Task{}).
 		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
-		Where(ordinaryOnly).
 		Where("status NOT IN ?", openStatusFilter).
 		Where("due IS NOT NULL AND due < ?", now).
 		Count(&overdueCount).Error; err != nil {
@@ -402,7 +397,6 @@ func (r *ProjectRepository) TaskSummary(workspaceID, projectID string, now int64
 	// high priority open count
 	if err := r.db.Model(&Task{}).
 		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
-		Where(ordinaryOnly).
 		Where("status NOT IN ?", openStatusFilter).
 		Where("priority = ?", "H").
 		Count(&highPriorityOpenCount).Error; err != nil {
@@ -411,7 +405,6 @@ func (r *ProjectRepository) TaskSummary(workspaceID, projectID string, now int64
 	// wait ready count
 	if err := r.db.Model(&Task{}).
 		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
-		Where(ordinaryOnly).
 		Where("status NOT IN ?", openStatusFilter).
 		Where("wait IS NOT NULL AND wait <= ?", now).
 		Count(&waitReadyCount).Error; err != nil {
@@ -420,7 +413,6 @@ func (r *ProjectRepository) TaskSummary(workspaceID, projectID string, now int64
 	// unassigned open count
 	if err := r.db.Model(&Task{}).
 		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
-		Where(ordinaryOnly).
 		Where("status NOT IN ?", openStatusFilter).
 		Where("NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)").
 		Count(&unassignedOpenCount).Error; err != nil {
@@ -512,12 +504,11 @@ func (r *ProjectRepository) projectSeriesMetrics(workspaceID, projectID string, 
 	return metrics, nil
 }
 
-// taskSummaryRefs 按类别返回最多 3 条普通任务短引用（series_id IS NULL，spec §17.4）。
+// taskSummaryRefs 按类别返回最多 3 条任务短引用（普通任务 + 已物化 occurrence，spec §17.4）。
 func (r *ProjectRepository) taskSummaryRefs(workspaceID, projectID string, now int64, kind string) ([]ProjectTaskRefSummary, error) {
 	base := r.db.Model(&Task{}).
 		Select("uuid, project, project_seq, title").
 		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
-		Where("series_id IS NULL").
 		Where("status NOT IN ?", []string{domain.StatusCompleted, domain.StatusDeleted})
 	switch kind {
 	case "overdue":
@@ -548,7 +539,8 @@ func (r *ProjectRepository) taskSummaryRefs(workspaceID, projectID string, now i
 
 // taskSummaryWorkload 按负责人聚合未关闭的真实任务行：普通任务和已物化的
 // occurrence 都计入 open/overdue/high，projected future occurrence 不在 tasks 表中。
-// 未分配行继续只统计普通任务，循环运行情况由 SeriesMetrics 单独表达（spec §17.4）。
+// 未分配行统计无 assignee 的任务（occurrence 物化时必有 assignee，故主要是普通任务），
+// 循环运行情况由 SeriesMetrics 单独表达（spec §17.4）。
 func (r *ProjectRepository) taskSummaryWorkload(workspaceID, projectID string, now int64) ([]ProjectAssigneeWorkloadRow, error) {
 	// assignee 负载：tasks join task_assignees left join users
 	type workloadRow struct {
@@ -589,7 +581,7 @@ func (r *ProjectRepository) taskSummaryWorkload(workspaceID, projectID string, n
 		})
 	}
 
-	// 未分配任务：NOT EXISTS assignee（只统计普通任务，spec §17.4）
+	// 未分配任务：NOT EXISTS assignee（occurrence 物化时必有 assignee，故主要是普通任务）
 	var unassigned struct {
 		OpenCount    int
 		Overdue      int
@@ -600,7 +592,6 @@ func (r *ProjectRepository) taskSummaryWorkload(workspaceID, projectID string, n
 			"SUM(CASE WHEN tasks.due IS NOT NULL AND tasks.due < ? THEN 1 ELSE 0 END) AS overdue, "+
 			"SUM(CASE WHEN tasks.priority = ? THEN 1 ELSE 0 END) AS high_priority", now, "H").
 		Where("tasks.workspace_id = ? AND tasks.project_id = ?", workspaceID, projectID).
-		Where("tasks.series_id IS NULL").
 		Where("tasks.status NOT IN ?", openFilter).
 		Where("NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_uuid = tasks.uuid)").
 		Scan(&unassigned).Error; err != nil {

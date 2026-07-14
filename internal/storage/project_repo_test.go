@@ -502,12 +502,23 @@ func TestProjectRepositoryTaskSummary(t *testing.T) {
 		t.Fatalf("TaskSummary() error = %v", err)
 	}
 
-	// overdue: overdue-h、duePast+pending；due-equal-now 不算；done/deleted 不算
-	if summary.OverdueCount != 1 {
-		t.Fatalf("OverdueCount = %d, want 1", summary.OverdueCount)
+	// overdue: overdue-h + recurring-open（物化 occurrence，due 过去、pending）；
+	// due-equal-now 不算；done/deleted 不算。
+	if summary.OverdueCount != 2 {
+		t.Fatalf("OverdueCount = %d, want 2", summary.OverdueCount)
 	}
-	if len(summary.OverdueRefs) != 1 || summary.OverdueRefs[0].TaskSlug != "ops-1" {
-		t.Fatalf("OverdueRefs = %#v, want [ops-1]", summary.OverdueRefs)
+	if len(summary.OverdueRefs) != 2 {
+		t.Fatalf("OverdueRefs = %#v, want 2 refs", summary.OverdueRefs)
+	}
+	// 排序按 entry ASC，相同 entry 时顺序不稳，故只断言 ops-1 在其中。
+	hasOverdueH := false
+	for _, ref := range summary.OverdueRefs {
+		if ref.TaskSlug == "ops-1" {
+			hasOverdueH = true
+		}
+	}
+	if !hasOverdueH {
+		t.Fatalf("OverdueRefs = %#v, want contains ops-1", summary.OverdueRefs)
 	}
 
 	// high priority open: overdue-h + high-only

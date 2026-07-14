@@ -136,6 +136,61 @@ describe("ProjectOverviewPage", () => {
     expect(screen.getByText("ops-7、ops-9")).toBeTruthy()
   })
 
+  it("shows normal progress and recurring runtime as separate execution signals", async () => {
+    vi.mocked(getProject).mockResolvedValue(
+      project({ task_count: 10, completed_count: 4, pending_count: 6 })
+    )
+    vi.mocked(getProjectTaskSummary).mockResolvedValue({
+      overdue_count: 0,
+      overdue_refs: [],
+      high_priority_open_count: 0,
+      high_priority_open_refs: [],
+      wait_ready_count: 0,
+      wait_ready_refs: [],
+      unassigned_open_count: 0,
+      unassigned_open_refs: [],
+      workload: [],
+      series_metrics: {
+        recurring_series_count: 2,
+        active_recurring_series_count: 1,
+        open_recurring_occurrence_count: 3,
+        overdue_recurring_occurrence_count: 1,
+      },
+    })
+    render(
+      <ProjectLayout
+        activeTab="overview"
+        projectSlug="ops"
+        workspaceSlug="local"
+      >
+        <ProjectOverviewPage projectSlug="ops" workspaceSlug="local" />
+      </ProjectLayout>,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("执行概览")
+    expect(screen.getByText("任务：4/10 已完成（40%）")).toBeTruthy()
+    expect(
+      screen.getByText("循环任务：1 个运行中系列，3 条未完成实例")
+    ).toBeTruthy()
+  })
+
+  it("hides execution overview when no normal or recurring work exists", async () => {
+    render(
+      <ProjectLayout
+        activeTab="overview"
+        projectSlug="ops"
+        workspaceSlug="local"
+      >
+        <ProjectOverviewPage projectSlug="ops" workspaceSlug="local" />
+      </ProjectLayout>,
+      { wrapper: Wrapper }
+    )
+
+    await screen.findByText("最新项目更新")
+    expect(screen.queryByText("执行概览")).toBeNull()
+  })
+
   it("does not request project task summary without task read", async () => {
     // 临时把 useMe 改成只有 project:read，没有 task:read
     vi.resetModules()

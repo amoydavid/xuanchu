@@ -634,7 +634,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `project_list`
 
-列出 effective workspace 内的项目。只读。
+列出 effective workspace 内的项目。只读。每个项目的 `task_count` 统计普通任务和已物化循环实例，并带有 `task_count_scope: "all_tasks"`；如需仅查循环实例，用 `task_query` 的 `task_type=occurrence`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -643,7 +643,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `project_get`
 
-读取单个项目及其 agent 配置。只读。返回 `config_summary`（包含 `agent.*` 配置项）。
+读取单个项目及其 agent 配置。只读。返回 `config_summary`（包含 `agent.*` 配置项）。项目对象中的 `task_count` 统计普通任务和已物化循环实例；同时返回 `task_count_scope: "all_tasks"` 明确该范围，如需仅查循环实例用 `task_query` 的 `task_type=occurrence`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -653,7 +653,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 #### `project_get_current`
 
-读取当前生效的 project scope。只读。
+读取当前生效的 project scope。只读。返回项目时，`task_count` 统计普通任务和已物化循环实例，并带有 `task_count_scope: "all_tasks"`。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|

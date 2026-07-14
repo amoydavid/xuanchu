@@ -2565,9 +2565,10 @@ func TestQueryTaskViewsExpandAppliesQueryFilter(t *testing.T) {
 	}
 }
 
-// TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics 验证 §17.4：
-// 一次性进度计数排除 materialized occurrence，series 运行情况单独报告。
-func TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics(t *testing.T) {
+// TestProjectTaskSummaryIncludesOccurrencesAndReportsSeriesMetrics 验证 §17.4：
+// 已物化的循环 occurrence 与普通任务一同计入风险计数和完成度，
+// series 运行情况仍单独通过 SeriesMetrics 报告。
+func TestProjectTaskSummaryIncludesOccurrencesAndReportsSeriesMetrics(t *testing.T) {
 	now := int64(1783785599)
 	svc, closeFn := newTestService(t, now)
 	defer closeFn()
@@ -2594,17 +2595,18 @@ func TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics(t *testing
 	if err != nil {
 		t.Fatalf("ProjectTaskSummary: %v", err)
 	}
-	// 普通任务计数：只有 1 条普通逾期任务。
-	if view.OverdueCount != 1 {
-		t.Fatalf("OverdueCount = %d, want 1（不应含 occurrence）", view.OverdueCount)
+	// 物化的 occurrence（due 在过去、pending）与普通逾期任务一同计入。
+	if view.OverdueCount != 2 {
+		t.Fatalf("OverdueCount = %d, want 2（普通逾期 + occurrence）", view.OverdueCount)
 	}
 	if view.HighPriorityOpenCount != 0 {
 		t.Fatalf("HighPriorityOpenCount = %d, want 0", view.HighPriorityOpenCount)
 	}
+	// 未分配只统计无 assignee 的任务；occurrence 已分配 local，故仍是 1 条。
 	if view.UnassignedOpenCount != 1 {
-		t.Fatalf("UnassignedOpenCount = %d, want 1（只统计普通任务）", view.UnassignedOpenCount)
+		t.Fatalf("UnassignedOpenCount = %d, want 1", view.UnassignedOpenCount)
 	}
-	// 成员待办是当前真实待办：已物化且未完成的循环实例按其负责人计入。
+	// 成员待办：已物化且未完成的循环实例按其负责人计入。
 	var localWorkload *ProjectSummaryWorkloadView
 	for i := range view.Workload {
 		if view.Workload[i].User != nil && view.Workload[i].User.ID == svc.runtime.ActorUserID {
@@ -2615,15 +2617,15 @@ func TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics(t *testing
 	if localWorkload == nil || localWorkload.OpenCount != 1 || localWorkload.OverdueCount != 1 {
 		t.Fatalf("local workload = %#v, want one overdue materialized occurrence", localWorkload)
 	}
-	// 项目普通进度不应被循环实例抬高；循环运行情况由 SeriesMetrics 单独承载。
+	// 项目完成度：普通任务 + 物化 occurrence 一起计入（2 条 pending）。
 	projectView, err := svc.ProjectInfo("ops")
 	if err != nil {
 		t.Fatalf("ProjectInfo: %v", err)
 	}
-	if projectView.TaskCount != 1 || projectView.PendingCount != 1 {
-		t.Fatalf("normal project counts = total:%d pending:%d, want total:1 pending:1", projectView.TaskCount, projectView.PendingCount)
+	if projectView.TaskCount != 2 || projectView.PendingCount != 2 {
+		t.Fatalf("project counts = total:%d pending:%d, want total:2 pending:2", projectView.TaskCount, projectView.PendingCount)
 	}
-	// series metrics。
+	// series metrics：循环运行情况仍独立报告。
 	if view.SeriesMetrics.RecurringSeriesCount != 1 {
 		t.Fatalf("RecurringSeriesCount = %d, want 1", view.SeriesMetrics.RecurringSeriesCount)
 	}
