@@ -130,6 +130,42 @@ describe("MarkdownEditor", () => {
     ).toBeTruthy()
   })
 
+  it("Tab 聚焦时进入编辑区而非工具栏按钮", async () => {
+    renderWithTooltip(
+      <>
+        <input data-testid="before" />
+        <MarkdownEditor ariaLabel="任务描述" onChange={() => undefined} value="" />
+      </>
+    )
+
+    // 从外部可聚焦元素 Tab 进入组件
+    await userEvent.click(screen.getByTestId("before"))
+    await userEvent.tab()
+
+    // 焦点应落在编辑区，而不是工具栏的第一个按钮（加粗）
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "任务描述" })
+    )
+    expect(document.activeElement).not.toBe(screen.getByLabelText("加粗"))
+  })
+
+  it("源码模式下 Tab 聚焦时进入 textarea 而非工具栏按钮", async () => {
+    renderWithTooltip(
+      <>
+        <input data-testid="before" />
+        <MarkdownEditor ariaLabel="任务描述" onChange={() => undefined} value="" />
+      </>
+    )
+
+    await userEvent.click(screen.getByLabelText("切换到源码"))
+    await userEvent.click(screen.getByTestId("before"))
+    await userEvent.tab()
+
+    expect(document.activeElement).toBe(
+      screen.getByLabelText("源码编辑器")
+    )
+  })
+
   it("表格浮动菜单按选区状态切换按钮", async () => {
     renderWithTooltip(
       <MarkdownEditor ariaLabel="任务描述" onChange={() => undefined} value="" />
