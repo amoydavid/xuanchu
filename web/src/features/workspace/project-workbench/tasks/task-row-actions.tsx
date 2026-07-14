@@ -196,17 +196,7 @@ export function TaskRowActions({
                   projectSlug,
                   seriesRef: recurrenceInfo.series_id,
                 }}
-                search={
-                  myTasksReturnSearch === undefined
-                    ? undefined
-                    : {
-                        panel_return_scope: "project",
-                        panel_return_search: myTasksReturnSearch,
-                        panel_return_source: "my-tasks",
-                        panel_return_task: taskRef,
-                      }
-                }
-                to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
+                to="/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef"
               >
                 {t("taskSeries.detail.viewSeries")}
               </Link>

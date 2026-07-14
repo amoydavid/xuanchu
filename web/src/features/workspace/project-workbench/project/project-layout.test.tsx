@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { useEffect, type ReactNode } from "react"
+import { type ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { i18n } from "@/i18n"
@@ -15,7 +15,7 @@ import {
   getProjectTimeline,
   type ProjectWorkbenchProject,
 } from "../api/project-api"
-import { ProjectLayout, useProjectLayout } from "./project-layout"
+import { ProjectLayout } from "./project-layout"
 
 vi.mock("@/features/workspace/session/useMe", () => ({
   useMe: () => ({
@@ -221,91 +221,4 @@ describe("ProjectLayout", () => {
     )
     expect(automationLink.getAttribute("aria-current")).toBe("page")
   })
-
-  it("renders a custom context panel as a Sheet on narrow screens", async () => {
-    const onClose = vi.fn()
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: () => ({
-        matches: true,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      }),
-    })
-
-    render(
-      <ProjectLayout activeTab="tasks" projectSlug="ops" workspaceSlug="local">
-        <ContextPanelRegistrar onClose={onClose} />
-      </ProjectLayout>,
-      { wrapper: Wrapper }
-    )
-
-    const dialog = await screen.findByRole("dialog", { name: "循环任务" })
-    expect(dialog.className).toContain("w-screen")
-    expect(dialog.className).toContain("h-dvh")
-    expect(dialog.getAttribute("aria-describedby")).toBeTruthy()
-    expect(
-      dialog.querySelector('[data-slot="sheet-description"]')?.textContent
-    ).toBe(i18n.t("taskSeries.description"))
-    await userEvent.click(screen.getByRole("button", { name: "关闭循环任务" }))
-    expect(onClose).toHaveBeenCalledOnce()
-  })
-
-  it("restores a collapsed rail after the custom panel content changes", async () => {
-    const user = userEvent.setup()
-    render(
-      <ProjectLayout activeTab="tasks" projectSlug="ops" workspaceSlug="local">
-        <ContextPanelLifecycle />
-      </ProjectLayout>,
-      { wrapper: Wrapper }
-    )
-
-    await screen.findByText("项目信息")
-    await user.click(screen.getByRole("button", { name: "收起右栏" }))
-    await user.click(screen.getByRole("button", { name: "打开循环面板" }))
-    expect(screen.getByText("循环面板 1")).toBeTruthy()
-
-    await user.click(screen.getByRole("button", { name: "更新循环面板" }))
-    expect(screen.getByText("循环面板 2")).toBeTruthy()
-    await user.click(screen.getByRole("button", { name: "关闭测试面板" }))
-
-    expect(screen.queryByText("项目信息")).toBeNull()
-    expect(screen.getByRole("button", { name: "展开右栏" })).toBeTruthy()
-  })
 })
-
-function ContextPanelRegistrar({ onClose }: { onClose: () => void }) {
-  const { setContextPanel } = useProjectLayout()
-  useEffect(() => {
-    setContextPanel({ node: <div>循环面板内容</div>, onClose })
-    return () => setContextPanel(null)
-    // setContextPanel 由 layout 提供；只在测试组件挂载/卸载时注册。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose])
-  return <div>任务主体</div>
-}
-
-function ContextPanelLifecycle() {
-  const { setContextPanel } = useProjectLayout()
-
-  const openPanel = (revision: number) => {
-    setContextPanel({
-      node: <div>循环面板 {revision}</div>,
-      onClose: () => setContextPanel(null),
-    })
-  }
-
-  return (
-    <div>
-      <button onClick={() => openPanel(1)} type="button">
-        打开循环面板
-      </button>
-      <button onClick={() => openPanel(2)} type="button">
-        更新循环面板
-      </button>
-      <button onClick={() => setContextPanel(null)} type="button">
-        关闭测试面板
-      </button>
-    </div>
-  )
-}

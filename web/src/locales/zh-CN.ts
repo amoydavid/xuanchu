@@ -478,6 +478,7 @@ export const zhCN = {
     tabs: "项目子页面",
     overview: "概览",
     tasks: "任务",
+    recurring: "循环任务",
     activity: "活动",
     automations: "自动化",
     railExpand: "展开右栏",

@@ -22,14 +22,13 @@ import {
 import type { ProjectTask } from "../api/task-api"
 import { DestructiveConfirmDialog } from "../shared/destructive-confirm-dialog"
 import { useTaskActionMutation } from "../hooks/use-task-mutations"
-import { taskDisplayRef, taskRouteRef } from "../tasks/task-reference"
+import { taskDisplayRef } from "../tasks/task-reference"
 
 type TaskActionBarProps = {
   // 权限层面的可写（不含任务状态判断）。
   permissionCanWrite: boolean
   projectSlug: string
   myTasksReturnSearch?: string
-  returnScope: "global" | "project"
   task: ProjectTask
   taskRef: string
   workspaceSlug: string
@@ -39,7 +38,6 @@ export function TaskActionBar({
   permissionCanWrite,
   projectSlug,
   myTasksReturnSearch,
-  returnScope,
   task,
   taskRef,
   workspaceSlug,
@@ -164,17 +162,7 @@ export function TaskActionBar({
                     projectSlug,
                     seriesRef: occurrence.series_id,
                   }}
-                  search={{
-                    ...(myTasksReturnSearch === undefined
-                      ? {}
-                      : {
-                          panel_return_search: myTasksReturnSearch,
-                          panel_return_source: "my-tasks",
-                        }),
-                    panel_return_scope: returnScope,
-                    panel_return_task: taskRouteRef(task),
-                  }}
-                  to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
+                  to="/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef"
                 >
                   {t("taskSeries.detail.viewSeries")}
                 </Link>

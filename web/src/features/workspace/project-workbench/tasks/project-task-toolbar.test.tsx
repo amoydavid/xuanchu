@@ -61,53 +61,6 @@ describe("ProjectTaskToolbar", () => {
     expect(screen.queryByRole("option", { name: "重复" })).toBeNull()
   })
 
-  it("localizes recurring-task entry points", async () => {
-    await i18n.changeLanguage("en-US")
-    const onCreateRecurringTask = vi.fn()
-    render(
-      <ProjectTaskToolbar
-        canCreateTask
-        filter={{}}
-        onCreateRecurringTask={onCreateRecurringTask}
-        onCreateTask={vi.fn()}
-        onOpenRecurringTasks={vi.fn()}
-        recurringTaskCount={3}
-        toParams={{ projectSlug: "adsops", workspaceSlug: "acme" }}
-      />
-    )
-
-    expect(
-      screen.getByRole("button", { name: "Recurring tasks 3" })
-    ).toBeTruthy()
-    await userEvent.click(
-      screen.getByRole("button", { name: "Task creation options" })
-    )
-    expect(
-      screen.getByRole("menuitem", { name: "Create one-time task" })
-    ).toBeTruthy()
-    await userEvent.click(
-      screen.getByRole("menuitem", { name: "Create recurring task" })
-    )
-    expect(onCreateRecurringTask).toHaveBeenCalledOnce()
-    expect(screen.queryByText("循环任务")).toBeNull()
-  })
-
-  it("hides the recurring-task count when there are no active series", () => {
-    render(
-      <ProjectTaskToolbar
-        canCreateTask
-        filter={{}}
-        onCreateTask={vi.fn()}
-        onOpenRecurringTasks={vi.fn()}
-        recurringTaskCount={0}
-        toParams={{ projectSlug: "adsops", workspaceSlug: "acme" }}
-      />
-    )
-
-    expect(screen.getByRole("button", { name: "循环任务" })).toBeTruthy()
-    expect(screen.queryByText("循环任务 0")).toBeNull()
-  })
-
   it("keeps primary filter controls on one visual rhythm", () => {
     render(
       <ProjectTaskToolbar

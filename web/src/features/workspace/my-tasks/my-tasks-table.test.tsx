@@ -286,7 +286,7 @@ describe("MyTasksTable", () => {
     expect(screen.queryByText(occurrenceRef)).toBeNull()
   })
 
-  it("shows occurrence actions and preserves the My Tasks source in the Series link", async () => {
+  it("shows occurrence actions and links the Series entry to the recurring tab", async () => {
     renderTable(
       <MyTasksTable
         canWrite
@@ -314,12 +314,8 @@ describe("MyTasksTable", () => {
 
     await userEvent.click(screen.getAllByRole("button", { name: /更多操作/ })[0])
     const seriesLink = screen.getByRole("menuitem", { name: "查看循环任务" })
-    expect(JSON.parse(seriesLink.getAttribute("data-search") ?? "{}")).toEqual({
-      panel_return_scope: "project",
-      panel_return_search:
-        "tab=incomplete&project=ops&task_type=occurrence&sort=due",
-      panel_return_source: "my-tasks",
-      panel_return_task: "ops-1",
-    })
+    // series 链接指向独立的循环任务 tab，不再携带 panel_return_* 返回来源参数。
+    expect(seriesLink.getAttribute("href")).toContain("/series/")
+    expect(seriesLink.getAttribute("data-search") ?? "").toBe("")
   })
 })

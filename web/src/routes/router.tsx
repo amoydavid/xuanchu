@@ -34,9 +34,19 @@ const ProjectTasksRoute = lazy(() =>
     default: module.ProjectTasksRoute,
   }))
 )
-const ProjectTaskSeriesPanelRoute = lazy(() =>
-  import("@/routes/workspace/ProjectTaskSeriesPanelRoute").then((module) => ({
-    default: module.ProjectTaskSeriesPanelRoute,
+const ProjectSeriesRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSeriesRoute").then((module) => ({
+    default: module.ProjectSeriesRoute,
+  }))
+)
+const ProjectSeriesListRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSeriesListRoute").then((module) => ({
+    default: module.ProjectSeriesListRoute,
+  }))
+)
+const ProjectSeriesDetailRoute = lazy(() =>
+  import("@/routes/workspace/ProjectSeriesDetailRoute").then((module) => ({
+    default: module.ProjectSeriesDetailRoute,
   }))
 )
 const ProjectActivityRoute = lazy(() =>
@@ -320,10 +330,6 @@ const projectTasksRoute = createRoute({
       "query",
       "sort",
       "task_type",
-      "panel_return_scope",
-      "panel_return_search",
-      "panel_return_source",
-      "panel_return_task",
     ]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") {
@@ -334,19 +340,25 @@ const projectTasksRoute = createRoute({
   },
 })
 
-// 循环任务管理面板子路由（spec §15.12）：
-// series 和 series/$seriesRef 是 tasks 的静态子路由，只渲染面板，不重挂载 ProjectTasksPage。
-// 静态 series 必须优先于动态 $taskRef 匹配。
-const projectTaskSeriesListRoute = createRoute({
-  getParentRoute: () => projectTasksRoute,
-  path: "series",
-  component: lazyRoute(ProjectTaskSeriesPanelRoute),
+// 循环任务独立一级 tab（spec §15.12）：
+// projectSeriesRoute 是持久父路由（ProjectLayout + Outlet），
+// list/detail 作为子路由通过 seriesRef 切换，不重挂载 layout。
+const projectSeriesRoute = createRoute({
+  getParentRoute: () => workspaceRootRoute,
+  path: "/workspaces/$workspaceSlug/projects/$projectSlug/series",
+  component: lazyRoute(ProjectSeriesRoute),
 })
 
-const projectTaskSeriesDetailRoute = createRoute({
-  getParentRoute: () => projectTasksRoute,
-  path: "series/$seriesRef",
-  component: lazyRoute(ProjectTaskSeriesPanelRoute),
+const projectSeriesListIndexRoute = createRoute({
+  getParentRoute: () => projectSeriesRoute,
+  path: "/",
+  component: lazyRoute(ProjectSeriesListRoute),
+})
+
+const projectSeriesDetailSubRoute = createRoute({
+  getParentRoute: () => projectSeriesRoute,
+  path: "$seriesRef",
+  component: lazyRoute(ProjectSeriesDetailRoute),
 })
 
 const projectActivityRoute = createRoute({
@@ -457,7 +469,11 @@ const routeTree = rootRoute.addChildren([
     createResourceRoute("audit", "/audit"),
     settingsRoute,
     projectWorkbenchRoute,
-    projectTasksRoute.addChildren([projectTaskSeriesListRoute, projectTaskSeriesDetailRoute]),
+    projectTasksRoute,
+    projectSeriesRoute.addChildren([
+      projectSeriesListIndexRoute,
+      projectSeriesDetailSubRoute,
+    ]),
     projectActivityRoute,
     projectAutomationsRoute,
     projectTaskDetailRoute,

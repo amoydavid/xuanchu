@@ -1,25 +1,10 @@
-import {
-  createContext,
-  useContext,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react"
+import { createContext, useContext, useState, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { PanelRightCloseIcon, PanelRightOpenIcon, XIcon } from "lucide-react"
+import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { listProjectEffectiveConfig } from "@/features/workspace/config/config-definition-api"
 import { useMe } from "@/features/workspace/session/useMe"
 import { ApiError } from "@/lib/api"
@@ -59,30 +44,9 @@ export type ProjectLayoutContextValue = {
   // setTabActions 允许子页面在 tabs 行右侧（收起/展开按钮左边）注册额外动作节点。
   // 例如任务页用它注册「导入任务」图标按钮。传 null 清空。
   setTabActions: (node: ReactNode | null) => void
-  // setContextPanel 允许子页面（如循环任务管理面板）临时替换右栏项目上下文。
-  // 传 null 恢复默认 ProjectContextRail。不修改用户保存的 railOpen 状态（spec §15.14）。
-  setContextPanel: (
-    panel: { node: ReactNode; onClose: () => void } | null
-  ) => void
 }
 
 const LayoutContext = createContext<ProjectLayoutContextValue | null>(null)
-
-const NARROW_PROJECT_LAYOUT = "(max-width: 1023px)"
-
-function subscribeNarrowProjectLayout(onStoreChange: () => void) {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {}
-  const media = window.matchMedia(NARROW_PROJECT_LAYOUT)
-  media.addEventListener("change", onStoreChange)
-  return () => media.removeEventListener("change", onStoreChange)
-}
-
-function getNarrowProjectLayoutSnapshot() {
-  return (
-    typeof window !== "undefined" &&
-    Boolean(window.matchMedia?.(NARROW_PROJECT_LAYOUT).matches)
-  )
-}
 
 export function useProjectLayout(): ProjectLayoutContextValue {
   const ctx = useContext(LayoutContext)
@@ -109,20 +73,8 @@ function ProjectLayoutContent({
   children,
 }: ProjectLayoutProps) {
   const { t } = useTranslation()
-  const narrowLayout = useSyncExternalStore(
-    subscribeNarrowProjectLayout,
-    getNarrowProjectLayoutSnapshot,
-    () => false
-  )
   const feedback = useEditFeedback()
   const [railOpen, setRailOpen] = useState(true)
-  // 循环任务管理面板等子页面可临时替换右栏（spec §15.14）。
-  // 不修改用户保存的 railOpen 状态；关闭后恢复。
-  const [contextPanel, setContextPanelState] = useState<{
-    node: ReactNode
-    onClose: () => void
-  } | null>(null)
-  const savedRailOpen = useRef(true)
   const [tabActions, setTabActions] = useState<ReactNode | null>(null)
   const me = useMe()
   const project = useProjectQuery(workspaceSlug, projectSlug)
@@ -194,23 +146,6 @@ function ProjectLayoutContent({
   }
 
   const closed = isClosedProjectStatus(project.data.status)
-  // setContextPanel：保存当前 railOpen，强制展开右栏；关闭时恢复。
-  const setContextPanel = (
-    panel: { node: ReactNode; onClose: () => void } | null
-  ) => {
-    if (panel) {
-      // list/detail 等路由切换只是在更新同一个面板，不能覆盖打开前的右栏状态。
-      if (!contextPanel) {
-        savedRailOpen.current = railOpen
-      }
-      setRailOpen(true)
-      setContextPanelState(panel)
-    } else {
-      setContextPanelState(null)
-      // 恢复用户打开前的右栏状态（spec §15.14）。
-      setRailOpen(savedRailOpen.current)
-    }
-  }
   const layoutValue: ProjectLayoutContextValue = {
     workspaceSlug,
     projectSlug,
@@ -220,7 +155,6 @@ function ProjectLayoutContent({
     canWriteTasks,
     closed,
     setTabActions,
-    setContextPanel,
   }
 
   return (
@@ -249,33 +183,21 @@ function ProjectLayoutContent({
             {tabActions}
             <Button
               aria-label={
-                contextPanel
-                  ? t("taskSeries.actions.close")
-                  : railOpen
-                    ? t("projectSubpages.railCollapse")
-                    : t("projectSubpages.railExpand")
+                railOpen
+                  ? t("projectSubpages.railCollapse")
+                  : t("projectSubpages.railExpand")
               }
-              onClick={() => {
-                if (contextPanel) {
-                  contextPanel.onClose()
-                  return
-                }
-                setRailOpen((value) => !value)
-              }}
+              onClick={() => setRailOpen((value) => !value)}
               size="icon"
               title={
-                contextPanel
-                  ? t("taskSeries.actions.close")
-                  : railOpen
-                    ? t("projectSubpages.railCollapse")
-                    : t("projectSubpages.railExpand")
+                railOpen
+                  ? t("projectSubpages.railCollapse")
+                  : t("projectSubpages.railExpand")
               }
               type="button"
               variant="ghost"
             >
-              {contextPanel ? (
-                <XIcon className="h-4 w-4" />
-              ) : railOpen ? (
+              {railOpen ? (
                 <PanelRightCloseIcon className="h-4 w-4" />
               ) : (
                 <PanelRightOpenIcon className="h-4 w-4" />
@@ -286,58 +208,15 @@ function ProjectLayoutContent({
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="min-w-0 flex-1">{children}</div>
           {railOpen ? (
-            contextPanel ? (
-              narrowLayout ? (
-                <Sheet
-                  open
-                  onOpenChange={(next) => !next && contextPanel.onClose()}
-                >
-                  <SheetContent
-                    className="inset-0 h-dvh w-screen max-w-none border-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:w-[min(92vw,24rem)] sm:border-l"
-                    side="right"
-                  >
-                    <SheetHeader className="justify-between">
-                      <div>
-                        <SheetTitle>{t("taskSeries.title")}</SheetTitle>
-                        <SheetDescription className="sr-only">
-                          {t("taskSeries.description")}
-                        </SheetDescription>
-                      </div>
-                      <SheetClose asChild>
-                        <Button
-                          aria-label={t("taskSeries.actions.close")}
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <XIcon />
-                        </Button>
-                      </SheetClose>
-                    </SheetHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                      {contextPanel.node}
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              ) : (
-                <div
-                  className="task-series-panel-slot w-full lg:w-80 lg:shrink-0"
-                  data-testid="context-panel-slot"
-                >
-                  {contextPanel.node}
-                </div>
-              )
-            ) : (
-              <ProjectContextRail
-                configError={homeConfig.isError}
-                configRows={homeConfig.data}
-                project={project.data}
-                summary={summary.data}
-                summaryError={summary.isError}
-                timeline={timeline.data}
-                timelineError={timeline.isError}
-              />
-            )
+            <ProjectContextRail
+              configError={homeConfig.isError}
+              configRows={homeConfig.data}
+              project={project.data}
+              summary={summary.data}
+              summaryError={summary.isError}
+              timeline={timeline.data}
+              timelineError={timeline.isError}
+            />
           ) : null}
         </div>
       </div>

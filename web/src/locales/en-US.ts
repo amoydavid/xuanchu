@@ -490,6 +490,7 @@ export const enUS = {
     tabs: "Project subpages",
     overview: "Overview",
     tasks: "Tasks",
+    recurring: "Recurring tasks",
     activity: "Activity",
     automations: "Automations",
     railExpand: "Expand rail",

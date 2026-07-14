@@ -57,10 +57,8 @@ async function runDesktopExecutionSmoke(browser) {
     await expectText(page, "OPS-7")
     await expectText(page, "计划实例")
     await expectText(page, "循环 · 每天")
-    const recurringTabs = page.getByRole("tab", { name: /^循环任务/ })
-    if ((await recurringTabs.count()) !== 0) {
-      throw new Error("project tabs must not contain an independent recurring-task tab")
-    }
+    const recurringTab = page.getByRole("link", { name: "循环任务" }).first()
+    await recurringTab.waitFor()
     await page.getByRole("combobox", { name: "任务类型" }).click()
     await page.getByRole("option", { name: "循环任务" }).click()
     await page.waitForURL(/task_type=occurrence/)
@@ -104,12 +102,10 @@ async function runDesktopExecutionSmoke(browser) {
     await screenshot(page, "desktop-occurrence-detail")
 
     await page.getByRole("link", { name: /查看循环任务/ }).first().click()
-    await page.waitForURL(new RegExp(`/tasks/series/${seriesID}`))
-    await page.getByTestId("task-series-panel").waitFor()
-    await expectText(page, "循环任务")
+    await page.waitForURL(new RegExp(`/series/${seriesID}`))
+    await page.getByTestId("task-series-page").waitFor()
     await expectText(page, "每日检查投放消耗")
     await expectText(page, "未完成实例")
-    await expectText(page, "一次性发布检查")
 
     await page.getByTestId("series-edit-btn").click()
     const editDialog = page.getByRole("dialog", { name: "编辑循环任务" })
@@ -131,8 +127,8 @@ async function runDesktopExecutionSmoke(browser) {
     await page.waitForURL(/\/tasks\/ops-7(?:\?|$)/)
     await expectText(page, "不会影响其它日期")
     await page.goForward()
-    await page.waitForURL(new RegExp(`/tasks/series/${seriesID}`))
-    await page.getByTestId("task-series-panel").waitFor()
+    await page.waitForURL(new RegExp(`/series/${seriesID}`))
+    await page.getByTestId("task-series-page").waitFor()
 
     const projectedRef = state.projected.id
     await page.goto(
@@ -183,9 +179,10 @@ async function runMyTasksReturnSmoke(browser) {
     await page.getByRole("link", { name: "返回我的任务" }).waitFor()
 
     await page.getByRole("link", { name: /查看循环任务/ }).first().click()
-    await page.waitForURL(new RegExp(`/tasks/series/${seriesID}`))
-    await page.getByTestId("task-series-panel").waitFor()
-    await page.getByRole("button", { name: "关闭循环任务" }).first().click()
+    await page.waitForURL(new RegExp(`/series/${seriesID}`))
+    await page.getByTestId("task-series-page").waitFor()
+    // series 现为独立 tab，返回任务详情通过浏览器后退。
+    await page.goBack()
     await page.waitForURL(/\/tasks\/ops-7\?from=my-tasks/)
     await page.getByRole("link", { name: "返回我的任务" }).click()
     await page.waitForURL(/\/my-tasks\?/)
@@ -222,18 +219,12 @@ async function runMobileSmoke(browser) {
   try {
     await page.goto(`${baseURL}/workspaces/acme/projects/ops/tasks`)
     await expectText(page, "OPS-7")
-    await page.getByRole("button", { name: "循环任务 1" }).click()
-    const sheet = page.getByRole("dialog", { name: "循环任务" })
-    await sheet.waitFor()
-    await page.waitForTimeout(500)
-    const sheetBox = await sheet.boundingBox()
-    if (!sheetBox || sheetBox.x > 1 || sheetBox.width < 373) {
-      throw new Error(`mobile task-series sheet is not full screen: ${JSON.stringify(sheetBox)}`)
-    }
-    await expectText(sheet, "每日检查投放消耗")
-    await assertNoHorizontalOverflow(page, "mobile task-series sheet")
-    await screenshot(page, "mobile-task-series-sheet")
-    await sheet.getByRole("button", { name: "关闭循环任务" }).click()
+    // 循环任务现为独立 tab，移动端直接进入 series 列表页（全宽主区，无 Sheet）。
+    await page.goto(`${baseURL}/workspaces/acme/projects/ops/series`)
+    await page.getByTestId("task-series-page").waitFor()
+    await expectText(page, "每日检查投放消耗")
+    await assertNoHorizontalOverflow(page, "mobile task-series list")
+    await screenshot(page, "mobile-task-series-list")
 
     await page.goto(
       `${baseURL}/workspaces/acme/projects/ops/tasks/${encodeURIComponent(state.projected.id)}`

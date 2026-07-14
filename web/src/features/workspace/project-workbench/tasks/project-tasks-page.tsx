@@ -18,7 +18,6 @@ import { useProjectLayout } from "../project/project-layout"
 import { TaskCreateDialog } from "./task-create-dialog"
 import { ProjectTaskToolbar } from "./project-task-toolbar"
 import { TaskTable } from "./task-table"
-import { listTaskSeries } from "../api/task-series-api"
 
 type ProjectTasksPageProps = {
   projectSlug: string
@@ -102,15 +101,6 @@ export function ProjectTasksPage({
     queryKey: ["workspace-members", workspaceSlug],
     queryFn: () => getWorkspaceMembers(workspaceSlug),
   })
-  const series = useQuery({
-    queryKey: ["task-series-count", workspaceSlug, projectSlug],
-    queryFn: () =>
-      listTaskSeries(workspaceSlug, {
-        project: projectSlug,
-        status: "active",
-        limit: 1,
-      }),
-  })
 
   const taskRows = useMemo(() => tasks.data ?? [], [tasks.data])
   const assigneeOptions = useMemo(
@@ -183,20 +173,6 @@ export function ProjectTasksPage({
           setCreateMode("recurring")
           setCreateOpen(true)
         }}
-        onOpenRecurringTasks={() => {
-          void navigate({
-            to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series",
-            params: { workspaceSlug, projectSlug },
-            search: (previous) =>
-              Object.fromEntries(
-                Object.entries(previous).filter(
-                  (entry): entry is [string, string] =>
-                    typeof entry[1] === "string"
-                )
-              ),
-          })
-        }}
-        recurringTaskCount={series.data?.total ?? 0}
         toParams={{ workspaceSlug, projectSlug }}
       />
       <TaskTable
@@ -221,15 +197,8 @@ export function ProjectTasksPage({
         onOpenChange={setCreateOpen}
         onRecurringCreated={(created) => {
           void navigate({
-            to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef",
+            to: "/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef",
             params: { workspaceSlug, projectSlug, seriesRef: created.id },
-            search: (previous) =>
-              Object.fromEntries(
-                Object.entries(previous).filter(
-                  (entry): entry is [string, string] =>
-                    typeof entry[1] === "string"
-                )
-              ),
           })
         }}
         open={createOpen}

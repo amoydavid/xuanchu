@@ -276,8 +276,6 @@ function TaskDetailPageContent({
             </div>
             <RecurrenceContextAlert
               projectSlug={effectiveProjectSlug}
-              myTasksReturnSearch={myTasksReturnSearch}
-              returnScope={projectSlug ? "project" : "global"}
               task={taskData}
               workspaceSlug={workspaceSlug}
             />
@@ -296,7 +294,6 @@ function TaskDetailPageContent({
               permissionCanWrite={pageCanWrite}
               projectSlug={effectiveProjectSlug ?? ""}
               myTasksReturnSearch={myTasksReturnSearch}
-              returnScope={projectSlug ? "project" : "global"}
               task={taskData}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}

@@ -45,8 +45,6 @@ type ProjectTaskToolbarProps = {
   filter: TaskFilter
   onCreateTask: () => void
   onCreateRecurringTask?: () => void
-  onOpenRecurringTasks?: () => void
-  recurringTaskCount?: number
   toParams: { workspaceSlug: string; projectSlug: string }
   // navigateTo 决定筛选 search 写入到哪个项目子页面路由。
   // Tasks 子页面传 /workspaces/$workspaceSlug/projects/$projectSlug/tasks；
@@ -100,8 +98,6 @@ export function ProjectTaskToolbar({
   filter,
   onCreateTask,
   onCreateRecurringTask,
-  onOpenRecurringTasks,
-  recurringTaskCount = 0,
   toParams,
   navigateTo = "/workspaces/$workspaceSlug/projects/$projectSlug",
 }: ProjectTaskToolbarProps) {
@@ -307,18 +303,6 @@ export function ProjectTaskToolbar({
             />
           </PopoverContent>
         </Popover>
-        {onOpenRecurringTasks ? (
-          <Button
-            onClick={onOpenRecurringTasks}
-            size="lg"
-            type="button"
-            variant="outline"
-          >
-            {recurringTaskCount > 0
-              ? i18n.t("taskSeries.count", { count: recurringTaskCount })
-              : i18n.t("taskSeries.title")}
-          </Button>
-        ) : null}
         {canCreateTask ? (
           <div className="col-span-2 flex min-w-0 sm:ml-auto">
             <Button

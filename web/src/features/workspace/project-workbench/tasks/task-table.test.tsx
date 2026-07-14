@@ -319,7 +319,7 @@ describe("TaskTable", () => {
     )
     expect(screen.getByRole("menuitem", { name: "跳过本次" })).toBeTruthy()
     const seriesLink = screen.getByRole("menuitem", { name: "查看循环任务" })
-    expect(seriesLink.getAttribute("href")).toContain("/tasks/series/series-1")
+    expect(seriesLink.getAttribute("href")).toContain("/series/series-1")
 
     await userEvent.click(screen.getByRole("menuitem", { name: "跳过本次" }))
     expect(screen.getByText("跳过 2026年7月19日 这一次？")).toBeTruthy()

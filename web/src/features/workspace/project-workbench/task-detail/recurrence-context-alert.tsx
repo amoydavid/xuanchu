@@ -8,18 +8,13 @@ import {
   formatTaskSeriesTimestamp,
   recurrenceRuleLabel,
 } from "../task-series/recurrence-preview"
-import { taskRouteRef } from "../tasks/task-reference"
 
 export function RecurrenceContextAlert({
   projectSlug,
-  myTasksReturnSearch,
-  returnScope,
   task,
   workspaceSlug,
 }: {
   projectSlug?: string
-  myTasksReturnSearch?: string
-  returnScope: "global" | "project"
   task: ProjectTask
   workspaceSlug: string
 }) {
@@ -75,17 +70,7 @@ export function RecurrenceContextAlert({
               projectSlug,
               seriesRef: recurrence.series_id,
             }}
-            search={{
-              ...(myTasksReturnSearch === undefined
-                ? {}
-                : {
-                    panel_return_search: myTasksReturnSearch,
-                    panel_return_source: "my-tasks",
-                  }),
-              panel_return_scope: returnScope,
-              panel_return_task: taskRouteRef(task),
-            }}
-            to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
+            to="/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef"
           >
             {t("taskSeries.detail.viewSeries")} →
           </Link>
