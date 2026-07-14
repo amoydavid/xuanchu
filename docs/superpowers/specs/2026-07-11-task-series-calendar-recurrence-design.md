@@ -343,7 +343,7 @@ title description priority due assignees tags udas wait scheduled depends
 
 - projected occurrence 的集合为空。
 - 通过普通 task modify 修改 occurrence 时，对应字段加入集合；clear 也算显式覆盖。
-- series shared-field modify 只同步未完成且该字段未被 override 的已物化 occurrence。
+- series shared-field modify 只同步未完成且该字段未被 override 的已物化 occurrence；`assignees` 例外：系列负责人只作为 projected/后续物化实例的默认值，绝不回写任何已物化 occurrence。
 - completed/deleted occurrence 永不随 series 修改。
 - `due` 的 override 永远不改变 `recurrence_at`。
 - series rule/until 只影响尚未物化的未来槽位，不写入 override。
@@ -800,7 +800,8 @@ Series modify 支持两组字段：
 
 | 字段 | 影响范围 |
 |---|---|
-| title/description/priority/assignees/tags/UDAs | 更新 series；同步到未完成且对应字段未被单次 override 的 materialized occurrence；projected occurrence 自动继承新值 |
+| title/description/priority/tags/UDAs | 更新 series；同步到未完成且对应字段未被单次 override 的 materialized occurrence；projected occurrence 自动继承新值 |
+| assignees | 仅更新 series 和 projected/后续物化实例的默认负责人；任何已物化 occurrence 的负责人保持不变，只能通过“仅本次”编辑 |
 | recurrence_rule/until | 只改变尚未生成的未来槽位；已生成 occurrence 不改 |
 
 `first_due` 创建后不可修改。实例 `due` 可单独修改，但不会改变 `recurrence_at` 或未来节奏。
@@ -1358,7 +1359,7 @@ task_type: all|normal|occurrence
 +--------------------------------------------------------------------------------+
 ```
 
-编辑系列对共享字段显示明确提示：“将更新未来实例；未完成实例中未被单独修改的字段也会更新；已完成、已跳过和已单独覆盖的字段不会改变。”
+编辑系列对共享字段显示明确提示：“标题、描述、优先级、标签和 UDA 会更新未来实例；未完成实例中未被单独修改的这些字段也会更新；负责人只影响未来实例，不会改动任何已物化实例；已完成、已跳过和已单独覆盖的字段不会改变。”
 
 详情仍位于任务页管理面板中。点击 occurrence 打开任务详情时关闭或暂时隐藏循环任务面板；浏览器返回恢复 Series 详情。历史“查看全部”在面板内分页，不跳转到新的项目 Tab。
 
@@ -1972,12 +1973,15 @@ Web 日期窗口
   - `open_recurring_occurrence_count`
   - `overdue_recurring_occurrence_count`
 - Web 项目摘要显示“普通任务进度”和“循环任务运行情况”两个口径。
+- 「成员待办」是人员当前工作负载，不是普通任务进度：按负责人汇总所有已物化、未关闭的任务，即普通任务加 materialized occurrence；不计 projected 的未来实例。循环实例在负责人、逾期和高优计数中与普通任务等权计一次。
+- 「未分配任务」及普通任务风险计数仍只统计普通任务；循环任务运行情况使用独立指标，不能把未来 projection 或每日生成数量混入普通项目进度。
 
 例如：
 
 ```text
 普通任务：8 / 12 已完成（67%）
 循环任务：3 个运行中系列，5 条未完成实例，其中 2 条逾期
+成员待办：Alice 4 条（其中 1 条为当前循环实例）
 ```
 
 ## 18. 审计、事件与自动化

@@ -694,7 +694,7 @@ func TestAddTaskSeriesCreatesFutureProjectedFirstOccurrence(t *testing.T) {
 	firstDue := int64(1783785599)
 	result, err := svc.AddTaskSeries(AddTaskSeriesInput{
 		Title: "每日巡检", ProjectID: proj.ID,
-		RecurrenceRule: "daily", FirstDue: firstDue,
+		RecurrenceRule: "daily", FirstDue: firstDue, Assignees: []string{"local"},
 	})
 	if err != nil {
 		t.Fatalf("AddTaskSeries: %v", err)
@@ -738,7 +738,7 @@ func TestAddTaskSeriesMaterializesFirstOccurrenceWhenDueEntered(t *testing.T) {
 	firstDue := int64(1783785599)
 	result, err := svc.AddTaskSeries(AddTaskSeriesInput{
 		Title: "每日巡检", ProjectID: proj.ID,
-		RecurrenceRule: "daily", FirstDue: firstDue,
+		RecurrenceRule: "daily", FirstDue: firstDue, Assignees: []string{"local"},
 	})
 	if err != nil {
 		t.Fatalf("AddTaskSeries: %v", err)
@@ -755,6 +755,13 @@ func TestAddTaskSeriesMaterializesFirstOccurrenceWhenDueEntered(t *testing.T) {
 	}
 	if count := occurrenceRowCount(t, svc, ws.ID); count != 1 {
 		t.Fatalf("应物化 1 条, count = %d", count)
+	}
+	persisted, err := svc.GetTaskView(*result.FirstOccurrence.UUID)
+	if err != nil {
+		t.Fatalf("GetTaskView(first occurrence): %v", err)
+	}
+	if len(persisted.Assignees) != 1 || persisted.Assignees[0].Name != "local" {
+		t.Fatalf("首个实例负责人未持久化: %#v", persisted.Assignees)
 	}
 }
 
@@ -2270,6 +2277,52 @@ func TestModifyTaskSeriesSyncsSharedFieldsToOpenOccurrences(t *testing.T) {
 	}
 }
 
+func TestModifyTaskSeriesAssigneesDoNotRewriteMaterializedOccurrences(t *testing.T) {
+	firstDue := int64(1000)
+	svc, closeFn := newTestService(t, 5000)
+	defer closeFn()
+	ws, err := svc.store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice := mustCreateUserRecord(t, svc.store, storage.User{
+		ID: "user-alice-series", Name: "alice-series", CreatedAt: 100, ModifiedAt: 100,
+	})
+	mustUpsertMembershipRecord(t, svc.store, storage.Membership{
+		UserID: alice.ID, WorkspaceID: ws.ID,
+		Role: string(RoleMember), JoinedAt: 100, ModifiedAt: 100,
+	})
+	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: proj.ID, RecurrenceRule: "daily", FirstDue: firstDue,
+		Assignees: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{
+		Assignees: []string{"alice-series"},
+	})
+	if err != nil {
+		t.Fatalf("ModifyTaskSeries: %v", err)
+	}
+	if len(updated.Assignees) != 1 || updated.Assignees[0].ID != alice.ID {
+		t.Fatalf("series assignees = %#v, want alice", updated.Assignees)
+	}
+
+	occurrence, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, created.Series.ID, firstDue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(occurrence.Assignees) != 1 || occurrence.Assignees[0].Name != "local" {
+		t.Fatalf("materialized occurrence assignees = %#v, want original local assignee", occurrence.Assignees)
+	}
+}
+
 func TestModifyTaskSeriesRollsBackWhenAuditFails(t *testing.T) {
 	svc, closeFn := newTestService(t, 1000)
 	defer closeFn()
@@ -2532,7 +2585,7 @@ func TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics(t *testing
 	firstDue := now - 86400
 	if _, err := svc.AddTaskSeries(AddTaskSeriesInput{
 		Title: "每日巡检", ProjectID: proj.ID,
-		RecurrenceRule: "daily", FirstDue: firstDue,
+		RecurrenceRule: "daily", FirstDue: firstDue, Assignees: []string{"local"},
 	}); err != nil {
 		t.Fatalf("AddTaskSeries: %v", err)
 	}
@@ -2550,6 +2603,25 @@ func TestProjectTaskSummaryExcludesOccurrencesAndReportsSeriesMetrics(t *testing
 	}
 	if view.UnassignedOpenCount != 1 {
 		t.Fatalf("UnassignedOpenCount = %d, want 1（只统计普通任务）", view.UnassignedOpenCount)
+	}
+	// 成员待办是当前真实待办：已物化且未完成的循环实例按其负责人计入。
+	var localWorkload *ProjectSummaryWorkloadView
+	for i := range view.Workload {
+		if view.Workload[i].User != nil && view.Workload[i].User.ID == svc.runtime.ActorUserID {
+			localWorkload = &view.Workload[i]
+			break
+		}
+	}
+	if localWorkload == nil || localWorkload.OpenCount != 1 || localWorkload.OverdueCount != 1 {
+		t.Fatalf("local workload = %#v, want one overdue materialized occurrence", localWorkload)
+	}
+	// 项目普通进度不应被循环实例抬高；循环运行情况由 SeriesMetrics 单独承载。
+	projectView, err := svc.ProjectInfo("ops")
+	if err != nil {
+		t.Fatalf("ProjectInfo: %v", err)
+	}
+	if projectView.TaskCount != 1 || projectView.PendingCount != 1 {
+		t.Fatalf("normal project counts = total:%d pending:%d, want total:1 pending:1", projectView.TaskCount, projectView.PendingCount)
 	}
 	// series metrics。
 	if view.SeriesMetrics.RecurringSeriesCount != 1 {

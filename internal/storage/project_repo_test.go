@@ -484,6 +484,9 @@ func TestProjectRepositoryTaskSummary(t *testing.T) {
 	insertTaskWithOpts(t, store, "unassigned-open", ws.ID, project.ID, "ops", 5, "pending", taskOpts{})
 	// wait-future: 等待未到期
 	insertTaskWithOpts(t, store, "wait-future", ws.ID, project.ID, "ops", 6, "waiting", taskOpts{Wait: &waitFuture, Assignees: []string{lisi}})
+	// recurring-open: 已物化的循环实例，分配给张三；应进入成员待办，但不改变普通任务风险。
+	seriesID := "series-daily"
+	insertTaskWithOpts(t, store, "recurring-open", ws.ID, project.ID, "ops", 10, "pending", taskOpts{Due: &duePast, Assignees: []string{zhang}, SeriesID: &seriesID})
 	// due-equal-now: due == now，按规则不计入 overdue
 	insertTaskWithOpts(t, store, "due-equal-now", ws.ID, project.ID, "ops", 7, "pending", taskOpts{Due: &dueEqualNow})
 	// done-overdue: 已完成且高优且逾期，不计入任何开放计数
@@ -532,11 +535,11 @@ func TestProjectRepositoryTaskSummary(t *testing.T) {
 	if got := workloadByUserID(summary.Workload, ""); got == nil || got.OpenCount != 4 {
 		t.Fatalf("unassigned OpenCount = %v, want 4", got)
 	}
-	if got := workloadByUserID(summary.Workload, zhang); got == nil || got.OpenCount != 2 {
-		t.Fatalf("zhang OpenCount = %v, want 2", got)
+	if got := workloadByUserID(summary.Workload, zhang); got == nil || got.OpenCount != 3 {
+		t.Fatalf("zhang OpenCount = %v, want 3（含 1 条循环实例）", got)
 	}
-	if got := workloadByUserID(summary.Workload, zhang); got != nil && got.OverdueCount != 0 {
-		t.Fatalf("zhang OverdueCount = %d, want 0", got.OverdueCount)
+	if got := workloadByUserID(summary.Workload, zhang); got != nil && got.OverdueCount != 1 {
+		t.Fatalf("zhang OverdueCount = %d, want 1（循环实例逾期）", got.OverdueCount)
 	}
 	if got := workloadByUserID(summary.Workload, lisi); got == nil || got.OpenCount != 1 {
 		t.Fatalf("lisi OpenCount = %v, want 1", got)
@@ -548,6 +551,7 @@ type taskOpts struct {
 	Wait      *int64
 	Priority  *string
 	Assignees []string
+	SeriesID  *string
 }
 
 func insertTaskWithOpts(t *testing.T, store *Store, uuid, workspaceID, projectID, projectSlug string, seq int, status string, opts taskOpts) {
@@ -565,6 +569,7 @@ func insertTaskWithOpts(t *testing.T, store *Store, uuid, workspaceID, projectID
 		Due:         opts.Due,
 		Wait:        opts.Wait,
 		Priority:    opts.Priority,
+		SeriesID:    opts.SeriesID,
 	}
 	if err := store.DB().Create(&task).Error; err != nil {
 		t.Fatalf("insert task %q: %v", uuid, err)

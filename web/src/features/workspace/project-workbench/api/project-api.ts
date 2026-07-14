@@ -148,6 +148,13 @@ export type ProjectSummaryWorkloadRow = {
   high_priority_count: number
 }
 
+export type ProjectSeriesMetrics = {
+  recurring_series_count: number
+  active_recurring_series_count: number
+  open_recurring_occurrence_count: number
+  overdue_recurring_occurrence_count: number
+}
+
 export type ProjectTaskSummary = {
   overdue_count: number
   overdue_refs: ProjectSummaryTaskRef[]
@@ -158,6 +165,8 @@ export type ProjectTaskSummary = {
   unassigned_open_count: number
   unassigned_open_refs: ProjectSummaryTaskRef[]
   workload: ProjectSummaryWorkloadRow[]
+  // 新服务端始终返回；可选是为了兼容滚动发布期间的旧响应。
+  series_metrics?: ProjectSeriesMetrics
 }
 
 export type ProjectCreateInput = {

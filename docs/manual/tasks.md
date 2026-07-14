@@ -183,7 +183,7 @@ xuanchu series occurrences <series-ref> --status all
 常用管理命令：
 
 - `series modify` 修改标题、描述、负责人、标签、优先级、UDA、结束日期或未来规则；
-  修改规则时必须同时给 `--effective-from`。
+  修改规则时必须同时给 `--effective-from`。修改负责人只影响未来实例，已物化实例的负责人需单独修改。
 - `series modify --clear priority,tags,until` 清空共享字段。
 - `series skip <series-ref> <occurrence-ref>` 跳过某一次。
 - `series stop <series-ref>` 停止后续实例；可选择同时删除尚未完成的实例。

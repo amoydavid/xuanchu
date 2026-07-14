@@ -305,16 +305,15 @@ func (s *Service) materializeFirstOccurrence(series taskseries.Series) (TaskOccu
 	}
 	due := series.FirstDue
 	occ.Due = &due
+	// 负责人必须在创建前写入，确保首个已物化实例与后续实例使用相同的
+	// task_assignees 持久化路径。
+	for _, id := range series.AssigneeIDs {
+		occ.Assignees = append(occ.Assignees, domain.AssigneeInfo{UserID: id})
+	}
 	created, _, err := s.taskOccurrenceRepo.CreateOccurrence(occ)
 	if err != nil {
 		return TaskOccurrenceView{}, err
 	}
-	// assignees 从 series 继承（物化时复制）。
-	createdAssignees := make([]domain.AssigneeInfo, 0, len(series.AssigneeIDs))
-	for _, id := range series.AssigneeIDs {
-		createdAssignees = append(createdAssignees, domain.AssigneeInfo{UserID: id})
-	}
-	created.Assignees = createdAssignees
 	// 写 task.created audit + 物化 audit。
 	if err := s.appendAuditEntry(AuditEntry{
 		Action: "task.recurrence.generated", WorkspaceID: &series.WorkspaceID,
@@ -450,7 +449,7 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 //
 // 执行顺序：
 // 1. 先 reconcile 已进入执行期的 backlog；若仍有 backlog 返回 task_recurrence_backlog。
-// 2. 共享字段更新 + 同步未 override 的 open materialized occurrence。
+// 2. 共享字段更新 + 同步未 override 的 open materialized occurrence（不含负责人）。
 // 3. 规则修改：追加 RuleVersion，更新 series 当前规则。
 // 4. until 修改：只影响未来槽位。
 func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput) (TaskSeriesView, error) {
@@ -642,8 +641,9 @@ func (s *Service) maxMaterializedRecurrenceAt(series taskseries.Series) (int64, 
 	return summaries[series.ID].MaxRecurrenceAt, nil
 }
 
-// syncSharedFieldsToOpenOccurrences 把共享字段同步到未 override 的 open materialized occurrence（spec §11.4）。
-// 只更新 pending/waiting 且对应字段未在 RecurrenceOverrides 中的 occurrence。
+// syncSharedFieldsToOpenOccurrences 把可同步共享字段同步到未 override 的 open materialized occurrence（spec §11.4）。
+// 只更新 pending/waiting 且对应字段未在 RecurrenceOverrides 中的 occurrence；负责人只作为
+// projected/后续物化实例的默认值，绝不回写已物化实例。
 func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, input ModifyTaskSeriesInput) error {
 	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
 		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
@@ -687,14 +687,6 @@ func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, in
 		}
 		if input.ClearTags && !overridden["tags"] {
 			occ.Tags = nil
-			changed = true
-		}
-		if input.Assignees != nil && !overridden["assignees"] {
-			newAssignees := make([]domain.AssigneeInfo, 0, len(input.Assignees))
-			for _, id := range input.Assignees {
-				newAssignees = append(newAssignees, domain.AssigneeInfo{UserID: id})
-			}
-			occ.Assignees = newAssignees
 			changed = true
 		}
 		if (input.UDAs != nil || len(input.ClearUDAs) > 0) && !overridden["udas"] {

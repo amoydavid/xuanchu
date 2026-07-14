@@ -125,7 +125,7 @@ export const enUS = {
     edit: {
       title: "Edit recurring task",
       description:
-        "Future occurrences use the new settings. Open occurrences also update fields that were not changed for that occurrence; completed, skipped, and overridden fields stay unchanged.",
+        "Future occurrences use the new settings. Assignees affect future occurrences only and never rewrite created occurrences. Other open fields that were not changed for an occurrence also update; completed, skipped, and overridden fields stay unchanged.",
       submit: "Save recurring settings",
       effectiveFromHint:
         "The new schedule starts on the selected date. Earlier instances stay unchanged.",
@@ -511,6 +511,9 @@ export const enUS = {
     riskHighPriority: "High priority open",
     riskWaitReady: "Wait ready",
     riskUnassigned: "Unassigned",
+    recurringRuntimeTitle: "Recurring task runtime",
+    recurringActiveSeries: "{{count}} active series",
+    recurringOpenOccurrences: "{{count}} open occurrences, {{overdue}} overdue",
     workloadTitle: "Member tasks",
     workloadUnassigned: "Unassigned",
     workloadPending: "{{count}} pending",

@@ -121,7 +121,7 @@ export const zhCN = {
     edit: {
       title: "编辑循环任务",
       description:
-        "未来实例使用新设置；未完成且未单独修改的实例也会同步。已完成、已跳过或已单独覆盖的字段保持不变。",
+        "未来实例使用新设置；负责人只影响未来实例，不会改动已生成实例。其它未完成且未单独修改的字段也会同步；已完成、已跳过或已单独覆盖的字段保持不变。",
       submit: "保存循环设置",
       effectiveFromHint: "新规则从所选日期起生效，早于该日期的实例保持不变。",
     },
@@ -499,6 +499,9 @@ export const zhCN = {
     riskHighPriority: "高优未完成",
     riskWaitReady: "等待已到期",
     riskUnassigned: "未分配任务",
+    recurringRuntimeTitle: "循环任务运行情况",
+    recurringActiveSeries: "{{count}} 个运行中系列",
+    recurringOpenOccurrences: "{{count}} 条未完成实例，其中 {{overdue}} 条逾期",
     workloadTitle: "成员待办",
     workloadUnassigned: "未分配任务",
     workloadPending: "{{count}} 待办",

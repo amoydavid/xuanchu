@@ -203,10 +203,10 @@ describe("TaskSeriesDialog", () => {
     )
 
     expect(
-      screen.getByText(/未来实例使用新设置；未完成且未单独修改的实例也会同步/)
+      screen.getByText(/未来实例使用新设置；负责人只影响未来实例，不会改动已生成实例/)
     ).toBeTruthy()
     expect(
-      screen.getByText(/已完成、已跳过或已单独覆盖的字段保持不变/)
+      screen.getByText(/其它未完成且未单独修改的字段也会同步/)
     ).toBeTruthy()
   })
 

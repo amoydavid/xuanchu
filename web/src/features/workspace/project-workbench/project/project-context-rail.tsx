@@ -10,6 +10,13 @@ import type {
   ProjectWorkbenchProject,
 } from "../api/project-api"
 
+const emptySeriesMetrics = {
+  recurring_series_count: 0,
+  active_recurring_series_count: 0,
+  open_recurring_occurrence_count: 0,
+  overdue_recurring_occurrence_count: 0,
+}
+
 type ProjectContextRailProps = {
   project: ProjectWorkbenchProject
   summary?: ProjectTaskSummary
@@ -34,6 +41,8 @@ export function ProjectContextRail({
   timelineError,
 }: ProjectContextRailProps) {
   const { t } = useTranslation()
+  // 兼容滚动发布或缓存中的旧 task-summary 响应；新服务端始终返回该字段。
+  const seriesMetrics = summary?.series_metrics ?? emptySeriesMetrics
 
   const completedRatio =
     project.task_count > 0
@@ -106,6 +115,23 @@ export function ProjectContextRail({
               value={summary.unassigned_open_count}
             />
           </RailSection>
+
+          {seriesMetrics.active_recurring_series_count > 0 ||
+          seriesMetrics.open_recurring_occurrence_count > 0 ? (
+            <RailSection title={t("projectSubpages.recurringRuntimeTitle")}>
+              <div className="text-sm font-medium">
+                {t("projectSubpages.recurringActiveSeries", {
+                  count: seriesMetrics.active_recurring_series_count,
+                })}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {t("projectSubpages.recurringOpenOccurrences", {
+                  count: seriesMetrics.open_recurring_occurrence_count,
+                  overdue: seriesMetrics.overdue_recurring_occurrence_count,
+                })}
+              </div>
+            </RailSection>
+          ) : null}
 
           {summary.workload.length > 0 ? (
             <RailSection title={t("projectSubpages.workloadTitle")}>

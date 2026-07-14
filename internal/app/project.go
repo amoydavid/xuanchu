@@ -74,8 +74,9 @@ type ProjectSummaryWorkloadView struct {
 // ProjectTaskSummaryView 是项目全量任务摘要。Overview 与右栏都使用它，
 // 不允许用当前任务列表派生。
 //
-// 一次性进度计数（Overdue/HighPriority/Wait/Unassigned/Workload）只统计
-// 普通任务（series_id IS NULL）；循环系列运行情况通过 SeriesMetrics 返回（spec §17.4）。
+// 一次性进度和风险计数（Overdue/HighPriority/Wait/Unassigned）只统计普通任务
+// （series_id IS NULL）；Workload 统计普通任务和已物化、未关闭的 occurrence，
+// 循环系列运行情况通过 SeriesMetrics 返回（spec §17.4）。
 type ProjectTaskSummaryView struct {
 	OverdueCount          int
 	OverdueRefs           []ProjectSummaryTaskRefView
