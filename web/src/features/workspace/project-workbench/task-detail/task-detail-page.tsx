@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "@tanstack/react-router"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -222,19 +222,19 @@ function TaskDetailPageContent({
     <div className="space-y-5">
       <section className="border-b pb-4">
         <nav className="text-xs text-muted-foreground">
-          <a className="hover:text-foreground" href="/projects">
+          <Link className="hover:text-foreground" to="/projects">
             {workspaceSlug}
-          </a>
+          </Link>
           {effectiveProjectSlug ? (
             <>
               {" / "}
-              <a className="hover:text-foreground" href={projectHref}>
+              <Link className="hover:text-foreground" to={projectHref}>
                 {effectiveProjectSlug}
-              </a>
+              </Link>
               {" / "}
-              <a className="hover:text-foreground" href={`${projectHref}/tasks`}>
+              <Link className="hover:text-foreground" to={`${projectHref}/tasks`}>
                 {t("projectSubpages.tasks")}
-              </a>
+              </Link>
             </>
           ) : null}
           {" / "}

@@ -19,9 +19,14 @@ import { TaskDetailPage } from "./task-detail-page"
 const navigateMock = vi.fn()
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children, ...props }: { children: ReactNode }) => (
-    <a {...props}>{children}</a>
-  ),
+  Link: ({
+    children,
+    to,
+    ...props
+  }: {
+    children: ReactNode
+    to?: string
+  }) => <a href={to} {...props}>{children}</a>,
   useNavigate: () => navigateMock,
 }))
 
@@ -161,6 +166,9 @@ describe("TaskDetailPage", () => {
     expect(
       screen.getByRole("link", { name: "agentapi" }).getAttribute("href")
     ).toBe("/workspaces/acme/projects/agentapi")
+    expect(
+      screen.getByRole("link", { name: "任务" }).getAttribute("href")
+    ).toBe("/workspaces/acme/projects/agentapi/tasks")
     expect(document.title).toBe("ag-23 · 写投放日报")
     expect(
       document.querySelectorAll('[class*="md:grid-cols-[minmax(0,1fr)_280px]"]')
