@@ -34,3 +34,6 @@ deploy.yaml
 config.toml
 .superpowers/
 .zcode/
+
+# Node（web/ 下的 node_modules 已由 web/.gitignore 覆盖，此处兜底根目录）
+node_modules/
