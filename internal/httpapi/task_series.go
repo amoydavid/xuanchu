@@ -98,6 +98,8 @@ type taskSeriesJSON struct {
 	ID                         string               `json:"id"`
 	WorkspaceID                string               `json:"workspace_id"`
 	ProjectID                  string               `json:"project_id"`
+	ProjectSlug                string               `json:"project_slug,omitempty"`
+	SeriesSlug                 string               `json:"series_slug,omitempty"`
 	Title                      string               `json:"title"`
 	Description                *string              `json:"description,omitempty"`
 	Status                     string               `json:"status"`
@@ -219,8 +221,9 @@ func occurrenceViewsToJSON(items []app.TaskOccurrenceView) []taskOccurrenceJSON 
 func seriesViewToJSON(v app.TaskSeriesView) taskSeriesJSON {
 	assignees := taskUserInfoListToJSON(seriesAssigneesToUserInfo(v))
 	return taskSeriesJSON{
-		ID: v.ID, WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID, Title: v.Title,
-		Description: v.Description, Status: v.Status, RecurrenceRule: v.RecurrenceRule,
+		ID: v.ID, WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID,
+		ProjectSlug: v.ProjectSlug, SeriesSlug: app.SeriesSlugOf(v.Series),
+		Title: v.Title, Description: v.Description, Status: v.Status, RecurrenceRule: v.RecurrenceRule,
 		FirstDue: v.FirstDue, Until: v.Until, Priority: v.Priority, Tags: v.Tags,
 		UDAs:      v.UDAs,
 		Assignees: assignees, OpenOccurrenceCount: v.OpenOccurrenceCount,

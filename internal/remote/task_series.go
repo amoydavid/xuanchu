@@ -80,6 +80,8 @@ type TaskSeriesDTO struct {
 	ID                         string              `json:"id"`
 	WorkspaceID                string              `json:"workspace_id"`
 	ProjectID                  string              `json:"project_id"`
+	ProjectSlug                string              `json:"project_slug,omitempty"`
+	SeriesSlug                 string              `json:"series_slug,omitempty"`
 	Title                      string              `json:"title"`
 	Description                *string             `json:"description,omitempty"`
 	Status                     string              `json:"status"`

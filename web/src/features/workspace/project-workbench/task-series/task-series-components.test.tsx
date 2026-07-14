@@ -1,11 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
+import type { ReactNode } from "react"
 
 import { TaskSeriesList } from "./task-series-list"
 import { TaskSeriesDetail } from "./task-series-detail"
 import { TaskSeriesStopDialog } from "./task-series-stop-dialog"
 import type { TaskSeriesView } from "@/features/workspace/project-workbench/api/task-series-api"
+import { LayoutContext, type ProjectLayoutContextValue } from "@/features/workspace/project-workbench/project/project-layout"
 import { i18n } from "@/i18n"
+
+// layoutStub 提供最小 ProjectLayoutContext，让 TaskSeriesDetail 的 useProjectLayout 可用。
+function layoutStub(children: ReactNode): ReactNode {
+  const value: ProjectLayoutContextValue = {
+    workspaceSlug: "ws",
+    projectSlug: "ops",
+    project: {} as ProjectLayoutContextValue["project"],
+    canManage: true,
+    canReadTasks: true,
+    canWriteTasks: true,
+    closed: false,
+    setTabActions: () => {},
+    setBreadcrumbLeaf: () => {},
+  }
+  return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>
+}
 
 function makeSeries(overrides: Partial<TaskSeriesView> = {}): TaskSeriesView {
   return {
@@ -126,11 +144,11 @@ describe("TaskSeriesDetail", () => {
 
   it("展示未完成实例和最近完成、跳过记录", () => {
     render(
-      <TaskSeriesDetail
-        canManage
-        onBack={vi.fn()}
-        projectSlug="ops"
-        series={makeSeries({
+      layoutStub(
+        <TaskSeriesDetail
+          canManage
+          projectSlug="ops"
+          series={makeSeries({
           open_occurrences: [
             {
               id: "occ:s1:100",
@@ -181,8 +199,9 @@ describe("TaskSeriesDetail", () => {
             },
           ],
         })}
-        workspaceSlug="ws"
-      />
+          workspaceSlug="ws"
+        />
+      )
     )
 
     expect(screen.getByRole("heading", { name: "未完成实例" })).toBeTruthy()

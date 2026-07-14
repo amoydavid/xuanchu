@@ -82,6 +82,37 @@ func (r *ProjectRepository) AllocateProjectTaskSeqLocked(workspaceID, projectID 
 	return seq, nil
 }
 
+// AllocateProjectSeriesSeqLocked 分配 series 在所属 project 内的自增序号（用于 series_slug）。
+// 必须在写事务内调用；postgres 用 SELECT ... FOR UPDATE 串行化（同 AllocateProjectTaskSeqLocked）。
+func (r *ProjectRepository) AllocateProjectSeriesSeqLocked(workspaceID, projectID string) (int64, error) {
+	var project Project
+	query := r.db.Where("workspace_id = ? AND id = ?", workspaceID, projectID)
+	if r.db.Dialector.Name() == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	err := query.First(&project).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	seq := project.NextSeriesSeq
+	if seq <= 0 {
+		seq = 1
+	}
+	result := r.db.Model(&Project{}).
+		Where("workspace_id = ? AND id = ?", workspaceID, projectID).
+		Update("next_series_seq", seq+1)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return 0, ErrNotFound
+	}
+	return seq, nil
+}
+
 func (r *ProjectRepository) List(workspaceID string, includeArchived bool) ([]Project, error) {
 	var projects []Project
 	query := r.db.Where("workspace_id = ?", workspaceID)
@@ -115,19 +146,24 @@ func (r *ProjectRepository) Update(project Project) error {
 	if nextTaskSeq <= 0 {
 		nextTaskSeq = 1
 	}
+	nextSeriesSeq := project.NextSeriesSeq
+	if nextSeriesSeq <= 0 {
+		nextSeriesSeq = 1
+	}
 	result := r.db.Model(&Project{}).
 		Where("id = ?", project.ID).
 		Updates(map[string]any{
-			"workspace_id":  project.WorkspaceID,
-			"slug":          project.Slug,
-			"name":          project.Name,
-			"description":   project.Description,
-			"status":        project.Status,
-			"settings_json": project.SettingsJSON,
-			"next_task_seq": nextTaskSeq,
-			"created_at":    project.CreatedAt,
-			"modified_at":   project.ModifiedAt,
-			"archived_at":   project.ArchivedAt,
+			"workspace_id":   project.WorkspaceID,
+			"slug":           project.Slug,
+			"name":           project.Name,
+			"description":    project.Description,
+			"status":         project.Status,
+			"settings_json":  project.SettingsJSON,
+			"next_task_seq":  nextTaskSeq,
+			"next_series_seq": nextSeriesSeq,
+			"created_at":     project.CreatedAt,
+			"modified_at":    project.ModifiedAt,
+			"archived_at":    project.ArchivedAt,
 		})
 	if result.Error != nil {
 		return result.Error

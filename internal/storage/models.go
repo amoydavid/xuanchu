@@ -65,11 +65,12 @@ type Project struct {
 	Description  string `gorm:"not null;default:''"`
 	Status       string `gorm:"not null;default:'active';index:idx_projects_ws_status,priority:2"`
 	SettingsJSON string `gorm:"not null;default:'{}'"`
-	NextTaskSeq  int64  `gorm:"not null;default:1"`
-	CreatedAt    int64  `gorm:"not null"`
-	ModifiedAt   int64  `gorm:"not null"`
-	ArchivedAt   *int64
-	Annotations  []ProjectAnnotation `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	NextTaskSeq   int64  `gorm:"not null;default:1"`
+	NextSeriesSeq int64  `gorm:"not null;default:1"`
+	CreatedAt     int64  `gorm:"not null"`
+	ModifiedAt    int64  `gorm:"not null"`
+	ArchivedAt    *int64
+	Annotations   []ProjectAnnotation `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 }
 
 type ProjectAnnotation struct {
@@ -544,6 +545,9 @@ type TaskSeries struct {
 	EffectiveEndAt *int64
 	StopReason     *string
 	Priority       *string
+	ProjectSeq     *int64
+	// ProjectSlugTransient 不落库，由 repo 读取时从 projects 表 join 回填，用于派生 series_slug。
+	ProjectSlugTransient string `gorm:"-"`
 	CreatedBy      string                  `gorm:"not null"`
 	CreatedAt      int64                   `gorm:"not null"`
 	ModifiedAt     int64                   `gorm:"not null"`

@@ -1,4 +1,5 @@
-import { ArrowLeftIcon, PencilIcon, StopCircleIcon } from "lucide-react"
+import { useEffect } from "react"
+import { PencilIcon, StopCircleIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -8,6 +9,7 @@ import type {
   TaskOccurrenceView,
   TaskSeriesView,
 } from "@/features/workspace/project-workbench/api/task-series-api"
+import { useProjectLayout } from "@/features/workspace/project-workbench/project/project-layout"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import {
   taskDisplayRef,
@@ -21,7 +23,6 @@ import {
 
 export function TaskSeriesDetail({
   series,
-  onBack,
   onEdit,
   onStop,
   canManage,
@@ -29,7 +30,6 @@ export function TaskSeriesDetail({
   projectSlug,
 }: {
   series: TaskSeriesView
-  onBack: () => void
   onEdit?: () => void
   onStop?: () => void
   canManage: boolean
@@ -37,9 +37,19 @@ export function TaskSeriesDetail({
   projectSlug: string
 }) {
   const { i18n, t } = useTranslation()
+  const layout = useProjectLayout()
   const active = series.status === "active"
   const formatTimestamp = (value: number | null | undefined) =>
     formatTaskSeriesTimestamp(value, i18n.language)
+
+  // 把 series 标题注入面包屑叶节点；卸载时清空。
+  useEffect(() => {
+    layout.setBreadcrumbLeaf({ label: series.title })
+    return () => {
+      layout.setBreadcrumbLeaf(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setBreadcrumbLeaf 是稳定回调
+  }, [series.title])
 
   return (
     <article
@@ -48,16 +58,6 @@ export function TaskSeriesDetail({
       data-series-id={series.id}
     >
       <header className="space-y-3">
-        <Button
-          className="-ml-2"
-          onClick={onBack}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <ArrowLeftIcon />
-          {t("taskSeries.detail.backToList")}
-        </Button>
         <div className="space-y-2">
           <div className="flex items-start justify-between gap-2">
             <h3 className="min-w-0 text-base leading-6 font-semibold">

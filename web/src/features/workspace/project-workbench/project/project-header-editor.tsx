@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { useModifyProjectMutation } from "../hooks/use-project-mutations"
+import { Breadcrumb, type BreadcrumbItem } from "./breadcrumb"
 import { ProjectSettingsDialog } from "./project-settings-dialog"
 import { ProjectStatusMenu } from "./project-status-menu"
 
@@ -15,6 +16,7 @@ type ProjectHeaderEditorProps = {
   importAction?: ReactNode
   project: ProjectWorkbenchProject
   workspaceSlug: string
+  breadcrumbItems: BreadcrumbItem[]
 }
 
 export function ProjectHeaderEditor({
@@ -23,6 +25,7 @@ export function ProjectHeaderEditor({
   onCopyLink,
   project,
   workspaceSlug,
+  breadcrumbItems,
 }: ProjectHeaderEditorProps) {
   const { t } = useTranslation()
   const modifyProject = useModifyProjectMutation(workspaceSlug, project.slug)
@@ -31,9 +34,7 @@ export function ProjectHeaderEditor({
     <section className="border-b pb-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-muted-foreground">
-            {workspaceSlug} / {project.slug}
-          </div>
+          <Breadcrumb items={breadcrumbItems} />
           {canManage ? (
             <InlineTextEditor
               ariaLabel={t("projectWorkbench.project.name")}

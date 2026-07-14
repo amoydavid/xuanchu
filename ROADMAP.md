@@ -613,6 +613,7 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 - 默认任务列表融合普通任务和 occurrence；series 从项目任务页的“循环任务 N”治理面板进入，不增加独立 Tab。项目普通进度排除循环实例，另给循环系列、未完成实例和逾期实例指标。
 - import/export 使用版本化璇础原生 bundle，不迁移或兼容 Taskwarrior recurring JSON；当前无生产历史数据，允许一次性重建旧 recurring 开发数据。
 - 项目 archive/cancel 时停止 active series，不在关闭项目中继续生成任务。
+- series 拥有独立短引用 `series_slug`（`{projectSlug}-s-{seq}`，如 `ops-s-1`），由 `projects.next_series_seq` 分配，与 task 的 `task_slug` 命名空间隔离；HTTP/CLI/MCP/Web 接受 UUID 或 `series_slug` 引用 series。
 
 规格：
 

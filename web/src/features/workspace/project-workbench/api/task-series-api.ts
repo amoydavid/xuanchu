@@ -82,6 +82,8 @@ export type TaskSeriesView = {
   id: string
   workspace_id: string
   project_id: string
+  series_slug?: string | null
+  project_slug?: string
   title: string
   description?: string | null
   status: "active" | "ended" | "stopped"

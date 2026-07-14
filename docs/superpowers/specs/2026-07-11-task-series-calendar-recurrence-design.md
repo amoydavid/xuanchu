@@ -220,10 +220,13 @@ until              BIGINT NULL
 effective_end_at   BIGINT NULL
 stop_reason        TEXT NULL
 priority           TEXT NULL
+project_seq        BIGINT NULL   // series 在所属 project 内的自增序号，用于 series_slug
 created_by         UUID NOT NULL
 created_at         BIGINT NOT NULL
 modified_at        BIGINT NOT NULL
 ```
+
+`project_seq` 由 `projects.next_series_seq` 分配（与 task 的 `next_task_seq` 独立计数），在创建 series 时同步分配。复合唯一索引 `(workspace_id, project_id, project_seq)`（partial，`project_seq IS NOT NULL`）。由此派生用户可见短引用 `series_slug = {projectSlug}-s-{projectSeq}`（如 `ops-s-1`），与 task 的 `task_slug`（`{projectSlug}-{projectSeq}`，如 `ops-1`）命名空间隔离，不落库，运行时从 join projects 取 slug 拼接。`projects` 表新增 `next_series_seq BIGINT NOT NULL DEFAULT 1`。
 
 共享多值字段使用独立关联表，不塞入 JSON：
 
@@ -255,7 +258,7 @@ segment[i] 的槽位：
 - `until` 是包含式槽位上界，存在时必须 `until >= first_due`。
 - `recurrence_rule` 必须是 §12 定义的 canonical 表达式。
 - rule version 的 `effective_from` 在同一 series 内唯一且严格递增。
-- series 不分配 `project_seq`，不能 start/done/reopen，也不出现在 task query。
+- series 不占用 task 的 `project_seq`，不能 start/done/reopen，也不出现在 task query；series 有独立的 `project_seq`（series_seq）与 `series_slug`（`{projectSlug}-s-{seq}`），但 series 本身仍不是 task，不接受 task 动作。
 - series 首版不硬删除；产品不提供“删除循环任务”，只提供“停止循环”，保留历史引用、审计和 occurrence 可重建性。
 - `tasks.series_id` 对 `task_series.id` 使用受限外键；不得级联删除 series 或历史 occurrence。
 

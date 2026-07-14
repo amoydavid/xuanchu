@@ -22,6 +22,7 @@ import {
 import { EditFeedbackProvider, useEditFeedback } from "../shared/edit-feedback"
 import { ProjectClosedBanner } from "./project-closed-banner"
 import { ProjectContextRail } from "./project-context-rail"
+import type { BreadcrumbItem } from "./breadcrumb"
 import { ProjectHeaderEditor } from "./project-header-editor"
 import { isClosedProjectStatus } from "./project-status-menu"
 import { ProjectTabs, type ProjectTabKey } from "./project-tabs"
@@ -44,9 +45,14 @@ export type ProjectLayoutContextValue = {
   // setTabActions 允许子页面在 tabs 行右侧（收起/展开按钮左边）注册额外动作节点。
   // 例如任务页用它注册「导入任务」图标按钮。传 null 清空。
   setTabActions: (node: ReactNode | null) => void
+  // setBreadcrumbLeaf 允许子页面在面包屑末尾追加一个叶节点（如 series 标题）。
+  // 传 null 清空。卸载子页面时必须清空，避免残留。
+  setBreadcrumbLeaf: (leaf: { label: string } | null) => void
 }
 
-const LayoutContext = createContext<ProjectLayoutContextValue | null>(null)
+// LayoutContext 未在生产代码中直接使用（通过 useProjectLayout 消费）；
+// export 仅供测试构造 stub provider。
+export const LayoutContext = createContext<ProjectLayoutContextValue | null>(null)
 
 export function useProjectLayout(): ProjectLayoutContextValue {
   const ctx = useContext(LayoutContext)
@@ -76,6 +82,8 @@ function ProjectLayoutContent({
   const feedback = useEditFeedback()
   const [railOpen, setRailOpen] = useState(true)
   const [tabActions, setTabActions] = useState<ReactNode | null>(null)
+  const [breadcrumbLeaf, setBreadcrumbLeaf] = useState<string | null>(null)
+  const setLeaf = (leaf: { label: string } | null) => setBreadcrumbLeaf(leaf?.label ?? null)
   const me = useMe()
   const project = useProjectQuery(workspaceSlug, projectSlug)
   const timeline = useProjectTimelineQuery(workspaceSlug, projectSlug)
@@ -155,6 +163,21 @@ function ProjectLayoutContent({
     canWriteTasks,
     closed,
     setTabActions,
+    setBreadcrumbLeaf: setLeaf,
+  }
+
+  // 面包屑：workspace / project / [tab] / [leaf]。overview 是项目根，不显示 tab 段。
+  const projectHref = `/workspaces/${encodeURIComponent(workspaceSlug)}/projects/${encodeURIComponent(projectSlug)}`
+  const tabSegment = tabBreadcrumbSegment(activeTab, projectHref, t)
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: workspaceSlug, href: "/projects" },
+    { label: project.data.slug, href: activeTab === "overview" ? undefined : projectHref },
+  ]
+  if (tabSegment) {
+    breadcrumbItems.push(tabSegment)
+  }
+  if (breadcrumbLeaf) {
+    breadcrumbItems.push({ label: breadcrumbLeaf })
   }
 
   return (
@@ -168,6 +191,7 @@ function ProjectLayoutContent({
           }}
           project={project.data}
           workspaceSlug={workspaceSlug}
+          breadcrumbItems={breadcrumbItems}
         />
         <ProjectClosedBanner
           canManage={canManage}
@@ -269,4 +293,26 @@ function isPermissionError(error: Error | null): boolean {
 
 function isNotFoundError(error: Error | null): boolean {
   return error instanceof ApiError && error.status === 404
+}
+
+// tabBreadcrumbSegment 返回当前 tab 的面包屑段。overview 是项目根，不单独显示。
+type TranslateFn = (key: string) => string
+
+function tabBreadcrumbSegment(
+  activeTab: ProjectTabKey,
+  projectHref: string,
+  t: TranslateFn
+): BreadcrumbItem | null {
+  switch (activeTab) {
+    case "tasks":
+      return { label: t("projectSubpages.tasks"), href: `${projectHref}/tasks` }
+    case "series":
+      return { label: t("projectSubpages.recurring"), href: `${projectHref}/series` }
+    case "activity":
+      return { label: t("projectSubpages.activity"), href: `${projectHref}/activity` }
+    case "automations":
+      return { label: t("projectSubpages.automations"), href: `${projectHref}/automations` }
+    default:
+      return null
+  }
 }

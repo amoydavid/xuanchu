@@ -54,6 +54,14 @@ func (s *Store) prepareTaskSeriesSchema() error {
 	if err := ensureOccurrenceLookupIndexes(s.db); err != nil {
 		return fmt.Errorf("task series: ensure lookup indexes: %w", err)
 	}
+	// 9. 回填存量 series 的 project_seq 并更新 projects.next_series_seq（series_slug 派生用）。
+	if err := backfillSeriesSeq(s.db); err != nil {
+		return fmt.Errorf("task series: backfill series seq: %w", err)
+	}
+	// 10. 建立 series project_seq partial unique index（series_slug 解析用）。
+	if err := createSeriesSeqUniqueIndex(s.db); err != nil {
+		return fmt.Errorf("task series: create series seq unique index: %w", err)
+	}
 	return nil
 }
 
@@ -268,5 +276,65 @@ func taskSeriesColumnExists(db *gorm.DB, dialect, table, column string) (bool, e
 // SQLite 和 PostgreSQL 都支持 partial index 语法。
 func createOccurrenceUniqueIndex(db *gorm.DB) error {
 	idxSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_ws_series_slot ON tasks(workspace_id, series_id, recurrence_at) WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL"
+	return db.Exec(idxSQL).Error
+}
+
+// backfillSeriesSeq 给 project_seq 为 NULL 的存量 series 按创建时间补序号，
+// 并把 projects.next_series_seq 推进到合理值。幂等：已有 seq 的 series 跳过。
+func backfillSeriesSeq(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 找出所有需要回填的 (workspace_id, project_id) 组合。
+		type wsProj struct {
+			WorkspaceID string
+			ProjectID   string
+		}
+		var groups []wsProj
+		if err := tx.Model(&TaskSeries{}).
+			Select("DISTINCT workspace_id, project_id").
+			Where("project_seq IS NULL").
+			Scan(&groups).Error; err != nil {
+			return err
+		}
+		for _, g := range groups {
+			// 该 project 下已有最大 seq（可能部分已回填）。
+			var maxSeq int64
+			if err := tx.Model(&TaskSeries{}).
+				Where("workspace_id = ? AND project_id = ?", g.WorkspaceID, g.ProjectID).
+				Select("COALESCE(MAX(project_seq), 0)").Scan(&maxSeq).Error; err != nil {
+				return err
+			}
+			next := maxSeq
+			// 按 created_at ASC 给 NULL 的分配序号。
+			var ids []string
+			if err := tx.Model(&TaskSeries{}).
+				Where("workspace_id = ? AND project_id = ? AND project_seq IS NULL", g.WorkspaceID, g.ProjectID).
+				Order("created_at ASC, id ASC").
+				Pluck("id", &ids).Error; err != nil {
+				return err
+			}
+			for _, id := range ids {
+				next++
+				if err := tx.Model(&TaskSeries{}).
+					Where("id = ?", id).
+					Update("project_seq", next).Error; err != nil {
+					return err
+				}
+			}
+			// 更新 projects.next_series_seq（取 max(当前 next_series_seq, next+1)）。
+			if next > 0 {
+				if err := tx.Model(&Project{}).
+					Where("workspace_id = ? AND id = ?", g.WorkspaceID, g.ProjectID).
+					Update("next_series_seq", next+1).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// createSeriesSeqUniqueIndex 建立 series project_seq 的 partial unique index（series_slug 解析用）。
+func createSeriesSeqUniqueIndex(db *gorm.DB) error {
+	idxSQL := "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_series_ws_project_seq ON task_series(workspace_id, project_id, project_seq) WHERE project_seq IS NOT NULL"
 	return db.Exec(idxSQL).Error
 }

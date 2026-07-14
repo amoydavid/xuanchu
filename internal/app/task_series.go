@@ -1,9 +1,11 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -230,6 +232,13 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 		if terr != nil {
 			return terr
 		}
+		// 分配 series 在所属 project 内的自增序号（series_slug 派生用）。
+		seq, serr := txSvc.projectRepo.AllocateProjectSeriesSeqLocked(s.workspaceID, projectID)
+		if serr != nil {
+			return serr
+		}
+		series.ProjectSeq = &seq
+		series.ProjectSlug = project.Slug
 		created, cerr := txSvc.taskSeriesRepo.Create(series)
 		if cerr != nil {
 			return cerr
@@ -399,7 +408,7 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return TaskSeriesDetailView{}, err
 	}
-	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	series, err := s.resolveSeriesRef(seriesID)
 	if err != nil {
 		return TaskSeriesDetailView{}, mapSeriesError(err)
 	}
@@ -449,7 +458,7 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 		return TaskSeriesView{}, err
 	}
 	now := s.clock.Unix()
-	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	series, err := s.resolveSeriesRef(seriesID)
 	if err != nil {
 		return TaskSeriesView{}, mapSeriesError(err)
 	}
@@ -752,6 +761,15 @@ func (s *Service) buildSeriesViewFromSummary(series taskseries.Series, summary s
 	}, nil
 }
 
+// SeriesSlugOf 由 series 的 project slug + project_seq 派生短引用（如 ops-s-1）。
+// project slug 或 seq 缺失时返回空字符串。
+func SeriesSlugOf(series taskseries.Series) string {
+	if series.ProjectSlug == "" || series.ProjectSeq == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s-s-%d", series.ProjectSlug, *series.ProjectSeq)
+}
+
 // computeSuggestedRuleEffectiveFrom 返回满足规则修改约束的默认切换槽位。
 // 它严格晚于当前时间和所有已物化槽位，并且只从现有规则版本产生的合法槽位中选择。
 func (s *Service) computeSuggestedRuleEffectiveFrom(series taskseries.Series) (*int64, error) {
@@ -823,6 +841,33 @@ func mapSeriesError(err error) error {
 		return RuntimeError{Code: "task_series_not_found", Message: "series 不存在"}
 	}
 	return err
+}
+
+// resolveSeriesRef 统一解析 series 引用：先按 UUID 查，找不到再按 series_slug（{projectSlug}-s-{seq}）解析。
+func (s *Service) resolveSeriesRef(target string) (taskseries.Series, error) {
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, target)
+	if err == nil {
+		return series, nil
+	}
+	if !errors.Is(err, storage.ErrSeriesNotFound) {
+		return taskseries.Series{}, err
+	}
+	// series_slug 解析：{projectSlug}-s-{seq}。project slug 只含 [a-z0-9]，不含 -，所以 -s- 是唯一分隔。
+	idx := strings.Index(target, "-s-")
+	if idx <= 0 {
+		return taskseries.Series{}, storage.ErrSeriesNotFound
+	}
+	projectSlug := target[:idx]
+	seqStr := target[idx+3:]
+	seq, perr := strconv.ParseInt(seqStr, 10, 64)
+	if perr != nil || seq < 1 {
+		return taskseries.Series{}, storage.ErrSeriesNotFound
+	}
+	project, perr := s.projectRepo.GetBySlug(s.workspaceID, projectSlug)
+	if perr != nil {
+		return taskseries.Series{}, storage.ErrSeriesNotFound
+	}
+	return s.taskSeriesRepo.GetByProjectSeq(s.workspaceID, project.ID, seq)
 }
 
 func storageTaskSeriesListOptions(input TaskSeriesListInput, status, assigneeUserID, workspaceID string) storage.TaskSeriesListOptions {
@@ -914,7 +959,7 @@ type TaskSeriesReconcileResult struct {
 // 当包含式 until 已过且所有合法槽位已物化，series 转 ended。
 // stopped series 不生成。
 func (s *Service) ReconcileTaskSeries(seriesID string, now int64, limit int) (TaskSeriesReconcileResult, error) {
-	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	series, err := s.resolveSeriesRef(seriesID)
 	if err != nil {
 		return TaskSeriesReconcileResult{}, mapSeriesError(err)
 	}
@@ -1041,7 +1086,7 @@ func (s *Service) StopTaskSeries(seriesID string, input StopTaskSeriesInput) (Ta
 	}
 	now := s.clock.Unix()
 	reason := taskseries.StopReasonUserStopped
-	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	series, err := s.resolveSeriesRef(seriesID)
 	if err != nil {
 		return TaskSeriesView{}, mapSeriesError(err)
 	}
@@ -1179,7 +1224,7 @@ func (s *Service) listTaskSeriesOccurrences(seriesID string, input TaskSeriesOcc
 	default:
 		return TaskViewPage{}, RuntimeError{Code: "task_series_invalid_rule", Message: "status 只能是 pending|waiting|completed|deleted|all"}
 	}
-	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	series, err := s.resolveSeriesRef(seriesID)
 	if err != nil {
 		return TaskViewPage{}, mapSeriesError(err)
 	}
@@ -1266,7 +1311,7 @@ func (s *Service) SkipTaskSeriesOccurrence(seriesID, occurrenceRef string) (Task
 	if refSeriesID != seriesID {
 		return TaskOccurrenceView{}, RuntimeError{Code: "task_series_occurrence_not_found", Message: "occurrence 不属于该 series"}
 	}
-	series, err := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
+	series, err := s.resolveSeriesRef(seriesID)
 	if err != nil {
 		return TaskOccurrenceView{}, mapSeriesError(err)
 	}

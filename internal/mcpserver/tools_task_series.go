@@ -357,6 +357,12 @@ func seriesViewToMCPJSON(v app.TaskSeriesView) map[string]any {
 		"completed_count":       v.CompletedCount, "skipped_count": v.SkippedCount,
 		"overdue_count": v.OverdueCount, "created_at": v.CreatedAt, "modified_at": v.ModifiedAt,
 	}
+	if v.ProjectSlug != "" {
+		out["project_slug"] = v.ProjectSlug
+	}
+	if slug := app.SeriesSlugOf(v.Series); slug != "" {
+		out["series_slug"] = slug
+	}
 	if v.Description != nil {
 		out["description"] = *v.Description
 	}

@@ -111,7 +111,74 @@ func (r *TaskSeriesRepository) Get(workspaceID, seriesID string) (taskseries.Ser
 		}
 		return taskseries.Series{}, err
 	}
+	if err := r.enrichProjectSlug(workspaceID, &model); err != nil {
+		return taskseries.Series{}, err
+	}
 	return seriesFromModel(model), nil
+}
+
+// GetByProjectSeq 按 workspace + project_id + series project_seq 读取 series（series_slug 解析路径）。
+func (r *TaskSeriesRepository) GetByProjectSeq(workspaceID, projectID string, seq int64) (taskseries.Series, error) {
+	var model TaskSeries
+	err := r.db.
+		Where("workspace_id = ? AND project_id = ? AND project_seq = ?", workspaceID, projectID, seq).
+		Preload("RuleVersions").
+		Preload("Assignees").
+		Preload("Tags").
+		Preload("UDAValues").
+		First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return taskseries.Series{}, ErrSeriesNotFound
+		}
+		return taskseries.Series{}, err
+	}
+	if err := r.enrichProjectSlug(workspaceID, &model); err != nil {
+		return taskseries.Series{}, err
+	}
+	return seriesFromModel(model), nil
+}
+
+// enrichProjectSlug 从 projects 表查 slug 回填到 model 的瞬态字段（series_slug 派生用，不落 series 表）。
+func (r *TaskSeriesRepository) enrichProjectSlug(workspaceID string, model *TaskSeries) error {
+	var project Project
+	err := r.db.
+		Select("slug").
+		Where("workspace_id = ? AND id = ?", workspaceID, model.ProjectID).
+		First(&project).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrSeriesNotFound
+		}
+		return err
+	}
+	model.ProjectSlugTransient = project.Slug
+	return nil
+}
+
+// enrichProjectSlugs 批量回填 project slug（避免 N+1）。
+func enrichProjectSlugs(workspaceID string, models []TaskSeries, db *gorm.DB) error {
+	if len(models) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ProjectID)
+	}
+	var projects []Project
+	if err := db.Select("id, slug").Where("workspace_id = ? AND id IN ?", workspaceID, ids).Find(&projects).Error; err != nil {
+		return err
+	}
+	slugByID := make(map[string]string, len(projects))
+	for _, p := range projects {
+		slugByID[p.ID] = p.Slug
+	}
+	for i := range models {
+		if slug, ok := slugByID[models[i].ProjectID]; ok {
+			models[i].ProjectSlugTransient = slug
+		}
+	}
+	return nil
 }
 
 // ListCandidates 返回过滤后的候选 series（含关联），不分页、不排序。
@@ -135,6 +202,9 @@ func (r *TaskSeriesRepository) ListCandidates(opts TaskSeriesListOptions) ([]tas
 	}
 	var models []TaskSeries
 	if err := q.Order("id ASC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	if err := enrichProjectSlugs(opts.WorkspaceID, models, r.db); err != nil {
 		return nil, err
 	}
 	out := make([]taskseries.Series, 0, len(models))
@@ -213,6 +283,9 @@ func (r *TaskSeriesRepository) ListActive(workspaceID string, limit, offset int)
 	if err := q.Order("id ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
+	if err := enrichProjectSlugs(workspaceID, models, r.db); err != nil {
+		return nil, err
+	}
 	out := make([]taskseries.Series, 0, len(models))
 	for _, m := range models {
 		out = append(out, seriesFromModel(m))
@@ -243,6 +316,9 @@ func (r *TaskSeriesRepository) StopProjectSeries(workspaceID, projectID string, 
 	if err != nil {
 		return nil, err
 	}
+	if err := enrichProjectSlugs(workspaceID, affected, r.db); err != nil {
+		return nil, err
+	}
 	out := make([]taskseries.Series, 0, len(affected))
 	for _, m := range affected {
 		out = append(out, seriesFromModel(m))
@@ -266,8 +342,8 @@ func seriesToModel(s taskseries.Series) seriesModelBundle {
 			ID: s.ID, WorkspaceID: s.WorkspaceID, ProjectID: s.ProjectID, Title: s.Title,
 			Description: s.Description, Status: s.Status, RecurrenceRule: s.RecurrenceRule,
 			FirstDue: s.FirstDue, Until: s.Until, EffectiveEndAt: s.EffectiveEndAt,
-			StopReason: s.StopReason, Priority: s.Priority, CreatedBy: s.CreatedBy,
-			CreatedAt: s.CreatedAt, ModifiedAt: s.ModifiedAt,
+			StopReason: s.StopReason, Priority: s.Priority, ProjectSeq: s.ProjectSeq,
+			CreatedBy: s.CreatedBy, CreatedAt: s.CreatedAt, ModifiedAt: s.ModifiedAt,
 		},
 	}
 	for _, rv := range s.RuleVersions {
@@ -295,8 +371,9 @@ func seriesFromModel(m TaskSeries) taskseries.Series {
 		ID: m.ID, WorkspaceID: m.WorkspaceID, ProjectID: m.ProjectID, Title: m.Title,
 		Description: m.Description, Status: m.Status, RecurrenceRule: m.RecurrenceRule,
 		FirstDue: m.FirstDue, Until: m.Until, EffectiveEndAt: m.EffectiveEndAt,
-		StopReason: m.StopReason, Priority: m.Priority, CreatedBy: m.CreatedBy,
-		CreatedAt: m.CreatedAt, ModifiedAt: m.ModifiedAt,
+		StopReason: m.StopReason, Priority: m.Priority, ProjectSeq: m.ProjectSeq,
+		ProjectSlug: m.ProjectSlugTransient,
+		CreatedBy: m.CreatedBy, CreatedAt: m.CreatedAt, ModifiedAt: m.ModifiedAt,
 	}
 	rvs := make([]taskseries.RuleVersion, 0, len(m.RuleVersions))
 	for _, rv := range m.RuleVersions {

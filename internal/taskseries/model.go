@@ -10,6 +10,8 @@ type Series struct {
 	ID            string
 	WorkspaceID   string
 	ProjectID     string
+	ProjectSlug   string // 不落 series 表，由 repo 从 projects 表回填（series_slug 派生用）
+	ProjectSeq    *int64 // series 在所属 project 内的自增序号（series_slug 派生用）
 	Title         string
 	Description   *string
 	Status        string // active|ended|stopped

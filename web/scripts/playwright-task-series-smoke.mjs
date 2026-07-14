@@ -226,6 +226,12 @@ async function runMobileSmoke(browser) {
     await assertNoHorizontalOverflow(page, "mobile task-series list")
     await screenshot(page, "mobile-task-series-list")
 
+    // series_slug 短引用可直接访问详情（后端双解析 slug/UUID）。
+    await page.goto(`${baseURL}/workspaces/acme/projects/ops/series/ops-s-1`)
+    await page.getByTestId("task-series-page").waitFor()
+    await expectText(page, "每日检查投放消耗")
+    await expectText(page, "未完成实例")
+
     await page.goto(
       `${baseURL}/workspaces/acme/projects/ops/tasks/${encodeURIComponent(state.projected.id)}`
     )
@@ -285,7 +291,7 @@ async function newMockedPage(browser, viewport, state) {
     if (method === "GET" && pathname === "/api/v1/task-series") {
       return fulfill(route, { items: [state.series], total: 1, limit: 20, offset: 0 })
     }
-    if (method === "GET" && pathname === `/api/v1/task-series/${seriesID}`) {
+    if (method === "GET" && (pathname === `/api/v1/task-series/${seriesID}` || pathname === "/api/v1/task-series/ops-s-1")) {
       return fulfill(route, state.series)
     }
     if (method === "GET" && pathname === "/api/v1/tasks") {
@@ -391,6 +397,8 @@ function createMockState() {
     id: seriesID,
     workspace_id: "workspace-acme",
     project_id: "project-ops",
+    project_slug: "ops",
+    series_slug: "ops-s-1",
     title: "每日检查投放消耗",
     description: "检查昨日投放消耗、异常账户和预算余额。",
     status: "active",

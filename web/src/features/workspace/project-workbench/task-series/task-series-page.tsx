@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- 弹窗打开时需在 effect 内重置状态 */
 import { useEffect, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { PlusIcon, Repeat2Icon } from "lucide-react"
+import { PlusIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -19,6 +19,7 @@ import { TaskSeriesList } from "./task-series-list"
 import { TaskSeriesDetail } from "./task-series-detail"
 import { TaskSeriesEditorDialog } from "./task-series-editor-dialog"
 import { TaskSeriesStopDialog } from "./task-series-stop-dialog"
+import { seriesRouteRef } from "./series-reference"
 import { TaskCreateDialog } from "../tasks/task-create-dialog"
 
 // TaskSeriesPage 是「循环任务」tab 的全宽管理页。
@@ -134,7 +135,7 @@ export function TaskSeriesPage({
   const selectSeries = (s: TaskSeriesView) => {
     void navigate({
       to: "/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef",
-      params: { workspaceSlug, projectSlug, seriesRef: s.id },
+      params: { workspaceSlug, projectSlug, seriesRef: seriesRouteRef(s) },
       search: true,
     })
   }
@@ -188,7 +189,6 @@ export function TaskSeriesPage({
             canManage={canManage}
             projectSlug={projectSlug}
             workspaceSlug={workspaceSlug}
-            onBack={backToList}
             onEdit={() => setEditOpen(true)}
             onStop={() => setStopOpen(true)}
           />
@@ -239,26 +239,14 @@ export function TaskSeriesPage({
       data-page-mode="list"
       className="space-y-4"
     >
-      <header className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-normal">
-            <Repeat2Icon className="size-5 text-muted-foreground" />
-            {t("taskSeries.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t("taskSeries.description")}
-          </p>
-        </div>
-        {canManage ? (
-          <Button
-            onClick={() => setCreateOpen(true)}
-            type="button"
-          >
+      {canManage ? (
+        <div className="flex justify-end">
+          <Button onClick={() => setCreateOpen(true)} type="button">
             <PlusIcon />
             {t("taskSeries.actions.create")}
           </Button>
-        ) : null}
-      </header>
+        </div>
+      ) : null}
 
       <TaskSeriesList
         items={list}

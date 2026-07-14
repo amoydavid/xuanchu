@@ -198,7 +198,7 @@ export function ProjectTasksPage({
         onRecurringCreated={(created) => {
           void navigate({
             to: "/workspaces/$workspaceSlug/projects/$projectSlug/series/$seriesRef",
-            params: { workspaceSlug, projectSlug, seriesRef: created.id },
+            params: { workspaceSlug, projectSlug, seriesRef: created.series_slug || created.id },
           })
         }}
         open={createOpen}
