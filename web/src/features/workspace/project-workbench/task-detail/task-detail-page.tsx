@@ -231,6 +231,10 @@ function TaskDetailPageContent({
               <a className="hover:text-foreground" href={projectHref}>
                 {effectiveProjectSlug}
               </a>
+              {" / "}
+              <a className="hover:text-foreground" href={`${projectHref}/tasks`}>
+                {t("projectSubpages.tasks")}
+              </a>
             </>
           ) : null}
           {" / "}
