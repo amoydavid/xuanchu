@@ -179,7 +179,7 @@ func TestProjectedOccurrenceReadSubresourcesStayEmptyWithoutMaterializing(t *tes
 	if err != nil {
 		t.Fatalf("ExplainUrgency(projected): %v", err)
 	}
-	if explain.UUID != ref || explain.Total <= 0 {
+	if explain.ID != ref || explain.UUID != nil || explain.Total <= 0 {
 		t.Fatalf("ExplainUrgency(projected) = %#v", explain)
 	}
 	if after := occurrenceRowCount(t, svc, svc.workspaceID); after != before {

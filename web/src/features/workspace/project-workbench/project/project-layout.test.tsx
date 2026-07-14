@@ -241,6 +241,8 @@ describe("ProjectLayout", () => {
     )
 
     const dialog = await screen.findByRole("dialog", { name: "循环任务" })
+    expect(dialog.className).toContain("w-screen")
+    expect(dialog.className).toContain("h-dvh")
     expect(dialog.getAttribute("aria-describedby")).toBeTruthy()
     expect(
       dialog.querySelector('[data-slot="sheet-description"]')?.textContent

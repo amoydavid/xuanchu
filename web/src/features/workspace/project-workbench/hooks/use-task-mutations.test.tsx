@@ -166,6 +166,9 @@ describe("task mutation hooks", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "timeline"],
       })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["my-tasks", "acme"],
+      })
     })
   })
 

@@ -29,12 +29,13 @@ func TestE2ESQLiteMigrationKeepsJSONStdoutClean(t *testing.T) {
 	if strings.Contains(stderr.String(), "warning:") || strings.Contains(stderr.String(), "migration") {
 		t.Fatalf("unexpected migration warning on clean legacy fixture: %q", stderr.String())
 	}
-	var rows []map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &rows); err != nil {
+	var page map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &page); err != nil {
 		t.Fatalf("json list stdout is not valid JSON: %v\n%s", err, stdout.String())
 	}
-	if !jsonArrayContainsString(mapsToAny(rows), "uuid", "legacy-task-1") {
-		t.Fatalf("migrated list rows = %#v, want legacy task", rows)
+	rows, ok := page["items"].([]any)
+	if !ok || !jsonArrayContainsString(rows, "uuid", "legacy-task-1") {
+		t.Fatalf("migrated list page = %#v, want legacy task", page)
 	}
 
 	add := run(t, bin, "--db", db, "--json", "add", "post migration task", "project:legacy")
@@ -46,12 +47,4 @@ func TestE2ESQLiteMigrationKeepsJSONStdoutClean(t *testing.T) {
 	if parseJSONMap(t, info)["title"] != "post migration task" {
 		t.Fatalf("post migration info output = %s", info)
 	}
-}
-
-func mapsToAny(rows []map[string]any) []any {
-	out := make([]any, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, row)
-	}
-	return out
 }

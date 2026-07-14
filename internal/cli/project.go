@@ -773,6 +773,9 @@ func renderRemoteTimelineEntries(cmd *cobra.Command, asJSON bool, entries []remo
 
 func renderAnnotations(cmd *cobra.Command, asJSON bool, annotations []task.Annotation) error {
 	if asJSON {
+		if annotations == nil {
+			annotations = []task.Annotation{}
+		}
 		return render.JSON(cmd.OutOrStdout(), annotations)
 	}
 	if len(annotations) == 0 {

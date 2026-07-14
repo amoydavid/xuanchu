@@ -13,6 +13,11 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	taskSeriesDefaultLimit = 200
+	taskSeriesMaxLimit     = 1000
+)
+
 // AddTaskSeriesInput 是创建循环系列的输入（spec §11.2）。
 type AddTaskSeriesInput struct {
 	Title          string
@@ -322,6 +327,11 @@ func (s *Service) ListTaskSeries(input TaskSeriesListInput) (TaskSeriesPage, err
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return TaskSeriesPage{}, err
 	}
+	limit, offset, err := normalizeTaskSeriesPagination(input.Limit, input.Offset)
+	if err != nil {
+		return TaskSeriesPage{}, err
+	}
+	input.Limit, input.Offset = limit, offset
 	status := input.Status
 	if status == "" {
 		status = "active"
@@ -354,9 +364,24 @@ func (s *Service) ListTaskSeries(input TaskSeriesListInput) (TaskSeriesPage, err
 			}
 		}
 	}
+	seriesIDs := make([]string, 0, len(scoped))
+	userIDs := make([]string, 0, len(scoped)*2)
+	for _, candidate := range scoped {
+		seriesIDs = append(seriesIDs, candidate.ID)
+		userIDs = append(userIDs, candidate.CreatedBy)
+		userIDs = append(userIDs, candidate.AssigneeIDs...)
+	}
+	summaries, err := s.taskOccurrenceRepo.SummarizeSeriesOccurrences(s.workspaceID, seriesIDs, s.clock.Unix())
+	if err != nil {
+		return TaskSeriesPage{}, err
+	}
+	userInfos, err := s.resolveUserInfos(userIDs)
+	if err != nil {
+		return TaskSeriesPage{}, err
+	}
 	views := make([]TaskSeriesView, 0, len(scoped))
 	for _, c := range scoped {
-		view, err := s.buildSeriesView(c)
+		view, err := s.buildSeriesViewFromSummary(c, summaries[c.ID], userInfos)
 		if err != nil {
 			return TaskSeriesPage{}, err
 		}
@@ -385,24 +410,27 @@ func (s *Service) GetTaskSeries(seriesID string) (TaskSeriesDetailView, error) {
 	if err != nil {
 		return TaskSeriesDetailView{}, err
 	}
-	pending, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "pending", Limit: 20})
+	pending, err := s.listTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "pending", Limit: 200}, false)
 	if err != nil {
 		return TaskSeriesDetailView{}, err
 	}
-	waiting, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "waiting", Limit: 20})
+	waiting, err := s.listTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "waiting", Limit: 200}, false)
 	if err != nil {
 		return TaskSeriesDetailView{}, err
 	}
-	completed, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "completed", Limit: 20})
+	completed, err := s.listTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "completed", Limit: 10}, true)
 	if err != nil {
 		return TaskSeriesDetailView{}, err
 	}
-	skipped, err := s.ListTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "deleted", Limit: 20})
+	skipped, err := s.listTaskSeriesOccurrences(seriesID, TaskSeriesOccurrenceListInput{Status: "deleted", Limit: 10}, true)
 	if err != nil {
 		return TaskSeriesDetailView{}, err
 	}
 	open := append(pending.Items, waiting.Items...)
 	sortTaskViews(open, "due")
+	if len(open) > 200 {
+		open = open[:200]
+	}
 	return TaskSeriesDetailView{
 		Series: view, OpenOccurrences: open,
 		RecentCompleted: completed.Items, RecentSkipped: skipped.Items,
@@ -596,20 +624,13 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 
 // maxMaterializedRecurrenceAt 返回 series 已物化的最大 recurrence_at。
 func (s *Service) maxMaterializedRecurrenceAt(series taskseries.Series) (int64, error) {
-	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
-		WorkspaceID: series.WorkspaceID, SeriesID: series.ID,
-		Start: series.FirstDue, End: math.MaxInt64,
-	})
+	summaries, err := s.taskOccurrenceRepo.SummarizeSeriesOccurrences(
+		series.WorkspaceID, []string{series.ID}, s.clock.Unix(),
+	)
 	if err != nil {
 		return 0, err
 	}
-	var maxSlot int64
-	for _, occ := range exceptions {
-		if occ.RecurrenceAt != nil && *occ.RecurrenceAt > maxSlot {
-			maxSlot = *occ.RecurrenceAt
-		}
-	}
-	return maxSlot, nil
+	return summaries[series.ID].MaxRecurrenceAt, nil
 }
 
 // syncSharedFieldsToOpenOccurrences 把共享字段同步到未 override 的 open materialized occurrence（spec §11.4）。
@@ -687,44 +708,43 @@ func (s *Service) syncSharedFieldsToOpenOccurrences(series taskseries.Series, in
 // --- 辅助 ---
 
 func (s *Service) buildSeriesView(series taskseries.Series) (TaskSeriesView, error) {
-	counts, err := s.taskOccurrenceRepo.CountSeriesOccurrences(series.WorkspaceID, series.ID, s.clock.Unix())
+	summaries, err := s.taskOccurrenceRepo.SummarizeSeriesOccurrences(series.WorkspaceID, []string{series.ID}, s.clock.Unix())
 	if err != nil {
 		return TaskSeriesView{}, err
 	}
+	userIDs := append([]string{series.CreatedBy}, series.AssigneeIDs...)
+	info, err := s.resolveUserInfos(userIDs)
+	if err != nil {
+		return TaskSeriesView{}, err
+	}
+	return s.buildSeriesViewFromSummary(series, summaries[series.ID], info)
+}
+
+func (s *Service) buildSeriesViewFromSummary(series taskseries.Series, summary storage.SeriesOccurrenceSummary, userInfos map[string]domain.UserInfo) (TaskSeriesView, error) {
 	createdBy := domain.UserInfo{ID: series.CreatedBy, Name: series.CreatedBy}
-	info, err := s.resolveUserInfos([]string{series.CreatedBy})
-	if err != nil {
-		return TaskSeriesView{}, err
-	}
-	if u, ok := info[series.CreatedBy]; ok {
-		createdBy = u
+	if user, ok := userInfos[series.CreatedBy]; ok {
+		createdBy = user
 	}
 	// 解析 assignees 为完整 UserInfo（含 display_name/email/external_ids）。
 	assigneeInfos := make([]domain.UserInfo, 0, len(series.AssigneeIDs))
-	if len(series.AssigneeIDs) > 0 {
-		resolved, err := s.resolveUserInfos(series.AssigneeIDs)
-		if err != nil {
-			return TaskSeriesView{}, err
-		}
-		for _, id := range series.AssigneeIDs {
-			if u, ok := resolved[id]; ok {
-				assigneeInfos = append(assigneeInfos, u)
-			} else {
-				assigneeInfos = append(assigneeInfos, domain.UserInfo{ID: id, Name: id})
-			}
+	for _, id := range series.AssigneeIDs {
+		if user, ok := userInfos[id]; ok {
+			assigneeInfos = append(assigneeInfos, user)
+		} else {
+			assigneeInfos = append(assigneeInfos, domain.UserInfo{ID: id, Name: id})
 		}
 	}
 	next := computeNextRecurrenceAt(series, s.clock)
-	suggested, err := s.computeSuggestedRuleEffectiveFrom(series)
+	suggested, err := s.computeSuggestedRuleEffectiveFromWithMax(series, summary.MaxRecurrenceAt)
 	if err != nil {
 		return TaskSeriesView{}, err
 	}
 	return TaskSeriesView{
 		Series:                     series,
-		OpenOccurrenceCount:        counts.Open,
-		CompletedCount:             counts.Completed,
-		SkippedCount:               counts.Deleted,
-		OverdueCount:               counts.Overdue,
+		OpenOccurrenceCount:        summary.Counts.Open,
+		CompletedCount:             summary.Counts.Completed,
+		SkippedCount:               summary.Counts.Deleted,
+		OverdueCount:               summary.Counts.Overdue,
 		NextRecurrenceAt:           next,
 		SuggestedRuleEffectiveFrom: suggested,
 		CreatedBy:                  createdBy,
@@ -741,6 +761,13 @@ func (s *Service) computeSuggestedRuleEffectiveFrom(series taskseries.Series) (*
 	maxMaterialized, err := s.maxMaterializedRecurrenceAt(series)
 	if err != nil {
 		return nil, err
+	}
+	return s.computeSuggestedRuleEffectiveFromWithMax(series, maxMaterialized)
+}
+
+func (s *Service) computeSuggestedRuleEffectiveFromWithMax(series taskseries.Series, maxMaterialized int64) (*int64, error) {
+	if series.Status != taskseries.StatusActive {
+		return nil, nil
 	}
 	threshold := s.clock.Unix()
 	if maxMaterialized > threshold {
@@ -1122,17 +1149,26 @@ func (s *Service) deleteOpenOccurrencesForStop(series taskseries.Series, now int
 // TaskSeriesOccurrenceListInput 是 series occurrence 分页查询参数（spec §11.3）。
 type TaskSeriesOccurrenceListInput struct {
 	Status    string // pending|waiting|completed|deleted|all
-	DueAfter  *int64
-	DueBefore *int64
+	DueAfter  *int64 // inclusive range start
+	DueBefore *int64 // exclusive range end
 	Limit     int
 	Offset    int
 }
 
 // ListTaskSeriesOccurrences 分页列出 series 的 materialized occurrence（spec §11.3）。
 func (s *Service) ListTaskSeriesOccurrences(seriesID string, input TaskSeriesOccurrenceListInput) (TaskViewPage, error) {
+	return s.listTaskSeriesOccurrences(seriesID, input, false)
+}
+
+func (s *Service) listTaskSeriesOccurrences(seriesID string, input TaskSeriesOccurrenceListInput, newestFirst bool) (TaskViewPage, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return TaskViewPage{}, err
 	}
+	limit, offset, err := normalizeTaskSeriesPagination(input.Limit, input.Offset)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	input.Limit, input.Offset = limit, offset
 	// 校验 status 枚举。
 	status := input.Status
 	if status == "" {
@@ -1150,19 +1186,25 @@ func (s *Service) ListTaskSeriesOccurrences(seriesID string, input TaskSeriesOcc
 	if err := s.ensureSeriesProjectScope(series, false); err != nil {
 		return TaskViewPage{}, err
 	}
-	// 大范围查询（series occurrence 数量有限）。
+	// 无范围时返回全部已物化历史；不用“当前时间 + N 年”的隐式截断。
 	start := int64(0)
-	end := s.clock.Unix() + 10*365*86400
+	end := int64(1<<63 - 1)
 	if input.DueAfter != nil {
 		start = *input.DueAfter
 	}
 	if input.DueBefore != nil {
-		end = *input.DueBefore + 86400
+		end = *input.DueBefore
 	}
-	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storage.OccurrenceRangeOptions{
+	storageOpts := storage.OccurrenceRangeOptions{
 		WorkspaceID: series.WorkspaceID, SeriesID: series.ID, Start: start, End: end,
 		Status: statusPredicate(status),
-	})
+		Limit:  input.Limit, Offset: input.Offset, Descending: newestFirst,
+	}
+	total, err := s.taskOccurrenceRepo.CountOccurrenceExceptions(storageOpts)
+	if err != nil {
+		return TaskViewPage{}, err
+	}
+	exceptions, err := s.taskOccurrenceRepo.ListOccurrenceExceptions(storageOpts)
 	if err != nil {
 		return TaskViewPage{}, err
 	}
@@ -1181,9 +1223,25 @@ func (s *Service) ListTaskSeriesOccurrences(seriesID string, input TaskSeriesOcc
 		views = append(views, v)
 	}
 	sortTaskViews(views, "due")
-	total := len(views)
-	paged := paginateTaskViews(views, input.Limit, input.Offset)
-	return TaskViewPage{Items: paged, Total: total, Limit: input.Limit, Offset: input.Offset, OccurrenceMode: OccurrenceModeMaterialized}, nil
+	if newestFirst {
+		for left, right := 0, len(views)-1; left < right; left, right = left+1, right-1 {
+			views[left], views[right] = views[right], views[left]
+		}
+	}
+	return TaskViewPage{Items: views, Total: total, Limit: input.Limit, Offset: input.Offset, OccurrenceMode: OccurrenceModeMaterialized}, nil
+}
+
+func normalizeTaskSeriesPagination(limit, offset int) (int, int, error) {
+	if limit == 0 {
+		limit = taskSeriesDefaultLimit
+	}
+	if limit < 0 || limit > taskSeriesMaxLimit {
+		return 0, 0, RuntimeError{Code: "api_bad_limit", Message: "limit must be between 1 and 1000"}
+	}
+	if offset < 0 {
+		return 0, 0, RuntimeError{Code: "api_bad_offset", Message: "offset must be >= 0"}
+	}
+	return limit, offset, nil
 }
 
 // statusPredicate 把列表 status 参数转为 storage 查询的 status predicate。

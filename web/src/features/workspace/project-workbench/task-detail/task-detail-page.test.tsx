@@ -86,9 +86,10 @@ function task(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function renderPage() {
+function renderPage(projectClosed = false) {
   render(
     <TaskDetailPage
+      projectClosed={projectClosed}
       projectSlug="agentapi"
       taskRef="ag-23"
       workspaceSlug="acme"
@@ -160,10 +161,9 @@ describe("TaskDetailPage", () => {
     expect(
       screen.getByRole("link", { name: "agentapi" }).getAttribute("href")
     ).toBe("/workspaces/acme/projects/agentapi")
+    expect(document.title).toBe("ag-23 · 写投放日报")
     expect(
-      document.querySelectorAll(
-        '[class*="md:grid-cols-[minmax(0,1fr)_280px]"]'
-      )
+      document.querySelectorAll('[class*="md:grid-cols-[minmax(0,1fr)_280px]"]')
     ).toHaveLength(1)
   })
 
@@ -190,9 +190,11 @@ describe("TaskDetailPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "开始" }))
     expect(startTask).toHaveBeenCalledWith("acme", "ag-23")
 
-    await userEvent.click(screen.getByRole("button", { name: "完成" }))
+    await userEvent.click(screen.getByRole("button", { name: "完成任务" }))
     expect(doneTask).toHaveBeenCalledWith("acme", "ag-23")
-    expect(await screen.findByRole("button", { name: "重新打开" })).toBeTruthy()
+    expect(
+      await screen.findByRole("button", { name: "重新打开任务" })
+    ).toBeTruthy()
   })
 
   it("deletes a pending ordinary task after confirmation", async () => {
@@ -323,6 +325,13 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByRole("button", { name: "开始本次" })).toBeNull()
     expect(screen.queryByRole("button", { name: "完成本次" })).toBeNull()
     expect(screen.queryByRole("button", { name: "跳过本次" })).toBeNull()
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "更多操作 ag-23" })
+    )
+    expect(screen.getByRole("menuitem", { name: "查看循环任务" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "复制本次链接" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "跳过本次" })).toBeNull()
   })
 
   it("allows adding a child to a projected occurrence", async () => {
@@ -386,6 +395,10 @@ describe("TaskDetailPage", () => {
     expect(screen.getAllByText("计划实例").length).toBeGreaterThan(0)
     expect(screen.getByText(/计划于.*2026/)).toBeTruthy()
     expect(screen.getByText(/首次编辑或执行操作后会创建本次任务/)).toBeTruthy()
+    expect(screen.getByText(/修改或完成只影响这一次/)).toBeTruthy()
+    expect(screen.getAllByText("继承自循环任务").length).toBeGreaterThanOrEqual(
+      4
+    )
     expect(screen.getByText("所属循环任务已停止")).toBeTruthy()
     expect(screen.getByRole("button", { name: "开始本次" })).toBeTruthy()
     expect(screen.queryByText("occ:series-1:1784476799")).toBeNull()
@@ -479,7 +492,7 @@ describe("TaskDetailPage", () => {
   it("returns a My Tasks occurrence to the original preset and filters", async () => {
     render(
       <TaskDetailPage
-        myTasksReturnSearch="tab=overdue&priority=H&q=review&sort=priority"
+        myTasksReturnSearch="tab=overdue&project=ops&task_type=occurrence&priority=H&q=review&sort=priority"
         projectSlug="agentapi"
         taskRef="ag-23"
         workspaceSlug="acme"
@@ -489,7 +502,7 @@ describe("TaskDetailPage", () => {
 
     const backLink = await screen.findByRole("link", { name: "返回我的任务" })
     expect(backLink.getAttribute("href")).toBe(
-      "/my-tasks?priority=H&q=review&sort=priority&tab=overdue"
+      "/my-tasks?priority=H&project=ops&q=review&sort=priority&tab=overdue&task_type=occurrence"
     )
   })
 
@@ -547,8 +560,25 @@ describe("TaskDetailPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "开始" })).toBeNull()
       expect(screen.queryByRole("button", { name: "停止" })).toBeNull()
-      expect(screen.queryByRole("button", { name: "完成" })).toBeNull()
+      expect(screen.queryByRole("button", { name: "完成任务" })).toBeNull()
     })
+  })
+
+  it("renders project tasks as read-only when the project is closed", async () => {
+    renderPage(true)
+
+    await screen.findByText("写投放日报")
+    expect(
+      (screen.getByRole("button", { name: "任务标题" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "编辑描述" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(screen.queryByRole("button", { name: "开始" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "完成任务" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "更多操作 ag-23" })).toBeNull()
   })
 
   it("disables all write controls for completed tasks", async () => {

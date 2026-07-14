@@ -74,6 +74,17 @@ func TestTaskSeriesHTTPCreateAndGet(t *testing.T) {
 	if createResp.Data.FirstOccurrence.RecurrenceInfo == nil || createResp.Data.FirstOccurrence.RecurrenceInfo.Materialization != "projected" {
 		t.Fatalf("first_occurrence 应为 projected: %#v", createResp.Data.FirstOccurrence.RecurrenceInfo)
 	}
+	var rawCreate map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &rawCreate); err != nil {
+		t.Fatal(err)
+	}
+	firstOccurrence := rawCreate["data"].(map[string]any)["first_occurrence"].(map[string]any)
+	for _, field := range []string{"uuid", "task_slug", "project_seq", "entry", "modified", "start", "end"} {
+		value, exists := firstOccurrence[field]
+		if !exists || value != nil {
+			t.Fatalf("projected first_occurrence %s = %#v, want explicit null", field, value)
+		}
+	}
 
 	// GET 单个 series。
 	rr2 := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/task-series/"+createResp.Data.Series.ID+"?workspace=local",
@@ -208,6 +219,53 @@ func TestTaskSeriesHTTPCreateRejectsInvalidRule(t *testing.T) {
 	}
 }
 
+func TestTaskSeriesHTTPRejectsUnknownWritesAndInvalidPagination(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	createHTTPTestProjectViaService(t, fixture)
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+
+	unknownAdd := requestHTTPBody(t, fixture.server, http.MethodPost,
+		"/api/v1/task-series?workspace=local",
+		`{"title":"每日巡检","project":"ops","recurrence_rule":"daily","first_due_date":"2030-01-01","unexpected":true}`,
+		headers)
+	assertHTTPErrorCode(t, unknownAdd, http.StatusBadRequest, "api_bad_request")
+
+	created := requestHTTPBody(t, fixture.server, http.MethodPost,
+		"/api/v1/task-series?workspace=local",
+		`{"title":"每日巡检","project":"ops","recurrence_rule":"daily","first_due_date":"2030-01-01"}`,
+		headers)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+	var response struct {
+		Data struct {
+			Series struct {
+				ID string `json:"id"`
+			} `json:"series"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+
+	unknownModify := requestHTTPBody(t, fixture.server, http.MethodPatch,
+		"/api/v1/task-series/"+response.Data.Series.ID+"?workspace=local",
+		`{"unexpected":true}`, headers)
+	assertHTTPErrorCode(t, unknownModify, http.StatusBadRequest, "api_bad_request")
+
+	for _, path := range []string{
+		"/api/v1/task-series?workspace=local&limit=bad",
+		"/api/v1/task-series?workspace=local&offset=-1",
+		"/api/v1/task-series/" + response.Data.Series.ID + "/occurrences?workspace=local&limit=0",
+		"/api/v1/task-series/" + response.Data.Series.ID + "/occurrences?workspace=local&offset=bad",
+	} {
+		rr := requestHTTP(t, fixture.server, http.MethodGet, path, headers)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("GET %s status=%d body=%s", path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
 func TestTaskSeriesHTTPCreateRejectsUndefinedUDAAsBadRequest(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
 	createHTTPTestProjectViaService(t, fixture)
@@ -271,11 +329,13 @@ func TestTaskSeriesHTTPOccurrencesRejectsInvalidRange(t *testing.T) {
 	}
 	_ = json.Unmarshal(rr.Body.Bytes(), &created)
 
-	rr = requestHTTP(t, fixture.server, http.MethodGet,
-		"/api/v1/task-series/"+created.Data.Series.ID+"/occurrences?workspace=local&due_after=not-a-date",
-		map[string]string{"Authorization": "Bearer " + fixture.token})
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("invalid range status=%d body=%s", rr.Code, rr.Body.String())
+	for _, value := range []string{"not-a-date", "today", "2030-1-1"} {
+		rr = requestHTTP(t, fixture.server, http.MethodGet,
+			"/api/v1/task-series/"+created.Data.Series.ID+"/occurrences?workspace=local&due_after="+value,
+			map[string]string{"Authorization": "Bearer " + fixture.token})
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("invalid range %q status=%d body=%s", value, rr.Code, rr.Body.String())
+		}
 	}
 }
 
@@ -353,6 +413,35 @@ func TestTaskHTTPGetsProjectedOccurrenceByEncodedReferenceWithoutMaterializing(t
 	}
 	if after := countMaterializedOccurrences(t, fixture); after != before {
 		t.Fatalf("projected GET wrote rows: before=%d after=%d", before, after)
+	}
+}
+
+func TestTaskHTTPRejectsProjectedOccurrenceProjectMoveWithoutMaterializing(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for slug, name := range map[string]string{"ops": "Ops", "other": "Other"} {
+		if _, err := svc.AddProject(app.AddProjectInput{Slug: slug, Name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	headers := map[string]string{"Authorization": "Bearer " + fixture.token}
+	created := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/task-series?workspace=local",
+		`{"title":"每日巡检","project":"ops","recurrence_rule":"daily","first_due_date":"2030-01-01"}`, headers)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create series: status=%d body=%s", created.Code, created.Body.String())
+	}
+	first := httpResponseDataMap(t, created)["first_occurrence"].(map[string]any)
+	encoded := strings.ReplaceAll(first["id"].(string), ":", "%3A")
+	before := countMaterializedOccurrences(t, fixture)
+
+	rr := requestHTTPBody(t, fixture.server, http.MethodPatch,
+		"/api/v1/tasks/"+encoded+"?workspace=local", `{"project":"other"}`, headers)
+	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "task_occurrence_project_immutable")
+	if after := countMaterializedOccurrences(t, fixture); after != before {
+		t.Fatalf("failed project move materialized occurrence: before=%d after=%d", before, after)
 	}
 }
 

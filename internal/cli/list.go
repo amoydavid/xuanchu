@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
@@ -26,7 +27,8 @@ func newNextCommand(opts Options) *cobra.Command {
 }
 
 func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
-	return &cobra.Command{
+	var viewFlags taskViewFlags
+	cmd := &cobra.Command{
 		Use:   name + " [filters...]",
 		Short: listCommandShorts[name],
 		Args:  cobra.ArbitraryArgs,
@@ -35,52 +37,49 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
-				input := remote.TaskQueryInput{
-					Workspace: currentOpts.Workspace,
-					Project:   currentOpts.Project,
-					ProjectID: currentOpts.ProjectID,
-					NoContext: currentOpts.NoContext,
-				}
-				// HTTP/MCP 的默认查询只排除 deleted；Remote CLI 仍需显式保持
-				// 与本地 list/next 一致的“未完成（pending 或 waiting）”语义。
-				if len(args) == 0 {
-					input.Filters = []string{"(status:pending or status:waiting)"}
-				}
-				if sort != "" {
-					input.Sort = sort
-				}
 				client, err := buildRemoteClient(currentOpts)
 				if err != nil {
 					return err
 				}
-				if len(args) > 0 {
-					if isPlainTargetArg(args) {
-						target, err := resolveRemoteTaskTarget(context.Background(), client, currentOpts, args[0])
-						if err != nil {
-							return err
-						}
-						input.Target = target
-					} else {
-						input.Filters = append([]string(nil), args...)
+				if len(args) > 0 && isPlainTargetArg(args) {
+					target, err := resolveRemoteTaskTarget(context.Background(), client, currentOpts, args[0])
+					if err != nil {
+						return err
 					}
+					view, err := client.GetTaskView(context.Background(), currentOpts.Workspace, target)
+					if err != nil {
+						return err
+					}
+					page := app.TaskViewPage{Items: []app.TaskOccurrenceView{remoteOccurrenceDTOToView(view)}, Total: 1, Limit: 1}
+					ids, err := remoteWorkingSetIDsForViews(context.Background(), client, currentOpts, page.Items)
+					if err != nil {
+						return err
+					}
+					renderTaskViewPage(cmd, currentOpts.JSON, page, ids)
+					return nil
+				}
+				input := remote.TaskQueryInput{
+					Workspace:      currentOpts.Workspace,
+					Project:        currentOpts.Project,
+					ProjectID:      currentOpts.ProjectID,
+					NoContext:      currentOpts.NoContext,
+					Report:         name,
+					DueAfter:       viewFlags.DueAfter,
+					DueBefore:      viewFlags.DueBefore,
+					OccurrenceMode: viewFlags.OccurrenceMode,
+					Sort:           viewFlags.Sort, Limit: viewFlags.Limit, Offset: viewFlags.Offset,
+					Filters: append([]string(nil), args...),
 				}
 				page, err := client.QueryTasks(context.Background(), input)
 				if err != nil {
 					return err
 				}
-				tasks := remotePageToTasks(page)
-				if currentOpts.JSON {
-					dtos := make([]task.JSONTask, len(tasks))
-					for i, tsk := range tasks {
-						dtos[i] = task.ToJSON(tsk)
-					}
-					return render.JSON(cmd.OutOrStdout(), dtos)
-				}
-				ids, err := remoteWorkingSetIDs(context.Background(), client, currentOpts, tasks)
+				viewPage := remotePageToTaskViewPage(page)
+				ids, err := remoteWorkingSetIDsForViews(context.Background(), client, currentOpts, viewPage.Items)
 				if err != nil {
 					return err
 				}
-				render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
+				renderTaskViewPage(cmd, currentOpts.JSON, viewPage, ids)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -89,40 +88,50 @@ func newTaskListCommand(opts Options, name, sort string) *cobra.Command {
 			}
 			defer closeFn()
 
-			input := app.ListInput{}
+			if len(args) > 0 && isPlainTargetArg(args) {
+				view, err := svc.GetTaskView(args[0])
+				if err != nil {
+					return err
+				}
+				page := app.TaskViewPage{Items: []app.TaskOccurrenceView{view}, Total: 1, Limit: 1}
+				ids, err := svc.WorkingSetIDsForViews(page.Items)
+				if err != nil {
+					return err
+				}
+				renderTaskViewPage(cmd, currentOpts.JSON, page, ids)
+				return nil
+			}
+			var expr query.Expr
 			if len(args) > 0 {
-				if isPlainTargetArg(args) {
-					v := args[0]
-					input.Target = &v
-				} else {
-					expr, err := query.ParseFilterExpr(args)
-					if err != nil {
-						return err
-					}
-					input.Query = expr
+				expr, err = query.ParseFilterExpr(args)
+				if err != nil {
+					return err
 				}
 			}
-			input.Sort = sort
-
-			tasks, err := svc.ListReport(name, input)
+			expr, dateRange, err := viewFlags.localQuery(expr, time.Local)
 			if err != nil {
 				return err
 			}
-			if currentOpts.JSON {
-				dtos := make([]task.JSONTask, len(tasks))
-				for i, tsk := range tasks {
-					dtos[i] = task.ToJSON(tsk)
-				}
-				return render.JSON(cmd.OutOrStdout(), dtos)
-			}
-			ids, err := svc.WorkingSetIDs(tasks)
+			page, err := svc.RunTaskViewReport(app.ReportViewInput{
+				Name: name, Query: expr, Range: dateRange,
+				OccurrenceMode: app.OccurrenceMode(viewFlags.OccurrenceMode),
+				NoContext:      currentOpts.NoContext, Sort: viewFlags.Sort,
+				Limit: viewFlags.Limit, Offset: viewFlags.Offset,
+			})
 			if err != nil {
 				return err
 			}
-			render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
+			ids, err := svc.WorkingSetIDsForViews(page.Items)
+			if err != nil {
+				return err
+			}
+			renderTaskViewPage(cmd, currentOpts.JSON, page, ids)
 			return nil
 		},
 	}
+	_ = sort
+	viewFlags.bind(cmd)
+	return cmd
 }
 
 func remoteWorkingSetIDs(ctx context.Context, client *remote.Client, opts Options, tasks []task.Task) ([]int, error) {
@@ -142,6 +151,47 @@ func remoteWorkingSetIDs(ctx context.Context, client *remote.Client, opts Option
 		ids[i] = index[tsk.UUID]
 	}
 	return ids, nil
+}
+
+func remoteWorkingSetIDsForViews(ctx context.Context, client *remote.Client, opts Options, views []app.TaskOccurrenceView) ([]int, error) {
+	if len(views) == 0 {
+		return nil, nil
+	}
+	workingSet, err := remoteDefaultWorkingSet(ctx, client, opts)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(workingSet))
+	for i, tsk := range workingSet {
+		index[tsk.UUID] = i + 1
+	}
+	ids := make([]int, len(views))
+	for i, view := range views {
+		if view.UUID != nil {
+			ids[i] = index[*view.UUID]
+		}
+	}
+	return ids, nil
+}
+
+func renderTaskViewPage(cmd *cobra.Command, asJSON bool, page app.TaskViewPage, ids []int) {
+	if asJSON {
+		renderOccurrencePage(cmd.OutOrStdout(), true, page)
+		return
+	}
+	tasks := make([]task.Task, 0, len(page.Items))
+	for _, view := range page.Items {
+		tsk := taskFromOccurrenceView(view)
+		if view.RecurrenceInfo != nil {
+			if view.RecurrenceInfo.Materialization == "projected" {
+				tsk.Title += " [计划实例 · " + view.ID + "]"
+			} else {
+				tsk.Title += " [循环实例 · " + view.RecurrenceInfo.Rule + "]"
+			}
+		}
+		tasks = append(tasks, tsk)
+	}
+	render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
 }
 
 func isPlainTargetArg(args []string) bool {

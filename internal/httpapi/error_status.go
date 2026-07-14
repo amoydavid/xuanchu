@@ -44,7 +44,7 @@ func statusForAppErrorCode(code string) int {
 	case "task_series_project_closed":
 		return http.StatusConflict
 	// 循环系列输入校验
-	case "task_series_due_required", "task_series_invalid_until", "task_series_invalid_rule", "task_series_invalid_effective_from", "task_series_unsupported_field", "task_series_endpoint_required", "task_occurrence_range_required", "task_occurrence_range_too_large", "uda_not_defined", "uda_orphan_readonly", "uda_value_invalid":
+	case "task_series_due_required", "task_series_invalid_until", "task_series_invalid_rule", "task_series_invalid_effective_from", "task_series_unsupported_field", "task_series_endpoint_required", "task_occurrence_project_immutable", "task_occurrence_range_required", "task_occurrence_range_too_large", "uda_not_defined", "uda_orphan_readonly", "uda_value_invalid":
 		return http.StatusBadRequest
 	// 输入校验类
 	case "hook_delivery_not_replayable", "hook_endpoint_invalid", "hook_event_types_invalid", "hook_name_invalid", "hook_timeout_invalid", "hook_max_attempts_invalid", "hook_project_required", "hook_scope_invalid", "hook_secret_invalid", "notification_sink_invalid", "reminder_rule_invalid", "notification_rule_invalid", "endpoint_unresolved", "endpoint_host_denied", "endpoint_mode_invalid", "endpoint_template_invalid", "audience_unsupported", "audience_unsupported_for_event", "template_unresolved", "token_ambiguous_ref", "tenant_token_name_required", "tenant_token_scope_invalid", "tenant_token_project_scope_invalid", "tenant_actor_not_user":

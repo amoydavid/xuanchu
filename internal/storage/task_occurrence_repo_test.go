@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 )
 
 func TestCreateOccurrenceIsUniqueBySeriesSlotForever(t *testing.T) {
@@ -117,6 +118,40 @@ func TestListOccurrenceExceptionsMatchesRecurrenceAtAndDue(t *testing.T) {
 	}
 }
 
+func TestListOccurrenceExceptionsPaginatesInDueOrderAndCountsFullSet(t *testing.T) {
+	store, ws, proj, series := newTaskSeriesRepoFixture(t)
+	repo := NewTaskOccurrenceRepository(store.DB())
+	seriesID, rule := series.ID, "daily"
+	for index, due := range []int64{300, 100, 200} {
+		slot := int64(1000 + index)
+		if _, _, err := repo.CreateOccurrence(domain.Task{
+			UUID: "occ-page-" + string(rune('a'+index)), WorkspaceID: ws.ID,
+			Title: "occ", Status: domain.StatusCompleted, Entry: slot, Modified: slot,
+			ProjectID: &proj.ID, Due: &due, SeriesID: &seriesID, RecurrenceAt: &slot,
+			RecurrenceRuleSnapshot: &rule,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	opts := OccurrenceRangeOptions{
+		WorkspaceID: ws.ID, SeriesID: seriesID, Start: 0, End: 10_000,
+		Status: domain.StatusCompleted, Limit: 1, Offset: 1,
+	}
+	total, err := repo.CountOccurrenceExceptions(opts)
+	if err != nil || total != 3 {
+		t.Fatalf("count = %d err=%v, want 3", total, err)
+	}
+	page, err := repo.ListOccurrenceExceptions(opts)
+	if err != nil || len(page) != 1 || page[0].Due == nil || *page[0].Due != 200 {
+		t.Fatalf("ascending page = %#v err=%v, want due=200", page, err)
+	}
+	opts.Descending = true
+	page, err = repo.ListOccurrenceExceptions(opts)
+	if err != nil || len(page) != 1 || page[0].Due == nil || *page[0].Due != 200 {
+		t.Fatalf("descending page = %#v err=%v, want due=200", page, err)
+	}
+}
+
 func TestCountSeriesOccurrences(t *testing.T) {
 	store, ws, proj, series := newTaskSeriesRepoFixture(t)
 	occRepo := NewTaskOccurrenceRepository(store.DB())
@@ -163,5 +198,62 @@ func TestCountSeriesOccurrences(t *testing.T) {
 	}
 	if counts.Overdue != 1 {
 		t.Fatalf("overdue = %d want 1 (pending due 500 < now 1000)", counts.Overdue)
+	}
+}
+
+func TestSummarizeSeriesOccurrencesReturnsCountsAndMaxForEveryRequestedSeries(t *testing.T) {
+	store, ws, proj, firstSeries := newTaskSeriesRepoFixture(t)
+	seriesRepo := NewTaskSeriesRepository(store.DB())
+	occRepo := NewTaskOccurrenceRepository(store.DB())
+	secondSeries, err := seriesRepo.Create(taskseries.Series{
+		WorkspaceID: ws.ID, ProjectID: proj.ID, Title: "每周巡检",
+		Status: taskseries.StatusActive, RecurrenceRule: "weekly", FirstDue: 700,
+		CreatedBy: "user-1", CreatedAt: 100, ModifiedAt: 100,
+	})
+	if err != nil {
+		t.Fatalf("Create second series: %v", err)
+	}
+
+	rule := "daily"
+	create := func(uuid, seriesID string, slot int64, status string, due *int64) {
+		t.Helper()
+		row := domain.Task{
+			UUID: uuid, WorkspaceID: ws.ID, Title: uuid, Status: status,
+			Entry: 1, Modified: 1, ProjectID: &proj.ID, Project: &proj.Slug, Due: due,
+			SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
+		}
+		if _, _, err := occRepo.CreateOccurrence(row); err != nil {
+			t.Fatalf("CreateOccurrence(%s): %v", uuid, err)
+		}
+	}
+	overdue := int64(500)
+	future := int64(1500)
+	create("first-pending-overdue", firstSeries.ID, 100, domain.StatusPending, &overdue)
+	create("first-waiting-overdue", firstSeries.ID, 200, domain.StatusWaiting, &overdue)
+	create("first-completed", firstSeries.ID, 300, domain.StatusCompleted, &overdue)
+	create("first-deleted", firstSeries.ID, 400, domain.StatusDeleted, &overdue)
+	create("first-pending-future", firstSeries.ID, 500, domain.StatusPending, &future)
+	create("second-pending-no-due", secondSeries.ID, 700, domain.StatusPending, nil)
+
+	summaries, err := occRepo.SummarizeSeriesOccurrences(
+		ws.ID,
+		[]string{firstSeries.ID, secondSeries.ID, "missing-series"},
+		1000,
+	)
+	if err != nil {
+		t.Fatalf("SummarizeSeriesOccurrences: %v", err)
+	}
+	if got := summaries[firstSeries.ID]; got.Counts != (OccurrenceCounts{
+		Open: 3, Pending: 2, Waiting: 1, Completed: 1, Deleted: 1, Overdue: 2,
+	}) || got.MaxRecurrenceAt != 500 {
+		t.Fatalf("first summary = %#v", got)
+	}
+	if got := summaries[secondSeries.ID]; got.Counts != (OccurrenceCounts{
+		Open: 1, Pending: 1,
+	}) || got.MaxRecurrenceAt != 700 {
+		t.Fatalf("second summary = %#v", got)
+	}
+	if got, ok := summaries["missing-series"]; !ok || got != (SeriesOccurrenceSummary{}) {
+		t.Fatalf("missing summary = %#v, present=%v", got, ok)
 	}
 }

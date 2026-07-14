@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
+	"gorm.io/gorm"
 )
 
 func TestOccurrenceRefRoundTrip(t *testing.T) {
@@ -24,6 +27,276 @@ func TestOccurrenceRefRoundTrip(t *testing.T) {
 	}
 	if seriesID != "11111111-1111-1111-1111-111111111111" || slot != 1783785599 {
 		t.Fatalf("ParseOccurrenceRef = %s %d", seriesID, slot)
+	}
+}
+
+func TestAddTaskViewReturnsUnifiedNormalTaskView(t *testing.T) {
+	svc, closeFn := newTestService(t, 1_750_000_000)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	due := int64(1_800_000_000)
+	view, err := svc.AddTaskView(AddInput{
+		Title: "normal view", Project: &project.Slug, Due: &due,
+		Assignees: []string{"local"},
+	})
+	if err != nil {
+		t.Fatalf("AddTaskView: %v", err)
+	}
+	if view.UUID == nil || view.ID != *view.UUID {
+		t.Fatalf("identity = id:%q uuid:%v", view.ID, view.UUID)
+	}
+	if view.TaskSlug == nil || *view.TaskSlug != "ops-1" {
+		t.Fatalf("task_slug = %v, want ops-1", view.TaskSlug)
+	}
+	if view.Due == nil || *view.Due != due || view.Entry == nil || view.Modified == nil {
+		t.Fatalf("timestamps = due:%v entry:%v modified:%v", view.Due, view.Entry, view.Modified)
+	}
+	if view.RecurrenceInfo != nil {
+		t.Fatalf("recurrence_info = %#v, want nil", view.RecurrenceInfo)
+	}
+	if len(view.Assignees) != 1 || view.Assignees[0].Name != "local" {
+		t.Fatalf("assignees = %#v", view.Assignees)
+	}
+}
+
+func TestTaskViewEvaluatorMatchesSQLCompilerOnMaterializedFixture(t *testing.T) {
+	loc := time.Local
+	now := time.Date(2025, 6, 1, 12, 0, 0, 0, loc).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetConfig("uda.estimate.type", "numeric"); err != nil {
+		t.Fatal(err)
+	}
+	for name, typ := range map[string]string{
+		"effort":   "duration",
+		"reviewed": "date",
+		"summary":  "string",
+	} {
+		if err := svc.SetConfig("uda."+name+".type", typ); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dep, err := svc.Add(AddInput{Title: "dependency", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := svc.Add(AddInput{Title: "parent", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := "contains needle in description"
+	priority := "H"
+	due := time.Date(2025, 6, 1, 23, 59, 59, 0, loc).Unix()
+	scheduled := time.Date(2025, 6, 1, 0, 0, 0, 0, loc).Unix()
+	until := time.Date(2025, 6, 2, 23, 59, 59, 0, loc).Unix()
+	rich, err := svc.Add(AddInput{
+		Title: "rich task", Description: &description, Project: &project.Slug,
+		Priority: &priority, Due: &due, Scheduled: &scheduled, Until: &until,
+		Assignees: []string{"local"}, Depends: []string{dep.UUID}, Parent: &parent.UUID,
+		Tags: []string{"daily"}, UDAs: map[string]string{
+			"estimate": "3", "effort": "3h", "reviewed": "2025-06-01", "summary": "Alpha launch review",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Start(rich.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Annotate(rich.UUID, "review note"); err != nil {
+		t.Fatal(err)
+	}
+	other, err := svc.Add(AddInput{Title: "other task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allIDs := []string{dep.UUID, parent.UUID, rich.UUID, other.UUID}
+	slices.Sort(allIDs)
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{query: "uuid:" + rich.UUID, want: []string{rich.UUID}},
+		{query: "title:ich", want: []string{rich.UUID}},
+		{query: "description:needle", want: []string{rich.UUID}},
+		{query: "due:today scheduled:today until.after:today", want: []string{rich.UUID}},
+		{query: "project:ops priority:H +daily", want: []string{rich.UUID}},
+		{query: "depends:" + dep.UUID, want: []string{rich.UUID}},
+		{query: "annotations:note", want: []string{rich.UUID}},
+		{query: "parent:" + parent.UUID, want: []string{rich.UUID}},
+		{query: "assignee:local", want: []string{rich.UUID}},
+		{query: "estimate.after:2", want: []string{rich.UUID}},
+		{query: "effort.after:7200", want: []string{rich.UUID}},
+		{query: "reviewed:today", want: []string{rich.UUID}},
+		{query: "summary:launch", want: []string{rich.UUID}},
+		{query: "assignee.notnull depends.notnull annotations.notnull", want: []string{rich.UUID}},
+		{query: "assignee.isnull depends.isnull annotations.isnull", want: []string{dep.UUID, parent.UUID, other.UUID}},
+		{query: "entry.notnull modified.notnull start.notnull end.isnull", want: []string{rich.UUID}},
+		{query: "-daily", want: []string{dep.UUID, parent.UUID, other.UUID}},
+		{query: "task_type:normal series_id.isnull recurrence_at.isnull", want: allIDs},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.query, func(t *testing.T) {
+			expr, err := query.ParseQuery(tc.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			materialized, err := svc.QueryTaskViews(TaskViewQuery{Query: expr, OccurrenceMode: OccurrenceModeMaterialized})
+			if err != nil {
+				t.Fatalf("materialized query: %v", err)
+			}
+			expanded, err := svc.QueryTaskViews(TaskViewQuery{
+				Query: expr, OccurrenceMode: OccurrenceModeExpand,
+				Range: &TaskViewRange{Start: now - 86400, End: now + 7*86400},
+			})
+			if err != nil {
+				t.Fatalf("expand query: %v", err)
+			}
+			ids := func(page TaskViewPage) []string {
+				out := make([]string, 0, len(page.Items))
+				for _, item := range page.Items {
+					out = append(out, item.ID)
+				}
+				slices.Sort(out)
+				return out
+			}
+			gotSQL, gotEvaluator := ids(materialized), ids(expanded)
+			want := append([]string(nil), tc.want...)
+			slices.Sort(want)
+			if !slices.Equal(gotSQL, want) {
+				t.Fatalf("SQL ids = %#v, want %#v", gotSQL, want)
+			}
+			if !slices.Equal(gotEvaluator, gotSQL) {
+				t.Fatalf("evaluator ids = %#v, SQL ids = %#v", gotEvaluator, gotSQL)
+			}
+		})
+	}
+}
+
+func TestTaskViewEvaluatorMatchesSQLCompilerOnOccurrenceAttributes(t *testing.T) {
+	loc := time.Local
+	now := time.Date(2025, 6, 1, 12, 0, 0, 0, loc).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := svc.Add(AddInput{Title: "ordinary", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	series, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "daily occurrence", Project: &project.Slug,
+		RecurrenceRule: "daily", FirstDue: now - 60,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if series.FirstOccurrence == nil || series.FirstOccurrence.UUID == nil ||
+		series.FirstOccurrence.RecurrenceInfo == nil ||
+		series.FirstOccurrence.RecurrenceInfo.Materialization != "materialized" {
+		t.Fatalf("first occurrence = %#v", series.FirstOccurrence)
+	}
+	occurrence := *series.FirstOccurrence
+
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{query: "task_type:occurrence", want: []string{occurrence.ID}},
+		{query: "series_id:" + series.Series.ID, want: []string{occurrence.ID}},
+		{query: "series_id.notnull recurrence_at.notnull", want: []string{occurrence.ID}},
+		{query: "recurrence_at:today", want: []string{occurrence.ID}},
+		{query: "uuid:" + *occurrence.UUID, want: []string{occurrence.ID}},
+		{query: "task_type:normal series_id.isnull recurrence_at.isnull", want: []string{ordinary.UUID}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.query, func(t *testing.T) {
+			expr, err := query.ParseQuery(tc.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			materialized, err := svc.QueryTaskViews(TaskViewQuery{
+				Query: expr, OccurrenceMode: OccurrenceModeMaterialized,
+			})
+			if err != nil {
+				t.Fatalf("materialized query: %v", err)
+			}
+			expanded, err := svc.QueryTaskViews(TaskViewQuery{
+				Query: expr, OccurrenceMode: OccurrenceModeExpand,
+				Range: &TaskViewRange{Start: now - 86400, End: now},
+			})
+			if err != nil {
+				t.Fatalf("expand query: %v", err)
+			}
+			ids := func(page TaskViewPage) []string {
+				out := make([]string, 0, len(page.Items))
+				for _, item := range page.Items {
+					out = append(out, item.ID)
+				}
+				slices.Sort(out)
+				return out
+			}
+			gotSQL, gotEvaluator := ids(materialized), ids(expanded)
+			want := append([]string(nil), tc.want...)
+			slices.Sort(want)
+			if !slices.Equal(gotSQL, want) {
+				t.Fatalf("SQL ids = %#v, want %#v", gotSQL, want)
+			}
+			if !slices.Equal(gotEvaluator, gotSQL) {
+				t.Fatalf("evaluator ids = %#v, SQL ids = %#v", gotEvaluator, gotSQL)
+			}
+		})
+	}
+}
+
+func TestProjectedOccurrenceMatchesPersistedIdentityNullPredicates(t *testing.T) {
+	loc := time.Local
+	now := time.Date(2025, 6, 1, 12, 0, 0, 0, loc).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDue := time.Date(2025, 6, 3, 23, 59, 59, 0, loc).Unix()
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "projected", Project: &project.Slug, RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.FirstOccurrence == nil || created.FirstOccurrence.RecurrenceInfo == nil || created.FirstOccurrence.RecurrenceInfo.Materialization != "projected" {
+		t.Fatalf("first occurrence = %#v", created.FirstOccurrence)
+	}
+
+	expr, err := query.ParseQuery("uuid.isnull entry.isnull modified.isnull start.isnull end.isnull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.QueryTaskViews(TaskViewQuery{
+		Query: expr, OccurrenceMode: OccurrenceModeExpand,
+		Range: &TaskViewRange{Start: now, End: time.Date(2025, 6, 4, 0, 0, 0, 0, loc).Unix()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != created.FirstOccurrence.ID {
+		t.Fatalf("items = %#v", page.Items)
 	}
 }
 
@@ -186,6 +459,32 @@ func TestQueryTaskViewsMaterializedModeReturnsOnlyMaterialized(t *testing.T) {
 	}
 }
 
+func TestOccurrenceCannotMoveAwayFromSeriesProject(t *testing.T) {
+	svc, series, day1, day2, _ := newOccurrenceMergeFixture(t)
+	other, err := svc.AddProject(AddProjectInput{Slug: "other", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := occurrenceRowCount(t, svc, svc.workspaceID)
+	projectedRef := OccurrenceRef(series.ID, day2)
+	err = svc.Modify(projectedRef, ModifyInput{Project: &other.Slug})
+	assertRuntimeCode(t, err, "task_occurrence_project_immutable")
+	if after := occurrenceRowCount(t, svc, svc.workspaceID); after != before {
+		t.Fatalf("failed projected move materialized row: before=%d after=%d", before, after)
+	}
+
+	materializedRef := OccurrenceRef(series.ID, day1)
+	err = svc.Modify(materializedRef, ModifyInput{Project: &other.Slug})
+	assertRuntimeCode(t, err, "task_occurrence_project_immutable")
+	view, err := svc.GetTaskView(materializedRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.ProjectID == nil || *view.ProjectID != series.ProjectID {
+		t.Fatalf("materialized occurrence project changed: %#v", view.ProjectID)
+	}
+}
+
 func TestQueryTaskViewsDefaultsToAllNonDeletedTasks(t *testing.T) {
 	svc, closeFn := newTestService(t, 1783900000)
 	t.Cleanup(closeFn)
@@ -227,6 +526,23 @@ func TestQueryTaskViewsExpandMergesProjectedAndMaterializedWithoutWrites(t *test
 	store := svc.store
 	ws, _ := store.LocalWorkspace()
 	beforeCount := occurrenceRowCount(t, svc, ws.ID)
+	createHookTestSink(t, store, ws.ID, svc.runtime.ActorUserID, "recurrence-read-sink")
+	hook, err := svc.AddHook(HookAddInput{
+		Name: "recurrence-read-hook", ScopeType: HookScopeWorkspace,
+		EventTypes: []string{"task.created"}, SinkRef: "recurrence-read-sink",
+		TimeoutSeconds: 10, MaxAttempts: 3,
+	})
+	if err != nil {
+		t.Fatalf("AddHook: %v", err)
+	}
+	beforeAudit, err := svc.ListAudit(AuditListInput{Limit: 1000})
+	if err != nil {
+		t.Fatalf("ListAudit before expand: %v", err)
+	}
+	beforeDeliveries, err := svc.ListHookDeliveries(hook.ID, "", 1000, 0)
+	if err != nil {
+		t.Fatalf("ListHookDeliveries before expand: %v", err)
+	}
 
 	page, err := svc.QueryTaskViews(TaskViewQuery{
 		OccurrenceMode: OccurrenceModeExpand,
@@ -249,6 +565,17 @@ func TestQueryTaskViewsExpandMergesProjectedAndMaterializedWithoutWrites(t *test
 	// 不写库。
 	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount {
 		t.Fatalf("expand 写库了: before=%d after=%d", beforeCount, after)
+	}
+	afterAudit, err := svc.ListAudit(AuditListInput{Limit: 1000})
+	if err != nil {
+		t.Fatalf("ListAudit after expand: %v", err)
+	}
+	afterDeliveries, err := svc.ListHookDeliveries(hook.ID, "", 1000, 0)
+	if err != nil {
+		t.Fatalf("ListHookDeliveries after expand: %v", err)
+	}
+	if len(afterAudit) != len(beforeAudit) || len(afterDeliveries) != len(beforeDeliveries) {
+		t.Fatalf("expand produced side effects: audit %d->%d deliveries %d->%d", len(beforeAudit), len(afterAudit), len(beforeDeliveries), len(afterDeliveries))
 	}
 	// day1 为 materialized，day2/day3 为 projected。
 	bySlot := map[int64]TaskOccurrenceView{}
@@ -487,6 +814,46 @@ func TestListTaskSeriesReturnsCreated(t *testing.T) {
 	}
 }
 
+func TestListTaskSeriesLoadsDerivedDataWithoutNPlusOne(t *testing.T) {
+	svc, closeFn := newTestService(t, time.Date(2026, 7, 14, 12, 0, 0, 0, time.Local).Unix())
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		_, err := svc.AddTaskSeries(AddTaskSeriesInput{
+			Title: fmt.Sprintf("series-%d", i), ProjectID: project.ID,
+			RecurrenceRule: "daily",
+			FirstDue:       time.Date(2030, 1, i+1, 23, 59, 59, 0, time.Local).Unix(),
+			Assignees:      []string{"local"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	queries := 0
+	callbackName := "test:list-task-series-query-count"
+	db := svc.store.DB()
+	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(*gorm.DB) {
+		queries++
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove(callbackName)
+	page, err := svc.ListTaskSeries(TaskSeriesListInput{ProjectID: project.ID, Status: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 5 {
+		t.Fatalf("total = %d, want 5", page.Total)
+	}
+	if queries > 15 {
+		t.Fatalf("ListTaskSeries executed %d queries for 5 series, want <= 15", queries)
+	}
+}
+
 func TestGetTaskSeriesReturnsDetail(t *testing.T) {
 	svc, closeFn := newTestService(t, 1000)
 	defer closeFn()
@@ -513,6 +880,121 @@ func TestGetTaskSeriesReturnsDetail(t *testing.T) {
 	}
 	if detail.Series.SuggestedRuleEffectiveFrom == nil || *detail.Series.SuggestedRuleEffectiveFrom != want {
 		t.Fatalf("suggested_rule_effective_from = %#v want %d", detail.Series.SuggestedRuleEffectiveFrom, want)
+	}
+}
+
+func TestTaskSeriesPaginationUsesSharedDefaultAndBounds(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: 100000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seriesPage, err := svc.ListTaskSeries(TaskSeriesListInput{ProjectID: project.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seriesPage.Limit != 200 {
+		t.Fatalf("series default limit = %d, want 200", seriesPage.Limit)
+	}
+	occurrencePage, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if occurrencePage.Limit != 200 {
+		t.Fatalf("occurrence default limit = %d, want 200", occurrencePage.Limit)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		limit int
+		off   int
+		code  string
+	}{
+		{name: "series limit", limit: 1001, code: "api_bad_limit"},
+		{name: "series offset", off: -1, code: "api_bad_offset"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.ListTaskSeries(TaskSeriesListInput{ProjectID: project.ID, Limit: tc.limit, Offset: tc.off})
+			assertTaskSeriesRuntimeErrorCode(t, err, tc.code)
+		})
+		t.Run("occurrence "+tc.name, func(t *testing.T) {
+			_, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{Limit: tc.limit, Offset: tc.off})
+			assertTaskSeriesRuntimeErrorCode(t, err, tc.code)
+		})
+	}
+}
+
+func assertTaskSeriesRuntimeErrorCode(t *testing.T, err error, want string) {
+	t.Helper()
+	got, ok := err.(RuntimeError)
+	if !ok || got.Code != want {
+		t.Fatalf("error = %#v, want RuntimeError code %q", err, want)
+	}
+}
+
+func TestGetTaskSeriesCapsOpenAndReturnsNewestRecentOccurrences(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: 100000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seriesID, rule := created.Series.ID, "daily"
+	createOccurrence := func(index int, status string) {
+		t.Helper()
+		slot := int64(200000 + index)
+		due := slot
+		_, _, err := svc.taskOccurrenceRepo.CreateOccurrence(domain.Task{
+			UUID: fmt.Sprintf("occurrence-%03d-%s", index, status), WorkspaceID: svc.workspaceID,
+			ProjectID: &project.ID, Title: "每日巡检", Status: status, Entry: slot, Modified: slot, Due: &due,
+			SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index := range 205 {
+		createOccurrence(index, domain.StatusPending)
+	}
+	for index := 205; index < 217; index++ {
+		createOccurrence(index, domain.StatusCompleted)
+	}
+	for index := 217; index < 229; index++ {
+		createOccurrence(index, domain.StatusDeleted)
+	}
+
+	detail, err := svc.GetTaskSeries(seriesID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(detail.OpenOccurrences); got != 200 {
+		t.Fatalf("open occurrences = %d, want 200", got)
+	}
+	if got := len(detail.RecentCompleted); got != 10 {
+		t.Fatalf("recent completed = %d, want 10", got)
+	}
+	if got := len(detail.RecentSkipped); got != 10 {
+		t.Fatalf("recent skipped = %d, want 10", got)
+	}
+	if got := detail.RecentCompleted[0].RecurrenceInfo.RecurrenceAt; got != 200216 {
+		t.Fatalf("newest completed recurrence_at = %d, want 200216", got)
+	}
+	if got := detail.RecentSkipped[0].RecurrenceInfo.RecurrenceAt; got != 200228 {
+		t.Fatalf("newest skipped recurrence_at = %d, want 200228", got)
 	}
 }
 
@@ -799,6 +1281,171 @@ func TestWithTaskForWriteWorksWithOrdinaryTaskUUID(t *testing.T) {
 	}
 }
 
+func TestReplaceEditableTaskRecordsMaterializedOccurrenceOverrides(t *testing.T) {
+	svc, series, day1, _, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day1)
+	resolution, err := svc.ResolveTaskReferenceForRead(ref)
+	if err != nil {
+		t.Fatalf("ResolveTaskReferenceForRead: %v", err)
+	}
+	if resolution.Task == nil {
+		t.Fatal("materialized occurrence should resolve to a task row")
+	}
+	edited := *resolution.Task
+	edited.Title = "本次单独标题"
+	due := day1 + 3600
+	edited.Due = &due
+
+	if err := svc.ReplaceEditableTask(ref, domain.EditableFieldsFromTask(edited)); err != nil {
+		t.Fatalf("ReplaceEditableTask: %v", err)
+	}
+	view, err := svc.GetTaskView(ref)
+	if err != nil {
+		t.Fatalf("GetTaskView: %v", err)
+	}
+	if view.Title != "本次单独标题" || view.Due == nil || *view.Due != due {
+		t.Fatalf("edited view = %#v", view)
+	}
+	wantOverrides := []string{"due", "title"}
+	if view.RecurrenceInfo == nil || !reflect.DeepEqual(view.RecurrenceInfo.Overrides, wantOverrides) {
+		t.Fatalf("overrides = %#v, want %#v", view.RecurrenceInfo, wantOverrides)
+	}
+}
+
+func TestReplaceEditableTaskMaterializesProjectedOccurrenceAndKeepsStableIdentity(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day2)
+	workspace, _ := svc.store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, workspace.ID)
+	due := day2 + 3600
+
+	err := svc.ReplaceEditableTask(ref, domain.EditableFields{
+		Title: "只修改本次", Status: domain.StatusPending, Due: &due,
+		Project: strPtr("ops"), Tags: []string{"edited"},
+	})
+	if err != nil {
+		t.Fatalf("ReplaceEditableTask(projected): %v", err)
+	}
+	if after := occurrenceRowCount(t, svc, workspace.ID); after != beforeCount+1 {
+		t.Fatalf("occurrence rows = %d, want %d", after, beforeCount+1)
+	}
+	view, err := svc.GetTaskView(ref)
+	if err != nil {
+		t.Fatalf("GetTaskView: %v", err)
+	}
+	if view.ID != ref || view.UUID == nil || view.TaskSlug == nil {
+		t.Fatalf("materialized identity = %#v", view)
+	}
+	if view.RecurrenceInfo == nil || view.RecurrenceInfo.RecurrenceAt != day2 {
+		t.Fatalf("recurrence info = %#v", view.RecurrenceInfo)
+	}
+	wantOverrides := []string{"due", "tags", "title"}
+	if !reflect.DeepEqual(view.RecurrenceInfo.Overrides, wantOverrides) {
+		t.Fatalf("overrides = %#v, want %#v", view.RecurrenceInfo.Overrides, wantOverrides)
+	}
+}
+
+func TestReplaceEditableTaskRejectsProjectedOccurrenceProjectMoveWithoutMaterializing(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	other, err := svc.AddProject(AddProjectInput{Slug: "other", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := OccurrenceRef(series.ID, day2)
+	beforeRows := occurrenceRowCount(t, svc, svc.workspaceID)
+	beforeAudit, err := svc.ListAudit(AuditListInput{Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = svc.ReplaceEditableTask(ref, domain.EditableFields{
+		Title: "非法迁移", Status: domain.StatusPending, Due: &day2, Project: &other.Slug,
+	})
+	assertRuntimeCode(t, err, "task_occurrence_project_immutable")
+	if afterRows := occurrenceRowCount(t, svc, svc.workspaceID); afterRows != beforeRows {
+		t.Fatalf("failed external edit materialized occurrence: before=%d after=%d", beforeRows, afterRows)
+	}
+	afterAudit, err := svc.ListAudit(AuditListInput{Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(afterAudit) != len(beforeAudit) {
+		t.Fatalf("failed external edit wrote audit: before=%d after=%d", len(beforeAudit), len(afterAudit))
+	}
+	view, err := svc.GetTaskView(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.UUID != nil || view.TaskSlug != nil || view.RecurrenceInfo == nil || view.RecurrenceInfo.Materialization != "projected" {
+		t.Fatalf("failed external edit changed projected view: %#v", view)
+	}
+}
+
+func TestReplaceEditableTaskProjectedRollsBackMaterializationWhenAuditFails(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day2)
+	workspace, _ := svc.store.LocalWorkspace()
+	beforeCount := occurrenceRowCount(t, svc, workspace.ID)
+	originalAuditRepo := svc.auditRepo
+	svc.auditRepo = &failingAuditRepo{}
+
+	err := svc.ReplaceEditableTask(ref, domain.EditableFields{
+		Title: "不能提交", Status: domain.StatusPending, Due: &day2,
+		Project: strPtr("ops"),
+	})
+	svc.auditRepo = originalAuditRepo
+	if err == nil {
+		t.Fatal("ReplaceEditableTask() error = nil, want audit failure")
+	}
+	if after := occurrenceRowCount(t, svc, workspace.ID); after != beforeCount {
+		t.Fatalf("failed edit materialized occurrence: before=%d after=%d", beforeCount, after)
+	}
+	view, err := svc.GetTaskView(ref)
+	if err != nil {
+		t.Fatalf("GetTaskView after rollback: %v", err)
+	}
+	if view.UUID != nil || view.RecurrenceInfo == nil || view.RecurrenceInfo.Materialization != "projected" {
+		t.Fatalf("view after rollback = %#v", view)
+	}
+}
+
+func TestAppendPrependDescriptionMaterializeProjectedOccurrenceAndRecordOverride(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	ref := OccurrenceRef(series.ID, day2)
+
+	if err := svc.AppendDescription(ref, "尾部说明"); err != nil {
+		t.Fatalf("AppendDescription(projected): %v", err)
+	}
+	if err := svc.PrependDescription(ref, "前置说明"); err != nil {
+		t.Fatalf("PrependDescription(materialized): %v", err)
+	}
+	view, err := svc.GetTaskView(ref)
+	if err != nil {
+		t.Fatalf("GetTaskView: %v", err)
+	}
+	if view.Title != "每日巡检" {
+		t.Fatalf("title = %q, append/prepend must not change title", view.Title)
+	}
+	if view.Description == nil || *view.Description != "前置说明 尾部说明" {
+		t.Fatalf("description = %#v", view.Description)
+	}
+	if view.RecurrenceInfo == nil || !reflect.DeepEqual(view.RecurrenceInfo.Overrides, []string{"description"}) {
+		t.Fatalf("recurrence info = %#v", view.RecurrenceInfo)
+	}
+}
+
+func TestEmptyAppendDoesNotMaterializeProjectedOccurrence(t *testing.T) {
+	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	workspace, _ := svc.store.LocalWorkspace()
+	before := occurrenceRowCount(t, svc, workspace.ID)
+	if err := svc.AppendDescription(OccurrenceRef(series.ID, day2), "   "); err == nil {
+		t.Fatal("AppendDescription(empty) error = nil")
+	}
+	if after := occurrenceRowCount(t, svc, workspace.ID); after != before {
+		t.Fatalf("empty append materialized occurrence: before=%d after=%d", before, after)
+	}
+}
+
 func TestWithExistingTaskForSubresourceWriteProjectedReturnsNotFound(t *testing.T) {
 	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
 	ref := OccurrenceRef(series.ID, day2)
@@ -888,6 +1535,108 @@ func TestReconcileTaskSeriesMaterializesDueSlots(t *testing.T) {
 	}
 	if count := occurrenceRowCount(t, svc, ws.ID); count < 3 {
 		t.Fatalf("总物化数 = %d want >= 3", count)
+	}
+}
+
+func TestDailySeriesKeepsYesterdayPendingWhenTodayOccurrenceIsGenerated(t *testing.T) {
+	firstDue := int64(1783785599)
+	svc, closeFn := newTestService(t, firstDue)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	yesterday, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, created.Series.ID, firstDue)
+	if err != nil {
+		t.Fatalf("GetOccurrence(yesterday): %v", err)
+	}
+	if yesterday.Status != domain.StatusPending {
+		t.Fatalf("yesterday status = %q", yesterday.Status)
+	}
+
+	today := firstDue + 86400
+	svc.clock = FixedClock{NowUnix: today}
+	if _, err := svc.ReconcileTaskSeries(created.Series.ID, today, 100); err != nil {
+		t.Fatalf("ReconcileTaskSeries(today): %v", err)
+	}
+	todayTask, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, created.Series.ID, today)
+	if err != nil {
+		t.Fatalf("GetOccurrence(today): %v", err)
+	}
+	yesterdayAfter, err := svc.taskOccurrenceRepo.GetOccurrence(svc.workspaceID, created.Series.ID, firstDue)
+	if err != nil {
+		t.Fatalf("GetOccurrence(yesterday after): %v", err)
+	}
+	if todayTask.UUID == yesterday.UUID || todayTask.Status != domain.StatusPending || yesterdayAfter.Status != domain.StatusPending {
+		t.Fatalf("daily occurrences not independent: yesterday=%#v today=%#v", yesterdayAfter, todayTask)
+	}
+}
+
+func TestFiveDayBacklogRemainsFullyVisibleAndReconcileCompletesIdempotently(t *testing.T) {
+	firstDue := int64(1783785599)
+	svc, closeFn := newTestService(t, firstDue-86400)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	day5 := firstDue + 4*86400
+	svc.clock = FixedClock{NowUnix: day5}
+	firstRun, err := svc.ReconcileTaskSeries(created.Series.ID, day5, 2)
+	if err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+	if firstRun.Created != 2 || firstRun.BacklogRemaining != 3 {
+		t.Fatalf("first reconcile = %#v, want created=2 backlog=3", firstRun)
+	}
+
+	page, err := svc.QueryTaskViews(TaskViewQuery{
+		OccurrenceMode: OccurrenceModeExpand,
+		Range:          &TaskViewRange{Start: firstDue, End: day5 + 1},
+	})
+	if err != nil {
+		t.Fatalf("QueryTaskViews expand backlog: %v", err)
+	}
+	if len(page.Items) != 5 {
+		t.Fatalf("visible backlog items = %d, want 5", len(page.Items))
+	}
+	materialized := 0
+	for _, item := range page.Items {
+		if item.RecurrenceInfo != nil && item.RecurrenceInfo.Materialization == "materialized" {
+			materialized++
+		}
+	}
+	if materialized != 2 {
+		t.Fatalf("materialized visible items = %d, want 2", materialized)
+	}
+
+	secondRun, err := svc.ReconcileTaskSeries(created.Series.ID, day5, 100)
+	if err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	if secondRun.Created != 3 || secondRun.BacklogRemaining != 0 {
+		t.Fatalf("second reconcile = %#v, want created=3 backlog=0", secondRun)
+	}
+	thirdRun, err := svc.ReconcileTaskSeries(created.Series.ID, day5, 100)
+	if err != nil {
+		t.Fatalf("third reconcile: %v", err)
+	}
+	if thirdRun.Created != 0 || occurrenceRowCount(t, svc, svc.workspaceID) != 5 {
+		t.Fatalf("third reconcile not idempotent: result=%#v rows=%d", thirdRun, occurrenceRowCount(t, svc, svc.workspaceID))
 	}
 }
 
@@ -1088,8 +1837,8 @@ func TestSkipTaskSeriesOccurrenceCreatesTombstone(t *testing.T) {
 }
 
 func TestListTaskSeriesOccurrencesPaged(t *testing.T) {
-	firstDue := int64(1000)
-	now := int64(5000)
+	firstDue := time.Date(2030, time.January, 1, 23, 59, 59, 0, time.Local).Unix()
+	now := time.Date(2030, time.January, 5, 23, 59, 59, 0, time.Local).Unix()
 	svc, closeFn := newTestService(t, now)
 	defer closeFn()
 	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
@@ -1104,21 +1853,87 @@ func TestListTaskSeriesOccurrencesPaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = svc.ReconcileTaskSeries(created.Series.ID, now, 100)
-	// 查 pending。
-	page, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{Status: "pending"})
+	page, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{
+		Status: "pending", Limit: 2, Offset: 1,
+	})
 	if err != nil {
 		t.Fatalf("ListTaskSeriesOccurrences: %v", err)
 	}
-	if len(page.Items) == 0 {
-		t.Fatal("应有 pending occurrence")
+	if page.Total != 5 || page.Limit != 2 || page.Offset != 1 || len(page.Items) != 2 {
+		t.Fatalf("page = %#v, want total=5 limit=2 offset=1 items=2", page)
 	}
-	for _, it := range page.Items {
+	for index, it := range page.Items {
 		if it.Status != domain.StatusPending {
 			t.Fatalf("status = %q want pending", it.Status)
 		}
 		if it.RecurrenceInfo == nil {
 			t.Fatal("occurrence 应有 recurrence_info")
 		}
+		wantSlot := firstDue + int64(index+1)*24*60*60
+		if it.RecurrenceInfo.RecurrenceAt != wantSlot {
+			t.Fatalf("item %d recurrence_at = %d, want %d", index, it.RecurrenceInfo.RecurrenceAt, wantSlot)
+		}
+	}
+}
+
+func TestListTaskSeriesOccurrencesUsesLeftClosedRightOpenRange(t *testing.T) {
+	firstDue := time.Date(2030, time.January, 1, 23, 59, 59, 0, time.Local).Unix()
+	now := time.Date(2030, time.January, 2, 23, 59, 59, 0, time.Local).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "每日巡检", ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReconcileTaskSeries(created.Series.ID, now, 100); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2030, time.January, 1, 0, 0, 0, 0, time.Local).Unix()
+	end := time.Date(2030, time.January, 2, 0, 0, 0, 0, time.Local).Unix()
+	page, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{
+		Status: "all", DueAfter: &start, DueBefore: &end,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Due == nil || *page.Items[0].Due != firstDue {
+		t.Fatalf("range page = %#v, want only Jan 1 occurrence", page)
+	}
+}
+
+func TestListTaskSeriesOccurrencesWithoutRangeIncludesAllMaterializedHistory(t *testing.T) {
+	now := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.Local).Unix()
+	firstDue := time.Date(2050, time.January, 1, 23, 59, 59, 0, time.Local).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "远期巡检", ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: firstDue,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := OccurrenceRef(created.Series.ID, firstDue)
+	if _, err := svc.SkipTaskSeriesOccurrence(created.Series.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.ListTaskSeriesOccurrences(created.Series.ID, TaskSeriesOccurrenceListInput{Status: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].ID != ref {
+		t.Fatalf("unbounded history = %#v, want far-future tombstone", page)
 	}
 }
 

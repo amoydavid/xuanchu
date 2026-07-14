@@ -3,6 +3,7 @@ package query
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,6 +39,12 @@ type TaskValue struct {
 
 // MatchTaskValue 对单个 TaskValue 求值 AST。
 func MatchTaskValue(expr Expr, tv TaskValue, loc *time.Location) (bool, error) {
+	return MatchTaskValueAt(expr, tv, time.Now().Unix(), loc)
+}
+
+// MatchTaskValueAt 使用调用方注入的当前时间求值。App 的 SQL compiler 与
+// merge evaluator 必须共享同一时钟，尤其是 today/tomorrow 等相对日期。
+func MatchTaskValueAt(expr Expr, tv TaskValue, nowUnix int64, loc *time.Location) (bool, error) {
 	if loc == nil {
 		loc = time.Local
 	}
@@ -46,11 +53,11 @@ func MatchTaskValue(expr Expr, tv TaskValue, loc *time.Location) (bool, error) {
 	}
 	switch e := expr.(type) {
 	case Binary:
-		leftOK, err := MatchTaskValue(e.Left, tv, loc)
+		leftOK, err := MatchTaskValueAt(e.Left, tv, nowUnix, loc)
 		if err != nil {
 			return false, err
 		}
-		rightOK, err := MatchTaskValue(e.Right, tv, loc)
+		rightOK, err := MatchTaskValueAt(e.Right, tv, nowUnix, loc)
 		if err != nil {
 			return false, err
 		}
@@ -62,7 +69,7 @@ func MatchTaskValue(expr Expr, tv TaskValue, loc *time.Location) (bool, error) {
 		}
 		return false, fmt.Errorf("query: unknown binary op %q", e.Op)
 	case Unary:
-		childOK, err := MatchTaskValue(e.Expr, tv, loc)
+		childOK, err := MatchTaskValueAt(e.Expr, tv, nowUnix, loc)
 		if err != nil {
 			return false, err
 		}
@@ -71,12 +78,12 @@ func MatchTaskValue(expr Expr, tv TaskValue, loc *time.Location) (bool, error) {
 		}
 		return false, fmt.Errorf("query: unknown unary op %q", e.Op)
 	case Predicate:
-		return matchPredicate(e, tv, loc)
+		return matchPredicate(e, tv, nowUnix, loc)
 	}
 	return false, fmt.Errorf("query: unsupported expr type %T", expr)
 }
 
-func matchPredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, error) {
+func matchPredicate(p Predicate, tv TaskValue, nowUnix int64, loc *time.Location) (bool, error) {
 	if p.Attribute == AttrBare {
 		return strings.Contains(strings.ToLower(tv.Title), strings.ToLower(p.Value.Raw)), nil
 	}
@@ -88,13 +95,13 @@ func matchPredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, error)
 		}
 		return matchStringOp(p.Operator, v, p.Value.Raw), nil
 	case AttrTitle:
-		return matchStringOp(p.Operator, tv.Title, p.Value.Raw), nil
+		return matchTextOp(p.Operator, tv.Title, p.Value.Raw), nil
 	case AttrDescription:
 		v := ""
 		if tv.Description != nil {
 			v = *tv.Description
 		}
-		return matchStringOp(p.Operator, v, p.Value.Raw), nil
+		return matchTextOp(p.Operator, v, p.Value.Raw), nil
 	case AttrStatus:
 		return matchStringOp(p.Operator, tv.Status, p.Value.Raw), nil
 	case AttrProject:
@@ -134,19 +141,28 @@ func matchPredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, error)
 		}
 		return matchStringOp(p.Operator, v, p.Value.Raw), nil
 	case AttrDue, AttrStart, AttrWait, AttrScheduled, AttrUntil, AttrEntry, AttrModified, AttrEnd, AttrRecurrenceAt:
-		return matchDatePredicate(p, tv, loc)
+		return matchDatePredicate(p, tv, nowUnix, loc)
 	case AttrTag:
-		return matchContains(tv.Tags, p.Value.Raw), nil
+		return matchListPredicate(p.Operator, tv.Tags, p.Value.Raw), nil
 	case AttrDepends:
-		return matchContains(tv.Depends, p.Value.Raw), nil
+		return matchListPredicate(p.Operator, tv.Depends, p.Value.Raw), nil
 	case AttrAnnotations:
-		return matchContains(tv.AnnotationTexts, p.Value.Raw), nil
+		return matchAnnotationPredicate(p.Operator, tv.AnnotationTexts, p.Value.Raw), nil
 	case AttrAssignee:
-		return matchContains(tv.AssigneeIDs, p.Value.Raw), nil
+		return matchListPredicate(p.Operator, tv.AssigneeIDs, p.Value.Raw), nil
 	case AttrUDA:
-		return matchStringOp(p.Operator, tv.UDAs[p.Field], p.Value.Raw), nil
+		return matchUDAPredicate(p, tv.UDAs[p.Field], nowUnix, loc)
 	}
 	return false, fmt.Errorf("query: unsupported attribute %q in evaluator", p.Attribute)
+}
+
+func matchTextOp(op Operator, actual, expected string) bool {
+	switch op {
+	case OpEqual, OpContains:
+		return strings.Contains(strings.ToLower(actual), strings.ToLower(expected))
+	default:
+		return matchStringOp(op, actual, expected)
+	}
 }
 
 func matchStringOp(op Operator, actual, expected string) bool {
@@ -174,7 +190,86 @@ func matchContains(list []string, value string) bool {
 	return false
 }
 
-func matchDatePredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, error) {
+func matchListPredicate(op Operator, list []string, value string) bool {
+	switch op {
+	case OpEqual, OpHasTag:
+		return matchContains(list, value)
+	case OpMissingTag:
+		return !matchContains(list, value)
+	case OpIsNull:
+		return len(list) == 0
+	case OpNotNull:
+		return len(list) > 0
+	default:
+		return false
+	}
+}
+
+func matchAnnotationPredicate(op Operator, annotations []string, value string) bool {
+	switch op {
+	case OpContains, OpEqual:
+		for _, annotation := range annotations {
+			if strings.Contains(strings.ToLower(annotation), strings.ToLower(value)) {
+				return true
+			}
+		}
+		return false
+	case OpIsNull:
+		return len(annotations) == 0
+	case OpNotNull:
+		return len(annotations) > 0
+	default:
+		return false
+	}
+}
+
+func matchUDAPredicate(p Predicate, actual string, nowUnix int64, loc *time.Location) (bool, error) {
+	if p.Operator == OpIsNull {
+		return actual == "", nil
+	}
+	if p.Operator == OpNotNull {
+		return actual != "", nil
+	}
+	if actual == "" {
+		return false, nil
+	}
+	if actualDate, err := time.Parse(time.RFC3339, actual); err == nil {
+		if p.Operator == OpEqual {
+			start, end, err := ResolveDateRange(p.Value, nowUnix, loc)
+			if err != nil {
+				return false, err
+			}
+			unix := actualDate.Unix()
+			return unix >= start && unix < end, nil
+		}
+		threshold, err := ResolveDateValue(p.Value, nowUnix, loc)
+		if err != nil {
+			return false, err
+		}
+		if p.Operator == OpBefore {
+			return actualDate.Unix() < threshold, nil
+		}
+		if p.Operator == OpAfter {
+			return actualDate.Unix() > threshold, nil
+		}
+		return false, nil
+	}
+	actualNumber, actualErr := strconv.ParseFloat(actual, 64)
+	expectedNumber, expectedErr := strconv.ParseFloat(p.Value.Raw, 64)
+	if actualErr == nil && expectedErr == nil {
+		switch p.Operator {
+		case OpEqual:
+			return actualNumber == expectedNumber, nil
+		case OpBefore:
+			return actualNumber < expectedNumber, nil
+		case OpAfter:
+			return actualNumber > expectedNumber, nil
+		}
+	}
+	return matchTextOp(p.Operator, actual, p.Value.Raw), nil
+}
+
+func matchDatePredicate(p Predicate, tv TaskValue, nowUnix int64, loc *time.Location) (bool, error) {
 	var actual *int64
 	switch p.Attribute {
 	case AttrDue:
@@ -202,7 +297,7 @@ func matchDatePredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, er
 	case OpNotNull:
 		return actual != nil, nil
 	case OpEqual:
-		start, end, err := ResolveDateRange(p.Value, time.Now().Unix(), loc)
+		start, end, err := ResolveDateRange(p.Value, nowUnix, loc)
 		if err != nil {
 			return false, err
 		}
@@ -211,7 +306,7 @@ func matchDatePredicate(p Predicate, tv TaskValue, loc *time.Location) (bool, er
 		}
 		return *actual >= start && *actual < end, nil
 	case OpBefore, OpAfter:
-		threshold, err := ResolveDateValue(p.Value, time.Now().Unix(), loc)
+		threshold, err := ResolveDateValue(p.Value, nowUnix, loc)
 		if err != nil {
 			return false, err
 		}

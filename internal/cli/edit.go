@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
+	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	apptedit "git.dajee.net/dajee/xuanchu/internal/edit"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
@@ -69,14 +72,14 @@ func newPrependCommand(opts Options) *cobra.Command {
 }
 
 func runEdit(cmd *cobra.Command, svc interface {
-	ResolveTarget(string) (task.Task, error)
-	ReplaceEditableTask(string, task.Task) error
+	GetTaskView(string) (app.TaskOccurrenceView, error)
+	ReplaceEditableTask(string, task.EditableFields) error
 }, target string) error {
-	tsk, err := svc.ResolveTarget(target)
+	view, err := svc.GetTaskView(target)
 	if err != nil {
 		return err
 	}
-	editable := apptedit.FromTask(tsk)
+	editable := editableTaskFromView(view)
 	data, err := json.MarshalIndent(editable, "", "  ")
 	if err != nil {
 		return err
@@ -118,13 +121,73 @@ func runEdit(cmd *cobra.Command, svc interface {
 	if err != nil {
 		return err
 	}
-	applied, err := apptedit.Apply(tsk, edited)
+	before, err := apptedit.Apply(editable)
 	if err != nil {
 		return err
 	}
-	if err := svc.ReplaceEditableTask(target, applied); err != nil {
+	after, err := apptedit.Apply(edited)
+	if err != nil {
+		return err
+	}
+	if editableFieldsEqual(before, after) {
+		fmt.Fprintln(cmd.OutOrStdout(), "Edit unchanged", target)
+		return nil
+	}
+	if err := svc.ReplaceEditableTask(target, after); err != nil {
 		return err
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), "Edited task", target)
 	return nil
+}
+
+func editableTaskFromView(view app.TaskOccurrenceView) apptedit.EditableTask {
+	annotations := make([]task.JSONAnnotation, len(view.Annotations))
+	for i, annotation := range view.Annotations {
+		annotations[i] = task.JSONAnnotation{
+			ID: annotation.ID, Entry: formatEditableUnix(annotation.Entry),
+			Description: annotation.Description,
+		}
+	}
+	return apptedit.EditableTask{
+		ID:          view.ID,
+		UUID:        cloneEditableString(view.UUID),
+		Entry:       formatEditableUnixPtr(view.Entry),
+		Title:       view.Title,
+		Description: cloneEditableString(view.Description),
+		Status:      view.Status,
+		Project:     cloneEditableString(view.Project),
+		Priority:    cloneEditableString(view.Priority),
+		Due:         formatEditableUnixPtr(view.Due),
+		Wait:        formatEditableUnixPtr(view.Wait),
+		Scheduled:   formatEditableUnixPtr(view.Scheduled),
+		Until:       formatEditableUnixPtr(view.Until),
+		Tags:        append([]string(nil), view.Tags...),
+		Annotations: annotations,
+		Depends:     append([]string(nil), view.Depends...),
+		Parent:      cloneEditableString(view.Parent),
+	}
+}
+
+func editableFieldsEqual(a, b task.EditableFields) bool {
+	return reflect.DeepEqual(a, b)
+}
+
+func formatEditableUnixPtr(value *int64) *string {
+	if value == nil {
+		return nil
+	}
+	formatted := formatEditableUnix(*value)
+	return &formatted
+}
+
+func formatEditableUnix(value int64) string {
+	return time.Unix(value, 0).UTC().Format(time.RFC3339)
+}
+
+func cloneEditableString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }

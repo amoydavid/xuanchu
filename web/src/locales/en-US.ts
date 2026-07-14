@@ -32,6 +32,37 @@ export const enUS = {
     loading: "Loading…",
     empty: "No tasks match the current filters",
     deleted: "deleted",
+    allProjects: "All projects",
+    allTaskTypes: "All types",
+    bulk: {
+      toolbarLabel: "Bulk task actions",
+      selected: "{{count}} selected",
+      selectAll: "Select all tasks in the current list",
+      selectTask: "Select task {{task}}",
+      complete: "Complete",
+      completeAria: "Complete the {{count}} selected tasks",
+      completed: "Completed {{count}} tasks",
+      priority: "Set priority",
+      priorityAria: "Set priority for the {{count}} selected tasks",
+      noPriority: "No priority",
+      priorityUpdated: "Updated priority for {{count}} tasks",
+      due: "Set due date",
+      dueAria: "Set due date for the {{count}} selected tasks",
+      dueUpdated: "Updated due date for {{count}} tasks",
+      assignees: "Assignees",
+      assigneesUpdated: "Updated assignees for {{count}} tasks",
+      delete: "Delete / skip",
+      deleteAria: "Delete or skip the {{count}} selected items",
+      deleteTitle: "Delete or skip the selected tasks?",
+      deleteDescription:
+        "This will delete {{normal}} one-time tasks and skip {{occurrence}} recurring occurrences.",
+      deleteConfirm: "Confirm delete or skip",
+      deleted: "Processed {{count}} tasks",
+      clearSelection: "Clear selection",
+      failureTitle: "Some bulk actions failed",
+      failureDescription:
+        "{{failed}} of {{total}} items could not be saved. Review them and try again.",
+    },
     tab: {
       incomplete: "Incomplete",
       today: "Due today",
@@ -94,7 +125,7 @@ export const enUS = {
     edit: {
       title: "Edit recurring task",
       description:
-        "Changes apply to this recurring task only. Existing tasks stay unchanged.",
+        "Future occurrences use the new settings. Open occurrences also update fields that were not changed for that occurrence; completed, skipped, and overridden fields stay unchanged.",
       submit: "Save recurring settings",
       effectiveFromHint:
         "The new schedule starts on the selected date. Earlier instances stay unchanged.",
@@ -193,11 +224,12 @@ export const enUS = {
         "This task belongs to a recurring task. Changes to this occurrence do not affect other dates.",
       plannedTitle: "Planned for {{date}}",
       plannedDescription:
-        "This is one planned occurrence. Editing or acting on it will create this occurrence.",
+        "This is one planned occurrence. Changes or completion affect only this occurrence. Editing or acting on it will create this occurrence.",
       seriesStopped: "The recurring task has stopped",
       seriesEnded: "The recurring task has ended",
       originalDate: "Original recurring date",
       skipped: "Skipped",
+      inherited: "Inherited from recurring task",
     },
     actions: {
       create: "Create recurring task",
@@ -209,6 +241,7 @@ export const enUS = {
       startOccurrence: "Start this occurrence",
       stopOccurrence: "Stop this occurrence",
       skipOccurrence: "Skip this occurrence",
+      copyOccurrenceLink: "Copy this occurrence link",
       confirmSkipTitle: "Skip the {{date}} occurrence?",
       confirmSkipDescription:
         "This occurrence will be marked as skipped without affecting future occurrences.",
@@ -660,6 +693,8 @@ export const enUS = {
   },
   taskDetail: {
     backToMyTasks: "Back to my tasks",
+    completeTask: "Complete task",
+    reopenTask: "Reopen task",
     urgency: "Urgency",
     urgencyUnavailable: "Urgency unavailable",
     subTasks: "Sub-tasks",

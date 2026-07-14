@@ -97,6 +97,15 @@ type TaskViewPage struct {
 	Range          *TaskViewRange
 }
 
+// UrgencyView 是跨 HTTP、MCP、Remote 与 CLI 统一的 urgency 响应。
+// ID 使用公开稳定引用；projected occurrence 尚无持久 UUID，因此 UUID 为 nil。
+type UrgencyView struct {
+	ID    string                `json:"id"`
+	UUID  *string               `json:"uuid"`
+	Total float64               `json:"total"`
+	Items []urgency.ExplainItem `json:"items"`
+}
+
 // OccurrenceRef 构造 occurrence 的稳定公开引用（spec §7.4）。
 // 格式：occ:<series_uuid>:<recurrence_at_unix>
 func OccurrenceRef(seriesID string, recurrenceAt int64) string {
@@ -189,6 +198,33 @@ func taskToView(tsk domain.Task, assignees []domain.UserInfo) TaskOccurrenceView
 		}
 	}
 	return view
+}
+
+// AddTaskView 创建普通任务并直接返回统一的 TaskOccurrenceView。
+// 传输层不得再把创建结果序列化为旧 task.JSONTask 形状。
+func (s *Service) AddTaskView(input AddInput) (TaskOccurrenceView, error) {
+	created, err := s.Add(input)
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return s.createdTaskView(created)
+}
+
+// AddTaskViewWithAnnotations 与 AddWithAnnotations 事务语义一致，但返回统一 view。
+func (s *Service) AddTaskViewWithAnnotations(input AddInput, annotations []string) (TaskOccurrenceView, error) {
+	created, err := s.AddWithAnnotations(input, annotations)
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return s.createdTaskView(created)
+}
+
+func (s *Service) createdTaskView(created domain.Task) (TaskOccurrenceView, error) {
+	resolved, err := s.taskRefResolutionFromTask(created)
+	if err != nil {
+		return TaskOccurrenceView{}, err
+	}
+	return resolved.View, nil
 }
 
 // projectedOccurrenceView 从 series 共享字段构造 projected occurrence view（spec §7.8）。
@@ -347,7 +383,7 @@ func (s *Service) QueryTaskViews(q TaskViewQuery) (TaskViewPage, error) {
 		filtered := make([]TaskOccurrenceView, 0, len(items))
 		for _, v := range items {
 			tv := taskViewToQueryValue(v)
-			ok, merr := query.MatchTaskValue(q.Query, tv, s.clock.Location())
+			ok, merr := query.MatchTaskValueAt(q.Query, tv, s.clock.Unix(), s.clock.Location())
 			if merr == nil && ok {
 				filtered = append(filtered, v)
 			}
@@ -1056,7 +1092,7 @@ func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error)
 		filtered := make([]TaskOccurrenceView, 0, len(candidates))
 		for _, v := range candidates {
 			tv := taskViewToQueryValue(v)
-			ok, merr := query.MatchTaskValue(effectiveQuery, tv, s.clock.Location())
+			ok, merr := query.MatchTaskValueAt(effectiveQuery, tv, s.clock.Unix(), s.clock.Location())
 			if merr == nil && ok {
 				filtered = append(filtered, v)
 			}
@@ -1177,9 +1213,13 @@ func taskViewToQueryValue(v TaskOccurrenceView) query.TaskValue {
 		ID: v.ID, UUID: v.UUID, Title: v.Title, Description: v.Description,
 		Status: v.Status, Entry: v.Entry, Modified: v.Modified, End: v.End,
 		Due: v.Due, Start: v.Start, Wait: v.Wait, Scheduled: v.Scheduled,
+		Until:   v.Until,
 		Project: v.Project, ProjectID: v.ProjectID,
 		Priority: v.Priority, Parent: v.Parent, Tags: v.Tags,
 		Depends: v.Depends, AssigneeIDs: assigneeIDsFromViews(v.Assignees),
+	}
+	for _, annotation := range v.Annotations {
+		tv.AnnotationTexts = append(tv.AnnotationTexts, annotation.Description)
 	}
 	// task_type。
 	if v.RecurrenceInfo != nil {

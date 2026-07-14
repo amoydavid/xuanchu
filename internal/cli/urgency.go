@@ -33,7 +33,7 @@ func newUrgencyCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					return render.JSON(cmd.OutOrStdout(), explain)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Urgency for %s\n", explain.UUID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Urgency for %s\n", explain.ID)
 				fmt.Fprintf(cmd.OutOrStdout(), "  Total: %.3f\n", explain.Total)
 				for _, item := range explain.Items {
 					fmt.Fprintf(cmd.OutOrStdout(), "  %s\tcoef=%.1f\tcontrib=%.3f\t%s\n", item.Name, item.Coefficient, item.Contribution, item.Reason)
@@ -53,7 +53,7 @@ func newUrgencyCommand(opts Options) *cobra.Command {
 			if currentOpts.JSON {
 				return render.JSON(cmd.OutOrStdout(), explain)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Urgency for %s\n", explain.UUID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Urgency for %s\n", explain.ID)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Total: %.3f\n", explain.Total)
 			for _, item := range explain.Items {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s\tcoef=%.1f\tcontrib=%.3f\t%s\n", item.Name, item.Coefficient, item.Contribution, item.Reason)

@@ -4,6 +4,7 @@ export type MyTasksFilter = {
   assignee: string
   status?: string
   project?: string
+  task_type?: string
   priority?: string
   due_after?: string
   due_before?: string
@@ -14,7 +15,7 @@ export type MyTasksFilter = {
 }
 
 // myTasksPath 把 filter 编码为 GET /api/v1/tasks 的完整路径（含前导 /）。
-// 复用现有 RESTful 参数：assignee/status/project/priority/due_after/due_before/q/sort，
+// 复用现有 RESTful 参数：assignee/status/project/task_type/priority/due_after/due_before/q/sort，
 // 以及 query 表达式：due.isnull、assignee.isnull。
 export function myTasksPath(
   workspaceSlug: string,
@@ -30,6 +31,7 @@ export function myTasksPath(
   const directKeys: Array<keyof MyTasksFilter> = [
     "status",
     "project",
+    "task_type",
     "priority",
     "due_after",
     "due_before",

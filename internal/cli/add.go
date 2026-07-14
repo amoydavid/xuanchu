@@ -7,8 +7,6 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/query"
 	"git.dajee.net/dajee/xuanchu/internal/remote"
-	"git.dajee.net/dajee/xuanchu/internal/render"
-	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/spf13/cobra"
 )
 
@@ -48,11 +46,12 @@ func newAddCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				createdTask := remoteDTOToTask(created)
+				createdView := remoteOccurrenceDTOToView(created)
 				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), task.ToJSON(createdTask))
+					renderOccurrenceViewJSON(cmd.OutOrStdout(), createdView)
+					return nil
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", createdTask.UUID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", createdView.ID)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -60,7 +59,7 @@ func newAddCommand(opts Options) *cobra.Command {
 				return err
 			}
 			defer closeFn()
-			created, err := svc.Add(app.AddInput{
+			created, err := svc.AddTaskView(app.AddInput{
 				Title:       parsed.Title,
 				Description: parsed.Mod.Description,
 				Project:     parsed.Mod.Project,
@@ -78,9 +77,10 @@ func newAddCommand(opts Options) *cobra.Command {
 				return err
 			}
 			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), task.ToJSON(created))
+				renderOccurrenceViewJSON(cmd.OutOrStdout(), created)
+				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", created.UUID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", created.ID)
 			return nil
 		},
 	}

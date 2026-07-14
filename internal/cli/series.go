@@ -125,6 +125,9 @@ func newSeriesListCommand(opts Options) *cobra.Command {
 		Short: "列出循环任务系列",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateSeriesPaginationFlags(cmd, limit, offset); err != nil {
+				return err
+			}
 			currentOpts := optionsFromCmd(cmd, opts)
 			if statusFilter == "" {
 				statusFilter = "active"
@@ -288,6 +291,9 @@ func newSeriesOccurrencesCommand(opts Options) *cobra.Command {
 		Short: "列出循环任务系列的实例",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateSeriesPaginationFlags(cmd, limit, offset); err != nil {
+				return err
+			}
 			currentOpts := optionsFromCmd(cmd, opts)
 			seriesRef := args[0]
 			if statusFilter == "" {
@@ -297,14 +303,14 @@ func newSeriesOccurrencesCommand(opts Options) *cobra.Command {
 				Status: statusFilter, Limit: limit, Offset: offset,
 			}
 			if dueAfter != "" {
-				ts, err := parseSeriesDateFlag(dueAfter)
+				ts, err := parseSeriesOccurrenceBoundary(dueAfter, false)
 				if err != nil {
 					return fmt.Errorf("--due-after: %w", err)
 				}
 				input.DueAfter = &ts
 			}
 			if dueBefore != "" {
-				ts, err := parseSeriesDateFlag(dueBefore)
+				ts, err := parseSeriesOccurrenceBoundary(dueBefore, true)
 				if err != nil {
 					return fmt.Errorf("--due-before: %w", err)
 				}
@@ -313,7 +319,7 @@ func newSeriesOccurrencesCommand(opts Options) *cobra.Command {
 			if remoteMode, _, err := isRemoteMode(currentOpts); err != nil {
 				return err
 			} else if remoteMode {
-				return runSeriesOccurrencesRemote(cmd, currentOpts, seriesRef, input)
+				return runSeriesOccurrencesRemote(cmd, currentOpts, seriesRef, input, dueAfter, dueBefore)
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
 			if err != nil {
@@ -334,6 +340,16 @@ func newSeriesOccurrencesCommand(opts Options) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 0, "分页上限")
 	cmd.Flags().IntVar(&offset, "offset", 0, "分页偏移")
 	return cmd
+}
+
+func validateSeriesPaginationFlags(cmd *cobra.Command, limit, offset int) error {
+	if cmd.Flags().Changed("limit") && (limit < 1 || limit > 1000) {
+		return fmt.Errorf("--limit 必须在 1 到 1000 之间")
+	}
+	if offset < 0 {
+		return fmt.Errorf("--offset 不能为负数")
+	}
+	return nil
 }
 
 // --- series stop ---
@@ -451,6 +467,17 @@ func parseSeriesDateFlag(raw string) (int64, error) {
 		return 0, err
 	}
 	return t.Unix(), nil
+}
+
+func parseSeriesOccurrenceBoundary(raw string, endExclusive bool) (int64, error) {
+	value, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(raw), time.Local)
+	if err != nil {
+		return 0, err
+	}
+	if endExclusive {
+		value = value.AddDate(0, 0, 1)
+	}
+	return value.Unix(), nil
 }
 
 func isLikelyUUID(s string) bool {
@@ -585,14 +612,14 @@ func runSeriesInfoRemote(cmd *cobra.Command, currentOpts Options, seriesRef stri
 	return nil
 }
 
-func runSeriesOccurrencesRemote(cmd *cobra.Command, currentOpts Options, seriesRef string, input app.TaskSeriesOccurrenceListInput) error {
+func runSeriesOccurrencesRemote(cmd *cobra.Command, currentOpts Options, seriesRef string, input app.TaskSeriesOccurrenceListInput, dueAfter, dueBefore string) error {
 	client, err := buildRemoteClient(currentOpts)
 	if err != nil {
 		return err
 	}
 	page, err := client.ListTaskSeriesOccurrences(context.Background(), remote.TaskSeriesOccurrenceListInput{
 		Workspace: currentOpts.Workspace, SeriesRef: seriesRef, Status: input.Status,
-		DueAfter: input.DueAfter, DueBefore: input.DueBefore, Limit: input.Limit, Offset: input.Offset,
+		DueAfter: dueAfter, DueBefore: dueBefore, Limit: input.Limit, Offset: input.Offset,
 	})
 	if err != nil {
 		return err
@@ -817,6 +844,8 @@ func occurrenceViewJSON(v app.TaskOccurrenceView) map[string]any {
 		"id": v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
 		"tags": v.Tags, "assignees": assignees, "depends": v.Depends,
 		"annotations": task.AnnotationsToJSON(v.Annotations), "links": links, "udas": udas,
+		"uuid": nil, "task_slug": nil, "project_seq": nil,
+		"entry": nil, "modified": nil, "start": nil, "end": nil,
 	}
 	if v.UUID != nil {
 		out["uuid"] = *v.UUID

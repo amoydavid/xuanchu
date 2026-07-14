@@ -132,18 +132,6 @@ type ModifyInput struct {
 	ClearUDAs        []string
 }
 
-type ReportInput struct {
-	Name      string
-	Query     query.Expr
-	NoContext bool
-	Limit     int
-	Offset    int
-}
-
-type ReportResult struct {
-	Tasks []task.Task
-}
-
 type auditAppenderLister interface {
 	Append(storage.AuditLogEntry) error
 	List(storage.AuditListOptions) ([]storage.AuditLogEntry, error)
@@ -387,6 +375,29 @@ func (s *Service) WorkingSetIDs(tasks []task.Task) ([]int, error) {
 	return ids, nil
 }
 
+// WorkingSetIDsForViews 为统一任务视图返回 CLI working-set 编号。
+// projected occurrence 没有 UUID，固定返回 0；物化后才可获得数字编号。
+func (s *Service) WorkingSetIDsForViews(views []TaskOccurrenceView) ([]int, error) {
+	if len(views) == 0 {
+		return nil, nil
+	}
+	workingSet, err := s.defaultWorkingSet()
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(workingSet))
+	for i, tsk := range workingSet {
+		index[tsk.UUID] = i + 1
+	}
+	ids := make([]int, len(views))
+	for i, view := range views {
+		if view.UUID != nil {
+			ids[i] = index[*view.UUID]
+		}
+	}
+	return ids, nil
+}
+
 func (s *Service) Add(input AddInput) (task.Task, error) {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return task.Task{}, err
@@ -546,17 +557,6 @@ func (s *Service) List(input ListInput) ([]task.Task, error) {
 	return tasks, nil
 }
 
-func (s *Service) ListReport(name string, input ListInput) ([]task.Task, error) {
-	if input.Target != nil {
-		return s.List(input)
-	}
-	result, err := s.RunReport(ReportInput{Name: name, Query: input.Query, NoContext: input.NoContext, Limit: input.Limit, Offset: input.Offset})
-	if err != nil {
-		return nil, err
-	}
-	return result.Tasks, nil
-}
-
 func (s *Service) Info(target string) (task.Task, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
 		return task.Task{}, err
@@ -706,6 +706,9 @@ func (s *Service) modifyLocked(target string, input ModifyInput) (task.Task, pro
 		if err != nil {
 			return task.Task{}, projectChange{}, err
 		}
+	}
+	if err := s.validateOccurrenceSeriesProject(tsk); err != nil {
+		return task.Task{}, projectChange{}, err
 	}
 	if input.Priority != nil {
 		tsk.Priority = input.Priority
@@ -1304,12 +1307,20 @@ func (s *Service) appendDescriptionLocked(target, suffix string) (task.Task, pro
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	before := tsk
 	change := projectChangeForTask(tsk)
 	suffix = strings.TrimSpace(suffix)
 	if suffix == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("title text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
 	}
-	tsk.Title = strings.TrimSpace(tsk.Title + " " + suffix)
+	description := strings.TrimSpace(optionalTextValue(tsk.Description) + " " + suffix)
+	tsk.Description = &description
+	if tsk.SeriesID != nil {
+		tsk.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			tsk.RecurrenceOverrides,
+			changedOccurrenceFields(before, tsk)...,
+		))
+	}
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -1337,12 +1348,20 @@ func (s *Service) prependDescriptionLocked(target, prefix string) (task.Task, pr
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	before := tsk
 	change := projectChangeForTask(tsk)
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		return task.Task{}, projectChange{}, fmt.Errorf("title text is required")
+		return task.Task{}, projectChange{}, fmt.Errorf("description text is required")
 	}
-	tsk.Title = strings.TrimSpace(prefix + " " + tsk.Title)
+	description := strings.TrimSpace(prefix + " " + optionalTextValue(tsk.Description))
+	tsk.Description = &description
+	if tsk.SeriesID != nil {
+		tsk.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			tsk.RecurrenceOverrides,
+			changedOccurrenceFields(before, tsk)...,
+		))
+	}
 	tsk.Modified = s.clock.Unix()
 	if err := s.repo.Update(tsk); err != nil {
 		return task.Task{}, projectChange{}, err
@@ -1350,12 +1369,12 @@ func (s *Service) prependDescriptionLocked(target, prefix string) (task.Task, pr
 	return tsk, change, nil
 }
 
-func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
+func (s *Service) ReplaceEditableTask(target string, fields task.EditableFields) error {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return err
 	}
 	return s.withAuditAndEvents(func(tx *Service) (*AuditEntry, []HookEvent, error) {
-		replacedTask, change, err := tx.replaceEditableTaskLocked(target, edited)
+		replacedTask, change, err := tx.replaceEditableTaskLocked(target, fields)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1365,17 +1384,34 @@ func (s *Service) ReplaceEditableTask(target string, edited task.Task) error {
 	})
 }
 
-func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (task.Task, projectChange, error) {
+func (s *Service) replaceEditableTaskLocked(target string, fields task.EditableFields) (task.Task, projectChange, error) {
 	original, err := s.resolveTargetForWrite(target)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
-	edited.UUID = original.UUID
-	edited.WorkspaceID = original.WorkspaceID
-	edited.Entry = original.Entry
+	if err := fields.Validate(); err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	edited := original
+	edited.Title = fields.Title
+	edited.Description = cloneStringPtr(fields.Description)
+	edited.Status = fields.Status
+	edited.Project = cloneStringPtr(fields.Project)
+	edited.Priority = cloneStringPtr(fields.Priority)
+	edited.Due = cloneInt64Ptr(fields.Due)
+	edited.Wait = cloneInt64Ptr(fields.Wait)
+	edited.Scheduled = cloneInt64Ptr(fields.Scheduled)
+	edited.Until = cloneInt64Ptr(fields.Until)
+	edited.Tags = append([]string(nil), fields.Tags...)
+	edited.Annotations = append([]task.Annotation(nil), fields.Annotations...)
+	edited.Depends = append([]string(nil), fields.Depends...)
+	edited.Parent = cloneStringPtr(fields.Parent)
 	edited.Modified = s.clock.Unix()
 	change, err := s.applyProjectBindingFrom(&edited, edited.Project, projectBindingFromTask(original))
 	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
+	if err := s.validateOccurrenceSeriesProject(edited); err != nil {
 		return task.Task{}, projectChange{}, err
 	}
 	if edited.Wait != nil && *edited.Wait > s.clock.Unix() && edited.Status == task.StatusPending {
@@ -1384,6 +1420,12 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (ta
 	if edited.Wait == nil && edited.Status == task.StatusWaiting {
 		edited.Status = task.StatusPending
 	}
+	if original.SeriesID != nil {
+		edited.RecurrenceOverrides = task.NormalizeRecurrenceOverrides(append(
+			edited.RecurrenceOverrides,
+			changedOccurrenceFields(original, edited)...,
+		))
+	}
 	if err := edited.Validate(); err != nil {
 		return task.Task{}, projectChange{}, err
 	}
@@ -1391,6 +1433,23 @@ func (s *Service) replaceEditableTaskLocked(target string, edited task.Task) (ta
 		return task.Task{}, projectChange{}, err
 	}
 	return edited, change, nil
+}
+
+func (s *Service) validateOccurrenceSeriesProject(tsk task.Task) error {
+	if tsk.SeriesID == nil {
+		return nil
+	}
+	series, err := s.taskSeriesRepo.Get(s.workspaceID, *tsk.SeriesID)
+	if err != nil {
+		return mapSeriesError(err)
+	}
+	if tsk.ProjectID == nil || *tsk.ProjectID != series.ProjectID {
+		return RuntimeError{
+			Code:    "task_occurrence_project_immutable",
+			Message: "循环实例必须保留在所属循环任务的项目中",
+		}
+	}
+	return nil
 }
 
 func (s *Service) Export() ([]task.Task, error) {
@@ -1621,80 +1680,6 @@ func (s *Service) dependencyGraph() (map[string][]string, error) {
 	return graph, nil
 }
 
-func (s *Service) RunReport(input ReportInput) (ReportResult, error) {
-	if err := s.Require(PermissionTaskRead); err != nil {
-		return ReportResult{}, err
-	}
-	def, ok := s.reports.Get(input.Name)
-	if !ok {
-		return ReportResult{}, fmt.Errorf("unknown report %q", input.Name)
-	}
-	if err := s.refreshAutomaticState(); err != nil {
-		return ReportResult{}, err
-	}
-	contextExpr, err := s.activeContextFilter(input.NoContext)
-	if err != nil {
-		return ReportResult{}, err
-	}
-	resolvedReportQuery, err := s.resolveTaskQueryPredicates(input.Query)
-	if err != nil {
-		return ReportResult{}, err
-	}
-	merged := query.And(s.projectScopeExpr(), query.And(contextExpr, query.And(def.Filter, resolvedReportQuery)))
-	now := s.clock.Unix()
-	udaDefs, err := s.udaDefinitionTypes()
-	if err != nil {
-		return ReportResult{}, err
-	}
-	tasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
-		Query:          merged,
-		Sort:           def.Sort,
-		NowUnix:        now,
-		UDADefinitions: udaDefs,
-		Limit:          input.Limit,
-		Offset:         input.Offset,
-		Dialect:        s.store.Dialect(),
-	})
-	if err != nil {
-		return ReportResult{}, mapProjectQueryCompileError(err)
-	}
-	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: now, Query: s.projectScopeExpr(), Dialect: s.store.Dialect()})
-	if err != nil {
-		return ReportResult{}, err
-	}
-	blocked, blocking := buildDependencyState(allTasks, now)
-	tasks = applyReportScope(tasks, def.Scope, now, blocked, blocking)
-	if def.Sort == "urgency" {
-		urgencyOptions, err := s.urgencyConfig()
-		if err != nil {
-			return ReportResult{}, err
-		}
-		type taskWithUrgency struct {
-			Task  task.Task
-			Total float64
-		}
-		withUrgency := make([]taskWithUrgency, len(tasks))
-		for i, tsk := range tasks {
-			opts := urgencyOptions
-			opts.NowUnix = now
-			opts.Blocked = blocked[tsk.UUID]
-			opts.Blocking = blocking[tsk.UUID]
-			explain := urgency.Explain(tsk, opts)
-			withUrgency[i] = taskWithUrgency{Task: tsk, Total: explain.Total}
-		}
-		sort.SliceStable(withUrgency, func(i, j int) bool {
-			return withUrgency[i].Total > withUrgency[j].Total
-		})
-		for i, wu := range withUrgency {
-			tasks[i] = wu.Task
-		}
-	}
-	if input.Limit > 0 && len(tasks) > input.Limit {
-		tasks = tasks[:input.Limit]
-	}
-	return ReportResult{Tasks: tasks}, nil
-}
-
 func (s *Service) resolveTaskQueryPredicates(expr query.Expr) (query.Expr, error) {
 	resolved, err := s.resolveProjectPredicates(expr)
 	if err != nil {
@@ -1874,25 +1859,25 @@ func cloneAssigneeInfos(assignees []task.AssigneeInfo) []task.AssigneeInfo {
 	return out
 }
 
-func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
+func (s *Service) ExplainUrgency(target string) (UrgencyView, error) {
 	if err := s.Require(PermissionTaskRead); err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	if err := s.refreshAutomaticState(); err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	resolved, err := s.ResolveTaskReferenceForRead(target)
 	if err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{NowUnix: s.clock.Unix(), Query: s.projectScopeExpr(), Dialect: s.store.Dialect()})
 	if err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	blocked, blocking := buildDependencyState(allTasks, s.clock.Unix())
 	opts, err := s.urgencyConfig()
 	if err != nil {
-		return urgency.ExplainResult{}, err
+		return UrgencyView{}, err
 	}
 	opts.NowUnix = s.clock.Unix()
 	if resolved.Task != nil {
@@ -1900,7 +1885,13 @@ func (s *Service) ExplainUrgency(target string) (urgency.ExplainResult, error) {
 		opts.Blocking = blocking[resolved.Task.UUID]
 	}
 	result := urgency.ExplainValue(taskViewToUrgencyValue(resolved.View), opts)
-	return urgency.ExplainResult{UUID: resolved.StableID, Total: result.Total, Items: result.Items}, nil
+	if result.Items == nil {
+		result.Items = []urgency.ExplainItem{}
+	}
+	return UrgencyView{
+		ID: resolved.StableID, UUID: cloneStringPtr(resolved.View.UUID),
+		Total: result.Total, Items: result.Items,
+	}, nil
 }
 
 func (s *Service) urgencyConfig() (urgency.Options, error) {
@@ -2025,46 +2016,6 @@ func (s *Service) refreshAutomaticState() error {
 	// 旧 ensureRecurringChildren（完成驱动补齐循环子任务）在 spec 2026-07-11 中移除。
 	// 循环实例由 TaskSeriesScheduler 按日历补齐（Task 7）。
 	return nil
-}
-
-func applyReportScope(tasks []task.Task, scope report.ScopeKind, now int64, blocked map[string]bool, blocking map[string]bool) []task.Task {
-	switch scope {
-	case report.ScopeHideUntilExpired:
-		return filterExpiredUntil(tasks, now)
-	case report.ScopeReady:
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range filterExpiredUntil(tasks, now) {
-			if tsk.Status != task.StatusPending || tsk.Start != nil || blocked[tsk.UUID] {
-				continue
-			}
-			if tsk.Wait != nil && *tsk.Wait > now {
-				continue
-			}
-			if tsk.Scheduled != nil && *tsk.Scheduled > now {
-				continue
-			}
-			filtered = append(filtered, tsk)
-		}
-		return filtered
-	case report.ScopeBlocked:
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range filterExpiredUntil(tasks, now) {
-			if tsk.Status == task.StatusPending && blocked[tsk.UUID] {
-				filtered = append(filtered, tsk)
-			}
-		}
-		return filtered
-	case report.ScopeBlocking:
-		filtered := make([]task.Task, 0, len(tasks))
-		for _, tsk := range filterExpiredUntil(tasks, now) {
-			if tsk.Status == task.StatusPending && blocking[tsk.UUID] {
-				filtered = append(filtered, tsk)
-			}
-		}
-		return filtered
-	default:
-		return tasks
-	}
 }
 
 func filterExpiredUntil(tasks []task.Task, now int64) []task.Task {

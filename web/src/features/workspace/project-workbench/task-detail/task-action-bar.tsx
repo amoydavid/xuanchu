@@ -47,6 +47,7 @@ export function TaskActionBar({
   const { i18n, t } = useTranslation()
   const navigate = useNavigate()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const start = useTaskActionMutation(workspaceSlug, projectSlug, "start")
   const stop = useTaskActionMutation(workspaceSlug, projectSlug, "stop")
   const done = useTaskActionMutation(workspaceSlug, projectSlug, "done")
@@ -61,6 +62,7 @@ export function TaskActionBar({
   const displayRef = taskDisplayRef(task, i18n.language) || taskRef
   const completed = task.status === "completed"
   const deleted = task.status === "deleted"
+  const canMutate = permissionCanWrite && !deleted
   const pending =
     start.isPending ||
     stop.isPending ||
@@ -68,15 +70,14 @@ export function TaskActionBar({
     reopen.isPending ||
     remove.isPending
 
-  // deleted 是真正的终态，无可执行动作；无权限也直接隐藏。
-  if (deleted || !permissionCanWrite) {
+  if ((!permissionCanWrite || deleted) && !occurrence) {
     return null
   }
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        {!completed && task.start ? (
+        {canMutate && !completed && task.start ? (
           <Button
             disabled={pending}
             onClick={() => {
@@ -92,7 +93,7 @@ export function TaskActionBar({
               : t("common.stop")}
           </Button>
         ) : null}
-        {!completed && !task.start ? (
+        {canMutate && !completed && !task.start ? (
           <Button
             disabled={pending}
             onClick={() => {
@@ -108,7 +109,7 @@ export function TaskActionBar({
               : t("common.start")}
           </Button>
         ) : null}
-        {!completed ? (
+        {canMutate && !completed ? (
           <Button
             disabled={pending}
             onClick={() => {
@@ -121,10 +122,10 @@ export function TaskActionBar({
             <CheckIcon />
             {occurrence
               ? t("taskSeries.actions.completeOccurrence")
-              : t("common.done")}
+              : t("taskDetail.completeTask")}
           </Button>
         ) : null}
-        {completed ? (
+        {canMutate && completed ? (
           <Button
             disabled={pending}
             onClick={() => {
@@ -137,10 +138,10 @@ export function TaskActionBar({
             <RotateCcwIcon />
             {occurrence
               ? t("taskSeries.actions.reopenOccurrence")
-              : t("common.reopen")}
+              : t("taskDetail.reopenTask")}
           </Button>
         ) : null}
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               aria-label={t("projectWorkbench.project.moreTaskActions", {
@@ -187,15 +188,18 @@ export function TaskActionBar({
               }}
             >
               <CopyIcon />
-              {t("projectWorkbench.project.copyTaskLink")}
+              {occurrence
+                ? t("taskSeries.actions.copyOccurrenceLink")
+                : t("projectWorkbench.project.copyTaskLink")}
             </DropdownMenuItem>
-            {!completed ? (
+            {canMutate && !completed ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={(event) => {
                     event.preventDefault()
+                    setMenuOpen(false)
                     setConfirmDelete(true)
                   }}
                 >

@@ -164,6 +164,10 @@ describe("TaskPropertyPanel", () => {
     )
     expect(screen.getByText("原循环日期")).toBeTruthy()
     expect(screen.getAllByText("计划实例").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("继承自循环任务").length).toBeGreaterThanOrEqual(
+      3
+    )
+    expect(screen.queryByRole("button", { name: "系统" })).toBeNull()
   })
 
   it("renders numeric entry and modified timestamps from occurrence responses", async () => {

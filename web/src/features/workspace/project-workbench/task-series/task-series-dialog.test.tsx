@@ -175,6 +175,41 @@ describe("TaskSeriesDialog", () => {
     expect(screen.getByRole("button", { name: "循环结束日期" })).toBeTruthy()
   })
 
+  it("explains how shared-field edits propagate to occurrences", () => {
+    render(
+      <TaskSeriesDialog
+        mode="edit"
+        onClose={vi.fn()}
+        open
+        projectSlug="ops"
+        series={{
+          id: "series-1",
+          workspace_id: "ws",
+          project_id: "project-1",
+          title: "每日巡检",
+          status: "active",
+          recurrence_rule: "daily",
+          first_due: 1_893_542_399,
+          open_occurrence_count: 2,
+          completed_count: 1,
+          skipped_count: 1,
+          overdue_count: 0,
+          created_by: { id: "local", name: "local", display_name: "本地用户" },
+          created_at: 1,
+          modified_at: 1,
+        }}
+        workspaceSlug="ws"
+      />
+    )
+
+    expect(
+      screen.getByText(/未来实例使用新设置；未完成且未单独修改的实例也会同步/)
+    ).toBeTruthy()
+    expect(
+      screen.getByText(/已完成、已跳过或已单独覆盖的字段保持不变/)
+    ).toBeTruthy()
+  })
+
   it("prevents closing the editor while a save is pending", async () => {
     mockedModifyTaskSeries.mockImplementation(() => new Promise(() => {}))
     const onClose = vi.fn()

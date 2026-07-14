@@ -1,8 +1,41 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
+
+	"github.com/google/jsonschema-go/jsonschema"
 )
+
+func TestMCPTaskSeriesListSchemasDocumentPaginationContract(t *testing.T) {
+	for _, schema := range []*jsonschema.Schema{
+		mustTaskSeriesSchema[TaskSeriesListInput](t),
+		mustTaskSeriesSchema[TaskSeriesOccurrenceListInput](t),
+	} {
+		limit := schema.Properties["limit"]
+		if string(limit.Default) != "200" || limit.Minimum == nil || *limit.Minimum != 1 || limit.Maximum == nil || *limit.Maximum != 1000 {
+			t.Fatalf("limit schema = %#v, want default=200 range=1..1000", limit)
+		}
+		offset := schema.Properties["offset"]
+		if string(offset.Default) != "0" || offset.Minimum == nil || *offset.Minimum != 0 {
+			t.Fatalf("offset schema = %#v, want default=0 minimum=0", offset)
+		}
+	}
+}
+
+func mustTaskSeriesSchema[T any](t *testing.T) *jsonschema.Schema {
+	t.Helper()
+	schema, err := jsonschema.For[T](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchInputSchema[T](schema)
+	if _, err := json.Marshal(schema); err != nil {
+		t.Fatal(err)
+	}
+	return schema
+}
 
 func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	srv, _ := newTestServer(t)
@@ -48,6 +81,12 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 		if firstOcc["id"] == nil {
 			t.Fatal("first_occurrence id 为空")
 		}
+		for _, field := range []string{"uuid", "task_slug", "project_seq", "entry", "modified", "start", "end"} {
+			value, exists := firstOcc[field]
+			if !exists || value != nil {
+				t.Fatalf("projected first_occurrence %s = %#v, want explicit null", field, value)
+			}
+		}
 	}
 
 	// series_get。
@@ -88,6 +127,11 @@ func TestMCPTaskSeriesList(t *testing.T) {
 	total, _ := data["total"].(float64)
 	if total != 1 {
 		t.Fatalf("total = %v want 1", total)
+	}
+
+	badLimit := callTool(t, session, "task_series_list", map[string]any{"status": "active", "limit": 0})
+	if !badLimit.IsError {
+		t.Fatal("explicit limit=0 should be rejected by the MCP pagination contract")
 	}
 }
 
@@ -163,6 +207,51 @@ func TestMCPTaskSeriesOccurrenceSkip(t *testing.T) {
 	data, _ := env.Data.(map[string]any)
 	if data["status"] != "deleted" {
 		t.Fatalf("status = %v want deleted", data["status"])
+	}
+	date := time.Unix(firstDue, 0).In(time.Local).Format("2006-01-02")
+	listed := callTool(t, session, "task_series_list_occurrences", TaskSeriesOccurrenceListInput{
+		ID: seriesID, Status: "all", DueAfter: date, DueBefore: date,
+	})
+	if listed.IsError {
+		t.Fatalf("list occurrences error: %v", parseError(t, listed))
+	}
+	listedData := parseEnvelope(t, listed).Data.(map[string]any)
+	if listedData["total"] != float64(1) {
+		t.Fatalf("date range list = %#v, want skipped occurrence", listedData)
+	}
+}
+
+func TestMCPTaskModifyRejectsProjectedOccurrenceProjectMoveWithoutMaterializing(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+	callTool(t, session, "project_add", map[string]any{"slug": "ops", "name": "Ops"})
+	callTool(t, session, "project_add", map[string]any{"slug": "other", "name": "Other"})
+	firstDue := int64(1893456000)
+	addResult := callTool(t, session, "task_series_add", TaskSeriesAddInput{
+		Project: "ops", Title: "每日巡检", RecurrenceRule: "daily", FirstDue: &firstDue,
+	})
+	if addResult.IsError {
+		t.Fatalf("series_add error: %v", parseError(t, addResult))
+	}
+	occurrenceRef := parseEnvelope(t, addResult).Data.(map[string]any)["first_occurrence"].(map[string]any)["id"].(string)
+
+	result := callTool(t, session, "task_modify", TaskModifyInput{ID: occurrenceRef, Project: "other"})
+	if !result.IsError {
+		t.Fatal("task_modify expected error")
+	}
+	if got := parseError(t, result).Code; got != "task_occurrence_project_immutable" {
+		t.Fatalf("error code = %q, want task_occurrence_project_immutable", got)
+	}
+	getResult := callTool(t, session, "task_get", TaskGetInput{ID: occurrenceRef})
+	if getResult.IsError {
+		t.Fatalf("task_get error: %v", parseError(t, getResult))
+	}
+	view, ok := parseEnvelope(t, getResult).Data.(map[string]any)
+	if !ok {
+		t.Fatalf("task_get data type = %T", parseEnvelope(t, getResult).Data)
+	}
+	if view["uuid"] != nil || view["task_slug"] != nil || nestedMap(t, view, "recurrence_info")["materialization"] != "projected" {
+		t.Fatalf("failed task_modify changed projected occurrence: %#v", view)
 	}
 }
 

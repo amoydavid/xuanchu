@@ -8,11 +8,12 @@ import (
 
 func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 	raw := `{
+		"id":"u1",
 		"uuid":"u1",
 		"title":"remote",
 		"status":"pending",
-		"entry":"1970-01-01T00:00:01Z",
-		"modified":"1970-01-01T00:00:02Z",
+		"entry":1,
+		"modified":2,
 		"project":"api",
 		"task_slug":"api-12"
 	}`
@@ -28,13 +29,27 @@ func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 	}
 }
 
+func TestRemoteTaskResponseRejectsLegacyJSONTaskShape(t *testing.T) {
+	raw := `{
+		"uuid":"u1",
+		"title":"legacy",
+		"status":"pending",
+		"entry":"1970-01-01T00:00:01Z",
+		"modified":"1970-01-01T00:00:02Z"
+	}`
+	if _, err := parseTaskOccurrenceDTO(json.RawMessage(raw)); err == nil {
+		t.Fatal("parseTaskOccurrenceDTO legacy JSONTask shape error = nil")
+	}
+}
+
 func TestRemoteTaskResponseRejectsMismatchedTaskSlugProject(t *testing.T) {
 	raw := `{
+		"id":"u1",
 		"uuid":"u1",
 		"title":"remote",
 		"status":"pending",
-		"entry":"1970-01-01T00:00:01Z",
-		"modified":"1970-01-01T00:00:02Z",
+		"entry":1,
+		"modified":2,
 		"project":"api",
 		"task_slug":"web-12"
 	}`

@@ -22,6 +22,8 @@ import { formatTaskSeriesTimestamp } from "../task-series/recurrence-preview"
 type TaskRowActionsProps = {
   canWrite: boolean
   displayRef: string
+  myTasksReturnSearch?: string
+  onNavigateFromList?: () => void
   projectSlug: string
   recurrenceInfo?: ProjectWorkbenchTask["recurrence_info"]
   start?: string | number | null
@@ -33,6 +35,8 @@ type TaskRowActionsProps = {
 export function TaskRowActions({
   canWrite,
   displayRef,
+  myTasksReturnSearch,
+  onNavigateFromList,
   projectSlug,
   recurrenceInfo,
   start,
@@ -48,6 +52,8 @@ export function TaskRowActions({
   const reopenMutation = useTaskActionMutation(workspaceSlug, projectSlug, "reopen")
   const remove = useTaskActionMutation(workspaceSlug, projectSlug, "delete")
   const isCompleted = status === "completed" || status === "deleted"
+  const isOpen = status === "pending" || status === "waiting"
+  const canStartOrStop = status === "pending"
   const isStarted = status === "pending" && start !== undefined && start !== null
   const occurrenceDate = recurrenceInfo
     ? formatTaskSeriesTimestamp(recurrenceInfo.recurrence_at, i18n.language)
@@ -73,7 +79,7 @@ export function TaskRowActions({
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {canWrite && !isCompleted ? (
+      {canWrite && canStartOrStop ? (
         <>
           {isStarted ? (
             <Button
@@ -110,25 +116,27 @@ export function TaskRowActions({
               <Play />
             </Button>
           )}
-          <Button
-            aria-label={
-              recurrenceInfo
-                ? t("taskSeries.aria.completeOccurrence", {
-                    date: occurrenceDate,
-                  })
-                : t("projectWorkbench.project.completeTask", {
-                    taskRef: displayRef,
-                  })
-            }
-            disabled={doneMutation.isPending}
-            onClick={() => runAction("done")}
-            size="icon-xs"
-            type="button"
-            variant="ghost"
-          >
-            <Check />
-          </Button>
         </>
+      ) : null}
+      {canWrite && isOpen ? (
+        <Button
+          aria-label={
+            recurrenceInfo
+              ? t("taskSeries.aria.completeOccurrence", {
+                  date: occurrenceDate,
+                })
+              : t("projectWorkbench.project.completeTask", {
+                  taskRef: displayRef,
+                })
+          }
+          disabled={doneMutation.isPending}
+          onClick={() => runAction("done")}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          <Check />
+        </Button>
       ) : null}
       {canWrite && status === "completed" ? (
         <Button
@@ -164,7 +172,16 @@ export function TaskRowActions({
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
             <Link
+              onClick={onNavigateFromList}
               params={{ workspaceSlug, projectSlug, taskRef }}
+              search={
+                myTasksReturnSearch === undefined
+                  ? undefined
+                  : {
+                      from: "my-tasks",
+                      my_tasks_search: myTasksReturnSearch,
+                    }
+              }
               to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef"
             >
               {t("projectWorkbench.project.openTaskDetails")}
@@ -173,11 +190,22 @@ export function TaskRowActions({
           {recurrenceInfo?.series_id ? (
             <DropdownMenuItem asChild>
               <Link
+                onClick={onNavigateFromList}
                 params={{
                   workspaceSlug,
                   projectSlug,
                   seriesRef: recurrenceInfo.series_id,
                 }}
+                search={
+                  myTasksReturnSearch === undefined
+                    ? undefined
+                    : {
+                        panel_return_scope: "project",
+                        panel_return_search: myTasksReturnSearch,
+                        panel_return_source: "my-tasks",
+                        panel_return_task: taskRef,
+                      }
+                }
                 to="/workspaces/$workspaceSlug/projects/$projectSlug/tasks/series/$seriesRef"
               >
                 {t("taskSeries.detail.viewSeries")}

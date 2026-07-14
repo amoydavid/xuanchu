@@ -66,6 +66,31 @@ func TestTaskSeriesRepositoryCreateAndGet(t *testing.T) {
 	}
 }
 
+func TestTaskSeriesRepositoryAllowsMultipleActiveSeriesPerProject(t *testing.T) {
+	store, ws, project, _ := newTaskSeriesRepoFixture(t)
+	repo := NewTaskSeriesRepository(store.DB())
+	created, err := repo.Create(taskseries.Series{
+		WorkspaceID: ws.ID, ProjectID: project.ID, Title: "第二条循环任务",
+		Status: taskseries.StatusActive, RecurrenceRule: "weekly", FirstDue: 2000,
+		CreatedBy: "user-1", CreatedAt: 200, ModifiedAt: 200,
+	})
+	if err != nil {
+		t.Fatalf("Create second active series: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("second active series ID is empty")
+	}
+	rows, err := repo.ListCandidates(TaskSeriesListOptions{
+		WorkspaceID: ws.ID, ProjectID: project.ID, Status: taskseries.StatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("active series = %d, want 2", len(rows))
+	}
+}
+
 func TestTaskSeriesRepositoryGetReturnsErrForMissing(t *testing.T) {
 	store, ws, _, _ := newTaskSeriesRepoFixture(t)
 	repo := NewTaskSeriesRepository(store.DB())

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -510,7 +511,7 @@ func TestCLIRemoteIDsAreSortedByWorkingSetPosition(t *testing.T) {
 	}
 }
 
-func TestCLIRemoteAddAndModifyPreserveTaskwarriorFields(t *testing.T) {
+func TestCLIRemoteAddAndModifyPreserveNativeTaskFields(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
@@ -1289,14 +1290,25 @@ func TestCLIJSONFlagProducesMachineReadableOutput(t *testing.T) {
 	if created["title"] != "write spec" {
 		t.Fatalf("created title = %#v", created["title"])
 	}
+	if created["id"] == nil || created["id"] != created["uuid"] {
+		t.Fatalf("created identity = id:%#v uuid:%#v", created["id"], created["uuid"])
+	}
+	if _, ok := created["entry"].(float64); !ok {
+		t.Fatalf("created entry = %#v (%T), want Unix number", created["entry"], created["entry"])
+	}
 
 	listOut := run(t, bin, "--db", db, "--json", "list")
-	var listed []map[string]any
-	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
+	var page map[string]any
+	if err := json.Unmarshal([]byte(listOut), &page); err != nil {
 		t.Fatalf("list --json output is not JSON: %v\n%s", err, listOut)
 	}
-	if len(listed) != 1 || listed[0]["title"] != "write spec" {
-		t.Fatalf("listed = %#v", listed)
+	listed, ok := page["items"].([]any)
+	if !ok || len(listed) != 1 {
+		t.Fatalf("list page = %#v", page)
+	}
+	first, ok := listed[0].(map[string]any)
+	if !ok || first["title"] != "write spec" || page["total"] != float64(1) {
+		t.Fatalf("list page = %#v", page)
 	}
 }
 
@@ -1794,9 +1806,12 @@ func TestCLIAppendPrepend(t *testing.T) {
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "1", "append", "end")
 	run(t, bin, "--db", db, "1", "prepend", "start")
-	got := run(t, bin, "--db", db, "_get", "1.title")
-	if !strings.Contains(got, "start middle end") {
-		t.Fatalf("title = %q", got)
+	got := run(t, bin, "--db", db, "_get", "1.description")
+	if !strings.Contains(got, "start end") {
+		t.Fatalf("description = %q", got)
+	}
+	if title := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.title")); title != "middle" {
+		t.Fatalf("title changed = %q", title)
 	}
 }
 
@@ -1806,9 +1821,9 @@ func TestCLIAppendPrependCommands(t *testing.T) {
 	run(t, bin, "--db", db, "add", "middle")
 	run(t, bin, "--db", db, "append", "1", "tail", "text")
 	run(t, bin, "--db", db, "prepend", "1", "head", "text")
-	got := run(t, bin, "--db", db, "_get", "1.title")
-	if !strings.Contains(got, "head text middle tail text") {
-		t.Fatalf("title = %q", got)
+	got := run(t, bin, "--db", db, "_get", "1.description")
+	if !strings.Contains(got, "head text tail text") {
+		t.Fatalf("description = %q", got)
 	}
 }
 
@@ -1873,6 +1888,294 @@ func main() {
 	got := run(t, bin, "--db", db, "_get", "1.title")
 	if !strings.Contains(got, "edited task") {
 		t.Fatalf("title = %q", got)
+	}
+}
+
+func TestCLIEditProjectedOccurrenceOnlyMaterializesAfterValidDiff(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+	run(t, bin, "--db", db, "project", "add", "ops", "name:Ops")
+	run(t, bin, "--db", db, "series", "add", "每日巡检", "--project", "ops", "--recur", "daily", "--first-due", "2030-01-01", "--priority", "H", "--tag", "projected-only")
+
+	listJSON := run(t, bin, "--db", db, "--json", "series", "list", "--project", "ops")
+	var list struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(listJSON), &list); err != nil || len(list.Items) != 1 {
+		t.Fatalf("series list = %q err=%v", listJSON, err)
+	}
+	infoJSON := run(t, bin, "--db", db, "--json", "series", "info", list.Items[0].ID)
+	var info struct {
+		FirstDue int64 `json:"first_due"`
+	}
+	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil || info.FirstDue == 0 {
+		t.Fatalf("series info = %q err=%v", infoJSON, err)
+	}
+	occurrenceRef := "occ:" + list.Items[0].ID + ":" + strconv.FormatInt(info.FirstDue, 10)
+	database, err := gorm.Open(gsqlite.Open(db), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	assertProjected := func(stage string) {
+		t.Helper()
+		var count int64
+		if err := database.Table("tasks").Where("series_id = ?", list.Items[0].ID).Count(&count).Error; err != nil {
+			t.Fatalf("%s count occurrence rows: %v", stage, err)
+		}
+		if count != 0 {
+			t.Fatalf("%s unexpectedly materialized %d occurrence rows", stage, count)
+		}
+	}
+	assertProjected("initial")
+	projectedInfo := run(t, bin, "--db", db, "--json", "info", occurrenceRef)
+	var projected struct {
+		ID             string  `json:"id"`
+		UUID           *string `json:"uuid"`
+		TaskSlug       *string `json:"task_slug"`
+		ProjectSeq     *int64  `json:"project_seq"`
+		Title          string  `json:"title"`
+		RecurrenceInfo struct {
+			Materialization string `json:"materialization"`
+		} `json:"recurrence_info"`
+	}
+	if err := json.Unmarshal([]byte(projectedInfo), &projected); err != nil {
+		t.Fatalf("projected info parse: %v body=%s", err, projectedInfo)
+	}
+	if projected.ID != occurrenceRef || projected.UUID != nil || projected.TaskSlug != nil || projected.ProjectSeq != nil || projected.RecurrenceInfo.Materialization != "projected" {
+		t.Fatalf("projected info = %#v", projected)
+	}
+	humanInfo := run(t, bin, "--db", db, "info", occurrenceRef)
+	if !strings.Contains(humanInfo, "计划实例") || !strings.Contains(humanInfo, occurrenceRef) {
+		t.Fatalf("projected human info = %q", humanInfo)
+	}
+	for _, field := range []string{"uuid", "task_slug", "project_seq"} {
+		if value := strings.TrimSpace(run(t, bin, "--db", db, "_get", occurrenceRef+"."+field)); value != "" {
+			t.Fatalf("projected _get %s = %q, want empty", field, value)
+		}
+		if value := strings.TrimSpace(run(t, bin, "--db", db, "--json", "_get", occurrenceRef+"."+field)); value != "null" {
+			t.Fatalf("projected JSON _get %s = %q, want null", field, value)
+		}
+	}
+	if title := strings.TrimSpace(run(t, bin, "--db", db, "_get", occurrenceRef+".title")); title != "每日巡检" {
+		t.Fatalf("projected _get title = %q", title)
+	}
+	for name, args := range map[string][]string{
+		"link command": {"--json", "link", "list", occurrenceRef},
+		"link action":  {"--json", occurrenceRef, "link", "list"},
+		"annotations":  {"--json", occurrenceRef, "annotations"},
+	} {
+		output := strings.TrimSpace(run(t, bin, append([]string{"--db", db}, args...)...))
+		if output != "[]" {
+			t.Fatalf("projected %s output = %q, want []", name, output)
+		}
+	}
+	assertProjected("projected subresource reads")
+	if ids := strings.TrimSpace(run(t, bin, "--db", db, "_ids")); ids != "" {
+		t.Fatalf("projected _ids = %q, want empty", ids)
+	}
+	if uuids := strings.TrimSpace(run(t, bin, "--db", db, "_uuids")); uuids != "" {
+		t.Fatalf("projected _uuids = %q, want empty", uuids)
+	}
+	if tags := run(t, bin, "--db", db, "_tags"); strings.Contains(tags, "projected-only") {
+		t.Fatalf("_tags enumerated projected metadata: %q", tags)
+	}
+	if priorities := run(t, bin, "--db", db, "_unique", "priority"); strings.Contains(priorities, "H") {
+		t.Fatalf("_unique enumerated projected metadata: %q", priorities)
+	}
+	urgencyJSON := run(t, bin, "--db", db, "--json", "urgency", occurrenceRef)
+	var projectedUrgency struct {
+		ID    string  `json:"id"`
+		UUID  *string `json:"uuid"`
+		Total float64 `json:"total"`
+		Items []struct {
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(urgencyJSON), &projectedUrgency); err != nil {
+		t.Fatalf("projected urgency parse: %v body=%s", err, urgencyJSON)
+	}
+	if projectedUrgency.ID != occurrenceRef || projectedUrgency.UUID != nil || projectedUrgency.Total <= 0 {
+		t.Fatalf("projected urgency = %#v", projectedUrgency)
+	}
+	for _, item := range projectedUrgency.Items {
+		if item.Name == "age" {
+			t.Fatalf("projected urgency contains age: %#v", projectedUrgency.Items)
+		}
+	}
+	if helper := strings.TrimSpace(run(t, bin, "--db", db, "_urgency", occurrenceRef)); helper == "" || helper == "0.000" {
+		t.Fatalf("projected _urgency = %q", helper)
+	}
+	if output, err := runErr(t, bin, "--db", db, occurrenceRef, "denotate", "missing-annotation"); err == nil {
+		t.Fatalf("projected denotate succeeded: %s", output)
+	}
+	assertProjected("failed denotate")
+	if output, err := runErr(t, bin, "--db", db, occurrenceRef, "link", "remove", "missing-link"); err == nil {
+		t.Fatalf("projected link remove succeeded: %s", output)
+	}
+	assertProjected("failed link remove")
+	expandedJSON := run(
+		t, bin, "--db", db, "--json", "list", "task_type:occurrence",
+		"--due-after", "2030-01-01", "--due-before", "2030-01-02",
+		"--occurrence-mode", "expand",
+	)
+	var expanded struct {
+		Items []struct {
+			ID             string  `json:"id"`
+			UUID           *string `json:"uuid"`
+			TaskSlug       *string `json:"task_slug"`
+			RecurrenceInfo struct {
+				Materialization string `json:"materialization"`
+			} `json:"recurrence_info"`
+		} `json:"items"`
+		Total          int    `json:"total"`
+		OccurrenceMode string `json:"occurrence_mode"`
+	}
+	if err := json.Unmarshal([]byte(expandedJSON), &expanded); err != nil {
+		t.Fatalf("expanded list parse: %v body=%s", err, expandedJSON)
+	}
+	if expanded.Total != 2 || len(expanded.Items) != 2 || expanded.OccurrenceMode != "expand" {
+		t.Fatalf("expanded page = %#v", expanded)
+	}
+	for _, item := range expanded.Items {
+		if item.UUID != nil || item.TaskSlug != nil || item.RecurrenceInfo.Materialization != "projected" {
+			t.Fatalf("expanded projected item = %#v", item)
+		}
+	}
+	expandedHuman := run(
+		t, bin, "--db", db, "list", "task_type:occurrence",
+		"--due-after", "2030-01-01", "--due-before", "2030-01-02",
+		"--occurrence-mode", "expand",
+	)
+	if !strings.Contains(expandedHuman, "计划实例") || !strings.Contains(expandedHuman, occurrenceRef) {
+		t.Fatalf("expanded human list = %q", expandedHuman)
+	}
+	reportJSON := run(
+		t, bin, "--db", db, "--json", "all", "task_type:occurrence",
+		"--due-after", "2030-01-01", "--due-before", "2030-01-02",
+		"--occurrence-mode", "expand", "--sort", "due", "--limit", "1", "--offset", "1",
+	)
+	var reportPage struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Total          int    `json:"total"`
+		Limit          int    `json:"limit"`
+		Offset         int    `json:"offset"`
+		OccurrenceMode string `json:"occurrence_mode"`
+	}
+	if err := json.Unmarshal([]byte(reportJSON), &reportPage); err != nil {
+		t.Fatalf("expanded report parse: %v body=%s", err, reportJSON)
+	}
+	if reportPage.Total != 2 || len(reportPage.Items) != 1 || reportPage.Limit != 1 || reportPage.Offset != 1 || reportPage.OccurrenceMode != "expand" {
+		t.Fatalf("expanded report page = %#v", reportPage)
+	}
+	assertProjected("expanded list")
+
+	noOpEditor := buildEditorHelper(t, `package main
+func main() {}
+`)
+	out := runWithEnv(t, map[string]string{"EDITOR": noOpEditor}, bin, "--db", db, occurrenceRef, "edit")
+	if !strings.Contains(out, "Edit unchanged") {
+		t.Fatalf("no-op edit output = %q", out)
+	}
+	assertProjected("no-op")
+
+	failingEditor := buildEditorHelper(t, `package main
+import "os"
+func main() { os.Exit(23) }
+`)
+	cmd := exec.Command(bin, "--db", db, occurrenceRef, "edit")
+	cmd.Env = append(os.Environ(), "EDITOR="+failingEditor)
+	if output, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("failing editor succeeded: %s", output)
+	}
+	assertProjected("editor failure")
+
+	invalidEditor := buildEditorHelper(t, `package main
+import (
+  "encoding/json"
+  "os"
+)
+func main() {
+  path := os.Args[1]
+  data, err := os.ReadFile(path); if err != nil { panic(err) }
+  var doc map[string]any
+  if err := json.Unmarshal(data, &doc); err != nil { panic(err) }
+  doc["due"] = "not-a-date"
+  data, err = json.Marshal(doc); if err != nil { panic(err) }
+  if err := os.WriteFile(path, data, 0o600); err != nil { panic(err) }
+}
+`)
+	cmd = exec.Command(bin, "--db", db, occurrenceRef, "edit")
+	cmd.Env = append(os.Environ(), "EDITOR="+invalidEditor)
+	if output, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("invalid edit succeeded: %s", output)
+	}
+	assertProjected("invalid edit")
+
+	validEditor := buildEditorHelper(t, `package main
+import (
+  "encoding/json"
+  "os"
+)
+func main() {
+  path := os.Args[1]
+  data, err := os.ReadFile(path); if err != nil { panic(err) }
+  var doc map[string]any
+  if err := json.Unmarshal(data, &doc); err != nil { panic(err) }
+  doc["title"] = "只修改本次巡检"
+  doc["due"] = "2030-01-02T23:59:59Z"
+  data, err = json.Marshal(doc); if err != nil { panic(err) }
+  if err := os.WriteFile(path, data, 0o600); err != nil { panic(err) }
+}
+`)
+	out = runWithEnv(t, map[string]string{"EDITOR": validEditor}, bin, "--db", db, occurrenceRef, "edit")
+	if !strings.Contains(out, "Edited task") {
+		t.Fatalf("valid edit output = %q", out)
+	}
+	payload := run(t, bin, "--db", db, "--json", "series", "occurrences", list.Items[0].ID, "--status", "all")
+	var page struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(payload), &page); err != nil || len(page.Items) != 1 {
+		t.Fatalf("occurrence page parse: %v body=%s", err, payload)
+	}
+	var edited struct {
+		ID             string  `json:"id"`
+		UUID           *string `json:"uuid"`
+		TaskSlug       *string `json:"task_slug"`
+		Title          string  `json:"title"`
+		RecurrenceInfo struct {
+			RecurrenceAt    int64    `json:"recurrence_at"`
+			Materialization string   `json:"materialization"`
+			Overrides       []string `json:"overrides"`
+		} `json:"recurrence_info"`
+	}
+	if err := json.Unmarshal(page.Items[0], &edited); err != nil {
+		t.Fatalf("edited info parse: %v body=%s", err, payload)
+	}
+	if edited.ID != occurrenceRef || edited.UUID == nil || edited.TaskSlug == nil || edited.Title != "只修改本次巡检" {
+		t.Fatalf("edited occurrence = %#v", edited)
+	}
+	if edited.RecurrenceInfo.RecurrenceAt != info.FirstDue || edited.RecurrenceInfo.Materialization != "materialized" {
+		t.Fatalf("recurrence identity changed: %#v", edited.RecurrenceInfo)
+	}
+	if !reflect.DeepEqual(edited.RecurrenceInfo.Overrides, []string{"due", "title"}) {
+		t.Fatalf("overrides = %#v", edited.RecurrenceInfo.Overrides)
+	}
+	if ids := strings.TrimSpace(run(t, bin, "--db", db, "_ids")); ids != "1" {
+		t.Fatalf("materialized _ids = %q, want 1", ids)
+	}
+	if uuids := strings.TrimSpace(run(t, bin, "--db", db, "_uuids")); edited.UUID == nil || uuids != *edited.UUID {
+		t.Fatalf("materialized _uuids = %q, occurrence=%#v", uuids, edited.UUID)
+	}
+	if tags := run(t, bin, "--db", db, "_tags"); !strings.Contains(tags, "projected-only") {
+		t.Fatalf("materialized _tags = %q", tags)
+	}
+	if priorities := run(t, bin, "--db", db, "_unique", "priority"); !strings.Contains(priorities, "H") {
+		t.Fatalf("materialized _unique priority = %q", priorities)
 	}
 }
 
@@ -2461,6 +2764,11 @@ func startXuanchuServer(t *testing.T, bin string, args ...string) (*exec.Cmd, st
 			_, _ = cmd.Process.Wait()
 		}
 		_ = stderrFile.Close()
+		if t.Failed() {
+			if stderr, err := os.ReadFile(stderrPath); err == nil && len(stderr) > 0 {
+				t.Logf("xuanchu server stderr:\n%s", stderr)
+			}
+		}
 	})
 
 	baseURL := "http://" + listen
@@ -2780,10 +3088,43 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 	if !strings.Contains(out, "已跳过实例") {
 		t.Fatalf("skip 输出: %q", out)
 	}
+	date := time.Unix(infoResp.FirstDue, 0).In(time.Local).Format("2006-01-02")
+	out = run(t, bin, "--db", db, "--json", "series", "occurrences", seriesID,
+		"--status", "all", "--due-after", date, "--due-before", date)
+	var ranged struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal([]byte(out), &ranged); err != nil || ranged.Total != 1 || len(ranged.Items) != 1 {
+		t.Fatalf("occurrences date range = %#v err=%v body=%s", ranged, err, out)
+	}
 
 	// series stop。
 	out = run(t, bin, "--db", db, "series", "stop", seriesID)
 	if !strings.Contains(out, "已停止循环任务") {
 		t.Fatalf("stop 输出: %q", out)
+	}
+}
+
+func TestCLIGenericTaskCommandsRejectRetiredRecurrenceFields(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+
+	if output, err := runErr(t, bin, "--db", db, "add", "legacy", "recur:daily"); err == nil {
+		t.Fatalf("add recur:daily succeeded: %s", output)
+	}
+	if ids := strings.TrimSpace(run(t, bin, "--db", db, "_ids")); ids != "" {
+		t.Fatalf("rejected recurring add created tasks: %q", ids)
+	}
+
+	run(t, bin, "--db", db, "add", "ordinary")
+	if output, err := runErr(t, bin, "--db", db, "1", "modify", "recur:weekly"); err == nil {
+		t.Fatalf("modify recur:weekly succeeded: %s", output)
+	}
+	if title := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.title")); title != "ordinary" {
+		t.Fatalf("title after rejected modify = %q", title)
+	}
+	if output, err := runErr(t, bin, "--db", db, "list", "recur:daily"); err == nil {
+		t.Fatalf("query recur:daily succeeded: %s", output)
 	}
 }

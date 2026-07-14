@@ -58,9 +58,9 @@ func (s *Server) registerHumaBridge(api huma.API, route humaRoute) {
 		Path:        route.Path,
 		Tags:        []string{route.Tag},
 		Summary:     route.Summary,
-		Parameters:  pathParameters(route.Path),
+		Parameters:  append(pathParameters(route.Path), contractQueryParameters(route)...),
 		Responses: map[string]*huma.Response{
-			defaultResponseStatus(route): jsonResponse("Successful response."),
+			defaultResponseStatus(route): contractSuccessResponse(route),
 			"400":                        jsonResponse("Bad request."),
 			"401":                        jsonResponse("Unauthorized."),
 			"403":                        jsonResponse("Forbidden."),
@@ -76,11 +76,15 @@ func (s *Server) registerHumaBridge(api huma.API, route humaRoute) {
 		op.Security = []map[string][]string{}
 	}
 	if route.Method == http.MethodPost || route.Method == http.MethodPut || route.Method == http.MethodPatch {
+		requestSchema := contractRequestSchema(route)
+		if requestSchema == nil {
+			requestSchema = &huma.Schema{Type: "object"}
+		}
 		op.RequestBody = &huma.RequestBody{
 			Description: "JSON request body.",
 			Required:    route.Method != http.MethodPost || !strings.HasSuffix(route.Path, "/enable") && !strings.HasSuffix(route.Path, "/disable") && !strings.HasSuffix(route.Path, "/done") && !strings.HasSuffix(route.Path, "/start") && !strings.HasSuffix(route.Path, "/stop") && !strings.HasSuffix(route.Path, "/archive") && !strings.HasSuffix(route.Path, "/use") && !strings.HasSuffix(route.Path, "/none") && !strings.HasSuffix(route.Path, "/replay"),
 			Content: map[string]*huma.MediaType{
-				"application/json": {Schema: &huma.Schema{Type: "object"}},
+				"application/json": {Schema: requestSchema},
 			},
 		}
 	}
@@ -97,6 +101,411 @@ func (s *Server) registerHumaBridge(api huma.API, route humaRoute) {
 		}
 		handler.ServeHTTP(res, req)
 	})
+}
+
+func contractQueryParameters(route humaRoute) []*huma.Param {
+	stringParam := func(name, description string) *huma.Param {
+		return &huma.Param{Name: name, In: "query", Description: description, Schema: &huma.Schema{Type: "string"}}
+	}
+	enumParam := func(name, description string, values ...string) *huma.Param {
+		enums := make([]any, 0, len(values))
+		for _, value := range values {
+			enums = append(enums, value)
+		}
+		return &huma.Param{Name: name, In: "query", Description: description, Schema: &huma.Schema{Type: "string", Enum: enums}}
+	}
+	limitParam := func() *huma.Param {
+		minimum, maximum := float64(1), float64(taskListMaxLimit)
+		return &huma.Param{Name: "limit", In: "query", Description: "Maximum page size; defaults to 200.", Schema: &huma.Schema{
+			Type: "integer", Format: "int32", Default: taskListDefaultLimit, Minimum: &minimum, Maximum: &maximum,
+		}}
+	}
+	offsetParam := func() *huma.Param {
+		minimum := float64(0)
+		return &huma.Param{Name: "offset", In: "query", Description: "Zero-based page offset; defaults to 0.", Schema: &huma.Schema{
+			Type: "integer", Format: "int32", Default: 0, Minimum: &minimum,
+		}}
+	}
+	boolParam := func(name, description string) *huma.Param {
+		return &huma.Param{Name: name, In: "query", Description: description, Schema: &huma.Schema{Type: "boolean"}}
+	}
+	workspaceScope := func() []*huma.Param {
+		return []*huma.Param{
+			stringParam("workspace", "Workspace slug or UUID."),
+			stringParam("project", "Project slug in the effective workspace."),
+			stringParam("project_id", "Stable project UUID."),
+		}
+	}
+	taskViewParams := func(includeReport bool) []*huma.Param {
+		params := workspaceScope()
+		if includeReport {
+			params = append(params, stringParam("report", "Optional saved report name."))
+		}
+		return append(params,
+			stringParam("query", "Task query expression; may be repeated."),
+			stringParam("status", "Explicit task status filter."),
+			stringParam("priority", "Task priority filter."),
+			stringParam("assignee", "Workspace user reference."),
+			stringParam("q", "Bare title search."),
+			stringParam("tags", "Comma-separated required tags."),
+			stringParam("due_after", "Inclusive local date in YYYY-MM-DD form."),
+			stringParam("due_before", "Inclusive local date in YYYY-MM-DD form."),
+			enumParam("occurrence_mode", "Occurrence projection mode.", "auto", "materialized", "expand"),
+			enumParam("task_type", "Normal task or recurring occurrence filter.", "all", "normal", "occurrence"),
+			stringParam("sort", "Task/report sort expression."),
+			limitParam(),
+			offsetParam(),
+			boolParam("no_context", "Ignore the active CLI/report context."),
+		)
+	}
+
+	switch {
+	case route.Method == http.MethodGet && route.Path == "/api/v1/tasks":
+		return append(taskViewParams(true), boolParam("include_deleted", "Include deleted tasks when no explicit status predicate is supplied."))
+	case route.Method == http.MethodGet && route.Path == "/api/v1/reports/{name}":
+		return taskViewParams(false)
+	case route.Method == http.MethodGet && route.Path == "/api/v1/task-series":
+		return append(workspaceScope(),
+			enumParam("status", "Series lifecycle status.", "active", "ended", "stopped", "all"),
+			stringParam("q", "Case-insensitive title/description search."),
+			stringParam("assignee", "Workspace user reference."),
+			enumParam("sort", "Series ordering.", "next", "title", "modified"),
+			limitParam(),
+			offsetParam(),
+		)
+	case route.Method == http.MethodGet && route.Path == "/api/v1/task-series/{seriesRef}/occurrences":
+		return []*huma.Param{
+			stringParam("workspace", "Workspace slug or UUID."),
+			enumParam("status", "Occurrence task status.", "pending", "waiting", "completed", "deleted", "all"),
+			stringParam("due_after", "Inclusive local date in YYYY-MM-DD form."),
+			stringParam("due_before", "Inclusive local date in YYYY-MM-DD form."),
+			limitParam(),
+			offsetParam(),
+		}
+	case route.Method == http.MethodDelete && route.Path == "/api/v1/task-series/{seriesRef}":
+		return []*huma.Param{
+			stringParam("workspace", "Workspace slug or UUID."),
+			boolParam("delete_open_occurrences", "Also skip all open and entered projected occurrences."),
+		}
+	case strings.HasPrefix(route.Path, "/api/v1/task-series") || strings.HasPrefix(route.Path, "/api/v1/tasks/{taskRef}"):
+		return []*huma.Param{stringParam("workspace", "Workspace slug or UUID.")}
+	default:
+		return nil
+	}
+}
+
+func contractRequestSchema(route humaRoute) *huma.Schema {
+	stringField := func() *huma.Schema { return &huma.Schema{Type: "string"} }
+	nullableStringField := func() *huma.Schema { return &huma.Schema{Type: "string", Nullable: true} }
+	int64Field := func() *huma.Schema { return &huma.Schema{Type: "integer", Format: "int64", Nullable: true} }
+	dateField := func() *huma.Schema { return &huma.Schema{Type: "string", Format: "date"} }
+	stringArrayField := func() *huma.Schema {
+		return &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}}
+	}
+	boolField := func() *huma.Schema { return &huma.Schema{Type: "boolean"} }
+	udaField := func() *huma.Schema {
+		return &huma.Schema{Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}}
+	}
+
+	if route.Path == "/api/v1/tasks" && route.Method == http.MethodPost {
+		return &huma.Schema{
+			Type: "object",
+			Properties: map[string]*huma.Schema{
+				"title":          stringField(),
+				"description":    nullableStringField(),
+				"project":        stringField(),
+				"project_id":     {Type: "string", Format: "uuid"},
+				"priority":       nullableStringField(),
+				"due":            int64Field(),
+				"due_date":       dateField(),
+				"assignees":      stringArrayField(),
+				"depends":        stringArrayField(),
+				"wait":           int64Field(),
+				"wait_date":      dateField(),
+				"scheduled":      int64Field(),
+				"scheduled_date": dateField(),
+				"until":          int64Field(),
+				"until_date":     dateField(),
+				"tags":           stringArrayField(),
+				"udas":           udaField(),
+				"parent":         stringField(),
+			},
+			Required: []string{"title"},
+		}
+	}
+	if route.Path == "/api/v1/tasks/{taskRef}" && route.Method == http.MethodPatch {
+		return &huma.Schema{
+			Type: "object",
+			Properties: map[string]*huma.Schema{
+				"title":             nullableStringField(),
+				"description":       nullableStringField(),
+				"clear_description": boolField(),
+				"project":           nullableStringField(),
+				"project_id":        {Type: "string", Format: "uuid", Nullable: true},
+				"clear_project":     boolField(),
+				"priority":          nullableStringField(),
+				"clear_priority":    boolField(),
+				"due":               int64Field(),
+				"due_date":          dateField(),
+				"clear_due":         boolField(),
+				"wait":              int64Field(),
+				"wait_date":         dateField(),
+				"clear_wait":        boolField(),
+				"scheduled":         int64Field(),
+				"scheduled_date":    dateField(),
+				"clear_scheduled":   boolField(),
+				"until":             int64Field(),
+				"until_date":        dateField(),
+				"clear_until":       boolField(),
+				"assignees":         stringArrayField(),
+				"remove_assignees":  stringArrayField(),
+				"clear_assignees":   boolField(),
+				"depends":           stringArrayField(),
+				"clear_depends":     boolField(),
+				"tags":              stringArrayField(),
+				"remove_tags":       stringArrayField(),
+				"udas":              udaField(),
+				"clear_udas":        stringArrayField(),
+			},
+		}
+	}
+	if route.Path != "/api/v1/task-series" && route.Path != "/api/v1/task-series/{seriesRef}" {
+		return nil
+	}
+	props := map[string]*huma.Schema{
+		"title":               {Type: "string"},
+		"description":         {Type: "string", Nullable: true},
+		"project":             {Type: "string"},
+		"project_id":          {Type: "string", Format: "uuid"},
+		"recurrence_rule":     {Type: "string", Pattern: `^(daily|weekly|monthly|[1-9][0-9]*(days|weeks|months))$`},
+		"first_due":           {Type: "integer", Format: "int64"},
+		"first_due_date":      {Type: "string", Format: "date"},
+		"until":               {Type: "integer", Format: "int64", Nullable: true},
+		"until_date":          {Type: "string", Format: "date", Nullable: true},
+		"priority":            {Type: "string", Nullable: true},
+		"assignees":           {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"tags":                {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"udas":                {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
+		"effective_from":      {Type: "integer", Format: "int64"},
+		"effective_from_date": {Type: "string", Format: "date"},
+		"clear":               {Type: "array", Items: &huma.Schema{Type: "string"}},
+	}
+	schema := &huma.Schema{Type: "object", Properties: props}
+	if route.Method == http.MethodPost {
+		schema.Required = []string{"title", "recurrence_rule"}
+		schema.AllOf = []*huma.Schema{
+			{AnyOf: []*huma.Schema{{Required: []string{"project"}}, {Required: []string{"project_id"}}}},
+			{AnyOf: []*huma.Schema{{Required: []string{"first_due"}}, {Required: []string{"first_due_date"}}}},
+		}
+	}
+	return schema
+}
+
+func contractSuccessResponse(route humaRoute) *huma.Response {
+	data := (*huma.Schema)(nil)
+	switch {
+	case route.Method == http.MethodGet && (route.Path == "/api/v1/tasks" || route.Path == "/api/v1/reports/{name}" || route.Path == "/api/v1/task-series/{seriesRef}/occurrences"):
+		data = taskViewPageOpenAPISchema()
+	case taskRouteReturnsOccurrenceView(route):
+		data = taskOccurrenceOpenAPISchema()
+	case route.Method == http.MethodGet && route.Path == "/api/v1/task-series":
+		data = taskSeriesPageOpenAPISchema()
+	case route.Method == http.MethodPost && route.Path == "/api/v1/task-series":
+		data = &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"series":           taskSeriesOpenAPISchema(),
+			"first_occurrence": {Type: "object", Nullable: true, Properties: taskOccurrenceOpenAPISchema().Properties},
+		}, Required: []string{"series"}}
+	case strings.HasPrefix(route.Path, "/api/v1/task-series/{seriesRef}"):
+		data = taskSeriesOpenAPISchema()
+	}
+	if data == nil {
+		return jsonResponse("Successful response.")
+	}
+	return jsonResponseWithSchema("Successful response.", successEnvelopeOpenAPISchema(data))
+}
+
+func taskRouteReturnsOccurrenceView(route humaRoute) bool {
+	if route.Path == "/api/v1/tasks" && route.Method == http.MethodPost {
+		return true
+	}
+	if route.Path == "/api/v1/tasks/{taskRef}" {
+		return route.Method == http.MethodGet || route.Method == http.MethodPatch || route.Method == http.MethodDelete
+	}
+	if route.Method != http.MethodPost {
+		return false
+	}
+	switch route.Path {
+	case "/api/v1/tasks/{taskRef}/done",
+		"/api/v1/tasks/{taskRef}/start",
+		"/api/v1/tasks/{taskRef}/stop",
+		"/api/v1/tasks/{taskRef}/reopen":
+		return true
+	default:
+		return false
+	}
+}
+
+func jsonResponseWithSchema(description string, schema *huma.Schema) *huma.Response {
+	return &huma.Response{Description: description, Content: map[string]*huma.MediaType{
+		"application/json": {Schema: schema},
+	}}
+}
+
+func successEnvelopeOpenAPISchema(data *huma.Schema) *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"data": data,
+		"meta": {Type: "object", Nullable: true, AdditionalProperties: true},
+	}, Required: []string{"data"}}
+}
+
+func taskViewPageOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"items":           {Type: "array", Items: taskOccurrenceOpenAPISchema()},
+		"total":           {Type: "integer", Format: "int32"},
+		"limit":           {Type: "integer", Format: "int32"},
+		"offset":          {Type: "integer", Format: "int32"},
+		"occurrence_mode": {Type: "string", Enum: []any{"auto", "materialized", "expand"}},
+		"range": {Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+			"start": {Type: "integer", Format: "int64"}, "end": {Type: "integer", Format: "int64"},
+		}, Required: []string{"start", "end"}},
+	}, Required: []string{"items", "total", "limit", "offset", "occurrence_mode"}}
+}
+
+func externalIDOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"provider":    {Type: "string", Enum: []any{"feishu", "wecom", "dingtalk"}},
+		"user_type":   {Type: "string", Enum: []any{"user_id", "open_id", "union_id"}},
+		"external_id": {Type: "string"},
+	}, Required: []string{"provider", "external_id"}}
+}
+
+func userInfoOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id":           {Type: "string"},
+		"name":         {Type: "string"},
+		"display_name": {Type: "string"},
+		"email":        {Type: "string", Nullable: true},
+		"external_ids": {Type: "array", Items: externalIDOpenAPISchema()},
+	}, Required: []string{"id", "name"}}
+}
+
+func taskRefOpenAPISchema(nullable bool) *huma.Schema {
+	return &huma.Schema{Type: "object", Nullable: nullable, Properties: map[string]*huma.Schema{
+		"uuid":      {Type: "string", Format: "uuid"},
+		"title":     {Type: "string"},
+		"task_slug": {Type: "string", Nullable: true},
+	}, Required: []string{"uuid", "title"}}
+}
+
+func actorInfoOpenAPISchema() *huma.Schema {
+	token := &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "name": {Type: "string"}, "prefix": {Type: "string"},
+	}, Required: []string{"id", "name"}}
+	user := userInfoOpenAPISchema()
+	user.Nullable = true
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"type":  {Type: "string", Description: "Actor kind, for example user or tenant_access_token."},
+		"user":  user,
+		"token": token,
+	}, Required: []string{"type"}}
+}
+
+func taskOccurrenceOpenAPISchema() *huma.Schema {
+	nullString := func() *huma.Schema { return &huma.Schema{Type: "string", Nullable: true} }
+	nullInt := func() *huma.Schema { return &huma.Schema{Type: "integer", Format: "int64", Nullable: true} }
+	recurrence := &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"role":            {Type: "string", Enum: []any{"occurrence"}},
+		"series_id":       {Type: "string", Format: "uuid"},
+		"series_title":    {Type: "string"},
+		"series_status":   {Type: "string", Enum: []any{"active", "ended", "stopped"}},
+		"rule":            {Type: "string"},
+		"recurrence_at":   {Type: "integer", Format: "int64"},
+		"materialization": {Type: "string", Enum: []any{"projected", "materialized"}},
+		"overrides":       {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"until":           nullInt(),
+	}, Required: []string{"role", "series_id", "series_title", "series_status", "rule", "recurrence_at", "materialization"}}
+	annotation := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "entry": {Type: "string", Format: "date-time"}, "description": {Type: "string"},
+	}, Required: []string{"entry", "description"}}
+	link := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "type": {Type: "string"}, "url": {Type: "string", Format: "uri"},
+		"title": {Type: "string"}, "created_at": {Type: "string", Format: "date-time"}, "created_by": actorInfoOpenAPISchema(),
+	}, Required: []string{"id", "type", "url", "created_at", "created_by"}}
+	parentInfo := taskRefOpenAPISchema(true)
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id":              {Type: "string", Description: "UUID for a normal task; stable occurrence_ref for a recurring occurrence."},
+		"uuid":            nullString(),
+		"task_slug":       nullString(),
+		"project_seq":     nullInt(),
+		"workspace_id":    {Type: "string", Format: "uuid"},
+		"project_id":      nullString(),
+		"project":         nullString(),
+		"title":           {Type: "string"},
+		"description":     nullString(),
+		"status":          {Type: "string", Enum: []any{"pending", "waiting", "completed", "deleted"}},
+		"entry":           nullInt(),
+		"modified":        nullInt(),
+		"due":             nullInt(),
+		"start":           nullInt(),
+		"end":             nullInt(),
+		"wait":            nullInt(),
+		"scheduled":       nullInt(),
+		"until":           nullInt(),
+		"parent":          nullString(),
+		"priority":        nullString(),
+		"tags":            {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"assignees":       {Type: "array", Items: userInfoOpenAPISchema()},
+		"depends":         {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"depends_info":    {Type: "array", Items: taskRefOpenAPISchema(false)},
+		"parent_info":     parentInfo,
+		"blocked_by_info": {Type: "array", Items: taskRefOpenAPISchema(false)},
+		"annotations":     {Type: "array", Items: annotation},
+		"links":           {Type: "array", Items: link},
+		"udas":            {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
+		"recurrence_info": recurrence,
+	}, Required: []string{"id", "uuid", "task_slug", "project_seq", "workspace_id", "title", "status", "entry", "modified", "start", "end"}}
+}
+
+func taskSeriesOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id":                            {Type: "string", Format: "uuid"},
+		"workspace_id":                  {Type: "string", Format: "uuid"},
+		"project_id":                    {Type: "string", Format: "uuid"},
+		"title":                         {Type: "string"},
+		"description":                   {Type: "string", Nullable: true},
+		"status":                        {Type: "string", Enum: []any{"active", "ended", "stopped"}},
+		"recurrence_rule":               {Type: "string"},
+		"first_due":                     {Type: "integer", Format: "int64"},
+		"until":                         {Type: "integer", Format: "int64", Nullable: true},
+		"priority":                      {Type: "string", Nullable: true},
+		"assignees":                     {Type: "array", Items: userInfoOpenAPISchema()},
+		"tags":                          {Type: "array", Items: &huma.Schema{Type: "string"}},
+		"udas":                          {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
+		"open_occurrence_count":         {Type: "integer", Format: "int32"},
+		"completed_count":               {Type: "integer", Format: "int32"},
+		"skipped_count":                 {Type: "integer", Format: "int32"},
+		"overdue_count":                 {Type: "integer", Format: "int32"},
+		"next_recurrence_at":            {Type: "integer", Format: "int64", Nullable: true},
+		"suggested_rule_effective_from": {Type: "integer", Format: "int64", Nullable: true},
+		"created_by":                    userInfoOpenAPISchema(),
+		"created_at":                    {Type: "integer", Format: "int64"},
+		"modified_at":                   {Type: "integer", Format: "int64"},
+		"open_occurrences":              {Type: "array", Items: taskOccurrenceOpenAPISchema()},
+		"recent_completed":              {Type: "array", Items: taskOccurrenceOpenAPISchema()},
+		"recent_skipped":                {Type: "array", Items: taskOccurrenceOpenAPISchema()},
+	}, Required: []string{
+		"id", "workspace_id", "project_id", "title", "status", "recurrence_rule", "first_due",
+		"open_occurrence_count", "completed_count", "skipped_count", "overdue_count", "created_by", "created_at", "modified_at",
+	}}
+}
+
+func taskSeriesPageOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"items":  {Type: "array", Items: taskSeriesOpenAPISchema()},
+		"total":  {Type: "integer", Format: "int32"},
+		"limit":  {Type: "integer", Format: "int32"},
+		"offset": {Type: "integer", Format: "int32"},
+	}, Required: []string{"items", "total", "limit", "offset"}}
 }
 
 func defaultResponseStatus(route humaRoute) string {

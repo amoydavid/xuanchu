@@ -10,16 +10,17 @@ describe("myTasksPath", () => {
     )
   })
 
-  it("encodes project, priority, q and sort", () => {
+  it("encodes project, task type, priority, q and sort", () => {
     const filter: MyTasksFilter = {
       assignee: "user-1",
       project: "proj-a",
+      task_type: "occurrence",
       priority: "H",
       q: "login bug",
       sort: "due",
     }
     expect(myTasksPath("dajee", filter)).toBe(
-      "/api/v1/tasks?workspace=dajee&assignee=user-1&project=proj-a&priority=H&q=login+bug&sort=due&limit=200"
+      "/api/v1/tasks?workspace=dajee&assignee=user-1&project=proj-a&task_type=occurrence&priority=H&q=login+bug&sort=due&limit=200"
     )
   })
 

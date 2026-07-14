@@ -3,12 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/remote"
-	"git.dajee.net/dajee/xuanchu/internal/render"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -36,11 +37,7 @@ func newInfoCommand(opts Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				taskObj := remoteDTOToTask(tsk)
-				if currentOpts.JSON {
-					return render.JSON(cmd.OutOrStdout(), task.ToJSON(taskObj))
-				}
-				render.TaskInfo(cmd.OutOrStdout(), taskObj)
+				renderTaskOccurrenceInfo(cmd.OutOrStdout(), currentOpts.JSON, remoteOccurrenceDTOToView(tsk))
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -49,17 +46,86 @@ func newInfoCommand(opts Options) *cobra.Command {
 			}
 			defer closeFn()
 
-			tsk, err := svc.ResolveTarget(args[0])
+			view, err := svc.GetTaskView(args[0])
 			if err != nil {
 				return err
 			}
-			if currentOpts.JSON {
-				return render.JSON(cmd.OutOrStdout(), task.ToJSON(tsk))
-			}
-			render.TaskInfo(cmd.OutOrStdout(), tsk)
+			renderTaskOccurrenceInfo(cmd.OutOrStdout(), currentOpts.JSON, view)
 			return nil
 		},
 	}
+}
+
+func renderTaskOccurrenceInfo(w io.Writer, asJSON bool, view app.TaskOccurrenceView) {
+	if asJSON {
+		renderOccurrenceViewJSON(w, view)
+		return
+	}
+	value := func(v *string) string {
+		if v == nil {
+			return "-"
+		}
+		return *v
+	}
+	timestamp := func(v *int64) string {
+		if v == nil {
+			return "-"
+		}
+		return time.Unix(*v, 0).UTC().Format(time.RFC3339)
+	}
+	fmt.Fprintf(w, "Reference: %s\n", occurrenceHumanRef(view))
+	fmt.Fprintf(w, "UUID: %s\n", value(view.UUID))
+	fmt.Fprintf(w, "Task slug: %s\n", value(view.TaskSlug))
+	fmt.Fprintf(w, "Status: %s\n", view.Status)
+	fmt.Fprintf(w, "Title: %s\n", view.Title)
+	fmt.Fprintf(w, "Description: %s\n", value(view.Description))
+	fmt.Fprintf(w, "Entry: %s\n", timestamp(view.Entry))
+	fmt.Fprintf(w, "Modified: %s\n", timestamp(view.Modified))
+	fmt.Fprintf(w, "End: %s\n", timestamp(view.End))
+	fmt.Fprintf(w, "Due: %s\n", timestamp(view.Due))
+	fmt.Fprintf(w, "Project: %s\n", value(view.Project))
+	fmt.Fprintf(w, "Priority: %s\n", value(view.Priority))
+	fmt.Fprintf(w, "Assignees: %s\n", formatOccurrenceAssignees(view.Assignees))
+	fmt.Fprintf(w, "Tags: %s\n", strings.Join(view.Tags, ","))
+	if view.RecurrenceInfo != nil {
+		label := "循环实例"
+		if view.RecurrenceInfo.Materialization == "projected" {
+			label = "计划实例"
+		}
+		fmt.Fprintf(w, "Type: %s\n", label)
+		fmt.Fprintf(w, "Occurrence ID: %s\n", view.ID)
+		fmt.Fprintf(w, "Series: %s (%s)\n", view.RecurrenceInfo.SeriesTitle, view.RecurrenceInfo.SeriesID)
+		fmt.Fprintf(w, "Recurrence: %s\n", view.RecurrenceInfo.Rule)
+		fmt.Fprintf(w, "Occurrence at: %s\n", time.Unix(view.RecurrenceInfo.RecurrenceAt, 0).UTC().Format(time.RFC3339))
+		fmt.Fprintf(w, "Materialization: %s\n", view.RecurrenceInfo.Materialization)
+		fmt.Fprintf(w, "Overrides: %s\n", strings.Join(view.RecurrenceInfo.Overrides, ","))
+	}
+	if len(view.Links) > 0 {
+		fmt.Fprintln(w, "Links:")
+		for _, link := range view.Links {
+			fmt.Fprintf(w, "  [%s] %s %s\n", link.Type, link.Title, link.URL)
+		}
+	}
+}
+
+func formatOccurrenceAssignees(assignees []task.UserInfo) string {
+	labels := make([]string, 0, len(assignees))
+	for _, assignee := range assignees {
+		label := assignee.Name
+		if label == "" {
+			label = assignee.DisplayName
+		}
+		if label == "" && assignee.Email != nil {
+			label = *assignee.Email
+		}
+		if label == "" {
+			label = assignee.ID
+		}
+		if label != "" {
+			labels = append(labels, "@"+label)
+		}
+	}
+	return strings.Join(labels, ", ")
 }
 
 func resolveRemoteTaskTarget(ctx context.Context, client *remote.Client, opts Options, target string) (string, error) {
@@ -168,30 +234,35 @@ func remotePageToTasks(page remote.TaskViewPageDTO) []task.Task {
 	return out
 }
 
-// remoteDTOToTask 把单个 DTO 转为 task.Task。
-// 优先使用 RawJSON（单任务端点的完整 JSONTask）；否则从窄字段构造。
-// projected occurrence 无 UUID 时用 DTO.ID（occurrence_ref）作为 UUID 占位，
-// 供渲染层显示（spec §13.5：不降级 occurrence，CLI 用稳定公开 id）。
+func remotePageToTaskViewPage(page remote.TaskViewPageDTO) app.TaskViewPage {
+	view := app.TaskViewPage{
+		Items: remoteOccurrenceDTOsToViews(page.Items), Total: page.Total,
+		Limit: page.Limit, Offset: page.Offset,
+		OccurrenceMode: app.OccurrenceMode(page.OccurrenceMode),
+	}
+	if page.Range != nil {
+		view.Range = &app.TaskViewRange{Start: page.Range.Start, End: page.Range.End}
+	}
+	return view
+}
+
+// remoteDTOToTask 把统一 TaskOccurrenceDTO 转为 task.Task，供既有 human renderer 使用。
+// projected occurrence 无 UUID 时用 DTO.ID（occurrence_ref）作为 UUID 占位。
 func remoteDTOToTask(dto remote.TaskOccurrenceDTO) task.Task {
-	if dto.JSONTask != nil {
-		if tsk, err := task.FromJSONStrict(*dto.JSONTask); err == nil {
-			return enrichTaskFromDTO(tsk, dto)
-		}
-	}
-	// 统一 task view 使用 Unix 时间和 recurrence_info；先复用完整 DTO→View
-	// 映射，再转为 CLI 既有的 domain Task 渲染输入，避免遗漏 wait 等字段。
-	view := remoteOccurrenceDTOToView(dto)
-	id := view.ID
-	if view.UUID != nil {
-		id = *view.UUID
-	}
+	return enrichTaskFromDTO(taskFromOccurrenceView(remoteOccurrenceDTOToView(dto)), dto)
+}
+
+func taskFromOccurrenceView(view app.TaskOccurrenceView) task.Task {
 	tsk := task.Task{
-		UUID: id, WorkspaceID: view.WorkspaceID, Title: view.Title, Description: view.Description,
+		WorkspaceID: view.WorkspaceID, Title: view.Title, Description: view.Description,
 		Status: view.Status, End: view.End, Due: view.Due, Project: view.Project,
 		ProjectID: view.ProjectID, ProjectSeq: view.ProjectSeq, Priority: view.Priority,
 		Tags: view.Tags, Start: view.Start, Wait: view.Wait, Scheduled: view.Scheduled,
 		Until: view.Until, Annotations: view.Annotations, Depends: view.Depends,
 		Parent: view.Parent, Links: view.Links, UDAs: view.UDAs,
+	}
+	if view.UUID != nil {
+		tsk.UUID = *view.UUID
 	}
 	if view.Entry != nil {
 		tsk.Entry = *view.Entry
@@ -205,7 +276,14 @@ func remoteDTOToTask(dto remote.TaskOccurrenceDTO) task.Task {
 			Email: assignee.Email, ExternalIDs: assignee.ExternalIDs,
 		})
 	}
-	return enrichTaskFromDTO(tsk, dto)
+	if view.RecurrenceInfo != nil {
+		tsk.SeriesID = &view.RecurrenceInfo.SeriesID
+		tsk.RecurrenceAt = &view.RecurrenceInfo.RecurrenceAt
+		rule := view.RecurrenceInfo.Rule
+		tsk.RecurrenceRuleSnapshot = &rule
+		tsk.RecurrenceOverrides = append([]string(nil), view.RecurrenceInfo.Overrides...)
+	}
+	return tsk
 }
 
 // enrichTaskFromDTO 用 DTO 的 occurrence 字段补充 task.Task。

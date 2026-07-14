@@ -78,25 +78,28 @@ type OccurrenceRangeOptions struct {
 	Start       int64 // inclusive
 	End         int64 // exclusive
 	Status      string
+	Limit       int
+	Offset      int
+	Descending  bool
 }
 
 // ListOccurrenceExceptions 查询 recurrence_at 或实际 due 命中范围的 materialized occurrence（spec §7.9）。
 // rescheduled occurrence 改期后，原槽位和新 due 都应被覆盖。
 func (r *TaskOccurrenceRepository) ListOccurrenceExceptions(opts OccurrenceRangeOptions) ([]domain.Task, error) {
-	q := r.taskRepo.preloadAssociations().Model(&Task{})
-	if opts.WorkspaceID != "" {
-		q = q.Where("tasks.workspace_id = ?", opts.WorkspaceID)
+	q := applyOccurrenceRange(r.taskRepo.preloadAssociations().Model(&Task{}), opts)
+	order := "COALESCE(tasks.due, 0) ASC, tasks.uuid ASC"
+	if opts.Descending {
+		order = "COALESCE(tasks.due, 0) DESC, tasks.uuid DESC"
 	}
-	if opts.SeriesID != "" {
-		q = q.Where("tasks.series_id = ?", opts.SeriesID)
+	q = q.Order(order)
+	if opts.Offset > 0 {
+		q = q.Offset(opts.Offset)
 	}
-	q = q.Where("(tasks.recurrence_at >= ? AND tasks.recurrence_at < ?) OR (tasks.due >= ? AND tasks.due < ?)",
-		opts.Start, opts.End, opts.Start, opts.End)
-	if opts.Status != "" {
-		q = q.Where("tasks.status = ?", opts.Status)
+	if opts.Limit > 0 {
+		q = q.Limit(opts.Limit)
 	}
 	var models []Task
-	if err := q.Order("tasks.recurrence_at ASC").Find(&models).Error; err != nil {
+	if err := q.Find(&models).Error; err != nil {
 		return nil, err
 	}
 	usersByID, err := r.taskRepo.loadAssigneeUsers(models)
@@ -114,6 +117,32 @@ func (r *TaskOccurrenceRepository) ListOccurrenceExceptions(opts OccurrenceRange
 	return out, nil
 }
 
+// CountOccurrenceExceptions 返回与 ListOccurrenceExceptions 相同过滤条件下的完整数量，
+// 不受 limit/offset 影响，供协议分页返回准确 total。
+func (r *TaskOccurrenceRepository) CountOccurrenceExceptions(opts OccurrenceRangeOptions) (int, error) {
+	q := applyOccurrenceRange(r.db.Model(&Task{}), opts)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return int(total), nil
+}
+
+func applyOccurrenceRange(q *gorm.DB, opts OccurrenceRangeOptions) *gorm.DB {
+	if opts.WorkspaceID != "" {
+		q = q.Where("tasks.workspace_id = ?", opts.WorkspaceID)
+	}
+	if opts.SeriesID != "" {
+		q = q.Where("tasks.series_id = ?", opts.SeriesID)
+	}
+	q = q.Where("(tasks.recurrence_at >= ? AND tasks.recurrence_at < ?) OR (tasks.due >= ? AND tasks.due < ?)",
+		opts.Start, opts.End, opts.Start, opts.End)
+	if opts.Status != "" {
+		q = q.Where("tasks.status = ?", opts.Status)
+	}
+	return q
+}
+
 // OccurrenceCounts 是 series 的 occurrence 计数（spec §7.7）。
 type OccurrenceCounts struct {
 	Open      int // pending + waiting
@@ -122,6 +151,62 @@ type OccurrenceCounts struct {
 	Completed int
 	Deleted   int
 	Overdue   int // open 且 due < now
+}
+
+// SeriesOccurrenceSummary 是 Series list 所需的批量派生统计。
+type SeriesOccurrenceSummary struct {
+	Counts          OccurrenceCounts
+	MaxRecurrenceAt int64
+}
+
+// SummarizeSeriesOccurrences 用一次分组查询返回多个 series 的计数与最大槽位，
+// 避免 Series list 按行读取 counts/max 形成 N+1。
+func (r *TaskOccurrenceRepository) SummarizeSeriesOccurrences(workspaceID string, seriesIDs []string, now int64) (map[string]SeriesOccurrenceSummary, error) {
+	out := make(map[string]SeriesOccurrenceSummary, len(seriesIDs))
+	for _, id := range seriesIDs {
+		out[id] = SeriesOccurrenceSummary{}
+	}
+	if len(seriesIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		SeriesID        string
+		Pending         int64
+		Waiting         int64
+		Completed       int64
+		Deleted         int64
+		Overdue         int64
+		MaxRecurrenceAt *int64
+	}
+	var rows []row
+	err := r.db.Model(&Task{}).
+		Select(`series_id,
+			SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS pending,
+			SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS waiting,
+			SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS completed,
+			SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS deleted,
+			SUM(CASE WHEN status IN (?, ?) AND due IS NOT NULL AND due < ? THEN 1 ELSE 0 END) AS overdue,
+			MAX(recurrence_at) AS max_recurrence_at`,
+			domain.StatusPending, domain.StatusWaiting, domain.StatusCompleted, domain.StatusDeleted,
+			domain.StatusPending, domain.StatusWaiting, now).
+		Where("workspace_id = ? AND series_id IN ?", workspaceID, seriesIDs).
+		Group("series_id").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range rows {
+		counts := OccurrenceCounts{
+			Pending: int(item.Pending), Waiting: int(item.Waiting),
+			Completed: int(item.Completed), Deleted: int(item.Deleted), Overdue: int(item.Overdue),
+		}
+		counts.Open = counts.Pending + counts.Waiting
+		summary := SeriesOccurrenceSummary{Counts: counts}
+		if item.MaxRecurrenceAt != nil {
+			summary.MaxRecurrenceAt = *item.MaxRecurrenceAt
+		}
+		out[item.SeriesID] = summary
+	}
+	return out, nil
 }
 
 // CountSeriesOccurrences 统计 series 的 materialized occurrence 数量。

@@ -164,3 +164,20 @@ func TestMatchTaskValueNilExpr(t *testing.T) {
 		t.Fatal("nil expr 应总是匹配")
 	}
 }
+
+func TestMatchTaskValueAtUsesInjectedClockForRelativeDates(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*60*60)
+	now := time.Date(2025, 6, 1, 12, 0, 0, 0, loc).Unix()
+	due := time.Date(2025, 6, 1, 23, 59, 59, 0, loc).Unix()
+	expr, err := ParseQuery(`due:today`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, err := MatchTaskValueAt(expr, TaskValue{Due: &due}, now, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("due:today must resolve against injected clock")
+	}
+}

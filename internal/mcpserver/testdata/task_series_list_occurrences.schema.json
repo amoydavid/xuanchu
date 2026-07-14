@@ -4,24 +4,25 @@
     "additionalProperties": false,
     "properties": {
       "due_after": {
-        "type": [
-          "null",
-          "integer"
-        ]
+        "description": "inclusive YYYY-MM-DD",
+        "type": "string"
       },
       "due_before": {
-        "type": [
-          "null",
-          "integer"
-        ]
+        "description": "inclusive YYYY-MM-DD",
+        "type": "string"
       },
       "id": {
         "type": "string"
       },
       "limit": {
+        "default": 200,
+        "maximum": 1000,
+        "minimum": 1,
         "type": "integer"
       },
       "offset": {
+        "default": 0,
+        "minimum": 0,
         "type": "integer"
       },
       "status": {

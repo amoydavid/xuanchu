@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -277,7 +278,12 @@ func (s *Server) handleTaskListReport(w http.ResponseWriter, r *http.Request, sc
 		}
 		queryExpr = query.And(queryExpr, query.Predicate{Attribute: query.AttrProjectID, Operator: query.OpEqual, Value: query.StringValue(project.ID)})
 	}
-	reportInput := app.ReportViewInput{Name: reportName, Query: queryExpr, Sort: q.Get("sort")}
+	reportInput := app.ReportViewInput{
+		Name:      reportName,
+		Query:     queryExpr,
+		Sort:      q.Get("sort"),
+		NoContext: isTruthyQueryValue(q.Get("no_context")),
+	}
 	// occurrence_mode / due range。
 	if raw := q.Get("occurrence_mode"); raw != "" {
 		reportInput.OccurrenceMode = app.OccurrenceMode(raw)
@@ -314,12 +320,12 @@ func isTruthyQueryValue(value string) bool {
 
 func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 	var req addTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeStrictJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
 	if req.Recur != nil {
-		writeError(w, http.StatusBadRequest, "task_recur_removed",
+		writeError(w, http.StatusBadRequest, "task_series_endpoint_required",
 			"recur 字段已移除，循环任务请使用 POST /api/v1/task-series", nil)
 		return
 	}
@@ -364,7 +370,7 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "api_bad_date", err.Error(), nil)
 		return
 	}
-	created, err := scoped.Add(app.AddInput{
+	created, err := scoped.AddTaskView(app.AddInput{
 		Title:       strings.TrimSpace(req.Title),
 		Description: req.Description,
 		Project:     projectPtr,
@@ -383,7 +389,7 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusCreated, task.ToJSON(created), nil)
+	writeSuccess(w, http.StatusCreated, occurrenceViewToJSON(created), nil)
 }
 
 func (s *Server) ensureTaskAddProjectRefs(w http.ResponseWriter, r *http.Request, req addTaskRequest) bool {
@@ -457,12 +463,12 @@ func taskToJSONWithRefs(svc *app.Service, tsk task.Task) task.JSONTask {
 
 func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 	var req modifyTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeStrictJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
 		return
 	}
 	if req.Recur != nil || req.ClearRecur {
-		writeError(w, http.StatusBadRequest, "task_recur_removed",
+		writeError(w, http.StatusBadRequest, "task_series_endpoint_required",
 			"recur/clear_recur 字段已移除，循环任务请使用 /api/v1/task-series", nil)
 		return
 	}
@@ -470,13 +476,10 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// 请求 scope 只能来自 URL/鉴权上下文。body 中的 project/project_id 是
+	// 修改目标，不能拿它来解析源任务，否则会在业务 invariant 之前隐藏源任务，
+	// 也可能让仅获目标项目授权的 token 绕过源项目可见性检查。
 	projectRef := requestProjectRef(r)
-	if projectRef == "" && req.ProjectID != nil {
-		projectRef = strings.TrimSpace(*req.ProjectID)
-	}
-	if projectRef == "" && req.Project != nil {
-		projectRef = strings.TrimSpace(*req.Project)
-	}
 	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, projectRef)
 	if err != nil {
 		writeAppError(w, err)
@@ -532,6 +535,21 @@ func (s *Server) handleTaskModify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeTaskAfterMutation(w, scoped, taskRef)
+}
+
+func decodeStrictJSON(r *http.Request, target any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Server) handleTaskDone(w http.ResponseWriter, r *http.Request) {

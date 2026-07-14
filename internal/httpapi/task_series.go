@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -38,20 +37,20 @@ type taskSeriesRequest struct {
 
 type taskOccurrenceJSON struct {
 	ID             string                `json:"id"`
-	UUID           *string               `json:"uuid,omitempty"`
-	TaskSlug       *string               `json:"task_slug,omitempty"`
-	ProjectSeq     *int64                `json:"project_seq,omitempty"`
+	UUID           *string               `json:"uuid"`
+	TaskSlug       *string               `json:"task_slug"`
+	ProjectSeq     *int64                `json:"project_seq"`
 	WorkspaceID    string                `json:"workspace_id"`
 	ProjectID      *string               `json:"project_id,omitempty"`
 	Project        *string               `json:"project,omitempty"`
 	Title          string                `json:"title"`
 	Description    *string               `json:"description,omitempty"`
 	Status         string                `json:"status"`
-	Entry          *int64                `json:"entry,omitempty"`
-	Modified       *int64                `json:"modified,omitempty"`
+	Entry          *int64                `json:"entry"`
+	Modified       *int64                `json:"modified"`
 	Due            *int64                `json:"due,omitempty"`
-	Start          *int64                `json:"start,omitempty"`
-	End            *int64                `json:"end,omitempty"`
+	Start          *int64                `json:"start"`
+	End            *int64                `json:"end"`
 	Wait           *int64                `json:"wait,omitempty"`
 	Scheduled      *int64                `json:"scheduled,omitempty"`
 	Until          *int64                `json:"until,omitempty"`
@@ -256,6 +255,10 @@ func (s *Server) handleTaskSeriesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	limit, offset, ok := parseOptionalPagination(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return
+	}
 	input := app.TaskSeriesListInput{
 		ProjectID: q.Get("project_id"),
 		Project:   q.Get("project"),
@@ -263,19 +266,11 @@ func (s *Server) handleTaskSeriesList(w http.ResponseWriter, r *http.Request) {
 		Q:         q.Get("q"),
 		Assignee:  q.Get("assignee"),
 		Sort:      q.Get("sort"),
+		Limit:     limit,
+		Offset:    offset,
 	}
 	if input.Status == "" {
 		input.Status = "active"
-	}
-	if raw := q.Get("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			input.Limit = n
-		}
-	}
-	if raw := q.Get("offset"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
-			input.Offset = n
-		}
 	}
 	page, err := scoped.ListTaskSeries(input)
 	if err != nil {
@@ -299,7 +294,7 @@ func (s *Server) handleTaskSeriesAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req taskSeriesRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeStrictJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_request", "invalid JSON body", nil)
 		return
 	}
@@ -348,7 +343,7 @@ func (s *Server) handleTaskSeriesModify(w http.ResponseWriter, r *http.Request) 
 	}
 	seriesRef := pathParam(r, "seriesRef")
 	var req taskSeriesRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeStrictJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "api_bad_request", "invalid JSON body", nil)
 		return
 	}
@@ -419,7 +414,13 @@ func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.
 	}
 	seriesRef := pathParam(r, "seriesRef")
 	q := r.URL.Query()
-	input := app.TaskSeriesOccurrenceListInput{Status: q.Get("status")}
+	limit, offset, ok := parseOptionalPagination(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return
+	}
+	input := app.TaskSeriesOccurrenceListInput{
+		Status: q.Get("status"), Limit: limit, Offset: offset,
+	}
 	if raw := q.Get("due_after"); raw != "" {
 		ts, perr := parseDueAfter(raw)
 		if perr != nil {
@@ -435,16 +436,6 @@ func (s *Server) handleTaskSeriesOccurrencesList(w http.ResponseWriter, r *http.
 			return
 		}
 		input.DueBefore = &ts
-	}
-	if raw := q.Get("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			input.Limit = n
-		}
-	}
-	if raw := q.Get("offset"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
-			input.Offset = n
-		}
 	}
 	page, err := scoped.ListTaskSeriesOccurrences(seriesRef, input)
 	if err != nil {
@@ -521,16 +512,22 @@ func parseDeadlineDate(date string) (int64, error) {
 
 func parseDueAfter(date string) (int64, error) {
 	// due_after = 当天 00:00 inclusive。
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return 0, fmt.Errorf("date must be YYYY-MM-DD")
+	}
 	return query.ResolveStartDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
 }
 
 func parseDueBefore(date string) (int64, error) {
 	// due_before = 当天结束，转次日 00:00 exclusive。
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return 0, fmt.Errorf("date must be YYYY-MM-DD")
+	}
 	start, err := query.ResolveStartDateValue(query.ParseDateValue(date), time.Now().Unix(), time.Local)
 	if err != nil {
 		return 0, err
 	}
-	return start + 86400, nil
+	return time.Unix(start, 0).In(time.Local).AddDate(0, 0, 1).Unix(), nil
 }
 
 func strValueOr(p *string, def string) string {
@@ -567,19 +564,14 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 		}
 		rng = &app.TaskViewRange{Start: start, End: end}
 	}
-	// limit 校验（与旧 /tasks 行为一致）。
+	// 分页校验与 Series/occurrence 列表使用同一契约。
+	requestedLimit, offset, ok := parseOptionalPagination(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return
+	}
 	limit := taskListDefaultLimit
-	if raw := q.Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
-			return
-		}
-		if parsed > taskListMaxLimit {
-			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", taskListMaxLimit), nil)
-			return
-		}
-		limit = parsed
+	if requestedLimit > 0 {
+		limit = requestedLimit
 	}
 	// query / filter（spec §17.1）。
 	var queryExpr query.Expr
@@ -616,13 +608,8 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 	input := app.TaskViewQuery{
 		OccurrenceMode: mode, Range: rng,
 		Status: q.Get("status"), Sort: q.Get("sort"),
-		Query: queryExpr, Limit: limit,
+		Query: queryExpr, Limit: limit, Offset: offset,
 		NoContext: isTruthyQueryValue(q.Get("no_context")),
-	}
-	if raw := q.Get("offset"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
-			input.Offset = n
-		}
 	}
 	if projectRef != "" {
 		project, err := scoped.ProjectInfo(projectRef)
@@ -638,6 +625,30 @@ func (s *Server) handleTaskListViewPage(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeSuccess(w, http.StatusOK, taskViewPageToJSON(page), nil)
+}
+
+func parseOptionalPagination(w http.ResponseWriter, limitRaw, offsetRaw string) (limit, offset int, ok bool) {
+	if limitRaw != "" {
+		parsed, err := strconv.Atoi(limitRaw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", "invalid limit", nil)
+			return 0, 0, false
+		}
+		if parsed > taskListMaxLimit {
+			writeError(w, http.StatusBadRequest, "api_bad_limit", fmt.Sprintf("limit must be <= %d", taskListMaxLimit), nil)
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if offsetRaw != "" {
+		parsed, err := strconv.Atoi(offsetRaw)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "api_bad_offset", "invalid offset", nil)
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
 }
 
 func parseDueAfterOrDefault(date string) (int64, error) {

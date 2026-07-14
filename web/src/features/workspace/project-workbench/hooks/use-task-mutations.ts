@@ -236,6 +236,9 @@ export function useTaskActionMutation(
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectTimeline(workspaceSlug, projectSlug),
       })
+      void queryClient.invalidateQueries({
+        queryKey: ["my-tasks", workspaceSlug],
+      })
       feedback.success(
         taskActionSuccessLabel(action, updatedTask, i18n.language, t)
       )

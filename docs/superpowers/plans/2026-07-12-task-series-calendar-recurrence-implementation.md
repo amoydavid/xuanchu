@@ -23,9 +23,7 @@
 >   - **P1**：前端 projected uuid 崩溃修复（uuid 改可选 + taskKey/taskShortLabel）；Series CRUD 事务边界 + ValidateSeries 错误；HTTP recur/clear_recur 显式拒绝；detectLegacyRecurringData 补 recur/mask/i_mask 检查；MCP task_get 支持 occurrence_ref + import/export 迁移 native bundle；Web Series 面板接入真实组件（List/Detail/Dialog/StopDialog）+ limit=1 修复；My Tasks active status bug 修复；任务详情 occurrence "查看循环任务"入口
 >   - **P2**：Series assignees UserInfo 退化修复（完整 display_name/email/external_ids）
 >
-> **已知遗留**：无。移动端按钮横向溢出与 Markdown 编辑器消费 Escape 导致的 smoke 超时已在第二轮评审修复。
->
-> **最终复核（2026-07-13）✅**：补齐已物化 occurrence 的可读短引用、三别名统一 resolver、循环详情页 `series_title`、来源返回状态、Series 面板实例短链接、详情页 shadcn 更多菜单与单一 `h1` 信息层级；`go test ./...`、`CGO_ENABLED=0 go test ./...`、零 CGO build、`go vet ./...`、PostgreSQL storage/E2E、Web 593 项测试、lint、typecheck、production build 与 `smoke:editing` 均通过。
+> **完成审计（2026-07-14，已完成）**：原计划 checkbox 只表示基础实现，完整 spec 的 25 项验收以 `2026-07-13-task-series-spec-completion-audit.md` 的直接证据为准。跨协议集合等价、CLI projected 全矩阵、My Tasks 返回状态、短引用详情、Series list N+1、MCP closed-schema 解码、OpenAPI 契约和浏览器 E2E 均已补齐；Go、零 CGO、PostgreSQL、Web 与浏览器全量门禁已新鲜通过。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -427,7 +425,7 @@ WHERE series_id IS NOT NULL AND recurrence_at IS NOT NULL;
 
 PostgreSQL and SQLite must both install the same logical constraint. Foreign keys from occurrence and association rows use RESTRICT for series history, while association rows may cascade when a development database row is explicitly removed.
 
-Also create `UNIQUE(series_id,effective_from)` on `task_series_rule_versions`, `(workspace_id,project_id,status)` on `task_series`, and lookup indexes for series assignees, recurrence_at and due. Repository tests must assert duplicate rule cutover fails and cross-workspace/project associations are rejected.
+Also create `UNIQUE(series_id,effective_from)` on `task_series_rule_versions`; create a non-unique lookup index on `(workspace_id,project_id,status)` for `task_series`, because one project must support multiple active/ended/stopped Series. Add lookup indexes for series assignees, recurrence_at and due. Repository tests must assert multiple active Series can coexist in one project, duplicate rule cutover fails, and cross-workspace/project associations are rejected.
 
 - [x] **Step 4: 实现破坏性 recurring schema 检测**
 
@@ -1436,7 +1434,7 @@ git commit -m "feat: 完成原生循环系列交付"
 - Task.status 无 recurring，Task.parent 不承载 series，普通 Task schema 无 recurrence。
 - HTTP、Remote、CLI、MCP 对同一输入返回相同集合、错误码、UserInfo 与 recurrence_info。
 - CLI `series occurrences` 提供完整历史分页；list/report、working set、helper 与 renderer 对 projected 的语义稳定。
-- external edit 取消、失败或无 diff 不物化；有效 diff 才原子物化并修改。
+- [x] external edit 取消、失败或无 diff 不物化；有效 diff 才原子物化并修改；materialized/projected occurrence 均记录 override，审计失败整体回滚。
 - series occurrences 的 pending/waiting/completed/deleted/all 在四端 schema 一致。
 - Series list 的 status/q/assignee/sort/pagination 在 HTTP/MCP/Remote/CLI/Web items 与 filtered total 一致。
 - 查询 DSL 删除 recur/mask/imask 并新增 series_id/recurrence_at/task_type；SQL 和 expand evaluator 等价。

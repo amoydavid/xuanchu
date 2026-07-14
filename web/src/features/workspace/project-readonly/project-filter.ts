@@ -15,6 +15,7 @@ export type TaskFilter = {
   q?: string
   query?: string
   sort?: string
+  task_type?: string
 }
 
 export const FILTER_KEYS: Array<keyof TaskFilter> = [
@@ -32,6 +33,7 @@ export const FILTER_KEYS: Array<keyof TaskFilter> = [
   "q",
   "query",
   "sort",
+  "task_type",
 ]
 
 const DIRECT_QUERY_KEYS: Array<keyof TaskFilter> = [
@@ -43,6 +45,7 @@ const DIRECT_QUERY_KEYS: Array<keyof TaskFilter> = [
   "tags",
   "q",
   "sort",
+  "task_type",
 ]
 
 // emptyFilter 判断是否没有任何激活的过滤条件。

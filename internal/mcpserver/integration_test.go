@@ -57,7 +57,7 @@ func ensureMCPHookSink(t *testing.T, store *storage.Store) {
 }
 
 // extractTask 从 envelope data 中提取 task 对象。
-// taskData 返回 {"task": {...}}，此函数提取内层 map。
+// task tools 为兼容既有调用方保留 {"task": {...}}，此函数提取内层 view。
 func extractTask(t *testing.T, env ToolEnvelope) map[string]any {
 	t.Helper()
 	dataMap, ok := env.Data.(map[string]any)
@@ -416,7 +416,7 @@ func TestTaskAddBasic(t *testing.T) {
 		t.Fatalf("unexpected error: %v", parseError(t, result))
 	}
 	env := parseEnvelope(t, result)
-	// taskData wraps task in {"task": {...}}
+	// task view 同时在 data 顶层和 data.task 中返回。
 	dataMap, ok := env.Data.(map[string]any)
 	if !ok {
 		t.Fatalf("data type = %T, want map", env.Data)
@@ -430,6 +430,15 @@ func TestTaskAddBasic(t *testing.T) {
 	}
 	if taskObj["uuid"] == nil || taskObj["uuid"] == "" {
 		t.Fatal("uuid is empty")
+	}
+	if dataMap["id"] != taskObj["uuid"] || dataMap["uuid"] != taskObj["uuid"] {
+		t.Fatalf("unified identity = id:%v uuid:%v task.uuid:%v", dataMap["id"], dataMap["uuid"], taskObj["uuid"])
+	}
+	if _, ok := taskObj["entry"].(float64); !ok {
+		t.Fatalf("task.entry = %#v (%T), want Unix number", taskObj["entry"], taskObj["entry"])
+	}
+	if recurrence, exists := dataMap["recurrence_info"]; exists && recurrence != nil {
+		t.Fatalf("recurrence_info = %#v, want absent or nil", recurrence)
 	}
 	if env.Rendered == "" {
 		t.Fatal("rendered is empty")
@@ -477,6 +486,57 @@ func TestTaskAddMissingTitle(t *testing.T) {
 	result := callTool(t, session, "task_add", TaskAddInput{})
 	if !result.IsError {
 		t.Fatal("expected IsError=true for missing title")
+	}
+}
+
+func TestGenericTaskToolsRejectRetiredRecurrenceFields(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	invalidAdd := callTool(t, session, "task_add", map[string]any{
+		"title": "legacy recurring task", "recur": "daily",
+	})
+	if !invalidAdd.IsError {
+		t.Fatal("task_add accepted retired recur field")
+	}
+	if got := parseError(t, invalidAdd).Code; got != "task_series_endpoint_required" {
+		t.Fatalf("task_add recur error code = %q", got)
+	}
+	if unknown := callTool(t, session, "task_add", map[string]any{
+		"title": "unknown field", "unexpected": true,
+	}); !unknown.IsError {
+		t.Fatal("task_add accepted an argument outside its closed schema")
+	}
+
+	validAdd := callTool(t, session, "task_add", TaskAddInput{Title: "ordinary task"})
+	if validAdd.IsError {
+		t.Fatalf("valid task_add: %v", parseError(t, validAdd))
+	}
+	uuid := extractUUID(t, parseEnvelope(t, validAdd))
+	invalidModify := callTool(t, session, "task_modify", map[string]any{
+		"id": uuid, "recur": "weekly",
+	})
+	if !invalidModify.IsError {
+		t.Fatal("task_modify accepted retired recur field")
+	}
+	if got := parseError(t, invalidModify).Code; got != "task_series_endpoint_required" {
+		t.Fatalf("task_modify recur error code = %q", got)
+	}
+
+	got := callTool(t, session, "task_get", TaskGetInput{ID: uuid})
+	if got.IsError {
+		t.Fatalf("task_get after rejected modify: %v", parseError(t, got))
+	}
+	if title := extractTask(t, parseEnvelope(t, got))["title"]; title != "ordinary task" {
+		t.Fatalf("task title after rejected modify = %v", title)
+	}
+	queryResult := callTool(t, session, "task_query", TaskQueryInput{})
+	if queryResult.IsError {
+		t.Fatalf("task_query: %v", parseError(t, queryResult))
+	}
+	data, ok := parseEnvelope(t, queryResult).Data.(map[string]any)
+	if !ok || data["total"] != float64(1) {
+		t.Fatalf("task_query data = %#v, want only the valid ordinary task", data)
 	}
 }
 
@@ -748,6 +808,29 @@ func TestTaskQueryExpandsOccurrencesAndAppliesTaskType(t *testing.T) {
 	}
 }
 
+func TestTaskQueryDueAfterIncludesExactLocalDayStart(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+	due := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
+	result := callTool(t, session, "task_add", TaskAddInput{
+		Title: "day start", Due: &due,
+	})
+	if result.IsError {
+		t.Fatalf("task_add error: %v", parseError(t, result))
+	}
+
+	result = callTool(t, session, "task_query", TaskQueryInput{
+		DueAfter: "2030-01-01", DueBefore: "2030-01-01",
+	})
+	if result.IsError {
+		t.Fatalf("task_query error: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	if data["total"] != float64(1) {
+		t.Fatalf("task_query total = %v, want exact day-start task; data=%#v", data["total"], data)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // task.done 集成测试
 // ---------------------------------------------------------------------------
@@ -856,23 +939,19 @@ func TestTaskAddDateFieldsUseFieldBoundaries(t *testing.T) {
 		t.Fatalf("unexpected error: %v", parseError(t, addResult))
 	}
 	taskObj := extractTask(t, parseEnvelope(t, addResult))
-	assertMCPRFC3339LocalTime(t, "due", taskObj["due"], 23, 59, 59)
-	assertMCPRFC3339LocalTime(t, "until", taskObj["until"], 23, 59, 59)
-	assertMCPRFC3339LocalTime(t, "wait", taskObj["wait"], 0, 0, 0)
-	assertMCPRFC3339LocalTime(t, "scheduled", taskObj["scheduled"], 0, 0, 0)
+	assertMCPUnixLocalTime(t, "due", taskObj["due"], 23, 59, 59)
+	assertMCPUnixLocalTime(t, "until", taskObj["until"], 23, 59, 59)
+	assertMCPUnixLocalTime(t, "wait", taskObj["wait"], 0, 0, 0)
+	assertMCPUnixLocalTime(t, "scheduled", taskObj["scheduled"], 0, 0, 0)
 }
 
-func assertMCPRFC3339LocalTime(t *testing.T, name string, value any, hour, minute, second int) {
+func assertMCPUnixLocalTime(t *testing.T, name string, value any, hour, minute, second int) {
 	t.Helper()
-	raw, ok := value.(string)
-	if !ok || raw == "" {
-		t.Fatalf("%s = %#v, want RFC3339 string", name, value)
+	raw, ok := value.(float64)
+	if !ok {
+		t.Fatalf("%s = %#v, want Unix number", name, value)
 	}
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		t.Fatalf("%s %q not RFC3339: %v", name, raw, err)
-	}
-	local := parsed.In(time.Local)
+	local := time.Unix(int64(raw), 0).In(time.Local)
 	if local.Hour() != hour || local.Minute() != minute || local.Second() != second {
 		t.Fatalf("%s local time = %v, want %02d:%02d:%02d", name, local, hour, minute, second)
 	}
@@ -1237,10 +1316,11 @@ func TestReportRun(t *testing.T) {
 	if !ok {
 		t.Fatalf("data type = %T, want map", env.Data)
 	}
-	count, _ := dataMap["count"].(float64)
-	if int(count) < 1 {
-		t.Fatalf("expected at least 1 task, got %d", int(count))
+	total, _ := dataMap["total"].(float64)
+	if int(total) < 1 {
+		t.Fatalf("expected at least 1 task, got %d", int(total))
 	}
+	_ = nestedSlice(t, dataMap, "items")
 }
 
 func TestReportRunLimit(t *testing.T) {
@@ -1254,9 +1334,72 @@ func TestReportRunLimit(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %v", parseError(t, result))
 	}
-	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "tasks")
+	tasks := nestedSlice(t, envelopeData(t, parseEnvelope(t, result)), "items")
 	if len(tasks) != 1 {
 		t.Fatalf("tasks len = %d, want 1", len(tasks))
+	}
+}
+
+func TestReportRunExpandsOccurrencesWithTaskViewPageSemantics(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	project := callTool(t, session, "project_add", ProjectAddInput{Slug: "ops", Name: "Ops"})
+	if project.IsError {
+		t.Fatalf("project_add: %v", parseError(t, project))
+	}
+	firstDue := "2025-06-02"
+	series := callTool(t, session, "task_series_add", TaskSeriesAddInput{
+		Project: "ops", Title: "每日巡检", RecurrenceRule: "daily", FirstDueDate: &firstDue,
+	})
+	if series.IsError {
+		t.Fatalf("task_series_add: %v", parseError(t, series))
+	}
+
+	result := callTool(t, session, "report_run", ReportRunInput{
+		Name: "all", Query: "task_type:occurrence",
+		DueAfter: "2025-06-02", DueBefore: "2025-06-03",
+		OccurrenceMode: "expand", Sort: "due", Limit: 1, Offset: 1,
+	})
+	if result.IsError {
+		t.Fatalf("report_run: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	items := nestedSlice(t, data, "items")
+	if data["total"] != float64(2) || data["limit"] != float64(1) || data["offset"] != float64(1) || data["occurrence_mode"] != "expand" || len(items) != 1 {
+		t.Fatalf("report page = %#v", data)
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok || item["uuid"] != nil || nestedMap(t, item, "recurrence_info")["materialization"] != "projected" {
+		t.Fatalf("report occurrence = %#v", items[0])
+	}
+}
+
+func TestReportRunDueBeforeAloneFiltersTasksInclusively(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	before := callTool(t, session, "task_add", TaskAddInput{Title: "report before", DueDate: "2025-06-01"})
+	if before.IsError {
+		t.Fatalf("task_add before: %v", parseError(t, before))
+	}
+	after := callTool(t, session, "task_add", TaskAddInput{Title: "report after", DueDate: "2030-06-15"})
+	if after.IsError {
+		t.Fatalf("task_add after: %v", parseError(t, after))
+	}
+
+	result := callTool(t, session, "report_run", ReportRunInput{Name: "all", DueBefore: "2025-06-01"})
+	if result.IsError {
+		t.Fatalf("report_run: %v", parseError(t, result))
+	}
+	data := envelopeData(t, parseEnvelope(t, result))
+	items := nestedSlice(t, data, "items")
+	if data["total"] != float64(1) || len(items) != 1 {
+		t.Fatalf("report page = %#v", data)
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok || item["title"] != "report before" {
+		t.Fatalf("report item = %#v", items[0])
 	}
 }
 
@@ -1305,8 +1448,17 @@ func TestUrgencyExplain(t *testing.T) {
 	if !ok {
 		t.Fatalf("data type = %T, want map", explainEnv.Data)
 	}
-	if explainData["uuid"] != uuid {
-		t.Fatalf("uuid = %v, want %s", explainData["uuid"], uuid)
+	if explainData["id"] != uuid || explainData["uuid"] != uuid {
+		t.Fatalf("identity = %#v, want id/uuid %s", explainData, uuid)
+	}
+	if _, ok := explainData["total"].(float64); !ok {
+		t.Fatalf("total = %#v", explainData["total"])
+	}
+	if _, ok := explainData["items"].([]any); !ok {
+		t.Fatalf("items = %#v", explainData["items"])
+	}
+	if _, exists := explainData["urgency"]; exists {
+		t.Fatalf("legacy urgency key remains: %#v", explainData)
 	}
 }
 

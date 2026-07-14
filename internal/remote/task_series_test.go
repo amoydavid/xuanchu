@@ -145,18 +145,40 @@ func TestRemoteListTaskSeriesOccurrencesForwardsRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, before := int64(100), int64(200)
 	_, err = client.ListTaskSeriesOccurrences(context.Background(), TaskSeriesOccurrenceListInput{
 		Workspace: "local", SeriesRef: "s1", Status: "pending",
-		DueAfter: &after, DueBefore: &before, Limit: 10,
+		DueAfter: "2030-01-01", DueBefore: "2030-01-31", Limit: 10,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"due_after=100", "due_before=200", "status=pending"} {
+	for _, want := range []string{"due_after=2030-01-01", "due_before=2030-01-31", "status=pending"} {
 		if !strings.Contains(receivedPath, want) {
 			t.Fatalf("query 缺少 %s: %q", want, receivedPath)
 		}
+	}
+}
+
+func TestRemoteTaskSeriesListsRejectInvalidPaginationBeforeRequest(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	client, err := NewClient(Options{BaseURL: srv.URL, Token: "tok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.ListTaskSeries(context.Background(), TaskSeriesListInput{Limit: 1001}); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("series invalid limit error = %v", err)
+	}
+	if _, err := client.ListTaskSeriesOccurrences(context.Background(), TaskSeriesOccurrenceListInput{SeriesRef: "s1", Offset: -1}); err == nil || !strings.Contains(err.Error(), "offset") {
+		t.Fatalf("occurrence invalid offset error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("invalid pagination sent %d HTTP requests, want 0", requests)
 	}
 }
 

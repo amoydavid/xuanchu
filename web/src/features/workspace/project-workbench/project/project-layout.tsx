@@ -293,7 +293,7 @@ function ProjectLayoutContent({
                   onOpenChange={(next) => !next && contextPanel.onClose()}
                 >
                   <SheetContent
-                    className="w-[min(92vw,24rem)] max-w-none"
+                    className="inset-0 h-dvh w-screen max-w-none border-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:w-[min(92vw,24rem)] sm:border-l"
                     side="right"
                   >
                     <SheetHeader className="justify-between">

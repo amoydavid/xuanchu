@@ -331,6 +331,10 @@ xuanchu --workspace dajee token create mcp-agent \
 
 ### 任务与循环任务（23 tools）
 
+所有 tool 输入都是 closed schema：未声明的参数会在服务端被拒绝，不会被静默忽略。
+普通任务的 `task_add` / `task_modify` 不接受 `recur`、`clear_recur`、`mask` 或 `imask`；
+传入这些旧字段会返回 `task_series_endpoint_required`，循环任务必须使用 `task_series_*` tools。
+
 #### `task_add`
 
 创建任务。
@@ -351,6 +355,11 @@ xuanchu --workspace dajee token create mcp-agent \
 | `until` | int64 | 否 | unix 秒 |
 | `annotations` | string[] | 否 | 初始注释 |
 
+`task_add`、`task_get` 和返回任务的写操作都以 App `TaskOccurrenceView` 为准：
+`data` 顶层包含稳定 `id`、可空 `uuid/task_slug/project_seq`、Unix 秒时间字段和
+可空 `recurrence_info`。现有 task tools 同时保留内层 `data.task` 镜像，两处字段来自同一 view，
+不再返回 RFC3339 时间的旧 `task.JSONTask` 变体。
+
 #### `task_query`
 
 查询任务。只读。默认返回所有非删除任务；显式 `status` 或 `query` 中的状态条件优先。
@@ -362,6 +371,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `project_id` | string | 否 | project UUID |
 | `query` | string | 否 | 任务过滤表达式 |
 | `status` | string | 否 | 按状态过滤 |
+| `sort` | string | 否 | 排序表达式，例如 `due`、`due-`、`urgency-` |
 | `limit` | int | 否 | 最大返回数，默认 200，最大 1000 |
 | `offset` | int | 否 | 分页偏移 |
 | `include_deleted` | bool | 否 | 在默认非删除集合上追加 deleted；显式状态条件存在时忽略 |
@@ -393,7 +403,6 @@ xuanchu --workspace dajee token create mcp-agent \
 | `id` | string | 是 | UUID、已物化 `task_slug` 或 `occurrence_ref`；projected 仅 occurrence_ref |
 | `title` | string | 否 | 新标题 |
 | `description` | string | 否 | 新详细描述 |
-| `clear_description` | bool | 否 | 清空详细描述 |
 | `priority` | string | 否 | `H`/`M`/`L` |
 | `due` | int64 | 否 | unix 秒 |
 | `wait` | int64 | 否 | unix 秒 |
@@ -406,7 +415,7 @@ xuanchu --workspace dajee token create mcp-agent \
 | `udas` | map | 否 | UDA 键值对 |
 | `depends` | string[] | 否 | 要添加的依赖 |
 | `clear_depends` | bool | 否 | 清空所有依赖 |
-| `clear` | string[] | 否 | 要清空的字段：`project`/`priority`/`due`/`wait`/`scheduled`/`until`/`assignees`/`uda.*` |
+| `clear` | string[] | 否 | 要清空的字段：`project`/`description`/`priority`/`due`/`wait`/`scheduled`/`until`/`assignees`/`uda.*` |
 
 #### `task_done`
 
@@ -554,7 +563,8 @@ xuanchu --workspace dajee token create mcp-agent \
 #### `task_series_list`
 
 分页列出循环任务。支持 `status=active|ended|stopped|all`、`q`、`assignee`、
-`sort=next|title|modified`、`limit/offset`，并遵守 workspace/project scope。
+`sort=next|title|modified`、`limit/offset`，并遵守 workspace/project scope。分页默认
+`limit=200, offset=0`，limit 最大 1000。
 
 #### `task_series_get`
 
@@ -575,7 +585,8 @@ xuanchu --workspace dajee token create mcp-agent \
 #### `task_series_list_occurrences`
 
 分页列出实例。支持 `status=pending|waiting|completed|deleted|all`、
-`due_after/due_before`（unix 秒）及 `limit/offset`。
+`due_after/due_before`（`YYYY-MM-DD`，包含边界当天）及 `limit/offset`。分页默认
+`limit=200, offset=0`，limit 最大 1000。
 
 #### `task_series_occurrence_skip`
 

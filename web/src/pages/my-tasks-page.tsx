@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Input } from "@/components/ui/input"
@@ -16,7 +16,9 @@ import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import { ApiError } from "@/lib/api"
 import { useMe } from "@/features/workspace/session/useMe"
 import type { MeResponse } from "@/features/workspace/session/useMe"
+import { canTaskWrite } from "@/features/workspace/project-workbench/permissions/permissions"
 import type { ProjectWorkbenchTask } from "@/features/workspace/project-workbench/api/project-api"
+import { getProjects } from "@/features/workspace/project-workbench/api/project-api"
 import { MyTasksTable } from "@/features/workspace/my-tasks/my-tasks-table"
 import {
   MY_TASK_TABS,
@@ -27,23 +29,31 @@ import {
   myTasksPath,
   type MyTasksFilter,
 } from "@/features/workspace/my-tasks/my-tasks-api"
+import {
+  restoreMyTasksReturnState,
+  takeMyTasksReturnState,
+} from "@/features/workspace/my-tasks/my-tasks-return-state"
 
 export function MyTasksPage({
   actor,
   actorType,
+  canWrite,
   workspaceSlug,
 }: {
   actor: MeResponse["actor"] | undefined
   actorType: MeResponse["actor_type"] | undefined
+  canWrite: boolean
   workspaceSlug: string | undefined
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as {
+    project?: string
     priority?: string
     q?: string
     sort?: string
     tab?: string
+    task_type?: string
   }
   const isSystemActor = actorType === "tenant_access_token"
   const actorId = actor?.id
@@ -54,17 +64,42 @@ export function MyTasksPage({
   const priority = ["H", "M", "L"].includes(routeSearch.priority ?? "")
     ? routeSearch.priority!
     : ""
+  const project = routeSearch.project ?? ""
+  const taskType = ["normal", "occurrence"].includes(
+    routeSearch.task_type ?? ""
+  )
+    ? routeSearch.task_type!
+    : ""
   const q = routeSearch.q ?? ""
   const sort = ["due", "priority", "entry", "next"].includes(
     routeSearch.sort ?? ""
   )
     ? routeSearch.sort!
     : "due"
+  const listRef = useRef<HTMLDivElement>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const returnSearch = useMemo(() => {
+    const values = {
+      project,
+      priority,
+      q,
+      sort,
+      tab,
+      task_type: taskType,
+    }
+    return new URLSearchParams(
+      Object.entries(values).filter((entry): entry is [string, string] =>
+        Boolean(entry[1])
+      )
+    ).toString()
+  }, [priority, project, q, sort, tab, taskType])
 
   const updateRouteSearch = (
-    patch: Partial<Record<"priority" | "q" | "sort" | "tab", string>>
+    patch: Partial<
+      Record<"priority" | "project" | "q" | "sort" | "tab" | "task_type", string>
+    >
   ) => {
-    const next = { priority, q, sort, tab, ...patch }
+    const next = { priority, project, q, sort, tab, task_type: taskType, ...patch }
     void navigate({
       to: "/my-tasks",
       search: Object.fromEntries(
@@ -77,12 +112,14 @@ export function MyTasksPage({
   const filter: MyTasksFilter = useMemo(() => {
     const base: MyTasksFilter = {
       assignee: actorId ?? "",
+      project,
       priority,
       q,
       sort,
+      task_type: taskType,
     }
     return { ...base, ...tabFilter(tab, new Date()) }
-  }, [actorId, priority, q, sort, tab])
+  }, [actorId, priority, project, q, sort, tab, taskType])
 
   const enabled = !isSystemActor && !!actorId && !!workspaceSlug
   const query = useQuery<ProjectWorkbenchTask[]>({
@@ -95,6 +132,26 @@ export function MyTasksPage({
       return page.items ?? []
     },
   })
+  const projects = useQuery({
+    enabled: !!workspaceSlug,
+    queryKey: ["my-tasks", workspaceSlug, "projects"],
+    queryFn: () => getProjects(workspaceSlug!, "all"),
+  })
+
+  useEffect(() => {
+    if (!enabled || query.isLoading) return
+    const state = takeMyTasksReturnState(returnSearch)
+    const visibleIDs = new Set((query.data ?? []).map(myTaskStableID))
+    const frame = window.requestAnimationFrame(() => {
+      setSelectedIds((current) =>
+        (state?.selectedIds ?? current).filter((id) => visibleIDs.has(id))
+      )
+      if (state && listRef.current) {
+        restoreMyTasksReturnState(listRef.current, state)
+      }
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [enabled, query.data, query.isLoading, returnSearch])
 
   return (
     <div className="space-y-4">
@@ -140,6 +197,31 @@ export function MyTasksPage({
           value={q}
         />
         <Select
+          onValueChange={(value) =>
+            updateRouteSearch({ project: value === "any" ? "" : value })
+          }
+          value={project || "any"}
+        >
+          <SelectTrigger
+            aria-label={t("projectReadonly.project")}
+            className="h-8 w-40"
+            size="sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">{t("myTasks.allProjects")}</SelectItem>
+            {(projects.data ?? []).map((item) => (
+              <SelectItem key={item.id} value={item.slug}>
+                {item.name || item.slug}
+              </SelectItem>
+            ))}
+            {project && !(projects.data ?? []).some((item) => item.slug === project) ? (
+              <SelectItem value={project}>{project}</SelectItem>
+            ) : null}
+          </SelectContent>
+        </Select>
+        <Select
           onValueChange={(v) =>
             updateRouteSearch({ priority: v === "any" ? "" : v })
           }
@@ -157,6 +239,27 @@ export function MyTasksPage({
             <SelectItem value="H">H</SelectItem>
             <SelectItem value="M">M</SelectItem>
             <SelectItem value="L">L</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          onValueChange={(value) =>
+            updateRouteSearch({ task_type: value === "all" ? "" : value })
+          }
+          value={taskType || "all"}
+        >
+          <SelectTrigger
+            aria-label={t("taskCreate.typeLabel")}
+            className="h-8 w-32"
+            size="sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("myTasks.allTaskTypes")}</SelectItem>
+            <SelectItem value="normal">{t("taskSeries.mode.normal")}</SelectItem>
+            <SelectItem value="occurrence">
+              {t("taskSeries.mode.recurring")}
+            </SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -198,24 +301,26 @@ export function MyTasksPage({
           {t("myTasks.loading")}
         </div>
       ) : (
-        <>
+        <div ref={listRef} tabIndex={-1}>
           <MyTasksTable
+            canWrite={canWrite}
             onSortChange={(value) => updateRouteSearch({ sort: value })}
-            returnSearch={new URLSearchParams({
-              priority,
-              q,
-              sort,
-              tab,
-            }).toString()}
+            onSelectedIdsChange={setSelectedIds}
+            returnSearch={returnSearch}
+            selectedIds={selectedIds}
             sort={sort}
             tasks={query.data ?? []}
             workspaceSlug={workspaceSlug!}
           />
           <MyTasksSummary tasks={query.data ?? []} />
-        </>
+        </div>
       )}
     </div>
   )
+}
+
+function myTaskStableID(task: ProjectWorkbenchTask): string {
+  return task.id || task.uuid || ""
 }
 
 function isMyTaskTabKey(value: string | undefined): value is MyTaskTabKey {
@@ -267,6 +372,10 @@ export function MyTasksPageConnected() {
     <MyTasksPage
       actor={me.data?.actor}
       actorType={me.data?.actor_type}
+      canWrite={canTaskWrite({
+        role: me.data?.effective_role,
+        scopes: me.data?.token.scopes,
+      })}
       workspaceSlug={me.data?.effective_workspace.slug}
     />
   )

@@ -293,7 +293,7 @@ func TestNotificationSinkMaxConcurrencyColumnMigrated(t *testing.T) {
 	}
 }
 
-func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
+func TestOpenConfiguresSQLitePragmasForPooledConnections(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -325,6 +325,13 @@ func TestOpenEnablesForeignKeysForPooledConnections(t *testing.T) {
 		}
 		if enabled != 1 {
 			t.Fatalf("conn %d foreign_keys = %d, want 1", i+1, enabled)
+		}
+		var busyTimeout int
+		if err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
+			t.Fatalf("conn %d PRAGMA busy_timeout error = %v", i+1, err)
+		}
+		if busyTimeout != 5000 {
+			t.Fatalf("conn %d busy_timeout = %d, want 5000", i+1, busyTimeout)
 		}
 	}
 }

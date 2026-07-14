@@ -88,48 +88,57 @@ export function TaskPropertyPanel({
           <TaskUrgencyPanel taskRef={taskRef} workspaceSlug={workspaceSlug} />
         </PropertyRow>
         <PropertyRow label={t("projectReadonly.priority")}>
-          <InlineSelectEditor
-            ariaLabel={t("projectReadonly.priority")}
-            className="w-full"
-            disabled={!canWrite}
-            onSave={async (priority) => {
-              await modify.mutateAsync(
-                priority === "none" ? { clear_priority: true } : { priority }
-              )
-            }}
-            options={priorityOptions}
-            placeholder="-"
-            triggerSize="sm"
-            value={task.priority ?? "none"}
-          />
+          <div className="space-y-1">
+            <InlineSelectEditor
+              ariaLabel={t("projectReadonly.priority")}
+              className="w-full"
+              disabled={!canWrite}
+              onSave={async (priority) => {
+                await modify.mutateAsync(
+                  priority === "none" ? { clear_priority: true } : { priority }
+                )
+              }}
+              options={priorityOptions}
+              placeholder="-"
+              triggerSize="sm"
+              value={task.priority ?? "none"}
+            />
+            <InheritanceHint show={projected} />
+          </div>
         </PropertyRow>
         <PropertyRow label={t("projectReadonly.assignee")}>
-          <AssigneePicker
-            disabled={!canWrite}
-            onSave={async (items) => {
-              // 后端 assignees 字段是「增量追加」语义（add），不是替换。
-              // 这里用 clear + assignees 表达「整体替换为 items」，
-              // 避免 a→b 时因未移除 a 导致结果变成 a+b。
-              await modify.mutateAsync(
-                items.length === 0
-                  ? { clear_assignees: true }
-                  : { clear_assignees: true, assignees: items }
-              )
-            }}
-            value={task.assignees ?? []}
-            workspaceSlug={workspaceSlug}
-          />
+          <div className="space-y-1">
+            <AssigneePicker
+              disabled={!canWrite}
+              onSave={async (items) => {
+                // 后端 assignees 字段是「增量追加」语义（add），不是替换。
+                // 这里用 clear + assignees 表达「整体替换为 items」，
+                // 避免 a→b 时因未移除 a 导致结果变成 a+b。
+                await modify.mutateAsync(
+                  items.length === 0
+                    ? { clear_assignees: true }
+                    : { clear_assignees: true, assignees: items }
+                )
+              }}
+              value={task.assignees ?? []}
+              workspaceSlug={workspaceSlug}
+            />
+            <InheritanceHint show={projected} />
+          </div>
         </PropertyRow>
         <PropertyRow label={t("projectReadonly.tags")}>
-          <TagPicker
-            disabled={!canWrite}
-            onSave={async (items) => {
-              await modify.mutateAsync({ tags: items })
-            }}
-            projectSlug={projectSlug}
-            value={task.tags ?? []}
-            workspaceSlug={workspaceSlug}
-          />
+          <div className="space-y-1">
+            <TagPicker
+              disabled={!canWrite}
+              onSave={async (items) => {
+                await modify.mutateAsync({ tags: items })
+              }}
+              projectSlug={projectSlug}
+              value={task.tags ?? []}
+              workspaceSlug={workspaceSlug}
+            />
+            <InheritanceHint show={projected} />
+          </div>
         </PropertyRow>
       </PropertyGroup>
 
@@ -239,15 +248,17 @@ export function TaskPropertyPanel({
         </PropertyGroup>
       ) : null}
 
-      {/* System：默认折叠 */}
-      <PropertyGroup defaultOpen={false} title={t("taskDetail.groupSystem")}>
-        <PropertyRow label={t("projectReadonly.entry")}>
-          <div className="font-medium">{formatRFCDate(task.entry)}</div>
-        </PropertyRow>
-        <PropertyRow label={t("projectReadonly.modified")}>
-          <div className="font-medium">{formatRFCDate(task.modified)}</div>
-        </PropertyRow>
-      </PropertyGroup>
+      {/* 计划实例尚无持久化时间，不展示会误导为实体记录的系统分组。 */}
+      {task.recurrence_info?.materialization !== "projected" ? (
+        <PropertyGroup defaultOpen={false} title={t("taskDetail.groupSystem")}>
+          <PropertyRow label={t("projectReadonly.entry")}>
+            <div className="font-medium">{formatRFCDate(task.entry)}</div>
+          </PropertyRow>
+          <PropertyRow label={t("projectReadonly.modified")}>
+            <div className="font-medium">{formatRFCDate(task.modified)}</div>
+          </PropertyRow>
+        </PropertyGroup>
+      ) : null}
 
       {/* Custom fields：仅有 UDA 时展示 */}
       {hasUDA ? (
@@ -268,6 +279,15 @@ export function TaskPropertyPanel({
       ) : null}
     </aside>
   )
+}
+
+function InheritanceHint({ show }: { show: boolean }) {
+  const { t } = useTranslation()
+  return show ? (
+    <div className="text-xs text-muted-foreground">
+      {t("taskSeries.occurrence.inherited")}
+    </div>
+  ) : null
 }
 
 // PropertyGroup 可折叠分组容器；hasContent=false 时整组不渲染（spec §9.5）。

@@ -45,6 +45,20 @@ func TestSeriesCommandHelpInChinese(t *testing.T) {
 	}
 }
 
+func TestSeriesListCommandsRejectExplicitZeroLimit(t *testing.T) {
+	for _, args := range [][]string{
+		{"series", "list", "--limit", "0"},
+		{"series", "occurrences", "missing-series", "--limit", "0"},
+	} {
+		cmd := NewRootCommand(Options{DBPath: t.TempDir() + "/xuanchu.db"})
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "--limit") {
+			t.Fatalf("args %v error = %v, want explicit --limit validation", args, err)
+		}
+	}
+}
+
 // TestParseSeriesDateFlag 验证日期 flag 解析。
 func TestParseSeriesDateFlag(t *testing.T) {
 	// unix 时间戳。
@@ -165,6 +179,16 @@ func TestRenderOccurrencePageUsesSlugOrPlannedDateInsteadOfUUID(t *testing.T) {
 	}
 	if !strings.Contains(text, "↻01-01") || !strings.Contains(text, "occ:series:2") {
 		t.Fatalf("projected reference output = %q", text)
+	}
+}
+
+func TestOccurrenceViewJSONKeepsProjectedNullableFields(t *testing.T) {
+	payload := occurrenceViewJSON(app.TaskOccurrenceView{ID: "occ:series:1", Title: "计划实例", Status: task.StatusPending})
+	for _, field := range []string{"uuid", "task_slug", "project_seq", "entry", "modified", "start", "end"} {
+		value, exists := payload[field]
+		if !exists || value != nil {
+			t.Fatalf("projected %s = %#v, want explicit null", field, value)
+		}
 	}
 }
 

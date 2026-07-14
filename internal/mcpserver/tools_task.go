@@ -41,6 +41,7 @@ type TaskQueryInput struct {
 	ProjectID      string `json:"project_id,omitempty"`
 	Query          string `json:"query,omitempty" jsonschema:"task filter expression; an explicit status predicate overrides default visibility"`
 	Status         string `json:"status,omitempty" jsonschema:"explicit task status filter; overrides default non-deleted visibility"`
+	Sort           string `json:"sort,omitempty" jsonschema:"task sort expression, for example due, due-, urgency-"`
 	Limit          int    `json:"limit,omitempty"`
 	Offset         int    `json:"offset,omitempty"`
 	IncludeDeleted bool   `json:"include_deleted,omitempty" jsonschema:"include deleted tasks in addition to the default non-deleted set; ignored when status is explicit"`
@@ -266,7 +267,7 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		created, err := svc.AddWithAnnotations(app.AddInput{
+		created, err := svc.AddTaskViewWithAnnotations(app.AddInput{
 			Title:       strings.TrimSpace(in.Title),
 			Description: in.Description,
 			Project:     project,
@@ -281,11 +282,8 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		data, err := taskData(created)
-		if err != nil {
-			return businessErrorWithEnvelope(err)
-		}
-		return successWithEnvelope(data, "Created task "+created.UUID)
+		data := taskViewToMCPJSON(created)
+		return successWithEnvelope(data, "Created task "+created.ID)
 	})
 
 	addTool(s, opts, &mcp.Tool{Name: "task_query", Description: "Query tasks; read-only. Defaults to all non-deleted tasks unless status is explicit."}, func(ctx context.Context, req *mcp.CallToolRequest, in TaskQueryInput) (*mcp.CallToolResult, ToolEnvelope, error) {
@@ -297,7 +295,11 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
-		input := app.TaskViewQuery{Status: strings.TrimSpace(in.Status), Limit: limit, Offset: in.Offset, OccurrenceMode: app.OccurrenceMode(strings.TrimSpace(in.OccurrenceMode))}
+		input := app.TaskViewQuery{
+			Status: strings.TrimSpace(in.Status), Sort: strings.TrimSpace(in.Sort),
+			Limit: limit, Offset: in.Offset,
+			OccurrenceMode: app.OccurrenceMode(strings.TrimSpace(in.OccurrenceMode)),
+		}
 		if strings.TrimSpace(in.Query) != "" {
 			expr, err := query.ParseFilterExpr([]string{in.Query})
 			if err != nil {
@@ -328,9 +330,10 @@ func registerTaskTools(s *mcp.Server, opts Options) {
 				if _, err := time.Parse("2006-01-02", dueAfter); err != nil {
 					return businessErrorWithEnvelope(app.RuntimeError{Code: "task_query_date_invalid", Message: "due_after must be YYYY-MM-DD"})
 				}
-				input.Query = query.And(input.Query, query.Predicate{
-					Attribute: query.AttrDue, Operator: query.OpAfter, Value: query.DateValue(dueAfter),
-				})
+				input.Query = query.And(input.Query, query.Or(
+					query.Predicate{Attribute: query.AttrDue, Operator: query.OpEqual, Value: query.DateValue(dueAfter)},
+					query.Predicate{Attribute: query.AttrDue, Operator: query.OpAfter, Value: query.DateValue(dueAfter)},
+				))
 			}
 			if dueBefore := strings.TrimSpace(in.DueBefore); dueBefore != "" {
 				parsed, err := time.Parse("2006-01-02", dueBefore)

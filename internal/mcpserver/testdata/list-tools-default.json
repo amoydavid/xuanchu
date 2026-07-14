@@ -2974,10 +2974,22 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "due_after": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
+          "due_before": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
           "limit": {
             "type": "integer"
           },
           "name": {
+            "type": "string"
+          },
+          "occurrence_mode": {
+            "description": "auto|materialized|expand",
             "type": "string"
           },
           "offset": {
@@ -2990,6 +3002,13 @@
             "type": "string"
           },
           "query": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "task_type": {
+            "description": "all|normal|occurrence",
             "type": "string"
           },
           "workspace": {
@@ -4262,6 +4281,10 @@
             "description": "task filter expression; an explicit status predicate overrides default visibility",
             "type": "string"
           },
+          "sort": {
+            "description": "task sort expression, for example due, due-, urgency-",
+            "type": "string"
+          },
           "status": {
             "description": "explicit task status filter; overrides default non-deleted visibility",
             "type": "string"
@@ -4483,9 +4506,14 @@
             "type": "string"
           },
           "limit": {
+            "default": 200,
+            "maximum": 1000,
+            "minimum": 1,
             "type": "integer"
           },
           "offset": {
+            "default": 0,
+            "minimum": 0,
             "type": "integer"
           },
           "project": {
@@ -4531,24 +4559,25 @@
         "additionalProperties": false,
         "properties": {
           "due_after": {
-            "type": [
-              "null",
-              "integer"
-            ]
+            "description": "inclusive YYYY-MM-DD",
+            "type": "string"
           },
           "due_before": {
-            "type": [
-              "null",
-              "integer"
-            ]
+            "description": "inclusive YYYY-MM-DD",
+            "type": "string"
           },
           "id": {
             "type": "string"
           },
           "limit": {
+            "default": 200,
+            "maximum": 1000,
+            "minimum": 1,
             "type": "integer"
           },
           "offset": {
+            "default": 0,
+            "minimum": 0,
             "type": "integer"
           },
           "status": {

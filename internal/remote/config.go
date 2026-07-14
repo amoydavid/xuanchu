@@ -10,7 +10,6 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskcontext"
-	"git.dajee.net/dajee/xuanchu/internal/urgency"
 )
 
 type contextDTO struct {
@@ -254,10 +253,10 @@ type auditDTO struct {
 	CreatedAt        int64            `json:"created_at"`
 }
 
-func (c *Client) ExplainUrgency(ctx context.Context, workspace, taskID string) (urgency.ExplainResult, error) {
-	var envelope apiEnvelope[urgency.ExplainResult]
+func (c *Client) ExplainUrgency(ctx context.Context, workspace, taskID string) (app.UrgencyView, error) {
+	var envelope apiEnvelope[app.UrgencyView]
 	if err := c.get(ctx, taskPathWithSuffix(workspace, taskID, "/urgency"), nil, &envelope); err != nil {
-		return urgency.ExplainResult{}, err
+		return app.UrgencyView{}, err
 	}
 	return envelope.Data, nil
 }

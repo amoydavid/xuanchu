@@ -2,9 +2,9 @@
 
 **日期：** 2026-07-11
 
-**状态：** 已实现并完成跨协议、双数据库与 Web E2E 验证
+**状态：** 实现补全与逐项完成审计中
 
-**修订：** 2026-07-13。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。2026-07-13 追加 Web Console 组件契约：循环任务 UI 必须复用现有 shadcn 设计系统、统一创建弹窗只能有一个 Dialog 语义、右侧栏与项目上下文栏保持同一宽度和响应式边界、所有用户文案进入 i18n。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。2026-07-13 最终实现复核补齐 task_slug/UUID/occurrence_ref 三别名、详情页所属 Series 名称、Series 面板短链接与来源返回语义，并通过 SQLite、PostgreSQL、零 CGO、HTTP/MCP/CLI/Remote、桌面与移动 Web Console 验收。
+**修订：** 2026-07-13。在主流日历 recurrence 模型调研及 Web Console、HTTP、MCP 场景复盘后，采用“独立 `task_series` 聚合 + 有界范围投影 + 例外覆盖 + 执行期/写操作物化”的最终模型。Web 信息架构不照搬后端资源边界：普通任务与循环 occurrence 统一进入“任务”执行视图，Series CRUD 收进任务页内可深链的管理面板，不新增项目一级 Tab。2026-07-13 追加 Web Console 组件契约：循环任务 UI 必须复用现有 shadcn 设计系统、统一创建弹窗只能有一个 Dialog 语义、右侧栏与项目上下文栏保持同一宽度和响应式边界、所有用户文案进入 i18n。璇础从本版本起不再承诺 Taskwarrior JSON、recurring parent 存储形态或循环命令兼容，只参考其规则表达和任务管理思路。2026-07-13 的实现补全范围包括 task_slug/UUID/occurrence_ref 三别名、详情页所属 Series 名称、Series 面板短链接与来源返回语义；SQLite、PostgreSQL、零 CGO、HTTP/MCP/CLI/Remote、桌面与移动 Web Console 的最终验收以完成审计记录为准。
 
 **范围：** 任务循环系列的领域语义、日历调度、CLI/HTTP/Remote/MCP 契约与 Web Console 完整 CRUD 体验
 
@@ -765,11 +765,11 @@ ended / stopped 首版均为终态，不支持恢复。
 
 ### 11.3 读取系列
 
-Series list 默认返回 active，可显式筛选 `active|ended|stopped|all`。Series get 返回：
+Series list 默认返回 active，可显式筛选 `active|ended|stopped|all`。Series list 与 occurrence history 的分页在 HTTP、MCP、Remote/CLI 和 Web 中统一为 `limit=200`、`offset=0`；`limit` 取值为 1–1000，负 offset 或越界 limit 必须在协议入口或 App 公共边界返回 `api_bad_offset/api_bad_limit`，不能被静默修正或在不同入口返回不同集合。Series get 返回：
 
 - SeriesView
-- 所有未完成 occurrences（分页上限 200）
-- 最近 completed/skipped occurrences（默认各 10 条）
+- 按 due 升序的未完成 occurrences（pending + waiting 合并后最多 200 条）
+- 按 due 降序的最近 completed/skipped occurrences（各 10 条）
 - 统计与 backlog 状态
 
 Occurrence 历史另用分页端点读取，避免 series get 无限增长。
@@ -1307,9 +1307,11 @@ task_type: all|normal|occurrence
 
 从 UUID 或 occurrence_ref 旧链接进入时，读取成功后使用 history replace 规范化到 `ops-18`。尚未物化的计划实例没有 task_slug，继续使用 URL 编码后的 occurrence_ref；首次成功写入后再 replace 到新获得的短链接。三种入口解析为 occurrence 后均渲染同一个“普通任务详情 + 循环上下文”页面，不另建循环详情路由。
 
+从项目任务列表或“我的任务”点击 `OPS-18` 后，最终页面必须直接呈现下方详情，而不是跳到 Series 管理页：面包屑、浏览器地址和 slug Badge 使用 `OPS-18`；标题、description、链接、子任务和活动沿用普通任务详情；标题下新增循环上下文；主动作改为“完成本次”，删除语义改为“跳过本次”。projected、pending、进行中、waiting、completed、deleted occurrence 的完整首屏、动作矩阵和页面状态流以定向修订 §9.2 为准。
+
 ```text
 +--------------------------------------------------------------------------------+
-| OPS-18 每日检查投放消耗                              [开始] [完成本次] [...]    |
+| OPS-18 每日检查投放消耗                          [开始本次] [完成本次] [...]    |
 | [待处理] [↻ 每天 · 2026-07-12]                                               |
 +--------------------------------------------------------------------------------+
 | 此任务属于循环任务“每日检查投放消耗”。                                       |
@@ -1330,7 +1332,7 @@ task_type: all|normal|occurrence
 
 实例详情不把 series 显示为“父任务”。`recurrence_info.rule` / `until` 只读；“查看循环任务”打开任务页管理面板中的 Series 详情，不离开任务执行上下文。
 
-详情页动作必须直接表达操作对象：普通任务使用“完成任务 / 重新打开任务”，occurrence 使用“完成本次 / 重新打开本次”。点击“完成本次”调用统一 task done 用例，不弹“本次/整个系列”范围选择；当前路由是 task_slug、UUID 或 occurrence_ref 都必须解析到同一实例。该日期的 occurrence 进入 completed，Series、其它已存在 occurrence 和后续槽位均不改变。成功后停留在当前详情，状态切为“已完成”，主动作切为“重新打开本次”，Toast 写“已完成 2026年7月12日这一次”。紧凑列表可以只显示完成图标或“完成”，但 aria-label/title 必须包含“完成本次：{日期}”。
+详情页动作必须直接表达操作对象：普通任务使用“开始 / 停止 / 完成任务 / 重新打开任务”，occurrence 使用“开始本次 / 停止本次 / 完成本次 / 重新打开本次”。点击“完成本次”调用统一 task done 用例，不弹“本次/整个系列”范围选择；当前路由是 task_slug、UUID 或 occurrence_ref 都必须解析到同一实例。该日期的 occurrence 进入 completed，Series、其它已存在 occurrence 和后续槽位均不改变。成功后停留在当前详情，状态切为“已完成”，主动作切为“重新打开本次”，Toast 写“已完成 2026年7月12日这一次”。紧凑列表可以只显示完成图标或“完成”，但 aria-label/title 必须包含“完成本次：{日期}”。
 
 ### 15.6 面板内系列详情原型
 
@@ -1407,6 +1409,8 @@ task_type: all|normal|occurrence
 My Tasks 的 preset、搜索、项目、优先级、任务类型和排序全部迁入 route search params，不再只保存在组件 `useState`。从 My Tasks 打开 Series 面板时，`panelReturnTo` 另外保存 `{scrollTop, focusId, selectedIds}`；返回后先恢复查询，再在数据加载完成后恢复选择、滚动锚点和焦点。无效/已消失的行 ID 静默忽略并聚焦列表容器。
 
 ### 15.9 任务详情与编辑作用域
+
+任务短引用、已物化实例、计划实例的完整详情页视觉与交互合同，以 [任务短引用与循环任务字段对齐设计 §9.2](./2026-07-13-task-reference-and-recurring-form-alignment-design.md#92-详情页) 为准。该合同包含桌面端和移动端 ASCII 原型、加载与别名规范化、状态动作矩阵、从“我的任务”返回以及 projected 首次物化后的无刷新地址切换；实现不得仅添加一个循环 Badge 便视为完成。
 
 Occurrence 详情顶部固定显示：
 
@@ -2064,6 +2068,7 @@ CLI 单条命令的 `--json` 直接输出当前原生 view：task 使用 TaskOcc
 | `task_recurrence_backlog` | 补偿超过单轮上限；返回可重试元数据，不作为 5xx |
 | `task_series_endpoint_required` | generic task add 收到旧 `recur` 字段；提示使用 series API/tool |
 | `task_occurrence_not_found` | occurrence_ref 非法、槽位不属于任何 rule version 或超出有效区间 |
+| `task_occurrence_project_immutable` | 尝试把 projected 或 materialized occurrence 移出所属 Series 的项目；失败写入必须回滚首次物化 |
 | `task_occurrence_range_required` | occurrence_mode=expand 但缺少完整范围 |
 | `task_occurrence_range_too_large` | 展开范围超过 366 天 |
 

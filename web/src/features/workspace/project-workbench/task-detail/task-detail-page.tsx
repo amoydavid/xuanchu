@@ -41,6 +41,7 @@ import { RecurrenceContextAlert } from "./recurrence-context-alert"
 
 type TaskDetailPageProps = {
   myTasksReturnSearch?: string
+  projectClosed?: boolean
   projectSlug?: string
   taskRef: string
   workspaceSlug: string
@@ -50,6 +51,7 @@ type MobileDetailTab = "description" | "subtasks" | "properties" | "activity"
 
 export function TaskDetailPage({
   myTasksReturnSearch,
+  projectClosed = false,
   projectSlug,
   taskRef,
   workspaceSlug,
@@ -58,6 +60,7 @@ export function TaskDetailPage({
     <EditFeedbackProvider>
       <TaskDetailPageContent
         myTasksReturnSearch={myTasksReturnSearch}
+        projectClosed={projectClosed}
         projectSlug={projectSlug}
         taskRef={taskRef}
         workspaceSlug={workspaceSlug}
@@ -68,6 +71,7 @@ export function TaskDetailPage({
 
 function TaskDetailPageContent({
   myTasksReturnSearch,
+  projectClosed = false,
   projectSlug,
   taskRef,
   workspaceSlug,
@@ -148,6 +152,18 @@ function TaskDetailPageContent({
     workspaceSlug,
   ])
 
+  useEffect(() => {
+    const loaded = task.data
+    if (!loaded) return
+    const previousTitle = document.title
+    const reference = taskDisplayRef(loaded, i18n.language) || taskRef
+    const nextTitle = `${reference} · ${loaded.title}`
+    document.title = nextTitle
+    return () => {
+      if (document.title === nextTitle) document.title = previousTitle
+    }
+  }, [i18n.language, task.data, taskRef])
+
   if (task.isPending) {
     return <TaskDetailSkeleton />
   }
@@ -181,7 +197,8 @@ function TaskDetailPageContent({
     // 已经过 isPending / isError，data 必然存在；防御性兜底。
     return <TaskDetailSkeleton />
   }
-  const taskWritable = canWrite && isWritableTaskStatus(taskData.status)
+  const pageCanWrite = canWrite && !projectClosed
+  const taskWritable = pageCanWrite && isWritableTaskStatus(taskData.status)
   // Series 不再存成隐藏的 recurring parent；这里只需要普通任务写权限门控。
   // projected occurrence 创建第一个 child 时由后端按 occurrence_ref 原子物化。
   const canCreateSubTask = taskWritable
@@ -276,7 +293,7 @@ function TaskDetailPageContent({
               </Button>
             ) : null}
             <TaskActionBar
-              permissionCanWrite={canWrite}
+              permissionCanWrite={pageCanWrite}
               projectSlug={effectiveProjectSlug ?? ""}
               myTasksReturnSearch={myTasksReturnSearch}
               returnScope={projectSlug ? "project" : "global"}
@@ -299,6 +316,9 @@ function TaskDetailPageContent({
           <div className={mobilePanelClass(activeMobileTab, "description")}>
             <TaskDescriptionBlock
               canWrite={taskWritable}
+              inherited={
+                taskData.recurrence_info?.materialization === "projected"
+              }
               onSave={async (description) => {
                 await modifyTask.mutateAsync(
                   description ? { description } : { clear_description: true }
@@ -385,10 +405,12 @@ function MobileDetailTabs({
 
 function TaskDescriptionBlock({
   canWrite,
+  inherited,
   onSave,
   value,
 }: {
   canWrite: boolean
+  inherited: boolean
   onSave: (value: string) => Promise<void> | void
   value: string
 }) {
@@ -424,9 +446,16 @@ function TaskDescriptionBlock({
     <>
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium">
-            {t("projectReadonly.description")}
-          </h2>
+          <div>
+            <h2 className="text-sm font-medium">
+              {t("projectReadonly.description")}
+            </h2>
+            {inherited ? (
+              <div className="text-xs text-muted-foreground">
+                {t("taskSeries.occurrence.inherited")}
+              </div>
+            ) : null}
+          </div>
           <Button
             disabled={!canWrite}
             onClick={openEditor}
@@ -532,7 +561,7 @@ function isWritableTaskStatus(status: string): boolean {
 function normalizedMyTasksHref(raw: string): string {
   const input = new URLSearchParams(raw)
   const output = new URLSearchParams()
-  for (const key of ["priority", "q", "sort", "tab"]) {
+  for (const key of ["priority", "project", "q", "sort", "tab", "task_type"]) {
     const value = input.get(key)
     if (value) output.set(key, value)
   }

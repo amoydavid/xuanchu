@@ -35,6 +35,10 @@
         "description": "task filter expression; an explicit status predicate overrides default visibility",
         "type": "string"
       },
+      "sort": {
+        "description": "task sort expression, for example due, due-, urgency-",
+        "type": "string"
+      },
       "status": {
         "description": "explicit task status filter; overrides default non-deleted visibility",
         "type": "string"

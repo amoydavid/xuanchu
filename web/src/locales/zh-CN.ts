@@ -30,6 +30,37 @@ export const zhCN = {
     loading: "加载中…",
     empty: "当前条件下没有任务",
     deleted: "已删除",
+    allProjects: "全部项目",
+    allTaskTypes: "全部类型",
+    bulk: {
+      toolbarLabel: "批量任务操作",
+      selected: "已选择 {{count}} 项",
+      selectAll: "选择当前列表全部任务",
+      selectTask: "选择任务 {{task}}",
+      complete: "完成",
+      completeAria: "完成选中的 {{count}} 项任务",
+      completed: "已完成 {{count}} 项任务",
+      priority: "设置优先级",
+      priorityAria: "设置选中的 {{count}} 项任务优先级",
+      noPriority: "无优先级",
+      priorityUpdated: "已更新 {{count}} 项任务的优先级",
+      due: "设置截止日期",
+      dueAria: "设置选中的 {{count}} 项任务截止日期",
+      dueUpdated: "已更新 {{count}} 项任务的截止日期",
+      assignees: "负责人",
+      assigneesUpdated: "已更新 {{count}} 项任务的负责人",
+      delete: "删除 / 跳过",
+      deleteAria: "删除或跳过选中的 {{count}} 项",
+      deleteTitle: "删除或跳过选中的任务？",
+      deleteDescription:
+        "将删除 {{normal}} 个普通任务，并跳过 {{occurrence}} 次循环任务。",
+      deleteConfirm: "确认删除或跳过",
+      deleted: "已处理 {{count}} 项任务",
+      clearSelection: "清除全部选择",
+      failureTitle: "部分批量操作失败",
+      failureDescription:
+        "{{total}} 项中有 {{failed}} 项未能保存，请检查后重试。",
+    },
     tab: {
       incomplete: "未完成",
       today: "今日到期",
@@ -89,7 +120,8 @@ export const zhCN = {
     },
     edit: {
       title: "编辑循环任务",
-      description: "修改只影响这个循环任务；已经生成的任务不会随之改变。",
+      description:
+        "未来实例使用新设置；未完成且未单独修改的实例也会同步。已完成、已跳过或已单独覆盖的字段保持不变。",
       submit: "保存循环设置",
       effectiveFromHint: "新规则从所选日期起生效，早于该日期的实例保持不变。",
     },
@@ -185,11 +217,12 @@ export const zhCN = {
       description: "此任务属于循环任务。修改本次不会影响其它日期。",
       plannedTitle: "计划于 {{date}}",
       plannedDescription:
-        "这是循环任务的一次计划。首次编辑或执行操作后会创建本次任务。",
+        "这是循环任务的一次计划。修改或完成只影响这一次。首次编辑或执行操作后会创建本次任务。",
       seriesStopped: "所属循环任务已停止",
       seriesEnded: "所属循环任务已结束",
       originalDate: "原循环日期",
       skipped: "已跳过",
+      inherited: "继承自循环任务",
     },
     actions: {
       create: "新建循环任务",
@@ -201,6 +234,7 @@ export const zhCN = {
       startOccurrence: "开始本次",
       stopOccurrence: "停止本次",
       skipOccurrence: "跳过本次",
+      copyOccurrenceLink: "复制本次链接",
       confirmSkipTitle: "跳过 {{date}} 这一次？",
       confirmSkipDescription:
         "本次任务会从待办中移除，不影响循环任务和之后的安排。",
@@ -640,6 +674,8 @@ export const zhCN = {
   },
   taskDetail: {
     backToMyTasks: "返回我的任务",
+    completeTask: "完成任务",
+    reopenTask: "重新打开任务",
     urgency: "紧迫度",
     urgencyUnavailable: "紧迫度暂不可用",
     subTasks: "子任务",

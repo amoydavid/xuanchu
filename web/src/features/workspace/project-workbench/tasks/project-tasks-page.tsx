@@ -69,6 +69,8 @@ export function ProjectTasksPage({
       q: typeof search.q === "string" ? search.q : undefined,
       query: typeof search.query === "string" ? search.query : undefined,
       sort: typeof search.sort === "string" ? search.sort : undefined,
+      task_type:
+        typeof search.task_type === "string" ? search.task_type : undefined,
     }),
     [
       search.assignee,
@@ -83,6 +85,7 @@ export function ProjectTasksPage({
       search.sort,
       search.status,
       search.tags,
+      search.task_type,
       search.until_before,
       search.wait_before,
     ]

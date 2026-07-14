@@ -1,16 +1,19 @@
 package edit
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type EditableTask struct {
-	UUID        string                `json:"uuid"`
-	Entry       string                `json:"entry"`
+	ID          string                `json:"id"`
+	UUID        *string               `json:"uuid"`
+	Entry       *string               `json:"entry"`
 	Title       string                `json:"title"`
 	Description *string               `json:"description,omitempty"`
 	Status      string                `json:"status"`
@@ -29,8 +32,9 @@ type EditableTask struct {
 func FromTask(tsk task.Task) EditableTask {
 	dto := task.ToJSON(tsk)
 	return EditableTask{
-		UUID:        dto.UUID,
-		Entry:       dto.Entry,
+		ID:          dto.UUID,
+		UUID:        stringPtr(dto.UUID),
+		Entry:       stringPtr(dto.Entry),
 		Title:       dto.Title,
 		Description: dto.Description,
 		Status:      dto.Status,
@@ -49,48 +53,52 @@ func FromTask(tsk task.Task) EditableTask {
 
 func Parse(data []byte, original EditableTask) (EditableTask, error) {
 	var edited EditableTask
-	if err := json.Unmarshal(data, &edited); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&edited); err != nil {
 		return EditableTask{}, err
 	}
-	if edited.UUID != original.UUID {
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return EditableTask{}, fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return EditableTask{}, err
+	}
+	if edited.ID != original.ID {
+		return EditableTask{}, fmt.Errorf("id is immutable")
+	}
+	if !equalStringPtr(edited.UUID, original.UUID) {
 		return EditableTask{}, fmt.Errorf("uuid is immutable")
 	}
-	if edited.Entry != original.Entry {
+	if !equalStringPtr(edited.Entry, original.Entry) {
 		return EditableTask{}, fmt.Errorf("entry is immutable")
 	}
 	return edited, nil
 }
 
-func Apply(original task.Task, edited EditableTask) (task.Task, error) {
-	out := original
+func Apply(edited EditableTask) (task.EditableFields, error) {
 	due, err := parseTimePtr("due", edited.Due)
 	if err != nil {
-		return task.Task{}, err
+		return task.EditableFields{}, err
 	}
 	wait, err := parseTimePtr("wait", edited.Wait)
 	if err != nil {
-		return task.Task{}, err
+		return task.EditableFields{}, err
 	}
 	scheduled, err := parseTimePtr("scheduled", edited.Scheduled)
 	if err != nil {
-		return task.Task{}, err
+		return task.EditableFields{}, err
 	}
 	until, err := parseTimePtr("until", edited.Until)
 	if err != nil {
-		return task.Task{}, err
+		return task.EditableFields{}, err
 	}
-	out.Title = edited.Title
-	out.Description = edited.Description
-	out.Status = edited.Status
-	out.Project = edited.Project
-	out.Priority = edited.Priority
-	out.Due = due
-	out.Wait = wait
-	out.Scheduled = scheduled
-	out.Until = until
-	out.Tags = edited.Tags
-	out.Depends = edited.Depends
-	out.Parent = edited.Parent
+	out := task.EditableFields{
+		Title: edited.Title, Description: edited.Description, Status: edited.Status,
+		Project: edited.Project, Priority: edited.Priority,
+		Due: due, Wait: wait, Scheduled: scheduled, Until: until,
+		Tags: edited.Tags, Depends: edited.Depends, Parent: edited.Parent,
+	}
 	if edited.Annotations == nil {
 		out.Annotations = nil
 	} else {
@@ -98,7 +106,7 @@ func Apply(original task.Task, edited EditableTask) (task.Task, error) {
 		for i, annotation := range edited.Annotations {
 			entry, err := parseTime(fmt.Sprintf("annotations[%d].entry", i), annotation.Entry)
 			if err != nil {
-				return task.Task{}, err
+				return task.EditableFields{}, err
 			}
 			out.Annotations[i] = task.Annotation{
 				ID:          annotation.ID,
@@ -127,4 +135,16 @@ func parseTime(field, value string) (int64, error) {
 		return 0, fmt.Errorf("invalid %s %q: %w", field, value, err)
 	}
 	return parsed.Unix(), nil
+}
+
+func stringPtr(value string) *string {
+	copy := value
+	return &copy
+}
+
+func equalStringPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

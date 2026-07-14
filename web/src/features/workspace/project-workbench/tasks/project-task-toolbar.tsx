@@ -89,6 +89,7 @@ const FILTER_LABELS: Record<keyof TaskFilter, string> = {
   sort: "排序",
   status: "状态",
   tags: "标签",
+  task_type: "任务类型",
   until_before: "有效至早于",
   wait_before: "暂缓到早于",
 }
@@ -208,6 +209,28 @@ export function ProjectTaskToolbar({
                 {priority}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select
+          onValueChange={(value) =>
+            setFilter("task_type", value === "all" ? "" : value)
+          }
+          value={filter.task_type ?? "all"}
+        >
+          <SelectTrigger
+            aria-label={i18n.t("taskCreate.typeLabel")}
+            className={cn(FILTER_CONTROL_CLASS, "w-full sm:w-32")}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{i18n.t("myTasks.allTaskTypes")}</SelectItem>
+            <SelectItem value="normal">
+              {i18n.t("taskSeries.mode.normal")}
+            </SelectItem>
+            <SelectItem value="occurrence">
+              {i18n.t("taskSeries.mode.recurring")}
+            </SelectItem>
           </SelectContent>
         </Select>
         <AssigneeFilterMenu

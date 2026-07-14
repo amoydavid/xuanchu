@@ -469,9 +469,9 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		}
 		return runEdit(cmd, svc, target)
 	case "annotations":
-		tsk, err := svc.Info(target)
+		view, err := svc.GetTaskView(target)
 		if err == nil {
-			return renderAnnotations(cmd, currentOpts.JSON, tsk.Annotations)
+			return renderAnnotations(cmd, currentOpts.JSON, view.Annotations)
 		}
 		if isPossibleProjectSlug(target) {
 			annotations, err := svc.ProjectAnnotations(target)
@@ -490,7 +490,7 @@ func handleTargetAction(cmd *cobra.Command, opts Options, flags []string, positi
 		}
 		return renderTimelineEntriesApp(cmd, currentOpts.JSON, entries)
 	case "link":
-		return handleLinkAction(cmd, opts, svc, target, actionArgs)
+		return handleLinkAction(cmd, currentOpts, svc, target, actionArgs)
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
@@ -595,17 +595,16 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		if len(actionArgs) == 0 {
 			return fmt.Errorf("%s requires text", action)
 		}
+		text := strings.TrimSpace(strings.Join(actionArgs, " "))
+		if text == "" {
+			return fmt.Errorf("%s requires text", action)
+		}
 		dto, err := client.GetTaskView(ctx, opts.Workspace, target)
 		if err != nil {
 			return err
 		}
-		tsk := remoteDTOToTask(dto)
-		text := strings.Join(actionArgs, " ")
-		title := strings.TrimSpace(tsk.Title + " " + text)
-		if action == "prepend" {
-			title = strings.TrimSpace(text + " " + tsk.Title)
-		}
-		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Title: &title}); err != nil {
+		description := taskDescriptionWithText(dto.Description, text, action == "prepend")
+		if _, err := client.ModifyTask(ctx, opts.Workspace, target, remote.ModifyTaskInput{Description: &description}); err != nil {
 			return err
 		}
 		if action == "append" {
@@ -642,6 +641,17 @@ func handleRemoteTargetAction(cmd *cobra.Command, opts Options, positional []str
 		return fmt.Errorf("unknown action %q", action)
 	}
 	return nil
+}
+
+func taskDescriptionWithText(current *string, text string, prepend bool) string {
+	currentText := ""
+	if current != nil {
+		currentText = *current
+	}
+	if prepend {
+		return strings.TrimSpace(text + " " + currentText)
+	}
+	return strings.TrimSpace(currentText + " " + text)
 }
 
 func buildServiceFromCmd(cmd *cobra.Command, base Options) (*app.Service, func() error, error) {

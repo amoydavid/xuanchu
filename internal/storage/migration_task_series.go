@@ -19,6 +19,12 @@ func (s *Store) prepareTaskSeriesSchema() error {
 	if err := s.db.AutoMigrate(&TaskSeries{}, &TaskSeriesRuleVersion{}, &TaskSeriesAssignee{}, &TaskSeriesTag{}, &TaskSeriesUDAValue{}); err != nil {
 		return fmt.Errorf("task series: AutoMigrate series: %w", err)
 	}
+	// 早期实现误把 (workspace, project, status) 建成唯一索引，导致同一项目
+	// 只能存在一条 active Series。这里原地改为普通查询索引；SQLite 与
+	// PostgreSQL 均支持同一组 DROP/CREATE INDEX 语法。
+	if err := normalizeTaskSeriesScopeIndex(s.db); err != nil {
+		return fmt.Errorf("task series: normalize scope index: %w", err)
+	}
 	// 2. 检测旧循环任务数据。若存在则拒绝启动，提示重建开发数据库（spec §20.2）。
 	if err := detectLegacyRecurringData(s.db); err != nil {
 		return err
@@ -49,6 +55,13 @@ func (s *Store) prepareTaskSeriesSchema() error {
 		return fmt.Errorf("task series: ensure lookup indexes: %w", err)
 	}
 	return nil
+}
+
+func normalizeTaskSeriesScopeIndex(db *gorm.DB) error {
+	if err := db.Exec("DROP INDEX IF EXISTS idx_task_series_ws_project_status").Error; err != nil {
+		return err
+	}
+	return db.Exec("CREATE INDEX IF NOT EXISTS idx_task_series_ws_project_status ON task_series(workspace_id, project_id, status)").Error
 }
 
 // backfillOccurrenceProjectBindings 把早期物化 occurrence 缺失的 project

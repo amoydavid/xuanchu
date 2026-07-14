@@ -46,6 +46,7 @@ const FILTER_LABEL_KEYS: Record<keyof TaskFilter, string> = {
   q: "common.search",
   query: "common.search",
   sort: "common.sort",
+  task_type: "taskCreate.typeLabel",
 }
 
 export function ProjectFilterToolbar({

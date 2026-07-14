@@ -7,9 +7,14 @@
         "type": "string"
       },
       "limit": {
+        "default": 200,
+        "maximum": 1000,
+        "minimum": 1,
         "type": "integer"
       },
       "offset": {
+        "default": 0,
+        "minimum": 0,
         "type": "integer"
       },
       "project": {

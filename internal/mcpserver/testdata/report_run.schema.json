@@ -3,10 +3,22 @@
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
+      "due_after": {
+        "description": "YYYY-MM-DD",
+        "type": "string"
+      },
+      "due_before": {
+        "description": "YYYY-MM-DD",
+        "type": "string"
+      },
       "limit": {
         "type": "integer"
       },
       "name": {
+        "type": "string"
+      },
+      "occurrence_mode": {
+        "description": "auto|materialized|expand",
         "type": "string"
       },
       "offset": {
@@ -19,6 +31,13 @@
         "type": "string"
       },
       "query": {
+        "type": "string"
+      },
+      "sort": {
+        "type": "string"
+      },
+      "task_type": {
+        "description": "all|normal|occurrence",
         "type": "string"
       },
       "workspace": {

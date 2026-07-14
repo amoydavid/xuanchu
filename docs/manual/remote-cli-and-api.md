@@ -174,6 +174,14 @@ curl -X PATCH \
 
 单任务 path 使用 `{taskRef}`，接受完整 UUID、已物化任务的 `task_slug` 或 URL 编码后的 `occurrence_ref`。projected 实例只能使用 occurrence_ref；已物化实例三种引用等价，响应都包含 `recurrence_info`。HTTP API 不接受纯数字 working-set ID；传入 `1` 会返回 `task_ref_invalid`。远程 CLI 仍支持 `info 1`、`1 done` 这类交互写法，但会先在客户端按当前 working set 解析，再调用 HTTP API。
 
+`POST /tasks`、`GET/PATCH/DELETE /tasks/{taskRef}` 和任务生命周期动作统一返回
+`TaskOccurrenceView`：普通任务的 `id` 等于 `uuid`且 `recurrence_info` 为空；循环实例的
+`id` 始终是 occurrence_ref。`entry/modified/due/start/end` 等时间字段使用 Unix 秒，
+Remote 不再根据时间字符串猜测另一种 JSON 形态。
+
+`GET /api/v1/task-series` 与 `GET /api/v1/task-series/{seriesRef}/occurrences` 的分页和 MCP、Remote CLI
+使用同一契约：默认 `limit=200, offset=0`，limit 取值 1–1000，offset 不得为负数。
+
 远程 CLI 走同一套字段语义：
 
 ```bash

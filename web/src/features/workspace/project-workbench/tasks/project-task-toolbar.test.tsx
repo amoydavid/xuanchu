@@ -37,6 +37,7 @@ describe("ProjectTaskToolbar", () => {
     expect(screen.getByLabelText("搜索任务")).toBeTruthy()
     expect(screen.getByRole("combobox", { name: "状态" })).toBeTruthy()
     expect(screen.getByRole("combobox", { name: "优先级" })).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: "任务类型" })).toBeTruthy()
     expect(screen.getByLabelText("负责人")).toBeTruthy()
     expect(screen.getByLabelText("标签")).toBeTruthy()
     expect(screen.getByRole("combobox", { name: "排序" })).toBeTruthy()
@@ -121,6 +122,7 @@ describe("ProjectTaskToolbar", () => {
       screen.getByLabelText("搜索任务"),
       screen.getByRole("combobox", { name: "状态" }),
       screen.getByRole("combobox", { name: "优先级" }),
+      screen.getByRole("combobox", { name: "任务类型" }),
       screen.getByRole("button", { name: "负责人" }),
       screen.getByLabelText("标签"),
       screen.getByRole("button", { name: "到期不早于" }),
@@ -206,6 +208,23 @@ describe("ProjectTaskToolbar", () => {
     })
     const searchUpdater = navigateMock.mock.calls[0]?.[0].search
     expect(searchUpdater({})).toEqual({ sort: "due" })
+  })
+
+  it("writes task type changes to route search", async () => {
+    render(
+      <ProjectTaskToolbar
+        canCreateTask
+        filter={{}}
+        onCreateTask={vi.fn()}
+        toParams={{ projectSlug: "adsops", workspaceSlug: "acme" }}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("combobox", { name: "任务类型" }))
+    await userEvent.click(screen.getByRole("option", { name: "循环任务" }))
+
+    const searchUpdater = navigateMock.mock.calls.at(-1)?.[0].search
+    expect(searchUpdater({})).toEqual({ task_type: "occurrence" })
   })
 
   it("commits advanced filters and clears active filters", async () => {

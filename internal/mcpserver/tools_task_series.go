@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -75,8 +76,8 @@ type TaskSeriesOccurrenceListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	ID        string `json:"id"`
 	Status    string `json:"status,omitempty"`
-	DueAfter  *int64 `json:"due_after,omitempty"`
-	DueBefore *int64 `json:"due_before,omitempty"`
+	DueAfter  string `json:"due_after,omitempty" jsonschema:"inclusive YYYY-MM-DD"`
+	DueBefore string `json:"due_before,omitempty" jsonschema:"inclusive YYYY-MM-DD"`
 	Limit     int    `json:"limit,omitempty"`
 	Offset    int    `json:"offset,omitempty"`
 }
@@ -279,8 +280,16 @@ func registerTaskSeriesListOccurrences(s *mcp.Server, opts Options) {
 		if err != nil {
 			return businessErrorWithEnvelope(err)
 		}
+		dueAfter, err := parseOccurrenceRangeBoundary(in.DueAfter, false)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
+		dueBefore, err := parseOccurrenceRangeBoundary(in.DueBefore, true)
+		if err != nil {
+			return businessErrorWithEnvelope(err)
+		}
 		input := app.TaskSeriesOccurrenceListInput{
-			Status: in.Status, DueAfter: in.DueAfter, DueBefore: in.DueBefore,
+			Status: in.Status, DueAfter: dueAfter, DueBefore: dueBefore,
 			Limit: in.Limit, Offset: in.Offset,
 		}
 		page, err := svc.ListTaskSeriesOccurrences(in.ID, input)
@@ -294,6 +303,22 @@ func registerTaskSeriesListOccurrences(s *mcp.Server, opts Options) {
 		rendered := fmt.Sprintf("共 %d 条实例", page.Total)
 		return successResult(map[string]any{"items": items, "total": page.Total, "limit": page.Limit, "offset": page.Offset}, rendered)
 	})
+}
+
+func parseOccurrenceRangeBoundary(raw string, endExclusive bool) (*int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+	if err != nil {
+		return nil, app.RuntimeError{Code: "api_bad_filter", Message: "due range must use YYYY-MM-DD"}
+	}
+	if endExclusive {
+		value = value.AddDate(0, 0, 1)
+	}
+	ts := value.Unix()
+	return &ts, nil
 }
 
 func registerTaskSeriesOccurrenceSkip(s *mcp.Server, opts Options) {
@@ -385,6 +410,8 @@ func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 		"tags": v.Tags, "depends": v.Depends, "udas": udaValuesForMCP(v.UDAs),
 		"assignees": userInfosForMCP(v.Assignees), "annotations": task.AnnotationsToJSON(v.Annotations),
 		"links": taskLinksForMCP(v.Links),
+		"uuid":  nil, "task_slug": nil, "project_seq": nil,
+		"entry": nil, "modified": nil, "start": nil, "end": nil,
 	}
 	if v.Description != nil {
 		out["description"] = *v.Description
@@ -439,16 +466,21 @@ func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 	return out
 }
 
-// taskResolutionToMCPJSON 保持 task tool 既有的内层 task 兼容字段，同时让
-// UUID、task_slug、occurrence_ref 的顶层结构完全由同一个 view 生成。
-func taskResolutionToMCPJSON(resolved app.TaskRefResolution) map[string]any {
-	out := occurrenceViewToMCPJSON(resolved.View)
-	if resolved.Task != nil {
-		out["task"] = occurrenceViewToMCPJSON(resolved.View)
-		out["completed"] = resolved.View.Status == task.StatusCompleted
-		out["deleted"] = resolved.View.Status == task.StatusDeleted
-	}
+// taskViewToMCPJSON 保持 task tool 既有的内层 task 字段，同时确保顶层和
+// 内层都来自同一个 TaskOccurrenceView，而不是旧 task.JSONTask。
+func taskViewToMCPJSON(view app.TaskOccurrenceView) map[string]any {
+	out := occurrenceViewToMCPJSON(view)
+	out["task"] = occurrenceViewToMCPJSON(view)
+	out["completed"] = view.Status == task.StatusCompleted
+	out["deleted"] = view.Status == task.StatusDeleted
 	return out
+}
+
+func taskResolutionToMCPJSON(resolved app.TaskRefResolution) map[string]any {
+	if resolved.Task != nil {
+		return taskViewToMCPJSON(resolved.View)
+	}
+	return occurrenceViewToMCPJSON(resolved.View)
 }
 
 func userInfosForMCP(rows []task.UserInfo) []task.JSONUserInfo {

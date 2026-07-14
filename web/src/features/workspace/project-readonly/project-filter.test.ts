@@ -25,12 +25,14 @@ describe("filterToTaskQuery", () => {
       priority: "H",
       q: "needle",
       sort: "due",
+      task_type: "occurrence",
     }
     const qs = filterToTaskQuery(filter)
     expect(qs).toContain("status=pending")
     expect(qs).toContain("priority=H")
     expect(qs).toContain("q=needle")
     expect(qs).toContain("sort=due")
+    expect(qs).toContain("task_type=occurrence")
   })
 
   it("returns empty string for empty filter", () => {

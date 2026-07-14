@@ -254,7 +254,7 @@ const myTasksRoute = createRoute({
   component: lazyRoute(MyTasksRoute),
   validateSearch: (search: Record<string, unknown>): Record<string, string> => {
     const out: Record<string, string> = {}
-    for (const key of ["tab", "priority", "q", "sort"]) {
+    for (const key of ["tab", "project", "task_type", "priority", "q", "sort"]) {
       const value = search[key]
       if (typeof value === "string" && value !== "") out[key] = value
     }
