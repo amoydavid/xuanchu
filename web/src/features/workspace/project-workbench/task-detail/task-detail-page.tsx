@@ -107,6 +107,9 @@ function TaskDetailPageContent({
   const projectHref = effectiveProjectSlug
     ? `/workspaces/${workspaceSlug}/projects/${effectiveProjectSlug}`
     : undefined
+  const projectTasksHref: string | undefined = projectHref
+    ? `${projectHref}/tasks`
+    : undefined
   const myTasksHref =
     myTasksReturnSearch === undefined
       ? undefined
@@ -232,7 +235,7 @@ function TaskDetailPageContent({
                 {effectiveProjectSlug}
               </Link>
               {" / "}
-              <Link className="hover:text-foreground" to={`${projectHref}/tasks`}>
+              <Link className="hover:text-foreground" to={projectTasksHref}>
                 {t("projectSubpages.tasks")}
               </Link>
             </>
