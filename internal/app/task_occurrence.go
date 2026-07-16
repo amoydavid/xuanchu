@@ -85,6 +85,9 @@ type TaskOccurrenceView struct {
 	Links          []domain.TaskLinkInfo
 	UDAs           map[string]domain.UDAValue
 	RecurrenceInfo *RecurrenceInfo
+	// Urgency 是该 view 的 urgency 总分；未计算时为 nil（spec §13.3、urgency 公式）。
+	// 仅在按 urgency/next 排序时填充，用于前端展示与稳定复现排序。
+	Urgency *float64
 }
 
 // TaskViewPage 是 TaskOccurrenceView 的分页结果（spec §13.3）。
@@ -391,8 +394,10 @@ func (s *Service) QueryTaskViews(q TaskViewQuery) (TaskViewPage, error) {
 		items = filtered
 	}
 
-	// 稳定排序：ID 作为最终 tie-breaker。
-	sortTaskViews(items, q.Sort)
+	// 稳定排序：ID 作为最终 tie-breaker；urgency/next 排序时顺带填充 urgency 分数。
+	if err := s.sortAndEnrichTaskViews(items, q.Sort); err != nil {
+		return TaskViewPage{}, err
+	}
 
 	total := len(items)
 	limit := q.Limit
@@ -720,10 +725,36 @@ func seriesUserInfoList(se taskseries.Series, userInfos map[string]domain.UserIn
 }
 
 // sortTaskViews 按 sort 模式稳定排序，ID 作为最终 tie-breaker。
+// 不处理 urgency/next（需要 Service 依赖图与配置），用 sortAndEnrichTaskViews。
 func sortTaskViews(items []TaskOccurrenceView, sort string) {
 	switch sort {
 	case "due":
 		sortByDueThenID(items)
+	case "wait":
+		// 与 storage.List 的 wait 排序一致：nulls last。
+		sortByTimestampThenID(items, func(v TaskOccurrenceView) (int64, bool) {
+			if v.Wait == nil {
+				return 0, false
+			}
+			return *v.Wait, true
+		}, false)
+	case "start":
+		// 与 storage.List 的 start 排序一致：start DESC（最近开始的在前）。
+		sortByTimestampThenID(items, func(v TaskOccurrenceView) (int64, bool) {
+			if v.Start == nil {
+				return 0, false
+			}
+			return *v.Start, true
+		}, true)
+	case "completed":
+		// 与 storage.List 的 completed 排序一致：end_ts DESC, modified DESC。
+		sortByTimestampThenID(items, func(v TaskOccurrenceView) (int64, bool) {
+			if v.End == nil {
+				return 0, false
+			}
+			return *v.End, true
+		}, true)
+		sortByModifiedDescThenID(items)
 	case "modified":
 		sortByModifiedDescThenID(items)
 	case "id":
@@ -732,6 +763,93 @@ func sortTaskViews(items []TaskOccurrenceView, sort string) {
 		// 默认 entry ASC，与 List 行为一致（spec §17.3：ID 作为 tie-breaker）。
 		sortByEntryThenID(items)
 	}
+}
+
+// sortByTimestampThenID 按给定时间戳排序：null 永远排在最后（无论 asc）。
+// desc=true 时非 null 段降序，desc=false 时升序；同值用 ID 兜底。
+// 与 storage.List 的 IS NULL ASC + 字段 ASC/DESC 语义一致。
+func sortByTimestampThenID(items []TaskOccurrenceView, pick func(TaskOccurrenceView) (int64, bool), desc bool) {
+	less := func(i, j int) bool {
+		vi, oki := pick(items[i])
+		vj, okj := pick(items[j])
+		// null（缺失）排最后。
+		if !oki && !okj {
+			return items[i].ID < items[j].ID
+		}
+		if !oki {
+			return false
+		}
+		if !okj {
+			return true
+		}
+		if vi != vj {
+			if desc {
+				return vi > vj
+			}
+			return vi < vj
+		}
+		return items[i].ID < items[j].ID
+	}
+	sort.SliceStable(items, less)
+}
+
+// sortAndEnrichTaskViews 是 sortTaskViews 的 Service 版本。
+// urgency/next 模式下计算每条 view 的 urgency 总分、降序排序，并把分数写回 view.Urgency，
+// 供 HTTP/MCP/CLI 输出展示。其余模式直接复用 sortTaskViews。
+func (s *Service) sortAndEnrichTaskViews(items []TaskOccurrenceView, sortKey string) error {
+	if !urgencySortKey(sortKey) {
+		sortTaskViews(items, sortKey)
+		return nil
+	}
+	return s.sortTaskViewsByUrgency(items)
+}
+
+// urgencySortKey 判断排序键是否走 urgency 公式。next 是 UI 上的「下一步优先」，
+// 与 urgency 等价：两者都表示按综合紧急度排序。
+func urgencySortKey(sortKey string) bool {
+	return sortKey == "urgency" || sortKey == "next"
+}
+
+// sortTaskViewsByUrgency 计算每条 view 的 urgency 总分并按降序排序（ID 兜底）。
+// 依赖图用全量非删除任务构建，projected occurrence 无 UUID 不参与依赖关系。
+func (s *Service) sortTaskViewsByUrgency(items []TaskOccurrenceView) error {
+	opts, err := s.urgencyConfig()
+	if err != nil {
+		return err
+	}
+	opts.NowUnix = s.clock.Unix()
+	blocked, blocking := s.viewDependencyState()
+	totals := make(map[string]float64, len(items))
+	for i := range items {
+		v := items[i]
+		vopts := opts
+		if v.UUID != nil {
+			vopts.Blocked = blocked[*v.UUID]
+			vopts.Blocking = blocking[*v.UUID]
+		}
+		total := urgency.ExplainValue(taskViewToUrgencyValue(v), vopts).Total
+		totals[v.ID] = total
+		items[i].Urgency = &total
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if totals[items[i].ID] != totals[items[j].ID] {
+			return totals[items[i].ID] > totals[items[j].ID]
+		}
+		return items[i].ID < items[j].ID
+	})
+	return nil
+}
+
+// viewDependencyState 构建全量任务的依赖状态（blocked/blocking），供 urgency 公式使用。
+// 复用 buildDependencyState，与 ExplainUrgency/RunTaskViewReport 同源。
+func (s *Service) viewDependencyState() (blocked, blocking map[string]bool) {
+	allTasks, err := s.repo.List(s.workspaceID, storage.ListOptions{
+		NowUnix: s.clock.Unix(), Query: s.projectScopeExpr(), Dialect: s.store.Dialect(),
+	})
+	if err != nil {
+		return map[string]bool{}, map[string]bool{}
+	}
+	return buildDependencyState(allTasks, s.clock.Unix())
 }
 
 func sortByEntryThenID(items []TaskOccurrenceView) {
@@ -1122,29 +1240,8 @@ func (s *Service) RunTaskViewReport(input ReportViewInput) (TaskViewPage, error)
 	if input.Sort != "" {
 		effectiveSort = input.Sort
 	}
-	if effectiveSort == "urgency" {
-		urgencyOptions, err := s.urgencyConfig()
-		if err != nil {
-			return TaskViewPage{}, err
-		}
-		totals := make(map[string]float64, len(candidates))
-		for _, v := range candidates {
-			opts := urgencyOptions
-			opts.NowUnix = s.clock.Unix()
-			if v.UUID != nil {
-				opts.Blocked = blocked[*v.UUID]
-				opts.Blocking = blocking[*v.UUID]
-			}
-			totals[v.ID] = urgency.ExplainValue(taskViewToUrgencyValue(v), opts).Total
-		}
-		sort.SliceStable(candidates, func(i, j int) bool {
-			if totals[candidates[i].ID] != totals[candidates[j].ID] {
-				return totals[candidates[i].ID] > totals[candidates[j].ID]
-			}
-			return candidates[i].ID < candidates[j].ID
-		})
-	} else {
-		sortTaskViews(candidates, effectiveSort)
+	if err := s.sortAndEnrichTaskViews(candidates, effectiveSort); err != nil {
+		return TaskViewPage{}, err
 	}
 	total := len(candidates)
 	paged := paginateTaskViews(candidates, input.Limit, input.Offset)

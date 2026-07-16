@@ -24,9 +24,25 @@ const (
 	ageMaxDays      = 365.0
 )
 
+// isTerminated 判断任务是否处于终态（completed/deleted）。
+// 终态任务 urgency 恒为 0，不再累计 due/priority/age 等任何加分项。
+// waiting 仍是活状态（可被唤醒），不计入终态。
+func isTerminated(status string) bool {
+	return status == task.StatusCompleted || status == task.StatusDeleted
+}
+
 func Explain(tsk task.Task, opts Options) ExplainResult {
 	var result ExplainResult
 	result.UUID = tsk.UUID
+	// 终态任务（completed/deleted）urgency 恒为 0：它们无需再排优先级，
+	// 与 Taskwarrior 行为一致（终态任务不进入 next 等 urgency 报表）。
+	// 保留一条说明项，便于 urgency 命令解释为何是 0。
+	if isTerminated(tsk.Status) {
+		result.Items = []ExplainItem{{
+			Name: "urgency_terminated", Reason: "task is " + tsk.Status + ", urgency is fixed at 0",
+		}}
+		return result
+	}
 	add := func(item ExplainItem) {
 		result.Items = append(result.Items, item)
 		result.Total += item.Contribution
@@ -149,6 +165,14 @@ type Result struct {
 // projected 的 Entry 为 nil → age 项不计；blocked/blocking 固定 false（由 Options 传）。
 func ExplainValue(tv TaskValue, opts Options) Result {
 	var result Result
+	// 终态任务（completed/deleted）urgency 恒为 0，与 Taskwarrior 一致。
+	// 保留一条说明项，便于 urgency 命令解释为何是 0。
+	if isTerminated(tv.Status) {
+		result.Items = []ExplainItem{{
+			Name: "urgency_terminated", Reason: "task is " + tv.Status + ", urgency is fixed at 0",
+		}}
+		return result
+	}
 	add := func(item ExplainItem) {
 		result.Items = append(result.Items, item)
 		result.Total += item.Contribution

@@ -145,3 +145,59 @@ func TestExplainValueProjectedNilEntryNoAge(t *testing.T) {
 		}
 	}
 }
+
+// TestTerminatedTasksHaveZeroUrgency 验证 completed/deleted 任务 urgency 恒为 0，
+// 即使带高优、+next、逾期 due、阻塞关系等也不会累计任何加分项。
+func TestTerminatedTasksHaveZeroUrgency(t *testing.T) {
+	due := int64(0) // 已逾期
+	priority := "H"
+	// completed：理论上若无归零会拿到 next(15)+H(6)+due(12)+age+tags+project 等高分。
+	tsk := task.Task{
+		UUID: "c1", Title: "done", Status: task.StatusCompleted,
+		Entry: 0, Modified: 0, Priority: &priority, Due: &due,
+		Tags: []string{"next", "ops"}, Project: strPtr("ops"),
+	}
+	if got := Explain(tsk, Options{NowUnix: 86400, Blocking: true}); got.Total != 0 {
+		t.Fatalf("completed Total = %f, want 0; items=%#v", got.Total, got.Items)
+	}
+	// deleted 同理。
+	del := tsk
+	del.UUID = "d1"
+	del.Status = task.StatusDeleted
+	if got := Explain(del, Options{NowUnix: 86400, Blocked: true}); got.Total != 0 {
+		t.Fatalf("deleted Total = %f, want 0; items=%#v", got.Total, got.Items)
+	}
+	// ExplainValue（TaskValue 路径，web console/HTTP 用）行为一致。
+	tv := TaskValue{
+		Status: task.StatusCompleted, Priority: &priority, Due: &due,
+		Tags: []string{"next"},
+	}
+	if got := ExplainValue(tv, Options{NowUnix: 86400, Blocking: true}); got.Total != 0 {
+		t.Fatalf("ExplainValue completed Total = %f, want 0; items=%#v", got.Total, got.Items)
+	}
+	// 终态任务应带一条说明项解释为何是 0。
+	if len(Explain(tsk, Options{}).Items) != 1 {
+		t.Fatal("terminated task should have a single urgency_terminated explanation item")
+	}
+}
+
+// TestActiveTasksNotAffectedByTermination 验证 pending/waiting 不受终态归零影响。
+func TestActiveTasksNotAffectedByTermination(t *testing.T) {
+	priority := "H"
+	pending := task.Task{
+		UUID: "p1", Title: "pending", Status: task.StatusPending,
+		Entry: 0, Priority: &priority, Tags: []string{"next"},
+	}
+	if got := Explain(pending, Options{NowUnix: 86400}); got.Total <= 0 {
+		t.Fatalf("pending Total = %f, want > 0", got.Total)
+	}
+	waiting := pending
+	waiting.UUID = "w1"
+	waiting.Status = task.StatusWaiting
+	// waiting 有负的 waiting 系数，但 next+H 仍为正，总不应被强制归零。
+	if got := Explain(waiting, Options{NowUnix: 86400}); got.Total <= 0 {
+		t.Fatalf("waiting Total = %f, want > 0 (only waiting penalty applied)", got.Total)
+	}
+}
+
+func strPtr(v string) *string { return &v }

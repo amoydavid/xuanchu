@@ -62,8 +62,8 @@ export type AssigneeFilterOption = {
 const STATUS_OPTIONS = ["pending", "completed", "waiting", "deleted"]
 const PRIORITY_OPTIONS = ["H", "M", "L"]
 const SORT_OPTIONS = [
+  { label: "紧急度（推荐）", value: "urgency" },
   { label: "创建顺序", value: "entry" },
-  { label: "下一步优先", value: "next" },
   { label: "截止日期", value: "due" },
   { label: "暂缓到", value: "wait" },
   { label: "开始时间", value: "start" },

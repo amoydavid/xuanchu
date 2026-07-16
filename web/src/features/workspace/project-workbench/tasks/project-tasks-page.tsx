@@ -67,7 +67,11 @@ export function ProjectTasksPage({
       tags: typeof search.tags === "string" ? search.tags : undefined,
       q: typeof search.q === "string" ? search.q : undefined,
       query: typeof search.query === "string" ? search.query : undefined,
-      sort: typeof search.sort === "string" ? search.sort : undefined,
+      // 默认按紧急度（urgency）排序：综合 due/priority/阻塞/active/age 等因素的优先级计算（spec §13.3）。
+      sort:
+        typeof search.sort === "string" && search.sort.length > 0
+          ? search.sort
+          : "urgency",
       task_type:
         typeof search.task_type === "string" ? search.task_type : undefined,
     }),

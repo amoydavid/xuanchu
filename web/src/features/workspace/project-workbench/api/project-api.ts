@@ -108,6 +108,8 @@ export type ProjectWorkbenchTask = {
     recurrence_at: number
     materialization: "projected" | "materialized"
   } | null
+  /** urgency 总分；按 urgency/next 排序时后端填充，用于展示与排序复现 */
+  urgency?: number | null
   [key: string]: unknown
 }
 

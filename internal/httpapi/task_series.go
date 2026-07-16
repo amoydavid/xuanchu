@@ -66,6 +66,7 @@ type taskOccurrenceJSON struct {
 	Links          []linkJSON            `json:"links,omitempty"`
 	RecurrenceInfo *recurrenceInfoJSON   `json:"recurrence_info,omitempty"`
 	UDAs           map[string]string     `json:"udas,omitempty"`
+	Urgency        *float64              `json:"urgency,omitempty"`
 }
 
 type recurrenceInfoJSON struct {
@@ -161,6 +162,7 @@ func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
 		Annotations: task.AnnotationsToJSON(v.Annotations), Links: taskLinksToJSON(v.Links),
 		Assignees: taskUserInfoListToJSON(v.Assignees),
 		UDAs:      udaValueMapToRaw(v.UDAs),
+		Urgency:   v.Urgency,
 	}
 	if v.RecurrenceInfo != nil {
 		out.RecurrenceInfo = &recurrenceInfoJSON{

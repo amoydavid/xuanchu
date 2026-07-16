@@ -79,6 +79,12 @@ export function TaskTable({
               <TableHead>{t("projectReadonly.title")}</TableHead>
               <TableHead>{t("common.status")}</TableHead>
               <TableHead>{t("projectReadonly.priority")}</TableHead>
+              <SortableHead
+                active={sort === "urgency"}
+                label={t("projectReadonly.urgency")}
+                onSortChange={onSortChange}
+                sort="urgency"
+              />
               <TableHead>{t("projectReadonly.assignee")}</TableHead>
               <SortableHead
                 active={sort === "due"}
@@ -236,6 +242,9 @@ function TaskTableRow({
           value={task.priority ?? "none"}
         />
       </TableCell>
+      <TableCell className="tabular-nums text-xs text-muted-foreground">
+        <UrgencyScore title={t("projectReadonly.urgencyHelp")} value={task.urgency} />
+      </TableCell>
       <TableCell className="max-w-48 truncate">{assigneeNames(task)}</TableCell>
       <TableCell>
         <InlineDatePicker
@@ -345,6 +354,9 @@ function TaskCard({
       <div className="mt-2 truncate text-xs text-muted-foreground">
         {assigneeNames(task)}
       </div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        <UrgencyScore title={t("projectReadonly.urgencyHelp")} value={task.urgency} />
+      </div>
       <div className="mt-3">
         <TaskRowActions
           canWrite={rowWritable}
@@ -420,4 +432,19 @@ function unixLikeToNumber(value: string | number | null | undefined) {
     }
   }
   return null
+}
+
+// UrgencyScore 展示后端计算的 urgency 总分；未计算（null/undefined）时显示占位符。
+// 只在按 urgency/next 排序时后端会填充该分数（spec §13.3）。
+function UrgencyScore({
+  title,
+  value,
+}: {
+  title?: string
+  value: number | null | undefined
+}) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return <span aria-hidden>-</span>
+  }
+  return <span title={title}>{value.toFixed(1)}</span>
 }

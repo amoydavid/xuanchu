@@ -2640,3 +2640,100 @@ func TestProjectTaskSummaryIncludesOccurrencesAndReportsSeriesMetrics(t *testing
 		t.Fatalf("OverdueRecurringOccurrenceCount = %d, want 1", view.SeriesMetrics.OverdueRecurringOccurrenceCount)
 	}
 }
+
+// TestQueryTaskViewsUrgencySortAndScore 验证 web console 任务列表页的默认排序路径
+// （QueryTaskViews + Sort=urgency）按 urgency 降序，并把分数回填到 view.Urgency。
+// 同时验证 next 是 urgency 的别名（UI 工具栏沿用 next 语义）。
+func TestQueryTaskViewsUrgencySortAndScore(t *testing.T) {
+	now := time.Date(2025, 7, 16, 12, 0, 0, 0, time.Local).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 高优 + 已逾期 due → 预期 urgency 最高。
+	overdue := now - 86400
+	high, err := svc.AddTaskView(AddInput{
+		Title: "high overdue", Project: &project.Slug, Priority: strptr("H"), Due: &overdue,
+	})
+	if err != nil {
+		t.Fatalf("AddTaskView high: %v", err)
+	}
+	// 低优 + 未来 due → urgency 次之。
+	future := now + 7*86400
+	low, err := svc.AddTaskView(AddInput{
+		Title: "low future", Project: &project.Slug, Priority: strptr("L"), Due: &future,
+	})
+	if err != nil {
+		t.Fatalf("AddTaskView low: %v", err)
+	}
+	// 无 due 无 priority → urgency 最低。
+	plain, err := svc.AddTaskView(AddInput{Title: "plain", Project: &project.Slug})
+	if err != nil {
+		t.Fatalf("AddTaskView plain: %v", err)
+	}
+
+	// urgency 排序应让 high > low > plain。
+	page, err := svc.QueryTaskViews(TaskViewQuery{Sort: "urgency", ProjectID: project.ID})
+	if err != nil {
+		t.Fatalf("QueryTaskViews urgency: %v", err)
+	}
+	wantOrder := []string{high.ID, low.ID, plain.ID}
+	if got := viewIDs(page.Items); !slices.Equal(got, wantOrder) {
+		t.Fatalf("urgency order = %v, want %v", got, wantOrder)
+	}
+	// 排序时应回填 urgency 分数。
+	for _, v := range page.Items {
+		if v.Urgency == nil {
+			t.Fatalf("view %s Urgency not populated", v.ID)
+		}
+	}
+	if page.Items[0].Urgency == nil || page.Items[1].Urgency == nil ||
+		*page.Items[0].Urgency <= *page.Items[1].Urgency {
+		t.Fatalf("urgency not descending: %v vs %v", page.Items[0].Urgency, page.Items[1].Urgency)
+	}
+
+	// next 是 urgency 的别名，应得到相同顺序。
+	nextPage, err := svc.QueryTaskViews(TaskViewQuery{Sort: "next", ProjectID: project.ID})
+	if err != nil {
+		t.Fatalf("QueryTaskViews next: %v", err)
+	}
+	if got := viewIDs(nextPage.Items); !slices.Equal(got, wantOrder) {
+		t.Fatalf("next order = %v, want %v (alias of urgency)", got, wantOrder)
+	}
+}
+
+// TestQueryTaskViewsUrgencyScoreNotPopulatedByOtherSorts 验证非 urgency 排序不回填分数。
+func TestQueryTaskViewsUrgencyScoreNotPopulatedByOtherSorts(t *testing.T) {
+	now := time.Date(2025, 7, 16, 12, 0, 0, 0, time.Local).Unix()
+	svc, closeFn := newTestService(t, now)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddTaskView(AddInput{Title: "t1", Project: &project.Slug}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.QueryTaskViews(TaskViewQuery{Sort: "entry", ProjectID: project.ID})
+	if err != nil {
+		t.Fatalf("QueryTaskViews entry: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(page.Items))
+	}
+	if page.Items[0].Urgency != nil {
+		t.Fatalf("entry sort should not populate Urgency, got %v", page.Items[0].Urgency)
+	}
+}
+
+func viewIDs(items []TaskOccurrenceView) []string {
+	out := make([]string, 0, len(items))
+	for _, v := range items {
+		out = append(out, v.ID)
+	}
+	return out
+}

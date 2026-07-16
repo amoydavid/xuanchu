@@ -975,6 +975,9 @@ export const zhCN = {
     overdue: "已逾期",
     pending: "待处理",
     priority: "优先级",
+    urgency: "紧急度",
+    urgencyHelp:
+      "紧急度由系统按 due、priority、阻塞关系、active、age、标签等综合计算，分数越高越优先处理。点击表头或工具栏可按此排序。",
     project: "项目",
     permissionDescription:
       "你已经登录，但当前身份没有读取 {{project}} 的权限。",

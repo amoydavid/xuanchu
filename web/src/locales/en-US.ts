@@ -1004,6 +1004,9 @@ export const enUS = {
     overdue: "Overdue",
     pending: "Pending",
     priority: "Priority",
+    urgency: "Urgency",
+    urgencyHelp:
+      "Urgency is computed from due date, priority, blocking relations, active state, age, tags and more. Higher score means higher priority. Sort by it from the column header or toolbar.",
     project: "Project",
     permissionDescription:
       "You are signed in, but this identity cannot read {{project}}.",
