@@ -271,12 +271,18 @@ func toolErrorCode(result *mcp.CallToolResult) string {
 }
 
 func patchInputSchema[In any](schema *jsonschema.Schema) {
-	switch any(*new(In)).(type) {
-	case ProjectGetInput:
+	annotateScopeFields(schema)
+
+	if projectRefRequired(any(*new(In))) {
+		// handler 通过 projectRefForScope 校验：project 或 project_id 至少传一个，
+		// 二者皆空会直接返回 project_not_found。anyOf 把这一约束暴露给调用方。
 		schema.AnyOf = []*jsonschema.Schema{
 			{Required: []string{"project"}},
 			{Required: []string{"project_id"}},
 		}
+	}
+
+	switch any(*new(In)).(type) {
 	case TaskSeriesListInput, TaskSeriesOccurrenceListInput:
 		minimum, maximum := float64(1), float64(mcpMaxLimit)
 		if limit := schema.Properties["limit"]; limit != nil {
@@ -289,6 +295,49 @@ func patchInputSchema[In any](schema *jsonschema.Schema) {
 			offset.Default = json.RawMessage("0")
 			offset.Minimum = &zero
 		}
+	}
+}
+
+// projectRefRequired 报告该 input 的 handler 是否依赖 projectRefForScope，
+// 即 project/project_id 至少传一个才能定位资源。用类型断言集中维护，
+// 避免每个 struct 都写 anyOf。
+func projectRefRequired(v any) bool {
+	switch v.(type) {
+	case ProjectGetInput,
+		ProjectAnnotateInput,
+		ProjectDenotateInput,
+		ProjectAnnotationsInput,
+		ProjectTimelineInput,
+		ProjectModifyInput,
+		ProjectArchiveInput,
+		ProjectTransitionInput,
+		ProjectConfigSetInput,
+		ProjectConfigUnsetInput,
+		ProjectConfigListInput:
+		return true
+	}
+	return false
+}
+
+// scopeFieldDescriptions 统一作用域三件套的描述。字段已有 jsonschema tag
+// （如 task 系列里更精确的文案）时不覆盖，仅给裸字段补说明，让 LLM 在
+// 所有工具上对 workspace/project/project_id 看到一致的语义。
+var scopeFieldDescriptions = map[string]string{
+	"workspace":  "workspace slug or UUID; omit to use the actor's default workspace",
+	"project":    "project slug in the effective workspace",
+	"project_id": "stable project UUID",
+}
+
+func annotateScopeFields(schema *jsonschema.Schema) {
+	if schema == nil || len(schema.Properties) == 0 {
+		return
+	}
+	for name, desc := range scopeFieldDescriptions {
+		prop := schema.Properties[name]
+		if prop == nil || prop.Description != "" {
+			continue
+		}
+		prop.Description = desc
 	}
 }
 

@@ -4,12 +4,15 @@
     "additionalProperties": false,
     "properties": {
       "display_name": {
+        "description": "human-readable display name",
         "type": "string"
       },
       "email": {
+        "description": "user email",
         "type": "string"
       },
       "name": {
+        "description": "login name, unique within the instance",
         "type": "string"
       }
     },

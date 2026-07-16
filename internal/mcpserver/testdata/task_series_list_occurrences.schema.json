@@ -12,6 +12,7 @@
         "type": "string"
       },
       "id": {
+        "description": "series UUID",
         "type": "string"
       },
       "limit": {
@@ -26,9 +27,11 @@
         "type": "integer"
       },
       "status": {
+        "description": "filter by occurrence status: pending, active, completed, deleted",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

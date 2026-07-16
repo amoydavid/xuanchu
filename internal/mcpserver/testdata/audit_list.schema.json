@@ -4,21 +4,27 @@
     "additionalProperties": false,
     "properties": {
       "actor": {
+        "description": "filter by actor user ref",
         "type": "string"
       },
       "limit": {
+        "description": "max audit entries to return (default 20)",
         "type": "integer"
       },
       "offset": {
+        "description": "number of audit entries to skip",
         "type": "integer"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

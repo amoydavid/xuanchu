@@ -4,12 +4,15 @@
     "additionalProperties": false,
     "properties": {
       "occurrence_id": {
+        "description": "occurrence UUID to skip",
         "type": "string"
       },
       "series_id": {
+        "description": "series UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

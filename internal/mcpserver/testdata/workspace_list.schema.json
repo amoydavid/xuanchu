@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "include_archived": {
+        "description": "include archived workspaces in the result",
         "type": "boolean"
       }
     },

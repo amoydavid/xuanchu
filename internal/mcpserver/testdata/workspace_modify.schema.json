@@ -4,24 +4,28 @@
     "additionalProperties": false,
     "properties": {
       "description": {
+        "description": "new workspace description; pass empty string to clear",
         "type": [
           "null",
           "string"
         ]
       },
       "name": {
+        "description": "new human-readable workspace name",
         "type": [
           "null",
           "string"
         ]
       },
       "visibility": {
+        "description": "new visibility: public or private",
         "type": [
           "null",
           "string"
         ]
       },
       "workspace": {
+        "description": "workspace slug or UUID",
         "type": "string"
       }
     },

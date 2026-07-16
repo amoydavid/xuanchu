@@ -11,8 +11,8 @@ import (
 
 type ProjectListInput struct {
 	Workspace       string `json:"workspace,omitempty"`
-	IncludeArchived bool   `json:"include_archived,omitempty"`
-	Status          string `json:"status,omitempty"`
+	IncludeArchived bool   `json:"include_archived,omitempty" jsonschema:"include archived projects in the result"`
+	Status          string `json:"status,omitempty" jsonschema:"filter by status: open, planning, active, archived, cancelled, or all (default open)"`
 }
 
 type ProjectGetInput struct {
@@ -31,14 +31,14 @@ type ProjectAnnotateInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Content   string `json:"content"`
+	Content   string `json:"content" jsonschema:"annotation body text"`
 }
 
 type ProjectDenotateInput struct {
 	Workspace    string `json:"workspace,omitempty"`
 	Project      string `json:"project,omitempty"`
 	ProjectID    string `json:"project_id,omitempty"`
-	AnnotationID string `json:"annotation_id"`
+	AnnotationID string `json:"annotation_id" jsonschema:"annotation ID to remove"`
 }
 
 type ProjectAnnotationsInput struct {
@@ -51,23 +51,23 @@ type ProjectTimelineInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
-	Offset    int    `json:"offset,omitempty"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"max timeline entries to return (default 20)"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"number of timeline entries to skip"`
 }
 
 type ProjectAddInput struct {
 	Workspace   string `json:"workspace,omitempty"`
-	Slug        string `json:"slug"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
+	Slug        string `json:"slug" jsonschema:"unique project slug within the workspace"`
+	Name        string `json:"name,omitempty" jsonschema:"human-readable project name"`
+	Description string `json:"description,omitempty" jsonschema:"project description"`
 }
 
 type ProjectModifyInput struct {
 	Workspace   string  `json:"workspace,omitempty"`
 	Project     string  `json:"project,omitempty"`
 	ProjectID   string  `json:"project_id,omitempty"`
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
+	Name        *string `json:"name,omitempty" jsonschema:"new human-readable project name"`
+	Description *string `json:"description,omitempty" jsonschema:"new project description; pass empty string to clear"`
 }
 
 type ProjectArchiveInput struct {
@@ -80,22 +80,22 @@ type ProjectTransitionInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Status    string `json:"status"`
+	Status    string `json:"status" jsonschema:"target status: planning, active, archived, or cancelled"`
 }
 
 type ProjectConfigSetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Key       string `json:"key"`
-	Value     string `json:"value"`
+	Key       string `json:"key" jsonschema:"config key, e.g. agent.background"`
+	Value     string `json:"value" jsonschema:"config value"`
 }
 
 type ProjectConfigUnsetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Key       string `json:"key"`
+	Key       string `json:"key" jsonschema:"config key to remove"`
 }
 
 type ProjectConfigListInput struct {

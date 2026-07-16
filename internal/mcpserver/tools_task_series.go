@@ -17,18 +17,18 @@ import (
 type TaskSeriesAddInput struct {
 	Workspace      string            `json:"workspace,omitempty"`
 	Project        string            `json:"project,omitempty"`
-	ProjectID      string            `json:"project_id,omitempty"`
-	Title          string            `json:"title"`
-	Description    *string           `json:"description,omitempty"`
-	RecurrenceRule string            `json:"recurrence_rule"`
-	FirstDue       *int64            `json:"first_due,omitempty"`
-	FirstDueDate   *string           `json:"first_due_date,omitempty"`
-	Until          *int64            `json:"until,omitempty"`
-	UntilDate      *string           `json:"until_date,omitempty"`
-	Priority       *string           `json:"priority,omitempty"`
-	Assignees      []string          `json:"assignees,omitempty"`
-	Tags           []string          `json:"tags,omitempty"`
-	UDAs           map[string]string `json:"udas,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	Title          string            `json:"title" jsonschema:"series title"`
+	Description    *string           `json:"description,omitempty" jsonschema:"series details"`
+	RecurrenceRule string            `json:"recurrence_rule" jsonschema:"recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO"`
+	FirstDue       *int64            `json:"first_due,omitempty" jsonschema:"first occurrence due time, unix seconds"`
+	FirstDueDate   *string           `json:"first_due_date,omitempty" jsonschema:"first occurrence due date as YYYY-MM-DD; stored at local 23:59:59"`
+	Until          *int64            `json:"until,omitempty" jsonschema:"series end time, unix seconds"`
+	UntilDate      *string           `json:"until_date,omitempty" jsonschema:"series end date as YYYY-MM-DD; stored at local 23:59:59"`
+	Priority       *string           `json:"priority,omitempty" jsonschema:"task priority: H, M, or L (default M)"`
+	Assignees      []string          `json:"assignees,omitempty" jsonschema:"workspace user refs to assign to each occurrence"`
+	Tags           []string          `json:"tags,omitempty" jsonschema:"tags applied to each occurrence"`
+	UDAs           map[string]string `json:"udas,omitempty" jsonschema:"user-defined attributes applied to each occurrence"`
 }
 
 func (in TaskSeriesAddInput) scopeInput() RequestScopeInput {
@@ -39,10 +39,10 @@ type TaskSeriesListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Q         string `json:"q,omitempty"`
-	Assignee  string `json:"assignee,omitempty"`
-	Sort      string `json:"sort,omitempty"`
+	Status    string `json:"status,omitempty" jsonschema:"filter by series status: active or stopped"`
+	Q         string `json:"q,omitempty" jsonschema:"free-text filter on series title"`
+	Assignee  string `json:"assignee,omitempty" jsonschema:"filter by assignee user ref"`
+	Sort      string `json:"sort,omitempty" jsonschema:"sort expression, e.g. title, due-"`
 	Limit     int    `json:"limit,omitempty"`
 	Offset    int    `json:"offset,omitempty"`
 }
@@ -55,7 +55,7 @@ type TaskSeriesRefInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	ID        string `json:"id"`
+	ID        string `json:"id" jsonschema:"series UUID"`
 }
 
 func (in TaskSeriesRefInput) scopeInput() RequestScopeInput {
@@ -64,8 +64,8 @@ func (in TaskSeriesRefInput) scopeInput() RequestScopeInput {
 
 type TaskSeriesStopInput struct {
 	Workspace             string `json:"workspace,omitempty"`
-	ID                    string `json:"id"`
-	DeleteOpenOccurrences bool   `json:"delete_open_occurrences,omitempty"`
+	ID                    string `json:"id" jsonschema:"series UUID"`
+	DeleteOpenOccurrences bool   `json:"delete_open_occurrences,omitempty" jsonschema:"also delete not-yet-completed occurrences"`
 }
 
 func (in TaskSeriesStopInput) scopeInput() RequestScopeInput {
@@ -74,8 +74,8 @@ func (in TaskSeriesStopInput) scopeInput() RequestScopeInput {
 
 type TaskSeriesOccurrenceListInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	ID        string `json:"id"`
-	Status    string `json:"status,omitempty"`
+	ID        string `json:"id" jsonschema:"series UUID"`
+	Status    string `json:"status,omitempty" jsonschema:"filter by occurrence status: pending, active, completed, deleted"`
 	DueAfter  string `json:"due_after,omitempty" jsonschema:"inclusive YYYY-MM-DD"`
 	DueBefore string `json:"due_before,omitempty" jsonschema:"inclusive YYYY-MM-DD"`
 	Limit     int    `json:"limit,omitempty"`
@@ -88,8 +88,8 @@ func (in TaskSeriesOccurrenceListInput) scopeInput() RequestScopeInput {
 
 type TaskSeriesOccurrenceSkipInput struct {
 	Workspace    string `json:"workspace,omitempty"`
-	SeriesID     string `json:"series_id"`
-	OccurrenceID string `json:"occurrence_id"`
+	SeriesID     string `json:"series_id" jsonschema:"series UUID"`
+	OccurrenceID string `json:"occurrence_id" jsonschema:"occurrence UUID to skip"`
 }
 
 func (in TaskSeriesOccurrenceSkipInput) scopeInput() RequestScopeInput {
@@ -201,19 +201,19 @@ func registerTaskSeriesGet(s *mcp.Server, opts Options) {
 
 type TaskSeriesModifyInput struct {
 	Workspace         string            `json:"workspace,omitempty"`
-	ID                string            `json:"id"`
-	Title             *string           `json:"title,omitempty"`
-	Description       *string           `json:"description,omitempty"`
-	Priority          *string           `json:"priority,omitempty"`
-	Assignees         []string          `json:"assignees,omitempty"`
-	Tags              []string          `json:"tags,omitempty"`
-	UDAs              map[string]string `json:"udas,omitempty"`
-	RecurrenceRule    *string           `json:"recurrence_rule,omitempty"`
-	EffectiveFrom     *int64            `json:"effective_from,omitempty"`
-	EffectiveFromDate *string           `json:"effective_from_date,omitempty"`
-	Until             *int64            `json:"until,omitempty"`
-	UntilDate         *string           `json:"until_date,omitempty"`
-	Clear             []string          `json:"clear,omitempty"`
+	ID                string            `json:"id" jsonschema:"series UUID"`
+	Title             *string           `json:"title,omitempty" jsonschema:"new series title"`
+	Description       *string           `json:"description,omitempty" jsonschema:"new series details; pass empty string to clear"`
+	Priority          *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L"`
+	Assignees         []string          `json:"assignees,omitempty" jsonschema:"replace assignee user refs on each occurrence"`
+	Tags              []string          `json:"tags,omitempty" jsonschema:"replace tags on each occurrence"`
+	UDAs              map[string]string `json:"udas,omitempty" jsonschema:"replace user-defined attributes on each occurrence"`
+	RecurrenceRule    *string           `json:"recurrence_rule,omitempty" jsonschema:"new recurrence rule; requires effective_from"`
+	EffectiveFrom     *int64            `json:"effective_from,omitempty" jsonschema:"rule-change effective time, unix seconds"`
+	EffectiveFromDate *string           `json:"effective_from_date,omitempty" jsonschema:"rule-change effective date as YYYY-MM-DD; stored at local 00:00:00"`
+	Until             *int64            `json:"until,omitempty" jsonschema:"new series end time, unix seconds"`
+	UntilDate         *string           `json:"until_date,omitempty" jsonschema:"new series end date as YYYY-MM-DD; stored at local 23:59:59"`
+	Clear             []string          `json:"clear,omitempty" jsonschema:"fields to clear: title, description, priority, assignees, tags, udas, until"`
 }
 
 func (in TaskSeriesModifyInput) scopeInput() RequestScopeInput {

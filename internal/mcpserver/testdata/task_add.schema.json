@@ -31,7 +31,7 @@
         ]
       },
       "due": {
-        "description": "unix seconds",
+        "description": "deadline time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -42,6 +42,7 @@
         "type": "string"
       },
       "priority": {
+        "description": "task priority: H, M, or L (default M)",
         "type": "string"
       },
       "project": {
@@ -53,7 +54,7 @@
         "type": "string"
       },
       "scheduled": {
-        "description": "unix seconds",
+        "description": "scheduled start time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -78,7 +79,7 @@
         "type": "string"
       },
       "until": {
-        "description": "unix seconds",
+        "description": "effective-until time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -89,7 +90,7 @@
         "type": "string"
       },
       "wait": {
-        "description": "unix seconds",
+        "description": "defer-until time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -100,7 +101,7 @@
         "type": "string"
       },
       "workspace": {
-        "description": "workspace slug or UUID",
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

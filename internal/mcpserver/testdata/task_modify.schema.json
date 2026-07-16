@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "assignees": {
+        "description": "workspace user refs to assign",
         "items": {
           "type": "string"
         },
@@ -13,6 +14,7 @@
         ]
       },
       "clear": {
+        "description": "fields to clear: title, description, priority, due, wait, scheduled, until",
         "items": {
           "type": "string"
         },
@@ -22,9 +24,11 @@
         ]
       },
       "clear_depends": {
+        "description": "remove all dependency links",
         "type": "boolean"
       },
       "depends": {
+        "description": "task refs this task depends on (replaces existing)",
         "items": {
           "type": "string"
         },
@@ -34,12 +38,14 @@
         ]
       },
       "description": {
+        "description": "new task details; pass empty string to clear",
         "type": [
           "null",
           "string"
         ]
       },
       "due": {
+        "description": "new deadline time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -54,18 +60,22 @@
         "type": "string"
       },
       "priority": {
+        "description": "new task priority: H, M, or L",
         "type": [
           "null",
           "string"
         ]
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "remove_assignees": {
+        "description": "workspace user refs to unassign",
         "items": {
           "type": "string"
         },
@@ -75,6 +85,7 @@
         ]
       },
       "remove_tags": {
+        "description": "task tags to remove",
         "items": {
           "type": "string"
         },
@@ -84,6 +95,7 @@
         ]
       },
       "scheduled": {
+        "description": "new scheduled start time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -94,6 +106,7 @@
         "type": "string"
       },
       "tags": {
+        "description": "task tags to add",
         "items": {
           "type": "string"
         },
@@ -103,6 +116,7 @@
         ]
       },
       "title": {
+        "description": "new task title",
         "type": [
           "null",
           "string"
@@ -112,9 +126,11 @@
         "additionalProperties": {
           "type": "string"
         },
+        "description": "user-defined attribute overrides",
         "type": "object"
       },
       "until": {
+        "description": "new effective-until time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -125,6 +141,7 @@
         "type": "string"
       },
       "wait": {
+        "description": "new defer-until time, unix seconds",
         "type": [
           "null",
           "integer"
@@ -135,6 +152,7 @@
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

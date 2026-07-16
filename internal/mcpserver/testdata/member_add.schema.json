@@ -4,12 +4,15 @@
     "additionalProperties": false,
     "properties": {
       "role": {
+        "description": "member role: owner, admin, member, or guest (default member)",
         "type": "string"
       },
       "user": {
+        "description": "user name, email, or UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

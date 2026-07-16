@@ -2,14 +2,29 @@
   "description": "List annotations on a project; read-only.",
   "inputSchema": {
     "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
     "properties": {
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

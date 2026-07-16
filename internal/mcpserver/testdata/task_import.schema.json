@@ -5,6 +5,7 @@
     "properties": {
       "bundle": {
         "additionalProperties": false,
+        "description": "exported task bundle; shape {schema, exported_at, task_series, tasks}",
         "properties": {
           "exported_at": {
             "type": "string"
@@ -433,12 +434,15 @@
         "type": "object"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

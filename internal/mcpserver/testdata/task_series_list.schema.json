@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "assignee": {
+        "description": "filter by assignee user ref",
         "type": "string"
       },
       "limit": {
@@ -18,21 +19,27 @@
         "type": "integer"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "q": {
+        "description": "free-text filter on series title",
         "type": "string"
       },
       "sort": {
+        "description": "sort expression, e.g. title, due-",
         "type": "string"
       },
       "status": {
+        "description": "filter by series status: active or stopped",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

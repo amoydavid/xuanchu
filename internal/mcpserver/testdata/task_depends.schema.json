@@ -4,9 +4,11 @@
     "additionalProperties": false,
     "properties": {
       "clear_depends": {
+        "description": "remove all dependency links",
         "type": "boolean"
       },
       "depends": {
+        "description": "task refs this task depends on (replaces existing)",
         "items": {
           "type": "string"
         },
@@ -20,12 +22,15 @@
         "type": "string"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

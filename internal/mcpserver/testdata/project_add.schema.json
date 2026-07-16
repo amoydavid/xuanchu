@@ -4,15 +4,19 @@
     "additionalProperties": false,
     "properties": {
       "description": {
+        "description": "project description",
         "type": "string"
       },
       "name": {
+        "description": "human-readable project name",
         "type": "string"
       },
       "slug": {
+        "description": "unique project slug within the workspace",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

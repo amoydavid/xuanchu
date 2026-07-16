@@ -50,10 +50,10 @@ type HookModifyInput struct {
 	Project   string   `json:"project,omitempty"`
 	ProjectID string   `json:"project_id,omitempty"`
 	Hook      string   `json:"hook" jsonschema:"hook ID"`
-	Name      *string  `json:"name,omitempty"`
-	Sink      *string  `json:"sink,omitempty"`
-	Events    []string `json:"events,omitempty"`
-	Active    *bool    `json:"active,omitempty"`
+	Name      *string  `json:"name,omitempty" jsonschema:"new hook name"`
+	Sink      *string  `json:"sink,omitempty" jsonschema:"new notification sink name or ID"`
+	Events    []string `json:"events,omitempty" jsonschema:"event types that trigger the hook"`
+	Active    *bool    `json:"active,omitempty" jsonschema:"whether the hook is enabled"`
 }
 
 func (in HookModifyInput) scopeInput() RequestScopeInput {
@@ -66,7 +66,7 @@ type HookDeliveryListInput struct {
 	ProjectID string `json:"project_id,omitempty"`
 	Hook      string `json:"hook" jsonschema:"hook ID"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"max deliveries to return (default 20)"`
-	Offset    int    `json:"offset,omitempty"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"number of deliveries to skip"`
 }
 
 func (in HookDeliveryListInput) scopeInput() RequestScopeInput {

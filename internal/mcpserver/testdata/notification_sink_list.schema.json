@@ -4,9 +4,11 @@
     "additionalProperties": false,
     "properties": {
       "include_disabled": {
+        "description": "include disabled sinks in the result",
         "type": "boolean"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

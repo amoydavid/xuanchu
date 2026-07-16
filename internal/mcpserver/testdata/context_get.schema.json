@@ -4,9 +4,11 @@
     "additionalProperties": false,
     "properties": {
       "name": {
+        "description": "named context to read; omit for the active context",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

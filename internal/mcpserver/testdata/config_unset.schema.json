@@ -4,9 +4,11 @@
     "additionalProperties": false,
     "properties": {
       "key": {
+        "description": "config key to remove",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

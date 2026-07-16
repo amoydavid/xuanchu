@@ -4,12 +4,15 @@
     "additionalProperties": false,
     "properties": {
       "external_id": {
+        "description": "external ID value",
         "type": "string"
       },
       "provider": {
+        "description": "external ID provider, e.g. feishu, wecom, dingtalk",
         "type": "string"
       },
       "user": {
+        "description": "user name, email, or UUID",
         "type": "string"
       }
     },

@@ -12,7 +12,7 @@ import (
 
 type NotificationSinkListInput struct {
 	Workspace       string `json:"workspace,omitempty"`
-	IncludeDisabled bool   `json:"include_disabled,omitempty"`
+	IncludeDisabled bool   `json:"include_disabled,omitempty" jsonschema:"include disabled sinks in the result"`
 }
 
 func (in NotificationSinkListInput) scopeInput() RequestScopeInput {
@@ -33,9 +33,9 @@ type NotificationSinkAddInput struct {
 	BodyContentType string                           `json:"body_content_type,omitempty" jsonschema:"rendered body content type"`
 	SecretRefs      []app.HTTPTemplateSecretRefInput `json:"secret_refs,omitempty" jsonschema:"secret aliases backed by secret config keys"`
 	Secret          string                           `json:"secret,omitempty" jsonschema:"webhook signing secret"`
-	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty"`
-	MaxAttempts     int                              `json:"max_attempts,omitempty"`
-	MaxConcurrency  int                              `json:"max_concurrency,omitempty"`
+	TimeoutSeconds  int                              `json:"timeout_seconds,omitempty" jsonschema:"delivery timeout in seconds"`
+	MaxAttempts     int                              `json:"max_attempts,omitempty" jsonschema:"max delivery attempts"`
+	MaxConcurrency  int                              `json:"max_concurrency,omitempty" jsonschema:"max concurrent deliveries"`
 }
 
 func (in NotificationSinkAddInput) scopeInput() RequestScopeInput {
@@ -54,21 +54,21 @@ func (in NotificationSinkRefInput) scopeInput() RequestScopeInput {
 type NotificationSinkModifyInput struct {
 	Workspace       string                            `json:"workspace,omitempty"`
 	Sink            string                            `json:"sink" jsonschema:"notification sink ID"`
-	Name            *string                           `json:"name,omitempty"`
-	Type            *string                           `json:"type,omitempty"`
-	EndpointMode    *string                           `json:"endpoint_mode,omitempty"`
-	URL             *string                           `json:"url,omitempty"`
-	URLTemplate     *string                           `json:"url_template,omitempty"`
-	ConfigKey       *string                           `json:"config_key,omitempty"`
-	AllowedHosts    *[]string                         `json:"allowed_hosts,omitempty"`
-	HeaderTemplates *[]app.HTTPHeaderTemplateInput    `json:"header_templates,omitempty"`
-	BodyTemplate    *string                           `json:"body_template,omitempty"`
-	BodyContentType *string                           `json:"body_content_type,omitempty"`
-	SecretRefs      *[]app.HTTPTemplateSecretRefInput `json:"secret_refs,omitempty"`
-	Secret          *string                           `json:"secret,omitempty"`
-	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty"`
-	MaxAttempts     *int                              `json:"max_attempts,omitempty"`
-	MaxConcurrency  *int                              `json:"max_concurrency,omitempty"`
+	Name            *string                           `json:"name,omitempty" jsonschema:"new sink name"`
+	Type            *string                           `json:"type,omitempty" jsonschema:"new sink type: webhook or http_template"`
+	EndpointMode    *string                           `json:"endpoint_mode,omitempty" jsonschema:"new endpoint mode: static_url, template, or config_value"`
+	URL             *string                           `json:"url,omitempty" jsonschema:"new static endpoint URL"`
+	URLTemplate     *string                           `json:"url_template,omitempty" jsonschema:"new controlled URL template"`
+	ConfigKey       *string                           `json:"config_key,omitempty" jsonschema:"new config key for config_value endpoint mode"`
+	AllowedHosts    *[]string                         `json:"allowed_hosts,omitempty" jsonschema:"new allowed endpoint hosts"`
+	HeaderTemplates *[]app.HTTPHeaderTemplateInput    `json:"header_templates,omitempty" jsonschema:"new HTTP header templates"`
+	BodyTemplate    *string                           `json:"body_template,omitempty" jsonschema:"new HTTP body template"`
+	BodyContentType *string                           `json:"body_content_type,omitempty" jsonschema:"new rendered body content type"`
+	SecretRefs      *[]app.HTTPTemplateSecretRefInput `json:"secret_refs,omitempty" jsonschema:"new secret aliases"`
+	Secret          *string                           `json:"secret,omitempty" jsonschema:"new webhook signing secret"`
+	TimeoutSeconds  *int                              `json:"timeout_seconds,omitempty" jsonschema:"new delivery timeout in seconds"`
+	MaxAttempts     *int                              `json:"max_attempts,omitempty" jsonschema:"new max delivery attempts"`
+	MaxConcurrency  *int                              `json:"max_concurrency,omitempty" jsonschema:"new max concurrent deliveries"`
 }
 
 func (in NotificationSinkModifyInput) scopeInput() RequestScopeInput {
@@ -79,7 +79,7 @@ type ReminderRuleListInput struct {
 	Workspace       string `json:"workspace,omitempty"`
 	Project         string `json:"project,omitempty"`
 	ProjectID       string `json:"project_id,omitempty"`
-	IncludeDisabled bool   `json:"include_disabled,omitempty"`
+	IncludeDisabled bool   `json:"include_disabled,omitempty" jsonschema:"include disabled rules in the result"`
 }
 
 func (in ReminderRuleListInput) scopeInput() RequestScopeInput {
@@ -123,17 +123,17 @@ type ReminderRuleModifyInput struct {
 	Project       string    `json:"project,omitempty"`
 	ProjectID     string    `json:"project_id,omitempty"`
 	Rule          string    `json:"rule" jsonschema:"reminder rule ID"`
-	Name          *string   `json:"name,omitempty"`
+	Name          *string   `json:"name,omitempty" jsonschema:"new rule name"`
 	ProjectRef    *string   `json:"project_ref,omitempty" jsonschema:"new rule project scope; empty clears project scope"`
-	TriggerType   *string   `json:"trigger_type,omitempty"`
-	OffsetSeconds *int64    `json:"offset_seconds,omitempty"`
-	AfterSeconds  *int64    `json:"after_seconds,omitempty"`
-	RepeatPolicy  *string   `json:"repeat_policy,omitempty"`
-	ScheduleType  *string   `json:"schedule_type,omitempty"`
-	ScheduleValue *string   `json:"schedule_value,omitempty"`
-	FilterSource  *string   `json:"filter_source,omitempty"`
-	AudienceType  *string   `json:"audience_type,omitempty"`
-	Recipients    *[]string `json:"recipients,omitempty"`
+	TriggerType   *string   `json:"trigger_type,omitempty" jsonschema:"new trigger type: due_before or overdue"`
+	OffsetSeconds *int64    `json:"offset_seconds,omitempty" jsonschema:"new seconds before due for due_before"`
+	AfterSeconds  *int64    `json:"after_seconds,omitempty" jsonschema:"new seconds after due for overdue"`
+	RepeatPolicy  *string   `json:"repeat_policy,omitempty" jsonschema:"new repeat policy: once or every:<duration>"`
+	ScheduleType  *string   `json:"schedule_type,omitempty" jsonschema:"new schedule type: daily_at or daily@HH:MM"`
+	ScheduleValue *string   `json:"schedule_value,omitempty" jsonschema:"new daily schedule time such as 08:50"`
+	FilterSource  *string   `json:"filter_source,omitempty" jsonschema:"new task filter expression for scheduled rules"`
+	AudienceType  *string   `json:"audience_type,omitempty" jsonschema:"new audience: assignees, explicit_users, or assignees_and_explicit_users"`
+	Recipients    *[]string `json:"recipients,omitempty" jsonschema:"new explicit recipient user refs"`
 	Sink          *string   `json:"sink,omitempty" jsonschema:"notification sink name or ID"`
 }
 
@@ -145,7 +145,7 @@ type NotificationRuleListInput struct {
 	Workspace       string `json:"workspace,omitempty"`
 	Project         string `json:"project,omitempty"`
 	ProjectID       string `json:"project_id,omitempty"`
-	IncludeDisabled bool   `json:"include_disabled,omitempty"`
+	IncludeDisabled bool   `json:"include_disabled,omitempty" jsonschema:"include disabled rules in the result"`
 }
 
 func (in NotificationRuleListInput) scopeInput() RequestScopeInput {
@@ -162,8 +162,8 @@ type NotificationRuleAddInput struct {
 	Audience        string   `json:"audience" jsonschema:"actor, assignees, explicit_users, or assignees_and_explicit_users"`
 	Recipients      []string `json:"recipients,omitempty" jsonschema:"explicit recipient user refs"`
 	Sink            string   `json:"sink" jsonschema:"notification sink name or ID"`
-	TemplateSubject string   `json:"template_subject,omitempty"`
-	TemplateBody    string   `json:"template_body,omitempty"`
+	TemplateSubject string   `json:"template_subject,omitempty" jsonschema:"optional rendered notification subject template"`
+	TemplateBody    string   `json:"template_body,omitempty" jsonschema:"optional rendered notification body template"`
 }
 
 func (in NotificationRuleAddInput) scopeInput() RequestScopeInput {
@@ -186,15 +186,15 @@ type NotificationRuleModifyInput struct {
 	Project         string    `json:"project,omitempty"`
 	ProjectID       string    `json:"project_id,omitempty"`
 	Rule            string    `json:"rule" jsonschema:"notification rule ID"`
-	Name            *string   `json:"name,omitempty"`
+	Name            *string   `json:"name,omitempty" jsonschema:"new rule name"`
 	ProjectRef      *string   `json:"project_ref,omitempty" jsonschema:"new rule project scope; empty clears project scope"`
-	Event           *string   `json:"event,omitempty"`
-	Filter          *string   `json:"filter,omitempty"`
-	Audience        *string   `json:"audience,omitempty"`
-	Recipients      *[]string `json:"recipients,omitempty"`
+	Event           *string   `json:"event,omitempty" jsonschema:"new event type"`
+	Filter          *string   `json:"filter,omitempty" jsonschema:"new task filter expression for task events"`
+	Audience        *string   `json:"audience,omitempty" jsonschema:"new audience: actor, assignees, explicit_users, or assignees_and_explicit_users"`
+	Recipients      *[]string `json:"recipients,omitempty" jsonschema:"new explicit recipient user refs"`
 	Sink            *string   `json:"sink,omitempty" jsonschema:"notification sink name or ID"`
-	TemplateSubject *string   `json:"template_subject,omitempty"`
-	TemplateBody    *string   `json:"template_body,omitempty"`
+	TemplateSubject *string   `json:"template_subject,omitempty" jsonschema:"new rendered notification subject template"`
+	TemplateBody    *string   `json:"template_body,omitempty" jsonschema:"new rendered notification body template"`
 }
 
 func (in NotificationRuleModifyInput) scopeInput() RequestScopeInput {
@@ -204,9 +204,9 @@ func (in NotificationRuleModifyInput) scopeInput() RequestScopeInput {
 type NotificationDeliveryListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Sink      string `json:"sink,omitempty" jsonschema:"notification sink ID"`
-	Status    string `json:"status,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
-	Offset    int    `json:"offset,omitempty"`
+	Status    string `json:"status,omitempty" jsonschema:"filter by delivery status: pending, delivered, failed"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"max deliveries to return (default 20)"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"number of deliveries to skip"`
 }
 
 func (in NotificationDeliveryListInput) scopeInput() RequestScopeInput {

@@ -4,39 +4,46 @@
     "additionalProperties": false,
     "properties": {
       "after_seconds": {
+        "description": "new seconds after due for overdue",
         "type": [
           "null",
           "integer"
         ]
       },
       "audience_type": {
+        "description": "new audience: assignees, explicit_users, or assignees_and_explicit_users",
         "type": [
           "null",
           "string"
         ]
       },
       "filter_source": {
+        "description": "new task filter expression for scheduled rules",
         "type": [
           "null",
           "string"
         ]
       },
       "name": {
+        "description": "new rule name",
         "type": [
           "null",
           "string"
         ]
       },
       "offset_seconds": {
+        "description": "new seconds before due for due_before",
         "type": [
           "null",
           "integer"
         ]
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "project_ref": {
@@ -47,6 +54,7 @@
         ]
       },
       "recipients": {
+        "description": "new explicit recipient user refs",
         "items": {
           "type": "string"
         },
@@ -56,6 +64,7 @@
         ]
       },
       "repeat_policy": {
+        "description": "new repeat policy: once or every:\u003cduration\u003e",
         "type": [
           "null",
           "string"
@@ -66,12 +75,14 @@
         "type": "string"
       },
       "schedule_type": {
+        "description": "new schedule type: daily_at or daily@HH:MM",
         "type": [
           "null",
           "string"
         ]
       },
       "schedule_value": {
+        "description": "new daily schedule time such as 08:50",
         "type": [
           "null",
           "string"
@@ -85,12 +96,14 @@
         ]
       },
       "trigger_type": {
+        "description": "new trigger type: due_before or overdue",
         "type": [
           "null",
           "string"
         ]
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

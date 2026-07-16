@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "assignees": {
+        "description": "workspace user refs to assign to each occurrence",
         "items": {
           "type": "string"
         },
@@ -13,39 +14,47 @@
         ]
       },
       "description": {
+        "description": "series details",
         "type": [
           "null",
           "string"
         ]
       },
       "first_due": {
+        "description": "first occurrence due time, unix seconds",
         "type": [
           "null",
           "integer"
         ]
       },
       "first_due_date": {
+        "description": "first occurrence due date as YYYY-MM-DD; stored at local 23:59:59",
         "type": [
           "null",
           "string"
         ]
       },
       "priority": {
+        "description": "task priority: H, M, or L (default M)",
         "type": [
           "null",
           "string"
         ]
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "recurrence_rule": {
+        "description": "recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO",
         "type": "string"
       },
       "tags": {
+        "description": "tags applied to each occurrence",
         "items": {
           "type": "string"
         },
@@ -55,27 +64,32 @@
         ]
       },
       "title": {
+        "description": "series title",
         "type": "string"
       },
       "udas": {
         "additionalProperties": {
           "type": "string"
         },
+        "description": "user-defined attributes applied to each occurrence",
         "type": "object"
       },
       "until": {
+        "description": "series end time, unix seconds",
         "type": [
           "null",
           "integer"
         ]
       },
       "until_date": {
+        "description": "series end date as YYYY-MM-DD; stored at local 23:59:59",
         "type": [
           "null",
           "string"
         ]
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

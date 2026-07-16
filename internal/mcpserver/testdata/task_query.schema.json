@@ -16,6 +16,7 @@
         "type": "boolean"
       },
       "limit": {
+        "description": "max tasks to return (default 200)",
         "type": "integer"
       },
       "occurrence_mode": {
@@ -23,12 +24,15 @@
         "type": "string"
       },
       "offset": {
+        "description": "number of tasks to skip",
         "type": "integer"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "query": {
@@ -48,6 +52,7 @@
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

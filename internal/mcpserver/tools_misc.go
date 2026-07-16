@@ -15,9 +15,9 @@ type AuditListInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
-	Offset    int    `json:"offset,omitempty"`
-	Actor     string `json:"actor,omitempty"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"max audit entries to return (default 20)"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"number of audit entries to skip"`
+	Actor     string `json:"actor,omitempty" jsonschema:"filter by actor user ref"`
 }
 
 type ScopeListInput struct{}

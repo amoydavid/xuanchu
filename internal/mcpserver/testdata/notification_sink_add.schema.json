@@ -53,9 +53,11 @@
         ]
       },
       "max_attempts": {
+        "description": "max delivery attempts",
         "type": "integer"
       },
       "max_concurrency": {
+        "description": "max concurrent deliveries",
         "type": "integer"
       },
       "name": {
@@ -90,6 +92,7 @@
         ]
       },
       "timeout_seconds": {
+        "description": "delivery timeout in seconds",
         "type": "integer"
       },
       "type": {
@@ -105,6 +108,7 @@
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

@@ -2,20 +2,37 @@
   "description": "Set a project config value; writes audit.",
   "inputSchema": {
     "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
     "properties": {
       "key": {
+        "description": "config key, e.g. agent.background",
         "type": "string"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "value": {
+        "description": "config value",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

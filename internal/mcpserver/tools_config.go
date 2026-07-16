@@ -13,22 +13,22 @@ type ConfigGetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Key       string `json:"key"`
-	Scope     string `json:"scope,omitempty"`
+	Key       string `json:"key" jsonschema:"config key to read"`
+	Scope     string `json:"scope,omitempty" jsonschema:"config scope: workspace, project, or local (omit to auto-resolve)"`
 }
 
 type ConfigSetInput struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
-	Key       string `json:"key"`
-	Value     string `json:"value"`
-	Scope     string `json:"scope"`
+	Key       string `json:"key" jsonschema:"config key to write"`
+	Value     string `json:"value" jsonschema:"config value"`
+	Scope     string `json:"scope" jsonschema:"config scope: workspace, project, or local"`
 }
 
 type ConfigUnsetInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	Key       string `json:"key"`
+	Key       string `json:"key" jsonschema:"config key to remove"`
 }
 
 type ConfigListInput struct {
@@ -37,21 +37,21 @@ type ConfigListInput struct {
 
 type ConfigSchemaGetInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	Key       string `json:"key"`
+	Key       string `json:"key" jsonschema:"config schema key"`
 }
 
 type ConfigSchemaSetInput struct {
 	Workspace         string   `json:"workspace,omitempty"`
-	Key               string   `json:"key"`
-	ValueType         string   `json:"value_type"`
-	AllowedScopes     []string `json:"allowed_scopes"`
-	Label             string   `json:"label,omitempty"`
-	Description       string   `json:"description,omitempty"`
-	EnumValues        []string `json:"enum_values,omitempty"`
-	DefaultValue      *string  `json:"default_value,omitempty"`
-	Required          bool     `json:"required,omitempty"`
-	Secret            bool     `json:"secret,omitempty"`
-	ShowOnConsoleHome bool     `json:"show_on_console_home,omitempty"`
+	Key               string   `json:"key" jsonschema:"config schema key"`
+	ValueType         string   `json:"value_type" jsonschema:"value type: string, bool, int, or float"`
+	AllowedScopes     []string `json:"allowed_scopes" jsonschema:"scopes that may set this key: workspace, project, local"`
+	Label             string   `json:"label,omitempty" jsonschema:"human-readable label"`
+	Description       string   `json:"description,omitempty" jsonschema:"human-readable description"`
+	EnumValues        []string `json:"enum_values,omitempty" jsonschema:"allowed enum values"`
+	DefaultValue      *string  `json:"default_value,omitempty" jsonschema:"default value applied when unset"`
+	Required          bool     `json:"required,omitempty" jsonschema:"whether the key must be explicitly set"`
+	Secret            bool     `json:"secret,omitempty" jsonschema:"whether the value is a secret and masked in output"`
+	ShowOnConsoleHome bool     `json:"show_on_console_home,omitempty" jsonschema:"surface this config on the console home view"`
 }
 
 type ConfigSchemaListInput struct {
@@ -60,8 +60,8 @@ type ConfigSchemaListInput struct {
 
 type ConfigSchemaDeleteInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	Key       string `json:"key"`
-	Purge     bool   `json:"purge,omitempty"`
+	Key       string `json:"key" jsonschema:"config schema key to delete"`
+	Purge     bool   `json:"purge,omitempty" jsonschema:"also delete existing config values for the key"`
 }
 
 func registerConfigTools(s *mcp.Server, opts Options) {

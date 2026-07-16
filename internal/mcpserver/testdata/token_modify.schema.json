@@ -4,24 +4,29 @@
     "additionalProperties": false,
     "properties": {
       "expires_in_seconds": {
+        "description": "new token expiration in seconds from now; 0 or omit to never expire",
         "type": [
           "null",
           "integer"
         ]
       },
       "name": {
+        "description": "new token name",
         "type": [
           "null",
           "string"
         ]
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "project_ids": {
+        "description": "project UUIDs the token is scoped to (replaces existing)",
         "items": {
           "type": "string"
         },
@@ -31,6 +36,7 @@
         ]
       },
       "projects": {
+        "description": "project slugs the token is scoped to (replaces existing)",
         "items": {
           "type": "string"
         },
@@ -40,6 +46,7 @@
         ]
       },
       "scope": {
+        "description": "new token scopes (replaces existing)",
         "items": {
           "type": "string"
         },
@@ -53,9 +60,11 @@
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       },
       "workspaces": {
+        "description": "workspace slugs the token can access (replaces existing)",
         "items": {
           "type": "string"
         },

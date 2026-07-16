@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "allowed_scopes": {
+        "description": "scopes that may set this key: workspace, project, local",
         "items": {
           "type": "string"
         },
@@ -13,15 +14,18 @@
         ]
       },
       "default_value": {
+        "description": "default value applied when unset",
         "type": [
           "null",
           "string"
         ]
       },
       "description": {
+        "description": "human-readable description",
         "type": "string"
       },
       "enum_values": {
+        "description": "allowed enum values",
         "items": {
           "type": "string"
         },
@@ -31,24 +35,31 @@
         ]
       },
       "key": {
+        "description": "config schema key",
         "type": "string"
       },
       "label": {
+        "description": "human-readable label",
         "type": "string"
       },
       "required": {
+        "description": "whether the key must be explicitly set",
         "type": "boolean"
       },
       "secret": {
+        "description": "whether the value is a secret and masked in output",
         "type": "boolean"
       },
       "show_on_console_home": {
+        "description": "surface this config on the console home view",
         "type": "boolean"
       },
       "value_type": {
+        "description": "value type: string, bool, int, or float",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

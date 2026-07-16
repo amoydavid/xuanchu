@@ -4,12 +4,15 @@
     "additionalProperties": false,
     "properties": {
       "include_archived": {
+        "description": "include archived projects in the result",
         "type": "boolean"
       },
       "status": {
+        "description": "filter by status: open, planning, active, archived, cancelled, or all (default open)",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

@@ -4,18 +4,23 @@
     "additionalProperties": false,
     "properties": {
       "key": {
+        "description": "config key to read",
         "type": "string"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "scope": {
+        "description": "config scope: workspace, project, or local (omit to auto-resolve)",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

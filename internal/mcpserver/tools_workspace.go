@@ -9,7 +9,7 @@ import (
 )
 
 type WorkspaceListInput struct {
-	IncludeArchived bool `json:"include_archived,omitempty"`
+	IncludeArchived bool `json:"include_archived,omitempty" jsonschema:"include archived workspaces in the result"`
 }
 
 type WorkspaceCurrentInput struct {
@@ -133,19 +133,19 @@ func registerWorkspaceTools(s *mcp.Server, opts Options) {
 }
 
 type WorkspaceAddInput struct {
-	Slug        string `json:"slug"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	Visibility  string `json:"visibility,omitempty"`
+	Slug        string `json:"slug" jsonschema:"unique workspace slug"`
+	Name        string `json:"name,omitempty" jsonschema:"human-readable workspace name"`
+	Description string `json:"description,omitempty" jsonschema:"workspace description"`
+	Visibility  string `json:"visibility,omitempty" jsonschema:"visibility: public or private (default private)"`
 }
 
 type WorkspaceRefInput struct {
-	Workspace string `json:"workspace"`
+	Workspace string `json:"workspace" jsonschema:"workspace slug or UUID"`
 }
 
 type WorkspaceModifyInput struct {
-	Workspace   string  `json:"workspace"`
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Visibility  *string `json:"visibility,omitempty"`
+	Workspace   string  `json:"workspace" jsonschema:"workspace slug or UUID"`
+	Name        *string `json:"name,omitempty" jsonschema:"new human-readable workspace name"`
+	Description *string `json:"description,omitempty" jsonschema:"new workspace description; pass empty string to clear"`
+	Visibility  *string `json:"visibility,omitempty" jsonschema:"new visibility: public or private"`
 }

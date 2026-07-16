@@ -14,14 +14,14 @@ type MemberListInput struct {
 
 type MemberAddInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	User      string `json:"user"`
-	Role      string `json:"role,omitempty"`
+	User      string `json:"user" jsonschema:"user name, email, or UUID"`
+	Role      string `json:"role,omitempty" jsonschema:"member role: owner, admin, member, or guest (default member)"`
 }
 
 type MemberRoleInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	User      string `json:"user"`
-	Role      string `json:"role"`
+	User      string `json:"user" jsonschema:"user name, email, or UUID"`
+	Role      string `json:"role" jsonschema:"new member role: owner, admin, member, or guest"`
 }
 
 func registerMemberTools(s *mcp.Server, opts Options) {

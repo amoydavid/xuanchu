@@ -12,9 +12,11 @@
         "type": "string"
       },
       "limit": {
+        "description": "max tasks to return (default 200)",
         "type": "integer"
       },
       "name": {
+        "description": "report name, e.g. active, blocked, due, overdue, upcoming",
         "type": "string"
       },
       "occurrence_mode": {
@@ -22,18 +24,23 @@
         "type": "string"
       },
       "offset": {
+        "description": "number of tasks to skip",
         "type": "integer"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "query": {
+        "description": "task filter expression",
         "type": "string"
       },
       "sort": {
+        "description": "task sort expression, for example due, due-, urgency-",
         "type": "string"
       },
       "task_type": {
@@ -41,6 +48,7 @@
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

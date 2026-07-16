@@ -2,20 +2,37 @@
   "description": "List timeline entries for a project; read-only.",
   "inputSchema": {
     "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "project"
+        ]
+      },
+      {
+        "required": [
+          "project_id"
+        ]
+      }
+    ],
     "properties": {
       "limit": {
+        "description": "max timeline entries to return (default 20)",
         "type": "integer"
       },
       "offset": {
+        "description": "number of timeline entries to skip",
         "type": "integer"
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

@@ -11,17 +11,17 @@ import (
 
 type ContextShowInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	Name      string `json:"name,omitempty"`
+	Name      string `json:"name,omitempty" jsonschema:"named context to read; omit for the active context"`
 }
 
 type ContextSetInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	Name      string `json:"name"`
+	Name      string `json:"name" jsonschema:"named context to activate"`
 }
 
 type ContextDeleteInput struct {
 	Workspace string `json:"workspace,omitempty"`
-	Name      string `json:"name"`
+	Name      string `json:"name" jsonschema:"named context to delete"`
 }
 
 func registerContextTools(s *mcp.Server, opts Options) {

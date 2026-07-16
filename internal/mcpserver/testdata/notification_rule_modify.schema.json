@@ -4,33 +4,39 @@
     "additionalProperties": false,
     "properties": {
       "audience": {
+        "description": "new audience: actor, assignees, explicit_users, or assignees_and_explicit_users",
         "type": [
           "null",
           "string"
         ]
       },
       "event": {
+        "description": "new event type",
         "type": [
           "null",
           "string"
         ]
       },
       "filter": {
+        "description": "new task filter expression for task events",
         "type": [
           "null",
           "string"
         ]
       },
       "name": {
+        "description": "new rule name",
         "type": [
           "null",
           "string"
         ]
       },
       "project": {
+        "description": "project slug in the effective workspace",
         "type": "string"
       },
       "project_id": {
+        "description": "stable project UUID",
         "type": "string"
       },
       "project_ref": {
@@ -41,6 +47,7 @@
         ]
       },
       "recipients": {
+        "description": "new explicit recipient user refs",
         "items": {
           "type": "string"
         },
@@ -61,18 +68,21 @@
         ]
       },
       "template_body": {
+        "description": "new rendered notification body template",
         "type": [
           "null",
           "string"
         ]
       },
       "template_subject": {
+        "description": "new rendered notification subject template",
         "type": [
           "null",
           "string"
         ]
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

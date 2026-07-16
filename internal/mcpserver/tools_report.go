@@ -15,15 +15,15 @@ type ReportRunInput struct {
 	Workspace      string `json:"workspace,omitempty"`
 	Project        string `json:"project,omitempty"`
 	ProjectID      string `json:"project_id,omitempty"`
-	Name           string `json:"name"`
-	Query          string `json:"query,omitempty"`
+	Name           string `json:"name" jsonschema:"report name, e.g. active, blocked, due, overdue, upcoming"`
+	Query          string `json:"query,omitempty" jsonschema:"task filter expression"`
 	DueAfter       string `json:"due_after,omitempty" jsonschema:"YYYY-MM-DD"`
 	DueBefore      string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD"`
 	OccurrenceMode string `json:"occurrence_mode,omitempty" jsonschema:"auto|materialized|expand"`
 	TaskType       string `json:"task_type,omitempty" jsonschema:"all|normal|occurrence"`
-	Sort           string `json:"sort,omitempty"`
-	Limit          int    `json:"limit,omitempty"`
-	Offset         int    `json:"offset,omitempty"`
+	Sort           string `json:"sort,omitempty" jsonschema:"task sort expression, for example due, due-, urgency-"`
+	Limit          int    `json:"limit,omitempty" jsonschema:"max tasks to return (default 200)"`
+	Offset         int    `json:"offset,omitempty" jsonschema:"number of tasks to skip"`
 }
 
 func (in ReportRunInput) scopeInput() RequestScopeInput {

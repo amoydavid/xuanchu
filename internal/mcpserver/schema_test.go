@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -77,5 +78,97 @@ func TestListToolsDefaultServerHasTools(t *testing.T) {
 	wantS := string(want)
 	if gotS != wantS {
 		t.Fatalf("golden mismatch:\n--- want\n%s\n--- got\n%s", wantS, gotS)
+	}
+}
+
+// mustSchema 生成 input schema 并应用 patchInputSchema，用于断言工具参数契约。
+func mustSchema[T any](t *testing.T) *jsonschema.Schema {
+	t.Helper()
+	schema, err := jsonschema.For[T](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[%T]: %v", *new(T), err)
+	}
+	patchInputSchema[T](schema)
+	return schema
+}
+
+// scopeFieldDescriptionNonEmpty 断言作用域三件套字段在出现时都有描述，
+// 让 LLM 在所有工具上看到一致的语义。
+func scopeFieldDescriptionNonEmpty(t *testing.T, schema *jsonschema.Schema) {
+	t.Helper()
+	for _, name := range []string{"workspace", "project", "project_id"} {
+		prop := schema.Properties[name]
+		if prop == nil {
+			continue
+		}
+		if prop.Description == "" {
+			t.Fatalf("scope field %q has empty description", name)
+		}
+	}
+}
+
+// TestMCPScopeFieldsDocumented 防止作用域字段 description 回归为空。
+func TestMCPScopeFieldsDocumented(t *testing.T) {
+	checks := []func(t *testing.T) *jsonschema.Schema{
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigListInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectGetInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[TaskAddInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[TaskQueryInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[ConfigGetInput](t) },
+		func(t *testing.T) *jsonschema.Schema { return mustSchema[TokenListInput](t) },
+	}
+	for _, fn := range checks {
+		schema := fn(t)
+		scopeFieldDescriptionNonEmpty(t, schema)
+	}
+}
+
+// projectRefRequiresAnyOf 断言 project-ref 工具声明了 project/project_id
+// 至少传一个，否则 LLM 会误以为可省略导致 project_not_found。
+func projectRefRequiresAnyOf(t *testing.T, schema *jsonschema.Schema, toolName string) {
+	t.Helper()
+	if len(schema.AnyOf) == 0 {
+		t.Fatalf("%s: expected anyOf requiring project or project_id, got none", toolName)
+	}
+	hasProject, hasProjectID := false, false
+	for _, branch := range schema.AnyOf {
+		for _, req := range branch.Required {
+			if req == "project" {
+				hasProject = true
+			}
+			if req == "project_id" {
+				hasProjectID = true
+			}
+		}
+	}
+	if !hasProject || !hasProjectID {
+		t.Fatalf("%s: anyOf must require project and project_id branches, got project=%v project_id=%v", toolName, hasProject, hasProjectID)
+	}
+}
+
+// TestMCPProjectRefToolsRequireProject 防止 project-ref 必填约束回归。
+func TestMCPProjectRefToolsRequireProject(t *testing.T) {
+	checks := []struct {
+		name string
+		fn   func(t *testing.T) *jsonschema.Schema
+	}{
+		{"project_get", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectGetInput](t) }},
+		{"project_annotate", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAnnotateInput](t) }},
+		{"project_denotate", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectDenotateInput](t) }},
+		{"project_list_annotations", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectAnnotationsInput](t) }},
+		{"project_list_timeline", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectTimelineInput](t) }},
+		{"project_modify", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectModifyInput](t) }},
+		{"project_archive", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectArchiveInput](t) }},
+		{"project_transition", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectTransitionInput](t) }},
+		{"project_config_set", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigSetInput](t) }},
+		{"project_config_unset", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigUnsetInput](t) }},
+		{"project_config_list", func(t *testing.T) *jsonschema.Schema { return mustSchema[ProjectConfigListInput](t) }},
+	}
+	for _, c := range checks {
+		t.Run(c.name, func(t *testing.T) {
+			schema := c.fn(t)
+			projectRefRequiresAnyOf(t, schema, c.name)
+			scopeFieldDescriptionNonEmpty(t, schema)
+		})
 	}
 }

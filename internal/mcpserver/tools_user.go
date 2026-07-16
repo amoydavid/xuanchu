@@ -12,7 +12,7 @@ import (
 type UserListInput struct{}
 
 type UserInfoInput struct {
-	User string `json:"user"`
+	User string `json:"user" jsonschema:"user name, email, or UUID"`
 }
 
 type UserBindInput struct {
@@ -23,23 +23,23 @@ type UserBindInput struct {
 }
 
 type UserUnbindInput struct {
-	User       string `json:"user"`
-	Provider   string `json:"provider"`
-	ExternalID string `json:"external_id"`
+	User       string `json:"user" jsonschema:"user name, email, or UUID"`
+	Provider   string `json:"provider" jsonschema:"external ID provider, e.g. feishu, wecom, dingtalk"`
+	ExternalID string `json:"external_id" jsonschema:"external ID value"`
 }
 
 type UserAddInput struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name,omitempty"`
-	Email       string `json:"email,omitempty"`
+	Name        string `json:"name" jsonschema:"login name, unique within the instance"`
+	DisplayName string `json:"display_name,omitempty" jsonschema:"human-readable display name"`
+	Email       string `json:"email,omitempty" jsonschema:"user email"`
 }
 
 type UserUseInput struct {
-	User string `json:"user"`
+	User string `json:"user" jsonschema:"user name, email, or UUID"`
 }
 
 type UserRefInput struct {
-	User string `json:"user"`
+	User string `json:"user" jsonschema:"user name, email, or UUID"`
 }
 
 func registerUserTools(s *mcp.Server, opts Options) {

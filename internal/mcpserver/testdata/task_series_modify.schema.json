@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "assignees": {
+        "description": "replace assignee user refs on each occurrence",
         "items": {
           "type": "string"
         },
@@ -13,6 +14,7 @@
         ]
       },
       "clear": {
+        "description": "fields to clear: title, description, priority, assignees, tags, udas, until",
         "items": {
           "type": "string"
         },
@@ -22,39 +24,46 @@
         ]
       },
       "description": {
+        "description": "new series details; pass empty string to clear",
         "type": [
           "null",
           "string"
         ]
       },
       "effective_from": {
+        "description": "rule-change effective time, unix seconds",
         "type": [
           "null",
           "integer"
         ]
       },
       "effective_from_date": {
+        "description": "rule-change effective date as YYYY-MM-DD; stored at local 00:00:00",
         "type": [
           "null",
           "string"
         ]
       },
       "id": {
+        "description": "series UUID",
         "type": "string"
       },
       "priority": {
+        "description": "new task priority: H, M, or L",
         "type": [
           "null",
           "string"
         ]
       },
       "recurrence_rule": {
+        "description": "new recurrence rule; requires effective_from",
         "type": [
           "null",
           "string"
         ]
       },
       "tags": {
+        "description": "replace tags on each occurrence",
         "items": {
           "type": "string"
         },
@@ -64,6 +73,7 @@
         ]
       },
       "title": {
+        "description": "new series title",
         "type": [
           "null",
           "string"
@@ -73,21 +83,25 @@
         "additionalProperties": {
           "type": "string"
         },
+        "description": "replace user-defined attributes on each occurrence",
         "type": "object"
       },
       "until": {
+        "description": "new series end time, unix seconds",
         "type": [
           "null",
           "integer"
         ]
       },
       "until_date": {
+        "description": "new series end date as YYYY-MM-DD; stored at local 23:59:59",
         "type": [
           "null",
           "string"
         ]
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

@@ -4,6 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "user": {
+        "description": "user name, email, or UUID",
         "type": "string"
       }
     },

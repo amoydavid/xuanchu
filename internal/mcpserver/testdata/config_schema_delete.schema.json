@@ -4,12 +4,15 @@
     "additionalProperties": false,
     "properties": {
       "key": {
+        "description": "config schema key to delete",
         "type": "string"
       },
       "purge": {
+        "description": "also delete existing config values for the key",
         "type": "boolean"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

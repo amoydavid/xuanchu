@@ -6,21 +6,27 @@
         "additionalProperties": false,
         "properties": {
           "actor": {
+            "description": "filter by actor user ref",
             "type": "string"
           },
           "limit": {
+            "description": "max audit entries to return (default 20)",
             "type": "integer"
           },
           "offset": {
+            "description": "number of audit entries to skip",
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -48,18 +54,23 @@
         "additionalProperties": false,
         "properties": {
           "key": {
+            "description": "config key to read",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "scope": {
+            "description": "config scope: workspace, project, or local (omit to auto-resolve)",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -90,6 +101,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -117,12 +129,15 @@
         "additionalProperties": false,
         "properties": {
           "key": {
+            "description": "config schema key to delete",
             "type": "string"
           },
           "purge": {
+            "description": "also delete existing config values for the key",
             "type": "boolean"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -153,9 +168,11 @@
         "additionalProperties": false,
         "properties": {
           "key": {
+            "description": "config schema key",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -186,6 +203,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -213,6 +231,7 @@
         "additionalProperties": false,
         "properties": {
           "allowed_scopes": {
+            "description": "scopes that may set this key: workspace, project, local",
             "items": {
               "type": "string"
             },
@@ -222,15 +241,18 @@
             ]
           },
           "default_value": {
+            "description": "default value applied when unset",
             "type": [
               "null",
               "string"
             ]
           },
           "description": {
+            "description": "human-readable description",
             "type": "string"
           },
           "enum_values": {
+            "description": "allowed enum values",
             "items": {
               "type": "string"
             },
@@ -240,24 +262,31 @@
             ]
           },
           "key": {
+            "description": "config schema key",
             "type": "string"
           },
           "label": {
+            "description": "human-readable label",
             "type": "string"
           },
           "required": {
+            "description": "whether the key must be explicitly set",
             "type": "boolean"
           },
           "secret": {
+            "description": "whether the value is a secret and masked in output",
             "type": "boolean"
           },
           "show_on_console_home": {
+            "description": "surface this config on the console home view",
             "type": "boolean"
           },
           "value_type": {
+            "description": "value type: string, bool, int, or float",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -290,21 +319,27 @@
         "additionalProperties": false,
         "properties": {
           "key": {
+            "description": "config key to write",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "scope": {
+            "description": "config scope: workspace, project, or local",
             "type": "string"
           },
           "value": {
+            "description": "config value",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -337,9 +372,11 @@
         "additionalProperties": false,
         "properties": {
           "key": {
+            "description": "config key to remove",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -370,9 +407,11 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "named context to delete",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -403,9 +442,11 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "named context to read; omit for the active context",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -433,9 +474,11 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "named context to read; omit for the active context",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -463,9 +506,11 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "named context to read; omit for the active context",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -493,9 +538,11 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "named context to activate",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -547,9 +594,11 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "sink": {
@@ -557,6 +606,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -597,12 +647,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -642,15 +695,19 @@
             "type": "integer"
           },
           "offset": {
+            "description": "number of deliveries to skip",
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -689,12 +746,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -730,12 +790,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -766,12 +829,15 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -799,12 +865,14 @@
         "additionalProperties": false,
         "properties": {
           "active": {
+            "description": "whether the hook is enabled",
             "type": [
               "null",
               "boolean"
             ]
           },
           "events": {
+            "description": "event types that trigger the hook",
             "items": {
               "type": "string"
             },
@@ -818,24 +886,29 @@
             "type": "string"
           },
           "name": {
+            "description": "new hook name",
             "type": [
               "null",
               "string"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "sink": {
+            "description": "new notification sink name or ID",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -870,12 +943,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -910,12 +986,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -950,12 +1029,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1008,12 +1090,15 @@
         "additionalProperties": false,
         "properties": {
           "role": {
+            "description": "member role: owner, admin, member, or guest (default member)",
             "type": "string"
           },
           "user": {
+            "description": "user name, email, or UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1044,6 +1129,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1071,12 +1157,15 @@
         "additionalProperties": false,
         "properties": {
           "role": {
+            "description": "new member role: owner, admin, member, or guest",
             "type": "string"
           },
           "user": {
+            "description": "user name, email, or UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1112,6 +1201,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1142,9 +1232,11 @@
         "additionalProperties": false,
         "properties": {
           "limit": {
+            "description": "max deliveries to return (default 20)",
             "type": "integer"
           },
           "offset": {
+            "description": "number of deliveries to skip",
             "type": "integer"
           },
           "sink": {
@@ -1152,9 +1244,11 @@
             "type": "string"
           },
           "status": {
+            "description": "filter by delivery status: pending, delivered, failed",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1186,6 +1280,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1232,9 +1327,11 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "recipients": {
@@ -1252,12 +1349,15 @@
             "type": "string"
           },
           "template_body": {
+            "description": "optional rendered notification body template",
             "type": "string"
           },
           "template_subject": {
+            "description": "optional rendered notification subject template",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1291,9 +1391,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -1301,6 +1403,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1331,9 +1434,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -1341,6 +1446,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1371,9 +1477,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -1381,6 +1489,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1411,15 +1520,19 @@
         "additionalProperties": false,
         "properties": {
           "include_disabled": {
+            "description": "include disabled rules in the result",
             "type": "boolean"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1447,33 +1560,39 @@
         "additionalProperties": false,
         "properties": {
           "audience": {
+            "description": "new audience: actor, assignees, explicit_users, or assignees_and_explicit_users",
             "type": [
               "null",
               "string"
             ]
           },
           "event": {
+            "description": "new event type",
             "type": [
               "null",
               "string"
             ]
           },
           "filter": {
+            "description": "new task filter expression for task events",
             "type": [
               "null",
               "string"
             ]
           },
           "name": {
+            "description": "new rule name",
             "type": [
               "null",
               "string"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "project_ref": {
@@ -1484,6 +1603,7 @@
             ]
           },
           "recipients": {
+            "description": "new explicit recipient user refs",
             "items": {
               "type": "string"
             },
@@ -1504,18 +1624,21 @@
             ]
           },
           "template_body": {
+            "description": "new rendered notification body template",
             "type": [
               "null",
               "string"
             ]
           },
           "template_subject": {
+            "description": "new rendered notification subject template",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1546,9 +1669,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -1556,6 +1681,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1635,9 +1761,11 @@
             ]
           },
           "max_attempts": {
+            "description": "max delivery attempts",
             "type": "integer"
           },
           "max_concurrency": {
+            "description": "max concurrent deliveries",
             "type": "integer"
           },
           "name": {
@@ -1672,6 +1800,7 @@
             ]
           },
           "timeout_seconds": {
+            "description": "delivery timeout in seconds",
             "type": "integer"
           },
           "type": {
@@ -1687,6 +1816,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1721,6 +1851,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1755,6 +1886,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1789,6 +1921,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1819,9 +1952,11 @@
         "additionalProperties": false,
         "properties": {
           "include_disabled": {
+            "description": "include disabled sinks in the result",
             "type": "boolean"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -1849,6 +1984,7 @@
         "additionalProperties": false,
         "properties": {
           "allowed_hosts": {
+            "description": "new allowed endpoint hosts",
             "items": {
               "type": "string"
             },
@@ -1858,30 +1994,35 @@
             ]
           },
           "body_content_type": {
+            "description": "new rendered body content type",
             "type": [
               "null",
               "string"
             ]
           },
           "body_template": {
+            "description": "new HTTP body template",
             "type": [
               "null",
               "string"
             ]
           },
           "config_key": {
+            "description": "new config key for config_value endpoint mode",
             "type": [
               "null",
               "string"
             ]
           },
           "endpoint_mode": {
+            "description": "new endpoint mode: static_url, template, or config_value",
             "type": [
               "null",
               "string"
             ]
           },
           "header_templates": {
+            "description": "new HTTP header templates",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -1904,30 +2045,35 @@
             ]
           },
           "max_attempts": {
+            "description": "new max delivery attempts",
             "type": [
               "null",
               "integer"
             ]
           },
           "max_concurrency": {
+            "description": "new max concurrent deliveries",
             "type": [
               "null",
               "integer"
             ]
           },
           "name": {
+            "description": "new sink name",
             "type": [
               "null",
               "string"
             ]
           },
           "secret": {
+            "description": "new webhook signing secret",
             "type": [
               "null",
               "string"
             ]
           },
           "secret_refs": {
+            "description": "new secret aliases",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -1954,30 +2100,35 @@
             "type": "string"
           },
           "timeout_seconds": {
+            "description": "new delivery timeout in seconds",
             "type": [
               "null",
               "integer"
             ]
           },
           "type": {
+            "description": "new sink type: webhook or http_template",
             "type": [
               "null",
               "string"
             ]
           },
           "url": {
+            "description": "new static endpoint URL",
             "type": [
               "null",
               "string"
             ]
           },
           "url_template": {
+            "description": "new controlled URL template",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2012,6 +2163,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2042,15 +2194,19 @@
         "additionalProperties": false,
         "properties": {
           "description": {
+            "description": "project description",
             "type": "string"
           },
           "name": {
+            "description": "human-readable project name",
             "type": "string"
           },
           "slug": {
+            "description": "unique project slug within the workspace",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2079,17 +2235,33 @@
       "description": "Add an annotation to a project; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "content": {
+            "description": "annotation body text",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2118,14 +2290,29 @@
       "description": "Archive a project; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2151,14 +2338,29 @@
       "description": "List project config values; read-only.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2184,20 +2386,37 @@
       "description": "Set a project config value; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "key": {
+            "description": "config key, e.g. agent.background",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "value": {
+            "description": "config value",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2227,17 +2446,33 @@
       "description": "Remove a project config value; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "key": {
+            "description": "config key to remove",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2266,17 +2501,33 @@
       "description": "Remove an annotation from a project; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "annotation_id": {
+            "description": "annotation ID to remove",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2319,12 +2570,15 @@
         ],
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2352,12 +2606,15 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2385,12 +2642,15 @@
         "additionalProperties": false,
         "properties": {
           "include_archived": {
+            "description": "include archived projects in the result",
             "type": "boolean"
           },
           "status": {
+            "description": "filter by status: open, planning, active, archived, cancelled, or all (default open)",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2416,14 +2676,29 @@
       "description": "List annotations on a project; read-only.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2449,20 +2724,37 @@
       "description": "List timeline entries for a project; read-only.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "limit": {
+            "description": "max timeline entries to return (default 20)",
             "type": "integer"
           },
           "offset": {
+            "description": "number of timeline entries to skip",
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2488,26 +2780,43 @@
       "description": "Modify a project; writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "description": {
+            "description": "new project description; pass empty string to clear",
             "type": [
               "null",
               "string"
             ]
           },
           "name": {
+            "description": "new human-readable project name",
             "type": [
               "null",
               "string"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2533,17 +2842,33 @@
       "description": "Transition a project to planning/active/archived/cancelled; any direction allowed; records an annotation and writes audit.",
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "project"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ],
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "status": {
+            "description": "target status: planning, active, archived, or cancelled",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2594,9 +2919,11 @@
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "recipients": {
@@ -2630,6 +2957,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2662,9 +2990,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -2672,6 +3002,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2702,9 +3033,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -2712,6 +3045,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2742,9 +3076,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -2752,6 +3088,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2782,15 +3119,19 @@
         "additionalProperties": false,
         "properties": {
           "include_disabled": {
+            "description": "include disabled rules in the result",
             "type": "boolean"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2818,39 +3159,46 @@
         "additionalProperties": false,
         "properties": {
           "after_seconds": {
+            "description": "new seconds after due for overdue",
             "type": [
               "null",
               "integer"
             ]
           },
           "audience_type": {
+            "description": "new audience: assignees, explicit_users, or assignees_and_explicit_users",
             "type": [
               "null",
               "string"
             ]
           },
           "filter_source": {
+            "description": "new task filter expression for scheduled rules",
             "type": [
               "null",
               "string"
             ]
           },
           "name": {
+            "description": "new rule name",
             "type": [
               "null",
               "string"
             ]
           },
           "offset_seconds": {
+            "description": "new seconds before due for due_before",
             "type": [
               "null",
               "integer"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "project_ref": {
@@ -2861,6 +3209,7 @@
             ]
           },
           "recipients": {
+            "description": "new explicit recipient user refs",
             "items": {
               "type": "string"
             },
@@ -2870,6 +3219,7 @@
             ]
           },
           "repeat_policy": {
+            "description": "new repeat policy: once or every:\u003cduration\u003e",
             "type": [
               "null",
               "string"
@@ -2880,12 +3230,14 @@
             "type": "string"
           },
           "schedule_type": {
+            "description": "new schedule type: daily_at or daily@HH:MM",
             "type": [
               "null",
               "string"
             ]
           },
           "schedule_value": {
+            "description": "new daily schedule time such as 08:50",
             "type": [
               "null",
               "string"
@@ -2899,12 +3251,14 @@
             ]
           },
           "trigger_type": {
+            "description": "new trigger type: due_before or overdue",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2935,9 +3289,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "rule": {
@@ -2945,6 +3301,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -2983,9 +3340,11 @@
             "type": "string"
           },
           "limit": {
+            "description": "max tasks to return (default 200)",
             "type": "integer"
           },
           "name": {
+            "description": "report name, e.g. active, blocked, due, overdue, upcoming",
             "type": "string"
           },
           "occurrence_mode": {
@@ -2993,18 +3352,23 @@
             "type": "string"
           },
           "offset": {
+            "description": "number of tasks to skip",
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "query": {
+            "description": "task filter expression",
             "type": "string"
           },
           "sort": {
+            "description": "task sort expression, for example due, due-, urgency-",
             "type": "string"
           },
           "task_type": {
@@ -3012,6 +3376,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3091,7 +3456,7 @@
             ]
           },
           "due": {
-            "description": "unix seconds",
+            "description": "deadline time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -3102,6 +3467,7 @@
             "type": "string"
           },
           "priority": {
+            "description": "task priority: H, M, or L (default M)",
             "type": "string"
           },
           "project": {
@@ -3113,7 +3479,7 @@
             "type": "string"
           },
           "scheduled": {
-            "description": "unix seconds",
+            "description": "scheduled start time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -3138,7 +3504,7 @@
             "type": "string"
           },
           "until": {
-            "description": "unix seconds",
+            "description": "effective-until time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -3149,7 +3515,7 @@
             "type": "string"
           },
           "wait": {
-            "description": "unix seconds",
+            "description": "defer-until time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -3160,7 +3526,7 @@
             "type": "string"
           },
           "workspace": {
-            "description": "workspace slug or UUID",
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3191,6 +3557,7 @@
         "additionalProperties": false,
         "properties": {
           "annotation": {
+            "description": "annotation body text",
             "type": "string"
           },
           "id": {
@@ -3198,12 +3565,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3239,12 +3609,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3283,12 +3656,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3320,9 +3696,11 @@
         "additionalProperties": false,
         "properties": {
           "clear_depends": {
+            "description": "remove all dependency links",
             "type": "boolean"
           },
           "depends": {
+            "description": "task refs this task depends on (replaces existing)",
             "items": {
               "type": "string"
             },
@@ -3336,12 +3714,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3376,12 +3757,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3412,12 +3796,15 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3449,12 +3836,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3486,6 +3876,7 @@
         "properties": {
           "bundle": {
             "additionalProperties": false,
+            "description": "exported task bundle; shape {schema, exported_at, task_series, tasks}",
             "properties": {
               "exported_at": {
                 "type": "string"
@@ -3914,12 +4305,15 @@
             "type": "object"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -3950,9 +4344,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "task": {
@@ -3972,6 +4368,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4004,9 +4401,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "task": {
@@ -4014,6 +4413,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4048,9 +4448,11 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "task": {
@@ -4058,6 +4460,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4089,6 +4492,7 @@
         "additionalProperties": false,
         "properties": {
           "assignees": {
+            "description": "workspace user refs to assign",
             "items": {
               "type": "string"
             },
@@ -4098,6 +4502,7 @@
             ]
           },
           "clear": {
+            "description": "fields to clear: title, description, priority, due, wait, scheduled, until",
             "items": {
               "type": "string"
             },
@@ -4107,9 +4512,11 @@
             ]
           },
           "clear_depends": {
+            "description": "remove all dependency links",
             "type": "boolean"
           },
           "depends": {
+            "description": "task refs this task depends on (replaces existing)",
             "items": {
               "type": "string"
             },
@@ -4119,12 +4526,14 @@
             ]
           },
           "description": {
+            "description": "new task details; pass empty string to clear",
             "type": [
               "null",
               "string"
             ]
           },
           "due": {
+            "description": "new deadline time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -4139,18 +4548,22 @@
             "type": "string"
           },
           "priority": {
+            "description": "new task priority: H, M, or L",
             "type": [
               "null",
               "string"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "remove_assignees": {
+            "description": "workspace user refs to unassign",
             "items": {
               "type": "string"
             },
@@ -4160,6 +4573,7 @@
             ]
           },
           "remove_tags": {
+            "description": "task tags to remove",
             "items": {
               "type": "string"
             },
@@ -4169,6 +4583,7 @@
             ]
           },
           "scheduled": {
+            "description": "new scheduled start time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -4179,6 +4594,7 @@
             "type": "string"
           },
           "tags": {
+            "description": "task tags to add",
             "items": {
               "type": "string"
             },
@@ -4188,6 +4604,7 @@
             ]
           },
           "title": {
+            "description": "new task title",
             "type": [
               "null",
               "string"
@@ -4197,9 +4614,11 @@
             "additionalProperties": {
               "type": "string"
             },
+            "description": "user-defined attribute overrides",
             "type": "object"
           },
           "until": {
+            "description": "new effective-until time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -4210,6 +4629,7 @@
             "type": "string"
           },
           "wait": {
+            "description": "new defer-until time, unix seconds",
             "type": [
               "null",
               "integer"
@@ -4220,6 +4640,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4262,6 +4683,7 @@
             "type": "boolean"
           },
           "limit": {
+            "description": "max tasks to return (default 200)",
             "type": "integer"
           },
           "occurrence_mode": {
@@ -4269,12 +4691,15 @@
             "type": "string"
           },
           "offset": {
+            "description": "number of tasks to skip",
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "query": {
@@ -4294,6 +4719,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4325,12 +4751,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4361,6 +4790,7 @@
         "additionalProperties": false,
         "properties": {
           "assignees": {
+            "description": "workspace user refs to assign to each occurrence",
             "items": {
               "type": "string"
             },
@@ -4370,39 +4800,47 @@
             ]
           },
           "description": {
+            "description": "series details",
             "type": [
               "null",
               "string"
             ]
           },
           "first_due": {
+            "description": "first occurrence due time, unix seconds",
             "type": [
               "null",
               "integer"
             ]
           },
           "first_due_date": {
+            "description": "first occurrence due date as YYYY-MM-DD; stored at local 23:59:59",
             "type": [
               "null",
               "string"
             ]
           },
           "priority": {
+            "description": "task priority: H, M, or L (default M)",
             "type": [
               "null",
               "string"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "recurrence_rule": {
+            "description": "recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO",
             "type": "string"
           },
           "tags": {
+            "description": "tags applied to each occurrence",
             "items": {
               "type": "string"
             },
@@ -4412,27 +4850,32 @@
             ]
           },
           "title": {
+            "description": "series title",
             "type": "string"
           },
           "udas": {
             "additionalProperties": {
               "type": "string"
             },
+            "description": "user-defined attributes applied to each occurrence",
             "type": "object"
           },
           "until": {
+            "description": "series end time, unix seconds",
             "type": [
               "null",
               "integer"
             ]
           },
           "until_date": {
+            "description": "series end date as YYYY-MM-DD; stored at local 23:59:59",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4464,15 +4907,19 @@
         "additionalProperties": false,
         "properties": {
           "id": {
+            "description": "series UUID",
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4503,6 +4950,7 @@
         "additionalProperties": false,
         "properties": {
           "assignee": {
+            "description": "filter by assignee user ref",
             "type": "string"
           },
           "limit": {
@@ -4517,21 +4965,27 @@
             "type": "integer"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "q": {
+            "description": "free-text filter on series title",
             "type": "string"
           },
           "sort": {
+            "description": "sort expression, e.g. title, due-",
             "type": "string"
           },
           "status": {
+            "description": "filter by series status: active or stopped",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4567,6 +5021,7 @@
             "type": "string"
           },
           "id": {
+            "description": "series UUID",
             "type": "string"
           },
           "limit": {
@@ -4581,9 +5036,11 @@
             "type": "integer"
           },
           "status": {
+            "description": "filter by occurrence status: pending, active, completed, deleted",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4614,6 +5071,7 @@
         "additionalProperties": false,
         "properties": {
           "assignees": {
+            "description": "replace assignee user refs on each occurrence",
             "items": {
               "type": "string"
             },
@@ -4623,6 +5081,7 @@
             ]
           },
           "clear": {
+            "description": "fields to clear: title, description, priority, assignees, tags, udas, until",
             "items": {
               "type": "string"
             },
@@ -4632,39 +5091,46 @@
             ]
           },
           "description": {
+            "description": "new series details; pass empty string to clear",
             "type": [
               "null",
               "string"
             ]
           },
           "effective_from": {
+            "description": "rule-change effective time, unix seconds",
             "type": [
               "null",
               "integer"
             ]
           },
           "effective_from_date": {
+            "description": "rule-change effective date as YYYY-MM-DD; stored at local 00:00:00",
             "type": [
               "null",
               "string"
             ]
           },
           "id": {
+            "description": "series UUID",
             "type": "string"
           },
           "priority": {
+            "description": "new task priority: H, M, or L",
             "type": [
               "null",
               "string"
             ]
           },
           "recurrence_rule": {
+            "description": "new recurrence rule; requires effective_from",
             "type": [
               "null",
               "string"
             ]
           },
           "tags": {
+            "description": "replace tags on each occurrence",
             "items": {
               "type": "string"
             },
@@ -4674,6 +5140,7 @@
             ]
           },
           "title": {
+            "description": "new series title",
             "type": [
               "null",
               "string"
@@ -4683,21 +5150,25 @@
             "additionalProperties": {
               "type": "string"
             },
+            "description": "replace user-defined attributes on each occurrence",
             "type": "object"
           },
           "until": {
+            "description": "new series end time, unix seconds",
             "type": [
               "null",
               "integer"
             ]
           },
           "until_date": {
+            "description": "new series end date as YYYY-MM-DD; stored at local 23:59:59",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4728,12 +5199,15 @@
         "additionalProperties": false,
         "properties": {
           "occurrence_id": {
+            "description": "occurrence UUID to skip",
             "type": "string"
           },
           "series_id": {
+            "description": "series UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4765,12 +5239,15 @@
         "additionalProperties": false,
         "properties": {
           "delete_open_occurrences": {
+            "description": "also delete not-yet-completed occurrences",
             "type": "boolean"
           },
           "id": {
+            "description": "series UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4805,12 +5282,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4845,12 +5325,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4892,9 +5375,11 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "scope": {
@@ -4908,6 +5393,7 @@
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4938,12 +5424,15 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -4971,24 +5460,29 @@
         "additionalProperties": false,
         "properties": {
           "expires_in_seconds": {
+            "description": "new token expiration in seconds from now; 0 or omit to never expire",
             "type": [
               "null",
               "integer"
             ]
           },
           "name": {
+            "description": "new token name",
             "type": [
               "null",
               "string"
             ]
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "project_ids": {
+            "description": "project UUIDs the token is scoped to (replaces existing)",
             "items": {
               "type": "string"
             },
@@ -4998,6 +5492,7 @@
             ]
           },
           "projects": {
+            "description": "project slugs the token is scoped to (replaces existing)",
             "items": {
               "type": "string"
             },
@@ -5007,6 +5502,7 @@
             ]
           },
           "scope": {
+            "description": "new token scopes (replaces existing)",
             "items": {
               "type": "string"
             },
@@ -5020,9 +5516,11 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           },
           "workspaces": {
+            "description": "workspace slugs the token can access (replaces existing)",
             "items": {
               "type": "string"
             },
@@ -5059,9 +5557,11 @@
         "additionalProperties": false,
         "properties": {
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "token_ref": {
@@ -5069,6 +5569,7 @@
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -5103,12 +5604,15 @@
             "type": "string"
           },
           "project": {
+            "description": "project slug in the effective workspace",
             "type": "string"
           },
           "project_id": {
+            "description": "stable project UUID",
             "type": "string"
           },
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -5139,12 +5643,15 @@
         "additionalProperties": false,
         "properties": {
           "display_name": {
+            "description": "human-readable display name",
             "type": "string"
           },
           "email": {
+            "description": "user email",
             "type": "string"
           },
           "name": {
+            "description": "login name, unique within the instance",
             "type": "string"
           }
         },
@@ -5220,6 +5727,7 @@
         "additionalProperties": false,
         "properties": {
           "user": {
+            "description": "user name, email, or UUID",
             "type": "string"
           }
         },
@@ -5272,6 +5780,7 @@
         "additionalProperties": false,
         "properties": {
           "user": {
+            "description": "user name, email, or UUID",
             "type": "string"
           }
         },
@@ -5302,12 +5811,15 @@
         "additionalProperties": false,
         "properties": {
           "external_id": {
+            "description": "external ID value",
             "type": "string"
           },
           "provider": {
+            "description": "external ID provider, e.g. feishu, wecom, dingtalk",
             "type": "string"
           },
           "user": {
+            "description": "user name, email, or UUID",
             "type": "string"
           }
         },
@@ -5340,6 +5852,7 @@
         "additionalProperties": false,
         "properties": {
           "user": {
+            "description": "user name, email, or UUID",
             "type": "string"
           }
         },
@@ -5370,15 +5883,19 @@
         "additionalProperties": false,
         "properties": {
           "description": {
+            "description": "workspace description",
             "type": "string"
           },
           "name": {
+            "description": "human-readable workspace name",
             "type": "string"
           },
           "slug": {
+            "description": "unique workspace slug",
             "type": "string"
           },
           "visibility": {
+            "description": "visibility: public or private (default private)",
             "type": "string"
           }
         },
@@ -5409,6 +5926,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID",
             "type": "string"
           }
         },
@@ -5439,6 +5957,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID; omit to use the actor's default workspace",
             "type": "string"
           }
         },
@@ -5466,6 +5985,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID",
             "type": "string"
           }
         },
@@ -5496,6 +6016,7 @@
         "additionalProperties": false,
         "properties": {
           "include_archived": {
+            "description": "include archived workspaces in the result",
             "type": "boolean"
           }
         },
@@ -5523,24 +6044,28 @@
         "additionalProperties": false,
         "properties": {
           "description": {
+            "description": "new workspace description; pass empty string to clear",
             "type": [
               "null",
               "string"
             ]
           },
           "name": {
+            "description": "new human-readable workspace name",
             "type": [
               "null",
               "string"
             ]
           },
           "visibility": {
+            "description": "new visibility: public or private",
             "type": [
               "null",
               "string"
             ]
           },
           "workspace": {
+            "description": "workspace slug or UUID",
             "type": "string"
           }
         },
@@ -5571,6 +6096,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace": {
+            "description": "workspace slug or UUID",
             "type": "string"
           }
         },

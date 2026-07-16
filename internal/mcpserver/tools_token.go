@@ -37,13 +37,13 @@ type TokenModifyInput struct {
 	Workspace        string   `json:"workspace,omitempty"`
 	Project          string   `json:"project,omitempty"`
 	ProjectID        string   `json:"project_id,omitempty"`
-	Workspaces       []string `json:"workspaces,omitempty"`
-	Projects         []string `json:"projects,omitempty"`
-	ProjectIDs       []string `json:"project_ids,omitempty"`
+	Workspaces       []string `json:"workspaces,omitempty" jsonschema:"workspace slugs the token can access (replaces existing)"`
+	Projects         []string `json:"projects,omitempty" jsonschema:"project slugs the token is scoped to (replaces existing)"`
+	ProjectIDs       []string `json:"project_ids,omitempty" jsonschema:"project UUIDs the token is scoped to (replaces existing)"`
 	TokenRef         string   `json:"token_ref" jsonschema:"token ID or prefix"`
-	Name             *string  `json:"name,omitempty"`
-	Scope            []string `json:"scope,omitempty"`
-	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty"`
+	Name             *string  `json:"name,omitempty" jsonschema:"new token name"`
+	Scope            []string `json:"scope,omitempty" jsonschema:"new token scopes (replaces existing)"`
+	ExpiresInSeconds *int64   `json:"expires_in_seconds,omitempty" jsonschema:"new token expiration in seconds from now; 0 or omit to never expire"`
 }
 
 func (in TokenModifyInput) scopeInput() RequestScopeInput {

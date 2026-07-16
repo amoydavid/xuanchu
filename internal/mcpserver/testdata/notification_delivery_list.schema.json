@@ -4,9 +4,11 @@
     "additionalProperties": false,
     "properties": {
       "limit": {
+        "description": "max deliveries to return (default 20)",
         "type": "integer"
       },
       "offset": {
+        "description": "number of deliveries to skip",
         "type": "integer"
       },
       "sink": {
@@ -14,9 +16,11 @@
         "type": "string"
       },
       "status": {
+        "description": "filter by delivery status: pending, delivered, failed",
         "type": "string"
       },
       "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
         "type": "string"
       }
     },

@@ -4,15 +4,19 @@
     "additionalProperties": false,
     "properties": {
       "description": {
+        "description": "workspace description",
         "type": "string"
       },
       "name": {
+        "description": "human-readable workspace name",
         "type": "string"
       },
       "slug": {
+        "description": "unique workspace slug",
         "type": "string"
       },
       "visibility": {
+        "description": "visibility: public or private (default private)",
         "type": "string"
       }
     },

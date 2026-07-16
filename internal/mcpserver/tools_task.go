@@ -12,21 +12,21 @@ import (
 )
 
 type TaskAddInput struct {
-	Workspace     string   `json:"workspace,omitempty" jsonschema:"workspace slug or UUID"`
-	Project       string   `json:"project,omitempty" jsonschema:"project slug in the effective workspace"`
-	ProjectID     string   `json:"project_id,omitempty" jsonschema:"stable project UUID"`
+	Workspace     string   `json:"workspace,omitempty"`
+	Project       string   `json:"project,omitempty"`
+	ProjectID     string   `json:"project_id,omitempty"`
 	Title         string   `json:"title" jsonschema:"task title"`
 	Description   *string  `json:"description,omitempty" jsonschema:"task details"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"task tags to add"`
 	Assignees     []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
-	Priority      string   `json:"priority,omitempty"`
-	Due           *int64   `json:"due,omitempty" jsonschema:"unix seconds"`
+	Priority      string   `json:"priority,omitempty" jsonschema:"task priority: H, M, or L (default M)"`
+	Due           *int64   `json:"due,omitempty" jsonschema:"deadline time, unix seconds"`
 	DueDate       string   `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
-	Wait          *int64   `json:"wait,omitempty" jsonschema:"unix seconds"`
+	Wait          *int64   `json:"wait,omitempty" jsonschema:"defer-until time, unix seconds"`
 	WaitDate      string   `json:"wait_date,omitempty" jsonschema:"defer-until date as YYYY-MM-DD; stored at local 00:00:00"`
-	Scheduled     *int64   `json:"scheduled,omitempty" jsonschema:"unix seconds"`
+	Scheduled     *int64   `json:"scheduled,omitempty" jsonschema:"scheduled start time, unix seconds"`
 	ScheduledDate string   `json:"scheduled_date,omitempty" jsonschema:"scheduled start date as YYYY-MM-DD; stored at local 00:00:00"`
-	Until         *int64   `json:"until,omitempty" jsonschema:"unix seconds"`
+	Until         *int64   `json:"until,omitempty" jsonschema:"effective-until time, unix seconds"`
 	UntilDate     string   `json:"until_date,omitempty" jsonschema:"effective-until date as YYYY-MM-DD; stored at local 23:59:59"`
 	Annotations   []string `json:"annotations,omitempty" jsonschema:"initial annotations"`
 }
@@ -42,8 +42,8 @@ type TaskQueryInput struct {
 	Query          string `json:"query,omitempty" jsonschema:"task filter expression; an explicit status predicate overrides default visibility"`
 	Status         string `json:"status,omitempty" jsonschema:"explicit task status filter; overrides default non-deleted visibility"`
 	Sort           string `json:"sort,omitempty" jsonschema:"task sort expression, for example due, due-, urgency-"`
-	Limit          int    `json:"limit,omitempty"`
-	Offset         int    `json:"offset,omitempty"`
+	Limit          int    `json:"limit,omitempty" jsonschema:"max tasks to return (default 200)"`
+	Offset         int    `json:"offset,omitempty" jsonschema:"number of tasks to skip"`
 	IncludeDeleted bool   `json:"include_deleted,omitempty" jsonschema:"include deleted tasks in addition to the default non-deleted set; ignored when status is explicit"`
 	// occurrence 查询参数（spec §13.3）。
 	OccurrenceMode string `json:"occurrence_mode,omitempty" jsonschema:"auto|materialized|expand"`
@@ -72,25 +72,25 @@ type TaskModifyInput struct {
 	Project         string            `json:"project,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
 	ID              string            `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
-	Title           *string           `json:"title,omitempty"`
-	Description     *string           `json:"description,omitempty"`
-	Priority        *string           `json:"priority,omitempty"`
-	Due             *int64            `json:"due,omitempty"`
+	Title           *string           `json:"title,omitempty" jsonschema:"new task title"`
+	Description     *string           `json:"description,omitempty" jsonschema:"new task details; pass empty string to clear"`
+	Priority        *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L"`
+	Due             *int64            `json:"due,omitempty" jsonschema:"new deadline time, unix seconds"`
 	DueDate         string            `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
-	Wait            *int64            `json:"wait,omitempty"`
+	Wait            *int64            `json:"wait,omitempty" jsonschema:"new defer-until time, unix seconds"`
 	WaitDate        string            `json:"wait_date,omitempty" jsonschema:"defer-until date as YYYY-MM-DD; stored at local 00:00:00"`
-	Scheduled       *int64            `json:"scheduled,omitempty"`
+	Scheduled       *int64            `json:"scheduled,omitempty" jsonschema:"new scheduled start time, unix seconds"`
 	ScheduledDate   string            `json:"scheduled_date,omitempty" jsonschema:"scheduled start date as YYYY-MM-DD; stored at local 00:00:00"`
-	Until           *int64            `json:"until,omitempty"`
+	Until           *int64            `json:"until,omitempty" jsonschema:"new effective-until time, unix seconds"`
 	UntilDate       string            `json:"until_date,omitempty" jsonschema:"effective-until date as YYYY-MM-DD; stored at local 23:59:59"`
-	Tags            []string          `json:"tags,omitempty"`
-	Assignees       []string          `json:"assignees,omitempty"`
-	RemoveAssignees []string          `json:"remove_assignees,omitempty"`
-	RemoveTags      []string          `json:"remove_tags,omitempty"`
-	UDAs            map[string]string `json:"udas,omitempty"`
-	Clear           []string          `json:"clear,omitempty"`
-	Depends         []string          `json:"depends,omitempty"`
-	ClearDepends    bool              `json:"clear_depends,omitempty"`
+	Tags            []string          `json:"tags,omitempty" jsonschema:"task tags to add"`
+	Assignees       []string          `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
+	RemoveAssignees []string          `json:"remove_assignees,omitempty" jsonschema:"workspace user refs to unassign"`
+	RemoveTags      []string          `json:"remove_tags,omitempty" jsonschema:"task tags to remove"`
+	UDAs            map[string]string `json:"udas,omitempty" jsonschema:"user-defined attribute overrides"`
+	Clear           []string          `json:"clear,omitempty" jsonschema:"fields to clear: title, description, priority, due, wait, scheduled, until"`
+	Depends         []string          `json:"depends,omitempty" jsonschema:"task refs this task depends on (replaces existing)"`
+	ClearDepends    bool              `json:"clear_depends,omitempty" jsonschema:"remove all dependency links"`
 }
 
 func (in TaskModifyInput) scopeInput() RequestScopeInput {
@@ -119,7 +119,7 @@ type TaskAnnotateInput struct {
 	Project    string `json:"project,omitempty"`
 	ProjectID  string `json:"project_id,omitempty"`
 	ID         string `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
-	Annotation string `json:"annotation"`
+	Annotation string `json:"annotation" jsonschema:"annotation body text"`
 }
 
 func (in TaskAnnotateInput) scopeInput() RequestScopeInput {
@@ -131,8 +131,8 @@ type TaskDependsInput struct {
 	Project      string   `json:"project,omitempty"`
 	ProjectID    string   `json:"project_id,omitempty"`
 	ID           string   `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
-	Depends      []string `json:"depends,omitempty"`
-	ClearDepends bool     `json:"clear_depends,omitempty"`
+	Depends      []string `json:"depends,omitempty" jsonschema:"task refs this task depends on (replaces existing)"`
+	ClearDepends bool     `json:"clear_depends,omitempty" jsonschema:"remove all dependency links"`
 }
 
 type TaskLinkAddInput struct {
@@ -199,7 +199,7 @@ type TaskImportInput struct {
 	Project   string `json:"project,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
 	// native bundle 格式（spec §20）：{schema, exported_at, task_series, tasks}。
-	Bundle app.TaskBundleV1 `json:"bundle"`
+	Bundle app.TaskBundleV1 `json:"bundle" jsonschema:"exported task bundle; shape {schema, exported_at, task_series, tasks}"`
 }
 
 func (in TaskImportInput) scopeInput() RequestScopeInput {
