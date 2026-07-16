@@ -2737,3 +2737,48 @@ func viewIDs(items []TaskOccurrenceView) []string {
 	}
 	return out
 }
+
+// TestEntryLessIsEntryThenID 验证 tie-breaker：同主键时按 entry 升序，
+// entry 相同/缺失时退回 ID。entry 为 nil 排最后。
+func TestEntryLessIsEntryThenID(t *testing.T) {
+	e1 := int64(100)
+	e2 := int64(200)
+	cases := []struct {
+		name string
+		a, b TaskOccurrenceView
+		want bool // a 是否应排在 b 前
+	}{
+		{"entry earlier first", TaskOccurrenceView{ID: "z", Entry: &e1}, TaskOccurrenceView{ID: "a", Entry: &e2}, true},
+		{"entry later second", TaskOccurrenceView{ID: "a", Entry: &e2}, TaskOccurrenceView{ID: "z", Entry: &e1}, false},
+		{"same entry id asc", TaskOccurrenceView{ID: "b", Entry: &e1}, TaskOccurrenceView{ID: "a", Entry: &e1}, false},
+		{"nil entry last", TaskOccurrenceView{ID: "a", Entry: nil}, TaskOccurrenceView{ID: "z", Entry: &e1}, false},
+		{"both nil id asc", TaskOccurrenceView{ID: "a", Entry: nil}, TaskOccurrenceView{ID: "z", Entry: nil}, true},
+	}
+	for _, tc := range cases {
+		if got := entryLess(tc.a, tc.b); got != tc.want {
+			t.Fatalf("%s: entryLess = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestSortByTimestampThenEntryTieBreaker 验证 due/wait 等时间戳排序的同值兜底：
+// 主键相同（这里 due 相同）时按 entry 升序，而非 UUID 字典序。
+func TestSortByTimestampThenEntryTieBreaker(t *testing.T) {
+	due := int64(500)
+	e1, e2 := int64(100), int64(200)
+	// 两条任务 due 相同、urgency 也相同；B 的 UUID 字典序更小但 entry 更晚。
+	// 期望按 entry 排：A（entry 早）在前。
+	items := []TaskOccurrenceView{
+		{ID: "bbb", Entry: &e2, Due: &due}, // entry 晚
+		{ID: "aaa", Entry: &e1, Due: &due}, // entry 早
+	}
+	sortByTimestampThenEntry(items, func(v TaskOccurrenceView) (int64, bool) {
+		if v.Due == nil {
+			return 0, false
+		}
+		return *v.Due, true
+	}, false)
+	if items[0].ID != "aaa" {
+		t.Fatalf("tie-break by entry failed: order = %s,%s; want aaa(entry early) first", items[0].ID, items[1].ID)
+	}
+}

@@ -729,10 +729,10 @@ func seriesUserInfoList(se taskseries.Series, userInfos map[string]domain.UserIn
 func sortTaskViews(items []TaskOccurrenceView, sort string) {
 	switch sort {
 	case "due":
-		sortByDueThenID(items)
+		sortByDueThenEntry(items)
 	case "wait":
 		// 与 storage.List 的 wait 排序一致：nulls last。
-		sortByTimestampThenID(items, func(v TaskOccurrenceView) (int64, bool) {
+		sortByTimestampThenEntry(items, func(v TaskOccurrenceView) (int64, bool) {
 			if v.Wait == nil {
 				return 0, false
 			}
@@ -740,7 +740,7 @@ func sortTaskViews(items []TaskOccurrenceView, sort string) {
 		}, false)
 	case "start":
 		// 与 storage.List 的 start 排序一致：start DESC（最近开始的在前）。
-		sortByTimestampThenID(items, func(v TaskOccurrenceView) (int64, bool) {
+		sortByTimestampThenEntry(items, func(v TaskOccurrenceView) (int64, bool) {
 			if v.Start == nil {
 				return 0, false
 			}
@@ -748,15 +748,15 @@ func sortTaskViews(items []TaskOccurrenceView, sort string) {
 		}, true)
 	case "completed":
 		// 与 storage.List 的 completed 排序一致：end_ts DESC, modified DESC。
-		sortByTimestampThenID(items, func(v TaskOccurrenceView) (int64, bool) {
+		sortByTimestampThenEntry(items, func(v TaskOccurrenceView) (int64, bool) {
 			if v.End == nil {
 				return 0, false
 			}
 			return *v.End, true
 		}, true)
-		sortByModifiedDescThenID(items)
+		sortByModifiedDescThenEntry(items)
 	case "modified":
-		sortByModifiedDescThenID(items)
+		sortByModifiedDescThenEntry(items)
 	case "id":
 		sortByID(items)
 	default:
@@ -765,16 +765,38 @@ func sortTaskViews(items []TaskOccurrenceView, sort string) {
 	}
 }
 
-// sortByTimestampThenID 按给定时间戳排序：null 永远排在最后（无论 asc）。
-// desc=true 时非 null 段降序，desc=false 时升序；同值用 ID 兜底。
+// entryLess 比较 entry：nil 视为最大（排最后），同 entry 再按 ID 兜底保证稳定。
+// 用作各排序的第二排序键——同主键（urgency/due/modified 等）时按创建先后，
+// 比 UUID 字典序更直观。
+func entryLess(a, b TaskOccurrenceView) bool {
+	aEntry, bEntry := int64(0), int64(0)
+	aHas, bHas := false, false
+	if a.Entry != nil {
+		aEntry, aHas = *a.Entry, true
+	}
+	if b.Entry != nil {
+		bEntry, bHas = *b.Entry, true
+	}
+	if aHas != bHas {
+		// 缺 entry 的排最后。
+		return aHas
+	}
+	if aEntry != bEntry {
+		return aEntry < bEntry
+	}
+	return a.ID < b.ID
+}
+
+// sortByTimestampThenEntry 按给定时间戳排序：null 永远排在最后（无论 asc）。
+// desc=true 时非 null 段降序，desc=false 时升序；同值用 entry 升序兜底（再退回 ID）。
 // 与 storage.List 的 IS NULL ASC + 字段 ASC/DESC 语义一致。
-func sortByTimestampThenID(items []TaskOccurrenceView, pick func(TaskOccurrenceView) (int64, bool), desc bool) {
+func sortByTimestampThenEntry(items []TaskOccurrenceView, pick func(TaskOccurrenceView) (int64, bool), desc bool) {
 	less := func(i, j int) bool {
 		vi, oki := pick(items[i])
 		vj, okj := pick(items[j])
 		// null（缺失）排最后。
 		if !oki && !okj {
-			return items[i].ID < items[j].ID
+			return entryLess(items[i], items[j])
 		}
 		if !oki {
 			return false
@@ -788,7 +810,7 @@ func sortByTimestampThenID(items []TaskOccurrenceView, pick func(TaskOccurrenceV
 			}
 			return vi < vj
 		}
-		return items[i].ID < items[j].ID
+		return entryLess(items[i], items[j])
 	}
 	sort.SliceStable(items, less)
 }
@@ -810,7 +832,7 @@ func urgencySortKey(sortKey string) bool {
 	return sortKey == "urgency" || sortKey == "next"
 }
 
-// sortTaskViewsByUrgency 计算每条 view 的 urgency 总分并按降序排序（ID 兜底）。
+// sortTaskViewsByUrgency 计算每条 view 的 urgency 总分并按降序排序（entry 升序兜底）。
 // 依赖图用全量非删除任务构建，projected occurrence 无 UUID 不参与依赖关系。
 func (s *Service) sortTaskViewsByUrgency(items []TaskOccurrenceView) error {
 	opts, err := s.urgencyConfig()
@@ -835,7 +857,7 @@ func (s *Service) sortTaskViewsByUrgency(items []TaskOccurrenceView) error {
 		if totals[items[i].ID] != totals[items[j].ID] {
 			return totals[items[i].ID] > totals[items[j].ID]
 		}
-		return items[i].ID < items[j].ID
+		return entryLess(items[i], items[j])
 	})
 	return nil
 }
@@ -882,7 +904,7 @@ func sortByID(items []TaskOccurrenceView) {
 	}
 }
 
-func sortByDueThenID(items []TaskOccurrenceView) {
+func sortByDueThenEntry(items []TaskOccurrenceView) {
 	for i := 1; i < len(items); i++ {
 		for j := i; j > 0; j-- {
 			a, b := items[j], items[j-1]
@@ -893,7 +915,7 @@ func sortByDueThenID(items []TaskOccurrenceView) {
 			if b.Due != nil {
 				bDue = *b.Due
 			}
-			if aDue < bDue || (aDue == bDue && a.ID < b.ID) {
+			if aDue < bDue || (aDue == bDue && entryLess(a, b)) {
 				items[j], items[j-1] = items[j-1], items[j]
 			} else {
 				break
@@ -902,7 +924,7 @@ func sortByDueThenID(items []TaskOccurrenceView) {
 	}
 }
 
-func sortByModifiedDescThenID(items []TaskOccurrenceView) {
+func sortByModifiedDescThenEntry(items []TaskOccurrenceView) {
 	for i := 1; i < len(items); i++ {
 		for j := i; j > 0; j-- {
 			a, b := items[j], items[j-1]
@@ -913,7 +935,7 @@ func sortByModifiedDescThenID(items []TaskOccurrenceView) {
 			if b.Modified != nil {
 				bMod = *b.Modified
 			}
-			if aMod > bMod || (aMod == bMod && a.ID < b.ID) {
+			if aMod > bMod || (aMod == bMod && entryLess(a, b)) {
 				items[j], items[j-1] = items[j-1], items[j]
 			} else {
 				break
