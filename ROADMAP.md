@@ -54,6 +54,7 @@
 | v0.5.5 | 已完成 | Web Console 任务详情页重构：手动 sub-task 能力闭环 + 主叙事区/分组属性栏/Activity 视觉合并 |
 | v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
 | v0.5.7 | 已完成 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
+| v0.5.8 | 已完成 | 循环任务系列稳定化收尾 + urgency 排序接入 Web Console 列表页 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -620,6 +621,20 @@ docs/superpowers/plans/2026-07-08-web-console-project-automation-openai-compatib
 ```text
 docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md
 ```
+
+## v0.5.8：循环任务系列稳定化与 urgency 排序接入
+
+**状态：已完成。**
+
+v0.5.8 是 v0.5.7 循环任务系列的稳定化收尾，并把已有的 urgency 优先级计算正式接入 Web Console 任务列表页。不新增独立功能模块，不改变数据库 schema。
+
+核心范围：
+
+- 循环任务系列评审修复（P0/P1/P2）：调度器接入与写前物化、Series scope 与 report 定义、前端 projected uuid 崩溃、HTTP recur 拒绝、Series CRUD 事务边界、assignees UserInfo 退化等。
+- 循环任务体验完善：提升为项目独立 tab、短引用与动态面包屑、循环实例计入成员待办与项目完成度/风险统计、任务详情 occurrence banner 增加循环入口。
+- Web Console 任务列表接入 urgency 排序：默认按紧急度降序，表头新增可排序紧急度列并展示分数；工具栏补齐 wait/start/completed 排序；各排序 tie-breaker 统一为 entry 升序。
+- urgency 公式修正：终态任务（completed/deleted）urgency 恒为 0，不再累计 due/priority 等加分项，与 Taskwarrior 行为一致。
+- bugfix：任务弹窗负责人在编辑场景初始展示裸 UUID（成员列表改为挂载即加载）。
 
 ## v0.1.1：稳定短任务标识 task_slug
 
