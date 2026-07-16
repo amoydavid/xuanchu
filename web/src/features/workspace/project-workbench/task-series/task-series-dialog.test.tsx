@@ -131,7 +131,8 @@ describe("TaskSeriesDialog", () => {
 
     await userEvent.clear(screen.getByLabelText("任务内容"))
     await userEvent.clear(await screen.findByLabelText("渠道"))
-    await userEvent.click(screen.getByRole("button", { name: /u1/ }))
+    // 负责人控件挂载即解析姓名，触发器按钮显示成员姓名（刘玮）而非裸 id（u1）。
+    await userEvent.click(screen.getByRole("button", { name: /刘玮/ }))
     await userEvent.click(screen.getByRole("button", { name: "清空负责人" }))
     await userEvent.click(screen.getByRole("button", { name: "完成" }))
     await userEvent.click(screen.getByRole("button", { name: "保存循环设置" }))

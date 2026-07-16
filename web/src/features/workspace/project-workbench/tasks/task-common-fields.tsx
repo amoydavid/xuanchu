@@ -152,22 +152,32 @@ function CommonAssigneeSelector({
   const [open, setOpen] = useState(false)
   const [members, setMembers] = useState<WorkspaceMemberCandidate[]>([])
   const [loaded, setLoaded] = useState(false)
-  const [pending, setPending] = useState(false)
   const selectedSet = useMemo(() => new Set(selected), [selected])
   const memberByID = useMemo(
     () => new Map(members.map((member) => [member.id, member])),
     [members]
   )
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next)
-    if (!next || loaded || pending) return
-    setPending(true)
+  // 挂载即加载成员：编辑场景回填的 assignee id 需要立刻解析为姓名，
+  // 而不是等用户打开下拉（否则触发器和 chip 会先显示裸 UUID）。
+  useEffect(() => {
+    if (loaded) return
+    let active = true
     void getWorkspaceMembers(workspaceSlug)
       .then((items) => {
-        setMembers(items)
-        setLoaded(true)
+        if (active) {
+          setMembers(items)
+          setLoaded(true)
+        }
       })
-      .finally(() => setPending(false))
+      .catch(() => {
+        if (active) setLoaded(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [loaded, workspaceSlug])
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
   }
 
   return (
@@ -192,7 +202,7 @@ function CommonAssigneeSelector({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80 space-y-2">
           <div className="max-h-64 space-y-1 overflow-auto">
-            {pending ? (
+            {!loaded ? (
               <p className="px-2 py-3 text-sm text-muted-foreground">
                 {t("taskCreate.loadingAssignees")}
               </p>
