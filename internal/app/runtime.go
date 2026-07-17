@@ -39,8 +39,24 @@ type RuntimeContext struct {
 	DelegatorAdminTokenName string
 	// WebLoginDisabled 表示当前请求来自 SSO browser session。
 	// 由此创建的 PAT/Agent token 会带上 WebLoginDisabled 标记，禁止后续用于 Web Console 登录页登录，
-	// 守住「SSO workspace 人工 token 走 SSO 登 Console」边界。token 在 API/MCP/CLI 仍可用。
+	// 守住「SSO workspace 人工 token 走 SSO 登录」边界。token 在 API/MCP/CLI 仍可用。
 	WebLoginDisabled bool
+	// ActorTokenType 记录调用者凭证的原始 token type（pat/agent/tenant_access_token/browser_session）。
+	// 用于区分「capability 是真实授权边界（PAT/Agent/tenant token）」与
+	// 「capability 是交互层人为收紧（browser session）」，影响 token 管理的子集校验语义。
+	ActorTokenType string
+}
+
+// BrowserSessionTokenType 是 Web Console SSO 登录会话的凭证类型。
+// 由 httpapi 层在 AuthenticateBearerToken 之外的 cookie session 路径构造，
+// app 层只识别该字符串值，不依赖 httpapi 包。
+const BrowserSessionTokenType = "browser_session"
+
+// CredentialIsBrowserSession 判断当前调用者是否为 Web Console 的 SSO browser session。
+// browser session 的 capability 集合是交互层人为收紧（见 httpapi.browserSessionScopes），
+// 真实授权由 membership role 决定，因此在 token 管理的子集校验里不应作为权限边界。
+func (rt RuntimeContext) CredentialIsBrowserSession() bool {
+	return rt.ActorTokenType == BrowserSessionTokenType
 }
 
 type ServiceOptions struct {

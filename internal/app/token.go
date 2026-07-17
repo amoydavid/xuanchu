@@ -436,7 +436,8 @@ func (s *Service) ModifyTenantAccessToken(input ModifyTenantAccessTokenInput) (*
 }
 
 func (s *Service) enforceTenantTokenModifyLimit(existingScopes, existingProjectIDs, finalScopes, finalProjectIDs []string) error {
-	if s.requestScope == nil {
+	// 与 enforceTenantTokenWriteLimit 同理：browser session 跳过子集校验。
+	if s.requestScope == nil || s.runtime.CredentialIsBrowserSession() {
 		return nil
 	}
 	for _, scope := range existingScopes {
@@ -520,7 +521,12 @@ func (s *Service) rejectAdminSwitchTokenManagement() error {
 }
 
 func (s *Service) enforceTenantTokenWriteLimit(scopes, projectIDs []string) error {
-	if s.requestScope == nil {
+	// 子集校验防止一个受限凭证（PAT/Agent/tenant token）创建/修改出比自己权限更大的子 token。
+	// browser session（Web Console 的 SSO 登录会话）不在此列：它的 capability 是交互层人为收紧，
+	// 真实授权由 membership role 决定（tokenManageAllowed 已限定 owner/admin），不应被 capability
+	// 子集卡住——否则 owner 在 Web Console 给 tenant token 勾选 workspace:write/user:write 等
+	// browser session 刻意排除的 scope 时会误报 "scope exceeds current token"。
+	if s.requestScope == nil || s.runtime.CredentialIsBrowserSession() {
 		return nil
 	}
 	for _, scope := range scopes {

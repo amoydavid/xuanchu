@@ -205,6 +205,9 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 	}
 
 	runtime := runtimeContextFromDecision(decision)
+	// 透传调用者凭证的原始 token type，用于区分真实授权边界（PAT/Agent/tenant token）
+	// 与交互层人为收紧（browser session），供 token 管理的子集校验判断。
+	runtime.ActorTokenType = input.Token.Token.Type
 	// acting token 的 server admin 委托链需要透传到 audit，与普通 user-agent impersonation 独立。
 	if input.Token.AdminActingTrace != nil {
 		runtime.AdminActingSessionID = input.Token.AdminActingTrace.SessionID
@@ -262,6 +265,7 @@ func (s *Service) authorizeTenantTokenRequest(input RequestAuthorizationInput, s
 	}
 	runtime := RuntimeContext{
 		ActorType:         auth.TokenTypeTenantAccess,
+		ActorTokenType:    auth.TokenTypeTenantAccess,
 		ActorName:         input.Token.Token.Name,
 		ActorTokenID:      input.Token.Token.ID,
 		ActorTokenName:    input.Token.Token.Name,

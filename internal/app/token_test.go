@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
 
@@ -945,4 +947,155 @@ func TestAuthenticateBearerToken(t *testing.T) {
 	} else {
 		assertRuntimeCode(t, err, "auth_token_revoked")
 	}
+}
+
+// newScopedTokenService 构造一个带指定 requestScope 和 runtime 的 service，
+// 用于模拟 HTTP/MCP 请求路径下（带 capability 集合）的调用者。
+// actorTokenType 决定子集校验语义：
+//   - BrowserSessionTokenType：capability 是交互层人为收紧，跳过子集校验
+//   - auth.TokenTypePAT / auth.TokenTypeAgent / auth.TokenTypeTenantAccess：真实授权边界，子集校验生效
+func newScopedTokenService(t *testing.T, store *storage.Store, capabilities []string, actorTokenType string) *Service {
+	t.Helper()
+	ws, err := storage.NewWorkspaceRepository(store.DB()).GetBySlug("local")
+	if err != nil {
+		t.Fatalf("GetBySlug(local) error = %v", err)
+	}
+	rt := RuntimeContext{
+		ActorType:      string(authz.ActorUser),
+		ActorTokenType: actorTokenType,
+		WorkspaceID:    ws.ID,
+		WorkspaceSlug:  ws.Slug,
+		Role:           RoleOwner,
+	}
+	if actorTokenType == auth.TokenTypeTenantAccess {
+		rt.ActorType = auth.TokenTypeTenantAccess
+		rt.Role = RoleOwner
+	}
+	scope := &RequestScope{
+		WorkspaceIDs: []string{ws.ID},
+		Capabilities: append([]string(nil), capabilities...),
+	}
+	svc, err := NewService(ServiceOptions{
+		Store:                 store,
+		Clock:                 FixedClock{NowUnix: 100},
+		Runtime:               &rt,
+		RequestScope:          scope,
+		DisableScopeBootstrap: true,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	return svc
+}
+
+// browserSessionOwnerCapabilities 镜像 internal/httpapi.browserSessionScopes()，
+// 刻意排除 workspace:write / user:write / impersonate，与 Web Console owner 的实际 capability 集一致。
+func browserSessionOwnerCapabilities() []string {
+	return []string{
+		auth.ScopeTaskRead, auth.ScopeTaskWrite,
+		auth.ScopeProjectRead, auth.ScopeProjectWrite,
+		auth.ScopeContextRead, auth.ScopeContextWrite,
+		auth.ScopeConfigRead, auth.ScopeConfigWrite,
+		auth.ScopeWorkspaceRead,
+		auth.ScopeAuditRead,
+		auth.ScopeUserRead,
+		auth.ScopeMemberRead, auth.ScopeMemberWrite,
+		auth.ScopeTokenRead, auth.ScopeTokenWrite,
+		auth.ScopeHookRead, auth.ScopeHookWrite,
+		auth.ScopeNotificationRead, auth.ScopeNotificationWrite,
+		auth.ScopeReminderRead, auth.ScopeReminderWrite,
+	}
+}
+
+// 回归测试：browser session 登录的 owner 用户，其 capability 集刻意不含 workspace:write/user:write，
+// 但在 Web Console 给 tenant token 勾选这两个 scope 时不应被 enforceTenantTokenWriteLimit 拦截。
+// browser session 的 capability 是交互层人为收紧，真实授权由 membership role 决定。
+func TestTenantTokenCreateAllowsBrowserSessionOwnerToGrantBroadScopes(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	ownerSvc := newScopedTokenService(t, svc.store, browserSessionOwnerCapabilities(), BrowserSessionTokenType)
+
+	created, err := ownerSvc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:         "broad",
+		Scopes:       []string{"workspace:write", "user:write", "member:read"},
+		WorkspaceRef: ownerSvc.Runtime().WorkspaceSlug,
+	})
+	if err != nil {
+		t.Fatalf("CreateTenantAccessToken with broad scopes by browser session owner error = %v", err)
+	}
+	want := map[string]bool{"workspace:write": true, "user:write": true, "member:read": true}
+	for _, s := range created.View.Scopes {
+		delete(want, s)
+	}
+	if len(want) > 0 {
+		t.Fatalf("missing scopes in created token: %v", want)
+	}
+}
+
+func TestTenantTokenModifyAllowsBrowserSessionOwnerToAddBroadScopes(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	// 先用一个无 requestScope 的 owner service 建一个窄 scope 的 tenant token。
+	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:         "narrow",
+		Scopes:       []string{"task:read"},
+		WorkspaceRef: svc.Runtime().WorkspaceSlug,
+	})
+	if err != nil {
+		t.Fatalf("CreateTenantAccessToken error = %v", err)
+	}
+
+	// 用 browser session owner（capability 不含 workspace:write/user:write）给它加宽 scope。
+	ownerSvc := newScopedTokenService(t, svc.store, browserSessionOwnerCapabilities(), BrowserSessionTokenType)
+	newScopes := []string{"task:read", "workspace:write", "user:write"}
+	updated, err := ownerSvc.ModifyTenantAccessToken(ModifyTenantAccessTokenInput{
+		TokenRef: created.View.ID,
+		Scopes:   &newScopes,
+	})
+	if err != nil {
+		t.Fatalf("ModifyTenantAccessToken add broad scopes by browser session owner error = %v", err)
+	}
+	got := map[string]bool{}
+	for _, s := range updated.Scopes {
+		got[s] = true
+	}
+	for _, want := range newScopes {
+		if !got[want] {
+			t.Fatalf("scope %q missing after modify, got %v", want, updated.Scopes)
+		}
+	}
+}
+
+// 对照测试：受限 PAT（真实授权边界）创建超出自身 capability 的 tenant token 仍应被拒。
+// PAT 的 scope 是用户自愿授予的真实权限边界，子集校验必须生效（防提权）。
+func TestTenantTokenCreateRejectsLimitedPATExceedingOwnScope(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	// PAT 只有 token:read/token:write，没有 task:read。
+	patSvc := newScopedTokenService(t, svc.store, []string{auth.ScopeTokenRead, auth.ScopeTokenWrite}, auth.TokenTypePAT)
+
+	_, err := patSvc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:         "escalation",
+		Scopes:       []string{"task:read"},
+		WorkspaceRef: patSvc.Runtime().WorkspaceSlug,
+	})
+	assertRuntimeCode(t, err, authz.CodeTokenScopeDenied)
+}
+
+// 对照测试：tenant actor 创建超出自身 capability 的 tenant token 仍应被拒。
+func TestTenantTokenCreateRejectsTenantActorExceedingOwnScope(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	tenantSvc := newScopedTokenService(t, svc.store, []string{auth.ScopeTaskRead, auth.ScopeTokenWrite}, auth.TokenTypeTenantAccess)
+
+	_, err := tenantSvc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name:         "escalation",
+		Scopes:       []string{"workspace:write"},
+		WorkspaceRef: tenantSvc.Runtime().WorkspaceSlug,
+	})
+	assertRuntimeCode(t, err, authz.CodeTokenScopeDenied)
 }
