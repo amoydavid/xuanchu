@@ -368,7 +368,7 @@ open 指 `pending` 或 `waiting`。日期边界沿用璇础既有规则：date-o
 - 最近一条 project annotation 摘要；没有 annotation 时显示最近更新时间，不编造“进展正常”；
 - archived/cancelled 项目不进入首页关注区，但仍可在项目列表查看。
 
-风险计数复用现有 `ProjectTaskSummary` 语义：普通任务风险读取 `overdue_count`、`high_priority_open_count`、`wait_ready_count`、`unassigned_open_count`；循环任务读取 `series_metrics`。排序时“逾期”使用普通任务逾期数加 `overdue_recurring_occurrence_count`，卡片有逾期循环实例时单独显示“循环实例逾期 N”，不把它混成普通任务。首页不得新定义第三套项目统计口径。
+风险计数复用现有 `ProjectTaskSummary` 语义：`overdue_count`、`high_priority_open_count`、`wait_ready_count`、`unassigned_open_count` 已统计普通任务和已物化循环实例；`series_metrics` 只提供循环任务子集和系列运行上下文。排序直接使用 `overdue_count`，不能再加 `overdue_recurring_occurrence_count` 造成重复计数。卡片有逾期循环实例时单独显示“其中循环实例逾期 N”，首页不得新定义第三套项目统计口径。
 
 交互：
 
