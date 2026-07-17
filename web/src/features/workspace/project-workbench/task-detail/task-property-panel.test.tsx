@@ -134,6 +134,45 @@ describe("TaskPropertyPanel", () => {
     expect(document.querySelector('[data-slot="calendar"]')).toBeTruthy()
   })
 
+  it("collapses an empty schedule until the user chooses to edit it", async () => {
+    render(
+      <TaskPropertyPanel
+        canWrite={true}
+        projectSlug="adsops"
+        task={task({ due: null, scheduled: null, until: null, wait: null })}
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    const scheduleToggle = screen.getByRole("button", { name: "计划" })
+    expect(screen.queryByRole("button", { name: "截止日期" })).toBeNull()
+
+    await userEvent.click(scheduleToggle)
+    expect(screen.getByRole("button", { name: "截止日期" })).toBeTruthy()
+  })
+
+  it("does not show relations for external links alone", () => {
+    render(
+      <TaskPropertyPanel
+        canWrite={true}
+        projectSlug="adsops"
+        task={task({
+          parent: undefined,
+          depends: [],
+          depends_info: [],
+          links: [{ id: "link-1", url: "https://example.com" }],
+        })}
+        taskRef="ads-1"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    expect(screen.queryByRole("button", { name: "关系" })).toBeNull()
+  })
+
   it("keeps due editing available for a projected occurrence", () => {
     render(
       <TaskPropertyPanel

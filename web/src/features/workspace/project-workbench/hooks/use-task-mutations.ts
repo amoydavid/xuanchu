@@ -116,6 +116,7 @@ export function useCreateSubTaskMutation(
 ) {
   const queryClient = useQueryClient()
   const feedback = useEditFeedback()
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: (input: TaskCreateInput) => createTask(workspaceSlug, input),
     onSuccess: () => {
@@ -134,7 +135,7 @@ export function useCreateSubTaskMutation(
           projectSlug
         ),
       })
-      feedback.success("已创建：子任务")
+      feedback.success(t("taskDetail.subTaskCreated"))
     },
   })
 }
@@ -146,6 +147,7 @@ export function useModifyTaskMutation(
 ) {
   const queryClient = useQueryClient()
   const feedback = useEditFeedback()
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: (input: TaskModifyInput & { taskRef?: string }) => {
       const ref = input.taskRef ?? taskRef
@@ -186,7 +188,7 @@ export function useModifyTaskMutation(
           projectSlug
         ),
       })
-      feedback.success("已保存：任务")
+      feedback.success(t("taskDetail.taskSaved"))
     },
   })
 }
@@ -272,6 +274,7 @@ export function useTaskAnnotationMutations(
 ) {
   const queryClient = useQueryClient()
   const feedback = useEditFeedback()
+  const { t } = useTranslation()
   const invalidate = () => {
     void queryClient.invalidateQueries({
       queryKey: taskQueryKeys.task(workspaceSlug, taskRef),
@@ -287,7 +290,7 @@ export function useTaskAnnotationMutations(
         addTaskAnnotation(workspaceSlug, taskRef, input),
       onSuccess: () => {
         invalidate()
-        feedback.success("已添加：注解")
+        feedback.success(t("taskDetail.annotationAdded"))
       },
     }),
     remove: useMutation({
@@ -295,7 +298,7 @@ export function useTaskAnnotationMutations(
         deleteTaskAnnotation(workspaceSlug, taskRef, annotationID),
       onSuccess: () => {
         invalidate()
-        feedback.success("已删除：注解")
+        feedback.success(t("taskDetail.annotationDeleted"))
       },
     }),
     update: useMutation({
@@ -308,7 +311,7 @@ export function useTaskAnnotationMutations(
       }) => updateTaskAnnotation(workspaceSlug, taskRef, annotationID, input),
       onSuccess: () => {
         invalidate()
-        feedback.success("已保存：注解")
+        feedback.success(t("taskDetail.annotationUpdated"))
       },
     }),
   }
@@ -321,6 +324,7 @@ export function useTaskLinkMutations(
 ) {
   const queryClient = useQueryClient()
   const feedback = useEditFeedback()
+  const { t } = useTranslation()
   const invalidate = () => {
     void queryClient.invalidateQueries({
       queryKey: taskQueryKeys.task(workspaceSlug, taskRef),
@@ -336,7 +340,7 @@ export function useTaskLinkMutations(
         addTaskLink(workspaceSlug, taskRef, input),
       onSuccess: () => {
         invalidate()
-        feedback.success("已添加：链接")
+        feedback.success(t("taskDetail.linkAdded"))
       },
     }),
     remove: useMutation({
@@ -344,7 +348,7 @@ export function useTaskLinkMutations(
         deleteTaskLink(workspaceSlug, taskRef, linkID),
       onSuccess: () => {
         invalidate()
-        feedback.success("已删除：链接")
+        feedback.success(t("taskDetail.linkDeleted"))
       },
     }),
     update: useMutation({
@@ -357,7 +361,7 @@ export function useTaskLinkMutations(
       }) => updateTaskLink(workspaceSlug, taskRef, linkID, input),
       onSuccess: () => {
         invalidate()
-        feedback.success("已保存：链接")
+        feedback.success(t("taskDetail.linkUpdated"))
       },
     }),
   }

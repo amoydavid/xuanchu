@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +27,9 @@ const PRIORITIES = ["H", "M", "L"] as const
 
 type SubTaskListProps = {
   canCreate: boolean
+  onContentVisibilityChange?: (visible: boolean) => void
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   parentRef: string
   parentUUID: string
   projectSlug: string
@@ -35,6 +38,9 @@ type SubTaskListProps = {
 
 export function SubTaskList({
   canCreate,
+  onContentVisibilityChange,
+  onOpenChange,
+  open: controlledOpen,
   parentRef,
   parentUUID,
   projectSlug,
@@ -43,26 +49,60 @@ export function SubTaskList({
   const { t } = useTranslation()
   const [showCompleted, setShowCompleted] = useState(false)
   // composer 默认不显示，点击「添加子任务」后展开（spec §7.2）。
-  const [composerOpen, setComposerOpen] = useState(false)
+  const [uncontrolledComposerOpen, setUncontrolledComposerOpen] =
+    useState(false)
+  const reportedVisibilityRef = useRef<boolean | null>(null)
 
   // 分别请求 open 与 all：默认只展示 open，展开已完成时用 all。
   // 这样切换 showCompleted 不会因为缓存切换而闪烁空态。
   const openChildren = useTaskChildrenQuery(workspaceSlug, parentRef, false)
   const allChildren = useTaskChildrenQuery(workspaceSlug, parentRef, true)
 
-  const children = showCompleted ? allChildren.data : openChildren.data
-  const isLoading = showCompleted
-    ? allChildren.isPending
-    : openChildren.isPending
-  const error = showCompleted ? allChildren.error : openChildren.error
-  const refetch = showCompleted ? allChildren.refetch : openChildren.refetch
+  const childrenQuery = showCompleted ? allChildren : openChildren
+  const children = childrenQuery.data
+  const isLoading = childrenQuery.isPending
+  const error = childrenQuery.error
+  const refetch = childrenQuery.refetch
 
   const openCount = openChildren.data?.length ?? 0
   const totalCount = allChildren.data?.length ?? 0
   const completedCount = Math.max(totalCount - openCount, 0)
+  const composerOpen = controlledOpen ?? uncontrolledComposerOpen
+  const hasChildrenError = openChildren.isError || allChildren.isError
+  const hasVisibleContent =
+    composerOpen ||
+    hasChildrenError ||
+    (allChildren.isSuccess && (allChildren.data?.length ?? 0) > 0)
+  const setComposerOpen = (nextOpen: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledComposerOpen(nextOpen)
+    onOpenChange?.(nextOpen)
+  }
+
+  useEffect(() => {
+    if (
+      !onContentVisibilityChange ||
+      reportedVisibilityRef.current === hasVisibleContent
+    ) {
+      return
+    }
+    reportedVisibilityRef.current = hasVisibleContent
+    onContentVisibilityChange(hasVisibleContent)
+  }, [hasVisibleContent, onContentVisibilityChange])
+
+  // 详情页受控使用时，只有查询成功且明确返回空数组才隐藏空态。
+  // 加载与错误状态必须保留，以免吞掉重试入口。
+  if (
+    controlledOpen !== undefined &&
+    !composerOpen &&
+    openChildren.isSuccess &&
+    allChildren.isSuccess &&
+    allChildren.data?.length === 0
+  ) {
+    return null
+  }
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-testid="task-subtasks-section">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium">{t("taskDetail.subTasks")}</h2>
         {canCreate && !composerOpen ? (
@@ -101,9 +141,11 @@ export function SubTaskList({
         </div>
       ) : !children || children.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {canCreate
-            ? t("taskDetail.subTasksEmpty")
-            : t("taskDetail.subTasksNone")}
+          {completedCount > 0
+            ? t("taskDetail.subTasksNoOpen")
+            : canCreate
+              ? t("taskDetail.subTasksEmpty")
+              : t("taskDetail.subTasksNone")}
         </p>
       ) : (
         <ul className="space-y-1">
@@ -161,7 +203,9 @@ function SubTaskRow({
       {task.assignees && task.assignees.length > 0 ? (
         <span className="truncate text-xs text-muted-foreground">
           {task.assignees
-            .map((a: ProjectWorkbenchAssignee) => a.display_name || a.name || a.id)
+            .map(
+              (a: ProjectWorkbenchAssignee) => a.display_name || a.name || a.id
+            )
             .join(", ")}
         </span>
       ) : null}

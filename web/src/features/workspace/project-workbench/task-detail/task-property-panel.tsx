@@ -66,8 +66,7 @@ export function TaskPropertyPanel({
   const hasRelations =
     !!task.parent ||
     (task.depends && task.depends.length > 0) ||
-    (task.blocked_by_info && task.blocked_by_info.length > 0) ||
-    (task.links && task.links.length > 0)
+    (task.blocked_by_info && task.blocked_by_info.length > 0)
   const hasUDA = udas.length > 0
   // 不可写且计划字段全空时，Schedule 整组隐身（避免空壳噪音）。
   const showSchedule = canWrite || hasSchedule
@@ -144,7 +143,10 @@ export function TaskPropertyPanel({
 
       {/* Schedule：日期/周期字段；空组在不可写时隐身 */}
       {showSchedule || task.recurrence_info ? (
-        <PropertyGroup title={t("taskDetail.groupSchedule")}>
+        <PropertyGroup
+          defaultOpen={hasSchedule || !!task.recurrence_info}
+          title={t("taskDetail.groupSchedule")}
+        >
           <PropertyRow label={t("projectReadonly.dueDate")}>
             <InlineDatePicker
               ariaLabel={t("projectReadonly.dueDate")}

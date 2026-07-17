@@ -7,13 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "@/i18n"
 import type { ProjectTask } from "../api/task-api"
 import { createTask, listTaskChildren } from "../api/task-api"
+import { EditFeedbackProvider } from "../shared/edit-feedback"
 import { SubTaskList } from "./sub-task-list"
 
 // Mock task-api：createTask / listTaskChildren 用 vi.fn，其余保持实际实现。
 vi.mock("../api/task-api", async () => {
-  const actual = await vi.importActual<typeof import("../api/task-api")>(
-    "../api/task-api"
-  )
+  const actual =
+    await vi.importActual<typeof import("../api/task-api")>("../api/task-api")
   return {
     ...actual,
     createTask: vi.fn(),
@@ -55,7 +55,7 @@ function makeQueryClient() {
 function Wrapper({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={makeQueryClient()}>
-      {children}
+      <EditFeedbackProvider>{children}</EditFeedbackProvider>
     </QueryClientProvider>
   )
 }
@@ -93,7 +93,9 @@ describe("SubTaskList", () => {
 
     // composer 初始不渲染，需点击「添加子任务」展开。
     expect(screen.queryByPlaceholderText("子任务标题")).toBeNull()
-    await userEvent.click(await screen.findByRole("button", { name: "添加子任务" }))
+    await userEvent.click(
+      await screen.findByRole("button", { name: "添加子任务" })
+    )
 
     const input = await screen.findByPlaceholderText("子任务标题")
     await userEvent.type(input, "新子任务")
@@ -112,7 +114,9 @@ describe("SubTaskList", () => {
       })
     )
     // composer 保持打开，标题已清空。
-    const titleInput = screen.getByPlaceholderText("子任务标题") as HTMLInputElement
+    const titleInput = screen.getByPlaceholderText(
+      "子任务标题"
+    ) as HTMLInputElement
     expect(titleInput.value).toBe("")
   })
 
@@ -129,7 +133,9 @@ describe("SubTaskList", () => {
       { wrapper: Wrapper }
     )
 
-    await userEvent.click(await screen.findByRole("button", { name: "添加子任务" }))
+    await userEvent.click(
+      await screen.findByRole("button", { name: "添加子任务" })
+    )
     await screen.findByPlaceholderText("子任务标题")
     await userEvent.keyboard("{Enter}")
     expect(createTaskMock).not.toHaveBeenCalled()
@@ -151,7 +157,9 @@ describe("SubTaskList", () => {
       { wrapper: Wrapper }
     )
 
-    await userEvent.click(await screen.findByRole("button", { name: "添加子任务" }))
+    await userEvent.click(
+      await screen.findByRole("button", { name: "添加子任务" })
+    )
     expect(await screen.findByPlaceholderText("子任务标题")).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "取消" }))
     expect(screen.queryByPlaceholderText("子任务标题")).toBeNull()
@@ -185,6 +193,83 @@ describe("SubTaskList", () => {
       />,
       { wrapper: Wrapper }
     )
-    expect((await screen.findAllByText("已存在子任务")).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("已存在子任务")).length).toBeGreaterThan(
+      0
+    )
+  })
+
+  it("受控默认态在子任务查询失败时保留错误与重试入口", async () => {
+    listTaskChildrenMock.mockRejectedValue(new Error("request failed"))
+
+    render(
+      <SubTaskList
+        canCreate
+        open={false}
+        parentRef="parent-ref"
+        parentUUID="parent-uuid"
+        projectSlug="ads"
+        workspaceSlug="acme"
+      />,
+      { wrapper: Wrapper }
+    )
+
+    expect(await screen.findByText("子任务加载失败")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "重试" })).toBeTruthy()
+    expect(screen.getByTestId("task-subtasks-section")).toBeTruthy()
+  })
+
+  it("受控默认态保留只有已完成的子任务，并提供展开入口", async () => {
+    listTaskChildrenMock.mockImplementation(
+      async (_workspace: string, _parent: string, includeClosed: boolean) =>
+        includeClosed ? [child({ status: "completed" })] : []
+    )
+
+    render(
+      <SubTaskList
+        canCreate
+        open={false}
+        parentRef="parent-ref"
+        parentUUID="parent-uuid"
+        projectSlug="ads"
+        workspaceSlug="acme"
+      />,
+      { wrapper: Wrapper }
+    )
+
+    expect(await screen.findByTestId("task-subtasks-section")).toBeTruthy()
+    expect(
+      await screen.findByRole("button", { name: "显示 1 个已完成" })
+    ).toBeTruthy()
+    expect(await screen.findByText("暂无未完成子任务")).toBeTruthy()
+    expect(screen.queryByText("还没有子任务，点击上方创建第一个。")).toBeNull()
+  })
+
+  it("uses an English success toast after creating a sub-task", async () => {
+    await i18n.changeLanguage("en-US")
+    listTaskChildrenMock.mockResolvedValue([])
+    createTaskMock.mockResolvedValue({ uuid: "new-child" })
+
+    render(
+      <SubTaskList
+        canCreate
+        parentRef="parent-ref"
+        parentUUID="parent-uuid"
+        projectSlug="ads"
+        workspaceSlug="acme"
+      />,
+      { wrapper: Wrapper }
+    )
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add sub-task" })
+    )
+    await userEvent.type(screen.getByLabelText("Sub-task title"), "Follow up")
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create sub-task" })
+    )
+
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "Sub-task created"
+    )
   })
 })

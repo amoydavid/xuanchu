@@ -18,6 +18,7 @@ import type {
 } from "../api/task-api"
 
 type TaskChangeHistoryProps = {
+  showTitle?: boolean
   workspaceSlug: string
   taskRef: string
 }
@@ -27,6 +28,7 @@ type TaskChangeHistoryProps = {
 // 前端用 field + raw + i18n locale 把变更渲染成自然语言句子，
 // 不直接展示 raw JSON / unix 秒 / null / UUID。
 export function TaskChangeHistory({
+  showTitle = true,
   workspaceSlug,
   taskRef,
 }: TaskChangeHistoryProps) {
@@ -35,10 +37,12 @@ export function TaskChangeHistory({
 
   if (audit.isError) {
     return (
-      <section className="space-y-2 border bg-card p-4">
-        <h2 className="text-sm font-medium">
-          {t("projectWorkbench.taskHistory.title")}
-        </h2>
+      <section className="space-y-2">
+        {showTitle ? (
+          <h2 className="text-sm font-medium">
+            {t("projectWorkbench.taskHistory.title")}
+          </h2>
+        ) : null}
         <p className="text-xs text-muted-foreground">
           {t("projectWorkbench.taskHistory.unavailable")}
         </p>
@@ -52,10 +56,12 @@ export function TaskChangeHistory({
   )
 
   return (
-    <section className="space-y-3 border bg-card p-4">
-      <h2 className="text-sm font-medium">
-        {t("projectWorkbench.taskHistory.title")}
-      </h2>
+    <section className="space-y-3">
+      {showTitle ? (
+        <h2 className="text-sm font-medium">
+          {t("projectWorkbench.taskHistory.title")}
+        </h2>
+      ) : null}
       {audit.isPending ? (
         <p className="text-xs text-muted-foreground">…</p>
       ) : rows.length === 0 ? (
@@ -196,13 +202,13 @@ function DescriptionChangeLine({
           </DialogHeader>
           <div className="grid gap-4 text-sm">
             <div>
-              <div className="mb-1 text-xs uppercase text-muted-foreground">
+              <div className="mb-1 text-xs text-muted-foreground uppercase">
                 {t("projectWorkbench.taskHistory.currentValue")}
               </div>
               <DescriptionValue value={change.current} />
             </div>
             <div>
-              <div className="mb-1 text-xs uppercase text-muted-foreground">
+              <div className="mb-1 text-xs text-muted-foreground uppercase">
                 {t("projectWorkbench.taskHistory.previousValue")}
               </div>
               <DescriptionValue value={change.previous} />
@@ -298,8 +304,7 @@ function actorLabel(
   }
   if (entry.actor_token) {
     return (
-      entry.actor_token.name ||
-      t("projectWorkbench.taskHistory.unknownActor")
+      entry.actor_token.name || t("projectWorkbench.taskHistory.unknownActor")
     )
   }
   return t("projectWorkbench.taskHistory.unknownActor")
@@ -316,7 +321,13 @@ function formatScalar(
   if (!value || value.raw == null) {
     return t("projectWorkbench.taskHistory.unset")
   }
-  if ((field === "due" || field === "wait" || field === "scheduled" || field === "until") && typeof value.raw === "number") {
+  if (
+    (field === "due" ||
+      field === "wait" ||
+      field === "scheduled" ||
+      field === "until") &&
+    typeof value.raw === "number"
+  ) {
     return new Date(value.raw * 1000).toLocaleDateString(locale)
   }
   if (typeof value.raw === "string" || typeof value.raw === "number") {

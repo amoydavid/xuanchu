@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react"
 import { AlertCircleIcon, CheckCircle2Icon, XIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,7 @@ export function EditFeedbackProvider({
   children,
   timeoutMs = 2500,
 }: EditFeedbackProviderProps) {
+  const { t } = useTranslation()
   const [message, setMessage] = useState<FeedbackMessage | null>(null)
   const [failures, setFailures] = useState<FailedEdit[]>([])
   const nextIDRef = useRef(1)
@@ -99,7 +101,9 @@ export function EditFeedbackProvider({
           variant="destructive"
         >
           <AlertCircleIcon className="size-4" />
-          <AlertTitle>{failures.length} 个编辑未保存</AlertTitle>
+          <AlertTitle>
+            {t("common.unsavedEdits", { count: failures.length })}
+          </AlertTitle>
           <AlertDescription>
             <ul className="mt-1 space-y-1">
               {failures.map((failure) => (
@@ -108,10 +112,15 @@ export function EditFeedbackProvider({
                   key={failure.id}
                 >
                   <span className="min-w-0 truncate">
-                    {failure.title}：{failure.message}
+                    {t("common.failedEdit", {
+                      title: failure.title,
+                      message: failure.message,
+                    })}
                   </span>
                   <Button
-                    aria-label={`关闭失败 ${failure.title}`}
+                    aria-label={t("common.dismissFailedEdit", {
+                      title: failure.title,
+                    })}
                     className="text-muted-foreground hover:text-foreground"
                     onClick={() =>
                       setFailures((current) =>
