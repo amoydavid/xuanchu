@@ -80,6 +80,9 @@ describe("project mutation hooks", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["projects", "acme"],
       })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "acme"],
+      })
     })
   })
 
@@ -104,6 +107,9 @@ describe("project mutation hooks", () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["projects", "acme"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "acme"],
       })
     })
   })
@@ -137,6 +143,9 @@ describe("project mutation hooks", () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "console", "tasks"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "acme"],
       })
     })
   })

@@ -31,9 +31,9 @@ export function ProjectActivityPage({
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [content, setContent] = useState("")
-  const [filterKey, setFilterKey] = useState<"all" | "project" | "task" | "audit">(
-    "all"
-  )
+  const [filterKey, setFilterKey] = useState<
+    "all" | "project" | "task" | "audit"
+  >("all")
   const { canManage, closed } = useProjectLayout()
   const timeline = useProjectTimelineQuery(workspaceSlug, projectSlug)
 
@@ -58,6 +58,9 @@ export function ProjectActivityPage({
     })
     void queryClient.invalidateQueries({
       queryKey: ["project", workspaceSlug, projectSlug],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ["home", workspaceSlug],
     })
   }
 

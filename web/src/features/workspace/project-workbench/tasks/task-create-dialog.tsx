@@ -12,7 +12,10 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { TaskSeriesView } from "../api/task-series-api"
-import type { ProjectTaskFilterParams } from "../api/project-api"
+import type {
+  ProjectTaskFilterParams,
+  ProjectWorkbenchTask,
+} from "../api/project-api"
 import { useCreateTaskMutation } from "../hooks/use-task-mutations"
 import { InlineDatePicker } from "../shared/inline-date-picker"
 import { TaskSeriesForm } from "../task-series/task-series-form"
@@ -35,6 +38,7 @@ type TaskCreateDialogProps = {
    * 两种模式共享同一个 Dialog 容器，表单状态分别保留。
    */
   initialMode?: "normal" | "recurring"
+  onCreated?: (task: ProjectWorkbenchTask) => void
   onRecurringCreated?: (series: TaskSeriesView) => void
 }
 
@@ -49,6 +53,7 @@ const emptyCommonFields = (): TaskCommonFieldValue => ({
 
 export function TaskCreateDialog({
   filters,
+  onCreated,
   onOpenChange,
   open,
   onRecurringCreated,
@@ -93,7 +98,7 @@ export function TaskCreateDialog({
     }
     setError(null)
     try {
-      await createTask.mutateAsync({
+      const created = await createTask.mutateAsync({
         ...(common.description.trim()
           ? { description: common.description.trim() }
           : {}),
@@ -110,6 +115,7 @@ export function TaskCreateDialog({
         project: projectSlug,
         title: normalizedTitle,
       })
+      onCreated?.(created)
       reset()
       onOpenChange(false)
     } catch (err) {

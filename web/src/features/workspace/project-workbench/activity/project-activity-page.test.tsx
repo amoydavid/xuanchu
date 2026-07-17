@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -38,7 +39,9 @@ vi.mock("@/features/workspace/session/useMe", () => ({
 
 vi.mock("../api/project-api", async () => {
   const actual =
-    await vi.importActual<typeof import("../api/project-api")>("../api/project-api")
+    await vi.importActual<typeof import("../api/project-api")>(
+      "../api/project-api"
+    )
   return {
     ...actual,
     getProject: vi.fn(),
@@ -67,9 +70,11 @@ function makeQueryClient() {
   })
 }
 
+let activeQueryClient = makeQueryClient()
+
 function Wrapper({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={makeQueryClient()}>
+    <QueryClientProvider client={activeQueryClient}>
       {renderWithRouter(<>{children}</>)}
     </QueryClientProvider>
   )
@@ -96,6 +101,7 @@ function project(
 describe("ProjectActivityPage", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    activeQueryClient = makeQueryClient()
     await i18n.changeLanguage("zh-CN")
     // 重置 meState 为 owner + audit:read
     meState.data = {
@@ -117,7 +123,11 @@ describe("ProjectActivityPage", () => {
         source_label: "ops",
         entry: 1800000100,
         content: "完成 token mcp-config 验证",
-        created_by: { id: "u1", name: "王五", user: { id: "u1", name: "王五" } },
+        created_by: {
+          id: "u1",
+          name: "王五",
+          user: { id: "u1", name: "王五" },
+        },
       },
       {
         source_type: "task",
@@ -125,7 +135,11 @@ describe("ProjectActivityPage", () => {
         source_label: "ops-12",
         entry: 1800000200,
         content: "线上回调地址已确认",
-        created_by: { id: "u2", name: "李四", user: { id: "u2", name: "李四" } },
+        created_by: {
+          id: "u2",
+          name: "李四",
+          user: { id: "u2", name: "李四" },
+        },
       },
     ])
     vi.mocked(getProjectTaskSummary).mockResolvedValue({
@@ -140,6 +154,14 @@ describe("ProjectActivityPage", () => {
       workload: [],
     })
     vi.mocked(getWorkspaceMembers).mockResolvedValue([])
+    vi.mocked(addProjectAnnotation).mockResolvedValue({
+      id: "annotation-2",
+      project_id: "project-1",
+      entry: 1800000300,
+      content: "上线窗口已确认",
+      created_by: { id: "u1", name: "owner" },
+      created_at: 1800000300,
+    })
   })
 
   it("uses timeline as the only list source for project updates", async () => {
@@ -215,6 +237,35 @@ describe("ProjectActivityPage", () => {
     )
     await screen.findAllByText("完成 token mcp-config 验证")
     expect(screen.getByRole("button", { name: "发布更新" })).toBeTruthy()
+  })
+
+  it("invalidates the home summary after publishing a project update", async () => {
+    const invalidateSpy = vi.spyOn(activeQueryClient, "invalidateQueries")
+    render(
+      <ProjectLayout
+        activeTab="activity"
+        projectSlug="ops"
+        workspaceSlug="local"
+      >
+        <ProjectActivityPage projectSlug="ops" workspaceSlug="local" />
+      </ProjectLayout>,
+      { wrapper: Wrapper }
+    )
+    await screen.findAllByText("完成 token mcp-config 验证")
+
+    await userEvent.type(screen.getByLabelText("发布更新"), "上线窗口已确认")
+    await userEvent.click(screen.getByRole("button", { name: "发布更新" }))
+
+    await waitFor(() => {
+      expect(addProjectAnnotation).toHaveBeenCalledWith(
+        "local",
+        "ops",
+        "上线窗口已确认"
+      )
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "local"],
+      })
+    })
   })
 
   it("hides publish form and shows readonly hint when project is closed", async () => {

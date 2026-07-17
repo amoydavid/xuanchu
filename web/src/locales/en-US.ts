@@ -3,10 +3,10 @@ export const enUS = {
     brand: "{{brand}}",
     title: "{{brand}} Web Admin Console",
     description:
-      "Operations console for {{brand}} server, Agent tokens, deliveries, and audit.",
+      "Plan tasks, move projects forward, and share work in {{brand}}.",
   },
   nav: {
-    overview: "Overview",
+    overview: "Home",
     tasks: "Tasks",
     projects: "Projects",
     myTasks: "My Tasks",
@@ -74,6 +74,70 @@ export const enUS = {
     sortNext: "Next",
     summary:
       "Overdue {{overdue}} · Due today {{today}} · In progress {{active}}",
+  },
+  home: {
+    title: "Home",
+    greeting: "Hello, {{name}}",
+    refresh: "Refresh home",
+    myToday: {
+      title: "My today",
+      viewAll: "View all tasks",
+      viewMine: "View my tasks",
+      started: "Started",
+      overdue: "Overdue",
+      dueToday: "Due today",
+      highPriority: "High priority",
+      emptyTitle: "Nothing needs your immediate attention today",
+      emptyDescription: "View all tasks or create one in a project.",
+      more: "{{count}} more open tasks",
+      enter: "Open my tasks",
+    },
+    reason: {
+      started: "Started",
+      overdue: "Overdue",
+      due_today: "Due today",
+      high_priority: "High priority",
+    },
+    projects: {
+      title: "Project attention",
+      viewAll: "View projects",
+      completion: "{{percent}}% complete",
+      noRisk: "No visible risk right now",
+      recurringOverdue: "{{count}} overdue recurring occurrences included",
+      updated: "Last updated: {{time}}",
+      metric: {
+        overdue: "{{count}} overdue",
+        highPriority: "{{count}} high priority",
+        waitReady: "{{count}} ready from wait",
+        unassigned: "{{count}} unassigned",
+      },
+    },
+    workspaceInfo: {
+      title: "Workspace information",
+      manage: "Manage workspace information",
+    },
+    system: {
+      title: "Using a system identity",
+      noPersonalWork: "System identities do not have personal tasks.",
+      switchHint: "Switch to a member identity to work on assigned tasks.",
+      projects: "View projects",
+      members: "Members",
+      hooks: "Hooks",
+      notifications: "Notifications",
+      audit: "Audit",
+      settings: "Settings",
+    },
+    create: {
+      action: "Create task",
+      chooseProject: "Choose a project",
+      chooseProjectDescription:
+        "Tasks must belong to an active or planning project.",
+      created: "Created: {{title}}",
+      openTask: "Open task",
+    },
+    error: {
+      title: "Home is temporarily unavailable",
+    },
   },
   taskCreate: {
     typeLabel: "Task type",
