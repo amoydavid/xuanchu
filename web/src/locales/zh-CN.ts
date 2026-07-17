@@ -63,6 +63,7 @@ export const zhCN = {
     },
     tab: {
       incomplete: "未完成",
+      started: "已开始",
       today: "今日到期",
       overdue: "逾期",
       noDue: "无截止",
@@ -687,6 +688,7 @@ export const zhCN = {
     targetId: "目标 ID",
   },
   taskDetail: {
+    backToHome: "返回首页",
     backToMyTasks: "返回我的任务",
     completeTask: "完成任务",
     reopenTask: "重新打开任务",

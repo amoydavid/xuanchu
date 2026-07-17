@@ -7,9 +7,10 @@ import { MY_TASK_TABS, tabFilter } from "./my-task-tabs"
 describe("my-task-tabs", () => {
   const now = new Date("2026-07-12T12:00:00Z")
 
-  it("exposes 5 mutually exclusive presets", () => {
+  it("exposes 6 mutually exclusive presets", () => {
     expect(MY_TASK_TABS.map((t) => t.key)).toEqual([
       "incomplete",
+      "started",
       "today",
       "overdue",
       "noDue",
@@ -20,6 +21,12 @@ describe("my-task-tabs", () => {
   it("incomplete tab queries pending OR waiting", () => {
     const filter = tabFilter("incomplete", now)
     expect(filter.query).toBe("(status:pending or status:waiting)")
+  })
+
+  it("maps started to open tasks with a start timestamp", () => {
+    expect(tabFilter("started", now)).toEqual({
+      query: "(status:pending or status:waiting) and start.notnull",
+    })
   })
 
   it("today tab queries open with today date range", () => {

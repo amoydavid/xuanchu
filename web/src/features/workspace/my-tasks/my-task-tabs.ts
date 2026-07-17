@@ -2,6 +2,7 @@
 //
 // 修订为互斥、可解释的一级预设：
 // - incomplete（未完成）：assignee=me 且 status 为 pending 或 waiting
+// - started（已开始）：open 且 start 非空
 // - today（今天）：open（pending 或 waiting）且 due 在本地今天 [00:00,次日00:00)
 // - overdue（逾期）：open 且 due < 今天 00:00
 // - noDue（无截止日期）：open 且 due is null
@@ -12,7 +13,13 @@ import { formatLocalDate } from "@/features/workspace/project-workbench/shared/d
 
 import type { MyTasksFilter } from "./my-tasks-api"
 
-export type MyTaskTabKey = "incomplete" | "today" | "overdue" | "noDue" | "completed"
+export type MyTaskTabKey =
+  | "incomplete"
+  | "started"
+  | "today"
+  | "overdue"
+  | "noDue"
+  | "completed"
 
 export type MyTaskTab = {
   key: MyTaskTabKey
@@ -20,6 +27,7 @@ export type MyTaskTab = {
 
 export const MY_TASK_TABS: MyTaskTab[] = [
   { key: "incomplete" },
+  { key: "started" },
   { key: "today" },
   { key: "overdue" },
   { key: "noDue" },
@@ -33,6 +41,10 @@ export function tabFilter(
   now: Date
 ): Omit<MyTasksFilter, "assignee"> {
   switch (tab) {
+    case "started":
+      return {
+        query: "(status:pending or status:waiting) and start.notnull",
+      }
     case "today": {
       // 今天：open（pending 或 waiting）且 due 在本地今天 [00:00, 次日00:00)。
       // 后端 due_before=当天 含当天整天；due_after=当天 从当天 00:00 起。

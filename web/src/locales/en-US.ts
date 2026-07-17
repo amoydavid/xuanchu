@@ -65,6 +65,7 @@ export const enUS = {
     },
     tab: {
       incomplete: "Incomplete",
+      started: "Started",
       today: "Due today",
       overdue: "Overdue",
       noDue: "No due",
@@ -706,6 +707,7 @@ export const enUS = {
     targetId: "Target ID",
   },
   taskDetail: {
+    backToHome: "Back to home",
     backToMyTasks: "Back to my tasks",
     completeTask: "Complete task",
     reopenTask: "Reopen task",
