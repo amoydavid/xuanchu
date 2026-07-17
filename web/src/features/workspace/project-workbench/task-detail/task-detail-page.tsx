@@ -301,11 +301,6 @@ function TaskDetailPageContent({
                 </Badge>
               ) : null}
             </div>
-            <RecurrenceContextAlert
-              projectSlug={effectiveProjectSlug}
-              task={taskData}
-              workspaceSlug={workspaceSlug}
-            />
           </div>
           <div className="flex shrink-0 items-start md:items-end">
             <TaskActionBar
@@ -323,6 +318,13 @@ function TaskDetailPageContent({
               workspaceSlug={workspaceSlug}
             />
           </div>
+        </div>
+        <div className="mt-4 w-full">
+          <RecurrenceContextAlert
+            projectSlug={effectiveProjectSlug}
+            task={taskData}
+            workspaceSlug={workspaceSlug}
+          />
         </div>
       </section>
 

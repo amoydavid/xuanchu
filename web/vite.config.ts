@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
+      dedupe: ["react", "react-dom"],
     },
     // Vitest 默认以 production 条件解析 react，而 React 19 仅在 development
     // build 导出 act（testing-library 依赖）。在测试模式下强制 dev 条件。

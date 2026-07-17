@@ -18,6 +18,12 @@ function resolveViteConfig(mode = "development"): UserConfig {
 }
 
 describe("vite dev proxy", () => {
+  test("deduplicates React runtime modules for editor dependencies", () => {
+    const config = resolveViteConfig()
+
+    expect(config.resolve?.dedupe).toEqual(["react", "react-dom"])
+  })
+
   test("proxies MCP requests to the Go server instead of serving them from Vite", () => {
     const config = resolveViteConfig()
 

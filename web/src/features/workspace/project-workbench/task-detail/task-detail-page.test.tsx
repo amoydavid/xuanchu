@@ -364,6 +364,29 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByText(/循环任务|完成本次|跳过本次/)).toBeNull()
   })
 
+  it("renders the occurrence banner below the title and action row at full width", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+
+    renderPage()
+
+    const banner = await screen.findByTestId("occurrence-banner")
+    expect(banner.parentElement?.className).toContain("w-full")
+    expect(banner.parentElement?.previousElementSibling?.className).toContain(
+      "md:flex-row"
+    )
+  })
+
   it("keeps a completed occurrence on its slug and announces the occurrence date", async () => {
     const occurrence = {
       role: "occurrence" as const,
