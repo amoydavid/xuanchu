@@ -1322,6 +1322,8 @@ export const enUS = {
       config: "Config (config)",
       workspace: "Workspaces (workspace)",
       audit: "Audit (audit)",
+      user: "Users (user)",
+      member: "Members (member)",
       token: "Token",
       hook: "Hook",
       notification: "Notifications (notification)",

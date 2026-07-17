@@ -1279,6 +1279,8 @@ export const zhCN = {
       config: "配置 (config)",
       workspace: "工作空间 (workspace)",
       audit: "审计 (audit)",
+      user: "用户 (user)",
+      member: "成员 (member)",
       token: "Token",
       hook: "Hook",
       notification: "通知 (notification)",

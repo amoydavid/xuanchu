@@ -24,8 +24,8 @@ describe("ScopeEditor", () => {
 
   it("renders all resource groups", () => {
     renderEditor({ value: [], onChange: () => {} })
-    // 每组都有「全选」按钮，10 组
-    expect(screen.getAllByText("全选").length).toBe(10)
+    // 每组都有「全选」按钮，12 组（task/project/context/config/workspace/audit/user/member/token/hook/notification/reminder）
+    expect(screen.getAllByText("全选").length).toBe(12)
     expect(
       screen
         .getAllByRole("button", { name: "全选" })[0]
@@ -61,33 +61,34 @@ describe("ScopeEditor", () => {
 
   it("renders unknown legacy scopes with remove buttons", () => {
     const onChange = vi.fn()
-    renderEditor({ value: ["task:read", "user:read"], onChange })
-    // user:read 不在任何已知分组，应显示在「未识别」区
-    expect(screen.getByText("user:read")).toBeTruthy()
+    renderEditor({ value: ["task:read", "legacy:foo"], onChange })
+    // legacy:foo 不在任何已知分组，应显示在「未识别」区
+    expect(screen.getByText("legacy:foo")).toBeTruthy()
     // 点击移除按钮（✕）
     const removeBtn = screen.getByRole("button", { name: "移除" })
     expect(removeBtn.getAttribute("data-slot")).toBe("button")
     fireEvent.click(removeBtn)
-    // 应移除 user:read，保留 task:read
+    // 应移除 legacy:foo，保留 task:read
     expect(onChange).toHaveBeenCalledWith(["task:read"])
   })
 
   it("tenant mode only selects allowed scopes from a group", () => {
     const onChange = vi.fn()
     renderEditor({ value: [], onChange, tenantAccessToken: true })
-    // workspace 组只允许 read，不允许 write。
+    // workspace 组对 tenant token 允许 read 和 write（与后端 tenantAllowedScopes 对齐）。
     fireEvent.click(screen.getAllByText("全选")[4])
-    expect(onChange).toHaveBeenCalledWith(["workspace:read"])
+    expect(onChange).toHaveBeenCalledWith(["workspace:read", "workspace:write"])
   })
 
   it("tenant mode can remove existing known but disallowed scopes", () => {
     const onChange = vi.fn()
     renderEditor({
-      value: ["task:read", "token:write"],
+      value: ["task:read", "impersonate"],
       onChange,
       tenantAccessToken: true,
     })
-    expect(screen.getByText("token:write")).toBeTruthy()
+    // impersonate 不在 tenant token 白名单内，应显示在「未识别/可移除」区
+    expect(screen.getByText("impersonate")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "移除" }))
     expect(onChange).toHaveBeenCalledWith(["task:read"])
   })

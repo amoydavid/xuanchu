@@ -16,6 +16,10 @@ export const SCOPE_CONFIG_WRITE = "config:write" as const
 export const SCOPE_WORKSPACE_READ = "workspace:read" as const
 export const SCOPE_WORKSPACE_WRITE = "workspace:write" as const
 export const SCOPE_AUDIT_READ = "audit:read" as const
+export const SCOPE_USER_READ = "user:read" as const
+export const SCOPE_USER_WRITE = "user:write" as const
+export const SCOPE_MEMBER_READ = "member:read" as const
+export const SCOPE_MEMBER_WRITE = "member:write" as const
 export const SCOPE_TOKEN_READ = "token:read" as const
 export const SCOPE_TOKEN_WRITE = "token:write" as const
 export const SCOPE_HOOK_READ = "hook:read" as const
@@ -40,6 +44,8 @@ export const SCOPE_GROUPS: ScopeGroup[] = [
   { scopes: [SCOPE_CONFIG_READ, SCOPE_CONFIG_WRITE], i18nKey: "token.scopeGroup.config" },
   { scopes: [SCOPE_WORKSPACE_READ, SCOPE_WORKSPACE_WRITE], i18nKey: "token.scopeGroup.workspace" },
   { scopes: [SCOPE_AUDIT_READ], i18nKey: "token.scopeGroup.audit" },
+  { scopes: [SCOPE_USER_READ, SCOPE_USER_WRITE], i18nKey: "token.scopeGroup.user" },
+  { scopes: [SCOPE_MEMBER_READ, SCOPE_MEMBER_WRITE], i18nKey: "token.scopeGroup.member" },
   { scopes: [SCOPE_TOKEN_READ, SCOPE_TOKEN_WRITE], i18nKey: "token.scopeGroup.token" },
   { scopes: [SCOPE_HOOK_READ, SCOPE_HOOK_WRITE], i18nKey: "token.scopeGroup.hook" },
   { scopes: [SCOPE_NOTIFICATION_READ, SCOPE_NOTIFICATION_WRITE], i18nKey: "token.scopeGroup.notification" },
@@ -56,7 +62,14 @@ export const TENANT_ACCESS_TOKEN_SCOPES: ReadonlySet<string> = new Set([
   SCOPE_CONFIG_READ,
   SCOPE_CONFIG_WRITE,
   SCOPE_WORKSPACE_READ,
+  SCOPE_WORKSPACE_WRITE,
   SCOPE_AUDIT_READ,
+  SCOPE_USER_READ,
+  SCOPE_USER_WRITE,
+  SCOPE_MEMBER_READ,
+  SCOPE_MEMBER_WRITE,
+  SCOPE_TOKEN_READ,
+  SCOPE_TOKEN_WRITE,
   SCOPE_HOOK_READ,
   SCOPE_HOOK_WRITE,
   SCOPE_NOTIFICATION_READ,
