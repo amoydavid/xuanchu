@@ -24,6 +24,7 @@ type Service struct {
 	taskSeriesRepo                *storage.TaskSeriesRepository
 	taskOccurrenceRepo            *storage.TaskOccurrenceRepository
 	projectRepo                   *storage.ProjectRepository
+	homeRepo                      *storage.HomeRepository
 	configRepo                    *storage.ConfigRepository
 	configDefRepo                 *storage.ConfigDefinitionRepository
 	userRepo                      *storage.UserRepository
@@ -173,6 +174,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		taskSeriesRepo:                storage.NewTaskSeriesRepository(opts.Store.DB()),
 		taskOccurrenceRepo:            storage.NewTaskOccurrenceRepository(opts.Store.DB()),
 		projectRepo:                   storage.NewProjectRepository(opts.Store.DB()),
+		homeRepo:                      storage.NewHomeRepository(opts.Store.DB()),
 		configRepo:                    storage.NewConfigRepository(opts.Store.DB()),
 		configDefRepo:                 storage.NewConfigDefinitionRepository(opts.Store.DB()),
 		userRepo:                      userRepo,
@@ -243,6 +245,7 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.taskSeriesRepo = storage.NewTaskSeriesRepository(store.DB())
 	clone.taskOccurrenceRepo = storage.NewTaskOccurrenceRepository(store.DB())
 	clone.projectRepo = storage.NewProjectRepository(store.DB())
+	clone.homeRepo = storage.NewHomeRepository(store.DB())
 	clone.configRepo = storage.NewConfigRepository(store.DB())
 	clone.configDefRepo = storage.NewConfigDefinitionRepository(store.DB())
 	clone.userRepo = storage.NewUserRepository(store.DB())
