@@ -1,10 +1,10 @@
 import {
-  Activity,
   ArrowLeft,
   Bell,
   Boxes,
   CheckSquare,
   FileClock,
+  House,
   KeyRound,
   LogOut,
   Menu,
@@ -66,7 +66,7 @@ const navGroups: Array<{ labelKey: string; items: NavItem[] }> = [
   {
     labelKey: "nav.group.personal",
     items: [
-      { key: "overview", icon: Activity, to: "/" },
+      { key: "overview", icon: House, to: "/" },
       { key: "myTasks", icon: CheckSquare, to: "/my-tasks" },
       { key: "projects", icon: Boxes, to: "/projects" },
     ],

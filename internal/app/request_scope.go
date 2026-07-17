@@ -83,7 +83,7 @@ func requestScopeProjectFilterExpr(scope *RequestScope) query.Expr {
 
 func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (AuthorizedRequest, error) {
 	scope := NewRequestScope(input.Token.Token)
-	if !scope.HasCapability(input.RequiredCapability) {
+	if input.RequiredCapability != "" && !scope.HasCapability(input.RequiredCapability) {
 		return AuthorizedRequest{}, RuntimeError{Code: authz.CodeTokenScopeDenied, Message: "token scope denied"}
 	}
 	subjectUserRef := strings.TrimSpace(input.SubjectUserRef)
@@ -214,8 +214,10 @@ func (s *Service) AuthorizeTokenRequest(input RequestAuthorizationInput) (Author
 		runtime.DelegatorAdminTokenID = derefString(input.Token.AdminActingTrace.DelegatorAdminTokenID)
 		runtime.DelegatorAdminTokenName = input.Token.AdminActingTrace.DelegatorAdminTokenName
 	}
-	if err := requireRolePermission(runtime.Role, input.RequiredPermission); err != nil {
-		return AuthorizedRequest{}, err
+	if input.RequiredPermission != "" {
+		if err := requireRolePermission(runtime.Role, input.RequiredPermission); err != nil {
+			return AuthorizedRequest{}, err
+		}
 	}
 	return AuthorizedRequest{
 		Runtime:   runtime,

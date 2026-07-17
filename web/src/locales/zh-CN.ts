@@ -2,10 +2,10 @@ export const zhCN = {
   app: {
     brand: "{{brand}}",
     title: "{{brand}} Web 管理控制台",
-    description: "面向 {{brand}} server、Agent token、投递和审计的运维入口",
+    description: "在 {{brand}} 中安排任务、推进项目并同步工作信息",
   },
   nav: {
-    overview: "概览",
+    overview: "首页",
     tasks: "任务",
     projects: "项目",
     myTasks: "我的任务",
@@ -63,6 +63,7 @@ export const zhCN = {
     },
     tab: {
       incomplete: "未完成",
+      started: "已开始",
       today: "今日到期",
       overdue: "逾期",
       noDue: "无截止",
@@ -71,6 +72,69 @@ export const zhCN = {
     sortNext: "下一步",
     summary:
       "逾期 {{overdue}} 项 · 今日到期 {{today}} 项 · 进行中 {{active}} 项",
+  },
+  home: {
+    title: "首页",
+    greeting: "你好，{{name}}",
+    refresh: "刷新首页",
+    myToday: {
+      title: "我的今日",
+      viewAll: "查看全部任务",
+      viewMine: "查看我的任务",
+      started: "已开始",
+      overdue: "逾期",
+      dueToday: "今日到期",
+      highPriority: "高优未完成",
+      emptyTitle: "今天没有需要优先处理的任务",
+      emptyDescription: "可以查看全部任务，或在一个项目中创建新任务。",
+      more: "还有 {{count}} 项未完成任务",
+      enter: "进入我的任务",
+    },
+    reason: {
+      started: "已开始",
+      overdue: "逾期",
+      due_today: "今日到期",
+      high_priority: "高优",
+    },
+    projects: {
+      title: "项目关注",
+      viewAll: "查看项目",
+      completion: "{{percent}}% 完成",
+      noRisk: "当前没有明显风险",
+      recurringOverdue: "其中循环实例逾期 {{count}} 项",
+      updated: "最近更新：{{time}}",
+      metric: {
+        overdue: "逾期 {{count}}",
+        highPriority: "高优 {{count}}",
+        waitReady: "等待已到期 {{count}}",
+        unassigned: "未分配 {{count}}",
+      },
+    },
+    workspaceInfo: {
+      title: "工作区信息",
+      manage: "管理工作区信息",
+    },
+    system: {
+      title: "当前为系统身份",
+      noPersonalWork: "系统身份没有个人任务。",
+      switchHint: "若要处理分配给成员的任务，请切换为成员身份。",
+      projects: "查看项目",
+      members: "成员",
+      hooks: "Hook",
+      notifications: "通知",
+      audit: "审计",
+      settings: "设置",
+    },
+    create: {
+      action: "新建任务",
+      chooseProject: "选择项目",
+      chooseProjectDescription: "任务必须属于一个进行中或规划中的项目。",
+      created: "已创建：{{title}}",
+      openTask: "打开任务",
+    },
+    error: {
+      title: "首页暂时无法加载",
+    },
   },
   taskCreate: {
     typeLabel: "任务类型",
@@ -687,6 +751,7 @@ export const zhCN = {
     targetId: "目标 ID",
   },
   taskDetail: {
+    backToHome: "返回首页",
     backToMyTasks: "返回我的任务",
     completeTask: "完成任务",
     reopenTask: "重新打开任务",

@@ -43,6 +43,7 @@ type TaskDetailPageProps = {
   myTasksReturnSearch?: string
   projectClosed?: boolean
   projectSlug?: string
+  returnToHome?: boolean
   taskRef: string
   workspaceSlug: string
 }
@@ -53,6 +54,7 @@ export function TaskDetailPage({
   myTasksReturnSearch,
   projectClosed = false,
   projectSlug,
+  returnToHome = false,
   taskRef,
   workspaceSlug,
 }: TaskDetailPageProps) {
@@ -62,6 +64,7 @@ export function TaskDetailPage({
         myTasksReturnSearch={myTasksReturnSearch}
         projectClosed={projectClosed}
         projectSlug={projectSlug}
+        returnToHome={returnToHome}
         taskRef={taskRef}
         workspaceSlug={workspaceSlug}
       />
@@ -73,6 +76,7 @@ function TaskDetailPageContent({
   myTasksReturnSearch,
   projectClosed = false,
   projectSlug,
+  returnToHome = false,
   taskRef,
   workspaceSlug,
 }: TaskDetailPageProps) {
@@ -126,7 +130,8 @@ function TaskDetailPageContent({
     myTasksReturnSearch === undefined
       ? undefined
       : normalizedMyTasksHref(myTasksReturnSearch)
-  const returnHref = myTasksHref ?? projectHref
+  const homeHref = returnToHome ? "/" : undefined
+  const returnHref = homeHref ?? myTasksHref ?? projectHref
 
   useEffect(() => {
     const loaded = task.data
@@ -148,20 +153,23 @@ function TaskDetailPageContent({
         projectSlug: effectiveProjectSlug,
         taskRef: canonicalRef,
       },
-      ...(myTasksReturnSearch === undefined
-        ? {}
-        : {
-            search: {
-              from: "my-tasks",
-              my_tasks_search: myTasksReturnSearch,
-            },
-          }),
+      ...(returnToHome
+        ? { search: { from: "home" } }
+        : myTasksReturnSearch === undefined
+          ? {}
+          : {
+              search: {
+                from: "my-tasks",
+                my_tasks_search: myTasksReturnSearch,
+              },
+            }),
       replace: true,
     })
   }, [
     effectiveProjectSlug,
     myTasksReturnSearch,
     navigate,
+    returnToHome,
     task.data,
     taskRef,
     workspaceSlug,
@@ -197,9 +205,11 @@ function TaskDetailPageContent({
         {returnHref ? (
           <Button asChild className="mt-5" variant="outline">
             <a href={returnHref}>
-              {myTasksHref
-                ? t("taskDetail.backToMyTasks")
-                : t("projectReadonly.backToProject")}
+              {homeHref
+                ? t("taskDetail.backToHome")
+                : myTasksHref
+                  ? t("taskDetail.backToMyTasks")
+                  : t("projectReadonly.backToProject")}
             </a>
           </Button>
         ) : null}
@@ -254,11 +264,13 @@ function TaskDetailPageContent({
           ) : null}
           {" / "}
           <span>{taskDisplayRef(taskData, i18n.language) || taskRef}</span>
-          {myTasksHref ? (
+          {homeHref || myTasksHref ? (
             <>
               {" · "}
-              <a className="hover:text-foreground" href={myTasksHref}>
-                {t("taskDetail.backToMyTasks")}
+              <a className="hover:text-foreground" href={returnHref}>
+                {homeHref
+                  ? t("taskDetail.backToHome")
+                  : t("taskDetail.backToMyTasks")}
               </a>
             </>
           ) : null}

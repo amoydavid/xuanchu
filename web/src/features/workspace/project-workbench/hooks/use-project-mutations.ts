@@ -21,6 +21,9 @@ export function useCreateProjectMutation(workspaceSlug: string) {
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectsPrefix(workspaceSlug),
       })
+      void queryClient.invalidateQueries({
+        queryKey: ["home", workspaceSlug],
+      })
       feedback.success("已创建：项目")
     },
   })
@@ -41,6 +44,9 @@ export function useModifyProjectMutation(
       })
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.projectsPrefix(workspaceSlug),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ["home", workspaceSlug],
       })
       feedback.success("已保存：项目")
     },
@@ -71,6 +77,9 @@ export function useTransitionProjectMutation(
           workspaceSlug,
           projectSlug
         ),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ["home", workspaceSlug],
       })
       feedback.success("已更新：项目状态")
     },

@@ -102,13 +102,14 @@ v0.5.0 起，Web Console 还支持 workspace 级 OIDC 单点登录（SSO）。wo
 v0.5.x 的「Web Console 能力桥接」把浏览器控制面从单项目工作台扩展为「任务协作入口 + 治理控制台」：
 
 - **侧栏归位**：左侧栏底部固定展示当前登录身份（actor / role / token type / workspace / 风险状态 / 退出 / 返回超管），主内容顶栏改为页面上下文，不再放 actor/token 信息。
-- **「我的任务」入口**（`/my-tasks`）：跨项目聚合分配给当前用户的任务，提供「全部 / 今日到期 / 逾期 / 无截止」预设视图、状态/优先级/排序 toolbar 和负载摘要。系统身份进入时显示空状态。
+- **用户首页**（`/`）：登录后首先展示「我的今日」，聚合当前用户已开始、逾期、今日到期和高优未完成任务，并可直接开始、停止或完成；随后展示权限内的项目关注和管理员明确放到首页的工作区信息。身份、Token、Scope、失败投递和审计不再占用首页，分别留在侧栏或治理专页。任务与项目计数由 `GET /api/v1/home` 基于权限内全量数据聚合，不再从 `limit=200` 的分页列表推断；tenant/system actor 使用明确的系统身份降级首页，不伪造个人任务。
+- **「我的任务」入口**（`/my-tasks`）：跨项目聚合分配给当前用户的任务，提供「全部 / 已开始 / 今日到期 / 逾期 / 无截止」预设视图、状态/优先级/排序 toolbar 和负载摘要。系统身份进入时显示空状态。
 - **任务详情解耦**：新增 `/tasks/$taskRef` 入口，从「我的任务」可直接进入任务详情；详情页 `projectSlug` 可选，缺失时从 task.project 兜底并隐藏「返回项目」入口。
 - **已删除任务可见性**：项目工作台 toolbar 的状态筛选支持 `deleted`，deleted 任务行灰显并禁用写控件（恢复能力待后端支持）。
 - **Hook 控制台**（`/hooks`）：从只读 DataTable 升级为带 CRUD、enable/disable、行内投递历史和重放的运维控制台。
 - **审计日志控制台**（`/audit`）：支持按 project/limit 服务端查询，actor/action/target 在当前结果上二次筛选，并支持导出 CSV。普通成员和 viewer 现在也能读取 workspace 全量审计（后端 `audit.read` 角色权限对齐）。
 - **项目设置页**（`/projects/$slug/settings`）：集中管理项目状态流转、配置值、配置定义和项目备注。配置值 tab（`/config`）展示 project effective 配置，读取顺序为 project 显式值 > workspace 值 > schema 默认值，secret 值遮掩、workspace-only key 只读、可「恢复继承」；配置定义 tab（`/definitions`）在 project 上下文里管理 workspace 中允许 project scope 的 `ConfigDefinition`。项目列表行操作菜单支持快速归档/取消/恢复。
-- **配置定义控制台**（`/settings`）：workspace 级 `ConfigDefinition` 控制面，管理哪些 config key 可被写入、值的类型/作用域/默认值/枚举，以及 `show_on_console_home` 开关。已有配置值时收紧 type/scope/enum 变更（返回 `config_definition_type_locked` / `config_definition_scope_locked` / `config_definition_enum_locked`）；删除定义走 `purge=true` 两段确认。Web Console 首页据此开关展示「配置概览」区。
+- **配置定义控制台**（`/settings`）：workspace 级 `ConfigDefinition` 控制面，管理哪些 config key 可被写入、值的类型/作用域/默认值/枚举，以及 `show_on_console_home` 开关。已有配置值时收紧 type/scope/enum 变更（返回 `config_definition_type_locked` / `config_definition_scope_locked` / `config_definition_enum_locked`）；删除定义走 `purge=true` 两段确认。Web Console 首页据此展示面向普通成员的「工作区信息」；没有可展示值时整块隐藏。
 - **成员外部身份**：成员详情页支持绑定/解绑 external-id（`POST/DELETE /users/{ref}/external-ids`），与 SSO 通讯录同步形成闭环。
 - **任务紧迫度**：任务详情属性栏展示 urgency 分数和各分项贡献（`GET /tasks/{ref}/urgency`）。终态任务（`completed`/`deleted`）urgency 恒为 0，不参与优先级排序，与 Taskwarrior 行为一致。
 - **Workspace / 通知控制台**：workspace 列表支持归档；通知页明确为「管控台」（sink/rule/delivery），不是个人消息收件箱。

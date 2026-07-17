@@ -102,6 +102,12 @@ export function useCreateTaskMutation(
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.project(workspaceSlug, projectSlug),
       })
+      void queryClient.invalidateQueries({
+        queryKey: ["home", workspaceSlug],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ["my-tasks", workspaceSlug],
+      })
       feedback.success("已创建：任务")
     },
   })
@@ -188,6 +194,12 @@ export function useModifyTaskMutation(
           projectSlug
         ),
       })
+      void queryClient.invalidateQueries({
+        queryKey: ["home", workspaceSlug],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ["my-tasks", workspaceSlug],
+      })
       feedback.success(t("taskDetail.taskSaved"))
     },
   })
@@ -240,6 +252,9 @@ export function useTaskActionMutation(
       })
       void queryClient.invalidateQueries({
         queryKey: ["my-tasks", workspaceSlug],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ["home", workspaceSlug],
       })
       feedback.success(
         taskActionSuccessLabel(action, updatedTask, i18n.language, t)

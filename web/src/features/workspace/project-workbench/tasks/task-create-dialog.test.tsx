@@ -126,6 +126,29 @@ describe("TaskCreateDialog", () => {
     expect(payload.description).toContain("- 素材")
   }, 10_000)
 
+  it("returns the created task to the caller", async () => {
+    const onCreated = vi.fn()
+    render(
+      <TaskCreateDialog
+        onCreated={onCreated}
+        onOpenChange={vi.fn()}
+        open={true}
+        projectSlug="adsops"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await userEvent.type(screen.getByLabelText("任务标题"), "写日报")
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ task_slug: "ads-1", title: "写日报" })
+      )
+    })
+  })
+
   it("keeps the dialog open and shows validation when title is empty", async () => {
     render(
       <TaskCreateDialog

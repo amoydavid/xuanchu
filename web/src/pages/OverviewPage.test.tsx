@@ -1,50 +1,78 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { MeResponse } from "@/features/workspace/session/useMe"
 import { renderWithRouter } from "@/test/router-wrapper"
-
 import { i18n } from "../i18n"
 import { OverviewPage } from "./OverviewPage"
 
-function mockFetchByUrl(routes: Record<string, unknown>) {
-  vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-    const url = String(input)
-    for (const prefix of Object.keys(routes)) {
-      if (url.startsWith(prefix)) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ data: routes[prefix] }), {
-            status: 200,
-          })
-        )
-      }
-    }
-    return Promise.resolve(
-      new Response(JSON.stringify({ data: [] }), { status: 200 })
-    )
-  })
-}
-
-const meProps: MeResponse = {
+const me: MeResponse = {
   actor_type: "user",
-  actor: { id: "u1", name: "local" },
-  effective_workspace: { slug: "local" },
+  actor: { id: "u1", name: "alice", display_name: "张三" },
+  effective_workspace: { slug: "local", name: "本地工作区" },
   effective_role: "owner",
   token: { scopes: ["*"], type: "pat" },
 }
 
+const home = {
+  generated_at: 1_784_246_400,
+  today: "2026-07-17",
+  actor_type: "user",
+  my_work: {
+    open_count: 1,
+    started_count: 1,
+    overdue_count: 0,
+    due_today_count: 1,
+    high_priority_open_count: 1,
+    items: [
+      {
+        task: {
+          id: "task-1",
+          uuid: "task-1",
+          task_slug: "OPS-7",
+          title: "确认上线清单",
+          status: "pending",
+          project: "ops",
+        },
+        reasons: ["started"],
+      },
+    ],
+  },
+  project_attention: [],
+}
+
 function renderOverview() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
   })
   render(
     renderWithRouter(
       <QueryClientProvider client={queryClient}>
-        <OverviewPage me={meProps} />
+        <OverviewPage me={me} />
       </QueryClientProvider>
     )
   )
+}
+
+function mockFetch(
+  responses: Record<string, unknown>,
+  requested: string[] = []
+) {
+  vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    const url = String(input)
+    requested.push(url)
+    const prefix = Object.keys(responses).find((candidate) =>
+      url.startsWith(candidate)
+    )
+    const data = prefix ? responses[prefix] : []
+    return Promise.resolve(
+      new Response(JSON.stringify({ data }), { status: 200 })
+    )
+  })
 }
 
 describe("OverviewPage", () => {
@@ -58,109 +86,48 @@ describe("OverviewPage", () => {
     vi.restoreAllMocks()
   })
 
-  it("does not render fabricated delivery or audit rows when APIs return empty data", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
-      Promise.resolve(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+  it("loads the user home without audit, delivery, or paged task requests", async () => {
+    const requested: string[] = []
+    mockFetch(
+      {
+        "/api/v1/home": home,
+        "/api/v1/config/effective": [],
+        "/api/v1/projects": [],
+      },
+      requested
     )
+
     renderOverview()
 
-    await waitFor(() => {
-      expect(screen.getAllByText("暂无数据").length).toBeGreaterThan(0)
-    })
-    expect(screen.queryByText("dead_lettered")).toBeNull()
-    expect(screen.queryByText("retry_wait")).toBeNull()
-    expect(screen.queryByText("task.done")).toBeNull()
+    expect(
+      await screen.findByRole("heading", { name: "我的今日" })
+    ).toBeTruthy()
+    expect(screen.getByText("确认上线清单")).toBeTruthy()
+    expect(requested.some((url) => url.startsWith("/api/v1/home"))).toBe(true)
+    expect(requested.some((url) => url.includes("/api/v1/audit"))).toBe(false)
+    expect(
+      requested.some((url) => url.includes("notification-deliveries"))
+    ).toBe(false)
+    expect(requested.some((url) => url.includes("tasks?limit=200"))).toBe(false)
+    expect(screen.queryByText("当前操作者")).toBeNull()
+    expect(screen.queryByText("最近失败投递")).toBeNull()
+    expect(screen.queryByText("最近审计")).toBeNull()
   })
 
-  it("renders config overview section with label as primary text", async () => {
-    mockFetchByUrl({
+  it("shows effective workspace information by label and hides an empty section", async () => {
+    mockFetch({
+      "/api/v1/home": home,
+      "/api/v1/projects": [],
       "/api/v1/config/effective": [
         {
-          key: "ads.roi_threshold",
-          value: "1.8",
-          source: "default",
-          definition: {
-            key: "ads.roi_threshold",
-            value_type: "number",
-            allowed_scopes: ["workspace"],
-            label: "ROI 阈值",
-            description: "",
-            enum_values: [],
-            default_value: "1.8",
-            required: false,
-            secret: false,
-            show_on_console_home: true,
-            created_at: 0,
-            modified_at: 0,
-          },
-          show_on_console_home: true,
-          missing_required: false,
-        },
-      ],
-    })
-    renderOverview()
-    // 等待数据行加载（query 异步）
-    await waitFor(() => expect(screen.getByText("ads.roi_threshold")).toBeTruthy())
-    // 主文本是 label
-    expect(screen.getByText((content) => content.includes("ROI"))).toBeTruthy()
-    expect(screen.getByText("默认")).toBeTruthy()
-    expect(screen.getByText("去配置定义")).toBeTruthy()
-  })
-
-  it("shows empty hint when no home-display configs", async () => {
-    mockFetchByUrl({ "/api/v1/config/effective": [] })
-    renderOverview()
-    await waitFor(() =>
-      expect(screen.getByText("没有标记为首页展示的配置")).toBeTruthy()
-    )
-  })
-
-  it("formats datetime value locally instead of raw RFC3339", async () => {
-    mockFetchByUrl({
-      "/api/v1/config/effective": [
-        {
-          key: "campaign.kickoff",
-          value: "2026-07-07T12:00:00Z",
-          source: "workspace",
-          definition: {
-            key: "campaign.kickoff",
-            value_type: "datetime",
-            allowed_scopes: ["workspace"],
-            label: "启动时间",
-            description: "",
-            enum_values: [],
-            default_value: null,
-            required: false,
-            secret: false,
-            show_on_console_home: true,
-            created_at: 0,
-            modified_at: 0,
-          },
-          show_on_console_home: true,
-          missing_required: false,
-        },
-      ],
-    })
-    renderOverview()
-    await waitFor(() => expect(screen.getByText("campaign.kickoff")).toBeTruthy())
-    // 展示值不应出现 RFC3339 原文（含 T 和 Z）
-    expect(screen.queryByText("2026-07-07T12:00:00Z")).toBeNull()
-    // 日期段按本地时区展示（包含年月）
-    expect(screen.getByText(/2026-07/)).toBeTruthy()
-  })
-
-  it("masks secret value as bullets", async () => {
-    mockFetchByUrl({
-      "/api/v1/config/effective": [
-        {
-          key: "ads.secret",
+          key: "notifications.default_sink",
           value: "••••••",
           source: "workspace",
           definition: {
-            key: "ads.secret",
+            key: "notifications.default_sink",
             value_type: "string",
             allowed_scopes: ["workspace"],
-            label: "Secret",
+            label: "默认通知渠道",
             description: "",
             enum_values: [],
             default_value: null,
@@ -175,40 +142,15 @@ describe("OverviewPage", () => {
         },
       ],
     })
-    renderOverview()
-    await waitFor(() => expect(screen.getByText("Secret")).toBeTruthy())
-    expect(screen.getByText("••••••")).toBeTruthy()
-  })
 
-  it("shows 未配置 for missing source", async () => {
-    mockFetchByUrl({
-      "/api/v1/config/effective": [
-        {
-          key: "ads.missing",
-          value: null,
-          source: "missing",
-          definition: {
-            key: "ads.missing",
-            value_type: "string",
-            allowed_scopes: ["workspace"],
-            label: "默认上下文",
-            description: "",
-            enum_values: [],
-            default_value: null,
-            required: false,
-            secret: false,
-            show_on_console_home: true,
-            created_at: 0,
-            modified_at: 0,
-          },
-          show_on_console_home: true,
-          missing_required: false,
-        },
-      ],
-    })
     renderOverview()
-    await waitFor(() =>
-      expect(screen.getAllByText("未配置").length).toBeGreaterThan(0)
-    )
+
+    expect(
+      await screen.findByRole("heading", { name: "工作区信息" })
+    ).toBeTruthy()
+    expect(screen.getByText("默认通知渠道")).toBeTruthy()
+    expect(screen.getByText("notifications.default_sink")).toBeTruthy()
+    expect(screen.getByText("••••••")).toBeTruthy()
+    expect(screen.queryByText("没有标记为首页展示的配置")).toBeNull()
   })
 })

@@ -106,8 +106,11 @@ describe("MyTasksPage", () => {
   })
 
   it.each([
-    ["zh-CN", ["未完成", "今日到期", "逾期", "无截止", "已完成"]],
-    ["en-US", ["Incomplete", "Due today", "Overdue", "No due", "Completed"]],
+    ["zh-CN", ["未完成", "已开始", "今日到期", "逾期", "无截止", "已完成"]],
+    [
+      "en-US",
+      ["Incomplete", "Started", "Due today", "Overdue", "No due", "Completed"],
+    ],
   ])("renders localized preset tabs in %s", async (language, labels) => {
     await i18n.changeLanguage(language)
     renderPage()
@@ -137,19 +140,18 @@ describe("MyTasksPage", () => {
       screen.getByRole("tab", { name: "已完成" }).getAttribute("data-state")
     ).toBe("active")
     expect(
-      (screen.getByRole("textbox", { name: "搜索" }) as HTMLInputElement)
-        .value
+      (screen.getByRole("textbox", { name: "搜索" }) as HTMLInputElement).value
     ).toBe("复盘")
     expect(
       screen.getByRole("combobox", { name: "优先级" }).textContent
     ).toContain("H")
-    expect(screen.getByRole("combobox", { name: "排序" }).textContent).toContain(
-      "优先级"
-    )
+    expect(
+      screen.getByRole("combobox", { name: "排序" }).textContent
+    ).toContain("优先级")
     await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "项目" }).textContent).toContain(
-        "运营项目"
-      )
+      expect(
+        screen.getByRole("combobox", { name: "项目" }).textContent
+      ).toContain("运营项目")
     })
     expect(
       screen.getByRole("combobox", { name: "任务类型" }).textContent
@@ -199,7 +201,8 @@ describe("MyTasksPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("checkbox", { name: "选择任务 ops-1" })[0]
+        screen
+          .getAllByRole("checkbox", { name: "选择任务 ops-1" })[0]
           .getAttribute("aria-checked")
       ).toBe("true")
     })

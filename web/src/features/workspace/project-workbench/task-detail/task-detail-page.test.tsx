@@ -640,6 +640,63 @@ describe("TaskDetailPage", () => {
     })
   })
 
+  it("preserves the Home return target when canonicalizing an occurrence permalink", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        id: "occ:series-1:1783036800",
+        uuid: "occurrence-uuid",
+        task_slug: "agentapi-7",
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+
+    render(
+      <TaskDetailPage
+        returnToHome
+        projectSlug="agentapi"
+        taskRef="occ:series-1:1783036800"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: "/workspaces/$workspaceSlug/projects/$projectSlug/tasks/$taskRef",
+        params: {
+          workspaceSlug: "acme",
+          projectSlug: "agentapi",
+          taskRef: "agentapi-7",
+        },
+        search: { from: "home" },
+        replace: true,
+      })
+    })
+  })
+
+  it("returns a Home task to the Home page", async () => {
+    render(
+      <TaskDetailPage
+        returnToHome
+        projectSlug="agentapi"
+        taskRef="ag-23"
+        workspaceSlug="acme"
+      />,
+      { wrapper: makeWrapper(makeQueryClient()) }
+    )
+
+    const backLink = await screen.findByRole("link", { name: "返回首页" })
+    expect(backLink.getAttribute("href")).toBe("/")
+  })
+
   it("returns a My Tasks occurrence to the original preset and filters", async () => {
     render(
       <TaskDetailPage

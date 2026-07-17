@@ -114,6 +114,12 @@ describe("task mutation hooks", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops"],
       })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "acme"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["my-tasks", "acme"],
+      })
     })
   })
 
@@ -143,6 +149,12 @@ describe("task mutation hooks", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["project", "acme", "adsops", "tasks"],
       })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "acme"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["my-tasks", "acme"],
+      })
     })
   })
 
@@ -168,6 +180,9 @@ describe("task mutation hooks", () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["my-tasks", "acme"],
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["home", "acme"],
       })
     })
   })
