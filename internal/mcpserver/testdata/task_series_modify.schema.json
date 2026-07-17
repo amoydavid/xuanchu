@@ -14,7 +14,7 @@
         ]
       },
       "clear": {
-        "description": "fields to clear: title, description, priority, assignees, tags, udas, until",
+        "description": "fields to clear: description, priority, assignees, tags, until, or uda.\u003cname\u003e",
         "items": {
           "type": "string"
         },
@@ -49,7 +49,7 @@
         "type": "string"
       },
       "priority": {
-        "description": "new task priority: H, M, or L",
+        "description": "new task priority: H, M, or L; omit to leave unchanged",
         "type": [
           "null",
           "string"

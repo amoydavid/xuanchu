@@ -3467,7 +3467,7 @@
             "type": "string"
           },
           "priority": {
-            "description": "task priority: H, M, or L (default M)",
+            "description": "task priority: H, M, or L; omit for no priority",
             "type": "string"
           },
           "project": {
@@ -3700,7 +3700,7 @@
             "type": "boolean"
           },
           "depends": {
-            "description": "task refs this task depends on (replaces existing)",
+            "description": "task refs to add as dependencies (appended, deduped)",
             "items": {
               "type": "string"
             },
@@ -4502,7 +4502,7 @@
             ]
           },
           "clear": {
-            "description": "fields to clear: title, description, priority, due, wait, scheduled, until",
+            "description": "fields to clear: project, priority, description, due, wait, scheduled, until, assignees, or uda.\u003cname\u003e",
             "items": {
               "type": "string"
             },
@@ -4516,7 +4516,7 @@
             "type": "boolean"
           },
           "depends": {
-            "description": "task refs this task depends on (replaces existing)",
+            "description": "task refs to add as dependencies (appended, deduped)",
             "items": {
               "type": "string"
             },
@@ -4548,7 +4548,7 @@
             "type": "string"
           },
           "priority": {
-            "description": "new task priority: H, M, or L",
+            "description": "new task priority: H, M, or L; omit to leave unchanged",
             "type": [
               "null",
               "string"
@@ -4821,7 +4821,7 @@
             ]
           },
           "priority": {
-            "description": "task priority: H, M, or L (default M)",
+            "description": "task priority: H, M, or L; omit for no priority",
             "type": [
               "null",
               "string"
@@ -5081,7 +5081,7 @@
             ]
           },
           "clear": {
-            "description": "fields to clear: title, description, priority, assignees, tags, udas, until",
+            "description": "fields to clear: description, priority, assignees, tags, until, or uda.\u003cname\u003e",
             "items": {
               "type": "string"
             },
@@ -5116,7 +5116,7 @@
             "type": "string"
           },
           "priority": {
-            "description": "new task priority: H, M, or L",
+            "description": "new task priority: H, M, or L; omit to leave unchanged",
             "type": [
               "null",
               "string"

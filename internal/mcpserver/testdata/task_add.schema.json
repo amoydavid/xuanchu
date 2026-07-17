@@ -42,7 +42,7 @@
         "type": "string"
       },
       "priority": {
-        "description": "task priority: H, M, or L (default M)",
+        "description": "task priority: H, M, or L; omit for no priority",
         "type": "string"
       },
       "project": {

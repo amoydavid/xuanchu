@@ -19,7 +19,7 @@ type TaskAddInput struct {
 	Description   *string  `json:"description,omitempty" jsonschema:"task details"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"task tags to add"`
 	Assignees     []string `json:"assignees,omitempty" jsonschema:"workspace user refs to assign"`
-	Priority      string   `json:"priority,omitempty" jsonschema:"task priority: H, M, or L (default M)"`
+	Priority      string   `json:"priority,omitempty" jsonschema:"task priority: H, M, or L; omit for no priority"`
 	Due           *int64   `json:"due,omitempty" jsonschema:"deadline time, unix seconds"`
 	DueDate       string   `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
 	Wait          *int64   `json:"wait,omitempty" jsonschema:"defer-until time, unix seconds"`
@@ -74,7 +74,7 @@ type TaskModifyInput struct {
 	ID              string            `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
 	Title           *string           `json:"title,omitempty" jsonschema:"new task title"`
 	Description     *string           `json:"description,omitempty" jsonschema:"new task details; pass empty string to clear"`
-	Priority        *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L"`
+	Priority        *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L; omit to leave unchanged"`
 	Due             *int64            `json:"due,omitempty" jsonschema:"new deadline time, unix seconds"`
 	DueDate         string            `json:"due_date,omitempty" jsonschema:"deadline date as YYYY-MM-DD; stored at local 23:59:59"`
 	Wait            *int64            `json:"wait,omitempty" jsonschema:"new defer-until time, unix seconds"`
@@ -88,8 +88,8 @@ type TaskModifyInput struct {
 	RemoveAssignees []string          `json:"remove_assignees,omitempty" jsonschema:"workspace user refs to unassign"`
 	RemoveTags      []string          `json:"remove_tags,omitempty" jsonschema:"task tags to remove"`
 	UDAs            map[string]string `json:"udas,omitempty" jsonschema:"user-defined attribute overrides"`
-	Clear           []string          `json:"clear,omitempty" jsonschema:"fields to clear: title, description, priority, due, wait, scheduled, until"`
-	Depends         []string          `json:"depends,omitempty" jsonschema:"task refs this task depends on (replaces existing)"`
+	Clear           []string          `json:"clear,omitempty" jsonschema:"fields to clear: project, priority, description, due, wait, scheduled, until, assignees, or uda.<name>"`
+	Depends         []string          `json:"depends,omitempty" jsonschema:"task refs to add as dependencies (appended, deduped)"`
 	ClearDepends    bool              `json:"clear_depends,omitempty" jsonschema:"remove all dependency links"`
 }
 
@@ -131,7 +131,7 @@ type TaskDependsInput struct {
 	Project      string   `json:"project,omitempty"`
 	ProjectID    string   `json:"project_id,omitempty"`
 	ID           string   `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
-	Depends      []string `json:"depends,omitempty" jsonschema:"task refs this task depends on (replaces existing)"`
+	Depends      []string `json:"depends,omitempty" jsonschema:"task refs to add as dependencies (appended, deduped)"`
 	ClearDepends bool     `json:"clear_depends,omitempty" jsonschema:"remove all dependency links"`
 }
 

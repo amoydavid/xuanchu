@@ -25,7 +25,7 @@ type TaskSeriesAddInput struct {
 	FirstDueDate   *string           `json:"first_due_date,omitempty" jsonschema:"first occurrence due date as YYYY-MM-DD; stored at local 23:59:59"`
 	Until          *int64            `json:"until,omitempty" jsonschema:"series end time, unix seconds"`
 	UntilDate      *string           `json:"until_date,omitempty" jsonschema:"series end date as YYYY-MM-DD; stored at local 23:59:59"`
-	Priority       *string           `json:"priority,omitempty" jsonschema:"task priority: H, M, or L (default M)"`
+	Priority       *string           `json:"priority,omitempty" jsonschema:"task priority: H, M, or L; omit for no priority"`
 	Assignees      []string          `json:"assignees,omitempty" jsonschema:"workspace user refs to assign to each occurrence"`
 	Tags           []string          `json:"tags,omitempty" jsonschema:"tags applied to each occurrence"`
 	UDAs           map[string]string `json:"udas,omitempty" jsonschema:"user-defined attributes applied to each occurrence"`
@@ -204,7 +204,7 @@ type TaskSeriesModifyInput struct {
 	ID                string            `json:"id" jsonschema:"series UUID"`
 	Title             *string           `json:"title,omitempty" jsonschema:"new series title"`
 	Description       *string           `json:"description,omitempty" jsonschema:"new series details; pass empty string to clear"`
-	Priority          *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L"`
+	Priority          *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L; omit to leave unchanged"`
 	Assignees         []string          `json:"assignees,omitempty" jsonschema:"replace assignee user refs on each occurrence"`
 	Tags              []string          `json:"tags,omitempty" jsonschema:"replace tags on each occurrence"`
 	UDAs              map[string]string `json:"udas,omitempty" jsonschema:"replace user-defined attributes on each occurrence"`
@@ -213,7 +213,7 @@ type TaskSeriesModifyInput struct {
 	EffectiveFromDate *string           `json:"effective_from_date,omitempty" jsonschema:"rule-change effective date as YYYY-MM-DD; stored at local 00:00:00"`
 	Until             *int64            `json:"until,omitempty" jsonschema:"new series end time, unix seconds"`
 	UntilDate         *string           `json:"until_date,omitempty" jsonschema:"new series end date as YYYY-MM-DD; stored at local 23:59:59"`
-	Clear             []string          `json:"clear,omitempty" jsonschema:"fields to clear: title, description, priority, assignees, tags, udas, until"`
+	Clear             []string          `json:"clear,omitempty" jsonschema:"fields to clear: description, priority, assignees, tags, until, or uda.<name>"`
 }
 
 func (in TaskSeriesModifyInput) scopeInput() RequestScopeInput {
