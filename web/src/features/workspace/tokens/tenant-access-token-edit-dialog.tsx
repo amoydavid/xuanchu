@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
 
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -45,6 +44,7 @@ export function TenantAccessTokenEditDialog({
         <TenantAccessTokenForm
           initial={token}
           mode="edit"
+          onCancel={close}
           onSubmit={(values) => {
             setError(null)
             mutation.mutate(
@@ -58,11 +58,6 @@ export function TenantAccessTokenEditDialog({
           submitting={mutation.isPending}
         />
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button onClick={close} type="button" variant="outline">
-            {t("token.cancel")}
-          </Button>
-        </div>
       </DialogContent>
     </Dialog>
   )

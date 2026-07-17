@@ -27,6 +27,7 @@ type TenantAccessTokenFormProps = {
   mode: "create" | "edit"
   initial?: TenantAccessTokenRow
   onSubmit: (values: TenantAccessTokenFormValues) => void
+  onCancel?: () => void
   submitting?: boolean
 }
 
@@ -57,6 +58,7 @@ export function TenantAccessTokenForm({
   mode,
   initial,
   onSubmit,
+  onCancel,
   submitting = false,
 }: TenantAccessTokenFormProps) {
   const { t } = useTranslation()
@@ -156,6 +158,17 @@ export function TenantAccessTokenForm({
       ) : null}
 
       <div className="flex justify-end gap-2 pt-2">
+        {onCancel ? (
+          <Button
+            disabled={submitting}
+            onClick={onCancel}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {t("token.cancel")}
+          </Button>
+        ) : null}
         <Button disabled={submitting} size="sm" type="submit">
           {submitting
             ? "..."

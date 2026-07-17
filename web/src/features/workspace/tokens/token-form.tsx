@@ -34,6 +34,7 @@ type TokenFormProps = {
   mode: "create" | "edit"
   initial?: TokenRow
   onSubmit: (values: TokenFormValues) => void
+  onCancel?: () => void
   submitting?: boolean
   canImpersonate?: boolean
   canManageUsers?: boolean
@@ -71,6 +72,7 @@ export function TokenForm({
   mode,
   initial,
   onSubmit,
+  onCancel,
   submitting = false,
   canImpersonate = false,
   canManageUsers = false,
@@ -212,6 +214,17 @@ export function TokenForm({
       ) : null}
 
       <div className="flex justify-end gap-2 pt-2">
+        {onCancel ? (
+          <Button
+            disabled={submitting}
+            onClick={onCancel}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {t("token.cancel")}
+          </Button>
+        ) : null}
         <Button disabled={submitting} size="sm" type="submit">
           {submitting
             ? "..."
