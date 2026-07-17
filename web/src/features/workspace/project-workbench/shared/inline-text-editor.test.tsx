@@ -1,12 +1,17 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { i18n } from "@/i18n"
 import { InlineTextEditor } from "./inline-text-editor"
 import { EditFeedbackProvider } from "./edit-feedback"
 
 describe("InlineTextEditor", () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage("zh-CN")
+  })
+
   it("saves edited value with Enter", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     function ControlledEditor() {

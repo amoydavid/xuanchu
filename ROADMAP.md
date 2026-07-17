@@ -55,6 +55,7 @@
 | v0.5.6 | 已完成 | Web Console 项目自动化：项目级定时/事件触发，按 OpenAI 兼容接口投递项目上下文给外部 Agent Provider，并记录投递结果 |
 | v0.5.7 | 已完成 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
 | v0.5.8 | 已完成 | 循环任务系列稳定化收尾 + urgency 排序接入 Web Console 列表页 |
+| v0.5.9 | 已完成 | Web Console 任务详情页低噪声默认态与动作层级收敛 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -635,6 +636,19 @@ v0.5.8 是 v0.5.7 循环任务系列的稳定化收尾，并把已有的 urgency
 - Web Console 任务列表接入 urgency 排序：默认按紧急度降序，表头新增可排序紧急度列并展示分数；工具栏补齐 wait/start/completed 排序；各排序 tie-breaker 统一为 entry 升序。
 - urgency 公式修正：终态任务（completed/deleted）urgency 恒为 0，不再累计 due/priority 等加分项，与 Taskwarrior 行为一致。
 - bugfix：任务弹窗负责人在编辑场景初始展示裸 UUID（成员列表改为挂载即加载）。
+
+## v0.5.9：Web Console 任务详情页低噪声默认态
+
+**状态：已完成。**
+
+将任务详情页从「预先展示全部能力」收敛为「按实际内容逐步展开」：默认隐藏空的关联资料与子任务，将两类低频创建入口收进更多菜单；完成任务成为唯一主按钮，开始/暂停保留次级按钮，其余局部编辑使用轻量动作。空计划分组默认折叠，活动编辑器按需展开，关联资料不再错误触发任务关系分组。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-17-web-console-task-detail-default-density-design.md
+docs/superpowers/plans/2026-07-17-web-console-task-detail-default-density-implementation.md
+```
 
 ## v0.1.1：稳定短任务标识 task_slug
 

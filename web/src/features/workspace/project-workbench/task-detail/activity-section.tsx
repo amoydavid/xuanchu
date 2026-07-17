@@ -31,10 +31,15 @@ export function ActivitySection({
         annotations={annotations}
         canWrite={canWrite}
         projectSlug={projectSlug}
+        showTitle={false}
         taskRef={taskRef}
         workspaceSlug={workspaceSlug}
       />
-      <TaskChangeHistory taskRef={taskRef} workspaceSlug={workspaceSlug} />
+      <TaskChangeHistory
+        showTitle={false}
+        taskRef={taskRef}
+        workspaceSlug={workspaceSlug}
+      />
     </section>
   )
 }

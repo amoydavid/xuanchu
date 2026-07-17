@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { PencilIcon, Trash2Icon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { MarkdownEditor, MarkdownView } from "@/components/markdown"
@@ -20,6 +21,7 @@ type TaskAnnotationsEditorProps = {
   annotations?: TaskAnnotation[]
   canWrite: boolean
   projectSlug: string
+  showTitle?: boolean
   taskRef: string
   workspaceSlug: string
 }
@@ -28,17 +30,24 @@ export function TaskAnnotationsEditor({
   annotations = [],
   canWrite,
   projectSlug,
+  showTitle = true,
   taskRef,
   workspaceSlug,
 }: TaskAnnotationsEditorProps) {
+  const { t } = useTranslation()
   const feedback = useEditFeedback()
   const [draft, setDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [composerOpen, setComposerOpen] = useState(false)
   const [editID, setEditID] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState("")
   const [editError, setEditError] = useState<string | null>(null)
   const [deleteID, setDeleteID] = useState<string | null>(null)
-  const mutations = useTaskAnnotationMutations(workspaceSlug, projectSlug, taskRef)
+  const mutations = useTaskAnnotationMutations(
+    workspaceSlug,
+    projectSlug,
+    taskRef
+  )
 
   const updateDraft = (nextDraft: string) => {
     setDraft((previousDraft) => {
@@ -61,24 +70,25 @@ export function TaskAnnotationsEditor({
   const add = async () => {
     const description = draft.trim()
     if (!description) {
-      setError("注解不能为空")
+      setError(t("taskDetail.annotationRequired"))
       return
     }
     setError(null)
     try {
       await mutations.add.mutateAsync({ description })
       setDraft("")
+      setComposerOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setError(message)
-      feedback.failure("添加注解", message)
+      feedback.failure(t("taskDetail.addAnnotation"), message)
     }
   }
 
   const update = async () => {
     const description = editDraft.trim()
     if (!description) {
-      setEditError("注解不能为空")
+      setEditError(t("taskDetail.annotationRequired"))
       return
     }
     if (!editID) {
@@ -95,30 +105,50 @@ export function TaskAnnotationsEditor({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setEditError(message)
-      feedback.failure("编辑注解", message)
+      feedback.failure(t("taskDetail.editAnnotation"), message)
     }
   }
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium">注解</h2>
-      </div>
-      {canWrite ? (
-        <div className="space-y-2 border bg-card p-3">
+      {showTitle || (canWrite && !composerOpen) ? (
+        <div className="flex items-center justify-between gap-2">
+          {showTitle ? (
+            <h2 className="text-sm font-medium">
+              {t("taskDetail.annotations")}
+            </h2>
+          ) : null}
+          {canWrite && !composerOpen ? (
+            <Button
+              onClick={() => setComposerOpen(true)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {t("taskDetail.writeUpdate")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {canWrite && composerOpen ? (
+        <div className="space-y-2">
           <MarkdownEditor
-            ariaLabel="新增注解"
+            ariaLabel={t("taskDetail.newAnnotation")}
             disabled={mutations.add.isPending}
             minHeight={120}
             onChange={updateDraft}
             onModEnter={() => {
               void add()
             }}
-            placeholder="记录进展、背景或决策..."
+            placeholder={t("taskDetail.annotationPlaceholder")}
             value={draft}
           />
           <div className="flex items-center justify-between gap-2">
-            {error ? <p className="text-xs text-destructive">{error}</p> : <span />}
+            {error ? (
+              <p className="text-xs text-destructive">{error}</p>
+            ) : (
+              <span />
+            )}
             <Button
               disabled={mutations.add.isPending}
               onClick={() => {
@@ -127,18 +157,16 @@ export function TaskAnnotationsEditor({
               size="sm"
               type="button"
             >
-              添加注解
+              {t("taskDetail.addAnnotation")}
             </Button>
           </div>
         </div>
       ) : null}
-      {annotations.length === 0 ? (
-        <p className="text-sm text-muted-foreground">暂无注解</p>
-      ) : (
+      {annotations.length > 0 ? (
         <div className="space-y-2">
           {annotations.map((annotation, index) => (
             <div
-              className="flex items-start justify-between gap-3 border bg-card p-3 text-sm"
+              className="flex items-start justify-between gap-3 py-2 text-sm"
               key={annotation.id || index}
             >
               <div className="min-w-0">
@@ -154,7 +182,7 @@ export function TaskAnnotationsEditor({
               {canWrite && annotation.id ? (
                 <div className="flex shrink-0 items-center gap-1">
                   <Button
-                    aria-label="编辑注解"
+                    aria-label={t("taskDetail.editAnnotation")}
                     onClick={() => {
                       setEditID(annotation.id ?? null)
                       setEditDraft(annotation.description)
@@ -167,7 +195,7 @@ export function TaskAnnotationsEditor({
                     <PencilIcon />
                   </Button>
                   <Button
-                    aria-label="删除注解"
+                    aria-label={t("taskDetail.deleteAnnotation")}
                     onClick={() => setDeleteID(annotation.id ?? null)}
                     size="icon-sm"
                     type="button"
@@ -180,7 +208,7 @@ export function TaskAnnotationsEditor({
             </div>
           ))}
         </div>
-      )}
+      ) : null}
       <Dialog
         open={editID !== null}
         onOpenChange={(open) => {
@@ -192,13 +220,13 @@ export function TaskAnnotationsEditor({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑注解</DialogTitle>
+            <DialogTitle>{t("taskDetail.editAnnotation")}</DialogTitle>
             <DialogDescription>
-              修正或补充这条任务注解。
+              {t("taskDetail.editAnnotationDescription")}
             </DialogDescription>
           </DialogHeader>
           <MarkdownEditor
-            ariaLabel="编辑注解内容"
+            ariaLabel={t("taskDetail.editAnnotationContent")}
             disabled={mutations.update.isPending}
             minHeight={160}
             onChange={updateEditDraft}
@@ -216,7 +244,7 @@ export function TaskAnnotationsEditor({
               type="button"
               variant="outline"
             >
-              取消
+              {t("taskDetail.cancel")}
             </Button>
             <Button
               disabled={mutations.update.isPending}
@@ -225,14 +253,15 @@ export function TaskAnnotationsEditor({
               }}
               type="button"
             >
-              保存注解
+              {t("taskDetail.saveAnnotation")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <DestructiveConfirmDialog
-        confirmLabel="删除"
-        description="删除后这条注解将不再显示。"
+        cancelLabel={t("taskDetail.cancel")}
+        confirmLabel={t("taskDetail.deleteAnnotation")}
+        description={t("taskDetail.deleteAnnotationDescription")}
         onConfirm={async () => {
           if (!deleteID) {
             return
@@ -247,7 +276,7 @@ export function TaskAnnotationsEditor({
         }}
         open={deleteID !== null}
         pending={mutations.remove.isPending}
-        title="确认删除注解"
+        title={t("taskDetail.confirmDeleteAnnotation")}
       />
     </section>
   )

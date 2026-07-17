@@ -7,7 +7,9 @@ import {
   CheckIcon,
   RotateCcwIcon,
   CopyIcon,
+  Link2Icon,
   MoreHorizontalIcon,
+  ListPlusIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -25,6 +27,9 @@ import { useTaskActionMutation } from "../hooks/use-task-mutations"
 import { taskDisplayRef } from "../tasks/task-reference"
 
 type TaskActionBarProps = {
+  canCreateRelatedContent: boolean
+  onAddLink: () => void
+  onAddSubTask: () => void
   // 权限层面的可写（不含任务状态判断）。
   permissionCanWrite: boolean
   projectSlug: string
@@ -35,6 +40,9 @@ type TaskActionBarProps = {
 }
 
 export function TaskActionBar({
+  canCreateRelatedContent,
+  onAddLink,
+  onAddSubTask,
   permissionCanWrite,
   projectSlug,
   myTasksReturnSearch,
@@ -115,7 +123,7 @@ export function TaskActionBar({
             }}
             size="sm"
             type="button"
-            variant="outline"
+            variant="default"
           >
             <CheckIcon />
             {occurrence
@@ -148,7 +156,7 @@ export function TaskActionBar({
               disabled={pending}
               size="icon-sm"
               type="button"
-              variant="outline"
+              variant="ghost"
             >
               <MoreHorizontalIcon />
             </Button>
@@ -180,6 +188,19 @@ export function TaskActionBar({
                 ? t("taskSeries.actions.copyOccurrenceLink")
                 : t("projectWorkbench.project.copyTaskLink")}
             </DropdownMenuItem>
+            {canCreateRelatedContent ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onAddLink}>
+                  <Link2Icon />
+                  {t("taskDetail.addRelatedResource")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onAddSubTask}>
+                  <ListPlusIcon />
+                  {t("taskDetail.addSubTask")}
+                </DropdownMenuItem>
+              </>
+            ) : null}
             {canMutate && !completed ? (
               <>
                 <DropdownMenuSeparator />

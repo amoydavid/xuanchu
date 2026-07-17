@@ -22,6 +22,19 @@ describe("i18n", () => {
     expect(flattenKeys(zhCN)).toEqual(flattenKeys(enUS))
   })
 
+  it.each([
+    ["zh-CN", 1, "1 个编辑未保存"],
+    ["zh-CN", 2, "2 个编辑未保存"],
+    ["en-US", 1, "1 edit not saved"],
+    ["en-US", 2, "2 edits not saved"],
+  ])(
+    "resolves common.unsavedEdits plurals for %s count %i",
+    (language, count, expected) => {
+      i18n.changeLanguage(language)
+      expect(i18n.t("common.unsavedEdits", { count })).toBe(expected)
+    }
+  )
+
   it.each(["zh-CN", "en-US"])(
     "contains the complete recurring-task vocabulary in %s",
     (language) => {

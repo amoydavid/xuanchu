@@ -10,6 +10,7 @@ import {
   doneTask,
   getTask,
   getTaskAudit,
+  listTaskChildren,
   modifyTask,
   startTask,
   stopTask,
@@ -19,14 +20,11 @@ import { TaskDetailPage } from "./task-detail-page"
 const navigateMock = vi.fn()
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({
-    children,
-    to,
-    ...props
-  }: {
-    children: ReactNode
-    to?: string
-  }) => <a href={to} {...props}>{children}</a>,
+  Link: ({ children, to, ...props }: { children: ReactNode; to?: string }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
   useNavigate: () => navigateMock,
 }))
 
@@ -52,6 +50,7 @@ vi.mock("../api/task-api", async () => {
     doneTask: vi.fn(),
     getTask: vi.fn(),
     getTaskAudit: vi.fn(),
+    listTaskChildren: vi.fn(),
     modifyTask: vi.fn(),
     startTask: vi.fn(),
     stopTask: vi.fn(),
@@ -109,6 +108,7 @@ describe("TaskDetailPage", () => {
     await i18n.changeLanguage("zh-CN")
     vi.mocked(getTask).mockResolvedValue(task())
     vi.mocked(getTaskAudit).mockResolvedValue([])
+    vi.mocked(listTaskChildren).mockResolvedValue([])
     vi.mocked(modifyTask).mockResolvedValue(task())
     vi.mocked(startTask).mockResolvedValue(task({ start: 1_900_000_000 }))
     vi.mocked(stopTask).mockResolvedValue(task({ start: null }))
@@ -127,6 +127,23 @@ describe("TaskDetailPage", () => {
     expect(modifyTask).toHaveBeenCalledWith("acme", "ag-23", {
       title: "写周报",
     })
+  })
+
+  it("uses an English success toast after modifying a task", async () => {
+    await i18n.changeLanguage("en-US")
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    await userEvent.click(screen.getByRole("button", { name: "Task title" }))
+    await userEvent.clear(screen.getByLabelText("Task title"))
+    await userEvent.type(
+      screen.getByLabelText("Task title"),
+      "Weekly report{Enter}"
+    )
+
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "Task saved"
+    )
   })
 
   it("shows the complete description and edits it from a dialog", async () => {
@@ -183,9 +200,9 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByText("pending")).toBeNull()
 
     const descriptionHeading = screen.getByRole("heading", { name: "描述" })
-    const annotationsHeading = screen.getByRole("heading", { name: /注解/ })
+    const activityHeading = screen.getByRole("heading", { name: "活动" })
     expect(
-      descriptionHeading.compareDocumentPosition(annotationsHeading) &
+      descriptionHeading.compareDocumentPosition(activityHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
     expect(screen.getByRole("button", { name: "编辑描述" })).toBeTruthy()
@@ -198,10 +215,73 @@ describe("TaskDetailPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "开始" }))
     expect(startTask).toHaveBeenCalledWith("acme", "ag-23")
 
-    await userEvent.click(screen.getByRole("button", { name: "完成任务" }))
+    const completeButton = screen.getByRole("button", { name: "完成任务" })
+    expect(completeButton.getAttribute("data-variant")).toBe("default")
+    await userEvent.click(completeButton)
     expect(doneTask).toHaveBeenCalledWith("acme", "ag-23")
     expect(
       await screen.findByRole("button", { name: "重新打开任务" })
+    ).toBeTruthy()
+  })
+
+  it("hides empty related sections and opens their creation flows from more actions", async () => {
+    vi.mocked(getTask).mockResolvedValue(task({ links: [] }))
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => expect(listTaskChildren).toHaveBeenCalled())
+    expect(screen.queryByTestId("task-links-section")).toBeNull()
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-subtasks-section")).toBeNull()
+    })
+    expect(screen.queryByRole("heading", { name: "链接" })).toBeNull()
+    expect(screen.queryByText("暂无链接")).toBeNull()
+    expect(screen.queryByRole("heading", { name: "子任务" })).toBeNull()
+    expect(screen.queryByText(/还没有子任务/)).toBeNull()
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "更多操作 ag-23" })
+    )
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: "添加关联资料" })
+    )
+    expect(await screen.findByRole("dialog", { name: "添加链接" })).toBeTruthy()
+
+    await userEvent.keyboard("{Escape}")
+    await userEvent.click(
+      screen.getByRole("button", { name: "更多操作 ag-23" })
+    )
+    await userEvent.click(screen.getByRole("menuitem", { name: "添加子任务" }))
+    expect(await screen.findByLabelText("子任务标题")).toBeTruthy()
+  })
+
+  it("uses stable related-section test ids when related content exists", async () => {
+    vi.mocked(listTaskChildren).mockResolvedValue([
+      task({ task_slug: "ag-24", title: "整理素材", uuid: "task-2" }),
+    ])
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => expect(listTaskChildren).toHaveBeenCalled())
+    expect(screen.getByTestId("task-links-section")).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByTestId("task-subtasks-section")).toBeTruthy()
+    })
+  })
+
+  it("localizes related-resource and activity entry points in English", async () => {
+    await i18n.changeLanguage("en-US")
+    vi.mocked(getTask).mockResolvedValue(task({ links: [] }))
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => expect(listTaskChildren).toHaveBeenCalled())
+    expect(screen.getByRole("button", { name: "Write update" })).toBeTruthy()
+    await userEvent.click(
+      screen.getByRole("button", { name: "More actions ag-23" })
+    )
+    expect(
+      screen.getByRole("menuitem", { name: "Add related resource" })
     ).toBeTruthy()
   })
 
@@ -342,7 +422,7 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByRole("menuitem", { name: "跳过本次" })).toBeNull()
   })
 
-  it("allows adding a child to a projected occurrence", async () => {
+  it("keeps creation entries out of a projected occurrence's more-actions menu", async () => {
     vi.mocked(getTask).mockResolvedValue(
       task({
         id: "occ:series-1:1783036800",
@@ -368,9 +448,49 @@ describe("TaskDetailPage", () => {
       { wrapper: makeWrapper(makeQueryClient()) }
     )
 
-    expect(
-      (await screen.findAllByRole("button", { name: "添加子任务" })).length
-    ).toBeGreaterThan(0)
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "更多操作 ↻07-03",
+      })
+    )
+    expect(screen.getByRole("menuitem", { name: "查看循环任务" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "复制本次链接" })).toBeTruthy()
+    expect(screen.getByRole("menuitem", { name: "跳过本次" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "添加子任务" })).toBeNull()
+    expect(screen.queryByRole("menuitem", { name: "添加关联资料" })).toBeNull()
+  })
+
+  it("keeps an occurrence's existing related content readable but not editable", async () => {
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        recurrence_info: {
+          role: "occurrence",
+          series_id: "series-1",
+          series_status: "active",
+          rule: "daily",
+          recurrence_at: 1_783_036_800,
+          materialization: "materialized",
+        },
+      })
+    )
+    vi.mocked(listTaskChildren).mockResolvedValue([
+      task({ task_slug: "ag-24", title: "已有子任务", uuid: "task-2" }),
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText("https://example.com")).toBeTruthy()
+    expect(await screen.findByText("已有子任务")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "添加链接" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "编辑链接" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "删除链接" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "添加子任务" })).toBeNull()
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "更多操作 ag-23" })
+    )
+    expect(screen.queryByRole("menuitem", { name: "添加子任务" })).toBeNull()
+    expect(screen.queryByRole("menuitem", { name: "添加关联资料" })).toBeNull()
   })
 
   it("presents a projected occurrence as a planned instance without internal ids", async () => {
@@ -590,7 +710,15 @@ describe("TaskDetailPage", () => {
   })
 
   it("disables all write controls for completed tasks", async () => {
-    vi.mocked(getTask).mockResolvedValue(task({ status: "completed" }))
+    vi.mocked(getTask).mockResolvedValue(
+      task({
+        status: "completed",
+        depends: ["dep-1"],
+        depends_info: [
+          { uuid: "dep-1", task_slug: "ag-22", title: "素材审核" },
+        ],
+      })
+    )
 
     renderPage()
 
@@ -629,12 +757,18 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByRole("button", { name: "删除" })).toBeNull()
   })
 
-  it("renders mobile detail tabs and switches active tab", async () => {
+  it("renders the mobile subtask tab when completed children exist and switches active tab", async () => {
+    vi.mocked(listTaskChildren).mockImplementation(
+      async (_workspace: string, _parent: string, includeClosed?: boolean) =>
+        includeClosed
+          ? [task({ task_slug: "ag-24", status: "completed", uuid: "task-2" })]
+          : []
+    )
     renderPage()
 
     await screen.findByText("写投放日报")
     const descriptionTab = screen.getByRole("tab", { name: "正文" })
-    const subtasksTab = screen.getByRole("tab", { name: "子任务" })
+    const subtasksTab = await screen.findByRole("tab", { name: "子任务" })
     const tabList = screen.getByRole("tablist", { name: "任务详情视图" })
 
     expect(tabList.getAttribute("data-slot")).toBe("tabs-list")
@@ -643,6 +777,48 @@ describe("TaskDetailPage", () => {
     await userEvent.click(subtasksTab)
     expect(subtasksTab.getAttribute("aria-selected")).toBe("true")
     expect(descriptionTab.getAttribute("aria-selected")).toBe("false")
+  })
+
+  it("hides the empty mobile subtask tab, then activates it when the more menu opens the composer", async () => {
+    vi.mocked(getTask).mockResolvedValue(task({ links: [] }))
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    await waitFor(() => expect(listTaskChildren).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole("tab", { name: "子任务" })).toBeNull()
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "更多操作 ag-23" })
+    )
+    await userEvent.click(screen.getByRole("menuitem", { name: "添加子任务" }))
+
+    const subtasksTab = await screen.findByRole("tab", { name: "子任务" })
+    expect(subtasksTab.getAttribute("aria-selected")).toBe("true")
+    expect(await screen.findByLabelText("子任务标题")).toBeTruthy()
+
+    await userEvent.click(screen.getByRole("button", { name: "取消" }))
+    await waitFor(() => {
+      expect(screen.queryByRole("tab", { name: "子任务" })).toBeNull()
+    })
+    expect(
+      screen.getByRole("tab", { name: "正文" }).getAttribute("aria-selected")
+    ).toBe("true")
+    expect(screen.getByTestId("mobile-description-panel").className).toContain(
+      "block"
+    )
+  })
+
+  it("keeps the mobile subtask tab for a child-query error and exposes retry UI", async () => {
+    vi.mocked(listTaskChildren).mockRejectedValue(new Error("request failed"))
+    renderPage()
+
+    await screen.findByText("写投放日报")
+    const subtasksTab = await screen.findByRole("tab", { name: "子任务" })
+    await userEvent.click(subtasksTab)
+
+    expect(subtasksTab.getAttribute("aria-selected")).toBe("true")
+    expect(await screen.findByText("子任务加载失败")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "重试" })).toBeTruthy()
   })
 
   it("renders scalar task change history as natural language", async () => {

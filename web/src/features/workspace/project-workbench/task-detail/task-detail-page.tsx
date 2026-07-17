@@ -86,6 +86,18 @@ function TaskDetailPageContent({
   const task = useTaskDetailQuery(workspaceSlug, taskRef)
   const [activeMobileTab, setActiveMobileTab] =
     useState<MobileDetailTab>("description")
+  const [linksOpen, setLinksOpen] = useState(false)
+  const [subTasksOpen, setSubTasksOpen] = useState(false)
+  const [hasVisibleSubTaskContent, setHasVisibleSubTaskContent] =
+    useState(false)
+  const handleSubTaskContentVisibilityChange = (visible: boolean) => {
+    setHasVisibleSubTaskContent(visible)
+    if (!visible && !subTasksOpen) {
+      setActiveMobileTab((current) =>
+        current === "subtasks" ? "description" : current
+      )
+    }
+  }
 
   // projectSlug 优先取路由参数（项目内进入），兜底取 task 自身 project 字段（/my-tasks / /tasks/:ref 进入）。
   // 注意：这里只读 task.data 的 project 字段用于派生 effectiveProjectSlug，
@@ -202,9 +214,9 @@ function TaskDetailPageContent({
   }
   const pageCanWrite = canWrite && !projectClosed
   const taskWritable = pageCanWrite && isWritableTaskStatus(taskData.status)
-  // Series 不再存成隐藏的 recurring parent；这里只需要普通任务写权限门控。
-  // projected occurrence 创建第一个 child 时由后端按 occurrence_ref 原子物化。
-  const canCreateSubTask = taskWritable
+  // 关联资料和子任务是普通任务的补充内容：必须同时满足可写、未完成/未删除、非循环实例。
+  // 该规则一次派生后下发至顶部入口和各区块，避免入口与局部操作权限漂移。
+  const canCreateRelatedContent = taskWritable && !taskData.recurrence_info
   // 仅在显式 projectSlug（项目内进入）时校验归属；从全局入口进入不做该严格校验。
   if (projectSlug && !taskBelongsToProject(taskData, projectSlug)) {
     return (
@@ -242,6 +254,14 @@ function TaskDetailPageContent({
           ) : null}
           {" / "}
           <span>{taskDisplayRef(taskData, i18n.language) || taskRef}</span>
+          {myTasksHref ? (
+            <>
+              {" · "}
+              <a className="hover:text-foreground" href={myTasksHref}>
+                {t("taskDetail.backToMyTasks")}
+              </a>
+            </>
+          ) : null}
         </nav>
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 flex-1">
@@ -287,17 +307,14 @@ function TaskDetailPageContent({
               workspaceSlug={workspaceSlug}
             />
           </div>
-          <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-            {returnHref ? (
-              <Button asChild variant="outline">
-                <a href={returnHref}>
-                  {myTasksHref
-                    ? t("taskDetail.backToMyTasks")
-                    : t("projectReadonly.backToProject")}
-                </a>
-              </Button>
-            ) : null}
+          <div className="flex shrink-0 items-start md:items-end">
             <TaskActionBar
+              canCreateRelatedContent={canCreateRelatedContent}
+              onAddLink={() => setLinksOpen(true)}
+              onAddSubTask={() => {
+                setSubTasksOpen(true)
+                setActiveMobileTab("subtasks")
+              }}
               permissionCanWrite={pageCanWrite}
               projectSlug={effectiveProjectSlug ?? ""}
               myTasksReturnSearch={myTasksReturnSearch}
@@ -312,12 +329,16 @@ function TaskDetailPageContent({
       <MobileDetailTabs
         active={activeMobileTab}
         onChange={setActiveMobileTab}
+        showSubTasks={hasVisibleSubTaskContent}
       />
 
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
         <div className="contents md:block md:min-w-0 md:space-y-5">
           {/* 正文 + 关联资源：spec §7.1 主叙事区顶部，links 作为正文附近的关联资源 */}
-          <div className={mobilePanelClass(activeMobileTab, "description")}>
+          <div
+            className={mobilePanelClass(activeMobileTab, "description")}
+            data-testid="mobile-description-panel"
+          >
             <TaskDescriptionBlock
               canWrite={taskWritable}
               inherited={
@@ -331,8 +352,10 @@ function TaskDetailPageContent({
               value={taskData.description ?? ""}
             />
             <TaskLinksEditor
-              canWrite={taskWritable}
+              canWrite={canCreateRelatedContent}
               links={taskData.links}
+              onOpenChange={setLinksOpen}
+              open={linksOpen}
               projectSlug={effectiveProjectSlug ?? ""}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
@@ -341,7 +364,10 @@ function TaskDetailPageContent({
           {/* 子任务 */}
           <div className={mobilePanelClass(activeMobileTab, "subtasks")}>
             <SubTaskList
-              canCreate={canCreateSubTask}
+              canCreate={canCreateRelatedContent}
+              onContentVisibilityChange={handleSubTaskContentVisibilityChange}
+              onOpenChange={setSubTasksOpen}
+              open={subTasksOpen}
               parentRef={taskRef}
               parentUUID={taskData.uuid ?? taskRef}
               projectSlug={effectiveProjectSlug ?? ""}
@@ -376,17 +402,21 @@ function TaskDetailPageContent({
 function MobileDetailTabs({
   active,
   onChange,
+  showSubTasks,
 }: {
   active: MobileDetailTab
   onChange: (tab: MobileDetailTab) => void
+  showSubTasks: boolean
 }) {
   const { t } = useTranslation()
   const tabs: Array<{ label: string; value: MobileDetailTab }> = [
     { label: t("taskDetail.description"), value: "description" },
-    { label: t("taskDetail.subTasks"), value: "subtasks" },
     { label: t("projectReadonly.attributes"), value: "properties" },
     { label: t("taskDetail.activity"), value: "activity" },
   ]
+  if (showSubTasks) {
+    tabs.splice(1, 0, { label: t("taskDetail.subTasks"), value: "subtasks" })
+  }
   return (
     <Tabs
       className="md:hidden"
@@ -395,7 +425,10 @@ function MobileDetailTabs({
     >
       <TabsList
         aria-label={t("projectReadonly.detailTabs")}
-        className="grid h-auto w-full grid-cols-4 gap-1 border bg-card p-1"
+        className={cn(
+          "grid h-auto w-full gap-1 border bg-card p-1",
+          showSubTasks ? "grid-cols-4" : "grid-cols-3"
+        )}
       >
         {tabs.map((tab) => (
           <TabsTrigger className="h-8" key={tab.value} value={tab.value}>
@@ -465,7 +498,7 @@ function TaskDescriptionBlock({
             onClick={openEditor}
             size="sm"
             type="button"
-            variant="outline"
+            variant="ghost"
           >
             {t("projectReadonly.editDescription")}
           </Button>
