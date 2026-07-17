@@ -56,6 +56,7 @@
 | v0.5.7 | 已完成 | 循环任务系列：日历驱动实例生成、停机补偿、Series CRUD 与 Web/MCP 完整闭环 |
 | v0.5.8 | 已完成 | 循环任务系列稳定化收尾 + urgency 排序接入 Web Console 列表页 |
 | v0.5.9 | 已完成 | Web Console 任务详情页低噪声默认态与动作层级收敛 |
+| v0.5.10 | 已完成 | Web Console 用户首页：我的今日、项目关注、工作区信息与系统身份降级 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -648,6 +649,21 @@ v0.5.8 是 v0.5.7 循环任务系列的稳定化收尾，并把已有的 urgency
 ```text
 docs/superpowers/specs/2026-07-17-web-console-task-detail-default-density-design.md
 docs/superpowers/plans/2026-07-17-web-console-task-detail-default-density-implementation.md
+```
+
+## v0.5.10：Web Console 用户首页
+
+**状态：已完成。**
+
+将登录后的 `/` 从运维概览改为用户工作首页：首屏以「我的今日」承接当前用户已开始、逾期、今日到期和高优未完成任务，支持开始、停止、完成以及返回位置恢复；第二层展示权限内的项目关注，页面末尾按需展示 `show_on_console_home=true` 的工作区信息。身份、Token、Scope、失败投递和审计回到侧栏或治理专页。
+
+新增 `GET /api/v1/home`，由 app/storage 对权限内全量任务和项目做权威聚合；首页不再从 `limit=200` 的前端列表推断全量数字。`/my-tasks` 新增「已开始」预设。tenant/system actor 使用系统身份降级首页，任务、项目和配置区按权限独立裁剪；所有用户引用继续使用完整 `UserInfo` / `ActorInfo`。
+
+规格与实施计划：
+
+```text
+docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
+docs/superpowers/plans/2026-07-17-web-console-user-home-implementation.md
 ```
 
 ## v0.1.1：稳定短任务标识 task_slug
@@ -1637,17 +1653,12 @@ docs/superpowers/specs/2026-07-07-web-console-project-subpages-design.md
 docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 ```
 
-v0.5.5 已完成任务详情页重构，v0.5.6 已完成项目自动化。当前下一步锁定为 v0.5.7「循环任务系列与日历驱动实例」：
+v0.5.5 至 v0.5.9 已依次完成任务详情重构、项目自动化、循环任务系列、循环与 urgency 稳定化，以及任务详情低噪声默认态。v0.5.10 已完成 Web Console 用户首页，登录后的默认主线从系统运行数据切换为个人任务执行、跨项目关注和按需工作区信息；`GET /api/v1/home` 提供权限感知的权威聚合，`/my-tasks` 补充「已开始」预设，tenant/system actor 使用明确的降级页。
 
-- `daily` 等规则改为日历驱动，上一实例未完成时下一日期仍生成独立实例。
-- 服务停机恢复后补齐全部遗漏日期，并以不可变 `recurrence_at` 和数据库唯一约束保证并发幂等。
-- 普通任务与循环系列不互转；Series CRUD 通过专用 app/HTTP/Remote/MCP 能力提供。
-- Web Console 补齐循环创建、系列列表/详情/历史/修改/停止，以及实例完成/reopen/跳过。
-- 默认任务列表只显示普通任务和 occurrence；series 使用独立 `task_series` 资源，项目进度与循环运行指标分开统计。
-- 不再兼容 Taskwarrior recurring JSON、hidden recurring parent 或循环命令；采用版本化璇础原生 bundle。
+当前没有锁定新的 milestone。下一阶段应先根据真实使用反馈更新 spec，再决定是否进入个人收藏、跨项目 Inbox、首页自定义或独立 workspace 管理态势页；不使用 audit、localStorage 或投递记录模拟这些尚不存在的产品概念。
 
-对应规格：
+最新规格：
 
 ```text
-docs/superpowers/specs/2026-07-11-task-series-calendar-recurrence-design.md
+docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
 ```

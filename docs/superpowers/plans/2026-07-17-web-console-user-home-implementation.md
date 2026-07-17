@@ -40,7 +40,7 @@
 - Produces: `(*app.Service).Home() (app.HomeView, error)`
 - Produces: `app.HomeTaskReason` values `started|overdue|due_today|high_priority`
 
-- [ ] **Step 1: 写 Storage 失败测试**
+- [x] **Step 1: 写 Storage 失败测试**
 
 在 `internal/storage/home_repo_test.go` 构造两个 active 项目、普通任务、已物化 occurrence、未分配任务和 project annotation，断言集合查询：
 
@@ -66,13 +66,13 @@ func TestHomeRepositoryLatestProjectAnnotations(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行 Storage 测试并确认 RED**
+- [x] **Step 2: 运行 Storage 测试并确认 RED**
 
 Run: `go test ./internal/storage -run 'TestHomeRepository' -count=1`
 
 Expected: FAIL，原因是 `NewHomeRepository` / `HomeProjectMetrics` 尚不存在。
 
-- [ ] **Step 3: 实现 HomeRepository**
+- [x] **Step 3: 实现 HomeRepository**
 
 `internal/storage/home_repo.go` 定义：
 
@@ -97,13 +97,13 @@ type HomeProjectMetrics struct {
 - `LatestProjectAnnotations` 一次读取目标项目 annotations，按 `project_id ASC, entry DESC` 排序后在 Go 中保留每项目第一条；不得逐项目查询。
 - 空 `projectIDs` 直接返回空 map。
 
-- [ ] **Step 4: 运行 Storage 测试并确认 GREEN**
+- [x] **Step 4: 运行 Storage 测试并确认 GREEN**
 
 Run: `go test ./internal/storage -run 'TestHomeRepository' -count=1`
 
 Expected: PASS。
 
-- [ ] **Step 5: 写 App 失败测试**
+- [x] **Step 5: 写 App 失败测试**
 
 在 `internal/app/home_test.go` 使用 `FixedClock` 和真实 Store，覆盖：
 
@@ -133,13 +133,13 @@ func TestHomeTenantActorOmitsPersonalWork(t *testing.T) {
 
 另写两个独立测试：`TestHomeRespectsProjectScope` 创建 allowlist 内外各一个项目并断言响应只含 allowlist 项目；`TestHomeUsesCompleteUserInfo` 为 assignee 和 annotation actor 写入 display name、email、external ID，并逐字段断言首页 view 完整返回。
 
-- [ ] **Step 6: 运行 App 测试并确认 RED**
+- [x] **Step 6: 运行 App 测试并确认 RED**
 
 Run: `go test ./internal/app -run '^TestHome' -count=1`
 
 Expected: FAIL，原因是 `Service.Home` 和首页 view types 尚不存在。
 
-- [ ] **Step 7: 实现 App 首页聚合**
+- [x] **Step 7: 实现 App 首页聚合**
 
 `internal/app/home.go` 定义：
 
@@ -186,13 +186,13 @@ type HomeView struct {
 - 项目排序按 overdue、high priority、wait ready、unassigned、modified DESC；有风险最多 5 个，无风险 fallback 最近 3 个。
 - `projectViewFromRow` / `projectAnnotationInfoFromModel` / `resolveUserInfos` 复用现有逻辑。
 
-- [ ] **Step 8: 运行 App 测试并确认 GREEN**
+- [x] **Step 8: 运行 App 测试并确认 GREEN**
 
 Run: `go test ./internal/app -run '^TestHome' -count=1`
 
 Expected: PASS。
 
-- [ ] **Step 9: 修正文档口径并提交 Task 1**
+- [x] **Step 9: 修正文档口径并提交 Task 1**
 
 确认 spec 明确 `overdue_count` 已包含 materialized occurrence，运行：
 
@@ -220,17 +220,17 @@ git commit -m "feat: 增加用户首页聚合"
 - Produces: `GET /api/v1/home`
 - Produces: context-only authorization when both `RequiredCapability` and `RequiredPermission` are empty; this resolves actor/workspace/project scope but grants no resource operation by itself
 
-- [ ] **Step 1: 写 context-only 授权失败测试**
+- [x] **Step 1: 写 context-only 授权失败测试**
 
 在 `request_scope_test.go` 断言空 required capability/permission 能解析合法 user/tenant token 的 workspace context，但后续 `svc.Require(PermissionTaskRead)` 仍按 role/scope 判定；无效 workspace 和非成员仍失败。
 
-- [ ] **Step 2: 运行授权测试并确认 RED**
+- [x] **Step 2: 运行授权测试并确认 RED**
 
 Run: `go test ./internal/app -run 'TestAuthorizeTokenRequestContextOnly' -count=1`
 
 Expected: FAIL，当前空 capability 会触发 `token_scope_denied`，空 permission 会触发 `permission_denied`。
 
-- [ ] **Step 3: 实现 context-only 授权**
+- [x] **Step 3: 实现 context-only 授权**
 
 只在 required 字段非空时执行检查：
 
@@ -247,13 +247,13 @@ if input.RequiredPermission != "" {
 
 tenant actor 同样只跳过入口检查；`Home()` 内部仍通过 `Require` 决定 task/project 区块。
 
-- [ ] **Step 4: 运行授权测试并确认 GREEN**
+- [x] **Step 4: 运行授权测试并确认 GREEN**
 
 Run: `go test ./internal/app -run 'TestAuthorizeTokenRequestContextOnly' -count=1`
 
 Expected: PASS。
 
-- [ ] **Step 5: 写 HTTP 失败测试**
+- [x] **Step 5: 写 HTTP 失败测试**
 
 `internal/httpapi/home_test.go` 覆盖：
 
@@ -264,13 +264,13 @@ Expected: PASS。
 - 响应 snake_case，不含裸 `user_id`。
 - OpenAPI `/api/v1/home` 包含 `reasons` enum 与 `JSONUserInfo`。
 
-- [ ] **Step 6: 运行 HTTP 测试并确认 RED**
+- [x] **Step 6: 运行 HTTP 测试并确认 RED**
 
 Run: `go test ./internal/httpapi -run 'TestHTTPHome|TestOpenAPIDocumentsHome' -count=1`
 
 Expected: FAIL，route/handler/schema 尚不存在。
 
-- [ ] **Step 7: 实现 handler、DTO 与 Huma schema**
+- [x] **Step 7: 实现 handler、DTO 与 Huma schema**
 
 `home.go`：
 
@@ -293,13 +293,13 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 在 `humaRoutes()` 注册 `GET /api/v1/home`；在 `contractSuccessResponse` 加 `homeOpenAPISchema()`，reasons enum 固定四个值。
 
-- [ ] **Step 8: 运行 HTTP 测试并确认 GREEN**
+- [x] **Step 8: 运行 HTTP 测试并确认 GREEN**
 
 Run: `go test ./internal/httpapi -run 'TestHTTPHome|TestOpenAPIDocumentsHome|TestOpenAPIIncludesEveryRegisteredHTTPRoute' -count=1`
 
 Expected: PASS。
 
-- [ ] **Step 9: 提交 Task 2**
+- [x] **Step 9: 提交 Task 2**
 
 ```bash
 git add internal/app/request_scope.go internal/app/request_scope_test.go internal/httpapi/app_service.go internal/httpapi/home.go internal/httpapi/home_test.go internal/httpapi/huma_routes.go internal/httpapi/server_test.go
@@ -328,7 +328,7 @@ git commit -m "feat: 提供用户首页 API"
 - Produces: task detail search `from=home`
 - Produces: `saveHomeReturnState` / `takeHomeReturnState`，按 workspace + actor 隔离
 
-- [ ] **Step 1: 写“已开始”失败测试**
+- [x] **Step 1: 写“已开始”失败测试**
 
 ```ts
 it("maps started to open tasks with a start timestamp", () => {
@@ -340,45 +340,45 @@ it("maps started to open tasks with a start timestamp", () => {
 
 并断言 `MY_TASK_TABS` 顺序为 `incomplete, started, today, overdue, noDue, completed`。
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `pnpm --dir web test -- my-task-tabs.test.ts`
 
 Expected: FAIL，`started` 不属于 `MyTaskTabKey`。
 
-- [ ] **Step 3: 实现 started tab 和路由校验**
+- [x] **Step 3: 实现 started tab 和路由校验**
 
 更新 tab 类型、数组、`tabFilter`、`isMyTaskTabKey` 和中英文文案；`router.tsx` 继续只接受结构化 `tab`，不暴露 raw query。
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `pnpm --dir web test -- my-task-tabs.test.ts my-tasks-page.test.tsx`
 
 Expected: PASS。
 
-- [ ] **Step 5: 写首页返回状态失败测试**
+- [x] **Step 5: 写首页返回状态失败测试**
 
 测试 storage key 包含 workspace+actor，保存 `scrollTop/focusId` 后只能取一次；task detail `from=home` 时返回 `/` 并显示“返回首页”。
 
-- [ ] **Step 6: 运行返回状态测试确认 RED**
+- [x] **Step 6: 运行返回状态测试确认 RED**
 
 Run: `pnpm --dir web test -- home-return-state.test.ts task-detail-page.test.tsx`
 
 Expected: FAIL，home return state 和 `from=home` 尚不存在。
 
-- [ ] **Step 7: 实现返回状态**
+- [x] **Step 7: 实现返回状态**
 
 - `home-return-state.ts` 复用 my-tasks return state 的 sessionStorage 思路，key 加 workspaceSlug 与 actorID。
 - router 的 task detail validateSearch 接受 `from`；`ProjectTaskDetailRoute` 把 `from=home` 传给 `TaskDetailPage`。
 - `TaskDetailPage` 优先返回首页，其次 my-tasks，再回 project；canonicalize occurrence permalink 时保留 `from=home`。
 
-- [ ] **Step 8: 运行返回状态测试确认 GREEN**
+- [x] **Step 8: 运行返回状态测试确认 GREEN**
 
 Run: `pnpm --dir web test -- home-return-state.test.ts task-detail-page.test.tsx`
 
 Expected: PASS。
 
-- [ ] **Step 9: 提交 Task 3**
+- [x] **Step 9: 提交 Task 3**
 
 ```bash
 git add web/src/features/workspace/my-tasks web/src/pages/my-tasks-page.tsx web/src/routes/router.tsx web/src/features/workspace/home/home-return-state.ts web/src/features/workspace/home/home-return-state.test.ts web/src/routes/workspace/ProjectTaskDetailRoute.tsx web/src/features/workspace/project-workbench/task-detail web/src/locales/zh-CN.ts web/src/locales/en-US.ts
@@ -412,21 +412,21 @@ git commit -m "feat: 增加已开始任务入口"
 - Produces: optional `TaskCreateDialog.onCreated(task)` callback
 - Produces: home query key `['home', workspaceSlug, actor.id]`
 
-- [ ] **Step 1: 写 API 失败测试**
+- [x] **Step 1: 写 API 失败测试**
 
 断言 `getHome()` 请求 `/api/v1/home`，类型覆盖 `my_work=null`、reasons、project metrics、latest update actor。
 
-- [ ] **Step 2: 运行 API 测试确认 RED**
+- [x] **Step 2: 运行 API 测试确认 RED**
 
 Run: `pnpm --dir web test -- home-api.test.ts`
 
 Expected: FAIL，module 尚不存在。
 
-- [ ] **Step 3: 实现 API client**
+- [x] **Step 3: 实现 API client**
 
 使用 `workspaceApiGet<HomeView>("/api/v1/home")`，复用 `ProjectWorkbenchTask/ProjectWorkbenchProject/ProjectSeriesMetrics/ProjectAnnotationInfo` 类型，不复制用户结构。
 
-- [ ] **Step 4: 写首页组件失败测试**
+- [x] **Step 4: 写首页组件失败测试**
 
 覆盖：
 
@@ -440,13 +440,13 @@ Expected: FAIL，module 尚不存在。
 - loading/error/readonly/mobile class 与 aria label。
 - 页面不请求 audit 或 notification-deliveries。
 
-- [ ] **Step 5: 运行组件测试确认 RED**
+- [x] **Step 5: 运行组件测试确认 RED**
 
 Run: `pnpm --dir web test -- home-page.test.tsx OverviewPage.test.tsx`
 
 Expected: FAIL，当前仍渲染旧运维概览。
 
-- [ ] **Step 6: 实现 HomePage**
+- [x] **Step 6: 实现 HomePage**
 
 组件拆分保持单一职责：
 
@@ -471,7 +471,7 @@ home-page.tsx
 - 完成比例使用 `completed_count/task_count`；0 task 显示 0%。
 - project latest update 只展示后端 content/actor/time，不从 audit 推导。
 
-- [ ] **Step 7: 实现首页新建任务**
+- [x] **Step 7: 实现首页新建任务**
 
 - 首页按钮先打开 active/planning project selector。
 - 选定 project 后复用 `TaskCreateDialog`。
@@ -479,20 +479,20 @@ home-page.tsx
 - created callback 失效 home query，并提供打开 project-scoped detail 的入口。
 - 无可写项目或 read-only 身份不显示按钮。
 
-- [ ] **Step 8: 更新导航和文案**
+- [x] **Step 8: 更新导航和文案**
 
 - `nav.overview` 改为“首页”/“Home”。
 - `app.description` 不再描述运维入口，改成面向任务协作的中性文案。
 - 首页所有文案进入 `home.*` namespace，不硬编码中文。
 - 保留管理/系统导航结构，不扩大为 Shell 重写。
 
-- [ ] **Step 9: 运行组件测试确认 GREEN**
+- [x] **Step 9: 运行组件测试确认 GREEN**
 
 Run: `pnpm --dir web test -- home-api.test.ts home-page.test.tsx OverviewPage.test.tsx task-create-dialog.test.tsx AppShell.test.tsx`
 
 Expected: PASS。
 
-- [ ] **Step 10: 提交 Task 4**
+- [x] **Step 10: 提交 Task 4**
 
 ```bash
 git add web/src/features/workspace/home web/src/pages/OverviewPage.tsx web/src/pages/OverviewPage.test.tsx web/src/features/workspace/project-workbench/tasks/task-create-dialog.tsx web/src/features/workspace/project-workbench/tasks/task-create-dialog.test.tsx web/src/features/workspace/project-workbench/hooks/use-task-mutations.ts web/src/components/AppShell.tsx web/src/components/AppShell.test.tsx web/src/locales/zh-CN.ts web/src/locales/en-US.ts
@@ -514,14 +514,14 @@ git commit -m "feat: 重构 Web Console 用户首页"
 - Consumes: Tasks 1-4 的最终 API 与 UI 行为
 - Produces: 与代码一致的用户文档、路线图状态和验证证据
 
-- [ ] **Step 1: 更新 README / ROADMAP**
+- [x] **Step 1: 更新 README / ROADMAP**
 
 - README Web Console 能力改为：首页以个人任务为主，项目关注与工作区信息为辅；运维信息在专页。
 - ROADMAP 新增当前 milestone 条目与 `GET /api/v1/home`、started preset、系统身份降级页的完成状态。
 - spec 状态从“待评审”改为“已实施”，并确保 API 示例与最终字段一致。
 - plan 勾选实际完成步骤；未执行的步骤不能标完成。
 
-- [ ] **Step 2: 运行 focused Go tests**
+- [x] **Step 2: 运行 focused Go tests**
 
 ```bash
 go test ./internal/storage -run 'TestHomeRepository' -count=1
@@ -531,7 +531,7 @@ go test ./internal/httpapi -run 'TestHTTPHome|TestOpenAPIDocumentsHome|TestOpenA
 
 Expected: 全部 PASS。
 
-- [ ] **Step 3: 运行 focused Web tests**
+- [x] **Step 3: 运行 focused Web tests**
 
 ```bash
 pnpm --dir web test -- my-task-tabs.test.ts home-return-state.test.ts task-detail-page.test.tsx home-api.test.ts home-page.test.tsx OverviewPage.test.tsx task-create-dialog.test.tsx AppShell.test.tsx
@@ -539,7 +539,7 @@ pnpm --dir web test -- my-task-tabs.test.ts home-return-state.test.ts task-detai
 
 Expected: 全部 PASS。
 
-- [ ] **Step 4: 运行仓库完整验证**
+- [x] **Step 4: 运行仓库完整验证**
 
 ```bash
 go test ./...
@@ -556,7 +556,7 @@ git diff --check
 
 Expected: 所有命令 exit 0；若 smoke 需要服务进程，按脚本既有方式启动并在验证后停止，证明端口已释放。
 
-- [ ] **Step 5: 按 spec 逐条完成审计**
+- [x] **Step 5: 按 spec 逐条完成审计**
 
 逐项核对 spec §17：
 
@@ -571,7 +571,7 @@ Expected: 所有命令 exit 0；若 smoke 需要服务进程，按脚本既有�
 
 每项记录对应测试、代码或命令输出；证据缺失就继续实现或补测试，不能仅凭搜索结果判定完成。
 
-- [ ] **Step 6: 提交文档与验证收口**
+- [x] **Step 6: 提交文档与验证收口**
 
 ```bash
 git add README.md ROADMAP.md docs/superpowers/specs/2026-07-17-web-console-user-home-design.md docs/superpowers/plans/2026-07-17-web-console-user-home-implementation.md
@@ -579,7 +579,7 @@ git diff --cached --check
 git commit -m "docs: 同步用户首页实现"
 ```
 
-- [ ] **Step 7: 最终工作树检查**
+- [x] **Step 7: 最终工作树检查**
 
 Run: `git status --short && git log -5 --oneline`
 
