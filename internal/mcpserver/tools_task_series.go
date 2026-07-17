@@ -202,7 +202,7 @@ func registerTaskSeriesGet(s *mcp.Server, opts Options) {
 type TaskSeriesModifyInput struct {
 	Workspace         string            `json:"workspace,omitempty"`
 	ID                string            `json:"id" jsonschema:"series UUID"`
-	Title             *string           `json:"title,omitempty" jsonschema:"new series title"`
+	Title             *string           `json:"title,omitempty" jsonschema:"new series title; cannot be empty, use clear to reset other fields"`
 	Description       *string           `json:"description,omitempty" jsonschema:"new series details; pass empty string to clear"`
 	Priority          *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L; omit to leave unchanged"`
 	Assignees         []string          `json:"assignees,omitempty" jsonschema:"replace assignee user refs on each occurrence"`

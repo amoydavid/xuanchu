@@ -5140,7 +5140,7 @@
             ]
           },
           "title": {
-            "description": "new series title",
+            "description": "new series title; cannot be empty, use clear to reset other fields",
             "type": [
               "null",
               "string"
