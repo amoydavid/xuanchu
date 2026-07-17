@@ -72,7 +72,7 @@ type TaskModifyInput struct {
 	Project         string            `json:"project,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
 	ID              string            `json:"id" jsonschema:"task reference: UUID, materialized task_slug, or occurrence_ref; projected occurrences only have occurrence_ref"`
-	Title           *string           `json:"title,omitempty" jsonschema:"new task title"`
+	Title           *string           `json:"title,omitempty" jsonschema:"new task title; cannot be empty, use clear to reset other fields"`
 	Description     *string           `json:"description,omitempty" jsonschema:"new task details; pass empty string to clear"`
 	Priority        *string           `json:"priority,omitempty" jsonschema:"new task priority: H, M, or L; omit to leave unchanged"`
 	Due             *int64            `json:"due,omitempty" jsonschema:"new deadline time, unix seconds"`

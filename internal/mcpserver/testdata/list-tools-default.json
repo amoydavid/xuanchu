@@ -4604,7 +4604,7 @@
             ]
           },
           "title": {
-            "description": "new task title",
+            "description": "new task title; cannot be empty, use clear to reset other fields",
             "type": [
               "null",
               "string"
