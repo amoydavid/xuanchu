@@ -54,7 +54,7 @@
 │  持久化: DirectorySyncJob 表（DB 轮询 dispatcher）           │
 │  app: DirectorySyncService                                  │
 │  - 读 workspace sso.* 配置                                  │
-│  - HTTP GET yaoguang /api/orgs/{org}/directory/members       │
+│  - HTTP GET yaoguang /api/v1/orgs/{org}/directory/members    │
 │  - upsert User + UserExternalID(sub + external_identities)   │
 │  - upsert Membership (role 原样映射, disabled 移除)          │
 └─────────────────────────────────────────────────────────────┘
@@ -95,7 +95,7 @@
 | Key | 类型 | 必填 | 含义 |
 |---|---|---|---|
 | `sso.provider` | string | 是 | 固定 `yaoguang`（本期唯一 provider，为未来多 provider 留扩展位） |
-| `sso.issuer_base_url` | string | 是 | yaoguang 根 URL。OIDC discovery 走 `{base}/.well-known/openid-configuration`，directory API 走 `{base}/api/orgs/{org_id}/directory/members`，OAuth 端点由 discovery 给出 |
+| `sso.issuer_base_url` | string | 是 | yaoguang 根 URL。OIDC discovery 走 `{base}/.well-known/openid-configuration`，directory API 走 `{base}/api/v1/orgs/{org_id}/directory/members`，OAuth 端点由 discovery 给出 |
 | `sso.org_id` | string | 是 | yaoguang 的 organization id（directory API 路径 + 校验 token 所属 org） |
 | `sso.client_id` | string | 是 | OIDC client_id（xuanchu 作为 RP 在 yaoguang 注册的 internal app client） |
 | `sso.client_secret` | string(secret) | 是 | OIDC client_secret。加密存储。通讯录同步也复用此凭证通过 `client_credentials` grant 自动换取 directory 访问 token |
@@ -250,7 +250,7 @@ OIDC 配置是 **workspace 级管理功能**，出现在用户登录 workspace �
 
 ### 5.1 数据源：yaoguang directory API
 
-调用 `GET {issuer_base_url}/api/orgs/{org_id}/directory/members`，请求头 `Authorization: Bearer <directory_access_token>`。
+调用 `GET {issuer_base_url}/api/v1/orgs/{org_id}/directory/members`，请求头 `Authorization: Bearer <directory_access_token>`。
 
 - 认证要求：token 须覆盖 scope `org.members.read`，且对应 internal app 的 `directory_access=org_read`。
 - **无分页**，全量返回。
@@ -299,7 +299,7 @@ OIDC 配置是 **workspace 级管理功能**，出现在用户登录 workspace �
 ```
 1. OIDCConfigService.Get(workspaceID) → 未启用则报错中止
 2. directoryClient.ListMembers(baseURL, orgID, accessToken)
-   → GET {base}/api/orgs/{org}/directory/members, Bearer token
+   → GET {base}/api/v1/orgs/{org}/directory/members, Bearer token
    → 解析 data.members[]（无分页，全量）
 3. 对每个 status != disabled 的 member:
    a. 按 sub 查 UserExternalID(provider=yaoguang, external_id=sub)

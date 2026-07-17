@@ -118,7 +118,7 @@ func newMockYaoguangForSync(t *testing.T, clientID, clientSecret, orgID string) 
 				"token_type":          "Bearer",
 				"expires_in":          3600,
 			})
-		case r.URL.Path == "/api/orgs/"+orgID+"/directory/members" && r.Method == "GET":
+		case r.URL.Path == "/api/v1/orgs/"+orgID+"/directory/members" && r.Method == "GET":
 			if r.Header.Get("Authorization") != "Bearer ygat_mock" {
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": map[string]any{"code": "invalid_token"}})

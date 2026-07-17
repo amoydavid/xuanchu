@@ -9,7 +9,7 @@ import (
 
 func TestListMembers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/orgs/org1/directory/members" {
+		if r.URL.Path != "/api/v1/orgs/org1/directory/members" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		if r.Header.Get("Authorization") != "Bearer tok1" {
@@ -90,8 +90,8 @@ func TestListMembersUnauthorized(t *testing.T) {
 // 能正确提取根地址拼接 directory API。
 func TestListMembersWithIssuerURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/orgs/org1/directory/members" {
-			t.Fatalf("path = %s, want /api/orgs/org1/directory/members", r.URL.Path)
+		if r.URL.Path != "/api/v1/orgs/org1/directory/members" {
+			t.Fatalf("path = %s, want /api/v1/orgs/org1/directory/members", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{"members": []any{}}})
 	}))

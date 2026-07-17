@@ -715,7 +715,7 @@ import (
 
 func TestListMembers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/orgs/org1/directory/members" {
+		if r.URL.Path != "/api/v1/orgs/org1/directory/members" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		if r.Header.Get("Authorization") != "Bearer tok1" {
@@ -836,7 +836,7 @@ type Client struct {
 
 // ListMembers 拉取某 org 的全量成员（yaoguang directory API 无分页）。
 func (c *Client) ListMembers(baseURL, orgID, accessToken string) ([]Member, error) {
-	u := fmt.Sprintf("%s/api/orgs/%s/directory/members", strings.TrimRight(baseURL, "/"), url.PathEscape(orgID))
+	u := fmt.Sprintf("%s/api/v1/orgs/%s/directory/members", strings.TrimRight(baseURL, "/"), url.PathEscape(orgID))
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err

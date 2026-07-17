@@ -48,10 +48,10 @@ func (c *Client) ListMembers(baseURL, orgID, accessToken string) ([]Member, erro
 
 // ListMembersWithContext 带 context 拉取，便于后台 worker 传递超时/取消。
 // baseURL 是 OIDC issuer_base_url（如 https://yaoguang.example.com/oidc/orgs/{org_id}），
-// 这里从中提取 yaoguang 根地址（截掉 /oidc/orgs/{org_id}），再拼 /api/orgs/{org_id}/directory/members。
+// 这里从中提取 yaoguang 根地址（截掉 /oidc/orgs/{org_id}），再拼 /api/v1/orgs/{org_id}/directory/members。
 func (c *Client) ListMembersWithContext(ctx context.Context, baseURL, orgID, accessToken string) ([]Member, error) {
 	root := yaoguangRootURL(baseURL)
-	u := fmt.Sprintf("%s/api/orgs/%s/directory/members", strings.TrimRight(root, "/"), url.PathEscape(orgID))
+	u := fmt.Sprintf("%s/api/v1/orgs/%s/directory/members", strings.TrimRight(root, "/"), url.PathEscape(orgID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err

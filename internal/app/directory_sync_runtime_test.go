@@ -68,7 +68,7 @@ func mockYaoguangIdP(t *testing.T, clientID, clientSecret, orgID string, members
 				"expires_in":           3600,
 				"scope":                r.Form.Get("scope"),
 			})
-		case r.URL.Path == "/api/orgs/"+orgID+"/directory/members" && r.Method == "GET":
+		case r.URL.Path == "/api/v1/orgs/"+orgID+"/directory/members" && r.Method == "GET":
 			auth := r.Header.Get("Authorization")
 			if auth != "Bearer ygat_mock_token" {
 				w.WriteHeader(http.StatusUnauthorized)
