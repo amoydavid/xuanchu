@@ -95,6 +95,68 @@ func TestAuthorizeTenantTokenDoesNotRequireMembership(t *testing.T) {
 	}
 }
 
+func TestAuthorizeTokenRequestContextOnly(t *testing.T) {
+	svc, closeFn := newTestService(t, 100)
+	defer closeFn()
+
+	created, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name: "home-project-reader", Scopes: []string{"project:read"}, WorkspaceRef: "local",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := svc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := svc.AuthorizeTokenRequest(RequestAuthorizationInput{
+		Token: authn, WorkspaceRef: "local",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest(context only) error = %v", err)
+	}
+	scoped, err := NewService(ServiceOptions{
+		Store: svc.store, Clock: FixedClock{NowUnix: 100}, Runtime: &authorized.Runtime, RequestScope: &authorized.Scope,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scoped.Require(PermissionProjectRead); err != nil {
+		t.Fatalf("Require(project:read) error = %v", err)
+	}
+	if err := scoped.Require(PermissionTaskRead); err == nil {
+		t.Fatal("Require(task:read) error = nil, want scope denial")
+	}
+}
+
+func TestAuthorizeUserTokenRequestContextOnly(t *testing.T) {
+	store := newTestStore(t)
+	workspace, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustCreateUserRecord(t, store, storage.User{ID: "ctx-member", Name: "ctx-member", CreatedAt: 1, ModifiedAt: 1})
+	mustUpsertMembershipRecord(t, store, storage.Membership{UserID: "ctx-member", WorkspaceID: workspace.ID, Role: "member", JoinedAt: 1, ModifiedAt: 1})
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", workspace.Slug)
+	created, err := ownerSvc.CreateToken(CreateTokenInput{
+		Name: "home-user", UserRef: "ctx-member", Scopes: []string{"project:read"}, WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := ownerSvc.AuthenticateBearerToken(created.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := ownerSvc.AuthorizeTokenRequest(RequestAuthorizationInput{Token: authn, WorkspaceRef: "local"})
+	if err != nil {
+		t.Fatalf("AuthorizeTokenRequest(context only) error = %v", err)
+	}
+	if authorized.Runtime.ActorUserID == "" || authorized.Runtime.WorkspaceID == "" {
+		t.Fatalf("authorized runtime = %#v", authorized.Runtime)
+	}
+}
+
 func TestProjectScopedServiceFiltersReadAndWrite(t *testing.T) {
 	store := newTestStore(t)
 	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")

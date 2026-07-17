@@ -304,6 +304,8 @@ func contractRequestSchema(route humaRoute) *huma.Schema {
 func contractSuccessResponse(route humaRoute) *huma.Response {
 	data := (*huma.Schema)(nil)
 	switch {
+	case route.Method == http.MethodGet && route.Path == "/api/v1/home":
+		data = homeOpenAPISchema()
 	case route.Method == http.MethodGet && (route.Path == "/api/v1/tasks" || route.Path == "/api/v1/reports/{name}" || route.Path == "/api/v1/task-series/{seriesRef}/occurrences"):
 		data = taskViewPageOpenAPISchema()
 	case taskRouteReturnsOccurrenceView(route):
@@ -322,6 +324,43 @@ func contractSuccessResponse(route humaRoute) *huma.Response {
 		return jsonResponse("Successful response.")
 	}
 	return jsonResponseWithSchema("Successful response.", successEnvelopeOpenAPISchema(data))
+}
+
+func homeOpenAPISchema() *huma.Schema {
+	reasons := &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string", Enum: []any{"started", "overdue", "due_today", "high_priority"}}}
+	taskSchema := taskOccurrenceOpenAPISchema()
+	myWork := &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"open_count": {Type: "integer", Format: "int32"}, "started_count": {Type: "integer", Format: "int32"},
+		"overdue_count": {Type: "integer", Format: "int32"}, "due_today_count": {Type: "integer", Format: "int32"},
+		"high_priority_open_count": {Type: "integer", Format: "int32"},
+		"items": {Type: "array", Items: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+			"task": taskSchema, "reasons": reasons,
+		}, Required: []string{"task", "reasons"}}},
+	}, Required: []string{"open_count", "started_count", "overdue_count", "due_today_count", "high_priority_open_count", "items"}}
+	project := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "workspace_id": {Type: "string"}, "slug": {Type: "string"}, "name": {Type: "string"},
+		"description": {Type: "string"}, "status": {Type: "string"}, "task_count": {Type: "integer", Format: "int32"},
+		"pending_count": {Type: "integer", Format: "int32"}, "completed_count": {Type: "integer", Format: "int32"},
+		"created_at": {Type: "integer", Format: "int64"}, "modified_at": {Type: "integer", Format: "int64"},
+	}, Required: []string{"id", "workspace_id", "slug", "name", "status", "task_count", "pending_count", "completed_count", "created_at", "modified_at"}}
+	series := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"recurring_series_count": {Type: "integer", Format: "int32"}, "active_recurring_series_count": {Type: "integer", Format: "int32"},
+		"open_recurring_occurrence_count": {Type: "integer", Format: "int32"}, "overdue_recurring_occurrence_count": {Type: "integer", Format: "int32"},
+	}, Required: []string{"recurring_series_count", "active_recurring_series_count", "open_recurring_occurrence_count", "overdue_recurring_occurrence_count"}}
+	latest := &huma.Schema{Type: "object", Nullable: true, Properties: map[string]*huma.Schema{
+		"id": {Type: "string"}, "project_id": {Type: "string"}, "entry": {Type: "integer", Format: "int64"},
+		"content": {Type: "string"}, "created_by": actorInfoOpenAPISchema(), "created_at": {Type: "integer", Format: "int64"},
+	}, Required: []string{"id", "project_id", "entry", "content", "created_by", "created_at"}}
+	attention := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"project": project, "overdue_count": {Type: "integer", Format: "int32"},
+		"high_priority_open_count": {Type: "integer", Format: "int32"}, "wait_ready_count": {Type: "integer", Format: "int32"},
+		"unassigned_open_count": {Type: "integer", Format: "int32"}, "series_metrics": series, "latest_update": latest,
+	}, Required: []string{"project", "overdue_count", "high_priority_open_count", "wait_ready_count", "unassigned_open_count", "series_metrics"}}
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"generated_at": {Type: "integer", Format: "int64"}, "today": {Type: "string", Format: "date"},
+		"actor_type": {Type: "string"}, "my_work": myWork,
+		"project_attention": {Type: "array", Items: attention},
+	}, Required: []string{"generated_at", "today", "actor_type", "my_work", "project_attention"}}
 }
 
 func taskRouteReturnsOccurrenceView(route humaRoute) bool {
@@ -463,6 +502,7 @@ func taskOccurrenceOpenAPISchema() *huma.Schema {
 		"links":           {Type: "array", Items: link},
 		"udas":            {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
 		"recurrence_info": recurrence,
+		"urgency":         {Type: "number", Format: "double", Nullable: true},
 	}, Required: []string{"id", "uuid", "task_slug", "project_seq", "workspace_id", "title", "status", "entry", "modified", "start", "end"}}
 }
 
@@ -589,6 +629,7 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodPatch, Path: "/api/v1/admin/tenant-access-tokens/{tokenRef}", Tag: "Admin", Summary: "Modify a tenant access token.", Handler: s.handleAdminTenantTokenModify, Admin: true},
 		{Method: http.MethodDelete, Path: "/api/v1/admin/tenant-access-tokens/{tokenRef}", Tag: "Admin", Summary: "Revoke a tenant access token.", Handler: s.handleAdminTenantTokenRevoke, Admin: true},
 		{Method: http.MethodGet, Path: "/api/v1/credentials/current", Tag: "Credentials", Summary: "Get current credential metadata.", Handler: s.handleCredentialsCurrent},
+		{Method: http.MethodGet, Path: "/api/v1/home", Tag: "Home", Summary: "Get the current actor's Web Console home summary.", Handler: s.handleHome},
 		{Method: http.MethodGet, Path: "/api/v1/me", Tag: "Me", Summary: "Get current actor metadata.", Handler: s.handleMe},
 		{Method: http.MethodPut, Path: "/api/v1/me/active_workspace", Tag: "Me", Summary: "Set active workspace.", Handler: s.handleMeActiveWorkspace},
 		{Method: http.MethodGet, Path: "/api/v1/tasks", Tag: "Tasks", Summary: "List tasks.", Handler: s.handleTaskList},
