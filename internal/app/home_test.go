@@ -105,3 +105,86 @@ func TestHomeTenantActorOmitsPersonalWork(t *testing.T) {
 		t.Fatalf("my_work = %#v, want nil", view.MyWork)
 	}
 }
+
+func TestHomeRespectsProjectScope(t *testing.T) {
+	store := newTestStore(t)
+	ownerSvc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	alpha, err := ownerSvc.AddProject(AddProjectInput{Slug: "alpha", Name: "Alpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := ownerSvc.AddProject(AddProjectInput{Slug: "beta", Name: "Beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ownerSvc.AddTaskView(AddInput{Title: "alpha task", Project: &alpha.Slug, Assignees: []string{"local"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ownerSvc.AddTaskView(AddInput{Title: "beta task", Project: &beta.Slug, Assignees: []string{"local"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := ownerSvc.Runtime()
+	scope := RequestScope{
+		Capabilities: []string{"task:read", "project:read"},
+		WorkspaceIDs: []string{runtime.WorkspaceID},
+		ProjectIDs:   []string{alpha.ID},
+	}
+	scopedSvc, err := NewService(ServiceOptions{
+		Store: store, Clock: FixedClock{NowUnix: 100, Loc: time.UTC}, Runtime: &runtime, RequestScope: &scope,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := scopedSvc.Home()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.MyWork == nil || len(view.MyWork.Items) != 1 || view.MyWork.Items[0].Task.ProjectID == nil || *view.MyWork.Items[0].Task.ProjectID != alpha.ID {
+		t.Fatalf("scoped my_work = %#v", view.MyWork)
+	}
+	if len(view.ProjectAttention) != 1 || view.ProjectAttention[0].Project.ID != alpha.ID {
+		t.Fatalf("scoped project_attention = %#v", view.ProjectAttention)
+	}
+}
+
+func TestHomeUsesCompleteUserInfo(t *testing.T) {
+	store := newTestStore(t)
+	svc := newTestServiceWithRuntime(t, store, 100, "local", "local")
+	actorID := svc.Runtime().ActorUserID
+	email := "alice@example.com"
+	if err := store.DB().Model(&storage.User{}).Where("id = ?", actorID).Updates(map[string]any{
+		"display_name": "Alice", "email": email,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.BindExternalID(actorID, "feishu", "open_id", "ou_home_actor"); err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(AddProjectInput{Slug: "people", Name: "People"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddTaskView(AddInput{Title: "owned task", Project: &project.Slug, Assignees: []string{"local"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ProjectAnnotate(project.Slug, "actor update"); err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := svc.Home()
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := view.MyWork.Items[0].Task.Assignees[0]
+	if user.ID != actorID || user.Name != "local" || user.DisplayName != "Alice" || user.Email == nil || *user.Email != email {
+		t.Fatalf("assignee = %#v", user)
+	}
+	if len(user.ExternalIDs) != 1 || user.ExternalIDs[0].Provider != "feishu" || user.ExternalIDs[0].UserType != "open_id" || user.ExternalIDs[0].ExternalID != "ou_home_actor" {
+		t.Fatalf("assignee external IDs = %#v", user.ExternalIDs)
+	}
+	actor := view.ProjectAttention[0].LatestUpdate.CreatedBy
+	if actor.Type != "user" || actor.User == nil || actor.User.ID != actorID || actor.User.DisplayName != "Alice" || len(actor.User.ExternalIDs) != 1 {
+		t.Fatalf("latest update actor = %#v", actor)
+	}
+}

@@ -999,7 +999,11 @@ function projectMetrics(
 ) {
   const openQuery = "(status:pending or status:waiting)"
   const base = `/workspaces/${encodeURIComponent(workspaceSlug)}/projects/${encodeURIComponent(item.project.slug)}/tasks`
-  const rows = [
+  const rows: Array<{
+    count: number
+    key: string
+    params: Record<string, string>
+  }> = [
     {
       count: item.overdue_count,
       key: "overdue",
