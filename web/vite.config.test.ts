@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import path from "node:path"
+
 import { describe, expect, test } from "vitest"
 import type { ConfigEnv, UserConfig } from "vite"
 import viteConfig from "./vite.config"
@@ -34,5 +37,17 @@ describe("vite dev proxy", () => {
         timeout: 30000,
       },
     })
+  })
+})
+
+describe("TypeScript application build config", () => {
+  test("excludes test files from the browser application project", () => {
+    const appConfig = readFileSync(
+      path.resolve(process.cwd(), "tsconfig.app.json"),
+      "utf8"
+    )
+
+    expect(appConfig).toMatch(/"exclude"\s*:\s*\[[\s\S]*"src\/\*\*\/\*.test\.ts"/)
+    expect(appConfig).toMatch(/"exclude"\s*:\s*\[[\s\S]*"src\/\*\*\/\*.test\.tsx"/)
   })
 })
