@@ -21,6 +21,7 @@ type workspaceView struct {
 
 type projectView struct {
 	ID             string `json:"id"`
+	URL            string `json:"url"`
 	WorkspaceID    string `json:"workspace_id"`
 	Slug           string `json:"slug"`
 	Name           string `json:"name"`
@@ -118,6 +119,7 @@ func workspaceViewsFromApp(rows []app.WorkspaceView) []workspaceView {
 func projectViewFromApp(row app.ProjectView) projectView {
 	return projectView{
 		ID:             row.ID,
+		URL:            row.URL,
 		WorkspaceID:    row.WorkspaceID,
 		Slug:           row.Slug,
 		Name:           row.Name,

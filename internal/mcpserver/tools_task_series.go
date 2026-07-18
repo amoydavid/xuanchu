@@ -17,7 +17,7 @@ import (
 type TaskSeriesAddInput struct {
 	Workspace      string            `json:"workspace,omitempty"`
 	Project        string            `json:"project,omitempty"`
-	ProjectID      string `json:"project_id,omitempty"`
+	ProjectID      string            `json:"project_id,omitempty"`
 	Title          string            `json:"title" jsonschema:"series title"`
 	Description    *string           `json:"description,omitempty" jsonschema:"series details"`
 	RecurrenceRule string            `json:"recurrence_rule" jsonschema:"recurrence rule, e.g. daily, weekly, FREQ=WEEKLY;BYDAY=MO"`
@@ -350,7 +350,8 @@ func resolveSeriesDueField(instant *int64, date *string) (*int64, error) {
 // seriesViewToMCPJSON 把 SeriesView 转为 MCP 输出 map。
 func seriesViewToMCPJSON(v app.TaskSeriesView) map[string]any {
 	out := map[string]any{
-		"id": v.ID, "workspace_id": v.WorkspaceID, "project_id": v.ProjectID,
+		"url": v.URL,
+		"id":  v.ID, "workspace_id": v.WorkspaceID, "project_id": v.ProjectID,
 		"title": v.Title, "status": v.Status, "recurrence_rule": v.RecurrenceRule,
 		"first_due":             v.FirstDue,
 		"open_occurrence_count": v.OpenOccurrenceCount,
@@ -412,7 +413,8 @@ func occurrenceViewsForMCP(rows []app.TaskOccurrenceView) []map[string]any {
 // occurrenceViewToMCPJSON 把 TaskOccurrenceView 转为 MCP 输出 map。
 func occurrenceViewToMCPJSON(v app.TaskOccurrenceView) map[string]any {
 	out := map[string]any{
-		"id": v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
+		"url": v.URL,
+		"id":  v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
 		"tags": v.Tags, "depends": v.Depends, "udas": udaValuesForMCP(v.UDAs),
 		"assignees": userInfosForMCP(v.Assignees), "annotations": task.AnnotationsToJSON(v.Annotations),
 		"links": taskLinksForMCP(v.Links),
