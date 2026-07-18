@@ -43,7 +43,11 @@ func NewProjectAutomationDispatcher(opts ProjectAutomationDispatcherOptions) *Pr
 		opts.Clock = RealClock{}
 	}
 	if opts.Client == nil {
-		opts.Client = &http.Client{Timeout: 120 * time.Second}
+		// 默认 10 分钟：OpenAI 兼容 provider 在慢首 token / 长上下文场景下可能很久才返回，
+		// 这里宁可等也不要提前掐断。
+		// 注意：dispatcher 串行处理一批（默认 BatchSize=50），最坏情况单批会阻塞
+		// BatchSize × 10min。若线上出现投递积压，应改为有界并发而非缩短超时。
+		opts.Client = &http.Client{Timeout: 10 * time.Minute}
 	}
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 50
