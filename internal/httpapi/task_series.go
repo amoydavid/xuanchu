@@ -36,6 +36,7 @@ type taskSeriesRequest struct {
 }
 
 type taskOccurrenceJSON struct {
+	URL            string                `json:"url"`
 	ID             string                `json:"id"`
 	UUID           *string               `json:"uuid"`
 	TaskSlug       *string               `json:"task_slug"`
@@ -96,6 +97,7 @@ type taskViewRangeJSON struct {
 }
 
 type taskSeriesJSON struct {
+	URL                        string               `json:"url"`
 	ID                         string               `json:"id"`
 	WorkspaceID                string               `json:"workspace_id"`
 	ProjectID                  string               `json:"project_id"`
@@ -153,7 +155,8 @@ func udaValueMapToRaw(udas map[string]task.UDAValue) map[string]string {
 
 func occurrenceViewToJSON(v app.TaskOccurrenceView) taskOccurrenceJSON {
 	out := taskOccurrenceJSON{
-		ID: v.ID, UUID: v.UUID, TaskSlug: v.TaskSlug, ProjectSeq: v.ProjectSeq,
+		URL: v.URL,
+		ID:  v.ID, UUID: v.UUID, TaskSlug: v.TaskSlug, ProjectSeq: v.ProjectSeq,
 		WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID, Project: v.Project,
 		Title: v.Title, Description: v.Description, Status: v.Status,
 		Entry: v.Entry, Modified: v.Modified, Due: v.Due, Start: v.Start, End: v.End,
@@ -223,7 +226,8 @@ func occurrenceViewsToJSON(items []app.TaskOccurrenceView) []taskOccurrenceJSON 
 func seriesViewToJSON(v app.TaskSeriesView) taskSeriesJSON {
 	assignees := taskUserInfoListToJSON(seriesAssigneesToUserInfo(v))
 	return taskSeriesJSON{
-		ID: v.ID, WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID,
+		URL: v.URL,
+		ID:  v.ID, WorkspaceID: v.WorkspaceID, ProjectID: v.ProjectID,
 		ProjectSlug: v.ProjectSlug, SeriesSlug: app.SeriesSlugOf(v.Series),
 		Title: v.Title, Description: v.Description, Status: v.Status, RecurrenceRule: v.RecurrenceRule,
 		FirstDue: v.FirstDue, Until: v.Until, Priority: v.Priority, Tags: v.Tags,

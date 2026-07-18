@@ -11,6 +11,7 @@ import (
 
 type projectDTO struct {
 	ID          string `json:"id"`
+	URL         string `json:"url"`
 	WorkspaceID string `json:"workspace_id"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
@@ -137,6 +138,7 @@ func projectPathWithSuffix(workspace, ref, suffix string) string {
 
 func projectDTOToView(row projectDTO) app.ProjectView {
 	return app.ProjectView{
+		URL:         row.URL,
 		ID:          row.ID,
 		WorkspaceID: row.WorkspaceID,
 		Slug:        row.Slug,

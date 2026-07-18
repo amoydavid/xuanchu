@@ -19,6 +19,7 @@ import (
 // DTO 与 HTTP TaskOccurrenceView 的 data 内层同构，所有时间字段使用 Unix 秒。
 type TaskOccurrenceDTO struct {
 	ID             string                `json:"id"`
+	URL            string                `json:"url"`
 	UUID           *string               `json:"uuid"`
 	TaskSlug       *string               `json:"task_slug"`
 	ProjectSeq     *int64                `json:"project_seq"`
@@ -78,6 +79,7 @@ type TaskViewRangeDTO struct {
 // TaskSeriesDTO 是 series 的远程 DTO。
 type TaskSeriesDTO struct {
 	ID                         string              `json:"id"`
+	URL                        string              `json:"url"`
 	WorkspaceID                string              `json:"workspace_id"`
 	ProjectID                  string              `json:"project_id"`
 	ProjectSlug                string              `json:"project_slug,omitempty"`

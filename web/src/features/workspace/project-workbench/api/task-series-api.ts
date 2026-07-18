@@ -23,6 +23,7 @@ export type RecurrenceInfo = {
 /** TaskOccurrenceView：普通任务和循环 occurrence 的统一视图。 */
 export type TaskOccurrenceView = {
   id: string
+  url: string
   uuid?: string | null
   task_slug?: string | null
   project_seq?: number | null
@@ -80,6 +81,7 @@ export type TaskViewPage = {
 /** TaskSeriesView：循环任务系列聚合。 */
 export type TaskSeriesView = {
   id: string
+  url: string
   workspace_id: string
   project_id: string
   series_slug?: string | null

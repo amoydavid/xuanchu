@@ -48,11 +48,13 @@ func TestTaskSeriesHTTPCreateAndGet(t *testing.T) {
 		Data struct {
 			Series struct {
 				ID     string `json:"id"`
+				URL    string `json:"url"`
 				Status string `json:"status"`
 				Rule   string `json:"recurrence_rule"`
 			} `json:"series"`
 			FirstOccurrence *struct {
 				ID             string `json:"id"`
+				URL            string `json:"url"`
 				RecurrenceInfo *struct {
 					Materialization string `json:"materialization"`
 				} `json:"recurrence_info"`
@@ -68,8 +70,14 @@ func TestTaskSeriesHTTPCreateAndGet(t *testing.T) {
 	if createResp.Data.Series.Status != "active" || createResp.Data.Series.Rule != "daily" {
 		t.Fatalf("series = %#v", createResp.Data.Series)
 	}
+	if createResp.Data.Series.URL != "/workspaces/local/projects/ops/series/ops-s-1" {
+		t.Fatalf("series URL = %q", createResp.Data.Series.URL)
+	}
 	if createResp.Data.FirstOccurrence == nil {
 		t.Fatal("first_occurrence 为空")
+	}
+	if createResp.Data.FirstOccurrence.URL == "" {
+		t.Fatalf("first occurrence URL missing: %#v", createResp.Data.FirstOccurrence)
 	}
 	if createResp.Data.FirstOccurrence.RecurrenceInfo == nil || createResp.Data.FirstOccurrence.RecurrenceInfo.Materialization != "projected" {
 		t.Fatalf("first_occurrence 应为 projected: %#v", createResp.Data.FirstOccurrence.RecurrenceInfo)
@@ -170,6 +178,9 @@ func TestTaskSeriesHTTPList(t *testing.T) {
 	}
 	if len(page.Data.Items) != 1 {
 		t.Fatalf("items len = %d want 1", len(page.Data.Items))
+	}
+	if page.Data.Items[0]["url"] != "/workspaces/local/projects/ops/series/ops-s-1" {
+		t.Fatalf("series list URL = %#v", page.Data.Items[0]["url"])
 	}
 }
 
@@ -410,6 +421,10 @@ func TestTaskHTTPGetsProjectedOccurrenceByEncodedReferenceWithoutMaterializing(t
 	data := httpResponseDataMap(t, rr)
 	if data["id"] != payload.Data.FirstOccurrence.ID || data["task_slug"] != nil {
 		t.Fatalf("occurrence response = %#v", data)
+	}
+	wantURL := "/workspaces/local/projects/ops/tasks/" + strings.ReplaceAll(payload.Data.FirstOccurrence.ID, ":", "%3A")
+	if data["url"] != wantURL {
+		t.Fatalf("projected URL = %#v, want %q", data["url"], wantURL)
 	}
 	if after := countMaterializedOccurrences(t, fixture); after != before {
 		t.Fatalf("projected GET wrote rows: before=%d after=%d", before, after)

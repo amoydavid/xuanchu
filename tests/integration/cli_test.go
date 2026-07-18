@@ -53,16 +53,26 @@ func TestCLITaskSlugTargets(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "API", "name:API")
-	run(t, bin, "--db", db, "add", "Write docs", "project:api", "+next")
+	addOut := run(t, bin, "--db", db, "add", "Write docs", "project:api", "+next")
+	wantTaskURL := "/workspaces/local/projects/api/tasks/api-1"
+	if !strings.Contains(addOut, "URL: "+wantTaskURL) {
+		t.Fatalf("add output missing URL: %q", addOut)
+	}
 
 	list := run(t, bin, "--db", db, "list")
 	if !strings.Contains(list, "api-1") {
 		t.Fatalf("list output missing task slug: %q", list)
 	}
+	if !strings.Contains(list, wantTaskURL) {
+		t.Fatalf("list output missing URL: %q", list)
+	}
 
 	info := run(t, bin, "--db", db, "info", "api-1")
 	if !strings.Contains(info, "Task slug:") || !strings.Contains(info, "api-1") {
 		t.Fatalf("info api-1 output = %q", info)
+	}
+	if !strings.Contains(info, "URL: "+wantTaskURL) {
+		t.Fatalf("info api-1 missing URL: %q", info)
 	}
 	listTarget := run(t, bin, "--db", db, "list", "api-1")
 	if !strings.Contains(listTarget, "Write docs") || !strings.Contains(listTarget, "api-1") {
@@ -2184,11 +2194,12 @@ func TestCLIProjectLifecycle(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	addOut := run(t, bin, "--db", db, "project", "add", "apiplat", "name:AI Agent Platform")
-	if !strings.Contains(addOut, "Created project apiplat") {
+	wantProjectURL := "/workspaces/local/projects/apiplat"
+	if !strings.Contains(addOut, "Created project apiplat") || !strings.Contains(addOut, "URL: "+wantProjectURL) {
 		t.Fatalf("project add output = %q", addOut)
 	}
 	listOut := run(t, bin, "--db", db, "project", "list")
-	if !strings.Contains(listOut, "apiplat") {
+	if !strings.Contains(listOut, "apiplat") || !strings.Contains(listOut, wantProjectURL) {
 		t.Fatalf("project list output = %q", listOut)
 	}
 	infoJSON := run(t, bin, "--db", db, "--json", "project", "info", "apiplat")
@@ -2196,11 +2207,11 @@ func TestCLIProjectLifecycle(t *testing.T) {
 	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil {
 		t.Fatalf("json.Unmarshal(project info) error = %v", err)
 	}
-	if info["slug"] != "apiplat" || info["name"] != "AI Agent Platform" {
+	if info["slug"] != "apiplat" || info["name"] != "AI Agent Platform" || info["url"] != wantProjectURL {
 		t.Fatalf("project info --json output = %#v", info)
 	}
 	modOut := run(t, bin, "--db", db, "project", "modify", "apiplat", "description:Agent MCP platform")
-	if !strings.Contains(modOut, "Modified project apiplat") {
+	if !strings.Contains(modOut, "Modified project apiplat") || !strings.Contains(modOut, "URL: "+wantProjectURL) {
 		t.Fatalf("project modify output = %q", modOut)
 	}
 	run(t, bin, "--db", db, "add", "Design schema", "project:apiplat")
@@ -3014,13 +3025,14 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 
 	// series add。
 	out := run(t, bin, "--db", db, "series", "add", "每日巡检", "--project", "ops", "--recur", "daily", "--first-due", "2030-01-01")
-	if !strings.Contains(out, "已创建循环任务") {
+	wantSeriesURL := "/workspaces/local/projects/ops/series/ops-s-1"
+	if !strings.Contains(out, "已创建循环任务") || !strings.Contains(out, "URL: "+wantSeriesURL) {
 		t.Fatalf("add 输出: %q", out)
 	}
 
 	// series list。
 	out = run(t, bin, "--db", db, "series", "list", "--project", "ops")
-	if !strings.Contains(out, "每日巡检") {
+	if !strings.Contains(out, "每日巡检") || !strings.Contains(out, wantSeriesURL) {
 		t.Fatalf("list 输出: %q", out)
 	}
 
@@ -3029,13 +3041,14 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 	var listResp struct {
 		Items []struct {
 			Title string `json:"title"`
+			URL   string `json:"url"`
 		} `json:"items"`
 		Total int `json:"total"`
 	}
 	if err := json.Unmarshal([]byte(out), &listResp); err != nil {
 		t.Fatalf("list --json 解析失败: %v body=%q", err, out)
 	}
-	if listResp.Total != 1 || listResp.Items[0].Title != "每日巡检" {
+	if listResp.Total != 1 || listResp.Items[0].Title != "每日巡检" || listResp.Items[0].URL != wantSeriesURL {
 		t.Fatalf("list --json = %#v", listResp)
 	}
 	if strings.Contains(out, `"Items"`) || strings.Contains(out, `"RecurrenceRule"`) {
@@ -3061,7 +3074,7 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 
 	// series info。
 	out = run(t, bin, "--db", db, "series", "info", seriesID)
-	if !strings.Contains(out, "每日巡检") {
+	if !strings.Contains(out, "每日巡检") || !strings.Contains(out, "URL: "+wantSeriesURL) {
 		t.Fatalf("info 输出: %q", out)
 	}
 

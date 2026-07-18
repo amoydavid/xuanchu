@@ -10,9 +10,11 @@ import (
 
 // projectListItem 对齐 projectResponse 的子集，用于断言聚合字段。
 type projectListItem struct {
-	TaskCount      int `json:"task_count"`
-	PendingCount   int `json:"pending_count"`
-	CompletedCount int `json:"completed_count"`
+	Slug           string `json:"slug"`
+	URL            string `json:"url"`
+	TaskCount      int    `json:"task_count"`
+	PendingCount   int    `json:"pending_count"`
+	CompletedCount int    `json:"completed_count"`
 }
 
 func TestHandleProjectListReturnsStatusBreakdown(t *testing.T) {
@@ -53,6 +55,9 @@ func TestHandleProjectListReturnsStatusBreakdown(t *testing.T) {
 	}
 	var found bool
 	for _, p := range resp.Data {
+		if p.Slug == "api" && p.URL != "/workspaces/local/projects/api" {
+			t.Fatalf("project URL = %q", p.URL)
+		}
 		if p.TaskCount == 3 && p.PendingCount == 2 && p.CompletedCount == 1 {
 			found = true
 		}

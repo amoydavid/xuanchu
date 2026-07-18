@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -192,6 +193,9 @@ func renderTaskViewPage(cmd *cobra.Command, asJSON bool, page app.TaskViewPage, 
 		tasks = append(tasks, tsk)
 	}
 	render.TaskListWithIDs(cmd.OutOrStdout(), tasks, ids)
+	for _, view := range page.Items {
+		fmt.Fprintf(cmd.OutOrStdout(), "URL %s: %s\n", occurrenceHumanRef(view), view.URL)
+	}
 }
 
 func isPlainTargetArg(args []string) bool {

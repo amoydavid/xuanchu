@@ -431,6 +431,9 @@ func TestTaskAddBasic(t *testing.T) {
 	if taskObj["uuid"] == nil || taskObj["uuid"] == "" {
 		t.Fatal("uuid is empty")
 	}
+	if taskObj["url"] != "/tasks/"+taskObj["uuid"].(string) {
+		t.Fatalf("task url = %#v", taskObj["url"])
+	}
 	if dataMap["id"] != taskObj["uuid"] || dataMap["uuid"] != taskObj["uuid"] {
 		t.Fatalf("unified identity = id:%v uuid:%v task.uuid:%v", dataMap["id"], dataMap["uuid"], taskObj["uuid"])
 	}
@@ -1571,6 +1574,9 @@ func TestMCPProjectTools(t *testing.T) {
 	if listProject["task_count_scope"] != "all_tasks" {
 		t.Fatalf("project list task_count_scope = %v, want all_tasks", listProject["task_count_scope"])
 	}
+	if listProject["url"] != "/workspaces/local/projects/agent" {
+		t.Fatalf("project list url = %#v", listProject["url"])
+	}
 
 	got := callTool(t, session, "project_get", ProjectGetInput{ProjectID: project.ID})
 	if got.IsError {
@@ -1580,6 +1586,9 @@ func TestMCPProjectTools(t *testing.T) {
 	projectData := nestedMap(t, data, "project")
 	if projectData["slug"] != "agent" {
 		t.Fatalf("project slug = %v, want agent", projectData["slug"])
+	}
+	if projectData["url"] != "/workspaces/local/projects/agent" {
+		t.Fatalf("project url = %#v", projectData["url"])
 	}
 	if projectData["task_count_scope"] != "all_tasks" {
 		t.Fatalf("project task_count_scope = %v, want all_tasks", projectData["task_count_scope"])

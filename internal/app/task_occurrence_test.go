@@ -63,6 +63,36 @@ func TestAddTaskViewReturnsUnifiedNormalTaskView(t *testing.T) {
 	}
 }
 
+func TestAppViewsExposeCanonicalURLs(t *testing.T) {
+	svc, closeFn := newTestService(t, 1_750_000_000)
+	defer closeFn()
+
+	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.URL != "/workspaces/local/projects/ops" {
+		t.Fatalf("project URL = %q", project.URL)
+	}
+
+	projectRef := project.Slug
+	created, err := svc.AddTaskView(AddInput{Title: "project task", Project: &projectRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.URL != "/workspaces/local/projects/ops/tasks/ops-1" {
+		t.Fatalf("task URL = %q", created.URL)
+	}
+
+	standalone, err := svc.AddTaskView(AddInput{Title: "standalone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if standalone.URL != StandaloneTaskURL(*standalone.UUID) {
+		t.Fatalf("standalone URL = %q", standalone.URL)
+	}
+}
+
 func TestTaskViewEvaluatorMatchesSQLCompilerOnMaterializedFixture(t *testing.T) {
 	loc := time.Local
 	now := time.Date(2025, 6, 1, 12, 0, 0, 0, loc).Unix()
@@ -313,7 +343,7 @@ func TestTaskToViewOrdinaryTask(t *testing.T) {
 		UUID: "task-1", WorkspaceID: "ws", Title: "普通任务", Status: domain.StatusPending,
 		Entry: 100, Modified: 200, Project: strPtr("ops"), ProjectSeq: int64Ptr(17),
 	}
-	view := taskToView(tsk, nil)
+	view := taskToView("local", tsk, nil)
 	if view.ID != "task-1" {
 		t.Fatalf("ID = %q want task-1", view.ID)
 	}
@@ -335,13 +365,16 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 	seriesID := "series-1"
 	slot := int64(1783785599)
 	rule := "daily"
+	project := "ops"
+	projectSeq := int64(17)
 	tsk := domain.Task{
 		UUID: "occ-uuid", WorkspaceID: "ws", Title: "巡检", Status: domain.StatusPending,
 		Entry: 100, Modified: 200,
+		Project: &project, ProjectSeq: &projectSeq,
 		SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
 		RecurrenceOverrides: []string{"due"},
 	}
-	view := taskToView(tsk, nil)
+	view := taskToView("local", tsk, nil)
 	// 已物化 occurrence 的 ID 仍是 occurrence_ref（不变）。
 	wantRef := OccurrenceRef(seriesID, slot)
 	if view.ID != wantRef {
@@ -349,6 +382,12 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 	}
 	if view.UUID == nil || *view.UUID != "occ-uuid" {
 		t.Fatalf("UUID = %#v want occ-uuid", view.UUID)
+	}
+	if view.TaskSlug == nil || *view.TaskSlug != "ops-17" {
+		t.Fatalf("TaskSlug = %#v want ops-17", view.TaskSlug)
+	}
+	if view.URL != "/workspaces/local/projects/ops/tasks/ops-17" {
+		t.Fatalf("URL = %q", view.URL)
 	}
 	if view.RecurrenceInfo == nil {
 		t.Fatal("RecurrenceInfo 为空")
@@ -366,11 +405,11 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 
 func TestProjectedOccurrenceViewDoesNotAllocateIdentity(t *testing.T) {
 	series := taskseries.Series{
-		ID: "series-1", WorkspaceID: "ws", ProjectID: "proj", Title: "巡检",
+		ID: "series-1", WorkspaceID: "ws", ProjectID: "proj", ProjectSlug: "ops", Title: "巡检",
 		Status: taskseries.StatusActive, RecurrenceRule: "daily", FirstDue: 1783785599,
 	}
 	slot := taskseries.Slot{RecurrenceAt: 1783785599, Rule: "daily"}
-	view := projectedOccurrenceView(series, slot, nil)
+	view := projectedOccurrenceView("local", series, slot, nil)
 	wantRef := OccurrenceRef("series-1", 1783785599)
 	if view.ID != wantRef {
 		t.Fatalf("ID = %q want %q", view.ID, wantRef)
@@ -635,6 +674,13 @@ func TestGetTaskViewProjectedDoesNotWrite(t *testing.T) {
 	if view.UUID != nil {
 		t.Fatalf("projected UUID 应为 nil")
 	}
+	if view.Project == nil || *view.Project != "ops" {
+		t.Fatalf("projected project = %#v", view.Project)
+	}
+	wantURL := ProjectTaskURL("local", "ops", view.ID)
+	if view.URL != wantURL {
+		t.Fatalf("projected URL = %q, want %q", view.URL, wantURL)
+	}
 	if after := occurrenceRowCount(t, svc, ws.ID); after != beforeCount {
 		t.Fatalf("GetTaskView(projected) 写库了: before=%d after=%d", beforeCount, after)
 	}
@@ -818,6 +864,9 @@ func TestListTaskSeriesReturnsCreated(t *testing.T) {
 	}
 	if page.Total != 1 {
 		t.Fatalf("total = %d want 1", page.Total)
+	}
+	if page.Items[0].URL != "/workspaces/local/projects/ops/series/ops-s-1" {
+		t.Fatalf("series URL = %q", page.Items[0].URL)
 	}
 }
 

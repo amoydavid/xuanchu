@@ -377,7 +377,7 @@ func newSeriesStopCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					_ = renderJSON(cmd.OutOrStdout(), view)
 				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "已停止循环任务 %s\n", view.Title)
+					fmt.Fprintf(cmd.OutOrStdout(), "已停止循环任务 %s\nURL: %s\n", view.Title, view.URL)
 				}
 				return nil
 			}
@@ -393,7 +393,7 @@ func newSeriesStopCommand(opts Options) *cobra.Command {
 			if currentOpts.JSON {
 				renderSeriesViewJSON(cmd.OutOrStdout(), view)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "已停止循环任务 %s\n", view.Title)
+				fmt.Fprintf(cmd.OutOrStdout(), "已停止循环任务 %s\nURL: %s\n", view.Title, view.URL)
 			}
 			return nil
 		},
@@ -427,7 +427,7 @@ func newSeriesSkipCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					_ = renderJSON(cmd.OutOrStdout(), view)
 				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "已跳过实例 %s\n", view.ID)
+					fmt.Fprintf(cmd.OutOrStdout(), "已跳过实例 %s\nURL: %s\n", view.ID, view.URL)
 				}
 				return nil
 			}
@@ -443,7 +443,7 @@ func newSeriesSkipCommand(opts Options) *cobra.Command {
 			if currentOpts.JSON {
 				renderOccurrenceViewJSON(cmd.OutOrStdout(), view)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "已跳过实例 %s\n", view.ID)
+				fmt.Fprintf(cmd.OutOrStdout(), "已跳过实例 %s\nURL: %s\n", view.ID, view.URL)
 			}
 			return nil
 		},
@@ -526,12 +526,13 @@ func runSeriesAddRemote(cmd *cobra.Command, currentOpts Options, input app.AddTa
 		_ = renderJSON(cmd.OutOrStdout(), result)
 	} else {
 		fmt.Fprintf(cmd.OutOrStdout(), "已创建循环任务 %s（%s）\n", result.Series.Title, result.Series.RecurrenceRule)
+		fmt.Fprintf(cmd.OutOrStdout(), "URL: %s\n", result.Series.URL)
 		if result.FirstOccurrence != nil {
 			mat := "计划实例"
 			if result.FirstOccurrence.RecurrenceInfo != nil {
 				mat = result.FirstOccurrence.RecurrenceInfo.Materialization
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "首次实例：%s（%s）\n", result.FirstOccurrence.ID, mat)
+			fmt.Fprintf(cmd.OutOrStdout(), "首次实例：%s（%s） %s\n", result.FirstOccurrence.ID, mat, result.FirstOccurrence.URL)
 		}
 	}
 	return nil
@@ -594,7 +595,7 @@ func runSeriesModifyRemote(cmd *cobra.Command, currentOpts Options, seriesRef st
 	if currentOpts.JSON {
 		_ = renderJSON(cmd.OutOrStdout(), dto)
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "已修改循环任务 %s\n", dto.Title)
+		fmt.Fprintf(cmd.OutOrStdout(), "已修改循环任务 %s\nURL: %s\n", dto.Title, dto.URL)
 	}
 	return nil
 }
@@ -647,12 +648,13 @@ func renderSeriesCreateResult(w io.Writer, asJSON bool, result app.TaskSeriesCre
 		return
 	}
 	fmt.Fprintf(w, "已创建循环任务 %s（%s）\n", result.Series.Title, result.Series.RecurrenceRule)
+	fmt.Fprintf(w, "URL: %s\n", result.Series.URL)
 	if result.FirstOccurrence != nil {
 		mat := "计划实例"
 		if result.FirstOccurrence.RecurrenceInfo != nil {
 			mat = result.FirstOccurrence.RecurrenceInfo.Materialization
 		}
-		fmt.Fprintf(w, "首次实例：%s（%s）\n", result.FirstOccurrence.ID, mat)
+		fmt.Fprintf(w, "首次实例：%s（%s） %s\n", result.FirstOccurrence.ID, mat, result.FirstOccurrence.URL)
 	}
 }
 
@@ -674,7 +676,7 @@ func renderSeriesList(w io.Writer, asJSON bool, page app.TaskSeriesPage) {
 		if s.NextRecurrenceAt != nil {
 			next = formatUnixShort(*s.NextRecurrenceAt)
 		}
-		fmt.Fprintf(w, "%s  %s  %s  未完成 %d  下次 %s\n", s.ID[:8], s.Title, s.Status, s.OpenOccurrenceCount, next)
+		fmt.Fprintf(w, "%s  %s  %s  未完成 %d  下次 %s  %s\n", s.ID[:8], s.Title, s.Status, s.OpenOccurrenceCount, next, s.URL)
 	}
 	if page.Total > len(page.Items) {
 		fmt.Fprintf(w, "... 共 %d 条\n", page.Total)
@@ -693,6 +695,7 @@ func renderSeriesDetail(w io.Writer, asJSON bool, detail app.TaskSeriesDetailVie
 	s := detail.Series
 	fmt.Fprintf(w, "循环任务：%s\n", s.Title)
 	fmt.Fprintf(w, "ID：%s\n", s.ID)
+	fmt.Fprintf(w, "URL: %s\n", s.URL)
 	fmt.Fprintf(w, "状态：%s\n", s.Status)
 	fmt.Fprintf(w, "规则：%s\n", s.RecurrenceRule)
 	fmt.Fprintf(w, "首次截止：%s\n", formatUnixShort(s.FirstDue))
@@ -718,7 +721,7 @@ func renderSeriesOccurrenceGroup(w io.Writer, title string, rows []app.TaskOccur
 		if row.Due != nil {
 			due = formatUnixShort(*row.Due)
 		}
-		fmt.Fprintf(w, "  %s  %s  %s  %s\n", occurrenceHumanRef(row), row.Status, due, row.Title)
+		fmt.Fprintf(w, "  %s  %s  %s  %s  %s\n", occurrenceHumanRef(row), row.Status, due, row.Title, row.URL)
 	}
 }
 
@@ -747,7 +750,7 @@ func renderOccurrencePage(w io.Writer, asJSON bool, page app.TaskViewPage) {
 		if it.RecurrenceInfo != nil {
 			mat = "（" + it.RecurrenceInfo.Materialization + "）"
 		}
-		fmt.Fprintf(w, "%s  %s  %s  %s%s\n", occurrenceHumanRef(it), it.Status, due, it.Title, mat)
+		fmt.Fprintf(w, "%s  %s  %s  %s%s  %s\n", occurrenceHumanRef(it), it.Status, due, it.Title, mat, it.URL)
 	}
 	if page.Total > len(page.Items) {
 		fmt.Fprintf(w, "... 共 %d 条\n", page.Total)
@@ -778,7 +781,8 @@ func renderOccurrenceViewJSON(w io.Writer, v app.TaskOccurrenceView) {
 
 func seriesViewJSON(v app.TaskSeriesView) map[string]any {
 	out := map[string]any{
-		"id": v.ID, "workspace_id": v.WorkspaceID, "project_id": v.ProjectID,
+		"url": v.URL,
+		"id":  v.ID, "workspace_id": v.WorkspaceID, "project_id": v.ProjectID,
 		"title": v.Title, "status": v.Status, "recurrence_rule": v.RecurrenceRule,
 		"first_due": v.FirstDue, "open_occurrence_count": v.OpenOccurrenceCount,
 		"completed_count": v.CompletedCount, "skipped_count": v.SkippedCount,
@@ -847,7 +851,8 @@ func occurrenceViewJSON(v app.TaskOccurrenceView) map[string]any {
 		})
 	}
 	out := map[string]any{
-		"id": v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
+		"url": v.URL,
+		"id":  v.ID, "workspace_id": v.WorkspaceID, "title": v.Title, "status": v.Status,
 		"tags": v.Tags, "assignees": assignees, "depends": v.Depends,
 		"annotations": task.AnnotationsToJSON(v.Annotations), "links": links, "udas": udas,
 		"uuid": nil, "task_slug": nil, "project_seq": nil,
@@ -929,6 +934,7 @@ func remoteSeriesDTOToView(dto remote.TaskSeriesDTO) app.TaskSeriesView {
 			Priority: dto.Priority, AssigneeIDs: assigneeIDs, Tags: dto.Tags, UDAs: dto.UDAs,
 			CreatedBy: dto.CreatedBy.ID, CreatedAt: dto.CreatedAt, ModifiedAt: dto.ModifiedAt,
 		},
+		URL:                        dto.URL,
 		OpenOccurrenceCount:        dto.OpenOccurrenceCount,
 		CompletedCount:             dto.CompletedCount,
 		SkippedCount:               dto.SkippedCount,
@@ -959,7 +965,7 @@ func remoteOccurrenceDTOsToViews(rows []remote.TaskOccurrenceDTO) []app.TaskOccu
 
 func remoteOccurrenceDTOToView(dto remote.TaskOccurrenceDTO) app.TaskOccurrenceView {
 	v := app.TaskOccurrenceView{
-		ID: dto.ID, UUID: dto.UUID, TaskSlug: dto.TaskSlug, ProjectSeq: dto.ProjectSeq,
+		URL: dto.URL, ID: dto.ID, UUID: dto.UUID, TaskSlug: dto.TaskSlug, ProjectSeq: dto.ProjectSeq,
 		WorkspaceID: dto.WorkspaceID, ProjectID: dto.ProjectID, Project: dto.Project,
 		Title: dto.Title, Description: dto.Description, Status: dto.Status,
 		Entry: dto.Entry, Modified: dto.Modified, Start: dto.Start, End: dto.End,

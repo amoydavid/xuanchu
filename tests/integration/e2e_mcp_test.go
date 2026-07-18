@@ -164,6 +164,13 @@ func TestE2ERecurringQueriesReportsAndSeriesListsAreProtocolEquivalent(t *testin
 	session, cancel := connectHTTPMCP(t, baseURL, token)
 	defer cancel()
 	callMCPToolData(t, session, "project_add", map[string]any{"slug": "ops", "name": "Ops"})
+	httpProject := nestedMap(t, httpJSON(t, http.MethodGet, baseURL+"/api/v1/projects/ops?workspace=local", nil, authHeaders(token)), "data")
+	mcpProject := nestedMap(t, callMCPToolData(t, session, "project_get", map[string]any{"project": "ops"}), "project")
+	remoteProject := parseJSONMap(t, run(t, bin,
+		"--db", clientDB, "--server", baseURL, "--token", token, "--workspace", "local", "--json",
+		"project", "info", "ops",
+	))
+	assertProjectsEquivalent(t, httpProject, mcpProject, remoteProject)
 	addSeries := func(title, rule, firstDue string) string {
 		t.Helper()
 		data := callMCPToolData(t, session, "task_series_add", map[string]any{
@@ -298,6 +305,7 @@ func cloneURLValues(in url.Values) url.Values {
 type taskViewPageContract struct {
 	Items []struct {
 		ID         string  `json:"id"`
+		URL        string  `json:"url"`
 		UUID       *string `json:"uuid"`
 		TaskSlug   *string `json:"task_slug"`
 		ProjectSeq *int64  `json:"project_seq"`
@@ -333,6 +341,11 @@ func assertTaskViewPagesCoreEquivalent(t *testing.T, label string, pages ...map[
 		if err := json.Unmarshal(encoded, &got); err != nil {
 			t.Fatal(err)
 		}
+		for _, item := range got.Items {
+			if item.URL == "" {
+				t.Fatalf("%s page %d item missing url: %#v", label, index, item)
+			}
+		}
 		if index == 0 {
 			want = got
 			continue
@@ -356,6 +369,9 @@ func assertTaskViewPagesEquivalent(t *testing.T, label string, pages ...map[stri
 			item, ok := raw.(map[string]any)
 			if !ok {
 				t.Fatalf("%s page %d item = %#v", label, index, raw)
+			}
+			if rawURL, ok := item["url"].(string); !ok || rawURL == "" {
+				t.Fatalf("%s page %d item missing url: %#v", label, index, item)
 			}
 			for _, field := range []string{"uuid", "task_slug", "project_seq", "entry", "modified", "start", "end"} {
 				if _, exists := item[field]; !exists {
@@ -387,6 +403,7 @@ func assertTaskViewPagesEquivalent(t *testing.T, label string, pages ...map[stri
 type seriesPageContract struct {
 	Items []struct {
 		ID             string `json:"id"`
+		URL            string `json:"url"`
 		Title          string `json:"title"`
 		Status         string `json:"status"`
 		RecurrenceRule string `json:"recurrence_rule"`
@@ -408,6 +425,11 @@ func assertSeriesPagesEquivalent(t *testing.T, pages ...map[string]any) {
 		if err := json.Unmarshal(encoded, &got); err != nil {
 			t.Fatal(err)
 		}
+		for _, item := range got.Items {
+			if item.URL == "" {
+				t.Fatalf("series page %d item missing url: %#v", index, item)
+			}
+		}
 		if index == 0 {
 			want = got
 			if want.Total != 3 || len(want.Items) != 1 || want.Items[0].Title != "Beta recurring" {
@@ -417,6 +439,37 @@ func assertSeriesPagesEquivalent(t *testing.T, pages ...map[string]any) {
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("series page %d = %#v, want %#v", index, got, want)
+		}
+	}
+}
+
+type projectResourceContract struct {
+	ID   string `json:"id"`
+	Slug string `json:"slug"`
+	URL  string `json:"url"`
+}
+
+func assertProjectsEquivalent(t *testing.T, projects ...map[string]any) {
+	t.Helper()
+	var want projectResourceContract
+	for index, project := range projects {
+		encoded, err := json.Marshal(project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got projectResourceContract
+		if err := json.Unmarshal(encoded, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.ID == "" || got.Slug == "" || got.URL == "" {
+			t.Fatalf("project %d missing resource field: %#v", index, got)
+		}
+		if index == 0 {
+			want = got
+			continue
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("project %d = %#v, want %#v", index, got, want)
 		}
 	}
 }

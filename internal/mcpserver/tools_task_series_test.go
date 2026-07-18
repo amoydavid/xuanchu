@@ -5,8 +5,33 @@ import (
 	"testing"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
+	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 	"github.com/google/jsonschema-go/jsonschema"
 )
+
+func TestMCPResourceMappersKeepURL(t *testing.T) {
+	projectURL := "/workspaces/local/projects/ops"
+	project := projectViewFromApp(app.ProjectView{URL: projectURL})
+	if project.URL != projectURL {
+		t.Fatalf("project URL = %q", project.URL)
+	}
+
+	seriesURL := "/workspaces/local/projects/ops/series/ops-s-1"
+	series := seriesViewToMCPJSON(app.TaskSeriesView{
+		Series: taskseries.Series{ID: "series-1"},
+		URL:    seriesURL,
+	})
+	if series["url"] != seriesURL {
+		t.Fatalf("series URL = %#v", series["url"])
+	}
+
+	taskURL := "/workspaces/local/projects/ops/tasks/ops-1"
+	task := occurrenceViewToMCPJSON(app.TaskOccurrenceView{ID: "task-1", URL: taskURL})
+	if task["url"] != taskURL {
+		t.Fatalf("task URL = %#v", task["url"])
+	}
+}
 
 func TestMCPTaskSeriesListSchemasDocumentPaginationContract(t *testing.T) {
 	for _, schema := range []*jsonschema.Schema{
@@ -65,6 +90,21 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	if series["title"] != "每日巡检" || series["status"] != "active" {
 		t.Fatalf("series = %#v", series)
 	}
+	if series["url"] != "/workspaces/local/projects/ops/series/ops-s-1" {
+		t.Fatalf("series URL = %#v", series["url"])
+	}
+	var textEnvelope ToolEnvelope
+	if err := json.Unmarshal([]byte(renderedText(result)), &textEnvelope); err != nil {
+		t.Fatalf("text envelope: %v", err)
+	}
+	textData, ok := textEnvelope.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("text data = %T", textEnvelope.Data)
+	}
+	textSeries, ok := textData["series"].(map[string]any)
+	if !ok || textSeries["url"] != series["url"] {
+		t.Fatalf("text/structured URL diverged: text=%#v structured=%#v", textSeries, series)
+	}
 	assignees, ok := series["assignees"].([]any)
 	if !ok || len(assignees) != 1 || assignees[0].(map[string]any)["id"] == nil {
 		t.Fatalf("assignees 未使用统一 UserInfo JSON: %#v", series["assignees"])
@@ -80,6 +120,9 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	if firstOcc, ok := data["first_occurrence"].(map[string]any); ok {
 		if firstOcc["id"] == nil {
 			t.Fatal("first_occurrence id 为空")
+		}
+		if firstOcc["url"] == nil || firstOcc["url"] == "" {
+			t.Fatal("first_occurrence url 为空")
 		}
 		for _, field := range []string{"uuid", "task_slug", "project_seq", "entry", "modified", "start", "end"} {
 			value, exists := firstOcc[field]
