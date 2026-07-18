@@ -54,16 +54,16 @@ type projectSummaryWorkloadResponse struct {
 }
 
 type projectTaskSummaryResponse struct {
-	OverdueCount          int                             `json:"overdue_count"`
-	OverdueRefs           []projectSummaryTaskRefResponse `json:"overdue_refs"`
-	HighPriorityOpenCount int                             `json:"high_priority_open_count"`
-	HighPriorityOpenRefs  []projectSummaryTaskRefResponse `json:"high_priority_open_refs"`
-	WaitReadyCount        int                             `json:"wait_ready_count"`
-	WaitReadyRefs         []projectSummaryTaskRefResponse `json:"wait_ready_refs"`
-	UnassignedOpenCount   int                             `json:"unassigned_open_count"`
-	UnassignedOpenRefs    []projectSummaryTaskRefResponse `json:"unassigned_open_refs"`
+	OverdueCount          int                              `json:"overdue_count"`
+	OverdueRefs           []projectSummaryTaskRefResponse  `json:"overdue_refs"`
+	HighPriorityOpenCount int                              `json:"high_priority_open_count"`
+	HighPriorityOpenRefs  []projectSummaryTaskRefResponse  `json:"high_priority_open_refs"`
+	WaitReadyCount        int                              `json:"wait_ready_count"`
+	WaitReadyRefs         []projectSummaryTaskRefResponse  `json:"wait_ready_refs"`
+	UnassignedOpenCount   int                              `json:"unassigned_open_count"`
+	UnassignedOpenRefs    []projectSummaryTaskRefResponse  `json:"unassigned_open_refs"`
 	Workload              []projectSummaryWorkloadResponse `json:"workload"`
-	SeriesMetrics         projectSeriesMetricsResponse    `json:"series_metrics"`
+	SeriesMetrics         projectSeriesMetricsResponse     `json:"series_metrics"`
 }
 
 type projectSeriesMetricsResponse struct {
@@ -74,6 +74,7 @@ type projectSeriesMetricsResponse struct {
 }
 
 type projectResponse struct {
+	URL               string                          `json:"url"`
 	ID                string                          `json:"id"`
 	WorkspaceID       string                          `json:"workspace_id"`
 	Slug              string                          `json:"slug"`
@@ -281,6 +282,7 @@ func (s *Server) handleProjectConfigUnset(w http.ResponseWriter, r *http.Request
 
 func projectResponseFromView(view app.ProjectView) projectResponse {
 	resp := projectResponse{
+		URL:            view.URL,
 		ID:             view.ID,
 		WorkspaceID:    view.WorkspaceID,
 		Slug:           view.Slug,

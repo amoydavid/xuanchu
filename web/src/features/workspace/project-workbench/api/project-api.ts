@@ -31,6 +31,7 @@ export type ProjectAnnotationInfo = {
 
 export type ProjectWorkbenchProject = {
   id: string
+  url: string
   workspace_id: string
   slug: string
   name: string
@@ -70,6 +71,8 @@ export type ProjectWorkbenchTaskLink = {
 export type ProjectWorkbenchTask = {
   /** 稳定公开 id：普通任务=UUID，occurrence=occ:series:slot（spec §7.4） */
   id?: string
+  /** Web Console 相对路径，由后端统一生成。 */
+  url: string
   /** 真实任务 UUID，projected occurrence 时为 null */
   uuid?: string
   task_slug?: string

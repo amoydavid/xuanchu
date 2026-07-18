@@ -3,6 +3,7 @@ import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 // ProjectSummary 对齐 GET /api/v1/projects 返回的项目对象（含聚合统计）。
 export interface ProjectSummary {
   id: string
+  url: string
   slug: string
   name: string
   description?: string

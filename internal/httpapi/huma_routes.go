@@ -306,6 +306,10 @@ func contractSuccessResponse(route humaRoute) *huma.Response {
 	switch {
 	case route.Method == http.MethodGet && route.Path == "/api/v1/home":
 		data = homeOpenAPISchema()
+	case route.Method == http.MethodGet && route.Path == "/api/v1/projects":
+		data = &huma.Schema{Type: "array", Items: projectOpenAPISchema()}
+	case projectRouteReturnsProjectView(route):
+		data = projectOpenAPISchema()
 	case route.Method == http.MethodGet && (route.Path == "/api/v1/tasks" || route.Path == "/api/v1/reports/{name}" || route.Path == "/api/v1/task-series/{seriesRef}/occurrences"):
 		data = taskViewPageOpenAPISchema()
 	case taskRouteReturnsOccurrenceView(route):
@@ -337,12 +341,7 @@ func homeOpenAPISchema() *huma.Schema {
 			"task": taskSchema, "reasons": reasons,
 		}, Required: []string{"task", "reasons"}}},
 	}, Required: []string{"open_count", "started_count", "overdue_count", "due_today_count", "high_priority_open_count", "items"}}
-	project := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
-		"id": {Type: "string"}, "workspace_id": {Type: "string"}, "slug": {Type: "string"}, "name": {Type: "string"},
-		"description": {Type: "string"}, "status": {Type: "string"}, "task_count": {Type: "integer", Format: "int32"},
-		"pending_count": {Type: "integer", Format: "int32"}, "completed_count": {Type: "integer", Format: "int32"},
-		"created_at": {Type: "integer", Format: "int64"}, "modified_at": {Type: "integer", Format: "int64"},
-	}, Required: []string{"id", "workspace_id", "slug", "name", "status", "task_count", "pending_count", "completed_count", "created_at", "modified_at"}}
+	project := projectOpenAPISchema()
 	series := &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 		"recurring_series_count": {Type: "integer", Format: "int32"}, "active_recurring_series_count": {Type: "integer", Format: "int32"},
 		"open_recurring_occurrence_count": {Type: "integer", Format: "int32"}, "overdue_recurring_occurrence_count": {Type: "integer", Format: "int32"},
@@ -361,6 +360,40 @@ func homeOpenAPISchema() *huma.Schema {
 		"actor_type": {Type: "string"}, "my_work": myWork,
 		"project_attention": {Type: "array", Items: attention},
 	}, Required: []string{"generated_at", "today", "actor_type", "my_work", "project_attention"}}
+}
+
+func projectRouteReturnsProjectView(route humaRoute) bool {
+	switch route.Path {
+	case "/api/v1/projects":
+		return route.Method == http.MethodPost
+	case "/api/v1/projects/{projectRef}":
+		return route.Method == http.MethodGet || route.Method == http.MethodPatch
+	case "/api/v1/projects/{projectRef}/archive", "/api/v1/projects/{projectRef}/transition":
+		return route.Method == http.MethodPost
+	default:
+		return false
+	}
+}
+
+func projectOpenAPISchema() *huma.Schema {
+	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
+		"id":              {Type: "string"},
+		"workspace_id":    {Type: "string"},
+		"slug":            {Type: "string"},
+		"name":            {Type: "string"},
+		"url":             {Type: "string", Description: "Web Console relative URL."},
+		"description":     {Type: "string"},
+		"status":          {Type: "string"},
+		"task_count":      {Type: "integer", Format: "int32"},
+		"pending_count":   {Type: "integer", Format: "int32"},
+		"completed_count": {Type: "integer", Format: "int32"},
+		"created_at":      {Type: "integer", Format: "int64"},
+		"modified_at":     {Type: "integer", Format: "int64"},
+		"archived_at":     {Type: "integer", Format: "int64", Nullable: true},
+	}, Required: []string{
+		"id", "workspace_id", "slug", "name", "url", "status", "task_count",
+		"pending_count", "completed_count", "created_at", "modified_at",
+	}}
 }
 
 func taskRouteReturnsOccurrenceView(route humaRoute) bool {
@@ -473,6 +506,7 @@ func taskOccurrenceOpenAPISchema() *huma.Schema {
 	parentInfo := taskRefOpenAPISchema(true)
 	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 		"id":              {Type: "string", Description: "UUID for a normal task; stable occurrence_ref for a recurring occurrence."},
+		"url":             {Type: "string", Description: "Web Console relative URL."},
 		"uuid":            nullString(),
 		"task_slug":       nullString(),
 		"project_seq":     nullInt(),
@@ -503,12 +537,13 @@ func taskOccurrenceOpenAPISchema() *huma.Schema {
 		"udas":            {Type: "object", AdditionalProperties: &huma.Schema{Type: "string"}},
 		"recurrence_info": recurrence,
 		"urgency":         {Type: "number", Format: "double", Nullable: true},
-	}, Required: []string{"id", "uuid", "task_slug", "project_seq", "workspace_id", "title", "status", "entry", "modified", "start", "end"}}
+	}, Required: []string{"id", "url", "uuid", "task_slug", "project_seq", "workspace_id", "title", "status", "entry", "modified", "start", "end"}}
 }
 
 func taskSeriesOpenAPISchema() *huma.Schema {
 	return &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 		"id":                            {Type: "string", Format: "uuid"},
+		"url":                           {Type: "string", Description: "Web Console relative URL."},
 		"workspace_id":                  {Type: "string", Format: "uuid"},
 		"project_id":                    {Type: "string", Format: "uuid"},
 		"title":                         {Type: "string"},
@@ -534,7 +569,7 @@ func taskSeriesOpenAPISchema() *huma.Schema {
 		"recent_completed":              {Type: "array", Items: taskOccurrenceOpenAPISchema()},
 		"recent_skipped":                {Type: "array", Items: taskOccurrenceOpenAPISchema()},
 	}, Required: []string{
-		"id", "workspace_id", "project_id", "title", "status", "recurrence_rule", "first_due",
+		"id", "url", "workspace_id", "project_id", "title", "status", "recurrence_rule", "first_due",
 		"open_occurrence_count", "completed_count", "skipped_count", "overdue_count", "created_by", "created_at", "modified_at",
 	}}
 }

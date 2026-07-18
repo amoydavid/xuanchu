@@ -228,7 +228,7 @@ func TestOpenAPIDocumentsTaskSeriesAndOccurrenceContracts(t *testing.T) {
 		{path: "/api/v1/tasks/{taskRef}/reopen", method: "post", status: "200"},
 	} {
 		properties := taskResponseProperties(route.path, route.method, route.status)
-		for _, name := range []string{"id", "uuid", "task_slug", "status", "recurrence_info"} {
+		for _, name := range []string{"id", "url", "uuid", "task_slug", "status", "recurrence_info"} {
 			if _, ok := properties[name]; !ok {
 				t.Fatalf("%s %s response schema missing %s", route.method, route.path, name)
 			}
@@ -279,6 +279,9 @@ func TestOpenAPIDocumentsTaskSeriesAndOccurrenceContracts(t *testing.T) {
 		}
 	}
 	itemProps := dataProps["items"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	if _, ok := itemProps["url"]; !ok {
+		t.Fatal("TaskOccurrence schema missing url")
+	}
 	for name, typ := range map[string]string{"uuid": "string", "task_slug": "string", "project_seq": "integer", "entry": "integer", "modified": "integer", "start": "integer", "end": "integer", "recurrence_info": "object"} {
 		types, ok := itemProps[name].(map[string]any)["type"].([]any)
 		if !ok || len(types) != 2 || types[0] != typ || types[1] != "null" {
@@ -301,6 +304,7 @@ func TestOpenAPIDocumentsTaskSeriesAndOccurrenceContracts(t *testing.T) {
 	seriesDataProps := seriesResponseSchema["properties"].(map[string]any)["data"].(map[string]any)["properties"].(map[string]any)
 	seriesItemProps := seriesDataProps["items"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
 	for _, name := range []string{
+		"url",
 		"open_occurrence_count", "completed_count", "skipped_count", "overdue_count",
 		"next_recurrence_at", "suggested_rule_effective_from", "created_by",
 		"open_occurrences", "recent_completed", "recent_skipped",
@@ -314,6 +318,22 @@ func TestOpenAPIDocumentsTaskSeriesAndOccurrenceContracts(t *testing.T) {
 		if _, ok := createdByProps[name]; !ok {
 			t.Fatalf("TaskSeries created_by schema missing %s", name)
 		}
+	}
+
+	projectOperation := operation("/api/v1/projects/{projectRef}", "get")
+	projectResponse := projectOperation["responses"].(map[string]any)["200"].(map[string]any)
+	projectContent := projectResponse["content"].(map[string]any)["application/json"].(map[string]any)
+	projectSchema := projectContent["schema"].(map[string]any)
+	projectData, ok := projectSchema["properties"].(map[string]any)["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("project response has no data schema: %#v", projectSchema)
+	}
+	projectProps, ok := projectData["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("project response data has no properties: %#v", projectData)
+	}
+	if _, ok := projectProps["url"]; !ok {
+		t.Fatal("Project schema missing url")
 	}
 }
 
