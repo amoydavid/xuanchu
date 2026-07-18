@@ -365,9 +365,12 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 	seriesID := "series-1"
 	slot := int64(1783785599)
 	rule := "daily"
+	project := "ops"
+	projectSeq := int64(17)
 	tsk := domain.Task{
 		UUID: "occ-uuid", WorkspaceID: "ws", Title: "巡检", Status: domain.StatusPending,
 		Entry: 100, Modified: 200,
+		Project: &project, ProjectSeq: &projectSeq,
 		SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
 		RecurrenceOverrides: []string{"due"},
 	}
@@ -379,6 +382,12 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 	}
 	if view.UUID == nil || *view.UUID != "occ-uuid" {
 		t.Fatalf("UUID = %#v want occ-uuid", view.UUID)
+	}
+	if view.TaskSlug == nil || *view.TaskSlug != "ops-17" {
+		t.Fatalf("TaskSlug = %#v want ops-17", view.TaskSlug)
+	}
+	if view.URL != "/workspaces/local/projects/ops/tasks/ops-17" {
+		t.Fatalf("URL = %q", view.URL)
 	}
 	if view.RecurrenceInfo == nil {
 		t.Fatal("RecurrenceInfo 为空")
