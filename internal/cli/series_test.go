@@ -99,7 +99,7 @@ func TestOccurrenceRefIsPlainTaskTarget(t *testing.T) {
 func TestRemoteSeriesDTOToViewKeepsProtocolFields(t *testing.T) {
 	description, priority, until, suggested := "说明", "H", int64(9000), int64(6000)
 	dto := remote.TaskSeriesDTO{
-		ID: "series-1", WorkspaceID: "workspace-1", ProjectID: "project-1",
+		ID: "series-1", URL: "/workspaces/local/projects/ops/series/ops-s-1", WorkspaceID: "workspace-1", ProjectID: "project-1",
 		Title: "每日巡检", Description: &description, Status: "active",
 		RecurrenceRule: "daily", FirstDue: 5000, Until: &until, Priority: &priority,
 		Tags: []string{"ops"}, UDAs: map[string]string{"estimate": "3"},
@@ -112,6 +112,9 @@ func TestRemoteSeriesDTOToViewKeepsProtocolFields(t *testing.T) {
 	if view.ID != dto.ID || view.Title != dto.Title || view.RecurrenceRule != dto.RecurrenceRule || view.FirstDue != dto.FirstDue {
 		t.Fatalf("series fields lost: %#v", view)
 	}
+	if view.URL != dto.URL {
+		t.Fatalf("series URL lost: %#v", view)
+	}
 	if !reflect.DeepEqual(view.Tags, dto.Tags) || view.UDAs["estimate"] != "3" || view.CreatedBy.ID != "user-1" || len(view.Assignees) != 1 {
 		t.Fatalf("series retained fields lost: %#v", view)
 	}
@@ -123,7 +126,7 @@ func TestRemoteSeriesDTOToViewKeepsProtocolFields(t *testing.T) {
 func TestRemoteOccurrenceDTOToViewKeepsProtocolFields(t *testing.T) {
 	description, project, projectID, parent := "说明", "ops", "project-1", "parent-1"
 	dto := remote.TaskOccurrenceDTO{
-		ID: "occ:s1:5000", WorkspaceID: "workspace-1", ProjectID: &projectID, Project: &project,
+		ID: "occ:s1:5000", URL: "/workspaces/local/projects/ops/tasks/occ%3As1%3A5000", WorkspaceID: "workspace-1", ProjectID: &projectID, Project: &project,
 		Title: "每日巡检", Description: &description, Status: "pending", Parent: &parent,
 		Assignees: []task.JSONUserInfo{{ID: "user-1", Name: "alice"}},
 		Depends:   []string{"dep-1"}, UDAs: map[string]string{"estimate": "3"},
@@ -131,6 +134,9 @@ func TestRemoteOccurrenceDTOToViewKeepsProtocolFields(t *testing.T) {
 	view := remoteOccurrenceDTOToView(dto)
 	if view.WorkspaceID != dto.WorkspaceID || view.ProjectID == nil || view.Description == nil || view.Parent == nil {
 		t.Fatalf("occurrence fields lost: %#v", view)
+	}
+	if view.URL != dto.URL {
+		t.Fatalf("occurrence URL lost: %#v", view)
 	}
 	if len(view.Assignees) != 1 || !reflect.DeepEqual(view.Depends, dto.Depends) || view.UDAs["estimate"].Raw != "3" {
 		t.Fatalf("occurrence retained fields lost: %#v", view)
@@ -189,6 +195,44 @@ func TestOccurrenceViewJSONKeepsProjectedNullableFields(t *testing.T) {
 		if !exists || value != nil {
 			t.Fatalf("projected %s = %#v, want explicit null", field, value)
 		}
+	}
+}
+
+func TestResourceJSONAndHumanOutputKeepURL(t *testing.T) {
+	view := app.TaskOccurrenceView{ID: "task-1", URL: "/tasks/task-1", Title: "任务", Status: task.StatusPending}
+	payload := occurrenceViewJSON(view)
+	if payload["url"] != view.URL {
+		t.Fatalf("json url = %#v", payload["url"])
+	}
+
+	var out bytes.Buffer
+	renderTaskOccurrenceInfo(&out, false, view)
+	if !strings.Contains(out.String(), "URL: /tasks/task-1") {
+		t.Fatalf("human output = %q", out.String())
+	}
+
+	series := app.TaskSeriesView{URL: "/workspaces/local/projects/ops/series/ops-s-1"}
+	if got := seriesViewJSON(series)["url"]; got != series.URL {
+		t.Fatalf("series json url = %#v", got)
+	}
+	project := app.ProjectView{URL: "/workspaces/local/projects/ops"}
+	if got := projectViewForJSON(project)["url"]; got != project.URL {
+		t.Fatalf("project json url = %#v", got)
+	}
+
+	out.Reset()
+	renderSeriesList(&out, false, app.TaskSeriesPage{Items: []app.TaskSeriesView{{
+		Series: taskseries.Series{ID: "series-1", ProjectSlug: "ops", Title: "循环任务", Status: taskseries.StatusActive},
+		URL:    "/workspaces/local/projects/ops/series/ops-s-1",
+	}}})
+	if !strings.Contains(out.String(), "/workspaces/local/projects/ops/series/ops-s-1") {
+		t.Fatalf("series list output = %q", out.String())
+	}
+
+	out.Reset()
+	renderOccurrencePage(&out, false, app.TaskViewPage{Items: []app.TaskOccurrenceView{view}})
+	if !strings.Contains(out.String(), "/tasks/task-1") {
+		t.Fatalf("occurrence list output = %q", out.String())
 	}
 }
 

@@ -47,7 +47,7 @@ func newProjectListCommand(opts Options) *cobra.Command {
 			if project.Status != "" && project.Status != "active" {
 				suffix = " " + project.Status
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s%s\n", project.Slug, project.Name, suffix)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %s%s %s\n", project.Slug, project.Name, suffix, project.URL)
 		}
 	}
 	cmd := &cobra.Command{
@@ -125,7 +125,7 @@ func newProjectAddCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Created project %s\n", project.Slug)
+				fmt.Fprintf(cmd.OutOrStdout(), "Created project %s\nURL: %s\n", project.Slug, project.URL)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -140,7 +140,7 @@ func newProjectAddCommand(opts Options) *cobra.Command {
 			if currentOpts.JSON {
 				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created project %s\n", project.Slug)
+			fmt.Fprintf(cmd.OutOrStdout(), "Created project %s\nURL: %s\n", project.Slug, project.URL)
 			return nil
 		},
 	}
@@ -167,7 +167,7 @@ func newProjectInfoCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\n", project.Slug, project.Name)
+				fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\nURL: %s\n", project.Slug, project.Name, project.URL)
 				if project.Description != "" {
 					fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", project.Description)
 				}
@@ -196,7 +196,7 @@ func newProjectInfoCommand(opts Options) *cobra.Command {
 			if currentOpts.JSON {
 				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\n", project.Slug, project.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Slug: %s\nName: %s\nURL: %s\n", project.Slug, project.Name, project.URL)
 			if project.Description != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", project.Description)
 			}
@@ -245,7 +245,7 @@ func newProjectModifyCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Modified project %s\n", args[0])
+				fmt.Fprintf(cmd.OutOrStdout(), "Modified project %s\nURL: %s\n", args[0], project.URL)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -256,7 +256,14 @@ func newProjectModifyCommand(opts Options) *cobra.Command {
 			if err := svc.ModifyProject(args[0], input); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Modified project %s\n", args[0])
+			project, err := svc.ProjectInfo(args[0])
+			if err != nil {
+				return err
+			}
+			if currentOpts.JSON {
+				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Modified project %s\nURL: %s\n", args[0], project.URL)
 			return nil
 		},
 	}
@@ -286,7 +293,7 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 				if project.TaskCount > 0 {
 					fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\n", args[0])
+				fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\nURL: %s\n", args[0], project.URL)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -304,7 +311,7 @@ func newProjectArchiveCommand(opts Options) *cobra.Command {
 			if project.TaskCount > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "xuanchu: warning: archived project %s still has %d non-deleted task(s)\n", project.Slug, project.TaskCount)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Archived project %s\nURL: %s\n", args[0], project.URL)
 			return nil
 		},
 	}
@@ -331,7 +338,7 @@ func newProjectTransitionCommand(opts Options) *cobra.Command {
 				if currentOpts.JSON {
 					return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Transitioned project %s to %s\n", project.Slug, args[1])
+				fmt.Fprintf(cmd.OutOrStdout(), "Transitioned project %s to %s\nURL: %s\n", project.Slug, args[1], project.URL)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -346,7 +353,7 @@ func newProjectTransitionCommand(opts Options) *cobra.Command {
 			if currentOpts.JSON {
 				return render.JSON(cmd.OutOrStdout(), projectViewForJSON(project))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Transitioned project %s to %s\n", project.Slug, args[1])
+			fmt.Fprintf(cmd.OutOrStdout(), "Transitioned project %s to %s\nURL: %s\n", project.Slug, args[1], project.URL)
 			return nil
 		},
 	}
@@ -535,6 +542,7 @@ func projectViewsForJSON(projects []app.ProjectView) []map[string]any {
 
 func projectViewForJSON(project app.ProjectView) map[string]any {
 	m := map[string]any{
+		"url":          project.URL,
 		"id":           project.ID,
 		"workspace_id": project.WorkspaceID,
 		"slug":         project.Slug,

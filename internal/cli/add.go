@@ -51,7 +51,7 @@ func newAddCommand(opts Options) *cobra.Command {
 					renderOccurrenceViewJSON(cmd.OutOrStdout(), createdView)
 					return nil
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", createdView.ID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\nURL: %s\n", createdView.ID, createdView.URL)
 				return nil
 			}
 			svc, closeFn, err := buildServiceFromCmd(cmd, opts)
@@ -80,7 +80,7 @@ func newAddCommand(opts Options) *cobra.Command {
 				renderOccurrenceViewJSON(cmd.OutOrStdout(), created)
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\n", created.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Created task %s\nURL: %s\n", created.ID, created.URL)
 			return nil
 		},
 	}

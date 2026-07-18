@@ -74,6 +74,7 @@ func renderTaskOccurrenceInfo(w io.Writer, asJSON bool, view app.TaskOccurrenceV
 		return time.Unix(*v, 0).UTC().Format(time.RFC3339)
 	}
 	fmt.Fprintf(w, "Reference: %s\n", occurrenceHumanRef(view))
+	fmt.Fprintf(w, "URL: %s\n", view.URL)
 	fmt.Fprintf(w, "UUID: %s\n", value(view.UUID))
 	fmt.Fprintf(w, "Task slug: %s\n", value(view.TaskSlug))
 	fmt.Fprintf(w, "Status: %s\n", view.Status)
