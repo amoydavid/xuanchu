@@ -52,35 +52,22 @@ type handler struct {
 	dist        fs.FS
 }
 
-// spaRoutes 是允许 fallback 到 index.html 的精确路径。
-// spaPrefixes 是允许 fallback 的路径前缀，用于 /workspaces/.../projects/...
-// 这类多段 deep link：直接访问或刷新这些 URL 时，服务端也要返回 index.html，
-// 让前端路由接管，而不是 404。前缀用末尾 "/" 表示只匹配路径段，避免误命中
-// 名字相近的静态文件或未来新增的顶层 API 前缀。
-var spaRoutes = map[string]struct{}{
-	"":                  {},
-	"admin":             {},
-	"admin/login":       {},
-	"admin/setup":       {},
-	"admin/tokens":      {},
-	"admin/workspaces":  {},
-	"audit":             {},
-	"hooks":             {},
-	"members":           {},
-	"notifications":     {},
-	"projects":          {},
-	"settings":          {},
-	"tasks":             {},
-	"tokens":            {},
-	"workspaces":        {},
-}
-
-var spaPrefixes = []string{
-	// workspaces 下是多段 SPA 路由，例如
-	// /workspaces/{slug}/projects/{slug} 和 /workspaces/{slug}/projects/{slug}/tasks/{ref}
-	"workspaces/",
-	// admin/workspaces/{slug} 是 workspace 控制面详情 deep link，刷新也要返回 index.html。
-	"admin/workspaces/",
+// systemPrefixes 是服务端独占、绝不能 fallback 到 SPA index.html 的路径前缀。
+// 它们已在 httpapi router 里被优先分发给 API router（最长前缀匹配），
+// webconsole 正常情况下收不到；这里保留一份防御性排除，避免未来路由重构
+// 把这些前缀漏配时被前端 404 页面掩盖成"看起来正常的 SPA"。
+var systemPrefixes = []string{
+	"api/",
+	"healthz",
+	"sso/",
+	"auth/",
+	"mcp",
+	"docs",
+	"openapi.json",
+	"openapi-3.0.json",
+	"openapi.yaml",
+	"openapi-3.0.yaml",
+	"schemas/",
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -124,18 +111,30 @@ func (h *handler) servePath(w http.ResponseWriter, r *http.Request, rel string) 
 		h.serveFile(w, r, rel)
 		return
 	}
+	// 默认放行：dist 里没有同名静态文件、也不是系统前缀的路径，一律返回 index.html，
+	// 让前端路由接管。新增前端顶层路由不再需要同步维护后端白名单。
+	// 系统前缀（API/MCP/openapi 等）由 httpapi router 优先分发，这里只是防御性兜底。
 	trimmed := strings.Trim(rel, "/")
-	if _, ok := spaRoutes[trimmed]; ok {
-		h.serveIndex(w, r)
+	if isSystemPath(trimmed) {
+		http.NotFound(w, r)
 		return
 	}
-	for _, prefix := range spaPrefixes {
-		if strings.HasPrefix(trimmed+"/", prefix) {
-			h.serveIndex(w, r)
-			return
+	h.serveIndex(w, r)
+}
+
+// isSystemPath 判断路径是否落在服务端独占前缀下，这些路径即便没命中静态文件
+// 也不应 fallback 到 SPA，避免把 API 类请求伪装成前端页面。
+func isSystemPath(trimmed string) bool {
+	if trimmed == "" {
+		return false
+	}
+	for _, prefix := range systemPrefixes {
+		if trimmed == strings.TrimSuffix(prefix, "/") ||
+			strings.HasPrefix(trimmed, prefix) {
+			return true
 		}
 	}
-	http.NotFound(w, r)
+	return false
 }
 
 func (h *handler) serveIndex(w http.ResponseWriter, r *http.Request) {

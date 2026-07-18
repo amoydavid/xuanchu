@@ -136,6 +136,7 @@ func TestHandlerServesWorkspaceDeepLinksAtRoot(t *testing.T) {
 	cases := []string{
 		"/",
 		"/tasks",
+		"/my-tasks",
 		"/admin/login",
 		"/admin/setup",
 		"/admin/workspaces",
@@ -177,20 +178,53 @@ func TestHandlerServesWorkspaceDeepLinksWithBasePath(t *testing.T) {
 	}
 }
 
-// TestHandlerStillRejectsUnknownTopLevel 确认前缀放行没有削弱安全：
-// 任意未知的顶层路径仍然 404，避免把所有路径都当成 SPA 路由。
-func TestHandlerStillRejectsUnknownTopLevel(t *testing.T) {
+// TestHandlerRejectsSystemPrefixes 确认服务端独占前缀不会被 fallback 到 SPA。
+// 这些前缀正常由 httpapi router 优先分发，webconsole 收到时必须 404，
+// 避免未来路由漏配时把 API 请求伪装成前端页面。
+func TestHandlerRejectsSystemPrefixes(t *testing.T) {
+	handler := testHandler(Options{Enabled: true, BasePath: "/"})
+
+	for _, p := range []string{
+		"/api/v1/tasks",
+		"/healthz",
+		"/sso/login",
+		"/auth/callback",
+		"/mcp",
+		"/docs",
+		"/openapi.json",
+		"/openapi.yaml",
+		"/openapi-3.0.json",
+		"/openapi-3.0.yaml",
+		"/schemas/operation.json",
+	} {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, p, nil))
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404 (system prefix must not fallback)", p, rr.Code)
+		}
+	}
+}
+
+// TestHandlerFallsBackForUnknownSPAPath 确认默认放行策略：
+// dist 里没有同名静态文件的非系统路径，一律 fallback 到 index.html，
+// 由前端路由决定渲染或 404。新增前端顶层路由无需同步后端白名单。
+func TestHandlerFallsBackForUnknownSPAPath(t *testing.T) {
 	handler := testHandler(Options{Enabled: true, BasePath: "/"})
 
 	for _, p := range []string{
 		"/random-unknown-page",
 		"/foo/bar/baz",
 		"/workspaces2/evil",
+		"/my-tasks",
+		"/any/new/route/that/frontend/added",
 	} {
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, p, nil))
-		if rr.Code != http.StatusNotFound {
-			t.Fatalf("%s status = %d, want 404 (unknown path must not fallback)", p, rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200 (fallback to index.html)", p, rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "<div id=\"root\"></div>") {
+			t.Fatalf("%s body = %q, want SPA index.html", p, rr.Body.String())
 		}
 	}
 }
