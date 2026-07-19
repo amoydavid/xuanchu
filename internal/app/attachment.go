@@ -163,7 +163,7 @@ func (s *Service) UploadAttachment(ctx context.Context, targetType, targetRef st
 	row, _ = s.attachmentRepo.GetByID(attachmentID)
 	s.appendAuditEntry(AuditEntry{
 		Action:      "attachment.add",
-		WorkspaceID: strPtr(target.WorkspaceID),
+		WorkspaceID: attachmentStrPtr(target.WorkspaceID),
 		TargetType:  "attachment",
 		TargetID:    attachmentID,
 		Payload:     attachmentAuditPayload(row, target),
@@ -320,7 +320,7 @@ func (s *Service) RenameAttachment(id, displayName string) (AttachmentView, erro
 	}
 	s.appendAuditEntry(AuditEntry{
 		Action:      "attachment.rename",
-		WorkspaceID: strPtr(row.WorkspaceID),
+		WorkspaceID: attachmentStrPtr(row.WorkspaceID),
 		TargetType:  "attachment",
 		TargetID:    id,
 		Payload:     attachmentAuditPayload(updated, target),
@@ -364,7 +364,7 @@ func (s *Service) RemoveAttachment(ctx context.Context, id string) error {
 	}
 	s.appendAuditEntry(AuditEntry{
 		Action:      "attachment.remove",
-		WorkspaceID: strPtr(target.WorkspaceID),
+		WorkspaceID: attachmentStrPtr(target.WorkspaceID),
 		TargetType:  "attachment",
 		TargetID:    id,
 		Payload:     attachmentAuditPayload(row, target),
@@ -561,8 +561,8 @@ func attachmentStorageKey(workspaceID, attachmentID string) string {
 	return fmt.Sprintf("workspaces/%s/attachments/%s", workspaceID, attachmentID)
 }
 
-// strPtr 返回 s 的指针；生产代码使用，测试文件中的同名 helper 不冲突（test 优先）。
-func strPtr(s string) *string { return &s }
+// attachmentStrPtr 返回 s 的指针。
+func attachmentStrPtr(s string) *string { return &s }
 
 // attachmentAuditPayload 构造审计 payload，不暴露 storage key/source URL。
 func attachmentAuditPayload(row storage.Attachment, target AttachmentTarget) map[string]any {

@@ -116,6 +116,15 @@ func newServerCommand(opts Options) *cobra.Command {
 				opts.SetLogger(logger)
 			}
 
+			// 附件运行时：在监听端口前构造并做 health 检查，配置错误立即 fail fast。
+			attachmentRuntime, err := app.NewAttachmentRuntime(context.Background(), cfg.Attachments)
+			if err != nil {
+				return fmt.Errorf("附件存储初始化失败: %w", err)
+			}
+			if cfg.Attachments.RemoteFetchEnabled {
+				attachmentRuntime.Fetcher = buildAttachmentRemoteFetcher(cfg.Attachments)
+			}
+
 			ln, err := net.Listen("tcp", listen)
 			if err != nil {
 				return err
@@ -132,6 +141,7 @@ func newServerCommand(opts Options) *cobra.Command {
 				Shutdown:             shutdown,
 				MCPTrustedProxyHosts: mcpOptions.TrustedProxyHosts,
 				ConfigSecretKey:      cfg.SecretKey,
+				Attachments:          attachmentRuntime,
 			})
 			httpServer := &http.Server{
 				Addr:              listen,
@@ -232,7 +242,7 @@ func newServerCommand(opts Options) *cobra.Command {
 			defer stopSignals()
 
 			var runtimeWG sync.WaitGroup
-			runtimeWG.Add(8)
+			runtimeWG.Add(9)
 			// 解析 config secret key（TOML [security].config_secret_key）
 			secretKey, err := app.ParseConfigSecretKey(cfg.SecretKey)
 			if errors.Is(err, app.ErrConfigSecretKeyMissing) {
@@ -303,6 +313,19 @@ func newServerCommand(opts Options) *cobra.Command {
 				if err := seriesScheduler.Run(runCtx, taskSeriesSchedulerInterval); err != nil {
 					errCh <- fmt.Errorf("task series scheduler: %w", err)
 				}
+			}()
+			// 附件清理器：每小时清理过期 uploading/draft 和到期 deleted（spec §11.4）
+			go func() {
+				defer runtimeWG.Done()
+				janitor := app.NewAttachmentJanitor(app.AttachmentJanitorOptions{
+					Store:     store,
+					Runtime:   attachmentRuntime,
+					Clock:     app.RealClock{},
+					BatchSize: 100,
+					Interval:  time.Hour,
+					Logger:    logger,
+				})
+				janitor.Run(runCtx)
 			}()
 
 			select {
