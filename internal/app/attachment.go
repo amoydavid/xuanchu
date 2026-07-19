@@ -561,7 +561,8 @@ func attachmentStorageKey(workspaceID, attachmentID string) string {
 	return fmt.Sprintf("workspaces/%s/attachments/%s", workspaceID, attachmentID)
 }
 
-// strPtr 已在 task_occurrence_test.go 中定义，这里复用。
+// strPtr 返回 s 的指针；生产代码使用，测试文件中的同名 helper 不冲突（test 优先）。
+func strPtr(s string) *string { return &s }
 
 // attachmentAuditPayload 构造审计 payload，不暴露 storage key/source URL。
 func attachmentAuditPayload(row storage.Attachment, target AttachmentTarget) map[string]any {

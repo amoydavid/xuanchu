@@ -141,15 +141,30 @@ func requestIDFromContext(ctx context.Context) string {
 
 func (s *Server) bodyLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.ContentLength > s.bodyLimitBytes {
+		limit := s.bodyLimitBytes
+		// 附件上传走 multipart，需要更大的 limit。
+		if s.attachmentUploadLimit() > 0 && strings.HasSuffix(r.URL.Path, "/attachments") && r.Method == http.MethodPost {
+			limit = s.attachmentUploadLimit()
+		}
+		if r.ContentLength > limit {
 			writeError(w, http.StatusRequestEntityTooLarge, "api_payload_too_large", "request payload too large", nil)
 			return
 		}
 		if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, s.bodyLimitBytes)
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// attachmentUploadLimit 返回附件上传路由应使用的 body limit。
+//
+// 至少要能容纳 MaxFileSizeBytes + multipart 开销；nil runtime 时返回 0（走全局上限）。
+func (s *Server) attachmentUploadLimit() int64 {
+	if s.attachments == nil || s.attachments.Config.MaxFileSizeBytes <= 0 {
+		return 0
+	}
+	return s.attachments.Config.MaxFileSizeBytes + (1 << 20)
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {

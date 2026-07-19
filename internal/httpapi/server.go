@@ -37,6 +37,8 @@ type Options struct {
 	// 生产留空（用 SSRF-safe 默认 client），测试可注入 httptest.Server.Client()。
 	SinkTestClient   *http.Client
 	SinkTestResolver app.HookHostResolver
+	// Attachments 注入附件运行时；nil 时附件 endpoint 返回 attachment_storage_unavailable。
+	Attachments *app.AttachmentRuntime
 }
 
 type AdminSetupOptions struct {
@@ -63,6 +65,7 @@ type Server struct {
 	secretKey            []byte               // config secret envelope 密钥，从 TOML [security] 注入
 	sinkTestClient       *http.Client
 	sinkTestResolver     app.HookHostResolver
+	attachments          *app.AttachmentRuntime
 }
 
 func NewServer(opts Options) *Server {
@@ -89,6 +92,7 @@ func NewServer(opts Options) *Server {
 		secretKey:            parseSecretKeyOrEmpty(opts.ConfigSecretKey),
 		sinkTestClient:       opts.SinkTestClient,
 		sinkTestResolver:     opts.SinkTestResolver,
+		attachments:          opts.Attachments,
 	}
 	srv.router = srv.newRouter()
 	return srv

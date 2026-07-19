@@ -63,6 +63,43 @@ func statusForAppErrorCode(code string) int {
 		return http.StatusNotFound
 	case "method_not_allowed":
 		return http.StatusMethodNotAllowed
+	// 附件错误码（spec §18）
+	case "attachment_not_found":
+		return http.StatusNotFound
+	case "attachment_remote_fetch_disabled":
+		return http.StatusForbidden
+	case "attachment_remote_url_invalid":
+		return http.StatusUnprocessableEntity
+	case "attachment_remote_fetch_failed":
+		return http.StatusBadGateway
+	case "attachment_too_large":
+		return http.StatusRequestEntityTooLarge
+	case "attachment_type_not_allowed":
+		return http.StatusUnsupportedMediaType
+	case "attachment_image_invalid":
+		return http.StatusUnprocessableEntity
+	case "attachment_target_type_unsupported":
+		return http.StatusUnprocessableEntity
+	case "attachment_quota_exceeded":
+		return http.StatusConflict
+	case "attachment_in_use":
+		return http.StatusConflict
+	case "attachment_draft_creator_mismatch":
+		return http.StatusForbidden
+	case "attachment_state_invalid":
+		return http.StatusConflict
+	case "attachment_content_gone":
+		return http.StatusGone
+	case "attachment_storage_unavailable":
+		return http.StatusServiceUnavailable
+	case "description_too_large":
+		return http.StatusUnprocessableEntity
+	case "description_reference_invalid":
+		return http.StatusUnprocessableEntity
+	case "description_reference_limit_exceeded":
+		return http.StatusUnprocessableEntity
+	case "content_reference_query_invalid":
+		return http.StatusBadRequest
 	default:
 		return http.StatusBadRequest
 	}

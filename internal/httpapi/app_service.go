@@ -78,6 +78,7 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 		SinkTestResolver:   s.sinkTestResolver,
 		TokenSecretKey:     s.secretKey,
 		RequireTokenSecret: true,
+		Attachments:        s.attachments,
 	})
 	if err != nil {
 		return nil, requestAuth{}, err
