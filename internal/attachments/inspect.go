@@ -21,11 +21,23 @@ import (
 // InspectedFile 描述通过校验后的附件本地 spool 文件。
 type InspectedFile struct {
 	Path          string
+	OriginalName  string
 	Extension     string
 	MediaType     string
 	SHA256        string
 	SizeBytes     int64
 	InlineCapable bool
+}
+
+// OriginalNameFromExt 在没有 display name 时返回基于扩展名的回退名。
+func (f InspectedFile) OriginalNameFromExt() string {
+	if f.OriginalName != "" {
+		return f.OriginalName
+	}
+	if f.Extension != "" {
+		return "attachment" + f.Extension
+	}
+	return "attachment"
 }
 
 // 错误码与 spec §18 保持一致。
@@ -222,6 +234,7 @@ func InspectToTemp(ctx context.Context, src io.Reader, originalName string, decl
 
 	return InspectedFile{
 		Path:          tmp.Name(),
+		OriginalName:  originalName,
 		Extension:     extension,
 		MediaType:     mediaType,
 		SHA256:        hex.EncodeToString(hasher.Sum(nil)),

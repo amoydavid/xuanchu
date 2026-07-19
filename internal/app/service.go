@@ -64,6 +64,9 @@ type Service struct {
 	tokenSecretKey []byte
 	// requireTokenSecret 为 true 时，缺少 secret key 的 token 创建请求会失败。
 	requireTokenSecret bool
+	// attachmentRepo/attachmentRuntime 提供附件 CRUD 与二进制存储。
+	attachmentRepo     *storage.AttachmentRepository
+	attachmentRuntime  *AttachmentRuntime
 }
 
 // adminActingSessionStore 是 admin acting session 仓储在 app 层的最小接口。
@@ -209,6 +212,8 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		sinkTestResolver:              opts.SinkTestResolver,
 		tokenSecretKey:                append([]byte(nil), opts.TokenSecretKey...),
 		requireTokenSecret:            opts.RequireTokenSecret,
+		attachmentRepo:                storage.NewAttachmentRepository(opts.Store.DB()),
+		attachmentRuntime:             opts.Attachments,
 	}
 	if !opts.DisableScopeBootstrap {
 		if err := svc.ensureBuiltinConfigDefinitions(rt.WorkspaceID); err != nil {
@@ -280,6 +285,9 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.notificationDeliveryRepo = storage.NewNotificationDeliveryRepository(store.DB())
 	clone.projectAutomationRuleRepo = storage.NewProjectAutomationRuleRepository(store.DB())
 	clone.projectAutomationDeliveryRepo = storage.NewProjectAutomationDeliveryRepository(store.DB())
+	clone.attachmentRepo = storage.NewAttachmentRepository(store.DB())
+	// attachmentRuntime 不依赖 db 句柄，事务克隆直接透传。
+	clone.attachmentRuntime = s.attachmentRuntime
 	// token secret key 在事务克隆中必须保留，否则 withAudit 内创建/解密 token 会失败。
 	clone.tokenSecretKey = append([]byte(nil), s.tokenSecretKey...)
 	clone.requireTokenSecret = s.requireTokenSecret

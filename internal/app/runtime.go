@@ -79,6 +79,8 @@ type ServiceOptions struct {
 	TokenSecretKey []byte
 	// RequireTokenSecret 为 true 时，缺少 TokenSecretKey 的 token 创建请求会失败。
 	RequireTokenSecret bool
+	// Attachments 注入附件运行时；nil 时附件相关方法返回 attachment_storage_unavailable。
+	Attachments *AttachmentRuntime
 }
 
 type RuntimeError struct {

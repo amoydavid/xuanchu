@@ -176,3 +176,13 @@ func stringPtrOrNil(v string) *string {
 	}
 	return &v
 }
+
+func attachmentActorColumns(row storage.Attachment) actorColumns {
+	return actorColumns{
+		Type:        row.CreatedByActorType,
+		UserID:      row.CreatedByUserID,
+		TokenID:     row.CreatedByTokenID,
+		TokenName:   row.CreatedByTokenName,
+		TokenPrefix: row.CreatedByTokenPrefix,
+	}
+}

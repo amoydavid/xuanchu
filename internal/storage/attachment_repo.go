@@ -245,6 +245,25 @@ func (r *AttachmentRepository) ActivateDrafts(taskID, creatorID string, ids []st
 	return int(result.RowsAffected), nil
 }
 
+// UpdateRemoteSource 记录远程抓取的规范化 host 与 source URL hash。
+func (r *AttachmentRepository) UpdateRemoteSource(id, sourceHost, sourceURLHash, sourceType string, modifiedAt int64) error {
+	result := r.db.Model(&Attachment{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"source_host":     sourceHost,
+			"source_url_hash": sourceURLHash,
+			"source_type":     sourceType,
+			"modified_at":     modifiedAt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // MarkDeleted 把附件软删除并设置 PurgeAfter。
 func (r *AttachmentRepository) MarkDeleted(id string, now, purgeAfter int64) error {
 	result := r.db.Model(&Attachment{}).
