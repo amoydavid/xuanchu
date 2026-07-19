@@ -20,12 +20,12 @@
 持久化示例：
 
 ```markdown
-请 [@Alice](xuanchu://ref/user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) 确认
-关联 [#agentapi-17 · 补齐接口](xuanchu://ref/task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)
+请 [@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) 确认
+关联 [#agentapi-17 · 补齐接口](ref://task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)
 
-![当前架构](xuanchu://attachment/40af0185-316f-42bb-b52b-545d21f6f012)
+![当前架构](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)
 
-[需求说明.pdf](xuanchu://attachment/a801f977-c745-4f47-95a4-7893a9317aba)
+[需求说明.pdf](ref://attachment/a801f977-c745-4f47-95a4-7893a9317aba)
 ```
 
 显示文字是保存当时的快照；稳定身份只由 URI 中的 UUID 决定。CLI、MCP、Remote Client、HTTP JSON 和导入导出继续看到可读 Markdown 源码。
@@ -98,7 +98,7 @@
 
 1. 用户粘贴截图、拖入图片或点击图片按钮。
 2. 前端以 `mode=description_draft` 上传到当前任务。
-3. 上传成功后插入 `![alt](xuanchu://attachment/{id})`；上传过程中显示进度节点，失败时显示可重试错误，不插入伪成功引用。
+3. 上传成功后插入 `![alt](ref://attachment/{id})`；上传过程中显示进度节点，失败时显示可重试错误，不插入伪成功引用。
 4. 用户保存 description 时，App 层解析附件 ID，并在同一业务事务中把本次引用到的 draft attachment 转为 active。
 5. 用户取消编辑时，前端尽力删除本次 draft；浏览器中断留下的 draft 由清理器在 24 小时后删除。
 
@@ -114,7 +114,7 @@
 
 1. 用户输入 `@`，编辑器查询当前 workspace 的 active 成员。
 2. 结果按 `display_name`、`name`、email 匹配，界面显示 `display_name` 优先，同时保留稳定 `name` 作为辅助信息。
-3. 选择后插入用户引用节点，保存为 `[@展示文字](xuanchu://ref/user/{uuid})`。
+3. 选择后插入用户引用节点，保存为 `[@展示文字](ref://user/{uuid})`。
 4. App 层比较保存前后的用户 UUID 集合，只对新增集合生成一次 `task.user_mentioned`。
 5. Notification Rule 可用 `audience=mentioned_users` 为每个被提及者生成 delivery；默认排除事件操作者本人。Hook 和项目自动化仍收到完整事件，包括自我 mention。
 
@@ -122,7 +122,7 @@
 
 1. 用户输入 `#`，编辑器查询当前 token scope、workspace/project allowlist 和行级权限内可读的实际任务。
 2. 当前项目的任务优先展示，其他可读项目随后展示；projected occurrence 不进入首期结果，物化后才可引用。
-3. 选择后保存为 `[#task_slug · title](xuanchu://ref/task/{uuid})`。
+3. 选择后保存为 `[#task_slug · title](ref://task/{uuid})`。
 4. 渲染时使用当前标题和 canonical URL；目标不可读或已不可用时退回保存时的文字快照，并显示为不可点击节点。
 
 ## 6. Markdown 扩展契约
@@ -132,18 +132,19 @@
 首期保留三类 URI：
 
 ```text
-xuanchu://ref/user/{canonical-uuid}
-xuanchu://ref/task/{canonical-uuid}
-xuanchu://attachment/{canonical-uuid}
+ref://user/{canonical-uuid}
+ref://task/{canonical-uuid}
+ref://attachment/{canonical-uuid}
 ```
 
 约束：
 
-- scheme 固定小写 `xuanchu`。
-- `ref` / `attachment` 是 URI host。
+- scheme 固定小写 `ref`。
+- `user`、`task`、`attachment` 是 URI host；以后增加实体类型时增加 host，不改变 path 结构。
 - UUID 必须是带连字符的 canonical lowercase 形式。
 - 不允许 userinfo、port、query、fragment、额外 path segment 或 percent-encoded UUID。
-- `xuanchu://` 是保留协议；格式非法、类型未开放或目标越权时，写操作返回 422，不把它降级为普通外链。
+- `ref://` 是 Markdown 内容内部引用的保留协议；格式非法、类型未开放或目标越权时，写操作返回 422，不把它降级为普通外链。
+- 仓库既有 `xuanchu://workspace/...`、`xuanchu://project/...` 等 URI 继续只表示 MCP Resource；description 不复用该 scheme，避免资源协议和正文实体引用混淆。
 - 普通 `http`、`https`、`mailto` 链接继续使用现有白名单。
 
 ### 6.2 Markdown 解析
@@ -781,7 +782,7 @@ description 的内部 URI 继续进入现有 `task.modify` before/after。任务
 
 - 现有 `task.description` 字段仍是字符串，HTTP/MCP/CLI/Remote JSON 字段不改名。
 - Taskwarrior 风格 JSON、XLSX task import 和 `xuanchu.task-bundle/v1` 不承载二进制。
-- 同 workspace 内导入包含现有 `xuanchu://attachment/{id}` 的 description 时，App 层按普通修改校验附件归属和权限。
+- 同 workspace 内导入包含现有 `ref://attachment/{id}` 的 description 时，App 层按普通修改校验附件归属和权限。
 - 跨 workspace 或跨部署导入遇到 attachment URI 时返回明确的 `description_reference_invalid`，不能静默生成坏图。
 - 普通 user/task 内部引用在 import 时必须解析到目标 workspace 中的同一 UUID；本期不按 name/title 猜测重映射。
 - 导出保留 Markdown URI，并在 export envelope 增加非阻断 `warnings`，列出二进制未包含的 attachment IDs。
