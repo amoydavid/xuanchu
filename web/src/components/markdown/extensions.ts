@@ -4,7 +4,9 @@ import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table
 import { Markdown, MarkdownManager } from "@tiptap/markdown"
 import StarterKit from "@tiptap/starter-kit"
 
+import { XuanchuAttachment } from "./attachment-extension"
 import { escapeMarkdownHtml, isAllowedMarkdownHref } from "./markdown-safety"
+import { XuanchuReference } from "./reference-extension"
 
 export const markdownExtension = Markdown.configure({
   markedOptions: {
@@ -40,6 +42,10 @@ export const markdownExtensions = [
   TableRow,
   TableHeader,
   TableCell,
+  // 自定义节点：附件与 user/task 引用。ref:// 协议仍以普通 link 的形式
+  // 在 markdown 中 round-trip，节点定义负责编辑器内的 atom 渲染与序列化。
+  XuanchuAttachment,
+  XuanchuReference,
 ]
 
 export const markdownManager = new MarkdownManager({

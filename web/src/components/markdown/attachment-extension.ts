@@ -43,7 +43,7 @@ export const XuanchuAttachment = Node.create<{
   HTMLAttributes: Record<string, string>
 }>({
   name: "xuanchuAttachment",
-  group: "block inline",
+  group: "inline",
   inline: true,
   atom: true,
   selectable: true,
