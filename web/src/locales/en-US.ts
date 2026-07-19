@@ -168,6 +168,23 @@ export const enUS = {
     titleRequired: "Task title is required",
     submit: "Create task",
   },
+  task: {
+    attachments: {
+      title: "Attachments",
+      add: "Add attachment",
+      download: "Download",
+      remove: "Remove",
+      empty: "No attachments",
+      inUse: "This attachment is still referenced by the description; remove the reference and save first",
+      content_gone: "Attachment content has been purged",
+      load_failed: "Attachment failed to load",
+      type_not_allowed: "This file type is not allowed",
+    },
+    mentions: {
+      userPlaceholder: "@ to mention a member",
+      taskPlaceholder: "# to reference a task",
+    },
+  },
   taskSeries: {
     title: "Recurring tasks",
     description:

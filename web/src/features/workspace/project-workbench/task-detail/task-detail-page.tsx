@@ -29,6 +29,7 @@ import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskActionBar } from "./task-action-bar"
 import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
+import { TaskAttachmentPanel } from "@/features/workspace/attachments/task-attachment-panel"
 import { TaskPropertyPanel } from "./task-property-panel"
 import { SubTaskList } from "./sub-task-list"
 import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
@@ -373,6 +374,11 @@ function TaskDetailPageContent({
               projectSlug={effectiveProjectSlug ?? ""}
               taskRef={taskRef}
               workspaceSlug={workspaceSlug}
+            />
+            <TaskAttachmentPanel
+              workspaceSlug={workspaceSlug}
+              taskRef={taskRef}
+              canWrite={taskWritable}
             />
           </div>
           {/* 子任务 */}

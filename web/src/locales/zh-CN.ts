@@ -164,6 +164,23 @@ export const zhCN = {
     titleRequired: "任务标题不能为空",
     submit: "创建任务",
   },
+  task: {
+    attachments: {
+      title: "附件",
+      add: "添加附件",
+      download: "下载",
+      remove: "移除",
+      empty: "暂无附件",
+      inUse: "正文仍在引用该附件，请先删除引用并保存",
+      content_gone: "附件内容已清理",
+      load_failed: "附件加载失败",
+      type_not_allowed: "不允许上传此文件类型",
+    },
+    mentions: {
+      userPlaceholder: "@ 选择成员",
+      taskPlaceholder: "# 选择任务",
+    },
+  },
   taskSeries: {
     title: "循环任务",
     description:
