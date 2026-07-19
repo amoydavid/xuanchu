@@ -49,6 +49,7 @@
 
 - Web Console 支持粘贴富文本，并稳定转换为当前支持的 Markdown 结构。
 - 支持通过剪贴板粘贴、拖拽和文件选择添加图片。
+- 粘贴 HTML 中的公网远程图片由服务端受控抓取并转存为任务附件，正文不长期依赖第三方图片 URL。
 - 支持 `@` 选择 workspace 成员，支持 `#` 选择当前调用者有权读取的任务。
 - 用户、任务、图片和普通附件在富文本模式显示为语义节点，在源码模式显示为明确的 Markdown。
 - 复制到外部应用时至少保留可读文本；在璇础编辑器之间复制时保留内部引用身份。
@@ -74,7 +75,8 @@
 - 不把 HTML、Tiptap/ProseMirror JSON 或 Delta 保存到数据库。
 - 不实现多人实时协同、评论线程、行内批注或修订模式。
 - 不在首期开放项目、循环系列、配置定义等实体的编辑器选择器。
-- 不自动抓取粘贴 HTML 中的远程图片，避免浏览器跟踪、服务端 SSRF 和第三方资源失效。
+- 不抓取需要登录态、Cookie、私网访问、客户端证书或交互式授权的远程图片；这类图片由用户下载后再上传。
+- 不解析 CSS `background-image`、`picture/source` 艺术方向或页面脚本运行后才生成的图片；首期只处理剪贴板 HTML 中静态可解析的 `img` 候选。
 - 不支持 SVG、HTML、脚本、可执行文件、带宏 Office 文件或浏览器可主动执行的附件类型。
 - 不内置病毒扫描或 DLP；允许的压缩包按不透明下载文件处理，不解包检查。
 - 不把 S3 bucket 设为 public，不持久化预签名 URL，不让浏览器直接持有 S3 凭证。
@@ -92,15 +94,18 @@
 4. 字体、字号、颜色、背景色、class、style、事件属性、脚本、iframe 和未知标签被删除或降级为纯文本。
 5. description 保存时仍提交 Markdown 字符串。
 
-只有 `text/plain` 时，沿用 Tiptap 的 Markdown/纯文本粘贴。剪贴板同时包含 HTML 和图片文件时，优先处理实际图片文件，不读取远程 `<img src="https://...">`。
+只有 `text/plain` 时，沿用 Tiptap 的 Markdown/纯文本粘贴。剪贴板同时包含 HTML 和实际图片文件时，优先使用图片文件，并按 DOM 位置替换对应 `<img>`，避免同一张图片既上传本地副本又抓取远程 `src`。剩余的公网 `http(s)` 图片进入服务端转存流程。
 
-### 5.2 粘贴或上传图片
+### 5.2 粘贴、上传或转存图片
 
-1. 用户粘贴截图、拖入图片或点击图片按钮。
-2. 前端以 `mode=description_draft` 上传到当前任务。
-3. 上传成功后插入 `![alt](ref://attachment/{id})`；上传过程中显示进度节点，失败时显示可重试错误，不插入伪成功引用。
-4. 用户保存 description 时，App 层解析附件 ID，并在同一业务事务中把本次引用到的 draft attachment 转为 active。
-5. 用户取消编辑时，前端尽力删除本次 draft；浏览器中断留下的 draft 由清理器在 24 小时后删除。
+1. 用户粘贴截图、拖入图片、点击图片按钮，或粘贴带远程 `<img>` 的 HTML。
+2. 本地 File/data image 以 `mode=description_draft` 上传；公网远程图片把 source URL 提交给服务端 import endpoint，由服务端受控抓取。
+3. 同一次粘贴按规范化后的 source URL 去重，前端最多并发 3 个远程抓取；HTML 中重复出现同一 URL 时复用一个 attachment ID。
+4. 服务端只接受最终校验为 PNG、JPEG、GIF 或 WebP 的内容，并使用与普通上传完全相同的大小、像素、配额、BlobStore 和状态机。
+5. 成功后把原 `<img>` 替换为 `![alt](ref://attachment/{id})`；上传/抓取过程中显示进度节点，不把远程 URL、data URL 或 blob URL 写进 Markdown。
+6. 抓取失败时保留带 alt 和原 URL 的失败占位，提供“重试”“移除”“明确保留为普通外链”三个动作；失败占位本身不进入 Markdown，保存前必须由用户选择移除或保留外链。
+7. 用户保存 description 时，App 层解析附件 ID，并在同一业务事务中把本次引用到的 draft attachment 转为 active。
+8. 用户取消编辑时，前端尽力删除本次 draft；浏览器中断留下的 draft 由清理器在 24 小时后删除。
 
 ### 5.3 管理普通附件
 
@@ -180,8 +185,9 @@ type ContentReference struct {
 |---|---|
 | `internal/task/content_reference.go` | Markdown AST 解析、内部 URI 语法、引用集合差异 |
 | `internal/blobstore/` | 二进制存储接口、本地文件系统实现、S3 实现、流式读写与删除 |
+| `internal/safefetch/` | 无 Cookie 的公网 HTTP 图片抓取、DNS/IP/redirect SSRF 防护和响应限流 |
 | `internal/storage/attachment_repo.go` | 附件元数据 CRUD、配额统计、状态迁移和清理查询 |
-| `internal/app/attachment.go` | task/workspace 权限、上传生命周期、引用绑定、附件 view |
+| `internal/app/attachment.go` | task/workspace 权限、上传/远程转存生命周期、引用绑定、附件 view |
 | `internal/app/content_reference.go` | 用户/任务批量解析、suggest/resolve、mention 事件数据 |
 | `internal/httpapi/attachments.go` | multipart 上传、metadata/content/list/modify/delete HTTP handler |
 | `internal/httpapi/content_references.go` | suggestion 和 batch resolve HTTP handler |
@@ -189,7 +195,7 @@ type ContentReference struct {
 | `internal/app/project_automation_*` | `mentioned_users` 模板变量和事件上下文 |
 | `internal/config/` | attachments backend、配额和 S3 配置解析 |
 
-`internal/httpapi` 不解释附件业务状态，不直接访问 GORM 或 S3；所有写操作必须进入 `internal/app`。`internal/storage` 不解析 Markdown，不解释 actor 权限。`internal/blobstore` 不知道 task、workspace、用户或权限。
+`internal/httpapi` 不解释附件业务状态，不直接访问 GORM、S3 或远程图片 URL；所有写操作必须进入 `internal/app`。`internal/storage` 不解析 Markdown，不解释 actor 权限。`internal/blobstore` 不知道 task、workspace、用户或权限。`internal/safefetch` 只负责安全取得受限字节流，不创建 attachment row，不决定 task 权限。
 
 ### 7.2 Web
 
@@ -222,6 +228,9 @@ type TaskAttachment struct {
     SHA256               string  `gorm:"not null;index"`
     InlineCapable        bool    `gorm:"not null;default:false"`
     EverEmbedded         bool    `gorm:"not null;default:false"`
+    SourceType           string  `gorm:"not null;default:'upload'"` // upload|remote_url
+    SourceHost           string  `gorm:"not null;default:''"`
+    SourceURLHash        string  `gorm:"not null;default:'';index"`
     StorageBackend       string  `gorm:"not null"` // filesystem|s3
     StorageKey           string  `gorm:"not null;uniqueIndex"`
     CreatedBy            string  `gorm:"not null;index"`
@@ -242,6 +251,7 @@ type TaskAttachment struct {
 
 - 数据库只保存元数据和存储 key，不保存文件内容。
 - `StorageKey` 由服务端生成，不含原始文件名。
+- 远程转存只记录规范化 host 和 source URL 的 SHA-256，不保存可能含签名参数、访问 token 或个人信息的完整 URL。
 - `CreatedBy` 对外必须转换为 `task.ActorInfo`；如果是用户，内层必须使用完整 `task.UserInfo`，不输出裸 UUID。
 - `active` 附件默认出现在任务附件列表；`draft` 只对创建它的 actor 可见；`deleted` 默认不出现在列表。
 - `EverEmbedded` 一旦为 true 不再回退，用于删除提示和审计保留判断。
@@ -261,6 +271,7 @@ type TaskAttachmentView struct {
     SizeBytes     int64
     SHA256        string
     InlineCapable bool
+    SourceType    string
     ContentURL    string
     CreatedBy     task.ActorInfo
     CreatedAt     int64
@@ -351,6 +362,10 @@ max_workspace_total_size_mb = 10240
 max_attachments_per_task = 100
 draft_ttl = "24h"
 deleted_retention = "720h"             # 30 天；0 表示删除后尽快清理
+remote_fetch_enabled = true
+remote_fetch_timeout = "30s"
+remote_fetch_max_redirects = 5
+remote_fetch_max_concurrency = 4         # 单进程、单 workspace
 
 [attachments.s3]
 bucket = ""
@@ -374,6 +389,10 @@ XUANCHU_ATTACHMENTS_MAX_WORKSPACE_TOTAL_SIZE_MB
 XUANCHU_ATTACHMENTS_MAX_ATTACHMENTS_PER_TASK
 XUANCHU_ATTACHMENTS_DRAFT_TTL
 XUANCHU_ATTACHMENTS_DELETED_RETENTION
+XUANCHU_ATTACHMENTS_REMOTE_FETCH_ENABLED
+XUANCHU_ATTACHMENTS_REMOTE_FETCH_TIMEOUT
+XUANCHU_ATTACHMENTS_REMOTE_FETCH_MAX_REDIRECTS
+XUANCHU_ATTACHMENTS_REMOTE_FETCH_MAX_CONCURRENCY
 XUANCHU_ATTACHMENTS_S3_BUCKET
 XUANCHU_ATTACHMENTS_S3_REGION
 XUANCHU_ATTACHMENTS_S3_ENDPOINT
@@ -391,8 +410,9 @@ AWS 凭证继续使用 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AWS_SESS
 - backend 未设置时为 `filesystem`。
 - S3 backend 必须有 bucket 和 region；自定义 endpoint 仍必须给 region。
 - `aws:kms` 必须有 `kms_key_id`，非 KMS 模式禁止残留 KMS key。
-- 所有大小、数量必须为正；workspace 总量不得小于 task 总量，task 总量不得小于单文件上限。
+- 文件大小、task/workspace 容量和每任务附件数必须为正；workspace 总量不得小于 task 总量，task 总量不得小于单文件上限。
 - duration 必须能被 `time.ParseDuration` 解析且非负。
+- remote fetch timeout 必须大于 0 且不超过 120 秒；redirect 上限为 0-10；并发数必须为 1-32。
 
 ## 11. 上传、绑定、删除与清理
 
@@ -494,12 +514,33 @@ MIME 与扩展名冲突、无法识别或不在允许表内时返回 `attachment
 - CSP 增加 `img-src 'self' blob: data:`；`data:` 只用于编辑器本地预览，持久化内容不得保留 data URL。
 - S3 错误、storage key、bucket、endpoint 和本地绝对路径不得返回给普通调用者。
 
+### 12.4 远程图片安全抓取
+
+远程图片只能由服务端 `internal/safefetch` 抓取，浏览器不直接加载粘贴来源的 URL。实现复用并抽取现有 Hook/Notification 出站防护中的 DNS/IP 判断，不能另写一套弱化版 URL 校验。
+
+请求规则：
+
+- 只允许 `http` 和 `https`，拒绝 `file`、`ftp`、`data`、`blob`、userinfo、空 host 和畸形端口。
+- HTTP 只允许有效端口 80，HTTPS 只允许有效端口 443；非标准端口不进入首期远程转存范围。
+- 不携带浏览器 Cookie、Authorization、Referer 或 workspace/token 凭证；使用固定、无身份信息的 User-Agent。
+- HTTP client 禁用环境代理，避免通过内部 proxy 绕过目标地址校验。
+- DNS 解析得到的所有地址都必须是公网地址；任一结果属于 loopback、RFC1918、link-local、multicast、unspecified、RFC6598 或其它保留网段时整次请求失败。
+- 自定义 `DialContext` 只连接本次已经校验过的公网 IP，Host/TLS SNI 仍使用原域名，阻止校验后 DNS rebinding。
+- 最多跟随配置数量的 301/302/303/307/308 redirect；每一跳重新执行 scheme、host、DNS 和 IP 校验。HTTPS 跳转到 HTTP 被拒绝。
+- 只接受 2xx 响应。`Content-Length` 已知且超过单文件限制时立即中止；未知长度使用 `io.LimitedReader(max+1)`。
+- 不信任远端 `Content-Type` 和扩展名，最终以内存/临时文件中的 magic、图片 decode config、像素限制和第 12.1 节 allowlist 为准。
+- 总请求时间使用 `remote_fetch_timeout`；连接、TLS handshake、响应 header 和 body 读取都受 context 取消。
+- 单 workspace 受进程内 semaphore 限制；超过并发上限时排队等待当前请求 context，不创建无界后台任务。
+
+远程抓取不会访问经过认证的内部知识库、企业内网或 localhost。抓取不到不代表粘贴整体失败：文本继续进入编辑器，图片以失败占位等待用户重试、移除或明确保留为普通 HTTPS 链接。
+
 ## 13. HTTP API
 
 ### 13.1 附件
 
 ```text
 POST   /api/v1/tasks/{taskRef}/attachments
+POST   /api/v1/tasks/{taskRef}/attachments/import-url
 GET    /api/v1/tasks/{taskRef}/attachments
 GET    /api/v1/attachments/{attachmentID}
 GET    /api/v1/attachments/{attachmentID}/content
@@ -515,6 +556,21 @@ mode=attachment|description_draft    必填
 display_name=<text>                  可选
 ```
 
+远程图片转存使用 JSON，不与 multipart 混用：
+
+```json
+{
+  "source_url": "https://cdn.example.com/architecture.png",
+  "mode": "description_draft",
+  "display_name": "架构图.png"
+}
+```
+
+- `mode` 首期固定为 `description_draft`；普通附件区不提供任意 URL 下载器。
+- endpoint 只接受最终内容为允许内联的图片，不把 HTML、PDF 或未知文件作为远程附件导入。
+- `display_name` 可省略；服务端依次使用安全的 `Content-Disposition` filename、URL path basename、`remote-image.{detected-ext}`。
+- 同一请求不按 URL 做全局去重；前端只在单次粘贴内复用重复 URL，避免不同任务意外共享附件权限或生命周期。
+
 `PATCH` 首期只接受：
 
 ```json
@@ -525,7 +581,7 @@ display_name=<text>                  可选
 
 列表默认只返回 active；`include_drafts=true` 只返回当前 actor 自己的 draft，供编辑器恢复/清理，不允许查看其他 actor 的 draft。
 
-上传、PATCH、DELETE 要求 `task:write`，并遵守 project allowlist、workspace allowlist、membership role 和 closed project 不可写规则。列表、metadata 和 content 要求 `task:read`。
+上传、远程转存、PATCH、DELETE 要求 `task:write`，并遵守 project allowlist、workspace allowlist、membership role 和 closed project 不可写规则。远程转存被配置关闭时返回稳定错误，不退化为浏览器直连。列表、metadata 和 content 要求 `task:read`。
 
 ### 13.2 引用建议
 
@@ -608,7 +664,9 @@ a
 
 只允许链接的 `href/title`、表格必要的 `colspan/rowspan` 和内部节点的受控 `data-xuanchu-*` 属性。删除 `style`、`class`、`id`、所有 `on*` 属性、iframe/object/embed/form/input/video/audio 和未知元素。
 
-清洗前先单独提取 `<img>`：远程 `<img src=http(s)>` 被移除并保留 alt 文本；`data:image/*` 先解码成 File，再走正常上传校验。随后 DOMPurify allowlist 不再保留任何 `img`，确保 data URL、blob URL 和远程 URL 都不能绕过附件上传进入持久化内容。
+清洗前先按 DOM 顺序提取 `<img>`：实际 clipboard File 与 data image 进入普通上传，公网 `http(s)` URL 进入服务端 `import-url`。候选 URL 优先级为 `src`、`data-src`/`data-original`、`srcset` 中最高分辨率项；每个图片位置先替换为本地异步占位，成功后变成 `XuanchuAttachment`，失败后保留重试/移除/转普通外链动作。随后 DOMPurify allowlist 不再保留任何原始 `img`，确保 data URL、blob URL 和远程 URL 都不能绕过附件流程进入持久化内容。
+
+远程 URL 规范化只用于单次粘贴去重：scheme/host 小写、移除 fragment、保留 path/query，不能删除 query 后合并不同签名图片。前端远程转存并发固定为 3，组件卸载或取消编辑时使用 AbortController 取消未完成请求。
 
 ### 15.2 Tiptap 节点
 
@@ -738,6 +796,9 @@ mentioned_users
 | `content_reference_query_invalid` | 400 | suggest/resolve 参数非法 |
 | `attachment_not_found` | 404 | 附件不存在或不在当前授权范围 |
 | `attachment_upload_incomplete` | 400 | multipart 缺文件、提前中断或声明大小不一致 |
+| `attachment_remote_fetch_disabled` | 403 | 运维配置关闭远程图片转存 |
+| `attachment_remote_url_invalid` | 422 | URL scheme/host/redirect 或 SSRF 校验失败 |
+| `attachment_remote_fetch_failed` | 502 | 公网目标超时、返回非 2xx 或响应读取失败 |
 | `attachment_too_large` | 413 | 单文件超过限制 |
 | `attachment_type_not_allowed` | 415 | 文件类型、扩展名或 magic 不允许 |
 | `attachment_image_invalid` | 422 | 图片无法解码或像素尺寸超限 |
@@ -760,7 +821,7 @@ task.attachment.rename
 task.attachment.remove
 ```
 
-payload 记录 attachment ID、task UUID、display name、media type、size、SHA-256 和 actor，不记录 storage key、S3 endpoint、凭证或文件内容。
+payload 记录 attachment ID、task UUID、display name、media type、size、SHA-256、source type、远程 source host 和 actor，不记录完整 source URL、storage key、S3 endpoint、凭证或文件内容。
 
 description 的内部 URI 继续进入现有 `task.modify` before/after。任务历史渲染器识别附件/引用节点：
 
@@ -771,6 +832,7 @@ description 的内部 URI 继续进入现有 `task.modify` before/after。任务
 结构化指标/日志：
 
 - 上传成功/失败次数、字节数、耗时、backend、media type。
+- 远程抓取成功/失败次数、响应耗时、redirect 次数、拒绝原因和 source host；不记录 query、fragment 或完整 URL。
 - 下载成功/失败次数、字节数、耗时、backend。
 - janitor 扫描、删除、重试和孤儿数量。
 - mention 事件数量、每事件 recipient 数量、空 audience 数量。
@@ -813,9 +875,9 @@ dompurify
 
 本文必须拆成四份 implementation plan，每份都产生可独立测试和审阅的交付物：
 
-1. **附件基础与存储后端**：metadata migration、BlobStore、filesystem、S3、配置、上传/下载 API、janitor、权限和配额。
+1. **附件基础与存储后端**：metadata migration、BlobStore、filesystem、S3、safe remote fetch、配置、上传/下载/远程转存 API、janitor、权限和配额。
 2. **通用附件跨入口**：附件面板、CLI/Remote、MCP metadata tools、审计、历史渲染和文档。
-3. **富文本粘贴与图片节点**：DOMPurify、paste pipeline、Tiptap attachment extension、draft binding、authenticated blob rendering、smoke coverage。
+3. **富文本粘贴与图片节点**：DOMPurify、远程图片识别/转存/失败占位、paste pipeline、Tiptap attachment extension、draft binding、authenticated blob rendering、smoke coverage。
 4. **用户/任务引用与 mention 事件**：Goldmark parser、suggest/resolve、Tiptap reference extension、`task.user_mentioned`、Notification audience、Hook/automation。
 
 依赖顺序为 1 → 2/3，4 可在 1 完成后与 2/3 独立实施。每份 plan 内继续按 TDD 小步提交，最终由一轮全量回归统一验收。
@@ -833,18 +895,20 @@ dompurify
 - 当前 description 引用阻止附件删除。
 - closed project、viewer、scope 缺失、tenant/admin acting 权限矩阵。
 - 并发上传的 task/workspace quota 最终提交不越限。
+- 远程抓取与普通上传进入同一 state/quota/validation 路径，不产生旁路 active attachment。
 
 ### 23.2 Storage/BlobStore
 
 - SQLite 和 PostgreSQL migration、索引、状态查询、配额统计。
 - filesystem 原子写、权限、路径分片、失败清理、stream read/delete。
 - S3 使用 fake HTTP S3 或 MinIO opt-in 覆盖 Put/Get/Delete、path-style、SSE header 和错误映射；测试不访问真实公网。
+- safe fetch 覆盖公网成功、所有私网/loopback/link-local/CGNAT/保留地址、混合 DNS 结果、DNS rebinding、redirect 每跳重验、HTTPS 降级、超时、超长 body、错误 MIME 和图片像素炸弹。
 - backend 切换后按 row backend 读取历史对象。
 - janitor 只删除过期记录，blob 删除失败会重试且 metadata 不丢失。
 
 ### 23.3 HTTP/CLI/MCP
 
-- multipart 上传、提前断流、超限、MIME 冲突、图片炸弹、配额和错误码。
+- multipart 上传、远程 URL 转存、提前断流、超限、MIME 冲突、图片炸弹、配额和错误码。
 - content 鉴权、nosniff、Content-Disposition、ETag、不可枚举 403/404 边界。
 - suggestion 的 user/task 权限与排序、resolve 的 user/task/attachment 批量权限、limit 和 unavailable 降级。
 - CLI local/remote 上传下载字节一致，stdout/stderr 分离，`--json` 不混入进度。
@@ -853,8 +917,9 @@ dompurify
 
 ### 23.4 Web
 
-- 富文本粘贴保留白名单结构，删除 style/script/iframe/remote image。
+- 富文本粘贴保留白名单结构，删除 style/script/iframe；公网 remote image 成功转存，私网/认证/失败图片进入明确失败占位。
 - data image 和 clipboard File 走上传，不持久化 data/blob URL。
+- 同次粘贴重复 URL 只抓取一次；redirect、取消、重试、移除和明确保留普通外链行为可验证。
 - 图片上传成功/失败/重试/取消和 draft 清理。
 - PAT、acting token、OIDC cookie 三种模式均通过 authenticated fetch 加载图片。
 - object URL 正确 revoke，请求按 attachment ID/SHA 去重。
@@ -869,6 +934,8 @@ dompurify
 
 - 从 Word/飞书文档粘贴包含标题、列表、表格和链接的内容，保存后数据库仍是 Markdown，刷新后结构一致。
 - 粘贴截图、拖入图片和文件选择都能上传；图片刷新后仍可显示，普通文件可下载且字节一致。
+- 粘贴带公网 `<img src="https://...">` 的 HTML 会把图片抓取并转存为 draft attachment，保存后 Markdown 只含 `ref://attachment/{id}`；远程源失效后已保存图片仍可显示。
+- localhost、私网、link-local、认证图片和超限响应不会被服务端抓取；失败占位不会静默丢图，也不会把远程图片 URL 当成持久 `<img>`。
 - PAT、OIDC browser session、admin acting 三种 Console 身份都能按既有权限显示图片。
 - 任务附件可独立上传、重命名、下载、移除；description 正在引用时不能移除。
 - filesystem 默认配置零额外基础设施可用；S3 配置可在 private bucket/MinIO 上完成同样操作。
@@ -904,6 +971,7 @@ S3 opt-in 验收另使用本地 MinIO 或 CI service container，不依赖共享
 - CLI manual：attachment 命令、remote upload/download。
 - MCP skills：四个 `task_attachment_*` tool 和 mention 事件说明。
 - 部署文档：本地附件目录备份、容器 volume、S3/MinIO 配置和 AWS credential chain。
+- 安全文档：远程图片 egress 开关、SSRF 禁止网段、redirect/timeout/并发限制和失败降级。
 
 ## 26. 已确认决策
 
