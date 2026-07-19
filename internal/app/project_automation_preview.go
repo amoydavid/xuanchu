@@ -304,6 +304,13 @@ func (s *Service) buildAutomationTemplateVars(project ProjectView, ruleID string
 		if added, ok := event.Data["added_assignees"]; ok {
 			vars["added_assignees"] = automationJSONIndented(added)
 		}
+		// mentioned_users / current_mentioned_users：spec §16.3 自动化上下文 include。
+		if mentioned, ok := event.Data["mentioned_users"]; ok {
+			vars["mentioned_users"] = automationJSONIndented(mentioned)
+		}
+		if current, ok := event.Data["current_mentioned_users"]; ok {
+			vars["current_mentioned_users"] = automationJSONIndented(current)
+		}
 	}
 	return vars, nil
 }
@@ -408,6 +415,16 @@ func (s *Service) buildProjectAutomationContext(project ProjectView, ruleID stri
 		if include["added_assignees"] {
 			if added, ok := event.Data["added_assignees"]; ok {
 				ctx["added_assignees"] = added
+			}
+		}
+		if include["mentioned_users"] {
+			if mentioned, ok := event.Data["mentioned_users"]; ok {
+				ctx["mentioned_users"] = mentioned
+			}
+		}
+		if include["current_mentioned_users"] {
+			if current, ok := event.Data["current_mentioned_users"]; ok {
+				ctx["current_mentioned_users"] = current
 			}
 		}
 	}

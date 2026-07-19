@@ -36,6 +36,8 @@ var automationTemplateVarSpecs = []automationTemplateVarSpec{
 	{Name: "task.title", Description: "任务标题", Triggers: []string{"event"}},
 	{Name: "task.status", Description: "任务状态", Triggers: []string{"event"}},
 	{Name: "added_assignees", Description: "新增负责人 JSON 数组（task.assigned）", Triggers: []string{"event"}},
+	{Name: "mentioned_users", Description: "新增提及用户完整 JSON 数组（task.user_mentioned）", Triggers: []string{"event"}},
+	{Name: "current_mentioned_users", Description: "当前正文涉及用户完整 JSON 数组（task.user_mentioned）", Triggers: []string{"event"}},
 }
 
 // AutomationTemplateVarView 是对外暴露的单个变量信息。
