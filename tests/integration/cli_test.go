@@ -141,6 +141,73 @@ func TestCLITaskSlugTargets(t *testing.T) {
 	run(t, bin, "--db", db, "api-1", "done")
 }
 
+// TestCLICrossProtocolURLConsistency 验证本地 CLI --json 和 HTTP API 对同一 task
+// 返回完全相同的绝对 URL（absolute-resource-url 计划 Task 4）。
+func TestCLICrossProtocolURLConsistency(t *testing.T) {
+	t.Setenv("XUANCHU_PUBLIC_BASE_URL", integrationResourceBaseURL)
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+
+	run(t, bin, "--db", db, "project", "add", "API", "name:API")
+	run(t, bin, "--db", db, "add", "Cross URL task", "project:api", "+next")
+	wantURL := integrationResourceBaseURL + "/workspaces/local/projects/api/tasks/api-1"
+
+	// 本地 CLI --json info
+	cliJSON := run(t, bin, "--db", db, "--json", "info", "api-1")
+	var cliPayload map[string]any
+	if err := json.Unmarshal([]byte(cliJSON), &cliPayload); err != nil {
+		t.Fatalf("CLI JSON parse: %v output=%q", err, cliJSON)
+	}
+	cliURL, _ := cliPayload["url"].(string)
+	if cliURL != wantURL {
+		t.Fatalf("CLI URL = %q, want %q", cliURL, wantURL)
+	}
+
+	// HTTP API 通过 server 子进程返回同一 URL。
+	srvPort := getFreeIntegrationPort(t)
+	srvProc := exec.Command(bin, "--db", db, "server", "--listen", "127.0.0.1:"+strconv.Itoa(srvPort))
+	srvProc.Stdout = io.Discard
+	srvProc.Stderr = io.Discard
+	if err := srvProc.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	defer func() { _ = srvProc.Process.Kill() }()
+	waitForHTTPServerSimple(t, fmt.Sprintf("http://127.0.0.1:%d/healthz", srvPort))
+
+	// 创建 token。
+	tokenOut := run(t, bin, "--db", db, "--json", "--workspace", "local", "token", "create", "cross-url", "--scope", "task:read")
+	var tokenCreated map[string]any
+	if err := json.Unmarshal([]byte(tokenOut), &tokenCreated); err != nil {
+		t.Fatalf("token create parse: %v output=%q", err, tokenOut)
+	}
+	tokenStr, _ := tokenCreated["token"].(string)
+	if tokenStr == "" {
+		t.Fatalf("token missing in %s", tokenOut)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/api/v1/tasks/api-1?workspace=local", srvPort), nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var httpPayload struct {
+		Data struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&httpPayload); err != nil {
+		t.Fatal(err)
+	}
+	if httpPayload.Data.URL != wantURL {
+		t.Fatalf("HTTP URL = %q, want %q", httpPayload.Data.URL, wantURL)
+	}
+	if httpPayload.Data.URL != cliURL {
+		t.Fatalf("URL mismatch: CLI=%q HTTP=%q", cliURL, httpPayload.Data.URL)
+	}
+}
+
 func TestCLIAddWithAssignees(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
@@ -3188,4 +3255,33 @@ func TestCLIDescriptionReferenceStaysMarkdown(t *testing.T) {
 	if !strings.Contains(jsonOut, "ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001") {
 		t.Fatalf("JSON output missing ref://user URI: %s", jsonOut)
 	}
+}
+
+// getFreeIntegrationPort 返回一个空闲 TCP 端口（用于集成测试启动 server 子进程）。
+func getFreeIntegrationPort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+// waitForHTTPServerSimple 等待 HTTP server 健康检查通过（简单版本，不需要 stderr/cmd）。
+func waitForHTTPServerSimple(t *testing.T, url string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("server did not become healthy at %s", url)
 }
