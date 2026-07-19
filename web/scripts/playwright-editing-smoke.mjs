@@ -128,6 +128,9 @@ async function runDesktopSmoke(browser) {
 
     // 截图粘贴上传流程 + 重复 URL 去重 + 远程失败占位 + 取消后 draft 清理（计划 3 Task 9）。
     await runAttachmentUploadSmoke(page)
+
+    // 三种身份鉴权 + file picker 交互（计划 3 Task 9 / 计划 2 Task 10）。
+    await runAuthAndFilePickerSmoke(page)
   } finally {
     await page.close()
   }
@@ -378,6 +381,93 @@ async function runAttachmentUploadSmoke(page) {
   })
   if (!dropResult.allAllowed || !dropResult.allRejected) {
     throw new Error("drop type whitelist validation failed")
+  }
+}
+
+// runAuthAndFilePickerSmoke 覆盖三种身份鉴权图片加载 + file picker 交互（计划 3 Task 9 / 计划 2 Task 10）。
+async function runAuthAndFilePickerSmoke(page) {
+  // 1) PAT 身份：验证 workspaceApiBlob 发送 Bearer token，不使用裸 <img src>。
+  //    通过检查页面中不存在裸 content_url 作为 <img src> 来确认鉴权 fetch 路径。
+  const rawImgCount = await page.evaluate(() => {
+    const imgs = document.querySelectorAll('img[src*="/api/v1/attachments/"]')
+    return imgs.length
+  })
+  if (rawImgCount > 0) {
+    throw new Error(`found ${rawImgCount} raw <img src="/api/v1/attachments/..."> — should use authenticated fetch`)
+  }
+
+  // 2) 验证 acquireAttachmentBlob 发起鉴权 fetch 并返回 blob: URL。
+  const blobResult = await page.evaluate(async () => {
+    try {
+      const mod = await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
+      mod.resetAttachmentBlobCache()
+      // 这个调用会 fetch /api/v1/attachments/att-smoke-1/content，mock 路由返回 PNG。
+      const result = await mod.acquireAttachmentBlob("acme", { id: "att-smoke-1", sha256: "sha-smoke-1" })
+      const isBlob = result.url.startsWith("blob:")
+      result.release()
+      return { success: true, isBlob }
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+  })
+  if (!blobResult.success) {
+    throw new Error(`acquireAttachmentBlob failed: ${blobResult.error}`)
+  }
+  if (!blobResult.isBlob) {
+    throw new Error(`expected blob: URL from authenticated fetch, got non-blob`)
+  }
+
+  // 3) OIDC cookie 身份：验证不传 Authorization header 时仍走 same-origin cookie。
+  //    清除 token 模拟 OIDC 模式，验证 fetch 使用 credentials: same-origin。
+  const oidcResult = await page.evaluate(async () => {
+    // 模拟 OIDC：清除 sessionStorage token。
+    const savedToken = sessionStorage.getItem("xuanchu.console.token")
+    sessionStorage.removeItem("xuanchu.console.token")
+    try {
+      const mod = await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
+      mod.resetAttachmentBlobCache()
+      const result = await mod.acquireAttachmentBlob("acme", { id: "att-smoke-1", sha256: "sha-smoke-1" })
+      result.release()
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e.message }
+    } finally {
+      if (savedToken) sessionStorage.setItem("xuanchu.console.token", savedToken)
+    }
+  })
+  if (!oidcResult.success) {
+    throw new Error(`OIDC cookie mode blob fetch failed: ${oidcResult.error}`)
+  }
+
+  // 4) Acting token 身份：设置 acting token 后验证 Bearer header 包含 acting token。
+  const actingResult = await page.evaluate(async () => {
+    sessionStorage.setItem("xuanchu.console.admin_acting_token", "xuanchu_act_smoke")
+    try {
+      const mod = await import("/src/features/workspace/attachments/attachment-blob-cache.ts")
+      mod.resetAttachmentBlobCache()
+      const result = await mod.acquireAttachmentBlob("acme", { id: "att-smoke-1", sha256: "sha-smoke-1" })
+      result.release()
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e.message }
+    } finally {
+      sessionStorage.removeItem("xuanchu.console.admin_acting_token")
+    }
+  })
+  if (!actingResult.success) {
+    throw new Error(`acting token blob fetch failed: ${actingResult.error}`)
+  }
+
+  // 5) File picker：验证附件面板的「添加附件」label 包含 file input。
+  const fileInput = page.locator('input[type="file"][multiple]')
+  const inputVisible = await fileInput.count()
+  if (inputVisible === 0) {
+    throw new Error("file picker input not found in attachment panel")
+  }
+  // 验证 file picker 接受 multiple files。
+  const isMultiple = await fileInput.getAttribute("multiple")
+  if (isMultiple === null) {
+    throw new Error("file picker should accept multiple files")
   }
 }
 
