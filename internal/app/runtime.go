@@ -62,6 +62,7 @@ func (rt RuntimeContext) CredentialIsBrowserSession() bool {
 type ServiceOptions struct {
 	Store                 *storage.Store
 	Clock                 Clock
+	ResourceBaseURL       string
 	NoContext             bool
 	DisableScopeBootstrap bool
 	RuntimeConfig         map[string]string

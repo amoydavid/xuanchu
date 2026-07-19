@@ -124,6 +124,7 @@ func newServerCommand(opts Options) *cobra.Command {
 
 			handler := httpapi.NewServer(httpapi.Options{
 				Store:                store,
+				ResourceBaseURL:      cfg.ResourceBaseURL(),
 				Stderr:               cmd.ErrOrStderr(),
 				Logger:               logger,
 				Admin:                cfg.ServerAdmin,

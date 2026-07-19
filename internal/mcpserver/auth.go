@@ -22,8 +22,9 @@ type RequestScopeInput struct {
 
 // RuntimeFactory 为 MCP server 提供 scoped app.Service 构造能力。
 type RuntimeFactory struct {
-	Store *storage.Store
-	Clock app.Clock
+	Store           *storage.Store
+	Clock           app.Clock
+	ResourceBaseURL string
 }
 
 // ServiceForStdio 为 stdio 模式构造 scoped service。
@@ -33,9 +34,10 @@ func (f RuntimeFactory) ServiceForStdio(ctx context.Context, input RequestScopeI
 		return nil, fmt.Errorf("mcp store not configured")
 	}
 	svc, err := app.NewService(app.ServiceOptions{
-		Store:        f.Store,
-		Clock:        f.Clock,
-		WorkspaceRef: strings.TrimSpace(input.Workspace),
+		Store:           f.Store,
+		Clock:           f.Clock,
+		ResourceBaseURL: f.ResourceBaseURL,
+		WorkspaceRef:    strings.TrimSpace(input.Workspace),
 	})
 	if err != nil {
 		return nil, err
@@ -114,10 +116,11 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		return nil, err
 	}
 	scoped, err := app.NewService(app.ServiceOptions{
-		Store:        f.Store,
-		Clock:        f.Clock,
-		Runtime:      &authorized.Runtime,
-		RequestScope: &authorized.Decision.RequestScope,
+		Store:           f.Store,
+		Clock:           f.Clock,
+		ResourceBaseURL: f.ResourceBaseURL,
+		Runtime:         &authorized.Runtime,
+		RequestScope:    &authorized.Decision.RequestScope,
 	})
 	if err != nil {
 		return nil, err

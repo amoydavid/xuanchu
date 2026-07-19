@@ -201,6 +201,81 @@ func TestResolveConsoleConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestResolvePublicBaseURLFromTomlAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"[server]",
+		`public_base_url = "https://toml.example.com/"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{ConfigPath: path, HomeDir: dir, Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.PublicBaseURL != "https://toml.example.com" {
+		t.Fatalf("PublicBaseURL = %q", cfg.PublicBaseURL)
+	}
+
+	cfg, err = Resolve(Options{
+		ConfigPath: path,
+		HomeDir:    dir,
+		Env:        map[string]string{"XUANCHU_PUBLIC_BASE_URL": "https://env.example.com/"},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() with env error = %v", err)
+	}
+	if cfg.PublicBaseURL != "https://env.example.com" {
+		t.Fatalf("PublicBaseURL = %q, want env override", cfg.PublicBaseURL)
+	}
+}
+
+func TestResolvePublicBaseURLRejectsInvalidValues(t *testing.T) {
+	for _, value := range []string{
+		"ftp://xuanchu.example.com",
+		"xuanchu.example.com",
+		"https://user@xuanchu.example.com",
+		"https://xuanchu.example.com/console",
+		"https://xuanchu.example.com?from=test",
+		"https://xuanchu.example.com#fragment",
+	} {
+		t.Run(value, func(t *testing.T) {
+			_, err := Resolve(Options{
+				HomeDir: "/home/alice",
+				Env:     map[string]string{"XUANCHU_PUBLIC_BASE_URL": value},
+			})
+			if err == nil {
+				t.Fatal("Resolve() error = nil")
+			}
+			if !strings.Contains(err.Error(), "server.public_base_url") {
+				t.Fatalf("error = %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestConfigResourceBaseURL(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{name: "unset", cfg: Config{Console: ConsoleConfig{BasePath: "/"}}, want: ""},
+		{name: "root", cfg: Config{PublicBaseURL: "https://xuanchu.example.com", Console: ConsoleConfig{BasePath: "/"}}, want: "https://xuanchu.example.com"},
+		{name: "mounted", cfg: Config{PublicBaseURL: "https://xuanchu.example.com", Console: ConsoleConfig{BasePath: "/admin"}}, want: "https://xuanchu.example.com/admin"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.ResourceBaseURL(); got != tt.want {
+				t.Fatalf("ResourceBaseURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveConsoleConfigReadsTomlAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "xuanchu.toml")

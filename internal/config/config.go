@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 type Config struct {
 	DatabasePath           string
 	DatabaseURL            string
+	PublicBaseURL          string
 	RemoteServer           string
 	RemoteToken            string
 	JSON                   bool
@@ -28,6 +30,18 @@ type Config struct {
 	HookDispatcher         DispatcherConfig
 	Shutdown               ShutdownConfig
 	SecretKey              string
+}
+
+// ResourceBaseURL 返回 Web Console 资源 URL 的统一前缀。
+// public base 未配置时返回空字符串，调用方不得退化为相对 URL。
+func (c Config) ResourceBaseURL() string {
+	if c.PublicBaseURL == "" {
+		return ""
+	}
+	if c.Console.BasePath == "/" || c.Console.BasePath == "" {
+		return c.PublicBaseURL
+	}
+	return c.PublicBaseURL + c.Console.BasePath
 }
 
 func (c Config) DatabaseTarget() string {
@@ -200,6 +214,17 @@ func Resolve(opts Options) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	publicBaseURL := ""
+	if tomlValues != nil {
+		publicBaseURL = tomlValues["server.public_base_url"]
+	}
+	if value := env["XUANCHU_PUBLIC_BASE_URL"]; value != "" {
+		publicBaseURL = value
+	}
+	publicBaseURL, err = ValidatePublicBaseURL(publicBaseURL)
+	if err != nil {
+		return Config{}, err
+	}
 	shutdownCfg, err := parseShutdownConfig(tomlValues)
 	if err != nil {
 		return Config{}, err
@@ -213,6 +238,7 @@ func Resolve(opts Options) (Config, error) {
 	return Config{
 		DatabasePath:           dbPath,
 		DatabaseURL:            dbURL,
+		PublicBaseURL:          publicBaseURL,
 		RemoteServer:           server,
 		RemoteToken:            token,
 		JSON:                   opts.JSON,
@@ -226,6 +252,26 @@ func Resolve(opts Options) (Config, error) {
 		Shutdown:               shutdownCfg,
 		SecretKey:              secretKey,
 	}, nil
+}
+
+// ValidatePublicBaseURL 校验并规范化 Web Console 对外 origin。
+// 这里只接受 origin；Console 部署前缀由 server.console.base_path 单独负责。
+func ValidatePublicBaseURL(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("server.public_base_url must be an absolute http(s) origin")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("server.public_base_url must use http or https")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", fmt.Errorf("server.public_base_url must not contain userinfo, path, query, or fragment")
+	}
+	return strings.TrimSuffix(value, "/"), nil
 }
 
 func environ() map[string]string {

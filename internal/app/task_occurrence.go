@@ -152,7 +152,7 @@ func ParseOccurrenceRef(ref string) (seriesID string, recurrenceAt int64, err er
 
 // taskToView 把普通或已物化 task.Task 映射为 TaskOccurrenceView。
 // occurrence 的 ID 固定为 occurrence_ref（即使已物化）。
-func taskToView(workspaceSlug string, tsk domain.Task, assignees []domain.UserInfo) TaskOccurrenceView {
+func taskToView(resourceBaseURL, workspaceSlug string, tsk domain.Task, assignees []domain.UserInfo) TaskOccurrenceView {
 	view := TaskOccurrenceView{
 		ID:          tsk.UUID,
 		UUID:        &tsk.UUID,
@@ -188,9 +188,9 @@ func taskToView(workspaceSlug string, tsk domain.Task, assignees []domain.UserIn
 	if tsk.Project != nil && tsk.ProjectSeq != nil {
 		slug := fmt.Sprintf("%s-%d", *tsk.Project, *tsk.ProjectSeq)
 		view.TaskSlug = &slug
-		view.URL = ProjectTaskURL(workspaceSlug, *tsk.Project, slug)
+		view.URL = ProjectTaskURL(resourceBaseURL, workspaceSlug, *tsk.Project, slug)
 	} else {
-		view.URL = StandaloneTaskURL(tsk.UUID)
+		view.URL = StandaloneTaskURL(resourceBaseURL, tsk.UUID)
 	}
 	// occurrence：ID 用 occurrence_ref，附加 RecurrenceInfo。
 	if tsk.SeriesID != nil && tsk.RecurrenceAt != nil && tsk.RecurrenceRuleSnapshot != nil {
@@ -236,11 +236,11 @@ func (s *Service) createdTaskView(created domain.Task) (TaskOccurrenceView, erro
 
 // projectedOccurrenceView 从 series 共享字段构造 projected occurrence view（spec §7.8）。
 // 不写库、不分配 UUID/project_seq。
-func projectedOccurrenceView(workspaceSlug string, series taskseries.Series, slot taskseries.Slot, assignees []domain.UserInfo) TaskOccurrenceView {
+func projectedOccurrenceView(resourceBaseURL, workspaceSlug string, series taskseries.Series, slot taskseries.Slot, assignees []domain.UserInfo) TaskOccurrenceView {
 	ref := OccurrenceRef(series.ID, slot.RecurrenceAt)
 	projectSlug := series.ProjectSlug
 	view := TaskOccurrenceView{
-		URL:         ProjectTaskURL(workspaceSlug, projectSlug, ref),
+		URL:         ProjectTaskURL(resourceBaseURL, workspaceSlug, projectSlug, ref),
 		ID:          ref,
 		WorkspaceID: series.WorkspaceID,
 		ProjectID:   &series.ProjectID,
@@ -485,13 +485,13 @@ func (s *Service) collectTaskViewCandidates(q TaskViewQuery, mode OccurrenceMode
 	result := make([]TaskOccurrenceView, 0, len(ordinaryTasks)+len(occurrenceTasks))
 	// 2. 普通任务（非 occurrence）。
 	for _, t := range ordinaryTasks {
-		result = append(result, taskToView(s.runtime.WorkspaceSlug, t, userInfoList(t.Assignees, userInfos)))
+		result = append(result, taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, t, userInfoList(t.Assignees, userInfos)))
 	}
 
 	if mode != OccurrenceModeExpand {
 		// materialized 模式：加入已物化 occurrence，不投影。
 		for _, t := range occurrenceTasks {
-			result = append(result, taskToView(s.runtime.WorkspaceSlug, t, userInfoList(t.Assignees, userInfos)))
+			result = append(result, taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, t, userInfoList(t.Assignees, userInfos)))
 		}
 		return result, nil
 	}
@@ -521,7 +521,7 @@ func (s *Service) collectTaskViewCandidates(q TaskViewQuery, mode OccurrenceMode
 			if !slotInRangeForSeriesStatus(se, slot.RecurrenceAt) {
 				continue
 			}
-			slotMap[slot.RecurrenceAt] = projectedOccurrenceView(s.runtime.WorkspaceSlug, se, slot, seriesAssignees)
+			slotMap[slot.RecurrenceAt] = projectedOccurrenceView(s.resourceBaseURL, s.runtime.WorkspaceSlug, se, slot, seriesAssignees)
 		}
 	}
 
@@ -535,7 +535,7 @@ func (s *Service) collectTaskViewCandidates(q TaskViewQuery, mode OccurrenceMode
 		slot := *t.RecurrenceAt
 		// 只处理属于当前 series candidates 的 occurrence（防御跨 series 污染）。
 		slotMap := projectedByID[seriesID]
-		view := taskToView(s.runtime.WorkspaceSlug, t, userInfoList(t.Assignees, userInfos))
+		view := taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, t, userInfoList(t.Assignees, userInfos))
 		// 补充 series_status（materialized 行不含 series 当前状态）。
 		if se := findSeries(seriesList, seriesID); se != nil && view.RecurrenceInfo != nil {
 			view.RecurrenceInfo.SeriesTitle = se.Title
@@ -600,7 +600,7 @@ func (s *Service) getOccurrenceView(ref string) (TaskOccurrenceView, error) {
 		if rerr != nil {
 			return TaskOccurrenceView{}, rerr
 		}
-		view := taskToView(s.runtime.WorkspaceSlug, occ, userInfoList(occ.Assignees, userInfos))
+		view := taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, occ, userInfoList(occ.Assignees, userInfos))
 		// 补充 series status。
 		se, _ := s.taskSeriesRepo.Get(s.workspaceID, seriesID)
 		if se.ID != "" && view.RecurrenceInfo != nil {
@@ -630,7 +630,7 @@ func (s *Service) getOccurrenceView(ref string) (TaskOccurrenceView, error) {
 	if err != nil {
 		return TaskOccurrenceView{}, err
 	}
-	return projectedOccurrenceView(s.runtime.WorkspaceSlug, series, slots[0], seriesUserInfoList(series, userInfos)), nil
+	return projectedOccurrenceView(s.resourceBaseURL, s.runtime.WorkspaceSlug, series, slots[0], seriesUserInfoList(series, userInfos)), nil
 }
 
 // --- merge 辅助 ---
@@ -1102,7 +1102,7 @@ func (s *Service) WithTaskForWrite(ref string, action func(*Service, domain.Task
 		if uerr != nil {
 			return uerr
 		}
-		resultView = taskToView(txSvc.runtime.WorkspaceSlug, finalTask, userInfoList(finalTask.Assignees, userInfos))
+		resultView = taskToView(txSvc.resourceBaseURL, txSvc.runtime.WorkspaceSlug, finalTask, userInfoList(finalTask.Assignees, userInfos))
 		return nil
 	})
 	if err != nil {
@@ -1165,7 +1165,7 @@ func (s *Service) WithExistingTaskForSubresourceWrite(ref string, action func(*S
 		if uerr != nil {
 			return uerr
 		}
-		resultView = taskToView(txSvc.runtime.WorkspaceSlug, finalTask, userInfoList(finalTask.Assignees, userInfos))
+		resultView = taskToView(txSvc.resourceBaseURL, txSvc.runtime.WorkspaceSlug, finalTask, userInfoList(finalTask.Assignees, userInfos))
 		return nil
 	})
 	if err != nil {

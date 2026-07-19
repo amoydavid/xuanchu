@@ -11,13 +11,13 @@ import (
 )
 
 func TestMCPResourceMappersKeepURL(t *testing.T) {
-	projectURL := "/workspaces/local/projects/ops"
+	projectURL := "https://xuanchu.example.com/workspaces/local/projects/ops"
 	project := projectViewFromApp(app.ProjectView{URL: projectURL})
 	if project.URL != projectURL {
 		t.Fatalf("project URL = %q", project.URL)
 	}
 
-	seriesURL := "/workspaces/local/projects/ops/series/ops-s-1"
+	seriesURL := "https://xuanchu.example.com/workspaces/local/projects/ops/series/ops-s-1"
 	series := seriesViewToMCPJSON(app.TaskSeriesView{
 		Series: taskseries.Series{ID: "series-1"},
 		URL:    seriesURL,
@@ -26,10 +26,24 @@ func TestMCPResourceMappersKeepURL(t *testing.T) {
 		t.Fatalf("series URL = %#v", series["url"])
 	}
 
-	taskURL := "/workspaces/local/projects/ops/tasks/ops-1"
+	taskURL := "https://xuanchu.example.com/workspaces/local/projects/ops/tasks/ops-1"
 	task := occurrenceViewToMCPJSON(app.TaskOccurrenceView{ID: "task-1", URL: taskURL})
 	if task["url"] != taskURL {
 		t.Fatalf("task URL = %#v", task["url"])
+	}
+}
+
+func TestMCPResourceURLIsEmptyWithoutPublicBaseURL(t *testing.T) {
+	srv, _ := newTestServerWithOptions(t, Options{})
+	session := connectClient(t, srv)
+	created := callTool(t, session, "project_add", map[string]any{"slug": "emptyurl", "name": "Empty URL"})
+	if created.IsError {
+		t.Fatalf("project_add error: %v", parseError(t, created))
+	}
+	data := parseEnvelope(t, created).Data.(map[string]any)
+	project := data["project"].(map[string]any)
+	if project["url"] != "" {
+		t.Fatalf("url = %#v, want empty", project["url"])
 	}
 }
 
@@ -90,7 +104,7 @@ func TestMCPTaskSeriesAddAndGet(t *testing.T) {
 	if series["title"] != "每日巡检" || series["status"] != "active" {
 		t.Fatalf("series = %#v", series)
 	}
-	if series["url"] != "/workspaces/local/projects/ops/series/ops-s-1" {
+	if series["url"] != mcpTestResourceBaseURL+"/workspaces/local/projects/ops/series/ops-s-1" {
 		t.Fatalf("series URL = %#v", series["url"])
 	}
 	var textEnvelope ToolEnvelope

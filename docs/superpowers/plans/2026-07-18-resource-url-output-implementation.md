@@ -1,5 +1,7 @@
 # 资源 URL 统一输出 Implementation Plan
 
+> **2026-07-19 更新：** 本计划记录最初相对路径实现；当前绝对 URL 与空配置契约由 `2026-07-19-absolute-resource-url-output-implementation.md` 接续并取代 URL 形态相关步骤。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让项目、任务、projected/materialized occurrence 和循环系列经 HTTP、MCP、CLI local、CLI remote 返回一致、可打开的 Web Console 相对 URL。

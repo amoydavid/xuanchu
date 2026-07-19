@@ -10,7 +10,7 @@ func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 	raw := `{
 		"id":"u1",
 		"uuid":"u1",
-		"url":"/workspaces/local/projects/api/tasks/api-12",
+		"url":"https://xuanchu.example.com/workspaces/local/projects/api/tasks/api-12",
 		"title":"remote",
 		"status":"pending",
 		"entry":1,
@@ -28,7 +28,7 @@ func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 	if dto.Project == nil || *dto.Project != "api" {
 		t.Fatalf("Project = %#v, want api", dto.Project)
 	}
-	if dto.URL != "/workspaces/local/projects/api/tasks/api-12" {
+	if dto.URL != "https://xuanchu.example.com/workspaces/local/projects/api/tasks/api-12" {
 		t.Fatalf("URL = %q", dto.URL)
 	}
 }

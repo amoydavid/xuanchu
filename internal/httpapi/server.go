@@ -18,15 +18,16 @@ const defaultBodyLimitBytes int64 = 10 << 20
 const defaultAdminSetupTTL = 30 * time.Minute
 
 type Options struct {
-	Store          *storage.Store
-	Clock          app.Clock
-	Stderr         io.Writer
-	BodyLimitBytes int64
-	TestPanicRoute bool
-	Logger         *logging.Logger
-	Admin          config.AdminConfig
-	AdminSetup     AdminSetupOptions
-	Console        config.ConsoleConfig
+	Store           *storage.Store
+	Clock           app.Clock
+	ResourceBaseURL string
+	Stderr          io.Writer
+	BodyLimitBytes  int64
+	TestPanicRoute  bool
+	Logger          *logging.Logger
+	Admin           config.AdminConfig
+	AdminSetup      AdminSetupOptions
+	Console         config.ConsoleConfig
 	// TestConsoleHandler 仅供测试注入最小 Console，避免普通 Go 测试依赖前端 dist。
 	TestConsoleHandler   http.Handler
 	Shutdown             *runtimeutil.ShutdownCoordinator
@@ -46,6 +47,7 @@ type AdminSetupOptions struct {
 type Server struct {
 	store                *storage.Store
 	clock                app.Clock
+	resourceBaseURL      string
 	stderr               io.Writer
 	bodyLimitBytes       int64
 	testPanicRoute       bool
@@ -73,6 +75,7 @@ func NewServer(opts Options) *Server {
 	srv := &Server{
 		store:                opts.Store,
 		clock:                opts.Clock,
+		resourceBaseURL:      opts.ResourceBaseURL,
 		stderr:               opts.Stderr,
 		bodyLimitBytes:       opts.BodyLimitBytes,
 		testPanicRoute:       opts.TestPanicRoute,

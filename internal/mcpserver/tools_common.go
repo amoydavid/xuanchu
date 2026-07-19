@@ -347,7 +347,7 @@ func serviceForTool(ctx context.Context, req *mcp.CallToolRequest, opts Options,
 }
 
 func serviceForToolWithAuth(ctx context.Context, req *mcp.CallToolRequest, opts Options, input RequestScopeInput, capability string, permission app.Permission) (*app.Service, *app.AuthenticatedToken, error) {
-	factory := RuntimeFactory{Store: opts.Store, Clock: opts.Clock}
+	factory := RuntimeFactory{Store: opts.Store, Clock: opts.Clock, ResourceBaseURL: opts.ResourceBaseURL}
 	var svc *app.Service
 	var authn *app.AuthenticatedToken
 	var err error

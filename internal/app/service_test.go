@@ -20,6 +20,8 @@ import (
 
 func strptr(v string) *string { return &v }
 
+const testResourceBaseURL = "https://xuanchu.example.com"
+
 func newTestService(t *testing.T, now int64) (*Service, func()) {
 	t.Helper()
 	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
@@ -27,6 +29,23 @@ func newTestService(t *testing.T, now int64) (*Service, func()) {
 		t.Fatal(err)
 	}
 	svc, err := NewService(ServiceOptions{Store: store, Clock: FixedClock{NowUnix: now}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, func() { _ = store.Close() }
+}
+
+func newTestServiceWithResourceBaseURL(t *testing.T, now int64) (*Service, func()) {
+	t.Helper()
+	store, err := storage.Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := NewService(ServiceOptions{
+		Store:           store,
+		Clock:           FixedClock{NowUnix: now},
+		ResourceBaseURL: testResourceBaseURL,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

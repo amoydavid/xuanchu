@@ -18,7 +18,7 @@ func RuntimeEnv() map[string]string {
 	values := map[string]string{}
 	for _, key := range []string{
 		"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-		"XUANCHU_DB", "XUANCHU_DB_URL", "XUANCHU_SERVER", "XUANCHU_TOKEN",
+		"XUANCHU_DB", "XUANCHU_DB_URL", "XUANCHU_SERVER", "XUANCHU_TOKEN", "XUANCHU_PUBLIC_BASE_URL",
 		"XUANCHU_CONFIG", "XUANCHU_LOG_LEVEL", "XUANCHU_LOG_FILE",
 	} {
 		if value, ok := os.LookupEnv(key); ok {

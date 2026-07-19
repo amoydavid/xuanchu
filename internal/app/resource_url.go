@@ -11,22 +11,34 @@ func webPathSegment(value string) string {
 	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
 }
 
-// ProjectURL 返回项目的 Web Console 相对路径。
-func ProjectURL(workspaceSlug, projectSlug string) string {
+func projectPath(workspaceSlug, projectSlug string) string {
 	return "/workspaces/" + webPathSegment(workspaceSlug) + "/projects/" + webPathSegment(projectSlug)
 }
 
-// ProjectTaskURL 返回项目内任务或 occurrence 的 Web Console 相对路径。
-func ProjectTaskURL(workspaceSlug, projectSlug, taskRef string) string {
-	return ProjectURL(workspaceSlug, projectSlug) + "/tasks/" + webPathSegment(taskRef)
+func resourceURL(resourceBaseURL, path string) string {
+	base := strings.TrimRight(strings.TrimSpace(resourceBaseURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + path
 }
 
-// StandaloneTaskURL 返回无项目任务的 Web Console 相对路径。
-func StandaloneTaskURL(taskRef string) string {
-	return "/tasks/" + webPathSegment(taskRef)
+// ProjectURL 返回项目的 Web Console 绝对 URL；未配置 base 时返回空字符串。
+func ProjectURL(resourceBaseURL, workspaceSlug, projectSlug string) string {
+	return resourceURL(resourceBaseURL, projectPath(workspaceSlug, projectSlug))
 }
 
-// TaskSeriesURL 返回循环系列的 Web Console 相对路径。
-func TaskSeriesURL(workspaceSlug, projectSlug, seriesSlug string) string {
-	return ProjectURL(workspaceSlug, projectSlug) + "/series/" + webPathSegment(seriesSlug)
+// ProjectTaskURL 返回项目内任务或 occurrence 的 Web Console 绝对 URL。
+func ProjectTaskURL(resourceBaseURL, workspaceSlug, projectSlug, taskRef string) string {
+	return resourceURL(resourceBaseURL, projectPath(workspaceSlug, projectSlug)+"/tasks/"+webPathSegment(taskRef))
+}
+
+// StandaloneTaskURL 返回无项目任务的 Web Console 绝对 URL。
+func StandaloneTaskURL(resourceBaseURL, taskRef string) string {
+	return resourceURL(resourceBaseURL, "/tasks/"+webPathSegment(taskRef))
+}
+
+// TaskSeriesURL 返回循环系列的 Web Console 绝对 URL。
+func TaskSeriesURL(resourceBaseURL, workspaceSlug, projectSlug, seriesSlug string) string {
+	return resourceURL(resourceBaseURL, projectPath(workspaceSlug, projectSlug)+"/series/"+webPathSegment(seriesSlug))
 }

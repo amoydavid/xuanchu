@@ -70,7 +70,7 @@ func TestTaskSeriesHTTPCreateAndGet(t *testing.T) {
 	if createResp.Data.Series.Status != "active" || createResp.Data.Series.Rule != "daily" {
 		t.Fatalf("series = %#v", createResp.Data.Series)
 	}
-	if createResp.Data.Series.URL != "/workspaces/local/projects/ops/series/ops-s-1" {
+	if createResp.Data.Series.URL != httpTestResourceBaseURL+"/workspaces/local/projects/ops/series/ops-s-1" {
 		t.Fatalf("series URL = %q", createResp.Data.Series.URL)
 	}
 	if createResp.Data.FirstOccurrence == nil {
@@ -179,7 +179,7 @@ func TestTaskSeriesHTTPList(t *testing.T) {
 	if len(page.Data.Items) != 1 {
 		t.Fatalf("items len = %d want 1", len(page.Data.Items))
 	}
-	if page.Data.Items[0]["url"] != "/workspaces/local/projects/ops/series/ops-s-1" {
+	if page.Data.Items[0]["url"] != httpTestResourceBaseURL+"/workspaces/local/projects/ops/series/ops-s-1" {
 		t.Fatalf("series list URL = %#v", page.Data.Items[0]["url"])
 	}
 }
@@ -422,7 +422,7 @@ func TestTaskHTTPGetsProjectedOccurrenceByEncodedReferenceWithoutMaterializing(t
 	if data["id"] != payload.Data.FirstOccurrence.ID || data["task_slug"] != nil {
 		t.Fatalf("occurrence response = %#v", data)
 	}
-	wantURL := "/workspaces/local/projects/ops/tasks/" + strings.ReplaceAll(payload.Data.FirstOccurrence.ID, ":", "%3A")
+	wantURL := httpTestResourceBaseURL + "/workspaces/local/projects/ops/tasks/" + strings.ReplaceAll(payload.Data.FirstOccurrence.ID, ":", "%3A")
 	if data["url"] != wantURL {
 		t.Fatalf("projected URL = %#v, want %q", data["url"], wantURL)
 	}

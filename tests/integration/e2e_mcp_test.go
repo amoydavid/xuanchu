@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -157,8 +159,9 @@ func TestE2ERecurringQueriesReportsAndSeriesListsAreProtocolEquivalent(t *testin
 	dir := t.TempDir()
 	db := filepath.Join(dir, "server.db")
 	clientDB := filepath.Join(dir, "client.db")
+	configPath := writeE2EResourceURLConfig(t, dir)
 	token := parseRawToken(t, createTokenJSON(t, bin, "--db", db, "recurrence-contract-e2e", "*"))
-	cmd, baseURL := startXuanchuServer(t, bin, "--db", db)
+	cmd, baseURL := startXuanchuServer(t, bin, "--config", configPath, "--db", db)
 	defer stopXuanchuServer(t, cmd)
 
 	session, cancel := connectHTTPMCP(t, baseURL, token)
@@ -282,6 +285,16 @@ func TestE2ERecurringQueriesReportsAndSeriesListsAreProtocolEquivalent(t *testin
 	assertReport("all", 2, "dependency root")
 }
 
+func writeE2EResourceURLConfig(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "resource-url.toml")
+	content := "[server]\npublic_base_url = \"" + integrationResourceBaseURL + "\"\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func callMCPToolData(t *testing.T, session *mcp.ClientSession, name string, arguments map[string]any) map[string]any {
 	t.Helper()
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: arguments})
@@ -345,6 +358,9 @@ func assertTaskViewPagesCoreEquivalent(t *testing.T, label string, pages ...map[
 			if item.URL == "" {
 				t.Fatalf("%s page %d item missing url: %#v", label, index, item)
 			}
+			if !strings.HasPrefix(item.URL, integrationResourceBaseURL+"/") {
+				t.Fatalf("%s page %d item URL is not canonical absolute URL: %q", label, index, item.URL)
+			}
 		}
 		if index == 0 {
 			want = got
@@ -372,6 +388,9 @@ func assertTaskViewPagesEquivalent(t *testing.T, label string, pages ...map[stri
 			}
 			if rawURL, ok := item["url"].(string); !ok || rawURL == "" {
 				t.Fatalf("%s page %d item missing url: %#v", label, index, item)
+			}
+			if !strings.HasPrefix(item["url"].(string), integrationResourceBaseURL+"/") {
+				t.Fatalf("%s page %d item URL is not canonical absolute URL: %q", label, index, item["url"])
 			}
 			for _, field := range []string{"uuid", "task_slug", "project_seq", "entry", "modified", "start", "end"} {
 				if _, exists := item[field]; !exists {
@@ -429,6 +448,9 @@ func assertSeriesPagesEquivalent(t *testing.T, pages ...map[string]any) {
 			if item.URL == "" {
 				t.Fatalf("series page %d item missing url: %#v", index, item)
 			}
+			if !strings.HasPrefix(item.URL, integrationResourceBaseURL+"/") {
+				t.Fatalf("series page %d URL is not canonical absolute URL: %q", index, item.URL)
+			}
 		}
 		if index == 0 {
 			want = got
@@ -463,6 +485,9 @@ func assertProjectsEquivalent(t *testing.T, projects ...map[string]any) {
 		}
 		if got.ID == "" || got.Slug == "" || got.URL == "" {
 			t.Fatalf("project %d missing resource field: %#v", index, got)
+		}
+		if !strings.HasPrefix(got.URL, integrationResourceBaseURL+"/") {
+			t.Fatalf("project %d URL is not canonical absolute URL: %q", index, got.URL)
 		}
 		if index == 0 {
 			want = got

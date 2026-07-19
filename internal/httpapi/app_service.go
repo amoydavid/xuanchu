@@ -71,6 +71,7 @@ func (s *Server) scopedServiceFor(r *http.Request, input scopedServiceInput) (*a
 	scoped, err := app.NewService(app.ServiceOptions{
 		Store:              s.store,
 		Clock:              s.effectiveClock(),
+		ResourceBaseURL:    s.resourceBaseURL,
 		Runtime:            &authorized.Runtime,
 		RequestScope:       &authorized.Decision.RequestScope,
 		SinkTestClient:     s.sinkTestClient,

@@ -86,14 +86,15 @@ func (s *Server) handleMCP() http.Handler {
 		}
 		authReq.Header.Set("X-Request-Id", requestIDFromContext(r.Context()))
 		return mcpserver.NewServer(mcpserver.Options{
-			Store:    s.store,
-			Clock:    s.effectiveClock(),
-			Version:  "dev",
-			Mode:     mcpserver.ModeHTTP,
-			Stderr:   s.stderr,
-			Request:  authReq,
-			Logger:   s.logger,
-			Shutdown: s.shutdown,
+			Store:           s.store,
+			Clock:           s.effectiveClock(),
+			ResourceBaseURL: s.resourceBaseURL,
+			Version:         "dev",
+			Mode:            mcpserver.ModeHTTP,
+			Stderr:          s.stderr,
+			Request:         authReq,
+			Logger:          s.logger,
+			Shutdown:        s.shutdown,
 		})
 	}, opts)
 }

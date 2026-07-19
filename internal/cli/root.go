@@ -769,6 +769,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	svc, err := app.NewService(app.ServiceOptions{
 		Store:            store,
 		NoContext:        opts.NoContext,
+		ResourceBaseURL:  cfg.ResourceBaseURL(),
 		RuntimeConfig:    rt.Values(),
 		RuntimeOverrides: rcOverridesAsStrings(opts.RCOverrides),
 		WorkspaceRef:     opts.Workspace,

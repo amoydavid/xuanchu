@@ -270,7 +270,7 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 			if uerr != nil {
 				return uerr
 			}
-			view := projectedOccurrenceView(txSvc.runtime.WorkspaceSlug, created, slot, seriesUserInfoList(created, userInfos))
+			view := projectedOccurrenceView(txSvc.resourceBaseURL, txSvc.runtime.WorkspaceSlug, created, slot, seriesUserInfoList(created, userInfos))
 			firstOcc = &view
 		}
 		seriesView, verr := txSvc.buildSeriesView(created)
@@ -327,7 +327,7 @@ func (s *Service) materializeFirstOccurrence(series taskseries.Series) (TaskOccu
 	if err != nil {
 		return TaskOccurrenceView{}, err
 	}
-	view := taskToView(s.runtime.WorkspaceSlug, created, userInfoList(created.Assignees, userInfos))
+	view := taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, created, userInfoList(created.Assignees, userInfos))
 	return view, nil
 }
 
@@ -747,7 +747,7 @@ func (s *Service) buildSeriesViewFromSummary(series taskseries.Series, summary s
 	}
 	return TaskSeriesView{
 		Series:                     series,
-		URL:                        TaskSeriesURL(s.runtime.WorkspaceSlug, series.ProjectSlug, seriesSlug),
+		URL:                        TaskSeriesURL(s.resourceBaseURL, s.runtime.WorkspaceSlug, series.ProjectSlug, seriesSlug),
 		OpenOccurrenceCount:        summary.Counts.Open,
 		CompletedCount:             summary.Counts.Completed,
 		SkippedCount:               summary.Counts.Deleted,
@@ -1257,7 +1257,7 @@ func (s *Service) listTaskSeriesOccurrences(seriesID string, input TaskSeriesOcc
 	}
 	views := make([]TaskOccurrenceView, 0, len(exceptions))
 	for _, occ := range exceptions {
-		v := taskToView(s.runtime.WorkspaceSlug, occ, userInfoList(occ.Assignees, userInfos))
+		v := taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, occ, userInfoList(occ.Assignees, userInfos))
 		if v.RecurrenceInfo != nil {
 			v.RecurrenceInfo.SeriesTitle = series.Title
 			v.RecurrenceInfo.SeriesStatus = series.Status
@@ -1347,7 +1347,7 @@ func (s *Service) SkipTaskSeriesOccurrence(seriesID, occurrenceRef string) (Task
 		if uerr != nil {
 			return uerr
 		}
-		resultView = taskToView(txSvc.runtime.WorkspaceSlug, finalTask, userInfoList(finalTask.Assignees, userInfos))
+		resultView = taskToView(txSvc.resourceBaseURL, txSvc.runtime.WorkspaceSlug, finalTask, userInfoList(finalTask.Assignees, userInfos))
 		return nil
 	})
 	if err != nil {
