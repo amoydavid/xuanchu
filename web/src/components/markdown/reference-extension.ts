@@ -1,5 +1,4 @@
 import { Node } from "@tiptap/core"
-import { MarkdownSerializer } from "@tiptap/markdown"
 
 // XuanchuReferenceAttrs 描述 user/task 引用节点的属性。
 export type XuanchuReferenceAttrs = {
@@ -95,14 +94,4 @@ export function serializeReferenceMarkdown(attrs: XuanchuReferenceAttrs): string
   const safeLabel = (attrs.label || "").replace(/[[\]]/g, "")
   const href = `ref://${attrs.kind}/${attrs.id}`
   return `[${safeLabel}](${href})`
-}
-
-// attachReferenceSerializer 注册到 markdown serializer，把 xuanchuReference 节点转为 link markdown。
-// 调用方需要在 MarkdownManager 配置里使用。
-export function registerReferenceSerializer(serializer: MarkdownSerializer): void {
-  // @tiptap/markdown 的 serializer 通过 storage key 注册节点序列化。
-  // 这里使用 nodes 字段覆盖，使序列化结果与标准 link 一致。
-  // 注意：@tiptap/markdown 默认会把未识别节点渲染为 text；本函数保留扩展点，
-  // 实际序列化由 link 语法承载（ref:// 协议在 markdown 中就是普通 link destination）。
-  void serializer
 }
