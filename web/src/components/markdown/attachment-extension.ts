@@ -111,7 +111,7 @@ export const XuanchuAttachment = Node.create<{
 // 文件：`[label](ref://attachment/{id})`
 // 由 @tiptap/markdown 的 markdown serializer 通过 `markdownStorageKey: "xuanchuAttachment"` 调用。
 export function serializeAttachmentMarkdown(attrs: XuanchuAttachmentAttrs): string {
-  const safeLabel = (attrs.label || "").replace(/[\[\]]/g, "")
+  const safeLabel = (attrs.label || "").replace(/[[\]]/g, "")
   const href = `ref://attachment/${attrs.id}`
   if (attrs.image) {
     return `![${safeLabel}](${href})`
