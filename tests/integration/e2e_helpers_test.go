@@ -247,3 +247,56 @@ func connectStdioMCP(t *testing.T, cmd *exec.Cmd) (*mcp.ClientSession, context.C
 	})
 	return session, cancel
 }
+
+// nestedMap 从 map 中按路径逐层取嵌套 map[string]any。
+// 例如 nestedMap(t, payload, "data", "task") 返回 payload["data"]["task"]。
+// 修复 postgres_e2e_test.go 中引用但未定义的 helper（pre-existing 编译错误）。
+func nestedMap(t *testing.T, m map[string]any, keys ...string) map[string]any {
+	t.Helper()
+	current := m
+	for _, key := range keys {
+		next, ok := current[key].(map[string]any)
+		if !ok {
+			t.Fatalf("nestedMap: key %q not found or not a map in %#v", key, current)
+		}
+		current = next
+	}
+	return current
+}
+
+// callMCPToolData 通过 MCP ClientSession 调用 tool 并返回 structured content 的 data 部分。
+// 修复 postgres_e2e_test.go 中引用但未定义的 helper。
+func callMCPToolData(t *testing.T, session *mcp.ClientSession, toolName string, args map[string]any) map[string]any {
+	t.Helper()
+	ctx := context.Background()
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      toolName,
+		Arguments: args,
+	})
+	if err != nil {
+		t.Fatalf("callMCPToolData %s: %v", toolName, err)
+	}
+	// structuredContent 是 *mcp.CallToolResult 中的字段。
+	if result.StructuredContent != nil {
+		if data, ok := result.StructuredContent.(map[string]any); ok {
+			if dataObj, ok := data["data"].(map[string]any); ok {
+				return dataObj
+			}
+			return data
+		}
+	}
+	// fallback: parse text content.
+	if len(result.Content) > 0 {
+		if text, ok := result.Content[0].(*mcp.TextContent); ok {
+			var embedded map[string]any
+			if err := json.Unmarshal([]byte(text.Text), &embedded); err == nil {
+				if data, ok := embedded["data"].(map[string]any); ok {
+					return data
+				}
+				return embedded
+			}
+		}
+	}
+	t.Fatalf("callMCPToolData: could not extract data from result for %s", toolName)
+	return nil
+}
