@@ -768,6 +768,37 @@ shared config 现在分成两层：
 
 `audit list --project` 支持 slug 或 `project_id`，JSON 输出里会带 `project_id`，方便脚本继续串联。
 
+## 任务附件
+
+任务详情支持上传任意二进制附件（图片、PDF、文档、压缩包），二进制内容默认存放在 `<data-dir>/attachments`，可选 S3 兼容私有 bucket。所有附件读取都走鉴权接口，不公开 bucket，也不持久化预签名 URL。
+
+### CLI
+
+```bash
+xuanchu attachment add <task-ref> <file> [--display-name <name>]
+xuanchu attachment list <task-ref>
+xuanchu attachment info <attachment-id>
+xuanchu attachment download <attachment-id> [--output <path>|-]
+xuanchu attachment rename <attachment-id> <display-name>
+xuanchu attachment remove <attachment-id>
+```
+
+`download` 默认写到当前目录的展示名；已存在则报 `attachment_output_exists`。`--output -` 写到 stdout，进度信息写 stderr，禁止与 `--json` 同时使用。
+
+### 允许类型
+
+- 内联图片：`.png .jpg/.jpeg .gif .webp`（边长 ≤ 20000，总像素 ≤ 4000 万）
+- 仅下载：`.pdf .txt .md .csv .json .docx .xlsx .pptx .zip .7z .tar .gz .tgz`
+- 固定拒绝：HTML/SVG/JS/WASM/可执行文件/带宏 Office 文件（详见 spec §12.1）
+
+### 配额与配置
+
+默认上限：单文件 25 MiB、单 task 200 MiB、单 workspace 10 GiB、每 task 100 个未删除附件；可在 `[attachments]` 配置中调整（详见 `config.example.toml`）。S3 后端、远程图片转存、保留时长、文件类型白名单都通过 TOML 或环境变量配置。
+
+### 安全
+
+远程图片转存由服务端 `internal/safefetch` 执行：禁止 loopback/RFC1918/link-local/multicast/CGNAT/ULA、redirect 每跳重验、HTTPS→HTTP 降级拒绝、无 Cookie/Authorization/Proxy。失败占位必须由用户显式处理，不会静默退化为浏览器直连。
+
 ## Server、Token 与远程 CLI
 
 HTTP/JSON API、PAT / Agent token 和远程 CLI 接到同一套 app service 上。本地 CLI 可以直接打开 SQLite 或 PostgreSQL；远程 CLI 通过 HTTP API 访问服务端，不会在 remote mode 下写本机任务库。

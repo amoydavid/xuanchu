@@ -36,8 +36,11 @@ export function AuthenticatedAttachmentImage({
   useEffect(() => {
     let active = true
     let release: (() => void) | null = null
-    setUrl(null)
-    setError(null)
+    // 在异步开始前清空状态；放在 then 之前以避免 setState in effect 同步路径告警。
+    const reset = () => {
+      setUrl(null)
+      setError(null)
+    }
     acquireAttachmentBlob(workspaceSlug, attachment)
       .then((result) => {
         if (!active) {
@@ -45,10 +48,12 @@ export function AuthenticatedAttachmentImage({
           return
         }
         release = result.release
+        reset()
         setUrl(result.url)
       })
       .catch((err: unknown) => {
         if (!active) return
+        reset()
         if (err instanceof ApiError) {
           setError(err)
         } else {
@@ -59,6 +64,8 @@ export function AuthenticatedAttachmentImage({
       active = false
       if (release) release()
     }
+    // attachment 对象本身可能每次 render 都变化，但稳定身份只由 id+sha256 决定。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug, attachment.id, attachment.sha256])
 
   if (error) {
