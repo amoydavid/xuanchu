@@ -759,6 +759,12 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// 本地 CLI 也构造附件运行时，使附件命令可以直接调用 app.Service。
+	// 构造失败不应阻塞非附件命令：仅在附件命令被调用时才真正需要。
+	attachmentRuntime, attachmentErr := app.NewAttachmentRuntime(context.Background(), cfg.Attachments)
+	if attachmentErr == nil && cfg.Attachments.RemoteFetchEnabled {
+		attachmentRuntime.Fetcher = buildAttachmentRemoteFetcher(cfg.Attachments)
+	}
 	runtimeOpts := opts
 	runtimeOpts.RCOverrides = nil
 	rt, err := runtimeFromResolvedConfig(runtimeOpts, cfg, store, env)
@@ -773,6 +779,7 @@ func buildServiceFromOpts(opts Options) (*app.Service, func() error, error) {
 		RuntimeConfig:    rt.Values(),
 		RuntimeOverrides: rcOverridesAsStrings(opts.RCOverrides),
 		WorkspaceRef:     opts.Workspace,
+		Attachments:      attachmentRuntime,
 	})
 	if err != nil {
 		_ = store.Close()

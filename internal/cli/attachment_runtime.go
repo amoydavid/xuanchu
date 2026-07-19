@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/attachments"
 	"git.dajee.net/dajee/xuanchu/internal/safefetch"
 )
@@ -23,6 +22,3 @@ func buildAttachmentRemoteFetcher(cfg attachments.Config) *safefetch.Fetcher {
 	}
 	return fetcher
 }
-
-// attachmentRuntimeForCLI 是一个占位说明，提醒 buildAttachmentRuntime 由 server.go 直接调用 app.NewAttachmentRuntime。
-var _ = app.AttachmentRuntime{}

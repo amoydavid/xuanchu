@@ -298,6 +298,11 @@ func (s *Service) Runtime() RuntimeContext {
 	return s.runtime
 }
 
+// AttachmentRuntime 暴露附件运行时；未配置时返回 nil。
+func (s *Service) AttachmentRuntime() *AttachmentRuntime {
+	return s.attachmentRuntime
+}
+
 func (s *Service) Projects(includeArchived bool) ([]string, error) {
 	projects, err := s.ListProjects(includeArchived)
 	if err != nil {
