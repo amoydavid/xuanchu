@@ -12,7 +12,7 @@
 本期继续把任务 `description` 持久化为 Markdown 字符串，不把 ProseMirror JSON、HTML 或独立字符位置表引入后端契约。在现有 Tiptap Markdown 编辑器上增加三类能力：
 
 1. 从 Word、飞书文档、网页等来源复制粘贴富文本，按白名单转换为现有 Markdown schema。
-2. 建立任务级通用附件资源：图片可以嵌入 description，其他文件既可插入为附件卡片，也可只存在于任务附件区。
+2. 建立 workspace 内通用附件资源：附件通过 `attached_to_type + attached_to_id` 归属任意业务实体；首期由 task 接入，图片可以嵌入 description，其他文件既可插入为附件卡片，也可只存在于任务附件区。
 3. 建立基于稳定 ID 的语义引用：首期支持 `@用户` 和 `#任务`，新增用户 mention 时产生 `task.user_mentioned` 事件，供 Notification Rule、Hook 和项目自动化消费。
 
 附件元数据保存在 SQLite / PostgreSQL，二进制内容默认保存在本地文件系统；S3 兼容对象存储是可选后端。所有附件内容都通过璇础鉴权接口读取，不公开 bucket，不把临时签名 URL 写进 Markdown。
@@ -56,7 +56,9 @@
 
 ### 3.2 通用附件
 
-- 附件是独立的任务资源，不要求必须出现在 description 中。
+- 附件是 workspace 内独立资源，通过稳定类型和资源 ID 关联业务实体，不把表结构锁死在 task。
+- 首期只开放 `attached_to_type=task` 的 App/HTTP/CLI/MCP/Web 行为；project、series、workspace 等后续接入不需要迁移附件表或改变 `ref://attachment/{id}`。
+- task 附件不要求必须出现在 description 中。
 - 图片可以内联显示；其他文件显示为包含文件名、类型、大小和下载动作的附件卡片。
 - 任务详情页提供附件列表、上传、重命名、下载和移除能力。
 - 附件内容支持本地文件系统和可选 S3 后端，元数据统一保存在现有数据库。
@@ -75,6 +77,7 @@
 - 不把 HTML、Tiptap/ProseMirror JSON 或 Delta 保存到数据库。
 - 不实现多人实时协同、评论线程、行内批注或修订模式。
 - 不在首期开放项目、循环系列、配置定义等实体的编辑器选择器。
+- 不在本期提供 project、series、workspace 等非 task 实体的附件 API 和管理界面；本期只保证底层模型、存储、配额和权限解析边界可扩展。
 - 不抓取需要登录态、Cookie、私网访问、客户端证书或交互式授权的远程图片；这类图片由用户下载后再上传。
 - 不解析 CSS `background-image`、`picture/source` 艺术方向或页面脚本运行后才生成的图片；首期只处理剪贴板 HTML 中静态可解析的 `img` 候选。
 - 不支持 SVG、HTML、脚本、可执行文件、带宏 Office 文件或浏览器可主动执行的附件类型。
@@ -186,8 +189,8 @@ type ContentReference struct {
 | `internal/task/content_reference.go` | Markdown AST 解析、内部 URI 语法、引用集合差异 |
 | `internal/blobstore/` | 二进制存储接口、本地文件系统实现、S3 实现、流式读写与删除 |
 | `internal/safefetch/` | 无 Cookie 的公网 HTTP 图片抓取、DNS/IP/redirect SSRF 防护和响应限流 |
-| `internal/storage/attachment_repo.go` | 附件元数据 CRUD、配额统计、状态迁移和清理查询 |
-| `internal/app/attachment.go` | task/workspace 权限、上传/远程转存生命周期、引用绑定、附件 view |
+| `internal/storage/attachment_repo.go` | 通用附件元数据 CRUD、按 attached resource/workspace 配额统计、状态迁移和清理查询 |
+| `internal/app/attachment.go` | attachment target 解析、资源读写权限、上传/远程转存生命周期、引用绑定、附件 view |
 | `internal/app/content_reference.go` | 用户/任务批量解析、suggest/resolve、mention 事件数据 |
 | `internal/httpapi/attachments.go` | multipart 上传、metadata/content/list/modify/delete HTTP handler |
 | `internal/httpapi/content_references.go` | suggestion 和 batch resolve HTTP handler |
@@ -195,7 +198,24 @@ type ContentReference struct {
 | `internal/app/project_automation_*` | `mentioned_users` 模板变量和事件上下文 |
 | `internal/config/` | attachments backend、配额和 S3 配置解析 |
 
-`internal/httpapi` 不解释附件业务状态，不直接访问 GORM、S3 或远程图片 URL；所有写操作必须进入 `internal/app`。`internal/storage` 不解析 Markdown，不解释 actor 权限。`internal/blobstore` 不知道 task、workspace、用户或权限。`internal/safefetch` 只负责安全取得受限字节流，不创建 attachment row，不决定 task 权限。
+`internal/httpapi` 不解释附件业务状态，不直接访问 GORM、S3 或远程图片 URL；所有写操作必须进入 `internal/app`。`internal/storage` 不解析 Markdown，不解释 actor 权限或 attached resource 类型。`internal/blobstore` 不知道 task、workspace、用户或权限。`internal/safefetch` 只负责安全取得受限字节流，不创建 attachment row，不决定资源权限。
+
+App 层定义统一 target：
+
+```go
+type AttachmentTarget struct {
+    Type        string // task；后续可增加 project|series|workspace
+    ID          string // 目标资源稳定 UUID
+    WorkspaceID string
+}
+
+type AttachmentTargetView struct {
+    Type string
+    ID   string
+}
+```
+
+`resolveAttachmentTarget(type, ref)` 负责解析稳定 ID、确认 workspace 归属并执行资源类型对应的 read/write/closed-state 判断。首期只注册 task handler；未知 type 返回 `attachment_target_type_unsupported`。删除前的引用检查也按 target type 分派：首期 task handler 检查当前 task description，后续实体接入时增加自己的 checker，不在通用 repository 中解析正文。
 
 ### 7.2 Web
 
@@ -212,13 +232,14 @@ type ContentReference struct {
 
 ## 8. 附件数据模型
 
-新增 `task_attachments`：
+新增通用 `attachments`：
 
 ```go
-type TaskAttachment struct {
+type Attachment struct {
     ID                   string  `gorm:"primaryKey"`
-    WorkspaceID          string  `gorm:"not null;index"`
-    TaskUUID             string  `gorm:"not null;index"`
+    WorkspaceID          string  `gorm:"not null;index;index:idx_attachments_target,priority:1"`
+    AttachedToType       string  `gorm:"not null;index:idx_attachments_target,priority:2"`
+    AttachedToID         string  `gorm:"not null;index:idx_attachments_target,priority:3"`
     State                string  `gorm:"not null;index"` // uploading|draft|active|deleted
     OriginalName         string  `gorm:"not null"`
     DisplayName          string  `gorm:"not null"`
@@ -253,17 +274,19 @@ type TaskAttachment struct {
 - `StorageKey` 由服务端生成，不含原始文件名。
 - 远程转存只记录规范化 host 和 source URL 的 SHA-256，不保存可能含签名参数、访问 token 或个人信息的完整 URL。
 - `CreatedBy` 对外必须转换为 `task.ActorInfo`；如果是用户，内层必须使用完整 `task.UserInfo`，不输出裸 UUID。
-- `active` 附件默认出现在任务附件列表；`draft` 只对创建它的 actor 可见；`deleted` 默认不出现在列表。
+- `active` 附件默认出现在 attached resource 的附件列表；首期对应任务附件列表。`draft` 只对创建它的 actor 可见；`deleted` 默认不出现在列表。
 - `EverEmbedded` 一旦为 true 不再回退，用于删除提示和审计保留判断。
 - GORM migration 同时覆盖 SQLite 和 PostgreSQL；SQLite 迁移保持纯 Go driver。
-- task row 与附件 metadata 不使用数据库级 `ON DELETE CASCADE`：删除 blob 是外部副作用，任务硬清理必须先由 App 层清理附件对象，再删除 metadata/task，不能让数据库先删 metadata 留下不可追踪对象。
+- `(WorkspaceID, AttachedToType, AttachedToID)` 是所有列表、配额和生命周期查询的归属键；首期写入的 type 固定为 `task`。
+- 每个 attachment 只有一个 attached target，创建后不可修改或“移动”；本期不引入多对多共享附件。某个实体正文只能嵌入归属于同一实体的附件，避免借内部 URI 跨资源复用绕过生命周期和权限。
+- attached resource 与附件 metadata 不使用数据库级多态外键或 `ON DELETE CASCADE`：数据库无法安全表达多态关联，删除 blob 又是外部副作用。资源硬清理必须先由 App 层清理附件对象，再删除 metadata/resource，不能让数据库先删 metadata 留下不可追踪对象。
 
 对外 view：
 
 ```go
-type TaskAttachmentView struct {
+type AttachmentView struct {
     ID            string
-    TaskUUID      string
+    AttachedTo    AttachmentTargetView
     State         string
     OriginalName  string
     DisplayName   string
@@ -279,7 +302,7 @@ type TaskAttachmentView struct {
 }
 ```
 
-`StorageBackend` 和 `StorageKey` 永不进入普通 HTTP、CLI、MCP 或 Hook 输出。
+`StorageBackend`、`StorageKey` 和内部 target resolver 信息永不进入普通 HTTP、CLI、MCP 或 Hook 输出。`AttachedTo` 只返回 `type/id`，不重复嵌入完整 task/project/workspace 对象。
 
 ## 9. BlobStore 与存储后端
 
@@ -357,9 +380,9 @@ TOML：
 backend = "filesystem"                 # filesystem | s3
 filesystem_dir = ""                   # 空值 = <data-dir>/attachments
 max_file_size_mb = 25
-max_task_total_size_mb = 200
+max_resource_total_size_mb = 200
 max_workspace_total_size_mb = 10240
-max_attachments_per_task = 100
+max_attachments_per_resource = 100
 draft_ttl = "24h"
 deleted_retention = "720h"             # 30 天；0 表示删除后尽快清理
 remote_fetch_enabled = true
@@ -384,9 +407,9 @@ kms_key_id = ""
 XUANCHU_ATTACHMENTS_BACKEND
 XUANCHU_ATTACHMENTS_FILESYSTEM_DIR
 XUANCHU_ATTACHMENTS_MAX_FILE_SIZE_MB
-XUANCHU_ATTACHMENTS_MAX_TASK_TOTAL_SIZE_MB
+XUANCHU_ATTACHMENTS_MAX_RESOURCE_TOTAL_SIZE_MB
 XUANCHU_ATTACHMENTS_MAX_WORKSPACE_TOTAL_SIZE_MB
-XUANCHU_ATTACHMENTS_MAX_ATTACHMENTS_PER_TASK
+XUANCHU_ATTACHMENTS_MAX_ATTACHMENTS_PER_RESOURCE
 XUANCHU_ATTACHMENTS_DRAFT_TTL
 XUANCHU_ATTACHMENTS_DELETED_RETENTION
 XUANCHU_ATTACHMENTS_REMOTE_FETCH_ENABLED
@@ -410,7 +433,7 @@ AWS 凭证继续使用 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AWS_SESS
 - backend 未设置时为 `filesystem`。
 - S3 backend 必须有 bucket 和 region；自定义 endpoint 仍必须给 region。
 - `aws:kms` 必须有 `kms_key_id`，非 KMS 模式禁止残留 KMS key。
-- 文件大小、task/workspace 容量和每任务附件数必须为正；workspace 总量不得小于 task 总量，task 总量不得小于单文件上限。
+- 文件大小、attached resource/workspace 容量和每资源附件数必须为正；workspace 总量不得小于 resource 总量，resource 总量不得小于单文件上限。
 - duration 必须能被 `time.ParseDuration` 解析且非负。
 - remote fetch timeout 必须大于 0 且不超过 120 秒；redirect 上限为 0-10；并发数必须为 1-32。
 
@@ -498,9 +521,9 @@ MIME 与扩展名冲突、无法识别或不在允许表内时返回 `attachment
 默认限制：
 
 - 单文件 25 MiB。
-- 单任务尚未 purge 的附件总量 200 MiB。
+- 单一 attached resource 尚未 purge 的附件总量 200 MiB。
 - 单 workspace 尚未 purge 的附件总量 10 GiB。
-- 单任务 `uploading + draft + active` 最多 100 个附件。
+- 单一 attached resource 的 `uploading + draft + active` 最多 100 个附件。
 
 配额检查在开始上传前做一次声明值检查，在流式接收结束后按实际大小再次检查。并发上传最终提交时必须在事务内重新统计，避免竞争越过配额。
 
@@ -583,6 +606,8 @@ display_name=<text>                  可选
 
 上传、远程转存、PATCH、DELETE 要求 `task:write`，并遵守 project allowlist、workspace allowlist、membership role 和 closed project 不可写规则。远程转存被配置关闭时返回稳定错误，不退化为浏览器直连。列表、metadata 和 content 要求 `task:read`。
 
+task-scoped 创建 endpoint 只接收 `taskRef`，服务端解析后写入 `attached_to_type=task` 和稳定 task UUID；请求体不允许传入或覆盖 `attached_to_*`。通用 metadata `PATCH` 也不能改变 attached target。后续增加 project/series/workspace endpoint 时必须先注册对应 App target handler，不能仅靠客户端提交 type/id 开启新类型。
+
 ### 13.2 引用建议
 
 ```text
@@ -612,7 +637,7 @@ POST /api/v1/content-references/resolve
 }
 ```
 
-响应保持输入顺序。可读目标返回 `status=resolved` 和 typed object；attachment 返回完整 `TaskAttachmentView`。不存在或不可读统一返回 `status=unavailable`，不区分 403/404，避免枚举资源。混合批次按每个引用独立做权限判断：缺少某一资源的 read capability 只让对应项 unavailable，不泄漏目标是否存在。
+响应保持输入顺序。可读目标返回 `status=resolved` 和 typed object；attachment 返回完整 `AttachmentView`，并通过 attached target handler 校验调用者对目标资源的读取权限。不存在或不可读统一返回 `status=unavailable`，不区分 403/404，避免枚举资源。混合批次按每个引用独立做权限判断：缺少某一资源的 read capability 只让对应项 unavailable，不泄漏目标是否存在。
 
 ## 14. CLI、Remote Client 与 MCP
 
@@ -776,13 +801,13 @@ mentioned_users
 
 ## 17. 权限、租户与状态边界
 
-- 附件 metadata row 必须有 `WorkspaceID + TaskUUID`；所有读取先解析 attachment，再按 task 做 workspace/project 行级授权。
+- 附件 metadata row 必须有 `WorkspaceID + AttachedToType + AttachedToID`；所有读取先解析 attachment，再由对应 target handler 做 workspace/project/资源状态授权。首期 `task` handler 复用现有 task 行级授权。
 - 不能仅凭不可猜 UUID 绕过权限。
 - 用户 suggestion 只包含当前 workspace 成员；用户引用不能跨 workspace。
 - 任务 suggestion/reference 必须在当前 workspace 且位于 request scope 可读项目内。
 - 保存 description 时重新校验所有新增内部引用，不能信任前端 suggestion 结果。
 - 历史已有引用若目标后来不可读，不阻止编辑无关文本；只要调用者没有新增或改变该引用，保留原 URI 和 label。调用者尝试新建/替换为不可读目标时拒绝。
-- archived/cancelled project 的任务 description、附件和 mention 都保持只读。
+- archived/cancelled project 的任务 description、task 附件和 mention 都保持只读；后续 target type 必须在接入时定义自己的 closed-state 规则。
 - admin acting、tenant access、PAT、Agent token 和 OIDC session 继续经过现有 authz decision；附件不增加旁路鉴权。
 - draft 只有创建 actor 可读取/绑定；active/deleted-retention 内容按 task read 权限读取。
 
@@ -802,9 +827,10 @@ mentioned_users
 | `attachment_too_large` | 413 | 单文件超过限制 |
 | `attachment_type_not_allowed` | 415 | 文件类型、扩展名或 magic 不允许 |
 | `attachment_image_invalid` | 422 | 图片无法解码或像素尺寸超限 |
-| `attachment_quota_exceeded` | 409 | task/workspace 数量或容量超限 |
+| `attachment_target_type_unsupported` | 422 | 当前版本尚未注册该 attached resource 类型 |
+| `attachment_quota_exceeded` | 409 | attached resource/workspace 数量或容量超限 |
 | `attachment_in_use` | 409 | 当前 description 仍引用该附件 |
-| `attachment_draft_owner_mismatch` | 403 | 非创建 actor 尝试绑定 draft |
+| `attachment_draft_creator_mismatch` | 403 | 非创建 actor 尝试绑定 draft |
 | `attachment_state_invalid` | 409 | 当前状态不支持操作 |
 | `attachment_content_gone` | 410 | metadata/history 存在但 blob 已 purge |
 | `attachment_storage_unavailable` | 503 | filesystem/S3 临时不可用 |
@@ -816,12 +842,12 @@ mentioned_users
 审计 action：
 
 ```text
-task.attachment.add
-task.attachment.rename
-task.attachment.remove
+attachment.add
+attachment.rename
+attachment.remove
 ```
 
-payload 记录 attachment ID、task UUID、display name、media type、size、SHA-256、source type、远程 source host 和 actor，不记录完整 source URL、storage key、S3 endpoint、凭证或文件内容。
+audit target 是 attachment；payload 记录 attachment ID、`attached_to.type/id`、display name、media type、size、SHA-256、source type、远程 source host 和 actor，不记录完整 source URL、storage key、S3 endpoint、凭证或文件内容。首期 task Activity 如需显示附件操作，通过 payload 中的 attached target 归并，不把 action 名重新写死为 `task.*`。
 
 description 的内部 URI 继续进入现有 `task.modify` before/after。任务历史渲染器识别附件/引用节点：
 
@@ -875,8 +901,8 @@ dompurify
 
 本文必须拆成四份 implementation plan，每份都产生可独立测试和审阅的交付物：
 
-1. **附件基础与存储后端**：metadata migration、BlobStore、filesystem、S3、safe remote fetch、配置、上传/下载/远程转存 API、janitor、权限和配额。
-2. **通用附件跨入口**：附件面板、CLI/Remote、MCP metadata tools、审计、历史渲染和文档。
+1. **通用附件基础与存储后端**：`attachments + attached target` metadata migration、target handler、BlobStore、filesystem、S3、safe remote fetch、配置、上传/下载/远程转存 API、janitor、权限和配额；首期注册 task target。
+2. **task 附件跨入口**：在通用 attachment foundation 上接入任务附件面板、CLI/Remote、MCP metadata tools、审计、历史渲染和文档。
 3. **富文本粘贴与图片节点**：DOMPurify、远程图片识别/转存/失败占位、paste pipeline、Tiptap attachment extension、draft binding、authenticated blob rendering、smoke coverage。
 4. **用户/任务引用与 mention 事件**：Goldmark parser、suggest/resolve、Tiptap reference extension、`task.user_mentioned`、Notification audience、Hook/automation。
 
@@ -894,12 +920,13 @@ dompurify
 - draft 创建者、绑定、过期、active、deleted、purge 状态机。
 - 当前 description 引用阻止附件删除。
 - closed project、viewer、scope 缺失、tenant/admin acting 权限矩阵。
-- 并发上传的 task/workspace quota 最终提交不越限。
+- 并发上传的 attached resource/workspace quota 最终提交不越限。
+- 未注册 attached type 被拒绝；同一通用 repository 可按 task target 列表，未来增加 project handler 不需要迁移表结构。
 - 远程抓取与普通上传进入同一 state/quota/validation 路径，不产生旁路 active attachment。
 
 ### 23.2 Storage/BlobStore
 
-- SQLite 和 PostgreSQL migration、索引、状态查询、配额统计。
+- SQLite 和 PostgreSQL migration、`attached_to_type/id` 组合索引、按资源/workspace 状态查询和配额统计。
 - filesystem 原子写、权限、路径分片、失败清理、stream read/delete。
 - S3 使用 fake HTTP S3 或 MinIO opt-in 覆盖 Put/Get/Delete、path-style、SSE header 和错误映射；测试不访问真实公网。
 - safe fetch 覆盖公网成功、所有私网/loopback/link-local/CGNAT/保留地址、混合 DNS 结果、DNS rebinding、redirect 每跳重验、HTTPS 降级、超时、超长 body、错误 MIME 和图片像素炸弹。
@@ -937,7 +964,7 @@ dompurify
 - 粘贴带公网 `<img src="https://...">` 的 HTML 会把图片抓取并转存为 draft attachment，保存后 Markdown 只含 `ref://attachment/{id}`；远程源失效后已保存图片仍可显示。
 - localhost、私网、link-local、认证图片和超限响应不会被服务端抓取；失败占位不会静默丢图，也不会把远程图片 URL 当成持久 `<img>`。
 - PAT、OIDC browser session、admin acting 三种 Console 身份都能按既有权限显示图片。
-- 任务附件可独立上传、重命名、下载、移除；description 正在引用时不能移除。
+- task 作为首个 attached resource，可独立上传、重命名、下载、移除附件；description 正在引用时不能移除。
 - filesystem 默认配置零额外基础设施可用；S3 配置可在 private bucket/MinIO 上完成同样操作。
 - 输入 `@` 能选择成员，输入 `#` 能选择可读任务；保存后的 Markdown 使用稳定 UUID。
 - 新增用户 mention 只生成一次 `task.user_mentioned`，Notification Rule 可用 `mentioned_users` 投递，Hook/automation 收到完整 `UserInfo`。
@@ -965,7 +992,7 @@ S3 opt-in 验收另使用本地 MinIO 或 CI service container，不依赖共享
 实施完成时同步：
 
 - `README.md`：description 富文本粘贴、内部引用、附件用法、文件限制。
-- `ROADMAP.md`：v0.5.11 状态和实际交付边界。
+- `ROADMAP.md`：v0.5.11 状态、通用 attachment foundation 与首期 task 接入边界。
 - OpenAPI：multipart、附件、suggest/resolve、事件 audience。
 - `docs/manual/notifications.md`：`task.user_mentioned` 和 `mentioned_users`。
 - CLI manual：attachment 命令、remote upload/download。
@@ -978,7 +1005,7 @@ S3 opt-in 验收另使用本地 MinIO 或 CI service container，不依赖共享
 - description 的唯一持久化格式继续是 Markdown。
 - mention 保存后产生语义事件，由 Notification Rule、Hook 和项目自动化消费，不直接绑定某个外部通道。
 - 首期可选择的语义实体是用户和任务，协议预留扩展能力。
-- 附件是任务级通用资源，不局限于 description 图片。
+- 附件底层是 workspace 级通用资源，以 `attached_to_type + attached_to_id` 归属业务实体；首期只接入 task，不局限于 description 图片。
 - 图片可以嵌入，其他允许类型以附件卡片和下载为主。
 - 高风险主动内容、脚本、可执行文件和带宏 Office 文件不允许上传。
 - 默认使用本地文件系统，S3 是可选配置项。
