@@ -20,7 +20,7 @@ import {
   TableIcon,
   Undo2Icon,
 } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -38,6 +38,17 @@ import {
 import { sanitizeRichPaste } from "./paste-sanitizer"
 import { LinkDialog } from "./link-dialog"
 import { TableBubbleMenu } from "./table-bubble-menu"
+import {
+  ReferenceSuggestionMenu,
+  type FetchSuggestions,
+  type ReferenceSuggestionMenuItem,
+} from "./reference-suggestion-menu"
+import {
+  buildInsertedReferenceMarkdown,
+  detectReferenceTrigger,
+  type ReferenceSuggestionState,
+  type ReferenceTriggerKind,
+} from "./reference-suggestion"
 import "./markdown.css"
 
 type MarkdownEditorProps = {
@@ -49,6 +60,19 @@ type MarkdownEditorProps = {
   className?: string
   disabled?: boolean
   onModEnter?: () => void
+  // 附件上下文：用于 @ 用户 suggestion 的 workspace 查询。
+  attachmentContext?: {
+    workspaceSlug: string
+    projectRef?: string
+    fetchSuggestions: FetchSuggestions
+  }
+}
+
+const emptySuggestionState: ReferenceSuggestionState = {
+  active: false,
+  kind: null,
+  query: "",
+  range: null,
 }
 
 export function MarkdownEditor({
@@ -60,12 +84,15 @@ export function MarkdownEditor({
   onModEnter,
   placeholder,
   value,
+  attachmentContext,
 }: MarkdownEditorProps) {
   const emittedMarkdownValuesRef = useRef(new Set<string>())
   const [linkState, setLinkState] = useState<{ open: boolean; initialHref?: string }>(
     { open: false }
   )
   const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg")
+  const [suggestion, setSuggestion] = useState<ReferenceSuggestionState>(emptySuggestionState)
+  const composingRef = useRef(false)
   const editor = useEditor({
     content: normalizeMarkdownSource(value),
     contentType: "markdown",
@@ -84,11 +111,37 @@ export function MarkdownEditor({
           onModEnter?.()
           return Boolean(onModEnter)
         }
+        if (event.key === "Escape" && suggestion.active) {
+          setSuggestion(emptySuggestionState)
+          return true
+        }
+        if (suggestion.active && (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter")) {
+          // 让菜单自己处理。
+          return false
+        }
         return false
+      },
+      handleDOMEvents: {
+        compositionstart: () => {
+          composingRef.current = true
+          return false
+        },
+        compositionend: () => {
+          composingRef.current = false
+          return false
+        },
       },
       // 富文本粘贴：先提取 <img> 候选再用 DOMPurify 白名单清洗剩余 HTML，
       // 普通 plain text 走默认 markdown 粘贴。
       handlePaste: (view, event) => {
+        // 内部 clipboard MIME 优先：同一璇础编辑器复制时保留 attachment/reference ID。
+        const internalMarkdown = event.clipboardData?.getData("application/x-xuanchu-markdown") ?? ""
+        if (internalMarkdown) {
+          const { tr } = view.state
+          view.dispatch(tr.insertContent(internalMarkdown))
+          event.preventDefault()
+          return true
+        }
         const html = event.clipboardData?.getData("text/html") ?? ""
         if (!html) return false
         const files: File[] = []
@@ -110,6 +163,19 @@ export function MarkdownEditor({
         event.preventDefault()
         return true
       },
+      // 拖拽文件：只接受 PNG/JPEG/GIF/WebP。
+      handleDrop: (view, event) => {
+        if (!event.dataTransfer?.files?.length) return false
+        const allowed = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+        const files = Array.from(event.dataTransfer.files).filter((f) =>
+          allowed.includes(f.type)
+        )
+        if (files.length === 0) return false
+        // 当前未提供 attachmentContext 的上传能力，仅阻止默认行为避免浏览器打开文件。
+        // 真实上传由 attachment 面板或后续上传队列处理。
+        event.preventDefault()
+        return true
+      },
     },
     extensions: [
       ...markdownExtensions,
@@ -122,6 +188,28 @@ export function MarkdownEditor({
       const nextMarkdown = normalizeMarkdownSource(updatedEditor.getMarkdown())
       emittedMarkdownValuesRef.current.add(nextMarkdown)
       onChange(nextMarkdown)
+      // 检测 @ / # 触发。
+      if (!attachmentContext) return
+      const selection = updatedEditor.state.selection
+      const textBefore = updatedEditor.state.doc.textBetween(
+        Math.max(0, selection.from - 64),
+        selection.from,
+        "\n"
+      )
+      const match = detectReferenceTrigger({
+        textBeforeCaret: textBefore,
+        composing: composingRef.current,
+      })
+      if (match) {
+        setSuggestion({
+          active: true,
+          kind: match.kind,
+          query: match.query,
+          range: { from: selection.from - match.query.length - 1, to: selection.from },
+        })
+      } else if (suggestion.active) {
+        setSuggestion(emptySuggestionState)
+      }
     },
   })
 
@@ -132,6 +220,33 @@ export function MarkdownEditor({
 
     editor.setEditable(!disabled)
   }, [disabled, editor])
+
+  // handleSuggestionSelect 把选中的 reference 替换为 markdown link。
+  const handleSuggestionSelect = useCallback(
+    (item: ReferenceSuggestionMenuItem) => {
+      if (!editor || !suggestion.range) {
+        setSuggestion(emptySuggestionState)
+        return
+      }
+      const label =
+        item.label ||
+        (item.kind === "task" && item.description ? `#${item.description}` : item.id)
+      const markdown = buildInsertedReferenceMarkdown({
+        kind: item.kind as ReferenceTriggerKind,
+        id: item.id,
+        label,
+      })
+      const { from, to } = suggestion.range
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from, to })
+        .insertContentAt(from, markdown)
+        .run()
+      setSuggestion(emptySuggestionState)
+    },
+    [editor, suggestion.range]
+  )
 
   useEffect(() => {
     if (!editor) {
@@ -341,6 +456,19 @@ export function MarkdownEditor({
         <>
           <EditorContent editor={editor} />
           <TableBubbleMenu editor={editor} />
+          {suggestion.active && suggestion.kind && attachmentContext && (
+            <div className="absolute left-1/2 top-full z-10 -translate-x-1/2 pt-1">
+              <ReferenceSuggestionMenu
+                kind={suggestion.kind}
+                query={suggestion.query}
+                fetchSuggestions={attachmentContext.fetchSuggestions}
+                onSelect={(item) => {
+                  handleSuggestionSelect(item)
+                }}
+                onClose={() => setSuggestion(emptySuggestionState)}
+              />
+            </div>
+          )}
         </>
       )}
       <LinkDialog
