@@ -155,25 +155,21 @@ export function MarkdownEditor({
         const html = event.clipboardData?.getData("text/html") ?? ""
 
         // 截图粘贴场景：有图片文件但没有 HTML。
-        // 构造一个占位 <img>，让 sanitizeRichPaste 提取为 file 候选并替换为 marker。
+        // 直接插入 Markdown 格式的占位文本（编辑器使用 contentType: markdown）。
         if (files.length > 0 && !html) {
           const imageFiles = files.filter((f) =>
             ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(f.type)
           )
           if (imageFiles.length > 0) {
-            // 构造包含每个图片文件的占位 HTML，交给 sanitizer 提取。
-            const fakeHtml = imageFiles
-              .map((f) => `<img alt="${f.name || "截图"}">`)
-              .join("")
-            const { html: cleaned } = sanitizeRichPaste({ html: fakeHtml, files: imageFiles })
-            if (cleaned) {
-              const temp = document.createElement("div")
-              temp.innerHTML = cleaned
-              const { tr } = view.state
-              view.dispatch(tr.insertContent(temp.innerHTML))
-              event.preventDefault()
-              return true
-            }
+            // 插入 Markdown 图片占位：![截图](pending)
+            // 上传完成后 attachment context 会替换为 ref://attachment/{id}
+            const placeholders = imageFiles
+              .map((f) => `![${f.name || "截图"}](pending-upload)`)
+              .join("\n\n")
+            const { tr } = view.state
+            view.dispatch(tr.insertContent(placeholders))
+            event.preventDefault()
+            return true
           }
         }
 
