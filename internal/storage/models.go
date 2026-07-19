@@ -588,3 +588,53 @@ type TaskSeriesUDAValue struct {
 	ValueType string
 	Orphan    bool
 }
+
+// Attachment 是 workspace 级通用附件元数据。
+//
+// 数据库只保存元数据和存储 key，二进制内容由 internal/blobstore 持有。
+// 归属键固定为 (WorkspaceID, AttachedToType, AttachedToID)；首期只注册
+// task target，未知类型由 App 层拒绝。详见 spec §8。
+type Attachment struct {
+	ID                   string  `gorm:"primaryKey"`
+	WorkspaceID          string  `gorm:"not null;index;index:idx_attachments_target,priority:1"`
+	AttachedToType       string  `gorm:"not null;index:idx_attachments_target,priority:2"`
+	AttachedToID         string  `gorm:"not null;index:idx_attachments_target,priority:3"`
+	State                string  `gorm:"not null;index"` // uploading|draft|active|deleted
+	OriginalName         string  `gorm:"not null"`
+	DisplayName          string  `gorm:"not null"`
+	MediaType            string  `gorm:"not null"`
+	Extension            string  `gorm:"not null"`
+	SizeBytes            int64   `gorm:"not null"`
+	SHA256               string  `gorm:"not null;index"`
+	InlineCapable        bool    `gorm:"not null;default:false"`
+	EverEmbedded         bool    `gorm:"not null;default:false"`
+	SourceType           string  `gorm:"not null;default:'upload'"` // upload|remote_url
+	SourceHost           string  `gorm:"not null;default:''"`
+	SourceURLHash        string  `gorm:"not null;default:'';index"`
+	StorageBackend       string  `gorm:"not null"` // filesystem|s3
+	StorageKey           string  `gorm:"not null;uniqueIndex"`
+	CreatedBy            string  `gorm:"not null;index"`
+	CreatedByActorType   string  `gorm:"not null;default:'user';index"`
+	CreatedByUserID      *string `gorm:"index"`
+	CreatedByTokenID     *string `gorm:"index"`
+	CreatedByTokenName   *string
+	CreatedByTokenPrefix *string
+	CreatedAt            int64   `gorm:"not null;index"`
+	ModifiedAt           int64   `gorm:"not null"`
+	ExpiresAt            *int64  `gorm:"index"`
+	DeletedAt            *int64  `gorm:"index"`
+	PurgeAfter           *int64  `gorm:"index"`
+}
+
+// 附件状态常量。
+const (
+	AttachmentStateUploading = "uploading"
+	AttachmentStateDraft     = "draft"
+	AttachmentStateActive    = "active"
+	AttachmentStateDeleted   = "deleted"
+)
+
+// 附件归属类型常量。首期只有 task。
+const (
+	AttachmentAttachedToTask = "task"
+)

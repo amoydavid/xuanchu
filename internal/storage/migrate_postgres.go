@@ -25,7 +25,7 @@ func (s *Store) migratePostgres() error {
 	}
 	if err := s.db.AutoMigrate(
 		&TaskTag{}, &TaskAnnotation{}, &TaskDependency{},
-		&TaskAssignee{}, &TaskUDAValue{}, &TaskLink{},
+		&TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}, &Attachment{},
 	); err != nil {
 		return err
 	}

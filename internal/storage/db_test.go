@@ -239,6 +239,24 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 	}
 }
 
+func TestAttachmentTableMigrated(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if !store.DB().Migrator().HasTable(&Attachment{}) {
+		t.Fatal("attachments table missing after migration")
+	}
+	if !store.DB().Migrator().HasIndex(&Attachment{}, "idx_attachments_target") {
+		t.Fatal("idx_attachments_target missing after migration")
+	}
+	if !store.DB().Migrator().HasIndex(&Attachment{}, "idx_attachments_storage_key") {
+		t.Fatal("attachments storage_key unique index missing")
+	}
+}
+
 func TestAuditTargetTimeIndexMigrated(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {

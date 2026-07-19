@@ -34,7 +34,7 @@ func (s *Store) migrateSQLite() error {
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &ProjectAutomationRule{}, &ProjectAutomationDelivery{}, &UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}); err != nil {
 		return err
 	}
-	if err := s.db.AutoMigrate(&TaskTag{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}); err != nil {
+	if err := s.db.AutoMigrate(&TaskTag{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}, &Attachment{}); err != nil {
 		return err
 	}
 	if err := s.prepareActorColumnsForP2(); err != nil {

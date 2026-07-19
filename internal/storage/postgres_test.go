@@ -45,7 +45,7 @@ func TestPostgres_Migration(t *testing.T) {
 		"api_tokens", "contexts", "uda_definitions", "hook_definitions",
 		"hook_deliveries", "user_external_ids", "tasks",
 		"task_tags", "task_annotations", "task_dependencies",
-		"task_assignees", "task_uda_values", "task_links"}
+		"task_assignees", "task_uda_values", "task_links", "attachments"}
 	for _, table := range tables {
 		if !db.Migrator().HasTable(table) {
 			t.Errorf("table %q not found after migration", table)
