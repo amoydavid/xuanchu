@@ -694,6 +694,8 @@ func (s *Server) humaRoutes() []humaRoute {
 		{Method: http.MethodGet, Path: "/api/v1/attachments/{attachmentID}/content", Tag: "Attachments", Summary: "Download attachment content.", Handler: s.handleAttachmentContent},
 		{Method: http.MethodPatch, Path: "/api/v1/attachments/{attachmentID}", Tag: "Attachments", Summary: "Rename an attachment.", Handler: s.handleAttachmentRename},
 		{Method: http.MethodDelete, Path: "/api/v1/attachments/{attachmentID}", Tag: "Attachments", Summary: "Remove an attachment.", Handler: s.handleAttachmentRemove},
+		{Method: http.MethodGet, Path: "/api/v1/content-references/suggestions", Tag: "Content References", Summary: "Suggest users or tasks for content references.", Handler: s.handleContentReferenceSuggestions},
+		{Method: http.MethodPost, Path: "/api/v1/content-references/resolve", Tag: "Content References", Summary: "Batch resolve content references.", Handler: s.handleContentReferenceResolve},
 		{Method: http.MethodGet, Path: "/api/v1/task-series", Tag: "Task Series", Summary: "List recurring task series.", Handler: s.handleTaskSeriesList},
 		{Method: http.MethodPost, Path: "/api/v1/task-series", Tag: "Task Series", Summary: "Create a recurring task series.", Handler: s.handleTaskSeriesAdd, Status: http.StatusCreated},
 		{Method: http.MethodGet, Path: "/api/v1/task-series/{seriesRef}", Tag: "Task Series", Summary: "Get series details.", Handler: s.handleTaskSeriesGet},

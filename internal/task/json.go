@@ -618,6 +618,15 @@ func UserInfoToJSON(u UserInfo) JSONUserInfo {
 	}
 }
 
+// UserInfoListToJSON 把 UserInfo 列表转为 JSONUserInfo 列表。
+func UserInfoListToJSON(list []UserInfo) []JSONUserInfo {
+	out := make([]JSONUserInfo, 0, len(list))
+	for _, u := range list {
+		out = append(out, UserInfoToJSON(u))
+	}
+	return out
+}
+
 func UserInfoFromJSON(j JSONUserInfo) UserInfo {
 	return UserInfo{
 		ID: j.ID, Name: j.Name, DisplayName: j.DisplayName, Email: j.Email,

@@ -38,6 +38,7 @@ var allowedHookEventTypes = map[string]bool{
 	"task.project_changed":  true,
 	"task.tags_changed":     true,
 	"task.unblocked":        true,
+	"task.user_mentioned":   true,
 	"project.archived":      true,
 	"project.transitioned":  true,
 	"project.annotated":     true,

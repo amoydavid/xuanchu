@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -157,6 +158,65 @@ func AttachmentReferenceIDs(markdown string) ([]string, error) {
 	var ids []string
 	for _, r := range refs {
 		if r.Kind != ContentReferenceAttachment {
+			continue
+		}
+		if _, ok := seen[r.ID]; ok {
+			continue
+		}
+		seen[r.ID] = struct{}{}
+		ids = append(ids, r.ID)
+	}
+	return ids, nil
+}
+
+// DiffContentReferenceKeys 计算两组引用的 added/removed。
+//
+// 身份只由 (kind, id) 决定，label 不参与。返回的两个切片按 (kind, id) 排序，去重。
+func DiffContentReferenceKeys(before, after []ContentReference) (added, removed []ContentReferenceKey) {
+	beforeSet := toKeySet(before)
+	afterSet := toKeySet(after)
+	for key := range afterSet {
+		if _, ok := beforeSet[key]; !ok {
+			added = append(added, key)
+		}
+	}
+	for key := range beforeSet {
+		if _, ok := afterSet[key]; !ok {
+			removed = append(removed, key)
+		}
+	}
+	sortKeys(added)
+	sortKeys(removed)
+	return added, removed
+}
+
+func toKeySet(refs []ContentReference) map[ContentReferenceKey]struct{} {
+	set := make(map[ContentReferenceKey]struct{}, len(refs))
+	for _, r := range refs {
+		set[ContentReferenceKey{Kind: r.Kind, ID: r.ID}] = struct{}{}
+	}
+	return set
+}
+
+func sortKeys(keys []ContentReferenceKey) {
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].Kind != keys[j].Kind {
+			return keys[i].Kind < keys[j].Kind
+		}
+		return keys[i].ID < keys[j].ID
+	})
+}
+
+// MentionedUserIDs 返回 markdown 中所有 user 引用的去重 user ID。
+func MentionedUserIDs(markdown string) ([]string, error) {
+	refs, err := ParseContentReferences(markdown)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	var ids []string
+	for _, r := range refs {
+		if r.Kind != ContentReferenceUser {
 			continue
 		}
 		if _, ok := seen[r.ID]; ok {

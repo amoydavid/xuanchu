@@ -694,6 +694,10 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		events := []HookEvent{buildTaskHookEvent("task.modified", modified, tx.runtime, now)}
 		events = append(events, fineGrained...)
 		events = append(events, blocked...)
+		// 新增用户 mention 生成一次 task.user_mentioned 事件。
+		if mentionEvent, ok := tx.buildUserMentionedEventIfNeeded(before, modified, now); ok {
+			events = append(events, mentionEvent)
+		}
 		entry := taskModifyAuditEntry(modified.UUID, change, diff)
 		return &entry, events, nil
 	})

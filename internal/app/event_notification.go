@@ -370,6 +370,12 @@ func validateEventNotificationAudience(eventType, audience string) error {
 			return nil
 		}
 		return RuntimeError{Code: "audience_unsupported_for_event", Message: "audience is unsupported for this event"}
+	case "mentioned_users":
+		// mentioned_users 只允许用于 task.user_mentioned。
+		if eventType == "task.user_mentioned" {
+			return nil
+		}
+		return RuntimeError{Code: "audience_unsupported_for_event", Message: "audience is unsupported for this event"}
 	default:
 		return RuntimeError{Code: "notification_rule_invalid", Message: "unsupported audience"}
 	}
@@ -634,6 +640,31 @@ func (s *Service) eventNotificationRecipientIDs(rule storage.EventNotificationRu
 		}
 		for _, assignee := range tsk.Assignees {
 			add(assignee.UserID)
+		}
+	}
+	if rule.AudienceType == "mentioned_users" {
+		// spec §16.2：从 event.Data["mentioned_users"] 解析 JSONUserInfo 列表。
+		// actor 自己默认排除（actor 是 user 时）；actor 是 tenant/agent token 时 ActorUserID 为空，不排除。
+		raw, ok := event.Data["mentioned_users"]
+		if !ok {
+			return []string{}, nil
+		}
+		bytes, err := json.Marshal(raw)
+		if err != nil {
+			return []string{}, nil
+		}
+		var jsonUsers []task.JSONUserInfo
+		if err := json.Unmarshal(bytes, &jsonUsers); err != nil {
+			return []string{}, nil
+		}
+		for _, ju := range jsonUsers {
+			if ju.ID == "" {
+				continue
+			}
+			if ju.ID == event.ActorUserID && event.ActorUserID != "" {
+				continue
+			}
+			add(ju.ID)
 		}
 	}
 	activeIDs := make([]string, 0, len(ids))
