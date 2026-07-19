@@ -1108,3 +1108,112 @@ func TestResolveLogEnvWithoutToml(t *testing.T) {
 		t.Fatalf("Log.File.Path = %q, want /tmp/from-env.log", cfg.Log.File.Path)
 	}
 }
+
+func TestResolveAttachmentDefaults(t *testing.T) {
+	cfg, err := Resolve(Options{HomeDir: "/home/alice", Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.DataDir != "/home/alice/.local/share/xuanchu" {
+		t.Fatalf("data dir = %q", cfg.DataDir)
+	}
+	if cfg.Attachments.Backend != "filesystem" {
+		t.Fatalf("backend = %q", cfg.Attachments.Backend)
+	}
+	if cfg.Attachments.FilesystemDir != "/home/alice/.local/share/xuanchu/attachments" {
+		t.Fatalf("dir = %q", cfg.Attachments.FilesystemDir)
+	}
+	if cfg.Attachments.MaxFileSizeBytes != 25<<20 {
+		t.Fatalf("max file = %d", cfg.Attachments.MaxFileSizeBytes)
+	}
+	if cfg.Attachments.DraftTTL != 24*time.Hour {
+		t.Fatalf("draft ttl = %v", cfg.Attachments.DraftTTL)
+	}
+}
+
+func TestResolveAttachmentConfigFromTomlAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "xuanchu.toml")
+	if err := os.WriteFile(path, []byte(strings.Join([]string{
+		"[attachments]",
+		`backend = "s3"`,
+		`max_file_size_mb = 1`,
+		`max_resource_total_size_mb = 2`,
+		`max_workspace_total_size_mb = 3`,
+		`draft_ttl = "12h"`,
+		`remote_fetch_enabled = false`,
+		`[attachments.s3]`,
+		`bucket = "toml-bucket"`,
+		`region = "us-west-2"`,
+		`server_side_encryption = "AES256"`,
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Resolve(Options{ConfigPath: path, HomeDir: dir, Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Attachments.Backend != "s3" {
+		t.Fatalf("backend = %q", cfg.Attachments.Backend)
+	}
+	if cfg.Attachments.MaxFileSizeBytes != 1<<20 {
+		t.Fatalf("max file = %d", cfg.Attachments.MaxFileSizeBytes)
+	}
+	if cfg.Attachments.S3.Bucket != "toml-bucket" || cfg.Attachments.S3.Region != "us-west-2" {
+		t.Fatalf("s3 = %#v", cfg.Attachments.S3)
+	}
+	if cfg.Attachments.RemoteFetchEnabled {
+		t.Fatalf("remote fetch should be disabled")
+	}
+
+	// env 覆盖
+	cfg, err = Resolve(Options{
+		ConfigPath: path,
+		HomeDir:    dir,
+		Env: map[string]string{
+			"XUANCHU_ATTACHMENTS_BACKEND": "filesystem",
+			"XUANCHU_ATTACHMENTS_S3_BUCKET": "env-bucket",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Resolve() env error = %v", err)
+	}
+	if cfg.Attachments.Backend != "filesystem" {
+		t.Fatalf("backend env override = %q", cfg.Attachments.Backend)
+	}
+	if cfg.Attachments.S3.Bucket != "env-bucket" {
+		t.Fatalf("s3 bucket env override = %q", cfg.Attachments.S3.Bucket)
+	}
+}
+
+func TestResolveAttachmentConfigRejectsInvalidS3(t *testing.T) {
+	_, err := Resolve(Options{
+		HomeDir: "/home/alice",
+		Env:     map[string]string{"XUANCHU_ATTACHMENTS_BACKEND": "s3"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bucket") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveAttachmentConfigRejectsInvalidQuota(t *testing.T) {
+	_, err := Resolve(Options{
+		HomeDir: "/home/alice",
+		Env:     map[string]string{"XUANCHU_ATTACHMENTS_MAX_FILE_SIZE_MB": "300", "XUANCHU_ATTACHMENTS_MAX_RESOURCE_TOTAL_SIZE_MB": "200"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "max_resource_total_size_mb") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveAttachmentConfigRejectsInvalidBackend(t *testing.T) {
+	_, err := Resolve(Options{
+		HomeDir: "/home/alice",
+		Env:     map[string]string{"XUANCHU_ATTACHMENTS_BACKEND": "gcs"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "backend") {
+		t.Fatalf("err = %v", err)
+	}
+}

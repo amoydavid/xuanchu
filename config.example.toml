@@ -42,6 +42,40 @@ timeout = "30s"
 # drain 超时后发出强制取消，再等待运行时清理资源的时间。
 force_timeout = "5s"
 
+[attachments]
+# 附件存储后端。filesystem 使用本地磁盘；s3 走 AWS 兼容对象存储（私有 bucket）。
+backend = "filesystem"
+# filesystem 后端根目录；留空时使用 <data-dir>/attachments。
+filesystem_dir = ""
+# 单文件、单 attached resource、单 workspace 与单资源数量上限。
+# 必须满足 file <= resource <= workspace。
+max_file_size_mb = 25
+max_resource_total_size_mb = 200
+max_workspace_total_size_mb = 10240
+max_attachments_per_resource = 100
+# 草稿保留时长：编辑器未保存的 draft 在此后由 janitor 清理。
+draft_ttl = "24h"
+# 已删除附件的保留时长：retention 内仍可鉴权读取，并继续计入配额。
+deleted_retention = "720h"
+# 服务端远程图片转存开关。关闭后 import-url 返回稳定错误，不退化为浏览器直连。
+remote_fetch_enabled = true
+remote_fetch_timeout = "30s"
+remote_fetch_max_redirects = 5
+# 单 workspace 单进程的远程抓取并发上限。
+remote_fetch_max_concurrency = 4
+
+# S3 后端配置。bucket 必须是 private，服务端代理所有读写。
+# AWS 凭证继续走 SDK 默认链路（AWS_ACCESS_KEY_ID 等环境变量、shared credentials、IAM role）。
+# [attachments.s3]
+# bucket = ""
+# region = ""
+# endpoint = ""
+# prefix = "xuanchu/attachments"
+# force_path_style = false
+# allow_insecure_endpoint = false
+# server_side_encryption = ""   # "" | AES256 | aws:kms
+# kms_key_id = ""
+
 [notifications.dispatcher]
 # dispatcher 级并发。默认 1，保持顺序投递；需要吞吐时再显式调大。
 max_concurrency = 1

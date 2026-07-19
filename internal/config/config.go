@@ -11,12 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/attachments"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
 )
 
 type Config struct {
 	DatabasePath           string
 	DatabaseURL            string
+	DataDir                string
 	PublicBaseURL          string
 	RemoteServer           string
 	RemoteToken            string
@@ -30,6 +32,7 @@ type Config struct {
 	HookDispatcher         DispatcherConfig
 	Shutdown               ShutdownConfig
 	SecretKey              string
+	Attachments            attachments.Config
 }
 
 // ResourceBaseURL 返回 Web Console 资源 URL 的统一前缀。
@@ -235,9 +238,16 @@ func Resolve(opts Options) (Config, error) {
 		secretKey = tomlValues["security.config_secret_key"]
 	}
 
+	dataDir := resolveDataDir(opts, env, home)
+	attachmentsCfg, err := parseAttachmentsConfig(tomlValues, env, dataDir)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		DatabasePath:           dbPath,
 		DatabaseURL:            dbURL,
+		DataDir:                dataDir,
 		PublicBaseURL:          publicBaseURL,
 		RemoteServer:           server,
 		RemoteToken:            token,
@@ -251,7 +261,229 @@ func Resolve(opts Options) (Config, error) {
 		HookDispatcher:         hookDispatcher,
 		Shutdown:               shutdownCfg,
 		SecretKey:              secretKey,
+		Attachments:            attachmentsCfg,
 	}, nil
+}
+
+// resolveDataDir 与现有 dbPath 回退保持一致的 data-dir 语义。
+func resolveDataDir(opts Options, env map[string]string, home string) string {
+	if opts.DataDir != "" {
+		return opts.DataDir
+	}
+	if env["XDG_DATA_HOME"] != "" {
+		return filepath.Join(env["XDG_DATA_HOME"], "xuanchu")
+	}
+	return filepath.Join(home, ".local", "share", "xuanchu")
+}
+
+// parseAttachmentsConfig 按 TOML > env 顺序解析附件配置，并执行严格校验。
+func parseAttachmentsConfig(values map[string]string, env map[string]string, dataDir string) (attachments.Config, error) {
+	cfg := attachments.DefaultConfig(dataDir)
+	if values != nil {
+		if v := values["attachments.backend"]; v != "" {
+			cfg.Backend = v
+		}
+		if v := values["attachments.filesystem_dir"]; v != "" {
+			cfg.FilesystemDir = v
+		}
+		if v, ok := values["attachments.max_file_size_mb"]; ok && v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				return attachments.Config{}, fmt.Errorf("attachments.max_file_size_mb must be a positive integer")
+			}
+			cfg.MaxFileSizeBytes = int64(n) << 20
+		}
+		if v, ok := values["attachments.max_resource_total_size_mb"]; ok && v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				return attachments.Config{}, fmt.Errorf("attachments.max_resource_total_size_mb must be a positive integer")
+			}
+			cfg.MaxResourceTotalSizeBytes = int64(n) << 20
+		}
+		if v, ok := values["attachments.max_workspace_total_size_mb"]; ok && v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				return attachments.Config{}, fmt.Errorf("attachments.max_workspace_total_size_mb must be a positive integer")
+			}
+			cfg.MaxWorkspaceTotalSizeBytes = int64(n) << 20
+		}
+		if v, ok := values["attachments.max_attachments_per_resource"]; ok && v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				return attachments.Config{}, fmt.Errorf("attachments.max_attachments_per_resource must be a positive integer")
+			}
+			cfg.MaxAttachmentsPerResource = n
+		}
+		if v, ok := values["attachments.draft_ttl"]; ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d < 0 {
+				return attachments.Config{}, fmt.Errorf("attachments.draft_ttl must be a non-negative duration")
+			}
+			cfg.DraftTTL = d
+		}
+		if v, ok := values["attachments.deleted_retention"]; ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d < 0 {
+				return attachments.Config{}, fmt.Errorf("attachments.deleted_retention must be a non-negative duration")
+			}
+			cfg.DeletedRetention = d
+		}
+		if v, ok := values["attachments.remote_fetch_enabled"]; ok && v != "" {
+			enabled, err := strconv.ParseBool(v)
+			if err != nil {
+				return attachments.Config{}, fmt.Errorf("attachments.remote_fetch_enabled must be a boolean")
+			}
+			cfg.RemoteFetchEnabled = enabled
+		}
+		if v, ok := values["attachments.remote_fetch_timeout"]; ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return attachments.Config{}, fmt.Errorf("attachments.remote_fetch_timeout must be a duration")
+			}
+			cfg.RemoteFetchTimeout = d
+		}
+		if v, ok := values["attachments.remote_fetch_max_redirects"]; ok && v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return attachments.Config{}, fmt.Errorf("attachments.remote_fetch_max_redirects must be an integer")
+			}
+			cfg.RemoteFetchMaxRedirects = n
+		}
+		if v, ok := values["attachments.remote_fetch_max_concurrency"]; ok && v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return attachments.Config{}, fmt.Errorf("attachments.remote_fetch_max_concurrency must be an integer")
+			}
+			cfg.RemoteFetchMaxConcurrency = n
+		}
+		if v := values["attachments.s3.bucket"]; v != "" {
+			cfg.S3.Bucket = v
+		}
+		if v := values["attachments.s3.region"]; v != "" {
+			cfg.S3.Region = v
+		}
+		if v := values["attachments.s3.endpoint"]; v != "" {
+			cfg.S3.Endpoint = v
+		}
+		if v := values["attachments.s3.prefix"]; v != "" {
+			cfg.S3.Prefix = v
+		}
+		if v, ok := values["attachments.s3.force_path_style"]; ok && v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return attachments.Config{}, fmt.Errorf("attachments.s3.force_path_style must be a boolean")
+			}
+			cfg.S3.ForcePathStyle = b
+		}
+		if v, ok := values["attachments.s3.allow_insecure_endpoint"]; ok && v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return attachments.Config{}, fmt.Errorf("attachments.s3.allow_insecure_endpoint must be a boolean")
+			}
+			cfg.S3.AllowInsecureEndpoint = b
+		}
+		if v := values["attachments.s3.server_side_encryption"]; v != "" {
+			cfg.S3.ServerSideEncryption = v
+		}
+		if v := values["attachments.s3.kms_key_id"]; v != "" {
+			cfg.S3.KMSKeyID = v
+		}
+	}
+
+	// 环境变量覆盖。规范要求 AWS 凭证继续走 SDK 默认链路，这里不读取。
+	envApply := map[string]func(string) error{
+		"XUANCHU_ATTACHMENTS_BACKEND":                 func(v string) error { cfg.Backend = v; return nil },
+		"XUANCHU_ATTACHMENTS_FILESYSTEM_DIR":          func(v string) error { cfg.FilesystemDir = v; return nil },
+		"XUANCHU_ATTACHMENTS_MAX_FILE_SIZE_MB":        parseIntMib("XUANCHU_ATTACHMENTS_MAX_FILE_SIZE_MB", &cfg.MaxFileSizeBytes),
+		"XUANCHU_ATTACHMENTS_MAX_RESOURCE_TOTAL_SIZE_MB": parseIntMib("XUANCHU_ATTACHMENTS_MAX_RESOURCE_TOTAL_SIZE_MB", &cfg.MaxResourceTotalSizeBytes),
+		"XUANCHU_ATTACHMENTS_MAX_WORKSPACE_TOTAL_SIZE_MB": parseIntMib("XUANCHU_ATTACHMENTS_MAX_WORKSPACE_TOTAL_SIZE_MB", &cfg.MaxWorkspaceTotalSizeBytes),
+		"XUANCHU_ATTACHMENTS_MAX_ATTACHMENTS_PER_RESOURCE": func(v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("XUANCHU_ATTACHMENTS_MAX_ATTACHMENTS_PER_RESOURCE must be an integer")
+			}
+			cfg.MaxAttachmentsPerResource = n
+			return nil
+		},
+		"XUANCHU_ATTACHMENTS_DRAFT_TTL": parseDurationEnv("XUANCHU_ATTACHMENTS_DRAFT_TTL", &cfg.DraftTTL, false),
+		"XUANCHU_ATTACHMENTS_DELETED_RETENTION": parseDurationEnv("XUANCHU_ATTACHMENTS_DELETED_RETENTION", &cfg.DeletedRetention, false),
+		"XUANCHU_ATTACHMENTS_REMOTE_FETCH_ENABLED": parseBoolEnv("XUANCHU_ATTACHMENTS_REMOTE_FETCH_ENABLED", &cfg.RemoteFetchEnabled),
+		"XUANCHU_ATTACHMENTS_REMOTE_FETCH_TIMEOUT":      parseDurationEnv("XUANCHU_ATTACHMENTS_REMOTE_FETCH_TIMEOUT", &cfg.RemoteFetchTimeout, true),
+		"XUANCHU_ATTACHMENTS_REMOTE_FETCH_MAX_REDIRECTS": func(v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("XUANCHU_ATTACHMENTS_REMOTE_FETCH_MAX_REDIRECTS must be an integer")
+			}
+			cfg.RemoteFetchMaxRedirects = n
+			return nil
+		},
+		"XUANCHU_ATTACHMENTS_REMOTE_FETCH_MAX_CONCURRENCY": func(v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("XUANCHU_ATTACHMENTS_REMOTE_FETCH_MAX_CONCURRENCY must be an integer")
+			}
+			cfg.RemoteFetchMaxConcurrency = n
+			return nil
+		},
+		"XUANCHU_ATTACHMENTS_S3_BUCKET":                   func(v string) error { cfg.S3.Bucket = v; return nil },
+		"XUANCHU_ATTACHMENTS_S3_REGION":                   func(v string) error { cfg.S3.Region = v; return nil },
+		"XUANCHU_ATTACHMENTS_S3_ENDPOINT":                 func(v string) error { cfg.S3.Endpoint = v; return nil },
+		"XUANCHU_ATTACHMENTS_S3_PREFIX":                   func(v string) error { cfg.S3.Prefix = v; return nil },
+		"XUANCHU_ATTACHMENTS_S3_FORCE_PATH_STYLE":         parseBoolEnv("XUANCHU_ATTACHMENTS_S3_FORCE_PATH_STYLE", &cfg.S3.ForcePathStyle),
+		"XUANCHU_ATTACHMENTS_S3_ALLOW_INSECURE_ENDPOINT":  parseBoolEnv("XUANCHU_ATTACHMENTS_S3_ALLOW_INSECURE_ENDPOINT", &cfg.S3.AllowInsecureEndpoint),
+		"XUANCHU_ATTACHMENTS_S3_SERVER_SIDE_ENCRYPTION":   func(v string) error { cfg.S3.ServerSideEncryption = v; return nil },
+		"XUANCHU_ATTACHMENTS_S3_KMS_KEY_ID":               func(v string) error { cfg.S3.KMSKeyID = v; return nil },
+	}
+	for key, apply := range envApply {
+		value, ok := env[key]
+		if !ok || value == "" {
+			continue
+		}
+		if err := apply(value); err != nil {
+			return attachments.Config{}, err
+		}
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return attachments.Config{}, err
+	}
+	return cfg, nil
+}
+
+func parseIntMib(name string, dst *int64) func(string) error {
+	return func(v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("%s must be a positive integer", name)
+		}
+		*dst = int64(n) << 20
+		return nil
+	}
+}
+
+func parseDurationEnv(name string, dst *time.Duration, allowZero bool) func(string) error {
+	return func(v string) error {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("%s must be a duration", name)
+		}
+		if d < 0 || (!allowZero && d == 0) {
+			return fmt.Errorf("%s must be a non-negative duration", name)
+		}
+		*dst = d
+		return nil
+	}
+}
+
+func parseBoolEnv(name string, dst *bool) func(string) error {
+	return func(v string) error {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("%s must be a boolean", name)
+		}
+		*dst = b
+		return nil
+	}
 }
 
 // ValidatePublicBaseURL 校验并规范化 Web Console 对外 origin。
