@@ -136,8 +136,17 @@ xuanchu reminder rule add overdue-daily \
 - `assignees`
 - `explicit_users`
 - `assignees_and_explicit_users`
+- `mentioned_users`（仅 `task.user_mentioned` 事件可用）
 
 不支持 `project_owner` 或 `project_maintainer`。Xuanchu 当前没有稳定的项目负责人模型，不会把 `project.created_by` 当负责人。
+
+`mentioned_users` 是 v0.5.11 引入的受众，专用于 `task.user_mentioned` 事件：当 task
+description 中新增 `[@用户](ref://user/{uuid})` 引用时，每个被提及的用户都会收到一条
+notification delivery。默认排除事件 actor 自己（actor 是 tenant/agent token 时
+`ActorUserID` 为空，不排除）；同一 event/rule/recipient 复用现有 dedupe key，不重复投递。
+其它 event type 创建规则时使用 `mentioned_users` 会返回 `audience_unsupported_for_event`。
+
+## 创建 notification rule
 
 ## 创建 notification rule
 
@@ -187,6 +196,7 @@ xuanchu notification rule add urgent-task-changes \
 - `task.priority_changed`
 - `task.project_changed`
 - `task.tags_changed`
+- `task.user_mentioned`
 - `project.archived`
 - `project.transitioned`
 - `project.annotated`

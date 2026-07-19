@@ -264,6 +264,43 @@ http://127.0.0.1:8080/openapi-3.0.json
 http://127.0.0.1:8080/openapi-3.0.yaml
 ```
 
+## 任务附件
+
+任务附件是 workspace 级通用二进制资源，首期挂在 task 上。本地 CLI 直接读写存储后端；
+远程 CLI 使用同一 HTTP API，上传/下载走 multipart/stream，不把二进制放进 JSON。
+
+### CLI 命令
+
+```bash
+xuanchu attachment add <task-ref> <file> [--display-name <name>]
+xuanchu attachment list <task-ref>
+xuanchu attachment info <attachment-id>
+xuanchu attachment download <attachment-id> [--output <path>|-]
+xuanchu attachment rename <attachment-id> <display-name>
+xuanchu attachment remove <attachment-id>
+```
+
+- `add` 走 multipart 上传，本地与远程一致；远程模式上传进度写 stderr。
+- `download` 默认写入当前目录的展示名（`O_CREAT|O_EXCL`，已存在返回 `attachment_output_exists`）。
+  `--output -` 写 stdout，进度信息写 stderr；禁止与 `--json` 同时使用。
+- `--json` 仅用于 metadata/list/info/write result，不与二进制 stdout 混用。
+
+### HTTP API
+
+```text
+POST   /api/v1/tasks/{taskRef}/attachments              multipart/form-data: file, mode, display_name?
+POST   /api/v1/tasks/{taskRef}/attachments/import-url   JSON: source_url, mode=description_draft, display_name?
+GET    /api/v1/tasks/{taskRef}/attachments              ?include_drafts=true
+GET    /api/v1/attachments/{attachmentID}
+GET    /api/v1/attachments/{attachmentID}/content       流式，返回 Content-Type/Disposition/ETag
+PATCH  /api/v1/attachments/{attachmentID}               JSON: display_name
+DELETE /api/v1/attachments/{attachmentID}               204
+```
+
+content 响应固定带 `X-Content-Type-Options: nosniff` 与 `Cache-Control: private, no-store`；
+非内联类型统一 `Content-Disposition: attachment`，文件名按 RFC 5987 编码。详细错误码见
+spec §18。
+
 ## Impersonation（M10）
 
 远程 CLI 和 HTTP API 支持 impersonation：持有带 `impersonate` scope 的 agent token 的请求可以指定目标用户，以该用户身份执行操作。

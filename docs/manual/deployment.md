@@ -157,6 +157,28 @@ chmod 600 ~/.local/share/xuanchu/xuanchu.db
 chmod 600 /path/to/backup.db
 ```
 
+## 附件存储
+
+任务附件二进制默认写入 `<data-dir>/attachments`（filesystem 后端），元数据写入
+主数据库。**迁移或备份服务器时必须同时迁移附件目录与数据库，仅迁移数据库会留下
+不可访问的 metadata**。
+
+```bash
+# 默认目录
+~/.local/share/xuanchu/attachments/
+
+# 容器部署：挂载 volume
+docker run -v /var/lib/xuanchu/data:/data \
+  xuanchu --data-dir /data
+# 附件会落在 /data/attachments
+```
+
+切换 backend（filesystem → S3）不自动迁移历史对象；只要旧目录仍挂载，历史附件可继续
+读取。S3/MinIO 配置见 `config.example.toml` 的 `[attachments.s3]` 段；AWS 凭证只走 SDK
+默认链路，不要把 access key/secret 写进 TOML。附件目录权限默认 `0700`（workspace 子目录）
+与 `0600`（blob 文件）。更多安全边界（远程图片转存、文件类型白名单、配额、生命周期）见
+[`attachment-security.md`](./attachment-security.md)。
+
 ## 出站网络
 
 hook dispatcher 和 notification dispatcher 需要访问外部 webhook / HTTP template URL。默认禁止投递到私网、loopback、link-local、multicast、unspecified 等地址。

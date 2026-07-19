@@ -31,3 +31,20 @@ description: 使用璇础 MCP skill 或把文档里的 canonical tool name 映�
 - MCP 接口里的任务引用使用 UUID、已物化任务的 `task_slug` 或循环实例 occurrence_ref；projected 实例只有 occurrence_ref。不要使用 CLI working-set 数字 ID。
 - `workspace_use`、`user_use`、`context_set` 只影响 stdio MCP 的隐式状态；HTTP MCP 不受影响。默认显式传参。
 - 以工具返回的 structured content 为准；rendered text 只用于人读摘要。
+
+## 任务附件
+
+附件 tool 只暴露 metadata：`task_attachment_list`、`task_attachment_get`、
+`task_attachment_rename`、`task_attachment_remove`。**MCP 不提供 base64 upload/download**。
+
+下载附件二进制内容时，使用 `task_attachment_get` 返回的 `content_url`，配合同一 Bearer
+token 走 HTTP `GET`：
+
+```text
+GET /api/v1/attachments/{attachment_id}/content?workspace=<slug>
+Authorization: Bearer <同一调用 token>
+```
+
+`task_attachment_remove` 在附件仍被 description 引用时返回 `attachment_in_use`，需要先
+删除正文引用并保存。
+

@@ -327,7 +327,7 @@ xuanchu --workspace dajee token create mcp-agent \
 
 ## Tools
 
-当前提供 102 个 tools。
+当前提供 106 个 tools。
 
 ### 任务与循环任务（23 tools）
 
@@ -592,6 +592,56 @@ xuanchu --workspace dajee token create mcp-agent \
 
 跳过一次实例。传 `series_id` 与稳定的 `occurrence_id`；结果是 deleted tombstone，
 不会停止整个循环任务。
+
+### 任务附件（4 tools）
+
+只读 metadata 工具。下载附件二进制内容需要使用返回的 `content_url`，配合同一 Bearer
+token 走 HTTP `GET`（MCP 不提供 base64 upload/download）。
+
+#### `task_attachment_list`
+
+列出任务的 active 附件。`include_drafts=true` 只返回当前调用者自己的 draft。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `task` | string | 是 | 任务引用 |
+
+#### `task_attachment_get`
+
+读取单个附件 metadata。响应含 `content_url`，需用同一 Bearer token 走 HTTP 下载内容。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `attachment_id` | string | 是 | 附件 ID |
+
+#### `task_attachment_rename`
+
+修改附件展示名。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `attachment_id` | string | 是 | 附件 ID |
+| `display_name` | string | 是 | 新展示名 |
+
+#### `task_attachment_remove`
+
+删除附件。若附件仍被 description 引用，返回 `attachment_in_use`。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `workspace` | string | 否 | |
+| `project` | string | 否 | |
+| `project_id` | string | 否 | |
+| `attachment_id` | string | 是 | 附件 ID |
 
 ### 报表与 Urgency（2 tools）
 
