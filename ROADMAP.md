@@ -57,7 +57,7 @@
 | v0.5.8 | 已完成 | 循环任务系列稳定化收尾 + urgency 排序接入 Web Console 列表页 |
 | v0.5.9 | 已完成 | Web Console 任务详情页低噪声默认态与动作层级收敛 |
 | v0.5.10 | 已完成 | Web Console 用户首页：我的今日、项目关注、工作区信息与系统身份降级 |
-| v0.5.11 | 待实施 | 任务 description 富文本粘贴、远程图片转存、通用附件基础与用户/任务语义引用 |
+| v0.5.11 | 已完成 | 任务 description 富文本粘贴、远程图片转存、通用附件基础与用户/任务语义引用 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
