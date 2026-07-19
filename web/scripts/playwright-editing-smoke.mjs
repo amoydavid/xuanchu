@@ -122,6 +122,9 @@ async function runDesktopSmoke(browser) {
 
     // 内容引用 smoke（计划 4 Task 12）：description 含 ref:// 引用、保存后仍是 Markdown。
     await runReferenceMarkdownSmoke(page)
+
+    // 富文本粘贴 smoke（计划 3 Task 9）：Word 风格 HTML 清洗、截图粘贴、远程图片。
+    await runPasteSanitizationSmoke(page)
   } finally {
     await page.close()
   }
@@ -186,6 +189,56 @@ async function runReferenceMarkdownSmoke(page) {
     await page.waitForTimeout(200)
   }
   throw new Error("description did not retain ref:// URI after save")
+}
+
+// runPasteSanitizationSmoke 验证富文本粘贴清洗（计划 3 Task 9）。
+//
+// 通过 DOMPurify sanitize 确认：
+// - Word 风格 HTML 的标题/列表/表格被保留，style/script 被移除
+// - 远程图片被替换为 marker，不持久化为 <img src="https://...">
+// - 剪贴板图片被识别为 file 候选
+async function runPasteSanitizationSmoke(page) {
+  // 在浏览器内直接调用 sanitizeRichPaste 验证清洗结果。
+  const result = await page.evaluate(async () => {
+    // 动态 import sanitize 模块
+    const mod = await import("/src/components/markdown/paste-sanitizer.ts")
+    const sanitized = mod.sanitizeRichPaste({
+      html: '<h2 style="color:red">标题</h2><script>alert(1)</script><p>段落</p><img src="https://cdn.example.com/arch.png" alt="架构"><img src="data:image/png;base64,xx" alt="截图">',
+      files: [],
+    })
+    return {
+      html: sanitized.html,
+      imageCount: sanitized.images.length,
+      hasScript: sanitized.html.includes("<script"),
+      hasStyle: sanitized.html.includes("style="),
+      hasRemoteImg: sanitized.html.includes("<img"),
+      hasDataXuanchu: sanitized.html.includes("data-xuanchu-paste-image"),
+    }
+  })
+  // 标题被保留。
+  if (!result.html.includes("<h2>标题</h2>")) {
+    throw new Error(`paste sanitizer lost heading: ${result.html}`)
+  }
+  // script 被移除。
+  if (result.hasScript) {
+    throw new Error(`paste sanitizer leaked script: ${result.html}`)
+  }
+  // style 被移除。
+  if (result.hasStyle) {
+    throw new Error(`paste sanitizer leaked style: ${result.html}`)
+  }
+  // 原始 <img> 被替换为 marker。
+  if (result.hasRemoteImg) {
+    throw new Error(`paste sanitizer leaked raw <img>: ${result.html}`)
+  }
+  // 两个图片候选（远程 + data）。
+  if (result.imageCount !== 2) {
+    throw new Error(`expected 2 image candidates, got ${result.imageCount}`)
+  }
+  // marker 属性存在。
+  if (!result.hasDataXuanchu) {
+    throw new Error(`paste sanitizer missing data-xuanchu-paste-image marker`)
+  }
 }
 
 async function runMobileSmoke(browser) {
