@@ -71,9 +71,10 @@ func runtimeEnvValues(env map[string]string) map[string]string {
 		values[key] = value
 	}
 	for envKey, configKey := range map[string]string{
-		"XUANCHU_DB":     "database.path",
-		"XUANCHU_SERVER": "remote.server",
-		"XUANCHU_TOKEN":  "remote.token",
+		"XUANCHU_DB":              "database.path",
+		"XUANCHU_SERVER":          "remote.server",
+		"XUANCHU_TOKEN":           "remote.token",
+		"XUANCHU_PUBLIC_BASE_URL": "server.public_base_url",
 	} {
 		if value := env[envKey]; value != "" {
 			values[configKey] = value

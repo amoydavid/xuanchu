@@ -52,6 +52,7 @@ type Service struct {
 	requestScope                  *RequestScope
 	workspaceID                   string
 	clock                         Clock
+	resourceBaseURL               string
 	reports                       report.Registry
 	disableContext                bool
 	// sinkTestClient 用于 notification sink 测试投递；nil 时使用 SSRF-safe 默认 client。
@@ -201,6 +202,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		requestScope:                  cloneRequestScope(opts.RequestScope),
 		workspaceID:                   rt.WorkspaceID,
 		clock:                         opts.Clock,
+		resourceBaseURL:               strings.TrimRight(strings.TrimSpace(opts.ResourceBaseURL), "/"),
 		reports:                       report.DefaultRegistry(),
 		disableContext:                opts.NoContext,
 		sinkTestClient:                opts.SinkTestClient,

@@ -30,6 +30,8 @@ func fixedTestClock() testClock {
 // ptrStr 返回字符串指针。
 func ptrStr(s string) *string { return &s }
 
+const mcpTestResourceBaseURL = "https://xuanchu.example.com"
+
 func ensureMCPHookSink(t *testing.T, store *storage.Store) {
 	t.Helper()
 	svc, err := app.NewService(app.ServiceOptions{Store: store, Clock: fixedTestClock()})
@@ -92,7 +94,7 @@ func newTestServer(t *testing.T) (*mcp.Server, testClock) {
 	t.Cleanup(func() { _ = store.Close() })
 	clock := fixedTestClock()
 	ensureMCPHookSink(t, store)
-	opts := Options{Store: store, Clock: clock, Version: "test"}
+	opts := Options{Store: store, Clock: clock, Version: "test", ResourceBaseURL: mcpTestResourceBaseURL}
 	srv := NewServer(opts)
 	return srv, clock
 }
@@ -431,7 +433,7 @@ func TestTaskAddBasic(t *testing.T) {
 	if taskObj["uuid"] == nil || taskObj["uuid"] == "" {
 		t.Fatal("uuid is empty")
 	}
-	if taskObj["url"] != "/tasks/"+taskObj["uuid"].(string) {
+	if taskObj["url"] != mcpTestResourceBaseURL+"/tasks/"+taskObj["uuid"].(string) {
 		t.Fatalf("task url = %#v", taskObj["url"])
 	}
 	if dataMap["id"] != taskObj["uuid"] || dataMap["uuid"] != taskObj["uuid"] {
@@ -1556,7 +1558,7 @@ func TestMCPProjectTools(t *testing.T) {
 	if err := svc.ProjectConfigSet(project.Slug, "context.default", "legacy"); err != nil {
 		t.Fatal(err)
 	}
-	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio})
+	srv, _ := newTestServerWithOptions(t, Options{Store: store, Mode: ModeStdio, ResourceBaseURL: mcpTestResourceBaseURL})
 	session := connectClient(t, srv)
 
 	list := callTool(t, session, "project_list", ProjectListInput{})
@@ -1574,7 +1576,7 @@ func TestMCPProjectTools(t *testing.T) {
 	if listProject["task_count_scope"] != "all_tasks" {
 		t.Fatalf("project list task_count_scope = %v, want all_tasks", listProject["task_count_scope"])
 	}
-	if listProject["url"] != "/workspaces/local/projects/agent" {
+	if listProject["url"] != mcpTestResourceBaseURL+"/workspaces/local/projects/agent" {
 		t.Fatalf("project list url = %#v", listProject["url"])
 	}
 
@@ -1587,7 +1589,7 @@ func TestMCPProjectTools(t *testing.T) {
 	if projectData["slug"] != "agent" {
 		t.Fatalf("project slug = %v, want agent", projectData["slug"])
 	}
-	if projectData["url"] != "/workspaces/local/projects/agent" {
+	if projectData["url"] != mcpTestResourceBaseURL+"/workspaces/local/projects/agent" {
 		t.Fatalf("project url = %#v", projectData["url"])
 	}
 	if projectData["task_count_scope"] != "all_tasks" {

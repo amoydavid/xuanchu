@@ -17,6 +17,32 @@ type projectListItem struct {
 	CompletedCount int    `json:"completed_count"`
 }
 
+func TestHTTPResourceURLIsEmptyWithoutPublicBaseURL(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "project:read", "project:write")
+	fixture.server.resourceBaseURL = ""
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddProject(app.AddProjectInput{Slug: "emptyurl", Name: "Empty URL"}); err != nil {
+		t.Fatal(err)
+	}
+	rr := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/projects/emptyurl?workspace=local",
+		map[string]string{"Authorization": "Bearer " + fixture.token})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data projectListItem `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.URL != "" {
+		t.Fatalf("URL = %q, want empty", resp.Data.URL)
+	}
+}
+
 func TestHandleProjectListReturnsStatusBreakdown(t *testing.T) {
 	fixture := newHTTPServerWithTokenFixture(t, "project:read", "project:write", "task:read", "task:write")
 	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
@@ -55,7 +81,7 @@ func TestHandleProjectListReturnsStatusBreakdown(t *testing.T) {
 	}
 	var found bool
 	for _, p := range resp.Data {
-		if p.Slug == "api" && p.URL != "/workspaces/local/projects/api" {
+		if p.Slug == "api" && p.URL != httpTestResourceBaseURL+"/workspaces/local/projects/api" {
 			t.Fatalf("project URL = %q", p.URL)
 		}
 		if p.TaskCount == 3 && p.PendingCount == 2 && p.CompletedCount == 1 {

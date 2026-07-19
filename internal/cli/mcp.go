@@ -84,6 +84,7 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			shutdown := runtimeutil.NewShutdownCoordinator()
 			srv := mcpserver.NewServer(mcpserver.Options{
 				Store:              store,
+				ResourceBaseURL:    cfg.ResourceBaseURL(),
 				Version:            opts.Version,
 				Mode:               mcpserver.ModeStdio,
 				Stderr:             cmd.ErrOrStderr(),

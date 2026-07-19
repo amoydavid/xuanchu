@@ -64,14 +64,14 @@ func TestAddTaskViewReturnsUnifiedNormalTaskView(t *testing.T) {
 }
 
 func TestAppViewsExposeCanonicalURLs(t *testing.T) {
-	svc, closeFn := newTestService(t, 1_750_000_000)
+	svc, closeFn := newTestServiceWithResourceBaseURL(t, 1_750_000_000)
 	defer closeFn()
 
 	project, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project.URL != "/workspaces/local/projects/ops" {
+	if project.URL != testResourceBaseURL+"/workspaces/local/projects/ops" {
 		t.Fatalf("project URL = %q", project.URL)
 	}
 
@@ -80,7 +80,7 @@ func TestAppViewsExposeCanonicalURLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.URL != "/workspaces/local/projects/ops/tasks/ops-1" {
+	if created.URL != testResourceBaseURL+"/workspaces/local/projects/ops/tasks/ops-1" {
 		t.Fatalf("task URL = %q", created.URL)
 	}
 
@@ -88,7 +88,7 @@ func TestAppViewsExposeCanonicalURLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if standalone.URL != StandaloneTaskURL(*standalone.UUID) {
+	if standalone.URL != StandaloneTaskURL(testResourceBaseURL, *standalone.UUID) {
 		t.Fatalf("standalone URL = %q", standalone.URL)
 	}
 }
@@ -343,7 +343,7 @@ func TestTaskToViewOrdinaryTask(t *testing.T) {
 		UUID: "task-1", WorkspaceID: "ws", Title: "普通任务", Status: domain.StatusPending,
 		Entry: 100, Modified: 200, Project: strPtr("ops"), ProjectSeq: int64Ptr(17),
 	}
-	view := taskToView("local", tsk, nil)
+	view := taskToView(testResourceBaseURL, "local", tsk, nil)
 	if view.ID != "task-1" {
 		t.Fatalf("ID = %q want task-1", view.ID)
 	}
@@ -374,7 +374,7 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 		SeriesID: &seriesID, RecurrenceAt: &slot, RecurrenceRuleSnapshot: &rule,
 		RecurrenceOverrides: []string{"due"},
 	}
-	view := taskToView("local", tsk, nil)
+	view := taskToView(testResourceBaseURL, "local", tsk, nil)
 	// 已物化 occurrence 的 ID 仍是 occurrence_ref（不变）。
 	wantRef := OccurrenceRef(seriesID, slot)
 	if view.ID != wantRef {
@@ -386,7 +386,7 @@ func TestTaskToViewMaterializedOccurrence(t *testing.T) {
 	if view.TaskSlug == nil || *view.TaskSlug != "ops-17" {
 		t.Fatalf("TaskSlug = %#v want ops-17", view.TaskSlug)
 	}
-	if view.URL != "/workspaces/local/projects/ops/tasks/ops-17" {
+	if view.URL != testResourceBaseURL+"/workspaces/local/projects/ops/tasks/ops-17" {
 		t.Fatalf("URL = %q", view.URL)
 	}
 	if view.RecurrenceInfo == nil {
@@ -409,7 +409,7 @@ func TestProjectedOccurrenceViewDoesNotAllocateIdentity(t *testing.T) {
 		Status: taskseries.StatusActive, RecurrenceRule: "daily", FirstDue: 1783785599,
 	}
 	slot := taskseries.Slot{RecurrenceAt: 1783785599, Rule: "daily"}
-	view := projectedOccurrenceView("local", series, slot, nil)
+	view := projectedOccurrenceView(testResourceBaseURL, "local", series, slot, nil)
 	wantRef := OccurrenceRef("series-1", 1783785599)
 	if view.ID != wantRef {
 		t.Fatalf("ID = %q want %q", view.ID, wantRef)
@@ -656,6 +656,7 @@ func TestQueryTaskViewsExpandRejectsRangeTooLarge(t *testing.T) {
 
 func TestGetTaskViewProjectedDoesNotWrite(t *testing.T) {
 	svc, series, _, day2, _ := newOccurrenceMergeFixture(t)
+	svc.resourceBaseURL = testResourceBaseURL
 	store := svc.store
 	ws, _ := store.LocalWorkspace()
 	beforeCount := occurrenceRowCount(t, svc, ws.ID)
@@ -677,7 +678,7 @@ func TestGetTaskViewProjectedDoesNotWrite(t *testing.T) {
 	if view.Project == nil || *view.Project != "ops" {
 		t.Fatalf("projected project = %#v", view.Project)
 	}
-	wantURL := ProjectTaskURL("local", "ops", view.ID)
+	wantURL := ProjectTaskURL(testResourceBaseURL, "local", "ops", view.ID)
 	if view.URL != wantURL {
 		t.Fatalf("projected URL = %q, want %q", view.URL, wantURL)
 	}
@@ -843,7 +844,7 @@ func TestAddTaskSeriesRejectsUnsupportedFields(t *testing.T) {
 }
 
 func TestListTaskSeriesReturnsCreated(t *testing.T) {
-	svc, closeFn := newTestService(t, 1000)
+	svc, closeFn := newTestServiceWithResourceBaseURL(t, 1000)
 	defer closeFn()
 	proj, err := svc.AddProject(AddProjectInput{Slug: "ops", Name: "Ops"})
 	if err != nil {
@@ -865,7 +866,7 @@ func TestListTaskSeriesReturnsCreated(t *testing.T) {
 	if page.Total != 1 {
 		t.Fatalf("total = %d want 1", page.Total)
 	}
-	if page.Items[0].URL != "/workspaces/local/projects/ops/series/ops-s-1" {
+	if page.Items[0].URL != testResourceBaseURL+"/workspaces/local/projects/ops/series/ops-s-1" {
 		t.Fatalf("series URL = %q", page.Items[0].URL)
 	}
 }

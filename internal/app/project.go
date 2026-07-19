@@ -128,7 +128,7 @@ func (s *Service) AddProject(input AddProjectInput) (ProjectView, error) {
 		if err != nil {
 			return AuditEntry{}, err
 		}
-		created = projectViewFromRow(tx.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
+		created = projectViewFromRow(tx.resourceBaseURL, tx.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
 		return AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
 			ProjectID:   &project.ID,
@@ -163,7 +163,7 @@ func (s *Service) ListProjectsByStatus(statusFilter string) ([]ProjectView, erro
 	}
 	views := make([]ProjectView, 0, len(rows))
 	for _, row := range rows {
-		views = append(views, projectViewFromRow(s.runtime.WorkspaceSlug, row, counts[row.ID]))
+		views = append(views, projectViewFromRow(s.resourceBaseURL, s.runtime.WorkspaceSlug, row, counts[row.ID]))
 	}
 	return filterProjectsByScope(s.requestScope, views), nil
 }
@@ -351,7 +351,7 @@ func (s *Service) projectViewForRow(project storage.Project) (ProjectView, error
 	if err != nil {
 		return ProjectView{}, err
 	}
-	view := projectViewFromRow(s.runtime.WorkspaceSlug, project, counts[project.ID])
+	view := projectViewFromRow(s.resourceBaseURL, s.runtime.WorkspaceSlug, project, counts[project.ID])
 	repo := storage.NewProjectAnnotationRepository(s.store.DB())
 	recent, err := repo.RecentByProject(project.ID, 5)
 	if err != nil {
@@ -367,9 +367,9 @@ func (s *Service) projectViewForRow(project storage.Project) (ProjectView, error
 	return view, nil
 }
 
-func projectViewFromRow(workspaceSlug string, project storage.Project, counts storage.ProjectTaskCounts) ProjectView {
+func projectViewFromRow(resourceBaseURL, workspaceSlug string, project storage.Project, counts storage.ProjectTaskCounts) ProjectView {
 	return ProjectView{
-		URL:            ProjectURL(workspaceSlug, project.Slug),
+		URL:            ProjectURL(resourceBaseURL, workspaceSlug, project.Slug),
 		ID:             project.ID,
 		WorkspaceID:    project.WorkspaceID,
 		Slug:           project.Slug,
@@ -466,7 +466,7 @@ func (s *Service) ProjectAnnotate(projectRef, content string) (ProjectAnnotation
 			return nil, nil, err
 		}
 		result = projectAnnotationInfoFromModel(created, userInfos)
-		view := projectViewFromRow(s.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
+		view := projectViewFromRow(s.resourceBaseURL, s.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
 		event := buildProjectAnnotatedHookEvent(view, result, tx.runtime, tx.clock.Unix())
 		entry := AuditEntry{
 			WorkspaceID: &project.WorkspaceID,
@@ -560,7 +560,7 @@ func (s *Service) ProjectDenotate(projectRef, annotationID string) error {
 		if err != nil {
 			return nil, nil, err
 		}
-		view := projectViewFromRow(s.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
+		view := projectViewFromRow(s.resourceBaseURL, s.runtime.WorkspaceSlug, project, storage.ProjectTaskCounts{})
 		event := buildProjectDenotatedHookEvent(view, annotationID, tx.runtime, tx.clock.Unix())
 		entry := AuditEntry{
 			WorkspaceID: &project.WorkspaceID,

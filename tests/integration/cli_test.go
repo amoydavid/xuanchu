@@ -30,6 +30,8 @@ var (
 	buildXuanchuErr  error
 )
 
+const integrationResourceBaseURL = "https://console.example.test"
+
 func TestCLIAddListInfo(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
@@ -48,13 +50,29 @@ func TestCLIAddListInfo(t *testing.T) {
 	}
 }
 
+func TestCLIResourceURLIsEmptyWithoutPublicBaseURL(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+	out := run(t, bin, "--db", db, "--json", "project", "add", "emptyurl", "name:Empty URL")
+	var project struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(out), &project); err != nil {
+		t.Fatal(err)
+	}
+	if project.URL != "" {
+		t.Fatalf("URL = %q, want empty", project.URL)
+	}
+}
+
 func TestCLITaskSlugTargets(t *testing.T) {
+	t.Setenv("XUANCHU_PUBLIC_BASE_URL", integrationResourceBaseURL)
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	run(t, bin, "--db", db, "project", "add", "API", "name:API")
 	addOut := run(t, bin, "--db", db, "add", "Write docs", "project:api", "+next")
-	wantTaskURL := "/workspaces/local/projects/api/tasks/api-1"
+	wantTaskURL := integrationResourceBaseURL + "/workspaces/local/projects/api/tasks/api-1"
 	if !strings.Contains(addOut, "URL: "+wantTaskURL) {
 		t.Fatalf("add output missing URL: %q", addOut)
 	}
@@ -2190,11 +2208,12 @@ func main() {
 }
 
 func TestCLIProjectLifecycle(t *testing.T) {
+	t.Setenv("XUANCHU_PUBLIC_BASE_URL", integrationResourceBaseURL)
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
 	addOut := run(t, bin, "--db", db, "project", "add", "apiplat", "name:AI Agent Platform")
-	wantProjectURL := "/workspaces/local/projects/apiplat"
+	wantProjectURL := integrationResourceBaseURL + "/workspaces/local/projects/apiplat"
 	if !strings.Contains(addOut, "Created project apiplat") || !strings.Contains(addOut, "URL: "+wantProjectURL) {
 		t.Fatalf("project add output = %q", addOut)
 	}
@@ -3017,6 +3036,7 @@ func TestCLIServerMCPRejectsBodyOverLimit(t *testing.T) {
 
 // TestCLISeriesAddListInfoOccurrencesSkipStop 覆盖 series CLI 全流程。
 func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
+	t.Setenv("XUANCHU_PUBLIC_BASE_URL", integrationResourceBaseURL)
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
@@ -3025,7 +3045,7 @@ func TestCLISeriesAddListInfoOccurrencesSkipStop(t *testing.T) {
 
 	// series add。
 	out := run(t, bin, "--db", db, "series", "add", "每日巡检", "--project", "ops", "--recur", "daily", "--first-due", "2030-01-01")
-	wantSeriesURL := "/workspaces/local/projects/ops/series/ops-s-1"
+	wantSeriesURL := integrationResourceBaseURL + "/workspaces/local/projects/ops/series/ops-s-1"
 	if !strings.Contains(out, "已创建循环任务") || !strings.Contains(out, "URL: "+wantSeriesURL) {
 		t.Fatalf("add 输出: %q", out)
 	}

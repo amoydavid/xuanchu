@@ -21,6 +21,8 @@ type httpTokenFixture struct {
 	id     string
 }
 
+const httpTestResourceBaseURL = "https://xuanchu.example.com"
+
 // httpTestSecretKeyBase64 返回一个固定的 32 字节 base64 secret key，供 token reveal 测试复用。
 // Web Console 创建可恢复 token 要求服务端配置 [security].config_secret_key。
 func httpTestSecretKeyBase64() string {
@@ -44,7 +46,7 @@ func newHTTPServerWithTokenFixture(t *testing.T, scopes ...string) httpTokenFixt
 		t.Fatal(err)
 	}
 	return httpTokenFixture{
-		server: NewServer(Options{Store: store, ConfigSecretKey: httpTestSecretKeyBase64()}),
+		server: NewServer(Options{Store: store, ResourceBaseURL: httpTestResourceBaseURL, ConfigSecretKey: httpTestSecretKeyBase64()}),
 		token:  created.RawToken,
 		id:     created.View.ID,
 	}

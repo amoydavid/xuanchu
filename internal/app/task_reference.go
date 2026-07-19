@@ -112,7 +112,7 @@ func (s *Service) taskRefResolutionFromTask(tsk domain.Task) (TaskRefResolution,
 	if err != nil {
 		return TaskRefResolution{}, err
 	}
-	view := taskToView(s.runtime.WorkspaceSlug, tsk, userInfoList(tsk.Assignees, userInfos))
+	view := taskToView(s.resourceBaseURL, s.runtime.WorkspaceSlug, tsk, userInfoList(tsk.Assignees, userInfos))
 	if view.RecurrenceInfo != nil {
 		if series, seriesErr := s.taskSeriesRepo.Get(s.workspaceID, view.RecurrenceInfo.SeriesID); seriesErr == nil {
 			view.RecurrenceInfo.SeriesTitle = series.Title

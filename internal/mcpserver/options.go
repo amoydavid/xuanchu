@@ -22,6 +22,7 @@ const (
 type Options struct {
 	Store              *storage.Store
 	Clock              app.Clock
+	ResourceBaseURL    string
 	Version            string
 	Mode               Mode
 	Stderr             io.Writer
