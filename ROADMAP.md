@@ -57,6 +57,7 @@
 | v0.5.8 | 已完成 | 循环任务系列稳定化收尾 + urgency 排序接入 Web Console 列表页 |
 | v0.5.9 | 已完成 | Web Console 任务详情页低噪声默认态与动作层级收敛 |
 | v0.5.10 | 已完成 | Web Console 用户首页：我的今日、项目关注、工作区信息与系统身份降级 |
+| v0.5.11 | 待实施 | 任务 description 富文本粘贴、通用附件、图片与用户/任务语义引用 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -1655,10 +1656,11 @@ docs/superpowers/plans/2026-07-07-web-console-project-subpages-implementation.md
 
 v0.5.5 至 v0.5.9 已依次完成任务详情重构、项目自动化、循环任务系列、循环与 urgency 稳定化，以及任务详情低噪声默认态。v0.5.10 已完成 Web Console 用户首页，登录后的默认主线从系统运行数据切换为个人任务执行、跨项目关注和按需工作区信息；`GET /api/v1/home` 提供权限感知的权威聚合，`/my-tasks` 补充「已开始」预设，tenant/system actor 使用明确的降级页。
 
-当前没有锁定新的 milestone。下一阶段应先根据真实使用反馈更新 spec，再决定是否进入个人收藏、跨项目 Inbox、首页自定义或独立 workspace 管理态势页；不使用 audit、localStorage 或投递记录模拟这些尚不存在的产品概念。
+v0.5.11 已完成规格确认，下一阶段进入实施计划拆分。该里程碑继续保持 task description 的 Markdown 字符串契约，在现有 Tiptap 编辑器上增加富文本粘贴、任务级通用附件、鉴权图片渲染、用户/任务语义引用和 `task.user_mentioned` 事件；附件二进制默认使用本地文件系统，可选使用 private S3/MinIO，对外不暴露 bucket 或持久预签名 URL。实施必须拆成附件存储基础、通用附件跨入口、富文本/图片节点、语义引用/mention 事件四份 plan，不能一次性横跨所有子系统。
 
 最新规格：
 
 ```text
 docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
+docs/superpowers/specs/2026-07-19-task-description-rich-content-attachments-mentions-design.md
 ```
