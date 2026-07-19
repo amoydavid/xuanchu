@@ -1502,6 +1502,55 @@ func (s *Service) ExportWithInput(input ExportInput) ([]task.Task, error) {
 	return tasks, nil
 }
 
+// ExportWarning 是 spec §20 的非阻断导出 warning。
+//
+// 当前只表达 attachment binary 未随 export 携带；用户/任务 ref 不产生 warning。
+type ExportWarning struct {
+	Type          string   `json:"type"`
+	AttachmentIDs []string `json:"attachment_ids"`
+}
+
+// ExportResult 是 ExportWithWarnings 的返回值，包含 tasks 与非阻断 warnings。
+type ExportResult struct {
+	Tasks    []task.Task     `json:"tasks"`
+	Warnings []ExportWarning `json:"warnings"`
+}
+
+// ExportWithWarnings 在 ExportWithInput 之上额外收集 attachment binary 未携带 warning。
+//
+// spec §20：导出保留 Markdown URI，并在 envelope 增加 warnings 列出二进制未包含的
+// attachment IDs（unique/sorted，按 task 聚合）。
+func (s *Service) ExportWithWarnings(input ExportInput) (ExportResult, error) {
+	tasks, err := s.ExportWithInput(input)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	attachmentIDs := map[string]struct{}{}
+	for _, tsk := range tasks {
+		ids, err := task.AttachmentReferenceIDs(optionalTextValue(tsk.Description))
+		if err != nil {
+			continue
+		}
+		for _, id := range ids {
+			attachmentIDs[id] = struct{}{}
+		}
+	}
+	if len(attachmentIDs) == 0 {
+		return ExportResult{Tasks: tasks}, nil
+	}
+	sortedIDs := make([]string, 0, len(attachmentIDs))
+	for id := range attachmentIDs {
+		sortedIDs = append(sortedIDs, id)
+	}
+	sort.Strings(sortedIDs)
+	return ExportResult{
+		Tasks: tasks,
+		Warnings: []ExportWarning{
+			{Type: "binary_not_included", AttachmentIDs: sortedIDs},
+		},
+	}, nil
+}
+
 func (s *Service) Import(tasks []task.JSONTask) (int, error) {
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return 0, err
