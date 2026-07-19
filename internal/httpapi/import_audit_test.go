@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -56,4 +57,37 @@ func TestOrdinaryTaskImportRejectsOccurrenceIdentity(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "task_import_occurrence_not_allowed") {
 		t.Fatalf("unexpected error: %s", rr.Body.String())
 	}
+}
+
+// TestExportTaskBundleIncludesAttachmentWarnings 验证导出的 bundle 在 description
+// 包含 ref://attachment/{id} 时返回非阻断 warnings（spec §20 / 计划 4 Task 11）。
+func TestExportTaskBundleIncludesAttachmentWarnings(t *testing.T) {
+	fixture := newHTTPServerWithTokenFixture(t, "task:read", "task:write")
+	// 创建一个带 attachment 引用的 task。
+	markdown := "![](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)"
+	body := `{"title":"ref-task","description":` + jsonStringQuote(markdown) + `}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks?workspace=local", body, authHeader(fixture.token))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create task: %d %s", rr.Code, rr.Body.String())
+	}
+	// 导出 bundle。
+	rr = requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/export?workspace=local", authHeader(fixture.token))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("export: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "binary_not_included") {
+		t.Fatalf("export missing warnings: %s", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "40af0185-316f-42bb-b52b-545d21f6f012") {
+		t.Fatalf("export missing attachment id in warnings: %s", rr.Body.String())
+	}
+}
+
+// jsonStringQuote 把字符串转为 JSON 字符串字面量。
+func jsonStringQuote(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
@@ -24,6 +25,9 @@ type TaskBundleV1 struct {
 	ExportedAt string             `json:"exported_at"`
 	TaskSeries []TaskSeriesBundle `json:"task_series"`
 	Tasks      []TaskBundleTask   `json:"tasks"`
+	// Warnings 列出导出时未携带二进制的 attachment IDs（spec §20）。
+	// 非阻断：description 仍是 Markdown 字符串，ref://attachment/{id} 原样保留。
+	Warnings []ExportWarning `json:"warnings,omitempty"`
 }
 
 // TaskSeriesBundle 是 bundle 中的 series 节点，含完整 rule-version history。
@@ -148,12 +152,51 @@ func (s *Service) ExportTaskBundle() (TaskBundleV1, error) {
 	for _, t := range tasks {
 		taskBundles = append(taskBundles, taskToBundle(t))
 	}
+	// 收集 attachment binary 未携带 warnings（spec §20）：description 中的 ref://attachment/{id}
+	// 原样保留，warning 只列出未携带的 attachment IDs。
+	warnings := collectBundleAttachmentWarnings(tasks, seriesBundles)
 	return TaskBundleV1{
 		Schema:     TaskBundleSchemaV1,
 		ExportedAt: time.Now().Format(time.RFC3339),
 		TaskSeries: seriesBundles,
 		Tasks:      taskBundles,
+		Warnings:   warnings,
 	}, nil
+}
+
+// collectBundleAttachmentWarnings 从 tasks + series 的 description 中收集 attachment 引用。
+func collectBundleAttachmentWarnings(tasks []domain.Task, series []TaskSeriesBundle) []ExportWarning {
+	ids := map[string]struct{}{}
+	for _, t := range tasks {
+		collected, err := domain.AttachmentReferenceIDs(optionalTextValue(t.Description))
+		if err != nil {
+			continue
+		}
+		for _, id := range collected {
+			ids[id] = struct{}{}
+		}
+	}
+	for _, se := range series {
+		if se.Description == nil {
+			continue
+		}
+		collected, err := domain.AttachmentReferenceIDs(*se.Description)
+		if err != nil {
+			continue
+		}
+		for _, id := range collected {
+			ids[id] = struct{}{}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	sortedIDs := make([]string, 0, len(ids))
+	for id := range ids {
+		sortedIDs = append(sortedIDs, id)
+	}
+	sort.Strings(sortedIDs)
+	return []ExportWarning{{Type: "binary_not_included", AttachmentIDs: sortedIDs}}
 }
 
 // ImportTaskBundle 在当前 workspace 导入 bundle（spec §20.1）。

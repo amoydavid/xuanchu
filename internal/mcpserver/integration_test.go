@@ -569,6 +569,35 @@ func TestTaskGetByID(t *testing.T) {
 	}
 }
 
+// TestTaskDescriptionIsMarkdownAcrossMCP 验证 task_get 返回的 description 仍是纯 Markdown 字符串，
+// 不出现 ProseMirror JSON、HTML、blob URL 或预签名 URL（spec §20 / 计划 4 Task 11）。
+func TestTaskDescriptionIsMarkdownAcrossMCP(t *testing.T) {
+	srv, _ := newTestServer(t)
+	session := connectClient(t, srv)
+
+	markdown := "[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) and [#task-1](ref://task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)"
+	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "ref-task", Description: &markdown})
+	uuid := extractUUID(t, parseEnvelope(t, addResult))
+
+	getResult := callTool(t, session, "task_get", TaskGetInput{ID: uuid})
+	if getResult.IsError {
+		t.Fatalf("unexpected error: %v", parseError(t, getResult))
+	}
+	taskObj := extractTask(t, parseEnvelope(t, getResult))
+	desc, ok := taskObj["description"].(string)
+	if !ok {
+		t.Fatalf("description type = %T, want string", taskObj["description"])
+	}
+	if desc != markdown {
+		t.Fatalf("description = %q, want %q", desc, markdown)
+	}
+	for _, forbidden := range []string{"<img", "\"type\":\"doc\"", "blob:", "X-Amz-Signature", "data:image"} {
+		if strings.Contains(desc, forbidden) {
+			t.Fatalf("description leaked %q: %s", forbidden, desc)
+		}
+	}
+}
+
 func TestTaskGetHonorsExplicitProjectScope(t *testing.T) {
 	store := newMCPTestStore(t)
 	svc := newMCPTestService(t, store)

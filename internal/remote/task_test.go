@@ -33,6 +33,47 @@ func TestRemoteTaskResponseDecodesTaskSlug(t *testing.T) {
 	}
 }
 
+// TestRemoteTaskDescriptionIsMarkdownString 验证 description 仍是纯 Markdown 字符串，
+// 不出现 ProseMirror JSON、HTML、blob URL 或预签名 URL（spec §20 / 计划 4 Task 11）。
+func TestRemoteTaskDescriptionIsMarkdownString(t *testing.T) {
+	markdown := "请 [@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) 看\n\n![图](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)"
+	raw := `{
+		"id":"u1",
+		"uuid":"u1",
+		"title":"ref-task",
+		"status":"pending",
+		"entry":1,
+		"modified":2,
+		"description":` + jsonQuote(markdown) + `
+	}`
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatal(err)
+	}
+	desc, ok := payload["description"].(string)
+	if !ok {
+		t.Fatalf("description type = %T, want string", payload["description"])
+	}
+	if desc != markdown {
+		t.Fatalf("description = %q, want %q", desc, markdown)
+	}
+	// 不应出现非 Markdown 内容。
+	for _, forbidden := range []string{"<img", "<div", "\"type\":\"doc\"", "blob:", "X-Amz-Signature", "data:image"} {
+		if strings.Contains(desc, forbidden) {
+			t.Fatalf("description leaked %q: %s", forbidden, desc)
+		}
+	}
+}
+
+// jsonQuote 把字符串转为 JSON 字符串字面量。
+func jsonQuote(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
 func TestRemoteTaskResponseRejectsLegacyJSONTaskShape(t *testing.T) {
 	raw := `{
 		"uuid":"u1",

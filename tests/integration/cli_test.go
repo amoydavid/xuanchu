@@ -3161,3 +3161,31 @@ func TestCLIGenericTaskCommandsRejectRetiredRecurrenceFields(t *testing.T) {
 		t.Fatalf("query recur:daily succeeded: %s", output)
 	}
 }
+
+// TestCLIDescriptionReferenceStaysMarkdown 验证含 ref:// 引用的 description
+// 在 CLI _get / --json 输出中仍是纯 Markdown 字符串，不出现 ProseMirror JSON、
+// HTML、blob URL 或预签名 URL（spec §20 / 计划 4 Task 11）。
+func TestCLIDescriptionReferenceStaysMarkdown(t *testing.T) {
+	bin := buildXuanchu(t)
+	db := filepath.Join(t.TempDir(), "xuanchu.db")
+
+	markdown := "[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) and ![图](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)"
+	run(t, bin, "--db", db, "add", "ref-task", "description:"+markdown)
+
+	// _get description 返回纯 Markdown。
+	got := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.description"))
+	if got != markdown {
+		t.Fatalf("description via _get = %q, want %q", got, markdown)
+	}
+
+	// --json info 也应保留 Markdown 字符串。
+	jsonOut := run(t, bin, "--db", db, "--json", "info", "1")
+	for _, forbidden := range []string{"<img", "\"type\":\"doc\"", "blob:", "X-Amz-Signature", "data:image"} {
+		if strings.Contains(jsonOut, forbidden) {
+			t.Fatalf("JSON output leaked %q: %s", forbidden, jsonOut)
+		}
+	}
+	if !strings.Contains(jsonOut, "ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001") {
+		t.Fatalf("JSON output missing ref://user URI: %s", jsonOut)
+	}
+}
