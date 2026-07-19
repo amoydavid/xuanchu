@@ -682,6 +682,10 @@ func (s *Service) Modify(target string, input ModifyInput) error {
 		if err != nil {
 			return nil, nil, err
 		}
+		// description 写入必须在同一事务内校验附件引用并激活 draft。
+		if err := tx.validateAndBindDescriptionAttachments(before, modified); err != nil {
+			return nil, nil, err
+		}
 		now := tx.clock.Unix()
 		diff := diffTaskChanges(before, modified)
 		diff = tx.hydrateAssigneeDiff(diff, before.Assignees, modified.Assignees)

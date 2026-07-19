@@ -35,6 +35,7 @@ import {
   markdownExtensions,
   normalizeMarkdownSource,
 } from "./extensions"
+import { sanitizeRichPaste } from "./paste-sanitizer"
 import { LinkDialog } from "./link-dialog"
 import { TableBubbleMenu } from "./table-bubble-menu"
 import "./markdown.css"
@@ -84,6 +85,30 @@ export function MarkdownEditor({
           return Boolean(onModEnter)
         }
         return false
+      },
+      // 富文本粘贴：先提取 <img> 候选再用 DOMPurify 白名单清洗剩余 HTML，
+      // 普通 plain text 走默认 markdown 粘贴。
+      handlePaste: (view, event) => {
+        const html = event.clipboardData?.getData("text/html") ?? ""
+        if (!html) return false
+        const files: File[] = []
+        if (event.clipboardData) {
+          for (const item of Array.from(event.clipboardData.items)) {
+            if (item.kind === "file") {
+              const file = item.getAsFile()
+              if (file) files.push(file)
+            }
+          }
+        }
+        const { html: cleaned } = sanitizeRichPaste({ html, files })
+        if (!cleaned) return false
+        const temp = document.createElement("div")
+        temp.innerHTML = cleaned
+        const slice = temp.innerHTML
+        const { tr } = view.state
+        view.dispatch(tr.insertContent(slice))
+        event.preventDefault()
+        return true
       },
     },
     extensions: [

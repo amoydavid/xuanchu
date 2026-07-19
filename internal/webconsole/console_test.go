@@ -40,6 +40,13 @@ func TestHandlerServesConsoleAndFallback(t *testing.T) {
 			if got := rr.Header().Get("Cache-Control"); strings.Contains(got, "immutable") {
 				t.Fatalf("index Cache-Control = %q, should not be immutable", got)
 			}
+			csp := rr.Header().Get("Content-Security-Policy")
+			if !strings.Contains(csp, "img-src 'self' blob: data:") {
+				t.Fatalf("CSP missing img-src blob: data:; got %q", csp)
+			}
+			if strings.Contains(csp, "https:") {
+				t.Fatalf("CSP too broad: %q", csp)
+			}
 		})
 	}
 }

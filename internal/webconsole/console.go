@@ -139,7 +139,26 @@ func isSystemPath(trimmed string) bool {
 
 func (h *handler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
+	// CSP：附件图片通过鉴权 fetch + URL.createObjectURL 渲染，需要 blob:；
+	// data: 仅用于编辑器内粘贴预览，持久化内容不得保留 data URL。
+	w.Header().Set("Content-Security-Policy", consoleContentSecurityPolicy())
 	h.serveBytes(w, "index.html")
+}
+
+// consoleContentSecurityPolicy 返回 Web Console 的 CSP 指令。
+//
+// img-src 同时允许 'self'、blob:（鉴权后的 object URL）和 data:（粘贴预览），
+// 其它指令保持收紧。
+func consoleContentSecurityPolicy() string {
+	return "default-src 'self'; " +
+		"img-src 'self' blob: data:; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"script-src 'self'; " +
+		"connect-src 'self'; " +
+		"font-src 'self' data:; " +
+		"object-src 'none'; " +
+		"base-uri 'self'; " +
+		"frame-ancestors 'none'"
 }
 
 func (h *handler) serveFile(w http.ResponseWriter, r *http.Request, rel string) {
