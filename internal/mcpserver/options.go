@@ -30,4 +30,6 @@ type Options struct {
 	LocalRuntimeValues map[string]string
 	Logger             *logging.Logger
 	Shutdown           *runtimeutil.ShutdownCoordinator
+	// Attachments 注入附件运行时；nil 时附件工具返回 attachment_storage_unavailable。
+	Attachments *app.AttachmentRuntime
 }

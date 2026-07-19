@@ -1,0 +1,43 @@
+{
+  "description": "List metadata-only attachments on a task. To download content, use the returned content_url with the same Bearer token over HTTP.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "task": {
+        "description": "task reference: UUID, materialized task_slug, or occurrence_ref",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "required": [
+      "task"
+    ],
+    "type": "object"
+  },
+  "name": "task_attachment_list",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

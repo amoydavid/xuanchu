@@ -274,6 +274,7 @@ func TestListToolsWithRegistered(t *testing.T) {
 		"task_annotate", "task_denotate", "task_depends",
 		"task_start", "task_stop", "task_reopen",
 		"task_link_add", "task_link_list", "task_link_remove",
+		"task_attachment_list", "task_attachment_get", "task_attachment_rename", "task_attachment_remove",
 		"task_export", "task_import",
 		"report_run", "urgency_explain",
 		"workspace_list", "workspace_get_current",

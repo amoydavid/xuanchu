@@ -95,6 +95,7 @@ func (s *Server) handleMCP() http.Handler {
 			Request:         authReq,
 			Logger:          s.logger,
 			Shutdown:        s.shutdown,
+			Attachments:     s.attachments,
 		})
 	}, opts)
 }

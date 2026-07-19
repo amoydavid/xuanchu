@@ -1,0 +1,48 @@
+{
+  "description": "Rename a task attachment.",
+  "inputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "attachment_id": {
+        "description": "attachment id (UUID)",
+        "type": "string"
+      },
+      "display_name": {
+        "description": "new display name",
+        "type": "string"
+      },
+      "project": {
+        "description": "project slug in the effective workspace",
+        "type": "string"
+      },
+      "project_id": {
+        "description": "stable project UUID",
+        "type": "string"
+      },
+      "workspace": {
+        "description": "workspace slug or UUID; omit to use the actor's default workspace",
+        "type": "string"
+      }
+    },
+    "required": [
+      "attachment_id",
+      "display_name"
+    ],
+    "type": "object"
+  },
+  "name": "task_attachment_rename",
+  "outputSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "data": true,
+      "rendered": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data",
+      "rendered"
+    ],
+    "type": "object"
+  }
+}

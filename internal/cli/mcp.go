@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/config"
 	"git.dajee.net/dajee/xuanchu/internal/logging"
 	"git.dajee.net/dajee/xuanchu/internal/mcpserver"
@@ -82,6 +83,10 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 			}
 
 			shutdown := runtimeutil.NewShutdownCoordinator()
+			attachmentRuntime, _ := app.NewAttachmentRuntime(context.Background(), cfg.Attachments)
+			if attachmentRuntime != nil && cfg.Attachments.RemoteFetchEnabled {
+				attachmentRuntime.Fetcher = buildAttachmentRemoteFetcher(cfg.Attachments)
+			}
 			srv := mcpserver.NewServer(mcpserver.Options{
 				Store:              store,
 				ResourceBaseURL:    cfg.ResourceBaseURL(),
@@ -91,6 +96,7 @@ func newMCPStdioCommand(opts Options) *cobra.Command {
 				LocalRuntimeValues: rt.Values(),
 				Logger:             logger,
 				Shutdown:           shutdown,
+				Attachments:        attachmentRuntime,
 			})
 
 			signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

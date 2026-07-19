@@ -25,6 +25,7 @@ type RuntimeFactory struct {
 	Store           *storage.Store
 	Clock           app.Clock
 	ResourceBaseURL string
+	Attachments     *app.AttachmentRuntime
 }
 
 // ServiceForStdio 为 stdio 模式构造 scoped service。
@@ -38,6 +39,7 @@ func (f RuntimeFactory) ServiceForStdio(ctx context.Context, input RequestScopeI
 		Clock:           f.Clock,
 		ResourceBaseURL: f.ResourceBaseURL,
 		WorkspaceRef:    strings.TrimSpace(input.Workspace),
+		Attachments:     f.Attachments,
 	})
 	if err != nil {
 		return nil, err
@@ -121,6 +123,7 @@ func (f RuntimeFactory) ServiceForHTTP(r *http.Request, input RequestScopeInput,
 		ResourceBaseURL: f.ResourceBaseURL,
 		Runtime:         &authorized.Runtime,
 		RequestScope:    &authorized.Decision.RequestScope,
+		Attachments:     f.Attachments,
 	})
 	if err != nil {
 		return nil, err
