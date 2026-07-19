@@ -661,3 +661,66 @@ func TestTaskRepositoryListDependents(t *testing.T) {
 		t.Fatalf("ListDependents(d) = %#v, want empty", got)
 	}
 }
+
+func TestTaskRepositorySearchTasksByTitleOrSlug(t *testing.T) {
+	store, repo, ws := newTestRepo(t)
+	projectID := "proj-search"
+	otherProjectID := "other-project"
+	// 预置两个 project，避免 task.project_id 外键约束失败。
+	for _, p := range []Project{
+		{ID: projectID, WorkspaceID: ws.ID, Slug: "search-proj", Name: "Search Project", Status: "active", SettingsJSON: "{}", CreatedAt: 1, ModifiedAt: 1},
+		{ID: otherProjectID, WorkspaceID: ws.ID, Slug: "other-proj", Name: "Other Project", Status: "active", SettingsJSON: "{}", CreatedAt: 1, ModifiedAt: 1},
+	} {
+		if err := store.DB().Create(&p).Error; err != nil {
+			t.Fatalf("create project: %v", err)
+		}
+	}
+	// 当前项目里的任务。
+	mustCreateTaskForSearch(t, repo, ws.ID, "t-title", "Implement API", projectID)
+	mustCreateTaskForSearch(t, repo, ws.ID, "t-other", "Fix bug", projectID)
+	// 另一个项目的任务。
+	mustCreateTaskForSearch(t, repo, ws.ID, "t-cross", "Implement docs", otherProjectID)
+
+	// 按 title 匹配。
+	got, err := repo.SearchTasksByTitleOrSlug(ws.ID, "API", projectID, 20)
+	if err != nil {
+		t.Fatalf("SearchTasksByTitleOrSlug: %v", err)
+	}
+	if len(got) != 1 || got[0].Title != "Implement API" {
+		t.Fatalf("title search got = %#v", got)
+	}
+
+	// 跨项目查询，当前项目优先排序。
+	got, _ = repo.SearchTasksByTitleOrSlug(ws.ID, "Implement", projectID, 20)
+	if len(got) != 2 {
+		t.Fatalf("got = %#v", got)
+	}
+	if got[0].ProjectID == nil || *got[0].ProjectID != projectID {
+		t.Fatalf("current project task should rank first: %#v", got[0])
+	}
+	if got[1].ProjectID == nil || *got[1].ProjectID != otherProjectID {
+		t.Fatalf("other project task should rank second: %#v", got[1])
+	}
+
+	// 不返回其它 workspace 的任务。
+	got, _ = repo.SearchTasksByTitleOrSlug("other-ws", "Implement", projectID, 20)
+	if len(got) != 0 {
+		t.Fatalf("leaked other-workspace tasks: %#v", got)
+	}
+}
+
+func mustCreateTaskForSearch(t *testing.T, repo *TaskRepository, wsID, taskUUID, title, projectID string) {
+	t.Helper()
+	tsk := domain.Task{
+		UUID:        taskUUID,
+		WorkspaceID: wsID,
+		Title:       title,
+		Status:      domain.StatusPending,
+		Entry:       1,
+		Modified:    1,
+	}
+	tsk.ProjectID = &projectID
+	if _, err := repo.Create(tsk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+}

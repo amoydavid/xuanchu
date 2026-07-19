@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -12,7 +13,8 @@ import (
 
 // handleContentReferenceSuggestions 暴露 GET /api/v1/content-references/suggestions。
 //
-// 当前实现返回最小可用响应（空数据），完整查询逻辑由 app 层后续迭代补齐。
+// type=user 返回当前 workspace active member；
+// type=task 返回 request scope 内可读的实际任务，当前项目优先。
 func (s *Server) handleContentReferenceSuggestions(w http.ResponseWriter, r *http.Request) {
 	refType := strings.TrimSpace(r.URL.Query().Get("type"))
 	if refType != "user" && refType != "task" {
@@ -24,12 +26,23 @@ func (s *Server) handleContentReferenceSuggestions(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "content_reference_query_invalid", "q is required", nil)
 		return
 	}
+	limit := 20
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
 	scoped, _, err := s.scopedService(r, scopeForRefType(refType), permissionForRefType(refType), "")
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	results, err := scoped.SuggestContentReferences(r.Context(), refType, query)
+	results, err := scoped.SuggestContentReferences(r.Context(), app.ContentReferenceSuggestionInput{
+		Type:       refType,
+		Query:      query,
+		ProjectRef: strings.TrimSpace(r.URL.Query().Get("project")),
+		Limit:      limit,
+	})
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -55,21 +68,29 @@ func (s *Server) handleContentReferenceResolve(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "description_reference_limit_exceeded", "too many references; max 200", nil)
 		return
 	}
-	results := make([]map[string]any, 0, len(req.References))
+	// resolve 不需要单一 capability：混合 user/task/attachment 引用各自走独立权限判断，
+	// 因此使用 workspace 读权限作为最小门槛。
+	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	keys := make([]app.ContentReferenceKeyInput, 0, len(req.References))
 	for _, ref := range req.References {
-		// 当前实现统一返回 unavailable；完整解析逻辑由 app 层后续迭代补齐。
-		results = append(results, map[string]any{
-			"type":   ref.Type,
-			"id":     ref.ID,
-			"status": "unavailable",
-		})
+		keys = append(keys, app.ContentReferenceKeyInput{Type: ref.Type, ID: ref.ID})
+	}
+	results, err := scoped.ResolveContentReferences(r.Context(), keys)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{"results": results}, nil)
 }
 
 func scopeForRefType(refType string) string {
 	if refType == "user" {
-		return "member:read"
+		// member 列表读取复用 workspace 读取 capability（无独立 member:read capability）。
+		return "workspace:read"
 	}
 	return "task:read"
 }

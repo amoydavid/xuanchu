@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -384,6 +385,51 @@ func (r *TaskRepository) Tags(workspaceID string) ([]string, error) {
 		Order("tag ASC").
 		Pluck("tag", &tags).Error
 	return tags, err
+}
+
+// SearchTasksByTitleOrSlug 在当前 workspace 按 title 子串匹配实际任务。
+//
+// 用于 content reference #任务 suggestion：当前项目优先，其次按 modified 倒序、title 升序。
+// occurrence_ref 关联的 projected 任务不出现在结果中（spec §5.5）。
+// task_slug 在数据库中没有独立列，由 project slug + seq 派生；为避免复杂 join，
+// 这里只按 title 匹配，slug 匹配留到 resolve 阶段（直接命中 project_seq）。
+func (r *TaskRepository) SearchTasksByTitleOrSlug(workspaceID, query, projectID string, limit int) ([]domain.Task, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	pattern := "%" + query + "%"
+	var models []Task
+	q := r.preloadAssociations().
+		Where("workspace_id = ?", workspaceID).
+		Where("series_id IS NULL"). // 排除 projected occurrence（spec §5.5）
+		Where("LOWER(title) LIKE LOWER(?)", pattern)
+	if projectID != "" {
+		// 当前项目优先：通过 CASE 排序实现。
+		q = q.Order(fmt.Sprintf("CASE WHEN project_id = '%s' THEN 0 ELSE 1 END", escapeSQLString(projectID)))
+	}
+	q = q.Order("modified DESC").Order("title ASC").Limit(limit)
+	if err := q.Find(&models).Error; err != nil {
+		return nil, err
+	}
+	usersByID, err := r.loadAssigneeUsers(models)
+	if err != nil {
+		return nil, err
+	}
+	linksByTask, err := r.loadLinksByTask(models)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Task, 0, len(models))
+	for _, model := range models {
+		out = append(out, fromModel(model, usersByID, linksByTask))
+	}
+	return out, nil
+}
+
+// escapeSQLString 做最小转义，避免 projectID 在 ORDER BY 表达式里注入。
+// projectID 由 server 生成（UUID），但仍做防御性转义。
+func escapeSQLString(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
 }
 
 func (r *TaskRepository) Children(workspaceID, parentUUID string) ([]domain.Task, error) {
