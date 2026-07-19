@@ -132,7 +132,7 @@ export function MarkdownEditor({
         },
       },
       // 富文本粘贴：先提取 <img> 候选再用 DOMPurify 白名单清洗剩余 HTML，
-      // 普通 plain text 走默认 markdown 粘贴。
+      // 截图粘贴（只有 image file、没有 HTML）也走此路径。
       handlePaste: (view, event) => {
         // 内部 clipboard MIME 优先：同一璇础编辑器复制时保留 attachment/reference ID。
         const internalMarkdown = event.clipboardData?.getData("application/x-xuanchu-markdown") ?? ""
@@ -142,8 +142,7 @@ export function MarkdownEditor({
           event.preventDefault()
           return true
         }
-        const html = event.clipboardData?.getData("text/html") ?? ""
-        if (!html) return false
+        // 提取剪贴板中的文件（截图粘贴的主要载体）。
         const files: File[] = []
         if (event.clipboardData) {
           for (const item of Array.from(event.clipboardData.items)) {
@@ -153,6 +152,33 @@ export function MarkdownEditor({
             }
           }
         }
+        const html = event.clipboardData?.getData("text/html") ?? ""
+
+        // 截图粘贴场景：有图片文件但没有 HTML。
+        // 构造一个占位 <img>，让 sanitizeRichPaste 提取为 file 候选并替换为 marker。
+        if (files.length > 0 && !html) {
+          const imageFiles = files.filter((f) =>
+            ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(f.type)
+          )
+          if (imageFiles.length > 0) {
+            // 构造包含每个图片文件的占位 HTML，交给 sanitizer 提取。
+            const fakeHtml = imageFiles
+              .map((f) => `<img alt="${f.name || "截图"}">`)
+              .join("")
+            const { html: cleaned } = sanitizeRichPaste({ html: fakeHtml, files: imageFiles })
+            if (cleaned) {
+              const temp = document.createElement("div")
+              temp.innerHTML = cleaned
+              const { tr } = view.state
+              view.dispatch(tr.insertContent(temp.innerHTML))
+              event.preventDefault()
+              return true
+            }
+          }
+        }
+
+        // 富文本粘贴场景：有 HTML，先提取 <img> 候选再清洗。
+        if (!html) return false
         const { html: cleaned } = sanitizeRichPaste({ html, files })
         if (!cleaned) return false
         const temp = document.createElement("div")
