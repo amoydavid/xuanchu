@@ -30,6 +30,7 @@ import { TaskActionBar } from "./task-action-bar"
 import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskAttachmentPanel } from "@/features/workspace/attachments/task-attachment-panel"
+import { useDescriptionDraftCleanup } from "@/features/workspace/attachments/use-description-draft-cleanup"
 import { TaskPropertyPanel } from "./task-property-panel"
 import { SubTaskList } from "./sub-task-list"
 import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
@@ -365,6 +366,7 @@ function TaskDetailPageContent({
                 )
               }}
               value={taskData.description ?? ""}
+              workspaceSlug={workspaceSlug}
             />
             <TaskLinksEditor
               canWrite={canCreateRelatedContent}
@@ -465,21 +467,25 @@ function TaskDescriptionBlock({
   inherited,
   onSave,
   value,
+  workspaceSlug,
 }: {
   canWrite: boolean
   inherited: boolean
   onSave: (value: string) => Promise<void> | void
   value: string
+  workspaceSlug: string
 }) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const draftCleanup = useDescriptionDraftCleanup(workspaceSlug)
 
   function openEditor() {
     setDraft(value)
     setError(null)
+    draftCleanup.reset()
     setEditing(true)
   }
 
@@ -491,12 +497,19 @@ function TaskDescriptionBlock({
     setError(null)
     try {
       await onSave(draft)
+      draftCleanup.reset()
       setEditing(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(false)
     }
+  }
+
+  async function cancel() {
+    // best-effort 清理本次会话创建的 draft；失败不阻塞关闭。
+    await draftCleanup.cleanup()
+    setEditing(false)
   }
 
   return (
@@ -565,7 +578,9 @@ function TaskDescriptionBlock({
           ) : null}
           <DialogFooter>
             <Button
-              onClick={() => setEditing(false)}
+              onClick={() => {
+                void cancel()
+              }}
               type="button"
               variant="outline"
             >
