@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -323,6 +323,44 @@ describe("ProjectTemplateLibraryPage", () => {
     expect(
       await screen.findByRole("button", { name: "从模板创建" })
     ).toBeTruthy()
+  })
+
+  it("selects a source project before opening the shared snapshot wizard", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input)
+      if (url === "/api/v1/projects?workspace=acme&status=all") {
+        return response([
+          {
+            id: "project-1",
+            workspace_id: "workspace-1",
+            slug: "launch-source",
+            name: "上线来源项目",
+            status: "active",
+            task_count: 20,
+            pending_count: 8,
+            completed_count: 12,
+            created_at: 1,
+            modified_at: 1,
+          },
+        ])
+      }
+      return url.includes("/launch?")
+        ? response(detailData())
+        : response(listData())
+    })
+    renderLibrary()
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "从项目更新快照" })
+    )
+    expect(screen.getByRole("dialog", { name: "选择来源项目" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: /上线来源项目/ }))
+
+    const wizard = screen.getByRole("dialog", { name: "从项目更新快照" })
+    expect(wizard).toBeTruthy()
+    expect(within(wizard).getAllByText(/launch-source/).length).toBeGreaterThan(
+      0
+    )
   })
 
   it("archives an active template through the typed endpoint", async () => {

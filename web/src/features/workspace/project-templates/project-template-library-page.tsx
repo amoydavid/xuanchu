@@ -15,8 +15,20 @@ import { useTranslation } from "react-i18next"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ProjectTemplateCaptureWizard } from "@/features/workspace/project-templates/capture/project-template-capture-wizard"
+import {
+  getProjects,
+  type ProjectWorkbenchProject,
+} from "@/features/workspace/project-workbench/api/project-api"
 import { hasScope } from "@/features/workspace/project-workbench/permissions/permissions"
 import { cn } from "@/lib/utils"
 
@@ -69,6 +81,9 @@ export function ProjectTemplateLibraryPage({
     ref: string
     snapshotID?: string
   }>()
+  const [captureTargetRef, setCaptureTargetRef] = useState<string>()
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false)
+  const [captureSource, setCaptureSource] = useState<ProjectWorkbenchProject>()
 
   const listQuery = useQuery({
     enabled: Boolean(workspaceSlug),
@@ -107,6 +122,11 @@ export function ProjectTemplateLibraryPage({
     ),
     queryFn: () =>
       getProjectTemplate(workspaceSlug, selectedRef!, selectedSnapshotID),
+  })
+  const sourceProjectsQuery = useQuery({
+    enabled: sourcePickerOpen,
+    queryKey: ["projects", workspaceSlug, "all", "template-capture-source"],
+    queryFn: () => getProjects(workspaceSlug, "all"),
   })
 
   const archiveMutation = useMutation({
@@ -297,7 +317,10 @@ export function ProjectTemplateLibraryPage({
                   archiveMutation.isError || reactivateMutation.isError
                 }
                 onArchive={(ref) => archiveMutation.mutate(ref)}
-                onCapture={onCaptureSnapshot}
+                onCapture={(ref) => {
+                  setCaptureTargetRef(ref)
+                  setSourcePickerOpen(true)
+                }}
                 onInstantiate={onInstantiate}
                 onReactivate={(ref) => reactivateMutation.mutate(ref)}
                 onSelectVersion={(snapshotID) =>
@@ -310,6 +333,81 @@ export function ProjectTemplateLibraryPage({
           </main>
         </div>
       )}
+      <Dialog onOpenChange={setSourcePickerOpen} open={sourcePickerOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>选择来源项目</DialogTitle>
+            <DialogDescription>
+              选择要读取的项目，然后进入同一快照选择与冲突处理向导。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] overflow-y-auto border">
+            {sourceProjectsQuery.isPending ? (
+              <div
+                className="space-y-2 p-3"
+                role="status"
+                aria-label="正在加载项目"
+              >
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : sourceProjectsQuery.isError ? (
+              <div className="p-4 text-sm text-destructive">
+                加载项目失败，请重试。
+              </div>
+            ) : sourceProjectsQuery.data?.length ? (
+              <ul className="divide-y">
+                {sourceProjectsQuery.data.map((project) => (
+                  <li key={project.id}>
+                    <button
+                      className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/60"
+                      onClick={() => {
+                        setCaptureSource(project)
+                        setSourcePickerOpen(false)
+                        onCaptureSnapshot?.(captureTargetRef!)
+                      }}
+                      type="button"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {project.name}
+                        </span>
+                        <span className="block truncate font-mono text-xs text-muted-foreground">
+                          {project.slug}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {project.pending_count}/{project.task_count} 待处理
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                没有可选项目
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {captureSource && captureTargetRef ? (
+        <ProjectTemplateCaptureWizard
+          mode="append"
+          onOpenChange={(next) => {
+            if (!next) setCaptureSource(undefined)
+          }}
+          onSaved={() => setCaptureSource(undefined)}
+          open
+          sourceProject={{
+            id: captureSource.id,
+            name: captureSource.name,
+            slug: captureSource.slug,
+          }}
+          templateRef={captureTargetRef}
+          workspaceSlug={workspaceSlug}
+        />
+      ) : null}
     </section>
   )
 }

@@ -1,8 +1,20 @@
-import { CopyIcon, SettingsIcon } from "lucide-react"
-import type { ReactNode } from "react"
+import {
+  CopyIcon,
+  MoreHorizontalIcon,
+  SaveIcon,
+  SettingsIcon,
+} from "lucide-react"
+import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ProjectTemplateCaptureWizard } from "@/features/workspace/project-templates/capture/project-template-capture-wizard"
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { InlineTextEditor } from "../shared/inline-text-editor"
 import { useModifyProjectMutation } from "../hooks/use-project-mutations"
@@ -29,6 +41,7 @@ export function ProjectHeaderEditor({
 }: ProjectHeaderEditorProps) {
   const { t } = useTranslation()
   const modifyProject = useModifyProjectMutation(workspaceSlug, project.slug)
+  const [captureOpen, setCaptureOpen] = useState(false)
 
   return (
     <section className="border-b pb-4">
@@ -81,19 +94,49 @@ export function ProjectHeaderEditor({
             {t("projectReadonly.copyLink")}
           </Button>
           {canManage ? (
-            <ProjectSettingsDialog
-              project={project}
-              trigger={
-                <Button
-                  aria-label={t("projectWorkbench.project.settings")}
-                  size="icon-sm"
-                  variant="outline"
-                >
-                  <SettingsIcon />
-                </Button>
-              }
-              workspaceSlug={workspaceSlug}
-            />
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label="更多操作"
+                    size="icon-sm"
+                    variant="outline"
+                  >
+                    <MoreHorizontalIcon />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setCaptureOpen(true)}>
+                    <SaveIcon />
+                    另存为模板
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <ProjectSettingsDialog
+                project={project}
+                trigger={
+                  <Button
+                    aria-label={t("projectWorkbench.project.settings")}
+                    size="icon-sm"
+                    variant="outline"
+                  >
+                    <SettingsIcon />
+                  </Button>
+                }
+                workspaceSlug={workspaceSlug}
+              />
+              <ProjectTemplateCaptureWizard
+                mode="create"
+                onOpenChange={setCaptureOpen}
+                open={captureOpen}
+                sourceProject={{
+                  id: project.id,
+                  slug: project.slug,
+                  name: project.name,
+                }}
+                workspaceSlug={workspaceSlug}
+              />
+            </>
           ) : null}
         </div>
       </div>
