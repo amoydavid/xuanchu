@@ -19,7 +19,7 @@
 - `internal/app/project_automation.go` 的规则引用 config key，delivery 则是运行历史；模板只能保存规则定义，不能保存 delivery。
 - task description 是 Markdown 字符串，可能包含 `ref://user/...`、`ref://task/...` 和 `ref://attachment/...` 语义引用。模板必须显式处理引用，不能盲目复制源 UUID。
 
-本功能是一个新的跨层能力，必须由 App 层统一编排，CLI、HTTP、Remote、MCP 和 Web Console 复用同一套用例。
+本功能是一个新的跨层能力，必须由 App 层统一编排。Web Console 通过 HTTP 使用完整治理能力；CLI、Remote 和 MCP 只复用“列出可用模板”和“从当前 Snapshot 创建项目”两个用例。
 
 ## 2. 第一性原理结论
 
@@ -36,6 +36,7 @@
 | 数据库兼容 | SQLite/PostgreSQL 都用 TEXT 保存 JSON 字节，不依赖数据库方言特有 JSON 类型 |
 | 内容更新 | 更新模板时追加新 Snapshot，不覆盖旧 Snapshot |
 | 大项目选择 | 服务端筛选和分页候选项；筛选结果与已选清单分离 |
+| 入口边界 | Web Console 负责完整治理；CLI/MCP 只提供 list/instantiate |
 | 普通任务 | 保存为初始化 blueprint；创建新项目时生成新的开放任务 |
 | Series | 保存当前有效定义；创建时生成新的 active Series 和一条初始 RuleVersion |
 | Config | 只保存用户选择的 project 显式值；不冻结 workspace 继承值/default |
@@ -58,7 +59,7 @@
 8. 保留选中任务之间的 parent、depends 和 task semantic reference。
 9. 防止 secret、attachment、历史 occurrence 和 automation delivery 泄漏到模板。
 10. 创建前提供可读预检；创建过程具备完整事务原子性。
-11. CLI、HTTP、Remote、MCP 和 Web Console 使用同一 App 能力和相同 JSON 语义。
+11. Web Console 通过 HTTP 完成模板治理；CLI、Remote、MCP 只暴露模板 list 和 current Snapshot instantiate。
 
 ## 4. 非目标
 
@@ -76,6 +77,7 @@
 - 不支持在模板库中实现一套完整 Task/Series 编辑器。
 - 不改变普通 task 与 TaskSeries 的既有领域边界。
 - 不使用 Taskwarrior JSON 或 `xuanchu.task-bundle/v1` 作为模板公开格式。
+- 不通过 CLI、Remote 或 MCP 保存/更新 Snapshot、查询候选项、预检、查看详情、修改、归档或管理版本。
 
 ## 5. 术语
 
@@ -122,23 +124,30 @@ Template 只保存 `source_project_id` 和筛选条件，Instantiate 时重新�
 ## 7. 总体架构
 
 ```text
-Web / CLI / HTTP / MCP / Remote
-                |
-                v
-        internal/app
-  capture preview / capture
-  instantiate preview / instantiate
-                |
-       +--------+---------+
-       |                  |
-       v                  v
-internal/projecttemplate  internal/storage
-typed snapshot + codec    template repositories
-validation + date shift   raw SnapshotJSON
-       |                  |
-       +--------+---------+
-                |
-          SQLite / PostgreSQL
+Web Console
+    |
+    v
+HTTP API ─────────────── full template governance
+    |                    candidate / capture / versions / lifecycle / instantiate
+    |
+    +-----------------------------+
+                                  |
+CLI local ── list/instantiate ────+
+CLI remote ─ Remote Client ───────+
+MCP ──────── list/instantiate ────+
+                                  v
+                           internal/app
+                                  |
+                       +----------+-----------+
+                       |                      |
+                       v                      v
+             internal/projecttemplate   internal/storage
+             typed snapshot + codec     template repositories
+             validation + date shift    raw SnapshotJSON
+                       |                      |
+                       +----------+-----------+
+                                  |
+                            SQLite/PostgreSQL
 ```
 
 分层约束：
@@ -146,7 +155,7 @@ validation + date shift   raw SnapshotJSON
 - `internal/projecttemplate` 只负责 Snapshot 领域模型、严格 codec、版本升级、hash 和纯函数校验，不依赖 GORM、Cobra、HTTP 或 App Service。
 - `internal/storage` 只保存模板元数据和原始 Snapshot JSON，不解释 task/series/config/automation 业务语义。
 - `internal/app` 负责权限、源资源读取、用户解析、Capture、Instantiate、事务、审计和事件。
-- 协议层只做 DTO 转换，不自行克隆项目资源。
+- 各入口只做 DTO 转换，不自行克隆项目资源；入口能力可以是 App 能力的受控子集。
 - Web Console 只消费 preview/result，不在浏览器内构造权威 Snapshot。
 
 ## 8. 数据模型
@@ -480,7 +489,7 @@ type CaptureSelection struct {
 ```
 
 所有选择必须显式提交。空数组表示不保存该类内容；不能用“字段缺失”推断全选。
-HTTP/OpenAPI/MCP schema 必须把四个数组都标为 required；App 输入解析还要记录字段是否出现，不能让 Go 的 nil/empty 零值掩盖调用方漏传。
+HTTP/OpenAPI schema 必须把四个数组都标为 required；App 输入解析还要记录字段是否出现，不能让 Go 的 nil/empty 零值掩盖调用方漏传。MCP 不暴露 Capture 输入。
 四个数组在协议上按集合处理：去重并按 §9.8 的规范顺序归一化。跨页点击顺序、网络返回顺序和“选择全部匹配”的分页顺序都不能改变 Snapshot hash 或新资源 seq。
 
 Capture 对依赖和日期的人工处理使用结构化 resolution，不接收自由文本指令：
@@ -811,13 +820,23 @@ PreviewProjectTemplateCapture(input CaptureInput) (CapturePreview, error)
 CreateProjectTemplate(input CreateTemplateInput) (ProjectTemplateView, error)
 CreateProjectTemplateSnapshot(templateRef string, input CaptureInput) (ProjectTemplateView, error)
 ListProjectTemplates(includeArchived bool) ([]ProjectTemplateSummaryView, error)
+ListProjectTemplatesForInstantiation(input TemplateInstantiationListInput) (ProjectTemplateInstantiationPage, error)
 ProjectTemplateInfo(templateRef string, snapshotID *string) (ProjectTemplateView, error)
 ModifyProjectTemplate(templateRef string, input ModifyTemplateInput) (ProjectTemplateView, error)
 ArchiveProjectTemplate(templateRef string) (ProjectTemplateView, error)
 ReactivateProjectTemplate(templateRef string) (ProjectTemplateView, error)
 PreviewProjectTemplateInstantiation(templateRef string, input InstantiateInput) (InstantiatePreview, error)
 InstantiateProjectTemplate(templateRef string, input InstantiateInput) (ProjectView, error)
+InstantiateCurrentProjectTemplate(templateRef string, input CurrentSnapshotInstantiateInput) (ProjectView, error)
 ```
+
+`ListProjectTemplatesForInstantiation` 和 `InstantiateCurrentProjectTemplate` 是 CLI/MCP 的收窄用例：
+
+- list 只返回 active Template 的 current Snapshot ID/version/hash、组件数量和需要补充的 secret key 名称，不返回 raw JSON、历史版本或治理动作。
+- instantiate 必须提交 list 返回的 current Snapshot ID/hash。
+- 如果 Template current Snapshot 已变化，返回 `project_template_snapshot_hash_mismatch`，调用方重新 list 后再创建。
+- 即使调用方从其他渠道知道旧 Snapshot ID，也不能通过这两个用例实例化旧版本。
+- 完整 `ProjectTemplateInfo`、历史 Snapshot instantiate 和治理用例只供 HTTP/Web Console 使用。
 
 辅助逻辑拆分：
 
@@ -828,7 +847,7 @@ InstantiateProjectTemplate(templateRef string, input InstantiateInput) (ProjectV
 
 不要把 GORM row 或 App automation input 直接序列化进 Snapshot。Snapshot struct 是独立的持久契约，App 负责显式映射。
 
-## 18. HTTP / Remote / CLI / MCP
+## 18. HTTP 全量治理与精简 CLI/MCP
 
 ### 18.1 HTTP
 
@@ -853,6 +872,7 @@ POST /api/v1/project-templates/{templateRef}/instantiate
 
 - create Template 时同时提交第一个 Capture。
 - 四类 candidate endpoint 复用各自现有筛选参数，统一返回有界 page；`resolve-selection` 把筛选结果展开为显式 refs。
+- 这些治理 endpoint 是 Web Console 的服务端契约，不因此自动生成 CLI、Remote 或 MCP 入口。
 - Snapshot raw JSON 不进入公开响应。
 - list 支持 `status=active|archived|all`、`limit`、`offset`，返回稳定分页元数据。
 - Instantiate 响应返回标准 ProjectView 和 component create counts。
@@ -860,74 +880,51 @@ POST /api/v1/project-templates/{templateRef}/instantiate
 
 ### 18.2 Remote
 
-Remote Client 提供与 HTTP 等价的 typed 方法，不能让 CLI 拼 HTTP body：
+Remote Client 只为远程 CLI 提供两个 typed 方法，不能镜像 Web 治理 API：
 
 ```go
-ListProjectTemplateTaskCandidates(...)
-ListProjectTemplateSeriesCandidates(...)
-ListProjectTemplateConfigCandidates(...)
-ListProjectTemplateAutomationCandidates(...)
-ResolveProjectTemplateCandidateSelection(...)
-PreviewProjectTemplateCapture(...)
-CreateProjectTemplate(...)
-ListProjectTemplates(...)
-GetProjectTemplate(...)
-CreateProjectTemplateSnapshot(...)
-PreviewProjectTemplateInstantiation(...)
-InstantiateProjectTemplate(...)
+ListProjectTemplatesForInstantiation(...)
+InstantiateCurrentProjectTemplate(...)
 ```
+
+Capture、candidate、detail、modify、archive、reactivate、Snapshot version 和 preview 不增加 Remote Client 方法。Web Console 直接使用 HTTP API。
 
 ### 18.3 CLI
 
 ```text
 xuanchu project template list
-xuanchu project template info <template-ref>
-xuanchu project template candidates <source-project> --component task
-xuanchu project template save <source-project> key:<key> name:<name>
-xuanchu project template snapshot <template-ref> --from <source-project>
 xuanchu project template instantiate <template-ref> <new-project-slug> name:<name>
-xuanchu project template archive <template-ref>
-xuanchu project template reactivate <template-ref>
 ```
 
-选择参数：
+CLI 边界：
 
-- `--task <ref>`、`--series <ref>`、`--config <key>`、`--automation <id>` 可重复。
-- `candidates` 支持对应组件的 `--filter/--status/--assignee/--tag/--limit/--offset`，输出显式 ref，便于脚本组合选择。
-- `--all-open-tasks`、`--all-active-series` 是显式 convenience flag。
-- 不传某一类选择参数表示该类为空，不表示全选。
-- `--anchor-date` / `--start-date` 使用 `YYYY-MM-DD`。
-- 非交互模式遇到 conflict 直接失败；drop resolution 必须通过显式 JSON input 文件提交。
-- stdout 只输出结果，preview warning/human error 走 stderr；`--json` 返回稳定 DTO。
+- `list` 只列 active Template 和 current Snapshot 摘要，支持 `q/limit/offset`。
+- `instantiate` 必须提交 `--snapshot <id>`、`--snapshot-hash <sha256>` 和 `--start-date YYYY-MM-DD`；这些值来自 list。
+- `--input <path|->` 可以补充 description、secret inputs 和 assignee replacements。推荐从 stdin 读取含 secret 的 JSON，避免 secret 出现在 shell history。
+- Snapshot 已切换时命令失败并要求重新 list，不自动改用新版本。
+- 不提供 info、candidate、preview、save、snapshot、modify、archive、reactivate 子命令。
+- stdout 只输出结果，human error 走 stderr；`--json` 返回稳定 DTO。
 
 ### 18.4 MCP
 
-MCP tool 名称：
+MCP 只注册两个 tool：
 
 ```text
-project_template_candidate_list
-project_template_candidate_selection_resolve
-project_template_capture_preview
-project_template_create
 project_template_list
-project_template_get
-project_template_modify
-project_template_archive
-project_template_reactivate
-project_template_snapshot_capture_preview
-project_template_snapshot_create
-project_template_instantiate_preview
 project_template_instantiate
 ```
 
 规则：
 
 - 名称全部使用下划线。
-- 每次显式传 workspace 和 template/project ref，不依赖 active context。
-- `project_template_candidate_list` 使用 `component=task|series|config|automation` 判别输入；每类 filter 使用独立 typed object，必须且只能提交与 component 对应的一个 filter。
+- 每次显式传 workspace，不依赖 active context。
+- `project_template_list` 只返回 active Template；每项包含 stable key/name/description、current Snapshot ID/version/hash、组件数量和 required secret key 名称。它不返回 Snapshot JSON、旧版本、候选项或治理链接。
+- `project_template_instantiate` 必须提交 template ref、current Snapshot ID/hash、新 Project slug/name、start date；可提交 description、secret inputs 和 assignee replacements。
+- instantiate 内部执行完整权限和数据预检，但不单独暴露 preview tool。失败时返回稳定错误码和结构化 issue，Agent 修正输入后重试。
+- MCP 不能实例化非 current Snapshot。
 - result 的 `content[0].text` 与 `structuredContent` 继续遵守现有 ToolEnvelope 契约。
 - created_by/assignee 等用户对象统一为 `task.JSONUserInfo`；actor 使用 `task.JSONActorInfo`。
-- tool schema golden、list-tools snapshot 和 Agent Skill 文档必须同步。
+- 两个 tool 都要有 schema golden、list-tools snapshot 和 Agent Skill 文档；不得为 Web 治理动作注册隐藏或同义 MCP tool。
 
 ## 19. 错误码
 
@@ -1259,8 +1256,11 @@ blocking issue 未清零时 `保存模板` 禁用。任何 drop/edit 都进入 C
 
 ### 24.4 协议与 Web
 
-- HTTP/Remote/MCP/CLI DTO 等价。
-- OpenAPI 与 MCP schema golden。
+- HTTP 覆盖完整 Web 治理契约；Remote/MCP/CLI 只覆盖 list/current instantiate。
+- list/current instantiate 在 HTTP/Remote/MCP/CLI 间使用等价字段和错误语义。
+- OpenAPI 覆盖全部 HTTP endpoint；MCP 只有两个 tool schema golden。
+- list-tools snapshot 断言不存在 candidate/capture/get/modify/archive/snapshot/preview 等额外 project template tool。
+- CLI command tree 和 Remote Client 测试断言不存在模板治理命令/方法。
 - `content[0].text` / `structuredContent` 等价。
 - Web 四类选择、搜索不丢 selection、冲突处理、secret 不回显。
 - Web 筛选、分页、当前页全选、全部匹配全选和已选抽屉语义一致。
@@ -1303,7 +1303,7 @@ pnpm --dir web build
 14. attachment ref、缺失依赖、不可用 member、失效 config/UDA/automation 在 Preview 中明确阻断。
 15. Instantiate 任一步失败不留下 Project 或子资源。
 16. Template/Snapshot 严格 workspace 隔离，project-scoped token 不能访问。
-17. CLI、HTTP、Remote、MCP、Web Console 行为一致。
+17. HTTP/Web 完成全部治理；CLI、Remote、MCP 只提供 list/current Snapshot instantiate，两个共享操作的字段和错误语义一致。
 18. 用户身份输出符合 `task.UserInfo` / `task.JSONUserInfo` 规范。
 19. SQLite/PostgreSQL 与 `CGO_ENABLED=0` 验证通过。
 
@@ -1316,9 +1316,9 @@ implementation plan 应按以下顺序拆分，但本文不代替计划：
 3. 四类 candidate filter/count/pagination、selection expansion 和大数据集测试。
 4. Capture Preview/Capture App 用例、引用归一化和审计。
 5. Instantiate Preview/Instantiate App 事务、日期恢复和 ID 映射。
-6. HTTP + OpenAPI + Remote。
-7. CLI。
-8. MCP + golden + Agent Skill 文档。
+6. HTTP 全量治理 + OpenAPI。
+7. Remote + CLI 的 list/current instantiate。
+8. MCP 两个 tool + golden + Agent Skill 文档。
 9. Web Template Library、Capture wizard、跨页已选清单、Instantiate wizard。
 10. E2E、README、ROADMAP 和 release 文档同步。
 
@@ -1328,10 +1328,10 @@ implementation plan 应按以下顺序拆分，但本文不代替计划：
 
 实现完成后同步：
 
-- `README.md`：项目模板入口、行为边界、CLI 示例。
+- `README.md`：Web 模板治理入口、CLI list/instantiate 示例和入口边界。
 - `ROADMAP.md`：v0.6.0 状态与交付内容。
 - OpenAPI runtime spec。
-- `docs/skills`：MCP tool 名称、输入输出和 Agent 使用边界。
+- `docs/skills`：仅记录 `project_template_list` / `project_template_instantiate` 及 Agent 使用边界。
 - 对应 implementation plan 的完成状态。
 
 在用户审阅并确认本规格前，不进入 implementation plan 或代码实现。

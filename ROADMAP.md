@@ -1659,7 +1659,7 @@ v0.5.5 至 v0.5.9 已依次完成任务详情重构、项目自动化、循环�
 
 v0.5.11 已完成。该里程碑继续保持 task description 的 Markdown 字符串契约，在现有 Tiptap 编辑器上交付了富文本粘贴、公网远程图片受控抓取转存、workspace 级通用附件基础及 task 首期接入、鉴权图片渲染、用户/任务语义引用和 `task.user_mentioned` 事件；附件通过 `attached_to_type + attached_to_id` 关联业务实体，后续 project/series/workspace 接入无需迁表。附件二进制默认使用本地文件系统，可选使用 private S3/MinIO，对外不暴露 bucket 或持久预签名 URL。
 
-v0.6.0 进入设计阶段。该里程碑新增 workspace 内项目模板：用户通过服务端筛选、稳定分页和独立的跨页已选清单，从源项目逐项选择 project config、普通 task、TaskSeries 和 project automation，生成带 schema 版本、Go struct 契约和 canonical hash 的不可变 JSON Snapshot；从模板创建项目时重新分配所有资源身份、按项目启动日恢复相对日期、重建任务引用、要求重新解析 secret，并确保自动化规则以停用状态创建。Template 可以通过追加 Snapshot 演进，但不与源项目实时同步，也不支持跨 workspace 复用。
+v0.6.0 进入设计阶段。该里程碑新增 workspace 内项目模板：用户在 Web Console 通过服务端筛选、稳定分页和独立的跨页已选清单，从源项目逐项选择 project config、普通 task、TaskSeries 和 project automation，生成带 schema 版本、Go struct 契约和 canonical hash 的不可变 JSON Snapshot；从模板创建项目时重新分配所有资源身份、按项目启动日恢复相对日期、重建任务引用、要求重新解析 secret，并确保自动化规则以停用状态创建。Template 可以通过追加 Snapshot 演进，但不与源项目实时同步，也不支持跨 workspace 复用。HTTP 保留 Web 所需的完整治理接口；CLI、Remote 和 MCP 只提供模板列表与从 current Snapshot 创建项目，其中 MCP 只注册 `project_template_list` / `project_template_instantiate` 两个 tool。
 
 最新规格：
 
