@@ -23,6 +23,7 @@ type TaskAttachmentPanelProps = {
   workspaceSlug: string
   taskRef: string
   canWrite: boolean
+  embeddedImageAttachmentIDs?: ReadonlySet<string>
 }
 
 const ATTACHMENTS_KEY = "task-attachments"
@@ -39,6 +40,7 @@ export function TaskAttachmentPanel({
   workspaceSlug,
   taskRef,
   canWrite,
+  embeddedImageAttachmentIDs = new Set(),
 }: TaskAttachmentPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -49,6 +51,10 @@ export function TaskAttachmentPanel({
   const [error, setError] = useState<string | null>(null)
   const [renamingID, setRenamingID] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const visibleAttachments = standaloneAttachments(
+    attachments ?? [],
+    embeddedImageAttachmentIDs
+  )
 
   const invalidate = () =>
     queryClient.invalidateQueries({
@@ -148,9 +154,9 @@ export function TaskAttachmentPanel({
         <p className="text-xs text-muted-foreground">
           {t("task.attachments.empty")}
         </p>
-      ) : (
+      ) : visibleAttachments.length > 0 ? (
         <ul className="space-y-2">
-          {attachments.map((attachment) => (
+          {visibleAttachments.map((attachment) => (
             <li
               key={attachment.id}
               className="flex items-start justify-between gap-3 rounded-md border px-3 py-2"
@@ -224,8 +230,29 @@ export function TaskAttachmentPanel({
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </section>
+  )
+}
+
+// embeddedImageAttachmentIDs 只识别描述中实际会渲染为图片的内部 attachment URI。
+// 普通链接不算内嵌预览，仍应在附件栏中保留下载入口。
+export function embeddedImageAttachmentIDs(markdown: string): ReadonlySet<string> {
+  return new Set(
+    [...markdown.matchAll(/!\[[^\]]*\]\(ref:\/\/attachment\/([^)]+)\)/g)].map(
+      (match) => match[1]
+    )
+  )
+}
+
+// standaloneAttachments 返回需要在附件栏单独展示的附件：只有已在描述中预览的图片会隐藏。
+export function standaloneAttachments(
+  attachments: Attachment[],
+  embeddedIDs: ReadonlySet<string>
+): Attachment[] {
+  return attachments.filter(
+    (attachment) =>
+      !attachment.inline_capable || !embeddedIDs.has(attachment.id)
   )
 }
 

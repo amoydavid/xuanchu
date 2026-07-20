@@ -1345,7 +1345,8 @@ export const zhCN = {
       changedDescription: "{{actor}} 更新了描述",
       udaChanged: "{{actor}} 更新了自定义字段",
       udaEntryChange: "{{name}}：{{previous}} → {{current}}",
-      expandValue: "查看完整内容",
+      viewChanges: "查看变更",
+      descriptionAttachmentDelta: "内嵌附件：新增 {{added}}，移除 {{removed}}",
       field: {
         assignees: "负责人",
         tags: "标签",

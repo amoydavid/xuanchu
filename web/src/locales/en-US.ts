@@ -1390,7 +1390,9 @@ export const enUS = {
       changedDescription: "{{actor}} updated the description",
       udaChanged: "{{actor}} updated custom fields",
       udaEntryChange: "{{name}}: {{previous}} → {{current}}",
-      expandValue: "View full content",
+      viewChanges: "View changes",
+      descriptionAttachmentDelta:
+        "Embedded attachments: {{added}} added, {{removed}} removed",
       field: {
         assignees: "Assignees",
         tags: "Tags",

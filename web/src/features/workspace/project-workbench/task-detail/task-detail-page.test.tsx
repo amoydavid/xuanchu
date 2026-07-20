@@ -1069,7 +1069,7 @@ describe("TaskDetailPage", () => {
     expect(screen.getAllByText(/未设置/).length).toBeGreaterThan(0)
   })
 
-  it("renders description change with truncated values and expand dialog", async () => {
+  it("summarizes rich description activity without exposing attachment references", async () => {
     vi.mocked(getTaskAudit).mockResolvedValue([
       {
         id: 4,
@@ -1083,22 +1083,27 @@ describe("TaskDetailPage", () => {
             field: "description",
             kind: "scalar",
             label_key: "projectWorkbench.taskHistory.field.description",
-            previous: { raw: "# 旧描述", text: "# 旧描述" },
-            current: { raw: "# 新描述正文", text: "# 新描述正文" },
+            previous: {
+              raw: "[旧需求](ref://attachment/11111111-1111-1111-1111-111111111111)",
+              text: "旧需求",
+            },
+            current: {
+              raw: "![架构图](ref://attachment/22222222-2222-2222-2222-222222222222)",
+              text: "架构图",
+            },
           },
         ],
       },
     ])
     renderPage()
 
-    // 列表行展示截断纯文本摘要（去掉 markdown 标记），含旧值和新值。
-    await screen.findByText(/新描述正文/)
-    expect(screen.getByText(/旧描述/)).toBeTruthy()
-    // 不直接展示 markdown 标记 #。
-    expect(screen.queryByText(/# 新描述正文/)).toBeNull()
+    // 活动列表只保留语义摘要和附件变化数量，不暴露 Markdown 或 UUID。
+    await screen.findByText(/Alice 更新了描述/)
+    expect(document.body.textContent).toContain("内嵌附件：新增 1，移除 1")
+    expect(screen.queryByText(/ref:\/\/attachment/)).toBeNull()
 
     // 点击展开 Dialog，查看完整 before/after。
-    await userEvent.click(screen.getByRole("button", { name: "查看完整内容" }))
+    await userEvent.click(screen.getByRole("button", { name: "查看变更" }))
     expect(screen.getByText("当前值")).toBeTruthy()
     expect(screen.getByText("原值")).toBeTruthy()
   })

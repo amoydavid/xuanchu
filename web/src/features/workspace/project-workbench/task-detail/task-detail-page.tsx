@@ -29,7 +29,10 @@ import { InlineTextEditor } from "../shared/inline-text-editor"
 import { TaskActionBar } from "./task-action-bar"
 import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
-import { TaskAttachmentPanel } from "@/features/workspace/attachments/task-attachment-panel"
+import {
+  embeddedImageAttachmentIDs,
+  TaskAttachmentPanel,
+} from "@/features/workspace/attachments/task-attachment-panel"
 import { useDescriptionDraftCleanup } from "@/features/workspace/attachments/use-description-draft-cleanup"
 import { suggestContentReferences } from "@/features/workspace/content-references"
 import { resolutionToMenuItem } from "@/components/markdown/reference-suggestion-menu"
@@ -385,6 +388,9 @@ function TaskDetailPageContent({
               workspaceSlug={workspaceSlug}
               taskRef={taskRef}
               canWrite={taskWritable}
+              embeddedImageAttachmentIDs={embeddedImageAttachmentIDs(
+                taskData.description ?? ""
+              )}
             />
           </div>
           {/* 子任务 */}

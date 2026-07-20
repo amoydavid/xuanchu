@@ -132,7 +132,6 @@ function ChangeLine({
         actor={actor}
         createdAt={createdAt}
         change={change}
-        locale={locale}
       />
     )
   }
@@ -154,32 +153,25 @@ function DescriptionChangeLine({
   actor,
   createdAt,
   change,
-  locale,
 }: {
   actor: string
   createdAt: string
   change: Extract<TaskFieldChange, { kind: "scalar" }>
-  locale: string
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const previous = truncateDescription(
-    formatScalar(change.previous, "description", t, locale)
-  )
-  const current = truncateDescription(
-    formatScalar(change.current, "description", t, locale)
-  )
+  const attachmentDelta = descriptionAttachmentDelta(change)
 
   return (
     <div className="space-y-1">
       <span>
         <span className="text-foreground">{createdAt}</span> ·{" "}
-        {t("projectWorkbench.taskHistory.scalarChange", {
-          actor,
-          field: t("projectWorkbench.taskHistory.field.description"),
-          previous,
-          current,
-        })}
+        {t("projectWorkbench.taskHistory.changedDescription", { actor })}
+        {attachmentDelta ? (
+          <span className="text-muted-foreground">
+            {" "}· {t("projectWorkbench.taskHistory.descriptionAttachmentDelta", attachmentDelta)}
+          </span>
+        ) : null}
       </span>
       <div>
         <Button
@@ -189,7 +181,7 @@ function DescriptionChangeLine({
           variant="link"
           className="h-auto p-0 text-xs"
         >
-          {t("projectWorkbench.taskHistory.expandValue")}
+          {t("projectWorkbench.taskHistory.viewChanges")}
         </Button>
       </div>
       <Dialog onOpenChange={setOpen} open={open}>
@@ -376,19 +368,25 @@ function formatSetItem(
   return item.text
 }
 
-// truncateDescription 压缩 description 用于 timeline 列表行展示，
-// 避免整段 Markdown 撑高单行；完整 before/after 在展开 Dialog 里查看。
-function truncateDescription(text: string): string {
-  const max = 80
-  // 去掉 markdown 标记符号的粗略处理，列表行只作摘要。
-  const flat = text
-    .replace(/[#*_`>~-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-  if (flat.length <= max) {
-    return flat
+// descriptionAttachmentDelta 只从内部 attachment URI 计算新增/移除数量。
+// 活动列表不再回显 Markdown 或稳定 ID，完整内容仅在弹窗中展示。
+function descriptionAttachmentDelta(change: Extract<TaskFieldChange, { kind: "scalar" }>) {
+  const previous = attachmentIDs(change.previous)
+  const current = attachmentIDs(change.current)
+  const added = [...current].filter((id) => !previous.has(id)).length
+  const removed = [...previous].filter((id) => !current.has(id)).length
+  return added > 0 || removed > 0 ? { added, removed } : null
+}
+
+function attachmentIDs(value: TaskChangeDisplayValue): Set<string> {
+  if (typeof value.raw !== "string") {
+    return new Set()
   }
-  return `${flat.slice(0, max)}…`
+  return new Set(
+    [...value.raw.matchAll(/\]\(ref:\/\/attachment\/([^)]+)\)/g)].map(
+      (match) => match[1]
+    )
+  )
 }
 
 function formatTimestamp(unixSeconds: number, locale: string): string {
