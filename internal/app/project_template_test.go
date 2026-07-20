@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -476,17 +477,26 @@ func TestProjectTemplateDetailResolvesFullUserInfoForCreatorsAndAssignees(t *tes
 	assertProjectTemplateUserInfo(t, &detail.Snapshot.Tasks[0].Assignees[0], actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
 	assertProjectTemplateUserInfo(t, &detail.Snapshot.Series[0].Assignees[0], actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
 
-	identityJSON := mustJSON(map[string]any{
-		"template_created_by": task.ActorInfoToJSON(detail.Template.CreatedBy),
-		"snapshot_created_by": task.ActorInfoToJSON(detail.Template.CurrentSnapshot.CreatedBy),
-		"version_created_by":  task.ActorInfoToJSON(detail.Versions[0].CreatedBy),
-		"task_assignee":       task.UserInfoToJSON(detail.Snapshot.Tasks[0].Assignees[0]),
-		"series_assignee":     task.UserInfoToJSON(detail.Snapshot.Series[0].Assignees[0]),
-	})
-	for _, expected := range []string{`"id":"template-full-user"`, `"name":"template-owner"`, `"display_name":"模板负责人"`, `"email":"template-owner@example.test"`, `"provider":"feishu"`, `"user_type":"open_id"`, `"external_id":"ou_template_owner"`} {
-		if !strings.Contains(identityJSON, expected) {
-			t.Fatalf("identity JSON missing full user field %s: %s", expected, identityJSON)
-		}
+	tests := []struct {
+		name  string
+		wire  any
+		actor bool
+	}{
+		{"current snapshot created_by", task.ActorInfoToJSON(detail.Template.CurrentSnapshot.CreatedBy), true},
+		{"task assignee", task.UserInfoToJSON(detail.Snapshot.Tasks[0].Assignees[0]), false},
+		{"series assignee", task.UserInfoToJSON(detail.Snapshot.Series[0].Assignees[0]), false},
+	}
+	for index, version := range detail.Versions {
+		tests = append(tests, struct {
+			name  string
+			wire  any
+			actor bool
+		}{fmt.Sprintf("version %d created_by", index+1), task.ActorInfoToJSON(version.CreatedBy), true})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assertProjectTemplateWireUserInfo(t, test.wire, test.actor)
+		})
 	}
 }
 
@@ -494,6 +504,50 @@ func assertProjectTemplateUserInfo(t *testing.T, info *task.UserInfo, id, name, 
 	t.Helper()
 	if info == nil || info.ID != id || info.Name != name || info.DisplayName != displayName || info.Email == nil || *info.Email != email || len(info.ExternalIDs) != 1 || info.ExternalIDs[0].Provider != provider || info.ExternalIDs[0].UserType != userType || info.ExternalIDs[0].ExternalID != externalID {
 		t.Fatalf("full user info = %#v", info)
+	}
+}
+
+func assertProjectTemplateWireUserInfo(t *testing.T, wire any, actor bool) {
+	t.Helper()
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatalf("marshal wire user info: %v", err)
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &object); err != nil {
+		t.Fatalf("unmarshal wire user info: %v", err)
+	}
+	if actor {
+		if _, ok := object["id"]; ok {
+			t.Fatalf("actor wire leaked user fields outside user: %s", encoded)
+		}
+		user, ok := object["user"]
+		if !ok {
+			t.Fatalf("actor wire missing user: %s", encoded)
+		}
+		if err := json.Unmarshal(user, &object); err != nil {
+			t.Fatalf("unmarshal actor user: %v", err)
+		}
+	}
+
+	if got := string(object["id"]); got != `"template-full-user"` {
+		t.Fatalf("wire user id = %s, wire = %s", got, encoded)
+	}
+	if got := string(object["name"]); got != `"template-owner"` {
+		t.Fatalf("wire user name = %s, wire = %s", got, encoded)
+	}
+	if got := string(object["display_name"]); got != `"模板负责人"` {
+		t.Fatalf("wire user display_name = %s, wire = %s", got, encoded)
+	}
+	if got := string(object["email"]); got != `"template-owner@example.test"` {
+		t.Fatalf("wire user email = %s, wire = %s", got, encoded)
+	}
+	var externalIDs []map[string]string
+	if err := json.Unmarshal(object["external_ids"], &externalIDs); err != nil {
+		t.Fatalf("unmarshal wire external_ids: %v, wire = %s", err, encoded)
+	}
+	if len(externalIDs) != 1 || externalIDs[0]["provider"] != "feishu" || externalIDs[0]["user_type"] != "open_id" || externalIDs[0]["external_id"] != "ou_template_owner" {
+		t.Fatalf("wire user external_ids = %#v, wire = %s", externalIDs, encoded)
 	}
 }
 
