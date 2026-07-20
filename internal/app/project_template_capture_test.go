@@ -448,6 +448,44 @@ func TestCaptureRejectsInvalidSeriesAggregateWithStableSelectionCode(t *testing.
 	}
 }
 
+func TestCaptureReconciledEndedSeriesSucceeds(t *testing.T) {
+	svc, project := captureFixture(t)
+	loc := svc.clock.Location()
+	firstDue := time.Date(2026, 7, 18, 23, 59, 59, 0, loc).Unix()
+	until := time.Date(2026, 7, 19, 23, 59, 59, 0, loc).Unix()
+	series, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "自然结束循环", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: firstDue, Until: &until,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciled, err := svc.ReconcileTaskSeries(series.Series.ID, svc.clock.Unix(), 100)
+	if err != nil || !reconciled.Ended {
+		t.Fatalf("ReconcileTaskSeries = %#v, %v", reconciled, err)
+	}
+	persisted, err := svc.taskSeriesRepo.Get(project.WorkspaceID, series.Series.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Status != taskseries.StatusEnded || persisted.Until == nil || persisted.EffectiveEndAt == nil || *persisted.EffectiveEndAt != *persisted.Until {
+		t.Fatalf("reconciled series = %#v", persisted)
+	}
+
+	input := completeCaptureInput(project.Slug, "2026-07-18", CaptureSelection{SeriesRefs: []string{series.Series.ID}})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil || len(preview.BlockingIssues) != 0 {
+		t.Fatalf("preview = %#v, %v", preview, err)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	captured, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "reconciled-ended", Name: "自然结束循环模板", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured.Snapshot == nil || len(captured.Snapshot.Series) != 1 || captured.Snapshot.Series[0].Until == nil {
+		t.Fatalf("captured = %#v", captured.Snapshot)
+	}
+}
+
 func TestCaptureSeriesUsesCurrentRuleWithoutHistoryAndNeedsStoppedConfirmation(t *testing.T) {
 	svc, project := captureFixture(t)
 	loc := svc.clock.Location()
