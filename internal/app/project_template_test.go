@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -519,8 +520,13 @@ func assertProjectTemplateWireUserInfo(t *testing.T, wire any, actor bool) {
 		t.Fatalf("unmarshal wire user info: %v", err)
 	}
 	if actor {
-		if _, ok := object["id"]; ok {
-			t.Fatalf("actor wire leaked user fields outside user: %s", encoded)
+		if len(object) != 2 {
+			t.Fatalf("actor wire top-level keys = %#v, want only type and user: %s", sortedProjectTemplateWireKeys(object), encoded)
+		}
+		for key := range object {
+			if key != "type" && key != "user" {
+				t.Fatalf("actor wire top-level key %q, want only type and user: %s", key, encoded)
+			}
 		}
 		if got := string(object["type"]); got != `"user"` {
 			t.Fatalf("actor wire type = %s, wire = %s", got, encoded)
@@ -556,6 +562,15 @@ func assertProjectTemplateWireUserInfo(t *testing.T, wire any, actor bool) {
 	if len(externalIDs) != 1 || externalIDs[0]["provider"] != "feishu" || externalIDs[0]["user_type"] != "open_id" || externalIDs[0]["external_id"] != "ou_template_owner" {
 		t.Fatalf("wire user external_ids = %#v, wire = %s", externalIDs, encoded)
 	}
+}
+
+func sortedProjectTemplateWireKeys(object map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(object))
+	for key := range object {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func TestProjectTemplateListUsesDatabaseOrderedPages(t *testing.T) {
