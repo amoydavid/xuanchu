@@ -1,10 +1,64 @@
 package app
 
 import (
+	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 )
+
+// prospectiveProjectConfigValue 按“尚未落库的新项目”视角解析 config。
+// projectValues 是实例化 plan 已确认会显式写入的值；其余仍按
+// workspace > default > missing 继承。返回值只供 App 内部预检使用。
+func (s *Service) prospectiveProjectConfigValue(key string, projectValues map[string]string) (value, source string, def ConfigDefinitionView, err error) {
+	key, err = normalizeScopedConfigKey(key)
+	if err != nil {
+		return "", "", ConfigDefinitionView{}, err
+	}
+	def, err = s.scopedConfigDefinition(key)
+	if err != nil {
+		return "", "", ConfigDefinitionView{}, err
+	}
+	if raw, ok := projectValues[key]; ok {
+		value, err = s.validateProspectiveProjectConfigValue(def, raw)
+		return value, "project", def, err
+	}
+	if configDefinitionAllowsScope(def, storage.ConfigScopeWorkspace) {
+		raw, ok, getErr := s.configRepo.Get(storage.ConfigKey{WorkspaceID: s.workspaceID, Scope: storage.ConfigScopeWorkspace, ScopeID: s.workspaceID, Key: key})
+		if getErr != nil {
+			return "", "", ConfigDefinitionView{}, getErr
+		}
+		if ok {
+			value, err = s.validateScopedConfigValue(def, storage.ConfigScopeWorkspace, raw)
+			return value, "workspace", def, err
+		}
+	}
+	if def.DefaultValue != nil {
+		value, err = normalizeCurrentConfigValue(def, *def.DefaultValue)
+		return value, "default", def, err
+	}
+	return "", "missing", def, nil
+}
+
+func (s *Service) validateProspectiveProjectConfigValue(def ConfigDefinitionView, raw string) (string, error) {
+	if strings.HasPrefix(def.Key, "agent.") && len(raw) > agentConfigValueMaxBytes {
+		return "", RuntimeError{Code: "config_value_too_large", Message: "config value too large"}
+	}
+	return s.validateScopedConfigValue(def, storage.ConfigScopeProject, raw)
+}
+
+func normalizeCurrentConfigValue(def ConfigDefinitionView, raw string) (string, error) {
+	value, err := normalizeScopedConfigValue(def.ValueType, raw)
+	if err != nil {
+		return "", err
+	}
+	if len(def.EnumValues) > 0 && !slices.Contains(def.EnumValues, value) {
+		return "", RuntimeError{Code: "config_value_invalid", Message: fmt.Sprintf("config value for %q is not in enum", def.Key)}
+	}
+	return value, nil
+}
 
 // ConfigSchemaUsageView 描述单个 config key 当前被多少 workspace/project value 引用。
 type ConfigSchemaUsageView struct {

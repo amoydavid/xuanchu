@@ -1,0 +1,570 @@
+package app
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"git.dajee.net/dajee/xuanchu/internal/auth"
+	"git.dajee.net/dajee/xuanchu/internal/authz"
+	"git.dajee.net/dajee/xuanchu/internal/projecttemplate"
+	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/uda"
+)
+
+func instantiateTemplateInput(t *testing.T, svc *Service, templateRef, slug string) InstantiateInput {
+	t.Helper()
+	template, err := svc.resolveProjectTemplate(templateRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := svc.projectTemplateSnapshot(template, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return InstantiateInput{
+		SnapshotID: snapshot.ID, ExpectedHash: snapshot.SnapshotHash,
+		ProjectSlug: slug, ProjectName: "新项目", StartDate: "2026-08-01",
+	}
+}
+
+func instantiateSnapshot() projecttemplate.SnapshotV1 {
+	return projecttemplate.SnapshotV1{
+		Schema: projecttemplate.SnapshotSchemaV1, AnchorDate: "2026-07-20",
+		Project: projecttemplate.ProjectBlueprintV1{Description: "模板项目说明"},
+		Configs: []projecttemplate.ConfigBlueprintV1{{Key: "agent.provider.api_key", Mode: "secret_input"}},
+		Tasks: []projecttemplate.TaskBlueprintV1{{
+			Ref: "task-1", Title: "准备发布",
+			Dates: projecttemplate.TaskDatesV1{Due: &projecttemplate.RelativeLocalTimeV1{DayOffset: 3, LocalTime: "09:30:00"}},
+		}},
+		Series:      []projecttemplate.SeriesBlueprintV1{},
+		Automations: []projecttemplate.AutomationBlueprintV1{},
+	}
+}
+
+func hasTemplateIssue(items []ProjectTemplateIssue, code string) bool {
+	for _, item := range items {
+		if item.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func TestProjectTemplateInstantiatePreviewReturnsIssuesWithoutSecrets(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	snapshot := instantiateSnapshot()
+	memberID := f.owner.Runtime().ActorUserID
+	snapshot.Tasks[0].AssigneeIDs = []string{memberID}
+	seedProjectTemplate(t, f.owner, "launch", snapshot)
+	if err := f.owner.memberRepo.Delete(memberID, f.owner.Runtime().WorkspaceID); err != nil {
+		t.Fatal(err)
+	}
+
+	input := instantiateTemplateInput(t, f.owner, "launch", "newproj")
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("launch", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_member_unavailable") || !hasTemplateIssue(preview.Issues, "project_template_secret_required") {
+		t.Fatalf("issues = %#v", preview.Issues)
+	}
+	if len(preview.SecretResolutions) != 1 || preview.SecretResolutions[0].ResolvedFrom != "missing" {
+		t.Fatalf("secret resolutions = %#v", preview.SecretResolutions)
+	}
+	if len(preview.AssigneeIssues) != 1 || preview.AssigneeIssues[0].User.ID != memberID || preview.AssigneeIssues[0].Resolution != "unresolved" {
+		t.Fatalf("assignee issues = %#v", preview.AssigneeIssues)
+	}
+
+	input.SecretInputs = map[string]string{"agent.provider.api_key": "sk-secret"}
+	replacement := (*string)(nil)
+	input.AssigneeReplacements = map[string]*string{memberID: replacement}
+	preview, err = f.owner.PreviewProjectTemplateInstantiation("launch", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Issues) != 0 || preview.SecretResolutions[0].ResolvedFrom != "input" || preview.AssigneeIssues[0].Resolution != "removed" {
+		t.Fatalf("resolved preview = %#v", preview)
+	}
+	raw, err := json.Marshal(preview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "sk-secret") || strings.Contains(string(raw), `"value"`) {
+		t.Fatalf("secret leaked: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"assignee_issues":[{"user":{"id":"`+memberID+`"`) {
+		t.Fatalf("user shape is not normalized: %s", raw)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewPinsHistoricalSnapshotAndCurrentOnlyRejectsIt(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	first := seedProjectTemplate(t, f.owner, "versions", instantiateSnapshot())
+	oldID := *first.CurrentSnapshotID
+	old, err := f.owner.projectTemplateRepo.GetSnapshot(first.WorkspaceID, first.ID, oldID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := instantiateSnapshot()
+	next.Project.Description = "第二版"
+	appendInstantiateSnapshot(t, f.owner, first, next)
+
+	input := InstantiateInput{SnapshotID: old.ID, ExpectedHash: old.SnapshotHash, ProjectSlug: "oldproj", ProjectName: "旧版项目", StartDate: "2026-08-01"}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation(first.Key, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Snapshot.ID != old.ID || preview.Snapshot.Hash != old.SnapshotHash || preview.Project.Description != "模板项目说明" {
+		t.Fatalf("historical preview = %#v", preview)
+	}
+	if _, err := f.owner.buildInstantiatePlan(first.Key, input, true); runtimeCode(err) != "project_template_snapshot_hash_mismatch" {
+		t.Fatalf("current-only historical error = %v", err)
+	}
+
+	input.SnapshotID = ""
+	currentPreview, err := f.owner.PreviewProjectTemplateInstantiation(first.Key, input)
+	if err == nil || runtimeCode(err) != "project_template_snapshot_hash_mismatch" {
+		t.Fatalf("current with stale expected hash = %#v, %v", currentPreview, err)
+	}
+	input.ExpectedHash = strings.Repeat("A", 64)
+	if _, err := f.owner.PreviewProjectTemplateInstantiation(first.Key, input); runtimeCode(err) != "project_template_snapshot_hash_mismatch" {
+		t.Fatalf("uppercase hash error = %v", err)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewValidatesConfigUDAAutomationAndDates(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newProjectTemplateFixture(t)
+	f.owner.clock = FixedClock{NowUnix: time.Date(2026, 1, 1, 12, 0, 0, 0, loc).Unix(), Loc: loc}
+	literal := "not-a-number"
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{{Key: "launch.score", Mode: "literal", Value: &literal}}
+	snapshot.Tasks[0].UDAs = map[string]projecttemplate.UDABlueprintV1{"estimate": {Raw: "abc", Type: "numeric"}}
+	snapshot.Tasks[0].Dates.Due = &projecttemplate.RelativeLocalTimeV1{DayOffset: 1, LocalTime: "02:30:00"}
+	snapshot.Automations = []projecttemplate.AutomationBlueprintV1{{
+		Ref: "automation-1", Name: "巡检", TriggerType: "schedule",
+		TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:00", Timezone: "Asia/Shanghai"},
+		Action:        projecttemplate.AutomationActionV1{Protocol: "chat_completions", BaseURLConfigKey: "missing.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelOverride: "gpt-test"},
+		Context:       projecttemplate.AutomationContextV1{Include: []string{}}, InstructionTemplate: "检查",
+	}}
+	seedProjectTemplate(t, f.owner, "invalid", snapshot)
+	if err := f.owner.configDefRepo.Set(storage.ConfigDefinition{WorkspaceID: f.owner.workspaceID, Key: "launch.score", ValueType: "number", AllowedScopesJSON: `["project"]`, EnumValuesJSON: `[]`, CreatedAt: 1, ModifiedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owner.udaRepo.UpsertDefinition(f.owner.workspaceID, uda.Definition{Name: "estimate", Type: uda.TypeNumeric}, 1); err != nil {
+		t.Fatal(err)
+	}
+	input := instantiateTemplateInput(t, f.owner, "invalid", "invalidp")
+	input.StartDate = "2026-03-07"
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("invalid", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"project_template_config_invalid", "project_template_uda_invalid", "project_template_automation_invalid", "project_template_date_out_of_range"} {
+		if !hasTemplateIssue(preview.Issues, code) {
+			t.Fatalf("missing %s in %#v", code, preview.Issues)
+		}
+	}
+}
+
+func TestProjectTemplateInstantiatePermissionAndValidationError(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	seeded := seedProjectTemplate(t, f.owner, "permission", instantiateSnapshot())
+	input := instantiateTemplateInput(t, f.owner, seeded.Key, "permissionp")
+
+	tenant := newScopedTokenService(t, f.store, []string{auth.ScopeProjectWrite}, auth.TokenTypeTenantAccess)
+	if _, err := tenant.PreviewProjectTemplateInstantiation(seeded.Key, input); runtimeCode(err) != authz.CodePermissionDenied {
+		t.Fatalf("missing task/config permissions error = %v", err)
+	}
+	tenant = newScopedTokenService(t, f.store, []string{auth.ScopeProjectWrite, auth.ScopeTaskWrite, auth.ScopeConfigWrite}, auth.TokenTypeTenantAccess)
+	preview, err := tenant.PreviewProjectTemplateInstantiation(seeded.Key, input)
+	if err != nil || !hasTemplateIssue(preview.Issues, "project_template_secret_required") {
+		t.Fatalf("tenant preview = %#v, %v", preview, err)
+	}
+
+	scope := &RequestScope{WorkspaceIDs: []string{f.owner.workspaceID}, ProjectIDs: []string{"only-project"}, Capabilities: []string{auth.ScopeProjectWrite, auth.ScopeTaskWrite, auth.ScopeConfigWrite}}
+	runtime := f.owner.Runtime()
+	scoped, err := NewService(ServiceOptions{Store: f.store, Clock: f.owner.clock, Runtime: &runtime, RequestScope: scope, DisableScopeBootstrap: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scoped.PreviewProjectTemplateInstantiation(seeded.Key, input); runtimeCode(err) != authz.CodeProjectScopeDenied {
+		t.Fatalf("project-scoped preview error = %v", err)
+	}
+
+	validationErr := ProjectTemplateValidationError{Issues: []ProjectTemplateIssue{{Code: "project_template_secret_required", Severity: "blocking", Message: "missing"}}}
+	if validationErr.PrimaryCode() != "project_template_secret_required" || validationErr.Error() == "" {
+		t.Fatalf("validation error = %#v", validationErr)
+	}
+	var target ProjectTemplateValidationError
+	if !errors.As(validationErr, &target) {
+		t.Fatal("validation error is not typed")
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewKeepsInheritedSecretOutOfProjectRows(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	baseURL, model, historicalSecret := "https://api.example.test", "gpt-test", "old-secret-must-not-leak"
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{
+		{Key: "agent.provider.base_url", Mode: "literal", Value: &baseURL},
+		// 模拟历史 Snapshot：Capture 时还是 literal，当前 schema 已改为 secret。
+		{Key: "agent.provider.api_key", Mode: "literal", Value: &historicalSecret},
+		{Key: "agent.provider.model", Mode: "literal", Value: &model},
+	}
+	snapshot.Automations = []projecttemplate.AutomationBlueprintV1{{
+		Ref: "automation-1", Name: "巡检", TriggerType: "schedule",
+		TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:00", Timezone: "Asia/Shanghai"},
+		Action:        projecttemplate.AutomationActionV1{Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelConfigKey: "agent.provider.model", AllowedHostsConfigKey: "agent.provider.allowed_hosts"},
+		Context:       projecttemplate.AutomationContextV1{Include: []string{}}, InstructionTemplate: "检查",
+	}}
+	seedProjectTemplate(t, f.owner, "inherit", snapshot)
+	if err := f.owner.configRepo.Set(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeWorkspace, ScopeID: f.owner.workspaceID, Key: "agent.provider.api_key"}, "workspace-secret"); err != nil {
+		t.Fatal(err)
+	}
+	input := instantiateTemplateInput(t, f.owner, "inherit", "inheritp")
+	plan, err := f.owner.buildInstantiatePlan("inherit", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Preview.Issues) != 0 || plan.Preview.Counts.Configs != 3 || plan.Preview.SecretResolutions[0].ResolvedFrom != "workspace" {
+		t.Fatalf("preview = %#v", plan.Preview)
+	}
+	if _, copied := plan.ConfigValues["agent.provider.api_key"]; copied || len(plan.ConfigValues) != 2 {
+		t.Fatalf("project config rows = %#v", plan.ConfigValues)
+	}
+	raw := string(mustJSON(plan.Preview))
+	for _, secret := range []string{"workspace-secret", historicalSecret} {
+		if strings.Contains(raw, secret) {
+			t.Fatalf("secret %q leaked: %s", secret, raw)
+		}
+	}
+	if len(plan.Automations) != 1 || plan.Automations[0].Input.Enabled {
+		t.Fatalf("planned automations = %#v", plan.Automations)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewReplacesOnlyUnavailableMembers(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	oldUser := storage.User{ID: uuid.NewString(), Name: "old-template-member", DisplayName: "旧成员", CreatedAt: 1, ModifiedAt: 1}
+	newUser := storage.User{ID: uuid.NewString(), Name: "new-template-member", DisplayName: "新成员", CreatedAt: 1, ModifiedAt: 1}
+	if _, err := f.owner.userRepo.Create(oldUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.userRepo.Create(newUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owner.memberRepo.Upsert(storage.Membership{UserID: newUser.ID, WorkspaceID: f.owner.workspaceID, Role: string(RoleMember), JoinedAt: 1, ModifiedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+	snapshot.Tasks[0].AssigneeIDs = []string{oldUser.ID}
+	description := "请联系 [旧成员](ref://user/" + oldUser.ID + ")\n```md\n[示例](ref://user/" + oldUser.ID + ")\n```"
+	snapshot.Tasks[0].Description = &description
+	seedProjectTemplate(t, f.owner, "replace", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "replace", "replacep")
+	input.AssigneeReplacements = map[string]*string{oldUser.ID: &newUser.ID}
+	plan, err := f.owner.buildInstantiatePlan("replace", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Preview.Issues) != 0 || len(plan.Tasks) != 1 || len(plan.Tasks[0].AssigneeIDs) != 1 || plan.Tasks[0].AssigneeIDs[0] != newUser.ID || plan.Preview.AssigneeIssues[0].Resolution != "replaced" {
+		t.Fatalf("replacement plan = %#v", plan)
+	}
+	if plan.Tasks[0].Description == nil || !strings.Contains(*plan.Tasks[0].Description, "[旧成员](ref://user/"+newUser.ID+")") || !strings.Contains(*plan.Tasks[0].Description, "```md\n[示例](ref://user/"+oldUser.ID+")") {
+		t.Fatalf("member reference rewrite changed the wrong Markdown nodes: %q", optionalTextValue(plan.Tasks[0].Description))
+	}
+
+	input.AssigneeReplacements = map[string]*string{oldUser.ID: nil}
+	removed, err := f.owner.buildInstantiatePlan("replace", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed.Tasks[0].Description == nil || !strings.Contains(*removed.Tasks[0].Description, "[旧成员](#)") || !strings.Contains(*removed.Tasks[0].Description, "```md\n[示例](ref://user/"+oldUser.ID+")") {
+		t.Fatalf("member reference removal changed the wrong Markdown nodes: %q", optionalTextValue(removed.Tasks[0].Description))
+	}
+
+	ownerID := f.owner.Runtime().ActorUserID
+	input.AssigneeReplacements = map[string]*string{ownerID: &newUser.ID}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("replace", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_member_unavailable") {
+		t.Fatalf("unexpected replacement was accepted: %#v", preview)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewBuildsFreshLocalReferencePlan(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+	description := "等待 [后续任务](ref://task/task-2)"
+	snapshot.Tasks = []projecttemplate.TaskBlueprintV1{
+		{Ref: "task-1", Title: "前置", Description: &description, DependsRefs: []string{"task-2"}},
+		{Ref: "task-2", Title: "后续"},
+	}
+	seedProjectTemplate(t, f.owner, "refs", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "refs", "refsproj")
+	first, err := f.owner.buildInstantiatePlan("refs", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.owner.buildInstantiatePlan("refs", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(mustJSON(first.Preview)) != string(mustJSON(second.Preview)) {
+		t.Fatalf("preview is not deterministic:\n%s\n%s", mustJSON(first.Preview), mustJSON(second.Preview))
+	}
+	if first.TaskIDs["task-1"] == first.TaskIDs["task-2"] || first.TaskIDs["task-1"] == second.TaskIDs["task-1"] {
+		t.Fatalf("task IDs are not fresh: first=%#v second=%#v", first.TaskIDs, second.TaskIDs)
+	}
+	if len(first.Tasks[0].DependsIDs) != 1 || first.Tasks[0].DependsIDs[0] != first.TaskIDs["task-2"] || first.Tasks[0].Description == nil || !strings.Contains(*first.Tasks[0].Description, first.TaskIDs["task-2"]) {
+		t.Fatalf("local refs were not rewritten: %#v", first.Tasks[0])
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewRejectsArchivedConflictAndInvalidHash(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	seedProjectTemplate(t, f.owner, "guards", instantiateSnapshot())
+	if _, err := f.owner.AddProject(AddProjectInput{Slug: "occupied", Name: "已占用"}); err != nil {
+		t.Fatal(err)
+	}
+	input := instantiateTemplateInput(t, f.owner, "guards", "occupied")
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("guards", input)
+	if err != nil || !hasTemplateIssue(preview.Issues, "project_already_exists") {
+		t.Fatalf("slug conflict preview = %#v, %v", preview, err)
+	}
+	input.ExpectedHash = strings.Repeat("0", 64)
+	if _, err := f.owner.PreviewProjectTemplateInstantiation("guards", input); runtimeCode(err) != "project_template_snapshot_hash_mismatch" {
+		t.Fatalf("hash mismatch error = %v", err)
+	}
+	input = instantiateTemplateInput(t, f.owner, "guards", "newguard")
+	if _, err := f.owner.ArchiveProjectTemplate("guards"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.PreviewProjectTemplateInstantiation("guards", input); runtimeCode(err) != "project_template_archived" {
+		t.Fatalf("archived error = %v", err)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewReturnsTypedIssueForLegacyRefCycle(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+	snapshot.Tasks = []projecttemplate.TaskBlueprintV1{{Ref: "task-1", Title: "一"}, {Ref: "task-2", Title: "二"}}
+	seeded := seedProjectTemplate(t, f.owner, "cycle", snapshot)
+	current, err := f.owner.projectTemplateSnapshot(seeded, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentOne, parentTwo := "task-2", "task-1"
+	snapshot.Tasks[0].ParentRef, snapshot.Tasks[1].ParentRef = &parentOne, &parentTwo
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	hash := fmt.Sprintf("%x", sum[:])
+	if err := f.store.DB().Model(&storage.ProjectTemplateSnapshot{}).Where("id = ?", current.ID).Updates(map[string]any{"snapshot_json": string(raw), "snapshot_hash": hash}).Error; err != nil {
+		t.Fatal(err)
+	}
+	input := InstantiateInput{SnapshotID: current.ID, ExpectedHash: hash, ProjectSlug: "cycleproj", ProjectName: "循环项目", StartDate: "2026-08-01"}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("cycle", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_ref_cycle") {
+		t.Fatalf("cycle preview = %#v", preview)
+	}
+	if plan, err := f.owner.buildInstantiatePlan("cycle", input, false); err != nil {
+		t.Fatal(err)
+	} else {
+		var validationErr ProjectTemplateValidationError
+		if !errors.As(plan.validationError(), &validationErr) || validationErr.PrimaryCode() != "project_template_ref_cycle" {
+			t.Fatalf("validation error = %#v, %v", validationErr, plan.validationError())
+		}
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewRejectsOversizedAgentConfigValues(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	oversized := strings.Repeat("x", agentConfigValueMaxBytes+1)
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{
+		{Key: "agent.provider.base_url", Mode: "literal", Value: &oversized},
+		{Key: "agent.provider.api_key", Mode: "secret_input"},
+	}
+	seedProjectTemplate(t, f.owner, "oversized", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "oversized", "largeconf")
+	input.SecretInputs = map[string]string{"agent.provider.api_key": oversized}
+	plan, err := f.owner.buildInstantiatePlan("oversized", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Preview.Counts.Configs != 0 || len(plan.ConfigValues) != 0 {
+		t.Fatalf("oversized configs entered plan: counts=%#v values=%d", plan.Preview.Counts, len(plan.ConfigValues))
+	}
+	count := 0
+	for _, issue := range plan.Preview.Issues {
+		if issue.Code == "project_template_config_invalid" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("config issues = %#v", plan.Preview.Issues)
+	}
+	if strings.Contains(string(mustJSON(plan.Preview)), oversized) {
+		t.Fatal("oversized secret leaked into preview")
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewUsesValidHistoricalWhenCurrentHasLegacyCycle(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	historicalSnapshot := instantiateSnapshot()
+	historicalSnapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+	seeded := seedProjectTemplate(t, f.owner, "legacy-current", historicalSnapshot)
+	historical, err := f.owner.projectTemplateSnapshot(seeded, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentSnapshot := historicalSnapshot
+	currentSnapshot.Tasks = []projecttemplate.TaskBlueprintV1{{Ref: "task-1", Title: "一"}, {Ref: "task-2", Title: "二"}}
+	current := appendInstantiateSnapshot(t, f.owner, seeded, currentSnapshot)
+	parentOne, parentTwo := "task-2", "task-1"
+	currentSnapshot.Tasks[0].ParentRef, currentSnapshot.Tasks[1].ParentRef = &parentOne, &parentTwo
+	raw, err := json.Marshal(currentSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	if err := f.store.DB().Model(&storage.ProjectTemplateSnapshot{}).Where("id = ?", current.ID).Updates(map[string]any{"snapshot_json": string(raw), "snapshot_hash": fmt.Sprintf("%x", sum[:])}).Error; err != nil {
+		t.Fatal(err)
+	}
+	input := InstantiateInput{SnapshotID: historical.ID, ExpectedHash: historical.SnapshotHash, ProjectSlug: "historyok", ProjectName: "历史项目", StartDate: "2026-08-01"}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation(seeded.Key, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Snapshot.ID != historical.ID || preview.Template.CurrentSnapshot == nil || preview.Template.CurrentSnapshot.ID != current.ID || len(preview.Issues) != 0 {
+		t.Fatalf("historical preview = %#v", preview)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewResolvesDefaultSecretWithoutCopyingIt(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	key := "template.default_secret"
+	if err := f.owner.configDefRepo.Set(storage.ConfigDefinition{
+		WorkspaceID: f.owner.workspaceID, Key: key, ValueType: "string",
+		AllowedScopesJSON: `["project"]`, EnumValuesJSON: `[]`,
+		DefaultValue: "sk-default-inherited-never-leak", HasDefault: true, Secret: true, CreatedAt: 1, ModifiedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{{Key: key, Mode: "secret_input"}}
+	seedProjectTemplate(t, f.owner, "default-secret", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "default-secret", "defaultsec")
+	plan, err := f.owner.buildInstantiatePlan("default-secret", input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Preview.Issues) != 0 || len(plan.Preview.SecretResolutions) != 1 || plan.Preview.SecretResolutions[0].ResolvedFrom != "default" || plan.Preview.Counts.Configs != 1 {
+		t.Fatalf("default secret preview = %#v", plan.Preview)
+	}
+	if len(plan.ConfigValues) != 0 || strings.Contains(string(mustJSON(plan.Preview)), "sk-default-inherited-never-leak") {
+		t.Fatalf("default secret was copied or leaked: values=%#v preview=%s", plan.ConfigValues, mustJSON(plan.Preview))
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewValidatesAutomationAllowedHosts(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	baseURL, model, allowedHosts := "https://api.example.test", "gpt-test", `["other.example"]`
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{
+		{Key: "agent.provider.base_url", Mode: "literal", Value: &baseURL},
+		{Key: "agent.provider.api_key", Mode: "secret_input"},
+		{Key: "agent.provider.model", Mode: "literal", Value: &model},
+		{Key: "agent.provider.allowed_hosts", Mode: "literal", Value: &allowedHosts},
+	}
+	snapshot.Automations = []projecttemplate.AutomationBlueprintV1{{
+		Ref: "automation-1", Name: "巡检", TriggerType: "schedule",
+		TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:00", Timezone: "Asia/Shanghai"},
+		Action:        projecttemplate.AutomationActionV1{Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelConfigKey: "agent.provider.model", AllowedHostsConfigKey: "agent.provider.allowed_hosts"},
+		Context:       projecttemplate.AutomationContextV1{Include: []string{}}, InstructionTemplate: "检查",
+	}}
+	seedProjectTemplate(t, f.owner, "host-denied", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "host-denied", "hostdeny")
+	input.SecretInputs = map[string]string{"agent.provider.api_key": "secret"}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("host-denied", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_automation_invalid") {
+		t.Fatalf("allowed-host mismatch was accepted: %#v", preview)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewRejectsInvalidAutomationAllowedHosts(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	baseURL, model := "https://api.example.test", "gpt-test"
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{
+		{Key: "agent.provider.base_url", Mode: "literal", Value: &baseURL},
+		{Key: "agent.provider.api_key", Mode: "secret_input"},
+		{Key: "agent.provider.model", Mode: "literal", Value: &model},
+	}
+	snapshot.Automations = []projecttemplate.AutomationBlueprintV1{{
+		Ref: "automation-1", Name: "巡检", TriggerType: "schedule",
+		TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:00", Timezone: "Asia/Shanghai"},
+		Action:        projecttemplate.AutomationActionV1{Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelConfigKey: "agent.provider.model", AllowedHostsConfigKey: "agent.provider.allowed_hosts"},
+		Context:       projecttemplate.AutomationContextV1{Include: []string{}}, InstructionTemplate: "检查",
+	}}
+	seedProjectTemplate(t, f.owner, "host-invalid", snapshot)
+	// 模拟 legacy/corrupt workspace row，绕过当前 JSON config 写入校验。
+	if err := f.owner.configRepo.Set(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeWorkspace, ScopeID: f.owner.workspaceID, Key: "agent.provider.allowed_hosts"}, "not-json"); err != nil {
+		t.Fatal(err)
+	}
+	input := instantiateTemplateInput(t, f.owner, "host-invalid", "hostbad")
+	input.SecretInputs = map[string]string{"agent.provider.api_key": "secret"}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("host-invalid", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_automation_invalid") {
+		t.Fatalf("invalid allowed-host config was accepted: %#v", preview)
+	}
+}
+
+func appendInstantiateSnapshot(t *testing.T, svc *Service, template storage.ProjectTemplate, snapshot projecttemplate.SnapshotV1) storage.ProjectTemplateSnapshot {
+	t.Helper()
+	raw, hash, err := projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.projectTemplateSnapshot(template, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := storage.ProjectTemplateSnapshot{ID: uuid.NewString(), SourceProjectID: current.SourceProjectID, SnapshotJSON: string(raw), SnapshotHash: hash, CreatedByActorType: actorTypeUser, CreatedAt: svc.clock.Unix()}
+	if err := svc.store.Transaction(func(txStore *storage.Store) error {
+		var appendErr error
+		row, appendErr = storage.NewProjectTemplateRepository(txStore.DB()).AppendSnapshotLocked(template.WorkspaceID, template.ID, row)
+		return appendErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
