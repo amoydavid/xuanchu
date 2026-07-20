@@ -43,6 +43,7 @@ type Service struct {
 	notificationDeliveryRepo      *storage.NotificationDeliveryRepository
 	projectAutomationRuleRepo     *storage.ProjectAutomationRuleRepository
 	projectAutomationDeliveryRepo *storage.ProjectAutomationDeliveryRepository
+	projectTemplateRepo           *storage.ProjectTemplateRepository
 	extIDRepo                     *storage.ExternalIDRepository
 	runtimeConfig                 map[string]string
 	runtimeOverrides              map[string]string
@@ -200,6 +201,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 		notificationDeliveryRepo:      storage.NewNotificationDeliveryRepository(opts.Store.DB()),
 		projectAutomationRuleRepo:     storage.NewProjectAutomationRuleRepository(opts.Store.DB()),
 		projectAutomationDeliveryRepo: storage.NewProjectAutomationDeliveryRepository(opts.Store.DB()),
+		projectTemplateRepo:           storage.NewProjectTemplateRepository(opts.Store.DB()),
 		extIDRepo:                     storage.NewExternalIDRepository(opts.Store.DB()),
 		runtimeConfig:                 runtimeConfig,
 		runtimeOverrides:              cloneStringMap(opts.RuntimeOverrides),
@@ -288,6 +290,7 @@ func (s *Service) withStore(store *storage.Store) (*Service, error) {
 	clone.notificationDeliveryRepo = storage.NewNotificationDeliveryRepository(store.DB())
 	clone.projectAutomationRuleRepo = storage.NewProjectAutomationRuleRepository(store.DB())
 	clone.projectAutomationDeliveryRepo = storage.NewProjectAutomationDeliveryRepository(store.DB())
+	clone.projectTemplateRepo = storage.NewProjectTemplateRepository(store.DB())
 	clone.attachmentRepo = storage.NewAttachmentRepository(store.DB())
 	// attachmentRuntime 不依赖 db 句柄，事务克隆直接透传。
 	clone.attachmentRuntime = s.attachmentRuntime
