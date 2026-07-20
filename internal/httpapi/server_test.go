@@ -225,6 +225,19 @@ func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
 	if parameter := openAPIParameter(detail, "snapshot_id"); parameter == nil || parameter["schema"].(map[string]any)["format"] != "uuid" {
 		t.Errorf("snapshot_id must use uuid format: %#v", parameter)
 	}
+	taskCandidates := paths["/api/v1/projects/{projectRef}/template-candidates/tasks"].(map[string]any)["get"].(map[string]any)
+	for _, raw := range taskCandidates["parameters"].([]any) {
+		parameter := raw.(map[string]any)
+		if parameter["name"] != "ref" {
+			continue
+		}
+		schema := parameter["schema"].(map[string]any)
+		if schema["type"] != "array" || schema["maxItems"] != float64(100) {
+			t.Fatalf("candidate ref parameter schema = %#v", schema)
+		}
+		return
+	}
+	t.Fatal("candidate ref parameter missing")
 }
 
 func openAPIOperation(t *testing.T, paths map[string]any, path, method string) map[string]any {

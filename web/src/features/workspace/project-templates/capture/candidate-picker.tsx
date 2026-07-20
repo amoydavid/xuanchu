@@ -130,9 +130,11 @@ export function CandidatePicker({
 
   useEffect(() => {
     if (refreshKey === 0 || refreshedKeyRef.current === refreshKey) return
-    refreshedKeyRef.current = refreshKey
     const refs = [...selected.keys()]
-    if (refs.length === 0) return
+    if (refs.length === 0) {
+      refreshedKeyRef.current = refreshKey
+      return
+    }
     let cancelled = false
     void Promise.all(
       chunk(refs, 100).map((selectedRefs) =>
@@ -148,6 +150,7 @@ export function CandidatePicker({
       for (const candidate of pages.flatMap((page) => page.items)) {
         next.set(candidate.ref, summarizeCandidate(candidate, kind))
       }
+      refreshedKeyRef.current = refreshKey
       if (!sameSelectionMap(next, selected)) onSummariesChange(next)
     })
     return () => {

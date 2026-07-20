@@ -136,6 +136,11 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 		explode := true
 		return &huma.Param{Name: name, In: "query", Description: description, Style: "form", Explode: &explode, Schema: &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}}}
 	}
+	refParam := func() *huma.Param {
+		explode := true
+		maximum := 100
+		return &huma.Param{Name: "ref", In: "query", Description: "Stable candidate reference; may be repeated, at most 100 values.", Style: "form", Explode: &explode, Schema: &huma.Schema{Type: "array", Items: &huma.Schema{Type: "string"}, MaxItems: &maximum}}
+	}
 	workspaceScope := func() []*huma.Param {
 		return []*huma.Param{
 			stringParam("workspace", "Workspace slug or UUID."),
@@ -186,7 +191,7 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 		params = append(
 			params,
 			stringParam("q", "Case-insensitive candidate search."),
-			multiStringParam("ref", "Stable candidate reference; may be repeated, at most 100 values."),
+			refParam(),
 		)
 		switch {
 		case strings.HasSuffix(route.Path, "/tasks"):
