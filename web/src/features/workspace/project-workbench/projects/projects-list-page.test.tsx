@@ -221,6 +221,22 @@ describe("ProjectWorkbench ProjectsListPage", () => {
     })
   })
 
+  it("places create-from-template beside new project", async () => {
+    projectsListFetchMock([])
+    renderPage()
+
+    const templateButton = await screen.findByRole("button", {
+      name: "从模板创建",
+    })
+    const createButton = screen.getByRole("button", { name: "新建项目" })
+    expect(templateButton.parentElement).toBe(createButton.parentElement)
+
+    await userEvent.click(templateButton)
+    expect(
+      await screen.findByRole("dialog", { name: "从模板创建项目" })
+    ).toBeTruthy()
+  })
+
   it("keeps dialog input and shows an error after create failure", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
       if (init?.method === "POST") {

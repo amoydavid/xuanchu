@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProjectTemplateCaptureWizard } from "@/features/workspace/project-templates/capture/project-template-capture-wizard"
+import { ProjectTemplateInstantiateWizard } from "@/features/workspace/project-templates/instantiate/project-template-instantiate-wizard"
 import {
   getProjects,
   type ProjectWorkbenchProject,
@@ -84,6 +85,8 @@ export function ProjectTemplateLibraryPage({
   const [captureTargetRef, setCaptureTargetRef] = useState<string>()
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false)
   const [captureSource, setCaptureSource] = useState<ProjectWorkbenchProject>()
+  const [instantiateSelection, setInstantiateSelection] =
+    useState<ProjectTemplateSelection>()
 
   const listQuery = useQuery({
     enabled: Boolean(workspaceSlug),
@@ -321,7 +324,10 @@ export function ProjectTemplateLibraryPage({
                   setCaptureTargetRef(ref)
                   setSourcePickerOpen(true)
                 }}
-                onInstantiate={onInstantiate}
+                onInstantiate={(nextSelection) => {
+                  onInstantiate?.(nextSelection)
+                  setInstantiateSelection(nextSelection)
+                }}
                 onReactivate={(ref) => reactivateMutation.mutate(ref)}
                 onSelectVersion={(snapshotID) =>
                   setSelection({ ref: selectedRef!, snapshotID })
@@ -408,6 +414,14 @@ export function ProjectTemplateLibraryPage({
           workspaceSlug={workspaceSlug}
         />
       ) : null}
+      <ProjectTemplateInstantiateWizard
+        initialSelection={instantiateSelection}
+        onOpenChange={(next) => {
+          if (!next) setInstantiateSelection(undefined)
+        }}
+        open={Boolean(instantiateSelection)}
+        workspaceSlug={workspaceSlug}
+      />
     </section>
   )
 }

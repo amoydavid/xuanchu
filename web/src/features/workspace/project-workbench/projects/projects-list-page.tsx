@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { PlusIcon } from "lucide-react"
+import { BoxesIcon, PlusIcon } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { taskStatusLabel } from "@/features/workspace/shared/task-labels"
 import { useMe } from "@/features/workspace/session/useMe"
+import { ProjectTemplateInstantiateWizard } from "@/features/workspace/project-templates/instantiate/project-template-instantiate-wizard"
 
 import type { ProjectWorkbenchProject } from "../api/project-api"
 import { useProjectsQuery } from "../hooks/use-project-data"
@@ -26,6 +27,7 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
   const role = me.data?.effective_role ?? ""
   const canManage = role === "owner" || role === "admin"
   const [createOpen, setCreateOpen] = useState(false)
+  const [instantiateOpen, setInstantiateOpen] = useState(false)
   const { data: projects = [], isPending, isError } = useProjectsQuery(
     workspaceSlug,
     "all"
@@ -117,10 +119,16 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
             {t("projectWorkbench.projects.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <PlusIcon data-icon="inline-start" />
-          {t("projectWorkbench.projects.create.button")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setInstantiateOpen(true)} variant="outline">
+            <BoxesIcon data-icon="inline-start" />
+            从模板创建
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <PlusIcon data-icon="inline-start" />
+            {t("projectWorkbench.projects.create.button")}
+          </Button>
+        </div>
       </div>
 
       <DataTable
@@ -138,6 +146,11 @@ export function ProjectsListPage({ workspaceSlug }: ProjectsListPageProps) {
           setCreateOpen(false)
           openProject(project.slug)
         }}
+      />
+      <ProjectTemplateInstantiateWizard
+        onOpenChange={setInstantiateOpen}
+        open={instantiateOpen}
+        workspaceSlug={workspaceSlug}
       />
     </div>
   )
