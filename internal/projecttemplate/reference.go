@@ -3,6 +3,7 @@ package projecttemplate
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -14,6 +15,18 @@ import (
 type markdownReference struct {
 	kind string
 	id   string
+}
+
+type markdownReferenceOccurrence struct {
+	markdownReference
+	start int
+	end   int
+}
+
+type markdownPatch struct {
+	start       int
+	end         int
+	replacement string
 }
 
 // ReferenceIssue 是 Capture 时必须由调用方解决的正文引用问题。
@@ -57,7 +70,8 @@ func RewriteCaptureTaskReferences(markdown string, localTaskRefs map[string]stri
 			return "", nil, invalid("capture content reference kind is invalid")
 		}
 	}
-	return rewriteMarkdownDestinations(markdown, replacements), issues, nil
+	rewritten, err := rewriteMarkdownDestinations(markdown, replacements)
+	return rewritten, issues, err
 }
 
 // RewriteInstantiateTaskReferences 把合法 local ref 还原为已预分配的新 task UUID。
@@ -75,7 +89,7 @@ func RewriteInstantiateTaskReferences(markdown string, taskIDs map[string]string
 			}
 			taskID, allocated := taskIDs[ref.id]
 			if !allocated || !canonicalUUID(taskID) {
-				return "", invalid("snapshot task content reference has no valid preallocation")
+				return "", Error{Code: "project_template_dependency_missing", Message: "snapshot task content reference has no valid preallocation"}
 			}
 			replacements["ref://task/"+ref.id] = "ref://task/" + taskID
 		case "attachment":
@@ -88,10 +102,10 @@ func RewriteInstantiateTaskReferences(markdown string, taskIDs map[string]string
 			return "", invalid("snapshot content reference kind is invalid")
 		}
 	}
-	return rewriteMarkdownDestinations(markdown, replacements), nil
+	return rewriteMarkdownDestinations(markdown, replacements)
 }
 
-func validateMarkdownReferences(markdown string) error {
+func validateMarkdownReferences(markdown string, taskRefs map[string]struct{}) error {
 	refs, err := markdownReferences(markdown)
 	if err != nil {
 		return err
@@ -104,8 +118,11 @@ func validateMarkdownReferences(markdown string) error {
 			if !validLocalRef(ref.id, "task") {
 				return invalid("snapshot task content reference must use a local task ref")
 			}
+			if _, exists := taskRefs[ref.id]; !exists {
+				return Error{Code: "project_template_dependency_missing", Message: "task content reference target is not selected"}
+			}
 		case "user":
-			if _, err := uuid.Parse(ref.id); err != nil {
+			if !canonicalUUID(ref.id) {
 				return invalid("snapshot user content reference must use a UUID")
 			}
 		default:
@@ -116,39 +133,67 @@ func validateMarkdownReferences(markdown string) error {
 }
 
 func markdownReferences(markdown string) ([]markdownReference, error) {
+	occurrences, err := markdownReferenceOccurrences(markdown)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]markdownReference, 0, len(occurrences))
+	for _, occurrence := range occurrences {
+		refs = append(refs, occurrence.markdownReference)
+	}
+	return refs, nil
+}
+
+func markdownReferenceOccurrences(markdown string) ([]markdownReferenceOccurrence, error) {
 	if markdown == "" {
 		return nil, nil
 	}
 	source := []byte(markdown)
 	doc := goldmark.New().Parser().Parse(text.NewReader(source))
-	var refs []markdownReference
+	var occurrences []markdownReferenceOccurrence
 	err := ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		var destination string
+		var destination []byte
+		var start, end int
+		var err error
 		switch typed := node.(type) {
 		case *ast.Link:
-			destination = string(typed.Destination)
+			if typed.Reference != nil {
+				return ast.WalkContinue, nil
+			}
+			destination = typed.Destination
+			start, end, err = inlineDestinationSpan(source, typed.Pos(), destination)
 		case *ast.Image:
-			destination = string(typed.Destination)
+			if typed.Reference != nil {
+				return ast.WalkContinue, nil
+			}
+			destination = typed.Destination
+			start, end, err = inlineDestinationSpan(source, typed.Pos(), destination)
+		case *ast.LinkReferenceDefinition:
+			destination = typed.Destination
+			start, end, err = referenceDefinitionDestinationSpan(source, typed)
 		default:
 			return ast.WalkContinue, nil
 		}
-		if !strings.HasPrefix(destination, "ref://") {
+		if !strings.HasPrefix(string(destination), "ref://") {
 			return ast.WalkContinue, nil
 		}
-		ref, err := parseMarkdownReference(destination)
 		if err != nil {
 			return ast.WalkStop, err
 		}
-		refs = append(refs, ref)
+		ref, err := parseMarkdownReference(string(destination))
+		if err != nil {
+			return ast.WalkStop, err
+		}
+		occurrences = append(occurrences, markdownReferenceOccurrence{markdownReference: ref, start: start, end: end})
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return refs, nil
+	return occurrences, nil
 }
 
 func parseMarkdownReference(destination string) (markdownReference, error) {
@@ -168,68 +213,120 @@ func canonicalUUID(value string) bool {
 	return err == nil && parsed.String() == value
 }
 
-// rewriteMarkdownDestinations 只替换已由 Goldmark AST 识别过的 destination。
-// 逐行扫描仅用于定位原文中的 destination，因此普通链接、inline code 与 fenced
-// code block 会保留原始字节，不会被 renderer 重新格式化。
-func rewriteMarkdownDestinations(markdown string, replacements map[string]string) string {
+// rewriteMarkdownDestinations 根据 Goldmark AST 节点的 source position 定位
+// inline/reference definition destination，并生成不重叠的保字节 patch。
+func rewriteMarkdownDestinations(markdown string, replacements map[string]string) (string, error) {
 	if len(replacements) == 0 {
-		return markdown
+		return markdown, nil
 	}
+	occurrences, err := markdownReferenceOccurrences(markdown)
+	if err != nil {
+		return "", err
+	}
+	patches := make([]markdownPatch, 0, len(occurrences))
+	for _, occurrence := range occurrences {
+		original := markdown[occurrence.start:occurrence.end]
+		if replacement, ok := replacements[original]; ok {
+			patches = append(patches, markdownPatch{start: occurrence.start, end: occurrence.end, replacement: replacement})
+		}
+	}
+	if len(patches) == 0 {
+		return markdown, nil
+	}
+	sort.Slice(patches, func(i, j int) bool { return patches[i].start < patches[j].start })
 	var out strings.Builder
-	inFence := false
-	for _, line := range strings.SplitAfter(markdown, "\n") {
-		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			out.WriteString(line)
-			inFence = !inFence
-			continue
+	previous := 0
+	for _, patch := range patches {
+		if patch.start < previous || patch.start > patch.end || patch.end > len(markdown) {
+			return "", invalid("overlapping Markdown destination spans")
 		}
-		if inFence {
-			out.WriteString(line)
-			continue
-		}
-		out.WriteString(rewriteMarkdownLine(line, replacements))
+		out.WriteString(markdown[previous:patch.start])
+		out.WriteString(patch.replacement)
+		previous = patch.end
 	}
-	return out.String()
+	out.WriteString(markdown[previous:])
+	return out.String(), nil
 }
 
-func rewriteMarkdownLine(line string, replacements map[string]string) string {
-	var out strings.Builder
-	codeDelimiterLength := 0
-	for index := 0; index < len(line); {
-		if line[index] == '`' {
-			end := index
-			for end < len(line) && line[end] == '`' {
-				end++
-			}
-			length := end - index
-			if codeDelimiterLength == 0 {
-				codeDelimiterLength = length
-			} else if codeDelimiterLength == length {
-				codeDelimiterLength = 0
-			}
-			out.WriteString(line[index:end])
-			index = end
+func inlineDestinationSpan(source []byte, nodeStart int, destination []byte) (int, int, error) {
+	if nodeStart < 0 || nodeStart >= len(source) {
+		return 0, 0, invalid("Markdown link has no source position")
+	}
+	open := nodeStart
+	if source[open] == '!' {
+		open++
+	}
+	if open >= len(source) || source[open] != '[' {
+		return 0, 0, invalid("Markdown link source span is invalid")
+	}
+	close, ok := matchingBracket(source, open)
+	if !ok || close+1 >= len(source) || source[close+1] != '(' {
+		return 0, 0, invalid("Markdown inline link source span is invalid")
+	}
+	return destinationSpan(source, close+2, len(source), destination)
+}
+
+func referenceDefinitionDestinationSpan(source []byte, definition *ast.LinkReferenceDefinition) (int, int, error) {
+	if definition.Pos() < 0 || definition.Lines().Len() == 0 {
+		return 0, 0, invalid("Markdown reference definition has no source span")
+	}
+	start := definition.Pos()
+	end := start
+	for i := 0; i < definition.Lines().Len(); i++ {
+		segment := definition.Lines().At(i)
+		if segment.Stop > end {
+			end = segment.Stop
+		}
+	}
+	open := start
+	for open < end && (source[open] == ' ' || source[open] == '\t') {
+		open++
+	}
+	if open >= end || source[open] != '[' {
+		return 0, 0, invalid("Markdown reference definition source span is invalid")
+	}
+	close, ok := matchingBracket(source[:end], open)
+	if !ok || close+1 >= end || source[close+1] != ':' {
+		return 0, 0, invalid("Markdown reference definition source span is invalid")
+	}
+	return destinationSpan(source, close+2, end, definition.Destination)
+}
+
+func destinationSpan(source []byte, start, limit int, destination []byte) (int, int, error) {
+	for start < limit && (source[start] == ' ' || source[start] == '\t' || source[start] == '\n' || source[start] == '\r') {
+		start++
+	}
+	if start >= limit {
+		return 0, 0, invalid("Markdown destination source span is empty")
+	}
+	if source[start] == '<' {
+		start++
+	}
+	end := start + len(destination)
+	if end > limit || string(source[start:end]) != string(destination) {
+		return 0, 0, invalid("Markdown destination source span does not match AST")
+	}
+	return start, end, nil
+}
+
+func matchingBracket(source []byte, open int) (int, bool) {
+	depth := 0
+	for i := open; i < len(source); i++ {
+		if source[i] == '\\' {
+			i++
 			continue
 		}
-		if codeDelimiterLength == 0 && line[index] == ']' && index+1 < len(line) && line[index+1] == '(' {
-			end := strings.IndexByte(line[index+2:], ')')
-			if end >= 0 {
-				end += index + 2
-				destination := line[index+2 : end]
-				if replacement, ok := replacements[destination]; ok {
-					out.WriteString("](")
-					out.WriteString(replacement)
-					out.WriteByte(')')
-					index = end + 1
-					continue
-				}
+		switch source[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return i, true
 			}
 		}
-		out.WriteByte(line[index])
-		index++
 	}
-	return out.String()
+	return 0, false
 }
 
 func referenceIssue(code, message string) Error {

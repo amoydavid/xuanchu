@@ -1,6 +1,9 @@
 package projecttemplate
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func fixtureSnapshotV1() SnapshotV1 {
 	description := "  初始化说明  "
@@ -79,6 +82,79 @@ func TestDecodeRejectsUnknownSchemaFieldAndTrailingJSON(t *testing.T) {
 		if _, err := Decode([]byte(raw), DefaultLimits); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
+	}
+}
+
+func TestDecodeClassifiesInvalidAndUnsupportedSchema(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		code string
+	}{
+		{name: "missing", raw: `{}`, code: "project_template_snapshot_invalid"},
+		{name: "null", raw: `{"schema":null}`, code: "project_template_snapshot_invalid"},
+		{name: "number", raw: `{"schema":1}`, code: "project_template_snapshot_invalid"},
+		{name: "unknown", raw: `{"schema":"xuanchu.project-template-snapshot/v2"}`, code: "project_template_snapshot_schema_unsupported"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Decode([]byte(tc.raw), DefaultLimits)
+			if ErrorCode(err) != tc.code {
+				t.Fatalf("error = %v, code = %q, want %q", err, ErrorCode(err), tc.code)
+			}
+		})
+	}
+}
+
+func TestEncodeV1RejectsUDATrimCollision(t *testing.T) {
+	snapshot := fixtureSnapshotV1()
+	snapshot.Tasks[0].UDAs = map[string]UDABlueprintV1{
+		" estimate": {Raw: "1", Type: "number"},
+		"estimate ": {Raw: "2", Type: "number"},
+	}
+	if _, _, err := EncodeV1(snapshot, DefaultLimits); ErrorCode(err) != "project_template_snapshot_invalid" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestEncodeV1KeepsRequiredEmptySlicesAsArrays(t *testing.T) {
+	snapshot := fixtureSnapshotV1()
+	snapshot.Configs = nil
+	snapshot.Tasks = nil
+	snapshot.Series = nil
+	snapshot.Automations[0].Context.Include = nil
+	raw, _, err := EncodeV1(snapshot, DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range [][]byte{
+		[]byte(`"configs":[]`), []byte(`"tasks":[]`), []byte(`"series":[]`), []byte(`"include":[]`),
+	} {
+		if !bytes.Contains(raw, want) {
+			t.Fatalf("canonical JSON missing %s: %s", want, raw)
+		}
+	}
+	snapshot = fixtureSnapshotV1()
+	snapshot.Automations = nil
+	raw, _, err = EncodeV1(snapshot, DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"automations":[]`)) {
+		t.Fatalf("canonical JSON missing empty automations array: %s", raw)
+	}
+}
+
+func TestDecodeRejectsNullRequiredAutomationContextInclude(t *testing.T) {
+	snapshot := fixtureSnapshotV1()
+	snapshot.Automations[0].Context.Include = []string{}
+	raw, _, err := EncodeV1(snapshot, DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = bytes.Replace(raw, []byte(`"include":[]`), []byte(`"include":null`), 1)
+	if _, err := Decode(raw, DefaultLimits); ErrorCode(err) != "project_template_snapshot_invalid" {
+		t.Fatalf("error = %v", err)
 	}
 }
 

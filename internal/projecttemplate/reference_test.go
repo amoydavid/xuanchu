@@ -42,3 +42,43 @@ func TestRewriteInstantiateTaskReferencesRequiresValidPreallocation(t *testing.T
 		t.Fatalf("invalid local ref error = %v", err)
 	}
 }
+
+func TestRewriteCaptureTaskReferencesUsesASTSourceSpans(t *testing.T) {
+	taskID := "40af0185-316f-42bb-b52b-545d21f6f012"
+	source := strings.Join([]string{
+		"[普通](ref://task/" + taskID + ` "标题")`,
+		"[尖括号](<ref://task/" + taskID + `> '另一标题')`,
+		"[引用式][target]",
+		"",
+		"[target]: <ref://task/" + taskID + `> "引用标题"`,
+		"",
+		"    [缩进代码](ref://task/" + taskID + ")",
+	}, "\n")
+
+	got, issues, err := RewriteCaptureTaskReferences(source, map[string]string{taskID: "task-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v", issues)
+	}
+	for _, want := range []string{
+		`[普通](ref://task/task-1 "标题")`,
+		`[尖括号](<ref://task/task-1> '另一标题')`,
+		`[target]: <ref://task/task-1> "引用标题"`,
+		"    [缩进代码](ref://task/" + taskID + ")",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("rewritten markdown missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestValidateSnapshotRejectsNonCanonicalUserReference(t *testing.T) {
+	snapshot := fixtureSnapshotV1()
+	description := "[用户](ref://user/40AF0185-316F-42BB-B52B-545D21F6F012)"
+	snapshot.Tasks[0].Description = &description
+	if err := ValidateSnapshot(snapshot, DefaultLimits); ErrorCode(err) != "project_template_snapshot_invalid" {
+		t.Fatalf("error = %v", err)
+	}
+}
