@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/lib/api"
 import { navigateToDocument } from "@/lib/browser-navigation"
 
-import { workspaceApiGet } from "./workspace-api"
+import { workspaceApiGet, workspaceApiMultipart } from "./workspace-api"
 import {
   clearAdminActingSession,
   getAdminActingToken,
@@ -20,8 +20,10 @@ vi.mock("@/lib/browser-navigation", () => ({
 describe("workspace api client", () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.mocked(navigateToDocument).mockClear()
     sessionStorage.clear()
+    document.cookie = "xuanchu_csrf=; path=/; max-age=0"
   })
 
   it("rejects admin API paths", async () => {
@@ -116,5 +118,53 @@ describe("workspace api client", () => {
     })
     clearAdminActingSession()
     expect(getAdminActingToken()).toBeNull()
+  })
+
+  it("uses the CSRF header for multipart uploads in cookie-session mode", async () => {
+    document.cookie = "xuanchu_csrf=cookie-csrf-token; path=/"
+    const instances: Array<{
+      headers: Record<string, string>
+      onload: (() => void) | null
+      open: (method: string, path: string) => void
+      send: (body: FormData) => void
+      withCredentials: boolean
+      status: number
+      responseText: string
+      upload: XMLHttpRequestUpload
+    }> = []
+
+    class FakeXMLHttpRequest {
+      headers: Record<string, string> = {}
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      onabort: (() => void) | null = null
+      withCredentials = false
+      status = 201
+      responseText = JSON.stringify({ data: { id: "attachment-1" } })
+      upload = {} as XMLHttpRequestUpload
+
+      constructor() {
+        instances.push(this)
+      }
+
+      open() {}
+
+      setRequestHeader(name: string, value: string) {
+        this.headers[name] = value
+      }
+
+      send() {
+        this.onload?.()
+      }
+
+      abort() {}
+    }
+
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest)
+    await expect(
+      workspaceApiMultipart("/api/v1/tasks/task-1/attachments?workspace=local", new FormData())
+    ).resolves.toEqual({ id: "attachment-1" })
+    expect(instances).toHaveLength(1)
+    expect(instances[0]?.headers["X-Xuanchu-CSRF"]).toBe("cookie-csrf-token")
   })
 })

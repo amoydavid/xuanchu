@@ -56,4 +56,13 @@ const a = 1
     expect(container.querySelector('a[href^="javascript:"]')).toBeNull()
     expect(container.querySelector('a[href="https://example.com"]')).toBeTruthy()
   })
+
+  it("falls back to the saved attachment label without emitting a broken image when no task context exists", () => {
+    const { container } = render(
+      <MarkdownView>{"![架构图](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)"}</MarkdownView>
+    )
+
+    expect(screen.getByText("架构图")).toBeTruthy()
+    expect(container.querySelector("img")).toBeNull()
+  })
 })

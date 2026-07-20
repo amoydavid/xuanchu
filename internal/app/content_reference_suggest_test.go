@@ -116,6 +116,39 @@ func TestResolveContentReferencesReturnsResolvedAndUnavailable(t *testing.T) {
 	}
 }
 
+func TestResolveContentReferencesTreatsMissingReadCapabilitiesAsUnavailable(t *testing.T) {
+	svc, store := eventNotificationTestEnv(t)
+	alice := createEventNotificationAssignee(t, svc, store, "alice-resolve-scope")
+	project, err := svc.AddProject(AddProjectInput{Name: "Resolve scope", Slug: "rscope"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsk, err := svc.Add(AddInput{Title: "Hidden from workspace-only token", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name: "workspace-only-resolve", Scopes: []string{"workspace:read"}, WorkspaceRef: svc.Runtime().WorkspaceSlug,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaceOnly := mustTenantServiceForTest(t, svc, token.RawToken, "workspace:read", PermissionWorkspaceRead, 1000)
+	results, err := workspaceOnly.ResolveContentReferences(context.Background(), []ContentReferenceKeyInput{
+		{Type: "user", ID: alice.ID},
+		{Type: "task", ID: tsk.UUID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Status != "resolved" || results[0].User == nil || results[0].User.ID != alice.ID {
+		t.Fatalf("user resolution = %#v, want resolved", results[0])
+	}
+	if results[1].Status != "unavailable" || results[1].Task != nil {
+		t.Fatalf("task resolution leaked without task:read: %#v", results[1])
+	}
+}
+
 func TestResolveContentReferencesRejectsTooMany(t *testing.T) {
 	svc, _ := eventNotificationTestEnv(t)
 	keys := make([]ContentReferenceKeyInput, 201)

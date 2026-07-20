@@ -575,7 +575,8 @@ func TestTaskDescriptionIsMarkdownAcrossMCP(t *testing.T) {
 	srv, _ := newTestServer(t)
 	session := connectClient(t, srv)
 
-	markdown := "[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) and [#task-1](ref://task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)"
+	referencedID := extractUUID(t, parseEnvelope(t, callTool(t, session, "task_add", TaskAddInput{Title: "referenced task"})))
+	markdown := "[#referenced task](ref://task/" + referencedID + ") and ![图](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)"
 	addResult := callTool(t, session, "task_add", TaskAddInput{Title: "ref-task", Description: &markdown})
 	uuid := extractUUID(t, parseEnvelope(t, addResult))
 

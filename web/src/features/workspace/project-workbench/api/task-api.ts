@@ -32,6 +32,7 @@ export type TaskCreateInput = {
   tags?: string[]
   udas?: Record<string, string>
   parent?: string
+  attachment_draft_target?: string
 }
 
 export type TaskModifyInput = {

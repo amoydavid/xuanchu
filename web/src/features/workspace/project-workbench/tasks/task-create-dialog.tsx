@@ -3,6 +3,16 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import {
+  replaceDeferredAttachmentMarkers,
+  type DeferredAttachment,
+} from "@/components/markdown"
+import {
+  importTaskDraftAttachmentURL,
+  removeAttachment,
+  uploadTaskDraftAttachment,
+} from "@/features/workspace/attachments"
+import { dataURLToFile } from "@/components/markdown/paste-sanitizer"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -51,6 +61,10 @@ const emptyCommonFields = (): TaskCommonFieldValue => ({
   udas: {},
 })
 
+function hasDeferredAttachmentMarker(markdown: string, marker: string): boolean {
+  return markdown.includes(marker) || markdown.includes(marker.replace(/[\\[\]]/g, "\\$&"))
+}
+
 export function TaskCreateDialog({
   filters,
   onCreated,
@@ -77,6 +91,9 @@ export function TaskCreateDialog({
   const [wait, setWait] = useState<number | null>(null)
   const [until, setUntil] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [deferredAttachments, setDeferredAttachments] = useState<DeferredAttachment[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const submissionControllerRef = useRef<AbortController | null>(null)
 
   const reset = () => {
     setCommon(emptyCommonFields())
@@ -88,38 +105,126 @@ export function TaskCreateDialog({
     setWait(null)
     setUntil(null)
     setError(null)
+    setDeferredAttachments([])
+  }
+
+  const cancelPendingSubmission = () => {
+    const controller = submissionControllerRef.current
+    if (!controller || createTask.isPending) {
+      return false
+    }
+    controller.abort()
+    submissionControllerRef.current = null
+    setIsSubmitting(false)
+    reset()
+    onOpenChange(false)
+    return true
   }
 
   const submit = async () => {
+    if (submissionControllerRef.current) return
     const normalizedTitle = common.title.trim()
     if (!normalizedTitle) {
       setError(t("taskCreate.titleRequired"))
       return
     }
     setError(null)
+    const controller = new AbortController()
+    submissionControllerRef.current = controller
+    setIsSubmitting(true)
+    const throwIfCancelled = () => {
+      if (controller.signal.aborted) {
+        throw new DOMException("submission cancelled", "AbortError")
+      }
+    }
     try {
-      const created = await createTask.mutateAsync({
-        ...(common.description.trim()
-          ? { description: common.description.trim() }
-          : {}),
-        ...(due !== null ? { due } : {}),
-        ...(common.priority ? { priority: common.priority } : {}),
-        ...(scheduled !== null ? { scheduled } : {}),
-        ...(common.assignees.length > 0 ? { assignees: common.assignees } : {}),
-        ...(splitCSV(common.tags).length > 0
-          ? { tags: splitCSV(common.tags) }
-          : {}),
-        ...(Object.keys(common.udas).length > 0 ? { udas: common.udas } : {}),
-        ...(until !== null ? { until } : {}),
-        ...(wait !== null ? { wait } : {}),
-        project: projectSlug,
-        title: normalizedTitle,
-      })
-      onCreated?.(created)
-      reset()
-      onOpenChange(false)
+      const sourceDescription = common.description.trim()
+      const activeDeferredAttachments = deferredAttachments.filter(({ marker }) =>
+        hasDeferredAttachmentMarker(sourceDescription, marker)
+      )
+      const draftTarget =
+        activeDeferredAttachments.length > 0 ? crypto.randomUUID() : undefined
+      const resolved: Array<{ marker: string; id: string; alt: string }> = []
+      if (draftTarget) {
+        try {
+          for (const { candidate, marker } of activeDeferredAttachments) {
+            if (candidate.kind === "remote" && candidate.sourceURL) {
+              const attachment = await importTaskDraftAttachmentURL(
+                workspaceSlug,
+                draftTarget,
+                { sourceURL: candidate.sourceURL, displayName: candidate.alt },
+                { signal: controller.signal }
+              )
+              resolved.push({ marker, id: attachment.id, alt: candidate.alt })
+              throwIfCancelled()
+              continue
+            }
+            const file = candidate.kind === "data" && candidate.sourceURL
+              ? dataURLToFile(candidate.sourceURL, candidate.alt)
+              : candidate.file
+            if (!file) throw new Error("图片数据无效")
+            const attachment = await uploadTaskDraftAttachment(
+              workspaceSlug,
+              draftTarget,
+              { file, mode: "description_draft", displayName: candidate.alt },
+              { signal: controller.signal }
+            )
+            resolved.push({ marker, id: attachment.id, alt: candidate.alt })
+            throwIfCancelled()
+          }
+        } catch (uploadErr) {
+          await Promise.all(
+            resolved.map(({ id }) =>
+              removeAttachment(workspaceSlug, id).catch(() => undefined)
+            )
+          )
+          throw uploadErr
+        }
+      }
+      const description = replaceDeferredAttachmentMarkers(
+        sourceDescription,
+        resolved
+      ).trim()
+      try {
+        throwIfCancelled()
+        const created = await createTask.mutateAsync({
+          ...(description ? { description } : {}),
+          ...(draftTarget ? { attachment_draft_target: draftTarget } : {}),
+          ...(due !== null ? { due } : {}),
+          ...(common.priority ? { priority: common.priority } : {}),
+          ...(scheduled !== null ? { scheduled } : {}),
+          ...(common.assignees.length > 0
+            ? { assignees: common.assignees }
+            : {}),
+          ...(splitCSV(common.tags).length > 0
+            ? { tags: splitCSV(common.tags) }
+            : {}),
+          ...(Object.keys(common.udas).length > 0 ? { udas: common.udas } : {}),
+          ...(until !== null ? { until } : {}),
+          ...(wait !== null ? { wait } : {}),
+          project: projectSlug,
+          title: normalizedTitle,
+        })
+        onCreated?.(created)
+        reset()
+        onOpenChange(false)
+      } catch (createErr) {
+        await Promise.all(
+          resolved.map(({ id }) =>
+            removeAttachment(workspaceSlug, id).catch(() => undefined)
+          )
+        )
+        throw createErr
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    } finally {
+      if (submissionControllerRef.current === controller) {
+        submissionControllerRef.current = null
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -127,7 +232,10 @@ export function TaskCreateDialog({
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen && !createTask.isPending && !seriesSubmitting) {
+        if (!nextOpen && isSubmitting && cancelPendingSubmission()) {
+          return
+        }
+        if (!nextOpen && !createTask.isPending && !seriesSubmitting && !isSubmitting) {
           reset()
           onOpenChange(false)
         }
@@ -172,13 +280,13 @@ export function TaskCreateDialog({
             className="grid w-full grid-cols-2"
           >
             <TabsTrigger
-              disabled={createTask.isPending || seriesSubmitting}
+              disabled={createTask.isPending || seriesSubmitting || isSubmitting}
               value="normal"
             >
               {t("taskSeries.mode.normal")}
             </TabsTrigger>
             <TabsTrigger
-              disabled={createTask.isPending || seriesSubmitting}
+              disabled={createTask.isPending || seriesSubmitting || isSubmitting}
               value="recurring"
             >
               {t("taskSeries.mode.recurring")}
@@ -190,10 +298,17 @@ export function TaskCreateDialog({
             <div className="grid gap-4">
               <TaskCommonFields
                 autoFocus
-                disabled={createTask.isPending}
+                disabled={createTask.isPending || isSubmitting}
                 onChange={(next) => {
                   setCommon(next)
                   setError(null)
+                }}
+                onDeferredAttachment={(attachment) => {
+                  setDeferredAttachments((current) =>
+                    current.some((item) => item.marker === attachment.marker)
+                      ? current
+                      : [...current, attachment]
+                  )
                 }}
                 onSubmit={() => void submit()}
                 value={common}
@@ -234,14 +349,16 @@ export function TaskCreateDialog({
             <DialogFooter>
               <Button
                 disabled={createTask.isPending}
-                onClick={() => onOpenChange(false)}
+                onClick={() => {
+                  if (!cancelPendingSubmission()) onOpenChange(false)
+                }}
                 type="button"
                 variant="outline"
               >
                 {t("common.cancel")}
               </Button>
               <Button
-                disabled={createTask.isPending}
+                disabled={createTask.isPending || isSubmitting}
                 onClick={() => void submit()}
                 type="button"
               >

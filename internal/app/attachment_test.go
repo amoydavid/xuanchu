@@ -3,10 +3,12 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -122,6 +124,285 @@ func TestAttachmentUploadDraftMode(t *testing.T) {
 	if len(withDrafts) != 1 {
 		t.Fatalf("draft not visible to creator: %#v", withDrafts)
 	}
+}
+
+func TestTaskDescriptionDraftIsOnlyAccessibleToCreator(t *testing.T) {
+	svc, closeFn := attachmentTestEnv(t)
+	defer closeFn()
+	tsk, err := svc.Add(AddInput{Title: "draft privacy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := pngBytes2x2()
+	draft, err := svc.UploadAttachment(context.Background(), "task", tsk.UUID, AttachmentUploadInput{
+		Reader:       bytes.NewReader(payload),
+		DeclaredSize: int64(len(payload)),
+		OriginalName: "private.png",
+		Mode:         "description_draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewerUser := storage.User{ID: uuid.NewString(), Name: "draft-viewer", DisplayName: "Draft Viewer", CreatedAt: 1000, ModifiedAt: 1000}
+	if _, err := storage.NewUserRepository(svc.store.DB()).Create(viewerUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.NewMemberRepository(svc.store.DB()).Upsert(storage.Membership{UserID: viewerUser.ID, WorkspaceID: svc.Runtime().WorkspaceID, Role: "member", JoinedAt: 1000, ModifiedAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	viewer, err := NewService(ServiceOptions{
+		Store:        svc.store,
+		Clock:        FixedClock{NowUnix: 1000},
+		ActorRef:     viewerUser.Name,
+		WorkspaceRef: "local",
+		Attachments:  svc.attachmentRuntime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := viewer.GetAttachment(draft.ID); err == nil {
+		t.Fatal("GetAttachment exposed another actor's draft")
+	} else {
+		assertRuntimeCode(t, err, "attachment_not_found")
+	}
+	if _, err := viewer.OpenAttachmentContent(context.Background(), draft.ID); err == nil {
+		t.Fatal("OpenAttachmentContent exposed another actor's draft")
+	} else {
+		assertRuntimeCode(t, err, "attachment_not_found")
+	}
+	if _, err := viewer.RenameAttachment(draft.ID, "stolen"); err == nil {
+		t.Fatal("RenameAttachment exposed another actor's draft")
+	} else {
+		assertRuntimeCode(t, err, "attachment_not_found")
+	}
+	if err := viewer.RemoveAttachment(context.Background(), draft.ID); err == nil {
+		t.Fatal("RemoveAttachment exposed another actor's draft")
+	} else {
+		assertRuntimeCode(t, err, "attachment_not_found")
+	}
+}
+
+func TestAddRejectsDescriptionAttachmentFromAnotherTask(t *testing.T) {
+	svc, closeFn := attachmentTestEnv(t)
+	defer closeFn()
+	owner, _ := svc.Add(AddInput{Title: "attachment-owner"})
+	payload := pngBytes2x2()
+	attachment, err := svc.UploadAttachment(context.Background(), "task", owner.UUID, AttachmentUploadInput{
+		Reader: bytes.NewReader(payload), DeclaredSize: int64(len(payload)), OriginalName: "draft.png", Mode: "description_draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := fmt.Sprintf("![图](ref://attachment/%s)", attachment.ID)
+	_, err = svc.Add(AddInput{Title: "foreign-reference", Description: &description})
+	assertRuntimeCode(t, err, "description_reference_invalid")
+}
+
+func TestModifyRejectsDescriptionDraftCreatedByAnotherActor(t *testing.T) {
+	svc, closeFn := attachmentTestEnv(t)
+	defer closeFn()
+	tsk, err := svc.Add(AddInput{Title: "draft owner boundary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := pngBytes2x2()
+	draft, err := svc.UploadAttachment(context.Background(), "task", tsk.UUID, AttachmentUploadInput{
+		Reader: bytes.NewReader(payload), DeclaredSize: int64(len(payload)), OriginalName: "private.png", Mode: "description_draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := storage.User{ID: uuid.NewString(), Name: "other-editor", DisplayName: "Other Editor", CreatedAt: 1000, ModifiedAt: 1000}
+	if _, err := storage.NewUserRepository(svc.store.DB()).Create(other); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.NewMemberRepository(svc.store.DB()).Upsert(storage.Membership{
+		UserID: other.ID, WorkspaceID: svc.Runtime().WorkspaceID, Role: "member", JoinedAt: 1000, ModifiedAt: 1000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	otherSvc, err := NewService(ServiceOptions{
+		Store: svc.store, Clock: FixedClock{NowUnix: 1000}, ActorRef: other.Name,
+		WorkspaceRef: "local", Attachments: svc.attachmentRuntime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := fmt.Sprintf("![private](ref://attachment/%s)", draft.ID)
+	err = otherSvc.Modify(tsk.UUID, ModifyInput{Description: &description})
+	assertRuntimeCode(t, err, "attachment_draft_creator_mismatch")
+}
+
+func TestAddRollsBackTaskAndDraftBindingWhenDescriptionValidationFails(t *testing.T) {
+	svc, closeFn := attachmentTestEnv(t)
+	defer closeFn()
+	draftTarget := uuid.NewString()
+	payload := pngBytes2x2()
+	draft, err := svc.UploadAttachment(context.Background(), "task_draft", draftTarget, AttachmentUploadInput{
+		Reader:       bytes.NewReader(payload),
+		DeclaredSize: int64(len(payload)),
+		OriginalName: "draft.png",
+		Mode:         "description_draft",
+	})
+	if err != nil {
+		t.Fatalf("upload task draft: %v", err)
+	}
+	// 该引用不属于本次创建的 draft target，触发 Add 中的 description 校验失败。
+	foreignID := uuid.NewString()
+	description := fmt.Sprintf("![图](ref://attachment/%s)", foreignID)
+	_, err = svc.Add(AddInput{
+		Title:                 "must rollback",
+		Description:           &description,
+		AttachmentDraftTarget: draftTarget,
+	})
+	assertRuntimeCode(t, err, "description_reference_invalid")
+
+	list, err := svc.List(ListInput{})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("failed creation persisted a task: %#v", list)
+	}
+	row, err := svc.attachmentRepo.GetByID(draft.ID)
+	if err != nil {
+		t.Fatalf("get draft: %v", err)
+	}
+	if row.AttachedToType != storage.AttachmentAttachedToTaskDraft || row.AttachedToID != draftTarget || row.State != storage.AttachmentStateDraft {
+		t.Fatalf("failed creation rebound draft: %#v", row)
+	}
+}
+
+func TestAddBindsOnlyDescriptionReferencedCreationDrafts(t *testing.T) {
+	svc, closeFn := attachmentTestEnv(t)
+	defer closeFn()
+	draftTarget := uuid.NewString()
+	payload := pngBytes2x2()
+	used, err := svc.UploadAttachment(context.Background(), "task_draft", draftTarget, AttachmentUploadInput{
+		Reader: bytes.NewReader(payload), DeclaredSize: int64(len(payload)), OriginalName: "used.png", Mode: "description_draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unused, err := svc.UploadAttachment(context.Background(), "task_draft", draftTarget, AttachmentUploadInput{
+		Reader: bytes.NewReader(payload), DeclaredSize: int64(len(payload)), OriginalName: "unused.png", Mode: "description_draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := fmt.Sprintf("![used](ref://attachment/%s)", used.ID)
+	created, err := svc.Add(AddInput{
+		Title: "only bind referenced draft", Description: &description, AttachmentDraftTarget: draftTarget,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	usedRow, err := svc.attachmentRepo.GetByID(used.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usedRow.AttachedToType != storage.AttachmentAttachedToTask || usedRow.AttachedToID != created.UUID || usedRow.State != storage.AttachmentStateActive {
+		t.Fatalf("referenced draft not rebound and activated: %#v", usedRow)
+	}
+	unusedRow, err := svc.attachmentRepo.GetByID(unused.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unusedRow.AttachedToType != storage.AttachmentAttachedToTaskDraft || unusedRow.AttachedToID != draftTarget || unusedRow.State != storage.AttachmentStateDraft {
+		t.Fatalf("unreferenced draft was rebound: %#v", unusedRow)
+	}
+}
+
+func TestAddEnforcesDescriptionSizeWithoutAttachmentRuntime(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	description := strings.Repeat("x", maxDescriptionBytes+1)
+	_, err := svc.Add(AddInput{Title: "oversized-description", Description: &description})
+	assertRuntimeCode(t, err, "description_too_large")
+}
+
+func TestAddRejectsUnavailableUserReference(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	description := "[@陌生人](ref://user/40af0185-316f-42bb-b52b-545d21f6f012)"
+	_, err := svc.Add(AddInput{Title: "unavailable-user-reference", Description: &description})
+	assertRuntimeCode(t, err, "description_reference_invalid")
+}
+
+func TestModifyAllowsUnchangedUnavailableUserReference(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	userID := svc.Runtime().ActorUserID
+	description := fmt.Sprintf("[@当前用户](ref://user/%s)", userID)
+	created, err := svc.Add(AddInput{Title: "historical-reference", Description: &description})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := svc.store.DB().Where("user_id = ? AND workspace_id = ?", userID, svc.Runtime().WorkspaceID).Delete(&storage.Membership{}).Error; err != nil {
+		t.Fatalf("remove membership: %v", err)
+	}
+	title := "edited without changing reference"
+	if err := svc.Modify(created.UUID, ModifyInput{Title: &title}); err != nil {
+		t.Fatalf("Modify unchanged historical reference: %v", err)
+	}
+}
+
+func TestAddRejectsNewReferenceWithoutTaskReadScope(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	target, err := svc.Add(AddInput{Title: "read-protected target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := svc.CreateTenantAccessToken(CreateTenantAccessTokenInput{
+		Name: "write-only", Scopes: []string{"task:write"}, WorkspaceRef: svc.Runtime().WorkspaceSlug,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOnly := mustTenantServiceForTest(t, svc, token.RawToken, "task:write", PermissionTaskWrite, 1000)
+	description := fmt.Sprintf("[#target](ref://task/%s)", target.UUID)
+	_, err = writeOnly.Add(AddInput{Title: "must not reference unreadable task", Description: &description})
+	assertRuntimeCode(t, err, "permission_denied")
+}
+
+func TestTaskSeriesRejectsInvalidRichDescription(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "richseries", Name: "Series Rich"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := strings.Repeat("x", maxDescriptionBytes+1)
+	_, err = svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "too large", Description: &description, ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	assertRuntimeCode(t, err, "description_too_large")
+}
+
+func TestTaskSeriesRejectsAttachmentDescriptionReferenceOnCreateAndModify(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "seriesrefs", Name: "Series references"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachmentDescription := "![图](ref://attachment/00000000-0000-4000-8000-000000000001)"
+	_, err = svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "attachment ref", Description: &attachmentDescription, ProjectID: project.ID,
+		RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	assertRuntimeCode(t, err, "description_reference_invalid")
+
+	created, err := svc.AddTaskSeries(AddTaskSeriesInput{
+		Title: "normal series", ProjectID: project.ID, RecurrenceRule: "daily", FirstDue: 2000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.ModifyTaskSeries(created.Series.ID, ModifyTaskSeriesInput{Description: &attachmentDescription})
+	assertRuntimeCode(t, err, "description_reference_invalid")
 }
 
 func TestAttachmentActivateDrafts(t *testing.T) {

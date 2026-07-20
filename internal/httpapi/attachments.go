@@ -57,6 +57,43 @@ func (s *Server) handleAttachmentUpload(w http.ResponseWriter, r *http.Request) 
 	writeSuccess(w, http.StatusCreated, view, nil)
 }
 
+// handleTaskCreationDraftAttachmentUpload 接收尚未创建 task 的私有图片 draft。
+// draftRef 必须是客户端生成的 UUID，后续 POST /tasks 会在同一事务绑定并激活它。
+func (s *Server) handleTaskCreationDraftAttachmentUpload(w http.ResponseWriter, r *http.Request) {
+	draftRef := strings.TrimSpace(chi.URLParam(r, "draftRef"))
+	if draftRef == "" {
+		writeError(w, http.StatusBadRequest, "attachment_target_type_unsupported", "draft ref is required", nil)
+		return
+	}
+	if err := r.ParseMultipartForm(s.attachmentUploadLimit()); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "attachment_too_large", "multipart payload too large", nil)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "attachment_upload_incomplete", "file field is required", nil)
+		return
+	}
+	defer file.Close()
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.UploadAttachment(r.Context(), "task_draft", draftRef, app.AttachmentUploadInput{
+		Reader:       file,
+		DeclaredSize: header.Size,
+		OriginalName: header.Filename,
+		DisplayName:  r.FormValue("display_name"),
+		Mode:         "description_draft",
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, view, nil)
+}
+
 // handleAttachmentImportURL 处理远程图片转存。
 func (s *Server) handleAttachmentImportURL(w http.ResponseWriter, r *http.Request) {
 	taskRef, ok := requireTaskRef(w, r)
@@ -89,6 +126,37 @@ func (s *Server) handleAttachmentImportURL(w http.ResponseWriter, r *http.Reques
 		SourceURL:   req.SourceURL,
 		DisplayName: req.DisplayName,
 		Mode:        req.Mode,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, view, nil)
+}
+
+func (s *Server) handleTaskCreationDraftAttachmentImportURL(w http.ResponseWriter, r *http.Request) {
+	draftRef := strings.TrimSpace(chi.URLParam(r, "draftRef"))
+	var req struct {
+		SourceURL   string `json:"source_url"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "api_bad_json", "invalid json body", nil)
+		return
+	}
+	if draftRef == "" || strings.TrimSpace(req.SourceURL) == "" {
+		writeError(w, http.StatusBadRequest, "content_reference_query_invalid", "draft_ref and source_url are required", nil)
+		return
+	}
+	scoped, _, err := s.scopedService(r, auth.ScopeTaskWrite, app.PermissionTaskWrite, "")
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := scoped.ImportAttachmentURL(r.Context(), "task_draft", draftRef, app.AttachmentImportURLInput{
+		SourceURL:   req.SourceURL,
+		DisplayName: req.DisplayName,
+		Mode:        "description_draft",
 	})
 	if err != nil {
 		writeAppError(w, err)

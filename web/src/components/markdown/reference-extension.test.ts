@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { parseReferenceRef, serializeReferenceMarkdown } from "./reference-extension"
+import { markdownManager, parseMarkdownToJSON } from "./extensions"
 
 describe("parseReferenceRef", () => {
   it("accepts canonical user ref", () => {
@@ -62,3 +63,30 @@ describe("serializeReferenceMarkdown", () => {
     ).toBe("[weird name](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001)")
   })
 })
+
+describe("reference markdown integration", () => {
+  it.each([
+    ["[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001)", "user"],
+    ["[#接口](ref://task/61f2a51e-0d5d-4f29-b502-cd195dfa1d84)", "task"],
+  ])("parses and serializes canonical reference markdown", (source, kind) => {
+    const document = parseMarkdownToJSON(source)
+    const reference = findNode(document, "xuanchuReference")
+
+    expect(reference).toMatchObject({
+      type: "xuanchuReference",
+      attrs: { kind },
+    })
+    expect(markdownManager.serialize(document).trim()).toBe(source)
+  })
+})
+
+function findNode(document: { type?: string; content?: unknown[] }, type: string): unknown {
+  if (document.type === type) return document
+  for (const child of document.content ?? []) {
+    if (typeof child === "object" && child !== null) {
+      const found = findNode(child as { type?: string; content?: unknown[] }, type)
+      if (found) return found
+    }
+  }
+  return undefined
+}

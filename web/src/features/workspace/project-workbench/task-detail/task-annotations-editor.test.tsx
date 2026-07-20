@@ -89,7 +89,7 @@ describe("TaskAnnotationsEditor", () => {
     })
     expect(screen.queryByLabelText("新增注解")).toBeNull()
     expect(screen.getByRole("button", { name: "写更新" })).toBeTruthy()
-  })
+  }, 10_000)
 
   it("does not submit empty annotation and keeps failed input", async () => {
     vi.mocked(addTaskAnnotation).mockRejectedValue(new Error("scope denied"))

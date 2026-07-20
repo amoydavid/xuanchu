@@ -1,4 +1,4 @@
-import { Node } from "@tiptap/core"
+import { Extension, Node } from "@tiptap/core"
 
 // XuanchuReferenceAttrs 描述 user/task 引用节点的属性。
 export type XuanchuReferenceAttrs = {
@@ -32,6 +32,8 @@ export function parseReferenceRef(href: string): { kind: "user" | "task"; id: st
 // Markdown 层面序列化为标准 link：`[@label](ref://user/{id})` / `[#label](ref://task/{id})`。
 export const XuanchuReference = Node.create({
   name: "xuanchuReference",
+  // 必须早于 Link mark 接管 canonical ref://user|task link。
+  priority: 2000,
   group: "inline",
   inline: true,
   atom: true,
@@ -83,10 +85,34 @@ export const XuanchuReference = Node.create({
     }
   },
 
+  // Marked 把标准 Markdown link 产出为 link token；只接管 canonical user/task
+  // URI，其余链接继续由 Link mark 处理。
+  markdownTokenName: "link",
+  parseMarkdown(token, helpers) {
+    const href = String(token.href ?? "")
+    const parsed = parseReferenceRef(href)
+    if (!parsed) return helpers.parseInline(token.tokens ?? [])
+    return helpers.createNode("xuanchuReference", {
+      kind: parsed.kind,
+      id: parsed.id,
+      label: String(token.text ?? ""),
+    })
+  },
+
+  renderMarkdown(node) {
+    return serializeReferenceMarkdown(node.attrs as XuanchuReferenceAttrs)
+  },
+
   // 让 @tiptap/markdown 在序列化/解析时把 ref://user|task/{uuid} 的 link 转为本节点。
   addProseMirrorPlugins() {
     return []
   },
+})
+
+// 当前 extension 已直接处理 link token。保留空 export 以便未来新增实体引用时
+// 仍能将 parser 拆分为独立 extension，避免改变稳定的节点名称。
+export const XuanchuReferenceMarkdown = Extension.create({
+  name: "xuanchuReferenceMarkdown",
 })
 
 // serializeReferenceMarkdown 把 reference 节点序列化为 markdown link。

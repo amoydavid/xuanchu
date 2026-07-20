@@ -31,6 +31,8 @@ import { ActivitySection } from "./activity-section"
 import { TaskLinksEditor } from "./task-links-editor"
 import { TaskAttachmentPanel } from "@/features/workspace/attachments/task-attachment-panel"
 import { useDescriptionDraftCleanup } from "@/features/workspace/attachments/use-description-draft-cleanup"
+import { suggestContentReferences } from "@/features/workspace/content-references"
+import { resolutionToMenuItem } from "@/components/markdown/reference-suggestion-menu"
 import { TaskPropertyPanel } from "./task-property-panel"
 import { SubTaskList } from "./sub-task-list"
 import { recurrenceRuleLabel } from "../task-series/recurrence-preview"
@@ -366,6 +368,8 @@ function TaskDetailPageContent({
                 )
               }}
               value={taskData.description ?? ""}
+              taskRef={taskRef}
+              projectRef={effectiveProjectSlug}
               workspaceSlug={workspaceSlug}
             />
             <TaskLinksEditor
@@ -467,12 +471,16 @@ function TaskDescriptionBlock({
   inherited,
   onSave,
   value,
+  taskRef,
+  projectRef,
   workspaceSlug,
 }: {
   canWrite: boolean
   inherited: boolean
   onSave: (value: string) => Promise<void> | void
   value: string
+  taskRef: string
+  projectRef?: string
   workspaceSlug: string
 }) {
   const { t } = useTranslation()
@@ -480,17 +488,21 @@ function TaskDescriptionBlock({
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingUploads, setPendingUploads] = useState(0)
+  const [failedUploads, setFailedUploads] = useState(0)
   const draftCleanup = useDescriptionDraftCleanup(workspaceSlug)
 
   function openEditor() {
     setDraft(value)
     setError(null)
+    setPendingUploads(0)
+    setFailedUploads(0)
     draftCleanup.reset()
     setEditing(true)
   }
 
   async function save() {
-    if (saving) {
+    if (saving || pendingUploads > 0 || failedUploads > 0) {
       return
     }
     setSaving(true)
@@ -538,6 +550,7 @@ function TaskDescriptionBlock({
         </div>
         {value ? (
           <MarkdownView
+            attachmentContext={{ workspaceSlug, taskRef }}
             className="max-w-3xl text-sm leading-6 text-muted-foreground"
             headingOffset={1}
           >
@@ -564,8 +577,25 @@ function TaskDescriptionBlock({
               {t("projectReadonly.taskDescription")}
             </Label>
             <MarkdownEditor
+              attachmentContext={{
+                workspaceSlug,
+                taskRef,
+                projectRef,
+                fetchSuggestions: async ({ kind, query, signal }) => {
+                  const resolved = await suggestContentReferences({
+                    type: kind,
+                    query,
+                    project: projectRef,
+                    limit: 20,
+                  }, { signal })
+                  return resolved.map(resolutionToMenuItem).filter((item) => item !== null)
+                },
+              }}
               ariaLabel={t("projectReadonly.taskDescription")}
               minHeight={260}
+              onAttachmentPendingChange={setPendingUploads}
+              onAttachmentFailureChange={setFailedUploads}
+              onDraftAttachmentCreated={draftCleanup.track}
               onChange={(markdown) => setDraft(markdown)}
               onModEnter={() => {
                 void save()
@@ -575,6 +605,9 @@ function TaskDescriptionBlock({
           </div>
           {error ? (
             <div className="text-sm text-destructive">{error}</div>
+          ) : null}
+          {failedUploads > 0 ? (
+            <div className="text-sm text-destructive">图片上传失败，请删除占位内容后重试粘贴。</div>
           ) : null}
           <DialogFooter>
             <Button
@@ -587,7 +620,7 @@ function TaskDescriptionBlock({
               {t("common.cancel")}
             </Button>
             <Button
-              disabled={saving}
+              disabled={saving || pendingUploads > 0 || failedUploads > 0}
               onClick={() => {
                 void save()
               }}

@@ -1,4 +1,6 @@
 import Placeholder from "@tiptap/extension-placeholder"
+import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model"
+import type { EditorView } from "@tiptap/pm/view"
 import { EditorContent, useEditor } from "@tiptap/react"
 import {
   BoldIcon,
@@ -30,12 +32,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import {
+  importTaskAttachmentURL,
+  removeAttachment,
+  uploadTaskAttachment,
+} from "@/features/workspace/attachments"
 
 import {
-  markdownExtensions,
+  markdownExtensionsWithAttachmentContext,
   normalizeMarkdownSource,
 } from "./extensions"
-import { sanitizeRichPaste } from "./paste-sanitizer"
+import { AttachmentUploadQueue, type AttachmentUploadQueueAPI } from "./attachment-upload-queue"
+import { dataURLToFile, sanitizeRichPaste, type PasteImageCandidate } from "./paste-sanitizer"
 import { LinkDialog } from "./link-dialog"
 import { TableBubbleMenu } from "./table-bubble-menu"
 import {
@@ -44,7 +52,6 @@ import {
   type ReferenceSuggestionMenuItem,
 } from "./reference-suggestion-menu"
 import {
-  buildInsertedReferenceMarkdown,
   detectReferenceTrigger,
   type ReferenceSuggestionState,
   type ReferenceTriggerKind,
@@ -60,12 +67,54 @@ type MarkdownEditorProps = {
   className?: string
   disabled?: boolean
   onModEnter?: () => void
-  // 附件上下文：用于 @ 用户 suggestion 的 workspace 查询。
+  onAttachmentPendingChange?: (pending: number) => void
+  onAttachmentFailureChange?: (failed: number) => void
+  onDraftAttachmentCreated?: (attachmentID: string) => void
+  onDeferredAttachment?: (input: DeferredAttachment) => void
+  // 附件上下文：taskRef 存在时启用图片上传和 @/# suggestion。
   attachmentContext?: {
     workspaceSlug: string
+    taskRef: string
     projectRef?: string
     fetchSuggestions: FetchSuggestions
+    attachmentAPI?: AttachmentUploadQueueAPI
   }
+}
+
+// DeferredAttachment 保存新建任务尚未拥有 taskRef 时的本地候选；只在内存中存在，
+// 任务创建成功后必须上传并把 marker 替换为 canonical ref。
+export type DeferredAttachment = {
+  candidate: PasteImageCandidate
+  marker: string
+}
+
+export function replaceDeferredAttachmentMarkers(
+  markdown: string,
+  attachments: Array<{ marker: string; id: string; alt: string }>
+): string {
+  return attachments.reduce(
+    (next, attachment) =>
+      replaceDeferredMarker(
+        next,
+        attachment.marker,
+        `![${attachment.alt}](ref://attachment/${attachment.id})`
+      ),
+    markdown
+  )
+}
+
+export function removeDeferredAttachmentMarkers(markdown: string, markers: string[]): string {
+  return markers.reduce(
+    (next, marker) => replaceDeferredMarker(next, marker, ""),
+    markdown
+  )
+}
+
+// Markdown serializer 会因上下文不同保留原 marker，或将 [] 转义为 \[\]。
+// 创建 task 前必须识别两种表示，避免把内部 marker 泄漏进持久化 description。
+function replaceDeferredMarker(markdown: string, marker: string, replacement: string): string {
+  const escaped = marker.replace(/\[|\]/g, "\\$&")
+  return markdown.split(marker).join(replacement).split(escaped).join(replacement)
 }
 
 const emptySuggestionState: ReferenceSuggestionState = {
@@ -81,6 +130,10 @@ export function MarkdownEditor({
   disabled = false,
   minHeight = 240,
   onChange,
+  onAttachmentPendingChange,
+  onAttachmentFailureChange,
+  onDraftAttachmentCreated,
+  onDeferredAttachment,
   onModEnter,
   placeholder,
   value,
@@ -92,7 +145,66 @@ export function MarkdownEditor({
   )
   const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg")
   const [suggestion, setSuggestion] = useState<ReferenceSuggestionState>(emptySuggestionState)
+  const [failedUploads, setFailedUploads] = useState<Array<{ candidate: PasteImageCandidate; marker: string }>>([])
   const composingRef = useRef(false)
+  const uploadQueueRef = useRef<AttachmentUploadQueue | null>(null)
+  const queueTaskRef = useRef("")
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null)
+  const pendingUploadsRef = useRef(0)
+  const failedMarkersRef = useRef(new Set<string>())
+
+  const replacePasteMarker = useCallback((marker: string, markdown: string) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const current = normalizeMarkdownSource(currentEditor.getMarkdown())
+    const serializedMarker = marker.replace(/[\\[\]]/g, "\\$&")
+    if (!current.includes(serializedMarker)) return
+    currentEditor.commands.setContent(current.replace(serializedMarker, markdown), { contentType: "markdown" })
+  }, [])
+
+  const queueCandidate = useCallback((candidate: PasteImageCandidate, marker: string) => {
+    if (!attachmentContext?.taskRef) {
+      onDeferredAttachment?.({ candidate, marker })
+      return
+    }
+    if (!uploadQueueRef.current || queueTaskRef.current !== attachmentContext.taskRef) {
+      const api = attachmentContext.attachmentAPI ?? {
+        uploadFile: (_taskRef, item, signal) => uploadTaskAttachment(attachmentContext.workspaceSlug, attachmentContext.taskRef, {
+          file: item.file!, mode: "description_draft", displayName: item.alt,
+        }, { signal }),
+        importRemoteURL: (_taskRef, sourceURL, signal) => importTaskAttachmentURL(
+          attachmentContext.workspaceSlug,
+          attachmentContext.taskRef,
+          { sourceURL, mode: "description_draft" },
+          { signal }
+        ),
+        removeDraft: (id) => removeAttachment(attachmentContext.workspaceSlug, id),
+      }
+      uploadQueueRef.current = new AttachmentUploadQueue(api)
+      uploadQueueRef.current.setTaskRef(attachmentContext.taskRef)
+      queueTaskRef.current = attachmentContext.taskRef
+    }
+    const uploadable = candidate.kind === "data" && candidate.sourceURL
+      ? { ...candidate, kind: "file" as const, file: dataURLToFile(candidate.sourceURL, candidate.alt) }
+      : candidate
+    pendingUploadsRef.current += 1
+    onAttachmentPendingChange?.(pendingUploadsRef.current)
+    void uploadQueueRef.current.enqueue(uploadable).then((attachment) => {
+      onDraftAttachmentCreated?.(attachment.id)
+      failedMarkersRef.current.delete(marker)
+      onAttachmentFailureChange?.(failedMarkersRef.current.size)
+      setFailedUploads((current) => current.filter((item) => item.marker !== marker))
+      replacePasteMarker(marker, `![${candidate.alt}](ref://attachment/${attachment.id})`)
+    }).catch(() => {
+      // 保留 marker 以阻止保存；用户删除 marker 后可继续保存，重新粘贴即可重试。
+      failedMarkersRef.current.add(marker)
+      onAttachmentFailureChange?.(failedMarkersRef.current.size)
+      setFailedUploads((current) => current.some((item) => item.marker === marker) ? current : [...current, { candidate, marker }])
+    }).finally(() => {
+      pendingUploadsRef.current -= 1
+      onAttachmentPendingChange?.(pendingUploadsRef.current)
+    })
+  }, [attachmentContext, onAttachmentFailureChange, onAttachmentPendingChange, onDeferredAttachment, onDraftAttachmentCreated, replacePasteMarker])
   const editor = useEditor({
     content: normalizeMarkdownSource(value),
     contentType: "markdown",
@@ -137,8 +249,7 @@ export function MarkdownEditor({
         // 内部 clipboard MIME 优先：同一璇础编辑器复制时保留 attachment/reference ID。
         const internalMarkdown = event.clipboardData?.getData("application/x-xuanchu-markdown") ?? ""
         if (internalMarkdown) {
-          const { tr } = view.state
-          view.dispatch(tr.insertContent(internalMarkdown))
+          view.dispatch(view.state.tr.insertText(internalMarkdown))
           event.preventDefault()
           return true
         }
@@ -161,13 +272,18 @@ export function MarkdownEditor({
             ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(f.type)
           )
           if (imageFiles.length > 0) {
-            // 插入 Markdown 图片占位：![截图](pending)
-            // 上传完成后 attachment context 会替换为 ref://attachment/{id}
-            const placeholders = imageFiles
-              .map((f) => `![${f.name || "截图"}](pending-upload)`)
-              .join("\n\n")
-            const { tr } = view.state
-            view.dispatch(tr.insertContent(placeholders))
+            if (!attachmentContext?.taskRef && !onDeferredAttachment) return false
+            for (const file of imageFiles) {
+              const key = `paste-image-${crypto.randomUUID()}`
+              const marker = `[[xuanchu-paste:${key}:${file.name || "截图"}]]`
+              const candidate = { key, kind: "file" as const, file, alt: file.name || "截图" }
+              if (!attachmentContext?.taskRef && onDeferredAttachment) {
+                insertDeferredAttachmentPreview(view, candidate, marker)
+              } else {
+                view.dispatch(view.state.tr.insertText(marker))
+              }
+              queueCandidate(candidate, marker)
+            }
             event.preventDefault()
             return true
           }
@@ -175,13 +291,17 @@ export function MarkdownEditor({
 
         // 富文本粘贴场景：有 HTML，先提取 <img> 候选再清洗。
         if (!html) return false
-        const { html: cleaned } = sanitizeRichPaste({ html, files })
+        if (!attachmentContext?.taskRef && !onDeferredAttachment) return false
+        const { html: cleaned, images } = sanitizeRichPaste({ html, files })
         if (!cleaned) return false
         const temp = document.createElement("div")
         temp.innerHTML = cleaned
-        const slice = temp.innerHTML
-        const { tr } = view.state
-        view.dispatch(tr.insertContent(slice))
+        const slice = ProseMirrorDOMParser.fromSchema(view.state.schema).parseSlice(temp)
+        view.dispatch(view.state.tr.replaceSelection(slice))
+        for (const candidate of images) {
+          const marker = `[[xuanchu-paste:${candidate.key}:${candidate.alt}]]`
+          queueCandidate(candidate, marker)
+        }
         event.preventDefault()
         return true
       },
@@ -193,21 +313,40 @@ export function MarkdownEditor({
           allowed.includes(f.type)
         )
         if (files.length === 0) return false
-        // 当前未提供 attachmentContext 的上传能力，仅阻止默认行为避免浏览器打开文件。
-        // 真实上传由 attachment 面板或后续上传队列处理。
+        if (!attachmentContext?.taskRef && !onDeferredAttachment) return false
+        for (const file of files) {
+          const key = `drop-image-${crypto.randomUUID()}`
+          const marker = `[[xuanchu-paste:${key}:${file.name || "图片"}]]`
+          const candidate = { key, kind: "file" as const, file, alt: file.name || "图片" }
+          if (!attachmentContext?.taskRef && onDeferredAttachment) {
+            insertDeferredAttachmentPreview(view, candidate, marker)
+          } else {
+            view.dispatch(view.state.tr.insertText(marker))
+          }
+          queueCandidate(candidate, marker)
+        }
         event.preventDefault()
         return true
       },
     },
     extensions: [
-      ...markdownExtensions,
+      ...markdownExtensionsWithAttachmentContext(attachmentContext?.taskRef ? {
+        workspaceSlug: attachmentContext.workspaceSlug,
+        taskRef: attachmentContext.taskRef,
+      } : undefined),
       Placeholder.configure({
         placeholder,
       }),
     ],
     immediatelyRender: false,
-    onUpdate: ({ editor: updatedEditor }) => {
-      const nextMarkdown = normalizeMarkdownSource(updatedEditor.getMarkdown())
+      onUpdate: ({ editor: updatedEditor }) => {
+        const nextMarkdown = normalizeMarkdownSource(updatedEditor.getMarkdown())
+        for (const marker of failedMarkersRef.current) {
+          if (!nextMarkdown.includes(marker.replace(/[\\[\]]/g, "\\$&"))) {
+            failedMarkersRef.current.delete(marker)
+            onAttachmentFailureChange?.(failedMarkersRef.current.size)
+          }
+        }
       emittedMarkdownValuesRef.current.add(nextMarkdown)
       onChange(nextMarkdown)
       // 检测 @ / # 触发。
@@ -236,6 +375,17 @@ export function MarkdownEditor({
   })
 
   useEffect(() => {
+    editorRef.current = editor
+  }, [editor])
+
+  useEffect(() => () => {
+    // 关闭编辑器时中断未完成请求，并清理已完成但尚未绑定的 draft；服务端 janitor
+    // 仅作为浏览器崩溃等异常场景的兜底，不能替代正常取消路径。
+    uploadQueueRef.current?.cancelAll()
+    void uploadQueueRef.current?.cleanupDrafts()
+  }, [])
+
+  useEffect(() => {
     if (!editor) {
       return
     }
@@ -253,17 +403,15 @@ export function MarkdownEditor({
       const label =
         item.label ||
         (item.kind === "task" && item.description ? `#${item.description}` : item.id)
-      const markdown = buildInsertedReferenceMarkdown({
-        kind: item.kind as ReferenceTriggerKind,
-        id: item.id,
-        label,
-      })
       const { from, to } = suggestion.range
       editor
         .chain()
         .focus()
         .deleteRange({ from, to })
-        .insertContentAt(from, markdown)
+        .insertContentAt(from, {
+          type: "xuanchuReference",
+          attrs: { kind: item.kind as ReferenceTriggerKind, id: item.id, label },
+        })
         .run()
       setSuggestion(emptySuggestionState)
     },
@@ -476,7 +624,31 @@ export function MarkdownEditor({
         />
       ) : (
         <>
-          <EditorContent editor={editor} />
+      <EditorContent editor={editor} />
+      {failedUploads.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-xs text-destructive">
+          {failedUploads.map(({ candidate, marker }) => (
+            <span className="inline-flex items-center gap-1" key={marker}>
+              <span>{candidate.alt} 上传失败</span>
+              <Button onClick={() => queueCandidate(candidate, marker)} size="sm" type="button" variant="ghost">重试</Button>
+              <Button onClick={() => {
+                failedMarkersRef.current.delete(marker)
+                onAttachmentFailureChange?.(failedMarkersRef.current.size)
+                setFailedUploads((current) => current.filter((item) => item.marker !== marker))
+                replacePasteMarker(marker, "")
+              }} size="sm" type="button" variant="ghost">移除</Button>
+              {candidate.kind === "remote" && /^https?:\/\//.test(candidate.sourceURL ?? "") ? (
+                <Button onClick={() => {
+                  failedMarkersRef.current.delete(marker)
+                  onAttachmentFailureChange?.(failedMarkersRef.current.size)
+                  setFailedUploads((current) => current.filter((item) => item.marker !== marker))
+                  replacePasteMarker(marker, `[${candidate.alt}](${candidate.sourceURL})`)
+                }} size="sm" type="button" variant="ghost">保留链接</Button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
           <TableBubbleMenu editor={editor} />
           {suggestion.active && suggestion.kind && attachmentContext && (
             <div className="absolute left-1/2 top-full z-10 -translate-x-1/2 pt-1">
@@ -544,4 +716,32 @@ function ToolbarButton({
 
 function ToolbarSeparator() {
   return <div className="mx-1 h-5 w-px bg-border" />
+}
+
+// insertDeferredAttachmentPreview 在新建 task 尚未拥有 target ID 时插入本地预览节点。
+// 它的 Markdown serializer 仍输出 marker，因此父表单可以在提交前上传并原子替换。
+function insertDeferredAttachmentPreview(
+  view: EditorView,
+  candidate: PasteImageCandidate,
+  marker: string
+) {
+  const type = view.state.schema.nodes.xuanchuAttachment
+  if (!type) {
+    view.dispatch(view.state.tr.insertText(marker))
+    return
+  }
+  const sourceURL = candidate.kind === "data"
+    ? candidate.sourceURL ?? ""
+    : candidate.file
+      ? URL.createObjectURL(candidate.file)
+      : ""
+  const node = type.create({
+    id: "",
+    label: candidate.alt,
+    image: true,
+    marker,
+    sourceURL,
+    state: "loading",
+  })
+  view.dispatch(view.state.tr.replaceSelectionWith(node))
 }

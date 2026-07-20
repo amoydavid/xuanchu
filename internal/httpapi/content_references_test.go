@@ -109,6 +109,39 @@ func TestContentReferenceResolveReturnsUnavailableForMissing(t *testing.T) {
 	}
 }
 
+func TestContentReferenceResolveAllowsMixedResultsForWorkspaceOnlyToken(t *testing.T) {
+	fixture, alice := newHTTPContentRefFixture(t)
+	svc, err := app.NewService(app.ServiceOptions{Store: fixture.server.store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := svc.AddProject(app.AddProjectInput{Slug: "resolvonl", Name: "Resolve only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsk, err := svc.Add(app.AddInput{Title: "not task readable", Project: &project.Slug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaceOnly, err := svc.CreateToken(app.CreateTokenInput{
+		Name: "workspace-only-resolve", Scopes: []string{auth.ScopeWorkspaceRead}, WorkspaceRefs: []string{"local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"references":[{"type":"user","id":"` + alice.ID + `"},{"type":"task","id":"` + tsk.UUID + `"}]}`
+	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/content-references/resolve?workspace=local", body, authHeader(workspaceOnly.RawToken))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"user","id":"`+alice.ID+`","status":"resolved"`) {
+		t.Fatalf("workspace-readable user should resolve: %s", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"task","id":"`+tsk.UUID+`","status":"unavailable"`) {
+		t.Fatalf("task without task:read must be unavailable: %s", rr.Body.String())
+	}
+}
+
 func TestContentReferenceResolveRejectsTooMany(t *testing.T) {
 	fixture, _ := newHTTPContentRefFixture(t)
 	var refs []string
@@ -119,4 +152,3 @@ func TestContentReferenceResolveRejectsTooMany(t *testing.T) {
 	rr := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/content-references/resolve?workspace=local", body, authHeader(fixture.token))
 	assertHTTPErrorCode(t, rr, http.StatusBadRequest, "description_reference_limit_exceeded")
 }
-

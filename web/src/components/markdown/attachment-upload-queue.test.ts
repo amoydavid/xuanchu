@@ -129,6 +129,19 @@ describe("AttachmentUploadQueue", () => {
     expect(item?.status).toBe("cancelled")
   })
 
+  it("removes a late server success after cancellation", async () => {
+    const api = mockApi()
+    let resolveUpload: ((attachment: ReturnType<typeof makeAttachment>) => void) | undefined
+    api.uploadFile.mockImplementation(() => new Promise((resolve) => { resolveUpload = resolve }))
+    const queue = new AttachmentUploadQueue(api, {})
+    queue.setTaskRef("t1")
+    const promise = queue.enqueue({ kind: "file", file: new File(["x"], "a.png"), alt: "a" })
+    queue.cancelAll()
+    resolveUpload?.(makeAttachment("late"))
+    await expect(promise).rejects.toThrow()
+    expect(api.removeDraft).toHaveBeenCalledWith("late", expect.any(AbortSignal))
+  })
+
   it("cleanupDrafts removes resolved drafts", async () => {
     const api = mockApi()
     const queue = new AttachmentUploadQueue(api, {})

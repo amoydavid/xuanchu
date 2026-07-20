@@ -634,7 +634,9 @@ const (
 	AttachmentStateDeleted   = "deleted"
 )
 
-// 附件归属类型常量。首期只有 task。
+// 附件归属类型常量。task_draft 是创建任务前的私有暂存归属，只能由创建者
+// 在同一 Add transaction 中绑定为 task，绝不作为对外资源展示。
 const (
 	AttachmentAttachedToTask = "task"
+	AttachmentAttachedToTaskDraft = "task_draft"
 )

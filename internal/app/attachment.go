@@ -260,6 +260,9 @@ func (s *Service) GetAttachment(id string) (AttachmentView, error) {
 	if err != nil {
 		return AttachmentView{}, mapRepoNotFound(err)
 	}
+	if s.isForeignDraftAttachment(row) {
+		return AttachmentView{}, RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
+	}
 	if _, err := s.resolveAttachmentTarget(row.AttachedToType, row.AttachedToID, false); err != nil {
 		return AttachmentView{}, RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
 	}
@@ -274,6 +277,9 @@ func (s *Service) OpenAttachmentContent(ctx context.Context, id string) (Attachm
 	row, err := s.attachmentRepo.GetByID(id)
 	if err != nil {
 		return AttachmentContent{}, mapRepoNotFound(err)
+	}
+	if s.isForeignDraftAttachment(row) {
+		return AttachmentContent{}, RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
 	}
 	if _, err := s.resolveAttachmentTarget(row.AttachedToType, row.AttachedToID, false); err != nil {
 		return AttachmentContent{}, RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
@@ -306,6 +312,9 @@ func (s *Service) RenameAttachment(id, displayName string) (AttachmentView, erro
 	if err != nil {
 		return AttachmentView{}, mapRepoNotFound(err)
 	}
+	if s.isForeignDraftAttachment(row) {
+		return AttachmentView{}, RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
+	}
 	target, err := s.resolveAttachmentTarget(row.AttachedToType, row.AttachedToID, true)
 	if err != nil {
 		return AttachmentView{}, RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
@@ -336,6 +345,9 @@ func (s *Service) RemoveAttachment(ctx context.Context, id string) error {
 	row, err := s.attachmentRepo.GetByID(id)
 	if err != nil {
 		return mapRepoNotFound(err)
+	}
+	if s.isForeignDraftAttachment(row) {
+		return RuntimeError{Code: "attachment_not_found", Message: "attachment not found"}
 	}
 	target, err := s.resolveAttachmentTarget(row.AttachedToType, row.AttachedToID, true)
 	if err != nil {
@@ -422,6 +434,19 @@ func (s *Service) CleanupAttachments(ctx context.Context, limit int) (Attachment
 
 // resolveAttachmentTarget 解析 task target，执行 workspace/scope/closed-state 检查。
 func (s *Service) resolveAttachmentTarget(targetType, targetRef string, write bool) (AttachmentTarget, error) {
+	if targetType == storage.AttachmentAttachedToTaskDraft {
+		if _, err := uuid.Parse(targetRef); err != nil {
+			return AttachmentTarget{}, RuntimeError{Code: "attachment_target_type_unsupported", Message: "invalid task draft target"}
+		}
+		if write {
+			if err := s.Require(PermissionTaskWrite); err != nil {
+				return AttachmentTarget{}, err
+			}
+		} else if err := s.Require(PermissionTaskRead); err != nil {
+			return AttachmentTarget{}, err
+		}
+		return AttachmentTarget{Type: targetType, ID: targetRef, WorkspaceID: s.workspaceID}, nil
+	}
 	if targetType != storage.AttachmentAttachedToTask {
 		return AttachmentTarget{}, RuntimeError{Code: "attachment_target_type_unsupported", Message: "only task target is supported"}
 	}
@@ -498,6 +523,12 @@ func (s *Service) actorCreatorID() string {
 		return s.runtime.ActorTokenID
 	}
 	return s.runtime.ActorType
+}
+
+// isForeignDraftAttachment 统一保护所有尚未激活的附件：无论其临时 target
+// 还是已知 task target，draft 只能由创建 actor 读取、改名、删除或绑定。
+func (s *Service) isForeignDraftAttachment(row storage.Attachment) bool {
+	return row.State == storage.AttachmentStateDraft && row.CreatedBy != s.actorCreatorID()
 }
 
 func (s *Service) attachmentReferencedByDescription(row storage.Attachment) (bool, error) {

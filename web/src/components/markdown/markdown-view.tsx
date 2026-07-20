@@ -3,18 +3,22 @@ import { renderToReactElement } from "@tiptap/static-renderer/pm/react"
 import { cn } from "@/lib/utils"
 
 import { markdownExtensions, parseMarkdownToJSON } from "./extensions"
+import { AttachmentInlineView } from "./attachment-node-view"
+import { ReferenceInlineView } from "./reference-inline-view"
 import "./markdown.css"
 
 type MarkdownViewProps = {
   children: string
   className?: string
   headingOffset?: number
+  attachmentContext?: { workspaceSlug: string; taskRef: string }
 }
 
 export function MarkdownView({
   children,
   className,
   headingOffset = 0,
+  attachmentContext,
 }: MarkdownViewProps) {
   if (!children.trim()) {
     return null
@@ -30,6 +34,21 @@ export function MarkdownView({
       {renderToReactElement({
         content,
         extensions: markdownExtensions,
+        options: {
+          nodeMapping: {
+            xuanchuAttachment: ({ node }: { node: { attrs: unknown } }) => {
+              const attrs = node.attrs as { id: string; label: string; image?: boolean }
+              if (attachmentContext) {
+                return <AttachmentInlineView workspaceSlug={attachmentContext.workspaceSlug} taskRef={attachmentContext.taskRef} attrs={attrs} />
+              }
+              return <span className="rounded bg-muted px-1 py-0.5 text-xs">{attrs.label}</span>
+            },
+            xuanchuReference: ({ node }) => {
+              const attrs = node.attrs as { kind: "user" | "task"; id: string; label: string }
+              return <ReferenceInlineView kind={attrs.kind} id={attrs.id} label={attrs.label} />
+            },
+          },
+        },
       })}
     </div>
   )

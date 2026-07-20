@@ -65,8 +65,8 @@ type Service struct {
 	// requireTokenSecret 为 true 时，缺少 secret key 的 token 创建请求会失败。
 	requireTokenSecret bool
 	// attachmentRepo/attachmentRuntime 提供附件 CRUD 与二进制存储。
-	attachmentRepo     *storage.AttachmentRepository
-	attachmentRuntime  *AttachmentRuntime
+	attachmentRepo    *storage.AttachmentRepository
+	attachmentRuntime *AttachmentRuntime
 }
 
 // adminActingSessionStore 是 admin acting session 仓储在 app 层的最小接口。
@@ -93,6 +93,9 @@ type AddInput struct {
 	Tags        []string
 	UDAs        map[string]string
 	Parent      *string
+	// AttachmentDraftTarget 是 Web 创建任务前上传图片的私有 target UUID。
+	// addLocked 在同一 transaction 中把它重绑定到创建的 task。
+	AttachmentDraftTarget string
 }
 
 type ListInput struct {
@@ -434,6 +437,9 @@ func (s *Service) Add(input AddInput) (task.Task, error) {
 		blocked := tx.detectBlockedEventsAfterAdd(created)
 		events := []HookEvent{event}
 		events = append(events, blocked...)
+		if mentionEvent, ok := tx.buildUserMentionedEventIfNeeded(task.Task{}, created, tx.clock.Unix()); ok {
+			events = append(events, mentionEvent)
+		}
 		entry := taskAuditEntry("task.add", created.UUID, change)
 		return &entry, events, nil
 	})
@@ -474,6 +480,9 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 		blocked := tx.detectBlockedEventsAfterAdd(created)
 		events := []HookEvent{event}
 		events = append(events, blocked...)
+		if mentionEvent, ok := tx.buildUserMentionedEventIfNeeded(task.Task{}, created, tx.clock.Unix()); ok {
+			events = append(events, mentionEvent)
+		}
 		return entries, events, nil
 	})
 	return created, err
@@ -481,6 +490,12 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 
 func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	now := s.clock.Unix()
+	// 先解析并校验 description，随后只重绑其中实际引用的创建草稿。不能按
+	// draft target 批量重绑，否则用户删除图片 marker 后仍会把已上传文件挂到 task。
+	descriptionRefs, err := s.validateDescriptionReferences(nil, input.Description, true)
+	if err != nil {
+		return task.Task{}, projectChange{}, err
+	}
 	assignees, err := s.resolveAssigneeRefs(input.Assignees)
 	if err != nil {
 		return task.Task{}, projectChange{}, err
@@ -514,7 +529,18 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 		tsk.Status = task.StatusWaiting
 	}
 	created, err := s.repo.Create(tsk)
-	return created, projChange, err
+	if err != nil {
+		return task.Task{}, projChange, err
+	}
+	if err := s.bindTaskCreationDrafts(input.AttachmentDraftTarget, created.UUID, uniqueAttachmentIDs(descriptionRefs)); err != nil {
+		return task.Task{}, projChange, err
+	}
+	// 新建任务也必须走同一 description 引用校验；外层事务会在失败时回滚
+	// 刚创建的 task，避免把跨任务/跨 workspace 的 attachment URI 持久化下来。
+	if err := s.validateAndBindDescriptionAttachments(task.Task{}, created); err != nil {
+		return task.Task{}, projChange, err
+	}
+	return created, projChange, nil
 }
 
 func (s *Service) List(input ListInput) ([]task.Task, error) {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
@@ -203,6 +204,46 @@ func TestImportTaskBundleRejectsMissingSeries(t *testing.T) {
 	_, err := svc.ImportTaskBundle(bundle)
 	if err == nil {
 		t.Fatal("引用不存在 series 的 occurrence 应被拒绝")
+	}
+}
+
+func TestImportTaskBundleRejectsInvalidDescriptionAndRollsBack(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	project, err := svc.AddProject(AddProjectInput{Slug: "importrich", Name: "Import rich"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := strings.Repeat("x", maxDescriptionBytes+1)
+	bundle := TaskBundleV1{
+		Schema: TaskBundleSchemaV1,
+		TaskSeries: []TaskSeriesBundle{{
+			ID: "oversized-series", ProjectID: project.ID, Title: "oversized", Description: &description,
+			Status: taskseries.StatusActive, RecurrenceRule: "daily", FirstDue: 5000,
+		}},
+	}
+	_, err = svc.ImportTaskBundle(bundle)
+	assertRuntimeCode(t, err, "description_too_large")
+	if _, err := svc.taskSeriesRepo.Get(svc.workspaceID, "oversized-series"); err == nil {
+		t.Fatal("invalid bundle series was persisted")
+	}
+}
+
+func TestImportTaskBundleRejectsUnavailableDescriptionReferenceAndRollsBack(t *testing.T) {
+	svc, closeFn := newTestService(t, 1000)
+	defer closeFn()
+	description := "[@missing](ref://user/00000000-0000-4000-8000-000000000001)"
+	bundle := TaskBundleV1{
+		Schema: TaskBundleSchemaV1,
+		Tasks: []TaskBundleTask{{
+			UUID: "invalid-reference-task", Title: "invalid reference", Description: &description,
+			Status: domain.StatusPending, Entry: 1, Modified: 1,
+		}},
+	}
+	_, err := svc.ImportTaskBundle(bundle)
+	assertRuntimeCode(t, err, "description_reference_invalid")
+	if _, err := svc.repo.GetByUUID(svc.workspaceID, "invalid-reference-task"); err == nil {
+		t.Fatal("invalid bundle task was persisted")
 	}
 }
 

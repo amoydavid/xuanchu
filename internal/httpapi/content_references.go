@@ -68,9 +68,9 @@ func (s *Server) handleContentReferenceResolve(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "description_reference_limit_exceeded", "too many references; max 200", nil)
 		return
 	}
-	// resolve 不需要单一 capability：混合 user/task/attachment 引用各自走独立权限判断，
-	// 因此使用 workspace 读权限作为最小门槛。
-	scoped, _, err := s.scopedService(r, "task:read", app.PermissionTaskRead, "")
+	// resolve 不要求单一 capability：混合 user/task/attachment 引用由 App 层逐项
+	// 判断 workspace:read 与 task:read，缺少一种时只返回对应项 unavailable。
+	scoped, _, err := s.scopedService(r, "", "", "")
 	if err != nil {
 		writeAppError(w, err)
 		return

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { CheckIcon, UserPlusIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { MarkdownEditor } from "@/components/markdown"
+import { MarkdownEditor, type DeferredAttachment } from "@/components/markdown"
+import { resolutionToMenuItem } from "@/components/markdown/reference-suggestion-menu"
+import { suggestContentReferences } from "@/features/workspace/content-references"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -43,6 +45,7 @@ export function TaskCommonFields({
   disabled = false,
   onChange,
   onSubmit,
+  onDeferredAttachment,
   value,
   workspaceSlug,
 }: {
@@ -50,6 +53,7 @@ export function TaskCommonFields({
   disabled?: boolean
   onChange: (value: TaskCommonFieldValue) => void
   onSubmit?: () => void
+  onDeferredAttachment?: (input: DeferredAttachment) => void
   value: TaskCommonFieldValue
   workspaceSlug: string
 }) {
@@ -79,9 +83,18 @@ export function TaskCommonFields({
       <div className="grid gap-2">
         <Label>{t("taskCreate.details")}</Label>
         <MarkdownEditor
+          attachmentContext={{
+            workspaceSlug,
+            taskRef: "",
+            fetchSuggestions: async ({ kind, query, signal }) =>
+              (await suggestContentReferences({ type: kind, query, limit: 20 }, { signal }))
+                .map(resolutionToMenuItem)
+                .filter((item) => item !== null),
+          }}
           ariaLabel={t("taskCreate.details")}
           minHeight={150}
           onChange={(description) => update({ description })}
+          onDeferredAttachment={onDeferredAttachment}
           onModEnter={() => onSubmit?.()}
           placeholder={t("taskCreate.detailsPlaceholder")}
           value={value.description}

@@ -22,7 +22,7 @@ export type AttachmentActorInfo = {
 
 export type Attachment = {
   id: string
-  attached_to: { type: "task"; id: string }
+  attached_to: { type: "task" | "task_draft"; id: string }
   state: "uploading" | "draft" | "active" | "deleted"
   original_name: string
   display_name: string
@@ -69,6 +69,20 @@ export function taskAttachmentImportURLPath(
   taskRef: string
 ): string {
   return `/api/v1/tasks/${encodeSegment(taskRef)}/attachments/import-url?${workspaceQuery(workspaceSlug)}`
+}
+
+export function taskDraftAttachmentsPath(
+  workspaceSlug: string,
+  draftTarget: string
+): string {
+  return `/api/v1/task-drafts/${encodeSegment(draftTarget)}/attachments?${workspaceQuery(workspaceSlug)}`
+}
+
+export function taskDraftAttachmentImportURLPath(
+  workspaceSlug: string,
+  draftTarget: string
+): string {
+  return `/api/v1/task-drafts/${encodeSegment(draftTarget)}/attachments/import-url?${workspaceQuery(workspaceSlug)}`
 }
 
 export function attachmentItemPath(
@@ -138,7 +152,8 @@ export function uploadTaskAttachment(
 export function importTaskAttachmentURL(
   workspaceSlug: string,
   taskRef: string,
-  input: { sourceURL: string; mode: AttachmentUploadMode; displayName?: string }
+  input: { sourceURL: string; mode: AttachmentUploadMode; displayName?: string },
+  options?: { signal?: AbortSignal }
 ): Promise<Attachment> {
   return workspaceApiPost<Attachment>(
     taskAttachmentImportURLPath(workspaceSlug, taskRef),
@@ -146,7 +161,38 @@ export function importTaskAttachmentURL(
       source_url: input.sourceURL,
       mode: input.mode,
       display_name: input.displayName,
-    }
+    },
+    options
+  )
+}
+
+// uploadTaskDraftAttachment 在任务尚未创建时，把截图暂存到本次创建专属的私有 target。
+export function uploadTaskDraftAttachment(
+  workspaceSlug: string,
+  draftTarget: string,
+  input: { file: File; mode: AttachmentUploadMode; displayName?: string },
+  options?: { signal?: AbortSignal; onProgress?: (sent: number, total: number) => void }
+): Promise<Attachment> {
+  const form = new FormData()
+  form.append("file", input.file)
+  if (input.displayName) form.append("display_name", input.displayName)
+  return workspaceApiMultipart<Attachment>(taskDraftAttachmentsPath(workspaceSlug, draftTarget), form, options)
+}
+
+// importTaskDraftAttachmentURL 将远程图片转存到任务创建前的私有 draft target。
+export function importTaskDraftAttachmentURL(
+  workspaceSlug: string,
+  draftTarget: string,
+  input: { sourceURL: string; displayName?: string },
+  options?: { signal?: AbortSignal }
+): Promise<Attachment> {
+  return workspaceApiPost<Attachment>(
+    taskDraftAttachmentImportURLPath(workspaceSlug, draftTarget),
+    {
+      source_url: input.sourceURL,
+      display_name: input.displayName,
+    },
+    options
   )
 }
 

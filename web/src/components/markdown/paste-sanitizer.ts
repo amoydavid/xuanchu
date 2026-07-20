@@ -18,6 +18,37 @@ export type SanitizedPaste = {
   images: PasteImageCandidate[]
 }
 
+const INLINE_IMAGE_MEDIA_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+])
+
+function isSupportedInlineImageMediaType(mediaType: string): boolean {
+  return INLINE_IMAGE_MEDIA_TYPES.has(mediaType.toLowerCase())
+}
+
+// dataURLToFile 将剪贴板 HTML 中的 data: 图片转换为普通 File，使其与截图走同一
+// 受限上传链路；data URL 绝不能进入持久化 Markdown。
+export function dataURLToFile(dataURL: string, name: string): File {
+  const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/i.exec(dataURL)
+  if (!match) {
+    throw new Error("invalid data image")
+  }
+  const mediaType = match[1] || "application/octet-stream"
+  if (!isSupportedInlineImageMediaType(mediaType)) {
+    throw new Error("invalid data image")
+  }
+  const payload = match[3] || ""
+  const decoded = match[2]
+    ? Uint8Array.from(atob(payload), (char) => char.charCodeAt(0))
+    : new TextEncoder().encode(decodeURIComponent(payload))
+  const extension = mediaType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin"
+  const baseName = name.trim() || "image"
+  return new File([decoded], `${baseName}.${extension}`, { type: mediaType })
+}
+
 const ALLOWED_TAGS = [
   "p", "br", "h1", "h2", "h3", "strong", "b", "em", "i", "s", "del",
   "ul", "ol", "li", "blockquote", "pre", "code",
@@ -42,7 +73,9 @@ export function sanitizeRichPaste(input: {
   const container = document.createElement("div")
   container.innerHTML = input.html
 
-  const fileByIndex = input.files ?? []
+  const fileByIndex = (input.files ?? []).filter((file) =>
+    isSupportedInlineImageMediaType(file.type)
+  )
   let fileCursor = 0
   const images: PasteImageCandidate[] = []
   const imgs = Array.from(container.querySelectorAll("img"))
@@ -60,9 +93,14 @@ export function sanitizeRichPaste(input: {
     // 2) data URL
     const src = img.getAttribute("src") ?? ""
     if (src.startsWith("data:")) {
-      const candidate = makeCandidate("data", alt, { sourceURL: src })
-      images.push(candidate)
-      replaceWithMarker(img, candidate.key, alt)
+      const mediaType = /^data:([^;,]+)/i.exec(src)?.[1] ?? ""
+      if (isSupportedInlineImageMediaType(mediaType)) {
+        const candidate = makeCandidate("data", alt, { sourceURL: src })
+        images.push(candidate)
+        replaceWithMarker(img, candidate.key, alt)
+      } else {
+        img.remove()
+      }
       continue
     }
     // 3) 公网 http(s)
@@ -112,7 +150,8 @@ function makeCandidate(
 function replaceWithMarker(img: Element, key: string, alt: string) {
   const anchor = document.createElement("a")
   anchor.setAttribute("data-xuanchu-paste-image", key)
-  anchor.textContent = alt
+  // 文本 marker 在 Tiptap 解析 HTML 时仍会保留；属性仅用于 sanitizer 的调用方定位。
+  anchor.textContent = `[[xuanchu-paste:${key}:${alt}]]`
   img.replaceWith(anchor)
 }
 

@@ -178,6 +178,9 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 	if input.Title == "" {
 		return TaskSeriesCreateResult{}, RuntimeError{Code: "task_series_invalid_rule", Message: "title 必填"}
 	}
+	if _, err := s.validateDescriptionReferences(nil, input.Description, false); err != nil {
+		return TaskSeriesCreateResult{}, err
+	}
 
 	// 解析 project。
 	projectID := input.ProjectID
@@ -468,6 +471,7 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 	if series.Status != taskseries.StatusActive {
 		return TaskSeriesView{}, RuntimeError{Code: "task_series_inactive", Message: "只能修改 active series"}
 	}
+	beforeDescription := series.Description
 	if input.Assignees != nil {
 		resolved, err := s.resolveAssigneeRefs(input.Assignees)
 		if err != nil {
@@ -584,6 +588,9 @@ func (s *Service) ModifyTaskSeries(seriesID string, input ModifyTaskSeriesInput)
 	series.ModifiedAt = now
 	if err := taskseries.ValidateSeries(series); err != nil {
 		return TaskSeriesView{}, RuntimeError{Code: "task_series_invalid", Message: err.Error()}
+	}
+	if _, err := s.validateDescriptionReferences(beforeDescription, series.Description, false); err != nil {
+		return TaskSeriesView{}, err
 	}
 	var result TaskSeriesView
 	err = s.store.Transaction(func(txStore *storage.Store) error {

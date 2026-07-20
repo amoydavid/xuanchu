@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ApiError } from "@/lib/api"
@@ -61,9 +61,8 @@ export function ReferenceSuggestionMenu({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
-  const abortRef = useRef<AbortController | null>(null)
-
   useEffect(() => {
+    const controller = new AbortController()
     if (query.trim().length === 0) {
       // 空 query 不请求。
       const reset = () => {
@@ -72,7 +71,7 @@ export function ReferenceSuggestionMenu({
         setError(null)
       }
       reset()
-      return
+      return () => controller.abort()
     }
     const startLoading = () => {
       setLoading(true)
@@ -80,9 +79,6 @@ export function ReferenceSuggestionMenu({
     }
     startLoading()
     const handle = setTimeout(() => {
-      const controller = new AbortController()
-      abortRef.current?.abort()
-      abortRef.current = controller
       fetchSuggestions({ kind, query, signal: controller.signal })
         .then((next) => {
           setItems(next.slice(0, maxItems))
@@ -101,13 +97,14 @@ export function ReferenceSuggestionMenu({
     }, debounceMs)
     return () => {
       clearTimeout(handle)
+      // 立即取消上一 query（以及组件卸载时的请求），不要等下一次 150ms
+      // debounce 才中止，避免旧结果竞争覆盖新菜单。
+      controller.abort()
     }
+    // fetchSuggestions 通常是编辑器 render 时创建的 closure；仅因其身份变化而重置
+    // debounce 会造成请求循环。query/kind 是实际触发条件。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, query])
-
-  useEffect(() => {
-    abortRef.current?.abort()
-  }, [])
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown") {

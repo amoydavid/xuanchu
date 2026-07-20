@@ -12,6 +12,7 @@ type RequestJsonOptions = {
   method: string
   onUnauthorized?: () => void
   path: string
+  signal?: AbortSignal
 }
 
 export class ApiError extends Error {
@@ -32,6 +33,7 @@ export async function requestJson<T>({
   method,
   onUnauthorized,
   path,
+  signal,
 }: RequestJsonOptions): Promise<T> {
   const token = getToken?.()
   const headers: Record<string, string> = {
@@ -61,6 +63,7 @@ export async function requestJson<T>({
     // 有 token 时仍发 same-origin credentials，让 cookie 一并带上（无副作用）；
     // 无 token 时依赖 cookie 鉴权。
     credentials: "same-origin",
+    signal,
   })
   const payload = (await response.json().catch(() => ({}))) as Envelope<T>
   if (!response.ok) {
@@ -74,7 +77,7 @@ export async function requestJson<T>({
 }
 
 // readCsrfCookie 从 xuanchu_csrf cookie 读取 CSRF 明文值（非 HttpOnly，JS 可读）。
-function readCsrfCookie(): string | undefined {
+export function readCsrfCookie(): string | undefined {
   const match = document.cookie
     .split("; ")
     .find((row) => row.startsWith("xuanchu_csrf="))

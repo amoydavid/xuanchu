@@ -105,6 +105,49 @@ func TestPostgres_TaskCRUD(t *testing.T) {
 	}
 }
 
+func TestPostgresAttachmentFinalizeWithQuota(t *testing.T) {
+	dbURL := postgresTestURL(t)
+	store, err := Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := store.DB().Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	defer tx.Rollback() //nolint:errcheck -- 测试事务只用于隔离 fixture。
+
+	repo := NewAttachmentRepository(tx)
+	id := uuid.NewString()
+	if _, err := repo.Create(Attachment{
+		ID: id, WorkspaceID: ws.ID, AttachedToType: AttachmentAttachedToTask, AttachedToID: uuid.NewString(),
+		State: AttachmentStateUploading, StorageBackend: "filesystem", StorageKey: "postgres-test/" + id,
+		CreatedBy: "postgres-test", CreatedAt: 1, ModifiedAt: 1,
+	}); err != nil {
+		t.Fatalf("Create attachment: %v", err)
+	}
+
+	err = repo.FinalizeWithQuota(id, AttachmentFinalize{
+		State: AttachmentStateActive, OriginalName: "diagram.png", DisplayName: "diagram.png",
+		MediaType: "image/png", Extension: "png", SizeBytes: 1, SHA256: "test",
+		InlineCapable: true, StorageBackend: "filesystem", StorageKey: "postgres-test/" + id,
+		ModifiedAt: 2,
+	}, AttachmentQuotaLimits{
+		MaxAttachmentsPerResource:  100,
+		MaxResourceTotalSizeBytes:  1 << 20,
+		MaxWorkspaceTotalSizeBytes: 1 << 20,
+	})
+	if err != nil {
+		t.Fatalf("FinalizeWithQuota: %v", err)
+	}
+}
+
 func TestPostgres_SummarizeSeriesOccurrences(t *testing.T) {
 	dbURL := postgresTestURL(t)
 	store, err := Open(dbURL)

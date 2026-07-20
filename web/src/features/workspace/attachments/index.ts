@@ -6,14 +6,18 @@ export {
   getAttachment,
   getAttachmentBlob,
   importTaskAttachmentURL,
+  importTaskDraftAttachmentURL,
   listTaskAttachments,
   removeAttachment,
   renameAttachment,
   taskAttachmentImportURLPath,
   taskAttachmentsPath,
+  taskDraftAttachmentImportURLPath,
+  taskDraftAttachmentsPath,
   attachmentItemPath,
   attachmentContentPath,
   uploadTaskAttachment,
+  uploadTaskDraftAttachment,
 } from "./attachment-api"
 
 export {

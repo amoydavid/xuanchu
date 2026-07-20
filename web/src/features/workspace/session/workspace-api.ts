@@ -1,4 +1,4 @@
-import { ApiError, requestJson } from "@/lib/api"
+import { ApiError, readCsrfCookie, requestJson } from "@/lib/api"
 import { navigateToDocument } from "@/lib/browser-navigation"
 
 import {
@@ -49,7 +49,8 @@ function resolveWorkspaceCredential() {
 async function workspaceRequest<T>(
   method: string,
   path: string,
-  body?: unknown
+  body?: unknown,
+  options?: { signal?: AbortSignal }
 ): Promise<T> {
   assertWorkspacePath(path)
   const { token, onUnauthorized } = resolveWorkspaceCredential()
@@ -59,6 +60,7 @@ async function workspaceRequest<T>(
     method,
     onUnauthorized,
     path,
+    signal: options?.signal,
   })
 }
 
@@ -81,12 +83,19 @@ function clearWorkspaceSession() {
   clearTenantSwitchContext()
 }
 
-export function workspaceApiGet<T>(path: string): Promise<T> {
-  return workspaceRequest<T>("GET", path)
+export function workspaceApiGet<T>(
+  path: string,
+  options?: { signal?: AbortSignal }
+): Promise<T> {
+  return workspaceRequest<T>("GET", path, undefined, options)
 }
 
-export function workspaceApiPost<T>(path: string, body?: unknown): Promise<T> {
-  return workspaceRequest<T>("POST", path, body)
+export function workspaceApiPost<T>(
+  path: string,
+  body?: unknown,
+  options?: { signal?: AbortSignal }
+): Promise<T> {
+  return workspaceRequest<T>("POST", path, body, options)
 }
 
 export function workspaceApiPatch<T>(path: string, body: unknown): Promise<T> {
@@ -156,6 +165,11 @@ export function workspaceApiMultipart<T>(
     xhr.withCredentials = true
     if (token) {
       xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+    } else {
+      const csrf = readCsrfCookie()
+      if (csrf) {
+        xhr.setRequestHeader("X-Xuanchu-CSRF", csrf)
+      }
     }
     if (options?.signal) {
       options.signal.addEventListener("abort", () => xhr.abort())

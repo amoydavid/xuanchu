@@ -261,6 +261,11 @@ func (s *Service) importTaskBundleLocked(bundle TaskBundleV1) (TaskBundleImportR
 		se := bundleToSeries(sb)
 		se.WorkspaceID = s.workspaceID
 		se.ProjectID = projectIDs[bundleProjectKey(sb.ProjectID, sb.Project)]
+		if _, err := s.validateDescriptionReferences(nil, se.Description, false); err != nil {
+			// RuntimeError 的 code 是 API/CLI 的稳定契约，不能被 fmt 包装成
+			// 无法映射的普通错误。
+			return result, err
+		}
 		created, err := s.taskSeriesRepo.Create(se)
 		if err != nil {
 			return result, fmt.Errorf("import series %s: %w", sb.ID, err)
@@ -281,6 +286,7 @@ func (s *Service) importTaskBundleLocked(bundle TaskBundleV1) (TaskBundleImportR
 		importedSeries++
 	}
 	// 再建 tasks/occurrences。
+	createdTasks := make([]domain.Task, 0, len(bundle.Tasks))
 	for _, tb := range bundle.Tasks {
 		tb.WorkspaceID = s.workspaceID
 		if tb.ProjectID != nil {
@@ -314,6 +320,7 @@ func (s *Service) importTaskBundleLocked(bundle TaskBundleV1) (TaskBundleImportR
 		if _, err := s.repo.Create(tsk); err != nil {
 			return result, fmt.Errorf("import task %s: %w", tb.UUID, err)
 		}
+		createdTasks = append(createdTasks, tsk)
 		for _, bundledLink := range tb.Links {
 			link := storage.TaskLink{
 				ID: bundledLink.ID, TaskUUID: tb.UUID, Type: bundledLink.Type,
@@ -333,6 +340,14 @@ func (s *Service) importTaskBundleLocked(bundle TaskBundleV1) (TaskBundleImportR
 			}
 		}
 		importedTasks++
+	}
+	// 等所有 task 创建后再校验 description：同一 bundle 内的 task 可以相互引用，
+	// 但任何错误仍由外层事务完整回滚。附件不随 bundle 携带二进制，运行时已启用
+	// 附件存储时会在此拒绝无归属的 attachment 引用。
+	for _, created := range createdTasks {
+		if err := s.validateAndBindDescriptionAttachments(domain.Task{}, created); err != nil {
+			return result, err
+		}
 	}
 	result.SeriesImported = importedSeries
 	result.TasksImported = importedTasks

@@ -3236,24 +3236,26 @@ func TestCLIDescriptionReferenceStaysMarkdown(t *testing.T) {
 	bin := buildXuanchu(t)
 	db := filepath.Join(t.TempDir(), "xuanchu.db")
 
-	markdown := "[@Alice](ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001) and ![图](ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012)"
+	run(t, bin, "--db", db, "add", "referenced task")
+	referencedID := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.uuid"))
+	markdown := "[#referenced task](ref://task/" + referencedID + ")"
 	run(t, bin, "--db", db, "add", "ref-task", "description:"+markdown)
 
 	// _get description 返回纯 Markdown。
-	got := strings.TrimSpace(run(t, bin, "--db", db, "_get", "1.description"))
+	got := strings.TrimSpace(run(t, bin, "--db", db, "_get", "2.description"))
 	if got != markdown {
 		t.Fatalf("description via _get = %q, want %q", got, markdown)
 	}
 
 	// --json info 也应保留 Markdown 字符串。
-	jsonOut := run(t, bin, "--db", db, "--json", "info", "1")
+	jsonOut := run(t, bin, "--db", db, "--json", "info", "2")
 	for _, forbidden := range []string{"<img", "\"type\":\"doc\"", "blob:", "X-Amz-Signature", "data:image"} {
 		if strings.Contains(jsonOut, forbidden) {
 			t.Fatalf("JSON output leaked %q: %s", forbidden, jsonOut)
 		}
 	}
-	if !strings.Contains(jsonOut, "ref://user/8c8b1bed-2e75-4de8-8d5f-c94cbf2b3001") {
-		t.Fatalf("JSON output missing ref://user URI: %s", jsonOut)
+	if !strings.Contains(jsonOut, "ref://task/"+referencedID) {
+		t.Fatalf("JSON output missing ref://task URI: %s", jsonOut)
 	}
 }
 

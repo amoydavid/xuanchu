@@ -171,6 +171,30 @@ describe("ReferenceSuggestionMenu", () => {
     )
     await waitFor(() => expect(aborted).toBeGreaterThanOrEqual(1))
   })
+
+  it("aborts an in-flight request when the menu unmounts", async () => {
+    let aborted = 0
+    const fetchSpy = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      return new Promise<ReferenceSuggestionMenuItem[]>((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          aborted += 1
+          reject(new DOMException("aborted", "AbortError"))
+        })
+      })
+    }) as FetchSuggestions
+    const { unmount } = render(
+      <ReferenceSuggestionMenu
+        kind="user"
+        query="alice"
+        fetchSuggestions={fetchSpy}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />
+    )
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
+    unmount()
+    await waitFor(() => expect(aborted).toBe(1))
+  })
 })
 
 describe("resolutionToMenuItem", () => {

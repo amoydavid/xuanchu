@@ -115,6 +115,14 @@ export class AttachmentUploadQueue {
       } else {
         throw new Error("invalid candidate")
       }
+      // Abort 可能发生在服务端已完成写入之后；这种晚到成功必须立即清理 draft，
+      // 不能依赖调用方在更早时刻执行的 cleanupDrafts。
+      if (signal.aborted) {
+        await Promise.resolve()
+          .then(() => this.api.removeDraft(attachment.id, signal))
+          .catch(() => undefined)
+        throw new DOMException("aborted", "AbortError")
+      }
       this.update(key, { status: "resolved", progress: 100, attachment })
       return attachment
     } catch (err) {
@@ -183,11 +191,14 @@ export class AttachmentUploadQueue {
     const tasks: Promise<void>[] = []
     for (const item of this.items.values()) {
       if (item.status === "resolved" && item.attachment) {
+        const attachmentID = item.attachment.id
         const controller = new AbortController()
         tasks.push(
-          this.api.removeDraft(item.attachment.id, controller.signal).catch(() => {
-            // best-effort：删除失败留给 janitor 兜底。
-          })
+          Promise.resolve()
+            .then(() => this.api.removeDraft(attachmentID, controller.signal))
+            .catch(() => {
+              // best-effort：删除失败留给 janitor 兜底。
+            })
         )
       }
     }

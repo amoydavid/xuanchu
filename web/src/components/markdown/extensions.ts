@@ -4,7 +4,10 @@ import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table
 import { Markdown, MarkdownManager } from "@tiptap/markdown"
 import StarterKit from "@tiptap/starter-kit"
 
-import { XuanchuAttachment } from "./attachment-extension"
+import {
+  XuanchuAttachment,
+  XuanchuAttachmentLinkMarkdown,
+} from "./attachment-extension"
 import { escapeMarkdownHtml, isAllowedMarkdownHref } from "./markdown-safety"
 import { XuanchuReference } from "./reference-extension"
 
@@ -45,8 +48,23 @@ export const markdownExtensions = [
   // 自定义节点：附件与 user/task 引用。ref:// 协议仍以普通 link 的形式
   // 在 markdown 中 round-trip，节点定义负责编辑器内的 atom 渲染与序列化。
   XuanchuAttachment,
+  XuanchuAttachmentLinkMarkdown,
   XuanchuReference,
 ]
+
+// markdownExtensionsWithAttachmentContext 为可编辑 task description 注入节点视图所需
+// 的鉴权查询上下文；只读渲染仍使用无上下文的共享 Markdown schema。
+export function markdownExtensionsWithAttachmentContext(context?: {
+  workspaceSlug: string
+  taskRef: string
+}) {
+  if (!context) return markdownExtensions
+  return markdownExtensions.map((extension) =>
+    extension.name === XuanchuAttachment.name
+      ? XuanchuAttachment.configure(context)
+      : extension
+  )
+}
 
 export const markdownManager = new MarkdownManager({
   extensions: markdownExtensions,

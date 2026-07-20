@@ -7,6 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "@/i18n"
 import { workspaceApiGet } from "@/features/workspace/session/workspace-api"
 import { createTask } from "../api/task-api"
+import {
+  removeAttachment,
+  uploadTaskDraftAttachment,
+} from "@/features/workspace/attachments"
 import { createTaskSeries } from "../api/task-series-api"
 import { getWorkspaceMembers } from "../api/users-api"
 import { dateToUnix } from "../shared/date-boundary"
@@ -14,6 +18,12 @@ import { TaskCreateDialog } from "./task-create-dialog"
 
 vi.mock("../api/task-api", () => ({
   createTask: vi.fn(),
+}))
+
+vi.mock("@/features/workspace/attachments", () => ({
+  uploadTaskDraftAttachment: vi.fn(),
+  importTaskDraftAttachmentURL: vi.fn(),
+  removeAttachment: vi.fn(),
 }))
 
 vi.mock("../api/users-api", () => ({
@@ -57,6 +67,7 @@ describe("TaskCreateDialog", () => {
       status: "pending",
       project: "adsops",
     })
+    vi.mocked(uploadTaskDraftAttachment).mockResolvedValue({ id: "40af0185-316f-42bb-b52b-545d21f6f012" } as never)
     vi.mocked(getWorkspaceMembers).mockResolvedValue([
       {
         id: "u1",
@@ -125,6 +136,79 @@ describe("TaskCreateDialog", () => {
     expect(payload.description).toContain("# 整理异常原因")
     expect(payload.description).toContain("- 素材")
   }, 10_000)
+
+  it("uploads pasted screenshots to a private draft target before one atomic task creation", async () => {
+    render(<TaskCreateDialog onOpenChange={vi.fn()} open projectSlug="adsops" workspaceSlug="acme" />, { wrapper: makeWrapper(makeQueryClient()) })
+    await userEvent.type(screen.getByLabelText("任务标题"), "截图任务")
+    const image = new File(["png"], "截图.png", { type: "image/png" })
+    const editor = screen.getByLabelText("任务内容")
+    const { fireEvent } = await import("@testing-library/react")
+    fireEvent.paste(editor, { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], getData: () => "" } })
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
+    await waitFor(() => expect(uploadTaskDraftAttachment).toHaveBeenCalledWith(
+      "acme",
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
+      expect.objectContaining({ file: image, mode: "description_draft" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    ))
+    await waitFor(() => expect(createTask).toHaveBeenCalledOnce())
+    expect(vi.mocked(createTask).mock.calls[0]?.[1]).toMatchObject({
+      attachment_draft_target: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      description: expect.stringContaining("ref://attachment/40af0185-316f-42bb-b52b-545d21f6f012"),
+    })
+  })
+
+  it("does not create a task when a deferred screenshot upload fails", async () => {
+    vi.mocked(uploadTaskDraftAttachment).mockRejectedValueOnce(new Error("upload failed"))
+    render(<TaskCreateDialog onOpenChange={vi.fn()} open projectSlug="adsops" workspaceSlug="acme" />, { wrapper: makeWrapper(makeQueryClient()) })
+    await userEvent.type(screen.getByLabelText("任务标题"), "失败截图任务")
+    const image = new File(["png"], "截图.png", { type: "image/png" })
+    const { fireEvent } = await import("@testing-library/react")
+    fireEvent.paste(screen.getByLabelText("任务内容"), { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], getData: () => "" } })
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
+    await waitFor(() => expect(uploadTaskDraftAttachment).toHaveBeenCalledOnce())
+    expect(createTask).not.toHaveBeenCalled()
+  })
+
+  it("does not upload a deferred image marker that the user removed before create", async () => {
+    render(<TaskCreateDialog onOpenChange={vi.fn()} open projectSlug="adsops" workspaceSlug="acme" />, { wrapper: makeWrapper(makeQueryClient()) })
+    await userEvent.type(screen.getByLabelText("任务标题"), "删除图片后创建")
+    const image = new File(["png"], "截图.png", { type: "image/png" })
+    const editor = screen.getByLabelText("任务内容")
+    const { fireEvent } = await import("@testing-library/react")
+    fireEvent.paste(editor, { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], getData: () => "" } })
+    await userEvent.click(editor)
+    await userEvent.keyboard("{Control>}a{/Control}{Backspace}")
+
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
+    await waitFor(() => expect(createTask).toHaveBeenCalledOnce())
+    expect(uploadTaskDraftAttachment).not.toHaveBeenCalled()
+    expect(vi.mocked(createTask).mock.calls[0]?.[1]).not.toHaveProperty("attachment_draft_target")
+  })
+
+  it("cancels a pending draft upload and never creates a task afterwards", async () => {
+    let resolveUpload: ((value: { id: string }) => void) | undefined
+    vi.mocked(uploadTaskDraftAttachment).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveUpload = resolve }) as never
+    )
+    const onOpenChange = vi.fn()
+    render(<TaskCreateDialog onOpenChange={onOpenChange} open projectSlug="adsops" workspaceSlug="acme" />, { wrapper: makeWrapper(makeQueryClient()) })
+    await userEvent.type(screen.getByLabelText("任务标题"), "取消中的截图任务")
+    const image = new File(["png"], "截图.png", { type: "image/png" })
+    const { fireEvent } = await import("@testing-library/react")
+    fireEvent.paste(screen.getByLabelText("任务内容"), { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], getData: () => "" } })
+
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }))
+    await waitFor(() => expect(uploadTaskDraftAttachment).toHaveBeenCalledOnce())
+    expect(screen.getByRole("button", { name: "创建任务" })).toHaveProperty("disabled", true)
+
+    await userEvent.click(screen.getByRole("button", { name: "取消" }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    resolveUpload?.({ id: "40af0185-316f-42bb-b52b-545d21f6f012" })
+
+    await waitFor(() => expect(removeAttachment).toHaveBeenCalledWith("acme", "40af0185-316f-42bb-b52b-545d21f6f012"))
+    expect(createTask).not.toHaveBeenCalled()
+  })
 
   it("returns the created task to the caller", async () => {
     const onCreated = vi.fn()

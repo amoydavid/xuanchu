@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"git.dajee.net/dajee/xuanchu/internal/app"
 	"git.dajee.net/dajee/xuanchu/internal/attachments"
 	"git.dajee.net/dajee/xuanchu/internal/auth"
@@ -122,6 +124,68 @@ func TestAttachmentUploadRequiresMode(t *testing.T) {
 	}
 }
 
+func TestTaskCreationDraftAttachmentIsAtomicallyBoundAndActivated(t *testing.T) {
+	fixture := newHTTPAttachmentFixture(t)
+	draftTarget := uuid.NewString()
+	body, contentType := multipartUploadBody(t, "file", "screenshot.png", pngPayload(), nil)
+	headers := authHeader(fixture.token)
+	headers["Content-Type"] = contentType
+	upload := requestHTTPBody(t, fixture.server, http.MethodPost,
+		"/api/v1/task-drafts/"+draftTarget+"/attachments?workspace=local", body.String(), headers)
+	if upload.Code != http.StatusCreated {
+		t.Fatalf("upload draft: status=%d body=%s", upload.Code, upload.Body.String())
+	}
+	var uploaded struct {
+		Data struct {
+			ID         string `json:"id"`
+			State      string `json:"state"`
+			AttachedTo struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"attached_to"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploaded); err != nil {
+		t.Fatalf("decode draft upload: %v", err)
+	}
+	if uploaded.Data.State != "draft" || uploaded.Data.AttachedTo.Type != "task_draft" || uploaded.Data.AttachedTo.ID != draftTarget {
+		t.Fatalf("unexpected draft attachment: %#v", uploaded.Data)
+	}
+
+	createBody := `{"title":"atomic screenshot","attachment_draft_target":"` + draftTarget + `","description":"![截图](ref://attachment/` + uploaded.Data.ID + `)"}`
+	created := requestHTTPBody(t, fixture.server, http.MethodPost, "/api/v1/tasks?workspace=local", createBody, authHeader(fixture.token))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create task: status=%d body=%s", created.Code, created.Body.String())
+	}
+	var createdResponse struct {
+		Data struct {
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &createdResponse); err != nil {
+		t.Fatalf("decode created task: %v", err)
+	}
+	metadata := requestHTTP(t, fixture.server, http.MethodGet, "/api/v1/attachments/"+uploaded.Data.ID+"?workspace=local", authHeader(fixture.token))
+	if metadata.Code != http.StatusOK {
+		t.Fatalf("get attachment: status=%d body=%s", metadata.Code, metadata.Body.String())
+	}
+	var bound struct {
+		Data struct {
+			State      string `json:"state"`
+			AttachedTo struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"attached_to"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(metadata.Body.Bytes(), &bound); err != nil {
+		t.Fatalf("decode bound attachment: %v", err)
+	}
+	if bound.Data.State != "active" || bound.Data.AttachedTo.Type != "task" || bound.Data.AttachedTo.ID != createdResponse.Data.UUID {
+		t.Fatalf("attachment was not atomically bound and activated: %#v", bound.Data)
+	}
+}
+
 func TestAttachmentUploadAndDownloadRoundTrip(t *testing.T) {
 	fixture := newHTTPAttachmentFixture(t)
 	taskRef := createTaskViaHTTP(t, fixture)
@@ -135,11 +199,11 @@ func TestAttachmentUploadAndDownloadRoundTrip(t *testing.T) {
 	}
 	var resp struct {
 		Data struct {
-			ID         string `json:"id"`
-			State      string `json:"state"`
-			MediaType  string `json:"media_type"`
-			ContentURL string `json:"content_url"`
-			InlineCapable bool `json:"inline_capable"`
+			ID            string `json:"id"`
+			State         string `json:"state"`
+			MediaType     string `json:"media_type"`
+			ContentURL    string `json:"content_url"`
+			InlineCapable bool   `json:"inline_capable"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {

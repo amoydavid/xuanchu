@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest"
 
-import { sanitizeRichPaste } from "./paste-sanitizer"
+import { dataURLToFile, sanitizeRichPaste } from "./paste-sanitizer"
 
 describe("sanitizeRichPaste", () => {
+  it("converts a pasted data image to an uploadable File", async () => {
+    const file = dataURLToFile("data:image/png;base64,aGVsbG8=", "architecture")
+
+    expect(file).toBeInstanceOf(File)
+    expect(file.type).toBe("image/png")
+    expect(file.name).toBe("architecture.png")
+    await expect(file.text()).resolves.toBe("hello")
+  })
   it("keeps markdown-schema html and removes active content", () => {
     const result = sanitizeRichPaste({
       html: `<h1 style="color:red">标题</h1><script>x()</script><table><tr><td onclick="x()">A</td></tr></table>`,
@@ -39,6 +47,18 @@ describe("sanitizeRichPaste", () => {
     expect(result.images[0]?.file).toBe(file)
   })
 
+  it("does not treat a non-image clipboard file as an inline image", () => {
+    const file = new File(["%PDF"], "proposal.pdf", { type: "application/pdf" })
+    const result = sanitizeRichPaste({
+      html: `<p>A<img src="https://cdn.example.com/x.png" alt="X">B</p>`,
+      files: [file],
+    })
+    expect(result.images[0]).toMatchObject({
+      kind: "remote",
+      sourceURL: "https://cdn.example.com/x.png",
+    })
+  })
+
   it("accepts data url images as candidates", () => {
     const result = sanitizeRichPaste({
       html: `<img src="data:image/png;base64,xx" alt="Y">`,
@@ -46,6 +66,16 @@ describe("sanitizeRichPaste", () => {
     })
     expect(result.images[0]?.kind).toBe("data")
     expect(result.images[0]?.sourceURL).toBe("data:image/png;base64,xx")
+  })
+
+  it("rejects non-image data URLs", () => {
+    const result = sanitizeRichPaste({
+      html: `<img src="data:text/html;base64,PHNjcmlwdD4=" alt="unsafe">`,
+      files: [],
+    })
+    expect(result.images).toHaveLength(0)
+    expect(result.html).not.toContain("xuanchu-paste")
+    expect(() => dataURLToFile("data:text/html;base64,PHNjcmlwdD4=", "unsafe")).toThrow("invalid data image")
   })
 
   it("rejects javascript: URLs entirely", () => {

@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest"
 
 import * as workspaceApi from "@/features/workspace/session/workspace-api"
+import { importTaskAttachmentURL, importTaskDraftAttachmentURL } from "./index"
 
 import {
   attachmentContentPath,
   attachmentItemPath,
   formatAttachmentSize,
+  taskDraftAttachmentImportURLPath,
+  taskDraftAttachmentsPath,
   taskAttachmentImportURLPath,
   taskAttachmentsPath,
 } from "./attachment-api"
@@ -37,6 +40,15 @@ describe("attachment-api path builders", () => {
       "/api/v1/tasks/task-1/attachments/import-url?workspace=dajee"
     )
   })
+
+  it("places task draft import-url before the workspace query", () => {
+    expect(taskDraftAttachmentsPath("dajee", "draft:1")).toBe(
+      "/api/v1/task-drafts/draft%3A1/attachments?workspace=dajee"
+    )
+    expect(taskDraftAttachmentImportURLPath("dajee", "draft:1")).toBe(
+      "/api/v1/task-drafts/draft%3A1/attachments/import-url?workspace=dajee"
+    )
+  })
 })
 
 describe("formatAttachmentSize", () => {
@@ -50,6 +62,10 @@ describe("formatAttachmentSize", () => {
 })
 
 describe("attachment-api CRUD delegates to workspace helpers", () => {
+  it("exports task draft import from the public attachment module", () => {
+    expect(importTaskDraftAttachmentURL).toBeTypeOf("function")
+  })
+
   it("upload uses multipart helper", async () => {
     const multipartSpy = vi
       .spyOn(workspaceApi, "workspaceApiMultipart")
@@ -59,5 +75,23 @@ describe("attachment-api CRUD delegates to workspace helpers", () => {
     await uploadTaskAttachment("dajee", "task-1", { file, mode: "attachment" })
     expect(multipartSpy).toHaveBeenCalledOnce()
     vi.restoreAllMocks()
+  })
+
+  it("passes cancellation through for remote image imports", async () => {
+    const postSpy = vi
+      .spyOn(workspaceApi, "workspaceApiPost")
+      .mockResolvedValue({ id: "x" } as never)
+    const controller = new AbortController()
+    await importTaskAttachmentURL(
+      "dajee",
+      "task-1",
+      { sourceURL: "https://cdn.example.test/diagram.png", mode: "description_draft" },
+      { signal: controller.signal }
+    )
+    expect(postSpy).toHaveBeenCalledWith(
+      taskAttachmentImportURLPath("dajee", "task-1"),
+      expect.objectContaining({ source_url: "https://cdn.example.test/diagram.png" }),
+      { signal: controller.signal }
+    )
   })
 })

@@ -1,5 +1,6 @@
 import {
-  workspaceApiPost,
+	workspaceApiGet,
+	workspaceApiPost,
 } from "@/features/workspace/session/workspace-api"
 
 // ContentReferenceKey 描述一个保留 URI 引用。
@@ -47,6 +48,10 @@ export type ReferenceAttachmentInfo = {
   content_url: string
 }
 
+type ContentReferenceSuggestionResponse =
+  | { type: "user"; user?: ReferenceUserInfo }
+  | { type: "task"; task?: ReferenceTaskInfo }
+
 // resolveContentReferences 批量解析引用，保持输入顺序。
 //
 // 最多 200 个引用；不可读/不存在统一返回 unavailable。
@@ -67,15 +72,36 @@ export async function suggestContentReferences(input: {
   query: string
   project?: string
   limit?: number
-}): Promise<ContentReferenceResolution[]> {
+}, options?: { signal?: AbortSignal }): Promise<ContentReferenceResolution[]> {
   const params = new URLSearchParams()
   params.set("type", input.type)
   params.set("q", input.query)
   if (input.project) params.set("project", input.project)
   if (input.limit) params.set("limit", String(input.limit))
-  const result = await workspaceApiPost<{ results: ContentReferenceResolution[] }>(
+  const result = await workspaceApiGet<{ results: ContentReferenceSuggestionResponse[] }>(
     `/api/v1/content-references/suggestions?${params.toString()}`,
-    {}
+    options
   )
-  return result.results
+  // suggestion 与 resolve 的 HTTP 响应形状不同：前者已经保证目标可读，
+  // 不带 status/id 顶层字段。统一成编辑器消费的 resolved 形状，避免菜单把
+  // 所有候选误判为 unavailable。
+  return result.results.flatMap((suggestion): ContentReferenceResolution[] => {
+    if (suggestion.type === "user" && suggestion.user) {
+      return [{
+        type: "user",
+        id: suggestion.user.id,
+        status: "resolved",
+        user: suggestion.user,
+      }]
+    }
+    if (suggestion.type === "task" && suggestion.task) {
+      return [{
+        type: "task",
+        id: suggestion.task.id,
+        status: "resolved",
+        task: suggestion.task,
+      }]
+    }
+    return []
+  })
 }

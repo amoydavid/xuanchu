@@ -25,27 +25,27 @@ type AttachmentListOptions struct {
 
 // AttachmentQuotaLimits 描述 FinalizeWithQuota 的配额上限。
 type AttachmentQuotaLimits struct {
-	MaxResourceTotalSizeBytes int64
+	MaxResourceTotalSizeBytes  int64
 	MaxWorkspaceTotalSizeBytes int64
-	MaxAttachmentsPerResource int
+	MaxAttachmentsPerResource  int
 }
 
 // AttachmentFinalize 是最终提交时的字段更新。
 type AttachmentFinalize struct {
-	State         string
-	OriginalName  string
-	DisplayName   string
-	MediaType     string
-	Extension     string
-	SizeBytes     int64
-	SHA256        string
-	InlineCapable bool
+	State          string
+	OriginalName   string
+	DisplayName    string
+	MediaType      string
+	Extension      string
+	SizeBytes      int64
+	SHA256         string
+	InlineCapable  bool
 	StorageBackend string
-	StorageKey    string
-	SourceHost    string
-	SourceURLHash string
-	SourceType    string
-	ModifiedAt    int64
+	StorageKey     string
+	SourceHost     string
+	SourceURLHash  string
+	SourceType     string
+	ModifiedAt     int64
 }
 
 // AttachmentRepository 封装附件元数据的持久化。
@@ -134,7 +134,8 @@ func (r *AttachmentRepository) UpdateDisplayName(id, displayName string, modifie
 //
 // resource/workspace 字节统计包含 uploading/draft/active/deleted（retention 内仍占配额）；
 // 数量上限只算 uploading/draft/active。
-// PostgreSQL 使用 SELECT ... FOR UPDATE 串行化，SQLite 靠 transaction 串行化。
+// PostgreSQL 锁定 workspace 实体行，使同一 workspace 的 finalize 串行化；不能对
+// COUNT/SUM 聚合查询直接使用 FOR UPDATE（PostgreSQL 明确禁止该 SQL）。SQLite 靠 transaction 串行化。
 func (r *AttachmentRepository) FinalizeWithQuota(id string, final AttachmentFinalize, limits AttachmentQuotaLimits) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var row Attachment
@@ -144,6 +145,15 @@ func (r *AttachmentRepository) FinalizeWithQuota(id string, final AttachmentFina
 			}
 			return err
 		}
+		if tx.Dialector.Name() == "postgres" {
+			// workspace 行是所有该 workspace 附件配额的稳定锁对象。先获取它，
+			// 再做 aggregate，避免对 PostgreSQL 不支持的 aggregate FOR UPDATE。
+			var workspace Workspace
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Select("id").Where("id = ?", row.WorkspaceID).First(&workspace).Error; err != nil {
+				return err
+			}
+		}
 
 		// 数量上限：uploading/draft/active。
 		var countActive int64
@@ -151,9 +161,6 @@ func (r *AttachmentRepository) FinalizeWithQuota(id string, final AttachmentFina
 			Where("workspace_id = ? AND attached_to_type = ? AND attached_to_id = ? AND state IN ?",
 				row.WorkspaceID, row.AttachedToType, row.AttachedToID,
 				[]string{AttachmentStateUploading, AttachmentStateDraft, AttachmentStateActive})
-		if tx.Dialector.Name() == "postgres" {
-			countQuery = countQuery.Clauses(clause.Locking{Strength: "UPDATE"})
-		}
 		if err := countQuery.Count(&countActive).Error; err != nil {
 			return err
 		}
@@ -168,9 +175,6 @@ func (r *AttachmentRepository) FinalizeWithQuota(id string, final AttachmentFina
 			Select("COALESCE(SUM(size_bytes), 0)").
 			Where("workspace_id = ? AND attached_to_type = ? AND attached_to_id = ?",
 				row.WorkspaceID, row.AttachedToType, row.AttachedToID)
-		if tx.Dialector.Name() == "postgres" {
-			resourceQuery = resourceQuery.Clauses(clause.Locking{Strength: "UPDATE"})
-		}
 		if err := resourceQuery.Scan(&resourceBytes).Error; err != nil {
 			return err
 		}
@@ -183,9 +187,6 @@ func (r *AttachmentRepository) FinalizeWithQuota(id string, final AttachmentFina
 		workspaceQuery := tx.Model(&Attachment{}).
 			Select("COALESCE(SUM(size_bytes), 0)").
 			Where("workspace_id = ?", row.WorkspaceID)
-		if tx.Dialector.Name() == "postgres" {
-			workspaceQuery = workspaceQuery.Clauses(clause.Locking{Strength: "UPDATE"})
-		}
 		if err := workspaceQuery.Scan(&workspaceBytes).Error; err != nil {
 			return err
 		}
@@ -195,17 +196,17 @@ func (r *AttachmentRepository) FinalizeWithQuota(id string, final AttachmentFina
 		}
 
 		updates := map[string]any{
-			"state":          final.State,
-			"original_name":  final.OriginalName,
-			"display_name":   final.DisplayName,
-			"media_type":     final.MediaType,
-			"extension":      final.Extension,
-			"size_bytes":     final.SizeBytes,
-			"sha256":         final.SHA256,
-			"inline_capable": final.InlineCapable,
+			"state":           final.State,
+			"original_name":   final.OriginalName,
+			"display_name":    final.DisplayName,
+			"media_type":      final.MediaType,
+			"extension":       final.Extension,
+			"size_bytes":      final.SizeBytes,
+			"sha256":          final.SHA256,
+			"inline_capable":  final.InlineCapable,
 			"storage_backend": final.StorageBackend,
-			"storage_key":    final.StorageKey,
-			"modified_at":    final.ModifiedAt,
+			"storage_key":     final.StorageKey,
+			"modified_at":     final.ModifiedAt,
 		}
 		if final.SourceType != "" {
 			updates["source_type"] = final.SourceType
@@ -238,6 +239,26 @@ func (r *AttachmentRepository) ActivateDrafts(taskID, creatorID string, ids []st
 			"state":         AttachmentStateActive,
 			"ever_embedded": true,
 			"modified_at":   now,
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
+}
+
+// BindTaskDrafts 把一次 task creation 实际引用的私有 draft 归属原子转为 task。
+// creatorID 是强制边界：知道 draft target UUID 的其他 actor 也不能窃取附件。
+func (r *AttachmentRepository) BindTaskDrafts(workspaceID, draftTargetID, taskID, creatorID string, ids []string, now int64) (int, error) {
+	if draftTargetID == "" || len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.db.Model(&Attachment{}).
+		Where("workspace_id = ? AND attached_to_type = ? AND attached_to_id = ? AND state = ? AND created_by = ? AND id IN ?",
+			workspaceID, AttachmentAttachedToTaskDraft, draftTargetID, AttachmentStateDraft, creatorID, ids).
+		Updates(map[string]any{
+			"attached_to_type": AttachmentAttachedToTask,
+			"attached_to_id":   taskID,
+			"modified_at":      now,
 		})
 	if result.Error != nil {
 		return 0, result.Error

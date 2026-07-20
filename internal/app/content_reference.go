@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"git.dajee.net/dajee/xuanchu/internal/auth"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	domain "git.dajee.net/dajee/xuanchu/internal/task"
 )
@@ -25,7 +26,7 @@ type ContentReferenceKeyInput struct {
 
 // ContentReferenceSuggestion 是 suggest 的单项结果。
 type ContentReferenceSuggestion struct {
-	Type string `json:"type"`
+	Type string               `json:"type"`
 	User *domain.JSONUserInfo `json:"user,omitempty"`
 	Task *TaskReferenceView   `json:"task,omitempty"`
 }
@@ -49,12 +50,12 @@ type TaskReferenceProject struct {
 
 // ContentReferenceResolution 是 resolve 的单项结果。
 type ContentReferenceResolution struct {
-	Type       string                 `json:"type"`
-	ID         string                 `json:"id"`
-	Status     string                 `json:"status"`
-	User       *domain.JSONUserInfo   `json:"user,omitempty"`
-	Task       *TaskReferenceView     `json:"task,omitempty"`
-	Attachment *AttachmentView        `json:"attachment,omitempty"`
+	Type       string               `json:"type"`
+	ID         string               `json:"id"`
+	Status     string               `json:"status"`
+	User       *domain.JSONUserInfo `json:"user,omitempty"`
+	Task       *TaskReferenceView   `json:"task,omitempty"`
+	Attachment *AttachmentView      `json:"attachment,omitempty"`
 }
 
 // buildUserMentionedEventIfNeeded 比较前后 description 中的 user 引用集合，
@@ -208,10 +209,15 @@ func (s *Service) ResolveContentReferences(ctx context.Context, keys []ContentRe
 			attachmentIDs = append(attachmentIDs, k.ID)
 		}
 	}
+	// resolve 是混合批量 API：缺少某一类资源的读取能力不能泄露目标，也不能
+	// 让其它类型一起失败。先算出每类资源可用的能力，再在各自分支内返回
+	// unavailable（而不是依赖 project allowlist 作为唯一 read 判断）。
+	canReadWorkspace := s.canResolveReferenceWith(PermissionWorkspaceRead, auth.ScopeWorkspaceRead)
+	canReadTask := s.canResolveReferenceWith(PermissionTaskRead, auth.ScopeTaskRead)
 
 	// user 解析：必须是当前 workspace active member。
 	userInfos := map[string]domain.UserInfo{}
-	if len(userIDs) > 0 {
+	if canReadWorkspace && len(userIDs) > 0 {
 		infos, _ := s.resolveUserInfos(userIDs)
 		members, _ := s.memberRepo.ListMembersByUserIDs(s.workspaceID, userIDs)
 		activeMember := map[string]struct{}{}
@@ -227,7 +233,7 @@ func (s *Service) ResolveContentReferences(ctx context.Context, keys []ContentRe
 
 	// task 解析：当前 workspace 且 request scope 可读。
 	taskViews := map[string]*TaskReferenceView{}
-	if len(taskIDs) > 0 {
+	if canReadTask && len(taskIDs) > 0 {
 		tasks, _ := s.repo.ListByUUIDs(s.workspaceID, taskIDs)
 		for _, tsk := range tasks {
 			if !s.allowsProjectScopeForRead(tsk) {
@@ -239,7 +245,7 @@ func (s *Service) ResolveContentReferences(ctx context.Context, keys []ContentRe
 
 	// attachment 解析：通过 attachment target handler 校验读取权限。
 	attachmentViews := map[string]*AttachmentView{}
-	if s.attachmentRuntime != nil {
+	if canReadTask && s.attachmentRuntime != nil {
 		for _, id := range attachmentIDs {
 			view, err := s.GetAttachment(id)
 			if err != nil {
@@ -273,6 +279,16 @@ func (s *Service) ResolveContentReferences(ctx context.Context, keys []ContentRe
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// canResolveReferenceWith 同时检查角色权限和 HTTP/MCP 注入的 token scope。
+// 普通 Request handler 会在入口检查一个主 capability；resolve 是混合资源接口，
+// 必须在这里逐项检查，否则 workspace:read PAT 会因 owner/admin 角色间接读到 task。
+func (s *Service) canResolveReferenceWith(permission Permission, capability string) bool {
+	if s.Require(permission) != nil {
+		return false
+	}
+	return s.requestScope == nil || s.requestScope.HasCapability(capability)
 }
 
 // allowsProjectScopeForRead 判断 task 是否在当前 request scope 可读。

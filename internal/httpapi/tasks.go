@@ -36,10 +36,11 @@ type addTaskRequest struct {
 	UntilDate     string   `json:"until_date,omitempty"`
 	// recur 已移除（spec §11.1）：循环任务通过 /task-series 管理。
 	// 保留字段用于检测并拒绝旧请求，不传递给 App 层。
-	Recur  *string           `json:"recur,omitempty"`
-	Tags   []string          `json:"tags,omitempty"`
-	UDAs   map[string]string `json:"udas,omitempty"`
-	Parent string            `json:"parent,omitempty"`
+	Recur                 *string           `json:"recur,omitempty"`
+	Tags                  []string          `json:"tags,omitempty"`
+	UDAs                  map[string]string `json:"udas,omitempty"`
+	Parent                string            `json:"parent,omitempty"`
+	AttachmentDraftTarget string            `json:"attachment_draft_target,omitempty"`
 }
 
 type modifyTaskRequest struct {
@@ -371,19 +372,20 @@ func (s *Server) handleTaskAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	created, err := scoped.AddTaskView(app.AddInput{
-		Title:       strings.TrimSpace(req.Title),
-		Description: req.Description,
-		Project:     projectPtr,
-		Priority:    priority,
-		Due:         due,
-		Assignees:   req.Assignees,
-		Depends:     req.Depends,
-		Wait:        wait,
-		Scheduled:   scheduled,
-		Until:       until,
-		Tags:        req.Tags,
-		UDAs:        req.UDAs,
-		Parent:      stringPtrIfPresent(req.Parent),
+		Title:                 strings.TrimSpace(req.Title),
+		Description:           req.Description,
+		Project:               projectPtr,
+		Priority:              priority,
+		Due:                   due,
+		Assignees:             req.Assignees,
+		Depends:               req.Depends,
+		Wait:                  wait,
+		Scheduled:             scheduled,
+		Until:                 until,
+		Tags:                  req.Tags,
+		UDAs:                  req.UDAs,
+		Parent:                stringPtrIfPresent(req.Parent),
+		AttachmentDraftTarget: strings.TrimSpace(req.AttachmentDraftTarget),
 	})
 	if err != nil {
 		writeAppError(w, err)
