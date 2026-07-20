@@ -777,9 +777,13 @@ func validateCaptureSeriesSource(series taskseries.Series, loc *time.Location) e
 		if series.StopReason == nil || !validCaptureSeriesStopReason(*series.StopReason) {
 			return errors.New("invalid stopped series reason")
 		}
-	case taskseries.StatusActive, taskseries.StatusEnded:
+	case taskseries.StatusActive:
 		if series.StopReason != nil {
 			return errors.New("stop reason is only valid for stopped series")
+		}
+	case taskseries.StatusEnded:
+		if series.StopReason != nil || series.Until == nil || series.EffectiveEndAt == nil || *series.EffectiveEndAt != *series.Until {
+			return errors.New("ended series must end at until without stop reason")
 		}
 	}
 	// ValidateSeries 负责聚合主体 invariant；RuleVersions 是同一 source aggregate

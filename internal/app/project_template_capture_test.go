@@ -401,6 +401,14 @@ func TestCaptureRejectsInvalidSeriesAggregateWithStableSelectionCode(t *testing.
 	}{
 		{"stopped without end and reason", func(series *taskseries.Series) { series.Status = taskseries.StatusStopped }},
 		{"ended without effective end", func(series *taskseries.Series) { series.Status = taskseries.StatusEnded }},
+		{"ended without until", func(series *taskseries.Series) {
+			end := series.FirstDue + 86400
+			series.Status, series.EffectiveEndAt = taskseries.StatusEnded, &end
+		}},
+		{"ended effective end differs from until", func(series *taskseries.Series) {
+			until, end := series.FirstDue+2*86400, series.FirstDue+86400
+			series.Status, series.Until, series.EffectiveEndAt = taskseries.StatusEnded, &until, &end
+		}},
 		{"active with stop reason", func(series *taskseries.Series) {
 			reason := taskseries.StopReasonUserStopped
 			series.StopReason = &reason
