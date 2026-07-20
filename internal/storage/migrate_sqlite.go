@@ -34,6 +34,9 @@ func (s *Store) migrateSQLite() error {
 	if err := s.db.AutoMigrate(&Meta{}, &User{}, &Workspace{}, &Membership{}, &AuditLog{}, &Project{}, &ProjectAnnotation{}, &Config{}, &ConfigDefinition{}, &ApiToken{}, &ServerAdminToken{}, &AdminActingSession{}, &Context{}, &UDADefinition{}, &HookDefinition{}, &HookDelivery{}, &NotificationSink{}, &ReminderRule{}, &EventNotificationRule{}, &NotificationDelivery{}, &ProjectAutomationRule{}, &ProjectAutomationDelivery{}, &UserExternalID{}, &BrowserSession{}, &BrowserAuthFlow{}, &DirectorySyncJob{}); err != nil {
 		return err
 	}
+	if err := s.prepareProjectTemplateSchemaSQLite(); err != nil {
+		return err
+	}
 	if err := s.db.AutoMigrate(&TaskTag{}, &TaskDependency{}, &TaskAssignee{}, &TaskUDAValue{}, &TaskLink{}, &Attachment{}); err != nil {
 		return err
 	}
@@ -54,6 +57,59 @@ func (s *Store) migrateSQLite() error {
 	}
 	if err := s.prepareTaskSeriesSchema(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// prepareProjectTemplateSchemaSQLite 显式建表以保留 Template 与 Snapshot 的循环
+// ON DELETE RESTRICT 外键。GORM 在 SQLite 上处理这种循环时可能通过 rebuild 表来
+// 迁移，因此这里不使用 AutoMigrate。
+func (s *Store) prepareProjectTemplateSchemaSQLite() error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS project_templates (
+id TEXT PRIMARY KEY,
+workspace_id TEXT NOT NULL,
+key TEXT NOT NULL,
+name TEXT NOT NULL,
+description TEXT NOT NULL DEFAULT '',
+status TEXT NOT NULL,
+current_snapshot_id TEXT,
+created_by_actor_type TEXT NOT NULL DEFAULT 'user',
+created_by_user_id TEXT,
+created_by_token_id TEXT,
+created_by_token_name TEXT,
+created_by_token_prefix TEXT,
+created_at INTEGER NOT NULL,
+modified_at INTEGER NOT NULL,
+archived_at INTEGER,
+FOREIGN KEY (current_snapshot_id) REFERENCES project_template_snapshots(id) ON DELETE RESTRICT
+)`,
+		`CREATE TABLE IF NOT EXISTS project_template_snapshots (
+id TEXT PRIMARY KEY,
+workspace_id TEXT NOT NULL,
+template_id TEXT NOT NULL,
+version INTEGER NOT NULL,
+source_project_id TEXT NOT NULL,
+snapshot_json TEXT NOT NULL,
+snapshot_hash TEXT NOT NULL,
+created_by_actor_type TEXT NOT NULL DEFAULT 'user',
+created_by_user_id TEXT,
+created_by_token_id TEXT,
+created_by_token_name TEXT,
+created_by_token_prefix TEXT,
+created_at INTEGER NOT NULL,
+FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE RESTRICT
+)`,
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_templates_ws_key ON project_templates(workspace_id, key)",
+		"CREATE INDEX IF NOT EXISTS idx_project_templates_ws_status ON project_templates(workspace_id, status)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_version ON project_template_snapshots(template_id, version)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_snapshot_hash ON project_template_snapshots(template_id, snapshot_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_project_template_snapshots_ws_template ON project_template_snapshots(workspace_id, template_id)",
+	}
+	for _, statement := range statements {
+		if err := s.db.Exec(statement).Error; err != nil {
+			return fmt.Errorf("project template migration: %w", err)
+		}
 	}
 	return nil
 }

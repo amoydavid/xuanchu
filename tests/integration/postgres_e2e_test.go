@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -46,6 +48,68 @@ func psqlExec(t *testing.T, dbURL string, sql string) {
 	cmd := exec.Command("psql", dbURL, "-v", "ON_ERROR_STOP=1", "-q", "-c", sql)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("psql %q error = %v\n%s", sql, err, out)
+	}
+}
+
+func TestPostgresE2EProjectTemplateStorage(t *testing.T) {
+	adminURL := postgresE2EAdminURL(t)
+	dbURL := createPostgresE2EDatabase(t, adminURL)
+	store, err := storage.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := storage.NewProjectTemplateRepository(store.DB())
+	template := storage.ProjectTemplate{
+		ID: "postgres-template", WorkspaceID: ws.ID, Key: "launch", Name: "PostgreSQL 模板",
+		Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 100, ModifiedAt: 100,
+	}
+	if err := repo.Create(template); err != nil {
+		t.Fatal(err)
+	}
+	appendSnapshot := func(id, hash string) storage.ProjectTemplateSnapshot {
+		t.Helper()
+		var row storage.ProjectTemplateSnapshot
+		err := store.Transaction(func(tx *storage.Store) error {
+			var appendErr error
+			row, appendErr = storage.NewProjectTemplateRepository(tx.DB()).AppendSnapshotLocked(ws.ID, template.ID, storage.ProjectTemplateSnapshot{
+				ID: id, SourceProjectID: "source-project", SnapshotJSON: `{"schema":"fixture/v1","value":"opaque"}`,
+				SnapshotHash: hash, CreatedByActorType: "user", CreatedAt: 100,
+			})
+			return appendErr
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	if first := appendSnapshot("postgres-snapshot-1", "postgres-hash-1"); first.Version != 1 {
+		t.Fatalf("first version = %d, want 1", first.Version)
+	}
+	if second := appendSnapshot("postgres-snapshot-2", "postgres-hash-2"); second.Version != 2 {
+		t.Fatalf("second version = %d, want 2", second.Version)
+	}
+
+	var dataType string
+	if err := store.DB().Raw(`SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'project_template_snapshots' AND column_name = 'snapshot_json'`).Scan(&dataType).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dataType != "text" {
+		t.Fatalf("snapshot_json data type = %q, want text", dataType)
+	}
+	var versions int64
+	if err := store.DB().Raw("SELECT count(DISTINCT version) FROM project_template_snapshots WHERE template_id = ?", template.ID).Scan(&versions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if versions != 2 {
+		t.Fatalf("distinct versions = %d, want 2", versions)
+	}
+	if _, err := repo.GetByRef("other-workspace", template.ID); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("cross-workspace template lookup err=%v, want ErrNotFound", err)
 	}
 }
 

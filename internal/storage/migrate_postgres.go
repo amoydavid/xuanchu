@@ -20,6 +20,9 @@ func (s *Store) migratePostgres() error {
 	); err != nil {
 		return err
 	}
+	if err := s.prepareProjectTemplateSchemaPostgres(); err != nil {
+		return err
+	}
 	if err := s.prepareTaskAnnotationIDsPostgres(); err != nil {
 		return err
 	}
@@ -33,6 +36,62 @@ func (s *Store) migratePostgres() error {
 		return err
 	}
 	return s.prepareActorColumnsForP2Postgres()
+}
+
+// prepareProjectTemplateSchemaPostgres 分两步建立循环 RESTRICT 外键：先建
+// Snapshot -> Template，再向 Template 补 current_snapshot_id 的引用。
+func (s *Store) prepareProjectTemplateSchemaPostgres() error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS project_templates (
+id text PRIMARY KEY,
+workspace_id text NOT NULL,
+key text NOT NULL,
+name text NOT NULL,
+description text NOT NULL DEFAULT '',
+status text NOT NULL,
+current_snapshot_id text,
+created_by_actor_type text NOT NULL DEFAULT 'user',
+created_by_user_id text,
+created_by_token_id text,
+created_by_token_name text,
+created_by_token_prefix text,
+created_at bigint NOT NULL,
+modified_at bigint NOT NULL,
+archived_at bigint
+)`,
+		`CREATE TABLE IF NOT EXISTS project_template_snapshots (
+id text PRIMARY KEY,
+workspace_id text NOT NULL,
+template_id text NOT NULL,
+version bigint NOT NULL,
+source_project_id text NOT NULL,
+snapshot_json text NOT NULL,
+snapshot_hash text NOT NULL,
+created_by_actor_type text NOT NULL DEFAULT 'user',
+created_by_user_id text,
+created_by_token_id text,
+created_by_token_name text,
+created_by_token_prefix text,
+created_at bigint NOT NULL,
+CONSTRAINT fk_project_template_snapshots_template FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE RESTRICT
+)`,
+		`DO $$ BEGIN
+ALTER TABLE project_templates ADD CONSTRAINT fk_project_templates_current_snapshot
+FOREIGN KEY (current_snapshot_id) REFERENCES project_template_snapshots(id) ON DELETE RESTRICT;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$`,
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_templates_ws_key ON project_templates(workspace_id, key)",
+		"CREATE INDEX IF NOT EXISTS idx_project_templates_ws_status ON project_templates(workspace_id, status)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_version ON project_template_snapshots(template_id, version)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_project_template_snapshots_template_snapshot_hash ON project_template_snapshots(template_id, snapshot_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_project_template_snapshots_ws_template ON project_template_snapshots(workspace_id, template_id)",
+	}
+	for _, statement := range statements {
+		if err := s.db.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) prepareActorColumnsForP2Postgres() error {

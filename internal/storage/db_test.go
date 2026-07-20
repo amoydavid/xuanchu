@@ -239,6 +239,80 @@ func TestTaskLinkTableMigrated(t *testing.T) {
 	}
 }
 
+func TestMigrationCreatesProjectTemplateTablesAndRestrictForeignKeys(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	for _, table := range []string{"project_templates", "project_template_snapshots"} {
+		if !store.DB().Migrator().HasTable(table) {
+			t.Fatalf("%s table missing after migration", table)
+		}
+	}
+	for index, columns := range map[string][]string{
+		"idx_project_templates_ws_key":                          {"workspace_id", "key"},
+		"idx_project_template_snapshots_template_version":       {"template_id", "version"},
+		"idx_project_template_snapshots_template_snapshot_hash": {"template_id", "snapshot_hash"},
+	} {
+		if !store.DB().Migrator().HasIndex("project_templates", index) && !store.DB().Migrator().HasIndex("project_template_snapshots", index) {
+			t.Fatalf("%s missing after migration", index)
+		}
+		assertIndexColumns(t, store, index, columns)
+	}
+	assertProjectTemplateForeignKey(t, store, "project_templates", "current_snapshot_id", "project_template_snapshots", "RESTRICT")
+	assertProjectTemplateForeignKey(t, store, "project_template_snapshots", "template_id", "project_templates", "RESTRICT")
+
+	ws, err := store.LocalWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewProjectTemplateRepository(store.DB())
+	tpl := templateRow("template-fk", ws.ID, "fk-check")
+	if err := repo.Create(tpl); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Transaction(func(tx *Store) error {
+		_, appendErr := NewProjectTemplateRepository(tx.DB()).AppendSnapshotLocked(ws.ID, tpl.ID, snapshotRow("snapshot-fk", "hash-fk"))
+		return appendErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DB().Where("id = ?", "snapshot-fk").Delete(&ProjectTemplateSnapshot{}).Error; err == nil {
+		t.Fatal("delete current snapshot succeeded, want RESTRICT failure")
+	}
+	if err := store.DB().Where("id = ?", tpl.ID).Delete(&ProjectTemplate{}).Error; err == nil {
+		t.Fatal("delete template with snapshot succeeded, want RESTRICT failure")
+	}
+}
+
+func assertProjectTemplateForeignKey(t *testing.T, store *Store, table, from, target, onDeleteWant string) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA foreign_key_list(" + table + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, seq int
+		var targetTable, source, targetColumn, onUpdate, onDelete, match string
+		if err := rows.Scan(&id, &seq, &targetTable, &source, &targetColumn, &onUpdate, &onDelete, &match); err != nil {
+			t.Fatal(err)
+		}
+		if source == from && targetTable == target {
+			if onDelete != onDeleteWant {
+				t.Fatalf("%s.%s ON DELETE = %q, want %q", table, from, onDelete, onDeleteWant)
+			}
+			return
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%s.%s -> %s foreign key missing", table, from, target)
+}
+
 func TestAttachmentTableMigrated(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "xuanchu.db"))
 	if err != nil {
