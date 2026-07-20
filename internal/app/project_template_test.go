@@ -482,6 +482,7 @@ func TestProjectTemplateDetailResolvesFullUserInfoForCreatorsAndAssignees(t *tes
 		wire  any
 		actor bool
 	}{
+		{"project template created_by", task.ActorInfoToJSON(detail.Template.CreatedBy), true},
 		{"current snapshot created_by", task.ActorInfoToJSON(detail.Template.CurrentSnapshot.CreatedBy), true},
 		{"task assignee", task.UserInfoToJSON(detail.Snapshot.Tasks[0].Assignees[0]), false},
 		{"series assignee", task.UserInfoToJSON(detail.Snapshot.Series[0].Assignees[0]), false},
@@ -520,6 +521,12 @@ func assertProjectTemplateWireUserInfo(t *testing.T, wire any, actor bool) {
 	if actor {
 		if _, ok := object["id"]; ok {
 			t.Fatalf("actor wire leaked user fields outside user: %s", encoded)
+		}
+		if got := string(object["type"]); got != `"user"` {
+			t.Fatalf("actor wire type = %s, wire = %s", got, encoded)
+		}
+		if _, ok := object["token"]; ok {
+			t.Fatalf("user actor wire unexpectedly contains token: %s", encoded)
 		}
 		user, ok := object["user"]
 		if !ok {
