@@ -3,7 +3,7 @@
 > **给 agentic workers 的要求：** 编码前必须先使用 `superpowers:writing-plans` 将本文档拆成实施计划。不要直接从本规格开始写代码。
 
 **日期：** 2026-07-20
-**状态：** 待用户审阅
+**状态：** 已批准，待实施
 **目标版本：** v0.6.0
 **背景需求：** workspace 内的真实项目可以选择部分 config、普通 task、task series 和 project automation，另存为可复用模板；用户随后从模板快速创建一个全新项目。
 
