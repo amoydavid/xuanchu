@@ -539,15 +539,19 @@ func (s *Service) buildProjectTemplateCapture(input CaptureInput, enforceSourceH
 	if err != nil {
 		return capturePlan{}, err
 	}
-	var raw []byte
-	var snapshotHash string
-	// Preview 允许返回尚未处理的 blocking issue。此时 blueprint 可能仍含 source task
-	// ref 或 attachment ref，不能冒充可持久化 Snapshot；只有问题清零后才严格编码。
-	if len(issues) == 0 {
-		raw, snapshotHash, err = projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)
-		if err != nil {
-			return capturePlan{}, mapProjectTemplateDomainError(err)
-		}
+	raw, snapshotHash, err := projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)
+	if err == nil {
+		// EncodeV1 是 Snapshot canonicalization 的唯一权威边界。Preview 和最终
+		// detail 都从 canonical JSON 解码 typed view，避免预览 raw、落库 normalized。
+		snapshot, err = projecttemplate.Decode(raw, projecttemplate.DefaultLimits)
+	} else if len(issues) > 0 {
+		// attachment/未选正文引用会让候选 Snapshot 暂时不能通过完整校验；仍以
+		// EncodeV1 规范化其余字段，并只恢复 trim 后的待处理 description。
+		snapshot, err = canonicalizeBlockingCaptureSnapshot(snapshot)
+		raw, snapshotHash = nil, ""
+	}
+	if err != nil {
+		return capturePlan{}, mapProjectTemplateDomainError(err)
 	}
 	userIDs := captureAssigneeIDs(source)
 	for _, issue := range append(append([]CaptureIssue{}, issues...), warnings...) {
@@ -618,6 +622,9 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 		if row.ProjectID != project.ID || (row.Status != taskseries.StatusActive && row.Status != taskseries.StatusEnded && row.Status != taskseries.StatusStopped) {
 			return captureSource{}, captureError("project_template_selection_invalid", "selected series is outside source project or invalid")
 		}
+		if err := validateCaptureSeriesSource(row, s.clock.Location()); err != nil {
+			return captureSource{}, captureError("project_template_selection_invalid", "selected series aggregate is invalid")
+		}
 	}
 	sort.Slice(series, func(i, j int) bool {
 		return lessSourceSeq(series[i].ProjectSeq, series[i].ID, series[j].ProjectSeq, series[j].ID)
@@ -630,17 +637,20 @@ func (s *Service) loadCaptureSource(project storage.Project, selection CaptureSe
 	if len(configs) != len(selection.ConfigKeys) {
 		return captureSource{}, captureError("project_template_config_invalid", "selected config must be an explicit source project row with a definition")
 	}
-	for _, item := range configs {
+	for i := range configs {
+		item := &configs[i]
 		if item.Definition.Key == "" {
-			return captureSource{}, captureError("project_template_config_invalid", fmt.Sprintf("config %q has no definition", item.Config.Key))
+			return captureSource{}, invalidCaptureConfig()
 		}
 		view, err := configDefinitionViewFromRow(item.Definition)
 		if err != nil {
-			return captureSource{}, captureError("project_template_config_invalid", err.Error())
+			return captureSource{}, invalidCaptureConfig()
 		}
-		if _, err := s.validateScopedConfigValue(view, storage.ConfigScopeProject, item.Config.Value); err != nil {
-			return captureSource{}, captureError("project_template_config_invalid", err.Error())
+		normalized, err := s.validateScopedConfigValue(view, storage.ConfigScopeProject, item.Config.Value)
+		if err != nil {
+			return captureSource{}, invalidCaptureConfig()
 		}
+		item.Config.Value = normalized
 	}
 
 	automations, err := s.projectAutomationRuleRepo.ListByIDs(s.workspaceID, selection.AutomationRuleIDs)
@@ -756,6 +766,75 @@ func captureSourceHash(source captureSource) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func validateCaptureSeriesSource(series taskseries.Series, loc *time.Location) error {
+	if err := taskseries.ValidateSeries(series); err != nil {
+		return err
+	}
+	switch series.Status {
+	case taskseries.StatusStopped:
+		if series.StopReason == nil || !validCaptureSeriesStopReason(*series.StopReason) {
+			return errors.New("invalid stopped series reason")
+		}
+	case taskseries.StatusActive, taskseries.StatusEnded:
+		if series.StopReason != nil {
+			return errors.New("stop reason is only valid for stopped series")
+		}
+	}
+	// ValidateSeries 负责聚合主体 invariant；RuleVersions 是同一 source aggregate
+	// 的一部分，Capture 前也必须完整验证，不能因 v1 只保存 current rule 而跳过。
+	if _, err := taskseries.FirstSlotAfter(series.RuleVersions, series.Until, series.FirstDue-1, loc); err != nil {
+		return err
+	}
+	versions := append([]taskseries.RuleVersion(nil), series.RuleVersions...)
+	sort.Slice(versions, func(i, j int) bool { return versions[i].EffectiveFrom < versions[j].EffectiveFrom })
+	if len(versions) == 0 || versions[0].EffectiveFrom != series.FirstDue || versions[len(versions)-1].RecurrenceRule != series.RecurrenceRule {
+		return errors.New("rule version boundaries do not match series")
+	}
+	return nil
+}
+
+func validCaptureSeriesStopReason(reason string) bool {
+	switch reason {
+	case taskseries.StopReasonUserStopped, taskseries.StopReasonProjectArchived, taskseries.StopReasonProjectCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func invalidCaptureConfig() error {
+	// Config validator 的底层错误可能包含 legacy row 的 raw value；Capture 对外只
+	// 暴露稳定 code/message，且该错误也不会进入 audit/log payload。
+	return captureError("project_template_config_invalid", "selected project config is invalid")
+}
+
+func canonicalizeBlockingCaptureSnapshot(snapshot projecttemplate.SnapshotV1) (projecttemplate.SnapshotV1, error) {
+	surrogate := snapshot
+	surrogate.Tasks = append([]projecttemplate.TaskBlueprintV1(nil), snapshot.Tasks...)
+	surrogate.Series = append([]projecttemplate.SeriesBlueprintV1(nil), snapshot.Series...)
+	for i := range surrogate.Tasks {
+		surrogate.Tasks[i].Description = nil
+	}
+	for i := range surrogate.Series {
+		surrogate.Series[i].Description = nil
+	}
+	raw, _, err := projecttemplate.EncodeV1(surrogate, projecttemplate.DefaultLimits)
+	if err != nil {
+		return projecttemplate.SnapshotV1{}, err
+	}
+	canonical, err := projecttemplate.Decode(raw, projecttemplate.DefaultLimits)
+	if err != nil {
+		return projecttemplate.SnapshotV1{}, err
+	}
+	for i := range canonical.Tasks {
+		canonical.Tasks[i].Description = trimStringPointer(snapshot.Tasks[i].Description)
+	}
+	for i := range canonical.Series {
+		canonical.Series[i].Description = trimStringPointer(snapshot.Series[i].Description)
+	}
+	return canonical, nil
 }
 
 type captureSourceFingerprint struct {

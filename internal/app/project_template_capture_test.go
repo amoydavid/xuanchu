@@ -101,6 +101,162 @@ func TestCapturePreviewAndCreateUseOnlyExplicitSelection(t *testing.T) {
 	}
 }
 
+func TestCapturePreviewUsesCanonicalSnapshotView(t *testing.T) {
+	svc, project := captureFixture(t)
+	row := seedCaptureTask(t, svc, project, "未规范", 1)
+	description := "  正文  "
+	priority := "H"
+	row.Title = "  已规范标题  "
+	row.Description = &description
+	row.Priority = &priority
+	row.Tags = []string{" beta ", "alpha", "alpha"}
+	if err := svc.repo.Update(row); err != nil {
+		t.Fatal(err)
+	}
+
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{TaskRefs: []string{row.UUID}})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := preview.Snapshot.Tasks[0]; got.Title != "已规范标题" || got.Description == nil || *got.Description != "正文" || got.Priority == nil || *got.Priority != "H" || strings.Join(got.Tags, ",") != "alpha,beta" {
+		t.Fatalf("preview snapshot is not canonical: %#v", got)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "canonical-preview", Name: "规范预览", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(mustJSON(preview.Snapshot)) != string(mustJSON(created.Snapshot)) {
+		t.Fatalf("preview=%s\ncreated=%s", mustJSON(preview.Snapshot), mustJSON(created.Snapshot))
+	}
+}
+
+func TestCaptureBlockingPreviewUsesCanonicalSnapshotView(t *testing.T) {
+	svc, project := captureFixture(t)
+	parent := seedCaptureTask(t, svc, project, "未选择父任务", 1)
+	row := seedCaptureTask(t, svc, project, "未规范", 2)
+	description := "  待处理正文  "
+	row.Title = "  待处理标题  "
+	row.Description = &description
+	row.Parent = &parent.UUID
+	if err := svc.repo.Update(row); err != nil {
+		t.Fatal(err)
+	}
+	input := completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{TaskRefs: []string{row.UUID}})
+	preview, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.BlockingIssues) != 1 || preview.BlockingIssues[0].Code != "project_template_dependency_missing" {
+		t.Fatalf("issues = %#v", preview.BlockingIssues)
+	}
+	if got := preview.Snapshot.Tasks[0]; got.Title != "待处理标题" || got.Description == nil || *got.Description != "待处理正文" {
+		t.Fatalf("blocking preview snapshot is not canonical: %#v", got)
+	}
+	input.ExpectedSourceHash = preview.SourceHash
+	input.Resolution.DropParentTaskRefs = []string{row.UUID}
+	created, err := svc.CreateProjectTemplate(CreateTemplateInput{Key: "canonical-blocking", Name: "规范阻断预览", Capture: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(mustJSON(preview.Snapshot)) != string(mustJSON(created.Snapshot)) {
+		t.Fatalf("preview=%s\ncreated=%s", mustJSON(preview.Snapshot), mustJSON(created.Snapshot))
+	}
+}
+
+func TestCaptureConfigLiteralUsesValidatedNormalizedValueAndStableHash(t *testing.T) {
+	svc, project := captureFixture(t)
+	cases := []struct {
+		key, valueType, first, equivalent, want string
+	}{
+		{"capture.number", string(ConfigValueTypeNumber), " 1.00e0 ", "1", "1"},
+		{"capture.boolean", string(ConfigValueTypeBoolean), " TRUE ", "true", "true"},
+		{"capture.json", string(ConfigValueTypeJSON), `{ "b": 2, "a": 1 }`, `{"a":1,"b":2}`, `{"a":1,"b":2}`},
+		{"capture.date", string(ConfigValueTypeDate), " 2026-07-20 ", "2026-07-20", "2026-07-20"},
+		{"capture.datetime", string(ConfigValueTypeDateTime), "2026-07-20T20:00:00+08:00", "2026-07-20T12:00:00Z", "2026-07-20T12:00:00Z"},
+	}
+	selection := CaptureSelection{ConfigKeys: make([]string, 0, len(cases))}
+	for _, tc := range cases {
+		if err := svc.configDefRepo.Set(storage.ConfigDefinition{WorkspaceID: project.WorkspaceID, Key: tc.key, ValueType: tc.valueType, AllowedScopesJSON: `["project"]`, CreatedAt: 1, ModifiedAt: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.configRepo.Set(storage.ConfigKey{WorkspaceID: project.WorkspaceID, Scope: storage.ConfigScopeProject, ScopeID: project.ID, Key: tc.key}, tc.first); err != nil {
+			t.Fatal(err)
+		}
+		selection.ConfigKeys = append(selection.ConfigKeys, tc.key)
+	}
+	input := completeCaptureInput(project.Slug, "2026-07-20", selection)
+	before, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := make(map[string]string, len(cases))
+	for _, tc := range cases {
+		want[tc.key] = tc.want
+	}
+	for _, config := range before.Snapshot.Configs {
+		if config.Value == nil || *config.Value != want[config.Key] {
+			t.Fatalf("normalized config %q = %#v, want %q", config.Key, config.Value, want[config.Key])
+		}
+	}
+	for _, tc := range cases {
+		if err := svc.configRepo.Set(storage.ConfigKey{WorkspaceID: project.WorkspaceID, Scope: storage.ConfigScopeProject, ScopeID: project.ID, Key: tc.key}, tc.equivalent); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := svc.PreviewProjectTemplateCapture(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.SourceHash != before.SourceHash {
+		t.Fatalf("semantically equivalent config changed source hash: before=%s after=%s", before.SourceHash, after.SourceHash)
+	}
+	if string(mustJSON(after.Snapshot)) != string(mustJSON(before.Snapshot)) {
+		t.Fatalf("normalized snapshots differ: before=%s after=%s", mustJSON(before.Snapshot), mustJSON(after.Snapshot))
+	}
+}
+
+func TestCaptureSnapshotAssigneesMarshalAsJSONUserInfo(t *testing.T) {
+	svc, project := captureFixture(t)
+	actorID := svc.Runtime().ActorUserID
+	email := "capture-owner@example.test"
+	if err := svc.store.DB().Model(&storage.User{}).Where("id = ?", actorID).Updates(map[string]any{"display_name": "模板负责人", "email": email}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.BindExternalID(actorID, "feishu", "open_id", "ou_capture_owner"); err != nil {
+		t.Fatal(err)
+	}
+	row := seedCaptureTask(t, svc, project, "负责人任务", 1)
+	row.Assignees = []task.AssigneeInfo{{UserID: actorID}}
+	if err := svc.repo.Update(row); err != nil {
+		t.Fatal(err)
+	}
+	series, err := svc.taskSeriesRepo.Create(taskseries.Series{
+		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, ProjectSeq: int64Ptr(2),
+		Title: "负责人循环", Status: taskseries.StatusActive, RecurrenceRule: "daily", FirstDue: svc.clock.Unix(),
+		AssigneeIDs: []string{actorID}, CreatedBy: actorID, CreatedAt: 1, ModifiedAt: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := svc.PreviewProjectTemplateCapture(completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{TaskRefs: []string{row.UUID}, SeriesRefs: []string{series.ID}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(mustJSON(preview.Snapshot))
+	for _, forbidden := range []string{`"ID"`, `"Name"`, `"DisplayName"`, `"Email"`, `"ExternalIDs"`, `"Provider"`, `"UserType"`, `"ExternalID"`} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("snapshot assignee used Go field name %s: %s", forbidden, raw)
+		}
+	}
+	for _, required := range []string{`"id":"` + actorID + `"`, `"name":`, `"display_name":"模板负责人"`, `"email":"` + email + `"`, `"external_ids":[{"provider":"feishu","user_type":"open_id","external_id":"ou_capture_owner"}]`} {
+		if !strings.Contains(raw, required) {
+			t.Fatalf("snapshot assignee missing %s: %s", required, raw)
+		}
+	}
+}
+
 func TestCaptureResolutionMustExactlyMatchPreviewIssues(t *testing.T) {
 	svc, project := captureFixture(t)
 	selected := seedCaptureTask(t, svc, project, "选中", 1)
@@ -213,13 +369,86 @@ func TestCaptureRejectsChangedSourceAndNeverPersistsSecret(t *testing.T) {
 	}
 }
 
+func TestCaptureCorruptLegacySecretConfigErrorIsSanitized(t *testing.T) {
+	svc, project := captureFixture(t)
+	const key, secret = "capture.corrupt-secret", "sk-corrupt-legacy-secret"
+	if err := svc.configDefRepo.Set(storage.ConfigDefinition{WorkspaceID: project.WorkspaceID, Key: key, ValueType: string(ConfigValueTypeNumber), AllowedScopesJSON: `["project"]`, Secret: true, CreatedAt: 1, ModifiedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.configRepo.Set(storage.ConfigKey{WorkspaceID: project.WorkspaceID, Scope: storage.ConfigScopeProject, ScopeID: project.ID, Key: key}, secret); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.PreviewProjectTemplateCapture(completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{ConfigKeys: []string{key}}))
+	if runtimeCode(err) != "project_template_config_invalid" {
+		t.Fatalf("error = %v", err)
+	}
+	if err == nil || err.Error() != "selected project config is invalid" || strings.Contains(err.Error(), secret) {
+		t.Fatalf("unsanitized capture error = %v", err)
+	}
+	var audits []storage.AuditLog
+	if dbErr := svc.store.DB().Find(&audits).Error; dbErr != nil {
+		t.Fatal(dbErr)
+	}
+	if strings.Contains(string(mustJSON(audits)), secret) {
+		t.Fatalf("audit leaked corrupt secret: %s", mustJSON(audits))
+	}
+}
+
+func TestCaptureRejectsInvalidSeriesAggregateWithStableSelectionCode(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*taskseries.Series)
+	}{
+		{"stopped without end and reason", func(series *taskseries.Series) { series.Status = taskseries.StatusStopped }},
+		{"ended without effective end", func(series *taskseries.Series) { series.Status = taskseries.StatusEnded }},
+		{"active with stop reason", func(series *taskseries.Series) {
+			reason := taskseries.StopReasonUserStopped
+			series.StopReason = &reason
+		}},
+		{"stopped with invalid stop reason", func(series *taskseries.Series) {
+			end, reason := series.FirstDue+1, "bogus"
+			series.Status, series.EffectiveEndAt, series.StopReason = taskseries.StatusStopped, &end, &reason
+		}},
+		{"invalid rule version", func(series *taskseries.Series) {
+			series.RuleVersions = []taskseries.RuleVersion{{ID: uuid.NewString(), EffectiveFrom: series.FirstDue, RecurrenceRule: "yearly", CreatedBy: series.CreatedBy, CreatedAt: 1}}
+		}},
+		{"rule versions do not start at first due", func(series *taskseries.Series) {
+			series.RuleVersions = []taskseries.RuleVersion{{ID: uuid.NewString(), EffectiveFrom: series.FirstDue + 86400, RecurrenceRule: "daily", CreatedBy: series.CreatedBy, CreatedAt: 1}}
+		}},
+		{"current rule differs from last version", func(series *taskseries.Series) {
+			series.RuleVersions = []taskseries.RuleVersion{{ID: uuid.NewString(), EffectiveFrom: series.FirstDue, RecurrenceRule: "weekly", CreatedBy: series.CreatedBy, CreatedAt: 1}}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, project := captureFixture(t)
+			series := taskseries.Series{
+				ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, ProjectSeq: int64Ptr(1),
+				Title: "非法聚合", Status: taskseries.StatusActive, RecurrenceRule: "daily", FirstDue: svc.clock.Unix(),
+				CreatedBy: svc.Runtime().ActorUserID, CreatedAt: 1, ModifiedAt: 1,
+			}
+			tc.mutate(&series)
+			created, err := svc.taskSeriesRepo.Create(series)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = svc.PreviewProjectTemplateCapture(completeCaptureInput(project.Slug, "2026-07-20", CaptureSelection{SeriesRefs: []string{created.ID}}))
+			if runtimeCode(err) != "project_template_selection_invalid" || err == nil || err.Error() != "selected series aggregate is invalid" {
+				t.Fatalf("error = %v, code=%q", err, runtimeCode(err))
+			}
+		})
+	}
+}
+
 func TestCaptureSeriesUsesCurrentRuleWithoutHistoryAndNeedsStoppedConfirmation(t *testing.T) {
 	svc, project := captureFixture(t)
 	loc := svc.clock.Location()
 	first := time.Date(2026, 7, 1, 23, 59, 59, 0, loc).Unix()
+	effectiveEnd := time.Date(2026, 7, 15, 23, 59, 59, 0, loc).Unix()
+	stopReason := taskseries.StopReasonUserStopped
 	series, err := svc.taskSeriesRepo.Create(taskseries.Series{
 		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, ProjectSeq: int64Ptr(1),
-		Title: "周报", Status: taskseries.StatusStopped, RecurrenceRule: "daily", FirstDue: first,
+		Title: "周报", Status: taskseries.StatusStopped, RecurrenceRule: "daily", FirstDue: first, EffectiveEndAt: &effectiveEnd, StopReason: &stopReason,
 		CreatedBy: svc.Runtime().ActorUserID, CreatedAt: 1, ModifiedAt: 2,
 		RuleVersions: []taskseries.RuleVersion{
 			{ID: uuid.NewString(), EffectiveFrom: first, RecurrenceRule: "weekly", CreatedBy: svc.Runtime().ActorUserID, CreatedAt: 1},
@@ -439,9 +668,10 @@ func TestCaptureStoppedSeriesWithFutureSlotDoesNotRequireFallbackConfirmation(t 
 	first := time.Date(2026, 7, 20, 23, 59, 59, 0, svc.clock.Location()).Unix()
 	until := time.Date(2026, 7, 24, 23, 59, 59, 0, svc.clock.Location()).Unix()
 	end := time.Date(2026, 7, 25, 0, 0, 0, 0, svc.clock.Location()).Unix()
+	stopReason := taskseries.StopReasonUserStopped
 	series, err := svc.taskSeriesRepo.Create(taskseries.Series{
 		ID: uuid.NewString(), WorkspaceID: project.WorkspaceID, ProjectID: project.ID, ProjectSeq: int64Ptr(1),
-		Title: "历史范围", Status: taskseries.StatusStopped, RecurrenceRule: "daily", FirstDue: first, Until: &until, EffectiveEndAt: &end,
+		Title: "历史范围", Status: taskseries.StatusStopped, RecurrenceRule: "daily", FirstDue: first, Until: &until, EffectiveEndAt: &end, StopReason: &stopReason,
 		CreatedBy: svc.Runtime().ActorUserID, CreatedAt: 1, ModifiedAt: 1,
 	})
 	if err != nil {

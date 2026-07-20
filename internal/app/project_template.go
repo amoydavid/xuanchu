@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -72,6 +73,27 @@ type ProjectTemplateTaskView struct {
 	Links       []projecttemplate.TaskLinkBlueprintV1     `json:"links"`
 }
 
+func (view ProjectTemplateTaskView) MarshalJSON() ([]byte, error) {
+	type wireView struct {
+		Ref         string                                    `json:"ref"`
+		Title       string                                    `json:"title"`
+		Description *string                                   `json:"description,omitempty"`
+		Priority    *string                                   `json:"priority,omitempty"`
+		Tags        []string                                  `json:"tags"`
+		Assignees   []task.JSONUserInfo                       `json:"assignees"`
+		UDAs        map[string]projecttemplate.UDABlueprintV1 `json:"udas"`
+		Dates       projecttemplate.TaskDatesV1               `json:"dates"`
+		ParentRef   *string                                   `json:"parent_ref,omitempty"`
+		DependsRefs []string                                  `json:"depends_refs"`
+		Links       []projecttemplate.TaskLinkBlueprintV1     `json:"links"`
+	}
+	return json.Marshal(wireView{
+		Ref: view.Ref, Title: view.Title, Description: view.Description, Priority: view.Priority,
+		Tags: view.Tags, Assignees: task.UserInfoListToJSON(view.Assignees), UDAs: view.UDAs,
+		Dates: view.Dates, ParentRef: view.ParentRef, DependsRefs: view.DependsRefs, Links: view.Links,
+	})
+}
+
 type ProjectTemplateSeriesView struct {
 	Ref            string                                    `json:"ref"`
 	Title          string                                    `json:"title"`
@@ -83,6 +105,27 @@ type ProjectTemplateSeriesView struct {
 	UDAs           map[string]projecttemplate.UDABlueprintV1 `json:"udas"`
 	FirstDue       projecttemplate.RelativeLocalTimeV1       `json:"first_due"`
 	Until          *projecttemplate.RelativeLocalTimeV1      `json:"until,omitempty"`
+}
+
+func (view ProjectTemplateSeriesView) MarshalJSON() ([]byte, error) {
+	type wireView struct {
+		Ref            string                                    `json:"ref"`
+		Title          string                                    `json:"title"`
+		RecurrenceRule string                                    `json:"recurrence_rule"`
+		Description    *string                                   `json:"description,omitempty"`
+		Priority       *string                                   `json:"priority,omitempty"`
+		Tags           []string                                  `json:"tags"`
+		Assignees      []task.JSONUserInfo                       `json:"assignees"`
+		UDAs           map[string]projecttemplate.UDABlueprintV1 `json:"udas"`
+		FirstDue       projecttemplate.RelativeLocalTimeV1       `json:"first_due"`
+		Until          *projecttemplate.RelativeLocalTimeV1      `json:"until,omitempty"`
+	}
+	return json.Marshal(wireView{
+		Ref: view.Ref, Title: view.Title, RecurrenceRule: view.RecurrenceRule,
+		Description: view.Description, Priority: view.Priority, Tags: view.Tags,
+		Assignees: task.UserInfoListToJSON(view.Assignees), UDAs: view.UDAs,
+		FirstDue: view.FirstDue, Until: view.Until,
+	})
 }
 
 type ProjectTemplateAutomationView = projecttemplate.AutomationBlueprintV1
