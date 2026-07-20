@@ -548,6 +548,156 @@ func TestProjectTemplateInstantiatePreviewRejectsInvalidAutomationAllowedHosts(t
 	}
 }
 
+func TestProjectTemplateInstantiatePreviewMarshalsCreatedByAsJSONActorInfo(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+	seedProjectTemplate(t, f.owner, "actor-wire", snapshot)
+	input := instantiateTemplateInput(t, f.owner, "actor-wire", "actorwire")
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("actor-wire", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Template struct {
+			CreatedBy map[string]any `json:"created_by"`
+		} `json:"template"`
+		Snapshot struct {
+			CreatedBy map[string]any `json:"created_by"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal([]byte(mustJSON(preview)), &wire); err != nil {
+		t.Fatal(err)
+	}
+	for name, actor := range map[string]map[string]any{"template": wire.Template.CreatedBy, "snapshot": wire.Snapshot.CreatedBy} {
+		if _, ok := actor["type"]; !ok || actor["user"] == nil {
+			t.Fatalf("%s created_by is not JSONActorInfo: %#v", name, actor)
+		}
+		for _, upper := range []string{"Type", "ID", "Name", "User", "Token"} {
+			if _, leaked := actor[upper]; leaked {
+				t.Fatalf("%s created_by leaked Go field %q: %#v", name, upper, actor)
+			}
+		}
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewRejectsNullAutomationAllowedHosts(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	baseURL, model := "https://api.example.test", "gpt-test"
+	snapshot := instantiateSnapshot()
+	snapshot.Configs = []projecttemplate.ConfigBlueprintV1{
+		{Key: "agent.provider.base_url", Mode: "literal", Value: &baseURL},
+		{Key: "agent.provider.api_key", Mode: "secret_input"},
+		{Key: "agent.provider.model", Mode: "literal", Value: &model},
+	}
+	snapshot.Automations = []projecttemplate.AutomationBlueprintV1{{
+		Ref: "automation-1", Name: "巡检", TriggerType: "schedule",
+		TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:00", Timezone: "Asia/Shanghai"},
+		Action:        projecttemplate.AutomationActionV1{Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelConfigKey: "agent.provider.model", AllowedHostsConfigKey: "agent.provider.allowed_hosts"},
+		Context:       projecttemplate.AutomationContextV1{Include: []string{}}, InstructionTemplate: "检查",
+	}}
+	seedProjectTemplate(t, f.owner, "host-null", snapshot)
+	if err := f.owner.configRepo.Set(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeWorkspace, ScopeID: f.owner.workspaceID, Key: "agent.provider.allowed_hosts"}, "null"); err != nil {
+		t.Fatal(err)
+	}
+	input := instantiateTemplateInput(t, f.owner, "host-null", "hostnull")
+	input.SecretInputs = map[string]string{"agent.provider.api_key": "secret"}
+	preview, err := f.owner.PreviewProjectTemplateInstantiation("host-null", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTemplateIssue(preview.Issues, "project_template_automation_invalid") {
+		t.Fatalf("null allowed-host config was accepted: %#v", preview)
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewSafelyDegradesInvalidCurrentSummary(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+	}{
+		{"unknown_field", `{"schema":"xuanchu.project-template-snapshot/v1","anchor_date":"2026-07-20","project":{"description":"invalid-current-must-not-leak"},"configs":[],"tasks":[],"series":[],"automations":[],"unknown":"invalid-current-must-not-leak"}`},
+		{"unsupported_schema", `{"schema":"xuanchu.project-template-snapshot/v999","invalid":"invalid-current-must-not-leak"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newProjectTemplateFixture(t)
+			historicalSnapshot := instantiateSnapshot()
+			historicalSnapshot.Configs = []projecttemplate.ConfigBlueprintV1{}
+			seeded := seedProjectTemplate(t, f.owner, "invalid-current", historicalSnapshot)
+			historical, err := f.owner.projectTemplateSnapshot(seeded, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			currentSnapshot := historicalSnapshot
+			currentSnapshot.Project.Description = "current"
+			current := appendInstantiateSnapshot(t, f.owner, seeded, currentSnapshot)
+			sum := sha256.Sum256([]byte(test.raw))
+			if err := f.store.DB().Model(&storage.ProjectTemplateSnapshot{}).Where("id = ?", current.ID).Updates(map[string]any{"snapshot_json": test.raw, "snapshot_hash": fmt.Sprintf("%x", sum[:])}).Error; err != nil {
+				t.Fatal(err)
+			}
+			input := InstantiateInput{SnapshotID: historical.ID, ExpectedHash: historical.SnapshotHash, ProjectSlug: "safeold", ProjectName: "历史项目", StartDate: "2026-08-01"}
+			preview, err := f.owner.PreviewProjectTemplateInstantiation(seeded.Key, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if preview.Template.CurrentSnapshot == nil || preview.Template.CurrentSnapshot.ID != current.ID || preview.Template.CurrentSnapshot.Counts != (ComponentCounts{}) || len(preview.Template.CurrentSnapshot.RequiredSecretKeys) != 0 {
+				t.Fatalf("degraded current summary = %#v", preview.Template.CurrentSnapshot)
+			}
+			if strings.Contains(mustJSON(preview), "invalid-current-must-not-leak") {
+				t.Fatalf("invalid current content leaked: %s", mustJSON(preview))
+			}
+		})
+	}
+}
+
+func TestProjectTemplateInstantiatePreviewTreatsBlankInheritedSecretsAsMissing(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		source  string
+		value   string
+		project string
+	}{
+		{"workspace_empty", "workspace", "", "wsempty"},
+		{"workspace_whitespace", "workspace", " \t ", "wsblank"},
+		{"default_empty", "default", "", "defempty"},
+		{"default_whitespace", "default", " \t ", "defblank"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newProjectTemplateFixture(t)
+			key := "template.inherited_secret"
+			def := storage.ConfigDefinition{
+				WorkspaceID: f.owner.workspaceID, Key: key, ValueType: "string",
+				AllowedScopesJSON: `["project","workspace"]`, EnumValuesJSON: `[]`, Secret: true, CreatedAt: 1, ModifiedAt: 1,
+			}
+			if test.source == "default" {
+				def.DefaultValue, def.HasDefault = test.value, true
+			}
+			if err := f.owner.configDefRepo.Set(def); err != nil {
+				t.Fatal(err)
+			}
+			if test.source == "workspace" {
+				if err := f.owner.configRepo.Set(storage.ConfigKey{WorkspaceID: f.owner.workspaceID, Scope: storage.ConfigScopeWorkspace, ScopeID: f.owner.workspaceID, Key: key}, test.value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			snapshot := instantiateSnapshot()
+			snapshot.Configs = []projecttemplate.ConfigBlueprintV1{{Key: key, Mode: "secret_input"}}
+			seedProjectTemplate(t, f.owner, "blank-secret", snapshot)
+			input := instantiateTemplateInput(t, f.owner, "blank-secret", test.project)
+			plan, err := f.owner.buildInstantiatePlan("blank-secret", input, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasTemplateIssue(plan.Preview.Issues, "project_template_secret_required") || plan.Preview.Counts.Configs != 0 || len(plan.Preview.SecretResolutions) != 1 || plan.Preview.SecretResolutions[0].ResolvedFrom != "missing" {
+				t.Fatalf("blank inherited secret preview = %#v", plan.Preview)
+			}
+			if _, copied := plan.ConfigValues[key]; copied {
+				t.Fatalf("blank inherited secret entered project rows: %#v", plan.ConfigValues)
+			}
+		})
+	}
+}
+
 func appendInstantiateSnapshot(t *testing.T, svc *Service, template storage.ProjectTemplate, snapshot projecttemplate.SnapshotV1) storage.ProjectTemplateSnapshot {
 	t.Helper()
 	raw, hash, err := projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)

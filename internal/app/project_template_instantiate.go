@@ -109,6 +109,68 @@ type InstantiatePreview struct {
 	Warnings          []ProjectTemplateIssue             `json:"warnings"`
 }
 
+type instantiateSnapshotSummaryWire struct {
+	ID                 string             `json:"id"`
+	Version            int64              `json:"version"`
+	Hash               string             `json:"hash"`
+	SourceProjectID    string             `json:"source_project_id"`
+	Counts             ComponentCounts    `json:"counts"`
+	RequiredSecretKeys []string           `json:"required_secret_keys"`
+	CreatedBy          task.JSONActorInfo `json:"created_by"`
+	CreatedAt          int64              `json:"created_at"`
+}
+
+type instantiateTemplateSummaryWire struct {
+	ID              string                          `json:"id"`
+	Key             string                          `json:"key"`
+	Name            string                          `json:"name"`
+	Description     string                          `json:"description"`
+	Status          string                          `json:"status"`
+	CurrentSnapshot *instantiateSnapshotSummaryWire `json:"current_snapshot,omitempty"`
+	CreatedBy       task.JSONActorInfo              `json:"created_by"`
+	CreatedAt       int64                           `json:"created_at"`
+	ModifiedAt      int64                           `json:"modified_at"`
+	ArchivedAt      *int64                          `json:"archived_at,omitempty"`
+}
+
+func (preview InstantiatePreview) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		Template          instantiateTemplateSummaryWire `json:"template"`
+		Snapshot          instantiateSnapshotSummaryWire `json:"snapshot"`
+		Project           ProjectTemplateProjectPreview  `json:"project"`
+		Counts            ComponentCounts                `json:"counts"`
+		SecretResolutions []SecretResolutionView         `json:"secret_resolutions"`
+		AssigneeIssues    []AssigneeIssueView            `json:"assignee_issues"`
+		Issues            []ProjectTemplateIssue         `json:"issues"`
+		Warnings          []ProjectTemplateIssue         `json:"warnings"`
+	}
+	return json.Marshal(wire{
+		Template: instantiateTemplateSummaryToWire(preview.Template), Snapshot: instantiateSnapshotSummaryToWire(preview.Snapshot),
+		Project: preview.Project, Counts: preview.Counts, SecretResolutions: preview.SecretResolutions,
+		AssigneeIssues: preview.AssigneeIssues, Issues: preview.Issues, Warnings: preview.Warnings,
+	})
+}
+
+func instantiateTemplateSummaryToWire(view ProjectTemplateSummaryView) instantiateTemplateSummaryWire {
+	out := instantiateTemplateSummaryWire{
+		ID: view.ID, Key: view.Key, Name: view.Name, Description: view.Description, Status: view.Status,
+		CreatedBy: task.ActorInfoToJSON(view.CreatedBy), CreatedAt: view.CreatedAt, ModifiedAt: view.ModifiedAt, ArchivedAt: view.ArchivedAt,
+	}
+	if view.CurrentSnapshot != nil {
+		current := instantiateSnapshotSummaryToWire(*view.CurrentSnapshot)
+		out.CurrentSnapshot = &current
+	}
+	return out
+}
+
+func instantiateSnapshotSummaryToWire(view ProjectTemplateSnapshotSummaryView) instantiateSnapshotSummaryWire {
+	return instantiateSnapshotSummaryWire{
+		ID: view.ID, Version: view.Version, Hash: view.Hash, SourceProjectID: view.SourceProjectID,
+		Counts: view.Counts, RequiredSecretKeys: append([]string{}, view.RequiredSecretKeys...),
+		CreatedBy: task.ActorInfoToJSON(view.CreatedBy), CreatedAt: view.CreatedAt,
+	}
+}
+
 type InstantiateResult struct {
 	Project ProjectView     `json:"project"`
 	Counts  ComponentCounts `json:"counts"`
@@ -253,7 +315,10 @@ func (s *Service) buildInstantiatePlan(templateRef string, input InstantiateInpu
 		}
 		currentDecoded, _, err = decodeInstantiateSnapshot([]byte(currentSnapshot.SnapshotJSON))
 		if err != nil {
-			return instantiatePlan{}, err
+			// current 仅用于 Template 元数据摘要；指定合法历史 Snapshot 时，
+			// current 的任何 codec/schema 损坏都不能阻断目标版本。安全降级只
+			// 保留 row 元数据，组件数和 secret keys 置空，不解释无效 payload。
+			currentDecoded = projecttemplate.Snapshot{}
 		}
 	}
 	users, err := s.resolveUserInfos([]string{valueOrEmpty(template.CreatedByUserID), valueOrEmpty(snapshot.CreatedByUserID), valueOrEmpty(currentSnapshot.CreatedByUserID)})
@@ -510,7 +575,7 @@ func (s *Service) planInstantiateConfigs(blueprints []projecttemplate.ConfigBlue
 				value, inheritedSource, _, resolveErr := s.prospectiveProjectConfigValue(blueprint.Key, projectValues)
 				if resolveErr != nil {
 					issues = append(issues, blockingTemplateIssue("project_template_config_invalid", "config", blueprint.Key, "value", "inherited secret is incompatible with current config schema"))
-				} else if inheritedSource == "workspace" || inheritedSource == "default" {
+				} else if (inheritedSource == "workspace" || inheritedSource == "default") && strings.TrimSpace(value) != "" {
 					effectiveValues[blueprint.Key], source = value, inheritedSource
 					applied++
 				} else {

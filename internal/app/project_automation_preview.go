@@ -204,7 +204,7 @@ func validateProjectAutomationProviderConfig(action ProjectAutomationActionConfi
 	}
 	var allowedHosts []string
 	if ok && strings.TrimSpace(allowedRaw) != "" && strings.TrimSpace(allowedRaw) != "[]" {
-		if err := json.Unmarshal([]byte(allowedRaw), &allowedHosts); err != nil {
+		if err := json.Unmarshal([]byte(allowedRaw), &allowedHosts); err != nil || allowedHosts == nil {
 			return "", "", "", RuntimeError{Code: "automation_provider_allowed_hosts_invalid", Message: "agent.provider.allowed_hosts must be a JSON string array"}
 		}
 	}
