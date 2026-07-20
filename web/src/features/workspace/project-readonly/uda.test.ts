@@ -39,6 +39,18 @@ describe("extractUDAs", () => {
     expect(extractUDAs(task)).toEqual([["estimate", "4h"]])
   })
 
+  it("excludes url field (runtime permalink) from custom fields", () => {
+    // 回归保护：url 是后端运行时生成的 Web Console permalink（不落库），
+    // CLI/MCP/HTTP 都会返回，必须识别为标准字段，不能被误显示成自定义 UDA。
+    const task = {
+      uuid: "u1",
+      status: "pending",
+      url: "https://example.com/workspaces/ws/projects/p/tasks/p-1",
+      estimate: "4h",
+    }
+    expect(extractUDAs(task)).toEqual([["estimate", "4h"]])
+  })
+
   it("uses explicit nested UDAs without inferring protocol metadata as custom fields", () => {
     expect(
       extractUDAs({

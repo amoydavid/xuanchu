@@ -44,6 +44,9 @@ export type ProjectReadonlyTask = {
   assignees?: ProjectReadonlyAssignee[]
   tags?: string[]
   links?: ProjectReadonlyTaskLink[]
+  // url 是后端运行时生成的 Web Console permalink（不落库），CLI/MCP/HTTP 统一返回。
+  // 非自定义字段，不应出现在右侧栏「自定义字段」分组里。
+  url?: string
   // UDAs 在后端平铺为顶层字段，此处用索引签名容纳任意自定义字段。
   [key: string]: unknown
 }
@@ -97,6 +100,7 @@ export const STANDARD_TASK_FIELDS: ReadonlySet<string> = new Set([
   "assignees",
   "tags",
   "links",
+  "url",
   "udas",
   "series_id",
   "recurrence_at",
