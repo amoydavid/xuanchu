@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/projecttemplate"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/uda"
 )
 
@@ -46,6 +48,216 @@ func instantiateSnapshot() projecttemplate.SnapshotV1 {
 		Series:      []projecttemplate.SeriesBlueprintV1{},
 		Automations: []projecttemplate.AutomationBlueprintV1{},
 	}
+}
+
+func fullInstantiateSnapshot(ownerID string) projecttemplate.SnapshotV1 {
+	baseURL := "https://api.example.test/v1"
+	parentRef := "task-3"
+	taskDescription := "等待 [收尾](ref://task/task-3)"
+	seriesDescription := "循环跟进 [收尾](ref://task/task-3)"
+	return projecttemplate.SnapshotV1{
+		Schema: projecttemplate.SnapshotSchemaV1, AnchorDate: "2026-07-20",
+		Project: projecttemplate.ProjectBlueprintV1{Description: "完整模板项目"},
+		Configs: []projecttemplate.ConfigBlueprintV1{
+			{Key: "agent.provider.base_url", Mode: "literal", Value: &baseURL},
+			{Key: "agent.provider.api_key", Mode: "secret_input"},
+		},
+		Tasks: []projecttemplate.TaskBlueprintV1{
+			{Ref: "task-1", Title: "准备", Description: &taskDescription, AssigneeIDs: []string{ownerID}, DependsRefs: []string{"task-2"}, Links: []projecttemplate.TaskLinkBlueprintV1{{Type: "document", URL: "https://docs.example.test/launch", Title: "发布文档"}}},
+			{Ref: "task-2", Title: "执行", ParentRef: &parentRef},
+			{Ref: "task-3", Title: "收尾"},
+		},
+		Series: []projecttemplate.SeriesBlueprintV1{{
+			Ref: "series-1", Title: "每日跟进", Description: &seriesDescription,
+			RecurrenceRule: "daily", FirstDue: projecttemplate.RelativeLocalTimeV1{DayOffset: 0, LocalTime: "09:00:00"},
+		}},
+		Automations: []projecttemplate.AutomationBlueprintV1{{
+			Ref: "automation-1", Name: "每日巡检", TriggerType: "schedule",
+			TriggerConfig: projecttemplate.AutomationTriggerV1{ScheduleType: "daily_at", ScheduleValue: "09:30", Timezone: "Asia/Shanghai"},
+			Action:        projecttemplate.AutomationActionV1{Protocol: "chat_completions", BaseURLConfigKey: "agent.provider.base_url", APIKeyConfigKey: "agent.provider.api_key", ModelOverride: "gpt-test"},
+			Context:       projecttemplate.AutomationContextV1{Include: []string{"project"}}, InstructionTemplate: "检查项目",
+		}},
+	}
+}
+
+func TestProjectTemplateInstantiateCreatesFreshGraphWithoutHistory(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.owner.clock = FixedClock{NowUnix: time.Date(2026, 8, 5, 12, 0, 0, 0, loc).Unix(), Loc: loc}
+	createHookTestSink(t, f.store, f.owner.workspaceID, f.owner.runtime.ActorUserID, "template-events")
+	hook, err := f.owner.AddHook(HookAddInput{Name: "template-events", ScopeType: HookScopeWorkspace, EventTypes: []string{"task.created"}, SinkRef: "template-events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedProjectTemplate(t, f.owner, "launch", fullInstantiateSnapshot(f.owner.runtime.ActorUserID))
+	input := instantiateTemplateInput(t, f.owner, "launch", "newproj")
+	input.SecretInputs = map[string]string{"agent.provider.api_key": "secret-canary-must-not-leak"}
+
+	got, err := f.owner.InstantiateCurrentProjectTemplate("launch", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCounts := ComponentCounts{Configs: 2, Tasks: 3, Series: 1, Automations: 1}
+	if got.Project.Status != string(storage.ProjectStatusPlanning) || got.Counts != wantCounts {
+		t.Fatalf("result = %#v", got)
+	}
+
+	var taskRows []storage.Task
+	if err := f.store.DB().Where("workspace_id = ? AND project_id = ? AND series_id IS NULL", f.owner.workspaceID, got.Project.ID).Order("project_seq ASC").Find(&taskRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(taskRows) != 3 {
+		t.Fatalf("tasks = %#v", taskRows)
+	}
+	byTitle := map[string]task.Task{}
+	for i, row := range taskRows {
+		if row.ProjectSeq == nil || *row.ProjectSeq != int64(i+1) {
+			t.Fatalf("task seq order = %#v", taskRows)
+		}
+		if _, err := uuid.Parse(row.UUID); err != nil {
+			t.Fatalf("task UUID = %q", row.UUID)
+		}
+		resolved, err := f.owner.repo.GetByUUID(f.owner.workspaceID, row.UUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		byTitle[row.Title] = resolved
+	}
+	if byTitle["准备"].Description == nil || !strings.Contains(*byTitle["准备"].Description, byTitle["收尾"].UUID) || len(byTitle["准备"].Depends) != 1 || byTitle["准备"].Depends[0] != byTitle["执行"].UUID {
+		t.Fatalf("mapped task refs/depends = %#v", byTitle["准备"])
+	}
+	if byTitle["执行"].Parent == nil || *byTitle["执行"].Parent != byTitle["收尾"].UUID {
+		t.Fatalf("mapped parent = %#v", byTitle["执行"])
+	}
+	if len(byTitle["准备"].Links) != 1 || byTitle["准备"].Links[0].ID == "" || byTitle["准备"].Links[0].CreatedBy.User == nil || byTitle["准备"].Links[0].CreatedBy.User.ID != f.owner.runtime.ActorUserID {
+		t.Fatalf("fresh link/actor = %#v", byTitle["准备"].Links)
+	}
+
+	var seriesRows []storage.TaskSeries
+	if err := f.store.DB().Where("workspace_id = ? AND project_id = ?", f.owner.workspaceID, got.Project.ID).Find(&seriesRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(seriesRows) != 1 || seriesRows[0].ProjectSeq == nil || *seriesRows[0].ProjectSeq != 1 || seriesRows[0].Status != "active" {
+		t.Fatalf("series = %#v", seriesRows)
+	}
+	series, err := f.owner.taskSeriesRepo.Get(f.owner.workspaceID, seriesRows[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series.RuleVersions) != 1 || series.Description == nil || !strings.Contains(*series.Description, byTitle["收尾"].UUID) {
+		t.Fatalf("series history/description = %#v", series)
+	}
+	var occurrenceCount int64
+	if err := f.store.DB().Model(&storage.Task{}).Where("workspace_id = ? AND project_id = ? AND series_id IS NOT NULL", f.owner.workspaceID, got.Project.ID).Count(&occurrenceCount).Error; err != nil || occurrenceCount != 0 {
+		t.Fatalf("occurrence count = %d, err=%v", occurrenceCount, err)
+	}
+
+	rules, err := f.owner.projectAutomationRuleRepo.List(f.owner.workspaceID, &got.Project.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 1 || rules[0].Enabled == nil || *rules[0].Enabled {
+		t.Fatalf("automation rules = %#v", rules)
+	}
+	var automationDeliveries int64
+	if err := f.store.DB().Model(&storage.ProjectAutomationDelivery{}).Where("project_id = ?", got.Project.ID).Count(&automationDeliveries).Error; err != nil || automationDeliveries != 0 {
+		t.Fatalf("automation deliveries = %d, err=%v", automationDeliveries, err)
+	}
+
+	deliveries, err := f.owner.hookDeliveryRepo.ListByHook(hook.ID, "", 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 3 {
+		t.Fatalf("task.created deliveries = %#v", deliveries)
+	}
+	template, err := f.owner.resolveProjectTemplate("launch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := f.owner.projectTemplateSnapshot(template, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, delivery := range deliveries {
+		var envelope map[string]any
+		if err := json.Unmarshal([]byte(delivery.PayloadJSON), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := envelope["data"].(map[string]any)
+		if data["source_template_id"] != template.ID || data["source_template_snapshot_id"] != snapshot.ID || data["source_template_snapshot_hash"] != snapshot.SnapshotHash {
+			t.Fatalf("source metadata = %#v", data)
+		}
+	}
+
+	var audits []storage.AuditLogEntry
+	if err := f.store.DB().Table("audit_logs").Where("project_id = ?", got.Project.ID).Order("id ASC").Find(&audits).Error; err != nil {
+		t.Fatal(err)
+	}
+	actions := make([]string, 0, len(audits))
+	joined := ""
+	for _, audit := range audits {
+		actions = append(actions, audit.Action)
+		joined += audit.PayloadJSON
+	}
+	sort.Strings(actions)
+	if !containsString(actions, "project_template.instantiate") || !containsString(actions, "project.add") || !containsString(actions, "task.add") || !containsString(actions, "task.series.created") || !containsString(actions, "project.config.set") || !containsString(actions, "task.link.add") {
+		t.Fatalf("audit actions = %#v", actions)
+	}
+	joined += string(mustJSON(deliveries))
+	if strings.Contains(joined, input.SecretInputs["agent.provider.api_key"]) {
+		t.Fatalf("secret leaked to audit/event: %s", joined)
+	}
+}
+
+func TestProjectTemplateInstantiateRollbackLeavesNothing(t *testing.T) {
+	stages := []string{"project-create", "config-create", "series-create", "task-shell-create", "task-finalize", "link-create", "automation-create", "audit-write"}
+	for index, stage := range stages {
+		t.Run(stage, func(t *testing.T) {
+			f := newProjectTemplateFixture(t)
+			seedProjectTemplate(t, f.owner, "launch", fullInstantiateSnapshot(f.owner.runtime.ActorUserID))
+			slug := fmt.Sprintf("rollback%d", index)
+			input := instantiateTemplateInput(t, f.owner, "launch", slug)
+			input.SecretInputs = map[string]string{"agent.provider.api_key": "rollback-secret"}
+			models := []any{&storage.Project{}, &storage.Config{}, &storage.Task{}, &storage.TaskLink{}, &storage.TaskSeries{}, &storage.TaskSeriesRuleVersion{}, &storage.ProjectAutomationRule{}, &storage.ProjectAutomationDelivery{}, &storage.AuditLog{}}
+			before := make([]int64, len(models))
+			for i, model := range models {
+				if err := f.store.DB().Model(model).Count(&before[i]).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.owner.projectTemplateInstantiateFailure = func(current string) error {
+				if current == stage {
+					return errors.New("injected " + stage + " failure")
+				}
+				return nil
+			}
+			if _, err := f.owner.InstantiateCurrentProjectTemplate("launch", input); err == nil || strings.Contains(err.Error(), input.SecretInputs["agent.provider.api_key"]) {
+				t.Fatalf("instantiate error = %v", err)
+			}
+			if _, err := f.owner.ResolveProject(slug); runtimeCode(err) != "project_not_found" {
+				t.Fatalf("rollback project remained: %v", err)
+			}
+			for i, model := range models {
+				var count int64
+				if err := f.store.DB().Model(model).Count(&count).Error; err != nil || count != before[i] {
+					t.Fatalf("rollback residue %T before=%d after=%d err=%v", model, before[i], count, err)
+				}
+			}
+		})
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func hasTemplateIssue(items []ProjectTemplateIssue, code string) bool {

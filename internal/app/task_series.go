@@ -39,6 +39,7 @@ type AddTaskSeriesInput struct {
 	Scheduled *int64
 	Depends   []string
 	Parent    *string
+	presetID  string
 }
 
 // TaskSeriesView 是 series 的对外视图（spec §7.7）。
@@ -161,6 +162,24 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 	if err := s.Require(PermissionTaskWrite); err != nil {
 		return TaskSeriesCreateResult{}, err
 	}
+	var result TaskSeriesCreateResult
+	err := s.store.Transaction(func(txStore *storage.Store) error {
+		txSvc, err := s.withStore(txStore)
+		if err != nil {
+			return err
+		}
+		result, err = txSvc.addTaskSeriesLocked(input, true)
+		return err
+	})
+	if err != nil {
+		return TaskSeriesCreateResult{}, err
+	}
+	return result, nil
+}
+
+// addTaskSeriesLocked 在调用方事务内创建 series。模板路径传
+// materializeFirst=false，禁止在初始化事务生成 occurrence 或历史 backlog。
+func (s *Service) addTaskSeriesLocked(input AddTaskSeriesInput, materializeFirst bool) (TaskSeriesCreateResult, error) {
 	// 拒绝不支持字段。
 	if input.Wait != nil || input.Scheduled != nil || len(input.Depends) > 0 || input.Parent != nil {
 		return TaskSeriesCreateResult{}, RuntimeError{Code: "task_series_unsupported_field", Message: "循环系列不支持 wait/scheduled/depends/parent"}
@@ -223,6 +242,7 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 
 	now := s.clock.Unix()
 	series := taskseries.Series{
+		ID:          input.presetID,
 		WorkspaceID: s.workspaceID, ProjectID: projectID, Title: input.Title,
 		Description: input.Description, Status: taskseries.StatusActive,
 		RecurrenceRule: input.RecurrenceRule, FirstDue: input.FirstDue, Until: input.Until,
@@ -230,63 +250,53 @@ func (s *Service) AddTaskSeries(input AddTaskSeriesInput) (TaskSeriesCreateResul
 		UDAs: input.UDAs, CreatedBy: s.runtime.ActorUserID, CreatedAt: now, ModifiedAt: now,
 	}
 
-	var result TaskSeriesCreateResult
-	err = s.store.Transaction(func(txStore *storage.Store) error {
-		txSvc, terr := s.withStore(txStore)
-		if terr != nil {
-			return terr
-		}
-		// 分配 series 在所属 project 内的自增序号（series_slug 派生用）。
-		seq, serr := txSvc.projectRepo.AllocateProjectSeriesSeqLocked(s.workspaceID, projectID)
-		if serr != nil {
-			return serr
-		}
-		series.ProjectSeq = &seq
-		series.ProjectSlug = project.Slug
-		created, cerr := txSvc.taskSeriesRepo.Create(series)
-		if cerr != nil {
-			return cerr
-		}
-		// 写 audit。
-		if aerr := txSvc.appendAuditEntry(AuditEntry{
-			Action: "task.series.created", WorkspaceID: &txSvc.workspaceID, ProjectID: &projectID,
-			TargetType: "task_series", TargetID: created.ID,
-			Payload: map[string]any{
-				"title": created.Title, "recurrence_rule": created.RecurrenceRule,
-				"first_due": created.FirstDue,
-			},
-		}); aerr != nil {
-			return aerr
-		}
-		// 判断 first_due 是否进入执行期。
-		var firstOcc *TaskOccurrenceView
-		availableAt := startOfDayUnix(input.FirstDue, txSvc.clock.Location())
+	// 分配 series 在所属 project 内的自增序号（series_slug 派生用）。
+	seq, err := s.projectRepo.AllocateProjectSeriesSeqLocked(s.workspaceID, projectID)
+	if err != nil {
+		return TaskSeriesCreateResult{}, err
+	}
+	series.ProjectSeq = &seq
+	series.ProjectSlug = project.Slug
+	created, err := s.taskSeriesRepo.Create(series)
+	if err != nil {
+		return TaskSeriesCreateResult{}, err
+	}
+	// 写 audit。
+	if err := s.appendAuditEntry(AuditEntry{
+		Action: "task.series.created", WorkspaceID: &s.workspaceID, ProjectID: &projectID,
+		TargetType: "task_series", TargetID: created.ID,
+		Payload: map[string]any{
+			"title": created.Title, "recurrence_rule": created.RecurrenceRule,
+			"first_due": created.FirstDue,
+		},
+	}); err != nil {
+		return TaskSeriesCreateResult{}, err
+	}
+	// 判断 first_due 是否进入执行期。
+	var firstOcc *TaskOccurrenceView
+	if materializeFirst {
+		availableAt := startOfDayUnix(input.FirstDue, s.clock.Location())
 		if availableAt <= now {
-			view, merr := txSvc.materializeFirstOccurrence(created)
-			if merr != nil {
-				return merr
+			view, err := s.materializeFirstOccurrence(created)
+			if err != nil {
+				return TaskSeriesCreateResult{}, err
 			}
 			firstOcc = &view
 		} else {
 			slot := taskseries.Slot{RecurrenceAt: input.FirstDue, Rule: created.RecurrenceRule}
-			userInfos, uerr := txSvc.resolveUserInfos(created.AssigneeIDs)
-			if uerr != nil {
-				return uerr
+			userInfos, err := s.resolveUserInfos(created.AssigneeIDs)
+			if err != nil {
+				return TaskSeriesCreateResult{}, err
 			}
-			view := projectedOccurrenceView(txSvc.resourceBaseURL, txSvc.runtime.WorkspaceSlug, created, slot, seriesUserInfoList(created, userInfos))
+			view := projectedOccurrenceView(s.resourceBaseURL, s.runtime.WorkspaceSlug, created, slot, seriesUserInfoList(created, userInfos))
 			firstOcc = &view
 		}
-		seriesView, verr := txSvc.buildSeriesView(created)
-		if verr != nil {
-			return verr
-		}
-		result = TaskSeriesCreateResult{Series: seriesView, FirstOccurrence: firstOcc}
-		return nil
-	})
+	}
+	seriesView, err := s.buildSeriesView(created)
 	if err != nil {
 		return TaskSeriesCreateResult{}, err
 	}
-	return result, nil
+	return TaskSeriesCreateResult{Series: seriesView, FirstOccurrence: firstOcc}, nil
 }
 
 // materializeFirstOccurrence 物化 series 的 first 槽位。

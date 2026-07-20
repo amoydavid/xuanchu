@@ -68,6 +68,9 @@ type Service struct {
 	// attachmentRepo/attachmentRuntime 提供附件 CRUD 与二进制存储。
 	attachmentRepo    *storage.AttachmentRepository
 	attachmentRuntime *AttachmentRuntime
+	// projectTemplateInstantiateFailure 仅供 App 测试在指定阶段注入错误，
+	// 验证整个模板实例化事务不会留下部分资源。
+	projectTemplateInstantiateFailure func(stage string) error
 }
 
 // adminActingSessionStore 是 admin acting session 仓储在 app 层的最小接口。
@@ -492,6 +495,12 @@ func (s *Service) AddWithAnnotations(input AddInput, annotations []string) (task
 }
 
 func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
+	return s.addLockedWithUUID(input, "")
+}
+
+// addLockedWithUUID 复用普通 Add 的全部校验与 project seq 分配；presetUUID
+// 只供模板实例化使用。普通创建传空值，始终生成全新 UUID。
+func (s *Service) addLockedWithUUID(input AddInput, presetUUID string) (task.Task, projectChange, error) {
 	now := s.clock.Unix()
 	// 先解析并校验 description，随后只重绑其中实际引用的创建草稿。不能按
 	// draft target 批量重绑，否则用户删除图片 marker 后仍会把已上传文件挂到 task。
@@ -511,8 +520,12 @@ func (s *Service) addLocked(input AddInput) (task.Task, projectChange, error) {
 	if err != nil {
 		return task.Task{}, projectChange{}, err
 	}
+	taskUUID := strings.TrimSpace(presetUUID)
+	if taskUUID == "" {
+		taskUUID = uuid.NewString()
+	}
 	tsk := task.Task{
-		UUID: uuid.NewString(), WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
+		UUID: taskUUID, WorkspaceID: s.workspaceID, Title: strings.TrimSpace(input.Title), Description: normalizeOptionalText(input.Description),
 		Status: task.StatusPending, Entry: now, Modified: now,
 		Due: input.Due, Priority: input.Priority, Tags: input.Tags,
 		Assignees: assignees, Depends: depends,

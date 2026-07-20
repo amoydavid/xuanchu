@@ -240,6 +240,253 @@ func (s *Service) PreviewProjectTemplateInstantiation(templateRef string, input 
 	return plan.Preview, nil
 }
 
+func (s *Service) InstantiateProjectTemplate(templateRef string, input InstantiateInput) (InstantiateResult, error) {
+	return s.instantiateProjectTemplate(templateRef, input, false)
+}
+
+func (s *Service) InstantiateCurrentProjectTemplate(templateRef string, input CurrentSnapshotInstantiateInput) (InstantiateResult, error) {
+	return s.instantiateProjectTemplate(templateRef, input, true)
+}
+
+func (s *Service) instantiateProjectTemplate(templateRef string, input InstantiateInput, currentOnly bool) (InstantiateResult, error) {
+	var result InstantiateResult
+	err := s.withAuditEntriesAndEvents(func(tx *Service) ([]AuditEntry, []HookEvent, error) {
+		// 必须在最终写事务内重建完整 plan；Preview 结果不作为写入依据。
+		plan, err := tx.buildInstantiatePlan(templateRef, input, currentOnly)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := plan.validationError(); err != nil {
+			return nil, nil, err
+		}
+
+		project, err := tx.addProjectLocked(plan.ProjectSlug, plan.ProjectName, plan.Description)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := tx.failProjectTemplateInstantiate("project-create"); err != nil {
+			return nil, nil, err
+		}
+		sourcePayload := instantiateSourcePayload(plan)
+		entries := []AuditEntry{{
+			Action: "project.add", WorkspaceID: &project.WorkspaceID, ProjectID: &project.ID,
+			TargetType: "project", TargetID: project.ID, Payload: cloneAnyMap(sourcePayload),
+		}}
+
+		for _, key := range sortedMapKeys(plan.ConfigValues) {
+			value := plan.ConfigValues[key]
+			def, err := tx.scopedConfigDefinition(key)
+			if err != nil {
+				return nil, nil, err
+			}
+			normalized, err := tx.validateScopedConfigValue(def, storage.ConfigScopeProject, value)
+			if err != nil {
+				return nil, nil, err
+			}
+			if err := tx.configRepo.Set(storage.ConfigKey{WorkspaceID: tx.workspaceID, Scope: storage.ConfigScopeProject, ScopeID: project.ID, Key: key}, normalized); err != nil {
+				return nil, nil, err
+			}
+			payload := cloneAnyMap(sourcePayload)
+			payload["key"] = key
+			if def.Secret {
+				payload["secret"], payload["changed"] = true, true
+			} else {
+				payload["value"] = normalized
+			}
+			entries = append(entries, AuditEntry{Action: "project.config.set", WorkspaceID: &project.WorkspaceID, ProjectID: &project.ID, TargetType: "project", TargetID: project.ID, Payload: payload})
+		}
+		if err := tx.failProjectTemplateInstantiate("config-create"); err != nil {
+			return nil, nil, err
+		}
+
+		for _, item := range plan.Series {
+			seriesInput := AddTaskSeriesInput{
+				Title: item.Title, Description: nil, ProjectID: project.ID, RecurrenceRule: item.RecurrenceRule,
+				FirstDue: item.FirstDue, Until: item.Until, Priority: item.Priority,
+				Assignees: append([]string{}, item.AssigneeIDs...), Tags: append([]string{}, item.Tags...), UDAs: cloneStringMap(item.UDAs), presetID: item.ID,
+			}
+			if _, err := tx.addTaskSeriesLocked(seriesInput, false); err != nil {
+				return nil, nil, err
+			}
+		}
+		if err := tx.failProjectTemplateInstantiate("series-create"); err != nil {
+			return nil, nil, err
+		}
+
+		changes := make(map[string]projectChange, len(plan.Tasks))
+		for _, item := range plan.Tasks {
+			projectSlug := project.Slug
+			created, change, err := tx.addLockedWithUUID(AddInput{
+				Title: item.Title, Project: &projectSlug, Priority: item.Priority, Due: item.Due,
+				Assignees: append([]string{}, item.AssigneeIDs...), Wait: item.Wait, Scheduled: item.Scheduled, Until: item.Until,
+				Tags: append([]string{}, item.Tags...), UDAs: cloneStringMap(item.UDAs),
+			}, item.ID)
+			if err != nil {
+				return nil, nil, err
+			}
+			changes[created.UUID] = change
+		}
+		if err := tx.failProjectTemplateInstantiate("task-shell-create"); err != nil {
+			return nil, nil, err
+		}
+
+		// Series 可能含指向普通 Task 的前向 ref；Task shell 全部存在后再回填正文。
+		for _, item := range plan.Series {
+			if item.Description == nil {
+				continue
+			}
+			series, err := tx.taskSeriesRepo.Get(tx.workspaceID, item.ID)
+			if err != nil {
+				return nil, nil, err
+			}
+			if _, err := tx.validateDescriptionReferences(nil, item.Description, false); err != nil {
+				return nil, nil, err
+			}
+			series.Description = normalizeOptionalText(item.Description)
+			series.ModifiedAt = tx.clock.Unix()
+			if err := tx.taskSeriesRepo.Update(series); err != nil {
+				return nil, nil, err
+			}
+		}
+
+		for _, item := range plan.Tasks {
+			if _, err := tx.finalizeInstantiatedTask(project, item); err != nil {
+				return nil, nil, err
+			}
+			entry := taskAuditEntry("task.add", item.ID, changes[item.ID])
+			entry.Payload = mergeAnyMaps(entry.Payload, sourcePayload)
+			entries = append(entries, entry)
+		}
+		if err := tx.failProjectTemplateInstantiate("task-finalize"); err != nil {
+			return nil, nil, err
+		}
+
+		for _, item := range plan.Tasks {
+			for _, link := range item.Links {
+				created, _, err := tx.addLinkLocked(item.ID, link.Type, link.URL, link.Title)
+				if err != nil {
+					return nil, nil, err
+				}
+				payload := mergeAnyMaps(map[string]any{"link_id": created.ID, "type": created.Type, "url": created.URL}, sourcePayload)
+				entries = append(entries, AuditEntry{Action: "task.link.add", ProjectID: &project.ID, TargetType: "task", TargetID: item.ID, Payload: payload})
+			}
+		}
+		if err := tx.failProjectTemplateInstantiate("link-create"); err != nil {
+			return nil, nil, err
+		}
+
+		for _, item := range plan.Automations {
+			automationInput := item.Input
+			automationInput.Enabled = false
+			automationInput.presetID = item.ID
+			if _, err := tx.addProjectAutomationRuleLocked(project, automationInput); err != nil {
+				return nil, nil, err
+			}
+		}
+		if err := tx.failProjectTemplateInstantiate("automation-create"); err != nil {
+			return nil, nil, err
+		}
+
+		projectView, err := tx.projectViewForRow(project)
+		if err != nil {
+			return nil, nil, err
+		}
+		result = InstantiateResult{Project: projectView, Counts: plan.Preview.Counts}
+		aggregate := mergeAnyMaps(sourcePayload, map[string]any{
+			"template_id": plan.Template.ID, "snapshot_id": plan.Snapshot.ID,
+			"snapshot_hash": plan.Snapshot.SnapshotHash, "counts": plan.Preview.Counts,
+		})
+		entries = append(entries, AuditEntry{Action: "project_template.instantiate", WorkspaceID: &project.WorkspaceID, ProjectID: &project.ID, TargetType: "project", TargetID: project.ID, Payload: aggregate})
+
+		events := make([]HookEvent, 0, len(plan.Tasks))
+		for _, item := range plan.Tasks {
+			created, err := tx.repo.GetByUUID(tx.workspaceID, item.ID)
+			if err != nil {
+				return nil, nil, err
+			}
+			createdEvent := buildTaskHookEvent("task.created", created, tx.runtime, tx.clock.Unix())
+			addProjectTemplateSourceMetadata(&createdEvent, plan.Template.ID, plan.Snapshot.ID, plan.Snapshot.SnapshotHash)
+			events = append(events, createdEvent)
+			events = append(events, tx.detectBlockedEventsAfterAdd(created)...)
+			if mentionEvent, ok := tx.buildUserMentionedEventIfNeeded(task.Task{}, created, tx.clock.Unix()); ok {
+				events = append(events, mentionEvent)
+			}
+		}
+		if err := tx.failProjectTemplateInstantiate("audit-write"); err != nil {
+			return nil, nil, err
+		}
+		return entries, events, nil
+	})
+	if err != nil {
+		return InstantiateResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Service) finalizeInstantiatedTask(project storage.Project, item plannedTask) (task.Task, error) {
+	row, err := s.repo.GetByUUID(s.workspaceID, item.ID)
+	if err != nil {
+		return task.Task{}, err
+	}
+	before := row
+	if _, err := s.validateDescriptionReferences(nil, item.Description, true); err != nil {
+		return task.Task{}, err
+	}
+	row.Description = normalizeOptionalText(item.Description)
+	if item.ParentID != nil {
+		projectSlug := project.Slug
+		parent, _, err := s.resolveParentForAdd(item.ParentID, &projectSlug)
+		if err != nil {
+			return task.Task{}, err
+		}
+		row.Parent = parent
+	}
+	row.Depends, err = s.resolveDependencyTargets(item.DependsIDs)
+	if err != nil {
+		return task.Task{}, err
+	}
+	if err := s.validateDependencyCycles(row.UUID, row.Depends); err != nil {
+		return task.Task{}, err
+	}
+	row.Modified = s.clock.Unix()
+	if err := s.repo.Update(row); err != nil {
+		return task.Task{}, err
+	}
+	if err := s.validateAndBindDescriptionAttachments(before, row); err != nil {
+		return task.Task{}, err
+	}
+	return s.repo.GetByUUID(s.workspaceID, row.UUID)
+}
+
+func (s *Service) failProjectTemplateInstantiate(stage string) error {
+	if s.projectTemplateInstantiateFailure == nil {
+		return nil
+	}
+	return s.projectTemplateInstantiateFailure(stage)
+}
+
+func instantiateSourcePayload(plan instantiatePlan) map[string]any {
+	return map[string]any{
+		"source_template_id":            plan.Template.ID,
+		"source_template_snapshot_id":   plan.Snapshot.ID,
+		"source_template_snapshot_hash": plan.Snapshot.SnapshotHash,
+	}
+}
+
+func cloneAnyMap(input map[string]any) map[string]any {
+	return mergeAnyMaps(input)
+}
+
+func mergeAnyMaps(inputs ...map[string]any) map[string]any {
+	out := map[string]any{}
+	for _, input := range inputs {
+		for key, value := range input {
+			out[key] = value
+		}
+	}
+	return out
+}
+
 func (s *Service) buildInstantiatePlan(templateRef string, input InstantiateInput, currentOnly bool) (instantiatePlan, error) {
 	if err := s.rejectProjectTemplateProjectScope(); err != nil {
 		return instantiatePlan{}, err

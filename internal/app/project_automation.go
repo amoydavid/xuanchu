@@ -35,15 +35,15 @@ type ProjectAutomationCondition struct {
 
 // ProjectAutomationActionConfig 描述 OpenAI 兼容投递动作的配置。
 type ProjectAutomationActionConfig struct {
-	Protocol             string  `json:"protocol"`
-	BaseURLConfigKey     string  `json:"base_url_config_key"`
-	APIKeyConfigKey      string  `json:"api_key_config_key"`
-	ModelConfigKey       string  `json:"model_config_key"`
-	AllowedHostsConfigKey string `json:"allowed_hosts_config_key,omitempty"`
-	ModelOverride        string  `json:"model_override,omitempty"`
-	Temperature          float64 `json:"temperature"`
-	MaxAttempts          int     `json:"max_attempts,omitempty"`
-	AttachMetadata       bool    `json:"attach_metadata,omitempty"`
+	Protocol              string  `json:"protocol"`
+	BaseURLConfigKey      string  `json:"base_url_config_key"`
+	APIKeyConfigKey       string  `json:"api_key_config_key"`
+	ModelConfigKey        string  `json:"model_config_key"`
+	AllowedHostsConfigKey string  `json:"allowed_hosts_config_key,omitempty"`
+	ModelOverride         string  `json:"model_override,omitempty"`
+	Temperature           float64 `json:"temperature"`
+	MaxAttempts           int     `json:"max_attempts,omitempty"`
+	AttachMetadata        bool    `json:"attach_metadata,omitempty"`
 }
 
 // ProjectAutomationContextConfig 描述投递上下文包含哪些信息。
@@ -63,6 +63,7 @@ type ProjectAutomationRuleAddInput struct {
 	Context             ProjectAutomationContextConfig
 	InstructionTemplate string
 	SystemPrompt        string
+	presetID            string
 }
 
 // ProjectAutomationRuleModifyInput 修改规则的输入，nil 字段表示不更新。
@@ -109,6 +110,12 @@ func (s *Service) AddProjectAutomationRule(projectRef string, input ProjectAutom
 	if err != nil {
 		return ProjectAutomationRuleView{}, err
 	}
+	return s.addProjectAutomationRuleLocked(project, input)
+}
+
+// addProjectAutomationRuleLocked 在调用方事务内创建规则，供普通 Add 和模板
+// 实例化共用同一套 normalization、closed-project 与 actor 规则。
+func (s *Service) addProjectAutomationRuleLocked(project storage.Project, input ProjectAutomationRuleAddInput) (ProjectAutomationRuleView, error) {
 	if isProjectClosed(project) {
 		return ProjectAutomationRuleView{}, RuntimeError{Code: "project_closed", Message: "project is closed"}
 	}
@@ -118,7 +125,7 @@ func (s *Service) AddProjectAutomationRule(projectRef string, input ProjectAutom
 	}
 	now := s.clock.Unix()
 	row := storage.ProjectAutomationRule{
-		ID:                  uuid.NewString(),
+		ID:                  input.presetID,
 		WorkspaceID:         s.workspaceID,
 		ProjectID:           project.ID,
 		Name:                normalized.Name,
@@ -134,6 +141,9 @@ func (s *Service) AddProjectAutomationRule(projectRef string, input ProjectAutom
 		SystemPrompt:        normalized.SystemPrompt,
 		CreatedAt:           now,
 		ModifiedAt:          now,
+	}
+	if row.ID == "" {
+		row.ID = uuid.NewString()
 	}
 	actor := s.runtime.actorColumns()
 	row.CreatedByActorType = actor.Type
