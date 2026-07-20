@@ -47,6 +47,7 @@ type TaskCandidateListOptions struct {
 	NowUnix         int64
 	UDADefinitions  map[string]string
 	Dialect         string
+	UrgencyScore    func(domain.Task, bool, bool) float64
 }
 
 type TaskCandidatePage struct {
@@ -134,7 +135,26 @@ func (r *TaskRepository) List(workspaceID string, opts ListOptions) ([]domain.Ta
 
 // ListCandidatePage 在数据库中完成模板普通任务候选的筛选、计数与分页。
 func (r *TaskRepository) ListCandidatePage(opts TaskCandidateListOptions, limit, offset int) (TaskCandidatePage, error) {
-	base := r.db.Model(&Task{}).
+	if opts.Sort == "urgency" {
+		return r.listUrgencyCandidatePage(opts, limit, offset)
+	}
+	base := taskCandidateQuery(r.db, opts)
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return TaskCandidatePage{}, err
+	}
+	var models []Task
+	pageQuery := base.Session(&gorm.Session{}).
+		Preload("Tags").Preload("Annotations").Preload("Depends").Preload("Assignees").Preload("UDAs")
+	pageQuery = orderTaskCandidateQuery(pageQuery, opts.Sort).Limit(limit).Offset(offset)
+	if err := pageQuery.Find(&models).Error; err != nil {
+		return TaskCandidatePage{}, err
+	}
+	return r.taskCandidatePage(models, total, limit, offset)
+}
+
+func taskCandidateQuery(db *gorm.DB, opts TaskCandidateListOptions) *gorm.DB {
+	base := db.Model(&Task{}).
 		Where("workspace_id = ? AND project_id = ? AND series_id IS NULL AND status <> ?", opts.WorkspaceID, opts.ProjectID, domain.StatusDeleted)
 	if opts.Status != "" && opts.Status != "all" {
 		base = base.Where("status = ?", opts.Status)
@@ -163,17 +183,115 @@ func (r *TaskRepository) ListCandidatePage(opts TaskCandidateListOptions, limit,
 	if opts.Query != nil {
 		base = ApplyQuery(base, opts.Query, QueryCompileOptions{WorkspaceID: opts.WorkspaceID, NowUnix: opts.NowUnix, UDADefinitions: opts.UDADefinitions, Dialect: opts.Dialect})
 	}
+	return base
+}
+
+func (r *TaskRepository) listUrgencyCandidatePage(opts TaskCandidateListOptions, limit, offset int) (TaskCandidatePage, error) {
+	if opts.UrgencyScore == nil {
+		return TaskCandidatePage{}, fmt.Errorf("task candidate urgency score is required")
+	}
 	var total int64
-	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return TaskCandidatePage{}, err
-	}
 	var models []Task
-	pageQuery := base.Session(&gorm.Session{}).
-		Preload("Tags").Preload("Annotations").Preload("Depends").Preload("Assignees").Preload("UDAs")
-	pageQuery = orderTaskCandidateQuery(pageQuery, opts.Sort).Limit(limit).Offset(offset)
-	if err := pageQuery.Find(&models).Error; err != nil {
+	err := withCandidateSortKeyTable(r.db, func(tx *gorm.DB, tableName string) error {
+		base := taskCandidateQuery(tx, opts)
+		if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+			return err
+		}
+		if err := populateTaskCandidateUrgencySortKeys(tx, opts, tableName); err != nil {
+			return err
+		}
+		quotedName := quoteCandidateSortKeyTable(tableName)
+		pageQuery := base.Session(&gorm.Session{}).
+			Select("tasks.*").
+			Joins("JOIN " + quotedName + " AS candidate_sort_keys ON candidate_sort_keys.candidate_id = tasks.uuid").
+			Preload("Tags").Preload("Annotations").Preload("Depends").Preload("Assignees").Preload("UDAs").
+			Order("candidate_sort_keys.sort_key DESC").Order("tasks.entry ASC").Order("tasks.uuid ASC").
+			Limit(limit).Offset(offset)
+		return pageQuery.Find(&models).Error
+	})
+	if err != nil {
 		return TaskCandidatePage{}, err
 	}
+	return r.taskCandidatePage(models, total, limit, offset)
+}
+
+func populateTaskCandidateUrgencySortKeys(tx *gorm.DB, opts TaskCandidateListOptions, tableName string) error {
+	lastUUID := ""
+	for {
+		var models []Task
+		q := taskCandidateQuery(tx, opts).
+			Preload("Tags").Preload("Annotations").Preload("Depends").Preload("UDAs").
+			Order("uuid ASC").Limit(candidateSortKeyBatchSize)
+		if lastUUID != "" {
+			q = q.Where("uuid > ?", lastUUID)
+		}
+		if err := q.Find(&models).Error; err != nil {
+			return err
+		}
+		if len(models) == 0 {
+			return nil
+		}
+		uuids := make([]string, 0, len(models))
+		for _, model := range models {
+			uuids = append(uuids, model.UUID)
+		}
+		blocked, blocking, err := candidateTaskDependencyState(tx, opts.WorkspaceID, opts.NowUnix, models, uuids)
+		if err != nil {
+			return err
+		}
+		keys := make([]candidateSortKey, 0, len(models))
+		for _, model := range models {
+			score := opts.UrgencyScore(fromModel(model, nil, nil), blocked[model.UUID], blocking[model.UUID])
+			keys = append(keys, candidateSortKey{CandidateID: model.UUID, SortKey: &score})
+		}
+		if err := tx.Table(tableName).Create(&keys).Error; err != nil {
+			return err
+		}
+		lastUUID = models[len(models)-1].UUID
+	}
+}
+
+func candidateTaskDependencyState(tx *gorm.DB, workspaceID string, now int64, models []Task, uuids []string) (map[string]bool, map[string]bool, error) {
+	eligible := make(map[string]bool, len(models))
+	for _, model := range models {
+		eligible[model.UUID] = candidateTaskDependencyEligible(model.Status, model.Until, now)
+	}
+	var blockedIDs []string
+	if err := tx.Table("task_dependencies AS dependencies").
+		Select("DISTINCT dependencies.task_uuid").
+		Joins("JOIN tasks AS targets ON targets.uuid = dependencies.depends_on").
+		Where("dependencies.task_uuid IN ?", uuids).
+		Where("targets.workspace_id = ? AND targets.status IN ?", workspaceID, []string{domain.StatusPending, domain.StatusWaiting}).
+		Where("targets.until IS NULL OR targets.until > ?", now).
+		Pluck("dependencies.task_uuid", &blockedIDs).Error; err != nil {
+		return nil, nil, err
+	}
+	var blockingIDs []string
+	if err := tx.Table("task_dependencies AS dependencies").
+		Select("DISTINCT dependencies.depends_on").
+		Joins("JOIN tasks AS dependents ON dependents.uuid = dependencies.task_uuid").
+		Where("dependencies.depends_on IN ?", uuids).
+		Where("dependents.workspace_id = ? AND dependents.status IN ?", workspaceID, []string{domain.StatusPending, domain.StatusWaiting}).
+		Where("dependents.until IS NULL OR dependents.until > ?", now).
+		Pluck("dependencies.depends_on", &blockingIDs).Error; err != nil {
+		return nil, nil, err
+	}
+	blocked := make(map[string]bool, len(blockedIDs))
+	for _, id := range blockedIDs {
+		blocked[id] = eligible[id]
+	}
+	blocking := make(map[string]bool, len(blockingIDs))
+	for _, id := range blockingIDs {
+		blocking[id] = eligible[id]
+	}
+	return blocked, blocking, nil
+}
+
+func candidateTaskDependencyEligible(status string, until *int64, now int64) bool {
+	return (status == domain.StatusPending || status == domain.StatusWaiting) && (until == nil || *until > now)
+}
+
+func (r *TaskRepository) taskCandidatePage(models []Task, total int64, limit, offset int) (TaskCandidatePage, error) {
 	usersByID, err := r.loadAssigneeUsers(models)
 	if err != nil {
 		return TaskCandidatePage{}, err
@@ -199,8 +317,6 @@ func orderTaskCandidateQuery(db *gorm.DB, sortKey string) *gorm.DB {
 		db = db.Order("wait IS NULL ASC").Order("wait ASC")
 	case "completed":
 		db = db.Order("end_ts IS NULL ASC").Order("end_ts DESC")
-	case "urgency":
-		db = db.Order("CASE priority WHEN 'H' THEN 3 WHEN 'M' THEN 2 WHEN 'L' THEN 1 ELSE 0 END DESC").Order("due IS NULL ASC").Order("due ASC").Order("entry ASC")
 	default:
 		db = db.Order("entry ASC")
 	}

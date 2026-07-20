@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 )
 
@@ -92,6 +93,125 @@ func TestProjectTemplateCandidateListsUseSourceScopeAndBoundedPages(t *testing.T
 	automations, err := svc.ListProjectTemplateAutomationCandidates(AutomationCandidateListInput{SourceProjectRef: source.Slug, Q: "发布", Status: "enabled", TriggerType: "schedule"})
 	if err != nil || automations.Total != 1 || automations.Items[0].Ref != "candidate-automation" || automations.Items[0].CreatedBy.ID != actorID {
 		t.Fatalf("automation page = %#v, err=%v", automations, err)
+	}
+}
+
+func TestProjectTemplateTaskCandidateUrgencyMatchesTaskListSemantics(t *testing.T) {
+	svc, source, other := projectTemplateCandidateFixture(t)
+	if err := svc.SetConfig("urgency.uda.estimate.coefficient", "20"); err != nil {
+		t.Fatal(err)
+	}
+	repo := storage.NewTaskRepository(svc.store.DB())
+	sourceSlug, sourceID := source.Slug, source.ID
+	otherSlug, otherID := other.Slug, other.ID
+	overdue := svc.clock.Unix()
+	high := "H"
+	for _, row := range []task.Task{
+		{
+			UUID: "candidate-urgency-proxy-first", WorkspaceID: source.WorkspaceID,
+			Title: "代理排序靠前", Status: task.StatusPending, Entry: 1, Modified: 1,
+			Project: &sourceSlug, ProjectID: &sourceID, Priority: &high, Due: &overdue,
+		},
+		{
+			UUID: "candidate-urgency-proxy-tie", WorkspaceID: source.WorkspaceID,
+			Title: "代理排序同分", Status: task.StatusPending, Entry: 1, Modified: 1,
+			Project: &sourceSlug, ProjectID: &sourceID, Priority: &high, Due: &overdue,
+		},
+		{
+			UUID: "candidate-urgency-real-first", WorkspaceID: source.WorkspaceID,
+			Title: "完整 urgency 靠前", Status: task.StatusPending, Entry: 2, Modified: 2,
+			Project: &sourceSlug, ProjectID: &sourceID, Tags: []string{"next"},
+			UDAs: map[string]task.UDAValue{"estimate": {Name: "estimate", Raw: "3"}},
+		},
+		{
+			UUID: "candidate-urgency-dependent", WorkspaceID: source.WorkspaceID,
+			Title: "跨项目依赖者", Status: task.StatusPending, Entry: 3, Modified: 3,
+			Project: &otherSlug, ProjectID: &otherID, Depends: []string{"candidate-urgency-real-first"},
+		},
+	} {
+		if _, err := repo.Create(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wantPage, err := svc.QueryTaskViews(TaskViewQuery{ProjectID: source.ID, Sort: "urgency"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wantPage.Items) != 3 || wantPage.Items[0].ID != "candidate-urgency-real-first" ||
+		wantPage.Items[1].ID != "candidate-urgency-proxy-first" || wantPage.Items[2].ID != "candidate-urgency-proxy-tie" {
+		t.Fatalf("task list urgency order = %#v", wantPage.Items)
+	}
+	for offset, want := range []string{"candidate-urgency-real-first", "candidate-urgency-proxy-first", "candidate-urgency-proxy-tie"} {
+		gotPage, err := svc.ListProjectTemplateTaskCandidates(TaskCandidateListInput{
+			SourceProjectRef: source.Slug, Status: "all", Sort: "urgency", Limit: 1, Offset: offset,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotPage.Total != 3 || len(gotPage.Items) != 1 || gotPage.Items[0].Ref != want {
+			t.Fatalf("candidate urgency page offset %d = %#v, want %q", offset, gotPage, want)
+		}
+	}
+}
+
+func TestProjectTemplateSeriesCandidateNextMatchesSeriesListSemantics(t *testing.T) {
+	svc, source, _ := projectTemplateCandidateFixture(t)
+	repo := storage.NewTaskSeriesRepository(svc.store.DB())
+	first, err := repo.Create(taskseries.Series{
+		ID: "candidate-series-first-due", WorkspaceID: source.WorkspaceID, ProjectID: source.ID,
+		Title: "旧 first_due 靠前", Status: taskseries.StatusActive, RecurrenceRule: "weekly", FirstDue: 10,
+		ProjectSeq: int64Ptr(1), CreatedBy: "candidate-user", CreatedAt: 1, ModifiedAt: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repo.Create(taskseries.Series{
+		ID: "candidate-series-next-first", WorkspaceID: source.WorkspaceID, ProjectID: source.ID,
+		Title: "当前规则下一槽位靠前", Status: taskseries.StatusActive, RecurrenceRule: "weekly", FirstDue: 20,
+		ProjectSeq: int64Ptr(2), CreatedBy: "candidate-user", CreatedAt: 2, ModifiedAt: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AppendRuleVersion(second.ID, taskseries.RuleVersion{
+		ID: "candidate-series-next-rule", SeriesID: second.ID, EffectiveFrom: 90,
+		RecurrenceRule: "daily", CreatedBy: "candidate-user", CreatedAt: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tie, err := repo.Create(taskseries.Series{
+		ID: "candidate-series-next-tie", WorkspaceID: source.WorkspaceID, ProjectID: source.ID,
+		Title: "相同下一槽位", Status: taskseries.StatusActive, RecurrenceRule: "weekly", FirstDue: 30,
+		ProjectSeq: int64Ptr(3), CreatedBy: "candidate-user", CreatedAt: 3, ModifiedAt: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AppendRuleVersion(tie.ID, taskseries.RuleVersion{
+		ID: "candidate-series-tie-rule", SeriesID: tie.ID, EffectiveFrom: 90,
+		RecurrenceRule: "daily", CreatedBy: "candidate-user", CreatedAt: 4,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	wantPage, err := svc.ListTaskSeries(TaskSeriesListInput{ProjectID: source.ID, Status: "active", Sort: "next"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wantPage.Items) != 3 || wantPage.Items[0].ID != second.ID || wantPage.Items[1].ID != tie.ID || wantPage.Items[2].ID != first.ID {
+		t.Fatalf("series list next order = %#v", wantPage.Items)
+	}
+	for offset, want := range []string{second.ID, tie.ID, first.ID} {
+		gotPage, err := svc.ListProjectTemplateSeriesCandidates(SeriesCandidateListInput{
+			SourceProjectRef: source.Slug, Status: "active", Sort: "next", Limit: 1, Offset: offset,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotPage.Total != 3 || len(gotPage.Items) != 1 || gotPage.Items[0].Ref != want {
+			t.Fatalf("candidate next page offset %d = %#v, want %q", offset, gotPage, want)
+		}
 	}
 }
 

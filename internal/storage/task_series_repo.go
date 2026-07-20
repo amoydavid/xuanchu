@@ -22,14 +22,16 @@ func NewTaskSeriesRepository(db *gorm.DB) *TaskSeriesRepository {
 }
 
 // TaskSeriesListOptions 是 Series 候选过滤参数。
-// App 层负责排序和分页；Storage 只做候选过滤（spec §11.3）。
+// 普通列表只使用过滤字段；模板候选的动态 next 排序由 App 注入领域计算器，
+// Storage 负责排序键落临时表以及最终 SQL 分页。
 type TaskSeriesListOptions struct {
-	WorkspaceID    string
-	ProjectID      string
-	Status         string // active|ended|stopped|all；空或 all 表示不筛选
-	Q              string // title/description 大小写不敏感包含
-	AssigneeUserID string // 按负责人 user id 过滤
-	Sort           string // next|title|modified|source
+	WorkspaceID      string
+	ProjectID        string
+	Status           string // active|ended|stopped|all；空或 all 表示不筛选
+	Q                string // title/description 大小写不敏感包含
+	AssigneeUserID   string // 按负责人 user id 过滤
+	Sort             string // next|title|modified|source
+	NextRecurrenceAt func(taskseries.Series) *int64
 }
 
 type TaskSeriesCandidatePage struct {
@@ -191,7 +193,7 @@ func enrichProjectSlugs(workspaceID string, models []TaskSeries, db *gorm.DB) er
 
 // ListCandidates 返回过滤后的候选 series（含关联），不分页、不排序。
 func (r *TaskSeriesRepository) ListCandidates(opts TaskSeriesListOptions) ([]taskseries.Series, error) {
-	q := r.candidateQuery(opts).Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues")
+	q := taskSeriesCandidateQuery(r.db, opts).Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues")
 	var models []TaskSeries
 	if err := q.Order("id ASC").Find(&models).Error; err != nil {
 		return nil, err
@@ -206,8 +208,8 @@ func (r *TaskSeriesRepository) ListCandidates(opts TaskSeriesListOptions) ([]tas
 	return out, nil
 }
 
-func (r *TaskSeriesRepository) candidateQuery(opts TaskSeriesListOptions) *gorm.DB {
-	q := r.db.Model(&TaskSeries{})
+func taskSeriesCandidateQuery(db *gorm.DB, opts TaskSeriesListOptions) *gorm.DB {
+	q := db.Model(&TaskSeries{})
 	if opts.WorkspaceID != "" {
 		q = q.Where("workspace_id = ?", opts.WorkspaceID)
 	}
@@ -229,7 +231,10 @@ func (r *TaskSeriesRepository) candidateQuery(opts TaskSeriesListOptions) *gorm.
 
 // ListCandidatePage 在数据库中完成 series 候选的筛选、计数与分页。
 func (r *TaskSeriesRepository) ListCandidatePage(opts TaskSeriesListOptions, limit, offset int) (TaskSeriesCandidatePage, error) {
-	base := r.candidateQuery(opts)
+	if opts.Sort == "next" {
+		return r.listNextCandidatePage(opts, limit, offset)
+	}
+	base := taskSeriesCandidateQuery(r.db, opts)
 	var total int64
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return TaskSeriesCandidatePage{}, err
@@ -239,8 +244,6 @@ func (r *TaskSeriesRepository) ListCandidatePage(opts TaskSeriesListOptions, lim
 	switch opts.Sort {
 	case "source":
 		q = q.Order("project_seq IS NULL ASC").Order("project_seq ASC")
-	case "next":
-		q = q.Order("first_due ASC")
 	case "title":
 		q = q.Order("title ASC")
 	default:
@@ -257,6 +260,73 @@ func (r *TaskSeriesRepository) ListCandidatePage(opts TaskSeriesListOptions, lim
 		out = append(out, seriesFromModel(m))
 	}
 	return TaskSeriesCandidatePage{Items: out, Total: total, Limit: limit, Offset: offset}, nil
+}
+
+func (r *TaskSeriesRepository) listNextCandidatePage(opts TaskSeriesListOptions, limit, offset int) (TaskSeriesCandidatePage, error) {
+	if opts.NextRecurrenceAt == nil {
+		return TaskSeriesCandidatePage{}, errors.New("task series candidate next recurrence calculator is required")
+	}
+	var total int64
+	var models []TaskSeries
+	err := withCandidateSortKeyTable(r.db, func(tx *gorm.DB, tableName string) error {
+		base := taskSeriesCandidateQuery(tx, opts)
+		if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+			return err
+		}
+		if err := populateTaskSeriesCandidateNextSortKeys(tx, opts, tableName); err != nil {
+			return err
+		}
+		quotedName := quoteCandidateSortKeyTable(tableName)
+		q := base.Session(&gorm.Session{}).
+			Select("task_series.*").
+			Joins("JOIN " + quotedName + " AS candidate_sort_keys ON candidate_sort_keys.candidate_id = task_series.id").
+			Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues").
+			Order("candidate_sort_keys.sort_key IS NULL ASC").Order("candidate_sort_keys.sort_key ASC").Order("task_series.id ASC").
+			Limit(limit).Offset(offset)
+		return q.Find(&models).Error
+	})
+	if err != nil {
+		return TaskSeriesCandidatePage{}, err
+	}
+	if err := enrichProjectSlugs(opts.WorkspaceID, models, r.db); err != nil {
+		return TaskSeriesCandidatePage{}, err
+	}
+	out := make([]taskseries.Series, 0, len(models))
+	for _, model := range models {
+		out = append(out, seriesFromModel(model))
+	}
+	return TaskSeriesCandidatePage{Items: out, Total: total, Limit: limit, Offset: offset}, nil
+}
+
+func populateTaskSeriesCandidateNextSortKeys(tx *gorm.DB, opts TaskSeriesListOptions, tableName string) error {
+	lastID := ""
+	for {
+		var models []TaskSeries
+		q := taskSeriesCandidateQuery(tx, opts).Preload("RuleVersions").Order("id ASC").Limit(candidateSortKeyBatchSize)
+		if lastID != "" {
+			q = q.Where("id > ?", lastID)
+		}
+		if err := q.Find(&models).Error; err != nil {
+			return err
+		}
+		if len(models) == 0 {
+			return nil
+		}
+		keys := make([]candidateSortKey, 0, len(models))
+		for _, model := range models {
+			next := opts.NextRecurrenceAt(seriesFromModel(model))
+			var sortKey *float64
+			if next != nil {
+				value := float64(*next)
+				sortKey = &value
+			}
+			keys = append(keys, candidateSortKey{CandidateID: model.ID, SortKey: sortKey})
+		}
+		if err := tx.Table(tableName).Create(&keys).Error; err != nil {
+			return err
+		}
+		lastID = models[len(models)-1].ID
+	}
 }
 
 // Update 更新 series 行 + 关联字段（不含 rule versions，rule version 追加用 AppendRuleVersion）。
@@ -374,7 +444,7 @@ func (r *TaskSeriesRepository) StopProjectSeries(workspaceID, projectID string, 
 // --- model mapping ---
 
 type seriesModelBundle struct {
-	TaskSeries TaskSeries
+	TaskSeries   TaskSeries
 	RuleVersions []TaskSeriesRuleVersion
 	Assignees    []TaskSeriesAssignee
 	Tags         []TaskSeriesTag
@@ -418,7 +488,7 @@ func seriesFromModel(m TaskSeries) taskseries.Series {
 		FirstDue: m.FirstDue, Until: m.Until, EffectiveEndAt: m.EffectiveEndAt,
 		StopReason: m.StopReason, Priority: m.Priority, ProjectSeq: m.ProjectSeq,
 		ProjectSlug: m.ProjectSlugTransient,
-		CreatedBy: m.CreatedBy, CreatedAt: m.CreatedAt, ModifiedAt: m.ModifiedAt,
+		CreatedBy:   m.CreatedBy, CreatedAt: m.CreatedAt, ModifiedAt: m.ModifiedAt,
 	}
 	rvs := make([]taskseries.RuleVersion, 0, len(m.RuleVersions))
 	for _, rv := range m.RuleVersions {

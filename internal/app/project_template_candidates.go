@@ -13,6 +13,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/storage"
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
+	"git.dajee.net/dajee/xuanchu/internal/urgency"
 )
 
 const (
@@ -221,10 +222,24 @@ func (s *Service) listProjectTemplateTaskCandidates(input TaskCandidateListInput
 	if err != nil {
 		return TaskCandidatePage{}, err
 	}
+	var urgencyScore func(task.Task, bool, bool) float64
+	if sortKey == "urgency" {
+		urgencyOpts, configErr := s.urgencyConfig()
+		if configErr != nil {
+			return TaskCandidatePage{}, configErr
+		}
+		urgencyOpts.NowUnix = s.clock.Unix()
+		urgencyScore = func(row task.Task, blocked, blocking bool) float64 {
+			opts := urgencyOpts
+			opts.Blocked, opts.Blocking = blocked, blocking
+			return urgency.Explain(row, opts).Total
+		}
+	}
 	page, err := s.repo.ListCandidatePage(storage.TaskCandidateListOptions{
 		WorkspaceID: s.workspaceID, ProjectID: project.ID, Q: input.Q, Status: status, Priority: priority,
 		AssigneeUserIDs: assigneeIDs, Tags: input.Tags, DueAfter: dueAfter, DueBefore: dueBefore,
 		Query: expr, Sort: sortKey, NowUnix: s.clock.Unix(), UDADefinitions: udaDefs, Dialect: s.store.Dialect(),
+		UrgencyScore: urgencyScore,
 	}, limit, offset)
 	if err != nil {
 		return TaskCandidatePage{}, mapProjectQueryCompileError(err)
@@ -294,6 +309,7 @@ func (s *Service) listProjectTemplateSeriesCandidates(input SeriesCandidateListI
 	}
 	page, err := s.taskSeriesRepo.ListCandidatePage(storage.TaskSeriesListOptions{
 		WorkspaceID: s.workspaceID, ProjectID: project.ID, Status: status, Q: input.Q, AssigneeUserID: assigneeID, Sort: sortKey,
+		NextRecurrenceAt: func(series taskseries.Series) *int64 { return computeNextRecurrenceAt(series, s.clock) },
 	}, limit, offset)
 	if err != nil {
 		return SeriesCandidatePage{}, err

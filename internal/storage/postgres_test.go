@@ -3,12 +3,14 @@ package storage
 import (
 	"database/sql"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"git.dajee.net/dajee/xuanchu/internal/task"
 	"git.dajee.net/dajee/xuanchu/internal/taskseries"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func postgresTestURL(t *testing.T) string {
@@ -29,6 +31,82 @@ func TestOpen_Postgres(t *testing.T) {
 	defer store.Close()
 	if store.Dialect() != "postgres" {
 		t.Errorf("expected dialect postgres, got %q", store.Dialect())
+	}
+}
+
+func TestPostgresCandidateSortKeyTablesCleanUpAndConcurrentIsolated(t *testing.T) {
+	dbURL := postgresTestURL(t)
+	store, err := Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	release := make(chan struct{})
+	results := make(chan float64, 2)
+	tableNames := make(chan string, 2)
+	started := make(chan error, 2)
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, want := range []float64{31, 42} {
+		want := want
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startedSent := false
+			err := withCandidateSortKeyTable(store.DB(), func(tx *gorm.DB, name string) error {
+				tableNames <- name
+				if err := tx.Table(name).Create(map[string]any{"candidate_id": "same", "sort_key": want}).Error; err != nil {
+					return err
+				}
+				started <- nil
+				startedSent = true
+				<-release
+				var got float64
+				if err := tx.Table(name).Select("sort_key").Where("candidate_id = ?", "same").Scan(&got).Error; err != nil {
+					return err
+				}
+				results <- got
+				return nil
+			})
+			if !startedSent {
+				started <- err
+			}
+			errs <- err
+		}()
+	}
+	for range 2 {
+		if err := <-started; err != nil {
+			close(release)
+			wg.Wait()
+			t.Fatal(err)
+		}
+	}
+	close(release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(results)
+	seen := map[float64]bool{}
+	for got := range results {
+		seen[got] = true
+	}
+	if !seen[31] || !seen[42] || len(seen) != 2 {
+		t.Fatalf("isolated PostgreSQL sort keys = %#v", seen)
+	}
+	close(tableNames)
+	for name := range tableNames {
+		var count int64
+		if err := store.DB().Raw(`SELECT COUNT(*) FROM pg_class WHERE relname = ?`, name).Scan(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("temporary table %q remains after transaction", name)
+		}
 	}
 }
 
