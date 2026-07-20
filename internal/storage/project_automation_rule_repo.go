@@ -13,6 +13,7 @@ type ProjectAutomationRuleRepository struct{ db *gorm.DB }
 type ProjectAutomationCandidateListOptions struct {
 	WorkspaceID string
 	ProjectID   string
+	Refs        []string
 	Q           string
 	Enabled     string // enabled|disabled|all
 	TriggerType string // schedule|event|all
@@ -74,6 +75,9 @@ func (r *ProjectAutomationRuleRepository) List(workspaceID string, projectID *st
 // ListCandidatePage 在数据库内完成项目自动化候选的过滤、计数和分页。
 func (r *ProjectAutomationRuleRepository) ListCandidatePage(opts ProjectAutomationCandidateListOptions, limit, offset int) (ProjectAutomationCandidatePage, error) {
 	base := r.db.Model(&ProjectAutomationRule{}).Where("workspace_id = ? AND project_id = ?", opts.WorkspaceID, opts.ProjectID)
+	if len(opts.Refs) > 0 {
+		base = base.Where("id IN ?", opts.Refs)
+	}
 	if q := strings.TrimSpace(opts.Q); q != "" {
 		like := "%" + q + "%"
 		base = base.Where("(LOWER(name) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?))", like, like)

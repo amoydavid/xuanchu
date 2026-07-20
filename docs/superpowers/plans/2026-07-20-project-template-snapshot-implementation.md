@@ -18,7 +18,7 @@
 - 普通 task 生成新 UUID、开放状态和新 project seq；Series 生成 active Series 与一条 initial RuleVersion，不复制 occurrence、历史 RuleVersion、tombstone、skip 或 backlog。
 - 只保存 project 显式 config；secret 只保存 `secret_input` 占位，secret 值不得进入 Snapshot、audit、日志、错误或 preview response。
 - Automation 只复制规则定义，新规则固定 `enabled=false`，不复制 delivery/retry/request/response。
-- Capture 只接受四个显式选择数组；filter/query 只用于找候选和展开 refs，不进入 Snapshot。
+- Capture 只接受四个显式选择数组；filter/query 只用于找候选和展开 refs，不进入 Snapshot。候选 GET 支持重复 `ref` 精确重取（最多 100 个）；来源 drift 后 Web 必须按已选 stable ref 分批重取摘要，不能只刷新当前分页或退化为模糊搜索。
 - 候选默认 `limit=50`、最大 100；Snapshot 上限 task 1,000、series 200、config 500、automation 200、canonical JSON 8 MiB。
 - 日期使用 workspace timezone 的 `day_offset + local_time` 日历运算；禁止用固定秒数模拟天数。
 - Instantiate 必须再次完整预检并在单一 `Store.Transaction` 中创建；任一步失败不得留下 Project 或任何子资源。
@@ -845,7 +845,7 @@ Expected: FAIL，routes 尚未注册。
 
 - [ ] **Step 3: 实现 handlers、DTO、presence conversion 和 body limit**
 
-精确注册 spec §18.1 路径。四个 selection 数组的 HTTP DTO 使用 `*[]string`，nil 表示字段缺失并转成 `CaptureSelectionPresence=false`，空 slice 表示明确不选。candidate query 参数与 Task/Series/Config/Automation App 输入一一映射；`resolve-selection` body 使用 `kind` 和对应 filter object。所有 template POST/PATCH body 用 `http.MaxBytesReader(..., 9<<20)`；secret input 只传 App，不进入 request/error logging。
+精确注册 spec §18.1 路径。四个 selection 数组的 HTTP DTO 使用 `*[]string`，nil 表示字段缺失并转成 `CaptureSelectionPresence=false`，空 slice 表示明确不选。candidate query 参数与 Task/Series/Config/Automation App 输入一一映射；重复 `ref` 是最多 100 个 stable ref 的精确筛选，并在 Huma/OpenAPI 以 form/explode array 声明；`resolve-selection` body 使用 `kind` 和对应 filter object。所有 template POST/PATCH body 用 `http.MaxBytesReader(..., 9<<20)`；secret input 只传 App，不进入 request/error logging。
 
 - [ ] **Step 4: 完成 Huma request/success schema 和错误码 status mapping**
 
@@ -971,7 +971,7 @@ state 固定为 `Record<'task'|'series'|'config'|'automation', Map<string,Candid
 
 - [ ] **Step 4: 实现 selected Sheet、Preview resolution 和 source drift 恢复**
 
-桌面右侧 sticky drawer、窄屏/移动端全屏 Sheet 共用同一 selected store；支持搜索、逐项移除、“清除当前筛选结果的选择”和“清除全部已选”。Preview blocking issue 未清零时禁用保存；补选、drop relation/content ref、date/series override 都写结构化 resolution。`project_template_source_changed` 返回选择步骤、保留显式 refs、重新加载摘要并要求重新 Preview。
+桌面右侧 sticky drawer、窄屏/移动端全屏 Sheet 共用同一 selected store；支持搜索、逐项移除、“清除当前筛选结果的选择”和“清除全部已选”。Preview blocking issue 未清零时禁用保存；补选、drop relation/content ref、date/series override 都写结构化 resolution。`project_template_source_changed` 返回选择步骤、清理过期 resolution、保留显式 refs，并以重复 `ref` 精确重取所有已选摘要后要求重新 Preview。
 
 - [ ] **Step 5: 接入口、运行测试并提交**
 

@@ -221,7 +221,7 @@ func (s *Server) handleProjectTemplateTaskCandidates(w http.ResponseWriter, r *h
 	}
 	q := r.URL.Query()
 	page, err := scoped.ListProjectTemplateTaskCandidates(app.TaskCandidateListInput{
-		SourceProjectRef: projectRef, Q: q.Get("q"), Status: q.Get("status"), Priority: q.Get("priority"),
+		SourceProjectRef: projectRef, Refs: queryStringList(q["ref"]), Q: q.Get("q"), Status: q.Get("status"), Priority: q.Get("priority"),
 		Assignees: queryStringList(q["assignee"]), Tags: queryStringList(q["tags"]), DueAfter: q.Get("due_after"),
 		DueBefore: q.Get("due_before"), Query: q.Get("query"), Sort: q.Get("sort"), Limit: limit, Offset: offset,
 	})
@@ -252,7 +252,7 @@ func (s *Server) handleProjectTemplateSeriesCandidates(w http.ResponseWriter, r 
 	}
 	q := r.URL.Query()
 	page, err := scoped.ListProjectTemplateSeriesCandidates(app.SeriesCandidateListInput{
-		SourceProjectRef: projectRef, Q: q.Get("q"), Status: q.Get("status"), Assignee: q.Get("assignee"),
+		SourceProjectRef: projectRef, Refs: queryStringList(q["ref"]), Q: q.Get("q"), Status: q.Get("status"), Assignee: q.Get("assignee"),
 		Sort: q.Get("sort"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
@@ -281,7 +281,7 @@ func (s *Server) handleProjectTemplateConfigCandidates(w http.ResponseWriter, r 
 		return
 	}
 	page, err := scoped.ListProjectTemplateConfigCandidates(app.ConfigCandidateListInput{
-		SourceProjectRef: projectRef, Q: r.URL.Query().Get("q"), Mode: r.URL.Query().Get("mode"), Limit: limit, Offset: offset,
+		SourceProjectRef: projectRef, Refs: queryStringList(r.URL.Query()["ref"]), Q: r.URL.Query().Get("q"), Mode: r.URL.Query().Get("mode"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -302,7 +302,7 @@ func (s *Server) handleProjectTemplateAutomationCandidates(w http.ResponseWriter
 	}
 	q := r.URL.Query()
 	page, err := scoped.ListProjectTemplateAutomationCandidates(app.AutomationCandidateListInput{
-		SourceProjectRef: projectRef, Q: q.Get("q"), Status: q.Get("status"), TriggerType: q.Get("trigger_type"), Limit: limit, Offset: offset,
+		SourceProjectRef: projectRef, Refs: queryStringList(q["ref"]), Q: q.Get("q"), Status: q.Get("status"), TriggerType: q.Get("trigger_type"), Limit: limit, Offset: offset,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -799,6 +799,10 @@ func projectTemplateCandidateCapability(kind string) (string, app.Permission) {
 
 func projectTemplatePageParams(w http.ResponseWriter, r *http.Request) (int, int, bool) {
 	limit, offset := 0, 0
+	if len(queryStringList(r.URL.Query()["ref"])) > 100 {
+		writeError(w, http.StatusUnprocessableEntity, "project_template_candidate_invalid", "ref must contain at most 100 values", nil)
+		return 0, 0, false
+	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > 100 {

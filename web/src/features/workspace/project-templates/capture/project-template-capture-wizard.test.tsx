@@ -113,7 +113,7 @@ async function enterSelectionStep() {
 
 describe("ProjectTemplateCaptureWizard", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     vi.mocked(api.listProjectTemplateTaskCandidates).mockImplementation(
       async (_workspace, _project, options) => ({
         items: options.offset === 50 ? [taskZ] : [taskA],
@@ -393,6 +393,62 @@ describe("ProjectTemplateCaptureWizard", () => {
     )
   })
 
+  it("clears a parent-drop resolution when the missing parent is selected", async () => {
+    const parentIssue: api.CaptureIssue = {
+      code: "project_template_dependency_missing",
+      source_kind: "task",
+      source_ref: "task-a",
+      target_ref: "task-b",
+      relation: "parent",
+      message: "父任务未选择",
+    }
+    vi.mocked(api.previewProjectTemplateSnapshotCapture)
+      .mockResolvedValueOnce({ ...preview, blocking_issues: [parentIssue] })
+      .mockResolvedValueOnce({ ...preview, blocking_issues: [parentIssue] })
+      .mockResolvedValueOnce(preview)
+    renderCaptureWizard()
+    await enterSelectionStep()
+    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+    await userEvent.click(screen.getByRole("button", { name: "移除父任务关系" }))
+    await userEvent.click(screen.getByRole("button", { name: "重新预览" }))
+    await userEvent.click(screen.getByRole("button", { name: "补选引用任务" }))
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+    expect(api.previewProjectTemplateSnapshotCapture).toHaveBeenLastCalledWith(
+      "acme",
+      "launch-template",
+      expect.not.objectContaining({ resolution: expect.anything() })
+    )
+  })
+
+  it("reruns a dirty preview with Cmd/Ctrl+Enter", async () => {
+    vi.mocked(api.previewProjectTemplateSnapshotCapture)
+      .mockResolvedValueOnce({
+        ...preview,
+        warnings: [
+          {
+            code: "project_template_date_before_anchor",
+            source_kind: "task",
+            source_ref: "task-a",
+            field: "due",
+            message: "任务日期早于锚点",
+          },
+        ],
+      })
+      .mockResolvedValueOnce(preview)
+    renderCaptureWizard()
+    await enterSelectionStep()
+    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+    await userEvent.click(screen.getByRole("button", { name: "清除 due 日期" }))
+    await userEvent.keyboard("{Control>}{Enter}{/Control}")
+    await waitFor(() =>
+      expect(api.previewProjectTemplateSnapshotCapture).toHaveBeenCalledTimes(2)
+    )
+  })
+
   it("requires an explicit ended-series schedule instead of inventing a first due", async () => {
     vi.mocked(api.listProjectTemplateSeriesCandidates).mockResolvedValue({
       items: [
@@ -445,13 +501,27 @@ describe("ProjectTemplateCaptureWizard", () => {
       }) as HTMLButtonElement).disabled
     ).toBe(true)
     await userEvent.type(screen.getByLabelText("循环首次到期日偏移"), "2")
-    await waitFor(() =>
-      expect(
-        (screen.getByLabelText("循环首次到期日偏移") as HTMLInputElement)
-          .value
-      ).toBe("2")
-    )
     await userEvent.type(screen.getByLabelText("循环首次到期时间"), "10:30")
+    expect(
+      (screen.getByRole("button", {
+        name: "确认循环排期",
+      }) as HTMLButtonElement).disabled
+    ).toBe(true)
+    await userEvent.clear(screen.getByLabelText("循环首次到期时间"))
+    await userEvent.type(
+      screen.getByLabelText("循环首次到期时间"),
+      "24:00:00"
+    )
+    expect(
+      (screen.getByRole("button", {
+        name: "确认循环排期",
+      }) as HTMLButtonElement).disabled
+    ).toBe(true)
+    await userEvent.clear(screen.getByLabelText("循环首次到期时间"))
+    await userEvent.type(
+      screen.getByLabelText("循环首次到期时间"),
+      "10:30:00"
+    )
     await userEvent.click(
       screen.getByRole("button", { name: "确认循环排期" })
     )
@@ -464,7 +534,7 @@ describe("ProjectTemplateCaptureWizard", () => {
           series_schedule_overrides: [
             {
               source_series_ref: "series-ended",
-              first_due: { day_offset: 2, local_time: "10:30" },
+              first_due: { day_offset: 2, local_time: "10:30:00" },
               until: null,
               clear_until: true,
             },
@@ -571,6 +641,42 @@ describe("ProjectTemplateCaptureWizard", () => {
     expect(screen.getByRole("tab", { name: /^循环任务1$/ })).toBeTruthy()
   })
 
+  it("blocks preview while defaults resolve and invalidates any preview when they change selection", async () => {
+    const pending = deferred<api.ResolvedCandidateSelection>()
+    const waiting = deferred<api.ResolvedCandidateSelection>()
+    const active = deferred<api.ResolvedCandidateSelection>()
+    vi.mocked(api.resolveProjectTemplateCandidateSelection).mockImplementation(
+      async (_workspace, _project, input) => {
+        if (input.kind === "task" && input.task?.status === "pending") {
+          return pending.promise
+        }
+        if (input.kind === "task" && input.task?.status === "waiting") {
+          return waiting.promise
+        }
+        return active.promise
+      }
+    )
+    renderCaptureWizard({ mode: "create", templateRef: undefined })
+    await enterSelectionStep()
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    expect(
+      (screen.getByRole("button", { name: "生成预览" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+
+    pending.resolve({ refs: ["pending-task"], total: 1, source_hash: "pending" })
+    waiting.resolve({ refs: [], total: 0, source_hash: "waiting" })
+    active.resolve({ refs: [], total: 0, source_hash: "active" })
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "生成预览" }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false)
+    )
+    expect(api.previewProjectTemplateCapture).not.toHaveBeenCalled()
+  })
+
   it("offers task date override controls from preview warnings", async () => {
     vi.mocked(api.previewProjectTemplateSnapshotCapture)
       .mockResolvedValueOnce({
@@ -674,6 +780,60 @@ describe("ProjectTemplateCaptureWizard", () => {
 
     const selectedDialog = screen.getByRole("dialog", { name: "已选内容" })
     expect(within(selectedDialog).getByText("变更后的任务标题")).toBeTruthy()
+  })
+
+  it("refreshes selected summaries that are outside the visible candidate page after source drift", async () => {
+    let taskZTitle = "上线复盘"
+    vi.mocked(api.listProjectTemplateTaskCandidates).mockImplementation(
+      async (_workspace, _project, options) => {
+        if (options.refs?.includes("task-z")) {
+          return {
+            items: [{ ...taskZ, title: taskZTitle }],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          }
+        }
+        return {
+          items: options.offset === 50 ? [{ ...taskZ, title: taskZTitle }] : [taskA],
+          total: 1001,
+          limit: 50,
+          offset: options.offset ?? 0,
+        }
+      }
+    )
+    vi.mocked(api.appendProjectTemplateSnapshot).mockImplementationOnce(
+      async () => {
+        taskZTitle = "变更后的跨页任务"
+        throw new ApiError(409, "project_template_source_changed", "changed")
+      }
+    )
+    renderCaptureWizard()
+    await enterSelectionStep()
+    await userEvent.click(screen.getByRole("button", { name: "下一页" }))
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "上线复盘" })
+    )
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    await userEvent.click(screen.getByRole("button", { name: "保存快照" }))
+    expect(
+      await screen.findByText("来源项目已变化，请检查选择后重新预览。")
+    ).toBeTruthy()
+    await waitFor(() =>
+      expect(
+        vi.mocked(api.listProjectTemplateTaskCandidates).mock.calls.some(
+          (call) => call[2].refs?.includes("task-z")
+        )
+      ).toBe(true)
+    )
+    await userEvent.click(screen.getByRole("button", { name: "已选 1 项" }))
+    expect(
+      within(screen.getByRole("dialog", { name: "已选内容" })).getByText(
+        "变更后的跨页任务"
+      )
+    ).toBeTruthy()
   })
 
   it("supports Cmd/Ctrl+Enter but blocks Escape and repeat submit while pending", async () => {
@@ -796,7 +956,7 @@ describe("ProjectTemplateCaptureWizard", () => {
       await screen.findByText("来源项目已变化，请检查选择后重新预览。")
     ).toBeTruthy()
     expect(screen.getByRole("button", { name: "已选 1 项" })).toBeTruthy()
-    expect(api.listProjectTemplateTaskCandidates).toHaveBeenCalledTimes(2)
+    expect(api.listProjectTemplateTaskCandidates.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
   it("renders a full-screen mobile selected sheet backed by the same store", async () => {

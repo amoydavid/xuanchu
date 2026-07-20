@@ -6,7 +6,7 @@ import {
   KeyRound,
   Search,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -83,6 +83,7 @@ export function CandidatePicker({
   const [status, setStatus] = useState("")
   const [offset, setOffset] = useState(0)
   const [resolving, setResolving] = useState(false)
+  const refreshedKeyRef = useRef<number | undefined>(undefined)
   const filter = useMemo(
     () => buildResolveInput(kind, q, status),
     [kind, q, status]
@@ -126,6 +127,33 @@ export function CandidatePicker({
     }
     if (changed) onSummariesChange(next)
   }, [kind, onSummariesChange, page.items, selected])
+
+  useEffect(() => {
+    if (refreshKey === 0 || refreshedKeyRef.current === refreshKey) return
+    refreshedKeyRef.current = refreshKey
+    const refs = [...selected.keys()]
+    if (refs.length === 0) return
+    let cancelled = false
+    void Promise.all(
+      chunk(refs, 100).map((selectedRefs) =>
+        listCandidates(kind, workspaceSlug, sourceProjectRef, {
+          limit: selectedRefs.length,
+          offset: 0,
+          refs: selectedRefs,
+        })
+      )
+    ).then((pages) => {
+      if (cancelled) return
+      const next = new Map(selected)
+      for (const candidate of pages.flatMap((page) => page.items)) {
+        next.set(candidate.ref, summarizeCandidate(candidate, kind))
+      }
+      if (!sameSelectionMap(next, selected)) onSummariesChange(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [kind, onSummariesChange, refreshKey, selected, sourceProjectRef, workspaceSlug])
 
   function toggle(candidate: Candidate, checked: boolean) {
     const next = new Map(selected)
@@ -368,7 +396,13 @@ function listCandidates(
   kind: CandidateKind,
   workspaceSlug: string,
   projectRef: string,
-  options: { q?: string; status?: string; limit: number; offset: number }
+  options: {
+    q?: string
+    status?: string
+    limit: number
+    offset: number
+    refs?: string[]
+  }
 ): Promise<Page<Candidate>> {
   switch (kind) {
     case "task":
@@ -388,6 +422,7 @@ function listCandidates(
         q: options.q,
         limit: options.limit,
         offset: options.offset,
+        refs: options.refs,
       })
     case "automation":
       return listProjectTemplateAutomationCandidates(
@@ -396,6 +431,14 @@ function listCandidates(
         options
       )
   }
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
 }
 
 function buildResolveInput(
@@ -464,4 +507,16 @@ function sameSummary(left: CandidateSummary, right: CandidateSummary) {
     left.secondary === right.secondary &&
     left.secret === right.secret
   )
+}
+
+function sameSelectionMap(
+  left: Map<string, CandidateSummary>,
+  right: Map<string, CandidateSummary>
+) {
+  if (left.size !== right.size) return false
+  for (const [ref, summary] of left) {
+    const other = right.get(ref)
+    if (!other || !sameSummary(summary, other)) return false
+  }
+  return true
 }

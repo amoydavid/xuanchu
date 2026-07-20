@@ -35,6 +35,7 @@ type ListOptions struct {
 type TaskCandidateListOptions struct {
 	WorkspaceID     string
 	ProjectID       string
+	Refs            []string
 	Q               string
 	Status          string
 	Priority        string
@@ -156,6 +157,9 @@ func (r *TaskRepository) ListCandidatePage(opts TaskCandidateListOptions, limit,
 func taskCandidateQuery(db *gorm.DB, opts TaskCandidateListOptions) *gorm.DB {
 	base := db.Model(&Task{}).
 		Where("workspace_id = ? AND project_id = ? AND series_id IS NULL AND status <> ?", opts.WorkspaceID, opts.ProjectID, domain.StatusDeleted)
+	if len(opts.Refs) > 0 {
+		base = base.Where("uuid IN ?", opts.Refs)
+	}
 	if opts.Status != "" && opts.Status != "all" {
 		base = base.Where("status = ?", opts.Status)
 	}

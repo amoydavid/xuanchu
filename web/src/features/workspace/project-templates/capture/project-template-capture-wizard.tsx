@@ -112,6 +112,7 @@ function ProjectTemplateCaptureWizardSession({
   const [resolution, setResolution] = useState<CaptureResolution>({})
   const [previewDirty, setPreviewDirty] = useState(false)
   const [pending, setPending] = useState(false)
+  const [defaultsPending, setDefaultsPending] = useState(false)
   const [error, setError] = useState<string>()
   const [limitError, setLimitError] = useState<string>()
   const [defaultLimitKinds, setDefaultLimitKinds] = useState<CandidateKind[]>(
@@ -121,6 +122,7 @@ function ProjectTemplateCaptureWizardSession({
   const firstIssueRef = useRef<HTMLDivElement>(null)
   const defaultLoadedRef = useRef(false)
   const pendingRef = useRef(false)
+  const defaultsPendingRef = useRef(false)
   const selectionRef = useRef(selection)
 
   const totalSelected = useMemo(
@@ -141,12 +143,15 @@ function ProjectTemplateCaptureWizardSession({
     preview &&
     blockingIssues.length === 0 &&
     !previewDirty &&
-    !pending
+    !pending &&
+    !defaultsPending
   )
 
   useEffect(() => {
     if (!open || mode !== "create" || defaultLoadedRef.current) return
     defaultLoadedRef.current = true
+    defaultsPendingRef.current = true
+    setDefaultsPending(true)
     let cancelled = false
     void loadDefaults().catch(() => undefined)
 
@@ -206,18 +211,25 @@ function ProjectTemplateCaptureWizardSession({
         }
         next[kind] = merged
       }
-      replaceSelection(next)
+      if (!sameSelectionStore(selectionRef.current, next)) {
+        replaceSelection(next)
+        setResolution((current) => sanitizeResolution(current, next))
+        setPreview(undefined)
+        setPreviewDirty(false)
+      }
       setDefaultLimitKinds([...limited])
+      defaultsPendingRef.current = false
+      setDefaultsPending(false)
     }
     return () => {
       cancelled = true
+      defaultsPendingRef.current = false
     }
   }, [mode, open, sourceProject.slug, workspaceSlug])
 
   useEffect(() => {
     if (preview?.blocking_issues.length) {
       firstIssueRef.current?.focus()
-      window.requestAnimationFrame(() => firstIssueRef.current?.focus())
     }
   }, [preview])
 
@@ -226,7 +238,7 @@ function ProjectTemplateCaptureWizardSession({
   }, [onOpenChange, pending])
 
   const runPreview = useCallback(async () => {
-    if (pendingRef.current) return
+    if (pendingRef.current || defaultsPendingRef.current) return
     pendingRef.current = true
     setPending(true)
     setError(undefined)
@@ -264,7 +276,7 @@ function ProjectTemplateCaptureWizardSession({
   ])
 
   const save = useCallback(async () => {
-    if (!canSave || !preview || pendingRef.current) return
+    if (!canSave || !preview || pendingRef.current || defaultsPendingRef.current) return
     pendingRef.current = true
     setPending(true)
     setError(undefined)
@@ -305,6 +317,7 @@ function ProjectTemplateCaptureWizardSession({
         setStep(1)
         setPreview(undefined)
         setPreviewDirty(false)
+        setResolution({})
         setRefreshKey((value) => value + 1)
         setError("来源项目已变化，请检查选择后重新预览。")
       } else {
@@ -343,13 +356,13 @@ function ProjectTemplateCaptureWizardSession({
     function shortcut(event: globalThis.KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return
       event.preventDefault()
-      if (step === 2 && !preview) void runPreview()
+      if (step === 2 && (!preview || previewDirty)) void runPreview()
       else if (step === 3) void save()
       else goNext()
     }
     document.addEventListener("keydown", shortcut)
     return () => document.removeEventListener("keydown", shortcut)
-  }, [goNext, open, preview, runPreview, save, step])
+  }, [goNext, open, preview, previewDirty, runPreview, save, step])
 
   function replaceSelection(next: CandidateSelectionStore) {
     selectionRef.current = next
@@ -382,6 +395,7 @@ function ProjectTemplateCaptureWizardSession({
 
   function changeAnchorDate(next: string) {
     setAnchorDate(next)
+    setResolution({})
     setPreview(undefined)
     setPreviewDirty(false)
     setError(undefined)
@@ -569,11 +583,20 @@ function ProjectTemplateCaptureWizardSession({
           ) : step === 2 ? (
             <PreviewStep
               onAddResolution={addResolution}
-              onSelectTask={(ref) => {
-                const next = new Map(selection.task)
-                next.set(ref, { ref, label: ref, secondary: "由冲突处理补选" })
-                updateSelection("task", next)
-              }}
+                onSelectTask={(ref, parentSourceRef) => {
+                  const next = new Map(selection.task)
+                  next.set(ref, { ref, label: ref, secondary: "由冲突处理补选" })
+                  updateSelection("task", next)
+                  if (parentSourceRef) {
+                    setResolution((current) => ({
+                      ...current,
+                      drop_parent_task_refs:
+                        current.drop_parent_task_refs?.filter(
+                          (source) => source !== parentSourceRef
+                        ) ?? [],
+                    }))
+                  }
+                }}
               preview={preview}
               previewDirty={previewDirty}
               firstIssueRef={firstIssueRef}
@@ -599,7 +622,7 @@ function ProjectTemplateCaptureWizardSession({
           </Button>
           {step > 0 ? (
             <Button
-              disabled={pending}
+              disabled={pending || defaultsPending}
               onClick={() => setStep((value) => value - 1)}
               variant="outline"
             >
@@ -611,13 +634,16 @@ function ProjectTemplateCaptureWizardSession({
               下一步 <ChevronRight />
             </Button>
           ) : step === 2 && !preview ? (
-            <Button disabled={pending} onClick={() => void runPreview()}>
+              <Button
+                disabled={pending || defaultsPending}
+                onClick={() => void runPreview()}
+              >
               {pending ? <Loader2 className="animate-spin" /> : null}生成预览
             </Button>
           ) : step === 2 ? (
             <>
               <Button
-                disabled={pending}
+                disabled={pending || defaultsPending}
                 onClick={() => void runPreview()}
                 variant="outline"
               >
@@ -722,7 +748,7 @@ function PreviewStep({
 }: {
   firstIssueRef: RefObject<HTMLDivElement | null>
   onAddResolution: (resolution: CaptureResolution) => void
-  onSelectTask: (ref: string) => void
+  onSelectTask: (ref: string, parentSourceRef?: string) => void
   preview?: CapturePreview
   previewDirty: boolean
 }) {
@@ -805,7 +831,7 @@ const IssueCard = forwardRef<
   {
     issue: CaptureIssue
     onAddResolution: (resolution: CaptureResolution) => void
-    onSelectTask: (ref: string) => void
+    onSelectTask: (ref: string, parentSourceRef?: string) => void
   }
 >(function IssueCard({ issue, onAddResolution, onSelectTask }, ref) {
   const relation = issue.relation ?? "depends"
@@ -828,7 +854,7 @@ const IssueCard = forwardRef<
   const scheduleReady =
     seriesDayOffset.trim().length > 0 &&
     Number.isInteger(dayOffset) &&
-    /^\d{2}:\d{2}(?::\d{2})?$/.test(seriesLocalTime)
+    /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(seriesLocalTime)
   return (
     <div
       aria-label={issue.message}
@@ -849,7 +875,12 @@ const IssueCard = forwardRef<
       <div className="mt-3 flex flex-wrap gap-2">
         {issue.target_ref && !isAttachment ? (
           <Button
-            onClick={() => onSelectTask(issue.target_ref!)}
+            onClick={() =>
+              onSelectTask(
+                issue.target_ref!,
+                relation === "parent" ? issue.source_ref : undefined
+              )
+            }
             size="sm"
             variant="outline"
           >
@@ -933,7 +964,7 @@ const IssueCard = forwardRef<
               <Input
                 aria-label="循环首次到期时间"
                 onChange={(event) => setSeriesLocalTime(event.target.value)}
-                placeholder="HH:MM"
+                placeholder="HH:MM:SS"
                 value={seriesLocalTime}
               />
             </label>
@@ -1172,12 +1203,14 @@ function dedupeResolution(resolution: CaptureResolution): CaptureResolution {
 
 function uniqueBy<T>(items: T[], key: (item: T) => string): T[] {
   const seen = new Set<string>()
-  return items.filter((item) => {
+  const result: T[] = []
+  for (const item of [...items].reverse()) {
     const value = key(item)
-    if (seen.has(value)) return false
+    if (seen.has(value)) continue
     seen.add(value)
-    return true
-  })
+    result.push(item)
+  }
+  return result.reverse()
 }
 
 function sameSelectionMap(
@@ -1197,6 +1230,13 @@ function sameSelectionMap(
     }
   }
   return true
+}
+
+function sameSelectionStore(
+  left: CandidateSelectionStore,
+  right: CandidateSelectionStore
+) {
+  return kinds.every((kind) => sameSelectionMap(left[kind], right[kind]))
 }
 
 function today() {

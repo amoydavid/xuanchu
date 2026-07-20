@@ -27,6 +27,7 @@ func NewTaskSeriesRepository(db *gorm.DB) *TaskSeriesRepository {
 type TaskSeriesListOptions struct {
 	WorkspaceID      string
 	ProjectID        string
+	Refs             []string
 	Status           string // active|ended|stopped|all；空或 all 表示不筛选
 	Q                string // title/description 大小写不敏感包含
 	AssigneeUserID   string // 按负责人 user id 过滤
@@ -237,6 +238,9 @@ func taskSeriesCandidateQuery(db *gorm.DB, opts TaskSeriesListOptions) *gorm.DB 
 	}
 	if opts.ProjectID != "" {
 		q = q.Where("project_id = ?", opts.ProjectID)
+	}
+	if len(opts.Refs) > 0 {
+		q = q.Where("id IN ?", opts.Refs)
 	}
 	if opts.Status != "" && opts.Status != "all" {
 		q = q.Where("status = ?", opts.Status)

@@ -23,6 +23,7 @@ const (
 
 type TaskCandidateListInput struct {
 	SourceProjectRef string
+	Refs             []string
 	Q                string
 	Status           string
 	Priority         string
@@ -38,6 +39,7 @@ type TaskCandidateListInput struct {
 
 type SeriesCandidateListInput struct {
 	SourceProjectRef string
+	Refs             []string
 	Q                string
 	Status           string
 	Assignee         string
@@ -48,6 +50,7 @@ type SeriesCandidateListInput struct {
 
 type ConfigCandidateListInput struct {
 	SourceProjectRef string
+	Refs             []string
 	Q                string
 	Mode             string
 	Limit            int
@@ -56,6 +59,7 @@ type ConfigCandidateListInput struct {
 
 type AutomationCandidateListInput struct {
 	SourceProjectRef string
+	Refs             []string
 	Q                string
 	Status           string
 	TriggerType      string
@@ -171,6 +175,9 @@ func (s *Service) listProjectTemplateTaskCandidates(input TaskCandidateListInput
 		return TaskCandidatePage{}, err
 	}
 	status := strings.TrimSpace(input.Status)
+	if len(input.Refs) > 0 {
+		status = "all"
+	}
 	if status == "" {
 		status = task.StatusPending
 	}
@@ -178,6 +185,13 @@ func (s *Service) listProjectTemplateTaskCandidates(input TaskCandidateListInput
 		return TaskCandidatePage{}, candidateInputError("task status must be pending|waiting|completed|all")
 	}
 	priority := strings.ToUpper(strings.TrimSpace(input.Priority))
+	if len(input.Refs) > 0 {
+		priority = "ALL"
+		input.Q = ""
+		input.Query = ""
+		input.Assignees, input.Tags = nil, nil
+		input.DueAfter, input.DueBefore = "", ""
+	}
 	if priority != "" && priority != "ALL" && priority != "H" && priority != "M" && priority != "L" {
 		return TaskCandidatePage{}, candidateInputError("task priority must be H|M|L|all")
 	}
@@ -236,7 +250,7 @@ func (s *Service) listProjectTemplateTaskCandidates(input TaskCandidateListInput
 		}
 	}
 	page, err := s.repo.ListCandidatePage(storage.TaskCandidateListOptions{
-		WorkspaceID: s.workspaceID, ProjectID: project.ID, Q: input.Q, Status: status, Priority: priority,
+		WorkspaceID: s.workspaceID, ProjectID: project.ID, Refs: input.Refs, Q: input.Q, Status: status, Priority: priority,
 		AssigneeUserIDs: assigneeIDs, Tags: input.Tags, DueAfter: dueAfter, DueBefore: dueBefore,
 		Query: expr, Sort: sortKey, NowUnix: s.clock.Unix(), UDADefinitions: udaDefs, Dialect: s.store.Dialect(),
 		UrgencyScore: urgencyScore,
@@ -286,6 +300,10 @@ func (s *Service) listProjectTemplateSeriesCandidates(input SeriesCandidateListI
 		return SeriesCandidatePage{}, err
 	}
 	status := strings.TrimSpace(input.Status)
+	if len(input.Refs) > 0 {
+		status = "all"
+		input.Q, input.Assignee = "", ""
+	}
 	if status == "" {
 		status = taskseries.StatusActive
 	}
@@ -308,7 +326,7 @@ func (s *Service) listProjectTemplateSeriesCandidates(input SeriesCandidateListI
 		assigneeID = resolved[0].UserID
 	}
 	page, err := s.taskSeriesRepo.ListCandidatePage(storage.TaskSeriesListOptions{
-		WorkspaceID: s.workspaceID, ProjectID: project.ID, Status: status, Q: input.Q, AssigneeUserID: assigneeID, Sort: sortKey,
+		WorkspaceID: s.workspaceID, ProjectID: project.ID, Refs: input.Refs, Status: status, Q: input.Q, AssigneeUserID: assigneeID, Sort: sortKey,
 		NextRecurrenceAt: func(series taskseries.Series) *int64 { return computeNextRecurrenceAt(series, s.clock) },
 	}, limit, offset)
 	if err != nil {
@@ -351,13 +369,16 @@ func (s *Service) listProjectTemplateConfigCandidates(input ConfigCandidateListI
 		return ConfigCandidatePage{}, err
 	}
 	mode := strings.TrimSpace(input.Mode)
+	if len(input.Refs) > 0 {
+		mode, input.Q = "all", ""
+	}
 	if mode == "" {
 		mode = "all"
 	}
 	if mode != "all" && mode != "literal" && mode != "secret" {
 		return ConfigCandidatePage{}, candidateInputError("config mode must be all|literal|secret")
 	}
-	page, err := s.configRepo.ListCandidatePage(storage.ConfigCandidateListOptions{WorkspaceID: s.workspaceID, ProjectID: project.ID, Q: input.Q, Mode: mode}, limit, offset)
+	page, err := s.configRepo.ListCandidatePage(storage.ConfigCandidateListOptions{WorkspaceID: s.workspaceID, ProjectID: project.ID, Refs: input.Refs, Q: input.Q, Mode: mode}, limit, offset)
 	if err != nil {
 		return ConfigCandidatePage{}, err
 	}
@@ -389,6 +410,9 @@ func (s *Service) listProjectTemplateAutomationCandidates(input AutomationCandid
 		return AutomationCandidatePage{}, err
 	}
 	status := strings.TrimSpace(input.Status)
+	if len(input.Refs) > 0 {
+		status, input.Q, input.TriggerType = "all", "", "all"
+	}
 	if status == "" {
 		status = "all"
 	}
@@ -403,7 +427,7 @@ func (s *Service) listProjectTemplateAutomationCandidates(input AutomationCandid
 		return AutomationCandidatePage{}, candidateInputError("automation trigger type must be schedule|event|all")
 	}
 	page, err := s.projectAutomationRuleRepo.ListCandidatePage(storage.ProjectAutomationCandidateListOptions{
-		WorkspaceID: s.workspaceID, ProjectID: project.ID, Q: input.Q, Enabled: status, TriggerType: trigger,
+		WorkspaceID: s.workspaceID, ProjectID: project.ID, Refs: input.Refs, Q: input.Q, Enabled: status, TriggerType: trigger,
 	}, limit, offset)
 	if err != nil {
 		return AutomationCandidatePage{}, err

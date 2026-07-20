@@ -94,6 +94,16 @@ func TestProjectTemplateCandidateListsUseSourceScopeAndBoundedPages(t *testing.T
 	if err != nil || automations.Total != 1 || automations.Items[0].Ref != "candidate-automation" || automations.Items[0].CreatedBy.ID != actorID {
 		t.Fatalf("automation page = %#v, err=%v", automations, err)
 	}
+
+	byRef, err := svc.ListProjectTemplateTaskCandidates(TaskCandidateListInput{
+		SourceProjectRef: source.Slug,
+		Refs:             []string{"candidate-task-119"},
+		Status:           "completed",
+		Q:                "does-not-match",
+	})
+	if err != nil || byRef.Total != 1 || len(byRef.Items) != 1 || byRef.Items[0].Ref != "candidate-task-119" {
+		t.Fatalf("task ref page = %#v, err=%v", byRef, err)
+	}
 }
 
 func TestProjectTemplateTaskCandidateUrgencyMatchesTaskListSemantics(t *testing.T) {

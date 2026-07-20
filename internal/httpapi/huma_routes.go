@@ -183,7 +183,11 @@ func contractQueryParameters(route humaRoute) []*huma.Param {
 		if route.Method == http.MethodPost {
 			return params
 		}
-		params = append(params, stringParam("q", "Case-insensitive candidate search."))
+		params = append(
+			params,
+			stringParam("q", "Case-insensitive candidate search."),
+			multiStringParam("ref", "Stable candidate reference; may be repeated, at most 100 values."),
+		)
 		switch {
 		case strings.HasSuffix(route.Path, "/tasks"):
 			params = append(params,

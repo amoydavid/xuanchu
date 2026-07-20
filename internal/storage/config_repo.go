@@ -37,6 +37,7 @@ type ConfigRepository struct {
 type ConfigCandidateListOptions struct {
 	WorkspaceID string
 	ProjectID   string
+	Refs        []string
 	Q           string
 	Mode        string // all|literal|secret
 }
@@ -174,6 +175,9 @@ func (r *ConfigRepository) ListCandidatePage(opts ConfigCandidateListOptions, li
 	base := r.db.Model(&Config{}).
 		Joins("JOIN config_definitions ON config_definitions.workspace_id = configs.workspace_id AND config_definitions.key = configs.key").
 		Where("configs.workspace_id = ? AND configs.scope = ? AND configs.scope_id = ?", opts.WorkspaceID, string(ConfigScopeProject), opts.ProjectID)
+	if len(opts.Refs) > 0 {
+		base = base.Where("configs.key IN ?", opts.Refs)
+	}
 	if q := strings.TrimSpace(opts.Q); q != "" {
 		like := "%" + q + "%"
 		base = base.Where("(LOWER(configs.key) LIKE LOWER(?) OR LOWER(config_definitions.label) LIKE LOWER(?))", like, like)

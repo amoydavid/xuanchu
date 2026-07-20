@@ -240,6 +240,7 @@ export type AutomationCandidateFilter = {
 export type CandidatePageOptions<TFilter> = TFilter & {
   limit?: number
   offset?: number
+  refs?: string[]
 }
 
 export type CandidateKind = "task" | "series" | "config" | "automation"
@@ -669,7 +670,10 @@ function candidatePath(
     if (raw === undefined || raw === "") continue
     if (Array.isArray(raw)) {
       for (const value of raw)
-        params.append(key === "assignees" ? "assignee" : key, String(value))
+        params.append(
+          key === "assignees" ? "assignee" : key === "refs" ? "ref" : key,
+          String(value)
+        )
       continue
     }
     params.set(key, String(raw))
