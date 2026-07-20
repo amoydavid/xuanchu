@@ -12,6 +12,7 @@ import (
 	"git.dajee.net/dajee/xuanchu/internal/authz"
 	"git.dajee.net/dajee/xuanchu/internal/projecttemplate"
 	"git.dajee.net/dajee/xuanchu/internal/storage"
+	"git.dajee.net/dajee/xuanchu/internal/task"
 )
 
 type projectTemplateFixture struct {
@@ -341,6 +342,28 @@ func TestProjectTemplateDetailRequiresOnlyPermissionsForPresentComponents(t *tes
 	}
 }
 
+func TestProjectTemplateDetailSeriesOnlyRequiresTaskRead(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	snapshot := projectTemplateSnapshotFixture()
+	snapshot.Tasks = nil
+	snapshot.Configs = nil
+	snapshot.Automations = nil
+	snapshot.Series = []projecttemplate.SeriesBlueprintV1{{
+		Ref: "series-1", Title: "每日巡检", RecurrenceRule: "daily",
+		FirstDue: projecttemplate.RelativeLocalTimeV1{LocalTime: "09:00:00"},
+	}}
+	seeded := seedProjectTemplate(t, f.owner, "series-only", snapshot)
+
+	base := []string{auth.ScopeProjectRead}
+	if _, err := newScopedTokenService(t, f.store, base, auth.TokenTypeTenantAccess).ProjectTemplateInfo(seeded.Key, nil); runtimeCode(err) != authz.CodePermissionDenied {
+		t.Fatalf("series-only detail without task:read error = %v", err)
+	}
+	detail, err := newScopedTokenService(t, f.store, append(base, auth.ScopeTaskRead), auth.TokenTypeTenantAccess).ProjectTemplateInfo(seeded.Key, nil)
+	if err != nil || detail.Snapshot == nil || len(detail.Snapshot.Tasks) != 0 || len(detail.Snapshot.Series) != 1 {
+		t.Fatalf("series-only detail with task:read = %#v, %v", detail, err)
+	}
+}
+
 func TestProjectTemplateMetadataAndDetailDoNotLeakAcrossWorkspaces(t *testing.T) {
 	f := newProjectTemplateFixture(t)
 	local := seedProjectTemplate(t, f.owner, "local", projectTemplateSnapshotFixture())
@@ -411,6 +434,66 @@ func TestProjectTemplateViewsRedactSnapshotAndResolveIdentityShapes(t *testing.T
 	assignees := detail.Snapshot.Tasks[0].Assignees
 	if len(assignees) != 1 || assignees[0].ID != detail.Template.CreatedBy.User.ID || assignees[0].Name != detail.Template.CreatedBy.User.Name {
 		t.Fatalf("resolved assignees = %#v, actor = %#v", assignees, detail.Template.CreatedBy)
+	}
+}
+
+func TestProjectTemplateDetailResolvesFullUserInfoForCreatorsAndAssignees(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	email := "template-owner@example.test"
+	actor := mustCreateUserRecord(t, f.store, storage.User{
+		ID: "template-full-user", Name: "template-owner", DisplayName: "模板负责人", Email: &email, CreatedAt: 100, ModifiedAt: 100,
+	})
+	mustUpsertMembershipRecord(t, f.store, storage.Membership{UserID: actor.ID, WorkspaceID: f.owner.Runtime().WorkspaceID, Role: string(RoleOwner), JoinedAt: 100, ModifiedAt: 100})
+	owner := newTestServiceWithRuntime(t, f.store, 100, actor.ID, f.owner.Runtime().WorkspaceSlug)
+	if err := owner.BindExternalID(actor.ID, "feishu", "open_id", "ou_template_owner"); err != nil {
+		t.Fatalf("BindExternalID: %v", err)
+	}
+
+	snapshot := projectTemplateSnapshotFixture()
+	snapshot.Tasks[0].AssigneeIDs = []string{actor.ID}
+	snapshot.Series = []projecttemplate.SeriesBlueprintV1{{
+		Ref: "series-1", Title: "每日巡检", AssigneeIDs: []string{actor.ID}, RecurrenceRule: "daily",
+		FirstDue: projecttemplate.RelativeLocalTimeV1{LocalTime: "09:00:00"},
+	}}
+	seeded := seedProjectTemplate(t, owner, "full-user-info", snapshot)
+
+	detail, err := owner.ProjectTemplateInfo(seeded.Key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertProjectTemplateUserInfo(t, detail.Template.CreatedBy.User, actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
+	if detail.Template.CurrentSnapshot == nil {
+		t.Fatal("current snapshot is nil")
+	}
+	assertProjectTemplateUserInfo(t, detail.Template.CurrentSnapshot.CreatedBy.User, actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
+	if len(detail.Versions) != 1 {
+		t.Fatalf("versions = %#v", detail.Versions)
+	}
+	assertProjectTemplateUserInfo(t, detail.Versions[0].CreatedBy.User, actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
+	if len(detail.Snapshot.Tasks) != 1 || len(detail.Snapshot.Series) != 1 {
+		t.Fatalf("snapshot = %#v", detail.Snapshot)
+	}
+	assertProjectTemplateUserInfo(t, &detail.Snapshot.Tasks[0].Assignees[0], actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
+	assertProjectTemplateUserInfo(t, &detail.Snapshot.Series[0].Assignees[0], actor.ID, "template-owner", "模板负责人", email, "feishu", "open_id", "ou_template_owner")
+
+	identityJSON := mustJSON(map[string]any{
+		"template_created_by": task.ActorInfoToJSON(detail.Template.CreatedBy),
+		"snapshot_created_by": task.ActorInfoToJSON(detail.Template.CurrentSnapshot.CreatedBy),
+		"version_created_by":  task.ActorInfoToJSON(detail.Versions[0].CreatedBy),
+		"task_assignee":       task.UserInfoToJSON(detail.Snapshot.Tasks[0].Assignees[0]),
+		"series_assignee":     task.UserInfoToJSON(detail.Snapshot.Series[0].Assignees[0]),
+	})
+	for _, expected := range []string{`"id":"template-full-user"`, `"name":"template-owner"`, `"display_name":"模板负责人"`, `"email":"template-owner@example.test"`, `"provider":"feishu"`, `"user_type":"open_id"`, `"external_id":"ou_template_owner"`} {
+		if !strings.Contains(identityJSON, expected) {
+			t.Fatalf("identity JSON missing full user field %s: %s", expected, identityJSON)
+		}
+	}
+}
+
+func assertProjectTemplateUserInfo(t *testing.T, info *task.UserInfo, id, name, displayName, email, provider, userType, externalID string) {
+	t.Helper()
+	if info == nil || info.ID != id || info.Name != name || info.DisplayName != displayName || info.Email == nil || *info.Email != email || len(info.ExternalIDs) != 1 || info.ExternalIDs[0].Provider != provider || info.ExternalIDs[0].UserType != userType || info.ExternalIDs[0].ExternalID != externalID {
+		t.Fatalf("full user info = %#v", info)
 	}
 }
 
