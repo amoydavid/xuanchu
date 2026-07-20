@@ -49,6 +49,29 @@ func projectTemplateSnapshotFixture() projecttemplate.SnapshotV1 {
 	}
 }
 
+func projectTemplateSnapshotWithOnly(component string, assigneeID string) projecttemplate.SnapshotV1 {
+	snapshot := projectTemplateSnapshotFixture()
+	automation := snapshot.Automations[0]
+	snapshot.Tasks = nil
+	snapshot.Series = nil
+	snapshot.Configs = nil
+	snapshot.Automations = nil
+	switch component {
+	case "task":
+		snapshot.Tasks = []projecttemplate.TaskBlueprintV1{{Ref: "task-1", Title: "仅详情任务标题", AssigneeIDs: []string{assigneeID}}}
+	case "config":
+		literal := "仅详情可见的 literal 配置值"
+		snapshot.Configs = []projecttemplate.ConfigBlueprintV1{{Key: "task.only.config", Mode: "literal", Value: &literal}}
+	case "automation":
+		automation.Name = "仅详情自动化"
+		automation.InstructionTemplate = "仅详情自动化指令"
+		snapshot.Automations = []projecttemplate.AutomationBlueprintV1{automation}
+	default:
+		panic("unknown template component: " + component)
+	}
+	return snapshot
+}
+
 func seedProjectTemplate(t *testing.T, svc *Service, key string, snapshot projecttemplate.SnapshotV1) storage.ProjectTemplate {
 	t.Helper()
 	raw, hash, err := projecttemplate.EncodeV1(snapshot, projecttemplate.DefaultLimits)
@@ -174,6 +197,51 @@ func TestProjectTemplatePermissionScopeAndInstantiationList(t *testing.T) {
 	}
 }
 
+func TestProjectTemplateProjectScopedTokenRejectsEveryPublicMetadataUseCase(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	seeded := seedProjectTemplate(t, f.owner, "launch", projectTemplateSnapshotFixture())
+	projectScope := &RequestScope{
+		WorkspaceIDs: []string{f.owner.Runtime().WorkspaceID},
+		ProjectIDs:   []string{"only-project"},
+		Capabilities: []string{
+			auth.ScopeProjectRead,
+			auth.ScopeProjectWrite,
+			auth.ScopeTaskRead,
+			auth.ScopeConfigRead,
+			auth.ScopeHookRead,
+		},
+	}
+	runtime := f.owner.Runtime()
+	scoped, err := NewService(ServiceOptions{Store: f.store, Clock: FixedClock{NowUnix: 100}, Runtime: &runtime, RequestScope: projectScope, DisableScopeBootstrap: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "不应修改"
+	for _, test := range []struct {
+		name string
+		call func() error
+	}{
+		{"list", func() error { _, err := scoped.ListProjectTemplates("active", "", 50, 0); return err }},
+		{"instantiation_list", func() error {
+			_, err := scoped.ListProjectTemplatesForInstantiation(TemplateInstantiationListInput{Limit: 50})
+			return err
+		}},
+		{"info", func() error { _, err := scoped.ProjectTemplateInfo(seeded.Key, nil); return err }},
+		{"modify", func() error {
+			_, err := scoped.ModifyProjectTemplate(seeded.Key, ModifyTemplateInput{Name: &name})
+			return err
+		}},
+		{"archive", func() error { _, err := scoped.ArchiveProjectTemplate(seeded.Key); return err }},
+		{"reactivate", func() error { _, err := scoped.ReactivateProjectTemplate(seeded.Key); return err }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); runtimeCode(err) != authz.CodeProjectScopeDenied {
+				t.Fatalf("error code = %q, err = %v", runtimeCode(err), err)
+			}
+		})
+	}
+}
+
 func TestProjectTemplateModifyAndLifecycleAudit(t *testing.T) {
 	f := newProjectTemplateFixture(t)
 	seeded := seedProjectTemplate(t, f.owner, "launch", projectTemplateSnapshotFixture())
@@ -189,22 +257,28 @@ func TestProjectTemplateModifyAndLifecycleAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	action := "project_template.modify"
-	rows, err := storage.NewAuditRepository(f.store.DB()).List(storage.AuditListOptions{WorkspaceID: &seeded.WorkspaceID, TargetID: &seeded.ID, Action: &action, Limit: 10})
-	if err != nil || len(rows) < 2 {
-		t.Fatalf("modify audit rows = %#v, %v", rows, err)
+	rows, err := storage.NewAuditRepository(f.store.DB()).List(storage.AuditListOptions{WorkspaceID: &seeded.WorkspaceID, TargetID: &seeded.ID, Limit: 10})
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("lifecycle audit rows = %#v, %v", rows, err)
 	}
-	var foundReactivate bool
+	actions := map[string]int{}
+	var foundModify, foundArchive, foundReactivate bool
 	for _, row := range rows {
-		if strings.Contains(row.PayloadJSON, `"status_before":"archived"`) && strings.Contains(row.PayloadJSON, `"status_after":"active"`) {
-			foundReactivate = true
-		}
+		actions[row.Action]++
 		if strings.Contains(row.PayloadJSON, "snapshot_json") || strings.Contains(row.PayloadJSON, "agent.api_key") {
 			t.Fatalf("audit leaked snapshot or secret: %s", row.PayloadJSON)
 		}
+		switch {
+		case row.Action == "project_template.modify" && strings.Contains(row.PayloadJSON, `"name_after":"新版发布模板"`):
+			foundModify = true
+		case row.Action == "project_template.archive" && strings.Contains(row.PayloadJSON, `"status_before":"active"`) && strings.Contains(row.PayloadJSON, `"status_after":"archived"`):
+			foundArchive = true
+		case row.Action == "project_template.modify" && strings.Contains(row.PayloadJSON, `"status_before":"archived"`) && strings.Contains(row.PayloadJSON, `"status_after":"active"`):
+			foundReactivate = true
+		}
 	}
-	if !foundReactivate {
-		t.Fatalf("reactivate must use project_template.modify with status payload: %#v", rows)
+	if actions["project_template.modify"] != 2 || actions["project_template.archive"] != 1 || !foundModify || !foundArchive || !foundReactivate {
+		t.Fatalf("unexpected lifecycle audit actions=%#v rows=%#v", actions, rows)
 	}
 }
 
@@ -239,6 +313,104 @@ func TestProjectTemplateDetailRequiresComponentPermissionsAndStaysInWorkspace(t 
 	otherTemplate := seedProjectTemplate(t, other, "other-launch", projectTemplateSnapshotFixture())
 	if _, err := f.owner.ProjectTemplateInfo(otherTemplate.ID, nil); runtimeCode(err) != "project_template_not_found" {
 		t.Fatalf("cross-workspace detail error = %v", err)
+	}
+}
+
+func TestProjectTemplateDetailRequiresOnlyPermissionsForPresentComponents(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		component  string
+		capability string
+	}{
+		{"task_only", "task", auth.ScopeTaskRead},
+		{"config_only", "config", auth.ScopeConfigRead},
+		{"automation_only", "automation", auth.ScopeHookRead},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newProjectTemplateFixture(t)
+			seeded := seedProjectTemplate(t, f.owner, test.component, projectTemplateSnapshotWithOnly(test.component, f.owner.Runtime().ActorUserID))
+			base := []string{auth.ScopeProjectRead}
+			if _, err := newScopedTokenService(t, f.store, base, auth.TokenTypeTenantAccess).ProjectTemplateInfo(seeded.Key, nil); runtimeCode(err) != authz.CodePermissionDenied {
+				t.Fatalf("missing %s error = %v", test.capability, err)
+			}
+			detail, err := newScopedTokenService(t, f.store, append(base, test.capability), auth.TokenTypeTenantAccess).ProjectTemplateInfo(seeded.Key, nil)
+			if err != nil || detail.Snapshot == nil {
+				t.Fatalf("detail with only %s = %#v, %v", test.capability, detail, err)
+			}
+		})
+	}
+}
+
+func TestProjectTemplateMetadataAndDetailDoNotLeakAcrossWorkspaces(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	local := seedProjectTemplate(t, f.owner, "local", projectTemplateSnapshotFixture())
+	otherWorkspace := mustCreateWorkspaceRecord(t, f.store, storage.Workspace{ID: "ws-template-other", Slug: "template-other", Name: "Other", CreatedAt: 100, ModifiedAt: 100})
+	mustUpsertMembershipRecord(t, f.store, storage.Membership{UserID: f.owner.Runtime().ActorUserID, WorkspaceID: otherWorkspace.ID, Role: string(RoleOwner), JoinedAt: 100, ModifiedAt: 100})
+	other := newTestServiceWithRuntime(t, f.store, 100, "local", otherWorkspace.Slug)
+	foreign := seedProjectTemplate(t, other, "foreign", projectTemplateSnapshotWithOnly("task", other.Runtime().ActorUserID))
+
+	page, err := f.owner.ListProjectTemplates("all", "", 50, 0)
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != local.ID || strings.Contains(mustJSON(page), foreign.ID) {
+		t.Fatalf("local metadata page = %#v, %v", page, err)
+	}
+	for _, test := range []struct {
+		name string
+		call func() error
+	}{
+		{"info", func() error { _, err := f.owner.ProjectTemplateInfo(foreign.ID, nil); return err }},
+		{"modify", func() error {
+			name := "leak"
+			_, err := f.owner.ModifyProjectTemplate(foreign.ID, ModifyTemplateInput{Name: &name})
+			return err
+		}},
+		{"archive", func() error { _, err := f.owner.ArchiveProjectTemplate(foreign.ID); return err }},
+		{"reactivate", func() error { _, err := f.owner.ReactivateProjectTemplate(foreign.ID); return err }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); runtimeCode(err) != "project_template_not_found" {
+				t.Fatalf("error code = %q, err = %v", runtimeCode(err), err)
+			}
+		})
+	}
+}
+
+func TestProjectTemplateViewsRedactSnapshotAndResolveIdentityShapes(t *testing.T) {
+	f := newProjectTemplateFixture(t)
+	snapshot := projectTemplateSnapshotFixture()
+	snapshot.Tasks[0].Title = "仅详情任务标题"
+	snapshot.Tasks[0].AssigneeIDs = []string{f.owner.Runtime().ActorUserID}
+	snapshot.Automations[0].InstructionTemplate = "仅详情自动化指令"
+	seeded := seedProjectTemplate(t, f.owner, "identity", snapshot)
+
+	page, err := f.owner.ListProjectTemplates("all", "", 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listJSON := mustJSON(page)
+	for _, leaked := range []string{"仅详情任务标题", "仅详情自动化指令", "https://api.example.test/v1", "snapshot_json"} {
+		if strings.Contains(listJSON, leaked) {
+			t.Fatalf("metadata list leaked %q: %s", leaked, listJSON)
+		}
+	}
+	detail, err := f.owner.ProjectTemplateInfo(seeded.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detailJSON := mustJSON(detail)
+	if strings.Contains(detailJSON, "snapshot_json") {
+		t.Fatalf("detail leaked secret or raw snapshot: %s", detailJSON)
+	}
+	for _, config := range detail.Snapshot.Configs {
+		if config.Key == "agent.api_key" && config.Value != nil {
+			t.Fatalf("detail exposed secret config value: %#v", config)
+		}
+	}
+	if detail.Template.CreatedBy.Type != actorTypeUser || detail.Template.CreatedBy.User == nil || detail.Template.CreatedBy.User.ID == "" || detail.Template.CreatedBy.User.Name == "" {
+		t.Fatalf("created_by user actor = %#v", detail.Template.CreatedBy)
+	}
+	assignees := detail.Snapshot.Tasks[0].Assignees
+	if len(assignees) != 1 || assignees[0].ID != detail.Template.CreatedBy.User.ID || assignees[0].Name != detail.Template.CreatedBy.User.Name {
+		t.Fatalf("resolved assignees = %#v, actor = %#v", assignees, detail.Template.CreatedBy)
 	}
 }
 

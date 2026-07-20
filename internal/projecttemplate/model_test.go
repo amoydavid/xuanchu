@@ -96,6 +96,15 @@ func TestValidateSnapshotRejectsDuplicateLocalRefsAndMissingBodyRef(t *testing.T
 				snapshot.Tasks[0].Description = &description
 			},
 		},
+		{
+			name: "missing series body task ref", code: "project_template_dependency_missing",
+			edit: func(snapshot *SnapshotV1) {
+				description := "[缺失任务](ref://task/task-2)"
+				series := validSeriesBlueprint()
+				series.Description = &description
+				snapshot.Series = []SeriesBlueprintV1{series}
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -169,6 +178,8 @@ func TestValidateSnapshotAppliesTextLimitToPersistedStrings(t *testing.T) {
 		name string
 		edit func(*SnapshotV1)
 	}{
+		{"schema", func(s *SnapshotV1) { s.Schema = tooLong }},
+		{"anchor date", func(s *SnapshotV1) { s.AnchorDate = tooLong }},
 		{"project description", func(s *SnapshotV1) { s.Project.Description = tooLong }},
 		{"config key", func(s *SnapshotV1) { s.Configs[0].Key = tooLong }},
 		{"config mode", func(s *SnapshotV1) { s.Configs[0].Mode = tooLong }},
@@ -182,6 +193,9 @@ func TestValidateSnapshotAppliesTextLimitToPersistedStrings(t *testing.T) {
 		{"task parent ref", func(s *SnapshotV1) { s.Tasks[0].ParentRef = &tooLong }},
 		{"task dependency ref", func(s *SnapshotV1) { s.Tasks[0].DependsRefs = []string{tooLong} }},
 		{"task due local time", func(s *SnapshotV1) { s.Tasks[0].Dates.Due = &RelativeLocalTimeV1{LocalTime: tooLong} }},
+		{"task wait local time", func(s *SnapshotV1) { s.Tasks[0].Dates.Wait = &RelativeLocalTimeV1{LocalTime: tooLong} }},
+		{"task scheduled local time", func(s *SnapshotV1) { s.Tasks[0].Dates.Scheduled = &RelativeLocalTimeV1{LocalTime: tooLong} }},
+		{"task until local time", func(s *SnapshotV1) { s.Tasks[0].Dates.Until = &RelativeLocalTimeV1{LocalTime: tooLong} }},
 		{"task UDA key", func(s *SnapshotV1) { s.Tasks[0].UDAs = map[string]UDABlueprintV1{tooLong: {Raw: "1"}} }},
 		{"task UDA raw", func(s *SnapshotV1) { s.Tasks[0].UDAs = map[string]UDABlueprintV1{"x": {Raw: tooLong}} }},
 		{"task UDA type", func(s *SnapshotV1) { s.Tasks[0].UDAs = map[string]UDABlueprintV1{"x": {Raw: "1", Type: tooLong}} }},
@@ -191,6 +205,16 @@ func TestValidateSnapshotAppliesTextLimitToPersistedStrings(t *testing.T) {
 		{"series description", func(s *SnapshotV1) {
 			x := validSeriesBlueprint()
 			x.Description = &tooLong
+			s.Series = []SeriesBlueprintV1{x}
+		}},
+		{"series ref", func(s *SnapshotV1) {
+			x := validSeriesBlueprint()
+			x.Ref = tooLong
+			s.Series = []SeriesBlueprintV1{x}
+		}},
+		{"series title", func(s *SnapshotV1) {
+			x := validSeriesBlueprint()
+			x.Title = tooLong
 			s.Series = []SeriesBlueprintV1{x}
 		}},
 		{"series priority", func(s *SnapshotV1) {
@@ -268,6 +292,20 @@ func TestValidateSnapshotAppliesTextLimitToPersistedStrings(t *testing.T) {
 				t.Fatalf("error = %v", err)
 			}
 		})
+	}
+}
+
+func TestValidateSnapshotRejectsSeriesUDATrimCollision(t *testing.T) {
+	snapshot := fixtureSnapshotV1()
+	series := validSeriesBlueprint()
+	series.UDAs = map[string]UDABlueprintV1{
+		" estimate": {Raw: "1", Type: "number"},
+		"estimate ": {Raw: "2", Type: "number"},
+	}
+	snapshot.Series = []SeriesBlueprintV1{series}
+
+	if err := ValidateSnapshot(snapshot, DefaultLimits); ErrorCode(err) != "project_template_snapshot_invalid" {
+		t.Fatalf("error = %v", err)
 	}
 }
 

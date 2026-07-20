@@ -3,12 +3,16 @@ package projecttemplate
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
 var localRefPattern = regexp.MustCompile(`^(task|series|automation)-[1-9][0-9]*$`)
 
 func ValidateSnapshot(snapshot Snapshot, limits Limits) error {
+	if err := validatePersistedText(snapshot, limits); err != nil {
+		return err
+	}
 	if snapshot.Schema != SnapshotSchemaV1 {
 		return invalid("snapshot schema must be v1")
 	}
@@ -20,9 +24,6 @@ func ValidateSnapshot(snapshot Snapshot, limits Limits) error {
 	}
 	if len(snapshot.Tasks) > limits.MaxTasks || len(snapshot.Series) > limits.MaxSeries || len(snapshot.Configs) > limits.MaxConfigs || len(snapshot.Automations) > limits.MaxAutomations {
 		return invalid("snapshot component count exceeds limit")
-	}
-	if err := validatePersistedText(snapshot, limits); err != nil {
-		return err
 	}
 	for _, config := range snapshot.Configs {
 		if config.Key == "" || (config.Mode != "literal" && config.Mode != "secret_input") {
@@ -315,7 +316,13 @@ func checkStrings(check func(string, string) error, field string, values []strin
 }
 
 func checkUDAText(check func(string, string) error, udas map[string]UDABlueprintV1) error {
+	keys := make(map[string]struct{}, len(udas))
 	for key, value := range udas {
+		trimmedKey := strings.TrimSpace(key)
+		if _, exists := keys[trimmedKey]; exists {
+			return invalid("UDA keys collide after normalization")
+		}
+		keys[trimmedKey] = struct{}{}
 		for field, text := range map[string]string{"UDA key": key, "UDA raw": value.Raw, "UDA type": value.Type} {
 			if err := check(field, text); err != nil {
 				return err
