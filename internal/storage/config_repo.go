@@ -136,6 +136,39 @@ func (r *ConfigRepository) ListScope(workspaceID string, scope ConfigScope, scop
 	return out, nil
 }
 
+// ListProjectExplicitByKeys 批量读取源项目显式保存的配置行及其当前定义。
+// workspace 继承值和 schema default 不会进入结果；缺失定义的行也不会被伪装成合法候选。
+func (r *ConfigRepository) ListProjectExplicitByKeys(workspaceID, projectID string, keys []string) ([]ConfigCandidate, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	var configs []Config
+	if err := r.db.Where("workspace_id = ? AND scope = ? AND scope_id = ? AND key IN ?", workspaceID, string(ConfigScopeProject), projectID, keys).
+		Order("key ASC").Find(&configs).Error; err != nil {
+		return nil, err
+	}
+	if len(configs) == 0 {
+		return nil, nil
+	}
+	foundKeys := make([]string, 0, len(configs))
+	for _, row := range configs {
+		foundKeys = append(foundKeys, row.Key)
+	}
+	var definitionRows []ConfigDefinition
+	if err := r.db.Where("workspace_id = ? AND key IN ?", workspaceID, foundKeys).Find(&definitionRows).Error; err != nil {
+		return nil, err
+	}
+	definitions := make(map[string]ConfigDefinition, len(definitionRows))
+	for _, row := range definitionRows {
+		definitions[row.Key] = row
+	}
+	items := make([]ConfigCandidate, 0, len(configs))
+	for _, row := range configs {
+		items = append(items, ConfigCandidate{Config: row, Definition: definitions[row.Key]})
+	}
+	return items, nil
+}
+
 // ListCandidatePage 只列出源项目显式保存的 project-scope 配置，并批量加载定义。
 func (r *ConfigRepository) ListCandidatePage(opts ConfigCandidateListOptions, limit, offset int) (ConfigCandidatePage, error) {
 	base := r.db.Model(&Config{}).

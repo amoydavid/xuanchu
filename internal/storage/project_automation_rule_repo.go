@@ -45,6 +45,18 @@ func (r *ProjectAutomationRuleRepository) GetByID(id string) (ProjectAutomationR
 	return row, err
 }
 
+// ListByIDs 批量读取当前 workspace 内的自动化规则。
+// Project 归属由 App 层结合 Capture source project 再次校验。
+func (r *ProjectAutomationRuleRepository) ListByIDs(workspaceID string, ids []string) ([]ProjectAutomationRule, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []ProjectAutomationRule
+	err := r.db.Where("workspace_id = ? AND id IN ?", workspaceID, ids).
+		Order("created_at ASC").Order("id ASC").Find(&rows).Error
+	return rows, err
+}
+
 // List 按 workspace/project 查询规则，includeDisabled 控制是否包含停用规则。
 func (r *ProjectAutomationRuleRepository) List(workspaceID string, projectID *string, includeDisabled bool) ([]ProjectAutomationRule, error) {
 	query := r.db.Where("workspace_id = ?", workspaceID)

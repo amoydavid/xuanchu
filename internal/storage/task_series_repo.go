@@ -127,6 +127,28 @@ func (r *TaskSeriesRepository) Get(workspaceID, seriesID string) (taskseries.Ser
 	return seriesFromModel(model), nil
 }
 
+// ListByIDs 批量读取当前 workspace 内的 Series 聚合。
+// 返回值不保证与输入顺序一致，调用方按 source project_seq/ID 做规范排序。
+func (r *TaskSeriesRepository) ListByIDs(workspaceID string, seriesIDs []string) ([]taskseries.Series, error) {
+	if len(seriesIDs) == 0 {
+		return nil, nil
+	}
+	var models []TaskSeries
+	if err := r.db.Where("workspace_id = ? AND id IN ?", workspaceID, seriesIDs).
+		Preload("RuleVersions").Preload("Assignees").Preload("Tags").Preload("UDAValues").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	if err := enrichProjectSlugs(workspaceID, models, r.db); err != nil {
+		return nil, err
+	}
+	out := make([]taskseries.Series, 0, len(models))
+	for _, model := range models {
+		out = append(out, seriesFromModel(model))
+	}
+	return out, nil
+}
+
 // GetByProjectSeq 按 workspace + project_id + series project_seq 读取 series（series_slug 解析路径）。
 func (r *TaskSeriesRepository) GetByProjectSeq(workspaceID, projectID string, seq int64) (taskseries.Series, error) {
 	var model TaskSeries
