@@ -16,6 +16,7 @@ export function ProjectTemplatesRoute() {
       <WorkspaceSettingsNav active="projectTemplates" />
       <ProjectTemplateLibraryPage
         canManage={canManage}
+        writeScopes={me.data?.token.scopes}
         workspaceSlug={workspaceSlug}
       />
     </>

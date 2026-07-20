@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { hasScope } from "@/features/workspace/project-workbench/permissions/permissions"
 import { cn } from "@/lib/utils"
 
 import {
@@ -42,6 +43,7 @@ export type ProjectTemplateSelection = {
 type ProjectTemplateLibraryPageProps = {
   workspaceSlug: string
   canManage: boolean
+  writeScopes: string[] | null | undefined
   initialSearch?: string
   onCreateTemplate?: () => void
   onCaptureSnapshot?: (templateRef: string) => void
@@ -51,6 +53,7 @@ type ProjectTemplateLibraryPageProps = {
 export function ProjectTemplateLibraryPage({
   workspaceSlug,
   canManage,
+  writeScopes,
   initialSearch = "",
   onCreateTemplate,
   onCaptureSnapshot,
@@ -158,6 +161,7 @@ export function ProjectTemplateLibraryPage({
 
   const page = listQuery.data
   const empty = page.items.length === 0
+  const hasFilters = q !== "" || status !== "all"
 
   return (
     <section className="space-y-4 p-6" aria-labelledby="project-template-title">
@@ -224,11 +228,14 @@ export function ProjectTemplateLibraryPage({
       {empty ? (
         <LibraryEmpty
           canManage={canManage}
-          hasSearch={q !== ""}
+          hasFilters={hasFilters}
           onCreate={onCreateTemplate}
           onClearSearch={() => {
             setSearchDraft("")
             setQ("")
+            setStatus("all")
+            setOffset(0)
+            setSelection(undefined)
           }}
         />
       ) : (
@@ -297,6 +304,7 @@ export function ProjectTemplateLibraryPage({
                   setSelection({ ref: selectedRef!, snapshotID })
                 }
                 selectedSnapshotID={selectedSnapshotID}
+                writeScopes={writeScopes}
               />
             ) : null}
           </main>
@@ -336,12 +344,12 @@ function DetailLoading() {
 
 function LibraryEmpty({
   canManage,
-  hasSearch,
+  hasFilters,
   onClearSearch,
   onCreate,
 }: {
   canManage: boolean
-  hasSearch: boolean
+  hasFilters: boolean
   onClearSearch: () => void
   onCreate?: () => void
 }) {
@@ -351,19 +359,19 @@ function LibraryEmpty({
       <Boxes className="mb-3 size-8 text-muted-foreground" />
       <h2 className="text-sm font-medium">
         {t(
-          hasSearch
+          hasFilters
             ? "projectTemplates.noSearchTitle"
             : "projectTemplates.emptyTitle"
         )}
       </h2>
       <p className="mt-1 max-w-md text-xs text-muted-foreground">
         {t(
-          hasSearch
+          hasFilters
             ? "projectTemplates.noSearchDescription"
             : "projectTemplates.emptyDescription"
         )}
       </p>
-      {hasSearch ? (
+      {hasFilters ? (
         <Button className="mt-4" onClick={onClearSearch} variant="outline">
           {t("projectTemplates.clearSearch")}
         </Button>
@@ -432,6 +440,7 @@ function TemplateDetail({
   onReactivate,
   onSelectVersion,
   selectedSnapshotID,
+  writeScopes,
 }: {
   canManage: boolean
   detail: import("./api/project-template-api").ProjectTemplateDetail
@@ -443,6 +452,7 @@ function TemplateDetail({
   onReactivate: (ref: string) => void
   onSelectVersion: (id?: string) => void
   selectedSnapshotID?: string
+  writeScopes: string[] | null | undefined
 }) {
   const { t, i18n } = useTranslation()
   const template = detail.template
@@ -453,6 +463,10 @@ function TemplateDetail({
     template.current_snapshot
   const historical = Boolean(selected && selected.id !== currentID)
   const archived = template.status === "archived"
+  const canInstantiate = Boolean(
+    selected &&
+    canInstantiateProjectTemplate(canManage, writeScopes, selected.counts)
+  )
 
   return (
     <div className="divide-y">
@@ -505,7 +519,7 @@ function TemplateDetail({
                 </Button>
               ) : (
                 <>
-                  {selected ? (
+                  {selected && canInstantiate ? (
                     <Button
                       onClick={() =>
                         onInstantiate?.({
@@ -642,6 +656,24 @@ function TemplateDetail({
       </section>
     </div>
   )
+}
+
+export function canInstantiateProjectTemplate(
+  canManage: boolean,
+  writeScopes: string[] | null | undefined,
+  counts: ComponentCounts
+) {
+  if (!canManage) return false
+  if (
+    (counts.tasks > 0 || counts.series > 0) &&
+    !hasScope(writeScopes, "task:write")
+  ) {
+    return false
+  }
+  if (counts.configs > 0 && !hasScope(writeScopes, "config:write")) {
+    return false
+  }
+  return counts.automations === 0 || hasScope(writeScopes, "hook:write")
 }
 
 function CountCell({ label, value }: { label: string; value: number }) {

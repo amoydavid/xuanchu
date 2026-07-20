@@ -967,7 +967,7 @@ export const zhCN = {
     saveNew: "保存新模板",
     search: "搜索模板",
     searchAction: "搜索",
-    clearSearch: "清除搜索",
+    clearSearch: "清除筛选条件",
     statusFilter: "模板状态",
     statusAll: "全部",
     statusActive: "使用中",

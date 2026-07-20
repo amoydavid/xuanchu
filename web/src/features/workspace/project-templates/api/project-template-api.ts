@@ -331,7 +331,7 @@ export type CapturePreview = {
   counts: ComponentCounts
   blocking_issues: CaptureIssue[]
   warnings: CaptureIssue[]
-  snapshot?: ProjectTemplateSnapshot
+  snapshot: ProjectTemplateSnapshot | null
 }
 
 export type ProjectTemplateIssue = {

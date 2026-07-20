@@ -88,9 +88,9 @@ function listData(items = [template]) {
   return { items, total: items.length, limit: 20, offset: 0 }
 }
 
-function detailData(selected = current) {
+function detailData(templateValue = template) {
   return {
-    template,
+    template: templateValue,
     snapshot: {
       project: { description: "" },
       configs: [],
@@ -98,7 +98,6 @@ function detailData(selected = current) {
       series: [],
       automations: [],
     },
-    selected_snapshot: selected,
     versions: [current, historical],
   }
 }
@@ -106,7 +105,12 @@ function detailData(selected = current) {
 function renderLibrary({
   canManage = true,
   initialSearch = "",
-}: { canManage?: boolean; initialSearch?: string } = {}) {
+  writeScopes = ["project:write", "task:write", "config:write", "hook:write"],
+}: {
+  canManage?: boolean
+  initialSearch?: string
+  writeScopes?: string[]
+} = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   })
@@ -117,6 +121,7 @@ function renderLibrary({
           <ProjectTemplateLibraryPage
             canManage={canManage}
             initialSearch={initialSearch}
+            writeScopes={writeScopes}
             workspaceSlug="acme"
           />
         </TooltipProvider>
@@ -147,6 +152,10 @@ describe("ProjectTemplateLibraryPage", () => {
     ).toBeTruthy()
   })
 
+  it("keeps the detail fixture aligned with the Task 8 response contract", () => {
+    expect(detailData()).not.toHaveProperty("selected_snapshot")
+  })
+
   it("distinguishes API error from an empty template library and retries", async () => {
     let calls = 0
     vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -175,6 +184,46 @@ describe("ProjectTemplateLibraryPage", () => {
     expect(screen.queryByText("还没有项目模板")).toBeNull()
   })
 
+  it("treats a status-only empty result as no match and clears all filters", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() => response(listData([])))
+    renderLibrary()
+
+    expect(await screen.findByText("还没有项目模板")).toBeTruthy()
+    const statusSelect = screen.getByRole("combobox", {
+      name: "模板状态",
+    }) as HTMLSelectElement
+    await userEvent.selectOptions(statusSelect, "archived")
+    expect(await screen.findByText("没有匹配的项目模板")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "保存新模板" })).toBeNull()
+
+    const searchInput = screen.getByRole("textbox", {
+      name: "搜索模板",
+    }) as HTMLInputElement
+    await userEvent.type(searchInput, "不存在")
+    await userEvent.click(screen.getByRole("button", { name: "搜索" }))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/project-templates?workspace=acme&status=archived&q=%E4%B8%8D%E5%AD%98%E5%9C%A8&limit=20&offset=0",
+        expect.anything()
+      )
+    )
+    await userEvent.click(screen.getByRole("button", { name: "清除筛选条件" }))
+    expect(await screen.findByText("还没有项目模板")).toBeTruthy()
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "模板状态",
+        }) as HTMLSelectElement
+      ).value
+    ).toBe("all")
+    expect(
+      (screen.getByRole("textbox", { name: "搜索模板" }) as HTMLInputElement)
+        .value
+    ).toBe("")
+  })
+
   it("keeps a responsive list-detail hierarchy and renders snapshot summaries", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
       String(input).includes("/launch?")
@@ -198,8 +247,7 @@ describe("ProjectTemplateLibraryPage", () => {
       .spyOn(globalThis, "fetch")
       .mockImplementation((input) => {
         const url = String(input)
-        if (url.includes("snapshot_id=snap-1"))
-          return response(detailData(historical))
+        if (url.includes("snapshot_id=snap-1")) return response(detailData())
         if (url.includes("/launch?")) return response(detailData())
         return response(listData())
       })
@@ -233,7 +281,57 @@ describe("ProjectTemplateLibraryPage", () => {
     expect(screen.queryByRole("button", { name: "从项目更新快照" })).toBeNull()
   })
 
+  it.each([
+    ["task:write", ["project:write", "config:write", "hook:write"]],
+    ["config:write", ["project:write", "task:write", "hook:write"]],
+    ["hook:write", ["project:write", "task:write", "config:write"]],
+  ])(
+    "hides instantiate when a non-empty snapshot lacks %s but keeps lifecycle governance",
+    async (_missing, writeScopes) => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+        String(input).includes("/launch?")
+          ? response(detailData())
+          : response(listData())
+      )
+      renderLibrary({ canManage: true, writeScopes })
+
+      expect(await screen.findByRole("button", { name: "归档" })).toBeTruthy()
+      expect(
+        screen.getByRole("button", { name: "从项目更新快照" })
+      ).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "从模板创建" })).toBeNull()
+    }
+  )
+
+  it("allows instantiate without component scopes when selected counts are zero", async () => {
+    const zeroSnapshot = {
+      ...current,
+      id: "snap-zero",
+      counts: { tasks: 0, series: 0, configs: 0, automations: 0 },
+    }
+    const zeroTemplate = { ...template, current_snapshot: zeroSnapshot }
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      String(input).includes("/launch?")
+        ? response({
+            ...detailData(zeroTemplate),
+            versions: [zeroSnapshot],
+          })
+        : response(listData([zeroTemplate]))
+    )
+    renderLibrary({ canManage: true, writeScopes: ["project:write"] })
+
+    expect(
+      await screen.findByRole("button", { name: "从模板创建" })
+    ).toBeTruthy()
+  })
+
   it("archives an active template through the typed endpoint", async () => {
+    let archived = false
+    const archivedTemplate = {
+      ...template,
+      status: "archived",
+      archived_at: 1_721_548_800,
+    }
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation((input, init) => {
@@ -242,13 +340,13 @@ describe("ProjectTemplateLibraryPage", () => {
           url.endsWith("/archive?workspace=acme") &&
           init?.method === "POST"
         ) {
-          return response({
-            ...detailData(),
-            template: { ...template, status: "archived" },
-          })
+          archived = true
+          return response(detailData(archivedTemplate))
         }
-        if (url.includes("/launch?")) return response(detailData())
-        return response(listData())
+        if (url.includes("/launch?")) {
+          return response(detailData(archived ? archivedTemplate : template))
+        }
+        return response(listData([archived ? archivedTemplate : template]))
       })
     renderLibrary()
 
@@ -259,6 +357,12 @@ describe("ProjectTemplateLibraryPage", () => {
         expect.objectContaining({ method: "POST" })
       )
     )
+    expect(
+      await screen.findByText("此模板已归档，只能查看历史版本。")
+    ).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "从模板创建" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "从项目更新快照" })).toBeNull()
+    expect(screen.getByRole("button", { name: "重新激活" })).toBeTruthy()
   })
 
   it("shows lifecycle failure without turning it into archived state", async () => {
@@ -278,6 +382,7 @@ describe("ProjectTemplateLibraryPage", () => {
   })
 
   it("shows archived lifecycle feedback, hides create actions, and reactivates", async () => {
+    let archived = true
     const archivedTemplate = {
       ...template,
       status: "archived",
@@ -291,12 +396,13 @@ describe("ProjectTemplateLibraryPage", () => {
           url.endsWith("/reactivate?workspace=acme") &&
           init?.method === "POST"
         ) {
-          return response({ ...detailData(), template })
+          archived = false
+          return response(detailData(template))
         }
         if (url.includes("/launch?")) {
-          return response({ ...detailData(), template: archivedTemplate })
+          return response(detailData(archived ? archivedTemplate : template))
         }
-        return response(listData([archivedTemplate]))
+        return response(listData([archived ? archivedTemplate : template]))
       })
     renderLibrary()
 
@@ -312,6 +418,12 @@ describe("ProjectTemplateLibraryPage", () => {
         expect.objectContaining({ method: "POST" })
       )
     )
+    await waitFor(() =>
+      expect(screen.queryByText("此模板已归档，只能查看历史版本。")).toBeNull()
+    )
+    expect(screen.getByRole("button", { name: "从模板创建" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "从项目更新快照" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "归档" })).toBeTruthy()
   })
 
   it("provides aligned settings navigation and complete multilingual keys", () => {
@@ -347,7 +459,16 @@ function renderLibraryAndReturn() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          <ProjectTemplateLibraryPage canManage workspaceSlug="acme" />
+          <ProjectTemplateLibraryPage
+            canManage
+            writeScopes={[
+              "project:write",
+              "task:write",
+              "config:write",
+              "hook:write",
+            ]}
+            workspaceSlug="acme"
+          />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

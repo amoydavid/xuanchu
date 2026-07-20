@@ -998,7 +998,7 @@ export const enUS = {
     saveNew: "Save New Template",
     search: "Search templates",
     searchAction: "Search",
-    clearSearch: "Clear search",
+    clearSearch: "Clear filters",
     statusFilter: "Template status",
     statusAll: "All",
     statusActive: "Active",

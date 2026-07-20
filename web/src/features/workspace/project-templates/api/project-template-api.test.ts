@@ -18,6 +18,7 @@ import {
   reactivateProjectTemplate,
   resolveProjectTemplateCandidateSelection,
 } from "./project-template-api"
+import { blockingCapturePreviewContract } from "./project-template-api.type-test"
 
 function ok(data: unknown = {}) {
   return Promise.resolve(
@@ -49,6 +50,10 @@ describe("project template api", () => {
       "launch",
       "snap-1",
     ])
+  })
+
+  it("represents a blocked capture preview with an explicit null snapshot", () => {
+    expect(blockingCapturePreviewContract.snapshot).toBeNull()
   })
 
   it("keeps template API scoped to workspace and never requests raw JSON", async () => {
