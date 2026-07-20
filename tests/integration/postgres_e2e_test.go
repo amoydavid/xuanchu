@@ -51,6 +51,16 @@ func psqlExec(t *testing.T, dbURL string, sql string) {
 	}
 }
 
+func psqlScalar(t *testing.T, dbURL string, sql string) string {
+	t.Helper()
+	cmd := exec.Command("psql", dbURL, "-v", "ON_ERROR_STOP=1", "-q", "-t", "-A", "-c", sql)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("psql %q error = %v\n%s", sql, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func TestPostgresE2EProjectTemplateStorage(t *testing.T) {
 	adminURL := postgresE2EAdminURL(t)
 	dbURL := createPostgresE2EDatabase(t, adminURL)
@@ -133,6 +143,137 @@ func TestPostgresE2EProjectTemplateStorage(t *testing.T) {
 	}
 }
 
+func TestPostgresE2EProjectTemplateLegacySchemaUpgrade(t *testing.T) {
+	adminURL := postgresE2EAdminURL(t)
+	dbURL := createPostgresE2EDatabase(t, adminURL)
+	workspaceID := seedPostgresE2EProjectTemplateLegacyPrerequisites(t, dbURL)
+	createPostgresE2ELegacyProjectTemplateSchema(t, dbURL, workspaceID, workspaceID)
+
+	store, err := storage.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	assertPostgresProjectTemplateForeignKey(t, store, "project_templates", "current_snapshot_id,id,workspace_id", "project_template_snapshots", "id,template_id,workspace_id")
+	assertPostgresProjectTemplateForeignKey(t, store, "project_template_snapshots", "template_id,workspace_id", "project_templates", "id,workspace_id")
+	assertPostgresProjectTemplateForeignKey(t, store, "project_template_snapshots", "source_project_id,workspace_id", "projects", "id,workspace_id")
+	if _, err := storage.NewProjectTemplateRepository(store.DB()).GetSnapshot(workspaceID, "legacy-template", "legacy-snapshot"); err != nil {
+		t.Fatalf("legacy snapshot was not retained: %v", err)
+	}
+}
+
+func TestPostgresE2EProjectTemplateLegacySchemaUpgradeRollsBackOnDirtyData(t *testing.T) {
+	adminURL := postgresE2EAdminURL(t)
+	dbURL := createPostgresE2EDatabase(t, adminURL)
+	workspaceID := seedPostgresE2EProjectTemplateLegacyPrerequisites(t, dbURL)
+	createPostgresE2ELegacyProjectTemplateSchema(t, dbURL, workspaceID, "legacy-other-workspace")
+
+	store, err := storage.Open(dbURL)
+	if store != nil {
+		_ = store.Close()
+	}
+	if err == nil {
+		t.Fatal("Open(dirty legacy schema) succeeded, want composite foreign key migration failure")
+	}
+	if got := psqlScalar(t, dbURL, `
+SELECT string_agg(source_column.attname, ',' ORDER BY source_key.ordinality)
+FROM pg_constraint AS pg_fk
+JOIN pg_class AS source_table ON source_table.oid = pg_fk.conrelid
+JOIN unnest(pg_fk.conkey) WITH ORDINALITY AS source_key(attnum, ordinality) ON TRUE
+JOIN pg_attribute AS source_column ON source_column.attrelid = source_table.oid AND source_column.attnum = source_key.attnum
+WHERE pg_fk.conname = 'fk_project_template_snapshots_template'`); got != "template_id" {
+		t.Fatalf("legacy template foreign key columns after failed upgrade = %q, want template_id", got)
+	}
+	if got := psqlScalar(t, dbURL, `
+SELECT string_agg(source_column.attname, ',' ORDER BY source_key.ordinality)
+FROM pg_constraint AS pg_fk
+JOIN pg_class AS source_table ON source_table.oid = pg_fk.conrelid
+JOIN unnest(pg_fk.conkey) WITH ORDINALITY AS source_key(attnum, ordinality) ON TRUE
+JOIN pg_attribute AS source_column ON source_column.attrelid = source_table.oid AND source_column.attnum = source_key.attnum
+WHERE pg_fk.conname = 'fk_project_templates_current_snapshot'`); got != "current_snapshot_id" {
+		t.Fatalf("legacy current snapshot foreign key columns after failed upgrade = %q, want current_snapshot_id", got)
+	}
+	if got := psqlScalar(t, dbURL, "SELECT to_regclass('idx_project_templates_id_workspace') IS NULL"); got != "t" {
+		t.Fatalf("new index survived failed upgrade = %q, want t", got)
+	}
+}
+
+func seedPostgresE2EProjectTemplateLegacyPrerequisites(t *testing.T, dbURL string) string {
+	t.Helper()
+	store, err := storage.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := store.LocalWorkspace()
+	if err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	project := storage.Project{
+		ID: "legacy-source", WorkspaceID: workspace.ID, Slug: "legacy-source", Name: "旧模板来源",
+		Description: "", Status: "active", SettingsJSON: "{}", NextTaskSeq: 1, NextSeriesSeq: 1,
+		CreatedAt: 100, ModifiedAt: 100,
+	}
+	if err := store.DB().Create(&project).Error; err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return workspace.ID
+}
+
+func createPostgresE2ELegacyProjectTemplateSchema(t *testing.T, dbURL, templateWorkspaceID, snapshotWorkspaceID string) {
+	t.Helper()
+	for _, statement := range []string{
+		"DROP TABLE project_template_snapshots, project_templates",
+		`CREATE TABLE project_templates (
+id text PRIMARY KEY,
+workspace_id text NOT NULL,
+key text NOT NULL,
+name text NOT NULL,
+description text NOT NULL DEFAULT '',
+status text NOT NULL,
+current_snapshot_id text,
+created_by_actor_type text NOT NULL DEFAULT 'user',
+created_by_user_id text,
+created_by_token_id text,
+created_by_token_name text,
+created_by_token_prefix text,
+created_at bigint NOT NULL,
+modified_at bigint NOT NULL,
+archived_at bigint
+)`,
+		`CREATE TABLE project_template_snapshots (
+id text PRIMARY KEY,
+workspace_id text NOT NULL,
+template_id text NOT NULL,
+version bigint NOT NULL,
+source_project_id text NOT NULL,
+snapshot_json text NOT NULL,
+snapshot_hash text NOT NULL,
+created_by_actor_type text NOT NULL DEFAULT 'user',
+created_by_user_id text,
+created_by_token_id text,
+created_by_token_name text,
+created_by_token_prefix text,
+created_at bigint NOT NULL,
+CONSTRAINT fk_project_template_snapshots_template FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE RESTRICT
+)`,
+		"ALTER TABLE project_templates ADD CONSTRAINT fk_project_templates_current_snapshot FOREIGN KEY (current_snapshot_id) REFERENCES project_template_snapshots(id) ON DELETE RESTRICT",
+		"CREATE UNIQUE INDEX idx_project_templates_ws_key ON project_templates(workspace_id, key)",
+		"CREATE UNIQUE INDEX idx_project_template_snapshots_template_version ON project_template_snapshots(template_id, version)",
+		"CREATE UNIQUE INDEX idx_project_template_snapshots_template_snapshot_hash ON project_template_snapshots(template_id, snapshot_hash)",
+		"CREATE INDEX idx_project_template_snapshots_ws_template ON project_template_snapshots(workspace_id, template_id)",
+		fmt.Sprintf("INSERT INTO project_templates (id, workspace_id, key, name, description, status, current_snapshot_id, created_by_actor_type, created_at, modified_at) VALUES ('legacy-template', '%s', 'legacy', '旧模板', '', 'active', NULL, 'user', 100, 100)", templateWorkspaceID),
+		fmt.Sprintf("INSERT INTO project_template_snapshots (id, workspace_id, template_id, version, source_project_id, snapshot_json, snapshot_hash, created_by_actor_type, created_at) VALUES ('legacy-snapshot', '%s', 'legacy-template', 1, 'legacy-source', '{\"schema\":\"fixture/v1\"}', 'legacy-hash', 'user', 100)", snapshotWorkspaceID),
+		"UPDATE project_templates SET current_snapshot_id = 'legacy-snapshot' WHERE id = 'legacy-template'",
+	} {
+		psqlExec(t, dbURL, statement)
+	}
+}
+
 func assertPostgresProjectTemplateForeignKey(t *testing.T, store *storage.Store, table, columns, targetTable, targetColumns string) {
 	t.Helper()
 	rows, err := store.DB().Raw(`
@@ -140,19 +281,19 @@ SELECT
   string_agg(source_column.attname, ',' ORDER BY source_key.ordinality) AS columns,
   target_table.relname AS target_table,
   string_agg(target_column.attname, ',' ORDER BY source_key.ordinality) AS target_columns,
-  constraint.confdeltype
-FROM pg_constraint AS constraint
-JOIN pg_class AS source_table ON source_table.oid = constraint.conrelid
+  pg_fk.confdeltype
+FROM pg_constraint AS pg_fk
+JOIN pg_class AS source_table ON source_table.oid = pg_fk.conrelid
 JOIN pg_namespace AS source_schema ON source_schema.oid = source_table.relnamespace
-JOIN pg_class AS target_table ON target_table.oid = constraint.confrelid
-JOIN unnest(constraint.conkey) WITH ORDINALITY AS source_key(attnum, ordinality) ON TRUE
+JOIN pg_class AS target_table ON target_table.oid = pg_fk.confrelid
+JOIN unnest(pg_fk.conkey) WITH ORDINALITY AS source_key(attnum, ordinality) ON TRUE
 JOIN pg_attribute AS source_column ON source_column.attrelid = source_table.oid AND source_column.attnum = source_key.attnum
-JOIN unnest(constraint.confkey) WITH ORDINALITY AS target_key(attnum, ordinality) ON target_key.ordinality = source_key.ordinality
+JOIN unnest(pg_fk.confkey) WITH ORDINALITY AS target_key(attnum, ordinality) ON target_key.ordinality = source_key.ordinality
 JOIN pg_attribute AS target_column ON target_column.attrelid = target_table.oid AND target_column.attnum = target_key.attnum
-WHERE constraint.contype = 'f'
+WHERE pg_fk.contype = 'f'
   AND source_schema.nspname = current_schema()
   AND source_table.relname = ?
-GROUP BY constraint.oid, target_table.relname, constraint.confdeltype`, table).Rows()
+GROUP BY pg_fk.oid, target_table.relname, pg_fk.confdeltype`, table).Rows()
 	if err != nil {
 		t.Fatal(err)
 	}

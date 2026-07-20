@@ -95,12 +95,14 @@ FOREIGN KEY (source_project_id, workspace_id) REFERENCES projects(id, workspace_
 		`ALTER TABLE project_templates ADD CONSTRAINT fk_project_templates_current_snapshot
 FOREIGN KEY (current_snapshot_id, id, workspace_id) REFERENCES project_template_snapshots(id, template_id, workspace_id) ON DELETE RESTRICT`,
 	}
-	for _, statement := range statements {
-		if err := s.db.Exec(statement).Error; err != nil {
-			return err
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, statement := range statements {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *Store) prepareActorColumnsForP2Postgres() error {

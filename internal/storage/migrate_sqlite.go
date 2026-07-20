@@ -195,6 +195,21 @@ func rebuildProjectTemplateSchemaSQLite(tx m5MigrationTx) error {
 	if err := tx.exec("ALTER TABLE project_template_snapshots RENAME TO project_template_snapshots_legacy_workspace_fk"); err != nil {
 		return err
 	}
+	// SQLite 保留重命名表上的 index 名称。若不先删除，CREATE INDEX IF NOT EXISTS
+	// 会误认为新表的索引已经存在；旧表删除时索引随之消失，最终新表没有索引。
+	for _, indexName := range []string{
+		"idx_project_templates_ws_key",
+		"idx_project_templates_id_workspace",
+		"idx_project_templates_ws_status",
+		"idx_project_template_snapshots_id_template_workspace",
+		"idx_project_template_snapshots_template_version",
+		"idx_project_template_snapshots_template_snapshot_hash",
+		"idx_project_template_snapshots_ws_template",
+	} {
+		if err := tx.exec("DROP INDEX IF EXISTS " + indexName); err != nil {
+			return err
+		}
+	}
 	if err := createProjectTemplateSchemaSQLite(tx); err != nil {
 		return err
 	}

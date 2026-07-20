@@ -431,11 +431,36 @@ VALUES ('legacy-snapshot', ?, 'legacy-template', 1, 'legacy-source', '{"schema":
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = migrated.Close() })
+	for _, check := range []struct {
+		table   string
+		name    string
+		unique  bool
+		columns []string
+	}{
+		{"project_templates", "idx_project_templates_ws_key", true, []string{"workspace_id", "key"}},
+		{"project_templates", "idx_project_templates_id_workspace", true, []string{"id", "workspace_id"}},
+		{"project_templates", "idx_project_templates_ws_status", false, []string{"workspace_id", "status"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_id_template_workspace", true, []string{"id", "template_id", "workspace_id"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_template_version", true, []string{"template_id", "version"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_template_snapshot_hash", true, []string{"template_id", "snapshot_hash"}},
+		{"project_template_snapshots", "idx_project_template_snapshots_ws_template", false, []string{"workspace_id", "template_id"}},
+	} {
+		assertSQLiteIndex(t, migrated, check.table, check.name, check.unique, check.columns)
+	}
 	assertProjectTemplateForeignKey(t, migrated, "project_templates", []string{"current_snapshot_id", "id", "workspace_id"}, "project_template_snapshots", []string{"id", "template_id", "workspace_id"}, "RESTRICT")
 	assertProjectTemplateForeignKey(t, migrated, "project_template_snapshots", []string{"template_id", "workspace_id"}, "project_templates", []string{"id", "workspace_id"}, "RESTRICT")
 	assertProjectTemplateForeignKey(t, migrated, "project_template_snapshots", []string{"source_project_id", "workspace_id"}, "projects", []string{"id", "workspace_id"}, "RESTRICT")
 	if _, err := NewProjectTemplateRepository(migrated.DB()).GetSnapshot(ws.ID, "legacy-template", "legacy-snapshot"); err != nil {
 		t.Fatalf("legacy snapshot was not retained: %v", err)
+	}
+	if err := migrated.DB().Create(&ProjectTemplate{ID: "duplicate-key", WorkspaceID: ws.ID, Key: "legacy", Name: "重复 key", Description: "", Status: "active", CreatedByActorType: "user", CreatedAt: 101, ModifiedAt: 101}).Error; err == nil {
+		t.Fatal("duplicate template key succeeded after legacy rebuild")
+	}
+	if err := migrated.DB().Create(&ProjectTemplateSnapshot{ID: "duplicate-version", WorkspaceID: ws.ID, TemplateID: "legacy-template", Version: 1, SourceProjectID: "legacy-source", SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "other-hash", CreatedByActorType: "user", CreatedAt: 101}).Error; err == nil {
+		t.Fatal("duplicate snapshot version succeeded after legacy rebuild")
+	}
+	if err := migrated.DB().Create(&ProjectTemplateSnapshot{ID: "duplicate-hash", WorkspaceID: ws.ID, TemplateID: "legacy-template", Version: 2, SourceProjectID: "legacy-source", SnapshotJSON: `{"schema":"fixture/v1"}`, SnapshotHash: "legacy-hash", CreatedByActorType: "user", CreatedAt: 101}).Error; err == nil {
+		t.Fatal("duplicate snapshot hash succeeded after legacy rebuild")
 	}
 }
 
@@ -1692,6 +1717,40 @@ func assertIndexColumns(t *testing.T, store *Store, indexName string, want []str
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%s columns = %#v, want %#v", indexName, got, want)
 	}
+}
+
+func assertSQLiteIndex(t *testing.T, store *Store, table, indexName string, unique bool, columns []string) {
+	t.Helper()
+	rows, err := store.DB().Raw("PRAGMA index_list(" + table + ")").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var seq int
+		var name string
+		var gotUnique int
+		var origin string
+		var partial int
+		if err := rows.Scan(&seq, &name, &gotUnique, &origin, &partial); err != nil {
+			t.Fatal(err)
+		}
+		if name == indexName {
+			found = true
+			if (gotUnique == 1) != unique {
+				t.Fatalf("%s unique = %v, want %v", indexName, gotUnique == 1, unique)
+			}
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("%s missing from PRAGMA index_list(%s)", indexName, table)
+	}
+	assertIndexColumns(t, store, indexName, columns)
 }
 
 func assertColumnNullable(t *testing.T, store *Store, table, column string, want bool) {
