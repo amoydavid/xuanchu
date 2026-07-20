@@ -35,6 +35,7 @@
 | Go 契约 | 使用带 schema 版本的 Go struct 严格编解码，不使用无约束 `map[string]any` |
 | 数据库兼容 | SQLite/PostgreSQL 都用 TEXT 保存 JSON 字节，不依赖数据库方言特有 JSON 类型 |
 | 内容更新 | 更新模板时追加新 Snapshot，不覆盖旧 Snapshot |
+| 大项目选择 | 服务端筛选和分页候选项；筛选结果与已选清单分离 |
 | 普通任务 | 保存为初始化 blueprint；创建新项目时生成新的开放任务 |
 | Series | 保存当前有效定义；创建时生成新的 active Series 和一条初始 RuleVersion |
 | Config | 只保存用户选择的 project 显式值；不冻结 workspace 继承值/default |
@@ -51,12 +52,13 @@
 2. 保存时按 config、task、series、automation 四类选择内容。
 3. 普通 task 和 series 必须支持逐项勾选，不要求整类全选。
 4. config 和 automation 同样支持逐项选择，避免复制项目特有信息。
-5. 模板内容可演进，但 JSON 结构变化不要求修改数据库表结构。
-6. 从模板创建的新项目拥有全新 ID、序号、运行状态和审计记录。
-7. 保留选中任务之间的 parent、depends 和 task semantic reference。
-8. 防止 secret、attachment、历史 occurrence 和 automation delivery 泄漏到模板。
-9. 创建前提供可读预检；创建过程具备完整事务原子性。
-10. CLI、HTTP、Remote、MCP 和 Web Console 使用同一 App 能力和相同 JSON 语义。
+5. 项目资源较多时，用户可以先按现有任务/Series 语义筛选候选项，再跨页选择并加入已选清单。
+6. 模板内容可演进，但 JSON 结构变化不要求修改数据库表结构。
+7. 从模板创建的新项目拥有全新 ID、序号、运行状态和审计记录。
+8. 保留选中任务之间的 parent、depends 和 task semantic reference。
+9. 防止 secret、attachment、历史 occurrence 和 automation delivery 泄漏到模板。
+10. 创建前提供可读预检；创建过程具备完整事务原子性。
+11. CLI、HTTP、Remote、MCP 和 Web Console 使用同一 App 能力和相同 JSON 语义。
 
 ## 4. 非目标
 
@@ -65,6 +67,7 @@
 - 不支持模板继承、模板组合或多模板叠加。
 - 不支持模板与源项目实时同步。
 - 不支持从源项目后续变更自动刷新模板。
+- 不把候选筛选表达式保存为 Snapshot 内容；Snapshot 始终保存显式选择结果。
 - 不复制 task/series attachment 二进制。
 - 不复制 task annotation、audit、completion history、project timeline。
 - 不复制 Series occurrence、tombstone、skip、backlog 或历史 RuleVersion。
@@ -378,7 +381,9 @@ Capture 在写库前必须：
 
 - trim/normalize 字段；
 - tags、assignee IDs、depends refs、config keys 等集合稳定排序并去重；
-- tasks、series、automation 按用户确认的顺序保存；该顺序同时决定新项目中的 seq 分配；
+- Capture selection 数组按集合解释，不让点击先后决定新项目编号；
+- tasks 按 source `project_seq`、UUID 排序，series 按 source `project_seq`、ID 排序，config 按 key 排序，automation 按 created_at、ID 排序；
+- local ref 和新项目 seq 按上述规范顺序分配；
 - 使用标准 codec 序列化最终 struct；
 - 对最终字节计算 SHA-256。
 
@@ -395,7 +400,75 @@ Capture 在写库前必须：
 - project-scoped token 不允许创建或更新 workspace 模板。
 - source Project 后续变更、关闭或重新激活都不改变已有 Snapshot。
 
-### 10.2 选择输入
+### 10.2 候选查询、筛选与分页
+
+资源多时，Capture wizard 不能先加载整个 Project 再在浏览器里过滤。App 层提供四个有界候选查询：
+
+```go
+ListProjectTemplateTaskCandidates(input TaskCandidateListInput) (TaskCandidatePage, error)
+ListProjectTemplateSeriesCandidates(input SeriesCandidateListInput) (SeriesCandidatePage, error)
+ListProjectTemplateConfigCandidates(input ConfigCandidateListInput) (ConfigCandidatePage, error)
+ListProjectTemplateAutomationCandidates(input AutomationCandidateListInput) (AutomationCandidatePage, error)
+```
+
+Task 候选筛选复用项目任务列表的既有语义：
+
+```go
+type TaskCandidateListInput struct {
+    SourceProjectRef string
+    Q                string
+    Status           string // pending|waiting|completed|all，不含 deleted
+    Priority         string
+    Assignees        []string
+    Tags             []string
+    DueAfter         string
+    DueBefore        string
+    Query            string // 现有 task query expression
+    Sort             string // urgency|entry|due|wait|completed
+    Limit            int
+    Offset           int
+}
+```
+
+服务端强制加上 source Project、`series_id IS NULL` 和 `status != deleted` 约束。调用方不能用 `Query` 绕过它们，也不能通过 candidate API 读取 occurrence 或其他 Project 的 task。
+
+Series 候选筛选复用现有 `TaskSeriesListInput` 的 `q/status/assignee/sort`，但 Project 固定为 source Project。Config 候选支持 key/label 模糊搜索和 `all|literal|secret`；Automation 候选支持 name/description 搜索、`enabled|disabled|all` 和 `schedule|event|all`。
+
+所有候选查询：
+
+- 默认 `limit=50`，最大 100，返回 `items/total/limit/offset`。
+- 使用稳定排序和 ID tie-break；翻页时不能重复或遗漏未变化的数据。
+- Storage 层完成 filter、count 和 pagination。禁止先加载全部候选再在 App/Web 切页。
+- 只返回选择器需要的摘要字段、可选状态和 warning 数量；Capture 时再按显式 refs 批量加载完整行。
+- 批量解析 assignee/user 和项目短引用，不能逐行查询。
+- source Project 变化可能让相邻页漂移，最终一致性由 Capture Preview 的 `source_hash` 保证。
+
+现有 Task 查询 AST、参数绑定和日期语义是唯一任务筛选实现；template candidate 只增加强制 scope，不复制一份筛选器。Series candidate 必须新增 Storage 层 count/pagination 路径，不能复用会返回全部行的 `ListCandidates` 后再内存分页。
+
+### 10.3 跨页选择
+
+筛选条件只负责“找到候选项”，已选清单是独立状态：
+
+- Web 使用 source UUID 维护 Task 选择，用 Series ID、config key 和 automation rule ID 维护其他选择。
+- 切换筛选、Tab 或页码不清除已选项。
+- Header checkbox 只选择/取消当前页，文案必须写“选择本页 50 项”。
+- 当前页全选后，可以继续点击“选择全部 N 条匹配结果”。
+- “选择全部匹配结果”由服务端使用当前筛选展开为显式 refs；Web 把返回的 refs 合并进已选清单。
+- 如果匹配数超过对应 Snapshot 上限，拒绝全选并要求继续缩小筛选范围。
+- 用户可以打开“已选 N 项”抽屉，搜索和移除已经不在当前筛选结果中的条目。
+- “清除当前筛选结果的选择”和“清除全部已选”是两个不同动作，不能共用模糊的“清除”。
+
+选择全部匹配结果的 App 用例：
+
+```go
+ResolveProjectTemplateCandidateSelection(
+    input CandidateSelectionQuery,
+) (ResolvedCandidateSelection, error)
+```
+
+响应返回显式 refs、匹配总数和 selection source hash。Capture 请求仍只接受显式数组，不接受 filter/query 作为模板内容。这样源 Project 后续新增匹配项时，不会被悄悄加入已经确认的 Snapshot。
+
+### 10.4 选择输入
 
 ```go
 type CaptureSelection struct {
@@ -408,6 +481,7 @@ type CaptureSelection struct {
 
 所有选择必须显式提交。空数组表示不保存该类内容；不能用“字段缺失”推断全选。
 HTTP/OpenAPI/MCP schema 必须把四个数组都标为 required；App 输入解析还要记录字段是否出现，不能让 Go 的 nil/empty 零值掩盖调用方漏传。
+四个数组在协议上按集合处理：去重并按 §9.8 的规范顺序归一化。跨页点击顺序、网络返回顺序和“选择全部匹配”的分页顺序都不能改变 Snapshot hash 或新资源 seq。
 
 Capture 对依赖和日期的人工处理使用结构化 resolution，不接收自由文本指令：
 
@@ -435,7 +509,7 @@ Capture Preview 返回：
 
 Capture 请求必须携带 Preview 返回的 `expected_source_hash`。若选中资源在 Preview 后发生变化，返回 `project_template_source_changed`，要求重新预览。
 
-### 10.3 普通 Task
+### 10.5 普通 Task
 
 可选范围：
 
@@ -453,7 +527,7 @@ Capture 请求必须携带 Preview 返回的 `expected_source_hash`。若选中�
 - TaskLink 只保存 type、URL、title；created_by 改为 Instantiate actor。
 - UDA 在 Capture 和 Instantiate 都按当前 workspace definition 校验。
 
-### 10.4 Series
+### 10.6 Series
 
 可选择 active、ended、stopped Series；UI 默认只勾选 active。
 
@@ -467,7 +541,7 @@ Capture 请求必须携带 Preview 返回的 `expected_source_hash`。若选中�
 - ended/stopped Series 没有未来槽位时，first_due 默认使用 anchor date offset 0，until 清空，并要求用户在 Preview 中确认。
 - 用户可以在 Capture Preview 中覆盖某个 Series 的 first_due/until 相对值。
 
-### 10.5 Config
+### 10.7 Config
 
 候选列表只包含源 Project 的显式 config rows：
 
@@ -485,7 +559,7 @@ configs.scope_id     = source project id
 - 如果 key 已被删除、scope 不再允许 project 或 literal 的类型不再合法，Instantiate Preview 阻断。
 - 如果一个历史 literal key 后来被改为 secret，Instantiate 不得返回或使用 Snapshot literal，必须按 secret_input 处理并要求用户确认新的值或继承来源。历史 Snapshot 仍不可修改。
 
-### 10.6 Automation
+### 10.8 Automation
 
 - 候选列表来自 source Project 的 automation rule，包含 enabled/disabled；两者都可选。
 - Snapshot 保存规则结构，不保存 enabled 状态。
@@ -498,7 +572,7 @@ configs.scope_id     = source project id
 
 ### 11.1 Local Ref
 
-Capture 按用户顺序分配：
+Capture 按 §9.8 的 source 规范顺序分配：
 
 ```text
 source task UUID A  -> task-1
@@ -728,6 +802,11 @@ Instantiate：
 建议新增 `internal/app/project_template.go`，按职责拆分而不是堆入 `project.go`：
 
 ```go
+ListProjectTemplateTaskCandidates(input TaskCandidateListInput) (TaskCandidatePage, error)
+ListProjectTemplateSeriesCandidates(input SeriesCandidateListInput) (SeriesCandidatePage, error)
+ListProjectTemplateConfigCandidates(input ConfigCandidateListInput) (ConfigCandidatePage, error)
+ListProjectTemplateAutomationCandidates(input AutomationCandidateListInput) (AutomationCandidatePage, error)
+ResolveProjectTemplateCandidateSelection(input CandidateSelectionQuery) (ResolvedCandidateSelection, error)
 PreviewProjectTemplateCapture(input CaptureInput) (CapturePreview, error)
 CreateProjectTemplate(input CreateTemplateInput) (ProjectTemplateView, error)
 CreateProjectTemplateSnapshot(templateRef string, input CaptureInput) (ProjectTemplateView, error)
@@ -754,6 +833,11 @@ InstantiateProjectTemplate(templateRef string, input InstantiateInput) (ProjectV
 ### 18.1 HTTP
 
 ```text
+GET  /api/v1/projects/{projectRef}/template-candidates/tasks
+GET  /api/v1/projects/{projectRef}/template-candidates/series
+GET  /api/v1/projects/{projectRef}/template-candidates/configs
+GET  /api/v1/projects/{projectRef}/template-candidates/automations
+POST /api/v1/projects/{projectRef}/template-candidates/resolve-selection
 POST /api/v1/project-templates/capture-preview
 POST /api/v1/project-templates
 GET  /api/v1/project-templates
@@ -768,6 +852,7 @@ POST /api/v1/project-templates/{templateRef}/instantiate
 ```
 
 - create Template 时同时提交第一个 Capture。
+- 四类 candidate endpoint 复用各自现有筛选参数，统一返回有界 page；`resolve-selection` 把筛选结果展开为显式 refs。
 - Snapshot raw JSON 不进入公开响应。
 - list 支持 `status=active|archived|all`、`limit`、`offset`，返回稳定分页元数据。
 - Instantiate 响应返回标准 ProjectView 和 component create counts。
@@ -778,6 +863,11 @@ POST /api/v1/project-templates/{templateRef}/instantiate
 Remote Client 提供与 HTTP 等价的 typed 方法，不能让 CLI 拼 HTTP body：
 
 ```go
+ListProjectTemplateTaskCandidates(...)
+ListProjectTemplateSeriesCandidates(...)
+ListProjectTemplateConfigCandidates(...)
+ListProjectTemplateAutomationCandidates(...)
+ResolveProjectTemplateCandidateSelection(...)
 PreviewProjectTemplateCapture(...)
 CreateProjectTemplate(...)
 ListProjectTemplates(...)
@@ -792,6 +882,7 @@ InstantiateProjectTemplate(...)
 ```text
 xuanchu project template list
 xuanchu project template info <template-ref>
+xuanchu project template candidates <source-project> --component task
 xuanchu project template save <source-project> key:<key> name:<name>
 xuanchu project template snapshot <template-ref> --from <source-project>
 xuanchu project template instantiate <template-ref> <new-project-slug> name:<name>
@@ -802,6 +893,7 @@ xuanchu project template reactivate <template-ref>
 选择参数：
 
 - `--task <ref>`、`--series <ref>`、`--config <key>`、`--automation <id>` 可重复。
+- `candidates` 支持对应组件的 `--filter/--status/--assignee/--tag/--limit/--offset`，输出显式 ref，便于脚本组合选择。
 - `--all-open-tasks`、`--all-active-series` 是显式 convenience flag。
 - 不传某一类选择参数表示该类为空，不表示全选。
 - `--anchor-date` / `--start-date` 使用 `YYYY-MM-DD`。
@@ -813,6 +905,8 @@ xuanchu project template reactivate <template-ref>
 MCP tool 名称：
 
 ```text
+project_template_candidate_list
+project_template_candidate_selection_resolve
 project_template_capture_preview
 project_template_create
 project_template_list
@@ -830,6 +924,7 @@ project_template_instantiate
 
 - 名称全部使用下划线。
 - 每次显式传 workspace 和 template/project ref，不依赖 active context。
+- `project_template_candidate_list` 使用 `component=task|series|config|automation` 判别输入；每类 filter 使用独立 typed object，必须且只能提交与 component 对应的一个 filter。
 - result 的 `content[0].text` 与 `structuredContent` 继续遵守现有 ToolEnvelope 契约。
 - created_by/assignee 等用户对象统一为 `task.JSONUserInfo`；actor 使用 `task.JSONActorInfo`。
 - tool schema golden、list-tools snapshot 和 Agent Skill 文档必须同步。
@@ -847,6 +942,7 @@ project_template_instantiate
 | `project_template_snapshot_hash_mismatch` | expected hash 与目标 Snapshot 不一致 |
 | `project_template_source_changed` | Capture Preview 后源选择内容发生变化 |
 | `project_template_selection_invalid` | 选择了外项目、deleted task 或 occurrence |
+| `project_template_candidate_limit_exceeded` | “选择全部匹配”超过该组件 Snapshot 上限 |
 | `project_template_dependency_missing` | parent/depends/task ref 指向未选择 task |
 | `project_template_attachment_unsupported` | description 含 attachment ref |
 | `project_template_member_unavailable` | assignee 已不可用 |
@@ -911,27 +1007,41 @@ project_template_instantiate
 ### 20.4 选择内容
 
 ```text
+┌────────────────────────────────────────────────────────────────────────────────────────────┐
+│ 另存为项目模板                                                                         [×]  │
+│ 1 基本信息 ── 2 选择内容 ── 3 检查 ── 4 完成                                                  │
+├────────────────────────────────────────────────────────────────────────────────────────────┤
+│ [任务 128] [循环任务 12] [配置 4] [自动化 2]                         [已选 36 项 →]         │
+├──────────────────────────────────────────────────────────┬─────────────────────────────────┤
+│ 搜索 [ 上线                                  ]            │ 已选任务 32                     │
+│ 状态 [待办+等待 v]  负责人 [全部 v]  标签 [launch]        │ 搜索已选 [                ]     │
+│ 优先级 [全部 v]  截止 [D-7] 至 [D+30]  [更多筛选] [清除]  ├─────────────────────────────────┤
+├──────────────────────────────────────────────────────────┤ [✓] 产品资料准备       D+0      │
+│ 匹配 286 项 · 第 1–50 项                                  │ [✓] 整理卖点           D+1      │
+│ [ ] 选择本页 50 项                                        │ [✓] 预热素材评审       D+3      │
+│                                                          │ [✓] 上线检查           D+7      │
+│ [✓] 产品资料准备       待办   D+0   小王                  │ ...                             │
+│ [✓] 整理卖点           待办   D+1   小王   依赖 1 项      │                                 │
+│ [ ] 预热素材评审       等待   D+3   设计组                ├─────────────────────────────────┤
+│ [ ] 上线检查           已完成 D+7   小王                  │ [清除当前筛选中的选择]          │
+│ [ ] 历史数据复盘       已完成 D-12  未分配                │ [清除全部已选]                  │
+│ ...                                                      │                                 │
+├──────────────────────────────────────────────────────────┴─────────────────────────────────┤
+│ [← 上一页]  1 / 6  [下一页 →]                                   [← 上一步] [检查选择 →]    │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+当用户勾选当前页全部结果时，在列表顶部出现二次动作：
+
+```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ 另存为项目模板                                                       [×]     │
-│ 1 基本信息 ── 2 选择内容 ── 3 检查 ── 4 完成                                │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ [任务 8] [循环任务 2] [配置 4] [自动化 1]                   搜索… [       ] │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ [✓] 选择未完成任务（8）                         已选择 8 / 可选 21           │
-│                                                                            │
-│ [✓] 产品资料准备       待办      D+0  负责人：小王                          │
-│     └─ [✓] 整理卖点     待办      D+1  依赖：产品资料准备                    │
-│ [✓] 预热素材评审       等待      D+3  负责人：设计组                        │
-│ [✓] 上线检查           已完成    D+7  新项目中将恢复为待办                  │
-│ [ ] 历史数据复盘       已完成   D-12                                      │
-│                                                                            │
-│ 说明：循环实例、已删除任务和附件不会进入模板                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                              [← 上一步] [检查选择 →]         │
+│ 已选择本页 50 项。 [选择全部 286 条匹配结果]                 [取消本页选择]  │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-四个 Tab 都必须显示已选数量。切换 Tab 不丢选择；搜索只过滤当前列表，不改变 selection。Series 行同时显示规则、首个相对日期和 until。Config 行显示来源；workspace/default 行只读且不可选择。Secret 行显示“创建项目时填写”，不展示值。Automation 行显示触发方式并标注“创建后默认停用”。
+四个 Tab 都显示候选总数和已选数量。筛选、Tab 和分页只改变左侧候选列表，不改变右侧已选清单。右侧清单在宽度不足时改为“已选 N 项”Sheet，不把主列表压窄到不可读。
+
+Task 复用现有项目任务筛选项和 query grammar，选择器强制普通 task。Series 行显示规则、负责人、首个相对日期和 until，并支持关键词、状态、负责人和排序。Config 行支持 key/label 和 secret 类型筛选；workspace/default 行只读且不可选择。Secret 行显示“创建项目时填写”，不展示值。Automation 行支持关键词、启用状态和触发类型筛选，并标注“创建后默认停用”。
 
 ### 20.5 引用冲突
 
@@ -1037,8 +1147,11 @@ blocking issue 未清零时 `保存模板` 禁用。任何 drop/edit 都进入 C
 ┌──────────────────────────────┐
 │ ← 选择模板内容          2/4  │
 ├──────────────────────────────┤
-│ [任务 8] [循环 2] [配置 4]  │
-│ [自动化 1]                  │
+│ [任务 128] [循环 12]        │
+│ [配置 4] [自动化 2]         │
+│ 搜索 [上线             ]    │
+│ [状态] [负责人] [标签]      │
+│ 匹配 286 · 已选 32          │
 │                              │
 │ [✓] 产品资料准备             │
 │     D+0 · 小王               │
@@ -1048,11 +1161,11 @@ blocking issue 未清零时 `保存模板` 禁用。任何 drop/edit 都进入 C
 │     已完成 · D-12             │
 │                              │
 ├──────────────────────────────┤
-│ 已选择 8          [检查选择] │
+│ [已选 36 项]      [检查选择] │
 └──────────────────────────────┘
 ```
 
-选择状态放在上层 wizard state，不因 Tab 或 Sheet 层级切换丢失。错误项点击后跳回对应组件并聚焦条目。
+`已选 36 项` 打开全屏 Sheet，支持搜索、逐项移除、清除当前筛选选择和清除全部。选择状态放在上层 wizard state，不因筛选、分页、Tab 或 Sheet 层级切换丢失。错误项点击后跳回对应组件并聚焦条目。
 
 ## 21. 状态、空态和可访问性
 
@@ -1125,6 +1238,11 @@ blocking issue 未清零时 `保存模板` 禁用。任何 drop/edit 都进入 C
 ### 24.3 App
 
 - 四类内容任意组合。
+- Task/Series/config/automation candidate filter 只返回 source Project 范围。
+- candidate count/pagination 在 Storage 层完成；大数据集不会先全量加载。
+- task candidate 复用现有 query AST，并强制排除 occurrence/deleted。
+- 当前页选择、跨页选择和“选择全部匹配”最终都解析为显式 refs。
+- 筛选变化不改变显式已选集合；匹配数超过上限时拒绝全选。
 - 精确选择，不误带未选择资源。
 - completed task 重置，occurrence 排除。
 - Series history/occurrence 排除并生成单一初始 RuleVersion。
@@ -1145,6 +1263,7 @@ blocking issue 未清零时 `保存模板` 禁用。任何 drop/edit 都进入 C
 - OpenAPI 与 MCP schema golden。
 - `content[0].text` / `structuredContent` 等价。
 - Web 四类选择、搜索不丢 selection、冲突处理、secret 不回显。
+- Web 筛选、分页、当前页全选、全部匹配全选和已选抽屉语义一致。
 - Snapshot 版本切换和 expected hash。
 - desktop/mobile ASCII 原型对应的关键交互 E2E。
 - closed/archived/permission/loading/error/empty 状态。
@@ -1170,21 +1289,23 @@ pnpm --dir web build
 
 1. 用户能从任意同 workspace Project 保存新 Template 和第一个 Snapshot。
 2. Capture 时能分别、逐项选择 config/task/series/automation。
-3. 未选择的资源不会进入 Snapshot。
-4. Snapshot 内容只存在一个版本化 JSON 字段，组件字段变化不要求新增模板子表。
-5. JSON 有明确 Go struct、strict codec、schema dispatch、canonical hash 和 unknown schema 错误。
-6. Template 更新追加 Snapshot version，不覆盖旧版本。
-7. 普通 task 生成新 UUID 和开放状态，内部依赖和 task ref 正确映射。
-8. Series 生成新 ID、active 状态和单一初始 RuleVersion，不携带 occurrence/history。
-9. project config 只复制显式值；secret 值从未进入 Snapshot。
-10. Automation 只复制定义且全部 disabled，不复制 delivery。
-11. 日期按 anchor/start date 和 workspace timezone 正确平移。
-12. attachment ref、缺失依赖、不可用 member、失效 config/UDA/automation 在 Preview 中明确阻断。
-13. Instantiate 任一步失败不留下 Project 或子资源。
-14. Template/Snapshot 严格 workspace 隔离，project-scoped token 不能访问。
-15. CLI、HTTP、Remote、MCP、Web Console 行为一致。
-16. 用户身份输出符合 `task.UserInfo` / `task.JSONUserInfo` 规范。
-17. SQLite/PostgreSQL 与 `CGO_ENABLED=0` 验证通过。
+3. Task 和 Series 候选支持服务端筛选、稳定分页、当前页全选、全部匹配全选和独立已选清单。
+4. 筛选表达式不会写入 Snapshot；Capture 只接收显式 refs。
+5. 未选择的资源不会进入 Snapshot。
+6. Snapshot 内容只存在一个版本化 JSON 字段，组件字段变化不要求新增模板子表。
+7. JSON 有明确 Go struct、strict codec、schema dispatch、canonical hash 和 unknown schema 错误。
+8. Template 更新追加 Snapshot version，不覆盖旧版本。
+9. 普通 task 生成新 UUID 和开放状态，内部依赖和 task ref 正确映射。
+10. Series 生成新 ID、active 状态和单一初始 RuleVersion，不携带 occurrence/history。
+11. project config 只复制显式值；secret 值从未进入 Snapshot。
+12. Automation 只复制定义且全部 disabled，不复制 delivery。
+13. 日期按 anchor/start date 和 workspace timezone 正确平移。
+14. attachment ref、缺失依赖、不可用 member、失效 config/UDA/automation 在 Preview 中明确阻断。
+15. Instantiate 任一步失败不留下 Project 或子资源。
+16. Template/Snapshot 严格 workspace 隔离，project-scoped token 不能访问。
+17. CLI、HTTP、Remote、MCP、Web Console 行为一致。
+18. 用户身份输出符合 `task.UserInfo` / `task.JSONUserInfo` 规范。
+19. SQLite/PostgreSQL 与 `CGO_ENABLED=0` 验证通过。
 
 ## 26. 实施切片建议
 
@@ -1192,13 +1313,14 @@ implementation plan 应按以下顺序拆分，但本文不代替计划：
 
 1. `internal/projecttemplate` V1 model、codec、hash、relative date 与纯函数测试。
 2. Template/Snapshot storage model、migration、repository 与双数据库测试。
-3. Capture Preview/Capture App 用例、引用归一化和审计。
-4. Instantiate Preview/Instantiate App 事务、日期恢复和 ID 映射。
-5. HTTP + OpenAPI + Remote。
-6. CLI。
-7. MCP + golden + Agent Skill 文档。
-8. Web Template Library、Capture wizard、Instantiate wizard。
-9. E2E、README、ROADMAP 和 release 文档同步。
+3. 四类 candidate filter/count/pagination、selection expansion 和大数据集测试。
+4. Capture Preview/Capture App 用例、引用归一化和审计。
+5. Instantiate Preview/Instantiate App 事务、日期恢复和 ID 映射。
+6. HTTP + OpenAPI + Remote。
+7. CLI。
+8. MCP + golden + Agent Skill 文档。
+9. Web Template Library、Capture wizard、跨页已选清单、Instantiate wizard。
+10. E2E、README、ROADMAP 和 release 文档同步。
 
 每一步必须先写失败测试，再补实现；不得等到最后才验证 secret、workspace 隔离和回滚。
 
