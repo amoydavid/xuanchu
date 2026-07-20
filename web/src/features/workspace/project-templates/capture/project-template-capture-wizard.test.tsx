@@ -836,6 +836,62 @@ describe("ProjectTemplateCaptureWizard", () => {
     ).toBeTruthy()
   })
 
+  it("retries a cancelled ref refresh generation after current-page summaries rerender", async () => {
+    const firstRefRefresh = deferred<api.Page<api.TaskCandidate>>()
+    let drifted = false
+    let refRefreshCalls = 0
+    vi.mocked(api.listProjectTemplateTaskCandidates).mockImplementation(
+      async (_workspace, _project, options) => {
+        if (options.refs?.includes("task-z")) {
+          refRefreshCalls++
+          if (refRefreshCalls === 1) return firstRefRefresh.promise
+          return {
+            items: [{ ...taskZ, title: "重试后的跨页任务" }],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          }
+        }
+        if (options.offset === 50) {
+          return { items: [taskZ], total: 1001, limit: 50, offset: 50 }
+        }
+        return {
+          items: [
+            drifted ? { ...taskA, title: "当前页已更新" } : taskA,
+          ],
+          total: 1001,
+          limit: 50,
+          offset: 0,
+        }
+      }
+    )
+    vi.mocked(api.appendProjectTemplateSnapshot).mockImplementationOnce(
+      async () => {
+        drifted = true
+        throw new ApiError(409, "project_template_source_changed", "changed")
+      }
+    )
+    renderCaptureWizard()
+    await enterSelectionStep()
+    await userEvent.click(await screen.findByRole("checkbox", { name: "准备上线" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一页" }))
+    await userEvent.click(await screen.findByRole("checkbox", { name: "上线复盘" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    await userEvent.click(screen.getByRole("button", { name: "生成预览" }))
+    await userEvent.click(screen.getByRole("button", { name: "下一步" }))
+    await userEvent.click(screen.getByRole("button", { name: "保存快照" }))
+    expect(
+      await screen.findByText("来源项目已变化，请检查选择后重新预览。")
+    ).toBeTruthy()
+    await waitFor(() => expect(refRefreshCalls).toBeGreaterThanOrEqual(2))
+    await userEvent.click(screen.getByRole("button", { name: "已选 2 项" }))
+    expect(
+      within(screen.getByRole("dialog", { name: "已选内容" })).getByText(
+        "重试后的跨页任务"
+      )
+    ).toBeTruthy()
+  })
+
   it("supports Cmd/Ctrl+Enter but blocks Escape and repeat submit while pending", async () => {
     const onOpenChange = vi.fn()
     const pendingPreview = deferred<api.CapturePreview>()
