@@ -58,6 +58,7 @@
 | v0.5.9 | 已完成 | Web Console 任务详情页低噪声默认态与动作层级收敛 |
 | v0.5.10 | 已完成 | Web Console 用户首页：我的今日、项目关注、工作区信息与系统身份降级 |
 | v0.5.11 | 已完成 | 任务 description 富文本粘贴、远程图片转存、通用附件基础与用户/任务语义引用 |
+| v0.6.0 | 设计中 | Workspace 内项目模板：选择 config/task/series/automation 生成版本化 JSON 快照并快速创建项目 |
 | docs | 已完成 | Agent Skill 文档按 `xuanchu-` namespace 重构（5 个业务 skill + 1 个基础 skill） |
 
 ## v0.2.0：定时通知、第三方通知与 Agent Skill 文档
@@ -1658,9 +1659,12 @@ v0.5.5 至 v0.5.9 已依次完成任务详情重构、项目自动化、循环�
 
 v0.5.11 已完成。该里程碑继续保持 task description 的 Markdown 字符串契约，在现有 Tiptap 编辑器上交付了富文本粘贴、公网远程图片受控抓取转存、workspace 级通用附件基础及 task 首期接入、鉴权图片渲染、用户/任务语义引用和 `task.user_mentioned` 事件；附件通过 `attached_to_type + attached_to_id` 关联业务实体，后续 project/series/workspace 接入无需迁表。附件二进制默认使用本地文件系统，可选使用 private S3/MinIO，对外不暴露 bucket 或持久预签名 URL。
 
+v0.6.0 进入设计阶段。该里程碑新增 workspace 内项目模板：用户从源项目逐项选择 project config、普通 task、TaskSeries 和 project automation，生成带 schema 版本、Go struct 契约和 canonical hash 的不可变 JSON Snapshot；从模板创建项目时重新分配所有资源身份、按项目启动日恢复相对日期、重建任务引用、要求重新解析 secret，并确保自动化规则以停用状态创建。Template 可以通过追加 Snapshot 演进，但不与源项目实时同步，也不支持跨 workspace 复用。
+
 最新规格：
 
 ```text
 docs/superpowers/specs/2026-07-17-web-console-user-home-design.md
 docs/superpowers/specs/2026-07-19-task-description-rich-content-attachments-mentions-design.md
+docs/superpowers/specs/2026-07-20-project-template-snapshot-design.md
 ```
