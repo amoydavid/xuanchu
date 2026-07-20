@@ -126,6 +126,158 @@ func TestOpenAPIIncludesEveryRegisteredHTTPRoute(t *testing.T) {
 	}
 }
 
+func TestOpenAPIDocumentsProjectTemplateGovernanceContracts(t *testing.T) {
+	srv := NewServer(Options{Store: openHTTPTestStore(t)})
+	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/openapi.json", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	paths := doc["paths"].(map[string]any)
+	want := map[string][]string{
+		"/api/v1/projects/{projectRef}/template-candidates/tasks":             {"get"},
+		"/api/v1/projects/{projectRef}/template-candidates/series":            {"get"},
+		"/api/v1/projects/{projectRef}/template-candidates/configs":           {"get"},
+		"/api/v1/projects/{projectRef}/template-candidates/automations":       {"get"},
+		"/api/v1/projects/{projectRef}/template-candidates/resolve-selection": {"post"},
+		"/api/v1/project-templates/capture-preview":                           {"post"},
+		"/api/v1/project-templates":                                           {"post", "get"},
+		"/api/v1/project-templates/{templateRef}":                             {"get", "patch"},
+		"/api/v1/project-templates/{templateRef}/archive":                     {"post"},
+		"/api/v1/project-templates/{templateRef}/reactivate":                  {"post"},
+		"/api/v1/project-templates/{templateRef}/snapshots/capture-preview":   {"post"},
+		"/api/v1/project-templates/{templateRef}/snapshots":                   {"post"},
+		"/api/v1/project-templates/{templateRef}/instantiate-preview":         {"post"},
+		"/api/v1/project-templates/{templateRef}/instantiate":                 {"post"},
+	}
+	operations := 0
+	for path, methods := range want {
+		item, ok := paths[path].(map[string]any)
+		if !ok {
+			t.Errorf("missing path %s", path)
+			continue
+		}
+		for _, method := range methods {
+			operations++
+			op, ok := item[method].(map[string]any)
+			if !ok {
+				t.Errorf("missing operation %s %s", method, path)
+				continue
+			}
+			if !openAPIParameterRequired(op, "workspace") {
+				t.Errorf("%s %s must require workspace", method, path)
+			}
+		}
+	}
+	if operations != 16 {
+		t.Fatalf("operation count=%d, want 16", operations)
+	}
+
+	create := openAPIOperation(t, paths, "/api/v1/project-templates", "post")
+	createCapture := openAPIRequestSchema(t, create)["properties"].(map[string]any)["capture"].(map[string]any)
+	selection := createCapture["properties"].(map[string]any)["selection"].(map[string]any)
+	for _, name := range []string{"config_keys", "task_refs", "series_refs", "automation_rule_ids"} {
+		if !openAPISchemaRequired(selection, name) {
+			t.Errorf("capture selection must require %s", name)
+		}
+	}
+	if !openAPISchemaRequired(createCapture, "expected_source_hash") {
+		t.Error("create capture must require expected_source_hash")
+	}
+	snapshotCapture := openAPIRequestSchema(t, openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}/snapshots", "post"))
+	if !openAPISchemaRequired(snapshotCapture, "expected_source_hash") {
+		t.Error("snapshot capture must require expected_source_hash")
+	}
+	if raw, _ := json.Marshal(createCapture); strings.Contains(string(raw), `"date_only"`) {
+		t.Fatalf("capture schema exposed nonexistent date_only: %s", raw)
+	}
+	preview := openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}/instantiate-preview", "post")
+	previewJSON, _ := json.Marshal(preview)
+	for _, want := range []string{"issues", "code", "severity", "component", "source_ref", "target_ref", "relation", "field", "message"} {
+		if !strings.Contains(string(previewJSON), `"`+want+`"`) {
+			t.Errorf("typed preview schema missing %s", want)
+		}
+	}
+	if strings.Contains(rr.Body.String(), "snapshot_json") {
+		t.Fatal("OpenAPI exposed raw snapshot_json")
+	}
+	assertCandidateFields := func(path string, fields ...string) {
+		t.Helper()
+		op := openAPIOperation(t, paths, path, "get")
+		response := op["responses"].(map[string]any)["200"].(map[string]any)
+		data := response["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["data"].(map[string]any)
+		itemProps := data["properties"].(map[string]any)["items"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+		for _, field := range fields {
+			if _, ok := itemProps[field]; !ok {
+				t.Errorf("%s response item missing %s", path, field)
+			}
+		}
+	}
+	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/tasks", "ref", "project_id", "project_seq", "series_id", "title", "status", "priority", "due", "assignees", "warning_count")
+	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/series", "ref", "project_id", "project_seq", "title", "status", "recurrence_rule", "first_due", "assignees", "created_by", "warning_count")
+	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/configs", "ref", "key", "label", "mode", "value_type", "warning_count")
+	assertCandidateFields("/api/v1/projects/{projectRef}/template-candidates/automations", "ref", "id", "project_id", "name", "description", "enabled", "trigger_type", "created_by", "created_at", "warning_count")
+	detail := openAPIOperation(t, paths, "/api/v1/project-templates/{templateRef}", "get")
+	if parameter := openAPIParameter(detail, "snapshot_id"); parameter == nil || parameter["schema"].(map[string]any)["format"] != "uuid" {
+		t.Errorf("snapshot_id must use uuid format: %#v", parameter)
+	}
+}
+
+func openAPIOperation(t *testing.T, paths map[string]any, path, method string) map[string]any {
+	t.Helper()
+	item, ok := paths[path].(map[string]any)
+	if !ok {
+		t.Fatalf("missing path %s", path)
+	}
+	op, ok := item[method].(map[string]any)
+	if !ok {
+		t.Fatalf("missing operation %s %s", method, path)
+	}
+	return op
+}
+
+func openAPIRequestSchema(t *testing.T, operation map[string]any) map[string]any {
+	t.Helper()
+	return operation["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+}
+
+func openAPIParameterRequired(operation map[string]any, name string) bool {
+	parameters, _ := operation["parameters"].([]any)
+	for _, raw := range parameters {
+		parameter, _ := raw.(map[string]any)
+		if parameter["name"] == name {
+			required, _ := parameter["required"].(bool)
+			return required
+		}
+	}
+	return false
+}
+
+func openAPIParameter(operation map[string]any, name string) map[string]any {
+	parameters, _ := operation["parameters"].([]any)
+	for _, raw := range parameters {
+		parameter, _ := raw.(map[string]any)
+		if parameter["name"] == name {
+			return parameter
+		}
+	}
+	return nil
+}
+
+func openAPISchemaRequired(schema map[string]any, name string) bool {
+	required, _ := schema["required"].([]any)
+	for _, item := range required {
+		if item == name {
+			return true
+		}
+	}
+	return false
+}
+
 func TestOpenAPIDocumentsTaskSeriesAndOccurrenceContracts(t *testing.T) {
 	srv := NewServer(Options{Store: openHTTPTestStore(t)})
 	rr := httptest.NewRecorder()
