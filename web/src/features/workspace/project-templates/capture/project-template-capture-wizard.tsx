@@ -20,6 +20,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,12 @@ const kindLabels: Record<CandidateKind, string> = {
   automation: "自动化",
 }
 const stepLabels = ["模板信息", "选择内容", "检查冲突", "确认保存"]
+const selectionLimits: Record<CandidateKind, number> = {
+  task: 1000,
+  series: 200,
+  config: 500,
+  automation: 200,
+}
 
 export function ProjectTemplateCaptureWizard(
   props: ProjectTemplateCaptureWizardProps
@@ -113,6 +120,8 @@ function ProjectTemplateCaptureWizardSession({
   const [refreshKey, setRefreshKey] = useState(0)
   const firstIssueRef = useRef<HTMLDivElement>(null)
   const defaultLoadedRef = useRef(false)
+  const pendingRef = useRef(false)
+  const selectionRef = useRef(selection)
 
   const totalSelected = useMemo(
     () => kinds.reduce((total, kind) => total + selection[kind].size, 0),
@@ -123,7 +132,7 @@ function ProjectTemplateCaptureWizardSession({
     step === 0
       ? mode === "append" || Boolean(keyValue.trim() && name.trim())
       : step === 1
-        ? totalSelected > 0
+        ? true
         : step === 2
           ? Boolean(preview && blockingIssues.length === 0 && !previewDirty)
           : false
@@ -165,30 +174,39 @@ function ProjectTemplateCaptureWizardSession({
       )
       if (cancelled) return
       const limited = new Set<CandidateKind>()
-      const next = emptySelection()
-      for (const result of results) {
+      const defaults = emptySelection()
+      for (const [index, result] of results.entries()) {
         if (result.status === "rejected") {
           if (
             result.reason instanceof ApiError &&
             result.reason.code === "project_template_candidate_limit_exceeded"
           ) {
             // 默认超过上限时整类保持未选择，不能静默截断。
-            const index = results.indexOf(result)
             limited.add(requests[index].kind)
           }
           continue
         }
         if (limited.has(result.value.kind)) continue
         for (const ref of result.value.result.refs) {
-          next[result.value.kind].set(ref, {
+          defaults[result.value.kind].set(ref, {
             ref,
             label: ref,
             secondary: "默认选择，打开对应分类查看摘要",
           })
         }
       }
-      for (const kind of limited) next[kind].clear()
-      setSelection(next)
+      const next = cloneSelection(selectionRef.current)
+      for (const kind of kinds) {
+        if (limited.has(kind)) continue
+        const merged = new Map(next[kind])
+        for (const [ref, summary] of defaults[kind]) merged.set(ref, summary)
+        if (merged.size > selectionLimits[kind]) {
+          limited.add(kind)
+          continue
+        }
+        next[kind] = merged
+      }
+      replaceSelection(next)
       setDefaultLimitKinds([...limited])
     }
     return () => {
@@ -204,11 +222,12 @@ function ProjectTemplateCaptureWizardSession({
   }, [preview])
 
   const close = useCallback(() => {
-    if (!pending) onOpenChange(false)
+    if (!pendingRef.current && !pending) onOpenChange(false)
   }, [onOpenChange, pending])
 
   const runPreview = useCallback(async () => {
-    if (pending) return
+    if (pendingRef.current) return
+    pendingRef.current = true
     setPending(true)
     setError(undefined)
     try {
@@ -231,12 +250,12 @@ function ProjectTemplateCaptureWizardSession({
     } catch (caught) {
       setError(errorMessage(caught, "生成预览失败，请检查选择和权限。"))
     } finally {
+      pendingRef.current = false
       setPending(false)
     }
   }, [
     anchorDate,
     mode,
-    pending,
     resolution,
     selection,
     sourceProject.slug,
@@ -245,7 +264,8 @@ function ProjectTemplateCaptureWizardSession({
   ])
 
   const save = useCallback(async () => {
-    if (!canSave || !preview) return
+    if (!canSave || !preview || pendingRef.current) return
+    pendingRef.current = true
     setPending(true)
     setError(undefined)
     const capture: CaptureInput = {
@@ -291,6 +311,7 @@ function ProjectTemplateCaptureWizardSession({
         setError(errorMessage(caught, "保存模板失败，请重试。"))
       }
     } finally {
+      pendingRef.current = false
       setPending(false)
     }
   }, [
@@ -330,11 +351,18 @@ function ProjectTemplateCaptureWizardSession({
     return () => document.removeEventListener("keydown", shortcut)
   }, [goNext, open, preview, runPreview, save, step])
 
+  function replaceSelection(next: CandidateSelectionStore) {
+    selectionRef.current = next
+    setSelection(next)
+  }
+
   function updateSelection(
     kind: CandidateKind,
     next: Map<string, CandidateSummary>
   ) {
-    setSelection((current) => ({ ...current, [kind]: next }))
+    const nextSelection = { ...selectionRef.current, [kind]: next }
+    replaceSelection(nextSelection)
+    setResolution((current) => sanitizeResolution(current, nextSelection))
     setPreview(undefined)
     setPreviewDirty(false)
   }
@@ -346,12 +374,39 @@ function ProjectTemplateCaptureWizardSession({
   }
 
   function addResolution(next: CaptureResolution) {
-    setResolution((current) => mergeResolution(current, next))
+    setResolution((current) =>
+      sanitizeResolution(mergeResolution(current, next), selectionRef.current)
+    )
     setPreviewDirty(true)
   }
 
+  function changeAnchorDate(next: string) {
+    setAnchorDate(next)
+    setPreview(undefined)
+    setPreviewDirty(false)
+    setError(undefined)
+  }
+
+  function clearAllSelection() {
+    const next = emptySelection()
+    replaceSelection(next)
+    setResolution((current) => sanitizeResolution(current, next))
+    setPreview(undefined)
+    setPreviewDirty(false)
+  }
+
+  function updateSummaries(
+    kind: CandidateKind,
+    next: Map<string, CandidateSummary>
+  ) {
+    if (sameSelectionMap(selectionRef.current[kind], next)) return
+    replaceSelection({ ...selectionRef.current, [kind]: next })
+  }
+
   function handleDialogKeyDown(event: ReactKeyboardEvent) {
-    if (event.key === "Escape" && pending) event.preventDefault()
+    if (event.key === "Escape" && (pendingRef.current || pending)) {
+      event.preventDefault()
+    }
   }
 
   return (
@@ -363,7 +418,9 @@ function ProjectTemplateCaptureWizardSession({
     >
       <DialogContent
         className="flex max-h-[calc(100svh-2rem)] w-[min(76rem,calc(100%-2rem))] max-w-none flex-col gap-0 overflow-hidden rounded-none p-0"
-        onEscapeKeyDown={(event) => pending && event.preventDefault()}
+        onEscapeKeyDown={(event) => {
+          if (pendingRef.current || pending) event.preventDefault()
+        }}
         onKeyDown={handleDialogKeyDown}
         showCloseButton={!pending}
       >
@@ -416,7 +473,7 @@ function ProjectTemplateCaptureWizardSession({
               keyValue={keyValue}
               mode={mode}
               name={name}
-              onAnchorDateChange={setAnchorDate}
+              onAnchorDateChange={changeAnchorDate}
               onDescriptionChange={setDescription}
               onKeyChange={setKeyValue}
               onNameChange={setName}
@@ -480,6 +537,9 @@ function ProjectTemplateCaptureWizardSession({
                           kind={kind}
                           onChange={(next) => updateSelection(kind, next)}
                           onLimitError={setLimitError}
+                          onSummariesChange={(next) =>
+                            updateSummaries(kind, next)
+                          }
                           refreshKey={refreshKey}
                           selected={selection[kind]}
                           sourceProjectRef={sourceProject.slug}
@@ -491,13 +551,13 @@ function ProjectTemplateCaptureWizardSession({
                 </Tabs>
               </div>
               <SelectedItemsDrawer
-                onClearAll={() => setSelection(emptySelection())}
+                onClearAll={clearAllSelection}
                 onRemove={removeSelection}
                 selection={selection}
               />
               <SelectedItemsSheet
                 onClearAll={() => {
-                  setSelection(emptySelection())
+                  clearAllSelection()
                   setSelectedOpen(false)
                 }}
                 onOpenChange={setSelectedOpen}
@@ -551,10 +611,7 @@ function ProjectTemplateCaptureWizardSession({
               下一步 <ChevronRight />
             </Button>
           ) : step === 2 && !preview ? (
-            <Button
-              disabled={pending || totalSelected === 0}
-              onClick={() => void runPreview()}
-            >
+            <Button disabled={pending} onClick={() => void runPreview()}>
               {pending ? <Loader2 className="animate-spin" /> : null}生成预览
             </Button>
           ) : step === 2 ? (
@@ -730,12 +787,11 @@ function PreviewStep({
           <h3 className="mb-2 text-sm font-medium">提醒</h3>
           <ul className="space-y-2">
             {preview.warnings.map((warning, index) => (
-              <li
-                className="border p-3 text-xs"
+              <WarningCard
+                issue={warning}
                 key={`${warning.code}:${index}`}
-              >
-                {warning.message}
-              </li>
+                onAddResolution={onAddResolution}
+              />
             ))}
           </ul>
         </section>
@@ -753,6 +809,26 @@ const IssueCard = forwardRef<
   }
 >(function IssueCard({ issue, onAddResolution, onSelectTask }, ref) {
   const relation = issue.relation ?? "depends"
+  const [seriesDayOffset, setSeriesDayOffset] = useState("")
+  const [seriesLocalTime, setSeriesLocalTime] = useState("")
+  const [clearUntil, setClearUntil] = useState(true)
+  const isAttachment = issue.code === "project_template_attachment_unsupported"
+  const isContentDrop =
+    issue.code === "project_template_dependency_missing" &&
+    relation === "content" &&
+    Boolean(issue.source_ref && issue.target_ref) &&
+    (issue.source_kind === "task" || issue.source_kind === "series")
+  const isDependencyDrop =
+    issue.code === "project_template_dependency_missing" &&
+    (relation === "parent" || relation === "depends")
+  const isSeriesSchedule =
+    issue.code === "project_template_series_schedule_confirmation_required" &&
+    Boolean(issue.source_ref)
+  const dayOffset = Number(seriesDayOffset)
+  const scheduleReady =
+    seriesDayOffset.trim().length > 0 &&
+    Number.isInteger(dayOffset) &&
+    /^\d{2}:\d{2}(?::\d{2})?$/.test(seriesLocalTime)
   return (
     <div
       aria-label={issue.message}
@@ -765,8 +841,13 @@ const IssueCard = forwardRef<
       <div className="mt-1 font-mono text-[11px] text-muted-foreground">
         {issue.source_ref ?? "-"} → {issue.target_ref ?? "-"}
       </div>
+      {isAttachment ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          附件引用不能作为模板内容保留，请先从来源内容移除。
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        {issue.target_ref ? (
+        {issue.target_ref && !isAttachment ? (
           <Button
             onClick={() => onSelectTask(issue.target_ref!)}
             size="sm"
@@ -775,7 +856,7 @@ const IssueCard = forwardRef<
             补选引用任务
           </Button>
         ) : null}
-        {issue.code.includes("dependency") || issue.relation ? (
+        {isDependencyDrop ? (
           <Button
             onClick={() =>
               onAddResolution(
@@ -798,7 +879,7 @@ const IssueCard = forwardRef<
             {relation === "parent" ? "移除父任务关系" : "移除依赖关系"}
           </Button>
         ) : null}
-        {issue.code.includes("attachment") || issue.code.includes("content") ? (
+        {isContentDrop ? (
           <Button
             onClick={() =>
               onAddResolution({
@@ -836,30 +917,101 @@ const IssueCard = forwardRef<
             清除任务日期
           </Button>
         ) : null}
-        {issue.code.includes("series") && issue.source_ref ? (
-          <Button
-            onClick={() =>
-              onAddResolution({
-                series_schedule_overrides: [
-                  {
-                    source_series_ref: issue.source_ref!,
-                    first_due: { day_offset: 0, local_time: "09:00:00" },
-                    until: null,
-                    clear_until: true,
-                  },
-                ],
-              })
-            }
-            size="sm"
-            variant="outline"
-          >
-            清除循环结束时间
-          </Button>
+        {isSeriesSchedule ? (
+          <div className="grid w-full gap-2 border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <label className="grid gap-1 text-xs">
+              循环首次到期日偏移
+              <Input
+                aria-label="循环首次到期日偏移"
+                inputMode="numeric"
+                onChange={(event) => setSeriesDayOffset(event.target.value)}
+                value={seriesDayOffset}
+              />
+            </label>
+            <label className="grid gap-1 text-xs">
+              循环首次到期时间
+              <Input
+                aria-label="循环首次到期时间"
+                onChange={(event) => setSeriesLocalTime(event.target.value)}
+                placeholder="HH:MM"
+                value={seriesLocalTime}
+              />
+            </label>
+            <div className="flex flex-col justify-end gap-2">
+              <label className="flex items-center gap-2 text-xs">
+                <Checkbox
+                  aria-label="清除循环结束时间"
+                  checked={clearUntil}
+                  onCheckedChange={(checked) => setClearUntil(checked === true)}
+                />
+                清除结束时间
+              </label>
+              <Button
+                disabled={!scheduleReady}
+                onClick={() =>
+                  onAddResolution({
+                    series_schedule_overrides: [
+                      {
+                        source_series_ref: issue.source_ref!,
+                        first_due: {
+                          day_offset: dayOffset,
+                          local_time: seriesLocalTime,
+                        },
+                        until: null,
+                        clear_until: clearUntil,
+                      },
+                    ],
+                  })
+                }
+                size="sm"
+                variant="outline"
+              >
+                确认循环排期
+              </Button>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>
   )
 })
+
+function WarningCard({
+  issue,
+  onAddResolution,
+}: {
+  issue: CaptureIssue
+  onAddResolution: (resolution: CaptureResolution) => void
+}) {
+  const canOverrideDate =
+    issue.source_kind === "task" &&
+    Boolean(issue.source_ref && issue.field) &&
+    issue.code.startsWith("project_template_date_")
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-2 border p-3 text-xs">
+      <span>{issue.message}</span>
+      {canOverrideDate ? (
+        <Button
+          onClick={() =>
+            onAddResolution({
+              task_date_overrides: [
+                {
+                  source_task_ref: issue.source_ref!,
+                  field: issue.field!,
+                  value: null,
+                },
+              ],
+            })
+          }
+          size="sm"
+          variant="outline"
+        >
+          清除 {issue.field} 日期
+        </Button>
+      ) : null}
+    </li>
+  )
+}
 
 function ReviewStep({
   anchorDate,
@@ -933,6 +1085,17 @@ function emptySelection(): CandidateSelectionStore {
   }
 }
 
+function cloneSelection(
+  selection: CandidateSelectionStore
+): CandidateSelectionStore {
+  return {
+    task: new Map(selection.task),
+    series: new Map(selection.series),
+    config: new Map(selection.config),
+    automation: new Map(selection.automation),
+  }
+}
+
 function mergeResolution(
   current: CaptureResolution,
   next: CaptureResolution
@@ -946,7 +1109,94 @@ function mergeResolution(
       ...values,
     ]
   }
-  return result
+  return dedupeResolution(result)
+}
+
+function sanitizeResolution(
+  resolution: CaptureResolution,
+  selection: CandidateSelectionStore
+): CaptureResolution {
+  const selectedTasks = new Set(selection.task.keys())
+  const selectedSeries = new Set(selection.series.keys())
+  return dedupeResolution({
+    drop_parent_task_refs: resolution.drop_parent_task_refs?.filter((source) =>
+      selectedTasks.has(source)
+    ),
+    drop_depends: resolution.drop_depends?.filter(
+      (item) =>
+        selectedTasks.has(item.source_task_ref) &&
+        !selectedTasks.has(item.target_task_ref)
+    ),
+    drop_content_task_refs: resolution.drop_content_task_refs?.filter(
+      (item) =>
+        (item.source_kind === "task"
+          ? selectedTasks.has(item.source_ref)
+          : selectedSeries.has(item.source_ref)) &&
+        !selectedTasks.has(item.target_task_ref)
+    ),
+    task_date_overrides: resolution.task_date_overrides?.filter((item) =>
+      selectedTasks.has(item.source_task_ref)
+    ),
+    series_schedule_overrides: resolution.series_schedule_overrides?.filter(
+      (item) => selectedSeries.has(item.source_series_ref)
+    ),
+  })
+}
+
+function dedupeResolution(resolution: CaptureResolution): CaptureResolution {
+  return {
+    drop_parent_task_refs: uniqueBy(
+      resolution.drop_parent_task_refs ?? [],
+      (item) => item
+    ),
+    drop_depends: uniqueBy(
+      resolution.drop_depends ?? [],
+      (item) =>
+        `${item.source_task_ref}\u0000${item.relation}\u0000${item.target_task_ref}`
+    ),
+    drop_content_task_refs: uniqueBy(
+      resolution.drop_content_task_refs ?? [],
+      (item) =>
+        `${item.source_kind}\u0000${item.source_ref}\u0000${item.target_task_ref}`
+    ),
+    task_date_overrides: uniqueBy(
+      resolution.task_date_overrides ?? [],
+      (item) => `${item.source_task_ref}\u0000${item.field}`
+    ),
+    series_schedule_overrides: uniqueBy(
+      resolution.series_schedule_overrides ?? [],
+      (item) => item.source_series_ref
+    ),
+  }
+}
+
+function uniqueBy<T>(items: T[], key: (item: T) => string): T[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const value = key(item)
+    if (seen.has(value)) return false
+    seen.add(value)
+    return true
+  })
+}
+
+function sameSelectionMap(
+  left: Map<string, CandidateSummary>,
+  right: Map<string, CandidateSummary>
+) {
+  if (left.size !== right.size) return false
+  for (const [ref, item] of left) {
+    const other = right.get(ref)
+    if (
+      !other ||
+      item.label !== other.label ||
+      item.secondary !== other.secondary ||
+      item.secret !== other.secret
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 function today() {

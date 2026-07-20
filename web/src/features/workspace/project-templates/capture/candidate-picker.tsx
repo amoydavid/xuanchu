@@ -6,7 +6,7 @@ import {
   KeyRound,
   Search,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -53,6 +53,7 @@ type CandidatePickerProps = {
   kind: CandidateKind
   onChange: (next: Map<string, CandidateSummary>) => void
   onLimitError: (message?: string) => void
+  onSummariesChange: (next: Map<string, CandidateSummary>) => void
   refreshKey: number
   selected: Map<string, CandidateSummary>
   sourceProjectRef: string
@@ -72,6 +73,7 @@ export function CandidatePicker({
   kind,
   onChange,
   onLimitError,
+  onSummariesChange,
   refreshKey,
   selected,
   sourceProjectRef,
@@ -109,6 +111,21 @@ export function CandidatePicker({
   const page = query.data ?? { items: [], total: 0, limit: PAGE_SIZE, offset }
   const pageRefs = page.items.map((item) => item.ref)
   const selectedOnPage = pageRefs.filter((ref) => selected.has(ref)).length
+
+  useEffect(() => {
+    const next = new Map(selected)
+    let changed = false
+    for (const candidate of page.items) {
+      const current = next.get(candidate.ref)
+      if (!current) continue
+      const summary = summarizeCandidate(candidate, kind)
+      if (!sameSummary(current, summary)) {
+        next.set(candidate.ref, summary)
+        changed = true
+      }
+    }
+    if (changed) onSummariesChange(next)
+  }, [kind, onSummariesChange, page.items, selected])
 
   function toggle(candidate: Candidate, checked: boolean) {
     const next = new Map(selected)
@@ -438,4 +455,13 @@ export function summarizeCandidate(
       }
     }
   }
+}
+
+function sameSummary(left: CandidateSummary, right: CandidateSummary) {
+  return (
+    left.ref === right.ref &&
+    left.label === right.label &&
+    left.secondary === right.secondary &&
+    left.secret === right.secret
+  )
 }
